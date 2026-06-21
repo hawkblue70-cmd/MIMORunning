@@ -1,17 +1,17 @@
-//
-//  MIMORunningApp.swift
-//  MIMORunning
-//
-//  Created by 한남석 on 6/19/26.
-//
-
 import SwiftUI
+import SwiftData
 
 @main
 struct MIMORunningApp: App {
+    @State private var raceDetector = RaceDetector()
+    @State private var miniMeStore = CustomMiniMeStore()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(raceDetector)
+                .environment(miniMeStore)
         }
+        .modelContainer(for: [WorkoutStory.self, Shoe.self])
     }
 }

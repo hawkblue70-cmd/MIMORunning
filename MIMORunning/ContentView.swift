@@ -1,24 +1,25 @@
-//
-//  ContentView.swift
-//  MIMORunning
-//
-//  Created by 한남석 on 6/19/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-    }
-}
+    @State private var manager = HealthKitManager()
+    @Environment(RaceDetector.self) private var raceDetector
 
-#Preview {
-    ContentView()
+    var body: some View {
+        TabView {
+            ActivityListView(manager: manager)
+                .tabItem { Label("기록", systemImage: "figure.run") }
+
+            GrowthView(manager: manager)
+                .tabItem { Label("성장", systemImage: "chart.line.uptrend.xyaxis") }
+
+            MeView(manager: manager)
+                .tabItem { Label("나", systemImage: "person") }
+        }
+        .tint(Theme.violet)
+        .preferredColorScheme(.dark)
+        .task {
+            await manager.checkAuthorizationStatus()
+            await raceDetector.setup()   // geocode races (cached after first run)
+        }
+    }
 }

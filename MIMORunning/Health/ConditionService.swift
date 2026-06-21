@@ -1,0 +1,159 @@
+import Foundation
+import CoreLocation
+
+// MARK: - Sleep score
+
+enum SleepGrade {
+    case excellent, good, fair, insufficient, poor
+
+    var label: String {
+        switch self {
+        case .excellent:    "매우높음"
+        case .good:         "높음"
+        case .fair:         "보통"
+        case .insufficient: "낮음"
+        case .poor:         "매우낮음"
+        }
+    }
+}
+
+/// 0–100 composite sleep quality score built from three weighted components.
+/// Labelled "수면상태" (not "수면 점수") to distinguish it from Apple Health's
+/// proprietary sleep score — values will differ.
+struct SleepScore {
+    let score: Int         // 0–100
+    let grade: SleepGrade
+    let sleepHours: Double // underlying duration, used by InsightEngine
+
+    static let displayName = "수면상태"
+
+    var isInsufficient: Bool { score < 55 }
+    var chipLabel: String { grade.label }
+
+    // MARK: Factory
+
+    static func compute(durationHours: Double, consistencyPts: Int, interruptionPts: Int) -> SleepScore {
+        let durPts = durationScore(hours: durationHours)
+        let total  = max(0, min(100, durPts + consistencyPts + interruptionPts))
+        let grade: SleepGrade
+        switch total {
+        case 85...: grade = .excellent
+        case 70..<85: grade = .good
+        case 55..<70: grade = .fair
+        case 40..<55: grade = .insufficient
+        default: grade = .poor
+        }
+        return SleepScore(score: total, grade: grade, sleepHours: durationHours)
+    }
+
+    // 0 pts at ≤4h, 50 pts at ≥7.5h, linear between
+    static func durationScore(hours: Double) -> Int {
+        let pts = (hours - 4.0) / (7.5 - 4.0) * 50.0
+        return max(0, min(50, Int(pts.rounded())))
+    }
+}
+
+// MARK: - Models
+
+struct WeatherSnapshot {
+    let tempC: Double
+    let precipitation: Double   // mm in the hour
+    let windKmh: Double
+
+    var isHot:     Bool { tempC >= 28 }
+    var isCold:    Bool { tempC <= 2 }
+    var isRainy:   Bool { precipitation > 0.1 }
+    var isWindy:   Bool { windKmh >= 20 }
+    var isAdverse: Bool { isHot || isCold || isRainy || isWindy }
+
+    var systemIcon: String {
+        if isRainy { return "cloud.rain.fill" }
+        if isHot   { return "sun.max.fill" }
+        if isCold  { return "snowflake" }
+        if isWindy { return "wind" }
+        return "cloud.sun.fill"
+    }
+
+    var formattedTemp: String { String(format: "%.0f°C", tempC) }
+}
+
+struct ActivityCondition {
+    var weather: WeatherSnapshot?
+    var sleepScore: SleepScore?
+
+    var isSleepInsufficient: Bool { sleepScore?.isInsufficient ?? false }
+
+    var hasAdverseSignal: Bool {
+        weather?.isAdverse == true || isSleepInsufficient
+    }
+}
+
+// MARK: - Weather fetch (Open-Meteo archive — free, no API key)
+
+struct ConditionService {
+
+    /// Fetches historical hourly weather for the run date and location.
+    /// Returns nil when: no coordinate, run < 48 h ago (archive lag), network error.
+    static func fetchWeather(
+        date: Date,
+        coordinate: CLLocationCoordinate2D?
+    ) async -> WeatherSnapshot? {
+        guard let coord = coordinate else { return nil }
+        // Open-Meteo historical archive has ~5-day processing lag; skip very recent runs
+        guard Date().timeIntervalSince(date) >= 48 * 3600 else { return nil }
+
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.timeZone = TimeZone(identifier: "UTC")
+        let dateStr = df.string(from: date)
+
+        var comps = URLComponents(string: "https://archive-api.open-meteo.com/v1/archive")!
+        comps.queryItems = [
+            URLQueryItem(name: "latitude",        value: String(format: "%.4f", coord.latitude)),
+            URLQueryItem(name: "longitude",       value: String(format: "%.4f", coord.longitude)),
+            URLQueryItem(name: "start_date",      value: dateStr),
+            URLQueryItem(name: "end_date",        value: dateStr),
+            URLQueryItem(name: "hourly",          value: "temperature_2m,precipitation,wind_speed_10m"),
+            URLQueryItem(name: "wind_speed_unit", value: "kmh"),
+            URLQueryItem(name: "timezone",        value: "UTC"),
+        ]
+        guard let url = comps.url else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+
+        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return nil }
+        return parseHourlyResponse(data: data, date: date)
+    }
+
+    private static func parseHourlyResponse(data: Data, date: Date) -> WeatherSnapshot? {
+        guard let json    = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hourly  = json["hourly"] as? [String: Any],
+              let times   = hourly["time"]           as? [String],
+              let temps   = hourly["temperature_2m"] as? [Double],
+              let precips = hourly["precipitation"]  as? [Double],
+              let winds   = hourly["wind_speed_10m"] as? [Double],
+              !times.isEmpty else { return nil }
+
+        // Match the hour closest to the run start (UTC)
+        var utcCal = Calendar(identifier: .gregorian)
+        utcCal.timeZone = TimeZone(identifier: "UTC")!
+        let runHour = utcCal.component(.hour, from: date)
+
+        var bestIdx = 0, bestDiff = 24
+        for (i, t) in times.enumerated() {
+            let parts = t.split(separator: "T")
+            guard parts.count == 2,
+                  let hStr = parts[1].split(separator: ":").first,
+                  let h    = Int(hStr) else { continue }
+            let diff = abs(h - runHour)
+            if diff < bestDiff { bestDiff = diff; bestIdx = i }
+        }
+
+        guard bestIdx < temps.count, bestIdx < precips.count, bestIdx < winds.count else { return nil }
+        return WeatherSnapshot(
+            tempC: temps[bestIdx],
+            precipitation: precips[bestIdx],
+            windKmh: winds[bestIdx]
+        )
+    }
+}
