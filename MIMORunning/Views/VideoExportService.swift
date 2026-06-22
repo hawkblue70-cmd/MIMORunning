@@ -43,7 +43,7 @@ struct VideoExportService {
     }
 
     static let targetSize = CGSize(width: 1080, height: 1920)
-    static let trimDuration: Double = 4.0
+    static let trimDuration: Double = 30.0
 
     // MARK: First frame
 
@@ -135,7 +135,14 @@ struct VideoExportService {
         overlayLayer.frame         = CGRect(origin: .zero, size: targetSize)
         overlayLayer.contents      = overlay.cgImage
 
+        // Slight brightness boost on the video layer (matches CardVisual.videoBrightnessBoost).
+        let brightenLayer         = CALayer()
+        brightenLayer.frame       = CGRect(origin: .zero, size: targetSize)
+        brightenLayer.backgroundColor = UIColor.white.cgColor
+        brightenLayer.opacity     = CardVisual.videoBrightenLayerOpacity
+
         parentLayer.addSublayer(videoLayer)
+        parentLayer.addSublayer(brightenLayer)
         parentLayer.addSublayer(overlayLayer)
 
         videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(

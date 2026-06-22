@@ -25,6 +25,12 @@ struct RouteVideoFrameView: View {
     let duration: String
     let date: Date
     var weather: WeatherSnapshot? = nil
+    var chartPanel: CardChartPanel = .map
+    var chartSplits: [SplitData] = []
+    var chartHRSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var chartHRZones: [HRZoneData] = []
+    var chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
+    var chartIntervalSegments: [IntervalSegment] = []
 
     var body: some View {
         GeometryReader { proxy in
@@ -37,15 +43,14 @@ struct RouteVideoFrameView: View {
                     .scaledToFill()
                     .frame(width: w, height: h)
                     .clipped()
+                    .brightness(CardVisual.videoBrightnessBoost)
+                    .saturation(CardVisual.videoSaturationBoost)
 
                 RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress)
                     .frame(width: w, height: h)
 
-                LinearGradient(
-                    colors: [Color.black.opacity(0.92), Color.black.opacity(0.68), Color.clear],
-                    startPoint: .bottom,
-                    endPoint: UnitPoint(x: 0.5, y: 0.55)
-                )
+                CardVisual.topScrim
+                CardVisual.videoBottomScrim
 
                 statsPanel(scale: scale)
             }
@@ -124,6 +129,26 @@ struct RouteVideoFrameView: View {
 
             Spacer()
 
+            // Chart panel (middle, right-aligned — same as Athletic)
+            if chartPanel != .map {
+                HStack {
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2 * scale) {
+                        HStack(spacing: 3 * scale) {
+                            Image(systemName: chartPanel.icon)
+                                .font(.system(size: 6 * scale))
+                            Text(chartPanel.rawValue)
+                                .font(.system(size: 7 * scale, weight: .semibold))
+                                .tracking(0.3)
+                        }
+                        .foregroundStyle(Color.white.opacity(0.55))
+                        chartContent(scale: scale)
+                    }
+                }
+                .padding(.horizontal, pad)
+                .padding(.bottom, 3 * scale)
+            }
+
             // Date · Divider · Stats (athletic style)
             if let w = weather {
                 HStack(spacing: 3 * scale) {
@@ -163,6 +188,7 @@ struct RouteVideoFrameView: View {
                 }
                 .fixedSize(horizontal: true, vertical: true)
                 .frame(width: distW, alignment: .leading)
+                .cardVideoLargeTextShadow()
                 .padding(.leading, pad)
 
                 if !metrics.isEmpty {
@@ -200,6 +226,26 @@ struct RouteVideoFrameView: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.top, 3 * scale)
             .padding(.bottom, 8 * scale)
+        }
+        .cardTextShadow()
+    }
+    @ViewBuilder
+    private func chartContent(scale: CGFloat) -> some View {
+        switch chartPanel {
+        case .splits where !chartSplits.isEmpty:
+            SplitsPanelChart(splits: chartSplits, compact: true)
+                .frame(width: 130 * scale, height: 83 * scale).clipped()
+        case .intervals where !chartIntervalSegments.isEmpty:
+            CardIntervalChart(segments: chartIntervalSegments)
+        case .heartRate where !chartHRSamples.isEmpty:
+            HRSeriesPanelChart(samples: chartHRSamples, zones: chartHRZones, compact: true)
+                .frame(width: 130 * scale, height: 83 * scale).clipped()
+        case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
+             where !chartWorkoutSeries.isEmpty:
+            CardWorkoutSeriesChart(samples: chartWorkoutSeries, panel: chartPanel)
+                .frame(width: 130 * scale, height: 83 * scale).clipped()
+        default:
+            EmptyView()
         }
     }
 }
@@ -311,6 +357,12 @@ struct RouteVideoExportService {
         miniMeVariant: MiniMeVariant?,
         customMiniMeImage: UIImage?,
         weather: WeatherSnapshot? = nil,
+        chartPanel: CardChartPanel = .map,
+        chartSplits: [SplitData] = [],
+        chartHRSamples: [(offset: TimeInterval, bpm: Int)] = [],
+        chartHRZones: [HRZoneData] = [],
+        chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = [],
+        chartIntervalSegments: [IntervalSegment] = [],
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
         let outputURL = FileManager.default.temporaryDirectory
@@ -356,7 +408,13 @@ struct RouteVideoExportService {
                 distanceKm: distanceKm,
                 duration: duration,
                 date: date,
-                weather: weather
+                weather: weather,
+                chartPanel: chartPanel,
+                chartSplits: chartSplits,
+                chartHRSamples: chartHRSamples,
+                chartHRZones: chartHRZones,
+                chartWorkoutSeries: chartWorkoutSeries,
+                chartIntervalSegments: chartIntervalSegments
             )
             .frame(width: renderSize.width, height: renderSize.height)
 

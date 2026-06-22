@@ -95,6 +95,67 @@ enum CardChartPanel: String, CaseIterable, Equatable {
     }
 }
 
+// MARK: - Shared overlay constants (cards + video, single source of truth)
+
+enum CardVisual {
+    /// Top scrim: black 20% at top edge, fades to clear by 22% of height. Shared by photo and video.
+    static var topScrim: LinearGradient {
+        LinearGradient(
+            colors: [Color.black.opacity(0.20), .clear],
+            startPoint: .top,
+            endPoint: UnitPoint(x: 0.5, y: 0.22)
+        )
+    }
+    /// Bottom scrim for photo cards: black 50%, clears at 60% from top.
+    static var bottomScrim: LinearGradient {
+        LinearGradient(
+            colors: [Color.black.opacity(0.50), .clear],
+            startPoint: .bottom,
+            endPoint: UnitPoint(x: 0.5, y: 0.40)
+        )
+    }
+    /// Bottom scrim for video cards: lighter (40%) and narrower — clears at 70% from top.
+    static var videoBottomScrim: LinearGradient {
+        LinearGradient(
+            colors: [Color.black.opacity(0.40), .clear],
+            startPoint: .bottom,
+            endPoint: UnitPoint(x: 0.5, y: 0.30)
+        )
+    }
+    static let textShadowColor:             Color   = .black.opacity(0.70)
+    static let textShadowRadius:            CGFloat = 5
+    static let largeTextShadowRadius:       CGFloat = 6
+    static let textShadowY:                 CGFloat = 1
+    static let videoLargeTextShadowColor:   Color   = .black.opacity(0.75)
+    /// Photo background brightness correction (+0.03).
+    static let photoBrightnessBoost:        Double  = 0.03
+    /// Video background brightness correction (+0.10).
+    static let videoBrightnessBoost:        Double  = 0.10
+    static let videoSaturationBoost:        Double  = 1.05
+    static let videoBrightenLayerOpacity:   Float   = 0.10  // white CALayer opacity for AVFoundation path
+}
+
+extension View {
+    /// Drop-shadow for overlay text (small labels, wordmark, insight title).
+    func cardTextShadow() -> some View {
+        shadow(color: CardVisual.textShadowColor,
+               radius: CardVisual.textShadowRadius,
+               x: 0, y: CardVisual.textShadowY)
+    }
+    /// Stronger drop-shadow for large distance numbers and stat values.
+    func cardLargeTextShadow() -> some View {
+        shadow(color: CardVisual.textShadowColor,
+               radius: CardVisual.largeTextShadowRadius,
+               x: 0, y: CardVisual.textShadowY)
+    }
+    /// Strengthened shadow for video distance/stats numbers (75% black, radius 6).
+    func cardVideoLargeTextShadow() -> some View {
+        shadow(color: CardVisual.videoLargeTextShadowColor,
+               radius: CardVisual.largeTextShadowRadius,
+               x: 0, y: CardVisual.textShadowY)
+    }
+}
+
 // MARK: - Athletic card (record-only mode, no photo)
 
 struct ShareCardView: View {
@@ -111,6 +172,7 @@ struct ShareCardView: View {
     var chartPanel: CardChartPanel = .map
     var chartSplits: [SplitData] = []
     var chartHRSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var chartHRZones: [HRZoneData] = []
     var chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     var chartIntervalSegments: [IntervalSegment] = []
     var weather: WeatherSnapshot? = nil
@@ -172,11 +234,12 @@ struct ShareCardView: View {
     private var chartContent: some View {
         switch chartPanel {
         case .splits where !chartSplits.isEmpty:
-            CardSplitsChart(splits: chartSplits)
+            SplitsPanelChart(splits: chartSplits, compact: true)
+                .frame(width: 130, height: 83).clipped()
         case .intervals where !chartIntervalSegments.isEmpty:
             CardIntervalChart(segments: chartIntervalSegments)
         case .heartRate where !chartHRSamples.isEmpty:
-            CardHRChart(samples: chartHRSamples)
+            HRSeriesPanelChart(samples: chartHRSamples, zones: chartHRZones, compact: true)
                 .frame(width: 130, height: 83).clipped()
         case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
              where !chartWorkoutSeries.isEmpty:
@@ -349,160 +412,9 @@ struct ShareCardView: View {
 
 // MARK: - Compact card charts
 
-private struct CardSplitsChart: View {
-    let splits: [SplitData]
-    @State private var labelX: [Int: CGFloat] = [:]
 
-    var body: some View {
-        let paces = splits.map(\.paceSecPerKm)
-        let lo = (paces.min() ?? 240) * 0.86
-        let sorted = paces.sorted()
-        let p90 = sorted[(sorted.count - 1) * 9 / 10]
-        let rawHi = paces.max() ?? 360
-        let hi = rawHi > p90 * 1.5 ? p90 * 1.18 : rawHi * 1.06
-        let n = splits.count
-        let step: Int = n <= 6 ? 1 : n <= 15 ? 2 : n <= 30 ? 5 : 10
-        let chartW: CGFloat = 130
-        let barW: CGFloat = n <= 6 ? 7 : n <= 12 ? 5 : n <= 20 ? 4 : 3
-        VStack(spacing: 1) {
-            Chart {
-                ForEach(splits) { split in
-                    BarMark(x: .value("km", split.id), y: .value("pace", split.paceSecPerKm),
-                            width: .fixed(barW))
-                        .foregroundStyle(Theme.pace.gradient)
-                        .cornerRadius(2)
-                }
-            }
-            .chartYScale(domain: lo...hi)
-            .chartXScale(domain: 0.5...(Double(n) + 0.5))
-            .chartXAxis(.hidden)
-            .chartYAxis {
-                AxisMarks(values: .automatic(desiredCount: 3)) { val in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(Color.white.opacity(0.10))
-                    AxisValueLabel {
-                        if let sec = val.as(Double.self) {
-                            Text(String(format: "%d'%02d\"", Int(sec) / 60, Int(sec) % 60))
-                                .font(.system(size: 6.5))
-                                .foregroundStyle(Color.white.opacity(0.80))
-                        }
-                    }
-                }
-            }
-            .chartOverlay { proxy in
-                Color.clear.onAppear {
-                    var positions: [Int: CGFloat] = [:]
-                    for id in 1...n where id % step == 0 {
-                        if let x = proxy.position(forX: id) { positions[id] = x }
-                    }
-                    labelX = positions
-                }
-            }
-            .frame(width: chartW, height: 63)
-            .clipped()
 
-            ZStack(alignment: .topLeading) {
-                Color.clear
-                ForEach(Array(labelX.keys.sorted()), id: \.self) { id in
-                    Text("\(id)")
-                        .font(.system(size: 6.5))
-                        .foregroundStyle(Color.white.opacity(0.80))
-                        .fixedSize()
-                        .position(x: labelX[id]!, y: 5)
-                }
-            }
-            .frame(width: chartW, height: 10)
-        }
-    }
-}
-
-private struct CardHRChart: View {
-    let samples: [(offset: TimeInterval, bpm: Int)]
-    var zones: [HRZoneData] = []
-
-    private static let zoneColors: [Color] = [
-        Color(red: 0.30, green: 0.60, blue: 1.00),
-        Color(red: 0.20, green: 0.85, blue: 0.85),
-        Color(red: 0.70, green: 1.00, blue: 0.10),
-        Color(red: 1.00, green: 0.60, blue: 0.15),
-        Color(red: 1.00, green: 0.30, blue: 0.55),
-    ]
-
-    private struct Bucket: Identifiable {
-        let id: Int; let midSec: Double; let minV: Double; let maxV: Double; let color: Color
-    }
-
-    private func zoneColor(for bpm: Double) -> Color {
-        guard !zones.isEmpty else { return Theme.heartRate }
-        let ibpm = Int(bpm)
-        guard let z = zones.first(where: { z in
-            z.id == zones.last?.id ? ibpm >= z.minBPM : (ibpm >= z.minBPM && ibpm <= z.maxBPM)
-        }) else { return Theme.heartRate }
-        return Self.zoneColors[min(z.id - 1, 4)]
-    }
-
-    private var validSamples: [(offset: TimeInterval, bpm: Int)] {
-        samples.filter { $0.offset >= 0 }
-    }
-
-    private var buckets: [Bucket] {
-        guard !validSamples.isEmpty else { return [] }
-        let total = max(validSamples.map(\.offset).max() ?? 1, 1)
-        let size = total / 40
-        return (0..<40).compactMap { i in
-            let lo = Double(i) * size, hi = lo + size
-            let vals = validSamples
-                .filter { $0.offset >= lo && ($0.offset < hi || (i == 39 && $0.offset <= hi)) }
-                .map { Double($0.bpm) }
-            guard !vals.isEmpty else { return nil }
-            let avg = vals.reduce(0, +) / Double(vals.count)
-            return Bucket(id: i, midSec: (lo + hi) / 2,
-                          minV: vals.min()!, maxV: vals.max()!, color: zoneColor(for: avg))
-        }
-    }
-
-    private var domainLo: Double { max((buckets.map(\.minV).min() ?? 60) - 6, 40) }
-    private var totalMin: Double { max(validSamples.map(\.offset).max() ?? 1, 1) / 60 }
-
-    var body: some View {
-        let lo = domainLo
-        Chart {
-            ForEach(buckets) { b in
-                BarMark(x: .value("t", b.midSec / 60),
-                        yStart: .value("lo", b.minV),
-                        yEnd: .value("hi", b.maxV),
-                        width: .fixed(2))
-                .foregroundStyle(b.color.opacity(0.85))
-            }
-        }
-        .chartYScale(domain: lo...(buckets.map(\.maxV).max().map { $0 + 6 } ?? 200))
-        .chartXScale(domain: 0...totalMin)
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { val in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color.white.opacity(0.10))
-                AxisValueLabel {
-                    if let v = val.as(Double.self) {
-                        Text("\(Int(v))").font(.system(size: 6.5))
-                            .foregroundStyle(Color.white.opacity(0.80))
-                    }
-                }
-            }
-        }
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { val in
-                AxisValueLabel {
-                    if let t = val.as(Double.self) {
-                        Text("\(Int(t))분").font(.system(size: 6))
-                            .foregroundStyle(Color.white.opacity(0.75))
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct CardWorkoutSeriesChart: View {
+struct CardWorkoutSeriesChart: View {
     let samples: [(offset: TimeInterval, value: Double)]
     let panel: CardChartPanel
 
@@ -613,7 +525,7 @@ private struct CardWorkoutSeriesChart: View {
     }
 }
 
-private struct CardIntervalChart: View {
+struct CardIntervalChart: View {
     let segments: [IntervalSegment]
     @State private var labelX: [Int: CGFloat] = [:]
 
@@ -700,6 +612,7 @@ private struct PhotoShareCardView: View {
     var chartPanel: CardChartPanel = .map
     var chartSplits: [SplitData] = []
     var chartHRSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var chartHRZones: [HRZoneData] = []
     var chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     var chartIntervalSegments: [IntervalSegment] = []
     var weather: WeatherSnapshot? = nil
@@ -732,16 +645,17 @@ private struct PhotoShareCardView: View {
     @ViewBuilder private var chartContent: some View {
         switch chartPanel {
         case .splits where !chartSplits.isEmpty:
-            CardSplitsChart(splits: chartSplits)
+            SplitsPanelChart(splits: chartSplits, compact: true)
+                .frame(width: 130, height: 83).clipped()
         case .intervals where !chartIntervalSegments.isEmpty:
             CardIntervalChart(segments: chartIntervalSegments)
         case .heartRate where !chartHRSamples.isEmpty:
-            CardHRChart(samples: chartHRSamples)
-                .frame(width: 120, height: 70).clipped()
+            HRSeriesPanelChart(samples: chartHRSamples, zones: chartHRZones, compact: true)
+                .frame(width: 130, height: 83).clipped()
         case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
              where !chartWorkoutSeries.isEmpty:
             CardWorkoutSeriesChart(samples: chartWorkoutSeries, panel: chartPanel)
-                .frame(width: 120, height: 70).clipped()
+                .frame(width: 130, height: 83).clipped()
         default:
             EmptyView()
         }
@@ -756,18 +670,10 @@ private struct PhotoShareCardView: View {
                 .scaledToFill()
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .offset(photoOffset)
+                .brightness(CardVisual.photoBrightnessBoost)
 
-            LinearGradient(
-                colors: [Color.black.opacity(0.60), Color.clear],
-                startPoint: .top,
-                endPoint: UnitPoint(x: 0.5, y: 0.30)
-            )
-
-            LinearGradient(
-                colors: [Color.black.opacity(0.90), Color.black.opacity(0.65), Color.clear],
-                startPoint: .bottom,
-                endPoint: UnitPoint(x: 0.5, y: 0.65)
-            )
+            CardVisual.topScrim
+            CardVisual.bottomScrim
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 10) {
@@ -917,6 +823,7 @@ private struct PhotoShareCardView: View {
                     }
                     .fixedSize(horizontal: true, vertical: true)
                     .frame(width: distW, alignment: .leading)
+                    .cardLargeTextShadow()
 
                     if !metrics.isEmpty {
                         Rectangle()
@@ -946,6 +853,7 @@ private struct PhotoShareCardView: View {
                 .padding(.bottom, 8)
 
             }
+            .cardTextShadow()
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
 
             if max.width > 1 || max.height > 1 {
@@ -1112,6 +1020,7 @@ private struct StoryShareCardView: View {
     var chartPanel: CardChartPanel = .map
     var chartSplits: [SplitData] = []
     var chartHRSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var chartHRZones: [HRZoneData] = []
     var chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     var chartIntervalSegments: [IntervalSegment] = []
     var weather: WeatherSnapshot? = nil
@@ -1133,11 +1042,12 @@ private struct StoryShareCardView: View {
     @ViewBuilder private var chartContent: some View {
         switch chartPanel {
         case .splits where !chartSplits.isEmpty:
-            CardSplitsChart(splits: chartSplits)
+            SplitsPanelChart(splits: chartSplits, compact: true)
+                .frame(width: 130, height: 83).clipped()
         case .intervals where !chartIntervalSegments.isEmpty:
             CardIntervalChart(segments: chartIntervalSegments)
         case .heartRate where !chartHRSamples.isEmpty:
-            CardHRChart(samples: chartHRSamples)
+            HRSeriesPanelChart(samples: chartHRSamples, zones: chartHRZones, compact: true)
                 .frame(width: 130, height: 83).clipped()
         case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
              where !chartWorkoutSeries.isEmpty:
@@ -1350,6 +1260,7 @@ private struct VideoOverlayCard: View {
     let chartPanel: CardChartPanel
     let chartSplits: [SplitData]
     let chartHRSamples: [(offset: TimeInterval, bpm: Int)]
+    var chartHRZones: [HRZoneData] = []
     let chartWorkoutSeries: [(offset: TimeInterval, value: Double)]
     let chartIntervalSegments: [IntervalSegment]
     let weather: WeatherSnapshot?
@@ -1364,16 +1275,17 @@ private struct VideoOverlayCard: View {
     @ViewBuilder private var chartContent: some View {
         switch chartPanel {
         case .splits where !chartSplits.isEmpty:
-            CardSplitsChart(splits: chartSplits)
+            SplitsPanelChart(splits: chartSplits, compact: true)
+                .frame(width: 130, height: 83).clipped()
         case .intervals where !chartIntervalSegments.isEmpty:
             CardIntervalChart(segments: chartIntervalSegments)
         case .heartRate where !chartHRSamples.isEmpty:
-            CardHRChart(samples: chartHRSamples)
-                .frame(width: 110, height: 55).clipped()
+            HRSeriesPanelChart(samples: chartHRSamples, zones: chartHRZones, compact: true)
+                .frame(width: 130, height: 83).clipped()
         case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
              where !chartWorkoutSeries.isEmpty:
             CardWorkoutSeriesChart(samples: chartWorkoutSeries, panel: chartPanel)
-                .frame(width: 110, height: 55).clipped()
+                .frame(width: 130, height: 83).clipped()
         default:
             EmptyView()
         }
@@ -1383,19 +1295,8 @@ private struct VideoOverlayCard: View {
         ZStack {
             Color.clear
 
-            // Bottom scrim (weather/date/stats area)
-            LinearGradient(
-                colors: [Color.black.opacity(0.92), Color.black.opacity(0.70), Color.clear],
-                startPoint: .bottom,
-                endPoint: UnitPoint(x: 0.5, y: 0.50)
-            )
-
-            // Top scrim (wordmark/insight/MiniMe area)
-            LinearGradient(
-                colors: [Color.black.opacity(0.65), Color.black.opacity(0.25), Color.clear],
-                startPoint: .top,
-                endPoint: UnitPoint(x: 0.5, y: 0.30)
-            )
+            CardVisual.videoBottomScrim
+            CardVisual.topScrim
 
             VStack(alignment: .leading, spacing: 0) {
 
@@ -1497,6 +1398,7 @@ private struct VideoOverlayCard: View {
                     }
                     .fixedSize(horizontal: true, vertical: true)
                     .frame(width: distW, alignment: .leading)
+                    .cardVideoLargeTextShadow()
 
                     if !metrics.isEmpty {
                         Rectangle()
@@ -1533,6 +1435,7 @@ private struct VideoOverlayCard: View {
                 .padding(.top, 2)
                 .padding(.bottom, 6)
             }
+            .cardTextShadow()
             .padding(.horizontal, 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -1580,7 +1483,10 @@ struct ShareCardScreen: View {
     @State private var isRendering = true
     @State private var showShareSheet = false
     @State private var selectedPhoto: UIImage?
-    @State private var pickerItem: PhotosPickerItem?
+    @State private var selectedPhotoIndex: Int = 0
+    @State private var allPickedPhotos: [UIImage] = []   // in-memory source of truth for sharing
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var showStoryPhotoPicker = false
     @State private var photoOffset: CGSize = .zero
     @State private var photoOffsets: [Int: CGSize] = [:]
     @State private var template: ShareTemplate = .athletic
@@ -1962,16 +1868,29 @@ struct ShareCardScreen: View {
     private var bottomControls: some View {
         if template == .story {
             HStack(spacing: 14) {
-                PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
-                    Label(selectedPhoto == nil ? "사진 추가" : "사진 변경",
-                          systemImage: selectedPhoto == nil ? "photo.badge.plus" : "photo")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Theme.violet)
-                }
-                if selectedPhoto != nil {
+                if storyPhotos.isEmpty {
+                    // 저장된 사진 없음 → 라이브러리에서 추가
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 5,
+                                 matching: .images, photoLibrary: .shared()) {
+                        Label("사진 추가", systemImage: "photo.badge.plus")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Theme.violet)
+                    }
+                } else {
+                    // 저장된 사진 있음 → 저장된 사진에서만 선택
                     Button {
-                        selectedPhoto = nil; pickerItem = nil
-                        clearStoryPhoto(); Task { await renderCard() }
+                        showStoryPhotoPicker = true
+                    } label: {
+                        Label(selectedPhoto == nil ? "사진 선택" : "사진 변경",
+                              systemImage: selectedPhoto == nil ? "photo" : "photo.fill")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Theme.violet)
+                    }
+                }
+                if storyPhotos.isEmpty, selectedPhoto != nil {
+                    Button {
+                        selectedPhoto = nil
+                        Task { await renderCard() }
                     } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.title3)
                     }
@@ -1979,21 +1898,26 @@ struct ShareCardScreen: View {
             }
             .padding(.bottom, 20)
         } else if template == .video {
-            HStack(spacing: 14) {
-                PhotosPicker(selection: $videoPickerItem, matching: .videos, photoLibrary: .shared()) {
-                    Label(sourceVideoURL == nil ? "영상 선택" : "영상 변경",
-                          systemImage: sourceVideoURL == nil ? "video.badge.plus" : "video")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Theme.violet)
-                }
-                if sourceVideoURL != nil {
-                    Button {
-                        sourceVideoURL = nil; videoPickerItem = nil
-                        videoPreviewImage = nil; exportedVideoFile = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.title3)
+            VStack(spacing: 6) {
+                HStack(spacing: 14) {
+                    PhotosPicker(selection: $videoPickerItem, matching: .videos, photoLibrary: .shared()) {
+                        Label(sourceVideoURL == nil ? "영상 선택" : "영상 변경",
+                              systemImage: sourceVideoURL == nil ? "video.badge.plus" : "video")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Theme.violet)
+                    }
+                    if sourceVideoURL != nil {
+                        Button {
+                            sourceVideoURL = nil; videoPickerItem = nil
+                            videoPreviewImage = nil; exportedVideoFile = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.title3)
+                        }
                     }
                 }
+                Text("최대 30초 · 영상 길이에 따라 합성 시간이 소요됩니다")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
             .padding(.bottom, 20)
         } else {
@@ -2021,23 +1945,45 @@ struct ShareCardScreen: View {
         }
         .navigationTitle("공유")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showStoryPhotoPicker) {
+            let pickerPhotos = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
+            StoryPhotoPickerSheet(photos: pickerPhotos, selected: selectedPhoto) { picked, idx in
+                selectedPhoto = picked
+                selectedPhotoIndex = idx
+                showStoryPhotoPicker = false
+                Task { await renderCard() }
+            }
+        }
         .task {
-            if selectedPhoto == nil, let sp = storyPhoto { selectedPhoto = sp }
+            // Restore selected photo from stored data on re-entry (e.g. after app restart).
+            // Without this, selectedPhoto stays nil and the legacy all-cards branch fires.
+            if selectedPhoto == nil, let first = storyPhotos.first {
+                selectedPhoto = first
+                selectedPhotoIndex = 0
+            }
             // Auto-select first available panel when no route
             if routeCoords.isEmpty && cardPanel == .map {
                 cardPanel = CardChartPanel.allCases.first { isChartPanelAvailable($0) } ?? .splits
             }
             await renderCard()
         }
-        .onChange(of: pickerItem) { _, newItem in
+        .onChange(of: pickerItems) { _, newItems in
             photoOffset = .zero
             photoOffsets = [:]
             Task {
-                guard let item = newItem,
-                      let data = try? await item.loadTransferable(type: Data.self),
-                      let image = UIImage(data: data) else { return }
-                selectedPhoto = image
-                persistStoryPhoto(image)
+                guard !newItems.isEmpty else { return }
+                var images: [UIImage] = []
+                for item in newItems {
+                    if let data = try? await item.loadTransferable(type: Data.self),
+                       let image = UIImage(data: data) {
+                        images.append(image)
+                    }
+                }
+                guard !images.isEmpty else { return }
+                selectedPhoto = images[0]
+                selectedPhotoIndex = 0
+                allPickedPhotos = images          // keep in memory for reliable share count
+                persistStoryPhotos(images)
                 await renderCard()
             }
         }
@@ -2114,16 +2060,17 @@ struct ShareCardScreen: View {
     @ViewBuilder private var videoChartContent: some View {
         switch cardPanel {
         case .splits where !(detail?.splits.isEmpty ?? true):
-            CardSplitsChart(splits: detail?.splits ?? [])
+            SplitsPanelChart(splits: detail?.splits ?? [], compact: true)
+                .frame(width: 130, height: 83).clipped()
         case .intervals where !(detail?.intervalSegments.isEmpty ?? true):
             CardIntervalChart(segments: detail?.intervalSegments ?? [])
         case .heartRate where !shareHRSamples.isEmpty:
-            CardHRChart(samples: shareHRSamples)
-                .frame(width: 110, height: 55).clipped()
+            HRSeriesPanelChart(samples: shareHRSamples, zones: detail?.hrZones ?? [], compact: true)
+                .frame(width: 130, height: 83).clipped()
         case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
              where !shareWorkoutSeries.isEmpty:
             CardWorkoutSeriesChart(samples: shareWorkoutSeries, panel: cardPanel)
-                .frame(width: 110, height: 55).clipped()
+                .frame(width: 130, height: 83).clipped()
         default:
             EmptyView()
         }
@@ -2143,6 +2090,7 @@ struct ShareCardScreen: View {
                           chartPanel: cardPanel,
                           chartSplits: detail?.splits ?? [],
                           chartHRSamples: shareHRSamples,
+                          chartHRZones: detail?.hrZones ?? [],
                           chartWorkoutSeries: shareWorkoutSeries,
                           chartIntervalSegments: detail?.intervalSegments ?? [],
                           weather: condition?.weather,
@@ -2159,6 +2107,7 @@ struct ShareCardScreen: View {
                                    chartPanel: cardPanel,
                                    chartSplits: detail?.splits ?? [],
                                    chartHRSamples: shareHRSamples,
+                                   chartHRZones: detail?.hrZones ?? [],
                                    chartWorkoutSeries: shareWorkoutSeries,
                                    chartIntervalSegments: detail?.intervalSegments ?? [],
                                    weather: condition?.weather,
@@ -2179,6 +2128,7 @@ struct ShareCardScreen: View {
                                               chartPanel: cardPanel,
                                               chartSplits: detail?.splits ?? [],
                                               chartHRSamples: shareHRSamples,
+                                              chartHRZones: detail?.hrZones ?? [],
                                               chartWorkoutSeries: shareWorkoutSeries,
                                               chartIntervalSegments: detail?.intervalSegments ?? [],
                                               weather: condition?.weather,
@@ -2201,6 +2151,7 @@ struct ShareCardScreen: View {
                                        chartPanel: cardPanel,
                                        chartSplits: detail?.splits ?? [],
                                        chartHRSamples: shareHRSamples,
+                                       chartHRZones: detail?.hrZones ?? [],
                                        chartWorkoutSeries: shareWorkoutSeries,
                                        chartIntervalSegments: detail?.intervalSegments ?? [],
                                        weather: condition?.weather,
@@ -2215,6 +2166,7 @@ struct ShareCardScreen: View {
                               chartPanel: cardPanel,
                               chartSplits: detail?.splits ?? [],
                               chartHRSamples: shareHRSamples,
+                              chartHRZones: detail?.hrZones ?? [],
                               chartWorkoutSeries: shareWorkoutSeries,
                               chartIntervalSegments: detail?.intervalSegments ?? [],
                               weather: condition?.weather,
@@ -2256,7 +2208,13 @@ struct ShareCardScreen: View {
                 distanceKm: distanceKmString,
                 duration: activity.formattedDuration,
                 date: activity.date,
-                weather: condition?.weather
+                weather: condition?.weather,
+                chartPanel: cardPanel,
+                chartSplits: detail?.splits ?? [],
+                chartHRSamples: shareHRSamples,
+                chartHRZones: detail?.hrZones ?? [],
+                chartWorkoutSeries: shareWorkoutSeries,
+                chartIntervalSegments: detail?.intervalSegments ?? []
             )
         } else {
             ZStack {
@@ -2283,6 +2241,8 @@ struct ShareCardScreen: View {
                 Image(uiImage: preview)
                     .resizable()
                     .scaledToFill()
+                    .frame(width: 300, height: 375)
+                    .clipped()
             } else {
                 Color(hex: "0D0D12")
                 if !isExportingVideo {
@@ -2560,7 +2520,7 @@ struct ShareCardScreen: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
             .sheet(isPresented: $showShareSheet) {
-                ShareSheet(items: storyShareImages)
+                ShareSheet(images: storyShareImages)
             }
         } else if let img = previewImage {
             Button { showShareSheet = true } label: {
@@ -2573,7 +2533,7 @@ struct ShareCardScreen: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
             .sheet(isPresented: $showShareSheet) {
-                ShareSheet(items: [img])
+                ShareSheet(images: [img])
             }
         } else {
             Text("카드 생성에 실패했어요")
@@ -2605,6 +2565,7 @@ struct ShareCardScreen: View {
             chartPanel: cardPanel,
             chartSplits: detail?.splits ?? [],
             chartHRSamples: shareHRSamples,
+            chartHRZones: detail?.hrZones ?? [],
             chartWorkoutSeries: shareWorkoutSeries,
             chartIntervalSegments: detail?.intervalSegments ?? [],
             weather: condition?.weather
@@ -2644,6 +2605,12 @@ struct ShareCardScreen: View {
                 miniMeVariant: activeMiniMeVariant,
                 customMiniMeImage: activeMiniMeImage,
                 weather: condition?.weather,
+                chartPanel: cardPanel,
+                chartSplits: detail?.splits ?? [],
+                chartHRSamples: shareHRSamples,
+                chartHRZones: detail?.hrZones ?? [],
+                chartWorkoutSeries: shareWorkoutSeries,
+                chartIntervalSegments: detail?.intervalSegments ?? [],
                 progressHandler: { p in routeVideoProgress = p }
             )
             routeVideoFile = SharableVideoFile(url: url)
@@ -2658,39 +2625,44 @@ struct ShareCardScreen: View {
         storyShareImages = []
         previewImage = nil
 
-        let photos = storyPhotos
-        if template == .story, selectedPhoto == nil, let s = story, photos.count > 1 {
-            var imgs: [UIImage] = []
-            for (idx, photo) in photos.enumerated() {
-                let renderer = ImageRenderer(content:
-                    PhotoShareCardView(activity: activity, photo: photo,
-                                       insightTitle: displayInsightTitle,
-                                       metrics: enabledMetricItems, raceName: activeRaceName,
-                                       story: s, showMood: showMoodOnCard, showMemo: showMemoOnCard,
-                                       miniMeVariant: activeMiniMeVariant,
-                                       customMiniMeImage: activeMiniMeImage,
-                                       routeCoordinates: routeCoords,
-                                       chartPanel: cardPanel,
-                                       chartSplits: detail?.splits ?? [],
-                                       chartHRSamples: shareHRSamples,
-                                       chartWorkoutSeries: shareWorkoutSeries,
-                                       chartIntervalSegments: detail?.intervalSegments ?? [],
-                                       weather: condition?.weather,
-                                       shoeName: displayShoeName,
-                                       photoOffset: .constant(photoOffsets[idx, default: .zero]))
-                        .frame(width: 300, height: 375)
-                )
-                renderer.scale = 3
-                if let img = renderer.uiImage {
-                    if idx == 0 { previewImage = img }
-                    imgs.append(img)
-                }
-                await Task.yield()
+        // Use in-memory array if available (avoids @Query timing gap); fall back to disk on restart.
+        let photos = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
+
+        // Story + selected photo: render data card, rest are plain images
+        if template == .story, let selPhoto = selectedPhoto {
+            let renderer = ImageRenderer(content:
+                PhotoShareCardView(activity: activity, photo: selPhoto,
+                                   insightTitle: displayInsightTitle,
+                                   metrics: enabledMetricItems, raceName: activeRaceName,
+                                   story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                                   miniMeVariant: activeMiniMeVariant,
+                                   customMiniMeImage: activeMiniMeImage,
+                                   routeCoordinates: routeCoords,
+                                   chartPanel: cardPanel,
+                                   chartSplits: detail?.splits ?? [],
+                                   chartHRSamples: shareHRSamples,
+                                   chartHRZones: detail?.hrZones ?? [],
+                                   chartWorkoutSeries: shareWorkoutSeries,
+                                   chartIntervalSegments: detail?.intervalSegments ?? [],
+                                   weather: condition?.weather,
+                                   shoeName: displayShoeName,
+                                   photoOffset: .constant(photoOffset))
+                    .frame(width: 300, height: 375)
+            )
+            renderer.scale = 3
+            guard let cardImg = renderer.uiImage else { isRendering = false; return }
+            previewImage = cardImg
+            let selIdx = selectedPhotoIndex
+            let plainPhotos = photos.enumerated()
+                .filter { $0.offset != selIdx }
+                .map { $0.element }
+            if !plainPhotos.isEmpty {
+                storyShareImages = [cardImg] + plainPhotos
             }
-            storyShareImages = imgs
             isRendering = false
             return
         }
+
 
         let renderer = ImageRenderer(content: renderableCard())
         renderer.scale = 3
@@ -2714,6 +2686,7 @@ struct ShareCardScreen: View {
                           chartPanel: cardPanel,
                           chartSplits: detail?.splits ?? [],
                           chartHRSamples: shareHRSamples,
+                          chartHRZones: detail?.hrZones ?? [],
                           chartWorkoutSeries: shareWorkoutSeries,
                           chartIntervalSegments: detail?.intervalSegments ?? [],
                           weather: condition?.weather,
@@ -2731,6 +2704,7 @@ struct ShareCardScreen: View {
                                    chartPanel: cardPanel,
                                    chartSplits: detail?.splits ?? [],
                                    chartHRSamples: shareHRSamples,
+                                   chartHRZones: detail?.hrZones ?? [],
                                    chartWorkoutSeries: shareWorkoutSeries,
                                    chartIntervalSegments: detail?.intervalSegments ?? [],
                                    weather: condition?.weather,
@@ -2747,6 +2721,7 @@ struct ShareCardScreen: View {
                                    chartPanel: cardPanel,
                                    chartSplits: detail?.splits ?? [],
                                    chartHRSamples: shareHRSamples,
+                                   chartHRZones: detail?.hrZones ?? [],
                                    chartWorkoutSeries: shareWorkoutSeries,
                                    chartIntervalSegments: detail?.intervalSegments ?? [],
                                    weather: condition?.weather,
@@ -2761,6 +2736,7 @@ struct ShareCardScreen: View {
                               chartPanel: cardPanel,
                               chartSplits: detail?.splits ?? [],
                               chartHRSamples: shareHRSamples,
+                              chartHRZones: detail?.hrZones ?? [],
                               chartWorkoutSeries: shareWorkoutSeries,
                               chartIntervalSegments: detail?.intervalSegments ?? [],
                               weather: condition?.weather,
@@ -2774,30 +2750,33 @@ struct ShareCardScreen: View {
 
     // MARK: - Photo persistence
 
-    private func persistStoryPhoto(_ image: UIImage) {
-        guard let filename = WorkoutStory.savePhoto(image, workoutID: activity.id.uuidString, index: 0) else { return }
+    private func persistStoryPhotos(_ images: [UIImage]) {
+        let capped = Array(images.prefix(5))  // never write more than 5 files
+        var filenames: [String] = []
+        for (idx, image) in capped.enumerated() {
+            if let name = WorkoutStory.savePhoto(image, workoutID: activity.id.uuidString, index: idx) {
+                filenames.append(name)
+            }
+        }
+        guard !filenames.isEmpty else { return }
         if let s = story {
-            var filenames = s.photoFilenames
-            if filenames.isEmpty {
-                filenames = [filename]
-            } else {
-                filenames[0] = filename
+            // Delete old files that won't be replaced
+            for old in s.photoFilenames where !filenames.contains(old) {
+                WorkoutStory.deletePhoto(named: old)
             }
             s.photoFilenames = filenames
             s.photoData = nil
             s.updatedAt = Date()
         } else {
-            modelContext.insert(WorkoutStory(workoutID: activity.id.uuidString, photoFilenames: [filename]))
+            modelContext.insert(WorkoutStory(workoutID: activity.id.uuidString, photoFilenames: filenames))
         }
         try? modelContext.save()
     }
 
     private func clearStoryPhoto() {
         if let s = story {
-            if !s.photoFilenames.isEmpty {
-                WorkoutStory.deletePhoto(named: s.photoFilenames[0])
-                s.photoFilenames.remove(at: 0)
-            }
+            s.photoFilenames.forEach { WorkoutStory.deletePhoto(named: $0) }
+            s.photoFilenames = []
             s.photoData = nil
             s.updatedAt = Date()
             try? modelContext.save()
@@ -2806,12 +2785,71 @@ struct ShareCardScreen: View {
 
 }
 
+// MARK: - Story photo picker sheet (stored photos only)
+
+private struct StoryPhotoPickerSheet: View {
+    let photos: [UIImage]
+    let selected: UIImage?
+    let onSelect: (UIImage, Int) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    private let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: 4) {
+                    ForEach(Array(photos.enumerated()), id: \.offset) { idx, photo in
+                        ZStack(alignment: .topTrailing) {
+                            Image(uiImage: photo)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(minWidth: 0, maxWidth: .infinity)
+                                .aspectRatio(1, contentMode: .fill)
+                                .clipped()
+                                .contentShape(Rectangle())
+                                .onTapGesture { onSelect(photo, idx) }
+
+                            if photo == selected {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(Theme.violet)
+                                    .background(Circle().fill(.white).padding(2))
+                                    .padding(6)
+                            }
+                        }
+                    }
+                }
+                .padding(4)
+            }
+            .navigationTitle("사진 선택")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
 // MARK: - UIActivityViewController wrapper
 
 private struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
+    let images: [UIImage]
+
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        // Instagram, Files, and many other extensions require file URLs, not raw UIImage objects.
+        let tmp = FileManager.default.temporaryDirectory
+        let items: [Any] = images.enumerated().map { idx, img -> Any in
+            guard let data = img.jpegData(compressionQuality: 0.92) else { return img }
+            let url = tmp.appendingPathComponent("mimo_share_\(idx)_\(UInt32.random(in: 0..<UInt32.max)).jpg")
+            return (try? data.write(to: url)) == nil ? img : url
+        }
+        return UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
+
     func updateUIViewController(_ uvc: UIActivityViewController, context: Context) {}
 }

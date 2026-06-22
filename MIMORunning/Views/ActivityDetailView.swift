@@ -2155,8 +2155,9 @@ private struct ManualRaceSheet: View {
 
 // MARK: - Panel Chart Views
 
-private struct SplitsPanelChart: View {
+struct SplitsPanelChart: View {
     let splits: [SplitData]
+    var compact: Bool = false
 
     private var fastestIdx: Int? {
         splits.indices.min(by: { splits[$0].paceSecPerKm < splits[$1].paceSecPerKm })
@@ -2178,24 +2179,152 @@ private struct SplitsPanelChart: View {
     private static let rowSpacing: CGFloat = 1
 
     var body: some View {
-        // 15 rows × (12 + 1) = 195pt ≤ 200pt inner area — no scroll needed up to 15 splits
-        let totalHeight = CGFloat(splits.count) * (Self.rowHeight + Self.rowSpacing)
-        let needsScroll  = totalHeight > 195
-
-        let rows = ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
-            panelRow(idx: idx, split: split)
-        }
-
-        if needsScroll {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: Self.rowSpacing) { rows }
-                    .padding(10)
-            }
+        if compact {
+            compactLineChart
         } else {
-            VStack(spacing: Self.rowSpacing) { rows }
-                .padding(10)
+            // 15 rows × (12 + 1) = 195pt ≤ 200pt inner area — no scroll needed up to 15 splits
+            let totalHeight = CGFloat(splits.count) * (Self.rowHeight + Self.rowSpacing)
+            let needsScroll = totalHeight > 195
+            let rows = ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
+                panelRow(idx: idx, split: split)
+            }
+            if needsScroll {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: Self.rowSpacing) { rows }.padding(10)
+                }
+            } else {
+                VStack(spacing: Self.rowSpacing) { rows }.padding(10)
+            }
         }
     }
+
+    // MARK: - Compact line chart (공유 모드)
+
+    private struct LinePoint: Identifiable {
+        let id: Int
+        let midMinute: Double
+        let invPace: Double   // offset - pace: 빠를수록 큰 값 → 차트 위쪽
+        let realPace: Double
+        let isFastest: Bool
+    }
+
+    private var lineData: (points: [LinePoint], totalMinutes: Double) {
+        let offset = minPace + maxPace
+        var cum: Double = 0
+        var pts: [LinePoint] = []
+        for (idx, split) in splits.enumerated() {
+            let mid = (cum + split.duration / 2) / 60
+            pts.append(LinePoint(
+                id: idx,
+                midMinute: mid,
+                invPace: offset - split.paceSecPerKm,
+                realPace: split.paceSecPerKm,
+                isFastest: idx == fastestIdx
+            ))
+            cum += split.duration
+        }
+        return (pts, cum / 60)
+    }
+
+    private func paceLabel(_ seconds: Double) -> String {
+        let s = Int(seconds.rounded())
+        return String(format: "%d'%02d\"", s / 60, s % 60)
+    }
+
+    @ViewBuilder
+    private var compactLineChart: some View {
+        let (pts, totalMin) = lineData
+        if pts.count < 2 {
+            EmptyView()
+        } else {
+        let offset   = minPace + maxPace
+        let pad      = max((maxPace - minPace) * 0.22, 12.0)
+        let domLo    = minPace - pad          // invPace for slowest + padding below
+        let domHi    = maxPace + pad          // invPace for fastest + padding above
+        let avgInv   = offset - avgPace
+        let fastest  = pts.first(where: { $0.isFastest })
+        let xStep: Double = totalMin <= 20 ? 5 : totalMin <= 50 ? 10 : 15
+
+        Chart {
+            ForEach(pts) { p in
+                AreaMark(
+                    x: .value("분", p.midMinute),
+                    yStart: .value("pace", p.invPace),
+                    yEnd: .value("base", domLo)
+                )
+                .foregroundStyle(LinearGradient(
+                    colors: [Self.panelVioletHi.opacity(0.30), Self.panelVioletHi.opacity(0.0)],
+                    startPoint: .top, endPoint: .bottom
+                ))
+                .interpolationMethod(.catmullRom)
+            }
+            ForEach(pts) { p in
+                LineMark(
+                    x: .value("분", p.midMinute),
+                    y: .value("pace", p.invPace)
+                )
+                .foregroundStyle(Self.panelVioletHi)
+                .lineStyle(StrokeStyle(lineWidth: 1.5))
+                .interpolationMethod(.catmullRom)
+            }
+            if let fp = fastest {
+                PointMark(x: .value("분", fp.midMinute), y: .value("pace", fp.invPace))
+                    .foregroundStyle(Self.panelGold)
+                    .symbolSize(18)
+                    .annotation(position: .top, alignment: .center) {
+                        Text(paceLabel(fp.realPace))
+                            .font(.system(size: 7, weight: .semibold))
+                            .foregroundStyle(Self.panelGold)
+                    }
+            }
+            RuleMark(y: .value("평균", avgInv))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                .foregroundStyle(Color.white.opacity(0.35))
+                .annotation(position: .bottom, alignment: .trailing) {
+                    Text("avg " + paceLabel(avgPace))
+                        .font(.system(size: 6.5))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                }
+        }
+        .chartYScale(domain: domLo...domHi)
+        .chartXScale(domain: 0...totalMin)
+        .chartYAxis {
+            AxisMarks(values: .automatic(desiredCount: 3)) { val in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color.white.opacity(0.08))
+                AxisValueLabel {
+                    if let v = val.as(Double.self) {
+                        let real = offset - v
+                        if real > 60 {
+                            Text(paceLabel(real))
+                                .font(.system(size: 6))
+                                .foregroundStyle(Color.white.opacity(0.55))
+                        }
+                    }
+                }
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: stride(from: xStep, through: totalMin, by: xStep).map { $0 }) { val in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color.white.opacity(0.08))
+                AxisValueLabel {
+                    if let m = val.as(Double.self) {
+                        Text(String(format: "%.0f분", m))
+                            .font(.system(size: 6))
+                            .foregroundStyle(Color.white.opacity(0.55))
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+        .frame(maxWidth: .infinity)
+        } // end else
+    }
+
+    // MARK: - Normal row (앱 내 상세)
 
     private static let panelGold      = Color(hex: "FFC74D")
     private static let panelGoldDark  = Color(hex: "F2A33C")
@@ -2207,9 +2336,9 @@ private struct SplitsPanelChart: View {
 
     @ViewBuilder
     private func panelRow(idx: Int, split: SplitData) -> some View {
-        let isFastest     = idx == fastestIdx
-        let isSlowerAvg   = split.paceSecPerKm > avgPace
-        let barOpacity    = (!isFastest && isSlowerAvg) ? 0.75 : 1.0
+        let isFastest   = idx == fastestIdx
+        let isSlowerAvg = split.paceSecPerKm > avgPace
+        let barOpacity  = (!isFastest && isSlowerAvg) ? 0.75 : 1.0
         let fillGradient: LinearGradient = isFastest
             ? LinearGradient(colors: [Self.panelGold, Self.panelGoldDark],
                              startPoint: .leading, endPoint: .trailing)
@@ -2230,16 +2359,14 @@ private struct SplitsPanelChart: View {
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(Self.panelTrack)
-                        .frame(height: 6)
-                        .frame(maxHeight: .infinity)
+                        .frame(height: 6).frame(maxHeight: .infinity)
                     RoundedRectangle(cornerRadius: 2)
                         .fill(fillGradient)
                         .frame(width: max(8, w * barFraction(for: split.paceSecPerKm)), height: 6)
                         .frame(maxHeight: .infinity)
                     Rectangle()
                         .fill(Self.panelAvgDot.opacity(0.45))
-                        .frame(width: 1, height: 10)
-                        .frame(maxHeight: .infinity)
+                        .frame(width: 1, height: 10).frame(maxHeight: .infinity)
                         .offset(x: max(0, w * barFraction(for: avgPace) - 0.5))
                 }
             }
@@ -2254,9 +2381,10 @@ private struct SplitsPanelChart: View {
     }
 }
 
-private struct HRSeriesPanelChart: View {
+struct HRSeriesPanelChart: View {
     let samples: [(offset: TimeInterval, bpm: Int)]
     var zones: [HRZoneData] = []
+    var compact: Bool = false
 
     private static let zoneColors: [Color] = [
         Color(red: 0.30, green: 0.60, blue: 1.00),
@@ -2343,7 +2471,7 @@ private struct HRSeriesPanelChart: View {
                 )
                 .foregroundStyle(b.color.opacity(0.85))
                 .annotation(position: .top, alignment: .center) {
-                    if b.id == peakID {
+                    if !compact, b.id == peakID {
                         Text("\(Int(b.max))")
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.85))
@@ -2364,22 +2492,30 @@ private struct HRSeriesPanelChart: View {
         .chartYScale(domain: lo...(buckets.map(\.max).max().map { $0 + 8 } ?? 200))
         .chartXScale(domain: 0...totalDurationMinutes)
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+            AxisMarks(values: .automatic(desiredCount: compact ? 3 : 4)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                 AxisValueLabel {
                     if let m = value.as(Double.self) {
-                        Text(String(format: "%.0f분", m)).font(.caption2).foregroundStyle(.secondary)
+                        Text(String(format: "%.0f분", m))
+                            .font(compact ? .system(size: 6.5) : .caption2)
+                            .foregroundStyle(Color.white.opacity(compact ? 0.75 : 0.6))
                     }
                 }
             }
         }
         .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+            AxisMarks(values: .automatic(desiredCount: compact ? 3 : 4)) { val in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
-                AxisValueLabel().foregroundStyle(Color.secondary).font(.caption2)
+                AxisValueLabel {
+                    if let v = val.as(Double.self) {
+                        Text("\(Int(v))")
+                            .font(compact ? .system(size: 6.5) : .caption2)
+                            .foregroundStyle(Color.white.opacity(compact ? 0.80 : 0.6))
+                    }
+                }
             }
         }
-        .padding(12)
+        .padding(compact ? 4 : 12)
     }
 }
 
