@@ -127,19 +127,11 @@ final class RaceDetector {
         let wasDismissed = existing?.isDismissed == true
 
         let cal = Calendar.current
-        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
 
         // Step 1: date + distance filter (no geocoding needed — run immediately)
         let sameDay = races.filter { race in
             guard let rd = race.date else { return false }
             return cal.isDate(date, inSameDayAs: rd)
-        }
-        if !sameDay.isEmpty {
-            print("[RaceDetector] ② 같은 날짜(\(df.string(from: date))) 대회 \(sameDay.count)개 (런 거리: \(String(format:"%.2f",distanceKm))km):")
-            for r in sameDay {
-                let pass = r.matchesDistance(distanceKm)
-                print("   · \(r.name) | distancesKm=\(r.distancesKm) | 거리필터: \(pass ? "✓ 통과" : "✗ 탈락")")
-            }
         }
         let dateDist = sameDay.filter { $0.matchesDistance(distanceKm) }
         guard !dateDist.isEmpty else { return nil }
@@ -147,23 +139,16 @@ final class RaceDetector {
         // Step 2: region filter — user reverse geocode only (does NOT need venue geocoding)
         var candidates = dateDist
         if let sc = startCoord {
-            print("[RaceDetector] ④ 런 시작좌표: (\(String(format:"%.6f",sc.latitude)), \(String(format:"%.6f",sc.longitude)))")
             let runTokens = await reverseGeocodeRegion(sc)
             if !runTokens.isEmpty {
-                print("[RaceDetector] ③ 런 지역 토큰: \(runTokens)")
                 let regionFiltered = dateDist.filter { regionMatches($0, runTokens) }
                 if !regionFiltered.isEmpty {
                     candidates = regionFiltered
-                    print("[RaceDetector] ③ 지역 필터 후 후보: \(regionFiltered.map(\.name))")
                 } else {
                     // Confirmed city mismatch (e.g. 성남 race + 안산 run) — don't fall back
                     let activeCityMismatch = runTokens.count > 1
                         && dateDist.contains { $0.cityHint != nil }
-                    if activeCityMismatch {
-                        print("[RaceDetector] ③ 도시 불일치 — 후보 없음, 제안 안 함")
-                        return nil
-                    }
-                    print("[RaceDetector] ③ 지역 필터 결과 없음 → 지역 무시")
+                    if activeCityMismatch { return nil }
                 }
             }
         }
@@ -181,7 +166,6 @@ final class RaceDetector {
                 if let cc = await cityHintCoordinate(hint: hint, region: race.region) {
                     let distKm = CLLocation(latitude: sc.latitude, longitude: sc.longitude)
                         .distance(from: CLLocation(latitude: cc.latitude, longitude: cc.longitude)) / 1000.0
-                    print("[RaceDetector] 도시 좌표 체크: '\(race.name)' hint='\(hint)' 거리 \(String(format:"%.1f", distKm))km (기준 20km)")
                     if distKm <= 20.0 { coordFiltered.append(race) }
                 } else {
                     coordFiltered.append(race)  // geocoding failed → keep candidate
@@ -190,7 +174,6 @@ final class RaceDetector {
             if !coordFiltered.isEmpty {
                 candidates = coordFiltered
             } else {
-                print("[RaceDetector] 도시 좌표 불일치 — 전체 제외")
                 return nil
             }
         }
@@ -207,31 +190,21 @@ final class RaceDetector {
         if candidates.count == 1 {
             let race = candidates[0]
             let strength: MatchStrength = race.isVagueLocation ? .weak : .strong
-            print("[RaceDetector] ⑤ 단일 후보 \(strength == .strong ? "강한" : "약한(모호한위치)") 매칭 → '\(race.name)'\(wasDismissed ? " (dismissed 재확인)" : "")")
             return RaceSuggestion(primary: race, strength: strength, alternatives: [])
         }
 
         // Step 4: multiple candidates — coordinate check with route-aware 5 km threshold
         if let sc = startCoord {
             let nearby = candidates.filter { race in
-                guard !race.isVagueLocation else {
-                    print("   · \(race.name) → 모호한 위치(일원), 좌표 비교 제외")
-                    return false
-                }
-                guard let rc = race.startCoordinate else {
-                    print("   · \(race.name) → 지오코딩 미완료")
-                    return false
-                }
+                guard !race.isVagueLocation else { return false }
+                guard let rc = race.startCoordinate else { return false }
                 let distKm = minDistance(from: sc, to: rc, routeCoords: routeCoords) / 1000.0
-                print("   · \(race.name) | 최단거리=\(String(format:"%.2f",distKm))km | 5km이내: \(distKm <= 5.0 ? "✓" : "✗")")
                 return distKm <= 5.0
             }
             if nearby.count == 1 {
-                print("[RaceDetector] ⑤ 최종: 강한 매칭(좌표) → '\(nearby[0].name)'")
                 return RaceSuggestion(primary: nearby[0], strength: .strong, alternatives: [])
             }
             if nearby.count > 1 {
-                print("[RaceDetector] ⑤ 최종: 복수 근접(\(nearby.count)개) → 약한 매칭")
                 if wasDismissed { return nil }
                 return RaceSuggestion(primary: nearby[0], strength: .weak,
                                       alternatives: Array(nearby.dropFirst()))
@@ -240,11 +213,7 @@ final class RaceDetector {
 
         // Weak fallback: sort specific locations first, vague last
         let sorted = candidates.sorted { !$0.isVagueLocation && $1.isVagueLocation }
-        if wasDismissed {
-            print("[RaceDetector] ⑤ 이전에 거부됨 → 약한 매칭 무시")
-            return nil
-        }
-        print("[RaceDetector] ⑤ 약한 매칭 primary='\(sorted[0].name)', alternatives=\(sorted.dropFirst().map(\.name))")
+        if wasDismissed { return nil }
         return RaceSuggestion(primary: sorted[0], strength: .weak,
                               alternatives: sorted.count > 1 ? Array(sorted.dropFirst()) : [])
     }
@@ -429,9 +398,6 @@ final class RaceDetector {
             }
         }
 
-        // 진단 ①: 로드 현황
-        print("[RaceDetector] ① 로드 결과 — 임베디드: \(embeddedCount)개 / 번들 JSON 파일: \(bundleFileCount)개(\(bundleRaceCount)개 대회) / 합계: \(all.count)개")
-
         guard !all.isEmpty else { return }
 
         // Restore geocache
@@ -460,15 +426,6 @@ final class RaceDetector {
                 if let idx = races.firstIndex(where: { $0.id == race.id }) {
                     races[idx].startLatitude  = coord.latitude
                     races[idx].startLongitude = coord.longitude
-                }
-                // 진단 ④: 인천문학경기장 지오코딩 결과
-                if race.start.contains("인천문학") {
-                    print("[RaceDetector] ④ 지오코딩 성공: '\(race.name)' → lat=\(String(format:"%.6f",coord.latitude)), lon=\(String(format:"%.6f",coord.longitude))")
-                }
-            } else {
-                // 진단 ④: 지오코딩 실패
-                if race.start.contains("인천문학") {
-                    print("[RaceDetector] ④ 지오코딩 실패: '\(race.name)' 쿼리='\(query)'")
                 }
             }
             try? await Task.sleep(nanoseconds: 600_000_000)   // rate-limit CLGeocoder

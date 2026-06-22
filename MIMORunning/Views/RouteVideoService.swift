@@ -30,7 +30,7 @@ struct RouteVideoFrameView: View {
         GeometryReader { proxy in
             let w = proxy.size.width
             let h = proxy.size.height
-            let scale = w / 216          // 216 = preview width; 540/216 = 2.5 at export
+            let scale = w / 300          // 300 = standard card width; 540/300 = 1.8 at export
             ZStack(alignment: .bottom) {
                 Image(uiImage: snapshot)
                     .resizable()

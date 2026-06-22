@@ -40,4 +40,5 @@ enum Theme {
     static let power = Color(hex: "A3E635")   // lime
     static let calories = Color.pink
     static let runningForm = Color.teal      // 러닝 다이내믹스 3종 (민트/청록 계열)
+    static let cadence = Color(hex: "5CE5D5") // 케이던스 (Apple Fitness 틸 계열)
 }

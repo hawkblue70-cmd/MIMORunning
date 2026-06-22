@@ -35,9 +35,11 @@ struct ShareMetricItem: Identifiable {
 
 private func moodCardColor(_ mood: Mood) -> Color {
     switch mood {
-    case .great: Theme.violet
-    case .okay:  Theme.time
-    case .tough: Theme.heartRate
+    case .fantastic: Theme.power
+    case .great:     Theme.violet
+    case .okay:      Theme.time
+    case .tough:     Color.orange
+    case .terrible:  Theme.heartRate
     }
 }
 
@@ -416,39 +418,72 @@ private struct CardSplitsChart: View {
 
 private struct CardHRChart: View {
     let samples: [(offset: TimeInterval, bpm: Int)]
+    var zones: [HRZoneData] = []
 
-    private var displaySamples: [(offset: TimeInterval, bpm: Int)] {
-        guard samples.count > 60 else { return samples }
-        let step = samples.count / 60
-        return samples.enumerated().filter { $0.offset % step == 0 }.map(\.element)
+    private static let zoneColors: [Color] = [
+        Color(red: 0.30, green: 0.60, blue: 1.00),
+        Color(red: 0.20, green: 0.85, blue: 0.85),
+        Color(red: 0.70, green: 1.00, blue: 0.10),
+        Color(red: 1.00, green: 0.60, blue: 0.15),
+        Color(red: 1.00, green: 0.30, blue: 0.55),
+    ]
+
+    private struct Bucket: Identifiable {
+        let id: Int; let midSec: Double; let minV: Double; let maxV: Double; let color: Color
     }
 
+    private func zoneColor(for bpm: Double) -> Color {
+        guard !zones.isEmpty else { return Theme.heartRate }
+        let ibpm = Int(bpm)
+        guard let z = zones.first(where: { z in
+            z.id == zones.last?.id ? ibpm >= z.minBPM : (ibpm >= z.minBPM && ibpm <= z.maxBPM)
+        }) else { return Theme.heartRate }
+        return Self.zoneColors[min(z.id - 1, 4)]
+    }
+
+    private var validSamples: [(offset: TimeInterval, bpm: Int)] {
+        samples.filter { $0.offset >= 0 }
+    }
+
+    private var buckets: [Bucket] {
+        guard !validSamples.isEmpty else { return [] }
+        let total = max(validSamples.map(\.offset).max() ?? 1, 1)
+        let size = total / 40
+        return (0..<40).compactMap { i in
+            let lo = Double(i) * size, hi = lo + size
+            let vals = validSamples
+                .filter { $0.offset >= lo && ($0.offset < hi || (i == 39 && $0.offset <= hi)) }
+                .map { Double($0.bpm) }
+            guard !vals.isEmpty else { return nil }
+            let avg = vals.reduce(0, +) / Double(vals.count)
+            return Bucket(id: i, midSec: (lo + hi) / 2,
+                          minV: vals.min()!, maxV: vals.max()!, color: zoneColor(for: avg))
+        }
+    }
+
+    private var domainLo: Double { max((buckets.map(\.minV).min() ?? 60) - 6, 40) }
+    private var totalMin: Double { max(validSamples.map(\.offset).max() ?? 1, 1) / 60 }
+
     var body: some View {
-        let pts = displaySamples
-        let vals = pts.map { Double($0.bpm) }
-        let lo = (vals.min() ?? 60) - 8
-        let hi = (vals.max() ?? 180) + 8
+        let lo = domainLo
         Chart {
-            ForEach(Array(pts.enumerated()), id: \.offset) { _, s in
-                AreaMark(x: .value("t", s.offset), yStart: .value("", lo), yEnd: .value("bpm", Double(s.bpm)))
-                    .foregroundStyle(Theme.heartRate.opacity(0.18))
-                    .interpolationMethod(.catmullRom)
-                LineMark(x: .value("t", s.offset), y: .value("bpm", Double(s.bpm)))
-                    .foregroundStyle(Theme.heartRate)
-                    .interpolationMethod(.catmullRom)
-                    .lineStyle(StrokeStyle(lineWidth: 1.0))
+            ForEach(buckets) { b in
+                BarMark(x: .value("t", b.midSec / 60),
+                        yStart: .value("lo", b.minV),
+                        yEnd: .value("hi", b.maxV),
+                        width: .fixed(2))
+                .foregroundStyle(b.color.opacity(0.85))
             }
         }
-        .chartYScale(domain: lo...hi)
-        .chartXScale(domain: 0...(Double(pts.last?.offset ?? 1)))
+        .chartYScale(domain: lo...(buckets.map(\.maxV).max().map { $0 + 6 } ?? 200))
+        .chartXScale(domain: 0...totalMin)
         .chartYAxis {
             AxisMarks(values: .automatic(desiredCount: 3)) { val in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(Color.white.opacity(0.10))
                 AxisValueLabel {
                     if let v = val.as(Double.self) {
-                        Text("\(Int(v))")
-                            .font(.system(size: 6.5))
+                        Text("\(Int(v))").font(.system(size: 6.5))
                             .foregroundStyle(Color.white.opacity(0.80))
                     }
                 }
@@ -458,8 +493,7 @@ private struct CardHRChart: View {
             AxisMarks(values: .automatic(desiredCount: 3)) { val in
                 AxisValueLabel {
                     if let t = val.as(Double.self) {
-                        Text("\(Int(t / 60))분")
-                            .font(.system(size: 6))
+                        Text("\(Int(t))분").font(.system(size: 6))
                             .foregroundStyle(Color.white.opacity(0.75))
                     }
                 }
@@ -472,11 +506,27 @@ private struct CardWorkoutSeriesChart: View {
     let samples: [(offset: TimeInterval, value: Double)]
     let panel: CardChartPanel
 
-    private var lineColor: Color {
+    private var barColor: Color {
         switch panel {
+        case .cadence:  Theme.cadence
+        case .power:    Theme.power
         case .elevation: Theme.elevation
-        case .power:     Theme.power
-        default:         Theme.runningForm
+        default:        Theme.runningForm
+        }
+    }
+
+    private var validMin: Double {
+        switch panel {
+        case .cadence: return 130.0
+        case .power:   return 5.0
+        default:       return 0.0
+        }
+    }
+
+    private var useRangeBar: Bool {
+        switch panel {
+        case .power, .groundContact, .strideLength, .verticalOscillation: return true
+        default: return false
         }
     }
 
@@ -488,60 +538,65 @@ private struct CardWorkoutSeriesChart: View {
         }
     }
 
-    // Filter outliers, then bucket into ≤60 windows and average — removes zero-spikes and shows flow
-    private var displaySamples: [(offset: TimeInterval, value: Double)] {
-        let minVal: Double
-        switch panel {
-        case .cadence: minVal = 50.0   // < 50 spm = not running (artifact)
-        case .power:   minVal = 5.0
-        default:       minVal = 0.0
+    private struct Bucket: Identifiable {
+        let id: Int; let midMin: Double; let avg: Double; let minV: Double; let maxV: Double
+    }
+
+    private var buckets: [Bucket] {
+        let filtered = samples.filter { $0.value > validMin }
+        guard !filtered.isEmpty else { return [] }
+        let total = max(filtered.map(\.offset).max() ?? 1, 1)
+        let count = 40
+        let size = total / Double(count)
+        return (0..<count).compactMap { i in
+            let lo = Double(i) * size, hi = lo + size
+            let vals = filtered
+                .filter { $0.offset >= lo && ($0.offset < hi || (i == count - 1 && $0.offset <= hi)) }
+                .map(\.value)
+            guard !vals.isEmpty else { return nil }
+            let avg = vals.reduce(0, +) / Double(vals.count)
+            return Bucket(id: i, midMin: (lo + hi) / 2 / 60,
+                          avg: avg, minV: vals.min()!, maxV: vals.max()!)
         }
-        let filtered = samples.filter { $0.value > minVal }
-        guard filtered.count > 1 else { return filtered }
-        let total = filtered.last!.offset
-        guard total > 0 else { return filtered }
-        let n = min(60, filtered.count)
-        let bSize = total / Double(n)
-        var result: [(offset: TimeInterval, value: Double)] = []
-        for i in 0..<n {
-            let lo = Double(i) * bSize
-            let hi = lo + bSize
-            let vals = filtered.filter { $0.offset >= lo && $0.offset < hi }.map(\.value)
-            guard !vals.isEmpty else { continue }
-            result.append((offset: lo + bSize / 2, value: vals.reduce(0, +) / Double(vals.count)))
+    }
+
+    private var domainLo: Double {
+        if useRangeBar {
+            guard let lo = buckets.map(\.minV).min() else { return 0 }
+            return max(lo - (lo * 0.02), 0)
         }
-        return result
+        guard let lo = buckets.map(\.avg).min() else { return 0 }
+        return max(lo - 15, 0)
+    }
+
+    private var domainHi: Double {
+        if useRangeBar {
+            return (buckets.map(\.maxV).max() ?? 1) * 1.05
+        }
+        return (buckets.map(\.avg).max() ?? 1) + 10
     }
 
     var body: some View {
-        let pts = displaySamples
-        let vals = pts.map(\.value)
-        let spread = (vals.max() ?? 100) - (vals.min() ?? 0)
-        let pad = max(spread * 0.08, 1.0)
-        let lo: Double = panel == .strideLength ? 0.5 : (vals.min() ?? 0) - pad
-        let hi = (vals.max() ?? 100) + pad
+        let lo = domainLo, hi = domainHi
         Chart {
-            ForEach(Array(pts.enumerated()), id: \.offset) { _, s in
-                AreaMark(x: .value("t", s.offset), yStart: .value("", lo), yEnd: .value("v", s.value))
-                    .foregroundStyle(lineColor.opacity(0.18))
-                    .interpolationMethod(.catmullRom)
-                LineMark(x: .value("t", s.offset), y: .value("v", s.value))
-                    .foregroundStyle(lineColor)
-                    .interpolationMethod(.catmullRom)
-                    .lineStyle(StrokeStyle(lineWidth: 1.0))
+            ForEach(buckets) { b in
+                BarMark(
+                    x: .value("분", b.midMin),
+                    yStart: .value("lo", useRangeBar ? b.minV : lo),
+                    yEnd: .value("hi", useRangeBar ? b.maxV : b.avg),
+                    width: .fixed(2)
+                )
+                .foregroundStyle(barColor.opacity(0.85))
             }
         }
         .chartYScale(domain: lo...hi)
-        .chartXScale(domain: 0...(pts.last?.offset ?? 1))
+        .chartXScale(domain: 0...((buckets.last?.midMin ?? 1) + 0.5))
         .chartYAxis {
             AxisMarks(values: .automatic(desiredCount: 3)) { val in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color.white.opacity(0.10))
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.10))
                 AxisValueLabel {
                     if let v = val.as(Double.self) {
-                        Text(yLabel(v))
-                            .font(.system(size: 6.5))
-                            .foregroundStyle(Color.white.opacity(0.80))
+                        Text(yLabel(v)).font(.system(size: 6.5)).foregroundStyle(Color.white.opacity(0.80))
                     }
                 }
             }
@@ -550,9 +605,7 @@ private struct CardWorkoutSeriesChart: View {
             AxisMarks(values: .automatic(desiredCount: 3)) { val in
                 AxisValueLabel {
                     if let t = val.as(Double.self) {
-                        Text("\(Int(t / 60))분")
-                            .font(.system(size: 6))
-                            .foregroundStyle(Color.white.opacity(0.75))
+                        Text("\(Int(t))분").font(.system(size: 6)).foregroundStyle(Color.white.opacity(0.75))
                     }
                 }
             }
@@ -849,18 +902,18 @@ private struct PhotoShareCardView: View {
                     .padding(.horizontal, 18)
 
                 HStack(alignment: .center, spacing: 0) {
-                    let distW: CGFloat = metrics.count >= 5 ? 60 : 80
-                    let distPt: CGFloat = metrics.count >= 5 ? 23 : 32
-                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                    let distW: CGFloat = metrics.count >= 5 ? 70 : 96
+                    let distPt: CGFloat = metrics.count >= 5 ? 28 : 38
+                    HStack(alignment: .lastTextBaseline, spacing: 3) {
                         Text(distanceValue)
                             .font(.system(size: distPt, weight: .black).width(.condensed))
                             .foregroundStyle(.white)
                             .minimumScaleFactor(0.5)
                             .lineLimit(1)
                         Text("KM")
-                            .font(.system(size: 8.5, weight: .bold).width(.condensed))
+                            .font(.system(size: 10, weight: .bold).width(.condensed))
                             .foregroundStyle(Theme.violet)
-                            .padding(.bottom, 1)
+                            .padding(.bottom, 2)
                     }
                     .fixedSize(horizontal: true, vertical: true)
                     .frame(width: distW, alignment: .leading)
@@ -868,27 +921,28 @@ private struct PhotoShareCardView: View {
                     if !metrics.isEmpty {
                         Rectangle()
                             .fill(.white.opacity(0.25))
-                            .frame(width: 0.5, height: 26)
+                            .frame(width: 0.5, height: 36)
 
                         let rows = metricsRows(metrics)
-                        VStack(spacing: rows.count > 1 ? 2 : 0) {
+                        VStack(spacing: rows.count > 1 ? 3 : 0) {
                             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                                 HStack(spacing: 0) {
                                     ForEach(row) { m in
-                                        PhotoCardMetric(value: m.value, label: m.label, color: m.color)
+                                        CardMetric(value: m.value, label: m.label, color: m.color,
+                                                   valueSize: row.count >= 5 ? 11 : 12, labelSize: 8)
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 8)
                         .frame(maxWidth: .infinity)
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 18)
-                .padding(.top, 1)
+                .padding(.top, 3)
                 .padding(.bottom, 8)
 
             }
@@ -1872,13 +1926,9 @@ struct ShareCardScreen: View {
     // MARK: - Body helpers
 
     private var cardSection: some View {
-        let isNarrow = template == .video || template == .routeVideo
-        let w: CGFloat = isNarrow ? 216 : 300
-        let h: CGFloat = isNarrow ? 384 : 375
-        let r: CGFloat = isNarrow ? 14 : 20
-        return cardPreview
-            .frame(width: w, height: h)
-            .clipShape(RoundedRectangle(cornerRadius: r))
+        cardPreview
+            .frame(width: 300, height: 375)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
             .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
             .animation(.easeInOut(duration: 0.2), value: template)
     }
@@ -2351,56 +2401,47 @@ struct ShareCardScreen: View {
                     .padding(.horizontal, 10)
 
                 HStack(alignment: .center, spacing: 0) {
-                    let distW: CGFloat = enabledMetricItems.count >= 5 ? 49 : 67
-                    let distPt: CGFloat = enabledMetricItems.count >= 5 ? 20 : 27
-                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                    let distW: CGFloat = enabledMetricItems.count >= 5 ? 70 : 96
+                    let distPt: CGFloat = enabledMetricItems.count >= 5 ? 28 : 38
+                    HStack(alignment: .lastTextBaseline, spacing: 3) {
                         Text(distStr)
                             .font(.system(size: distPt, weight: .black).width(.condensed))
                             .foregroundStyle(.white)
                             .minimumScaleFactor(0.5)
                             .lineLimit(1)
                         Text("KM")
-                            .font(.system(size: 7, weight: .bold).width(.condensed))
+                            .font(.system(size: 10, weight: .bold).width(.condensed))
                             .foregroundStyle(Theme.violet)
-                            .padding(.bottom, 1)
+                            .padding(.bottom, 2)
                     }
                     .fixedSize(horizontal: true, vertical: true)
                     .frame(width: distW, alignment: .leading)
+                    .padding(.leading, 20)
 
                     if !enabledMetricItems.isEmpty {
                         Rectangle()
                             .fill(.white.opacity(0.07))
-                            .frame(width: 0.5, height: 25)
+                            .frame(width: 0.5, height: 36)
 
                         let rows = metricsRows(enabledMetricItems)
-                        VStack(spacing: rows.count > 1 ? 2 : 0) {
+                        VStack(spacing: rows.count > 1 ? 3 : 0) {
                             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                                 HStack(spacing: 0) {
                                     ForEach(row) { m in
-                                        VStack(spacing: 1) {
-                                            Text(m.value)
-                                                .font(.system(size: 8, weight: .bold, design: .rounded))
-                                                .foregroundStyle(.white)
-                                                .lineLimit(1)
-                                                .minimumScaleFactor(0.6)
-                                            Text(m.label)
-                                                .font(.system(size: 5.5, weight: .semibold))
-                                                .foregroundStyle(m.color)
-                                        }
-                                        .frame(maxWidth: .infinity)
+                                        CardMetric(value: m.value, label: m.label, color: m.color,
+                                                   valueSize: row.count >= 5 ? 11 : 12, labelSize: 8)
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 5)
+                        .padding(.horizontal, 8)
                         .frame(maxWidth: .infinity)
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 10)
-                .padding(.top, 2)
+                .padding(.top, 3)
                 .padding(.bottom, 6)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

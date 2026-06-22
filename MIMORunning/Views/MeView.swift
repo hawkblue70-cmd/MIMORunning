@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import StoreKit
 #if canImport(ImagePlayground)
 import ImagePlayground
 #endif
@@ -90,7 +91,6 @@ struct MeView: View {
                         shoesSection
                         milestonesSection
                         settingsSection
-                        levelDebugSection
                         Spacer(minLength: 32)
                     }
                     .padding(.top, 8)
@@ -354,6 +354,10 @@ struct MeView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
 
+            // Subscription
+            SubscriptionSectionCard()
+                .padding(.horizontal, 16)
+
             // Activity type filter
             VStack(spacing: 0) {
                 settingRow {
@@ -465,62 +469,6 @@ struct MeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 16)
         }
-    }
-
-    // MARK: - Level Debug (비공개 내부용)
-
-    private var levelDebugSection: some View {
-        let level = manager.userLevel
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("레벨 (내부 디버그)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 16)
-
-            VStack(alignment: .leading, spacing: 6) {
-                debugRow(label: "버킷", value: level.bucket.koreanName)
-                if let ag = level.ageGrade {
-                    debugRow(label: "에이지그레이드", value: String(format: "%.1f%%", ag))
-                }
-                if let t5k = level.best5KEquivSec {
-                    debugRow(label: "5K 환산", value: LevelEngine.formattedTime(t5k))
-                }
-                if let date = level.best5KDate {
-                    debugRow(label: "기준 날짜", value: {
-                        let fmt = DateFormatter()
-                        fmt.dateFormat = "yy.M.d"
-                        return fmt.string(from: date)
-                    }())
-                }
-                if let vdot = level.vdot {
-                    debugRow(label: "VDOT", value: String(format: "%.1f", vdot))
-                }
-                debugRow(
-                    label: "성별",
-                    value: manager.userIsMale.map { $0 ? "남성" : "여성" } ?? "미설정"
-                )
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
-            )
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private func debugRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .foregroundStyle(.white)
-        }
-        .font(.caption2)
     }
 
     private func settingRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -894,6 +842,168 @@ private struct MiniMeCreatorView: View {
     }
 }
 #endif
+
+// MARK: - Subscription Card
+
+struct SubscriptionSectionCard: View {
+    @ObservedObject private var pro = ProManager.shared
+
+    private var product: Product? { pro.products.first(where: { $0.id == ProManager.sixMonthID }) }
+    private var isEligibleForIntro: Bool { pro.introEligibility[ProManager.sixMonthID] == true }
+
+    @State private var isPurchasing = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header gradient band
+            LinearGradient(
+                colors: [Theme.violet, Color(hex: "5B3FD6")],
+                startPoint: .leading, endPoint: .trailing
+            )
+            .frame(height: 4)
+            .clipShape(UnevenRoundedRectangle(
+                topLeadingRadius: 14, bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0, topTrailingRadius: 14
+            ))
+
+            VStack(spacing: 14) {
+                // Title row
+                HStack(spacing: 8) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.violet)
+                    Text("MIMO Pro")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    if pro.isPro {
+                        Text("구독 중")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.violet)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Theme.violet.opacity(0.15))
+                            .clipShape(Capsule())
+                    } else if pro.isTrialActive {
+                        Text("체험 \(pro.daysRemainingInTrial)일 남음")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.15))
+                            .clipShape(Capsule())
+                    } else {
+                        Text("체험 종료")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.red.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+                }
+
+                // Price block
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(product?.displayPrice ?? "₩11,000")
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("/ 6개월")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 2)
+                    Spacer()
+                    if isEligibleForIntro {
+                        Text("첫 달 무료")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.violet)
+                    } else {
+                        Text("월 ₩1,833")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                // CTA
+                if !pro.isPro {
+                    Button {
+                        Task { await doPurchase() }
+                    } label: {
+                        Group {
+                            if isPurchasing {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text(isEligibleForIntro ? "무료로 시작하기" : "구독하기")
+                                    .font(.system(size: 15, weight: .bold))
+                            }
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Theme.violet)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isPurchasing || product == nil)
+                    .opacity((isPurchasing || product == nil) ? 0.6 : 1)
+
+                    Button {
+                        Task { await pro.restorePurchases() }
+                    } label: {
+                        Text("구독 복원")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if let err = pro.purchaseError {
+                    Text(err)
+                        .font(.caption2)
+                        .foregroundStyle(Theme.heartRate)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                // Legal
+                VStack(spacing: 6) {
+                    Text("구독은 기간 종료 24시간 전까지 취소하지 않으면 자동 갱신됩니다. Apple ID 계정을 통해 관리할 수 있습니다.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        Link("개인정보처리방침",
+                             destination: URL(string: "https://mimoplanner.kr/privacy.html")!)
+                        Text("·").foregroundStyle(.tertiary)
+                        Link("이용약관",
+                             destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                    }
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(16)
+            .background(Theme.cardBackground)
+            .clipShape(UnevenRoundedRectangle(
+                topLeadingRadius: 0, bottomLeadingRadius: 14,
+                bottomTrailingRadius: 14, topTrailingRadius: 0
+            ))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .task {
+            await pro.loadProducts()
+        }
+    }
+
+    private func doPurchase() async {
+        guard let product else { return }
+        isPurchasing = true
+        _ = await pro.purchase(product)
+        isPurchasing = false
+    }
+}
 
 // MARK: - Add Shoe Sheet
 

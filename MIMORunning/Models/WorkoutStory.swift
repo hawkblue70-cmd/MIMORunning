@@ -3,23 +3,29 @@ import SwiftData
 import UIKit
 
 enum Mood: String, CaseIterable, Codable {
-    case great = "great"
-    case okay  = "okay"
-    case tough = "tough"
+    case fantastic = "fantastic"
+    case great     = "great"
+    case okay      = "okay"
+    case tough     = "tough"
+    case terrible  = "terrible"
 
     var label: String {
         switch self {
-        case .great: "좋음"
-        case .okay:  "보통"
-        case .tough: "힘듦"
+        case .fantastic: "최고"
+        case .great:     "좋음"
+        case .okay:      "보통"
+        case .tough:     "힘듦"
+        case .terrible:  "최악"
         }
     }
 
     var sfSymbol: String {
         switch self {
-        case .great: "face.smiling.fill"
-        case .okay:  "minus.circle.fill"
-        case .tough: "bolt.slash.fill"
+        case .fantastic: "bolt.fill"
+        case .great:     "face.smiling.fill"
+        case .okay:      "minus.circle.fill"
+        case .tough:     "bolt.slash.fill"
+        case .terrible:  "xmark.circle.fill"
         }
     }
 }

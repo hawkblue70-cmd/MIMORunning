@@ -19,9 +19,13 @@ class HealthKitManager {
     var userDateOfBirth: DateComponents? = nil
     var userIsMale: Bool? = nil
     var userLevel: UserLevel = UserLevel(bucket: .beginner, ageGrade: nil, best5KEquivSec: nil, best5KDate: nil, vdot: nil)
+    /// Latest resting HR from HealthKit — used as RHR in Karvonen zone calc
+    var restingHeartRate: Int? = nil
 
     private let store = HKHealthStore()
     @ObservationIgnored private var workoutCache: [UUID: HKWorkout] = [:]
+    @ObservationIgnored private var cachedMHR: Int? = nil
+    @ObservationIgnored private var pausedIntervalsCache: [UUID: [DateInterval]] = [:]
 
     /// True when any loaded workout originates from Garmin Connect.
     var hasGarminSource: Bool {
@@ -40,6 +44,7 @@ class HealthKitManager {
             HKSeriesType.workoutRoute(),
             HKQuantityType(.distanceWalkingRunning),
             HKQuantityType(.heartRate),
+            HKQuantityType(.restingHeartRate),
             HKQuantityType(.activeEnergyBurned),
             HKQuantityType(.stepCount),
             HKQuantityType(.runningPower),
@@ -98,6 +103,7 @@ class HealthKitManager {
         isLoading = true
         defer { isLoading = false }
         readBiologicalCharacteristics()
+        await refreshHRZoneParameters()
         do {
             let workouts = try await queryWorkouts()
 
@@ -106,11 +112,10 @@ class HealthKitManager {
             // workout record — no extra HealthKit round-trips needed.
             activities = workouts.map { buildSummary(from: $0) }
 
-            // ── Phase 2: enrich the most-recent 50 with calories + heart rate ─────────
-            // These extra stat queries are run on the recent slice only, so older
-            // history (used by growth/insight) stays fast with summary-only data.
-            let enrichCount = min(50, workouts.count)
-            for i in 0..<enrichCount {
+            // ── Phase 2: enrich all workouts with calories + heart rate ─────────────
+            // No count limit — users running 5×/week hit 50 workouts in ~10 weeks,
+            // causing older activities to lose HR and calorie display.
+            for i in workouts.indices {
                 activities[i] = await enrich(activities[i], workout: workouts[i])
             }
 
@@ -158,8 +163,6 @@ class HealthKitManager {
                 return WorkoutTypeClassifier.classify(activity: activity, history: activities,
                                                       splits: splits, intervalSegments: intervals)
             }()
-            print("[WorkoutType] \(workoutType.koreanLabel) — \(workout.workoutActivities.count) activities, \(splits.count) splits")
-
             return ActivityDetail(
                 routeCoordinates: locations.map(\.coordinate),
                 elevationGain: computeElevationGain(from: locations),
@@ -280,9 +283,19 @@ class HealthKitManager {
     // MARK: - Workout query — date range, no count limit
 
     private func queryWorkouts() async throws -> [HKWorkout] {
-        let cutoff = Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? .distantPast
+        let pro = ProManager.shared
+        let startCutoff: Date
+        let endDate: Date?
+        if pro.isTrialExpired {
+            // Freeze the data window at the trial end — no new activities after that date.
+            startCutoff = Calendar.current.date(byAdding: .month, value: -12, to: pro.firstLaunchDate) ?? .distantPast
+            endDate = pro.trialEndDate
+        } else {
+            startCutoff = Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? .distantPast
+            endDate = nil
+        }
         let datePred = HKQuery.predicateForSamples(
-            withStart: cutoff, end: nil, options: .strictStartDate
+            withStart: startCutoff, end: endDate, options: .strictStartDate
         )
         let typePred = NSCompoundPredicate(orPredicateWithSubpredicates: [
             HKQuery.predicateForWorkouts(with: .walking),
@@ -358,22 +371,53 @@ class HealthKitManager {
         )
     }
 
+    // MARK: - Pause Intervals
+
+    private func pausedIntervals(for workout: HKWorkout) -> [DateInterval] {
+        if let cached = pausedIntervalsCache[workout.uuid] { return cached }
+        guard let events = workout.workoutEvents else {
+            pausedIntervalsCache[workout.uuid] = []
+            return []
+        }
+        var intervals: [DateInterval] = []
+        var pauseStart: Date? = nil
+        let sorted = events.sorted { $0.dateInterval.start < $1.dateInterval.start }
+        for event in sorted {
+            switch event.type {
+            case .pause, .motionPaused:
+                if pauseStart == nil { pauseStart = event.dateInterval.start }
+            case .resume, .motionResumed:
+                if let start = pauseStart {
+                    let end = event.dateInterval.start
+                    if end > start { intervals.append(DateInterval(start: start, end: end)) }
+                    pauseStart = nil
+                }
+            default: break
+            }
+        }
+        if let start = pauseStart, workout.endDate > start {
+            intervals.append(DateInterval(start: start, end: workout.endDate))
+        }
+        pausedIntervalsCache[workout.uuid] = intervals
+        return intervals
+    }
+
+    private func isPaused(_ date: Date, in intervals: [DateInterval]) -> Bool {
+        guard !intervals.isEmpty else { return false }
+        return intervals.contains { $0.start <= date && date < $0.end }
+    }
+
     // MARK: - Route
 
     private func fetchRouteLocations(for workout: HKWorkout) async -> [CLLocation] {
         let routes = await fetchWorkoutRoutes(for: workout)
-        print("[Route] \(routes.count) route(s) for workout \(workout.uuid)")
         guard let route = routes.first else { return [] }
 
         return await withCheckedContinuation { continuation in
             let batch = LocationBatch()
-            let query = HKWorkoutRouteQuery(route: route) { _, locations, done, error in
-                if let error { print("[Route] Query error: \(error.localizedDescription)") }
+            let query = HKWorkoutRouteQuery(route: route) { _, locations, done, _ in
                 if let locations { batch.locations.append(contentsOf: locations) }
-                if done {
-                    print("[Route] Done — \(batch.locations.count) coordinates")
-                    continuation.resume(returning: batch.locations)
-                }
+                if done { continuation.resume(returning: batch.locations) }
             }
             self.store.execute(query)
         }
@@ -387,8 +431,7 @@ class HealthKitManager {
                 predicate: predicate,
                 limit: HKObjectQueryNoLimit,
                 sortDescriptors: nil
-            ) { _, samples, error in
-                if let error { print("[Route] Route sample query error: \(error.localizedDescription)") }
+            ) { _, samples, _ in
                 continuation.resume(returning: (samples as? [HKWorkoutRoute]) ?? [])
             }
             self.store.execute(query)
@@ -437,6 +480,7 @@ class HealthKitManager {
 
     func fetchHRTimeSeries(for workoutID: UUID) async -> [(offset: TimeInterval, bpm: Int)] {
         guard let workout = workoutCache[workoutID] else { return [] }
+        let paused = pausedIntervals(for: workout)
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.heartRate),
             predicate: HKQuery.predicateForObjects(from: workout)
@@ -447,17 +491,20 @@ class HealthKitManager {
         )
         guard let samples = try? await descriptor.result(for: store) else { return [] }
         let unit = HKUnit.count().unitDivided(by: .minute())
-        return samples.map { sample in
-            let bpm = Int(sample.quantity.doubleValue(for: unit).rounded())
-            let offset = sample.startDate.timeIntervalSince(workout.startDate)
-            return (offset: offset, bpm: bpm)
-        }
+        return samples
+            .filter { !isPaused($0.startDate, in: paused) }
+            .map { sample in
+                let bpm = Int(sample.quantity.doubleValue(for: unit).rounded())
+                let offset = sample.startDate.timeIntervalSince(workout.startDate)
+                return (offset: offset, bpm: bpm)
+            }
     }
 
     // MARK: - Workout time-series (for share card panels)
 
     func fetchWorkoutTimeSeries(for workoutID: UUID, identifier: HKQuantityTypeIdentifier, unit: HKUnit) async -> [(offset: TimeInterval, value: Double)] {
         guard let workout = workoutCache[workoutID] else { return [] }
+        let paused = pausedIntervals(for: workout)
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(identifier),
             predicate: HKQuery.predicateForObjects(from: workout)
@@ -467,14 +514,17 @@ class HealthKitManager {
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
         guard let samples = try? await descriptor.result(for: store) else { return [] }
-        return samples.map { s in
-            (offset: s.startDate.timeIntervalSince(workout.startDate),
-             value: s.quantity.doubleValue(for: unit))
-        }
+        return samples
+            .filter { !isPaused($0.startDate, in: paused) }
+            .map { s in
+                (offset: s.startDate.timeIntervalSince(workout.startDate),
+                 value: s.quantity.doubleValue(for: unit))
+            }
     }
 
     func fetchCadenceTimeSeries(for workoutID: UUID) async -> [(offset: TimeInterval, value: Double)] {
         guard let workout = workoutCache[workoutID] else { return [] }
+        let paused = pausedIntervals(for: workout)
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.stepCount),
             predicate: HKQuery.predicateForObjects(from: workout)
@@ -484,13 +534,29 @@ class HealthKitManager {
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
         guard let samples = try? await descriptor.result(for: store) else { return [] }
-        return samples.compactMap { s in
+        let workoutDuration = workout.duration
+
+        var result: [(offset: TimeInterval, value: Double)] = []
+        for s in samples {
+            guard !isPaused(s.startDate, in: paused) else { continue }
             let dur = s.endDate.timeIntervalSince(s.startDate)
-            guard dur > 0 else { return nil }
+            guard dur > 0 else { continue }
             let steps = s.quantity.doubleValue(for: .count())
-            return (offset: s.startDate.timeIntervalSince(workout.startDate),
-                    value: (steps / dur) * 60)
+            let spm = (steps / dur) * 60
+            let startOffset = s.startDate.timeIntervalSince(workout.startDate)
+
+            if dur >= workoutDuration * 0.25 {
+                let endOffset = min(startOffset + dur, workoutDuration)
+                let n = max(2, min(40, Int(dur / 20)))
+                for j in 0..<n {
+                    let t = startOffset + (endOffset - startOffset) * (Double(j) + 0.5) / Double(n)
+                    result.append((offset: t, value: spm))
+                }
+            } else {
+                result.append((offset: startOffset + dur / 2, value: spm))
+            }
         }
+        return result.filter { $0.offset >= 0 }
     }
 
     // MARK: - Stats queries
@@ -525,10 +591,21 @@ class HealthKitManager {
     }
 
     private func queryAvgHeartRate(workout: HKWorkout) async -> Int? {
-        guard let bpm = await queryAvgQuantity(
-            .heartRate, unit: .count().unitDivided(by: .minute()), workout: workout
-        ) else { return nil }
-        return Int(bpm.rounded())
+        let paused = pausedIntervals(for: workout)
+        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.heartRate),
+            predicate: HKQuery.predicateForObjects(from: workout)
+        )
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [pred],
+            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+        )
+        guard let all = try? await descriptor.result(for: store), !all.isEmpty else { return nil }
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        let active = all.filter { !isPaused($0.startDate, in: paused) }
+        guard !active.isEmpty else { return nil }
+        let sum = active.reduce(0.0) { $0 + $1.quantity.doubleValue(for: unit) }
+        return Int((sum / Double(active.count)).rounded())
     }
 
     private func queryCadence(workout: HKWorkout) async -> Int? {
@@ -559,7 +636,29 @@ class HealthKitManager {
             predicates: [hrPred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
-        let hrSamples = (try? await hrDesc.result(for: store)) ?? []
+        let powerPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.runningPower),
+            predicate: HKQuery.predicateForObjects(from: workout)
+        )
+        let powerDesc = HKSampleQueryDescriptor(
+            predicates: [powerPred],
+            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+        )
+        let stepPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.stepCount),
+            predicate: HKQuery.predicateForObjects(from: workout)
+        )
+        let stepDesc = HKSampleQueryDescriptor(
+            predicates: [stepPred],
+            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+        )
+        async let hrFetch    = hrDesc.result(for: store)
+        async let powerFetch = powerDesc.result(for: store)
+        async let stepFetch  = stepDesc.result(for: store)
+        let hrSamples    = (try? await hrFetch)    ?? []
+        let powerSamples = (try? await powerFetch) ?? []
+        let stepSamples  = (try? await stepFetch)  ?? []
+        let paused = pausedIntervals(for: workout)
 
         // Build cumulative distance timeline: (date, cumulative meters)
         var timeline: [(date: Date, cum: Double)] = [(distSamples[0].startDate, 0.0)]
@@ -588,9 +687,12 @@ class HealthKitManager {
         for crossing in crossings {
             let dur = crossing.date.timeIntervalSince(prevDate)
             guard dur > 1 else { prevDate = crossing.date; continue }
+            let activeDur = activeDuration(from: prevDate, to: crossing.date, paused: paused)
             result.append(SplitData(
-                id: crossing.km, distanceM: 1000, duration: dur,
-                avgHeartRate: splitAvgHR(from: prevDate, to: crossing.date, samples: hrSamples)
+                id: crossing.km, distanceM: 1000, duration: activeDur,
+                avgHeartRate: splitAvgHR(from: prevDate, to: crossing.date, samples: hrSamples, paused: paused),
+                avgCadence: splitAvgCadence(from: prevDate, to: crossing.date, duration: activeDur, samples: stepSamples, paused: paused),
+                avgPower: splitAvgPower(from: prevDate, to: crossing.date, samples: powerSamples, paused: paused)
             ))
             prevDate = crossing.date
         }
@@ -600,21 +702,48 @@ class HealthKitManager {
         if remaining >= 100, let lastDate = timeline.last?.date {
             let dur = lastDate.timeIntervalSince(prevDate)
             if dur > 1 {
+                let activeDur = activeDuration(from: prevDate, to: lastDate, paused: paused)
                 result.append(SplitData(
-                    id: lastKm + 1, distanceM: remaining, duration: dur,
-                    avgHeartRate: splitAvgHR(from: prevDate, to: lastDate, samples: hrSamples)
+                    id: lastKm + 1, distanceM: remaining, duration: activeDur,
+                    avgHeartRate: splitAvgHR(from: prevDate, to: lastDate, samples: hrSamples, paused: paused),
+                    avgCadence: splitAvgCadence(from: prevDate, to: lastDate, duration: activeDur, samples: stepSamples, paused: paused),
+                    avgPower: splitAvgPower(from: prevDate, to: lastDate, samples: powerSamples, paused: paused)
                 ))
             }
         }
         return result
     }
 
-    private func splitAvgHR(from start: Date, to end: Date, samples: [HKQuantitySample]) -> Int? {
+    private func activeDuration(from start: Date, to end: Date, paused: [DateInterval]) -> TimeInterval {
+        let wall = end.timeIntervalSince(start)
+        let pausedSec = paused.reduce(0.0) { total, iv in
+            let s = max(iv.start, start); let e = min(iv.end, end)
+            return e > s ? total + e.timeIntervalSince(s) : total
+        }
+        return max(wall - pausedSec, 1)
+    }
+
+    private func splitAvgHR(from start: Date, to end: Date, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Int? {
         let unit = HKUnit.count().unitDivided(by: .minute())
-        let relevant = samples.filter { $0.startDate >= start && $0.startDate < end }
+        let relevant = samples.filter { $0.startDate >= start && $0.startDate < end && !isPaused($0.startDate, in: paused) }
         guard !relevant.isEmpty else { return nil }
         let sum = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: unit) }
         return Int((sum / Double(relevant.count)).rounded())
+    }
+
+    private func splitAvgPower(from start: Date, to end: Date, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Int? {
+        let relevant = samples.filter { $0.startDate >= start && $0.startDate < end && !isPaused($0.startDate, in: paused) }
+        guard !relevant.isEmpty else { return nil }
+        let sum = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: .watt()) }
+        return Int((sum / Double(relevant.count)).rounded())
+    }
+
+    private func splitAvgCadence(from start: Date, to end: Date, duration: TimeInterval, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Int? {
+        let relevant = samples.filter { $0.startDate >= start && $0.startDate < end && !isPaused($0.startDate, in: paused) }
+        guard !relevant.isEmpty, duration > 0 else { return nil }
+        // duration은 이미 정지 제외된 활성 시간 — 추가 차감 없이 직접 사용
+        let totalSteps = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: .count()) }
+        return Int((totalSteps / (duration / 60)).rounded())
     }
 
     // MARK: - VO2max (most recent estimate at/before a given date)
@@ -637,9 +766,73 @@ class HealthKitManager {
         return sample.quantity.doubleValue(for: unit)
     }
 
+    // MARK: - HR Zone Parameters (Karvonen / HRR)
+
+    /// Fetches fresh RHR from HealthKit and computes MHR every time — no cache.
+    func refreshHRZoneParameters() async {
+        // Discard any legacy UserDefaults cache
+        UserDefaults.standard.removeObject(forKey: "hrZone_rhr")
+        UserDefaults.standard.removeObject(forKey: "hrZone_mhr")
+        UserDefaults.standard.removeObject(forKey: "hrZone_fetchDate")
+
+        // Tanaka: MHR = 208 − 0.7 × age
+        guard let dob = userDateOfBirth, let year = dob.year, year > 1900 else {
+            restingHeartRate = nil; cachedMHR = nil; return
+        }
+        let age = Calendar.current.component(.year, from: Date()) - year
+        let mhr = max(150, Int((208.0 - 0.7 * Double(age)).rounded()))
+
+        guard let rhr = await queryLatestRestingHR() else {
+            restingHeartRate = nil; cachedMHR = nil; return
+        }
+        restingHeartRate = rhr
+        cachedMHR        = mhr
+    }
+
+    /// Fetches resting HR samples (최근 30일 우선, 없으면 전체 기간) — 중앙값 반환.
+    private func queryLatestRestingHR() async -> Int? {
+        let unit = HKUnit.count().unitDivided(by: .minute())
+
+        func fetchSamples(start: Date?) async -> [Int] {
+            let predicate = HKQuery.predicateForSamples(
+                withStart: start, end: Date(), options: start == nil ? [] : .strictStartDate
+            )
+            let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+                type: HKQuantityType(.restingHeartRate), predicate: predicate
+            )
+            let desc = HKSampleQueryDescriptor(
+                predicates: [pred],
+                sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .reverse)],
+                limit: 7
+            )
+            guard let samples = try? await desc.result(for: store) else { return [] }
+            return samples.map { Int($0.quantity.doubleValue(for: unit).rounded()) }.sorted()
+        }
+
+        // 1차: 최근 30일 — 애플과 동일하게 최솟값 사용
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())
+        let recent = await fetchSamples(start: thirtyDaysAgo)
+        if !recent.isEmpty {
+            let rhr = max(40, recent.min() ?? 40)   // 비정상 저값(40 미만) 방지
+            return rhr
+        }
+
+        // 2차 폴백: 전체 기간
+        let allTime = await fetchSamples(start: nil)
+        if !allTime.isEmpty {
+            let rhr = max(40, allTime.min() ?? 40)
+            return rhr
+        }
+
+        return nil
+    }
+
     // MARK: - HR Zones
 
     private func queryHRZones(workout: HKWorkout) async -> [HRZoneData] {
+        // Both RHR (HealthKit) and age are required — without them, skip zone display
+        guard let rhr = restingHeartRate, let mhr = cachedMHR, mhr > rhr else { return [] }
+
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.heartRate),
             predicate: HKQuery.predicateForObjects(from: workout)
@@ -650,46 +843,43 @@ class HealthKitManager {
         )
         guard let samples = try? await desc.result(for: store), samples.count >= 5 else { return [] }
 
-        let maxHR = Double(estimatedMaxHR())
-        let unit = HKUnit.count().unitDivided(by: .minute())
-        let zoneDefs: [(name: String, lo: Double, hi: Double)] = [
-            ("Z1 웜업",   0.50, 0.60),
+        let hrr = Double(mhr - rhr)
+        // Karvonen: boundary = RHR + ratio × HRR  (Apple 기본값)
+        // Z1 <60%  Z2 60–70%  Z3 70–80%  Z4 80–90%  Z5 90%+
+        let ratios: [(name: String, lo: Double, hi: Double)] = [
+            ("Z1 웜업",   0.00, 0.60),
             ("Z2 회복",   0.60, 0.70),
             ("Z3 유산소", 0.70, 0.80),
             ("Z4 임계",   0.80, 0.90),
             ("Z5 최대",   0.90, 1.01),
         ]
+        func boundary(_ ratio: Double) -> Int { Int((Double(rhr) + ratio * hrr).rounded()) }
+
         var zoneSecs = [Double](repeating: 0, count: 5)
+        let unit = HKUnit.count().unitDivided(by: .minute())
 
         for i in 0..<samples.count {
-            let bpm = samples[i].quantity.doubleValue(for: unit)
-            let frac = bpm / maxHR
+            let bpm  = samples[i].quantity.doubleValue(for: unit)
+            let hrrF = (bpm - Double(rhr)) / hrr
             let next = i + 1 < samples.count ? samples[i + 1].startDate : workout.endDate
-            let gap = min(60, max(0, next.timeIntervalSince(samples[i].startDate)))
-            for (z, def) in zoneDefs.enumerated() {
-                if frac >= def.lo && frac < def.hi { zoneSecs[z] += gap; break }
+            let gap  = min(60, max(0, next.timeIntervalSince(samples[i].startDate)))
+            for (z, ratio) in ratios.enumerated() {
+                if hrrF >= ratio.lo && hrrF < ratio.hi { zoneSecs[z] += gap; break }
             }
         }
 
         let total = zoneSecs.reduce(0, +)
         guard total > 0 else { return [] }
-        return zoneDefs.enumerated().compactMap { z, def in
-            guard zoneSecs[z] > 0 else { return nil }
-            return HRZoneData(
-                id: z + 1, name: def.name,
-                minBPM: Int(maxHR * def.lo),
-                maxBPM: z == 4 ? Int(maxHR) : Int(maxHR * def.hi),
+
+        return ratios.enumerated().map { z, ratio in
+            HRZoneData(
+                id: z + 1, name: ratio.name,
+                minBPM: z == 0 ? rhr          : boundary(ratio.lo),
+                maxBPM: z == 4 ? mhr          : boundary(ratio.hi) - 1,
                 seconds: zoneSecs[z],
                 fraction: zoneSecs[z] / total
             )
         }
-    }
-
-    private func estimatedMaxHR() -> Int {
-        guard let dob = try? store.dateOfBirthComponents(),
-              let year = dob.year, year > 1900 else { return 190 }
-        let age = Calendar.current.component(.year, from: Date()) - year
-        return max(150, 220 - age)
     }
 
     // MARK: - Interval segments (WorkoutKit plan composition)
@@ -700,18 +890,11 @@ class HealthKitManager {
     /// • the plan is not a CustomWorkout
     /// • the activity count doesn't match the flattened step count
     private func queryIntervalSegments(workout: HKWorkout) async -> [IntervalSegment] {
-        let tf = DateFormatter()
-        tf.dateFormat = "HH:mm:ss"
-        print("[Interval] ── \(tf.string(from: workout.startDate)) ──")
-        print("[Interval] workoutActivities: \(workout.workoutActivities.count)")
-
         guard let plan = try? await workout.workoutPlan else {
-            print("[Interval] No workout plan")
             return []
         }
 
         guard case .custom(let custom) = plan.workout else {
-            print("[Interval] Plan is not CustomWorkout")
             return []
         }
 
@@ -731,10 +914,7 @@ class HealthKitManager {
         }
         if custom.cooldown != nil { flatLabels.append(("정리운동", false)) }
 
-        print("[Interval] Plan steps: \(flatLabels.count)  workoutActivities: \(workout.workoutActivities.count)")
-
         guard workout.workoutActivities.count == flatLabels.count else {
-            print("[Interval] Count mismatch — hiding interval section")
             return []
         }
 
@@ -759,10 +939,6 @@ class HealthKitManager {
                 let sPerKm = activity.duration / (d / 1000)
                 paceStr = String(format: "%d'%02d\"/km", Int(sPerKm) / 60, Int(sPerKm) % 60)
             }
-            print(String(format: "[Interval] #%d (%@)  dist:%.0fm  pace:%@  hr:%@",
-                         i + 1, labelPair.label, distM ?? 0, paceStr,
-                         hr.map { "\($0)bpm" } ?? "—"))
-
             result.append(IntervalSegment(
                 id: i + 1,
                 startDate: activity.startDate,
@@ -909,8 +1085,6 @@ class HealthKitManager {
         ]
         let asleepSamples = samples.filter { asleepValues.contains($0.value) }
         let awakeSamples  = samples.filter { $0.value == HKCategoryValueSleepAnalysis.awake.rawValue }
-        let sourceCount   = Set(samples.map { $0.sourceRevision.source.bundleIdentifier }).count
-        print("[Sleep] 쿼리: 전체 \(samples.count)개, asleep \(asleepSamples.count)개, awake \(awakeSamples.count)개, 소스 \(sourceCount)개")
         guard !asleepSamples.isEmpty else { return nil }
 
         // Union-merge with 5-min gap tolerance (eliminates duplicate-source overlap)
@@ -932,13 +1106,9 @@ class HealthKitManager {
             guard effEnd > blk.start else { return nil }
             return (blk.start, effEnd, effEnd.timeIntervalSince(blk.start) / 3600.0)
         }
-        guard let main = candidates.max(by: { $0.hours < $1.hours }) else {
-            print("[Sleep] 런 전 수면 블록 없음"); return nil
-        }
+        guard let main = candidates.max(by: { $0.hours < $1.hours }) else { return nil }
         let hours = main.hours
-        guard hours > 0.5, hours <= 12.0 else {
-            print("[Sleep] 비정상값 \(String(format:"%.1fh", hours)) → 표시 보류"); return nil
-        }
+        guard hours > 0.5, hours <= 12.0 else { return nil }
 
         // Component 1 — duration (max 50)
         let durPts = SleepScore.durationScore(hours: hours)
@@ -959,7 +1129,6 @@ class HealthKitManager {
 
         let score = SleepScore.compute(durationHours: hours, consistencyPts: consistencyPts,
                                        interruptionPts: interruptionPts)
-        print("[Sleep] 주 수면 \(String(format:"%.1fh", hours)), 시간\(durPts)+일관성\(consistencyPts)+중단\(interruptionPts) = \(score.score) \(score.grade.label)")
         return score
     }
 

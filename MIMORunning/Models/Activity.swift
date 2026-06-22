@@ -164,12 +164,20 @@ struct SplitData: Identifiable {
     let distanceM: Double    // meters (< 1000 for last partial split)
     let duration: TimeInterval
     let avgHeartRate: Int?
+    let avgCadence: Int?     // spm — nil when Watch data unavailable
+    let avgPower: Int?       // W  — nil when Watch data unavailable
 
     var paceSecPerKm: Double { duration / (distanceM / 1000) }
 
     var formattedPace: String {
         let sec = Int(paceSecPerKm)
         return String(format: "%d'%02d\"", sec / 60, sec % 60)
+    }
+
+    var formattedDuration: String {
+        let m = Int(duration) / 60
+        let s = Int(duration) % 60
+        return String(format: "%d:%02d", m, s)
     }
 }
 

@@ -10,9 +10,22 @@
 		EE9799402FE54EFD005A90B8 /* MIMORunning.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MIMORunning.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		EE603EA22FE913FF00B7F305 /* Exceptions for "MIMORunning" folder in "MIMORunning" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = EE97993F2FE54EFD005A90B8 /* MIMORunning */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		EE9799422FE54EFD005A90B8 /* MIMORunning */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				EE603EA22FE913FF00B7F305 /* Exceptions for "MIMORunning" folder in "MIMORunning" target */,
+			);
 			path = MIMORunning;
 			sourceTree = "<group>";
 		};
@@ -257,7 +270,12 @@
 				DEVELOPMENT_TEAM = 42LZ7F8332;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MIMORunning/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "달린·걸은 기록을 불러와 정리하고 보여주기 위해 건강 데이터를 읽습니다.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -292,7 +310,12 @@
 				DEVELOPMENT_TEAM = 42LZ7F8332;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MIMORunning/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "달린·걸은 기록을 불러와 정리하고 보여주기 위해 건강 데이터를 읽습니다.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

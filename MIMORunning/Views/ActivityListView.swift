@@ -19,8 +19,8 @@ struct ActivityListView: View {
                     UnavailableView()
                 }
             }
-            .navigationTitle("미모러닝")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Activity.self) { activity in
                 ActivityDetailView(activity: activity, manager: manager)
             }
@@ -37,17 +37,37 @@ private struct ConnectView: View {
         VStack(spacing: 0) {
             Spacer()
             VStack(spacing: 20) {
-                Image(systemName: "figure.run")
-                    .font(.system(size: 72))
-                    .foregroundStyle(Theme.violet)
-                VStack(spacing: 8) {
-                    Text("미모러닝")
-                        .font(.largeTitle.bold())
-                        .foregroundStyle(.white)
-                    Text("걷고 뛰기만 하세요.\n정리는 미모러닝이 합니다.")
+                ZStack {
+                    Circle()
+                        .fill(Theme.violet.opacity(0.15))
+                        .frame(width: 108, height: 108)
+                    Image(systemName: "figure.run")
+                        .font(.system(size: 56))
+                        .foregroundStyle(Theme.violet)
+                }
+                VStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("MIMO")
+                            .font(.system(size: 58, weight: .black))
+                            .fontWidth(.condensed)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Theme.violet, Color(red: 0.72, green: 0.52, blue: 1.0)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                        Text("Running")
+                            .font(.system(size: 40, weight: .black))
+                            .fontWidth(.condensed)
+                            .foregroundStyle(.white)
+                            .tracking(2)
+                    }
+                    Text("걷고 뛰기만 하세요.\n정리는 MIMO Running이 합니다.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                        .padding(.top, 6)
                 }
             }
             Spacer()
@@ -70,7 +90,9 @@ private struct ConnectView: View {
 
 private struct ActivityListContent: View {
     var manager: HealthKitManager
+    @ObservedObject private var pro = ProManager.shared
     @State private var displayCount = 50
+    @State private var showPaywall = false
     @AppStorage("showRunning")  private var showRunning  = true
     @AppStorage("showWalking")  private var showWalking  = false
     @AppStorage("showHiking")   private var showHiking   = false
@@ -104,6 +126,24 @@ private struct ActivityListContent: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
+                        HStack(spacing: 0) {
+                            Text("MIMO")
+                                .font(.system(size: 38, weight: .black))
+                                .fontWidth(.condensed)
+                                .foregroundStyle(Theme.violet)
+                            Text(" Running")
+                                .font(.system(size: 38, weight: .black))
+                                .fontWidth(.condensed)
+                                .foregroundStyle(.white)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.bottom, 4)
+                        if !pro.isPro {
+                            TrialBannerView(
+                                isExpired: pro.isTrialExpired,
+                                daysRemaining: pro.daysRemainingInTrial
+                            ) { showPaywall = true }
+                        }
                         ForEach(visibleActivities) { activity in
                             NavigationLink(value: activity) {
                                 ActivityCard(activity: activity, level: manager.userLevel.bucket)
@@ -139,6 +179,107 @@ private struct ActivityListContent: View {
         .onChange(of: showHiking)   { _, _ in displayCount = 50 }
         .onChange(of: showCycling)  { _, _ in displayCount = 50 }
         .onChange(of: showSwimming) { _, _ in displayCount = 50 }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallSheet()
+        }
+    }
+}
+
+// MARK: - Trial Banner
+
+private struct TrialBannerView: View {
+    let isExpired: Bool
+    let daysRemaining: Int
+    let onSubscribe: () -> Void
+
+    private var accentColor: Color { isExpired ? .orange : Theme.violet }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: isExpired ? "lock.fill" : "crown.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isExpired
+                     ? "무료 체험이 종료되었어요"
+                     : "무료 체험 중 · \(daysRemaining)일 남음")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text(isExpired
+                     ? "새 기록을 받으려면 MIMO Pro 구독이 필요해요"
+                     : "체험 종료 후 새 기록을 계속 받으려면 구독하세요")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button(action: onSubscribe) {
+                Text("구독하기")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(accentColor)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(accentColor.opacity(0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(accentColor.opacity(0.30), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - Pro Paywall Sheet
+
+private struct ProPaywallSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 24) {
+                        VStack(spacing: 10) {
+                            ZStack {
+                                Circle()
+                                    .fill(Theme.violet.opacity(0.15))
+                                    .frame(width: 72, height: 72)
+                                Image(systemName: "crown.fill")
+                                    .font(.system(size: 32, weight: .semibold))
+                                    .foregroundStyle(Theme.violet)
+                            }
+                            Text("MIMO Pro")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(.white)
+                            Text("새 기록을 계속 쌓으려면\n구독이 필요해요")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.top, 8)
+
+                        SubscriptionSectionCard()
+                            .padding(.horizontal, 16)
+                    }
+                    .padding(.vertical, 20)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("닫기") { dismiss() }
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -147,23 +288,31 @@ private struct ActivityListContent: View {
 private struct ActivityCard: View {
     let activity: Activity
     var level: LevelBucket = .beginner
+
+    private var formattedDate: String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US")
+        df.dateFormat = "yyyy. M. d h:mm a"
+        return df.string(from: activity.date)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Label(activity.type.label, systemImage: activity.type.icon)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.violet)
                 Spacer()
-                Text(activity.date, format: .dateTime.month().day().hour().minute())
+                Text(formattedDate)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white)
             }
             Text(activity.formattedDistance)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(.system(size: 24, weight: .black))
+                .fontWidth(.condensed)
                 .foregroundStyle(.white)
                 .contentTransition(.numericText())
             HStack(spacing: 5) {
-                MetricChip(value: activity.formattedDuration, label: "시간", color: Theme.time)
                 switch activity.type {
                 case .cycling:
                     if let speed = activity.formattedSpeed {
@@ -178,6 +327,7 @@ private struct ActivityCard: View {
                         MetricChip(value: pace, label: "/km", color: Theme.pace)
                     }
                 }
+                MetricChip(value: activity.formattedDuration, label: "시간", color: Theme.time)
                 if level >= .novice, let hr = activity.avgHeartRate {
                     MetricChip(value: "\(hr)", label: "bpm", color: Theme.heartRate)
                 }

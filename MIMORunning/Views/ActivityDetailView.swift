@@ -126,7 +126,8 @@ struct ActivityDetailView: View {
                         IntervalSegmentsSection(segments: intervals)
                     }
                     if let splits = detail?.splits, !splits.isEmpty {
-                        SplitsSection(splits: splits)
+                        SplitsSection(splits: splits, zones: detail?.hrZones ?? [],
+                                  activity: activity, allActivities: manager.activities)
                     }
                     if let zones = detail?.hrZones, !zones.isEmpty {
                         HRZonesSection(zones: zones)
@@ -229,7 +230,6 @@ struct ActivityDetailView: View {
                     condition: fetchedCondition,
                     raceMatch: raceDetector.matchFor(activityID: activity.id)
                 )
-                print("[Insight] type=\(det.workoutType.koreanLabel)  theme=\(refined.theme)  title=\(refined.title)")
                 withAnimation(.easeInOut(duration: 0.3)) { insight = refined }
             } else {
                 refined = initial
@@ -384,7 +384,7 @@ struct ActivityDetailView: View {
             if hrSamples.isEmpty {
                 ProgressView().tint(Theme.violet)
             } else {
-                HRSeriesPanelChart(samples: hrSamples)
+                HRSeriesPanelChart(samples: hrSamples, zones: detail?.hrZones ?? [])
             }
         case .elevation:
             if let profile = detail?.altitudeProfile, !profile.isEmpty {
@@ -399,20 +399,23 @@ struct ActivityDetailView: View {
                 panelPlaceholder(icon: "repeat", message: "인터벌 없음")
             }
         case .cadence:
-            seriesPanel(icon: "figure.run", label: "케이던스", unit: "spm",
-                        color: .white, format: "%.0f", available: detail?.avgCadence != nil)
+            rangeBarPanel(icon: "figure.run", available: detail?.avgCadence != nil)
         case .power:
             seriesPanel(icon: "bolt.fill", label: "파워", unit: "W",
-                        color: Theme.power, format: "%.0f", available: detail?.avgPower != nil)
+                        color: Theme.power, format: "%.0f", useRangeBar: true,
+                        available: detail?.avgPower != nil)
         case .groundContact:
             seriesPanel(icon: "stopwatch", label: "지면 접촉", unit: "ms",
-                        color: Theme.runningForm, format: "%.0f", available: detail?.avgGroundContactTime != nil)
+                        color: Theme.runningForm, format: "%.0f", useRangeBar: true,
+                        available: detail?.avgGroundContactTime != nil)
         case .strideLength:
             seriesPanel(icon: "arrow.left.and.right", label: "보폭", unit: "m",
-                        color: Theme.runningForm, format: "%.2f", available: detail?.avgStrideLength != nil)
+                        color: Theme.runningForm, format: "%.2f", useRangeBar: true,
+                        available: detail?.avgStrideLength != nil)
         case .verticalOscillation:
             seriesPanel(icon: "arrow.up.and.down", label: "수직 진폭", unit: "cm",
-                        color: Theme.runningForm, format: "%.1f", available: detail?.avgVerticalOscillation != nil)
+                        color: Theme.runningForm, format: "%.1f", useRangeBar: true,
+                        available: detail?.avgVerticalOscillation != nil)
         }
     }
 
@@ -425,7 +428,8 @@ struct ActivityDetailView: View {
 
     @ViewBuilder
     private func seriesPanel(icon: String, label: String, unit: String,
-                             color: Color, format: String, available: Bool) -> some View {
+                             color: Color, format: String, useRangeBar: Bool = false,
+                             available: Bool) -> some View {
         if !available {
             panelPlaceholder(icon: icon, message: "\(label) 없음")
         } else if isLoadingPanelSeries {
@@ -433,8 +437,21 @@ struct ActivityDetailView: View {
         } else if panelSeriesData.isEmpty {
             panelPlaceholder(icon: "chart.xyaxis.line", message: "데이터 없음")
         } else {
-            MetricSeriesPanelChart(samples: panelSeriesData, label: label,
-                                   unit: unit, color: color, format: format)
+            MetricBarPanelChart(samples: panelSeriesData, color: color,
+                                unit: unit, format: format, useRangeBar: useRangeBar)
+        }
+    }
+
+    @ViewBuilder
+    private func rangeBarPanel(icon: String, available: Bool) -> some View {
+        if !available {
+            panelPlaceholder(icon: icon, message: "케이던스 없음")
+        } else if isLoadingPanelSeries {
+            ProgressView().tint(.white)
+        } else if panelSeriesData.isEmpty {
+            panelPlaceholder(icon: "chart.xyaxis.line", message: "데이터 없음")
+        } else {
+            CadenceRangeBarChart(samples: panelSeriesData)
         }
     }
 
@@ -629,13 +646,12 @@ private struct InsightCard: View {
                 }
                 Text("·").foregroundStyle(.tertiary)
                 Text(activity.formattedDuration).foregroundStyle(Theme.time)
+                if let hr = activity.avgHeartRate {
+                    Text("·").foregroundStyle(.tertiary)
+                    Text("\(hr)bpm").foregroundStyle(Theme.heartRate)
+                }
             }
             .font(.caption.weight(.semibold))
-            #if canImport(ImagePlayground)
-            if #available(iOS 18.2, *), let photo = storyPhoto {
-                MiniMeUpdateButton(storyPhoto: photo)
-            }
-            #endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -897,7 +913,7 @@ private struct MetricGrid: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
             ForEach(items) { item in
                 MetricCell(icon: item.icon, label: item.label, value: item.value,
                            color: item.color, note: item.note)
@@ -915,7 +931,7 @@ private struct DetailSectionHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.headline).foregroundStyle(.white)
-            Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            Text(subtitle).font(.caption).foregroundStyle(.white.opacity(0.55))
         }
     }
 }
@@ -1033,85 +1049,42 @@ private struct IntervalSegmentsSection: View {
 
 private struct SplitsSection: View {
     let splits: [SplitData]
+    var zones: [HRZoneData] = []
+    var activity: Activity? = nil
+    var allActivities: [Activity] = []
 
-    private var minPace: Double { splits.map(\.paceSecPerKm).min() ?? 1 }
-    private var maxPace: Double { splits.map(\.paceSecPerKm).max() ?? minPace }
     private var fastestIdx: Int? {
         splits.indices.min(by: { splits[$0].paceSecPerKm < splits[$1].paceSecPerKm })
     }
-
-    private func barFraction(for split: SplitData) -> CGFloat {
-        guard maxPace > minPace else { return 1.0 }
-        return CGFloat(1.0 - (split.paceSecPerKm - minPace) / (maxPace - minPace) * 0.6)
+    private var minPace: Double { splits.map(\.paceSecPerKm).min() ?? 0 }
+    private var maxPace: Double { splits.map(\.paceSecPerKm).max() ?? 0 }
+    private var avgPace: Double {
+        guard !splits.isEmpty else { return 0 }
+        return splits.map(\.paceSecPerKm).reduce(0, +) / Double(splits.count)
     }
 
-    private var hasHR: Bool { splits.contains(where: { $0.avgHeartRate != nil }) }
+    // Slower pace = more seconds per km = longer bar. Range: 0.28 (fastest) … 1.0 (slowest).
+    private func barFraction(for pace: Double) -> Double {
+        let range = maxPace - minPace
+        guard range > 0.5 else { return 0.65 }
+        return 0.28 + 0.72 * (pace - minPace) / range
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             DetailSectionHeader(title: "구간 기록", subtitle: "\(splits.count)개 구간")
-
+            SplitsHighlightCard(splits: splits, activity: activity, allActivities: allActivities)
             VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    Text("km")
-                        .frame(width: 24, alignment: .leading)
-                    Spacer()
-                    Text("페이스")
-                        .frame(width: 70, alignment: .trailing)
-                    if hasHR {
-                        Text("심박")
-                            .frame(width: 44, alignment: .trailing)
-                    }
-                }
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-
                 ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
-                    let isFastest = idx == fastestIdx
-                    VStack(spacing: 0) {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.07))
-                            .frame(height: 0.5)
-                        HStack(spacing: 10) {
-                            Text(split.distanceM < 990
-                                 ? String(format: "%.0fm", split.distanceM)
-                                 : "\(split.id)")
-                                .font(.system(.subheadline, design: .rounded)
-                                    .weight(isFastest ? .bold : .regular))
-                                .foregroundStyle(isFastest ? Theme.violet : .white)
-                                .frame(width: 24, alignment: .leading)
-
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.white.opacity(0.06))
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(isFastest ? Theme.pace : Theme.violet.opacity(0.55))
-                                        .frame(width: geo.size.width * barFraction(for: split))
-                                }
-                            }
-                            .frame(height: 8)
-
-                            Text(split.formattedPace)
-                                .font(.system(.subheadline, design: .rounded)
-                                    .weight(isFastest ? .semibold : .regular))
-                                .foregroundStyle(isFastest ? Theme.pace : .white)
-                                .frame(width: 70, alignment: .trailing)
-
-                            if hasHR {
-                                Text(split.avgHeartRate.map { "\($0)" } ?? "—")
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(split.avgHeartRate != nil
-                                                     ? Theme.heartRate : Color.secondary)
-                                    .frame(width: 44, alignment: .trailing)
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(isFastest ? Theme.violet.opacity(0.06) : Color.clear)
-                    }
+                    SplitBarRow(
+                        split: split,
+                        isFastest: idx == fastestIdx,
+                        isSlowerThanAvg: split.paceSecPerKm > avgPace,
+                        barFraction: barFraction(for: split.paceSecPerKm),
+                        avgFraction: barFraction(for: avgPace),
+                        showTopDivider: idx > 0,
+                        zones: zones
+                    )
                 }
             }
             .background(Theme.cardBackground)
@@ -1121,69 +1094,375 @@ private struct SplitsSection: View {
     }
 }
 
+private struct SplitBarRow: View {
+    let split: SplitData
+    let isFastest: Bool
+    let isSlowerThanAvg: Bool
+    let barFraction: Double
+    let avgFraction: Double
+    let showTopDivider: Bool
+    var zones: [HRZoneData] = []
+
+    private var hrZoneNumber: Int? {
+        guard let hr = split.avgHeartRate, !zones.isEmpty else { return nil }
+        return zones.first(where: { hr >= $0.minBPM && hr <= $0.maxBPM })?.id
+    }
+
+    private static let barWidth: CGFloat = 110
+
+    private static let gold        = Color(hex: "FFC74D")
+    private static let goldDark    = Color(hex: "F2A33C")
+    private static let violetHi    = Color(hex: "9B7DFF")
+    private static let violetLo    = Color(hex: "6845E8")
+    private static let track       = Color.white.opacity(0.09)
+    private static let kmColor     = Color(hex: "6E6E78")
+    private static let hrColor     = Color(hex: "8A8A92")
+    private static let cadColor    = Color(hex: "60E8CC")
+    private static let pwrColor    = Color(hex: "BEFA6A")
+    private static let avgDotColor = Color(hex: "7A7A85")
+
+    private var kmLabel: String {
+        split.distanceM < 990
+            ? String(format: "%.1fkm", split.distanceM / 1000)
+            : "\(split.id)"
+    }
+
+    private func hrZoneColor(_ zone: Int) -> Color {
+        switch zone {
+        case 1: return Color(hex: "4FC3F7")
+        case 2: return Color(hex: "81C784")
+        case 3: return Color(hex: "FFB74D")
+        case 4: return Color(hex: "FF7043")
+        case 5: return Color(hex: "E53935")
+        default: return .secondary
+        }
+    }
+
+    private var barGradient: LinearGradient {
+        if isFastest {
+            return LinearGradient(colors: [Self.gold, Self.goldDark],
+                                  startPoint: .leading, endPoint: .trailing)
+        }
+        let a: Double = isSlowerThanAvg ? 0.75 : 1.0
+        return LinearGradient(colors: [Self.violetHi.opacity(a), Self.violetLo.opacity(a)],
+                              startPoint: .leading, endPoint: .trailing)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if showTopDivider {
+                Rectangle()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 0.5)
+            }
+            HStack(alignment: .center, spacing: 0) {
+                // ① km label
+                Text(kmLabel)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(isFastest ? Self.gold : Self.kmColor)
+                    .frame(width: 28, alignment: .leading)
+
+                // ② 고정 너비 바 + 평균 점선
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Self.track)
+                        .frame(width: Self.barWidth, height: 6)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(barGradient)
+                        .frame(width: max(10, Self.barWidth * barFraction), height: 6)
+                    VStack(spacing: 2) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            Rectangle()
+                                .fill(Self.avgDotColor.opacity(0.45))
+                                .frame(width: 1.5, height: 2.5)
+                        }
+                    }
+                    .offset(x: max(0, Self.barWidth * avgFraction - 0.75))
+                }
+                .frame(width: Self.barWidth, height: 16)
+                .padding(.horizontal, 5)
+
+                // ③ 한 줄: 최고 · 페이스 · 심박 · 존 · 케이던스 · 파워
+                HStack(spacing: 4) {
+                    if isFastest {
+                        Text("최고")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(Self.gold)
+                            .padding(.horizontal, 3)
+                            .padding(.vertical, 1.5)
+                            .background(Self.gold.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
+                    Text(split.formattedPace)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(isFastest ? Self.gold : .white)
+                    if let hr = split.avgHeartRate {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 7))
+                            .foregroundStyle(Theme.heartRate)
+                        Text("\(hr)")
+                            .font(.system(size: 10, design: .rounded))
+                            .foregroundStyle(Theme.heartRate)
+                    }
+                    if let zone = hrZoneNumber {
+                        Text("Z\(zone)")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(hrZoneColor(zone))
+                    }
+                    if let cad = split.avgCadence {
+                        Text("\(cad)") .font(.system(size: 10, design: .rounded)) .foregroundStyle(Self.cadColor)
+                        + Text("spm") .font(.system(size: 9))                     .foregroundStyle(Self.cadColor.opacity(0.85))
+                    }
+                    if let pwr = split.avgPower {
+                        Text("\(pwr)") .font(.system(size: 10, design: .rounded)) .foregroundStyle(Self.pwrColor)
+                        + Text("W")   .font(.system(size: 9))                     .foregroundStyle(Self.pwrColor.opacity(0.85))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 1)
+        }
+    }
+}
+
+// MARK: - Splits Highlight Card
+
+private struct SplitsHighlightCard: View {
+    let splits: [SplitData]
+    var activity: Activity? = nil
+    var allActivities: [Activity] = []
+
+    private static let gold = Color(hex: "FFC74D")
+
+    private var avgPaceSeconds: Double {
+        guard !splits.isEmpty else { return 0 }
+        return splits.map(\.paceSecPerKm).reduce(0,+) / Double(splits.count)
+    }
+    private var fastestSplit: SplitData? { splits.min(by: { $0.paceSecPerKm < $1.paceSecPerKm }) }
+    private var paceSpread: Double {
+        guard let lo = splits.map(\.paceSecPerKm).min(),
+              let hi = splits.map(\.paceSecPerKm).max() else { return 0 }
+        return hi - lo
+    }
+
+    private enum HighlightKind {
+        case negativeSplit(diff: Int)
+        case consistency(spread: Int)
+        case recentBest(n: Int)
+        case fallback
+    }
+    private var highlightKind: HighlightKind {
+        // 1. Negative split — need ≥4 splits for meaningful halves
+        if splits.count >= 4 {
+            let half = splits.count / 2
+            let firstAvg  = splits.prefix(half).map(\.paceSecPerKm).reduce(0,+) / Double(half)
+            let backCount = splits.count - half
+            let secondAvg = splits.suffix(backCount).map(\.paceSecPerKm).reduce(0,+) / Double(backCount)
+            let diff = firstAvg - secondAvg   // positive → second half faster
+            if diff >= 5 { return .negativeSplit(diff: Int(diff.rounded())) }
+        }
+        // 2. Pace consistency
+        if splits.count >= 2 && paceSpread < 20 {
+            return .consistency(spread: Int(paceSpread.rounded()))
+        }
+        // 3. Recent similar-distance comparison
+        if let act = activity, let currentPace = act.paceSecPerKm {
+            let targetDist = act.distance
+            let similar = allActivities.filter { a in
+                a.id != act.id && a.type == act.type &&
+                abs(a.distance - targetDist) / max(targetDist, 1) < 0.15 &&
+                a.paceSecPerKm != nil && a.date < act.date
+            }.sorted { $0.date > $1.date }
+            if similar.count >= 2 {
+                let recentPaces = similar.prefix(5).compactMap(\.paceSecPerKm)
+                let recentAvg = recentPaces.reduce(0,+) / Double(recentPaces.count)
+                if currentPace < recentAvg { return .recentBest(n: min(similar.count, 5)) }
+            }
+        }
+        return .fallback
+    }
+
+    private var isFallback: Bool { if case .fallback = highlightKind { return true }; return false }
+
+    private var messageText: Text {
+        let g = Self.gold
+        switch highlightKind {
+        case .negativeSplit(let diff):
+            return Text("후반이 전반보다 ").foregroundStyle(Color.white)
+                 + Text("\(diff)초 더 빠르게").foregroundStyle(g)
+                 + Text(" — 끝까지 밀어붙였네요.").foregroundStyle(Color.white)
+        case .consistency(let spread):
+            return Text("페이스 편차 단 ").foregroundStyle(Color.white)
+                 + Text("\(spread)초").foregroundStyle(g)
+                 + Text(", 흔들림 없었어요.").foregroundStyle(Color.white)
+        case .recentBest(let n):
+            return Text("최근 \(n)회 중 ").foregroundStyle(Color.white)
+                 + Text("가장 빠른 평균 페이스").foregroundStyle(g)
+                 + Text("예요.").foregroundStyle(Color.white)
+        case .fallback:
+            return Text("완주했어요. 오늘도 수고하셨어요.")
+                .foregroundStyle(Color.secondary)
+        }
+    }
+
+    private func formatPace(_ sec: Double) -> String {
+        let s = Int(sec.rounded())
+        return "\(s / 60)'\(String(format: "%02d", s % 60))\""
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            messageText
+                .font(.system(size: 14, weight: isFallback ? .regular : .semibold))
+
+            HStack(spacing: 8) {
+                SplitChip(label: "평균 페이스", value: formatPace(avgPaceSeconds), color: Theme.violet)
+                SplitChip(label: "페이스 편차", value: "±\(Int(paceSpread.rounded()))초", color: Theme.violet)
+                if let fastest = fastestSplit {
+                    let km = fastest.distanceM >= 990 ? "\(fastest.id)km" : "마지막"
+                    SplitChip(label: "최고 구간", value: "\(km) · \(fastest.formattedPace)", color: Self.gold)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [Theme.violet.opacity(0.18), Color(hex: "6845E8").opacity(0.06)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Theme.violet.opacity(0.22), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+private struct SplitChip: View {
+    let label: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(color)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
 // MARK: - HR Zones Section
 
 private struct HRZonesSection: View {
     let zones: [HRZoneData]
 
+    // Apple Fitness zone colors: Z1 blue → Z2 cyan → Z3 lime → Z4 orange → Z5 pink
     private static let zoneColors: [Color] = [
-        Color.red.opacity(0.35),
-        Color.red.opacity(0.52),
-        Color.red.opacity(0.68),
-        Color.red.opacity(0.84),
-        Color.red,
+        Color(red: 0.30, green: 0.60, blue: 1.00),  // Z1 Blue
+        Color(red: 0.20, green: 0.85, blue: 0.85),  // Z2 Cyan
+        Color(red: 0.70, green: 1.00, blue: 0.10),  // Z3 Lime
+        Color(red: 1.00, green: 0.60, blue: 0.15),  // Z4 Orange
+        Color(red: 1.00, green: 0.30, blue: 0.55),  // Z5 Pink
     ]
 
-    private func color(for zone: HRZoneData) -> Color {
-        Self.zoneColors[min(zone.id - 1, Self.zoneColors.count - 1)]
+    private func zoneColor(_ id: Int) -> Color {
+        Self.zoneColors[min(id - 1, 4)]
     }
 
-    private func formattedTime(_ seconds: TimeInterval) -> String {
-        let m = Int(seconds) / 60
-        let s = Int(seconds) % 60
-        return m > 0 ? "\(m)분 \(s)초" : "\(s)초"
+    private func formattedZoneTime(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        return String(format: "%02d:%02d", total / 60, total % 60)
+    }
+
+    private func bpmRangeText(_ zone: HRZoneData) -> String {
+        if zone.id == 1 { return "<\(zone.maxBPM)BPM" }
+        if zone.id == 5 { return "\(zone.minBPM)+BPM" }
+        return "\(zone.minBPM)~\(zone.maxBPM)BPM"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DetailSectionHeader(title: "심박존", subtitle: "존별 운동 시간")
+            DetailSectionHeader(title: "심박 영역", subtitle: "존별 운동 시간")
 
-            VStack(spacing: 10) {
-                ForEach(zones) { zone in
-                    HStack(spacing: 10) {
-                        Text(zone.name)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(color(for: zone))
-                            .frame(width: 60, alignment: .leading)
-
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color.white.opacity(0.06))
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(color(for: zone))
-                                    .frame(width: geo.size.width * zone.fraction)
-                            }
+            VStack(spacing: 0) {
+                ForEach(Array(zones.enumerated()), id: \.element.id) { idx, zone in
+                    let color = zoneColor(zone.id)
+                    let hasTime = zone.seconds > 0
+                    VStack(spacing: 0) {
+                        if idx > 0 {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.06))
+                                .frame(height: 0.5)
                         }
-                        .frame(height: 18)
+                        HStack(spacing: 8) {
+                            // Zone label
+                            Text("영역 \(zone.id)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(hasTime ? color : color.opacity(0.35))
+                                .frame(width: 44, alignment: .leading)
 
-                        Text(formattedTime(zone.seconds))
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 56, alignment: .trailing)
+                            // Bar — RoundedRectangle so tiny fractions stay as short bars, not dots
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Color.white.opacity(0.09))
+                                        .frame(height: 7)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    if hasTime {
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(color)
+                                            .frame(width: max(8, geo.size.width * zone.fraction),
+                                                   height: 7)
+                                            .frame(maxHeight: .infinity)
+                                    }
+                                }
+                            }
+                            .frame(height: 20)
+
+                            // Time in zone
+                            Text(formattedZoneTime(zone.seconds))
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(hasTime ? Color.white : Color.white.opacity(0.25))
+                                .frame(width: 40, alignment: .trailing)
+
+                            // BPM range
+                            Text(bpmRangeText(zone))
+                                .font(.system(size: 10))
+                                .foregroundStyle(hasTime ? Color.white.opacity(0.55) : Color.white.opacity(0.2))
+                                .frame(width: 82, alignment: .trailing)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 1)
                     }
                 }
 
-                if let first = zones.first, let last = zones.last {
-                    HStack {
-                        Spacer()
-                        Text("최대심박 기준 \(first.minBPM)–\(last.maxBPM) bpm")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
+                Rectangle()
+                    .fill(Color.white.opacity(0.07))
+                    .frame(height: 0.5)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("각각의 심박수 영역에 머무르는 예상 시간입니다.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text("Karvonen(심박 예비율) 공식 기반 · 최근 30일 최소 안정시 심박(RHR) + 나이별 최대심박(MHR) 추정 적용. 개인 체력 및 측정 조건에 따라 실제 영역과 다를 수 있습니다.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.quaternary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
             }
-            .padding(14)
             .background(Theme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
@@ -1201,7 +1480,7 @@ private struct MetricCell: View {
     var note: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.caption.weight(.semibold))
@@ -1211,10 +1490,11 @@ private struct MetricCell: View {
                     .foregroundStyle(color)
             }
             Text(value)
-                .font(.system(.title3, design: .rounded).weight(.bold))
+                .font(.system(.title3, weight: .black))
+                .fontWidth(.condensed)
                 .foregroundStyle(.white)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.75)
             if let note {
                 Text(note)
                     .font(.system(size: 9))
@@ -1222,7 +1502,7 @@ private struct MetricCell: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(10)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
@@ -1346,9 +1626,11 @@ private struct StoryDisplay: View {
     private var photos: [UIImage] { story.allPhotoImages }
     private var moodColor: Color {
         switch story.mood {
-        case .great: Theme.violet
-        case .okay:  Theme.time
-        case .tough: Theme.heartRate
+        case .fantastic: Theme.power
+        case .great:     Theme.violet
+        case .okay:      Theme.time
+        case .tough:     Color.orange
+        case .terrible:  Theme.heartRate
         }
     }
 
@@ -1361,6 +1643,12 @@ private struct StoryDisplay: View {
                 Text(story.mood.label)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(moodColor)
+                Spacer()
+                #if canImport(ImagePlayground)
+                if #available(iOS 18.2, *), let photo = photos.first {
+                    MiniMeUpdateButton(storyPhoto: photo)
+                }
+                #endif
             }
             if !story.memo.isEmpty {
                 Text(story.memo)
@@ -1455,16 +1743,16 @@ private struct StoryEditorSheet: View {
             HStack(spacing: 10) {
                 ForEach(Mood.allCases, id: \.self) { m in
                     Button { mood = m } label: {
-                        VStack(spacing: 6) {
+                        VStack(spacing: 5) {
                             Image(systemName: m.sfSymbol)
-                                .font(.title2)
+                                .font(.system(size: 20))
                                 .foregroundStyle(mood == m ? moodColor(m) : Color.white.opacity(0.3))
                             Text(m.label)
-                                .font(.caption.weight(.medium))
+                                .font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(mood == m ? moodColor(m) : Color.white.opacity(0.3))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 12)
                         .background(mood == m ? moodColor(m).opacity(0.15) : Theme.cardBackground)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
@@ -1569,9 +1857,11 @@ private struct StoryEditorSheet: View {
 
     private func moodColor(_ m: Mood) -> Color {
         switch m {
-        case .great: Theme.violet
-        case .okay:  Theme.time
-        case .tough: Theme.heartRate
+        case .fantastic: Theme.power
+        case .great:     Theme.violet
+        case .okay:      Theme.time
+        case .tough:     Color.orange
+        case .terrible:  Theme.heartRate
         }
     }
 
@@ -1868,52 +2158,211 @@ private struct ManualRaceSheet: View {
 private struct SplitsPanelChart: View {
     let splits: [SplitData]
 
+    private var fastestIdx: Int? {
+        splits.indices.min(by: { splits[$0].paceSecPerKm < splits[$1].paceSecPerKm })
+    }
+    private var minPace: Double { splits.map(\.paceSecPerKm).min() ?? 0 }
+    private var maxPace: Double { splits.map(\.paceSecPerKm).max() ?? 0 }
+    private var avgPace: Double {
+        guard !splits.isEmpty else { return 0 }
+        return splits.map(\.paceSecPerKm).reduce(0, +) / Double(splits.count)
+    }
+    private func barFraction(for pace: Double) -> Double {
+        let range = maxPace - minPace
+        guard range > 0.5 else { return 0.65 }
+        return 0.28 + 0.72 * (pace - minPace) / range
+    }
+
+    // Row height × count for layout decision
+    private static let rowHeight: CGFloat = 12
+    private static let rowSpacing: CGFloat = 1
+
     var body: some View {
-        Chart {
-            ForEach(splits) { split in
-                BarMark(x: .value("km", split.id), y: .value("pace", split.paceSecPerKm))
-                    .foregroundStyle(
-                        split.id == splits.min(by: { $0.paceSecPerKm < $1.paceSecPerKm })?.id
-                        ? Theme.pace.gradient : Theme.violet.opacity(0.65).gradient
-                    )
-                    .cornerRadius(3)
-            }
+        // 15 rows × (12 + 1) = 195pt ≤ 200pt inner area — no scroll needed up to 15 splits
+        let totalHeight = CGFloat(splits.count) * (Self.rowHeight + Self.rowSpacing)
+        let needsScroll  = totalHeight > 195
+
+        let rows = ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
+            panelRow(idx: idx, split: split)
         }
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
-                AxisValueLabel {
-                    if let sec = value.as(Double.self) {
-                        Text(String(format: "%d'", Int(sec) / 60)).font(.caption2).foregroundStyle(.secondary)
-                    }
+
+        if needsScroll {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: Self.rowSpacing) { rows }
+                    .padding(10)
+            }
+        } else {
+            VStack(spacing: Self.rowSpacing) { rows }
+                .padding(10)
+        }
+    }
+
+    private static let panelGold      = Color(hex: "FFC74D")
+    private static let panelGoldDark  = Color(hex: "F2A33C")
+    private static let panelVioletHi  = Color(hex: "9B7DFF")
+    private static let panelVioletLo  = Color(hex: "6845E8")
+    private static let panelTrack     = Color(hex: "26262E")
+    private static let panelKmColor   = Color(hex: "6E6E78")
+    private static let panelAvgDot    = Color(hex: "7A7A85")
+
+    @ViewBuilder
+    private func panelRow(idx: Int, split: SplitData) -> some View {
+        let isFastest     = idx == fastestIdx
+        let isSlowerAvg   = split.paceSecPerKm > avgPace
+        let barOpacity    = (!isFastest && isSlowerAvg) ? 0.75 : 1.0
+        let fillGradient: LinearGradient = isFastest
+            ? LinearGradient(colors: [Self.panelGold, Self.panelGoldDark],
+                             startPoint: .leading, endPoint: .trailing)
+            : LinearGradient(colors: [Self.panelVioletHi.opacity(barOpacity),
+                                      Self.panelVioletLo.opacity(barOpacity)],
+                             startPoint: .leading, endPoint: .trailing)
+
+        HStack(spacing: 0) {
+            Text(split.distanceM < 990
+                 ? String(format: "%.0fm", split.distanceM)
+                 : "\(split.id)")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(isFastest ? Self.panelGold : Self.panelKmColor)
+                .frame(width: 18, alignment: .leading)
+
+            GeometryReader { geo in
+                let w = geo.size.width
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Self.panelTrack)
+                        .frame(height: 6)
+                        .frame(maxHeight: .infinity)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(fillGradient)
+                        .frame(width: max(8, w * barFraction(for: split.paceSecPerKm)), height: 6)
+                        .frame(maxHeight: .infinity)
+                    Rectangle()
+                        .fill(Self.panelAvgDot.opacity(0.45))
+                        .frame(width: 1, height: 10)
+                        .frame(maxHeight: .infinity)
+                        .offset(x: max(0, w * barFraction(for: avgPace) - 0.5))
                 }
             }
+            .frame(height: Self.rowHeight)
+            .padding(.horizontal, 5)
+
+            Text(split.formattedPace)
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(isFastest ? Self.panelGold : .white)
+                .frame(width: 40, alignment: .trailing)
         }
-        .chartXAxis {
-            AxisMarks { value in
-                AxisValueLabel {
-                    if let n = value.as(Int.self) { Text("\(n)").font(.caption2).foregroundStyle(.secondary) }
-                }
-            }
-        }
-        .padding(12)
     }
 }
 
 private struct HRSeriesPanelChart: View {
     let samples: [(offset: TimeInterval, bpm: Int)]
+    var zones: [HRZoneData] = []
+
+    private static let zoneColors: [Color] = [
+        Color(red: 0.30, green: 0.60, blue: 1.00),
+        Color(red: 0.20, green: 0.85, blue: 0.85),
+        Color(red: 0.70, green: 1.00, blue: 0.10),
+        Color(red: 1.00, green: 0.60, blue: 0.15),
+        Color(red: 1.00, green: 0.30, blue: 0.55),
+    ]
+
+    private struct Bucket: Identifiable {
+        let id: Int
+        let midMinute: Double
+        let min: Double
+        let max: Double
+        let avg: Double
+        let color: Color
+    }
+
+    private func zoneColor(for bpm: Double) -> Color {
+        guard !zones.isEmpty else { return Theme.heartRate }
+        let ibpm = Int(bpm)
+        let zone = zones.first { z in
+            z.id == zones.last?.id ? ibpm >= z.minBPM : (ibpm >= z.minBPM && ibpm <= z.maxBPM)
+        }
+        guard let z = zone else { return Theme.heartRate }
+        return Self.zoneColors[min(z.id - 1, 4)]
+    }
+
+    private var validSamples: [(offset: TimeInterval, bpm: Int)] {
+        samples.filter { $0.offset >= 0 }
+    }
+
+    private var totalDurationMinutes: Double {
+        max(validSamples.map(\.offset).max() ?? 1, 1) / 60
+    }
+
+    private var buckets: [Bucket] {
+        guard !validSamples.isEmpty else { return [] }
+        let totalDuration = max(validSamples.map(\.offset).max() ?? 1, 1)
+        let bucketSize = totalDuration / 40
+        return (0..<40).compactMap { i in
+            let lo = Double(i) * bucketSize
+            let hi = lo + bucketSize
+            let isLast = i == 39
+            let vals = validSamples
+                .filter { $0.offset >= lo && ($0.offset < hi || (isLast && $0.offset <= hi)) }
+                .map { Double($0.bpm) }
+            guard !vals.isEmpty else { return nil }
+            let avg = vals.reduce(0, +) / Double(vals.count)
+            return Bucket(id: i,
+                          midMinute: (lo + hi) / 2 / 60,
+                          min: vals.min()!,
+                          max: vals.max()!,
+                          avg: avg,
+                          color: zoneColor(for: avg))
+        }
+    }
+
+    private var overallAvg: Double {
+        guard !buckets.isEmpty else { return 0 }
+        return buckets.map(\.avg).reduce(0, +) / Double(buckets.count)
+    }
+
+    private var domainLo: Double {
+        let minVal = buckets.map(\.min).min() ?? 60
+        return max(minVal - 8, 40)
+    }
+
+    private var peakBucketID: Int? {
+        buckets.max(by: { $0.max < $1.max })?.id
+    }
 
     var body: some View {
+        let lo = domainLo
+        let avg = overallAvg
+        let peakID = peakBucketID
         Chart {
-            ForEach(Array(samples.enumerated()), id: \.offset) { _, s in
-                LineMark(x: .value("분", s.offset / 60), y: .value("bpm", s.bpm))
-                    .foregroundStyle(Theme.heartRate.gradient)
-                    .interpolationMethod(.catmullRom)
-                AreaMark(x: .value("분", s.offset / 60), y: .value("bpm", s.bpm))
-                    .foregroundStyle(Theme.heartRate.opacity(0.12).gradient)
-                    .interpolationMethod(.catmullRom)
+            ForEach(buckets) { b in
+                BarMark(
+                    x: .value("분", b.midMinute),
+                    yStart: .value("최저", b.min),
+                    yEnd: .value("최고", b.max),
+                    width: .fixed(5)
+                )
+                .foregroundStyle(b.color.opacity(0.85))
+                .annotation(position: .top, alignment: .center) {
+                    if b.id == peakID {
+                        Text("\(Int(b.max))")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                }
+            }
+            if avg > 0 {
+                RuleMark(y: .value("평균", avg))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    .foregroundStyle(Theme.heartRate.opacity(0.7))
+                    .annotation(position: .top, alignment: .trailing) {
+                        Text(String(format: "avg %.0f", avg))
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(Theme.heartRate.opacity(0.8))
+                    }
             }
         }
+        .chartYScale(domain: lo...(buckets.map(\.max).max().map { $0 + 8 } ?? 200))
+        .chartXScale(domain: 0...totalDurationMinutes)
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
@@ -1934,28 +2383,91 @@ private struct HRSeriesPanelChart: View {
     }
 }
 
-private struct MetricSeriesPanelChart: View {
+private struct MetricBarPanelChart: View {
     let samples: [(offset: TimeInterval, value: Double)]
-    let label: String
-    let unit: String
     let color: Color
+    let unit: String
     let format: String
+    var useRangeBar: Bool = false  // true: floating min~max bars (Apple style), false: avg-from-baseline
+
+    private struct Bucket: Identifiable {
+        let id: Int
+        let midMinute: Double
+        let avg: Double
+        let min: Double
+        let max: Double
+    }
+
+    private var buckets: [Bucket] {
+        guard !samples.isEmpty else { return [] }
+        let totalDuration = max(samples.map(\.offset).max() ?? 1, 1)
+        let bucketSize = totalDuration / 40
+        return (0..<40).compactMap { i in
+            let lo = Double(i) * bucketSize
+            let hi = lo + bucketSize
+            let isLast = i == 39
+            let vals = samples
+                .filter { $0.offset >= lo && ($0.offset < hi || (isLast && $0.offset <= hi)) && $0.value > 0 }
+                .map(\.value)
+            guard !vals.isEmpty else { return nil }
+            return Bucket(id: i, midMinute: (lo + hi) / 2 / 60,
+                          avg: vals.reduce(0, +) / Double(vals.count),
+                          min: vals.min()!,
+                          max: vals.max()!)
+        }
+    }
 
     private var avgValue: Double? {
-        guard !samples.isEmpty else { return nil }
-        return samples.map(\.value).reduce(0, +) / Double(samples.count)
+        let valid = samples.filter { $0.value > 0 }.map(\.value)
+        guard !valid.isEmpty else { return nil }
+        return valid.reduce(0, +) / Double(valid.count)
+    }
+
+    private var overallMin: Double? { buckets.map(\.min).min() }
+    private var overallMax: Double? { buckets.map(\.max).max() }
+
+    private var domainLo: Double {
+        if useRangeBar {
+            guard let lo = overallMin, let hi = overallMax else { return max(0, (avgValue ?? 0) * 0.9) }
+            let range = max(hi - lo, lo * 0.02)
+            return max(0, lo - range * 0.4)
+        } else {
+            let avgs = buckets.map(\.avg)
+            guard let lo = avgs.min(), let hi = avgs.max() else { return max(0, (avgValue ?? 0) * 0.9) }
+            let range = max(hi - lo, lo * 0.02)
+            return max(0, lo - range * 0.6)
+        }
+    }
+
+    private var yDomain: ClosedRange<Double> {
+        if useRangeBar {
+            guard let lo = overallMin, let hi = overallMax else {
+                let c = avgValue ?? 0; return max(0, c * 0.9)...(c * 1.1)
+            }
+            let range = max(hi - lo, lo * 0.02)
+            return max(0, lo - range * 0.4)...(hi + range * 0.2)
+        } else {
+            let avgs = buckets.map(\.avg)
+            guard let lo = avgs.min(), let hi = avgs.max() else {
+                let c = avgValue ?? 0; return max(0, c * 0.9)...(c * 1.1)
+            }
+            let range = max(hi - lo, lo * 0.02)
+            return max(0, lo - range * 0.6)...(hi + range * 0.2)
+        }
     }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
+            let baseline = domainLo
             Chart {
-                ForEach(Array(samples.enumerated()), id: \.offset) { _, s in
-                    LineMark(x: .value("분", s.offset / 60), y: .value(label, s.value))
-                        .foregroundStyle(color.gradient)
-                        .interpolationMethod(.catmullRom)
-                    AreaMark(x: .value("분", s.offset / 60), y: .value(label, s.value))
-                        .foregroundStyle(color.opacity(0.12).gradient)
-                        .interpolationMethod(.catmullRom)
+                ForEach(buckets) { b in
+                    BarMark(
+                        x: .value("분", b.midMinute),
+                        yStart: .value("시작", useRangeBar ? b.min : baseline),
+                        yEnd: .value("끝", useRangeBar ? b.max : b.avg),
+                        width: .fixed(5)
+                    )
+                    .foregroundStyle(color.opacity(0.85))
                 }
                 if let avg = avgValue {
                     RuleMark(y: .value("평균", avg))
@@ -1963,12 +2475,13 @@ private struct MetricSeriesPanelChart: View {
                         .foregroundStyle(color.opacity(0.55))
                 }
             }
+            .chartYScale(domain: yDomain)
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 4)) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                     AxisValueLabel {
                         if let m = value.as(Double.self) {
-                            Text(String(format: "%.0f분", m)).font(.caption2).foregroundStyle(.secondary)
+                            Text(String(format: "%.0f분", m)).font(.caption2).foregroundStyle(.white.opacity(0.6))
                         }
                     }
                 }
@@ -1978,7 +2491,7 @@ private struct MetricSeriesPanelChart: View {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                     AxisValueLabel {
                         if let v = value.as(Double.self) {
-                            Text(String(format: format, v)).font(.caption2).foregroundStyle(.secondary)
+                            Text(String(format: format, v)).font(.caption2).foregroundStyle(.white.opacity(0.6))
                         }
                     }
                 }
@@ -1986,11 +2499,131 @@ private struct MetricSeriesPanelChart: View {
             .padding(12)
 
             if let avg = avgValue {
-                HStack(spacing: 3) {
+                HStack(spacing: 4) {
                     Text(String(format: format, avg))
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(color)
                     Text("avg \(unit)")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    if useRangeBar, let lo = overallMin, let hi = overallMax {
+                        Text("·")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                        Text("\(String(format: format, lo))~\(String(format: format, hi))")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+            }
+        }
+    }
+}
+
+private struct CadenceRangeBarChart: View {
+    let samples: [(offset: TimeInterval, value: Double)]
+
+    private static let validMin = 130.0
+    private static let validMax = 230.0
+
+    private struct Bucket: Identifiable {
+        let id: Int
+        let midMinute: Double
+        let avg: Double
+    }
+
+    private var buckets: [Bucket] {
+        guard !samples.isEmpty else { return [] }
+        let totalDuration = max(samples.map(\.offset).max() ?? 1, 1)
+        let bucketCount = 40
+        let bucketSize = totalDuration / Double(bucketCount)
+        return (0..<bucketCount).compactMap { i in
+            let lo = Double(i) * bucketSize
+            let hi = lo + bucketSize
+            let isLast = i == bucketCount - 1
+            let vals = samples
+                .filter {
+                    $0.offset >= lo &&
+                    ($0.offset < hi || (isLast && $0.offset <= hi)) &&
+                    $0.value >= Self.validMin &&
+                    $0.value <= Self.validMax
+                }
+                .map(\.value)
+            guard !vals.isEmpty else { return nil }
+            return Bucket(id: i, midMinute: (lo + hi) / 2 / 60,
+                          avg: vals.reduce(0, +) / Double(vals.count))
+        }
+    }
+
+    private var stats: (avg: Double, min: Double, max: Double)? {
+        let valid = samples.filter { $0.value >= Self.validMin && $0.value <= Self.validMax }.map(\.value)
+        guard !valid.isEmpty else { return nil }
+        let avg = valid.reduce(0, +) / Double(valid.count)
+        return (avg: avg, min: valid.min()!, max: valid.max()!)
+    }
+
+    private var domainLo: Double {
+        let minAvg = buckets.map(\.avg).min() ?? 150
+        return max(minAvg - 20, 0)
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            let lo = domainLo
+            Chart {
+                ForEach(buckets) { b in
+                    BarMark(
+                        x: .value("분", b.midMinute),
+                        yStart: .value("바닥", lo),
+                        yEnd: .value("spm", b.avg),
+                        width: .fixed(4)
+                    )
+                    .foregroundStyle(Theme.cadence.opacity(0.85))
+                    .cornerRadius(2)
+                }
+                if let s = stats {
+                    RuleMark(y: .value("평균", s.avg))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                        .foregroundStyle(Theme.cadence.opacity(0.55))
+                }
+            }
+            .chartYScale(domain: lo...(buckets.map(\.avg).max().map { $0 + 12 } ?? 200))
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
+                    AxisValueLabel {
+                        if let m = value.as(Double.self) {
+                            Text(String(format: "%.0f분", m)).font(.caption2).foregroundStyle(.white.opacity(0.6))
+                        }
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
+                    AxisValueLabel {
+                        if let v = value.as(Double.self) {
+                            Text(String(format: "%.0f", v)).font(.caption2).foregroundStyle(.white.opacity(0.6))
+                        }
+                    }
+                }
+            }
+            .padding(12)
+
+            if let s = stats {
+                HStack(spacing: 4) {
+                    Text(String(format: "%.0f", s.avg))
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.cadence)
+                    Text("avg SPM")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text("·")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                    Text(String(format: "%.0f~%.0fSPM", s.min, s.max))
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
@@ -2004,31 +2637,75 @@ private struct MetricSeriesPanelChart: View {
 private struct ElevationPanelChart: View {
     let profile: [(distanceKm: Double, altitude: Double)]
 
+    private struct Bucket: Identifiable {
+        let id: Int
+        let midKm: Double
+        let avg: Double
+    }
+
+    private var buckets: [Bucket] {
+        guard !profile.isEmpty else { return [] }
+        let maxKm = profile.map(\.distanceKm).max() ?? 1
+        let bucketSize = maxKm / 40
+        return (0..<40).compactMap { i in
+            let lo = Double(i) * bucketSize
+            let hi = lo + bucketSize
+            let isLast = i == 39
+            let vals = profile
+                .filter { $0.distanceKm >= lo && ($0.distanceKm < hi || (isLast && $0.distanceKm <= hi)) }
+                .map(\.altitude)
+            guard !vals.isEmpty else { return nil }
+            return Bucket(id: i, midKm: (lo + hi) / 2,
+                          avg: vals.reduce(0, +) / Double(vals.count))
+        }
+    }
+
+    private var domainLo: Double {
+        let alts = buckets.map(\.avg)
+        guard let lo = alts.min(), let hi = alts.max() else { return 0 }
+        let range = max(hi - lo, 5)
+        return lo - range * 0.6
+    }
+
+    private var yDomain: ClosedRange<Double> {
+        let alts = buckets.map(\.avg)
+        guard let lo = alts.min(), let hi = alts.max() else { return 0...100 }
+        let range = max(hi - lo, 5)
+        return (lo - range * 0.6)...(hi + range * 0.2)
+    }
+
     var body: some View {
+        let baseline = domainLo
         Chart {
-            ForEach(Array(profile.enumerated()), id: \.offset) { _, pt in
-                LineMark(x: .value("km", pt.distanceKm), y: .value("m", pt.altitude))
-                    .foregroundStyle(Theme.elevation)
-                    .interpolationMethod(.catmullRom)
-                AreaMark(x: .value("km", pt.distanceKm), y: .value("m", pt.altitude))
-                    .foregroundStyle(Theme.elevation.opacity(0.18).gradient)
-                    .interpolationMethod(.catmullRom)
+            ForEach(buckets) { b in
+                BarMark(
+                    x: .value("km", b.midKm),
+                    yStart: .value("바닥", baseline),
+                    yEnd: .value("고도", b.avg),
+                    width: .fixed(5)
+                )
+                .foregroundStyle(Theme.elevation.opacity(0.85))
             }
         }
+        .chartYScale(domain: yDomain)
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                 AxisValueLabel {
                     if let km = value.as(Double.self) {
-                        Text(String(format: "%.1f", km)).font(.caption2).foregroundStyle(.secondary)
+                        Text(String(format: "%.1fkm", km)).font(.caption2).foregroundStyle(.white.opacity(0.6))
                     }
                 }
             }
         }
         .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+            AxisMarks(values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
-                AxisValueLabel().foregroundStyle(Color.secondary).font(.caption2)
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text(String(format: "%.0fm", v)).font(.caption2).foregroundStyle(.white.opacity(0.6))
+                    }
+                }
             }
         }
         .padding(12)
