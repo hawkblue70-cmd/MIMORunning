@@ -43,7 +43,7 @@ final class ProManager: ObservableObject {
     static let shared = ProManager()
 
     // App Store Connect에서 생성한 구독 상품 ID
-    static let sixMonthID = "kr.mimo.running.pro.6month"
+    static let sixMonthID = "com.denny.mimorunning.pro"
     private static let allProductIDs: Set<String> = [sixMonthID]
 
     @Published var isPro = false
@@ -84,16 +84,24 @@ final class ProManager: ObservableObject {
 
     // MARK: - StoreKit 2
 
+    @Published var productLoadError: String?
+
     func loadProducts() async {
+        productLoadError = nil
         do {
             let loaded = try await Product.products(for: Self.allProductIDs)
+            if loaded.isEmpty {
+                productLoadError = "상품 정보를 불러올 수 없습니다. App Store Connect에서 구독 상품이 등록되어 있는지 확인하세요."
+            }
             products = loaded.sorted { $0.price < $1.price }
             for p in products {
                 if let sub = p.subscription {
                     introEligibility[p.id] = await sub.isEligibleForIntroOffer
                 }
             }
-        } catch { }
+        } catch {
+            productLoadError = "상품 로드 실패: \(error.localizedDescription)"
+        }
     }
 
     func purchase(_ product: Product) async -> Bool {

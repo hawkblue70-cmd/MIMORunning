@@ -462,7 +462,7 @@ struct MeView: View {
                 settingRow {
                     Text("만든 곳").foregroundStyle(.white)
                     Spacer()
-                    Text("MIMO").font(.caption).foregroundStyle(.secondary)
+                    Text("MIMOPlanner").font(.caption).foregroundStyle(.secondary)
                 }
             }
             .background(Theme.cardBackground)
@@ -851,6 +851,18 @@ struct SubscriptionSectionCard: View {
     private var product: Product? { pro.products.first(where: { $0.id == ProManager.sixMonthID }) }
     private var isEligibleForIntro: Bool { pro.introEligibility[ProManager.sixMonthID] == true }
 
+    private var introOfferLabel: String {
+        guard let offer = product?.subscription?.introductoryOffer else { return "무료 체험" }
+        let v = offer.period.value
+        switch offer.period.unit {
+        case .day:   return "\(v)일 무료"
+        case .week:  return "\(v)주 무료"
+        case .month: return "\(v)개월 무료"
+        case .year:  return "\(v)년 무료"
+        @unknown default: return "무료 체험"
+        }
+    }
+
     @State private var isPurchasing = false
 
     var body: some View {
@@ -914,7 +926,7 @@ struct SubscriptionSectionCard: View {
                         .padding(.bottom, 2)
                     Spacer()
                     if isEligibleForIntro {
-                        Text("첫 달 무료")
+                        Text(introOfferLabel)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Theme.violet)
                     } else {
@@ -959,6 +971,12 @@ struct SubscriptionSectionCard: View {
                 }
 
                 if let err = pro.purchaseError {
+                    Text(err)
+                        .font(.caption2)
+                        .foregroundStyle(Theme.heartRate)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if let err = pro.productLoadError {
                     Text(err)
                         .font(.caption2)
                         .foregroundStyle(Theme.heartRate)
