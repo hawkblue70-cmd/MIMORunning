@@ -30,63 +30,51 @@ enum Mood: String, CaseIterable, Codable {
     }
 }
 
+// MARK: - StoryPhoto
+
+@Model
+final class StoryPhoto {
+    var imageData: Data = Data()
+    var index: Int = 0
+    var story: WorkoutStory?
+
+    init(data: Data, index: Int) {
+        self.imageData = data
+        self.index = index
+    }
+
+    var image: UIImage? { UIImage(data: imageData) }
+}
+
+// MARK: - WorkoutStory
+
 @Model
 final class WorkoutStory {
-    @Attribute(.unique) var workoutID: String
-    var memo: String
-    var moodRaw: String
-    var photoFilenames: [String] = []
-    @Attribute(.externalStorage) var photoData: Data?  // legacy, kept for migration
-    var updatedAt: Date
-    var shoeID: String?  // UUID string of selected Shoe
+    var workoutID: String = ""
+    var memo: String = ""
+    var moodRaw: String = Mood.okay.rawValue
+    var updatedAt: Date = Date()
+    var shoeID: String?
+
+    // CloudKit requires all relationships to be optional
+    @Relationship(deleteRule: .cascade, inverse: \StoryPhoto.story)
+    var photos: [StoryPhoto]?
 
     var mood: Mood {
         get { Mood(rawValue: moodRaw) ?? .okay }
         set { moodRaw = newValue.rawValue }
     }
 
-    var hasContent: Bool { !memo.isEmpty || !photoFilenames.isEmpty || photoData != nil }
+    var hasContent: Bool { !memo.isEmpty || !(photos?.isEmpty ?? true) }
 
     var allPhotoImages: [UIImage] {
-        if !photoFilenames.isEmpty {
-            return photoFilenames.compactMap { WorkoutStory.loadPhoto(named: $0) }
-        }
-        if let data = photoData, let img = UIImage(data: data) { return [img] }
-        return []
+        (photos ?? []).sorted { $0.index < $1.index }.compactMap { UIImage(data: $0.imageData) }
     }
 
-    init(workoutID: String, memo: String = "", mood: Mood = .okay,
-         photoFilenames: [String] = [], photoData: Data? = nil) {
+    init(workoutID: String, memo: String = "", mood: Mood = .okay) {
         self.workoutID = workoutID
         self.memo = memo
         self.moodRaw = mood.rawValue
-        self.photoFilenames = photoFilenames
-        self.photoData = photoData
         self.updatedAt = Date()
-    }
-
-    // MARK: - File storage helpers
-
-    private static var documentsDir: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-    }
-
-    static func savePhoto(_ image: UIImage, workoutID: String, index: Int) -> String? {
-        guard let data = image.jpegData(compressionQuality: 0.75) else { return nil }
-        let filename = "\(workoutID)_\(index).jpg"
-        let url = documentsDir.appendingPathComponent(filename)
-        try? data.write(to: url)
-        return filename
-    }
-
-    static func loadPhoto(named filename: String) -> UIImage? {
-        let url = documentsDir.appendingPathComponent(filename)
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return UIImage(data: data)
-    }
-
-    static func deletePhoto(named filename: String) {
-        let url = documentsDir.appendingPathComponent(filename)
-        try? FileManager.default.removeItem(at: url)
     }
 }

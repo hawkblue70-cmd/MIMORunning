@@ -6,12 +6,43 @@ struct MIMORunningApp: App {
     @State private var raceDetector = RaceDetector()
     @State private var miniMeStore = CustomMiniMeStore()
 
+    private static let container: ModelContainer = {
+        let schema = Schema([WorkoutStory.self, StoryPhoto.self, Shoe.self])
+        if let c = try? ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)) {
+            return c
+        }
+        return try! ModelContainer(for: schema)
+    }()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(raceDetector)
-                .environment(miniMeStore)
+            PhoneWidthWrapper {
+                ContentView()
+                    .environment(raceDetector)
+                    .environment(miniMeStore)
+            }
         }
-        .modelContainer(for: [WorkoutStory.self, Shoe.self])
+        .modelContainer(Self.container)
+    }
+}
+
+// iPad에서 폰 너비(430pt)로 중앙 표시, iPhone은 전체 사용
+private struct PhoneWidthWrapper<Content: View>: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    let content: () -> Content
+
+    init(@ViewBuilder content: @escaping () -> Content) {
+        self.content = content
+    }
+
+    var body: some View {
+        if sizeClass == .regular {
+            content()
+                .frame(maxWidth: 430)
+                .frame(maxWidth: .infinity)
+                .background(Color(.systemBackground))
+        } else {
+            content()
+        }
     }
 }

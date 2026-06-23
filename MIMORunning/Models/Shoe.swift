@@ -3,10 +3,10 @@ import SwiftData
 
 @Model
 final class Shoe {
-    var id: UUID
-    var name: String
-    var brand: String
-    var addedDate: Date
+    var id: UUID = UUID()
+    var name: String = ""
+    var brand: String = ""
+    var addedDate: Date = Date()
 
     init(name: String, brand: String = "") {
         self.id = UUID()

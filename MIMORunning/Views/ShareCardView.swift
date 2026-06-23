@@ -101,7 +101,7 @@ enum CardVisual {
     /// Top scrim: black 20% at top edge, fades to clear by 22% of height. Shared by photo and video.
     static var topScrim: LinearGradient {
         LinearGradient(
-            colors: [Color.black.opacity(0.20), .clear],
+            colors: [Color.black.opacity(0.07), .clear],
             startPoint: .top,
             endPoint: UnitPoint(x: 0.5, y: 0.22)
         )
@@ -109,7 +109,7 @@ enum CardVisual {
     /// Bottom scrim for photo cards: black 50%, clears at 60% from top.
     static var bottomScrim: LinearGradient {
         LinearGradient(
-            colors: [Color.black.opacity(0.50), .clear],
+            colors: [Color.black.opacity(0.18), .clear],
             startPoint: .bottom,
             endPoint: UnitPoint(x: 0.5, y: 0.40)
         )
@@ -117,7 +117,7 @@ enum CardVisual {
     /// Bottom scrim for video cards: lighter (40%) and narrower — clears at 70% from top.
     static var videoBottomScrim: LinearGradient {
         LinearGradient(
-            colors: [Color.black.opacity(0.40), .clear],
+            colors: [Color.black.opacity(0.18), .clear],
             startPoint: .bottom,
             endPoint: UnitPoint(x: 0.5, y: 0.30)
         )
@@ -1482,6 +1482,7 @@ struct ShareCardScreen: View {
     @State private var previewImage: UIImage?
     @State private var isRendering = true
     @State private var showShareSheet = false
+    @State private var savedToPhotos = false
     @State private var selectedPhoto: UIImage?
     @State private var selectedPhotoIndex: Int = 0
     @State private var allPickedPhotos: [UIImage] = []   // in-memory source of truth for sharing
@@ -2510,36 +2511,70 @@ struct ShareCardScreen: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
         } else if storyShareImages.count > 1 {
-            Button { showShareSheet = true } label: {
-                Label("공유하기 (\(storyShareImages.count)장)", systemImage: "square.and.arrow.up")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Theme.violet)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-            .sheet(isPresented: $showShareSheet) {
-                ShareSheet(images: storyShareImages)
+            VStack(spacing: 10) {
+                Button { showShareSheet = true } label: {
+                    Label("공유하기 (\(storyShareImages.count)장)", systemImage: "square.and.arrow.up")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Theme.violet)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .sheet(isPresented: $showShareSheet) {
+                    ShareSheet(images: storyShareImages)
+                }
+                Button { saveImagesToPhotos(storyShareImages) } label: {
+                    Label(savedToPhotos ? "저장됨" : "사진첩에 저장", systemImage: savedToPhotos ? "checkmark" : "square.and.arrow.down")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.violet)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Theme.violet.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
             }
         } else if let img = previewImage {
-            Button { showShareSheet = true } label: {
-                Label("공유하기", systemImage: "square.and.arrow.up")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Theme.violet)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-            .sheet(isPresented: $showShareSheet) {
-                ShareSheet(images: [img])
+            VStack(spacing: 10) {
+                Button { showShareSheet = true } label: {
+                    Label("공유하기", systemImage: "square.and.arrow.up")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Theme.violet)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .sheet(isPresented: $showShareSheet) {
+                    ShareSheet(images: [img])
+                }
+                Button { saveImagesToPhotos([img]) } label: {
+                    Label(savedToPhotos ? "저장됨" : "사진첩에 저장", systemImage: savedToPhotos ? "checkmark" : "square.and.arrow.down")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.violet)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Theme.violet.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
             }
         } else {
             Text("카드 생성에 실패했어요")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
+        }
+    }
+
+    // MARK: - Save to Photos
+
+    private func saveImagesToPhotos(_ images: [UIImage]) {
+        for img in images {
+            UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
+        }
+        withAnimation { savedToPhotos = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { savedToPhotos = false }
         }
     }
 
@@ -2751,33 +2786,35 @@ struct ShareCardScreen: View {
     // MARK: - Photo persistence
 
     private func persistStoryPhotos(_ images: [UIImage]) {
-        let capped = Array(images.prefix(5))  // never write more than 5 files
-        var filenames: [String] = []
-        for (idx, image) in capped.enumerated() {
-            if let name = WorkoutStory.savePhoto(image, workoutID: activity.id.uuidString, index: idx) {
-                filenames.append(name)
-            }
-        }
-        guard !filenames.isEmpty else { return }
+        let capped = Array(images.prefix(5))
+        guard !capped.isEmpty else { return }
         if let s = story {
-            // Delete old files that won't be replaced
-            for old in s.photoFilenames where !filenames.contains(old) {
-                WorkoutStory.deletePhoto(named: old)
+            for photo in s.photos ?? [] { modelContext.delete(photo) }
+            s.photos = nil
+            let newPhotos = capped.enumerated().compactMap { idx, img -> StoryPhoto? in
+                guard let data = img.jpegData(compressionQuality: 0.75) else { return nil }
+                return StoryPhoto(data: data, index: idx)
             }
-            s.photoFilenames = filenames
-            s.photoData = nil
+            newPhotos.forEach { modelContext.insert($0) }
+            s.photos = newPhotos.isEmpty ? nil : newPhotos
             s.updatedAt = Date()
         } else {
-            modelContext.insert(WorkoutStory(workoutID: activity.id.uuidString, photoFilenames: filenames))
+            let s = WorkoutStory(workoutID: activity.id.uuidString)
+            modelContext.insert(s)
+            let newPhotos = capped.enumerated().compactMap { idx, img -> StoryPhoto? in
+                guard let data = img.jpegData(compressionQuality: 0.75) else { return nil }
+                return StoryPhoto(data: data, index: idx)
+            }
+            newPhotos.forEach { modelContext.insert($0) }
+            s.photos = newPhotos
         }
         try? modelContext.save()
     }
 
     private func clearStoryPhoto() {
         if let s = story {
-            s.photoFilenames.forEach { WorkoutStory.deletePhoto(named: $0) }
-            s.photoFilenames = []
-            s.photoData = nil
+            for photo in s.photos ?? [] { modelContext.delete(photo) }
+            s.photos = nil
             s.updatedAt = Date()
             try? modelContext.save()
         }

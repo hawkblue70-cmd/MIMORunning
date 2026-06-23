@@ -399,7 +399,10 @@ struct ActivityDetailView: View {
                 panelPlaceholder(icon: "repeat", message: "인터벌 없음")
             }
         case .cadence:
-            rangeBarPanel(icon: "figure.run", available: detail?.avgCadence != nil)
+            seriesPanel(icon: "figure.run", label: "케이던스", unit: "spm",
+                        color: Theme.cadence, format: "%.0f", useRangeBar: false,
+                        validMin: 130,
+                        available: detail?.avgCadence != nil)
         case .power:
             seriesPanel(icon: "bolt.fill", label: "파워", unit: "W",
                         color: Theme.power, format: "%.0f", useRangeBar: true,
@@ -429,6 +432,7 @@ struct ActivityDetailView: View {
     @ViewBuilder
     private func seriesPanel(icon: String, label: String, unit: String,
                              color: Color, format: String, useRangeBar: Bool = false,
+                             validMin: Double = 0,
                              available: Bool) -> some View {
         if !available {
             panelPlaceholder(icon: icon, message: "\(label) 없음")
@@ -438,20 +442,8 @@ struct ActivityDetailView: View {
             panelPlaceholder(icon: "chart.xyaxis.line", message: "데이터 없음")
         } else {
             MetricBarPanelChart(samples: panelSeriesData, color: color,
-                                unit: unit, format: format, useRangeBar: useRangeBar)
-        }
-    }
-
-    @ViewBuilder
-    private func rangeBarPanel(icon: String, available: Bool) -> some View {
-        if !available {
-            panelPlaceholder(icon: icon, message: "케이던스 없음")
-        } else if isLoadingPanelSeries {
-            ProgressView().tint(.white)
-        } else if panelSeriesData.isEmpty {
-            panelPlaceholder(icon: "chart.xyaxis.line", message: "데이터 없음")
-        } else {
-            CadenceRangeBarChart(samples: panelSeriesData)
+                                unit: unit, format: format, useRangeBar: useRangeBar,
+                                validMin: validMin)
         }
     }
 
@@ -1873,23 +1865,29 @@ private struct StoryEditorSheet: View {
     }
 
     private func save() {
-        // Delete old photo files
         if let s = existingStory {
-            for fn in s.photoFilenames { WorkoutStory.deletePhoto(named: fn) }
-        }
-        // Save current images to Documents
-        let filenames = photoImages.enumerated().compactMap { idx, img in
-            WorkoutStory.savePhoto(img, workoutID: workoutID, index: idx)
-        }
-        if let s = existingStory {
+            // Remove old StoryPhoto records
+            for photo in s.photos ?? [] { modelContext.delete(photo) }
+            s.photos = nil
+            // Save new photos as StoryPhoto
+            let newPhotos = photoImages.enumerated().compactMap { idx, img -> StoryPhoto? in
+                guard let data = img.jpegData(compressionQuality: 0.75) else { return nil }
+                return StoryPhoto(data: data, index: idx)
+            }
+            newPhotos.forEach { modelContext.insert($0) }
+            s.photos = newPhotos.isEmpty ? nil : newPhotos
             s.memo = memo
             s.mood = mood
-            s.photoFilenames = filenames
-            s.photoData = nil
             s.updatedAt = Date()
         } else {
-            modelContext.insert(WorkoutStory(workoutID: workoutID, memo: memo, mood: mood,
-                                             photoFilenames: filenames))
+            let story = WorkoutStory(workoutID: workoutID, memo: memo, mood: mood)
+            modelContext.insert(story)
+            let newPhotos = photoImages.enumerated().compactMap { idx, img -> StoryPhoto? in
+                guard let data = img.jpegData(compressionQuality: 0.75) else { return nil }
+                return StoryPhoto(data: data, index: idx)
+            }
+            newPhotos.forEach { modelContext.insert($0) }
+            story.photos = newPhotos.isEmpty ? nil : newPhotos
         }
         try? modelContext.save()
     }
@@ -2525,6 +2523,7 @@ private struct MetricBarPanelChart: View {
     let unit: String
     let format: String
     var useRangeBar: Bool = false  // true: floating min~max bars (Apple style), false: avg-from-baseline
+    var validMin: Double = 0
 
     private struct Bucket: Identifiable {
         let id: Int
@@ -2535,26 +2534,26 @@ private struct MetricBarPanelChart: View {
     }
 
     private var buckets: [Bucket] {
-        guard !samples.isEmpty else { return [] }
-        let totalDuration = max(samples.map(\.offset).max() ?? 1, 1)
-        let bucketSize = totalDuration / 40
-        return (0..<40).compactMap { i in
-            let lo = Double(i) * bucketSize
-            let hi = lo + bucketSize
-            let isLast = i == 39
-            let vals = samples
-                .filter { $0.offset >= lo && ($0.offset < hi || (isLast && $0.offset <= hi)) && $0.value > 0 }
+        let src = samples.filter { $0.value > validMin }
+        guard !src.isEmpty else { return [] }
+        let total = max(src.map(\.offset).max() ?? 1, 1)
+        let count = 40
+        let size  = total / Double(count)
+        return (0..<count).compactMap { i in
+            let lo   = Double(i) * size
+            let hi   = lo + size
+            let vals = src
+                .filter { $0.offset >= lo && ($0.offset < hi || (i == count - 1 && $0.offset <= hi)) }
                 .map(\.value)
             guard !vals.isEmpty else { return nil }
+            let avg = vals.reduce(0, +) / Double(vals.count)
             return Bucket(id: i, midMinute: (lo + hi) / 2 / 60,
-                          avg: vals.reduce(0, +) / Double(vals.count),
-                          min: vals.min()!,
-                          max: vals.max()!)
+                          avg: avg, min: vals.min()!, max: vals.max()!)
         }
     }
 
     private var avgValue: Double? {
-        let valid = samples.filter { $0.value > 0 }.map(\.value)
+        let valid = samples.filter { $0.value > validMin }.map(\.value)
         guard !valid.isEmpty else { return nil }
         return valid.reduce(0, +) / Double(valid.count)
     }
@@ -2612,6 +2611,7 @@ private struct MetricBarPanelChart: View {
                 }
             }
             .chartYScale(domain: yDomain)
+            .chartXScale(domain: 0...((buckets.last?.midMinute ?? 1) + 0.5))
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 4)) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
@@ -2650,118 +2650,6 @@ private struct MetricBarPanelChart: View {
                             .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-            }
-        }
-    }
-}
-
-private struct CadenceRangeBarChart: View {
-    let samples: [(offset: TimeInterval, value: Double)]
-
-    private static let validMin = 130.0
-    private static let validMax = 230.0
-
-    private struct Bucket: Identifiable {
-        let id: Int
-        let midMinute: Double
-        let avg: Double
-    }
-
-    private var buckets: [Bucket] {
-        guard !samples.isEmpty else { return [] }
-        let totalDuration = max(samples.map(\.offset).max() ?? 1, 1)
-        let bucketCount = 40
-        let bucketSize = totalDuration / Double(bucketCount)
-        return (0..<bucketCount).compactMap { i in
-            let lo = Double(i) * bucketSize
-            let hi = lo + bucketSize
-            let isLast = i == bucketCount - 1
-            let vals = samples
-                .filter {
-                    $0.offset >= lo &&
-                    ($0.offset < hi || (isLast && $0.offset <= hi)) &&
-                    $0.value >= Self.validMin &&
-                    $0.value <= Self.validMax
-                }
-                .map(\.value)
-            guard !vals.isEmpty else { return nil }
-            return Bucket(id: i, midMinute: (lo + hi) / 2 / 60,
-                          avg: vals.reduce(0, +) / Double(vals.count))
-        }
-    }
-
-    private var stats: (avg: Double, min: Double, max: Double)? {
-        let valid = samples.filter { $0.value >= Self.validMin && $0.value <= Self.validMax }.map(\.value)
-        guard !valid.isEmpty else { return nil }
-        let avg = valid.reduce(0, +) / Double(valid.count)
-        return (avg: avg, min: valid.min()!, max: valid.max()!)
-    }
-
-    private var domainLo: Double {
-        let minAvg = buckets.map(\.avg).min() ?? 150
-        return max(minAvg - 20, 0)
-    }
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            let lo = domainLo
-            Chart {
-                ForEach(buckets) { b in
-                    BarMark(
-                        x: .value("분", b.midMinute),
-                        yStart: .value("바닥", lo),
-                        yEnd: .value("spm", b.avg),
-                        width: .fixed(4)
-                    )
-                    .foregroundStyle(Theme.cadence.opacity(0.85))
-                    .cornerRadius(2)
-                }
-                if let s = stats {
-                    RuleMark(y: .value("평균", s.avg))
-                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                        .foregroundStyle(Theme.cadence.opacity(0.55))
-                }
-            }
-            .chartYScale(domain: lo...(buckets.map(\.avg).max().map { $0 + 12 } ?? 200))
-            .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
-                    AxisValueLabel {
-                        if let m = value.as(Double.self) {
-                            Text(String(format: "%.0f분", m)).font(.caption2).foregroundStyle(.white.opacity(0.6))
-                        }
-                    }
-                }
-            }
-            .chartYAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
-                    AxisValueLabel {
-                        if let v = value.as(Double.self) {
-                            Text(String(format: "%.0f", v)).font(.caption2).foregroundStyle(.white.opacity(0.6))
-                        }
-                    }
-                }
-            }
-            .padding(12)
-
-            if let s = stats {
-                HStack(spacing: 4) {
-                    Text(String(format: "%.0f", s.avg))
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.cadence)
-                    Text("avg SPM")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Text("·")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                    Text(String(format: "%.0f~%.0fSPM", s.min, s.max))
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
