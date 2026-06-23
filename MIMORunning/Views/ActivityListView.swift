@@ -39,11 +39,11 @@ private struct ConnectView: View {
             VStack(spacing: 20) {
                 ZStack {
                     Circle()
-                        .fill(Theme.violet.opacity(0.15))
+                        .fill(Color(hex: "3DFF7A").opacity(0.12))
                         .frame(width: 108, height: 108)
                     Image(systemName: "figure.run")
                         .font(.system(size: 56))
-                        .foregroundStyle(Theme.violet)
+                        .foregroundStyle(Color(hex: "3DFF7A"))
                 }
                 VStack(spacing: 6) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -96,8 +96,6 @@ private struct ActivityListContent: View {
     @AppStorage("showRunning")  private var showRunning  = true
     @AppStorage("showWalking")  private var showWalking  = false
     @AppStorage("showHiking")   private var showHiking   = false
-    @AppStorage("showCycling")  private var showCycling  = false
-    @AppStorage("showSwimming") private var showSwimming = false
 
     private var filteredActivities: [Activity] {
         manager.activities.filter { a in
@@ -105,8 +103,8 @@ private struct ActivityListContent: View {
             case .running:  return showRunning
             case .walking:  return showWalking
             case .hiking:   return showHiking
-            case .cycling:  return showCycling
-            case .swimming: return showSwimming
+            case .cycling:  return false
+            case .swimming: return false
             }
         }
     }
@@ -177,8 +175,6 @@ private struct ActivityListContent: View {
         .onChange(of: showRunning)  { _, _ in displayCount = 50 }
         .onChange(of: showWalking)  { _, _ in displayCount = 50 }
         .onChange(of: showHiking)   { _, _ in displayCount = 50 }
-        .onChange(of: showCycling)  { _, _ in displayCount = 50 }
-        .onChange(of: showSwimming) { _, _ in displayCount = 50 }
         .sheet(isPresented: $showPaywall) {
             ProPaywallSheet()
         }
@@ -289,19 +285,27 @@ private struct ActivityCard: View {
     let activity: Activity
     var level: LevelBucket = .beginner
 
-    private var formattedDate: String {
+    private static let dateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US")
         df.dateFormat = "yyyy. M. d h:mm a"
-        return df.string(from: activity.date)
+        return df
+    }()
+
+    private var formattedDate: String {
+        Self.dateFormatter.string(from: activity.date)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Label(activity.type.label, systemImage: activity.type.icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.violet)
+                HStack(spacing: 4) {
+                    Image(systemName: activity.type.icon)
+                        .foregroundStyle(Color(hex: "3DFF7A"))
+                    Text(activity.type.label)
+                        .foregroundStyle(Theme.violet)
+                }
+                .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 Text(formattedDate)
                     .font(.system(size: 13, weight: .medium))

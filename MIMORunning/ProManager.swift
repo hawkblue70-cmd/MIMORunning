@@ -53,7 +53,7 @@ final class ProManager: ObservableObject {
 
     private(set) var firstLaunchDate: Date
 
-    private static let firstLaunchKey = "kr.mimo.running.firstLaunchDate"
+    private static let firstLaunchKey = "firstLaunchDate"
 
     var trialEndDate: Date {
         Calendar.current.date(byAdding: .day, value: 14, to: firstLaunchDate) ?? firstLaunchDate
@@ -69,12 +69,20 @@ final class ProManager: ObservableObject {
     private var transactionListener: Task<Void, Never>?
 
     private init() {
-        if let d = UserDefaults.standard.object(forKey: Self.firstLaunchKey) as? Date {
+        // Keychain에서 읽기 — 앱 삭제 후 재설치해도 날짜 유지
+        if let str = KeychainHelper.load(forKey: Self.firstLaunchKey),
+           let d = ISO8601DateFormatter().date(from: str) {
             firstLaunchDate = d
         } else {
-            let now = Date()
+            // 최초 설치: UserDefaults에 기존 값이 있으면 마이그레이션
+            let now: Date
+            if let legacy = UserDefaults.standard.object(forKey: "kr.mimo.running.firstLaunchDate") as? Date {
+                now = legacy
+            } else {
+                now = Date()
+            }
             firstLaunchDate = now
-            UserDefaults.standard.set(now, forKey: Self.firstLaunchKey)
+            KeychainHelper.save(ISO8601DateFormatter().string(from: now), forKey: Self.firstLaunchKey)
         }
         transactionListener = listenForTransactions()
         Task { await checkEntitlements() }

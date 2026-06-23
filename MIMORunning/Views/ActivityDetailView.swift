@@ -54,6 +54,7 @@ struct ActivityDetailView: View {
     @State private var activePanel: DetailPanel = .map
     @State private var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var panelSeriesData: [(offset: TimeInterval, value: Double)] = []
+    @State private var panelSeriesCache: [DetailPanel: [(offset: TimeInterval, value: Double)]] = [:]
     @State private var isLoadingPanelSeries = false
     @Environment(RaceDetector.self) private var raceDetector
 
@@ -294,28 +295,36 @@ struct ActivityDetailView: View {
     }
 
     private func loadPanelSeries(for panel: DetailPanel) async {
+        // Return cached result immediately if available
+        if let cached = panelSeriesCache[panel] {
+            panelSeriesData = cached
+            return
+        }
         panelSeriesData = []
         isLoadingPanelSeries = true
+        let fetched: [(offset: TimeInterval, value: Double)]
         switch panel {
         case .cadence:
-            panelSeriesData = await manager.fetchCadenceTimeSeries(for: activity.id)
+            fetched = await manager.fetchCadenceTimeSeries(for: activity.id)
         case .power:
-            panelSeriesData = await manager.fetchWorkoutTimeSeries(for: activity.id,
-                                                                   identifier: .runningPower, unit: .watt())
+            fetched = await manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                           identifier: .runningPower, unit: .watt())
         case .groundContact:
-            panelSeriesData = await manager.fetchWorkoutTimeSeries(for: activity.id,
-                                                                   identifier: .runningGroundContactTime,
-                                                                   unit: .secondUnit(with: .milli))
+            fetched = await manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                           identifier: .runningGroundContactTime,
+                                                           unit: .secondUnit(with: .milli))
         case .strideLength:
-            panelSeriesData = await manager.fetchWorkoutTimeSeries(for: activity.id,
-                                                                   identifier: .runningStrideLength, unit: .meter())
+            fetched = await manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                           identifier: .runningStrideLength, unit: .meter())
         case .verticalOscillation:
-            panelSeriesData = await manager.fetchWorkoutTimeSeries(for: activity.id,
-                                                                   identifier: .runningVerticalOscillation,
-                                                                   unit: .meterUnit(with: .centi))
+            fetched = await manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                           identifier: .runningVerticalOscillation,
+                                                           unit: .meterUnit(with: .centi))
         default:
-            break
+            fetched = []
         }
+        panelSeriesCache[panel] = fetched
+        panelSeriesData = fetched
         isLoadingPanelSeries = false
     }
 
@@ -376,7 +385,7 @@ struct ActivityDetailView: View {
             EmptyView()
         case .splits:
             if let splits = detail?.splits, !splits.isEmpty {
-                SplitsPanelChart(splits: splits)
+                SplitsPanelChart(splits: splits, compact: true, isLargeDisplay: true)
             } else {
                 panelPlaceholder(icon: "chart.bar.fill", message: "스플릿 없음")
             }
@@ -500,9 +509,9 @@ private struct DetailHeader: View {
             HStack(spacing: 12) {
                 Image(systemName: activity.type.icon)
                     .font(.title2)
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(Color(hex: "3DFF7A"))
                     .frame(width: 44, height: 44)
-                    .background(Theme.violet.opacity(0.15))
+                    .background(Color(hex: "3DFF7A").opacity(0.12))
                     .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(activity.type.label)
@@ -1045,6 +1054,9 @@ private struct SplitsSection: View {
     var activity: Activity? = nil
     var allActivities: [Activity] = []
 
+    @Environment(CustomMiniMeStore.self) private var miniMeStore
+    @State private var showSplitsShare = false
+
     private var fastestIdx: Int? {
         splits.indices.min(by: { splits[$0].paceSecPerKm < splits[$1].paceSecPerKm })
     }
@@ -1064,7 +1076,26 @@ private struct SplitsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DetailSectionHeader(title: "구간 기록", subtitle: "\(splits.count)개 구간")
+            HStack(alignment: .top) {
+                DetailSectionHeader(title: "구간 기록", subtitle: "\(splits.count)개 구간")
+                Spacer()
+                if activity != nil {
+                    Button { showSplitsShare = true } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.caption.weight(.semibold))
+                            Text("공유")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(Theme.violet)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.violet.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
             SplitsHighlightCard(splits: splits, activity: activity, allActivities: allActivities)
             VStack(spacing: 0) {
                 ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
@@ -1083,6 +1114,11 @@ private struct SplitsSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .padding(.horizontal, 16)
+        .sheet(isPresented: $showSplitsShare) {
+            if let act = activity {
+                SplitsShareCardScreen(activity: act, splits: splits, zones: zones, miniMeImage: miniMeStore.image)
+            }
+        }
     }
 }
 
@@ -1114,9 +1150,10 @@ private struct SplitBarRow: View {
     private static let avgDotColor = Color(hex: "7A7A85")
 
     private var kmLabel: String {
-        split.distanceM < 990
-            ? String(format: "%.1fkm", split.distanceM / 1000)
-            : "\(split.id)"
+        if split.distanceM < 990 {
+            return String(format: "%.1f", split.distanceM / 1000)
+        }
+        return split.id == 1 ? "1km" : "\(split.id)"
     }
 
     private func hrZoneColor(_ zone: Int) -> Color {
@@ -1648,14 +1685,7 @@ private struct StoryDisplay: View {
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(4)
             }
-            if photos.count == 1 {
-                Image(uiImage: photos[0])
-                    .resizable()
-                    .scaledToFill()
-                    .frame(height: 160)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .clipped()
-            } else if photos.count > 1 {
+            if photos.count >= 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(Array(photos.enumerated()), id: \.offset) { _, img in
@@ -2156,6 +2186,7 @@ private struct ManualRaceSheet: View {
 struct SplitsPanelChart: View {
     let splits: [SplitData]
     var compact: Bool = false
+    var isLargeDisplay: Bool = false
 
     private var fastestIdx: Int? {
         splits.indices.min(by: { splits[$0].paceSecPerKm < splits[$1].paceSecPerKm })
@@ -2271,7 +2302,7 @@ struct SplitsPanelChart: View {
                     .symbolSize(18)
                     .annotation(position: .top, alignment: .center) {
                         Text(paceLabel(fp.realPace))
-                            .font(.system(size: 7, weight: .semibold))
+                            .font(.system(size: isLargeDisplay ? 13 : 7, weight: .semibold))
                             .foregroundStyle(Self.panelGold)
                     }
             }
@@ -2280,7 +2311,7 @@ struct SplitsPanelChart: View {
                 .foregroundStyle(Color.white.opacity(0.35))
                 .annotation(position: .bottom, alignment: .trailing) {
                     Text("avg " + paceLabel(avgPace))
-                        .font(.system(size: 6.5))
+                        .font(.system(size: isLargeDisplay ? 11 : 6.5))
                         .foregroundStyle(Color.white.opacity(0.55))
                 }
         }
@@ -2295,7 +2326,7 @@ struct SplitsPanelChart: View {
                         let real = offset - v
                         if real > 60 {
                             Text(paceLabel(real))
-                                .font(.system(size: 6))
+                                .font(.system(size: isLargeDisplay ? 11 : 6))
                                 .foregroundStyle(Color.white.opacity(0.55))
                         }
                     }
@@ -2309,7 +2340,7 @@ struct SplitsPanelChart: View {
                 AxisValueLabel {
                     if let m = val.as(Double.self) {
                         Text(String(format: "%.0f분", m))
-                            .font(.system(size: 6))
+                            .font(.system(size: isLargeDisplay ? 11 : 6))
                             .foregroundStyle(Color.white.opacity(0.55))
                     }
                 }

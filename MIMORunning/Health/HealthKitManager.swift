@@ -3,6 +3,7 @@ import HealthKit
 import WorkoutKit
 import CoreLocation
 import Observation
+import SwiftData
 
 // Thread-safe accumulator for HKWorkoutRouteQuery batched callbacks
 private final class LocationBatch: @unchecked Sendable {
@@ -27,6 +28,14 @@ class HealthKitManager {
     @ObservationIgnored private var cachedMHR: Int? = nil
     @ObservationIgnored private var pausedIntervalsCache: [UUID: [DateInterval]] = [:]
 
+    @ObservationIgnored private let cacheContainer: ModelContainer? = {
+        let schema = Schema([CachedActivity.self])
+        return try? ModelContainer(for: schema,
+                                   configurations: ModelConfiguration(schema: schema,
+                                                                       isStoredInMemoryOnly: false))
+    }()
+    private var cacheContext: ModelContext? { cacheContainer?.mainContext }
+
     /// True when any loaded workout originates from Garmin Connect.
     var hasGarminSource: Bool {
         workoutCache.values.contains {
@@ -38,7 +47,7 @@ class HealthKitManager {
         case notDetermined, authorized, denied
     }
 
-    private var readTypes: Set<HKObjectType> {
+    private static let readTypes: Set<HKObjectType> = {
         [
             HKObjectType.workoutType(),
             HKSeriesType.workoutRoute(),
@@ -65,7 +74,15 @@ class HealthKitManager {
             HKQuantityType(.bodyMass),
             HKQuantityType(.bodyFatPercentage),
         ]
-    }
+    }()
+
+    private static let bpmUnit = HKUnit.count().unitDivided(by: .minute())
+
+    private static let vo2MaxUnit: HKUnit = {
+        HKUnit.literUnit(with: .milli)
+            .unitDivided(by: HKUnit.gramUnit(with: .kilo)
+            .unitMultiplied(by: HKUnit(from: "min")))
+    }()
 
     // MARK: - Authorization
 
@@ -76,7 +93,7 @@ class HealthKitManager {
         }
         guard UserDefaults.standard.bool(forKey: "hkAuthorizationRequested") else { return }
         // Re-request to cover any types added after initial auth — HealthKit only prompts for new/undecided types.
-        try? await store.requestAuthorization(toShare: [], read: readTypes)
+        try? await store.requestAuthorization(toShare: [], read: Self.readTypes)
         authorizationStatus = .authorized
         await fetchActivities()
     }
@@ -87,7 +104,7 @@ class HealthKitManager {
             return
         }
         do {
-            try await store.requestAuthorization(toShare: [], read: readTypes)
+            try await store.requestAuthorization(toShare: [], read: Self.readTypes)
             UserDefaults.standard.set(true, forKey: "hkAuthorizationRequested")
             authorizationStatus = .authorized
             await fetchActivities()
@@ -101,38 +118,70 @@ class HealthKitManager {
 
     func fetchActivities() async {
         isLoading = true
-        defer { isLoading = false }
         readBiologicalCharacteristics()
         await refreshHRZoneParameters()
+
+        // Phase 0: instant display from SwiftData cache (zero HealthKit queries)
+        let cached = loadActivityCache()
+        if !cached.isEmpty {
+            activities = cached.map { $0.toActivity() }
+            userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+            isLoading = false
+        }
+
+        defer { isLoading = false }
+
         do {
             let workouts = try await queryWorkouts()
+            let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
 
-            // ── Phase 1: populate immediately from workout's embedded statistics ──────
-            // HKWorkout.statistics(for:) reads pre-aggregated data stored inside the
-            // workout record — no extra HealthKit round-trips needed.
-            activities = workouts.map { buildSummary(from: $0) }
-
-            // ── Phase 2: enrich all workouts with calories + heart rate ─────────────
-            // No count limit — users running 5×/week hit 50 workouts in ~10 weeks,
-            // causing older activities to lose HR and calorie display.
-            for i in workouts.indices {
-                activities[i] = await enrich(activities[i], workout: workouts[i])
+            // Phase 1: populate workoutCache and show correct order immediately.
+            // For cached workouts use cached data; for new ones show bare summary first.
+            activities = workouts.map { w -> Activity in
+                let summary = buildSummary(from: w)  // populates workoutCache
+                return cacheDict[w.uuid.uuidString]?.toActivity() ?? summary
             }
 
-            // ── Phase 3: compute user level from all activities ───────────────────────
-            userLevel = LevelEngine.compute(
-                activities: activities,
-                dateOfBirth: userDateOfBirth,
-                isMale: userIsMale
-            )
+            // Phase 2: enrich only new workouts, updating the list in real time
+            var toSave: [CachedActivity] = []
+            for i in workouts.indices {
+                let wid = workouts[i].uuid.uuidString
+                guard cacheDict[wid] == nil else { continue }
+                activities[i] = await enrich(activities[i], workout: workouts[i])
+                toSave.append(CachedActivity(from: activities[i]))
+            }
+
+            if !toSave.isEmpty { saveToCache(toSave) }
+
+            // Phase 3: recompute user level
+            userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
         } catch {
             self.error = error
         }
     }
 
+    // MARK: - Cache helpers
+
+    private func loadActivityCache() -> [CachedActivity] {
+        guard let ctx = cacheContext else { return [] }
+        let descriptor = FetchDescriptor<CachedActivity>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        return (try? ctx.fetch(descriptor)) ?? []
+    }
+
+    private func saveToCache(_ items: [CachedActivity]) {
+        guard let ctx = cacheContext else { return }
+        for item in items { ctx.insert(item) }
+        try? ctx.save()
+    }
+
     // MARK: - Detail (on demand)
 
     func fetchDetail(for activityID: UUID) async -> ActivityDetail? {
+        // workoutCache is populated during fetchActivities; if detail is tapped before
+        // background sync finishes (cache-first launch), do a targeted lookup.
+        if workoutCache[activityID] == nil { await fetchSingleWorkout(id: activityID) }
         guard let workout = workoutCache[activityID] else { return nil }
         let actType = mapType(workout.workoutActivityType)
 
@@ -190,7 +239,7 @@ class HealthKitManager {
             async let speedTask = queryAvgQuantity(.cyclingSpeed, unit: HKUnit(from: "m/s"), workout: workout)
             async let powerTask = queryAvgQuantity(.cyclingPower, unit: .watt(), workout: workout)
             async let cadTask   = queryAvgQuantity(.cyclingCadence,
-                                                    unit: HKUnit.count().unitDivided(by: .minute()),
+                                                    unit: Self.bpmUnit,
                                                     workout: workout)
 
             let (locations, speed, power, cad, zones) = await (locTask, speedTask, powerTask, cadTask, zonesTask)
@@ -278,6 +327,16 @@ class HealthKitManager {
                 altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate)
             )
         }
+    }
+
+    private func fetchSingleWorkout(id: UUID) async {
+        let pred = HKQuery.predicateForObject(with: id)
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.workout(pred)],
+            sortDescriptors: []
+        )
+        guard let workout = try? await descriptor.result(for: store).first else { return }
+        workoutCache[id] = workout
     }
 
     // MARK: - Workout query — date range, no count limit
@@ -490,7 +549,7 @@ class HealthKitManager {
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
         guard let samples = try? await descriptor.result(for: store) else { return [] }
-        let unit = HKUnit.count().unitDivided(by: .minute())
+        let unit = Self.bpmUnit
         return samples
             .filter { !isPaused($0.startDate, in: paused) }
             .map { sample in
@@ -601,7 +660,7 @@ class HealthKitManager {
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
         guard let all = try? await descriptor.result(for: store), !all.isEmpty else { return nil }
-        let unit = HKUnit.count().unitDivided(by: .minute())
+        let unit = Self.bpmUnit
         let active = all.filter { !isPaused($0.startDate, in: paused) }
         guard !active.isEmpty else { return nil }
         let sum = active.reduce(0.0) { $0 + $1.quantity.doubleValue(for: unit) }
@@ -724,7 +783,7 @@ class HealthKitManager {
     }
 
     private func splitAvgHR(from start: Date, to end: Date, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Int? {
-        let unit = HKUnit.count().unitDivided(by: .minute())
+        let unit = Self.bpmUnit
         let relevant = samples.filter { $0.startDate >= start && $0.startDate < end && !isPaused($0.startDate, in: paused) }
         guard !relevant.isEmpty else { return nil }
         let sum = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: unit) }
@@ -760,9 +819,7 @@ class HealthKitManager {
         )
         guard let sample = try? await descriptor.result(for: store).first else { return nil }
         // mL/(kg·min) — compose unit to avoid locale-sensitive string parsing
-        let unit = HKUnit.literUnit(with: .milli)
-            .unitDivided(by: HKUnit.gramUnit(with: .kilo)
-            .unitMultiplied(by: HKUnit(from: "min")))
+        let unit = Self.vo2MaxUnit
         return sample.quantity.doubleValue(for: unit)
     }
 
@@ -791,7 +848,7 @@ class HealthKitManager {
 
     /// Fetches resting HR samples (최근 30일 우선, 없으면 전체 기간) — 중앙값 반환.
     private func queryLatestRestingHR() async -> Int? {
-        let unit = HKUnit.count().unitDivided(by: .minute())
+        let unit = Self.bpmUnit
 
         func fetchSamples(start: Date?) async -> [Int] {
             let predicate = HKQuery.predicateForSamples(
@@ -856,7 +913,7 @@ class HealthKitManager {
         func boundary(_ ratio: Double) -> Int { Int((Double(rhr) + ratio * hrr).rounded()) }
 
         var zoneSecs = [Double](repeating: 0, count: 5)
-        let unit = HKUnit.count().unitDivided(by: .minute())
+        let unit = Self.bpmUnit
 
         for i in 0..<samples.count {
             let bpm  = samples[i].quantity.doubleValue(for: unit)
@@ -918,7 +975,7 @@ class HealthKitManager {
             return []
         }
 
-        let hrUnit = HKUnit.count().unitDivided(by: .minute())
+        let hrUnit = Self.bpmUnit
         var result: [IntervalSegment] = []
 
         for (i, (activity, labelPair)) in zip(workout.workoutActivities, flatLabels).enumerated() {
@@ -1047,9 +1104,7 @@ class HealthKitManager {
             predicates: [pred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
-        let unit = HKUnit.literUnit(with: .milli)
-            .unitDivided(by: HKUnit.gramUnit(with: .kilo)
-            .unitMultiplied(by: HKUnit(from: "min")))
+        let unit = Self.vo2MaxUnit
         guard let samples = try? await descriptor.result(for: store) else { return [] }
         return samples.map { ($0.startDate, $0.quantity.doubleValue(for: unit)) }
     }

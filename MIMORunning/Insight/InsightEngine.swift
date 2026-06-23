@@ -265,13 +265,18 @@ struct InsightEngine {
         let cal = Calendar.current
         let streakThreshold = level == .beginner ? 2 : 3
 
+        // Precompute set of weeks that have at least one prior run — O(n) once
+        let priorWeekStarts = Set(prior.map {
+            cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.date)) ?? $0.date
+        })
+
         var streak = 1
         var weekAnchor = cal.date(
             from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)
         ) ?? a.date
         for _ in 0..<52 {
             let prevWeekStart = cal.date(byAdding: .weekOfYear, value: -1, to: weekAnchor)!
-            if prior.contains(where: { $0.date >= prevWeekStart && $0.date < weekAnchor }) {
+            if priorWeekStarts.contains(prevWeekStart) {
                 streak += 1
                 weekAnchor = prevWeekStart
             } else {

@@ -24,53 +24,100 @@ struct MeView: View {
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @Query private var shoes: [Shoe]
     @Query private var allStories: [WorkoutStory]
-    @State private var showMonthlyShare = false
-    @State private var showYearlyShare  = false
+    @State private var showShare0 = false
+    @State private var showShare1 = false
+    @State private var showShare2 = false
+    @State private var showYearShare0 = false
+    @State private var showYearShare1 = false
     @State private var showAddShoe = false
+    @State private var shoeToDelete: Shoe?
     @AppStorage("distanceUnitMiles") private var useMiles = false
     @AppStorage("garminNoticeDismissed") private var garminNoticeDismissed = false
     @AppStorage("showRunning")  private var showRunning  = true
     @AppStorage("showWalking")  private var showWalking  = false
     @AppStorage("showHiking")   private var showHiking   = false
-    @AppStorage("showCycling")  private var showCycling  = false
-    @AppStorage("showSwimming") private var showSwimming = false
 
     // MARK: - Period stats
 
-    private var monthlyActivities: [Activity] {
+    private var runWalkActivities: [Activity] {
+        manager.activities.filter { $0.type == .running || $0.type == .walking }
+    }
+
+    private func periodStats(monthOffset: Int) -> SummaryPeriodStats {
         let cal = Calendar.current
-        let now = Date()
-        let year  = cal.component(.year,  from: now)
-        let month = cal.component(.month, from: now)
-        return manager.activities.filter {
+        let ref = cal.date(byAdding: .month, value: -monthOffset, to: Date()) ?? Date()
+        let year  = cal.component(.year,  from: ref)
+        let month = cal.component(.month, from: ref)
+        let acts = runWalkActivities.filter {
             cal.component(.year,  from: $0.date) == year &&
             cal.component(.month, from: $0.date) == month
         }
-    }
 
-    private var yearlyActivities: [Activity] {
-        let year = Calendar.current.component(.year, from: Date())
-        return manager.activities.filter {
-            Calendar.current.component(.year, from: $0.date) == year
+        let prevRef = cal.date(byAdding: .month, value: -(monthOffset + 1), to: Date()) ?? Date()
+        let prevYear  = cal.component(.year,  from: prevRef)
+        let prevMonth = cal.component(.month, from: prevRef)
+        let prevActs = runWalkActivities.filter {
+            cal.component(.year,  from: $0.date) == prevYear &&
+            cal.component(.month, from: $0.date) == prevMonth
         }
-    }
+        let prevRuns = prevActs.filter { $0.type == .running }
+        let prevDistKm = prevActs.reduce(0.0) { $0 + $1.distance / 1000 }
+        let prevPaceSec: Double? = {
+            let r = prevRuns.filter { $0.distance > 0 }
+            guard !r.isEmpty else { return nil }
+            let d = r.reduce(0.0) { $0 + $1.distance }
+            let t = r.reduce(0.0) { $0 + $1.duration }
+            return d > 0 ? t / (d / 1000) : nil
+        }()
 
-    private var monthlyStats: SummaryPeriodStats {
-        let now = Date()
-        let cal = Calendar.current
+        var ytdKm: Double? = nil
+        if monthOffset == 0 {
+            let currYear = cal.component(.year, from: Date())
+            let km = runWalkActivities.filter {
+                cal.component(.year, from: $0.date) == currYear
+            }.reduce(0.0) { $0 + $1.distance / 1000 }
+            ytdKm = km > 0 ? km : nil
+        }
+
         return SummaryPeriodStats(
-            kind: .monthly(year: cal.component(.year, from: now),
-                           month: cal.component(.month, from: now)),
-            activities: monthlyActivities,
-            useMiles: useMiles
+            kind: .monthly(year: year, month: month),
+            activities: acts,
+            useMiles: useMiles,
+            compDistanceKm: prevDistKm > 0 ? prevDistKm : nil,
+            compRunCount: prevRuns.isEmpty ? nil : prevRuns.count,
+            compAvgPaceSecPerKm: prevPaceSec,
+            ytdDistanceKm: ytdKm
         )
     }
 
-    private var yearlyStats: SummaryPeriodStats {
-        SummaryPeriodStats(
-            kind: .yearly(year: Calendar.current.component(.year, from: Date())),
-            activities: yearlyActivities,
-            useMiles: useMiles
+    private func yearStats(yearOffset: Int) -> SummaryPeriodStats {
+        let cal = Calendar.current
+        let year = cal.component(.year, from: Date()) - yearOffset
+        let acts = runWalkActivities.filter {
+            cal.component(.year, from: $0.date) == year
+        }
+
+        let prevYear = year - 1
+        let prevActs = runWalkActivities.filter {
+            cal.component(.year, from: $0.date) == prevYear
+        }
+        let prevRuns = prevActs.filter { $0.type == .running }
+        let prevDistKm = prevActs.reduce(0.0) { $0 + $1.distance / 1000 }
+        let prevPaceSec: Double? = {
+            let r = prevRuns.filter { $0.distance > 0 }
+            guard !r.isEmpty else { return nil }
+            let d = r.reduce(0.0) { $0 + $1.distance }
+            let t = r.reduce(0.0) { $0 + $1.duration }
+            return d > 0 ? t / (d / 1000) : nil
+        }()
+
+        return SummaryPeriodStats(
+            kind: .yearly(year: year),
+            activities: acts,
+            useMiles: useMiles,
+            compDistanceKm: prevDistKm > 0 ? prevDistKm : nil,
+            compRunCount: prevRuns.isEmpty ? nil : prevRuns.count,
+            compAvgPaceSecPerKm: prevPaceSec
         )
     }
 
@@ -217,22 +264,42 @@ struct MeView: View {
     // MARK: - Stats section
 
     private var statsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let s0 = periodStats(monthOffset: 0)
+        let s1 = periodStats(monthOffset: 1)
+        let s2 = periodStats(monthOffset: 2)
+        let y0 = yearStats(yearOffset: 0)
+        let y1 = yearStats(yearOffset: 1)
+        return VStack(alignment: .leading, spacing: 12) {
             Text("기간별 결산")
                 .font(.headline)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
 
-            SummarySectionCard(stats: monthlyStats) { showMonthlyShare = true }
+            SummarySectionCard(stats: s0, manager: manager) { showShare0 = true }
                 .padding(.horizontal, 16)
-            SummarySectionCard(stats: yearlyStats)  { showYearlyShare  = true }
+            SummarySectionCard(stats: s1, manager: manager) { showShare1 = true }
+                .padding(.horizontal, 16)
+            SummarySectionCard(stats: s2, manager: manager) { showShare2 = true }
+                .padding(.horizontal, 16)
+            SummarySectionCard(stats: y0, manager: manager) { showYearShare0 = true }
+                .padding(.horizontal, 16)
+            SummarySectionCard(stats: y1, manager: manager) { showYearShare1 = true }
                 .padding(.horizontal, 16)
         }
-        .sheet(isPresented: $showMonthlyShare) {
-            SummaryShareCardScreen(stats: monthlyStats, miniMeImage: miniMeStore.image)
+        .sheet(isPresented: $showShare0) {
+            SummaryShareCardScreen(stats: s0, miniMeImage: miniMeStore.image)
         }
-        .sheet(isPresented: $showYearlyShare) {
-            SummaryShareCardScreen(stats: yearlyStats, miniMeImage: miniMeStore.image)
+        .sheet(isPresented: $showShare1) {
+            SummaryShareCardScreen(stats: s1, miniMeImage: miniMeStore.image)
+        }
+        .sheet(isPresented: $showShare2) {
+            SummaryShareCardScreen(stats: s2, miniMeImage: miniMeStore.image)
+        }
+        .sheet(isPresented: $showYearShare0) {
+            SummaryShareCardScreen(stats: y0, miniMeImage: miniMeStore.image)
+        }
+        .sheet(isPresented: $showYearShare1) {
+            SummaryShareCardScreen(stats: y1, miniMeImage: miniMeStore.image)
         }
     }
 
@@ -242,9 +309,11 @@ struct MeView: View {
 
     private func cumulativeKm(for shoe: Shoe) -> Double {
         let sid = shoe.id.uuidString
-        let storyIDs = allStories.filter { $0.shoeID == sid }.map { $0.workoutID }
-        let matched = manager.activities.filter { storyIDs.contains($0.id.uuidString) }
-        return matched.reduce(0) { $0 + $1.distance } / 1000
+        let workoutIDs = Set(allStories.lazy.filter { $0.shoeID == sid }.map { $0.workoutID })
+        guard !workoutIDs.isEmpty else { return 0 }
+        return manager.activities
+            .lazy.filter { workoutIDs.contains($0.id.uuidString) }
+            .reduce(0) { $0 + $1.distance } / 1000
     }
 
     private var shoesSection: some View {
@@ -302,16 +371,18 @@ struct MeView: View {
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundStyle(.secondary)
                             }
+                            Button {
+                                shoeToDelete = shoe
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(Color.red.opacity(0.6))
+                                    .padding(8)
+                            }
+                            .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                modelContext.delete(shoe)
-                            } label: {
-                                Label("삭제", systemImage: "trash")
-                            }
-                        }
                     }
                 }
                 .background(Theme.cardBackground)
@@ -321,6 +392,20 @@ struct MeView: View {
         }
         .sheet(isPresented: $showAddShoe) {
             AddShoeSheet()
+        }
+        .alert("신발 삭제", isPresented: .init(
+            get: { shoeToDelete != nil },
+            set: { if !$0 { shoeToDelete = nil } }
+        )) {
+            Button("삭제", role: .destructive) {
+                if let shoe = shoeToDelete { modelContext.delete(shoe) }
+                shoeToDelete = nil
+            }
+            Button("취소", role: .cancel) { shoeToDelete = nil }
+        } message: {
+            if let shoe = shoeToDelete {
+                Text("'\(shoe.displayName)'을(를) 삭제하면 복구할 수 없어요.")
+            }
         }
     }
 
@@ -382,18 +467,6 @@ struct MeView: View {
                     Label("하이킹", systemImage: "figure.hiking").foregroundStyle(.white)
                     Spacer()
                     Toggle("", isOn: $showHiking).labelsHidden().tint(Theme.violet)
-                }
-                thinDivider
-                settingRow {
-                    Label("자전거", systemImage: "figure.outdoor.cycle").foregroundStyle(.white)
-                    Spacer()
-                    Toggle("", isOn: $showCycling).labelsHidden().tint(Theme.violet)
-                }
-                thinDivider
-                settingRow {
-                    Label("수영", systemImage: "figure.pool.swim").foregroundStyle(.white)
-                    Spacer()
-                    Toggle("", isOn: $showSwimming).labelsHidden().tint(Theme.violet)
                 }
             }
             .background(Theme.cardBackground)
@@ -554,9 +627,22 @@ struct MeView: View {
 
 // MARK: - Summary section card (inline in Me tab)
 
+private struct FormMetricsData {
+    let cadence: Double?
+    let prevCadence: Double?
+    let power: Double?
+    let prevPower: Double?
+    let strideLength: Double?
+    let prevStrideLength: Double?
+    var hasAny: Bool { cadence != nil || power != nil || strideLength != nil }
+}
+
 private struct SummarySectionCard: View {
     let stats: SummaryPeriodStats
+    let manager: HealthKitManager
     let onShare: () -> Void
+
+    @State private var formMetrics: FormMetricsData? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -634,7 +720,7 @@ private struct SummarySectionCard: View {
                             .foregroundStyle(Theme.pace.opacity(0.7))
                         Text("평균 페이스")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.white)
                         Spacer()
                         Text(pace)
                             .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -650,12 +736,117 @@ private struct SummarySectionCard: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
                 }
+
+                // Comparison strip
+                if stats.compDistanceKm != nil {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.06))
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary)
+                        if let d = stats.distanceDeltaStr {
+                            compChip(text: d, up: stats.distanceDeltaIsUp)
+                        }
+                        if let c = stats.runCountDeltaStr {
+                            compChip(text: c, up: stats.runCount >= (stats.compRunCount ?? 0))
+                        }
+                        if let p = stats.paceDeltaStr {
+                            compChip(text: p, up: p.contains("빨라짐"))
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                }
+
+                // YTD
+                if let ytd = stats.ytdStr {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Theme.violet.opacity(0.7))
+                        Text(ytd)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Theme.violet.opacity(0.85))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 4)
+                }
+
+                // Form metrics (워치 전용, 비동기 로드)
+                if let fm = formMetrics, fm.hasAny {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.06))
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+
+                    HStack(spacing: 0) {
+                        if let cad = fm.cadence {
+                            formMetricCell(value: "\(Int(cad.rounded()))spm",
+                                           label: "케이던스",
+                                           current: cad, prev: fm.prevCadence,
+                                           higherBetter: true)
+                        }
+                        if let pwr = fm.power {
+                            if fm.cadence != nil { formMetricDivider }
+                            formMetricCell(value: "\(Int(pwr.rounded()))W",
+                                           label: "파워",
+                                           current: pwr, prev: fm.prevPower,
+                                           higherBetter: true)
+                        }
+                        if let str = fm.strideLength {
+                            if fm.cadence != nil || fm.power != nil { formMetricDivider }
+                            formMetricCell(value: String(format: "%.2fm", str),
+                                           label: "보폭",
+                                           current: str, prev: fm.prevStrideLength,
+                                           higherBetter: true)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+                }
             }
 
             Spacer(minLength: 14)
         }
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .task(id: stats.kind.title) {
+            guard case .monthly(let y, let m) = stats.kind else { return }
+            let cal = Calendar.current
+            let start = cal.date(from: DateComponents(year: y, month: m)) ?? Date()
+            let end   = cal.date(byAdding: .month, value: 1, to: start)  ?? Date()
+            let prev  = cal.date(byAdding: .month, value: -1, to: start) ?? Date()
+
+            async let cadFetch = manager.fetchMetricHistory(.cadence,      from: prev)
+            async let pwrFetch = manager.fetchMetricHistory(.power,        from: prev)
+            async let strFetch = manager.fetchMetricHistory(.strideLength, from: prev)
+            let (cad, pwr, str) = await (cadFetch, pwrFetch, strFetch)
+
+            func avg(_ pts: [(date: Date, value: Double)], from s: Date, to e: Date) -> Double? {
+                let f = pts.filter { $0.date >= s && $0.date < e }
+                guard !f.isEmpty else { return nil }
+                return f.map(\.value).reduce(0, +) / Double(f.count)
+            }
+
+            formMetrics = FormMetricsData(
+                cadence:          avg(cad, from: start, to: end),
+                prevCadence:      avg(cad, from: prev,  to: start),
+                power:            avg(pwr, from: start, to: end),
+                prevPower:        avg(pwr, from: prev,  to: start),
+                strideLength:     avg(str, from: start, to: end),
+                prevStrideLength: avg(str, from: prev,  to: start)
+            )
+        }
     }
 
     private func statCell(value: String, label: String, color: Color) -> some View {
@@ -667,7 +858,7 @@ private struct SummarySectionCard: View {
                 .minimumScaleFactor(0.7)
             Text(label)
                 .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -677,6 +868,49 @@ private struct SummarySectionCard: View {
             .fill(Color.white.opacity(0.08))
             .frame(width: 0.5, height: 28)
             .padding(.horizontal, 10)
+    }
+
+    private func compChip(text: String, up: Bool) -> some View {
+        let color: Color = up ? .green : Color(red: 1, green: 0.45, blue: 0.45)
+        return Text(text)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.12))
+            .clipShape(Capsule())
+    }
+
+    private func formMetricCell(value: String, label: String,
+                                current: Double, prev: Double?,
+                                higherBetter: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 3) {
+                Text(value)
+                    .font(.system(size: 14, design: .rounded).weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                if let p = prev {
+                    let up = current > p
+                    let good = higherBetter ? up : !up
+                    Image(systemName: up ? "arrow.up" : "arrow.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(good ? Color.green : Color(red: 1, green: 0.45, blue: 0.45))
+                }
+            }
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white)
+        }
+        .frame(minWidth: 72, alignment: .leading)
+    }
+
+    private var formMetricDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.08))
+            .frame(width: 0.5, height: 32)
+            .padding(.horizontal, 12)
     }
 }
 
@@ -1030,7 +1264,6 @@ private struct AddShoeSheet: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var name = ""
-    @State private var brand = ""
 
     var body: some View {
         NavigationStack {
@@ -1038,12 +1271,7 @@ private struct AddShoeSheet: View {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 16) {
                     VStack(spacing: 0) {
-                        field(label: "신발 이름", placeholder: "예: Pegasus 41", text: $name)
-                        Rectangle()
-                            .fill(Color.white.opacity(0.07))
-                            .frame(height: 0.5)
-                            .padding(.horizontal, 16)
-                        field(label: "브랜드 (선택)", placeholder: "예: Nike", text: $brand)
+                        field(label: "신발 이름", placeholder: "예: Nike Pegasus 41", text: $name)
                     }
                     .background(Theme.cardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -1062,8 +1290,7 @@ private struct AddShoeSheet: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("추가") {
                         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                        let shoe = Shoe(name: name.trimmingCharacters(in: .whitespaces),
-                                       brand: brand.trimmingCharacters(in: .whitespaces))
+                        let shoe = Shoe(name: name.trimmingCharacters(in: .whitespaces), brand: "")
                         modelContext.insert(shoe)
                         dismiss()
                     }

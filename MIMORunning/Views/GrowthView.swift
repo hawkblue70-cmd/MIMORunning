@@ -73,8 +73,35 @@ struct GrowthView: View {
     @State private var showBodyFat = false
     @AppStorage("distanceUnitMiles") private var useMiles = false
 
+    // Cached chart data — refreshed only when activities change
+    @State private var weeklyKmsCache: [WeeklyKm] = []
+    @State private var weeklyMinsCache: [WeeklyMins] = []
+    @State private var monthlyKmsCache: [MonthlyKm] = []
+    @State private var monthlyMinsCache: [MonthlyMins] = []
+    @State private var pacePointsCache: [PacePoint] = []
+    @State private var heatmapColumnsCache: [WeekColumn] = []
+    @State private var weekStreakCache: Int = 0
+
+    private static let weekLabelFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "M/d"; return f
+    }()
+    private static let monthLabelFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "M월"; return f
+    }()
+
     private var runs: [Activity] {
         manager.activities.filter { $0.type == .running }
+    }
+
+    private func refreshChartCache() {
+        weeklyKmsCache   = weeklyKms()
+        weeklyMinsCache  = weeklyMins()
+        monthlyKmsCache  = monthlyKms()
+        monthlyMinsCache = monthlyMins()
+        pacePointsCache  = pacePoints()
+        let cols = heatmapColumns()
+        heatmapColumnsCache = cols
+        weekStreakCache  = weekStreak()
     }
 
     var body: some View {
@@ -89,6 +116,7 @@ struct GrowthView: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
+                            growthInsightBanner
                             weeklySection
                             paceSection
                             heatmapSection
@@ -105,7 +133,9 @@ struct GrowthView: View {
             .navigationTitle("성장")
             .navigationBarTitleDisplayMode(.large)
         }
+        .onChange(of: manager.activities) { refreshChartCache() }
         .task {
+            refreshChartCache()
             let bucket = manager.userLevel.bucket
             showTimeMileage = (bucket == .beginner || bucket == .novice)
             await checkBodyDataAvailability()
@@ -154,14 +184,14 @@ struct GrowthView: View {
     private var mileageSubtitle: String {
         if showMonthly {
             if showTimeMileage {
-                return timeSummary(mins: monthlyMins().last?.mins ?? 0, isMonth: true)
+                return timeSummary(mins: monthlyMinsCache.last?.mins ?? 0, isMonth: true)
             } else {
-                let km = monthlyKms().last?.km ?? 0
+                let km = monthlyKmsCache.last?.km ?? 0
                 return km > 0 ? String(format: "이번 달 %.1fkm", km) : "이번 달 아직 없어요"
             }
         } else {
             if showTimeMileage {
-                return timeSummary(mins: weeklyMins().last?.mins ?? 0, isMonth: false)
+                return timeSummary(mins: weeklyMinsCache.last?.mins ?? 0, isMonth: false)
             } else {
                 return "최근 8주 러닝 km"
             }
@@ -230,34 +260,30 @@ struct GrowthView: View {
     private var mileageChartView: some View {
         if showMonthly {
             if showTimeMileage {
-                let data = monthlyMins()
-                if data.allSatisfy({ $0.mins == 0 }) {
+                if monthlyMinsCache.allSatisfy({ $0.mins == 0 }) {
                     EmptyChartPlaceholder(message: "최근 12개월간 러닝 기록이 없어요")
                 } else {
-                    MonthlyTimeChart(data: data)
+                    MonthlyTimeChart(data: monthlyMinsCache)
                 }
             } else {
-                let data = monthlyKms()
-                if data.allSatisfy({ $0.km == 0 }) {
+                if monthlyKmsCache.allSatisfy({ $0.km == 0 }) {
                     EmptyChartPlaceholder(message: "최근 12개월간 러닝 기록이 없어요")
                 } else {
-                    MonthlyDistanceChart(data: data)
+                    MonthlyDistanceChart(data: monthlyKmsCache)
                 }
             }
         } else {
             if showTimeMileage {
-                let data = weeklyMins()
-                if data.allSatisfy({ $0.mins == 0 }) {
+                if weeklyMinsCache.allSatisfy({ $0.mins == 0 }) {
                     EmptyChartPlaceholder(message: "이번 8주간 러닝 기록이 없어요")
                 } else {
-                    WeeklyTimeChart(data: data)
+                    WeeklyTimeChart(data: weeklyMinsCache)
                 }
             } else {
-                let data = weeklyKms()
-                if data.allSatisfy({ $0.km == 0 }) {
+                if weeklyKmsCache.allSatisfy({ $0.km == 0 }) {
                     EmptyChartPlaceholder(message: "이번 8주간 러닝 기록이 없어요")
                 } else {
-                    WeeklyDistanceChart(data: data)
+                    WeeklyDistanceChart(data: weeklyKmsCache)
                 }
             }
         }
@@ -273,7 +299,7 @@ struct GrowthView: View {
     }
 
     private var paceSection: some View {
-        let points = pacePoints()
+        let points = pacePointsCache
         return VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: "페이스 추이", subtitle: "위로 갈수록 빠름")
             if points.count < 2 {
@@ -285,8 +311,8 @@ struct GrowthView: View {
     }
 
     private var heatmapSection: some View {
-        let columns = heatmapColumns()
-        let streak = weekStreak()
+        let columns = heatmapColumnsCache
+        let streak = weekStreakCache
         let activeDays = activeDaysInHeatmap(columns: columns)
         let summary = heatmapSummary(streak: streak, activeDays: activeDays)
         return VStack(alignment: .leading, spacing: 10) {
@@ -344,6 +370,65 @@ struct GrowthView: View {
                 JourneyTimeline(events: events)
             }
         }
+    }
+
+    // MARK: - Growth insight banner
+
+    @ViewBuilder
+    private var growthInsightBanner: some View {
+        if let text = growthInsightText {
+            HStack(spacing: 10) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.violet)
+                Text(text)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Theme.violet.opacity(0.12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Theme.violet.opacity(0.25), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private var growthInsightText: String? {
+        let streak = weekStreak()
+        if streak >= 3 {
+            return "\(streak)주 연속 달리고 있어요 — 루틴이 자리 잡고 있어요"
+        }
+        if streak == 2 {
+            return "2주 연속 달리고 있어요 — 이번 주도 이어가 봐요"
+        }
+
+        let weeks = weeklyKms()
+        let thisKm = weeks.last?.km ?? 0
+        let prevKm = weeks.dropLast().last?.km ?? 0
+        if thisKm > prevKm, prevKm > 0 {
+            let diff = thisKm - prevKm
+            return String(format: "이번 주 거리가 지난 주보다 +%.1fkm 늘었어요", diff)
+        }
+
+        if let recent = prEntries().first(where: { $0.isNew }) {
+            return "\(recent.label) 신기록을 세웠어요"
+        }
+
+        let pts = pacePoints()
+        if pts.count >= 6 {
+            let latestAvg = pts.suffix(3).map(\.speedKmh).reduce(0, +) / 3
+            let earlierAvg = pts.prefix(3).map(\.speedKmh).reduce(0, +) / 3
+            if earlierAvg > 0, latestAvg > earlierAvg * 1.02 {
+                return "최근 페이스가 꾸준히 빨라지고 있어요"
+            }
+        }
+
+        return nil
     }
 
     private var emptyState: some View {
@@ -470,9 +555,7 @@ struct GrowthView: View {
             let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date))!
             if totals[ws] != nil { totals[ws]! += a.distance / 1000 }
         }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "M/d"
-        return starts.map { s in WeeklyKm(id: s, label: fmt.string(from: s), km: totals[s] ?? 0) }
+        return starts.map { s in WeeklyKm(id: s, label: Self.weekLabelFormatter.string(from: s), km: totals[s] ?? 0) }
     }
 
     private func weeklyMins() -> [WeeklyMins] {
@@ -487,9 +570,7 @@ struct GrowthView: View {
             let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date))!
             if totals[ws] != nil { totals[ws]! += a.duration / 60 }
         }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "M/d"
-        return starts.map { s in WeeklyMins(id: s, label: fmt.string(from: s), mins: totals[s] ?? 0) }
+        return starts.map { s in WeeklyMins(id: s, label: Self.weekLabelFormatter.string(from: s), mins: totals[s] ?? 0) }
     }
 
     // MARK: - Monthly distance data
@@ -506,9 +587,7 @@ struct GrowthView: View {
             let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date))!
             if totals[ms] != nil { totals[ms]! += a.distance / 1000 }
         }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "M월"
-        return starts.map { s in MonthlyKm(id: s, label: fmt.string(from: s), km: totals[s] ?? 0) }
+        return starts.map { s in MonthlyKm(id: s, label: Self.monthLabelFormatter.string(from: s), km: totals[s] ?? 0) }
     }
 
     private func monthlyMins(count: Int = 12) -> [MonthlyMins] {
@@ -523,9 +602,7 @@ struct GrowthView: View {
             let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date))!
             if totals[ms] != nil { totals[ms]! += a.duration / 60 }
         }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "M월"
-        return starts.map { s in MonthlyMins(id: s, label: fmt.string(from: s), mins: totals[s] ?? 0) }
+        return starts.map { s in MonthlyMins(id: s, label: Self.monthLabelFormatter.string(from: s), mins: totals[s] ?? 0) }
     }
 
     // MARK: - Pace data

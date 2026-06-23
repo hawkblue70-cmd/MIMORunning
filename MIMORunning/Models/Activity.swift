@@ -50,17 +50,15 @@ struct Activity: Identifiable, Hashable {
             : String(format: "%d:%02d", m, s)
     }
 
-    var formattedPace: String? {
-        guard distance > 0 else { return nil }
-        let secPerKm = duration / (distance / 1000)
-        let m = Int(secPerKm) / 60
-        let s = Int(secPerKm) % 60
-        return String(format: "%d'%02d\"", m, s)
-    }
-
     var paceSecPerKm: Double? {
         guard distance > 0 else { return nil }
         return duration / (distance / 1000)
+    }
+
+    var formattedPace: String? {
+        guard let sec = paceSecPerKm else { return nil }
+        let s = Int(sec)
+        return String(format: "%d'%02d\"", s / 60, s % 60)
     }
 
     var avgSpeedKmh: Double? {
