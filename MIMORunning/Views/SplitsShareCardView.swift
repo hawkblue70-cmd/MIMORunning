@@ -43,14 +43,7 @@ struct SplitsShareCardView: View {
         return split.id == 1 ? "1km" : "\(split.id)"
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "M월 d일"
-        f.locale = Locale(identifier: "ko_KR")
-        return f
-    }()
-
-    private var dateStr: String { Self.dateFormatter.string(from: activity.date) }
+    private var dateStr: String { activity.date.cardShortDateString }
 
     private func formatPace(_ secs: Double) -> String {
         let s = Int(secs)
@@ -118,7 +111,7 @@ struct SplitsShareCardView: View {
                     Text(dateStr)
                         .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("구간 기록")
+                    Text(AppLanguage.shared.s("구간 기록", "Splits"))
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(0.5)
                         .foregroundStyle(Theme.violet)
@@ -144,13 +137,13 @@ struct SplitsShareCardView: View {
                         .padding(.bottom, 10)
 
                     HStack(spacing: 0) {
-                        footerStat(value: formatPace(avgPace), label: "평균 페이스", color: Theme.pace)
+                        footerStat(value: formatPace(avgPace), label: AppLanguage.shared.s("평균 페이스", "AVG PACE"), color: Theme.pace)
                         Spacer()
                         if let best = bestPace {
-                            footerStat(value: formatPace(best), label: "최고 구간", color: Self.gold)
+                            footerStat(value: formatPace(best), label: AppLanguage.shared.s("최고 구간", "BEST"), color: Self.gold)
                             Spacer()
                         }
-                        footerStat(value: String(format: "%.1fkm", totalDistanceKm), label: "총 거리", color: Theme.violet)
+                        footerStat(value: String(format: "%.1fkm", totalDistanceKm), label: AppLanguage.shared.s("총 거리", "TOTAL"), color: Theme.violet)
                     }
 
                     // Branding
@@ -317,15 +310,15 @@ struct SplitsShareCardScreen: View {
 
     private var topBar: some View {
         HStack {
-            Button("닫기") { dismiss() }
+            Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
                 .font(.body)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text("구간 기록 카드")
+            Text(AppLanguage.shared.s("구간 기록 카드", "Splits Card"))
                 .font(.headline)
                 .foregroundStyle(.white)
             Spacer()
-            Text("닫기").foregroundStyle(.clear)
+            Text(AppLanguage.shared.s("닫기", "Close")).foregroundStyle(.clear)
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -358,8 +351,8 @@ struct SplitsShareCardScreen: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
         } else if let url = shareURL {
-            ShareLink(item: url, preview: SharePreview("구간 기록")) {
-                Label("공유하기", systemImage: "square.and.arrow.up")
+            ShareLink(item: url, preview: SharePreview(AppLanguage.shared.s("구간 기록", "Splits"))) {
+                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)

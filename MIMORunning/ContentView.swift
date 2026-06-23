@@ -7,13 +7,13 @@ struct ContentView: View {
     var body: some View {
         TabView {
             ActivityListView(manager: manager)
-                .tabItem { Label("기록", systemImage: "figure.run") }
+                .tabItem { Label(AppLanguage.shared.s("기록", "Log"), systemImage: "figure.run") }
 
             GrowthView(manager: manager)
-                .tabItem { Label("성장", systemImage: "chart.line.uptrend.xyaxis") }
+                .tabItem { Label(AppLanguage.shared.s("성장", "Growth"), systemImage: "chart.line.uptrend.xyaxis") }
 
             MeView(manager: manager)
-                .tabItem { Label("나", systemImage: "person") }
+                .tabItem { Label(AppLanguage.shared.s("나", "Me"), systemImage: "person") }
         }
         .tint(Theme.violet)
         .preferredColorScheme(.dark)

@@ -143,7 +143,7 @@ struct MeView: View {
                     .padding(.top, 8)
                 }
             }
-            .navigationTitle("나")
+            .navigationTitle(AppLanguage.shared.s("나", "Me"))
             .navigationBarTitleDisplayMode(.large)
         }
     }
@@ -157,10 +157,10 @@ struct MeView: View {
                 .foregroundStyle(Theme.violet)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
-                Text("가민 기기 감지됨")
+                Text(AppLanguage.shared.s("가민 기기 감지됨", "Garmin Device Detected"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
-                Text("심박·러닝폼·VO2max 등 일부 지표는 가민→애플 건강 앱 동기화가 필요해요. 동기화가 안 된 경우 해당 지표가 표시되지 않을 수 있어요.")
+                Text(AppLanguage.shared.s("심박·러닝폼·VO2max 등 일부 지표는 가민→애플 건강 앱 동기화가 필요해요. 동기화가 안 된 경우 해당 지표가 표시되지 않을 수 있어요.", "Some metrics (HR, running form, VO2max) require Garmin→Apple Health sync. They may not appear if sync is off."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -207,10 +207,10 @@ struct MeView: View {
                         .foregroundStyle(Theme.violet)
                 }
             }
-            Text("나의 러닝")
+            Text(AppLanguage.shared.s("나의 러닝", "My Runs"))
                 .font(.title3.bold())
                 .foregroundStyle(.white)
-            Text("\(manager.activities.count)개 활동 기록")
+            Text(AppLanguage.shared.s("\(manager.activities.count)개 활동 기록", "\(manager.activities.count) activities"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -222,7 +222,7 @@ struct MeView: View {
 
     private var miniMeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("내 미니미")
+            Text(AppLanguage.shared.s("내 미니미", "My Mini-Me"))
                 .font(.headline)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
@@ -244,10 +244,10 @@ struct MeView: View {
         HStack(spacing: 16) {
             MiniMeView(variant: .running, size: 60)
             VStack(alignment: .leading, spacing: 4) {
-                Text("기본 미니미")
+                Text(AppLanguage.shared.s("기본 미니미", "Default Mini-Me"))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                Text("iOS 18.2 이상 기기에서 나만의 미니미를 만들 수 있어요")
+                Text(AppLanguage.shared.s("iOS 18.2 이상 기기에서 나만의 미니미를 만들 수 있어요", "Create your own Mini-Me on iOS 18.2+ devices"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -270,7 +270,7 @@ struct MeView: View {
         let y0 = yearStats(yearOffset: 0)
         let y1 = yearStats(yearOffset: 1)
         return VStack(alignment: .leading, spacing: 12) {
-            Text("기간별 결산")
+            Text(AppLanguage.shared.s("기간별 결산", "Period Summary"))
                 .font(.headline)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
@@ -319,7 +319,7 @@ struct MeView: View {
     private var shoesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("신발")
+                Text(AppLanguage.shared.s("신발", "Shoes"))
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
@@ -335,7 +335,7 @@ struct MeView: View {
             .padding(.horizontal, 16)
 
             if shoes.isEmpty {
-                Text("등록된 신발이 없어요. + 버튼으로 추가하세요.")
+                Text(AppLanguage.shared.s("등록된 신발이 없어요. + 버튼으로 추가하세요.", "No shoes added. Tap + to add one."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -393,18 +393,18 @@ struct MeView: View {
         .sheet(isPresented: $showAddShoe) {
             AddShoeSheet()
         }
-        .alert("신발 삭제", isPresented: .init(
+        .alert(AppLanguage.shared.s("신발 삭제", "Delete Shoe"), isPresented: .init(
             get: { shoeToDelete != nil },
             set: { if !$0 { shoeToDelete = nil } }
         )) {
-            Button("삭제", role: .destructive) {
+            Button(AppLanguage.shared.s("삭제", "Delete"), role: .destructive) {
                 if let shoe = shoeToDelete { modelContext.delete(shoe) }
                 shoeToDelete = nil
             }
-            Button("취소", role: .cancel) { shoeToDelete = nil }
+            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) { shoeToDelete = nil }
         } message: {
             if let shoe = shoeToDelete {
-                Text("'\(shoe.displayName)'을(를) 삭제하면 복구할 수 없어요.")
+                Text(AppLanguage.shared.s("'\(shoe.displayName)'을(를) 삭제하면 복구할 수 없어요.", "'\(shoe.displayName)' cannot be recovered after deletion."))
             }
         }
     }
@@ -413,7 +413,7 @@ struct MeView: View {
 
     private var milestonesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("마일스톤")
+            Text(AppLanguage.shared.s("마일스톤", "Milestones"))
                 .font(.headline)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
@@ -434,7 +434,7 @@ struct MeView: View {
 
     private var settingsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("설정")
+            Text(AppLanguage.shared.s("설정", "Settings"))
                 .font(.headline)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
@@ -446,25 +446,25 @@ struct MeView: View {
             // Activity type filter
             VStack(spacing: 0) {
                 settingRow {
-                    Text("활동 종류")
+                    Text(AppLanguage.shared.s("활동 종류", "Activity Type"))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                 }
                 thinDivider
                 settingRow {
-                    Label("러닝", systemImage: "figure.run").foregroundStyle(.white)
+                    Label(AppLanguage.shared.s("러닝", "Running"), systemImage: "figure.run").foregroundStyle(.white)
                     Spacer()
                     Toggle("", isOn: $showRunning).labelsHidden().tint(Theme.violet)
                 }
                 thinDivider
                 settingRow {
-                    Label("걷기", systemImage: "figure.walk").foregroundStyle(.white)
+                    Label(AppLanguage.shared.s("걷기", "Walking"), systemImage: "figure.walk").foregroundStyle(.white)
                     Spacer()
                     Toggle("", isOn: $showWalking).labelsHidden().tint(Theme.violet)
                 }
                 thinDivider
                 settingRow {
-                    Label("하이킹", systemImage: "figure.hiking").foregroundStyle(.white)
+                    Label(AppLanguage.shared.s("하이킹", "Hiking"), systemImage: "figure.hiking").foregroundStyle(.white)
                     Spacer()
                     Toggle("", isOn: $showHiking).labelsHidden().tint(Theme.violet)
                 }
@@ -476,14 +476,28 @@ struct MeView: View {
             // Display preferences
             VStack(spacing: 0) {
                 settingRow {
-                    Text("거리 단위").foregroundStyle(.white)
+                    Text(AppLanguage.shared.s("거리 단위", "Distance Unit")).foregroundStyle(.white)
                     Spacer()
                     Picker("", selection: $useMiles) {
                         Text("km").tag(false)
-                        Text("마일").tag(true)
+                        Text(AppLanguage.shared.s("마일", "mi")).tag(true)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 100)
+                }
+                thinDivider
+                settingRow {
+                    Text(AppLanguage.shared.s("언어", "Language")).foregroundStyle(.white)
+                    Spacer()
+                    Picker("", selection: Binding(
+                        get: { AppLanguage.shared.isEnglish },
+                        set: { AppLanguage.shared.isEnglish = $0 }
+                    )) {
+                        Text("한국어").tag(false)
+                        Text("English").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 130)
                 }
             }
             .background(Theme.cardBackground)
@@ -493,14 +507,16 @@ struct MeView: View {
             // HealthKit
             VStack(spacing: 0) {
                 settingRow {
-                    Label("건강 앱", systemImage: "heart.text.square").foregroundStyle(.white)
+                    Label(AppLanguage.shared.s("건강 앱", "Health App"), systemImage: "heart.text.square").foregroundStyle(.white)
                     Spacer()
                     HStack(spacing: 5) {
                         Circle()
                             .fill(manager.authorizationStatus == .authorized
                                   ? Theme.elevation : Theme.heartRate)
                             .frame(width: 7, height: 7)
-                        Text(manager.authorizationStatus == .authorized ? "연결됨" : "미연결")
+                        Text(manager.authorizationStatus == .authorized
+                             ? AppLanguage.shared.s("연결됨", "Connected")
+                             : AppLanguage.shared.s("미연결", "Not connected"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -511,7 +527,7 @@ struct MeView: View {
                         Button {
                             Task { await manager.requestAuthorization() }
                         } label: {
-                            Text("권한 다시 요청")
+                            Text(AppLanguage.shared.s("권한 다시 요청", "Re-request Access"))
                                 .font(.subheadline)
                                 .foregroundStyle(Theme.violet)
                         }
@@ -526,14 +542,14 @@ struct MeView: View {
             // App info
             VStack(spacing: 0) {
                 settingRow {
-                    Text("앱 버전").foregroundStyle(.white)
+                    Text(AppLanguage.shared.s("앱 버전", "App Version")).foregroundStyle(.white)
                     Spacer()
                     Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 thinDivider
                 settingRow {
-                    Text("만든 곳").foregroundStyle(.white)
+                    Text(AppLanguage.shared.s("만든 곳", "Made by")).foregroundStyle(.white)
                     Spacer()
                     Text("MIMOPlanner").font(.caption).foregroundStyle(.secondary)
                 }
@@ -565,16 +581,17 @@ struct MeView: View {
 
         func firstRun(over dist: Double) -> Activity? { runs.first { $0.distance >= dist } }
 
+        let L = AppLanguage.shared
         var badges: [BadgeInfo] = [
-            .init(id: "first_run", icon: "figure.run",  title: "첫 러닝",
+            .init(id: "first_run", icon: "figure.run",  title: L.s("첫 러닝", "First Run"),
                   achieved: !runs.isEmpty,                        achievedDate: runs.first?.date),
-            .init(id: "5k",   icon: "flag",        title: "5K 완주",
+            .init(id: "5k",   icon: "flag",        title: L.s("5K 완주", "5K Finish"),
                   achieved: firstRun(over:  5000) != nil,         achievedDate: firstRun(over:  5000)?.date),
-            .init(id: "10k",  icon: "flag.fill",   title: "10K 완주",
+            .init(id: "10k",  icon: "flag.fill",   title: L.s("10K 완주", "10K Finish"),
                   achieved: firstRun(over: 10000) != nil,         achievedDate: firstRun(over: 10000)?.date),
-            .init(id: "half", icon: "medal",        title: "하프 완주",
+            .init(id: "half", icon: "medal",        title: L.s("하프 완주", "Half Finish"),
                   achieved: firstRun(over: 21097) != nil,         achievedDate: firstRun(over: 21097)?.date),
-            .init(id: "full", icon: "trophy.fill",  title: "풀 완주",
+            .init(id: "full", icon: "trophy.fill",  title: L.s("풀 완주", "Full Finish"),
                   achieved: firstRun(over: 42195) != nil,         achievedDate: firstRun(over: 42195)?.date),
         ]
 
@@ -588,22 +605,22 @@ struct MeView: View {
             }
         }
         badges += [
-            .init(id: "cum100",  icon: "map",           title: "누적 100km",
+            .init(id: "cum100",  icon: "map",           title: L.s("누적 100km", "100km Total"),
                   achieved: cumDates[100]  != nil, achievedDate: cumDates[100]),
-            .init(id: "cum300",  icon: "map.fill",       title: "누적 300km",
+            .init(id: "cum300",  icon: "map.fill",       title: L.s("누적 300km", "300km Total"),
                   achieved: cumDates[300]  != nil, achievedDate: cumDates[300]),
-            .init(id: "cum500",  icon: "globe.americas", title: "누적 500km",
+            .init(id: "cum500",  icon: "globe.americas", title: L.s("누적 500km", "500km Total"),
                   achieved: cumDates[500]  != nil, achievedDate: cumDates[500]),
-            .init(id: "cum1000", icon: "globe",          title: "누적 1000km",
+            .init(id: "cum1000", icon: "globe",          title: L.s("누적 1000km", "1000km Total"),
                   achieved: cumDates[1000] != nil, achievedDate: cumDates[1000]),
         ]
 
         // Week streak
         let maxStreak = computeMaxWeekStreak(runs: runs)
         badges += [
-            .init(id: "streak4",  icon: "flame.fill", title: "4주 연속",  achieved: maxStreak >= 4,  achievedDate: nil),
-            .init(id: "streak8",  icon: "bolt.fill",  title: "8주 연속",  achieved: maxStreak >= 8,  achievedDate: nil),
-            .init(id: "streak12", icon: "crown.fill", title: "12주 연속", achieved: maxStreak >= 12, achievedDate: nil),
+            .init(id: "streak4",  icon: "flame.fill", title: L.s("4주 연속", "4-Wk Streak"),  achieved: maxStreak >= 4,  achievedDate: nil),
+            .init(id: "streak8",  icon: "bolt.fill",  title: L.s("8주 연속", "8-Wk Streak"),  achieved: maxStreak >= 8,  achievedDate: nil),
+            .init(id: "streak12", icon: "crown.fill", title: L.s("12주 연속", "12-Wk Streak"), achieved: maxStreak >= 12, achievedDate: nil),
         ]
 
         return badges
@@ -661,7 +678,7 @@ private struct SummarySectionCard: View {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.caption.weight(.semibold))
-                        Text("공유")
+                        Text(AppLanguage.shared.s("공유", "Share"))
                             .font(.caption.weight(.semibold))
                     }
                     .foregroundStyle(Theme.violet)
@@ -685,7 +702,7 @@ private struct SummarySectionCard: View {
 
             // Stats grid
             if stats.isEmpty {
-                Text("이 기간에 기록된 활동이 없어요")
+                Text(AppLanguage.shared.s("이 기간에 기록된 활동이 없어요", "No activities for this period"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -694,19 +711,19 @@ private struct SummarySectionCard: View {
                 HStack(spacing: 0) {
                     statCell(
                         value: stats.distanceStr + " " + stats.distanceUnit,
-                        label: "총 거리",
+                        label: AppLanguage.shared.s("총 거리", "TOTAL"),
                         color: .white
                     )
                     cellDivider
                     statCell(
                         value: stats.durationStr,
-                        label: "운동 시간",
+                        label: AppLanguage.shared.s("운동 시간", "TIME"),
                         color: Theme.time
                     )
                     cellDivider
                     statCell(
-                        value: "\(stats.runCount)회",
-                        label: "러닝",
+                        value: AppLanguage.shared.s("\(stats.runCount)회", "\(stats.runCount)"),
+                        label: AppLanguage.shared.s("러닝", "RUNS"),
                         color: Theme.violet
                     )
                 }
@@ -718,7 +735,7 @@ private struct SummarySectionCard: View {
                         Image(systemName: "speedometer")
                             .font(.system(size: 9))
                             .foregroundStyle(Theme.pace.opacity(0.7))
-                        Text("평균 페이스")
+                        Text(AppLanguage.shared.s("평균 페이스", "AVG PACE"))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(.white)
                         Spacer()
@@ -728,7 +745,7 @@ private struct SummarySectionCard: View {
                         if let longest = stats.longestStr {
                             Text("·")
                                 .foregroundStyle(.tertiary)
-                            Text("최장 \(longest)")
+                            Text(AppLanguage.shared.s("최장 \(longest)", "Longest \(longest)"))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
                         }
@@ -756,7 +773,7 @@ private struct SummarySectionCard: View {
                             compChip(text: c, up: stats.runCount >= (stats.compRunCount ?? 0))
                         }
                         if let p = stats.paceDeltaStr {
-                            compChip(text: p, up: p.contains("빨라짐"))
+                            compChip(text: p, up: p.contains(AppLanguage.shared.s("빨라짐", "faster")))
                         }
                         Spacer()
                     }
@@ -790,21 +807,21 @@ private struct SummarySectionCard: View {
                     HStack(spacing: 0) {
                         if let cad = fm.cadence {
                             formMetricCell(value: "\(Int(cad.rounded()))spm",
-                                           label: "케이던스",
+                                           label: AppLanguage.shared.s("케이던스", "Cadence"),
                                            current: cad, prev: fm.prevCadence,
                                            higherBetter: true)
                         }
                         if let pwr = fm.power {
                             if fm.cadence != nil { formMetricDivider }
                             formMetricCell(value: "\(Int(pwr.rounded()))W",
-                                           label: "파워",
+                                           label: AppLanguage.shared.s("파워", "Power"),
                                            current: pwr, prev: fm.prevPower,
                                            higherBetter: true)
                         }
                         if let str = fm.strideLength {
                             if fm.cadence != nil || fm.power != nil { formMetricDivider }
                             formMetricCell(value: String(format: "%.2fm", str),
-                                           label: "보폭",
+                                           label: AppLanguage.shared.s("보폭", "Stride"),
                                            current: str, prev: fm.prevStrideLength,
                                            higherBetter: true)
                         }
@@ -940,9 +957,9 @@ private struct BadgeCell: View {
                     Text(shortDate(date))
                         .foregroundStyle(.secondary)
                 } else if badge.achieved {
-                    Text("달성").foregroundStyle(Theme.violet.opacity(0.8))
+                    Text(AppLanguage.shared.s("달성", "Done")).foregroundStyle(Theme.violet.opacity(0.8))
                 } else {
-                    Text("미달성").foregroundStyle(.tertiary)
+                    Text(AppLanguage.shared.s("미달성", "Locked")).foregroundStyle(.tertiary)
                 }
             }
             .font(.system(size: 9))
@@ -980,7 +997,7 @@ private struct MiniMeCreatorView: View {
             if supportsImagePlayground {
                 creatorButtons
             } else {
-                Text("Apple Intelligence가 지원되는 기기(iPhone 15 Pro 이상, iOS 18.2+)에서 나만의 미니미를 만들 수 있어요")
+                Text(AppLanguage.shared.s("Apple Intelligence가 지원되는 기기(iPhone 15 Pro 이상, iOS 18.2+)에서 나만의 미니미를 만들 수 있어요", "Create your Mini-Me on Apple Intelligence devices (iPhone 15 Pro+, iOS 18.2+)"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -1027,12 +1044,14 @@ private struct MiniMeCreatorView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(miniMeStore.image != nil ? "내 미니미" : "기본 미니미")
+                Text(miniMeStore.image != nil
+                     ? AppLanguage.shared.s("내 미니미", "My Mini-Me")
+                     : AppLanguage.shared.s("기본 미니미", "Default Mini-Me"))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                 Text(miniMeStore.image != nil
-                     ? "인사이트·공유 카드에 표시돼요"
-                     : "사진으로 나만의 미니미를 만들어 보세요")
+                     ? AppLanguage.shared.s("인사이트·공유 카드에 표시돼요", "Shown in insights & share cards")
+                     : AppLanguage.shared.s("사진으로 나만의 미니미를 만들어 보세요", "Create your Mini-Me from a photo"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1048,7 +1067,9 @@ private struct MiniMeCreatorView: View {
     private var creatorButtons: some View {
         HStack(spacing: 10) {
             PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
-                Label(miniMeStore.image != nil ? "다시 만들기" : "사진으로 만들기",
+                Label(miniMeStore.image != nil
+                      ? AppLanguage.shared.s("다시 만들기", "Redo")
+                      : AppLanguage.shared.s("사진으로 만들기", "Create from Photo"),
                       systemImage: miniMeStore.image != nil ? "arrow.clockwise" : "sparkles")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
@@ -1086,14 +1107,15 @@ struct SubscriptionSectionCard: View {
     private var isEligibleForIntro: Bool { pro.introEligibility[ProManager.sixMonthID] == true }
 
     private var introOfferLabel: String {
-        guard let offer = product?.subscription?.introductoryOffer else { return "무료 체험" }
+        let L = AppLanguage.shared
+        guard let offer = product?.subscription?.introductoryOffer else { return L.s("무료 체험", "Free Trial") }
         let v = offer.period.value
         switch offer.period.unit {
-        case .day:   return "\(v)일 무료"
-        case .week:  return "\(v)주 무료"
-        case .month: return "\(v)개월 무료"
-        case .year:  return "\(v)년 무료"
-        @unknown default: return "무료 체험"
+        case .day:   return L.s("\(v)일 무료", "\(v)-day free")
+        case .week:  return L.s("\(v)주 무료", "\(v)-week free")
+        case .month: return L.s("\(v)개월 무료", "\(v)-month free")
+        case .year:  return L.s("\(v)년 무료", "\(v)-year free")
+        @unknown default: return L.s("무료 체험", "Free Trial")
         }
     }
 
@@ -1123,7 +1145,7 @@ struct SubscriptionSectionCard: View {
                         .foregroundStyle(.white)
                     Spacer()
                     if pro.isPro {
-                        Text("구독 중")
+                        Text(AppLanguage.shared.s("구독 중", "Active"))
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(Theme.violet)
                             .padding(.horizontal, 8)
@@ -1131,7 +1153,7 @@ struct SubscriptionSectionCard: View {
                             .background(Theme.violet.opacity(0.15))
                             .clipShape(Capsule())
                     } else if pro.isTrialActive {
-                        Text("체험 \(pro.daysRemainingInTrial)일 남음")
+                        Text(AppLanguage.shared.s("체험 \(pro.daysRemainingInTrial)일 남음", "Trial · \(pro.daysRemainingInTrial)d left"))
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.orange)
                             .padding(.horizontal, 8)
@@ -1139,7 +1161,7 @@ struct SubscriptionSectionCard: View {
                             .background(Color.orange.opacity(0.15))
                             .clipShape(Capsule())
                     } else {
-                        Text("체험 종료")
+                        Text(AppLanguage.shared.s("체험 종료", "Trial Ended"))
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.red)
                             .padding(.horizontal, 8)
@@ -1154,7 +1176,7 @@ struct SubscriptionSectionCard: View {
                     Text(product?.displayPrice ?? "₩11,000")
                         .font(.system(size: 28, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
-                    Text("/ 6개월")
+                    Text(AppLanguage.shared.s("/ 6개월", "/ 6mo"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
                         .padding(.bottom, 2)
@@ -1164,7 +1186,7 @@ struct SubscriptionSectionCard: View {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Theme.violet)
                     } else {
-                        Text("월 ₩1,833")
+                        Text(AppLanguage.shared.s("월 ₩1,833", "₩1,833/mo"))
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
@@ -1179,7 +1201,9 @@ struct SubscriptionSectionCard: View {
                             if isPurchasing {
                                 ProgressView().tint(.white)
                             } else {
-                                Text(isEligibleForIntro ? "무료로 시작하기" : "구독하기")
+                                Text(isEligibleForIntro
+                                     ? AppLanguage.shared.s("무료로 시작하기", "Start Free")
+                                     : AppLanguage.shared.s("구독하기", "Subscribe"))
                                     .font(.system(size: 15, weight: .bold))
                             }
                         }
@@ -1196,7 +1220,7 @@ struct SubscriptionSectionCard: View {
                     Button {
                         Task { await pro.restorePurchases() }
                     } label: {
-                        Text("구독 복원")
+                        Text(AppLanguage.shared.s("구독 복원", "Restore Purchase"))
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
@@ -1219,17 +1243,17 @@ struct SubscriptionSectionCard: View {
 
                 // Legal
                 VStack(spacing: 6) {
-                    Text("구독은 기간 종료 24시간 전까지 취소하지 않으면 자동 갱신됩니다. Apple ID 계정을 통해 관리할 수 있습니다.")
+                    Text(AppLanguage.shared.s("구독은 기간 종료 24시간 전까지 취소하지 않으면 자동 갱신됩니다. Apple ID 계정을 통해 관리할 수 있습니다.", "Subscription auto-renews unless cancelled at least 24 hours before the end of the period. Manage via Apple ID."))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 8) {
-                        Link("개인정보처리방침",
+                        Link(AppLanguage.shared.s("개인정보처리방침", "Privacy Policy"),
                              destination: URL(string: "https://mimoplanner.kr/privacy.html")!)
                         Text("·").foregroundStyle(.tertiary)
-                        Link("이용약관",
+                        Link(AppLanguage.shared.s("이용약관", "Terms of Use"),
                              destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
                     }
                     .font(.system(size: 10))
@@ -1271,7 +1295,7 @@ private struct AddShoeSheet: View {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 16) {
                     VStack(spacing: 0) {
-                        field(label: "신발 이름", placeholder: "예: Nike Pegasus 41", text: $name)
+                        field(label: AppLanguage.shared.s("신발 이름", "Shoe Name"), placeholder: AppLanguage.shared.s("예: Nike Pegasus 41", "e.g. Nike Pegasus 41"), text: $name)
                     }
                     .background(Theme.cardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -1281,14 +1305,14 @@ private struct AddShoeSheet: View {
                 }
                 .padding(.top, 20)
             }
-            .navigationTitle("신발 추가")
+            .navigationTitle(AppLanguage.shared.s("신발 추가", "Add Shoe"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("취소") { dismiss() }.foregroundStyle(.secondary)
+                    Button(AppLanguage.shared.s("취소", "Cancel")) { dismiss() }.foregroundStyle(.secondary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("추가") {
+                    Button(AppLanguage.shared.s("추가", "Add")) {
                         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
                         let shoe = Shoe(name: name.trimmingCharacters(in: .whitespaces), brand: "")
                         modelContext.insert(shoe)

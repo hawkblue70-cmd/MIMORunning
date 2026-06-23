@@ -8,6 +8,19 @@ struct SummaryPeriodStats {
         case yearly(year: Int)
 
         var title: String {
+            let L = AppLanguage.shared
+            if L.isEnglish {
+                switch self {
+                case .monthly(let y, let m):
+                    let df = DateFormatter()
+                    df.dateFormat = "MMMM yyyy"
+                    df.locale = Locale(identifier: "en_US")
+                    var comps = DateComponents(); comps.year = y; comps.month = m; comps.day = 1
+                    if let d = Calendar.current.date(from: comps) { return df.string(from: d) }
+                    return "\(y)/\(m)"
+                case .yearly(let y): return "\(y)"
+                }
+            }
             switch self {
             case .monthly(let y, let m): return "\(y)년 \(m)월"
             case .yearly(let y):        return "\(y)년"
@@ -15,9 +28,24 @@ struct SummaryPeriodStats {
         }
 
         var subtitle: String {
+            let L = AppLanguage.shared
             switch self {
-            case .monthly: return "이번 달 결산"
-            case .yearly:  return "올해 결산"
+            case .monthly(let y, let m):
+                let cal = Calendar.current
+                let now = Date()
+                let currY = cal.component(.year,  from: now)
+                let currM = cal.component(.month, from: now)
+                if y == currY && m == currM { return L.s("이번 달 결산", "This Month") }
+                let diff = (currY - y) * 12 + (currM - m)
+                return diff == 1
+                    ? L.s("지난달 결산", "Last Month")
+                    : L.s("\(diff)달 전 결산", "\(diff) Months Ago")
+            case .yearly(let y):
+                let currY = Calendar.current.component(.year, from: Date())
+                if y == currY { return L.s("올해 결산", "This Year") }
+                return y == currY - 1
+                    ? L.s("작년 결산", "Last Year")
+                    : L.s("\(currY - y)년 전 결산", "\(currY - y) Years Ago")
             }
         }
 
@@ -32,6 +60,11 @@ struct SummaryPeriodStats {
     let kind: Kind
     let activities: [Activity]
     let useMiles: Bool
+
+    var compDistanceKm: Double? = nil
+    var compRunCount: Int? = nil
+    var compAvgPaceSecPerKm: Double? = nil
+    var ytdDistanceKm: Double? = nil
 
     var runCount: Int { activities.filter { $0.type == .running }.count }
     var totalDistanceKm: Double { activities.reduce(0) { $0 + $1.distance / 1000 } }
@@ -61,7 +94,7 @@ struct SummaryPeriodStats {
     var durationStr: String {
         let h = Int(totalDuration) / 3600
         let m = (Int(totalDuration) % 3600) / 60
-        return h > 0 ? "\(h)h \(m)m" : "\(m)분"
+        return h > 0 ? "\(h)h \(m)m" : AppLanguage.shared.s("\(m)분", "\(m)m")
     }
 
     var avgPaceStr: String? {
@@ -76,6 +109,42 @@ struct SummaryPeriodStats {
         return useMiles
             ? String(format: "%.1f mi", km * 0.621371)
             : String(format: "%.1f km", km)
+    }
+
+    var distanceDeltaIsUp: Bool {
+        totalDistanceKm >= (compDistanceKm ?? totalDistanceKm)
+    }
+
+    var distanceDeltaStr: String? {
+        guard let prev = compDistanceKm, prev > 0 else { return nil }
+        let delta = totalDistanceKm - prev
+        let pct = delta / prev * 100
+        let sign = delta >= 0 ? "+" : ""
+        return String(format: "\(sign)%.1fkm (%.0f%%)", delta, pct)
+    }
+
+    var runCountDeltaStr: String? {
+        guard let prev = compRunCount else { return nil }
+        let delta = runCount - prev
+        let sign = delta >= 0 ? "+" : ""
+        return AppLanguage.shared.s("\(sign)\(delta)회", "\(sign)\(delta) runs")
+    }
+
+    var paceDeltaStr: String? {
+        guard let curr = avgPacePerKmSec, let prev = compAvgPaceSecPerKm else { return nil }
+        let delta = prev - curr
+        let absDelta = Int((delta < 0 ? -delta : delta).rounded())
+        guard absDelta >= 2 else { return nil }
+        let m = absDelta / 60; let s = absDelta % 60
+        let timeStr = m > 0 ? "\(m)′\(String(format: "%02d", s))″" : "\(s)″"
+        return delta > 0
+            ? AppLanguage.shared.s("\(timeStr) 빨라짐", "\(timeStr) faster")
+            : AppLanguage.shared.s("\(timeStr) 느려짐", "\(timeStr) slower")
+    }
+
+    var ytdStr: String? {
+        guard case .monthly = kind, let km = ytdDistanceKm, km > 0 else { return nil }
+        return AppLanguage.shared.s(String(format: "올해 누적 %.0fkm", km), String(format: "YTD %.0fkm", km))
     }
 
     var isEmpty: Bool { activities.isEmpty }
@@ -124,7 +193,7 @@ struct SummaryShareCardView: View {
                         .font(.system(size: 22, weight: .bold))
                         .foregroundStyle(.white)
                     Text(stats.kind.subtitle)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .tracking(0.5)
                         .foregroundStyle(Theme.violet)
                         .padding(.top, 2)
@@ -139,7 +208,7 @@ struct SummaryShareCardView: View {
                     // Hero distance
                     HStack(alignment: .lastTextBaseline, spacing: 6) {
                         Text(stats.distanceStr)
-                            .font(.system(size: 66, weight: .black, design: .rounded))
+                            .font(.system(size: 66, weight: .black, design: .default).width(.compressed))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.55)
@@ -147,10 +216,23 @@ struct SummaryShareCardView: View {
                             .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(Theme.violet)
                     }
-                    Text("총 거리")
-                        .font(.system(size: 10, weight: .semibold))
+                    Text(AppLanguage.shared.s("총 거리", "TOTAL"))
+                        .font(.system(size: 13, weight: .semibold))
                         .tracking(1)
                         .foregroundStyle(.white.opacity(0.4))
+
+                    if let delta = stats.distanceDeltaStr {
+                        HStack(spacing: 3) {
+                            Image(systemName: stats.distanceDeltaIsUp ? "arrow.up.right" : "arrow.down.right")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(delta)
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundStyle(stats.distanceDeltaIsUp
+                            ? Color.green
+                            : Color(red: 1, green: 0.45, blue: 0.45))
+                        .padding(.top, 1)
+                    }
 
                     Spacer(minLength: 0)
 
@@ -163,12 +245,12 @@ struct SummaryShareCardView: View {
 
                     // Secondary stats
                     HStack(spacing: 0) {
-                        secondaryCell(value: stats.durationStr,    label: "운동 시간",   color: Theme.time)
+                        secondaryCell(value: stats.durationStr,    label: AppLanguage.shared.s("운동 시간", "TIME"),     color: Theme.time)
                         cellDivider
-                        secondaryCell(value: "\(stats.runCount)회", label: "러닝 횟수",  color: Theme.violet)
+                        secondaryCell(value: AppLanguage.shared.s("\(stats.runCount)회", "\(stats.runCount)"), label: AppLanguage.shared.s("러닝 횟수", "RUNS"), color: Theme.violet)
                         if let pace = stats.avgPaceStr {
                             cellDivider
-                            secondaryCell(value: pace, label: "평균 페이스", color: Theme.pace)
+                            secondaryCell(value: pace, label: AppLanguage.shared.s("평균 페이스", "AVG PACE"), color: Theme.pace)
                         }
                     }
 
@@ -182,24 +264,28 @@ struct SummaryShareCardView: View {
                             Image(systemName: "arrow.right.circle.fill")
                                 .font(.system(size: 9))
                                 .foregroundStyle(Theme.violet)
-                            Text("최장 거리")
-                                .font(.system(size: 10, weight: .medium))
+                            Text(AppLanguage.shared.s("최장 거리", "LONGEST"))
+                                .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.4))
                             Spacer()
                             Text(longest)
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                     }
 
-                    Spacer(minLength: 12)
+                    Spacer(minLength: 8)
+
+                    if let ytd = stats.ytdStr {
+                        Text(ytd)
+                            .font(.system(size: 11, weight: .medium))
+                            .tracking(0.5)
+                            .foregroundStyle(Theme.violet.opacity(0.6))
+                            .padding(.bottom, 4)
+                    }
 
                     // Footer
                     HStack {
-                        Text("미모러닝")
-                            .font(.system(size: 9, weight: .semibold))
-                            .tracking(1)
-                            .foregroundStyle(.white.opacity(0.2))
                         Spacer()
                         Image(systemName: "figure.run")
                             .font(.system(size: 8))
@@ -229,14 +315,14 @@ struct SummaryShareCardView: View {
     }
 
     private func secondaryCell(value: String, label: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(size: 19, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(label)
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .tracking(0.3)
                 .foregroundStyle(color.opacity(0.75))
         }
@@ -246,7 +332,7 @@ struct SummaryShareCardView: View {
     private var cellDivider: some View {
         Rectangle()
             .fill(Color.white.opacity(0.1))
-            .frame(width: 0.5, height: 30)
+            .frame(width: 0.5, height: 38)
             .padding(.horizontal, 10)
     }
 }
@@ -283,16 +369,16 @@ struct SummaryShareCardScreen: View {
 
     private var topBar: some View {
         HStack {
-            Button("닫기") { dismiss() }
+            Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
                 .font(.body)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text("결산 카드")
+            Text(AppLanguage.shared.s("결산 카드", "Summary Card"))
                 .font(.headline)
                 .foregroundStyle(.white)
             Spacer()
             // Balance alignment
-            Text("닫기").foregroundStyle(.clear)
+            Text(AppLanguage.shared.s("닫기", "Close")).foregroundStyle(.clear)
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -326,7 +412,7 @@ struct SummaryShareCardScreen: View {
                 .padding(.vertical, 16)
         } else if let url = shareURL {
             ShareLink(item: url, preview: SharePreview(stats.kind.title)) {
-                Label("공유하기", systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)

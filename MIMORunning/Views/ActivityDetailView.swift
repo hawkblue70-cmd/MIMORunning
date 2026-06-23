@@ -22,6 +22,22 @@ private enum DetailPanel: String, CaseIterable {
     case elevation           = "고도"
     case intervals           = "인터벌"
 
+    var label: String {
+        let L = AppLanguage.shared
+        return switch self {
+        case .map:                  L.s("지도",     "Map")
+        case .splits:               L.s("스플릿",   "Splits")
+        case .heartRate:            L.s("심박수",   "HR")
+        case .cadence:              L.s("케이던스", "Cadence")
+        case .groundContact:        L.s("지면 접촉","Gnd Contact")
+        case .strideLength:         L.s("보폭",     "Stride")
+        case .power:                L.s("파워",     "Power")
+        case .verticalOscillation:  L.s("수직진폭", "Vert. Osc.")
+        case .elevation:            L.s("고도",     "Elevation")
+        case .intervals:            L.s("인터벌",   "Intervals")
+        }
+    }
+
     var icon: String {
         switch self {
         case .map:                  return "map.fill"
@@ -110,7 +126,7 @@ struct ActivityDetailView: View {
                             raceDetector.resetDismissed(activityID: activity.id)
                             Task { await runRaceAssessment() }
                         } label: {
-                            Label("대회 기록 추가", systemImage: "flag.checkered")
+                            Label(AppLanguage.shared.s("대회 기록 추가", "Add Race Record"), systemImage: "flag.checkered")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity)
@@ -362,7 +378,7 @@ struct ActivityDetailView: View {
                     if let coords = detail?.routeCoordinates, !coords.isEmpty {
                         RouteMapView(coordinates: coords)
                     } else {
-                        panelPlaceholder(icon: "map.fill", message: "경로 없음")
+                        panelPlaceholder(icon: "map.fill", message: AppLanguage.shared.s("경로 없음", "No Route"))
                     }
                 } else {
                     ZStack {
@@ -387,7 +403,7 @@ struct ActivityDetailView: View {
             if let splits = detail?.splits, !splits.isEmpty {
                 SplitsPanelChart(splits: splits, compact: true, isLargeDisplay: true)
             } else {
-                panelPlaceholder(icon: "chart.bar.fill", message: "스플릿 없음")
+                panelPlaceholder(icon: "chart.bar.fill", message: AppLanguage.shared.s("스플릿 없음", "No Splits"))
             }
         case .heartRate:
             if hrSamples.isEmpty {
@@ -399,33 +415,33 @@ struct ActivityDetailView: View {
             if let profile = detail?.altitudeProfile, !profile.isEmpty {
                 ElevationPanelChart(profile: profile)
             } else {
-                panelPlaceholder(icon: "mountain.2.fill", message: "고도 데이터 없음")
+                panelPlaceholder(icon: "mountain.2.fill", message: AppLanguage.shared.s("고도 데이터 없음", "No Elevation Data"))
             }
         case .intervals:
             if let segs = detail?.intervalSegments, !segs.isEmpty {
                 IntervalPanelChart(segments: segs)
             } else {
-                panelPlaceholder(icon: "repeat", message: "인터벌 없음")
+                panelPlaceholder(icon: "repeat", message: AppLanguage.shared.s("인터벌 없음", "No Intervals"))
             }
         case .cadence:
-            seriesPanel(icon: "figure.run", label: "케이던스", unit: "spm",
+            seriesPanel(icon: "figure.run", label: AppLanguage.shared.s("케이던스", "Cadence"), unit: "spm",
                         color: Theme.cadence, format: "%.0f", useRangeBar: false,
                         validMin: 130,
                         available: detail?.avgCadence != nil)
         case .power:
-            seriesPanel(icon: "bolt.fill", label: "파워", unit: "W",
+            seriesPanel(icon: "bolt.fill", label: AppLanguage.shared.s("파워", "Power"), unit: "W",
                         color: Theme.power, format: "%.0f", useRangeBar: true,
                         available: detail?.avgPower != nil)
         case .groundContact:
-            seriesPanel(icon: "stopwatch", label: "지면 접촉", unit: "ms",
+            seriesPanel(icon: "stopwatch", label: AppLanguage.shared.s("지면 접촉", "Gnd Contact"), unit: "ms",
                         color: Theme.runningForm, format: "%.0f", useRangeBar: true,
                         available: detail?.avgGroundContactTime != nil)
         case .strideLength:
-            seriesPanel(icon: "arrow.left.and.right", label: "보폭", unit: "m",
+            seriesPanel(icon: "arrow.left.and.right", label: AppLanguage.shared.s("보폭", "Stride"), unit: "m",
                         color: Theme.runningForm, format: "%.2f", useRangeBar: true,
                         available: detail?.avgStrideLength != nil)
         case .verticalOscillation:
-            seriesPanel(icon: "arrow.up.and.down", label: "수직 진폭", unit: "cm",
+            seriesPanel(icon: "arrow.up.and.down", label: AppLanguage.shared.s("수직 진폭", "Vert. Osc."), unit: "cm",
                         color: Theme.runningForm, format: "%.1f", useRangeBar: true,
                         available: detail?.avgVerticalOscillation != nil)
         }
@@ -444,11 +460,11 @@ struct ActivityDetailView: View {
                              validMin: Double = 0,
                              available: Bool) -> some View {
         if !available {
-            panelPlaceholder(icon: icon, message: "\(label) 없음")
+            panelPlaceholder(icon: icon, message: AppLanguage.shared.s("\(label) 없음", "No \(label)"))
         } else if isLoadingPanelSeries {
             ProgressView().tint(color)
         } else if panelSeriesData.isEmpty {
-            panelPlaceholder(icon: "chart.xyaxis.line", message: "데이터 없음")
+            panelPlaceholder(icon: "chart.xyaxis.line", message: AppLanguage.shared.s("데이터 없음", "No Data"))
         } else {
             MetricBarPanelChart(samples: panelSeriesData, color: color,
                                 unit: unit, format: format, useRangeBar: useRangeBar,
@@ -471,7 +487,7 @@ struct ActivityDetailView: View {
                         HStack(spacing: 4) {
                             Image(systemName: panel.icon)
                                 .font(.system(size: 10, weight: .semibold))
-                            Text(panel.rawValue)
+                            Text(panel.label)
                                 .font(.caption.weight(.semibold))
                         }
                         .foregroundStyle(
@@ -534,7 +550,7 @@ private struct DetailHeader: View {
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Theme.violet.opacity(0.35), lineWidth: 1))
                     if let revoke = onRaceRevoke {
-                        Button("이 대회 아니에요", action: revoke)
+                        Button(AppLanguage.shared.s("이 대회 아니에요", "Not a Race"), action: revoke)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
@@ -577,7 +593,7 @@ private struct InsightCard: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("오늘의 인사이트")
+                        Text(AppLanguage.shared.s("오늘의 인사이트", "Today's Insight"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.violet)
                         Spacer()
@@ -585,16 +601,16 @@ private struct InsightCard: View {
                             .font(.caption)
                             .foregroundStyle(Theme.violet)
                     }
-                    Text(insight?.title ?? "오늘의 러닝")
+                    Text(insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run"))
                         .font(.title3.bold())
                         .foregroundStyle(.white)
                         .contentTransition(.opacity)
-                    Text(insight?.detail ?? "인사이트 분석 준비 중")
+                    Text(insight?.detail ?? AppLanguage.shared.s("인사이트 분석 준비 중", "Analyzing…"))
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.72))
                         .contentTransition(.opacity)
                     if let race = confirmedRace {
-                        Label("대회 러닝 · \(race.raceName)", systemImage: "flag.checkered")
+                        Label(AppLanguage.shared.s("대회 러닝 · \(race.raceName)", "Race · \(race.raceName)"), systemImage: "flag.checkered")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.violet)
                             .padding(.horizontal, 10)
@@ -632,7 +648,7 @@ private struct InsightCard: View {
                     if let slp = cond.sleepScore {
                         ConditionChip(
                             icon: "bed.double.fill",
-                            label: "수면 \(slp.chipLabel)",
+                            label: AppLanguage.shared.s("수면 \(slp.chipLabel)", "Sleep \(slp.chipLabel)"),
                             color: slp.isInsufficient ? Theme.time : .secondary
                         )
                     }
@@ -686,8 +702,8 @@ private struct MiniMeUpdateButton: View {
                     Image(systemName: miniMeStore.image == nil ? "sparkles" : "arrow.clockwise")
                         .font(.system(size: 10, weight: .semibold))
                     Text(miniMeStore.image == nil
-                         ? "이 사진으로 미니미 만들기"
-                         : "이 사진으로 미니미 업데이트")
+                         ? AppLanguage.shared.s("이 사진으로 미니미 만들기", "Create Mini-Me from photo")
+                         : AppLanguage.shared.s("이 사진으로 미니미 업데이트", "Update Mini-Me from photo"))
                         .font(.caption.weight(.medium))
                 }
                 .foregroundStyle(Theme.violet)
@@ -797,117 +813,120 @@ private struct MetricGrid: View {
     }
 
     private var generalItems: [Item] {
+        let L = AppLanguage.shared
         var list: [Item] = [
-            Item(icon: "ruler", label: "거리", value: activity.formattedDistance, color: .white),
-            Item(icon: "clock", label: "시간", value: activity.formattedDuration, color: Theme.time),
+            Item(icon: "ruler", label: L.s("거리", "Dist."), value: activity.formattedDistance, color: .white),
+            Item(icon: "clock", label: L.s("시간", "Time"), value: activity.formattedDuration, color: Theme.time),
         ]
         if let pace = activity.formattedPace {
-            list.append(Item(icon: "timer", label: "페이스", value: pace, color: Theme.pace))
+            list.append(Item(icon: "timer", label: L.s("페이스", "Pace"), value: pace, color: Theme.pace))
         }
         if let hr = activity.avgHeartRate {
-            list.append(Item(icon: "heart.fill", label: "평균 심박", value: "\(hr) bpm", color: Theme.heartRate))
+            list.append(Item(icon: "heart.fill", label: L.s("평균 심박", "Avg HR"), value: "\(hr) bpm", color: Theme.heartRate))
         }
         if activity.type == .running {
             if let cadence = detail?.avgCadence {
-                list.append(Item(icon: "figure.run", label: "케이던스", value: "\(cadence) spm",
+                list.append(Item(icon: "figure.run", label: L.s("케이던스", "Cadence"), value: "\(cadence) spm",
                                  color: .white, trendMetric: .cadence))
             }
             if let power = detail?.avgPower {
-                list.append(Item(icon: "bolt.fill", label: "파워", value: "\(power) W",
+                list.append(Item(icon: "bolt.fill", label: L.s("파워", "Power"), value: "\(power) W",
                                  color: Theme.power, trendMetric: .power))
             }
             if let gct = detail?.avgGroundContactTime {
-                list.append(Item(icon: "stopwatch", label: "지면 접촉",
+                list.append(Item(icon: "stopwatch", label: L.s("지면 접촉", "Gnd Contact"),
                                  value: "\(Int(gct.rounded())) ms", color: Theme.runningForm,
                                  trendMetric: .groundContactTime))
             }
             if let stride = detail?.avgStrideLength {
-                list.append(Item(icon: "arrow.left.and.right", label: "보폭",
+                list.append(Item(icon: "arrow.left.and.right", label: L.s("보폭", "Stride"),
                                  value: String(format: "%.2f m", stride), color: Theme.runningForm,
                                  trendMetric: .strideLength))
             }
             if let vo = detail?.avgVerticalOscillation {
-                list.append(Item(icon: "arrow.up.and.down", label: "수직 진폭",
+                list.append(Item(icon: "arrow.up.and.down", label: L.s("수직 진폭", "Vert. Osc."),
                                  value: String(format: "%.1f cm", vo), color: Theme.runningForm,
                                  trendMetric: .verticalOscillation))
             }
             if let vo2 = detail?.vo2Max {
                 let rating = CardioFitnessClassifier.rating(vo2: vo2, age: age, isMale: isMale)
-                let note = rating.map { "현재 추정 · \($0)" } ?? "현재 추정"
-                list.append(Item(icon: "lungs.fill", label: "유산소 피트니스",
+                let note = rating.map { L.s("현재 추정 · \($0)", "Curr. Est. · \($0)") } ?? L.s("현재 추정", "Curr. Est.")
+                list.append(Item(icon: "lungs.fill", label: L.s("유산소 피트니스", "Cardio Fitness"),
                                  value: String(format: "%.1f mL/kg·min", vo2),
                                  color: Theme.elevation, note: note, trendMetric: .vo2Max))
             }
         }
         if let cal = activity.calories {
-            list.append(Item(icon: "flame.fill", label: "칼로리",
+            list.append(Item(icon: "flame.fill", label: L.s("칼로리", "Cals"),
                              value: String(format: "%.0f kcal", cal), color: Theme.calories))
         }
         if let elev = detail?.elevationGain {
-            list.append(Item(icon: "arrow.up.right", label: "고도 획득",
+            list.append(Item(icon: "arrow.up.right", label: L.s("고도 획득", "Elev. Gain"),
                              value: String(format: "%.0f m", elev), color: Theme.elevation))
         }
         return list
     }
 
     private var cyclingItems: [Item] {
+        let L = AppLanguage.shared
         var list: [Item] = [
-            Item(icon: "ruler", label: "거리", value: activity.formattedDistance, color: .white),
-            Item(icon: "clock", label: "시간", value: activity.formattedDuration, color: Theme.time),
+            Item(icon: "ruler", label: L.s("거리", "Dist."), value: activity.formattedDistance, color: .white),
+            Item(icon: "clock", label: L.s("시간", "Time"), value: activity.formattedDuration, color: Theme.time),
         ]
         let speedKmh = detail?.avgSpeed ?? activity.avgSpeedKmh
         if let speed = speedKmh {
-            list.append(Item(icon: "speedometer", label: "평균 속도",
+            list.append(Item(icon: "speedometer", label: L.s("평균 속도", "Avg Speed"),
                              value: String(format: "%.1f km/h", speed), color: Theme.pace))
         }
         if let hr = activity.avgHeartRate {
-            list.append(Item(icon: "heart.fill", label: "평균 심박", value: "\(hr) bpm", color: Theme.heartRate))
+            list.append(Item(icon: "heart.fill", label: L.s("평균 심박", "Avg HR"), value: "\(hr) bpm", color: Theme.heartRate))
         }
         if let power = detail?.avgPower {
-            list.append(Item(icon: "bolt.fill", label: "파워", value: "\(power) W", color: Theme.power))
+            list.append(Item(icon: "bolt.fill", label: L.s("파워", "Power"), value: "\(power) W", color: Theme.power))
         }
         if let cadence = detail?.avgCadence {
-            list.append(Item(icon: "arrow.clockwise", label: "케이던스", value: "\(cadence) rpm", color: .white))
+            list.append(Item(icon: "arrow.clockwise", label: L.s("케이던스", "Cadence"), value: "\(cadence) rpm", color: .white))
         }
         if let cal = activity.calories {
-            list.append(Item(icon: "flame.fill", label: "칼로리",
+            list.append(Item(icon: "flame.fill", label: L.s("칼로리", "Cals"),
                              value: String(format: "%.0f kcal", cal), color: Theme.calories))
         }
         if let elev = detail?.elevationGain {
-            list.append(Item(icon: "arrow.up.right", label: "고도 획득",
+            list.append(Item(icon: "arrow.up.right", label: L.s("고도 획득", "Elev. Gain"),
                              value: String(format: "%.0f m", elev), color: Theme.elevation))
         }
         return list
     }
 
     private var swimmingItems: [Item] {
+        let L = AppLanguage.shared
         var list: [Item] = [
-            Item(icon: "ruler", label: "거리", value: activity.formattedDistance, color: .white),
-            Item(icon: "clock", label: "시간", value: activity.formattedDuration, color: Theme.time),
+            Item(icon: "ruler", label: L.s("거리", "Dist."), value: activity.formattedDistance, color: .white),
+            Item(icon: "clock", label: L.s("시간", "Time"), value: activity.formattedDuration, color: Theme.time),
         ]
         if let pace = activity.formattedPace100m {
-            list.append(Item(icon: "timer", label: "페이스", value: "\(pace)/100m", color: Theme.pace))
+            list.append(Item(icon: "timer", label: L.s("페이스", "Pace"), value: "\(pace)/100m", color: Theme.pace))
         }
         if let hr = activity.avgHeartRate {
-            list.append(Item(icon: "heart.fill", label: "평균 심박", value: "\(hr) bpm", color: Theme.heartRate))
+            list.append(Item(icon: "heart.fill", label: L.s("평균 심박", "Avg HR"), value: "\(hr) bpm", color: Theme.heartRate))
         }
         if let laps = detail?.swimLapCount {
-            list.append(Item(icon: "repeat", label: "랩", value: "\(laps)회", color: .white))
+            list.append(Item(icon: "repeat", label: L.s("랩", "Laps"), value: L.s("\(laps)회", "\(laps)"), color: .white))
         }
         if let pool = detail?.poolLength {
-            list.append(Item(icon: "arrow.left.and.right", label: "풀 길이",
+            list.append(Item(icon: "arrow.left.and.right", label: L.s("풀 길이", "Pool Length"),
                              value: "\(Int(pool))m", color: .white))
         }
         if let strokes = detail?.swimmingStrokeCount {
-            list.append(Item(icon: "hand.draw", label: "총 스트로크",
-                             value: "\(strokes)회", color: .white))
+            list.append(Item(icon: "hand.draw", label: L.s("총 스트로크", "Strokes"),
+                             value: L.s("\(strokes)회", "\(strokes)"), color: .white))
         }
         if let swolf = detail?.swolfScore {
             list.append(Item(icon: "waveform", label: "SWOLF",
                              value: String(format: "%.0f", swolf), color: Theme.pace))
         }
         if let cal = activity.calories {
-            list.append(Item(icon: "flame.fill", label: "칼로리",
+            list.append(Item(icon: "flame.fill", label: L.s("칼로리", "Cals"),
                              value: String(format: "%.0f kcal", cal), color: Theme.calories))
         }
         return list
@@ -953,6 +972,19 @@ private struct IntervalSegmentsSection: View {
         return paces[paces.count / 2]
     }
 
+    private func localizedStepLabel(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let L = AppLanguage.shared
+        switch raw {
+        case "준비운동": return L.s("준비운동", "Warmup")
+        case "운동":     return L.s("운동",     "Work")
+        case "회복":     return L.s("회복",     "Recovery")
+        case "정리운동": return L.s("정리운동", "Cooldown")
+        case "구간":     return L.s("구간",     "Interval")
+        default:         return raw
+        }
+    }
+
     private func isWork(_ seg: IntervalSegment) -> Bool {
         if let label = seg.stepLabel { return label == "운동" }
         if let pace = seg.paceSecPerKm, let median = medianPace { return pace < median }
@@ -961,20 +993,21 @@ private struct IntervalSegmentsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DetailSectionHeader(title: "인터벌 구간", subtitle: "\(segments.count)개 구간")
+            DetailSectionHeader(title: AppLanguage.shared.s("인터벌 구간", "Interval Reps"),
+                                subtitle: AppLanguage.shared.s("\(segments.count)개 구간", "\(segments.count) reps"))
 
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
                     if hasLabels {
-                        Text("구간").frame(width: 56, alignment: .leading)
+                        Text(AppLanguage.shared.s("구간", "Rep")).frame(width: 56, alignment: .leading)
                     } else {
                         Text("#").frame(width: 20, alignment: .leading)
                     }
-                    if hasDist { Text("거리").frame(width: 60, alignment: .trailing) }
+                    if hasDist { Text(AppLanguage.shared.s("거리", "Dist.")).frame(width: 60, alignment: .trailing) }
                     Spacer()
-                    Text("페이스").frame(width: 70, alignment: .trailing)
-                    Text("시간").frame(width: 50, alignment: .trailing)
-                    if hasHR { Text("심박").frame(width: 44, alignment: .trailing) }
+                    Text(AppLanguage.shared.s("페이스", "Pace")).frame(width: 70, alignment: .trailing)
+                    Text(AppLanguage.shared.s("시간", "Time")).frame(width: 50, alignment: .trailing)
+                    if hasHR { Text(AppLanguage.shared.s("심박", "HR")).frame(width: 44, alignment: .trailing) }
                 }
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -989,7 +1022,7 @@ private struct IntervalSegmentsSection: View {
                             .frame(height: 0.5)
                         HStack(spacing: 8) {
                             if hasLabels {
-                                Text(seg.stepLabel ?? "#\(seg.id)")
+                                Text(localizedStepLabel(seg.stepLabel) ?? "#\(seg.id)")
                                     .font(.system(size: 12, weight: work ? .bold : .regular))
                                     .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.55))
                                     .frame(width: 56, alignment: .leading)
@@ -1077,14 +1110,15 @@ private struct SplitsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
-                DetailSectionHeader(title: "구간 기록", subtitle: "\(splits.count)개 구간")
+                DetailSectionHeader(title: AppLanguage.shared.s("구간 기록", "Splits"),
+                                   subtitle: AppLanguage.shared.s("\(splits.count)개 구간", "\(splits.count) splits"))
                 Spacer()
                 if activity != nil {
                     Button { showSplitsShare = true } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.caption.weight(.semibold))
-                            Text("공유")
+                            Text(AppLanguage.shared.s("공유", "Share"))
                                 .font(.caption.weight(.semibold))
                         }
                         .foregroundStyle(Theme.violet)
@@ -1214,7 +1248,7 @@ private struct SplitBarRow: View {
                 // ③ 한 줄: 최고 · 페이스 · 심박 · 존 · 케이던스 · 파워
                 HStack(spacing: 4) {
                     if isFastest {
-                        Text("최고")
+                        Text(AppLanguage.shared.s("최고", "Best"))
                             .font(.system(size: 7, weight: .bold))
                             .foregroundStyle(Self.gold)
                             .padding(.horizontal, 3)
@@ -1316,21 +1350,34 @@ private struct SplitsHighlightCard: View {
 
     private var messageText: Text {
         let g = Self.gold
+        let L = AppLanguage.shared
         switch highlightKind {
         case .negativeSplit(let diff):
-            return Text("후반이 전반보다 ").foregroundStyle(Color.white)
-                 + Text("\(diff)초 더 빠르게").foregroundStyle(g)
-                 + Text(" — 끝까지 밀어붙였네요.").foregroundStyle(Color.white)
+            return L.isEnglish
+                ? Text("Second half ").foregroundStyle(Color.white)
+                  + Text("\(diff)s faster").foregroundStyle(g)
+                  + Text(" — you pushed through.").foregroundStyle(Color.white)
+                : Text("후반이 전반보다 ").foregroundStyle(Color.white)
+                  + Text("\(diff)초 더 빠르게").foregroundStyle(g)
+                  + Text(" — 끝까지 밀어붙였네요.").foregroundStyle(Color.white)
         case .consistency(let spread):
-            return Text("페이스 편차 단 ").foregroundStyle(Color.white)
-                 + Text("\(spread)초").foregroundStyle(g)
-                 + Text(", 흔들림 없었어요.").foregroundStyle(Color.white)
+            return L.isEnglish
+                ? Text("Pace deviation only ").foregroundStyle(Color.white)
+                  + Text("\(spread)s").foregroundStyle(g)
+                  + Text(" — rock solid.").foregroundStyle(Color.white)
+                : Text("페이스 편차 단 ").foregroundStyle(Color.white)
+                  + Text("\(spread)초").foregroundStyle(g)
+                  + Text(", 흔들림 없었어요.").foregroundStyle(Color.white)
         case .recentBest(let n):
-            return Text("최근 \(n)회 중 ").foregroundStyle(Color.white)
-                 + Text("가장 빠른 평균 페이스").foregroundStyle(g)
-                 + Text("예요.").foregroundStyle(Color.white)
+            return L.isEnglish
+                ? Text("Fastest avg pace in your last ").foregroundStyle(Color.white)
+                  + Text("\(n) runs").foregroundStyle(g)
+                  + Text(".").foregroundStyle(Color.white)
+                : Text("최근 \(n)회 중 ").foregroundStyle(Color.white)
+                  + Text("가장 빠른 평균 페이스").foregroundStyle(g)
+                  + Text("예요.").foregroundStyle(Color.white)
         case .fallback:
-            return Text("완주했어요. 오늘도 수고하셨어요.")
+            return Text(L.s("완주했어요. 오늘도 수고하셨어요.", "Finished. Great work today."))
                 .foregroundStyle(Color.secondary)
         }
     }
@@ -1346,11 +1393,13 @@ private struct SplitsHighlightCard: View {
                 .font(.system(size: 14, weight: isFallback ? .regular : .semibold))
 
             HStack(spacing: 8) {
-                SplitChip(label: "평균 페이스", value: formatPace(avgPaceSeconds), color: Theme.violet)
-                SplitChip(label: "페이스 편차", value: "±\(Int(paceSpread.rounded()))초", color: Theme.violet)
+                SplitChip(label: AppLanguage.shared.s("평균 페이스", "Avg Pace"), value: formatPace(avgPaceSeconds), color: Theme.violet)
+                SplitChip(label: AppLanguage.shared.s("페이스 편차", "Deviation"),
+                          value: AppLanguage.shared.s("±\(Int(paceSpread.rounded()))초", "±\(Int(paceSpread.rounded()))s"),
+                          color: Theme.violet)
                 if let fastest = fastestSplit {
-                    let km = fastest.distanceM >= 990 ? "\(fastest.id)km" : "마지막"
-                    SplitChip(label: "최고 구간", value: "\(km) · \(fastest.formattedPace)", color: Self.gold)
+                    let km = fastest.distanceM >= 990 ? "\(fastest.id)km" : AppLanguage.shared.s("마지막", "Last")
+                    SplitChip(label: AppLanguage.shared.s("최고 구간", "Best Split"), value: "\(km) · \(fastest.formattedPace)", color: Self.gold)
                 }
             }
         }
@@ -1422,7 +1471,8 @@ private struct HRZonesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DetailSectionHeader(title: "심박 영역", subtitle: "존별 운동 시간")
+            DetailSectionHeader(title: AppLanguage.shared.s("심박 영역", "HR Zones"),
+                               subtitle: AppLanguage.shared.s("존별 운동 시간", "Time per zone"))
 
             VStack(spacing: 0) {
                 ForEach(Array(zones.enumerated()), id: \.element.id) { idx, zone in
@@ -1436,7 +1486,7 @@ private struct HRZonesSection: View {
                         }
                         HStack(spacing: 8) {
                             // Zone label
-                            Text("영역 \(zone.id)")
+                            Text(AppLanguage.shared.s("영역 \(zone.id)", "Z\(zone.id)"))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(hasTime ? color : color.opacity(0.35))
                                 .frame(width: 44, alignment: .leading)
@@ -1481,10 +1531,10 @@ private struct HRZonesSection: View {
                     .frame(height: 0.5)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("각각의 심박수 영역에 머무르는 예상 시간입니다.")
+                    Text(AppLanguage.shared.s("각각의 심박수 영역에 머무르는 예상 시간입니다.", "Estimated time spent in each heart rate zone."))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
-                    Text("Karvonen(심박 예비율) 공식 기반 · 최근 30일 최소 안정시 심박(RHR) + 나이별 최대심박(MHR) 추정 적용. 개인 체력 및 측정 조건에 따라 실제 영역과 다를 수 있습니다.")
+                    Text(AppLanguage.shared.s("Karvonen(심박 예비율) 공식 기반 · 최근 30일 최소 안정시 심박(RHR) + 나이별 최대심박(MHR) 추정 적용. 개인 체력 및 측정 조건에 따라 실제 영역과 다를 수 있습니다.", "Based on Karvonen (HRR) formula · Uses lowest resting HR over last 30 days + age-estimated max HR. Zones may differ from actual values."))
                         .font(.system(size: 10))
                         .foregroundStyle(.quaternary)
                 }
@@ -1563,14 +1613,14 @@ private struct StorySection: View {
                 shoePicker
             }
             HStack {
-                Label("스토리", systemImage: "quote.bubble")
+                Label(AppLanguage.shared.s("스토리", "Story"), systemImage: "quote.bubble")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
                     showEditor = true
                 } label: {
-                    Label(story == nil ? "추가" : "편집",
+                    Label(story == nil ? AppLanguage.shared.s("추가", "Add") : AppLanguage.shared.s("편집", "Edit"),
                           systemImage: story == nil ? "plus" : "pencil")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(Theme.violet)
@@ -1592,9 +1642,9 @@ private struct StorySection: View {
                 assignShoe(nil)
             } label: {
                 if selectedShoe == nil {
-                    Label("없음", systemImage: "checkmark")
+                    Label(AppLanguage.shared.s("없음", "None"), systemImage: "checkmark")
                 } else {
-                    Text("없음")
+                    Text(AppLanguage.shared.s("없음", "None"))
                 }
             }
             ForEach(shoes) { shoe in
@@ -1613,7 +1663,7 @@ private struct StorySection: View {
                 Image(systemName: "shoe.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(selectedShoe != nil ? Theme.violet : .secondary)
-                Text(selectedShoe?.displayName ?? "신발 선택")
+                Text(selectedShoe?.displayName ?? AppLanguage.shared.s("신발 선택", "Select Shoe"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(selectedShoe != nil ? .white : .secondary)
                 Spacer()
@@ -1740,14 +1790,14 @@ private struct StoryEditorSheet: View {
                     .padding(16)
                 }
             }
-            .navigationTitle("스토리")
+            .navigationTitle(AppLanguage.shared.s("스토리", "Story"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("취소") { dismiss() }.foregroundStyle(.secondary)
+                    Button(AppLanguage.shared.s("취소", "Cancel")) { dismiss() }.foregroundStyle(.secondary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("저장") { save(); dismiss() }
+                    Button(AppLanguage.shared.s("저장", "Save")) { save(); dismiss() }
                         .fontWeight(.semibold)
                         .foregroundStyle(Theme.violet)
                 }
@@ -1759,7 +1809,7 @@ private struct StoryEditorSheet: View {
 
     private var moodPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("느낌")
+            Text(AppLanguage.shared.s("느낌", "Mood"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {
@@ -1790,10 +1840,10 @@ private struct StoryEditorSheet: View {
 
     private var memoField: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("한줄 메모")
+            Text(AppLanguage.shared.s("한줄 메모", "Note"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            TextField("오늘의 러닝은...", text: $memo, axis: .vertical)
+            TextField(AppLanguage.shared.s("오늘의 러닝은...", "How was today's run?"), text: $memo, axis: .vertical)
                 .lineLimit(1...4)
                 .padding(14)
                 .background(Theme.cardBackground)
@@ -1805,7 +1855,7 @@ private struct StoryEditorSheet: View {
     private var photoSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("사진")
+                Text(AppLanguage.shared.s("사진", "Photos"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -1849,7 +1899,7 @@ private struct StoryEditorSheet: View {
                     photoLibrary: .shared()
                 ) {
                     Label(
-                        photoImages.isEmpty ? "사진 추가" : "더 추가",
+                        photoImages.isEmpty ? AppLanguage.shared.s("사진 추가", "Add Photo") : AppLanguage.shared.s("더 추가", "Add More"),
                         systemImage: photoImages.isEmpty ? "photo.badge.plus" : "plus.square"
                     )
                     .font(.subheadline.weight(.medium))
@@ -1974,7 +2024,7 @@ private struct RaceDetectionBanner: View {
     @ViewBuilder
     private func weakSuggestionContent(suggestion: RaceSuggestion) -> some View {
         HStack {
-            Label("이 기록 대회였나요?", systemImage: "flag.checkered")
+            Label(AppLanguage.shared.s("이 기록 대회였나요?", "Was this a race?"), systemImage: "flag.checkered")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.violet)
             Spacer()
@@ -1991,12 +2041,12 @@ private struct RaceDetectionBanner: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             HStack(spacing: 10) {
-                confirmButton(race: suggestion.primary, label: "예, 맞아요")
-                denyButton(label: "아니요")
+                confirmButton(race: suggestion.primary, label: AppLanguage.shared.s("예, 맞아요", "Yes, this one"))
+                denyButton(label: AppLanguage.shared.s("아니요", "No"))
             }
         } else {
             // Multiple candidates — vertical pick list (up to 4 shown)
-            Text("후보 대회를 선택하거나 직접 입력하세요")
+            Text(AppLanguage.shared.s("후보 대회를 선택하거나 직접 입력하세요", "Select a race or enter manually"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             VStack(spacing: 6) {
@@ -2031,7 +2081,7 @@ private struct RaceDetectionBanner: View {
             }
             HStack(spacing: 10) {
                 Button { showManualSheet = true } label: {
-                    Text("직접 입력")
+                    Text(AppLanguage.shared.s("직접 입력", "Enter Manually"))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.violet)
                         .frame(maxWidth: .infinity)
@@ -2040,7 +2090,7 @@ private struct RaceDetectionBanner: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
-                denyButton(label: "아니요")
+                denyButton(label: AppLanguage.shared.s("아니요", "No"))
             }
         }
     }
@@ -2048,12 +2098,12 @@ private struct RaceDetectionBanner: View {
     @ViewBuilder
     private func manualPromptContent() -> some View {
         HStack {
-            Label("이 기록 대회였나요?", systemImage: "flag.checkered")
+            Label(AppLanguage.shared.s("이 기록 대회였나요?", "Was this a race?"), systemImage: "flag.checkered")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.white)
             Spacer()
             Button { showManualSheet = true } label: {
-                Text("대회 입력")
+                Text(AppLanguage.shared.s("대회 입력", "Enter Race"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.violet)
                     .padding(.horizontal, 10)
@@ -2136,10 +2186,10 @@ private struct ManualRaceSheet: View {
                 Theme.background.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("대회 이름")
+                        Text(AppLanguage.shared.s("대회 이름", "Race Name"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        TextField("예: 춘천 마라톤", text: $raceName)
+                        TextField(AppLanguage.shared.s("예: 춘천 마라톤", "e.g. Boston Marathon"), text: $raceName)
                             .padding(14)
                             .background(Theme.cardBackground)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -2149,7 +2199,7 @@ private struct ManualRaceSheet: View {
                         Image(systemName: "ruler")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("기록 거리: \(formattedDistance)")
+                        Text(AppLanguage.shared.s("기록 거리: \(formattedDistance)", "Distance: \(formattedDistance)"))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -2157,18 +2207,18 @@ private struct ManualRaceSheet: View {
                 }
                 .padding(16)
             }
-            .navigationTitle("대회 기록 추가")
+            .navigationTitle(AppLanguage.shared.s("대회 기록 추가", "Add Race Record"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("취소") {
+                    Button(AppLanguage.shared.s("취소", "Cancel")) {
                         onCancel()
                         dismiss()
                     }
                     .foregroundStyle(.secondary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("저장") {
+                    Button(AppLanguage.shared.s("저장", "Save")) {
                         onSave(raceName)
                         dismiss()
                     }
@@ -2821,7 +2871,7 @@ private struct InlineTrendChart: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("이번 달 · \(data.count)개 기록")
+            Text(AppLanguage.shared.s("이번 달 · \(data.count)개 기록", "This month · \(data.count) records"))
                 .font(.caption2).foregroundStyle(.secondary)
                 .padding(.horizontal, 14).padding(.top, 10)
             chart.padding(12)

@@ -85,9 +85,15 @@ struct GrowthView: View {
     private static let weekLabelFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "M/d"; return f
     }()
-    private static let monthLabelFormatter: DateFormatter = {
+    private static let monthLabelFormatterKo: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "M월"; return f
     }()
+    private static let monthLabelFormatterEn: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "MMM"; return f
+    }()
+    private static var monthLabelFormatter: DateFormatter {
+        AppLanguage.shared.isEnglish ? monthLabelFormatterEn : monthLabelFormatterKo
+    }
 
     private var runs: [Activity] {
         manager.activities.filter { $0.type == .running }
@@ -130,7 +136,7 @@ struct GrowthView: View {
                     }
                 }
             }
-            .navigationTitle("성장")
+            .navigationTitle(AppLanguage.shared.s("성장", "Growth"))
             .navigationBarTitleDisplayMode(.large)
         }
         .onChange(of: manager.activities) { refreshChartCache() }
@@ -176,32 +182,37 @@ struct GrowthView: View {
     }
 
     private var mileageTitle: String {
-        let period = showMonthly ? "월간" : "주간"
-        let mode   = showTimeMileage ? "시간" : "거리"
+        let L = AppLanguage.shared
+        let period = showMonthly ? L.s("월간", "Monthly") : L.s("주간", "Weekly")
+        let mode   = showTimeMileage ? L.s("시간", "Time") : L.s("거리", "Distance")
         return "\(period) \(mode)"
     }
 
     private var mileageSubtitle: String {
+        let L = AppLanguage.shared
         if showMonthly {
             if showTimeMileage {
                 return timeSummary(mins: monthlyMinsCache.last?.mins ?? 0, isMonth: true)
             } else {
                 let km = monthlyKmsCache.last?.km ?? 0
-                return km > 0 ? String(format: "이번 달 %.1fkm", km) : "이번 달 아직 없어요"
+                return km > 0
+                    ? String(format: L.s("이번 달 %.1fkm", "This month %.1fkm"), km)
+                    : L.s("이번 달 아직 없어요", "Nothing this month")
             }
         } else {
             if showTimeMileage {
                 return timeSummary(mins: weeklyMinsCache.last?.mins ?? 0, isMonth: false)
             } else {
-                return "최근 8주 러닝 km"
+                return L.s("최근 8주 러닝 km", "Last 8 weeks (km)")
             }
         }
     }
 
     private var periodToggle: some View {
-        HStack(spacing: 0) {
+        let L = AppLanguage.shared
+        return HStack(spacing: 0) {
             Button { showMonthly = false } label: {
-                Text("주")
+                Text(L.s("주", "W"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(!showMonthly ? Color.white : Color.secondary)
                     .padding(.horizontal, 10)
@@ -210,7 +221,7 @@ struct GrowthView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             Button { showMonthly = true } label: {
-                Text("월")
+                Text(L.s("월", "M"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(showMonthly ? Color.white : Color.secondary)
                     .padding(.horizontal, 10)
@@ -228,7 +239,8 @@ struct GrowthView: View {
     }
 
     private var modeToggle: some View {
-        HStack(spacing: 0) {
+        let L = AppLanguage.shared
+        return HStack(spacing: 0) {
             Button { showTimeMileage = false } label: {
                 Text("km")
                     .font(.caption.weight(.semibold))
@@ -239,7 +251,7 @@ struct GrowthView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             Button { showTimeMileage = true } label: {
-                Text("분")
+                Text(L.s("분", "min"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(showTimeMileage ? Color.white : Color.secondary)
                     .padding(.horizontal, 10)
@@ -258,16 +270,17 @@ struct GrowthView: View {
 
     @ViewBuilder
     private var mileageChartView: some View {
+        let L = AppLanguage.shared
         if showMonthly {
             if showTimeMileage {
                 if monthlyMinsCache.allSatisfy({ $0.mins == 0 }) {
-                    EmptyChartPlaceholder(message: "최근 12개월간 러닝 기록이 없어요")
+                    EmptyChartPlaceholder(message: L.s("최근 12개월간 러닝 기록이 없어요", "No runs in the last 12 months"))
                 } else {
                     MonthlyTimeChart(data: monthlyMinsCache)
                 }
             } else {
                 if monthlyKmsCache.allSatisfy({ $0.km == 0 }) {
-                    EmptyChartPlaceholder(message: "최근 12개월간 러닝 기록이 없어요")
+                    EmptyChartPlaceholder(message: L.s("최근 12개월간 러닝 기록이 없어요", "No runs in the last 12 months"))
                 } else {
                     MonthlyDistanceChart(data: monthlyKmsCache)
                 }
@@ -275,13 +288,13 @@ struct GrowthView: View {
         } else {
             if showTimeMileage {
                 if weeklyMinsCache.allSatisfy({ $0.mins == 0 }) {
-                    EmptyChartPlaceholder(message: "이번 8주간 러닝 기록이 없어요")
+                    EmptyChartPlaceholder(message: L.s("이번 8주간 러닝 기록이 없어요", "No runs in the last 8 weeks"))
                 } else {
                     WeeklyTimeChart(data: weeklyMinsCache)
                 }
             } else {
                 if weeklyKmsCache.allSatisfy({ $0.km == 0 }) {
-                    EmptyChartPlaceholder(message: "이번 8주간 러닝 기록이 없어요")
+                    EmptyChartPlaceholder(message: L.s("이번 8주간 러닝 기록이 없어요", "No runs in the last 8 weeks"))
                 } else {
                     WeeklyDistanceChart(data: weeklyKmsCache)
                 }
@@ -290,20 +303,26 @@ struct GrowthView: View {
     }
 
     private func timeSummary(mins: Double, isMonth: Bool = false) -> String {
+        let L = AppLanguage.shared
         let total = Int(mins)
-        let prefix = isMonth ? "이번 달 " : "이번 주 "
-        guard total > 0 else { return "\(prefix)아직 없어요" }
+        let prefix = isMonth ? L.s("이번 달 ", "This month: ") : L.s("이번 주 ", "This week: ")
+        guard total > 0 else { return "\(prefix)\(L.s("아직 없어요", "Nothing yet"))" }
         let h = total / 60
         let m = total % 60
-        return h > 0 ? "\(prefix)\(h)시간 \(m)분" : "\(prefix)\(m)분"
+        if L.isEnglish {
+            return h > 0 ? "\(prefix)\(h)h \(m)m" : "\(prefix)\(m)m"
+        } else {
+            return h > 0 ? "\(prefix)\(h)시간 \(m)분" : "\(prefix)\(m)분"
+        }
     }
 
     private var paceSection: some View {
+        let L = AppLanguage.shared
         let points = pacePointsCache
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "페이스 추이", subtitle: "위로 갈수록 빠름")
+            SectionLabel(title: L.s("페이스 추이", "Pace Trend"), subtitle: L.s("위로 갈수록 빠름", "Higher = faster"))
             if points.count < 2 {
-                EmptyChartPlaceholder(message: "비교하려면 러닝 2회 이상이 필요해요")
+                EmptyChartPlaceholder(message: L.s("비교하려면 러닝 2회 이상이 필요해요", "Need 2+ runs to compare"))
             } else {
                 PaceTrendChart(points: points)
             }
@@ -316,18 +335,19 @@ struct GrowthView: View {
         let activeDays = activeDaysInHeatmap(columns: columns)
         let summary = heatmapSummary(streak: streak, activeDays: activeDays)
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "연속 달리기", subtitle: summary)
+            SectionLabel(title: AppLanguage.shared.s("연속 달리기", "Streak"), subtitle: summary)
             RunHeatmap(columns: columns)
         }
     }
 
     private var metricTrendsSection: some View {
+        let L = AppLanguage.shared
         let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
         let runningMetrics: [TrendMetric] = [
             .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max
         ]
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "지표 추세", subtitle: "탭하면 상세 보기")
+            SectionLabel(title: L.s("지표 추세", "Metric Trends"), subtitle: L.s("탭하면 상세 보기", "Tap for details"))
             LazyVGrid(columns: cols, spacing: 12) {
                 ForEach(runningMetrics) { metric in
                     MetricSparkCard(metric: metric, manager: manager, usePounds: useMiles) {
@@ -349,11 +369,12 @@ struct GrowthView: View {
     }
 
     private var prSection: some View {
+        let L = AppLanguage.shared
         let entries = prEntries()
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "PR 타임라인", subtitle: "거리별 최고 기록")
+            SectionLabel(title: L.s("PR 타임라인", "PR Timeline"), subtitle: L.s("거리별 최고 기록", "Best by distance"))
             if entries.isEmpty {
-                EmptyChartPlaceholder(message: "표준 거리 완주 기록이 생기면 PR이 여기에 표시돼요")
+                EmptyChartPlaceholder(message: L.s("표준 거리 완주 기록이 생기면 PR이 여기에 표시돼요", "Complete a standard distance to see your PR"))
             } else {
                 PRGrid(entries: entries)
             }
@@ -361,11 +382,12 @@ struct GrowthView: View {
     }
 
     private var journeySection: some View {
+        let L = AppLanguage.shared
         let events = journeyMilestones()
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "나의 여정", subtitle: "걷기에서 러닝으로")
+            SectionLabel(title: L.s("나의 여정", "My Journey"), subtitle: L.s("걷기에서 러닝으로", "From walking to running"))
             if events.isEmpty {
-                EmptyChartPlaceholder(message: "기록이 쌓이면 여정이 여기에 펼쳐져요")
+                EmptyChartPlaceholder(message: L.s("기록이 쌓이면 여정이 여기에 펼쳐져요", "Your journey will appear as you log more"))
             } else {
                 JourneyTimeline(events: events)
             }
@@ -399,12 +421,15 @@ struct GrowthView: View {
     }
 
     private var growthInsightText: String? {
+        let L = AppLanguage.shared
         let streak = weekStreak()
         if streak >= 3 {
-            return "\(streak)주 연속 달리고 있어요 — 루틴이 자리 잡고 있어요"
+            return L.s("\(streak)주 연속 달리고 있어요 — 루틴이 자리 잡고 있어요",
+                       "\(streak) weeks in a row — you're building a routine")
         }
         if streak == 2 {
-            return "2주 연속 달리고 있어요 — 이번 주도 이어가 봐요"
+            return L.s("2주 연속 달리고 있어요 — 이번 주도 이어가 봐요",
+                       "2 weeks running — keep it up this week")
         }
 
         let weeks = weeklyKms()
@@ -412,11 +437,11 @@ struct GrowthView: View {
         let prevKm = weeks.dropLast().last?.km ?? 0
         if thisKm > prevKm, prevKm > 0 {
             let diff = thisKm - prevKm
-            return String(format: "이번 주 거리가 지난 주보다 +%.1fkm 늘었어요", diff)
+            return String(format: L.s("이번 주 거리가 지난 주보다 +%.1fkm 늘었어요", "+%.1fkm more than last week"), diff)
         }
 
         if let recent = prEntries().first(where: { $0.isNew }) {
-            return "\(recent.label) 신기록을 세웠어요"
+            return L.s("\(recent.label) 신기록을 세웠어요", "New \(recent.label) PR")
         }
 
         let pts = pacePoints()
@@ -424,7 +449,7 @@ struct GrowthView: View {
             let latestAvg = pts.suffix(3).map(\.speedKmh).reduce(0, +) / 3
             let earlierAvg = pts.prefix(3).map(\.speedKmh).reduce(0, +) / 3
             if earlierAvg > 0, latestAvg > earlierAvg * 1.02 {
-                return "최근 페이스가 꾸준히 빨라지고 있어요"
+                return L.s("최근 페이스가 꾸준히 빨라지고 있어요", "Your pace has been steadily improving")
             }
         }
 
@@ -436,7 +461,8 @@ struct GrowthView: View {
             Image(systemName: "chart.line.uptrend.xyaxis")
                 .font(.system(size: 56))
                 .foregroundStyle(.secondary)
-            Text("러닝을 시작하면\n성장 차트가 여기에 나타나요")
+            Text(AppLanguage.shared.s("러닝을 시작하면\n성장 차트가 여기에 나타나요",
+                                     "Start running and your\ngrowth chart will appear here"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -460,28 +486,31 @@ struct GrowthView: View {
     // MARK: - Journey milestones
 
     private func journeyMilestones() -> [MilestoneEvent] {
+        let L = AppLanguage.shared
         let all = manager.activities.sorted { $0.date < $1.date }
         let allRuns = all.filter { $0.type == .running }
         var events: [MilestoneEvent] = []
 
         // 첫 기록 (any type)
         if let first = all.first {
+            let typeLabel = first.type.label
+            let title = L.isEnglish ? "First \(typeLabel)" : "첫 \(typeLabel)"
             events.append(.init(id: "first_any", date: first.date, kind: .first,
-                                title: "첫 \(first.type.label)", detail: first.formattedDistance))
+                                title: title, detail: first.formattedDistance))
         }
 
         // 첫 러닝 (only if different from very first activity)
         if let firstRun = allRuns.first, firstRun.id != all.first?.id {
             events.append(.init(id: "first_run", date: firstRun.date, kind: .first,
-                                title: "첫 러닝", detail: firstRun.formattedDistance))
+                                title: L.s("첫 러닝", "First Run"), detail: firstRun.formattedDistance))
         }
 
         // 거리별 첫 완주 (5K / 10K / 하프 / 풀)
         let distMilestones: [(Double, String, String)] = [
-            (5000,  "first_5k",   "첫 5K 완주"),
-            (10000, "first_10k",  "첫 10K 완주"),
-            (21097, "first_half", "첫 하프 완주"),
-            (42195, "first_full", "첫 풀 완주"),
+            (5000,  "first_5k",   L.s("첫 5K 완주",   "First 5K")),
+            (10000, "first_10k",  L.s("첫 10K 완주",  "First 10K")),
+            (21097, "first_half", L.s("첫 하프 완주",  "First Half")),
+            (42195, "first_full", L.s("첫 풀 완주",    "First Full")),
         ]
         var coveredRunIDs = Set<UUID>()
         for (minDist, key, title) in distMilestones {
@@ -504,8 +533,8 @@ struct GrowthView: View {
                     id: "cum_\(Int(km))",
                     date: a.date,
                     kind: .cumulative,
-                    title: "누적 \(Int(km))km 돌파",
-                    detail: String(format: "총 %.0fkm", totalKm)
+                    title: L.s("누적 \(Int(km))km 돌파", "\(Int(km))km total"),
+                    detail: String(format: L.s("총 %.0fkm", "Total %.0fkm"), totalKm)
                 ))
                 nextThresh += 1
             }
@@ -516,7 +545,7 @@ struct GrowthView: View {
            longest.distance >= 5000,
            !coveredRunIDs.contains(longest.id) {
             events.append(.init(id: "longest", date: longest.date, kind: .longest,
-                                title: "현재 최장 거리", detail: longest.formattedDistance))
+                                title: L.s("현재 최장 거리", "Longest Run"), detail: longest.formattedDistance))
         }
 
         return events.sorted { $0.date < $1.date }
@@ -524,12 +553,15 @@ struct GrowthView: View {
 
     // MARK: - PR data
 
-    private static let prBuckets: [(id: String, label: String, range: ClosedRange<Double>)] = [
-        ("5K",   "5K",    4700...5500),
-        ("10K",  "10K",   9500...10500),
-        ("half", "하프",  20000...22000),
-        ("full", "풀",    41000...43000),
-    ]
+    private static var prBuckets: [(id: String, label: String, range: ClosedRange<Double>)] {
+        let L = AppLanguage.shared
+        return [
+            ("5K",   "5K",                  4700...5500),
+            ("10K",  "10K",                 9500...10500),
+            ("half", L.s("하프", "Half"),   20000...22000),
+            ("full", L.s("풀",   "Full"),   41000...43000),
+        ]
+    }
 
     private func prEntries() -> [PREntry] {
         Self.prBuckets.compactMap { bucket in
@@ -679,12 +711,16 @@ struct GrowthView: View {
     }
 
     private func heatmapSummary(streak: Int, activeDays: Int) -> String {
+        let L = AppLanguage.shared
         if streak >= 2 {
-            return "\(streak)주 연속 · \(Self.heatmapWeeks)주간 \(activeDays)일 러닝"
+            return L.s("\(streak)주 연속 · \(Self.heatmapWeeks)주간 \(activeDays)일 러닝",
+                       "\(streak) weeks · \(activeDays) days in \(Self.heatmapWeeks) wks")
         } else if activeDays > 0 {
-            return "최근 \(Self.heatmapWeeks)주간 \(activeDays)일 러닝"
+            return L.s("최근 \(Self.heatmapWeeks)주간 \(activeDays)일 러닝",
+                       "\(activeDays) days in the last \(Self.heatmapWeeks) wks")
         } else {
-            return "최근 \(Self.heatmapWeeks)주간 기록 없음"
+            return L.s("최근 \(Self.heatmapWeeks)주간 기록 없음",
+                       "No runs in the last \(Self.heatmapWeeks) wks")
         }
     }
 }
@@ -699,7 +735,11 @@ private struct RunHeatmap: View {
     private let labelW: CGFloat = 16
 
     // Mon, -, Wed, -, Fri, Sat, Sun  (blank on Tue/Thu to reduce clutter)
-    private let dayLabels = ["월", "", "수", "", "금", "토", "일"]
+    private var dayLabels: [String] {
+        AppLanguage.shared.isEnglish
+            ? ["M", "", "W", "", "F", "Sa", "Su"]
+            : ["월", "", "수", "", "금", "토", "일"]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -767,9 +807,10 @@ private struct RunHeatmap: View {
 
     // Color scale legend
     private var legend: some View {
-        HStack(spacing: 5) {
+        let L = AppLanguage.shared
+        return HStack(spacing: 5) {
             Spacer()
-            Text("적음")
+            Text(L.s("적음", "Less"))
                 .font(.system(size: 8))
                 .foregroundStyle(.secondary)
             ForEach([0.0, 2.0, 5.0, 8.0, 12.0], id: \.self) { km in
@@ -777,7 +818,7 @@ private struct RunHeatmap: View {
                     .fill(cellColor(km: km, isFuture: false))
                     .frame(width: cellSize, height: cellSize)
             }
-            Text("많음")
+            Text(L.s("많음", "More"))
                 .font(.system(size: 8))
                 .foregroundStyle(.secondary)
         }
@@ -1243,7 +1284,7 @@ private struct MetricSparkCard: View {
                         .minimumScaleFactor(0.8)
                     sparkline
                 } else {
-                    Text("데이터 없음")
+                    Text(AppLanguage.shared.s("데이터 없음", "No Data"))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .frame(height: 36)

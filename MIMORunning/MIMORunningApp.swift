@@ -20,6 +20,7 @@ struct MIMORunningApp: App {
                 ContentView()
                     .environment(raceDetector)
                     .environment(miniMeStore)
+                    .environment(AppLanguage.shared)
             }
         }
         .modelContainer(Self.container)

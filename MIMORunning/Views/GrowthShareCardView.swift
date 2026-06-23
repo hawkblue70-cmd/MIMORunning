@@ -1,6 +1,5 @@
 import SwiftUI
 import Charts
-import PhotosUI
 
 // MARK: - Growth Trend Chart (compact, standalone — safe for ImageRenderer)
 
@@ -251,7 +250,7 @@ struct GrowthShareCard: View {
     }
 
     private var metricTitle: some View {
-        Text("\(metric.koreanLabel) · \(selectedRange.rawValue)")
+        Text("\(metric.koreanLabel) · \(selectedRange.label)")
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.white.opacity(0.65))
     }
@@ -282,11 +281,11 @@ struct GrowthShareCard: View {
         HStack {
             ZStack {
                 Circle()
-                    .fill(Theme.violet.opacity(0.12))
+                    .fill(Color(hex: "3DFF7A").opacity(0.12))
                     .frame(width: 34, height: 34)
                 Image(systemName: "figure.run")
                     .font(.system(size: 15, weight: .light))
-                    .foregroundStyle(Theme.violet.opacity(0.50))
+                    .foregroundStyle(Color(hex: "3DFF7A"))
             }
             Spacer()
             Text("mimorunning")
@@ -357,8 +356,6 @@ struct GrowthShareCardScreen: View {
     @State private var shareURL: URL?
     @State private var previewImage: UIImage?
     @State private var isRendering = true
-    @State private var selectedPhoto: UIImage?
-    @State private var pickerItem: PhotosPickerItem?
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
@@ -379,68 +376,29 @@ struct GrowthShareCardScreen: View {
                         dataPoints: dataPoints,
                         currentValue: currentValue,
                         age: age,
-                        isMale: isMale,
-                        photo: selectedPhoto
+                        isMale: isMale
                     )
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
-                    .animation(.easeInOut(duration: 0.25), value: selectedPhoto == nil)
 
                     Spacer(minLength: 24)
-
-                    // Photo picker
-                    HStack(spacing: 14) {
-                        PhotosPicker(
-                            selection: $pickerItem,
-                            matching: .images,
-                            photoLibrary: .shared()
-                        ) {
-                            Label(
-                                selectedPhoto == nil ? "사진 추가" : "사진 변경",
-                                systemImage: selectedPhoto == nil ? "photo.badge.plus" : "photo"
-                            )
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Theme.violet)
-                        }
-                        if selectedPhoto != nil {
-                            Button {
-                                selectedPhoto = nil
-                                pickerItem = nil
-                                Task { await renderCard() }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                                    .font(.title3)
-                            }
-                        }
-                    }
-                    .padding(.bottom, 20)
 
                     shareCTA
                         .padding(.horizontal, 24)
                         .padding(.bottom, 36)
                 }
             }
-            .navigationTitle("성장 카드 공유")
+            .navigationTitle(AppLanguage.shared.s("성장 카드 공유", "Growth Card"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("닫기") { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
                         .foregroundStyle(Theme.violet)
                 }
             }
         }
         .task { await renderCard() }
-        .onChange(of: pickerItem) { _, newItem in
-            Task {
-                guard let item = newItem,
-                      let data = try? await item.loadTransferable(type: Data.self),
-                      let image = UIImage(data: data) else { return }
-                selectedPhoto = image
-                await renderCard()
-            }
-        }
     }
 
     // MARK: - Share CTA
@@ -450,7 +408,7 @@ struct GrowthShareCardScreen: View {
         if isRendering {
             HStack(spacing: 10) {
                 ProgressView().tint(Theme.violet)
-                Text("카드 만드는 중...")
+                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card..."))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -459,9 +417,9 @@ struct GrowthShareCardScreen: View {
         } else if let url = shareURL, let img = previewImage {
             ShareLink(
                 item: url,
-                preview: SharePreview("\(metric.koreanLabel) 추세", image: Image(uiImage: img))
+                preview: SharePreview(AppLanguage.shared.s("\(metric.koreanLabel) 추세", "\(metric.koreanLabel) Trend"), image: Image(uiImage: img))
             ) {
-                Label("공유하기", systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -470,7 +428,7 @@ struct GrowthShareCardScreen: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
         } else {
-            Text("카드 생성에 실패했어요")
+            Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
@@ -507,8 +465,7 @@ struct GrowthShareCardScreen: View {
             dataPoints: dataPoints,
             currentValue: currentValue,
             age: age,
-            isMale: isMale,
-            photo: selectedPhoto
+            isMale: isMale
         )
         .frame(width: cardW, height: cardH)
     }

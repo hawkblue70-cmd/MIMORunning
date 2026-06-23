@@ -7,12 +7,13 @@ enum SleepGrade {
     case excellent, good, fair, insufficient, poor
 
     var label: String {
-        switch self {
-        case .excellent:    "매우높음"
-        case .good:         "높음"
-        case .fair:         "보통"
-        case .insufficient: "낮음"
-        case .poor:         "매우낮음"
+        let L = AppLanguage.shared
+        return switch self {
+        case .excellent:    L.s("매우높음", "Excellent")
+        case .good:         L.s("높음",     "Good")
+        case .fair:         L.s("보통",     "Fair")
+        case .insufficient: L.s("낮음",     "Poor")
+        case .poor:         L.s("매우낮음", "Very Poor")
         }
     }
 }

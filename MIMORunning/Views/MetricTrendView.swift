@@ -32,22 +32,24 @@ enum CardioFitnessClassifier {
 
     static func rating(vo2: Double, age: Int?, isMale: Bool?) -> String? {
         guard let age, let isMale else { return nil }
+        let L = AppLanguage.shared
         let t = thresholds(age: age, isMale: isMale)
         switch vo2 {
-        case ..<t.belowAvg: return "낮음"
-        case ..<t.aboveAvg: return "평균 이하"
-        case ..<t.high:     return "평균 이상"
-        default:            return "높음"
+        case ..<t.belowAvg: return L.s("낮음",      "Low")
+        case ..<t.aboveAvg: return L.s("평균 이하", "Below Avg")
+        case ..<t.high:     return L.s("평균 이상", "Above Avg")
+        default:            return L.s("높음",      "High")
         }
     }
 
     static func bands(age: Int, isMale: Bool, yMin: Double, yMax: Double) -> [Band] {
+        let L = AppLanguage.shared
         let t = thresholds(age: age, isMale: isMale)
         return [
-            Band(label: "낮음",      color: .red,    low: yMin,       high: t.belowAvg),
-            Band(label: "평균 이하", color: .orange, low: t.belowAvg, high: t.aboveAvg),
-            Band(label: "평균 이상", color: .yellow, low: t.aboveAvg, high: t.high),
-            Band(label: "높음",      color: .green,  low: t.high,     high: yMax),
+            Band(label: L.s("낮음",      "Low"),       color: .red,    low: yMin,       high: t.belowAvg),
+            Band(label: L.s("평균 이하", "Below Avg"), color: .orange, low: t.belowAvg, high: t.aboveAvg),
+            Band(label: L.s("평균 이상", "Above Avg"), color: .yellow, low: t.aboveAvg, high: t.high),
+            Band(label: L.s("높음",      "High"),      color: .green,  low: t.high,     high: yMax),
         ]
     }
 
@@ -83,6 +85,16 @@ enum TrendRange: String, CaseIterable, Identifiable {
     case year     = "1년"
 
     var id: String { rawValue }
+
+    var label: String {
+        let L = AppLanguage.shared
+        switch self {
+        case .week:     return L.s("주",    "1W")
+        case .month:    return L.s("1개월", "1M")
+        case .sixMonth: return L.s("6개월", "6M")
+        case .year:     return L.s("1년",   "1Y")
+        }
+    }
 
     var startDate: Date {
         let cal = Calendar.current
@@ -157,7 +169,7 @@ struct MetricTrendView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("닫기") { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
                         .foregroundStyle(Theme.violet)
                 }
             }
@@ -183,8 +195,8 @@ struct MetricTrendView: View {
     // MARK: - Subviews
 
     private var rangePicker: some View {
-        Picker("기간", selection: $selectedRange) {
-            ForEach(TrendRange.allCases) { r in Text(r.rawValue).tag(r) }
+        Picker(AppLanguage.shared.s("기간", "Period"), selection: $selectedRange) {
+            ForEach(TrendRange.allCases) { r in Text(r.label).tag(r) }
         }
         .pickerStyle(.segmented)
         .padding(.horizontal, 16)
@@ -193,7 +205,7 @@ struct MetricTrendView: View {
 
     private var chartCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("\(dataPoints.count)개 기록")
+            Text(AppLanguage.shared.s("\(dataPoints.count)개 기록", "\(dataPoints.count) records"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -293,7 +305,7 @@ struct MetricTrendView: View {
     private var statsCard: some View {
         HStack(spacing: 0) {
             if let cur = effectiveCurrent {
-                statCell(label: "현재값", value: metric.formattedValue(cur, usePounds: useMiles), color: Theme.violet)
+                statCell(label: AppLanguage.shared.s("현재값", "Current"), value: metric.formattedValue(cur, usePounds: useMiles), color: Theme.violet)
                 if periodAverage != nil {
                     Rectangle()
                         .fill(Color.white.opacity(0.08))
@@ -303,7 +315,7 @@ struct MetricTrendView: View {
             }
             if let avg = periodAverage {
                 statCell(
-                    label: "기간 평균 (\(dataPoints.count)회)",
+                    label: AppLanguage.shared.s("기간 평균 (\(dataPoints.count)회)", "Period avg (\(dataPoints.count))"),
                     value: avgDisplayString(avg),
                     color: avgDisplayColor(avg)
                 )
@@ -335,10 +347,10 @@ struct MetricTrendView: View {
             Image(systemName: "chart.xyaxis.line")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text("데이터 없음")
+            Text(AppLanguage.shared.s("데이터 없음", "No Data"))
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text("이 기간에 기록된 \(metric.koreanLabel) 데이터가 없어요")
+            Text(AppLanguage.shared.s("이 기간에 기록된 \(metric.koreanLabel) 데이터가 없어요", "No \(metric.koreanLabel) data for this period"))
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

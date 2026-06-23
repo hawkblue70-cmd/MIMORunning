@@ -15,12 +15,13 @@ enum ActivityType: String {
     }
 
     var label: String {
-        switch self {
-        case .walking:  "걷기"
-        case .running:  "러닝"
-        case .hiking:   "하이킹"
-        case .cycling:  "자전거"
-        case .swimming: "수영"
+        let L = AppLanguage.shared
+        return switch self {
+        case .walking:  L.s("걷기",   "Walk")
+        case .running:  L.s("러닝",   "Run")
+        case .hiking:   L.s("하이킹", "Hike")
+        case .cycling:  L.s("자전거", "Cycle")
+        case .swimming: L.s("수영",   "Swim")
         }
     }
 }
@@ -88,12 +89,13 @@ enum WorkoutType: String {
     case general   // 일반
 
     var koreanLabel: String {
-        switch self {
-        case .interval: "인터벌"
-        case .longRun:  "롱런"
-        case .easy:     "회복런"
-        case .tempo:    "템포런"
-        case .general:  "일반 러닝"
+        let L = AppLanguage.shared
+        return switch self {
+        case .interval: L.s("인터벌", "Interval")
+        case .longRun:  L.s("롱런",   "Long Run")
+        case .easy:     L.s("회복런", "Easy Run")
+        case .tempo:    L.s("템포런", "Tempo Run")
+        case .general:  L.s("일반 러닝", "General Run")
         }
     }
 }
@@ -197,15 +199,16 @@ enum TrendMetric: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var koreanLabel: String {
-        switch self {
-        case .cadence:             "케이던스"
-        case .power:               "파워"
-        case .groundContactTime:   "지면 접촉 시간"
-        case .strideLength:        "보폭"
-        case .verticalOscillation: "수직 진폭"
-        case .vo2Max:              "유산소 피트니스"
-        case .bodyMass:            "체중"
-        case .bodyFatPercentage:   "체지방률"
+        let L = AppLanguage.shared
+        return switch self {
+        case .cadence:             L.s("케이던스",     "Cadence")
+        case .power:               L.s("파워",         "Power")
+        case .groundContactTime:   L.s("지면 접촉 시간", "Gnd Contact")
+        case .strideLength:        L.s("보폭",         "Stride Length")
+        case .verticalOscillation: L.s("수직 진폭",   "Vert. Osc.")
+        case .vo2Max:              L.s("유산소 피트니스", "Cardio Fitness")
+        case .bodyMass:            L.s("체중",         "Body Weight")
+        case .bodyFatPercentage:   L.s("체지방률",     "Body Fat")
         }
     }
 

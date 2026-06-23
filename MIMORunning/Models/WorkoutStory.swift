@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import UIKit
+import SwiftUI
 
 enum Mood: String, CaseIterable, Codable {
     case fantastic = "fantastic"
@@ -10,12 +11,13 @@ enum Mood: String, CaseIterable, Codable {
     case terrible  = "terrible"
 
     var label: String {
-        switch self {
-        case .fantastic: "최고"
-        case .great:     "좋음"
-        case .okay:      "보통"
-        case .tough:     "힘듦"
-        case .terrible:  "최악"
+        let L = AppLanguage.shared
+        return switch self {
+        case .fantastic: L.s("최고", "Great!")
+        case .great:     L.s("좋음", "Good")
+        case .okay:      L.s("보통", "Okay")
+        case .tough:     L.s("힘듦", "Tough")
+        case .terrible:  L.s("최악", "Bad")
         }
     }
 

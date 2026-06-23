@@ -63,7 +63,8 @@ private struct ConnectView: View {
                             .foregroundStyle(.white)
                             .tracking(2)
                     }
-                    Text("걷고 뛰기만 하세요.\n정리는 MIMO Running이 합니다.")
+                    Text(AppLanguage.shared.s("걷고 뛰기만 하세요.\n정리는 MIMO Running이 합니다.",
+                                              "Just walk and run.\nMIMO Running handles the rest."))
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -72,7 +73,7 @@ private struct ConnectView: View {
             }
             Spacer()
             Button(action: onConnect) {
-                Text("건강 앱 연결하기")
+                Text(AppLanguage.shared.s("건강 앱 연결하기", "Connect Health App"))
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -152,7 +153,7 @@ private struct ActivityListContent: View {
                             Button {
                                 displayCount += 50
                             } label: {
-                                Text("더 보기 (\(filteredActivities.count - displayCount)개 남음)")
+                                Text(AppLanguage.shared.s("더 보기 (\(filteredActivities.count - displayCount)개 남음)", "Load More (\(filteredActivities.count - displayCount) left)"))
                                     .font(.subheadline.weight(.medium))
                                     .foregroundStyle(Theme.violet)
                                     .frame(maxWidth: .infinity)
@@ -197,20 +198,20 @@ private struct TrialBannerView: View {
                 .foregroundStyle(accentColor)
             VStack(alignment: .leading, spacing: 2) {
                 Text(isExpired
-                     ? "무료 체험이 종료되었어요"
-                     : "무료 체험 중 · \(daysRemaining)일 남음")
+                     ? AppLanguage.shared.s("무료 체험이 종료되었어요", "Free trial ended")
+                     : AppLanguage.shared.s("무료 체험 중 · \(daysRemaining)일 남음", "Free trial · \(daysRemaining) days left"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(isExpired
-                     ? "새 기록을 받으려면 MIMO Pro 구독이 필요해요"
-                     : "체험 종료 후 새 기록을 계속 받으려면 구독하세요")
+                     ? AppLanguage.shared.s("새 기록을 받으려면 MIMO Pro 구독이 필요해요", "Subscribe to MIMO Pro to keep syncing new workouts")
+                     : AppLanguage.shared.s("체험 종료 후 새 기록을 계속 받으려면 구독하세요", "Subscribe to continue syncing after the trial"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Button(action: onSubscribe) {
-                Text("구독하기")
+                Text(AppLanguage.shared.s("구독하기", "Subscribe"))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
@@ -250,10 +251,10 @@ private struct ProPaywallSheet: View {
                                     .font(.system(size: 32, weight: .semibold))
                                     .foregroundStyle(Theme.violet)
                             }
-                            Text("MIMO Pro")
+                            Text(AppLanguage.shared.s("MIMO Pro", "MIMO Pro"))
                                 .font(.system(size: 22, weight: .bold))
                                 .foregroundStyle(.white)
-                            Text("새 기록을 계속 쌓으려면\n구독이 필요해요")
+                            Text(AppLanguage.shared.s("새 기록을 계속 쌓으려면\n구독이 필요해요", "Subscribe to keep syncing\nnew workouts"))
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -270,7 +271,7 @@ private struct ProPaywallSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("닫기") { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
                         .foregroundStyle(.secondary)
                 }
             }
@@ -331,7 +332,7 @@ private struct ActivityCard: View {
                         MetricChip(value: pace, label: "/km", color: Theme.pace)
                     }
                 }
-                MetricChip(value: activity.formattedDuration, label: "시간", color: Theme.time)
+                MetricChip(value: activity.formattedDuration, label: AppLanguage.shared.s("시간", "TIME"), color: Theme.time)
                 if level >= .novice, let hr = activity.avgHeartRate {
                     MetricChip(value: "\(hr)", label: "bpm", color: Theme.heartRate)
                 }
@@ -378,7 +379,7 @@ private struct EmptyActivitiesView: View {
             Image(systemName: "figure.walk.motion")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text("기록된 활동이 없어요")
+            Text(AppLanguage.shared.s("기록된 활동이 없어요", "No activities found"))
                 .foregroundStyle(.secondary)
         }
     }
@@ -390,10 +391,10 @@ private struct FilteredEmptyView: View {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text("선택한 종류의 활동이 없어요")
+            Text(AppLanguage.shared.s("선택한 종류의 활동이 없어요", "No activities for selected type"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Text("나 탭 > 설정 > 활동 종류에서 변경할 수 있어요")
+            Text(AppLanguage.shared.s("나 탭 > 설정 > 활동 종류에서 변경할 수 있어요", "Change in Me > Settings > Activity Type"))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -408,10 +409,10 @@ private struct UnavailableView: View {
             Image(systemName: "heart.slash")
                 .font(.system(size: 48))
                 .foregroundStyle(Theme.heartRate)
-            Text("건강 앱을 사용할 수 없어요")
+            Text(AppLanguage.shared.s("건강 앱을 사용할 수 없어요", "Health App Not Available"))
                 .font(.headline)
                 .foregroundStyle(.white)
-            Text("이 기기는 HealthKit을 지원하지 않습니다.")
+            Text(AppLanguage.shared.s("이 기기는 HealthKit을 지원하지 않습니다.", "This device doesn't support HealthKit."))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

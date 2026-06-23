@@ -7,10 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		EE25E4812FEAC714009C7CEA /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE25E4802FEAC714009C7CEA /* AppLanguage.swift */; };
 		EEADA2AA2FEA21CF000BDF08 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EEADA2A92FEA21CF000BDF08 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		EE25E4802FEAC714009C7CEA /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
 		EE9799402FE54EFD005A90B8 /* MIMORunning.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MIMORunning.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EEADA2A92FEA21CF000BDF08 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -53,6 +55,7 @@
 				EE9799422FE54EFD005A90B8 /* MIMORunning */,
 				EE9799412FE54EFD005A90B8 /* Products */,
 				EEADA2A92FEA21CF000BDF08 /* PrivacyInfo.xcprivacy */,
+				EE25E4802FEAC714009C7CEA /* AppLanguage.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -139,6 +142,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EE25E4812FEAC714009C7CEA /* AppLanguage.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -25,9 +25,11 @@ enum InsightAIGenerator {
     }
 
     /// Rewrites `base` title/detail with on-device AI.
-    /// Returns nil when unavailable or generation fails; caller keeps rule-based result.
+    /// Returns nil when unavailable, English mode, or generation fails; caller keeps rule-based result.
     static func enhance(_ base: InsightResult) async -> InsightResult? {
         guard isAvailable else { return nil }
+        // AI prompt is Korean-only; skip enhancement when English mode is active
+        guard !AppLanguage.shared.isEnglish else { return nil }
 
         let instructions = """
             당신은 러닝 앱 "미모러닝"의 인사이트 카피라이터입니다. You MUST respond in Korean.
