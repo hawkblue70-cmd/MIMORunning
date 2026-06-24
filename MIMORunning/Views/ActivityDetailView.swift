@@ -2389,7 +2389,9 @@ struct SplitsPanelChart: View {
                     .foregroundStyle(Color.white.opacity(0.08))
                 AxisValueLabel {
                     if let m = val.as(Double.self) {
-                        Text(String(format: "%.0f분", m))
+                        Text(AppLanguage.shared.isEnglish
+                             ? String(format: "%.0fm", m)
+                             : String(format: "%.0f분", m))
                             .font(.system(size: isLargeDisplay ? 11 : 6))
                             .foregroundStyle(Color.white.opacity(0.55))
                     }
@@ -2575,7 +2577,9 @@ struct HRSeriesPanelChart: View {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                 AxisValueLabel {
                     if let m = value.as(Double.self) {
-                        Text(String(format: "%.0f분", m))
+                        Text(AppLanguage.shared.isEnglish
+                             ? String(format: "%.0fm", m)
+                             : String(format: "%.0f분", m))
                             .font(compact ? .system(size: 6.5) : .caption2)
                             .foregroundStyle(Color.white.opacity(compact ? 0.75 : 0.6))
                     }
@@ -2698,7 +2702,10 @@ private struct MetricBarPanelChart: View {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                     AxisValueLabel {
                         if let m = value.as(Double.self) {
-                            Text(String(format: "%.0f분", m)).font(.caption2).foregroundStyle(.white.opacity(0.6))
+                            Text(AppLanguage.shared.isEnglish
+                                 ? String(format: "%.0fm", m)
+                                 : String(format: "%.0f분", m))
+                                .font(.caption2).foregroundStyle(.white.opacity(0.6))
                         }
                     }
                 }

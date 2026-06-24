@@ -118,8 +118,6 @@ class HealthKitManager {
 
     func fetchActivities() async {
         isLoading = true
-        readBiologicalCharacteristics()
-        await refreshHRZoneParameters()
 
         // Phase 0: instant display from SwiftData cache (zero HealthKit queries)
         let cached = loadActivityCache()
@@ -128,6 +126,11 @@ class HealthKitManager {
             userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
             isLoading = false
         }
+
+        // Resolve subscription status and prepare HRZone parameters before HealthKit query.
+        await ProManager.shared.checkEntitlements()
+        readBiologicalCharacteristics()
+        if restingHeartRate == nil { await refreshHRZoneParameters() }
 
         defer { isLoading = false }
 
@@ -142,16 +145,21 @@ class HealthKitManager {
                 return cacheDict[w.uuid.uuidString]?.toActivity() ?? summary
             }
 
-            // Phase 2: enrich only new workouts, updating the list in real time
-            var toSave: [CachedActivity] = []
-            for i in workouts.indices {
-                let wid = workouts[i].uuid.uuidString
-                guard cacheDict[wid] == nil else { continue }
-                activities[i] = await enrich(activities[i], workout: workouts[i])
-                toSave.append(CachedActivity(from: activities[i]))
+            // Phase 2: enrich only new workouts — all concurrently, save each immediately
+            let newIndices = workouts.indices.filter { cacheDict[workouts[$0].uuid.uuidString] == nil }
+            if !newIndices.isEmpty {
+                await withTaskGroup(of: (Int, Activity).self) { group in
+                    for i in newIndices {
+                        let w = workouts[i]
+                        let a = activities[i]
+                        group.addTask { await (i, self.enrich(a, workout: w)) }
+                    }
+                    for await (i, enriched) in group {
+                        activities[i] = enriched
+                        saveToCache([CachedActivity(from: enriched)])
+                    }
+                }
             }
-
-            if !toSave.isEmpty { saveToCache(toSave) }
 
             // Phase 3: recompute user level
             userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
@@ -164,9 +172,16 @@ class HealthKitManager {
 
     private func loadActivityCache() -> [CachedActivity] {
         guard let ctx = cacheContext else { return [] }
-        let descriptor = FetchDescriptor<CachedActivity>(
+        let pro = ProManager.shared
+        var descriptor = FetchDescriptor<CachedActivity>(
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
+        // Apply the same date gate as queryWorkouts() so Phase 0 cache
+        // never flashes activities that are beyond the trial cutoff.
+        if pro.isTrialExpired {
+            let cutoff = pro.effectiveCutoffDate
+            descriptor.predicate = #Predicate<CachedActivity> { $0.date < cutoff }
+        }
         return (try? ctx.fetch(descriptor)) ?? []
     }
 
@@ -346,9 +361,9 @@ class HealthKitManager {
         let startCutoff: Date
         let endDate: Date?
         if pro.isTrialExpired {
-            // Freeze the data window at the trial end — no new activities after that date.
+            // Freeze the data window at the cutoff — trial end, or last subscription period end if later.
             startCutoff = Calendar.current.date(byAdding: .month, value: -12, to: pro.firstLaunchDate) ?? .distantPast
-            endDate = pro.trialEndDate
+            endDate = pro.effectiveCutoffDate
         } else {
             startCutoff = Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? .distantPast
             endDate = nil

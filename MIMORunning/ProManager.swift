@@ -53,11 +53,30 @@ final class ProManager: ObservableObject {
 
     private(set) var firstLaunchDate: Date
 
-    private static let firstLaunchKey = "firstLaunchDate"
+    /// Last known subscription expiry — saved to UserDefaults while subscription is active
+    /// so it survives after the subscription lapses.
+    private(set) var lastSubscriptionEndDate: Date? {
+        didSet {
+            if let d = lastSubscriptionEndDate {
+                UserDefaults.standard.set(d, forKey: Self.subscriptionEndDateKey)
+            }
+        }
+    }
+
+    private static let firstLaunchKey        = "firstLaunchDate"
+    private static let subscriptionEndDateKey = "kr.mimo.running.subscriptionEndDate"
 
     var trialEndDate: Date {
         Calendar.current.date(byAdding: .day, value: 14, to: firstLaunchDate) ?? firstLaunchDate
     }
+
+    /// The effective data cutoff when the subscription has lapsed.
+    /// = the later of trial end and the last subscription period end.
+    var effectiveCutoffDate: Date {
+        guard let subEnd = lastSubscriptionEndDate else { return trialEndDate }
+        return max(trialEndDate, subEnd)
+    }
+
     var isTrialActive:  Bool { !isPro && Date() < trialEndDate }
     var isTrialExpired: Bool { !isPro && Date() >= trialEndDate }
     var daysRemainingInTrial: Int {
@@ -84,6 +103,8 @@ final class ProManager: ObservableObject {
             firstLaunchDate = now
             KeychainHelper.save(ISO8601DateFormatter().string(from: now), forKey: Self.firstLaunchKey)
         }
+        // Restore last known subscription end date
+        lastSubscriptionEndDate = UserDefaults.standard.object(forKey: Self.subscriptionEndDateKey) as? Date
         transactionListener = listenForTransactions()
         Task { await checkEntitlements() }
     }
@@ -146,6 +167,9 @@ final class ProManager: ObservableObject {
             if let tx = try? checkVerified(result),
                Self.allProductIDs.contains(tx.productID) {
                 isPro = true
+                if let exp = tx.expirationDate {
+                    lastSubscriptionEndDate = exp
+                }
                 return
             }
         }
