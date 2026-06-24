@@ -167,6 +167,10 @@ struct ContextualMiniMeView: View {
         // Keep layout frame at avatar size; decorations overflow without affecting layout.
         .frame(width: size, height: size)
         .onAppear { startAnimations() }
+        .onDisappear {
+            floating = false
+            pulsing  = false
+        }
     }
 
     // MARK: Glow ring

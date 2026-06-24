@@ -31,7 +31,8 @@ class HealthKitManager {
     @ObservationIgnored private let cacheContainer: ModelContainer? = {
         let schema = Schema([CachedActivity.self])
         return try? ModelContainer(for: schema,
-                                   configurations: ModelConfiguration(schema: schema,
+                                   configurations: ModelConfiguration("activity-cache",
+                                                                       schema: schema,
                                                                        isStoredInMemoryOnly: false))
     }()
     private var cacheContext: ModelContext? { cacheContainer?.mainContext }
@@ -121,9 +122,9 @@ class HealthKitManager {
 
         // Phase 0: instant display from SwiftData cache (zero HealthKit queries)
         let cached = loadActivityCache()
-        if !cached.isEmpty {
+        let isWarmCache = !cached.isEmpty
+        if isWarmCache {
             activities = cached.map { $0.toActivity() }
-            userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
             isLoading = false
         }
 
@@ -135,36 +136,87 @@ class HealthKitManager {
         defer { isLoading = false }
 
         do {
-            let workouts = try await queryWorkouts()
             let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
 
-            // Phase 1: populate workoutCache and show correct order immediately.
-            // For cached workouts use cached data; for new ones show bare summary first.
-            activities = workouts.map { w -> Activity in
-                let summary = buildSummary(from: w)  // populates workoutCache
-                return cacheDict[w.uuid.uuidString]?.toActivity() ?? summary
-            }
+            // Warm cache: only query workouts newer than the latest cached entry — very fast.
+            // Cold cache: full 12-month query.
+            let since: Date? = isWarmCache
+                ? cached.map(\.date).max().map { Calendar.current.date(byAdding: .day, value: -1, to: $0)! }
+                : nil
+            let fetchedWorkouts = try await queryWorkouts(since: since)
 
-            // Phase 2: enrich only new workouts — all concurrently, save each immediately
-            let newIndices = workouts.indices.filter { cacheDict[workouts[$0].uuid.uuidString] == nil }
-            if !newIndices.isEmpty {
-                await withTaskGroup(of: (Int, Activity).self) { group in
-                    for i in newIndices {
-                        let w = workouts[i]
-                        let a = activities[i]
-                        group.addTask { await (i, self.enrich(a, workout: w)) }
-                    }
-                    for await (i, enriched) in group {
-                        activities[i] = enriched
-                        saveToCache([CachedActivity(from: enriched)])
-                    }
+            if isWarmCache {
+                if fetchedWorkouts.isEmpty {
+                    // Nothing new — level recompute only.
+                    userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+                    return
                 }
+                // Prepend new workouts to cached list (avoiding duplicates).
+                let newIDs = Set(fetchedWorkouts.map { $0.uuid.uuidString })
+                let newActivities = fetchedWorkouts.map { w -> Activity in
+                    let summary = buildSummary(from: w)
+                    return cacheDict[w.uuid.uuidString]?.toActivity() ?? summary
+                }
+                activities = newActivities + activities.filter { !newIDs.contains($0.id.uuidString) }
+            } else {
+                // Cold cache: query recent 2 months first for fast display.
+                let twoMonthsAgo = Calendar.current.date(byAdding: .month, value: -2, to: Date()) ?? .distantPast
+                let recentWorkouts = try await queryWorkouts(since: twoMonthsAgo)
+                activities = recentWorkouts.map { w -> Activity in
+                    let summary = buildSummary(from: w)
+                    return cacheDict[w.uuid.uuidString]?.toActivity() ?? summary
+                }
+                isLoading = false
+                await enrichAndCache(recentWorkouts, cacheDict: cacheDict)
+                userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+
+                // Background: fetch older history (months 3–12).
+                Task { await self.fetchOlderActivities(until: twoMonthsAgo) }
+                return
             }
 
-            // Phase 3: recompute user level
+            // Warm cache new-workout enrich path.
+            await enrichAndCache(fetchedWorkouts, cacheDict: cacheDict)
             userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
         } catch {
             self.error = error
+        }
+    }
+
+    // MARK: - Background history fetch (cold cache: months 3–12)
+
+    private func fetchOlderActivities(until: Date) async {
+        guard let oldWorkouts = try? await queryWorkouts(until: until), !oldWorkouts.isEmpty else { return }
+        let cached = loadActivityCache()
+        let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
+        let existingIDs = Set(activities.map { $0.id.uuidString })
+        let toAdd = oldWorkouts.compactMap { w -> Activity? in
+            guard !existingIDs.contains(w.uuid.uuidString) else { return nil }
+            let summary = buildSummary(from: w)
+            return cacheDict[w.uuid.uuidString]?.toActivity() ?? summary
+        }
+        if !toAdd.isEmpty { activities += toAdd }
+        await enrichAndCache(oldWorkouts, cacheDict: cacheDict)
+        userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+    }
+
+    // MARK: - Enrich helper
+
+    private func enrichAndCache(_ workouts: [HKWorkout], cacheDict: [String: CachedActivity]) async {
+        let toEnrich = workouts.filter { cacheDict[$0.uuid.uuidString] == nil }
+        guard !toEnrich.isEmpty else { return }
+        let idToIndex = Dictionary(uniqueKeysWithValues:
+            activities.enumerated().map { ($0.element.id.uuidString, $0.offset) })
+        await withTaskGroup(of: (Int, Activity).self) { group in
+            for w in toEnrich {
+                guard let idx = idToIndex[w.uuid.uuidString] else { continue }
+                let a = activities[idx]
+                group.addTask { await (idx, self.enrich(a, workout: w)) }
+            }
+            for await (idx, enriched) in group {
+                activities[idx] = enriched
+                saveToCache([CachedActivity(from: enriched)])
+            }
         }
     }
 
@@ -356,17 +408,16 @@ class HealthKitManager {
 
     // MARK: - Workout query — date range, no count limit
 
-    private func queryWorkouts() async throws -> [HKWorkout] {
+    private func queryWorkouts(since: Date? = nil, until: Date? = nil) async throws -> [HKWorkout] {
         let pro = ProManager.shared
         let startCutoff: Date
         let endDate: Date?
         if pro.isTrialExpired {
-            // Freeze the data window at the cutoff — trial end, or last subscription period end if later.
             startCutoff = Calendar.current.date(byAdding: .month, value: -12, to: pro.firstLaunchDate) ?? .distantPast
             endDate = pro.effectiveCutoffDate
         } else {
-            startCutoff = Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? .distantPast
-            endDate = nil
+            startCutoff = since ?? Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? .distantPast
+            endDate = until
         }
         let datePred = HKQuery.predicateForSamples(
             withStart: startCutoff, end: endDate, options: .strictStartDate

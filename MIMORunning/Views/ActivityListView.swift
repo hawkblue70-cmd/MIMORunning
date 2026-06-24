@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct ActivityListView: View {
     var manager: HealthKitManager
@@ -98,6 +99,20 @@ private struct ActivityListContent: View {
     @AppStorage("showWalking")  private var showWalking  = false
     @AppStorage("showHiking")   private var showHiking   = false
 
+    @Query private var stories: [WorkoutStory]
+    @Query private var shoes: [Shoe]
+
+    private var shoeByWorkout: [String: String] {
+        let shoeDict = Dictionary(uniqueKeysWithValues: shoes.map { ($0.id.uuidString, $0.displayName) })
+        var result: [String: String] = [:]
+        for story in stories {
+            if let sid = story.shoeID, let name = shoeDict[sid] {
+                result[story.workoutID] = name
+            }
+        }
+        return result
+    }
+
     private var filteredActivities: [Activity] {
         manager.activities.filter { a in
             switch a.type {
@@ -145,7 +160,8 @@ private struct ActivityListContent: View {
                         }
                         ForEach(visibleActivities) { activity in
                             NavigationLink(value: activity) {
-                                ActivityCard(activity: activity, level: manager.userLevel.bucket)
+                                ActivityCard(activity: activity, level: manager.userLevel.bucket,
+                                         shoeName: shoeByWorkout[activity.id.uuidString])
                             }
                             .buttonStyle(.plain)
                         }
@@ -285,6 +301,7 @@ private struct ProPaywallSheet: View {
 private struct ActivityCard: View {
     let activity: Activity
     var level: LevelBucket = .beginner
+    var shoeName: String? = nil
 
     private static let dateFormatter: DateFormatter = {
         let df = DateFormatter()
@@ -339,6 +356,18 @@ private struct ActivityCard: View {
                 if level >= .intermediate, activity.type != .swimming,
                    let cal = activity.calories {
                     MetricChip(value: String(format: "%.0f", cal), label: "kcal", color: Theme.calories)
+                }
+                if let shoe = shoeName {
+                    Spacer()
+                    HStack(spacing: 3) {
+                        Image(systemName: "shoe.fill")
+                            .font(.system(size: 7))
+                            .foregroundStyle(.secondary)
+                        Text(shoe)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
         }
