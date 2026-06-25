@@ -472,6 +472,28 @@ struct InsightEngine {
                              detail: L.s("\(sleepLabel)인 날 — 그래도 나섰어요", "\(sleepLabel) — you showed up anyway"))
     }
 
+    // MARK: - Async compute (cache-friendly entry point)
+
+    /// Async wrapper around `compute` — enables cache checks at call sites before invoking the
+    /// synchronous rule engine. Marking async lets `.task` callers interleave UI work between
+    /// suspension points without a perceptible delay on the detail view.
+    static func computeBackground(
+        activity: Activity,
+        history: [Activity],
+        level: LevelBucket = .beginner,
+        workoutType: WorkoutType = .general,
+        splits: [SplitData] = [],
+        intervalSegments: [IntervalSegment] = [],
+        condition: ActivityCondition? = nil,
+        raceMatch: PersistedRaceMatch? = nil,
+        detail: ActivityDetail? = nil
+    ) async -> InsightResult {
+        compute(activity: activity, history: history, level: level,
+                workoutType: workoutType, splits: splits,
+                intervalSegments: intervalSegments, condition: condition,
+                raceMatch: raceMatch, detail: detail)
+    }
+
     // MARK: - AI enhancement bridge
 
     /// Attempts on-device AI rewrite (iOS 26+). Returns nil on older OS or failure;
@@ -503,9 +525,10 @@ struct InsightEngine {
 
     /// C-1: Current avg HR ≥8% above the user's own baseline at the same pace band (±5 s/km).
     /// Requires ≥5 prior samples in that band. Not called when conditions are hot — caller gates this.
+    /// Scanned against most-recent 60 runs to bound cost (pace-band match is O(n)).
     private static func hrElevatedNote(_ a: Activity, _ prior: [Activity]) -> InsightResult? {
         guard let currentPace = a.paceSecPerKm, let currentHR = a.avgHeartRate else { return nil }
-        let bandHRs = prior
+        let bandHRs = prior.prefix(60)
             .filter { guard let p = $0.paceSecPerKm else { return false }; return abs(p - currentPace) <= 5.0 }
             .compactMap(\.avgHeartRate)
         guard bandHRs.count >= 5 else { return nil }

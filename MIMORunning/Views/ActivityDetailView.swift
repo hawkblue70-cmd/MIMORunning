@@ -102,7 +102,7 @@ struct ActivityDetailView: View {
                         confirmedRace: confirmedRaceMatch,
                         onRaceRevoke: {
                             raceDetector.removeMatch(activityID: activity.id)
-                            recomputeInsightWithRaceMatch()
+                            Task { await recomputeInsightWithRaceMatch() }
                         }
                     )
                     if activity.type == .running {
@@ -118,7 +118,7 @@ struct ActivityDetailView: View {
                             activityID: activity.id,
                             activityDistanceKm: activity.distance / 1000,
                             activityDate: activity.date,
-                            onConfirmed: { recomputeInsightWithRaceMatch() },
+                            onConfirmed: { Task { await recomputeInsightWithRaceMatch() } },
                             onDismissed: {}
                         )
                     } else if isDismissedRace {
@@ -174,7 +174,7 @@ struct ActivityDetailView: View {
                 onSave: { name in
                     raceDetector.addManual(activityID: activity.id, name: name,
                                            distanceKm: activity.distance / 1000, date: activity.date)
-                    recomputeInsightWithRaceMatch()
+                    Task { await recomputeInsightWithRaceMatch() }
                 },
                 onCancel: {
                     raceDetector.markAsNotRace(activityID: activity.id)
@@ -200,10 +200,19 @@ struct ActivityDetailView: View {
                 return
             }
 
-            // Phase 1: show a quick insight immediately (no workout-type yet)
-            let initial = InsightEngine.compute(activity: activity, history: manager.activities,
-                                                level: level,
-                                                raceMatch: raceDetector.matchFor(activityID: activity.id))
+            let historyCount = manager.activities.count
+
+            // Phase 1: quick insight off main thread (no workout-type yet)
+            let initial: InsightResult
+            if let cached = await InsightCache.shared.result(for: activity.id, historyCount: historyCount, isRefined: false) {
+                initial = cached
+            } else {
+                let computed = await InsightEngine.computeBackground(
+                    activity: activity, history: manager.activities, level: level,
+                    raceMatch: raceDetector.matchFor(activityID: activity.id))
+                await InsightCache.shared.cache(computed, for: activity.id, historyCount: historyCount, isRefined: false)
+                initial = computed
+            }
             insight = initial
 
             // Phase 2: fetch detail — splits drive workout-type classification
@@ -229,25 +238,31 @@ struct ActivityDetailView: View {
             if let s = suggestion, s.strength == .strong {
                 raceDetector.confirm(activityID: activity.id, race: s.primary,
                                      activityDistanceKm: activity.distance / 1000)
-                recomputeInsightWithRaceMatch()
+                await recomputeInsightWithRaceMatch()
             } else {
                 withAnimation(.easeIn) { raceSuggestion = suggestion }
             }
 
-            // Phase 3: refine insight with workout type + splits + condition
+            // Phase 3: refine insight off main thread with workout type + splits + condition
             let refined: InsightResult
             if let det = detail {
-                refined = InsightEngine.compute(
-                    activity: activity,
-                    history: manager.activities,
-                    level: level,
-                    workoutType: det.workoutType,
-                    splits: det.splits,
-                    intervalSegments: det.intervalSegments,
-                    condition: fetchedCondition,
-                    raceMatch: raceDetector.matchFor(activityID: activity.id),
-                    detail: det
-                )
+                if let cached = await InsightCache.shared.result(for: activity.id, historyCount: historyCount, isRefined: true) {
+                    refined = cached
+                } else {
+                    let computed = await InsightEngine.computeBackground(
+                        activity: activity,
+                        history: manager.activities,
+                        level: level,
+                        workoutType: det.workoutType,
+                        splits: det.splits,
+                        intervalSegments: det.intervalSegments,
+                        condition: fetchedCondition,
+                        raceMatch: raceDetector.matchFor(activityID: activity.id),
+                        detail: det
+                    )
+                    await InsightCache.shared.cache(computed, for: activity.id, historyCount: historyCount, isRefined: true)
+                    refined = computed
+                }
                 withAnimation(.easeInOut(duration: 0.3)) { insight = refined }
             } else {
                 refined = initial
@@ -265,9 +280,11 @@ struct ActivityDetailView: View {
         return Calendar.current.component(.year, from: Date()) - year
     }
 
-    private func recomputeInsightWithRaceMatch() {
+    private func recomputeInsightWithRaceMatch() async {
+        let historyCount = manager.activities.count
+        await InsightCache.shared.invalidate(activity.id)
         let match = raceDetector.matchFor(activityID: activity.id)
-        let recomputed = InsightEngine.compute(
+        let recomputed = await InsightEngine.computeBackground(
             activity: activity,
             history: manager.activities,
             level: level,
@@ -278,6 +295,8 @@ struct ActivityDetailView: View {
             raceMatch: match,
             detail: detail
         )
+        let isRefined = detail != nil
+        await InsightCache.shared.cache(recomputed, for: activity.id, historyCount: historyCount, isRefined: isRefined)
         withAnimation(.easeInOut(duration: 0.3)) { insight = recomputed }
     }
 
@@ -293,7 +312,7 @@ struct ActivityDetailView: View {
         if let s = suggestion, s.strength == .strong {
             raceDetector.confirm(activityID: activity.id, race: s.primary,
                                  activityDistanceKm: activity.distance / 1000)
-            recomputeInsightWithRaceMatch()
+            await recomputeInsightWithRaceMatch()
         } else {
             withAnimation(.easeIn) { raceSuggestion = suggestion }
         }
