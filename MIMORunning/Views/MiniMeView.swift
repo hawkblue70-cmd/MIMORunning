@@ -33,11 +33,14 @@ enum MiniMeVariant {
         }
         if mood == .tough { return .tough }
         switch workoutType {
-        case .interval: return .sprinting
-        case .longRun:  return .longDistance
-        case .easy:     return .recovery
-        case .tempo:    return .tempo
-        case .general:  return .running
+        case .interval:     return .sprinting
+        case .longRun:      return .longDistance
+        case .easy:         return .recovery
+        case .tempo:        return .tempo
+        case .buildUp:      return .sprinting
+        case .lsd:          return .longDistance
+        case .distanceRun:  return .longDistance
+        case .general:      return .running
         }
     }
 

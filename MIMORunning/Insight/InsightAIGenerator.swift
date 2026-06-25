@@ -8,7 +8,7 @@ struct AIInsightOutput {
     @Guide(description: """
         한국어 제목, 12자 이내, 담백한 감성.
         · 워크아웃 타입이 '일반 러닝'이면: 'OO 러닝' 형식 (예: '쌓이는 러닝', '한계를 미는 러닝').
-        · 워크아웃 타입이 인터벌/롱런/회복런/템포런이면: '[동사구]+[타입명]' 형식 (예: '심장을 끌어올린 인터벌', '멀리 나아간 롱런', '숨을 고른 이지런', '리듬을 탄 템포').
+        · 워크아웃 타입이 인터벌/롱런/회복런/템포런/빌드업/LSD/거리주이면: '[동사구]+[타입명]' 형식 (예: '심장을 끌어올린 인터벌', '멀리 나아간 롱런', '숨을 고른 이지런', '리듬을 탄 템포', '끝까지 올린 빌드업', '천천히 멀리 간 LSD', '레이스처럼 밀어붙인 거리주').
           이때 '꾸준함', '효율', '자산', '한계', '경계' 같은 일반 테마 단어를 타입명에 붙이면 절대 안 됨.
         """)
     var title: String
@@ -30,6 +30,8 @@ enum InsightAIGenerator {
         guard isAvailable else { return nil }
         // AI prompt is Korean-only; skip enhancement when English mode is active
         guard !AppLanguage.shared.isEnglish else { return nil }
+        // Safety notes contain factual load/HR numbers — must not be creatively rewritten
+        guard base.theme != .safety else { return nil }
 
         let instructions = """
             당신은 러닝 앱 "미모러닝"의 인사이트 카피라이터입니다. You MUST respond in Korean.
@@ -38,8 +40,8 @@ enum InsightAIGenerator {
             · 부연: 제공된 수치·사실만 사용, 절대 없는 수치를 만들어내지 말 것, 30자 이내
             · 제목 형식:
               - 워크아웃 타입이 '일반 러닝'이면 → 'OO 러닝' 형식, 12자 이내, 담백하고 철학적인 톤
-              - 워크아웃 타입이 인터벌/롱런/회복런/템포런이면 → 반드시 '[동사구]+[타입명]' 형식만 사용
-                타입명: 인터벌→인터벌, 롱런→롱런, 회복런→이지런, 템포런→템포
+              - 워크아웃 타입이 인터벌/롱런/회복런/템포런/빌드업/LSD/거리주이면 → 반드시 '[동사구]+[타입명]' 형식만 사용
+                타입명: 인터벌→인터벌, 롱런→롱런, 회복런→이지런, 템포런→템포, 빌드업→빌드업, LSD→LSD, 거리주→거리주
                 금지: '꾸준함 인터벌', '효율 롱런', '자산 인터벌' 같이 일반 테마 단어를 타입명에 붙이는 것
               - 강한 성취(첫 달성·페이스 PR) + 특정 타입이면 결합 허용: '기록을 깬 인터벌', '기록을 쓴 롱런'
             스타일 예시(제목 / 부연):
@@ -51,6 +53,9 @@ enum InsightAIGenerator {
             롱런 — 멀리 나아간 롱런 / 이번 달 최장 거리 18km
             회복런 — 숨을 고른 이지런 / 낮은 강도로 다음 훈련을 준비
             템포런 — 리듬을 탄 템포 / 균일하게 밀어붙인 8km
+            빌드업 — 끝까지 올린 빌드업 / 마지막 km 최고 페이스
+            LSD — 천천히 멀리 간 LSD / 느리고 고르게 21km
+            거리주 — 레이스처럼 밀어붙인 거리주 / 하프 거리 레이스페이스 완주
             """
 
         let prompt = """
@@ -73,11 +78,14 @@ enum InsightAIGenerator {
 
     private static func workoutTypeKorean(_ type: WorkoutType) -> String {
         switch type {
-        case .interval: "인터벌"
-        case .longRun:  "롱런"
-        case .easy:     "회복런"
-        case .tempo:    "템포런"
-        case .general:  "일반 러닝"
+        case .interval:    "인터벌"
+        case .longRun:     "롱런"
+        case .easy:        "회복런"
+        case .tempo:       "템포런"
+        case .buildUp:     "빌드업"
+        case .lsd:         "LSD"
+        case .distanceRun: "거리주"
+        case .general:     "일반 러닝"
         }
     }
 
@@ -91,6 +99,9 @@ enum InsightAIGenerator {
         case .recovery:          "회복 런 (낮은 강도)"
         case .raceDay:           "대회 완주"
         case .default:           "일반 달리기"
+        case .tradeoff:          "지표 트레이드오프 (예: 거리↑을 위한 의도적 페이스↓, 심폐 효율 향상)"
+        case .periodPositive:    "월간 총량 하향이지만 긍정 요소 발견 (페이스·최고 거리·연속·이정표·회복)"
+        case .safety:            "안전·환경 돌봄 (심박 상승·부하 급증·더위)"
         }
     }
 }

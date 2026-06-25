@@ -140,7 +140,7 @@ struct ActivityDetailView: View {
                     MetricGrid(activity: activity, detail: detail, age: userAge,
                                isMale: manager.userIsMale)
                     if let intervals = detail?.intervalSegments, !intervals.isEmpty {
-                        IntervalSegmentsSection(segments: intervals)
+                        IntervalSegmentsSection(segments: intervals, activity: activity)
                     }
                     if let splits = detail?.splits, !splits.isEmpty {
                         SplitsSection(splits: splits, zones: detail?.hrZones ?? [],
@@ -245,7 +245,8 @@ struct ActivityDetailView: View {
                     splits: det.splits,
                     intervalSegments: det.intervalSegments,
                     condition: fetchedCondition,
-                    raceMatch: raceDetector.matchFor(activityID: activity.id)
+                    raceMatch: raceDetector.matchFor(activityID: activity.id),
+                    detail: det
                 )
                 withAnimation(.easeInOut(duration: 0.3)) { insight = refined }
             } else {
@@ -274,7 +275,8 @@ struct ActivityDetailView: View {
             splits: detail?.splits ?? [],
             intervalSegments: detail?.intervalSegments ?? [],
             condition: condition,
-            raceMatch: match
+            raceMatch: match,
+            detail: detail
         )
         withAnimation(.easeInOut(duration: 0.3)) { insight = recomputed }
     }
@@ -960,6 +962,10 @@ private struct DetailSectionHeader: View {
 
 private struct IntervalSegmentsSection: View {
     let segments: [IntervalSegment]
+    var activity: Activity? = nil
+
+    @Environment(CustomMiniMeStore.self) private var miniMeStore
+    @State private var showIntervalsShare = false
 
     private var hasLabels: Bool { segments.contains { $0.stepLabel != nil } }
     private var hasHR: Bool { segments.contains { $0.avgHeartRate != nil } }
@@ -993,8 +999,26 @@ private struct IntervalSegmentsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DetailSectionHeader(title: AppLanguage.shared.s("인터벌 구간", "Interval Reps"),
-                                subtitle: AppLanguage.shared.s("\(segments.count)개 구간", "\(segments.count) reps"))
+            HStack(alignment: .top) {
+                DetailSectionHeader(title: AppLanguage.shared.s("인터벌 구간", "Interval Reps"),
+                                    subtitle: AppLanguage.shared.s("\(segments.count)개 구간", "\(segments.count) reps"))
+                Spacer()
+                if activity != nil {
+                    Button { showIntervalsShare = true } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.caption.weight(.semibold))
+                            Text(AppLanguage.shared.s("공유", "Share"))
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(Theme.violet)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(Theme.violet.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
 
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
@@ -1076,6 +1100,11 @@ private struct IntervalSegmentsSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .padding(.horizontal, 16)
+        .sheet(isPresented: $showIntervalsShare) {
+            if let act = activity {
+                IntervalsShareCardScreen(activity: act, segments: segments, miniMeImage: miniMeStore.image)
+            }
+        }
     }
 }
 
@@ -2548,7 +2577,7 @@ struct HRSeriesPanelChart: View {
                     x: .value("분", b.midMinute),
                     yStart: .value("최저", b.min),
                     yEnd: .value("최고", b.max),
-                    width: .fixed(5)
+                    width: .fixed(compact ? 2 : 5)
                 )
                 .foregroundStyle(b.color.opacity(0.85))
                 .annotation(position: .top, alignment: .center) {

@@ -82,20 +82,26 @@ struct Activity: Identifiable, Hashable {
 // MARK: - Workout Type
 
 enum WorkoutType: String {
-    case interval  // 인터벌/스피드
-    case longRun   // 롱런
-    case easy      // 이지/회복런
-    case tempo     // 템포런
-    case general   // 일반
+    case interval    // 인터벌/스피드
+    case longRun     // 롱런
+    case easy        // 이지/회복런
+    case tempo       // 템포런
+    case buildUp     // 빌드업 (점진적 가속 구조)
+    case lsd         // LSD — long slow distance
+    case distanceRun // 거리주 (레이스페이스 장거리)
+    case general     // 일반
 
     var koreanLabel: String {
         let L = AppLanguage.shared
         return switch self {
-        case .interval: L.s("인터벌", "Interval")
-        case .longRun:  L.s("롱런",   "Long Run")
-        case .easy:     L.s("회복런", "Easy Run")
-        case .tempo:    L.s("템포런", "Tempo Run")
-        case .general:  L.s("일반 러닝", "General Run")
+        case .interval:    L.s("인터벌",   "Interval")
+        case .longRun:     L.s("롱런",     "Long Run")
+        case .easy:        L.s("회복런",   "Easy Run")
+        case .tempo:       L.s("템포런",   "Tempo Run")
+        case .buildUp:     L.s("빌드업",   "Build-Up")
+        case .lsd:         L.s("LSD",      "LSD")
+        case .distanceRun: L.s("거리주",   "Distance Run")
+        case .general:     L.s("일반 러닝", "General Run")
         }
     }
 }

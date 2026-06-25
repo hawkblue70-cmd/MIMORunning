@@ -381,3 +381,295 @@ struct SplitsShareCardScreen: View {
         isRendering = false
     }
 }
+
+// MARK: - Intervals share card (360 × dynamic height)
+
+struct IntervalsShareCardView: View {
+    let activity: Activity
+    let segments: [IntervalSegment]
+    var miniMeImage: UIImage? = nil
+
+    static func cardHeight(segmentCount: Int) -> CGFloat {
+        max(520, 258 + CGFloat(segmentCount) * 24)
+    }
+
+    private var hasLabels: Bool { segments.contains { $0.stepLabel != nil } }
+    private var hasHR: Bool     { segments.contains { $0.avgHeartRate != nil } }
+    private var hasDist: Bool   { segments.contains { $0.distanceM != nil } }
+
+    private var workSegments: [IntervalSegment] {
+        let labeled = segments.filter { $0.stepLabel == "운동" }
+        if !labeled.isEmpty { return labeled }
+        let paces = segments.compactMap(\.paceSecPerKm).sorted()
+        guard !paces.isEmpty else { return segments }
+        let median = paces[paces.count / 2]
+        return segments.filter { ($0.paceSecPerKm ?? .greatestFiniteMagnitude) < median }
+    }
+
+    private var fastestWorkPace: Double? { workSegments.compactMap(\.paceSecPerKm).min() }
+    private var avgWorkPace: Double? {
+        let paces = workSegments.compactMap(\.paceSecPerKm)
+        guard !paces.isEmpty else { return nil }
+        return paces.reduce(0, +) / Double(paces.count)
+    }
+
+    private func isWork(_ seg: IntervalSegment) -> Bool {
+        if let label = seg.stepLabel { return label == "운동" }
+        let paces = segments.compactMap(\.paceSecPerKm).sorted()
+        guard !paces.isEmpty, let pace = seg.paceSecPerKm else { return seg.id % 2 == 1 }
+        return pace < paces[paces.count / 2]
+    }
+
+    private func labelText(_ seg: IntervalSegment) -> String {
+        let L = AppLanguage.shared
+        switch seg.stepLabel {
+        case "준비운동": return L.s("준비운동", "Warmup")
+        case "운동":     return L.s("운동",     "Work")
+        case "회복":     return L.s("회복",     "Rest")
+        case "정리운동": return L.s("정리운동", "Cooldown")
+        case let s?:     return s
+        default:         return "#\(seg.id)"
+        }
+    }
+
+    private func formatPace(_ secs: Double) -> String {
+        let s = Int(secs); return String(format: "%d'%02d\"", s / 60, s % 60)
+    }
+
+    private static let gold = Color(hex: "FFC74D")
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Theme.background
+            VStack(alignment: .leading, spacing: 0) {
+                Rectangle().fill(Theme.violet).frame(height: 3)
+
+                VStack(alignment: .leading, spacing: 0) {
+                    // Wordmark + MiniMe
+                    HStack(alignment: .top) {
+                        HStack(spacing: 0) {
+                            Text("MIMO")
+                                .font(.system(size: 9, weight: .black)).tracking(2).foregroundStyle(.white)
+                            Text(" RUNNING")
+                                .font(.system(size: 9, weight: .bold)).tracking(2).foregroundStyle(Theme.violet)
+                        }
+                        Spacer()
+                        miniMeContent.frame(width: 44, height: 44)
+                    }
+                    .padding(.top, 16).padding(.bottom, 10)
+
+                    Text(activity.date.cardShortDateString)
+                        .font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+                    Text(AppLanguage.shared.s("인터벌 구간", "Interval Reps"))
+                        .font(.system(size: 12, weight: .semibold)).tracking(0.5)
+                        .foregroundStyle(Theme.violet).padding(.top, 2)
+
+                    // Column header
+                    Rectangle().fill(Theme.violet.opacity(0.35)).frame(height: 0.5)
+                        .padding(.top, 14).padding(.bottom, 6)
+
+                    HStack(spacing: 0) {
+                        Text(hasLabels ? AppLanguage.shared.s("구간", "Rep") : "#")
+                            .frame(width: hasLabels ? 60 : 22, alignment: .leading)
+                        if hasDist {
+                            Text(AppLanguage.shared.s("거리", "Dist")).frame(width: 56, alignment: .trailing)
+                        }
+                        Spacer()
+                        Text(AppLanguage.shared.s("페이스", "Pace")).frame(width: 62, alignment: .trailing)
+                        Text(AppLanguage.shared.s("시간", "Time")).frame(width: 48, alignment: .trailing)
+                        if hasHR {
+                            Text(AppLanguage.shared.s("심박", "HR")).frame(width: 38, alignment: .trailing)
+                        }
+                    }
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.38))
+                    .padding(.bottom, 4)
+
+                    ForEach(segments) { seg in segmentRow(seg) }
+
+                    // Footer
+                    Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
+                        .padding(.top, 10).padding(.bottom, 10)
+                    HStack(spacing: 0) {
+                        footerStat("\(workSegments.count)", AppLanguage.shared.s("워크 구간", "WORK REPS"), Theme.violet)
+                        Spacer()
+                        if let best = fastestWorkPace {
+                            footerStat(formatPace(best), AppLanguage.shared.s("최고 구간", "BEST"), Self.gold)
+                            Spacer()
+                        }
+                        if let avg = avgWorkPace {
+                            footerStat(formatPace(avg), AppLanguage.shared.s("평균 워크", "AVG WORK"), Theme.pace)
+                        }
+                    }
+
+                    HStack {
+                        Spacer()
+                        Image(systemName: "figure.highintensity.intervaltraining")
+                            .font(.system(size: 8)).foregroundStyle(Theme.violet.opacity(0.35))
+                    }
+                    .padding(.top, 10).padding(.bottom, 2)
+                }
+                .padding(.horizontal, 22).padding(.bottom, 14)
+            }
+        }
+        .frame(width: 360, height: Self.cardHeight(segmentCount: segments.count))
+    }
+
+    @ViewBuilder private var miniMeContent: some View {
+        if let img = miniMeImage {
+            Image(uiImage: img).resizable().scaledToFill()
+                .frame(width: 44, height: 44).clipShape(Circle())
+                .overlay(Circle().stroke(Theme.violet.opacity(0.4), lineWidth: 1.5))
+        } else {
+            MiniMeView(variant: .sprinting, size: 44)
+        }
+    }
+
+    private func segmentRow(_ seg: IntervalSegment) -> some View {
+        let work = isWork(seg)
+        let isDim = seg.stepLabel == "준비운동" || seg.stepLabel == "정리운동"
+        let paceColor: Color = work ? Theme.violet : Color.white.opacity(0.50)
+        let labelW: CGFloat  = hasLabels ? 60 : 22
+
+        return VStack(spacing: 0) {
+            Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5)
+            HStack(spacing: 0) {
+                if hasLabels {
+                    Text(labelText(seg))
+                        .font(.system(size: 11, weight: work ? .bold : .regular))
+                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(isDim ? 0.30 : 0.45))
+                        .frame(width: labelW, alignment: .leading)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                } else {
+                    Text("\(seg.id)")
+                        .font(.system(size: 11, weight: work ? .bold : .regular, design: .rounded))
+                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.30))
+                        .frame(width: labelW, alignment: .leading)
+                }
+                if hasDist {
+                    Text(seg.formattedDistance ?? "—")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(isDim ? 0.28 : (work ? 0.90 : 0.55)))
+                        .frame(width: 56, alignment: .trailing)
+                }
+                Spacer()
+                Text(seg.formattedPace ?? "—")
+                    .font(.system(size: 12, weight: work ? .semibold : .regular, design: .rounded))
+                    .foregroundStyle(seg.formattedPace != nil ? paceColor : Color.secondary)
+                    .frame(width: 62, alignment: .trailing)
+                Text(seg.formattedDuration)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(isDim ? 0.28 : (work ? 0.75 : 0.38)))
+                    .frame(width: 48, alignment: .trailing)
+                if hasHR {
+                    Text(seg.avgHeartRate.map { "\($0)" } ?? "—")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(seg.avgHeartRate != nil
+                            ? Theme.heartRate.opacity(work ? 1.0 : 0.42)
+                            : Color.secondary)
+                        .frame(width: 38, alignment: .trailing)
+                }
+            }
+            .padding(.vertical, 5)
+            .background(work ? Theme.violet.opacity(0.08) : Color.clear)
+        }
+    }
+
+    private func footerStat(_ value: String, _ label: String, _ color: Color) -> some View {
+        VStack(alignment: .center, spacing: 2) {
+            Text(value).font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(.white)
+            Text(label).font(.system(size: 9, weight: .medium)).tracking(0.3).foregroundStyle(color.opacity(0.7))
+        }
+    }
+}
+
+// MARK: - Intervals share screen
+
+struct IntervalsShareCardScreen: View {
+    let activity: Activity
+    let segments: [IntervalSegment]
+    var miniMeImage: UIImage? = nil
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var shareURL: URL?
+    @State private var previewImage: UIImage?
+    @State private var isRendering = false
+
+    private var shareFilename: String {
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyyMMdd"
+        return "mimo_intervals_\(fmt.string(from: activity.date)).png"
+    }
+
+    var body: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            VStack(spacing: 0) {
+                topBar
+                ScrollView {
+                    VStack(spacing: 28) {
+                        cardPreview
+                        shareButton.padding(.horizontal, 24)
+                        Spacer(minLength: 32)
+                    }
+                    .padding(.top, 20)
+                }
+            }
+        }
+        .task { await renderCard() }
+    }
+
+    private var topBar: some View {
+        HStack {
+            Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                .font(.body).foregroundStyle(.secondary)
+            Spacer()
+            Text(AppLanguage.shared.s("인터벌 카드", "Intervals Card"))
+                .font(.headline).foregroundStyle(.white)
+            Spacer()
+            Text(AppLanguage.shared.s("닫기", "Close")).foregroundStyle(.clear)
+        }
+        .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 14)
+    }
+
+    @ViewBuilder private var cardPreview: some View {
+        if let img = previewImage {
+            Image(uiImage: img).resizable().scaledToFit()
+                .frame(maxWidth: 300)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
+        } else {
+            let scale: CGFloat = 300.0 / 360.0
+            IntervalsShareCardView(activity: activity, segments: segments, miniMeImage: miniMeImage)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .scaleEffect(scale)
+                .frame(width: 300, height: scale * IntervalsShareCardView.cardHeight(segmentCount: segments.count))
+        }
+    }
+
+    @ViewBuilder private var shareButton: some View {
+        if isRendering {
+            ProgressView().tint(Theme.violet).frame(maxWidth: .infinity).padding(.vertical, 16)
+        } else if let url = shareURL {
+            ShareLink(item: url, preview: SharePreview(AppLanguage.shared.s("인터벌 구간", "Interval Reps"))) {
+                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                    .font(.headline).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 15)
+                    .background(Theme.violet).clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+    }
+
+    @MainActor
+    private func renderCard() async {
+        isRendering = true
+        let card = IntervalsShareCardView(activity: activity, segments: segments, miniMeImage: miniMeImage)
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3
+        guard let img = renderer.uiImage, let data = img.pngData() else { isRendering = false; return }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(shareFilename)
+        try? data.write(to: url)
+        previewImage = img
+        shareURL = url
+        isRendering = false
+    }
+}

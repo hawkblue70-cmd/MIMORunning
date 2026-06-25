@@ -1502,8 +1502,8 @@ struct ShareCardScreen: View {
     @State private var showInsightOnCard = true
     @State private var showRaceOnCard = true
     @State private var showMiniMe = true
-    @State private var showMoodOnCard = false
-    @State private var showMemoOnCard = false
+    @State private var showMoodOnCard = true
+    @State private var showMemoOnCard = true
     @State private var showShoeOnCard = true
     @State private var carouselPage = 0
     // Video
@@ -1594,8 +1594,6 @@ struct ShareCardScreen: View {
         var d: Set<ShareMetric> = [.pace, .duration]
         if activity.avgHeartRate != nil { d.insert(.heartRate) }
         if detail?.avgCadence != nil   { d.insert(.cadence) }
-        if detail?.vo2Max != nil       { d.insert(.vo2Max) }
-        if activity.calories != nil    { d.insert(.calories) }
         return d
     }
 
