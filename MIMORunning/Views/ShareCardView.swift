@@ -1788,10 +1788,10 @@ struct ShareCardScreen: View {
                                 Text(item.id.chipLabel)
                                     .font(.caption.weight(.semibold))
                             }
-                            .foregroundStyle(isOn ? Color.white : Color.white.opacity(0.4))
+                            .foregroundStyle(Color.white)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(isOn ? Theme.violet : Color.white.opacity(0.08))
+                            .background(isOn ? Theme.violet : Color.white.opacity(0.15))
                             .clipShape(Capsule())
                         }
                         .buttonStyle(.plain)
@@ -1822,15 +1822,13 @@ struct ShareCardScreen: View {
                                     .font(.caption.weight(.semibold))
                             }
                             .foregroundStyle(
-                                available
-                                    ? (isSelected ? Color.white : Color.white.opacity(0.4))
-                                    : Color.white.opacity(0.18)
+                                available ? Color.white : Color.white.opacity(0.18)
                             )
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(
                                 isSelected ? Theme.violet
-                                : Color.white.opacity(available ? 0.08 : 0.04)
+                                : Color.white.opacity(available ? 0.15 : 0.04)
                             )
                             .clipShape(Capsule())
                         }
