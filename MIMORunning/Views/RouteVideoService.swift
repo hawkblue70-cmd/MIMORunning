@@ -43,8 +43,8 @@ struct RouteVideoFrameView: View {
                     .scaledToFill()
                     .frame(width: w, height: h)
                     .clipped()
-                    .brightness(CardVisual.videoBrightnessBoost)
-                    .saturation(CardVisual.videoSaturationBoost)
+                    .brightness(-0.08)
+                    .saturation(0.85)
 
                 RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress)
                     .frame(width: w, height: h)
