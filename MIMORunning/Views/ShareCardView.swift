@@ -866,9 +866,13 @@ private struct PhotoShareCardView: View {
             if max.width > 1 || max.height > 1 {
                 Color.clear
                     .contentShape(Rectangle())
-                    .gesture(
+                    .simultaneousGesture(
                         DragGesture(minimumDistance: 4)
                             .onChanged { value in
+                                // Pass horizontal swipes through to the parent TabView
+                                let h = abs(value.translation.width)
+                                let v = abs(value.translation.height)
+                                guard v > h else { return }
                                 photoOffset = CGSize(
                                     width: min(max.width, Swift.max(-max.width,
                                                gestureStart.width + value.translation.width)),
@@ -876,7 +880,11 @@ private struct PhotoShareCardView: View {
                                                 gestureStart.height + value.translation.height))
                                 )
                             }
-                            .onEnded { _ in gestureStart = photoOffset }
+                            .onEnded { value in
+                                let h = abs(value.translation.width)
+                                let v = abs(value.translation.height)
+                                if v > h { gestureStart = photoOffset }
+                            }
                     )
             }
         }
@@ -1523,6 +1531,13 @@ struct ShareCardScreen: View {
     @State private var cardPanel: CardChartPanel = .map
     @State private var shareHRSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var shareWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
+    // Card index (0 = template card, 1 = big number)
+    @State private var cardIndex = 0
+    @State private var heroMetric: HeroMetric = .distance
+    @State private var bigNumberShowMood: Bool = true
+    @State private var bigNumberShowMemo: Bool = true
+
+    private var isBigNumber: Bool { cardIndex == 1 }
 
     private var routeCoords: [CLLocationCoordinate2D] { detail?.routeCoordinates ?? [] }
     private var distanceKmString: String {
@@ -1832,11 +1847,188 @@ struct ShareCardScreen: View {
     // MARK: - Body helpers
 
     private var cardSection: some View {
-        cardPreview
-            .frame(width: 300, height: 375)
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+        TabView(selection: $cardIndex) {
+            cardPreview
+                .frame(width: 300, height: 375)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
+                .animation(.easeInOut(duration: 0.2), value: template)
+                .tag(0)
+            BigNumberCard(
+                activity: activity,
+                detail: detail,
+                heroMetric: heroMetric,
+                mood: bigNumberShowMood ? story?.mood : nil,
+                memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
+                weatherText: condition?.weather?.formattedTemp,
+                weatherIcon: condition?.weather?.systemIcon,
+                dateText: activity.date.cardDateTimeString,
+                photo: template == .story ? (selectedPhoto ?? storyPhoto) : nil
+            )
             .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
-            .animation(.easeInOut(duration: 0.2), value: template)
+            .tag(1)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .frame(height: 375)
+    }
+
+    private var cardPageDots: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(cardIndex == 0 ? Theme.violet : Color(hex: "6E6E78"))
+                .frame(width: 7, height: 7)
+            Circle()
+                .fill(cardIndex == 1 ? Theme.violet : Color(hex: "6E6E78"))
+                .frame(width: 7, height: 7)
+        }
+        .padding(.top, 8)
+    }
+
+    // MARK: - Big Number chip row (cardIndex == 1)
+
+    @ViewBuilder
+    private func lockedChip(_ label: String, icon: String? = nil) -> some View {
+        HStack(spacing: 4) {
+            if let icon = icon {
+                Image(systemName: icon).font(.system(size: 10))
+            }
+            Text(label).font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(Color(hex: "6E6E78"))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.04))
+        .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private func activeChip(_ label: String, icon: String? = nil) -> some View {
+        HStack(spacing: 4) {
+            if let icon = icon {
+                Image(systemName: icon).font(.system(size: 10))
+            }
+            Text(label).font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(Color.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Theme.violet)
+        .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private func availableChip(_ label: String, icon: String? = nil) -> some View {
+        HStack(spacing: 4) {
+            if let icon = icon {
+                Image(systemName: icon).font(.system(size: 10))
+            }
+            Text(label).font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(Color.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.15))
+        .clipShape(Capsule())
+    }
+
+    private var bigNumberChipRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Row 1: content chips — all locked
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    lockedChip(AppLanguage.shared.s("인사이트", "Insight"), icon: "sparkles")
+                    if let s = story {
+                        Button {
+                            bigNumberShowMood.toggle()
+                            Task { await renderCard(showSpinner: false) }
+                        } label: {
+                            if bigNumberShowMood {
+                                activeChip(AppLanguage.shared.s("느낌", "Mood"), icon: s.mood.sfSymbol)
+                            } else {
+                                availableChip(AppLanguage.shared.s("느낌", "Mood"), icon: s.mood.sfSymbol)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        if !s.memo.isEmpty {
+                            Button {
+                                bigNumberShowMemo.toggle()
+                                Task { await renderCard(showSpinner: false) }
+                            } label: {
+                                if bigNumberShowMemo {
+                                    activeChip(AppLanguage.shared.s("메모", "Memo"))
+                                } else {
+                                    availableChip(AppLanguage.shared.s("메모", "Memo"))
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    if canShowMiniMe {
+                        lockedChip(AppLanguage.shared.s("미니미", "Mini-Me"))
+                    }
+                    if let shoe = activeShoe {
+                        lockedChip(shoe.displayName, icon: "shoe.fill")
+                    }
+                    if let race = confirmedRace {
+                        lockedChip(race.raceName, icon: "flag.checkered")
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 2)
+            }
+            // Row 2: HeroMetric radio chips + non-hero metric chips locked
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(HeroMetric.allCases) { m in
+                        let available = m.isAvailable(activity: activity, detail: detail)
+                        let isSelected = heroMetric == m
+                        Button {
+                            guard available else { return }
+                            heroMetric = m
+                        } label: {
+                            HStack(spacing: 4) {
+                                if isSelected {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                                Text(m.shortName).font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(
+                                !available ? Color(hex: "6E6E78")
+                                    : Color.white
+                            )
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                !available ? Color.white.opacity(0.04)
+                                    : (isSelected ? Theme.violet : Color.white.opacity(0.15))
+                            )
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!available)
+                    }
+                    // Non-hero metric chips (cadence, VO₂max, calories) — locked
+                    ForEach(allMetricItems.filter {
+                        $0.id != .pace && $0.id != .duration && $0.id != .heartRate
+                    }) { item in
+                        lockedChip(item.id.chipLabel)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 2)
+            }
+            // Row 3: chart panel chips — all locked
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(CardChartPanel.allCases, id: \.self) { panel in
+                        lockedChip(panel.label, icon: panel.icon)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 2)
+            }
+        }
     }
 
     @ViewBuilder
@@ -1936,8 +2128,11 @@ struct ShareCardScreen: View {
                 Spacer()
                 cardSection
                 carouselDots
+                cardPageDots
                 Spacer(minLength: 20)
-                chipRow.padding(.bottom, 12)
+                Group {
+                    if isBigNumber { bigNumberChipRow } else { chipRow }
+                }.padding(.bottom, 12)
                 templatePicker
                 bottomControls
                 shareCTA.padding(.horizontal, 24).padding(.bottom, 36)
@@ -2013,6 +2208,21 @@ struct ShareCardScreen: View {
                 await loadChartData(for: newPanel)
                 await renderCard(showSpinner: false)
             }
+        }
+        .onChange(of: cardIndex) { _, _ in
+            Task { await renderCard(showSpinner: false) }
+        }
+        .onChange(of: heroMetric) { _, _ in
+            guard isBigNumber else { return }
+            Task { await renderCard(showSpinner: false) }
+        }
+        .onChange(of: bigNumberShowMood) { _, _ in
+            guard isBigNumber else { return }
+            Task { await renderCard(showSpinner: false) }
+        }
+        .onChange(of: bigNumberShowMemo) { _, _ in
+            guard isBigNumber else { return }
+            Task { await renderCard(showSpinner: false) }
         }
         .task(id: template) {
             guard template == .routeVideo else { return }
@@ -2626,6 +2836,25 @@ struct ShareCardScreen: View {
         if showSpinner { isRendering = true }
         storyShareImages = []
         previewImage = nil
+
+        // BigNumber card: render directly without template
+        if cardIndex == 1 {
+            let renderer = ImageRenderer(content:
+                BigNumberCard(
+                    activity: activity, detail: detail, heroMetric: heroMetric,
+                    mood: bigNumberShowMood ? story?.mood : nil,
+                memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
+                    weatherText: condition?.weather?.formattedTemp,
+                    dateText: activity.date.cardDateTimeString,
+                    photo: template == .story ? (selectedPhoto ?? storyPhoto) : nil
+                )
+                .frame(width: 300, height: 375)
+            )
+            renderer.scale = 3
+            previewImage = renderer.uiImage
+            isRendering = false
+            return
+        }
 
         // Use in-memory array if available (avoids @Query timing gap); fall back to disk on restart.
         let photos = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
