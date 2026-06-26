@@ -252,12 +252,30 @@ private struct TrialBannerView: View {
 private struct ProPaywallSheet: View {
     @Environment(\.dismiss) private var dismiss
 
+    private struct FeatureRow: View {
+        let icon: String
+        let text: String
+        var body: some View {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.violet)
+                    .frame(width: 20)
+                Text(text)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.85))
+                Spacer()
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: 20) {
+                        // Header
                         VStack(spacing: 10) {
                             ZStack {
                                 Circle()
@@ -267,7 +285,7 @@ private struct ProPaywallSheet: View {
                                     .font(.system(size: 32, weight: .semibold))
                                     .foregroundStyle(Theme.violet)
                             }
-                            Text(AppLanguage.shared.s("MIMO Pro", "MIMO Pro"))
+                            Text("MIMO Pro")
                                 .font(.system(size: 22, weight: .bold))
                                 .foregroundStyle(.white)
                             Text(AppLanguage.shared.s("새 기록을 계속 쌓으려면\n구독이 필요해요", "Subscribe to keep syncing\nnew workouts"))
@@ -277,6 +295,43 @@ private struct ProPaywallSheet: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.top, 8)
+
+                        // Features list
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(AppLanguage.shared.s("포함 기능", "What's included"))
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                                .tracking(0.5)
+                            FeatureRow(
+                                icon: "arrow.triangle.2.circlepath",
+                                text: AppLanguage.shared.s("모든 러닝·걷기·하이킹 기록 무제한 동기화", "Unlimited sync for all running, walking & hiking")
+                            )
+                            FeatureRow(
+                                icon: "chart.xyaxis.line",
+                                text: AppLanguage.shared.s("상세 지표: 페이스, 심박수, 칼로리, 고도", "Detailed metrics: pace, heart rate, calories, elevation")
+                            )
+                            FeatureRow(
+                                icon: "map",
+                                text: AppLanguage.shared.s("GPS 루트 지도 및 스플릿 분석", "GPS route map & split analysis")
+                            )
+                            FeatureRow(
+                                icon: "sparkles",
+                                text: AppLanguage.shared.s("러닝 인사이트 및 공유 카드", "Running insights & share cards")
+                            )
+                            FeatureRow(
+                                icon: "shoe",
+                                text: AppLanguage.shared.s("신발 관리 및 주행거리 추적", "Shoe management & mileage tracking")
+                            )
+                            FeatureRow(
+                                icon: "chart.line.uptrend.xyaxis",
+                                text: AppLanguage.shared.s("성장 차트 및 개인 기록(PR) 추적", "Growth charts & personal record (PR) tracking")
+                            )
+                        }
+                        .padding(16)
+                        .background(Theme.cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .padding(.horizontal, 16)
 
                         SubscriptionSectionCard()
                             .padding(.horizontal, 16)

@@ -466,10 +466,7 @@ struct InsightEngine {
                                  title: L.s("바람을 가른 러닝", "Into the Wind"),
                                  detail: L.s("강풍 속에서도 멈추지 않았어요", "Strong winds, but you didn't stop"))
         }
-        let sleepLabel = cond.sleepScore.map { L.s("수면 \($0.grade.label)", "Sleep: \($0.grade.label)") } ?? L.s("수면 부족", "poor sleep")
-        return InsightResult(theme: .adverseCondition,
-                             title: L.s("잠 부족에도 해낸 러닝", "Running on Little Sleep"),
-                             detail: L.s("\(sleepLabel)인 날 — 그래도 나섰어요", "\(sleepLabel) — you showed up anyway"))
+        return nil
     }
 
     // MARK: - Async compute (cache-friendly entry point)

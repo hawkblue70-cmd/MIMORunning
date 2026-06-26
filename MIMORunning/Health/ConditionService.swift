@@ -82,10 +82,8 @@ struct ActivityCondition {
     var weather: WeatherSnapshot?
     var sleepScore: SleepScore?
 
-    var isSleepInsufficient: Bool { sleepScore?.isInsufficient ?? false }
-
     var hasAdverseSignal: Bool {
-        weather?.isAdverse == true || isSleepInsufficient
+        weather?.isAdverse == true
     }
 }
 
@@ -93,22 +91,28 @@ struct ActivityCondition {
 
 struct ConditionService {
 
-    /// Fetches historical hourly weather for the run date and location.
-    /// Returns nil when: no coordinate, run < 48 h ago (archive lag), network error.
+    /// Fetches hourly weather for the run date and location.
+    /// Uses the forecast API for runs within the last 7 days (no archive lag),
+    /// falls back to the historical archive for older runs.
+    /// Returns nil when: no coordinate, network error.
     static func fetchWeather(
         date: Date,
         coordinate: CLLocationCoordinate2D?
     ) async -> WeatherSnapshot? {
         guard let coord = coordinate else { return nil }
-        // Open-Meteo historical archive has ~5-day processing lag; skip very recent runs
-        guard Date().timeIntervalSince(date) >= 48 * 3600 else { return nil }
 
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
         df.timeZone = TimeZone(identifier: "UTC")
         let dateStr = df.string(from: date)
 
-        var comps = URLComponents(string: "https://archive-api.open-meteo.com/v1/archive")!
+        // Forecast API covers today back ~7 days with no processing lag.
+        // Archive API covers older dates but has a ~5-day quality lag.
+        let daysSince = Date().timeIntervalSince(date) / 86400
+        let baseURL = daysSince < 7
+            ? "https://api.open-meteo.com/v1/forecast"
+            : "https://archive-api.open-meteo.com/v1/archive"
+        var comps = URLComponents(string: baseURL)!
         comps.queryItems = [
             URLQueryItem(name: "latitude",        value: String(format: "%.4f", coord.latitude)),
             URLQueryItem(name: "longitude",       value: String(format: "%.4f", coord.longitude)),

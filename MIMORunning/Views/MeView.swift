@@ -1171,12 +1171,18 @@ struct SubscriptionSectionCard: View {
                     }
                 }
 
+                // Subscription term label
+                Text(AppLanguage.shared.s("6개월 자동 갱신 구독", "6-Month Auto-Renewing Subscription"))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 // Price block
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(product?.displayPrice ?? "₩11,000")
                         .font(.system(size: 28, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
-                    Text(AppLanguage.shared.s("/ 6개월", "/ 6mo"))
+                    Text(AppLanguage.shared.s("/ 6개월", "/ 6 months"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
                         .padding(.bottom, 2)

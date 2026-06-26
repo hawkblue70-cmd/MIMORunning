@@ -27,6 +27,7 @@ class HealthKitManager {
     @ObservationIgnored private var workoutCache: [UUID: HKWorkout] = [:]
     @ObservationIgnored private var cachedMHR: Int? = nil
     @ObservationIgnored private var pausedIntervalsCache: [UUID: [DateInterval]] = [:]
+    @ObservationIgnored private var detailCache: [UUID: ActivityDetail] = [:]
 
     @ObservationIgnored private let cacheContainer: ModelContainer? = {
         let schema = Schema([CachedActivity.self])
@@ -246,6 +247,13 @@ class HealthKitManager {
     // MARK: - Detail (on demand)
 
     func fetchDetail(for activityID: UUID) async -> ActivityDetail? {
+        if let cached = detailCache[activityID] { return cached }
+        let result = await fetchDetailFromHealthKit(for: activityID)
+        if let result { detailCache[activityID] = result }
+        return result
+    }
+
+    private func fetchDetailFromHealthKit(for activityID: UUID) async -> ActivityDetail? {
         // workoutCache is populated during fetchActivities; if detail is tapped before
         // background sync finishes (cache-first launch), do a targeted lookup.
         if workoutCache[activityID] == nil { await fetchSingleWorkout(id: activityID) }
@@ -447,7 +455,9 @@ class HealthKitManager {
         workoutCache[workout.uuid] = workout
         let distID = distanceTypeID(for: workout.workoutActivityType)
         let distance = workout.statistics(for: HKQuantityType(distID))?
-            .sumQuantity()?.doubleValue(for: .meter()) ?? 0
+            .sumQuantity()?.doubleValue(for: .meter())
+            ?? workout.totalDistance?.doubleValue(for: .meter())
+            ?? 0
         return Activity(
             id: workout.uuid,
             type: mapType(workout.workoutActivityType),
@@ -1231,20 +1241,31 @@ class HealthKitManager {
         let hours = main.hours
         guard hours > 0.5, hours <= 12.0 else { return nil }
 
-        // Component 1 — duration (max 50)
-        let durPts = SleepScore.durationScore(hours: hours)
-
         // Component 2 — consistency (max 30): bedtime deviation from 14-day average
         let consistencyPts = sleepConsistencyScore(currentBedtime: main.start, history: bedtimeHistory)
 
-        // Component 3 — interruptions (max 20): awake samples inside main block
+        // Component 3 — interruptions (max 20): awake events inside main block.
+        // Union-merge awake samples first to deduplicate multiple sources (e.g. Watch + third-party
+        // app each writing their own awake stages). Then count only events lasting ≥ 5 min — brief
+        // arousals between sleep stages are physiologically normal and should not be penalised.
         let hasWatchData = asleepSamples.contains {
             $0.value == HKCategoryValueSleepAnalysis.asleepCore.rawValue ||
             $0.value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue ||
             $0.value == HKCategoryValueSleepAnalysis.asleepREM.rawValue
         }
-        let awakeInBlock = awakeSamples.filter {
-            $0.startDate >= main.start && $0.startDate < main.end
+        let sortedAwake = awakeSamples.map { ($0.startDate, $0.endDate) }.sorted { $0.0 < $1.0 }
+        var mergedAwake: [(start: Date, end: Date)] = []
+        for (s, e) in sortedAwake {
+            if let last = mergedAwake.last, s <= last.end.addingTimeInterval(gapTolerance) {
+                mergedAwake[mergedAwake.count - 1] = (last.start, max(last.end, e))
+            } else {
+                mergedAwake.append((start: s, end: e))
+            }
+        }
+        let minAwakeDuration: TimeInterval = 5 * 60
+        let awakeInBlock = mergedAwake.filter {
+            $0.start >= main.start && $0.start < main.end &&
+            $0.end.timeIntervalSince($0.start) >= minAwakeDuration
         }.count
         let interruptionPts = sleepInterruptionScore(awakeCount: awakeInBlock, hasWatchData: hasWatchData)
 

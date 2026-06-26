@@ -262,10 +262,14 @@ private struct RoutePolylineOverlay: View {
         Canvas { ctx, size in
             guard snapshotPoints.count > 1, progress > 0 else { return }
 
-            // Scale snapshot-space points to current canvas size
-            let sx = size.width  / RouteVideoExportService.renderSize.width
-            let sy = size.height / RouteVideoExportService.renderSize.height
-            let pts = snapshotPoints.map { CGPoint(x: $0.x * sx, y: $0.y * sy) }
+            // scaledToFill: uniform scale so image covers the frame, then center-crop.
+            // Points must use the same transform to stay aligned with the map.
+            let imgW = RouteVideoExportService.renderSize.width
+            let imgH = RouteVideoExportService.renderSize.height
+            let s    = max(size.width / imgW, size.height / imgH)
+            let xOff = (size.width  - imgW * s) / 2
+            let yOff = (size.height - imgH * s) / 2
+            let pts  = snapshotPoints.map { CGPoint(x: $0.x * s + xOff, y: $0.y * s + yOff) }
 
             let endIdx = max(1, Int(CGFloat(pts.count - 1) * min(progress, 1.0)))
             let slice = Array(pts[0...endIdx])

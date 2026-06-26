@@ -8,16 +8,17 @@ actor InsightCache {
         let activityID: UUID
         let historyCount: Int
         let isRefined: Bool
+        let language: String
     }
 
     private var store: [Key: InsightResult] = [:]
 
-    func result(for activityID: UUID, historyCount: Int, isRefined: Bool) -> InsightResult? {
-        store[Key(activityID: activityID, historyCount: historyCount, isRefined: isRefined)]
+    func result(for activityID: UUID, historyCount: Int, isRefined: Bool, language: String) -> InsightResult? {
+        store[Key(activityID: activityID, historyCount: historyCount, isRefined: isRefined, language: language)]
     }
 
-    func cache(_ result: InsightResult, for activityID: UUID, historyCount: Int, isRefined: Bool) {
-        store[Key(activityID: activityID, historyCount: historyCount, isRefined: isRefined)] = result
+    func cache(_ result: InsightResult, for activityID: UUID, historyCount: Int, isRefined: Bool, language: String) {
+        store[Key(activityID: activityID, historyCount: historyCount, isRefined: isRefined, language: language)] = result
     }
 
     func invalidate(_ activityID: UUID) {

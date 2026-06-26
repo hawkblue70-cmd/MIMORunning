@@ -201,16 +201,17 @@ struct ActivityDetailView: View {
             }
 
             let historyCount = manager.activities.count
+            let lang = AppLanguage.shared.isEnglish ? "en" : "ko"
 
             // Phase 1: quick insight off main thread (no workout-type yet)
             let initial: InsightResult
-            if let cached = await InsightCache.shared.result(for: activity.id, historyCount: historyCount, isRefined: false) {
+            if let cached = await InsightCache.shared.result(for: activity.id, historyCount: historyCount, isRefined: false, language: lang) {
                 initial = cached
             } else {
                 let computed = await InsightEngine.computeBackground(
                     activity: activity, history: manager.activities, level: level,
                     raceMatch: raceDetector.matchFor(activityID: activity.id))
-                await InsightCache.shared.cache(computed, for: activity.id, historyCount: historyCount, isRefined: false)
+                await InsightCache.shared.cache(computed, for: activity.id, historyCount: historyCount, isRefined: false, language: lang)
                 initial = computed
             }
             insight = initial
@@ -246,7 +247,7 @@ struct ActivityDetailView: View {
             // Phase 3: refine insight off main thread with workout type + splits + condition
             let refined: InsightResult
             if let det = detail {
-                if let cached = await InsightCache.shared.result(for: activity.id, historyCount: historyCount, isRefined: true) {
+                if let cached = await InsightCache.shared.result(for: activity.id, historyCount: historyCount, isRefined: true, language: lang) {
                     refined = cached
                 } else {
                     let computed = await InsightEngine.computeBackground(
@@ -260,7 +261,7 @@ struct ActivityDetailView: View {
                         raceMatch: raceDetector.matchFor(activityID: activity.id),
                         detail: det
                     )
-                    await InsightCache.shared.cache(computed, for: activity.id, historyCount: historyCount, isRefined: true)
+                    await InsightCache.shared.cache(computed, for: activity.id, historyCount: historyCount, isRefined: true, language: lang)
                     refined = computed
                 }
                 withAnimation(.easeInOut(duration: 0.3)) { insight = refined }
@@ -282,6 +283,7 @@ struct ActivityDetailView: View {
 
     private func recomputeInsightWithRaceMatch() async {
         let historyCount = manager.activities.count
+        let lang = AppLanguage.shared.isEnglish ? "en" : "ko"
         await InsightCache.shared.invalidate(activity.id)
         let match = raceDetector.matchFor(activityID: activity.id)
         let recomputed = await InsightEngine.computeBackground(
@@ -296,7 +298,7 @@ struct ActivityDetailView: View {
             detail: detail
         )
         let isRefined = detail != nil
-        await InsightCache.shared.cache(recomputed, for: activity.id, historyCount: historyCount, isRefined: isRefined)
+        await InsightCache.shared.cache(recomputed, for: activity.id, historyCount: historyCount, isRefined: isRefined, language: lang)
         withAnimation(.easeInOut(duration: 0.3)) { insight = recomputed }
     }
 
