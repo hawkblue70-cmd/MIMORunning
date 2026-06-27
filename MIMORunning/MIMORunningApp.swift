@@ -38,10 +38,17 @@ private struct PhoneWidthWrapper<Content: View>: View {
 
     var body: some View {
         if sizeClass == .regular {
-            content()
-                .frame(maxWidth: 430)
-                .frame(maxWidth: .infinity)
-                .background(Color(.systemBackground))
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                content()
+                    .environment(\.horizontalSizeClass, .compact)
+                    .frame(width: 430)
+                    .clipped()
+                Spacer(minLength: 0)
+            }
+            .background(Color.black)
+            .preferredColorScheme(.dark)
+            .ignoresSafeArea()
         } else {
             content()
         }

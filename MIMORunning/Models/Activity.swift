@@ -81,7 +81,7 @@ struct Activity: Identifiable, Hashable {
 
 // MARK: - Workout Type
 
-enum WorkoutType: String {
+enum WorkoutType: String, Codable {
     case interval    // 인터벌/스피드
     case longRun     // 롱런
     case easy        // 이지/회복런
@@ -131,7 +131,7 @@ struct ActivityDetail {
     let altitudeTimeProfile: [(offset: TimeInterval, altitude: Double)]  // time-based for share card
 }
 
-struct IntervalSegment: Identifiable {
+struct IntervalSegment: Identifiable, Codable {
     let id: Int           // 1-based index
     let startDate: Date
     let endDate: Date
@@ -165,7 +165,7 @@ struct IntervalSegment: Identifiable {
     }
 }
 
-struct SplitData: Identifiable {
+struct SplitData: Identifiable, Codable {
     let id: Int              // 1-based km number
     let distanceM: Double    // meters (< 1000 for last partial split)
     let duration: TimeInterval
@@ -187,13 +187,82 @@ struct SplitData: Identifiable {
     }
 }
 
-struct HRZoneData: Identifiable {
+struct HRZoneData: Identifiable, Codable {
     let id: Int              // 1–5
     let name: String
     let minBPM: Int
     let maxBPM: Int
     let seconds: TimeInterval
     let fraction: Double     // proportion of total tracked HR time (0.0–1.0)
+}
+
+// MARK: - ActivityDetail Codable (manual — handles CLLocationCoordinate2D and named tuples)
+
+extension ActivityDetail: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case routeLat, routeLon
+        case elevationGain, avgSpeed, avgPower, avgCadence
+        case splits, hrZones, intervalSegments, workoutType
+        case avgGroundContactTime, avgStrideLength, avgVerticalOscillation
+        case vo2Max, poolLength, swimmingStrokeCount, swimLapCount, swolfScore
+        case altProfileDist, altProfileAlt
+        case altTimeOffset, altTimeAlt
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let lats = try c.decode([Double].self, forKey: .routeLat)
+        let lons = try c.decode([Double].self, forKey: .routeLon)
+        routeCoordinates = zip(lats, lons).map { CLLocationCoordinate2D(latitude: $0, longitude: $1) }
+        elevationGain           = try c.decodeIfPresent(Double.self, forKey: .elevationGain)
+        avgSpeed                = try c.decodeIfPresent(Double.self, forKey: .avgSpeed)
+        avgPower                = try c.decodeIfPresent(Int.self,    forKey: .avgPower)
+        avgCadence              = try c.decodeIfPresent(Int.self,    forKey: .avgCadence)
+        splits                  = try c.decode([SplitData].self,       forKey: .splits)
+        hrZones                 = try c.decode([HRZoneData].self,      forKey: .hrZones)
+        intervalSegments        = try c.decode([IntervalSegment].self, forKey: .intervalSegments)
+        workoutType             = try c.decode(WorkoutType.self,       forKey: .workoutType)
+        avgGroundContactTime    = try c.decodeIfPresent(Double.self, forKey: .avgGroundContactTime)
+        avgStrideLength         = try c.decodeIfPresent(Double.self, forKey: .avgStrideLength)
+        avgVerticalOscillation  = try c.decodeIfPresent(Double.self, forKey: .avgVerticalOscillation)
+        vo2Max                  = try c.decodeIfPresent(Double.self, forKey: .vo2Max)
+        poolLength              = try c.decodeIfPresent(Double.self, forKey: .poolLength)
+        swimmingStrokeCount     = try c.decodeIfPresent(Int.self,    forKey: .swimmingStrokeCount)
+        swimLapCount            = try c.decodeIfPresent(Int.self,    forKey: .swimLapCount)
+        swolfScore              = try c.decodeIfPresent(Double.self, forKey: .swolfScore)
+        let dists   = try c.decode([Double].self, forKey: .altProfileDist)
+        let alts    = try c.decode([Double].self, forKey: .altProfileAlt)
+        altitudeProfile = zip(dists, alts).map { (distanceKm: $0, altitude: $1) }
+        let offsets = try c.decode([Double].self, forKey: .altTimeOffset)
+        let tAlts   = try c.decode([Double].self, forKey: .altTimeAlt)
+        altitudeTimeProfile = zip(offsets, tAlts).map { (offset: $0, altitude: $1) }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(routeCoordinates.map(\.latitude),  forKey: .routeLat)
+        try c.encode(routeCoordinates.map(\.longitude), forKey: .routeLon)
+        try c.encodeIfPresent(elevationGain,          forKey: .elevationGain)
+        try c.encodeIfPresent(avgSpeed,               forKey: .avgSpeed)
+        try c.encodeIfPresent(avgPower,               forKey: .avgPower)
+        try c.encodeIfPresent(avgCadence,             forKey: .avgCadence)
+        try c.encode(splits,           forKey: .splits)
+        try c.encode(hrZones,          forKey: .hrZones)
+        try c.encode(intervalSegments, forKey: .intervalSegments)
+        try c.encode(workoutType,      forKey: .workoutType)
+        try c.encodeIfPresent(avgGroundContactTime,   forKey: .avgGroundContactTime)
+        try c.encodeIfPresent(avgStrideLength,        forKey: .avgStrideLength)
+        try c.encodeIfPresent(avgVerticalOscillation, forKey: .avgVerticalOscillation)
+        try c.encodeIfPresent(vo2Max,                 forKey: .vo2Max)
+        try c.encodeIfPresent(poolLength,             forKey: .poolLength)
+        try c.encodeIfPresent(swimmingStrokeCount,    forKey: .swimmingStrokeCount)
+        try c.encodeIfPresent(swimLapCount,           forKey: .swimLapCount)
+        try c.encodeIfPresent(swolfScore,             forKey: .swolfScore)
+        try c.encode(altitudeProfile.map(\.distanceKm), forKey: .altProfileDist)
+        try c.encode(altitudeProfile.map(\.altitude),   forKey: .altProfileAlt)
+        try c.encode(altitudeTimeProfile.map(\.offset),   forKey: .altTimeOffset)
+        try c.encode(altitudeTimeProfile.map(\.altitude), forKey: .altTimeAlt)
+    }
 }
 
 // MARK: - Trend Metric

@@ -31,6 +31,7 @@ struct RouteVideoFrameView: View {
     var chartHRZones: [HRZoneData] = []
     var chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     var chartIntervalSegments: [IntervalSegment] = []
+    var showStats: Bool = true
 
     var body: some View {
         GeometryReader { proxy in
@@ -52,7 +53,9 @@ struct RouteVideoFrameView: View {
                 CardVisual.topScrim
                 CardVisual.videoBottomScrim
 
-                statsPanel(scale: scale)
+                if showStats {
+                    statsPanel(scale: scale)
+                }
             }
         }
     }
@@ -294,6 +297,50 @@ private struct RoutePolylineOverlay: View {
     }
 }
 
+// MARK: - BigNumberRouteVideoFrameView
+// Single-pass frame view: map background + route animation + BigNumber overlay (no transparency issues)
+struct BigNumberRouteVideoFrameView: View {
+    let snapshot: UIImage
+    let snapshotPoints: [CGPoint]
+    let routeProgress: CGFloat
+    let activity: Activity
+    let detail: ActivityDetail?
+    let heroMetric: HeroMetric
+    var mood: Mood? = nil
+    var memoText: String? = nil
+    var weatherText: String? = nil
+    var weatherIcon: String? = nil
+    let dateText: String
+    var shoeName: String? = nil
+
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = proxy.size.height
+            ZStack {
+                Image(uiImage: snapshot)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: w, height: h)
+                    .clipped()
+                    .brightness(-0.08)
+                    .saturation(0.85)
+
+                RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress)
+                    .frame(width: w, height: h)
+
+                BigNumberVideoOverlayView(
+                    activity: activity, detail: detail, heroMetric: heroMetric,
+                    mood: mood, memoText: memoText,
+                    weatherText: weatherText, weatherIcon: weatherIcon,
+                    dateText: dateText, shoeName: shoeName
+                )
+                .frame(width: w, height: h)
+            }
+        }
+    }
+}
+
 // MARK: - RouteVideoExportService
 
 struct RouteVideoExportService {
@@ -419,6 +466,84 @@ struct RouteVideoExportService {
                 chartHRZones: chartHRZones,
                 chartWorkoutSeries: chartWorkoutSeries,
                 chartIntervalSegments: chartIntervalSegments
+            )
+            .frame(width: renderSize.width, height: renderSize.height)
+
+            let renderer = ImageRenderer(content: frameView)
+            renderer.scale = 1
+            guard let cgImage = renderer.cgImage,
+                  let buffer = makePixelBuffer(from: cgImage) else { continue }
+            let pts = CMTime(value: CMTimeValue(frame), timescale: fps)
+            while !writerInput.isReadyForMoreMediaData { await Task.yield() }
+            adaptor.append(buffer, withPresentationTime: pts)
+            progressHandler(Double(frame + 1) / Double(frameCount))
+            await Task.yield()
+        }
+
+        writerInput.markAsFinished()
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            writer.finishWriting { cont.resume() }
+        }
+
+        guard writer.status == .completed else {
+            throw writer.error ?? NSError(domain: "RouteVideoExport", code: -1)
+        }
+        return outputURL
+    }
+
+    // MARK: BigNumber export — map + route animation + BigNumber overlay in one render pass
+
+    @MainActor
+    static func exportBigNumber(
+        snapshot: UIImage,
+        snapshotPoints: [CGPoint],
+        activity: Activity,
+        detail: ActivityDetail?,
+        heroMetric: HeroMetric,
+        mood: Mood?,
+        memoText: String?,
+        weatherText: String?,
+        weatherIcon: String?,
+        dateText: String,
+        shoeName: String?,
+        progressHandler: @escaping (Double) -> Void
+    ) async throws -> URL {
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_route_bn_\(UUID().uuidString).mp4")
+        try? FileManager.default.removeItem(at: outputURL)
+
+        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+        let inputSettings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: Int(renderSize.width),
+            AVVideoHeightKey: Int(renderSize.height),
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 2_500_000,
+                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+            ]
+        ]
+        let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: inputSettings)
+        writerInput.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: writerInput,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: Int(renderSize.width),
+                kCVPixelBufferHeightKey as String: Int(renderSize.height)
+            ]
+        )
+        writer.add(writerInput)
+        writer.startWriting()
+        writer.startSession(atSourceTime: .zero)
+
+        for frame in 0..<frameCount {
+            let progress = CGFloat(frame) / CGFloat(frameCount - 1)
+            let frameView = BigNumberRouteVideoFrameView(
+                snapshot: snapshot, snapshotPoints: snapshotPoints, routeProgress: progress,
+                activity: activity, detail: detail, heroMetric: heroMetric,
+                mood: mood, memoText: memoText,
+                weatherText: weatherText, weatherIcon: weatherIcon,
+                dateText: dateText, shoeName: shoeName
             )
             .frame(width: renderSize.width, height: renderSize.height)
 

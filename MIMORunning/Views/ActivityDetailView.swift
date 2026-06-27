@@ -93,6 +93,26 @@ struct ActivityDetailView: View {
     }
 
     var body: some View {
+        GeometryReader { geo in
+            let isWide = geo.size.width > 500   // iPad full-screen detection
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                if isWide {
+                    // iPad: constrain content to 430pt centered
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        detailContent.frame(width: 430)
+                        Spacer(minLength: 0)
+                    }
+                } else {
+                    detailContent
+                }
+            }
+        }
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    private var detailContent: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
             ScrollView {
@@ -399,7 +419,7 @@ struct ActivityDetailView: View {
             Group {
                 if activePanel == .map {
                     if let coords = detail?.routeCoordinates, !coords.isEmpty {
-                        RouteMapView(coordinates: coords)
+                        RouteMapView(coordinates: coords, activityID: activity.id)
                     } else {
                         panelPlaceholder(icon: "map.fill", message: AppLanguage.shared.s("경로 없음", "No Route"))
                     }
@@ -776,36 +796,123 @@ private struct ConditionChip: View {
 
 private struct RouteMapView: View {
     let coordinates: [CLLocationCoordinate2D]
+    let activityID: UUID
 
-    private var cameraPosition: MapCameraPosition {
-        guard let minLat = coordinates.map(\.latitude).min(),
-              let maxLat = coordinates.map(\.latitude).max(),
-              let minLon = coordinates.map(\.longitude).min(),
-              let maxLon = coordinates.map(\.longitude).max() else {
-            return .automatic
+    @State private var snapshot: UIImage?
+
+    var body: some View {
+        ZStack {
+            if let img = snapshot {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 220)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+            } else {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(hex: "0D0D12"))
+                    .frame(height: 220)
+                    .overlay { ProgressView().tint(Theme.violet) }
+            }
         }
-        let region = MKCoordinateRegion(
+        .padding(.horizontal, 16)
+        .task(id: activityID) {
+            guard snapshot == nil else { return }
+            if let cached = loadFromDisk() {
+                snapshot = cached
+            } else if let generated = await makeSnapshot() {
+                snapshot = generated
+                saveToDisk(generated)
+            }
+        }
+    }
+
+    // MARK: - Disk cache
+
+    private var cacheURL: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_map_v7_\(activityID.uuidString).jpg")
+    }
+
+    private func loadFromDisk() -> UIImage? {
+        guard let data = try? Data(contentsOf: cacheURL) else { return nil }
+        return UIImage(data: data)
+    }
+
+    private func saveToDisk(_ image: UIImage) {
+        if let data = image.jpegData(compressionQuality: 0.85) {
+            try? data.write(to: cacheURL)
+        }
+    }
+
+    // MARK: - Snapshot generation
+
+    private func makeSnapshot() async -> UIImage? {
+        // Filter out invalid GPS fixes (e.g. (0,0) cold-start spikes that inflate bounding box)
+        let valid = coordinates.filter { CLLocationCoordinate2DIsValid($0) && abs($0.latitude) > 1 && abs($0.longitude) > 1 }
+        guard valid.count > 1 else { return nil }
+
+        let lats = valid.map(\.latitude)
+        let lons = valid.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return nil }
+
+        let opts = MKMapSnapshotter.Options()
+        opts.region = MKCoordinateRegion(
             center: CLLocationCoordinate2D(
                 latitude: (minLat + maxLat) / 2,
                 longitude: (minLon + maxLon) / 2
             ),
             span: MKCoordinateSpan(
-                latitudeDelta: max(0.004, (maxLat - minLat) * 1.5),
-                longitudeDelta: max(0.004, (maxLon - minLon) * 1.5)
+                latitudeDelta: max(0.004, (maxLat - minLat) * 1.4),
+                longitudeDelta: max(0.004, (maxLon - minLon) * 1.4)
             )
         )
-        return .region(region)
-    }
+        // Cap at 398pt so snapshot fits inside 430pt iPad container (16pt padding each side)
+        let snapWidth = min(398, max(300, UIScreen.main.bounds.width - 32))
+        opts.size = CGSize(width: snapWidth, height: 220)
+        opts.scale = UIScreen.main.scale
+        opts.mapType = .mutedStandard
+        opts.showsBuildings = false
 
-    var body: some View {
-        Map(initialPosition: cameraPosition) {
-            MapPolyline(coordinates: coordinates)
-                .stroke(Theme.violet, lineWidth: 4)
+        guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
+
+        // snap.point(for:) returns logical-point coordinates matching snap.image.size (Apple documented).
+        // Use valid-only coordinates so invalid GPS spikes don't shift points off-screen.
+        let step = max(1, valid.count / 300)
+        let pts = stride(from: 0, to: valid.count, by: step).map { snap.point(for: valid[$0]) }
+
+        let violetColor = UIColor(red: 0x7C / 255.0, green: 0x5C / 255.0, blue: 0xFC / 255.0, alpha: 1.0)
+        // Use default format (no explicit scale) — matches Apple's documented snapshot drawing pattern
+        return UIGraphicsImageRenderer(size: snap.image.size).image { _ in
+            snap.image.draw(at: .zero)
+            guard pts.count > 1 else { return }
+
+            let path = UIBezierPath()
+            path.move(to: pts[0])
+            for pt in pts.dropFirst() { path.addLine(to: pt) }
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+
+            // Glow
+            path.lineWidth = 3
+            violetColor.withAlphaComponent(0.4).setStroke()
+            path.stroke()
+
+            // Main line
+            path.lineWidth = 1.5
+            violetColor.setStroke()
+            path.stroke()
+
+            // End dot
+            if let last = pts.last {
+                let dot = UIBezierPath(ovalIn: CGRect(x: last.x - 3, y: last.y - 3, width: 6, height: 6))
+                UIColor.white.setFill()
+                dot.fill()
+            }
         }
-        .mapStyle(.standard(elevation: .flat))
-        .frame(height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, 16)
     }
 }
 

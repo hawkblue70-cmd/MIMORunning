@@ -248,9 +248,31 @@ class HealthKitManager {
 
     func fetchDetail(for activityID: UUID) async -> ActivityDetail? {
         if let cached = detailCache[activityID] { return cached }
+        if let disk = loadDetailFromDisk(activityID) {
+            detailCache[activityID] = disk
+            return disk
+        }
         let result = await fetchDetailFromHealthKit(for: activityID)
-        if let result { detailCache[activityID] = result }
+        if let result {
+            detailCache[activityID] = result
+            saveDetailToDisk(result, id: activityID)
+        }
         return result
+    }
+
+    private func detailCacheURL(_ id: UUID) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_detail_\(id.uuidString).json")
+    }
+
+    private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
+        guard let data = try? Data(contentsOf: detailCacheURL(id)) else { return nil }
+        return try? JSONDecoder().decode(ActivityDetail.self, from: data)
+    }
+
+    private func saveDetailToDisk(_ detail: ActivityDetail, id: UUID) {
+        guard let data = try? JSONEncoder().encode(detail) else { return }
+        try? data.write(to: detailCacheURL(id), options: .atomic)
     }
 
     private func fetchDetailFromHealthKit(for activityID: UUID) async -> ActivityDetail? {

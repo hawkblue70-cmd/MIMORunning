@@ -1852,17 +1852,39 @@ struct ShareCardScreen: View {
                 .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                 .animation(.easeInOut(duration: 0.2), value: template)
                 .tag(0)
-            BigNumberCard(
-                activity: activity,
-                detail: detail,
-                heroMetric: heroMetric,
-                mood: bigNumberShowMood ? story?.mood : nil,
-                memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
-                weatherText: condition?.weather?.formattedTemp,
-                weatherIcon: condition?.weather?.systemIcon,
-                dateText: activity.date.cardDateTimeString,
-                photo: template == .story ? (selectedPhoto ?? storyPhoto) : nil
-            )
+            Group {
+                if template == .routeVideo, let snap = routeSnapshot {
+                    BigNumberRouteVideoFrameView(
+                        snapshot: snap,
+                        snapshotPoints: routeSnapshotPoints,
+                        routeProgress: routePreviewProgress,
+                        activity: activity, detail: detail, heroMetric: heroMetric,
+                        mood: bigNumberShowMood ? story?.mood : nil,
+                        memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
+                        weatherText: condition?.weather?.formattedTemp,
+                        weatherIcon: condition?.weather?.systemIcon,
+                        dateText: activity.date.cardDateTimeString,
+                        shoeName: displayShoeName
+                    )
+                    .frame(width: 300, height: 375)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                } else {
+                    BigNumberCard(
+                        activity: activity,
+                        detail: detail,
+                        heroMetric: heroMetric,
+                        mood: bigNumberShowMood ? story?.mood : nil,
+                        memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
+                        weatherText: condition?.weather?.formattedTemp,
+                        weatherIcon: condition?.weather?.systemIcon,
+                        dateText: activity.date.cardDateTimeString,
+                        shoeName: displayShoeName,
+                        photo: template == .story ? (selectedPhoto ?? storyPhoto)
+                            : template == .video ? videoPreviewImage
+                            : nil
+                    )
+                }
+            }
             .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
             .tag(1)
         }
@@ -2191,6 +2213,8 @@ struct ShareCardScreen: View {
             }
         }
         .onChange(of: template) { _, _ in
+            routeVideoFile = nil
+            exportedVideoFile = nil
             if template == .routeVideo, routeSnapshot == nil, !routeCoords.isEmpty {
                 Task {
                     if let result = try? await RouteVideoExportService.mapSnapshot(coordinates: routeCoords) {
@@ -2208,6 +2232,9 @@ struct ShareCardScreen: View {
             }
         }
         .onChange(of: cardIndex) { _, _ in
+            // Reset exported video files so each card manages its own export
+            routeVideoFile = nil
+            exportedVideoFile = nil
             Task { await renderCard(showSpinner: false) }
         }
         .onChange(of: heroMetric) { _, _ in
@@ -2708,6 +2735,36 @@ struct ShareCardScreen: View {
                 }
                 .disabled(routeSnapshotPoints.isEmpty)
             }
+        } else if isBigNumber {
+            // BigNumber card: always share as image (video/routeVideo handled above via exportVideo/exportRouteVideo)
+            if isRendering {
+                HStack(spacing: 10) {
+                    ProgressView().tint(Theme.violet)
+                    Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card..."))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+            } else if let img = previewImage {
+                Button { showShareSheet = true } label: {
+                    Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Theme.violet)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .sheet(isPresented: $showShareSheet) {
+                    ShareSheet(images: [img])
+                }
+            } else {
+                Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+            }
         } else if isRendering {
             HStack(spacing: 10) {
                 ProgressView().tint(Theme.violet)
@@ -2756,10 +2813,39 @@ struct ShareCardScreen: View {
     // MARK: - Render
 
     @MainActor
+    private func makeBigNumberOverlayView() -> BigNumberVideoOverlayView {
+        BigNumberVideoOverlayView(
+            activity: activity, detail: detail, heroMetric: heroMetric,
+            mood: bigNumberShowMood ? story?.mood : nil,
+            memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
+            weatherText: condition?.weather?.formattedTemp,
+            weatherIcon: condition?.weather?.systemIcon,
+            dateText: activity.date.cardDateTimeString,
+            shoeName: displayShoeName
+        )
+    }
+
+    @MainActor
     private func exportVideo() async {
         guard let url = sourceVideoURL else { return }
         isExportingVideo = true
         exportedVideoFile = nil
+
+        if isBigNumber {
+            // Render transparent overlay at 216×384 @5x → 1080×1920 px (same as VideoOverlayCard)
+            let overlayRenderer = ImageRenderer(content:
+                makeBigNumberOverlayView().frame(width: 216, height: 384)
+            )
+            overlayRenderer.scale = 5.0
+            guard let overlayImage = overlayRenderer.uiImage else {
+                isExportingVideo = false; return
+            }
+            if let out = try? await VideoExportService.exportVideo(sourceURL: url, overlay: overlayImage) {
+                exportedVideoFile = SharableVideoFile(url: out)
+            }
+            isExportingVideo = false
+            return
+        }
 
         let km = activity.distance / 1000
         let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
@@ -2803,26 +2889,45 @@ struct ShareCardScreen: View {
         routeVideoProgress = 0
         routeVideoFile = nil
         do {
-            let url = try await RouteVideoExportService.export(
-                snapshot: snap,
-                snapshotPoints: routeSnapshotPoints,
-                insightTitle: displayInsightTitle,
-                distanceKm: distanceKmString,
-                duration: activity.formattedDuration,
-                date: activity.date,
-                metrics: Array(enabledMetricItems.prefix(6)),
-                raceName: activeRaceName,
-                miniMeVariant: activeMiniMeVariant,
-                customMiniMeImage: activeMiniMeImage,
-                weather: condition?.weather,
-                chartPanel: cardPanel,
-                chartSplits: detail?.splits ?? [],
-                chartHRSamples: shareHRSamples,
-                chartHRZones: detail?.hrZones ?? [],
-                chartWorkoutSeries: shareWorkoutSeries,
-                chartIntervalSegments: detail?.intervalSegments ?? [],
-                progressHandler: { p in routeVideoProgress = p }
-            )
+            let url: URL
+            if isBigNumber {
+                // BigNumber: single-pass render (map + route animation + BigNumber overlay)
+                url = try await RouteVideoExportService.exportBigNumber(
+                    snapshot: snap,
+                    snapshotPoints: routeSnapshotPoints,
+                    activity: activity,
+                    detail: detail,
+                    heroMetric: heroMetric,
+                    mood: bigNumberShowMood ? story?.mood : nil,
+                    memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
+                    weatherText: condition?.weather?.formattedTemp,
+                    weatherIcon: condition?.weather?.systemIcon,
+                    dateText: activity.date.cardDateTimeString,
+                    shoeName: displayShoeName,
+                    progressHandler: { p in routeVideoProgress = p }
+                )
+            } else {
+                url = try await RouteVideoExportService.export(
+                    snapshot: snap,
+                    snapshotPoints: routeSnapshotPoints,
+                    insightTitle: displayInsightTitle,
+                    distanceKm: distanceKmString,
+                    duration: activity.formattedDuration,
+                    date: activity.date,
+                    metrics: Array(enabledMetricItems.prefix(6)),
+                    raceName: activeRaceName,
+                    miniMeVariant: activeMiniMeVariant,
+                    customMiniMeImage: activeMiniMeImage,
+                    weather: condition?.weather,
+                    chartPanel: cardPanel,
+                    chartSplits: detail?.splits ?? [],
+                    chartHRSamples: shareHRSamples,
+                    chartHRZones: detail?.hrZones ?? [],
+                    chartWorkoutSeries: shareWorkoutSeries,
+                    chartIntervalSegments: detail?.intervalSegments ?? [],
+                    progressHandler: { p in routeVideoProgress = p }
+                )
+            }
             routeVideoFile = SharableVideoFile(url: url)
         } catch { }
         isExportingRouteVideo = false
@@ -2830,21 +2935,24 @@ struct ShareCardScreen: View {
 
     @MainActor
     private func renderCard(showSpinner: Bool = true) async {
-        guard template != .video && template != .routeVideo else { return }
-        if showSpinner { isRendering = true }
-        storyShareImages = []
-        previewImage = nil
-
-        // BigNumber card: render directly without template
+        // BigNumber card: render regardless of template (video/routeVideo don't block it)
         if cardIndex == 1 {
+            if showSpinner { isRendering = true }
+            storyShareImages = []
+            previewImage = nil
             let renderer = ImageRenderer(content:
                 BigNumberCard(
                     activity: activity, detail: detail, heroMetric: heroMetric,
                     mood: bigNumberShowMood ? story?.mood : nil,
-                memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
+                    memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
                     weatherText: condition?.weather?.formattedTemp,
+                    weatherIcon: condition?.weather?.systemIcon,
                     dateText: activity.date.cardDateTimeString,
-                    photo: template == .story ? (selectedPhoto ?? storyPhoto) : nil
+                    shoeName: displayShoeName,
+                    photo: template == .story ? (selectedPhoto ?? storyPhoto)
+                        : template == .video ? videoPreviewImage
+                        : template == .routeVideo ? routeSnapshot
+                        : nil
                 )
                 .frame(width: 300, height: 375)
             )
@@ -2853,6 +2961,11 @@ struct ShareCardScreen: View {
             isRendering = false
             return
         }
+
+        guard template != .video && template != .routeVideo else { return }
+        if showSpinner { isRendering = true }
+        storyShareImages = []
+        previewImage = nil
 
         // Use in-memory array if available (avoids @Query timing gap); fall back to disk on restart.
         let photos = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
