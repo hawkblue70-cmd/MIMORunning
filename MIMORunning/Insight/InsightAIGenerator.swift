@@ -9,8 +9,10 @@ struct AIInsightOutput {
     @Guide(description: """
         한국어 제목, 12자 이내, 담백한 감성.
         · 워크아웃 타입이 '일반 러닝'이면: 'OO 러닝' 형식 (예: '쌓이는 러닝', '한계를 미는 러닝').
-        · 워크아웃 타입이 인터벌/롱런/회복런/템포런/빌드업/LSD/거리주이면: '[동사구]+[타입명]' 형식 (예: '심장을 끌어올린 인터벌', '멀리 나아간 롱런', '숨을 고른 이지런', '리듬을 탄 템포', '끝까지 올린 빌드업', '천천히 멀리 간 LSD', '레이스처럼 밀어붙인 거리주').
-          이때 '꾸준함', '효율', '자산', '한계', '경계' 같은 일반 테마 단어를 타입명에 붙이면 절대 안 됨.
+        · 워크아웃 타입이 인터벌/롱런/회복런/템포런/빌드업/LSD/거리주이면: '[형용사(구)]+[타입명]' 형식.
+          형용사(구) 예: '격렬한', '묵직한', '차오르는', '심장을 끌어올린', '느긋한', '균일한'.
+          조합 예: '격렬한 인터벌', '묵직한 롱런', '느긋한 이지런', '균일한 템포', '끝까지 오른 빌드업', '여유로운 LSD', '단단한 거리주'.
+          금지: '꾸준함', '효율', '자산', '한계', '경계' 같은 명사형 단어를 타입명 앞에 붙이는 것.
         """)
     var title: String
 
@@ -48,22 +50,24 @@ enum InsightAIGenerator {
             · 부연: 제공된 수치·사실만 사용, 절대 없는 수치를 만들어내지 말 것, 30자 이내
             · 제목 형식:
               - 워크아웃 타입이 '일반 러닝'이면 → 'OO 러닝' 형식, 12자 이내, 담백하고 철학적인 톤
-              - 워크아웃 타입이 인터벌/롱런/회복런/템포런/빌드업/LSD/거리주이면 → 반드시 '[동사구]+[타입명]' 형식만 사용
+              - 워크아웃 타입이 인터벌/롱런/회복런/템포런/빌드업/LSD/거리주이면 → 반드시 '[형용사(구)]+[타입명]' 형식만 사용
+                형용사(구): '격렬한', '묵직한', '차오르는', '심장을 끌어올린' 처럼 형용사 또는 형용사절. 명사형 불가.
                 타입명: 인터벌→인터벌, 롱런→롱런, 회복런→이지런, 템포런→템포, 빌드업→빌드업, LSD→LSD, 거리주→거리주
-                금지: '꾸준함 인터벌', '효율 롱런', '자산 인터벌' 같이 일반 테마 단어를 타입명에 붙이는 것
+                금지: '꾸준함 인터벌', '효율 롱런', '자산 인터벌' 같이 명사형 단어를 타입명 앞에 붙이는 것
               - 강한 성취(첫 달성·페이스 PR) + 특정 타입이면 결합 허용: '기록을 깬 인터벌', '기록을 쓴 롱런'
             스타일 예시(제목 / 부연):
             일반 러닝 — 한계를 미는 러닝 / 최근 5km 중 가장 빠른 페이스
             일반 러닝 — 쌓이는 러닝 / 4주 연속 달리기 중
             일반 러닝 — 경계를 넓힌 러닝 / 이번 달 최장 거리 12.3km
-            인터벌 — 심장을 끌어올린 인터벌 / 400m×6, 최고 1'42"
+            인터벌 — 격렬한 인터벌 / 400m×6, 최고 1'42"
+            인터벌 — 차오르는 인터벌 / 심박 최고 178bpm
             인터벌 — 기록을 깬 인터벌 / 동일 거리 페이스 갱신
-            롱런 — 멀리 나아간 롱런 / 이번 달 최장 거리 18km
-            회복런 — 숨을 고른 이지런 / 낮은 강도로 다음 훈련을 준비
-            템포런 — 리듬을 탄 템포 / 균일하게 밀어붙인 8km
-            빌드업 — 끝까지 올린 빌드업 / 마지막 km 최고 페이스
-            LSD — 천천히 멀리 간 LSD / 느리고 고르게 21km
-            거리주 — 레이스처럼 밀어붙인 거리주 / 하프 거리 레이스페이스 완주
+            롱런 — 묵직한 롱런 / 이번 달 최장 거리 18km
+            회복런 — 느긋한 이지런 / 낮은 강도로 다음 훈련을 준비
+            템포런 — 균일한 템포 / 균일하게 밀어붙인 8km
+            빌드업 — 끝까지 오른 빌드업 / 마지막 km 최고 페이스
+            LSD — 여유로운 LSD / 느리고 고르게 21km
+            거리주 — 단단한 거리주 / 하프 거리 레이스페이스 완주
             """
 
         let prompt = """
@@ -78,10 +82,43 @@ enum InsightAIGenerator {
             let response = try await session.respond(to: prompt, generating: AIInsightOutput.self)
             let output = response.content
             guard !output.title.isEmpty, !output.detail.isEmpty else { return nil }
+            // Reject titles that pair a generic theme word with a workout type name
+            guard isValidInsightTitle(output.title, workoutType: base.workoutType) else { return nil }
             return InsightResult(theme: base.theme, workoutType: base.workoutType, title: output.title, detail: output.detail)
         } catch {
             return nil
         }
+    }
+
+    /// Returns false when the AI title is invalid:
+    /// - Prohibited "명사형 테마단어+타입명" pattern (e.g. "꾸준함 인터벌")
+    /// - Missing the required type name in the title for typed workouts
+    private static func isValidInsightTitle(_ title: String, workoutType: WorkoutType) -> Bool {
+        let themeWords = ["꾸준함", "효율", "자산", "한계", "경계", "성장", "빠름", "회복"]
+        let requiredTypeNames: [String]  // at least one must appear in the title
+        switch workoutType {
+        case .interval:    requiredTypeNames = ["인터벌"]
+        case .longRun:     requiredTypeNames = ["롱런"]
+        case .easy:        requiredTypeNames = ["이지런", "회복런"]
+        case .tempo:       requiredTypeNames = ["템포런", "템포"]
+        case .buildUp:     requiredTypeNames = ["빌드업"]
+        case .lsd:         requiredTypeNames = ["LSD"]
+        case .distanceRun: requiredTypeNames = ["거리주"]
+        case .general:     return true  // "OO 러닝" 형식 — 타입명 강제 불필요
+        }
+
+        // 타입명이 제목에 포함되어 있어야 함
+        guard requiredTypeNames.contains(where: { title.contains($0) }) else { return false }
+
+        // 명사형 테마단어+타입명 조합 금지
+        for theme in themeWords {
+            for typeName in requiredTypeNames {
+                if title.contains("\(theme) \(typeName)") || title.contains("\(theme)\(typeName)") {
+                    return false
+                }
+            }
+        }
+        return true
     }
 
     private static func workoutTypeKorean(_ type: WorkoutType) -> String {

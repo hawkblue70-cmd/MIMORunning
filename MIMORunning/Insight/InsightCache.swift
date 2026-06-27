@@ -6,7 +6,6 @@ actor InsightCache {
 
     private struct Key: Hashable {
         let activityID: UUID
-        let historyCount: Int
         let isRefined: Bool
         let language: String
     }
@@ -15,8 +14,8 @@ actor InsightCache {
 
     // MARK: - Lookup (in-memory → disk)
 
-    func result(for activityID: UUID, historyCount: Int, isRefined: Bool, language: String) -> InsightResult? {
-        let key = Key(activityID: activityID, historyCount: historyCount, isRefined: isRefined, language: language)
+    func result(for activityID: UUID, isRefined: Bool, language: String) -> InsightResult? {
+        let key = Key(activityID: activityID, isRefined: isRefined, language: language)
         if let hit = store[key] { return hit }
         if let disk = loadFromDisk(activityID: activityID, isRefined: isRefined, language: language) {
             store[key] = disk
@@ -25,8 +24,8 @@ actor InsightCache {
         return nil
     }
 
-    func cache(_ result: InsightResult, for activityID: UUID, historyCount: Int, isRefined: Bool, language: String) {
-        let key = Key(activityID: activityID, historyCount: historyCount, isRefined: isRefined, language: language)
+    func cache(_ result: InsightResult, for activityID: UUID, isRefined: Bool, language: String) {
+        let key = Key(activityID: activityID, isRefined: isRefined, language: language)
         store[key] = result
         saveToDisk(result, activityID: activityID, isRefined: isRefined, language: language)
     }
@@ -42,7 +41,7 @@ actor InsightCache {
     // MARK: - Disk persistence
 
     // Bump this when insight generation logic changes to invalidate stale cache files.
-    private static let cacheVersion = 3
+    private static let cacheVersion = 5
 
     private func diskURL(activityID: UUID, isRefined: Bool, language: String) -> URL {
         let refined  = isRefined ? "1" : "0"

@@ -143,6 +143,10 @@ struct RouteVideoFrameView: View {
                             Text(chartPanel.rawValue)
                                 .font(.system(size: 7 * scale, weight: .semibold))
                                 .tracking(0.3)
+                            if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
+                                Text(s)
+                                    .font(.system(size: 7 * scale, weight: .semibold).monospacedDigit())
+                            }
                         }
                         .foregroundStyle(Color.white.opacity(0.55))
                         chartContent(scale: scale)

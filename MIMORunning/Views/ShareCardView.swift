@@ -231,6 +231,10 @@ struct ShareCardView: View {
                         Text(chartPanel.label)
                             .font(.system(size: 8, weight: .semibold))
                             .tracking(0.3)
+                        if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
+                            Text(s)
+                                .font(.system(size: 8, weight: .semibold).monospacedDigit())
+                        }
                     }
                     .foregroundStyle(Color.white.opacity(0.55))
                     chartContent
@@ -537,6 +541,36 @@ struct CardWorkoutSeriesChart: View {
     }
 }
 
+// MARK: - Interval work summary helper
+
+extension Array where Element == IntervalSegment {
+    private static let standardDistances = [100, 200, 300, 400, 500, 600, 800, 1000, 1200, 1500, 1600, 2000, 3000, 4000, 5000]
+
+    var workSummaryText: String? {
+        let paces = compactMap(\.paceSecPerKm).sorted()
+        let median = paces.isEmpty ? nil : paces[paces.count / 2]
+        let workSegs = filter { seg in
+            if let label = seg.stepLabel { return label == "운동" }
+            guard let p = seg.paceSecPerKm, let m = median else { return seg.id % 2 == 1 }
+            return p < m
+        }
+        guard !workSegs.isEmpty else { return nil }
+        let distances = workSegs.compactMap(\.distanceM)
+        guard distances.count == workSegs.count else { return nil }
+        let snapped = distances.map { d -> Int in
+            let t = 0.08
+            if let s = Self.standardDistances.first(where: { abs(Double($0) - d) / Double($0) <= t }) { return s }
+            return d >= 200 ? Int((d / 100).rounded()) * 100 : Int((d / 50).rounded()) * 50
+        }
+        let counts = Dictionary(grouping: snapped, by: { $0 }).mapValues(\.count)
+        guard let (dist, cnt) = counts.max(by: { $0.value < $1.value }), cnt > 1 || counts.count == 1 else { return nil }
+        let label = dist >= 1000
+            ? (dist % 1000 == 0 ? "\(dist / 1000)km" : String(format: "%.1fkm", Double(dist) / 1000))
+            : "\(dist)m"
+        return AppLanguage.shared.s("\(label)×\(cnt)회", "\(label)×\(cnt)")
+    }
+}
+
 struct CardIntervalChart: View {
     let segments: [IntervalSegment]
     @State private var labelX: [Int: CGFloat] = [:]
@@ -773,6 +807,10 @@ private struct PhotoShareCardView: View {
                                 Text(chartPanel.label)
                                     .font(.system(size: 8, weight: .semibold))
                                     .tracking(0.3)
+                                if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
+                                    Text(s)
+                                        .font(.system(size: 8, weight: .semibold).monospacedDigit())
+                                }
                             }
                             .foregroundStyle(Color.white.opacity(0.55))
                             chartContent
@@ -1177,6 +1215,10 @@ private struct StoryShareCardView: View {
                                 Text(chartPanel.label)
                                     .font(.system(size: 8, weight: .semibold))
                                     .tracking(0.3)
+                                if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
+                                    Text(s)
+                                        .font(.system(size: 8, weight: .semibold).monospacedDigit())
+                                }
                             }
                             .foregroundStyle(Color.white.opacity(0.55))
                             chartContent
@@ -1369,6 +1411,10 @@ private struct VideoOverlayCard: View {
                                 Text(chartPanel.label)
                                     .font(.system(size: 7, weight: .semibold))
                                     .tracking(0.3)
+                                if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
+                                    Text(s)
+                                        .font(.system(size: 7, weight: .semibold).monospacedDigit())
+                                }
                             }
                             .foregroundStyle(Color.white.opacity(0.55))
                             chartContent
@@ -2564,6 +2610,11 @@ struct ShareCardScreen: View {
                                 Text(cardPanel.rawValue)
                                     .font(.system(size: 7, weight: .semibold))
                                     .tracking(0.3)
+                                if cardPanel == .intervals,
+                                   let s = (detail?.intervalSegments ?? []).workSummaryText {
+                                    Text(s)
+                                        .font(.system(size: 7, weight: .semibold).monospacedDigit())
+                                }
                             }
                             .foregroundStyle(Color.white.opacity(0.55))
                             videoChartContent
