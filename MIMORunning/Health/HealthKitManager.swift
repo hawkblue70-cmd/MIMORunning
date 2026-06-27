@@ -28,6 +28,12 @@ class HealthKitManager {
     @ObservationIgnored private var cachedMHR: Int? = nil
     @ObservationIgnored private var pausedIntervalsCache: [UUID: [DateInterval]] = [:]
     @ObservationIgnored private var detailCache: [UUID: ActivityDetail] = [:]
+    @ObservationIgnored private var hrSeriesCache: [UUID: [(offset: TimeInterval, bpm: Int)]] = [:]
+    @ObservationIgnored private var panelSeriesCache: [String: [(offset: TimeInterval, value: Double)]] = [:]
+
+    // Codable proxies for disk serialization of time-series tuples
+    private struct HRPoint: Codable { var offset: Double; var bpm: Int }
+    private struct SeriesPoint: Codable { var offset: Double; var value: Double }
 
     @ObservationIgnored private let cacheContainer: ModelContainer? = {
         let schema = Schema([CachedActivity.self])
@@ -56,6 +62,7 @@ class HealthKitManager {
             HKQuantityType(.distanceWalkingRunning),
             HKQuantityType(.heartRate),
             HKQuantityType(.restingHeartRate),
+            HKQuantityType(.heartRateVariabilitySDNN),
             HKQuantityType(.activeEnergyBurned),
             HKQuantityType(.stepCount),
             HKQuantityType(.runningPower),
@@ -636,6 +643,11 @@ class HealthKitManager {
     // MARK: - Heart Rate time series for a single workout
 
     func fetchHRTimeSeries(for workoutID: UUID) async -> [(offset: TimeInterval, bpm: Int)] {
+        if let cached = hrSeriesCache[workoutID] { return cached }
+        if let disk = loadHRSeriesFromDisk(workoutID) {
+            hrSeriesCache[workoutID] = disk
+            return disk
+        }
         guard let workout = workoutCache[workoutID] else { return [] }
         let paused = pausedIntervals(for: workout)
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
@@ -648,18 +660,43 @@ class HealthKitManager {
         )
         guard let samples = try? await descriptor.result(for: store) else { return [] }
         let unit = Self.bpmUnit
-        return samples
+        let result = samples
             .filter { !isPaused($0.startDate, in: paused) }
             .map { sample in
                 let bpm = Int(sample.quantity.doubleValue(for: unit).rounded())
                 let offset = sample.startDate.timeIntervalSince(workout.startDate)
                 return (offset: offset, bpm: bpm)
             }
+        hrSeriesCache[workoutID] = result
+        saveHRSeriesToDisk(result, id: workoutID)
+        return result
+    }
+
+    private func hrSeriesCacheURL(_ id: UUID) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_hr_\(id.uuidString).json")
+    }
+
+    private func loadHRSeriesFromDisk(_ id: UUID) -> [(offset: TimeInterval, bpm: Int)]? {
+        guard let data = try? Data(contentsOf: hrSeriesCacheURL(id)),
+              let pts = try? JSONDecoder().decode([HRPoint].self, from: data) else { return nil }
+        return pts.map { (offset: $0.offset, bpm: $0.bpm) }
+    }
+
+    private func saveHRSeriesToDisk(_ series: [(offset: TimeInterval, bpm: Int)], id: UUID) {
+        guard let data = try? JSONEncoder().encode(series.map { HRPoint(offset: $0.offset, bpm: $0.bpm) }) else { return }
+        try? data.write(to: hrSeriesCacheURL(id), options: .atomic)
     }
 
     // MARK: - Workout time-series (for share card panels)
 
     func fetchWorkoutTimeSeries(for workoutID: UUID, identifier: HKQuantityTypeIdentifier, unit: HKUnit) async -> [(offset: TimeInterval, value: Double)] {
+        let key = "\(workoutID)_\(identifier.rawValue)"
+        if let cached = panelSeriesCache[key] { return cached }
+        if let disk = loadPanelSeriesFromDisk(key: key) {
+            panelSeriesCache[key] = disk
+            return disk
+        }
         guard let workout = workoutCache[workoutID] else { return [] }
         let paused = pausedIntervals(for: workout)
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
@@ -671,15 +708,24 @@ class HealthKitManager {
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
         guard let samples = try? await descriptor.result(for: store) else { return [] }
-        return samples
+        let result = samples
             .filter { !isPaused($0.startDate, in: paused) }
             .map { s in
                 (offset: s.startDate.timeIntervalSince(workout.startDate),
                  value: s.quantity.doubleValue(for: unit))
             }
+        panelSeriesCache[key] = result
+        savePanelSeriesToDisk(result, key: key)
+        return result
     }
 
     func fetchCadenceTimeSeries(for workoutID: UUID) async -> [(offset: TimeInterval, value: Double)] {
+        let key = "\(workoutID)_cadence"
+        if let cached = panelSeriesCache[key] { return cached }
+        if let disk = loadPanelSeriesFromDisk(key: key) {
+            panelSeriesCache[key] = disk
+            return disk
+        }
         guard let workout = workoutCache[workoutID] else { return [] }
         let paused = pausedIntervals(for: workout)
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
@@ -713,7 +759,27 @@ class HealthKitManager {
                 result.append((offset: startOffset + dur / 2, value: spm))
             }
         }
-        return result.filter { $0.offset >= 0 }
+        let filtered = result.filter { $0.offset >= 0 }
+        panelSeriesCache[key] = filtered
+        savePanelSeriesToDisk(filtered, key: key)
+        return filtered
+    }
+
+    private func panelSeriesCacheURL(key: String) -> URL {
+        let safe = key.replacingOccurrences(of: "/", with: "_")
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_panel_\(safe).json")
+    }
+
+    private func loadPanelSeriesFromDisk(key: String) -> [(offset: TimeInterval, value: Double)]? {
+        guard let data = try? Data(contentsOf: panelSeriesCacheURL(key: key)),
+              let pts = try? JSONDecoder().decode([SeriesPoint].self, from: data) else { return nil }
+        return pts.map { (offset: $0.offset, value: $0.value) }
+    }
+
+    private func savePanelSeriesToDisk(_ series: [(offset: TimeInterval, value: Double)], key: String) {
+        guard let data = try? JSONEncoder().encode(series.map { SeriesPoint(offset: $0.offset, value: $0.value) }) else { return }
+        try? data.write(to: panelSeriesCacheURL(key: key), options: .atomic)
     }
 
     // MARK: - Stats queries
@@ -1132,6 +1198,17 @@ class HealthKitManager {
     // MARK: - Metric Trend History
 
     func fetchMetricHistory(_ metric: TrendMetric, from startDate: Date, usePounds: Bool = false) async -> [(date: Date, value: Double)] {
+        if let disk = loadMetricHistoryFromDisk(metric, startDate: startDate, usePounds: usePounds) {
+            return disk
+        }
+        let result = await fetchMetricHistoryFromHealthKit(metric, from: startDate, usePounds: usePounds)
+        if !result.isEmpty {
+            saveMetricHistoryToDisk(result, metric: metric, startDate: startDate, usePounds: usePounds)
+        }
+        return result
+    }
+
+    private func fetchMetricHistoryFromHealthKit(_ metric: TrendMetric, from startDate: Date, usePounds: Bool = false) async -> [(date: Date, value: Double)] {
         switch metric {
         case .vo2Max:
             return await fetchVO2MaxHistory(from: startDate)
@@ -1139,8 +1216,9 @@ class HealthKitManager {
             let unit: HKUnit = usePounds ? HKUnit(from: "lb") : .gramUnit(with: .kilo)
             return await fetchQuantitySampleHistory(.bodyMass, from: startDate, unit: unit)
         case .bodyFatPercentage:
+            // HealthKit stores body fat as a fraction (0–1); multiply by 100 to get percentage
             let raw = await fetchQuantitySampleHistory(.bodyFatPercentage, from: startDate, unit: .percent())
-            return raw.map { ($0.date, $0.value) }
+            return raw.map { ($0.date, $0.value * 100) }
         case .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation:
             let workouts = workoutCache.values
                 .filter { $0.workoutActivityType == .running && $0.startDate >= startDate }
@@ -1174,6 +1252,45 @@ class HealthKitManager {
             }
             return results
         }
+    }
+
+    // MARK: - Metric history disk cache
+
+    private struct MetricDataPoint: Codable {
+        let date: Date
+        let value: Double
+    }
+
+    private struct MetricHistoryCacheFile: Codable {
+        let points: [MetricDataPoint]
+        let cachedAt: Date
+        var isStale: Bool { Date().timeIntervalSince(cachedAt) > 3600 }
+    }
+
+    private func metricHistoryCacheURL(_ metric: TrendMetric, startDate: Date, usePounds: Bool) -> URL {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.year, .month, .day], from: startDate)
+        let dateStr = String(format: "%04d%02d%02d", comps.year ?? 0, comps.month ?? 0, comps.day ?? 0)
+        let suffix = (metric == .bodyMass && usePounds) ? "_lbs" : ""
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_metric_\(metric.rawValue)_\(dateStr)\(suffix).json")
+    }
+
+    private func loadMetricHistoryFromDisk(_ metric: TrendMetric, startDate: Date, usePounds: Bool) -> [(date: Date, value: Double)]? {
+        let url = metricHistoryCacheURL(metric, startDate: startDate, usePounds: usePounds)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let file = try? JSONDecoder().decode(MetricHistoryCacheFile.self, from: data),
+              !file.isStale else { return nil }
+        return file.points.map { ($0.date, $0.value) }
+    }
+
+    private func saveMetricHistoryToDisk(_ points: [(date: Date, value: Double)], metric: TrendMetric, startDate: Date, usePounds: Bool) {
+        let file = MetricHistoryCacheFile(
+            points: points.map { MetricDataPoint(date: $0.date, value: $0.value) },
+            cachedAt: Date()
+        )
+        guard let data = try? JSONEncoder().encode(file) else { return }
+        try? data.write(to: metricHistoryCacheURL(metric, startDate: startDate, usePounds: usePounds), options: .atomic)
     }
 
     private func fetchQuantitySampleHistory(
@@ -1210,9 +1327,94 @@ class HealthKitManager {
     // MARK: - Condition (weather + sleep)
 
     func fetchCondition(for activity: Activity, firstCoordinate: CLLocationCoordinate2D?) async -> ActivityCondition {
-        let weather = await ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate)
-        let sleep   = await querySleepScore(nightBefore: activity.date)
-        return ActivityCondition(weather: weather, sleepScore: sleep)
+        if let cached = await ConditionCache.shared.condition(for: activity.id) { return cached }
+        // Skip disk if HRV field missing — one-time migration to include HRV in cached conditions
+        if let disk = loadConditionFromDisk(activity.id), disk.hrvRecovery != nil {
+            await ConditionCache.shared.cache(disk, for: activity.id)
+            return disk
+        }
+        // Weather, sleep, HRV in parallel
+        async let weather = ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate)
+        async let sleep   = querySleepScore(nightBefore: activity.date)
+        async let hrv     = queryHRVRecovery(nightBefore: activity.date)
+        let result = ActivityCondition(weather: await weather, sleepScore: await sleep, hrvRecovery: await hrv)
+        await ConditionCache.shared.cache(result, for: activity.id)
+        saveConditionToDisk(result, id: activity.id)
+        return result
+    }
+
+    private func conditionCacheURL(_ id: UUID) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_condition_\(id.uuidString).json")
+    }
+
+    private func loadConditionFromDisk(_ id: UUID) -> ActivityCondition? {
+        guard let data = try? Data(contentsOf: conditionCacheURL(id)) else { return nil }
+        return try? JSONDecoder().decode(ActivityCondition.self, from: data)
+    }
+
+    private func saveConditionToDisk(_ condition: ActivityCondition, id: UUID) {
+        guard let data = try? JSONEncoder().encode(condition) else { return }
+        try? data.write(to: conditionCacheURL(id), options: .atomic)
+    }
+
+    // MARK: - HRV Recovery
+
+    /// 단일 night window(nightStart~nightEnd)의 HRV 중앙값.
+    /// noiseFloor 미만 샘플은 측정 노이즈로 제외.
+    private func queryNightHRVMedian(for date: Date, noiseFloor: Double = 10.0) async -> Double? {
+        let cal = Calendar.current
+        guard let dayStart   = cal.date(bySettingHour: 0, minute: 0, second: 0, of: date),
+              let nightStart = cal.date(byAdding: .hour, value: -9,  to: dayStart),
+              let nightEnd   = cal.date(byAdding: .hour, value: 12, to: dayStart) else { return nil }
+
+        let hrvType = HKQuantityType(.heartRateVariabilitySDNN)
+        let msUnit  = HKUnit.secondUnit(with: .milli)
+
+        let samples: [HKQuantitySample] = await withCheckedContinuation { cont in
+            let pred = HKQuery.predicateForSamples(withStart: nightStart, end: nightEnd,
+                                                   options: .strictStartDate)
+            let q = HKSampleQuery(sampleType: hrvType, predicate: pred,
+                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, s, _ in
+                cont.resume(returning: (s as? [HKQuantitySample]) ?? [])
+            }
+            self.store.execute(q)
+        }
+
+        let values = samples
+            .map { $0.quantity.doubleValue(for: msUnit) }
+            .filter { $0 >= noiseFloor }
+        return values.isEmpty ? nil : hrvMedian(values)
+    }
+
+    /// 수면 HRV 기반 회복 등급 계산.
+    /// today: 해당 night window 중앙값.
+    /// baseline: 직전 7일(today 제외) 일별 중앙값의 중앙값. 유효일 4일 미만 → .insufficient.
+    private func queryHRVRecovery(nightBefore date: Date) async -> HRVRecovery? {
+        let cal = Calendar.current
+
+        guard let todayVal = await queryNightHRVMedian(for: date) else { return nil }
+
+        var dailyValues: [Double] = []
+        for offset in 1...7 {
+            guard let pastDay = cal.date(byAdding: .day, value: -offset, to: date) else { continue }
+            if let v = await queryNightHRVMedian(for: pastDay) { dailyValues.append(v) }
+        }
+
+        guard dailyValues.count >= 4 else {
+            return HRVRecovery(todayValue: todayVal, baseline: 0, sd: 0, level: .insufficient)
+        }
+
+        let baseline    = hrvMedian(dailyValues)
+        let sd          = hrvSD(dailyValues)
+        let effectiveSD = max(sd, baseline * 0.10)  // SD 하한: baseline의 10%
+        let level: RecoveryLevel = {
+            if todayVal < baseline - 1.5 * effectiveSD { return .low }
+            if todayVal > baseline + 1.5 * effectiveSD { return .high }
+            return .normal
+        }()
+
+        return HRVRecovery(todayValue: todayVal, baseline: baseline, sd: sd, level: level)
     }
 
     // MARK: - Sleep score (50/30/20 weighted composite)

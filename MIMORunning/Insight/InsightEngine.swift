@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Output types
 
-enum InsightTheme {
+enum InsightTheme: String, Codable {
     case firstAchievement
     case recordImproved
     case adverseCondition
@@ -16,7 +16,7 @@ enum InsightTheme {
     case safety         // safety/environment note (highest priority)
 }
 
-struct InsightResult {
+struct InsightResult: Codable {
     let theme: InsightTheme
     let workoutType: WorkoutType
     let title: String
@@ -233,6 +233,25 @@ struct InsightEngine {
 
     /// Builds the interval insight detail string.
     /// Prefers WorkoutKit work steps ("운동" label); falls back to fast km splits.
+    // Snap raw GPS distance to nearest standard interval distance within ±8%
+    private static let standardDistances = [
+        100, 200, 300, 400, 500, 600, 800,
+        1000, 1200, 1500, 1600, 2000, 3000, 4000, 5000
+    ]
+
+    private static func recognizedDistLabel(_ meters: Double) -> String {
+        let snapped: Int
+        if let s = standardDistances.first(where: { abs(Double($0) - meters) / Double($0) <= 0.08 }) {
+            snapped = s
+        } else {
+            snapped = meters >= 200 ? Int((meters / 100).rounded()) * 100 : Int((meters / 50).rounded()) * 50
+        }
+        if snapped >= 1000 {
+            return snapped % 1000 == 0 ? "\(snapped / 1000)km" : String(format: "%.1fkm", Double(snapped) / 1000)
+        }
+        return "\(snapped)m"
+    }
+
     private static func intervalDetailString(
         intervalSegments: [IntervalSegment],
         splits: [SplitData]
@@ -244,7 +263,7 @@ struct InsightEngine {
             let fastestStr = fastest?.formattedPace
             let dists = workSteps.compactMap(\.distanceM)
             let avgDist = dists.isEmpty ? nil : dists.reduce(0, +) / Double(dists.count)
-            let distStr = avgDist.map { String(format: "%.0fm", $0) }
+            let distStr = avgDist.map { recognizedDistLabel($0) }
             switch (distStr, fastestStr) {
             case let (d?, f?): return L.s("\(d)×\(workSteps.count), 최고 \(f)", "\(d)×\(workSteps.count), best \(f)")
             case let (nil, f?): return L.s("\(workSteps.count)개 구간, 최고 \(f)", "\(workSteps.count) reps, best \(f)")

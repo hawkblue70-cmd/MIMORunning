@@ -3,7 +3,7 @@ import CoreLocation
 
 // MARK: - Sleep score
 
-enum SleepGrade {
+enum SleepGrade: String, Codable {
     case excellent, good, fair, insufficient, poor
 
     var label: String {
@@ -21,7 +21,7 @@ enum SleepGrade {
 /// 0–100 composite sleep quality score built from three weighted components.
 /// Labelled "수면상태" (not "수면 점수") to distinguish it from Apple Health's
 /// proprietary sleep score — values will differ.
-struct SleepScore {
+struct SleepScore: Codable {
     let score: Int         // 0–100
     let grade: SleepGrade
     let sleepHours: Double // underlying duration, used by InsightEngine
@@ -56,7 +56,7 @@ struct SleepScore {
 
 // MARK: - Models
 
-struct WeatherSnapshot {
+struct WeatherSnapshot: Codable {
     let tempC: Double
     let precipitation: Double   // mm in the hour
     let windKmh: Double
@@ -78,12 +78,30 @@ struct WeatherSnapshot {
     var formattedTemp: String { String(format: "%.0f°C", tempC) }
 }
 
-struct ActivityCondition {
+struct ActivityCondition: Codable {
     var weather: WeatherSnapshot?
     var sleepScore: SleepScore?
+    var hrvRecovery: HRVRecovery?
 
     var hasAdverseSignal: Bool {
         weather?.isAdverse == true
+    }
+}
+
+// MARK: - Condition cache (in-memory, keyed by activity UUID)
+
+actor ConditionCache {
+    static let shared = ConditionCache()
+    private init() {}
+
+    private var store: [UUID: ActivityCondition] = [:]
+
+    func condition(for activityID: UUID) -> ActivityCondition? {
+        store[activityID]
+    }
+
+    func cache(_ condition: ActivityCondition, for activityID: UUID) {
+        store[activityID] = condition
     }
 }
 

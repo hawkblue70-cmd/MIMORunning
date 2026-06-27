@@ -72,6 +72,7 @@ struct ActivityDetailView: View {
     @State private var panelSeriesData: [(offset: TimeInterval, value: Double)] = []
     @State private var panelSeriesCache: [DetailPanel: [(offset: TimeInterval, value: Double)]] = [:]
     @State private var isLoadingPanelSeries = false
+    @State private var hillMatch: HillMatch?
     @Environment(RaceDetector.self) private var raceDetector
 
     private var level: LevelBucket { manager.userLevel.bucket }
@@ -127,7 +128,7 @@ struct ActivityDetailView: View {
                     )
                     if activity.type == .running {
                         InsightCard(activity: activity, insight: insight, condition: condition,
-                                    confirmedRace: confirmedRaceMatch)
+                                    confirmedRace: confirmedRaceMatch, hillMatch: hillMatch)
                     }
                     StorySection(workoutID: activity.id.uuidString)
                     panelSection
@@ -239,6 +240,11 @@ struct ActivityDetailView: View {
             // Phase 2: fetch detail — splits drive workout-type classification
             detail = await manager.fetchDetail(for: activity.id)
             isLoadingDetail = false
+
+            hillMatch = HillSpotDetector.shared.assess(
+                routeCoords: detail?.routeCoordinates ?? [],
+                elevationGain: detail?.elevationGain
+            ).first(where: { $0.matched })
 
             // Phase 2b: fetch condition (weather archive + sleep) using first route point
             let firstCoord = detail?.routeCoordinates.first
@@ -611,6 +617,7 @@ private struct InsightCard: View {
     let insight: InsightResult?
     var condition: ActivityCondition? = nil
     var confirmedRace: PersistedRaceMatch? = nil
+    var hillMatch: HillMatch? = nil
 
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @Query private var allStories: [WorkoutStory]
@@ -628,6 +635,83 @@ private struct InsightCard: View {
     private var miniMeVariant: MiniMeVariant {
         guard let insight else { return .running }
         return MiniMeVariant.from(theme: insight.theme, workoutType: insight.workoutType)
+    }
+
+    private var effectiveHRV: HRVRecovery? {
+        condition?.hrvRecovery
+    }
+
+    private func pick(_ options: [String]) -> String {
+        let seed = Int(abs(activity.date.timeIntervalSinceReferenceDate))
+        return options[seed % options.count]
+    }
+
+    private func recoveryLine(sleep: SleepScore, hrv: HRVRecovery) -> String {
+        let L = AppLanguage.shared
+        let sleepGood = sleep.score >= 70
+        switch hrv.level {
+        case .high:
+            return pick([
+                L.s("컨디션이 좋은 날이었네요", "Your body was primed today"),
+                L.s("회복이 잘 된 좋은 날이었어요", "Well-rested and ready to go"),
+            ])
+        case .normal:
+            return sleepGood
+                ? pick([
+                    L.s("잘 회복된 상태로 달렸어요", "You ran well-recovered"),
+                    L.s("회복이 잘 된 상태였어요", "Your body was nicely recovered"),
+                  ])
+                : pick([
+                    L.s("수면은 짧았지만 회복은 괜찮았어요", "Short sleep, but recovery held up"),
+                    L.s("수면이 적었어도 회복 상태는 나쁘지 않았어요", "Less sleep, but recovery was decent"),
+                  ])
+        case .low:
+            return sleepGood
+                ? pick([
+                    L.s("잘 잤지만 회복은 평소보다 더뎠을 수 있어요", "Good sleep, but recovery may have lagged a bit"),
+                    L.s("수면은 충분했어도 회복이 조금 더 필요했을 수 있어요", "Enough sleep, but recovery may have needed more time"),
+                  ])
+                : pick([
+                    L.s("평소보다 피로가 남아있었을 수 있어요 (가볍게도 좋아요)", "Some lingering fatigue — easy effort works too"),
+                    L.s("몸이 평소보다 조금 더 피로했을 수 있어요", "Your body may have carried a bit more fatigue"),
+                  ])
+        case .insufficient:
+            return L.s("잘 회복된 상태로 달렸어요", "You ran well-recovered")
+        }
+    }
+
+    // ── 컨디션 행: 날씨 칩 + (수면+HRV 통합 문구 or 수면 칩) ──
+    @ViewBuilder
+    private var conditionRow: some View {
+        let hrv = effectiveHRV
+        let validHRV: HRVRecovery? = {
+            guard let h = hrv, h.level != .insufficient else { return nil }
+            return h
+        }()
+        if let cond = condition, cond.weather != nil || cond.sleepScore != nil {
+            HStack(alignment: .center, spacing: 6) {
+                if let w = cond.weather {
+                    let wColor: Color = {
+                        if w.isRainy { return Theme.pace }
+                        if w.isHot   { return Theme.calories }
+                        if w.isCold  { return .blue }
+                        return .secondary
+                    }()
+                    ConditionChip(icon: w.systemIcon, label: w.formattedTemp, color: wColor)
+                }
+                if let slp = cond.sleepScore, let vh = validHRV {
+                    Text(recoveryLine(sleep: slp, hrv: vh))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let slp = cond.sleepScore {
+                    ConditionChip(
+                        icon: "bed.double.fill",
+                        label: AppLanguage.shared.s("수면 \(slp.chipLabel)", "Sleep \(slp.chipLabel)"),
+                        color: slp.isInsufficient ? Theme.time : .secondary
+                    )
+                }
+            }
+        }
     }
 
     var body: some View {
@@ -662,6 +746,17 @@ private struct InsightCard: View {
                             .clipShape(Capsule())
                             .overlay(Capsule().stroke(Theme.violet.opacity(0.3), lineWidth: 1))
                     }
+                    if let hill = hillMatch {
+                        Label(AppLanguage.shared.s("\(hill.spot.name) · 언덕", "\(hill.spot.name) · Hill"),
+                              systemImage: "mountain.2.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color(hex: "FFC74D"))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color(hex: "FFC74D").opacity(0.12))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color(hex: "FFC74D").opacity(0.3), lineWidth: 1))
+                    }
                 }
 
                 // MiniMe — contextual overlays + animations once insight is loaded
@@ -676,27 +771,8 @@ private struct InsightCard: View {
                 }
             }
 
-            // ── Condition chips ──────────────────────────────
-            if let cond = condition, cond.weather != nil || cond.sleepScore != nil {
-                HStack(spacing: 6) {
-                    if let w = cond.weather {
-                        let wColor: Color = {
-                            if w.isRainy { return Theme.pace }
-                            if w.isHot   { return Theme.calories }
-                            if w.isCold  { return .blue }
-                            return .secondary
-                        }()
-                        ConditionChip(icon: w.systemIcon, label: w.formattedTemp, color: wColor)
-                    }
-                    if let slp = cond.sleepScore {
-                        ConditionChip(
-                            icon: "bed.double.fill",
-                            label: AppLanguage.shared.s("수면 \(slp.chipLabel)", "Sleep \(slp.chipLabel)"),
-                            color: slp.isInsufficient ? Theme.time : .secondary
-                        )
-                    }
-                }
-            }
+            // ── Condition row (weather chip + sleep/recovery line) ──
+            conditionRow
             HStack(spacing: 4) {
                 Text(activity.formattedDistance)
                     .foregroundStyle(Theme.violet)
@@ -1125,11 +1201,46 @@ private struct IntervalSegmentsSection: View {
         return seg.id % 2 == 1
     }
 
+    private static let standardDistances = [100, 200, 300, 400, 500, 600, 800, 1000, 1200, 1500, 1600, 2000, 3000, 4000, 5000]
+
+    private func recognizedDistanceM(_ d: Double) -> Int {
+        let tolerance = 0.08
+        if let snap = Self.standardDistances.first(where: { abs(Double($0) - d) / Double($0) <= tolerance }) { return snap }
+        return d >= 200 ? Int((d / 100).rounded()) * 100 : Int((d / 50).rounded()) * 50
+    }
+
+    private var workSummaryText: String? {
+        let workSegs = segments.filter { isWork($0) }
+        guard !workSegs.isEmpty else { return nil }
+        let distances = workSegs.compactMap(\.distanceM)
+        guard distances.count == workSegs.count else { return nil }
+        let snapped = distances.map { recognizedDistanceM($0) }
+        guard let dominant = snapped.sorted().first(where: { d in snapped.filter { $0 == d }.count == snapped.count }) else {
+            // mixed distances — find most common
+            let counts = Dictionary(grouping: snapped, by: { $0 }).mapValues(\.count)
+            guard let (dist, cnt) = counts.max(by: { $0.value < $1.value }), cnt > 1 else { return nil }
+            let label = dist >= 1000
+                ? (dist % 1000 == 0 ? "\(dist / 1000)km" : String(format: "%.1fkm", Double(dist) / 1000))
+                : "\(dist)m"
+            return AppLanguage.shared.s("\(label)×\(cnt)회", "\(label)×\(cnt)")
+        }
+        let label = dominant >= 1000
+            ? (dominant % 1000 == 0 ? "\(dominant / 1000)km" : String(format: "%.1fkm", Double(dominant) / 1000))
+            : "\(dominant)m"
+        return AppLanguage.shared.s("\(label)×\(workSegs.count)회", "\(label)×\(workSegs.count)")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
-                DetailSectionHeader(title: AppLanguage.shared.s("인터벌 구간", "Interval Reps"),
-                                    subtitle: AppLanguage.shared.s("\(segments.count)개 구간", "\(segments.count) reps"))
+                DetailSectionHeader(
+                    title: AppLanguage.shared.s("인터벌 구간", "Interval Reps"),
+                    subtitle: {
+                        let base = AppLanguage.shared.s("\(segments.count)개 구간", "\(segments.count) reps")
+                        if let s = workSummaryText { return "\(base) (\(s))" }
+                        return base
+                    }()
+                )
                 Spacer()
                 if activity != nil {
                     Button { showIntervalsShare = true } label: {
@@ -1771,7 +1882,7 @@ private struct StorySection: View {
             }
             HStack {
                 Label(AppLanguage.shared.s("스토리", "Story"), systemImage: "quote.bubble")
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
@@ -1779,7 +1890,7 @@ private struct StorySection: View {
                 } label: {
                     Label(story == nil ? AppLanguage.shared.s("추가", "Add") : AppLanguage.shared.s("편집", "Edit"),
                           systemImage: story == nil ? "plus" : "pencil")
-                        .font(.caption.weight(.medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(Theme.violet)
                 }
             }
@@ -2662,11 +2773,13 @@ struct HRSeriesPanelChart: View {
     private var buckets: [Bucket] {
         guard !validSamples.isEmpty else { return [] }
         let totalDuration = max(validSamples.map(\.offset).max() ?? 1, 1)
-        let bucketSize = totalDuration / 40
-        return (0..<40).compactMap { i in
+        // 1 bar per 30 seconds (Apple Health style), capped at 240
+        let numBuckets = max(1, min(240, Int((totalDuration / 30).rounded(.up))))
+        let bucketSize = totalDuration / Double(numBuckets)
+        return (0..<numBuckets).compactMap { i in
             let lo = Double(i) * bucketSize
             let hi = lo + bucketSize
-            let isLast = i == 39
+            let isLast = i == numBuckets - 1
             let vals = validSamples
                 .filter { $0.offset >= lo && ($0.offset < hi || (isLast && $0.offset <= hi)) }
                 .map { Double($0.bpm) }
@@ -2695,6 +2808,14 @@ struct HRSeriesPanelChart: View {
         buckets.max(by: { $0.max < $1.max })?.id
     }
 
+    private var barWidth: CGFloat {
+        let n = buckets.count
+        if n <= 45  { return 5 }
+        if n <= 90  { return 3 }
+        if n <= 150 { return 2 }
+        return 1.5
+    }
+
     var body: some View {
         let lo = domainLo
         let avg = overallAvg
@@ -2705,7 +2826,7 @@ struct HRSeriesPanelChart: View {
                     x: .value("분", b.midMinute),
                     yStart: .value("최저", b.min),
                     yEnd: .value("최고", b.max),
-                    width: .fixed(compact ? 2 : 5)
+                    width: .fixed(compact ? 2 : barWidth)
                 )
                 .foregroundStyle(b.color.opacity(0.85))
                 .annotation(position: .top, alignment: .center) {
@@ -2779,7 +2900,8 @@ private struct MetricBarPanelChart: View {
         let src = samples.filter { $0.value > validMin }
         guard !src.isEmpty else { return [] }
         let total = max(src.map(\.offset).max() ?? 1, 1)
-        let count = 40
+        // 1 bar per 30 seconds (matches HR chart), capped at 240
+        let count = max(1, min(240, Int((total / 30).rounded(.up))))
         let size  = total / Double(count)
         return (0..<count).compactMap { i in
             let lo   = Double(i) * size
@@ -2792,6 +2914,14 @@ private struct MetricBarPanelChart: View {
             return Bucket(id: i, midMinute: (lo + hi) / 2 / 60,
                           avg: avg, min: vals.min()!, max: vals.max()!)
         }
+    }
+
+    private var barWidth: CGFloat {
+        let n = buckets.count
+        if n <= 45  { return 5 }
+        if n <= 90  { return 3 }
+        if n <= 150 { return 2 }
+        return 1.5
     }
 
     private var avgValue: Double? {
@@ -2842,7 +2972,7 @@ private struct MetricBarPanelChart: View {
                         x: .value("분", b.midMinute),
                         yStart: .value("시작", useRangeBar ? b.min : baseline),
                         yEnd: .value("끝", useRangeBar ? b.max : b.avg),
-                        width: .fixed(5)
+                        width: .fixed(barWidth)
                     )
                     .foregroundStyle(color.opacity(0.85))
                 }
@@ -2906,57 +3036,64 @@ private struct MetricBarPanelChart: View {
 private struct ElevationPanelChart: View {
     let profile: [(distanceKm: Double, altitude: Double)]
 
-    private struct Bucket: Identifiable {
+    private struct Point: Identifiable {
         let id: Int
-        let midKm: Double
-        let avg: Double
+        let km: Double
+        let alt: Double
     }
 
-    private var buckets: [Bucket] {
-        guard !profile.isEmpty else { return [] }
-        let maxKm = profile.map(\.distanceKm).max() ?? 1
-        let bucketSize = maxKm / 40
-        return (0..<40).compactMap { i in
-            let lo = Double(i) * bucketSize
-            let hi = lo + bucketSize
-            let isLast = i == 39
-            let vals = profile
-                .filter { $0.distanceKm >= lo && ($0.distanceKm < hi || (isLast && $0.distanceKm <= hi)) }
-                .map(\.altitude)
-            guard !vals.isEmpty else { return nil }
-            return Bucket(id: i, midKm: (lo + hi) / 2,
-                          avg: vals.reduce(0, +) / Double(vals.count))
+    // Smooth to ~100 evenly-spaced points; avoids GPS gaps causing empty buckets
+    private var points: [Point] {
+        guard profile.count > 1 else { return [] }
+        let targetCount = min(profile.count, 100)
+        let step = max(1, profile.count / targetCount)
+        return Swift.stride(from: 0, to: profile.count, by: step).enumerated().map { idx, i in
+            Point(id: idx, km: profile[i].distanceKm, alt: profile[i].altitude)
         }
     }
 
-    private var domainLo: Double {
-        let alts = buckets.map(\.avg)
-        guard let lo = alts.min(), let hi = alts.max() else { return 0 }
-        let range = max(hi - lo, 5)
-        return lo - range * 0.6
-    }
+    private var altitudes: [Double] { points.map(\.alt) }
 
     private var yDomain: ClosedRange<Double> {
-        let alts = buckets.map(\.avg)
-        guard let lo = alts.min(), let hi = alts.max() else { return 0...100 }
+        guard let lo = altitudes.min(), let hi = altitudes.max() else { return 0...100 }
         let range = max(hi - lo, 5)
-        return (lo - range * 0.6)...(hi + range * 0.2)
+        return (lo - range * 0.5)...(hi + range * 0.2)
+    }
+
+    private var baseline: Double {
+        guard let lo = altitudes.min(), let hi = altitudes.max() else { return 0 }
+        let range = max(hi - lo, 5)
+        return lo - range * 0.5
     }
 
     var body: some View {
-        let baseline = domainLo
+        let base = baseline
         Chart {
-            ForEach(buckets) { b in
-                BarMark(
-                    x: .value("km", b.midKm),
-                    yStart: .value("바닥", baseline),
-                    yEnd: .value("고도", b.avg),
-                    width: .fixed(5)
+            ForEach(points) { p in
+                AreaMark(
+                    x: .value("km", p.km),
+                    yStart: .value("바닥", base),
+                    yEnd: .value("고도", p.alt)
                 )
-                .foregroundStyle(Theme.elevation.opacity(0.85))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Theme.elevation.opacity(0.6), Theme.elevation.opacity(0.15)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+                .interpolationMethod(.catmullRom)
+
+                LineMark(
+                    x: .value("km", p.km),
+                    y: .value("고도", p.alt)
+                )
+                .foregroundStyle(Theme.elevation)
+                .lineStyle(StrokeStyle(lineWidth: 1.5))
+                .interpolationMethod(.catmullRom)
             }
         }
         .chartYScale(domain: yDomain)
+        .chartXScale(domain: 0...(points.last?.km ?? 1))
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
@@ -2984,45 +3121,162 @@ private struct ElevationPanelChart: View {
 private struct IntervalPanelChart: View {
     let segments: [IntervalSegment]
 
-    private var paced: [(id: Int, pace: Double, isWork: Bool)] {
+    private struct Row: Identifiable {
+        let id: Int
+        let isWork: Bool
+        let typeLabel: String      // 준비/운동/회복/정리
+        let formattedPace: String?
+        let avgHeartRate: Int?
+        let barRatio: Double    // 0–1, fastest work interval = 1.0
+        let formattedDuration: String
+    }
+
+    private func shortLabel(_ stepLabel: String?, isWork: Bool) -> String {
+        switch stepLabel {
+        case "준비운동": return "준비"
+        case "운동":    return "운동"
+        case "회복":    return "회복"
+        case "정리운동": return "정리"
+        default:        return isWork ? "운동" : "회복"
+        }
+    }
+
+    // Standard interval distances (m) — snap GPS measurement within ±8%
+    private static let standardDistances = [
+        100, 200, 300, 400, 500, 600, 800,
+        1000, 1200, 1500, 1600, 2000, 3000, 4000, 5000
+    ]
+
+    private func recognizedDistanceM(_ d: Double) -> Int {
+        let tolerance = 0.08
+        if let snap = Self.standardDistances.first(where: { abs(Double($0) - d) / Double($0) <= tolerance }) {
+            return snap
+        }
+        // fallback: round to nearest 100m (≥200m) or nearest 50m
+        return d >= 200 ? Int((d / 100).rounded()) * 100 : Int((d / 50).rounded()) * 50
+    }
+
+    private func formattedRoundedDist(_ d: Double) -> String {
+        let r = recognizedDistanceM(d)
+        return r >= 1000 ? (r % 1000 == 0 ? "\(r / 1000)km" : String(format: "%.1fkm", Double(r) / 1000)) : "\(r)m"
+    }
+
+    // "400m×5회" summary for work intervals
+    private var workSummary: String? {
         let allPaces = segments.compactMap(\.paceSecPerKm).sorted()
-        let median = allPaces.isEmpty ? nil : allPaces[allPaces.count / 2]
-        return segments.compactMap { seg in
-            guard let pace = seg.paceSecPerKm else { return nil }
-            let work: Bool
-            if let label = seg.stepLabel { work = label == "운동" }
-            else if let m = median { work = pace < m }
-            else { work = seg.id % 2 == 1 }
-            return (id: seg.id, pace: pace, isWork: work)
+        let medianPace = allPaces.isEmpty ? nil : allPaces[allPaces.count / 2]
+
+        let workSegs = segments.filter { seg -> Bool in
+            if let label = seg.stepLabel { return label == "운동" }
+            if let m = medianPace, let p = seg.paceSecPerKm { return p < m }
+            return seg.id % 2 == 1
+        }
+        guard !workSegs.isEmpty else { return nil }
+
+        // group by rounded distance
+        var groups: [(dist: String, count: Int)] = []
+        for seg in workSegs {
+            guard let d = seg.distanceM else { continue }
+            let label = formattedRoundedDist(d)
+            if let idx = groups.firstIndex(where: { $0.dist == label }) {
+                groups[idx].count += 1
+            } else {
+                groups.append((label, 1))
+            }
+        }
+        guard !groups.isEmpty else { return nil }
+        return groups.map { "\($0.dist)×\($0.count)회" }.joined(separator: " · ")
+    }
+
+    private var rows: [Row] {
+        let allPaces = segments.compactMap(\.paceSecPerKm).sorted()
+        let medianPace = allPaces.isEmpty ? nil : allPaces[allPaces.count / 2]
+        let fastestPace = allPaces.first   // smallest sec/km = fastest
+        let maxDuration = segments.map(\.duration).max() ?? 1
+
+        return segments.map { seg in
+            let isWork: Bool
+            if let label = seg.stepLabel { isWork = label == "운동" }
+            else if let m = medianPace, let p = seg.paceSecPerKm { isWork = p < m }
+            else { isWork = seg.id % 2 == 1 }
+
+            let barRatio: Double
+            if let pace = seg.paceSecPerKm, let fastest = fastestPace, fastest > 0 {
+                barRatio = fastest / pace   // faster = larger ratio = longer bar
+            } else {
+                barRatio = min(1.0, seg.duration / maxDuration) * 0.35
+            }
+
+            return Row(id: seg.id, isWork: isWork,
+                       typeLabel: shortLabel(seg.stepLabel, isWork: isWork),
+                       formattedPace: seg.formattedPace,
+                       avgHeartRate: seg.avgHeartRate,
+                       barRatio: barRatio,
+                       formattedDuration: seg.formattedDuration)
         }
     }
 
     var body: some View {
-        Chart {
-            ForEach(paced, id: \.id) { item in
-                BarMark(x: .value("구간", item.id), y: .value("페이스", item.pace))
-                    .foregroundStyle(item.isWork ? Theme.violet.gradient : Color.white.opacity(0.20).gradient)
-                    .cornerRadius(3)
-            }
-        }
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
-                AxisValueLabel {
-                    if let sec = value.as(Double.self) {
-                        Text(String(format: "%d'", Int(sec) / 60)).font(.caption2).foregroundStyle(.secondary)
+        GeometryReader { geo in
+            let typeW:  CGFloat = 28
+            let labelW: CGFloat = 90
+            let indexW: CGFloat = 20
+            let spacing: CGFloat = 6
+            let maxBarW = geo.size.width - indexW - typeW - labelW - spacing * 3 - 24
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let summary = workSummary {
+                        Text(summary)
+                            .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(Theme.violet)
+                            .padding(.bottom, 2)
+                    }
+                    ForEach(rows) { row in
+                        HStack(spacing: spacing) {
+                            // interval index
+                            Text("\(row.id)")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(width: indexW, alignment: .trailing)
+
+                            // segment type label
+                            Text(row.typeLabel)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(row.isWork ? Theme.violet.opacity(0.9) : Color.white.opacity(0.35))
+                                .frame(width: typeW, alignment: .leading)
+
+                            // horizontal bar
+                            ZStack(alignment: .leading) {
+                                Color.clear.frame(width: maxBarW, height: 12)
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(row.isWork ? Theme.violet : Color.white.opacity(0.18))
+                                    .frame(width: max(4, maxBarW * row.barRatio), height: 12)
+                            }
+
+                            // pace · HR on one line
+                            HStack(spacing: 4) {
+                                if let pace = row.formattedPace {
+                                    Text(pace)
+                                        .foregroundStyle(row.isWork ? .white : .secondary)
+                                } else {
+                                    Text(row.formattedDuration)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if let hr = row.avgHeartRate {
+                                    Text("·").foregroundStyle(.tertiary)
+                                    Text("\(hr)")
+                                        .foregroundStyle(Theme.heartRate.opacity(0.85))
+                                }
+                            }
+                            .font(.caption2.monospacedDigit())
+                            .frame(width: labelW, alignment: .leading)
+                        }
                     }
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
         }
-        .chartXAxis {
-            AxisMarks { value in
-                AxisValueLabel {
-                    if let n = value.as(Int.self) { Text("\(n)").font(.caption2).foregroundStyle(.secondary) }
-                }
-            }
-        }
-        .padding(12)
     }
 }
 

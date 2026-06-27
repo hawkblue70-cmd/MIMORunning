@@ -13,12 +13,22 @@ actor InsightCache {
 
     private var store: [Key: InsightResult] = [:]
 
+    // MARK: - Lookup (in-memory → disk)
+
     func result(for activityID: UUID, historyCount: Int, isRefined: Bool, language: String) -> InsightResult? {
-        store[Key(activityID: activityID, historyCount: historyCount, isRefined: isRefined, language: language)]
+        let key = Key(activityID: activityID, historyCount: historyCount, isRefined: isRefined, language: language)
+        if let hit = store[key] { return hit }
+        if let disk = loadFromDisk(activityID: activityID, isRefined: isRefined, language: language) {
+            store[key] = disk
+            return disk
+        }
+        return nil
     }
 
     func cache(_ result: InsightResult, for activityID: UUID, historyCount: Int, isRefined: Bool, language: String) {
-        store[Key(activityID: activityID, historyCount: historyCount, isRefined: isRefined, language: language)] = result
+        let key = Key(activityID: activityID, historyCount: historyCount, isRefined: isRefined, language: language)
+        store[key] = result
+        saveToDisk(result, activityID: activityID, isRefined: isRefined, language: language)
     }
 
     func invalidate(_ activityID: UUID) {
@@ -27,5 +37,29 @@ actor InsightCache {
 
     func clear() {
         store.removeAll()
+    }
+
+    // MARK: - Disk persistence
+
+    // Bump this when insight generation logic changes to invalidate stale cache files.
+    private static let cacheVersion = 2
+
+    private func diskURL(activityID: UUID, isRefined: Bool, language: String) -> URL {
+        let refined  = isRefined ? "1" : "0"
+        let safeLang = language.replacingOccurrences(of: "/", with: "_")
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_insight_\(activityID.uuidString)_\(refined)_\(safeLang)_v\(Self.cacheVersion).json")
+    }
+
+    private func loadFromDisk(activityID: UUID, isRefined: Bool, language: String) -> InsightResult? {
+        let url = diskURL(activityID: activityID, isRefined: isRefined, language: language)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(InsightResult.self, from: data)
+    }
+
+    private func saveToDisk(_ result: InsightResult, activityID: UUID, isRefined: Bool, language: String) {
+        let url = diskURL(activityID: activityID, isRefined: isRefined, language: language)
+        guard let data = try? JSONEncoder().encode(result) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 }

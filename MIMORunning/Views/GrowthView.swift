@@ -81,6 +81,19 @@ struct GrowthView: View {
     @State private var pacePointsCache: [PacePoint] = []
     @State private var heatmapColumnsCache: [WeekColumn] = []
     @State private var weekStreakCache: Int = 0
+    @State private var metricAnalyses: [TrendMetric: (direction: TrendDirection, changeRatio: Double)] = [:]
+    @State private var paceAnalysisCache: (direction: TrendDirection, changeRatio: Double) = (.insufficient, 0)
+    @State private var hrAnalysisCache: (direction: TrendDirection, changeRatio: Double) = (.insufficient, 0)
+    @State private var thisWeekLongestKmCache: Double = 0
+    @State private var weeklyPatternCache: [WeeklyPattern] = []
+    @State private var weeklyCommentText: String = ""
+    @State private var weeklyCommentCache: [String: String] = [:]
+    @State private var runsCache: [Activity] = []
+    @State private var prEntriesCache: [PREntry] = []
+    @State private var journeyMilestonesCache: [MilestoneEvent] = []
+    @State private var thisWeekRunCountCache: Int = 0
+    @State private var growthInsightBannerText: String? = nil
+    @State private var showWeeklyShareCard = false
 
     private static let weekLabelFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "M/d"; return f
@@ -95,11 +108,10 @@ struct GrowthView: View {
         AppLanguage.shared.isEnglish ? monthLabelFormatterEn : monthLabelFormatterKo
     }
 
-    private var runs: [Activity] {
-        manager.activities.filter { $0.type == .running }
-    }
+    private var runs: [Activity] { runsCache }
 
     private func refreshChartCache() {
+        runsCache        = manager.activities.filter { $0.type == .running }
         weeklyKmsCache   = weeklyKms()
         weeklyMinsCache  = weeklyMins()
         monthlyKmsCache  = monthlyKms()
@@ -108,6 +120,28 @@ struct GrowthView: View {
         let cols = heatmapColumns()
         heatmapColumnsCache = cols
         weekStreakCache  = weekStreak()
+
+        // Pace trend from recent runs (sec/km values — down = faster = good)
+        let paceSamples = runs.prefix(14).compactMap { $0.paceSecPerKm }.map { Double($0) }
+        paceAnalysisCache = trendDirection(values: Array(paceSamples.reversed()))
+
+        // HR trend from recent runs
+        let hrSamples = runs.prefix(14).compactMap { $0.avgHeartRate }.map { Double($0) }
+        hrAnalysisCache = trendDirection(values: Array(hrSamples.reversed()))
+
+        // Longest run this week
+        let cal = Calendar.current
+        let nowComps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        thisWeekLongestKmCache = runs
+            .filter { cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.date) == nowComps }
+            .map { $0.distance / 1000 }
+            .max() ?? 0
+
+        let ws = cal.date(from: nowComps) ?? Date()
+        thisWeekRunCountCache   = runsCache.filter { $0.date >= ws }.count
+        prEntriesCache          = prEntries()
+        journeyMilestonesCache  = journeyMilestones()
+        growthInsightBannerText = computeGrowthInsightText()
     }
 
     var body: some View {
@@ -126,6 +160,7 @@ struct GrowthView: View {
                             weeklySection
                             paceSection
                             heatmapSection
+                            weekSummarySection
                             metricTrendsSection
                             prSection
                             journeySection
@@ -139,12 +174,13 @@ struct GrowthView: View {
             .navigationTitle(AppLanguage.shared.s("성장", "Growth"))
             .navigationBarTitleDisplayMode(.large)
         }
-        .onChange(of: manager.activities) { refreshChartCache() }
+        .onChange(of: manager.activities) { Task { refreshChartCache(); await refreshMetricAnalyses() } }
         .task {
             refreshChartCache()
             let bucket = manager.userLevel.bucket
             showTimeMileage = (bucket == .beginner || bucket == .novice)
             await checkBodyDataAvailability()
+            await refreshMetricAnalyses()
         }
         .sheet(item: $selectedTrend) { metric in
             MetricTrendView(
@@ -153,6 +189,19 @@ struct GrowthView: View {
                 manager: manager,
                 age: userAge,
                 isMale: manager.userIsMale
+            )
+        }
+        .sheet(isPresented: $showWeeklyShareCard) {
+            let style = weeklyPatternCache.first.map { weeklyPatternStyle(for: $0.key) }
+            WeeklyGrowthShareCardScreen(
+                km: weeklyKmsCache.last?.km ?? 0,
+                mins: weeklyMinsCache.last?.mins ?? 0,
+                count: thisWeekRunCount,
+                streak: weekStreakCache,
+                insightText: weeklyCommentText.isEmpty ? nil : weeklyCommentText,
+                insightSymbol: style?.symbol,
+                insightColor: style?.color,
+                manager: manager
             )
         }
     }
@@ -340,6 +389,77 @@ struct GrowthView: View {
         }
     }
 
+    private var thisWeekRunCount: Int { thisWeekRunCountCache }
+
+    private func weekTimeFormatted(_ total: Int) -> String {
+        guard total > 0 else { return "--" }
+        let h = total / 60
+        let m = total % 60
+        let L = AppLanguage.shared
+        if L.isEnglish { return h > 0 ? "\(h)h \(m)m" : "\(m)m" }
+        return h > 0 ? "\(h)시간 \(m)분" : "\(m)분"
+    }
+
+    private var weekSummarySection: some View {
+        let L = AppLanguage.shared
+        let km   = weeklyKmsCache.last?.km ?? 0
+        let mins = weeklyMinsCache.last?.mins ?? 0
+        let count  = thisWeekRunCount
+        let streak = weekStreakCache
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L.s("이번 주", "This Week"))
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(L.s("월요일부터 지금까지", "Monday through today"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(hex: "8A8A92"))
+                }
+                if km > 0 || mins > 0 || count > 0 {
+                    Spacer()
+                    Button { showWeeklyShareCard = true } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .foregroundStyle(Theme.violet)
+                    .padding(.top, 4)
+                }
+            }
+
+            if km == 0 && mins == 0 && count == 0 {
+                Text(L.s("이번 주 첫 러닝을 기다리고 있어요", "Waiting for your first run this week"))
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(hex: "8A8A92"))
+                    .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                HStack(spacing: 8) {
+                    WeekStatTile(
+                        value: String(format: km >= 10 ? "%.1f km" : "%.2f km", km),
+                        label: L.s("거리", "Distance")
+                    )
+                    WeekStatTile(
+                        value: weekTimeFormatted(Int(mins)),
+                        label: L.s("시간", "Time")
+                    )
+                    WeekStatTile(
+                        value: L.s("\(count)회", "\(count)"),
+                        label: L.s("횟수", "Runs")
+                    )
+                    if streak > 0 {
+                        WeekStatTile(
+                            value: L.s("\(streak)주", "\(streak)wk"),
+                            label: L.s("연속", "Streak")
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private var metricTrendsSection: some View {
         let L = AppLanguage.shared
         let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
@@ -347,7 +467,8 @@ struct GrowthView: View {
             .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max
         ]
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: L.s("지표 추세", "Metric Trends"), subtitle: L.s("탭하면 상세 보기", "Tap for details"))
+            SectionLabel(title: L.s("주간 지표 추세", "Weekly Metric Trends"), subtitle: L.s("탭하면 상세 보기", "Tap for details"))
+            weeklyPatternCommentCard
             LazyVGrid(columns: cols, spacing: 12) {
                 ForEach(runningMetrics) { metric in
                     MetricSparkCard(metric: metric, manager: manager, usePounds: useMiles) {
@@ -368,9 +489,43 @@ struct GrowthView: View {
         }
     }
 
+    @ViewBuilder
+    private var weeklyPatternCommentCard: some View {
+        if let pattern = weeklyPatternCache.first, !weeklyCommentText.isEmpty {
+            let style = weeklyPatternStyle(for: pattern.key)
+            HStack(spacing: 10) {
+                Image(systemName: style.symbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(style.color)
+                Text(weeklyCommentText)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Theme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private func weeklyPatternStyle(for key: String) -> (symbol: String, color: Color) {
+        switch key {
+        case "economy":    return ("bolt.fill",             Color(hex: "F5C542"))
+        case "speed":      return ("hare.fill",             Color(hex: "5AC8FA"))
+        case "form":       return ("figure.run",            Theme.violet)
+        case "cardio":     return ("heart.fill",            Color(hex: "30D158"))
+        case "easy":       return ("leaf.fill",             Color(hex: "34C759"))
+        case "streak":     return ("flame.fill",            Color(hex: "FF9F0A"))
+        case "consistent": return ("checkmark.circle.fill", Theme.violet)
+        default:           return ("figure.walk",           Color(hex: "8A8A92"))
+        }
+    }
+
     private var prSection: some View {
         let L = AppLanguage.shared
-        let entries = prEntries()
+        let entries = prEntriesCache
         return VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: L.s("PR 타임라인", "PR Timeline"), subtitle: L.s("거리별 최고 기록", "Best by distance"))
             if entries.isEmpty {
@@ -383,7 +538,7 @@ struct GrowthView: View {
 
     private var journeySection: some View {
         let L = AppLanguage.shared
-        let events = journeyMilestones()
+        let events = journeyMilestonesCache
         return VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: L.s("나의 여정", "My Journey"), subtitle: L.s("걷기에서 러닝으로", "From walking to running"))
             if events.isEmpty {
@@ -420,9 +575,11 @@ struct GrowthView: View {
         }
     }
 
-    private var growthInsightText: String? {
+    private var growthInsightText: String? { growthInsightBannerText }
+
+    private func computeGrowthInsightText() -> String? {
         let L = AppLanguage.shared
-        let streak = weekStreak()
+        let streak = weekStreakCache
         if streak >= 3 {
             return L.s("\(streak)주 연속 달리고 있어요 — 루틴이 자리 잡고 있어요",
                        "\(streak) weeks in a row — you're building a routine")
@@ -432,19 +589,18 @@ struct GrowthView: View {
                        "2 weeks running — keep it up this week")
         }
 
-        let weeks = weeklyKms()
-        let thisKm = weeks.last?.km ?? 0
-        let prevKm = weeks.dropLast().last?.km ?? 0
+        let thisKm = weeklyKmsCache.last?.km ?? 0
+        let prevKm = weeklyKmsCache.dropLast().last?.km ?? 0
         if thisKm > prevKm, prevKm > 0 {
             let diff = thisKm - prevKm
             return String(format: L.s("이번 주 거리가 지난 주보다 +%.1fkm 늘었어요", "+%.1fkm more than last week"), diff)
         }
 
-        if let recent = prEntries().first(where: { $0.isNew }) {
+        if let recent = prEntriesCache.first(where: { $0.isNew }) {
             return L.s("\(recent.label) 신기록을 세웠어요", "New \(recent.label) PR")
         }
 
-        let pts = pacePoints()
+        let pts = pacePointsCache
         if pts.count >= 6 {
             let latestAvg = pts.suffix(3).map(\.speedKmh).reduce(0, +) / 3
             let earlierAvg = pts.prefix(3).map(\.speedKmh).reduce(0, +) / 3
@@ -481,6 +637,86 @@ struct GrowthView: View {
             showBodyMass = !bm.isEmpty
             showBodyFat  = !bf.isEmpty
         }
+    }
+
+    // MARK: - Metric trend analyses
+
+    private func refreshMetricAnalyses() async {
+        let since = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
+        let runningMetrics: [TrendMetric] = [
+            .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max
+        ]
+
+        // Fetch all metric histories concurrently
+        var fetched: [(TrendMetric, [Double])] = []
+        await withTaskGroup(of: (TrendMetric, [Double]).self) { group in
+            for metric in runningMetrics {
+                group.addTask {
+                    let pts = await self.manager.fetchMetricHistory(metric, from: since)
+                    return (metric, pts.map(\.value))
+                }
+            }
+            for await item in group {
+                fetched.append(item)
+            }
+        }
+
+        // Compute trend directions back on the main actor
+        var results: [TrendMetric: (direction: TrendDirection, changeRatio: Double)] = [:]
+        for (metric, values) in fetched {
+            results[metric] = trendDirection(values: values)
+        }
+        metricAnalyses = results
+
+        // Build WeeklyInsightInputs and detect patterns
+        let cal = Calendar.current
+        let nowComps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        let thisWeekRuns = runs.filter {
+            cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.date) == nowComps
+        }
+        let inputs = WeeklyInsightInputs(
+            paceDirection:       paceAnalysisCache.direction,
+            hrDirection:         hrAnalysisCache.direction,
+            cadence:             results[.cadence]?.direction             ?? .insufficient,
+            power:               results[.power]?.direction               ?? .insufficient,
+            strideLength:        results[.strideLength]?.direction         ?? .insufficient,
+            groundContactTime:   results[.groundContactTime]?.direction    ?? .insufficient,
+            vertOsc:             results[.verticalOscillation]?.direction  ?? .insufficient,
+            vo2Max:              results[.vo2Max]?.direction               ?? .insufficient,
+            paceChangeRatio:     paceAnalysisCache.changeRatio,
+            hrChangeRatio:       hrAnalysisCache.changeRatio,
+            metricChangeRatios:  results.mapValues { $0.changeRatio },
+            weekStreak:          weekStreakCache,
+            runCount:            thisWeekRuns.count,
+            thisWeekDistanceKm:  thisWeekLongestKmCache
+        )
+        weeklyPatternCache = detectWeeklyPatterns(inputs)
+
+        // ① 폴백 템플릿으로 즉시 표시
+        let weekOfYear = Calendar.current.component(.weekOfYear, from: Date())
+        guard let top = weeklyPatternCache.first else {
+            weeklyCommentText = ""
+            return
+        }
+        weeklyCommentText = top.template(for: weekOfYear, isEnglish: AppLanguage.shared.isEnglish)
+        // ② 같은 주·같은 패턴이면 캐시 사용
+        let cacheKey = "\(weekOfYear)_\(top.key)"
+        if let cached = weeklyCommentCache[cacheKey] {
+            weeklyCommentText = cached
+            return
+        }
+
+        // ③ AI 강화 시도 (iOS 26+, 한국어, 사실 있을 때만)
+        #if canImport(FoundationModels)
+        if #available(iOS 26, *) {
+            if let aiText = await InsightAIGenerator.generateWeeklyComment(
+                patternKey: top.key, factSummary: top.factSummary
+            ) {
+                weeklyCommentText = aiText
+                weeklyCommentCache[cacheKey] = aiText
+            }
+        }
+        #endif
     }
 
     // MARK: - Journey milestones
@@ -833,10 +1069,11 @@ private struct RunHeatmap: View {
         return prevMonth != currMonth
     }
 
+    private static let shortDateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "M/d"; return f
+    }()
     private func shortDate(_ date: Date) -> String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "M/d"
-        return fmt.string(from: date)
+        Self.shortDateFmt.string(from: date)
     }
 }
 
@@ -905,10 +1142,11 @@ private struct PRCard: View {
         )
     }
 
+    private static let shortDateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yy.M.d"; return f
+    }()
     private func shortDate(_ date: Date) -> String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yy.M.d"
-        return fmt.string(from: date)
+        Self.shortDateFmt.string(from: date)
     }
 }
 
@@ -974,10 +1212,11 @@ private struct JourneyTimeline: View {
         }
     }
 
+    private static let dateStringFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yy.M.d"; return f
+    }()
     private func dateString(_ date: Date) -> String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yy.M.d"
-        return fmt.string(from: date)
+        Self.dateStringFmt.string(from: date)
     }
 }
 
@@ -1236,26 +1475,38 @@ private struct MetricSparkCard: View {
 
     private var currentValue: Double? { dataPoints.last?.value }
 
-    private var trendDirection: Double? {
-        guard dataPoints.count >= 4 else { return nil }
-        let half = dataPoints.count / 2
-        let older = dataPoints.prefix(half).map(\.value).reduce(0, +) / Double(half)
-        let newer = dataPoints.suffix(half).map(\.value).reduce(0, +) / Double(half)
-        guard older > 0 else { return nil }
-        let delta = (newer - older) / older
-        return abs(delta) > 0.01 ? delta : nil
+    private var isNeutral: Bool {
+        metric == .bodyMass || metric == .bodyFatPercentage
     }
 
-    private var trendArrow: String? {
-        guard let d = trendDirection else { return nil }
-        return d > 0 ? "↑" : "↓"
+    private var analysis: (direction: TrendDirection, changeRatio: Double) {
+        trendDirection(values: dataPoints.map(\.value))
     }
 
-    private var sparkColor: Color {
-        guard let arrow = trendArrow,
-              metric != .bodyMass && metric != .bodyFatPercentage else { return Theme.violet }
-        let up = arrow == "↑"
-        return (metric.lowerIsBetter ? !up : up) ? .green : Color(red: 1, green: 0.4, blue: 0.4)
+    private var sentiment: TrendSentiment {
+        trendSentiment(direction: analysis.direction,
+                       lowerIsBetter: metric.lowerIsBetter,
+                       isNeutral: isNeutral)
+    }
+
+    private var arrowText: String? {
+        switch analysis.direction {
+        case .up:   return "↑"
+        case .down: return "↓"
+        default:    return nil
+        }
+    }
+
+    private var arrowColor: Color {
+        switch sentiment {
+        case .good:    return .green
+        case .bad:     return Color(hex: "8A8A92")
+        case .neutral: return Color(hex: "6E6E78")
+        }
+    }
+
+    private var sparklineColor: Color {
+        sentiment == .good ? .green : Theme.violet
     }
 
     var body: some View {
@@ -1266,10 +1517,10 @@ private struct MetricSparkCard: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    if let arrow = trendArrow {
+                    if let arrow = arrowText {
                         Text(arrow)
                             .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(sparkColor)
+                            .foregroundStyle(arrowColor)
                     }
                 }
                 if isLoading {
@@ -1277,11 +1528,21 @@ private struct MetricSparkCard: View {
                         .frame(height: 56)
                         .overlay(ProgressView().scaleEffect(0.7).tint(Theme.violet))
                 } else if let cur = currentValue {
-                    Text(metric.formattedValue(cur, usePounds: usePounds))
-                        .font(.system(.subheadline, design: .rounded).weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(metric.formattedValue(cur, usePounds: usePounds))
+                            .font(.system(.subheadline, design: .rounded).weight(.bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        if analysis.direction != .insufficient { // TODO: 점검 후 제거
+                            let ratio = analysis.changeRatio
+                            let sign: String = ratio >= 0 ? "+" : "−"
+                            Text(String(format: "%@%.1f%%", sign, abs(ratio * 100)))
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color(hex: "6E6E78"))
+                                .lineLimit(1)
+                        }
+                    }
                     sparkline
                 } else {
                     Text(AppLanguage.shared.s("데이터 없음", "No Data"))
@@ -1297,7 +1558,7 @@ private struct MetricSparkCard: View {
         }
         .buttonStyle(.plain)
         .task {
-            let from = Calendar.current.date(byAdding: .month, value: -3, to: Date()) ?? Date()
+            let from = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
             dataPoints = await manager.fetchMetricHistory(metric, from: from, usePounds: usePounds)
             isLoading = false
         }
@@ -1306,15 +1567,30 @@ private struct MetricSparkCard: View {
     @ViewBuilder
     private var sparkline: some View {
         if dataPoints.count >= 2 {
+            let values  = dataPoints.map(\.value)
+            let minVal  = values.min() ?? 0
+            let maxVal  = values.max() ?? 1
+            let spread  = maxVal - minVal
+            let padding = spread > 0 ? spread * 0.4 : max(maxVal * 0.05, 1.0)
+
             Chart(dataPoints, id: \.date) { pt in
                 LineMark(
                     x: .value("날짜", pt.date),
                     y: .value(metric.unit, pt.value)
                 )
-                .foregroundStyle(sparkColor)
+                .foregroundStyle(sparklineColor)
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
                 .interpolationMethod(.catmullRom)
+
+                PointMark(
+                    x: .value("날짜", pt.date),
+                    y: .value(metric.unit, pt.value)
+                )
+                .symbol(HollowCircle())
+                .foregroundStyle(sparklineColor)
+                .symbolSize(14)
             }
+            .chartYScale(domain: (minVal - padding)...(maxVal + padding))
             .chartXAxis(.hidden)
             .chartYAxis(.hidden)
             .frame(height: 32)
@@ -1354,5 +1630,93 @@ private struct EmptyChartPlaceholder: View {
             .padding(14)
             .background(Theme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+// MARK: - Week Stat Tile
+
+private struct WeekStatTile: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(Color(hex: "8A8A92"))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+#Preview("주간 지표 추세 카드") {
+    // 판정기 UI 검증용 — good(초록)·neutral(회색)·bad(8A8A92) 색상과 변화율 % 확인
+    let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+    let cases: [(label: String, value: String, arrow: String?, arrowColor: Color, ratio: String?, lineColor: Color)] = [
+        ("케이던스",      "178 spm",      "↑", .green,              "+6.2%",  .green),
+        ("파워",         "245 W",        "↓", Color(hex:"8A8A92"), "−3.1%",  Theme.violet),
+        ("지면 접촉 시간","248 ms",       "↓", .green,              "−4.8%",  .green),
+        ("보폭",         "1.28 m",       nil, Color(hex:"6E6E78"), "+0.8%",  Theme.violet),
+        ("수직 진폭",    "8.4 cm",       "↑", Color(hex:"8A8A92"), "+5.5%",  Theme.violet),
+        ("유산소 피트니스","42.3 mL/kg·min","↑",.green,             "+7.1%",  .green),
+        ("체중",         "72.4 kg",      nil, Color(hex:"6E6E78"), "+1.2%",  Theme.violet),
+        ("체지방률",      "19.9%",        nil, Color(hex:"6E6E78"), "−0.3%",  Theme.violet),
+    ]
+    return ZStack {
+        Theme.background.ignoresSafeArea()
+        ScrollView {
+            LazyVGrid(columns: cols, spacing: 12) {
+                ForEach(cases, id: \.label) { c in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(c.label).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                            Spacer()
+                            if let a = c.arrow { Text(a).font(.system(size: 10, weight: .bold)).foregroundStyle(c.arrowColor) }
+                        }
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(c.value).font(.system(.subheadline, design: .rounded).weight(.bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.8)
+                            if let r = c.ratio { Text(r).font(.system(size: 11)).foregroundStyle(Color(hex: "6E6E78")) } // TODO: 점검 후 제거
+                        }
+                        RoundedRectangle(cornerRadius: 2).fill(c.lineColor).frame(height: 2).padding(.top, 4)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, minHeight: 90, alignment: .topLeading)
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .padding(16)
+        }
+    }
+}
+
+#Preview("이번 주 누적 블록") {
+    ZStack {
+        Theme.background.ignoresSafeArea()
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("이번 주")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("월요일부터 지금까지")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(hex: "8A8A92"))
+            }
+            HStack(spacing: 8) {
+                WeekStatTile(value: "18.4 km", label: "거리")
+                WeekStatTile(value: "2시간 3분", label: "시간")
+                WeekStatTile(value: "3회", label: "횟수")
+                WeekStatTile(value: "4주", label: "연속")
+            }
+        }
+        .padding(16)
     }
 }

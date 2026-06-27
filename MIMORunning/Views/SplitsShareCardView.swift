@@ -436,6 +436,28 @@ struct IntervalsShareCardView: View {
         let s = Int(secs); return String(format: "%d'%02d\"", s / 60, s % 60)
     }
 
+    private static let standardDistances = [100, 200, 300, 400, 500, 600, 800, 1000, 1200, 1500, 1600, 2000, 3000, 4000, 5000]
+
+    private func recognizedDistanceM(_ d: Double) -> Int {
+        let tolerance = 0.08
+        if let snap = Self.standardDistances.first(where: { abs(Double($0) - d) / Double($0) <= tolerance }) { return snap }
+        return d >= 200 ? Int((d / 100).rounded()) * 100 : Int((d / 50).rounded()) * 50
+    }
+
+    private var workSummaryText: String? {
+        let workSegs = workSegments
+        guard !workSegs.isEmpty else { return nil }
+        let distances = workSegs.compactMap(\.distanceM)
+        guard distances.count == workSegs.count else { return nil }
+        let snapped = distances.map { recognizedDistanceM($0) }
+        let counts = Dictionary(grouping: snapped, by: { $0 }).mapValues(\.count)
+        guard let (dist, cnt) = counts.max(by: { $0.value < $1.value }), cnt > 1 || counts.count == 1 else { return nil }
+        let label = dist >= 1000
+            ? (dist % 1000 == 0 ? "\(dist / 1000)km" : String(format: "%.1fkm", Double(dist) / 1000))
+            : "\(dist)m"
+        return AppLanguage.shared.s("\(label)×\(cnt)회", "\(label)×\(cnt)")
+    }
+
     private static let gold = Color(hex: "FFC74D")
 
     var body: some View {
@@ -460,7 +482,11 @@ struct IntervalsShareCardView: View {
 
                     Text(activity.date.cardShortDateString)
                         .font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
-                    Text(AppLanguage.shared.s("인터벌 구간", "Interval Reps"))
+                    Text({
+                        let base = AppLanguage.shared.s("인터벌 구간", "Interval Reps")
+                        if let s = workSummaryText { return "\(base)  (\(s))" }
+                        return base
+                    }())
                         .font(.system(size: 12, weight: .semibold)).tracking(0.5)
                         .foregroundStyle(Theme.violet).padding(.top, 2)
 

@@ -1,4 +1,5 @@
 #if canImport(FoundationModels)
+import Foundation
 import FoundationModels
 
 // Structured output type — @Generable ensures the model fills both fields.
@@ -15,6 +16,13 @@ struct AIInsightOutput {
 
     @Guide(description: "제공된 수치·사실만 활용한 한 줄 부연, 30자 이내")
     var detail: String
+}
+
+@available(iOS 26, *)
+@Generable(description: "2주 러닝 추세 격려 한 문장")
+struct WeeklyCommentOutput {
+    @Guide(description: "한국어 격려 한 문장, 25자 내외. 주어진 숫자만 쓸 것. 이모지 최대 1개.")
+    var comment: String
 }
 
 @available(iOS 26, *)
@@ -103,6 +111,116 @@ enum InsightAIGenerator {
         case .periodPositive:    "월간 총량 하향이지만 긍정 요소 발견 (페이스·최고 거리·연속·이정표·회복)"
         case .safety:            "안전·환경 돌봄 (심박 상승·부하 급증·더위)"
         }
+    }
+
+    // MARK: - Weekly comment
+
+    /// 2주 추세 패턴에서 격려 한 문장을 생성. nil이면 호출부가 템플릿을 유지.
+    static func generateWeeklyComment(patternKey: String, factSummary: String) async -> String? {
+        guard isAvailable else { return nil }
+        guard !AppLanguage.shared.isEnglish else { return nil }
+        guard !factSummary.isEmpty else { return nil }
+
+        let instructions = """
+            너는 러닝 앱 "미모러닝"의 따뜻한 코치다. 주어진 2주 훈련 사실로 격려 한 문장을 쓴다.
+            규칙:
+            1) 주어진 숫자 외의 수치를 절대 만들지 마라.
+            2) '더 빨리', '더 멀리', '빠르게', '더 많이', '더 길게', '치고 나가', '위험', '과훈련', '부상' 같은 압박·경고·결과 표현 금지.
+            3) 절대적 기준이 아닌 본인의 2주 변화만 말한다.
+            4) 한국어 한 문장, 18~35자. 명사 나열이나 감탄사가 아니라 완결된 격려 문장으로 쓴다. 예: '힘있게 밀어내며 발걸음이 가벼워졌어요' 같은 톤.
+            5) 이모지는 최대 1개.
+            6) 주어진 사실에 나온 지표(파워·접촉시간·보폭 등)의 의미만 표현하라. 사실에 없는 속도·거리·페이스를 언급하지 마라.
+            7) 같은 단어를 반복하지 마라.
+            8) '효율 향상!', '최고!' 같은 헤드라인·구호 형태 금지. 반드시 서술형 문장으로 끝낸다.
+            """
+        let guide = patternGuide(patternKey)
+        let prompt = "패턴: \(weeklyPatternKorean(patternKey)). \(guide) 사실: \(factSummary). 이 사실로 격려 한 문장."
+
+        do {
+            let session = LanguageModelSession(instructions: instructions)
+            let response = try await session.respond(to: prompt, generating: WeeklyCommentOutput.self)
+            let text = response.content.comment
+            guard validateWeeklyComment(text, factSummary: factSummary, patternKey: patternKey) else { return nil }
+            return text
+        } catch {
+            return nil
+        }
+    }
+
+    private static func patternGuide(_ key: String) -> String {
+        switch key {
+        case "economy":    return "이 패턴은 '효율·추진력·가벼움'에 대한 것이다. 속도나 거리가 아니다."
+        case "speed":      return "이 패턴은 '페이스 향상·수월함'에 대한 것이다."
+        case "form":       return "이 패턴은 '보폭·자세·폼 안정'에 대한 것이다. 속도나 거리가 아니다."
+        case "cardio":     return "이 패턴은 '심폐·유산소 향상'에 대한 것이다."
+        case "easy":       return "이 패턴은 '편안한 회복·여유'에 대한 것이다. 빠르게나 멀리가 아니다."
+        case "streak":     return "이 패턴은 '꾸준한 연속'에 대한 것이다."
+        case "consistent": return "이 패턴은 '꾸준한 훈련 횟수'에 대한 것이다."
+        default:           return ""
+        }
+    }
+
+    private static func weeklyPatternKorean(_ key: String) -> String {
+        switch key {
+        case "economy":    return "러닝 이코노미 향상"
+        case "speed":      return "페이스 향상"
+        case "form":       return "폼 개선"
+        case "cardio":     return "심폐 향상"
+        case "easy":       return "이지런 주간"
+        case "streak":     return "연속 달리기"
+        case "consistent": return "꾸준한 훈련"
+        default:           return "달리기"
+        }
+    }
+
+    private static func requiredVocab(for key: String) -> [String] {
+        switch key {
+        case "economy":    return ["힘", "추진", "밀어", "접촉", "가벼", "효율", "이코노미"]
+        case "form":       return ["보폭", "자세", "폼", "케이던스", "안정"]
+        case "speed":      return ["페이스", "빨라", "같은 노력", "수월"]
+        case "cardio":     return ["심폐", "유산소", "숨", "오래"]
+        case "easy":       return ["편하", "가볍게", "회복", "여유", "천천"]
+        case "streak":     return ["연속", "꾸준", "이어", "쉬지"]
+        case "consistent": return ["꾸준", "쌓이", "차곡"]
+        default:           return []
+        }
+    }
+
+    private static func validateWeeklyComment(_ text: String, factSummary: String, patternKey: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        // 최소 글자수: 빈약한 단문·헤드라인 차단 (공백 제외)
+        guard trimmed.filter({ !$0.isWhitespace }).count >= 12 else { return false }
+        // 종결어미 검증: 완결 격려 문장 강제 (이모지가 뒤에 올 수 있으므로 뒤 10자 안에 '요' 확인)
+        let tail = String(trimmed.suffix(10))
+        guard tail.contains("요") || trimmed.hasSuffix("다") else { return false }
+        // 문장 수 제한
+        let sentenceEnders = CharacterSet(charactersIn: ".。!?！？\n")
+        let segments = trimmed.components(separatedBy: sentenceEnders)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard segments.count <= 2 else { return false }
+        // 금지어 — 압박·결과·반복 차단
+        let banned = ["더 멀리", "멀리", "더 빨리", "빠르게", "더 많이", "더 길게", "치고", "위험", "과훈련", "부상"]
+        for word in banned where trimmed.contains(word) { return false }
+        // 숫자 조작 차단
+        let allowed = extractNumbers(from: factSummary)
+        let aiNums  = extractNumbers(from: trimmed)
+        guard aiNums.isSubset(of: allowed) else { return false }
+        // 양성 검증: 패턴 필수 어휘군 중 하나 이상 포함
+        let vocab = requiredVocab(for: patternKey)
+        if !vocab.isEmpty && !vocab.contains(where: { trimmed.contains($0) }) { return false }
+        return true
+    }
+
+    private static func extractNumbers(from text: String) -> Set<Int> {
+        var result = Set<Int>()
+        guard let regex = try? NSRegularExpression(pattern: #"\d+"#) else { return result }
+        regex.enumerateMatches(in: text, range: NSRange(text.startIndex..., in: text)) { match, _, _ in
+            if let match, let r = Range(match.range, in: text), let n = Int(text[r]) {
+                result.insert(n)
+            }
+        }
+        return result
     }
 }
 #endif
