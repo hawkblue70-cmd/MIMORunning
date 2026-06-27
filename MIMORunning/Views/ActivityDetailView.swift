@@ -208,7 +208,13 @@ struct ActivityDetailView: View {
             }
             switch newPanel {
             case .cadence, .power, .groundContact, .strideLength, .verticalOscillation:
-                Task { await loadPanelSeries(for: newPanel) }
+                // synchronous cache hit — no Task, no frame delay
+                if let cached = panelSeriesCache[newPanel] {
+                    panelSeriesData = cached
+                    isLoadingPanelSeries = false
+                } else {
+                    Task { await loadPanelSeries(for: newPanel) }
+                }
             default:
                 break
             }
@@ -296,7 +302,9 @@ struct ActivityDetailView: View {
             }
 
             // Phase 4: optional on-device AI rewrite (iOS 26+)
+            // tryAIEnhance returns nil if already enhanced (aiEnhanced == true)
             if let aiResult = await InsightEngine.tryAIEnhance(refined) {
+                await InsightCache.shared.cache(aiResult, for: activity.id, historyCount: historyCount, isRefined: true, language: lang)
                 withAnimation(.easeInOut(duration: 0.4)) { insight = aiResult }
             }
         }
@@ -360,11 +368,6 @@ struct ActivityDetailView: View {
     }
 
     private func loadPanelSeries(for panel: DetailPanel) async {
-        // Return cached result immediately if available
-        if let cached = panelSeriesCache[panel] {
-            panelSeriesData = cached
-            return
-        }
         panelSeriesData = []
         isLoadingPanelSeries = true
         let fetched: [(offset: TimeInterval, value: Double)]
@@ -389,6 +392,8 @@ struct ActivityDetailView: View {
             fetched = []
         }
         panelSeriesCache[panel] = fetched
+        // discard result if user already switched to another panel
+        guard activePanel == panel else { return }
         panelSeriesData = fetched
         isLoadingPanelSeries = false
     }
@@ -2773,8 +2778,8 @@ struct HRSeriesPanelChart: View {
     private var buckets: [Bucket] {
         guard !validSamples.isEmpty else { return [] }
         let totalDuration = max(validSamples.map(\.offset).max() ?? 1, 1)
-        // 1 bar per 30 seconds (Apple Health style), capped at 240
-        let numBuckets = max(1, min(240, Int((totalDuration / 30).rounded(.up))))
+        // always 80 bars; bucket duration scales with run length
+        let numBuckets = 80
         let bucketSize = totalDuration / Double(numBuckets)
         return (0..<numBuckets).compactMap { i in
             let lo = Double(i) * bucketSize
@@ -2808,13 +2813,7 @@ struct HRSeriesPanelChart: View {
         buckets.max(by: { $0.max < $1.max })?.id
     }
 
-    private var barWidth: CGFloat {
-        let n = buckets.count
-        if n <= 45  { return 5 }
-        if n <= 90  { return 3 }
-        if n <= 150 { return 2 }
-        return 1.5
-    }
+    private var barWidth: CGFloat { 3 }
 
     var body: some View {
         let lo = domainLo
@@ -2900,8 +2899,8 @@ private struct MetricBarPanelChart: View {
         let src = samples.filter { $0.value > validMin }
         guard !src.isEmpty else { return [] }
         let total = max(src.map(\.offset).max() ?? 1, 1)
-        // 1 bar per 30 seconds (matches HR chart), capped at 240
-        let count = max(1, min(240, Int((total / 30).rounded(.up))))
+        // always 60 bars; bucket duration scales with run length
+        let count = 80
         let size  = total / Double(count)
         return (0..<count).compactMap { i in
             let lo   = Double(i) * size
@@ -2916,13 +2915,7 @@ private struct MetricBarPanelChart: View {
         }
     }
 
-    private var barWidth: CGFloat {
-        let n = buckets.count
-        if n <= 45  { return 5 }
-        if n <= 90  { return 3 }
-        if n <= 150 { return 2 }
-        return 1.5
-    }
+    private var barWidth: CGFloat { 3 }
 
     private var avgValue: Double? {
         let valid = samples.filter { $0.value > validMin }.map(\.value)

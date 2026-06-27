@@ -21,12 +21,14 @@ struct InsightResult: Codable {
     let workoutType: WorkoutType
     let title: String
     let detail: String
+    var aiEnhanced: Bool = false
 
-    init(theme: InsightTheme, workoutType: WorkoutType = .general, title: String, detail: String) {
+    init(theme: InsightTheme, workoutType: WorkoutType = .general, title: String, detail: String, aiEnhanced: Bool = false) {
         self.theme = theme
         self.workoutType = workoutType
         self.title = title
         self.detail = detail
+        self.aiEnhanced = aiEnhanced
     }
 }
 
@@ -515,9 +517,12 @@ struct InsightEngine {
     /// Attempts on-device AI rewrite (iOS 26+). Returns nil on older OS or failure;
     /// callers keep the rule-based result as-is.
     static func tryAIEnhance(_ base: InsightResult) async -> InsightResult? {
+        guard !base.aiEnhanced else { return nil }  // already enhanced, skip
         #if canImport(FoundationModels)
         if #available(iOS 26, *) {
-            return await InsightAIGenerator.enhance(base)
+            guard let enhanced = await InsightAIGenerator.enhance(base) else { return nil }
+            return InsightResult(theme: enhanced.theme, workoutType: enhanced.workoutType,
+                                 title: enhanced.title, detail: enhanced.detail, aiEnhanced: true)
         }
         #endif
         return nil
