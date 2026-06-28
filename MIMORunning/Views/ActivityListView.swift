@@ -92,6 +92,7 @@ private struct ConnectView: View {
 
 private struct ActivityListContent: View {
     var manager: HealthKitManager
+    @Environment(RaceDetector.self) private var raceDetector
     @ObservedObject private var pro = ProManager.shared
     @State private var displayCount = 50
     @State private var showPaywall = false
@@ -160,8 +161,15 @@ private struct ActivityListContent: View {
                         }
                         ForEach(visibleActivities) { activity in
                             NavigationLink(value: activity) {
-                                ActivityCard(activity: activity, level: manager.userLevel.bucket,
-                                         shoeName: shoeByWorkout[activity.id.uuidString])
+                                ActivityCard(
+                                    activity: activity,
+                                    level: manager.userLevel.bucket,
+                                    shoeName: shoeByWorkout[activity.id.uuidString],
+                                    workoutType: manager.cachedWorkoutType(for: activity.id),
+                                    raceName: raceDetector.matchFor(activityID: activity.id).flatMap {
+                                        $0.isConfirmed ? $0.raceName : nil
+                                    }
+                                )
                             }
                             .buttonStyle(.plain)
                         }
@@ -357,6 +365,8 @@ private struct ActivityCard: View {
     let activity: Activity
     var level: LevelBucket = .beginner
     var shoeName: String? = nil
+    var workoutType: WorkoutType? = nil
+    var raceName: String? = nil
 
     private static let dateFormatter: DateFormatter = {
         let df = DateFormatter()
@@ -371,18 +381,30 @@ private struct ActivityCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack {
+            HStack(alignment: .top) {
                 HStack(spacing: 4) {
                     Image(systemName: activity.type.icon)
                         .foregroundStyle(Color(hex: "3DFF7A"))
                     Text(activity.type.label)
                         .foregroundStyle(Theme.violet)
+                    if let wt = workoutType {
+                        Text("- \(wt.koreanLabel)")
+                            .foregroundStyle(Color(hex: "FFC74D"))
+                    }
                 }
                 .font(.system(size: 12, weight: .semibold))
                 Spacer()
-                Text(formattedDate)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(formattedDate)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white)
+                    if let race = raceName {
+                        Text(race)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color(hex: "FFC74D"))
+                            .lineLimit(1)
+                    }
+                }
             }
             Text(activity.formattedDistance)
                 .font(.system(size: 24, weight: .black))

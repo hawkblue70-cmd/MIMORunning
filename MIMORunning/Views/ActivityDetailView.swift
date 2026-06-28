@@ -161,7 +161,7 @@ struct ActivityDetailView: View {
                     MetricGrid(activity: activity, detail: detail, age: userAge,
                                isMale: manager.userIsMale)
                     if let intervals = detail?.intervalSegments, !intervals.isEmpty {
-                        IntervalSegmentsSection(segments: intervals, activity: activity)
+                        IntervalSegmentsSection(segments: intervals, activity: activity, condition: condition)
                     }
                     if let splits = detail?.splits, !splits.isEmpty {
                         SplitsSection(splits: splits, zones: detail?.hrZones ?? [],
@@ -1176,6 +1176,7 @@ private struct DetailSectionHeader: View {
 private struct IntervalSegmentsSection: View {
     let segments: [IntervalSegment]
     var activity: Activity? = nil
+    var condition: ActivityCondition? = nil
 
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @State private var showIntervalsShare = false
@@ -1350,7 +1351,9 @@ private struct IntervalSegmentsSection: View {
         .padding(.horizontal, 16)
         .sheet(isPresented: $showIntervalsShare) {
             if let act = activity {
-                IntervalsShareCardScreen(activity: act, segments: segments, miniMeImage: miniMeStore.image)
+                IntervalsShareCardScreen(activity: act, segments: segments, miniMeImage: miniMeStore.image,
+                                        weatherText: condition?.weather?.formattedTemp,
+                                        weatherIcon: condition?.weather?.systemIcon)
             }
         }
     }

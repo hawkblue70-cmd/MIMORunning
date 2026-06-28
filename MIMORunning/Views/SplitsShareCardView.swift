@@ -388,6 +388,8 @@ struct IntervalsShareCardView: View {
     let activity: Activity
     let segments: [IntervalSegment]
     var miniMeImage: UIImage? = nil
+    var weatherText: String? = nil
+    var weatherIcon: String? = nil
 
     static func cardHeight(segmentCount: Int) -> CGFloat {
         max(520, 258 + CGFloat(segmentCount) * 24)
@@ -480,8 +482,19 @@ struct IntervalsShareCardView: View {
                     }
                     .padding(.top, 16).padding(.bottom, 10)
 
-                    Text(activity.date.cardShortDateString)
-                        .font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(activity.date.cardShortDateString)
+                            .font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+                        if let w = weatherText {
+                            HStack(spacing: 3) {
+                                Image(systemName: weatherIcon ?? "thermometer.medium")
+                                    .font(.system(size: 14))
+                                Text(w)
+                                    .font(.system(size: 15, weight: .medium))
+                            }
+                            .foregroundStyle(Color.white.opacity(0.60))
+                        }
+                    }
                     Text({
                         let base = AppLanguage.shared.s("인터벌 구간", "Interval Reps")
                         if let s = workSummaryText { return "\(base)  (\(s))" }
@@ -615,6 +628,8 @@ struct IntervalsShareCardScreen: View {
     let activity: Activity
     let segments: [IntervalSegment]
     var miniMeImage: UIImage? = nil
+    var weatherText: String? = nil
+    var weatherIcon: String? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var shareURL: URL?
@@ -665,7 +680,8 @@ struct IntervalsShareCardScreen: View {
                 .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         } else {
             let scale: CGFloat = 300.0 / 360.0
-            IntervalsShareCardView(activity: activity, segments: segments, miniMeImage: miniMeImage)
+            IntervalsShareCardView(activity: activity, segments: segments, miniMeImage: miniMeImage,
+                                   weatherText: weatherText, weatherIcon: weatherIcon)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .scaleEffect(scale)
                 .frame(width: 300, height: scale * IntervalsShareCardView.cardHeight(segmentCount: segments.count))
@@ -688,7 +704,8 @@ struct IntervalsShareCardScreen: View {
     @MainActor
     private func renderCard() async {
         isRendering = true
-        let card = IntervalsShareCardView(activity: activity, segments: segments, miniMeImage: miniMeImage)
+        let card = IntervalsShareCardView(activity: activity, segments: segments, miniMeImage: miniMeImage,
+                                          weatherText: weatherText, weatherIcon: weatherIcon)
         let renderer = ImageRenderer(content: card)
         renderer.scale = 3
         guard let img = renderer.uiImage, let data = img.pngData() else { isRendering = false; return }

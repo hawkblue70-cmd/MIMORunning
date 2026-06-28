@@ -253,6 +253,12 @@ class HealthKitManager {
 
     // MARK: - Detail (on demand)
 
+    /// Returns the workout type from in-memory cache only (no HealthKit fetch). nil = not loaded yet or not interval.
+    func cachedWorkoutType(for activityID: UUID) -> WorkoutType? {
+        guard let detail = detailCache[activityID] else { return nil }
+        return detail.workoutType == .interval ? .interval : nil
+    }
+
     func fetchDetail(for activityID: UUID) async -> ActivityDetail? {
         if let cached = detailCache[activityID] { return cached }
         if let disk = loadDetailFromDisk(activityID) {
