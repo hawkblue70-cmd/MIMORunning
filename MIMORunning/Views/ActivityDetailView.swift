@@ -11,7 +11,7 @@ import ImagePlayground
 // MARK: - Detail Panel
 
 private enum DetailPanel: String, CaseIterable {
-    case map                 = "지도"
+    case map                 = "경로"
     case splits              = "스플릿"
     case heartRate           = "심박수"
     case cadence             = "케이던스"
@@ -25,7 +25,7 @@ private enum DetailPanel: String, CaseIterable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .map:                  L.s("지도",     "Map")
+        case .map:                  L.s("경로",     "Route")
         case .splits:               L.s("스플릿",   "Splits")
         case .heartRate:            L.s("심박수",   "HR")
         case .cadence:              L.s("케이던스", "Cadence")

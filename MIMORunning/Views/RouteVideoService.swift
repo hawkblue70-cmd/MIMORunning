@@ -21,10 +21,13 @@ struct RouteVideoFrameView: View {
     var raceName: String? = nil
     var miniMeVariant: MiniMeVariant? = nil
     var customMiniMeImage: UIImage? = nil
+    var mood: Mood? = nil
+    var memoText: String? = nil
     let distanceKm: String
     let duration: String
     let date: Date
     var weather: WeatherSnapshot? = nil
+    var shoeName: String? = nil
     var chartPanel: CardChartPanel = .map
     var chartSplits: [SplitData] = []
     var chartHRSamples: [(offset: TimeInterval, bpm: Int)] = []
@@ -97,6 +100,29 @@ struct RouteVideoFrameView: View {
                     .padding(.top, 3 * scale)
             }
 
+            // Mood
+            if let m = mood {
+                HStack(spacing: 4 * scale) {
+                    Image(systemName: m.sfSymbol)
+                        .font(.system(size: 10 * scale))
+                    Text(m.label)
+                        .font(.system(size: 10 * scale, weight: .medium))
+                }
+                .foregroundStyle(m.cardColor)
+                .padding(.horizontal, pad)
+                .padding(.top, 2 * scale)
+            }
+
+            // Memo
+            if let memo = memoText, !memo.isEmpty {
+                Text(memo)
+                    .font(.system(size: 11 * scale, weight: .regular, design: .serif).italic())
+                    .foregroundStyle(.white.opacity(0.80))
+                    .lineLimit(2)
+                    .padding(.horizontal, pad)
+                    .padding(.top, 2 * scale)
+            }
+
             // Badges + MiniMe row
             let hasBadges = raceName != nil || miniMeVariant != nil || customMiniMeImage != nil
             if hasBadges {
@@ -140,7 +166,7 @@ struct RouteVideoFrameView: View {
                         HStack(spacing: 3 * scale) {
                             Image(systemName: chartPanel.icon)
                                 .font(.system(size: 6 * scale))
-                            Text(chartPanel.rawValue)
+                            Text(chartPanel.label)
                                 .font(.system(size: 7 * scale, weight: .semibold))
                                 .tracking(0.3)
                             if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
@@ -168,11 +194,21 @@ struct RouteVideoFrameView: View {
                 .padding(.horizontal, pad)
                 .padding(.bottom, 2 * scale)
             }
-            Text(startDateTimeString)
-                .font(.system(size: 9 * scale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.80))
-                .padding(.horizontal, pad)
-                .padding(.bottom, 3 * scale)
+            HStack {
+                Text(startDateTimeString)
+                    .font(.system(size: 9 * scale, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.80))
+                if let shoe = shoeName {
+                    Spacer()
+                    HStack(spacing: 3 * scale) {
+                        Image(systemName: "shoe.fill").font(.system(size: 7 * scale))
+                        Text(shoe).font(.system(size: 8 * scale, weight: .medium)).lineLimit(1)
+                    }
+                    .foregroundStyle(.white.opacity(0.75))
+                }
+            }
+            .padding(.horizontal, pad)
+            .padding(.bottom, 3 * scale)
 
             Rectangle()
                 .fill(Theme.violet.opacity(0.30))
@@ -411,6 +447,8 @@ struct RouteVideoExportService {
         raceName: String?,
         miniMeVariant: MiniMeVariant?,
         customMiniMeImage: UIImage?,
+        mood: Mood? = nil,
+        memoText: String? = nil,
         weather: WeatherSnapshot? = nil,
         chartPanel: CardChartPanel = .map,
         chartSplits: [SplitData] = [],
@@ -460,6 +498,8 @@ struct RouteVideoExportService {
                 raceName: raceName,
                 miniMeVariant: miniMeVariant,
                 customMiniMeImage: customMiniMeImage,
+                mood: mood,
+                memoText: memoText,
                 distanceKm: distanceKm,
                 duration: duration,
                 date: date,

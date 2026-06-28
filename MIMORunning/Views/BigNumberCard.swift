@@ -1,4 +1,5 @@
 import SwiftUI
+import MapKit
 
 struct BigNumberCard: View {
     let activity: Activity
@@ -11,6 +12,13 @@ struct BigNumberCard: View {
     let dateText: String
     var shoeName: String? = nil
     var photo: UIImage? = nil
+    var chartPanel: CardChartPanel = .map
+    var chartSplits: [SplitData] = []
+    var chartHRSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var chartHRZones: [HRZoneData] = []
+    var chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
+    var chartIntervalSegments: [IntervalSegment] = []
+    var routeCoordinates: [CLLocationCoordinate2D] = []
 
     static let cardWidth: CGFloat  = 300
     static let cardHeight: CGFloat = 375
@@ -68,12 +76,12 @@ struct BigNumberCard: View {
                     HStack(alignment: .top, spacing: 6) {
                         if let mood = mood {
                             Image(systemName: mood.sfSymbol)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(Color(hex: "FFC74D"))
                         }
                         if let memo = memoText, !memo.isEmpty {
                             Text(memo)
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .lineLimit(2)
                         }
@@ -85,6 +93,27 @@ struct BigNumberCard: View {
 
                 // 3) Hero block — positioned at ~42% from top
                 Spacer()
+
+                if chartPanel == .map, !routeCoordinates.isEmpty {
+                    HStack {
+                        Spacer()
+                        RouteLineArt(coordinates: routeCoordinates)
+                            .frame(width: 110, height: 110)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+                } else if chartPanel != .map {
+                    HStack {
+                        Spacer()
+                        CardChartLabeledPanel(
+                            panel: chartPanel, splits: chartSplits, hrSamples: chartHRSamples,
+                            hrZones: chartHRZones, workoutSeries: chartWorkoutSeries,
+                            intervalSegments: chartIntervalSegments
+                        )
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+                }
 
                 VStack(spacing: 6) {
                     Text(heroMetric.formattedValue(activity: activity, detail: detail))
@@ -239,12 +268,12 @@ struct BigNumberVideoOverlayView: View {
                         HStack(alignment: .top, spacing: 6 * s) {
                             if let mood = mood {
                                 Image(systemName: mood.sfSymbol)
-                                    .font(.system(size: 13 * s, weight: .semibold))
+                                    .font(.system(size: 10 * s, weight: .semibold))
                                     .foregroundStyle(Color(hex: "FFC74D"))
                             }
                             if let memo = memoText, !memo.isEmpty {
                                 Text(memo)
-                                    .font(.system(size: 16 * s, weight: .semibold))
+                                    .font(.system(size: 11 * s, weight: .semibold))
                                     .foregroundStyle(.white)
                                     .lineLimit(2)
                             }

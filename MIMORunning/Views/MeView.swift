@@ -31,6 +31,7 @@ struct MeView: View {
     @State private var showYearShare1 = false
     @State private var showAddShoe = false
     @State private var shoeToDelete: Shoe?
+    @State private var shoeKmCache: [UUID: Double] = [:]
     @AppStorage("distanceUnitMiles") private var useMiles = false
     @AppStorage("garminNoticeDismissed") private var garminNoticeDismissed = false
     @AppStorage("showRunning")  private var showRunning  = true
@@ -146,6 +147,9 @@ struct MeView: View {
             .navigationTitle(AppLanguage.shared.s("나", "Me"))
             .navigationBarTitleDisplayMode(.large)
         }
+        .task { refreshShoeKmCache() }
+        .onChange(of: manager.activities.count) { refreshShoeKmCache() }
+        .onChange(of: allStories.count) { refreshShoeKmCache() }
     }
 
     // MARK: - Garmin notice
@@ -307,13 +311,21 @@ struct MeView: View {
 
     @Environment(\.modelContext) private var modelContext
 
+    private func refreshShoeKmCache() {
+        var dict: [UUID: Double] = [:]
+        for shoe in shoes {
+            let sid = shoe.id.uuidString
+            let workoutIDs = Set(allStories.filter { $0.shoeID == sid }.map { $0.workoutID })
+            guard !workoutIDs.isEmpty else { dict[shoe.id] = 0; continue }
+            dict[shoe.id] = manager.activities
+                .filter { workoutIDs.contains($0.id.uuidString) }
+                .reduce(0) { $0 + $1.distance } / 1000
+        }
+        shoeKmCache = dict
+    }
+
     private func cumulativeKm(for shoe: Shoe) -> Double {
-        let sid = shoe.id.uuidString
-        let workoutIDs = Set(allStories.lazy.filter { $0.shoeID == sid }.map { $0.workoutID })
-        guard !workoutIDs.isEmpty else { return 0 }
-        return manager.activities
-            .lazy.filter { workoutIDs.contains($0.id.uuidString) }
-            .reduce(0) { $0 + $1.distance } / 1000
+        shoeKmCache[shoe.id] ?? 0
     }
 
     private var shoesSection: some View {

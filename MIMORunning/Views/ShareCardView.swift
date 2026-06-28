@@ -69,7 +69,7 @@ private func photoMetricsRows(_ items: [ShareMetricItem]) -> [[ShareMetricItem]]
 // MARK: - Card Chart Panel
 
 enum CardChartPanel: String, CaseIterable, Equatable {
-    case map                 = "지도"
+    case map                 = "경로"
     case splits              = "스플릿"
     case heartRate           = "심박수"
     case cadence             = "케이던스"
@@ -98,7 +98,7 @@ enum CardChartPanel: String, CaseIterable, Equatable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .map:                  L.s("지도",    "Map")
+        case .map:                  L.s("경로",    "Route")
         case .splits:               L.s("스플릿",  "Splits")
         case .heartRate:            L.s("심박수",  "HR")
         case .cadence:              L.s("케이던스", "Cadence")
@@ -173,6 +173,66 @@ extension View {
     }
 }
 
+// MARK: - Shared chart panel components (used by all card styles)
+
+struct CardChartPanelView: View {
+    let panel: CardChartPanel
+    var splits: [SplitData] = []
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var hrZones: [HRZoneData] = []
+    var workoutSeries: [(offset: TimeInterval, value: Double)] = []
+    var intervalSegments: [IntervalSegment] = []
+
+    var body: some View {
+        switch panel {
+        case .splits where !splits.isEmpty:
+            SplitsPanelChart(splits: splits, compact: true)
+                .frame(width: 130, height: 83).clipped()
+        case .intervals where !intervalSegments.isEmpty:
+            CardIntervalChart(segments: intervalSegments)
+        case .heartRate where !hrSamples.isEmpty:
+            HRSeriesPanelChart(samples: hrSamples, zones: hrZones, compact: true)
+                .frame(width: 130, height: 83).clipped()
+        case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
+             where !workoutSeries.isEmpty:
+            CardWorkoutSeriesChart(samples: workoutSeries, panel: panel)
+                .frame(width: 130, height: 83).clipped()
+        default:
+            EmptyView()
+        }
+    }
+}
+
+struct CardChartLabeledPanel: View {
+    let panel: CardChartPanel
+    var splits: [SplitData] = []
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var hrZones: [HRZoneData] = []
+    var workoutSeries: [(offset: TimeInterval, value: Double)] = []
+    var intervalSegments: [IntervalSegment] = []
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            HStack(spacing: 3) {
+                Image(systemName: panel.icon).font(.system(size: 7))
+                Text(panel.label)
+                    .font(.system(size: 8, weight: .semibold))
+                    .tracking(0.3)
+                if panel == .intervals, let s = intervalSegments.workSummaryText {
+                    Text(s)
+                        .font(.system(size: 8, weight: .semibold).monospacedDigit())
+                }
+            }
+            .foregroundStyle(Color.white.opacity(0.55))
+            CardChartPanelView(
+                panel: panel, splits: splits, hrSamples: hrSamples,
+                hrZones: hrZones, workoutSeries: workoutSeries,
+                intervalSegments: intervalSegments
+            )
+        }
+    }
+}
+
 // MARK: - Athletic card (record-only mode, no photo)
 
 struct ShareCardView: View {
@@ -224,45 +284,15 @@ struct ShareCardView: View {
         if chartPanel != .map {
             HStack {
                 Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    HStack(spacing: 3) {
-                        Image(systemName: chartPanel.icon)
-                            .font(.system(size: 7))
-                        Text(chartPanel.label)
-                            .font(.system(size: 8, weight: .semibold))
-                            .tracking(0.3)
-                        if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
-                            Text(s)
-                                .font(.system(size: 8, weight: .semibold).monospacedDigit())
-                        }
-                    }
-                    .foregroundStyle(Color.white.opacity(0.55))
-                    chartContent
-                }
+                CardChartLabeledPanel(
+                    panel: chartPanel, splits: chartSplits, hrSamples: chartHRSamples,
+                    hrZones: chartHRZones, workoutSeries: chartWorkoutSeries,
+                    intervalSegments: chartIntervalSegments
+                )
                 .padding(.trailing, 20)
             }
             .padding(.top, 6)
             .padding(.bottom, 6)
-        }
-    }
-
-    @ViewBuilder
-    private var chartContent: some View {
-        switch chartPanel {
-        case .splits where !chartSplits.isEmpty:
-            SplitsPanelChart(splits: chartSplits, compact: true)
-                .frame(width: 130, height: 83).clipped()
-        case .intervals where !chartIntervalSegments.isEmpty:
-            CardIntervalChart(segments: chartIntervalSegments)
-        case .heartRate where !chartHRSamples.isEmpty:
-            HRSeriesPanelChart(samples: chartHRSamples, zones: chartHRZones, compact: true)
-                .frame(width: 130, height: 83).clipped()
-        case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
-             where !chartWorkoutSeries.isEmpty:
-            CardWorkoutSeriesChart(samples: chartWorkoutSeries, panel: chartPanel)
-                .frame(width: 130, height: 83).clipped()
-        default:
-            EmptyView()
         }
     }
 
@@ -289,11 +319,13 @@ struct ShareCardView: View {
                                 .tracking(2)
                                 .foregroundStyle(Theme.violet)
                         }
-                        Text(insightTitle)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.90))
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
+                        if !insightTitle.isEmpty {
+                            Text(insightTitle)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.90))
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         if let race = raceName {
                             HStack(spacing: 4) {
                                 Image(systemName: "flag.checkered")
@@ -508,13 +540,36 @@ struct CardWorkoutSeriesChart: View {
         let lo = domainLo, hi = domainHi
         Chart {
             ForEach(buckets) { b in
-                BarMark(
-                    x: .value("분", b.midMin),
-                    yStart: .value("lo", useRangeBar ? b.minV : lo),
-                    yEnd: .value("hi", useRangeBar ? b.maxV : b.avg),
-                    width: .fixed(2)
-                )
-                .foregroundStyle(barColor.opacity(0.85))
+                if panel == .elevation {
+                    AreaMark(
+                        x: .value("분", b.midMin),
+                        yStart: .value("바닥", lo),
+                        yEnd: .value("고도", b.avg)
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [barColor.opacity(0.55), barColor.opacity(0.10)],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+                    .interpolationMethod(.catmullRom)
+
+                    LineMark(
+                        x: .value("분", b.midMin),
+                        y: .value("고도", b.avg)
+                    )
+                    .foregroundStyle(barColor)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .interpolationMethod(.catmullRom)
+                } else {
+                    BarMark(
+                        x: .value("분", b.midMin),
+                        yStart: .value("lo", useRangeBar ? b.minV : lo),
+                        yEnd: .value("hi", useRangeBar ? b.maxV : b.avg),
+                        width: .fixed(2)
+                    )
+                    .foregroundStyle(barColor.opacity(0.85))
+                }
             }
         }
         .chartYScale(domain: lo...hi)
@@ -683,25 +738,6 @@ private struct PhotoShareCardView: View {
     private var startDateTimeString: String { activity.date.cardDateTimeString }
     private var hasMiniMe: Bool { customMiniMeImage != nil || miniMeVariant != nil }
 
-    @ViewBuilder private var chartContent: some View {
-        switch chartPanel {
-        case .splits where !chartSplits.isEmpty:
-            SplitsPanelChart(splits: chartSplits, compact: true)
-                .frame(width: 130, height: 83).clipped()
-        case .intervals where !chartIntervalSegments.isEmpty:
-            CardIntervalChart(segments: chartIntervalSegments)
-        case .heartRate where !chartHRSamples.isEmpty:
-            HRSeriesPanelChart(samples: chartHRSamples, zones: chartHRZones, compact: true)
-                .frame(width: 130, height: 83).clipped()
-        case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
-             where !chartWorkoutSeries.isEmpty:
-            CardWorkoutSeriesChart(samples: chartWorkoutSeries, panel: chartPanel)
-                .frame(width: 130, height: 83).clipped()
-        default:
-            EmptyView()
-        }
-    }
-
     var body: some View {
         GeometryReader { proxy in
         let max = maxOffset(for: proxy.size)
@@ -793,28 +829,18 @@ private struct PhotoShareCardView: View {
                     HStack {
                         Spacer()
                         RouteLineArt(coordinates: routeCoordinates)
-                            .frame(width: 120, height: 120)
+                            .frame(width: 110, height: 110)
                     }
                     .padding(.horizontal, 18)
                     .padding(.bottom, 6)
                 } else if chartPanel != .map {
                     HStack {
                         Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            HStack(spacing: 3) {
-                                Image(systemName: chartPanel.icon)
-                                    .font(.system(size: 7))
-                                Text(chartPanel.label)
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .tracking(0.3)
-                                if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
-                                    Text(s)
-                                        .font(.system(size: 8, weight: .semibold).monospacedDigit())
-                                }
-                            }
-                            .foregroundStyle(Color.white.opacity(0.55))
-                            chartContent
-                        }
+                        CardChartLabeledPanel(
+                            panel: chartPanel, splits: chartSplits, hrSamples: chartHRSamples,
+                            hrZones: chartHRZones, workoutSeries: chartWorkoutSeries,
+                            intervalSegments: chartIntervalSegments
+                        )
                     }
                     .padding(.horizontal, 18)
                     .padding(.bottom, 6)
@@ -984,7 +1010,7 @@ private struct PhotoCardMetric: View {
 
 // MARK: - Route line art (Canvas)
 
-private struct RouteLineArt: View {
+struct RouteLineArt: View {
     let coordinates: [CLLocationCoordinate2D]
 
     var body: some View {
@@ -1097,25 +1123,6 @@ private struct StoryShareCardView: View {
     private var hasMiniMe: Bool { customMiniMeImage != nil || miniMeVariant != nil }
     private var startDateTimeString: String { activity.date.cardDateTimeString }
 
-    @ViewBuilder private var chartContent: some View {
-        switch chartPanel {
-        case .splits where !chartSplits.isEmpty:
-            SplitsPanelChart(splits: chartSplits, compact: true)
-                .frame(width: 130, height: 83).clipped()
-        case .intervals where !chartIntervalSegments.isEmpty:
-            CardIntervalChart(segments: chartIntervalSegments)
-        case .heartRate where !chartHRSamples.isEmpty:
-            HRSeriesPanelChart(samples: chartHRSamples, zones: chartHRZones, compact: true)
-                .frame(width: 130, height: 83).clipped()
-        case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
-             where !chartWorkoutSeries.isEmpty:
-            CardWorkoutSeriesChart(samples: chartWorkoutSeries, panel: chartPanel)
-                .frame(width: 130, height: 83).clipped()
-        default:
-            EmptyView()
-        }
-    }
-
     var body: some View {
         ZStack {
             LinearGradient(
@@ -1201,28 +1208,18 @@ private struct StoryShareCardView: View {
                     HStack {
                         Spacer()
                         RouteLineArt(coordinates: routeCoordinates)
-                            .frame(width: 130, height: 130)
+                            .frame(width: 110, height: 110)
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 8)
                 } else if chartPanel != .map {
                     HStack {
                         Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            HStack(spacing: 3) {
-                                Image(systemName: chartPanel.icon)
-                                    .font(.system(size: 7))
-                                Text(chartPanel.label)
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .tracking(0.3)
-                                if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
-                                    Text(s)
-                                        .font(.system(size: 8, weight: .semibold).monospacedDigit())
-                                }
-                            }
-                            .foregroundStyle(Color.white.opacity(0.55))
-                            chartContent
-                        }
+                        CardChartLabeledPanel(
+                            panel: chartPanel, splits: chartSplits, hrSamples: chartHRSamples,
+                            hrZones: chartHRZones, workoutSeries: chartWorkoutSeries,
+                            intervalSegments: chartIntervalSegments
+                        )
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 8)
@@ -1319,6 +1316,8 @@ private struct VideoOverlayCard: View {
     let raceName: String?
     let miniMeVariant: MiniMeVariant?
     let miniMeImage: UIImage?
+    var mood: Mood? = nil
+    var memoText: String? = nil
     let chartPanel: CardChartPanel
     let chartSplits: [SplitData]
     let chartHRSamples: [(offset: TimeInterval, bpm: Int)]
@@ -1328,25 +1327,6 @@ private struct VideoOverlayCard: View {
     let weather: WeatherSnapshot?
 
     private var startDateTimeString: String { date.cardDateTimeString }
-
-    @ViewBuilder private var chartContent: some View {
-        switch chartPanel {
-        case .splits where !chartSplits.isEmpty:
-            SplitsPanelChart(splits: chartSplits, compact: true)
-                .frame(width: 130, height: 83).clipped()
-        case .intervals where !chartIntervalSegments.isEmpty:
-            CardIntervalChart(segments: chartIntervalSegments)
-        case .heartRate where !chartHRSamples.isEmpty:
-            HRSeriesPanelChart(samples: chartHRSamples, zones: chartHRZones, compact: true)
-                .frame(width: 130, height: 83).clipped()
-        case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
-             where !chartWorkoutSeries.isEmpty:
-            CardWorkoutSeriesChart(samples: chartWorkoutSeries, panel: chartPanel)
-                .frame(width: 130, height: 83).clipped()
-        default:
-            EmptyView()
-        }
-    }
 
     var body: some View {
         ZStack {
@@ -1390,6 +1370,21 @@ private struct VideoOverlayCard: View {
                             .background(Theme.violet.opacity(0.20))
                             .clipShape(Capsule())
                         }
+                        if let m = mood {
+                            HStack(spacing: 3) {
+                                Image(systemName: m.sfSymbol)
+                                    .font(.system(size: 10, weight: .medium))
+                                Text(m.label)
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                            .foregroundStyle(m.cardColor)
+                        }
+                        if let memo = memoText, !memo.isEmpty {
+                            Text(memo)
+                                .font(.system(size: 11, weight: .regular, design: .serif).italic())
+                                .foregroundStyle(.white.opacity(0.80))
+                                .lineLimit(2)
+                        }
                     }
                     Spacer(minLength: 4)
                     if miniMeVariant != nil || miniMeImage != nil {
@@ -1417,7 +1412,11 @@ private struct VideoOverlayCard: View {
                                 }
                             }
                             .foregroundStyle(Color.white.opacity(0.55))
-                            chartContent
+                            CardChartPanelView(
+                                panel: chartPanel, splits: chartSplits, hrSamples: chartHRSamples,
+                                hrZones: chartHRZones, workoutSeries: chartWorkoutSeries,
+                                intervalSegments: chartIntervalSegments
+                            )
                         }
                     }
                     .padding(.bottom, 3)
@@ -1890,6 +1889,40 @@ struct ShareCardScreen: View {
 
     // MARK: - Body helpers
 
+    @ViewBuilder
+    private var bigNumberCardPreview: some View {
+        if template == .routeVideo, let snap = routeSnapshot {
+            BigNumberRouteVideoFrameView(
+                snapshot: snap,
+                snapshotPoints: routeSnapshotPoints,
+                routeProgress: routePreviewProgress,
+                activity: activity, detail: detail, heroMetric: heroMetric,
+                mood: bigNumberShowMood ? story?.mood : nil,
+                memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
+                weatherText: condition?.weather?.formattedTemp,
+                weatherIcon: condition?.weather?.systemIcon,
+                dateText: activity.date.cardDateTimeString,
+                shoeName: displayShoeName
+            )
+            .frame(width: 300, height: 375)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+        } else {
+            BigNumberCard(
+                activity: activity, detail: detail, heroMetric: heroMetric,
+                mood: bigNumberShowMood ? story?.mood : nil,
+                memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
+                weatherText: condition?.weather?.formattedTemp,
+                weatherIcon: condition?.weather?.systemIcon,
+                dateText: activity.date.cardDateTimeString,
+                shoeName: displayShoeName,
+                photo: template == .story ? (selectedPhoto ?? storyPhoto)
+                    : template == .video ? videoPreviewImage : nil,
+                chartPanel: .map,
+                routeCoordinates: []
+            )
+        }
+    }
+
     private var cardSection: some View {
         TabView(selection: $cardIndex) {
             cardPreview
@@ -1898,41 +1931,9 @@ struct ShareCardScreen: View {
                 .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                 .animation(.easeInOut(duration: 0.2), value: template)
                 .tag(0)
-            Group {
-                if template == .routeVideo, let snap = routeSnapshot {
-                    BigNumberRouteVideoFrameView(
-                        snapshot: snap,
-                        snapshotPoints: routeSnapshotPoints,
-                        routeProgress: routePreviewProgress,
-                        activity: activity, detail: detail, heroMetric: heroMetric,
-                        mood: bigNumberShowMood ? story?.mood : nil,
-                        memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
-                        weatherText: condition?.weather?.formattedTemp,
-                        weatherIcon: condition?.weather?.systemIcon,
-                        dateText: activity.date.cardDateTimeString,
-                        shoeName: displayShoeName
-                    )
-                    .frame(width: 300, height: 375)
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                } else {
-                    BigNumberCard(
-                        activity: activity,
-                        detail: detail,
-                        heroMetric: heroMetric,
-                        mood: bigNumberShowMood ? story?.mood : nil,
-                        memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
-                        weatherText: condition?.weather?.formattedTemp,
-                        weatherIcon: condition?.weather?.systemIcon,
-                        dateText: activity.date.cardDateTimeString,
-                        shoeName: displayShoeName,
-                        photo: template == .story ? (selectedPhoto ?? storyPhoto)
-                            : template == .video ? videoPreviewImage
-                            : nil
-                    )
-                }
-            }
-            .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
-            .tag(1)
+            bigNumberCardPreview
+                .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
+                .tag(1)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(height: 375)
@@ -2084,16 +2085,6 @@ struct ShareCardScreen: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 2)
             }
-            // Row 3: chart panel chips — all locked
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(CardChartPanel.allCases, id: \.self) { panel in
-                        lockedChip(panel.label, icon: panel.icon)
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 2)
-            }
         }
     }
 
@@ -2154,9 +2145,9 @@ struct ShareCardScreen: View {
                     }
                 }
             }
-            .padding(.bottom, 20)
+            .padding(.bottom, 8)
         } else if template == .video {
-            VStack(spacing: 6) {
+            VStack(spacing: 2) {
                 HStack(spacing: 14) {
                     PhotosPicker(selection: $videoPickerItem, matching: .videos, photoLibrary: .shared()) {
                         Label(sourceVideoURL == nil ? AppLanguage.shared.s("영상 선택", "Select Video") : AppLanguage.shared.s("영상 변경", "Change Video"),
@@ -2177,9 +2168,9 @@ struct ShareCardScreen: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            .padding(.bottom, 20)
+            .padding(.bottom, 8)
         } else {
-            Spacer(minLength: 20)
+            Color.clear.frame(height: 20)
         }
         // routeVideo has no bottom picker
     }
@@ -2191,16 +2182,17 @@ struct ShareCardScreen: View {
             Theme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Spacer()
+                Color.clear.frame(height: 20)
                 cardSection
                 carouselDots
                 cardPageDots
-                Spacer(minLength: 20)
+                Color.clear.frame(height: 12)
                 Group {
                     if isBigNumber { bigNumberChipRow } else { chipRow }
                 }.padding(.bottom, 12)
                 templatePicker
                 bottomControls
+                Spacer(minLength: 0)
                 shareCTA.padding(.horizontal, 24).padding(.bottom, 36)
             }
         }
@@ -2339,22 +2331,14 @@ struct ShareCardScreen: View {
     // MARK: - Video chart content
 
     @ViewBuilder private var videoChartContent: some View {
-        switch cardPanel {
-        case .splits where !(detail?.splits.isEmpty ?? true):
-            SplitsPanelChart(splits: detail?.splits ?? [], compact: true)
-                .frame(width: 130, height: 83).clipped()
-        case .intervals where !(detail?.intervalSegments.isEmpty ?? true):
-            CardIntervalChart(segments: detail?.intervalSegments ?? [])
-        case .heartRate where !shareHRSamples.isEmpty:
-            HRSeriesPanelChart(samples: shareHRSamples, zones: detail?.hrZones ?? [], compact: true)
-                .frame(width: 130, height: 83).clipped()
-        case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
-             where !shareWorkoutSeries.isEmpty:
-            CardWorkoutSeriesChart(samples: shareWorkoutSeries, panel: cardPanel)
-                .frame(width: 130, height: 83).clipped()
-        default:
-            EmptyView()
-        }
+        CardChartPanelView(
+            panel: cardPanel,
+            splits: detail?.splits ?? [],
+            hrSamples: shareHRSamples,
+            hrZones: detail?.hrZones ?? [],
+            workoutSeries: shareWorkoutSeries,
+            intervalSegments: detail?.intervalSegments ?? []
+        )
     }
 
     // MARK: - Card preview
@@ -2486,10 +2470,13 @@ struct ShareCardScreen: View {
                 raceName: activeRaceName,
                 miniMeVariant: activeMiniMeVariant,
                 customMiniMeImage: activeMiniMeImage,
+                mood: showMoodOnCard ? story?.mood : nil,
+                memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                 distanceKm: distanceKmString,
                 duration: activity.formattedDuration,
                 date: activity.date,
                 weather: condition?.weather,
+                shoeName: displayShoeName,
                 chartPanel: cardPanel,
                 chartSplits: detail?.splits ?? [],
                 chartHRSamples: shareHRSamples,
@@ -2502,7 +2489,7 @@ struct ShareCardScreen: View {
                 Color(hex: "0D0D12")
                 VStack(spacing: 10) {
                     ProgressView().tint(Theme.violet)
-                    Text(AppLanguage.shared.s("지도 준비 중…", "Loading map…"))
+                    Text(AppLanguage.shared.s("경로 준비 중…", "Loading route…"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -2586,6 +2573,21 @@ struct ShareCardScreen: View {
                             .background(Theme.violet.opacity(0.20))
                             .clipShape(Capsule())
                         }
+                        if showMoodOnCard, let m = story?.mood {
+                            HStack(spacing: 4) {
+                                Image(systemName: m.sfSymbol)
+                                    .font(.system(size: 10))
+                                Text(m.label)
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                            .foregroundStyle(m.cardColor)
+                        }
+                        if showMemoOnCard, let memo = story?.memo, !memo.isEmpty {
+                            Text(memo)
+                                .font(.system(size: 11, weight: .regular, design: .serif).italic())
+                                .foregroundStyle(.white.opacity(0.80))
+                                .lineLimit(2)
+                        }
                     }
 
                     Spacer(minLength: 4)
@@ -2600,14 +2602,22 @@ struct ShareCardScreen: View {
 
                 Spacer()
 
-                if cardPanel != .map {
+                if cardPanel == .map, !routeCoords.isEmpty {
+                    HStack {
+                        Spacer()
+                        RouteLineArt(coordinates: routeCoords)
+                            .frame(width: 110, height: 110)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 3)
+                } else if cardPanel != .map {
                     HStack {
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
                             HStack(spacing: 3) {
                                 Image(systemName: cardPanel.icon)
                                     .font(.system(size: 6))
-                                Text(cardPanel.rawValue)
+                                Text(cardPanel.label)
                                     .font(.system(size: 7, weight: .semibold))
                                     .tracking(0.3)
                                 if cardPanel == .intervals,
@@ -2635,11 +2645,21 @@ struct ShareCardScreen: View {
                     .padding(.horizontal, 10)
                     .padding(.bottom, 1)
                 }
-                Text(activity.date.cardDateTimeString)
-                    .font(.system(size: 6, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.80))
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 2)
+                HStack {
+                    Text(activity.date.cardDateTimeString)
+                        .font(.system(size: 6, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.80))
+                    if let shoe = displayShoeName {
+                        Spacer()
+                        HStack(spacing: 3) {
+                            Image(systemName: "shoe.fill").font(.system(size: 6))
+                            Text(shoe).font(.system(size: 7, weight: .medium)).lineLimit(1)
+                        }
+                        .foregroundStyle(.white.opacity(0.75))
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 2)
 
                 Rectangle()
                     .fill(Theme.violet.opacity(0.30))
@@ -2909,6 +2929,8 @@ struct ShareCardScreen: View {
             raceName: activeRaceName,
             miniMeVariant: activeMiniMeVariant,
             miniMeImage: activeMiniMeImage,
+            mood: showMoodOnCard ? story?.mood : nil,
+            memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
             chartPanel: cardPanel,
             chartSplits: detail?.splits ?? [],
             chartHRSamples: shareHRSamples,
@@ -2969,6 +2991,8 @@ struct ShareCardScreen: View {
                     raceName: activeRaceName,
                     miniMeVariant: activeMiniMeVariant,
                     customMiniMeImage: activeMiniMeImage,
+                    mood: showMoodOnCard ? story?.mood : nil,
+                    memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                     weather: condition?.weather,
                     chartPanel: cardPanel,
                     chartSplits: detail?.splits ?? [],
@@ -2991,22 +3015,23 @@ struct ShareCardScreen: View {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
-            let renderer = ImageRenderer(content:
-                BigNumberCard(
-                    activity: activity, detail: detail, heroMetric: heroMetric,
-                    mood: bigNumberShowMood ? story?.mood : nil,
-                    memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
-                    weatherText: condition?.weather?.formattedTemp,
-                    weatherIcon: condition?.weather?.systemIcon,
-                    dateText: activity.date.cardDateTimeString,
-                    shoeName: displayShoeName,
-                    photo: template == .story ? (selectedPhoto ?? storyPhoto)
-                        : template == .video ? videoPreviewImage
-                        : template == .routeVideo ? routeSnapshot
-                        : nil
-                )
-                .frame(width: 300, height: 375)
+            let bnPhoto: UIImage? = template == .story ? (selectedPhoto ?? storyPhoto)
+                : template == .video ? videoPreviewImage
+                : template == .routeVideo ? routeSnapshot
+                : nil
+            let bnCard = BigNumberCard(
+                activity: activity, detail: detail, heroMetric: heroMetric,
+                mood: bigNumberShowMood ? story?.mood : nil,
+                memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
+                weatherText: condition?.weather?.formattedTemp,
+                weatherIcon: condition?.weather?.systemIcon,
+                dateText: activity.date.cardDateTimeString,
+                shoeName: displayShoeName,
+                photo: bnPhoto,
+                chartPanel: .map,
+                routeCoordinates: []
             )
+            let renderer = ImageRenderer(content: bnCard.frame(width: 300, height: 375))
             renderer.scale = 3
             previewImage = renderer.uiImage
             isRendering = false

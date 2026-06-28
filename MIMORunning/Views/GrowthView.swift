@@ -90,6 +90,7 @@ struct GrowthView: View {
     @State private var weeklyCommentCache: [String: String] = [:]
     @State private var isRefreshingMetrics = false
     @State private var lastAnalyzedRunCount: Int = -1
+    @State private var lastChartRefreshCount: Int = -1
     @State private var runsCache: [Activity] = []
     @State private var prEntriesCache: [PREntry] = []
     @State private var journeyMilestonesCache: [MilestoneEvent] = []
@@ -112,7 +113,17 @@ struct GrowthView: View {
 
     private var runs: [Activity] { runsCache }
 
+    private var mondayCal: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.firstWeekday = 2  // Monday
+        c.locale = Locale.current
+        return c
+    }
+
     private func refreshChartCache() {
+        let currentCount = manager.activities.count
+        guard currentCount != lastChartRefreshCount else { return }
+        lastChartRefreshCount = currentCount
         runsCache        = manager.activities.filter { $0.type == .running }
         weeklyKmsCache   = weeklyKms()
         weeklyMinsCache  = weeklyMins()
@@ -132,7 +143,7 @@ struct GrowthView: View {
         hrAnalysisCache = trendDirection(values: Array(hrSamples.reversed()))
 
         // Longest run this week
-        let cal = Calendar.current
+        let cal = mondayCal
         let nowComps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
         thisWeekLongestKmCache = runs
             .filter { cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.date) == nowComps }
@@ -419,14 +430,12 @@ struct GrowthView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(Color(hex: "8A8A92"))
                 }
-                if km > 0 || mins > 0 || count > 0 {
-                    Spacer()
-                    Button { showWeeklyShareCard = true } label: {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .foregroundStyle(Theme.violet)
-                    .padding(.top, 4)
+                Spacer()
+                Button { showWeeklyShareCard = true } label: {
+                    Image(systemName: "square.and.arrow.up")
                 }
+                .foregroundStyle(Theme.violet)
+                .padding(.top, 4)
             }
 
             if km == 0 && mins == 0 && count == 0 {
@@ -684,7 +693,7 @@ struct GrowthView: View {
         metricAnalyses = results
 
         // Build WeeklyInsightInputs and detect patterns
-        let cal = Calendar.current
+        let cal = mondayCal
         let nowComps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
         let thisWeekRuns = runs.filter {
             cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.date) == nowComps
@@ -708,7 +717,7 @@ struct GrowthView: View {
         weeklyPatternCache = detectWeeklyPatterns(inputs)
 
         // ① 폴백 템플릿으로 즉시 표시
-        let weekOfYear = Calendar.current.component(.weekOfYear, from: Date())
+        let weekOfYear = mondayCal.component(.weekOfYear, from: Date())
         guard let top = weeklyPatternCache.first else {
             weeklyCommentText = ""
             return
@@ -716,7 +725,7 @@ struct GrowthView: View {
         weeklyCommentText = top.template(for: weekOfYear, isEnglish: AppLanguage.shared.isEnglish)
 
         // ② 같은 주·같은 패턴이면 메모리 캐시 사용
-        let year = Calendar.current.component(.year, from: Date())
+        let year = mondayCal.component(.year, from: Date())
         let cacheKey = "\(year)W\(weekOfYear)_\(top.key)"
         if let cached = weeklyCommentCache[cacheKey] {
             weeklyCommentText = cached
@@ -844,7 +853,7 @@ struct GrowthView: View {
     // MARK: - Weekly distance data
 
     private func weeklyKms() -> [WeeklyKm] {
-        let cal = Calendar.current
+        let cal = mondayCal
         let now = Date()
         let starts: [Date] = (0..<8).reversed().compactMap { ago -> Date? in
             let ref = cal.date(byAdding: .weekOfYear, value: -ago, to: now)!
@@ -859,7 +868,7 @@ struct GrowthView: View {
     }
 
     private func weeklyMins() -> [WeeklyMins] {
-        let cal = Calendar.current
+        let cal = mondayCal
         let now = Date()
         let starts: [Date] = (0..<8).reversed().compactMap { ago -> Date? in
             let ref = cal.date(byAdding: .weekOfYear, value: -ago, to: now)!

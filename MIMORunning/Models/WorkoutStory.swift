@@ -30,6 +30,16 @@ enum Mood: String, CaseIterable, Codable {
         case .terrible:  "xmark.circle.fill"
         }
     }
+
+    var cardColor: Color {
+        switch self {
+        case .fantastic: Theme.power
+        case .great:     Theme.violet
+        case .okay:      Theme.time
+        case .tough:     Color.orange
+        case .terrible:  Theme.heartRate
+        }
+    }
 }
 
 // MARK: - StoryPhoto
