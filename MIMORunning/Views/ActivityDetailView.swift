@@ -240,7 +240,12 @@ struct ActivityDetailView: View {
                 await InsightCache.shared.cache(computed, for: activity.id, isRefined: false, language: lang)
                 initial = computed
             }
-            insight = initial
+            // If refined cache already exists, show it immediately to avoid Phase 1 → Phase 3 flash
+            if let refinedCached = await InsightCache.shared.result(for: activity.id, isRefined: true, language: lang) {
+                insight = refinedCached
+            } else {
+                insight = initial
+            }
 
             // Phase 2: fetch detail — splits drive workout-type classification
             detail = await manager.fetchDetail(for: activity.id)
@@ -280,6 +285,7 @@ struct ActivityDetailView: View {
             if let det = detail {
                 if let cached = await InsightCache.shared.result(for: activity.id, isRefined: true, language: lang) {
                     refined = cached
+                    // Already showing this result — no animation needed (avoids flash)
                 } else {
                     let computed = await InsightEngine.computeBackground(
                         activity: activity,
@@ -294,17 +300,15 @@ struct ActivityDetailView: View {
                     )
                     await InsightCache.shared.cache(computed, for: activity.id, isRefined: true, language: lang)
                     refined = computed
+                    withAnimation(.easeInOut(duration: 0.3)) { insight = refined }
                 }
-                withAnimation(.easeInOut(duration: 0.3)) { insight = refined }
             } else {
                 refined = initial
             }
 
             // Phase 4: optional on-device AI rewrite (iOS 26+)
-            // Only the 3 most recent runs get AI enhancement to limit compute/heat.
-            // tryAIEnhance returns nil if already enhanced (aiEnhanced == true).
-            let isRecentRun = manager.activities.prefix(3).contains(where: { $0.id == activity.id })
-            if isRecentRun, let aiResult = await InsightEngine.tryAIEnhance(refined) {
+            // tryAIEnhance returns nil if already enhanced (aiEnhanced == true) — runs once per activity.
+            if let aiResult = await InsightEngine.tryAIEnhance(refined) {
                 await InsightCache.shared.cache(aiResult, for: activity.id, isRefined: true, language: lang)
                 withAnimation(.easeInOut(duration: 0.4)) { insight = aiResult }
             }

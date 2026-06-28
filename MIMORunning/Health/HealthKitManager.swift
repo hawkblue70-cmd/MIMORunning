@@ -1264,7 +1264,7 @@ class HealthKitManager {
     private struct MetricHistoryCacheFile: Codable {
         let points: [MetricDataPoint]
         let cachedAt: Date
-        var isStale: Bool { Date().timeIntervalSince(cachedAt) > 3600 }
+        var isStale: Bool { Date().timeIntervalSince(cachedAt) > 86400 }  // 24h — historical metric data doesn't change intraday
     }
 
     private func metricHistoryCacheURL(_ metric: TrendMetric, startDate: Date, usePounds: Bool) -> URL {
@@ -1282,6 +1282,16 @@ class HealthKitManager {
         guard let file = try? JSONDecoder().decode(MetricHistoryCacheFile.self, from: data),
               !file.isStale else { return nil }
         return file.points.map { ($0.date, $0.value) }
+    }
+
+    /// 새 런 추가 시 호출 — 런 기반 메트릭(케이던스·파워·폼) 디스크 캐시를 삭제해 다음 쿼리 시 최신 데이터 반영
+    func invalidateRunningMetricHistoryCache() {
+        let runningMetrics: [TrendMetric] = [.cadence, .power, .groundContactTime, .strideLength, .verticalOscillation]
+        let since = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
+        for metric in runningMetrics {
+            let url = metricHistoryCacheURL(metric, startDate: since, usePounds: false)
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     private func saveMetricHistoryToDisk(_ points: [(date: Date, value: Double)], metric: TrendMetric, startDate: Date, usePounds: Bool) {

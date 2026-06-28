@@ -88,6 +88,8 @@ struct GrowthView: View {
     @State private var weeklyPatternCache: [WeeklyPattern] = []
     @State private var weeklyCommentText: String = ""
     @State private var weeklyCommentCache: [String: String] = [:]
+    @State private var isRefreshingMetrics = false
+    @State private var lastAnalyzedRunCount: Int = -1
     @State private var runsCache: [Activity] = []
     @State private var prEntriesCache: [PREntry] = []
     @State private var journeyMilestonesCache: [MilestoneEvent] = []
@@ -642,6 +644,19 @@ struct GrowthView: View {
     // MARK: - Metric trend analyses
 
     private func refreshMetricAnalyses() async {
+        guard !isRefreshingMetrics else { return }
+        let currentCount = runsCache.count
+        guard currentCount != lastAnalyzedRunCount else { return }
+        // 런이 새로 추가됐을 때만 캐시 무효화 (첫 실행은 제외)
+        if currentCount > lastAnalyzedRunCount && lastAnalyzedRunCount >= 0 {
+            manager.invalidateRunningMetricHistoryCache()
+        }
+        isRefreshingMetrics = true
+        defer {
+            isRefreshingMetrics = false
+            lastAnalyzedRunCount = currentCount
+        }
+
         let since = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
         let runningMetrics: [TrendMetric] = [
             .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max
@@ -699,14 +714,29 @@ struct GrowthView: View {
             return
         }
         weeklyCommentText = top.template(for: weekOfYear, isEnglish: AppLanguage.shared.isEnglish)
-        // ② 같은 주·같은 패턴이면 캐시 사용
-        let cacheKey = "\(weekOfYear)_\(top.key)"
+
+        // ② 같은 주·같은 패턴이면 메모리 캐시 사용
+        let year = Calendar.current.component(.year, from: Date())
+        let cacheKey = "\(year)W\(weekOfYear)_\(top.key)"
         if let cached = weeklyCommentCache[cacheKey] {
             weeklyCommentText = cached
             return
         }
 
-        // ③ AI 강화 시도 (iOS 26+, 한국어, 사실 있을 때만)
+        // ③ 디스크(UserDefaults) 캐시 — 앱 재시작 후에도 AI 재실행 방지
+        let udKey = "mimo_weekly_comment_\(cacheKey)"
+        if let persisted = UserDefaults.standard.string(forKey: udKey) {
+            weeklyCommentText = persisted
+            weeklyCommentCache[cacheKey] = persisted
+            return
+        }
+
+        // ④ 하루 1회 한도 — 오늘 이미 AI가 실행됐으면 재실행 금지
+        let today = ISO8601DateFormatter().string(from: Calendar.current.startOfDay(for: Date()))
+        let dailyRunKey = "mimo_weekly_comment_ai_ran_\(today)"
+        guard !UserDefaults.standard.bool(forKey: dailyRunKey) else { return }
+
+        // ⑤ AI 강화 시도 (iOS 26+, 한국어, 사실 있을 때만)
         #if canImport(FoundationModels)
         if #available(iOS 26, *) {
             if let aiText = await InsightAIGenerator.generateWeeklyComment(
@@ -714,6 +744,8 @@ struct GrowthView: View {
             ) {
                 weeklyCommentText = aiText
                 weeklyCommentCache[cacheKey] = aiText
+                UserDefaults.standard.set(aiText, forKey: udKey)
+                UserDefaults.standard.set(true, forKey: dailyRunKey)
             }
         }
         #endif
