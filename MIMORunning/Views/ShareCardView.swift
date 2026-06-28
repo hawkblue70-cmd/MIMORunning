@@ -1342,17 +1342,17 @@ private struct VideoOverlayCard: View {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 0) {
                             Text("MIMO")
-                                .font(.system(size: 6, weight: .black))
+                                .font(.system(size: 9, weight: .black))
                                 .tracking(2)
                                 .foregroundStyle(.white)
                             Text(" RUNNING")
-                                .font(.system(size: 6, weight: .bold))
+                                .font(.system(size: 9, weight: .bold))
                                 .tracking(2)
                                 .foregroundStyle(Theme.violet)
                         }
                         if !insightTitle.isEmpty {
                             Text(insightTitle)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.90))
                                 .lineLimit(2)
                         }
@@ -2542,18 +2542,18 @@ struct ShareCardScreen: View {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 0) {
                             Text("MIMO")
-                                .font(.system(size: 6, weight: .black))
+                                .font(.system(size: 9, weight: .black))
                                 .tracking(2)
                                 .foregroundStyle(.white)
                             Text(" RUNNING")
-                                .font(.system(size: 6, weight: .bold))
+                                .font(.system(size: 9, weight: .bold))
                                 .tracking(2)
                                 .foregroundStyle(Theme.violet)
                         }
 
                         if !displayInsightTitle.isEmpty {
                             Text(displayInsightTitle)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.90))
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.8)

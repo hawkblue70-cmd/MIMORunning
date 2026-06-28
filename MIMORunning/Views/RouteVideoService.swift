@@ -92,9 +92,9 @@ struct RouteVideoFrameView: View {
             // Insight title
             if !insightTitle.isEmpty {
                 Text(insightTitle)
-                    .font(.system(size: 11 * scale, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(1)
+                    .font(.system(size: 15 * scale, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.90))
+                    .lineLimit(2)
                     .minimumScaleFactor(0.8)
                     .padding(.horizontal, pad)
                     .padding(.top, 3 * scale)
