@@ -1934,7 +1934,8 @@ struct ShareCardScreen: View {
             photo: template == .video ? videoPreviewImage : (selectedPhoto ?? storyPhoto),
             dateText: activity.date.cardDateTimeString,
             metricsPosition: placeableMetricsPosition,
-            accent: placeableAccent
+            accent: placeableAccent,
+            shoeName: displayShoeName
         )
     }
 
@@ -3046,7 +3047,8 @@ struct ShareCardScreen: View {
                 dateText: activity.date.cardDateTimeString,
                 metricsPosition: placeableMetricsPosition,
                 accent: placeableAccent,
-                showBackground: false
+                showBackground: false,
+                shoeName: displayShoeName
             )
             .frame(width: PlaceableCard.cardWidth, height: PlaceableCard.cardHeight)
             .scaleEffect(scale, anchor: .center)
@@ -3169,7 +3171,8 @@ struct ShareCardScreen: View {
                 photo: template == .video ? videoPreviewImage : (selectedPhoto ?? storyPhoto),
                 dateText: activity.date.cardDateTimeString,
                 metricsPosition: placeableMetricsPosition,
-                accent: placeableAccent
+                accent: placeableAccent,
+                shoeName: displayShoeName
             )
             let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
             renderer.scale = 3

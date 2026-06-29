@@ -69,6 +69,7 @@ struct PlaceableCard: View {
     var metricsPosition: CardPosition = .topLeading
     var accent: CardAccent = .none
     var showBackground: Bool = true
+    var shoeName: String? = nil
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
@@ -252,17 +253,23 @@ struct PlaceableCard: View {
 
     // MARK: - Footer
     private var footerView: some View {
-        HStack {
+        HStack(spacing: 4) {
             Text(dateText)
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.white)
                 .brightCardText()
             Spacer()
+            if let shoe = shoeName {
+                Text(shoe)
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.70))
+                    .brightCardText()
+                    .lineLimit(1)
+            }
             Image(systemName: activity.type.icon)
                 .font(.system(size: 8))
                 .foregroundStyle(.white.opacity(0.50))
                 .brightCardText()
-                .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 1)
         }
     }
 
