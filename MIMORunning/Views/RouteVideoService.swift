@@ -118,7 +118,6 @@ struct RouteVideoFrameView: View {
                 Text(memo)
                     .font(.system(size: 11 * scale, weight: .regular, design: .serif).italic())
                     .foregroundStyle(.white.opacity(0.80))
-                    .lineLimit(2)
                     .padding(.horizontal, pad)
                     .padding(.top, 2 * scale)
             }
@@ -459,17 +458,16 @@ struct RouteVideoExportService {
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
         let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mimo_route_\(UUID().uuidString).mp4")
+            .appendingPathComponent("mimo_route_\(UUID().uuidString).mov")
         try? FileManager.default.removeItem(at: outputURL)
 
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
         let inputSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoCodecKey: AVVideoCodecType.hevc,
             AVVideoWidthKey: Int(renderSize.width),
             AVVideoHeightKey: Int(renderSize.height),
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 2_500_000,
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+                AVVideoQualityKey: 0.85
             ]
         ]
         let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: inputSettings)
@@ -553,17 +551,16 @@ struct RouteVideoExportService {
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
         let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mimo_route_bn_\(UUID().uuidString).mp4")
+            .appendingPathComponent("mimo_route_bn_\(UUID().uuidString).mov")
         try? FileManager.default.removeItem(at: outputURL)
 
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
         let inputSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoCodecKey: AVVideoCodecType.hevc,
             AVVideoWidthKey: Int(renderSize.width),
             AVVideoHeightKey: Int(renderSize.height),
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 2_500_000,
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+                AVVideoQualityKey: 0.85
             ]
         ]
         let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: inputSettings)

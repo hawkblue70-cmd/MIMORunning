@@ -253,22 +253,39 @@ class HealthKitManager {
 
     // MARK: - Detail (on demand)
 
-    /// Returns the workout type from in-memory cache only (no HealthKit fetch). nil = not loaded yet or not interval.
+    private static let workoutTypeCacheKey = "mimo.workoutTypeCache.v1"
+
+    private func persistWorkoutType(_ type: WorkoutType, for id: UUID) {
+        var dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+        dict[id.uuidString] = type.rawValue
+        UserDefaults.standard.set(dict, forKey: Self.workoutTypeCacheKey)
+    }
+
+    /// Returns the workout type for display in the list. Checks memory → UserDefaults (persists across launches).
     func cachedWorkoutType(for activityID: UUID) -> WorkoutType? {
-        guard let detail = detailCache[activityID] else { return nil }
-        return detail.workoutType == .interval ? .interval : nil
+        let type: WorkoutType
+        if let detail = detailCache[activityID] {
+            type = detail.workoutType
+        } else {
+            let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+            guard let raw = dict[activityID.uuidString], let t = WorkoutType(rawValue: raw) else { return nil }
+            type = t
+        }
+        return type == .interval ? .interval : nil
     }
 
     func fetchDetail(for activityID: UUID) async -> ActivityDetail? {
         if let cached = detailCache[activityID] { return cached }
         if let disk = loadDetailFromDisk(activityID) {
             detailCache[activityID] = disk
+            persistWorkoutType(disk.workoutType, for: activityID)
             return disk
         }
         let result = await fetchDetailFromHealthKit(for: activityID)
         if let result {
             detailCache[activityID] = result
             saveDetailToDisk(result, id: activityID)
+            persistWorkoutType(result.workoutType, for: activityID)
         }
         return result
     }

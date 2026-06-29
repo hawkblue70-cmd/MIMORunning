@@ -135,11 +135,11 @@ struct VideoExportService {
         overlayLayer.frame         = CGRect(origin: .zero, size: targetSize)
         overlayLayer.contents      = overlay.cgImage
 
-        // Slight brightness boost on the video layer (matches CardVisual.videoBrightnessBoost).
-        let brightenLayer         = CALayer()
-        brightenLayer.frame       = CGRect(origin: .zero, size: targetSize)
-        brightenLayer.backgroundColor = UIColor.white.cgColor
-        brightenLayer.opacity     = CardVisual.videoBrightenLayerOpacity
+        // Slight brightness boost on the video layer.
+        let brightenLayer              = CALayer()
+        brightenLayer.frame            = CGRect(origin: .zero, size: targetSize)
+        brightenLayer.backgroundColor  = UIColor.white.cgColor
+        brightenLayer.opacity          = CardVisual.videoBrightenLayerOpacity
 
         parentLayer.addSublayer(videoLayer)
         parentLayer.addSublayer(brightenLayer)
@@ -152,16 +152,16 @@ struct VideoExportService {
 
         // Export
         let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mimo_video_\(UUID().uuidString).mp4")
+            .appendingPathComponent("mimo_video_\(UUID().uuidString).mov")
         try? FileManager.default.removeItem(at: outputURL)
 
         guard let session = AVAssetExportSession(
             asset: composition,
-            presetName: AVAssetExportPreset1920x1080)
+            presetName: AVAssetExportPresetHEVCHighestQuality)
         else { throw ExportError.sessionFailed }
 
         session.outputURL      = outputURL
-        session.outputFileType = .mp4
+        session.outputFileType = .mov
         session.videoComposition = videoComposition
         session.timeRange      = timeRange
 

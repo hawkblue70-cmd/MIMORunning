@@ -354,7 +354,6 @@ struct ShareCardView: View {
                             Text(s.memo)
                                 .font(.system(size: 11, weight: .regular, design: .serif).italic())
                                 .foregroundStyle(.white.opacity(0.78))
-                                .lineLimit(2)
                         }
                     }
                     Spacer(minLength: 8)
@@ -808,7 +807,6 @@ private struct PhotoShareCardView: View {
                             Text(s.memo)
                                 .font(.system(size: 11, weight: .regular, design: .serif).italic())
                                 .foregroundStyle(.white.opacity(0.85))
-                                .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -1012,13 +1010,15 @@ private struct PhotoCardMetric: View {
 
 struct RouteLineArt: View {
     let coordinates: [CLLocationCoordinate2D]
+    var lineColor: Color = Theme.violet.opacity(0.85)
+    var lineWidth: CGFloat = 1.5
 
     var body: some View {
         Canvas { ctx, size in
             ctx.stroke(
                 buildPath(in: CGRect(origin: .zero, size: size)),
-                with: .color(Theme.violet.opacity(0.85)),
-                style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
+                with: .color(lineColor),
+                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
             )
         }
     }
@@ -1383,7 +1383,6 @@ private struct VideoOverlayCard: View {
                             Text(memo)
                                 .font(.system(size: 11, weight: .regular, design: .serif).italic())
                                 .foregroundStyle(.white.opacity(0.80))
-                                .lineLimit(2)
                         }
                     }
                     Spacer(minLength: 4)
@@ -1583,6 +1582,10 @@ struct ShareCardScreen: View {
     @State private var bigNumberShowMemo: Bool = true
 
     private var isBigNumber: Bool { cardIndex == 1 }
+    private var isPlaceable: Bool { cardIndex == 2 }
+
+    @State private var placeableMetricsPosition: CardPosition = .topLeading
+    @State private var placeableAccent: CardAccent = .gold
 
     private var routeCoords: [CLLocationCoordinate2D] { detail?.routeCoordinates ?? [] }
     private var distanceKmString: String {
@@ -1923,6 +1926,18 @@ struct ShareCardScreen: View {
         }
     }
 
+    private var placeableCardPreview: some View {
+        PlaceableCard(
+            activity: activity,
+            detail: detail,
+            routeCoords: routeCoords.isEmpty ? nil : routeCoords,
+            photo: template == .video ? videoPreviewImage : (selectedPhoto ?? storyPhoto),
+            dateText: activity.date.cardDateTimeString,
+            metricsPosition: placeableMetricsPosition,
+            accent: placeableAccent
+        )
+    }
+
     private var cardSection: some View {
         TabView(selection: $cardIndex) {
             cardPreview
@@ -1934,6 +1949,11 @@ struct ShareCardScreen: View {
             bigNumberCardPreview
                 .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                 .tag(1)
+            placeableCardPreview
+                .frame(width: 300, height: 375)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
+                .tag(2)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(height: 375)
@@ -1946,6 +1966,9 @@ struct ShareCardScreen: View {
                 .frame(width: 7, height: 7)
             Circle()
                 .fill(cardIndex == 1 ? Theme.violet : Color(hex: "6E6E78"))
+                .frame(width: 7, height: 7)
+            Circle()
+                .fill(cardIndex == 2 ? Theme.violet : Color(hex: "6E6E78"))
                 .frame(width: 7, height: 7)
         }
         .padding(.top, 8)
@@ -2088,27 +2111,106 @@ struct ShareCardScreen: View {
         }
     }
 
-    @ViewBuilder
-    private var carouselDots: some View {
-        if template == .story, storyPhotos.count > 1 {
-            HStack(spacing: 5) {
-                ForEach(0..<storyPhotos.count, id: \.self) { i in
-                    Circle()
-                        .fill(Color.white.opacity(i == carouselPage ? 1.0 : 0.3))
-                        .frame(width: 6, height: 6)
+    // MARK: - Placeable card chip row (position grid + accent chips)
+
+    private var placeableChipRow: some View {
+        let rows: [[CardPosition]] = [
+            [.topLeading, .top, .topTrailing],
+            [.leading, .center, .trailing],
+            [.bottomLeading, .bottom, .bottomTrailing]
+        ]
+        let accents: [(CardAccent, String, Color)] = [
+            (.none,   AppLanguage.shared.s("없음",     "None"),   Color.white),
+            (.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF")),
+            (.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
+        ]
+        return HStack(alignment: .top, spacing: 20) {
+            // 3×3 position grid
+            VStack(spacing: 4) {
+                ForEach(rows.indices, id: \.self) { row in
+                    HStack(spacing: 4) {
+                        ForEach(rows[row].indices, id: \.self) { col in
+                            let pos = rows[row][col]
+                            let isSelected = placeableMetricsPosition == pos
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    placeableMetricsPosition = pos
+                                }
+                                Task { await renderCard(showSpinner: false) }
+                            } label: {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(isSelected ? Theme.violet : Color(hex: "26262E"))
+                                    .frame(width: 26, height: 26)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
             }
-            .padding(.top, 6)
+            // Accent chips
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(accents.indices, id: \.self) { i in
+                    let (accent, label, color) = accents[i]
+                    let isSelected = placeableAccent == accent
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { placeableAccent = accent }
+                        Task { await renderCard(showSpinner: false) }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isSelected {
+                                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                            }
+                            if accent != .none {
+                                Circle().fill(color).frame(width: 8, height: 8)
+                            }
+                            Text(label).font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            isSelected
+                                ? (accent == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
+                                : Color.white.opacity(0.08)
+                        )
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 4)
     }
 
     private var templatePicker: some View {
-        Picker("", selection: $template) {
+        HStack(spacing: 0) {
             ForEach(ShareTemplate.allCases, id: \.self) { t in
-                Text(t.label).tag(t)
+                let available = !isPlaceable || t == .story || t == .video
+                let selected  = template == t
+                Button {
+                    guard available else { return }
+                    withAnimation(.easeInOut(duration: 0.15)) { template = t }
+                } label: {
+                    Text(t.label)
+                        .font(.system(size: 13, weight: selected ? .semibold : (available ? .semibold : .regular)))
+                        .foregroundStyle(
+                            selected  ? Theme.violet :
+                            available ? Color.white   :
+                                        Color(hex: "6E6E78")
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(
+                            selected
+                                ? RoundedRectangle(cornerRadius: 8)
+                                    .fill(Theme.violet.opacity(0.18))
+                                : nil
+                        )
+                }
+                .disabled(!available)
             }
         }
-        .pickerStyle(.segmented)
         .padding(.horizontal, 24)
         .padding(.bottom, 12)
     }
@@ -2130,8 +2232,8 @@ struct ShareCardScreen: View {
                     Button {
                         showStoryPhotoPicker = true
                     } label: {
-                        Label(selectedPhoto == nil ? AppLanguage.shared.s("사진 선택", "Select Photo") : AppLanguage.shared.s("사진 변경", "Change Photo"),
-                              systemImage: selectedPhoto == nil ? "photo" : "photo.fill")
+                        Label(AppLanguage.shared.s("사진 변경 · \(storyPhotos.count)장", "Change Photo · \(storyPhotos.count)"),
+                              systemImage: "photo.fill")
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(Theme.violet)
                     }
@@ -2147,7 +2249,7 @@ struct ShareCardScreen: View {
             }
             .padding(.bottom, 8)
         } else if template == .video {
-            VStack(spacing: 2) {
+            VStack(spacing: 0) {
                 HStack(spacing: 14) {
                     PhotosPicker(selection: $videoPickerItem, matching: .videos, photoLibrary: .shared()) {
                         Label(sourceVideoURL == nil ? AppLanguage.shared.s("영상 선택", "Select Video") : AppLanguage.shared.s("영상 변경", "Change Video"),
@@ -2167,6 +2269,7 @@ struct ShareCardScreen: View {
                 Text(AppLanguage.shared.s("최대 30초 · 영상 길이에 따라 합성 시간이 소요됩니다", "Max 30s · Processing time varies by length"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .padding(.top, 2)
             }
             .padding(.bottom, 8)
         } else {
@@ -2184,14 +2287,16 @@ struct ShareCardScreen: View {
             VStack(spacing: 0) {
                 Color.clear.frame(height: 20)
                 cardSection
-                carouselDots
                 cardPageDots
                 Color.clear.frame(height: 12)
                 Group {
-                    if isBigNumber { bigNumberChipRow } else { chipRow }
+                    if isBigNumber { bigNumberChipRow }
+                    else if isPlaceable { placeableChipRow }
+                    else { chipRow }
                 }.padding(.bottom, 12)
                 templatePicker
                 bottomControls
+                    .frame(height: 44)
                 Spacer(minLength: 0)
                 shareCTA.padding(.horizontal, 24).padding(.bottom, 36)
             }
@@ -2269,10 +2374,14 @@ struct ShareCardScreen: View {
                 await renderCard(showSpinner: false)
             }
         }
-        .onChange(of: cardIndex) { _, _ in
+        .onChange(of: cardIndex) { _, newIndex in
             // Reset exported video files so each card manages its own export
             routeVideoFile = nil
             exportedVideoFile = nil
+            // PlaceableCard only supports story/video — auto-switch if incompatible
+            if newIndex == 2, template != .story && template != .video {
+                template = .story
+            }
             Task { await renderCard(showSpinner: false) }
         }
         .onChange(of: heroMetric) { _, _ in
@@ -2285,6 +2394,14 @@ struct ShareCardScreen: View {
         }
         .onChange(of: bigNumberShowMemo) { _, _ in
             guard isBigNumber else { return }
+            Task { await renderCard(showSpinner: false) }
+        }
+        .onChange(of: placeableMetricsPosition) { _, _ in
+            guard isPlaceable else { return }
+            Task { await renderCard(showSpinner: false) }
+        }
+        .onChange(of: placeableAccent) { _, _ in
+            guard isPlaceable else { return }
             Task { await renderCard(showSpinner: false) }
         }
         .task(id: template) {
@@ -2586,7 +2703,6 @@ struct ShareCardScreen: View {
                             Text(memo)
                                 .font(.system(size: 11, weight: .regular, design: .serif).italic())
                                 .foregroundStyle(.white.opacity(0.80))
-                                .lineLimit(2)
                         }
                     }
 
@@ -2848,7 +2964,7 @@ struct ShareCardScreen: View {
         } else if storyShareImages.count > 1 {
             VStack(spacing: 10) {
                 Button { showShareSheet = true } label: {
-                    Label(AppLanguage.shared.s("공유하기 (\(storyShareImages.count)장)", "Share (\(storyShareImages.count) photos)"), systemImage: "square.and.arrow.up")
+                    Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -2907,6 +3023,37 @@ struct ShareCardScreen: View {
             let overlayRenderer = ImageRenderer(content:
                 makeBigNumberOverlayView().frame(width: 216, height: 384)
             )
+            overlayRenderer.scale = 5.0
+            guard let overlayImage = overlayRenderer.uiImage else {
+                isExportingVideo = false; return
+            }
+            if let out = try? await VideoExportService.exportVideo(sourceURL: url, overlay: overlayImage) {
+                exportedVideoFile = SharableVideoFile(url: out)
+            }
+            isExportingVideo = false
+            return
+        }
+
+        if isPlaceable {
+            // PlaceableCard overlay: transparent background, scaled to fit 216×384 video frame
+            let scale: CGFloat = 216.0 / PlaceableCard.cardWidth  // 0.72
+            let scaledH = PlaceableCard.cardHeight * scale          // ~270pt
+            let overlayContent = PlaceableCard(
+                activity: activity,
+                detail: detail,
+                routeCoords: routeCoords.isEmpty ? nil : routeCoords,
+                photo: nil,
+                dateText: activity.date.cardDateTimeString,
+                metricsPosition: placeableMetricsPosition,
+                accent: placeableAccent,
+                showBackground: false
+            )
+            .frame(width: PlaceableCard.cardWidth, height: PlaceableCard.cardHeight)
+            .scaleEffect(scale, anchor: .center)
+            .frame(width: 216, height: scaledH)
+            .frame(width: 216, height: 384)  // center vertically in video frame
+
+            let overlayRenderer = ImageRenderer(content: overlayContent)
             overlayRenderer.scale = 5.0
             guard let overlayImage = overlayRenderer.uiImage else {
                 isExportingVideo = false; return
@@ -3010,6 +3157,27 @@ struct ShareCardScreen: View {
 
     @MainActor
     private func renderCard(showSpinner: Bool = true) async {
+        // Placeable card: always render as static image
+        if cardIndex == 2 {
+            if showSpinner { isRendering = true }
+            storyShareImages = []
+            previewImage = nil
+            let card = PlaceableCard(
+                activity: activity,
+                detail: detail,
+                routeCoords: routeCoords.isEmpty ? nil : routeCoords,
+                photo: template == .video ? videoPreviewImage : (selectedPhoto ?? storyPhoto),
+                dateText: activity.date.cardDateTimeString,
+                metricsPosition: placeableMetricsPosition,
+                accent: placeableAccent
+            )
+            let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
+            renderer.scale = 3
+            previewImage = renderer.uiImage
+            isRendering = false
+            return
+        }
+
         // BigNumber card: render regardless of template (video/routeVideo don't block it)
         if cardIndex == 1 {
             if showSpinner { isRendering = true }

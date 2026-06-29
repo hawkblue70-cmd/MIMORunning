@@ -83,7 +83,6 @@ struct BigNumberCard: View {
                             Text(memo)
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .lineLimit(2)
                         }
                     }
                     .cardTextShadow()
@@ -275,7 +274,6 @@ struct BigNumberVideoOverlayView: View {
                                 Text(memo)
                                     .font(.system(size: 11 * s, weight: .semibold))
                                     .foregroundStyle(.white)
-                                    .lineLimit(2)
                             }
                         }
                         .cardTextShadow()
