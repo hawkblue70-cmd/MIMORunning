@@ -143,6 +143,13 @@ class HealthKitManager {
 
         defer { isLoading = false }
 
+        // Skip HealthKit query if synced very recently (warm cache path only).
+        let lastSync = UserDefaults.standard.object(forKey: "mimo.lastSyncedAt") as? Date
+        if isWarmCache, let last = lastSync, Date().timeIntervalSince(last) < 300 {
+            userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+            return
+        }
+
         do {
             let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
 
@@ -157,6 +164,7 @@ class HealthKitManager {
                 if fetchedWorkouts.isEmpty {
                     // Nothing new — level recompute only.
                     userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+                    UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
                     return
                 }
                 // Prepend new workouts to cached list (avoiding duplicates).
@@ -177,6 +185,7 @@ class HealthKitManager {
                 isLoading = false
                 await enrichAndCache(recentWorkouts, cacheDict: cacheDict)
                 userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+                UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
 
                 // Background: fetch older history (months 3–12).
                 Task { await self.fetchOlderActivities(until: twoMonthsAgo) }
@@ -186,6 +195,7 @@ class HealthKitManager {
             // Warm cache new-workout enrich path.
             await enrichAndCache(fetchedWorkouts, cacheDict: cacheDict)
             userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+            UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
         } catch {
             self.error = error
         }
@@ -212,19 +222,71 @@ class HealthKitManager {
 
     private func enrichAndCache(_ workouts: [HKWorkout], cacheDict: [String: CachedActivity]) async {
         let toEnrich = workouts.filter { cacheDict[$0.uuid.uuidString] == nil }
-        guard !toEnrich.isEmpty else { return }
-        let idToIndex = Dictionary(uniqueKeysWithValues:
-            activities.enumerated().map { ($0.element.id.uuidString, $0.offset) })
-        await withTaskGroup(of: (Int, Activity).self) { group in
-            for w in toEnrich {
-                guard let idx = idToIndex[w.uuid.uuidString] else { continue }
-                let a = activities[idx]
-                group.addTask { await (idx, self.enrich(a, workout: w)) }
+        if !toEnrich.isEmpty {
+            let idToIndex = Dictionary(uniqueKeysWithValues:
+                activities.enumerated().map { ($0.element.id.uuidString, $0.offset) })
+            await withTaskGroup(of: (Int, Activity).self) { group in
+                for w in toEnrich {
+                    guard let idx = idToIndex[w.uuid.uuidString] else { continue }
+                    let a = activities[idx]
+                    group.addTask { await (idx, self.enrich(a, workout: w)) }
+                }
+                for await (idx, enriched) in group {
+                    activities[idx] = enriched
+                    saveToCache([CachedActivity(from: enriched)])
+                }
             }
-            for await (idx, enriched) in group {
-                activities[idx] = enriched
-                saveToCache([CachedActivity(from: enriched)])
+        }
+        // Background: weather pre-fetch for any workout not yet cached
+        Task { await self.prefetchWeather(for: workouts) }
+    }
+
+    /// Fetches weather for workouts not yet in ConditionCache.
+    /// Processes in small batches to stay within Open-Meteo free-tier limits.
+    private func prefetchWeather(for workouts: [HKWorkout]) async {
+        for batchStart in stride(from: 0, to: workouts.count, by: 3) {
+            let batch = workouts[batchStart..<min(batchStart + 3, workouts.count)]
+            await withTaskGroup(of: Void.self) { group in
+                for w in batch {
+                    group.addTask {
+                        let cached = await ConditionCache.shared.condition(for: w.uuid)
+                        // Skip only when weather is already stored
+                        if let cached, cached.weather != nil { return }
+                        let coord = await self.fetchFirstCoordinate(for: w)
+                        guard let coord else {
+                            // No GPS → mark as tried so we don't re-query routes every launch
+                            if cached == nil {
+                                await ConditionCache.shared.cache(ActivityCondition(), for: w.uuid)
+                            }
+                            return
+                        }
+                        let weather = await ConditionService.fetchWeather(date: w.startDate, coordinate: coord)
+                        var cond = cached ?? ActivityCondition()
+                        cond.weather = weather
+                        await ConditionCache.shared.cache(cond, for: w.uuid)
+                    }
+                }
             }
+        }
+    }
+
+    /// Lightweight route query — returns only the first GPS point without loading the full track.
+    private func fetchFirstCoordinate(for workout: HKWorkout) async -> CLLocationCoordinate2D? {
+        let routes = await fetchWorkoutRoutes(for: workout)
+        guard let route = routes.first else { return nil }
+        return await withCheckedContinuation { continuation in
+            var resumed = false
+            let query = HKWorkoutRouteQuery(route: route) { _, locations, done, _ in
+                guard !resumed else { return }
+                if let first = locations?.first {
+                    resumed = true
+                    continuation.resume(returning: first.coordinate)
+                } else if done {
+                    resumed = true
+                    continuation.resume(returning: nil)
+                }
+            }
+            self.store.execute(query)
         }
     }
 
@@ -275,8 +337,8 @@ class HealthKitManager {
     }
 
     func fetchDetail(for activityID: UUID) async -> ActivityDetail? {
-        if let cached = detailCache[activityID] { return cached }
-        if let disk = loadDetailFromDisk(activityID) {
+        if let cached = detailCache[activityID], cached.isComplete { return cached }
+        if let disk = loadDetailFromDisk(activityID), disk.isComplete {
             detailCache[activityID] = disk
             persistWorkoutType(disk.workoutType, for: activityID)
             return disk
@@ -284,19 +346,32 @@ class HealthKitManager {
         let result = await fetchDetailFromHealthKit(for: activityID)
         if let result {
             detailCache[activityID] = result
-            saveDetailToDisk(result, id: activityID)
+            // Only persist when data is complete so the next visit retries HealthKit
+            // if fields like GPS route were still being processed at the time of fetch.
+            if result.isComplete { saveDetailToDisk(result, id: activityID) }
             persistWorkoutType(result.workoutType, for: activityID)
         }
         return result
     }
 
     private func detailCacheURL(_ id: UUID) -> URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_detail_\(id.uuidString).json")
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_detail", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("v2_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
-        guard let data = try? Data(contentsOf: detailCacheURL(id)) else { return nil }
+        let url = detailCacheURL(id)
+        // Migrate existing cache files from old Caches/ location (cleared by iOS) to Application Support/.
+        if !FileManager.default.fileExists(atPath: url.path) {
+            let oldURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("mimo_detail_v2_\(id.uuidString).json")
+            if FileManager.default.fileExists(atPath: oldURL.path) {
+                try? FileManager.default.moveItem(at: oldURL, to: url)
+            }
+        }
+        guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(ActivityDetail.self, from: data)
     }
 
@@ -1163,6 +1238,19 @@ class HealthKitManager {
         }
 
         let hrUnit = Self.bpmUnit
+
+        // Fetch step count samples for the whole workout; filter per segment below.
+        // workoutActivity.statistics(for: .stepCount) is not stored per activity segment.
+        let stepPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.stepCount),
+            predicate: HKQuery.predicateForObjects(from: workout)
+        )
+        let stepDesc = HKSampleQueryDescriptor(
+            predicates: [stepPred],
+            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+        )
+        let stepSamples = (try? await stepDesc.result(for: store)) ?? []
+
         var result: [IntervalSegment] = []
 
         for (i, (activity, labelPair)) in zip(workout.workoutActivities, flatLabels).enumerated() {
@@ -1177,6 +1265,17 @@ class HealthKitManager {
                     .averageQuantity() else { return nil }
                 return Int(qty.doubleValue(for: hrUnit).rounded())
             }()
+            let cadence: Int? = {
+                let segStart = activity.startDate
+                let segEnd = activity.endDate ?? workout.endDate
+                let segDuration = segEnd.timeIntervalSince(segStart)
+                guard segDuration > 10 else { return nil }
+                let steps = stepSamples
+                    .filter { $0.startDate >= segStart && $0.endDate <= segEnd }
+                    .reduce(0.0) { $0 + $1.quantity.doubleValue(for: .count()) }
+                guard steps > 0 else { return nil }
+                return Int((steps / (segDuration / 60)).rounded())
+            }()
 
             var paceStr = "—"
             if let d = distM, d > 0, activity.duration > 0 {
@@ -1189,6 +1288,7 @@ class HealthKitManager {
                 endDate: activity.endDate ?? workout.endDate,
                 distanceM: distM,
                 avgHeartRate: hr,
+                avgCadence: cadence,
                 stepLabel: labelPair.label
             ))
         }
@@ -1360,35 +1460,25 @@ class HealthKitManager {
     // MARK: - Condition (weather + sleep)
 
     func fetchCondition(for activity: Activity, firstCoordinate: CLLocationCoordinate2D?) async -> ActivityCondition {
-        if let cached = await ConditionCache.shared.condition(for: activity.id) { return cached }
-        // Skip disk if HRV field missing — one-time migration to include HRV in cached conditions
-        if let disk = loadConditionFromDisk(activity.id), disk.hrvRecovery != nil {
-            await ConditionCache.shared.cache(disk, for: activity.id)
-            return disk
+        let cached = await ConditionCache.shared.condition(for: activity.id)
+        if let cached {
+            // Weather already stored, or no GPS to fetch it → return as-is
+            if cached.weather != nil || firstCoordinate == nil { return cached }
+            // Condition cached but weather missing and GPS available → fetch weather only
+            if let w = await ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate) {
+                var updated = cached; updated.weather = w
+                await ConditionCache.shared.cache(updated, for: activity.id)
+                return updated
+            }
+            return cached
         }
-        // Weather, sleep, HRV in parallel
+        // Never fetched → weather + sleep + HRV in parallel
         async let weather = ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate)
         async let sleep   = querySleepScore(nightBefore: activity.date)
         async let hrv     = queryHRVRecovery(nightBefore: activity.date)
         let result = ActivityCondition(weather: await weather, sleepScore: await sleep, hrvRecovery: await hrv)
         await ConditionCache.shared.cache(result, for: activity.id)
-        saveConditionToDisk(result, id: activity.id)
         return result
-    }
-
-    private func conditionCacheURL(_ id: UUID) -> URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_condition_\(id.uuidString).json")
-    }
-
-    private func loadConditionFromDisk(_ id: UUID) -> ActivityCondition? {
-        guard let data = try? Data(contentsOf: conditionCacheURL(id)) else { return nil }
-        return try? JSONDecoder().decode(ActivityCondition.self, from: data)
-    }
-
-    private func saveConditionToDisk(_ condition: ActivityCondition, id: UUID) {
-        guard let data = try? JSONEncoder().encode(condition) else { return }
-        try? data.write(to: conditionCacheURL(id), options: .atomic)
     }
 
     // MARK: - HRV Recovery

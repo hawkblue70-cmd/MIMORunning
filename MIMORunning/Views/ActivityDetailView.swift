@@ -10,7 +10,7 @@ import ImagePlayground
 
 // MARK: - Detail Panel
 
-private enum DetailPanel: String, CaseIterable {
+enum DetailPanel: String, CaseIterable {
     case map                 = "경로"
     case splits              = "스플릿"
     case heartRate           = "심박수"
@@ -67,6 +67,7 @@ struct ActivityDetailView: View {
     @State private var condition: ActivityCondition?
     @State private var raceSuggestion: RaceSuggestion?
     @State private var showManualRaceEntry = false
+    @State private var showPanelShareCard = false
     @State private var activePanel: DetailPanel = .map
     @State private var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var panelSeriesData: [(offset: TimeInterval, value: Double)] = []
@@ -131,6 +132,7 @@ struct ActivityDetailView: View {
                                     confirmedRace: confirmedRaceMatch, hillMatch: hillMatch)
                     }
                     StorySection(workoutID: activity.id.uuidString)
+                    panelShareHeader
                     panelSection
                     panelChipRow
                     if showRaceBanner {
@@ -161,11 +163,14 @@ struct ActivityDetailView: View {
                     MetricGrid(activity: activity, detail: detail, age: userAge,
                                isMale: manager.userIsMale)
                     if let intervals = detail?.intervalSegments, !intervals.isEmpty {
-                        IntervalSegmentsSection(segments: intervals, activity: activity, condition: condition)
+                        IntervalSegmentsSection(segments: intervals, activity: activity, condition: condition,
+                                                firstCoordinate: detail?.routeCoordinates.first)
                     }
                     if let splits = detail?.splits, !splits.isEmpty {
                         SplitsSection(splits: splits, zones: detail?.hrZones ?? [],
-                                  activity: activity, allActivities: manager.activities)
+                                  activity: activity, allActivities: manager.activities,
+                                  condition: condition,
+                                  firstCoordinate: detail?.routeCoordinates.first)
                     }
                     if let zones = detail?.hrZones, !zones.isEmpty {
                         HRZonesSection(zones: zones)
@@ -200,6 +205,14 @@ struct ActivityDetailView: View {
                 onCancel: {
                     raceDetector.markAsNotRace(activityID: activity.id)
                 }
+            )
+        }
+        .sheet(isPresented: $showPanelShareCard) {
+            DetailPanelShareCardScreen(
+                activity: activity, detail: detail,
+                activePanel: activePanel,
+                hrSamples: hrSamples, panelSeriesData: panelSeriesData,
+                condition: condition
             )
         }
         .onChange(of: activePanel) { _, newPanel in
@@ -444,12 +457,19 @@ struct ActivityDetailView: View {
                         panelInnerContent
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .frame(height: 220)
+                    .frame(height: panelContentHeight)
                     .padding(.horizontal, 16)
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: activePanel)
         }
+    }
+
+    private var panelContentHeight: CGFloat {
+        if activePanel == .intervals, let segs = detail?.intervalSegments, !segs.isEmpty {
+            return max(220, IntervalPanelChart.requiredHeight(segmentCount: segs.count, hasSummary: true))
+        }
+        return 220
     }
 
     @ViewBuilder
@@ -568,6 +588,35 @@ struct ActivityDetailView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 2)
         }
+    }
+
+    private var panelShareHeader: some View {
+        HStack {
+            HStack(spacing: 5) {
+                Image(systemName: activePanel.icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.violet)
+                Text(activePanel.label)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            Spacer()
+            Button { showPanelShareCard = true } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.caption.weight(.semibold))
+                    Text(AppLanguage.shared.s("공유", "Share"))
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(Theme.violet)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Theme.violet.opacity(0.12))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
     }
 }
 
@@ -1017,6 +1066,7 @@ private struct MetricGrid: View {
         let color: Color
         var note: String? = nil
         var trendMetric: TrendMetric? = nil
+        var compactValue: Bool = false  // true → title3, false → title2
     }
 
     private var items: [Item] {
@@ -1068,7 +1118,7 @@ private struct MetricGrid: View {
                 let note = rating.map { L.s("현재 추정 · \($0)", "Curr. Est. · \($0)") } ?? L.s("현재 추정", "Curr. Est.")
                 list.append(Item(icon: "lungs.fill", label: L.s("유산소 피트니스", "Cardio Fitness"),
                                  value: String(format: "%.1f mL/kg·min", vo2),
-                                 color: Theme.elevation, note: note, trendMetric: .vo2Max))
+                                 color: Theme.elevation, note: note, trendMetric: .vo2Max, compactValue: true))
             }
         }
         if let cal = activity.calories {
@@ -1151,7 +1201,7 @@ private struct MetricGrid: View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
             ForEach(items) { item in
                 MetricCell(icon: item.icon, label: item.label, value: item.value,
-                           color: item.color, note: item.note)
+                           color: item.color, note: item.note, compactValue: item.compactValue)
             }
         }
         .padding(.horizontal, 16)
@@ -1177,13 +1227,23 @@ private struct IntervalSegmentsSection: View {
     let segments: [IntervalSegment]
     var activity: Activity? = nil
     var condition: ActivityCondition? = nil
+    var firstCoordinate: CLLocationCoordinate2D? = nil
 
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @State private var showIntervalsShare = false
+    @Query private var allStories: [WorkoutStory]
+    @Query private var allShoes: [Shoe]
+
+    private var shoeName: String? {
+        guard let wid = activity?.id.uuidString,
+              let sid = allStories.first(where: { $0.workoutID == wid })?.shoeID else { return nil }
+        return allShoes.first { $0.id.uuidString == sid }?.displayName
+    }
 
     private var hasLabels: Bool { segments.contains { $0.stepLabel != nil } }
     private var hasHR: Bool { segments.contains { $0.avgHeartRate != nil } }
     private var hasDist: Bool { segments.contains { $0.distanceM != nil } }
+    private var hasCadence: Bool { segments.contains { $0.avgCadence != nil } }
 
     private var medianPace: Double? {
         guard !hasLabels else { return nil }
@@ -1269,91 +1329,104 @@ private struct IntervalSegmentsSection: View {
                 }
             }
 
-            VStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    if hasLabels {
-                        Text(AppLanguage.shared.s("구간", "Rep")).frame(width: 56, alignment: .leading)
-                    } else {
-                        Text("#").frame(width: 20, alignment: .leading)
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        if hasLabels {
+                            Text(AppLanguage.shared.s("구간", "Rep")).frame(width: 56, alignment: .leading)
+                        } else {
+                            Text("#").frame(width: 20, alignment: .leading)
+                        }
+                        if hasDist { Text(AppLanguage.shared.s("거리", "Dist.")).frame(width: 60, alignment: .trailing) }
+                        Spacer(minLength: 8)
+                        Text(AppLanguage.shared.s("페이스", "Pace")).frame(width: 70, alignment: .trailing)
+                        Text(AppLanguage.shared.s("시간", "Time")).frame(width: 50, alignment: .trailing)
+                        if hasHR { Text(AppLanguage.shared.s("심박", "HR")).frame(width: 44, alignment: .trailing) }
+                        if hasCadence { Text(AppLanguage.shared.s("케이던스", "Cad.")).frame(width: 50, alignment: .trailing) }
                     }
-                    if hasDist { Text(AppLanguage.shared.s("거리", "Dist.")).frame(width: 60, alignment: .trailing) }
-                    Spacer()
-                    Text(AppLanguage.shared.s("페이스", "Pace")).frame(width: 70, alignment: .trailing)
-                    Text(AppLanguage.shared.s("시간", "Time")).frame(width: 50, alignment: .trailing)
-                    if hasHR { Text(AppLanguage.shared.s("심박", "HR")).frame(width: 44, alignment: .trailing) }
-                }
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
 
-                ForEach(segments) { seg in
-                    let work = isWork(seg)
-                    VStack(spacing: 0) {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.07))
-                            .frame(height: 0.5)
-                        HStack(spacing: 8) {
-                            if hasLabels {
-                                Text(localizedStepLabel(seg.stepLabel) ?? "#\(seg.id)")
-                                    .font(.system(size: 12, weight: work ? .bold : .regular))
-                                    .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.55))
-                                    .frame(width: 56, alignment: .leading)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                            } else {
-                                Text("\(seg.id)")
-                                    .font(.system(.subheadline, design: .rounded)
-                                        .weight(work ? .bold : .regular))
-                                    .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.35))
-                                    .frame(width: 20, alignment: .leading)
-                            }
-                            if hasDist {
-                                Text(seg.formattedDistance ?? "—")
-                                    .font(.system(.subheadline, design: .rounded))
-                                    .foregroundStyle(work ? .white : Color.white.opacity(0.45))
-                                    .frame(width: 60, alignment: .trailing)
-                            }
-                            Spacer()
-                            Text(seg.formattedPace ?? "—")
-                                .font(.system(.subheadline, design: .rounded)
-                                    .weight(work ? .semibold : .regular))
-                                .foregroundStyle(
-                                    seg.formattedPace != nil
-                                        ? (work ? Theme.violet : Color.white.opacity(0.40))
-                                        : Color.secondary
-                                )
-                                .frame(width: 70, alignment: .trailing)
-                            Text(seg.formattedDuration)
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(work ? .secondary : Color.white.opacity(0.25))
-                                .frame(width: 50, alignment: .trailing)
-                            if hasHR {
-                                Text(seg.avgHeartRate.map { "\($0)" } ?? "—")
-                                    .font(.caption.weight(.medium))
+                    ForEach(segments) { seg in
+                        let work = isWork(seg)
+                        VStack(spacing: 0) {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.07))
+                                .frame(height: 0.5)
+                            HStack(spacing: 8) {
+                                if hasLabels {
+                                    Text(localizedStepLabel(seg.stepLabel) ?? "#\(seg.id)")
+                                        .font(.system(.subheadline, design: .rounded).weight(work ? .bold : .regular))
+                                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.55))
+                                        .frame(width: 56, alignment: .leading)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                } else {
+                                    Text("\(seg.id)")
+                                        .font(.system(.subheadline, design: .rounded).weight(work ? .bold : .regular))
+                                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.35))
+                                        .frame(width: 20, alignment: .leading)
+                                }
+                                if hasDist {
+                                    Text(seg.formattedDistance ?? "—")
+                                        .font(.system(.subheadline, design: .rounded))
+                                        .foregroundStyle(work ? .white : Color.white.opacity(0.45))
+                                        .frame(width: 60, alignment: .trailing)
+                                }
+                                Spacer(minLength: 8)
+                                Text(seg.formattedPace ?? "—")
+                                    .font(.system(.callout, design: .rounded).weight(work ? .semibold : .regular))
                                     .foregroundStyle(
-                                        seg.avgHeartRate != nil
-                                            ? (work ? Theme.heartRate : Theme.heartRate.opacity(0.45))
+                                        seg.formattedPace != nil
+                                            ? (work ? Theme.violet : Color.white.opacity(0.40))
                                             : Color.secondary
                                     )
-                                    .frame(width: 44, alignment: .trailing)
+                                    .frame(width: 70, alignment: .trailing)
+                                Text(seg.formattedDuration)
+                                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                                    .foregroundStyle(work ? .secondary : Color.white.opacity(0.25))
+                                    .frame(width: 50, alignment: .trailing)
+                                if hasHR {
+                                    Text(seg.avgHeartRate.map { "\($0)" } ?? "—")
+                                        .font(.system(.callout, design: .rounded).weight(.medium))
+                                        .foregroundStyle(
+                                            seg.avgHeartRate != nil
+                                                ? (work ? Theme.heartRate : Theme.heartRate.opacity(0.45))
+                                                : Color.secondary
+                                        )
+                                        .frame(width: 44, alignment: .trailing)
+                                }
+                                if hasCadence {
+                                    Text(seg.avgCadence.map { "\($0)" } ?? "—")
+                                        .font(.system(.callout, design: .rounded).weight(.medium))
+                                        .foregroundStyle(
+                                            seg.avgCadence != nil
+                                                ? (work ? Theme.cadence : Theme.cadence.opacity(0.45))
+                                                : Color.secondary
+                                        )
+                                        .frame(width: 50, alignment: .trailing)
+                                }
                             }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(work ? Theme.violet.opacity(0.07) : Color.clear)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(work ? Theme.violet.opacity(0.07) : Color.clear)
                     }
                 }
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             }
-            .background(Theme.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .padding(.horizontal, 16)
         .sheet(isPresented: $showIntervalsShare) {
             if let act = activity {
                 IntervalsShareCardScreen(activity: act, segments: segments, miniMeImage: miniMeStore.image,
                                         weatherText: condition?.weather?.formattedTemp,
-                                        weatherIcon: condition?.weather?.systemIcon)
+                                        weatherIcon: condition?.weather?.systemIcon,
+                                        shoeName: shoeName,
+                                        firstCoordinate: firstCoordinate)
             }
         }
     }
@@ -1366,9 +1439,19 @@ private struct SplitsSection: View {
     var zones: [HRZoneData] = []
     var activity: Activity? = nil
     var allActivities: [Activity] = []
+    var condition: ActivityCondition? = nil
+    var firstCoordinate: CLLocationCoordinate2D? = nil
 
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @State private var showSplitsShare = false
+    @Query private var allStories: [WorkoutStory]
+    @Query private var allShoes: [Shoe]
+
+    private var shoeName: String? {
+        guard let wid = activity?.id.uuidString,
+              let sid = allStories.first(where: { $0.workoutID == wid })?.shoeID else { return nil }
+        return allShoes.first { $0.id.uuidString == sid }?.displayName
+    }
 
     private var fastestIdx: Int? {
         splits.indices.min(by: { splits[$0].paceSecPerKm < splits[$1].paceSecPerKm })
@@ -1430,7 +1513,10 @@ private struct SplitsSection: View {
         .padding(.horizontal, 16)
         .sheet(isPresented: $showSplitsShare) {
             if let act = activity {
-                SplitsShareCardScreen(activity: act, splits: splits, zones: zones, miniMeImage: miniMeStore.image)
+                SplitsShareCardScreen(activity: act, splits: splits, zones: zones, miniMeImage: miniMeStore.image, shoeName: shoeName,
+                                      weatherText: condition?.weather?.formattedTemp,
+                                      weatherIcon: condition?.weather?.systemIcon,
+                                      firstCoordinate: firstCoordinate)
             }
         }
     }
@@ -1837,6 +1923,7 @@ private struct MetricCell: View {
     let value: String
     let color: Color
     var note: String? = nil
+    var compactValue: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -1849,7 +1936,7 @@ private struct MetricCell: View {
                     .foregroundStyle(color)
             }
             Text(value)
-                .font(.system(.title3, weight: .black))
+                .font(.system(compactValue ? .title3 : .title2, weight: .black))
                 .fontWidth(.condensed)
                 .foregroundStyle(.white)
                 .lineLimit(1)
@@ -2886,13 +2973,14 @@ struct HRSeriesPanelChart: View {
     }
 }
 
-private struct MetricBarPanelChart: View {
+struct MetricBarPanelChart: View {
     let samples: [(offset: TimeInterval, value: Double)]
     let color: Color
     let unit: String
     let format: String
     var useRangeBar: Bool = false  // true: floating min~max bars (Apple style), false: avg-from-baseline
     var validMin: Double = 0
+    var barWidthOverride: CGFloat? = nil
 
     private struct Bucket: Identifiable {
         let id: Int
@@ -2906,7 +2994,7 @@ private struct MetricBarPanelChart: View {
         let src = samples.filter { $0.value > validMin }
         guard !src.isEmpty else { return [] }
         let total = max(src.map(\.offset).max() ?? 1, 1)
-        // always 60 bars; bucket duration scales with run length
+        // 80 bars; bucket duration scales with run length
         let count = 80
         let size  = total / Double(count)
         return (0..<count).compactMap { i in
@@ -2922,7 +3010,7 @@ private struct MetricBarPanelChart: View {
         }
     }
 
-    private var barWidth: CGFloat { 3 }
+    private var barWidth: CGFloat { barWidthOverride ?? 3 }
 
     private var avgValue: Double? {
         let valid = samples.filter { $0.value > validMin }.map(\.value)
@@ -3033,7 +3121,7 @@ private struct MetricBarPanelChart: View {
     }
 }
 
-private struct ElevationPanelChart: View {
+struct ElevationPanelChart: View {
     let profile: [(distanceKm: Double, altitude: Double)]
 
     private struct Point: Identifiable {
@@ -3118,7 +3206,7 @@ private struct ElevationPanelChart: View {
     }
 }
 
-private struct IntervalPanelChart: View {
+struct IntervalPanelChart: View {
     let segments: [IntervalSegment]
 
     private struct Row: Identifiable {
@@ -3127,6 +3215,7 @@ private struct IntervalPanelChart: View {
         let typeLabel: String      // 준비/운동/회복/정리
         let formattedPace: String?
         let avgHeartRate: Int?
+        let avgCadence: Int?
         let barRatio: Double    // 0–1, fastest work interval = 1.0
         let formattedDuration: String
     }
@@ -3211,26 +3300,70 @@ private struct IntervalPanelChart: View {
                        typeLabel: shortLabel(seg.stepLabel, isWork: isWork),
                        formattedPace: seg.formattedPace,
                        avgHeartRate: seg.avgHeartRate,
+                       avgCadence: seg.avgCadence,
                        barRatio: barRatio,
                        formattedDuration: seg.formattedDuration)
         }
     }
 
+    private var hasCadence: Bool { segments.contains { $0.avgCadence != nil } }
+
+    // caption2 line height ~13pt, VStack spacing 0 between rows
+    // base = summary(16+pad) + header(12+pad) + vertical padding(16)
+    static func requiredHeight(segmentCount: Int, hasSummary: Bool) -> CGFloat {
+        let rowH: CGFloat = 13
+        let baseH: CGFloat = hasSummary ? 44 : 26
+        return baseH + CGFloat(segmentCount) * rowH
+    }
+
+    // Fixed sub-column widths — same for header and data rows (guarantees column alignment)
+    private let paceW: CGFloat = 38
+    private let dotW:  CGFloat = 8
+    private let hrW:   CGFloat = 42   // "149bpm" ~38pt at caption2
+    private let cadW:  CGFloat = 44   // "172spm" ~38pt at caption2
+
     var body: some View {
         GeometryReader { geo in
             let typeW:  CGFloat = 28
-            let labelW: CGFloat = 90
+            let labelW: CGFloat = paceW + dotW + hrW + (hasCadence ? dotW + cadW : 0)
             let indexW: CGFloat = 20
             let spacing: CGFloat = 6
-            let maxBarW = geo.size.width - indexW - typeW - labelW - spacing * 3 - 24
+            let maxBarW = min(100, max(20, geo.size.width - indexW - typeW - labelW - spacing * 3 - 24))
+            let L = AppLanguage.shared
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 0) {
                     if let summary = workSummary {
                         Text(summary)
                             .font(.system(size: 12, weight: .semibold).monospacedDigit())
                             .foregroundStyle(Theme.violet)
                             .padding(.bottom, 2)
                     }
+
+                    // Column header — exact same sub-widths as data rows for alignment
+                    HStack(spacing: spacing) {
+                        Color.clear.frame(width: indexW)
+                        Color.clear.frame(width: typeW)
+                        Color.clear.frame(width: maxBarW, height: 1)
+                        HStack(spacing: 0) {
+                            Text(L.s("페이스", "Pace"))
+                                .lineLimit(1).minimumScaleFactor(0.6)
+                                .frame(width: paceW, alignment: .trailing)
+                            Color.clear.frame(width: dotW)
+                            Text(L.s("심박수", "HR"))
+                                .lineLimit(1).minimumScaleFactor(0.75)
+                                .frame(width: hrW, alignment: .trailing)
+                            if hasCadence {
+                                Color.clear.frame(width: dotW)
+                                Text(L.s("케이던스", "Cad"))
+                                    .lineLimit(1).minimumScaleFactor(0.75)
+                                    .frame(width: cadW, alignment: .trailing)
+                            }
+                        }
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(.bottom, 2)
+
                     ForEach(rows) { row in
                         HStack(spacing: spacing) {
                             // interval index
@@ -3245,31 +3378,45 @@ private struct IntervalPanelChart: View {
                                 .foregroundStyle(row.isWork ? Theme.violet.opacity(0.9) : Color.white.opacity(0.35))
                                 .frame(width: typeW, alignment: .leading)
 
-                            // horizontal bar
+                            // horizontal bar — 8pt height
                             ZStack(alignment: .leading) {
-                                Color.clear.frame(width: maxBarW, height: 12)
+                                Color.clear.frame(width: maxBarW, height: 8)
                                 RoundedRectangle(cornerRadius: 2)
                                     .fill(row.isWork ? Theme.violet : Color.white.opacity(0.18))
-                                    .frame(width: max(4, maxBarW * row.barRatio), height: 12)
+                                    .frame(width: max(4, maxBarW * row.barRatio), height: 8)
                             }
 
-                            // pace · HR on one line
-                            HStack(spacing: 4) {
+                            // pace · HR · cadence — fixed sub-widths for column alignment
+                            HStack(spacing: 0) {
                                 if let pace = row.formattedPace {
                                     Text(pace)
                                         .foregroundStyle(row.isWork ? .white : .secondary)
+                                        .frame(width: paceW, alignment: .trailing)
                                 } else {
                                     Text(row.formattedDuration)
                                         .foregroundStyle(.secondary)
+                                        .frame(width: paceW, alignment: .trailing)
                                 }
-                                if let hr = row.avgHeartRate {
-                                    Text("·").foregroundStyle(.tertiary)
-                                    Text("\(hr)")
-                                        .foregroundStyle(Theme.heartRate.opacity(0.85))
+                                Text("·")
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: dotW, alignment: .center)
+                                Text(row.avgHeartRate.map { "\($0)bpm" } ?? "—")
+                                    .lineLimit(1).minimumScaleFactor(0.8)
+                                    .foregroundStyle(row.avgHeartRate != nil
+                                        ? Theme.heartRate.opacity(0.85) : Color.secondary)
+                                    .frame(width: hrW, alignment: .trailing)
+                                if hasCadence {
+                                    Text("·")
+                                        .foregroundStyle(.tertiary)
+                                        .frame(width: dotW, alignment: .center)
+                                    Text(row.avgCadence.map { "\($0)spm" } ?? "—")
+                                        .lineLimit(1).minimumScaleFactor(0.8)
+                                        .foregroundStyle(row.avgCadence != nil
+                                            ? Theme.cadence.opacity(0.85) : Color.secondary)
+                                        .frame(width: cadW, alignment: .trailing)
                                 }
                             }
                             .font(.caption2.monospacedDigit())
-                            .frame(width: labelW, alignment: .leading)
                         }
                     }
                 }

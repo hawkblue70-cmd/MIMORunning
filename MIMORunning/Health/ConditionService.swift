@@ -83,12 +83,18 @@ struct ActivityCondition: Codable {
     var sleepScore: SleepScore?
     var hrvRecovery: HRVRecovery?
 
+    nonisolated init(weather: WeatherSnapshot? = nil, sleepScore: SleepScore? = nil, hrvRecovery: HRVRecovery? = nil) {
+        self.weather = weather
+        self.sleepScore = sleepScore
+        self.hrvRecovery = hrvRecovery
+    }
+
     var hasAdverseSignal: Bool {
         weather?.isAdverse == true
     }
 }
 
-// MARK: - Condition cache (in-memory, keyed by activity UUID)
+// MARK: - Condition cache (memory + disk, keyed by activity UUID)
 
 actor ConditionCache {
     static let shared = ConditionCache()
@@ -96,12 +102,26 @@ actor ConditionCache {
 
     private var store: [UUID: ActivityCondition] = [:]
 
-    func condition(for activityID: UUID) -> ActivityCondition? {
-        store[activityID]
+    private func cacheURL(_ id: UUID) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_condition_\(id.uuidString).json")
     }
 
+    /// Checks memory first, then disk on miss. Returns nil only if truly unavailable.
+    func condition(for activityID: UUID) -> ActivityCondition? {
+        if let hit = store[activityID] { return hit }
+        guard let data = try? Data(contentsOf: cacheURL(activityID)),
+              let disk = try? JSONDecoder().decode(ActivityCondition.self, from: data)
+        else { return nil }
+        store[activityID] = disk
+        return disk
+    }
+
+    /// Saves to memory and disk atomically.
     func cache(_ condition: ActivityCondition, for activityID: UUID) {
         store[activityID] = condition
+        guard let data = try? JSONEncoder().encode(condition) else { return }
+        try? data.write(to: cacheURL(activityID), options: .atomic)
     }
 }
 

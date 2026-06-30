@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import CoreLocation
 
 // MARK: - Splits share card (360 × dynamic height, rendered via ImageRenderer)
 
@@ -8,6 +9,9 @@ struct SplitsShareCardView: View {
     let splits: [SplitData]
     var zones: [HRZoneData] = []
     var miniMeImage: UIImage? = nil
+    var shoeName: String? = nil
+    var weatherText: String? = nil
+    var weatherIcon: String? = nil
 
     // Fixed overhead ≈ 238pt + 22pt per row, minimum 520
     static func cardHeight(splitCount: Int) -> CGFloat {
@@ -43,7 +47,11 @@ struct SplitsShareCardView: View {
         return split.id == 1 ? "1km" : "\(split.id)"
     }
 
-    private var dateStr: String { activity.date.cardShortDateString }
+    private var dateStr: String {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy. M. d"
+        return df.string(from: activity.date)
+    }
 
     private func formatPace(_ secs: Double) -> String {
         let s = Int(secs)
@@ -107,10 +115,21 @@ struct SplitsShareCardView: View {
                     .padding(.top, 16)
                     .padding(.bottom, 10)
 
-                    // Date + title
-                    Text(dateStr)
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(.white)
+                    // Date + weather + title
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(dateStr)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                        if let w = weatherText {
+                            HStack(spacing: 3) {
+                                Image(systemName: weatherIcon ?? "thermometer.medium")
+                                    .font(.system(size: 10))
+                                Text(w)
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundStyle(.white.opacity(0.60))
+                        }
+                    }
                     Text(AppLanguage.shared.s("구간 기록", "Splits"))
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(0.5)
@@ -147,11 +166,22 @@ struct SplitsShareCardView: View {
                     }
 
                     // Branding
-                    HStack {
-                        Spacer()
+                    HStack(spacing: 6) {
                         Image(systemName: "figure.run")
                             .font(.system(size: 8))
                             .foregroundStyle(Theme.violet.opacity(0.35))
+                        Spacer()
+                        if let shoe = shoeName {
+                            HStack(spacing: 3) {
+                                Image(systemName: "shoe.fill")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.white.opacity(0.45))
+                                Text(shoe)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
                     .padding(.top, 10)
                     .padding(.bottom, 2)
@@ -277,11 +307,17 @@ struct SplitsShareCardScreen: View {
     let splits: [SplitData]
     var zones: [HRZoneData] = []
     var miniMeImage: UIImage? = nil
+    var shoeName: String? = nil
+    var weatherText: String? = nil
+    var weatherIcon: String? = nil
+    var firstCoordinate: CLLocationCoordinate2D? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var shareURL: URL?
     @State private var previewImage: UIImage?
     @State private var isRendering = false
+    @State private var resolvedWeatherText: String?
+    @State private var resolvedWeatherIcon: String?
 
     private var shareFilename: String {
         let fmt = DateFormatter()
@@ -305,7 +341,7 @@ struct SplitsShareCardScreen: View {
                 }
             }
         }
-        .task { await renderCard() }
+        .task { await resolveWeatherAndRender() }
     }
 
     private var topBar: some View {
@@ -336,7 +372,7 @@ struct SplitsShareCardScreen: View {
                 .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         } else {
             let scale: CGFloat = 300.0 / 360.0
-            SplitsShareCardView(activity: activity, splits: splits, zones: zones, miniMeImage: miniMeImage)
+            SplitsShareCardView(activity: activity, splits: splits, zones: zones, miniMeImage: miniMeImage, shoeName: shoeName, weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .scaleEffect(scale)
                 .frame(width: 300, height: scale * SplitsShareCardView.cardHeight(splitCount: splits.count))
@@ -364,9 +400,34 @@ struct SplitsShareCardScreen: View {
     }
 
     @MainActor
+    private func resolveWeatherAndRender() async {
+        resolvedWeatherText = weatherText
+        resolvedWeatherIcon = weatherIcon
+        if resolvedWeatherText == nil {
+            let cached = await ConditionCache.shared.condition(for: activity.id)
+            if let cached, let w = cached.weather {
+                // 날씨 캐시 히트 → 즉시 사용
+                resolvedWeatherText = w.formattedTemp
+                resolvedWeatherIcon = w.systemIcon
+            } else if firstCoordinate != nil {
+                // GPS 있음 → 날씨 없거나 미시도 → live fetch (스피너 중이므로 대기 허용)
+                let w = await ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate)
+                if let w {
+                    resolvedWeatherText = w.formattedTemp
+                    resolvedWeatherIcon = w.systemIcon
+                    var cond = cached ?? ActivityCondition()
+                    cond.weather = w
+                    await ConditionCache.shared.cache(cond, for: activity.id)
+                }
+            }
+        }
+        await renderCard()
+    }
+
+    @MainActor
     private func renderCard() async {
         isRendering = true
-        let card = SplitsShareCardView(activity: activity, splits: splits, zones: zones, miniMeImage: miniMeImage)
+        let card = SplitsShareCardView(activity: activity, splits: splits, zones: zones, miniMeImage: miniMeImage, shoeName: shoeName, weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon)
         let renderer = ImageRenderer(content: card)
         renderer.scale = 3
         guard let img = renderer.uiImage, let data = img.pngData() else {
@@ -390,14 +451,16 @@ struct IntervalsShareCardView: View {
     var miniMeImage: UIImage? = nil
     var weatherText: String? = nil
     var weatherIcon: String? = nil
+    var shoeName: String? = nil
 
     static func cardHeight(segmentCount: Int) -> CGFloat {
         max(520, 258 + CGFloat(segmentCount) * 24)
     }
 
-    private var hasLabels: Bool { segments.contains { $0.stepLabel != nil } }
-    private var hasHR: Bool     { segments.contains { $0.avgHeartRate != nil } }
-    private var hasDist: Bool   { segments.contains { $0.distanceM != nil } }
+    private var hasLabels:   Bool { segments.contains { $0.stepLabel != nil } }
+    private var hasHR:       Bool { segments.contains { $0.avgHeartRate != nil } }
+    private var hasDist:     Bool { segments.contains { $0.distanceM != nil } }
+    private var hasCadence:  Bool { segments.contains { $0.avgCadence != nil } }
 
     private var workSegments: [IntervalSegment] {
         let labeled = segments.filter { $0.stepLabel == "운동" }
@@ -482,15 +545,18 @@ struct IntervalsShareCardView: View {
                     }
                     .padding(.top, 16).padding(.bottom, 10)
 
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(activity.date.cardShortDateString)
-                            .font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text({
+                            let df = DateFormatter(); df.dateFormat = "yyyy. M. d"
+                            return df.string(from: activity.date)
+                        }())
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                         if let w = weatherText {
                             HStack(spacing: 3) {
                                 Image(systemName: weatherIcon ?? "thermometer.medium")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: 10))
                                 Text(w)
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.system(size: 11, weight: .medium))
                             }
                             .foregroundStyle(Color.white.opacity(0.60))
                         }
@@ -517,7 +583,10 @@ struct IntervalsShareCardView: View {
                         Text(AppLanguage.shared.s("페이스", "Pace")).frame(width: 62, alignment: .trailing)
                         Text(AppLanguage.shared.s("시간", "Time")).frame(width: 48, alignment: .trailing)
                         if hasHR {
-                            Text(AppLanguage.shared.s("심박", "HR")).frame(width: 38, alignment: .trailing)
+                            Text(AppLanguage.shared.s("심박", "HR")).frame(width: 34, alignment: .trailing)
+                        }
+                        if hasCadence {
+                            Text(AppLanguage.shared.s("케이던스", "Cad.")).frame(width: 36, alignment: .trailing)
                         }
                     }
                     .font(.system(size: 9, weight: .semibold))
@@ -541,10 +610,21 @@ struct IntervalsShareCardView: View {
                         }
                     }
 
-                    HStack {
-                        Spacer()
+                    HStack(spacing: 6) {
                         Image(systemName: "figure.highintensity.intervaltraining")
                             .font(.system(size: 8)).foregroundStyle(Theme.violet.opacity(0.35))
+                        Spacer()
+                        if let shoe = shoeName {
+                            HStack(spacing: 3) {
+                                Image(systemName: "shoe.fill")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.white.opacity(0.45))
+                                Text(shoe)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
                     .padding(.top, 10).padding(.bottom, 2)
                 }
@@ -606,7 +686,15 @@ struct IntervalsShareCardView: View {
                         .foregroundStyle(seg.avgHeartRate != nil
                             ? Theme.heartRate.opacity(work ? 1.0 : 0.42)
                             : Color.secondary)
-                        .frame(width: 38, alignment: .trailing)
+                        .frame(width: 34, alignment: .trailing)
+                }
+                if hasCadence {
+                    Text(seg.avgCadence.map { "\($0)" } ?? "—")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(seg.avgCadence != nil
+                            ? Theme.cadence.opacity(work ? 1.0 : 0.42)
+                            : Color.secondary)
+                        .frame(width: 36, alignment: .trailing)
                 }
             }
             .padding(.vertical, 5)
@@ -630,11 +718,15 @@ struct IntervalsShareCardScreen: View {
     var miniMeImage: UIImage? = nil
     var weatherText: String? = nil
     var weatherIcon: String? = nil
+    var shoeName: String? = nil
+    var firstCoordinate: CLLocationCoordinate2D? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var shareURL: URL?
     @State private var previewImage: UIImage?
     @State private var isRendering = false
+    @State private var resolvedWeatherText: String?
+    @State private var resolvedWeatherIcon: String?
 
     private var shareFilename: String {
         let fmt = DateFormatter(); fmt.dateFormat = "yyyyMMdd"
@@ -656,7 +748,7 @@ struct IntervalsShareCardScreen: View {
                 }
             }
         }
-        .task { await renderCard() }
+        .task { await resolveWeatherAndRender() }
     }
 
     private var topBar: some View {
@@ -681,7 +773,7 @@ struct IntervalsShareCardScreen: View {
         } else {
             let scale: CGFloat = 300.0 / 360.0
             IntervalsShareCardView(activity: activity, segments: segments, miniMeImage: miniMeImage,
-                                   weatherText: weatherText, weatherIcon: weatherIcon)
+                                   weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon, shoeName: shoeName)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .scaleEffect(scale)
                 .frame(width: 300, height: scale * IntervalsShareCardView.cardHeight(segmentCount: segments.count))
@@ -702,10 +794,33 @@ struct IntervalsShareCardScreen: View {
     }
 
     @MainActor
+    private func resolveWeatherAndRender() async {
+        resolvedWeatherText = weatherText
+        resolvedWeatherIcon = weatherIcon
+        if resolvedWeatherText == nil {
+            let cached = await ConditionCache.shared.condition(for: activity.id)
+            if let cached, let w = cached.weather {
+                resolvedWeatherText = w.formattedTemp
+                resolvedWeatherIcon = w.systemIcon
+            } else if firstCoordinate != nil {
+                let w = await ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate)
+                if let w {
+                    resolvedWeatherText = w.formattedTemp
+                    resolvedWeatherIcon = w.systemIcon
+                    var cond = cached ?? ActivityCondition()
+                    cond.weather = w
+                    await ConditionCache.shared.cache(cond, for: activity.id)
+                }
+            }
+        }
+        await renderCard()
+    }
+
+    @MainActor
     private func renderCard() async {
         isRendering = true
         let card = IntervalsShareCardView(activity: activity, segments: segments, miniMeImage: miniMeImage,
-                                          weatherText: weatherText, weatherIcon: weatherIcon)
+                                          weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon, shoeName: shoeName)
         let renderer = ImageRenderer(content: card)
         renderer.scale = 3
         guard let img = renderer.uiImage, let data = img.pngData() else { isRendering = false; return }

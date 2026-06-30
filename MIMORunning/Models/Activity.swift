@@ -129,6 +129,13 @@ struct ActivityDetail {
     let swolfScore: Double?          // avg per length (strokes + seconds) — swimming
     let altitudeProfile: [(distanceKm: Double, altitude: Double)]  // elevation chart data
     let altitudeTimeProfile: [(offset: TimeInterval, altitude: Double)]  // time-based for share card
+
+    /// True when HealthKit returned at least one major data field.
+    /// An incomplete cache (all empty) means HealthKit hadn't finished processing — re-fetch needed.
+    var isComplete: Bool {
+        !routeCoordinates.isEmpty || !splits.isEmpty || !hrZones.isEmpty ||
+        avgPower != nil || avgCadence != nil || swimmingStrokeCount != nil
+    }
 }
 
 struct IntervalSegment: Identifiable, Codable {
@@ -137,6 +144,7 @@ struct IntervalSegment: Identifiable, Codable {
     let endDate: Date
     let distanceM: Double?
     let avgHeartRate: Int?
+    let avgCadence: Int?    // spm — nil when Watch data unavailable
     let stepLabel: String?  // "준비운동" / "운동" / "회복" / "정리운동", nil if plan unavailable
 
     var duration: TimeInterval { endDate.timeIntervalSince(startDate) }

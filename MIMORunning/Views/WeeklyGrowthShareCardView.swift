@@ -463,3 +463,414 @@ struct WeeklyGrowthShareCardScreen: View {
         isRendering = false
     }
 }
+
+// MARK: - Heatmap share data types
+
+struct ShareHeatmapDay {
+    let km: Double
+    let isFuture: Bool
+}
+
+struct ShareHeatmapColumn: Identifiable {
+    let id: Date
+    let days: [ShareHeatmapDay]
+}
+
+// MARK: - Mileage + Streak combined share card
+
+private struct MileageBarPoint: Identifiable {
+    let id = UUID()
+    let label: String
+    let value: Double
+}
+
+struct MileageStreakShareCard: View {
+    let showMonthly: Bool
+    let showTimeMileage: Bool
+    let mileageSubtitle: String
+    let barData: [(label: String, value: Double)]
+    let heatmapColumns: [ShareHeatmapColumn]
+    let streak: Int
+    let activeDays: Int
+    let heatmapWeekCount: Int
+
+    private static let cellSize: CGFloat = 10
+    private static let cellGap:  CGFloat = 2.5
+    private static let labelW:   CGFloat = 14
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            VStack(alignment: .leading, spacing: 0) {
+                wordmarkRow
+                    .padding(.horizontal, 20)
+                    .padding(.top, 18)
+
+                divider.padding(.top, 10)
+
+                mileageTitleRow
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+
+                barChart
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+
+                divider.padding(.top, 12)
+
+                streakTitleBlock
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+
+                heatmapGrid
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+
+                Spacer(minLength: 8)
+
+                footerRow
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 14)
+            }
+        }
+    }
+
+    // MARK: Wordmark
+    private var wordmarkRow: some View {
+        HStack(spacing: 0) {
+            Text("MIMO")
+                .font(.system(size: 11, weight: .black))
+                .tracking(2)
+                .foregroundStyle(.white)
+            Text(" RUNNING")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(2)
+                .foregroundStyle(Theme.violet)
+        }
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Theme.violet.opacity(0.35))
+            .frame(height: 0.5)
+            .padding(.horizontal, 20)
+    }
+
+    // MARK: Mileage section
+    private var mileageTitleRow: some View {
+        let L = AppLanguage.shared
+        let period = showMonthly ? L.s("월간", "Monthly") : L.s("주간", "Weekly")
+        let mode   = showTimeMileage ? L.s("시간", "Time") : L.s("거리", "Distance")
+        return VStack(alignment: .leading, spacing: 1) {
+            Text("\(period) \(mode)")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+            Text(mileageSubtitle)
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.50))
+        }
+    }
+
+    private var barChart: some View {
+        let items = barData.map { MileageBarPoint(label: $0.label, value: $0.value) }
+        let color: Color = showTimeMileage ? Theme.time : Theme.violet
+        return Chart(items) { item in
+            BarMark(
+                x: .value("x", item.label),
+                y: .value("y", item.value)
+            )
+            .foregroundStyle(item.value > 0 ? color.gradient : Color.secondary.opacity(0.25).gradient)
+            .cornerRadius(3)
+        }
+        .frame(height: 120)
+        .chartXAxis {
+            AxisMarks { value in
+                AxisValueLabel {
+                    Text(value.as(String.self) ?? "")
+                        .font(.system(size: 7))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(values: .automatic(desiredCount: 3)) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(.white.opacity(0.08))
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text(yLabel(v))
+                            .font(.system(size: 7))
+                            .foregroundStyle(.white.opacity(0.45))
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func yLabel(_ v: Double) -> String {
+        if showTimeMileage {
+            let h = Int(v) / 60; let m = Int(v) % 60
+            return h > 0 ? "\(h)h" : "\(m)m"
+        } else {
+            return String(format: "%.0f", v)
+        }
+    }
+
+    // MARK: Streak section
+    private var streakTitleBlock: some View {
+        let L = AppLanguage.shared
+        let detail: String
+        if streak >= 2 {
+            detail = L.s("\(streak)주 연속 · \(heatmapWeekCount)주간 \(activeDays)일",
+                         "\(streak)wk · \(activeDays)d / \(heatmapWeekCount)wk")
+        } else if activeDays > 0 {
+            detail = L.s("\(heatmapWeekCount)주간 \(activeDays)일 러닝",
+                         "\(activeDays) days / \(heatmapWeekCount) wks")
+        } else {
+            detail = L.s("\(heatmapWeekCount)주간 기록 없음", "No runs in \(heatmapWeekCount) wks")
+        }
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(L.s("연속 달리기", "Streak"))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.70))
+            Text(detail)
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.40))
+        }
+    }
+
+    private var heatmapGrid: some View {
+        let cs  = Self.cellSize
+        let gap = Self.cellGap
+        let lw  = Self.labelW
+        return VStack(alignment: .leading, spacing: gap) {
+            // Week-start date header
+            HStack(spacing: gap) {
+                Color.clear.frame(width: lw, height: 8)
+                ForEach(Array(heatmapColumns.enumerated()), id: \.offset) { idx, col in
+                    if idx == 0 || heatmapMonthChanges(at: idx) {
+                        Text(heatmapShortDate(col.id))
+                            .font(.system(size: 6, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.40))
+                            .frame(width: cs, alignment: .leading)
+                            .fixedSize()
+                    } else {
+                        Color.clear.frame(width: cs, height: 8)
+                    }
+                }
+            }
+            // Day rows
+            ForEach(0..<7, id: \.self) { dayIdx in
+                HStack(spacing: gap) {
+                    Text(heatmapDayLabels[dayIdx])
+                        .font(.system(size: 7, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .frame(width: lw, height: cs, alignment: .trailing)
+                    ForEach(heatmapColumns) { col in
+                        let cell = col.days[dayIdx]
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(cellColor(km: cell.km, isFuture: cell.isFuture))
+                            .frame(width: cs, height: cs)
+                    }
+                }
+            }
+            // Legend
+            HStack(spacing: 4) {
+                Spacer()
+                Text(AppLanguage.shared.s("적음", "Less"))
+                    .font(.system(size: 6))
+                    .foregroundStyle(.white.opacity(0.35))
+                ForEach([0.0, 2.0, 5.0, 8.0, 12.0], id: \.self) { km in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(cellColor(km: km, isFuture: false))
+                        .frame(width: cs, height: cs)
+                }
+                Text(AppLanguage.shared.s("많음", "More"))
+                    .font(.system(size: 6))
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var heatmapDayLabels: [String] {
+        AppLanguage.shared.isEnglish
+            ? ["M", "", "W", "", "F", "Sa", "Su"]
+            : ["월", "", "수", "", "금", "토", "일"]
+    }
+
+    private func heatmapMonthChanges(at idx: Int) -> Bool {
+        guard idx > 0 else { return false }
+        let cal = Calendar.current
+        return cal.component(.month, from: heatmapColumns[idx - 1].id)
+            != cal.component(.month, from: heatmapColumns[idx].id)
+    }
+
+    private static let heatmapDateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "M/d"; return f
+    }()
+
+    private func heatmapShortDate(_ date: Date) -> String {
+        Self.heatmapDateFmt.string(from: date)
+    }
+
+    private func cellColor(km: Double, isFuture: Bool) -> Color {
+        if isFuture { return Color.white.opacity(0.04) }
+        if km == 0  { return Theme.violet.opacity(0.10) }
+        if km < 3   { return Theme.violet.opacity(0.32) }
+        if km < 6   { return Theme.violet.opacity(0.56) }
+        if km < 10  { return Theme.violet.opacity(0.80) }
+        return Theme.violet
+    }
+
+    // MARK: Footer
+    private var footerRow: some View {
+        HStack {
+            ZStack {
+                Circle()
+                    .fill(Color(hex: "3DFF7A").opacity(0.12))
+                    .frame(width: 28, height: 28)
+                Image(systemName: "figure.run")
+                    .font(.system(size: 12, weight: .light))
+                    .foregroundStyle(Color(hex: "3DFF7A"))
+            }
+            Spacer()
+            Text("mimorunning")
+                .font(.system(size: 8, weight: .medium))
+                .tracking(1)
+                .foregroundStyle(.white.opacity(0.18))
+        }
+    }
+}
+
+// MARK: - Mileage + Streak share screen
+
+struct MileageStreakShareCardScreen: View {
+    let showMonthly: Bool
+    let showTimeMileage: Bool
+    let mileageSubtitle: String
+    let barData: [(label: String, value: Double)]
+    let heatmapColumns: [ShareHeatmapColumn]
+    let streak: Int
+    let activeDays: Int
+    let heatmapWeekCount: Int
+
+    @State private var shareURL: URL?
+    @State private var previewImage: UIImage?
+    @State private var isRendering = true
+    @Environment(\.dismiss) private var dismiss
+
+    private let cardW: CGFloat = 300
+    private let cardH: CGFloat = 530
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    Spacer()
+                    MileageStreakShareCard(
+                        showMonthly: showMonthly,
+                        showTimeMileage: showTimeMileage,
+                        mileageSubtitle: mileageSubtitle,
+                        barData: barData,
+                        heatmapColumns: heatmapColumns,
+                        streak: streak,
+                        activeDays: activeDays,
+                        heatmapWeekCount: heatmapWeekCount
+                    )
+                    .frame(width: cardW, height: cardH)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
+
+                    Spacer(minLength: 24)
+
+                    shareCTA
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 36)
+                }
+            }
+            .navigationTitle(AppLanguage.shared.s("거리 · 연속 공유", "Mileage & Streak"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                        .foregroundStyle(Theme.violet)
+                }
+            }
+        }
+        .task { await renderCard() }
+    }
+
+    @ViewBuilder
+    private var shareCTA: some View {
+        if isRendering {
+            HStack(spacing: 10) {
+                ProgressView().tint(Theme.violet)
+                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card..."))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+        } else if let url = shareURL, let img = previewImage {
+            ShareLink(
+                item: url,
+                preview: SharePreview(
+                    AppLanguage.shared.s("거리 · 연속 달리기", "Mileage & Streak"),
+                    image: Image(uiImage: img)
+                )
+            ) {
+                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Theme.violet)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        } else {
+            Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+        }
+    }
+
+    @MainActor
+    private func renderCard() async {
+        isRendering = true
+        let renderer = ImageRenderer(content:
+            MileageStreakShareCard(
+                showMonthly: showMonthly,
+                showTimeMileage: showTimeMileage,
+                mileageSubtitle: mileageSubtitle,
+                barData: barData,
+                heatmapColumns: heatmapColumns,
+                streak: streak,
+                activeDays: activeDays,
+                heatmapWeekCount: heatmapWeekCount
+            )
+            .frame(width: cardW, height: cardH)
+        )
+        renderer.scale = 3
+        guard let img = renderer.uiImage, let data = img.pngData() else {
+            isRendering = false; return
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_mileage_streak.png")
+        try? data.write(to: url)
+        previewImage = img
+        shareURL = url
+        isRendering = false
+    }
+}

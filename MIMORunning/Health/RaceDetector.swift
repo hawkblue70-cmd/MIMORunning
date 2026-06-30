@@ -99,6 +99,42 @@ struct PersistedRaceMatch: Codable, Equatable {
     var isManual: Bool
 }
 
+// MARK: - GeocoderService (rate-limited, serialized)
+// Apple's geocoding limit is 50 requests / 60 s. Enforcing 1.3 s minimum gap stays
+// safely under that even if multiple callers share this actor simultaneously.
+
+private actor GeocoderService {
+    private let geocoder = CLGeocoder()
+    private var lastRequestTime: Date = .distantPast
+    private let minInterval: TimeInterval = 1.3
+
+    func geocodeAddress(_ address: String) async -> CLLocationCoordinate2D? {
+        await throttle()
+        return await withCheckedContinuation { cont in
+            geocoder.geocodeAddressString(address) { placemarks, _ in
+                cont.resume(returning: placemarks?.first?.location?.coordinate)
+            }
+        }
+    }
+
+    func reverseGeocodeLocation(_ location: CLLocation) async -> [CLPlacemark]? {
+        await throttle()
+        return await withCheckedContinuation { cont in
+            geocoder.reverseGeocodeLocation(location) { placemarks, _ in
+                cont.resume(returning: placemarks)
+            }
+        }
+    }
+
+    private func throttle() async {
+        let wait = minInterval - Date().timeIntervalSince(lastRequestTime)
+        if wait > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+        }
+        lastRequestTime = Date()
+    }
+}
+
 // MARK: - RaceDetector
 
 @Observable
@@ -111,6 +147,7 @@ final class RaceDetector {
     private static let matchesKey  = "raceDetector.matches.v1"
     private var regionCache: [String: [String]] = [:]          // "lat,lon" → [province, city, …]
     private var cityHintCoordCache: [String: CLLocationCoordinate2D] = [:]  // "성남_경기" → coord
+    private let geocoderService = GeocoderService()
 
     // MARK: - Setup (call once at app start)
 
@@ -278,23 +315,16 @@ final class RaceDetector {
     private func reverseGeocodeRegion(_ coord: CLLocationCoordinate2D) async -> [String] {
         let key = String(format: "%.4f,%.4f", coord.latitude, coord.longitude)
         if let cached = regionCache[key] { return cached }
-        return await withCheckedContinuation { cont in
-            CLGeocoder().reverseGeocodeLocation(
-                CLLocation(latitude: coord.latitude, longitude: coord.longitude)
-            ) { [self] placemarks, _ in
-                var tokens: [String] = []
-                if let pm = placemarks?.first {
-                    if let prov = Self.normalizeRegion(pm.administrativeArea) {
-                        tokens.append(prov)
-                    }
-                    if let city = pm.locality, !city.isEmpty {
-                        tokens.append(city)
-                    }
-                }
-                if !tokens.isEmpty { self.regionCache[key] = tokens }
-                cont.resume(returning: tokens)
-            }
+        let placemarks = await geocoderService.reverseGeocodeLocation(
+            CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+        )
+        var tokens: [String] = []
+        if let pm = placemarks?.first {
+            if let prov = Self.normalizeRegion(pm.administrativeArea) { tokens.append(prov) }
+            if let city = pm.locality, !city.isEmpty { tokens.append(city) }
         }
+        if !tokens.isEmpty { regionCache[key] = tokens }
+        return tokens
     }
 
     private static func normalizeRegion(_ adminArea: String?) -> String? {
@@ -443,7 +473,7 @@ final class RaceDetector {
                     races[idx].startLongitude = coord.longitude
                 }
             }
-            try? await Task.sleep(nanoseconds: 600_000_000)   // rate-limit CLGeocoder
+            // Rate limiting is handled inside GeocoderService (1.3 s per request)
         }
         if let encoded = try? JSONEncoder().encode(cache) {
             UserDefaults.standard.set(encoded, forKey: Self.geocacheKey)
@@ -452,11 +482,7 @@ final class RaceDetector {
     }
 
     private func geocode(_ address: String) async -> CLLocationCoordinate2D? {
-        await withCheckedContinuation { cont in
-            CLGeocoder().geocodeAddressString(address) { placemarks, _ in
-                cont.resume(returning: placemarks?.first?.location?.coordinate)
-            }
-        }
+        await geocoderService.geocodeAddress(address)
     }
 
     // MARK: - Embedded race data (문화체육관광부 국내마라톤대회 정보, 2025년)

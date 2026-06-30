@@ -168,7 +168,7 @@ struct BigNumberCard: View {
                             Text(shoe)
                         }
                         .font(.system(size: 9))
-                        .foregroundStyle(Color.white.opacity(0.5))
+                        .foregroundStyle(.white)
                         .cardTextShadow()
                         .frame(maxWidth: .infinity, alignment: .center)
                     }
@@ -190,12 +190,12 @@ struct BigNumberCard: View {
                 Text("\(w) · \(dateText)")
             }
             .font(.system(size: 10))
-            .foregroundStyle(Color.white.opacity(0.7))
+            .foregroundStyle(.white)
             .cardTextShadow()
         } else {
             Text(dateText)
                 .font(.system(size: 10))
-                .foregroundStyle(Color.white.opacity(0.7))
+                .foregroundStyle(.white)
                 .cardTextShadow()
         }
     }
@@ -337,7 +337,7 @@ struct BigNumberVideoOverlayView: View {
                                 Text(shoe)
                             }
                             .font(.system(size: 9 * s))
-                            .foregroundStyle(Color.white.opacity(0.5))
+                            .foregroundStyle(.white)
                             .cardTextShadow()
                             .frame(maxWidth: .infinity, alignment: .center)
                         }
@@ -358,12 +358,12 @@ struct BigNumberVideoOverlayView: View {
                 Text("\(w) · \(dateText)")
             }
             .font(.system(size: 10 * s))
-            .foregroundStyle(Color.white.opacity(0.7))
+            .foregroundStyle(.white)
             .cardTextShadow()
         } else {
             Text(dateText)
                 .font(.system(size: 10 * s))
-                .foregroundStyle(Color.white.opacity(0.7))
+                .foregroundStyle(.white)
                 .cardTextShadow()
         }
     }

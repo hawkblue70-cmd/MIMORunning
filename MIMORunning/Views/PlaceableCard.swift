@@ -70,6 +70,7 @@ struct PlaceableCard: View {
     var accent: CardAccent = .none
     var showBackground: Bool = true
     var shoeName: String? = nil
+    var weather: WeatherSnapshot? = nil
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
@@ -253,16 +254,25 @@ struct PlaceableCard: View {
 
     // MARK: - Footer
     private var footerView: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             Text(dateText)
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.white)
                 .brightCardText()
+            if let w = weather {
+                HStack(spacing: 3) {
+                    Image(systemName: w.systemIcon).font(.system(size: 8))
+                    Text(w.formattedTemp).font(.system(size: 8, weight: .medium))
+                }
+                .foregroundStyle(.white.opacity(0.75))
+                .brightCardText()
+                .padding(.leading, 6)
+            }
             Spacer()
             if let shoe = shoeName {
                 Text(shoe)
                     .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.70))
+                    .foregroundStyle(.white)
                     .brightCardText()
                     .lineLimit(1)
             }

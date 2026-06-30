@@ -374,21 +374,20 @@ struct ShareCardView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     chartAboveDivider
 
-                    if let w = weather {
-                        HStack(spacing: 3) {
-                            Image(systemName: w.systemIcon)
-                                .font(.system(size: 8))
-                            Text(w.formattedTemp)
-                                .font(.system(size: 8, weight: .medium))
-                        }
-                        .foregroundStyle(.white.opacity(0.80))
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 2)
-                    }
-                    HStack {
+                    HStack(spacing: 0) {
                         Text(startDateTimeString)
                             .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(.white.opacity(0.80))
+                        if let w = weather {
+                            HStack(spacing: 3) {
+                                Image(systemName: w.systemIcon)
+                                    .font(.system(size: 8))
+                                Text(w.formattedTemp)
+                                    .font(.system(size: 8, weight: .medium))
+                            }
+                            .foregroundStyle(.white.opacity(0.65))
+                            .padding(.leading, 6)
+                        }
                         if let shoe = shoeName {
                             Spacer()
                             HStack(spacing: 3) {
@@ -844,21 +843,20 @@ private struct PhotoShareCardView: View {
                     .padding(.bottom, 6)
                 }
 
-                if let w = weather {
-                    HStack(spacing: 3) {
-                        Image(systemName: w.systemIcon)
-                            .font(.system(size: 8))
-                        Text(w.formattedTemp)
-                            .font(.system(size: 8, weight: .medium))
-                    }
-                    .foregroundStyle(.white.opacity(0.80))
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 2)
-                }
-                HStack {
+                HStack(spacing: 0) {
                     Text(startDateTimeString)
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.white.opacity(0.80))
+                    if let w = weather {
+                        HStack(spacing: 3) {
+                            Image(systemName: w.systemIcon)
+                                .font(.system(size: 8))
+                            Text(w.formattedTemp)
+                                .font(.system(size: 8, weight: .medium))
+                        }
+                        .foregroundStyle(.white.opacity(0.65))
+                        .padding(.leading, 6)
+                    }
                     if let shoe = shoeName {
                         Spacer()
                         HStack(spacing: 3) {
@@ -1225,21 +1223,20 @@ private struct StoryShareCardView: View {
                     .padding(.bottom, 8)
                 }
 
-                if let w = weather {
-                    HStack(spacing: 3) {
-                        Image(systemName: w.systemIcon)
-                            .font(.system(size: 8))
-                        Text(w.formattedTemp)
-                            .font(.system(size: 8, weight: .medium))
-                    }
-                    .foregroundStyle(.white.opacity(0.80))
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 2)
-                }
-                HStack {
+                HStack(spacing: 0) {
                     Text(startDateTimeString)
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.white.opacity(0.80))
+                    if let w = weather {
+                        HStack(spacing: 3) {
+                            Image(systemName: w.systemIcon)
+                                .font(.system(size: 8))
+                            Text(w.formattedTemp)
+                                .font(.system(size: 8, weight: .medium))
+                        }
+                        .foregroundStyle(.white.opacity(0.65))
+                        .padding(.leading, 6)
+                    }
                     if let shoe = shoeName {
                         Spacer()
                         HStack(spacing: 3) {
@@ -1422,20 +1419,22 @@ private struct VideoOverlayCard: View {
                 }
 
                 // ── BOTTOM: weather · date · divider · stats ──
-                if let w = weather {
-                    HStack(spacing: 2) {
-                        Image(systemName: w.systemIcon)
-                            .font(.system(size: 5.5))
-                        Text(w.formattedTemp)
-                            .font(.system(size: 5.5, weight: .medium))
+                HStack(spacing: 0) {
+                    Text(startDateTimeString)
+                        .font(.system(size: 6, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.80))
+                    if let w = weather {
+                        HStack(spacing: 2) {
+                            Image(systemName: w.systemIcon)
+                                .font(.system(size: 6))
+                            Text(w.formattedTemp)
+                                .font(.system(size: 6, weight: .medium))
+                        }
+                        .foregroundStyle(.white.opacity(0.65))
+                        .padding(.leading, 5)
                     }
-                    .foregroundStyle(.white.opacity(0.80))
-                    .padding(.bottom, 1)
                 }
-                Text(startDateTimeString)
-                    .font(.system(size: 6, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.80))
-                    .padding(.bottom, 2)
+                .padding(.bottom, 2)
 
                 Rectangle()
                     .fill(Theme.violet.opacity(0.30))
@@ -1935,7 +1934,8 @@ struct ShareCardScreen: View {
             dateText: activity.date.cardDateTimeString,
             metricsPosition: placeableMetricsPosition,
             accent: placeableAccent,
-            shoeName: displayShoeName
+            shoeName: displayShoeName,
+            weather: condition?.weather
         )
     }
 
@@ -2751,32 +2751,31 @@ struct ShareCardScreen: View {
                     .padding(.bottom, 3)
                 }
 
-                if let w = condition?.weather {
-                    HStack(spacing: 2) {
-                        Image(systemName: w.systemIcon)
-                            .font(.system(size: 5.5))
-                        Text(w.formattedTemp)
-                            .font(.system(size: 5.5, weight: .medium))
-                    }
-                    .foregroundStyle(.white.opacity(0.80))
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 1)
-                }
-                HStack {
+                HStack(spacing: 0) {
                     Text(activity.date.cardDateTimeString)
-                        .font(.system(size: 6, weight: .medium))
+                        .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.white.opacity(0.80))
+                    if let w = condition?.weather {
+                        HStack(spacing: 3) {
+                            Image(systemName: w.systemIcon)
+                                .font(.system(size: 8))
+                            Text(w.formattedTemp)
+                                .font(.system(size: 8, weight: .medium))
+                        }
+                        .foregroundStyle(.white.opacity(0.65))
+                        .padding(.leading, 6)
+                    }
                     if let shoe = displayShoeName {
                         Spacer()
                         HStack(spacing: 3) {
-                            Image(systemName: "shoe.fill").font(.system(size: 6))
-                            Text(shoe).font(.system(size: 7, weight: .medium)).lineLimit(1)
+                            Image(systemName: "shoe.fill").font(.system(size: 8))
+                            Text(shoe).font(.system(size: 9, weight: .medium)).lineLimit(1)
                         }
                         .foregroundStyle(.white.opacity(0.75))
                     }
                 }
                 .padding(.horizontal, 10)
-                .padding(.bottom, 2)
+                .padding(.bottom, 3)
 
                 Rectangle()
                     .fill(Theme.violet.opacity(0.30))
@@ -3048,7 +3047,8 @@ struct ShareCardScreen: View {
                 metricsPosition: placeableMetricsPosition,
                 accent: placeableAccent,
                 showBackground: false,
-                shoeName: displayShoeName
+                shoeName: displayShoeName,
+                weather: condition?.weather
             )
             .frame(width: PlaceableCard.cardWidth, height: PlaceableCard.cardHeight)
             .scaleEffect(scale, anchor: .center)
@@ -3172,7 +3172,8 @@ struct ShareCardScreen: View {
                 dateText: activity.date.cardDateTimeString,
                 metricsPosition: placeableMetricsPosition,
                 accent: placeableAccent,
-                shoeName: displayShoeName
+                shoeName: displayShoeName,
+                weather: condition?.weather
             )
             let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
             renderer.scale = 3

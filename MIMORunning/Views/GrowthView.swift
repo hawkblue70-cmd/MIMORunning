@@ -97,6 +97,7 @@ struct GrowthView: View {
     @State private var thisWeekRunCountCache: Int = 0
     @State private var growthInsightBannerText: String? = nil
     @State private var showWeeklyShareCard = false
+    @State private var showMileageStreakShareCard = false
 
     private static let weekLabelFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "M/d"; return f
@@ -171,8 +172,8 @@ struct GrowthView: View {
                         VStack(alignment: .leading, spacing: 20) {
                             growthInsightBanner
                             weeklySection
-                            paceSection
                             heatmapSection
+                            paceSection
                             weekSummarySection
                             metricTrendsSection
                             prSection
@@ -204,6 +205,18 @@ struct GrowthView: View {
                 isMale: manager.userIsMale
             )
         }
+        .sheet(isPresented: $showMileageStreakShareCard) {
+            MileageStreakShareCardScreen(
+                showMonthly: showMonthly,
+                showTimeMileage: showTimeMileage,
+                mileageSubtitle: mileageSubtitle,
+                barData: currentBarData,
+                heatmapColumns: shareHeatmapColumns,
+                streak: weekStreakCache,
+                activeDays: activeDaysInHeatmap(columns: heatmapColumnsCache),
+                heatmapWeekCount: Self.heatmapWeeks
+            )
+        }
         .sheet(isPresented: $showWeeklyShareCard) {
             let style = weeklyPatternCache.first.map { weeklyPatternStyle(for: $0.key) }
             WeeklyGrowthShareCardScreen(
@@ -227,6 +240,29 @@ struct GrowthView: View {
         return Calendar.current.component(.year, from: Date()) - year
     }
 
+    // MARK: - Share card data helpers
+
+    private var currentBarData: [(label: String, value: Double)] {
+        if showMonthly {
+            return showTimeMileage
+                ? monthlyMinsCache.map { (label: $0.label, value: $0.mins) }
+                : monthlyKmsCache.map  { (label: $0.label, value: $0.km)   }
+        } else {
+            return showTimeMileage
+                ? weeklyMinsCache.map  { (label: $0.label, value: $0.mins) }
+                : weeklyKmsCache.map   { (label: $0.label, value: $0.km)   }
+        }
+    }
+
+    private var shareHeatmapColumns: [ShareHeatmapColumn] {
+        heatmapColumnsCache.map { col in
+            ShareHeatmapColumn(
+                id: col.id,
+                days: col.days.map { ShareHeatmapDay(km: $0.km, isFuture: $0.isFuture) }
+            )
+        }
+    }
+
     // MARK: - Sections
 
     private var weeklySection: some View {
@@ -235,7 +271,14 @@ struct GrowthView: View {
                 SectionLabel(title: mileageTitle, subtitle: mileageSubtitle)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {
-                    periodToggle
+                    HStack(spacing: 10) {
+                        Button { showMileageStreakShareCard = true } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 14))
+                        }
+                        .foregroundStyle(Theme.violet)
+                        periodToggle
+                    }
                     modeToggle
                 }
             }

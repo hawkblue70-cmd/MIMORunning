@@ -6,10 +6,6 @@
 	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.healthcare-fitness</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-	</array>
 	<key>NSHealthShareUsageDescription</key>
 	<string>러닝, 걷기, 하이킹 운동 기록과 심박수, 페이스 등 건강 데이터를 읽어 활동을 분석합니다.</string>
 	<key>NSHealthUpdateUsageDescription</key>

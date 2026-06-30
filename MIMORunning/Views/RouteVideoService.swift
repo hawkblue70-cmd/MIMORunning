@@ -181,27 +181,26 @@ struct RouteVideoFrameView: View {
                 .padding(.bottom, 3 * scale)
             }
 
-            // Date · Divider · Stats (athletic style)
-            if let w = weather {
-                HStack(spacing: 3 * scale) {
-                    Image(systemName: w.systemIcon)
-                        .font(.system(size: 8 * scale))
-                    Text(w.formattedTemp)
-                        .font(.system(size: 8 * scale, weight: .medium))
-                }
-                .foregroundStyle(.white.opacity(0.80))
-                .padding(.horizontal, pad)
-                .padding(.bottom, 2 * scale)
-            }
-            HStack {
+            // Date · Divider · Stats (athletic style — date + weather inline)
+            HStack(spacing: 0) {
                 Text(startDateTimeString)
                     .font(.system(size: 9 * scale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.80))
+                if let w = weather {
+                    HStack(spacing: 3 * scale) {
+                        Image(systemName: w.systemIcon)
+                            .font(.system(size: 8 * scale))
+                        Text(w.formattedTemp)
+                            .font(.system(size: 8 * scale, weight: .medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.65))
+                    .padding(.leading, 6 * scale)
+                }
                 if let shoe = shoeName {
                     Spacer()
                     HStack(spacing: 3 * scale) {
-                        Image(systemName: "shoe.fill").font(.system(size: 7 * scale))
-                        Text(shoe).font(.system(size: 8 * scale, weight: .medium)).lineLimit(1)
+                        Image(systemName: "shoe.fill").font(.system(size: 8 * scale))
+                        Text(shoe).font(.system(size: 9 * scale, weight: .medium)).lineLimit(1)
                     }
                     .foregroundStyle(.white.opacity(0.75))
                 }
