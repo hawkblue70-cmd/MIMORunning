@@ -436,9 +436,9 @@ struct SplitsShareCardScreen: View {
             isRendering = false
             return
         }
-        let url = FileManager.default.temporaryDirectory
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(shareFilename)
-        try? data.write(to: url)
+        try? data.write(to: url, options: .atomic)
         previewImage = img
         shareURL = url
         isRendering = false
@@ -825,8 +825,9 @@ struct IntervalsShareCardScreen: View {
         let renderer = ImageRenderer(content: card)
         renderer.scale = 3
         guard let img = renderer.uiImage, let data = img.pngData() else { isRendering = false; return }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(shareFilename)
-        try? data.write(to: url)
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(shareFilename)
+        try? data.write(to: url, options: .atomic)
         previewImage = img
         shareURL = url
         isRendering = false

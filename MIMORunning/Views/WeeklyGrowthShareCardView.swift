@@ -455,9 +455,9 @@ struct WeeklyGrowthShareCardScreen: View {
         guard let img = renderer.uiImage, let data = img.pngData() else {
             isRendering = false; return
         }
-        let url = FileManager.default.temporaryDirectory
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_weekly_growth.png")
-        try? data.write(to: url)
+        try? data.write(to: url, options: .atomic)
         previewImage = img
         shareURL = url
         isRendering = false
@@ -875,9 +875,9 @@ struct MileageStreakShareCardScreen: View {
         guard let img = renderer.uiImage, let data = img.pngData() else {
             isRendering = false; return
         }
-        let url = FileManager.default.temporaryDirectory
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_mileage_streak.png")
-        try? data.write(to: url)
+        try? data.write(to: url, options: .atomic)
         previewImage = img
         shareURL = url
         isRendering = false

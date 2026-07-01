@@ -493,9 +493,9 @@ struct DetailPanelShareCardScreen: View {
             isRendering = false; return
         }
         let fmt = DateFormatter(); fmt.dateFormat = "yyyyMMdd"
-        let url = FileManager.default.temporaryDirectory
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_panel_\(fmt.string(from: activity.date)).png")
-        try? data.write(to: url)
+        try? data.write(to: url, options: .atomic)
         previewImage = img
         shareURL = url
         isRendering = false

@@ -451,9 +451,9 @@ struct GrowthShareCardScreen: View {
             isRendering = false
             return
         }
-        let url = FileManager.default.temporaryDirectory
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_growth_\(metric.rawValue).png")
-        try? data.write(to: url)
+        try? data.write(to: url, options: .atomic)
         previewImage = img
         shareURL = url
         isRendering = false
