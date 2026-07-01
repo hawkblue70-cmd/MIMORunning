@@ -127,7 +127,8 @@ class HealthKitManager {
 
     // MARK: - Fetch (two-phase)
 
-    func fetchActivities() async {
+    // forced=true: 당기기 새로고침 등 명시적 요청. forced=false(기본): 완료 태그 있으면 캐시만 사용.
+    func fetchActivities(forced: Bool = false) async {
         guard !isFetchInProgress else { return }
         isFetchInProgress = true
         defer { isFetchInProgress = false }
@@ -139,9 +140,9 @@ class HealthKitManager {
             activities = cached.map { $0.toActivity() }
         }
 
-        // 완료 태그 확인: lastSyncedAt이 최근이면 캐시가 정답 — HealthKit 조회 불필요
+        // 완료 태그 확인: 태그가 있고 강제 갱신이 아니면 절대 HealthKit 재조회 안 함
         let lastSync = UserDefaults.standard.object(forKey: "mimo.lastSyncedAt") as? Date
-        if isWarmCache, let last = lastSync, Date().timeIntervalSince(last) < 300 {
+        if !forced, isWarmCache, lastSync != nil {
             return
         }
 

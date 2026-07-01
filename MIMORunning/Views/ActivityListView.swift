@@ -193,7 +193,7 @@ private struct ActivityListContent: View {
                 }
                 .refreshable {
                     displayCount = 50
-                    await manager.fetchActivities()
+                    await manager.fetchActivities(forced: true)
                 }
             }
         }
