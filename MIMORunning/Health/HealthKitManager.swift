@@ -132,21 +132,21 @@ class HealthKitManager {
         isFetchInProgress = true
         defer { isFetchInProgress = false }
 
-        // Fast path: data is loaded and was synced very recently — skip disk read + all async work.
+        // Phase 0: 캐시 먼저 로드 — 강제 종료 후 재실행에서도 즉시 표시
+        let cached = loadActivityCache()
+        let isWarmCache = !cached.isEmpty
+        if isWarmCache && activities.isEmpty {
+            activities = cached.map { $0.toActivity() }
+        }
+
+        // 완료 태그 확인: lastSyncedAt이 최근이면 캐시가 정답 — HealthKit 조회 불필요
         let lastSync = UserDefaults.standard.object(forKey: "mimo.lastSyncedAt") as? Date
-        if !activities.isEmpty, let last = lastSync, Date().timeIntervalSince(last) < 300 {
+        if isWarmCache, let last = lastSync, Date().timeIntervalSince(last) < 300 {
             return
         }
 
-        isLoading = true
-
-        // Phase 0: instant display from SwiftData cache (zero HealthKit queries)
-        let cached = loadActivityCache()
-        let isWarmCache = !cached.isEmpty
-        if isWarmCache {
-            activities = cached.map { $0.toActivity() }
-            isLoading = false
-        }
+        // 캐시가 없는 첫 실행만 로딩 표시
+        isLoading = !isWarmCache
 
         // Resolve subscription status and prepare HRZone parameters before HealthKit query.
         await ProManager.shared.checkEntitlements()
