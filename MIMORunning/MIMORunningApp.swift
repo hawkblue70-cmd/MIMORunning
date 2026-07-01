@@ -11,7 +11,11 @@ struct MIMORunningApp: App {
         if let c = try? ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)) {
             return c
         }
-        return try! ModelContainer(for: schema)
+        do {
+            return try ModelContainer(for: schema)
+        } catch {
+            fatalError("ModelContainer 초기화 실패: \(error)")
+        }
     }()
 
     var body: some Scene {

@@ -304,8 +304,9 @@ struct GrowthShareCard: View {
     }
 
     private var periodChange: Double? {
-        guard dataPoints.count >= 2 else { return nil }
-        return dataPoints.last!.value - dataPoints.first!.value
+        guard dataPoints.count >= 2,
+              let first = dataPoints.first, let last = dataPoints.last else { return nil }
+        return last.value - first.value
     }
 
     private var periodChangeString: String? {

@@ -529,7 +529,7 @@ struct CardWorkoutSeriesChart: View {
             guard !vals.isEmpty else { return nil }
             let avg = vals.reduce(0, +) / Double(vals.count)
             return Bucket(id: i, midMin: (lo + hi) / 2 / 60,
-                          avg: avg, minV: vals.min()!, maxV: vals.max()!)
+                          avg: avg, minV: vals.min() ?? 0, maxV: vals.max() ?? 0)
         }
     }
 
@@ -700,7 +700,7 @@ struct CardIntervalChart: View {
                         .font(.system(size: 6.5))
                         .foregroundStyle(Color.white.opacity(0.80))
                         .fixedSize()
-                        .position(x: labelX[id]!, y: 5)
+                        .position(x: labelX[id] ?? 0, y: 5)
                 }
             }
             .frame(width: chartW, height: 10)

@@ -2894,8 +2894,8 @@ struct HRSeriesPanelChart: View {
             let avg = vals.reduce(0, +) / Double(vals.count)
             return Bucket(id: i,
                           midMinute: (lo + hi) / 2 / 60,
-                          min: vals.min()!,
-                          max: vals.max()!,
+                          min: vals.min() ?? 0,
+                          max: vals.max() ?? 0,
                           avg: avg,
                           color: zoneColor(for: avg))
         }
@@ -3015,7 +3015,7 @@ struct MetricBarPanelChart: View {
             guard !vals.isEmpty else { return nil }
             let avg = vals.reduce(0, +) / Double(vals.count)
             return Bucket(id: i, midMinute: (lo + hi) / 2 / 60,
-                          avg: avg, min: vals.min()!, max: vals.max()!)
+                          avg: avg, min: vals.min() ?? 0, max: vals.max() ?? 0)
         }
     }
 

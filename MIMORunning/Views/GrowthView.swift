@@ -989,7 +989,7 @@ struct GrowthView: View {
         var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
         for a in runs {
             guard let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)) else { continue }
-            if totals[ws] != nil { totals[ws]! += a.distance / 1000 }
+            totals[ws] = totals[ws].map { $0 + a.distance / 1000 }
         }
         return starts.map { s in WeeklyKm(id: s, label: Self.weekLabelFormatter.string(from: s), km: totals[s] ?? 0) }
     }
@@ -1004,7 +1004,7 @@ struct GrowthView: View {
         var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
         for a in runs {
             guard let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)) else { continue }
-            if totals[ws] != nil { totals[ws]! += a.duration / 60 }
+            totals[ws] = totals[ws].map { $0 + a.duration / 60 }
         }
         return starts.map { s in WeeklyMins(id: s, label: Self.weekLabelFormatter.string(from: s), mins: totals[s] ?? 0) }
     }
@@ -1021,7 +1021,7 @@ struct GrowthView: View {
         var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
         for a in runs {
             guard let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date)) else { continue }
-            if totals[ms] != nil { totals[ms]! += a.distance / 1000 }
+            totals[ms] = totals[ms].map { $0 + a.distance / 1000 }
         }
         return starts.map { s in MonthlyKm(id: s, label: Self.monthLabelFormatter.string(from: s), km: totals[s] ?? 0) }
     }
@@ -1036,7 +1036,7 @@ struct GrowthView: View {
         var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
         for a in runs {
             guard let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date)) else { continue }
-            if totals[ms] != nil { totals[ms]! += a.duration / 60 }
+            totals[ms] = totals[ms].map { $0 + a.duration / 60 }
         }
         return starts.map { s in MonthlyMins(id: s, label: Self.monthLabelFormatter.string(from: s), mins: totals[s] ?? 0) }
     }
@@ -1684,7 +1684,7 @@ private struct PaceTrendChart: View {
     }
 
     private var strideCount: Int {
-        let span: TimeInterval = (points.count >= 2) ? points.last!.date.timeIntervalSince(points.first!.date) : 0
+        let span: TimeInterval = (points.count >= 2) ? points[points.count - 1].date.timeIntervalSince(points[0].date) : 0
         let days = Int(span / 86400)
         return max(1, days / 4)
     }

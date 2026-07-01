@@ -1008,7 +1008,8 @@ class HealthKitManager {
 
         // Build SplitData from crossings
         var result: [SplitData] = []
-        var prevDate = timeline.first!.date
+        guard let firstPoint = timeline.first else { return [] }
+        var prevDate = firstPoint.date
         for crossing in crossings {
             let dur = crossing.date.timeIntervalSince(prevDate)
             guard dur > 1 else { prevDate = crossing.date; continue }

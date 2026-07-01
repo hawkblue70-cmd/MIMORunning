@@ -328,7 +328,7 @@ private struct RoutePolylineOverlay: View {
             ctx.stroke(path, with: .color(Theme.violet),
                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
 
-            let tip = slice.last!
+            let tip = slice[slice.count - 1]
             var glow = Path()
             glow.addEllipse(in: CGRect(x: tip.x - 9, y: tip.y - 9, width: 18, height: 18))
             ctx.fill(glow, with: .color(Theme.violet.opacity(0.38)))
@@ -402,8 +402,10 @@ struct RouteVideoExportService {
 
         let lats = coordinates.map(\.latitude)
         let lons = coordinates.map(\.longitude)
-        let minLat = lats.min()!, maxLat = lats.max()!
-        let minLon = lons.min()!, maxLon = lons.max()!
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else {
+            return (darkPlaceholder(), [])
+        }
         let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2,
                                             longitude: (minLon + maxLon) / 2)
         let span = MKCoordinateSpan(
