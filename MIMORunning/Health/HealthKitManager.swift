@@ -1311,14 +1311,18 @@ class HealthKitManager {
     // MARK: - Metric Trend History
 
     func fetchMetricHistory(_ metric: TrendMetric, from startDate: Date, usePounds: Bool = false) async -> [(date: Date, value: Double)] {
-        if let disk = loadMetricHistoryFromDisk(metric, startDate: startDate, usePounds: usePounds) {
-            return disk
+        // 캐시 히트: 전체 저장 데이터에서 요청 범위만 메모리 필터 — HealthKit 조회 없음
+        if let cached = loadMetricHistoryFromDisk(metric, usePounds: usePounds) {
+            let filtered = cached.filter { $0.date >= startDate }
+            if !filtered.isEmpty { return filtered }
         }
-        let result = await fetchMetricHistoryFromHealthKit(metric, from: startDate, usePounds: usePounds)
+        // 캐시 미스: 1년치 전부 불러와 저장 후 필터 반환
+        let fullStart = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+        let result = await fetchMetricHistoryFromHealthKit(metric, from: fullStart, usePounds: usePounds)
         if !result.isEmpty {
-            saveMetricHistoryToDisk(result, metric: metric, startDate: startDate, usePounds: usePounds)
+            saveMetricHistoryToDisk(result, metric: metric, usePounds: usePounds)
         }
-        return result
+        return result.filter { $0.date >= startDate }
     }
 
     private func fetchMetricHistoryFromHealthKit(_ metric: TrendMetric, from startDate: Date, usePounds: Bool = false) async -> [(date: Date, value: Double)] {
@@ -1386,28 +1390,24 @@ class HealthKitManager {
         return dir
     }()
 
-    private func metricHistoryCacheURL(_ metric: TrendMetric, startDate: Date, usePounds: Bool) -> URL {
-        let cal = Calendar.current
-        let comps = cal.dateComponents([.year, .month, .day], from: startDate)
-        let dateStr = String(format: "%04d%02d%02d", comps.year ?? 0, comps.month ?? 0, comps.day ?? 0)
+    // 지표당 파일 1개 — 날짜 무관, 영구 캐시 (새 런 추가·새로고침 시만 삭제)
+    private func metricHistoryCacheURL(_ metric: TrendMetric, usePounds: Bool) -> URL {
         let suffix = (metric == .bodyMass && usePounds) ? "_lbs" : ""
-        return Self.metricCacheDir.appendingPathComponent("metric_\(metric.rawValue)_\(dateStr)\(suffix).json")
+        return Self.metricCacheDir.appendingPathComponent("metric_\(metric.rawValue)\(suffix).json")
     }
 
-    private func loadMetricHistoryFromDisk(_ metric: TrendMetric, startDate: Date, usePounds: Bool) -> [(date: Date, value: Double)]? {
-        let url = metricHistoryCacheURL(metric, startDate: startDate, usePounds: usePounds)
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        guard let file = try? JSONDecoder().decode(MetricHistoryCacheFile.self, from: data) else { return nil }
+    private func loadMetricHistoryFromDisk(_ metric: TrendMetric, usePounds: Bool) -> [(date: Date, value: Double)]? {
+        let url = metricHistoryCacheURL(metric, usePounds: usePounds)
+        guard let data = try? Data(contentsOf: url),
+              let file = try? JSONDecoder().decode(MetricHistoryCacheFile.self, from: data) else { return nil }
         return file.points.map { ($0.date, $0.value) }
     }
 
     /// 새 런 추가 시 호출 — 런 기반 메트릭 캐시 삭제
     func invalidateRunningMetricHistoryCache() {
         let runningMetrics: [TrendMetric] = [.cadence, .power, .groundContactTime, .strideLength, .verticalOscillation]
-        let since = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
         for metric in runningMetrics {
-            let url = metricHistoryCacheURL(metric, startDate: since, usePounds: false)
-            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: metricHistoryCacheURL(metric, usePounds: false))
         }
     }
 
@@ -1417,13 +1417,13 @@ class HealthKitManager {
         for file in files { try? FileManager.default.removeItem(at: file) }
     }
 
-    private func saveMetricHistoryToDisk(_ points: [(date: Date, value: Double)], metric: TrendMetric, startDate: Date, usePounds: Bool) {
+    private func saveMetricHistoryToDisk(_ points: [(date: Date, value: Double)], metric: TrendMetric, usePounds: Bool) {
         let file = MetricHistoryCacheFile(
             points: points.map { MetricDataPoint(date: $0.date, value: $0.value) },
             cachedAt: Date()
         )
         guard let data = try? JSONEncoder().encode(file) else { return }
-        try? data.write(to: metricHistoryCacheURL(metric, startDate: startDate, usePounds: usePounds), options: .atomic)
+        try? data.write(to: metricHistoryCacheURL(metric, usePounds: usePounds), options: .atomic)
     }
 
     private func fetchQuantitySampleHistory(
