@@ -156,7 +156,7 @@ class HealthKitManager {
             // Warm cache: only query workouts newer than the latest cached entry — very fast.
             // Cold cache: full 12-month query.
             let since: Date? = isWarmCache
-                ? cached.map(\.date).max().map { Calendar.current.date(byAdding: .day, value: -1, to: $0)! }
+                ? cached.map(\.date).max().flatMap { Calendar.current.date(byAdding: .day, value: -1, to: $0) }
                 : nil
             let fetchedWorkouts = try await queryWorkouts(since: since)
 

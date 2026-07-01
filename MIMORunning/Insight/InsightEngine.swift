@@ -394,7 +394,7 @@ struct InsightEngine {
             from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)
         ) ?? a.date
         for _ in 0..<52 {
-            let prevWeekStart = cal.date(byAdding: .weekOfYear, value: -1, to: weekAnchor)!
+            let prevWeekStart = cal.date(byAdding: .weekOfYear, value: -1, to: weekAnchor) ?? weekAnchor
             if priorWeekStarts.contains(prevWeekStart) {
                 streak += 1
                 weekAnchor = prevWeekStart

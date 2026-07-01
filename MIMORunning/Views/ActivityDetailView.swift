@@ -3512,7 +3512,7 @@ private struct InlineTrendChart: View {
         let yMin = min(dMin - 2, t.belowAvg - 3)
         let yMax = max(dMax + 2, t.high + 3)
         let bands = CardioFitnessClassifier.bands(age: age, isMale: isMale, yMin: yMin, yMax: yMax)
-        let startDate = data.map(\.date).min() ?? Calendar.current.date(byAdding: .month, value: -1, to: Date())!
+        let startDate = data.map(\.date).min() ?? Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
 
         return Chart {
             ForEach(bands) { band in

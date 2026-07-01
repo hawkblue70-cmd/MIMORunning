@@ -100,10 +100,10 @@ enum TrendRange: String, CaseIterable, Identifiable {
         let cal = Calendar.current
         let now = Date()
         switch self {
-        case .week:     return cal.date(byAdding: .day,   value: -7,  to: now)!
-        case .month:    return cal.date(byAdding: .month, value: -1,  to: now)!
-        case .sixMonth: return cal.date(byAdding: .month, value: -6,  to: now)!
-        case .year:     return cal.date(byAdding: .year,  value: -1,  to: now)!
+        case .week:     return cal.date(byAdding: .day,   value: -7,  to: now) ?? now
+        case .month:    return cal.date(byAdding: .month, value: -1,  to: now) ?? now
+        case .sixMonth: return cal.date(byAdding: .month, value: -6,  to: now) ?? now
+        case .year:     return cal.date(byAdding: .year,  value: -1,  to: now) ?? now
         }
     }
 }

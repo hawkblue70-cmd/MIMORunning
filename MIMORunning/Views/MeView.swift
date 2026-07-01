@@ -641,8 +641,8 @@ struct MeView: View {
     private func computeMaxWeekStreak(runs: [Activity]) -> Int {
         guard !runs.isEmpty else { return 0 }
         let cal = Calendar.current
-        let weekStarts = Set(runs.map {
-            cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.date))!
+        let weekStarts = Set(runs.compactMap {
+            cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.date))
         }).sorted()
         var maxStreak = 1, cur = 1
         for i in 1..<weekStarts.count {

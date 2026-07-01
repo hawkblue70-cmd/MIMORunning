@@ -983,12 +983,12 @@ struct GrowthView: View {
         let cal = mondayCal
         let now = Date()
         let starts: [Date] = (0..<8).reversed().compactMap { ago -> Date? in
-            let ref = cal.date(byAdding: .weekOfYear, value: -ago, to: now)!
+            guard let ref = cal.date(byAdding: .weekOfYear, value: -ago, to: now) else { return nil }
             return cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: ref))
         }
         var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
         for a in runs {
-            let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date))!
+            guard let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)) else { continue }
             if totals[ws] != nil { totals[ws]! += a.distance / 1000 }
         }
         return starts.map { s in WeeklyKm(id: s, label: Self.weekLabelFormatter.string(from: s), km: totals[s] ?? 0) }
@@ -998,12 +998,12 @@ struct GrowthView: View {
         let cal = mondayCal
         let now = Date()
         let starts: [Date] = (0..<8).reversed().compactMap { ago -> Date? in
-            let ref = cal.date(byAdding: .weekOfYear, value: -ago, to: now)!
+            guard let ref = cal.date(byAdding: .weekOfYear, value: -ago, to: now) else { return nil }
             return cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: ref))
         }
         var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
         for a in runs {
-            let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date))!
+            guard let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)) else { continue }
             if totals[ws] != nil { totals[ws]! += a.duration / 60 }
         }
         return starts.map { s in WeeklyMins(id: s, label: Self.weekLabelFormatter.string(from: s), mins: totals[s] ?? 0) }
@@ -1014,13 +1014,13 @@ struct GrowthView: View {
     private func monthlyKms(count: Int = 12) -> [MonthlyKm] {
         let cal = Calendar.current
         let now = Date()
-        let starts: [Date] = (0..<count).reversed().compactMap { ago in
-            let ref = cal.date(byAdding: .month, value: -ago, to: now)!
+        let starts: [Date] = (0..<count).reversed().compactMap { ago -> Date? in
+            guard let ref = cal.date(byAdding: .month, value: -ago, to: now) else { return nil }
             return cal.date(from: cal.dateComponents([.year, .month], from: ref))
         }
         var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
         for a in runs {
-            let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date))!
+            guard let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date)) else { continue }
             if totals[ms] != nil { totals[ms]! += a.distance / 1000 }
         }
         return starts.map { s in MonthlyKm(id: s, label: Self.monthLabelFormatter.string(from: s), km: totals[s] ?? 0) }
@@ -1029,13 +1029,13 @@ struct GrowthView: View {
     private func monthlyMins(count: Int = 12) -> [MonthlyMins] {
         let cal = Calendar.current
         let now = Date()
-        let starts: [Date] = (0..<count).reversed().compactMap { ago in
-            let ref = cal.date(byAdding: .month, value: -ago, to: now)!
+        let starts: [Date] = (0..<count).reversed().compactMap { ago -> Date? in
+            guard let ref = cal.date(byAdding: .month, value: -ago, to: now) else { return nil }
             return cal.date(from: cal.dateComponents([.year, .month], from: ref))
         }
         var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
         for a in runs {
-            let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date))!
+            guard let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date)) else { continue }
             if totals[ms] != nil { totals[ms]! += a.duration / 60 }
         }
         return starts.map { s in MonthlyMins(id: s, label: Self.monthLabelFormatter.string(from: s), mins: totals[s] ?? 0) }
@@ -1056,8 +1056,8 @@ struct GrowthView: View {
                 kmByDay[day, default: 0] += a.distance / 1000
             }
         }
-        return range.map { d in
-            let date = cal.date(byAdding: .day, value: d - 1, to: start)!
+        return range.compactMap { d -> DailyKm? in
+            guard let date = cal.date(byAdding: .day, value: d - 1, to: start) else { return nil }
             return DailyKm(id: date, day: d, km: kmByDay[date] ?? 0)
         }
     }
@@ -1089,12 +1089,12 @@ struct GrowthView: View {
         // Monday of the current week (weekday: 1=Sun…7=Sat → Mon=0 offset)
         let todayWeekday = cal.component(.weekday, from: today)
         let daysFromMon = (todayWeekday + 5) % 7  // Mon=0, Sun=6
-        let thisMonday = cal.date(byAdding: .day, value: -daysFromMon, to: today)!
+        let thisMonday = cal.date(byAdding: .day, value: -daysFromMon, to: today) ?? today
 
         // First Monday of the heatmap
         let firstMonday = cal.date(byAdding: .weekOfYear,
                                    value: -(Self.heatmapWeeks - 1),
-                                   to: thisMonday)!
+                                   to: thisMonday) ?? thisMonday
 
         // Build km-per-day lookup
         var kmByDay: [Date: Double] = [:]
@@ -1104,9 +1104,9 @@ struct GrowthView: View {
         }
 
         return (0..<Self.heatmapWeeks).map { w in
-            let monday = cal.date(byAdding: .day, value: w * 7, to: firstMonday)!
+            let monday = cal.date(byAdding: .day, value: w * 7, to: firstMonday) ?? firstMonday
             let days = (0..<7).map { d -> DayCell in
-                let date = cal.date(byAdding: .day, value: d, to: monday)!
+                let date = cal.date(byAdding: .day, value: d, to: monday) ?? monday
                 return DayCell(id: date, km: kmByDay[date] ?? 0, isFuture: date > today)
             }
             return WeekColumn(id: monday, days: days)
@@ -1118,10 +1118,10 @@ struct GrowthView: View {
         let now = Date()
         var streak = 0
         var offset = 0
-        while true {
-            let ref = cal.date(byAdding: .weekOfYear, value: -offset, to: now)!
-            let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: ref))!
-            let we = cal.date(byAdding: .weekOfYear, value: 1, to: ws)!
+        while offset < 52 {
+            guard let ref = cal.date(byAdding: .weekOfYear, value: -offset, to: now),
+                  let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: ref)),
+                  let we = cal.date(byAdding: .weekOfYear, value: 1, to: ws) else { break }
             if runs.contains(where: { $0.date >= ws && $0.date < we }) {
                 streak += 1; offset += 1
             } else {
@@ -1684,7 +1684,7 @@ private struct PaceTrendChart: View {
     }
 
     private var strideCount: Int {
-        let span = points.last.map { $0.date.timeIntervalSince(points.first!.date) } ?? 0
+        let span: TimeInterval = (points.count >= 2) ? points.last!.date.timeIntervalSince(points.first!.date) : 0
         let days = Int(span / 86400)
         return max(1, days / 4)
     }
@@ -1762,7 +1762,7 @@ private struct MetricSparkCard: View {
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
-                        if analysis.direction != .insufficient { // TODO: 점검 후 제거
+                        if analysis.direction != .insufficient {
                             let ratio = analysis.changeRatio
                             let sign: String = ratio >= 0 ? "+" : "−"
                             Text(String(format: "%@%.1f%%", sign, abs(ratio * 100)))
@@ -1911,7 +1911,7 @@ private struct WeekStatTile: View {
                         }
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text(c.value).font(.system(.subheadline, design: .rounded).weight(.bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.8)
-                            if let r = c.ratio { Text(r).font(.system(size: 11)).foregroundStyle(Color(hex: "6E6E78")) } // TODO: 점검 후 제거
+                            if let r = c.ratio { Text(r).font(.system(size: 11)).foregroundStyle(Color(hex: "6E6E78")) }
                         }
                         RoundedRectangle(cornerRadius: 2).fill(c.lineColor).frame(height: 2).padding(.top, 4)
                     }
