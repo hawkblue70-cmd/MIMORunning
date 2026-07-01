@@ -159,49 +159,33 @@ class HealthKitManager {
         do {
             let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
 
-            // Warm cache: only query workouts newer than the latest cached entry — very fast.
-            // Cold cache: full 12-month query.
-            let since: Date? = isWarmCache
-                ? cached.map(\.date).max().flatMap { Calendar.current.date(byAdding: .day, value: -1, to: $0) }
-                : nil
-            let fetchedWorkouts = try await queryWorkouts(since: since)
-
             if isWarmCache {
-                if fetchedWorkouts.isEmpty {
-                    // Nothing new — level recompute only.
+                // 웜캐시: 최신 캐시 날짜 이후 새 운동만 조회 (오버랩 없음)
+                let since = cached.map(\.date).max()
+                let fetched = try await queryWorkouts(since: since)
+                // 캐시에 없는 진짜 새 운동만 처리 — 이미 태그된 운동은 절대 재처리 안 함
+                let newWorkouts = fetched.filter { cacheDict[$0.uuid.uuidString] == nil }
+                if newWorkouts.isEmpty {
                     userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
                     UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
                     return
                 }
-                // Prepend new workouts to cached list (avoiding duplicates).
-                let newIDs = Set(fetchedWorkouts.map { $0.uuid.uuidString })
-                let newActivities = fetchedWorkouts.map { w -> Activity in
-                    let summary = buildSummary(from: w)
-                    return cacheDict[w.uuid.uuidString]?.toActivity() ?? summary
-                }
-                activities = newActivities + activities.filter { !newIDs.contains($0.id.uuidString) }
+                let newActivities = newWorkouts.map { buildSummary(from: $0) }
+                activities = newActivities + activities
+                await enrichAndCache(newWorkouts, cacheDict: cacheDict)
+                userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+                UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
             } else {
-                // Cold cache: query recent 2 months first for fast display.
+                // 콜드캐시(최초 실행): 최근 2개월 먼저 표시 후 나머지 백그라운드
                 let twoMonthsAgo = Calendar.current.date(byAdding: .month, value: -2, to: Date()) ?? .distantPast
                 let recentWorkouts = try await queryWorkouts(since: twoMonthsAgo)
-                activities = recentWorkouts.map { w -> Activity in
-                    let summary = buildSummary(from: w)
-                    return cacheDict[w.uuid.uuidString]?.toActivity() ?? summary
-                }
+                activities = recentWorkouts.map { buildSummary(from: $0) }
                 isLoading = false
                 await enrichAndCache(recentWorkouts, cacheDict: cacheDict)
                 userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
                 UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
-
-                // Background: fetch older history (months 3–12).
                 Task { await self.fetchOlderActivities(until: twoMonthsAgo) }
-                return
             }
-
-            // Warm cache new-workout enrich path.
-            await enrichAndCache(fetchedWorkouts, cacheDict: cacheDict)
-            userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
-            UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
         } catch {
             self.error = error
         }
