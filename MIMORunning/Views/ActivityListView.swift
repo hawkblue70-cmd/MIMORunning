@@ -193,6 +193,7 @@ private struct ActivityListContent: View {
                 }
                 .refreshable {
                     displayCount = 50
+                    manager.invalidateAllMetricHistoryCache()
                     await manager.fetchActivities(forced: true)
                 }
             }

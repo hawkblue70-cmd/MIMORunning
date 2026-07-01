@@ -1377,7 +1377,6 @@ class HealthKitManager {
     private struct MetricHistoryCacheFile: Codable {
         let points: [MetricDataPoint]
         let cachedAt: Date
-        var isStale: Bool { Date().timeIntervalSince(cachedAt) > 86400 }  // 24h — historical metric data doesn't change intraday
     }
 
     private static let metricCacheDir: URL = {
@@ -1398,12 +1397,11 @@ class HealthKitManager {
     private func loadMetricHistoryFromDisk(_ metric: TrendMetric, startDate: Date, usePounds: Bool) -> [(date: Date, value: Double)]? {
         let url = metricHistoryCacheURL(metric, startDate: startDate, usePounds: usePounds)
         guard let data = try? Data(contentsOf: url) else { return nil }
-        guard let file = try? JSONDecoder().decode(MetricHistoryCacheFile.self, from: data),
-              !file.isStale else { return nil }
+        guard let file = try? JSONDecoder().decode(MetricHistoryCacheFile.self, from: data) else { return nil }
         return file.points.map { ($0.date, $0.value) }
     }
 
-    /// 새 런 추가 시 호출 — 런 기반 메트릭(케이던스·파워·폼) 디스크 캐시를 삭제해 다음 쿼리 시 최신 데이터 반영
+    /// 새 런 추가 시 호출 — 런 기반 메트릭 캐시 삭제
     func invalidateRunningMetricHistoryCache() {
         let runningMetrics: [TrendMetric] = [.cadence, .power, .groundContactTime, .strideLength, .verticalOscillation]
         let since = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
@@ -1411,6 +1409,12 @@ class HealthKitManager {
             let url = metricHistoryCacheURL(metric, startDate: since, usePounds: false)
             try? FileManager.default.removeItem(at: url)
         }
+    }
+
+    /// 당기기 새로고침 시 호출 — 모든 지표 캐시 삭제 (체성분 포함)
+    func invalidateAllMetricHistoryCache() {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: Self.metricCacheDir, includingPropertiesForKeys: nil) else { return }
+        for file in files { try? FileManager.default.removeItem(at: file) }
     }
 
     private func saveMetricHistoryToDisk(_ points: [(date: Date, value: Double)], metric: TrendMetric, startDate: Date, usePounds: Bool) {
