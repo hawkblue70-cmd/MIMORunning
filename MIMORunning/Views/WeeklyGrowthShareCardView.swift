@@ -63,36 +63,36 @@ struct WeeklyGrowthShareCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 wordmarkRow
                     .padding(.horizontal, 20)
-                    .padding(.top, 18)
+                    .padding(.top, 12)
 
-                divider.padding(.top, 10)
+                divider.padding(.top, 7)
 
                 weekLabel
                     .padding(.horizontal, 20)
-                    .padding(.top, 10)
+                    .padding(.top, 7)
 
                 statTiles
                     .padding(.horizontal, 16)
-                    .padding(.top, 10)
+                    .padding(.top, 7)
 
                 if let text = insightText {
                     insightBanner(text: text)
                         .padding(.horizontal, 16)
-                        .padding(.top, 10)
+                        .padding(.top, 7)
                 }
 
                 if !sparkData.isEmpty {
-                    divider.padding(.top, 10)
+                    divider.padding(.top, 7)
                     sparkGrid
                         .padding(.horizontal, 16)
-                        .padding(.top, 10)
+                        .padding(.top, 7)
                 }
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 5)
 
                 footerRow
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 9)
             }
         }
     }
@@ -153,7 +153,7 @@ struct WeeklyGrowthShareCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 8)
-        .padding(.vertical, 8)
+        .padding(.vertical, 5)
         .background(Color.white.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -175,7 +175,7 @@ struct WeeklyGrowthShareCard: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 5)
         .background(Theme.violet.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -185,9 +185,9 @@ struct WeeklyGrowthShareCard: View {
         let rows = stride(from: 0, to: sparkData.count, by: 2).map { i in
             Array(sparkData[i..<min(i + 2, sparkData.count)])
         }
-        return VStack(spacing: 6) {
+        return VStack(spacing: 4) {
             ForEach(0..<rows.count, id: \.self) { r in
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     ForEach(0..<rows[r].count, id: \.self) { i in
                         sparkCell(metric: rows[r][i].metric, dataPoints: rows[r][i].points)
                     }
@@ -218,7 +218,7 @@ struct WeeklyGrowthShareCard: View {
             ? String(format: "%@%.1f%%", ratio >= 0 ? "+" : "−", abs(ratio * 100))
             : nil
 
-        return VStack(alignment: .leading, spacing: 3) {
+        return VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(metric.koreanLabel)
                     .font(.system(size: 8, weight: .semibold))
@@ -245,9 +245,9 @@ struct WeeklyGrowthShareCard: View {
                 }
             }
             ShareSparkline(dataPoints: dataPoints, color: sparkColor)
-                .frame(height: 24)
+                .frame(height: 16)
         }
-        .padding(6)
+        .padding(4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -258,9 +258,9 @@ struct WeeklyGrowthShareCard: View {
             ZStack {
                 Circle()
                     .fill(Color(hex: "3DFF7A").opacity(0.12))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 20, height: 20)
                 Image(systemName: "figure.run")
-                    .font(.system(size: 12, weight: .light))
+                    .font(.system(size: 8, weight: .light))
                     .foregroundStyle(Color(hex: "3DFF7A"))
             }
             Spacer()
@@ -329,7 +329,7 @@ struct WeeklyGrowthShareCardScreen: View {
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
-    private let cardH: CGFloat = 560
+    private let cardH: CGFloat = 375
 
     var body: some View {
         NavigationStack {
@@ -486,6 +486,7 @@ private struct MileageBarPoint: Identifiable {
 
 struct MileageStreakShareCard: View {
     let showMonthly: Bool
+    let showDaily: Bool
     let showTimeMileage: Bool
     let mileageSubtitle: String
     let barData: [(label: String, value: Double)]
@@ -494,9 +495,9 @@ struct MileageStreakShareCard: View {
     let activeDays: Int
     let heatmapWeekCount: Int
 
-    private static let cellSize: CGFloat = 10
-    private static let cellGap:  CGFloat = 2.5
-    private static let labelW:   CGFloat = 14
+    private static let cellSize: CGFloat = 7
+    private static let cellGap:  CGFloat = 2
+    private static let labelW:   CGFloat = 10
 
     var body: some View {
         ZStack {
@@ -508,33 +509,33 @@ struct MileageStreakShareCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 wordmarkRow
                     .padding(.horizontal, 20)
-                    .padding(.top, 18)
+                    .padding(.top, 13)
 
-                divider.padding(.top, 10)
+                divider.padding(.top, 7)
 
                 mileageTitleRow
                     .padding(.horizontal, 20)
-                    .padding(.top, 10)
+                    .padding(.top, 7)
 
                 barChart
                     .padding(.horizontal, 14)
-                    .padding(.top, 8)
+                    .padding(.top, 6)
 
-                divider.padding(.top, 12)
+                divider.padding(.top, 9)
 
                 streakTitleBlock
                     .padding(.horizontal, 20)
-                    .padding(.top, 12)
+                    .padding(.top, 9)
 
                 heatmapGrid
                     .padding(.horizontal, 14)
-                    .padding(.top, 8)
+                    .padding(.top, 6)
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 6)
 
                 footerRow
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 10)
             }
         }
     }
@@ -563,8 +564,13 @@ struct MileageStreakShareCard: View {
     // MARK: Mileage section
     private var mileageTitleRow: some View {
         let L = AppLanguage.shared
-        let period = showMonthly ? L.s("월간", "Monthly") : L.s("주간", "Weekly")
-        let mode   = showTimeMileage ? L.s("시간", "Time") : L.s("거리", "Distance")
+        let period: String
+        if showDaily {
+            period = L.s("일간", "Daily")
+        } else {
+            period = showMonthly ? L.s("월간", "Monthly") : L.s("주간", "Weekly")
+        }
+        let mode = (showDaily || !showTimeMileage) ? L.s("거리", "Distance") : L.s("시간", "Time")
         return VStack(alignment: .leading, spacing: 1) {
             Text("\(period) \(mode)")
                 .font(.system(size: 13, weight: .bold))
@@ -577,7 +583,7 @@ struct MileageStreakShareCard: View {
 
     private var barChart: some View {
         let items = barData.map { MileageBarPoint(label: $0.label, value: $0.value) }
-        let color: Color = showTimeMileage ? Theme.time : Theme.violet
+        let color: Color = (showDaily || showTimeMileage) ? Theme.time : Theme.violet
         return Chart(items) { item in
             BarMark(
                 x: .value("x", item.label),
@@ -586,7 +592,7 @@ struct MileageStreakShareCard: View {
             .foregroundStyle(item.value > 0 ? color.gradient : Color.secondary.opacity(0.25).gradient)
             .cornerRadius(3)
         }
-        .frame(height: 120)
+        .frame(height: 85)
         .chartXAxis {
             AxisMarks { value in
                 AxisValueLabel {
@@ -609,13 +615,13 @@ struct MileageStreakShareCard: View {
                 }
             }
         }
-        .padding(10)
+        .padding(7)
         .background(Color.white.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private func yLabel(_ v: Double) -> String {
-        if showTimeMileage {
+        if !showDaily && showTimeMileage {
             let h = Int(v) / 60; let m = Int(v) % 60
             return h > 0 ? "\(h)h" : "\(m)m"
         } else {
@@ -697,7 +703,7 @@ struct MileageStreakShareCard: View {
                     .foregroundStyle(.white.opacity(0.35))
             }
         }
-        .padding(10)
+        .padding(7)
         .background(Color.white.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
@@ -738,9 +744,9 @@ struct MileageStreakShareCard: View {
             ZStack {
                 Circle()
                     .fill(Color(hex: "3DFF7A").opacity(0.12))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 20, height: 20)
                 Image(systemName: "figure.run")
-                    .font(.system(size: 12, weight: .light))
+                    .font(.system(size: 8, weight: .light))
                     .foregroundStyle(Color(hex: "3DFF7A"))
             }
             Spacer()
@@ -756,6 +762,7 @@ struct MileageStreakShareCard: View {
 
 struct MileageStreakShareCardScreen: View {
     let showMonthly: Bool
+    let showDaily: Bool
     let showTimeMileage: Bool
     let mileageSubtitle: String
     let barData: [(label: String, value: Double)]
@@ -770,7 +777,7 @@ struct MileageStreakShareCardScreen: View {
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
-    private let cardH: CGFloat = 530
+    private let cardH: CGFloat = 375
 
     var body: some View {
         NavigationStack {
@@ -780,6 +787,7 @@ struct MileageStreakShareCardScreen: View {
                     Spacer()
                     MileageStreakShareCard(
                         showMonthly: showMonthly,
+                        showDaily: showDaily,
                         showTimeMileage: showTimeMileage,
                         mileageSubtitle: mileageSubtitle,
                         barData: barData,
@@ -852,6 +860,7 @@ struct MileageStreakShareCardScreen: View {
         let renderer = ImageRenderer(content:
             MileageStreakShareCard(
                 showMonthly: showMonthly,
+                showDaily: showDaily,
                 showTimeMileage: showTimeMileage,
                 mileageSubtitle: mileageSubtitle,
                 barData: barData,

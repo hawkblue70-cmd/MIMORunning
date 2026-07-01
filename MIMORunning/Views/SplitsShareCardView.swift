@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import CoreLocation
 
-// MARK: - Splits share card (360 × dynamic height, rendered via ImageRenderer)
+// MARK: - Splits share card (300 × dynamic height, rendered via ImageRenderer)
 
 struct SplitsShareCardView: View {
     let activity: Activity
@@ -13,9 +13,10 @@ struct SplitsShareCardView: View {
     var weatherText: String? = nil
     var weatherIcon: String? = nil
 
-    // Fixed overhead ≈ 238pt + 22pt per row, minimum 520
+    // Scale factor 300/360 = 5/6 applied throughout
+    // Base 4:5 (300×375), grows dynamically for more splits
     static func cardHeight(splitCount: Int) -> CGFloat {
-        max(520, 238 + CGFloat(splitCount) * 22)
+        max(375, 198 + CGFloat(splitCount) * 18)
     }
 
     private var fastestIdx: Int? {
@@ -75,7 +76,7 @@ struct SplitsShareCardView: View {
     }
 
     // Shared style constants (mirrors SplitBarRow)
-    private static let barW:     CGFloat = 110
+    private static let barW:     CGFloat = 92
     private static let gold      = Color(hex: "FFC74D")
     private static let goldDark  = Color(hex: "F2A33C")
     private static let violetHi  = Color(hex: "9B7DFF")
@@ -100,38 +101,41 @@ struct SplitsShareCardView: View {
                     HStack(alignment: .top) {
                         HStack(spacing: 0) {
                             Text("MIMO")
-                                .font(.system(size: 9, weight: .black))
+                                .font(.system(size: 8, weight: .black))
                                 .tracking(2)
                                 .foregroundStyle(.white)
                             Text(" RUNNING")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 8, weight: .bold))
                                 .tracking(2)
                                 .foregroundStyle(Theme.violet)
                         }
                         Spacer()
                         miniMeContent
-                            .frame(width: 44, height: 44)
+                            .frame(width: 37, height: 37)
                     }
-                    .padding(.top, 16)
-                    .padding(.bottom, 10)
+                    .padding(.top, 13)
+                    .padding(.bottom, 8)
 
                     // Date + weather + title
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
                         Text(dateStr)
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
+                        Text(activity.date.weekdayCharKo)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.time)
                         if let w = weatherText {
                             HStack(spacing: 3) {
                                 Image(systemName: weatherIcon ?? "thermometer.medium")
-                                    .font(.system(size: 10))
+                                    .font(.system(size: 9))
                                 Text(w)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(.system(size: 10, weight: .medium))
                             }
                             .foregroundStyle(.white.opacity(0.60))
                         }
                     }
                     Text(AppLanguage.shared.s("구간 기록", "Splits"))
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .tracking(0.5)
                         .foregroundStyle(Theme.violet)
                         .padding(.top, 2)
@@ -140,8 +144,8 @@ struct SplitsShareCardView: View {
                     Rectangle()
                         .fill(Theme.violet.opacity(0.35))
                         .frame(height: 0.5)
-                        .padding(.top, 14)
-                        .padding(.bottom, 4)
+                        .padding(.top, 12)
+                        .padding(.bottom, 3)
 
                     // Split rows
                     ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
@@ -152,8 +156,8 @@ struct SplitsShareCardView: View {
                     Rectangle()
                         .fill(Color.white.opacity(0.08))
                         .frame(height: 0.5)
-                        .padding(.top, 10)
-                        .padding(.bottom, 10)
+                        .padding(.top, 8)
+                        .padding(.bottom, 8)
 
                     HStack(spacing: 0) {
                         footerStat(value: formatPace(avgPace), label: AppLanguage.shared.s("평균 페이스", "AVG PACE"), color: Theme.pace)
@@ -166,31 +170,31 @@ struct SplitsShareCardView: View {
                     }
 
                     // Branding
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: "figure.run")
-                            .font(.system(size: 8))
+                            .font(.system(size: 7))
                             .foregroundStyle(Theme.violet.opacity(0.35))
                         Spacer()
                         if let shoe = shoeName {
                             HStack(spacing: 3) {
                                 Image(systemName: "shoe.fill")
-                                    .font(.system(size: 7))
+                                    .font(.system(size: 6))
                                     .foregroundStyle(.white.opacity(0.45))
                                 Text(shoe)
-                                    .font(.system(size: 9, weight: .medium))
+                                    .font(.system(size: 8, weight: .medium))
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
                             }
                         }
                     }
-                    .padding(.top, 10)
+                    .padding(.top, 8)
                     .padding(.bottom, 2)
                 }
-                .padding(.horizontal, 22)
-                .padding(.bottom, 14)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 12)
             }
         }
-        .frame(width: 360, height: Self.cardHeight(splitCount: splits.count))
+        .frame(width: 300, height: Self.cardHeight(splitCount: splits.count))
     }
 
     @ViewBuilder
@@ -199,11 +203,11 @@ struct SplitsShareCardView: View {
             Image(uiImage: img)
                 .resizable()
                 .scaledToFill()
-                .frame(width: 44, height: 44)
+                .frame(width: 37, height: 37)
                 .clipShape(Circle())
-                .overlay(Circle().stroke(Theme.violet.opacity(0.4), lineWidth: 1.5))
+                .overlay(Circle().stroke(Theme.violet.opacity(0.4), lineWidth: 1.2))
         } else {
-            MiniMeView(variant: .celebrating, size: 44)
+            MiniMeView(variant: .celebrating, size: 37)
         }
     }
 
@@ -230,55 +234,55 @@ struct SplitsShareCardView: View {
             HStack(alignment: .center, spacing: 0) {
                 // ① km label
                 Text(kmLabel(for: split))
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(isFastest ? Self.gold : Self.kmColor)
-                    .frame(width: 28, alignment: .leading)
+                    .frame(width: 23, alignment: .leading)
 
                 // ② bar + avg dotted marker
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
+                    RoundedRectangle(cornerRadius: 2)
                         .fill(Color.white.opacity(0.09))
-                        .frame(width: Self.barW, height: 6)
-                    RoundedRectangle(cornerRadius: 3)
+                        .frame(width: Self.barW, height: 5)
+                    RoundedRectangle(cornerRadius: 2)
                         .fill(barGradient)
-                        .frame(width: max(10, Self.barW * barFraction(for: split.paceSecPerKm)), height: 6)
+                        .frame(width: max(8, Self.barW * barFraction(for: split.paceSecPerKm)), height: 5)
                     VStack(spacing: 2) {
                         ForEach(0..<3, id: \.self) { _ in
                             Rectangle()
                                 .fill(Self.avgDot.opacity(0.45))
-                                .frame(width: 1.5, height: 2.5)
+                                .frame(width: 1.5, height: 2)
                         }
                     }
                     .offset(x: max(0, Self.barW * avgFrac - 0.75))
                 }
-                .frame(width: Self.barW, height: 16)
-                .padding(.horizontal, 5)
+                .frame(width: Self.barW, height: 13)
+                .padding(.horizontal, 4)
 
                 // ③ 페이스 · 심박 · 존 · 케이던스 · 파워
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     Text(split.formattedPace)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(isFastest ? Self.gold : .white)
                     if let hr = split.avgHeartRate {
                         Image(systemName: "heart.fill")
-                            .font(.system(size: 7))
+                            .font(.system(size: 6))
                             .foregroundStyle(Theme.heartRate)
                         Text("\(hr)")
-                            .font(.system(size: 10, design: .rounded))
+                            .font(.system(size: 8, design: .rounded))
                             .foregroundStyle(Theme.heartRate)
                         if let zone = hrZoneNumber(for: hr) {
                             Text("Z\(zone)")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(.system(size: 8, weight: .semibold, design: .rounded))
                                 .foregroundStyle(hrZoneColor(zone))
                         }
                     }
                     if let cad = split.avgCadence {
-                        (Text("\(cad)").font(.system(size: 10, design: .rounded)).foregroundStyle(Self.cadColor)
-                         + Text("spm").font(.system(size: 9)).foregroundStyle(Self.cadColor.opacity(0.85)))
+                        (Text("\(cad)").font(.system(size: 8, design: .rounded)).foregroundStyle(Self.cadColor)
+                         + Text("spm").font(.system(size: 7)).foregroundStyle(Self.cadColor.opacity(0.85)))
                     }
                     if let pwr = split.avgPower {
-                        (Text("\(pwr)").font(.system(size: 10, design: .rounded)).foregroundStyle(Self.pwrColor)
-                         + Text("W").font(.system(size: 9)).foregroundStyle(Self.pwrColor.opacity(0.85)))
+                        (Text("\(pwr)").font(.system(size: 8, design: .rounded)).foregroundStyle(Self.pwrColor)
+                         + Text("W").font(.system(size: 7)).foregroundStyle(Self.pwrColor.opacity(0.85)))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -290,10 +294,10 @@ struct SplitsShareCardView: View {
     private func footerStat(value: String, label: String, color: Color) -> some View {
         VStack(alignment: .center, spacing: 2) {
             Text(value)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
             Text(label)
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 8, weight: .medium))
                 .tracking(0.3)
                 .foregroundStyle(color.opacity(0.7))
         }
@@ -371,11 +375,9 @@ struct SplitsShareCardScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         } else {
-            let scale: CGFloat = 300.0 / 360.0
             SplitsShareCardView(activity: activity, splits: splits, zones: zones, miniMeImage: miniMeImage, shoeName: shoeName, weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
-                .scaleEffect(scale)
-                .frame(width: 300, height: scale * SplitsShareCardView.cardHeight(splitCount: splits.count))
+                .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         }
     }
 
@@ -453,8 +455,9 @@ struct IntervalsShareCardView: View {
     var weatherIcon: String? = nil
     var shoeName: String? = nil
 
+    // Base 4:5 (300×375), grows dynamically for more segments
     static func cardHeight(segmentCount: Int) -> CGFloat {
-        max(520, 258 + CGFloat(segmentCount) * 24)
+        max(375, 215 + CGFloat(segmentCount) * 20)
     }
 
     private var hasLabels:   Bool { segments.contains { $0.stepLabel != nil } }
@@ -536,27 +539,27 @@ struct IntervalsShareCardView: View {
                     HStack(alignment: .top) {
                         HStack(spacing: 0) {
                             Text("MIMO")
-                                .font(.system(size: 9, weight: .black)).tracking(2).foregroundStyle(.white)
+                                .font(.system(size: 8, weight: .black)).tracking(2).foregroundStyle(.white)
                             Text(" RUNNING")
-                                .font(.system(size: 9, weight: .bold)).tracking(2).foregroundStyle(Theme.violet)
+                                .font(.system(size: 8, weight: .bold)).tracking(2).foregroundStyle(Theme.violet)
                         }
                         Spacer()
-                        miniMeContent.frame(width: 44, height: 44)
+                        miniMeContent.frame(width: 37, height: 37)
                     }
-                    .padding(.top, 16).padding(.bottom, 10)
+                    .padding(.top, 13).padding(.bottom, 8)
 
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
                         Text({
                             let df = DateFormatter(); df.dateFormat = "yyyy. M. d"
                             return df.string(from: activity.date)
                         }())
-                            .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
                         if let w = weatherText {
                             HStack(spacing: 3) {
                                 Image(systemName: weatherIcon ?? "thermometer.medium")
-                                    .font(.system(size: 10))
+                                    .font(.system(size: 8))
                                 Text(w)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(.system(size: 9, weight: .medium))
                             }
                             .foregroundStyle(Color.white.opacity(0.60))
                         }
@@ -566,38 +569,38 @@ struct IntervalsShareCardView: View {
                         if let s = workSummaryText { return "\(base)  (\(s))" }
                         return base
                     }())
-                        .font(.system(size: 12, weight: .semibold)).tracking(0.5)
+                        .font(.system(size: 10, weight: .semibold)).tracking(0.5)
                         .foregroundStyle(Theme.violet).padding(.top, 2)
 
                     // Column header
                     Rectangle().fill(Theme.violet.opacity(0.35)).frame(height: 0.5)
-                        .padding(.top, 14).padding(.bottom, 6)
+                        .padding(.top, 12).padding(.bottom, 5)
 
                     HStack(spacing: 0) {
                         Text(hasLabels ? AppLanguage.shared.s("구간", "Rep") : "#")
-                            .frame(width: hasLabels ? 60 : 22, alignment: .leading)
+                            .frame(width: hasLabels ? 50 : 18, alignment: .leading)
                         if hasDist {
-                            Text(AppLanguage.shared.s("거리", "Dist")).frame(width: 56, alignment: .trailing)
+                            Text(AppLanguage.shared.s("거리", "Dist")).frame(width: 47, alignment: .trailing)
                         }
                         Spacer()
-                        Text(AppLanguage.shared.s("페이스", "Pace")).frame(width: 62, alignment: .trailing)
-                        Text(AppLanguage.shared.s("시간", "Time")).frame(width: 48, alignment: .trailing)
+                        Text(AppLanguage.shared.s("페이스", "Pace")).frame(width: 52, alignment: .trailing)
+                        Text(AppLanguage.shared.s("시간", "Time")).frame(width: 40, alignment: .trailing)
                         if hasHR {
-                            Text(AppLanguage.shared.s("심박", "HR")).frame(width: 34, alignment: .trailing)
+                            Text(AppLanguage.shared.s("심박", "HR")).frame(width: 28, alignment: .trailing)
                         }
                         if hasCadence {
-                            Text(AppLanguage.shared.s("케이던스", "Cad.")).frame(width: 36, alignment: .trailing)
+                            Text(AppLanguage.shared.s("케이던스", "Cad.")).frame(width: 30, alignment: .trailing)
                         }
                     }
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.38))
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 3)
 
                     ForEach(segments) { seg in segmentRow(seg) }
 
                     // Footer
                     Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
-                        .padding(.top, 10).padding(.bottom, 10)
+                        .padding(.top, 8).padding(.bottom, 8)
                     HStack(spacing: 0) {
                         footerStat("\(workSegments.count)", AppLanguage.shared.s("워크 구간", "WORK REPS"), Theme.violet)
                         Spacer()
@@ -610,37 +613,37 @@ struct IntervalsShareCardView: View {
                         }
                     }
 
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: "figure.highintensity.intervaltraining")
-                            .font(.system(size: 8)).foregroundStyle(Theme.violet.opacity(0.35))
+                            .font(.system(size: 7)).foregroundStyle(Theme.violet.opacity(0.35))
                         Spacer()
                         if let shoe = shoeName {
                             HStack(spacing: 3) {
                                 Image(systemName: "shoe.fill")
-                                    .font(.system(size: 7))
+                                    .font(.system(size: 6))
                                     .foregroundStyle(.white.opacity(0.45))
                                 Text(shoe)
-                                    .font(.system(size: 9, weight: .medium))
+                                    .font(.system(size: 8, weight: .medium))
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
                             }
                         }
                     }
-                    .padding(.top, 10).padding(.bottom, 2)
+                    .padding(.top, 8).padding(.bottom, 2)
                 }
-                .padding(.horizontal, 22).padding(.bottom, 14)
+                .padding(.horizontal, 18).padding(.bottom, 12)
             }
         }
-        .frame(width: 360, height: Self.cardHeight(segmentCount: segments.count))
+        .frame(width: 300, height: Self.cardHeight(segmentCount: segments.count))
     }
 
     @ViewBuilder private var miniMeContent: some View {
         if let img = miniMeImage {
             Image(uiImage: img).resizable().scaledToFill()
-                .frame(width: 44, height: 44).clipShape(Circle())
-                .overlay(Circle().stroke(Theme.violet.opacity(0.4), lineWidth: 1.5))
+                .frame(width: 37, height: 37).clipShape(Circle())
+                .overlay(Circle().stroke(Theme.violet.opacity(0.4), lineWidth: 1.2))
         } else {
-            MiniMeView(variant: .sprinting, size: 44)
+            MiniMeView(variant: .sprinting, size: 37)
         }
     }
 
@@ -648,64 +651,64 @@ struct IntervalsShareCardView: View {
         let work = isWork(seg)
         let isDim = seg.stepLabel == "준비운동" || seg.stepLabel == "정리운동"
         let paceColor: Color = work ? Theme.violet : Color.white.opacity(0.50)
-        let labelW: CGFloat  = hasLabels ? 60 : 22
+        let labelW: CGFloat  = hasLabels ? 50 : 18
 
         return VStack(spacing: 0) {
             Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5)
             HStack(spacing: 0) {
                 if hasLabels {
                     Text(labelText(seg))
-                        .font(.system(size: 11, weight: work ? .bold : .regular))
+                        .font(.system(size: 10, weight: work ? .bold : .regular))
                         .foregroundStyle(work ? Theme.violet : Color.white.opacity(isDim ? 0.30 : 0.45))
                         .frame(width: labelW, alignment: .leading)
                         .lineLimit(1).minimumScaleFactor(0.8)
                 } else {
                     Text("\(seg.id)")
-                        .font(.system(size: 11, weight: work ? .bold : .regular, design: .rounded))
+                        .font(.system(size: 10, weight: work ? .bold : .regular, design: .rounded))
                         .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.30))
                         .frame(width: labelW, alignment: .leading)
                 }
                 if hasDist {
                     Text(seg.formattedDistance ?? "—")
-                        .font(.system(size: 11, design: .rounded))
+                        .font(.system(size: 10, design: .rounded))
                         .foregroundStyle(Color.white.opacity(isDim ? 0.28 : (work ? 0.90 : 0.55)))
-                        .frame(width: 56, alignment: .trailing)
+                        .frame(width: 47, alignment: .trailing)
                 }
                 Spacer()
                 Text(seg.formattedPace ?? "—")
-                    .font(.system(size: 12, weight: work ? .semibold : .regular, design: .rounded))
+                    .font(.system(size: 10, weight: work ? .semibold : .regular, design: .rounded))
                     .foregroundStyle(seg.formattedPace != nil ? paceColor : Color.secondary)
-                    .frame(width: 62, alignment: .trailing)
+                    .frame(width: 52, alignment: .trailing)
                 Text(seg.formattedDuration)
-                    .font(.system(size: 11, design: .rounded))
+                    .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(Color.white.opacity(isDim ? 0.28 : (work ? 0.75 : 0.38)))
-                    .frame(width: 48, alignment: .trailing)
+                    .frame(width: 40, alignment: .trailing)
                 if hasHR {
                     Text(seg.avgHeartRate.map { "\($0)" } ?? "—")
-                        .font(.system(size: 11, design: .rounded))
+                        .font(.system(size: 10, design: .rounded))
                         .foregroundStyle(seg.avgHeartRate != nil
                             ? Theme.heartRate.opacity(work ? 1.0 : 0.42)
                             : Color.secondary)
-                        .frame(width: 34, alignment: .trailing)
+                        .frame(width: 28, alignment: .trailing)
                 }
                 if hasCadence {
                     Text(seg.avgCadence.map { "\($0)" } ?? "—")
-                        .font(.system(size: 11, design: .rounded))
+                        .font(.system(size: 10, design: .rounded))
                         .foregroundStyle(seg.avgCadence != nil
                             ? Theme.cadence.opacity(work ? 1.0 : 0.42)
                             : Color.secondary)
-                        .frame(width: 36, alignment: .trailing)
+                        .frame(width: 30, alignment: .trailing)
                 }
             }
-            .padding(.vertical, 5)
+            .padding(.vertical, 4)
             .background(work ? Theme.violet.opacity(0.08) : Color.clear)
         }
     }
 
     private func footerStat(_ value: String, _ label: String, _ color: Color) -> some View {
         VStack(alignment: .center, spacing: 2) {
-            Text(value).font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(.white)
-            Text(label).font(.system(size: 9, weight: .medium)).tracking(0.3).foregroundStyle(color.opacity(0.7))
+            Text(value).font(.system(size: 12, weight: .bold, design: .rounded)).foregroundStyle(.white)
+            Text(label).font(.system(size: 8, weight: .medium)).tracking(0.3).foregroundStyle(color.opacity(0.7))
         }
     }
 }
@@ -771,12 +774,10 @@ struct IntervalsShareCardScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         } else {
-            let scale: CGFloat = 300.0 / 360.0
             IntervalsShareCardView(activity: activity, segments: segments, miniMeImage: miniMeImage,
                                    weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon, shoeName: shoeName)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
-                .scaleEffect(scale)
-                .frame(width: 300, height: scale * IntervalsShareCardView.cardHeight(segmentCount: segments.count))
+                .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         }
     }
 

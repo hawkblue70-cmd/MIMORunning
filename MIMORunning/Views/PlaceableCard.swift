@@ -65,7 +65,7 @@ struct PlaceableCard: View {
     let detail: ActivityDetail?
     let routeCoords: [CLLocationCoordinate2D]?
     let photo: UIImage?
-    let dateText: String
+    let date: Date
     var metricsPosition: CardPosition = .topLeading
     var accent: CardAccent = .none
     var showBackground: Bool = true
@@ -255,10 +255,14 @@ struct PlaceableCard: View {
     // MARK: - Footer
     private var footerView: some View {
         HStack(spacing: 0) {
-            Text(dateText)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.white)
-                .brightCardText()
+            HStack(spacing: 3) {
+                Text(date.cardDateString)
+                Text(date.weekdayCharKo).foregroundStyle(Theme.time)
+                Text(date.cardTimeString)
+            }
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(.white)
+            .brightCardText()
             if let w = weather {
                 HStack(spacing: 3) {
                     Image(systemName: w.systemIcon).font(.system(size: 8))
@@ -350,7 +354,7 @@ private extension PlaceableCard {
             detail: nil,
             routeCoords: PlaceableCard.previewCoords,
             photo: PlaceableCard.brightPhoto,
-            dateText: "2026. 6. 27  오전 8:04",
+            date: PlaceableCard.previewActivity.date,
             metricsPosition: .topLeading,
             accent: .none
         )
@@ -365,7 +369,7 @@ private extension PlaceableCard {
             detail: nil,
             routeCoords: PlaceableCard.previewCoords,
             photo: PlaceableCard.brightPhoto,
-            dateText: "2026. 6. 27  오전 8:04",
+            date: PlaceableCard.previewActivity.date,
             metricsPosition: .topLeading,
             accent: .violet
         )
@@ -380,7 +384,7 @@ private extension PlaceableCard {
             detail: nil,
             routeCoords: PlaceableCard.previewCoords,
             photo: nil,
-            dateText: "2026. 6. 27  오전 8:04",
+            date: PlaceableCard.previewActivity.date,
             metricsPosition: .topLeading,
             accent: .gold
         )

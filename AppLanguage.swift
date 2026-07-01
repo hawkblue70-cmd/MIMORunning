@@ -35,6 +35,38 @@ extension Date {
         return df.string(from: self)
     }
 
+    /// "yyyy. M. d" (KO) / "MMM d, yyyy" (EN)
+    var cardDateString: String {
+        let df = DateFormatter()
+        if AppLanguage.shared.isEnglish {
+            df.locale = Locale(identifier: "en_US")
+            df.dateFormat = "MMM d, yyyy"
+        } else {
+            df.locale = Locale(identifier: "ko_KR")
+            df.dateFormat = "yyyy. M. d"
+        }
+        return df.string(from: self)
+    }
+
+    /// "a h:mm" (KO) / "h:mm a" (EN)
+    var cardTimeString: String {
+        let df = DateFormatter()
+        if AppLanguage.shared.isEnglish {
+            df.locale = Locale(identifier: "en_US")
+            df.dateFormat = "h:mm a"
+        } else {
+            df.locale = Locale(identifier: "ko_KR")
+            df.dateFormat = "a h:mm"
+        }
+        return df.string(from: self)
+    }
+
+    /// 요일 한자 (일/월/화/수/목/금/토)
+    var weekdayCharKo: String {
+        let weekday = Calendar.current.component(.weekday, from: self)
+        return ["일", "월", "화", "수", "목", "금", "토"][(weekday - 1) % 7]
+    }
+
     /// "M월 d일" (KO) / "MMM d" (EN) — used on splits share card
     var cardShortDateString: String {
         let df = DateFormatter()

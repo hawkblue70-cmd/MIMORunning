@@ -27,6 +27,12 @@ private struct MonthlyMins: Identifiable {
     let mins: Double
 }
 
+private struct DailyKm: Identifiable {
+    let id: Date
+    let day: Int    // 1–31
+    let km: Double
+}
+
 private struct PacePoint: Identifiable {
     let id = UUID()
     let date: Date
@@ -68,6 +74,9 @@ struct GrowthView: View {
 
     @State private var showTimeMileage: Bool = false
     @State private var showMonthly: Bool = false
+    @State private var showDaily: Bool = true
+    @State private var dailyMonth: Date = Date()
+    @State private var dailyKmsCache: [DailyKm] = []
     @State private var selectedTrend: TrendMetric? = nil
     @State private var showBodyMass = false
     @State private var showBodyFat = false
@@ -130,6 +139,7 @@ struct GrowthView: View {
         weeklyMinsCache  = weeklyMins()
         monthlyKmsCache  = monthlyKms()
         monthlyMinsCache = monthlyMins()
+        dailyKmsCache    = dailyKms(for: dailyMonth)
         pacePointsCache  = pacePoints()
         let cols = heatmapColumns()
         heatmapColumnsCache = cols
@@ -189,6 +199,7 @@ struct GrowthView: View {
             .navigationBarTitleDisplayMode(.large)
         }
         .onChange(of: manager.activities) { Task { refreshChartCache(); await refreshMetricAnalyses() } }
+        .onChange(of: dailyMonth) { dailyKmsCache = dailyKms(for: dailyMonth) }
         .task {
             refreshChartCache()
             let bucket = manager.userLevel.bucket
@@ -208,6 +219,7 @@ struct GrowthView: View {
         .sheet(isPresented: $showMileageStreakShareCard) {
             MileageStreakShareCardScreen(
                 showMonthly: showMonthly,
+                showDaily: showDaily,
                 showTimeMileage: showTimeMileage,
                 mileageSubtitle: mileageSubtitle,
                 barData: currentBarData,
@@ -243,6 +255,9 @@ struct GrowthView: View {
     // MARK: - Share card data helpers
 
     private var currentBarData: [(label: String, value: Double)] {
+        if showDaily {
+            return dailyKmsCache.map { (label: "\($0.day)", value: $0.km) }
+        }
         if showMonthly {
             return showTimeMileage
                 ? monthlyMinsCache.map { (label: $0.label, value: $0.mins) }
@@ -279,8 +294,13 @@ struct GrowthView: View {
                         .foregroundStyle(Theme.violet)
                         periodToggle
                     }
-                    modeToggle
+                    if !showDaily {
+                        modeToggle
+                    }
                 }
+            }
+            if showDaily {
+                dailyMonthNavRow
             }
             mileageChartView
         }
@@ -288,13 +308,37 @@ struct GrowthView: View {
 
     private var mileageTitle: String {
         let L = AppLanguage.shared
+        if showDaily { return L.s("일간 거리", "Daily Distance") }
         let period = showMonthly ? L.s("월간", "Monthly") : L.s("주간", "Weekly")
         let mode   = showTimeMileage ? L.s("시간", "Time") : L.s("거리", "Distance")
         return "\(period) \(mode)"
     }
 
+    private var dailyMonthLabel: String {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.year, .month], from: dailyMonth)
+        if AppLanguage.shared.isEnglish {
+            let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMMM yyyy"
+            return df.string(from: dailyMonth)
+        }
+        return "\(comps.year ?? 2025)년 \(comps.month ?? 1)월"
+    }
+
+    private var isAtCurrentMonth: Bool {
+        let cal = Calendar.current
+        let dc = cal.dateComponents([.year, .month], from: dailyMonth)
+        let nc = cal.dateComponents([.year, .month], from: Date())
+        return dc.year == nc.year && dc.month == nc.month
+    }
+
     private var mileageSubtitle: String {
         let L = AppLanguage.shared
+        if showDaily {
+            let total = dailyKmsCache.reduce(0.0) { $0 + $1.km }
+            return total > 0
+                ? String(format: L.s("총 %.1fkm", "Total %.1fkm"), total)
+                : L.s("러닝 기록 없음", "No runs")
+        }
         if showMonthly {
             if showTimeMileage {
                 return timeSummary(mins: monthlyMinsCache.last?.mins ?? 0, isMonth: true)
@@ -315,23 +359,34 @@ struct GrowthView: View {
 
     private var periodToggle: some View {
         let L = AppLanguage.shared
+        let isWeekly  = !showMonthly && !showDaily
+        let isMonthly = showMonthly && !showDaily
         return HStack(spacing: 0) {
-            Button { showMonthly = false } label: {
-                Text(L.s("주", "W"))
+            Button { showDaily = true } label: {
+                Text(L.s("일", "D"))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(!showMonthly ? Color.white : Color.secondary)
-                    .padding(.horizontal, 10)
+                    .foregroundStyle(showDaily ? Color.white : Color.secondary)
+                    .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(!showMonthly ? Theme.violet : Color.clear)
+                    .background(showDaily ? Theme.time : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
-            Button { showMonthly = true } label: {
+            Button { showDaily = false; showMonthly = false } label: {
+                Text(L.s("주", "W"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isWeekly ? Color.white : Color.secondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(isWeekly ? Theme.violet : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            Button { showDaily = false; showMonthly = true } label: {
                 Text(L.s("월", "M"))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(showMonthly ? Color.white : Color.secondary)
-                    .padding(.horizontal, 10)
+                    .foregroundStyle(isMonthly ? Color.white : Color.secondary)
+                    .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(showMonthly ? Theme.violet : Color.clear)
+                    .background(isMonthly ? Theme.violet : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
         }
@@ -341,6 +396,29 @@ struct GrowthView: View {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
         )
+    }
+
+    private var dailyMonthNavRow: some View {
+        HStack(spacing: 16) {
+            Button {
+                dailyMonth = Calendar.current.date(byAdding: .month, value: -1, to: dailyMonth) ?? dailyMonth
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.violet)
+            }
+            Text(dailyMonthLabel)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
+            Button {
+                guard !isAtCurrentMonth else { return }
+                dailyMonth = Calendar.current.date(byAdding: .month, value: 1, to: dailyMonth) ?? dailyMonth
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isAtCurrentMonth ? Theme.violet.opacity(0.30) : Theme.violet)
+            }
+        }
     }
 
     private var modeToggle: some View {
@@ -376,7 +454,13 @@ struct GrowthView: View {
     @ViewBuilder
     private var mileageChartView: some View {
         let L = AppLanguage.shared
-        if showMonthly {
+        if showDaily {
+            if dailyKmsCache.allSatisfy({ $0.km == 0 }) {
+                EmptyChartPlaceholder(message: L.s("이번 달 러닝 기록이 없어요", "No runs this month"))
+            } else {
+                DailyDistanceChart(data: dailyKmsCache)
+            }
+        } else if showMonthly {
             if showTimeMileage {
                 if monthlyMinsCache.allSatisfy({ $0.mins == 0 }) {
                     EmptyChartPlaceholder(message: L.s("최근 12개월간 러닝 기록이 없어요", "No runs in the last 12 months"))
@@ -957,6 +1041,27 @@ struct GrowthView: View {
         return starts.map { s in MonthlyMins(id: s, label: Self.monthLabelFormatter.string(from: s), mins: totals[s] ?? 0) }
     }
 
+    // MARK: - Daily distance data
+
+    private func dailyKms(for month: Date) -> [DailyKm] {
+        let cal = Calendar.current
+        let start = cal.date(from: cal.dateComponents([.year, .month], from: month)) ?? month
+        guard let range = cal.range(of: .day, in: .month, for: start) else { return [] }
+        var kmByDay: [Date: Double] = [:]
+        for a in runs {
+            let day = cal.startOfDay(for: a.date)
+            let dc = cal.dateComponents([.year, .month], from: day)
+            let sc = cal.dateComponents([.year, .month], from: start)
+            if dc.year == sc.year && dc.month == sc.month {
+                kmByDay[day, default: 0] += a.distance / 1000
+            }
+        }
+        return range.map { d in
+            let date = cal.date(byAdding: .day, value: d - 1, to: start)!
+            return DailyKm(id: date, day: d, km: kmByDay[date] ?? 0)
+        }
+    }
+
     // MARK: - Pace data
 
     private func pacePoints(maxCount: Int = 20) -> [PacePoint] {
@@ -1475,6 +1580,45 @@ private struct MonthlyTimeChart: View {
         let m = total % 60
         if h > 0 { return m > 0 ? "\(h)h\(m)m" : "\(h)h" }
         return "\(m)m"
+    }
+}
+
+// MARK: - Daily Distance Chart
+
+private struct DailyDistanceChart: View {
+    let data: [DailyKm]
+
+    var body: some View {
+        Chart(data) { item in
+            BarMark(
+                x: .value("일", item.day),
+                y: .value("거리(km)", item.km)
+            )
+            .foregroundStyle(item.km > 0 ? Theme.time.gradient : Color.secondary.opacity(0.3).gradient)
+            .cornerRadius(2)
+        }
+        .frame(height: 180)
+        .chartXScale(domain: 1...31)
+        .chartXAxis {
+            AxisMarks(values: [1, 7, 14, 21, 28]) { value in
+                AxisValueLabel {
+                    Text("\(value.as(Int.self) ?? 0)")
+                        .font(.caption2)
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(values: .automatic(desiredCount: 3)) { value in
+                AxisValueLabel {
+                    Text(String(format: "%.0f", value.as(Double.self) ?? 0))
+                        .font(.caption2)
+                }
+                AxisGridLine()
+            }
+        }
+        .padding(14)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
 

@@ -9,7 +9,7 @@ struct BigNumberCard: View {
     var memoText: String? = nil
     var weatherText: String? = nil
     var weatherIcon: String? = nil
-    let dateText: String
+    let date: Date
     var shoeName: String? = nil
     var photo: UIImage? = nil
     var chartPanel: CardChartPanel = .map
@@ -32,11 +32,18 @@ struct BigNumberCard: View {
         )
     }
 
-    private let heroGradient = LinearGradient(
-        colors: [Color(hex: "9B7DFF"), Color(hex: "6845E8")],
-        startPoint: .top,
-        endPoint: .bottom
-    )
+    var accent: CardAccent = .violet
+
+    private var heroGradient: LinearGradient {
+        switch accent {
+        case .none:   return LinearGradient(colors: [.white, .white],
+                                            startPoint: .top, endPoint: .bottom)
+        case .violet: return LinearGradient(colors: [Color(hex: "9B7DFF"), Color(hex: "6845E8")],
+                                            startPoint: .top, endPoint: .bottom)
+        case .gold:   return LinearGradient(colors: [Color(hex: "FFC74D"), Color(hex: "F2A33C")],
+                                            startPoint: .top, endPoint: .bottom)
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -117,6 +124,7 @@ struct BigNumberCard: View {
                 VStack(spacing: 6) {
                     Text(heroMetric.formattedValue(activity: activity, detail: detail))
                         .font(.system(size: 96, weight: .black).monospacedDigit())
+                        .fontWidth(.condensed)
                         .tracking(-2)
                         .foregroundStyle(heroGradient)
                         .lineLimit(1)
@@ -125,7 +133,8 @@ struct BigNumberCard: View {
 
                     if !heroMetric.unit.isEmpty {
                         Text(heroMetric.unit)
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: 20, weight: .black))
+                            .fontWidth(.condensed)
                             .foregroundStyle(Color.white.opacity(0.9))
                             .tracking(4)
                             .cardTextShadow()
@@ -148,10 +157,12 @@ struct BigNumberCard: View {
                                 }
                                 VStack(spacing: 3) {
                                     Text(m.formattedValue(activity: activity, detail: detail))
-                                        .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
+                                        .font(.system(size: 22, weight: .black).monospacedDigit())
+                                        .fontWidth(.condensed)
                                         .foregroundStyle(Color(hex: "EDEDED"))
                                     Text(secondaryLabel(for: m))
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(.system(size: 11, weight: .bold))
+                                        .fontWidth(.condensed)
                                         .foregroundStyle(Color(hex: "6E6E78"))
                                 }
                                 .cardTextShadow()
@@ -183,21 +194,18 @@ struct BigNumberCard: View {
 
     @ViewBuilder
     private var metaRow: some View {
-        if let w = weatherText {
-            HStack(spacing: 4) {
-                Image(systemName: weatherIcon ?? "thermometer.medium")
-                    .font(.system(size: 9))
-                Text("\(w) · \(dateText)")
+        HStack(spacing: 4) {
+            if let w = weatherText {
+                Image(systemName: weatherIcon ?? "thermometer.medium").font(.system(size: 9))
+                Text("\(w) ·")
             }
-            .font(.system(size: 10))
-            .foregroundStyle(.white)
-            .cardTextShadow()
-        } else {
-            Text(dateText)
-                .font(.system(size: 10))
-                .foregroundStyle(.white)
-                .cardTextShadow()
+            Text(date.cardDateString)
+            Text(date.weekdayCharKo).foregroundStyle(Theme.time)
+            Text(date.cardTimeString)
         }
+        .font(.system(size: 10))
+        .foregroundStyle(.white)
+        .cardTextShadow()
     }
 
     private func secondaryLabel(for metric: HeroMetric) -> String {
@@ -222,14 +230,21 @@ struct BigNumberVideoOverlayView: View {
     var memoText: String? = nil
     var weatherText: String? = nil
     var weatherIcon: String? = nil
-    let dateText: String
+    let date: Date
     var shoeName: String? = nil
 
-    private let heroGradient = LinearGradient(
-        colors: [Color(hex: "9B7DFF"), Color(hex: "6845E8")],
-        startPoint: .top,
-        endPoint: .bottom
-    )
+    var accent: CardAccent = .violet
+
+    private var heroGradient: LinearGradient {
+        switch accent {
+        case .none:   return LinearGradient(colors: [.white, .white],
+                                            startPoint: .top, endPoint: .bottom)
+        case .violet: return LinearGradient(colors: [Color(hex: "9B7DFF"), Color(hex: "6845E8")],
+                                            startPoint: .top, endPoint: .bottom)
+        case .gold:   return LinearGradient(colors: [Color(hex: "FFC74D"), Color(hex: "F2A33C")],
+                                            startPoint: .top, endPoint: .bottom)
+        }
+    }
 
     private var secondaryMetrics: [HeroMetric] {
         let order: [HeroMetric] = [.distance, .duration, .pace, .heartRate]
@@ -287,6 +302,7 @@ struct BigNumberVideoOverlayView: View {
                     VStack(spacing: 6 * s) {
                         Text(heroMetric.formattedValue(activity: activity, detail: detail))
                             .font(.system(size: 96 * s, weight: .black).monospacedDigit())
+                            .fontWidth(.condensed)
                             .tracking(-2)
                             .foregroundStyle(heroGradient)
                             .lineLimit(1)
@@ -295,7 +311,8 @@ struct BigNumberVideoOverlayView: View {
 
                         if !heroMetric.unit.isEmpty {
                             Text(heroMetric.unit)
-                                .font(.system(size: 20 * s, weight: .bold))
+                                .font(.system(size: 20 * s, weight: .black))
+                                .fontWidth(.condensed)
                                 .foregroundStyle(Color.white.opacity(0.9))
                                 .tracking(4)
                                 .cardTextShadow()
@@ -317,10 +334,12 @@ struct BigNumberVideoOverlayView: View {
                                     }
                                     VStack(spacing: 3 * s) {
                                         Text(m.formattedValue(activity: activity, detail: detail))
-                                            .font(.system(size: 22 * s, weight: .semibold, design: .rounded).monospacedDigit())
+                                            .font(.system(size: 22 * s, weight: .black).monospacedDigit())
+                                            .fontWidth(.condensed)
                                             .foregroundStyle(Color(hex: "EDEDED"))
                                         Text(secondaryLabel(for: m))
-                                            .font(.system(size: 11 * s, weight: .medium))
+                                            .font(.system(size: 11 * s, weight: .bold))
+                                            .fontWidth(.condensed)
                                             .foregroundStyle(Color(hex: "6E6E78"))
                                     }
                                     .cardTextShadow()
@@ -351,21 +370,18 @@ struct BigNumberVideoOverlayView: View {
 
     @ViewBuilder
     private func metaRow(s: CGFloat) -> some View {
-        if let w = weatherText {
-            HStack(spacing: 4 * s) {
-                Image(systemName: weatherIcon ?? "thermometer.medium")
-                    .font(.system(size: 9 * s))
-                Text("\(w) · \(dateText)")
+        HStack(spacing: 4 * s) {
+            if let w = weatherText {
+                Image(systemName: weatherIcon ?? "thermometer.medium").font(.system(size: 9 * s))
+                Text("\(w) ·")
             }
-            .font(.system(size: 10 * s))
-            .foregroundStyle(.white)
-            .cardTextShadow()
-        } else {
-            Text(dateText)
-                .font(.system(size: 10 * s))
-                .foregroundStyle(.white)
-                .cardTextShadow()
+            Text(date.cardDateString)
+            Text(date.weekdayCharKo).foregroundStyle(Theme.time)
+            Text(date.cardTimeString)
         }
+        .font(.system(size: 10 * s))
+        .foregroundStyle(.white)
+        .cardTextShadow()
     }
 
     private func secondaryLabel(for metric: HeroMetric) -> String {
@@ -396,7 +412,7 @@ struct BigNumberVideoOverlayView: View {
         mood: .great,
         memoText: "오늘은 날씨도 좋고 페이스도 잘 나왔다",
         weatherText: "22°C",
-        dateText: "2026. 6. 26  오전 7:30"
+        date: Date()
     )
     .padding()
     .background(Color.black)

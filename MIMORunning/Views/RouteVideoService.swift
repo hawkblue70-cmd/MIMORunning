@@ -183,9 +183,13 @@ struct RouteVideoFrameView: View {
 
             // Date · Divider · Stats (athletic style — date + weather inline)
             HStack(spacing: 0) {
-                Text(startDateTimeString)
-                    .font(.system(size: 9 * scale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.80))
+                HStack(spacing: 3 * scale) {
+                    Text(date.cardDateString)
+                    Text(date.weekdayCharKo).foregroundStyle(Theme.time)
+                    Text(date.cardTimeString)
+                }
+                .font(.system(size: 9 * scale, weight: .medium))
+                .foregroundStyle(.white.opacity(0.80))
                 if let w = weather {
                     HStack(spacing: 3 * scale) {
                         Image(systemName: w.systemIcon)
@@ -348,7 +352,7 @@ struct BigNumberRouteVideoFrameView: View {
     var memoText: String? = nil
     var weatherText: String? = nil
     var weatherIcon: String? = nil
-    let dateText: String
+    let date: Date
     var shoeName: String? = nil
 
     var body: some View {
@@ -371,7 +375,7 @@ struct BigNumberRouteVideoFrameView: View {
                     activity: activity, detail: detail, heroMetric: heroMetric,
                     mood: mood, memoText: memoText,
                     weatherText: weatherText, weatherIcon: weatherIcon,
-                    dateText: dateText, shoeName: shoeName
+                    date: date, shoeName: shoeName
                 )
                 .frame(width: w, height: h)
             }
@@ -545,7 +549,7 @@ struct RouteVideoExportService {
         memoText: String?,
         weatherText: String?,
         weatherIcon: String?,
-        dateText: String,
+        date: Date,
         shoeName: String?,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
@@ -583,7 +587,7 @@ struct RouteVideoExportService {
                 activity: activity, detail: detail, heroMetric: heroMetric,
                 mood: mood, memoText: memoText,
                 weatherText: weatherText, weatherIcon: weatherIcon,
-                dateText: dateText, shoeName: shoeName
+                date: date, shoeName: shoeName
             )
             .frame(width: renderSize.width, height: renderSize.height)
 

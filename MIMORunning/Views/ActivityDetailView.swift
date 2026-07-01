@@ -467,7 +467,7 @@ struct ActivityDetailView: View {
 
     private var panelContentHeight: CGFloat {
         if activePanel == .intervals, let segs = detail?.intervalSegments, !segs.isEmpty {
-            return max(220, IntervalPanelChart.requiredHeight(segmentCount: segs.count, hasSummary: true))
+            return IntervalPanelChart.requiredHeight(segmentCount: segs.count, hasSummary: true)
         }
         return 220
     }
@@ -636,13 +636,21 @@ private struct DetailHeader: View {
                     .frame(width: 44, height: 44)
                     .background(Color(hex: "3DFF7A").opacity(0.12))
                     .clipShape(Circle())
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(activity.type.label)
                         .font(.title2.bold())
                         .foregroundStyle(.white)
-                    Text(activity.date, format: .dateTime.year().month().day().hour().minute())
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Text({
+                        let df = DateFormatter()
+                        df.locale = Locale(identifier: AppLanguage.shared.s("ko_KR", "en_US"))
+                        df.dateFormat = AppLanguage.shared.s(
+                            "yyyy년 M월 d일 EEEE  a h:mm",
+                            "EEEE, MMMM d, yyyy  h:mm a"
+                        )
+                        return df.string(from: activity.date)
+                    }())
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
                 }
                 Spacer()
             }
@@ -759,7 +767,7 @@ private struct InsightCard: View {
                 }
                 if let slp = cond.sleepScore, let vh = validHRV {
                     Text(recoveryLine(sleep: slp, hrv: vh))
-                        .font(.caption)
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 } else if let slp = cond.sleepScore {
                     ConditionChip(
@@ -845,7 +853,7 @@ private struct InsightCard: View {
                     Text("\(hr)bpm").foregroundStyle(Theme.heartRate)
                 }
             }
-            .font(.caption.weight(.semibold))
+            .font(.system(size: 13, weight: .semibold))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -915,8 +923,8 @@ private struct ConditionChip: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: icon).font(.system(size: 9))
-            Text(label).font(.system(size: 10, weight: .medium))
+            Image(systemName: icon).font(.system(size: 10))
+            Text(label).font(.system(size: 11, weight: .medium))
         }
         .foregroundStyle(color)
         .padding(.horizontal, 7)
@@ -2941,7 +2949,7 @@ struct HRSeriesPanelChart: View {
                     }
             }
         }
-        .chartYScale(domain: lo...(buckets.map(\.max).max().map { $0 + 8 } ?? 200))
+        .chartYScale(domain: lo...(buckets.map(\.max).max().map { $0 + 4 } ?? 200))
         .chartXScale(domain: 0...totalDurationMinutes)
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: compact ? 3 : 4)) { value in
@@ -2951,7 +2959,7 @@ struct HRSeriesPanelChart: View {
                         Text(AppLanguage.shared.isEnglish
                              ? String(format: "%.0fm", m)
                              : String(format: "%.0f분", m))
-                            .font(compact ? .system(size: 6.5) : .caption2)
+                            .font(compact ? .system(size: 8) : .caption2)
                             .foregroundStyle(Color.white.opacity(compact ? 0.75 : 0.6))
                     }
                 }
@@ -2963,13 +2971,13 @@ struct HRSeriesPanelChart: View {
                 AxisValueLabel {
                     if let v = val.as(Double.self) {
                         Text("\(Int(v))")
-                            .font(compact ? .system(size: 6.5) : .caption2)
+                            .font(compact ? .system(size: 8) : .caption2)
                             .foregroundStyle(Color.white.opacity(compact ? 0.80 : 0.6))
                     }
                 }
             }
         }
-        .padding(compact ? 4 : 12)
+        .padding(compact ? 2 : 12)
     }
 }
 
@@ -2981,6 +2989,7 @@ struct MetricBarPanelChart: View {
     var useRangeBar: Bool = false  // true: floating min~max bars (Apple style), false: avg-from-baseline
     var validMin: Double = 0
     var barWidthOverride: CGFloat? = nil
+    var compact: Bool = false
 
     private struct Bucket: Identifiable {
         let id: Int
@@ -3073,29 +3082,32 @@ struct MetricBarPanelChart: View {
             .chartYScale(domain: yDomain)
             .chartXScale(domain: 0...((buckets.last?.midMinute ?? 1) + 0.5))
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                AxisMarks(values: .automatic(desiredCount: compact ? 3 : 4)) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                     AxisValueLabel {
                         if let m = value.as(Double.self) {
                             Text(AppLanguage.shared.isEnglish
                                  ? String(format: "%.0fm", m)
                                  : String(format: "%.0f분", m))
-                                .font(.caption2).foregroundStyle(.white.opacity(0.6))
+                                .font(compact ? .system(size: 8) : .caption2)
+                                .foregroundStyle(.white.opacity(0.6))
                         }
                     }
                 }
             }
             .chartYAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                AxisMarks(values: .automatic(desiredCount: compact ? 3 : 4)) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                     AxisValueLabel {
                         if let v = value.as(Double.self) {
-                            Text(String(format: format, v)).font(.caption2).foregroundStyle(.white.opacity(0.6))
+                            Text(String(format: format, v))
+                                .font(compact ? .system(size: 8) : .caption2)
+                                .foregroundStyle(.white.opacity(0.6))
                         }
                     }
                 }
             }
-            .padding(12)
+            .padding(compact ? 6 : 12)
 
             if let avg = avgValue {
                 HStack(spacing: 4) {
@@ -3123,6 +3135,7 @@ struct MetricBarPanelChart: View {
 
 struct ElevationPanelChart: View {
     let profile: [(distanceKm: Double, altitude: Double)]
+    var compact: Bool = false
 
     private struct Point: Identifiable {
         let id: Int
@@ -3183,31 +3196,36 @@ struct ElevationPanelChart: View {
         .chartYScale(domain: yDomain)
         .chartXScale(domain: 0...(points.last?.km ?? 1))
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+            AxisMarks(values: .automatic(desiredCount: compact ? 3 : 4)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                 AxisValueLabel {
                     if let km = value.as(Double.self) {
-                        Text(String(format: "%.1fkm", km)).font(.caption2).foregroundStyle(.white.opacity(0.6))
+                        Text(String(format: "%.1fkm", km))
+                            .font(compact ? .system(size: 8) : .caption2)
+                            .foregroundStyle(.white.opacity(0.6))
                     }
                 }
             }
         }
         .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+            AxisMarks(values: .automatic(desiredCount: compact ? 3 : 4)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                 AxisValueLabel {
                     if let v = value.as(Double.self) {
-                        Text(String(format: "%.0fm", v)).font(.caption2).foregroundStyle(.white.opacity(0.6))
+                        Text(String(format: "%.0fm", v))
+                            .font(compact ? .system(size: 8) : .caption2)
+                            .foregroundStyle(.white.opacity(0.6))
                     }
                 }
             }
         }
-        .padding(12)
+        .padding(compact ? 6 : 12)
     }
 }
 
 struct IntervalPanelChart: View {
     let segments: [IntervalSegment]
+    var compact: Bool = false
 
     private struct Row: Identifiable {
         let id: Int
@@ -3308,120 +3326,126 @@ struct IntervalPanelChart: View {
 
     private var hasCadence: Bool { segments.contains { $0.avgCadence != nil } }
 
-    // caption2 line height ~13pt, VStack spacing 0 between rows
+    // 9pt font line height ~11pt, VStack spacing 0 between rows
     // base = summary(16+pad) + header(12+pad) + vertical padding(16)
     static func requiredHeight(segmentCount: Int, hasSummary: Bool) -> CGFloat {
-        let rowH: CGFloat = 13
+        let rowH: CGFloat = 11
         let baseH: CGFloat = hasSummary ? 44 : 26
         return baseH + CGFloat(segmentCount) * rowH
     }
 
     // Fixed sub-column widths — same for header and data rows (guarantees column alignment)
-    private let paceW: CGFloat = 38
-    private let dotW:  CGFloat = 8
-    private let hrW:   CGFloat = 42   // "149bpm" ~38pt at caption2
-    private let cadW:  CGFloat = 44   // "172spm" ~38pt at caption2
+    private let paceW: CGFloat = 30
+    private let dotW:  CGFloat = 6
+    private let hrW:   CGFloat = 34   // "149bpm" at 9pt
+    private let cadW:  CGFloat = 34   // "172spm" at 9pt
 
     var body: some View {
         GeometryReader { geo in
-            let typeW:  CGFloat = 28
+            let typeW:  CGFloat = 26
             let labelW: CGFloat = paceW + dotW + hrW + (hasCadence ? dotW + cadW : 0)
-            let indexW: CGFloat = 20
+            let indexW: CGFloat = 14
             let spacing: CGFloat = 6
             let maxBarW = min(100, max(20, geo.size.width - indexW - typeW - labelW - spacing * 3 - 24))
             let L = AppLanguage.shared
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    if let summary = workSummary {
-                        Text(summary)
-                            .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(Theme.violet)
-                            .padding(.bottom, 2)
-                    }
+            let content = VStack(alignment: .leading, spacing: 0) {
+                if let summary = workSummary {
+                    Text(summary)
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(Theme.violet)
+                        .padding(.bottom, 2)
+                }
 
-                    // Column header — exact same sub-widths as data rows for alignment
-                    HStack(spacing: spacing) {
-                        Color.clear.frame(width: indexW)
-                        Color.clear.frame(width: typeW)
-                        Color.clear.frame(width: maxBarW, height: 1)
-                        HStack(spacing: 0) {
-                            Text(L.s("페이스", "Pace"))
-                                .lineLimit(1).minimumScaleFactor(0.6)
-                                .frame(width: paceW, alignment: .trailing)
+                // Column header — exact same sub-widths as data rows for alignment
+                HStack(spacing: spacing) {
+                    Color.clear.frame(width: indexW)
+                    Color.clear.frame(width: typeW)
+                    Color.clear.frame(width: maxBarW, height: 1)
+                    HStack(spacing: 0) {
+                        Text(L.s("페이스", "Pace"))
+                            .lineLimit(1).minimumScaleFactor(0.6)
+                            .frame(width: paceW, alignment: .trailing)
+                        Color.clear.frame(width: dotW)
+                        Text(L.s("심박수", "HR"))
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                            .frame(width: hrW, alignment: .trailing)
+                        if hasCadence {
                             Color.clear.frame(width: dotW)
-                            Text(L.s("심박수", "HR"))
+                            Text(L.s("케이던스", "Cad"))
                                 .lineLimit(1).minimumScaleFactor(0.75)
+                                .frame(width: cadW, alignment: .trailing)
+                        }
+                    }
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(.white)
+                }
+                .padding(.bottom, 2)
+
+                ForEach(rows) { row in
+                    HStack(spacing: spacing) {
+                        // interval index
+                        Text("\(row.id)")
+                            .font(.system(size: 9).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .frame(width: indexW, alignment: .leading)
+
+                        // segment type label
+                        Text(row.typeLabel)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(row.isWork ? Theme.violet.opacity(0.9) : Color.white.opacity(0.55))
+                            .frame(width: typeW, alignment: .leading)
+
+                        // horizontal bar — 8pt height
+                        ZStack(alignment: .leading) {
+                            Color.clear.frame(width: maxBarW, height: 8)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(row.isWork ? Theme.violet : Color.white.opacity(0.18))
+                                .frame(width: max(4, maxBarW * row.barRatio), height: 8)
+                        }
+
+                        // pace · HR · cadence — fixed sub-widths for column alignment
+                        HStack(spacing: 0) {
+                            if let pace = row.formattedPace {
+                                Text(pace)
+                                    .foregroundStyle(row.isWork ? .white : Color.white.opacity(0.55))
+                                    .frame(width: paceW, alignment: .trailing)
+                            } else {
+                                Text(row.formattedDuration)
+                                    .foregroundStyle(Color.white.opacity(0.55))
+                                    .frame(width: paceW, alignment: .trailing)
+                            }
+                            Text("·")
+                                .foregroundStyle(.tertiary)
+                                .frame(width: dotW, alignment: .center)
+                            Text(row.avgHeartRate.map { "\($0)bpm" } ?? "—")
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                                .foregroundStyle(row.avgHeartRate != nil
+                                    ? Theme.heartRate.opacity(0.85) : Color.secondary)
                                 .frame(width: hrW, alignment: .trailing)
                             if hasCadence {
-                                Color.clear.frame(width: dotW)
-                                Text(L.s("케이던스", "Cad"))
-                                    .lineLimit(1).minimumScaleFactor(0.75)
-                                    .frame(width: cadW, alignment: .trailing)
-                            }
-                        }
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    }
-                    .padding(.bottom, 2)
-
-                    ForEach(rows) { row in
-                        HStack(spacing: spacing) {
-                            // interval index
-                            Text("\(row.id)")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                                .frame(width: indexW, alignment: .trailing)
-
-                            // segment type label
-                            Text(row.typeLabel)
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(row.isWork ? Theme.violet.opacity(0.9) : Color.white.opacity(0.35))
-                                .frame(width: typeW, alignment: .leading)
-
-                            // horizontal bar — 8pt height
-                            ZStack(alignment: .leading) {
-                                Color.clear.frame(width: maxBarW, height: 8)
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(row.isWork ? Theme.violet : Color.white.opacity(0.18))
-                                    .frame(width: max(4, maxBarW * row.barRatio), height: 8)
-                            }
-
-                            // pace · HR · cadence — fixed sub-widths for column alignment
-                            HStack(spacing: 0) {
-                                if let pace = row.formattedPace {
-                                    Text(pace)
-                                        .foregroundStyle(row.isWork ? .white : .secondary)
-                                        .frame(width: paceW, alignment: .trailing)
-                                } else {
-                                    Text(row.formattedDuration)
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: paceW, alignment: .trailing)
-                                }
                                 Text("·")
                                     .foregroundStyle(.tertiary)
                                     .frame(width: dotW, alignment: .center)
-                                Text(row.avgHeartRate.map { "\($0)bpm" } ?? "—")
+                                Text(row.avgCadence.map { "\($0)spm" } ?? "—")
                                     .lineLimit(1).minimumScaleFactor(0.8)
-                                    .foregroundStyle(row.avgHeartRate != nil
-                                        ? Theme.heartRate.opacity(0.85) : Color.secondary)
-                                    .frame(width: hrW, alignment: .trailing)
-                                if hasCadence {
-                                    Text("·")
-                                        .foregroundStyle(.tertiary)
-                                        .frame(width: dotW, alignment: .center)
-                                    Text(row.avgCadence.map { "\($0)spm" } ?? "—")
-                                        .lineLimit(1).minimumScaleFactor(0.8)
-                                        .foregroundStyle(row.avgCadence != nil
-                                            ? Theme.cadence.opacity(0.85) : Color.secondary)
-                                        .frame(width: cadW, alignment: .trailing)
-                                }
+                                    .foregroundStyle(row.avgCadence != nil
+                                        ? Theme.cadence.opacity(0.85) : Color.secondary)
+                                    .frame(width: cadW, alignment: .trailing)
                             }
-                            .font(.caption2.monospacedDigit())
                         }
+                        .font(.system(size: 9).monospacedDigit())
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            if compact {
+                content
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    content
+                }
             }
         }
     }

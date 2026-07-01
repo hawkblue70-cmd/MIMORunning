@@ -18,7 +18,7 @@ struct DetailPanelShareCard: View {
     var condition: ActivityCondition? = nil
 
     static let cardWidth:  CGFloat = 300
-    static let cardHeight: CGFloat = 500
+    static let cardHeight: CGFloat = 375
 
     var body: some View {
         ZStack {
@@ -28,59 +28,88 @@ struct DetailPanelShareCard: View {
             )
             VStack(alignment: .leading, spacing: 0) {
                 headerRow
-                    .padding(.horizontal, 18).padding(.top, 16)
+                    .padding(.horizontal, 41).padding(.top, 20)
                 panelTitleRow
-                    .padding(.horizontal, 18).padding(.top, 6)
+                    .padding(.horizontal, 41).padding(.top, 5)
                 chartArea
-                    .padding(.horizontal, 14).padding(.top, 10)
-                    .frame(height: chartAreaHeight)
+                    .frame(height: chartInnerHeight)
+                    .frame(maxWidth: .infinity, minHeight: chartAreaHeight, maxHeight: chartAreaHeight, alignment: .center)
+                    .padding(.horizontal, 41).padding(.top, 4)
                 Rectangle()
                     .fill(Theme.violet.opacity(0.30))
                     .frame(height: 0.5)
-                    .padding(.horizontal, 18).padding(.top, 10)
+                    .padding(.horizontal, 41).padding(.top, 4)
                 metricsGrid
-                    .padding(.horizontal, 14).padding(.top, 10)
-                Spacer(minLength: 6)
+                    .padding(.horizontal, 41).padding(.top, 4)
+                Spacer(minLength: 0)
                 footerRow
-                    .padding(.horizontal, 18).padding(.bottom, 12)
+                    .padding(.horizontal, 41).padding(.bottom, 18)
             }
         }
     }
 
     // MARK: Header
 
+    private var headerDateStr: String {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "ko_KR")
+        fmt.dateFormat = "yyyy. M.d"
+        return fmt.string(from: activity.date)
+    }
+
+    private var headerTimeStr: String {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "ko_KR")
+        fmt.dateStyle = .none
+        fmt.timeStyle = .short
+        return fmt.string(from: activity.date)
+    }
+
+    private var weekdayChar: String {
+        let weekday = Calendar.current.component(.weekday, from: activity.date)
+        return ["일", "월", "화", "수", "목", "금", "토"][(weekday - 1) % 7]
+    }
+
     private var headerRow: some View {
         HStack {
             HStack(spacing: 0) {
                 Text("MIMO")
-                    .font(.system(size: 10, weight: .black)).tracking(2).foregroundStyle(.white)
+                    .font(.system(size: 10, weight: .black)).tracking(1.2).foregroundStyle(.white)
                 Text(" RUNNING")
-                    .font(.system(size: 10, weight: .bold)).tracking(2).foregroundStyle(Theme.violet)
+                    .font(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(Theme.violet)
             }
             Spacer()
-            Text(dateText.isEmpty ? activity.date.formatted(.dateTime.year().month().day()) : dateText)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.white)
+            HStack(spacing: 3) {
+                Text(headerDateStr)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white)
+                Text(weekdayChar)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Theme.time)
+                Text(headerTimeStr)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white)
+            }
         }
     }
 
     private var panelTitleRow: some View {
         HStack(spacing: 4) {
             Image(systemName: activePanel.icon)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(accentColor)
             Text(activePanel.label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.80))
             if let weather = condition?.weather {
                 Text("·")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.30))
                 Image(systemName: weather.systemIcon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.55))
                 Text(weather.formattedTemp)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.55))
             }
             Spacer()
@@ -117,12 +146,12 @@ struct DetailPanelShareCard: View {
 
             case .elevation:
                 if let profile = detail?.altitudeProfile, !profile.isEmpty {
-                    ElevationPanelChart(profile: profile)
+                    ElevationPanelChart(profile: profile, compact: true)
                 } else { placeholder("mountain.2.fill") }
 
             case .intervals:
                 if let segs = detail?.intervalSegments, !segs.isEmpty {
-                    IntervalPanelChart(segments: segs)
+                    IntervalPanelChart(segments: segs, compact: true)
                 } else { placeholder("repeat") }
 
             case .cadence, .power, .groundContact, .strideLength, .verticalOscillation:
@@ -134,7 +163,8 @@ struct DetailPanelShareCard: View {
                         format: seriesFormat,
                         useRangeBar: seriesUseRangeBar,
                         validMin: activePanel == .cadence ? 130 : 0,
-                        barWidthOverride: 2
+                        barWidthOverride: 2,
+                        compact: true
                     )
                 } else { placeholder(activePanel.icon) }
             }
@@ -152,14 +182,27 @@ struct DetailPanelShareCard: View {
 
     var chartAreaHeight: CGFloat {
         guard activePanel == .intervals,
-              let segs = detail?.intervalSegments, !segs.isEmpty else { return 192 }
+              let segs = detail?.intervalSegments, !segs.isEmpty else { return 140 }
         return IntervalPanelChart.requiredHeight(segmentCount: segs.count, hasSummary: true)
     }
 
     var effectiveCardHeight: CGFloat {
         guard activePanel == .intervals,
               let segs = detail?.intervalSegments, !segs.isEmpty else { return Self.cardHeight }
-        return (Self.cardHeight - 192) + chartAreaHeight
+        return (Self.cardHeight - 150) + chartAreaHeight
+    }
+
+    // 비율 유지: 가로 272×0.8=218, 세로 150×0.8=120 → 주변 여백 가로 27pt씩, 세로 15pt씩
+    private var chartInnerWidth: CGFloat {
+        guard activePanel == .intervals,
+              let segs = detail?.intervalSegments, !segs.isEmpty else { return 218 }
+        return Self.cardWidth - 28
+    }
+
+    private var chartInnerHeight: CGFloat {
+        guard activePanel == .intervals,
+              let segs = detail?.intervalSegments, !segs.isEmpty else { return 132 }
+        return chartAreaHeight
     }
 
     private var accentColor: Color {
@@ -207,6 +250,7 @@ struct DetailPanelShareCard: View {
         let label: String
         let value: String
         let color: Color
+        var valueFontSize: CGFloat = 12  // 15pt × 0.8 (지도 축소 비율)
     }
 
     private var availableMetrics: [MetricItem] {
@@ -237,7 +281,7 @@ struct DetailPanelShareCard: View {
             items.append(.init(icon: "arrow.up.and.down", label: L.s("수직 진폭", "Vert. Osc."), value: String(format: "%.1f cm", vo),                color: Theme.runningForm))
         }
         if let vo2 = detail?.vo2Max {
-            items.append(.init(icon: "lungs.fill",      label: L.s("유산소 피트니스", "Cardio Fitness"), value: String(format: "%.1f mL/kg·min", vo2), color: Theme.elevation))
+            items.append(.init(icon: "lungs.fill",      label: L.s("유산소", "Cardio"),               value: String(format: "%.1f mL/kg·m", vo2),   color: Theme.elevation, valueFontSize: 15))
         }
         if let cal = activity.calories {
             items.append(.init(icon: "flame.fill",      label: L.s("칼로리", "Cals"),          value: String(format: "%.0f kcal", cal),                color: Theme.calories))
@@ -252,7 +296,7 @@ struct DetailPanelShareCard: View {
         let items = availableMetrics
         return LazyVGrid(
             columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
-            spacing: 5
+            spacing: 4
         ) {
             ForEach(0..<items.count, id: \.self) { i in
                 metricCell(items[i])
@@ -264,23 +308,24 @@ struct DetailPanelShareCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 3) {
                 Image(systemName: item.icon)
-                    .font(.caption2.weight(.semibold))
+                    .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(item.color)
                 Text(item.label)
-                    .font(.caption2.weight(.medium))
+                    .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(item.color)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             Text(item.value)
-                .font(.system(size: 15, weight: .black))
+                .font(.system(size: item.valueFontSize, weight: .black))
                 .fontWidth(.condensed)
                 .foregroundStyle(.white)
                 .lineLimit(1)
-                .minimumScaleFactor(0.65)
+                .minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
@@ -343,7 +388,7 @@ struct DetailPanelShareCardScreen: View {
         guard activePanel == .intervals,
               let segs = detail?.intervalSegments, !segs.isEmpty else { return DetailPanelShareCard.cardHeight }
         let chartH = IntervalPanelChart.requiredHeight(segmentCount: segs.count, hasSummary: true)
-        return (DetailPanelShareCard.cardHeight - 192) + chartH
+        return (DetailPanelShareCard.cardHeight - 150) + chartH
     }
 
     private var formattedDateText: String {
@@ -460,7 +505,7 @@ struct DetailPanelShareCardScreen: View {
 
     private func loadCachedMapSnapshot() -> UIImage? {
         let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_v7_\(activity.id.uuidString).jpg")
+            .appendingPathComponent("mimo_map_v13_\(activity.id.uuidString).jpg")
         guard let data = try? Data(contentsOf: url) else { return nil }
         return UIImage(data: data)
     }
@@ -481,7 +526,7 @@ struct DetailPanelShareCardScreen: View {
             span: MKCoordinateSpan(latitudeDelta: max(0.004, (maxLat - minLat) * 1.4),
                                    longitudeDelta: max(0.004, (maxLon - minLon) * 1.4))
         )
-        opts.size = CGSize(width: 272, height: 192)
+        opts.size = CGSize(width: 218, height: 132)
         opts.scale = 3
         opts.mapType = .mutedStandard
         opts.showsBuildings = false

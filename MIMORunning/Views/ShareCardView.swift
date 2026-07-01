@@ -254,6 +254,7 @@ struct ShareCardView: View {
     var chartIntervalSegments: [IntervalSegment] = []
     var weather: WeatherSnapshot? = nil
     var shoeName: String? = nil
+    var photo: UIImage? = nil
 
     private var hasMiniMe: Bool { customMiniMeImage != nil || miniMeVariant != nil }
 
@@ -298,11 +299,21 @@ struct ShareCardView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            if let photo = photo {
+                Image(uiImage: photo)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 300, height: 375)
+                    .clipped()
+                CardVisual.topScrim
+                CardVisual.bottomScrim
+            } else {
+                LinearGradient(
+                    colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
 
             VStack(alignment: .leading, spacing: 0) {
 
@@ -375,9 +386,13 @@ struct ShareCardView: View {
                     chartAboveDivider
 
                     HStack(spacing: 0) {
-                        Text(startDateTimeString)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.80))
+                        HStack(spacing: 3) {
+                            Text(activity.date.cardDateString)
+                            Text(activity.date.weekdayCharKo).foregroundStyle(Theme.time)
+                            Text(activity.date.cardTimeString)
+                        }
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.80))
                         if let w = weather {
                             HStack(spacing: 3) {
                                 Image(systemName: w.systemIcon)
@@ -844,9 +859,13 @@ private struct PhotoShareCardView: View {
                 }
 
                 HStack(spacing: 0) {
-                    Text(startDateTimeString)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.80))
+                    HStack(spacing: 3) {
+                        Text(activity.date.cardDateString)
+                        Text(activity.date.weekdayCharKo).foregroundStyle(Theme.time)
+                        Text(activity.date.cardTimeString)
+                    }
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.80))
                     if let w = weather {
                         HStack(spacing: 3) {
                             Image(systemName: w.systemIcon)
@@ -1224,9 +1243,13 @@ private struct StoryShareCardView: View {
                 }
 
                 HStack(spacing: 0) {
-                    Text(startDateTimeString)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.80))
+                    HStack(spacing: 3) {
+                        Text(activity.date.cardDateString)
+                        Text(activity.date.weekdayCharKo).foregroundStyle(Theme.time)
+                        Text(activity.date.cardTimeString)
+                    }
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.80))
                     if let w = weather {
                         HStack(spacing: 3) {
                             Image(systemName: w.systemIcon)
@@ -1420,9 +1443,13 @@ private struct VideoOverlayCard: View {
 
                 // ── BOTTOM: weather · date · divider · stats ──
                 HStack(spacing: 0) {
-                    Text(startDateTimeString)
-                        .font(.system(size: 6, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.80))
+                    HStack(spacing: 2) {
+                        Text(date.cardDateString)
+                        Text(date.weekdayCharKo).foregroundStyle(Theme.time)
+                        Text(date.cardTimeString)
+                    }
+                    .font(.system(size: 6, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.80))
                     if let w = weather {
                         HStack(spacing: 2) {
                             Image(systemName: w.systemIcon)
@@ -1576,9 +1603,11 @@ struct ShareCardScreen: View {
     @State private var shareWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     // Card index (0 = template card, 1 = big number)
     @State private var cardIndex = 0
+    @State private var cardPhotoIndex: [Int: Int] = [:]
     @State private var heroMetric: HeroMetric = .distance
     @State private var bigNumberShowMood: Bool = true
     @State private var bigNumberShowMemo: Bool = true
+    @State private var bigNumberAccent: CardAccent = .violet
 
     private var isBigNumber: Bool { cardIndex == 1 }
     private var isPlaceable: Bool { cardIndex == 2 }
@@ -1659,10 +1688,54 @@ struct ShareCardScreen: View {
         return d
     }
 
+    private func photoFor(_ cIdx: Int) -> UIImage? {
+        guard !storyPhotos.isEmpty else { return selectedPhoto }
+        let idx = cardPhotoIndex[cIdx] ?? 0
+        return idx < storyPhotos.count ? storyPhotos[idx] : storyPhotos.first
+    }
+
+    private var photoStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(storyPhotos.indices, id: \.self) { i in
+                    let isSelected = (cardPhotoIndex[cardIndex] ?? 0) == i
+                    Button {
+                        cardPhotoIndex[cardIndex] = i
+                        Task { await renderCard(showSpinner: false) }
+                    } label: {
+                        Image(uiImage: storyPhotos[i])
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 46, height: 46)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(isSelected ? Theme.violet : Color.clear, lineWidth: 2)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                PhotosPicker(selection: $pickerItems, maxSelectionCount: 5, matching: .images, photoLibrary: .shared()) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 46, height: 46)
+                        Image(systemName: storyPhotos.isEmpty ? "photo.badge.plus" : "plus")
+                            .font(.system(size: storyPhotos.isEmpty ? 20 : 16))
+                            .foregroundStyle(Theme.violet)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 4)
+        }
+    }
+
     // MARK: - Chip toggle rows
 
     private var chipRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             // ── Row 1: content chips ──────────────────────────────
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -1903,7 +1976,7 @@ struct ShareCardScreen: View {
                 memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                 weatherText: condition?.weather?.formattedTemp,
                 weatherIcon: condition?.weather?.systemIcon,
-                dateText: activity.date.cardDateTimeString,
+                date: activity.date,
                 shoeName: displayShoeName
             )
             .frame(width: 300, height: 375)
@@ -1915,12 +1988,12 @@ struct ShareCardScreen: View {
                 memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
                 weatherText: condition?.weather?.formattedTemp,
                 weatherIcon: condition?.weather?.systemIcon,
-                dateText: activity.date.cardDateTimeString,
+                date: activity.date,
                 shoeName: displayShoeName,
-                photo: template == .story ? (selectedPhoto ?? storyPhoto)
-                    : template == .video ? videoPreviewImage : nil,
+                photo: template == .video ? videoPreviewImage : template == .story ? photoFor(1) : nil,
                 chartPanel: .map,
-                routeCoordinates: []
+                routeCoordinates: [],
+                accent: bigNumberAccent
             )
         }
     }
@@ -1930,8 +2003,8 @@ struct ShareCardScreen: View {
             activity: activity,
             detail: detail,
             routeCoords: routeCoords.isEmpty ? nil : routeCoords,
-            photo: template == .video ? videoPreviewImage : (selectedPhoto ?? storyPhoto),
-            dateText: activity.date.cardDateTimeString,
+            photo: template == .video ? videoPreviewImage : photoFor(2),
+            date: activity.date,
             metricsPosition: placeableMetricsPosition,
             accent: placeableAccent,
             shoeName: displayShoeName,
@@ -1948,6 +2021,8 @@ struct ShareCardScreen: View {
                 .animation(.easeInOut(duration: 0.2), value: template)
                 .tag(0)
             bigNumberCardPreview
+                .frame(width: 300, height: 375)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
                 .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                 .tag(1)
             placeableCardPreview
@@ -1961,18 +2036,18 @@ struct ShareCardScreen: View {
     }
 
     private var cardPageDots: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             Circle()
                 .fill(cardIndex == 0 ? Theme.violet : Color(hex: "6E6E78"))
-                .frame(width: 7, height: 7)
+                .frame(width: 6, height: 6)
             Circle()
                 .fill(cardIndex == 1 ? Theme.violet : Color(hex: "6E6E78"))
-                .frame(width: 7, height: 7)
+                .frame(width: 6, height: 6)
             Circle()
                 .fill(cardIndex == 2 ? Theme.violet : Color(hex: "6E6E78"))
-                .frame(width: 7, height: 7)
+                .frame(width: 6, height: 6)
         }
-        .padding(.top, 8)
+        .padding(.top, 6)
     }
 
     // MARK: - Big Number chip row (cardIndex == 1)
@@ -1995,6 +2070,8 @@ struct ShareCardScreen: View {
     @ViewBuilder
     private func activeChip(_ label: String, icon: String? = nil) -> some View {
         HStack(spacing: 4) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 9, weight: .bold))
             if let icon = icon {
                 Image(systemName: icon).font(.system(size: 10))
             }
@@ -2023,7 +2100,7 @@ struct ShareCardScreen: View {
     }
 
     private var bigNumberChipRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             // Row 1: content chips — all locked
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -2067,7 +2144,7 @@ struct ShareCardScreen: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 2)
             }
-            // Row 2: HeroMetric radio chips + non-hero metric chips locked
+            // Row 2: HeroMetric radio chips (거리/페이스/시간/심박) + non-hero locked chips
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(HeroMetric.allCases) { m in
@@ -2109,7 +2186,48 @@ struct ShareCardScreen: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 2)
             }
+            bigNumberAccentRow
         }
+    }
+
+    private var bigNumberAccentRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                bigNumberAccentChip(.none,   AppLanguage.shared.s("없음",     "None"),   Color.white)
+                bigNumberAccentChip(.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF"))
+                bigNumberAccentChip(.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func bigNumberAccentChip(_ accent: CardAccent, _ label: String, _ color: Color) -> some View {
+        let isSelected = bigNumberAccent == accent
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { bigNumberAccent = accent }
+            Task { await renderCard(showSpinner: false) }
+        } label: {
+            HStack(spacing: 6) {
+                if isSelected {
+                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                }
+                if accent != .none {
+                    Circle().fill(color).frame(width: 8, height: 8)
+                }
+                Text(label).font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                isSelected
+                    ? (accent == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
+                    : Color.white.opacity(0.08)
+            )
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Placeable card chip row (position grid + accent chips)
@@ -2125,7 +2243,7 @@ struct ShareCardScreen: View {
             (.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF")),
             (.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
         ]
-        return HStack(alignment: .top, spacing: 20) {
+        return HStack(alignment: .center, spacing: 20) {
             // 3×3 position grid
             VStack(spacing: 4) {
                 ForEach(rows.indices, id: \.self) { row in
@@ -2141,15 +2259,15 @@ struct ShareCardScreen: View {
                             } label: {
                                 RoundedRectangle(cornerRadius: 4)
                                     .fill(isSelected ? Theme.violet : Color(hex: "26262E"))
-                                    .frame(width: 26, height: 26)
+                                    .frame(width: 23, height: 23)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
             }
-            // Accent chips
-            VStack(alignment: .leading, spacing: 8) {
+            // Accent chips — single horizontal row
+            HStack(spacing: 8) {
                 ForEach(accents.indices, id: \.self) { i in
                     let (accent, label, color) = accents[i]
                     let isSelected = placeableAccent == accent
@@ -2193,63 +2311,38 @@ struct ShareCardScreen: View {
                     guard available else { return }
                     withAnimation(.easeInOut(duration: 0.15)) { template = t }
                 } label: {
-                    Text(t.label)
-                        .font(.system(size: 13, weight: selected ? .semibold : (available ? .semibold : .regular)))
-                        .foregroundStyle(
-                            selected  ? Theme.violet :
-                            available ? Color.white   :
-                                        Color(hex: "6E6E78")
-                        )
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
-                        .background(
-                            selected
-                                ? RoundedRectangle(cornerRadius: 8)
-                                    .fill(Theme.violet.opacity(0.18))
-                                : nil
-                        )
+                    HStack(spacing: 4) {
+                        if selected {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        Text(t.label)
+                            .font(.system(size: 13, weight: selected ? .semibold : (available ? .semibold : .regular)))
+                    }
+                    .foregroundStyle(
+                        selected  ? Color.white       :
+                        available ? Color.white       :
+                                    Color(hex: "6E6E78")
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .background(
+                        selected
+                            ? RoundedRectangle(cornerRadius: 8)
+                                .fill(Theme.violet.opacity(0.18))
+                            : nil
+                    )
                 }
                 .disabled(!available)
             }
         }
         .padding(.horizontal, 24)
-        .padding(.bottom, 12)
+        .padding(.bottom, 6)
     }
 
     @ViewBuilder
     private var bottomControls: some View {
-        if template == .story {
-            HStack(spacing: 14) {
-                if storyPhotos.isEmpty {
-                    // 저장된 사진 없음 → 라이브러리에서 추가
-                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 5,
-                                 matching: .images, photoLibrary: .shared()) {
-                        Label(AppLanguage.shared.s("사진 추가", "Add Photo"), systemImage: "photo.badge.plus")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Theme.violet)
-                    }
-                } else {
-                    // 저장된 사진 있음 → 저장된 사진에서만 선택
-                    Button {
-                        showStoryPhotoPicker = true
-                    } label: {
-                        Label(AppLanguage.shared.s("사진 변경 · \(storyPhotos.count)장", "Change Photo · \(storyPhotos.count)"),
-                              systemImage: "photo.fill")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Theme.violet)
-                    }
-                }
-                if storyPhotos.isEmpty, selectedPhoto != nil {
-                    Button {
-                        selectedPhoto = nil
-                        Task { await renderCard() }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.title3)
-                    }
-                }
-            }
-            .padding(.bottom, 8)
-        } else if template == .video {
+        if template == .video {
             VStack(spacing: 0) {
                 HStack(spacing: 14) {
                     PhotosPicker(selection: $videoPickerItem, matching: .videos, photoLibrary: .shared()) {
@@ -2276,7 +2369,6 @@ struct ShareCardScreen: View {
         } else {
             Color.clear.frame(height: 20)
         }
-        // routeVideo has no bottom picker
     }
 
     // MARK: - Body
@@ -2285,22 +2377,33 @@ struct ShareCardScreen: View {
         ZStack {
             Theme.background.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Color.clear.frame(height: 20)
-                cardSection
-                cardPageDots
-                Color.clear.frame(height: 12)
-                Group {
-                    if isBigNumber { bigNumberChipRow }
-                    else if isPlaceable { placeableChipRow }
-                    else { chipRow }
-                }.padding(.bottom, 12)
-                templatePicker
-                bottomControls
-                    .frame(height: 44)
-                Spacer(minLength: 0)
-                shareCTA.padding(.horizontal, 24).padding(.bottom, 36)
+            ScrollView {
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: 8)
+                    cardSection
+                    cardPageDots
+                    Color.clear.frame(height: 10)
+                    Group {
+                        if isBigNumber { bigNumberChipRow }
+                        else if isPlaceable { placeableChipRow }
+                        else { chipRow }
+                    }.padding(.bottom, 3)
+                    templatePicker
+                    if template == .story {
+                        photoStrip
+                            .padding(.bottom, 8)
+                    }
+                    bottomControls
+                    Color.clear.frame(height: 8)
+                }
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            shareCTA
+                .padding(.horizontal, 24)
+                .padding(.top, 6)
+                .padding(.bottom, 16)
+                .background(Theme.background.ignoresSafeArea())
         }
         .navigationTitle(AppLanguage.shared.s("공유", "Share"))
         .navigationBarTitleDisplayMode(.inline)
@@ -2316,9 +2419,10 @@ struct ShareCardScreen: View {
         .task {
             // Restore selected photo from stored data on re-entry (e.g. after app restart).
             // Without this, selectedPhoto stays nil and the legacy all-cards branch fires.
-            if selectedPhoto == nil, let first = storyPhotos.first {
-                selectedPhoto = first
-                selectedPhotoIndex = 0
+            if !storyPhotos.isEmpty {
+                for i in 0..<3 where cardPhotoIndex[i] == nil {
+                    cardPhotoIndex[i] = 0
+                }
             }
             // Auto-select first available panel when no route
             if routeCoords.isEmpty && cardPanel == .map {
@@ -2331,18 +2435,21 @@ struct ShareCardScreen: View {
             photoOffsets = [:]
             Task {
                 guard !newItems.isEmpty else { return }
-                var images: [UIImage] = []
+                var newImages: [UIImage] = []
                 for item in newItems {
                     if let data = try? await item.loadTransferable(type: Data.self),
                        let image = UIImage(data: data) {
-                        images.append(image)
+                        newImages.append(image)
                     }
                 }
-                guard !images.isEmpty else { return }
-                selectedPhoto = images[0]
-                selectedPhotoIndex = 0
-                allPickedPhotos = images          // keep in memory for reliable share count
-                persistStoryPhotos(images)
+                guard !newImages.isEmpty else { return }
+                let existing = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
+                let merged = Array((existing + newImages).prefix(5))
+                selectedPhoto = merged[0]
+                allPickedPhotos = merged
+                persistStoryPhotos(merged)
+                // Point current card to the first newly added photo
+                cardPhotoIndex[cardIndex] = min(existing.count, merged.count - 1)
                 await renderCard()
             }
         }
@@ -2397,6 +2504,10 @@ struct ShareCardScreen: View {
             guard isBigNumber else { return }
             Task { await renderCard(showSpinner: false) }
         }
+        .onChange(of: bigNumberAccent) { _, _ in
+            guard isBigNumber else { return }
+            Task { await renderCard(showSpinner: false) }
+        }
         .onChange(of: placeableMetricsPosition) { _, _ in
             guard isPlaceable else { return }
             Task { await renderCard(showSpinner: false) }
@@ -2405,14 +2516,16 @@ struct ShareCardScreen: View {
             guard isPlaceable else { return }
             Task { await renderCard(showSpinner: false) }
         }
-        .task(id: template) {
-            guard template == .routeVideo else { return }
-            routePreviewProgress = 0
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 50_000_000)   // ~20 fps preview
-                routePreviewProgress += 1.0 / 60.0
-                if routePreviewProgress > 1.0 { routePreviewProgress = 0 }
-            }
+        .task(id: template) { await animateRouteVideoPreview() }
+    }
+
+    private func animateRouteVideoPreview() async {
+        guard template == .routeVideo else { return }
+        routePreviewProgress = 0.0
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            routePreviewProgress += 1.0 / 60.0
+            if routePreviewProgress > 1.0 { routePreviewProgress = 0.0 }
         }
     }
 
@@ -2477,9 +2590,10 @@ struct ShareCardScreen: View {
                           chartWorkoutSeries: shareWorkoutSeries,
                           chartIntervalSegments: detail?.intervalSegments ?? [],
                           weather: condition?.weather,
-                          shoeName: displayShoeName)
+                          shoeName: displayShoeName,
+                          photo: nil)
         case .story:
-            if let photo = selectedPhoto {
+            if let photo = photoFor(0) {
                 PhotoShareCardView(activity: activity, photo: photo,
                                    insightTitle: displayInsightTitle,
                                    metrics: enabledMetricItems, raceName: activeRaceName,
@@ -2497,49 +2611,20 @@ struct ShareCardScreen: View {
                                    shoeName: displayShoeName,
                                    photoOffset: $photoOffset)
             } else if let s = story {
-                let photos = storyPhotos
-                if photos.count > 1 {
-                    TabView(selection: $carouselPage) {
-                        ForEach(Array(photos.enumerated()), id: \.offset) { idx, photo in
-                            PhotoShareCardView(activity: activity, photo: photo,
-                                              insightTitle: displayInsightTitle,
-                                              metrics: enabledMetricItems, raceName: activeRaceName,
-                                              story: s, showMood: showMoodOnCard, showMemo: showMemoOnCard,
-                                              miniMeVariant: activeMiniMeVariant,
-                                              customMiniMeImage: activeMiniMeImage,
-                                              routeCoordinates: routeCoords,
-                                              chartPanel: cardPanel,
-                                              chartSplits: detail?.splits ?? [],
-                                              chartHRSamples: shareHRSamples,
-                                              chartHRZones: detail?.hrZones ?? [],
-                                              chartWorkoutSeries: shareWorkoutSeries,
-                                              chartIntervalSegments: detail?.intervalSegments ?? [],
-                                              weather: condition?.weather,
-                                              shoeName: displayShoeName,
-                                              photoOffset: Binding(
-                                                  get: { photoOffsets[idx, default: .zero] },
-                                                  set: { photoOffsets[idx] = $0 }
-                                              ))
-                                .tag(idx)
-                        }
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                } else {
-                    StoryShareCardView(activity: activity, routeCoordinates: routeCoords,
-                                       story: s, insightTitle: displayInsightTitle,
-                                       metrics: enabledMetricItems,
-                                       raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
-                                       customMiniMeImage: activeMiniMeImage,
-                                       showMood: showMoodOnCard, showMemo: showMemoOnCard,
-                                       chartPanel: cardPanel,
-                                       chartSplits: detail?.splits ?? [],
-                                       chartHRSamples: shareHRSamples,
-                                       chartHRZones: detail?.hrZones ?? [],
-                                       chartWorkoutSeries: shareWorkoutSeries,
-                                       chartIntervalSegments: detail?.intervalSegments ?? [],
-                                       weather: condition?.weather,
-                                       shoeName: displayShoeName)
-                }
+                StoryShareCardView(activity: activity, routeCoordinates: routeCoords,
+                                   story: s, insightTitle: displayInsightTitle,
+                                   metrics: enabledMetricItems,
+                                   raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
+                                   customMiniMeImage: activeMiniMeImage,
+                                   showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                                   chartPanel: cardPanel,
+                                   chartSplits: detail?.splits ?? [],
+                                   chartHRSamples: shareHRSamples,
+                                   chartHRZones: detail?.hrZones ?? [],
+                                   chartWorkoutSeries: shareWorkoutSeries,
+                                   chartIntervalSegments: detail?.intervalSegments ?? [],
+                                   weather: condition?.weather,
+                                   shoeName: displayShoeName)
             } else {
                 ShareCardView(activity: activity, routeCoordinates: routeCoords,
                               insightTitle: displayInsightTitle, metrics: enabledMetricItems,
@@ -2752,9 +2837,13 @@ struct ShareCardScreen: View {
                 }
 
                 HStack(spacing: 0) {
-                    Text(activity.date.cardDateTimeString)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.80))
+                    HStack(spacing: 3) {
+                        Text(activity.date.cardDateString)
+                        Text(activity.date.weekdayCharKo).foregroundStyle(Theme.time)
+                        Text(activity.date.cardTimeString)
+                    }
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.80))
                     if let w = condition?.weather {
                         HStack(spacing: 3) {
                             Image(systemName: w.systemIcon)
@@ -2861,8 +2950,7 @@ struct ShareCardScreen: View {
                     Label(AppLanguage.shared.s("영상 공유하기", "Share Video"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, minHeight: 46)
                         .background(Theme.violet)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
@@ -2903,8 +2991,7 @@ struct ShareCardScreen: View {
                     Label(AppLanguage.shared.s("경로 영상 공유하기", "Share Route Video"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, minHeight: 46)
                         .background(Theme.violet)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
@@ -2915,8 +3002,7 @@ struct ShareCardScreen: View {
                     Label(AppLanguage.shared.s("경로 영상 만들기", "Create Route Video"), systemImage: "film")
                         .font(.headline)
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, minHeight: 46)
                         .background(!routeSnapshotPoints.isEmpty ? Theme.violet : Color.gray.opacity(0.4))
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
@@ -2938,8 +3024,7 @@ struct ShareCardScreen: View {
                     Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, minHeight: 46)
                         .background(Theme.violet)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
@@ -2967,8 +3052,7 @@ struct ShareCardScreen: View {
                     Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, minHeight: 46)
                         .background(Theme.violet)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
@@ -2982,7 +3066,7 @@ struct ShareCardScreen: View {
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, 12)
                     .background(Theme.violet)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
@@ -3007,7 +3091,7 @@ struct ShareCardScreen: View {
             memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
             weatherText: condition?.weather?.formattedTemp,
             weatherIcon: condition?.weather?.systemIcon,
-            dateText: activity.date.cardDateTimeString,
+            date: activity.date,
             shoeName: displayShoeName
         )
     }
@@ -3043,7 +3127,7 @@ struct ShareCardScreen: View {
                 detail: detail,
                 routeCoords: routeCoords.isEmpty ? nil : routeCoords,
                 photo: nil,
-                dateText: activity.date.cardDateTimeString,
+                date: activity.date,
                 metricsPosition: placeableMetricsPosition,
                 accent: placeableAccent,
                 showBackground: false,
@@ -3124,7 +3208,7 @@ struct ShareCardScreen: View {
                     memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                     weatherText: condition?.weather?.formattedTemp,
                     weatherIcon: condition?.weather?.systemIcon,
-                    dateText: activity.date.cardDateTimeString,
+                    date: activity.date,
                     shoeName: displayShoeName,
                     progressHandler: { p in routeVideoProgress = p }
                 )
@@ -3168,8 +3252,8 @@ struct ShareCardScreen: View {
                 activity: activity,
                 detail: detail,
                 routeCoords: routeCoords.isEmpty ? nil : routeCoords,
-                photo: template == .video ? videoPreviewImage : (selectedPhoto ?? storyPhoto),
-                dateText: activity.date.cardDateTimeString,
+                photo: template == .video ? videoPreviewImage : photoFor(2),
+                date: activity.date,
                 metricsPosition: placeableMetricsPosition,
                 accent: placeableAccent,
                 shoeName: displayShoeName,
@@ -3187,9 +3271,9 @@ struct ShareCardScreen: View {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
-            let bnPhoto: UIImage? = template == .story ? (selectedPhoto ?? storyPhoto)
-                : template == .video ? videoPreviewImage
+            let bnPhoto: UIImage? = template == .video ? videoPreviewImage
                 : template == .routeVideo ? routeSnapshot
+                : template == .story ? photoFor(1)
                 : nil
             let bnCard = BigNumberCard(
                 activity: activity, detail: detail, heroMetric: heroMetric,
@@ -3197,11 +3281,12 @@ struct ShareCardScreen: View {
                 memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
                 weatherText: condition?.weather?.formattedTemp,
                 weatherIcon: condition?.weather?.systemIcon,
-                dateText: activity.date.cardDateTimeString,
+                date: activity.date,
                 shoeName: displayShoeName,
                 photo: bnPhoto,
                 chartPanel: .map,
-                routeCoordinates: []
+                routeCoordinates: [],
+                accent: bigNumberAccent
             )
             let renderer = ImageRenderer(content: bnCard.frame(width: 300, height: 375))
             renderer.scale = 3
@@ -3219,7 +3304,7 @@ struct ShareCardScreen: View {
         let photos = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
 
         // Story + selected photo: render data card, rest are plain images
-        if template == .story, let selPhoto = selectedPhoto {
+        if template == .story, let selPhoto = photoFor(0) {
             let renderer = ImageRenderer(content:
                 PhotoShareCardView(activity: activity, photo: selPhoto,
                                    insightTitle: displayInsightTitle,
@@ -3242,7 +3327,7 @@ struct ShareCardScreen: View {
             renderer.scale = 3
             guard let cardImg = renderer.uiImage else { isRendering = false; return }
             previewImage = cardImg
-            let selIdx = selectedPhotoIndex
+            let selIdx = cardPhotoIndex[0] ?? 0
             let plainPhotos = photos.enumerated()
                 .filter { $0.offset != selIdx }
                 .map { $0.element }
@@ -3280,10 +3365,11 @@ struct ShareCardScreen: View {
                           chartWorkoutSeries: shareWorkoutSeries,
                           chartIntervalSegments: detail?.intervalSegments ?? [],
                           weather: condition?.weather,
-                          shoeName: displayShoeName)
+                          shoeName: displayShoeName,
+                          photo: nil)
                 .frame(width: 300, height: 375)
         case .story:
-            if let photo = selectedPhoto {
+            if let photo = photoFor(0) {
                 PhotoShareCardView(activity: activity, photo: photo,
                                    insightTitle: displayInsightTitle,
                                    metrics: enabledMetricItems, raceName: activeRaceName,

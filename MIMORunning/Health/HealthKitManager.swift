@@ -223,15 +223,14 @@ class HealthKitManager {
     private func enrichAndCache(_ workouts: [HKWorkout], cacheDict: [String: CachedActivity]) async {
         let toEnrich = workouts.filter { cacheDict[$0.uuid.uuidString] == nil }
         if !toEnrich.isEmpty {
-            let idToIndex = Dictionary(uniqueKeysWithValues:
-                activities.enumerated().map { ($0.element.id.uuidString, $0.offset) })
-            await withTaskGroup(of: (Int, Activity).self) { group in
+            await withTaskGroup(of: Activity?.self) { group in
                 for w in toEnrich {
-                    guard let idx = idToIndex[w.uuid.uuidString] else { continue }
-                    let a = activities[idx]
-                    group.addTask { await (idx, self.enrich(a, workout: w)) }
+                    guard let a = activities.first(where: { $0.id == w.uuid }) else { continue }
+                    group.addTask { await self.enrich(a, workout: w) }
                 }
-                for await (idx, enriched) in group {
+                for await enriched in group {
+                    guard let enriched,
+                          let idx = activities.firstIndex(where: { $0.id == enriched.id }) else { continue }
                     activities[idx] = enriched
                     saveToCache([CachedActivity(from: enriched)])
                 }

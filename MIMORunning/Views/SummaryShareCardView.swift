@@ -150,7 +150,8 @@ struct SummaryPeriodStats {
     var isEmpty: Bool { activities.isEmpty }
 }
 
-// MARK: - Athletic share card (360 × 520, rendered via ImageRenderer)
+// MARK: - Athletic share card (300 × 375, rendered via ImageRenderer)
+// Scale applied: width 5/6 (fonts), height 375/520 ≈ 0.721 (vertical spacing)
 
 struct SummaryShareCardView: View {
     let stats: SummaryPeriodStats
@@ -172,28 +173,28 @@ struct SummaryShareCardView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 0) {
                                 Text("MIMO")
-                                    .font(.system(size: 9, weight: .black))
+                                    .font(.system(size: 8, weight: .black))
                                     .tracking(2)
                                     .foregroundStyle(.white)
                                 Text(" RUNNING")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: 8, weight: .bold))
                                     .tracking(2)
                                     .foregroundStyle(Theme.violet)
                             }
                         }
                         Spacer()
                         miniMeContent
-                            .frame(width: 52, height: 52)
+                            .frame(width: 43, height: 43)
                     }
-                    .padding(.top, 16)
-                    .padding(.bottom, 10)
+                    .padding(.top, 12)
+                    .padding(.bottom, 7)
 
                     // Period
                     Text(stats.kind.title)
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.white)
                     Text(stats.kind.subtitle)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .tracking(0.5)
                         .foregroundStyle(Theme.violet)
                         .padding(.top, 2)
@@ -202,31 +203,31 @@ struct SummaryShareCardView: View {
                     Rectangle()
                         .fill(Theme.violet.opacity(0.35))
                         .frame(height: 0.5)
-                        .padding(.top, 18)
-                        .padding(.bottom, 22)
+                        .padding(.top, 13)
+                        .padding(.bottom, 16)
 
                     // Hero distance
-                    HStack(alignment: .lastTextBaseline, spacing: 6) {
+                    HStack(alignment: .lastTextBaseline, spacing: 5) {
                         Text(stats.distanceStr)
-                            .font(.system(size: 66, weight: .black, design: .default).width(.compressed))
+                            .font(.system(size: 55, weight: .black, design: .default).width(.compressed))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.55)
                         Text(stats.distanceUnit)
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 18, weight: .bold))
                             .foregroundStyle(Theme.violet)
                     }
                     Text(AppLanguage.shared.s("총 거리", "TOTAL"))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .tracking(1)
                         .foregroundStyle(.white.opacity(0.4))
 
                     if let delta = stats.distanceDeltaStr {
                         HStack(spacing: 3) {
                             Image(systemName: stats.distanceDeltaIsUp ? "arrow.up.right" : "arrow.down.right")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 8, weight: .bold))
                             Text(delta)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 9, weight: .semibold))
                         }
                         .foregroundStyle(stats.distanceDeltaIsUp
                             ? Color.green
@@ -240,8 +241,8 @@ struct SummaryShareCardView: View {
                     Rectangle()
                         .fill(Color.white.opacity(0.08))
                         .frame(height: 0.5)
-                        .padding(.top, 20)
-                        .padding(.bottom, 16)
+                        .padding(.top, 14)
+                        .padding(.bottom, 12)
 
                     // Secondary stats
                     HStack(spacing: 0) {
@@ -259,45 +260,45 @@ struct SummaryShareCardView: View {
                         Rectangle()
                             .fill(Color.white.opacity(0.07))
                             .frame(height: 0.5)
-                            .padding(.vertical, 12)
-                        HStack(spacing: 6) {
+                            .padding(.vertical, 9)
+                        HStack(spacing: 5) {
                             Image(systemName: "arrow.right.circle.fill")
-                                .font(.system(size: 9))
+                                .font(.system(size: 8))
                                 .foregroundStyle(Theme.violet)
                             Text(AppLanguage.shared.s("최장 거리", "LONGEST"))
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.4))
                             Spacer()
                             Text(longest)
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                     }
 
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 6)
 
                     if let ytd = stats.ytdStr {
                         Text(ytd)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 9, weight: .medium))
                             .tracking(0.5)
                             .foregroundStyle(Theme.violet.opacity(0.6))
-                            .padding(.bottom, 4)
+                            .padding(.bottom, 3)
                     }
 
                     // Footer
                     HStack {
                         Spacer()
                         Image(systemName: "figure.run")
-                            .font(.system(size: 8))
+                            .font(.system(size: 7))
                             .foregroundStyle(Theme.violet.opacity(0.35))
                     }
                     .padding(.bottom, 2)
                 }
-                .padding(.horizontal, 22)
-                .padding(.bottom, 18)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 13)
             }
         }
-        .frame(width: 360, height: 520)
+        .frame(width: 300, height: 375)
     }
 
     @ViewBuilder
@@ -306,23 +307,23 @@ struct SummaryShareCardView: View {
             Image(uiImage: img)
                 .resizable()
                 .scaledToFill()
-                .frame(width: 52, height: 52)
+                .frame(width: 43, height: 43)
                 .clipShape(Circle())
-                .overlay(Circle().stroke(Theme.violet.opacity(0.4), lineWidth: 1.5))
+                .overlay(Circle().stroke(Theme.violet.opacity(0.4), lineWidth: 1.2))
         } else {
-            MiniMeView(variant: .celebrating, size: 52)
+            MiniMeView(variant: .celebrating, size: 43)
         }
     }
 
     private func secondaryCell(value: String, label: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(value)
-                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .font(.system(size: 16, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(label)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .tracking(0.3)
                 .foregroundStyle(color.opacity(0.75))
         }
@@ -332,8 +333,8 @@ struct SummaryShareCardView: View {
     private var cellDivider: some View {
         Rectangle()
             .fill(Color.white.opacity(0.1))
-            .frame(width: 0.5, height: 38)
-            .padding(.horizontal, 10)
+            .frame(width: 0.5, height: 27)
+            .padding(.horizontal, 8)
     }
 }
 
