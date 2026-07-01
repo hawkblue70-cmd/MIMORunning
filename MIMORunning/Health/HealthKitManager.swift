@@ -130,6 +130,13 @@ class HealthKitManager {
         guard !isFetchInProgress else { return }
         isFetchInProgress = true
         defer { isFetchInProgress = false }
+
+        // Fast path: data is loaded and was synced very recently — skip disk read + all async work.
+        let lastSync = UserDefaults.standard.object(forKey: "mimo.lastSyncedAt") as? Date
+        if !activities.isEmpty, let last = lastSync, Date().timeIntervalSince(last) < 300 {
+            return
+        }
+
         isLoading = true
 
         // Phase 0: instant display from SwiftData cache (zero HealthKit queries)
@@ -138,14 +145,6 @@ class HealthKitManager {
         if isWarmCache {
             activities = cached.map { $0.toActivity() }
             isLoading = false
-        }
-
-        // Skip ALL async work if synced very recently (warm cache path only).
-        let lastSync = UserDefaults.standard.object(forKey: "mimo.lastSyncedAt") as? Date
-        if isWarmCache, let last = lastSync, Date().timeIntervalSince(last) < 300 {
-            userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
-            isLoading = false
-            return
         }
 
         // Resolve subscription status and prepare HRZone parameters before HealthKit query.
@@ -1394,13 +1393,19 @@ class HealthKitManager {
         var isStale: Bool { Date().timeIntervalSince(cachedAt) > 86400 }  // 24h — historical metric data doesn't change intraday
     }
 
+    private static let metricCacheDir: URL = {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = base.appendingPathComponent("MIMOMetrics", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
     private func metricHistoryCacheURL(_ metric: TrendMetric, startDate: Date, usePounds: Bool) -> URL {
         let cal = Calendar.current
         let comps = cal.dateComponents([.year, .month, .day], from: startDate)
         let dateStr = String(format: "%04d%02d%02d", comps.year ?? 0, comps.month ?? 0, comps.day ?? 0)
         let suffix = (metric == .bodyMass && usePounds) ? "_lbs" : ""
-        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_metric_\(metric.rawValue)_\(dateStr)\(suffix).json")
+        return Self.metricCacheDir.appendingPathComponent("metric_\(metric.rawValue)_\(dateStr)\(suffix).json")
     }
 
     private func loadMetricHistoryFromDisk(_ metric: TrendMetric, startDate: Date, usePounds: Bool) -> [(date: Date, value: Double)]? {

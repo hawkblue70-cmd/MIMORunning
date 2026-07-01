@@ -102,9 +102,15 @@ actor ConditionCache {
 
     private var store: [UUID: ActivityCondition] = [:]
 
+    private static let cacheDir: URL = {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = base.appendingPathComponent("MIMOCondition", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
     private func cacheURL(_ id: UUID) -> URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_condition_\(id.uuidString).json")
+        Self.cacheDir.appendingPathComponent("condition_\(id.uuidString).json")
     }
 
     /// Checks memory first, then disk on miss. Returns nil only if truly unavailable.

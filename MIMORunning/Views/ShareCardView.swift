@@ -2523,8 +2523,8 @@ struct ShareCardScreen: View {
         guard template == .routeVideo else { return }
         routePreviewProgress = 0.0
         while !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 50_000_000)
-            routePreviewProgress += 1.0 / 60.0
+            try? await Task.sleep(nanoseconds: 100_000_000)  // 10Hz — preview only, no need for 20Hz
+            routePreviewProgress += 2.0 / 60.0
             if routePreviewProgress > 1.0 { routePreviewProgress = 0.0 }
         }
     }
