@@ -26,6 +26,7 @@ class HealthKitManager {
     private let store = HKHealthStore()
     @ObservationIgnored private var workoutCache: [UUID: HKWorkout] = [:]
     @ObservationIgnored private var cachedMHR: Int? = nil
+    @ObservationIgnored private var isFetchInProgress = false
     @ObservationIgnored private var pausedIntervalsCache: [UUID: [DateInterval]] = [:]
     @ObservationIgnored private var detailCache: [UUID: ActivityDetail] = [:]
     @ObservationIgnored private var hrSeriesCache: [UUID: [(offset: TimeInterval, bpm: Int)]] = [:]
@@ -126,6 +127,9 @@ class HealthKitManager {
     // MARK: - Fetch (two-phase)
 
     func fetchActivities() async {
+        guard !isFetchInProgress else { return }
+        isFetchInProgress = true
+        defer { isFetchInProgress = false }
         isLoading = true
 
         // Phase 0: instant display from SwiftData cache (zero HealthKit queries)
@@ -136,19 +140,20 @@ class HealthKitManager {
             isLoading = false
         }
 
+        // Skip ALL async work if synced very recently (warm cache path only).
+        let lastSync = UserDefaults.standard.object(forKey: "mimo.lastSyncedAt") as? Date
+        if isWarmCache, let last = lastSync, Date().timeIntervalSince(last) < 300 {
+            userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+            isLoading = false
+            return
+        }
+
         // Resolve subscription status and prepare HRZone parameters before HealthKit query.
         await ProManager.shared.checkEntitlements()
         readBiologicalCharacteristics()
         if restingHeartRate == nil { await refreshHRZoneParameters() }
 
         defer { isLoading = false }
-
-        // Skip HealthKit query if synced very recently (warm cache path only).
-        let lastSync = UserDefaults.standard.object(forKey: "mimo.lastSyncedAt") as? Date
-        if isWarmCache, let last = lastSync, Date().timeIntervalSince(last) < 300 {
-            userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
-            return
-        }
 
         do {
             let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
