@@ -102,10 +102,11 @@ class HealthKitManager {
             return
         }
         guard UserDefaults.standard.bool(forKey: "hkAuthorizationRequested") else { return }
-        // Re-request to cover any types added after initial auth — HealthKit only prompts for new/undecided types.
-        try? await store.requestAuthorization(toShare: [], read: Self.readTypes)
+        // Set authorized and load cached data immediately — don't wait for HK daemon roundtrip.
         authorizationStatus = .authorized
         await fetchActivities()
+        // Re-request after data is shown to pick up any new types added since last install.
+        try? await store.requestAuthorization(toShare: [], read: Self.readTypes)
     }
 
     func requestAuthorization() async {
