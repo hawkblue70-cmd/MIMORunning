@@ -3519,12 +3519,18 @@ private struct ShareSheet: UIViewControllerRepresentable {
     let images: [UIImage]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        // Instagram, Files, and many other extensions require file URLs, not raw UIImage objects.
-        let tmp = FileManager.default.temporaryDirectory
+        // Instagram and many extensions require file URLs, not raw UIImage objects.
+        // Use cachesDirectory (not temporaryDirectory): temp files can be purged before
+        // the receiving app reads them, causing intermittent "cannot apply" errors.
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let items: [Any] = images.enumerated().map { idx, img -> Any in
-            guard let data = img.jpegData(compressionQuality: 0.92) else { return img }
-            let url = tmp.appendingPathComponent("mimo_share_\(idx)_\(UInt32.random(in: 0..<UInt32.max)).jpg")
-            return (try? data.write(to: url)) == nil ? img : url
+            // PNG is lossless and universally accepted; use a fixed filename so old files get overwritten.
+            let url = caches.appendingPathComponent("mimo_share_\(idx).png")
+            if let data = img.pngData(), (try? data.write(to: url)) != nil { return url }
+            // JPEG fallback
+            let jpgURL = caches.appendingPathComponent("mimo_share_\(idx).jpg")
+            if let data = img.jpegData(compressionQuality: 0.92), (try? data.write(to: jpgURL)) != nil { return jpgURL }
+            return img
         }
         return UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
