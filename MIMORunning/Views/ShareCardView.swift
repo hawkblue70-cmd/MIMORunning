@@ -1609,11 +1609,21 @@ struct ShareCardScreen: View {
     @State private var bigNumberShowMemo: Bool = true
     @State private var bigNumberAccent: CardAccent = .violet
 
-    private var isBigNumber: Bool { cardIndex == 1 }
-    private var isPlaceable: Bool { cardIndex == 2 }
+    private var isBigNumber: Bool { cardIndex == 2 }
+    private var isPlaceable: Bool { cardIndex == 1 }
+    private var isSky: Bool      { cardIndex == 3 }
+    private var isECG: Bool      { cardIndex == 4 }
 
     @State private var placeableMetricsPosition: CardPosition = .topLeading
     @State private var placeableAccent: CardAccent = .gold
+    // ECG card
+    @State private var paceWaveform:     ECGWaveform? = nil
+    @State private var hrWaveform:       ECGWaveform? = nil
+    @State private var ecgShowPace:      Bool         = true
+    @State private var ecgDataAvailable: Bool?        = nil
+    @State private var ecgAccent:        CardAccent   = .violet
+    // Sky card
+    @State private var skyAccent:        CardAccent   = .none
 
     private var routeCoords: [CLLocationCoordinate2D] { detail?.routeCoordinates ?? [] }
     private var distanceKmString: String {
@@ -1990,7 +2000,7 @@ struct ShareCardScreen: View {
                 weatherIcon: condition?.weather?.systemIcon,
                 date: activity.date,
                 shoeName: displayShoeName,
-                photo: template == .video ? videoPreviewImage : template == .story ? photoFor(1) : nil,
+                photo: template == .video ? videoPreviewImage : template == .story ? photoFor(2) : nil,
                 chartPanel: .map,
                 routeCoordinates: [],
                 accent: bigNumberAccent
@@ -2003,13 +2013,47 @@ struct ShareCardScreen: View {
             activity: activity,
             detail: detail,
             routeCoords: routeCoords.isEmpty ? nil : routeCoords,
-            photo: template == .video ? videoPreviewImage : photoFor(2),
+            photo: template == .video ? videoPreviewImage : photoFor(1),
             date: activity.date,
             metricsPosition: placeableMetricsPosition,
             accent: placeableAccent,
             shoeName: displayShoeName,
             weather: condition?.weather
         )
+    }
+
+    private var skyCardPreview: some View {
+        SkyCard(
+            activity: activity,
+            weather: condition?.weather,
+            shoeName: displayShoeName,
+            accent: skyAccent
+        )
+    }
+
+    @ViewBuilder
+    private var ecgCardPreview: some View {
+        let activeWaveform = ecgShowPace ? (paceWaveform ?? hrWaveform) : (hrWaveform ?? paceWaveform)
+        if let waveform = activeWaveform {
+            ECGSignatureCard(
+                activity: activity,
+                waveform: waveform,
+                weather: condition?.weather,
+                shoeName: displayShoeName,
+                accent: ecgAccent
+            )
+        } else {
+            ZStack {
+                Color(hex: "0D0D12")
+                if ecgDataAvailable == nil {
+                    ProgressView().tint(Theme.violet)
+                } else {
+                    Image(systemName: "waveform.path.ecg")
+                        .font(.system(size: 28))
+                        .foregroundStyle(Theme.violet.opacity(0.4))
+                }
+            }
+        }
     }
 
     private var cardSection: some View {
@@ -2020,16 +2064,28 @@ struct ShareCardScreen: View {
                 .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                 .animation(.easeInOut(duration: 0.2), value: template)
                 .tag(0)
-            bigNumberCardPreview
-                .frame(width: 300, height: 375)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
-                .tag(1)
             placeableCardPreview
                 .frame(width: 300, height: 375)
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
+                .tag(1)
+            bigNumberCardPreview
+                .frame(width: 300, height: 375)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                 .tag(2)
+            skyCardPreview
+                .frame(width: 300, height: 375)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .shadow(color: Color(hex: "1B2A4A").opacity(0.5), radius: 28, y: 10)
+                .tag(3)
+            if ecgDataAvailable != false {
+                ecgCardPreview
+                    .frame(width: 300, height: 375)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .shadow(color: Theme.violet.opacity(0.2), radius: 28, y: 10)
+                    .tag(4)
+            }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(height: 375)
@@ -2046,11 +2102,19 @@ struct ShareCardScreen: View {
             Circle()
                 .fill(cardIndex == 2 ? Theme.violet : Color(hex: "6E6E78"))
                 .frame(width: 6, height: 6)
+            Circle()
+                .fill(cardIndex == 3 ? Theme.violet : Color(hex: "6E6E78"))
+                .frame(width: 6, height: 6)
+            if ecgDataAvailable != false {
+                Circle()
+                    .fill(cardIndex == 4 ? Theme.violet : Color(hex: "6E6E78"))
+                    .frame(width: 6, height: 6)
+            }
         }
         .padding(.top, 6)
     }
 
-    // MARK: - Big Number chip row (cardIndex == 1)
+    // MARK: - Big Number chip row (cardIndex == 2)
 
     @ViewBuilder
     private func lockedChip(_ label: String, icon: String? = nil) -> some View {
@@ -2302,10 +2366,185 @@ struct ShareCardScreen: View {
         .padding(.vertical, 4)
     }
 
+    // Chip row for placeholder cards: all chips shown but locked/gray
+    private var lockedAllChipRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                lockedChip(AppLanguage.shared.s("인사이트", "Insight"), icon: "sparkles")
+                if canShowMiniMe {
+                    lockedChip(AppLanguage.shared.s("미니미", "Mini-Me"))
+                }
+                ForEach(allMetricItems) { item in
+                    lockedChip(item.id.chipLabel)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 2)
+        }
+    }
+
+    // Chip row for sky card: locked content chips + time-range accent selector
+    private var skyChipRow: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    lockedChip(AppLanguage.shared.s("인사이트", "Insight"), icon: "sparkles")
+                    if canShowMiniMe {
+                        lockedChip(AppLanguage.shared.s("미니미", "Mini-Me"))
+                    }
+                    if let shoe = activeShoe {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { showShoeOnCard.toggle() }
+                            Task { await renderCard(showSpinner: false) }
+                        } label: {
+                            HStack(spacing: 4) {
+                                if showShoeOnCard {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                                Image(systemName: "shoe.fill")
+                                    .font(.system(size: 10))
+                                Text(shoe.displayName)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(showShoeOnCard ? Color.white : Color.white.opacity(0.4))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(showShoeOnCard ? Theme.violet : Color.white.opacity(0.08))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    ForEach(allMetricItems) { item in
+                        lockedChip(item.id.chipLabel)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 2)
+            }
+            skyAccentRow
+        }
+    }
+
+    private var skyAccentRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                skyAccentChip(.none,   AppLanguage.shared.s("자동", "Auto"),   .white)
+                skyAccentChip(.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF"))
+                skyAccentChip(.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func skyAccentChip(_ accent: CardAccent, _ label: String, _ color: Color) -> some View {
+        let isSelected = skyAccent == accent
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { skyAccent = accent }
+            Task { await renderCard(showSpinner: false) }
+        } label: {
+            HStack(spacing: 6) {
+                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
+                if accent != .none { Circle().fill(color).frame(width: 8, height: 8) }
+                Text(label).font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                isSelected
+                    ? (accent == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
+                    : Color.white.opacity(0.08)
+            )
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Chip row for ECG card: pace / HR source radio + accent selector
+    private var ecgChipRow: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ecgSourceChip(label: AppLanguage.shared.s("페이스", "Pace"), icon: "figure.run", isPace: true)
+                    ecgSourceChip(label: AppLanguage.shared.s("심박", "HR"),  icon: "heart.fill",  isPace: false)
+                        .opacity(hrWaveform == nil ? 0.4 : 1.0)
+                        .disabled(hrWaveform == nil)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 2)
+            }
+            ecgAccentRow
+        }
+    }
+
+    private var ecgAccentRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ecgAccentChip(.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF"))
+                ecgAccentChip(.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
+                ecgAccentChip(.none,   AppLanguage.shared.s("없음",     "None"),   .white)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func ecgAccentChip(_ accent: CardAccent, _ label: String, _ color: Color) -> some View {
+        let isSelected = ecgAccent == accent
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { ecgAccent = accent }
+            Task { await renderCard(showSpinner: false) }
+        } label: {
+            HStack(spacing: 6) {
+                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
+                if accent != .none { Circle().fill(color).frame(width: 8, height: 8) }
+                Text(label).font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                isSelected
+                    ? (accent == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
+                    : Color.white.opacity(0.08)
+            )
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func ecgSourceChip(label: String, icon: String, isPace: Bool) -> some View {
+        let isSelected = ecgShowPace == isPace
+        let available  = isPace ? true : hrWaveform != nil
+        return Button {
+            guard available else { return }
+            withAnimation(.easeInOut(duration: 0.15)) { ecgShowPace = isPace }
+            Task { await renderCard(showSpinner: false) }
+        } label: {
+            HStack(spacing: 4) {
+                if isSelected {
+                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                }
+                Image(systemName: icon).font(.system(size: 10))
+                Text(label).font(.caption.weight(.semibold)).lineLimit(1)
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.4))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(isSelected ? Theme.violet : Color.white.opacity(available ? 0.08 : 0.04))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var templatePicker: some View {
         HStack(spacing: 0) {
             ForEach(ShareTemplate.allCases, id: \.self) { t in
-                let available = !isPlaceable || t == .story || t == .video
+                let available = (!isPlaceable || t == .story || t == .video)
+                             && (!(isSky || isECG) || (t != .video && t != .routeVideo))
                 let selected  = template == t
                 Button {
                     guard available else { return }
@@ -2386,6 +2625,8 @@ struct ShareCardScreen: View {
                     Group {
                         if isBigNumber { bigNumberChipRow }
                         else if isPlaceable { placeableChipRow }
+                        else if isSky { skyChipRow }
+                        else if isECG { ecgChipRow }
                         else { chipRow }
                     }.padding(.bottom, 3)
                     templatePicker
@@ -2429,6 +2670,7 @@ struct ShareCardScreen: View {
                 cardPanel = CardChartPanel.allCases.first { isChartPanelAvailable($0) } ?? .splits
             }
             await renderCard()
+            await loadECGWaveforms()
         }
         .onChange(of: pickerItems) { _, newItems in
             photoOffset = .zero
@@ -2487,8 +2729,12 @@ struct ShareCardScreen: View {
             routeVideoFile = nil
             exportedVideoFile = nil
             // PlaceableCard only supports story/video — auto-switch if incompatible
-            if newIndex == 2, template != .story && template != .video {
+            if newIndex == 1, template != .story && template != .video {
                 template = .story
+            }
+            // Sky/ECG placeholders don't support video templates — switch away
+            if (newIndex == 3 || newIndex == 4), template == .video || template == .routeVideo {
+                template = .athletic
             }
             Task { await renderCard(showSpinner: false) }
         }
@@ -2514,6 +2760,14 @@ struct ShareCardScreen: View {
         }
         .onChange(of: placeableAccent) { _, _ in
             guard isPlaceable else { return }
+            Task { await renderCard(showSpinner: false) }
+        }
+        .onChange(of: ecgAccent) { _, _ in
+            guard isECG else { return }
+            Task { await renderCard(showSpinner: false) }
+        }
+        .onChange(of: skyAccent) { _, _ in
+            guard isSky else { return }
             Task { await renderCard(showSpinner: false) }
         }
         .task(id: template) { await animateRouteVideoPreview() }
@@ -3242,9 +3496,24 @@ struct ShareCardScreen: View {
     }
 
     @MainActor
+    private func loadECGWaveforms() async {
+        guard let mgr = manager else { ecgDataAvailable = false; return }
+        async let pace = ECGWaveform.fromPace(activity: activity, using: mgr)
+        async let hr   = ECGWaveform.fromHeartRate(activity: activity, using: mgr)
+        let p = await pace
+        let h = await hr
+        paceWaveform      = p
+        hrWaveform        = h
+        ecgDataAvailable  = (p != nil || h != nil)
+        if paceWaveform == nil, hrWaveform != nil { ecgShowPace = false }
+        if ecgDataAvailable == false && cardIndex == 4 { withAnimation { cardIndex = 3 } }
+        if isECG { await renderCard(showSpinner: false) }
+    }
+
+    @MainActor
     private func renderCard(showSpinner: Bool = true) async {
         // Placeable card: always render as static image
-        if cardIndex == 2 {
+        if cardIndex == 1 {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
@@ -3252,7 +3521,7 @@ struct ShareCardScreen: View {
                 activity: activity,
                 detail: detail,
                 routeCoords: routeCoords.isEmpty ? nil : routeCoords,
-                photo: template == .video ? videoPreviewImage : photoFor(2),
+                photo: template == .video ? videoPreviewImage : photoFor(1),
                 date: activity.date,
                 metricsPosition: placeableMetricsPosition,
                 accent: placeableAccent,
@@ -3267,13 +3536,13 @@ struct ShareCardScreen: View {
         }
 
         // BigNumber card: render regardless of template (video/routeVideo don't block it)
-        if cardIndex == 1 {
+        if cardIndex == 2 {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
             let bnPhoto: UIImage? = template == .video ? videoPreviewImage
                 : template == .routeVideo ? routeSnapshot
-                : template == .story ? photoFor(1)
+                : template == .story ? photoFor(2)
                 : nil
             let bnCard = BigNumberCard(
                 activity: activity, detail: detail, heroMetric: heroMetric,
@@ -3289,6 +3558,45 @@ struct ShareCardScreen: View {
                 accent: bigNumberAccent
             )
             let renderer = ImageRenderer(content: bnCard.frame(width: 300, height: 375))
+            renderer.scale = 3
+            previewImage = renderer.uiImage
+            isRendering = false
+            return
+        }
+
+        // Sky card — "그날의 하늘"
+        if cardIndex == 3 {
+            if showSpinner { isRendering = true }
+            storyShareImages = []
+            previewImage = nil
+            let card = SkyCard(
+                activity: activity,
+                weather: condition?.weather,
+                shoeName: displayShoeName,
+                accent: skyAccent
+            )
+            let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
+            renderer.scale = 3
+            previewImage = renderer.uiImage
+            isRendering = false
+            return
+        }
+
+        // ECG card — "심전도 시그니처"
+        if cardIndex == 4 {
+            let activeWaveform = ecgShowPace ? (paceWaveform ?? hrWaveform) : (hrWaveform ?? paceWaveform)
+            guard let waveform = activeWaveform else { isRendering = false; return }
+            if showSpinner { isRendering = true }
+            storyShareImages = []
+            previewImage = nil
+            let card = ECGSignatureCard(
+                activity: activity,
+                waveform: waveform,
+                weather: condition?.weather,
+                shoeName: displayShoeName,
+                accent: ecgAccent
+            )
+            let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
             renderer.scale = 3
             previewImage = renderer.uiImage
             isRendering = false
@@ -3515,24 +3823,12 @@ private struct StoryPhotoPickerSheet: View {
 
 // MARK: - UIActivityViewController wrapper
 
-private struct ShareSheet: UIViewControllerRepresentable {
+// UIImage를 직접 전달 — Instagram은 파일 URL(특히 PNG)을 거부하므로 UIImage 객체를 전달해야 함
+struct ShareSheet: UIViewControllerRepresentable {
     let images: [UIImage]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        // Instagram and many extensions require file URLs, not raw UIImage objects.
-        // Use cachesDirectory (not temporaryDirectory): temp files can be purged before
-        // the receiving app reads them, causing intermittent "cannot apply" errors.
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let items: [Any] = images.enumerated().map { idx, img -> Any in
-            // PNG is lossless and universally accepted; use a fixed filename so old files get overwritten.
-            let url = caches.appendingPathComponent("mimo_share_\(idx).png")
-            if let data = img.pngData(), (try? data.write(to: url)) != nil { return url }
-            // JPEG fallback
-            let jpgURL = caches.appendingPathComponent("mimo_share_\(idx).jpg")
-            if let data = img.jpegData(compressionQuality: 0.92), (try? data.write(to: jpgURL)) != nil { return jpgURL }
-            return img
-        }
-        return UIActivityViewController(activityItems: items, applicationActivities: nil)
+        UIActivityViewController(activityItems: images, applicationActivities: nil)
     }
 
     func updateUIViewController(_ uvc: UIActivityViewController, context: Context) {}

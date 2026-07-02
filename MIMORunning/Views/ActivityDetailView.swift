@@ -70,6 +70,7 @@ struct ActivityDetailView: View {
     @State private var showPanelShareCard = false
     @State private var activePanel: DetailPanel = .map
     @State private var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+    @State private var hrFetchDone = false
     @State private var panelSeriesData: [(offset: TimeInterval, value: Double)] = []
     @State private var panelSeriesCache: [DetailPanel: [(offset: TimeInterval, value: Double)]] = [:]
     @State private var isLoadingPanelSeries = false
@@ -77,6 +78,14 @@ struct ActivityDetailView: View {
     @Environment(RaceDetector.self) private var raceDetector
 
     private var level: LevelBucket { manager.userLevel.bucket }
+
+    /// detail.hrZones가 비어 있는 경우(구 캐시) hrSamples로 존 분포 재계산
+    private var effectiveHRZones: [HRZoneData] {
+        let zones = detail?.hrZones ?? []
+        if !zones.isEmpty { return zones }
+        guard hrFetchDone, !hrSamples.isEmpty else { return [] }
+        return manager.computeHRZonesFromSamples(hrSamples)
+    }
 
     private var confirmedRaceMatch: PersistedRaceMatch? {
         guard let m = raceDetector.matchFor(activityID: activity.id), m.isConfirmed else { return nil }
@@ -216,8 +225,16 @@ struct ActivityDetailView: View {
             )
         }
         .onChange(of: activePanel) { _, newPanel in
-            if newPanel == .heartRate, hrSamples.isEmpty {
-                Task { hrSamples = await manager.fetchHRTimeSeries(for: activity.id) }
+            if newPanel == .heartRate, !hrFetchDone {
+                Task {
+                    hrSamples = await manager.fetchHRTimeSeries(for: activity.id)
+                    hrFetchDone = true
+                    // detail?.hrZones가 비어있으면 계산해서 채움 — 차트와 공유 카드가 동일 경로 사용
+                    if (detail?.hrZones ?? []).isEmpty, !hrSamples.isEmpty {
+                        let computed = manager.computeHRZonesFromSamples(hrSamples)
+                        if !computed.isEmpty { detail?.hrZones = computed }
+                    }
+                }
             }
             switch newPanel {
             case .cadence, .power, .groundContact, .strideLength, .verticalOscillation:
@@ -484,10 +501,15 @@ struct ActivityDetailView: View {
                 panelPlaceholder(icon: "chart.bar.fill", message: AppLanguage.shared.s("스플릿 없음", "No Splits"))
             }
         case .heartRate:
-            if hrSamples.isEmpty {
+            if !hrFetchDone {
                 ProgressView().tint(Theme.violet)
             } else {
-                HRSeriesPanelChart(samples: hrSamples, zones: detail?.hrZones ?? [])
+                let minExpected = max(Int(activity.duration / 60), 1)
+                if hrSamples.count >= minExpected {
+                    HRSeriesPanelChart(samples: hrSamples, zones: effectiveHRZones, workoutDuration: activity.duration)
+                } else {
+                    hrSeriesSparseView
+                }
             }
         case .elevation:
             if let profile = detail?.altitudeProfile, !profile.isEmpty {
@@ -530,6 +552,27 @@ struct ActivityDetailView: View {
             Image(systemName: icon).font(.system(size: 28)).foregroundStyle(.secondary)
             Text(message).font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    @ViewBuilder
+    private var hrSeriesSparseView: some View {
+        let L = AppLanguage.shared
+        VStack(spacing: 12) {
+            if let avg = activity.avgHeartRate {
+                Text("\(avg)")
+                    .font(.system(size: 48, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.heartRate)
+                + Text(" bpm")
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.heartRate.opacity(0.7))
+            }
+            Text(L.s("이 운동의 상세 심박 기록이 없어요",
+                     "No detailed HR data for this workout"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
@@ -2841,6 +2884,7 @@ struct HRSeriesPanelChart: View {
     let samples: [(offset: TimeInterval, bpm: Int)]
     var zones: [HRZoneData] = []
     var compact: Bool = false
+    var workoutDuration: TimeInterval? = nil
 
     private static let zoneColors: [Color] = [
         Color(red: 0.30, green: 0.60, blue: 1.00),
@@ -2874,12 +2918,15 @@ struct HRSeriesPanelChart: View {
     }
 
     private var totalDurationMinutes: Double {
-        max(validSamples.map(\.offset).max() ?? 1, 1) / 60
+        let sampleMax = validSamples.map(\.offset).max() ?? 1
+        let duration = workoutDuration.map { max($0, sampleMax) } ?? sampleMax
+        return max(duration, 1) / 60
     }
 
     private var buckets: [Bucket] {
         guard !validSamples.isEmpty else { return [] }
-        let totalDuration = max(validSamples.map(\.offset).max() ?? 1, 1)
+        let sampleMax = validSamples.map(\.offset).max() ?? 1
+        let totalDuration = workoutDuration.map { max($0, sampleMax) } ?? sampleMax
         // always 80 bars; bucket duration scales with run length
         let numBuckets = 80
         let bucketSize = totalDuration / Double(numBuckets)
@@ -3346,7 +3393,7 @@ struct IntervalPanelChart: View {
             let labelW: CGFloat = paceW + dotW + hrW + (hasCadence ? dotW + cadW : 0)
             let indexW: CGFloat = 14
             let spacing: CGFloat = 6
-            let maxBarW = min(100, max(20, geo.size.width - indexW - typeW - labelW - spacing * 3 - 24))
+            let maxBarW = max(20, geo.size.width - indexW - typeW - labelW - spacing * 3 - 24)
             let L = AppLanguage.shared
             let content = VStack(alignment: .leading, spacing: 0) {
                 if let summary = workSummary {
