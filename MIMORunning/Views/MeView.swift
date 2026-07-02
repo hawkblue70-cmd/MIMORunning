@@ -32,6 +32,11 @@ struct MeView: View {
     @State private var showAddShoe = false
     @State private var shoeToDelete: Shoe?
     @State private var shoeKmCache: [UUID: Double] = [:]
+    @State private var cachedMonthStats: [SummaryPeriodStats] = []
+    @State private var cachedYearStats: [SummaryPeriodStats] = []
+    @State private var badgesCache: [BadgeInfo] = []
+    @State private var lastStatsCacheKey: String = ""
+    @State private var cachedMonthFormMetrics: [String: FormMetricsData] = [:]
     @AppStorage("distanceUnitMiles") private var useMiles = false
     @AppStorage("garminNoticeDismissed") private var garminNoticeDismissed = false
     @AppStorage("showRunning")  private var showRunning  = true
@@ -122,6 +127,54 @@ struct MeView: View {
         )
     }
 
+    // MARK: - Cache refresh
+
+    private func refreshStatsAndBadges() {
+        let key = "\(manager.activities.count)-\(useMiles)"
+        guard key != lastStatsCacheKey else { return }
+        lastStatsCacheKey = key
+        cachedMonthStats = [periodStats(monthOffset: 0), periodStats(monthOffset: 1), periodStats(monthOffset: 2)]
+        cachedYearStats  = [yearStats(yearOffset: 0), yearStats(yearOffset: 1)]
+        badgesCache      = computeBadges()
+        cachedMonthFormMetrics = [:]  // 데이터 변경 시 폼 지표도 무효화
+    }
+
+    // 3지표를 디스크 캐시에서 1회만 읽어 월별 폼 지표 사전 계산
+    private func refreshFormMetrics() async {
+        guard !cachedMonthStats.isEmpty else { return }
+        guard cachedMonthFormMetrics.isEmpty else { return }  // 이미 계산됐으면 즉시 리턴
+        let yearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+        async let cadFetch = manager.fetchMetricHistory(.cadence,      from: yearAgo)
+        async let pwrFetch = manager.fetchMetricHistory(.power,        from: yearAgo)
+        async let strFetch = manager.fetchMetricHistory(.strideLength, from: yearAgo)
+        let (cad, pwr, str) = await (cadFetch, pwrFetch, strFetch)
+
+        var result: [String: FormMetricsData] = [:]
+        let cal = Calendar.current
+
+        func avg(_ pts: [(date: Date, value: Double)], from s: Date, to e: Date) -> Double? {
+            let f = pts.filter { $0.date >= s && $0.date < e }
+            guard !f.isEmpty else { return nil }
+            return f.map(\.value).reduce(0, +) / Double(f.count)
+        }
+
+        for stats in cachedMonthStats {
+            guard case .monthly(let y, let m) = stats.kind else { continue }
+            let start = cal.date(from: DateComponents(year: y, month: m)) ?? Date()
+            let end   = cal.date(byAdding: .month, value: 1,  to: start) ?? Date()
+            let prev  = cal.date(byAdding: .month, value: -1, to: start) ?? Date()
+            result[stats.kind.title] = FormMetricsData(
+                cadence:          avg(cad, from: start, to: end),
+                prevCadence:      avg(cad, from: prev,  to: start),
+                power:            avg(pwr, from: start, to: end),
+                prevPower:        avg(pwr, from: prev,  to: start),
+                strideLength:     avg(str, from: start, to: end),
+                prevStrideLength: avg(str, from: prev,  to: start)
+            )
+        }
+        cachedMonthFormMetrics = result
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -147,9 +200,14 @@ struct MeView: View {
             .navigationTitle(AppLanguage.shared.s("나", "Me"))
             .navigationBarTitleDisplayMode(.large)
         }
-        .task { refreshShoeKmCache() }
-        .onChange(of: manager.activities.count) { refreshShoeKmCache() }
+        .task { refreshShoeKmCache(); refreshStatsAndBadges(); await refreshFormMetrics() }
+        .onChange(of: manager.activities.count) {
+            refreshShoeKmCache()
+            refreshStatsAndBadges()
+            Task { await refreshFormMetrics() }
+        }
         .onChange(of: allStories.count) { refreshShoeKmCache() }
+        .onChange(of: useMiles) { refreshStatsAndBadges() }
     }
 
     // MARK: - Garmin notice
@@ -268,22 +326,25 @@ struct MeView: View {
     // MARK: - Stats section
 
     private var statsSection: some View {
-        let s0 = periodStats(monthOffset: 0)
-        let s1 = periodStats(monthOffset: 1)
-        let s2 = periodStats(monthOffset: 2)
-        let y0 = yearStats(yearOffset: 0)
-        let y1 = yearStats(yearOffset: 1)
+        let s0 = cachedMonthStats.count > 0 ? cachedMonthStats[0] : periodStats(monthOffset: 0)
+        let s1 = cachedMonthStats.count > 1 ? cachedMonthStats[1] : periodStats(monthOffset: 1)
+        let s2 = cachedMonthStats.count > 2 ? cachedMonthStats[2] : periodStats(monthOffset: 2)
+        let y0 = cachedYearStats.count > 0  ? cachedYearStats[0]  : yearStats(yearOffset: 0)
+        let y1 = cachedYearStats.count > 1  ? cachedYearStats[1]  : yearStats(yearOffset: 1)
         return VStack(alignment: .leading, spacing: 12) {
             Text(AppLanguage.shared.s("기간별 결산", "Period Summary"))
                 .font(.headline)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
 
-            SummarySectionCard(stats: s0, manager: manager) { showShare0 = true }
+            SummarySectionCard(stats: s0, manager: manager,
+                               preloadedFormMetrics: cachedMonthFormMetrics[s0.kind.title]) { showShare0 = true }
                 .padding(.horizontal, 16)
-            SummarySectionCard(stats: s1, manager: manager) { showShare1 = true }
+            SummarySectionCard(stats: s1, manager: manager,
+                               preloadedFormMetrics: cachedMonthFormMetrics[s1.kind.title]) { showShare1 = true }
                 .padding(.horizontal, 16)
-            SummarySectionCard(stats: s2, manager: manager) { showShare2 = true }
+            SummarySectionCard(stats: s2, manager: manager,
+                               preloadedFormMetrics: cachedMonthFormMetrics[s2.kind.title]) { showShare2 = true }
                 .padding(.horizontal, 16)
             SummarySectionCard(stats: y0, manager: manager) { showYearShare0 = true }
                 .padding(.horizontal, 16)
@@ -434,7 +495,7 @@ struct MeView: View {
                 columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
                 spacing: 10
             ) {
-                ForEach(computeBadges()) { badge in
+                ForEach(badgesCache) { badge in
                     BadgeCell(badge: badge)
                 }
             }
@@ -669,6 +730,7 @@ private struct FormMetricsData {
 private struct SummarySectionCard: View {
     let stats: SummaryPeriodStats
     let manager: HealthKitManager
+    var preloadedFormMetrics: FormMetricsData? = nil
     let onShare: () -> Void
 
     @State private var formMetrics: FormMetricsData? = nil
@@ -850,6 +912,8 @@ private struct SummarySectionCard: View {
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .task(id: stats.kind.title) {
+            // MeView에서 사전 계산된 데이터가 있으면 즉시 사용 — 디스크 재조회 없음
+            if let pre = preloadedFormMetrics { formMetrics = pre; return }
             guard case .monthly(let y, let m) = stats.kind else { return }
             let cal = Calendar.current
             let start = cal.date(from: DateComponents(year: y, month: m)) ?? Date()
@@ -875,6 +939,9 @@ private struct SummarySectionCard: View {
                 strideLength:     avg(str, from: start, to: end),
                 prevStrideLength: avg(str, from: prev,  to: start)
             )
+        }
+        .onChange(of: preloadedFormMetrics?.cadence) {
+            if let pre = preloadedFormMetrics { formMetrics = pre }
         }
     }
 

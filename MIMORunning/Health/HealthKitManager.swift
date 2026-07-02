@@ -31,6 +31,8 @@ class HealthKitManager {
     @ObservationIgnored private var detailCache: [UUID: ActivityDetail] = [:]
     @ObservationIgnored private var hrSeriesCache: [UUID: [(offset: TimeInterval, bpm: Int)]] = [:]
     @ObservationIgnored private var panelSeriesCache: [String: [(offset: TimeInterval, value: Double)]] = [:]
+    // 동일 지표 동시 요청 시 하나의 Task만 실행 — HealthKit 중복 조회 방지
+    @ObservationIgnored private var metricFetchTasks: [String: Task<[(date: Date, value: Double)], Never>] = [:]
 
     // Codable proxies for disk serialization of time-series tuples
     private struct HRPoint: Codable { var offset: Double; var bpm: Int }
@@ -129,6 +131,14 @@ class HealthKitManager {
 
     // forced=true: 당기기 새로고침 등 명시적 요청. forced=false(기본): 완료 태그 있으면 캐시만 사용.
     func fetchActivities(forced: Bool = false) async {
+        // 일회성 마이그레이션: 시간 범위 폴백 추가 이전에 저장된 부분적 HR 시리즈 캐시 삭제
+        migrateHRSeriesCacheIfNeeded()
+
+        // 메모리에 데이터 있고 완료 태그 있으면 즉시 반환 — 디스크 I/O·락 없음
+        // scenePhase.active 등 반복 호출이 발열·배터리 낭비로 이어지는 것을 방지
+        let lastSync = UserDefaults.standard.object(forKey: "mimo.lastSyncedAt") as? Date
+        if !forced, !activities.isEmpty, lastSync != nil { return }
+
         guard !isFetchInProgress else { return }
         isFetchInProgress = true
         defer { isFetchInProgress = false }
@@ -141,8 +151,9 @@ class HealthKitManager {
         }
 
         // 완료 태그 확인: 태그가 있고 강제 갱신이 아니면 절대 HealthKit 재조회 안 함
-        let lastSync = UserDefaults.standard.object(forKey: "mimo.lastSyncedAt") as? Date
         if !forced, isWarmCache, lastSync != nil {
+            Task { await self.repairMissingMetrics() }
+            Task { await self.fetchAllOlderHistory() }
             return
         }
 
@@ -168,6 +179,8 @@ class HealthKitManager {
                 if newWorkouts.isEmpty {
                     userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
                     UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
+                    Task { await self.repairMissingMetrics() }
+                    Task { await self.fetchAllOlderHistory() }
                     return
                 }
                 let newActivities = newWorkouts.map { buildSummary(from: $0) }
@@ -175,36 +188,154 @@ class HealthKitManager {
                 await enrichAndCache(newWorkouts, cacheDict: cacheDict)
                 userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
                 UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
+                Task { await self.repairMissingMetrics() }
+                Task { await self.fetchAllOlderHistory() }
             } else {
-                // 콜드캐시(최초 실행): 최근 2개월 먼저 표시 후 나머지 백그라운드
-                let twoMonthsAgo = Calendar.current.date(byAdding: .month, value: -2, to: Date()) ?? .distantPast
-                let recentWorkouts = try await queryWorkouts(since: twoMonthsAgo)
+                // 콜드캐시(최초 실행): 최근 6개월 먼저 표시 후 나머지 백그라운드
+                let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? .distantPast
+                let recentWorkouts = try await queryWorkouts(since: sixMonthsAgo)
                 activities = recentWorkouts.map { buildSummary(from: $0) }
                 isLoading = false
                 await enrichAndCache(recentWorkouts, cacheDict: cacheDict)
                 userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
                 UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
-                Task { await self.fetchOlderActivities(until: twoMonthsAgo) }
+                UserDefaults.standard.set(sixMonthsAgo, forKey: "mimo.oldestFetchedDate")
+                Task { await self.fetchAllOlderHistory() }
             }
         } catch {
             self.error = error
         }
     }
 
-    // MARK: - Background history fetch (cold cache: months 3–12)
+    // MARK: - Metrics repair (background, metricsChecked flag)
 
-    private func fetchOlderActivities(until: Date) async {
-        guard let oldWorkouts = try? await queryWorkouts(until: until), !oldWorkouts.isEmpty else { return }
+    private enum HRQueryResult {
+        case found(Int)  // 쿼리 성공, 샘플 있음
+        case notFound    // 쿼리 성공, 샘플 없음 — HealthKit에 진짜 없음
+        case failed      // 쿼리 자체 실패 — 다음 실행에서 재시도
+    }
+
+    /// SwiftData 마이그레이션 이슈 없는 UserDefaults 기반 체크 집합
+    private var repairedWorkoutIDs: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "mimo.repairedIDs") ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: "mimo.repairedIDs") }
+    }
+
+    /// avgHeartRate == nil이고 아직 repair 시도 안 한 활동을 최대 20개씩 재조회.
+    /// found / notFound → repairedWorkoutIDs에 추가 → 이후 건너뜀.
+    /// failed → 추가 안 함 → 다음 실행 재시도.
+    private func repairMissingMetrics() async {
+        let repaired = repairedWorkoutIDs
+        let candidates = activities.filter { $0.avgHeartRate == nil && !repaired.contains($0.id.uuidString) }
+        guard !candidates.isEmpty else { return }
+        let batch = candidates.prefix(20)
+
+        for activity in batch {
+            if workoutCache[activity.id] == nil {
+                await fetchSingleWorkout(id: activity.id)
+            }
+            guard let workout = workoutCache[activity.id] else {
+                // HKWorkout 자체 없음 — 영구 확정
+                finalizeRepair(for: activity.id, hr: nil)
+                continue
+            }
+            // 1차: 워크아웃 연결 샘플 (Apple Watch 정상 기록)
+            if let hr = await queryAvgHeartRate(workout: workout) {
+                finalizeRepair(for: activity.id, hr: hr)
+                continue
+            }
+            // 2차: 시간 범위 기반 — 서드파티 앱 독립 기록 커버
+            switch await queryAvgHeartRateByTimeRange(start: workout.startDate, end: workout.endDate) {
+            case .found(let hr): finalizeRepair(for: activity.id, hr: hr)
+            case .notFound:      finalizeRepair(for: activity.id, hr: nil)  // 진짜 없음 → 영구 확정
+            case .failed:        break                                        // 일시적 실패 → 다음 실행 재시도
+            }
+        }
+    }
+
+    /// HR 업데이트(있으면) + repairedWorkoutIDs 마킹
+    private func finalizeRepair(for activityID: UUID, hr: Int?) {
+        if let hr, let idx = activities.firstIndex(where: { $0.id == activityID }) {
+            let a = activities[idx]
+            let updated = Activity(id: a.id, type: a.type, date: a.date,
+                                   duration: a.duration, distance: a.distance,
+                                   calories: a.calories, avgHeartRate: hr)
+            activities[idx] = updated
+            saveToCache([CachedActivity(from: updated)])  // upsert via @Attribute(.unique)
+        }
+        var repaired = repairedWorkoutIDs
+        repaired.insert(activityID.uuidString)
+        repairedWorkoutIDs = repaired
+    }
+
+    /// 시간 범위로 심박 조회 — 성공(빈 배열) vs 실패(에러) 구분
+    private func queryAvgHeartRateByTimeRange(start: Date, end: Date) async -> HRQueryResult {
+        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.heartRate),
+            predicate: HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        )
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [pred],
+            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+        )
+        do {
+            let all = try await descriptor.result(for: store)
+            if all.isEmpty { return .notFound }
+            let sum = all.reduce(0.0) { $0 + $1.quantity.doubleValue(for: Self.bpmUnit) }
+            return .found(Int((sum / Double(all.count)).rounded()))
+        } catch {
+            return .failed
+        }
+    }
+
+    // MARK: - Background history fetch (3개월씩, 실행당 1회)
+
+    private static let oldestFetchedKey   = "mimo.oldestFetchedDate"
+    private static let historyCompleteKey = "mimo.historyComplete"
+    private static let emptyMonthCountKey = "mimo.consecutiveEmptyMonths"
+    private static let historyFetchVersionKey = "mimo.historyFetchVersion"
+
+    /// 실행당 3개월씩 과거로 fetch — 발열 없음. 6개월 연속 빈 달이면 historyComplete.
+    /// historyFetchVersion < 2: 공백 기간으로 잘못 중단된 캐시 리셋 후 재실행.
+    private func fetchAllOlderHistory() async {
+        // 잘못 중단된 경우 한 번 리셋 (공백 3개월로 중단됐을 수 있음)
+        if UserDefaults.standard.integer(forKey: Self.historyFetchVersionKey) < 2 {
+            UserDefaults.standard.removeObject(forKey: Self.historyCompleteKey)
+            UserDefaults.standard.set(0, forKey: Self.emptyMonthCountKey)
+            UserDefaults.standard.set(2, forKey: Self.historyFetchVersionKey)
+        }
+
+        guard !UserDefaults.standard.bool(forKey: Self.historyCompleteKey) else { return }
+
+        let end = (UserDefaults.standard.object(forKey: Self.oldestFetchedKey) as? Date)
+               ?? Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? .distantPast
+        // 3개월씩 fetch — 1개월 기준 대비 3배 빠르게 과거 도달
+        let start = Calendar.current.date(byAdding: .month, value: -3, to: end) ?? .distantPast
+
+        guard let workouts = try? await queryWorkouts(since: start, until: end) else { return }
+        UserDefaults.standard.set(start, forKey: Self.oldestFetchedKey)
+
+        if workouts.isEmpty {
+            let streak = UserDefaults.standard.integer(forKey: Self.emptyMonthCountKey) + 3
+            UserDefaults.standard.set(streak, forKey: Self.emptyMonthCountKey)
+            // 6개월(2회 연속 빈 3개월 구간) 이상 연속으로 운동 없으면 완료 처리
+            if streak >= 6 {
+                UserDefaults.standard.set(true, forKey: Self.historyCompleteKey)
+            }
+            return
+        }
+
+        UserDefaults.standard.set(0, forKey: Self.emptyMonthCountKey)
+
         let cached = loadActivityCache()
         let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
         let existingIDs = Set(activities.map { $0.id.uuidString })
-        let toAdd = oldWorkouts.compactMap { w -> Activity? in
+        let toAdd = workouts.compactMap { w -> Activity? in
             guard !existingIDs.contains(w.uuid.uuidString) else { return nil }
-            let summary = buildSummary(from: w)
-            return cacheDict[w.uuid.uuidString]?.toActivity() ?? summary
+            return cacheDict[w.uuid.uuidString]?.toActivity() ?? buildSummary(from: w)
         }
         if !toAdd.isEmpty { activities += toAdd }
-        await enrichAndCache(oldWorkouts, cacheDict: cacheDict)
+        await enrichAndCache(workouts, cacheDict: cacheDict)
         userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
     }
 
@@ -596,9 +727,17 @@ class HealthKitManager {
     /// Add calories + heart rate. Runs two stat queries concurrently.
     /// Also retries distance via sample query if embedded stats returned 0.
     private func enrich(_ activity: Activity, workout: HKWorkout) async -> Activity {
-        async let calTask  = querySum(.activeEnergyBurned, unit: .kilocalorie(), workout: workout)
-        async let hrTask   = queryAvgHeartRate(workout: workout)
+        async let calTask = querySum(.activeEnergyBurned, unit: .kilocalorie(), workout: workout)
+        async let hrTask  = queryAvgHeartRate(workout: workout)
         let (cal, hr) = await (calTask, hrTask)
+
+        // 시간 범위 폴백 — 워크아웃 링크 실패 시 시간대 기반 재시도
+        var finalHR = hr
+        if finalHR == nil,
+           case .found(let rangeHR) = await queryAvgHeartRateByTimeRange(
+               start: workout.startDate, end: workout.endDate) {
+            finalHR = rangeHR
+        }
 
         var distance = activity.distance
         if distance == 0 {
@@ -618,7 +757,7 @@ class HealthKitManager {
             duration: activity.duration,
             distance: distance,
             calories: cal > 0 ? cal : nil,
-            avgHeartRate: hr
+            avgHeartRate: finalHR
         )
     }
 
@@ -731,32 +870,76 @@ class HealthKitManager {
 
     func fetchHRTimeSeries(for workoutID: UUID) async -> [(offset: TimeInterval, bpm: Int)] {
         if let cached = hrSeriesCache[workoutID] { return cached }
+
+        // workout을 먼저 확보 — 디스크 캐시 유효성 검증에 필요
+        if workoutCache[workoutID] == nil { await fetchSingleWorkout(id: workoutID) }
+        let cachedWorkout = workoutCache[workoutID]
+
+        // 디스크 캐시 로드 — 분당 1개 이상 & 커버리지 50% 이상이어야 유효
         if let disk = loadHRSeriesFromDisk(workoutID) {
-            hrSeriesCache[workoutID] = disk
-            return disk
+            if let wk = cachedWorkout {
+                let minExpected = max(Int(wk.duration / 60), 1)
+                let maxOffset = disk.map(\.offset).max() ?? 0
+                if disk.count >= minExpected && maxOffset >= wk.duration * 0.5 {
+                    hrSeriesCache[workoutID] = disk
+                    return disk
+                }
+            } else {
+                hrSeriesCache[workoutID] = disk
+                return disk
+            }
         }
-        guard let workout = workoutCache[workoutID] else { return [] }
+
+        guard let workout = cachedWorkout else { return [] }
+
+        let unit = Self.bpmUnit
+        let minExpected = max(Int(workout.duration / 60), 1)
+        // 케이던스/GCT와 동일: 일시정지 구간 계산 — 배경 HR(비연결) 오염 방지
         let paused = pausedIntervals(for: workout)
-        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+
+        // 1차: 워크아웃 연결 샘플 (fetchWorkoutTimeSeries와 동일 구조)
+        let linkedPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.heartRate),
             predicate: HKQuery.predicateForObjects(from: workout)
         )
-        let descriptor = HKSampleQueryDescriptor(
-            predicates: [pred],
+        let linkedDesc = HKSampleQueryDescriptor(
+            predicates: [linkedPred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
-        guard let samples = try? await descriptor.result(for: store) else { return [] }
-        let unit = Self.bpmUnit
-        let result = samples
-            .filter { !isPaused($0.startDate, in: paused) }
-            .map { sample in
-                let bpm = Int(sample.quantity.doubleValue(for: unit).rounded())
-                let offset = sample.startDate.timeIntervalSince(workout.startDate)
-                return (offset: offset, bpm: bpm)
+        var bestResult: [(offset: TimeInterval, bpm: Int)] =
+            ((try? await linkedDesc.result(for: store)) ?? [])
+            .filter { !isPaused($0.startDate, in: paused) }  // 일시정지 구간 제외
+            .map { s in
+                (offset: s.startDate.timeIntervalSince(workout.startDate),
+                 bpm: Int(s.quantity.doubleValue(for: unit).rounded()))
             }
-        hrSeriesCache[workoutID] = result
-        saveHRSeriesToDisk(result, id: workoutID)
-        return result
+
+        // 2차: 시간 범위 시리즈 쿼리 — fetchWorkoutTimeSeries 2차와 동일.
+        // options: [] — 컨테이너 startDate가 workout.startDate보다 1~2초 앞선 경우도 포함.
+        // isPaused 필터 — 일시정지 중 배경 HR 개별 샘플 제거 → 케이던스처럼 자연스러운 gap.
+        if bestResult.count < minExpected {
+            let seriesPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+                type: HKQuantityType(.heartRate),
+                predicate: HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: [])
+            )
+            let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: seriesPred, options: [])
+            var seriesResult: [(offset: TimeInterval, bpm: Int)] = []
+            do {
+                for try await entry in seriesDesc.results(for: store) {
+                    guard !isPaused(entry.dateInterval.start, in: paused) else { continue }
+                    let offset = entry.dateInterval.start.timeIntervalSince(workout.startDate)
+                    guard offset >= 0 else { continue }
+                    seriesResult.append((offset: offset, bpm: Int(entry.quantity.doubleValue(for: unit).rounded())))
+                }
+            } catch {}
+            if seriesResult.count > bestResult.count {
+                bestResult = seriesResult.sorted { $0.offset < $1.offset }
+            }
+        }
+
+        hrSeriesCache[workoutID] = bestResult
+        saveHRSeriesToDisk(bestResult, id: workoutID)
+        return bestResult
     }
 
     private func hrSeriesCacheURL(_ id: UUID) -> URL {
@@ -775,17 +958,49 @@ class HealthKitManager {
         try? data.write(to: hrSeriesCacheURL(id), options: .atomic)
     }
 
+    // 워크아웃 연결 시리즈 쿼리 추가 이전에 저장된 잘못된 HR 캐시(휴식 구간 HR만 포함) 삭제
+    private func migrateHRSeriesCacheIfNeeded() {
+        let key = "mimo.hrSeriesCacheVersion"
+        guard UserDefaults.standard.integer(forKey: key) < 6 else { return }
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        if let files = try? FileManager.default.contentsOfDirectory(at: caches, includingPropertiesForKeys: nil) {
+            for file in files where file.lastPathComponent.hasPrefix("mimo_hr_") {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
+        hrSeriesCache.removeAll()
+        UserDefaults.standard.set(6, forKey: key)
+    }
+
     // MARK: - Workout time-series (for share card panels)
 
     func fetchWorkoutTimeSeries(for workoutID: UUID, identifier: HKQuantityTypeIdentifier, unit: HKUnit) async -> [(offset: TimeInterval, value: Double)] {
         let key = "\(workoutID)_\(identifier.rawValue)"
         if let cached = panelSeriesCache[key] { return cached }
+
+        // workout 먼저 확보 — 디스크 캐시 유효성 검증에 필요
+        if workoutCache[workoutID] == nil { await fetchSingleWorkout(id: workoutID) }
+        let cachedWorkout = workoutCache[workoutID]
+
         if let disk = loadPanelSeriesFromDisk(key: key) {
-            panelSeriesCache[key] = disk
-            return disk
+            if let wk = cachedWorkout {
+                let minExpected = max(Int(wk.duration / 60), 1)
+                if disk.count >= minExpected {
+                    panelSeriesCache[key] = disk
+                    return disk
+                }
+                // 부족하면 시리즈 재조회로 이어짐
+            } else {
+                panelSeriesCache[key] = disk
+                return disk
+            }
         }
-        guard let workout = workoutCache[workoutID] else { return [] }
+
+        guard let workout = cachedWorkout else { return [] }
         let paused = pausedIntervals(for: workout)
+        let minExpected = max(Int(workout.duration / 60), 1)
+
+        // 1차: 워크아웃 연결 샘플
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(identifier),
             predicate: HKQuery.predicateForObjects(from: workout)
@@ -794,13 +1009,34 @@ class HealthKitManager {
             predicates: [pred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
-        guard let samples = try? await descriptor.result(for: store) else { return [] }
-        let result = samples
+        var result = ((try? await descriptor.result(for: store)) ?? [])
             .filter { !isPaused($0.startDate, in: paused) }
             .map { s in
                 (offset: s.startDate.timeIntervalSince(workout.startDate),
                  value: s.quantity.doubleValue(for: unit))
             }
+
+        // 2차 시리즈 폴백: Apple Watch 워크아웃 지표가 시리즈로 저장된 경우
+        if result.count < minExpected {
+            let seriesPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+                type: HKQuantityType(identifier),
+                predicate: HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: .strictStartDate)
+            )
+            let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: seriesPred, options: [])
+            var seriesResult: [(offset: TimeInterval, value: Double)] = []
+            do {
+                for try await entry in seriesDesc.results(for: store) {
+                    guard !isPaused(entry.dateInterval.start, in: paused) else { continue }
+                    let offset = entry.dateInterval.start.timeIntervalSince(workout.startDate)
+                    guard offset >= 0 else { continue }
+                    seriesResult.append((offset: offset, value: entry.quantity.doubleValue(for: unit)))
+                }
+            } catch {}
+            if seriesResult.count > result.count {
+                result = seriesResult.sorted { $0.offset < $1.offset }
+            }
+        }
+
         panelSeriesCache[key] = result
         savePanelSeriesToDisk(result, key: key)
         return result
@@ -809,12 +1045,30 @@ class HealthKitManager {
     func fetchCadenceTimeSeries(for workoutID: UUID) async -> [(offset: TimeInterval, value: Double)] {
         let key = "\(workoutID)_cadence"
         if let cached = panelSeriesCache[key] { return cached }
+
+        // workout 먼저 확보 — 디스크 캐시 유효성 검증에 필요
+        if workoutCache[workoutID] == nil { await fetchSingleWorkout(id: workoutID) }
+        let cachedWorkout = workoutCache[workoutID]
+
         if let disk = loadPanelSeriesFromDisk(key: key) {
-            panelSeriesCache[key] = disk
-            return disk
+            if let wk = cachedWorkout {
+                let minExpected = max(Int(wk.duration / 60), 1)
+                if disk.count >= minExpected {
+                    panelSeriesCache[key] = disk
+                    return disk
+                }
+            } else {
+                panelSeriesCache[key] = disk
+                return disk
+            }
         }
-        guard let workout = workoutCache[workoutID] else { return [] }
+
+        guard let workout = cachedWorkout else { return [] }
         let paused = pausedIntervals(for: workout)
+        let workoutDuration = workout.duration
+        let minExpected = max(Int(workoutDuration / 60), 1)
+
+        // 1차: 워크아웃 연결 계단 샘플 (보통 km 단위 집계)
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.stepCount),
             predicate: HKQuery.predicateForObjects(from: workout)
@@ -823,33 +1077,66 @@ class HealthKitManager {
             predicates: [pred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
-        guard let samples = try? await descriptor.result(for: store) else { return [] }
-        let workoutDuration = workout.duration
-
         var result: [(offset: TimeInterval, value: Double)] = []
-        for s in samples {
-            guard !isPaused(s.startDate, in: paused) else { continue }
-            let dur = s.endDate.timeIntervalSince(s.startDate)
-            guard dur > 0 else { continue }
-            let steps = s.quantity.doubleValue(for: .count())
-            let spm = (steps / dur) * 60
-            let startOffset = s.startDate.timeIntervalSince(workout.startDate)
-
-            if dur >= workoutDuration * 0.25 {
-                let endOffset = min(startOffset + dur, workoutDuration)
-                let n = max(2, min(40, Int(dur / 20)))
-                for j in 0..<n {
-                    let t = startOffset + (endOffset - startOffset) * (Double(j) + 0.5) / Double(n)
-                    result.append((offset: t, value: spm))
+        if let samples = try? await descriptor.result(for: store) {
+            for s in samples {
+                guard !isPaused(s.startDate, in: paused) else { continue }
+                let dur = s.endDate.timeIntervalSince(s.startDate)
+                guard dur > 0 else { continue }
+                let steps = s.quantity.doubleValue(for: .count())
+                let spm = (steps / dur) * 60
+                let startOffset = s.startDate.timeIntervalSince(workout.startDate)
+                if dur >= workoutDuration * 0.25 {
+                    let endOffset = min(startOffset + dur, workoutDuration)
+                    let n = max(2, min(40, Int(dur / 20)))
+                    for j in 0..<n {
+                        let t = startOffset + (endOffset - startOffset) * (Double(j) + 0.5) / Double(n)
+                        result.append((offset: t, value: spm))
+                    }
+                } else {
+                    result.append((offset: startOffset + dur / 2, value: spm))
                 }
-            } else {
-                result.append((offset: startOffset + dur / 2, value: spm))
             }
+            result = result.filter { $0.offset >= 0 }
         }
-        let filtered = result.filter { $0.offset >= 0 }
-        panelSeriesCache[key] = filtered
-        savePanelSeriesToDisk(filtered, key: key)
-        return filtered
+
+        // 2차 시리즈 폴백: Apple Watch 고주파 계단 시리즈 → 30초 버켓으로 집계해 SPM 계산
+        if result.count < minExpected {
+            let seriesPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+                type: HKQuantityType(.stepCount),
+                predicate: HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: .strictStartDate)
+            )
+            let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: seriesPred, options: [])
+            var buckets: [Double: (steps: Double, dur: Double)] = [:]
+            let bucketSize: Double = 30
+            do {
+                for try await entry in seriesDesc.results(for: store) {
+                    guard !isPaused(entry.dateInterval.start, in: paused) else { continue }
+                    let offset = entry.dateInterval.start.timeIntervalSince(workout.startDate)
+                    guard offset >= 0 else { continue }
+                    let mid = floor(offset / bucketSize) * bucketSize + bucketSize / 2
+                    let dur = entry.dateInterval.duration
+                    let steps = entry.quantity.doubleValue(for: .count())
+                    if var b = buckets[mid] {
+                        b.steps += steps; b.dur += dur; buckets[mid] = b
+                    } else {
+                        buckets[mid] = (steps, dur)
+                    }
+                }
+            } catch {}
+            let seriesResult: [(offset: TimeInterval, value: Double)] = buckets
+                .sorted { $0.key < $1.key }
+                .compactMap { mid, b in
+                    guard b.dur > 0 else { return nil }
+                    let spm = (b.steps / b.dur) * 60
+                    return spm > 60 ? (offset: mid, value: spm) : nil
+                }
+            if seriesResult.count > result.count { result = seriesResult }
+        }
+
+        panelSeriesCache[key] = result
+        savePanelSeriesToDisk(result, key: key)
+        return result
     }
 
     private func panelSeriesCacheURL(key: String) -> URL {
@@ -1139,9 +1426,11 @@ class HealthKitManager {
     // MARK: - HR Zones
 
     private func queryHRZones(workout: HKWorkout) async -> [HRZoneData] {
-        // Both RHR (HealthKit) and age are required — without them, skip zone display
         guard let rhr = restingHeartRate, let mhr = cachedMHR, mhr > rhr else { return [] }
 
+        let unit = Self.bpmUnit
+
+        // 1차: 워크아웃 연결 샘플
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.heartRate),
             predicate: HKQuery.predicateForObjects(from: workout)
@@ -1150,11 +1439,32 @@ class HealthKitManager {
             predicates: [pred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
-        guard let samples = try? await desc.result(for: store), samples.count >= 5 else { return [] }
+        var bpmDates: [(bpm: Double, start: Date)] = []
+        if let linked = try? await desc.result(for: store) {
+            bpmDates = linked.map { ($0.quantity.doubleValue(for: unit), $0.startDate) }
+        }
+
+        // 2차 시리즈 폴백: Apple Watch HR이 HKQuantitySeriesSampleBuilder로 저장된 경우
+        if bpmDates.count < 5 {
+            let seriesPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+                type: HKQuantityType(.heartRate),
+                predicate: HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: .strictStartDate)
+            )
+            let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: seriesPred, options: [])
+            var seriesBpmDates: [(bpm: Double, start: Date)] = []
+            do {
+                for try await entry in seriesDesc.results(for: store) {
+                    seriesBpmDates.append((entry.quantity.doubleValue(for: unit), entry.dateInterval.start))
+                }
+            } catch {}
+            if seriesBpmDates.count > bpmDates.count {
+                bpmDates = seriesBpmDates.sorted { $0.start < $1.start }
+            }
+        }
+
+        guard bpmDates.count >= 5 else { return [] }
 
         let hrr = Double(mhr - rhr)
-        // Karvonen: boundary = RHR + ratio × HRR  (Apple 기본값)
-        // Z1 <60%  Z2 60–70%  Z3 70–80%  Z4 80–90%  Z5 90%+
         let ratios: [(name: String, lo: Double, hi: Double)] = [
             ("Z1 웜업",   0.00, 0.60),
             ("Z2 회복",   0.60, 0.70),
@@ -1165,13 +1475,12 @@ class HealthKitManager {
         func boundary(_ ratio: Double) -> Int { Int((Double(rhr) + ratio * hrr).rounded()) }
 
         var zoneSecs = [Double](repeating: 0, count: 5)
-        let unit = Self.bpmUnit
 
-        for i in 0..<samples.count {
-            let bpm  = samples[i].quantity.doubleValue(for: unit)
+        for i in 0..<bpmDates.count {
+            let bpm  = bpmDates[i].bpm
             let hrrF = (bpm - Double(rhr)) / hrr
-            let next = i + 1 < samples.count ? samples[i + 1].startDate : workout.endDate
-            let gap  = min(60, max(0, next.timeIntervalSince(samples[i].startDate)))
+            let next = i + 1 < bpmDates.count ? bpmDates[i + 1].start : workout.endDate
+            let gap  = min(60, max(0, next.timeIntervalSince(bpmDates[i].start)))
             for (z, ratio) in ratios.enumerated() {
                 if hrrF >= ratio.lo && hrrF < ratio.hi { zoneSecs[z] += gap; break }
             }
@@ -1183,8 +1492,50 @@ class HealthKitManager {
         return ratios.enumerated().map { z, ratio in
             HRZoneData(
                 id: z + 1, name: ratio.name,
-                minBPM: z == 0 ? rhr          : boundary(ratio.lo),
-                maxBPM: z == 4 ? mhr          : boundary(ratio.hi) - 1,
+                minBPM: z == 0 ? rhr : boundary(ratio.lo),
+                maxBPM: z == 4 ? mhr : boundary(ratio.hi) - 1,
+                seconds: zoneSecs[z],
+                fraction: zoneSecs[z] / total
+            )
+        }
+    }
+
+    /// 이미 fetch된 HR 시리즈 샘플로 존 분포 계산 — 캐시된 detail의 hrZones가 빈 경우 뷰에서 호출
+    func computeHRZonesFromSamples(_ samples: [(offset: TimeInterval, bpm: Int)]) -> [HRZoneData] {
+        guard !samples.isEmpty,
+              let rhr = restingHeartRate, let mhr = cachedMHR, mhr > rhr else { return [] }
+
+        let hrr = Double(mhr - rhr)
+        let ratios: [(name: String, lo: Double, hi: Double)] = [
+            ("Z1 웜업",   0.00, 0.60),
+            ("Z2 회복",   0.60, 0.70),
+            ("Z3 유산소", 0.70, 0.80),
+            ("Z4 임계",   0.80, 0.90),
+            ("Z5 최대",   0.90, 1.01),
+        ]
+        func boundary(_ ratio: Double) -> Int { Int((Double(rhr) + ratio * hrr).rounded()) }
+
+        var zoneSecs = [Double](repeating: 0, count: 5)
+        let sorted = samples.sorted { $0.offset < $1.offset }
+
+        for i in 0..<sorted.count {
+            let bpm  = Double(sorted[i].bpm)
+            let hrrF = (bpm - Double(rhr)) / hrr
+            let nextOffset = i + 1 < sorted.count ? sorted[i + 1].offset : sorted[i].offset + 5
+            let gap  = min(60, max(0, nextOffset - sorted[i].offset))
+            for (z, ratio) in ratios.enumerated() {
+                if hrrF >= ratio.lo && hrrF < ratio.hi { zoneSecs[z] += gap; break }
+            }
+        }
+
+        let total = zoneSecs.reduce(0, +)
+        guard total > 0 else { return [] }
+
+        return ratios.enumerated().map { z, ratio in
+            HRZoneData(
+                id: z + 1, name: ratio.name,
+                minBPM: z == 0 ? rhr : boundary(ratio.lo),
+                maxBPM: z == 4 ? mhr : boundary(ratio.hi) - 1,
                 seconds: zoneSecs[z],
                 fraction: zoneSecs[z] / total
             )
@@ -1311,18 +1662,25 @@ class HealthKitManager {
     // MARK: - Metric Trend History
 
     func fetchMetricHistory(_ metric: TrendMetric, from startDate: Date, usePounds: Bool = false) async -> [(date: Date, value: Double)] {
-        // 캐시 히트: 전체 저장 데이터에서 요청 범위만 메모리 필터 — HealthKit 조회 없음
+        // 캐시 히트: 파일이 존재하면 HealthKit 재조회 없이 즉시 반환 (데이터 없어도 반환)
         if let cached = loadMetricHistoryFromDisk(metric, usePounds: usePounds) {
-            let filtered = cached.filter { $0.date >= startDate }
-            if !filtered.isEmpty { return filtered }
+            return cached.filter { $0.date >= startDate }
         }
-        // 캐시 미스: 1년치 전부 불러와 저장 후 필터 반환
+        // 동일 지표 동시 요청 시 이미 실행 중인 Task를 공유 — HealthKit 중복 조회 방지
+        let taskKey = "\(metric.rawValue)-\(usePounds)"
+        if let existing = metricFetchTasks[taskKey] {
+            return await existing.value.filter { $0.date >= startDate }
+        }
+        // 캐시 미스: 1년치 전부 불러와 저장 — 빈 결과도 반드시 저장해 반복 조회 방지
         let fullStart = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
-        let result = await fetchMetricHistoryFromHealthKit(metric, from: fullStart, usePounds: usePounds)
-        if !result.isEmpty {
+        let fetchTask = Task<[(date: Date, value: Double)], Never> {
+            let result = await fetchMetricHistoryFromHealthKit(metric, from: fullStart, usePounds: usePounds)
             saveMetricHistoryToDisk(result, metric: metric, usePounds: usePounds)
+            metricFetchTasks.removeValue(forKey: taskKey)
+            return result
         }
-        return result.filter { $0.date >= startDate }
+        metricFetchTasks[taskKey] = fetchTask
+        return await fetchTask.value.filter { $0.date >= startDate }
     }
 
     private func fetchMetricHistoryFromHealthKit(_ metric: TrendMetric, from startDate: Date, usePounds: Bool = false) async -> [(date: Date, value: Double)] {
@@ -1337,37 +1695,53 @@ class HealthKitManager {
             let raw = await fetchQuantitySampleHistory(.bodyFatPercentage, from: startDate, unit: .percent())
             return raw.map { ($0.date, $0.value * 100) }
         case .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation:
-            let workouts = workoutCache.values
+            // workoutCache is in-memory only; it's empty on warm restart (early return path).
+            // Fall back to a direct HK workout query so we can actually build the disk cache.
+            var runWorkouts = workoutCache.values
                 .filter { $0.workoutActivityType == .running && $0.startDate >= startDate }
-                .sorted { $0.startDate < $1.startDate }
-            guard !workouts.isEmpty else { return [] }
+            if runWorkouts.isEmpty {
+                let fetched = (try? await queryWorkouts(since: startDate)) ?? []
+                runWorkouts = fetched.filter { $0.workoutActivityType == .running }
+                for w in runWorkouts { workoutCache[w.uuid] = w }
+            }
+            let sortedWorkouts = runWorkouts.sorted { $0.startDate < $1.startDate }
+            guard !sortedWorkouts.isEmpty else { return [] }
 
+            // Parallel per-workout queries — all HealthKit requests in flight at once
+            let m = metric
             var results: [(date: Date, value: Double)] = []
-            for workout in workouts {
-                let val: Double?
-                switch metric {
-                case .cadence:
-                    let steps = await querySum(.stepCount, unit: .count(), workout: workout)
-                    let mins = workout.duration / 60
-                    val = (steps > 0 && mins > 0) ? steps / mins : nil
-                case .power:
-                    val = await queryAvgQuantity(.runningPower, unit: .watt(), workout: workout)
-                case .groundContactTime:
-                    val = await queryAvgQuantity(.runningGroundContactTime,
-                                                 unit: .secondUnit(with: .milli), workout: workout)
-                case .strideLength:
-                    val = await queryAvgQuantity(.runningStrideLength, unit: .meter(), workout: workout)
-                case .verticalOscillation:
-                    val = await queryAvgQuantity(.runningVerticalOscillation,
-                                                 unit: .meterUnit(with: .centi), workout: workout)
-                default:
-                    val = nil
+            await withTaskGroup(of: (Date, Double?).self) { group in
+                for workout in sortedWorkouts {
+                    group.addTask {
+                        let val: Double?
+                        switch m {
+                        case .cadence:
+                            let steps = await self.querySum(.stepCount, unit: .count(), workout: workout)
+                            let mins = workout.duration / 60
+                            val = (steps > 0 && mins > 0) ? steps / mins : nil
+                        case .power:
+                            val = await self.queryAvgQuantity(.runningPower, unit: .watt(), workout: workout)
+                        case .groundContactTime:
+                            val = await self.queryAvgQuantity(.runningGroundContactTime,
+                                                             unit: .secondUnit(with: .milli), workout: workout)
+                        case .strideLength:
+                            val = await self.queryAvgQuantity(.runningStrideLength, unit: .meter(), workout: workout)
+                        case .verticalOscillation:
+                            val = await self.queryAvgQuantity(.runningVerticalOscillation,
+                                                             unit: .meterUnit(with: .centi), workout: workout)
+                        default:
+                            val = nil
+                        }
+                        return (workout.startDate, val)
+                    }
                 }
-                if let v = val, v > 0 {
-                    results.append((date: workout.startDate, value: v))
+                for await (date, val) in group {
+                    if let v = val, v > 0 {
+                        results.append((date: date, value: v))
+                    }
                 }
             }
-            return results
+            return results.sorted { $0.date < $1.date }
         }
     }
 
@@ -1405,7 +1779,7 @@ class HealthKitManager {
 
     /// 새 런 추가 시 호출 — 런 기반 메트릭 캐시 삭제
     func invalidateRunningMetricHistoryCache() {
-        let runningMetrics: [TrendMetric] = [.cadence, .power, .groundContactTime, .strideLength, .verticalOscillation]
+        let runningMetrics: [TrendMetric] = [.cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max]
         for metric in runningMetrics {
             try? FileManager.default.removeItem(at: metricHistoryCacheURL(metric, usePounds: false))
         }

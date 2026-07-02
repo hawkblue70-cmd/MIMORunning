@@ -43,7 +43,7 @@ struct ECGSignatureCard: View {
     private var badgePlacement: (x: CGFloat, y: CGFloat) {
         let idx   = waveform.peakIndex
         let total = ECGWaveform.bucketCount   // 100
-        let halfW: CGFloat = 30              // safe upper bound for badge half-width
+        let halfW: CGFloat = 40              // safe upper bound for badge half-width (value text widens badge)
         let dotR:  CGFloat = 3
         let gap:   CGFloat = 5
         if idx >= Int(Double(total) * 0.9) {
@@ -57,6 +57,17 @@ struct ECGSignatureCard: View {
             let minX = 12.0 + halfW
             let maxX = Self.cardWidth - 12.0 - halfW
             return (x: max(minX, min(maxX, peakX)), y: max(20, peakY - 16))
+        }
+    }
+
+    // Peak value formatted for display: "172" for HR, "5'02"" for pace.
+    private var peakValueText: String {
+        switch waveform.source {
+        case .heartRate:
+            return "\(Int(waveform.peakValue.rounded()))"
+        case .pace:
+            let secs = Int(waveform.peakValue.rounded())
+            return "\(secs / 60)'\(String(format: "%02d", secs % 60))\""
         }
     }
 
@@ -182,15 +193,23 @@ struct ECGSignatureCard: View {
             }
             .frame(maxWidth: .infinity)
 
+            // Source label: top-left of waveform band, 8pt above the band
+            Text(waveform.source == .heartRate ? "HEART RATE" : "PACE")
+                .font(.system(size: 9, weight: .medium))
+                .tracking(3)
+                .foregroundStyle(Color(hex: "6E6E78"))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.leading, 20)
+                .padding(.top, bandTop - 20)
+                .allowsHitTesting(false)
+
             // Peak badge: above dot normally; left/right when near a card edge
-            if waveform.peakIndex >= 3 {
-                let p = badgePlacement
-                peakBadge
-                    .position(x: p.x, y: p.y)
-            }
+            let p = badgePlacement
+            peakBadge
+                .position(x: p.x, y: p.y)
         }
-        .clipped()
         .frame(width: Self.cardWidth, height: Self.cardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
     // MARK: - Subviews
@@ -289,7 +308,7 @@ struct ECGSignatureCard: View {
         HStack(spacing: 3) {
             Image(systemName: "bolt.fill")
                 .font(.system(size: 7, weight: .bold))
-            Text(AppLanguage.shared.s("최고", "BEST"))
+            Text(AppLanguage.shared.s("최고 \(peakValueText)", "BEST \(peakValueText)"))
                 .font(.system(size: 8, weight: .bold))
         }
         .foregroundStyle(.black)

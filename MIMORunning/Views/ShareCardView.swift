@@ -150,6 +150,10 @@ enum CardVisual {
     static let videoBrightnessBoost:        Double  = 0.10
     static let videoSaturationBoost:        Double  = 1.05
     static let videoBrightenLayerOpacity:   Float   = 0.10  // white CALayer opacity for AVFoundation path
+    /// Route line art shadow: black 55%, radius 3, y 1.
+    static let routeShadowColor:  Color   = .black.opacity(0.55)
+    static let routeShadowRadius: CGFloat = 3
+    static let routeShadowY:      CGFloat = 1
 }
 
 extension View {
@@ -170,6 +174,12 @@ extension View {
         shadow(color: CardVisual.videoLargeTextShadowColor,
                radius: CardVisual.largeTextShadowRadius,
                x: 0, y: CardVisual.textShadowY)
+    }
+    /// Drop-shadow for route line art. Pass a scaled radius for size variants.
+    func cardRouteShadow(radius: CGFloat = CardVisual.routeShadowRadius) -> some View {
+        shadow(color: CardVisual.routeShadowColor,
+               radius: radius,
+               x: 0, y: CardVisual.routeShadowY)
     }
 }
 
@@ -332,7 +342,7 @@ struct ShareCardView: View {
                         }
                         if !insightTitle.isEmpty {
                             Text(insightTitle)
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.90))
                                 .lineLimit(3)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -363,7 +373,7 @@ struct ShareCardView: View {
                         }
                         if showMemo, let s = story, !s.memo.isEmpty {
                             Text(s.memo)
-                                .font(.system(size: 11, weight: .regular, design: .serif).italic())
+                                .font(.system(size: 10, weight: .regular, design: .serif).italic())
                                 .foregroundStyle(.white.opacity(0.78))
                         }
                     }
@@ -468,6 +478,8 @@ struct ShareCardView: View {
                 .padding(.bottom, 8)
             }
         }
+        .frame(width: 300, height: 375)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 }
 
@@ -752,13 +764,12 @@ private struct PhotoShareCardView: View {
     private var hasMiniMe: Bool { customMiniMeImage != nil || miniMeVariant != nil }
 
     var body: some View {
-        GeometryReader { proxy in
-        let max = maxOffset(for: proxy.size)
+        let max = maxOffset(for: CGSize(width: 300, height: 375))
         ZStack {
             Image(uiImage: photo)
                 .resizable()
                 .scaledToFill()
-                .frame(width: proxy.size.width, height: proxy.size.height)
+                .frame(width: 300, height: 375)
                 .offset(photoOffset)
                 .brightness(CardVisual.photoBrightnessBoost)
 
@@ -940,7 +951,7 @@ private struct PhotoShareCardView: View {
 
             }
             .cardTextShadow()
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            .frame(width: 300, height: 375, alignment: .topLeading)
 
             if max.width > 1 || max.height > 1 {
                 Color.clear
@@ -968,7 +979,8 @@ private struct PhotoShareCardView: View {
             }
         }
         .clipped()
-        }
+        .frame(width: 300, height: 375)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
         .onChange(of: photoOffset) { _, new in
             if new == .zero { gestureStart = .zero }
         }
@@ -1323,6 +1335,8 @@ private struct StoryShareCardView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(width: 300, height: 375)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 }
 
@@ -1614,8 +1628,15 @@ struct ShareCardScreen: View {
     private var isSky: Bool      { cardIndex == 3 }
     private var isECG: Bool      { cardIndex == 4 }
 
+    // Binding<Int?> used by scrollPosition(id:); reads/writes cardIndex directly
+    // so programmatic cardIndex changes scroll the card, and user swipes update cardIndex.
+    private var scrollCardBinding: Binding<Int?> {
+        Binding(get: { cardIndex }, set: { if let v = $0 { cardIndex = v } })
+    }
+
     @State private var placeableMetricsPosition: CardPosition = .topLeading
     @State private var placeableAccent: CardAccent = .gold
+    @State private var placeableSize:   PlaceableSize = .large
     // ECG card
     @State private var paceWaveform:     ECGWaveform? = nil
     @State private var hrWaveform:       ECGWaveform? = nil
@@ -2018,7 +2039,8 @@ struct ShareCardScreen: View {
             metricsPosition: placeableMetricsPosition,
             accent: placeableAccent,
             shoeName: displayShoeName,
-            weather: condition?.weather
+            weather: condition?.weather,
+            size: placeableSize
         )
     }
 
@@ -2057,37 +2079,50 @@ struct ShareCardScreen: View {
     }
 
     private var cardSection: some View {
-        TabView(selection: $cardIndex) {
-            cardPreview
-                .frame(width: 300, height: 375)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
-                .animation(.easeInOut(duration: 0.2), value: template)
-                .tag(0)
-            placeableCardPreview
-                .frame(width: 300, height: 375)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
-                .tag(1)
-            bigNumberCardPreview
-                .frame(width: 300, height: 375)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
-                .tag(2)
-            skyCardPreview
-                .frame(width: 300, height: 375)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .shadow(color: Color(hex: "1B2A4A").opacity(0.5), radius: 28, y: 10)
-                .tag(3)
-            if ecgDataAvailable != false {
-                ecgCardPreview
-                    .frame(width: 300, height: 375)
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .shadow(color: Theme.violet.opacity(0.2), radius: 28, y: 10)
-                    .tag(4)
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    cardPreview
+                        .frame(width: 300, height: 375)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
+                        .animation(.easeInOut(duration: 0.2), value: template)
+                        .frame(width: w, height: 375)
+                        .id(0)
+                    placeableCardPreview
+                        .frame(width: 300, height: 375)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
+                        .frame(width: w, height: 375)
+                        .id(1)
+                    bigNumberCardPreview
+                        .frame(width: 300, height: 375)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
+                        .frame(width: w, height: 375)
+                        .id(2)
+                    skyCardPreview
+                        .frame(width: 300, height: 375)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: Color(hex: "1B2A4A").opacity(0.5), radius: 28, y: 10)
+                        .frame(width: w, height: 375)
+                        .id(3)
+                    if ecgDataAvailable != false {
+                        ecgCardPreview
+                            .frame(width: 300, height: 375)
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                            .shadow(color: Theme.violet.opacity(0.2), radius: 28, y: 10)
+                            .frame(width: w, height: 375)
+                            .id(4)
+                    }
+                }
+                .scrollTargetLayout()
             }
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: scrollCardBinding)
+            .frame(width: w, height: 375)
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(height: 375)
     }
 
@@ -2294,7 +2329,7 @@ struct ShareCardScreen: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Placeable card chip row (position grid + accent chips)
+    // MARK: - Placeable card chip row (position grid + size + accent chips)
 
     private var placeableChipRow: some View {
         let rows: [[CardPosition]] = [
@@ -2306,6 +2341,10 @@ struct ShareCardScreen: View {
             (.none,   AppLanguage.shared.s("없음",     "None"),   Color.white),
             (.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF")),
             (.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
+        ]
+        let sizes: [(PlaceableSize, String)] = [
+            (.large, AppLanguage.shared.s("크게", "Large")),
+            (.small, AppLanguage.shared.s("작게", "Small"))
         ]
         return HStack(alignment: .center, spacing: 20) {
             // 3×3 position grid
@@ -2330,35 +2369,62 @@ struct ShareCardScreen: View {
                     }
                 }
             }
-            // Accent chips — single horizontal row
-            HStack(spacing: 8) {
-                ForEach(accents.indices, id: \.self) { i in
-                    let (accent, label, color) = accents[i]
-                    let isSelected = placeableAccent == accent
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { placeableAccent = accent }
-                        Task { await renderCard(showSpinner: false) }
-                    } label: {
-                        HStack(spacing: 6) {
-                            if isSelected {
-                                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+            // Size + Accent stacked vertically
+            VStack(alignment: .leading, spacing: 6) {
+                // Size chips (크게 / 작게)
+                HStack(spacing: 8) {
+                    ForEach(sizes.indices, id: \.self) { i in
+                        let (sz, label) = sizes[i]
+                        let isSelected = placeableSize == sz
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { placeableSize = sz }
+                            Task { await renderCard(showSpinner: false) }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isSelected {
+                                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                                }
+                                Text(label).font(.caption.weight(.semibold))
                             }
-                            if accent != .none {
-                                Circle().fill(color).frame(width: 8, height: 8)
-                            }
-                            Text(label).font(.caption.weight(.semibold))
+                            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(isSelected ? Color(hex: "3A3A44") : Color.white.opacity(0.08))
+                            .clipShape(Capsule())
                         }
-                        .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            isSelected
-                                ? (accent == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
-                                : Color.white.opacity(0.08)
-                        )
-                        .clipShape(Capsule())
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                }
+                // Accent chips
+                HStack(spacing: 8) {
+                    ForEach(accents.indices, id: \.self) { i in
+                        let (accent, label, color) = accents[i]
+                        let isSelected = placeableAccent == accent
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { placeableAccent = accent }
+                            Task { await renderCard(showSpinner: false) }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isSelected {
+                                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                                }
+                                if accent != .none {
+                                    Circle().fill(color).frame(width: 8, height: 8)
+                                }
+                                Text(label).font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                isSelected
+                                    ? (accent == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
+                                    : Color.white.opacity(0.08)
+                            )
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
@@ -2544,7 +2610,7 @@ struct ShareCardScreen: View {
         HStack(spacing: 0) {
             ForEach(ShareTemplate.allCases, id: \.self) { t in
                 let available = (!isPlaceable || t == .story || t == .video)
-                             && (!(isSky || isECG) || (t != .video && t != .routeVideo))
+                             && (!(isSky || isECG) || t == .athletic)
                 let selected  = template == t
                 Button {
                     guard available else { return }
@@ -2732,8 +2798,8 @@ struct ShareCardScreen: View {
             if newIndex == 1, template != .story && template != .video {
                 template = .story
             }
-            // Sky/ECG placeholders don't support video templates — switch away
-            if (newIndex == 3 || newIndex == 4), template == .video || template == .routeVideo {
+            // Sky/ECG only support athletic — switch away from any other template
+            if (newIndex == 3 || newIndex == 4), template != .athletic {
                 template = .athletic
             }
             Task { await renderCard(showSpinner: false) }
@@ -2759,6 +2825,10 @@ struct ShareCardScreen: View {
             Task { await renderCard(showSpinner: false) }
         }
         .onChange(of: placeableAccent) { _, _ in
+            guard isPlaceable else { return }
+            Task { await renderCard(showSpinner: false) }
+        }
+        .onChange(of: placeableSize) { _, _ in
             guard isPlaceable else { return }
             Task { await renderCard(showSpinner: false) }
         }
@@ -3526,7 +3596,8 @@ struct ShareCardScreen: View {
                 metricsPosition: placeableMetricsPosition,
                 accent: placeableAccent,
                 shoeName: displayShoeName,
-                weather: condition?.weather
+                weather: condition?.weather,
+                size: placeableSize
             )
             let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
             renderer.scale = 3

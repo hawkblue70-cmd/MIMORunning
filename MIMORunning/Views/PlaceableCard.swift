@@ -48,6 +48,10 @@ enum CardAccent {
     case none, violet, gold
 }
 
+// MARK: - PlaceableSize
+
+enum PlaceableSize { case large, small }
+
 // MARK: - Bright-background text legibility
 
 extension View {
@@ -71,9 +75,26 @@ struct PlaceableCard: View {
     var showBackground: Bool = true
     var shoeName: String? = nil
     var weather: WeatherSnapshot? = nil
+    var size: PlaceableSize = .large
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
+
+    private var labelFontSize:    CGFloat { size == .large ? 12   : 8.4  }
+    private var valueFontSize:    CGFloat { size == .large ? 24   : 16.8 }
+    private var unitFontSize:     CGFloat { size == .large ? 14   : 9.8  }
+    private var routeArtSize:     CGFloat { size == .large ? 109  : 76   }
+    private var routeLineWidth:   CGFloat { size == .large ? 1.0  : 0.7  }
+    private var routeShadowRadius: CGFloat {
+        size == .large ? CardVisual.routeShadowRadius : CardVisual.routeShadowRadius * 0.7
+    }
+    private var routeLineColor: Color {
+        switch accent {
+        case .none:   return .white
+        case .violet: return Color(hex: "9B7DFF")
+        case .gold:   return Color(hex: "FFC74D")
+        }
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -128,9 +149,9 @@ struct PlaceableCard: View {
     private var routeArtLayer: some View {
         if let coords = routeCoords, !coords.isEmpty {
             let rp = metricsPosition.opposite()
-            RouteLineArt(coordinates: coords, lineColor: .white, lineWidth: 1.0)
-                .shadow(color: .black.opacity(0.40), radius: 3)
-                .frame(width: 109, height: 109)
+            RouteLineArt(coordinates: coords, lineColor: routeLineColor, lineWidth: routeLineWidth)
+                .cardRouteShadow(radius: routeShadowRadius)
+                .frame(width: routeArtSize, height: routeArtSize)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: rp.alignment)
                 .padding(routeArtPadding(for: rp))
                 .allowsHitTesting(false)
@@ -174,7 +195,7 @@ struct PlaceableCard: View {
             // Distance — accent color on value, "km" unit at 60%
             VStack(alignment: .leading, spacing: 0) {
                 Text(AppLanguage.shared.s("거리", "DIST"))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: labelFontSize, weight: .semibold))
                     .fontWidth(.condensed)
                     .tracking(1.5)
                     .foregroundStyle(.white)
@@ -182,7 +203,7 @@ struct PlaceableCard: View {
                 HStack(alignment: .lastTextBaseline, spacing: 3) {
                     distanceValueText
                     Text("km")
-                        .font(.system(size: 14, weight: .semibold).italic())
+                        .font(.system(size: unitFontSize, weight: .semibold).italic())
                         .fontWidth(.condensed)
                         .foregroundStyle(.white.opacity(0.70))
                         .brightCardText()
@@ -204,13 +225,13 @@ struct PlaceableCard: View {
         switch accent {
         case .none:
             Text(distanceKm)
-                .font(.system(size: 24, weight: .heavy).italic().monospacedDigit())
+                .font(.system(size: valueFontSize, weight: .heavy).italic().monospacedDigit())
                 .fontWidth(.condensed)
                 .foregroundStyle(.white)
                 .brightCardText()
         case .violet:
             Text(distanceKm)
-                .font(.system(size: 24, weight: .heavy).italic().monospacedDigit())
+                .font(.system(size: valueFontSize, weight: .heavy).italic().monospacedDigit())
                 .fontWidth(.condensed)
                 .foregroundStyle(LinearGradient(
                     colors: [Color(hex: "9B7DFF"), Color(hex: "6845E8")],
@@ -218,7 +239,7 @@ struct PlaceableCard: View {
                 .brightCardText()
         case .gold:
             Text(distanceKm)
-                .font(.system(size: 24, weight: .heavy).italic().monospacedDigit())
+                .font(.system(size: valueFontSize, weight: .heavy).italic().monospacedDigit())
                 .fontWidth(.condensed)
                 .foregroundStyle(LinearGradient(
                     colors: [Color(hex: "FFC74D"), Color(hex: "F2A33C")],
@@ -230,20 +251,20 @@ struct PlaceableCard: View {
     private func metricRow(label: String, value: String, unit: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: labelFontSize, weight: .semibold))
                 .fontWidth(.condensed)
                 .tracking(1.5)
                 .foregroundStyle(.white)
                 .brightCardText()
             HStack(alignment: .lastTextBaseline, spacing: 3) {
                 Text(value)
-                    .font(.system(size: 24, weight: .heavy).italic().monospacedDigit())
+                    .font(.system(size: valueFontSize, weight: .heavy).italic().monospacedDigit())
                     .fontWidth(.condensed)
                     .foregroundStyle(.white)
                     .brightCardText()
                 if let unit {
                     Text(unit)
-                        .font(.system(size: 14, weight: .semibold).italic())
+                        .font(.system(size: unitFontSize, weight: .semibold).italic())
                         .fontWidth(.condensed)
                         .foregroundStyle(.white.opacity(0.70))
                         .brightCardText()

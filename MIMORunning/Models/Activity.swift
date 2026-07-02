@@ -115,7 +115,7 @@ struct ActivityDetail {
     let avgPower: Int?
     let avgCadence: Int?
     let splits: [SplitData]
-    let hrZones: [HRZoneData]
+    var hrZones: [HRZoneData]
     let intervalSegments: [IntervalSegment]
     let workoutType: WorkoutType       // classified from splits + history
     // Running dynamics — Watch only, nil when unavailable

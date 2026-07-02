@@ -193,7 +193,6 @@ private struct ActivityListContent: View {
                 }
                 .refreshable {
                     displayCount = 50
-                    manager.invalidateAllMetricHistoryCache()
                     await manager.fetchActivities(forced: true)
                 }
             }
@@ -369,16 +368,28 @@ private struct ActivityCard: View {
     var workoutType: WorkoutType? = nil
     var raceName: String? = nil
 
-    private static let dateFormatter: DateFormatter = {
+    private static let datePart: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US")
-        df.dateFormat = "yyyy. M. d h:mm a"
+        df.dateFormat = "yyyy. M. d"
+        return df
+    }()
+    private static let weekdayPart: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "ko_KR")
+        df.dateFormat = "EEEEE"  // 요일 한 글자: 월화수목금토일
+        return df
+    }()
+    private static let timePart: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US")
+        df.dateFormat = "h:mm a"
         return df
     }()
 
-    private var formattedDate: String {
-        Self.dateFormatter.string(from: activity.date)
-    }
+    private var formattedDatePart:    String { Self.datePart.string(from: activity.date) }
+    private var formattedWeekday:     String { Self.weekdayPart.string(from: activity.date) }
+    private var formattedTimePart:    String { Self.timePart.string(from: activity.date) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -396,9 +407,15 @@ private struct ActivityCard: View {
                 .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(formattedDate)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white)
+                    HStack(spacing: 4) {
+                        Text(formattedDatePart)
+                            .foregroundStyle(.white)
+                        Text(formattedWeekday)
+                            .foregroundStyle(Color(hex: "FFC74D"))
+                        Text(formattedTimePart)
+                            .foregroundStyle(.white)
+                    }
+                    .font(.system(size: 13, weight: .medium))
                     if let race = raceName {
                         Text(race)
                             .font(.system(size: 10, weight: .medium))
@@ -440,10 +457,10 @@ private struct ActivityCard: View {
                     HStack(spacing: 3) {
                         Image(systemName: "shoe.fill")
                             .font(.system(size: 7))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color(red: 0.2, green: 1.0, blue: 0.4))
                         Text(shoe)
                             .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color(red: 0.2, green: 1.0, blue: 0.4))
                             .lineLimit(1)
                     }
                 }

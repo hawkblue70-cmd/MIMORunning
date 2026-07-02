@@ -345,9 +345,9 @@ struct SummaryShareCardScreen: View {
     var miniMeImage: UIImage? = nil
 
     @Environment(\.dismiss) private var dismiss
-    @State private var shareURL: URL?
     @State private var previewImage: UIImage?
     @State private var isRendering = false
+    @State private var showShareSheet = false
 
     var body: some View {
         ZStack {
@@ -411,8 +411,8 @@ struct SummaryShareCardScreen: View {
                 .tint(Theme.violet)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-        } else if let url = shareURL {
-            ShareLink(item: url, preview: SharePreview(stats.kind.title)) {
+        } else if previewImage != nil {
+            Button { showShareSheet = true } label: {
                 Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -420,6 +420,9 @@ struct SummaryShareCardScreen: View {
                     .padding(.vertical, 15)
                     .background(Theme.violet)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let img = previewImage { ShareSheet(images: [img]) }
             }
         }
     }
@@ -430,15 +433,7 @@ struct SummaryShareCardScreen: View {
         let card = SummaryShareCardView(stats: stats, miniMeImage: miniMeImage)
         let renderer = ImageRenderer(content: card)
         renderer.scale = 3
-        guard let img = renderer.uiImage, let data = img.pngData() else {
-            isRendering = false
-            return
-        }
-        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(stats.kind.shareFilename)
-        try? data.write(to: url, options: .atomic)
-        previewImage = img
-        shareURL = url
+        previewImage = renderer.uiImage
         isRendering = false
     }
 }

@@ -5,6 +5,9 @@ import HealthKit
 // §7 compliance: normalization is intra-workout only — rawMin/rawMax bound this run.
 //   1.0 = fastest/highest *this run*. No absolute benchmarks applied.
 
+/// Identifies the HealthKit data type behind an ECGWaveform.
+enum WaveformSource { case pace, heartRate }
+
 /// Normalized pace or heart-rate time-series for the "심전도 시그니처" ECG share card.
 ///
 /// `points` is always 100 values mapped to equal-width time buckets across the
@@ -19,6 +22,10 @@ struct ECGWaveform {
     let rawMin: Double
     /// Original raw maximum value before normalization.
     let rawMax: Double
+    /// Raw value at the peak index, before normalization (sec/km for pace, bpm for HR).
+    let peakValue: Double
+    /// Whether this waveform is sourced from pace or heart rate data.
+    let source: WaveformSource
 
     // MARK: - Constants
 
@@ -59,8 +66,9 @@ struct ECGWaveform {
         let span = rawMax - rawMin
         let normalized = rawPoints.map { CGFloat(1.0 - ($0 - rawMin) / span) }
         let peakIndex  = normalized.indices.max(by: { normalized[$0] < normalized[$1] }) ?? 0
+        let peakValue  = rawPoints[peakIndex]   // sec/km at fastest moment
 
-        return ECGWaveform(points: normalized, peakIndex: peakIndex, rawMin: rawMin, rawMax: rawMax)
+        return ECGWaveform(points: normalized, peakIndex: peakIndex, rawMin: rawMin, rawMax: rawMax, peakValue: peakValue, source: .pace)
     }
 
     // MARK: - Heart rate (higher bpm = 1.0)
@@ -85,8 +93,9 @@ struct ECGWaveform {
         let span = rawMax - rawMin
         let normalized = rawPoints.map { CGFloat(($0 - rawMin) / span) }
         let peakIndex  = normalized.indices.max(by: { normalized[$0] < normalized[$1] }) ?? 0
+        let peakValue  = rawPoints[peakIndex]   // bpm at highest moment
 
-        return ECGWaveform(points: normalized, peakIndex: peakIndex, rawMin: rawMin, rawMax: rawMax)
+        return ECGWaveform(points: normalized, peakIndex: peakIndex, rawMin: rawMin, rawMax: rawMax, peakValue: peakValue, source: .heartRate)
     }
 
     // MARK: - Primary entry point: pace first, HR fallback, nil if both unavailable

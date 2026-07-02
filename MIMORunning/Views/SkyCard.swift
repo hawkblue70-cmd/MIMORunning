@@ -115,7 +115,8 @@ struct SkyCard: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .clipped()
+        .frame(width: Self.cardWidth, height: Self.cardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
     // MARK: Subviews

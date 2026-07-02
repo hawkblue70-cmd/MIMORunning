@@ -838,7 +838,7 @@ private struct InsightCard: View {
                             .foregroundStyle(Theme.violet)
                     }
                     Text(insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run"))
-                        .font(.title3.bold())
+                        .font(.headline.bold())
                         .foregroundStyle(.white)
                         .contentTransition(.opacity)
                     Text(insight?.detail ?? AppLanguage.shared.s("인사이트 분석 준비 중", "Analyzing…"))

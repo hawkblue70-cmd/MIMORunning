@@ -368,9 +368,9 @@ struct DetailPanelShareCardScreen: View {
     let panelSeriesData: [(offset: TimeInterval, value: Double)]
     var condition: ActivityCondition? = nil
 
-    @State private var shareURL: URL?
     @State private var previewImage: UIImage?
     @State private var isRendering = true
+    @State private var showShareSheet = false
     @State private var mapSnapshot: UIImage?
     @Environment(\.dismiss) private var dismiss
 
@@ -449,16 +449,16 @@ struct DetailPanelShareCardScreen: View {
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 18)
-        } else if let url = shareURL, let img = previewImage {
-            ShareLink(
-                item: url,
-                preview: SharePreview(activePanel.label, image: Image(uiImage: img))
-            ) {
+        } else if previewImage != nil {
+            Button { showShareSheet = true } label: {
                 Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                     .font(.headline).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 16)
                     .background(Theme.violet)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let img = previewImage { ShareSheet(images: [img]) }
             }
         } else {
             Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
@@ -489,15 +489,7 @@ struct DetailPanelShareCardScreen: View {
             .frame(width: cardW, height: cardH)
         )
         renderer.scale = 3
-        guard let img = renderer.uiImage, let data = img.pngData() else {
-            isRendering = false; return
-        }
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyyMMdd"
-        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_panel_\(fmt.string(from: activity.date)).png")
-        try? data.write(to: url, options: .atomic)
-        previewImage = img
-        shareURL = url
+        previewImage = renderer.uiImage
         isRendering = false
     }
 

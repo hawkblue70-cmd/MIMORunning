@@ -320,12 +320,14 @@ struct WeeklyGrowthShareCardScreen: View {
     let insightText: String?
     let insightSymbol: String?
     let insightColor: Color?
+    /// GrowthView가 이미 로드한 스파크 데이터 — nil이면 자체 조회 폴백
+    var preloadedSparkData: [(metric: TrendMetric, points: [(date: Date, value: Double)])]? = nil
     let manager: HealthKitManager
 
     @State private var sparkData: [(metric: TrendMetric, points: [(date: Date, value: Double)])] = []
-    @State private var shareURL: URL?
     @State private var previewImage: UIImage?
     @State private var isRendering = true
+    @State private var showShareSheet = false
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
@@ -365,7 +367,13 @@ struct WeeklyGrowthShareCardScreen: View {
             }
         }
         .task {
-            await fetchSparkData()
+            // 부모가 이미 로드한 데이터 사용 — 재조회 없음
+            // 없으면(앱 초기 실행 직후 시트를 매우 빠르게 열었을 때) 자체 조회 폴백
+            if let preloaded = preloadedSparkData {
+                sparkData = preloaded
+            } else {
+                await fetchSparkData()
+            }
             await renderCard()
         }
     }
@@ -383,14 +391,8 @@ struct WeeklyGrowthShareCardScreen: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
-        } else if let url = shareURL, let img = previewImage {
-            ShareLink(
-                item: url,
-                preview: SharePreview(
-                    AppLanguage.shared.s("이번 주 성장", "This Week's Growth"),
-                    image: Image(uiImage: img)
-                )
-            ) {
+        } else if previewImage != nil {
+            Button { showShareSheet = true } label: {
                 Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -398,6 +400,9 @@ struct WeeklyGrowthShareCardScreen: View {
                     .padding(.vertical, 16)
                     .background(Theme.violet)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let img = previewImage { ShareSheet(images: [img]) }
             }
         } else {
             Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
@@ -452,14 +457,7 @@ struct WeeklyGrowthShareCardScreen: View {
             .frame(width: cardW, height: cardH)
         )
         renderer.scale = 3
-        guard let img = renderer.uiImage, let data = img.pngData() else {
-            isRendering = false; return
-        }
-        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_weekly_growth.png")
-        try? data.write(to: url, options: .atomic)
-        previewImage = img
-        shareURL = url
+        previewImage = renderer.uiImage
         isRendering = false
     }
 }
@@ -771,9 +769,9 @@ struct MileageStreakShareCardScreen: View {
     let activeDays: Int
     let heatmapWeekCount: Int
 
-    @State private var shareURL: URL?
     @State private var previewImage: UIImage?
     @State private var isRendering = true
+    @State private var showShareSheet = false
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
@@ -830,14 +828,8 @@ struct MileageStreakShareCardScreen: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
-        } else if let url = shareURL, let img = previewImage {
-            ShareLink(
-                item: url,
-                preview: SharePreview(
-                    AppLanguage.shared.s("거리 · 연속 달리기", "Mileage & Streak"),
-                    image: Image(uiImage: img)
-                )
-            ) {
+        } else if previewImage != nil {
+            Button { showShareSheet = true } label: {
                 Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -845,6 +837,9 @@ struct MileageStreakShareCardScreen: View {
                     .padding(.vertical, 16)
                     .background(Theme.violet)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let img = previewImage { ShareSheet(images: [img]) }
             }
         } else {
             Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
@@ -872,14 +867,7 @@ struct MileageStreakShareCardScreen: View {
             .frame(width: cardW, height: cardH)
         )
         renderer.scale = 3
-        guard let img = renderer.uiImage, let data = img.pngData() else {
-            isRendering = false; return
-        }
-        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_mileage_streak.png")
-        try? data.write(to: url, options: .atomic)
-        previewImage = img
-        shareURL = url
+        previewImage = renderer.uiImage
         isRendering = false
     }
 }

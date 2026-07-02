@@ -91,6 +91,8 @@ struct GrowthView: View {
     @State private var heatmapColumnsCache: [WeekColumn] = []
     @State private var weekStreakCache: Int = 0
     @State private var metricAnalyses: [TrendMetric: (direction: TrendDirection, changeRatio: Double)] = [:]
+    @State private var metricDataPoints: [TrendMetric: [(date: Date, value: Double)]] = [:]
+    @State private var weeklySparkData: [(metric: TrendMetric, points: [(date: Date, value: Double)])] = []
     @State private var paceAnalysisCache: (direction: TrendDirection, changeRatio: Double) = (.insufficient, 0)
     @State private var hrAnalysisCache: (direction: TrendDirection, changeRatio: Double) = (.insufficient, 0)
     @State private var thisWeekLongestKmCache: Double = 0
@@ -123,12 +125,13 @@ struct GrowthView: View {
 
     private var runs: [Activity] { runsCache }
 
-    private var mondayCal: Calendar {
+    private static let _mondayCal: Calendar = {
         var c = Calendar(identifier: .gregorian)
         c.firstWeekday = 2  // Monday
         c.locale = Locale.current
         return c
-    }
+    }()
+    private var mondayCal: Calendar { Self._mondayCal }
 
     private func refreshChartCache() {
         let currentCount = manager.activities.count
@@ -239,6 +242,7 @@ struct GrowthView: View {
                 insightText: weeklyCommentText.isEmpty ? nil : weeklyCommentText,
                 insightSymbol: style?.symbol,
                 insightColor: style?.color,
+                preloadedSparkData: weeklySparkData.isEmpty ? nil : weeklySparkData,
                 manager: manager
             )
         }
@@ -609,7 +613,8 @@ struct GrowthView: View {
             weeklyPatternCommentCard
             LazyVGrid(columns: cols, spacing: 12) {
                 ForEach(runningMetrics) { metric in
-                    MetricSparkCard(metric: metric, manager: manager, usePounds: useMiles) {
+                    MetricSparkCard(metric: metric, manager: manager, usePounds: useMiles,
+                                    preloadedPoints: metricDataPoints[metric]) {
                         selectedTrend = metric
                     }
                 }
@@ -797,14 +802,16 @@ struct GrowthView: View {
         let runningMetrics: [TrendMetric] = [
             .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max
         ]
+        // 체성분 2개도 함께 — 이번주 공유 카드용 sparkData 사전 구성
+        let allWeeklyMetrics: [TrendMetric] = runningMetrics + [.bodyMass, .bodyFatPercentage]
 
-        // Fetch all metric histories concurrently
-        var fetched: [(TrendMetric, [Double])] = []
-        await withTaskGroup(of: (TrendMetric, [Double]).self) { group in
-            for metric in runningMetrics {
+        // Fetch all 8 metric histories concurrently — running cards + weekly share card
+        var fetched: [(TrendMetric, [(date: Date, value: Double)])] = []
+        await withTaskGroup(of: (TrendMetric, [(date: Date, value: Double)]).self) { group in
+            for metric in allWeeklyMetrics {
                 group.addTask {
                     let pts = await self.manager.fetchMetricHistory(metric, from: since)
-                    return (metric, pts.map(\.value))
+                    return (metric, pts)
                 }
             }
             for await item in group {
@@ -812,12 +819,24 @@ struct GrowthView: View {
             }
         }
 
-        // Compute trend directions back on the main actor
+        let fetchedMap = Dictionary(uniqueKeysWithValues: fetched)
+
+        // Compute trend directions and store full data for running spark cards
         var results: [TrendMetric: (direction: TrendDirection, changeRatio: Double)] = [:]
-        for (metric, values) in fetched {
-            results[metric] = trendDirection(values: values)
+        var points: [TrendMetric: [(date: Date, value: Double)]] = [:]
+        for metric in runningMetrics {
+            guard let pts = fetchedMap[metric] else { continue }
+            results[metric] = trendDirection(values: pts.map(\.value))
+            points[metric] = pts
         }
         metricAnalyses = results
+        metricDataPoints = points
+
+        // Build weekly share card sparkData (display order, non-empty only)
+        weeklySparkData = allWeeklyMetrics.compactMap { m in
+            guard let pts = fetchedMap[m], !pts.isEmpty else { return nil }
+            return (metric: m, points: pts)
+        }
 
         // Build WeeklyInsightInputs and detect patterns
         let cal = mondayCal
@@ -1696,6 +1715,7 @@ private struct MetricSparkCard: View {
     let metric: TrendMetric
     let manager: HealthKitManager
     let usePounds: Bool
+    var preloadedPoints: [(date: Date, value: Double)]? = nil
     let onTap: () -> Void
 
     @State private var dataPoints: [(date: Date, value: Double)] = []
@@ -1786,9 +1806,23 @@ private struct MetricSparkCard: View {
         }
         .buttonStyle(.plain)
         .task {
-            let from = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-            dataPoints = await manager.fetchMetricHistory(metric, from: from, usePounds: usePounds)
-            isLoading = false
+            if let pre = preloadedPoints {
+                // 부모가 이미 불러온 데이터 사용 — 중복 조회 없음
+                dataPoints = pre
+                isLoading = false
+            } else {
+                // bodyMass / bodyFatPercentage 등 부모가 로드하지 않는 지표만 자체 조회
+                let from = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
+                dataPoints = await manager.fetchMetricHistory(metric, from: from, usePounds: usePounds)
+                isLoading = false
+            }
+        }
+        .onChange(of: preloadedPoints?.count) {
+            // 부모의 refreshMetricAnalyses 완료 후 데이터가 늦게 도착하면 반영
+            if let pre = preloadedPoints {
+                dataPoints = pre
+                isLoading = false
+            }
         }
     }
 

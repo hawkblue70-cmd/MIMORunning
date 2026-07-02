@@ -10,9 +10,10 @@ final class CachedActivity {
     var date:         Date
     var duration:     Double
     var distance:     Double
-    var avgHeartRate: Int?
-    var calories:     Double?
-    var cachedAt:     Date
+    var avgHeartRate:   Int?
+    var calories:       Double?
+    var cachedAt:       Date
+    var metricsChecked: Bool = false  // true = HealthKit에서 HR 유무 확정 완료, 재시도 불필요
 
     init(from activity: Activity) {
         self.workoutID    = activity.id.uuidString

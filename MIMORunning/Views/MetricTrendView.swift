@@ -118,6 +118,7 @@ struct MetricTrendView: View {
     let isMale: Bool?
 
     @State private var selectedRange: TrendRange = .month
+    @State private var fullYearPoints: [(date: Date, value: Double)] = []
     @State private var dataPoints: [(date: Date, value: Double)] = []
     @State private var isLoading = true
     @State private var showShareCard = false
@@ -175,10 +176,15 @@ struct MetricTrendView: View {
             }
         }
         .presentationDetents([.large])
-        .task(id: selectedRange) {
+        .task {
+            // 1년치 전부 1회 로드 — 이후 범위 변경은 메모리 필터만 실행
             isLoading = true
-            dataPoints = await manager.fetchMetricHistory(metric, from: selectedRange.startDate, usePounds: useMiles)
+            fullYearPoints = await manager.fetchMetricHistory(metric, from: TrendRange.year.startDate, usePounds: useMiles)
+            dataPoints = fullYearPoints.filter { $0.date >= selectedRange.startDate }
             isLoading = false
+        }
+        .onChange(of: selectedRange) {
+            dataPoints = fullYearPoints.filter { $0.date >= selectedRange.startDate }
         }
         .sheet(isPresented: $showShareCard) {
             GrowthShareCardScreen(

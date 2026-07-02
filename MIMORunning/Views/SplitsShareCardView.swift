@@ -317,17 +317,11 @@ struct SplitsShareCardScreen: View {
     var firstCoordinate: CLLocationCoordinate2D? = nil
 
     @Environment(\.dismiss) private var dismiss
-    @State private var shareURL: URL?
     @State private var previewImage: UIImage?
     @State private var isRendering = false
+    @State private var showShareSheet = false
     @State private var resolvedWeatherText: String?
     @State private var resolvedWeatherIcon: String?
-
-    private var shareFilename: String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyyMMdd"
-        return "mimo_splits_\(fmt.string(from: activity.date)).png"
-    }
 
     var body: some View {
         ZStack {
@@ -388,8 +382,8 @@ struct SplitsShareCardScreen: View {
                 .tint(Theme.violet)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-        } else if let url = shareURL {
-            ShareLink(item: url, preview: SharePreview(AppLanguage.shared.s("구간 기록", "Splits"))) {
+        } else if previewImage != nil {
+            Button { showShareSheet = true } label: {
                 Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -397,6 +391,9 @@ struct SplitsShareCardScreen: View {
                     .padding(.vertical, 15)
                     .background(Theme.violet)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let img = previewImage { ShareSheet(images: [img]) }
             }
         }
     }
@@ -432,15 +429,7 @@ struct SplitsShareCardScreen: View {
         let card = SplitsShareCardView(activity: activity, splits: splits, zones: zones, miniMeImage: miniMeImage, shoeName: shoeName, weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon)
         let renderer = ImageRenderer(content: card)
         renderer.scale = 3
-        guard let img = renderer.uiImage, let data = img.pngData() else {
-            isRendering = false
-            return
-        }
-        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(shareFilename)
-        try? data.write(to: url, options: .atomic)
-        previewImage = img
-        shareURL = url
+        previewImage = renderer.uiImage
         isRendering = false
     }
 }
@@ -725,16 +714,11 @@ struct IntervalsShareCardScreen: View {
     var firstCoordinate: CLLocationCoordinate2D? = nil
 
     @Environment(\.dismiss) private var dismiss
-    @State private var shareURL: URL?
     @State private var previewImage: UIImage?
     @State private var isRendering = false
+    @State private var showShareSheet = false
     @State private var resolvedWeatherText: String?
     @State private var resolvedWeatherIcon: String?
-
-    private var shareFilename: String {
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyyMMdd"
-        return "mimo_intervals_\(fmt.string(from: activity.date)).png"
-    }
 
     var body: some View {
         ZStack {
@@ -784,12 +768,15 @@ struct IntervalsShareCardScreen: View {
     @ViewBuilder private var shareButton: some View {
         if isRendering {
             ProgressView().tint(Theme.violet).frame(maxWidth: .infinity).padding(.vertical, 16)
-        } else if let url = shareURL {
-            ShareLink(item: url, preview: SharePreview(AppLanguage.shared.s("인터벌 구간", "Interval Reps"))) {
+        } else if previewImage != nil {
+            Button { showShareSheet = true } label: {
                 Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                     .font(.headline).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 15)
                     .background(Theme.violet).clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let img = previewImage { ShareSheet(images: [img]) }
             }
         }
     }
@@ -824,12 +811,7 @@ struct IntervalsShareCardScreen: View {
                                           weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon, shoeName: shoeName)
         let renderer = ImageRenderer(content: card)
         renderer.scale = 3
-        guard let img = renderer.uiImage, let data = img.pngData() else { isRendering = false; return }
-        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(shareFilename)
-        try? data.write(to: url, options: .atomic)
-        previewImage = img
-        shareURL = url
+        previewImage = renderer.uiImage
         isRendering = false
     }
 }

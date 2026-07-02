@@ -354,9 +354,9 @@ struct GrowthShareCardScreen: View {
     let age: Int?
     let isMale: Bool?
 
-    @State private var shareURL: URL?
     @State private var previewImage: UIImage?
     @State private var isRendering = true
+    @State private var showShareSheet = false
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
@@ -415,11 +415,8 @@ struct GrowthShareCardScreen: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
-        } else if let url = shareURL, let img = previewImage {
-            ShareLink(
-                item: url,
-                preview: SharePreview(AppLanguage.shared.s("\(metric.koreanLabel) 추세", "\(metric.koreanLabel) Trend"), image: Image(uiImage: img))
-            ) {
+        } else if previewImage != nil {
+            Button { showShareSheet = true } label: {
                 Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -427,6 +424,9 @@ struct GrowthShareCardScreen: View {
                     .padding(.vertical, 16)
                     .background(Theme.violet)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let img = previewImage { ShareSheet(images: [img]) }
             }
         } else {
             Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
@@ -441,21 +441,11 @@ struct GrowthShareCardScreen: View {
     @MainActor
     private func renderCard() async {
         isRendering = true
-        shareURL = nil
         previewImage = nil
 
         let renderer = ImageRenderer(content: renderableCard())
         renderer.scale = 3
-
-        guard let img = renderer.uiImage, let data = img.pngData() else {
-            isRendering = false
-            return
-        }
-        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_growth_\(metric.rawValue).png")
-        try? data.write(to: url, options: .atomic)
-        previewImage = img
-        shareURL = url
+        previewImage = renderer.uiImage
         isRendering = false
     }
 
