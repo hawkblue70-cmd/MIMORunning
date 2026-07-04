@@ -3,6 +3,7 @@ import Charts
 import CoreLocation
 import HealthKit
 import PhotosUI
+import Photos
 import SwiftData
 
 // MARK: - Share Metric model
@@ -115,12 +116,20 @@ enum CardChartPanel: String, CaseIterable, Equatable {
 // MARK: - Shared overlay constants (cards + video, single source of truth)
 
 enum CardVisual {
-    /// Top scrim: black 20% at top edge, fades to clear by 22% of height. Shared by photo and video.
+    /// Top scrim (short block, ≤2 lines): black 20% at top edge, fades to clear at 22% of height.
     static var topScrim: LinearGradient {
         LinearGradient(
-            colors: [Color.black.opacity(0.07), .clear],
+            colors: [Color.black.opacity(0.20), .clear],
             startPoint: .top,
             endPoint: UnitPoint(x: 0.5, y: 0.22)
+        )
+    }
+    /// Top scrim (tall block, 3+ lines with memo): black 35%, fades to clear at 30% of height.
+    static var topScrimWide: LinearGradient {
+        LinearGradient(
+            colors: [Color.black.opacity(0.35), .clear],
+            startPoint: .top,
+            endPoint: UnitPoint(x: 0.5, y: 0.30)
         )
     }
     /// Bottom scrim for photo cards: black 50%, clears at 60% from top.
@@ -154,6 +163,17 @@ enum CardVisual {
     static let routeShadowColor:  Color   = .black.opacity(0.55)
     static let routeShadowRadius: CGFloat = 3
     static let routeShadowY:      CGFloat = 1
+
+    // Instagram safe zones for all 9:16 video cards (1080×1920 px).
+    // Top: Reels account name + audio row measured on-device — 260px.
+    // Bottom: reply bar / caption — 220px.  Horizontal: 60px.
+    static let videoSafeTop:    CGFloat = 260
+    static let videoSafeBottom: CGFloat = 220
+    static let videoSafeHoriz:  CGFloat = 60
+    // Reference pt values at scale=1.0 (300pt card width over 1080px output).
+    static var videoSafeTopRef:    CGFloat { videoSafeTop    * 300 / 1080 }  // ≈ 72.2 pt
+    static var videoSafeBottomRef: CGFloat { videoSafeBottom * 300 / 1080 }  // ≈ 61.1 pt
+    static var videoSafeHorizRef:  CGFloat { videoSafeHoriz  * 300 / 1080 }  // ≈ 16.7 pt
 }
 
 extension View {
@@ -192,21 +212,23 @@ struct CardChartPanelView: View {
     var hrZones: [HRZoneData] = []
     var workoutSeries: [(offset: TimeInterval, value: Double)] = []
     var intervalSegments: [IntervalSegment] = []
+    var chartSize: CGSize = CGSize(width: 130, height: 83)
+    var labelScale: CGFloat = 1.0
 
     var body: some View {
         switch panel {
         case .splits where !splits.isEmpty:
-            SplitsPanelChart(splits: splits, compact: true)
-                .frame(width: 130, height: 83).clipped()
+            SplitsPanelChart(splits: splits, compact: true, labelScale: labelScale)
+                .frame(width: chartSize.width, height: chartSize.height).clipped()
         case .intervals where !intervalSegments.isEmpty:
-            CardIntervalChart(segments: intervalSegments)
+            CardIntervalChart(segments: intervalSegments, labelScale: labelScale)
         case .heartRate where !hrSamples.isEmpty:
-            HRSeriesPanelChart(samples: hrSamples, zones: hrZones, compact: true)
-                .frame(width: 130, height: 83).clipped()
+            HRSeriesPanelChart(samples: hrSamples, zones: hrZones, compact: true, labelScale: labelScale)
+                .frame(width: chartSize.width, height: chartSize.height).clipped()
         case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
              where !workoutSeries.isEmpty:
-            CardWorkoutSeriesChart(samples: workoutSeries, panel: panel)
-                .frame(width: 130, height: 83).clipped()
+            CardWorkoutSeriesChart(samples: workoutSeries, panel: panel, labelScale: labelScale)
+                .frame(width: chartSize.width, height: chartSize.height).clipped()
         default:
             EmptyView()
         }
@@ -283,9 +305,9 @@ struct ShareCardView: View {
                 Spacer()
                 RouteLineArt(coordinates: routeCoordinates)
                     .frame(width: 110, height: 110)
-                    .padding(.trailing, 20)
             }
-            .padding(.bottom, 12)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
         }
     }
 
@@ -300,10 +322,9 @@ struct ShareCardView: View {
                     hrZones: chartHRZones, workoutSeries: chartWorkoutSeries,
                     intervalSegments: chartIntervalSegments
                 )
-                .padding(.trailing, 20)
             }
-            .padding(.top, 6)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
         }
     }
 
@@ -490,6 +511,7 @@ struct ShareCardView: View {
 struct CardWorkoutSeriesChart: View {
     let samples: [(offset: TimeInterval, value: Double)]
     let panel: CardChartPanel
+    var labelScale: CGFloat = 1.0
 
     private var barColor: Color {
         switch panel {
@@ -604,7 +626,7 @@ struct CardWorkoutSeriesChart: View {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.10))
                 AxisValueLabel {
                     if let v = val.as(Double.self) {
-                        Text(yLabel(v)).font(.system(size: 6.5)).foregroundStyle(Color.white.opacity(0.80))
+                        Text(yLabel(v)).font(.system(size: 6.5 * labelScale)).foregroundStyle(Color.white.opacity(0.80))
                     }
                 }
             }
@@ -613,7 +635,7 @@ struct CardWorkoutSeriesChart: View {
             AxisMarks(values: .automatic(desiredCount: 3)) { val in
                 AxisValueLabel {
                     if let t = val.as(Double.self) {
-                        Text(AppLanguage.shared.s("\(Int(t))분", "\(Int(t))m")).font(.system(size: 6)).foregroundStyle(Color.white.opacity(0.75))
+                        Text(AppLanguage.shared.s("\(Int(t))분", "\(Int(t))m")).font(.system(size: 6 * labelScale)).foregroundStyle(Color.white.opacity(0.75))
                     }
                 }
             }
@@ -653,6 +675,7 @@ extension Array where Element == IntervalSegment {
 
 struct CardIntervalChart: View {
     let segments: [IntervalSegment]
+    var labelScale: CGFloat = 1.0
     @State private var labelX: [Int: CGFloat] = [:]
 
     var body: some View {
@@ -664,8 +687,8 @@ struct CardIntervalChart: View {
         let hi = rawHi > p90 * 1.5 ? p90 * 1.18 : rawHi * 1.06
         let n = segments.count
         let step: Int = n <= 6 ? 1 : n <= 15 ? 2 : n <= 30 ? 5 : 10
-        let chartW: CGFloat = 130
-        let barW: CGFloat = n <= 6 ? 7 : n <= 12 ? 5 : n <= 20 ? 4 : 3
+        let chartW: CGFloat = 130 * labelScale
+        let barW: CGFloat = labelScale * (n <= 6 ? 7 : n <= 12 ? 5 : n <= 20 ? 4 : 3)
         VStack(spacing: 1) {
             Chart {
                 ForEach(segments) { seg in
@@ -687,7 +710,7 @@ struct CardIntervalChart: View {
                     AxisValueLabel {
                         if let sec = val.as(Double.self) {
                             Text(String(format: "%d'%02d\"", Int(sec) / 60, Int(sec) % 60))
-                                .font(.system(size: 6.5))
+                                .font(.system(size: 6.5 * labelScale))
                                 .foregroundStyle(Color.white.opacity(0.80))
                         }
                     }
@@ -702,20 +725,20 @@ struct CardIntervalChart: View {
                     labelX = positions
                 }
             }
-            .frame(width: chartW, height: 63)
+            .frame(width: chartW, height: 63 * labelScale)
             .clipped()
 
             ZStack(alignment: .topLeading) {
                 Color.clear
                 ForEach(Array(labelX.keys.sorted()), id: \.self) { id in
                     Text("\(id)")
-                        .font(.system(size: 6.5))
+                        .font(.system(size: 6.5 * labelScale))
                         .foregroundStyle(Color.white.opacity(0.80))
                         .fixedSize()
-                        .position(x: labelX[id] ?? 0, y: 5)
+                        .position(x: labelX[id] ?? 0, y: 5 * labelScale)
                 }
             }
-            .frame(width: chartW, height: 10)
+            .frame(width: chartW, height: 10 * labelScale)
         }
     }
 }
@@ -792,36 +815,36 @@ private struct PhotoShareCardView: View {
 
                         if !insightTitle.isEmpty {
                             Text(insightTitle)
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.90))
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.8)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
 
                         let hasBadges = raceName != nil || (showMood && story != nil)
                         if hasBadges {
                             HStack(spacing: 6) {
                                 if let race = raceName {
-                                    HStack(spacing: 3) {
+                                    HStack(spacing: 4) {
                                         Image(systemName: "flag.checkered")
                                             .font(.system(size: 8, weight: .semibold))
                                         Text(race)
-                                            .font(.system(size: 8.5, weight: .semibold))
+                                            .font(.system(size: 9, weight: .semibold))
                                             .lineLimit(1)
                                     }
                                     .foregroundStyle(Theme.violet)
-                                    .padding(.horizontal, 7)
+                                    .padding(.horizontal, 8)
                                     .padding(.vertical, 3)
-                                    .background(Theme.violet.opacity(0.22))
+                                    .background(Theme.violet.opacity(0.18))
                                     .clipShape(Capsule())
                                 }
                                 if showMood, let s = story {
-                                    HStack(spacing: 3) {
+                                    HStack(spacing: 4) {
                                         Image(systemName: s.mood.sfSymbol)
-                                            .font(.system(size: 8))
+                                            .font(.system(size: 10))
                                             .foregroundStyle(moodCardColor(s.mood))
                                         Text(s.mood.label)
-                                            .font(.system(size: 8.5, weight: .medium))
+                                            .font(.system(size: 10, weight: .medium))
                                             .foregroundStyle(moodCardColor(s.mood))
                                     }
                                 }
@@ -830,7 +853,7 @@ private struct PhotoShareCardView: View {
 
                         if showMemo, let s = story, !s.memo.isEmpty {
                             Text(s.memo)
-                                .font(.system(size: 11, weight: .regular, design: .serif).italic())
+                                .font(.system(size: 10, weight: .regular, design: .serif).italic())
                                 .foregroundStyle(.white.opacity(0.85))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -854,8 +877,8 @@ private struct PhotoShareCardView: View {
                         RouteLineArt(coordinates: routeCoordinates)
                             .frame(width: 110, height: 110)
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 6)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
                 } else if chartPanel != .map {
                     HStack {
                         Spacer()
@@ -865,8 +888,8 @@ private struct PhotoShareCardView: View {
                             intervalSegments: chartIntervalSegments
                         )
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 6)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
                 }
 
                 HStack(spacing: 0) {
@@ -920,11 +943,11 @@ private struct PhotoShareCardView: View {
                     }
                     .fixedSize(horizontal: true, vertical: true)
                     .frame(width: distW, alignment: .leading)
-                    .cardLargeTextShadow()
+                    .padding(.leading, 20)
 
                     if !metrics.isEmpty {
                         Rectangle()
-                            .fill(.white.opacity(0.25))
+                            .fill(.white.opacity(0.07))
                             .frame(width: 0.5, height: 36)
 
                         let rows = metricsRows(metrics)
@@ -945,7 +968,6 @@ private struct PhotoShareCardView: View {
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 18)
                 .padding(.top, 3)
                 .padding(.bottom, 8)
 
@@ -1122,6 +1144,40 @@ private enum ShareTemplate: String, CaseIterable {
     }
 }
 
+// MARK: - Share Card (카드별 지원 템플릿 단일 소스)
+
+private enum ShareCard: Int {
+    case placeable = 0
+    case oneLiner  = 1
+    case athletic  = 2
+    case bigNumber = 3
+    case sky       = 4
+    case ecg       = 5
+    case ticket    = 6
+
+    /// 이 카드에서 활성화(탭 가능·흰색)로 표시할 템플릿 집합.
+    /// templatePicker 활성화, onCardIndexChanged 자동전환, renderCard 분기의 단일 소스.
+    var supportedTemplates: Set<ShareTemplate> {
+        switch self {
+        case .placeable: return [.story, .video]
+        case .oneLiner:  return [.story, .video]
+        case .athletic:  return [.athletic, .story, .video, .routeVideo]
+        case .bigNumber: return [.athletic, .story, .video, .routeVideo]
+        case .sky:       return [.athletic]
+        case .ecg:       return [.athletic]
+        case .ticket:    return [.athletic]
+        }
+    }
+
+    /// 카드 진입 시 현재 템플릿이 미지원이면 이 값으로 자동 전환.
+    var defaultTemplate: ShareTemplate {
+        switch self {
+        case .placeable, .oneLiner: return .story
+        default:                    return .athletic
+        }
+    }
+}
+
 // MARK: - Story Share Card (no photo — dark card)
 
 private struct StoryShareCardView: View {
@@ -1176,36 +1232,36 @@ private struct StoryShareCardView: View {
 
                         if !insightTitle.isEmpty {
                             Text(insightTitle)
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.90))
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.8)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
 
                         let hasBadges = raceName != nil || showMood
                         if hasBadges {
                             HStack(spacing: 6) {
                                 if let race = raceName {
-                                    HStack(spacing: 3) {
+                                    HStack(spacing: 4) {
                                         Image(systemName: "flag.checkered")
                                             .font(.system(size: 8, weight: .semibold))
                                         Text(race)
-                                            .font(.system(size: 8.5, weight: .semibold))
+                                            .font(.system(size: 9, weight: .semibold))
                                             .lineLimit(1)
                                     }
                                     .foregroundStyle(Theme.violet)
-                                    .padding(.horizontal, 7)
+                                    .padding(.horizontal, 8)
                                     .padding(.vertical, 3)
                                     .background(Theme.violet.opacity(0.18))
                                     .clipShape(Capsule())
                                 }
                                 if showMood {
-                                    HStack(spacing: 3) {
+                                    HStack(spacing: 4) {
                                         Image(systemName: story.mood.sfSymbol)
-                                            .font(.system(size: 9))
+                                            .font(.system(size: 10))
                                             .foregroundStyle(moodColor)
                                         Text(story.mood.label)
-                                            .font(.system(size: 9, weight: .medium))
+                                            .font(.system(size: 10, weight: .medium))
                                             .foregroundStyle(moodColor)
                                     }
                                 }
@@ -1214,7 +1270,7 @@ private struct StoryShareCardView: View {
 
                         if showMemo, !story.memo.isEmpty {
                             Text("\u{201C}\(story.memo)\u{201D}")
-                                .font(.system(size: 15, weight: .regular, design: .serif).italic())
+                                .font(.system(size: 10, weight: .regular, design: .serif).italic())
                                 .foregroundStyle(.white.opacity(0.88))
                                 .lineLimit(3)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -1305,6 +1361,7 @@ private struct StoryShareCardView: View {
                     }
                     .fixedSize(horizontal: true, vertical: true)
                     .frame(width: distW, alignment: .leading)
+                    .padding(.leading, 20)
 
                     if !metrics.isEmpty {
                         Rectangle()
@@ -1329,7 +1386,6 @@ private struct StoryShareCardView: View {
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20)
                 .padding(.top, 3)
                 .padding(.bottom, 8)
             }
@@ -1342,7 +1398,7 @@ private struct StoryShareCardView: View {
 
 // MARK: - Video Overlay Card (rendered via ImageRenderer at 216×384pt × scale 5 → 1080×1920px)
 
-private struct VideoOverlayCard: View {
+struct VideoOverlayCard: View {
     let insightTitle: String
     let distanceKm: String
     let date: Date
@@ -1359,72 +1415,79 @@ private struct VideoOverlayCard: View {
     let chartWorkoutSeries: [(offset: TimeInterval, value: Double)]
     let chartIntervalSegments: [IntervalSegment]
     let weather: WeatherSnapshot?
-
-    private var startDateTimeString: String { date.cardDateTimeString }
+    var shoeName: String? = nil
+    var scale: CGFloat = 1.0
 
     var body: some View {
         ZStack {
             Color.clear
 
             CardVisual.videoBottomScrim
-            CardVisual.topScrim
+            // Use wider, darker scrim when memo pushes the top block to 3+ lines.
+            if memoText?.isEmpty == false {
+                CardVisual.topScrimWide
+            } else {
+                CardVisual.topScrim
+            }
 
             VStack(alignment: .leading, spacing: 0) {
 
-                // ── TOP: Wordmark + Insight + MiniMe (mirrors Athletic layout) ──
-                HStack(alignment: .top, spacing: 6) {
-                    VStack(alignment: .leading, spacing: 3) {
+                // ── TOP: Wordmark + Insight + MiniMe ──
+                HStack(alignment: .top, spacing: 4 * scale) {
+                    VStack(alignment: .leading, spacing: 2 * scale) {
                         HStack(spacing: 0) {
                             Text("MIMO")
-                                .font(.system(size: 9, weight: .black))
+                                .font(.system(size: 9 * scale, weight: .black))
                                 .tracking(2)
                                 .foregroundStyle(.white)
                             Text(" RUNNING")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9 * scale, weight: .bold))
                                 .tracking(2)
                                 .foregroundStyle(Theme.violet)
                         }
                         if !insightTitle.isEmpty {
                             Text(insightTitle)
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 13 * scale, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.90))
                                 .lineLimit(2)
+                                .cardTextShadow()
                         }
                         if let race = raceName {
-                            HStack(spacing: 2) {
+                            HStack(spacing: 2 * scale) {
                                 Image(systemName: "flag.checkered")
-                                    .font(.system(size: 6, weight: .semibold))
+                                    .font(.system(size: 8 * scale, weight: .semibold))
                                 Text(race)
-                                    .font(.system(size: 6.5, weight: .semibold))
+                                    .font(.system(size: 9 * scale, weight: .semibold))
                                     .lineLimit(1)
                             }
                             .foregroundStyle(Theme.violet)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 4 * scale)
+                            .padding(.vertical, 2 * scale)
                             .background(Theme.violet.opacity(0.20))
                             .clipShape(Capsule())
                         }
                         if let m = mood {
-                            HStack(spacing: 3) {
+                            HStack(spacing: 3 * scale) {
                                 Image(systemName: m.sfSymbol)
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.system(size: 10 * scale, weight: .medium))
                                 Text(m.label)
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.system(size: 10 * scale, weight: .medium))
                             }
                             .foregroundStyle(m.cardColor)
                         }
                         if let memo = memoText, !memo.isEmpty {
                             Text(memo)
-                                .font(.system(size: 11, weight: .regular, design: .serif).italic())
+                                .font(.system(size: 10 * scale, weight: .regular, design: .serif).italic())
                                 .foregroundStyle(.white.opacity(0.80))
+                                .cardTextShadow()
                         }
                     }
-                    Spacer(minLength: 4)
+                    Spacer(minLength: 3 * scale)
                     if miniMeVariant != nil || miniMeImage != nil {
-                        MiniMeOrCustomImage(customImage: miniMeImage, variant: miniMeVariant, size: 38)
+                        MiniMeOrCustomImage(customImage: miniMeImage, variant: miniMeVariant, size: 54 * scale)
                     }
                 }
-                .padding(.top, 12)
+                .padding(.top, CardVisual.videoSafeTopRef * scale)
 
                 Spacer()
 
@@ -1432,68 +1495,79 @@ private struct VideoOverlayCard: View {
                 if chartPanel != .map {
                     HStack {
                         Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            HStack(spacing: 3) {
+                        VStack(alignment: .trailing, spacing: 2 * scale) {
+                            HStack(spacing: 2 * scale) {
                                 Image(systemName: chartPanel.icon)
-                                    .font(.system(size: 6))
+                                    .font(.system(size: 7 * scale))
                                 Text(chartPanel.label)
-                                    .font(.system(size: 7, weight: .semibold))
+                                    .font(.system(size: 8 * scale, weight: .semibold))
                                     .tracking(0.3)
                                 if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
                                     Text(s)
-                                        .font(.system(size: 7, weight: .semibold).monospacedDigit())
+                                        .font(.system(size: 8 * scale, weight: .semibold).monospacedDigit())
                                 }
                             }
                             .foregroundStyle(Color.white.opacity(0.55))
                             CardChartPanelView(
                                 panel: chartPanel, splits: chartSplits, hrSamples: chartHRSamples,
                                 hrZones: chartHRZones, workoutSeries: chartWorkoutSeries,
-                                intervalSegments: chartIntervalSegments
+                                intervalSegments: chartIntervalSegments,
+                                chartSize: CGSize(width: 130 * scale, height: 83 * scale),
+                                labelScale: scale
                             )
                         }
                     }
-                    .padding(.bottom, 3)
+                    .padding(.horizontal, 20 * scale)
+                    .padding(.bottom, 8 * scale)
                 }
 
-                // ── BOTTOM: weather · date · divider · stats ──
+                // ── BOTTOM: date · divider · stats ──
                 HStack(spacing: 0) {
-                    HStack(spacing: 2) {
+                    HStack(spacing: 2 * scale) {
                         Text(date.cardDateString)
                         Text(date.weekdayCharKo).foregroundStyle(Theme.time)
                         Text(date.cardTimeString)
                     }
-                    .font(.system(size: 6, weight: .medium))
+                    .font(.system(size: 9 * scale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.80))
                     if let w = weather {
-                        HStack(spacing: 2) {
+                        HStack(spacing: 2 * scale) {
                             Image(systemName: w.systemIcon)
-                                .font(.system(size: 6))
+                                .font(.system(size: 8 * scale))
                             Text(w.formattedTemp)
-                                .font(.system(size: 6, weight: .medium))
+                                .font(.system(size: 8 * scale, weight: .medium))
                         }
                         .foregroundStyle(.white.opacity(0.65))
-                        .padding(.leading, 5)
+                        .padding(.leading, 4 * scale)
+                    }
+                    if let shoe = shoeName {
+                        Spacer()
+                        HStack(spacing: 3 * scale) {
+                            Image(systemName: "shoe.fill").font(.system(size: 8 * scale))
+                            Text(shoe).font(.system(size: 9 * scale, weight: .medium)).lineLimit(1)
+                        }
+                        .foregroundStyle(.white.opacity(0.75))
                     }
                 }
-                .padding(.bottom, 2)
+                .padding(.bottom, 2 * scale)
 
                 Rectangle()
                     .fill(Theme.violet.opacity(0.30))
                     .frame(height: 0.5)
 
                 HStack(alignment: .center, spacing: 0) {
-                    let distW: CGFloat = metrics.count >= 5 ? 49 : 67
-                    let distPt: CGFloat = metrics.count >= 5 ? 20 : 27
-                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                    let distW: CGFloat = (metrics.count >= 5 ? 70 : 96) * scale
+                    let distPt: CGFloat = (metrics.count >= 5 ? 28 : 38) * scale
+                    HStack(alignment: .lastTextBaseline, spacing: 2 * scale) {
                         Text(distanceKm)
                             .font(.system(size: distPt, weight: .black).width(.condensed))
                             .foregroundStyle(.white)
                             .minimumScaleFactor(0.5)
                             .lineLimit(1)
                         Text("KM")
-                            .font(.system(size: 7, weight: .bold).width(.condensed))
+                            .font(.system(size: 10 * scale, weight: .bold).width(.condensed))
                             .foregroundStyle(Theme.violet)
-                            .padding(.bottom, 1)
+                            .padding(.bottom, 1 * scale)
                     }
                     .fixedSize(horizontal: true, vertical: true)
                     .frame(width: distW, alignment: .leading)
@@ -1502,21 +1576,22 @@ private struct VideoOverlayCard: View {
                     if !metrics.isEmpty {
                         Rectangle()
                             .fill(.white.opacity(0.07))
-                            .frame(width: 0.5, height: 25)
+                            .frame(width: 0.5, height: 36 * scale)
 
                         let rows = metricsRows(metrics)
-                        VStack(spacing: rows.count > 1 ? 2 : 0) {
+                        VStack(spacing: rows.count > 1 ? 3 * scale : 0) {
                             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                                 HStack(spacing: 0) {
                                     ForEach(row) { m in
                                         VStack(spacing: 1) {
                                             Text(m.value)
-                                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                                                .font(.system(size: (row.count >= 5 ? 11 : 12) * scale,
+                                                              weight: .bold, design: .rounded))
                                                 .foregroundStyle(.white)
                                                 .lineLimit(1)
                                                 .minimumScaleFactor(0.6)
                                             Text(m.label)
-                                                .font(.system(size: 5.5, weight: .semibold))
+                                                .font(.system(size: 8 * scale, weight: .semibold))
                                                 .foregroundStyle(m.color)
                                         }
                                         .frame(maxWidth: .infinity)
@@ -1526,16 +1601,16 @@ private struct VideoOverlayCard: View {
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 5)
+                        .padding(.horizontal, 6 * scale)
                         .frame(maxWidth: .infinity)
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 2)
-                .padding(.bottom, 6)
+                .padding(.top, 2 * scale)
+                .padding(.bottom, CardVisual.videoSafeBottomRef * scale)
             }
             .cardTextShadow()
-            .padding(.horizontal, 10)
+            .padding(.horizontal, CardVisual.videoSafeHorizRef * scale)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
@@ -1555,6 +1630,7 @@ struct ShareCardScreen: View {
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
+    @Query private var allOneLinerEntries: [OneLinerEntry]
     private var story: WorkoutStory? { allStories.first { $0.workoutID == activity.id.uuidString } }
     private var activeShoe: Shoe? {
         guard let sid = story?.shoeID else { return nil }
@@ -1562,10 +1638,21 @@ struct ShareCardScreen: View {
     }
     private var storyPhotos: [UIImage] { story?.allPhotoImages ?? [] }
     private var storyPhoto: UIImage? { storyPhotos.first }
+    private var oneLinerEntries: [OneLinerEntry] {
+        OneLinerEntry.visible(from: allOneLinerEntries, workoutID: activity.id.uuidString)
+    }
 
     private var confirmedRace: PersistedRaceMatch? {
         guard let m = raceDetector.matchFor(activityID: activity.id), m.isConfirmed else { return nil }
         return m
+    }
+    // Look up the BundledRace matching the confirmed match to get startTimeString
+    private var confirmedBundledRace: BundledRace? {
+        guard let match = confirmedRace else { return nil }
+        return raceDetector.races.first {
+            $0.name == match.raceName &&
+            Calendar.current.isDate($0.date ?? .distantPast, inSameDayAs: match.raceDate)
+        }
     }
     private var activeRaceName: String? { showRaceOnCard ? confirmedRace?.raceName : nil }
 
@@ -1589,7 +1676,7 @@ struct ShareCardScreen: View {
     @State private var showStoryPhotoPicker = false
     @State private var photoOffset: CGSize = .zero
     @State private var photoOffsets: [Int: CGSize] = [:]
-    @State private var template: ShareTemplate = .athletic
+    @State private var template: ShareTemplate = .story
     @State private var enabledMetrics: Set<ShareMetric>
     @State private var showInsightOnCard = true
     @State private var showRaceOnCard = true
@@ -1604,6 +1691,8 @@ struct ShareCardScreen: View {
     @State private var videoPreviewImage: UIImage?
     @State private var isExportingVideo = false
     @State private var exportedVideoFile: SharableVideoFile?
+    @State private var isBatchExporting = false
+    @State private var showExportedVideoWarning = false
     // Route video
     @State private var routeSnapshot: UIImage?
     @State private var routeSnapshotPoints: [CGPoint] = []
@@ -1623,10 +1712,13 @@ struct ShareCardScreen: View {
     @State private var bigNumberShowMemo: Bool = true
     @State private var bigNumberAccent: CardAccent = .violet
 
-    private var isBigNumber: Bool { cardIndex == 2 }
-    private var isPlaceable: Bool { cardIndex == 1 }
-    private var isSky: Bool      { cardIndex == 3 }
-    private var isECG: Bool      { cardIndex == 4 }
+    private var isPlaceable: Bool  { cardIndex == 0 }
+    private var isOneLiner: Bool   { cardIndex == 1 }
+    // cardIndex == 2: Athletic (기본 템플릿 카드, 별도 판별 불필요)
+    private var isBigNumber: Bool  { cardIndex == 3 }
+    private var isSky: Bool        { cardIndex == 4 }
+    private var isECG: Bool        { cardIndex == 5 }
+    private var isTicket: Bool     { cardIndex == 6 }
 
     // Binding<Int?> used by scrollPosition(id:); reads/writes cardIndex directly
     // so programmatic cardIndex changes scroll the card, and user swipes update cardIndex.
@@ -1645,6 +1737,24 @@ struct ShareCardScreen: View {
     @State private var ecgAccent:        CardAccent   = .violet
     // Sky card
     @State private var skyAccent:        CardAccent   = .none
+    // Ticket card
+    @State private var ticketDepartureName: String = "RUN"
+    @State private var ticketAccent: CardAccent = .none    // race ticket ignores this (gold fixed)
+    // OneLiner card
+    @State private var oneLinerText:          String           = ""
+    @State private var oneLinerPosition:      CardPosition     = .center
+    @State private var oneLinerColor:         OneLinerTextColor = .white
+    @State private var oneLinerFont:          OneLinerFont     = .pen
+    @State private var oneLinerShowDate:      Bool             = true
+    /// Photo UUIDs parallel to storyPhotos; used as stable keys for OneLinerEntry.mediaRef.
+    @State private var storyPhotoUUIDs:       [String]         = []
+    /// True when the linked video PHAsset has been deleted from Photos app.
+    @State private var oneLinerPhAssetDeleted: Bool            = false
+    /// PHAsset-loaded full-res images by story photo index (overrides SwiftData thumbnail for rendering).
+    @State private var highQualityStoryPhotos: [Int: UIImage]  = [:]
+    /// Indices of story photos whose backing PHAsset has been deleted from Photos.
+    @State private var deletedPhotoIndices:    Set<Int>         = []
+    @FocusState private var oneLinerFieldFocused: Bool
 
     private var routeCoords: [CLLocationCoordinate2D] { detail?.routeCoordinates ?? [] }
     private var distanceKmString: String {
@@ -1722,6 +1832,8 @@ struct ShareCardScreen: View {
     private func photoFor(_ cIdx: Int) -> UIImage? {
         guard !storyPhotos.isEmpty else { return selectedPhoto }
         let idx = cardPhotoIndex[cIdx] ?? 0
+        // PHAsset-loaded high-res photo takes priority over SwiftData thumbnail
+        if let hq = highQualityStoryPhotos[idx] { return hq }
         return idx < storyPhotos.count ? storyPhotos[idx] : storyPhotos.first
     }
 
@@ -1731,7 +1843,23 @@ struct ShareCardScreen: View {
                 ForEach(storyPhotos.indices, id: \.self) { i in
                     let isSelected = (cardPhotoIndex[cardIndex] ?? 0) == i
                     Button {
-                        cardPhotoIndex[cardIndex] = i
+                        if isOneLiner {
+                            // ① 저장 — cardPhotoIndex 커밋 전이므로 이전 사진의 ref 사용
+                            let oldRef   = computeOneLinerMediaRef() ?? "nil"
+                            let oldTxt   = oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            saveOneLinerSettings()
+                            let newRef   = i < storyPhotoUUIDs.count ? "photo:\(storyPhotoUUIDs[i])" : "nil"
+                            print("[OneLiner] 선택 사진=…\(newRef.suffix(4)) / 저장(이전=…\(oldRef.suffix(4)))=\(oldTxt.isEmpty ? "(빈 문구 스킵)" : String(oldTxt.prefix(10)))")
+
+                            // ② 포커스 해제 — 키보드 열려 있으면 TextField 내부 버퍼가 바인딩 갱신을 씹음
+                            oneLinerFieldFocused = false
+
+                            // ③ 인덱스 갱신 + ④ 새 사진 entry 로드 (명시적 index로 배치 이전에 확정 로드)
+                            cardPhotoIndex[cardIndex] = i
+                            loadOneLinerSettingsFor(photoIndex: i)
+                        } else {
+                            cardPhotoIndex[cardIndex] = i
+                        }
                         Task { await renderCard(showSpinner: false) }
                     } label: {
                         Image(uiImage: storyPhotos[i])
@@ -1743,6 +1871,32 @@ struct ShareCardScreen: View {
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(isSelected ? Theme.violet : Color.clear, lineWidth: 2)
                             )
+                            .overlay {
+                                if deletedPhotoIndices.contains(i) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.55))
+                                        Image(systemName: "icloud.slash")
+                                            .font(.system(size: 12)).foregroundStyle(.white)
+                                    }
+                                }
+                            }
+                            // 한마디 연결 여부 표시: 문구 있는 사진은 우하단 바이올렛 도트
+                            .overlay(alignment: .bottomTrailing) {
+                                if isOneLiner, i < storyPhotoUUIDs.count {
+                                    let ref = "photo:\(storyPhotoUUIDs[i])"
+                                    let hasText = oneLinerEntries.contains {
+                                        $0.mediaRef == ref &&
+                                        !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    }
+                                    if hasText {
+                                        Circle()
+                                            .fill(Theme.violet)
+                                            .frame(width: 9, height: 9)
+                                            .overlay(Circle().strokeBorder(.black.opacity(0.25), lineWidth: 1))
+                                            .offset(x: 3, y: 3)
+                                    }
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                 }
@@ -2034,7 +2188,7 @@ struct ShareCardScreen: View {
             activity: activity,
             detail: detail,
             routeCoords: routeCoords.isEmpty ? nil : routeCoords,
-            photo: template == .video ? videoPreviewImage : photoFor(1),
+            photo: template == .video ? videoPreviewImage : photoFor(0),
             date: activity.date,
             metricsPosition: placeableMetricsPosition,
             accent: placeableAccent,
@@ -2078,78 +2232,241 @@ struct ShareCardScreen: View {
         }
     }
 
+    private var ticketCardPreview: some View {
+        TicketCard(
+            activity: activity,
+            routeCoordinates: routeCoords,
+            splits: detail?.splits ?? [],
+            raceName: confirmedRace?.raceName,
+            shoeName: displayShoeName,
+            departureName: ticketDepartureName,
+            raceDistanceKm: confirmedRace?.distanceKm,
+            raceStartTimeString: confirmedBundledRace?.startTimeString,
+            accent: ticketAccent
+        )
+    }
+
+    @ViewBuilder
+    private var oneLinerCardPreview: some View {
+        if template == .video {
+            oneLinerVideoPreviewCard
+        } else {
+            let idx   = cardPhotoIndex[1]
+            let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
+            OneLinerCard(
+                activity: activity,
+                backgroundPhoto: photo,
+                text: oneLinerText,
+                position: oneLinerPosition,
+                textColor: oneLinerColor,
+                fontChoice: oneLinerFont,
+                showDate: oneLinerShowDate
+            )
+        }
+    }
+
+    private var oneLinerVideoPreviewCard: some View {
+        // 9:16 preview frame — same aspect ratio as export output (1080×1920).
+        // The OneLinerCard overlay is offset to sit inside the safe zone so text
+        // positions in preview approximately match the export layout.
+        let pW: CGFloat = 300
+        let pH: CGFloat = pW * 16 / 9                         // ≈ 533.33
+        let scale: CGFloat = pW / 1080                         // 300/1080 = 5/18
+        let safeTopPt    = CardVisual.videoSafeTop    * scale  // = 50 pt
+        let safeBottomPt = CardVisual.videoSafeBottom * scale  // ≈ 61.1 pt
+
+        return ZStack(alignment: .top) {
+            // ── Background / placeholder ──────────────────────────────
+            if let preview = videoPreviewImage {
+                Image(uiImage: preview)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: pW, height: pH)
+                    .clipped()
+            } else {
+                Color(hex: "0D0D12")
+                    .frame(width: pW, height: pH)
+                if !isExportingVideo {
+                    VStack(spacing: 10) {
+                        Image(systemName: oneLinerPhAssetDeleted ? "video.slash" : "video.badge.plus")
+                            .font(.system(size: 32))
+                            .foregroundStyle(oneLinerPhAssetDeleted ? .orange : Theme.violet)
+                        Text(oneLinerPhAssetDeleted
+                             ? AppLanguage.shared.s("원본이 삭제되었어요", "Original deleted")
+                             : AppLanguage.shared.s("영상을 선택해 주세요", "Select a video"))
+                            .font(.caption)
+                            .foregroundStyle(oneLinerPhAssetDeleted ? .orange : .secondary)
+                        if oneLinerPhAssetDeleted {
+                            Text(AppLanguage.shared.s("한마디는 유지됩니다", "Your text is preserved"))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(width: pW, height: pH)
+                }
+            }
+
+            // ── Text overlay: OneLinerCard inside the safe zone ───────
+            // The card is 300×375pt. Offset by safeTopPt (50pt) approximates
+            // the export layout where text sits inside the 180px–220px safe zone.
+            OneLinerCard(
+                activity: activity,
+                backgroundPhoto: nil,
+                text: oneLinerText,
+                position: oneLinerPosition,
+                textColor: oneLinerColor,
+                fontChoice: oneLinerFont,
+                showDate: oneLinerShowDate,
+                showBackground: false
+            )
+            .frame(width: OneLinerCard.cardWidth, height: OneLinerCard.cardHeight)
+            .offset(y: safeTopPt)
+            .allowsHitTesting(false)
+
+            // ── Safe zone guides ──────────────────────────────────────
+            VStack(spacing: 0) {
+                // Top danger zone (Instagram UI — profile, icons)
+                ZStack(alignment: .bottomLeading) {
+                    Color.black.opacity(0.30)
+                    Text(AppLanguage.shared.s("인스타 UI 영역", "Instagram UI"))
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .padding(.leading, 8)
+                        .padding(.bottom, 4)
+                    Canvas { ctx, size in
+                        var path = Path()
+                        path.move(to: CGPoint(x: 0, y: size.height - 0.5))
+                        path.addLine(to: CGPoint(x: size.width, y: size.height - 0.5))
+                        ctx.stroke(path, with: .color(.white.opacity(0.45)),
+                                   style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    }
+                }
+                .frame(width: pW, height: safeTopPt)
+
+                Spacer()
+
+                // Bottom danger zone (reply bar / caption)
+                ZStack(alignment: .topLeading) {
+                    Color.black.opacity(0.30)
+                    Text(AppLanguage.shared.s("인스타 UI 영역", "Instagram UI"))
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .padding(.leading, 8)
+                        .padding(.top, 4)
+                    Canvas { ctx, size in
+                        var path = Path()
+                        path.move(to: CGPoint(x: 0, y: 0.5))
+                        path.addLine(to: CGPoint(x: size.width, y: 0.5))
+                        ctx.stroke(path, with: .color(.white.opacity(0.45)),
+                                   style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    }
+                }
+                .frame(width: pW, height: safeBottomPt)
+            }
+            .frame(width: pW, height: pH)
+            .allowsHitTesting(false)
+
+            // ── Export progress ───────────────────────────────────────
+            if isExportingVideo {
+                Color.black.opacity(0.55)
+                    .frame(width: pW, height: pH)
+                VStack(spacing: 8) {
+                    ProgressView().tint(.white).scaleEffect(1.2)
+                    Text(AppLanguage.shared.s("합성 중...", "Processing..."))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: pW, height: pH)
+            }
+        }
+        .frame(width: pW, height: pH)
+        .clipped()
+    }
+
     private var cardSection: some View {
         GeometryReader { proxy in
             let w = proxy.size.width
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
+                    // 0: Placeable
+                    placeableCardPreview
+                        .frame(width: 300, height: 375)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
+                        .frame(width: w, height: 375)
+                        .id(0)
+                    // 1: OneLiner (한마디) — 영상 선택 시 9:16 확장
+                    oneLinerCardPreview
+                        .frame(width: 300, height: oneLinerCardHeight)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: Theme.violet.opacity(0.1), radius: 28, y: 10)
+                        .frame(width: w, height: oneLinerCardHeight)
+                        .id(1)
+                    // 2: Athletic (기본 템플릿 카드)
                     cardPreview
                         .frame(width: 300, height: 375)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                         .animation(.easeInOut(duration: 0.2), value: template)
                         .frame(width: w, height: 375)
-                        .id(0)
-                    placeableCardPreview
-                        .frame(width: 300, height: 375)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
-                        .frame(width: w, height: 375)
-                        .id(1)
+                        .id(2)
+                    // 3: BigNumber
                     bigNumberCardPreview
                         .frame(width: 300, height: 375)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                         .frame(width: w, height: 375)
-                        .id(2)
+                        .id(3)
+                    // 4: Sky
                     skyCardPreview
                         .frame(width: 300, height: 375)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .shadow(color: Color(hex: "1B2A4A").opacity(0.5), radius: 28, y: 10)
                         .frame(width: w, height: 375)
-                        .id(3)
+                        .id(4)
+                    // 5: ECG (데이터 없으면 숨김)
                     if ecgDataAvailable != false {
                         ecgCardPreview
                             .frame(width: 300, height: 375)
                             .clipShape(RoundedRectangle(cornerRadius: 20))
                             .shadow(color: Theme.violet.opacity(0.2), radius: 28, y: 10)
                             .frame(width: w, height: 375)
-                            .id(4)
+                            .id(5)
                     }
+                    // 6: Ticket
+                    ticketCardPreview
+                        .frame(width: 300, height: 375)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: Theme.violet.opacity(0.15), radius: 28, y: 10)
+                        .frame(width: w, height: 375)
+                        .id(6)
                 }
                 .scrollTargetLayout()
             }
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: scrollCardBinding)
-            .frame(width: w, height: 375)
+            .frame(width: w, height: oneLinerCardHeight)
         }
-        .frame(height: 375)
+        .frame(height: oneLinerCardHeight)
+        .animation(.easeInOut(duration: 0.3), value: oneLinerCardHeight)
     }
 
     private var cardPageDots: some View {
         HStack(spacing: 7) {
-            Circle()
-                .fill(cardIndex == 0 ? Theme.violet : Color(hex: "6E6E78"))
-                .frame(width: 6, height: 6)
-            Circle()
-                .fill(cardIndex == 1 ? Theme.violet : Color(hex: "6E6E78"))
-                .frame(width: 6, height: 6)
-            Circle()
-                .fill(cardIndex == 2 ? Theme.violet : Color(hex: "6E6E78"))
-                .frame(width: 6, height: 6)
-            Circle()
-                .fill(cardIndex == 3 ? Theme.violet : Color(hex: "6E6E78"))
-                .frame(width: 6, height: 6)
+            Circle().fill(cardIndex == 0 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // Placeable
+            Circle().fill(cardIndex == 1 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // OneLiner
+            Circle().fill(cardIndex == 2 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // Athletic
+            Circle().fill(cardIndex == 3 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // BigNumber
+            Circle().fill(cardIndex == 4 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // Sky
             if ecgDataAvailable != false {
-                Circle()
-                    .fill(cardIndex == 4 ? Theme.violet : Color(hex: "6E6E78"))
-                    .frame(width: 6, height: 6)
+                Circle().fill(cardIndex == 5 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // ECG
             }
+            Circle().fill(cardIndex == 6 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // Ticket
         }
         .padding(.top, 6)
     }
 
-    // MARK: - Big Number chip row (cardIndex == 2)
+    // MARK: - Big Number chip row (cardIndex == 3)
 
     @ViewBuilder
     private func lockedChip(_ label: String, icon: String? = nil) -> some View {
@@ -2292,7 +2609,7 @@ struct ShareCardScreen: View {
     private var bigNumberAccentRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                bigNumberAccentChip(.none,   AppLanguage.shared.s("없음",     "None"),   Color.white)
+                bigNumberAccentChip(.none,   AppLanguage.shared.s("흰색",     "White"),  Color.white)
                 bigNumberAccentChip(.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF"))
                 bigNumberAccentChip(.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
             }
@@ -2311,9 +2628,7 @@ struct ShareCardScreen: View {
                 if isSelected {
                     Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
                 }
-                if accent != .none {
-                    Circle().fill(color).frame(width: 8, height: 8)
-                }
+                Circle().fill(color).frame(width: 8, height: 8)
                 Text(label).font(.caption.weight(.semibold))
             }
             .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
@@ -2338,7 +2653,7 @@ struct ShareCardScreen: View {
             [.bottomLeading, .bottom, .bottomTrailing]
         ]
         let accents: [(CardAccent, String, Color)] = [
-            (.none,   AppLanguage.shared.s("없음",     "None"),   Color.white),
+            (.none,   AppLanguage.shared.s("흰색",     "White"),  Color.white),
             (.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF")),
             (.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
         ]
@@ -2408,9 +2723,7 @@ struct ShareCardScreen: View {
                                 if isSelected {
                                     Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
                                 }
-                                if accent != .none {
-                                    Circle().fill(color).frame(width: 8, height: 8)
-                                }
+                                Circle().fill(color).frame(width: 8, height: 8)
                                 Text(label).font(.caption.weight(.semibold))
                             }
                             .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
@@ -2513,7 +2826,7 @@ struct ShareCardScreen: View {
         } label: {
             HStack(spacing: 6) {
                 if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
-                if accent != .none { Circle().fill(color).frame(width: 8, height: 8) }
+                Circle().fill(color).frame(width: 8, height: 8)
                 Text(label).font(.caption.weight(.semibold))
             }
             .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
@@ -2527,6 +2840,312 @@ struct ShareCardScreen: View {
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    // Chip row selector — extracted from body to keep the body's type-check surface small.
+    @ViewBuilder private var activeChipRow: some View {
+        if isBigNumber       { bigNumberChipRow }
+        else if isPlaceable  { placeableChipRow }
+        else if isSky        { skyChipRow }
+        else if isECG        { ecgChipRow }
+        else if isTicket     { ticketChipRowContent }
+        else if isOneLiner   { oneLinerChipRow }
+        else                 { chipRow }
+    }
+
+    // Resolved chip row for ticket card slot — extracted so the Group if-else chain stays shallow.
+    @ViewBuilder private var ticketChipRowContent: some View {
+        if confirmedRace == nil { ticketAccentRow }
+        // Race ticket → EmptyView (gold fixed, no accent selection needed)
+    }
+
+    // Chip row for Ticket card (non-race only): accent colour for FROM text + route line
+    // Race ticket hides this row entirely — gold is always fixed.
+    private var ticketAccentRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ticketAccentChip(.none, AppLanguage.shared.s("자동", "Auto"),   .white)
+                ticketAccentChip(.gold, AppLanguage.shared.s("골드", "Gold"),   Color(hex: "FFC74D"))
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func ticketAccentChip(_ a: CardAccent, _ label: String, _ color: Color) -> some View {
+        let isSelected = ticketAccent == a
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { ticketAccent = a }
+            Task { await renderCard(showSpinner: false) }
+        } label: {
+            HStack(spacing: 6) {
+                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
+                if a != .none  { Circle().fill(color).frame(width: 8, height: 8) }
+                Text(label).font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                isSelected
+                    ? (a == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
+                    : Color.white.opacity(0.08)
+            )
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Height of the card section: 9:16 (≈533pt) when showing OneLiner video, 375pt otherwise.
+    private var oneLinerCardHeight: CGFloat {
+        cardIndex == 1 && template == .video ? 300 * 16 / 9 : 375
+    }
+
+    // 문구가 연결된 사진(story template) 개수 — 2장 이상이면 일괄 저장 모드.
+    private var linkedOneLinerPhotoCount: Int {
+        guard isOneLiner, template == .story else { return 0 }
+        return storyPhotoUUIDs.indices.filter { i in
+            let ref = "photo:\(storyPhotoUUIDs[i])"
+            return oneLinerEntries.contains {
+                $0.mediaRef == ref &&
+                !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+        }.count
+    }
+
+    // MARK: - OneLiner chip row (cardIndex == 1)
+
+    // Layout (top→bottom):
+    //   [9-grid | font 3-chips (VStack) / color 3-chips]
+    //   [재사용 칩 — 이 미디어에 entry가 없고 다른 entry가 있을 때만 표시]
+    //   [text input field full-width]
+    private var oneLinerChipRow: some View {
+        VStack(spacing: 8) {
+            oneLinerGridAndChips
+            oneLinerReuseChipRow
+            oneLinerTextField
+        }
+        .padding(.vertical, 4)
+    }
+
+    // 이 러닝의 고유 문구 풀 (같은 텍스트 중복 제거, 최신순).
+    // 칩 줄 상시 표시에 사용.
+    private var uniqueOneLinerEntries: [OneLinerEntry] {
+        var seen = Set<String>()
+        var result: [OneLinerEntry] = []
+        for entry in oneLinerEntries.reversed() {   // reversed() = 최신 먼저
+            let key = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !key.isEmpty && seen.insert(key).inserted {
+                result.append(entry)
+            }
+        }
+        return result   // 최신순 유지
+    }
+
+    // 문구 칩 줄: entry가 1개 이상이면 상시 표시.
+    // · 현재 사진에 이미 적용된 문구 칩에는 체크 표시.
+    // · 탭 → 현재 사진의 entry를 해당 문구로 교체(upsert 저장).
+    @ViewBuilder
+    private var oneLinerReuseChipRow: some View {
+        if !uniqueOneLinerEntries.isEmpty {
+            let currentText = oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(uniqueOneLinerEntries) { entry in
+                        let isCurrent = entry.text.trimmingCharacters(in: .whitespacesAndNewlines) == currentText
+                        Button {
+                            oneLinerText     = entry.text
+                            oneLinerFont     = entry.font
+                            oneLinerColor    = entry.textColor
+                            oneLinerPosition = entry.position
+                            oneLinerShowDate = entry.showDate
+                            saveOneLinerSettings()           // 현재 사진 entry에 upsert
+                            Task { await renderCard(showSpinner: false) }
+                        } label: {
+                            HStack(spacing: 5) {
+                                if isCurrent {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                                Text(entry.text.count > 10
+                                     ? String(entry.text.prefix(10)) + "…"
+                                     : entry.text)
+                                    .font(.custom(entry.font.fontName, size: 13))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(isCurrent ? Theme.violet : entry.textColor.color.opacity(0.85))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(isCurrent ? Theme.violet.opacity(0.12) : Color(hex: "1E1E28"))
+                            .overlay(Capsule().strokeBorder(
+                                isCurrent ? Theme.violet.opacity(0.55) : Color.white.opacity(0.15),
+                                lineWidth: 1
+                            ))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 24)
+            }
+        }
+    }
+
+    // Position grid + font/color chips — extracted for type-checker
+    private var oneLinerGridAndChips: some View {
+        let rows: [[CardPosition]] = [
+            [.topLeading, .top, .topTrailing],
+            [.leading, .center, .trailing],
+            [.bottomLeading, .bottom, .bottomTrailing]
+        ]
+        return HStack(alignment: .center, spacing: 20) {
+            // 3×3 position grid (same UI as placeableChipRow)
+            VStack(spacing: 4) {
+                ForEach(rows.indices, id: \.self) { row in
+                    HStack(spacing: 4) {
+                        ForEach(rows[row].indices, id: \.self) { col in
+                            let pos = rows[row][col]
+                            let isSelected = oneLinerPosition == pos
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) { oneLinerPosition = pos }
+                                saveOneLinerSettings()
+                                Task { await renderCard(showSpinner: false) }
+                            } label: {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(isSelected ? Theme.violet : Color(hex: "26262E"))
+                                    .frame(width: 23, height: 23)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            // Font chips + color chips stacked vertically
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    ForEach(OneLinerFont.allCases, id: \.self) { f in
+                        oneLinerFontChip(f)
+                    }
+                }
+                HStack(spacing: 8) {
+                    ForEach(OneLinerTextColor.allCases, id: \.self) { c in
+                        oneLinerColorChip(c)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // Font chip — label rendered IN the font so users preview each style before tapping
+    private func oneLinerFontChip(_ font: OneLinerFont) -> some View {
+        let isSelected = oneLinerFont == font
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { oneLinerFont = font }
+            saveOneLinerSettings()
+            Task { await renderCard(showSpinner: false) }
+        } label: {
+            HStack(spacing: 4) {
+                if isSelected {
+                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                }
+                Text(font.chipLabel)
+                    .font(.custom(font.fontName, size: 13))
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color(hex: "3A3A44") : Color.white.opacity(0.08))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Color chip — same Capsule style as accent chips
+    private func oneLinerColorChip(_ textColor: OneLinerTextColor) -> some View {
+        let isSelected = oneLinerColor == textColor
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { oneLinerColor = textColor }
+            saveOneLinerSettings()
+            Task { await renderCard(showSpinner: false) }
+        } label: {
+            HStack(spacing: 6) {
+                if isSelected {
+                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                }
+                if textColor != .white {
+                    Circle().fill(textColor.color).frame(width: 8, height: 8)
+                }
+                Text(textColor.chipLabel).font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                isSelected
+                    ? (textColor == .white ? Color(hex: "3A3A44") : textColor.color.opacity(0.25))
+                    : Color.white.opacity(0.08)
+            )
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Text input field with 40-char limit, character counter, and memo guidance
+    @ViewBuilder
+    private var oneLinerTextField: some View {
+        HStack(spacing: 8) {
+            TextField(
+                AppLanguage.shared.s("오늘의 한마디", "Your one-liner"),
+                text: $oneLinerText,
+                axis: .vertical
+            )
+            .lineLimit(1...2)
+            .focused($oneLinerFieldFocused)
+            .font(.system(size: 15))
+            .foregroundStyle(.white)
+            .tint(Theme.violet)
+            .onChange(of: oneLinerText) { _, newValue in
+                // Block 3rd line: strip everything after the second \n
+                let lines = newValue.components(separatedBy: "\n")
+                if lines.count > 2 {
+                    oneLinerText = String(lines.prefix(2).joined(separator: "\n").prefix(40))
+                    return  // onChange fires again with the corrected value
+                }
+                if newValue.count > 40 { oneLinerText = String(newValue.prefix(40)); return }
+                saveOneLinerSettings()
+                Task { await renderCard(showSpinner: false) }
+            }
+            Spacer(minLength: 0)
+            Text("\(oneLinerText.count)/40")
+                .font(.system(size: 11))
+                .foregroundStyle(Color(hex: "6E6E78"))
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(hex: "1E1E28"))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 24)
+        .padding(.bottom, (oneLinerText.count >= 38 || oneLinerText.contains("\n")) ? 2 : 4)
+
+        if oneLinerText.components(separatedBy: "\n").count >= 2 {
+            Text(AppLanguage.shared.s("두 줄까지 쓸 수 있어요", "Two lines maximum"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 4)
+        }
+        if oneLinerText.count >= 38 {
+            Text(AppLanguage.shared.s(
+                "긴 이야기는 메모에 남겨보세요",
+                "For longer thoughts, try the memo field"
+            ))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 4)
+        }
     }
 
     // Chip row for ECG card: pace / HR source radio + accent selector
@@ -2551,7 +3170,7 @@ struct ShareCardScreen: View {
             HStack(spacing: 8) {
                 ecgAccentChip(.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF"))
                 ecgAccentChip(.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
-                ecgAccentChip(.none,   AppLanguage.shared.s("없음",     "None"),   .white)
+                ecgAccentChip(.none,   AppLanguage.shared.s("흰색",     "White"),  .white)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 2)
@@ -2566,7 +3185,7 @@ struct ShareCardScreen: View {
         } label: {
             HStack(spacing: 6) {
                 if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
-                if accent != .none { Circle().fill(color).frame(width: 8, height: 8) }
+                Circle().fill(color).frame(width: 8, height: 8)
                 Text(label).font(.caption.weight(.semibold))
             }
             .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
@@ -2609,8 +3228,7 @@ struct ShareCardScreen: View {
     private var templatePicker: some View {
         HStack(spacing: 0) {
             ForEach(ShareTemplate.allCases, id: \.self) { t in
-                let available = (!isPlaceable || t == .story || t == .video)
-                             && (!(isSky || isECG) || t == .athletic)
+                let available = ShareCard(rawValue: cardIndex)?.supportedTemplates.contains(t) ?? true
                 let selected  = template == t
                 Button {
                     guard available else { return }
@@ -2678,7 +3296,8 @@ struct ShareCardScreen: View {
 
     // MARK: - Body
 
-    var body: some View {
+    // Extracted to keep the body modifier chain within Swift's type-check budget.
+    private var bodyContent: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
 
@@ -2688,13 +3307,7 @@ struct ShareCardScreen: View {
                     cardSection
                     cardPageDots
                     Color.clear.frame(height: 10)
-                    Group {
-                        if isBigNumber { bigNumberChipRow }
-                        else if isPlaceable { placeableChipRow }
-                        else if isSky { skyChipRow }
-                        else if isECG { ecgChipRow }
-                        else { chipRow }
-                    }.padding(.bottom, 3)
+                    activeChipRow.padding(.bottom, 3)
                     templatePicker
                     if template == .story {
                         photoStrip
@@ -2714,6 +3327,12 @@ struct ShareCardScreen: View {
         }
         .navigationTitle(AppLanguage.shared.s("공유", "Share"))
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    // bodyWithEventHandlers attaches complex event handlers; split from body to reduce
+    // the modifier chain the Swift type-checker must evaluate in a single expression.
+    private var bodyWithEventHandlers: some View {
+        bodyContent
         .sheet(isPresented: $showStoryPhotoPicker) {
             let pickerPhotos = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
             StoryPhotoPickerSheet(photos: pickerPhotos, selected: selectedPhoto) { picked, idx in
@@ -2723,87 +3342,54 @@ struct ShareCardScreen: View {
                 Task { await renderCard() }
             }
         }
-        .task {
-            // Restore selected photo from stored data on re-entry (e.g. after app restart).
-            // Without this, selectedPhoto stays nil and the legacy all-cards branch fires.
-            if !storyPhotos.isEmpty {
-                for i in 0..<3 where cardPhotoIndex[i] == nil {
-                    cardPhotoIndex[i] = 0
-                }
-            }
-            // Auto-select first available panel when no route
-            if routeCoords.isEmpty && cardPanel == .map {
-                cardPanel = CardChartPanel.allCases.first { isChartPanelAvailable($0) } ?? .splits
-            }
-            await renderCard()
-            await loadECGWaveforms()
-        }
-        .onChange(of: pickerItems) { _, newItems in
-            photoOffset = .zero
-            photoOffsets = [:]
-            Task {
-                guard !newItems.isEmpty else { return }
-                var newImages: [UIImage] = []
-                for item in newItems {
-                    if let data = try? await item.loadTransferable(type: Data.self),
-                       let image = UIImage(data: data) {
-                        newImages.append(image)
-                    }
-                }
-                guard !newImages.isEmpty else { return }
-                let existing = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
-                let merged = Array((existing + newImages).prefix(5))
-                selectedPhoto = merged[0]
-                allPickedPhotos = merged
-                persistStoryPhotos(merged)
-                // Point current card to the first newly added photo
-                cardPhotoIndex[cardIndex] = min(existing.count, merged.count - 1)
-                await renderCard()
-            }
-        }
-        .onChange(of: videoPickerItem) { _, newItem in
-            Task {
-                guard let item = newItem,
-                      let result = try? await item.loadTransferable(type: VideoPickerResult.self)
-                else { return }
-                sourceVideoURL = result.url
-                videoPreviewImage = await VideoExportService.firstFrame(of: result.url)
-                await exportVideo()
-            }
-        }
-        .onChange(of: template) { _, _ in
-            routeVideoFile = nil
-            exportedVideoFile = nil
-            if template == .routeVideo, routeSnapshot == nil, !routeCoords.isEmpty {
-                Task {
-                    if let result = try? await RouteVideoExportService.mapSnapshot(coordinates: routeCoords) {
-                        routeSnapshot = result.image
-                        routeSnapshotPoints = result.points
-                    }
-                }
-            }
-            Task { await renderCard() }
-        }
+        .task { await onAppear() }
+        .onChange(of: pickerItems) { _, newItems in onPickerItemsChanged(newItems) }
+        .onChange(of: videoPickerItem) { _, newItem in onVideoPickerItemChanged(newItem) }
+        .onChange(of: template) { _, _ in onTemplateChanged() }
         .onChange(of: cardPanel) { _, newPanel in
             Task {
                 await loadChartData(for: newPanel)
                 await renderCard(showSpinner: false)
             }
         }
-        .onChange(of: cardIndex) { _, newIndex in
-            // Reset exported video files so each card manages its own export
-            routeVideoFile = nil
+        .onChange(of: cardIndex) { _, newIndex in onCardIndexChanged(newIndex) }
+        // OneLiner 설정 변경 시 기존 export 무효화 + 이산 설정은 즉시 재내보내기
+        .onChange(of: oneLinerText) { _, _ in
+            guard isOneLiner, template == .video, sourceVideoURL != nil else { return }
             exportedVideoFile = nil
-            // PlaceableCard only supports story/video — auto-switch if incompatible
-            if newIndex == 1, template != .story && template != .video {
-                template = .story
-            }
-            // Sky/ECG only support athletic — switch away from any other template
-            if (newIndex == 3 || newIndex == 4), template != .athletic {
-                template = .athletic
-            }
-            Task { await renderCard(showSpinner: false) }
         }
+        .onChange(of: oneLinerPosition) { _, _ in
+            guard isOneLiner, template == .video, sourceVideoURL != nil else { return }
+            exportedVideoFile = nil
+            Task { await exportVideo() }
+        }
+        .onChange(of: oneLinerColor) { _, _ in
+            guard isOneLiner, template == .video, sourceVideoURL != nil else { return }
+            exportedVideoFile = nil
+            Task { await exportVideo() }
+        }
+        .onChange(of: oneLinerFont) { _, _ in
+            guard isOneLiner, template == .video, sourceVideoURL != nil else { return }
+            exportedVideoFile = nil
+            Task { await exportVideo() }
+        }
+        .onChange(of: oneLinerShowDate) { _, _ in
+            guard isOneLiner, template == .video, sourceVideoURL != nil else { return }
+            exportedVideoFile = nil
+            Task { await exportVideo() }
+        }
+        // OneLiner 카드(index 1)의 사진이 바뀌면 새 사진의 entry 로드.
+        // 저장은 Button 액션에서 cardPhotoIndex 변경 전에 처리.
+        // Button 액션이 loadOneLinerSettingsFor를 먼저 호출하지만, 포커스 해제 타이밍에 따라
+        // onChange도 발화할 수 있어 방어적으로 유지 — 중복 로드는 무해함.
+        .onChange(of: cardPhotoIndex) { old, new in
+            guard isOneLiner, template == .story, old[1] != new[1] else { return }
+            loadOneLinerSettingsFor(photoIndex: new[1] ?? 0)
+        }
+    }
+
+    var body: some View {
+        bodyWithEventHandlers
         .onChange(of: heroMetric) { _, _ in
             guard isBigNumber else { return }
             Task { await renderCard(showSpinner: false) }
@@ -2840,7 +3426,20 @@ struct ShareCardScreen: View {
             guard isSky else { return }
             Task { await renderCard(showSpinner: false) }
         }
+        .onChange(of: ticketAccent) { _, _ in
+            guard isTicket else { return }
+            Task { await renderCard(showSpinner: false) }
+        }
         .task(id: template) { await animateRouteVideoPreview() }
+        .alert(AppLanguage.shared.s("이미 내보낸 영상이에요", "Already exported video"),
+               isPresented: $showExportedVideoWarning) {
+            Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { }
+        } message: {
+            Text(AppLanguage.shared.s(
+                "원본 영상을 선택해 주세요. 내보낸 영상을 다시 선택하면 내용이 두 번 나타납니다.",
+                "Please select the original video. Selecting an exported video again will duplicate the overlay."
+            ))
+        }
     }
 
     private func animateRouteVideoPreview() async {
@@ -2851,6 +3450,89 @@ struct ShareCardScreen: View {
             routePreviewProgress += 2.0 / 60.0
             if routePreviewProgress > 1.0 { routePreviewProgress = 0.0 }
         }
+    }
+
+    // MARK: - Event handler helpers (extracted to keep body type-check budget manageable)
+
+    private func onPickerItemsChanged(_ newItems: [PhotosPickerItem]) {
+        photoOffset = .zero
+        photoOffsets = [:]
+        Task {
+            guard !newItems.isEmpty else { return }
+            var newImages: [UIImage] = []
+            var newItemIDs: [String] = []
+            for item in newItems {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    newImages.append(image)
+                    // Prefer PHAsset localIdentifier if available; else generate a stable UUID
+                    newItemIDs.append(item.itemIdentifier ?? UUID().uuidString)
+                }
+            }
+            guard !newImages.isEmpty else { return }
+            let existing = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
+            let merged = Array((existing + newImages).prefix(5))
+            selectedPhoto = merged[0]
+            allPickedPhotos = merged
+            // Extend storyPhotoUUIDs: preserve existing, append new
+            let existingUUIDs = storyPhotoUUIDs.isEmpty
+                ? (story?.sortedPhotoUUIDs ?? Array(repeating: UUID().uuidString, count: existing.count))
+                : storyPhotoUUIDs
+            let mergedUUIDs = Array((existingUUIDs + newItemIDs).prefix(5))
+            storyPhotoUUIDs = mergedUUIDs
+            persistStoryPhotos(merged, uuids: mergedUUIDs)
+            cardPhotoIndex[cardIndex] = min(existing.count, merged.count - 1)
+            await renderCard()
+        }
+    }
+
+    private func onVideoPickerItemChanged(_ newItem: PhotosPickerItem?) {
+        Task {
+            guard let item = newItem,
+                  let result = try? await item.loadTransferable(type: VideoPickerResult.self)
+            else { return }
+
+            // Block if this video was already exported by MIMORunning — re-using it
+            // as a source would bake a second overlay on top of the first.
+            if isOneLiner, await VideoExportService.isMIMOOneLinerExport(url: result.url) {
+                showExportedVideoWarning = true
+                videoPickerItem = nil
+                return
+            }
+
+            sourceVideoURL = result.url
+            // PHAsset ID가 확정된 후 해당 영상의 저장된 OneLiner 설정 로드
+            if isOneLiner { loadOneLinerSettings() }
+            videoPreviewImage = await VideoExportService.firstFrame(of: result.url)
+            await exportVideo()
+        }
+    }
+
+    private func onTemplateChanged() {
+        routeVideoFile = nil
+        exportedVideoFile = nil
+        if template == .routeVideo, routeSnapshot == nil, !routeCoords.isEmpty {
+            Task {
+                if let result = try? await RouteVideoExportService.mapSnapshot(coordinates: routeCoords) {
+                    routeSnapshot = result.image
+                    routeSnapshotPoints = result.points
+                }
+            }
+        }
+        Task { await renderCard() }
+    }
+
+    private func onCardIndexChanged(_ newIndex: Int) {
+        routeVideoFile = nil
+        exportedVideoFile = nil
+        // 새 카드가 현재 템플릿을 지원하지 않으면 그 카드의 기본 템플릿으로 자동 전환.
+        if let card = ShareCard(rawValue: newIndex),
+           !card.supportedTemplates.contains(template) {
+            template = card.defaultTemplate
+        }
+        // OneLiner 카드 진입 시 현재 미디어(그라데이션 포함) 저장값 로드
+        if newIndex == 1 { loadOneLinerSettings() }
+        Task { await renderCard(showSpinner: false) }
     }
 
     // MARK: - Chart data loading
@@ -2883,19 +3565,6 @@ struct ShareCardScreen: View {
         }
     }
 
-    // MARK: - Video chart content
-
-    @ViewBuilder private var videoChartContent: some View {
-        CardChartPanelView(
-            panel: cardPanel,
-            splits: detail?.splits ?? [],
-            hrSamples: shareHRSamples,
-            hrZones: detail?.hrZones ?? [],
-            workoutSeries: shareWorkoutSeries,
-            intervalSegments: detail?.intervalSegments ?? []
-        )
-    }
-
     // MARK: - Card preview
 
     @ViewBuilder
@@ -2917,7 +3586,7 @@ struct ShareCardScreen: View {
                           shoeName: displayShoeName,
                           photo: nil)
         case .story:
-            if let photo = photoFor(0) {
+            if let photo = photoFor(1) {
                 PhotoShareCardView(activity: activity, photo: photo,
                                    insightTitle: displayInsightTitle,
                                    metrics: enabledMetricItems, raceName: activeRaceName,
@@ -3052,194 +3721,27 @@ struct ShareCardScreen: View {
                 }
             }
 
-            LinearGradient(
-                colors: [Color.black.opacity(0.60), Color.clear],
-                startPoint: .top,
-                endPoint: UnitPoint(x: 0.5, y: 0.30)
+            VideoOverlayCard(
+                insightTitle: displayInsightTitle,
+                distanceKm: distStr,
+                date: activity.date,
+                metrics: Array(enabledMetricItems.prefix(6)),
+                raceName: activeRaceName,
+                miniMeVariant: activeMiniMeVariant,
+                miniMeImage: activeMiniMeImage,
+                mood: showMoodOnCard ? story?.mood : nil,
+                memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
+                chartPanel: cardPanel,
+                chartSplits: detail?.splits ?? [],
+                chartHRSamples: shareHRSamples,
+                chartHRZones: detail?.hrZones ?? [],
+                chartWorkoutSeries: shareWorkoutSeries,
+                chartIntervalSegments: detail?.intervalSegments ?? [],
+                weather: condition?.weather,
+                shoeName: displayShoeName,
+                scale: 1.0
             )
-
-            LinearGradient(
-                colors: [Color.black.opacity(0.92), Color.black.opacity(0.70), Color.clear],
-                startPoint: .bottom,
-                endPoint: UnitPoint(x: 0.5, y: 0.55)
-            )
-
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 6) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 0) {
-                            Text("MIMO")
-                                .font(.system(size: 9, weight: .black))
-                                .tracking(2)
-                                .foregroundStyle(.white)
-                            Text(" RUNNING")
-                                .font(.system(size: 9, weight: .bold))
-                                .tracking(2)
-                                .foregroundStyle(Theme.violet)
-                        }
-
-                        if !displayInsightTitle.isEmpty {
-                            Text(displayInsightTitle)
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.90))
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.8)
-                        }
-
-                        if let race = activeRaceName {
-                            HStack(spacing: 2) {
-                                Image(systemName: "flag.checkered")
-                                    .font(.system(size: 6, weight: .semibold))
-                                Text(race)
-                                    .font(.system(size: 6.5, weight: .semibold))
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(Theme.violet)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Theme.violet.opacity(0.20))
-                            .clipShape(Capsule())
-                        }
-                        if showMoodOnCard, let m = story?.mood {
-                            HStack(spacing: 4) {
-                                Image(systemName: m.sfSymbol)
-                                    .font(.system(size: 10))
-                                Text(m.label)
-                                    .font(.system(size: 10, weight: .medium))
-                            }
-                            .foregroundStyle(m.cardColor)
-                        }
-                        if showMemoOnCard, let memo = story?.memo, !memo.isEmpty {
-                            Text(memo)
-                                .font(.system(size: 11, weight: .regular, design: .serif).italic())
-                                .foregroundStyle(.white.opacity(0.80))
-                        }
-                    }
-
-                    Spacer(minLength: 4)
-
-                    if activeMiniMeVariant != nil || activeMiniMeImage != nil {
-                        MiniMeOrCustomImage(customImage: activeMiniMeImage, variant: activeMiniMeVariant, size: 38)
-                            .padding(.top, 2)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, 12)
-
-                Spacer()
-
-                if cardPanel == .map, !routeCoords.isEmpty {
-                    HStack {
-                        Spacer()
-                        RouteLineArt(coordinates: routeCoords)
-                            .frame(width: 110, height: 110)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 3)
-                } else if cardPanel != .map {
-                    HStack {
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            HStack(spacing: 3) {
-                                Image(systemName: cardPanel.icon)
-                                    .font(.system(size: 6))
-                                Text(cardPanel.label)
-                                    .font(.system(size: 7, weight: .semibold))
-                                    .tracking(0.3)
-                                if cardPanel == .intervals,
-                                   let s = (detail?.intervalSegments ?? []).workSummaryText {
-                                    Text(s)
-                                        .font(.system(size: 7, weight: .semibold).monospacedDigit())
-                                }
-                            }
-                            .foregroundStyle(Color.white.opacity(0.55))
-                            videoChartContent
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 3)
-                }
-
-                HStack(spacing: 0) {
-                    HStack(spacing: 3) {
-                        Text(activity.date.cardDateString)
-                        Text(activity.date.weekdayCharKo).foregroundStyle(Theme.time)
-                        Text(activity.date.cardTimeString)
-                    }
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.80))
-                    if let w = condition?.weather {
-                        HStack(spacing: 3) {
-                            Image(systemName: w.systemIcon)
-                                .font(.system(size: 8))
-                            Text(w.formattedTemp)
-                                .font(.system(size: 8, weight: .medium))
-                        }
-                        .foregroundStyle(.white.opacity(0.65))
-                        .padding(.leading, 6)
-                    }
-                    if let shoe = displayShoeName {
-                        Spacer()
-                        HStack(spacing: 3) {
-                            Image(systemName: "shoe.fill").font(.system(size: 8))
-                            Text(shoe).font(.system(size: 9, weight: .medium)).lineLimit(1)
-                        }
-                        .foregroundStyle(.white.opacity(0.75))
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.bottom, 3)
-
-                Rectangle()
-                    .fill(Theme.violet.opacity(0.30))
-                    .frame(height: 0.5)
-                    .padding(.horizontal, 10)
-
-                HStack(alignment: .center, spacing: 0) {
-                    let distW: CGFloat = enabledMetricItems.count >= 5 ? 70 : 96
-                    let distPt: CGFloat = enabledMetricItems.count >= 5 ? 28 : 38
-                    HStack(alignment: .lastTextBaseline, spacing: 3) {
-                        Text(distStr)
-                            .font(.system(size: distPt, weight: .black).width(.condensed))
-                            .foregroundStyle(.white)
-                            .minimumScaleFactor(0.5)
-                            .lineLimit(1)
-                        Text("KM")
-                            .font(.system(size: 10, weight: .bold).width(.condensed))
-                            .foregroundStyle(Theme.violet)
-                            .padding(.bottom, 2)
-                    }
-                    .fixedSize(horizontal: true, vertical: true)
-                    .frame(width: distW, alignment: .leading)
-                    .padding(.leading, 20)
-
-                    if !enabledMetricItems.isEmpty {
-                        Rectangle()
-                            .fill(.white.opacity(0.07))
-                            .frame(width: 0.5, height: 36)
-
-                        let rows = metricsRows(enabledMetricItems)
-                        VStack(spacing: rows.count > 1 ? 3 : 0) {
-                            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                                HStack(spacing: 0) {
-                                    ForEach(row) { m in
-                                        CardMetric(value: m.value, label: m.label, color: m.color,
-                                                   valueSize: row.count >= 5 ? 11 : 12, labelSize: 8)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                            }
-                        }
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 8)
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 3)
-                .padding(.bottom, 6)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // Export progress overlay
             if isExportingVideo {
@@ -3286,10 +3788,17 @@ struct ShareCardScreen: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
             } else {
-                Text(AppLanguage.shared.s("합성 실패 — 다시 시도해 주세요", "Export failed — please try again"))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
+                Button {
+                    Task { await exportVideo() }
+                } label: {
+                    Label(AppLanguage.shared.s("다시 합성", "Re-export"),
+                          systemImage: "arrow.triangle.2.circlepath")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(Theme.violet)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
             }
         } else if template == .routeVideo {
             if routeCoords.isEmpty {
@@ -3385,17 +3894,45 @@ struct ShareCardScreen: View {
                 }
             }
         } else if let img = previewImage {
-            Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Theme.violet)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-            .sheet(isPresented: $showShareSheet) {
-                ShareSheet(images: [img])
+            if isOneLiner && isBatchExporting {
+                HStack(spacing: 10) {
+                    ProgressView().tint(Theme.violet)
+                    Text(AppLanguage.shared.s("저장 중...", "Saving..."))
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 18)
+            } else if isOneLiner && template == .story && !storyPhotoUUIDs.isEmpty {
+                // 사진 연결 OneLiner: 문구 있는 사진 수 기준 저장 버튼
+                // · 2장 이상: "N장 저장" / 1장: "저장" / 0장: 비활성
+                let count = linkedOneLinerPhotoCount
+                let btnLabel = count >= 2
+                    ? AppLanguage.shared.s("\(count)장 저장", "Save \(count) cards")
+                    : AppLanguage.shared.s("저장", "Save")
+                let btnIcon = count >= 2 ? "photo.on.rectangle.angled" : "square.and.arrow.down"
+                Button { Task { await batchExportOneLinerCards() } } label: {
+                    Label(btnLabel, systemImage: btnIcon)
+                        .font(.headline)
+                        .foregroundStyle(count == 0 ? Color.white.opacity(0.4) : .white)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(count == 0 ? Theme.violet.opacity(0.35) : Theme.violet)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .disabled(count == 0)
+            } else {
+                let shareDisabled = isOneLiner && oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                Button { showShareSheet = true } label: {
+                    Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                        .font(.headline)
+                        .foregroundStyle(shareDisabled ? Color.white.opacity(0.4) : .white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(shareDisabled ? Theme.violet.opacity(0.35) : Theme.violet)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .disabled(shareDisabled)
+                .sheet(isPresented: $showShareSheet) {
+                    ShareSheet(images: [img])
+                }
             }
         } else {
             Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
@@ -3423,8 +3960,24 @@ struct ShareCardScreen: View {
     @MainActor
     private func exportVideo() async {
         guard let url = sourceVideoURL else { return }
+        guard !isExportingVideo else { return }
         isExportingVideo = true
         exportedVideoFile = nil
+
+        if isOneLiner {
+            if let out = try? await VideoExportService.exportOneLinerTypingVideo(
+                sourceURL: url,
+                text: oneLinerText,
+                fontChoice: oneLinerFont,
+                textColor: oneLinerColor,
+                position: oneLinerPosition,
+                activityDate: activity.date,
+                showDate: oneLinerShowDate) {
+                exportedVideoFile = SharableVideoFile(url: out)
+            }
+            isExportingVideo = false
+            return
+        }
 
         if isBigNumber {
             // Render transparent overlay at 216×384 @5x → 1080×1920 px (same as VideoOverlayCard)
@@ -3494,7 +4047,9 @@ struct ShareCardScreen: View {
             chartHRZones: detail?.hrZones ?? [],
             chartWorkoutSeries: shareWorkoutSeries,
             chartIntervalSegments: detail?.intervalSegments ?? [],
-            weather: condition?.weather
+            weather: condition?.weather,
+            shoeName: displayShoeName,
+            scale: 216.0 / 300.0   // proportional to 300pt preview (= 0.72)
         )
         .frame(width: 216, height: 384)
 
@@ -3521,8 +4076,7 @@ struct ShareCardScreen: View {
         do {
             let url: URL
             if isBigNumber {
-                // BigNumber: single-pass render (map + route animation + BigNumber overlay)
-                url = try await RouteVideoExportService.exportBigNumber(
+                url = try await RouteVideoExportService.exportBigNumberFast(
                     snapshot: snap,
                     snapshotPoints: routeSnapshotPoints,
                     activity: activity,
@@ -3534,10 +4088,11 @@ struct ShareCardScreen: View {
                     weatherIcon: condition?.weather?.systemIcon,
                     date: activity.date,
                     shoeName: displayShoeName,
+                    totalDistanceM: activity.distance,
                     progressHandler: { p in routeVideoProgress = p }
                 )
             } else {
-                url = try await RouteVideoExportService.export(
+                url = try await RouteVideoExportService.exportFast(
                     snapshot: snap,
                     snapshotPoints: routeSnapshotPoints,
                     insightTitle: displayInsightTitle,
@@ -3551,12 +4106,14 @@ struct ShareCardScreen: View {
                     mood: showMoodOnCard ? story?.mood : nil,
                     memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                     weather: condition?.weather,
+                    shoeName: displayShoeName,
                     chartPanel: cardPanel,
                     chartSplits: detail?.splits ?? [],
                     chartHRSamples: shareHRSamples,
                     chartHRZones: detail?.hrZones ?? [],
                     chartWorkoutSeries: shareWorkoutSeries,
                     chartIntervalSegments: detail?.intervalSegments ?? [],
+                    totalDistanceM: activity.distance,
                     progressHandler: { p in routeVideoProgress = p }
                 )
             }
@@ -3576,14 +4133,262 @@ struct ShareCardScreen: View {
         hrWaveform        = h
         ecgDataAvailable  = (p != nil || h != nil)
         if paceWaveform == nil, hrWaveform != nil { ecgShowPace = false }
-        if ecgDataAvailable == false && cardIndex == 4 { withAnimation { cardIndex = 3 } }
+        if ecgDataAvailable == false && cardIndex == 5 { withAnimation { cardIndex = 4 } }
         if isECG { await renderCard(showSpinner: false) }
+    }
+
+    // Extracted from .task {} to keep the closure trivial and avoid type-checker timeouts.
+    @MainActor
+    private func onAppear() async {
+        // Restore selected photo from stored data on re-entry (e.g. after app restart).
+        // Without this, selectedPhoto stays nil and the legacy all-cards branch fires.
+        if !storyPhotos.isEmpty {
+            // 사진 선택을 지원하는 카드 인덱스: Placeable(0), OneLiner(1), Athletic(2), BigNumber(3)
+            for i in [0, 1, 2, 3] where cardPhotoIndex[i] == nil {
+                cardPhotoIndex[i] = 0
+            }
+        }
+        // Load stable photo UUIDs from SwiftData (used by OneLinerEntry cross-references)
+        if storyPhotoUUIDs.isEmpty {
+            storyPhotoUUIDs = story?.sortedPhotoUUIDs ?? []
+        }
+        // Auto-select first available panel when no route
+        if routeCoords.isEmpty && cardPanel == .map {
+            let first = CardChartPanel.allCases.first { isChartPanelAvailable($0) }
+            cardPanel = first ?? .splits
+        }
+        deduplicateOneLinerEntries()
+        loadOneLinerSettings()
+        await loadHighQualityPhotos()
+        await renderCard()
+        await loadECGWaveforms()
+        await loadTicketDepartureName()
+    }
+
+    private func loadTicketDepartureName() async {
+        guard let coord = routeCoords.first else { return }
+        let location = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+        let geocoder = CLGeocoder()
+        guard let placemarks = try? await geocoder.reverseGeocodeLocation(location),
+              let pm = placemarks.first else { return }
+        let name = pm.subLocality ?? pm.locality ?? pm.administrativeArea ?? "RUN"
+        ticketDepartureName = name
+        if isTicket { await renderCard(showSpinner: false) }
+    }
+
+    // MARK: - OneLiner persistence (SwiftData, per media ref)
+
+    /// mediaRef key for the currently active OneLiner entry.
+    private func computeOneLinerMediaRef() -> String? {
+        guard isOneLiner else { return nil }
+        if template == .video, let assetID = videoPickerItem?.itemIdentifier {
+            return "video:\(assetID)"
+        }
+        if template == .story {
+            let idx = cardPhotoIndex[1] ?? 0
+            if idx < storyPhotoUUIDs.count { return "photo:\(storyPhotoUUIDs[idx])" }
+        }
+        return nil   // gradient
+    }
+
+    private func findOrCreateOneLinerEntry(for mediaRef: String?) -> OneLinerEntry {
+        if let existing = oneLinerEntries.first(where: { $0.mediaRef == mediaRef }) {
+            return existing
+        }
+        let entry = OneLinerEntry(workoutID: activity.id.uuidString, mediaRef: mediaRef)
+        modelContext.insert(entry)
+        return entry
+    }
+
+    private func syncUIFromEntry(_ entry: OneLinerEntry) {
+        oneLinerText     = entry.text
+        oneLinerFont     = entry.font
+        oneLinerColor    = entry.textColor
+        oneLinerPosition = entry.position
+        oneLinerShowDate = entry.showDate
+    }
+
+    private func loadOneLinerSettings() {
+        migrateUserDefaultsOneLiner()
+        let mediaRef = computeOneLinerMediaRef()
+        if let entry = oneLinerEntries.first(where: { $0.mediaRef == mediaRef }) {
+            syncUIFromEntry(entry)
+            oneLinerPhAssetDeleted = !entry.isPHAssetAvailable
+        } else {
+            oneLinerText = ""
+            oneLinerPhAssetDeleted = false
+            // 연재 연속성: 새 사진에 처음 문구를 쓸 때 폰트·색은 직전 entry 기본값으로.
+            // 위치(9앵커)는 사진마다 독립 — 사진 구도가 다르므로 그대로 유지.
+            if let latest = oneLinerEntries.last {
+                oneLinerFont  = latest.font
+                oneLinerColor = latest.textColor
+            }
+        }
+    }
+
+    /// 명시적 photoIndex로 OneLiner entry 로드.
+    /// cardPhotoIndex가 아직 커밋되지 않은 Button 액션 내에서 호출 시 사용.
+    private func loadOneLinerSettingsFor(photoIndex: Int) {
+        migrateUserDefaultsOneLiner()
+        let mediaRef: String? = photoIndex < storyPhotoUUIDs.count
+            ? "photo:\(storyPhotoUUIDs[photoIndex])"
+            : nil
+        let suffix = String((mediaRef ?? "nil").suffix(4))
+        if let entry = oneLinerEntries.first(where: { $0.mediaRef == mediaRef }) {
+            syncUIFromEntry(entry)
+            oneLinerPhAssetDeleted = !entry.isPHAssetAvailable
+            print("[OneLiner] 로드(새 사진=…\(suffix))=\(entry.text.isEmpty ? "(비어있음)" : String(entry.text.prefix(10)))")
+        } else {
+            oneLinerText = ""
+            oneLinerPhAssetDeleted = false
+            if let latest = oneLinerEntries.last {
+                oneLinerFont  = latest.font
+                oneLinerColor = latest.textColor
+            }
+            print("[OneLiner] 로드(새 사진=…\(suffix))=entry 없음 → 비움")
+        }
+    }
+
+    // 저장 트리거 전체 (모두 이 함수를 경유 → upsert 또는 delete-on-empty, append 경로 없음):
+    // ① onChange(of: oneLinerText)   — 키 입력마다
+    // ② 9앵커(position) 칩 탭
+    // ③ 폰트 칩 탭
+    // ④ 색 칩 탭
+    // ⑤ 썸네일 탭                    — cardPhotoIndex 커밋 전에 이전 사진 entry 저장
+    // ⑥ 날짜 토글                    — showDate 변경 시 (해당 버튼 액션에 포함)
+    private func saveOneLinerSettings() {
+        let mediaRef = computeOneLinerMediaRef()
+        let trimmed  = oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let existing = oneLinerEntries.first(where: { $0.mediaRef == mediaRef }) {
+            // 빈 문구: 기존 entry 삭제 — 빈 텍스트 entry 잔류 방지
+            if trimmed.isEmpty {
+                modelContext.delete(existing)
+                try? modelContext.save()
+                return
+            }
+            // 변경 없으면 스킵
+            guard existing.text      != oneLinerText     ||
+                  existing.font      != oneLinerFont     ||
+                  existing.textColor != oneLinerColor    ||
+                  existing.position  != oneLinerPosition ||
+                  existing.showDate  != oneLinerShowDate else { return }
+            existing.text      = oneLinerText
+            existing.font      = oneLinerFont
+            existing.textColor = oneLinerColor
+            existing.position  = oneLinerPosition
+            existing.showDate  = oneLinerShowDate
+            try? modelContext.save()
+            return
+        }
+
+        // 신규 entry: 문구가 있고 5개 미만일 때만 생성
+        guard !trimmed.isEmpty, oneLinerEntries.count < 5 else { return }
+        let entry = OneLinerEntry(workoutID: activity.id.uuidString, mediaRef: mediaRef)
+        entry.text      = oneLinerText
+        entry.font      = oneLinerFont
+        entry.textColor = oneLinerColor
+        entry.position  = oneLinerPosition
+        entry.showDate  = oneLinerShowDate
+        modelContext.insert(entry)
+        try? modelContext.save()
+    }
+
+    /// 중복·빈 문구 entry 정리.
+    /// - nil mediaRef = "그라데이션 슬롯" — 러닝당 최대 1개로 취급 (nil끼리도 중복 처리됨).
+    /// - 빈 텍스트 entry도 함께 제거.
+    private func deduplicateOneLinerEntries() {
+        var toDelete: [OneLinerEntry] = []
+
+        // ① 빈 텍스트 entry
+        for entry in oneLinerEntries where entry.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            toDelete.append(entry)
+        }
+
+        // ② 같은 (workoutID + mediaRef) 중복 — nil도 단일 슬롯으로 처리
+        let deleteIDs = Set(toDelete.map { ObjectIdentifier($0) })
+        let remaining = oneLinerEntries.filter { !deleteIDs.contains(ObjectIdentifier($0)) }
+        // Dictionary<String?, [OneLinerEntry]> — nil은 Optional.none 키로 그룹됨 ✓
+        let grouped = Dictionary(grouping: remaining) { $0.mediaRef as String? }
+        for (_, entries) in grouped where entries.count > 1 {
+            let sorted = entries.sorted { $0.createdAt > $1.createdAt }
+            toDelete.append(contentsOf: sorted.dropFirst())
+        }
+
+        guard !toDelete.isEmpty else { return }
+        toDelete.forEach { modelContext.delete($0) }
+        print("[OneLinerDedup] \(toDelete.count)개 정리 (빈 문구 + 중복, workout: \(activity.id.uuidString))")
+        try? modelContext.save()
+    }
+
+    // MARK: - 연재 일괄 내보내기 (N장 저장)
+
+    /// 문구가 연결된 사진을 순서대로 모두 렌더링해 사진 앱에 저장.
+    @MainActor
+    private func batchExportOneLinerCards() async {
+        guard isOneLiner, template == .story else { return }
+        isBatchExporting = true
+        defer { isBatchExporting = false }
+
+        for i in storyPhotoUUIDs.indices {
+            guard i < storyPhotos.count else { continue }
+            let ref = "photo:\(storyPhotoUUIDs[i])"
+            guard let entry = oneLinerEntries.first(where: {
+                $0.mediaRef == ref &&
+                !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }) else { continue }
+
+            print("[OneLinerExport] 사진=…\(ref.suffix(4)) 문구=\"\(String(entry.text.prefix(10)))\"")
+            let photo = highQualityStoryPhotos[i] ?? storyPhotos[i]
+            let card = OneLinerCard(
+                activity: activity,
+                backgroundPhoto: photo,
+                text: entry.text,
+                position: entry.position,
+                textColor: entry.textColor,
+                fontChoice: entry.font,
+                showDate: entry.showDate
+            )
+            let renderer = ImageRenderer(content: card.frame(width: OneLinerCard.cardWidth,
+                                                              height: OneLinerCard.cardHeight))
+            renderer.scale = 3
+            if let img = renderer.uiImage {
+                UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
+            }
+            // 프레임 간 렌더러 충돌 방지
+            await Task.yield()
+        }
+    }
+
+    /// One-time migration: lift existing UserDefaults entry → SwiftData with mediaRef = nil.
+    private func migrateUserDefaultsOneLiner() {
+        let id = activity.id.uuidString
+        let key = "oneliner_text_\(id)"
+        guard let text = UserDefaults.standard.string(forKey: key), !text.isEmpty,
+              !oneLinerEntries.contains(where: { $0.mediaRef == nil }) else { return }
+        let entry = OneLinerEntry(workoutID: id, mediaRef: nil)
+        entry.text = text
+        if let raw = UserDefaults.standard.string(forKey: "oneliner_font_\(id)"),
+           let f = OneLinerFont(rawValue: raw) { entry.font = f }
+        if let raw = UserDefaults.standard.string(forKey: "oneliner_color_\(id)"),
+           let c = OneLinerTextColor(rawValue: raw) { entry.textColor = c }
+        let posIdx = UserDefaults.standard.integer(forKey: "oneliner_pos_\(id)")
+        let cases = Array(CardPosition.allCases)
+        if posIdx < cases.count { entry.position = cases[posIdx] }
+        if UserDefaults.standard.object(forKey: "oneliner_date_\(id)") != nil {
+            entry.showDate = UserDefaults.standard.bool(forKey: "oneliner_date_\(id)")
+        }
+        modelContext.insert(entry)
+        try? modelContext.save()
+        ["text", "font", "color", "pos", "date"].forEach {
+            UserDefaults.standard.removeObject(forKey: "oneliner_\($0)_\(id)")
+        }
     }
 
     @MainActor
     private func renderCard(showSpinner: Bool = true) async {
         // Placeable card: always render as static image
-        if cardIndex == 1 {
+        if cardIndex == 0 {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
@@ -3591,7 +4396,7 @@ struct ShareCardScreen: View {
                 activity: activity,
                 detail: detail,
                 routeCoords: routeCoords.isEmpty ? nil : routeCoords,
-                photo: template == .video ? videoPreviewImage : photoFor(1),
+                photo: template == .video ? videoPreviewImage : photoFor(0),
                 date: activity.date,
                 metricsPosition: placeableMetricsPosition,
                 accent: placeableAccent,
@@ -3607,7 +4412,7 @@ struct ShareCardScreen: View {
         }
 
         // BigNumber card: render regardless of template (video/routeVideo don't block it)
-        if cardIndex == 2 {
+        if cardIndex == 3 {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
@@ -3636,7 +4441,7 @@ struct ShareCardScreen: View {
         }
 
         // Sky card — "그날의 하늘"
-        if cardIndex == 3 {
+        if cardIndex == 4 {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
@@ -3654,7 +4459,7 @@ struct ShareCardScreen: View {
         }
 
         // ECG card — "심전도 시그니처"
-        if cardIndex == 4 {
+        if cardIndex == 5 {
             let activeWaveform = ecgShowPace ? (paceWaveform ?? hrWaveform) : (hrWaveform ?? paceWaveform)
             guard let waveform = activeWaveform else { isRendering = false; return }
             if showSpinner { isRendering = true }
@@ -3674,6 +4479,52 @@ struct ShareCardScreen: View {
             return
         }
 
+        // Ticket card
+        if cardIndex == 6 {
+            if showSpinner { isRendering = true }
+            storyShareImages = []
+            previewImage = nil
+            let card = TicketCard(
+                activity: activity,
+                routeCoordinates: routeCoords,
+                splits: detail?.splits ?? [],
+                raceName: confirmedRace?.raceName,
+                shoeName: displayShoeName,
+                departureName: ticketDepartureName,
+                raceDistanceKm: confirmedRace?.distanceKm,
+                raceStartTimeString: confirmedBundledRace?.startTimeString,
+                accent: ticketAccent
+            )
+            let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
+            renderer.scale = 3
+            previewImage = renderer.uiImage
+            isRendering = false
+            return
+        }
+
+        // OneLiner card
+        if cardIndex == 1 {
+            if showSpinner { isRendering = true }
+            storyShareImages = []
+            previewImage = nil
+            let idx   = cardPhotoIndex[1]
+            let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
+            let card = OneLinerCard(
+                activity: activity,
+                backgroundPhoto: photo,
+                text: oneLinerText,
+                position: oneLinerPosition,
+                textColor: oneLinerColor,
+                fontChoice: oneLinerFont,
+                showDate: oneLinerShowDate
+            )
+            let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
+            renderer.scale = 3
+            previewImage = renderer.uiImage
+            isRendering = false
+            return
+        }
+
         guard template != .video && template != .routeVideo else { return }
         if showSpinner { isRendering = true }
         storyShareImages = []
@@ -3683,7 +4534,7 @@ struct ShareCardScreen: View {
         let photos = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
 
         // Story + selected photo: render data card, rest are plain images
-        if template == .story, let selPhoto = photoFor(0) {
+        if template == .story, let selPhoto = photoFor(1) {
             let renderer = ImageRenderer(content:
                 PhotoShareCardView(activity: activity, photo: selPhoto,
                                    insightTitle: displayInsightTitle,
@@ -3706,7 +4557,7 @@ struct ShareCardScreen: View {
             renderer.scale = 3
             guard let cardImg = renderer.uiImage else { isRendering = false; return }
             previewImage = cardImg
-            let selIdx = cardPhotoIndex[0] ?? 0
+            let selIdx = cardPhotoIndex[2] ?? 0
             let plainPhotos = photos.enumerated()
                 .filter { $0.offset != selIdx }
                 .map { $0.element }
@@ -3748,7 +4599,7 @@ struct ShareCardScreen: View {
                           photo: nil)
                 .frame(width: 300, height: 375)
         case .story:
-            if let photo = photoFor(0) {
+            if let photo = photoFor(1) {
                 PhotoShareCardView(activity: activity, photo: photo,
                                    insightTitle: displayInsightTitle,
                                    metrics: enabledMetricItems, raceName: activeRaceName,
@@ -3805,30 +4656,70 @@ struct ShareCardScreen: View {
 
     // MARK: - Photo persistence
 
-    private func persistStoryPhotos(_ images: [UIImage]) {
+    private func persistStoryPhotos(_ images: [UIImage], uuids: [String]? = nil) {
         let capped = Array(images.prefix(5))
         guard !capped.isEmpty else { return }
+        let makePhoto: (Int, UIImage) -> StoryPhoto? = { idx, img in
+            guard let data = StoryPhoto.thumbnailData(from: img) else { return nil }
+            #if DEBUG
+            let sizeKB = data.count / 1024
+            print("[StoryPhoto] 저장 크기=\(sizeKB)kB\(sizeKB <= 300 ? " ✓300KB 이하" : " ⚠️300KB 초과")")
+            #endif
+            let uuid = uuids?[safe: idx] ?? UUID().uuidString
+            return StoryPhoto(data: data, index: idx, uuid: uuid)
+        }
         if let s = story {
             for photo in s.photos ?? [] { modelContext.delete(photo) }
             s.photos = nil
-            let newPhotos = capped.enumerated().compactMap { idx, img -> StoryPhoto? in
-                guard let data = img.jpegData(compressionQuality: 0.75) else { return nil }
-                return StoryPhoto(data: data, index: idx)
-            }
+            let newPhotos = capped.enumerated().compactMap { makePhoto($0.offset, $0.element) }
             newPhotos.forEach { modelContext.insert($0) }
             s.photos = newPhotos.isEmpty ? nil : newPhotos
             s.updatedAt = Date()
         } else {
             let s = WorkoutStory(workoutID: activity.id.uuidString)
             modelContext.insert(s)
-            let newPhotos = capped.enumerated().compactMap { idx, img -> StoryPhoto? in
-                guard let data = img.jpegData(compressionQuality: 0.75) else { return nil }
-                return StoryPhoto(data: data, index: idx)
-            }
+            let newPhotos = capped.enumerated().compactMap { makePhoto($0.offset, $0.element) }
             newPhotos.forEach { modelContext.insert($0) }
             s.photos = newPhotos
         }
         try? modelContext.save()
+    }
+
+    // MARK: - High-quality photo loading from PHAsset
+
+    /// Loads full-res images from Photos library for cross-session rendering quality.
+    /// PHAsset localIdentifiers contain "/"; random UUIDs don't — used to distinguish.
+    private func loadHighQualityPhotos() async {
+        guard let sortedPhotos = story?.photos?.sorted(by: { $0.index < $1.index }) else { return }
+        for (idx, photo) in sortedPhotos.enumerated() {
+            guard photo.photoUUID.contains("/") else { continue }
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: [photo.photoUUID], options: nil)
+            if assets.count == 0 {
+                deletedPhotoIndices.insert(idx)
+                continue
+            }
+            guard let asset = assets.firstObject else { continue }
+            if let img = await loadImageFromPHAsset(asset) {
+                highQualityStoryPhotos[idx] = img
+            }
+        }
+    }
+
+    private func loadImageFromPHAsset(_ asset: PHAsset) async -> UIImage? {
+        await withCheckedContinuation { cont in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat  // called exactly once
+            options.isNetworkAccessAllowed = false      // local only; iCloud-only → nil
+            options.isSynchronous = false
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: 1800, height: 1800),
+                contentMode: .aspectFit,
+                options: options
+            ) { image, _ in
+                cont.resume(returning: image)
+            }
+        }
     }
 
     private func clearStoryPhoto() {
@@ -3892,7 +4783,7 @@ private struct StoryPhotoPickerSheet: View {
     }
 }
 
-// MARK: - UIActivityViewController wrapper
+// MARK: - UIActivityViewController wrapper (static image 공유 전용)
 
 // UIImage를 직접 전달 — Instagram은 파일 URL(특히 PNG)을 거부하므로 UIImage 객체를 전달해야 함
 struct ShareSheet: UIViewControllerRepresentable {
@@ -3903,4 +4794,13 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uvc: UIActivityViewController, context: Context) {}
+}
+
+// 영상 파일을 공유하고 완료/취소 후 onComplete 호출 (임시 파일 삭제용)
+// MARK: - Collection safe subscript
+
+private extension Collection {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
 }

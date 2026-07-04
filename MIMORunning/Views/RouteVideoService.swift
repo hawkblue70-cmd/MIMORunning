@@ -3,12 +3,6 @@ import CoreLocation
 import MapKit
 import SwiftUI
 
-private func metricsRows(_ items: [ShareMetricItem]) -> [[ShareMetricItem]] {
-    let capped = Array(items.prefix(6))
-    guard capped.count == 6 else { return [capped] }
-    return [Array(capped.prefix(3)), Array(capped.suffix(3))]
-}
-
 // MARK: - Frame view (preview + render)
 
 struct RouteVideoFrameView: View {
@@ -40,7 +34,7 @@ struct RouteVideoFrameView: View {
         GeometryReader { proxy in
             let w = proxy.size.width
             let h = proxy.size.height
-            let scale = w / 300          // 300 = standard card width; 540/300 = 1.8 at export
+            let scale = w / 300   // 300 = VideoOverlayCard reference width; 540/300 = 1.8 at export
             ZStack(alignment: .bottom) {
                 Image(uiImage: snapshot)
                     .resizable()
@@ -53,244 +47,30 @@ struct RouteVideoFrameView: View {
                 RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress)
                     .frame(width: w, height: h)
 
-                CardVisual.topScrim
-                CardVisual.videoBottomScrim
-
                 if showStats {
-                    statsPanel(scale: scale)
+                    VideoOverlayCard(
+                        insightTitle: insightTitle,
+                        distanceKm: distanceKm,
+                        date: date,
+                        metrics: metrics,
+                        raceName: raceName,
+                        miniMeVariant: miniMeVariant,
+                        miniMeImage: customMiniMeImage,
+                        mood: mood,
+                        memoText: memoText,
+                        chartPanel: chartPanel,
+                        chartSplits: chartSplits,
+                        chartHRSamples: chartHRSamples,
+                        chartHRZones: chartHRZones,
+                        chartWorkoutSeries: chartWorkoutSeries,
+                        chartIntervalSegments: chartIntervalSegments,
+                        weather: weather,
+                        shoeName: shoeName,
+                        scale: scale
+                    )
+                    .frame(width: w, height: h)
                 }
             }
-        }
-    }
-
-    private var startDateTimeString: String {
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "ko_KR")
-        df.dateFormat = "yyyy. M. d  a h:mm"
-        return df.string(from: date)
-    }
-
-    @ViewBuilder
-    private func statsPanel(scale: CGFloat) -> some View {
-        let pad: CGFloat = 14 * scale
-
-        VStack(alignment: .leading, spacing: 0) {
-            // Wordmark
-            HStack(spacing: 0) {
-                Text("MIMO")
-                    .font(.system(size: 9 * scale, weight: .black))
-                    .tracking(2)
-                    .foregroundStyle(.white)
-                Text(" RUNNING")
-                    .font(.system(size: 9 * scale, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(Theme.violet)
-            }
-            .padding(.horizontal, pad)
-            .padding(.top, 14 * scale)
-
-            // Insight title
-            if !insightTitle.isEmpty {
-                Text(insightTitle)
-                    .font(.system(size: 15 * scale, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.90))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                    .padding(.horizontal, pad)
-                    .padding(.top, 3 * scale)
-            }
-
-            // Mood
-            if let m = mood {
-                HStack(spacing: 4 * scale) {
-                    Image(systemName: m.sfSymbol)
-                        .font(.system(size: 10 * scale))
-                    Text(m.label)
-                        .font(.system(size: 10 * scale, weight: .medium))
-                }
-                .foregroundStyle(m.cardColor)
-                .padding(.horizontal, pad)
-                .padding(.top, 2 * scale)
-            }
-
-            // Memo
-            if let memo = memoText, !memo.isEmpty {
-                Text(memo)
-                    .font(.system(size: 11 * scale, weight: .regular, design: .serif).italic())
-                    .foregroundStyle(.white.opacity(0.80))
-                    .padding(.horizontal, pad)
-                    .padding(.top, 2 * scale)
-            }
-
-            // Badges + MiniMe row
-            let hasBadges = raceName != nil || miniMeVariant != nil || customMiniMeImage != nil
-            if hasBadges {
-                HStack(spacing: 5 * scale) {
-                    if let race = raceName {
-                        HStack(spacing: 3 * scale) {
-                            Image(systemName: "flag.checkered")
-                                .font(.system(size: 6.5 * scale, weight: .semibold))
-                            Text(race)
-                                .font(.system(size: 7 * scale, weight: .semibold))
-                                .lineLimit(1)
-                        }
-                        .foregroundStyle(Theme.violet)
-                        .padding(.horizontal, 5 * scale)
-                        .padding(.vertical, 2 * scale)
-                        .background(Theme.violet.opacity(0.22))
-                        .clipShape(Capsule())
-                    }
-                    Spacer()
-                    if let img = customMiniMeImage {
-                        Image(uiImage: img)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 26 * scale, height: 26 * scale)
-                            .clipShape(Circle())
-                    } else if let v = miniMeVariant {
-                        MiniMeView(variant: v, size: 26 * scale)
-                    }
-                }
-                .padding(.horizontal, pad)
-                .padding(.top, 4 * scale)
-            }
-
-            Spacer()
-
-            // Chart panel (middle, right-aligned — same as Athletic)
-            if chartPanel != .map {
-                HStack {
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 2 * scale) {
-                        HStack(spacing: 3 * scale) {
-                            Image(systemName: chartPanel.icon)
-                                .font(.system(size: 6 * scale))
-                            Text(chartPanel.label)
-                                .font(.system(size: 7 * scale, weight: .semibold))
-                                .tracking(0.3)
-                            if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
-                                Text(s)
-                                    .font(.system(size: 7 * scale, weight: .semibold).monospacedDigit())
-                            }
-                        }
-                        .foregroundStyle(Color.white.opacity(0.55))
-                        chartContent(scale: scale)
-                    }
-                }
-                .padding(.horizontal, pad)
-                .padding(.bottom, 3 * scale)
-            }
-
-            // Date · Divider · Stats (athletic style — date + weather inline)
-            HStack(spacing: 0) {
-                HStack(spacing: 3 * scale) {
-                    Text(date.cardDateString)
-                    Text(date.weekdayCharKo).foregroundStyle(Theme.time)
-                    Text(date.cardTimeString)
-                }
-                .font(.system(size: 9 * scale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.80))
-                if let w = weather {
-                    HStack(spacing: 3 * scale) {
-                        Image(systemName: w.systemIcon)
-                            .font(.system(size: 8 * scale))
-                        Text(w.formattedTemp)
-                            .font(.system(size: 8 * scale, weight: .medium))
-                    }
-                    .foregroundStyle(.white.opacity(0.65))
-                    .padding(.leading, 6 * scale)
-                }
-                if let shoe = shoeName {
-                    Spacer()
-                    HStack(spacing: 3 * scale) {
-                        Image(systemName: "shoe.fill").font(.system(size: 8 * scale))
-                        Text(shoe).font(.system(size: 9 * scale, weight: .medium)).lineLimit(1)
-                    }
-                    .foregroundStyle(.white.opacity(0.75))
-                }
-            }
-            .padding(.horizontal, pad)
-            .padding(.bottom, 3 * scale)
-
-            Rectangle()
-                .fill(Theme.violet.opacity(0.30))
-                .frame(height: 0.5)
-                .padding(.horizontal, pad)
-
-            HStack(alignment: .center, spacing: 0) {
-                let distW: CGFloat = (metrics.count >= 5 ? 70 : 96) * scale
-                let distPt: CGFloat = (metrics.count >= 5 ? 28 : 38) * scale
-                HStack(alignment: .lastTextBaseline, spacing: 3 * scale) {
-                    Text(distanceKm)
-                        .font(.system(size: distPt, weight: .black).width(.condensed))
-                        .foregroundStyle(.white)
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-                    Text("KM")
-                        .font(.system(size: 10 * scale, weight: .bold).width(.condensed))
-                        .foregroundStyle(Theme.violet)
-                        .padding(.bottom, 2 * scale)
-                }
-                .fixedSize(horizontal: true, vertical: true)
-                .frame(width: distW, alignment: .leading)
-                .cardVideoLargeTextShadow()
-                .padding(.leading, pad)
-
-                if !metrics.isEmpty {
-                    Rectangle()
-                        .fill(.white.opacity(0.07))
-                        .frame(width: 0.5, height: 36 * scale)
-
-                    let rows = metricsRows(metrics)
-                    VStack(spacing: rows.count > 1 ? 3 * scale : 0) {
-                        ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                            HStack(spacing: 0) {
-                                ForEach(row) { m in
-                                    VStack(spacing: 1) {
-                                        Text(m.value)
-                                            .font(.system(size: (row.count >= 5 ? 11 : 12) * scale,
-                                                          weight: .bold, design: .rounded))
-                                            .foregroundStyle(.white)
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.6)
-                                        Text(m.label)
-                                            .font(.system(size: 8 * scale, weight: .semibold))
-                                            .foregroundStyle(m.color)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 8 * scale)
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 3 * scale)
-            .padding(.bottom, 8 * scale)
-        }
-        .cardTextShadow()
-    }
-    @ViewBuilder
-    private func chartContent(scale: CGFloat) -> some View {
-        switch chartPanel {
-        case .splits where !chartSplits.isEmpty:
-            SplitsPanelChart(splits: chartSplits, compact: true)
-                .frame(width: 130 * scale, height: 83 * scale).clipped()
-        case .intervals where !chartIntervalSegments.isEmpty:
-            CardIntervalChart(segments: chartIntervalSegments)
-        case .heartRate where !chartHRSamples.isEmpty:
-            HRSeriesPanelChart(samples: chartHRSamples, zones: chartHRZones, compact: true)
-                .frame(width: 130 * scale, height: 83 * scale).clipped()
-        case .cadence, .groundContact, .strideLength, .power, .verticalOscillation, .elevation
-             where !chartWorkoutSeries.isEmpty:
-            CardWorkoutSeriesChart(samples: chartWorkoutSeries, panel: chartPanel)
-                .frame(width: 130 * scale, height: 83 * scale).clipped()
-        default:
-            EmptyView()
         }
     }
 }
@@ -308,7 +88,6 @@ private struct RoutePolylineOverlay: View {
             guard snapshotPoints.count > 1, progress > 0 else { return }
 
             // scaledToFill: uniform scale so image covers the frame, then center-crop.
-            // Points must use the same transform to stay aligned with the map.
             let imgW = RouteVideoExportService.renderSize.width
             let imgH = RouteVideoExportService.renderSize.height
             let s    = max(size.width / imgW, size.height / imgH)
@@ -340,7 +119,7 @@ private struct RoutePolylineOverlay: View {
 }
 
 // MARK: - BigNumberRouteVideoFrameView
-// Single-pass frame view: map background + route animation + BigNumber overlay (no transparency issues)
+
 struct BigNumberRouteVideoFrameView: View {
     let snapshot: UIImage
     let snapshotPoints: [CGPoint]
@@ -383,18 +162,31 @@ struct BigNumberRouteVideoFrameView: View {
     }
 }
 
+// MARK: - KM Marker data
+
+private struct KmMarkerInfo {
+    let position: CGPoint   // UIKit pixel coords (y=0 at top, already × renderScale)
+    let distanceM: Double
+    let isFinish: Bool
+    let pathFraction: Double  // 0…1 fraction of total distance
+}
+
 // MARK: - RouteVideoExportService
 
 struct RouteVideoExportService {
 
-    static let fps: Int32  = 30
-    static let frameCount  = 600          // 20 s × 30 fps
-    static let renderSize  = CGSize(width: 540, height: 960)
+    static let fps: Int32    = 30
+    static let frameCount    = 450          // 15 s × 30 fps
+    static let renderSize    = CGSize(width: 540, height: 960)
+    static let renderScale: CGFloat = 2.0
+    static var pixelSize: CGSize {
+        CGSize(width: renderSize.width * renderScale, height: renderSize.height * renderScale)
+    }
+    static var videoDuration: Double { Double(frameCount) / Double(fps) }   // 15.0 s
+    static var routeDuration: Double  { videoDuration - 1.0 }               // 14.0 s
 
     // MARK: Map snapshot + coordinate mapping
 
-    /// Returns the map image and route points pre-mapped into renderSize coordinate space
-    /// using MKMapSnapshotter.Snapshot.point(for:) for pixel-accurate alignment.
     static func mapSnapshot(
         coordinates: [CLLocationCoordinate2D]
     ) async throws -> (image: UIImage, points: [CGPoint]) {
@@ -415,13 +207,12 @@ struct RouteVideoExportService {
         let opts        = MKMapSnapshotter.Options()
         opts.region     = MKCoordinateRegion(center: center, span: span)
         opts.size       = renderSize
-        opts.scale      = 1
+        opts.scale      = renderScale
         opts.mapType    = .mutedStandard
         opts.showsBuildings = false
 
         let snap = try await MKMapSnapshotter(options: opts).start()
 
-        // Use snapshot.point(for:) for map-projection-accurate positions
         let step = max(1, coordinates.count / 500)
         let points = Swift.stride(from: 0, to: coordinates.count, by: step).map { i in
             snap.point(for: coordinates[i])
@@ -437,10 +228,12 @@ struct RouteVideoExportService {
         }
     }
 
-    // MARK: Export (main actor — ImageRenderer requires it)
+    // MARK: - Stage 2: CAShapeLayer + AVVideoCompositionCoreAnimationTool
 
+    /// Export route video (VideoOverlayCard stats) using GPU-composited CAShapeLayer animation.
+    /// Replaces the per-frame CVPixelBuffer loop.  1080×1920 HEVC, ~3-5 s on device.
     @MainActor
-    static func export(
+    static func exportFast(
         snapshot: UIImage,
         snapshotPoints: [CGPoint],
         insightTitle: String,
@@ -451,97 +244,74 @@ struct RouteVideoExportService {
         raceName: String?,
         miniMeVariant: MiniMeVariant?,
         customMiniMeImage: UIImage?,
-        mood: Mood? = nil,
-        memoText: String? = nil,
-        weather: WeatherSnapshot? = nil,
-        chartPanel: CardChartPanel = .map,
-        chartSplits: [SplitData] = [],
-        chartHRSamples: [(offset: TimeInterval, bpm: Int)] = [],
-        chartHRZones: [HRZoneData] = [],
-        chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = [],
-        chartIntervalSegments: [IntervalSegment] = [],
+        mood: Mood?,
+        memoText: String?,
+        weather: WeatherSnapshot?,
+        shoeName: String?,
+        chartPanel: CardChartPanel,
+        chartSplits: [SplitData],
+        chartHRSamples: [(offset: TimeInterval, bpm: Int)],
+        chartHRZones: [HRZoneData],
+        chartWorkoutSeries: [(offset: TimeInterval, value: Double)],
+        chartIntervalSegments: [IntervalSegment],
+        totalDistanceM: Double,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
+        let t0 = CACurrentMediaTime()
+
+        // 1. Pre-render overlay once (main thread, SwiftUI → CGImage)
+        let overlayView = VideoOverlayCard(
+            insightTitle: insightTitle, distanceKm: distanceKm, date: date,
+            metrics: metrics, raceName: raceName,
+            miniMeVariant: miniMeVariant, miniMeImage: customMiniMeImage,
+            mood: mood, memoText: memoText,
+            chartPanel: chartPanel, chartSplits: chartSplits,
+            chartHRSamples: chartHRSamples, chartHRZones: chartHRZones,
+            chartWorkoutSeries: chartWorkoutSeries, chartIntervalSegments: chartIntervalSegments,
+            weather: weather, shoeName: shoeName,
+            scale: renderSize.width / 300
+        )
+        .frame(width: renderSize.width, height: renderSize.height)
+        let overlayRenderer = ImageRenderer(content: overlayView)
+        overlayRenderer.scale = renderScale
+        guard let overlayImage = overlayRenderer.uiImage,
+              let overlayCGImage = overlayImage.cgImage else {
+            throw NSError(domain: "RouteVideoExport", code: -2)
+        }
+
+        // 2. Convert Metal-backed snapshot to CPU CGImage via CIContext
+        guard let ciMap = CIImage(image: snapshot),
+              let mapCGImage = CIContext().createCGImage(ciMap, from: ciMap.extent) else {
+            throw NSError(domain: "RouteVideoExport", code: -3)
+        }
+
+        // 3. Scaled route points (renderSize → pixel space)
+        let scaledPoints = snapshotPoints.map {
+            CGPoint(x: $0.x * renderScale, y: $0.y * renderScale)
+        }
+
         let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mimo_route_\(UUID().uuidString).mov")
+            .appendingPathComponent("mimo_route_v2_\(UUID().uuidString).mov")
         try? FileManager.default.removeItem(at: outputURL)
 
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
-        let inputSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.hevc,
-            AVVideoWidthKey: Int(renderSize.width),
-            AVVideoHeightKey: Int(renderSize.height),
-            AVVideoCompressionPropertiesKey: [
-                AVVideoQualityKey: 0.85
-            ]
-        ]
-        let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: inputSettings)
-        writerInput.expectsMediaDataInRealTime = false
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: writerInput,
-            sourcePixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: Int(renderSize.width),
-                kCVPixelBufferHeightKey as String: Int(renderSize.height)
-            ]
+        try await exportWithCAShapeLayer(
+            mapCGImage: mapCGImage,
+            overlayCGImage: overlayCGImage,
+            scaledPoints: scaledPoints,
+            totalDistanceM: totalDistanceM,
+            outputURL: outputURL,
+            progressHandler: progressHandler
         )
-        writer.add(writerInput)
-        writer.startWriting()
-        writer.startSession(atSourceTime: .zero)
 
-        for frame in 0..<frameCount {
-            let progress = CGFloat(frame) / CGFloat(frameCount - 1)
-
-            let frameView = RouteVideoFrameView(
-                snapshot: snapshot,
-                snapshotPoints: snapshotPoints,
-                routeProgress: progress,
-                insightTitle: insightTitle,
-                metrics: metrics,
-                raceName: raceName,
-                miniMeVariant: miniMeVariant,
-                customMiniMeImage: customMiniMeImage,
-                mood: mood,
-                memoText: memoText,
-                distanceKm: distanceKm,
-                duration: duration,
-                date: date,
-                weather: weather,
-                chartPanel: chartPanel,
-                chartSplits: chartSplits,
-                chartHRSamples: chartHRSamples,
-                chartHRZones: chartHRZones,
-                chartWorkoutSeries: chartWorkoutSeries,
-                chartIntervalSegments: chartIntervalSegments
-            )
-            .frame(width: renderSize.width, height: renderSize.height)
-
-            let renderer = ImageRenderer(content: frameView)
-            renderer.scale = 1
-            guard let cgImage = renderer.cgImage,
-                  let buffer = makePixelBuffer(from: cgImage) else { continue }
-            let pts = CMTime(value: CMTimeValue(frame), timescale: fps)
-            while !writerInput.isReadyForMoreMediaData { await Task.yield() }
-            adaptor.append(buffer, withPresentationTime: pts)
-            progressHandler(Double(frame + 1) / Double(frameCount))
-            await Task.yield()
-        }
-
-        writerInput.markAsFinished()
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            writer.finishWriting { cont.resume() }
-        }
-
-        guard writer.status == .completed else {
-            throw writer.error ?? NSError(domain: "RouteVideoExport", code: -1)
-        }
+        let elapsed   = CACurrentMediaTime() - t0
+        let fileBytes = (try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int) ?? 0
+        print("[RouteVideo v2] \(Int(pixelSize.width))×\(Int(pixelSize.height)) — \(String(format: "%.1f", elapsed))s — \(fileBytes / 1024)KB")
         return outputURL
     }
 
-    // MARK: BigNumber export — map + route animation + BigNumber overlay in one render pass
-
+    /// Export route video (BigNumber overlay).
     @MainActor
-    static func exportBigNumber(
+    static func exportBigNumberFast(
         snapshot: UIImage,
         snapshotPoints: [CGPoint],
         activity: Activity,
@@ -553,90 +323,489 @@ struct RouteVideoExportService {
         weatherIcon: String?,
         date: Date,
         shoeName: String?,
+        totalDistanceM: Double,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
+        let t0 = CACurrentMediaTime()
+
+        let overlayView = BigNumberVideoOverlayView(
+            activity: activity, detail: detail, heroMetric: heroMetric,
+            mood: mood, memoText: memoText,
+            weatherText: weatherText, weatherIcon: weatherIcon,
+            date: date, shoeName: shoeName
+        )
+        .frame(width: renderSize.width, height: renderSize.height)
+        let overlayRenderer = ImageRenderer(content: overlayView)
+        overlayRenderer.scale = renderScale
+        guard let overlayImage = overlayRenderer.uiImage,
+              let overlayCGImage = overlayImage.cgImage else {
+            throw NSError(domain: "RouteVideoExport", code: -2)
+        }
+
+        guard let ciMap = CIImage(image: snapshot),
+              let mapCGImage = CIContext().createCGImage(ciMap, from: ciMap.extent) else {
+            throw NSError(domain: "RouteVideoExport", code: -3)
+        }
+
+        let scaledPoints = snapshotPoints.map {
+            CGPoint(x: $0.x * renderScale, y: $0.y * renderScale)
+        }
+
         let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mimo_route_bn_\(UUID().uuidString).mov")
+            .appendingPathComponent("mimo_route_bn_v2_\(UUID().uuidString).mov")
         try? FileManager.default.removeItem(at: outputURL)
 
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
-        let inputSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.hevc,
-            AVVideoWidthKey: Int(renderSize.width),
-            AVVideoHeightKey: Int(renderSize.height),
-            AVVideoCompressionPropertiesKey: [
-                AVVideoQualityKey: 0.85
-            ]
-        ]
-        let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: inputSettings)
-        writerInput.expectsMediaDataInRealTime = false
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: writerInput,
-            sourcePixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: Int(renderSize.width),
-                kCVPixelBufferHeightKey as String: Int(renderSize.height)
-            ]
+        try await exportWithCAShapeLayer(
+            mapCGImage: mapCGImage,
+            overlayCGImage: overlayCGImage,
+            scaledPoints: scaledPoints,
+            totalDistanceM: totalDistanceM,
+            outputURL: outputURL,
+            progressHandler: progressHandler
         )
-        writer.add(writerInput)
-        writer.startWriting()
-        writer.startSession(atSourceTime: .zero)
 
-        for frame in 0..<frameCount {
-            let progress = CGFloat(frame) / CGFloat(frameCount - 1)
-            let frameView = BigNumberRouteVideoFrameView(
-                snapshot: snapshot, snapshotPoints: snapshotPoints, routeProgress: progress,
-                activity: activity, detail: detail, heroMetric: heroMetric,
-                mood: mood, memoText: memoText,
-                weatherText: weatherText, weatherIcon: weatherIcon,
-                date: date, shoeName: shoeName
-            )
-            .frame(width: renderSize.width, height: renderSize.height)
-
-            let renderer = ImageRenderer(content: frameView)
-            renderer.scale = 1
-            guard let cgImage = renderer.cgImage,
-                  let buffer = makePixelBuffer(from: cgImage) else { continue }
-
-            let pts = CMTime(value: CMTimeValue(frame), timescale: fps)
-            while !writerInput.isReadyForMoreMediaData { await Task.yield() }
-            adaptor.append(buffer, withPresentationTime: pts)
-            progressHandler(Double(frame + 1) / Double(frameCount))
-            await Task.yield()
-        }
-
-        writerInput.markAsFinished()
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            writer.finishWriting { cont.resume() }
-        }
-
-        guard writer.status == .completed else {
-            throw writer.error ?? NSError(domain: "RouteVideoExport", code: -1)
-        }
+        let elapsed   = CACurrentMediaTime() - t0
+        let fileBytes = (try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int) ?? 0
+        print("[RouteVideo BN v2] \(Int(pixelSize.width))×\(Int(pixelSize.height)) — \(String(format: "%.1f", elapsed))s — \(fileBytes / 1024)KB")
         return outputURL
     }
 
-    // MARK: CGImage → CVPixelBuffer
+    // MARK: - Core compositing engine
 
-    private static func makePixelBuffer(from cgImage: CGImage) -> CVPixelBuffer? {
-        let w = cgImage.width, h = cgImage.height
+    private static func exportWithCAShapeLayer(
+        mapCGImage: CGImage,
+        overlayCGImage: CGImage,
+        scaledPoints: [CGPoint],
+        totalDistanceM: Double,
+        outputURL: URL,
+        progressHandler: @escaping (Double) -> Void
+    ) async throws {
+        let px = pixelSize
+        let routeDur = routeDuration
+        let vidDur   = videoDuration
+
+        // A. Write 2-frame background video (map + darken) — fast, same-pixel both frames
+        let bgURL = try await writeBackgroundVideo(mapCGImage: mapCGImage, pixelSize: px)
+        defer { try? FileManager.default.removeItem(at: bgURL) }
+
+        // B. Build layer hierarchy
+        //    parentLayer uses CG coords (y=0 at bottom) via isGeometryFlipped = true.
+        //    Child layers position in parent's CG space; their own contents render in iOS space (y=0 top).
+        let parentLayer = CALayer()
+        parentLayer.frame = CGRect(origin: .zero, size: px)
+        parentLayer.isGeometryFlipped = true
+
+        // Video layer receives source video frames (the map)
+        let videoLayer = CALayer()
+        videoLayer.frame = parentLayer.frame
+        parentLayer.addSublayer(videoLayer)
+
+        // Route CGPath — convert UIKit pixel coords (y=0 top) → CG coords (y=0 bottom)
+        let cgPath = buildCGPath(from: scaledPoints, pixelHeight: px.height)
+
+        if scaledPoints.count > 1 {
+            // Start marker: static white ring at first point
+            if let firstPt = scaledPoints.first {
+                let startLayer = makeStartMarkerLayer(
+                    cgPos: CGPoint(x: firstPt.x, y: px.height - firstPt.y),
+                    renderScale: renderScale
+                )
+                parentLayer.addSublayer(startLayer)
+            }
+
+            // Glow route stroke
+            let glowRoute = CAShapeLayer()
+            glowRoute.frame = parentLayer.frame
+            glowRoute.path = cgPath
+            glowRoute.strokeColor = UIColor(Theme.violet).withAlphaComponent(0.35).cgColor
+            glowRoute.lineWidth = 6 * renderScale
+            glowRoute.fillColor = UIColor.clear.cgColor
+            glowRoute.lineCap = .round
+            glowRoute.lineJoin = .round
+            glowRoute.strokeEnd = 0
+            glowRoute.add(strokeAnimation(duration: routeDur), forKey: "strokeEnd")
+            parentLayer.addSublayer(glowRoute)
+
+            // Core route stroke
+            let coreRoute = CAShapeLayer()
+            coreRoute.frame = parentLayer.frame
+            coreRoute.path = cgPath
+            coreRoute.strokeColor = UIColor(Theme.violet).cgColor
+            coreRoute.lineWidth = 2.5 * renderScale
+            coreRoute.fillColor = UIColor.clear.cgColor
+            coreRoute.lineCap = .round
+            coreRoute.lineJoin = .round
+            coreRoute.strokeEnd = 0
+            coreRoute.add(strokeAnimation(duration: routeDur), forKey: "strokeEnd")
+            parentLayer.addSublayer(coreRoute)
+
+            // Moving tip dot — follows path via CAKeyframeAnimation
+            let firstCGPt = CGPoint(x: scaledPoints[0].x, y: px.height - scaledPoints[0].y)
+            let rGlow: CGFloat = 9 * renderScale
+            let rDot:  CGFloat = 5 * renderScale
+
+            let tipGlow = makeCircleLayer(radius: rGlow,
+                                          color: UIColor(Theme.violet).withAlphaComponent(0.38))
+            tipGlow.position = firstCGPt
+            tipGlow.add(pathAnimation(path: cgPath, duration: routeDur), forKey: "position")
+            parentLayer.addSublayer(tipGlow)
+
+            let tipDot = makeCircleLayer(radius: rDot, color: .white)
+            tipDot.position = firstCGPt
+            tipDot.add(pathAnimation(path: cgPath, duration: routeDur), forKey: "position")
+            parentLayer.addSublayer(tipDot)
+
+            // KM markers (appear as route reaches each distance milestone)
+            let markers = computeKmMarkers(snapshotPoints: scaledPoints,
+                                           totalDistanceM: totalDistanceM,
+                                           pixelHeight: px.height)
+            for m in markers {
+                parentLayer.addSublayer(makeMarkerLayer(marker: m, pixelSize: px,
+                                                        routeDuration: routeDur,
+                                                        renderScale: renderScale))
+            }
+        }
+
+        // Overlay layer: static, on top of everything
+        let overlayLayer = CALayer()
+        overlayLayer.frame = parentLayer.frame
+        overlayLayer.contents = overlayCGImage
+        parentLayer.addSublayer(overlayLayer)
+
+        // C. Load background video track
+        let bgAsset  = AVURLAsset(url: bgURL)
+        let bgTracks = try await bgAsset.loadTracks(withMediaType: .video)
+        guard let bgTrack = bgTracks.first else {
+            throw NSError(domain: "RouteVideoExport", code: -9)
+        }
+        let bgRange = try await bgTrack.load(.timeRange)
+
+        // D. Composition
+        let composition = AVMutableComposition()
+        guard let compTrack = composition.addMutableTrack(
+            withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid
+        ) else { throw NSError(domain: "RouteVideoExport", code: -10) }
+        try compTrack.insertTimeRange(bgRange, of: bgTrack, at: .zero)
+
+        let videoComp = AVMutableVideoComposition()
+        videoComp.frameDuration = CMTime(value: 1, timescale: fps)
+        videoComp.renderSize = px
+        videoComp.animationTool = AVVideoCompositionCoreAnimationTool(
+            postProcessingAsVideoLayer: videoLayer, in: parentLayer
+        )
+
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = bgRange
+        let layerInstr = AVMutableVideoCompositionLayerInstruction(assetTrack: compTrack)
+        instruction.layerInstructions = [layerInstr]
+        videoComp.instructions = [instruction]
+
+        // E. Export via AVAssetExportSession (GPU-accelerated, no Swift frame loop)
+        guard let exporter = AVAssetExportSession(
+            asset: composition, presetName: AVAssetExportPresetHighestQuality
+        ) else { throw NSError(domain: "RouteVideoExport", code: -11) }
+        exporter.videoComposition = videoComp
+        exporter.outputURL = outputURL
+        exporter.outputFileType = .mov
+
+        let progressTask = Task {
+            while !Task.isCancelled {
+                progressHandler(Double(exporter.progress))
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            exporter.exportAsynchronously { cont.resume() }
+        }
+        progressTask.cancel()
+        progressHandler(1.0)
+
+        guard exporter.status == .completed else {
+            throw exporter.error ?? NSError(domain: "RouteVideoExport", code: -12,
+                                            userInfo: [NSLocalizedDescriptionKey: "Export failed"])
+        }
+    }
+
+    // MARK: - Background video writer
+
+    private static func writeBackgroundVideo(
+        mapCGImage: CGImage,
+        pixelSize: CGSize
+    ) async throws -> URL {
+        let px = pixelSize
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_bg_\(UUID().uuidString).mov")
+
+        // Render map + darken into a single pixel buffer
         var pb: CVPixelBuffer?
-        let attrs = [kCVPixelBufferCGImageCompatibilityKey: true,
-                     kCVPixelBufferCGBitmapContextCompatibilityKey: true] as CFDictionary
-        guard CVPixelBufferCreate(kCFAllocatorDefault, w, h,
-                                  kCVPixelFormatType_32BGRA, attrs, &pb) == kCVReturnSuccess,
-              let buf = pb else { return nil }
+        let attrs: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, Int(px.width), Int(px.height),
+                                  kCVPixelFormatType_32BGRA, attrs as CFDictionary, &pb) == kCVReturnSuccess,
+              let buf = pb else {
+            throw NSError(domain: "RouteVideoExport", code: -6)
+        }
         CVPixelBufferLockBaseAddress(buf, [])
-        defer { CVPixelBufferUnlockBaseAddress(buf, []) }
         guard let ctx = CGContext(
             data: CVPixelBufferGetBaseAddress(buf),
-            width: w, height: h,
+            width: Int(px.width), height: Int(px.height),
             bitsPerComponent: 8,
             bytesPerRow: CVPixelBufferGetBytesPerRow(buf),
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-        ) else { return nil }
-        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
-        return buf
+        ) else {
+            CVPixelBufferUnlockBaseAddress(buf, [])
+            throw NSError(domain: "RouteVideoExport", code: -7)
+        }
+        ctx.draw(mapCGImage, in: CGRect(origin: .zero, size: px))
+        ctx.setFillColor(UIColor.black.withAlphaComponent(0.08).cgColor)
+        ctx.fill(CGRect(origin: .zero, size: px))
+        CVPixelBufferUnlockBaseAddress(buf, [])
+
+        // Write 2 identical frames so the video duration = frameCount/fps (15 s)
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input  = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.hevc,
+            AVVideoWidthKey: Int(px.width), AVVideoHeightKey: Int(px.height),
+            AVVideoCompressionPropertiesKey: [AVVideoQualityKey: 0.85]
+        ])
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: input, sourcePixelBufferAttributes: nil
+        )
+        writer.add(input)
+        writer.startWriting()
+        writer.startSession(atSourceTime: .zero)
+
+        while !input.isReadyForMoreMediaData { await Task.yield() }
+        adaptor.append(buf, withPresentationTime: .zero)
+
+        // Second frame at t = (frameCount-1)/fps → video duration = frameCount/fps = 15 s
+        let lastFrameTime = CMTime(value: CMTimeValue(frameCount - 1), timescale: fps)
+        while !input.isReadyForMoreMediaData { await Task.yield() }
+        adaptor.append(buf, withPresentationTime: lastFrameTime)
+
+        input.markAsFinished()
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            writer.finishWriting { cont.resume() }
+        }
+        guard writer.status == .completed else {
+            throw writer.error ?? NSError(domain: "RouteVideoExport", code: -8)
+        }
+        return url
+    }
+
+    // MARK: - Layer factory helpers
+
+    private static func strokeAnimation(duration: Double) -> CABasicAnimation {
+        let anim = CABasicAnimation(keyPath: "strokeEnd")
+        anim.fromValue = 0
+        anim.toValue   = 1
+        anim.duration  = duration
+        anim.beginTime = AVCoreAnimationBeginTimeAtZero
+        anim.timingFunction = CAMediaTimingFunction(name: .linear)
+        anim.fillMode  = .forwards
+        anim.isRemovedOnCompletion = false
+        return anim
+    }
+
+    private static func pathAnimation(path: CGPath, duration: Double) -> CAKeyframeAnimation {
+        let anim = CAKeyframeAnimation(keyPath: "position")
+        anim.path = path
+        anim.duration = duration
+        anim.beginTime = AVCoreAnimationBeginTimeAtZero
+        anim.calculationMode = .paced
+        anim.fillMode = .forwards
+        anim.isRemovedOnCompletion = false
+        return anim
+    }
+
+    private static func makeCircleLayer(radius: CGFloat, color: UIColor) -> CALayer {
+        let layer = CALayer()
+        let d = radius * 2
+        layer.bounds = CGRect(x: 0, y: 0, width: d, height: d)
+        layer.cornerRadius = radius
+        layer.backgroundColor = color.cgColor
+        return layer
+    }
+
+    private static func makeStartMarkerLayer(cgPos: CGPoint, renderScale: CGFloat) -> CALayer {
+        let ringR: CGFloat = 5 * renderScale
+        let container = CALayer()
+        let d = ringR * 2 + 4 * renderScale
+        container.bounds = CGRect(x: 0, y: 0, width: d, height: d)
+        container.position = cgPos
+
+        let ring = CALayer()
+        ring.bounds = CGRect(x: 0, y: 0, width: ringR * 2, height: ringR * 2)
+        ring.position = CGPoint(x: d / 2, y: d / 2)
+        ring.cornerRadius = ringR
+        ring.borderWidth = 1.5 * renderScale
+        ring.borderColor = UIColor.white.cgColor
+        ring.backgroundColor = UIColor.clear.cgColor
+        container.addSublayer(ring)
+        return container
+    }
+
+    // MARK: - CGPath from UIKit pixel coords
+
+    private static func buildCGPath(from points: [CGPoint], pixelHeight: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        guard let first = points.first else { return path }
+        // parentLayer has isGeometryFlipped=true → CG coords (y=0 at bottom), so flip y
+        path.move(to: CGPoint(x: first.x, y: pixelHeight - first.y))
+        for p in points.dropFirst() {
+            path.addLine(to: CGPoint(x: p.x, y: pixelHeight - p.y))
+        }
+        return path
+    }
+
+    // MARK: - KM marker computation
+
+    private static func computeKmMarkers(
+        snapshotPoints: [CGPoint],
+        totalDistanceM: Double,
+        pixelHeight: CGFloat
+    ) -> [KmMarkerInfo] {
+        guard snapshotPoints.count > 1, totalDistanceM > 100 else { return [] }
+
+        let totalKm   = totalDistanceM / 1000
+        let interval: Double = totalKm <= 10 ? 1 : totalKm <= 21.5 ? 2 : 5
+        let intervalM = interval * 1000
+
+        // Cumulative pixel-path length for each point
+        var cum: [Double] = [0]
+        for i in 1..<snapshotPoints.count {
+            let dx = Double(snapshotPoints[i].x - snapshotPoints[i-1].x)
+            let dy = Double(snapshotPoints[i].y - snapshotPoints[i-1].y)
+            cum.append(cum.last! + sqrt(dx*dx + dy*dy))
+        }
+        let totalPixelLen = cum.last!
+        guard totalPixelLen > 0 else { return [] }
+
+        var markers: [KmMarkerInfo] = []
+
+        var targetM = intervalM
+        while targetM < totalDistanceM - intervalM * 0.5 {
+            let frac   = targetM / totalDistanceM
+            let pixelT = frac * totalPixelLen
+            let pos    = interpolatePoint(at: pixelT, cum: cum, points: snapshotPoints)
+            markers.append(KmMarkerInfo(position: pos, distanceM: targetM,
+                                        isFinish: false, pathFraction: frac))
+            targetM += intervalM
+        }
+
+        // Finish marker at last point
+        markers.append(KmMarkerInfo(position: snapshotPoints.last!,
+                                    distanceM: totalDistanceM,
+                                    isFinish: true, pathFraction: 1.0))
+        return markers
+    }
+
+    private static func interpolatePoint(
+        at targetLen: Double,
+        cum: [Double],
+        points: [CGPoint]
+    ) -> CGPoint {
+        for i in 1..<points.count {
+            if cum[i] >= targetLen {
+                let segLen = cum[i] - cum[i-1]
+                let t = segLen > 0 ? CGFloat((targetLen - cum[i-1]) / segLen) : 0
+                return CGPoint(
+                    x: points[i-1].x + t * (points[i].x - points[i-1].x),
+                    y: points[i-1].y + t * (points[i].y - points[i-1].y)
+                )
+            }
+        }
+        return points.last!
+    }
+
+    // MARK: - Marker layer factory
+
+    private static func makeMarkerLayer(
+        marker: KmMarkerInfo,
+        pixelSize: CGSize,
+        routeDuration: Double,
+        renderScale: CGFloat
+    ) -> CALayer {
+        // CG coordinate (y=0 at bottom) for parent with isGeometryFlipped=true
+        let cgPos = CGPoint(x: marker.position.x, y: pixelSize.height - marker.position.y)
+
+        // Container sized to hold dot + label with room to scale from center
+        let csize: CGFloat = 120 * renderScale
+        let half  = csize / 2
+        let container = CALayer()
+        container.bounds   = CGRect(x: 0, y: 0, width: csize, height: csize)
+        container.position = cgPos        // anchor (0.5, 0.5) → center at cgPos
+        container.opacity  = 0
+
+        if marker.isFinish {
+            let glowR: CGFloat = 9 * renderScale
+            let glow = makeCircleLayer(radius: glowR,
+                                       color: UIColor(hex: "FFC74D").withAlphaComponent(0.38))
+            glow.position = CGPoint(x: half, y: half)
+            container.addSublayer(glow)
+
+            let dotR: CGFloat = 5 * renderScale
+            let dot = makeCircleLayer(radius: dotR, color: UIColor(hex: "FFC74D"))
+            dot.position = CGPoint(x: half, y: half)
+            container.addSublayer(dot)
+        } else {
+            let dotR: CGFloat = 3.5 * renderScale
+            let dot = makeCircleLayer(radius: dotR,
+                                      color: UIColor.white.withAlphaComponent(0.8))
+            dot.position = CGPoint(x: half, y: half)
+            container.addSublayer(dot)
+
+            // Label text
+            let km = Int((marker.distanceM / 1000).rounded())
+            let fontSize: CGFloat = 9 * renderScale
+            let labelW: CGFloat   = 22 * renderScale
+            let labelH: CGFloat   = fontSize * 1.4
+            let gap: CGFloat      = 6 * renderScale
+
+            // Safe zone check: flip label to left if near right edge
+            let safeRight: CGFloat = 60     // px from video right
+            let nearRight = marker.position.x > pixelSize.width - safeRight - dotR - gap - labelW
+            let labelXCenter = nearRight
+                ? half - (dotR + gap + labelW / 2)  // flip left
+                : half + (dotR + gap + labelW / 2)  // default right
+
+            let textLayer = CATextLayer()
+            textLayer.string  = "\(km)"
+            textLayer.fontSize = fontSize
+            textLayer.foregroundColor = UIColor.white.cgColor
+            textLayer.alignmentMode   = .center
+            textLayer.contentsScale   = 1
+            textLayer.shadowOpacity   = 0.8
+            textLayer.shadowRadius    = 2 * renderScale
+            textLayer.shadowOffset    = .zero
+            textLayer.shadowColor     = UIColor.black.cgColor
+            textLayer.bounds   = CGRect(x: 0, y: 0, width: labelW, height: labelH)
+            textLayer.position = CGPoint(x: labelXCenter, y: half)
+            container.addSublayer(textLayer)
+        }
+
+        // Pop-in animation: opacity 0→1 then scale 0→1
+        let beginTime = marker.pathFraction * routeDuration
+
+        let opAnim = CABasicAnimation(keyPath: "opacity")
+        opAnim.fromValue = 0; opAnim.toValue = 1
+        opAnim.duration  = 0.01
+        opAnim.beginTime = beginTime == 0 ? AVCoreAnimationBeginTimeAtZero : beginTime
+        opAnim.fillMode  = .forwards; opAnim.isRemovedOnCompletion = false
+
+        let scAnim = CABasicAnimation(keyPath: "transform.scale")
+        scAnim.fromValue = 0; scAnim.toValue = 1
+        scAnim.duration  = 0.2
+        scAnim.beginTime = beginTime == 0 ? AVCoreAnimationBeginTimeAtZero : beginTime
+        scAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        scAnim.fillMode  = .forwards; scAnim.isRemovedOnCompletion = false
+
+        container.add(opAnim, forKey: "opacity")
+        container.add(scAnim, forKey: "scale")
+        return container
     }
 }

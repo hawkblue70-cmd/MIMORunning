@@ -1,16 +1,32 @@
 import SwiftUI
 import SwiftData
+import OSLog
 
 @main
 struct MIMORunningApp: App {
     @State private var raceDetector = RaceDetector()
     @State private var miniMeStore = CustomMiniMeStore()
 
+    init() {
+        FontLoader.registerBundledFonts()
+        #if DEBUG
+        InsightEngine.auditTitlePools()
+        #endif
+    }
+
     private static let container: ModelContainer = {
-        let schema = Schema([WorkoutStory.self, StoryPhoto.self, Shoe.self])
-        if let c = try? ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)) {
+        let schema = Schema([
+            WorkoutStory.self, StoryPhoto.self, Shoe.self,
+            OneLinerEntry.self, PersistedRaceMatchRecord.self
+        ])
+        if let c = try? ModelContainer(for: schema,
+                                       configurations: ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)) {
+            UserDefaults.standard.set(true, forKey: "cloudKitSyncAvailable")
             return c
         }
+        let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "MIMORunning", category: "CloudKit")
+        log.warning("CloudKit ModelContainer 초기화 실패 — 로컬 전용으로 강등")
+        UserDefaults.standard.set(false, forKey: "cloudKitSyncAvailable")
         do {
             return try ModelContainer(for: schema)
         } catch {

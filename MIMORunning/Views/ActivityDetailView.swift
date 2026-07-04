@@ -250,6 +250,8 @@ struct ActivityDetailView: View {
             }
         }
         .task {
+            // Release any stale in-flight claim left by a prior cancelled task for this activity
+            await InsightCache.shared.releaseRefinedCompute(activity.id)
             // Non-running activities: just fetch detail, no insight computation
             guard activity.type == .running else {
                 detail = await manager.fetchDetail(for: activity.id)
@@ -259,38 +261,20 @@ struct ActivityDetailView: View {
 
             let lang = AppLanguage.shared.isEnglish ? "en" : "ko"
 
-            // Phase 1: quick insight off main thread (no workout-type yet)
-            let initial: InsightResult
-            if let cached = await InsightCache.shared.result(for: activity.id, isRefined: false, language: lang) {
-                initial = cached
-            } else {
-                let computed = await InsightEngine.computeBackground(
-                    activity: activity, history: manager.activities, level: level,
-                    raceMatch: raceDetector.matchFor(activityID: activity.id))
-                await InsightCache.shared.cache(computed, for: activity.id, isRefined: false, language: lang)
-                initial = computed
-            }
-            // If refined cache already exists, show it immediately to avoid Phase 1 → Phase 3 flash
-            if let refinedCached = await InsightCache.shared.result(for: activity.id, isRefined: true, language: lang) {
-                insight = refinedCached
-            } else {
-                insight = initial
-            }
+            // Check cache first — show immediately if available (insight stays nil → loading state otherwise)
+            let cachedInsight = await InsightCache.shared.result(for: activity.id, isRefined: true, language: lang)
+            if let c = cachedInsight { insight = c }
 
-            // Phase 2: fetch detail — splits drive workout-type classification
+            // Fetch detail regardless (route map, splits, hill annotation)
             detail = await manager.fetchDetail(for: activity.id)
             isLoadingDetail = false
-
             hillMatch = HillSpotDetector.shared.assess(
                 routeCoords: detail?.routeCoordinates ?? [],
                 elevationGain: detail?.elevationGain
             ).first(where: { $0.matched })
-
-            // Phase 2b: fetch condition (weather archive + sleep) using first route point
             let firstCoord = detail?.routeCoordinates.first
-            async let conditionFetch = manager.fetchCondition(for: activity, firstCoordinate: firstCoord)
 
-            // Phase 2c: assess race match (async, region-aware, route-informed)
+            // Start race detection (always needed for badge UI)
             async let raceFetch: RaceSuggestion? = raceDetector.assess(
                 activityID: activity.id,
                 date: activity.date,
@@ -298,47 +282,73 @@ struct ActivityDetailView: View {
                 startCoord: firstCoord,
                 routeCoords: detail?.routeCoordinates ?? []
             )
-            let (fetchedCondition, suggestion) = await (conditionFetch, raceFetch)
+
+            if cachedInsight != nil {
+                // Fast path: insight cached — fetch condition + race for display, no generation
+                let fetchedCondition = await manager.fetchCondition(for: activity, firstCoordinate: firstCoord)
+                let suggestion = await raceFetch
+                withAnimation(.easeIn(duration: 0.2)) { condition = fetchedCondition }
+                if let s = suggestion, s.strength == .strong {
+                    raceDetector.confirm(activityID: activity.id, race: s.primary,
+                                         activityDistanceKm: activity.distance / 1000)
+                } else {
+                    withAnimation(.easeIn) { raceSuggestion = suggestion }
+                }
+                // AI enhancement pass (idempotent — skips if already enhanced)
+                if let aiResult = await InsightEngine.tryAIEnhance(cachedInsight!) {
+                    await InsightCache.shared.cache(aiResult, for: activity.id, isRefined: true, language: lang)
+                    withAnimation(.easeInOut(duration: 0.4)) { insight = aiResult }
+                }
+                return
+            }
+
+            // Slow path: no cache — wait for condition (max 3 s) then generate exactly once
+            // insight remains nil during this wait → loading state in UI
+            let fetchedCondition: ActivityCondition? = await withTaskGroup(of: ActivityCondition?.self) { group in
+                group.addTask { await manager.fetchCondition(for: activity, firstCoordinate: firstCoord) }
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(3))
+                    return nil
+                }
+                let result = await group.next() ?? nil
+                group.cancelAll()
+                return result
+            }
+            let suggestion = await raceFetch
             withAnimation(.easeIn(duration: 0.2)) { condition = fetchedCondition }
 
-            // Strong match → auto-confirm immediately (user can revoke via badge button)
+            // Confirm strong race before generation so the single compute includes it
             if let s = suggestion, s.strength == .strong {
                 raceDetector.confirm(activityID: activity.id, race: s.primary,
                                      activityDistanceKm: activity.distance / 1000)
-                await recomputeInsightWithRaceMatch()
             } else {
                 withAnimation(.easeIn) { raceSuggestion = suggestion }
             }
 
-            // Phase 3: refine insight off main thread with workout type + splits + condition
-            let refined: InsightResult
-            if let det = detail {
-                if let cached = await InsightCache.shared.result(for: activity.id, isRefined: true, language: lang) {
-                    refined = cached
-                    // Already showing this result — no animation needed (avoids flash)
-                } else {
-                    let computed = await InsightEngine.computeBackground(
-                        activity: activity,
-                        history: manager.activities,
-                        level: level,
-                        workoutType: det.workoutType,
-                        splits: det.splits,
-                        intervalSegments: det.intervalSegments,
-                        condition: fetchedCondition,
-                        raceMatch: raceDetector.matchFor(activityID: activity.id),
-                        detail: det
-                    )
-                    await InsightCache.shared.cache(computed, for: activity.id, isRefined: true, language: lang)
-                    refined = computed
-                    withAnimation(.easeInOut(duration: 0.3)) { insight = refined }
-                }
-            } else {
-                refined = initial
+            // Exactly one generation: guarded by in-flight claim
+            guard await InsightCache.shared.claimRefinedCompute(activity.id) else {
+                #if DEBUG
+                print("[DetailInsight] 중복스킵(진행중) activity=\(activity.id)")
+                #endif
+                return
             }
+            let result = await InsightEngine.computeBackground(
+                activity: activity,
+                history: manager.activities,
+                level: level,
+                workoutType: detail?.workoutType ?? .general,
+                splits: detail?.splits ?? [],
+                intervalSegments: detail?.intervalSegments ?? [],
+                condition: fetchedCondition,
+                raceMatch: raceDetector.matchFor(activityID: activity.id),
+                detail: detail
+            )
+            await InsightCache.shared.cache(result, for: activity.id, isRefined: true, language: lang)
+            await InsightCache.shared.releaseRefinedCompute(activity.id)
+            withAnimation(.easeInOut(duration: 0.3)) { insight = result }
 
-            // Phase 4: optional on-device AI rewrite (iOS 26+)
-            // tryAIEnhance returns nil if already enhanced (aiEnhanced == true) — runs once per activity.
-            if let aiResult = await InsightEngine.tryAIEnhance(refined) {
+            // AI rewrite (idempotent — skips if aiEnhanced == true)
+            if let aiResult = await InsightEngine.tryAIEnhance(result) {
                 await InsightCache.shared.cache(aiResult, for: activity.id, isRefined: true, language: lang)
                 withAnimation(.easeInOut(duration: 0.4)) { insight = aiResult }
             }
@@ -670,6 +680,26 @@ private struct DetailHeader: View {
     var confirmedRace: PersistedRaceMatch? = nil
     var onRaceRevoke: (() -> Void)? = nil
 
+    private var dateText: Text {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: AppLanguage.shared.s("ko_KR", "en_US"))
+        if AppLanguage.shared.isEnglish {
+            df.dateFormat = "EEEE"
+            let weekday = df.string(from: activity.date)
+            df.dateFormat = ", MMMM d, yyyy  h:mm a"
+            let rest = df.string(from: activity.date)
+            return Text(weekday).foregroundStyle(Theme.time) + Text(rest)
+        } else {
+            df.dateFormat = "yyyy년 M월 d일"
+            let datePart = df.string(from: activity.date)
+            df.dateFormat = " EEEE"
+            let weekday = df.string(from: activity.date)
+            df.dateFormat = "  a h:mm"
+            let timePart = df.string(from: activity.date)
+            return Text(datePart) + Text(weekday).foregroundStyle(Theme.time) + Text(timePart)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
@@ -683,17 +713,9 @@ private struct DetailHeader: View {
                     Text(activity.type.label)
                         .font(.title2.bold())
                         .foregroundStyle(.white)
-                    Text({
-                        let df = DateFormatter()
-                        df.locale = Locale(identifier: AppLanguage.shared.s("ko_KR", "en_US"))
-                        df.dateFormat = AppLanguage.shared.s(
-                            "yyyy년 M월 d일 EEEE  a h:mm",
-                            "EEEE, MMMM d, yyyy  h:mm a"
-                        )
-                        return df.string(from: activity.date)
-                    }())
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
+                    dateText
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
                 }
                 Spacer()
             }
@@ -2012,17 +2034,22 @@ private struct StorySection: View {
     @State private var showEditor = false
     @Query private var stories: [WorkoutStory]
     @Query private var shoes: [Shoe]
+    @Query private var allOneLinerEntries: [OneLinerEntry]
     @Environment(\.modelContext) private var modelContext
     private var story: WorkoutStory? { stories.first }
     private var selectedShoe: Shoe? {
         guard let sid = story?.shoeID else { return nil }
         return shoes.first { $0.id.uuidString == sid }
     }
+    private var oneLinerEntries: [OneLinerEntry] {
+        OneLinerEntry.visible(from: allOneLinerEntries, workoutID: workoutID)
+    }
 
     init(workoutID: String) {
         self.workoutID = workoutID
         let wid = workoutID
         _stories = Query(filter: #Predicate<WorkoutStory> { $0.workoutID == wid })
+        _allOneLinerEntries = Query(filter: #Predicate<OneLinerEntry> { $0.workoutID == wid })
     }
 
     var body: some View {
@@ -2046,6 +2073,16 @@ private struct StorySection: View {
             }
             if let s = story {
                 StoryDisplay(story: s)
+            }
+            if !oneLinerEntries.isEmpty {
+                HStack {
+                    Label(AppLanguage.shared.s("오늘의 한마디", "One-Liners"),
+                          systemImage: "text.bubble.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                OneLinerListDisplay(entries: oneLinerEntries)
             }
         }
         .padding(.horizontal, 16)
@@ -2173,6 +2210,187 @@ private struct StoryDisplay: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+// MARK: - OneLinerGroup
+
+/// 같은 텍스트를 공유하는 entry 묶음. 리스트에서 한 줄로 표시.
+private struct OneLinerGroup: Identifiable {
+    /// 중복 제거 키 = 트리밍된 텍스트
+    let id: String
+    /// 대표 entry (최신) — 폰트·색·미디어삭제 여부 결정
+    let representative: OneLinerEntry
+    /// 이 그룹에 속한 전체 entry
+    let entries: [OneLinerEntry]
+
+    /// 사진·영상에 연결된 entry 수 (nil mediaRef 제외)
+    var photoCount: Int { entries.filter { $0.mediaRef != nil }.count }
+}
+
+// MARK: - OneLinerListDisplay
+
+private struct OneLinerListDisplay: View {
+    let entries: [OneLinerEntry]
+    @Environment(\.modelContext) private var modelContext
+    @State private var recentlyDeleted: [OneLinerEntry] = []
+    @State private var showUndo = false
+    @State private var groupToConfirm: OneLinerGroup?
+
+    // entries는 createdAt 오름차순 — 첫 등장 순서를 그룹 순서로 유지
+    private var groups: [OneLinerGroup] {
+        var seen  = Set<String>()
+        var order = [String]()
+        var map   = [String: [OneLinerEntry]]()
+        for entry in entries {
+            let key = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty else { continue }
+            if seen.insert(key).inserted { order.append(key) }
+            map[key, default: []].append(entry)
+        }
+        return order.compactMap { key -> OneLinerGroup? in
+            guard let group = map[key], !group.isEmpty else { return nil }
+            let rep = group.max(by: { $0.createdAt < $1.createdAt })!
+            return OneLinerGroup(id: key, representative: rep, entries: group)
+        }
+    }
+
+    // List는 ScrollView 안에서 자체 높이 계산을 못함 → 명시적으로 지정
+    private var listHeight: CGFloat {
+        let twoLine = groups.filter { $0.id.contains("\n") || $0.id.count > 20 }.count
+        return CGFloat(groups.count - twoLine) * 54 + CGFloat(twoLine) * 72
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            List {
+                ForEach(groups) { group in
+                    OneLinerGroupRow(group: group)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: group.entries.count == 1) {
+                            Button(role: .destructive) { requestDelete(group) } label: {
+                                Label(AppLanguage.shared.s("삭제", "Delete"), systemImage: "trash")
+                            }
+                        }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollDisabled(true)
+            .frame(height: listHeight)
+
+            if showUndo {
+                HStack(spacing: 0) {
+                    Text(AppLanguage.shared.s("삭제됨  ·  ", "Deleted  ·  "))
+                        .foregroundStyle(.white)
+                    Button(AppLanguage.shared.s("되돌리기", "Undo")) { undoDelete() }
+                        .foregroundStyle(Theme.violet)
+                }
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(hex: "26262E"))
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .animation(.easeInOut(duration: 0.2), value: showUndo)
+        .alert(
+            AppLanguage.shared.s("문구 삭제", "Delete One-Liner"),
+            isPresented: Binding(
+                get: { groupToConfirm != nil },
+                set: { if !$0 { groupToConfirm = nil } }
+            ),
+            presenting: groupToConfirm
+        ) { group in
+            Button(AppLanguage.shared.s("모두 삭제", "Delete All"), role: .destructive) {
+                commitDelete(group)
+            }
+            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
+        } message: { group in
+            let n = group.entries.count
+            Text(AppLanguage.shared.s(
+                "사진 \(n)장에 적용된 문구예요. 모두 삭제할까요?",
+                "Applied to \(n) photos. Delete all?"
+            ))
+        }
+    }
+
+    private func requestDelete(_ group: OneLinerGroup) {
+        if group.entries.count == 1 {
+            // 단일 항목: 즉시 삭제 + 3초 undo
+            commitDelete(group)
+            showUndo = true
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                showUndo = false
+            }
+        } else {
+            // 다중 항목: 확인 다이얼로그
+            groupToConfirm = group
+        }
+    }
+
+    private func commitDelete(_ group: OneLinerGroup) {
+        recentlyDeleted = group.entries
+        group.entries.forEach { modelContext.delete($0) }
+        try? modelContext.save()
+        groupToConfirm = nil
+    }
+
+    private func undoDelete() {
+        recentlyDeleted.forEach { modelContext.insert($0) }
+        try? modelContext.save()
+        showUndo = false
+        recentlyDeleted = []
+    }
+}
+
+// MARK: - OneLinerGroupRow
+
+private struct OneLinerGroupRow: View {
+    let group: OneLinerGroup
+
+    private var rep: OneLinerEntry { group.representative }
+
+    private var mediaDeleted: Bool {
+        rep.phAssetLocalIdentifier != nil && !rep.isPHAssetAvailable
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(mediaDeleted
+                      ? Color.orange.opacity(0.7)
+                      : rep.textColor.color.opacity(rep.textColor == .white ? 0.55 : 0.85))
+                .frame(width: 6, height: 6)
+                .padding(.top, 6)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rep.text)
+                    .font(.custom(rep.font.fontName, size: 17))
+                    .foregroundStyle(rep.textColor.color)
+                    .lineLimit(3)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // 2장 이상 사진에 적용된 경우 병기
+                if group.photoCount >= 2 {
+                    Text(AppLanguage.shared.s("사진 \(group.photoCount)장", "\(group.photoCount) photos"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if mediaDeleted {
+                    Text(AppLanguage.shared.s("원본이 삭제되었어요", "Original deleted"))
+                        .font(.caption2)
+                        .foregroundStyle(.orange.opacity(0.8))
+                }
+            }
+        }
     }
 }
 
@@ -2655,6 +2873,7 @@ struct SplitsPanelChart: View {
     let splits: [SplitData]
     var compact: Bool = false
     var isLargeDisplay: Bool = false
+    var labelScale: CGFloat = 1.0
 
     private var fastestIdx: Int? {
         splits.indices.min(by: { splits[$0].paceSecPerKm < splits[$1].paceSecPerKm })
@@ -2770,7 +2989,7 @@ struct SplitsPanelChart: View {
                     .symbolSize(18)
                     .annotation(position: .top, alignment: .center) {
                         Text(paceLabel(fp.realPace))
-                            .font(.system(size: isLargeDisplay ? 13 : 7, weight: .semibold))
+                            .font(.system(size: isLargeDisplay ? 13 : 7 * labelScale, weight: .semibold))
                             .foregroundStyle(Self.panelGold)
                     }
             }
@@ -2779,7 +2998,7 @@ struct SplitsPanelChart: View {
                 .foregroundStyle(Color.white.opacity(0.35))
                 .annotation(position: .bottom, alignment: .trailing) {
                     Text("avg " + paceLabel(avgPace))
-                        .font(.system(size: isLargeDisplay ? 11 : 6.5))
+                        .font(.system(size: isLargeDisplay ? 11 : 6.5 * labelScale))
                         .foregroundStyle(Color.white.opacity(0.55))
                 }
         }
@@ -2794,7 +3013,7 @@ struct SplitsPanelChart: View {
                         let real = offset - v
                         if real > 60 {
                             Text(paceLabel(real))
-                                .font(.system(size: isLargeDisplay ? 11 : 6))
+                                .font(.system(size: isLargeDisplay ? 11 : 6 * labelScale))
                                 .foregroundStyle(Color.white.opacity(0.55))
                         }
                     }
@@ -2810,7 +3029,7 @@ struct SplitsPanelChart: View {
                         Text(AppLanguage.shared.isEnglish
                              ? String(format: "%.0fm", m)
                              : String(format: "%.0f분", m))
-                            .font(.system(size: isLargeDisplay ? 11 : 6))
+                            .font(.system(size: isLargeDisplay ? 11 : 6 * labelScale))
                             .foregroundStyle(Color.white.opacity(0.55))
                     }
                 }
@@ -2885,6 +3104,7 @@ struct HRSeriesPanelChart: View {
     var zones: [HRZoneData] = []
     var compact: Bool = false
     var workoutDuration: TimeInterval? = nil
+    var labelScale: CGFloat = 1.0
 
     private static let zoneColors: [Color] = [
         Color(red: 0.30, green: 0.60, blue: 1.00),
@@ -2991,7 +3211,7 @@ struct HRSeriesPanelChart: View {
                     .foregroundStyle(Theme.heartRate.opacity(0.7))
                     .annotation(position: .top, alignment: .trailing) {
                         Text(String(format: "avg %.0f", avg))
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.system(size: compact ? 9 * labelScale : 9, weight: .medium))
                             .foregroundStyle(Theme.heartRate.opacity(0.8))
                     }
             }
@@ -3006,7 +3226,7 @@ struct HRSeriesPanelChart: View {
                         Text(AppLanguage.shared.isEnglish
                              ? String(format: "%.0fm", m)
                              : String(format: "%.0f분", m))
-                            .font(compact ? .system(size: 8) : .caption2)
+                            .font(compact ? .system(size: 8 * labelScale) : .caption2)
                             .foregroundStyle(Color.white.opacity(compact ? 0.75 : 0.6))
                     }
                 }
@@ -3018,7 +3238,7 @@ struct HRSeriesPanelChart: View {
                 AxisValueLabel {
                     if let v = val.as(Double.self) {
                         Text("\(Int(v))")
-                            .font(compact ? .system(size: 8) : .caption2)
+                            .font(compact ? .system(size: 8 * labelScale) : .caption2)
                             .foregroundStyle(Color.white.opacity(compact ? 0.80 : 0.6))
                     }
                 }
