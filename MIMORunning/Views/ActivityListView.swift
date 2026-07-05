@@ -207,7 +207,6 @@ private struct ActivityListContent: View {
             if let all = try? modelContext.fetch(FetchDescriptor<OneLinerEntry>()) {
                 let stale = all.filter { $0.workoutID.hasPrefix("restDay-") }
                 if !stale.isEmpty {
-                    print("[RestDayCleanup] \(stale.count)건 삭제")
                     stale.forEach { modelContext.delete($0) }
                     try? modelContext.save()
                 }

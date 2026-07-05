@@ -1057,9 +1057,6 @@ private struct RouteMapView: View {
             }
         }
         .padding(.horizontal, 16)
-        .onAppear {
-            print("[ZoneRoute] 진입 — 좌표=\(coordinates.count) timeOffsets=\(routeTimeOffsets.count) hasHRData=\(hasHRData) showHRZones=\(showHRZones)")
-        }
         .task(id: activityID) {
             // 1) 기본 지도 스냅샷
             if snapshot == nil {
@@ -1082,12 +1079,9 @@ private struct RouteMapView: View {
             }
         }
         .onChange(of: showHRZones) { _, newValue in
-            print("[ZoneRoute] 토글→\(newValue ? "심박존" : "기본") samples=\(localHRSamples.count)(loaded=\(hrLoadDone)) snapshot=\(hrZoneSnapshot != nil)")
             guard newValue, hrZoneSnapshot == nil else { return }
             if canShowZones {
                 Task { await generateHRZoneSnapshot() }
-            } else if hrLoadDone {
-                print("[ZoneRoute] 심박샘플 부족(\(localHRSamples.count)<10) — 칩 비활성")
             }
         }
     }
@@ -1240,12 +1234,7 @@ private struct RouteMapView: View {
         let samples = await manager.fetchHRTimeSeries(for: activityID)
         localHRSamples = samples
         hrLoadDone = true
-        let status = samples.count >= 10 ? "활성가능" : "부족(비활성)"
-        print("[ZoneRoute] HR시계열(fetchHRTimeSeries): \(samples.count)개 → 칩=\(status)")
-        if samples.count < 10 {
-            print("[ZoneRoute] 샘플 \(samples.count)<10 — 심박존 비활성")
-            return
-        }
+        if samples.count < 10 { return }
         // 로드 완료 후 칩이 이미 켜져 있으면 생성
         if showHRZones, hrZoneSnapshot == nil {
             await generateHRZoneSnapshot()
@@ -1282,7 +1271,6 @@ private struct RouteMapView: View {
             // 최대 관측값이 ~90% 수준이라고 추정해 피크 계산
             let peak = min(220, Int(Double(maxObs) / 0.90))
             zoneBounds = [(1,0),(2,Int(Double(peak)*0.60)),(3,Int(Double(peak)*0.70)),(4,Int(Double(peak)*0.80)),(5,Int(Double(peak)*0.90))]
-            print("[ZoneRoute] Karvonen 없음 — 최대\(maxObs)bpm→추정피크\(peak)bpm 폴백 존 경계")
         }
 
         let lats = indexed.map { $0.element.latitude }
@@ -1321,12 +1309,7 @@ private struct RouteMapView: View {
 
         // 매칭 성공률 확인 — 좌표-샘플 시간대 불일치 감지
         let matchedCount = points.filter(\.matched).count
-        guard matchedCount > 0 else {
-            print("[ZoneRoute] 매칭성공=0 — 좌표 타임스탬프와 HR 샘플 시간대 불일치. 존 지도 생성 중단.")
-            return nil
-        }
-
-        print("[ZoneRoute] 그라데이션 렌더 매칭=\(matchedCount)/\(points.count) 좌표=\(points.count)/\(indexed.count)")
+        guard matchedCount > 0 else { return nil }
 
         let sortedBounds = zoneBounds.sorted { $0.minBPM < $1.minBPM }
         return UIGraphicsImageRenderer(size: snap.image.size).image { _ in

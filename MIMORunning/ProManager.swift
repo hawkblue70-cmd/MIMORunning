@@ -197,9 +197,7 @@ final class ProManager {
             }
             record["expiryDate"] = expiryDate
             try await db.save(record)
-        } catch {
-            print("[ProMgr] CloudKit 저장 실패:", error)
-        }
+        } catch { }
     }
 
     private func checkCloudSubscription() async -> Bool {
@@ -214,7 +212,6 @@ final class ProManager {
     private func isDeveloperAccount() async -> Bool {
         do {
             let id = try await CKContainer.default().userRecordID()
-            print("[ProMgr] CloudKit ID:", id.recordName)
             guard !Self.developerCloudKitID.isEmpty else { return false }
             return id.recordName == Self.developerCloudKitID
         } catch {

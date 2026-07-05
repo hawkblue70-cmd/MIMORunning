@@ -428,9 +428,6 @@ struct RouteVideoExportService {
             progressHandler: progressHandler
         )
 
-        let elapsed   = CACurrentMediaTime() - t0
-        let fileBytes = (try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int) ?? 0
-        print("[RouteVideo v2] \(Int(pixelSize.width))×\(Int(pixelSize.height)) — \(String(format: "%.1f", elapsed))s — \(fileBytes / 1024)KB")
         return outputURL
     }
 
@@ -500,9 +497,6 @@ struct RouteVideoExportService {
             progressHandler: progressHandler
         )
 
-        let elapsed   = CACurrentMediaTime() - t0
-        let fileBytes = (try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int) ?? 0
-        print("[RouteVideo BN v2] \(Int(pixelSize.width))×\(Int(pixelSize.height)) — \(String(format: "%.1f", elapsed))s — \(fileBytes / 1024)KB")
         return outputURL
     }
 

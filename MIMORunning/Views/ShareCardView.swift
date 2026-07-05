@@ -1950,8 +1950,6 @@ struct ShareCardScreen: View {
                             let oldRef   = computeOneLinerMediaRef() ?? "nil"
                             let oldTxt   = oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
                             saveOneLinerSettings()
-                            let newRef   = i < storyPhotoUUIDs.count ? "photo:\(storyPhotoUUIDs[i])" : "nil"
-                            print("[OneLiner] 선택 사진=…\(newRef.suffix(4)) / 저장(이전=…\(oldRef.suffix(4)))=\(oldTxt.isEmpty ? "(빈 문구 스킵)" : String(oldTxt.prefix(10)))")
 
                             // ② 포커스 해제 — 키보드 열려 있으면 TextField 내부 버퍼가 바인딩 갱신을 씹음
                             oneLinerFieldFocused = false
@@ -4496,7 +4494,6 @@ struct ShareCardScreen: View {
         if let entry = oneLinerEntries.first(where: { $0.mediaRef == mediaRef }) {
             syncUIFromEntry(entry)
             oneLinerPhAssetDeleted = !entry.isPHAssetAvailable
-            print("[OneLiner] 로드(새 사진=…\(suffix))=\(entry.text.isEmpty ? "(비어있음)" : String(entry.text.prefix(10)))")
         } else {
             oneLinerText = ""
             oneLinerPhAssetDeleted = false
@@ -4504,7 +4501,6 @@ struct ShareCardScreen: View {
                 oneLinerFont  = latest.font
                 oneLinerColor = latest.textColor
             }
-            print("[OneLiner] 로드(새 사진=…\(suffix))=entry 없음 → 비움")
         }
     }
 
@@ -4576,7 +4572,6 @@ struct ShareCardScreen: View {
 
         guard !toDelete.isEmpty else { return }
         toDelete.forEach { modelContext.delete($0) }
-        print("[OneLinerDedup] \(toDelete.count)개 정리 (빈 문구 + 중복, workout: \(activity.id.uuidString))")
         try? modelContext.save()
     }
 
@@ -4597,7 +4592,6 @@ struct ShareCardScreen: View {
                 !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }) else { continue }
 
-            print("[OneLinerExport] 사진=…\(ref.suffix(4)) 문구=\"\(String(entry.text.prefix(10)))\"")
             let photo = highQualityStoryPhotos[i] ?? storyPhotos[i]
             let card = OneLinerCard(
                 activity: activity,
