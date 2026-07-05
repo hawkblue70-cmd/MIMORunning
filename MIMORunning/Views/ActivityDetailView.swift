@@ -71,6 +71,9 @@ struct ActivityDetailView: View {
     @State private var activePanel: DetailPanel = .map
     @State private var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var hrFetchDone = false
+    /// 비동기 computeHRZonesForDate 결과 전용 상태. detail?.hrZones보다 우선.
+    @State private var displayZones: [HRZoneData] = []
+    @State private var isComputingZones = false
     @State private var panelSeriesData: [(offset: TimeInterval, value: Double)] = []
     @State private var panelSeriesCache: [DetailPanel: [(offset: TimeInterval, value: Double)]] = [:]
     @State private var isLoadingPanelSeries = false
@@ -80,8 +83,9 @@ struct ActivityDetailView: View {
 
     private var level: LevelBucket { manager.userLevel.bucket }
 
-    /// detail.hrZones가 비어 있는 경우(구 캐시) hrSamples로 존 분포 재계산
+    /// displayZones(비동기 계산) 우선, 없으면 detail.hrZones, 최후 동기 폴백.
     private var effectiveHRZones: [HRZoneData] {
+        if !displayZones.isEmpty { return displayZones }
         let zones = detail?.hrZones ?? []
         if !zones.isEmpty { return zones }
         guard hrFetchDone, !hrSamples.isEmpty else { return [] }
@@ -182,12 +186,44 @@ struct ActivityDetailView: View {
                                   condition: condition,
                                   firstCoordinate: detail?.routeCoordinates.first)
                     }
-                    if let zones = detail?.hrZones, !zones.isEmpty {
+                    let zones = effectiveHRZones
+                    if !zones.isEmpty {
                         HRZonesSection(zones: zones)
+                    } else if isComputingZones {
+                        HStack(spacing: 8) {
+                            ProgressView().scaleEffect(0.7)
+                            Text(AppLanguage.shared.s("심박 존 계산 중…", "Computing zones…"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                    } else if !manager.hasDOBSource && hrFetchDone {
+                        // DOB/수동나이 없어서 존 계산 불가 → 안내
+                        HStack(spacing: 6) {
+                            Image(systemName: "info.circle")
+                                .font(.caption).foregroundStyle(Theme.violet)
+                            Text(AppLanguage.shared.s(
+                                "정확한 존 계산을 위해 건강 앱에 생년월일을 입력하거나, '나' 탭에서 나이를 설정해 주세요.",
+                                "For accurate HR zones, add your date of birth in the Health app or set your age in the Me tab."))
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
                     }
                     Spacer(minLength: 32)
                 }
                 .padding(.top, 8)
+            }
+        }
+        .onChange(of: manager.manualAge) {
+            // 수동 나이 변경 시 존 재계산
+            guard !hrSamples.isEmpty else { return }
+            Task {
+                isComputingZones = true
+                let computed = await manager.computeHRZonesForDate(activity.date, samples: hrSamples)
+                displayZones = computed
+                if !computed.isEmpty { detail?.hrZones = computed }
+                isComputingZones = false
             }
         }
         .navigationTitle(activity.type.label)
@@ -230,10 +266,13 @@ struct ActivityDetailView: View {
                 Task {
                     hrSamples = await manager.fetchHRTimeSeries(for: activity.id)
                     hrFetchDone = true
-                    // detail?.hrZones가 비어있으면 계산해서 채움 — 차트와 공유 카드가 동일 경로 사용
-                    if (detail?.hrZones ?? []).isEmpty, !hrSamples.isEmpty {
-                        let computed = manager.computeHRZonesFromSamples(hrSamples)
-                        if !computed.isEmpty { detail?.hrZones = computed }
+                    // provisional 재조회로 hrSamples가 갱신됐을 수 있음 → displayZones 재계산
+                    if displayZones.isEmpty || (detail?.hrZones ?? []).isEmpty {
+                        let computed = await manager.computeHRZonesForDate(activity.date, samples: hrSamples)
+                        if !computed.isEmpty {
+                            displayZones = computed
+                            detail?.hrZones = computed
+                        }
                     }
                 }
             }
@@ -269,6 +308,35 @@ struct ActivityDetailView: View {
             // Fetch detail regardless (route map, splits, hill annotation)
             detail = await manager.fetchDetail(for: activity.id)
             isLoadingDetail = false
+
+            // 존 분포: detail?.hrZones 우선, 없으면 HR 시리즈로 비동기 재계산 → displayZones
+            isComputingZones = true
+            let detailZones = detail?.hrZones ?? []
+            if !detailZones.isEmpty {
+                displayZones = detailZones
+                isComputingZones = false
+            } else {
+                // queryHRZones가 실패했거나 v3 캐시 미생성 → HR 시리즈로 직접 계산
+                if hrSamples.isEmpty {
+                    let earlyHR = await manager.fetchHRTimeSeries(for: activity.id)
+                    if !earlyHR.isEmpty { hrSamples = earlyHR; hrFetchDone = true }
+                }
+                let computed = await manager.computeHRZonesForDate(activity.date, samples: hrSamples)
+                displayZones = computed
+                if !computed.isEmpty { detail?.hrZones = computed }
+                isComputingZones = false
+                #if DEBUG
+                let dist = computed.map { "z\($0.id):\(Int($0.seconds))초" }.joined(separator: " ")
+                let cond = computed.isEmpty ? "미충족(계산결과빈배열) hrSamples=\(hrSamples.count)" : "충족"
+                print("[ZoneDist] 뷰로드(폴백) 존개수=\(computed.count) 분포=[\(dist)] 표시조건=\(cond)")
+                #endif
+            }
+            #if DEBUG
+            let finalZones = displayZones
+            let distFinal  = finalZones.map { "z\($0.id):\(Int($0.seconds))초" }.joined(separator: " ")
+            print("[ZoneDist] 뷰로드 최종 존개수=\(finalZones.count) 분포=[\(distFinal)]")
+            #endif
+
             hillMatch = HillSpotDetector.shared.assess(
                 routeCoords: detail?.routeCoordinates ?? [],
                 elevationGain: detail?.elevationGain
@@ -342,7 +410,8 @@ struct ActivityDetailView: View {
                 intervalSegments: detail?.intervalSegments ?? [],
                 condition: fetchedCondition,
                 raceMatch: raceDetector.matchFor(activityID: activity.id),
-                detail: detail
+                detail: detail,
+                historyComplete: manager.isHistoryLoadComplete
             )
             await InsightCache.shared.cache(result, for: activity.id, isRefined: true, language: lang)
             await InsightCache.shared.releaseRefinedCompute(activity.id)
@@ -374,7 +443,8 @@ struct ActivityDetailView: View {
             intervalSegments: detail?.intervalSegments ?? [],
             condition: condition,
             raceMatch: match,
-            detail: detail
+            detail: detail,
+            historyComplete: manager.isHistoryLoadComplete
         )
         let isRefined = detail != nil
         await InsightCache.shared.cache(recomputed, for: activity.id, isRefined: isRefined, language: lang)
@@ -478,6 +548,7 @@ struct ActivityDetailView: View {
                         RouteMapView(
                             coordinates: coords,
                             activityID: activity.id,
+                            activityDate: activity.date,
                             manager: manager,
                             routeTimeOffsets: detail?.routeTimeOffsets ?? [],
                             workoutDuration: activity.duration,
@@ -1014,6 +1085,7 @@ private struct ConditionChip: View {
 private struct RouteMapView: View {
     let coordinates: [CLLocationCoordinate2D]
     let activityID: UUID
+    let activityDate: Date
     let manager: HealthKitManager       // HR 차트와 동일한 소스: manager.fetchHRTimeSeries
     var routeTimeOffsets: [TimeInterval] = []
     var workoutDuration: TimeInterval = 0
@@ -1261,17 +1333,12 @@ private struct RouteMapView: View {
         })
         guard indexed.count > 1, !localHRSamples.isEmpty else { return nil }
 
-        // 존 경계: Karvonen(manager) 우선, 없으면 샘플 최대 BPM 기준 % 폴백
-        let karvonen = manager.computeHRZonesFromSamples(localHRSamples)
-        let zoneBounds: [(id: Int, minBPM: Int)]
-        if !karvonen.isEmpty {
-            zoneBounds = karvonen.sorted { $0.minBPM < $1.minBPM }.map { (id: $0.id, minBPM: $0.minBPM) }
-        } else {
-            let maxObs = localHRSamples.map(\.bpm).max() ?? 180
-            // 최대 관측값이 ~90% 수준이라고 추정해 피크 계산
-            let peak = min(220, Int(Double(maxObs) / 0.90))
-            zoneBounds = [(1,0),(2,Int(Double(peak)*0.60)),(3,Int(Double(peak)*0.70)),(4,Int(Double(peak)*0.80)),(5,Int(Double(peak)*0.90))]
-        }
+        // 존 경계: 러닝 날짜 기준 직전 30일 RHR → Karvonen, 없으면 %MHR — computeHRZonesForDate가 일원화
+        let zones = await manager.computeHRZonesForDate(activityDate, samples: localHRSamples)
+        let zoneBounds: [(id: Int, minBPM: Int)] = zones.isEmpty
+            ? { let peak = min(220, Int(Double(localHRSamples.map(\.bpm).max() ?? 180) / 0.90))
+                return [(1,0),(2,Int(Double(peak)*0.60)),(3,Int(Double(peak)*0.70)),(4,Int(Double(peak)*0.80)),(5,Int(Double(peak)*0.90))] }()
+            : zones.sorted { $0.minBPM < $1.minBPM }.map { (id: $0.id, minBPM: $0.minBPM) }
 
         let lats = indexed.map { $0.element.latitude }
         let lons = indexed.map { $0.element.longitude }

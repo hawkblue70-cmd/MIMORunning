@@ -111,8 +111,15 @@ private actor GeocoderService {
 
     func geocodeAddress(_ address: String) async -> CLLocationCoordinate2D? {
         await throttle()
+        #if DEBUG
+        let callID = Int.random(in: 1000...9999)
+        print("[Geocode] geocodeAddress 진입 id=\(callID) addr=\(address.prefix(30))")
+        #endif
         return await withCheckedContinuation { cont in
-            geocoder.geocodeAddressString(address) { placemarks, _ in
+            geocoder.geocodeAddressString(address) { placemarks, error in
+                #if DEBUG
+                print("[Geocode] geocodeAddress resume id=\(callID) 결과=\(placemarks?.first?.name ?? "nil") err=\(error?.localizedDescription ?? "없음")")
+                #endif
                 cont.resume(returning: placemarks?.first?.location?.coordinate)
             }
         }
@@ -120,8 +127,15 @@ private actor GeocoderService {
 
     func reverseGeocodeLocation(_ location: CLLocation) async -> [CLPlacemark]? {
         await throttle()
+        #if DEBUG
+        let callID = Int.random(in: 1000...9999)
+        print("[Geocode] reverseGeocode 진입 id=\(callID)")
+        #endif
         return await withCheckedContinuation { cont in
-            geocoder.reverseGeocodeLocation(location) { placemarks, _ in
+            geocoder.reverseGeocodeLocation(location) { placemarks, error in
+                #if DEBUG
+                print("[Geocode] reverseGeocode resume id=\(callID) 결과=\(placemarks?.count ?? 0)개 err=\(error?.localizedDescription ?? "없음")")
+                #endif
                 cont.resume(returning: placemarks)
             }
         }
@@ -200,10 +214,9 @@ final class RaceDetector {
                 if !regionFiltered.isEmpty {
                     candidates = regionFiltered
                 } else {
-                    // Confirmed city mismatch (e.g. 성남 race + 안산 run) — don't fall back
-                    let activeCityMismatch = runTokens.count > 1
-                        && dateDist.contains { $0.cityHint != nil }
-                    if activeCityMismatch { return nil }
+                    // Geocoding succeeded but no race region matches the run's region
+                    // (e.g. 서울 run vs 광주마라톤) — clear mismatch, don't suggest
+                    return nil
                 }
             }
         }

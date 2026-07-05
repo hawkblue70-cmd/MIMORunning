@@ -62,7 +62,7 @@ actor InsightCache {
     // MARK: - Disk persistence
 
     // Bump this when insight generation logic changes to invalidate stale cache files.
-    private static let cacheVersion = 11
+    private static let cacheVersion = 12
 
     private func diskURL(activityID: UUID, isRefined: Bool, language: String) -> URL {
         let refined  = isRefined ? "1" : "0"

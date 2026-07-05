@@ -19,6 +19,18 @@ class HealthKitManager {
     var error: Error?
     var userDateOfBirth: DateComponents? = nil
     var userIsMale: Bool? = nil
+    /// 건강 앱 생년월일 미설정 시 수동 입력 나이 (0 = 미설정). UserDefaults 영속.
+    var manualAge: Int = {
+        let v = UserDefaults.standard.integer(forKey: "mimo.manualAge")
+        return v > 0 ? v : 0
+    }() {
+        didSet { UserDefaults.standard.set(manualAge, forKey: "mimo.manualAge") }
+    }
+
+    /// 존 계산에 쓸 나이 소스 존재 여부 — HealthKit DOB 또는 수동 입력 둘 중 하나.
+    var hasDOBSource: Bool {
+        (userDateOfBirth?.year ?? 0) > 1900 || manualAge > 0
+    }
     var userLevel: UserLevel = UserLevel(bucket: .beginner, ageGrade: nil, best5KEquivSec: nil, best5KDate: nil, vdot: nil)
     /// Latest resting HR from HealthKit — used as RHR in Karvonen zone calc
     var restingHeartRate: Int? = nil
@@ -30,6 +42,8 @@ class HealthKitManager {
     @ObservationIgnored private var pausedIntervalsCache: [UUID: [DateInterval]] = [:]
     @ObservationIgnored private var detailCache: [UUID: ActivityDetail] = [:]
     @ObservationIgnored private var hrSeriesCache: [UUID: [(offset: TimeInterval, bpm: Int)]] = [:]
+    /// 불완전(provisional) 캐시 ID — 다음 진입 시 HealthKit 재조회
+    @ObservationIgnored private var hrSeriesProvisionalIDs: Set<UUID> = []
     @ObservationIgnored private var panelSeriesCache: [String: [(offset: TimeInterval, value: Double)]] = [:]
     // 동일 지표 동시 요청 시 하나의 Task만 실행 — HealthKit 중복 조회 방지
     @ObservationIgnored private var metricFetchTasks: [String: Task<[(date: Date, value: Double)], Never>] = [:]
@@ -37,6 +51,13 @@ class HealthKitManager {
     // Codable proxies for disk serialization of time-series tuples
     private struct HRPoint: Codable { var offset: Double; var bpm: Int }
     private struct SeriesPoint: Codable { var offset: Double; var value: Double }
+    /// 심박 시리즈 캐시 완전성 메타데이터 — mimo_hr_{uuid}_meta.json
+    private struct HRSeriesMeta: Codable {
+        var count: Int
+        var durationMin: Int
+        /// true = 샘플 수 < durationMin×2 — 다음 진입 시 HealthKit 재조회
+        var provisional: Bool
+    }
 
     @ObservationIgnored private let cacheContainer: ModelContainer? = {
         let schema = Schema([CachedActivity.self])
@@ -48,6 +69,12 @@ class HealthKitManager {
                                                                        cloudKitDatabase: .none))
     }()
     private var cacheContext: ModelContext? { cacheContainer?.mainContext }
+
+    /// True once the background history fetch has reached the beginning of the user's HealthKit data.
+    /// Milestone and temperature-distribution facts are suppressed until this is true to avoid false triggers.
+    var isHistoryLoadComplete: Bool {
+        UserDefaults.standard.bool(forKey: Self.historyCompleteKey)
+    }
 
     /// True when any loaded workout originates from Garmin Connect.
     var hasGarminSource: Bool {
@@ -110,7 +137,10 @@ class HealthKitManager {
         authorizationStatus = .authorized
         await fetchActivities()
         // Re-request after data is shown to pick up any new types added since last install.
+        // (e.g. dateOfBirth added after initial install — user sees dialog for new type only)
         try? await store.requestAuthorization(toShare: [], read: Self.readTypes)
+        // Re-read characteristics in case the user just granted dateOfBirth / biologicalSex
+        readBiologicalCharacteristics()
     }
 
     func requestAuthorization() async {
@@ -135,6 +165,7 @@ class HealthKitManager {
     func fetchActivities(forced: Bool = false) async {
         // 일회성 마이그레이션: 시간 범위 폴백 추가 이전에 저장된 부분적 HR 시리즈 캐시 삭제
         migrateHRSeriesCacheIfNeeded()
+        auditHRSeriesCacheIfNeeded()
 
         // 메모리에 데이터 있고 완료 태그 있으면 즉시 반환 — 디스크 I/O·락 없음
         // scenePhase.active 등 반복 호출이 발열·배터리 낭비로 이어지는 것을 방지
@@ -482,19 +513,12 @@ class HealthKitManager {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_detail", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("v2_\(id.uuidString).json")
+        // v3: 구간 심박 2패스 시리즈 쿼리 + 케이던스 2배 보정 적용. 기존 v2 캐시 자동 무효화.
+        return dir.appendingPathComponent("v3_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
         let url = detailCacheURL(id)
-        // Migrate existing cache files from old Caches/ location (cleared by iOS) to Application Support/.
-        if !FileManager.default.fileExists(atPath: url.path) {
-            let oldURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("mimo_detail_v2_\(id.uuidString).json")
-            if FileManager.default.fileExists(atPath: oldURL.path) {
-                try? FileManager.default.moveItem(at: oldURL, to: url)
-            }
-        }
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(ActivityDetail.self, from: data)
     }
@@ -883,35 +907,71 @@ class HealthKitManager {
     // MARK: - Heart Rate time series for a single workout
 
     func fetchHRTimeSeries(for workoutID: UUID) async -> [(offset: TimeInterval, bpm: Int)] {
-        if let cached = hrSeriesCache[workoutID] { return cached }
+        // 확정(non-provisional) 인메모리 캐시 → 즉시 반환
+        if let cached = hrSeriesCache[workoutID], !hrSeriesProvisionalIDs.contains(workoutID) {
+            return cached
+        }
 
         // workout을 먼저 확보 — 디스크 캐시 유효성 검증에 필요
         if workoutCache[workoutID] == nil { await fetchSingleWorkout(id: workoutID) }
         let cachedWorkout = workoutCache[workoutID]
+        let durationMin = cachedWorkout.map { max(Int($0.duration / 60), 1) } ?? 1
 
-        // 디스크 캐시 로드 — 분당 1개 이상 & 커버리지 50% 이상이어야 유효
-        if let disk = loadHRSeriesFromDisk(workoutID) {
-            if let wk = cachedWorkout {
-                let minExpected = max(Int(wk.duration / 60), 1)
-                let maxOffset = disk.map(\.offset).max() ?? 0
-                if disk.count >= minExpected && maxOffset >= wk.duration * 0.5 {
-                    hrSeriesCache[workoutID] = disk
-                    return disk
-                }
-            } else {
+        // 디스크 캐시 로드
+        if let (disk, diskProvisional) = loadHRSeriesFromDisk(workoutID) {
+            let isComplete = disk.count >= durationMin * 2
+            if !diskProvisional && isComplete {
+                // 확정 캐시 — 재조회 없이 사용
+                #if DEBUG
+                print("[HRCache] 확정캐시 샘플=\(disk.count) 기준=\(durationMin*2) durationMin=\(durationMin)")
+                #endif
                 hrSeriesCache[workoutID] = disk
+                hrSeriesProvisionalIDs.remove(workoutID)
                 return disk
             }
+            // Provisional 또는 완전성 미달 → HealthKit 재조회 후 비교
+            #if DEBUG
+            print("[HRCache] 캐시샘플=\(disk.count) 기준=\(durationMin*2) provisional=\(diskProvisional) → HealthKit 재조회")
+            #endif
+            guard let workout = cachedWorkout else {
+                hrSeriesCache[workoutID] = disk
+                if !isComplete { hrSeriesProvisionalIDs.insert(workoutID) }
+                return disk
+            }
+            let fresh = await queryHRSamples(for: workout)
+            #if DEBUG
+            print("[HRCache] 캐시샘플=\(disk.count) vs HealthKit재조회샘플=\(fresh.count) → \(fresh.count > disk.count ? "갱신" : "캐시유지")")
+            #endif
+            let best = fresh.count > disk.count ? fresh : disk
+            hrSeriesCache[workoutID] = best
+            let nowProvisional = best.count < durationMin * 2
+            if nowProvisional { hrSeriesProvisionalIDs.insert(workoutID) } else { hrSeriesProvisionalIDs.remove(workoutID) }
+            saveHRSeriesToDisk(best, id: workoutID, durationMin: durationMin)
+            return best
         }
 
+        // 디스크 캐시 없음 → 신규 조회
         guard let workout = cachedWorkout else { return [] }
+        let bestResult = await queryHRSamples(for: workout)
 
+        hrSeriesCache[workoutID] = bestResult
+        let nowProvisional = bestResult.count < durationMin * 2
+        if nowProvisional { hrSeriesProvisionalIDs.insert(workoutID) } else { hrSeriesProvisionalIDs.remove(workoutID) }
+        saveHRSeriesToDisk(bestResult, id: workoutID, durationMin: durationMin)
+        #if DEBUG
+        let resolution = durationMin > 0 ? Double(bestResult.count) / Double(durationMin) : 0
+        print("[HRChart] 샘플수=\(bestResult.count) 운동시간=\(durationMin)분 해상도=\(String(format:"%.2f",resolution))개/분 provisional=\(nowProvisional)")
+        #endif
+        return bestResult
+    }
+
+    /// 워크아웃에서 HR 샘플을 HealthKit에서 직접 조회 (linked 1차 + 시리즈 2차).
+    private func queryHRSamples(for workout: HKWorkout) async -> [(offset: TimeInterval, bpm: Int)] {
         let unit = Self.bpmUnit
         let minExpected = max(Int(workout.duration / 60), 1)
-        // 케이던스/GCT와 동일: 일시정지 구간 계산 — 배경 HR(비연결) 오염 방지
         let paused = pausedIntervals(for: workout)
 
-        // 1차: 워크아웃 연결 샘플 (fetchWorkoutTimeSeries와 동일 구조)
+        // 1차: 워크아웃 연결 샘플
         let linkedPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.heartRate),
             predicate: HKQuery.predicateForObjects(from: workout)
@@ -922,37 +982,42 @@ class HealthKitManager {
         )
         var bestResult: [(offset: TimeInterval, bpm: Int)] =
             ((try? await linkedDesc.result(for: store)) ?? [])
-            .filter { !isPaused($0.startDate, in: paused) }  // 일시정지 구간 제외
+            .filter { !isPaused($0.startDate, in: paused) }
             .map { s in
                 (offset: s.startDate.timeIntervalSince(workout.startDate),
                  bpm: Int(s.quantity.doubleValue(for: unit).rounded()))
             }
 
-        // 2차: 시간 범위 시리즈 쿼리 — fetchWorkoutTimeSeries 2차와 동일.
-        // options: [] — 컨테이너 startDate가 workout.startDate보다 1~2초 앞선 경우도 포함.
-        // isPaused 필터 — 일시정지 중 배경 HR 개별 샘플 제거 → 케이던스처럼 자연스러운 gap.
+        // 2차: 시간 범위 시리즈 쿼리 (워치 HK 시리즈 컨테이너 대응)
+        // 중복 컨테이너 경계 타임스탬프 → Set<Date>로 완전 일치 중복 제거.
         if bestResult.count < minExpected {
             let seriesPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
                 type: HKQuantityType(.heartRate),
                 predicate: HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: [])
             )
             let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: seriesPred, options: [])
+            var seen = Set<Date>()
             var seriesResult: [(offset: TimeInterval, bpm: Int)] = []
             do {
                 for try await entry in seriesDesc.results(for: store) {
-                    guard !isPaused(entry.dateInterval.start, in: paused) else { continue }
-                    let offset = entry.dateInterval.start.timeIntervalSince(workout.startDate)
+                    let start = entry.dateInterval.start
+                    guard seen.insert(start).inserted else { continue }
+                    guard !isPaused(start, in: paused) else { continue }
+                    let offset = start.timeIntervalSince(workout.startDate)
                     guard offset >= 0 else { continue }
                     seriesResult.append((offset: offset, bpm: Int(entry.quantity.doubleValue(for: unit).rounded())))
                 }
             } catch {}
+            #if DEBUG
+            if seriesResult.count > bestResult.count {
+                // seen.count = 고유 타임스탬프 수 (paused 포함). seriesResult = 실제 사용.
+                print("[HRChart] 시리즈쿼리 고유타임스탬프=\(seen.count) → 사용샘플=\(seriesResult.count)")
+            }
+            #endif
             if seriesResult.count > bestResult.count {
                 bestResult = seriesResult.sorted { $0.offset < $1.offset }
             }
         }
-
-        hrSeriesCache[workoutID] = bestResult
-        saveHRSeriesToDisk(bestResult, id: workoutID)
         return bestResult
     }
 
@@ -961,15 +1026,31 @@ class HealthKitManager {
             .appendingPathComponent("mimo_hr_\(id.uuidString).json")
     }
 
-    private func loadHRSeriesFromDisk(_ id: UUID) -> [(offset: TimeInterval, bpm: Int)]? {
-        guard let data = try? Data(contentsOf: hrSeriesCacheURL(id)),
-              let pts = try? JSONDecoder().decode([HRPoint].self, from: data) else { return nil }
-        return pts.map { (offset: $0.offset, bpm: $0.bpm) }
+    private func hrSeriesMetaURL(_ id: UUID) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_hr_\(id.uuidString)_meta.json")
     }
 
-    private func saveHRSeriesToDisk(_ series: [(offset: TimeInterval, bpm: Int)], id: UUID) {
+    /// 디스크 캐시 로드. 메타 파일 없거나 provisional=true이면 (series, true) 반환.
+    private func loadHRSeriesFromDisk(_ id: UUID) -> (series: [(offset: TimeInterval, bpm: Int)], provisional: Bool)? {
+        guard let data = try? Data(contentsOf: hrSeriesCacheURL(id)),
+              let pts = try? JSONDecoder().decode([HRPoint].self, from: data) else { return nil }
+        let series = pts.map { (offset: $0.offset, bpm: $0.bpm) }
+        guard let metaData = try? Data(contentsOf: hrSeriesMetaURL(id)),
+              let meta = try? JSONDecoder().decode(HRSeriesMeta.self, from: metaData) else {
+            return (series, true)  // 메타 없음 = 이전 포맷 캐시 → provisional 처리
+        }
+        return (series, meta.provisional)
+    }
+
+    private func saveHRSeriesToDisk(_ series: [(offset: TimeInterval, bpm: Int)], id: UUID, durationMin: Int) {
         guard let data = try? JSONEncoder().encode(series.map { HRPoint(offset: $0.offset, bpm: $0.bpm) }) else { return }
         try? data.write(to: hrSeriesCacheURL(id), options: .atomic)
+        let provisional = series.count < durationMin * 2
+        let meta = HRSeriesMeta(count: series.count, durationMin: durationMin, provisional: provisional)
+        if let metaData = try? JSONEncoder().encode(meta) {
+            try? metaData.write(to: hrSeriesMetaURL(id), options: .atomic)
+        }
     }
 
     // 워크아웃 연결 시리즈 쿼리 추가 이전에 저장된 잘못된 HR 캐시(휴식 구간 HR만 포함) 삭제
@@ -984,6 +1065,33 @@ class HealthKitManager {
         }
         hrSeriesCache.removeAll()
         UserDefaults.standard.set(6, forKey: key)
+    }
+
+    /// 앱 시작 시 1회: 메타 파일 없거나 provisional인 HR 캐시 파일 수를 로그.
+    /// 해당 캐시는 다음 진입 시 fetchHRTimeSeries가 자동으로 HealthKit 재조회·갱신.
+    private func auditHRSeriesCacheIfNeeded() {
+        #if DEBUG
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        guard let files = try? FileManager.default.contentsOfDirectory(at: caches, includingPropertiesForKeys: nil) else { return }
+        let hrFiles = files.filter {
+            $0.lastPathComponent.hasPrefix("mimo_hr_") && !$0.lastPathComponent.hasSuffix("_meta.json")
+        }
+        var provisionalCount = 0
+        var confirmedCount   = 0
+        for file in hrFiles {
+            let uuidStr = file.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: "mimo_hr_", with: "")
+            guard let uuid = UUID(uuidString: uuidStr) else { continue }
+            if let metaData = try? Data(contentsOf: hrSeriesMetaURL(uuid)),
+               let meta = try? JSONDecoder().decode(HRSeriesMeta.self, from: metaData),
+               !meta.provisional {
+                confirmedCount += 1
+            } else {
+                provisionalCount += 1
+            }
+        }
+        print("[HRCacheAudit] 전체=\(hrFiles.count)건 확정=\(confirmedCount)건 provisional=\(provisionalCount)건 → 다음 진입 시 자동 재조회")
+        #endif
     }
 
     // MARK: - Workout time-series (for share card panels)
@@ -1239,14 +1347,40 @@ class HealthKitManager {
         guard let distSamples = try? await distDesc.result(for: store),
               !distSamples.isEmpty else { return [] }
 
-        let hrPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
-            type: HKQuantityType(.heartRate),
-            predicate: HKQuery.predicateForObjects(from: workout)
-        )
-        let hrDesc = HKSampleQueryDescriptor(
-            predicates: [hrPred],
-            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
-        )
+        // HR: 1차 연결 샘플, 부족하면 2차 시리즈 쿼리 — fetchHRTimeSeries와 동일 로직.
+        // predicateForObjects만 쓰면 Watch HR 시리즈 컨테이너(1개)만 반환 → 구간별 매칭 불가.
+        let hrDateSamples: [(startDate: Date, bpm: Int)] = await {
+            let unit = Self.bpmUnit
+            let linkedPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+                type: HKQuantityType(.heartRate),
+                predicate: HKQuery.predicateForObjects(from: workout)
+            )
+            let linkedDesc = HKSampleQueryDescriptor(
+                predicates: [linkedPred],
+                sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+            )
+            let linked = (try? await linkedDesc.result(for: store)) ?? []
+            let linkedMapped = linked.map { (startDate: $0.startDate, bpm: Int($0.quantity.doubleValue(for: unit).rounded())) }
+            let minExpected = max(Int(workout.duration / 60), 1)
+            if linkedMapped.count >= minExpected { return linkedMapped }
+            // 2차: 시리즈 쿼리 — Watch의 HKQuantitySeriesSampleBuilder 포인트 추출
+            let seriesPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+                type: HKQuantityType(.heartRate),
+                predicate: HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: [])
+            )
+            let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: seriesPred, options: [])
+            var series: [(startDate: Date, bpm: Int)] = []
+            var seenDates = Set<Date>()
+            do {
+                for try await entry in seriesDesc.results(for: store) {
+                    let start = entry.dateInterval.start
+                    guard seenDates.insert(start).inserted else { continue }
+                    series.append((startDate: start, bpm: Int(entry.quantity.doubleValue(for: unit).rounded())))
+                }
+            } catch {}
+            return series.count > linkedMapped.count ? series.sorted { $0.startDate < $1.startDate } : linkedMapped
+        }()
+
         let powerPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.runningPower),
             predicate: HKQuery.predicateForObjects(from: workout)
@@ -1263,13 +1397,15 @@ class HealthKitManager {
             predicates: [stepPred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
-        async let hrFetch    = hrDesc.result(for: store)
         async let powerFetch = powerDesc.result(for: store)
         async let stepFetch  = stepDesc.result(for: store)
-        let hrSamples    = (try? await hrFetch)    ?? []
         let powerSamples = (try? await powerFetch) ?? []
         let stepSamples  = (try? await stepFetch)  ?? []
         let paused = pausedIntervals(for: workout)
+
+        #if DEBUG
+        print("[SplitHR] 워크아웃=\(workout.startDate.formatted(.dateTime.month().day())) 총HR샘플=\(hrDateSamples.count)개 (2차시리즈포함)")
+        #endif
 
         // Build cumulative distance timeline: (date, cumulative meters)
         var timeline: [(date: Date, cum: Double)] = [(distSamples[0].startDate, 0.0)]
@@ -1300,9 +1436,14 @@ class HealthKitManager {
             let dur = crossing.date.timeIntervalSince(prevDate)
             guard dur > 1 else { prevDate = crossing.date; continue }
             let activeDur = activeDuration(from: prevDate, to: crossing.date, paused: paused)
+            let hr = splitAvgHRFromDates(from: prevDate, to: crossing.date, samples: hrDateSamples, paused: paused)
+            #if DEBUG
+            let matchedCount = hrDateSamples.filter { $0.startDate >= prevDate && $0.startDate < crossing.date }.count
+            print("[SplitHR] 구간=\(crossing.km)km 매칭샘플=\(matchedCount)개 결과=\(hr.map { "\($0)bpm" } ?? "없음")")
+            #endif
             result.append(SplitData(
                 id: crossing.km, distanceM: 1000, duration: activeDur,
-                avgHeartRate: splitAvgHR(from: prevDate, to: crossing.date, samples: hrSamples, paused: paused),
+                avgHeartRate: hr,
                 avgCadence: splitAvgCadence(from: prevDate, to: crossing.date, duration: activeDur, samples: stepSamples, paused: paused),
                 avgPower: splitAvgPower(from: prevDate, to: crossing.date, samples: powerSamples, paused: paused)
             ))
@@ -1315,9 +1456,14 @@ class HealthKitManager {
             let dur = lastDate.timeIntervalSince(prevDate)
             if dur > 1 {
                 let activeDur = activeDuration(from: prevDate, to: lastDate, paused: paused)
+                let hr = splitAvgHRFromDates(from: prevDate, to: lastDate, samples: hrDateSamples, paused: paused)
+                #if DEBUG
+                let matchedCount = hrDateSamples.filter { $0.startDate >= prevDate && $0.startDate < lastDate }.count
+                print("[SplitHR] 구간=\(lastKm+1)km(부분) 매칭샘플=\(matchedCount)개 결과=\(hr.map { "\($0)bpm" } ?? "없음")")
+                #endif
                 result.append(SplitData(
                     id: lastKm + 1, distanceM: remaining, duration: activeDur,
-                    avgHeartRate: splitAvgHR(from: prevDate, to: lastDate, samples: hrSamples, paused: paused),
+                    avgHeartRate: hr,
                     avgCadence: splitAvgCadence(from: prevDate, to: lastDate, duration: activeDur, samples: stepSamples, paused: paused),
                     avgPower: splitAvgPower(from: prevDate, to: lastDate, samples: powerSamples, paused: paused)
                 ))
@@ -1335,12 +1481,11 @@ class HealthKitManager {
         return max(wall - pausedSec, 1)
     }
 
-    private func splitAvgHR(from start: Date, to end: Date, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Int? {
-        let unit = Self.bpmUnit
+    private func splitAvgHRFromDates(from start: Date, to end: Date, samples: [(startDate: Date, bpm: Int)], paused: [DateInterval] = []) -> Int? {
         let relevant = samples.filter { $0.startDate >= start && $0.startDate < end && !isPaused($0.startDate, in: paused) }
         guard !relevant.isEmpty else { return nil }
-        let sum = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: unit) }
-        return Int((sum / Double(relevant.count)).rounded())
+        let sum = relevant.reduce(0) { $0 + $1.bpm }
+        return Int((Double(sum) / Double(relevant.count)).rounded())
     }
 
     private func splitAvgPower(from start: Date, to end: Date, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Int? {
@@ -1355,7 +1500,9 @@ class HealthKitManager {
         guard !relevant.isEmpty, duration > 0 else { return nil }
         // duration은 이미 정지 제외된 활성 시간 — 추가 차감 없이 직접 사용
         let totalSteps = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: .count()) }
-        return Int((totalSteps / (duration / 60)).rounded())
+        let spm = Int((totalSteps / (duration / 60)).rounded())
+        // 일부 기기는 좌우 발을 각각 카운트 → 2배 보정
+        return spm > 200 ? spm / 2 : spm
     }
 
     // MARK: - VO2max (most recent estimate at/before a given date)
@@ -1397,15 +1544,25 @@ class HealthKitManager {
         }
         restingHeartRate = rhr
         cachedMHR        = mhr
+        #if DEBUG
+        let hrr = Double(mhr - rhr)
+        let z1 = rhr
+        let z2 = Int((Double(rhr) + 0.60 * hrr).rounded())
+        let z3 = Int((Double(rhr) + 0.70 * hrr).rounded())
+        let z4 = Int((Double(rhr) + 0.80 * hrr).rounded())
+        let z5 = Int((Double(rhr) + 0.90 * hrr).rounded())
+        print("[HRZone] RHR=\(rhr) MHR=\(mhr) 존경계=[\(z1)/\(z2)/\(z3)/\(z4)/\(z5)bpm] 소스=현재30일")
+        #endif
     }
 
-    /// Fetches resting HR samples (최근 30일 우선, 없으면 전체 기간) — 중앙값 반환.
-    private func queryLatestRestingHR() async -> Int? {
+    /// Fetches resting HR samples anchored to a specific date (직전 30일 → 전체 기간 폴백).
+    /// `anchor`: 검색 종료 기준. 기본값 Date()는 전역 파라미터 갱신용; 러닝별 존 계산은 workout.startDate를 전달.
+    private func queryLatestRestingHR(before anchor: Date = Date()) async -> Int? {
         let unit = Self.bpmUnit
 
-        func fetchSamples(start: Date?) async -> [Int] {
+        func fetchSamples(start: Date?, end: Date) async -> [Int] {
             let predicate = HKQuery.predicateForSamples(
-                withStart: start, end: Date(), options: start == nil ? [] : .strictStartDate
+                withStart: start, end: end, options: start == nil ? [] : .strictStartDate
             )
             let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
                 type: HKQuantityType(.restingHeartRate), predicate: predicate
@@ -1419,19 +1576,17 @@ class HealthKitManager {
             return samples.map { Int($0.quantity.doubleValue(for: unit).rounded()) }.sorted()
         }
 
-        // 1차: 최근 30일 — 애플과 동일하게 최솟값 사용
-        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())
-        let recent = await fetchSamples(start: thirtyDaysAgo)
+        // 1차: anchor 직전 30일
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: anchor)
+        let recent = await fetchSamples(start: thirtyDaysAgo, end: anchor)
         if !recent.isEmpty {
-            let rhr = max(40, recent.min() ?? 40)   // 비정상 저값(40 미만) 방지
-            return rhr
+            return max(40, recent.min() ?? 40)
         }
 
-        // 2차 폴백: 전체 기간
-        let allTime = await fetchSamples(start: nil)
+        // 2차 폴백: anchor 이전 전체 기간
+        let allTime = await fetchSamples(start: nil, end: anchor)
         if !allTime.isEmpty {
-            let rhr = max(40, allTime.min() ?? 40)
-            return rhr
+            return max(40, allTime.min() ?? 40)
         }
 
         return nil
@@ -1439,10 +1594,119 @@ class HealthKitManager {
 
     // MARK: - HR Zones
 
-    private func queryHRZones(workout: HKWorkout) async -> [HRZoneData] {
-        guard let rhr = restingHeartRate, let mhr = cachedMHR, mhr > rhr else { return [] }
+    /// MHR 단독 기반 존 경계 — RHR 없을 때 폴백. Karvonen보다 부정확하나 단색보다 의미 있음.
+    private func hrZonesMHR(mhr: Int, samples: [(offset: TimeInterval, bpm: Int)]) -> [HRZoneData] {
+        let ratios: [(name: String, lo: Double, hi: Double)] = [
+            ("Z1 웜업",   0.00, 0.60),
+            ("Z2 회복",   0.60, 0.70),
+            ("Z3 유산소", 0.70, 0.80),
+            ("Z4 임계",   0.80, 0.90),
+            ("Z5 최대",   0.90, Double.infinity),  // MHR 초과 측정치도 Z5로 포함
+        ]
+        func bnd(_ r: Double) -> Int { Int((Double(mhr) * r).rounded()) }
+        var secs = [Double](repeating: 0, count: 5)
+        let sorted = samples.sorted { $0.offset < $1.offset }
+        for i in 0..<sorted.count {
+            let bpmF = Double(sorted[i].bpm) / Double(mhr)
+            let next = i + 1 < sorted.count ? sorted[i + 1].offset : sorted[i].offset + 5
+            let gap  = min(60, max(0, next - sorted[i].offset))
+            for (z, r) in ratios.enumerated() {
+                if bpmF >= r.lo && bpmF < r.hi { secs[z] += gap; break }
+            }
+        }
+        let total = secs.reduce(0, +)
+        guard total > 0 else { return [] }
+        return ratios.enumerated().map { z, r in
+            HRZoneData(id: z + 1, name: r.name,
+                       minBPM: z == 0 ? 0 : bnd(r.lo),
+                       maxBPM: z == 4 ? mhr : bnd(r.hi) - 1,
+                       seconds: secs[z], fraction: secs[z] / total)
+        }
+    }
 
+    /// 런 날짜 기준 직전 30일 RHR로 Karvonen 존 계산. RHR 없으면 %MHR 폴백.
+    /// [HRChart] 와 ZoneRoute도 이 함수로 일원화 — `date`: 러닝 시작 시각.
+    /// 러닝 날짜 기준 나이. HealthKit DOB → 수동 입력 → nil 순.
+    /// nil이면 존 계산 불가 → 뷰에서 안내 메시지 표시.
+    private func effectiveAge(at date: Date) -> (age: Int, source: String)? {
+        if let dob = userDateOfBirth, let year = dob.year, year > 1900 {
+            let age = Calendar.current.dateComponents([.year],
+                from: Calendar.current.date(from: DateComponents(year: year, month: 6, day: 15))!,
+                to: date).year ?? 35
+            return (max(15, age), "HealthKit DOB")
+        }
+        if manualAge > 0 { return (manualAge, "수동입력") }
+        return nil
+    }
+
+    func computeHRZonesForDate(_ date: Date, samples: [(offset: TimeInterval, bpm: Int)]) async -> [HRZoneData] {
+        guard !samples.isEmpty else {
+            #if DEBUG
+            print("[ZoneDist] computeHRZonesForDate 샘플=0")
+            #endif
+            return []
+        }
+        guard let (age, ageSrc) = effectiveAge(at: date) else {
+            #if DEBUG
+            print("[ZoneDist] computeHRZonesForDate DOB없음·수동나이미설정 → 존계산불가")
+            #endif
+            return []
+        }
+        let mhr = max(150, Int((208.0 - 0.7 * Double(age)).rounded()))
+
+        if let rhr = await queryLatestRestingHR(before: date), mhr > rhr {
+            #if DEBUG
+            let cal = Calendar.current; let m = cal.component(.month, from: date); let d = cal.component(.day, from: date)
+            print("[HRZone] 러닝당시(\(m)/\(d)) 나이=\(age)(\(ageSrc)) MHR=\(mhr) RHR=\(rhr) → Karvonen")
+            #endif
+            return computeKarvonenZones(samples: samples, rhr: rhr, mhr: mhr)
+        }
+
+        #if DEBUG
+        let cal = Calendar.current; let m = cal.component(.month, from: date); let d = cal.component(.day, from: date)
+        print("[HRZone] 러닝당시(\(m)/\(d)) 나이=\(age)(\(ageSrc)) MHR=\(mhr) RHR없음→%MHR")
+        #endif
+        return hrZonesMHR(mhr: mhr, samples: samples)
+    }
+
+    /// Karvonen 존 분포 계산 (offset 기반 샘플 — fetchHRTimeSeries 결과).
+    private func computeKarvonenZones(samples: [(offset: TimeInterval, bpm: Int)], rhr: Int, mhr: Int) -> [HRZoneData] {
+        let hrr = Double(mhr - rhr)
+        let ratios: [(name: String, lo: Double, hi: Double)] = [
+            ("Z1 웜업",   0.00, 0.60),
+            ("Z2 회복",   0.60, 0.70),
+            ("Z3 유산소", 0.70, 0.80),
+            ("Z4 임계",   0.80, 0.90),
+            ("Z5 최대",   0.90, Double.infinity),  // 실제 MHR 초과 측정치도 Z5로 포함
+        ]
+        func boundary(_ ratio: Double) -> Int { Int((Double(rhr) + ratio * hrr).rounded()) }
+        var zoneSecs = [Double](repeating: 0, count: 5)
+        let sorted = samples.sorted { $0.offset < $1.offset }
+        for i in 0..<sorted.count {
+            let hrrF = (Double(sorted[i].bpm) - Double(rhr)) / hrr
+            let next = i + 1 < sorted.count ? sorted[i + 1].offset : sorted[i].offset + 5
+            let gap  = min(60, max(0, next - sorted[i].offset))
+            for (z, ratio) in ratios.enumerated() {
+                if hrrF >= ratio.lo && hrrF < ratio.hi { zoneSecs[z] += gap; break }
+            }
+        }
+        let total = zoneSecs.reduce(0, +)
+        guard total > 0 else { return [] }
+        return ratios.enumerated().map { z, ratio in
+            HRZoneData(id: z + 1, name: ratio.name,
+                       minBPM: z == 0 ? rhr : boundary(ratio.lo),
+                       maxBPM: z == 4 ? mhr : boundary(ratio.hi) - 1,
+                       seconds: zoneSecs[z], fraction: zoneSecs[z] / total)
+        }
+    }
+
+    private func queryHRZones(workout: HKWorkout) async -> [HRZoneData] {
         let unit = Self.bpmUnit
+
+        // 러닝 날짜 기준 나이 — HealthKit DOB → 수동입력 → nil(존계산불가)
+        guard let (ageAtRun, ageSrc) = effectiveAge(at: workout.startDate) else { return [] }
+        let mhr = max(150, Int((208.0 - 0.7 * Double(ageAtRun)).rounded()))
+        let rhr = await queryLatestRestingHR(before: workout.startDate)
 
         // 1차: 워크아웃 연결 샘플
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
@@ -1458,17 +1722,21 @@ class HealthKitManager {
             bpmDates = linked.map { ($0.quantity.doubleValue(for: unit), $0.startDate) }
         }
 
-        // 2차 시리즈 폴백: Apple Watch HR이 HKQuantitySeriesSampleBuilder로 저장된 경우
+        // 2차 시리즈 폴백: Apple Watch HR이 HKQuantitySeriesSampleBuilder로 저장된 경우.
+        // options: [] — 컨테이너 startDate가 workout.startDate보다 1~2초 앞선 경우도 포함 (strictStartDate 금지).
         if bpmDates.count < 5 {
             let seriesPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
                 type: HKQuantityType(.heartRate),
-                predicate: HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: .strictStartDate)
+                predicate: HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: [])
             )
             let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: seriesPred, options: [])
+            var seen = Set<Date>()
             var seriesBpmDates: [(bpm: Double, start: Date)] = []
             do {
                 for try await entry in seriesDesc.results(for: store) {
-                    seriesBpmDates.append((entry.quantity.doubleValue(for: unit), entry.dateInterval.start))
+                    let start = entry.dateInterval.start
+                    guard seen.insert(start).inserted else { continue }
+                    seriesBpmDates.append((entry.quantity.doubleValue(for: unit), start))
                 }
             } catch {}
             if seriesBpmDates.count > bpmDates.count {
@@ -1476,84 +1744,51 @@ class HealthKitManager {
             }
         }
 
+        #if DEBUG
+        let cal2 = Calendar.current; let mo2 = cal2.component(.month, from: workout.startDate); let dy2 = cal2.component(.day, from: workout.startDate)
+        guard bpmDates.count >= 5 else {
+            print("[ZoneDist] \(mo2)/\(dy2) 샘플=\(bpmDates.count) 표시조건=미충족(샘플부족<5)")
+            return []
+        }
+        #else
         guard bpmDates.count >= 5 else { return [] }
+        #endif
 
-        let hrr = Double(mhr - rhr)
-        let ratios: [(name: String, lo: Double, hi: Double)] = [
-            ("Z1 웜업",   0.00, 0.60),
-            ("Z2 회복",   0.60, 0.70),
-            ("Z3 유산소", 0.70, 0.80),
-            ("Z4 임계",   0.80, 0.90),
-            ("Z5 최대",   0.90, 1.01),
-        ]
-        func boundary(_ ratio: Double) -> Int { Int((Double(rhr) + ratio * hrr).rounded()) }
+        // bpmDates → offset 형식으로 변환해 공유 계산 함수 재사용
+        let asSamples = bpmDates.map { (offset: $0.start.timeIntervalSince(workout.startDate), bpm: Int($0.bpm.rounded())) }
 
-        var zoneSecs = [Double](repeating: 0, count: 5)
-
-        for i in 0..<bpmDates.count {
-            let bpm  = bpmDates[i].bpm
-            let hrrF = (bpm - Double(rhr)) / hrr
-            let next = i + 1 < bpmDates.count ? bpmDates[i + 1].start : workout.endDate
-            let gap  = min(60, max(0, next.timeIntervalSince(bpmDates[i].start)))
-            for (z, ratio) in ratios.enumerated() {
-                if hrrF >= ratio.lo && hrrF < ratio.hi { zoneSecs[z] += gap; break }
-            }
+        let zones: [HRZoneData]
+        if let rhr, mhr > rhr {
+            #if DEBUG
+            let cal = Calendar.current; let mo = cal.component(.month, from: workout.startDate); let dy = cal.component(.day, from: workout.startDate)
+            print("[HRZone] 러닝당시(\(mo)/\(dy)) 나이=\(ageAtRun)(\(ageSrc)) MHR=\(mhr) RHR=\(rhr) → Karvonen(enrichCache)")
+            #endif
+            zones = computeKarvonenZones(samples: asSamples, rhr: rhr, mhr: mhr)
+        } else {
+            #if DEBUG
+            let cal = Calendar.current; let mo = cal.component(.month, from: workout.startDate); let dy = cal.component(.day, from: workout.startDate)
+            print("[HRZone] 러닝당시(\(mo)/\(dy)) 나이=\(ageAtRun)(\(ageSrc)) MHR=\(mhr) RHR없음→%MHR(enrichCache)")
+            #endif
+            zones = hrZonesMHR(mhr: mhr, samples: asSamples)
         }
-
-        let total = zoneSecs.reduce(0, +)
-        guard total > 0 else { return [] }
-
-        return ratios.enumerated().map { z, ratio in
-            HRZoneData(
-                id: z + 1, name: ratio.name,
-                minBPM: z == 0 ? rhr : boundary(ratio.lo),
-                maxBPM: z == 4 ? mhr : boundary(ratio.hi) - 1,
-                seconds: zoneSecs[z],
-                fraction: zoneSecs[z] / total
-            )
-        }
+        #if DEBUG
+        let distStr = zones.map { "z\($0.id):\(Int($0.seconds))초" }.joined(separator: " ")
+        let showCond = zones.isEmpty ? "미충족(계산결과빈배열)" : "충족"
+        print("[ZoneDist] \(mo2)/\(dy2) 존개수=\(zones.count) 샘플=\(asSamples.count) 분포=[\(distStr)] 표시조건=\(showCond)")
+        #endif
+        return zones
     }
 
-    /// 이미 fetch된 HR 시리즈 샘플로 존 분포 계산 — 캐시된 detail의 hrZones가 빈 경우 뷰에서 호출
+    /// 이미 fetch된 HR 시리즈 샘플로 존 분포 계산 — 동기 경로 호환용 (날짜 없는 컨텍스트). 가능하면 computeHRZonesForDate 사용.
     func computeHRZonesFromSamples(_ samples: [(offset: TimeInterval, bpm: Int)]) -> [HRZoneData] {
-        guard !samples.isEmpty,
-              let rhr = restingHeartRate, let mhr = cachedMHR, mhr > rhr else { return [] }
-
-        let hrr = Double(mhr - rhr)
-        let ratios: [(name: String, lo: Double, hi: Double)] = [
-            ("Z1 웜업",   0.00, 0.60),
-            ("Z2 회복",   0.60, 0.70),
-            ("Z3 유산소", 0.70, 0.80),
-            ("Z4 임계",   0.80, 0.90),
-            ("Z5 최대",   0.90, 1.01),
-        ]
-        func boundary(_ ratio: Double) -> Int { Int((Double(rhr) + ratio * hrr).rounded()) }
-
-        var zoneSecs = [Double](repeating: 0, count: 5)
-        let sorted = samples.sorted { $0.offset < $1.offset }
-
-        for i in 0..<sorted.count {
-            let bpm  = Double(sorted[i].bpm)
-            let hrrF = (bpm - Double(rhr)) / hrr
-            let nextOffset = i + 1 < sorted.count ? sorted[i + 1].offset : sorted[i].offset + 5
-            let gap  = min(60, max(0, nextOffset - sorted[i].offset))
-            for (z, ratio) in ratios.enumerated() {
-                if hrrF >= ratio.lo && hrrF < ratio.hi { zoneSecs[z] += gap; break }
-            }
+        guard !samples.isEmpty else { return [] }
+        guard let (age, _) = effectiveAge(at: Date()) else { return [] }
+        // Karvonen (전역 RHR/MHR — 현재 30일 기준, 날짜별 정확도 불필요한 동기 호출용)
+        if let rhr = restingHeartRate, let mhr = cachedMHR, mhr > rhr {
+            return computeKarvonenZones(samples: samples, rhr: rhr, mhr: mhr)
         }
-
-        let total = zoneSecs.reduce(0, +)
-        guard total > 0 else { return [] }
-
-        return ratios.enumerated().map { z, ratio in
-            HRZoneData(
-                id: z + 1, name: ratio.name,
-                minBPM: z == 0 ? rhr : boundary(ratio.lo),
-                maxBPM: z == 4 ? mhr : boundary(ratio.hi) - 1,
-                seconds: zoneSecs[z],
-                fraction: zoneSecs[z] / total
-            )
-        }
+        let mhrFallback = max(150, Int((208.0 - 0.7 * Double(age)).rounded()))
+        return hrZonesMHR(mhr: mhrFallback, samples: samples)
     }
 
     // MARK: - Interval segments (WorkoutKit plan composition)

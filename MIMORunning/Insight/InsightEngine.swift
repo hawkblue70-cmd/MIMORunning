@@ -54,7 +54,7 @@ import Foundation
 // ┌── insightVersion(cacheVersion) 규칙 ──────────────────────────┐
 // │ · 로직 변경 시 InsightCache.cacheVersion 정수 +1              │
 // │ · 파일명에 버전 포함 → 구버전 캐시 자동 무시 (삭제 불요)     │
-// │ · 현재: v11 (title 고정 풀·금지어 정비·AI title 차단 완료)   │
+// │ · 현재: v12 (historyComplete 플래그·milestone/tempExtreme 침묵 보장) │
 // └──────────────────────────────────────────────────────────────┘
 
 // MARK: - Output types
@@ -112,7 +112,8 @@ struct InsightEngine {
         intervalSegments: [IntervalSegment] = [],
         condition: ActivityCondition? = nil,
         raceMatch: PersistedRaceMatch? = nil,
-        detail: ActivityDetail? = nil
+        detail: ActivityDetail? = nil,
+        historyComplete: Bool = true
     ) -> InsightResult {
         let prior = history.filter { $0.id != activity.id && $0.type == activity.type }
 
@@ -147,7 +148,7 @@ struct InsightEngine {
             var band: [InsightResult] = []
             if let r = adverseCondition(activity, condition) { band.append(r) }
             if let r = tradeoffInsight(activity, prior, detail: detail, splits: splits) { band.append(r) }
-            if let r = rarityFact(activity, prior, condition: condition) { band.append(r) }
+            if let r = rarityFact(activity, prior, condition: condition, historyComplete: historyComplete) { band.append(r) }
             if let r = subThresholdRecognition(activity, intervalSegments, detail) { band.append(r) }
 
             #if DEBUG
@@ -172,7 +173,7 @@ struct InsightEngine {
                 #if DEBUG
                 _dbgReason = "band없음→consistent"
                 #endif
-            } else if let r = periodicPositive(activity, prior) {
+            } else if let r = periodicPositive(activity, prior, historyComplete: historyComplete) {
                 base = r
                 #if DEBUG
                 _dbgReason = "band없음→periodPositive"
@@ -622,12 +623,14 @@ struct InsightEngine {
         intervalSegments: [IntervalSegment] = [],
         condition: ActivityCondition? = nil,
         raceMatch: PersistedRaceMatch? = nil,
-        detail: ActivityDetail? = nil
+        detail: ActivityDetail? = nil,
+        historyComplete: Bool = true
     ) async -> InsightResult {
         compute(activity: activity, history: history, level: level,
                 workoutType: workoutType, splits: splits,
                 intervalSegments: intervalSegments, condition: condition,
-                raceMatch: raceMatch, detail: detail)
+                raceMatch: raceMatch, detail: detail,
+                historyComplete: historyComplete)
     }
 
     // MARK: - AI enhancement bridge
@@ -815,7 +818,7 @@ struct InsightEngine {
     /// When this calendar month's total distance/count is down vs the prior month, scans in priority
     /// order for a positive fact: pace quality → peak distance → weekly streak → milestone → recovery block.
     /// Always returns a result once triggered (activity count > 0 means a positive exists).
-    private static func periodicPositive(_ a: Activity, _ prior: [Activity]) -> InsightResult? {
+    private static func periodicPositive(_ a: Activity, _ prior: [Activity], historyComplete: Bool = true) -> InsightResult? {
         let cal = Calendar.current
         let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: a.date)) ?? .distantPast
         guard let prevMonthStart = cal.date(byAdding: .month, value: -1, to: monthStart) else { return nil }
@@ -879,17 +882,19 @@ struct InsightEngine {
             )
         }
 
-        // 4. Cumulative lifetime distance milestone?
-        let priorTotal   = prior.reduce(0.0) { $0 + $1.distance }
-        let currentTotal = priorTotal + a.distance
-        for km in [100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000] {
-            let m = Double(km) * 1000
-            if priorTotal < m && currentTotal >= m {
-                return InsightResult(
-                    theme: .periodPositive,
-                    title: L.s("이정표를 넘은 러닝", "Milestone Reached"),
-                    detail: L.s("누적 \(km)km 돌파", "Lifetime total: \(km) km")
-                )
+        // 4. Cumulative lifetime distance milestone? — skip when full history not yet loaded
+        if historyComplete {
+            let priorTotal   = prior.reduce(0.0) { $0 + $1.distance }
+            let currentTotal = priorTotal + a.distance
+            for km in [100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000] {
+                let m = Double(km) * 1000
+                if priorTotal < m && currentTotal >= m {
+                    return InsightResult(
+                        theme: .periodPositive,
+                        title: L.s("이정표를 넘은 러닝", "Milestone Reached"),
+                        detail: L.s("누적 \(km)km 돌파", "Lifetime total: \(km) km")
+                    )
+                }
             }
         }
 
@@ -954,13 +959,19 @@ struct InsightEngine {
     private static func rarityFact(
         _ a: Activity,
         _ prior: [Activity],
-        condition: ActivityCondition?
+        condition: ActivityCondition?,
+        historyComplete: Bool = true
     ) -> InsightResult? {
         if let tempC = condition?.weather?.tempC { recordTemperature(tempC, for: a.id) }
         let historicalTemps = loadTemperatureHistory()
-        if let r = temperatureExtreme(a, condition: condition, historicalTemps: historicalTemps) { return r }
+        // Temperature distribution and cumulative milestone require full history to avoid false triggers.
+        if historyComplete {
+            if let r = temperatureExtreme(a, condition: condition, historicalTemps: historicalTemps) { return r }
+        }
         if let r = timeOfDayReunion(a, prior) { return r }
-        if let r = cumulativeMilestone(a, prior) { return r }
+        if historyComplete {
+            if let r = cumulativeMilestone(a, prior) { return r }
+        }
         return nil
     }
 
@@ -1042,11 +1053,16 @@ struct InsightEngine {
 
     /// Fires when this run crosses any 50 km cumulative lifetime boundary.
     private static func cumulativeMilestone(_ a: Activity, _ prior: [Activity]) -> InsightResult? {
-        let priorM   = prior.filter { $0.date < a.date }.reduce(0.0) { $0 + $1.distance }
+        let priorFiltered = prior.filter { $0.date < a.date }
+        let priorM   = priorFiltered.reduce(0.0) { $0 + $1.distance }
         let currentM = priorM + a.distance
         let priorKm  = priorM   / 1000
         let curKm    = currentM / 1000
         let nextMark = (Int(priorKm / 50) + 1) * 50
+        #if DEBUG
+        let fires = curKm >= Double(nextMark)
+        print("[Milestone] 타입=\(a.type.rawValue) 풀=\(priorFiltered.count)개 시점누적=\(String(format:"%.1f",curKm))km 다음=\(nextMark)km 발화=\(fires)")
+        #endif
         guard curKm >= Double(nextMark) else { return nil }
         let km = nextMark
         let L = AppLanguage.shared

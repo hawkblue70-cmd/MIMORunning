@@ -611,6 +611,23 @@ struct MeView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                // DOB 없을 때만 수동 나이 입력 노출
+                let noDOB = (manager.userDateOfBirth?.year ?? 0) <= 1900
+                if noDOB {
+                    thinDivider
+                    settingRow {
+                        @Bindable var mgr = manager
+                        Label(AppLanguage.shared.s("나이 (존 계산)", "Age (Zone calc.)"),
+                              systemImage: "person").foregroundStyle(.white)
+                        Spacer()
+                        Stepper(
+                            manager.manualAge > 0 ? "\(manager.manualAge)" : AppLanguage.shared.s("미설정", "Not set"),
+                            value: $mgr.manualAge, in: 0...90, step: 1
+                        )
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                }
                 if manager.authorizationStatus != .authorized {
                     thinDivider
                     settingRow {

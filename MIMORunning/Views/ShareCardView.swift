@@ -2378,14 +2378,48 @@ struct ShareCardScreen: View {
     }
 
     private var oneLinerVideoPreviewCard: some View {
-        // 9:16 preview frame — same aspect ratio as export output (1080×1920).
-        // The OneLinerCard overlay is offset to sit inside the safe zone so text
-        // positions in preview approximately match the export layout.
-        let pW: CGFloat = 300
-        let pH: CGFloat = pW * 16 / 9                         // ≈ 533.33
-        let scale: CGFloat = pW / 1080                         // 300/1080 = 5/18
-        let safeTopPt    = CardVisual.videoSafeTop    * scale  // = 50 pt
-        let safeBottomPt = CardVisual.videoSafeBottom * scale  // ≈ 61.1 pt
+        // 9:16 preview — exact coordinate mapping to export (1080×1920 px).
+        //
+        // Bug fixed: old code used OneLinerCard(300×375pt) offset by safeTopPt, which put
+        // text ~24pt above the export position for .top and ~25pt above for .bottom.
+        // Root cause: card height (375pt) ≠ safe-zone content height (≈400pt).
+        //
+        // Fix: use a safeZoneH container (pH - safeTopPt - safeBottomPt ≈ 400pt).
+        // SwiftUI alignment within the container maps 1-to-1 to the export pixel math:
+        //   .top    → container top  + 4pt  == export: safeTop + 4px
+        //   .bottom → container bottom      == export: H - safeBottom
+        //   .center → container midpoint    == export: (safeTop + H - safeBottom) / 2
+        let pW:          CGFloat = 300
+        let pH:          CGFloat = pW * 16 / 9           // ≈ 533.33
+        let scale:       CGFloat = pW / 1080             // 300/1080 ≈ 0.2778
+        let safeTopPt    = CardVisual.videoSafeTop    * scale  // ≈ 72.2pt
+        let safeBottomPt = CardVisual.videoSafeBottom * scale  // ≈ 61.1pt
+        let safeZoneH    = pH - safeTopPt - safeBottomPt      // ≈ 400pt
+
+        let fontSize     = 24 * oneLinerFont.sizeScale
+        let lineSpacing  = fontSize * 0.4
+        let multiAlign: TextAlignment = {
+            switch oneLinerPosition {
+            case .topTrailing, .trailing, .bottomTrailing: return .trailing
+            case .topLeading,  .leading,  .bottomLeading:  return .leading
+            default: return .center
+            }
+        }()
+
+        let df = DateFormatter()
+        df.dateFormat = "yyyy. M. d."
+        let dateStr = df.string(from: activity.date)
+
+        #if DEBUG
+        let previewY: CGFloat = safeTopPt + (oneLinerPosition.isTop ? 4 :
+                                              oneLinerPosition.isBottom ? safeZoneH :
+                                              safeZoneH / 2)
+        let exportY:  CGFloat = (oneLinerPosition.isTop  ? max(31.6 + 4, CardVisual.videoSafeTop + 4) :
+                                  oneLinerPosition.isBottom ? 1920 - CardVisual.videoSafeBottom :
+                                  (CardVisual.videoSafeTop + 1920 - CardVisual.videoSafeBottom) / 2) * scale
+        Swift.print(String(format: "[VideoLayout] pos=%@ 프리뷰앵커Y=%.1fpt 합성앵커Y=%.1fpt 세이프존적용=예",
+                           "\(oneLinerPosition)", previewY, exportY))
+        #endif
 
         return ZStack(alignment: .top) {
             // ── Background / placeholder ──────────────────────────────
@@ -2418,22 +2452,53 @@ struct ShareCardScreen: View {
                 }
             }
 
-            // ── Text overlay: OneLinerCard inside the safe zone ───────
-            // The card is 300×375pt. Offset by safeTopPt (50pt) approximates
-            // the export layout where text sits inside the 180px–220px safe zone.
-            OneLinerCard(
-                activity: activity,
-                backgroundPhoto: nil,
-                text: oneLinerText,
-                position: oneLinerPosition,
-                textColor: oneLinerColor,
-                fontChoice: oneLinerFont,
-                showDate: oneLinerShowDate,
-                showBackground: false
-            )
-            .frame(width: OneLinerCard.cardWidth, height: OneLinerCard.cardHeight)
-            .offset(y: safeTopPt)
+            // ── Wordmark: y=12pt matches export wMarkTopPad (12 * vScale * scale = 12pt)
+            // Placed above the safe zone (in danger zone) — same as the actual export.
+            HStack(spacing: 0) {
+                Text("MIMO")
+                    .font(.system(size: 9, weight: .black))
+                    .tracking(2)
+                    .foregroundStyle(.white)
+                Text(" RUNNING")
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(2)
+                    .foregroundStyle(Theme.violet)
+            }
+            .cardTextShadow()
+            .frame(width: pW, alignment: .leading)
+            .padding(.leading, 14)
+            .offset(y: 12)
             .allowsHitTesting(false)
+
+            // ── Text: safe-zone container — exactly mirrors export pixel coordinates ──
+            if !oneLinerText.isEmpty {
+                Text(oneLinerText)
+                    .font(.custom(oneLinerFont.fontName, size: fontSize))
+                    .lineSpacing(lineSpacing)
+                    .multilineTextAlignment(multiAlign)
+                    .foregroundStyle(oneLinerColor.color)
+                    .shadow(color: .black.opacity(0.55), radius: 5, x: 1, y: 2)
+                    .lineLimit(2)
+                    .padding(.horizontal, 24)
+                    // +4pt top inset for .top mirrors export: max(safeTop+4, wMarkZone+4)
+                    .padding(.top, oneLinerPosition.isTop ? 4 : 0)
+                    .frame(width: pW, height: safeZoneH, alignment: oneLinerPosition.alignment)
+                    .offset(y: safeTopPt)
+                    .allowsHitTesting(false)
+            }
+
+            // ── Date: container bottom - 14pt matches export datePad (14 * vScale * scale = 14pt)
+            if oneLinerShowDate {
+                Text(dateStr)
+                    .font(.system(size: 11, weight: .light))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                    .frame(width: pW - 28, alignment: .trailing)
+                    .padding(.bottom, 14)
+                    .frame(height: safeZoneH, alignment: .bottom)
+                    .offset(y: safeTopPt)
+                    .allowsHitTesting(false)
+            }
 
             // ── Safe zone guides ──────────────────────────────────────
             VStack(spacing: 0) {
@@ -3154,6 +3219,17 @@ struct ShareCardScreen: View {
     //   [text input field full-width]
     private var oneLinerChipRow: some View {
         VStack(spacing: 8) {
+            // Video template: disable overlay controls until video is selected
+            if template == .video, sourceVideoURL == nil {
+                HStack(spacing: 6) {
+                    Image(systemName: "video.badge.plus").font(.system(size: 12))
+                    Text(AppLanguage.shared.s("영상을 먼저 선택해 주세요", "Select a video first"))
+                        .font(.caption)
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24)
+            }
             oneLinerGridAndChips
             oneLinerReuseChipRow
             oneLinerTextField
@@ -3226,6 +3302,7 @@ struct ShareCardScreen: View {
 
     // Position grid + font/color chips — extracted for type-checker
     private var oneLinerGridAndChips: some View {
+        let shouldDisable = template == .video && sourceVideoURL == nil
         let rows: [[CardPosition]] = [
             [.topLeading, .top, .topTrailing],
             [.leading, .center, .trailing],
@@ -3268,6 +3345,8 @@ struct ShareCardScreen: View {
             }
         }
         .padding(.horizontal, 24)
+        .opacity(shouldDisable ? 0.35 : 1.0)
+        .disabled(shouldDisable)
     }
 
     // Font chip — label rendered IN the font so users preview each style before tapping
@@ -3594,22 +3673,18 @@ struct ShareCardScreen: View {
         .onChange(of: oneLinerPosition) { _, _ in
             guard isOneLiner, template == .video, sourceVideoURL != nil else { return }
             exportedVideoFile = nil
-            Task { await exportVideo() }
         }
         .onChange(of: oneLinerColor) { _, _ in
             guard isOneLiner, template == .video, sourceVideoURL != nil else { return }
             exportedVideoFile = nil
-            Task { await exportVideo() }
         }
         .onChange(of: oneLinerFont) { _, _ in
             guard isOneLiner, template == .video, sourceVideoURL != nil else { return }
             exportedVideoFile = nil
-            Task { await exportVideo() }
         }
         .onChange(of: oneLinerShowDate) { _, _ in
             guard isOneLiner, template == .video, sourceVideoURL != nil else { return }
             exportedVideoFile = nil
-            Task { await exportVideo() }
         }
         // OneLiner 카드(index 1)의 사진이 바뀌면 새 사진의 entry 로드.
         // 저장은 Button 액션에서 cardPhotoIndex 변경 전에 처리.
@@ -3741,7 +3816,7 @@ struct ShareCardScreen: View {
             // PHAsset ID가 확정된 후 해당 영상의 저장된 OneLiner 설정 로드
             if isOneLiner { loadOneLinerSettings() }
             videoPreviewImage = await VideoExportService.firstFrame(of: result.url)
-            await exportVideo()
+            // 자동 합성 안 함 — 사용자가 미리보기로 배치 확인 후 직접 합성 버튼 탭
         }
     }
 
@@ -4022,7 +4097,7 @@ struct ShareCardScreen: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
             } else if sourceVideoURL == nil {
-                Text(AppLanguage.shared.s("영상을 선택하면 자동으로 합성돼요", "Select a video to begin export"))
+                Text(AppLanguage.shared.s("영상을 선택해 주세요", "Select a video first"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -4032,8 +4107,8 @@ struct ShareCardScreen: View {
                 Button {
                     Task { await exportVideo() }
                 } label: {
-                    Label(AppLanguage.shared.s("다시 합성", "Re-export"),
-                          systemImage: "arrow.triangle.2.circlepath")
+                    Label(AppLanguage.shared.s("합성하기", "Export Video"),
+                          systemImage: "film")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 46)
