@@ -540,6 +540,7 @@ class HealthKitManager {
             }()
             return ActivityDetail(
                 routeCoordinates: locations.map(\.coordinate),
+                routeTimeOffsets: computeRouteTimeOffsets(from: locations, workoutStart: workout.startDate),
                 elevationGain: computeElevationGain(from: locations),
                 avgSpeed: nil,
                 avgPower: powerVal.map { Int($0.rounded()) },
@@ -572,6 +573,7 @@ class HealthKitManager {
 
             return ActivityDetail(
                 routeCoordinates: locations.map(\.coordinate),
+                routeTimeOffsets: computeRouteTimeOffsets(from: locations, workoutStart: workout.startDate),
                 elevationGain: computeElevationGain(from: locations),
                 avgSpeed: speed.map { $0 * 3.6 },
                 avgPower: power.map { Int($0.rounded()) },
@@ -609,6 +611,7 @@ class HealthKitManager {
 
             return ActivityDetail(
                 routeCoordinates: [],
+                routeTimeOffsets: [],
                 elevationGain: nil,
                 avgSpeed: nil,
                 avgPower: nil,
@@ -633,6 +636,7 @@ class HealthKitManager {
             let (locations, zones) = await (fetchRouteLocations(for: workout), zonesTask)
             return ActivityDetail(
                 routeCoordinates: locations.map(\.coordinate),
+                routeTimeOffsets: computeRouteTimeOffsets(from: locations, workoutStart: workout.startDate),
                 elevationGain: computeElevationGain(from: locations),
                 avgSpeed: nil,
                 avgPower: nil,
@@ -843,6 +847,10 @@ class HealthKitManager {
             if delta > 0 { gain += delta }
         }
         return gain > 1 ? gain : nil
+    }
+
+    private func computeRouteTimeOffsets(from locations: [CLLocation], workoutStart: Date) -> [TimeInterval] {
+        locations.map { $0.timestamp.timeIntervalSince(workoutStart) }
     }
 
     private func computeAltitudeTimeProfile(from locations: [CLLocation], workoutStart: Date) -> [(offset: TimeInterval, altitude: Double)] {

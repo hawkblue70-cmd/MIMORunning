@@ -76,6 +76,7 @@ struct ActivityDetailView: View {
     @State private var isLoadingPanelSeries = false
     @State private var hillMatch: HillMatch?
     @Environment(RaceDetector.self) private var raceDetector
+    @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
 
     private var level: LevelBucket { manager.userLevel.bucket }
 
@@ -474,7 +475,15 @@ struct ActivityDetailView: View {
             Group {
                 if activePanel == .map {
                     if let coords = detail?.routeCoordinates, !coords.isEmpty {
-                        RouteMapView(coordinates: coords, activityID: activity.id)
+                        RouteMapView(
+                            coordinates: coords,
+                            activityID: activity.id,
+                            manager: manager,
+                            routeTimeOffsets: detail?.routeTimeOffsets ?? [],
+                            workoutDuration: activity.duration,
+                            hasHRData: activity.avgHeartRate != nil,
+                            showHRZones: $mapHRZoneMode
+                        )
                     } else {
                         panelPlaceholder(icon: "map.fill", message: AppLanguage.shared.s("경로 없음", "No Route"))
                     }
@@ -1005,36 +1014,122 @@ private struct ConditionChip: View {
 private struct RouteMapView: View {
     let coordinates: [CLLocationCoordinate2D]
     let activityID: UUID
+    let manager: HealthKitManager       // HR 차트와 동일한 소스: manager.fetchHRTimeSeries
+    var routeTimeOffsets: [TimeInterval] = []
+    var workoutDuration: TimeInterval = 0
+    var hasHRData: Bool = false
+    @Binding var showHRZones: Bool
 
     @State private var snapshot: UIImage?
+    @State private var hrZoneSnapshot: UIImage?
+    @State private var isGeneratingHRSnapshot = false
+    @State private var localHRSamples: [(offset: TimeInterval, bpm: Int)] = []
+    @State private var hrLoadDone = false
+
+    private var canShowZones: Bool { hrLoadDone && localHRSamples.count >= 10 }
 
     var body: some View {
         ZStack {
-            if let img = snapshot {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 220)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+            if showHRZones && hasHRData {
+                if let img = hrZoneSnapshot {
+                    mapImage(img)
+                } else {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(hex: "0D0D12"))
+                        .frame(height: 220)
+                        .overlay { ProgressView().tint(isGeneratingHRSnapshot ? Theme.heartRate : Theme.violet) }
+                }
             } else {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(hex: "0D0D12"))
-                    .frame(height: 220)
-                    .overlay { ProgressView().tint(Theme.violet) }
+                if let img = snapshot {
+                    mapImage(img)
+                } else {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(hex: "0D0D12"))
+                        .frame(height: 220)
+                        .overlay { ProgressView().tint(Theme.violet) }
+                }
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if hasHRData {
+                modeChip
+                    .padding(10)
             }
         }
         .padding(.horizontal, 16)
+        .onAppear {
+            print("[ZoneRoute] 진입 — 좌표=\(coordinates.count) timeOffsets=\(routeTimeOffsets.count) hasHRData=\(hasHRData) showHRZones=\(showHRZones)")
+        }
         .task(id: activityID) {
-            guard snapshot == nil else { return }
-            if let cached = loadFromDisk() {
-                snapshot = cached
-            } else if let generated = await makeSnapshot() {
-                snapshot = generated
-                saveToDisk(generated)
+            // 1) 기본 지도 스냅샷
+            if snapshot == nil {
+                if let cached = loadFromDisk() {
+                    snapshot = cached
+                } else if let generated = await makeSnapshot() {
+                    snapshot = generated
+                    saveToDisk(generated)
+                }
+            }
+            // 2) 디스크에 이미 완성된 존 스냅샷이 있으면 즉시 로드
+            if hrZoneSnapshot == nil, let cached = loadHRZoneFromDisk() {
+                hrZoneSnapshot = cached
+            }
+            // 3) HR 시계열 로드 — HR 차트와 동일 소스(fetchHRTimeSeries)
+            if hasHRData { await loadLocalHRSamples() }
+            // 4) 존 모드가 이미 켜져 있고 샘플 충분하면 생성
+            if showHRZones, hrZoneSnapshot == nil, canShowZones {
+                await generateHRZoneSnapshot()
             }
         }
+        .onChange(of: showHRZones) { _, newValue in
+            print("[ZoneRoute] 토글→\(newValue ? "심박존" : "기본") samples=\(localHRSamples.count)(loaded=\(hrLoadDone)) snapshot=\(hrZoneSnapshot != nil)")
+            guard newValue, hrZoneSnapshot == nil else { return }
+            if canShowZones {
+                Task { await generateHRZoneSnapshot() }
+            } else if hrLoadDone {
+                print("[ZoneRoute] 심박샘플 부족(\(localHRSamples.count)<10) — 칩 비활성")
+            }
+        }
+    }
+
+    private func mapImage(_ img: UIImage) -> some View {
+        Image(uiImage: img)
+            .resizable()
+            .scaledToFill()
+            .frame(maxWidth: .infinity)
+            .frame(height: 220)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    @ViewBuilder
+    private var modeChip: some View {
+        HStack(spacing: 0) {
+            chipButton(AppLanguage.shared.s("심박존", "HR Zones"),
+                       selected: showHRZones && canShowZones,
+                       loading: (!hrLoadDone && hasHRData) || (showHRZones && isGeneratingHRSnapshot)) {
+                if canShowZones { showHRZones = true }
+            }
+            chipButton(AppLanguage.shared.s("기본", "Default"), selected: !showHRZones) { showHRZones = false }
+        }
+        .background(.ultraThinMaterial)
+        .clipShape(Capsule())
+    }
+
+    private func chipButton(_ label: String, selected: Bool, loading: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if loading { ProgressView().scaleEffect(0.65).tint(.white) }
+                Text(label)
+                    .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? .white : .white.opacity(0.55))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(selected ? Color.white.opacity(0.2) : Color.clear)
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Disk cache
@@ -1042,6 +1137,11 @@ private struct RouteMapView: View {
     private var cacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_map_v7_\(activityID.uuidString).jpg")
+    }
+
+    private var hrZoneCacheURL: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_map_hrzone_v2_\(activityID.uuidString).jpg")
     }
 
     private func loadFromDisk() -> UIImage? {
@@ -1055,7 +1155,18 @@ private struct RouteMapView: View {
         }
     }
 
-    // MARK: - Snapshot generation
+    private func loadHRZoneFromDisk() -> UIImage? {
+        guard let data = try? Data(contentsOf: hrZoneCacheURL) else { return nil }
+        return UIImage(data: data)
+    }
+
+    private func saveHRZoneToDisk(_ image: UIImage) {
+        if let data = image.jpegData(compressionQuality: 0.85) {
+            try? data.write(to: hrZoneCacheURL)
+        }
+    }
+
+    // MARK: - Snapshot generation (default — violet single line)
 
     private func makeSnapshot() async -> UIImage? {
         // Filter out invalid GPS fixes (e.g. (0,0) cold-start spikes that inflate bounding box)
@@ -1121,6 +1232,160 @@ private struct RouteMapView: View {
                 dot.fill()
             }
         }
+    }
+
+    // MARK: - HR 시계열 로드 (HR 차트와 동일 소스)
+
+    private func loadLocalHRSamples() async {
+        let samples = await manager.fetchHRTimeSeries(for: activityID)
+        localHRSamples = samples
+        hrLoadDone = true
+        let status = samples.count >= 10 ? "활성가능" : "부족(비활성)"
+        print("[ZoneRoute] HR시계열(fetchHRTimeSeries): \(samples.count)개 → 칩=\(status)")
+        if samples.count < 10 {
+            print("[ZoneRoute] 샘플 \(samples.count)<10 — 심박존 비활성")
+            return
+        }
+        // 로드 완료 후 칩이 이미 켜져 있으면 생성
+        if showHRZones, hrZoneSnapshot == nil {
+            await generateHRZoneSnapshot()
+        }
+    }
+
+    // MARK: - HR zone snapshot
+
+    private func generateHRZoneSnapshot() async {
+        guard !isGeneratingHRSnapshot else { return }
+        isGeneratingHRSnapshot = true
+        defer { isGeneratingHRSnapshot = false }
+        if let cached = loadHRZoneFromDisk() { hrZoneSnapshot = cached; return }
+        if let generated = await makeHRZoneSnapshot() {
+            hrZoneSnapshot = generated
+            saveHRZoneToDisk(generated)
+        }
+    }
+
+    private func makeHRZoneSnapshot() async -> UIImage? {
+        // enumerated() preserves original index for routeTimeOffsets lookup
+        let indexed = Array(coordinates.enumerated().filter {
+            CLLocationCoordinate2DIsValid($0.element) && abs($0.element.latitude) > 1 && abs($0.element.longitude) > 1
+        })
+        guard indexed.count > 1, !localHRSamples.isEmpty else { return nil }
+
+        // 존 경계: Karvonen(manager) 우선, 없으면 샘플 최대 BPM 기준 % 폴백
+        let karvonen = manager.computeHRZonesFromSamples(localHRSamples)
+        let zoneBounds: [(id: Int, minBPM: Int)]
+        if !karvonen.isEmpty {
+            zoneBounds = karvonen.sorted { $0.minBPM < $1.minBPM }.map { (id: $0.id, minBPM: $0.minBPM) }
+        } else {
+            let maxObs = localHRSamples.map(\.bpm).max() ?? 180
+            // 최대 관측값이 ~90% 수준이라고 추정해 피크 계산
+            let peak = min(220, Int(Double(maxObs) / 0.90))
+            zoneBounds = [(1,0),(2,Int(Double(peak)*0.60)),(3,Int(Double(peak)*0.70)),(4,Int(Double(peak)*0.80)),(5,Int(Double(peak)*0.90))]
+            print("[ZoneRoute] Karvonen 없음 — 최대\(maxObs)bpm→추정피크\(peak)bpm 폴백 존 경계")
+        }
+
+        let lats = indexed.map { $0.element.latitude }
+        let lons = indexed.map { $0.element.longitude }
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return nil }
+
+        let opts = MKMapSnapshotter.Options()
+        opts.region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
+            span: MKCoordinateSpan(
+                latitudeDelta: max(0.004, (maxLat - minLat) * 1.4),
+                longitudeDelta: max(0.004, (maxLon - minLon) * 1.4)
+            )
+        )
+        let snapWidth = min(398, max(300, UIScreen.main.bounds.width - 32))
+        opts.size = CGSize(width: snapWidth, height: 220)
+        opts.scale = UIScreen.main.scale
+        opts.mapType = .mutedStandard
+        opts.showsBuildings = false
+
+        guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
+
+        let step = max(1, indexed.count / 300)
+        struct ZP { let pt: CGPoint; let bpm: Int; let matched: Bool }
+        var points: [ZP] = []
+        for i in stride(from: 0, to: indexed.count, by: step) {
+            let (origIdx, coord) = indexed[i]
+            let pt = snap.point(for: coord)
+            let offset = origIdx < routeTimeOffsets.count
+                ? routeTimeOffsets[origIdx]
+                : Double(origIdx) * workoutDuration / max(Double(coordinates.count - 1), 1)
+            let (bpm, matched) = smoothedBPM(at: offset)
+            points.append(ZP(pt: pt, bpm: bpm, matched: matched))
+        }
+
+        // 매칭 성공률 확인 — 좌표-샘플 시간대 불일치 감지
+        let matchedCount = points.filter(\.matched).count
+        guard matchedCount > 0 else {
+            print("[ZoneRoute] 매칭성공=0 — 좌표 타임스탬프와 HR 샘플 시간대 불일치. 존 지도 생성 중단.")
+            return nil
+        }
+
+        print("[ZoneRoute] 그라데이션 렌더 매칭=\(matchedCount)/\(points.count) 좌표=\(points.count)/\(indexed.count)")
+
+        let sortedBounds = zoneBounds.sorted { $0.minBPM < $1.minBPM }
+        return UIGraphicsImageRenderer(size: snap.image.size).image { _ in
+            snap.image.draw(at: .zero)
+            guard points.count > 1 else { return }
+            // 글로우 패스 전체 먼저 → 코어 패스 위에 올림
+            for i in 0..<(points.count - 1) {
+                let color = gradientUIColor(bpm: (points[i].bpm + points[i+1].bpm) / 2, bounds: sortedBounds)
+                let seg = UIBezierPath()
+                seg.move(to: points[i].pt); seg.addLine(to: points[i+1].pt)
+                seg.lineCapStyle = .round; seg.lineWidth = 3.5
+                color.withAlphaComponent(0.35).setStroke(); seg.stroke()
+            }
+            for i in 0..<(points.count - 1) {
+                let color = gradientUIColor(bpm: (points[i].bpm + points[i+1].bpm) / 2, bounds: sortedBounds)
+                let seg = UIBezierPath()
+                seg.move(to: points[i].pt); seg.addLine(to: points[i+1].pt)
+                seg.lineCapStyle = .round; seg.lineWidth = 1.5
+                color.setStroke(); seg.stroke()
+            }
+            if let last = points.last {
+                let dot = UIBezierPath(ovalIn: CGRect(x: last.pt.x - 3, y: last.pt.y - 3, width: 6, height: 6))
+                UIColor.white.setFill(); dot.fill()
+            }
+        }
+    }
+
+    // 5초 이동평균 심박 반환 — matched=true면 윈도우 샘플 있음, false면 최근접 폴백
+    private func smoothedBPM(at offset: TimeInterval) -> (bpm: Int, matched: Bool) {
+        let window = localHRSamples.filter { abs($0.offset - offset) <= 2.5 }
+        if window.isEmpty {
+            guard let nearest = localHRSamples.min(by: { abs($0.offset - offset) < abs($1.offset - offset) }) else { return (60, false) }
+            return (nearest.bpm, false)
+        }
+        return (window.reduce(0) { $0 + $1.bpm } / window.count, true)
+    }
+
+    // 존 경계 BPM → 그라데이션 UIColor (인접 존 색 사이 선형 보간)
+    private func gradientUIColor(bpm: Int, bounds: [(id: Int, minBPM: Int)]) -> UIColor {
+        let sorted = bounds.sorted { $0.minBPM < $1.minBPM }
+        let colors = Theme.hrZoneColors.map { UIColor($0) }
+        guard sorted.count >= 2, !colors.isEmpty else { return UIColor(Theme.violet) }
+        if bpm <= sorted[0].minBPM { return colors[0] }
+        for i in 0..<(sorted.count - 1) {
+            let lo = sorted[i].minBPM, hi = sorted[i+1].minBPM
+            guard hi > lo, bpm < hi else { continue }
+            let t = CGFloat(bpm - lo) / CGFloat(hi - lo)
+            return lerpUIColor(colors[min(i, colors.count-1)], colors[min(i+1, colors.count-1)], t)
+        }
+        return colors[min(sorted.count-1, colors.count-1)]
+    }
+
+    private func lerpUIColor(_ a: UIColor, _ b: UIColor, _ t: CGFloat) -> UIColor {
+        var r1: CGFloat=0, g1: CGFloat=0, b1: CGFloat=0, a1: CGFloat=0
+        var r2: CGFloat=0, g2: CGFloat=0, b2: CGFloat=0, a2: CGFloat=0
+        a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        let tc = max(0, min(1, t))
+        return UIColor(red: r1+(r2-r1)*tc, green: g1+(g2-g1)*tc, blue: b1+(b2-b1)*tc, alpha: 1)
     }
 }
 
@@ -1885,18 +2150,7 @@ private struct SplitChip: View {
 private struct HRZonesSection: View {
     let zones: [HRZoneData]
 
-    // Apple Fitness zone colors: Z1 blue → Z2 cyan → Z3 lime → Z4 orange → Z5 pink
-    private static let zoneColors: [Color] = [
-        Color(red: 0.30, green: 0.60, blue: 1.00),  // Z1 Blue
-        Color(red: 0.20, green: 0.85, blue: 0.85),  // Z2 Cyan
-        Color(red: 0.70, green: 1.00, blue: 0.10),  // Z3 Lime
-        Color(red: 1.00, green: 0.60, blue: 0.15),  // Z4 Orange
-        Color(red: 1.00, green: 0.30, blue: 0.55),  // Z5 Pink
-    ]
-
-    private func zoneColor(_ id: Int) -> Color {
-        Self.zoneColors[min(id - 1, 4)]
-    }
+    private func zoneColor(_ id: Int) -> Color { Theme.hrZoneColor(id) }
 
     private func formattedZoneTime(_ seconds: TimeInterval) -> String {
         let total = Int(seconds)
@@ -3107,14 +3361,6 @@ struct HRSeriesPanelChart: View {
     var workoutDuration: TimeInterval? = nil
     var labelScale: CGFloat = 1.0
 
-    private static let zoneColors: [Color] = [
-        Color(red: 0.30, green: 0.60, blue: 1.00),
-        Color(red: 0.20, green: 0.85, blue: 0.85),
-        Color(red: 0.70, green: 1.00, blue: 0.10),
-        Color(red: 1.00, green: 0.60, blue: 0.15),
-        Color(red: 1.00, green: 0.30, blue: 0.55),
-    ]
-
     private struct Bucket: Identifiable {
         let id: Int
         let midMinute: Double
@@ -3131,7 +3377,7 @@ struct HRSeriesPanelChart: View {
             z.id == zones.last?.id ? ibpm >= z.minBPM : (ibpm >= z.minBPM && ibpm <= z.maxBPM)
         }
         guard let z = zone else { return Theme.heartRate }
-        return Self.zoneColors[min(z.id - 1, 4)]
+        return Theme.hrZoneColor(z.id)
     }
 
     private var validSamples: [(offset: TimeInterval, bpm: Int)] {

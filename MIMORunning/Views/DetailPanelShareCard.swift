@@ -373,6 +373,7 @@ struct DetailPanelShareCardScreen: View {
     @State private var showShareSheet = false
     @State private var mapSnapshot: UIImage?
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -470,7 +471,9 @@ struct DetailPanelShareCardScreen: View {
     private func renderCard() async {
         isRendering = true
         if activePanel == .map {
-            if let cached = loadCachedMapSnapshot() {
+            if mapHRZoneMode, let gradient = loadCachedGradientMapSnapshot() {
+                mapSnapshot = gradient
+            } else if let cached = loadCachedMapSnapshot() {
                 mapSnapshot = cached
             } else {
                 mapSnapshot = await makeMapSnapshot()
@@ -498,6 +501,13 @@ struct DetailPanelShareCardScreen: View {
     private func loadCachedMapSnapshot() -> UIImage? {
         let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_map_v13_\(activity.id.uuidString).jpg")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return UIImage(data: data)
+    }
+
+    private func loadCachedGradientMapSnapshot() -> UIImage? {
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_map_hrzone_v2_\(activity.id.uuidString).jpg")
         guard let data = try? Data(contentsOf: url) else { return nil }
         return UIImage(data: data)
     }

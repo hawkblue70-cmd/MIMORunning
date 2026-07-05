@@ -1063,15 +1063,68 @@ struct RouteLineArt: View {
     let coordinates: [CLLocationCoordinate2D]
     var lineColor: Color = Theme.violet.opacity(0.85)
     var lineWidth: CGFloat = 1.5
+    // Gradient mode
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var workoutDuration: TimeInterval = 0
+    var zoneBounds: [(id: Int, minBPM: Int)] = []
+    var showHRGradient: Bool = false
 
     var body: some View {
         Canvas { ctx, size in
-            ctx.stroke(
-                buildPath(in: CGRect(origin: .zero, size: size)),
-                with: .color(lineColor),
-                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
-            )
+            let rect = CGRect(origin: .zero, size: size)
+            if showHRGradient && !hrSamples.isEmpty && !zoneBounds.isEmpty {
+                let mapped = mappedPoints(in: rect)
+                guard mapped.count > 1 else { return }
+                let sorted = zoneBounds.sorted { $0.minBPM < $1.minBPM }
+                // Glow pass
+                for i in 0..<(mapped.count - 1) {
+                    let midOff = (mapped[i].1 + mapped[i+1].1) / 2
+                    let color = gradientColor(bpm: smoothedBPM(at: midOff), sorted: sorted)
+                    var seg = Path(); seg.move(to: mapped[i].0); seg.addLine(to: mapped[i+1].0)
+                    ctx.stroke(seg, with: .color(color.opacity(0.35)),
+                               style: StrokeStyle(lineWidth: lineWidth * 2.5, lineCap: .round))
+                }
+                // Core pass
+                for i in 0..<(mapped.count - 1) {
+                    let midOff = (mapped[i].1 + mapped[i+1].1) / 2
+                    let color = gradientColor(bpm: smoothedBPM(at: midOff), sorted: sorted)
+                    var seg = Path(); seg.move(to: mapped[i].0); seg.addLine(to: mapped[i+1].0)
+                    ctx.stroke(seg, with: .color(color),
+                               style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                }
+            } else {
+                ctx.stroke(buildPath(in: rect), with: .color(lineColor),
+                           style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+            }
         }
+    }
+
+    // Returns (screenPoint, timeOffset) pairs for gradient mapping
+    private func mappedPoints(in rect: CGRect) -> [(CGPoint, TimeInterval)] {
+        guard coordinates.count > 1 else { return [] }
+        let lats = coordinates.map(\.latitude)
+        let lons = coordinates.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return [] }
+        let latRange = max(maxLat - minLat, 0.0001)
+        let lonRange = max(maxLon - minLon, 0.0001)
+        let inset: CGFloat = 4
+        let draw = rect.insetBy(dx: inset, dy: inset)
+        let scale = min(draw.width / CGFloat(lonRange), draw.height / CGFloat(latRange))
+        let ox = draw.minX + (draw.width  - CGFloat(lonRange) * scale) / 2
+        let oy = draw.minY + (draw.height - CGFloat(latRange)  * scale) / 2
+        let step = max(1, coordinates.count / 300)
+        let total = coordinates.count
+        var result: [(CGPoint, TimeInterval)] = []
+        for i in Swift.stride(from: 0, to: total, by: step) {
+            let c = coordinates[i]
+            result.append((
+                CGPoint(x: ox + CGFloat(c.longitude - minLon) * scale,
+                        y: oy + CGFloat(maxLat - c.latitude) * scale),
+                workoutDuration > 0 ? Double(i) / Double(max(total - 1, 1)) * workoutDuration : 0
+            ))
+        }
+        return result
     }
 
     private func buildPath(in rect: CGRect) -> Path {
@@ -1080,7 +1133,6 @@ struct RouteLineArt: View {
         let lons = coordinates.map(\.longitude)
         guard let minLat = lats.min(), let maxLat = lats.max(),
               let minLon = lons.min(), let maxLon = lons.max() else { return Path() }
-
         let latRange = max(maxLat - minLat, 0.0001)
         let lonRange = max(maxLon - minLon, 0.0001)
         let inset: CGFloat = 4
@@ -1088,20 +1140,46 @@ struct RouteLineArt: View {
         let scale = min(draw.width / CGFloat(lonRange), draw.height / CGFloat(latRange))
         let ox = draw.minX + (draw.width  - CGFloat(lonRange) * scale) / 2
         let oy = draw.minY + (draw.height - CGFloat(latRange)  * scale) / 2
-
         let step = max(1, coordinates.count / 300)
         return Path { path in
             var moved = false
             for i in Swift.stride(from: 0, to: coordinates.count, by: step) {
                 let c = coordinates[i]
-                let pt = CGPoint(
-                    x: ox + CGFloat(c.longitude - minLon) * scale,
-                    y: oy + CGFloat(maxLat - c.latitude) * scale
-                )
-                if !moved { path.move(to: pt); moved = true }
-                else { path.addLine(to: pt) }
+                let pt = CGPoint(x: ox + CGFloat(c.longitude - minLon) * scale,
+                                 y: oy + CGFloat(maxLat - c.latitude) * scale)
+                if !moved { path.move(to: pt); moved = true } else { path.addLine(to: pt) }
             }
         }
+    }
+
+    private func smoothedBPM(at offset: TimeInterval) -> Int {
+        let window = hrSamples.filter { abs($0.offset - offset) <= 2.5 }
+        if window.isEmpty {
+            return hrSamples.min(by: { abs($0.offset - offset) < abs($1.offset - offset) })?.bpm ?? 120
+        }
+        return window.reduce(0) { $0 + $1.bpm } / window.count
+    }
+
+    private func gradientColor(bpm: Int, sorted: [(id: Int, minBPM: Int)]) -> Color {
+        let colors = Theme.hrZoneColors
+        guard sorted.count >= 2, !colors.isEmpty else { return Theme.violet }
+        if bpm <= sorted[0].minBPM { return colors[0] }
+        for i in 0..<(sorted.count - 1) {
+            let lo = sorted[i].minBPM, hi = sorted[i+1].minBPM
+            guard hi > lo, bpm < hi else { continue }
+            return lerpColor(colors[min(i, colors.count-1)], colors[min(i+1, colors.count-1)],
+                             Double(bpm - lo) / Double(hi - lo))
+        }
+        return colors[min(sorted.count-1, colors.count-1)]
+    }
+
+    private func lerpColor(_ a: Color, _ b: Color, _ t: Double) -> Color {
+        var r1: CGFloat=0, g1: CGFloat=0, b1: CGFloat=0, a1: CGFloat=0
+        var r2: CGFloat=0, g2: CGFloat=0, b2: CGFloat=0, a2: CGFloat=0
+        UIColor(a).getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        UIColor(b).getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        let tc = CGFloat(max(0, min(1, t)))
+        return Color(red: Double(r1+(r2-r1)*tc), green: Double(g1+(g2-g1)*tc), blue: Double(b1+(b2-b1)*tc))
     }
 }
 
@@ -1145,6 +1223,8 @@ private enum ShareTemplate: String, CaseIterable {
 }
 
 // MARK: - Share Card (카드별 지원 템플릿 단일 소스)
+
+private enum HorizGridMode { case text, route }
 
 private enum ShareCard: Int {
     case placeable = 0
@@ -1665,6 +1745,8 @@ struct ShareCardScreen: View {
     private var activeMiniMeImage: UIImage? { (showMiniMe && canShowMiniMe) ? miniMeStore.image : nil }
 
     @State private var storyShareImages: [UIImage] = []
+    @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
+
     @State private var previewImage: UIImage?
     @State private var isRendering = true
     @State private var showShareSheet = false
@@ -1728,7 +1810,11 @@ struct ShareCardScreen: View {
 
     @State private var placeableMetricsPosition: CardPosition = .topLeading
     @State private var placeableAccent: CardAccent = .gold
-    @State private var placeableSize:   PlaceableSize = .large
+    @State private var placeableSize:        PlaceableSize   = .large
+    @State private var placeableLayout:      PlaceableLayout = .vertical
+    @State private var placeableHorizTextRow:  HorizRow      = .bottom
+    @State private var placeableHorizRoutePos: CardPosition  = .center
+    @State private var horizGridMode:          HorizGridMode = .text
     // ECG card
     @State private var paceWaveform:     ECGWaveform? = nil
     @State private var hrWaveform:       ECGWaveform? = nil
@@ -1757,6 +1843,22 @@ struct ShareCardScreen: View {
     @FocusState private var oneLinerFieldFocused: Bool
 
     private var routeCoords: [CLLocationCoordinate2D] { detail?.routeCoordinates ?? [] }
+
+    private var showHRGradientForRoute: Bool {
+        mapHRZoneMode && activity.avgHeartRate != nil && shareHRSamples.count >= 10
+    }
+
+    private var shareZoneBounds: [(id: Int, minBPM: Int)] {
+        guard !shareHRSamples.isEmpty else { return [] }
+        if let mgr = manager {
+            let k = mgr.computeHRZonesFromSamples(shareHRSamples)
+            if !k.isEmpty { return k.sorted { $0.minBPM < $1.minBPM }.map { (id: $0.id, minBPM: $0.minBPM) } }
+        }
+        let peak = min(220, Int(Double(shareHRSamples.map(\.bpm).max() ?? 180) / 0.90))
+        return [(1,0),(2,Int(Double(peak)*0.60)),(3,Int(Double(peak)*0.70)),
+                (4,Int(Double(peak)*0.80)),(5,Int(Double(peak)*0.90))]
+    }
+
     private var distanceKmString: String {
         let km = activity.distance / 1000
         return km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
@@ -2162,7 +2264,12 @@ struct ShareCardScreen: View {
                 weatherText: condition?.weather?.formattedTemp,
                 weatherIcon: condition?.weather?.systemIcon,
                 date: activity.date,
-                shoeName: displayShoeName
+                shoeName: displayShoeName,
+                accent: bigNumberAccent,
+                hrSamplesForRoute: shareHRSamples,
+                routeWorkoutDuration: activity.duration,
+                routeZoneBounds: shareZoneBounds,
+                showHRGradient: showHRGradientForRoute
             )
             .frame(width: 300, height: 375)
             .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -2177,8 +2284,12 @@ struct ShareCardScreen: View {
                 shoeName: displayShoeName,
                 photo: template == .video ? videoPreviewImage : template == .story ? photoFor(3) : nil,
                 chartPanel: .map,
-                routeCoordinates: [],
-                accent: bigNumberAccent
+                routeCoordinates: routeCoords,
+                accent: bigNumberAccent,
+                showHRGradient: showHRGradientForRoute,
+                hrSamplesForRoute: shareHRSamples,
+                routeWorkoutDuration: activity.duration,
+                routeZoneBounds: shareZoneBounds
             )
         }
     }
@@ -2194,7 +2305,10 @@ struct ShareCardScreen: View {
             accent: placeableAccent,
             shoeName: displayShoeName,
             weather: condition?.weather,
-            size: placeableSize
+            size: placeableSize,
+            layout: placeableLayout,
+            horizTextRow: placeableHorizTextRow,
+            horizRoutePos: placeableHorizRoutePos
         )
     }
 
@@ -2644,6 +2758,22 @@ struct ShareCardScreen: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Placeable card horizontal mode helpers
+
+    private func posRow(_ pos: CardPosition) -> HorizRow {
+        if pos.isTop    { return .top }
+        if pos.isBottom { return .bottom }
+        return .middle
+    }
+
+    private func handleHorizTextRowChange(_ newRow: HorizRow) {
+        guard posRow(placeableHorizRoutePos) == newRow else { return }
+        switch newRow {
+        case .top, .bottom: placeableHorizRoutePos = .center
+        case .middle:       placeableHorizRoutePos = .bottom
+        }
+    }
+
     // MARK: - Placeable card chip row (position grid + size + accent chips)
 
     private var placeableChipRow: some View {
@@ -2661,31 +2791,136 @@ struct ShareCardScreen: View {
             (.large, AppLanguage.shared.s("크게", "Large")),
             (.small, AppLanguage.shared.s("작게", "Small"))
         ]
+        let layouts: [(PlaceableLayout, String)] = [
+            (.vertical,   AppLanguage.shared.s("세로", "Vert")),
+            (.horizontal, AppLanguage.shared.s("가로", "Horiz"))
+        ]
         return HStack(alignment: .center, spacing: 20) {
-            // 3×3 position grid
-            VStack(spacing: 4) {
-                ForEach(rows.indices, id: \.self) { row in
-                    HStack(spacing: 4) {
-                        ForEach(rows[row].indices, id: \.self) { col in
-                            let pos = rows[row][col]
-                            let isSelected = placeableMetricsPosition == pos
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    placeableMetricsPosition = pos
+            // 3×3 position grid — horizontal layout uses dual-mode (글자/경로) tab
+            if placeableLayout == .horizontal {
+                VStack(spacing: 6) {
+                    // Mode tab
+                    HStack(spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { horizGridMode = .text }
+                        } label: {
+                            Text(AppLanguage.shared.s("글자", "Text"))
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(horizGridMode == .text ? .white : .white.opacity(0.4))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(horizGridMode == .text ? Theme.violet.opacity(0.85) : Color.clear)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { horizGridMode = .route }
+                        } label: {
+                            Text(AppLanguage.shared.s("경로", "Route"))
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(horizGridMode == .route ? .white : .white.opacity(0.4))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(horizGridMode == .route ? Color(hex: "5BA4FF").opacity(0.85) : Color.clear)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                    // Grid cells
+                    VStack(spacing: 4) {
+                        ForEach(rows.indices, id: \.self) { row in
+                            HStack(spacing: 4) {
+                                ForEach(rows[row].indices, id: \.self) { col in
+                                    let pos = rows[row][col]
+                                    let pr  = posRow(pos)
+                                    if horizGridMode == .text {
+                                        let isRowSel = pr == placeableHorizTextRow
+                                        Button {
+                                            withAnimation(.easeInOut(duration: 0.15)) {
+                                                placeableHorizTextRow = pr
+                                                handleHorizTextRowChange(pr)
+                                            }
+                                            Task { await renderCard(showSpinner: false) }
+                                        } label: {
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(isRowSel ? Theme.violet : Color(hex: "26262E"))
+                                                .frame(width: 23, height: 23)
+                                        }
+                                        .buttonStyle(.plain)
+                                    } else {
+                                        let isLocked = pr == placeableHorizTextRow
+                                        let isSel    = placeableHorizRoutePos == pos
+                                        if isLocked {
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Color(hex: "1C1C22"))
+                                                .frame(width: 23, height: 23)
+                                        } else {
+                                            Button {
+                                                withAnimation(.easeInOut(duration: 0.15)) {
+                                                    placeableHorizRoutePos = pos
+                                                }
+                                                Task { await renderCard(showSpinner: false) }
+                                            } label: {
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .fill(isSel ? Color(hex: "5BA4FF") : Color(hex: "26262E"))
+                                                    .frame(width: 23, height: 23)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
                                 }
-                                Task { await renderCard(showSpinner: false) }
-                            } label: {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(isSelected ? Theme.violet : Color(hex: "26262E"))
-                                    .frame(width: 23, height: 23)
                             }
-                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(rows.indices, id: \.self) { row in
+                        HStack(spacing: 4) {
+                            ForEach(rows[row].indices, id: \.self) { col in
+                                let pos = rows[row][col]
+                                let isSelected = placeableMetricsPosition == pos
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        placeableMetricsPosition = pos
+                                    }
+                                    Task { await renderCard(showSpinner: false) }
+                                } label: {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(isSelected ? Theme.violet : Color(hex: "26262E"))
+                                        .frame(width: 23, height: 23)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
                 }
             }
             // Size + Accent stacked vertically
             VStack(alignment: .leading, spacing: 6) {
+                // Layout chips (세로 / 가로)
+                HStack(spacing: 8) {
+                    ForEach(layouts.indices, id: \.self) { i in
+                        let (lyt, label) = layouts[i]
+                        let isSelected = placeableLayout == lyt
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { placeableLayout = lyt }
+                            Task { await renderCard(showSpinner: false) }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isSelected {
+                                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                                }
+                                Text(label).font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(isSelected ? Color(hex: "3A3A44") : Color.white.opacity(0.08))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
                 // Size chips (크게 / 작게)
                 HStack(spacing: 8) {
                     ForEach(sizes.indices, id: \.self) { i in
@@ -3418,6 +3653,10 @@ struct ShareCardScreen: View {
             guard isPlaceable else { return }
             Task { await renderCard(showSpinner: false) }
         }
+        .onChange(of: placeableLayout) { _, _ in
+            guard isPlaceable else { return }
+            Task { await renderCard(showSpinner: false) }
+        }
         .onChange(of: ecgAccent) { _, _ in
             guard isECG else { return }
             Task { await renderCard(showSpinner: false) }
@@ -3584,7 +3823,8 @@ struct ShareCardScreen: View {
                           chartIntervalSegments: detail?.intervalSegments ?? [],
                           weather: condition?.weather,
                           shoeName: displayShoeName,
-                          photo: nil)
+                          photo: nil,
+)
         case .story:
             if let photo = photoFor(2) {
                 ShareCardView(activity: activity, routeCoordinates: routeCoords,
@@ -3615,7 +3855,8 @@ struct ShareCardScreen: View {
                                    chartWorkoutSeries: shareWorkoutSeries,
                                    chartIntervalSegments: detail?.intervalSegments ?? [],
                                    weather: condition?.weather,
-                                   shoeName: displayShoeName)
+                                   shoeName: displayShoeName,
+)
             } else {
                 ShareCardView(activity: activity, routeCoordinates: routeCoords,
                               insightTitle: displayInsightTitle, metrics: enabledMetricItems,
@@ -3676,7 +3917,11 @@ struct ShareCardScreen: View {
                 chartHRSamples: shareHRSamples,
                 chartHRZones: detail?.hrZones ?? [],
                 chartWorkoutSeries: shareWorkoutSeries,
-                chartIntervalSegments: detail?.intervalSegments ?? []
+                chartIntervalSegments: detail?.intervalSegments ?? [],
+                hrSamplesForRoute: shareHRSamples,
+                routeWorkoutDuration: activity.duration,
+                routeZoneBounds: shareZoneBounds,
+                showHRGradient: showHRGradientForRoute
             )
         } else {
             ZStack {
@@ -4007,7 +4252,11 @@ struct ShareCardScreen: View {
                 accent: placeableAccent,
                 showBackground: false,
                 shoeName: displayShoeName,
-                weather: condition?.weather
+                weather: condition?.weather,
+                size: placeableSize,
+                layout: placeableLayout,
+                horizTextRow: placeableHorizTextRow,
+                horizRoutePos: placeableHorizRoutePos
             )
             .frame(width: PlaceableCard.cardWidth, height: PlaceableCard.cardHeight)
             .scaleEffect(scale, anchor: .center)
@@ -4087,6 +4336,11 @@ struct ShareCardScreen: View {
                     date: activity.date,
                     shoeName: displayShoeName,
                     totalDistanceM: activity.distance,
+                    hrSamplesForRoute: shareHRSamples,
+                    routeWorkoutDuration: activity.duration,
+                    showHRGradient: showHRGradientForRoute,
+                    miniMeImage: activeMiniMeImage,
+                    accent: bigNumberAccent,
                     progressHandler: { p in routeVideoProgress = p }
                 )
             } else {
@@ -4112,6 +4366,9 @@ struct ShareCardScreen: View {
                     chartWorkoutSeries: shareWorkoutSeries,
                     chartIntervalSegments: detail?.intervalSegments ?? [],
                     totalDistanceM: activity.distance,
+                    hrSamplesForRoute: shareHRSamples,
+                    routeWorkoutDuration: activity.duration,
+                    showHRGradient: showHRGradientForRoute,
                     progressHandler: { p in routeVideoProgress = p }
                 )
             }
@@ -4158,6 +4415,10 @@ struct ShareCardScreen: View {
         deduplicateOneLinerEntries()
         loadOneLinerSettings()
         await loadHighQualityPhotos()
+        // HR 시계열 미리 로드 — 공유 카드 경로 그라데이션용 (패널 무관)
+        if activity.avgHeartRate != nil, let mgr = manager, shareHRSamples.isEmpty {
+            shareHRSamples = await mgr.fetchHRTimeSeries(for: activity.id)
+        }
         await renderCard()
         await loadECGWaveforms()
         await loadTicketDepartureName()
@@ -4400,7 +4661,10 @@ struct ShareCardScreen: View {
                 accent: placeableAccent,
                 shoeName: displayShoeName,
                 weather: condition?.weather,
-                size: placeableSize
+                size: placeableSize,
+                layout: placeableLayout,
+                horizTextRow: placeableHorizTextRow,
+                horizRoutePos: placeableHorizRoutePos
             )
             let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
             renderer.scale = 3
@@ -4428,8 +4692,12 @@ struct ShareCardScreen: View {
                 shoeName: displayShoeName,
                 photo: bnPhoto,
                 chartPanel: .map,
-                routeCoordinates: [],
-                accent: bigNumberAccent
+                routeCoordinates: routeCoords,
+                accent: bigNumberAccent,
+                showHRGradient: showHRGradientForRoute,
+                hrSamplesForRoute: shareHRSamples,
+                routeWorkoutDuration: activity.duration,
+                routeZoneBounds: shareZoneBounds
             )
             let renderer = ImageRenderer(content: bnCard.frame(width: 300, height: 375))
             renderer.scale = 3
@@ -4587,7 +4855,8 @@ struct ShareCardScreen: View {
                           chartIntervalSegments: detail?.intervalSegments ?? [],
                           weather: condition?.weather,
                           shoeName: displayShoeName,
-                          photo: nil)
+                          photo: nil,
+)
                 .frame(width: 300, height: 375)
         case .story:
             if let photo = photoFor(1) {
@@ -4622,7 +4891,8 @@ struct ShareCardScreen: View {
                                    chartWorkoutSeries: shareWorkoutSeries,
                                    chartIntervalSegments: detail?.intervalSegments ?? [],
                                    weather: condition?.weather,
-                                   shoeName: displayShoeName)
+                                   shoeName: displayShoeName,
+)
                     .frame(width: 300, height: 375)
             } else {
                 ShareCardView(activity: activity, routeCoordinates: routeCoords,

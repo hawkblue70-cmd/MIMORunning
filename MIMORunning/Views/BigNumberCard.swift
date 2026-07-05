@@ -33,6 +33,11 @@ struct BigNumberCard: View {
     }
 
     var accent: CardAccent = .violet
+    // HR gradient for route line (dark-background only; suppressed when photo != nil)
+    var showHRGradient: Bool = false
+    var hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = []
+    var routeWorkoutDuration: TimeInterval = 0
+    var routeZoneBounds: [(id: Int, minBPM: Int)] = []
 
     private var heroGradient: LinearGradient {
         switch accent {
@@ -42,6 +47,14 @@ struct BigNumberCard: View {
                                             startPoint: .top, endPoint: .bottom)
         case .gold:   return LinearGradient(colors: [Color(hex: "FFC74D"), Color(hex: "F2A33C")],
                                             startPoint: .top, endPoint: .bottom)
+        }
+    }
+
+    private var routeLineColor: Color {
+        switch accent {
+        case .none:   return .white.opacity(0.85)
+        case .violet: return Theme.violet.opacity(0.85)
+        case .gold:   return Color(hex: "FFC74D").opacity(0.85)
         }
     }
 
@@ -103,8 +116,15 @@ struct BigNumberCard: View {
                 if chartPanel == .map, !routeCoordinates.isEmpty {
                     HStack {
                         Spacer()
-                        RouteLineArt(coordinates: routeCoordinates)
-                            .frame(width: 110, height: 110)
+                        RouteLineArt(
+                            coordinates: routeCoordinates,
+                            lineColor: routeLineColor,
+                            hrSamples: hrSamplesForRoute,
+                            workoutDuration: routeWorkoutDuration,
+                            zoneBounds: routeZoneBounds,
+                            showHRGradient: showHRGradient && photo == nil
+                        )
+                        .frame(width: 110, height: 110)
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)

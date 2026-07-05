@@ -110,6 +110,7 @@ enum WorkoutType: String, Codable {
 
 struct ActivityDetail {
     let routeCoordinates: [CLLocationCoordinate2D]
+    let routeTimeOffsets: [TimeInterval]           // 워크아웃 시작 기준 각 좌표의 초(seconds)
     let elevationGain: Double?
     let avgSpeed: Double?            // km/h — cycling
     let avgPower: Int?
@@ -208,7 +209,7 @@ struct HRZoneData: Identifiable, Codable {
 
 extension ActivityDetail: Codable {
     private enum CodingKeys: String, CodingKey {
-        case routeLat, routeLon
+        case routeLat, routeLon, routeTimeOffsets
         case elevationGain, avgSpeed, avgPower, avgCadence
         case splits, hrZones, intervalSegments, workoutType
         case avgGroundContactTime, avgStrideLength, avgVerticalOscillation
@@ -222,6 +223,7 @@ extension ActivityDetail: Codable {
         let lats = try c.decode([Double].self, forKey: .routeLat)
         let lons = try c.decode([Double].self, forKey: .routeLon)
         routeCoordinates = zip(lats, lons).map { CLLocationCoordinate2D(latitude: $0, longitude: $1) }
+        routeTimeOffsets = (try? c.decode([TimeInterval].self, forKey: .routeTimeOffsets)) ?? []
         elevationGain           = try c.decodeIfPresent(Double.self, forKey: .elevationGain)
         avgSpeed                = try c.decodeIfPresent(Double.self, forKey: .avgSpeed)
         avgPower                = try c.decodeIfPresent(Int.self,    forKey: .avgPower)
@@ -250,6 +252,7 @@ extension ActivityDetail: Codable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(routeCoordinates.map(\.latitude),  forKey: .routeLat)
         try c.encode(routeCoordinates.map(\.longitude), forKey: .routeLon)
+        try c.encode(routeTimeOffsets,                  forKey: .routeTimeOffsets)
         try c.encodeIfPresent(elevationGain,          forKey: .elevationGain)
         try c.encodeIfPresent(avgSpeed,               forKey: .avgSpeed)
         try c.encodeIfPresent(avgPower,               forKey: .avgPower)

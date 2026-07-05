@@ -41,5 +41,18 @@ enum Theme {
     static let calories = Color.pink
     static let runningForm = Color.teal      // 러닝 다이내믹스 3종 (민트/청록 계열)
     static let cadence = Color(hex: "5CE5D5") // 케이던스 (Apple Fitness 틸 계열)
+
+    /// HR 존 색상 (Z1..Z5) — 지도 경로, HR 차트, 카드 렌더러가 공유하는 팔레트.
+    static let hrZoneColors: [Color] = [
+        Color(red: 0.30, green: 0.60, blue: 1.00),  // Z1 Blue
+        Color(red: 0.20, green: 0.85, blue: 0.85),  // Z2 Cyan
+        Color(red: 0.70, green: 1.00, blue: 0.10),  // Z3 Lime
+        Color(red: 1.00, green: 0.60, blue: 0.15),  // Z4 Orange
+        Color(red: 1.00, green: 0.30, blue: 0.55),  // Z5 Pink
+    ]
+
+    static func hrZoneColor(_ zoneID: Int) -> Color {
+        hrZoneColors[min(max(zoneID - 1, 0), 4)]
+    }
 }
 

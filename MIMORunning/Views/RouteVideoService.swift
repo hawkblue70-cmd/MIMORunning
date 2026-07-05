@@ -29,6 +29,11 @@ struct RouteVideoFrameView: View {
     var chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     var chartIntervalSegments: [IntervalSegment] = []
     var showStats: Bool = true
+    // HR gradient for route polyline
+    var hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = []
+    var routeWorkoutDuration: TimeInterval = 0
+    var routeZoneBounds: [(id: Int, minBPM: Int)] = []
+    var showHRGradient: Bool = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -44,7 +49,11 @@ struct RouteVideoFrameView: View {
                     .brightness(-0.08)
                     .saturation(0.85)
 
-                RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress)
+                RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress,
+                                     hrSamples: hrSamplesForRoute,
+                                     workoutDuration: routeWorkoutDuration,
+                                     zoneBounds: routeZoneBounds,
+                                     showHRGradient: showHRGradient)
                     .frame(width: w, height: h)
 
                 if showStats {
@@ -83,6 +92,11 @@ private struct RoutePolylineOverlay: View {
     let snapshotPoints: [CGPoint]
     let progress: CGFloat
     var totalDistanceM: Double = 0
+    // HR gradient
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var workoutDuration: TimeInterval = 0
+    var zoneBounds: [(id: Int, minBPM: Int)] = []
+    var showHRGradient: Bool = false
 
     var body: some View {
         Canvas { ctx, size in
@@ -99,14 +113,31 @@ private struct RoutePolylineOverlay: View {
             let endIdx = max(1, Int(CGFloat(pts.count - 1) * min(progress, 1.0)))
             let slice = Array(pts[0...endIdx])
 
-            var path = Path()
-            path.move(to: slice[0])
-            for i in 1..<slice.count { path.addLine(to: slice[i]) }
-
-            ctx.stroke(path, with: .color(Theme.violet.opacity(0.35)),
-                       style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
-            ctx.stroke(path, with: .color(Theme.violet),
-                       style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+            if showHRGradient && slice.count > 1 && !hrSamples.isEmpty && !zoneBounds.isEmpty {
+                let sortedBounds = zoneBounds.sorted { $0.minBPM < $1.minBPM }
+                for i in 0..<(slice.count - 1) {
+                    let offset = Double(i) / Double(max(pts.count - 1, 1)) * workoutDuration
+                    let color = canvasGradientColor(bpm: canvasBPM(at: offset), sorted: sortedBounds)
+                    var seg = Path(); seg.move(to: slice[i]); seg.addLine(to: slice[i+1])
+                    ctx.stroke(seg, with: .color(color.opacity(0.35)),
+                               style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                }
+                for i in 0..<(slice.count - 1) {
+                    let offset = Double(i) / Double(max(pts.count - 1, 1)) * workoutDuration
+                    let color = canvasGradientColor(bpm: canvasBPM(at: offset), sorted: sortedBounds)
+                    var seg = Path(); seg.move(to: slice[i]); seg.addLine(to: slice[i+1])
+                    ctx.stroke(seg, with: .color(color),
+                               style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                }
+            } else {
+                var path = Path()
+                path.move(to: slice[0])
+                for i in 1..<slice.count { path.addLine(to: slice[i]) }
+                ctx.stroke(path, with: .color(Theme.violet.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                ctx.stroke(path, with: .color(Theme.violet),
+                           style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+            }
 
             let tip = slice[slice.count - 1]
             var glow = Path()
@@ -162,6 +193,36 @@ private struct RoutePolylineOverlay: View {
             }
         }
     }
+
+    private func canvasBPM(at offset: TimeInterval) -> Int {
+        let window = hrSamples.filter { abs($0.offset - offset) <= 2.5 }
+        if window.isEmpty {
+            return hrSamples.min(by: { abs($0.offset - offset) < abs($1.offset - offset) })?.bpm ?? 120
+        }
+        return window.reduce(0) { $0 + $1.bpm } / window.count
+    }
+
+    private func canvasGradientColor(bpm: Int, sorted: [(id: Int, minBPM: Int)]) -> Color {
+        let colors = Theme.hrZoneColors
+        guard sorted.count >= 2, !colors.isEmpty else { return Theme.violet }
+        if bpm <= sorted[0].minBPM { return colors[0] }
+        for i in 0..<(sorted.count - 1) {
+            let lo = sorted[i].minBPM, hi = sorted[i+1].minBPM
+            guard hi > lo, bpm < hi else { continue }
+            let t = Double(bpm - lo) / Double(hi - lo)
+            return lerpCanvasColor(colors[min(i, colors.count-1)], colors[min(i+1, colors.count-1)], t)
+        }
+        return colors[min(sorted.count-1, colors.count-1)]
+    }
+
+    private func lerpCanvasColor(_ a: Color, _ b: Color, _ t: Double) -> Color {
+        var r1: CGFloat=0, g1: CGFloat=0, b1: CGFloat=0, a1: CGFloat=0
+        var r2: CGFloat=0, g2: CGFloat=0, b2: CGFloat=0, a2: CGFloat=0
+        UIColor(a).getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        UIColor(b).getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        let tc = CGFloat(max(0, min(1, t)))
+        return Color(red: Double(r1+(r2-r1)*tc), green: Double(g1+(g2-g1)*tc), blue: Double(b1+(b2-b1)*tc))
+    }
 }
 
 // MARK: - BigNumberRouteVideoFrameView
@@ -179,6 +240,12 @@ struct BigNumberRouteVideoFrameView: View {
     var weatherIcon: String? = nil
     let date: Date
     var shoeName: String? = nil
+    var accent: CardAccent = .violet
+    // HR gradient for route polyline
+    var hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = []
+    var routeWorkoutDuration: TimeInterval = 0
+    var routeZoneBounds: [(id: Int, minBPM: Int)] = []
+    var showHRGradient: Bool = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -193,14 +260,19 @@ struct BigNumberRouteVideoFrameView: View {
                     .brightness(-0.08)
                     .saturation(0.85)
 
-                RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress)
+                RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress,
+                                     hrSamples: hrSamplesForRoute,
+                                     workoutDuration: routeWorkoutDuration,
+                                     zoneBounds: routeZoneBounds,
+                                     showHRGradient: showHRGradient)
                     .frame(width: w, height: h)
 
                 BigNumberVideoOverlayView(
                     activity: activity, detail: detail, heroMetric: heroMetric,
                     mood: mood, memoText: memoText,
                     weatherText: weatherText, weatherIcon: weatherIcon,
-                    date: date, shoeName: shoeName
+                    date: date, shoeName: shoeName,
+                    accent: accent
                 )
                 .frame(width: w, height: h)
             }
@@ -301,6 +373,9 @@ struct RouteVideoExportService {
         chartWorkoutSeries: [(offset: TimeInterval, value: Double)],
         chartIntervalSegments: [IntervalSegment],
         totalDistanceM: Double,
+        hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = [],
+        routeWorkoutDuration: TimeInterval = 0,
+        showHRGradient: Bool = false,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
         let t0 = CACurrentMediaTime()
@@ -345,6 +420,10 @@ struct RouteVideoExportService {
             overlayCGImage: overlayCGImage,
             scaledPoints: scaledPoints,
             totalDistanceM: totalDistanceM,
+            hrSamples: hrSamplesForRoute,
+            workoutDuration: routeWorkoutDuration,
+            showHRGradient: showHRGradient,
+            miniMeImage: customMiniMeImage,
             outputURL: outputURL,
             progressHandler: progressHandler
         )
@@ -370,6 +449,11 @@ struct RouteVideoExportService {
         date: Date,
         shoeName: String?,
         totalDistanceM: Double,
+        hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = [],
+        routeWorkoutDuration: TimeInterval = 0,
+        showHRGradient: Bool = false,
+        miniMeImage: UIImage? = nil,
+        accent: CardAccent = .violet,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
         let t0 = CACurrentMediaTime()
@@ -378,7 +462,8 @@ struct RouteVideoExportService {
             activity: activity, detail: detail, heroMetric: heroMetric,
             mood: mood, memoText: memoText,
             weatherText: weatherText, weatherIcon: weatherIcon,
-            date: date, shoeName: shoeName
+            date: date, shoeName: shoeName,
+            accent: accent
         )
         .frame(width: renderSize.width, height: renderSize.height)
         let overlayRenderer = ImageRenderer(content: overlayView)
@@ -406,6 +491,11 @@ struct RouteVideoExportService {
             overlayCGImage: overlayCGImage,
             scaledPoints: scaledPoints,
             totalDistanceM: totalDistanceM,
+            hrSamples: hrSamplesForRoute,
+            workoutDuration: routeWorkoutDuration,
+            showHRGradient: showHRGradient,
+            miniMeImage: miniMeImage,
+            showKmMarkers: false,
             outputURL: outputURL,
             progressHandler: progressHandler
         )
@@ -423,6 +513,11 @@ struct RouteVideoExportService {
         overlayCGImage: CGImage,
         scaledPoints: [CGPoint],
         totalDistanceM: Double,
+        hrSamples: [(offset: TimeInterval, bpm: Int)] = [],
+        workoutDuration: TimeInterval = 0,
+        showHRGradient: Bool = false,
+        miniMeImage: UIImage? = nil,
+        showKmMarkers: Bool = true,
         outputURL: URL,
         progressHandler: @escaping (Double) -> Void
     ) async throws {
@@ -461,53 +556,156 @@ struct RouteVideoExportService {
                 parentLayer.addSublayer(startLayer)
             }
 
-            // Glow route stroke
-            let glowRoute = CAShapeLayer()
-            glowRoute.frame = parentLayer.frame
-            glowRoute.path = routePath
-            glowRoute.strokeColor = UIColor(Theme.violet).withAlphaComponent(0.35).cgColor
-            glowRoute.lineWidth = 8 * renderScale
-            glowRoute.fillColor = UIColor.clear.cgColor
-            glowRoute.lineCap = .round; glowRoute.lineJoin = .round
-            glowRoute.strokeEnd = 0
-            glowRoute.add(strokeAnimation(duration: routeDur), forKey: "strokeEnd")
-            parentLayer.addSublayer(glowRoute)
+            let useGradient = showHRGradient && hrSamples.count >= 10
+            if useGradient {
+                // Gradient mode: ~50 micro-segments, each with its own color and timed strokeEnd
+                let segCount = min(50, scaledPoints.count - 1)
+                let step = (scaledPoints.count - 1) / segCount
+                let sortedBounds = computeZoneBoundsStatic(from: hrSamples)
 
-            // Core route stroke
-            let coreRoute = CAShapeLayer()
-            coreRoute.frame = parentLayer.frame
-            coreRoute.path = routePath
-            coreRoute.strokeColor = UIColor(Theme.violet).cgColor
-            coreRoute.lineWidth = 3.5 * renderScale
-            coreRoute.fillColor = UIColor.clear.cgColor
-            coreRoute.lineCap = .round; coreRoute.lineJoin = .round
-            coreRoute.strokeEnd = 0
-            coreRoute.add(strokeAnimation(duration: routeDur), forKey: "strokeEnd")
-            parentLayer.addSublayer(coreRoute)
+                // Glow pass — all micro-segments
+                for si in 0..<segCount {
+                    let i0 = si * step
+                    let i1 = min(i0 + step, scaledPoints.count - 1)
+                    let tStart = routeDur * Double(si) / Double(segCount)
+                    let tEnd   = routeDur * Double(si + 1) / Double(segCount)
+                    let midOffset = workoutDuration * Double(i0 + i1) / 2.0 / Double(scaledPoints.count - 1)
+                    let bpm = smoothedBPMForVideo(at: midOffset, samples: hrSamples)
+                    let color = gradientUIColorForVideo(bpm: bpm, bounds: sortedBounds)
 
-            // Moving tip dot — same path as stroke (UIKit coords, no flip needed)
+                    let seg = UIBezierPath()
+                    seg.move(to: scaledPoints[i0])
+                    for j in (i0 + 1)...i1 { seg.addLine(to: scaledPoints[j]) }
+                    seg.lineCapStyle = .round; seg.lineJoinStyle = .round
+
+                    let layer = CAShapeLayer()
+                    layer.frame = parentLayer.frame
+                    layer.path = seg.cgPath
+                    layer.strokeColor = color.withAlphaComponent(0.35).cgColor
+                    layer.lineWidth = 8 * renderScale
+                    layer.fillColor = UIColor.clear.cgColor
+                    layer.lineCap = .round; layer.lineJoin = .round
+                    layer.strokeEnd = 0
+                    layer.add(segmentAnimation(tStart: tStart, tEnd: tEnd, totalDur: routeDur), forKey: "strokeEnd")
+                    parentLayer.addSublayer(layer)
+                }
+                // Core pass — all micro-segments on top of glow
+                for si in 0..<segCount {
+                    let i0 = si * step
+                    let i1 = min(i0 + step, scaledPoints.count - 1)
+                    let tStart = routeDur * Double(si) / Double(segCount)
+                    let tEnd   = routeDur * Double(si + 1) / Double(segCount)
+                    let midOffset = workoutDuration * Double(i0 + i1) / 2.0 / Double(scaledPoints.count - 1)
+                    let bpm = smoothedBPMForVideo(at: midOffset, samples: hrSamples)
+                    let color = gradientUIColorForVideo(bpm: bpm, bounds: sortedBounds)
+
+                    let seg = UIBezierPath()
+                    seg.move(to: scaledPoints[i0])
+                    for j in (i0 + 1)...i1 { seg.addLine(to: scaledPoints[j]) }
+                    seg.lineCapStyle = .round; seg.lineJoinStyle = .round
+
+                    let layer = CAShapeLayer()
+                    layer.frame = parentLayer.frame
+                    layer.path = seg.cgPath
+                    layer.strokeColor = color.cgColor
+                    layer.lineWidth = 3.5 * renderScale
+                    layer.fillColor = UIColor.clear.cgColor
+                    layer.lineCap = .round; layer.lineJoin = .round
+                    layer.strokeEnd = 0
+                    layer.add(segmentAnimation(tStart: tStart, tEnd: tEnd, totalDur: routeDur), forKey: "strokeEnd")
+                    parentLayer.addSublayer(layer)
+                }
+            } else {
+                // Single-color mode (original)
+                let glowRoute = CAShapeLayer()
+                glowRoute.frame = parentLayer.frame
+                glowRoute.path = routePath
+                glowRoute.strokeColor = UIColor(Theme.violet).withAlphaComponent(0.35).cgColor
+                glowRoute.lineWidth = 8 * renderScale
+                glowRoute.fillColor = UIColor.clear.cgColor
+                glowRoute.lineCap = .round; glowRoute.lineJoin = .round
+                glowRoute.strokeEnd = 0
+                glowRoute.add(strokeAnimation(duration: routeDur), forKey: "strokeEnd")
+                parentLayer.addSublayer(glowRoute)
+
+                let coreRoute = CAShapeLayer()
+                coreRoute.frame = parentLayer.frame
+                coreRoute.path = routePath
+                coreRoute.strokeColor = UIColor(Theme.violet).cgColor
+                coreRoute.lineWidth = 3.5 * renderScale
+                coreRoute.fillColor = UIColor.clear.cgColor
+                coreRoute.lineCap = .round; coreRoute.lineJoin = .round
+                coreRoute.strokeEnd = 0
+                coreRoute.add(strokeAnimation(duration: routeDur), forKey: "strokeEnd")
+                parentLayer.addSublayer(coreRoute)
+            }
+
+            // Moving tip — choose animation axis: arc-length-keyed for gradient, path-based for solid
+            // Gradient segments draw by point-index; .paced path animation uses arc-length → axis mismatch.
+            // gradientTipAnimation rebuilds keyframes from the same arc-length-per-segment logic.
             let firstPt = scaledPoints[0]
-            let rGlow: CGFloat = 11 * renderScale
-            let rDot:  CGFloat = 5  * renderScale
+            let tipPositionAnim: CAAnimation
+            if useGradient {
+                let segC = min(50, scaledPoints.count - 1)
+                let stp  = max(1, (scaledPoints.count - 1) / segC)
+                tipPositionAnim = gradientTipAnimation(
+                    scaledPoints: scaledPoints, segCount: segC, step: stp, routeDur: routeDur
+                )
+            } else {
+                tipPositionAnim = pathAnimation(path: routePath, duration: routeDur)
+            }
 
-            let tipGlow = makeCircleLayer(radius: rGlow,
-                                          color: UIColor(Theme.violet).withAlphaComponent(0.38))
-            tipGlow.position = firstPt
-            tipGlow.add(pathAnimation(path: routePath, duration: routeDur), forKey: "position")
-            parentLayer.addSublayer(tipGlow)
+            if let uiImg = miniMeImage, let cgImg = uiImg.cgImage {
+                let markerR: CGFloat = 20 * renderScale   // 80px diameter (~7% of 1080px)
+                let borderW: CGFloat = 2  * renderScale
+                let imageR  = markerR - borderW
 
-            let tipDot = makeCircleLayer(radius: rDot, color: .white)
-            tipDot.position = firstPt
-            tipDot.add(pathAnimation(path: routePath, duration: routeDur), forKey: "position")
-            parentLayer.addSublayer(tipDot)
+                // White outer circle — border ring and drop shadow
+                let borderLayer = makeCircleLayer(radius: markerR, color: .white)
+                borderLayer.shadowOpacity = 0.45
+                borderLayer.shadowRadius  = 4 * renderScale
+                borderLayer.shadowOffset  = CGSize(width: 0, height: 2 * renderScale)
+                borderLayer.shadowColor   = UIColor.black.cgColor
+                borderLayer.position = firstPt
+                borderLayer.add(tipPositionAnim, forKey: "position")
+                parentLayer.addSublayer(borderLayer)
 
-            // KM markers (position also UIKit coords, no flip)
-            let markers = computeKmMarkers(snapshotPoints: scaledPoints, totalDistanceM: totalDistanceM)
-            for m in markers {
-                parentLayer.addSublayer(makeMarkerLayer(marker: m, pixelSize: px,
-                                                        routeDuration: routeDur,
-                                                        videoDuration: vidDur,
-                                                        renderScale: renderScale))
+                // Circular image layer (sits on top, slightly smaller)
+                let imageLayer = CALayer()
+                let imgD = imageR * 2
+                imageLayer.bounds = CGRect(x: 0, y: 0, width: imgD, height: imgD)
+                imageLayer.position = firstPt
+                imageLayer.contents = cgImg
+                imageLayer.contentsGravity = .resizeAspectFill
+                imageLayer.masksToBounds = true
+                imageLayer.cornerRadius = imageR
+                imageLayer.add(tipPositionAnim, forKey: "position")
+                parentLayer.addSublayer(imageLayer)
+            } else {
+                let rGlow: CGFloat = 11 * renderScale
+                let rDot:  CGFloat = 5  * renderScale
+
+                let tipGlow = makeCircleLayer(radius: rGlow,
+                                              color: UIColor(Theme.violet).withAlphaComponent(0.38))
+                tipGlow.position = firstPt
+                tipGlow.add(tipPositionAnim, forKey: "position")
+                parentLayer.addSublayer(tipGlow)
+
+                let tipDot = makeCircleLayer(radius: rDot, color: .white)
+                tipDot.position = firstPt
+                tipDot.add(tipPositionAnim, forKey: "position")
+                parentLayer.addSublayer(tipDot)
+            }
+
+            // KM markers — route video only (BigNumber card uses showKmMarkers: false)
+            if showKmMarkers {
+                let markers = computeKmMarkers(snapshotPoints: scaledPoints, totalDistanceM: totalDistanceM)
+                for m in markers {
+                    parentLayer.addSublayer(makeMarkerLayer(marker: m, pixelSize: px,
+                                                            routeDuration: routeDur,
+                                                            videoDuration: vidDur,
+                                                            renderScale: renderScale))
+                }
             }
         }
 
@@ -695,6 +893,108 @@ struct RouteVideoExportService {
         return container
     }
 
+    /// Position animation synchronized to the gradient segment draw.
+    /// Gradient segments divide scaledPoints into `segCount` groups of `step` points each.
+    /// Each group draws over 1/segCount of routeDur. Within a group the progress is arc-length-keyed
+    /// so the tip position exactly tracks the strokeEnd tip rather than jumping ahead.
+    private static func gradientTipAnimation(
+        scaledPoints: [CGPoint],
+        segCount: Int,
+        step: Int,
+        routeDur: Double
+    ) -> CAKeyframeAnimation {
+        let n = scaledPoints.count
+        guard n > 1 else {
+            let anim = CAKeyframeAnimation(keyPath: "position")
+            anim.values = [NSValue(cgPoint: scaledPoints.first ?? .zero)]
+            anim.duration = routeDur
+            anim.beginTime = AVCoreAnimationBeginTimeAtZero
+            anim.fillMode = .forwards
+            anim.isRemovedOnCompletion = false
+            return anim
+        }
+
+        // Cumulative arc length at each scaledPoint (pixel-space distance)
+        var cumLen = [CGFloat](repeating: 0, count: n)
+        for i in 1..<n {
+            let dx = scaledPoints[i].x - scaledPoints[i-1].x
+            let dy = scaledPoints[i].y - scaledPoints[i-1].y
+            cumLen[i] = cumLen[i-1] + sqrt(dx*dx + dy*dy)
+        }
+
+        // Build per-point keyTimes that mirror each gradient segment's time window.
+        // For point j in segment si: time = tStart[si] + arcFrac * (tEnd[si] - tStart[si])
+        var keyTimes = [NSNumber]()
+        var values   = [NSValue]()
+        keyTimes.reserveCapacity(n)
+        values.reserveCapacity(n)
+
+        for j in 0..<n {
+            let si     = min(j / max(1, step), segCount - 1)
+            let i0     = si * step
+            let i1     = min(i0 + step, n - 1)
+            let tStart = routeDur * Double(si)     / Double(segCount)
+            let tEnd   = routeDur * Double(si + 1) / Double(segCount)
+            let segLen = cumLen[i1] - cumLen[i0]
+            let relArc = segLen > 0 ? Double((cumLen[j] - cumLen[i0]) / segLen) : 0
+            let t      = tStart + relArc * (tEnd - tStart)
+            keyTimes.append(NSNumber(value: max(0, min(1, t / routeDur))))
+            values.append(NSValue(cgPoint: scaledPoints[j]))
+        }
+
+        #if DEBUG
+        // Validate: at p=0.25/0.50/0.75 the tip should be within a few pixels of the strokeEnd.
+        for p in [0.25, 0.50, 0.75] {
+            let t   = routeDur * p
+            let si  = min(Int(p * Double(segCount)), segCount - 1)
+            let i0  = si * step; let i1 = min(i0 + step, n - 1)
+            let tS  = routeDur * Double(si)     / Double(segCount)
+            let tE  = routeDur * Double(si + 1) / Double(segCount)
+            let frac = tE > tS ? (t - tS) / (tE - tS) : 0
+            // Where the gradient strokeEnd is at time t (arc-length within segment)
+            let targetLen = cumLen[i0] + CGFloat(frac) * (cumLen[i1] - cumLen[i0])
+            var lo2 = i0; var hi2 = i1
+            while lo2 + 1 < hi2 {
+                let mid = (lo2 + hi2) / 2
+                if cumLen[mid] <= targetLen { lo2 = mid } else { hi2 = mid }
+            }
+            let segL2 = cumLen[hi2] - cumLen[lo2]
+            let tk = segL2 > 0 ? (targetLen - cumLen[lo2]) / segL2 : 0
+            let strokePt = CGPoint(
+                x: scaledPoints[lo2].x + tk * (scaledPoints[hi2].x - scaledPoints[lo2].x),
+                y: scaledPoints[lo2].y + tk * (scaledPoints[hi2].y - scaledPoints[lo2].y)
+            )
+            // Where the tip keyframe animation lands at time p
+            let kts = keyTimes.map { $0.doubleValue }
+            let loK = kts.lastIndex(where: { $0 <= p }) ?? 0
+            let hiK = min(loK + 1, n - 1)
+            let miniMePt: CGPoint
+            if loK == hiK {
+                miniMePt = scaledPoints[loK]
+            } else {
+                let range = kts[hiK] - kts[loK]
+                let fk = range > 0 ? CGFloat((p - kts[loK]) / range) : 0
+                let a = scaledPoints[loK]; let b = scaledPoints[hiK]
+                miniMePt = CGPoint(x: a.x + fk * (b.x - a.x), y: a.y + fk * (b.y - a.y))
+            }
+            let dx = strokePt.x - miniMePt.x; let dy = strokePt.y - miniMePt.y
+            print(String(format: "[RouteVideo] p=%.2f 선끝=(%d,%d) 미니미=(%d,%d) 거리차=%.0fpx",
+                         p, Int(strokePt.x), Int(strokePt.y),
+                         Int(miniMePt.x), Int(miniMePt.y), sqrt(dx*dx + dy*dy)))
+        }
+        #endif
+
+        let anim = CAKeyframeAnimation(keyPath: "position")
+        anim.values              = values
+        anim.keyTimes            = keyTimes
+        anim.calculationMode     = .linear
+        anim.duration            = routeDur
+        anim.beginTime           = AVCoreAnimationBeginTimeAtZero
+        anim.fillMode            = .forwards
+        anim.isRemovedOnCompletion = false
+        return anim
+    }
+
     // MARK: - CGPath builders
 
     // For CAShapeLayer.path — drawn in layer's LOCAL space (y=0 at TOP on iOS).
@@ -874,5 +1174,63 @@ struct RouteVideoExportService {
                          cornerRadius: imgSize.height / 2).fill()
             (text as NSString).draw(at: CGPoint(x: hPad, y: vPad), withAttributes: attrs)
         }.cgImage
+    }
+
+    // MARK: - Gradient helpers (CAShapeLayer path)
+
+    private static func segmentAnimation(tStart: Double, tEnd: Double, totalDur: Double) -> CABasicAnimation {
+        let anim = CABasicAnimation(keyPath: "strokeEnd")
+        anim.fromValue = 0
+        anim.toValue   = 1
+        anim.duration  = max(tEnd - tStart, 0.01)
+        anim.beginTime = AVCoreAnimationBeginTimeAtZero + tStart
+        anim.timingFunction = CAMediaTimingFunction(name: .linear)
+        anim.fillMode  = .forwards
+        anim.isRemovedOnCompletion = false
+        return anim
+    }
+
+    private static func computeZoneBoundsStatic(from samples: [(offset: TimeInterval, bpm: Int)]) -> [(id: Int, minBPM: Int)] {
+        guard !samples.isEmpty else { return [] }
+        let peak = min(220, Int(Double(samples.map(\.bpm).max() ?? 180) / 0.90))
+        return [
+            (1, 0),
+            (2, Int(Double(peak) * 0.60)),
+            (3, Int(Double(peak) * 0.70)),
+            (4, Int(Double(peak) * 0.80)),
+            (5, Int(Double(peak) * 0.90))
+        ]
+    }
+
+    private static func smoothedBPMForVideo(at offset: TimeInterval, samples: [(offset: TimeInterval, bpm: Int)]) -> Int {
+        let window = samples.filter { abs($0.offset - offset) <= 2.5 }
+        if window.isEmpty {
+            guard let nearest = samples.min(by: { abs($0.offset - offset) < abs($1.offset - offset) }) else { return 60 }
+            return nearest.bpm
+        }
+        return window.reduce(0) { $0 + $1.bpm } / window.count
+    }
+
+    private static func gradientUIColorForVideo(bpm: Int, bounds: [(id: Int, minBPM: Int)]) -> UIColor {
+        let sorted = bounds.sorted { $0.minBPM < $1.minBPM }
+        let colors = Theme.hrZoneColors.map { UIColor($0) }
+        guard sorted.count >= 2, !colors.isEmpty else { return UIColor(Theme.violet) }
+        if bpm <= sorted[0].minBPM { return colors[0] }
+        for i in 0..<(sorted.count - 1) {
+            let lo = sorted[i].minBPM, hi = sorted[i+1].minBPM
+            guard hi > lo, bpm < hi else { continue }
+            let t = CGFloat(bpm - lo) / CGFloat(hi - lo)
+            return lerpUIColorStatic(colors[min(i, colors.count-1)], colors[min(i+1, colors.count-1)], t)
+        }
+        return colors[min(sorted.count-1, colors.count-1)]
+    }
+
+    private static func lerpUIColorStatic(_ a: UIColor, _ b: UIColor, _ t: CGFloat) -> UIColor {
+        var r1: CGFloat=0, g1: CGFloat=0, b1: CGFloat=0, a1: CGFloat=0
+        var r2: CGFloat=0, g2: CGFloat=0, b2: CGFloat=0, a2: CGFloat=0
+        a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        let tc = max(0, min(1, t))
+        return UIColor(red: r1+(r2-r1)*tc, green: g1+(g2-g1)*tc, blue: b1+(b2-b1)*tc, alpha: 1)
     }
 }

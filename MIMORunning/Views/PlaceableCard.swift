@@ -52,6 +52,10 @@ enum CardAccent {
 
 enum PlaceableSize { case large, small }
 
+enum PlaceableLayout { case vertical, horizontal }
+
+enum HorizRow { case top, middle, bottom }
+
 // MARK: - Bright-background text legibility
 
 extension View {
@@ -76,6 +80,9 @@ struct PlaceableCard: View {
     var shoeName: String? = nil
     var weather: WeatherSnapshot? = nil
     var size: PlaceableSize = .large
+    var layout: PlaceableLayout = .vertical
+    var horizTextRow:  HorizRow     = .bottom    // horizontal mode: which row text occupies
+    var horizRoutePos: CardPosition = .center    // horizontal mode: explicit route anchor cell
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
@@ -96,6 +103,14 @@ struct PlaceableCard: View {
         }
     }
 
+    private var horizontalModeAlignment: Alignment {
+        switch horizTextRow {
+        case .top:    return .top
+        case .middle: return .center
+        case .bottom: return .bottom
+        }
+    }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             backgroundView
@@ -111,7 +126,8 @@ struct PlaceableCard: View {
             // Metrics block at chosen position (shifted to avoid wordmark when top)
             metricsView
                 .padding(metricsInsets)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: metricsPosition.alignment)
+                .frame(maxWidth: .infinity, maxHeight: .infinity,
+                       alignment: layout == .horizontal ? horizontalModeAlignment : metricsPosition.alignment)
 
             // Footer — date + activity icon, always bottom
             footerView
@@ -145,10 +161,17 @@ struct PlaceableCard: View {
     }
 
     // MARK: - Route art
+
+    // Horizontal mode: route placed at explicit horizRoutePos (full 9-cell control).
+    private var routePosition: CardPosition {
+        if layout == .horizontal { return horizRoutePos }
+        return metricsPosition.opposite()
+    }
+
     @ViewBuilder
     private var routeArtLayer: some View {
         if let coords = routeCoords, !coords.isEmpty {
-            let rp = metricsPosition.opposite()
+            let rp = routePosition
             RouteLineArt(coordinates: coords, lineColor: routeLineColor, lineWidth: routeLineWidth)
                 .cardRouteShadow(radius: routeShadowRadius)
                 .frame(width: routeArtSize, height: routeArtSize)
@@ -190,7 +213,12 @@ struct PlaceableCard: View {
         return km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
     }
 
+    @ViewBuilder
     private var metricsView: some View {
+        if layout == .horizontal { horizontalMetricsView } else { verticalMetricsView }
+    }
+
+    private var verticalMetricsView: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Distance — accent color on value, "km" unit at 60%
             VStack(alignment: .leading, spacing: 0) {
@@ -273,6 +301,81 @@ struct PlaceableCard: View {
         }
     }
 
+    // Thin separator dot for horizontal metrics row
+    private var dividerDot: some View {
+        Text(" · ")
+            .font(.system(size: valueFontSize * 0.9, weight: .regular))
+            .fontWidth(.condensed)
+            .foregroundStyle(.white.opacity(0.45))
+            .brightCardText()
+    }
+
+    // Accent-colored distance text (same size as other metrics, color-only distinction)
+    @ViewBuilder
+    private var distanceHorizText: some View {
+        switch accent {
+        case .none:
+            Text(distanceKm)
+                .font(.system(size: valueFontSize, weight: .heavy).italic().monospacedDigit())
+                .fontWidth(.condensed)
+                .foregroundStyle(.white)
+                .brightCardText()
+        case .violet:
+            Text(distanceKm)
+                .font(.system(size: valueFontSize, weight: .heavy).italic().monospacedDigit())
+                .fontWidth(.condensed)
+                .foregroundStyle(LinearGradient(
+                    colors: [Color(hex: "9B7DFF"), Color(hex: "6845E8")],
+                    startPoint: .top, endPoint: .bottom))
+                .brightCardText()
+        case .gold:
+            Text(distanceKm)
+                .font(.system(size: valueFontSize, weight: .heavy).italic().monospacedDigit())
+                .fontWidth(.condensed)
+                .foregroundStyle(LinearGradient(
+                    colors: [Color(hex: "FFC74D"), Color(hex: "F2A33C")],
+                    startPoint: .top, endPoint: .bottom))
+                .brightCardText()
+        }
+    }
+
+    // Horizontal single-row: "7.02km · 43:34 · 6'12"" — labels omitted, distance accented
+    private var horizontalMetricsView: some View {
+        HStack(alignment: .lastTextBaseline, spacing: 0) {
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                distanceHorizText
+                Text("km")
+                    .font(.system(size: unitFontSize, weight: .semibold).italic())
+                    .fontWidth(.condensed)
+                    .foregroundStyle(.white.opacity(0.70))
+                    .brightCardText()
+            }
+            dividerDot
+            Text(activity.formattedDuration)
+                .font(.system(size: valueFontSize, weight: .heavy).italic().monospacedDigit())
+                .fontWidth(.condensed)
+                .foregroundStyle(.white)
+                .brightCardText()
+            if let pace = activity.formattedPace {
+                dividerDot
+                HStack(alignment: .lastTextBaseline, spacing: 2) {
+                    Text(pace)
+                        .font(.system(size: valueFontSize, weight: .heavy).italic().monospacedDigit())
+                        .fontWidth(.condensed)
+                        .foregroundStyle(.white)
+                        .brightCardText()
+                    Text("/km")
+                        .font(.system(size: unitFontSize, weight: .semibold).italic())
+                        .fontWidth(.condensed)
+                        .foregroundStyle(.white.opacity(0.70))
+                        .brightCardText()
+                }
+            }
+        }
+        .cardTextShadow()
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
     // MARK: - Footer
     private var footerView: some View {
         HStack(spacing: 0) {
@@ -315,6 +418,13 @@ struct PlaceableCard: View {
         let p: CGFloat = 14
         let topClear: CGFloat = 50   // clears wordmark + safe breathing room
         let botClear: CGFloat = 26   // clears footer
+        if layout == .horizontal {
+            switch horizTextRow {
+            case .top:    return EdgeInsets(top: p + topClear, leading: p, bottom: p, trailing: p)
+            case .bottom: return EdgeInsets(top: p, leading: p, bottom: p + botClear, trailing: p)
+            case .middle: return EdgeInsets(top: p, leading: p, bottom: p, trailing: p)
+            }
+        }
         switch metricsPosition {
         case .topLeading:
             return EdgeInsets(top: p + topClear, leading: p, bottom: p, trailing: p)
