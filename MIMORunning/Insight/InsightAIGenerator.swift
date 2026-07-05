@@ -2,28 +2,19 @@
 import Foundation
 import FoundationModels
 
-// Structured output type — @Generable ensures the model fills both fields.
+// Structured output type — @Generable ensures the model fills the detail field.
+// Title is always kept verbatim from the rule engine; only detail is AI-rewritten.
 @available(iOS 26, *)
-@Generable(description: "러닝 인사이트 제목과 부연 문구")
+@Generable(description: "러닝 인사이트 부연 문구")
 struct AIInsightOutput {
-    @Guide(description: """
-        한국어 제목, 12자 이내, 담백한 감성.
-        · 워크아웃 타입이 '일반 러닝'이면: 'OO 러닝' 형식 (예: '쌓이는 러닝', '한계를 미는 러닝').
-        · 워크아웃 타입이 인터벌/롱런/회복런/템포런/빌드업/LSD/거리주이면: '[형용사(구)]+[타입명]' 형식.
-          형용사(구) 예: '격렬한', '묵직한', '차오르는', '심장을 끌어올린', '느긋한', '균일한'.
-          조합 예: '격렬한 인터벌', '묵직한 롱런', '느긋한 이지런', '균일한 템포', '끝까지 오른 빌드업', '여유로운 LSD', '단단한 거리주'.
-          금지: '꾸준함', '효율', '자산', '한계', '경계' 같은 명사형 단어를 타입명 앞에 붙이는 것.
-        """)
-    var title: String
-
     @Guide(description: "제공된 수치·사실만 활용한 한 줄 부연, 30자 이내")
     var detail: String
 }
 
 @available(iOS 26, *)
-@Generable(description: "2주 러닝 추세 격려 한 문장")
+@Generable(description: "2주 러닝 훈련 총평 2~3문장")
 struct WeeklyCommentOutput {
-    @Guide(description: "한국어 격려 한 문장, 25자 내외. 주어진 숫자만 쓸 것. 이모지 최대 1개.")
+    @Guide(description: "한국어 2~3문장 총평, 전체 30~80자. 구성→신호→흐름 순. 주어진 숫자만 쓸 것. 이모지 금지.")
     var comment: String
 }
 
@@ -34,7 +25,7 @@ enum InsightAIGenerator {
         SystemLanguageModel.default.availability == .available
     }
 
-    /// Rewrites `base` title/detail with on-device AI.
+    /// Rewrites `base.detail` with on-device AI; `base.title` is always kept verbatim.
     /// Returns nil when unavailable, English mode, or generation fails; caller keeps rule-based result.
     static func enhance(_ base: InsightResult) async -> InsightResult? {
         guard isAvailable else { return nil }
@@ -45,92 +36,30 @@ enum InsightAIGenerator {
 
         let instructions = """
             당신은 러닝 앱 "미모러닝"의 인사이트 카피라이터입니다. You MUST respond in Korean.
-            규칙 엔진이 계산한 테마와 사실을 받아 제목과 부연 문구를 자연스럽게 재표현합니다.
+            규칙 엔진이 계산한 테마와 사실을 받아 부연 문구를 자연스럽게 재표현합니다.
             규칙:
             · 부연: 제공된 수치·사실만 사용, 절대 없는 수치를 만들어내지 말 것, 30자 이내
-            · 제목 형식:
-              - 워크아웃 타입이 '일반 러닝'이면 → 'OO 러닝' 형식, 12자 이내, 담백하고 철학적인 톤
-              - 워크아웃 타입이 인터벌/롱런/회복런/템포런/빌드업/LSD/거리주이면 → 반드시 '[형용사(구)]+[타입명]' 형식만 사용
-                형용사(구): '격렬한', '묵직한', '차오르는', '심장을 끌어올린' 처럼 형용사 또는 형용사절. 명사형 불가.
-                타입명: 인터벌→인터벌, 롱런→롱런, 회복런→이지런, 템포런→템포, 빌드업→빌드업, LSD→LSD, 거리주→거리주
-                금지: '꾸준함 인터벌', '효율 롱런', '자산 인터벌' 같이 명사형 단어를 타입명 앞에 붙이는 것
-              - 강한 성취(첫 달성·페이스 PR) + 특정 타입이면 결합 허용: '기록을 깬 인터벌', '기록을 쓴 롱런'
-            스타일 예시(제목 / 부연):
-            일반 러닝 — 한계를 미는 러닝 / 최근 5km 중 가장 빠른 페이스
-            일반 러닝 — 쌓이는 러닝 / 4주 연속 달리기 중
-            일반 러닝 — 경계를 넓힌 러닝 / 이번 달 최장 거리 12.3km
-            인터벌 — 격렬한 인터벌 / 400m×6, 최고 1'42"
-            인터벌 — 차오르는 인터벌 / 심박 최고 178bpm
-            인터벌 — 기록을 깬 인터벌 / 동일 거리 페이스 갱신
-            롱런 — 묵직한 롱런 / 이번 달 최장 거리 18km
-            회복런 — 느긋한 이지런 / 낮은 강도로 다음 훈련을 준비
-            템포런 — 균일한 템포 / 균일하게 밀어붙인 8km
-            빌드업 — 끝까지 오른 빌드업 / 마지막 km 최고 페이스
-            LSD — 여유로운 LSD / 느리고 고르게 21km
-            거리주 — 단단한 거리주 / 하프 거리 레이스페이스 완주
+            스타일 예시(부연):
+            최근 5km 중 가장 빠른 페이스
+            4주 연속 달리기 중
+            이번 달 최장 거리 12.3km
+            400m×6, 최고 1'42"
+            심박 최고 178bpm
             """
 
         let prompt = """
             테마: \(themeKorean(base.theme))
-            워크아웃 타입: \(workoutTypeKorean(base.workoutType))
             사실: \(base.detail)
-            기존 제목 참고: \(base.title)
             """
 
         do {
             let session = LanguageModelSession(instructions: instructions)
             let response = try await session.respond(to: prompt, generating: AIInsightOutput.self)
             let output = response.content
-            guard !output.title.isEmpty, !output.detail.isEmpty else { return nil }
-            // Reject titles that pair a generic theme word with a workout type name
-            guard isValidInsightTitle(output.title, workoutType: base.workoutType) else { return nil }
-            return InsightResult(theme: base.theme, workoutType: base.workoutType, title: output.title, detail: output.detail)
+            guard !output.detail.isEmpty else { return nil }
+            return InsightResult(theme: base.theme, workoutType: base.workoutType, title: base.title, detail: output.detail)
         } catch {
             return nil
-        }
-    }
-
-    /// Returns false when the AI title is invalid:
-    /// - Prohibited "명사형 테마단어+타입명" pattern (e.g. "꾸준함 인터벌")
-    /// - Missing the required type name in the title for typed workouts
-    private static func isValidInsightTitle(_ title: String, workoutType: WorkoutType) -> Bool {
-        let themeWords = ["꾸준함", "효율", "자산", "한계", "경계", "성장", "빠름", "회복"]
-        let requiredTypeNames: [String]  // at least one must appear in the title
-        switch workoutType {
-        case .interval:    requiredTypeNames = ["인터벌"]
-        case .longRun:     requiredTypeNames = ["롱런"]
-        case .easy:        requiredTypeNames = ["이지런", "회복런"]
-        case .tempo:       requiredTypeNames = ["템포런", "템포"]
-        case .buildUp:     requiredTypeNames = ["빌드업"]
-        case .lsd:         requiredTypeNames = ["LSD"]
-        case .distanceRun: requiredTypeNames = ["거리주"]
-        case .general:     return true  // "OO 러닝" 형식 — 타입명 강제 불필요
-        }
-
-        // 타입명이 제목에 포함되어 있어야 함
-        guard requiredTypeNames.contains(where: { title.contains($0) }) else { return false }
-
-        // 명사형 테마단어+타입명 조합 금지
-        for theme in themeWords {
-            for typeName in requiredTypeNames {
-                if title.contains("\(theme) \(typeName)") || title.contains("\(theme)\(typeName)") {
-                    return false
-                }
-            }
-        }
-        return true
-    }
-
-    private static func workoutTypeKorean(_ type: WorkoutType) -> String {
-        switch type {
-        case .interval:    "인터벌"
-        case .longRun:     "롱런"
-        case .easy:        "회복런"
-        case .tempo:       "템포런"
-        case .buildUp:     "빌드업"
-        case .lsd:         "LSD"
-        case .distanceRun: "거리주"
-        case .general:     "일반 러닝"
         }
     }
 
@@ -147,6 +76,9 @@ enum InsightAIGenerator {
         case .tradeoff:          "지표 트레이드오프 (예: 거리↑을 위한 의도적 페이스↓, 심폐 효율 향상)"
         case .periodPositive:    "월간 총량 하향이지만 긍정 요소 발견 (페이스·최고 거리·연속·이정표·회복)"
         case .safety:            "안전·환경 돌봄 (심박 상승·부하 급증·더위)"
+        case .rarityFact:        "희소성 사실 (기온 극값·시간대 재회)"
+        case .milestone:         "평생 누적 이정표 (50km 단위 최초 돌파)"
+        case .subThreshold:      "서브T 절제 인정 (인터벌 구간 페이스 일관성)"
         }
     }
 
@@ -154,99 +86,180 @@ enum InsightAIGenerator {
 
     /// 2주 추세 패턴에서 격려 한 문장을 생성. nil이면 호출부가 템플릿을 유지.
     static func generateWeeklyComment(patternKey: String, factSummary: String) async -> String? {
-        guard isAvailable else { return nil }
+        // [AI-A] 가용성 확인 — availability enum 값 그대로 출력
+        let availability = SystemLanguageModel.default.availability
+        if availability == .available {
+            #if DEBUG
+            print("[AI-A] 가용=.available 패턴=\(patternKey) 양성어휘=\(requiredVocab(for: patternKey))")
+            #endif
+        } else {
+            #if DEBUG
+            print("[AI-A] 미지원: \(availability)")
+            #endif
+            return nil
+        }
         guard !AppLanguage.shared.isEnglish else { return nil }
         guard !factSummary.isEmpty else { return nil }
 
         let instructions = """
-            너는 러닝 앱 "미모러닝"의 따뜻한 코치다. 주어진 2주 훈련 사실로 격려 한 문장을 쓴다.
+            너는 러닝 앱 "미모러닝"의 따뜻한 코치다. 주어진 2주 훈련 사실로 총평을 쓴다.
+            출력 규격:
+            - 출력은 2~3문장, 전체 30~80자.
+            - 각 문장은 '~요' 또는 '~네요'로 끝낸다.
+            - 이모지, 느낌표, 특수문자를 쓰지 않는다.
+            - 주어진 사실의 수치를 최소 한 곳에 포함한다.
             규칙:
             1) 주어진 숫자 외의 수치를 절대 만들지 마라.
-            2) '더 빨리', '더 멀리', '빠르게', '더 많이', '더 길게', '치고 나가', '위험', '과훈련', '부상' 같은 압박·경고·결과 표현 금지.
+            2) '더 빨리', '더 멀리', '빠르게', '더 많이', '더 길게', '치고 나가', '위험', '과훈련', '부상' 같은 압박·경고 표현 금지.
             3) 절대적 기준이 아닌 본인의 2주 변화만 말한다.
-            4) 한국어 한 문장, 18~35자. 명사 나열이나 감탄사가 아니라 완결된 격려 문장으로 쓴다. 예: '힘있게 밀어내며 발걸음이 가벼워졌어요' 같은 톤.
-            5) 이모지는 최대 1개.
-            6) 주어진 사실에 나온 지표(파워·접촉시간·보폭 등)의 의미만 표현하라. 사실에 없는 속도·거리·페이스를 언급하지 마라.
-            7) 같은 단어를 반복하지 마라.
-            8) '효율 향상!', '최고!' 같은 헤드라인·구호 형태 금지. 반드시 서술형 문장으로 끝낸다.
+            4) 같은 단어를 반복하지 마라.
+            5) 헤드라인·구호 형태 금지. 반드시 서술형 문장으로 끝낸다.
+            좋은 예: "인터벌 2회를 섞은 5회 구성이었어요. 보폭이 늘어나는 흐름이에요. 4주째 이어지고 있어요."
+            나쁜 예: "5회 완주! 최고였어요."
             """
         let guide = patternGuide(patternKey)
-        let prompt = "패턴: \(weeklyPatternKorean(patternKey)). \(guide) 사실: \(factSummary). 이 사실로 격려 한 문장."
+        let prompt = "패턴: \(weeklyPatternKorean(patternKey)). \(guide) 사실: \(factSummary). 이 사실로 2~3문장 총평."
 
         do {
             let session = LanguageModelSession(instructions: instructions)
             let response = try await session.respond(to: prompt, generating: WeeklyCommentOutput.self)
             let text = response.content.comment
-            guard validateWeeklyComment(text, factSummary: factSummary, patternKey: patternKey) else { return nil }
-            return text
+            let (valid, reason) = validateWeeklyCommentDetailed(text, factSummary: factSummary, patternKey: patternKey)
+            if valid { return text }
+
+            // [AI-C] 1차 탈락 → 사유 명시 재시도
+            #if DEBUG
+            print("[AI-C] 1차 탈락 원문=「\(text)」 사유=\(reason ?? "unknown") → 재시도")
+            #endif
+            let retryHint: String
+            if let r = reason {
+                if r.contains("길이 미달") {
+                    retryHint = "이전 출력은 너무 짧았다. 30자 이상 2~3문장으로 다시 써라."
+                } else if r.contains("문장수 부족") {
+                    retryHint = "이전 출력이 문장 1개뿐이었다. 반드시 2~3문장으로 나눠서 다시 써라."
+                } else if r.contains("종결어미") {
+                    retryHint = "이전 출력이 '요' 또는 '다'로 끝나지 않았다. 반드시 '~요'로 끝내라."
+                } else if r.contains("양성어휘") {
+                    retryHint = "이전 출력에 필수 어휘(\(requiredVocab(for: patternKey).joined(separator: "/")))가 없었다. 이 중 하나를 포함해서 다시 써라."
+                } else if r.contains("금지어") {
+                    retryHint = "이전 출력에 금지어가 있었다. 압박·결과 표현 없이 다시 써라."
+                } else {
+                    retryHint = "이전 출력(\(r))을 수정해서 다시 써라."
+                }
+            } else {
+                retryHint = "이전 출력을 규칙에 맞게 다시 써라."
+            }
+            let retryResponse = try await session.respond(to: retryHint, generating: WeeklyCommentOutput.self)
+            let retryText = retryResponse.content.comment
+            let (retryValid, retryReason) = validateWeeklyCommentDetailed(retryText, factSummary: factSummary, patternKey: patternKey)
+            if retryValid {
+                #if DEBUG
+                print("[AI-C] 재시도 성공 원문=「\(retryText)」")
+                #endif
+                return retryText
+            }
+            #if DEBUG
+            print("[AI-C] 재시도 탈락 원문=「\(retryText)」 사유=\(retryReason ?? "unknown")")
+            #endif
+            return nil
         } catch {
+            #if DEBUG
+            print("[AI-B] 생성 실패: \(error)")
+            #endif
             return nil
         }
     }
 
     private static func patternGuide(_ key: String) -> String {
         switch key {
-        case "economy":    return "이 패턴은 '효율·추진력·가벼움'에 대한 것이다. 속도나 거리가 아니다."
-        case "speed":      return "이 패턴은 '페이스 향상·수월함'에 대한 것이다."
-        case "form":       return "이 패턴은 '보폭·자세·폼 안정'에 대한 것이다. 속도나 거리가 아니다."
-        case "cardio":     return "이 패턴은 '심폐·유산소 향상'에 대한 것이다."
-        case "easy":       return "이 패턴은 '편안한 회복·여유'에 대한 것이다. 빠르게나 멀리가 아니다."
-        case "streak":     return "이 패턴은 '꾸준한 연속'에 대한 것이다."
-        case "consistent": return "이 패턴은 '꾸준한 훈련 횟수'에 대한 것이다."
-        default:           return ""
+        case "economy":           return "이 패턴은 '효율·추진력·가벼움'에 대한 것이다. 속도나 거리가 아니다."
+        case "speed":             return "이 패턴은 '페이스 향상·수월함'에 대한 것이다."
+        case "form":              return "이 패턴은 '보폭·자세·폼 안정'에 대한 것이다. 속도나 거리가 아니다."
+        case "cardio":            return "이 패턴은 '심폐·유산소 향상'에 대한 것이다."
+        case "easy":              return "이 패턴은 '편안한 회복·여유'에 대한 것이다. 빠르게나 멀리가 아니다."
+        case "streak":            return "이 패턴은 '꾸준한 연속'에 대한 것이다."
+        case "consistent":        return "이 패턴은 '꾸준한 훈련 횟수'에 대한 것이다."
+        case "fatigueSign":       return "이 패턴은 '폼 피로 관찰'에 대한 것이다. 단정·경고가 아니라 관찰과 부드러운 제안만 한다."
+        case "overstride":        return "이 패턴은 '착지·발 위치 관찰'에 대한 것이다. 부드러운 폼 제안만 하고 결함을 진단하지 않는다."
+        case "economyPlus":       return "이 패턴은 '러닝 이코노미 자연 개선'에 대한 것이다. 효율·가벼움·접촉에 집중한다."
+        case "propulsion":        return "이 패턴은 '추진력·보폭 성장'에 대한 것이다. 보폭이 자란다는 것을 긍정적으로 표현한다."
+        case "turnover":          return "이 패턴은 '케이던스·잰걸음 발달'에 대한 것이다. 리듬과 발 회전에 집중한다."
+        case "compositionChange": return "이 패턴은 '훈련 구성 변화·적응'에 대한 것이다. 지표 출렁임이 자연스럽다고 안심시킨다."
+        default:                  return ""
         }
     }
 
     private static func weeklyPatternKorean(_ key: String) -> String {
         switch key {
-        case "economy":    return "러닝 이코노미 향상"
-        case "speed":      return "페이스 향상"
-        case "form":       return "폼 개선"
-        case "cardio":     return "심폐 향상"
-        case "easy":       return "이지런 주간"
-        case "streak":     return "연속 달리기"
-        case "consistent": return "꾸준한 훈련"
-        default:           return "달리기"
+        case "economy":           return "러닝 이코노미 향상"
+        case "speed":             return "페이스 향상"
+        case "form":              return "폼 개선"
+        case "cardio":            return "심폐 향상"
+        case "easy":              return "이지런 주간"
+        case "streak":            return "연속 달리기"
+        case "consistent":        return "꾸준한 훈련"
+        case "fatigueSign":       return "폼 피로 신호"
+        case "overstride":        return "오버스트라이드 신호"
+        case "economyPlus":       return "이코노미 개선"
+        case "propulsion":        return "추진력 발달"
+        case "turnover":          return "턴오버 개선"
+        case "compositionChange": return "훈련 구성 변화"
+        default:                  return "달리기"
         }
     }
 
     private static func requiredVocab(for key: String) -> [String] {
         switch key {
-        case "economy":    return ["힘", "추진", "밀어", "접촉", "가벼", "효율", "이코노미"]
-        case "form":       return ["보폭", "자세", "폼", "케이던스", "안정"]
-        case "speed":      return ["페이스", "빨라", "같은 노력", "수월"]
-        case "cardio":     return ["심폐", "유산소", "숨", "오래"]
-        case "easy":       return ["편하", "가볍게", "회복", "여유", "천천"]
-        case "streak":     return ["연속", "꾸준", "이어", "쉬지"]
-        case "consistent": return ["꾸준", "쌓이", "차곡"]
-        default:           return []
+        case "economy":           return ["힘", "추진", "밀어", "접촉", "가벼", "효율", "이코노미"]
+        case "form":              return ["보폭", "자세", "폼", "케이던스", "안정"]
+        case "speed":             return ["페이스", "빨라", "같은 노력", "수월"]
+        case "cardio":            return ["심폐", "유산소", "숨", "오래"]
+        case "easy":              return ["편하", "가볍게", "회복", "여유", "천천"]
+        case "streak":            return ["연속", "꾸준", "이어", "쉬지"]
+        case "consistent":        return ["꾸준", "쌓이", "차곡"]
+        case "fatigueSign":       return ["회복", "가볍", "쉬", "몸", "신호"]
+        case "overstride":        return ["착지", "발", "몸 아래", "케이던스", "회전"]
+        case "economyPlus":       return ["효율", "가벼", "접촉", "이코노미", "조용"]
+        case "propulsion":        return ["추진", "보폭", "리듬", "자라", "힘"]
+        case "turnover":          return ["리듬", "잰걸음", "케이던스", "발 회전", "분산"]
+        case "compositionChange": return ["강약", "훈련", "자연", "적응", "출렁"]
+        default:                  return []
         }
     }
 
-    private static func validateWeeklyComment(_ text: String, factSummary: String, patternKey: String) -> Bool {
+    /// 검증 결과와 탈락 사유를 함께 반환. [AI-C] 진단에 사용.
+    private static func validateWeeklyCommentDetailed(_ text: String, factSummary: String, patternKey: String) -> (valid: Bool, reason: String?) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        // 최소 글자수: 빈약한 단문·헤드라인 차단 (공백 제외)
-        guard trimmed.filter({ !$0.isWhitespace }).count >= 12 else { return false }
-        // 종결어미 검증: 완결 격려 문장 강제 (이모지가 뒤에 올 수 있으므로 뒤 10자 안에 '요' 확인)
+        guard !trimmed.isEmpty else { return (false, "빈 문자열") }
+        let charCount = trimmed.filter({ !$0.isWhitespace }).count
+        guard charCount >= 25 else { return (false, "길이 미달: \(charCount)자 < 25자") }
         let tail = String(trimmed.suffix(10))
-        guard tail.contains("요") || trimmed.hasSuffix("다") else { return false }
-        // 문장 수 제한
+        guard tail.contains("요") || trimmed.hasSuffix("다") else {
+            return (false, "종결어미 없음: 뒤10자=「\(tail)」")
+        }
         let sentenceEnders = CharacterSet(charactersIn: ".。!?！？\n")
         let segments = trimmed.components(separatedBy: sentenceEnders)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        guard segments.count <= 2 else { return false }
-        // 금지어 — 압박·결과·반복 차단
+        guard segments.count >= 2 else { return (false, "문장수 부족: \(segments.count)개 < 2개") }
+        guard segments.count <= 3 else { return (false, "문장수 초과: \(segments.count)개 > 3개") }
         let banned = ["더 멀리", "멀리", "더 빨리", "빠르게", "더 많이", "더 길게", "치고", "위험", "과훈련", "부상"]
-        for word in banned where trimmed.contains(word) { return false }
-        // 숫자 조작 차단
+        for word in banned where trimmed.contains(word) {
+            return (false, "금지어: 「\(word)」")
+        }
         let allowed = extractNumbers(from: factSummary)
         let aiNums  = extractNumbers(from: trimmed)
-        guard aiNums.isSubset(of: allowed) else { return false }
-        // 양성 검증: 패턴 필수 어휘군 중 하나 이상 포함
+        guard aiNums.isSubset(of: allowed) else {
+            return (false, "숫자조작: AI=\(aiNums.sorted()) 허용=\(allowed.sorted())")
+        }
         let vocab = requiredVocab(for: patternKey)
-        if !vocab.isEmpty && !vocab.contains(where: { trimmed.contains($0) }) { return false }
-        return true
+        if !vocab.isEmpty && !vocab.contains(where: { trimmed.contains($0) }) {
+            return (false, "양성어휘 없음: 필수=\(vocab)")
+        }
+        return (true, nil)
+    }
+
+    private static func validateWeeklyComment(_ text: String, factSummary: String, patternKey: String) -> Bool {
+        validateWeeklyCommentDetailed(text, factSummary: factSummary, patternKey: patternKey).valid
     }
 
     private static func extractNumbers(from text: String) -> Set<Int> {

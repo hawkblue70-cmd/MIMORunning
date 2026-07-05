@@ -1,5 +1,62 @@
 import Foundation
 
+// MARK: - InsightEngine 시스템 요약
+//
+// ┌── 우선순위 체계 ──────────────────────────────────────────────┐
+// │ 1. safety            안전·돌봄 (HR 과상승 / 더위 경보)       │
+// │ 2. firstAchievement  생애 첫 거리 달성                       │
+// │ 2. raceDay           대회 러닝                               │
+// │ 2. recordImproved    동거리 최고 페이스 PR                   │
+// │ 3. ── 동급 밴드(6종) ─── recency 타이브레이크 ─────────────  │
+// │    · adverseCondition  날씨 악조건 (비/더위·추위/강풍)       │
+// │    · tradeoff          지표 트레이드오프                     │
+// │    · tempExtreme       기온 극값 (개인 분포 상하위 5%)       │
+// │    · timeReunion       동일 시간대 60일+ 공백 후 재회        │
+// │    · milestone         누적 이정표 ← 동급 중 항상 최우선    │
+// │    · subThreshold      서브T 인터벌 절제 인정                │
+// │ 4. distanceExpanded · consistent · periodPositive · recovery  │
+// │ 5. default                                                    │
+// └──────────────────────────────────────────────────────────────┘
+//
+// ┌── 밴드 fact 침묵 조건 ────────────────────────────────────────┐
+// │ adverse      condition=nil / !hasAdverseSignal / 거리<1km   │
+// │ tradeoff     조건 없음 (거리↑·페이스↓, 심박↑·EF↑ 등)       │
+// │ tempExtreme  샘플<20 / 5‑95%ile 이내                        │
+// │ timeReunion  동일 시간대 60일 이내에 달린 기록 있음          │
+// │ milestone    현재 날짜 기준 이전 누적이 경계 미달             │
+// │ subT         운동구간<2 / zone5≥3% / 페이스 CV≥8%           │
+// └──────────────────────────────────────────────────────────────┘
+//
+// ┌── 시점 누적 원칙 ─────────────────────────────────────────────┐
+// │ milestone·timeReunion은 prior 집계 시                        │
+// │ filter { $0.date < a.date } 로 현재 런을 반드시 제외.        │
+// │ 미제외 시 이정표 조기 발화 → 다음 런에서 재발화 안 하는     │
+// │ 버그 발생. 이 원칙을 깨면 cacheVersion을 올려야 함.          │
+// └──────────────────────────────────────────────────────────────┘
+//
+// ┌── title 소유 규칙 ────────────────────────────────────────────┐
+// │ title은 규칙 엔진 단독 소유. AI는 detail만 재표현.           │
+// │ AIInsightOutput에 title 필드 없음.                           │
+// │ tryAIEnhance → InsightResult(title: base.title, …)           │
+// │ isRefined=true 캐시도 title = 규칙 엔진 값 그대로.           │
+// └──────────────────────────────────────────────────────────────┘
+//
+// ┌── 생성 상태 머신 ──────────────────────────────────────────────┐
+// │ idle → (task 진입, 캐시 없음) → waiting(재료 로드)            │
+// │     → (날씨 완료 OR 3초 타임아웃) → generating               │
+// │     → (InsightCache.cache 저장) → cached                     │
+// │ * cached: task 재진입 → fast path, 생성 0회                  │
+// │ * generating 중 재진입 → claimRefinedCompute 실패 → skip      │
+// │ * task 취소로 stale claim → 재진입 시 releaseRefinedCompute   │
+// │ ⚠ 이중 실행 금지: Phase1+Phase3 구조가 발열 원인이었음       │
+// └──────────────────────────────────────────────────────────────┘
+//
+// ┌── insightVersion(cacheVersion) 규칙 ──────────────────────────┐
+// │ · 로직 변경 시 InsightCache.cacheVersion 정수 +1              │
+// │ · 파일명에 버전 포함 → 구버전 캐시 자동 무시 (삭제 불요)     │
+// │ · 현재: v11 (title 고정 풀·금지어 정비·AI title 차단 완료)   │
+// └──────────────────────────────────────────────────────────────┘
+
 // MARK: - Output types
 
 enum InsightTheme: String, Codable {
@@ -14,6 +71,9 @@ enum InsightTheme: String, Codable {
     case tradeoff       // paired-metric reframe of a down metric
     case periodPositive // period total is down — positive scan
     case safety         // safety/environment note (highest priority)
+    case rarityFact     // temperature extreme, time-of-day reunion
+    case milestone      // lifetime cumulative distance milestone (once per crossing — always wins ties)
+    case subThreshold   // controlled effort acknowledgment (interval-structured runs only)
 }
 
 struct InsightResult: Codable {
@@ -37,9 +97,12 @@ struct InsightResult: Codable {
 struct InsightEngine {
 
     /// Compute the highest-priority insight for `activity` against full history.
-    /// Priority: safety > firstAchievement > raceDay > recordImproved > adverseCondition > tradeoff > distanceExpanded > consistent > periodPositive > recovery > default
-    /// Safety combines with big achievements (firstAchievement/raceDay) rather than suppressing them.
-    /// workoutType modulates the final title/detail; safety/raceDay/firstAchievement always win title unchanged.
+    /// Priority: safety > firstAchievement > raceDay > recordImproved
+    ///           > [adverseCondition ≈ tradeoff ≈ rarityFact ≈ milestone ≈ subThreshold]
+    ///           > distanceExpanded > consistent > periodPositive > recovery > default
+    /// Within the band, recency-based pick (oldest-shown theme wins); `.milestone` always wins ties.
+    /// p5 fatigueSign → soften non-critical themes (UserDefaults.mimo_weekly_p5_fatigue_active).
+    /// Safety combines with firstAchievement/raceDay rather than suppressing them.
     static func compute(
         activity: Activity,
         history: [Activity],
@@ -53,7 +116,11 @@ struct InsightEngine {
     ) -> InsightResult {
         let prior = history.filter { $0.id != activity.id && $0.type == activity.type }
 
-        let base: InsightResult
+        var base: InsightResult
+        #if DEBUG
+        var _dbgFacts = "[]"
+        var _dbgReason = "n/a"
+        #endif
         // Safety is the highest priority. For once-in-a-lifetime achievements (firstAchievement,
         // raceDay), safety becomes the title and the achievement is embedded in the detail line.
         let safetyCandidate = safetyNote(activity, prior, condition: condition)
@@ -74,21 +141,67 @@ struct InsightEngine {
             base = raceDayInsight(rm)
         } else if level >= .novice, let r = recordImproved(activity, prior, level: level) {
             base = r
-        } else if let r = adverseCondition(activity, condition) {
-            base = r
-        } else if let r = tradeoffInsight(activity, prior, detail: detail, splits: splits) {
-            base = r
-        } else if let r = distanceExpanded(activity, prior) {
-            base = r
-        } else if let r = consistent(activity, prior, level: level) {
-            base = r
-        } else if let r = periodicPositive(activity, prior) {
-            base = r
-        } else if level >= .novice, let r = recovery(activity, prior, level: level) {
-            base = r
         } else {
-            base = defaultInsight(activity, prior, level: level)
+            // Same-priority band: adverseCondition ≈ tradeoff ≈ rarityFact ≈ subThreshold.
+            // Collect all candidates then pick by recency (oldest-shown theme wins).
+            var band: [InsightResult] = []
+            if let r = adverseCondition(activity, condition) { band.append(r) }
+            if let r = tradeoffInsight(activity, prior, detail: detail, splits: splits) { band.append(r) }
+            if let r = rarityFact(activity, prior, condition: condition) { band.append(r) }
+            if let r = subThresholdRecognition(activity, intervalSegments, detail) { band.append(r) }
+
+            #if DEBUG
+            _dbgFacts = buildBandFactLog(activity, prior, condition: condition,
+                                         intervalSegments: intervalSegments, detail: detail, splits: splits)
+            let _histBefore = loadThemeHistory()
+            #endif
+
+            if let r = pickByRecency(band) {
+                base = r
+                #if DEBUG
+                let _wasNew = !_histBefore.contains(r.theme.rawValue)
+                _dbgReason = band.count == 1 ? "단독후보" : (_wasNew ? "우선순위동급-미노출우선" : "우선순위동급-반복방지")
+                #endif
+            } else if let r = distanceExpanded(activity, prior) {
+                base = r
+                #if DEBUG
+                _dbgReason = "band없음→distanceExpanded"
+                #endif
+            } else if let r = consistent(activity, prior, level: level) {
+                base = r
+                #if DEBUG
+                _dbgReason = "band없음→consistent"
+                #endif
+            } else if let r = periodicPositive(activity, prior) {
+                base = r
+                #if DEBUG
+                _dbgReason = "band없음→periodPositive"
+                #endif
+            } else if level >= .novice, let r = recovery(activity, prior, level: level) {
+                base = r
+                #if DEBUG
+                _dbgReason = "band없음→recovery"
+                #endif
+            } else {
+                base = defaultInsight(activity, prior, level: level)
+                #if DEBUG
+                _dbgReason = "band없음→default"
+                #endif
+            }
         }
+
+        // p5 weekly fatigue: soften non-critical themes when GrowthView signals fatigue
+        if isWeeklyFatigueActive() { base = applyFatigueContext(base) }
+
+        #if DEBUG
+        if _dbgReason == "n/a" { _dbgReason = base.theme.rawValue }
+        let _p5Tag = isWeeklyFatigueActive() ? " [p5]" : ""
+        let _dateStr: String = {
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: activity.date)
+        }()
+        let _distStr = String(format: "%.1fkm", activity.distance / 1000)
+        print("[DetailInsight] 재생성 activity=\(activity.id)(\(_dateStr), \(_distStr)) facts=\(_dbgFacts) selected=\(base.theme.rawValue) reason=\(_dbgReason)\(_p5Tag) title=\"\(base.title)\"")
+        #endif
 
         let typed = applyWorkoutType(base: base, workoutType: workoutType, activity: activity,
                                      splits: splits, intervalSegments: intervalSegments)
@@ -117,16 +230,18 @@ struct InsightEngine {
         case .interval:
             guard base.theme != .firstAchievement, base.theme != .adverseCondition,
                   base.theme != .raceDay, base.theme != .tradeoff,
-                  base.theme != .periodPositive, base.theme != .safety else { return base }
+                  base.theme != .periodPositive, base.theme != .safety,
+                  base.theme != .rarityFact, base.theme != .milestone,
+                  base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
             let title: String
             if base.theme == .recordImproved {
                 title = L.s("기록을 깬 인터벌", "PR Interval")
             } else {
                 title = pick(
-                    [L.s("한계를 깎는 인터벌", "Limit-Breaking Intervals"),
+                    [L.s("차오르는 인터벌", "Surging Intervals"),
                      L.s("스피드를 깨운 인터벌", "Speed Awakened"),
-                     L.s("심장을 끌어올린 인터벌", "Heart-Raising Intervals")],
+                     L.s("호흡을 끌어올린 인터벌", "Breath-Pushing Intervals")],
                     date: activity.date
                 )
             }
@@ -136,7 +251,9 @@ struct InsightEngine {
         case .longRun:
             guard base.theme != .firstAchievement, base.theme != .adverseCondition,
                   base.theme != .raceDay, base.theme != .tradeoff,
-                  base.theme != .periodPositive, base.theme != .safety else { return base }
+                  base.theme != .periodPositive, base.theme != .safety,
+                  base.theme != .rarityFact, base.theme != .milestone,
+                  base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
             let title: String
             let detail: String
@@ -156,7 +273,9 @@ struct InsightEngine {
         case .easy:
             guard base.theme != .firstAchievement, base.theme != .adverseCondition,
                   base.theme != .raceDay, base.theme != .tradeoff,
-                  base.theme != .periodPositive, base.theme != .safety else { return base }
+                  base.theme != .periodPositive, base.theme != .safety,
+                  base.theme != .rarityFact, base.theme != .milestone,
+                  base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
             return InsightResult(theme: .recovery,
                                  title: L.s("숨을 고른 이지런", "Easy Does It"),
@@ -165,7 +284,9 @@ struct InsightEngine {
         case .tempo:
             guard base.theme != .firstAchievement, base.theme != .adverseCondition,
                   base.theme != .raceDay, base.theme != .tradeoff,
-                  base.theme != .periodPositive, base.theme != .safety else { return base }
+                  base.theme != .periodPositive, base.theme != .safety,
+                  base.theme != .rarityFact, base.theme != .milestone,
+                  base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
             let title: String
             if base.theme == .recordImproved {
@@ -182,7 +303,9 @@ struct InsightEngine {
         case .buildUp:
             guard base.theme != .firstAchievement, base.theme != .adverseCondition,
                   base.theme != .raceDay, base.theme != .tradeoff,
-                  base.theme != .periodPositive, base.theme != .safety else { return base }
+                  base.theme != .periodPositive, base.theme != .safety,
+                  base.theme != .rarityFact, base.theme != .milestone,
+                  base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
             let title = base.theme == .recordImproved
                 ? L.s("기록을 쓴 빌드업", "PR Build-Up")
@@ -198,7 +321,9 @@ struct InsightEngine {
         case .lsd:
             guard base.theme != .firstAchievement, base.theme != .adverseCondition,
                   base.theme != .raceDay, base.theme != .tradeoff,
-                  base.theme != .periodPositive, base.theme != .safety else { return base }
+                  base.theme != .periodPositive, base.theme != .safety,
+                  base.theme != .rarityFact, base.theme != .milestone,
+                  base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
             let title = pick([L.s("느리게 길게 간 LSD", "Long Slow Distance"),
                               L.s("유산소 엔진을 키운 LSD", "Aerobic Engine Builder"),
@@ -211,7 +336,9 @@ struct InsightEngine {
         case .distanceRun:
             guard base.theme != .firstAchievement, base.theme != .adverseCondition,
                   base.theme != .raceDay, base.theme != .tradeoff,
-                  base.theme != .periodPositive, base.theme != .safety else { return base }
+                  base.theme != .periodPositive, base.theme != .safety,
+                  base.theme != .rarityFact, base.theme != .milestone,
+                  base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
             let title = base.theme == .recordImproved
                 ? L.s("기록을 쓴 거리주", "PR Distance Run")
@@ -343,9 +470,9 @@ struct InsightEngine {
             switch level {
             case .advanced, .elite:
                 return (L.s("효율의 러닝", "Efficiency Run"),
-                        L.s("동일 거리 페이스 갱신 — 한계를 넘어서는 중", "PR on same distance — limits keep dropping"))
+                        L.s("동일 거리 페이스 갱신 — 꾸준히 나아지고 있어요", "PR on same distance — steady improvement"))
             default:
-                return (L.s("한계를 미는 러닝", "Pushing Limits"),
+                return (L.s("페이스가 자란 러닝", "Growing Pace"),
                         L.s("최근 동일 거리 중 가장 빠른 페이스 \(a.formattedPace ?? "")",
                             "Fastest pace on this distance recently: \(a.formattedPace ?? "")"))
             }
@@ -363,10 +490,14 @@ struct InsightEngine {
 
         let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)) ?? .distantPast
         let priorThisWeek = prior.filter { $0.date >= weekStart }
+        let distanceTitles = [L.s("경계를 넓힌 러닝", "Expanding Boundaries"),
+                              L.s("낯선 거리를 만난 날", "Into New Distance"),
+                              L.s("거리의 문을 연 러닝", "Opening New Distance")]
         if !priorThisWeek.isEmpty, let maxWeek = priorThisWeek.map(\.distance).max(),
            a.distance > maxWeek {
+            let idx = nextTitleIdx(for: "distanceExpanded", poolSize: 3)
             return InsightResult(theme: .distanceExpanded,
-                                 title: L.s("경계를 넓힌 러닝", "Expanding Boundaries"),
+                                 title: distanceTitles[idx],
                                  detail: L.s("이번 주 최장 거리 \(a.formattedDistance)", "Longest run this week: \(a.formattedDistance)"))
         }
 
@@ -374,8 +505,9 @@ struct InsightEngine {
         let priorThisMonth = prior.filter { $0.date >= monthStart }
         guard !priorThisMonth.isEmpty, let maxMonth = priorThisMonth.map(\.distance).max(),
               a.distance > maxMonth else { return nil }
+        let idx = nextTitleIdx(for: "distanceExpanded", poolSize: 3)
         return InsightResult(theme: .distanceExpanded,
-                             title: L.s("경계를 넓힌 러닝", "Expanding Boundaries"),
+                             title: distanceTitles[idx],
                              detail: L.s("이번 달 최장 거리 \(a.formattedDistance)", "Longest run this month: \(a.formattedDistance)"))
     }
 
@@ -403,21 +535,14 @@ struct InsightEngine {
             }
         }
         let L = AppLanguage.shared
+        let consistentTitles = [L.s("꾸준함이 쌓이는 러닝", "Building Consistency"),
+                                L.s("쌓이는 러닝", "Stacking Up"),
+                                L.s("이어지는 러닝", "Keeping It Going")]
         if streak >= streakThreshold {
-            let (title, detail): (String, String) = {
-                switch level {
-                case .beginner:
-                    return (L.s("꾸준함이 쌓이는 러닝", "Building Consistency"),
-                            L.s("\(streak)주 연속 — 루틴이 만들어지고 있어요", "\(streak) weeks straight — building a routine"))
-                case .advanced, .elite:
-                    return (L.s("자산 축적 러닝", "Banking Miles"),
-                            L.s("\(streak)주 연속 러닝", "\(streak) weeks in a row"))
-                default:
-                    return (L.s("쌓이는 러닝", "Stacking Up"),
-                            L.s("\(streak)주 연속 러닝", "\(streak) weeks in a row"))
-                }
-            }()
-            return InsightResult(theme: .consistent, title: title, detail: detail)
+            let idx = nextTitleIdx(for: "consistent", poolSize: 3)
+            return InsightResult(theme: .consistent,
+                                 title: consistentTitles[idx],
+                                 detail: L.s("\(streak)주 연속 러닝", "\(streak) weeks in a row"))
         }
 
         let thisWeekStart = cal.date(
@@ -426,17 +551,10 @@ struct InsightEngine {
         let thisWeekCount = prior.filter { $0.date >= thisWeekStart }.count + 1
         let weekCountThreshold = level == .beginner ? 2 : 3
         if thisWeekCount >= weekCountThreshold {
-            let (title, detail): (String, String) = {
-                switch level {
-                case .beginner:
-                    return (L.s("꾸준함이 쌓이는 러닝", "Building Consistency"),
-                            L.s("이번 주 \(thisWeekCount)번째 러닝", "Run #\(thisWeekCount) this week"))
-                default:
-                    return (L.s("쌓이는 러닝", "Stacking Up"),
-                            L.s("이번 주 \(thisWeekCount)번째 러닝", "Run #\(thisWeekCount) this week"))
-                }
-            }()
-            return InsightResult(theme: .consistent, title: title, detail: detail)
+            let idx = nextTitleIdx(for: "consistent", poolSize: 3)
+            return InsightResult(theme: .consistent,
+                                 title: consistentTitles[idx],
+                                 detail: L.s("이번 주 \(thisWeekCount)번째 러닝", "Run #\(thisWeekCount) this week"))
         }
         return nil
     }
@@ -475,12 +593,12 @@ struct InsightEngine {
             }
             if w.isHot {
                 return InsightResult(theme: .adverseCondition,
-                                     title: L.s("더위를 이겨낸 러닝", "Beating the Heat"),
+                                     title: L.s("궂은 날의 완주", "Finishing Through It"),
                                      detail: L.s("\(w.formattedTemp) 더위에도 끝까지", "\(w.formattedTemp) heat, but you finished"))
             }
             if w.isCold {
                 return InsightResult(theme: .adverseCondition,
-                                     title: L.s("추위를 뚫은 러닝", "Pushing Through the Cold"),
+                                     title: L.s("궂은 날의 완주", "Finishing Through It"),
                                      detail: L.s("\(w.formattedTemp) — 나오는 것만으로도 반", "\(w.formattedTemp) — getting out was half the battle"))
             }
             return InsightResult(theme: .adverseCondition,
@@ -521,8 +639,9 @@ struct InsightEngine {
         #if canImport(FoundationModels)
         if #available(iOS 26, *) {
             guard let enhanced = await InsightAIGenerator.enhance(base) else { return nil }
-            return InsightResult(theme: enhanced.theme, workoutType: enhanced.workoutType,
-                                 title: enhanced.title, detail: enhanced.detail, aiEnhanced: true)
+            // Title always comes from the rule engine (base) — AI may only rewrite detail.
+            return InsightResult(theme: base.theme, workoutType: base.workoutType,
+                                 title: base.title, detail: enhanced.detail, aiEnhanced: true)
         }
         #endif
         return nil
@@ -827,4 +946,433 @@ struct InsightEngine {
                                  detail: L.s("오늘도 꾸준히 쌓아갑니다", "Steady progress, one run at a time"))
         }
     }
+
+    // MARK: - Rarity facts
+
+    /// Umbrella collector. Tries: temperature extreme → time-of-day reunion → cumulative 50 km milestone.
+    /// Also records current run's temperature for distribution tracking (deduped by activity ID).
+    private static func rarityFact(
+        _ a: Activity,
+        _ prior: [Activity],
+        condition: ActivityCondition?
+    ) -> InsightResult? {
+        if let tempC = condition?.weather?.tempC { recordTemperature(tempC, for: a.id) }
+        let historicalTemps = loadTemperatureHistory()
+        if let r = temperatureExtreme(a, condition: condition, historicalTemps: historicalTemps) { return r }
+        if let r = timeOfDayReunion(a, prior) { return r }
+        if let r = cumulativeMilestone(a, prior) { return r }
+        return nil
+    }
+
+    /// Fires when today's temperature is in the top/bottom 5% of the user's personal run-temperature
+    /// distribution. Silence when fewer than 20 samples exist.
+    private static func temperatureExtreme(
+        _ a: Activity,
+        condition: ActivityCondition?,
+        historicalTemps: [Double]
+    ) -> InsightResult? {
+        guard let tempC = condition?.weather?.tempC, historicalTemps.count >= 20 else { return nil }
+        let sorted = historicalTemps.sorted()
+        let n = sorted.count
+        let rank = sorted.filter { $0 <= tempC }.count
+        let percentile = Double(rank) / Double(n)
+        let L = AppLanguage.shared
+        if percentile >= 0.95 {
+            let idx = nextTitleIdx(for: "tempHot", poolSize: 3)
+            let titles = [L.s("가장 더운 축의 러닝", "One of Your Hottest Runs"),
+                          L.s("기온 상위 5%의 러닝", "Top 5% Heat Run"),
+                          L.s("뜨거운 날의 러닝", "Peak Heat Run")]
+            let details = [L.s("오늘 기온은 본인 러닝 기온 분포 상위 5% 이내예요", "Today's temp is within your top 5% running conditions"),
+                           L.s("이 더위에 달린 건 \(n)번의 기록 중 드문 편이에요", "Running in this heat is rare across your \(n) recorded runs"),
+                           L.s("본인 기온 분포 극단 — 더위 속 완주", "Near the extreme of your personal temperature range")]
+            return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
+        }
+        if percentile <= 0.05 {
+            let idx = nextTitleIdx(for: "tempCold", poolSize: 3)
+            let titles = [L.s("가장 추운 축의 러닝", "One of Your Coldest Runs"),
+                          L.s("기온 하위 5%의 러닝", "Bottom 5% Cold Run"),
+                          L.s("혹한 속 러닝", "Into the Cold")]
+            let details = [L.s("오늘 기온은 본인 러닝 기온 분포 하위 5% 이내예요", "Today's temp is within your bottom 5% running conditions"),
+                           L.s("이 추위에 달린 건 \(n)번의 기록 중 드문 편이에요", "Running in this cold is rare across your \(n) recorded runs"),
+                           L.s("본인 기온 분포 극단 — 혹한 속 완주", "Near the extreme of your personal temperature range")]
+            return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
+        }
+        return nil
+    }
+
+    /// Same time-slot (dawn/morning/midday/evening/night) last visited >60 days ago → "N개월 만의 OO 러닝".
+    /// First-ever visit to that slot → "첫 OO 러닝".
+    private static func timeOfDayReunion(_ a: Activity, _ prior: [Activity]) -> InsightResult? {
+        let cal = Calendar.current
+        let hour = cal.component(.hour, from: a.date)
+
+        func slotID(for h: Int) -> Int {
+            switch h { case 4..<7: return 0; case 7..<11: return 1; case 11..<16: return 2; case 16..<20: return 3; default: return 4 }
+        }
+        let slot = slotID(for: hour)
+        let (koName, enName): (String, String) = [("새벽","dawn"),("오전","morning"),("낮","midday"),("저녁","evening"),("밤","night")][slot]
+
+        let sameSlot = prior.filter { slotID(for: cal.component(.hour, from: $0.date)) == slot && $0.date < a.date }
+        let L = AppLanguage.shared
+
+        if sameSlot.isEmpty {
+            let idx = nextTitleIdx(for: "timeFirst", poolSize: 3)
+            let titles = [L.s("첫 \(koName) 러닝", "First \(enName.capitalized) Run"),
+                          L.s("\(koName)에 처음 달린 러닝", "Running at \(enName.capitalized) for the First Time"),
+                          L.s("\(koName) 러닝 첫 경험", "\(enName.capitalized) Run Debut")]
+            let details = [L.s("처음으로 \(koName)에 달렸어요", "First time running in the \(enName)"),
+                           L.s("\(koName) 러닝 첫 기록 — 시간대의 문을 열었어요", "First \(enName) run logged — a new window opens"),
+                           L.s("지금까지 \(koName)엔 달린 기록이 없었어요", "No prior runs at this time of day")]
+            return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
+        }
+        guard let lastVisit = sameSlot.max(by: { $0.date < $1.date }) else { return nil }
+        let days = cal.dateComponents([.day], from: lastVisit.date, to: a.date).day ?? 0
+        guard days >= 60 else { return nil }
+        let months = max(1, (days + 14) / 30)
+
+        let idx = nextTitleIdx(for: "timeReunion", poolSize: 3)
+        let titles = [L.s("\(months)개월 만의 \(koName) 러닝", "\(enName.capitalized) Run After \(months) Months"),
+                      L.s("오랜만의 \(koName) 러닝", "Back to \(enName.capitalized) Running"),
+                      L.s("\(months)개월 만에 다시 \(koName)에", "Back at \(enName.capitalized) After \(months) Months")]
+        let details = [L.s("\(months)개월 만에 다시 \(koName)에 달렸어요", "Back to \(enName) runs after \(months) months"),
+                       L.s("마지막 \(koName) 러닝이 \(days)일 전이었어요", "Your last \(enName) run was \(days) days ago"),
+                       L.s("오래된 시간대로 돌아왔어요 — \(months)개월 만", "Old time slot revisited — \(months) months later")]
+        return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
+    }
+
+    /// Fires when this run crosses any 50 km cumulative lifetime boundary.
+    private static func cumulativeMilestone(_ a: Activity, _ prior: [Activity]) -> InsightResult? {
+        let priorM   = prior.filter { $0.date < a.date }.reduce(0.0) { $0 + $1.distance }
+        let currentM = priorM + a.distance
+        let priorKm  = priorM   / 1000
+        let curKm    = currentM / 1000
+        let nextMark = (Int(priorKm / 50) + 1) * 50
+        guard curKm >= Double(nextMark) else { return nil }
+        let km = nextMark
+        let L = AppLanguage.shared
+        let idx = nextTitleIdx(for: "milestone", poolSize: 3)
+        let titles = [L.s("누적 \(km)km의 발자국", "\(km) km of Footprints"),
+                      L.s("\(km)km 이정표를 넘은 러닝", "Crossing \(km) km Total"),
+                      L.s("\(km)km이 쌓인 날", "\(km) km — Day It Stacked Up")]
+        let details = [L.s("이 러닝으로 누적 \(km)km에 도달했어요", "This run brought your total to \(km) km"),
+                       L.s("한 걸음 한 걸음 쌓아 \(km)km", "Step by step to \(km) km"),
+                       L.s("누적 \(Int(curKm))km — \(km)km 이정표 통과", "Lifetime: \(Int(curKm)) km, past the \(km) km mark")]
+        return InsightResult(theme: .milestone, title: titles[idx], detail: details[idx])
+    }
+
+    // MARK: - SubThreshold recognition
+
+    /// Fires only for interval-structured runs (≥2 work steps) when:
+    ///   (a) HR zone 5 fraction < 3% of total tracked HR time (or no HR zone data), AND
+    ///   (b) work-step pace CV < 8% (consistent pacing across all reps).
+    /// Acknowledges controlled discipline — no prescription, no set-count.
+    private static func subThresholdRecognition(
+        _ a: Activity,
+        _ intervalSegments: [IntervalSegment],
+        _ detail: ActivityDetail?
+    ) -> InsightResult? {
+        let workSteps = intervalSegments.filter { $0.stepLabel == "운동" }
+        guard workSteps.count >= 2 else { return nil }
+
+        if let hrZones = detail?.hrZones, !hrZones.isEmpty {
+            let z5Fraction = hrZones.first(where: { $0.id == 5 })?.fraction ?? 0.0
+            guard z5Fraction < 0.03 else { return nil }
+        }
+
+        let workPaces = workSteps.compactMap(\.paceSecPerKm)
+        guard workPaces.count >= 2 else { return nil }
+        let mean = workPaces.reduce(0, +) / Double(workPaces.count)
+        guard mean > 0 else { return nil }
+        let variance = workPaces.map { pow($0 - mean, 2) }.reduce(0, +) / Double(workPaces.count)
+        let cv = sqrt(variance) / mean
+        guard cv < 0.08 else { return nil }
+
+        let L = AppLanguage.shared
+        let idx = nextTitleIdx(for: "subThreshold", poolSize: 3)
+        let titles = [L.s("절제가 빛난 인터벌", "Discipline in Every Rep"),
+                      L.s("흔들리지 않은 인터벌", "Steady Through the Sets"),
+                      L.s("페이스를 지켜낸 인터벌", "Pace Held Throughout")]
+        let details = [L.s("심장이 요동쳐도 페이스는 일정 — 절제된 서브T 인터벌",
+                           "HR surged but pace stayed true — textbook sub-threshold control"),
+                       L.s("모든 구간 고른 페이스 — 과부하 없이 훈련 목표 완수",
+                           "Even splits across all reps — goal met without overreach"),
+                       L.s("빠르지만 무너지지 않은 인터벌 — 다음 훈련도 충전된 상태로",
+                           "Fast but controlled — you'll recover well for the next session")]
+        return InsightResult(theme: .subThreshold, title: titles[idx], detail: details[idx])
+    }
+
+    // MARK: - Fatigue context
+
+    /// Softens tone when GrowthView signals p5 fatigueSign active (UserDefaults bridge).
+    /// safety/firstAchievement/raceDay pass through unchanged.
+    /// Achievement themes: prepend fatigue note, preserve data.
+    /// Other themes: replace detail with completion acknowledgment.
+    private static func applyFatigueContext(_ base: InsightResult) -> InsightResult {
+        guard base.theme != .safety, base.theme != .firstAchievement,
+              base.theme != .raceDay, base.theme != .milestone else { return base }
+        let L = AppLanguage.shared
+        let seed = Int((base.title.unicodeScalars.first?.value ?? 1) % 4)
+        switch base.theme {
+        case .recordImproved, .distanceExpanded, .adverseCondition, .tradeoff, .rarityFact, .milestone, .subThreshold:
+            let prefixes = [L.s("몸이 무거운 흐름 속에서도 ", "Through heavy legs — "),
+                            L.s("피로가 쌓이는 주간에도 ", "Even in a heavy week — "),
+                            L.s("힘든 흐름 속에서도 ", "Despite the fatigue — "),
+                            L.s("무거운 몸으로도 ", "Heavy legs and all — ")]
+            return InsightResult(theme: base.theme, workoutType: base.workoutType,
+                                 title: base.title, detail: prefixes[seed] + base.detail)
+        default:
+            let replacements = [L.s("몸이 무거운 흐름 속에서도 완주한 러닝이에요.",
+                                    "A finish through heavy legs — that counts."),
+                                L.s("피로가 쌓이는 주간에도 나섰어요.",
+                                    "You showed up even in a heavy week."),
+                                L.s("힘든 흐름 속에서도 달렸어요.",
+                                    "Running through the fatigue takes its own strength."),
+                                L.s("무거운 몸을 끌고 나온 것 자체가 이미 성취예요.",
+                                    "Getting out the door with tired legs is its own win.")]
+            return InsightResult(theme: base.theme, workoutType: base.workoutType,
+                                 title: base.title, detail: replacements[seed])
+        }
+    }
+
+    // MARK: - UserDefaults stores
+
+    private static let tempHistoryKey    = "mimo_run_temp_history_v1"
+    private static let tempHistoryIDsKey = "mimo_run_temp_ids_v1"
+    private static let fatigueSignKey    = "mimo_weekly_p5_fatigue_active"
+    private static let themeHistoryKey   = "mimo_insight_theme_history_v1"
+    private static let titleIdxBaseKey   = "mimo_insight_title_idx_v1"
+
+    /// Returns the current index for the given key's title pool (size `poolSize`) and advances it for
+    /// the next call. Ensures sequential rotation through the pool without date-based repetition.
+    private static func nextTitleIdx(for key: String, poolSize: Int) -> Int {
+        let fullKey = "\(titleIdxBaseKey)_\(key)"
+        let ud = UserDefaults.standard
+        let current = ud.integer(forKey: fullKey) % poolSize
+        ud.set((current + 1) % poolSize, forKey: fullKey)
+        return current
+    }
+
+    /// Records temp for an activity once (deduped by UUID). Caps history at 200 (oldest dropped).
+    static func recordTemperature(_ tempC: Double, for activityID: UUID) {
+        let ud = UserDefaults.standard
+        var ids   = ud.array(forKey: tempHistoryIDsKey) as? [String] ?? []
+        var temps = ud.array(forKey: tempHistoryKey)    as? [Double] ?? []
+        let idStr = activityID.uuidString
+        guard !ids.contains(idStr) else { return }
+        ids.append(idStr); temps.append(tempC)
+        if temps.count > 200 { ids = Array(ids.dropFirst()); temps = Array(temps.dropFirst()) }
+        ud.set(ids,   forKey: tempHistoryIDsKey)
+        ud.set(temps, forKey: tempHistoryKey)
+    }
+
+    private static func loadTemperatureHistory() -> [Double] {
+        UserDefaults.standard.array(forKey: tempHistoryKey) as? [Double] ?? []
+    }
+
+    /// Called by GrowthView after weeklyPatternCache is updated.
+    static func updateFatigueSignal(active: Bool) {
+        UserDefaults.standard.set(active, forKey: fatigueSignKey)
+    }
+
+    private static func isWeeklyFatigueActive() -> Bool {
+        UserDefaults.standard.bool(forKey: fatigueSignKey)
+    }
+
+    private static func loadThemeHistory() -> [String] {
+        UserDefaults.standard.array(forKey: themeHistoryKey) as? [String] ?? []
+    }
+
+    private static func recordTheme(_ theme: InsightTheme) {
+        let ud = UserDefaults.standard
+        var h = ud.array(forKey: themeHistoryKey) as? [String] ?? []
+        h.append(theme.rawValue)
+        if h.count > 10 { h = Array(h.suffix(10)) }
+        ud.set(h, forKey: themeHistoryKey)
+    }
+
+    /// From same-priority candidates, returns the one whose theme was seen LEAST recently.
+    /// `.milestone` is a once-in-a-lifetime fact — it always wins the tie-break.
+    /// Never-seen themes win over previously-seen ones. Records the winner to history.
+    private static func pickByRecency(_ candidates: [InsightResult]) -> InsightResult? {
+        guard !candidates.isEmpty else { return nil }
+        // Milestones are crossed at most once per boundary — always prefer over recency picks
+        if let m = candidates.first(where: { $0.theme == .milestone }) {
+            recordTheme(m.theme)
+            return m
+        }
+        let history = loadThemeHistory()
+        let winner = candidates.min { a, b in
+            let ai = history.lastIndex(of: a.theme.rawValue) ?? -1
+            let bi = history.lastIndex(of: b.theme.rawValue) ?? -1
+            return ai < bi
+        }
+        if let w = winner { recordTheme(w.theme) }
+        return winner
+    }
+
+    // MARK: - DEBUG fact log (stripped from release builds)
+
+    #if DEBUG
+    /// Probes all same-priority band facts and returns a diagnostic string.
+    /// Called only in DEBUG builds; re-runs checks without side-effects (temp recording is idempotent).
+    private static func buildBandFactLog(
+        _ a: Activity, _ prior: [Activity],
+        condition: ActivityCondition?,
+        intervalSegments: [IntervalSegment],
+        detail: ActivityDetail?,
+        splits: [SplitData]
+    ) -> String {
+        var parts: [String] = []
+
+        // adverseCondition (moved into band)
+        let advR = adverseCondition(a, condition)
+        if let advR = advR {
+            parts.append("adverse(발화:\(advR.title))")
+        } else if condition == nil {
+            parts.append("adverse(침묵:날씨없음)")
+        } else if !(condition?.hasAdverseSignal ?? false) {
+            parts.append("adverse(침묵:정상날씨)")
+        } else if a.distance < 1000 {
+            parts.append("adverse(침묵:거리<1km)")
+        } else {
+            parts.append("adverse(침묵:날씨OK)")
+        }
+
+        // tradeoff
+        let tradeoffFired = tradeoffInsight(a, prior, detail: detail, splits: splits) != nil
+        parts.append("tradeoff(\(tradeoffFired ? "발화" : "침묵"))")
+
+        // temperature extreme
+        let hTemps = loadTemperatureHistory()
+        if let tempC = condition?.weather?.tempC {
+            if hTemps.count < 20 {
+                parts.append("tempExtreme(침묵:표본\(hTemps.count)<20)")
+            } else {
+                let sorted = hTemps.sorted()
+                let pct = Double(sorted.filter { $0 <= tempC }.count) / Double(sorted.count)
+                if pct >= 0.95      { parts.append("tempExtreme(발화:상위5%·\(Int(tempC))°C)") }
+                else if pct <= 0.05 { parts.append("tempExtreme(발화:하위5%·\(Int(tempC))°C)") }
+                else                { parts.append("tempExtreme(침묵:\(Int(pct*100))%ile·\(Int(tempC))°C)") }
+            }
+        } else {
+            parts.append("tempExtreme(침묵:기온없음)")
+        }
+
+        // time-of-day reunion
+        let cal = Calendar.current
+        let hour = cal.component(.hour, from: a.date)
+        func sid(_ h: Int) -> Int {
+            switch h { case 4..<7: return 0; case 7..<11: return 1; case 11..<16: return 2; case 16..<20: return 3; default: return 4 }
+        }
+        let slot = sid(hour)
+        let slotNames = ["새벽","오전","낮","저녁","밤"]
+        let sameSlot = prior.filter { sid(cal.component(.hour, from: $0.date)) == slot && $0.date < a.date }
+        if sameSlot.isEmpty {
+            parts.append("timeReunion(발화:첫\(slotNames[slot]))")
+        } else if let last = sameSlot.max(by: { $0.date < $1.date }) {
+            let days = cal.dateComponents([.day], from: last.date, to: a.date).day ?? 0
+            if days >= 60 { parts.append("timeReunion(발화:\(days)일만의\(slotNames[slot]))") }
+            else          { parts.append("timeReunion(침묵:최근\(days)일)") }
+        } else {
+            parts.append("timeReunion(침묵)")
+        }
+
+        // cumulative milestone
+        let priorKm = prior.filter { $0.date < a.date }.reduce(0.0) { $0 + $1.distance } / 1000
+        let curKm   = priorKm + a.distance / 1000
+        let nextMark = (Int(priorKm / 50) + 1) * 50
+        if curKm >= Double(nextMark) {
+            parts.append("milestone(발화:\(nextMark)km·현재\(Int(curKm))km)")
+        } else {
+            let rem = Double(nextMark) - curKm
+            parts.append("milestone(침묵:다음\(nextMark)km·\(String(format:"%.1f",rem))km남음)")
+        }
+
+        // subThreshold
+        let workSteps = intervalSegments.filter { $0.stepLabel == "운동" }
+        if workSteps.count < 2 {
+            parts.append("subT(침묵:운동구간\(workSteps.count)개)")
+        } else {
+            let z5 = detail?.hrZones.first(where: { $0.id == 5 })?.fraction ?? -1
+            if z5 >= 0.03 {
+                parts.append("subT(침묵:zone5=\(Int(z5*100))%≥3%)")
+            } else {
+                let paces = workSteps.compactMap(\.paceSecPerKm)
+                if paces.count < 2 {
+                    parts.append("subT(침묵:페이스없음)")
+                } else {
+                    let mean = paces.reduce(0,+) / Double(paces.count)
+                    let cv   = mean > 0 ? sqrt(paces.map { pow($0-mean,2) }.reduce(0,+)/Double(paces.count))/mean : 999
+                    if cv < 0.08 { parts.append("subT(발화:CV=\(String(format:"%.1f",cv*100))%)") }
+                    else         { parts.append("subT(침묵:CV=\(String(format:"%.1f",cv*100))%≥8%)") }
+                }
+            }
+        }
+
+        return "[" + parts.joined(separator: ", ") + "]"
+    }
+
+    /// Scans every static Korean title string against the forbidden-word list.
+    /// Call once at app launch to catch regressions before they ship.
+    static func auditTitlePools() {
+        let forbidden = ["더 빨리", "더 멀리", "더 많이", "격렬", "폭발", "한계", "심장을"]
+        let allTitles: [String] = [
+            // distanceExpanded
+            "경계를 넓힌 러닝", "낯선 거리를 만난 날", "거리의 문을 연 러닝",
+            // consistent
+            "꾸준함이 쌓이는 러닝", "쌓이는 러닝", "이어지는 러닝",
+            // milestone (km placeholder)
+            "누적 NNNkm의 발자국", "NNNkm 이정표를 넘은 러닝", "NNNkm이 쌓인 날",
+            // tempHot
+            "가장 더운 축의 러닝", "기온 상위 5%의 러닝", "뜨거운 날의 러닝",
+            // tempCold
+            "가장 추운 축의 러닝", "기온 하위 5%의 러닝", "혹한 속 러닝",
+            // timeFirst / timeReunion (slot name substituted)
+            "첫 새벽 러닝", "새벽에 처음 달린 러닝", "새벽 러닝 첫 경험",
+            "N개월 만의 새벽 러닝", "오랜만의 새벽 러닝", "N개월 만에 다시 새벽에",
+            // subThreshold
+            "절제가 빛난 인터벌", "흔들리지 않은 인터벌", "페이스를 지켜낸 인터벌",
+            // adverseCondition
+            "빗속을 달린 러닝", "궂은 날의 완주", "바람을 가른 러닝",
+            // recordImproved
+            "효율의 러닝", "페이스가 자란 러닝",
+            // firstAchievement
+            "문을 연 러닝",
+            // recovery
+            "숨 고르는 러닝",
+            // raceDay
+            "마라톤 완주 러닝", "하프 완주 러닝", "10K 대회 러닝", "5K 대회 러닝", "대회 러닝",
+            // tradeoff
+            "심폐가 단단해지는 러닝", "지구력을 쌓는 러닝", "보폭이 자라는 러닝",
+            "폼이 다듬어지는 러닝", "스피드의 정당한 대가",
+            // safety
+            "오늘 심박이 평소보다 높았어요",
+            "더위 속 장거리 — 잘 해냈어요", "열기를 이겨낸 장거리", "더운 날의 긴 거리",
+            "더운 날 잘 뛰었어요", "열기 속 러닝 완료", "더위와 함께 달린 러닝",
+            // applyWorkoutType
+            "기록을 깬 인터벌", "차오르는 인터벌", "스피드를 깨운 인터벌", "호흡을 끌어올린 인터벌",
+            "기록을 쓴 롱런", "멀리 나아간 롱런", "지구력을 쌓은 롱런",
+            "숨을 고른 이지런",
+            "기록을 깬 템포", "리듬을 탄 템포", "임계점을 밀어붙인 템포",
+            "기록을 쓴 빌드업", "후반이 가장 빨랐던 빌드업", "끝으로 갈수록 강해진 러닝", "마지막을 위해 달린 빌드업",
+            "느리게 길게 간 LSD", "유산소 엔진을 키운 LSD", "천천히 멀리 간 러닝",
+            "레이스처럼 달린 거리주", "목표 페이스로 달린 거리주", "강도 있게 달린 거리주",
+            // periodPositive
+            "밀도가 높아진 러닝", "집중된 달의 러닝", "꾸준히 이어가는 러닝",
+            "이정표를 넘은 러닝", "부하를 내린 러닝", "쉬운 달에도 이어가는 러닝",
+            // default
+            "시작이 전부인 러닝", "자산 축적 러닝", "오늘도 나온 러닝",
+        ]
+        var found = 0
+        for title in allTitles {
+            for word in forbidden where title.contains(word) {
+                print("[InsightTitleAudit] ⚠️ 금지어 '\(word)' in → \"\(title)\"")
+                found += 1
+            }
+        }
+        if found == 0 {
+            print("[InsightTitleAudit] ✓ 금지어 없음 (\(allTitles.count)개 검사)")
+        }
+    }
+    #endif
 }

@@ -537,6 +537,7 @@ struct ActivityDetailView: View {
             seriesPanel(icon: "figure.run", label: AppLanguage.shared.s("케이던스", "Cadence"), unit: "spm",
                         color: Theme.cadence, format: "%.0f", useRangeBar: false,
                         validMin: 130,
+                        overrideAvg: detail?.avgCadence.map { Double($0) },
                         available: detail?.avgCadence != nil)
         case .power:
             seriesPanel(icon: "bolt.fill", label: AppLanguage.shared.s("파워", "Power"), unit: "W",
@@ -588,7 +589,7 @@ struct ActivityDetailView: View {
     @ViewBuilder
     private func seriesPanel(icon: String, label: String, unit: String,
                              color: Color, format: String, useRangeBar: Bool = false,
-                             validMin: Double = 0,
+                             validMin: Double = 0, overrideAvg: Double? = nil,
                              available: Bool) -> some View {
         if !available {
             panelPlaceholder(icon: icon, message: AppLanguage.shared.s("\(label) 없음", "No \(label)"))
@@ -599,7 +600,7 @@ struct ActivityDetailView: View {
         } else {
             MetricBarPanelChart(samples: panelSeriesData, color: color,
                                 unit: unit, format: format, useRangeBar: useRangeBar,
-                                validMin: validMin)
+                                validMin: validMin, overrideAvg: overrideAvg)
         }
     }
 
@@ -3257,6 +3258,8 @@ struct MetricBarPanelChart: View {
     var validMin: Double = 0
     var barWidthOverride: CGFloat? = nil
     var compact: Bool = false
+    /// 지표 타일 값을 그대로 표시해 두 화면의 평균이 일치하도록 강제. nil이면 차트 샘플 산술 평균 사용.
+    var overrideAvg: Double? = nil
 
     private struct Bucket: Identifiable {
         let id: Int
@@ -3289,6 +3292,7 @@ struct MetricBarPanelChart: View {
     private var barWidth: CGFloat { barWidthOverride ?? 3 }
 
     private var avgValue: Double? {
+        if let ov = overrideAvg { return ov }
         let valid = samples.filter { $0.value > validMin }.map(\.value)
         guard !valid.isEmpty else { return nil }
         return valid.reduce(0, +) / Double(valid.count)

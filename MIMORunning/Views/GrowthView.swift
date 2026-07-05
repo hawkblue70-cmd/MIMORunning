@@ -110,6 +110,16 @@ struct GrowthView: View {
     @State private var showWeeklyShareCard = false
     @State private var showMileageStreakShareCard = false
 
+    // 버전을 올리면 해당 주의 코멘트 캐시(메모리·디스크)가 자동 무효화됨
+    private static let weeklyCommentVersion = 7
+    private static let debugBypassCache = false
+    private static let debugBypassDailyLimit = false
+    // 2026-07 검증: 온디바이스 모델이 3요소 총평 규격을 재시도에도 못 맞춤
+    // (감사합니다 종결, 동일 출력 반복). 템플릿 확정. 모델 개선 시 true로 재평가.
+    private static let useAITotalComment = false
+    @State private var weeklySummary: WeeklySummary? = nil
+    @State private var lastWeeklyCommentInputKey: String = ""
+
     private static let weekLabelFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "M/d"; return f
     }()
@@ -148,12 +158,12 @@ struct GrowthView: View {
         heatmapColumnsCache = cols
         weekStreakCache  = weekStreak()
 
-        // Pace trend from recent runs (sec/km values — down = faster = good)
-        let paceSamples = runs.prefix(14).compactMap { $0.paceSecPerKm }.map { Double($0) }
+        // Pace/HR trend — 날짜 기반(-14일): 6개 폼 지표·구성 게이트와 동일 윈도우
+        let trendWindow14 = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
+        let paceHrWindow = runs.filter { $0.date >= trendWindow14 }
+        let paceSamples = paceHrWindow.compactMap { $0.paceSecPerKm }.map { Double($0) }
         paceAnalysisCache = trendDirection(values: Array(paceSamples.reversed()))
-
-        // HR trend from recent runs
-        let hrSamples = runs.prefix(14).compactMap { $0.avgHeartRate }.map { Double($0) }
+        let hrSamples = paceHrWindow.compactMap { $0.avgHeartRate }.map { Double($0) }
         hrAnalysisCache = trendDirection(values: Array(hrSamples.reversed()))
 
         // Longest run this week
@@ -209,6 +219,10 @@ struct GrowthView: View {
             showTimeMileage = (bucket == .beginner || bucket == .novice)
             await checkBodyDataAvailability()
             await refreshMetricAnalyses()
+        }
+        .onAppear {
+            // .task는 첫 진입 1회만 실행 — 탭 재진입 시 신체 측정 최신화
+            Task { await checkBodyDataAvailability() }
         }
         .sheet(item: $selectedTrend) { metric in
             MetricTrendView(
@@ -619,12 +633,14 @@ struct GrowthView: View {
                     }
                 }
                 if showBodyMass {
-                    MetricSparkCard(metric: .bodyMass, manager: manager, usePounds: useMiles) {
+                    MetricSparkCard(metric: .bodyMass, manager: manager, usePounds: useMiles,
+                                    preloadedPoints: metricDataPoints[.bodyMass]) {
                         selectedTrend = .bodyMass
                     }
                 }
                 if showBodyFat {
-                    MetricSparkCard(metric: .bodyFatPercentage, manager: manager, usePounds: useMiles) {
+                    MetricSparkCard(metric: .bodyFatPercentage, manager: manager, usePounds: useMiles,
+                                    preloadedPoints: metricDataPoints[.bodyFatPercentage]) {
                         selectedTrend = .bodyFatPercentage
                     }
                 }
@@ -636,15 +652,22 @@ struct GrowthView: View {
     private var weeklyPatternCommentCard: some View {
         if let pattern = weeklyPatternCache.first, !weeklyCommentText.isEmpty {
             let style = weeklyPatternStyle(for: pattern.key)
-            HStack(spacing: 10) {
-                Image(systemName: style.symbol)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(style.color)
+            let woy = mondayCal.component(.weekOfYear, from: Date())
+            let headline = pattern.shortName(for: woy)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: style.symbol)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(style.color)
+                    Text(headline)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Spacer()
+                }
                 Text(weeklyCommentText)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                Spacer()
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(hex: "AEAEB2"))
+                    .lineLimit(3)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -655,14 +678,20 @@ struct GrowthView: View {
 
     private func weeklyPatternStyle(for key: String) -> (symbol: String, color: Color) {
         switch key {
-        case "economy":    return ("bolt.fill",             Color(hex: "F5C542"))
-        case "speed":      return ("hare.fill",             Color(hex: "5AC8FA"))
-        case "form":       return ("figure.run",            Theme.violet)
-        case "cardio":     return ("heart.fill",            Color(hex: "30D158"))
-        case "easy":       return ("leaf.fill",             Color(hex: "34C759"))
-        case "streak":     return ("flame.fill",            Color(hex: "FF9F0A"))
-        case "consistent": return ("checkmark.circle.fill", Theme.violet)
-        default:           return ("figure.walk",           Color(hex: "8A8A92"))
+        case "economy":           return ("bolt.fill",                    Color(hex: "F5C542"))
+        case "speed":             return ("hare.fill",                    Color(hex: "5AC8FA"))
+        case "form":              return ("figure.run",                   Theme.violet)
+        case "cardio":            return ("heart.fill",                   Color(hex: "30D158"))
+        case "easy":              return ("leaf.fill",                    Color(hex: "34C759"))
+        case "streak":            return ("flame.fill",                   Color(hex: "FF9F0A"))
+        case "consistent":        return ("checkmark.circle.fill",        Theme.violet)
+        case "fatigueSign":       return ("moon.fill",                    Color(hex: "FF9F0A"))
+        case "overstride":        return ("figure.walk",                  Color(hex: "FFD60A"))
+        case "economyPlus":       return ("sparkle",                      Color(hex: "5AC8FA"))
+        case "propulsion":        return ("arrow.up.forward.circle.fill", Theme.violet)
+        case "turnover":          return ("arrow.clockwise.circle.fill",  Color(hex: "64D2FF"))
+        case "compositionChange": return ("chart.bar.fill",               Color(hex: "FF9F0A"))
+        default:                  return ("figure.walk",                  Color(hex: "8A8A92"))
         }
     }
 
@@ -772,6 +801,8 @@ struct GrowthView: View {
     // MARK: - Body data availability
 
     private func checkBodyDataAvailability() async {
+        // 탭 진입마다 캐시를 지워 HealthKit 최신 신체 측정값 반영
+        manager.invalidateBodyMetricHistoryCache()
         let since = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
         async let bmTask = manager.fetchMetricHistory(.bodyMass, from: since)
         async let bfTask = manager.fetchMetricHistory(.bodyFatPercentage, from: since)
@@ -780,6 +811,10 @@ struct GrowthView: View {
             showBodyMass = !bm.isEmpty
             showBodyFat  = !bf.isEmpty
         }
+        // 카드가 preloadedPoints를 통해 즉시 최신 데이터를 표시할 수 있도록 미리 채움
+        let window14 = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
+        if !bm.isEmpty { metricDataPoints[.bodyMass]             = bm.filter { $0.date >= window14 } }
+        if !bf.isEmpty { metricDataPoints[.bodyFatPercentage]    = bf.filter { $0.date >= window14 } }
     }
 
     // MARK: - Metric trend analyses
@@ -844,66 +879,184 @@ struct GrowthView: View {
         let thisWeekRuns = runs.filter {
             cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.date) == nowComps
         }
+
+        // 구성 변화 게이트용 — 이번/직전 2주 고강도(인터벌/템포) 횟수
+        let twoWeeksAgo  = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
+        let fourWeeksAgo = Calendar.current.date(byAdding: .day, value: -28, to: Date()) ?? .distantPast
+        let intenseTypes: Set<WorkoutType> = [.interval, .tempo]
+        let thisWindowRuns = runs.filter { $0.date >= twoWeeksAgo }
+        let prevWindowRuns = runs.filter { $0.date >= fourWeeksAgo && $0.date < twoWeeksAgo }
+        let thisWindowIntenseCount = thisWindowRuns.filter {
+            manager.cachedWorkoutType(for: $0.id).map { intenseTypes.contains($0) } ?? false
+        }.count
+        let prevWindowIntenseCount = prevWindowRuns.filter {
+            manager.cachedWorkoutType(for: $0.id).map { intenseTypes.contains($0) } ?? false
+        }.count
+
         let inputs = WeeklyInsightInputs(
-            paceDirection:       paceAnalysisCache.direction,
-            hrDirection:         hrAnalysisCache.direction,
-            cadence:             results[.cadence]?.direction             ?? .insufficient,
-            power:               results[.power]?.direction               ?? .insufficient,
-            strideLength:        results[.strideLength]?.direction         ?? .insufficient,
-            groundContactTime:   results[.groundContactTime]?.direction    ?? .insufficient,
-            vertOsc:             results[.verticalOscillation]?.direction  ?? .insufficient,
-            vo2Max:              results[.vo2Max]?.direction               ?? .insufficient,
-            paceChangeRatio:     paceAnalysisCache.changeRatio,
-            hrChangeRatio:       hrAnalysisCache.changeRatio,
-            metricChangeRatios:  results.mapValues { $0.changeRatio },
-            weekStreak:          weekStreakCache,
-            runCount:            thisWeekRuns.count,
-            thisWeekDistanceKm:  thisWeekLongestKmCache
+            paceDirection:         paceAnalysisCache.direction,
+            hrDirection:           hrAnalysisCache.direction,
+            cadence:               results[.cadence]?.direction             ?? .insufficient,
+            power:                 results[.power]?.direction               ?? .insufficient,
+            strideLength:          results[.strideLength]?.direction         ?? .insufficient,
+            groundContactTime:     results[.groundContactTime]?.direction    ?? .insufficient,
+            vertOsc:               results[.verticalOscillation]?.direction  ?? .insufficient,
+            vo2Max:                results[.vo2Max]?.direction               ?? .insufficient,
+            paceChangeRatio:       paceAnalysisCache.changeRatio,
+            hrChangeRatio:         hrAnalysisCache.changeRatio,
+            metricChangeRatios:    results.mapValues { $0.changeRatio },
+            weekStreak:            weekStreakCache,
+            runCount:              thisWeekRuns.count,
+            thisWeekDistanceKm:    thisWeekLongestKmCache,
+            thisWindowIntenseCount: thisWindowIntenseCount,
+            prevWindowIntenseCount: prevWindowIntenseCount,
+            prevWindowRunCount:    prevWindowRuns.count
         )
-        weeklyPatternCache = detectWeeklyPatterns(inputs)
+        weeklyPatternCache = applyPatternRepeatGuard(detectWeeklyPatterns(inputs))
+        InsightEngine.updateFatigueSignal(active: weeklyPatternCache.contains { $0.key == "fatigueSign" })
+        weeklySummary = assembleWeeklySummary(
+            patterns: weeklyPatternCache,
+            inputs: inputs,
+            thisWindowRuns: thisWindowRuns,
+            recentWeeklyKms: weeklyKmsCache.suffix(4).map { $0.km }
+        )
 
         // ① 폴백 템플릿으로 즉시 표시
         let weekOfYear = mondayCal.component(.weekOfYear, from: Date())
-        guard let top = weeklyPatternCache.first else {
+        guard let summary = weeklySummary else {
             weeklyCommentText = ""
             return
         }
-        weeklyCommentText = top.template(for: weekOfYear, isEnglish: AppLanguage.shared.isEnglish)
+        weeklyCommentText = summary.template(for: weekOfYear, isEnglish: AppLanguage.shared.isEnglish)
 
         // ② 같은 주·같은 패턴이면 메모리 캐시 사용
         let year = mondayCal.component(.year, from: Date())
-        let cacheKey = "\(year)W\(weekOfYear)_\(top.key)"
-        if let cached = weeklyCommentCache[cacheKey] {
+        let cacheKey = "v\(Self.weeklyCommentVersion)_\(year)W\(weekOfYear)_\(summary.topPatternKey)"
+
+        // 중복 실행 방지: 직전 호출과 동일 입력이면 AI 재시도 스킵 (onChange 이중 실행 등 방어)
+        let inputKey = "\(cacheKey)|\(summary.aiFacts)"
+        guard inputKey != lastWeeklyCommentInputKey else {
+            #if DEBUG
+            print("[WeeklyComment] 중복 입력 스킵 key=\(cacheKey)")
+            #endif
+            return
+        }
+        lastWeeklyCommentInputKey = inputKey
+
+        if !Self.debugBypassCache, let cached = weeklyCommentCache[cacheKey] {
+            #if DEBUG
+            print("[WeeklyComment] 경로=② 메모리 캐시히트 key=\(cacheKey)")
+            #endif
             weeklyCommentText = cached
             return
         }
 
         // ③ 디스크(UserDefaults) 캐시 — 앱 재시작 후에도 AI 재실행 방지
         let udKey = "mimo_weekly_comment_\(cacheKey)"
-        if let persisted = UserDefaults.standard.string(forKey: udKey) {
+        let udDateKey = "\(udKey)_date"
+        if !Self.debugBypassCache, let persisted = UserDefaults.standard.string(forKey: udKey) {
+            #if DEBUG
+            let savedDate = UserDefaults.standard.object(forKey: udDateKey) as? Date
+            let dateStr = savedDate.map { ISO8601DateFormatter().string(from: $0) } ?? "날짜 미기록"
+            print("[WeeklyComment] 경로=③ 디스크 캐시히트 key=\(cacheKey) 저장일시=\(dateStr)")
+            #endif
             weeklyCommentText = persisted
             weeklyCommentCache[cacheKey] = persisted
             return
         }
 
+        #if DEBUG
+        print("[WeeklyComment] 경로=① 새 템플릿 생성 key=\(cacheKey) pattern=\(summary.topPatternKey)")
+        #endif
+
+        // 이번 주 패턴 히스토리 기록 (주당 1회 — 새 템플릿 생성 경로에서만)
+        let patternHistoryKey = "mimo_weekly_pattern_history"
+        let weekRecordKey = "mimo_weekly_pattern_recorded_\(year)W\(weekOfYear)"
+        if !UserDefaults.standard.bool(forKey: weekRecordKey) {
+            var history = (UserDefaults.standard.array(forKey: patternHistoryKey) as? [String]) ?? []
+            history.append(summary.topPatternKey)
+            if history.count > 5 { history = Array(history.suffix(5)) }
+            UserDefaults.standard.set(history, forKey: patternHistoryKey)
+            UserDefaults.standard.set(true, forKey: weekRecordKey)
+        }
+
         // ④ 하루 1회 한도 — 오늘 이미 AI가 실행됐으면 재실행 금지
         let today = ISO8601DateFormatter().string(from: Calendar.current.startOfDay(for: Date()))
         let dailyRunKey = "mimo_weekly_comment_ai_ran_\(today)"
-        guard !UserDefaults.standard.bool(forKey: dailyRunKey) else { return }
-
-        // ⑤ AI 강화 시도 (iOS 26+, 한국어, 사실 있을 때만)
-        #if canImport(FoundationModels)
-        if #available(iOS 26, *) {
-            if let aiText = await InsightAIGenerator.generateWeeklyComment(
-                patternKey: top.key, factSummary: top.factSummary
-            ) {
-                weeklyCommentText = aiText
-                weeklyCommentCache[cacheKey] = aiText
-                UserDefaults.standard.set(aiText, forKey: udKey)
-                UserDefaults.standard.set(true, forKey: dailyRunKey)
-            }
+        if !Self.debugBypassCache && !Self.debugBypassDailyLimit
+            && UserDefaults.standard.bool(forKey: dailyRunKey) {
+            #if DEBUG
+            print("[WeeklyComment] AI=④ 오늘 이미 실행됨 → 템플릿 디스크 저장")
+            print("[WeeklyComment] 저장 문장=\"\(weeklyCommentText)\"")
+            #endif
+            weeklyCommentCache[cacheKey] = weeklyCommentText
+            UserDefaults.standard.set(weeklyCommentText, forKey: udKey)
+            UserDefaults.standard.set(Date(), forKey: udDateKey)
+            return
         }
-        #endif
+
+        // ⑤ 총평 AI 경로 (useAITotalComment = true 일 때만 시도)
+        if Self.useAITotalComment {
+            #if canImport(FoundationModels)
+            if #available(iOS 26, *) {
+                let isAvail = InsightAIGenerator.isAvailable
+                let willTry = isAvail && !summary.aiFacts.isEmpty && !AppLanguage.shared.isEnglish
+                #if DEBUG
+                print("[WeeklyComment] AI=⑤ 사용가능=\(isAvail) 시도=\(willTry) 패턴=\(summary.topPatternKey)")
+                #endif
+                if willTry, let aiText = await InsightAIGenerator.generateWeeklyComment(
+                    patternKey: summary.shortNamePatternKey, factSummary: summary.aiFacts
+                ) {
+                    #if DEBUG
+                    print("[WeeklyComment] AI=⑤ 성공")
+                    print("  [AI원문]       \"\(aiText)\"")
+                    print("  [폴백 템플릿]  \"\(weeklyCommentText)\"")
+                    #endif
+                    weeklyCommentText = aiText
+                    weeklyCommentCache[cacheKey] = aiText
+                    UserDefaults.standard.set(aiText, forKey: udKey)
+                    UserDefaults.standard.set(Date(), forKey: udDateKey)
+                    UserDefaults.standard.set(true, forKey: dailyRunKey)
+                } else {
+                    #if DEBUG
+                    let skipReason = willTry ? "검증탈락·미지원" : "AI 비대상(\(summary.topPatternKey))"
+                    print("[WeeklyComment] AI=⑤ \(skipReason)")
+                    print("  [템플릿 저장]  \"\(weeklyCommentText)\"")
+                    #endif
+                    weeklyCommentCache[cacheKey] = weeklyCommentText
+                    UserDefaults.standard.set(weeklyCommentText, forKey: udKey)
+                    UserDefaults.standard.set(Date(), forKey: udDateKey)
+                    if willTry { UserDefaults.standard.set(true, forKey: dailyRunKey) }
+                }
+            } else {
+                weeklyCommentCache[cacheKey] = weeklyCommentText
+                UserDefaults.standard.set(weeklyCommentText, forKey: udKey)
+                UserDefaults.standard.set(Date(), forKey: udDateKey)
+            }
+            #else
+            weeklyCommentCache[cacheKey] = weeklyCommentText
+            UserDefaults.standard.set(weeklyCommentText, forKey: udKey)
+            UserDefaults.standard.set(Date(), forKey: udDateKey)
+            #endif
+        } else {
+            weeklyCommentCache[cacheKey] = weeklyCommentText
+            UserDefaults.standard.set(weeklyCommentText, forKey: udKey)
+            UserDefaults.standard.set(Date(), forKey: udDateKey)
+        }
+    }
+
+    // MARK: - Pattern repeat guard
+
+    /// 동일 패턴이 3주 연속 최상위에 오면 차순위로 교체. streak·consistent 는 면제.
+    private func applyPatternRepeatGuard(_ patterns: [WeeklyPattern]) -> [WeeklyPattern] {
+        guard patterns.count > 1, let top = patterns.first else { return patterns }
+        guard top.key != "streak" && top.key != "consistent" else { return patterns }
+        let historyKey = "mimo_weekly_pattern_history"
+        let history = (UserDefaults.standard.array(forKey: historyKey) as? [String]) ?? []
+        let recent = Array(history.suffix(3))
+        guard recent.count == 3 && recent.allSatisfy({ $0 == top.key }) else { return patterns }
+        // 최상위를 맨 뒤로 밀고 차순위를 앞으로
+        return Array(patterns.dropFirst()) + [top]
     }
 
     // MARK: - Journey milestones

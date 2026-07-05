@@ -12,5 +12,17 @@
 	<string>미모러닝은 건강 데이터를 직접 기록하지 않습니다. 모든 운동 기록은 기존 건강 앱의 데이터를 읽어 분석합니다.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>러닝 공유 카드를 사진첩에 저장합니다.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>러닝 공유 카드 및 영상을 사진첩에 저장하거나 사진을 불러옵니다.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Gaegu-Regular.ttf</string>
+		<string>NanumPenScript-Regular.ttf</string>
+		<string>NanumBrushScript-Regular.ttf</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

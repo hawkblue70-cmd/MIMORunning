@@ -1,6 +1,7 @@
 import Foundation
 import CoreLocation
 import Observation
+import SwiftData
 
 // MARK: - JSON race model
 
@@ -145,14 +146,16 @@ final class RaceDetector {
 
     private static let geocacheKey = "raceDetector.geocache.v2"
     private static let matchesKey  = "raceDetector.matches.v1"
+    private var modelContext: ModelContext?
     private var regionCache: [String: [String]] = [:]          // "lat,lon" → [province, city, …]
     private var cityHintCoordCache: [String: CLLocationCoordinate2D] = [:]  // "성남_경기" → coord
     private let geocoderService = GeocoderService()
 
     // MARK: - Setup (call once at app start)
 
-    func setup() async {
-        loadMatches()
+    func setup(context: ModelContext) async {
+        modelContext = context
+        await loadMatchesFromSwiftData(context)
         await loadAndGeocodeRaces()
     }
 
@@ -400,16 +403,42 @@ final class RaceDetector {
 
     // MARK: - Persistence
 
-    private func loadMatches() {
+    private func loadMatchesFromSwiftData(_ context: ModelContext) async {
+        let descriptor = FetchDescriptor<PersistedRaceMatchRecord>()
+        if let records = try? context.fetch(descriptor), !records.isEmpty {
+            matches = Dictionary(uniqueKeysWithValues: records.compactMap { r in
+                r.asPersistedRaceMatch.map { (r.activityID, $0) }
+            })
+            return
+        }
+        // No SwiftData records → 1회 UserDefaults 마이그레이션
         guard let data = UserDefaults.standard.data(forKey: Self.matchesKey),
-              let saved = try? JSONDecoder().decode([String: PersistedRaceMatch].self, from: data)
+              let saved = try? JSONDecoder().decode([String: PersistedRaceMatch].self, from: data),
+              !saved.isEmpty
         else { return }
         matches = saved
+        syncMatchesToSwiftData(context)
+        UserDefaults.standard.removeObject(forKey: Self.matchesKey)
+        #if DEBUG
+        print("RaceDetector: UserDefaults → SwiftData 마이그레이션 \(saved.count)건")
+        #endif
     }
 
     private func saveMatches() {
-        guard let data = try? JSONEncoder().encode(matches) else { return }
-        UserDefaults.standard.set(data, forKey: Self.matchesKey)
+        if let ctx = modelContext {
+            syncMatchesToSwiftData(ctx)
+        } else {
+            // 폴백: context 주입 전 호출 시 UserDefaults 임시 저장
+            guard let data = try? JSONEncoder().encode(matches) else { return }
+            UserDefaults.standard.set(data, forKey: Self.matchesKey)
+        }
+    }
+
+    private func syncMatchesToSwiftData(_ ctx: ModelContext) {
+        let descriptor = FetchDescriptor<PersistedRaceMatchRecord>()
+        if let existing = try? ctx.fetch(descriptor) { existing.forEach { ctx.delete($0) } }
+        for (_, match) in matches { ctx.insert(PersistedRaceMatchRecord(from: match)) }
+        try? ctx.save()
     }
 
     // MARK: - JSON loading + geocoding

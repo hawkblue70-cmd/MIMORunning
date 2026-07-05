@@ -263,7 +263,7 @@ struct BigNumberVideoOverlayView: View {
                 CardVisual.bottomScrim
 
                 VStack(alignment: .leading, spacing: 0) {
-                    // Wordmark
+                    // Wordmark — positioned inside the video safe zone top edge
                     HStack(spacing: 0) {
                         Text("MIMO")
                             .font(.system(size: 9 * s, weight: .black))
@@ -274,8 +274,8 @@ struct BigNumberVideoOverlayView: View {
                             .tracking(2)
                             .foregroundStyle(Theme.violet)
                     }
-                    .padding(.horizontal, 16 * s)
-                    .padding(.top, 16 * s)
+                    .padding(.horizontal, CardVisual.videoSafeHorizRef * s)
+                    .padding(.top, CardVisual.videoSafeTopRef * s)
 
                     // Mood + Memo
                     if mood != nil || memoText != nil {
@@ -361,8 +361,8 @@ struct BigNumberVideoOverlayView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                         }
                     }
-                    .padding(.horizontal, 20 * s)
-                    .padding(.bottom, 24 * s)
+                    .padding(.horizontal, CardVisual.videoSafeHorizRef * s)
+                    .padding(.bottom, CardVisual.videoSafeBottomRef * s)
                 }
             }
         }

@@ -11,14 +11,23 @@ actor InsightCache {
     }
 
     private var store: [Key: InsightResult] = [:]
+    private var refinedInFlight: Set<UUID> = []
 
     // MARK: - Lookup (in-memory → disk)
 
     func result(for activityID: UUID, isRefined: Bool, language: String) -> InsightResult? {
         let key = Key(activityID: activityID, isRefined: isRefined, language: language)
-        if let hit = store[key] { return hit }
+        if let hit = store[key] {
+            #if DEBUG
+            print("[DetailInsight] 캐시히트(메모리) v=\(Self.cacheVersion) isRefined=\(isRefined) selected=\(hit.theme.rawValue) title=\"\(hit.title)\"")
+            #endif
+            return hit
+        }
         if let disk = loadFromDisk(activityID: activityID, isRefined: isRefined, language: language) {
             store[key] = disk
+            #if DEBUG
+            print("[DetailInsight] 캐시히트(디스크) v=\(Self.cacheVersion) isRefined=\(isRefined) selected=\(disk.theme.rawValue) title=\"\(disk.title)\"")
+            #endif
             return disk
         }
         return nil
@@ -30,8 +39,20 @@ actor InsightCache {
         saveToDisk(result, activityID: activityID, isRefined: isRefined, language: language)
     }
 
+    /// Claims a refined-insight compute slot. Returns true if the caller may proceed; false if already in flight.
+    func claimRefinedCompute(_ activityID: UUID) -> Bool {
+        guard !refinedInFlight.contains(activityID) else { return false }
+        refinedInFlight.insert(activityID)
+        return true
+    }
+
+    func releaseRefinedCompute(_ activityID: UUID) {
+        refinedInFlight.remove(activityID)
+    }
+
     func invalidate(_ activityID: UUID) {
         store = store.filter { $0.key.activityID != activityID }
+        refinedInFlight.remove(activityID)   // Allow recomputation after explicit invalidation
     }
 
     func clear() {
@@ -41,7 +62,7 @@ actor InsightCache {
     // MARK: - Disk persistence
 
     // Bump this when insight generation logic changes to invalidate stale cache files.
-    private static let cacheVersion = 5
+    private static let cacheVersion = 11
 
     private func diskURL(activityID: UUID, isRefined: Bool, language: String) -> URL {
         let refined  = isRefined ? "1" : "0"

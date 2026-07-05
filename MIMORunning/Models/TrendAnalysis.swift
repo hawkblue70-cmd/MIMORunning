@@ -10,6 +10,7 @@ enum TrendSentiment {
 
 /// 선형회귀 기울기를 평균으로 정규화해 추세 방향을 판정.
 /// values = dataPoints.map(\.value) 형태로 넘길 것.
+// values는 반드시 시간순(오래된→최신). 최신순 배열을 넘기면 모든 방향 판정이 반전된다. 호출부에서 .reversed() 확인할 것.
 func trendDirection(values: [Double]) -> (direction: TrendDirection, changeRatio: Double) {
     let n = values.count
     guard n >= 4 else { return (.insufficient, 0) }

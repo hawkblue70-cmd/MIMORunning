@@ -42,6 +42,7 @@ struct MeView: View {
     @AppStorage("showRunning")  private var showRunning  = true
     @AppStorage("showWalking")  private var showWalking  = false
     @AppStorage("showHiking")   private var showHiking   = false
+    @AppStorage("cloudKitSyncAvailable") private var cloudKitSyncAvailable = false
 
     // MARK: - Period stats
 
@@ -590,6 +591,22 @@ struct MeView: View {
                         Text(manager.authorizationStatus == .authorized
                              ? AppLanguage.shared.s("연결됨", "Connected")
                              : AppLanguage.shared.s("미연결", "Not connected"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                thinDivider
+                settingRow {
+                    Label(AppLanguage.shared.s("iCloud 동기화", "iCloud Sync"), systemImage: "icloud")
+                        .foregroundStyle(.white)
+                    Spacer()
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(cloudKitSyncAvailable ? Theme.elevation : Color.gray)
+                            .frame(width: 7, height: 7)
+                        Text(cloudKitSyncAvailable
+                             ? AppLanguage.shared.s("사용 중", "Active")
+                             : AppLanguage.shared.s("사용 안 함", "Inactive"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1180,7 +1197,7 @@ private struct MiniMeCreatorView: View {
 // MARK: - Subscription Card
 
 struct SubscriptionSectionCard: View {
-    @ObservedObject private var pro = ProManager.shared
+    private let pro = ProManager.shared
 
     private var product: Product? { pro.products.first(where: { $0.id == ProManager.sixMonthID }) }
     private var isEligibleForIntro: Bool { pro.introEligibility[ProManager.sixMonthID] == true }
@@ -1423,4 +1440,59 @@ private struct AddShoeSheet: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
     }
+}
+
+// MARK: - Preview
+
+#Preview("설정 - iCloud 동기화 행") {
+    struct SyncCardPreview: View {
+        @AppStorage("cloudKitSyncAvailable") private var iCloudOn = true
+        var body: some View {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                VStack(spacing: 24) {
+                    // HealthKit + iCloud 카드 (실제 settingsSection과 동일 구조)
+                    VStack(spacing: 0) {
+                        row {
+                            Label("건강 앱", systemImage: "heart.text.square").foregroundStyle(.white)
+                            Spacer()
+                            HStack(spacing: 5) {
+                                Circle().fill(Theme.elevation).frame(width: 7, height: 7)
+                                Text("연결됨").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        divider
+                        row {
+                            Label("iCloud 동기화", systemImage: "icloud").foregroundStyle(.white)
+                            Spacer()
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(iCloudOn ? Theme.elevation : Color.gray)
+                                    .frame(width: 7, height: 7)
+                                Text(iCloudOn ? "사용 중" : "사용 안 함")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .padding(.horizontal, 16)
+
+                    // 토글로 두 상태 전환
+                    Toggle("iCloudOn 시뮬레이션", isOn: $iCloudOn)
+                        .tint(Theme.violet)
+                        .padding(.horizontal, 16)
+                }
+                .padding(.top, 40)
+            }
+        }
+
+        private func row<C: View>(@ViewBuilder _ c: () -> C) -> some View {
+            HStack { c() }.padding(.horizontal, 16).padding(.vertical, 13)
+        }
+        private var divider: some View {
+            Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5).padding(.horizontal, 16)
+        }
+    }
+    return SyncCardPreview().preferredColorScheme(.dark)
 }

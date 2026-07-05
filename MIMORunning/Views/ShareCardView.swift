@@ -2175,7 +2175,7 @@ struct ShareCardScreen: View {
                 weatherIcon: condition?.weather?.systemIcon,
                 date: activity.date,
                 shoeName: displayShoeName,
-                photo: template == .video ? videoPreviewImage : template == .story ? photoFor(2) : nil,
+                photo: template == .video ? videoPreviewImage : template == .story ? photoFor(3) : nil,
                 chartPanel: .map,
                 routeCoordinates: [],
                 accent: bigNumberAccent
@@ -3586,23 +3586,21 @@ struct ShareCardScreen: View {
                           shoeName: displayShoeName,
                           photo: nil)
         case .story:
-            if let photo = photoFor(1) {
-                PhotoShareCardView(activity: activity, photo: photo,
-                                   insightTitle: displayInsightTitle,
-                                   metrics: enabledMetricItems, raceName: activeRaceName,
-                                   story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
-                                   miniMeVariant: activeMiniMeVariant,
-                                   customMiniMeImage: activeMiniMeImage,
-                                   routeCoordinates: routeCoords,
-                                   chartPanel: cardPanel,
-                                   chartSplits: detail?.splits ?? [],
-                                   chartHRSamples: shareHRSamples,
-                                   chartHRZones: detail?.hrZones ?? [],
-                                   chartWorkoutSeries: shareWorkoutSeries,
-                                   chartIntervalSegments: detail?.intervalSegments ?? [],
-                                   weather: condition?.weather,
-                                   shoeName: displayShoeName,
-                                   photoOffset: $photoOffset)
+            if let photo = photoFor(2) {
+                ShareCardView(activity: activity, routeCoordinates: routeCoords,
+                              insightTitle: displayInsightTitle, metrics: enabledMetricItems,
+                              raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
+                              customMiniMeImage: activeMiniMeImage,
+                              story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                              chartPanel: cardPanel,
+                              chartSplits: detail?.splits ?? [],
+                              chartHRSamples: shareHRSamples,
+                              chartHRZones: detail?.hrZones ?? [],
+                              chartWorkoutSeries: shareWorkoutSeries,
+                              chartIntervalSegments: detail?.intervalSegments ?? [],
+                              weather: condition?.weather,
+                              shoeName: displayShoeName,
+                              photo: photo)
             } else if let s = story {
                 StoryShareCardView(activity: activity, routeCoordinates: routeCoords,
                                    story: s, insightTitle: displayInsightTitle,
@@ -4418,7 +4416,7 @@ struct ShareCardScreen: View {
             previewImage = nil
             let bnPhoto: UIImage? = template == .video ? videoPreviewImage
                 : template == .routeVideo ? routeSnapshot
-                : template == .story ? photoFor(2)
+                : template == .story ? photoFor(3)
                 : nil
             let bnCard = BigNumberCard(
                 activity: activity, detail: detail, heroMetric: heroMetric,
@@ -4533,37 +4531,30 @@ struct ShareCardScreen: View {
         // Use in-memory array if available (avoids @Query timing gap); fall back to disk on restart.
         let photos = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
 
-        // Story + selected photo: render data card, rest are plain images
-        if template == .story, let selPhoto = photoFor(1) {
+        // Athletic card + story template: render athletic card with selected photo background.
+        // Share only the single rendered card (no extra plain photos).
+        if template == .story, let selPhoto = photoFor(2) {
             let renderer = ImageRenderer(content:
-                PhotoShareCardView(activity: activity, photo: selPhoto,
-                                   insightTitle: displayInsightTitle,
-                                   metrics: enabledMetricItems, raceName: activeRaceName,
-                                   story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
-                                   miniMeVariant: activeMiniMeVariant,
-                                   customMiniMeImage: activeMiniMeImage,
-                                   routeCoordinates: routeCoords,
-                                   chartPanel: cardPanel,
-                                   chartSplits: detail?.splits ?? [],
-                                   chartHRSamples: shareHRSamples,
-                                   chartHRZones: detail?.hrZones ?? [],
-                                   chartWorkoutSeries: shareWorkoutSeries,
-                                   chartIntervalSegments: detail?.intervalSegments ?? [],
-                                   weather: condition?.weather,
-                                   shoeName: displayShoeName,
-                                   photoOffset: .constant(photoOffset))
+                ShareCardView(activity: activity, routeCoordinates: routeCoords,
+                              insightTitle: displayInsightTitle, metrics: enabledMetricItems,
+                              raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
+                              customMiniMeImage: activeMiniMeImage,
+                              story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                              chartPanel: cardPanel,
+                              chartSplits: detail?.splits ?? [],
+                              chartHRSamples: shareHRSamples,
+                              chartHRZones: detail?.hrZones ?? [],
+                              chartWorkoutSeries: shareWorkoutSeries,
+                              chartIntervalSegments: detail?.intervalSegments ?? [],
+                              weather: condition?.weather,
+                              shoeName: displayShoeName,
+                              photo: selPhoto)
                     .frame(width: 300, height: 375)
             )
             renderer.scale = 3
             guard let cardImg = renderer.uiImage else { isRendering = false; return }
             previewImage = cardImg
-            let selIdx = cardPhotoIndex[2] ?? 0
-            let plainPhotos = photos.enumerated()
-                .filter { $0.offset != selIdx }
-                .map { $0.element }
-            if !plainPhotos.isEmpty {
-                storyShareImages = [cardImg] + plainPhotos
-            }
+            storyShareImages = []
             isRendering = false
             return
         }

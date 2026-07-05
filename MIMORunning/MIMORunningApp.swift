@@ -19,18 +19,21 @@ struct MIMORunningApp: App {
             WorkoutStory.self, StoryPhoto.self, Shoe.self,
             OneLinerEntry.self, PersistedRaceMatchRecord.self
         ])
-        if let c = try? ModelContainer(for: schema,
-                                       configurations: ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)) {
-            UserDefaults.standard.set(true, forKey: "cloudKitSyncAvailable")
-            return c
-        }
         let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "MIMORunning", category: "CloudKit")
-        log.warning("CloudKit ModelContainer 초기화 실패 — 로컬 전용으로 강등")
-        UserDefaults.standard.set(false, forKey: "cloudKitSyncAvailable")
         do {
-            return try ModelContainer(for: schema)
+            let c = try ModelContainer(for: schema,
+                                       configurations: ModelConfiguration(schema: schema, cloudKitDatabase: .automatic))
+            UserDefaults.standard.set(true, forKey: "cloudKitSyncAvailable")
+            log.info("[CloudKit] main container = 동기화 활성")
+            return c
         } catch {
-            fatalError("ModelContainer 초기화 실패: \(error)")
+            log.warning("[CloudKit] main container = 폴백(로컬) — 사유: \(error.localizedDescription, privacy: .public)")
+            UserDefaults.standard.set(false, forKey: "cloudKitSyncAvailable")
+            do {
+                return try ModelContainer(for: schema)
+            } catch let fallbackError {
+                fatalError("ModelContainer 초기화 실패: \(fallbackError)")
+            }
         }
     }()
 

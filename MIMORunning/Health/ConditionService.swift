@@ -82,11 +82,14 @@ struct ActivityCondition: Codable {
     var weather: WeatherSnapshot?
     var sleepScore: SleepScore?
     var hrvRecovery: HRVRecovery?
+    /// 수면/HRV 조회를 완료했음을 표시. 이전 캐시는 false로 디코딩되어 1회 재조회 후 true로 갱신.
+    var sleepChecked: Bool = false
 
-    nonisolated init(weather: WeatherSnapshot? = nil, sleepScore: SleepScore? = nil, hrvRecovery: HRVRecovery? = nil) {
+    nonisolated init(weather: WeatherSnapshot? = nil, sleepScore: SleepScore? = nil, hrvRecovery: HRVRecovery? = nil, sleepChecked: Bool = false) {
         self.weather = weather
         self.sleepScore = sleepScore
         self.hrvRecovery = hrvRecovery
+        self.sleepChecked = sleepChecked
     }
 
     var hasAdverseSignal: Bool {

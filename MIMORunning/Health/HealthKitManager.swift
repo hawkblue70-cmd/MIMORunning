@@ -40,10 +40,12 @@ class HealthKitManager {
 
     @ObservationIgnored private let cacheContainer: ModelContainer? = {
         let schema = Schema([CachedActivity.self])
+        // 의도적 로컬 캐시. CloudKit 금지 — CachedActivity는 non-optional+unique라 CloudKit 규칙 위반. 2026-07 회귀 이력.
         return try? ModelContainer(for: schema,
                                    configurations: ModelConfiguration("activity-cache",
                                                                        schema: schema,
-                                                                       isStoredInMemoryOnly: false))
+                                                                       isStoredInMemoryOnly: false,
+                                                                       cloudKitDatabase: .none))
     }()
     private var cacheContext: ModelContext? { cacheContainer?.mainContext }
 
@@ -148,6 +150,8 @@ class HealthKitManager {
         let isWarmCache = !cached.isEmpty
         if isWarmCache && activities.isEmpty {
             activities = cached.map { $0.toActivity() }
+            // 캐시 로드 직후 레벨 계산 — 아래 조기 return 경로에서도 레벨이 반영되도록
+            userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
         }
 
         // 완료 태그 확인: 태그가 있고 강제 갱신이 아니면 절대 HealthKit 재조회 안 함
@@ -705,6 +709,8 @@ class HealthKitManager {
             .sumQuantity()?.doubleValue(for: .meter())
             ?? workout.totalDistance?.doubleValue(for: .meter())
             ?? 0
+        let hrBpm = workout.statistics(for: HKQuantityType(.heartRate))?
+            .averageQuantity()?.doubleValue(for: Self.bpmUnit)
         return Activity(
             id: workout.uuid,
             type: mapType(workout.workoutActivityType),
@@ -712,7 +718,7 @@ class HealthKitManager {
             duration: workout.duration,
             distance: distance,
             calories: nil,
-            avgHeartRate: nil
+            avgHeartRate: hrBpm.map { Int($0.rounded()) }
         )
     }
 
@@ -757,7 +763,7 @@ class HealthKitManager {
             duration: activity.duration,
             distance: distance,
             calories: cal > 0 ? cal : nil,
-            avgHeartRate: finalHR
+            avgHeartRate: finalHR ?? activity.avgHeartRate
         )
     }
 
@@ -1785,6 +1791,13 @@ class HealthKitManager {
         }
     }
 
+    /// 신체 측정(체중·체지방) 캐시 삭제 — 탭 진입 시마다 호출해 최신 HealthKit 데이터 반영
+    func invalidateBodyMetricHistoryCache() {
+        try? FileManager.default.removeItem(at: metricHistoryCacheURL(.bodyMass, usePounds: false))
+        try? FileManager.default.removeItem(at: metricHistoryCacheURL(.bodyMass, usePounds: true))
+        try? FileManager.default.removeItem(at: metricHistoryCacheURL(.bodyFatPercentage, usePounds: false))
+    }
+
     /// 당기기 새로고침 시 호출 — 모든 지표 캐시 삭제 (체성분 포함)
     func invalidateAllMetricHistoryCache() {
         guard let files = try? FileManager.default.contentsOfDirectory(at: Self.metricCacheDir, includingPropertiesForKeys: nil) else { return }
@@ -1836,21 +1849,33 @@ class HealthKitManager {
     func fetchCondition(for activity: Activity, firstCoordinate: CLLocationCoordinate2D?) async -> ActivityCondition {
         let cached = await ConditionCache.shared.condition(for: activity.id)
         if let cached {
-            // Weather already stored, or no GPS to fetch it → return as-is
-            if cached.weather != nil || firstCoordinate == nil { return cached }
-            // Condition cached but weather missing and GPS available → fetch weather only
-            if let w = await ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate) {
-                var updated = cached; updated.weather = w
-                await ConditionCache.shared.cache(updated, for: activity.id)
-                return updated
+            let needsWeather = cached.weather == nil && firstCoordinate != nil
+            let needsSleep   = !cached.sleepChecked
+
+            // Cache is complete — return immediately
+            if !needsWeather && !needsSleep { return cached }
+
+            var updated = cached
+            if needsWeather,
+               let w = await ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate) {
+                updated.weather = w
             }
-            return cached
+            if needsSleep {
+                async let sleepFetch = querySleepScore(nightBefore: activity.date)
+                async let hrvFetch   = queryHRVRecovery(nightBefore: activity.date)
+                updated.sleepScore   = await sleepFetch
+                updated.hrvRecovery  = await hrvFetch
+                updated.sleepChecked = true
+            }
+            await ConditionCache.shared.cache(updated, for: activity.id)
+            return updated
         }
         // Never fetched → weather + sleep + HRV in parallel
         async let weather = ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate)
         async let sleep   = querySleepScore(nightBefore: activity.date)
         async let hrv     = queryHRVRecovery(nightBefore: activity.date)
-        let result = ActivityCondition(weather: await weather, sleepScore: await sleep, hrvRecovery: await hrv)
+        let result = ActivityCondition(weather: await weather, sleepScore: await sleep,
+                                       hrvRecovery: await hrv, sleepChecked: true)
         await ConditionCache.shared.cache(result, for: activity.id)
         return result
     }

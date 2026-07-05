@@ -82,6 +82,7 @@ private struct RoutePolylineOverlay: View {
     /// Points in renderSize (540×960) coordinate space, from MKMapSnapshotter.Snapshot.point(for:).
     let snapshotPoints: [CGPoint]
     let progress: CGFloat
+    var totalDistanceM: Double = 0
 
     var body: some View {
         Canvas { ctx, size in
@@ -103,17 +104,62 @@ private struct RoutePolylineOverlay: View {
             for i in 1..<slice.count { path.addLine(to: slice[i]) }
 
             ctx.stroke(path, with: .color(Theme.violet.opacity(0.35)),
-                       style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                       style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
             ctx.stroke(path, with: .color(Theme.violet),
-                       style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                       style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
 
             let tip = slice[slice.count - 1]
             var glow = Path()
-            glow.addEllipse(in: CGRect(x: tip.x - 9, y: tip.y - 9, width: 18, height: 18))
+            glow.addEllipse(in: CGRect(x: tip.x - 11, y: tip.y - 11, width: 22, height: 22))
             ctx.fill(glow, with: .color(Theme.violet.opacity(0.38)))
             var dot = Path()
-            dot.addEllipse(in: CGRect(x: tip.x - 5, y: tip.y - 5, width: 10, height: 10))
+            dot.addEllipse(in: CGRect(x: tip.x - 6, y: tip.y - 6, width: 12, height: 12))
             ctx.fill(dot, with: .color(.white))
+
+            // KM marker dots in preview (dots only, no text)
+            if totalDistanceM > 100, pts.count > 1 {
+                var cum: [Double] = [0]
+                for i in 1..<pts.count {
+                    let dx = Double(pts[i].x - pts[i-1].x)
+                    let dy = Double(pts[i].y - pts[i-1].y)
+                    cum.append(cum.last! + sqrt(dx*dx + dy*dy))
+                }
+                let totalPxLen = cum.last!
+                guard totalPxLen > 0 else { return }
+
+                let totalKm = totalDistanceM / 1000
+                let interval: Double = totalKm <= 10 ? 1 : totalKm <= 21.5 ? 2 : 5
+                let intervalM = interval * 1000
+
+                func previewInterp(_ targetLen: Double) -> CGPoint {
+                    for i in 1..<pts.count {
+                        if cum[i] >= targetLen {
+                            let segLen = cum[i] - cum[i-1]
+                            let t = segLen > 0 ? CGFloat((targetLen - cum[i-1]) / segLen) : 0
+                            return CGPoint(x: pts[i-1].x + t*(pts[i].x-pts[i-1].x),
+                                           y: pts[i-1].y + t*(pts[i].y-pts[i-1].y))
+                        }
+                    }
+                    return pts.last!
+                }
+
+                var targetM = intervalM
+                while targetM < totalDistanceM - intervalM * 0.5 {
+                    let frac = targetM / totalDistanceM
+                    guard frac <= Double(progress) else { break }
+                    let pos = previewInterp(frac * totalPxLen)
+                    var d = Path()
+                    d.addEllipse(in: CGRect(x: pos.x - 4, y: pos.y - 4, width: 8, height: 8))
+                    ctx.fill(d, with: .color(.white.opacity(0.85)))
+                    targetM += intervalM
+                }
+                // Finish dot
+                if Double(progress) >= 1.0, let lastPt = pts.last {
+                    var d = Path()
+                    d.addEllipse(in: CGRect(x: lastPt.x - 5, y: lastPt.y - 5, width: 10, height: 10))
+                    ctx.fill(d, with: .color(Color(hex: "FFC74D")))
+                }
+            }
         }
     }
 }
@@ -400,14 +446,16 @@ struct RouteVideoExportService {
         videoLayer.frame = parentLayer.frame
         parentLayer.addSublayer(videoLayer)
 
-        // Route CGPath — convert UIKit pixel coords (y=0 top) → CG coords (y=0 bottom)
-        let cgPath = buildCGPath(from: scaledPoints, pixelHeight: px.height)
-
         if scaledPoints.count > 1 {
-            // Start marker: static white ring at first point
+            // CAShapeLayer.path (local space, y=0 TOP) and layer.position (parent space)
+            // both use the SAME UIKit coordinate convention under isGeometryFlipped=true.
+            // Do NOT y-flip positions — empirically confirmed: stroke (no flip) aligns with map.
+            let routePath = buildStrokePath(from: scaledPoints)
+
+            // Start marker: static white ring at first point (UIKit coords, no flip)
             if let firstPt = scaledPoints.first {
                 let startLayer = makeStartMarkerLayer(
-                    cgPos: CGPoint(x: firstPt.x, y: px.height - firstPt.y),
+                    position: CGPoint(x: firstPt.x, y: firstPt.y),
                     renderScale: renderScale
                 )
                 parentLayer.addSublayer(startLayer)
@@ -416,12 +464,11 @@ struct RouteVideoExportService {
             // Glow route stroke
             let glowRoute = CAShapeLayer()
             glowRoute.frame = parentLayer.frame
-            glowRoute.path = cgPath
+            glowRoute.path = routePath
             glowRoute.strokeColor = UIColor(Theme.violet).withAlphaComponent(0.35).cgColor
-            glowRoute.lineWidth = 6 * renderScale
+            glowRoute.lineWidth = 8 * renderScale
             glowRoute.fillColor = UIColor.clear.cgColor
-            glowRoute.lineCap = .round
-            glowRoute.lineJoin = .round
+            glowRoute.lineCap = .round; glowRoute.lineJoin = .round
             glowRoute.strokeEnd = 0
             glowRoute.add(strokeAnimation(duration: routeDur), forKey: "strokeEnd")
             parentLayer.addSublayer(glowRoute)
@@ -429,39 +476,37 @@ struct RouteVideoExportService {
             // Core route stroke
             let coreRoute = CAShapeLayer()
             coreRoute.frame = parentLayer.frame
-            coreRoute.path = cgPath
+            coreRoute.path = routePath
             coreRoute.strokeColor = UIColor(Theme.violet).cgColor
-            coreRoute.lineWidth = 2.5 * renderScale
+            coreRoute.lineWidth = 3.5 * renderScale
             coreRoute.fillColor = UIColor.clear.cgColor
-            coreRoute.lineCap = .round
-            coreRoute.lineJoin = .round
+            coreRoute.lineCap = .round; coreRoute.lineJoin = .round
             coreRoute.strokeEnd = 0
             coreRoute.add(strokeAnimation(duration: routeDur), forKey: "strokeEnd")
             parentLayer.addSublayer(coreRoute)
 
-            // Moving tip dot — follows path via CAKeyframeAnimation
-            let firstCGPt = CGPoint(x: scaledPoints[0].x, y: px.height - scaledPoints[0].y)
-            let rGlow: CGFloat = 9 * renderScale
-            let rDot:  CGFloat = 5 * renderScale
+            // Moving tip dot — same path as stroke (UIKit coords, no flip needed)
+            let firstPt = scaledPoints[0]
+            let rGlow: CGFloat = 11 * renderScale
+            let rDot:  CGFloat = 5  * renderScale
 
             let tipGlow = makeCircleLayer(radius: rGlow,
                                           color: UIColor(Theme.violet).withAlphaComponent(0.38))
-            tipGlow.position = firstCGPt
-            tipGlow.add(pathAnimation(path: cgPath, duration: routeDur), forKey: "position")
+            tipGlow.position = firstPt
+            tipGlow.add(pathAnimation(path: routePath, duration: routeDur), forKey: "position")
             parentLayer.addSublayer(tipGlow)
 
             let tipDot = makeCircleLayer(radius: rDot, color: .white)
-            tipDot.position = firstCGPt
-            tipDot.add(pathAnimation(path: cgPath, duration: routeDur), forKey: "position")
+            tipDot.position = firstPt
+            tipDot.add(pathAnimation(path: routePath, duration: routeDur), forKey: "position")
             parentLayer.addSublayer(tipDot)
 
-            // KM markers (appear as route reaches each distance milestone)
-            let markers = computeKmMarkers(snapshotPoints: scaledPoints,
-                                           totalDistanceM: totalDistanceM,
-                                           pixelHeight: px.height)
+            // KM markers (position also UIKit coords, no flip)
+            let markers = computeKmMarkers(snapshotPoints: scaledPoints, totalDistanceM: totalDistanceM)
             for m in markers {
                 parentLayer.addSublayer(makeMarkerLayer(marker: m, pixelSize: px,
                                                         routeDuration: routeDur,
+                                                        videoDuration: vidDur,
                                                         renderScale: renderScale))
             }
         }
@@ -579,13 +624,14 @@ struct RouteVideoExportService {
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
 
-        while !input.isReadyForMoreMediaData { await Task.yield() }
-        adaptor.append(buf, withPresentationTime: .zero)
-
-        // Second frame at t = (frameCount-1)/fps → video duration = frameCount/fps = 15 s
-        let lastFrameTime = CMTime(value: CMTimeValue(frameCount - 1), timescale: fps)
-        while !input.isReadyForMoreMediaData { await Task.yield() }
-        adaptor.append(buf, withPresentationTime: lastFrameTime)
+        // Write all frameCount identical frames at 1/fps intervals.
+        // HEVC compresses static P-frames to near-zero, so this is fast.
+        // Two-frame approach caused AVAssetWriter to infer the last frame's duration
+        // equal to the gap between frames → doubled video length (30s instead of 15s).
+        for i in 0..<frameCount {
+            while !input.isReadyForMoreMediaData { await Task.yield() }
+            adaptor.append(buf, withPresentationTime: CMTime(value: CMTimeValue(i), timescale: fps))
+        }
 
         input.markAsFinished()
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
@@ -631,12 +677,12 @@ struct RouteVideoExportService {
         return layer
     }
 
-    private static func makeStartMarkerLayer(cgPos: CGPoint, renderScale: CGFloat) -> CALayer {
+    private static func makeStartMarkerLayer(position: CGPoint, renderScale: CGFloat) -> CALayer {
         let ringR: CGFloat = 5 * renderScale
         let container = CALayer()
         let d = ringR * 2 + 4 * renderScale
         container.bounds = CGRect(x: 0, y: 0, width: d, height: d)
-        container.position = cgPos
+        container.position = position
 
         let ring = CALayer()
         ring.bounds = CGRect(x: 0, y: 0, width: ringR * 2, height: ringR * 2)
@@ -649,16 +695,15 @@ struct RouteVideoExportService {
         return container
     }
 
-    // MARK: - CGPath from UIKit pixel coords
+    // MARK: - CGPath builders
 
-    private static func buildCGPath(from points: [CGPoint], pixelHeight: CGFloat) -> CGPath {
+    // For CAShapeLayer.path — drawn in layer's LOCAL space (y=0 at TOP on iOS).
+    // With parentLayer.isGeometryFlipped=true the layer's local top = video top → use UIKit coords directly.
+    private static func buildStrokePath(from points: [CGPoint]) -> CGPath {
         let path = CGMutablePath()
         guard let first = points.first else { return path }
-        // parentLayer has isGeometryFlipped=true → CG coords (y=0 at bottom), so flip y
-        path.move(to: CGPoint(x: first.x, y: pixelHeight - first.y))
-        for p in points.dropFirst() {
-            path.addLine(to: CGPoint(x: p.x, y: pixelHeight - p.y))
-        }
+        path.move(to: first)
+        for p in points.dropFirst() { path.addLine(to: p) }
         return path
     }
 
@@ -666,8 +711,7 @@ struct RouteVideoExportService {
 
     private static func computeKmMarkers(
         snapshotPoints: [CGPoint],
-        totalDistanceM: Double,
-        pixelHeight: CGFloat
+        totalDistanceM: Double
     ) -> [KmMarkerInfo] {
         guard snapshotPoints.count > 1, totalDistanceM > 100 else { return [] }
 
@@ -728,84 +772,107 @@ struct RouteVideoExportService {
         marker: KmMarkerInfo,
         pixelSize: CGSize,
         routeDuration: Double,
+        videoDuration: Double,
         renderScale: CGFloat
     ) -> CALayer {
-        // CG coordinate (y=0 at bottom) for parent with isGeometryFlipped=true
-        let cgPos = CGPoint(x: marker.position.x, y: pixelSize.height - marker.position.y)
-
-        // Container sized to hold dot + label with room to scale from center
-        let csize: CGFloat = 120 * renderScale
+        // position uses same UIKit coord convention as strokePath (y=0 at top, no flip)
+        let csize: CGFloat = 80 * renderScale
         let half  = csize / 2
         let container = CALayer()
         container.bounds   = CGRect(x: 0, y: 0, width: csize, height: csize)
-        container.position = cgPos        // anchor (0.5, 0.5) → center at cgPos
+        container.position = marker.position
         container.opacity  = 0
 
         if marker.isFinish {
+            let goldColor = UIColor(Color(hex: "FFC74D"))
             let glowR: CGFloat = 9 * renderScale
-            let glow = makeCircleLayer(radius: glowR,
-                                       color: UIColor(hex: "FFC74D").withAlphaComponent(0.38))
+            let glow = makeCircleLayer(radius: glowR, color: goldColor.withAlphaComponent(0.40))
             glow.position = CGPoint(x: half, y: half)
             container.addSublayer(glow)
 
             let dotR: CGFloat = 5 * renderScale
-            let dot = makeCircleLayer(radius: dotR, color: UIColor(hex: "FFC74D"))
+            let dot = makeCircleLayer(radius: dotR, color: goldColor)
             dot.position = CGPoint(x: half, y: half)
             container.addSublayer(dot)
         } else {
             let dotR: CGFloat = 3.5 * renderScale
             let dot = makeCircleLayer(radius: dotR,
-                                      color: UIColor.white.withAlphaComponent(0.8))
+                                      color: UIColor.white.withAlphaComponent(0.85))
             dot.position = CGPoint(x: half, y: half)
             container.addSublayer(dot)
 
-            // Label text
+            // Pre-render label as CGImage — reliable in AVVideoCompositionCoreAnimationTool
             let km = Int((marker.distanceM / 1000).rounded())
-            let fontSize: CGFloat = 9 * renderScale
-            let labelW: CGFloat   = 22 * renderScale
-            let labelH: CGFloat   = fontSize * 1.4
-            let gap: CGFloat      = 6 * renderScale
+            if let labelImg = makeKmLabelImage(km: km, renderScale: renderScale) {
+                let lw = CGFloat(labelImg.width)
+                let lh = CGFloat(labelImg.height)
+                let gap: CGFloat = 5 * renderScale
 
-            // Safe zone check: flip label to left if near right edge
-            let safeRight: CGFloat = 60     // px from video right
-            let nearRight = marker.position.x > pixelSize.width - safeRight - dotR - gap - labelW
-            let labelXCenter = nearRight
-                ? half - (dotR + gap + labelW / 2)  // flip left
-                : half + (dotR + gap + labelW / 2)  // default right
+                // Safe zone: flip label left if dot is near the right edge (60px safe margin)
+                let nearRight = marker.position.x > pixelSize.width - 60 - dotR - gap - lw
+                let labelX = nearRight
+                    ? half - dotR - gap - lw / 2
+                    : half + dotR + gap + lw / 2
 
-            let textLayer = CATextLayer()
-            textLayer.string  = "\(km)"
-            textLayer.fontSize = fontSize
-            textLayer.foregroundColor = UIColor.white.cgColor
-            textLayer.alignmentMode   = .center
-            textLayer.contentsScale   = 1
-            textLayer.shadowOpacity   = 0.8
-            textLayer.shadowRadius    = 2 * renderScale
-            textLayer.shadowOffset    = .zero
-            textLayer.shadowColor     = UIColor.black.cgColor
-            textLayer.bounds   = CGRect(x: 0, y: 0, width: labelW, height: labelH)
-            textLayer.position = CGPoint(x: labelXCenter, y: half)
-            container.addSublayer(textLayer)
+                let labelLayer = CALayer()
+                labelLayer.contents = labelImg
+                labelLayer.bounds   = CGRect(x: 0, y: 0, width: lw, height: lh)
+                labelLayer.position = CGPoint(x: labelX, y: half)
+                container.addSublayer(labelLayer)
+            }
         }
 
-        // Pop-in animation: opacity 0→1 then scale 0→1
-        let beginTime = marker.pathFraction * routeDuration
+        // Full-span keyframe animations spanning the entire video duration.
+        // This is more reliable than delayed CABasicAnimation + fillMode in AVVideoCompositionCoreAnimationTool.
+        let tAppear  = marker.pathFraction * routeDuration / videoDuration
+        let tPopEnd  = min((marker.pathFraction * routeDuration + 0.2) / videoDuration, 1.0)
 
-        let opAnim = CABasicAnimation(keyPath: "opacity")
-        opAnim.fromValue = 0; opAnim.toValue = 1
-        opAnim.duration  = 0.01
-        opAnim.beginTime = beginTime == 0 ? AVCoreAnimationBeginTimeAtZero : beginTime
-        opAnim.fillMode  = .forwards; opAnim.isRemovedOnCompletion = false
-
-        let scAnim = CABasicAnimation(keyPath: "transform.scale")
-        scAnim.fromValue = 0; scAnim.toValue = 1
-        scAnim.duration  = 0.2
-        scAnim.beginTime = beginTime == 0 ? AVCoreAnimationBeginTimeAtZero : beginTime
-        scAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        scAnim.fillMode  = .forwards; scAnim.isRemovedOnCompletion = false
-
+        // Opacity: discrete jump from 0 to 1 at tAppear
+        let opAnim = CAKeyframeAnimation(keyPath: "opacity")
+        opAnim.values    = [0, 0, 1]
+        opAnim.keyTimes  = [0, max(0, tAppear - 0.0001), tAppear + 0.0001].map { NSNumber(value: min($0, 1.0)) }
+        opAnim.duration  = videoDuration
+        opAnim.beginTime = AVCoreAnimationBeginTimeAtZero
+        opAnim.fillMode  = .forwards
+        opAnim.isRemovedOnCompletion = false
         container.add(opAnim, forKey: "opacity")
+
+        // Scale: 0→1 pop over 0.2 s, stays at 1 for remainder
+        let scAnim = CAKeyframeAnimation(keyPath: "transform.scale")
+        scAnim.values   = [0.001, 0.001, 1.0]
+        scAnim.keyTimes = [0, tAppear, tPopEnd].map { NSNumber(value: $0) }
+        scAnim.timingFunctions = [
+            CAMediaTimingFunction(name: .linear),
+            CAMediaTimingFunction(name: .easeOut)
+        ]
+        scAnim.duration  = videoDuration
+        scAnim.beginTime = AVCoreAnimationBeginTimeAtZero
+        scAnim.fillMode  = .forwards
+        scAnim.isRemovedOnCompletion = false
         container.add(scAnim, forKey: "scale")
         return container
+    }
+
+    // MARK: - KM label image (pre-rendered CGImage, avoids CATextLayer rendering quirks)
+
+    private static func makeKmLabelImage(km: Int, renderScale: CGFloat) -> CGImage? {
+        let text     = "\(km)km"
+        let fontSize = 12 * renderScale
+        let font     = UIFont.systemFont(ofSize: fontSize, weight: .bold)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.white]
+        let textSize = (text as NSString).size(withAttributes: attrs)
+        let hPad: CGFloat = 5 * renderScale
+        let vPad: CGFloat = 2.5 * renderScale
+        let imgSize = CGSize(width: ceil(textSize.width + hPad * 2),
+                             height: ceil(textSize.height + vPad * 2))
+        // scale=1.0 → CGImage pixels == imgSize pixels (avoids 2x/3x screen-scale inflation)
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1.0
+        return UIGraphicsImageRenderer(size: imgSize, format: fmt).image { _ in
+            UIColor.black.withAlphaComponent(0.65).setFill()
+            UIBezierPath(roundedRect: CGRect(origin: .zero, size: imgSize),
+                         cornerRadius: imgSize.height / 2).fill()
+            (text as NSString).draw(at: CGPoint(x: hPad, y: vPad), withAttributes: attrs)
+        }.cgImage
     }
 }

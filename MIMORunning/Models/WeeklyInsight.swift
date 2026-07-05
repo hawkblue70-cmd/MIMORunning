@@ -1,5 +1,49 @@
 import Foundation
 
+// MARK: - WeeklyInsight 설계 요약
+//
+// ▶ 주간 총평(WeeklySummary) 3요소
+//   구성   : 이번 2주 러닝 횟수 + 고강도(인터벌/템포) 비율 + 롱런 유무
+//   몸의 신호: 조합 패턴(p5-p9, compositionChange) 최우선 1개의 factSummary. 없으면 "지표 안정".
+//   흐름   : 연속 주수(streakWeeks) 또는 주간 거리 추세(recent 4주).
+//   → assembleWeeklySummary()에서 조립. 폴백=2~3문장 템플릿, AI 시도=모든 패턴.
+//
+// ▶ 14일 날짜 기반 윈도우 (개수 기반 prefix 금지)
+//   모든 지표(pace·HR·cadence·GCT·strideLength·vertOsc·vo2Max·power)와
+//   구성 게이트(thisWindowIntenseCount), assembleWeeklySummary의 thisWindowRuns는
+//   반드시 Calendar.current.date(byAdding: .day, value: -14, to: Date()) 날짜 필터를 사용.
+//   [이력] runs.prefix(14) 개수 기반을 사용하던 시기에 pace·HR 방향 판정이 오래된 런에
+//   오염돼 WeeklyInsightInputs의 paceDirection·hrDirection이 왜곡됐음 (2025-07 수정).
+//
+// ▶ 조합 패턴 조건 (p5-p9, compositionChange)
+//   p5 fatigueSign  : GCT↑ AND 수직진폭↑ AND 페이스 flat — 구성변화 게이트로 억제
+//   p6 overstride   : 보폭↑ AND 케이던스↓ AND GCT↑       — 구성변화 게이트로 억제
+//   p7 economyPlus  : (GCT↓ OR 수직진폭↓) AND 페이스 not-up
+//   p8 propulsion   : 보폭↑ AND 케이던스 up-or-flat AND GCT↓-or-flat
+//   p9 turnover     : 케이던스↑ AND 보폭 flat-or-down
+//   compositionChange: 이번/직전 2주 고강도 횟수 차 ≥ 2 (prevWindowRunCount ≥ 3 충분성 게이트)
+//
+// ▶ 구성 게이트 (compositionChanged = true)
+//   p5·p6를 억제 — 훈련 구성이 바뀌면 폼 신호가 구성 효과와 혼동될 수 있으므로.
+//
+// ▶ 총평 AI (현재 off — GrowthView.useAITotalComment = false)
+//   2026-07 검증: 온디바이스 모델이 3요소 총평 규격을 재시도에도 못 맞춤
+//   (감사합니다 종결, 동일 출력 반복). 템플릿 확정.
+//   재평가 조건: FoundationModels 모델 업데이트 또는 iOS 27+ 새 API 출시 시.
+//   구현은 InsightAIGenerator.generateWeeklyComment(patternKey:factSummary:) 에 유지.
+//
+// ▶ 반복 방지
+//   동일 패턴 3주 연속 → 차순위 패턴 사용. streak은 예외(연속 자체가 의미).
+//   최근 5회 이력: UserDefaults "mimo_weekly_pattern_history" ([String] 배열).
+//   GrowthView.applyPatternRepeatGuard() 에서 처리.
+//
+// ▶ trendDirection 순서 주의
+//   values 배열은 반드시 시간순(오래된→최신). 호출부에서 .reversed() 확인.
+//
+// ▶ 캐시 버전 규칙
+//   templates·rules 변경 시 GrowthView.weeklyCommentVersion 상수를 올리면
+//   해당 주의 메모리·디스크 캐시가 자동 무효화됨.
+
 struct WeeklyInsightInputs {
     let paceDirection: TrendDirection
     let hrDirection: TrendDirection
@@ -40,6 +84,247 @@ struct WeeklyPattern {
     }
 }
 
+// MARK: - WeeklySummary
+
+/// 2주 훈련 총평 — 구성·몸의 신호·흐름 3요소.
+/// `assembleWeeklySummary()` 로 생성. 폴백 템플릿·AI 입력 모두 이 타입에서.
+struct WeeklySummary {
+    let totalRunCount: Int
+    let intenseRunCount: Int        // 인터벌·템포 횟수
+    let hasLongRun: Bool            // 최장 런 > 14 km
+    let bodySignalKey: String       // 조합 패턴 key 또는 ""
+    let bodySignalFact: String      // 수치 사실 (AI입력용)
+    let streakWeeks: Int
+    let weekDistanceTrend: TrendDirection
+    let topPatternKey: String       // detectWeeklyPatterns 최상위 key
+
+    private static let comboKeys: Set<String> = [
+        "fatigueSign","overstride","economyPlus","propulsion","turnover","compositionChange"
+    ]
+
+    /// shortName 선택용 key — 조합 패턴 신호(있으면) > 전체 top 패턴
+    var shortNamePatternKey: String {
+        WeeklySummary.comboKeys.contains(bodySignalKey) ? bodySignalKey : topPatternKey
+    }
+
+    /// AI 입력: 3요소 합산 (한국어 사실)
+    var aiFacts: String {
+        var parts = ["구성: \(koCompositionFact)"]
+        if !bodySignalFact.isEmpty { parts.append("몸의 신호: \(bodySignalFact)") }
+        parts.append("흐름: \(koFlowFact)")
+        return parts.joined(separator: " / ")
+    }
+
+    /// 폴백 2~3문장 템플릿
+    func template(for weekOfYear: Int, isEnglish: Bool) -> String {
+        let s1 = isEnglish ? enCompositionSentence(weekOfYear) : koCompositionSentence(weekOfYear)
+        let s2 = isEnglish ? enBodySignalSentence(weekOfYear) : koBodySignalSentence(weekOfYear)
+        let s3 = isEnglish ? enFlowSentence(weekOfYear) : koFlowSentence(weekOfYear)
+        return [s1, s2, s3].filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    // MARK: AI 사실 문자열
+
+    private var koCompositionFact: String {
+        guard totalRunCount > 0 else { return "기록 없음" }
+        var base: String
+        if intenseRunCount >= 3 {
+            base = "인터벌·템포 \(intenseRunCount)회를 섞은 \(totalRunCount)회"
+        } else if intenseRunCount >= 1 {
+            base = "이지런 \(totalRunCount - intenseRunCount)회·인터벌 \(intenseRunCount)회"
+        } else {
+            base = "이지런 위주 \(totalRunCount)회"
+        }
+        return hasLongRun ? base + "·롱런 포함" : base
+    }
+    private var koFlowFact: String {
+        if streakWeeks >= 2 { return "\(streakWeeks)주 연속" }
+        switch weekDistanceTrend {
+        case .up:   return "주간 거리 증가 중"
+        case .down: return "주간 거리 감소 중"
+        default:    return "주간 거리 유지"
+        }
+    }
+
+    // MARK: 한국어 템플릿 문장
+
+    private func koCompositionSentence(_ woy: Int) -> String {
+        guard totalRunCount > 0 else { return "" }
+        let variants: [String]
+        if intenseRunCount >= 3 {
+            variants = [
+                "인터벌·템포를 \(intenseRunCount)회 섞은 \(totalRunCount)회 구성이었어요.",
+                "고강도 훈련을 \(intenseRunCount)번 넣은 \(totalRunCount)회의 2주였어요.",
+                "\(totalRunCount)회 중 \(intenseRunCount)회를 인터벌·템포로 채운 2주예요."
+            ]
+        } else if intenseRunCount >= 1 {
+            variants = [
+                "이지런 위주에 인터벌 \(intenseRunCount)회를 섞은 \(totalRunCount)회였어요.",
+                "\(totalRunCount)번 달리는 동안 인터벌·템포가 \(intenseRunCount)번 있었어요.",
+                "대부분 이지런으로, \(intenseRunCount)번의 인터벌이 포함된 구성이에요."
+            ]
+        } else {
+            variants = [
+                "이지런 위주로 \(totalRunCount)회 달린 2주였어요.",
+                "편안한 페이스로 \(totalRunCount)번 쌓은 2주예요.",
+                "\(totalRunCount)회 모두 이지런 위주로 이어졌어요."
+            ]
+        }
+        let base = variants[woy % variants.count]
+        return hasLongRun ? base + " 롱런도 한 번 있었어요." : base
+    }
+
+    private func koBodySignalSentence(_ woy: Int) -> String {
+        let p = (woy + 1) % 3
+        switch bodySignalKey {
+        case "fatigueSign":
+            return ["지면접촉과 진폭이 늘었어요. 몸이 피로 신호를 보내는 중일 수 있어요.",
+                    "폼이 조금 무거워졌어요. 가볍게 달리는 날을 넣어봐도 좋아요.",
+                    "접촉이 길어지고 진폭도 커졌어요. 쉬어가는 날이 도움이 될 수 있어요."][p]
+        case "overstride":
+            return ["보폭이 길어지고 케이던스가 줄었어요. 발이 몸 아래에 떨어지는 느낌을 살려보면 좋아요.",
+                    "착지가 앞으로 나갔어요. 발 회전을 조금 높이면 자연스럽게 정리될 수 있어요.",
+                    "스트라이드가 앞서고 접촉이 길어졌어요. 발이 무릎 아래에 오는 느낌으로 달려봐요."][p]
+        case "economyPlus":
+            return ["지면접촉이나 수직진폭이 줄어 효율이 좋아지는 흐름이에요.",
+                    "힘이 덜 들면서 더 가볍게 달리고 있어요.",
+                    "접촉과 진폭이 함께 줄고 있어요. 에너지가 앞으로 잘 가고 있어요."][p]
+        case "propulsion":
+            return ["보폭이 자라고 추진력이 붙는 흐름이에요.",
+                    "밀고 나가는 힘이 붙으면서 보폭이 넓어졌어요.",
+                    "케이던스는 유지하며 보폭이 자랐어요. 러닝이 점점 힘차지고 있어요."][p]
+        case "turnover":
+            return ["케이던스가 높아지며 잰걸음의 리듬이 잡히는 중이에요.",
+                    "발 회전이 빨라지고 리듬이 몸에 익어가고 있어요.",
+                    "발 회전이 빨라지면서 폼이 안정되고 있어요."][p]
+        case "compositionChange":
+            return ["훈련 구성이 바뀌며 지표가 출렁이는 건 자연스러운 흐름이에요.",
+                    "구성 변화에 몸이 적응 중이라 지표 변동은 자연스러워요.",
+                    "고강도가 늘면 지표가 흔들려요. 몸이 적응하는 과정이에요."][p]
+        default:
+            return ["지표는 전반적으로 안정적이었어요.",
+                    "폼 지표에 큰 변화 없이 안정된 2주였어요.",
+                    "수치 변화 없이 안정적으로 달린 2주예요."][p]
+        }
+    }
+
+    private func koFlowSentence(_ woy: Int) -> String {
+        if streakWeeks >= 3 {
+            return ["\(streakWeeks)주째 이어지는 흐름이에요.",
+                    "\(streakWeeks)주 연속으로 달리고 있어요.",
+                    "꾸준히 \(streakWeeks)주를 이어왔어요."][woy % 3]
+        }
+        let p = woy % 3
+        switch weekDistanceTrend {
+        case .up:
+            return ["주간 거리가 조금씩 늘어나는 방향이에요.",
+                    "달리는 거리가 꾸준히 쌓여가고 있어요.",
+                    "주간 거리가 늘어나는 흐름이에요."][p]
+        case .down:
+            return ["주간 거리를 조절하며 가고 있어요.",
+                    "이번 2주는 거리를 줄이며 달렸어요.",
+                    "쉬어가는 흐름으로 달린 2주였어요."][p]
+        default:
+            return ""
+        }
+    }
+
+    // MARK: 영어 템플릿 문장
+
+    private func enCompositionSentence(_ woy: Int) -> String {
+        guard totalRunCount > 0 else { return "" }
+        var base: String
+        if intenseRunCount >= 3 {
+            base = "\(intenseRunCount) interval/tempo sessions in \(totalRunCount) runs this 2 weeks."
+        } else if intenseRunCount >= 1 {
+            base = "Mostly easy running with \(intenseRunCount) interval session\(intenseRunCount > 1 ? "s" : "") across \(totalRunCount) runs."
+        } else {
+            base = "Easy-run focused — \(totalRunCount) sessions over 2 weeks."
+        }
+        return hasLongRun ? base + " A long run was in the mix." : base
+    }
+    private func enBodySignalSentence(_ woy: Int) -> String {
+        let p = (woy + 1) % 3
+        switch bodySignalKey {
+        case "fatigueSign":
+            return ["Ground contact and oscillation up — your body may be signaling fatigue. A lighter day could help.",
+                    "Form felt a bit heavier this stretch. An easy day would be a good response.",
+                    "Contact longer, oscillation bigger. Some lighter running could be just what's needed."][p]
+        case "overstride":
+            return ["Stride lengthened and cadence dropped. Try landing closer to under your body.",
+                    "Landing shifted forward. A slightly quicker turnover may sort it out naturally.",
+                    "Stride ahead, contact longer. Focus on your foot landing under your knee."][p]
+        case "economyPlus":
+            return ["Contact or oscillation reduced — efficiency is improving.",
+                    "Less effort, lighter movement. Running economy is growing.",
+                    "Contact and oscillation both coming down — energy going forward more cleanly."][p]
+        case "propulsion":
+            return ["Stride growing, more push-off force developing.",
+                    "Push-off power building as stride widens.",
+                    "Cadence steady, stride wider — drive is getting stronger."][p]
+        case "turnover":
+            return ["Cadence up, quicker-turnover rhythm forming.",
+                    "Faster footfall, rhythm settling in.",
+                    "Faster turnover stabilizing the form."][p]
+        case "compositionChange":
+            return ["Metric variation from the composition shift is natural — adaptation in progress.",
+                    "With training composition changing, metric swings are expected. Body is adapting.",
+                    "More intense sessions change the metrics. This is the adaptation phase."][p]
+        default:
+            return ["Form metrics were generally stable.",
+                    "No significant form changes — a steady 2 weeks.",
+                    "Metrics held steady across the 2 weeks."][p]
+        }
+    }
+    private func enFlowSentence(_ woy: Int) -> String {
+        let p = woy % 3
+        if streakWeeks >= 3 {
+            return ["\(streakWeeks)-week streak continuing.",
+                    "\(streakWeeks) weeks straight — consistency is building.",
+                    "Running every week for \(streakWeeks) weeks now."][p]
+        }
+        switch weekDistanceTrend {
+        case .up:
+            return ["Weekly mileage trending up.",
+                    "Distance building week by week.",
+                    "Running volume on the rise."][p]
+        case .down:
+            return ["Weekly mileage easing down.",
+                    "Stepping back on distance this stretch.",
+                    "Lighter mileage these 2 weeks."][p]
+        default:
+            return ""
+        }
+    }
+}
+
+/// 2주 훈련 총평을 조립. 런이 없으면 nil.
+func assembleWeeklySummary(
+    patterns: [WeeklyPattern],
+    inputs: WeeklyInsightInputs,
+    thisWindowRuns: [Activity],
+    recentWeeklyKms: [Double]   // oldest → newest, up to 4 values
+) -> WeeklySummary? {
+    guard !thisWindowRuns.isEmpty else { return nil }
+    let comboKeys: Set<String> = [
+        "fatigueSign","overstride","economyPlus","propulsion","turnover","compositionChange"
+    ]
+    let bodySignalPattern = patterns.first { comboKeys.contains($0.key) }
+    let distanceTrend: TrendDirection = recentWeeklyKms.count >= 3
+        ? trendDirection(values: Array(recentWeeklyKms.suffix(4))).direction
+        : .insufficient
+    return WeeklySummary(
+        totalRunCount:     thisWindowRuns.count,
+        intenseRunCount:   inputs.thisWindowIntenseCount,
+        hasLongRun:        thisWindowRuns.contains { $0.distance / 1000 > 14 },
+        bodySignalKey:     bodySignalPattern?.key ?? "",
+        bodySignalFact:    bodySignalPattern?.factSummary ?? "",
+        streakWeeks:       inputs.weekStreak,
+        weekDistanceTrend: distanceTrend,
+        topPatternKey:     patterns.first?.key ?? "easy"
+    )
+}
+
 // 변화율을 부호 포함 정수 % 문자열로 포매팅.
 private func pct(_ ratio: Double) -> String {
     let v = Int((ratio * 100).rounded())
@@ -55,9 +340,6 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
     let intenseCountDiff = inputs.thisWindowIntenseCount - inputs.prevWindowIntenseCount
     let compositionChanged = inputs.prevWindowRunCount >= 3 && abs(intenseCountDiff) >= 2
 
-    // TODO: 조합 패턴 검증 후 제거 — 게이트 억제 추적
-    var debugSuppressed: [String] = []
-
     // p5 피로 신호: GCT↑ AND 수직진폭↑ AND 페이스 flat — 부정 계열, insufficient 제외, 구성변화 게이트
     let p5Conditions = inputs.groundContactTime != .insufficient
         && inputs.vertOsc != .insufficient
@@ -65,35 +347,31 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
         && inputs.groundContactTime == .up
         && inputs.vertOsc == .up
         && inputs.paceDirection == .flat
-    if p5Conditions {
-        if compositionChanged {
-            debugSuppressed.append("fatigueSign(p5)")
-        } else {
-            var facts: [String] = []
-            if let r = inputs.metricChangeRatios[.groundContactTime] { facts.append("지면접촉 \(pct(r))") }
-            if let r = inputs.metricChangeRatios[.verticalOscillation] { facts.append("수직진폭 \(pct(r))") }
-            patterns.append(WeeklyPattern(
-                priority: 5, key: "fatigueSign",
-                factSummary: facts.joined(separator: ", "),
-                shortNames: ["쉼표가 필요한 즈음", "몸이 말을 거는 주"],
-                koTemplates: [
-                    "이번 2주는 몸이 조금 무거웠을 수 있어요. 다음 러닝은 가볍게 가도 좋아요.",
-                    "지면접촉이 늘고 진폭이 커졌어요. 충분한 쉬어감이 도움이 될 수 있어요.",
-                    "페이스는 유지됐지만 폼이 달라졌어요. 몸이 신호를 보내는 중일 수 있어요.",
-                    "폼이 조금 무거워진 2주였어요. 가볍게 달리는 날을 한 번 넣어봐도 좋아요.",
-                    "지면접촉과 진폭이 함께 늘었어요. 짧고 가볍게 달려보는 것도 좋은 선택이에요.",
-                    "몸이 피로를 표현하는 방식이에요. 천천히 달리는 날로 응답해줘도 좋아요."
-                ],
-                enTemplates: [
-                    "Your form felt a bit heavier this 2 weeks. An easy run next time might be just right.",
-                    "Ground contact up, oscillation up. Some lighter running could help.",
-                    "Pace held, but form shifted. Your body might be sending a signal.",
-                    "Form got a little heavier these 2 weeks. A gentle day could be a good reset.",
-                    "Both contact and oscillation went up. A short, easy run might be a good next step.",
-                    "This is how your body expresses fatigue. A slower run is a valid response."
-                ]
-            ))
-        }
+    if p5Conditions && !compositionChanged {
+        var facts: [String] = []
+        if let r = inputs.metricChangeRatios[.groundContactTime] { facts.append("지면접촉 \(pct(r))") }
+        if let r = inputs.metricChangeRatios[.verticalOscillation] { facts.append("수직진폭 \(pct(r))") }
+        patterns.append(WeeklyPattern(
+            priority: 5, key: "fatigueSign",
+            factSummary: facts.joined(separator: ", "),
+            shortNames: ["쉼표가 필요한 즈음", "몸이 말을 거는 주"],
+            koTemplates: [
+                "이번 2주는 몸이 조금 무거웠을 수 있어요. 다음 러닝은 가볍게 가도 좋아요.",
+                "지면접촉이 늘고 진폭이 커졌어요. 충분한 쉬어감이 도움이 될 수 있어요.",
+                "페이스는 유지됐지만 폼이 달라졌어요. 몸이 신호를 보내는 중일 수 있어요.",
+                "폼이 조금 무거워진 2주였어요. 가볍게 달리는 날을 한 번 넣어봐도 좋아요.",
+                "지면접촉과 진폭이 함께 늘었어요. 짧고 가볍게 달려보는 것도 좋은 선택이에요.",
+                "몸이 피로를 표현하는 방식이에요. 천천히 달리는 날로 응답해줘도 좋아요."
+            ],
+            enTemplates: [
+                "Your form felt a bit heavier this 2 weeks. An easy run next time might be just right.",
+                "Ground contact up, oscillation up. Some lighter running could help.",
+                "Pace held, but form shifted. Your body might be sending a signal.",
+                "Form got a little heavier these 2 weeks. A gentle day could be a good reset.",
+                "Both contact and oscillation went up. A short, easy run might be a good next step.",
+                "This is how your body expresses fatigue. A slower run is a valid response."
+            ]
+        ))
     }
 
     // p6 오버스트라이드: 보폭↑ AND 케이던스↓ AND GCT↑ — 부정 계열, insufficient 제외, 구성변화 게이트
@@ -103,36 +381,32 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
         && inputs.strideLength == .up
         && inputs.cadence == .down
         && inputs.groundContactTime == .up
-    if p6Conditions {
-        if compositionChanged {
-            debugSuppressed.append("overstride(p6)")
-        } else {
-            var facts: [String] = []
-            if let r = inputs.metricChangeRatios[.strideLength] { facts.append("보폭 \(pct(r))") }
-            if let r = inputs.metricChangeRatios[.cadence] { facts.append("케이던스 \(pct(r))") }
-            if let r = inputs.metricChangeRatios[.groundContactTime] { facts.append("지면접촉 \(pct(r))") }
-            patterns.append(WeeklyPattern(
-                priority: 6, key: "overstride",
-                factSummary: facts.joined(separator: ", "),
-                shortNames: ["착지를 돌아볼 때", "보폭이 앞서간 주"],
-                koTemplates: [
-                    "보폭이 커지면서 착지가 길어졌어요. 발이 몸 아래에 떨어지는 느낌을 살려보면 좋아요.",
-                    "보폭이 앞서고 케이던스가 줄었어요. 발 회전을 조금 높여보는 게 도움이 될 수 있어요.",
-                    "스트라이드가 길어졌어요. 발이 무릎 아래에 떨어지는지 한 번 살펴보면 좋아요.",
-                    "지면접촉이 늘고 보폭이 앞섰어요. 케이던스를 먼저 챙기면 자연스럽게 정리될 수 있어요.",
-                    "보폭과 접촉이 함께 늘었어요. 짧고 빠른 발 회전을 한 번 의식해보면 어떨까요.",
-                    "착지가 앞으로 나간 2주였어요. 발이 몸 무게 중심 아래로 오는 느낌에 집중해보세요."
-                ],
-                enTemplates: [
-                    "Stride lengthened, ground contact extended. Try landing closer to under your body.",
-                    "Stride ahead, cadence down. A slightly quicker turnover might help.",
-                    "Stride got longer. Worth checking if your foot lands under your knee.",
-                    "More contact, more stride. Focusing on cadence first may naturally tighten things up.",
-                    "Stride and contact both went up. A short drill on quick, light steps could be useful.",
-                    "Your landing shifted forward these 2 weeks. Focus on keeping your foot under your center."
-                ]
-            ))
-        }
+    if p6Conditions && !compositionChanged {
+        var facts: [String] = []
+        if let r = inputs.metricChangeRatios[.strideLength] { facts.append("보폭 \(pct(r))") }
+        if let r = inputs.metricChangeRatios[.cadence] { facts.append("케이던스 \(pct(r))") }
+        if let r = inputs.metricChangeRatios[.groundContactTime] { facts.append("지면접촉 \(pct(r))") }
+        patterns.append(WeeklyPattern(
+            priority: 6, key: "overstride",
+            factSummary: facts.joined(separator: ", "),
+            shortNames: ["착지를 돌아볼 때", "보폭이 앞서간 주"],
+            koTemplates: [
+                "보폭이 커지면서 착지가 길어졌어요. 발이 몸 아래에 떨어지는 느낌을 살려보면 좋아요.",
+                "보폭이 앞서고 케이던스가 줄었어요. 발 회전을 조금 높여보는 게 도움이 될 수 있어요.",
+                "스트라이드가 길어졌어요. 발이 무릎 아래에 떨어지는지 한 번 살펴보면 좋아요.",
+                "지면접촉이 늘고 보폭이 앞섰어요. 케이던스를 먼저 챙기면 자연스럽게 정리될 수 있어요.",
+                "보폭과 접촉이 함께 늘었어요. 짧고 빠른 발 회전을 한 번 의식해보면 어떨까요.",
+                "착지가 앞으로 나간 2주였어요. 발이 몸 무게 중심 아래로 오는 느낌에 집중해보세요."
+            ],
+            enTemplates: [
+                "Stride lengthened, ground contact extended. Try landing closer to under your body.",
+                "Stride ahead, cadence down. A slightly quicker turnover might help.",
+                "Stride got longer. Worth checking if your foot lands under your knee.",
+                "More contact, more stride. Focusing on cadence first may naturally tighten things up.",
+                "Stride and contact both went up. A short drill on quick, light steps could be useful.",
+                "Your landing shifted forward these 2 weeks. Focus on keeping your foot under your center."
+            ]
+        ))
     }
 
     // 구성 변화 패턴: p5/p6 억제 대체 (priority 5)
@@ -476,22 +750,5 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
         ))
     }
 
-    let sorted = patterns.sorted { $0.priority < $1.priority }
-
-    // TODO: 조합 패턴 검증 후 제거
-    func d(_ dir: TrendDirection) -> String {
-        switch dir {
-        case .up:           return "↑"
-        case .down:         return "↓"
-        case .flat:         return "→"
-        case .insufficient: return "?"
-        }
-    }
-    let dirLine = "pace:\(d(inputs.paceDirection)) hr:\(d(inputs.hrDirection)) cadence:\(d(inputs.cadence)) power:\(d(inputs.power)) stride:\(d(inputs.strideLength)) gct:\(d(inputs.groundContactTime)) vertOsc:\(d(inputs.vertOsc)) vo2Max:\(d(inputs.vo2Max))"
-    let gateLine = "compositionGate:\(compositionChanged) (thisIntense=\(inputs.thisWindowIntenseCount) prevIntense=\(inputs.prevWindowIntenseCount) prevRuns=\(inputs.prevWindowRunCount))"
-    let suppressedLine = debugSuppressed.isEmpty ? "-" : debugSuppressed.joined(separator: ", ")
-    let finalLine = sorted.isEmpty ? "none" : sorted.map { "\($0.key)(p\($0.priority))" }.joined(separator: " > ")
-    print("[WeeklyPattern DEBUG]\n  \(dirLine)\n  \(gateLine)\n  suppressed: [\(suppressedLine)]\n  final: \(finalLine)")
-
-    return sorted
+    return patterns.sorted { $0.priority < $1.priority }
 }

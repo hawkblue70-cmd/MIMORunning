@@ -1,9 +1,10 @@
 import SwiftUI
-import Combine
 import StoreKit
 import Security
+import CloudKit
+import Observation
 
-// MARK: - Keychain Helper (앱 삭제 후 재설치로 구독 우회 방지)
+// MARK: - Keychain Helper (앱 삭제 후 재설치로 체험 기간 우회 방지)
 
 enum KeychainHelper {
     private static let service = "kr.mimo.MIMORunning.pro"
@@ -39,22 +40,31 @@ enum KeychainHelper {
 // MARK: - Pro Manager
 
 @MainActor
-final class ProManager: ObservableObject {
+@Observable
+final class ProManager {
     static let shared = ProManager()
 
-    // App Store Connect에서 생성한 구독 상품 ID
+    // 개발자 iCloud 계정 식별자 — 첫 실행 후 콘솔에서 "[ProMgr] CloudKit ID:" 로그로 확인
+    private static let developerCloudKitID = "_278335aa7345fdb9ed107eed61d2cdb0"
+
+    // App Store Connect 구독 상품 ID (6개월)
     static let sixMonthID = "com.denny.mimorunning.pro"
     private static let allProductIDs: Set<String> = [sixMonthID]
 
-    @Published var isPro = false
-    @Published var products: [Product] = []
-    @Published var purchaseError: String?
-    @Published var introEligibility: [String: Bool] = [:]
+    // CloudKit — MIMOApp과 공유 컨테이너로 개발자 계정 인식
+    private static let sharedContainerID    = "iCloud.com.denny.MimoSubscription"
+    private static let subscriptionRecordID = CKRecord.ID(recordName: "mimo-running-pro-subscription")
+
+    static let trialDays = 14
+
+    var isPro            = false
+    var products: [Product] = []
+    var purchaseError: String?
+    var productLoadError: String?
+    var introEligibility: [String: Bool] = [:]
 
     private(set) var firstLaunchDate: Date
 
-    /// Last known subscription expiry — saved to UserDefaults while subscription is active
-    /// so it survives after the subscription lapses.
     private(set) var lastSubscriptionEndDate: Date? {
         didSet {
             if let d = lastSubscriptionEndDate {
@@ -67,11 +77,9 @@ final class ProManager: ObservableObject {
     private static let subscriptionEndDateKey = "kr.mimo.running.subscriptionEndDate"
 
     var trialEndDate: Date {
-        Calendar.current.date(byAdding: .day, value: 14, to: firstLaunchDate) ?? firstLaunchDate
+        Calendar.current.date(byAdding: .day, value: Self.trialDays, to: firstLaunchDate) ?? firstLaunchDate
     }
 
-    /// The effective data cutoff when the subscription has lapsed.
-    /// = the later of trial end and the last subscription period end.
     var effectiveCutoffDate: Date {
         guard let subEnd = lastSubscriptionEndDate else { return trialEndDate }
         return max(trialEndDate, subEnd)
@@ -93,7 +101,6 @@ final class ProManager: ObservableObject {
            let d = ISO8601DateFormatter().date(from: str) {
             firstLaunchDate = d
         } else {
-            // 최초 설치: UserDefaults에 기존 값이 있으면 마이그레이션
             let now: Date
             if let legacy = UserDefaults.standard.object(forKey: "kr.mimo.running.firstLaunchDate") as? Date {
                 now = legacy
@@ -103,17 +110,13 @@ final class ProManager: ObservableObject {
             firstLaunchDate = now
             KeychainHelper.save(ISO8601DateFormatter().string(from: now), forKey: Self.firstLaunchKey)
         }
-        // Restore last known subscription end date
         lastSubscriptionEndDate = UserDefaults.standard.object(forKey: Self.subscriptionEndDateKey) as? Date
         transactionListener = listenForTransactions()
         Task { await checkEntitlements() }
     }
 
-    deinit { transactionListener?.cancel() }
 
     // MARK: - StoreKit 2
-
-    @Published var productLoadError: String?
 
     func loadProducts() async {
         productLoadError = nil
@@ -122,7 +125,7 @@ final class ProManager: ObservableObject {
             if loaded.isEmpty {
                 productLoadError = "상품 정보를 불러올 수 없습니다. App Store Connect에서 구독 상품이 등록되어 있는지 확인하세요."
             }
-            products = loaded.sorted { $0.price < $1.price }
+            products = loaded
             for p in products {
                 if let sub = p.subscription {
                     introEligibility[p.id] = await sub.isEligibleForIntroOffer
@@ -169,11 +172,54 @@ final class ProManager: ObservableObject {
                 isPro = true
                 if let exp = tx.expirationDate {
                     lastSubscriptionEndDate = exp
+                    await saveSubscriptionToCloud(expiryDate: exp)
                 }
                 return
             }
         }
+        // 개발자 계정 → 자동 Pro
+        if await isDeveloperAccount() { isPro = true; return }
+        // CloudKit 백업 확인 (구독 만료 직후 영수증 전파 지연 보완)
+        if await checkCloudSubscription() { isPro = true; return }
         isPro = false
+    }
+
+    // MARK: - CloudKit
+
+    private func saveSubscriptionToCloud(expiryDate: Date) async {
+        let db = CKContainer(identifier: Self.sharedContainerID).privateCloudDatabase
+        do {
+            let record: CKRecord
+            do {
+                record = try await db.record(for: Self.subscriptionRecordID)
+            } catch {
+                record = CKRecord(recordType: "MimoSubscription", recordID: Self.subscriptionRecordID)
+            }
+            record["expiryDate"] = expiryDate
+            try await db.save(record)
+        } catch {
+            print("[ProMgr] CloudKit 저장 실패:", error)
+        }
+    }
+
+    private func checkCloudSubscription() async -> Bool {
+        let db = CKContainer(identifier: Self.sharedContainerID).privateCloudDatabase
+        do {
+            let record = try await db.record(for: Self.subscriptionRecordID)
+            if let exp = record["expiryDate"] as? Date { return exp > Date() }
+        } catch { }
+        return false
+    }
+
+    private func isDeveloperAccount() async -> Bool {
+        do {
+            let id = try await CKContainer.default().userRecordID()
+            print("[ProMgr] CloudKit ID:", id.recordName)
+            guard !Self.developerCloudKitID.isEmpty else { return false }
+            return id.recordName == Self.developerCloudKitID
+        } catch {
+            return false
+        }
     }
 
     // MARK: - Helpers

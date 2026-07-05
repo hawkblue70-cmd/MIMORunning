@@ -93,7 +93,8 @@ private struct ConnectView: View {
 private struct ActivityListContent: View {
     var manager: HealthKitManager
     @Environment(RaceDetector.self) private var raceDetector
-    @ObservedObject private var pro = ProManager.shared
+    @Environment(\.modelContext) private var modelContext
+    private let pro = ProManager.shared
     @State private var displayCount = 50
     @State private var showPaywall = false
     @AppStorage("showRunning")  private var showRunning  = true
@@ -126,18 +127,12 @@ private struct ActivityListContent: View {
         }
     }
 
-    private var visibleActivities: [Activity] {
-        Array(filteredActivities.prefix(displayCount))
-    }
+    private var visibleActivities: [Activity] { Array(filteredActivities.prefix(displayCount)) }
 
     var body: some View {
         Group {
             if manager.isLoading && manager.activities.isEmpty {
                 ProgressView().tint(Theme.violet)
-            } else if manager.activities.isEmpty {
-                EmptyActivitiesView()
-            } else if filteredActivities.isEmpty {
-                FilteredEmptyView()
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
@@ -153,39 +148,47 @@ private struct ActivityListContent: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 4)
+
                         if !pro.isPro {
                             TrialBannerView(
                                 isExpired: pro.isTrialExpired,
                                 daysRemaining: pro.daysRemainingInTrial
                             ) { showPaywall = true }
                         }
-                        ForEach(visibleActivities) { activity in
-                            NavigationLink(value: activity) {
-                                ActivityCard(
-                                    activity: activity,
-                                    level: manager.userLevel.bucket,
-                                    shoeName: shoeByWorkout[activity.id.uuidString],
-                                    workoutType: manager.cachedWorkoutType(for: activity.id),
-                                    raceName: raceDetector.matchFor(activityID: activity.id).flatMap {
-                                        $0.isConfirmed ? $0.raceName : nil
-                                    }
-                                )
+
+                        if manager.activities.isEmpty {
+                            EmptyActivitiesView()
+                        } else if filteredActivities.isEmpty {
+                            FilteredEmptyView()
+                        } else {
+                            ForEach(visibleActivities, id: \.id) { activity in
+                                NavigationLink(value: activity) {
+                                    ActivityCard(
+                                        activity: activity,
+                                        level: manager.userLevel.bucket,
+                                        shoeName: shoeByWorkout[activity.id.uuidString],
+                                        workoutType: manager.cachedWorkoutType(for: activity.id),
+                                        raceName: raceDetector.matchFor(activityID: activity.id).flatMap {
+                                            $0.isConfirmed ? $0.raceName : nil
+                                        }
+                                    )
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
-                        }
-                        if displayCount < filteredActivities.count {
-                            Button {
-                                displayCount += 50
-                            } label: {
-                                Text(AppLanguage.shared.s("더 보기 (\(filteredActivities.count - displayCount)개 남음)", "Load More (\(filteredActivities.count - displayCount) left)"))
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(Theme.violet)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 14)
-                                    .background(Theme.violet.opacity(0.12))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            if displayCount < filteredActivities.count {
+                                Button {
+                                    displayCount += 50
+                                } label: {
+                                    Text(AppLanguage.shared.s("더 보기 (\(filteredActivities.count - displayCount)개 남음)", "Load More (\(filteredActivities.count - displayCount) left)"))
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(Theme.violet)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 14)
+                                        .background(Theme.violet.opacity(0.12))
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                                .padding(.top, 4)
                             }
-                            .padding(.top, 4)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -200,6 +203,16 @@ private struct ActivityListContent: View {
         .onChange(of: showRunning)  { _, _ in displayCount = 50 }
         .onChange(of: showWalking)  { _, _ in displayCount = 50 }
         .onChange(of: showHiking)   { _, _ in displayCount = 50 }
+        .task {
+            if let all = try? modelContext.fetch(FetchDescriptor<OneLinerEntry>()) {
+                let stale = all.filter { $0.workoutID.hasPrefix("restDay-") }
+                if !stale.isEmpty {
+                    print("[RestDayCleanup] \(stale.count)건 삭제")
+                    stale.forEach { modelContext.delete($0) }
+                    try? modelContext.save()
+                }
+            }
+        }
         .sheet(isPresented: $showPaywall) {
             ProPaywallSheet()
         }
@@ -544,3 +557,4 @@ private struct UnavailableView: View {
         .padding(24)
     }
 }
+
