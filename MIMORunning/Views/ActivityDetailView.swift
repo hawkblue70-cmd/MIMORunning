@@ -325,17 +325,7 @@ struct ActivityDetailView: View {
                 displayZones = computed
                 if !computed.isEmpty { detail?.hrZones = computed }
                 isComputingZones = false
-                #if DEBUG
-                let dist = computed.map { "z\($0.id):\(Int($0.seconds))초" }.joined(separator: " ")
-                let cond = computed.isEmpty ? "미충족(계산결과빈배열) hrSamples=\(hrSamples.count)" : "충족"
-                print("[ZoneDist] 뷰로드(폴백) 존개수=\(computed.count) 분포=[\(dist)] 표시조건=\(cond)")
-                #endif
             }
-            #if DEBUG
-            let finalZones = displayZones
-            let distFinal  = finalZones.map { "z\($0.id):\(Int($0.seconds))초" }.joined(separator: " ")
-            print("[ZoneDist] 뷰로드 최종 존개수=\(finalZones.count) 분포=[\(distFinal)]")
-            #endif
 
             hillMatch = HillSpotDetector.shared.assess(
                 routeCoords: detail?.routeCoordinates ?? [],
@@ -395,12 +385,7 @@ struct ActivityDetailView: View {
             }
 
             // Exactly one generation: guarded by in-flight claim
-            guard await InsightCache.shared.claimRefinedCompute(activity.id) else {
-                #if DEBUG
-                print("[DetailInsight] 중복스킵(진행중) activity=\(activity.id)")
-                #endif
-                return
-            }
+            guard await InsightCache.shared.claimRefinedCompute(activity.id) else { return }
             let result = await InsightEngine.computeBackground(
                 activity: activity,
                 history: manager.activities,
