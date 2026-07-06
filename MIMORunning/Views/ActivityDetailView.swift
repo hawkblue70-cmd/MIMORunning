@@ -2332,7 +2332,26 @@ private struct StorySection: View {
         return shoes.first { $0.id.uuidString == sid }
     }
     private var oneLinerEntries: [OneLinerEntry] {
-        OneLinerEntry.visible(from: allOneLinerEntries, workoutID: workoutID)
+        let validPhotoUUIDs = Set(story?.sortedPhotoUUIDs ?? [])
+        return OneLinerEntry.visible(from: allOneLinerEntries, workoutID: workoutID).filter { entry in
+            guard let ref = entry.mediaRef, ref.hasPrefix("photo:") else { return true }
+            let uuid = String(ref.dropFirst("photo:".count))
+            return validPhotoUUIDs.contains(uuid)
+        }
+    }
+
+    /// 스토리에 존재하지 않는 photo UUID를 가진 OneLinerEntry를 DB에서 삭제.
+    private func cleanupOrphanedEntries() {
+        let validPhotoUUIDs = Set(story?.sortedPhotoUUIDs ?? [])
+        let orphaned = allOneLinerEntries.filter { entry in
+            guard entry.workoutID == workoutID,
+                  let ref = entry.mediaRef, ref.hasPrefix("photo:") else { return false }
+            let uuid = String(ref.dropFirst("photo:".count))
+            return !validPhotoUUIDs.contains(uuid)
+        }
+        guard !orphaned.isEmpty else { return }
+        orphaned.forEach { modelContext.delete($0) }
+        try? modelContext.save()
     }
 
     init(workoutID: String) {
@@ -2379,6 +2398,8 @@ private struct StorySection: View {
         .sheet(isPresented: $showEditor) {
             StoryEditorSheet(workoutID: workoutID)
         }
+        .task { cleanupOrphanedEntries() }
+        .onChange(of: story?.updatedAt) { _, _ in cleanupOrphanedEntries() }
     }
 
     private var shoePicker: some View {
@@ -2689,11 +2710,14 @@ private struct StoryEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query private var stories: [WorkoutStory]
+    @Query private var oneLinerEntries: [OneLinerEntry]
     private var existingStory: WorkoutStory? { stories.first }
 
     @State private var memo = ""
     @State private var mood: Mood = .okay
     @State private var photoImages: [UIImage] = []
+    /// photoImages와 1:1 병렬 배열 — 기존 사진은 원본 UUID 보존, 신규 사진은 새 UUID 부여.
+    @State private var photoUUIDs: [String] = []
     @State private var pickerItems: [PhotosPickerItem] = []
     private let maxPhotos = 10
 
@@ -2701,6 +2725,7 @@ private struct StoryEditorSheet: View {
         self.workoutID = workoutID
         let wid = workoutID
         _stories = Query(filter: #Predicate<WorkoutStory> { $0.workoutID == wid })
+        _oneLinerEntries = Query(filter: #Predicate<OneLinerEntry> { $0.workoutID == wid })
     }
 
     var body: some View {
@@ -2802,6 +2827,7 @@ private struct StoryEditorSheet: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                                     .clipped()
                                 Button {
+                                    if idx < photoUUIDs.count { photoUUIDs.remove(at: idx) }
                                     photoImages.remove(at: idx)
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
@@ -2845,7 +2871,9 @@ private struct StoryEditorSheet: View {
                             }
                         }
                         let available = maxPhotos - photoImages.count
-                        photoImages.append(contentsOf: loaded.prefix(available))
+                        let addCount = min(loaded.count, available)
+                        photoImages.append(contentsOf: loaded.prefix(addCount))
+                        photoUUIDs.append(contentsOf: (0..<addCount).map { _ in UUID().uuidString })
                         pickerItems = []
                     }
                 }
@@ -2868,18 +2896,31 @@ private struct StoryEditorSheet: View {
         memo = s.memo
         mood = s.mood
         photoImages = s.allPhotoImages
+        photoUUIDs = s.sortedPhotoUUIDs
     }
 
     private func save() {
+        // 저장 시 UUID 보존: 기존 사진은 원본 UUID 유지, 신규 사진은 새 UUID 사용.
+        // 이렇게 하면 OneLinerEntry.mediaRef 링크가 깨지지 않는다.
+        let makePhoto: (Int, UIImage) -> StoryPhoto? = { idx, img in
+            guard let data = img.jpegData(compressionQuality: 0.75) else { return nil }
+            let uuid = idx < self.photoUUIDs.count ? self.photoUUIDs[idx] : UUID().uuidString
+            return StoryPhoto(data: data, index: idx, uuid: uuid)
+        }
         if let s = existingStory {
-            // Remove old StoryPhoto records
+            // 삭제된 사진의 OneLinerEntry 제거: 기존 UUID 중 새 목록에 없는 것을 찾아 삭제.
+            let oldUUIDs = s.sortedPhotoUUIDs
+            let newUUIDs = Set(photoUUIDs.prefix(photoImages.count))
+            for oldUUID in oldUUIDs where !newUUIDs.contains(oldUUID) {
+                let ref = "photo:\(oldUUID)"
+                if let entry = oneLinerEntries.first(where: { $0.mediaRef == ref }) {
+                    modelContext.delete(entry)
+                }
+            }
+            // StoryPhoto 교체 (UUID는 위에서 보존됨)
             for photo in s.photos ?? [] { modelContext.delete(photo) }
             s.photos = nil
-            // Save new photos as StoryPhoto
-            let newPhotos = photoImages.enumerated().compactMap { idx, img -> StoryPhoto? in
-                guard let data = img.jpegData(compressionQuality: 0.75) else { return nil }
-                return StoryPhoto(data: data, index: idx)
-            }
+            let newPhotos = photoImages.enumerated().compactMap { makePhoto($0.offset, $0.element) }
             newPhotos.forEach { modelContext.insert($0) }
             s.photos = newPhotos.isEmpty ? nil : newPhotos
             s.memo = memo
@@ -2888,10 +2929,7 @@ private struct StoryEditorSheet: View {
         } else {
             let story = WorkoutStory(workoutID: workoutID, memo: memo, mood: mood)
             modelContext.insert(story)
-            let newPhotos = photoImages.enumerated().compactMap { idx, img -> StoryPhoto? in
-                guard let data = img.jpegData(compressionQuality: 0.75) else { return nil }
-                return StoryPhoto(data: data, index: idx)
-            }
+            let newPhotos = photoImages.enumerated().compactMap { makePhoto($0.offset, $0.element) }
             newPhotos.forEach { modelContext.insert($0) }
             story.photos = newPhotos.isEmpty ? nil : newPhotos
         }

@@ -295,11 +295,12 @@ struct RouteVideoExportService {
 
     static let fps: Int32    = 30
     static let frameCount    = 450          // 15 s × 30 fps
+    // renderSize = intermediate SwiftUI point space; pixelSize MUST equal VideoExportService.targetSize.
+    // renderScale is derived — do NOT hardcode. Changing renderSize without updating renderScale
+    // would silently produce a wrong output resolution.
     static let renderSize    = CGSize(width: 540, height: 960)
-    static let renderScale: CGFloat = 2.0
-    static var pixelSize: CGSize {
-        CGSize(width: renderSize.width * renderScale, height: renderSize.height * renderScale)
-    }
+    static let renderScale: CGFloat = VideoExportService.targetSize.width / renderSize.width  // 1080/540 = 2.0
+    static var pixelSize: CGSize { VideoExportService.targetSize }  // always 1080×1920
     static var videoDuration: Double { Double(frameCount) / Double(fps) }   // 15.0 s
     static var routeDuration: Double  { videoDuration - 1.0 }               // 14.0 s
 
@@ -738,8 +739,9 @@ struct RouteVideoExportService {
         videoComp.instructions = [instruction]
 
         // E. Export via AVAssetExportSession (GPU-accelerated, no Swift frame loop)
+        // Use HEVCHighestQuality — same codec as VideoExportService for consistent output.
         guard let exporter = AVAssetExportSession(
-            asset: composition, presetName: AVAssetExportPresetHighestQuality
+            asset: composition, presetName: AVAssetExportPresetHEVCHighestQuality
         ) else { throw NSError(domain: "RouteVideoExport", code: -11) }
         exporter.videoComposition = videoComp
         exporter.outputURL = outputURL

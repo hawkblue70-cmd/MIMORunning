@@ -165,10 +165,12 @@ enum CardVisual {
     static let routeShadowY:      CGFloat = 1
 
     // Instagram safe zones for all 9:16 video cards (1080×1920 px).
-    // Top: Reels account name + audio row measured on-device — 260px.
-    // Bottom: reply bar / caption — 220px.  Horizontal: 60px.
+    // Top: Reels account name + audio row — 260px (≈13.5%).
+    // Bottom: Reels like/comment/share action bar — 270px (≈14%). Reply bar is ~220px but
+    //   the full action cluster on Reels extends to ~270px. Raised from 220 to fix clip.
+    // Horizontal: 60px.
     static let videoSafeTop:    CGFloat = 260
-    static let videoSafeBottom: CGFloat = 220
+    static let videoSafeBottom: CGFloat = 270
     static let videoSafeHoriz:  CGFloat = 60
     // Reference pt values at scale=1.0 (300pt card width over 1080px output).
     static var videoSafeTopRef:    CGFloat { videoSafeTop    * 300 / 1080 }  // ≈ 72.2 pt
@@ -3254,9 +3256,11 @@ struct ShareCardScreen: View {
     // 문구 칩 줄: entry가 1개 이상이면 상시 표시.
     // · 현재 사진에 이미 적용된 문구 칩에는 체크 표시.
     // · 탭 → 현재 사진의 entry를 해당 문구로 교체(upsert 저장).
+    // · 다중 사진 연재 모드(사진 2장 이상)에서는 숨김 — 각 사진마다 독립 입력이 의도된 설계.
     @ViewBuilder
     private var oneLinerReuseChipRow: some View {
-        if !uniqueOneLinerEntries.isEmpty {
+        let isMultiPhotoStory = template == .story && storyPhotoUUIDs.count > 1
+        if !uniqueOneLinerEntries.isEmpty && !isMultiPhotoStory {
             let currentText = oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -3788,7 +3792,7 @@ struct ShareCardScreen: View {
             allPickedPhotos = merged
             // Extend storyPhotoUUIDs: preserve existing, append new
             let existingUUIDs = storyPhotoUUIDs.isEmpty
-                ? (story?.sortedPhotoUUIDs ?? Array(repeating: UUID().uuidString, count: existing.count))
+                ? (story?.sortedPhotoUUIDs ?? (0..<existing.count).map { _ in UUID().uuidString })
                 : storyPhotoUUIDs
             let mergedUUIDs = Array((existingUUIDs + newItemIDs).prefix(5))
             storyPhotoUUIDs = mergedUUIDs
