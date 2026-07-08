@@ -60,15 +60,12 @@ struct RestDayOneLinerSheet: View {
                         .padding(.top, 16)
 
                         // ── Controls ──────────────────────────────────────
-                        VStack(spacing: 14) {
+                        VStack(spacing: 12) {
                             // Text input
                             oneLinerTextField
 
-                            // Font + color row
-                            fontColorRow
-
-                            // Position grid
-                            positionGrid
+                            // 9-position grid + font/color chips (identical to running-day layout)
+                            gridAndChips
 
                             // Photo picker row
                             photoRow
@@ -160,86 +157,83 @@ struct RestDayOneLinerSheet: View {
         }
     }
 
-    private var fontColorRow: some View {
-        HStack(spacing: 8) {
-            ForEach(OneLinerFont.allCases, id: \.self) { f in
-                Button {
-                    fontChoice = f
-                    saveEntry()
-                } label: {
-                    Text(f.chipLabel)
-                        .font(.custom(f.fontName, size: 14))
-                        .foregroundStyle(fontChoice == f ? Theme.violet : Color.white.opacity(0.7))
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(fontChoice == f
-                                    ? Theme.violet.opacity(0.12)
-                                    : Color(hex: "1E1E28"))
-                        .overlay(Capsule().strokeBorder(
-                            fontChoice == f
-                                ? Theme.violet.opacity(0.55)
-                                : Color.white.opacity(0.15),
-                            lineWidth: 1))
-                        .clipShape(Capsule())
+    /// 9-position anchor grid + font/color chips — mirrors running-day `oneLinerGridAndChips`.
+    private var gridAndChips: some View {
+        let rows: [[CardPosition]] = [
+            [.topLeading,    .top,    .topTrailing],
+            [.leading,       .center, .trailing],
+            [.bottomLeading, .bottom, .bottomTrailing]
+        ]
+        return HStack(alignment: .center, spacing: 20) {
+            // 3×3 compact grid (23×23 pt squares)
+            VStack(spacing: 4) {
+                ForEach(rows.indices, id: \.self) { rowIdx in
+                    HStack(spacing: 4) {
+                        ForEach(rows[rowIdx], id: \.self) { pos in
+                            let isSelected = position == pos
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) { position = pos }
+                                saveEntry()
+                            } label: {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(isSelected ? Theme.violet : Color(hex: "26262E"))
+                                    .frame(width: 23, height: 23)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
             }
 
-            Spacer()
-
-            ForEach(OneLinerTextColor.allCases, id: \.self) { c in
-                Button {
-                    textColor = c
-                    saveEntry()
-                } label: {
-                    Circle()
-                        .fill(c.color)
-                        .frame(width: 24, height: 24)
-                        .overlay(Circle().strokeBorder(
-                            textColor == c ? .white : .white.opacity(0.2),
-                            lineWidth: textColor == c ? 2 : 1))
+            // Font + color chips stacked
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    ForEach(OneLinerFont.allCases, id: \.self) { f in fontChip(f) }
                 }
-                .buttonStyle(.plain)
+                HStack(spacing: 8) {
+                    ForEach(OneLinerTextColor.allCases, id: \.self) { c in colorChip(c) }
+                }
             }
         }
     }
 
-    private var positionGrid: some View {
-        let cases = Array(CardPosition.allCases)
-        let rows: [[CardPosition]] = stride(from: 0, to: cases.count, by: 3).map {
-            Array(cases[$0..<min($0 + 3, cases.count)])
-        }
-        return VStack(spacing: 4) {
-            ForEach(rows.indices, id: \.self) { rowIdx in
-                HStack(spacing: 4) {
-                    ForEach(rows[rowIdx], id: \.self) { pos in
-                        Button {
-                            position = pos
-                            saveEntry()
-                        } label: {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(position == pos
-                                          ? Theme.violet.opacity(0.25)
-                                          : Color(hex: "1E1E28"))
-                                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(
-                                        position == pos
-                                            ? Theme.violet.opacity(0.6)
-                                            : Color.white.opacity(0.1),
-                                        lineWidth: 1))
-                                Circle()
-                                    .fill(position == pos ? Theme.violet : Color.white.opacity(0.3))
-                                    .frame(width: 5, height: 5)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity,
-                                           alignment: pos.alignment)
-                                    .padding(5)
-                            }
-                            .frame(height: 36)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+    private func fontChip(_ font: OneLinerFont) -> some View {
+        let isSelected = fontChoice == font
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { fontChoice = font }
+            saveEntry()
+        } label: {
+            HStack(spacing: 4) {
+                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
+                Text(font.chipLabel).font(.custom(font.fontName, size: 13))
             }
+            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(isSelected ? Color(hex: "3A3A44") : Color.white.opacity(0.08))
+            .clipShape(Capsule())
         }
+        .buttonStyle(.plain)
+    }
+
+    private func colorChip(_ tc: OneLinerTextColor) -> some View {
+        let isSelected = textColor == tc
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { textColor = tc }
+            saveEntry()
+        } label: {
+            HStack(spacing: 6) {
+                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
+                if tc != .white { Circle().fill(tc.color).frame(width: 8, height: 8) }
+                Text(tc.chipLabel).font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(isSelected
+                        ? (tc == .white ? Color(hex: "3A3A44") : tc.color.opacity(0.25))
+                        : Color.white.opacity(0.08))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private var photoRow: some View {
