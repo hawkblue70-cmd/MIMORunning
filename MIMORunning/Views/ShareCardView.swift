@@ -1843,6 +1843,10 @@ struct ShareCardScreen: View {
     /// Indices of story photos whose backing PHAsset has been deleted from Photos.
     @State private var deletedPhotoIndices:    Set<Int>         = []
     @FocusState private var oneLinerFieldFocused: Bool
+    /// Per-slot texts for video multi-page typing animation. One text field per slot.
+    @State private var oneLinerVideoSlotTexts: [String]        = ["", ""]
+    /// Number of video slots, auto-calculated from video duration (~3.5 s / slot).
+    @State private var oneLinerVideoSlotCount: Int             = 2
 
     private var routeCoords: [CLLocationCoordinate2D] { detail?.routeCoordinates ?? [] }
 
@@ -3234,9 +3238,64 @@ struct ShareCardScreen: View {
             }
             oneLinerGridAndChips
             oneLinerReuseChipRow
-            oneLinerTextField
+            // Video template with a loaded video: show per-slot inputs
+            if isOneLiner && template == .video && sourceVideoURL != nil {
+                oneLinerVideoSlotInput
+            } else {
+                oneLinerTextField
+            }
         }
         .padding(.vertical, 4)
+    }
+
+    /// Multi-slot text input for video template OneLiner.
+    /// Each slot becomes one line in the multi-page typing animation.
+    @ViewBuilder
+    private var oneLinerVideoSlotInput: some View {
+        let L = AppLanguage.shared
+        VStack(spacing: 6) {
+            ForEach(0..<oneLinerVideoSlotCount, id: \.self) { idx in
+                HStack(spacing: 8) {
+                    Text("\(idx + 1)")
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(Color(hex: "6E6E78"))
+                        .frame(width: 18, alignment: .trailing)
+                    let placeholder = L.s("슬롯 \(idx + 1)", "Slot \(idx + 1)")
+                    TextField(placeholder, text: Binding(
+                        get: {
+                            idx < oneLinerVideoSlotTexts.count ? oneLinerVideoSlotTexts[idx] : ""
+                        },
+                        set: { newVal in
+                            let capped = String(newVal.prefix(24))
+                            if idx < oneLinerVideoSlotTexts.count {
+                                oneLinerVideoSlotTexts[idx] = capped
+                            }
+                            // Sync joined text → oneLinerText for preview & storage
+                            oneLinerText = oneLinerVideoSlotTexts
+                                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                                .joined(separator: "\n")
+                            saveOneLinerSettings()
+                            Task { await renderCard(showSpinner: false) }
+                        }
+                    ))
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white)
+                    .tint(Theme.violet)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(Color(hex: "1E1E28"))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        .padding(.horizontal, 24)
+
+        Text(L.s("각 칸이 영상에서 차례로 타이핑됩니다", "Each slot types in sequence on the video"))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 4)
     }
 
     // 이 러닝의 고유 문구 풀 (같은 텍스트 중복 제거, 최신순).
@@ -3817,6 +3876,18 @@ struct ShareCardScreen: View {
             }
 
             sourceVideoURL = result.url
+
+            // OneLiner 영상: 영상 길이에서 슬롯 수 자동 계산 (~3.5초/슬롯, 최소 2, 최대 20)
+            if isOneLiner {
+                let dur = (try? await AVURLAsset(url: result.url).load(.duration).seconds) ?? 7.0
+                let count = max(2, min(20, Int(ceil(dur / 3.5))))
+                let existing = oneLinerVideoSlotTexts
+                oneLinerVideoSlotCount = count
+                oneLinerVideoSlotTexts = (0..<count).map { i in
+                    i < existing.count ? existing[i] : ""
+                }
+            }
+
             // PHAsset ID가 확정된 후 해당 영상의 저장된 OneLiner 설정 로드
             if isOneLiner { loadOneLinerSettings() }
             videoPreviewImage = await VideoExportService.firstFrame(of: result.url)
@@ -4285,6 +4356,35 @@ struct ShareCardScreen: View {
         exportedVideoFile = nil
 
         if isOneLiner {
+            // Multi-slot mode (3+ slots = 2+ pages): group into pages of 2 and use multi-page export
+            let filledSlots = oneLinerVideoSlotTexts
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if oneLinerVideoSlotCount >= 3 && filledSlots.contains(where: { !$0.isEmpty }) {
+                var pages: [[String]] = []
+                var i = 0
+                while i < filledSlots.count {
+                    let s1 = filledSlots[i]
+                    let s2 = i + 1 < filledSlots.count ? filledSlots[i + 1] : ""
+                    let pair = [s1, s2].filter { !$0.isEmpty }
+                    if !pair.isEmpty { pages.append(pair) }
+                    i += 2
+                }
+                if pages.count > 1 {
+                    if let out = try? await VideoExportService.exportOneLinerMultiPageVideo(
+                        sourceURL: url,
+                        pages: pages,
+                        fontChoice: oneLinerFont,
+                        textColor: oneLinerColor,
+                        position: oneLinerPosition,
+                        activityDate: activity.date,
+                        showDate: oneLinerShowDate) {
+                        exportedVideoFile = SharableVideoFile(url: out)
+                    }
+                    isExportingVideo = false
+                    return
+                }
+            }
+            // Single-text fallback: 2 slots or fewer, or all content resolves to 1 page
             if let out = try? await VideoExportService.exportOneLinerTypingVideo(
                 sourceURL: url,
                 text: oneLinerText,
@@ -4550,6 +4650,13 @@ struct ShareCardScreen: View {
         if let entry = oneLinerEntries.first(where: { $0.mediaRef == mediaRef }) {
             syncUIFromEntry(entry)
             oneLinerPhAssetDeleted = !entry.isPHAssetAvailable
+            // Video slot mode: split saved text back into individual slot fields
+            if template == .video && oneLinerVideoSlotCount > 2 {
+                let lines = entry.text.components(separatedBy: "\n")
+                oneLinerVideoSlotTexts = (0..<oneLinerVideoSlotCount).map { i in
+                    i < lines.count ? lines[i] : ""
+                }
+            }
         } else {
             oneLinerText = ""
             oneLinerPhAssetDeleted = false
@@ -4558,6 +4665,10 @@ struct ShareCardScreen: View {
             if let latest = oneLinerEntries.last {
                 oneLinerFont  = latest.font
                 oneLinerColor = latest.textColor
+            }
+            // Video slot mode: clear all slot fields
+            if template == .video {
+                oneLinerVideoSlotTexts = Array(repeating: "", count: max(2, oneLinerVideoSlotCount))
             }
         }
     }

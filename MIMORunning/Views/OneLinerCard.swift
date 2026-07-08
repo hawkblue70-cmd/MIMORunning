@@ -82,7 +82,9 @@ enum OneLinerTextColor: String, CaseIterable, Codable {
 // showBackground: false renders content-only with transparent background (for video overlay).
 
 struct OneLinerCard: View {
-    let activity: Activity
+    var activity: Activity? = nil
+    /// Date used for the date stamp and gradient when `activity` is nil (rest-day mode).
+    var displayDate: Date = Date()
     var backgroundPhoto: UIImage? = nil
     var text: String = ""
     var position: CardPosition = .center
@@ -90,6 +92,8 @@ struct OneLinerCard: View {
     var fontChoice: OneLinerFont = .pen
     var showDate: Bool = true
     var showBackground: Bool = true
+
+    private var cardDate: Date { activity?.date ?? displayDate }
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
@@ -144,7 +148,7 @@ struct OneLinerCard: View {
 
             // ── Date stamp ─────────────────────────────────────
             if showDate {
-                Text(activity.date.oneLinerDateString)
+                Text(cardDate.oneLinerDateString)
                     .font(.system(size: 11, weight: .light))
                     .foregroundStyle(.white.opacity(0.55))
                     .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
@@ -167,7 +171,7 @@ struct OneLinerCard: View {
                 .overlay(Color.black.opacity(0.22))
         } else {
             LinearGradient(
-                colors: SkyPalette.colors(for: activity.date),
+                colors: SkyPalette.colors(for: cardDate),
                 startPoint: .top,
                 endPoint: .bottom
             )

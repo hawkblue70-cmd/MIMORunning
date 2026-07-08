@@ -4,9 +4,22 @@ import Photos
 
 // MARK: - OneLinerEntry
 
-/// Text composition tied to a workout run, optionally linked to a photo or video background.
-/// The TEXT is owned by the workout — it persists even if the backing media is deleted.
-/// Up to 5 entries per workout; each has a distinct mediaRef.
+/// Text composition tied to a workout day, optionally linked to a photo or video background.
+/// The TEXT is owned by the day — it persists even if the backing media is deleted.
+///
+/// workoutID formats:
+///   • "<UUID string>"          — a HealthKit workout (running day)
+///   • "date:yyyy-MM-dd"        — a rest day (no workout); key is the calendar date
+///
+/// mediaRef formats:
+///   • nil                      — SkyPalette gradient background
+///   • "photo:<storyPhotoUUID>" — locally stored StoryPhoto
+///   • "video:<PHAsset.localIdentifier>" — Photos library video
+///
+/// Video multi-slot: text may contain "\n"-separated lines, each line = one display slot
+/// for the multi-page typing animation. Single-line text = legacy single-page mode.
+///
+/// Up to 5 entries per workout/day; each has a distinct mediaRef.
 @Model
 final class OneLinerEntry {
     var id: UUID           = UUID()
@@ -16,9 +29,6 @@ final class OneLinerEntry {
     var colorID: String    = OneLinerTextColor.white.rawValue
     var anchorRaw: Int     = 0       // index into CardPosition.allCases
     var showDate: Bool     = true
-    /// nil = SkyPalette gradient background (standalone entry)
-    /// "photo:<storyPhotoUUID>" = locally stored StoryPhoto
-    /// "video:<PHAsset.localIdentifier>" = Photos library video
     var mediaRef: String?  = nil
     var createdAt: Date    = Date()
 
@@ -41,6 +51,19 @@ final class OneLinerEntry {
             return cases[anchorRaw]
         }
         set { anchorRaw = CardPosition.allCases.firstIndex(of: newValue) ?? 0 }
+    }
+
+    // MARK: workoutID helpers
+
+    /// True when this entry belongs to a rest day (no workout).
+    var isRestDay: Bool { workoutID.hasPrefix("date:") }
+
+    /// Calendar date string → workoutID for a rest day entry ("date:yyyy-MM-dd").
+    static func restDayWorkoutID(for date: Date) -> String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        return "date:\(fmt.string(from: date))"
     }
 
     // MARK: mediaRef helpers

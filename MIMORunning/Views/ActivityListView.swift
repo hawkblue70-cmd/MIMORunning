@@ -97,12 +97,14 @@ private struct ActivityListContent: View {
     private let pro = ProManager.shared
     @State private var displayCount = 50
     @State private var showPaywall = false
+    @State private var showRestDaySheet = false
     @AppStorage("showRunning")  private var showRunning  = true
     @AppStorage("showWalking")  private var showWalking  = false
     @AppStorage("showHiking")   private var showHiking   = false
 
     @Query private var stories: [WorkoutStory]
     @Query private var shoes: [Shoe]
+    @Query private var allOneLinerEntries: [OneLinerEntry]
 
     private var shoeByWorkout: [String: String] {
         let shoeDict = Dictionary(uniqueKeysWithValues: shoes.map { ($0.id.uuidString, $0.displayName) })
@@ -129,6 +131,16 @@ private struct ActivityListContent: View {
 
     private var visibleActivities: [Activity] { Array(filteredActivities.prefix(displayCount)) }
 
+    /// True when today has no recorded workout (running, walking, or hiking).
+    private var isTodayRestDay: Bool {
+        !manager.activities.contains { Calendar.current.isDateInToday($0.date) }
+    }
+
+    private var todayRestDayEntry: OneLinerEntry? {
+        let wid = OneLinerEntry.restDayWorkoutID(for: Date())
+        return allOneLinerEntries.first { $0.workoutID == wid && $0.mediaRef == nil }
+    }
+
     var body: some View {
         Group {
             if manager.isLoading && manager.activities.isEmpty {
@@ -154,6 +166,13 @@ private struct ActivityListContent: View {
                                 isExpired: pro.isTrialExpired,
                                 daysRemaining: pro.daysRemainingInTrial
                             ) { showPaywall = true }
+                        }
+
+                        // 오늘 운동 기록이 없으면 쉬는 날 행 표시
+                        if isTodayRestDay && !manager.isLoading {
+                            RestDayListRow(entry: todayRestDayEntry) {
+                                showRestDaySheet = true
+                            }
                         }
 
                         if manager.activities.isEmpty {
@@ -215,6 +234,77 @@ private struct ActivityListContent: View {
         .sheet(isPresented: $showPaywall) {
             ProPaywallSheet()
         }
+        .sheet(isPresented: $showRestDaySheet) {
+            RestDayOneLinerSheet(date: Date())
+        }
+    }
+}
+
+// MARK: - Rest Day List Row
+
+private struct RestDayListRow: View {
+    let entry:   OneLinerEntry?
+    let onTap:   () -> Void
+
+    private var hasEntry: Bool { !(entry?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                // Left: icon + label
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "moon.zzz.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(hex: "6E6E78"))
+                        Text(AppLanguage.shared.s("쉬는 날", "Rest Day"))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color(hex: "6E6E78"))
+                    }
+                    Text(todayLabel)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+
+                Spacer()
+
+                // Right: entry text preview or placeholder
+                if hasEntry, let t = entry?.text {
+                    Text(t)
+                        .font(.custom(entry?.font.fontName ?? OneLinerFont.pen.fontName, size: 13))
+                        .foregroundStyle(entry?.textColor.color ?? .white)
+                        .lineLimit(1)
+                        .frame(maxWidth: 140, alignment: .trailing)
+                } else {
+                    Text(AppLanguage.shared.s("이야기 추가하기", "Add your story"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.violet.opacity(0.8))
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(hex: "4E4E5A"))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color(hex: "1E1E28"))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(
+                hasEntry ? Theme.violet.opacity(0.20) : Color.white.opacity(0.07),
+                lineWidth: 1
+            ))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var todayLabel: String {
+        let f = DateFormatter()
+        f.dateFormat = "M월 d일 (E)"
+        f.locale = Locale(identifier: "ko_KR")
+        let enF = DateFormatter()
+        enF.dateFormat = "MMM d, EEE"
+        enF.locale = Locale(identifier: "en_US")
+        return AppLanguage.shared.s(f.string(from: Date()), enF.string(from: Date()))
     }
 }
 
