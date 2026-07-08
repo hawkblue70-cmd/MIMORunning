@@ -28,8 +28,6 @@ struct RestDayOneLinerSheet: View {
     @State private var fontChoice:  OneLinerFont     = .pen
     @State private var textColor:   OneLinerTextColor = .white
     @State private var position:    CardPosition     = .center
-    @State private var showDate:    Bool             = true
-
     @State private var backgroundPhoto: UIImage? = nil
     @State private var photoPickerItem: PhotosPickerItem? = nil
 
@@ -53,7 +51,7 @@ struct RestDayOneLinerSheet: View {
                             position: position,
                             textColor: textColor,
                             fontChoice: fontChoice,
-                            showDate: showDate
+                            showDate: true
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
@@ -69,9 +67,6 @@ struct RestDayOneLinerSheet: View {
 
                             // Photo picker row
                             photoRow
-
-                            // Date toggle
-                            dateToggleRow
                         }
                         .padding(.horizontal, 24)
                         .padding(.bottom, 32)
@@ -267,18 +262,6 @@ struct RestDayOneLinerSheet: View {
         }
     }
 
-    private var dateToggleRow: some View {
-        Toggle(isOn: Binding(
-            get: { showDate },
-            set: { showDate = $0; saveEntry() }
-        )) {
-            Text(AppLanguage.shared.s("날짜 표시", "Show date"))
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.8))
-        }
-        .tint(Theme.violet)
-    }
-
     // MARK: - Helpers
 
     private var dateTitle: String {
@@ -298,7 +281,6 @@ struct RestDayOneLinerSheet: View {
         fontChoice  = entry.font
         textColor = entry.textColor
         position  = entry.position
-        showDate  = entry.showDate
     }
 
     private func saveEntry() {
@@ -311,7 +293,7 @@ struct RestDayOneLinerSheet: View {
                 existing.font      = fontChoice
                 existing.textColor = textColor
                 existing.position  = position
-                existing.showDate  = showDate
+                existing.showDate  = true
             }
             try? modelContext.save()
             return
@@ -322,7 +304,7 @@ struct RestDayOneLinerSheet: View {
         entry.font      = fontChoice
         entry.textColor = textColor
         entry.position  = position
-        entry.showDate  = showDate
+        entry.showDate  = true
         modelContext.insert(entry)
         try? modelContext.save()
     }
@@ -336,7 +318,7 @@ struct RestDayOneLinerSheet: View {
             position: position,
             textColor: textColor,
             fontChoice: fontChoice,
-            showDate: showDate
+            showDate: true
         )
         .frame(width: OneLinerCard.cardWidth, height: OneLinerCard.cardHeight)
         let renderer = ImageRenderer(content: card)
