@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import AVFoundation
 import UIKit
 
 // MARK: - RestDayTemplate
@@ -50,16 +51,15 @@ struct RestDayOneLinerSheet: View {
     @State private var photoPickerItems:   [PhotosPickerItem] = []
     @State private var selectedPhotoIndex: Int                = 0
     @State private var videoPickerItems:   [PhotosPickerItem] = []
-    @State private var videoFirstFrame:    UIImage?           = nil
+    @State private var clipRecipes:        [ClipRecipe]       = []
+    @State private var editingClipIndex:   Int?               = nil
+    @State private var draggingClipIndex:  Int?               = nil
     @State private var videoSlotTexts:     [String]           = []
     @State private var videoSlotCount:     Int                = 0
-    @State private var videoClipCount:     Int                = 0   // number of clips selected
-    @State private var videoTotalSeconds:  Double             = 0   // sum of all clip durations
     @State private var slotTexts:          [String]           = []  // per-photo (mirrors backgroundPhotos)
     @State private var orphanedTexts:      [String]           = []  // texts whose photo was removed
     @State private var draggingPhotoIndex: Int?               = nil
     @State private var selectedTemplate:  RestDayTemplate     = .story
-    @State private var videoSourceURLs:   [URL]               = []
     @State private var isExportingVideo:  Bool                = false
     @State private var muteVideoAudio:    Bool                = false
     @State private var activeVideoSlot:   Int                = 0
@@ -67,12 +67,15 @@ struct RestDayOneLinerSheet: View {
     @FocusState private var fieldFocused: Bool
 
     // MARK: Computed
-    private var isVideoMode: Bool { videoFirstFrame != nil }
+    private var isVideoMode: Bool { !clipRecipes.isEmpty }
+    private var videoFirstFrame: UIImage? { clipRecipes.first?.thumbnail }
+    private var videoTotalSeconds: Double { MultiClipComposition.totalDuration(recipes: clipRecipes) }
+    private var videoClipCount: Int { clipRecipes.count }
 
     private var shareButtonActive: Bool {
         guard !isExportingVideo else { return false }
         switch selectedTemplate {
-        case .video: return videoFirstFrame != nil && videoTotalSeconds <= MultiClipComposition.maxSeconds
+        case .video: return isVideoMode && videoTotalSeconds <= MultiClipComposition.maxSeconds
         case .story:
             return true
         }
@@ -163,6 +166,14 @@ struct RestDayOneLinerSheet: View {
                 }
             }
         }
+        .sheet(isPresented: Binding(
+            get: { editingClipIndex != nil },
+            set: { if !$0 { editingClipIndex = nil } }
+        )) {
+            if let idx = editingClipIndex, idx < clipRecipes.count {
+                ClipTrimSheet(recipe: $clipRecipes[idx])
+            }
+        }
         .onAppear { loadEntry() }
         .onChange(of: allEntries) { oldValue, _ in
             guard oldValue.isEmpty, text.isEmpty, backgroundPhotos.isEmpty else { return }
@@ -194,9 +205,8 @@ struct RestDayOneLinerSheet: View {
                 orphanedTexts = pool          // leftovers stay as orphans
 
                 if isVideoMode { text = "" }
-                videoFirstFrame = nil
+                clipRecipes      = []
                 videoPickerItems = []
-                videoSourceURLs  = []
                 // videoSlotTexts·videoSlotCount는 영상 상태와 독립 — 사진 선택 시 건드리지 않음
                 backgroundPhotos   = images
                 selectedPhotoIndex = 0
@@ -206,36 +216,29 @@ struct RestDayOneLinerSheet: View {
         .onChange(of: videoPickerItems) { _, items in
             guard !items.isEmpty else { return }
             Task {
-                // Load each picker item to a temp URL (sequentially — stable order)
-                var urls: [URL] = []
+                // Build ClipRecipe[] — sequential to preserve picker order
+                var recipes: [ClipRecipe] = []
                 for item in items {
                     guard let result = try? await item.loadTransferable(type: VideoPickerResult.self)
                     else { continue }
-                    urls.append(result.url)
+                    let url = result.url
+                    let dur = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
+                    let thumb = await VideoExportService.firstFrame(of: url)
+                    recipes.append(ClipRecipe(url: url, fullDuration: dur, thumbnail: thumb))
                 }
-                guard !urls.isEmpty else { return }
-                let loadedURLs = urls   // immutable copy for concurrent use
+                guard !recipes.isEmpty else { return }
 
-                // First frame preview from first clip
-                async let firstFrame = VideoExportService.firstFrame(of: loadedURLs[0])
-
-                // Total duration (load in parallel via MultiClipComposition helper)
-                let totalSeconds = await MultiClipComposition.totalDuration(urls: loadedURLs)
+                let totalSeconds = MultiClipComposition.totalDuration(recipes: recipes)
                 let count        = max(1, min(20, Int(totalSeconds / 3.0)))
-
-                print("[OneLinerVideo] 클립수=\(loadedURLs.count) 합산=\(Int(totalSeconds))초 칸=\(count)개 생성")
+                print("[OneLinerVideo] 클립수=\(recipes.count) 합산=\(Int(totalSeconds))초 칸=\(count)개 생성")
 
                 // 사진 상태는 독립 보존 — 영상 선택 시 건드리지 않음
-                videoFirstFrame   = await firstFrame
-                videoSourceURLs   = loadedURLs
-                videoClipCount    = loadedURLs.count
-                videoTotalSeconds = totalSeconds
-                videoSlotCount    = count
-                // 기존 문구 유지: 새 슬롯 수 범위 안은 보존, 초과분 삭제
+                clipRecipes    = recipes
+                videoSlotCount = count
                 let prev = videoSlotTexts
-                videoSlotTexts    = (0..<count).map { i in i < prev.count ? prev[i] : "" }
-                text              = ""
-                selectedTemplate  = .video
+                videoSlotTexts = (0..<count).map { i in i < prev.count ? prev[i] : "" }
+                text           = ""
+                selectedTemplate = .video
             }
         }
     }
@@ -603,36 +606,15 @@ struct RestDayOneLinerSheet: View {
                 .padding(.vertical, 4)
             }
         } else if selectedTemplate == .video {
-            HStack(spacing: 10) {
-                // Thumbnail — first frame of first clip
-                if let frame = videoFirstFrame {
-                    ZStack(alignment: .bottomTrailing) {
-                        Image(uiImage: frame)
-                            .resizable().scaledToFill()
-                            .frame(width: 52, height: 52)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(Theme.violet, lineWidth: 1.5))
-                        if videoClipCount > 1 {
-                            Text("\(videoClipCount)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 4).padding(.vertical, 2)
-                                .background(Theme.violet.opacity(0.85))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .offset(x: 4, y: 4)
-                        }
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    // Multi-select picker
+            VStack(alignment: .leading, spacing: 8) {
+                // ── Picker button row ──────────────────────────
+                HStack(spacing: 10) {
                     PhotosPicker(selection: $videoPickerItems,
                                  maxSelectionCount: 10,
                                  matching: .videos) {
                         HStack(spacing: 6) {
                             Image(systemName: "video.badge.plus")
-                            Text(videoFirstFrame == nil
+                            Text(clipRecipes.isEmpty
                                  ? AppLanguage.shared.s("영상 선택", "Select videos")
                                  : AppLanguage.shared.s("영상 변경", "Change videos"))
                                 .font(.subheadline)
@@ -644,54 +626,122 @@ struct RestDayOneLinerSheet: View {
                     }
                     .buttonStyle(.plain)
 
-                    // Clip count + duration label / 60s warning
-                    if videoClipCount > 0 {
-                        let exceeded = videoTotalSeconds > MultiClipComposition.maxSeconds
-                        let overBy   = Int(videoTotalSeconds) - Int(MultiClipComposition.maxSeconds)
-                        if exceeded {
-                            Text(AppLanguage.shared.s(
-                                "전체 60초를 넘어요 — \(overBy)초 초과",
-                                "Over 60s limit — \(overBy)s too long"))
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        } else {
-                            Text(AppLanguage.shared.s(
-                                "클립 \(videoClipCount)개 · \(Int(videoTotalSeconds))초",
-                                "\(videoClipCount) clips · \(Int(videoTotalSeconds))s"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+
+                    if isVideoMode {
+                        Button { muteVideoAudio.toggle() } label: {
+                            Image(systemName: muteVideoAudio ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                .foregroundStyle(muteVideoAudio ? Color.secondary : Theme.violet)
+                                .font(.title3)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
 
-                Spacer(minLength: 0)
+                // ── Clip strip (thumbnails + drag reorder + × + tap to trim) ──
+                if !clipRecipes.isEmpty {
+                    clipStrip
+                }
 
-                if videoFirstFrame != nil {
-                    Button { muteVideoAudio.toggle() } label: {
-                        Image(systemName: muteVideoAudio ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .foregroundStyle(muteVideoAudio ? Color.secondary : Theme.violet)
-                            .font(.title3)
+                // ── Duration label / 60s warning ──────────────
+                if !clipRecipes.isEmpty {
+                    let exceeded = videoTotalSeconds > MultiClipComposition.maxSeconds
+                    let overBy   = Int(videoTotalSeconds) - Int(MultiClipComposition.maxSeconds)
+                    if exceeded {
+                        Text(AppLanguage.shared.s(
+                            "전체 60초를 넘어요 — \(overBy)초 초과",
+                            "Over 60s limit — \(overBy)s too long"))
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else {
+                        Text(AppLanguage.shared.s(
+                            "클립 \(videoClipCount)개 · \(Int(videoTotalSeconds))초  (탭하면 구간 설정)",
+                            "\(videoClipCount) clips · \(Int(videoTotalSeconds))s  (tap to trim)"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        videoFirstFrame   = nil
-                        videoPickerItems  = []
-                        videoSourceURLs   = []
-                        videoClipCount    = 0
-                        videoTotalSeconds = 0
-                        text              = ""
-                        muteVideoAudio    = false
-                        // videoSlotTexts·videoSlotCount는 유지 — 영상 재선택 시 복원됨
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary).font(.title3)
-                    }
-                    .buttonStyle(.plain)
                 }
             }
         }
         // .athletic: no media picker
+    }
+
+    // MARK: - Clip strip
+
+    private var clipStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(clipRecipes.indices, id: \.self) { i in
+                    let isDragging = draggingClipIndex == i
+                    ZStack(alignment: .topTrailing) {
+                        Button { editingClipIndex = i } label: {
+                            Group {
+                                if let thumb = clipRecipes[i].thumbnail {
+                                    Image(uiImage: thumb)
+                                        .resizable().scaledToFill()
+                                } else {
+                                    Rectangle()
+                                        .fill(Color(.systemGray5))
+                                        .overlay(Image(systemName: "video").foregroundStyle(.secondary))
+                                }
+                            }
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(
+                                        clipRecipes[i].isTrimmed ? Color.orange : Theme.violet.opacity(0.6),
+                                        lineWidth: 1.5)
+                            )
+                            .overlay(alignment: .bottom) {
+                                Text("\(Int(clipRecipes[i].trimmedDuration))s")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 3).padding(.vertical, 1)
+                                    .background(Color.black.opacity(0.55))
+                                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                                    .padding(.bottom, 3)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        Button { removeClip(at: i) } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(Color.white, Color.black.opacity(0.65))
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: 4, y: -4)
+                    }
+                    .scaleEffect(isDragging ? 1.08 : 1.0)
+                    .animation(.easeInOut(duration: 0.1), value: isDragging)
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 8)
+                            .onChanged { value in
+                                if draggingClipIndex == nil { draggingClipIndex = i }
+                                guard let from = draggingClipIndex else { return }
+                                let step: CGFloat = 60
+                                if value.translation.width > step / 2, from < clipRecipes.count - 1 {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        clipRecipes.swapAt(from, from + 1)
+                                        draggingClipIndex = from + 1
+                                    }
+                                } else if value.translation.width < -step / 2, from > 0 {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        clipRecipes.swapAt(from, from - 1)
+                                        draggingClipIndex = from - 1
+                                    }
+                                }
+                            }
+                            .onEnded { _ in
+                                withAnimation { draggingClipIndex = nil }
+                            }
+                    )
+                }
+            }
+            .padding(.vertical, 4)
+        }
     }
 
     // MARK: - Bindings
@@ -740,6 +790,27 @@ struct RestDayOneLinerSheet: View {
     }
 
     // MARK: - Helpers
+
+    private func removeClip(at index: Int) {
+        guard index < clipRecipes.count else { return }
+        clipRecipes.remove(at: index)
+        if clipRecipes.isEmpty {
+            videoPickerItems = []
+            videoSlotCount   = 0
+            muteVideoAudio   = false
+            selectedTemplate = .story
+        } else {
+            updateVideoSlotCount()
+        }
+    }
+
+    private func updateVideoSlotCount() {
+        let totalSeconds = MultiClipComposition.totalDuration(recipes: clipRecipes)
+        let count        = max(1, min(20, Int(totalSeconds / 3.0)))
+        videoSlotCount   = count
+        let prev         = videoSlotTexts
+        videoSlotTexts   = (0..<count).map { i in i < prev.count ? prev[i] : "" }
+    }
 
     private var dateTitle: String {
         let f = DateFormatter()
@@ -888,29 +959,31 @@ struct RestDayOneLinerSheet: View {
     @MainActor
     private func renderCardForSharing() {
         // 영상 템플릿: VideoExportService로 실제 .mov 출력
-        if selectedTemplate == .video, !videoSourceURLs.isEmpty {
+        if selectedTemplate == .video, !clipRecipes.isEmpty {
             isExportingVideo = true
             Task {
                 defer { isExportingVideo = false }
                 do {
-                    // Multi-clip: compose clips first (rotation+stitch), then overlay typing animation.
-                    // Single-clip: skip compose step to avoid the extra encode pass.
+                    // Multi-clip or trimmed: compose via recipe path.
+                    // Single untrimmed clip: skip compose to save one encode pass.
+                    let recipes     = clipRecipes
+                    let needsCompose = recipes.count > 1 || recipes.contains { $0.isTrimmed }
                     let exportURL:  URL
                     var cleanupURL: URL? = nil
-                    if videoSourceURLs.count > 1 {
+                    if needsCompose {
                         let (composed, _) = try await MultiClipComposition.composeAndExport(
-                            urls: videoSourceURLs, muteAudio: muteVideoAudio)
+                            recipes: recipes, muteAudio: muteVideoAudio)
                         exportURL  = composed
                         cleanupURL = composed
                     } else {
-                        exportURL = videoSourceURLs[0]
+                        exportURL = recipes[0].url
                     }
                     defer { cleanupURL.map { try? FileManager.default.removeItem(at: $0) } }
 
-                    // For multi-clip the composed file is the full duration; don't trim it.
-                    let maxDur: Double? = videoSourceURLs.count > 1 ? videoTotalSeconds : nil
-                    // Audio is already handled by composeAndExport for multi-clip.
-                    let isMuted = videoSourceURLs.count > 1 ? false : muteVideoAudio
+                    // For composed output the full duration is already baked in; no trim needed.
+                    let maxDur: Double? = needsCompose ? videoTotalSeconds : nil
+                    // Audio muting for composed output is handled inside composeAndExport.
+                    let isMuted = needsCompose ? false : muteVideoAudio
 
                     let outputURL: URL
                     if videoSlotCount > 1 {

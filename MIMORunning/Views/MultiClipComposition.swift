@@ -5,7 +5,35 @@ import UIKit
 
 struct ClipDescriptor {
     let url: URL
-    let duration: Double   // seconds
+    let duration: Double    // trimmed duration (seconds)
+    let trimStart: Double
+    let trimEnd: Double
+}
+
+// MARK: - ClipRecipe
+//
+// User-editable descriptor for one clip.
+// The source file is never mutated; trimStart/trimEnd are applied as CMTimeRange
+// during composition. Trim info is in-memory only (not persisted to DB).
+
+struct ClipRecipe: Identifiable {
+    var id:           UUID    = UUID()
+    let url:          URL
+    var trimStart:    Double          // seconds from clip start (default: 0)
+    var trimEnd:      Double          // seconds from clip start (default: fullDuration)
+    let fullDuration: Double
+    var thumbnail:    UIImage?        // first frame, loaded async after selection
+
+    init(url: URL, fullDuration: Double, thumbnail: UIImage? = nil) {
+        self.url          = url
+        self.fullDuration = fullDuration
+        self.trimStart    = 0
+        self.trimEnd      = fullDuration
+        self.thumbnail    = thumbnail
+    }
+
+    var trimmedDuration: Double { max(0.1, trimEnd - trimStart) }
+    var isTrimmed: Bool { trimStart > 0.05 || trimEnd < fullDuration - 0.05 }
 }
 
 // MARK: - MultiClipComposition
@@ -80,7 +108,8 @@ enum MultiClipComposition {
                 scaleFillTransform(naturalSize: natSz, preferredTransform: prefTf),
                 at: insertAt)
 
-            clips.append(ClipDescriptor(url: url, duration: CMTimeGetSeconds(dur)))
+            let clipSecs = CMTimeGetSeconds(dur)
+            clips.append(ClipDescriptor(url: url, duration: clipSecs, trimStart: 0, trimEnd: clipSecs))
             insertAt = CMTimeAdd(insertAt, dur)
         }
         guard !clips.isEmpty else { throw MCError.noVideoTrack }
@@ -145,6 +174,107 @@ enum MultiClipComposition {
             for await d in group { sum += d }
             return sum
         }
+    }
+
+    /// Sync total of trimmed durations — no async needed since durations are already in the recipes.
+    static func totalDuration(recipes: [ClipRecipe]) -> Double {
+        recipes.reduce(0) { $0 + $1.trimmedDuration }
+    }
+
+    // MARK: - composeAndExport (recipes — supports trim)
+    //
+    // Like the URL-based version, but uses each recipe's trimStart/trimEnd
+    // to insert only the trimmed CMTimeRange from each clip.
+    // Log format: [MultiClip] 클립수=N 각트림=[0-5s, 2-10s, ...] 합산=Xs 합성시간=X.XXs
+
+    static func composeAndExport(recipes: [ClipRecipe], muteAudio: Bool = false) async throws -> (url: URL, clips: [ClipDescriptor]) {
+        guard !recipes.isEmpty else { throw MCError.noClips }
+        let tStart = Date()
+
+        let composition = AVMutableComposition()
+        guard let compVideo = composition.addMutableTrack(
+            withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { throw MCError.compositionFailed }
+
+        let compAudio: AVMutableCompositionTrack? = muteAudio ? nil :
+            composition.addMutableTrack(withMediaType: .audio,
+                                        preferredTrackID: kCMPersistentTrackID_Invalid)
+
+        let layerInstr = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
+        var insertAt   = CMTime.zero
+        var clips:     [ClipDescriptor] = []
+
+        for recipe in recipes {
+            let asset = AVURLAsset(url: recipe.url)
+            let vts   = try await asset.loadTracks(withMediaType: .video)
+            guard let vt = vts.first else { continue }
+
+            let natSz  = try await vt.load(.naturalSize)
+            let prefTf = try await vt.load(.preferredTransform)
+
+            // Trimmed range within the source clip
+            let clipRange = CMTimeRange(
+                start:    CMTimeMakeWithSeconds(recipe.trimStart, preferredTimescale: 600),
+                duration: CMTimeMakeWithSeconds(recipe.trimmedDuration, preferredTimescale: 600))
+
+            try compVideo.insertTimeRange(clipRange, of: vt, at: insertAt)
+
+            if let ca = compAudio,
+               let ats = try? await asset.loadTracks(withMediaType: .audio),
+               let at  = ats.first {
+                try? ca.insertTimeRange(clipRange, of: at, at: insertAt)
+            }
+
+            layerInstr.setTransform(
+                scaleFillTransform(naturalSize: natSz, preferredTransform: prefTf),
+                at: insertAt)
+
+            clips.append(ClipDescriptor(url: recipe.url, duration: recipe.trimmedDuration,
+                                        trimStart: recipe.trimStart, trimEnd: recipe.trimEnd))
+            insertAt = CMTimeAdd(insertAt, clipRange.duration)
+        }
+        guard !clips.isEmpty else { throw MCError.noVideoTrack }
+
+        let totalDuration = insertAt
+        let totalSeconds  = CMTimeGetSeconds(totalDuration)
+
+        let vcInstr = AVMutableVideoCompositionInstruction()
+        vcInstr.timeRange         = CMTimeRange(start: .zero, duration: totalDuration)
+        vcInstr.layerInstructions = [layerInstr]
+
+        let videoComp           = AVMutableVideoComposition()
+        videoComp.renderSize    = targetSize
+        videoComp.frameDuration = CMTimeMake(value: 1, timescale: 30)
+        videoComp.instructions  = [vcInstr]
+
+        let outURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_multiclip_\(UUID().uuidString).mov")
+        try? FileManager.default.removeItem(at: outURL)
+
+        guard let session = AVAssetExportSession(
+            asset: composition, presetName: AVAssetExportPresetHEVCHighestQuality)
+        else { throw MCError.exportFailed }
+
+        session.outputURL        = outURL
+        session.outputFileType   = .mov
+        session.videoComposition = videoComp
+        session.timeRange        = CMTimeRange(start: .zero, duration: totalDuration)
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            session.exportAsynchronously {
+                switch session.status {
+                case .completed: cont.resume()
+                case .failed:    cont.resume(throwing: session.error ?? MCError.exportFailed)
+                default:         cont.resume(throwing: MCError.exportFailed)
+                }
+            }
+        }
+
+        let elapsed    = Date().timeIntervalSince(tStart)
+        let trimLog    = clips.map { "\(Int($0.trimStart))-\(Int($0.trimEnd))s" }.joined(separator: ", ")
+        print("[MultiClip] 클립수=\(clips.count) 각트림=[\(trimLog)] 합산=\(Int(totalSeconds))초 합성시간=\(String(format: "%.2f", elapsed))s")
+
+        return (outURL, clips)
     }
 
     // MARK: - Private
