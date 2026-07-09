@@ -92,13 +92,16 @@ struct OneLinerCard: View {
     var fontChoice: OneLinerFont = .pen
     var showDate: Bool = true
     var showBackground: Bool = true
+    /// When true, text + date are pinned together at the bottom-left (caption layout).
+    /// The `position` parameter is ignored in this mode.
+    var captionMode: Bool = false
 
     private var cardDate: Date { activity?.date ?? displayDate }
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
 
-    private var baseFontSize: CGFloat { 24 * fontChoice.sizeScale }
+    private var baseFontSize: CGFloat { 20 * fontChoice.sizeScale }
     private var lineSpacing:  CGFloat { baseFontSize * 0.4 }
 
     private var textAlignment: TextAlignment {
@@ -120,44 +123,86 @@ struct OneLinerCard: View {
             // ── Wordmark: MIMO (white) + RUNNING (violet) ──────
             wordmark
 
-            // ── Hero text ──────────────────────────────────────
+            // ── Hero text + date ───────────────────────────────
+            if captionMode {
+                captionContent
+                if showDate {
+                    Text(cardDate.oneLinerDateString)
+                        .font(.system(size: 11, weight: .light))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .padding(.trailing, 14)
+                        .padding(.bottom, 12)
+                }
+            } else {
+                if text.isEmpty {
+                    if showBackground {
+                        Text(AppLanguage.shared.s("한마디를 입력해 주세요", "Enter your one-liner"))
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white.opacity(0.35))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                } else {
+                    Text(text)
+                        .font(.custom(fontChoice.fontName, size: baseFontSize))
+                        .lineSpacing(lineSpacing)
+                        .multilineTextAlignment(textAlignment)
+                        .foregroundStyle(textColor.color)
+                        .shadow(color: .black.opacity(0.55), radius: 5, x: 1, y: 2)
+                        .lineLimit(2)
+                        .padding(.horizontal, 24)
+                        .padding(.top, textTopInset)
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity,
+                            alignment: position.alignment
+                        )
+                }
+                if showDate {
+                    Text(cardDate.oneLinerDateString)
+                        .font(.system(size: 11, weight: .light))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .padding(.trailing, 14)
+                        .padding(.bottom, 12)
+                }
+            }
+        }
+        .frame(width: Self.cardWidth, height: Self.cardHeight)
+    }
+
+    // Text just above date — the text+date unit moves together to `position`.
+    // Horizontal alignment follows the position column; vertical follows the row.
+    @ViewBuilder
+    private var captionContent: some View {
+        let isTrailing = (position == .topTrailing || position == .trailing || position == .bottomTrailing)
+        let hAlign: HorizontalAlignment = position.isLeading ? .leading : isTrailing ? .trailing : .center
+        let tAlign: TextAlignment       = position.isLeading ? .leading : isTrailing ? .trailing : .center
+        VStack(alignment: hAlign, spacing: 4) {
             if text.isEmpty {
                 if showBackground {
                     Text(AppLanguage.shared.s("한마디를 입력해 주세요", "Enter your one-liner"))
                         .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.35))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
                 Text(text)
                     .font(.custom(fontChoice.fontName, size: baseFontSize))
                     .lineSpacing(lineSpacing)
-                    .multilineTextAlignment(textAlignment)
+                    .multilineTextAlignment(tAlign)
                     .foregroundStyle(textColor.color)
                     .shadow(color: .black.opacity(0.55), radius: 5, x: 1, y: 2)
                     .lineLimit(2)
-                    .padding(.horizontal, 24)
-                    .padding(.top, textTopInset)
-                    .frame(
-                        maxWidth: .infinity,
-                        maxHeight: .infinity,
-                        alignment: position.alignment
-                    )
-            }
-
-            // ── Date stamp ─────────────────────────────────────
-            if showDate {
-                Text(cardDate.oneLinerDateString)
-                    .font(.system(size: 11, weight: .light))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(.trailing, 14)
-                    .padding(.bottom, 12)
             }
         }
-        .frame(width: Self.cardWidth, height: Self.cardHeight)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
+        .padding(.horizontal, 14)
+        .padding(.top, position.isTop ? 32 : 12)
+        // 하단 위치: 날짜(11pt + 12pt 패딩 + 여백) 위로 문구가 올라가도록 여유 확보
+        .padding(.bottom, position.isBottom ? 34 : 12)
     }
 
     @ViewBuilder

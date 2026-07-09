@@ -74,6 +74,10 @@ struct VideoExportService {
         }
     }
 
+    static func duration(of url: URL) async -> Double {
+        (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
+    }
+
     // MARK: Export (static overlay)
 
     static func exportVideo(sourceURL: URL, overlay: UIImage) async throws -> URL {
@@ -214,7 +218,8 @@ struct VideoExportService {
         textColor: OneLinerTextColor,
         position: CardPosition,
         activityDate: Date,
-        showDate: Bool
+        showDate: Bool,
+        muteAudio: Bool = false
     ) async throws -> URL {
 
         let asset = AVURLAsset(url: sourceURL)
@@ -235,7 +240,7 @@ struct VideoExportService {
         let chars = Array(text)
         let N     = chars.count
 
-        var durs: [Double] = chars.map { $0.isWhitespace ? 0.05 : 0.13 }
+        var durs: [Double] = chars.map { $0.isWhitespace ? 0.08 : 0.20 }
         let baseTotal = durs.reduce(0, +)
         let startDelay: Double = 0.8
         let endMargin:  Double = 1.0
@@ -272,7 +277,7 @@ struct VideoExportService {
         else { throw ExportError.compositionFailed }
         try compVideo.insertTimeRange(timeRange, of: videoTrack, at: .zero)
 
-        if let audioTrack = audioTracks.first,
+        if !muteAudio, let audioTrack = audioTracks.first,
            let compAudio = composition.addMutableTrack(
             withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
             try? compAudio.insertTimeRange(timeRange, of: audioTrack, at: .zero)
@@ -312,7 +317,7 @@ struct VideoExportService {
         let wMarkFontPx:  CGFloat = 9  * vScale
         let wMarkZoneH:   CGFloat = wMarkTopPad + ceil(wMarkFontPx * 1.5) + 6 * vScale
 
-        let fontSize:    CGFloat = 24.0 * fontChoice.sizeScale * vScale
+        let fontSize:    CGFloat = 20.0 * fontChoice.sizeScale * vScale
         let lineSpacing: CGFloat = fontSize * 0.4
         let uiFont = UIFont(name: fontChoice.fontName, size: fontSize)
                      ?? UIFont.systemFont(ofSize: fontSize)
@@ -629,7 +634,8 @@ struct VideoExportService {
         textColor: OneLinerTextColor,
         position: CardPosition,
         activityDate: Date,
-        showDate: Bool
+        showDate: Bool,
+        muteAudio: Bool = false
     ) async throws -> URL {
 
         let nonEmpty = pages.filter { $0.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
@@ -676,7 +682,7 @@ struct VideoExportService {
         else { throw ExportError.compositionFailed }
         try compVideo.insertTimeRange(timeRange, of: videoTrack, at: .zero)
 
-        if let audioTrack = audioTracks.first,
+        if !muteAudio, let audioTrack = audioTracks.first,
            let compAudio = composition.addMutableTrack(
             withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
             try? compAudio.insertTimeRange(timeRange, of: audioTrack, at: .zero)
@@ -710,7 +716,7 @@ struct VideoExportService {
         let wMarkFontPx:  CGFloat = 9  * vScale
         let wMarkZoneH:   CGFloat = wMarkTopPad + ceil(wMarkFontPx * 1.5) + 6 * vScale
 
-        let fontSize:    CGFloat = 24.0 * fontChoice.sizeScale * vScale
+        let fontSize:    CGFloat = 20.0 * fontChoice.sizeScale * vScale
         let lineSpacing: CGFloat = fontSize * 0.4
         let uiFont = UIFont(name: fontChoice.fontName, size: fontSize)
                      ?? UIFont.systemFont(ofSize: fontSize)
@@ -795,7 +801,7 @@ struct VideoExportService {
             let N = chars.count
 
             // Scale char timing to fit within page budget
-            var rawDurs: [Double] = chars.map { $0.isNewline ? 0.20 : ($0.isWhitespace ? 0.05 : 0.13) }
+            var rawDurs: [Double] = chars.map { $0.isNewline ? 0.30 : ($0.isWhitespace ? 0.08 : 0.20) }
             let rawTotal = rawDurs.reduce(0.0, +)
             let budget   = max(0.1, timePerPage - startDelay - holdTime - (isLastPage ? 0 : fadeTime))
             if rawTotal > budget && rawTotal > 0 {

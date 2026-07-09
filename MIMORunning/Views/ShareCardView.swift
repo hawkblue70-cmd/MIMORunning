@@ -3511,16 +3511,6 @@ struct ShareCardScreen: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 4)
         }
-        if oneLinerText.count >= 38 {
-            Text(AppLanguage.shared.s(
-                "긴 이야기는 메모에 남겨보세요",
-                "For longer thoughts, try the memo field"
-            ))
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 4)
-        }
     }
 
     // Chip row for ECG card: pace / HR source radio + accent selector
