@@ -49,15 +49,17 @@ struct RestDayOneLinerSheet: View {
     @State private var backgroundPhotos:   [UIImage]          = []
     @State private var photoPickerItems:   [PhotosPickerItem] = []
     @State private var selectedPhotoIndex: Int                = 0
-    @State private var videoPickerItem:    PhotosPickerItem?  = nil
+    @State private var videoPickerItems:   [PhotosPickerItem] = []
     @State private var videoFirstFrame:    UIImage?           = nil
     @State private var videoSlotTexts:     [String]           = []
     @State private var videoSlotCount:     Int                = 0
+    @State private var videoClipCount:     Int                = 0   // number of clips selected
+    @State private var videoTotalSeconds:  Double             = 0   // sum of all clip durations
     @State private var slotTexts:          [String]           = []  // per-photo (mirrors backgroundPhotos)
     @State private var orphanedTexts:      [String]           = []  // texts whose photo was removed
     @State private var draggingPhotoIndex: Int?               = nil
     @State private var selectedTemplate:  RestDayTemplate     = .story
-    @State private var videoSourceURL:    URL?                = nil
+    @State private var videoSourceURLs:   [URL]               = []
     @State private var isExportingVideo:  Bool                = false
     @State private var muteVideoAudio:    Bool                = false
     @State private var activeVideoSlot:   Int                = 0
@@ -70,7 +72,7 @@ struct RestDayOneLinerSheet: View {
     private var shareButtonActive: Bool {
         guard !isExportingVideo else { return false }
         switch selectedTemplate {
-        case .video: return videoFirstFrame != nil
+        case .video: return videoFirstFrame != nil && videoTotalSeconds <= MultiClipComposition.maxSeconds
         case .story:
             return true
         }
@@ -146,28 +148,7 @@ struct RestDayOneLinerSheet: View {
                 })
 
                 // Fixed bottom share button
-                Button { renderCardForSharing() } label: {
-                    Group {
-                        if isExportingVideo {
-                            HStack(spacing: 8) {
-                                ProgressView().tint(.white)
-                                Text(AppLanguage.shared.s("내보내는 중...", "Exporting..."))
-                                    .fontWeight(.semibold)
-                            }
-                        } else {
-                            HStack(spacing: 8) {
-                                Image(systemName: "square.and.arrow.up")
-                                Text(AppLanguage.shared.s("공유하기", "Share"))
-                                    .fontWeight(.semibold)
-                            }
-                        }
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(shareButtonActive ? Theme.violet : Theme.violet.opacity(0.4))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                }
+                Button { renderCardForSharing() } label: { shareButtonLabel }
                 .disabled(!shareButtonActive)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
@@ -213,38 +194,70 @@ struct RestDayOneLinerSheet: View {
                 orphanedTexts = pool          // leftovers stay as orphans
 
                 if isVideoMode { text = "" }
-                videoFirstFrame  = nil
-                videoPickerItem  = nil
+                videoFirstFrame = nil
+                videoPickerItems = []
+                videoSourceURLs  = []
                 // videoSlotTexts·videoSlotCount는 영상 상태와 독립 — 사진 선택 시 건드리지 않음
                 backgroundPhotos   = images
                 selectedPhotoIndex = 0
                 savePhotos(images)
             }
         }
-        .onChange(of: videoPickerItem) { _, item in
+        .onChange(of: videoPickerItems) { _, items in
+            guard !items.isEmpty else { return }
             Task {
-                guard let item,
-                      let result = try? await item.loadTransferable(type: VideoPickerResult.self)
-                else { return }
-                async let frame   = VideoExportService.firstFrame(of: result.url)
-                async let dur     = VideoExportService.duration(of: result.url)
-                let (img, seconds) = await (frame, dur)
-                let count = max(1, min(20, Int(seconds / 3.0)))
-                print("[OneLinerVideo] 영상길이=\(Int(seconds))초 칸=\(count)개 생성")
+                // Load each picker item to a temp URL (sequentially — stable order)
+                var urls: [URL] = []
+                for item in items {
+                    guard let result = try? await item.loadTransferable(type: VideoPickerResult.self)
+                    else { continue }
+                    urls.append(result.url)
+                }
+                guard !urls.isEmpty else { return }
+                let loadedURLs = urls   // immutable copy for concurrent use
+
+                // First frame preview from first clip
+                async let firstFrame = VideoExportService.firstFrame(of: loadedURLs[0])
+
+                // Total duration (load in parallel via MultiClipComposition helper)
+                let totalSeconds = await MultiClipComposition.totalDuration(urls: loadedURLs)
+                let count        = max(1, min(20, Int(totalSeconds / 3.0)))
+
+                print("[OneLinerVideo] 클립수=\(loadedURLs.count) 합산=\(Int(totalSeconds))초 칸=\(count)개 생성")
+
                 // 사진 상태는 독립 보존 — 영상 선택 시 건드리지 않음
-                videoFirstFrame    = img
-                videoSourceURL     = result.url
-                videoSlotCount     = count
-                // 기존 문구 유지: 새 슬롯 수 범위 안은 보존, 짧은 영상으로 변경 시 초과분 삭제
+                videoFirstFrame   = await firstFrame
+                videoSourceURLs   = loadedURLs
+                videoClipCount    = loadedURLs.count
+                videoTotalSeconds = totalSeconds
+                videoSlotCount    = count
+                // 기존 문구 유지: 새 슬롯 수 범위 안은 보존, 초과분 삭제
                 let prev = videoSlotTexts
-                videoSlotTexts = (0..<count).map { i in i < prev.count ? prev[i] : "" }
-                text               = ""
-                selectedTemplate   = .video
+                videoSlotTexts    = (0..<count).map { i in i < prev.count ? prev[i] : "" }
+                text              = ""
+                selectedTemplate  = .video
             }
         }
     }
 
     // MARK: - Sub-views
+
+    private var shareButtonLabel: some View {
+        HStack(spacing: 8) {
+            if isExportingVideo {
+                ProgressView().tint(.white)
+                Text(AppLanguage.shared.s("내보내는 중...", "Exporting...")).fontWeight(.semibold)
+            } else {
+                Image(systemName: "square.and.arrow.up")
+                Text(AppLanguage.shared.s("공유하기", "Share")).fontWeight(.semibold)
+            }
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(shareButtonActive ? Theme.violet : Theme.violet.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
 
     /// Single text field used in gradient (no-photo) mode.
     private var oneLinerTextField: some View {
@@ -591,28 +604,68 @@ struct RestDayOneLinerSheet: View {
             }
         } else if selectedTemplate == .video {
             HStack(spacing: 10) {
+                // Thumbnail — first frame of first clip
                 if let frame = videoFirstFrame {
-                    Image(uiImage: frame)
-                        .resizable().scaledToFill()
-                        .frame(width: 52, height: 52)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Theme.violet, lineWidth: 1.5))
-                }
-                PhotosPicker(selection: $videoPickerItem, matching: .videos) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "video")
-                        Text(videoFirstFrame == nil
-                             ? AppLanguage.shared.s("영상 선택", "Select video")
-                             : AppLanguage.shared.s("영상 변경", "Change video"))
-                            .font(.subheadline)
+                    ZStack(alignment: .bottomTrailing) {
+                        Image(uiImage: frame)
+                            .resizable().scaledToFill()
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(Theme.violet, lineWidth: 1.5))
+                        if videoClipCount > 1 {
+                            Text("\(videoClipCount)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4).padding(.vertical, 2)
+                                .background(Theme.violet.opacity(0.85))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .offset(x: 4, y: 4)
+                        }
                     }
-                    .foregroundStyle(Theme.violet)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(Theme.violet.opacity(0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    // Multi-select picker
+                    PhotosPicker(selection: $videoPickerItems,
+                                 maxSelectionCount: 10,
+                                 matching: .videos) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "video.badge.plus")
+                            Text(videoFirstFrame == nil
+                                 ? AppLanguage.shared.s("영상 선택", "Select videos")
+                                 : AppLanguage.shared.s("영상 변경", "Change videos"))
+                                .font(.subheadline)
+                        }
+                        .foregroundStyle(Theme.violet)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(Theme.violet.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+
+                    // Clip count + duration label / 60s warning
+                    if videoClipCount > 0 {
+                        let exceeded = videoTotalSeconds > MultiClipComposition.maxSeconds
+                        let overBy   = Int(videoTotalSeconds) - Int(MultiClipComposition.maxSeconds)
+                        if exceeded {
+                            Text(AppLanguage.shared.s(
+                                "전체 60초를 넘어요 — \(overBy)초 초과",
+                                "Over 60s limit — \(overBy)s too long"))
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text(AppLanguage.shared.s(
+                                "클립 \(videoClipCount)개 · \(Int(videoTotalSeconds))초",
+                                "\(videoClipCount) clips · \(Int(videoTotalSeconds))s"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+
                 if videoFirstFrame != nil {
                     Button { muteVideoAudio.toggle() } label: {
                         Image(systemName: muteVideoAudio ? "speaker.slash.fill" : "speaker.wave.2.fill")
@@ -622,9 +675,13 @@ struct RestDayOneLinerSheet: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        videoFirstFrame = nil; videoPickerItem = nil
-                        videoSourceURL  = nil; text             = ""
-                        muteVideoAudio  = false
+                        videoFirstFrame   = nil
+                        videoPickerItems  = []
+                        videoSourceURLs   = []
+                        videoClipCount    = 0
+                        videoTotalSeconds = 0
+                        text              = ""
+                        muteVideoAudio    = false
                         // videoSlotTexts·videoSlotCount는 유지 — 영상 재선택 시 복원됨
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -831,11 +888,30 @@ struct RestDayOneLinerSheet: View {
     @MainActor
     private func renderCardForSharing() {
         // 영상 템플릿: VideoExportService로 실제 .mov 출력
-        if selectedTemplate == .video, let sourceURL = videoSourceURL {
+        if selectedTemplate == .video, !videoSourceURLs.isEmpty {
             isExportingVideo = true
             Task {
                 defer { isExportingVideo = false }
                 do {
+                    // Multi-clip: compose clips first (rotation+stitch), then overlay typing animation.
+                    // Single-clip: skip compose step to avoid the extra encode pass.
+                    let exportURL:  URL
+                    var cleanupURL: URL? = nil
+                    if videoSourceURLs.count > 1 {
+                        let (composed, _) = try await MultiClipComposition.composeAndExport(
+                            urls: videoSourceURLs, muteAudio: muteVideoAudio)
+                        exportURL  = composed
+                        cleanupURL = composed
+                    } else {
+                        exportURL = videoSourceURLs[0]
+                    }
+                    defer { cleanupURL.map { try? FileManager.default.removeItem(at: $0) } }
+
+                    // For multi-clip the composed file is the full duration; don't trim it.
+                    let maxDur: Double? = videoSourceURLs.count > 1 ? videoTotalSeconds : nil
+                    // Audio is already handled by composeAndExport for multi-clip.
+                    let isMuted = videoSourceURLs.count > 1 ? false : muteVideoAudio
+
                     let outputURL: URL
                     if videoSlotCount > 1 {
                         let count = videoSlotTexts.count
@@ -843,14 +919,16 @@ struct RestDayOneLinerSheet: View {
                             Array(videoSlotTexts[$0..<min($0 + 2, count)])
                         }
                         outputURL = try await VideoExportService.exportOneLinerMultiPageVideo(
-                            sourceURL: sourceURL, pages: pages,
+                            sourceURL: exportURL, pages: pages,
                             fontChoice: fontChoice, textColor: textColor, position: position,
-                            activityDate: date, showDate: true, muteAudio: muteVideoAudio)
+                            activityDate: date, showDate: true,
+                            muteAudio: isMuted, maxDuration: maxDur)
                     } else {
                         outputURL = try await VideoExportService.exportOneLinerTypingVideo(
-                            sourceURL: sourceURL, text: videoSlotTexts.first ?? "",
+                            sourceURL: exportURL, text: videoSlotTexts.first ?? "",
                             fontChoice: fontChoice, textColor: textColor, position: position,
-                            activityDate: date, showDate: true, muteAudio: muteVideoAudio)
+                            activityDate: date, showDate: true,
+                            muteAudio: isMuted, maxDuration: maxDur)
                     }
                     presentShareSheet(url: outputURL)
                 } catch {

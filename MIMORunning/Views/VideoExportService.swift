@@ -219,7 +219,8 @@ struct VideoExportService {
         position: CardPosition,
         activityDate: Date,
         showDate: Bool,
-        muteAudio: Bool = false
+        muteAudio: Bool = false,
+        maxDuration: Double? = nil   // nil = trimDuration (30s); pass total seconds for multi-clip
     ) async throws -> URL {
 
         let asset = AVURLAsset(url: sourceURL)
@@ -232,7 +233,7 @@ struct VideoExportService {
         let audioTracks        = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
 
         // ── 1. Timing ────────────────────────────────────────────────────────
-        let trimEnd   = min(CMTimeGetSeconds(assetDuration), trimDuration)
+        let trimEnd   = min(CMTimeGetSeconds(assetDuration), maxDuration ?? trimDuration)
         let timeRange = CMTimeRange(start: .zero,
                                     duration: CMTimeMakeWithSeconds(trimEnd, preferredTimescale: 600))
         let D = trimEnd
@@ -635,7 +636,8 @@ struct VideoExportService {
         position: CardPosition,
         activityDate: Date,
         showDate: Bool,
-        muteAudio: Bool = false
+        muteAudio: Bool = false,
+        maxDuration: Double? = nil   // nil = trimDuration (30s); pass total seconds for multi-clip
     ) async throws -> URL {
 
         let nonEmpty = pages.filter { $0.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
@@ -662,7 +664,7 @@ struct VideoExportService {
         let preferredTransform = try await videoTrack.load(.preferredTransform)
         let audioTracks        = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
 
-        let trimEnd   = min(CMTimeGetSeconds(assetDuration), trimDuration)
+        let trimEnd   = min(CMTimeGetSeconds(assetDuration), maxDuration ?? trimDuration)
         let timeRange = CMTimeRange(start: .zero,
                                     duration: CMTimeMakeWithSeconds(trimEnd, preferredTimescale: 600))
         let D = trimEnd
