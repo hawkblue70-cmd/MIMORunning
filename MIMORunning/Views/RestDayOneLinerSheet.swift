@@ -951,31 +951,15 @@ struct RestDayOneLinerSheet: View {
                     }
                     defer { cleanupURL.map { try? FileManager.default.removeItem(at: $0) } }
 
-                    // For composed output the full duration is already baked in; no trim needed.
-                    let maxDur: Double? = needsCompose ? videoTotalSeconds : nil
                     // Audio muting for composed output is handled inside composeAndExport.
                     let isMuted = needsCompose ? false : muteVideoAudio
 
-                    // Collect all non-empty lines across clips in order
-                    let allLines = clipRecipes.flatMap { $0.lines }
-                        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-
-                    let outputURL: URL
-                    if allLines.count > 1 {
-                        // Each line gets its own typing screen
-                        let pages = allLines.map { [$0] }
-                        outputURL = try await VideoExportService.exportOneLinerMultiPageVideo(
-                            sourceURL: exportURL, pages: pages,
-                            fontChoice: fontChoice, textColor: textColor, position: position,
-                            activityDate: date, showDate: true,
-                            muteAudio: isMuted, maxDuration: maxDur)
-                    } else {
-                        outputURL = try await VideoExportService.exportOneLinerTypingVideo(
-                            sourceURL: exportURL, text: allLines.first ?? "",
-                            fontChoice: fontChoice, textColor: textColor, position: position,
-                            activityDate: date, showDate: true,
-                            muteAudio: isMuted, maxDuration: maxDur)
-                    }
+                    // Clip-bound export: each clip's lines appear only during that clip's window.
+                    let outputURL = try await VideoExportService.exportOneLinerClipBoundVideo(
+                        sourceURL: exportURL,
+                        recipes: recipes,
+                        fontChoice: fontChoice, textColor: textColor, position: position,
+                        activityDate: date, showDate: true, muteAudio: isMuted)
                     presentShareSheet(url: outputURL)
                 } catch {
                     // export failed — silently ignore (user can retry)

@@ -1058,4 +1058,460 @@ struct VideoExportService {
 
         return outputURL
     }
+
+    // MARK: Export OneLiner clip-bound typing animation
+    //
+    // Each ClipRecipe's lines are constrained to that clip's window in the composed timeline.
+    // Clip offsets = cumulative trimmedDuration — identical to what composeAndExport(recipes:) used.
+    // Within a clip, lines are grouped into pages of 2 and distributed evenly across the clip window.
+    // Last page of each clip stays until clipEnd; last page overall stays until video end.
+    // Clips with no text produce no overlay — empty clips are silent gaps.
+    //
+    // Log: [MultiClip-Text] 클립N 페이지P: 시작=Xs 끝=Ys "text"
+
+    static func exportOneLinerClipBoundVideo(
+        sourceURL: URL,
+        recipes: [ClipRecipe],
+        fontChoice: OneLinerFont,
+        textColor: OneLinerTextColor,
+        position: CardPosition,
+        activityDate: Date,
+        showDate: Bool,
+        muteAudio: Bool = false
+    ) async throws -> URL {
+
+        // ── 0. Page plan ──────────────────────────────────────────────────────
+        var clipOffsets: [Double] = []
+        var runningOffset = 0.0
+        for recipe in recipes {
+            clipOffsets.append(runningOffset)
+            runningOffset += recipe.trimmedDuration
+        }
+        let D = runningOffset   // total composed duration
+
+        // Last clip that has non-empty text
+        var lastTextClipIdx = -1
+        for (i, recipe) in recipes.enumerated() { if recipe.hasText { lastTextClipIdx = i } }
+
+        struct PageSpec {
+            let text: String
+            let winStart: Double      // seconds into composed timeline
+            let winEnd: Double        // D for last overall; clipEnd for last in non-last clip
+            let isLast: Bool          // true = stays until D, no fade
+        }
+        var pageSpecs: [PageSpec] = []
+
+        for (clipIdx, recipe) in recipes.enumerated() {
+            let clipStart = clipOffsets[clipIdx]
+            let clipEnd   = clipStart + recipe.trimmedDuration
+            let nonEmpty  = recipe.lines.filter {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            guard !nonEmpty.isEmpty else { continue }
+
+            let clipPages  = stride(from: 0, to: nonEmpty.count, by: 2).map { i in
+                Array(nonEmpty[i..<min(i + 2, nonEmpty.count)])
+            }
+            let nPages     = clipPages.count
+            let tPerPage   = recipe.trimmedDuration / Double(nPages)
+            let isLastClip = clipIdx == lastTextClipIdx
+
+            for (pIdx, slots) in clipPages.enumerated() {
+                let isLastInClip = pIdx == nPages - 1
+                let isLast       = isLastClip && isLastInClip
+                let winStart     = clipStart + Double(pIdx) * tPerPage
+                let winEnd       = isLastInClip
+                    ? (isLast ? D : clipEnd)
+                    : clipStart + Double(pIdx + 1) * tPerPage
+                let text         = slots.joined(separator: "\n")
+                print("[MultiClip-Text] 클립\(clipIdx+1) 페이지\(pIdx+1): " +
+                      "시작=\(String(format:"%.1f",winStart))s " +
+                      "끝=\(String(format:"%.1f",winEnd))s \"\(text)\"")
+                pageSpecs.append(PageSpec(text: text, winStart: winStart, winEnd: winEnd, isLast: isLast))
+            }
+        }
+
+        guard !pageSpecs.isEmpty else {
+            return try await exportOneLinerTypingVideo(
+                sourceURL: sourceURL, text: "",
+                fontChoice: fontChoice, textColor: textColor, position: position,
+                activityDate: activityDate, showDate: showDate, muteAudio: muteAudio)
+        }
+
+        // ── 1. Asset ──────────────────────────────────────────────────────────
+        let asset       = AVURLAsset(url: sourceURL)
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
+        let naturalSize   = try await videoTrack.load(.naturalSize)
+        let prefTransform = try await videoTrack.load(.preferredTransform)
+        let audioTracks   = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+
+        let timeRange = CMTimeRange(start: .zero,
+                                    duration: CMTimeMakeWithSeconds(D, preferredTimescale: 600))
+
+        // ── 2. Composition ────────────────────────────────────────────────────
+        let oneLinerSize = CGSize(width: 1080, height: 1920)
+        let displayRect  = CGRect(origin: .zero, size: naturalSize).applying(prefTransform)
+        let displayW     = abs(displayRect.width)
+        let displayH     = abs(displayRect.height)
+        let fillScale    = max(oneLinerSize.width / displayW, oneLinerSize.height / displayH)
+        let txOff        = (oneLinerSize.width  - displayW * fillScale) / 2
+        let tyOff        = (oneLinerSize.height - displayH * fillScale) / 2
+
+        let composition = AVMutableComposition()
+        guard let compVideo = composition.addMutableTrack(
+            withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { throw ExportError.compositionFailed }
+        try compVideo.insertTimeRange(timeRange, of: videoTrack, at: .zero)
+
+        if !muteAudio, let audioTrack = audioTracks.first,
+           let compAudio = composition.addMutableTrack(
+            withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            try? compAudio.insertTimeRange(timeRange, of: audioTrack, at: .zero)
+        }
+
+        var tf = prefTransform
+        tf.tx -= displayRect.origin.x
+        tf.ty -= displayRect.origin.y
+        tf = tf.concatenating(CGAffineTransform(scaleX: fillScale, y: fillScale))
+        tf = tf.concatenating(CGAffineTransform(translationX: txOff, y: tyOff))
+
+        let layerInstr = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
+        layerInstr.setTransform(tf, at: .zero)
+        let vcInstr = AVMutableVideoCompositionInstruction()
+        vcInstr.timeRange         = timeRange
+        vcInstr.layerInstructions = [layerInstr]
+        let videoComp           = AVMutableVideoComposition()
+        videoComp.renderSize    = oneLinerSize
+        videoComp.frameDuration = CMTimeMake(value: 1, timescale: 30)
+        videoComp.instructions  = [vcInstr]
+
+        // ── 3. Layout ─────────────────────────────────────────────────────────
+        let W: CGFloat = oneLinerSize.width
+        let H: CGFloat = oneLinerSize.height
+        let vScale: CGFloat = W / 300.0
+
+        let safeTop:  CGFloat = CardVisual.videoSafeTop
+        let safeBot:  CGFloat = CardVisual.videoSafeBottom
+        let hPad:     CGFloat = 24 * vScale
+        let wMTopPad: CGFloat = 12 * vScale
+        let wMFontPx: CGFloat = 9  * vScale
+        let wMZoneH:  CGFloat = wMTopPad + ceil(wMFontPx * 1.5) + 6 * vScale
+
+        let fontSize:    CGFloat = 20.0 * fontChoice.sizeScale * vScale
+        let lineSpacing: CGFloat = fontSize * 0.4
+        let uiFont = UIFont(name: fontChoice.fontName, size: fontSize)
+                     ?? UIFont.systemFont(ofSize: fontSize)
+        let lineH: CGFloat = uiFont.lineHeight + lineSpacing
+
+        let nsAlign: NSTextAlignment
+        switch position {
+        case .topLeading,  .leading,  .bottomLeading:  nsAlign = .left
+        case .topTrailing, .trailing, .bottomTrailing: nsAlign = .right
+        default: nsAlign = .center
+        }
+        let pStyle = NSMutableParagraphStyle()
+        pStyle.lineSpacing = lineSpacing
+        pStyle.alignment   = nsAlign
+        let textUIColor = textColor.uiColor
+        let textAttrs: [NSAttributedString.Key: Any] = [
+            .font: uiFont, .foregroundColor: textUIColor, .paragraphStyle: pStyle
+        ]
+        let textMaxW = W - 2 * hPad
+
+        let shadowOffX = 1 * vScale; let shadowOffY = 2 * vScale; let shadowBlur = 5 * vScale
+        let imgFormat  = UIGraphicsImageRendererFormat()
+        imgFormat.scale = 1.0; imgFormat.opaque = false
+        let cursorW: CGFloat = max(3.0, vScale * 0.8)
+        let cursorH: CGFloat = ceil(uiFont.capHeight + abs(uiFont.descender)) + 2
+
+        func measureLastLine(_ s: String) -> CGFloat {
+            let ls = s.split(separator: "\n", omittingEmptySubsequences: false)
+            guard let last = ls.last, !last.isEmpty else { return 0 }
+            return ceil(NSAttributedString(string: String(last), attributes: [.font: uiFont]).size().width)
+        }
+
+        // ── 4. CALayer tree ───────────────────────────────────────────────────
+        let parentLayer = CALayer()
+        parentLayer.frame = CGRect(origin: .zero, size: oneLinerSize)
+        parentLayer.isGeometryFlipped = true
+
+        let videoLayer = CALayer()
+        videoLayer.frame = CGRect(origin: .zero, size: oneLinerSize)
+
+        let brightenLayer = CALayer()
+        brightenLayer.frame           = CGRect(origin: .zero, size: oneLinerSize)
+        brightenLayer.backgroundColor = UIColor.white.cgColor
+        brightenLayer.opacity         = CardVisual.videoBrightenLayerOpacity
+
+        parentLayer.addSublayer(videoLayer)
+        parentLayer.addSublayer(brightenLayer)
+
+        func discreteAnim(keyPath: String, keyTimes: [NSNumber], values: [Any]) -> CAKeyframeAnimation {
+            let a = CAKeyframeAnimation(keyPath: keyPath)
+            a.beginTime             = AVCoreAnimationBeginTimeAtZero
+            a.duration              = D
+            a.calculationMode       = .discrete
+            a.fillMode              = .both
+            a.isRemovedOnCompletion = false
+            a.keyTimes              = keyTimes
+            a.values                = values
+            return a
+        }
+
+        // ── 5. Per-page rendering ─────────────────────────────────────────────
+        let startDelay: Double = 0.20
+        let holdTime:   Double = 0.40
+        let fadeTime:   Double = 0.25
+
+        for page in pageSpecs {
+            let chars = Array(page.text)
+            let N     = chars.count
+            let windowDur = page.winEnd - page.winStart
+
+            var rawDurs: [Double] = chars.map { $0.isNewline ? 0.30 : ($0.isWhitespace ? 0.08 : 0.20) }
+            let rawTotal = rawDurs.reduce(0.0, +)
+            let budget   = max(0.1, windowDur - startDelay - holdTime - (page.isLast ? 0 : fadeTime))
+            if rawTotal > budget && rawTotal > 0 {
+                let factor = max(0.02, budget / rawTotal)
+                rawDurs = rawDurs.map { $0 * factor }
+            }
+
+            var charAppearTimes: [Double] = []
+            var t = page.winStart + startDelay
+            for d in rawDurs { charAppearTimes.append(t); t += d }
+            let typingEndTime = t
+
+            let fadeStart = page.isLast ? D : min(typingEndTime + holdTime, page.winEnd - fadeTime)
+            let fadeEnd   = page.isLast ? D : min(page.winEnd, fadeStart + fadeTime)
+
+            // Text frame
+            let textLayerH: CGFloat = {
+                guard !page.text.isEmpty else { return lineH }
+                let r = NSAttributedString(string: page.text, attributes: textAttrs)
+                    .boundingRect(with: CGSize(width: textMaxW, height: 4000),
+                                  options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+                return ceil(r.height) + lineSpacing + 20
+            }()
+            let textFrameY: CGFloat = position.isTop
+                ? max(wMZoneH + 4 * vScale, safeTop + 4 * vScale)
+                : position.isBottom
+                    ? H - safeBot - textLayerH
+                    : (safeTop + (H - safeBot)) / 2 - textLayerH / 2
+            let textFrame = CGRect(x: hPad, y: textFrameY, width: textMaxW, height: textLayerH)
+
+            // Pre-render character frames
+            let imgRenderer = UIGraphicsImageRenderer(
+                size: CGSize(width: textMaxW, height: textLayerH), format: imgFormat)
+            var charImages: [CGImage] = []
+            for k in 0...N {
+                let cgImg = imgRenderer.image { ctx in
+                    guard k > 0 else { return }
+                    ctx.cgContext.setShadow(offset: CGSize(width: shadowOffX, height: shadowOffY),
+                                            blur: shadowBlur,
+                                            color: UIColor.black.withAlphaComponent(0.55).cgColor)
+                    NSAttributedString(string: String(chars.prefix(k)), attributes: textAttrs)
+                        .draw(in: CGRect(x: 0, y: 0, width: textMaxW, height: textLayerH))
+                }.cgImage
+                charImages.append(cgImg ?? UIGraphicsImageRenderer(
+                    size: CGSize(width: 1, height: 1), format: imgFormat).image { _ in }.cgImage!)
+            }
+
+            // Page container (opacity gating)
+            let pageLayer = CALayer()
+            pageLayer.frame   = CGRect(origin: .zero, size: oneLinerSize)
+            pageLayer.opacity = 0.0
+
+            let opAppear = max(0.0, min((page.winStart + 0.05) / D, 1.0))
+            let opKeyTimes: [NSNumber]
+            let opValues:   [Float]
+            if page.isLast {
+                opKeyTimes = [0.0, NSNumber(value: max(0.0001, page.winStart / D)), NSNumber(value: opAppear), 1.0]
+                opValues   = [0.0, 0.0, 1.0, 1.0]
+            } else {
+                let fFadeStart = max(opAppear + 0.0001, fadeStart / D)
+                let fFadeEnd   = max(fFadeStart + 0.0001, min(fadeEnd / D, 1.0))
+                opKeyTimes = [0.0,
+                              NSNumber(value: max(0.0001, page.winStart / D)),
+                              NSNumber(value: opAppear),
+                              NSNumber(value: fFadeStart),
+                              NSNumber(value: fFadeEnd),
+                              1.0]
+                opValues   = [0.0, 0.0, 1.0, 1.0, 0.0, 0.0]
+            }
+            pageLayer.add(discreteAnim(keyPath: "opacity", keyTimes: opKeyTimes, values: opValues),
+                          forKey: "opacity")
+
+            if N > 0 {
+                let textLayer = CALayer()
+                textLayer.frame           = textFrame
+                textLayer.contentsGravity = .topLeft
+                textLayer.masksToBounds   = false
+                textLayer.contents        = charImages[0]
+
+                var cKeyTimes: [NSNumber] = [0.0]
+                var cValues:   [Any]      = [charImages[0] as Any]
+                for k in 1...N {
+                    cKeyTimes.append(NSNumber(value: max(0.0001, charAppearTimes[k-1] / D)))
+                    cValues.append(charImages[k] as Any)
+                }
+                cKeyTimes.append(1.0)
+                cValues.append(charImages[N] as Any)
+                textLayer.add(discreteAnim(keyPath: "contents",
+                                           keyTimes: cKeyTimes, values: cValues), forKey: "contents")
+                pageLayer.addSublayer(textLayer)
+
+                let cursorLayer = CALayer()
+                cursorLayer.backgroundColor = textUIColor.cgColor
+                cursorLayer.bounds          = CGRect(x: 0, y: 0, width: cursorW, height: cursorH)
+                cursorLayer.anchorPoint     = CGPoint(x: 0, y: 0)
+                cursorLayer.opacity         = 0.0
+
+                func cursorPos(_ k: Int) -> CGPoint {
+                    let visible   = String(chars.prefix(k))
+                    let lineCount = max(1, visible.filter { $0 == "\n" }.count + 1)
+                    let lastW     = measureLastLine(visible)
+                    let cy = textFrameY + CGFloat(lineCount - 1) * lineH
+                    let cx: CGFloat
+                    switch nsAlign {
+                    case .left:  cx = hPad + lastW + 2
+                    case .right: cx = hPad + textMaxW - lastW - cursorW - 4
+                    default:     cx = W / 2 + lastW / 2 + 2
+                    }
+                    return CGPoint(x: cx, y: cy)
+                }
+
+                var pKeyTimes: [NSNumber] = [0.0]
+                var pValues:   [NSValue]  = [NSValue(cgPoint: cursorPos(0))]
+                for k in 1...N {
+                    pKeyTimes.append(NSNumber(value: max(0.0001, charAppearTimes[k-1] / D)))
+                    pValues.append(NSValue(cgPoint: cursorPos(k)))
+                }
+                pKeyTimes.append(1.0)
+                pValues.append(NSValue(cgPoint: cursorPos(N)))
+                cursorLayer.add(discreteAnim(keyPath: "position",
+                                             keyTimes: pKeyTimes, values: pValues), forKey: "position")
+
+                let cursorStartFrac = max(0.0001, (page.winStart + startDelay) / D)
+                let cursorEndFrac   = min(typingEndTime / D, 1.0)
+                var blinkKeyTimes: [NSNumber] = [0.0, NSNumber(value: cursorStartFrac)]
+                var blinkValues:   [Float]    = [0.0, 1.0]
+                var bt = page.winStart + startDelay + 0.25
+                var blinkOn = false
+                while bt < typingEndTime && bt / D < 1.0 {
+                    blinkKeyTimes.append(NSNumber(value: bt / D))
+                    blinkValues.append(blinkOn ? 1.0 : 0.0)
+                    bt += 0.25; blinkOn.toggle()
+                }
+                let safeEnd = max(Double(blinkKeyTimes.last ?? 0) + 0.0001, cursorEndFrac)
+                blinkKeyTimes.append(NSNumber(value: min(safeEnd, 1.0)))
+                blinkValues.append(0.0)
+                blinkKeyTimes.append(1.0)
+                blinkValues.append(0.0)
+                cursorLayer.add(discreteAnim(keyPath: "opacity",
+                                             keyTimes: blinkKeyTimes, values: blinkValues), forKey: "opacity")
+                pageLayer.addSublayer(cursorLayer)
+            }
+
+            parentLayer.addSublayer(pageLayer)
+        }
+
+        // ── 6. Wordmark ───────────────────────────────────────────────────────
+        let wMLayerH  = ceil(wMFontPx * 1.5)
+        let wMarkW    = W - 2 * hPad
+        let wMRenderer = UIGraphicsImageRenderer(
+            size: CGSize(width: wMarkW, height: wMLayerH), format: imgFormat)
+        let wMImg = wMRenderer.image { ctx in
+            let mimoAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: wMFontPx, weight: .black),
+                .foregroundColor: UIColor.white, .kern: NSNumber(value: 2.0)
+            ]
+            let runAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: wMFontPx, weight: .bold),
+                .foregroundColor: UIColor(red: 0x7C/255.0, green: 0x5C/255.0,
+                                          blue: 0xFC/255.0, alpha: 1),
+                .kern: NSNumber(value: 2.0)
+            ]
+            let combined = NSMutableAttributedString(
+                attributedString: NSAttributedString(string: "MIMO", attributes: mimoAttrs))
+            combined.append(NSAttributedString(string: " RUNNING", attributes: runAttrs))
+            ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
+                                    blur: 3 * vScale,
+                                    color: UIColor.black.withAlphaComponent(0.4).cgColor)
+            combined.draw(in: CGRect(x: 0, y: 0, width: wMarkW, height: wMLayerH))
+        }
+        let wMLayer = CALayer()
+        wMLayer.frame           = CGRect(x: hPad, y: wMTopPad, width: wMarkW, height: wMLayerH)
+        wMLayer.contents        = wMImg.cgImage
+        wMLayer.contentsGravity = .topLeft
+        wMLayer.masksToBounds   = false
+        parentLayer.addSublayer(wMLayer)
+
+        // ── 7. Date stamp ─────────────────────────────────────────────────────
+        if showDate {
+            let df = DateFormatter()
+            df.dateFormat = "yyyy. M. d."
+            let dateStr = df.string(from: activityDate)
+            let dateFontPx: CGFloat = 11 * vScale
+            let dateAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .light),
+                .foregroundColor: UIColor.white.withAlphaComponent(0.55)
+            ]
+            let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
+            let dateSize    = dateAttrStr.size()
+            let datePad: CGFloat = 14 * vScale
+            let dateImgW = ceil(dateSize.width) + 4; let dateImgH = ceil(dateSize.height) + 4
+            let dateRenderer = UIGraphicsImageRenderer(
+                size: CGSize(width: dateImgW, height: dateImgH), format: imgFormat)
+            let dateImg = dateRenderer.image { ctx in
+                ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
+                                        blur: 6 * vScale,
+                                        color: UIColor.black.withAlphaComponent(0.4).cgColor)
+                dateAttrStr.draw(in: CGRect(x: 0, y: 0, width: dateImgW, height: dateImgH))
+            }
+            let dateLayer = CALayer()
+            dateLayer.frame           = CGRect(x: W - datePad - dateImgW,
+                                               y: H - safeBot - datePad - dateImgH,
+                                               width: dateImgW, height: dateImgH)
+            dateLayer.contents        = dateImg.cgImage
+            dateLayer.contentsGravity = .topLeft
+            dateLayer.masksToBounds   = false
+            parentLayer.addSublayer(dateLayer)
+        }
+
+        // ── 8. Export ─────────────────────────────────────────────────────────
+        videoComp.animationTool = AVVideoCompositionCoreAnimationTool(
+            postProcessingAsVideoLayer: videoLayer, in: parentLayer)
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_oneliner_cb_\(UUID().uuidString).mov")
+        try? FileManager.default.removeItem(at: outputURL)
+
+        guard let session = AVAssetExportSession(
+            asset: composition, presetName: AVAssetExportPresetHEVCHighestQuality)
+        else { throw ExportError.sessionFailed }
+
+        session.outputURL        = outputURL
+        session.outputFileType   = .mov
+        session.videoComposition = videoComp
+        session.timeRange        = timeRange
+
+        let exportFlag = AVMutableMetadataItem()
+        exportFlag.identifier = .commonIdentifierDescription
+        exportFlag.value      = "MIMO_ONELINER_V1" as NSString
+        session.metadata      = [exportFlag]
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            session.exportAsynchronously {
+                switch session.status {
+                case .completed: cont.resume()
+                case .failed:    cont.resume(throwing: session.error ?? ExportError.exportFailed)
+                case .cancelled: cont.resume(throwing: ExportError.cancelled)
+                default:         cont.resume(throwing: ExportError.exportFailed)
+                }
+            }
+        }
+
+        return outputURL
+    }
 }
