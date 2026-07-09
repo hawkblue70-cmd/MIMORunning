@@ -23,6 +23,7 @@ struct ClipRecipe: Identifiable {
     var trimEnd:      Double          // seconds from clip start (default: fullDuration)
     let fullDuration: Double
     var thumbnail:    UIImage?        // first frame, loaded async after selection
+    var lines:        [String]        // text slots owned by this clip
 
     init(url: URL, fullDuration: Double, thumbnail: UIImage? = nil) {
         self.url          = url
@@ -30,10 +31,15 @@ struct ClipRecipe: Identifiable {
         self.trimStart    = 0
         self.trimEnd      = fullDuration
         self.thumbnail    = thumbnail
+        let n             = max(1, min(20, Int(fullDuration / 3.0)))
+        self.lines        = Array(repeating: "", count: n)
     }
 
     var trimmedDuration: Double { max(0.1, trimEnd - trimStart) }
     var isTrimmed: Bool { trimStart > 0.05 || trimEnd < fullDuration - 0.05 }
+    /// Number of text slots based on trimmed duration (1 slot per 3 s).
+    var linesCount: Int { max(1, min(20, Int(trimmedDuration / 3.0))) }
+    var hasText: Bool { lines.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
 }
 
 // MARK: - MultiClipComposition

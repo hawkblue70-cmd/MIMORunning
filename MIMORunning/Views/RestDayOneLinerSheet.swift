@@ -54,15 +54,13 @@ struct RestDayOneLinerSheet: View {
     @State private var clipRecipes:        [ClipRecipe]       = []
     @State private var editingClipIndex:   Int?               = nil
     @State private var draggingClipIndex:  Int?               = nil
-    @State private var videoSlotTexts:     [String]           = []
-    @State private var videoSlotCount:     Int                = 0
+    @State private var savedClipLines:     [[String]]         = []  // restored from DB; applied to new clips
     @State private var slotTexts:          [String]           = []  // per-photo (mirrors backgroundPhotos)
     @State private var orphanedTexts:      [String]           = []  // texts whose photo was removed
     @State private var draggingPhotoIndex: Int?               = nil
     @State private var selectedTemplate:  RestDayTemplate     = .story
     @State private var isExportingVideo:  Bool                = false
     @State private var muteVideoAudio:    Bool                = false
-    @State private var activeVideoSlot:   Int                = 0
 
     @FocusState private var fieldFocused: Bool
 
@@ -87,14 +85,14 @@ struct RestDayOneLinerSheet: View {
         return backgroundPhotos[min(selectedPhotoIndex, backgroundPhotos.count - 1)]
     }
 
-    /// Text shown on the card preview; uses per-photo slot in photo mode.
-    /// Gradient (no-photo) mode shows no text since the input was removed.
-    /// Video mode: shows the currently focused slot's text; falls back to first non-empty.
+    /// Text shown on the card preview.
+    /// Video mode: shows first non-empty line of the editing clip; falls back to any clip.
     private var cardText: String {
         if selectedTemplate == .video {
-            let active = videoSlotTexts.indices.contains(activeVideoSlot) ? videoSlotTexts[activeVideoSlot] : ""
-            if !active.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return active }
-            return videoSlotTexts.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? ""
+            let clip = editingClipIndex.flatMap {
+                clipRecipes.indices.contains($0) ? clipRecipes[$0] : nil
+            } ?? clipRecipes.first
+            return clip?.lines.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? ""
         }
         if !backgroundPhotos.isEmpty, selectedPhotoIndex < slotTexts.count {
             return slotTexts[selectedPhotoIndex]
@@ -128,13 +126,9 @@ struct RestDayOneLinerSheet: View {
                                 gridAndChips
                                 templateTabs
 
-                                if selectedTemplate == .video {
-                                    if videoSlotCount > 0 { videoSlotInputs }
-                                } else {
-                                    // .story — 사진이 있을 때만 텍스트 입력 표시
-                                    if !backgroundPhotos.isEmpty {
-                                        textSlotsView
-                                    }
+                                // story — 사진이 있을 때만 텍스트 입력 표시 (영상 입력은 ClipTrimSheet에서)
+                                if selectedTemplate == .story, !backgroundPhotos.isEmpty {
+                                    textSlotsView
                                 }
 
                                 templateMediaRow
@@ -173,6 +167,10 @@ struct RestDayOneLinerSheet: View {
             if let idx = editingClipIndex, idx < clipRecipes.count {
                 ClipTrimSheet(recipe: $clipRecipes[idx])
             }
+        }
+        .onChange(of: editingClipIndex) { _, newVal in
+            // Trim sheet closed → persist clip lines + style
+            if newVal == nil { saveEntry() }
         }
         .onAppear { loadEntry() }
         .onChange(of: allEntries) { oldValue, _ in
@@ -228,16 +226,20 @@ struct RestDayOneLinerSheet: View {
                 }
                 guard !recipes.isEmpty else { return }
 
+                // Restore previously saved lines by clip position
+                for i in recipes.indices {
+                    guard i < savedClipLines.count else { break }
+                    let saved = savedClipLines[i]
+                    let n     = recipes[i].linesCount
+                    recipes[i].lines = (0..<n).map { j in j < saved.count ? saved[j] : "" }
+                }
+
                 let totalSeconds = MultiClipComposition.totalDuration(recipes: recipes)
-                let count        = max(1, min(20, Int(totalSeconds / 3.0)))
-                print("[OneLinerVideo] 클립수=\(recipes.count) 합산=\(Int(totalSeconds))초 칸=\(count)개 생성")
+                print("[OneLinerVideo] 클립수=\(recipes.count) 합산=\(Int(totalSeconds))초")
 
                 // 사진 상태는 독립 보존 — 영상 선택 시 건드리지 않음
-                clipRecipes    = recipes
-                videoSlotCount = count
-                let prev = videoSlotTexts
-                videoSlotTexts = (0..<count).map { i in i < prev.count ? prev[i] : "" }
-                text           = ""
+                clipRecipes      = recipes
+                text             = ""
                 selectedTemplate = .video
             }
         }
@@ -385,33 +387,6 @@ struct RestDayOneLinerSheet: View {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .background(Color(hex: "181820"))
             .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
-    }
-
-    /// Video slot inputs (video mode).
-    private var videoSlotInputs: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(0..<videoSlotCount, id: \.self) { i in
-                HStack(spacing: 8) {
-                    TextField(
-                        AppLanguage.shared.s("\(i + 1)번째 줄", "Line \(i + 1)"),
-                        text: slotBinding(for: i)
-                    )
-                    .lineLimit(1)
-                    .font(.system(size: 15))
-                    .foregroundStyle(.white)
-                    .tint(Theme.violet)
-                    Spacer(minLength: 0)
-                    Text("\(i < videoSlotTexts.count ? videoSlotTexts[i].count : 0)/20")
-                        .font(.system(size: 11).monospacedDigit())
-                        .foregroundStyle(Color(hex: "6E6E78"))
-                }
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(Color(hex: "1E1E28"))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-            Text(AppLanguage.shared.s("각 칸이 영상에서 차례로 나타납니다", "Each line appears in turn"))
-                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 
@@ -702,6 +677,15 @@ struct RestDayOneLinerSheet: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 3))
                                     .padding(.bottom, 3)
                             }
+                            // 문구 있음 도트 — 말풍선 위치
+                            .overlay(alignment: .topLeading) {
+                                if clipRecipes[i].hasText {
+                                    Circle()
+                                        .fill(Theme.violet)
+                                        .frame(width: 7, height: 7)
+                                        .padding(3)
+                                }
+                            }
                         }
                         .buttonStyle(.plain)
 
@@ -736,6 +720,7 @@ struct RestDayOneLinerSheet: View {
                             }
                             .onEnded { _ in
                                 withAnimation { draggingClipIndex = nil }
+                                saveEntry()
                             }
                     )
                 }
@@ -774,21 +759,6 @@ struct RestDayOneLinerSheet: View {
         }
     }
 
-    /// Binding for video slot texts.
-    private func slotBinding(for index: Int) -> Binding<String> {
-        Binding {
-            guard index < videoSlotTexts.count else { return "" }
-            return videoSlotTexts[index]
-        } set: { newVal in
-            let cleaned = String(newVal.replacingOccurrences(of: "\n", with: "").prefix(20))
-            guard index < videoSlotTexts.count else { return }
-            activeVideoSlot = index
-            videoSlotTexts[index] = cleaned
-            text = videoSlotTexts.filter { !$0.isEmpty }.joined(separator: "\n")
-            saveEntry()
-        }
-    }
-
     // MARK: - Helpers
 
     private func removeClip(at index: Int) {
@@ -796,20 +766,10 @@ struct RestDayOneLinerSheet: View {
         clipRecipes.remove(at: index)
         if clipRecipes.isEmpty {
             videoPickerItems = []
-            videoSlotCount   = 0
             muteVideoAudio   = false
             selectedTemplate = .story
-        } else {
-            updateVideoSlotCount()
         }
-    }
-
-    private func updateVideoSlotCount() {
-        let totalSeconds = MultiClipComposition.totalDuration(recipes: clipRecipes)
-        let count        = max(1, min(20, Int(totalSeconds / 3.0)))
-        videoSlotCount   = count
-        let prev         = videoSlotTexts
-        videoSlotTexts   = (0..<count).map { i in i < prev.count ? prev[i] : "" }
+        saveEntry()
     }
 
     private var dateTitle: String {
@@ -830,16 +790,26 @@ struct RestDayOneLinerSheet: View {
             modelContext.delete(entry)
             try? modelContext.save()
         }
-        // 영상 슬롯 문구 복원 (영상 자체는 재선택 필요, 문구는 DB에서 유지)
+        // 영상 문구 복원 (영상 자체는 재선택 필요, 문구는 DB에서 유지)
         if let vEntry = videoTextEntry {
-            let lines = vEntry.text.components(separatedBy: "\n")
-            if let first = lines.first, let count = Int(first), count > 0 {
-                videoSlotCount = count
-                videoSlotTexts = (0..<count).map { i in (i + 1) < lines.count ? lines[i + 1] : "" }
-                fontChoice     = vEntry.font
-                textColor      = vEntry.textColor
-                position       = vEntry.position
+            let raw = vEntry.text
+            if raw.hasPrefix("v2clips\n") {
+                // v2 format: per-clip lines separated by ---CLIP---
+                let section = String(raw.dropFirst("v2clips\n".count))
+                savedClipLines = section
+                    .components(separatedBy: "\n---CLIP---\n")
+                    .map { $0.components(separatedBy: "\n") }
+            } else {
+                // Legacy v1: "<count>\n<line0>\n<line1>..." — treat as single clip
+                let linesArr = raw.components(separatedBy: "\n")
+                if let first = linesArr.first, let count = Int(first), count > 0 {
+                    let texts = (0..<count).map { i in (i + 1) < linesArr.count ? linesArr[i + 1] : "" }
+                    savedClipLines = [texts]
+                }
             }
+            fontChoice = vEntry.font
+            textColor  = vEntry.textColor
+            position   = vEntry.position
         }
 
         let stored = photoEntries
@@ -863,9 +833,10 @@ struct RestDayOneLinerSheet: View {
     }
 
     private func saveEntry() {
-        // Video mode — slot count + texts stored as "<count>\n<slot0>\n<slot1>..."
-        if videoSlotCount > 0 {
-            let payload = "\(videoSlotCount)\n" + videoSlotTexts.joined(separator: "\n")
+        // Video mode — per-clip lines stored as "v2clips\n<clip0lines>\n---CLIP---\n<clip1lines>..."
+        if !clipRecipes.isEmpty {
+            let clipTexts = clipRecipes.map { $0.lines.joined(separator: "\n") }
+            let payload   = "v2clips\n" + clipTexts.joined(separator: "\n---CLIP---\n")
             if let existing = videoTextEntry {
                 existing.text      = payload
                 existing.font      = fontChoice
@@ -985,12 +956,14 @@ struct RestDayOneLinerSheet: View {
                     // Audio muting for composed output is handled inside composeAndExport.
                     let isMuted = needsCompose ? false : muteVideoAudio
 
+                    // Collect all non-empty lines across clips in order
+                    let allLines = clipRecipes.flatMap { $0.lines }
+                        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
                     let outputURL: URL
-                    if videoSlotCount > 1 {
-                        let count = videoSlotTexts.count
-                        let pages = stride(from: 0, to: count, by: 2).map {
-                            Array(videoSlotTexts[$0..<min($0 + 2, count)])
-                        }
+                    if allLines.count > 1 {
+                        // Each line gets its own typing screen
+                        let pages = allLines.map { [$0] }
                         outputURL = try await VideoExportService.exportOneLinerMultiPageVideo(
                             sourceURL: exportURL, pages: pages,
                             fontChoice: fontChoice, textColor: textColor, position: position,
@@ -998,7 +971,7 @@ struct RestDayOneLinerSheet: View {
                             muteAudio: isMuted, maxDuration: maxDur)
                     } else {
                         outputURL = try await VideoExportService.exportOneLinerTypingVideo(
-                            sourceURL: exportURL, text: videoSlotTexts.first ?? "",
+                            sourceURL: exportURL, text: allLines.first ?? "",
                             fontChoice: fontChoice, textColor: textColor, position: position,
                             activityDate: date, showDate: true,
                             muteAudio: isMuted, maxDuration: maxDur)

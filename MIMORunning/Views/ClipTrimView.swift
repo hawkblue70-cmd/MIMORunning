@@ -3,84 +3,174 @@ import AVFoundation
 
 // MARK: - ClipTrimSheet
 //
-// Modal sheet shown when the user taps a clip in the thumbnail strip.
-// Shows a static first-frame preview + an Instagram-style trim bar.
-// Trim values are written back via a Binding<ClipRecipe>.
+// Modal sheet: static first-frame preview + Instagram-style trim bar
+// + per-clip text slot inputs below the bar.
+// All edits (trim + lines) are committed atomically on "완료".
 
 struct ClipTrimSheet: View {
     @Binding var recipe: ClipRecipe
     @Environment(\.dismiss) private var dismiss
 
-    // Local copy so changes are only committed on "완료"
+    // Local copies; written back to recipe only on "완료"
     @State private var trimStart: Double = 0
     @State private var trimEnd:   Double = 0
+    @State private var lines:     [String] = []
+
+    /// Number of slots that the current local trim would produce.
+    private var projectedCount: Int {
+        max(1, min(20, Int(max(0.1, trimEnd - trimStart) / 3.0)))
+    }
+
+    /// Non-empty lines beyond projectedCount — warn user they'll be dropped.
+    private var droppedWarning: String? {
+        guard projectedCount < lines.count else { return nil }
+        let wouldDrop = lines[projectedCount...]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !wouldDrop.isEmpty else { return nil }
+        return AppLanguage.shared.s(
+            "\(projectedCount + 1)번째 줄부터 표시되지 않아요",
+            "Lines from \(projectedCount + 1) won't appear")
+    }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                // ── Static preview ──────────────────────────────
-                Group {
-                    if let thumb = recipe.thumbnail {
-                        Image(uiImage: thumb)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxHeight: 280)
-                            .clipped()
-                            .cornerRadius(10)
-                    } else {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color(.systemGray5))
-                            .frame(height: 200)
-                            .overlay(
-                                Image(systemName: "video")
-                                    .font(.system(size: 40))
-                                    .foregroundStyle(.secondary)
-                            )
+            ScrollView {
+                VStack(spacing: 20) {
+                    // ── Static preview ──────────────────────────
+                    Group {
+                        if let thumb = recipe.thumbnail {
+                            Image(uiImage: thumb)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxHeight: 240)
+                                .cornerRadius(10)
+                        } else {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(.systemGray5))
+                                .frame(height: 180)
+                                .overlay(
+                                    Image(systemName: "video")
+                                        .font(.system(size: 36))
+                                        .foregroundStyle(.secondary)
+                                )
+                        }
                     }
+                    .padding(.horizontal)
+
+                    // ── Duration readout ────────────────────────
+                    let trimmed = max(0.1, trimEnd - trimStart)
+                    Text(AppLanguage.shared.s(
+                        "\(formatSec(trimStart)) – \(formatSec(trimEnd))  ·  \(formatSec(trimmed)) 사용",
+                        "\(formatSec(trimStart)) – \(formatSec(trimEnd))  ·  \(formatSec(trimmed)) used"))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    // ── Trim bar ─────────────────────────────────
+                    TrimBarView(
+                        duration:  recipe.fullDuration,
+                        trimStart: $trimStart,
+                        trimEnd:   $trimEnd
+                    )
+                    .padding(.horizontal)
+
+                    // Drop warning — appears as user trims shorter
+                    if let warning = droppedWarning {
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal)
+                    }
+
+                    Divider().padding(.horizontal)
+
+                    // ── Text slot inputs ─────────────────────────
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(AppLanguage.shared.s("문구", "Text"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal)
+
+                        ForEach(0..<projectedCount, id: \.self) { i in
+                            HStack(spacing: 8) {
+                                TextField(
+                                    AppLanguage.shared.s("\(i + 1)번째 줄", "Line \(i + 1)"),
+                                    text: lineBinding(for: i)
+                                )
+                                .lineLimit(1)
+                                .font(.system(size: 15))
+                                .foregroundStyle(.white)
+                                .tint(Theme.violet)
+
+                                Spacer(minLength: 0)
+                                Text("\((i < lines.count ? lines[i] : "").count)/20")
+                                    .font(.system(size: 11).monospacedDigit())
+                                    .foregroundStyle(Color(hex: "6E6E78"))
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .background(Color(hex: "1E1E28"))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .padding(.horizontal)
+                        }
+
+                        Text(AppLanguage.shared.s(
+                            "각 줄이 영상에서 차례로 나타납니다",
+                            "Each line appears in turn on the video"))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal)
+                    }
+
+                    Spacer(minLength: 24)
                 }
-                .padding(.horizontal)
-
-                // ── Duration info ────────────────────────────────
-                let trimmed = max(0.1, trimEnd - trimStart)
-                Text(AppLanguage.shared.s(
-                    "\(formatSec(trimStart)) – \(formatSec(trimEnd))  ·  \(formatSec(trimmed)) 사용",
-                    "\(formatSec(trimStart)) – \(formatSec(trimEnd))  ·  \(formatSec(trimmed)) used"))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-
-                // ── Trim bar ─────────────────────────────────────
-                TrimBarView(
-                    duration:  recipe.fullDuration,
-                    trimStart: $trimStart,
-                    trimEnd:   $trimEnd
-                )
-                .padding(.horizontal)
-
-                Spacer()
+                .padding(.top, 16)
             }
-            .padding(.top, 16)
-            .navigationTitle(AppLanguage.shared.s("구간 설정", "Trim Clip"))
+            .scrollDismissesKeyboard(.immediately)
+            .background(Color(hex: "0E0E18").ignoresSafeArea())
+            .navigationTitle(AppLanguage.shared.s("구간·문구 설정", "Trim & Text"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLanguage.shared.s("취소", "Cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(AppLanguage.shared.s("완료", "Done")) {
-                        recipe.trimStart = trimStart
-                        recipe.trimEnd   = trimEnd
-                        dismiss()
-                    }
-                    .bold()
+                    Button(AppLanguage.shared.s("완료", "Done")) { commit() }
+                        .bold()
                 }
             }
         }
         .onAppear {
             trimStart = recipe.trimStart
             trimEnd   = recipe.trimEnd
+            lines     = recipe.lines
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+    }
+
+    // MARK: - Helpers
+
+    private func lineBinding(for i: Int) -> Binding<String> {
+        Binding {
+            i < lines.count ? lines[i] : ""
+        } set: { newVal in
+            let v = String(newVal.replacingOccurrences(of: "\n", with: "").prefix(20))
+            while lines.count <= i { lines.append("") }
+            lines[i] = v
+        }
+    }
+
+    private func commit() {
+        let count = projectedCount
+        let finalLines: [String]
+        if lines.count >= count {
+            finalLines = Array(lines.prefix(count))
+        } else {
+            finalLines = lines + Array(repeating: "", count: count - lines.count)
+        }
+        recipe.trimStart = trimStart
+        recipe.trimEnd   = trimEnd
+        recipe.lines     = finalLines
+        dismiss()
     }
 
     private func formatSec(_ s: Double) -> String {
@@ -99,56 +189,52 @@ struct TrimBarView: View {
     @Binding var trimStart: Double
     @Binding var trimEnd:   Double
 
-    private let barHeight: CGFloat  = 48
-    private let handleW:   CGFloat  = 18
-    private let minTrim:   Double   = 0.5    // seconds
+    private let barHeight: CGFloat = 48
+    private let handleW:   CGFloat = 18
+    private let minTrim:   Double  = 0.5
 
     var body: some View {
         GeometryReader { geo in
             let totalW = geo.size.width
-            let usable = totalW - handleW * 2  // area between handle outer edges
+            let usable = totalW - handleW * 2
 
-            // Position of the inner edge of each handle
             let startX = handleW + CGFloat(trimStart / duration) * usable
             let endX   = handleW + CGFloat(trimEnd   / duration) * usable
 
             ZStack(alignment: .leading) {
-                // ── Full-track background ─────────────────────
+                // Full track
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color(.systemGray4))
                     .frame(height: 6)
                     .padding(.horizontal, handleW)
 
-                // ── Active range highlight ────────────────────
+                // Active range
                 Rectangle()
                     .fill(Color.orange)
                     .frame(width: max(0, endX - startX), height: 6)
                     .offset(x: startX)
 
-                // ── Start handle ──────────────────────────────
+                // Start handle
                 handle(symbol: "chevron.left")
                     .offset(x: startX - handleW)
                     .gesture(DragGesture(minimumDistance: 1)
                         .onChanged { v in
                             let raw = Double((v.location.x - handleW) / usable) * duration
-                            let clamped = max(0, min(raw, trimEnd - minTrim))
-                            trimStart = clamped
+                            trimStart = max(0, min(raw, trimEnd - minTrim))
                         }
                     )
 
-                // ── End handle ────────────────────────────────
+                // End handle
                 handle(symbol: "chevron.right")
                     .offset(x: endX - handleW)
                     .gesture(DragGesture(minimumDistance: 1)
                         .onChanged { v in
                             let raw = Double((v.location.x - handleW) / usable) * duration
-                            let clamped = min(duration, max(raw, trimStart + minTrim))
-                            trimEnd = clamped
+                            trimEnd = min(duration, max(raw, trimStart + minTrim))
                         }
                     )
             }
             .frame(height: barHeight)
-            .coordinateSpace(name: "trimBar")
         }
         .frame(height: barHeight)
     }
