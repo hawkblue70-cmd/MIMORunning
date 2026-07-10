@@ -18,12 +18,26 @@ struct ClipDescriptor {
 
 struct ClipRecipe: Identifiable {
     var id:           UUID    = UUID()
-    let url:          URL
+    var url:          URL
     var trimStart:    Double          // seconds from clip start (default: 0)
     var trimEnd:      Double          // seconds from clip start (default: fullDuration)
-    let fullDuration: Double
+    var fullDuration: Double
     var thumbnail:    UIImage?        // first frame, loaded async after selection
     var lines:        [String]        // text slots owned by this clip
+
+    // Persistence refs — populated on pick, restored on load
+    var assetIdentifier: String? = nil  // PHAsset.localIdentifier (video clips)
+    var storedPhotoRef:  String? = nil  // OneLinerPhotoStore ref (photo-slide clips)
+    var thumbRef:        String? = nil  // ClipThumbStore 200 px mini-thumbnail
+
+    // Per-clip style — controls bound to the selected clip in MultiClipEditorView
+    var fontChoice: OneLinerFont      = .pen
+    var textColor:  OneLinerTextColor = .white
+    var position:   CardPosition      = .bottom
+    var sizeLevel:  TextSizeLevel     = .medium
+    var appearanceMode: AppearanceMode = .typing
+    var decorEffect:    DecorEffect    = .none
+    var outline:        Bool           = false
 
     init(url: URL, fullDuration: Double, thumbnail: UIImage? = nil) {
         self.url          = url
@@ -40,6 +54,19 @@ struct ClipRecipe: Identifiable {
     /// Number of text slots based on trimmed duration (1 slot per 3 s).
     var linesCount: Int { max(1, min(20, Int(trimmedDuration / 3.0))) }
     var hasText: Bool { lines.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
+}
+
+// MARK: - OneLinerTitleStyle
+//
+// Style for the full-video title overlay (영상·슬라이드 only).
+// Stored as raw-value fields in SavedRecipeSet.
+
+struct OneLinerTitleStyle: Equatable {
+    var position:   CardPosition       = .top
+    var sizeLevel:  TextSizeLevel      = .medium
+    var fontChoice: OneLinerFont       = .gothic
+    var textColor:  OneLinerTextColor  = .white
+    var outline:    Bool               = false
 }
 
 // MARK: - MultiClipComposition

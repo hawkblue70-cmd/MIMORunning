@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Photos
 import PhotosUI
 import AVFoundation
 import UIKit
@@ -9,6 +10,7 @@ import UIKit
 private enum RestDayTemplate: String, CaseIterable {
     case story = "스토리"
     case video = "영상"
+    case slide = "슬라이드"
 }
 
 // MARK: - RestDayOneLinerSheet
@@ -50,17 +52,27 @@ struct RestDayOneLinerSheet: View {
     @State private var backgroundPhotos:   [UIImage]          = []
     @State private var photoPickerItems:   [PhotosPickerItem] = []
     @State private var selectedPhotoIndex: Int                = 0
-    @State private var videoPickerItems:   [PhotosPickerItem] = []
-    @State private var clipRecipes:        [ClipRecipe]       = []
-    @State private var editingClipIndex:   Int?               = nil
-    @State private var draggingClipIndex:  Int?               = nil
-    @State private var savedClipLines:     [[String]]         = []  // restored from DB; applied to new clips
-    @State private var slotTexts:          [String]           = []  // per-photo (mirrors backgroundPhotos)
-    @State private var orphanedTexts:      [String]           = []  // texts whose photo was removed
+    @State private var clipRecipes:           [ClipRecipe]       = []
+    @State private var storyModeRecipes:      [ClipRecipe]       = []
+    @State private var videoModeRecipes:      [ClipRecipe]       = []
+    @State private var slideModeRecipes:      [ClipRecipe]       = []
+    @State private var enabledMetricIDs:      Set<String>        = []
+    @State private var savedClipLines:        [[String]]         = []
+    @State private var currentClipIndex:      Int                = 0
+    @State private var slotTexts:          [String]           = []
+    @State private var orphanedTexts:      [String]           = []
     @State private var draggingPhotoIndex: Int?               = nil
     @State private var selectedTemplate:  RestDayTemplate     = .story
     @State private var isExportingVideo:  Bool                = false
     @State private var muteVideoAudio:    Bool                = false
+    @State private var videoTitle:        String               = ""
+    @State private var titleStyle:        OneLinerTitleStyle   = OneLinerTitleStyle()
+    @State private var videoModeTitle:    String               = ""
+    @State private var videoModeTitleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
+    @State private var slideModeTitle:    String               = ""
+    @State private var slideModeTitleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
+    @State private var didInitialize:    Bool                 = false
+    @State private var previewPlayer:    OneLinerPreviewPlayer = OneLinerPreviewPlayer()
 
     @FocusState private var fieldFocused: Bool
 
@@ -73,25 +85,26 @@ struct RestDayOneLinerSheet: View {
     private var shareButtonActive: Bool {
         guard !isExportingVideo else { return false }
         switch selectedTemplate {
-        case .video: return isVideoMode && videoTotalSeconds <= MultiClipComposition.maxSeconds
-        case .story:
-            return true
+        case .video, .slide: return isVideoMode && videoTotalSeconds <= MultiClipComposition.maxSeconds
+        case .story:         return true
         }
     }
 
     private var cardBackground: UIImage? {
-        if selectedTemplate == .video { return videoFirstFrame }
+        if selectedTemplate == .video || selectedTemplate == .slide || selectedTemplate == .story {
+            let safeIdx = clipRecipes.indices.contains(currentClipIndex) ? currentClipIndex : 0
+            return clipRecipes.indices.contains(safeIdx) ? clipRecipes[safeIdx].thumbnail : clipRecipes.first?.thumbnail
+        }
         guard !backgroundPhotos.isEmpty else { return nil }
         return backgroundPhotos[min(selectedPhotoIndex, backgroundPhotos.count - 1)]
     }
 
     /// Text shown on the card preview.
-    /// Video mode: shows first non-empty line of the editing clip; falls back to any clip.
+    /// Video/slide mode: shows first non-empty line of the selected clip; falls back to any clip.
     private var cardText: String {
-        if selectedTemplate == .video {
-            let clip = editingClipIndex.flatMap {
-                clipRecipes.indices.contains($0) ? clipRecipes[$0] : nil
-            } ?? clipRecipes.first
+        if selectedTemplate == .video || selectedTemplate == .slide || selectedTemplate == .story {
+            let safeIdx = clipRecipes.indices.contains(currentClipIndex) ? currentClipIndex : 0
+            let clip = clipRecipes.indices.contains(safeIdx) ? clipRecipes[safeIdx] : clipRecipes.first
             return clip?.lines.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? ""
         }
         if !backgroundPhotos.isEmpty, selectedPhotoIndex < slotTexts.count {
@@ -100,152 +113,205 @@ struct RestDayOneLinerSheet: View {
         return ""
     }
 
+    private var isClipMode: Bool { selectedTemplate == .video || selectedTemplate == .slide }
+    private var isPhotoSlideMode: Bool { selectedTemplate == .slide || selectedTemplate == .story }
+
+    // Per-clip preview style — used by OneLinerCard when in video/slide/story mode
+    private var previewFont: OneLinerFont {
+        if (isClipMode || selectedTemplate == .story), clipRecipes.indices.contains(currentClipIndex) {
+            return clipRecipes[currentClipIndex].fontChoice
+        }
+        return fontChoice
+    }
+    private var previewTextColor: OneLinerTextColor {
+        if (isClipMode || selectedTemplate == .story), clipRecipes.indices.contains(currentClipIndex) {
+            return clipRecipes[currentClipIndex].textColor
+        }
+        return textColor
+    }
+    private var previewPosition: CardPosition {
+        if (isClipMode || selectedTemplate == .story), clipRecipes.indices.contains(currentClipIndex) {
+            return clipRecipes[currentClipIndex].position
+        }
+        return position
+    }
+    private var previewSizeLevel: TextSizeLevel {
+        if (isClipMode || selectedTemplate == .story), clipRecipes.indices.contains(currentClipIndex) {
+            return clipRecipes[currentClipIndex].sizeLevel
+        }
+        return .medium
+    }
+    private var previewAppearanceMode: AppearanceMode {
+        if (isClipMode || selectedTemplate == .story), clipRecipes.indices.contains(currentClipIndex) {
+            return clipRecipes[currentClipIndex].appearanceMode
+        }
+        return .typing
+    }
+    private var previewDecorEffect: DecorEffect {
+        if (isClipMode || selectedTemplate == .story), clipRecipes.indices.contains(currentClipIndex) {
+            return clipRecipes[currentClipIndex].decorEffect
+        }
+        return .none
+    }
+    private var previewOutline: Bool {
+        if (isClipMode || selectedTemplate == .story), clipRecipes.indices.contains(currentClipIndex) {
+            return clipRecipes[currentClipIndex].outline
+        }
+        return false
+    }
+
     // MARK: Body
-    var body: some View {
+    var body: some View { mainContent }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        navStack
+            .interactiveDismissDisabled(previewPlayer.isReady)
+            .onAppear { loadEntry() }
+            .onChange(of: allEntries) { old, _ in
+                guard old.isEmpty, !didInitialize else { return }
+                loadEntry()
+            }
+            .onChange(of: photoPickerItems) { _, items in handlePhotoPicker(items) }
+            .onChange(of: clipRecipes.count) { _, _ in
+                previewPlayer.invalidate()
+            }
+            .onChange(of: videoTitle)  { _, _ in previewPlayer.invalidate() }
+            .onChange(of: titleStyle)  { _, _ in previewPlayer.invalidate() }
+    }
+
+    private var navStack: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ZStack {
-                    Color(hex: "0E0E18").ignoresSafeArea()
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            OneLinerCard(
-                                displayDate: date,
-                                backgroundPhoto: cardBackground,
-                                text: cardText,
-                                position: position,
-                                textColor: textColor,
-                                fontChoice: fontChoice,
-                                showDate: true,
-                                captionMode: true
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                            .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
-                            .padding(.top, 16)
-
-                            VStack(spacing: 12) {
-                                gridAndChips
-                                templateTabs
-
-                                // story — 사진이 있을 때만 텍스트 입력 표시 (영상 입력은 ClipTrimSheet에서)
-                                if selectedTemplate == .story, !backgroundPhotos.isEmpty {
-                                    textSlotsView
-                                }
-
-                                templateMediaRow
-                            }
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 16)
-                        }
-                    }
-                    .scrollDismissesKeyboard(.immediately)
-                }
-                .simultaneousGesture(TapGesture().onEnded {
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                })
-
-                // Fixed bottom share button
-                Button { renderCardForSharing() } label: { shareButtonLabel }
-                .disabled(!shareButtonActive)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(Color(hex: "0E0E18"))
+                scrollArea
+                shareBar
             }
             .navigationTitle(dateTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
-                        .foregroundStyle(.secondary)
+                    Button(AppLanguage.shared.s("닫기", "Close")) {
+                        if previewPlayer.isReady {
+                            previewPlayer.pause()
+                            previewPlayer.invalidate()
+                        } else {
+                            dismiss()
+                        }
+                    }
+                    .foregroundStyle(.secondary)
                 }
-            }
-        }
-        .sheet(isPresented: Binding(
-            get: { editingClipIndex != nil },
-            set: { if !$0 { editingClipIndex = nil } }
-        )) {
-            if let idx = editingClipIndex, idx < clipRecipes.count {
-                ClipTrimSheet(recipe: $clipRecipes[idx])
-            }
-        }
-        .onChange(of: editingClipIndex) { _, newVal in
-            // Trim sheet closed → persist clip lines + style
-            if newVal == nil { saveEntry() }
-        }
-        .onAppear { loadEntry() }
-        .onChange(of: allEntries) { oldValue, _ in
-            guard oldValue.isEmpty, text.isEmpty, backgroundPhotos.isEmpty else { return }
-            loadEntry()
-        }
-        .onChange(of: photoPickerItems) { _, items in
-            Task { @MainActor in
-                var images: [UIImage] = []
-                for item in items {
-                    guard let data = try? await item.loadTransferable(type: Data.self),
-                          let img  = UIImage(data: data) else { continue }
-                    images.append(img)
-                }
-                guard !images.isEmpty else { return }
-
-                // Pool = all existing slot texts + orphaned texts.
-                // Gradient text is offered as a seed if the pool is otherwise empty.
-                var pool = slotTexts.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                         + orphanedTexts
-                if pool.isEmpty {
-                    let seed = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                               ? (gradientEntry?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
-                               : text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !seed.isEmpty { pool = [seed] }
-                }
-
-                // Each new photo takes one text from the pool (or gets "").
-                slotTexts     = images.map { _ in pool.isEmpty ? "" : pool.removeFirst() }
-                orphanedTexts = pool          // leftovers stay as orphans
-
-                if isVideoMode { text = "" }
-                clipRecipes      = []
-                videoPickerItems = []
-                // videoSlotTexts·videoSlotCount는 영상 상태와 독립 — 사진 선택 시 건드리지 않음
-                backgroundPhotos   = images
-                selectedPhotoIndex = 0
-                savePhotos(images)
-            }
-        }
-        .onChange(of: videoPickerItems) { _, items in
-            guard !items.isEmpty else { return }
-            Task {
-                // Build ClipRecipe[] — sequential to preserve picker order
-                var recipes: [ClipRecipe] = []
-                for item in items {
-                    guard let result = try? await item.loadTransferable(type: VideoPickerResult.self)
-                    else { continue }
-                    let url = result.url
-                    let dur = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
-                    let thumb = await VideoExportService.firstFrame(of: url)
-                    recipes.append(ClipRecipe(url: url, fullDuration: dur, thumbnail: thumb))
-                }
-                guard !recipes.isEmpty else { return }
-
-                // Restore previously saved lines by clip position
-                for i in recipes.indices {
-                    guard i < savedClipLines.count else { break }
-                    let saved = savedClipLines[i]
-                    let n     = recipes[i].linesCount
-                    recipes[i].lines = (0..<n).map { j in j < saved.count ? saved[j] : "" }
-                }
-
-                let totalSeconds = MultiClipComposition.totalDuration(recipes: recipes)
-                print("[OneLinerVideo] 클립수=\(recipes.count) 합산=\(Int(totalSeconds))초")
-
-                // 사진 상태는 독립 보존 — 영상 선택 시 건드리지 않음
-                clipRecipes      = recipes
-                text             = ""
-                selectedTemplate = .video
             }
         }
     }
 
+    private var shareBar: some View {
+        Button { renderCardForSharing() } label: { shareButtonLabel }
+            .disabled(!shareButtonActive)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Color(hex: "0E0E18"))
+    }
+
     // MARK: - Sub-views
+
+    private var scrollArea: some View {
+        ZStack {
+            Color(hex: "0E0E18").ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 20) {
+                    cardPreview.padding(.top, 16)
+                    controlsArea
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 16)
+                }
+            }
+            .scrollDismissesKeyboard(.immediately)
+        }
+        .simultaneousGesture(TapGesture().onEnded {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        })
+    }
+
+    @ViewBuilder
+    private var cardPreview: some View {
+        if previewPlayer.isReady,
+           let pl = previewPlayer.player,
+           let cl = previewPlayer.contentLayer {
+            OneLinerPreviewView(player: pl, contentLayer: cl, renderSize: previewPlayer.renderSize)
+                .frame(width: CardPreviewFrame.width, height: CardPreviewFrame.height)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
+                .overlay(alignment: .bottom) {
+                    GeometryReader { geo in
+                        Rectangle()
+                            .fill(Theme.violet)
+                            .frame(width: geo.size.width * previewPlayer.progress, height: 3)
+                            .animation(.linear(duration: 0.1), value: previewPlayer.progress)
+                    }
+                    .frame(height: 3)
+                    .clipShape(RoundedRectangle(cornerRadius: 1.5))
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                }
+                .overlay {
+                    Button { previewPlayer.togglePlayPause() } label: {
+                        Image(systemName: previewPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 44))
+                            .foregroundStyle(.white.opacity(previewPlayer.isPlaying ? 0 : 0.85))
+                            .shadow(color: .black.opacity(0.5), radius: 8)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { previewPlayer.togglePlayPause() }
+                .frame(maxWidth: .infinity)
+        } else {
+            OneLinerCard(
+                displayDate: date,
+                backgroundPhoto: cardBackground,
+                text: cardText,
+                position: previewPosition,
+                textColor: previewTextColor,
+                fontChoice: previewFont,
+                sizeLevel: previewSizeLevel,
+                appearanceMode: previewAppearanceMode,
+                decorEffect: previewDecorEffect,
+                outline: previewOutline,
+                showDate: true,
+                captionMode: true,
+                videoTitle: selectedTemplate != .story ? videoTitle : "",
+                titleStyle: titleStyle
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
+            .overlay(alignment: .center) {
+                if previewPlayer.isBuilding {
+                    ProgressView().tint(.white)
+                        .padding(16)
+                        .background(.black.opacity(0.45))
+                        .clipShape(Circle())
+                } else if isClipMode && isVideoMode {
+                    Button { buildPreview() } label: {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .shadow(color: .black.opacity(0.55), radius: 10)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var controlsArea: some View {
+        VStack(spacing: 12) {
+            templateTabs
+            templateMediaRow
+        }
+    }
 
     private var shareButtonLabel: some View {
         HStack(spacing: 8) {
@@ -492,241 +558,19 @@ struct RestDayOneLinerSheet: View {
 
     @ViewBuilder
     private var templateMediaRow: some View {
-        if selectedTemplate == .story {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(backgroundPhotos.indices, id: \.self) { i in
-                        let isDragging = draggingPhotoIndex == i
-                        ZStack(alignment: .topTrailing) {
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.15)) { selectedPhotoIndex = i }
-                            } label: {
-                                Image(uiImage: backgroundPhotos[i])
-                                    .resizable().scaledToFill()
-                                    .frame(width: 52, height: 52)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .strokeBorder(
-                                                selectedPhotoIndex == i
-                                                ? Theme.violet : Color.white.opacity(0.2),
-                                                lineWidth: 2)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-
-                            Button { deletePhoto(at: i) } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 16))
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(Color.white, Color.black.opacity(0.65))
-                            }
-                            .buttonStyle(.plain)
-                            .offset(x: 4, y: -4)
-                        }
-                        .scaleEffect(isDragging ? 1.08 : 1.0)
-                        .animation(.easeInOut(duration: 0.1), value: isDragging)
-                        .highPriorityGesture(
-                            DragGesture(minimumDistance: 8)
-                                .onChanged { value in
-                                    if draggingPhotoIndex == nil { draggingPhotoIndex = i }
-                                    guard let from = draggingPhotoIndex else { return }
-                                    let dx = value.translation.width
-                                    let step: CGFloat = 60
-                                    if dx > step / 2, from < backgroundPhotos.count - 1 {
-                                        withAnimation(.easeInOut(duration: 0.15)) {
-                                            backgroundPhotos.swapAt(from, from + 1)
-                                            if from < slotTexts.count, from + 1 < slotTexts.count {
-                                                slotTexts.swapAt(from, from + 1)
-                                            }
-                                            draggingPhotoIndex = from + 1
-                                            selectedPhotoIndex = from + 1
-                                        }
-                                    } else if dx < -step / 2, from > 0 {
-                                        withAnimation(.easeInOut(duration: 0.15)) {
-                                            backgroundPhotos.swapAt(from, from - 1)
-                                            if from < slotTexts.count, from - 1 < slotTexts.count {
-                                                slotTexts.swapAt(from, from - 1)
-                                            }
-                                            draggingPhotoIndex = from - 1
-                                            selectedPhotoIndex = from - 1
-                                        }
-                                    }
-                                }
-                                .onEnded { _ in
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        draggingPhotoIndex = nil
-                                    }
-                                    savePhotos(backgroundPhotos)
-                                }
-                        )
-                    }
-                    // 사진 추가 인라인 + 버튼
-                    PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 10, matching: .images) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color(hex: "1E1E28"))
-                                .frame(width: 52, height: 52)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-                                )
-                            Image(systemName: "photo.badge.plus")
-                                .font(.system(size: 20))
-                                .foregroundStyle(Theme.violet)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, 4)
-            }
-        } else if selectedTemplate == .video {
-            VStack(alignment: .leading, spacing: 8) {
-                // ── Picker button row ──────────────────────────
-                HStack(spacing: 10) {
-                    PhotosPicker(selection: $videoPickerItems,
-                                 maxSelectionCount: 10,
-                                 matching: .videos) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "video.badge.plus")
-                            Text(clipRecipes.isEmpty
-                                 ? AppLanguage.shared.s("영상 선택", "Select videos")
-                                 : AppLanguage.shared.s("영상 변경", "Change videos"))
-                                .font(.subheadline)
-                        }
-                        .foregroundStyle(Theme.violet)
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(Theme.violet.opacity(0.10))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer(minLength: 0)
-
-                    if isVideoMode {
-                        Button { muteVideoAudio.toggle() } label: {
-                            Image(systemName: muteVideoAudio ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                                .foregroundStyle(muteVideoAudio ? Color.secondary : Theme.violet)
-                                .font(.title3)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-
-                // ── Clip strip (thumbnails + drag reorder + × + tap to trim) ──
-                if !clipRecipes.isEmpty {
-                    clipStrip
-                }
-
-                // ── Duration label / 60s warning ──────────────
-                if !clipRecipes.isEmpty {
-                    let exceeded = videoTotalSeconds > MultiClipComposition.maxSeconds
-                    let overBy   = Int(videoTotalSeconds) - Int(MultiClipComposition.maxSeconds)
-                    if exceeded {
-                        Text(AppLanguage.shared.s(
-                            "전체 60초를 넘어요 — \(overBy)초 초과",
-                            "Over 60s limit — \(overBy)s too long"))
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    } else {
-                        Text(AppLanguage.shared.s(
-                            "클립 \(videoClipCount)개 · \(Int(videoTotalSeconds))초  (탭하면 구간 설정)",
-                            "\(videoClipCount) clips · \(Int(videoTotalSeconds))s  (tap to trim)"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        // .athletic: no media picker
-    }
-
-    // MARK: - Clip strip
-
-    private var clipStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(clipRecipes.indices, id: \.self) { i in
-                    let isDragging = draggingClipIndex == i
-                    ZStack(alignment: .topTrailing) {
-                        Button { editingClipIndex = i } label: {
-                            Group {
-                                if let thumb = clipRecipes[i].thumbnail {
-                                    Image(uiImage: thumb)
-                                        .resizable().scaledToFill()
-                                } else {
-                                    Rectangle()
-                                        .fill(Color(.systemGray5))
-                                        .overlay(Image(systemName: "video").foregroundStyle(.secondary))
-                                }
-                            }
-                            .frame(width: 52, height: 52)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .strokeBorder(
-                                        clipRecipes[i].isTrimmed ? Color.orange : Theme.violet.opacity(0.6),
-                                        lineWidth: 1.5)
-                            )
-                            .overlay(alignment: .bottom) {
-                                Text("\(Int(clipRecipes[i].trimmedDuration))s")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 3).padding(.vertical, 1)
-                                    .background(Color.black.opacity(0.55))
-                                    .clipShape(RoundedRectangle(cornerRadius: 3))
-                                    .padding(.bottom, 3)
-                            }
-                            // 문구 있음 도트 — 말풍선 위치
-                            .overlay(alignment: .topLeading) {
-                                if clipRecipes[i].hasText {
-                                    Circle()
-                                        .fill(Theme.violet)
-                                        .frame(width: 7, height: 7)
-                                        .padding(3)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-
-                        Button { removeClip(at: i) } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 16))
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(Color.white, Color.black.opacity(0.65))
-                        }
-                        .buttonStyle(.plain)
-                        .offset(x: 4, y: -4)
-                    }
-                    .scaleEffect(isDragging ? 1.08 : 1.0)
-                    .animation(.easeInOut(duration: 0.1), value: isDragging)
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 8)
-                            .onChanged { value in
-                                if draggingClipIndex == nil { draggingClipIndex = i }
-                                guard let from = draggingClipIndex else { return }
-                                let step: CGFloat = 60
-                                if value.translation.width > step / 2, from < clipRecipes.count - 1 {
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        clipRecipes.swapAt(from, from + 1)
-                                        draggingClipIndex = from + 1
-                                    }
-                                } else if value.translation.width < -step / 2, from > 0 {
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        clipRecipes.swapAt(from, from - 1)
-                                        draggingClipIndex = from - 1
-                                    }
-                                }
-                            }
-                            .onEnded { _ in
-                                withAnimation { draggingClipIndex = nil }
-                                saveEntry()
-                            }
-                    )
-                }
-            }
-            .padding(.vertical, 4)
-        }
+        MultiClipEditorView(
+            recipes: $clipRecipes,
+            isPhotoSlideMode: .constant(isPhotoSlideMode),
+            muteAudio: $muteVideoAudio,
+            selectedClipIndex: $currentClipIndex,
+            savedClipLines: savedClipLines,
+            availableMetrics: [],
+            enabledMetricIDs: $enabledMetricIDs,
+            onSave: handleRecipesChanged,
+            isStoryMode: selectedTemplate == .story,
+            videoTitle: $videoTitle,
+            titleStyle: $titleStyle
+        )
     }
 
     // MARK: - Bindings
@@ -761,15 +605,33 @@ struct RestDayOneLinerSheet: View {
 
     // MARK: - Helpers
 
-    private func removeClip(at index: Int) {
-        guard index < clipRecipes.count else { return }
-        clipRecipes.remove(at: index)
-        if clipRecipes.isEmpty {
-            videoPickerItems = []
-            muteVideoAudio   = false
-            selectedTemplate = .story
+    private func handlePhotoPicker(_ items: [PhotosPickerItem]) {
+        Task { @MainActor in
+            var images: [UIImage] = []
+            for item in items {
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let img  = UIImage(data: data) else { continue }
+                images.append(img)
+            }
+            guard !images.isEmpty else { return }
+
+            var pool = slotTexts.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                     + orphanedTexts
+            if pool.isEmpty {
+                let seed = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                           ? (gradientEntry?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+                           : text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !seed.isEmpty { pool = [seed] }
+            }
+            slotTexts     = images.map { _ in pool.isEmpty ? "" : pool.removeFirst() }
+            orphanedTexts = pool
+
+            if isVideoMode { text = "" }
+            clipRecipes = []
+            backgroundPhotos   = images
+            selectedPhotoIndex = 0
+            savePhotos(images)
         }
-        saveEntry()
     }
 
     private var dateTitle: String {
@@ -782,7 +644,9 @@ struct RestDayOneLinerSheet: View {
     }
 
     private func loadEntry() {
-        // gradient 엔트리는 더 이상 사용하지 않으므로 스타일만 복원 후 삭제
+        didInitialize = true
+
+        // Migrate legacy gradient entry for style only
         if let entry = gradientEntry {
             fontChoice = entry.font
             textColor  = entry.textColor
@@ -790,37 +654,64 @@ struct RestDayOneLinerSheet: View {
             modelContext.delete(entry)
             try? modelContext.save()
         }
-        // 영상 문구 복원 (영상 자체는 재선택 필요, 문구는 DB에서 유지)
-        if let vEntry = videoTextEntry {
-            let raw = vEntry.text
-            if raw.hasPrefix("v2clips\n") {
-                // v2 format: per-clip lines separated by ---CLIP---
-                let section = String(raw.dropFirst("v2clips\n".count))
-                savedClipLines = section
-                    .components(separatedBy: "\n---CLIP---\n")
-                    .map { $0.components(separatedBy: "\n") }
-            } else {
-                // Legacy v1: "<count>\n<line0>\n<line1>..." — treat as single clip
-                let linesArr = raw.components(separatedBy: "\n")
-                if let first = linesArr.first, let count = Int(first), count > 0 {
-                    let texts = (0..<count).map { i in (i + 1) < linesArr.count ? linesArr[i + 1] : "" }
-                    savedClipLines = [texts]
-                }
-            }
-            fontChoice = vEntry.font
-            textColor  = vEntry.textColor
-            position   = vEntry.position
-        }
 
-        let stored = photoEntries
-        guard !stored.isEmpty else { return }
-        Task { @MainActor in
-            let images = stored.compactMap { OneLinerPhotoStore.load(mediaRef: $0.mediaRef ?? "") }
-            guard !images.isEmpty else { return }
-            backgroundPhotos   = images
-            slotTexts          = stored.prefix(images.count).map { $0.text }
-            selectedPhotoIndex = 0
-            selectedTemplate   = .story
+        guard let vEntry = videoTextEntry else { return }
+        fontChoice = vEntry.font
+        textColor  = vEntry.textColor
+        position   = vEntry.position
+        let raw = vEntry.text
+
+        if raw.hasPrefix("v4recipes\n") {
+            let jsonStr = String(raw.dropFirst("v4recipes\n".count))
+            guard let data  = jsonStr.data(using: .utf8),
+                  let store = try? JSONDecoder().decode(PerModeRecipeStore.self, from: data) else { return }
+            storyModeRecipes = restoreRecipes(from: store.story)
+            videoModeRecipes = restoreRecipes(from: store.video)
+            slideModeRecipes = restoreRecipes(from: store.slide)
+            if let videoSet = store.video {
+                videoModeTitle      = videoSet.videoTitle
+                videoModeTitleStyle = restoreTitleStyle(from: videoSet)
+            }
+            if let slideSet = store.slide {
+                slideModeTitle      = slideSet.videoTitle
+                slideModeTitleStyle = restoreTitleStyle(from: slideSet)
+            }
+            if let mode = RestDayTemplate(rawValue: store.activeMode) { selectedTemplate = mode }
+            loadFromBackingStore(for: selectedTemplate)
+            switch selectedTemplate {
+            case .video: muteVideoAudio = store.video?.muteAudio ?? false
+            case .slide: muteVideoAudio = store.slide?.muteAudio ?? false
+            case .story: break
+            }
+        } else if raw.hasPrefix("v3recipes\n") {
+            // Migration: single-mode save → slot into the right backing store
+            let jsonStr = String(raw.dropFirst("v3recipes\n".count))
+            guard let data  = jsonStr.data(using: .utf8),
+                  let saved = try? JSONDecoder().decode(SavedRecipeSet.self, from: data),
+                  !saved.clips.isEmpty else { return }
+            muteVideoAudio = saved.muteAudio
+            let restored = restoreRecipes(from: saved)
+            let mode = saved.mode == "story" ? RestDayTemplate.story
+                                             : (saved.isPhotoSlide ? .slide : .video)
+            switch mode {
+            case .story: storyModeRecipes = restored
+            case .video: videoModeRecipes = restored
+            case .slide: slideModeRecipes = restored
+            }
+            selectedTemplate = mode
+            clipRecipes = restored
+            currentClipIndex = 0
+        } else if raw.hasPrefix("v2clips\n") {
+            let section = String(raw.dropFirst("v2clips\n".count))
+            savedClipLines = section
+                .components(separatedBy: "\n---CLIP---\n")
+                .map { $0.components(separatedBy: "\n") }
+        } else {
+            let linesArr = raw.components(separatedBy: "\n")
+            if let first = linesArr.first, let count = Int(first), count > 0 {
+                let texts = (0..<count).map { i in (i + 1) < linesArr.count ? linesArr[i + 1] : "" }
+                savedClipLines = [texts]
+            }
         }
     }
 
@@ -833,56 +724,247 @@ struct RestDayOneLinerSheet: View {
     }
 
     private func saveEntry() {
-        // Video mode — per-clip lines stored as "v2clips\n<clip0lines>\n---CLIP---\n<clip1lines>..."
-        if !clipRecipes.isEmpty {
-            let clipTexts = clipRecipes.map { $0.lines.joined(separator: "\n") }
-            let payload   = "v2clips\n" + clipTexts.joined(separator: "\n---CLIP---\n")
-            if let existing = videoTextEntry {
-                existing.text      = payload
-                existing.font      = fontChoice
-                existing.textColor = textColor
-                existing.position  = position
-                existing.showDate  = true
-            } else {
-                let entry = OneLinerEntry(workoutID: workoutID, mediaRef: "videotexts")
-                entry.text      = payload
-                entry.font      = fontChoice
-                entry.textColor = textColor
-                entry.position  = position
-                entry.showDate  = true
-                modelContext.insert(entry)
+        syncActiveToBackingStore()
+
+        let storySet = buildRecipeSet(from: storyModeRecipes, mode: "story")
+        let videoSet = buildRecipeSet(from: videoModeRecipes, mode: nil,
+                                      title: videoModeTitle, titleStyleParam: videoModeTitleStyle)
+        let slideSet = buildRecipeSet(from: slideModeRecipes, mode: nil, isPhotoSlide: true,
+                                      title: slideModeTitle, titleStyleParam: slideModeTitleStyle)
+
+        if storySet != nil || videoSet != nil || slideSet != nil {
+            let store = PerModeRecipeStore(
+                story: storySet, video: videoSet, slide: slideSet,
+                activeMode: selectedTemplate.rawValue)
+            if let data = try? JSONEncoder().encode(store),
+               let json = String(data: data, encoding: .utf8) {
+                let payload = "v4recipes\n" + json
+                if let existing = videoTextEntry {
+                    existing.text = payload; existing.font = fontChoice
+                    existing.textColor = textColor; existing.position = position
+                    existing.showDate = true
+                } else {
+                    let entry = OneLinerEntry(workoutID: workoutID, mediaRef: "videotexts")
+                    entry.text = payload; entry.font = fontChoice
+                    entry.textColor = textColor; entry.position = position
+                    entry.showDate = true
+                    modelContext.insert(entry)
+                }
             }
             try? modelContext.save()
             return
         }
 
-        if backgroundPhotos.isEmpty {
-            // Gradient mode — update gradient entry only
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let existing = gradientEntry {
-                if trimmed.isEmpty { modelContext.delete(existing) } else { applyStyle(to: existing) }
-            } else if !trimmed.isEmpty {
-                let entry = OneLinerEntry(workoutID: workoutID, mediaRef: nil)
-                applyStyle(to: entry); modelContext.insert(entry)
-            }
-        } else {
-            // Photo mode — font/color/position apply to all; text is per-slot
-            for (i, pe) in photoEntries.enumerated() {
-                pe.font      = fontChoice
-                pe.textColor = textColor
-                pe.position  = position
-                pe.showDate  = true
-                if i < slotTexts.count { pe.text = slotTexts[i] }
-            }
+        // No clips — save gradient entry only
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let existing = gradientEntry {
+            if trimmed.isEmpty { modelContext.delete(existing) } else { applyStyle(to: existing) }
+        } else if !trimmed.isEmpty {
+            let entry = OneLinerEntry(workoutID: workoutID, mediaRef: nil)
+            applyStyle(to: entry); modelContext.insert(entry)
         }
         try? modelContext.save()
     }
 
-    private func switchTemplate(to template: RestDayTemplate) {
-        guard template != selectedTemplate else { return }
-        saveEntry()   // 전환 전 현재 상태(영상 문구 포함) 즉시 저장
-        withAnimation(.easeInOut(duration: 0.15)) { selectedTemplate = template }
-        // 사진·영상 상태는 각각 독립 보존 — 탭 전환 시 삭제하지 않음
+    private func handleRecipesChanged() {
+        // Invalidate stale video preview whenever clip content changes so the
+        // card preview reflects the latest edits immediately.
+        if previewPlayer.isReady || previewPlayer.isBuilding {
+            previewPlayer.pause()
+            previewPlayer.invalidate()
+        }
+        saveEntry()
+    }
+
+    // MARK: - Clip state helpers
+
+    private func clearClipState() {
+        for recipe in storyModeRecipes + videoModeRecipes + slideModeRecipes {
+            if let ref = recipe.thumbRef      { ClipThumbStore.delete(ref: ref) }
+            if let ref = recipe.storedPhotoRef { OneLinerPhotoStore.delete(mediaRef: ref) }
+        }
+        storyModeRecipes = []
+        videoModeRecipes = []
+        slideModeRecipes = []
+        clipRecipes      = []
+        muteVideoAudio   = false
+        selectedTemplate = .story
+        if let vEntry = videoTextEntry { modelContext.delete(vEntry); try? modelContext.save() }
+    }
+
+    private func markAsShared() {
+        guard let vEntry = videoTextEntry else { return }
+        if vEntry.text.hasPrefix("v4recipes\n") {
+            let jsonStr = String(vEntry.text.dropFirst("v4recipes\n".count))
+            guard let data  = jsonStr.data(using: .utf8),
+                  var store = try? JSONDecoder().decode(PerModeRecipeStore.self, from: data) else { return }
+            switch selectedTemplate {
+            case .story: store.story?.isShared = true
+            case .video: store.video?.isShared = true
+            case .slide: store.slide?.isShared = true
+            }
+            if let newData = try? JSONEncoder().encode(store),
+               let json    = String(data: newData, encoding: .utf8) {
+                vEntry.text = "v4recipes\n" + json; try? modelContext.save()
+            }
+        } else if vEntry.text.hasPrefix("v3recipes\n") {
+            let jsonStr = String(vEntry.text.dropFirst("v3recipes\n".count))
+            guard let data  = jsonStr.data(using: .utf8),
+                  var saved = try? JSONDecoder().decode(SavedRecipeSet.self, from: data) else { return }
+            saved.isShared = true
+            if let newData = try? JSONEncoder().encode(saved),
+               let json    = String(data: newData, encoding: .utf8) {
+                vEntry.text = "v3recipes\n" + json; try? modelContext.save()
+            }
+        }
+    }
+
+    /// Resolves a PHAsset identifier to a usable file URL for compositing.
+    private func resolveVideoAsset(_ assetID: String) async throws -> URL {
+        enum E: Error { case notFound, noURL }
+        guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [assetID], options: nil).firstObject
+        else { throw E.notFound }
+        return try await withCheckedThrowingContinuation { cont in
+            let opts = PHVideoRequestOptions()
+            opts.deliveryMode        = .highQualityFormat
+            opts.isNetworkAccessAllowed = true
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: opts) { avAsset, _, info in
+                if let err = info?[PHImageErrorKey] as? Error { cont.resume(throwing: err); return }
+                if let urlAsset = avAsset as? AVURLAsset,
+                   urlAsset.url.isFileURL,
+                   FileManager.default.fileExists(atPath: urlAsset.url.path) {
+                    cont.resume(returning: urlAsset.url)
+                } else {
+                    cont.resume(throwing: E.noURL)
+                }
+            }
+        }
+    }
+
+    private func switchTemplate(to newTemplate: RestDayTemplate) {
+        guard newTemplate != selectedTemplate else { return }
+        syncActiveToBackingStore()
+        previewPlayer.pause()
+        previewPlayer.invalidate()
+        withAnimation(.easeInOut(duration: 0.15)) { selectedTemplate = newTemplate }
+        loadFromBackingStore(for: newTemplate)
+    }
+
+    private func syncActiveToBackingStore() {
+        switch selectedTemplate {
+        case .story:
+            storyModeRecipes = clipRecipes
+        case .video:
+            videoModeRecipes = clipRecipes
+            videoModeTitle = videoTitle
+            videoModeTitleStyle = titleStyle
+        case .slide:
+            slideModeRecipes = clipRecipes
+            slideModeTitle = videoTitle
+            slideModeTitleStyle = titleStyle
+        }
+    }
+
+    private func loadFromBackingStore(for template: RestDayTemplate) {
+        switch template {
+        case .story:
+            clipRecipes = storyModeRecipes
+            videoTitle  = ""
+            titleStyle  = OneLinerTitleStyle()
+        case .video:
+            clipRecipes = videoModeRecipes
+            videoTitle  = videoModeTitle
+            titleStyle  = videoModeTitleStyle
+        case .slide:
+            clipRecipes = slideModeRecipes
+            videoTitle  = slideModeTitle
+            titleStyle  = slideModeTitleStyle
+        }
+        currentClipIndex = 0
+    }
+
+    private func buildRecipeSet(from recipes: [ClipRecipe], mode: String?,
+                                isPhotoSlide: Bool = false,
+                                title: String = "",
+                                titleStyleParam: OneLinerTitleStyle = OneLinerTitleStyle()) -> SavedRecipeSet? {
+        guard !recipes.isEmpty else { return nil }
+        let descs = recipes.map { r in
+            SavedClipDescriptor(
+                assetID: r.assetIdentifier, photoRef: r.storedPhotoRef,
+                thumbRef: r.thumbRef, trimStart: r.trimStart,
+                trimEnd: r.trimEnd, fullDuration: r.fullDuration,
+                lines: r.lines,
+                fontID: r.fontChoice.rawValue,
+                colorID: r.textColor.rawValue,
+                anchorIdx: CardPosition.allCases.firstIndex(of: r.position),
+                sizeID: r.sizeLevel.rawValue,
+                effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|\(r.outline ? 1 : 0)")
+        }
+        return SavedRecipeSet(
+            isPhotoSlide: isPhotoSlide || (mode == "story"),
+            muteAudio: mode == "story" ? false : muteVideoAudio,
+            clips: descs, isShared: false, mode: mode,
+            videoTitle: title,
+            titleAnchorIdx: CardPosition.allCases.firstIndex(of: titleStyleParam.position),
+            titleFontID: titleStyleParam.fontChoice.rawValue,
+            titleColorID: titleStyleParam.textColor.rawValue,
+            titleSizeID: titleStyleParam.sizeLevel.rawValue,
+            titleOutline: titleStyleParam.outline)
+    }
+
+    private func restoreTitleStyle(from set: SavedRecipeSet) -> OneLinerTitleStyle {
+        var style = OneLinerTitleStyle()
+        if let idx = set.titleAnchorIdx, CardPosition.allCases.indices.contains(idx) {
+            style.position = CardPosition.allCases[idx]
+        }
+        if let fid = set.titleFontID   { style.fontChoice = OneLinerFont(rawValue: fid) ?? .gothic }
+        if let cid = set.titleColorID  { style.textColor  = OneLinerTextColor(rawValue: cid) ?? .white }
+        if let sid = set.titleSizeID   { style.sizeLevel  = TextSizeLevel(rawValue: sid) ?? .medium }
+        style.outline = set.titleOutline
+        return style
+    }
+
+    private func restoreRecipes(from saved: SavedRecipeSet?) -> [ClipRecipe] {
+        guard let saved, !saved.clips.isEmpty else { return [] }
+        var restored: [ClipRecipe] = []
+        for desc in saved.clips {
+            let thumb: UIImage?
+            if let pr = desc.photoRef { thumb = OneLinerPhotoStore.load(mediaRef: pr) }
+            else if let tr = desc.thumbRef { thumb = ClipThumbStore.load(ref: tr) }
+            else { thumb = nil }
+            let placeholder = URL(fileURLWithPath: NSTemporaryDirectory())
+            var recipe = ClipRecipe(url: placeholder, fullDuration: desc.fullDuration,
+                                   thumbnail: thumb)
+            recipe.trimStart       = desc.trimStart
+            recipe.trimEnd         = desc.trimEnd
+            recipe.lines           = desc.lines
+            recipe.assetIdentifier = desc.assetID
+            recipe.storedPhotoRef  = desc.photoRef
+            recipe.thumbRef        = desc.thumbRef
+            recipe.fontChoice = desc.fontID.flatMap { OneLinerFont(rawValue: $0) } ?? fontChoice
+            recipe.textColor  = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? textColor
+            if let idx = desc.anchorIdx, CardPosition.allCases.indices.contains(idx) {
+                recipe.position = CardPosition.allCases[idx]
+            } else {
+                recipe.position = position
+            }
+            recipe.sizeLevel = desc.sizeID.flatMap { TextSizeLevel(rawValue: $0) } ?? .medium
+            // effectID 형식: "appearanceMode|decorEffect|outline(0/1)"
+            // 레거시(구 comma-joined OneLinerEffect 포맷) 자동 마이그레이션: | 없으면 기본값 사용
+            if let eid = desc.effectID, eid.contains("|") {
+                let parts = eid.split(separator: "|", maxSplits: 2).map(String.init)
+                recipe.appearanceMode = parts.count > 0 ? (AppearanceMode(rawValue: parts[0]) ?? .typing) : .typing
+                recipe.decorEffect    = parts.count > 1 ? (DecorEffect(rawValue: parts[1]) ?? .none) : .none
+                recipe.outline        = parts.count > 2 ? parts[2] == "1" : false
+            } else {
+                // 레거시 포맷: 기본값으로 초기화
+                recipe.appearanceMode = .typing
+                recipe.decorEffect    = .none
+                recipe.outline        = false
+            }
+            restored.append(recipe)
+        }
+        return restored
     }
 
     private func deletePhoto(at index: Int) {
@@ -927,40 +1009,138 @@ struct RestDayOneLinerSheet: View {
         try? modelContext.save()
     }
 
+    private func buildPreview() {
+        guard !previewPlayer.isBuilding else { return }
+        Task {
+            if isPhotoSlideMode {
+                let photos = clipRecipes.compactMap { $0.thumbnail }
+                guard !photos.isEmpty else { return }
+                await previewPlayer.buildForPhotoSlides(
+                    photos: photos, recipes: clipRecipes,
+                    activityDate: date, showDate: true,
+                    videoTitle: videoTitle, titleStyle: titleStyle)
+                previewPlayer.play()
+            } else if isVideoMode {
+                var resolved = clipRecipes
+                for i in resolved.indices {
+                    guard !FileManager.default.fileExists(atPath: resolved[i].url.path) else { continue }
+                    if let assetID = resolved[i].assetIdentifier,
+                       let url = try? await resolveVideoAsset(assetID) {
+                        resolved[i].url = url
+                    } else if let pr = resolved[i].storedPhotoRef,
+                              let img = OneLinerPhotoStore.load(mediaRef: pr) {
+                        let tmp = FileManager.default.temporaryDirectory
+                            .appendingPathComponent("mimo_prev_\(UUID().uuidString).jpg")
+                        if let d = img.jpegData(compressionQuality: 0.82) { try? d.write(to: tmp) }
+                        resolved[i].url = tmp
+                    }
+                }
+                await previewPlayer.buildForVideoClips(
+                    recipes: resolved, activityDate: date,
+                    showDate: true, muteAudio: muteVideoAudio,
+                    videoTitle: videoTitle, titleStyle: titleStyle)
+                previewPlayer.play()
+            }
+        }
+    }
+
     @MainActor
     private func renderCardForSharing() {
-        // 영상 템플릿: VideoExportService로 실제 .mov 출력
-        if selectedTemplate == .video, !clipRecipes.isEmpty {
+        // 스토리 템플릿: 클립 사진별 정지 카드 렌더링
+        if selectedTemplate == .story, !clipRecipes.isEmpty {
+            FontLoader.registerBundledFonts()
+            var rendered: [UIImage] = []
+            for recipe in clipRecipes {
+                guard let photo = recipe.thumbnail else { continue }
+                let txt = recipe.lines.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? ""
+                let card = OneLinerCard(
+                    displayDate: date,
+                    backgroundPhoto: photo,
+                    text: txt,
+                    position: recipe.position,
+                    textColor: recipe.textColor,
+                    fontChoice: recipe.fontChoice,
+                    sizeLevel: recipe.sizeLevel,
+                    appearanceMode: recipe.appearanceMode,
+                    decorEffect: recipe.decorEffect,
+                    outline: recipe.outline,
+                    showDate: true,
+                    captionMode: true
+                )
+                .frame(width: OneLinerCard.cardWidth, height: OneLinerCard.cardHeight)
+                let renderer = ImageRenderer(content: card)
+                renderer.scale = 3.0
+                if let img = renderer.uiImage { rendered.append(img) }
+            }
+            if !rendered.isEmpty {
+                markAsShared()
+                presentShareSheet(images: rendered)
+            }
+            return
+        }
+
+        // 영상/슬라이드 템플릿: VideoExportService로 실제 .mov 출력
+        if (selectedTemplate == .video || selectedTemplate == .slide), !clipRecipes.isEmpty {
             isExportingVideo = true
             Task {
                 defer { isExportingVideo = false }
                 do {
-                    // Multi-clip or trimmed: compose via recipe path.
-                    // Single untrimmed clip: skip compose to save one encode pass.
-                    let recipes     = clipRecipes
-                    let needsCompose = recipes.count > 1 || recipes.contains { $0.isTrimmed }
-                    let exportURL:  URL
-                    var cleanupURL: URL? = nil
-                    if needsCompose {
-                        let (composed, _) = try await MultiClipComposition.composeAndExport(
-                            recipes: recipes, muteAudio: muteVideoAudio)
-                        exportURL  = composed
-                        cleanupURL = composed
-                    } else {
-                        exportURL = recipes[0].url
+                    var recipes = clipRecipes
+
+                    // Resolve recipe URLs that expired (temp files from previous session)
+                    var tempURLsToClean: [URL] = []
+                    for i in recipes.indices {
+                        guard !FileManager.default.fileExists(atPath: recipes[i].url.path) else { continue }
+                        if let assetID = recipes[i].assetIdentifier {
+                            recipes[i].url = try await resolveVideoAsset(assetID)
+                        } else if let pr = recipes[i].storedPhotoRef,
+                                  let img = OneLinerPhotoStore.load(mediaRef: pr) {
+                            let tmpURL = FileManager.default.temporaryDirectory
+                                .appendingPathComponent("mimo_photoclip_\(UUID().uuidString).jpg")
+                            if let d = img.jpegData(compressionQuality: 0.82) { try d.write(to: tmpURL) }
+                            recipes[i].url = tmpURL
+                            if recipes[i].thumbnail == nil { recipes[i].thumbnail = img }
+                            tempURLsToClean.append(tmpURL)
+                        }
                     }
-                    defer { cleanupURL.map { try? FileManager.default.removeItem(at: $0) } }
+                    defer { tempURLsToClean.forEach { try? FileManager.default.removeItem(at: $0) } }
 
-                    // Audio muting for composed output is handled inside composeAndExport.
-                    let isMuted = needsCompose ? false : muteVideoAudio
+                    if isPhotoSlideMode {
+                        // Photo slide: single-pass CALayer composite (Ken Burns + text)
+                        let photos = recipes.compactMap { $0.thumbnail }
+                        guard !photos.isEmpty else { return }
+                        let outputURL = try await PhotoSlideComposition.exportSlideWithText(
+                            photos: photos, recipes: recipes,
+                            fontChoice: fontChoice, textColor: textColor, position: position,
+                            activityDate: date, showDate: true,
+                            videoTitle: videoTitle, titleStyle: titleStyle)
+                        markAsShared()
+                        presentShareSheet(url: outputURL)
+                    } else {
+                        // Video clips: multi-clip compose or single-pass
+                        let needsCompose = recipes.count > 1 || recipes.contains { $0.isTrimmed }
+                        let exportURL:  URL
+                        var cleanupURL: URL? = nil
+                        if needsCompose {
+                            let (composed, _) = try await MultiClipComposition.composeAndExport(
+                                recipes: recipes, muteAudio: muteVideoAudio)
+                            exportURL  = composed
+                            cleanupURL = composed
+                        } else {
+                            exportURL = recipes[0].url
+                        }
+                        defer { cleanupURL.map { try? FileManager.default.removeItem(at: $0) } }
 
-                    // Clip-bound export: each clip's lines appear only during that clip's window.
-                    let outputURL = try await VideoExportService.exportOneLinerClipBoundVideo(
-                        sourceURL: exportURL,
-                        recipes: recipes,
-                        fontChoice: fontChoice, textColor: textColor, position: position,
-                        activityDate: date, showDate: true, muteAudio: isMuted)
-                    presentShareSheet(url: outputURL)
+                        let isMuted = needsCompose ? false : muteVideoAudio
+                        let outputURL = try await VideoExportService.exportOneLinerClipBoundVideo(
+                            sourceURL: exportURL,
+                            recipes: recipes,
+                            fontChoice: fontChoice, textColor: textColor, position: position,
+                            activityDate: date, showDate: true, muteAudio: isMuted,
+                            videoTitle: videoTitle, titleStyle: titleStyle)
+                        markAsShared()
+                        presentShareSheet(url: outputURL)
+                    }
                 } catch {
                     // export failed — silently ignore (user can retry)
                 }
@@ -1024,36 +1204,12 @@ struct RestDayOneLinerSheet: View {
     }
 }
 
-// MARK: - OneLinerPhotoStore
+// MARK: - PerModeRecipeStore
 
-/// Saves rest-day background photos as JPEG files in <Documents>/OneLinerPhotos/.
-/// mediaRef format: "restphoto:<uuid>.jpg"
-private enum OneLinerPhotoStore {
-    private static var dir: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let d = docs.appendingPathComponent("OneLinerPhotos", isDirectory: true)
-        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-        return d
-    }
-
-    static let prefix = "restphoto:"
-
-    static func save(_ image: UIImage) -> String? {
-        guard let data = image.jpegData(compressionQuality: 0.82) else { return nil }
-        let name = UUID().uuidString + ".jpg"
-        do { try data.write(to: dir.appendingPathComponent(name)) } catch { return nil }
-        return prefix + name
-    }
-
-    static func load(mediaRef: String) -> UIImage? {
-        guard mediaRef.hasPrefix(prefix) else { return nil }
-        let name = String(mediaRef.dropFirst(prefix.count))
-        return UIImage(contentsOfFile: dir.appendingPathComponent(name).path)
-    }
-
-    static func delete(mediaRef: String) {
-        guard mediaRef.hasPrefix(prefix) else { return }
-        let name = String(mediaRef.dropFirst(prefix.count))
-        try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
-    }
+struct PerModeRecipeStore: Codable {
+    var story:      SavedRecipeSet?
+    var video:      SavedRecipeSet?
+    var slide:      SavedRecipeSet?
+    var activeMode: String   // RestDayTemplate.rawValue: "스토리" | "영상" | "슬라이드"
 }
+

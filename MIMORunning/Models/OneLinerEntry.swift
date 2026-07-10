@@ -96,6 +96,132 @@ final class OneLinerEntry {
         self.createdAt = Date()
     }
 
+    // MARK: - Preview text helpers
+
+    /// First non-empty display text, extracting from v4recipes/v3recipes JSON or plain text.
+    var previewText: String {
+        let raw = text
+        if raw.hasPrefix("v4recipes\n") {
+            return Self.firstLine(fromV4JSON: String(raw.dropFirst("v4recipes\n".count)))
+        } else if raw.hasPrefix("v3recipes\n") {
+            return Self.firstLine(fromV3JSON: String(raw.dropFirst("v3recipes\n".count)))
+        } else if raw.hasPrefix("v2clips\n") {
+            return ""
+        } else {
+            return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    var hasContent: Bool { !previewText.isEmpty }
+
+    // MARK: - Media info for list thumbnail
+
+    struct RestDayMediaInfo {
+        let photoRef:  String?  // "restphoto:<uuid>.jpg" — photo-slide source (full quality)
+        let thumbRef:  String?  // "clipthumb:<uuid>.jpg" — video clip mini-thumbnail
+        let clipCount: Int
+        let isSlide:   Bool
+    }
+
+    /// Extracts media metadata for the list-row thumbnail, clip count, and slide indicator.
+    var restDayMediaInfo: RestDayMediaInfo {
+        let raw = text
+        if raw.hasPrefix("v4recipes\n") {
+            return Self.v4MediaInfo(String(raw.dropFirst("v4recipes\n".count)))
+        } else if raw.hasPrefix("v3recipes\n") {
+            return Self.v3MediaInfo(String(raw.dropFirst("v3recipes\n".count)))
+        }
+        return RestDayMediaInfo(photoRef: nil, thumbRef: nil, clipCount: 0, isSlide: false)
+    }
+
+    /// True when the entry has any stored photo or video thumbnail.
+    var hasMedia: Bool {
+        let info = restDayMediaInfo
+        return (info.photoRef.map { !$0.isEmpty } ?? false) ||
+               (info.thumbRef.map { !$0.isEmpty } ?? false)
+    }
+
+    private static func v4MediaInfo(_ json: String) -> RestDayMediaInfo {
+        guard let data = json.data(using: .utf8),
+              let obj  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let mode = obj["activeMode"] as? String else {
+            return RestDayMediaInfo(photoRef: nil, thumbRef: nil, clipCount: 0, isSlide: false)
+        }
+        let key: String
+        switch mode {
+        case "스토리":   key = "story"
+        case "영상":    key = "video"
+        case "슬라이드":  key = "slide"
+        default:        key = mode.lowercased()
+        }
+        guard let modeObj = obj[key] as? [String: Any],
+              let clips   = modeObj["clips"] as? [[String: Any]] else {
+            return RestDayMediaInfo(photoRef: nil, thumbRef: nil, clipCount: 0, isSlide: mode == "슬라이드")
+        }
+        let first = clips.first
+        return RestDayMediaInfo(
+            photoRef:  first?["photoRef"] as? String,
+            thumbRef:  first?["thumbRef"] as? String,
+            clipCount: clips.count,
+            isSlide:   mode == "슬라이드"
+        )
+    }
+
+    private static func v3MediaInfo(_ json: String) -> RestDayMediaInfo {
+        guard let data  = json.data(using: .utf8),
+              let obj   = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let clips = obj["clips"] as? [[String: Any]] else {
+            return RestDayMediaInfo(photoRef: nil, thumbRef: nil, clipCount: 0, isSlide: false)
+        }
+        let first   = clips.first
+        let isSlide = obj["isPhotoSlide"] as? Bool ?? false
+        return RestDayMediaInfo(
+            photoRef:  first?["photoRef"] as? String,
+            thumbRef:  first?["thumbRef"] as? String,
+            clipCount: clips.count,
+            isSlide:   isSlide
+        )
+    }
+
+    private static func firstLine(fromV4JSON json: String) -> String {
+        guard let data = json.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let activeMode = obj["activeMode"] as? String else { return "" }
+        let key: String
+        switch activeMode {
+        case "스토리":   key = "story"
+        case "영상":    key = "video"
+        case "슬라이드":  key = "slide"
+        default:        key = activeMode.lowercased()
+        }
+        guard let modeObj = obj[key] as? [String: Any],
+              let clips = modeObj["clips"] as? [[String: Any]] else { return "" }
+        for clip in clips {
+            if let lines = clip["lines"] as? [String] {
+                for line in lines {
+                    let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !t.isEmpty { return t }
+                }
+            }
+        }
+        return ""
+    }
+
+    private static func firstLine(fromV3JSON json: String) -> String {
+        guard let data = json.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let clips = obj["clips"] as? [[String: Any]] else { return "" }
+        for clip in clips {
+            if let lines = clip["lines"] as? [String] {
+                for line in lines {
+                    let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !t.isEmpty { return t }
+                }
+            }
+        }
+        return ""
+    }
+
     // MARK: - Shared fetch helper
     // 스토리 섹션·공유 화면이 동일한 조건으로 entry를 필터/정렬하도록 단일 경로 제공.
     static func visible(from all: [OneLinerEntry], workoutID: String) -> [OneLinerEntry] {

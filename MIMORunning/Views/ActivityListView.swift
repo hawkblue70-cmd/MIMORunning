@@ -88,6 +88,26 @@ private struct ConnectView: View {
     }
 }
 
+// MARK: - List item model
+
+private enum ListItem: Identifiable {
+    case workout(Activity)
+    case restDay(date: Date, entry: OneLinerEntry)
+
+    var id: String {
+        switch self {
+        case .workout(let a):     return a.id.uuidString
+        case .restDay(let d, _):  return "restday-\(Int(d.timeIntervalSince1970))"
+        }
+    }
+    var date: Date {
+        switch self {
+        case .workout(let a):    return a.date
+        case .restDay(let d, _): return d
+        }
+    }
+}
+
 // MARK: - Activity List
 
 private struct ActivityListContent: View {
@@ -97,7 +117,7 @@ private struct ActivityListContent: View {
     private let pro = ProManager.shared
     @State private var displayCount = 50
     @State private var showPaywall = false
-    @State private var showRestDaySheet = false
+    @State private var restDaySheetDate: Date? = nil
     @AppStorage("showRunning")  private var showRunning  = true
     @AppStorage("showWalking")  private var showWalking  = false
     @AppStorage("showHiking")   private var showHiking   = false
@@ -138,7 +158,43 @@ private struct ActivityListContent: View {
 
     private var todayRestDayEntry: OneLinerEntry? {
         let wid = OneLinerEntry.restDayWorkoutID(for: Date())
-        return allOneLinerEntries.first { $0.workoutID == wid && $0.mediaRef == nil }
+        let candidates = allOneLinerEntries.filter { $0.workoutID == wid }
+        // Prefer videotexts (v4recipes) over gradient (nil) for accurate preview
+        return candidates.first(where: { $0.mediaRef == "videotexts" })
+            ?? candidates.first(where: { $0.mediaRef == nil })
+            ?? candidates.first
+    }
+
+    /// Past rest day entries (not today) that have content — one per date, best entry preferred.
+    private var pastRestDayItems: [ListItem] {
+        let todayWid = OneLinerEntry.restDayWorkoutID(for: Date())
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        var byWid: [String: [OneLinerEntry]] = [:]
+        for e in allOneLinerEntries {
+            guard e.workoutID.hasPrefix("date:"),
+                  e.workoutID != todayWid,
+                  e.hasContent else { continue }
+            byWid[e.workoutID, default: []].append(e)
+        }
+        var result: [ListItem] = []
+        for (wid, entries) in byWid {
+            let best = entries.first(where: { $0.mediaRef == "videotexts" })
+                ?? entries.first(where: { $0.mediaRef == nil })
+                ?? entries[0]
+            let dateStr = String(wid.dropFirst("date:".count))
+            guard let date = fmt.date(from: dateStr) else { continue }
+            result.append(.restDay(date: date, entry: best))
+        }
+        return result
+    }
+
+    /// Paginated workouts merged with past rest days — sorted newest first.
+    private var mergedItems: [ListItem] {
+        var items = visibleActivities.map { ListItem.workout($0) }
+        items.append(contentsOf: pastRestDayItems)
+        return items.sorted { $0.date > $1.date }
     }
 
     var body: some View {
@@ -170,8 +226,8 @@ private struct ActivityListContent: View {
 
                         // 오늘 운동 기록이 없으면 쉬는 날 행 표시
                         if isTodayRestDay && !manager.isLoading {
-                            RestDayListRow(entry: todayRestDayEntry) {
-                                showRestDaySheet = true
+                            RestDayListRow(entry: todayRestDayEntry, date: Date()) {
+                                restDaySheetDate = Date()
                             }
                         }
 
@@ -180,19 +236,26 @@ private struct ActivityListContent: View {
                         } else if filteredActivities.isEmpty {
                             FilteredEmptyView()
                         } else {
-                            ForEach(visibleActivities, id: \.id) { activity in
-                                NavigationLink(value: activity) {
-                                    ActivityCard(
-                                        activity: activity,
-                                        level: manager.userLevel.bucket,
-                                        shoeName: shoeByWorkout[activity.id.uuidString],
-                                        workoutType: manager.cachedWorkoutType(for: activity.id),
-                                        raceName: raceDetector.matchFor(activityID: activity.id).flatMap {
-                                            $0.isConfirmed ? $0.raceName : nil
-                                        }
-                                    )
+                            ForEach(mergedItems) { item in
+                                switch item {
+                                case .workout(let activity):
+                                    NavigationLink(value: activity) {
+                                        ActivityCard(
+                                            activity: activity,
+                                            level: manager.userLevel.bucket,
+                                            shoeName: shoeByWorkout[activity.id.uuidString],
+                                            workoutType: manager.cachedWorkoutType(for: activity.id),
+                                            raceName: raceDetector.matchFor(activityID: activity.id).flatMap {
+                                                $0.isConfirmed ? $0.raceName : nil
+                                            }
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                case .restDay(let date, let entry):
+                                    RestDayListRow(entry: entry, date: date) {
+                                        restDaySheetDate = date
+                                    }
                                 }
-                                .buttonStyle(.plain)
                             }
                             if displayCount < filteredActivities.count {
                                 Button {
@@ -224,6 +287,17 @@ private struct ActivityListContent: View {
         .onChange(of: showHiking)   { _, _ in displayCount = 50 }
         .task {
             if let all = try? modelContext.fetch(FetchDescriptor<OneLinerEntry>()) {
+                // ── 진단 로그: 쉬는 날 entry 현황 출력 ──
+                let restEntries = all.filter { $0.workoutID.hasPrefix("date:") }
+                if restEntries.isEmpty {
+                    print("[DayStory] DB에 쉬는 날 entry 없음")
+                } else {
+                    for e in restEntries.sorted(by: { $0.workoutID < $1.workoutID }) {
+                        let prefix = String(e.text.prefix(60)).replacingOccurrences(of: "\n", with: "↵")
+                        print("[DayStory] \(e.workoutID) mediaRef=\(e.mediaRef ?? "nil") 문구=\(prefix)")
+                    }
+                }
+                // ── stale 키("restDay-") 정리 ──
                 let stale = all.filter { $0.workoutID.hasPrefix("restDay-") }
                 if !stale.isEmpty {
                     stale.forEach { modelContext.delete($0) }
@@ -234,8 +308,13 @@ private struct ActivityListContent: View {
         .sheet(isPresented: $showPaywall) {
             ProPaywallSheet()
         }
-        .sheet(isPresented: $showRestDaySheet) {
-            RestDayOneLinerSheet(date: Date())
+        .sheet(isPresented: Binding(
+            get: { restDaySheetDate != nil },
+            set: { if !$0 { restDaySheetDate = nil } }
+        )) {
+            if let d = restDaySheetDate {
+                RestDayOneLinerSheet(date: d)
+            }
         }
     }
 }
@@ -243,68 +322,152 @@ private struct ActivityListContent: View {
 // MARK: - Rest Day List Row
 
 private struct RestDayListRow: View {
-    let entry:   OneLinerEntry?
-    let onTap:   () -> Void
+    let entry:  OneLinerEntry?
+    let date:   Date
+    let onTap:  () -> Void
 
-    private var hasEntry: Bool { !(entry?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }
+    @State private var thumbnail: UIImage? = nil
+
+    private var hasEntry:  Bool { entry?.hasContent ?? false }
+    private var mediaInfo: OneLinerEntry.RestDayMediaInfo? { entry?.restDayMediaInfo }
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
-                // Left: icon + label
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "moon.zzz.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color(hex: "6E6E78"))
-                        Text(AppLanguage.shared.s("쉬는 날", "Rest Day"))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color(hex: "6E6E78"))
+            HStack(alignment: .center, spacing: 10) {
+                // Left: type label row + text
+                VStack(alignment: .leading, spacing: 6) {
+                    // Top: 🌙 쉬는 날 | date · time
+                    HStack(alignment: .top) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "moon.zzz.fill")
+                                .foregroundStyle(Color(hex: "FFC74D"))
+                            Text(AppLanguage.shared.s("쉬는 날", "Rest Day"))
+                                .foregroundStyle(Color(hex: "6E6E78"))
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        dateTimeLabel
                     }
-                    Text(todayLabel)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                    // Text line
+                    if hasEntry, let preview = entry?.previewText, !preview.isEmpty {
+                        Text(preview)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                    } else if !hasEntry {
+                        Text(AppLanguage.shared.s("이야기 추가하기", "Add your story"))
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.violet.opacity(0.8))
+                    }
                 }
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                // Right: entry text preview or placeholder
-                if hasEntry, let t = entry?.text {
-                    Text(t)
-                        .font(.custom(entry?.font.fontName ?? OneLinerFont.pen.fontName, size: 13))
-                        .foregroundStyle(entry?.textColor.color ?? .white)
-                        .lineLimit(1)
-                        .frame(maxWidth: 140, alignment: .trailing)
-                } else {
-                    Text(AppLanguage.shared.s("이야기 추가하기", "Add your story"))
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.violet.opacity(0.8))
+                // Right: thumbnail + count badge (only when media exists)
+                if let info = mediaInfo, info.clipCount > 0 {
+                    thumbnailBadge(info)
+                } else if !hasEntry {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(hex: "4E4E5A"))
                 }
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color(hex: "4E4E5A"))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color(hex: "1E1E28"))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(
-                hasEntry ? Theme.violet.opacity(0.20) : Color.white.opacity(0.07),
-                lineWidth: 1
-            ))
+            .padding(10)
+            .background(Theme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                if !hasEntry {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 3]))
+                        .foregroundStyle(Color.white.opacity(0.18))
+                }
+            }
         }
         .buttonStyle(.plain)
+        .task(id: entry?.text) { thumbnail = loadThumbnail() }
     }
 
-    private var todayLabel: String {
+    // MARK: - Thumbnail badge (right side, 48pt)
+
+    private func thumbnailBadge(_ info: OneLinerEntry.RestDayMediaInfo) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            Group {
+                if let img = thumbnail {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Color.white.opacity(0.07)
+                        .overlay {
+                            Image(systemName: info.isSlide ? "photo.stack" : "photo")
+                                .font(.system(size: 15))
+                                .foregroundStyle(.white.opacity(0.35))
+                        }
+                }
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+
+            if info.clipCount > 1 {
+                Text("\(info.clipCount)")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(.black.opacity(0.65))
+                    .clipShape(Capsule())
+                    .offset(x: 4, y: 4)
+            }
+        }
+    }
+
+    // MARK: - Date/time (running-card format)
+
+    private var dateTimeLabel: some View {
+        let displayTime = entry?.createdAt ?? date
+        return HStack(spacing: 4) {
+            Text(dateStr(date))
+                .foregroundStyle(.white)
+            Text(weekdayStr(date))
+                .foregroundStyle(weekdayColor(date))
+            if hasEntry {
+                Text(timeStr(displayTime))
+                    .foregroundStyle(.white)
+            }
+        }
+        .font(.system(size: 13, weight: .medium))
+    }
+
+    // MARK: - Helpers
+
+    private func loadThumbnail() -> UIImage? {
+        guard let info = entry?.restDayMediaInfo else { return nil }
+        if let pr = info.photoRef, !pr.isEmpty { return OneLinerPhotoStore.load(mediaRef: pr) }
+        if let tr = info.thumbRef, !tr.isEmpty { return ClipThumbStore.load(ref: tr) }
+        return nil
+    }
+
+    private func dateStr(_ d: Date) -> String {
         let f = DateFormatter()
-        f.dateFormat = "M월 d일 (E)"
-        f.locale = Locale(identifier: "ko_KR")
-        let enF = DateFormatter()
-        enF.dateFormat = "MMM d, EEE"
-        enF.locale = Locale(identifier: "en_US")
-        return AppLanguage.shared.s(f.string(from: Date()), enF.string(from: Date()))
+        f.locale = Locale(identifier: "en_US"); f.dateFormat = "yyyy. M. d"
+        return f.string(from: d)
+    }
+    private func weekdayStr(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR"); f.dateFormat = "EEEEE"
+        return f.string(from: d)
+    }
+    private func timeStr(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US"); f.dateFormat = "h:mm a"
+        return f.string(from: d)
+    }
+    private func weekdayColor(_ d: Date) -> Color {
+        switch Calendar.current.component(.weekday, from: d) {
+        case 1: return Theme.heartRate
+        case 7: return Color(hex: "6699FF")
+        default: return Color(hex: "FFC74D")
+        }
     }
 }
 

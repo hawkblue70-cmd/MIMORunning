@@ -26,6 +26,13 @@ extension Color {
     }
 }
 
+/// 9:16 preview frame for video/slide clips — matches VideoExportService/PhotoSlideComposition (1080×1920).
+/// Story mode uses OneLinerCard directly (300×375 = 4:5) for WYSIWYG accuracy.
+enum CardPreviewFrame {
+    static var height: CGFloat { UIScreen.main.bounds.height * 0.40 }
+    static var width:  CGFloat { height * 9 / 16 }
+}
+
 enum Theme {
     // Brand
     static let violet = Color(hex: "7C5CFC")
