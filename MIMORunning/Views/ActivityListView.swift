@@ -276,16 +276,11 @@ private struct ActivityListContent: View {
                                     }
                                     .buttonStyle(.plain)
                                 case .restDay(let date, let entry, let isDiary):
-                                    RestDayListRow(entry: entry, date: date, isDiary: isDiary) {
-                                        restDaySheetDate = date
-                                    }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button(role: .destructive) {
-                                            deleteRestDayEntries(for: date)
-                                        } label: {
-                                            Label(AppLanguage.shared.s("삭제", "Delete"), systemImage: "trash")
-                                        }
-                                    }
+                                    SwipeableRestDayRow(
+                                        entry: entry, date: date, isDiary: isDiary,
+                                        onTap: { restDaySheetDate = date },
+                                        onDelete: { deleteRestDayEntries(for: date) }
+                                    )
                                 }
                             }
                             if displayCount < filteredActivities.count {
@@ -338,6 +333,66 @@ private struct ActivityListContent: View {
                 // 완전히 새 뷰를 생성 → @State 오염 방지
                 RestDayOneLinerSheet(date: d).id(d)
             }
+        }
+    }
+}
+
+// MARK: - Swipeable Rest Day Row
+
+private struct SwipeableRestDayRow: View {
+    let entry:    OneLinerEntry?
+    let date:     Date
+    let isDiary:  Bool
+    let onTap:    () -> Void
+    let onDelete: () -> Void
+
+    @GestureState private var dragX: CGFloat = 0
+    @State private var baseOffset: CGFloat = 0
+    private let deleteWidth: CGFloat = 72
+
+    private var currentOffset: CGFloat {
+        min(0, max(-deleteWidth, baseOffset + dragX))
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            // Delete button revealed on left-swipe
+            Button(role: .destructive) {
+                withAnimation(.spring(response: 0.22)) { baseOffset = 0 }
+                onDelete()
+            } label: {
+                Image(systemName: "trash.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: deleteWidth)
+                    .frame(maxHeight: .infinity)
+            }
+            .background(Color.red)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            // Row slides left
+            RestDayListRow(entry: entry, date: date, isDiary: isDiary) {
+                if baseOffset != 0 {
+                    withAnimation(.spring(response: 0.22)) { baseOffset = 0 }
+                } else {
+                    onTap()
+                }
+            }
+            .offset(x: currentOffset)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .updating($dragX) { v, state, _ in
+                        guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                        state = v.translation.width
+                    }
+                    .onEnded { v in
+                        guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                        let target = baseOffset + v.translation.width
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                            baseOffset = target < -deleteWidth / 3 ? -deleteWidth : 0
+                        }
+                    }
+            )
         }
     }
 }

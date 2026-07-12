@@ -209,19 +209,24 @@ class HealthKitManager {
 
             if isWarmCache {
                 // 웜캐시: 새 운동만 조회.
-                // forced=true → 캐시로 activities 완전 재건(메모리↔캐시 드리프트 해소) 후 자정부터 HealthKit 조회
-                // forced=false → 최신 캐시 날짜 이후 조회 (효율적, 중복 없음)
+                // forced=true → 자정부터 조회 (같은 날 순서 역전 방지)
+                // forced=false → 최신 캐시 날짜와 오늘 자정 중 이른 쪽 (오늘 운동 누락 방지)
                 let since: Date?
                 if forced {
-                    activities = cached.map { $0.toActivity() }
                     since = Calendar.current.startOfDay(for: Date())
                 } else {
-                    since = cached.map(\.date).max()
+                    let startOfToday = Calendar.current.startOfDay(for: Date())
+                    let latestCached = cached.map(\.date).max()
+                    since = latestCached.map { min($0, startOfToday) } ?? startOfToday
                 }
                 let fetched = try await queryWorkouts(since: since)
                 // 캐시에 없는 진짜 새 운동만 처리 — 이미 태그된 운동은 절대 재처리 안 함
                 let newWorkouts = fetched.filter { cacheDict[$0.uuid.uuidString] == nil }
                 if newWorkouts.isEmpty {
+                    // 캐시 항목이 activities보다 많으면 드리프트 — 캐시로 재건
+                    if cached.count > activities.count {
+                        activities = cached.map { $0.toActivity() }
+                    }
                     userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
                     UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
                     Task { await self.repairMissingMetrics() }
