@@ -168,10 +168,11 @@ class HealthKitManager {
         // 일회성 마이그레이션: 러닝 폼 쿼리 방식 변경(predicateForObjects→timeRange) 후 캐시 재빌드
         migrateRunningMetricCacheIfNeeded()
 
-        // 메모리에 데이터 있고 완료 태그 있으면 즉시 반환 — 디스크 I/O·락 없음
-        // scenePhase.active 등 반복 호출이 발열·배터리 낭비로 이어지는 것을 방지
+        // 메모리에 데이터 있고 완료 태그가 최근(5분 이내)이면 즉시 반환 — 디스크 I/O·락 없음
+        // 5분 초과 시 웜캐시 갱신 허용 — 운동 완료 후 포그라운드 복귀 시 새 운동 감지
         let lastSync = UserDefaults.standard.object(forKey: "mimo.lastSyncedAt") as? Date
-        if !forced, !activities.isEmpty, lastSync != nil { return }
+        let syncAge = lastSync.map { Date().timeIntervalSince($0) } ?? .infinity
+        if !forced, !activities.isEmpty, syncAge < 300 { return }
 
         guard !isFetchInProgress else { return }
         isFetchInProgress = true
@@ -207,8 +208,16 @@ class HealthKitManager {
             let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
 
             if isWarmCache {
-                // 웜캐시: 최신 캐시 날짜 이후 새 운동만 조회 (오버랩 없음)
-                let since = cached.map(\.date).max()
+                // 웜캐시: 새 운동만 조회.
+                // forced=true → 캐시로 activities 완전 재건(메모리↔캐시 드리프트 해소) 후 자정부터 HealthKit 조회
+                // forced=false → 최신 캐시 날짜 이후 조회 (효율적, 중복 없음)
+                let since: Date?
+                if forced {
+                    activities = cached.map { $0.toActivity() }
+                    since = Calendar.current.startOfDay(for: Date())
+                } else {
+                    since = cached.map(\.date).max()
+                }
                 let fetched = try await queryWorkouts(since: since)
                 // 캐시에 없는 진짜 새 운동만 처리 — 이미 태그된 운동은 절대 재처리 안 함
                 let newWorkouts = fetched.filter { cacheDict[$0.uuid.uuidString] == nil }
