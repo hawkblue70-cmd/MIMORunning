@@ -307,32 +307,49 @@ struct RestDayOneLinerSheet: View {
                 .contentShape(Rectangle())
                 .onTapGesture { previewPlayer.togglePlayPause() }
                 .frame(maxWidth: .infinity)
-        } else if isClipMode, let thumb = cardBackground {
-            // 영상/슬라이드 대기화면: 라이브 프리뷰와 동일한 9:16 프레임(CardPreviewFrame) → 크기·비율 일치
-            Image(uiImage: thumb)
-                .resizable()
-                .scaledToFill()
-                .frame(width: CardPreviewFrame.width, height: CardPreviewFrame.height)
-                .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
-                .overlay(alignment: .center) {
-                    if previewPlayer.isBuilding {
-                        ProgressView().tint(.white)
-                            .padding(16)
-                            .background(.black.opacity(0.45))
-                            .clipShape(Circle())
-                    } else if isVideoMode {
-                        Button { buildPreview() } label: {
-                            Image(systemName: "play.circle.fill")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.white.opacity(0.85))
-                                .shadow(color: .black.opacity(0.55), radius: 10)
-                        }
-                        .buttonStyle(.plain)
+        } else if isClipMode {
+            // 영상/슬라이드 대기화면: OneLinerCard를 9:16(300×533)로 렌더 후 CardPreviewFrame 크기로 스케일
+            //  → 라이브 프리뷰와 크기 일치 + 제목·문구·워드마크·날짜 모두 표시(제목 속성 편집 시 즉시 보임)
+            OneLinerCard(
+                displayDate: date,
+                backgroundPhoto: cardBackground,
+                text: cardText,
+                position: previewPosition,
+                textColor: previewTextColor,
+                fontChoice: previewFont,
+                sizeLevel: previewSizeLevel,
+                appearanceMode: previewAppearanceMode,
+                decorEffect: previewDecorEffect,
+                hasBorder: previewHasBorder,
+                plateOn: previewPlateOn,
+                plateColorPreset: previewPlatePreset,
+                showDate: true,
+                captionMode: true,
+                videoTitle: selectedTemplate != .story ? videoTitle : "",
+                titleStyle: titleStyle,
+                cardHeightOverride: 300.0 * 16.0 / 9.0
+            )
+            .scaleEffect(CardPreviewFrame.width / 300.0, anchor: .topLeading)
+            .frame(width: CardPreviewFrame.width, height: CardPreviewFrame.height, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
+            .overlay(alignment: .center) {
+                if previewPlayer.isBuilding {
+                    ProgressView().tint(.white)
+                        .padding(16)
+                        .background(.black.opacity(0.45))
+                        .clipShape(Circle())
+                } else if isVideoMode {
+                    Button { buildPreview() } label: {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .shadow(color: .black.opacity(0.55), radius: 10)
                     }
+                    .buttonStyle(.plain)
                 }
-                .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity)
         } else {
             OneLinerCard(
                 displayDate: date,

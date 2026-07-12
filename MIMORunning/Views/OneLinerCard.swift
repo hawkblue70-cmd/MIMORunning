@@ -560,6 +560,9 @@ struct OneLinerCard: View {
     /// Full-video title overlay (영상·슬라이드 미리보기). Empty = hidden.
     var videoTitle: String = ""
     var titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
+    /// 카드 높이 오버라이드. nil=기본 375(4:5). 영상/슬라이드 9:16 프리뷰는 300*16/9=533.33 전달.
+    /// 폭은 300 고정(폰트 기준 유지) → 호출부에서 scaleEffect로 목표 크기에 맞춤.
+    var cardHeightOverride: CGFloat? = nil
 
     private var cardDate: Date { activity?.date ?? displayDate }
 
@@ -644,7 +647,7 @@ struct OneLinerCard: View {
                 }
             }
         }
-        .frame(width: Self.cardWidth, height: Self.cardHeight)
+        .frame(width: Self.cardWidth, height: cardHeightOverride ?? Self.cardHeight)
     }
 
     // Full-video title overlay — 9위치(3×3 그리드) 완전 반영.
@@ -761,7 +764,7 @@ struct OneLinerCard: View {
             Image(uiImage: photo)
                 .resizable()
                 .scaledToFill()
-                .frame(width: Self.cardWidth, height: Self.cardHeight)
+                .frame(width: Self.cardWidth, height: cardHeightOverride ?? Self.cardHeight)
                 .clipped()
                 .overlay(Color.black.opacity(0.22))
         } else {
