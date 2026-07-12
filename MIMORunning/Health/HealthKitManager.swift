@@ -208,38 +208,61 @@ class HealthKitManager {
             let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
 
             if isWarmCache {
-                // 웜캐시: 새 운동만 조회.
-                // forced=true → 자정부터 조회 (같은 날 순서 역전 방지)
-                // forced=false → 최신 캐시 날짜와 오늘 자정 중 이른 쪽 (오늘 운동 누락 방지)
-                let since: Date?
                 if forced {
-                    since = Calendar.current.startOfDay(for: Date())
-                } else {
-                    let startOfToday = Calendar.current.startOfDay(for: Date())
-                    let latestCached = cached.map(\.date).max()
-                    since = latestCached.map { min($0, startOfToday) } ?? startOfToday
-                }
-                let fetched = try await queryWorkouts(since: since)
-                // 캐시에 없는 진짜 새 운동만 처리 — 이미 태그된 운동은 절대 재처리 안 함
-                let newWorkouts = fetched.filter { cacheDict[$0.uuid.uuidString] == nil }
-                if newWorkouts.isEmpty {
-                    // 캐시 항목이 activities보다 많으면 드리프트 — 캐시로 재건
-                    if cached.count > activities.count {
-                        activities = cached.map { $0.toActivity() }
+                    // ── 강제 새로고침: 전체 대조 (삭제 감지 + 신규 추가) ──
+                    // 캐시 기간 전체를 HealthKit와 대조해 삭제된 운동을 제거하고 새 운동을 추가
+                    let sinceAll = cached.map(\.date).min() ?? Calendar.current.startOfDay(for: Date())
+                    let allHK = try await queryWorkouts(since: sinceAll)
+                    let validIDs = Set(allHK.map { $0.uuid.uuidString })
+
+                    // HealthKit에서 사라진 운동을 캐시에서 제거
+                    let toDelete = cached.filter { !validIDs.contains($0.workoutID) }
+                    if !toDelete.isEmpty, let ctx = cacheContext {
+                        toDelete.forEach { ctx.delete($0) }
+                        try? ctx.save()
+                    }
+
+                    // 남은 캐시로 activities 재건
+                    let survivingCache = cached.filter { validIDs.contains($0.workoutID) }
+                    activities = survivingCache.map { $0.toActivity() }
+
+                    // 캐시에 없는 신규 운동 추가
+                    let survivingIDs = Set(survivingCache.map { $0.workoutID })
+                    let newWorkouts = allHK.filter { !survivingIDs.contains($0.uuid.uuidString) }
+                    if !newWorkouts.isEmpty {
+                        activities = newWorkouts.map { buildSummary(from: $0) } + activities
+                        let survivingDict = Dictionary(uniqueKeysWithValues: survivingCache.map { ($0.workoutID, $0) })
+                        await enrichAndCache(newWorkouts, cacheDict: survivingDict)
                     }
                     userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
                     UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
                     Task { await self.repairMissingMetrics() }
                     Task { await self.fetchAllOlderHistory() }
-                    return
+                } else {
+                    // ── 일반 갱신: 오늘 자정부터 증분 조회 ──
+                    let startOfToday = Calendar.current.startOfDay(for: Date())
+                    let latestCached = cached.map(\.date).max()
+                    let since = latestCached.map { min($0, startOfToday) } ?? startOfToday
+                    let fetched = try await queryWorkouts(since: since)
+                    let newWorkouts = fetched.filter { cacheDict[$0.uuid.uuidString] == nil }
+                    if newWorkouts.isEmpty {
+                        // 드리프트 감지 — 캐시가 더 많으면 재건
+                        if cached.count > activities.count {
+                            activities = cached.map { $0.toActivity() }
+                        }
+                        userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+                        UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
+                        Task { await self.repairMissingMetrics() }
+                        Task { await self.fetchAllOlderHistory() }
+                        return
+                    }
+                    activities = newWorkouts.map { buildSummary(from: $0) } + activities
+                    await enrichAndCache(newWorkouts, cacheDict: cacheDict)
+                    userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+                    UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
+                    Task { await self.repairMissingMetrics() }
+                    Task { await self.fetchAllOlderHistory() }
                 }
-                let newActivities = newWorkouts.map { buildSummary(from: $0) }
-                activities = newActivities + activities
-                await enrichAndCache(newWorkouts, cacheDict: cacheDict)
-                userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
-                UserDefaults.standard.set(Date(), forKey: "mimo.lastSyncedAt")
-                Task { await self.repairMissingMetrics() }
-                Task { await self.fetchAllOlderHistory() }
             } else {
                 // 콜드캐시(최초 실행): 최근 6개월 먼저 표시 후 나머지 백그라운드
                 let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? .distantPast
