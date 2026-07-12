@@ -1,4 +1,5 @@
 import AVFoundation
+import Photos
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -45,6 +46,140 @@ struct VideoExportService {
     static let targetSize = CGSize(width: 1080, height: 1920)
     static let trimDuration: Double = 30.0
 
+    // MARK: - SDR filmic pipeline (preview = export)
+    //
+    // HDR 소스를 BT.709 SDR로 전처리할 때 사용하는 필믹 파라미터.
+    // export와 preview 모두 preprocessHDRToSDR()를 거치므로 동일한 값을 공유한다.
+    //
+    // 눈 튜닝 순서:
+    //   1. sdrMidtoneLift 로 미드톤 전체 밝기 조절 (올리면 밝아짐)
+    //   2. sdrHighlightCeiling 로 하늘 클리핑 조절 (낮출수록 하이라이트 더 압축)
+    //   3. sdrClarity 로 펀치감 조절 (올리면 또렷해지나 과하면 거칠어짐)
+    //   4. sdrSaturation 은 마지막, 1.02 이상 금지
+
+    /// 미드톤 리프트. 0.50 그레이를 얼마나 올리나(+%). 범위 0.00–0.10, 기본 0.05.
+    static var sdrMidtoneLift: Float = 0.05
+
+    /// 하이라이트 롤오프 상한. 1.0 화이트가 이 값으로 부드럽게 압축됨. 범위 0.93–1.00, 기본 0.96.
+    static var sdrHighlightCeiling: Float = 0.96
+
+    /// 로컬 콘트라스트(클래리티). CIUnsharpMask intensity, 반경 25px(광역 선명도).
+    /// 0.0 = off, 범위 0.05–0.20, 기본 0.12.
+    static var sdrClarity: Float = 0.12
+
+    /// 채도 배수. 1.00 = 중립, 1.02 이상 과보정 금지. 기본 1.01.
+    static var sdrSaturation: Float = 1.01
+
+    /// Returns true if the track has BT.2020 (HDR) color primaries.
+    private static func isHDRSource(track: AVAssetTrack) async -> Bool {
+        let descs = (try? await track.load(.formatDescriptions)) ?? []
+        for desc in descs {
+            guard let p = CMFormatDescriptionGetExtension(
+                desc, extensionKey: kCMFormatDescriptionExtension_ColorPrimaries
+            ) as? String else { continue }
+            if p == (kCVImageBufferColorPrimaries_ITU_R_2020 as String) { return true }
+        }
+        return false
+    }
+
+    /// Stamps BT.709 SDR output properties on `vc`.
+    /// For preprocessed sources this is a label-only pass; AVFoundation keeps the SDR pixels as-is.
+    /// For raw HDR sources (AVComposition / EV=0 fast path) AVFoundation applies BT.709 tone-mapping.
+    private static func applySDROutputProps(
+        _ vc: AVMutableVideoComposition,
+        track: AVAssetTrack
+    ) async {
+        vc.colorPrimaries        = AVVideoColorPrimaries_ITU_R_709_2
+        vc.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+        vc.colorYCbCrMatrix      = AVVideoYCbCrMatrix_ITU_R_709_2
+        let hdr = await isHDRSource(track: track)
+        print("[SDR] \(hdr ? "HDR→BT.709 톤매핑(롤오프)" : "SDR/필믹→BT.709 레이블")")
+    }
+
+    /// Pre-processes an HDR video file: filmic tone curve + local contrast + saturation → BT.709 SDR.
+    ///
+    /// - SDR source → original URL returned immediately (no re-encode).
+    /// - HDR source → temp file with filmic pipeline; caller shadows `sourceURL` with the result.
+    ///
+    /// CIFilter chain (all ops share the same captured parameters → export = preview):
+    ///   1. CIToneCurve  — S-curve: shadow deepen · midtone lift · highlight rolloff
+    ///   2. CIUnsharpMask (radius 25px) — broad-radius local contrast ("clarity")
+    ///   3. CIColorControls — saturation trim (default 1.01, nearly neutral)
+    static func preprocessHDRToSDR(url: URL) async throws -> URL {
+        let asset  = AVURLAsset(url: url)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        guard let track = tracks.first, await isHDRSource(track: track) else { return url }
+
+        // Capture params to avoid capturing `self` (struct static) in the closure
+        let lift = sdrMidtoneLift
+        let ceil = sdrHighlightCeiling
+        let clarity    = sdrClarity
+        let saturation = sdrSaturation
+
+        let comp = AVMutableVideoComposition(asset: asset) { request in
+            var img: CIImage = request.sourceImage
+
+            // 1. Filmic S-curve tone map
+            //    • shadows:   0.25 → (0.25 − lift×0.4) — 미드로부터 아래를 살짝 눌러 콘트라스트 깊이 추가
+            //    • midtones:  0.50 → (0.50 + lift)      — 미드톤 리프트 (HDR 밝기 보상)
+            //    • upper-mid: 0.75 → (0.75 + lift×0.6) — 롤오프 시작
+            //    • highlights: 1.00 → ceil              — 하이라이트 클리핑 방지
+            let p0 = CIVector(x: 0.00, y: 0.00)
+            let p1 = CIVector(x: 0.25, y: CGFloat(max(0.00, 0.25 - lift * 0.4)))
+            let p2 = CIVector(x: 0.50, y: CGFloat(min(1.00, 0.50 + lift)))
+            let p3 = CIVector(x: 0.75, y: CGFloat(min(1.00, 0.75 + lift * 0.6)))
+            let p4 = CIVector(x: 1.00, y: CGFloat(min(1.00, ceil)))
+            img = img.applyingFilter("CIToneCurve", parameters: [
+                "inputPoint0": p0, "inputPoint1": p1,
+                "inputPoint2": p2, "inputPoint3": p3, "inputPoint4": p4
+            ])
+
+            // 2. Local contrast (clarity): broad-radius unsharp mask → HDR 펀치감 근사
+            if clarity > 0 {
+                img = img.applyingFilter("CIUnsharpMask", parameters: [
+                    kCIInputRadiusKey:    25.0,
+                    kCIInputIntensityKey: CGFloat(clarity)
+                ])
+            }
+
+            // 3. Saturation (keep near-neutral; 1.01 is barely perceptible)
+            if saturation != 1.0 {
+                img = img.applyingFilter("CIColorControls", parameters: [
+                    kCIInputSaturationKey: CGFloat(saturation)
+                ])
+            }
+
+            request.finish(with: img, context: nil)
+        }
+        comp.colorPrimaries        = AVVideoColorPrimaries_ITU_R_709_2
+        comp.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+        comp.colorYCbCrMatrix      = AVVideoYCbCrMatrix_ITU_R_709_2
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_sdr_pre_\(UUID().uuidString).mov")
+        try? FileManager.default.removeItem(at: outputURL)
+
+        guard let session = AVAssetExportSession(
+            asset: asset, presetName: AVAssetExportPresetHEVCHighestQuality)
+        else { throw ExportError.sessionFailed }
+        session.outputURL        = outputURL
+        session.outputFileType   = .mov
+        session.videoComposition = comp
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            session.exportAsynchronously {
+                switch session.status {
+                case .completed: cont.resume()
+                case .failed:    cont.resume(throwing: session.error ?? ExportError.exportFailed)
+                case .cancelled: cont.resume(throwing: ExportError.cancelled)
+                default:         cont.resume(throwing: ExportError.exportFailed)
+                }
+            }
+        }
+        print("[SDR] HDR→필믹 완료: lift=\(lift) ceil=\(ceil) clarity=\(clarity) sat=\(saturation)")
+        return outputURL
+    }
+
     // MARK: Export detection
 
     /// Returns true if this video was previously exported by MIMORunning's OneLiner export.
@@ -89,6 +224,42 @@ struct VideoExportService {
         }
     }
 
+    /// PHAsset(localIdentifier) → 포스터 프레임 (빠른 시트 배경 표시용, 트림 미적용)
+    static func quickFrame(assetID: String) async -> UIImage? {
+        guard let phAsset = PHAsset.fetchAssets(
+            withLocalIdentifiers: [assetID], options: nil).firstObject
+        else { return nil }
+        return await withCheckedContinuation { cont in
+            let opts = PHImageRequestOptions()
+            opts.deliveryMode = .highQualityFormat
+            opts.isNetworkAccessAllowed = true
+            var resumed = false
+            PHImageManager.default().requestImage(
+                for: phAsset, targetSize: CGSize(width: 540, height: 960),
+                contentMode: .aspectFill, options: opts
+            ) { img, info in
+                // isDegraded=true는 저화질 임시 결과 → skip, 고화질만 resume
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                guard !isDegraded, !resumed else { return }
+                resumed = true
+                cont.resume(returning: img)
+            }
+        }
+    }
+
+    /// AVAsset의 특정 시점 UIImage 프레임 (시트 미리보기 트림 시작점용)
+    static func frame(of asset: AVAsset, at time: Double) async -> UIImage? {
+        let gen = AVAssetImageGenerator(asset: asset)
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 540, height: 960)
+        let t = CMTimeMakeWithSeconds(time, preferredTimescale: 600)
+        return await withCheckedContinuation { cont in
+            gen.generateCGImageAsynchronously(for: t) { img, _, _ in
+                cont.resume(returning: img.map { UIImage(cgImage: $0) })
+            }
+        }
+    }
+
     static func duration(of url: URL) async -> Double {
         (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
     }
@@ -96,7 +267,8 @@ struct VideoExportService {
     // MARK: Export (static overlay)
 
     static func exportVideo(sourceURL: URL, overlay: UIImage) async throws -> URL {
-        let asset = AVURLAsset(url: sourceURL)
+        let sourceURL   = try await preprocessHDRToSDR(url: sourceURL)
+        let asset       = AVURLAsset(url: sourceURL)
 
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
@@ -157,6 +329,9 @@ struct VideoExportService {
         videoComposition.frameDuration    = CMTimeMake(value: 1, timescale: 30)
         videoComposition.instructions     = [instruction]
 
+        // SDR output: BT.709 — HDR sources tone-mapped with rolloff; preview = export.
+        await applySDROutputProps(videoComposition, track: videoTrack)
+
         // CALayer overlay — pre-rendered by ImageRenderer in ShareCardScreen
         let parentLayer   = CALayer()
         parentLayer.frame = CGRect(origin: .zero, size: targetSize)
@@ -169,14 +344,7 @@ struct VideoExportService {
         overlayLayer.frame         = CGRect(origin: .zero, size: targetSize)
         overlayLayer.contents      = overlay.cgImage
 
-        // Slight brightness boost on the video layer.
-        let brightenLayer              = CALayer()
-        brightenLayer.frame            = CGRect(origin: .zero, size: targetSize)
-        brightenLayer.backgroundColor  = UIColor.white.cgColor
-        brightenLayer.opacity          = CardVisual.videoBrightenLayerOpacity
-
         parentLayer.addSublayer(videoLayer)
-        parentLayer.addSublayer(brightenLayer)
         parentLayer.addSublayer(overlayLayer)
 
         videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
@@ -238,7 +406,8 @@ struct VideoExportService {
         maxDuration: Double? = nil   // nil = trimDuration (30s); pass total seconds for multi-clip
     ) async throws -> URL {
 
-        let asset = AVURLAsset(url: sourceURL)
+        let sourceURL   = try await preprocessHDRToSDR(url: sourceURL)
+        let asset       = AVURLAsset(url: sourceURL)
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
 
@@ -312,6 +481,9 @@ struct VideoExportService {
         videoComposition.frameDuration = CMTimeMake(value: 1, timescale: 30)
         videoComposition.instructions  = [vcInstruction]
 
+        // SDR output: BT.709 — HDR sources tone-mapped with rolloff; preview = export.
+        await applySDROutputProps(videoComposition, track: videoTrack)
+
         // ── 3. Layout constants ───────────────────────────────────────────────
         // Text is placed in the unified video safe zone (safeTop=180px, safeBottom=220px).
         // hPad (86.4px) already exceeds the horizontal safe margin (60px), so no separate h-safe needed.
@@ -328,7 +500,7 @@ struct VideoExportService {
         let wMarkFontPx:  CGFloat = 9  * vScale
         let wMarkZoneH:   CGFloat = wMarkTopPad + ceil(wMarkFontPx * 1.5) + 6 * vScale
 
-        let fontSize:    CGFloat = 20.0 * fontChoice.sizeScale * vScale
+        let fontSize:    CGFloat = OneLinerFont.basePt * fontChoice.sizeScale * vScale
         let lineSpacing: CGFloat = fontSize * 0.1
         let uiFont = fontChoice.uiFont(size: fontSize)
         let lineHeight:  CGFloat = uiFont.lineHeight + lineSpacing
@@ -376,18 +548,11 @@ struct VideoExportService {
         let imgRenderer = UIGraphicsImageRenderer(size: CGSize(width: textMaxW, height: textLayerH),
                                                   format: imgFormat)
 
-        let shadowOffX = 1 * vScale
-        let shadowOffY = 2 * vScale
-        let shadowBlur = 5 * vScale
-
         var textCGImages: [CGImage] = []
         for k in 0...N {
             let cgImg = imgRenderer.image { ctx in
                 guard k > 0 else { return }
-                let ctxCG = ctx.cgContext
-                ctxCG.setShadow(offset: CGSize(width: shadowOffX, height: shadowOffY),
-                                blur: shadowBlur,
-                                color: UIColor.black.withAlphaComponent(0.55).cgColor)
+                ctx.cgContext.setLineJoin(.round)
                 NSAttributedString(string: String(chars.prefix(k)), attributes: textAttrs)
                     .draw(in: CGRect(x: 0, y: 0, width: textMaxW, height: textLayerH))
             }.cgImage
@@ -428,13 +593,7 @@ struct VideoExportService {
         let videoLayer = CALayer()
         videoLayer.frame = CGRect(origin: .zero, size: oneLinerSize)
 
-        let brightenLayer = CALayer()
-        brightenLayer.frame           = CGRect(origin: .zero, size: oneLinerSize)
-        brightenLayer.backgroundColor = UIColor.white.cgColor
-        brightenLayer.opacity         = CardVisual.videoBrightenLayerOpacity
-
         parentLayer.addSublayer(videoLayer)
-        parentLayer.addSublayer(brightenLayer)
 
         func discreteAnim(keyPath: String,
                           keyTimes: [NSNumber],
@@ -562,8 +721,8 @@ struct VideoExportService {
 
             let dateFontPx: CGFloat = 11 * vScale
             let dateAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .light),
-                .foregroundColor: UIColor.white.withAlphaComponent(0.55)
+                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
+                .foregroundColor: UIColor.white
             ]
             let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
             let dateSize    = dateAttrStr.size()
@@ -664,7 +823,8 @@ struct VideoExportService {
                 activityDate: activityDate, showDate: showDate)
         }
 
-        let asset = AVURLAsset(url: sourceURL)
+        let sourceURL   = try await preprocessHDRToSDR(url: sourceURL)
+        let asset       = AVURLAsset(url: sourceURL)
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
 
@@ -715,6 +875,9 @@ struct VideoExportService {
         videoComposition.frameDuration = CMTimeMake(value: 1, timescale: 30)
         videoComposition.instructions  = [vcInstruction]
 
+        // SDR output: BT.709 — HDR sources tone-mapped with rolloff; preview = export.
+        await applySDROutputProps(videoComposition, track: videoTrack)
+
         // ── Layout constants (same as single-page) ────────────────────────────
         let W: CGFloat = oneLinerSize.width
         let H: CGFloat = oneLinerSize.height
@@ -727,7 +890,7 @@ struct VideoExportService {
         let wMarkFontPx:  CGFloat = 9  * vScale
         let wMarkZoneH:   CGFloat = wMarkTopPad + ceil(wMarkFontPx * 1.5) + 6 * vScale
 
-        let fontSize:    CGFloat = 20.0 * fontChoice.sizeScale * vScale
+        let fontSize:    CGFloat = OneLinerFont.basePt * fontChoice.sizeScale * vScale
         let lineSpacing: CGFloat = fontSize * 0.1
         let uiFont = fontChoice.uiFont(size: fontSize)
         let lineHeight: CGFloat = uiFont.lineHeight + lineSpacing
@@ -747,10 +910,6 @@ struct VideoExportService {
             .font: uiFont, .foregroundColor: textUIColor, .paragraphStyle: pStyle
         ]
         let textMaxW = W - 2 * hPad
-
-        let shadowOffX = 1 * vScale
-        let shadowOffY = 2 * vScale
-        let shadowBlur = 5 * vScale
 
         let imgFormat = UIGraphicsImageRendererFormat()
         imgFormat.scale = 1.0
@@ -774,13 +933,7 @@ struct VideoExportService {
         let videoLayer = CALayer()
         videoLayer.frame = CGRect(origin: .zero, size: oneLinerSize)
 
-        let brightenLayer = CALayer()
-        brightenLayer.frame           = CGRect(origin: .zero, size: oneLinerSize)
-        brightenLayer.backgroundColor = UIColor.white.cgColor
-        brightenLayer.opacity         = CardVisual.videoBrightenLayerOpacity
-
         parentLayer.addSublayer(videoLayer)
-        parentLayer.addSublayer(brightenLayer)
 
         func discreteAnim(keyPath: String, keyTimes: [NSNumber], values: [Any]) -> CAKeyframeAnimation {
             let a = CAKeyframeAnimation(keyPath: keyPath)
@@ -845,9 +998,7 @@ struct VideoExportService {
             for k in 0...N {
                 let cgImg = imgRenderer.image { ctx in
                     guard k > 0 else { return }
-                    ctx.cgContext.setShadow(offset: CGSize(width: shadowOffX, height: shadowOffY),
-                                           blur: shadowBlur,
-                                           color: UIColor.black.withAlphaComponent(0.55).cgColor)
+                    ctx.cgContext.setLineJoin(.round)
                     NSAttributedString(string: String(chars.prefix(k)), attributes: textAttrs)
                         .draw(in: CGRect(x: 0, y: 0, width: textMaxW, height: textLayerH))
                 }.cgImage
@@ -998,8 +1149,8 @@ struct VideoExportService {
             let dateStr = df.string(from: activityDate)
             let dateFontPx: CGFloat = 11 * vScale
             let dateAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .light),
-                .foregroundColor: UIColor.white.withAlphaComponent(0.55)
+                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
+                .foregroundColor: UIColor.white
             ]
             let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
             let dateSize    = dateAttrStr.size()
@@ -1068,8 +1219,6 @@ struct VideoExportService {
     // Within a clip, lines are grouped into pages of 2 and distributed evenly across the clip window.
     // Last page of each clip stays until clipEnd; last page overall stays until video end.
     // Clips with no text produce no overlay — empty clips are silent gaps.
-    //
-    // Log: [MultiClip-Text] 클립N 페이지P: 시작=Xs 끝=Ys "text"
 
     static func exportOneLinerClipBoundVideo(
         sourceURL: URL,
@@ -1130,9 +1279,6 @@ struct VideoExportService {
                     ? (isLast ? D : clipEnd)
                     : clipStart + Double(pIdx + 1) * tPerPage
                 let text         = slots.joined(separator: "\n")
-                print("[MultiClip-Text] 클립\(clipIdx+1) 페이지\(pIdx+1): " +
-                      "시작=\(String(format:"%.1f",winStart))s " +
-                      "끝=\(String(format:"%.1f",winEnd))s \"\(text)\"")
                 pageSpecs.append(PageSpec(text: text, winStart: winStart, winEnd: winEnd, isLast: isLast, clipIdx: clipIdx))
             }
         }
@@ -1145,6 +1291,7 @@ struct VideoExportService {
         }
 
         // ── 1. Asset ──────────────────────────────────────────────────────────
+        let sourceURL   = try await preprocessHDRToSDR(url: sourceURL)
         let asset       = AVURLAsset(url: sourceURL)
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
@@ -1191,6 +1338,9 @@ struct VideoExportService {
         videoComp.renderSize    = oneLinerSize
         videoComp.frameDuration = CMTimeMake(value: 1, timescale: 30)
         videoComp.instructions  = [vcInstr]
+
+        // SDR output: BT.709 — HDR sources tone-mapped with rolloff; preview = export.
+        await applySDROutputProps(videoComp, track: videoTrack)
 
         // ── 4. Content layer (shared with preview) ─────────────────────────
         let contentLayer = buildClipTextContentLayer(
@@ -1269,19 +1419,12 @@ struct VideoExportService {
         let wMFontPx: CGFloat = 9  * vScale
         let wMZoneH: CGFloat  = wMTopPad + ceil(wMFontPx * 1.5) + 6 * vScale
         let textMaxW: CGFloat = W - 2 * hPad
-        let shadowOffX = 1 * vScale; let shadowOffY = 2 * vScale; let shadowBlur = 5 * vScale
         let imgFormat   = UIGraphicsImageRendererFormat()
         imgFormat.scale = 1.0; imgFormat.opaque = false
         let cursorW: CGFloat  = max(3.0, vScale * 0.8)
 
         let contentLayer = CALayer()
         contentLayer.frame = CGRect(origin: .zero, size: renderSize)
-
-        let brightenLayer = CALayer()
-        brightenLayer.frame           = CGRect(origin: .zero, size: renderSize)
-        brightenLayer.backgroundColor = UIColor.white.cgColor
-        brightenLayer.opacity         = CardVisual.videoBrightenLayerOpacity
-        contentLayer.addSublayer(brightenLayer)
 
         func discreteAnim(keyPath: String, keyTimes: [NSNumber], values: [Any]) -> CAKeyframeAnimation {
             let a = CAKeyframeAnimation(keyPath: keyPath)
@@ -1355,9 +1498,10 @@ struct VideoExportService {
             let windowDur = page.winEnd - page.winStart
 
             let clip        = page.clipIdx < recipes.count ? recipes[page.clipIdx] : recipes[0]
-            let fontSize    = 20.0 * clip.fontChoice.sizeScale * clip.sizeLevel.scale * vScale
-            let lineSpacing = fontSize * 0.1
-            let uiFont      = clip.fontChoice.uiFont(size: fontSize)
+            let fontSize    = OneLinerFont.basePt * clip.fontChoice.sizeScale * clip.sizeLevel.scale * vScale
+            let uiFont      = clip.fontChoice.boldUIFont(size: fontSize)
+            let plateLayout = clip.plateOn ? PlateLayout(uiFont: uiFont, vScale: vScale) : nil
+            let lineSpacing = plateLayout?.lineSpacing ?? (fontSize * 0.1)
             let lineH       = uiFont.lineHeight + lineSpacing
             let nsAlign: NSTextAlignment = {
                 switch clip.position {
@@ -1368,17 +1512,25 @@ struct VideoExportService {
             }()
             let pStyle = NSMutableParagraphStyle()
             pStyle.lineSpacing = lineSpacing; pStyle.alignment = nsAlign
-            let textUIColor = clip.textColor.uiColor
+            let textUIColor = clip.plateOn
+                ? clip.plateColorPreset.textUIColor
+                : clip.textColor.uiColor
             var textAttrs: [NSAttributedString.Key: Any] = [
                 .font: uiFont, .foregroundColor: textUIColor, .paragraphStyle: pStyle
             ]
-            if clip.outline {
-                textAttrs[.strokeWidth] = CGFloat(-1.8)
-                textAttrs[.strokeColor] = UIColor.black.withAlphaComponent(0.6)
-            } else {
-                textAttrs[.strokeWidth] = CGFloat(-3.5)
+            // 합성 볼드: pen/brush만 적용(size 비례), gothic/round는 실제 볼드 웨이트 사용
+            let synStroke = clip.fontChoice.syntheticBoldStroke(for: fontSize)
+            if synStroke != 0 {
+                textAttrs[.strokeWidth] = synStroke
                 textAttrs[.strokeColor] = textUIColor
             }
+            // 8방향 테두리: borderUIColor fill, 별도 borderAttrs (blur 0, lineJoin=round)
+            let borderOffset: CGFloat = clip.hasBorder ? fontSize * clip.textColor.borderOffsetFactor : 0
+            let borderAttrs: [NSAttributedString.Key: Any]? = clip.hasBorder ? [
+                .font: uiFont,
+                .foregroundColor: clip.textColor.borderUIColor,
+                .paragraphStyle: pStyle
+            ] : nil
             let cursorH: CGFloat = ceil(uiFont.capHeight + abs(uiFont.descender)) + 2
             func measureLastLine(_ s: String) -> CGFloat {
                 let ls = s.split(separator: "\n", omittingEmptySubsequences: false)
@@ -1387,7 +1539,8 @@ struct VideoExportService {
             }
 
             // ── 타임라인 계산 ──────────────────────────────────────────────────
-            let isFade = clip.appearanceMode == .fade
+            let isFade  = clip.appearanceMode == .fade
+            let isFlyIn = clip.appearanceMode == .flyIn
             var charAppearTimes: [Double] = []  // typing 전용
             let appearEnd: Double   // 텍스트 완전히 보이는 시점
             let fadeStart: Double
@@ -1397,6 +1550,15 @@ struct VideoExportService {
                 appearEnd = fi
                 // 페이드 모드: 클립(페이지) 끝까지 유지, 마지막 순간에만 짧게 페이드아웃
                 fadeStart = page.isLast ? D : max(fi + 0.05, page.winEnd - fadeTime)
+                fadeEnd   = page.isLast ? D : min(page.winEnd, fadeStart + fadeTime)
+            } else if isFlyIn {
+                // 줄 수만큼 stagger 반영: 마지막 줄 시작 + 0.30 s
+                let lineDelay_t   = 0.25
+                let lineTexts_t   = page.text.components(separatedBy: "\n")
+                let nonEmptyCnt_t = lineTexts_t.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+                let slideEnd      = page.winStart + startDelay + Double(max(0, nonEmptyCnt_t - 1)) * lineDelay_t + 0.30
+                appearEnd = slideEnd
+                fadeStart = page.isLast ? D : max(slideEnd + 0.05, page.winEnd - fadeTime)
                 fadeEnd   = page.isLast ? D : min(page.winEnd, fadeStart + fadeTime)
             } else {
                 let budget  = max(0.1, windowDur - startDelay - holdTime - (page.isLast ? 0 : fadeTime))
@@ -1426,17 +1588,23 @@ struct VideoExportService {
                 size: CGSize(width: textMaxW, height: textLayerH), format: imgFormat)
             let fallbackImg = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1), format: imgFormat)
                 .image { _ in }.cgImage!
-            // 페이드: 완성 이미지 1장(index 0=full). 타이핑: N+1장(0=공백, 1…N=누적).
-            let renderRange = isFade ? [N] : Array(0...N)
+            // 페이드: 완성 이미지 1장. 타이핑: N+1장. 날아오기: 줄별 개별 렌더링(아래 isFlyIn 블록에서 처리).
+            let renderRange = isFade ? [N] : (isFlyIn ? [] : Array(0...N))
             var charImages: [CGImage] = []
             for k in renderRange {
                 let cgImg = imgRenderer.image { ctx in
                     guard k > 0 else { return }
-                    ctx.cgContext.setShadow(offset: CGSize(width: shadowOffX, height: shadowOffY),
-                                            blur: shadowBlur,
-                                            color: UIColor.black.withAlphaComponent(0.55).cgColor)
-                    NSAttributedString(string: String(chars.prefix(k)), attributes: textAttrs)
-                        .draw(in: CGRect(x: 0, y: 0, width: textMaxW, height: textLayerH))
+                    ctx.cgContext.setLineJoin(.round)
+                    let str  = String(chars.prefix(k))
+                    let rect = CGRect(x: 0, y: 0, width: textMaxW, height: textLayerH)
+                    if let ba = borderAttrs {
+                        let bStr = NSAttributedString(string: str, attributes: ba)
+                        let o = borderOffset
+                        for (ox, oy): (CGFloat, CGFloat) in [(-o,-o),(o,-o),(-o,o),(o,o),(-o,0),(o,0),(0,-o),(0,o)] {
+                            bStr.draw(in: rect.offsetBy(dx: ox, dy: oy))
+                        }
+                    }
+                    NSAttributedString(string: str, attributes: textAttrs).draw(in: rect)
                 }.cgImage
                 charImages.append(cgImg ?? fallbackImg)
             }
@@ -1462,6 +1630,42 @@ struct VideoExportService {
                           forKey: "opacity")
 
             if N > 0 {
+                // 음영판 줄별 판: textLayer보다 먼저 추가, 애니메이션 동기화를 위해 참조 보관
+                var plateLayers:      [CALayer] = []
+                var plateLineIndices: [Int]     = []
+                // 날아오기 모드는 줄별 루프 내에서 판+텍스트를 동시 생성.
+                if !isFlyIn, let pl = plateLayout {
+                    let platePadH = pl.padH
+                    let platePadV = pl.padV
+                    let cornerR   = pl.cornerR
+                    let lineStep  = pl.lineStep
+                    let plateH    = pl.plateH
+                    let anchorX: CGFloat
+                    let anchorPosX: CGFloat
+                    switch nsAlign {
+                    case .center: anchorX = 0.5; anchorPosX = hPad + textMaxW / 2
+                    case .right:  anchorX = 1.0; anchorPosX = hPad + textMaxW
+                    default:      anchorX = 0.0; anchorPosX = hPad
+                    }
+                    for (i, rawLine) in page.text.components(separatedBy: "\n").enumerated() {
+                        let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { continue }
+                        let lineW  = min(ceil(NSAttributedString(string: trimmed, attributes: textAttrs).size().width), textMaxW)
+                        let plateW = lineW + 2 * platePadH
+                        let lineTopY = textFrame.minY + CGFloat(i) * lineStep
+                        let pLayer = CALayer()
+                        pLayer.anchorPoint     = CGPoint(x: anchorX, y: 0.5)
+                        pLayer.position        = CGPoint(x: anchorPosX, y: lineTopY - platePadV + plateH / 2)
+                        pLayer.bounds          = CGRect(x: 0, y: 0, width: plateW, height: plateH)
+                        pLayer.backgroundColor = clip.plateColorPreset.plateUIColorWithAlpha.cgColor
+                        pLayer.cornerRadius    = cornerR
+                        pLayer.masksToBounds   = true
+                        pageLayer.addSublayer(pLayer)
+                        plateLayers.append(pLayer)
+                        plateLineIndices.append(i)
+                    }
+                }
+
                 let textLayer = CALayer()
                 textLayer.frame           = textFrame
                 textLayer.contentsGravity = .topLeft
@@ -1473,26 +1677,32 @@ struct VideoExportService {
                     textLayer.opacity  = 0.0
                     let tiS = max(0.0001, (page.winStart + startDelay) / D)
                     let tiE = min(appearEnd / D, 1.0)
-                    textLayer.add(linearAnim(keyPath: "opacity",
-                                             keyTimes: [0.0, NSNumber(value: tiS), NSNumber(value: tiE), 1.0],
-                                             values:   [Float(0), Float(0), Float(1), Float(1)]),
+                    let fadeKT: [NSNumber] = [0.0, NSNumber(value: tiS), NSNumber(value: tiE), 1.0]
+                    let fadeV:  [Any]      = [Float(0), Float(0), Float(1), Float(1)]
+                    textLayer.add(linearAnim(keyPath: "opacity", keyTimes: fadeKT, values: fadeV),
                                   forKey: "textFade")
-                    // 팝: 페이드 완료 직후 1회 1.2→1.0 스프링
+                    // 음영판도 함께 페이드인
+                    for pLayer in plateLayers {
+                        pLayer.opacity = 0.0
+                        pLayer.add(linearAnim(keyPath: "opacity", keyTimes: fadeKT, values: fadeV),
+                                   forKey: "plateFade")
+                    }
+                    // 팝: 페이드 완료 직후 1회 1.25→1.0 스프링 (반동 강화)
                     if clip.decorEffect == .pop {
                         let pop = CAKeyframeAnimation(keyPath: "transform.scale")
-                        pop.values          = [1.2, 1.08, 0.96, 1.02, 1.0]
-                        pop.keyTimes        = [0.0, 0.3,  0.6,  0.82, 1.0] as [NSNumber]
-                        pop.duration        = 0.42
+                        pop.values          = [1.25, 1.10, 0.94, 1.03, 1.0]
+                        pop.keyTimes        = [0.0,  0.3,  0.6,  0.82, 1.0] as [NSNumber]
+                        pop.duration        = 0.45
                         pop.beginTime       = AVCoreAnimationBeginTimeAtZero + appearEnd
                         pop.fillMode        = .both
                         pop.isRemovedOnCompletion = false
                         pop.calculationMode = .linear
                         textLayer.add(pop, forKey: "pop")
                     }
-                    // 흔들림
+                    // 흔들림 ±1.5° (주기 유지)
                     if clip.decorEffect == .wobble {
                         let wob = CAKeyframeAnimation(keyPath: "transform.rotation.z")
-                        wob.values           = [0.0, 0.014, 0.0, -0.014, 0.0]  // ±0.8°
+                        wob.values           = [0.0, 0.026, 0.0, -0.026, 0.0]  // ±1.5°
                         wob.keyTimes         = [0.0, 0.25,  0.5,  0.75,  1.0]
                         wob.duration         = 0.5
                         wob.repeatCount      = .infinity
@@ -1503,6 +1713,80 @@ struct VideoExportService {
                         textLayer.add(wob, forKey: "wobble")
                     }
                     pageLayer.addSublayer(textLayer)
+                } else if isFlyIn {
+                    // ── 날아오기 모드: 줄별 순차 ─────────────────────────────────
+                    // 줄마다 독립 레이어, 0.25 s 간격 stagger.
+                    let lineDelay:    Double  = 0.25
+                    let flyDur:       Double  = 0.30
+                    let slideX:       CGFloat = clip.flyDirection == .trailing ? W : -W
+                    let lineTexts     = page.text.components(separatedBy: "\n")
+                    let lineRenderer  = UIGraphicsImageRenderer(
+                        size: CGSize(width: textMaxW, height: ceil(lineH)), format: imgFormat)
+                    let anchorX:    CGFloat
+                    let anchorPosX: CGFloat
+                    switch nsAlign {
+                    case .center: anchorX = 0.5; anchorPosX = hPad + textMaxW / 2
+                    case .right:  anchorX = 1.0; anchorPosX = hPad + textMaxW
+                    default:      anchorX = 0.0; anchorPosX = hPad
+                    }
+                    var staggerIdx = 0
+                    for (i, rawLine) in lineTexts.enumerated() {
+                        let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { continue }
+                        let flyBegin = page.winStart + startDelay + Double(staggerIdx) * lineDelay
+                        staggerIdx  += 1
+                        let lineTopY = textFrame.minY + CGFloat(i) * lineH
+                        // 판 레이어 (텍스트보다 먼저 → z-order 아래)
+                        if let pl = plateLayout {
+                            let lineW  = min(ceil(NSAttributedString(string: trimmed, attributes: textAttrs).size().width), textMaxW)
+                            let pLayer = CALayer()
+                            pLayer.anchorPoint     = CGPoint(x: anchorX, y: 0.5)
+                            pLayer.position        = CGPoint(x: anchorPosX, y: lineTopY - pl.padV + pl.plateH / 2)
+                            pLayer.bounds          = CGRect(x: 0, y: 0, width: lineW + 2 * pl.padH, height: pl.plateH)
+                            pLayer.backgroundColor = clip.plateColorPreset.plateUIColorWithAlpha.cgColor
+                            pLayer.cornerRadius    = pl.cornerR
+                            pLayer.masksToBounds   = true
+                            pageLayer.addSublayer(pLayer)
+                            let pFly                     = CABasicAnimation(keyPath: "transform.translation.x")
+                            pFly.beginTime               = AVCoreAnimationBeginTimeAtZero + flyBegin
+                            pFly.duration                = flyDur
+                            pFly.fromValue               = Float(slideX)
+                            pFly.toValue                 = Float(0)
+                            pFly.timingFunction          = CAMediaTimingFunction(name: .easeOut)
+                            pFly.fillMode                = .both
+                            pFly.isRemovedOnCompletion   = false
+                            pLayer.add(pFly, forKey: "flyIn")
+                        }
+                        // 텍스트 레이어
+                        let lineImg = lineRenderer.image { ctx in
+                            ctx.cgContext.setLineJoin(.round)
+                            let lRect = CGRect(x: 0, y: 0, width: textMaxW, height: ceil(lineH))
+                            if let ba = borderAttrs {
+                                let bStr = NSAttributedString(string: trimmed, attributes: ba)
+                                let o = borderOffset
+                                for (ox, oy): (CGFloat, CGFloat) in [(-o,-o),(o,-o),(-o,o),(o,o),(-o,0),(o,0),(0,-o),(0,o)] {
+                                    bStr.draw(in: lRect.offsetBy(dx: ox, dy: oy))
+                                }
+                            }
+                            NSAttributedString(string: trimmed, attributes: textAttrs).draw(in: lRect)
+                        }.cgImage ?? fallbackImg
+                        let lineLayer                    = CALayer()
+                        lineLayer.frame                  = CGRect(x: textFrame.origin.x, y: lineTopY,
+                                                                  width: textMaxW, height: ceil(lineH))
+                        lineLayer.contentsGravity        = .topLeft
+                        lineLayer.masksToBounds          = false
+                        lineLayer.contents               = lineImg
+                        let fly                          = CABasicAnimation(keyPath: "transform.translation.x")
+                        fly.beginTime                    = AVCoreAnimationBeginTimeAtZero + flyBegin
+                        fly.duration                     = flyDur
+                        fly.fromValue                    = Float(slideX)
+                        fly.toValue                      = Float(0)
+                        fly.timingFunction               = CAMediaTimingFunction(name: .easeOut)
+                        fly.fillMode                     = .both
+                        fly.isRemovedOnCompletion        = false
+                        lineLayer.add(fly, forKey: "flyIn")
+                        pageLayer.addSublayer(lineLayer)
+                    }
                 } else {
                     // ── 타이핑 모드 ──────────────────────────────────────────────
                     textLayer.contents = charImages[0]
@@ -1564,6 +1848,48 @@ struct VideoExportService {
                     cursorLayer.add(discreteAnim(keyPath: "opacity",
                                                  keyTimes: blinkKeyTimes, values: blinkValues), forKey: "opacity")
                     pageLayer.addSublayer(cursorLayer)
+
+                    // ── 음영판 타이핑 동기화: 판 폭이 글자를 따라 늘어남 ──────────────
+                    if !plateLayers.isEmpty {
+                        let textLines = page.text.components(separatedBy: "\n")
+                        var lineCharStarts: [Int] = []
+                        var lineCharEnds:   [Int] = []
+                        var cur = 0
+                        for line in textLines {
+                            lineCharStarts.append(cur)
+                            cur += line.count
+                            lineCharEnds.append(cur)
+                            cur += 1  // \n 건너뜀
+                        }
+                        let platePadH: CGFloat = 8 * vScale
+                        for (j, pLayer) in plateLayers.enumerated() {
+                            let lineIdx = plateLineIndices[j]
+                            guard lineIdx < lineCharStarts.count else { continue }
+                            let s  = lineCharStarts[lineIdx]
+                            let e  = lineCharEnds[lineIdx]
+                            let fH = pLayer.bounds.height
+                            let fW = pLayer.bounds.width
+                            var wKeyTimes: [NSNumber] = [0.0]
+                            var wValues:   [Any]      = [NSValue(cgRect: CGRect(x: 0, y: 0, width: 0, height: fH))]
+                            for k in 1...N {
+                                let typed = max(0, min(k, e) - s)
+                                let pW: CGFloat
+                                if typed > 0 {
+                                    let t = String(chars[s..<(s + typed)])
+                                    let w = min(ceil(NSAttributedString(string: t, attributes: textAttrs).size().width), textMaxW)
+                                    pW = w + 2 * platePadH
+                                } else {
+                                    pW = 0
+                                }
+                                wKeyTimes.append(NSNumber(value: max(0.0001, charAppearTimes[k - 1] / D)))
+                                wValues.append(NSValue(cgRect: CGRect(x: 0, y: 0, width: pW, height: fH)))
+                            }
+                            wKeyTimes.append(1.0)
+                            wValues.append(NSValue(cgRect: CGRect(x: 0, y: 0, width: fW, height: fH)))
+                            pLayer.bounds = CGRect(x: 0, y: 0, width: 0, height: fH)
+                            pLayer.add(discreteAnim(keyPath: "bounds", keyTimes: wKeyTimes, values: wValues), forKey: "plateBounds")
+                        }
+                    }
                 }
             }
             contentLayer.addSublayer(pageLayer)
@@ -1654,8 +1980,8 @@ struct VideoExportService {
             let dateStr     = df.string(from: activityDate)
             let dateFontPx: CGFloat = 11 * vScale
             let dateAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .light),
-                .foregroundColor: UIColor.white.withAlphaComponent(0.55)
+                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
+                .foregroundColor: UIColor.white
             ]
             let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
             let dateSz      = dateAttrStr.size()
@@ -1681,7 +2007,7 @@ struct VideoExportService {
 
         // ── Full-video title overlay ───────────────────────────────────────────
         if !videoTitle.isEmpty {
-            let tFontPx  = 20.0 * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale * vScale
+            let tFontPx  = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale * vScale
             let tUIFont  = titleStyle.fontChoice.uiFont(size: tFontPx)
             let tUIColor = titleStyle.textColor.uiColor
             let nsAlign: NSTextAlignment = {
@@ -1692,16 +2018,24 @@ struct VideoExportService {
                 }
             }()
             let pStyle = NSMutableParagraphStyle(); pStyle.alignment = nsAlign
+            // 채움 attrs (합성 볼드 포함, 테두리 없을 때만)
             var tAttrs: [NSAttributedString.Key: Any] = [
                 .font: tUIFont, .foregroundColor: tUIColor, .paragraphStyle: pStyle
             ]
-            if titleStyle.outline {
-                tAttrs[.strokeWidth] = CGFloat(-1.8)
-                tAttrs[.strokeColor] = UIColor.black.withAlphaComponent(0.6)
-            } else {
-                tAttrs[.strokeWidth] = CGFloat(-3.5)
-                tAttrs[.strokeColor] = tUIColor
+            if !titleStyle.outline {
+                let synStroke = titleStyle.fontChoice.syntheticBoldStroke(for: tFontPx)
+                if synStroke != 0 {
+                    tAttrs[.strokeWidth] = synStroke
+                    tAttrs[.strokeColor] = tUIColor
+                }
             }
+            // 8방향 테두리 attrs (borderUIColor fill, blur 0, lineJoin=round) — §15.3
+            let tBorderOffset: CGFloat = titleStyle.outline ? tFontPx * titleStyle.textColor.borderOffsetFactor : 0
+            let tBorderAttrs: [NSAttributedString.Key: Any]? = titleStyle.outline ? [
+                .font: tUIFont,
+                .foregroundColor: titleStyle.textColor.borderUIColor,
+                .paragraphStyle: pStyle
+            ] : nil
             let attrStr   = NSAttributedString(string: videoTitle, attributes: tAttrs)
             let bound     = attrStr.boundingRect(with: CGSize(width: textMaxW, height: 4000),
                                                   options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -1715,16 +2049,23 @@ struct VideoExportService {
             let tRenderer = UIGraphicsImageRenderer(
                 size: CGSize(width: textMaxW, height: tLayerH), format: imgFormat)
             let tImg = tRenderer.image { ctx in
-                ctx.cgContext.setShadow(offset: CGSize(width: shadowOffX, height: shadowOffY),
-                                        blur: shadowBlur,
-                                        color: UIColor.black.withAlphaComponent(0.55).cgColor)
-                attrStr.draw(in: CGRect(x: 0, y: 0, width: textMaxW, height: tLayerH))
+                ctx.cgContext.setLineJoin(.round)
+                let tRect = CGRect(x: 0, y: 0, width: textMaxW, height: tLayerH)
+                if let ba = tBorderAttrs {
+                    let bStr = NSAttributedString(string: videoTitle, attributes: ba)
+                    let o = tBorderOffset
+                    for (ox, oy): (CGFloat, CGFloat) in [(-o,-o),(o,-o),(-o,o),(o,o),(-o,0),(o,0),(0,-o),(0,o)] {
+                        bStr.draw(in: tRect.offsetBy(dx: ox, dy: oy))
+                    }
+                }
+                attrStr.draw(in: tRect)
             }
             let titleLayer = CALayer()
             titleLayer.frame           = CGRect(x: hPad, y: tFrameY, width: textMaxW, height: tLayerH)
             titleLayer.contents        = tImg.cgImage
             titleLayer.contentsGravity = .topLeft
             titleLayer.masksToBounds   = false
+            titleLayer.opacity         = 0.0
             let fadeEnd = NSNumber(value: min(0.5 / D, 0.99))
             titleLayer.add(linearAnim(keyPath: "opacity",
                                       keyTimes: [0.0, 0.0001, fadeEnd, 1.0],
@@ -1763,31 +2104,51 @@ struct VideoExportService {
             withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
         else { throw ExportError.compositionFailed }
 
+        // 음소거 ON이면 오디오 트랙 자체를 만들지 않음 — 컴포지션에 어떤 오디오도 안 들어감
         let compAudio: AVMutableCompositionTrack? = muteAudio ? nil :
             composition.addMutableTrack(withMediaType: .audio,
                                         preferredTrackID: kCMPersistentTrackID_Invalid)
 
         let layerInstr = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
-        var insertAt = CMTime.zero
+        var insertAt    = CMTime.zero
+        var clipIdx     = 0
+        var audioInserted = 0
+        var firstVideoTrack: AVAssetTrack? = nil
 
         for recipe in recipes {
-            let asset = AVURLAsset(url: recipe.url)
+            // resolvedAsset: 재진입 시 PHImageManager가 해석한 AVAsset(AVComposition 포함) 우선 사용
+            let asset: AVAsset = recipe.resolvedAsset ?? AVURLAsset(url: recipe.url)
             let vts   = try await asset.loadTracks(withMediaType: .video)
-            guard let vt = vts.first else { continue }
+            guard let vt = vts.first else { clipIdx += 1; continue }
+            if firstVideoTrack == nil { firstVideoTrack = vt }
 
-            let natSz  = try await vt.load(.naturalSize)
-            let prefTf = try await vt.load(.preferredTransform)
+            // HDR 전처리: URL 접근 가능한 경우 sdrBrightnessEV 보정 적용
+            let effectiveVT: AVAssetTrack
+            if let urlAsset = asset as? AVURLAsset {
+                let sdrURL   = (try? await preprocessHDRToSDR(url: urlAsset.url)) ?? urlAsset.url
+                let sdrAsset = AVURLAsset(url: sdrURL)
+                effectiveVT  = (try? await sdrAsset.loadTracks(withMediaType: .video).first) ?? vt
+            } else {
+                effectiveVT = vt   // AVComposition(PHAsset slow-mo 등) — 전처리 불가, BT.709만 적용
+            }
+
+            let natSz  = try await effectiveVT.load(.naturalSize)
+            let prefTf = try await effectiveVT.load(.preferredTransform)
 
             let clipRange = CMTimeRange(
                 start:    CMTimeMakeWithSeconds(recipe.trimStart, preferredTimescale: 600),
                 duration: CMTimeMakeWithSeconds(recipe.trimmedDuration, preferredTimescale: 600))
 
-            try compVideo.insertTimeRange(clipRange, of: vt, at: insertAt)
+            try compVideo.insertTimeRange(clipRange, of: effectiveVT, at: insertAt)
 
-            if let ca = compAudio,
+            // 음소거=true이면 compAudio=nil → 조건 자체가 false → 전 클립 오디오 삽입 없음
+            // 오디오는 HDR 전처리 불필요 — 원본 asset 사용
+            if !muteAudio,
+               let ca = compAudio,
                let ats = try? await asset.loadTracks(withMediaType: .audio),
                let at  = ats.first {
                 try? ca.insertTimeRange(clipRange, of: at, at: insertAt)
+                audioInserted += 1
             }
 
             let displayRect = CGRect(origin: .zero, size: natSz).applying(prefTf)
@@ -1802,7 +2163,10 @@ struct VideoExportService {
             layerInstr.setTransform(tf, at: insertAt)
 
             insertAt = CMTimeAdd(insertAt, clipRange.duration)
+            clipIdx += 1
         }
+
+        print("[MultiClip] 미리보기 음소거=\(muteAudio) 삽입오디오=\(audioInserted)개")
 
         let totalDuration = insertAt
         let vcInstr = AVMutableVideoCompositionInstruction()
@@ -1814,6 +2178,11 @@ struct VideoExportService {
         videoComp.frameDuration = CMTimeMake(value: 1, timescale: 30)
         videoComp.instructions  = [vcInstr]
         // NO animationTool — live preview uses AVSynchronizedLayer
+
+        // SDR output props: preview uses same BT.709 tone-mapping as export → preview = output.
+        if let fTrack = firstVideoTrack {
+            await applySDROutputProps(videoComp, track: fTrack)
+        }
 
         let contentLayer = buildClipTextContentLayer(
             recipes: recipes, renderSize: oneLinerSize, totalDuration: D,
