@@ -34,10 +34,11 @@ struct ClipRecipe: Identifiable {
     var resolvedAsset:   AVAsset? = nil // PHImageManager 해석 결과 (재진입 시 주입)
 
     // Per-clip style — controls bound to the selected clip in MultiClipEditorView
-    var fontChoice: OneLinerFont      = .pen
-    var textColor:  OneLinerTextColor = .white
+    // 기본값: 고딕 · 노란색(골드) · 대 · 타이핑 · 테두리(hasBorder)
+    var fontChoice: OneLinerFont      = .gothic
+    var textColor:  OneLinerTextColor = .gold
     var position:   CardPosition      = .bottom
-    var sizeLevel:  TextSizeLevel     = .medium
+    var sizeLevel:  TextSizeLevel     = .large
     var appearanceMode:   AppearanceMode   = .typing
     var decorEffect:      DecorEffect      = .none
     var hasBorder: Bool = true {        // 8방향 오프셋 테두리 (plateOn과 상호 배타)

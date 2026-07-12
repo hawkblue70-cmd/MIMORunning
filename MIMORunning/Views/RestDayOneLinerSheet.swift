@@ -307,6 +307,32 @@ struct RestDayOneLinerSheet: View {
                 .contentShape(Rectangle())
                 .onTapGesture { previewPlayer.togglePlayPause() }
                 .frame(maxWidth: .infinity)
+        } else if isClipMode, let thumb = cardBackground {
+            // 영상/슬라이드 대기화면: 라이브 프리뷰와 동일한 9:16 프레임(CardPreviewFrame) → 크기·비율 일치
+            Image(uiImage: thumb)
+                .resizable()
+                .scaledToFill()
+                .frame(width: CardPreviewFrame.width, height: CardPreviewFrame.height)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
+                .overlay(alignment: .center) {
+                    if previewPlayer.isBuilding {
+                        ProgressView().tint(.white)
+                            .padding(16)
+                            .background(.black.opacity(0.45))
+                            .clipShape(Circle())
+                    } else if isVideoMode {
+                        Button { buildPreview() } label: {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .shadow(color: .black.opacity(0.55), radius: 10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .frame(maxWidth: .infinity)
         } else {
             OneLinerCard(
                 displayDate: date,
@@ -1259,7 +1285,9 @@ struct RestDayOneLinerSheet: View {
             : [(cardBackground, cardText)]
 
         var rendered: [UIImage] = []
-        for (photo, txt) in pairs {
+        for (i, (photo, txt)) in pairs.enumerated() {
+            // 인덱스별 recipe에서 음영판/테두리 설정을 가져와 반영 (없으면 현재 미리보기 값)
+            let rp = i < clipRecipes.count ? clipRecipes[i] : nil
             let card = OneLinerCard(
                 displayDate: date,
                 backgroundPhoto: photo,
@@ -1267,6 +1295,9 @@ struct RestDayOneLinerSheet: View {
                 position: position,
                 textColor: textColor,
                 fontChoice: fontChoice,
+                hasBorder: rp?.hasBorder ?? previewHasBorder,
+                plateOn: rp?.plateOn ?? previewPlateOn,
+                plateColorPreset: rp?.plateColorPreset ?? previewPlatePreset,
                 showDate: true,
                 captionMode: true
             )

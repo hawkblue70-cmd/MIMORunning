@@ -962,8 +962,9 @@ enum PhotoSlideComposition {
                 dateAttrStr.draw(in: CGRect(x: 0, y: 0, width: dateImgW, height: dateImgH))
             }
             let dateLayer = CALayer()
-            dateLayer.frame           = CGRect(x: W - datePad - dateImgW,
-                                               y: H - safeBot - datePad - dateImgH,
+            // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 끝에 정렬 → 하단 문구와 겹침 방지
+            dateLayer.frame           = CGRect(x: W - hPad - dateImgW,
+                                               y: wMTopPad + (wMLayerH - dateImgH) / 2,
                                                width: dateImgW, height: dateImgH)
             dateLayer.contents        = dateImg.cgImage
             dateLayer.contentsGravity = .topLeft

@@ -596,12 +596,13 @@ struct OneLinerCard: View {
                 captionContent
                 if showDate {
                     Text(cardDate.oneLinerDateString)
-                        .font(.system(size: 11, weight: .light))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.white)   // 밝은 흰색
                         .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 → 하단 문구와 겹침 방지
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                         .padding(.trailing, 14)
-                        .padding(.bottom, 12)
+                        .padding(.top, 12)
                 }
             } else {
                 if text.isEmpty {
@@ -613,32 +614,33 @@ struct OneLinerCard: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 } else {
-                    // 문구 + 날짜를 한 블록으로 묶어 position.alignment에 배치.
-                    // 날짜는 문구 바로 아래 trailing 정렬로 표시.
-                    VStack(alignment: .trailing, spacing: 4) {
-                        EffectTextView(
-                            text: text, font: fontChoice.swiftUIFont(size: baseFontSize),
-                            lineSpacing: lineSpacing, alignment: textAlignment,
-                            color: plateOn ? plateColorPreset.textSwiftColor : textColor.color,
-                            appearanceMode: appearanceMode,
-                            decorEffect: decorEffect,
-                            hasBorder: hasBorder, plateOn: plateOn,
-                            flyDirection: flyDirection,
-                            plateBgColor: plateColorPreset.plateBgColor,
-                            syntheticBoldStroke: fontChoice.syntheticBoldStroke(for: baseFontSize),
-                            borderColor: hasBorder ? textColor.borderSwiftColor : .clear,
-                            borderOffset: hasBorder ? max(0.8, baseFontSize * textColor.borderOffsetFactor) : 0
-                        )
-                        if showDate {
-                            Text(cardDate.oneLinerDateString)
-                                .font(.system(size: 9, weight: .light))
-                                .foregroundStyle(.white.opacity(0.55))
-                                .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                        }
-                    }
+                    // 문구 블록 (날짜는 아래에서 우상단 별도 배치)
+                    EffectTextView(
+                        text: text, font: fontChoice.swiftUIFont(size: baseFontSize),
+                        lineSpacing: lineSpacing, alignment: textAlignment,
+                        color: plateOn ? plateColorPreset.textSwiftColor : textColor.color,
+                        appearanceMode: appearanceMode,
+                        decorEffect: decorEffect,
+                        hasBorder: hasBorder, plateOn: plateOn,
+                        flyDirection: flyDirection,
+                        plateBgColor: plateColorPreset.plateBgColor,
+                        syntheticBoldStroke: fontChoice.syntheticBoldStroke(for: baseFontSize),
+                        borderColor: hasBorder ? textColor.borderSwiftColor : .clear,
+                        borderOffset: hasBorder ? max(0.8, baseFontSize * textColor.borderOffsetFactor) : 0
+                    )
                     .padding(.horizontal, 24)
                     .padding(.top, textTopInset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
+                    if showDate {
+                        // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 → 문구와 겹침 방지
+                        Text(cardDate.oneLinerDateString)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                            .padding(.trailing, 14)
+                            .padding(.top, 12)
+                    }
                 }
             }
         }

@@ -4204,6 +4204,42 @@ struct ShareCardScreen: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { previewPlayer.togglePlayPause() }
+        } else if isOneLiner, !oneLinerClipRecipes.isEmpty {
+            // 재생 전에도 실제 라이브 프리뷰와 동일한 9:16 한마디 카드 표시 → 창·크기 일치
+            // oneLinerVideoPreviewCard는 고정 300pt 폭 → 컨테이너 폭에 맞춰 스케일(라이브의 aspectRatio fit과 동일 크기)
+            GeometryReader { geo in
+                oneLinerVideoPreviewCard
+                    .scaleEffect(geo.size.width / 300, anchor: .topLeading)
+            }
+            .aspectRatio(9/16, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay {
+                    if isExportingVideo {
+                        ZStack {
+                            Color.black.opacity(0.55)
+                            VStack(spacing: 8) {
+                                ProgressView().tint(.white).scaleEffect(1.2)
+                                Text(AppLanguage.shared.s("합성 중...", "Processing..."))
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    } else if previewPlayer.isBuilding {
+                        ProgressView().tint(.white)
+                            .padding(14)
+                            .background(.black.opacity(0.45))
+                            .clipShape(Circle())
+                    } else {
+                        Button { buildPreview() } label: {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .shadow(color: .black.opacity(0.55), radius: 10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
         } else {
             ZStack {
                 // Background: first frame or dark placeholder
@@ -4492,14 +4528,24 @@ struct ShareCardScreen: View {
     private func buildPreview() {
         guard !previewPlayer.isBuilding else { return }
         Task {
-            // 영상·슬라이드 모두 thumbnail 기반 단일 경로 — PHAsset 해석 불필요.
-            let photos = oneLinerClipRecipes.compactMap { $0.thumbnail }
-            guard !photos.isEmpty else { return }
-            await previewPlayer.buildForPhotoSlides(
-                photos: photos, recipes: oneLinerClipRecipes,
-                activityDate: activity.date, showDate: oneLinerShowDate,
-                metricChips: oneLinerActiveMetricChips,
-                videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
+            if oneLinerIsPhotoSlide {
+                // 슬라이드: 썸네일(정지사진) 기반 프리뷰
+                let photos = oneLinerClipRecipes.compactMap { $0.thumbnail }
+                guard !photos.isEmpty else { return }
+                await previewPlayer.buildForPhotoSlides(
+                    photos: photos, recipes: oneLinerClipRecipes,
+                    activityDate: activity.date, showDate: oneLinerShowDate,
+                    metricChips: oneLinerActiveMetricChips,
+                    videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
+            } else {
+                // 영상: 실제 클립 재생 (export와 동일한 필믹 파이프라인 — resolvedAsset 사용)
+                await previewPlayer.buildForVideoClips(
+                    recipes: oneLinerClipRecipes,
+                    activityDate: activity.date, showDate: oneLinerShowDate,
+                    muteAudio: oneLinerMuteAudio,
+                    metricChips: oneLinerActiveMetricChips,
+                    videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
+            }
             previewPlayer.play()
         }
     }

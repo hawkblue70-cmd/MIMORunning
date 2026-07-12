@@ -49,7 +49,8 @@ struct VideoExportService {
     // MARK: - SDR filmic pipeline (preview = export)
     //
     // HDR 소스를 BT.709 SDR로 전처리할 때 사용하는 필믹 파라미터.
-    // export와 preview 모두 preprocessHDRToSDR()를 거치므로 동일한 값을 공유한다.
+    // export는 preprocessHDRToSDR() 필믹 파이프라인 사용.
+    // 프리뷰는 재생 안정성·성능을 위해 재인코딩을 생략하고 709 태깅 톤매핑만 적용(색은 근사).
     //
     // 눈 튜닝 순서:
     //   1. sdrMidtoneLift 로 미드톤 전체 밝기 조절 (올리면 밝아짐)
@@ -740,8 +741,9 @@ struct VideoExportService {
             }
 
             let dateLayer = CALayer()
-            dateLayer.frame           = CGRect(x: W - datePad - dateImgW,
-                                               y: H - safeBottom - datePad - dateImgH,
+            // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 끝에 정렬 → 하단 문구와 겹침 방지
+            dateLayer.frame           = CGRect(x: W - hPad - dateImgW,
+                                               y: wMarkTopPad + (wMarkLayerH - dateImgH) / 2,
                                                width: dateImgW,
                                                height: dateImgH)
             dateLayer.contents        = dateImg.cgImage
@@ -1166,8 +1168,9 @@ struct VideoExportService {
                 dateAttrStr.draw(in: CGRect(x: 0, y: 0, width: dateImgW, height: dateImgH))
             }
             let dateLayer = CALayer()
-            dateLayer.frame           = CGRect(x: W - datePad - dateImgW,
-                                               y: H - safeBottom - datePad - dateImgH,
+            // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 끝에 정렬 → 하단 문구와 겹침 방지
+            dateLayer.frame           = CGRect(x: W - hPad - dateImgW,
+                                               y: wMarkTopPad + (wMarkLayerH - dateImgH) / 2,
                                                width: dateImgW,
                                                height: dateImgH)
             dateLayer.contents        = dateImg.cgImage
@@ -1996,8 +1999,9 @@ struct VideoExportService {
                 dateAttrStr.draw(in: CGRect(x: 0, y: 0, width: dateImgW, height: dateImgH))
             }
             let dateLayer = CALayer()
-            dateLayer.frame           = CGRect(x: W - datePad - dateImgW,
-                                               y: H - safeBot - datePad - dateImgH,
+            // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 끝에 정렬 → 하단 문구와 겹침 방지
+            dateLayer.frame           = CGRect(x: W - hPad - dateImgW,
+                                               y: wMTopPad + (wMLayerH - dateImgH) / 2,
                                                width: dateImgW, height: dateImgH)
             dateLayer.contents        = dateImg.cgImage
             dateLayer.contentsGravity = .topLeft
@@ -2042,7 +2046,7 @@ struct VideoExportService {
                                                   context: nil)
             let tLayerH   = ceil(bound.height) + 20
             let tFrameY: CGFloat = titleStyle.position.isTop
-                ? max(wMZoneH + 4 * vScale, safeTop + 4 * vScale)
+                ? max(wMZoneH + 12 * vScale, safeTop * 0.6)   // 제목 위로: safeTop→0.6배
                 : titleStyle.position.isBottom
                     ? H - safeBot - tLayerH
                     : (safeTop + (H - safeBot)) / 2 - tLayerH / 2
@@ -2122,15 +2126,12 @@ struct VideoExportService {
             guard let vt = vts.first else { clipIdx += 1; continue }
             if firstVideoTrack == nil { firstVideoTrack = vt }
 
-            // HDR 전처리: URL 접근 가능한 경우 sdrBrightnessEV 보정 적용
-            let effectiveVT: AVAssetTrack
-            if let urlAsset = asset as? AVURLAsset {
-                let sdrURL   = (try? await preprocessHDRToSDR(url: urlAsset.url)) ?? urlAsset.url
-                let sdrAsset = AVURLAsset(url: sdrURL)
-                effectiveVT  = (try? await sdrAsset.loadTracks(withMediaType: .video).first) ?? vt
-            } else {
-                effectiveVT = vt   // AVComposition(PHAsset slow-mo 등) — 전처리 불가, BT.709만 적용
-            }
+            // 프리뷰: 필믹 재인코딩(preprocessHDRToSDR) 생략 — 원본 트랙 그대로 사용.
+            //   · 임시 SDR 파일의 타이밍 불일치로 insertTimeRange가 -11800 던지던 문제 해결
+            //   · export 세션 남발 제거 → 재생 빠르고 발열 없음
+            //   · HDR→BT.709 톤매핑은 아래 applySDROutputProps의 709 태깅으로 AVFoundation이 처리
+            //   (export 경로는 여전히 preprocessHDRToSDR 필믹 파이프라인 사용)
+            let effectiveVT: AVAssetTrack = vt
 
             let natSz  = try await effectiveVT.load(.naturalSize)
             let prefTf = try await effectiveVT.load(.preferredTransform)
