@@ -1,4 +1,5 @@
 import AVFoundation
+import Photos
 import UIKit
 
 // MARK: - ClipDescriptor
@@ -26,18 +27,27 @@ struct ClipRecipe: Identifiable {
     var lines:        [String]        // text slots owned by this clip
 
     // Persistence refs — populated on pick, restored on load
-    var assetIdentifier: String? = nil  // PHAsset.localIdentifier (video clips)
+    var assetIdentifier: String? = nil  // PHAsset.localIdentifier (video clips; primary stable ref)
+    var clipVideoRef:    String? = nil  // ClipVideoStore ref — stable copy when assetIdentifier unavailable
     var storedPhotoRef:  String? = nil  // OneLinerPhotoStore ref (photo-slide clips)
     var thumbRef:        String? = nil  // ClipThumbStore 200 px mini-thumbnail
+    var resolvedAsset:   AVAsset? = nil // PHImageManager 해석 결과 (재진입 시 주입)
 
     // Per-clip style — controls bound to the selected clip in MultiClipEditorView
     var fontChoice: OneLinerFont      = .pen
     var textColor:  OneLinerTextColor = .white
     var position:   CardPosition      = .bottom
     var sizeLevel:  TextSizeLevel     = .medium
-    var appearanceMode: AppearanceMode = .typing
-    var decorEffect:    DecorEffect    = .none
-    var outline:        Bool           = false
+    var appearanceMode:   AppearanceMode   = .typing
+    var decorEffect:      DecorEffect      = .none
+    var hasBorder: Bool = true {        // 8방향 오프셋 테두리 (plateOn과 상호 배타)
+        didSet { if hasBorder { plateOn = false } }
+    }
+    var plateOn: Bool = false {         // 음영판 (hasBorder와 상호 배타)
+        didSet { if plateOn { hasBorder = false } }
+    }
+    var flyDirection:     FlyInDirection   = .trailing
+    var plateColorPreset: PlateColorPreset = .blackWhite
 
     init(url: URL, fullDuration: Double, thumbnail: UIImage? = nil) {
         self.url          = url
@@ -54,6 +64,37 @@ struct ClipRecipe: Identifiable {
     /// Number of text slots based on trimmed duration (1 slot per 3 s).
     var linesCount: Int { max(1, min(20, Int(trimmedDuration / 3.0))) }
     var hasText: Bool { lines.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
+}
+
+// MARK: - PlateLayout
+//
+// 음영판(plate) CALayer 배치 공통 상수.
+// PhotoSlideComposition과 VideoExportService에서 동일 인스턴스를 사용.
+//
+// 미리보기(SwiftUI) 기준: VStack spacing=3, .padding(.vertical, 2), cornerRadius 5.
+// lineSpacing = 2*padV + gap = 7 pt (vScale=1) → NSParagraphStyle.lineSpacing에 사용.
+// 이 값을 pStyle.lineSpacing으로 설정하면 boundingRect도 자동으로 올바른 높이를 반환.
+
+struct PlateLayout {
+    let padH:        CGFloat   // 좌우 패딩 (= 8 * vScale)
+    let padV:        CGFloat   // 상하 패딩 (= 2 * vScale)
+    let gap:         CGFloat   // 판 간 세로 간격 (= 3 * vScale)
+    let cornerR:     CGFloat   // 코너 반경 (= 5 * vScale)
+    let plateH:      CGFloat   // 판 rect 높이 = ceil(lineHeight) + 2*padV
+    let lineStep:    CGFloat   // 줄 간 Y 거리 = lineHeight + 2*padV + gap
+    let lineSpacing: CGFloat   // NSParagraphStyle.lineSpacing = 2*padV + gap
+
+    init(uiFont: UIFont, vScale: CGFloat) {
+        let padV_  = 2 * vScale
+        let gap_   = 3 * vScale
+        padH       = 8 * vScale
+        padV       = padV_
+        gap        = gap_
+        cornerR    = 5 * vScale
+        lineSpacing = 2 * padV_ + gap_
+        plateH     = ceil(uiFont.lineHeight) + 2 * padV_
+        lineStep   = uiFont.lineHeight + lineSpacing
+    }
 }
 
 // MARK: - OneLinerTitleStyle
@@ -101,7 +142,6 @@ enum MultiClipComposition {
 
     static func composeAndExport(urls: [URL], muteAudio: Bool = false) async throws -> (url: URL, clips: [ClipDescriptor]) {
         guard !urls.isEmpty else { throw MCError.noClips }
-        let tStart = Date()
 
         let composition = AVMutableComposition()
         guard let compVideo = composition.addMutableTrack(
@@ -130,7 +170,8 @@ enum MultiClipComposition {
 
             try compVideo.insertTimeRange(range, of: vt, at: insertAt)
 
-            if let ca = compAudio,
+            if !muteAudio,
+               let ca = compAudio,
                let ats = try? await asset.loadTracks(withMediaType: .audio),
                let at  = ats.first {
                 try? ca.insertTimeRange(range, of: at, at: insertAt)
@@ -148,7 +189,6 @@ enum MultiClipComposition {
         guard !clips.isEmpty else { throw MCError.noVideoTrack }
 
         let totalDuration = insertAt
-        let totalSeconds  = CMTimeGetSeconds(totalDuration)
 
         // Build video composition with one instruction spanning the full timeline.
         let vcInstr = AVMutableVideoCompositionInstruction()
@@ -183,13 +223,6 @@ enum MultiClipComposition {
             }
         }
 
-        let elapsed = Date().timeIntervalSince(tStart)
-        print("""
-[MultiClip] 클립수=\(clips.count) \
-각길이=\(clips.map { "\(Int($0.duration))초" }.joined(separator: "+")) \
-합산=\(Int(totalSeconds))초 합성시간=\(String(format: "%.2f", elapsed))s
-""")
-
         return (outURL, clips)
     }
 
@@ -222,7 +255,6 @@ enum MultiClipComposition {
 
     static func composeAndExport(recipes: [ClipRecipe], muteAudio: Bool = false) async throws -> (url: URL, clips: [ClipDescriptor]) {
         guard !recipes.isEmpty else { throw MCError.noClips }
-        let tStart = Date()
 
         let composition = AVMutableComposition()
         guard let compVideo = composition.addMutableTrack(
@@ -234,13 +266,15 @@ enum MultiClipComposition {
                                         preferredTrackID: kCMPersistentTrackID_Invalid)
 
         let layerInstr = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
-        var insertAt   = CMTime.zero
-        var clips:     [ClipDescriptor] = []
+        var insertAt      = CMTime.zero
+        var clips:        [ClipDescriptor] = []
+        var clipIdx       = 0
+        var audioInserted = 0
 
         for recipe in recipes {
-            let asset = AVURLAsset(url: recipe.url)
+            let asset: AVAsset = recipe.resolvedAsset ?? AVURLAsset(url: recipe.url)
             let vts   = try await asset.loadTracks(withMediaType: .video)
-            guard let vt = vts.first else { continue }
+            guard let vt = vts.first else { clipIdx += 1; continue }
 
             let natSz  = try await vt.load(.naturalSize)
             let prefTf = try await vt.load(.preferredTransform)
@@ -252,10 +286,13 @@ enum MultiClipComposition {
 
             try compVideo.insertTimeRange(clipRange, of: vt, at: insertAt)
 
-            if let ca = compAudio,
+            // 음소거=true이면 compAudio=nil → 조건 자체가 false → 전 클립 오디오 삽입 없음
+            if !muteAudio,
+               let ca = compAudio,
                let ats = try? await asset.loadTracks(withMediaType: .audio),
                let at  = ats.first {
                 try? ca.insertTimeRange(clipRange, of: at, at: insertAt)
+                audioInserted += 1
             }
 
             layerInstr.setTransform(
@@ -265,11 +302,13 @@ enum MultiClipComposition {
             clips.append(ClipDescriptor(url: recipe.url, duration: recipe.trimmedDuration,
                                         trimStart: recipe.trimStart, trimEnd: recipe.trimEnd))
             insertAt = CMTimeAdd(insertAt, clipRange.duration)
+            clipIdx += 1
         }
         guard !clips.isEmpty else { throw MCError.noVideoTrack }
 
+        print("[MultiClip] export 음소거=\(muteAudio) 삽입오디오=\(audioInserted)개")
+
         let totalDuration = insertAt
-        let totalSeconds  = CMTimeGetSeconds(totalDuration)
 
         let vcInstr = AVMutableVideoCompositionInstruction()
         vcInstr.timeRange         = CMTimeRange(start: .zero, duration: totalDuration)
@@ -303,11 +342,35 @@ enum MultiClipComposition {
             }
         }
 
-        let elapsed    = Date().timeIntervalSince(tStart)
-        let trimLog    = clips.map { "\(Int($0.trimStart))-\(Int($0.trimEnd))s" }.joined(separator: ", ")
-        print("[MultiClip] 클립수=\(clips.count) 각트림=[\(trimLog)] 합산=\(Int(totalSeconds))초 합성시간=\(String(format: "%.2f", elapsed))s")
-
         return (outURL, clips)
+    }
+
+    // MARK: - PHAsset 해석
+
+    /// PHAsset.localIdentifier → AVAsset 해석.
+    /// AVComposition(슬로모션·편집 영상) 포함 모든 타입 수용.
+    /// fileExists 체크 없음 — PHImageManager가 반환하는 모든 AVAsset 타입 사용.
+    static func resolveAVAsset(assetID: String) async throws -> AVAsset {
+        enum E: Error { case notFound, failed }
+        guard let phAsset = PHAsset.fetchAssets(
+            withLocalIdentifiers: [assetID], options: nil).firstObject
+        else { throw E.notFound }
+
+        return try await withCheckedThrowingContinuation { cont in
+            let opts = PHVideoRequestOptions()
+            opts.deliveryMode           = .highQualityFormat
+            opts.version                = .current
+            opts.isNetworkAccessAllowed = true
+            opts.progressHandler = { _, _, _, _ in }
+            var resumed = false
+            PHImageManager.default().requestAVAsset(forVideo: phAsset, options: opts) { avAsset, _, info in
+                guard !resumed else { return }
+                resumed = true
+                if let err = info?[PHImageErrorKey] as? Error { cont.resume(throwing: err); return }
+                if let asset = avAsset { cont.resume(returning: asset) }
+                else                   { cont.resume(throwing: E.failed) }
+            }
+        }
     }
 
     // MARK: - Private

@@ -16,9 +16,7 @@
 	<string>러닝 공유 카드 및 영상을 사진첩에 저장하거나 사진을 불러옵니다.</string>
 	<key>UIAppFonts</key>
 	<array>
-		<string>Gaegu-Regular.ttf</string>
 		<string>NanumPenScript-Regular.ttf</string>
-		<string>NanumBrushScript-Regular.ttf</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

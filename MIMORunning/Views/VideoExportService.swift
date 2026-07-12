@@ -58,10 +58,10 @@ struct VideoExportService {
     //   4. sdrSaturation 은 마지막, 1.02 이상 금지
 
     /// 미드톤 리프트. 0.50 그레이를 얼마나 올리나(+%). 범위 0.00–0.10, 기본 0.05.
-    static var sdrMidtoneLift: Float = 0.05
+    static var sdrMidtoneLift: Float = 0.07
 
     /// 하이라이트 롤오프 상한. 1.0 화이트가 이 값으로 부드럽게 압축됨. 범위 0.93–1.00, 기본 0.96.
-    static var sdrHighlightCeiling: Float = 0.96
+    static var sdrHighlightCeiling: Float = 0.98
 
     /// 로컬 콘트라스트(클래리티). CIUnsharpMask intensity, 반경 25px(광역 선명도).
     /// 0.0 = off, 범위 0.05–0.20, 기본 0.12.

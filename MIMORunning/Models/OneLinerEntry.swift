@@ -35,7 +35,7 @@ final class OneLinerEntry {
     // MARK: Typed accessors
 
     var font: OneLinerFont {
-        get { OneLinerFont(rawValue: fontID) ?? .pen }
+        get { OneLinerFont.migrate(fontID) }
         set { fontID = newValue.rawValue }
     }
 
@@ -112,7 +112,7 @@ final class OneLinerEntry {
         }
     }
 
-    var hasContent: Bool { !previewText.isEmpty }
+    var hasContent: Bool { !previewText.isEmpty || hasMedia }
 
     // MARK: - Media info for list thumbnail
 

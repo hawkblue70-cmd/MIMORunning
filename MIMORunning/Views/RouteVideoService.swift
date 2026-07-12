@@ -46,8 +46,8 @@ struct RouteVideoFrameView: View {
                     .scaledToFill()
                     .frame(width: w, height: h)
                     .clipped()
-                    .brightness(-0.08)
-                    .saturation(0.85)
+                    .brightness(CardVisual.videoBrightnessBoost)
+                    .saturation(CardVisual.videoSaturationBoost)
 
                 RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress,
                                      hrSamples: hrSamplesForRoute,
@@ -257,8 +257,8 @@ struct BigNumberRouteVideoFrameView: View {
                     .scaledToFill()
                     .frame(width: w, height: h)
                     .clipped()
-                    .brightness(-0.08)
-                    .saturation(0.85)
+                    .brightness(CardVisual.videoBrightnessBoost)
+                    .saturation(CardVisual.videoSaturationBoost)
 
                 RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress,
                                      hrSamples: hrSamplesForRoute,

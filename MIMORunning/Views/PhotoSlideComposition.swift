@@ -45,7 +45,6 @@ enum PhotoSlideComposition {
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
     ) async throws -> URL {
 
-        let tStart = Date()
         guard !photos.isEmpty else { throw SlideError.noPhotos }
 
         let size       = targetSize
@@ -135,9 +134,6 @@ enum PhotoSlideComposition {
                 }
             }
         }
-
-        let elapsed = Date().timeIntervalSince(tStart)
-        print("[MultiClip] type=photo 사진수=\(n) 합산=\(Int(D))초 합성시간=\(String(format: "%.2f", elapsed))s")
 
         return outputURL
     }
@@ -246,7 +242,6 @@ enum PhotoSlideComposition {
         let wMFontPx: CGFloat = 9  * vScale
         let wMZoneH: CGFloat  = wMTopPad + ceil(wMFontPx * 1.5) + 6 * vScale
         let textMaxW: CGFloat = W - 2 * hPad
-        let shadowOffX = 1 * vScale; let shadowOffY = 2 * vScale; let shadowBlur = 5 * vScale
         let imgFormat   = UIGraphicsImageRendererFormat()
         imgFormat.scale = 1.0; imgFormat.opaque = false
         let cursorW: CGFloat = max(3.0, vScale * 0.8)
@@ -394,9 +389,10 @@ enum PhotoSlideComposition {
             let windowDur = page.winEnd - page.winStart
 
             let clip        = page.clipIdx < useRecipes.count ? useRecipes[page.clipIdx] : useRecipes[0]
-            let fontSize    = 20.0 * clip.fontChoice.sizeScale * clip.sizeLevel.scale * vScale
-            let lineSpacing = fontSize * 0.1
-            let uiFont      = clip.fontChoice.uiFont(size: fontSize)
+            let fontSize    = OneLinerFont.basePt * clip.fontChoice.sizeScale * clip.sizeLevel.scale * vScale
+            let uiFont      = clip.fontChoice.boldUIFont(size: fontSize)
+            let plateLayout = clip.plateOn ? PlateLayout(uiFont: uiFont, vScale: vScale) : nil
+            let lineSpacing = plateLayout?.lineSpacing ?? (fontSize * 0.1)
             let lineH       = uiFont.lineHeight + lineSpacing
             let nsAlign: NSTextAlignment = {
                 switch clip.position {
@@ -408,17 +404,25 @@ enum PhotoSlideComposition {
             let pStyle = NSMutableParagraphStyle()
             pStyle.lineSpacing = lineSpacing
             pStyle.alignment   = nsAlign
-            let textUIColor = clip.textColor.uiColor
+            let textUIColor = clip.plateOn
+                ? clip.plateColorPreset.textUIColor
+                : clip.textColor.uiColor
             var textAttrs: [NSAttributedString.Key: Any] = [
                 .font: uiFont, .foregroundColor: textUIColor, .paragraphStyle: pStyle
             ]
-            if clip.outline {
-                textAttrs[.strokeWidth] = CGFloat(-1.8)
-                textAttrs[.strokeColor] = UIColor.black.withAlphaComponent(0.6)
-            } else {
-                textAttrs[.strokeWidth] = CGFloat(-3.5)
+            // 합성 볼드: pen/brush만 적용(size 비례), gothic/round는 실제 볼드 웨이트 사용
+            let synStroke = clip.fontChoice.syntheticBoldStroke(for: fontSize)
+            if synStroke != 0 {
+                textAttrs[.strokeWidth] = synStroke
                 textAttrs[.strokeColor] = textUIColor
             }
+            // 8방향 테두리: borderUIColor fill, 별도 borderAttrs (blur 0, lineJoin=round)
+            let borderOffset: CGFloat = clip.hasBorder ? fontSize * clip.textColor.borderOffsetFactor : 0
+            let borderAttrs: [NSAttributedString.Key: Any]? = clip.hasBorder ? [
+                .font: uiFont,
+                .foregroundColor: clip.textColor.borderUIColor,
+                .paragraphStyle: pStyle
+            ] : nil
             let cursorH: CGFloat = ceil(uiFont.capHeight + abs(uiFont.descender)) + 2
             func measureLastLine(_ s: String) -> CGFloat {
                 let ls = s.split(separator: "\n", omittingEmptySubsequences: false)
@@ -427,7 +431,8 @@ enum PhotoSlideComposition {
             }
 
             // ── 타임라인 계산 ──────────────────────────────────────────────────
-            let isFade = clip.appearanceMode == .fade
+            let isFade  = clip.appearanceMode == .fade
+            let isFlyIn = clip.appearanceMode == .flyIn
             var charAppearTimes: [Double] = []  // typing 전용
             let appearEnd: Double   // 텍스트 완전히 보이는 시점
             let fadeStart: Double
@@ -437,6 +442,15 @@ enum PhotoSlideComposition {
                 appearEnd = fi
                 // 페이드 모드: 클립(페이지) 끝까지 유지, 마지막 순간에만 짧게 페이드아웃
                 fadeStart = page.isLast ? D : max(fi + 0.05, page.winEnd - fadeTime)
+                fadeEnd   = page.isLast ? D : min(page.winEnd, fadeStart + fadeTime)
+            } else if isFlyIn {
+                // 줄 수만큼 stagger 반영: 마지막 줄 시작 + 0.30 s
+                let lineDelay_t   = 0.25
+                let lineTexts_t   = page.text.components(separatedBy: "\n")
+                let nonEmptyCnt_t = lineTexts_t.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+                let slideEnd      = page.winStart + startDelay + Double(max(0, nonEmptyCnt_t - 1)) * lineDelay_t + 0.30
+                appearEnd = slideEnd
+                fadeStart = page.isLast ? D : max(slideEnd + 0.05, page.winEnd - fadeTime)
                 fadeEnd   = page.isLast ? D : min(page.winEnd, fadeStart + fadeTime)
             } else {
                 let budget  = max(0.1, windowDur - startDelay - holdTime - (page.isLast ? 0 : fadeTime))
@@ -466,17 +480,23 @@ enum PhotoSlideComposition {
                 size: CGSize(width: textMaxW, height: textLayerH), format: imgFormat)
             let fallbackImg = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1), format: imgFormat)
                 .image { _ in }.cgImage!
-            // 페이드: 완성 이미지 1장(index 0=full). 타이핑: N+1장(0=공백, 1…N=누적).
-            let renderRange = isFade ? [N] : Array(0...N)
+            // 페이드: 완성 이미지 1장. 타이핑: N+1장. 날아오기: 줄별 개별 렌더링(아래 isFlyIn 블록에서 처리).
+            let renderRange = isFade ? [N] : (isFlyIn ? [] : Array(0...N))
             var charImages: [CGImage] = []
             for k in renderRange {
                 let cgImg = imgRenderer.image { ctx in
                     guard k > 0 else { return }
-                    ctx.cgContext.setShadow(offset: CGSize(width: shadowOffX, height: shadowOffY),
-                                            blur: shadowBlur,
-                                            color: UIColor.black.withAlphaComponent(0.55).cgColor)
-                    NSAttributedString(string: String(chars.prefix(k)), attributes: textAttrs)
-                        .draw(in: CGRect(x: 0, y: 0, width: textMaxW, height: textLayerH))
+                    ctx.cgContext.setLineJoin(.round)
+                    let str  = String(chars.prefix(k))
+                    let rect = CGRect(x: 0, y: 0, width: textMaxW, height: textLayerH)
+                    if let ba = borderAttrs {
+                        let bStr = NSAttributedString(string: str, attributes: ba)
+                        let o = borderOffset
+                        for (ox, oy): (CGFloat, CGFloat) in [(-o,-o),(o,-o),(-o,o),(o,o),(-o,0),(o,0),(0,-o),(0,o)] {
+                            bStr.draw(in: rect.offsetBy(dx: ox, dy: oy))
+                        }
+                    }
+                    NSAttributedString(string: str, attributes: textAttrs).draw(in: rect)
                 }.cgImage
                 charImages.append(cgImg ?? fallbackImg)
             }
@@ -504,6 +524,42 @@ enum PhotoSlideComposition {
                           forKey: "opacity")
 
             if N > 0 {
+                // 음영판 줄별 판: textLayer보다 먼저 추가, 애니메이션 동기화를 위해 참조 보관
+                var plateLayers:      [CALayer] = []
+                var plateLineIndices: [Int]     = []
+                // 날아오기 모드는 줄별 루프 내에서 판+텍스트를 동시 생성.
+                if !isFlyIn, let pl = plateLayout {
+                    let platePadH = pl.padH
+                    let platePadV = pl.padV
+                    let cornerR   = pl.cornerR
+                    let lineStep  = pl.lineStep
+                    let plateH    = pl.plateH
+                    let anchorX: CGFloat
+                    let anchorPosX: CGFloat
+                    switch nsAlign {
+                    case .center: anchorX = 0.5; anchorPosX = hPad + textMaxW / 2
+                    case .right:  anchorX = 1.0; anchorPosX = hPad + textMaxW
+                    default:      anchorX = 0.0; anchorPosX = hPad
+                    }
+                    for (i, rawLine) in page.text.components(separatedBy: "\n").enumerated() {
+                        let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { continue }
+                        let lineW  = min(ceil(NSAttributedString(string: trimmed, attributes: textAttrs).size().width), textMaxW)
+                        let plateW = lineW + 2 * platePadH
+                        let lineTopY = textFrame.minY + CGFloat(i) * lineStep
+                        let pLayer = CALayer()
+                        pLayer.anchorPoint     = CGPoint(x: anchorX, y: 0.5)
+                        pLayer.position        = CGPoint(x: anchorPosX, y: lineTopY - platePadV + plateH / 2)
+                        pLayer.bounds          = CGRect(x: 0, y: 0, width: plateW, height: plateH)
+                        pLayer.backgroundColor = clip.plateColorPreset.plateUIColorWithAlpha.cgColor
+                        pLayer.cornerRadius    = cornerR
+                        pLayer.masksToBounds   = true
+                        pageLayer.addSublayer(pLayer)
+                        plateLayers.append(pLayer)
+                        plateLineIndices.append(i)
+                    }
+                }
+
                 let textLayer = CALayer()
                 textLayer.frame           = textFrame
                 textLayer.contentsGravity = .topLeft
@@ -515,26 +571,32 @@ enum PhotoSlideComposition {
                     textLayer.opacity  = 0.0
                     let tiS = max(0.0001, (page.winStart + startDelay) / D)
                     let tiE = min(appearEnd / D, 1.0)
-                    textLayer.add(linearAnim("opacity",
-                                             keyTimes: [0.0, NSNumber(value: tiS), NSNumber(value: tiE), 1.0],
-                                             values:   [Float(0), Float(0), Float(1), Float(1)]),
+                    let fadeKT: [NSNumber] = [0.0, NSNumber(value: tiS), NSNumber(value: tiE), 1.0]
+                    let fadeV:  [Any]      = [Float(0), Float(0), Float(1), Float(1)]
+                    textLayer.add(linearAnim("opacity", keyTimes: fadeKT, values: fadeV),
                                   forKey: "textFade")
-                    // 팝: 페이드 완료 직후 1회 1.2→1.0 스프링
+                    // 음영판도 함께 페이드인
+                    for pLayer in plateLayers {
+                        pLayer.opacity = 0.0
+                        pLayer.add(linearAnim("opacity", keyTimes: fadeKT, values: fadeV),
+                                   forKey: "plateFade")
+                    }
+                    // 팝: 페이드 완료 직후 1회 1.25→1.0 스프링 (반동 강화)
                     if clip.decorEffect == .pop {
                         let pop = CAKeyframeAnimation(keyPath: "transform.scale")
-                        pop.values          = [1.2, 1.08, 0.96, 1.02, 1.0]
-                        pop.keyTimes        = [0.0, 0.3,  0.6,  0.82, 1.0] as [NSNumber]
-                        pop.duration        = 0.42
+                        pop.values          = [1.25, 1.10, 0.94, 1.03, 1.0]
+                        pop.keyTimes        = [0.0,  0.3,  0.6,  0.82, 1.0] as [NSNumber]
+                        pop.duration        = 0.45
                         pop.beginTime       = AVCoreAnimationBeginTimeAtZero + appearEnd
                         pop.fillMode        = .both
                         pop.isRemovedOnCompletion = false
                         pop.calculationMode = .linear
                         textLayer.add(pop, forKey: "pop")
                     }
-                    // 흔들림
+                    // 흔들림 ±1.5° (주기 유지)
                     if clip.decorEffect == .wobble {
                         let wob = CAKeyframeAnimation(keyPath: "transform.rotation.z")
-                        wob.values           = [0.0, 0.014, 0.0, -0.014, 0.0]  // ±0.8°
+                        wob.values           = [0.0, 0.026, 0.0, -0.026, 0.0]  // ±1.5°
                         wob.keyTimes         = [0.0, 0.25,  0.5,  0.75,  1.0]
                         wob.duration         = 0.5
                         wob.repeatCount      = .infinity
@@ -545,6 +607,81 @@ enum PhotoSlideComposition {
                         textLayer.add(wob, forKey: "wobble")
                     }
                     pageLayer.addSublayer(textLayer)
+                } else if isFlyIn {
+                    // ── 날아오기 모드: 줄별 순차 ─────────────────────────────────
+                    // 줄마다 독립 레이어, 0.25 s 간격 stagger.
+                    let lineDelay:    Double  = 0.25
+                    let flyDur:       Double  = 0.30
+                    // 켄번즈 반대 자동: 짝수 클립은 오른쪽에서(W), 홀수는 왼쪽에서(-W) 진입
+                    let slideX:       CGFloat = page.clipIdx % 2 == 0 ? W : -W
+                    let lineTexts     = page.text.components(separatedBy: "\n")
+                    let lineRenderer  = UIGraphicsImageRenderer(
+                        size: CGSize(width: textMaxW, height: ceil(lineH)), format: imgFormat)
+                    let anchorX:    CGFloat
+                    let anchorPosX: CGFloat
+                    switch nsAlign {
+                    case .center: anchorX = 0.5; anchorPosX = hPad + textMaxW / 2
+                    case .right:  anchorX = 1.0; anchorPosX = hPad + textMaxW
+                    default:      anchorX = 0.0; anchorPosX = hPad
+                    }
+                    var staggerIdx = 0
+                    for (i, rawLine) in lineTexts.enumerated() {
+                        let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { continue }
+                        let flyBegin = page.winStart + startDelay + Double(staggerIdx) * lineDelay
+                        staggerIdx  += 1
+                        let lineTopY = textFrame.minY + CGFloat(i) * lineH
+                        // 판 레이어 (텍스트보다 먼저 → z-order 아래)
+                        if let pl = plateLayout {
+                            let lineW  = min(ceil(NSAttributedString(string: trimmed, attributes: textAttrs).size().width), textMaxW)
+                            let pLayer = CALayer()
+                            pLayer.anchorPoint     = CGPoint(x: anchorX, y: 0.5)
+                            pLayer.position        = CGPoint(x: anchorPosX, y: lineTopY - pl.padV + pl.plateH / 2)
+                            pLayer.bounds          = CGRect(x: 0, y: 0, width: lineW + 2 * pl.padH, height: pl.plateH)
+                            pLayer.backgroundColor = clip.plateColorPreset.plateUIColorWithAlpha.cgColor
+                            pLayer.cornerRadius    = pl.cornerR
+                            pLayer.masksToBounds   = true
+                            pageLayer.addSublayer(pLayer)
+                            let pFly                     = CABasicAnimation(keyPath: "transform.translation.x")
+                            pFly.beginTime               = AVCoreAnimationBeginTimeAtZero + flyBegin
+                            pFly.duration                = flyDur
+                            pFly.fromValue               = Float(slideX)
+                            pFly.toValue                 = Float(0)
+                            pFly.timingFunction          = CAMediaTimingFunction(name: .easeOut)
+                            pFly.fillMode                = .both
+                            pFly.isRemovedOnCompletion   = false
+                            pLayer.add(pFly, forKey: "flyIn")
+                        }
+                        // 텍스트 레이어
+                        let lineImg = lineRenderer.image { ctx in
+                            ctx.cgContext.setLineJoin(.round)
+                            let lRect = CGRect(x: 0, y: 0, width: textMaxW, height: ceil(lineH))
+                            if let ba = borderAttrs {
+                                let bStr = NSAttributedString(string: trimmed, attributes: ba)
+                                let o = borderOffset
+                                for (ox, oy): (CGFloat, CGFloat) in [(-o,-o),(o,-o),(-o,o),(o,o),(-o,0),(o,0),(0,-o),(0,o)] {
+                                    bStr.draw(in: lRect.offsetBy(dx: ox, dy: oy))
+                                }
+                            }
+                            NSAttributedString(string: trimmed, attributes: textAttrs).draw(in: lRect)
+                        }.cgImage ?? fallbackImg
+                        let lineLayer                    = CALayer()
+                        lineLayer.frame                  = CGRect(x: textFrame.origin.x, y: lineTopY,
+                                                                  width: textMaxW, height: ceil(lineH))
+                        lineLayer.contentsGravity        = .topLeft
+                        lineLayer.masksToBounds          = false
+                        lineLayer.contents               = lineImg
+                        let fly                          = CABasicAnimation(keyPath: "transform.translation.x")
+                        fly.beginTime                    = AVCoreAnimationBeginTimeAtZero + flyBegin
+                        fly.duration                     = flyDur
+                        fly.fromValue                    = Float(slideX)
+                        fly.toValue                      = Float(0)
+                        fly.timingFunction               = CAMediaTimingFunction(name: .easeOut)
+                        fly.fillMode                     = .both
+                        fly.isRemovedOnCompletion        = false
+                        lineLayer.add(fly, forKey: "flyIn")
+                        pageLayer.addSublayer(lineLayer)
+                    }
                 } else {
                     // ── 타이핑 모드 ──────────────────────────────────────────────
                     textLayer.contents = charImages[0]
@@ -607,6 +744,48 @@ enum PhotoSlideComposition {
                     cursorLayer.add(discreteAnim("opacity", keyTimes: blinkKeyTimes, values: blinkValues),
                                     forKey: "opacity")
                     pageLayer.addSublayer(cursorLayer)
+
+                    // ── 음영판 타이핑 동기화: 판 폭이 글자를 따라 늘어남 ──────────────
+                    if !plateLayers.isEmpty {
+                        let textLines = page.text.components(separatedBy: "\n")
+                        var lineCharStarts: [Int] = []
+                        var lineCharEnds:   [Int] = []
+                        var cur = 0
+                        for line in textLines {
+                            lineCharStarts.append(cur)
+                            cur += line.count
+                            lineCharEnds.append(cur)
+                            cur += 1  // \n 건너뜀
+                        }
+                        let platePadH: CGFloat = 8 * vScale
+                        for (j, pLayer) in plateLayers.enumerated() {
+                            let lineIdx = plateLineIndices[j]
+                            guard lineIdx < lineCharStarts.count else { continue }
+                            let s  = lineCharStarts[lineIdx]
+                            let e  = lineCharEnds[lineIdx]
+                            let fH = pLayer.bounds.height
+                            let fW = pLayer.bounds.width
+                            var wKeyTimes: [NSNumber] = [0.0]
+                            var wValues:   [Any]      = [NSValue(cgRect: CGRect(x: 0, y: 0, width: 0, height: fH))]
+                            for k in 1...N {
+                                let typed = max(0, min(k, e) - s)
+                                let pW: CGFloat
+                                if typed > 0 {
+                                    let t = String(chars[s..<(s + typed)])
+                                    let w = min(ceil(NSAttributedString(string: t, attributes: textAttrs).size().width), textMaxW)
+                                    pW = w + 2 * platePadH
+                                } else {
+                                    pW = 0
+                                }
+                                wKeyTimes.append(NSNumber(value: max(0.0001, charAppearTimes[k - 1] / D)))
+                                wValues.append(NSValue(cgRect: CGRect(x: 0, y: 0, width: pW, height: fH)))
+                            }
+                            wKeyTimes.append(1.0)
+                            wValues.append(NSValue(cgRect: CGRect(x: 0, y: 0, width: fW, height: fH)))
+                            pLayer.bounds = CGRect(x: 0, y: 0, width: 0, height: fH)
+                            pLayer.add(discreteAnim("bounds", keyTimes: wKeyTimes, values: wValues), forKey: "plateBounds")
+                        }
+                    }
                 }
             }
             contentLayer.addSublayer(pageLayer)
@@ -693,18 +872,35 @@ enum PhotoSlideComposition {
 
         // ── Full-video title overlay ───────────────────────────────────────────────────
         if !videoTitle.isEmpty {
-            let tFontPx  = 20.0 * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale * vScale
+            let tFontPx  = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale * vScale
             let tUIFont  = titleStyle.fontChoice.uiFont(size: tFontPx)
             let tUIColor = titleStyle.textColor.uiColor
             let pStyle2  = NSMutableParagraphStyle()
-            pStyle2.alignment = .center
+            pStyle2.alignment = {
+                switch titleStyle.position {
+                case .topLeading, .leading, .bottomLeading:    return NSTextAlignment.left
+                case .topTrailing, .trailing, .bottomTrailing: return NSTextAlignment.right
+                default: return NSTextAlignment.center
+                }
+            }()
+            // 채움 attrs (합성 볼드 포함, 테두리 없을 때만)
             var tAttrs: [NSAttributedString.Key: Any] = [
                 .font: tUIFont, .foregroundColor: tUIColor, .paragraphStyle: pStyle2
             ]
-            if titleStyle.outline {
-                tAttrs[.strokeWidth] = CGFloat(-1.8)
-                tAttrs[.strokeColor] = UIColor.black.withAlphaComponent(0.6)
+            if !titleStyle.outline {
+                let synStroke = titleStyle.fontChoice.syntheticBoldStroke(for: tFontPx)
+                if synStroke != 0 {
+                    tAttrs[.strokeWidth] = synStroke
+                    tAttrs[.strokeColor] = tUIColor
+                }
             }
+            // 8방향 테두리 attrs (borderUIColor fill, blur 0, lineJoin=round) — §15.3
+            let tBorderOffset: CGFloat = titleStyle.outline ? tFontPx * titleStyle.textColor.borderOffsetFactor : 0
+            let tBorderAttrs: [NSAttributedString.Key: Any]? = titleStyle.outline ? [
+                .font: tUIFont,
+                .foregroundColor: titleStyle.textColor.borderUIColor,
+                .paragraphStyle: pStyle2
+            ] : nil
             let tAttrStr  = NSAttributedString(string: videoTitle, attributes: tAttrs)
             let tBounds   = tAttrStr.boundingRect(
                 with: CGSize(width: textMaxW, height: 4000),
@@ -718,11 +914,16 @@ enum PhotoSlideComposition {
             let tRenderer = UIGraphicsImageRenderer(
                 size: CGSize(width: textMaxW, height: tLayerH), format: imgFormat)
             let tImg = tRenderer.image { ctx in
-                ctx.cgContext.setShadow(
-                    offset: CGSize(width: shadowOffX, height: shadowOffY),
-                    blur: shadowBlur,
-                    color: UIColor.black.withAlphaComponent(0.55).cgColor)
-                tAttrStr.draw(in: CGRect(x: 0, y: 0, width: textMaxW, height: tLayerH))
+                ctx.cgContext.setLineJoin(.round)
+                let tRect = CGRect(x: 0, y: 0, width: textMaxW, height: tLayerH)
+                if let ba = tBorderAttrs {
+                    let bStr = NSAttributedString(string: videoTitle, attributes: ba)
+                    let o = tBorderOffset
+                    for (ox, oy): (CGFloat, CGFloat) in [(-o,-o),(o,-o),(-o,o),(o,o),(-o,0),(o,0),(0,-o),(0,o)] {
+                        bStr.draw(in: tRect.offsetBy(dx: ox, dy: oy))
+                    }
+                }
+                tAttrStr.draw(in: tRect)
             }
             let titleLayer = CALayer()
             titleLayer.frame           = CGRect(x: hPad, y: tFrameY, width: textMaxW, height: tLayerH)
@@ -745,8 +946,8 @@ enum PhotoSlideComposition {
             let dateStr     = df.string(from: activityDate)
             let dateFontPx: CGFloat = 11 * vScale
             let dateAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .light),
-                .foregroundColor: UIColor.white.withAlphaComponent(0.55)
+                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
+                .foregroundColor: UIColor.white
             ]
             let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
             let dateSz      = dateAttrStr.size()

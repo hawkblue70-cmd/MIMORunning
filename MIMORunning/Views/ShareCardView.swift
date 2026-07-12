@@ -155,10 +155,13 @@ enum CardVisual {
     static let videoLargeTextShadowColor:   Color   = .black.opacity(0.75)
     /// Photo background brightness correction (+0.03).
     static let photoBrightnessBoost:        Double  = 0.03
-    /// Video background brightness correction (+0.10).
-    static let videoBrightnessBoost:        Double  = 0.10
-    static let videoSaturationBoost:        Double  = 1.05
+    /// Video brightness: white CALayer overlay opacity in AVFoundation export path.
     static let videoBrightenLayerOpacity:   Float   = 0.10  // white CALayer opacity for AVFoundation path
+    /// Video brightness for SwiftUI frames (RouteVideoService map snapshots).
+    static let videoBrightnessBoost:        Double  = 0.10
+    /// Saturation multiplier for video frames. 눈 튜닝: 1.05(원본) → 1.03 → 1.02 … 단계 조절.
+    /// 상수 한 곳에서 관리 — RouteVideoService 미리보기·export 공유.
+    static let videoSaturationBoost:        Double  = 1.05
     /// Route line art shadow: black 55%, radius 3, y 1.
     static let routeShadowColor:  Color   = .black.opacity(0.55)
     static let routeShadowRadius: CGFloat = 3
@@ -4489,23 +4492,15 @@ struct ShareCardScreen: View {
     private func buildPreview() {
         guard !previewPlayer.isBuilding else { return }
         Task {
-            if oneLinerIsPhotoSlide {
-                let photos = oneLinerClipRecipes.compactMap { $0.thumbnail }
-                guard !photos.isEmpty else { return }
-                await previewPlayer.buildForPhotoSlides(
-                    photos: photos, recipes: oneLinerClipRecipes,
-                    activityDate: activity.date, showDate: oneLinerShowDate,
-                    metricChips: oneLinerActiveMetricChips,
-                    videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
-                previewPlayer.play()
-            } else if !oneLinerClipRecipes.isEmpty {
-                await previewPlayer.buildForVideoClips(
-                    recipes: oneLinerClipRecipes, activityDate: activity.date,
-                    showDate: oneLinerShowDate, muteAudio: oneLinerMuteAudio,
-                    metricChips: oneLinerActiveMetricChips,
-                    videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
-                previewPlayer.play()
-            }
+            // 영상·슬라이드 모두 thumbnail 기반 단일 경로 — PHAsset 해석 불필요.
+            let photos = oneLinerClipRecipes.compactMap { $0.thumbnail }
+            guard !photos.isEmpty else { return }
+            await previewPlayer.buildForPhotoSlides(
+                photos: photos, recipes: oneLinerClipRecipes,
+                activityDate: activity.date, showDate: oneLinerShowDate,
+                metricChips: oneLinerActiveMetricChips,
+                videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
+            previewPlayer.play()
         }
     }
 
@@ -4544,7 +4539,7 @@ struct ShareCardScreen: View {
                         exportSrc = recipes[0].url
                     }
                     defer { cleanup.map { try? FileManager.default.removeItem(at: $0) } }
-                    let isMuted = needsCompose ? false : oneLinerMuteAudio
+                    let isMuted = oneLinerMuteAudio
                     let out = try await VideoExportService.exportOneLinerClipBoundVideo(
                         sourceURL: exportSrc, recipes: recipes,
                         fontChoice: oneLinerFont, textColor: oneLinerColor,

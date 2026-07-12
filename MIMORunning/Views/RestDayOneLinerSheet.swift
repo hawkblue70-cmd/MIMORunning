@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Combine
 import Photos
 import PhotosUI
 import AVFoundation
@@ -11,6 +12,13 @@ private enum RestDayTemplate: String, CaseIterable {
     case story = "스토리"
     case video = "영상"
     case slide = "슬라이드"
+}
+
+// MARK: - RestDayLoadGuard
+// @StateObject: 뷰 생존 기간 동안 유지, re-render에 재설정 안 됨.
+// @State보다 확실하게 loadEntry 1회 보장 (배칭 타이밍 이슈 없음).
+private final class RestDayLoadGuard: ObservableObject {
+    @Published var hasLoaded = false
 }
 
 // MARK: - RestDayOneLinerSheet
@@ -71,8 +79,9 @@ struct RestDayOneLinerSheet: View {
     @State private var videoModeTitleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
     @State private var slideModeTitle:    String               = ""
     @State private var slideModeTitleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
-    @State private var didInitialize:    Bool                 = false
+    @StateObject private var loadGuard:  RestDayLoadGuard     = RestDayLoadGuard()
     @State private var previewPlayer:    OneLinerPreviewPlayer = OneLinerPreviewPlayer()
+    @State private var exportError:     String?              = nil
 
     @FocusState private var fieldFocused: Bool
 
@@ -100,9 +109,16 @@ struct RestDayOneLinerSheet: View {
     }
 
     /// Text shown on the card preview.
-    /// Video/slide mode: shows first non-empty line of the selected clip; falls back to any clip.
+    /// Story mode: joins all non-empty lines so both lines appear (matching export).
+    /// Video/slide mode: shows first non-empty line only (video animation handles pagination).
     private var cardText: String {
-        if selectedTemplate == .video || selectedTemplate == .slide || selectedTemplate == .story {
+        if selectedTemplate == .story {
+            let safeIdx = clipRecipes.indices.contains(currentClipIndex) ? currentClipIndex : 0
+            let clip = clipRecipes.indices.contains(safeIdx) ? clipRecipes[safeIdx] : clipRecipes.first
+            return clip?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .joined(separator: "\n") ?? ""
+        }
+        if selectedTemplate == .video || selectedTemplate == .slide {
             let safeIdx = clipRecipes.indices.contains(currentClipIndex) ? currentClipIndex : 0
             let clip = clipRecipes.indices.contains(safeIdx) ? clipRecipes[safeIdx] : clipRecipes.first
             return clip?.lines.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? ""
@@ -153,11 +169,21 @@ struct RestDayOneLinerSheet: View {
         }
         return .none
     }
-    private var previewOutline: Bool {
+    private var previewHasBorder: Bool {
+        guard (isClipMode || selectedTemplate == .story),
+              clipRecipes.indices.contains(currentClipIndex) else { return false }
+        return clipRecipes[currentClipIndex].hasBorder
+    }
+    private var previewPlateOn: Bool {
+        guard (isClipMode || selectedTemplate == .story),
+              clipRecipes.indices.contains(currentClipIndex) else { return false }
+        return clipRecipes[currentClipIndex].plateOn
+    }
+    private var previewPlatePreset: PlateColorPreset {
         if (isClipMode || selectedTemplate == .story), clipRecipes.indices.contains(currentClipIndex) {
-            return clipRecipes[currentClipIndex].outline
+            return clipRecipes[currentClipIndex].plateColorPreset
         }
-        return false
+        return .blackWhite
     }
 
     // MARK: Body
@@ -167,17 +193,32 @@ struct RestDayOneLinerSheet: View {
     private var mainContent: some View {
         navStack
             .interactiveDismissDisabled(previewPlayer.isReady)
-            .onAppear { loadEntry() }
+            .onAppear {
+                // @StateObject 가드: re-render·child-sheet 닫힘에 재실행 방지. @State보다 확실.
+                guard !loadGuard.hasLoaded else { return }
+                loadGuard.hasLoaded = true
+                loadEntry()
+            }
             .onChange(of: allEntries) { old, _ in
-                guard old.isEmpty, !didInitialize else { return }
+                // SwiftData 비동기 초기 로드 폴백: 첫 쿼리 결과가 빈 배열로 온 뒤 갱신될 때만 허용.
+                guard old.isEmpty, !loadGuard.hasLoaded else { return }
+                loadGuard.hasLoaded = true
                 loadEntry()
             }
             .onChange(of: photoPickerItems) { _, items in handlePhotoPicker(items) }
             .onChange(of: clipRecipes.count) { _, _ in
                 previewPlayer.invalidate()
             }
-            .onChange(of: videoTitle)  { _, _ in previewPlayer.invalidate() }
-            .onChange(of: titleStyle)  { _, _ in previewPlayer.invalidate() }
+            .onChange(of: videoTitle)     { _, _ in previewPlayer.invalidate() }
+            .onChange(of: titleStyle)     { _, _ in previewPlayer.invalidate() }
+            .onChange(of: muteVideoAudio) { _, muted in previewPlayer.setMuted(muted) }
+            .alert(AppLanguage.shared.s("내보내기 실패", "Export Failed"),
+                   isPresented: Binding(get: { exportError != nil },
+                                        set: { if !$0 { exportError = nil } })) {
+                Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { exportError = nil }
+            } message: {
+                if let msg = exportError { Text(msg) }
+            }
     }
 
     private var navStack: some View {
@@ -277,7 +318,9 @@ struct RestDayOneLinerSheet: View {
                 sizeLevel: previewSizeLevel,
                 appearanceMode: previewAppearanceMode,
                 decorEffect: previewDecorEffect,
-                outline: previewOutline,
+                hasBorder: previewHasBorder,
+                plateOn: previewPlateOn,
+                plateColorPreset: previewPlatePreset,
                 showDate: true,
                 captionMode: true,
                 videoTitle: selectedTemplate != .story ? videoTitle : "",
@@ -644,7 +687,19 @@ struct RestDayOneLinerSheet: View {
     }
 
     private func loadEntry() {
-        didInitialize = true
+        // 상태 초기화 — 다른 날짜로 시트가 재사용될 때 이전 날짜의 recipes가 남는 것 방지
+        storyModeRecipes    = []
+        videoModeRecipes    = []
+        slideModeRecipes    = []
+        clipRecipes         = []
+        videoTitle          = ""
+        titleStyle          = OneLinerTitleStyle()
+        videoModeTitle      = ""
+        videoModeTitleStyle = OneLinerTitleStyle()
+        slideModeTitle      = ""
+        slideModeTitleStyle = OneLinerTitleStyle()
+        selectedTemplate    = .story
+        currentClipIndex    = 0
 
         // Migrate legacy gradient entry for style only
         if let entry = gradientEntry {
@@ -755,7 +810,9 @@ struct RestDayOneLinerSheet: View {
             return
         }
 
-        // No clips — save gradient entry only
+        // No clips — videoTextEntry(v4recipes) 도 정리
+        if let vEntry = videoTextEntry { modelContext.delete(vEntry) }
+
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if let existing = gradientEntry {
             if trimmed.isEmpty { modelContext.delete(existing) } else { applyStyle(to: existing) }
@@ -782,6 +839,7 @@ struct RestDayOneLinerSheet: View {
         for recipe in storyModeRecipes + videoModeRecipes + slideModeRecipes {
             if let ref = recipe.thumbRef      { ClipThumbStore.delete(ref: ref) }
             if let ref = recipe.storedPhotoRef { OneLinerPhotoStore.delete(mediaRef: ref) }
+            if let ref = recipe.clipVideoRef  { ClipVideoStore.delete(ref: ref) }
         }
         storyModeRecipes = []
         videoModeRecipes = []
@@ -819,28 +877,6 @@ struct RestDayOneLinerSheet: View {
         }
     }
 
-    /// Resolves a PHAsset identifier to a usable file URL for compositing.
-    private func resolveVideoAsset(_ assetID: String) async throws -> URL {
-        enum E: Error { case notFound, noURL }
-        guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [assetID], options: nil).firstObject
-        else { throw E.notFound }
-        return try await withCheckedThrowingContinuation { cont in
-            let opts = PHVideoRequestOptions()
-            opts.deliveryMode        = .highQualityFormat
-            opts.isNetworkAccessAllowed = true
-            PHImageManager.default().requestAVAsset(forVideo: asset, options: opts) { avAsset, _, info in
-                if let err = info?[PHImageErrorKey] as? Error { cont.resume(throwing: err); return }
-                if let urlAsset = avAsset as? AVURLAsset,
-                   urlAsset.url.isFileURL,
-                   FileManager.default.fileExists(atPath: urlAsset.url.path) {
-                    cont.resume(returning: urlAsset.url)
-                } else {
-                    cont.resume(throwing: E.noURL)
-                }
-            }
-        }
-    }
-
     private func switchTemplate(to newTemplate: RestDayTemplate) {
         guard newTemplate != selectedTemplate else { return }
         syncActiveToBackingStore()
@@ -848,18 +884,26 @@ struct RestDayOneLinerSheet: View {
         previewPlayer.invalidate()
         withAnimation(.easeInOut(duration: 0.15)) { selectedTemplate = newTemplate }
         loadFromBackingStore(for: newTemplate)
+        // 영상/슬라이드로 전환 시 클립이 있으면 미리보기 자동 시작
+        if (newTemplate == .video || newTemplate == .slide), !clipRecipes.isEmpty {
+            buildPreview()
+        }
     }
 
     private func syncActiveToBackingStore() {
+        // 소스없음 클립(assetID·clipVideoRef·storedPhotoRef 모두 nil)은 배열에 영구 저장 금지
+        let valid = clipRecipes.filter {
+            $0.assetIdentifier != nil || $0.clipVideoRef != nil || $0.storedPhotoRef != nil
+        }
         switch selectedTemplate {
         case .story:
-            storyModeRecipes = clipRecipes
+            storyModeRecipes = valid
         case .video:
-            videoModeRecipes = clipRecipes
+            videoModeRecipes = valid
             videoModeTitle = videoTitle
             videoModeTitleStyle = titleStyle
         case .slide:
-            slideModeRecipes = clipRecipes
+            slideModeRecipes = valid
             slideModeTitle = videoTitle
             slideModeTitleStyle = titleStyle
         }
@@ -881,6 +925,13 @@ struct RestDayOneLinerSheet: View {
             titleStyle  = slideModeTitleStyle
         }
         currentClipIndex = 0
+        let srcs = clipRecipes.map { r -> String in
+            if let id = r.assetIdentifier { return "assetID:\(id.prefix(8))" }
+            if let ref = r.clipVideoRef   { return "clipVideoRef:\(ref.prefix(8))" }
+            if let pr  = r.storedPhotoRef { return "photo:\(pr.prefix(8))" }
+            return "소스없음"
+        }
+        print("[loadFromBackingStore] template=\(template) clips=\(clipRecipes.count) sources=\(srcs)")
     }
 
     private func buildRecipeSet(from recipes: [ClipRecipe], mode: String?,
@@ -888,9 +939,15 @@ struct RestDayOneLinerSheet: View {
                                 title: String = "",
                                 titleStyleParam: OneLinerTitleStyle = OneLinerTitleStyle()) -> SavedRecipeSet? {
         guard !recipes.isEmpty else { return nil }
-        let descs = recipes.map { r in
+        // 소스없음 클립은 저장 자체를 skip — 배열에 영구 기록 금지
+        let validRecipes = recipes.filter {
+            $0.assetIdentifier != nil || $0.clipVideoRef != nil || $0.storedPhotoRef != nil
+        }
+        guard !validRecipes.isEmpty else { return nil }
+        let descs = validRecipes.map { r in
             SavedClipDescriptor(
-                assetID: r.assetIdentifier, photoRef: r.storedPhotoRef,
+                assetID: r.assetIdentifier, clipVideoRef: r.clipVideoRef,
+                photoRef: r.storedPhotoRef,
                 thumbRef: r.thumbRef, trimStart: r.trimStart,
                 trimEnd: r.trimEnd, fullDuration: r.fullDuration,
                 lines: r.lines,
@@ -898,7 +955,8 @@ struct RestDayOneLinerSheet: View {
                 colorID: r.textColor.rawValue,
                 anchorIdx: CardPosition.allCases.firstIndex(of: r.position),
                 sizeID: r.sizeLevel.rawValue,
-                effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|\(r.outline ? 1 : 0)")
+                effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)P\(r.plateOn ? 1 : 0)|\(r.flyDirection.rawValue)",
+                plateColorID: r.plateColorPreset.rawValue)
         }
         return SavedRecipeSet(
             isPhotoSlide: isPhotoSlide || (mode == "story"),
@@ -917,7 +975,7 @@ struct RestDayOneLinerSheet: View {
         if let idx = set.titleAnchorIdx, CardPosition.allCases.indices.contains(idx) {
             style.position = CardPosition.allCases[idx]
         }
-        if let fid = set.titleFontID   { style.fontChoice = OneLinerFont(rawValue: fid) ?? .gothic }
+        if let fid = set.titleFontID   { style.fontChoice = OneLinerFont.migrate(fid) }
         if let cid = set.titleColorID  { style.textColor  = OneLinerTextColor(rawValue: cid) ?? .white }
         if let sid = set.titleSizeID   { style.sizeLevel  = TextSizeLevel(rawValue: sid) ?? .medium }
         style.outline = set.titleOutline
@@ -932,16 +990,32 @@ struct RestDayOneLinerSheet: View {
             if let pr = desc.photoRef { thumb = OneLinerPhotoStore.load(mediaRef: pr) }
             else if let tr = desc.thumbRef { thumb = ClipThumbStore.load(ref: tr) }
             else { thumb = nil }
-            let placeholder = URL(fileURLWithPath: NSTemporaryDirectory())
-            var recipe = ClipRecipe(url: placeholder, fullDuration: desc.fullDuration,
+            // 소스 결정: clipVideoRef(안정 복사본) → assetIdentifier(PHAsset 재해석) 순
+            let recipeURL: URL
+            if let ref = desc.clipVideoRef, let stableURL = ClipVideoStore.fileURL(ref: ref),
+               FileManager.default.fileExists(atPath: stableURL.path) {
+                // 앱 Documents 복사본 존재 → placeholder 없이 직접 사용
+                recipeURL = stableURL
+                print("[restoreRecipes] clip[\(restored.count)] clipVideoRef 안정 URL 사용")
+            } else if desc.assetID != nil {
+                // PHAsset localIdentifier 있음 → placeholder 생성 후 resolveVideoClips가 재취득
+                recipeURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("mimo_placeholder_\(UUID().uuidString)")
+            } else {
+                // 소스 없음 — 이 클립은 복구 불가. 저장 경로에서 필터되어야 함.
+                recipeURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("mimo_placeholder_\(UUID().uuidString)")
+            }
+            var recipe = ClipRecipe(url: recipeURL, fullDuration: desc.fullDuration,
                                    thumbnail: thumb)
             recipe.trimStart       = desc.trimStart
             recipe.trimEnd         = desc.trimEnd
             recipe.lines           = desc.lines
             recipe.assetIdentifier = desc.assetID
+            recipe.clipVideoRef    = desc.clipVideoRef
             recipe.storedPhotoRef  = desc.photoRef
             recipe.thumbRef        = desc.thumbRef
-            recipe.fontChoice = desc.fontID.flatMap { OneLinerFont(rawValue: $0) } ?? fontChoice
+            recipe.fontChoice = OneLinerFont.migrate(desc.fontID)
             recipe.textColor  = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? textColor
             if let idx = desc.anchorIdx, CardPosition.allCases.indices.contains(idx) {
                 recipe.position = CardPosition.allCases[idx]
@@ -949,19 +1023,37 @@ struct RestDayOneLinerSheet: View {
                 recipe.position = position
             }
             recipe.sizeLevel = desc.sizeID.flatMap { TextSizeLevel(rawValue: $0) } ?? .medium
-            // effectID 형식: "appearanceMode|decorEffect|outline(0/1)"
+            // effectID 형식: "appearanceMode|decorEffect|B{0|1}P{0|1}|flyDirection"
             // 레거시(구 comma-joined OneLinerEffect 포맷) 자동 마이그레이션: | 없으면 기본값 사용
+            // parts[2] 마이그레이션: B접두사=신규, "0"/"1"/"none"/"outline"/"plate"=구 readabilityStyle
             if let eid = desc.effectID, eid.contains("|") {
-                let parts = eid.split(separator: "|", maxSplits: 2).map(String.init)
+                let parts = eid.split(separator: "|", maxSplits: 3).map(String.init)
                 recipe.appearanceMode = parts.count > 0 ? (AppearanceMode(rawValue: parts[0]) ?? .typing) : .typing
                 recipe.decorEffect    = parts.count > 1 ? (DecorEffect(rawValue: parts[1]) ?? .none) : .none
-                recipe.outline        = parts.count > 2 ? parts[2] == "1" : false
+                if parts.count > 2 {
+                    let r = parts[2]
+                    if r.hasPrefix("B") {
+                        // 신규 포맷: "B{0|1}P{0|1}"
+                        recipe.hasBorder = r.contains("B1")
+                        recipe.plateOn   = r.contains("P1")
+                    } else {
+                        // 레거시 마이그레이션: readabilityStyle enum rawValue
+                        switch r {
+                        case "1", "outline": recipe.hasBorder = true;  recipe.plateOn = false
+                        case "plate":        recipe.hasBorder = false; recipe.plateOn = true
+                        default:             recipe.hasBorder = false; recipe.plateOn = false
+                        }
+                    }
+                }
+                recipe.flyDirection = parts.count > 3 ? (FlyInDirection(rawValue: parts[3]) ?? .trailing) : .trailing
             } else {
                 // 레거시 포맷: 기본값으로 초기화
                 recipe.appearanceMode = .typing
                 recipe.decorEffect    = .none
-                recipe.outline        = false
+                recipe.hasBorder      = false
+                recipe.plateOn        = false
             }
+            recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
             restored.append(recipe)
         }
         return restored
@@ -1012,35 +1104,30 @@ struct RestDayOneLinerSheet: View {
     private func buildPreview() {
         guard !previewPlayer.isBuilding else { return }
         Task {
-            if isPhotoSlideMode {
+            if selectedTemplate == .video {
+                // 영상 모드: PHAsset 재해석 후 AVPlayer 경로 (export와 동일 함수)
+                var resolved = clipRecipes
+                for i in resolved.indices {
+                    guard resolved[i].resolvedAsset == nil,
+                          !FileManager.default.fileExists(atPath: resolved[i].url.path),
+                          let assetID = resolved[i].assetIdentifier else { continue }
+                    do {
+                        resolved[i].resolvedAsset = try await MultiClipComposition.resolveAVAsset(assetID: assetID)
+                    } catch { }
+                }
+                await previewPlayer.buildForVideoClips(
+                    recipes: resolved, activityDate: date, showDate: true,
+                    muteAudio: muteVideoAudio, videoTitle: videoTitle, titleStyle: titleStyle)
+            } else {
+                // 슬라이드·스토리: 썸네일 기반 슬라이드 미리보기
                 let photos = clipRecipes.compactMap { $0.thumbnail }
                 guard !photos.isEmpty else { return }
                 await previewPlayer.buildForPhotoSlides(
                     photos: photos, recipes: clipRecipes,
                     activityDate: date, showDate: true,
                     videoTitle: videoTitle, titleStyle: titleStyle)
-                previewPlayer.play()
-            } else if isVideoMode {
-                var resolved = clipRecipes
-                for i in resolved.indices {
-                    guard !FileManager.default.fileExists(atPath: resolved[i].url.path) else { continue }
-                    if let assetID = resolved[i].assetIdentifier,
-                       let url = try? await resolveVideoAsset(assetID) {
-                        resolved[i].url = url
-                    } else if let pr = resolved[i].storedPhotoRef,
-                              let img = OneLinerPhotoStore.load(mediaRef: pr) {
-                        let tmp = FileManager.default.temporaryDirectory
-                            .appendingPathComponent("mimo_prev_\(UUID().uuidString).jpg")
-                        if let d = img.jpegData(compressionQuality: 0.82) { try? d.write(to: tmp) }
-                        resolved[i].url = tmp
-                    }
-                }
-                await previewPlayer.buildForVideoClips(
-                    recipes: resolved, activityDate: date,
-                    showDate: true, muteAudio: muteVideoAudio,
-                    videoTitle: videoTitle, titleStyle: titleStyle)
-                previewPlayer.play()
             }
+            previewPlayer.play()
         }
     }
 
@@ -1052,7 +1139,9 @@ struct RestDayOneLinerSheet: View {
             var rendered: [UIImage] = []
             for recipe in clipRecipes {
                 guard let photo = recipe.thumbnail else { continue }
-                let txt = recipe.lines.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? ""
+                let txt = recipe.lines
+                    .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    .joined(separator: "\n")
                 let card = OneLinerCard(
                     displayDate: date,
                     backgroundPhoto: photo,
@@ -1063,7 +1152,9 @@ struct RestDayOneLinerSheet: View {
                     sizeLevel: recipe.sizeLevel,
                     appearanceMode: recipe.appearanceMode,
                     decorEffect: recipe.decorEffect,
-                    outline: recipe.outline,
+                    hasBorder: recipe.hasBorder,
+                    plateOn: recipe.plateOn,
+                    plateColorPreset: recipe.plateColorPreset,
                     showDate: true,
                     captionMode: true
                 )
@@ -1088,11 +1179,12 @@ struct RestDayOneLinerSheet: View {
                     var recipes = clipRecipes
 
                     // Resolve recipe URLs that expired (temp files from previous session)
+                    // Video clips: PHAsset → AVAsset 직접 해석 (AVComposition/슬로모션 포함)
                     var tempURLsToClean: [URL] = []
                     for i in recipes.indices {
                         guard !FileManager.default.fileExists(atPath: recipes[i].url.path) else { continue }
                         if let assetID = recipes[i].assetIdentifier {
-                            recipes[i].url = try await resolveVideoAsset(assetID)
+                            recipes[i].resolvedAsset = try await MultiClipComposition.resolveAVAsset(assetID: assetID)
                         } else if let pr = recipes[i].storedPhotoRef,
                                   let img = OneLinerPhotoStore.load(mediaRef: pr) {
                             let tmpURL = FileManager.default.temporaryDirectory
@@ -1101,6 +1193,9 @@ struct RestDayOneLinerSheet: View {
                             recipes[i].url = tmpURL
                             if recipes[i].thumbnail == nil { recipes[i].thumbnail = img }
                             tempURLsToClean.append(tmpURL)
+                        } else {
+                            // 해결 경로 없음: assetIdentifier도 없고 파일도 없음 → 영상 재선택 필요
+                            throw ExportError.clipNotFound
                         }
                     }
                     defer { tempURLsToClean.forEach { try? FileManager.default.removeItem(at: $0) } }
@@ -1118,7 +1213,8 @@ struct RestDayOneLinerSheet: View {
                         presentShareSheet(url: outputURL)
                     } else {
                         // Video clips: multi-clip compose or single-pass
-                        let needsCompose = recipes.count > 1 || recipes.contains { $0.isTrimmed }
+                        let hasResolvedAssets = recipes.contains { $0.resolvedAsset != nil }
+                        let needsCompose = recipes.count > 1 || recipes.contains { $0.isTrimmed } || hasResolvedAssets
                         let exportURL:  URL
                         var cleanupURL: URL? = nil
                         if needsCompose {
@@ -1131,7 +1227,7 @@ struct RestDayOneLinerSheet: View {
                         }
                         defer { cleanupURL.map { try? FileManager.default.removeItem(at: $0) } }
 
-                        let isMuted = needsCompose ? false : muteVideoAudio
+                        let isMuted = muteVideoAudio
                         let outputURL = try await VideoExportService.exportOneLinerClipBoundVideo(
                             sourceURL: exportURL,
                             recipes: recipes,
@@ -1141,8 +1237,14 @@ struct RestDayOneLinerSheet: View {
                         markAsShared()
                         presentShareSheet(url: outputURL)
                     }
+                } catch ExportError.clipNotFound {
+                    exportError = AppLanguage.shared.s(
+                        "영상 파일을 찾을 수 없습니다. 영상을 삭제하고 다시 추가해주세요.",
+                        "Video file not found. Please remove the clip and add it again.")
                 } catch {
-                    // export failed — silently ignore (user can retry)
+                    exportError = AppLanguage.shared.s(
+                        "내보내기 중 오류가 발생했습니다: \(error.localizedDescription)",
+                        "Export error: \(error.localizedDescription)")
                 }
             }
             return
@@ -1202,6 +1304,12 @@ struct RestDayOneLinerSheet: View {
         vc.popoverPresentationController?.sourceView = top.view  // required on iPad
         top.present(vc, animated: true)
     }
+}
+
+// MARK: - ExportError
+
+private enum ExportError: Error {
+    case clipNotFound   // 임시 파일 삭제됨 + assetIdentifier/storedPhotoRef 없음
 }
 
 // MARK: - PerModeRecipeStore

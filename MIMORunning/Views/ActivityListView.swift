@@ -92,20 +92,26 @@ private struct ConnectView: View {
 
 private enum ListItem: Identifiable {
     case workout(Activity)
-    case restDay(date: Date, entry: OneLinerEntry)
+    case restDay(date: Date, entry: OneLinerEntry, isDiary: Bool)
 
     var id: String {
         switch self {
-        case .workout(let a):     return a.id.uuidString
-        case .restDay(let d, _):  return "restday-\(Int(d.timeIntervalSince1970))"
+        case .workout(let a):        return a.id.uuidString
+        case .restDay(let d, _, _):  return "restday-\(Int(d.timeIntervalSince1970))"
         }
     }
     var date: Date {
         switch self {
-        case .workout(let a):    return a.date
-        case .restDay(let d, _): return d
+        case .workout(let a):       return a.date
+        case .restDay(let d, _, _): return d
         }
     }
+}
+
+// 날짜 기반 카드 제목 — 교체 시 이 한 곳만 수정
+private enum OneLinerListLabels {
+    static var diary:   String { AppLanguage.shared.s("일기",   "Diary") }
+    static var restDay: String { AppLanguage.shared.s("쉬는 날", "Rest Day") }
 }
 
 // MARK: - Activity List
@@ -156,6 +162,11 @@ private struct ActivityListContent: View {
         !manager.activities.contains { Calendar.current.isDateInToday($0.date) }
     }
 
+    /// True when the given date has at least one recorded workout.
+    private func hasWorkout(on date: Date) -> Bool {
+        manager.activities.contains { Calendar.current.isDate($0.date, inSameDayAs: date) }
+    }
+
     private var todayRestDayEntry: OneLinerEntry? {
         let wid = OneLinerEntry.restDayWorkoutID(for: Date())
         let candidates = allOneLinerEntries.filter { $0.workoutID == wid }
@@ -185,15 +196,20 @@ private struct ActivityListContent: View {
                 ?? entries[0]
             let dateStr = String(wid.dropFirst("date:".count))
             guard let date = fmt.date(from: dateStr) else { continue }
-            result.append(.restDay(date: date, entry: best))
+            result.append(.restDay(date: date, entry: best, isDiary: hasWorkout(on: date)))
         }
         return result
     }
 
-    /// Paginated workouts merged with past rest days — sorted newest first.
+    /// Paginated workouts merged with past rest days + today's diary — sorted newest first.
     private var mergedItems: [ListItem] {
         var items = visibleActivities.map { ListItem.workout($0) }
         items.append(contentsOf: pastRestDayItems)
+        // 오늘 고아 방지: 워크아웃이 있는 날에도 일기 내용이 있으면 '일기' 카드로 추가.
+        // pastRestDayItems는 오늘을 제외하므로 여기서 별도 처리.
+        if !isTodayRestDay, let entry = todayRestDayEntry, entry.hasContent {
+            items.append(.restDay(date: Date(), entry: entry, isDiary: true))
+        }
         return items.sorted { $0.date > $1.date }
     }
 
@@ -224,9 +240,9 @@ private struct ActivityListContent: View {
                             ) { showPaywall = true }
                         }
 
-                        // 오늘 운동 기록이 없으면 쉬는 날 행 표시
+                        // 오늘 운동 기록이 없으면 쉬는 날 행 표시 (isDiary: false 고정 — 워크아웃 없는 날)
                         if isTodayRestDay && !manager.isLoading {
-                            RestDayListRow(entry: todayRestDayEntry, date: Date()) {
+                            RestDayListRow(entry: todayRestDayEntry, date: Date(), isDiary: false) {
                                 restDaySheetDate = Date()
                             }
                         }
@@ -251,8 +267,8 @@ private struct ActivityListContent: View {
                                         )
                                     }
                                     .buttonStyle(.plain)
-                                case .restDay(let date, let entry):
-                                    RestDayListRow(entry: entry, date: date) {
+                                case .restDay(let date, let entry, let isDiary):
+                                    RestDayListRow(entry: entry, date: date, isDiary: isDiary) {
                                         restDaySheetDate = date
                                     }
                                 }
@@ -287,16 +303,6 @@ private struct ActivityListContent: View {
         .onChange(of: showHiking)   { _, _ in displayCount = 50 }
         .task {
             if let all = try? modelContext.fetch(FetchDescriptor<OneLinerEntry>()) {
-                // ── 진단 로그: 쉬는 날 entry 현황 출력 ──
-                let restEntries = all.filter { $0.workoutID.hasPrefix("date:") }
-                if restEntries.isEmpty {
-                    print("[DayStory] DB에 쉬는 날 entry 없음")
-                } else {
-                    for e in restEntries.sorted(by: { $0.workoutID < $1.workoutID }) {
-                        let prefix = String(e.text.prefix(60)).replacingOccurrences(of: "\n", with: "↵")
-                        print("[DayStory] \(e.workoutID) mediaRef=\(e.mediaRef ?? "nil") 문구=\(prefix)")
-                    }
-                }
                 // ── stale 키("restDay-") 정리 ──
                 let stale = all.filter { $0.workoutID.hasPrefix("restDay-") }
                 if !stale.isEmpty {
@@ -313,7 +319,9 @@ private struct ActivityListContent: View {
             set: { if !$0 { restDaySheetDate = nil } }
         )) {
             if let d = restDaySheetDate {
-                RestDayOneLinerSheet(date: d)
+                // .id(d): 날짜가 다르면 SwiftUI가 기존 뷰를 재사용하지 않고
+                // 완전히 새 뷰를 생성 → @State 오염 방지
+                RestDayOneLinerSheet(date: d).id(d)
             }
         }
     }
@@ -322,13 +330,14 @@ private struct ActivityListContent: View {
 // MARK: - Rest Day List Row
 
 private struct RestDayListRow: View {
-    let entry:  OneLinerEntry?
-    let date:   Date
-    let onTap:  () -> Void
+    let entry:   OneLinerEntry?
+    let date:    Date
+    let isDiary: Bool   // true = 워크아웃이 있는 날의 일기 카드
+    let onTap:   () -> Void
 
     @State private var thumbnail: UIImage? = nil
 
-    private var hasEntry:  Bool { entry?.hasContent ?? false }
+    private var hasEntry:  Bool { (entry?.hasContent ?? false) || (entry?.hasMedia ?? false) }
     private var mediaInfo: OneLinerEntry.RestDayMediaInfo? { entry?.restDayMediaInfo }
 
     var body: some View {
@@ -336,12 +345,12 @@ private struct RestDayListRow: View {
             HStack(alignment: .center, spacing: 10) {
                 // Left: type label row + text
                 VStack(alignment: .leading, spacing: 6) {
-                    // Top: 🌙 쉬는 날 | date · time
+                    // Top: 아이콘 + 제목(쉬는 날 / 일기) | date · time
                     HStack(alignment: .top) {
                         HStack(spacing: 4) {
-                            Image(systemName: "moon.zzz.fill")
-                                .foregroundStyle(Color(hex: "FFC74D"))
-                            Text(AppLanguage.shared.s("쉬는 날", "Rest Day"))
+                            Image(systemName: isDiary ? "pencil" : "moon.zzz.fill")
+                                .foregroundStyle(isDiary ? Theme.violet.opacity(0.85) : Color(hex: "FFC74D"))
+                            Text(isDiary ? OneLinerListLabels.diary : OneLinerListLabels.restDay)
                                 .foregroundStyle(Color(hex: "6E6E78"))
                         }
                         .font(.system(size: 12, weight: .semibold))

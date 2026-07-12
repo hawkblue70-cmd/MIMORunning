@@ -6,11 +6,8 @@ import Foundation
 /// by the preview host process).
 enum FontLoader {
     static func registerBundledFonts() {
-        let names = [
-            "Gaegu-Regular",
-            "NanumPenScript-Regular",
-            "NanumBrushScript-Regular",
-        ]
+        // NanumPen만 번들 등록. Apple SD Gothic Neo는 iOS 시스템 폰트라 등록 불필요.
+        let names = ["NanumPenScript-Regular"]
         for name in names {
             guard let url = Bundle.main.url(forResource: name, withExtension: "ttf") else { continue }
             CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)

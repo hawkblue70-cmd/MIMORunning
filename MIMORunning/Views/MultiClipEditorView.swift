@@ -66,8 +66,14 @@ struct MultiClipEditorView: View {
     // Internal picker state
     @State private var videoPickerItems:      [PhotosPickerItem] = []
     @State private var photoSlidePickerItems: [PhotosPickerItem] = []
+    @State private var showPhotoSlidePicker:  Bool               = false
     @State private var isEditing:             Bool = false
     @State private var draggingClipIndex:     Int? = nil
+
+    // 영상 클립 PHAsset 비동기 해석 상태 (만료된 임시 URL 대체)
+    @State private var resolvingIDs:    Set<String> = []
+    @State private var failedIDs:       Set<String> = []
+    @State private var showReAddAlert:  Bool = false
 
     private var totalSeconds: Double { MultiClipComposition.totalDuration(recipes: recipes) }
     private var safeClipIdx: Int {
@@ -88,12 +94,32 @@ struct MultiClipEditorView: View {
                 recipes: $recipes,
                 selectedClipIndex: $selectedClipIndex,
                 hideTimePicker: isStoryMode,
-                isStoryMode: isStoryMode
+                isStoryMode: isStoryMode,
+                videoTitle: isStoryMode ? "" : videoTitle,
+                titleStyle: titleStyle
             )
         }
-        .onChange(of: isEditing)             { _, v in if !v { onSave() } }
+        .onChange(of: isEditing) { _, v in
+            if !v {
+                onSave()
+                // ClipTrimSheet.Done이 workingRecipes를 쓰면서 resolvedAsset을 덮어쓸 수 있음.
+                // 이전 실패 기록을 지워 재해석을 허용한다 (export가 성공 = 원본 존재).
+                failedIDs.removeAll()
+                resolveVideoClips()
+            }
+        }
         .onChange(of: videoPickerItems)      { _, items in loadVideoClips(items) }
         .onChange(of: photoSlidePickerItems) { _, items in loadPhotoSlides(items) }
+        .alert(AppLanguage.shared.s("영상을 다시 추가해 주세요", "Re-add This Video"),
+               isPresented: $showReAddAlert) {
+            Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { }
+        } message: {
+            Text(AppLanguage.shared.s(
+                "이 영상은 저장된 참조를 잃어 재생·export가 불가합니다.\n삭제 후 사진 보관함에서 다시 추가해 주세요.",
+                "This video's reference was lost and can't be played or exported.\nPlease delete it and re-add from your photo library."))
+        }
+        .onAppear { resolveVideoClips() }
+        .onChange(of: recipes.map { $0.assetIdentifier }) { _, _ in resolveVideoClips() }
     }
 
     // MARK: - Picker button row
@@ -101,8 +127,11 @@ struct MultiClipEditorView: View {
     private var pickerButtonRow: some View {
         HStack(spacing: 8) {
             if isPhotoSlideMode {
-                PhotosPicker(selection: $photoSlidePickerItems,
-                             maxSelectionCount: PhotoSlideComposition.maxPhotos, matching: .images) {
+                Button {
+                    // 이전 선택 상태 초기화 후 열기 → 스토리/슬라이드 이전 선택 물려받지 않음
+                    photoSlidePickerItems = []
+                    showPhotoSlidePicker  = true
+                } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "photo.stack.fill")
                         Text(recipes.isEmpty
@@ -116,9 +145,14 @@ struct MultiClipEditorView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
+                .photosPicker(isPresented: $showPhotoSlidePicker,
+                              selection: $photoSlidePickerItems,
+                              maxSelectionCount: PhotoSlideComposition.maxPhotos,
+                              matching: .images, photoLibrary: .shared())
             } else {
                 PhotosPicker(selection: $videoPickerItems,
-                             maxSelectionCount: 10, matching: .videos) {
+                             maxSelectionCount: 10, matching: .videos,
+                             photoLibrary: .shared()) {
                     HStack(spacing: 5) {
                         Image(systemName: "video.badge.plus")
                         Text(recipes.isEmpty
@@ -177,10 +211,19 @@ struct MultiClipEditorView: View {
     private func clipButton(index i: Int) -> some View {
         let avail = clipAvailability(recipes[i])
         let isSelected = safeClipIdx == i
-        return Button { selectedClipIndex = i; isEditing = true } label: {
+        let isNoSource = avail == .noSource
+        return Button {
+            if isNoSource {
+                showReAddAlert = true
+            } else {
+                selectedClipIndex = i
+                isEditing = true
+            }
+        } label: {
             Group {
                 if let thumb = recipes[i].thumbnail {
                     Image(uiImage: thumb).resizable().scaledToFill()
+                        .overlay(isNoSource ? Color.black.opacity(0.45) : Color.clear)
                 } else {
                     Rectangle().fill(Color(.systemGray5))
                         .overlay(Image(systemName: isPhotoSlideMode ? "photo" : "video")
@@ -190,17 +233,30 @@ struct MultiClipEditorView: View {
             .frame(width: 52, height: 52)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(
-                isSelected ? Theme.violet :
-                (avail == .deleted ? Color.red.opacity(0.5) :
-                recipes[i].isTrimmed ? Color.orange.opacity(0.7) : Color.white.opacity(0.2)),
+                isSelected   ? Theme.violet :
+                isNoSource   ? Color.yellow.opacity(0.7) :
+                avail == .deleted   ? Color.red.opacity(0.5) :
+                avail == .resolving ? Color.white.opacity(0.35) :
+                recipes[i].isTrimmed ? Color.orange.opacity(0.7) : Color.white.opacity(0.2),
                 lineWidth: isSelected ? 2.5 : 1.5))
             .overlay(alignment: .bottom) {
-                if avail == .deleted {
+                if isNoSource {
+                    Text(AppLanguage.shared.s("재추가 필요", "Re-add"))
+                        .font(.system(size: 7, weight: .bold)).foregroundStyle(.black)
+                        .padding(.horizontal, 3).padding(.vertical, 1)
+                        .background(Color.yellow.opacity(0.92))
+                        .clipShape(RoundedRectangle(cornerRadius: 2)).padding(.bottom, 3)
+                } else if avail == .deleted {
                     Text(AppLanguage.shared.s("원본 없음", "Missing"))
                         .font(.system(size: 7, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 3).padding(.vertical, 1)
                         .background(Color.red.opacity(0.85))
                         .clipShape(RoundedRectangle(cornerRadius: 2)).padding(.bottom, 3)
+                } else if avail == .resolving {
+                    ProgressView()
+                        .scaleEffect(0.55)
+                        .tint(.white)
+                        .padding(.bottom, 3)
                 } else if !isStoryMode {
                     Text("\(Int(recipes[i].trimmedDuration))s")
                         .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
@@ -435,13 +491,32 @@ struct MultiClipEditorView: View {
 
     // MARK: - Availability
 
-    private enum ClipAvailability { case available, resolvable, deleted }
+    // .noSource: assetIdentifier·clipVideoRef 모두 없음 — 구 포맷 저장본이어서 복구 불가
+    private enum ClipAvailability { case available, resolving, resolvable, deleted, noSource }
     private func clipAvailability(_ r: ClipRecipe) -> ClipAvailability {
-        if FileManager.default.fileExists(atPath: r.url.path) { return .available }
-        if let id = r.assetIdentifier,
-           PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).count > 0 { return .resolvable }
+        // 실제 파일 존재 확인 (디렉토리 제외)
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: r.url.path, isDirectory: &isDir), !isDir.boolValue {
+            // 파일이 존재해도 placeholder 이름이면 소스 없음으로 간주
+            let name = r.url.lastPathComponent
+            if name.hasPrefix("mimo_placeholder_") { }  // fall through
+            else { return .available }
+        }
+        // AVAsset 비동기 해석 결과가 이미 있으면 resolvable
+        if r.resolvedAsset != nil { return .resolvable }
+        // PHAsset 기반 해석 중 → 로딩 표시 (원본 없음 조기 단정 금지)
+        if let id = r.assetIdentifier {
+            if resolvingIDs.contains(id) { return .resolving }
+            if failedIDs.contains(id)   { return .deleted }
+            if PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).count > 0 { return .resolvable }
+            return .deleted
+        }
+        // 영상 앱-내 복사본 (assetIdentifier 없는 경우 폴백)
+        if let ref = r.clipVideoRef, ClipVideoStore.fileExists(ref: ref) { return .available }
+        // 사진 로컬 저장본
         if let pr = r.storedPhotoRef, OneLinerPhotoStore.fileExists(mediaRef: pr) { return .resolvable }
-        return .deleted
+        // 복구 가능한 참조가 전혀 없음 → 재추가 필요 (구 포맷 저장본 등)
+        return .noSource
     }
 
     // MARK: - Async loaders
@@ -455,13 +530,32 @@ struct MultiClipEditorView: View {
                 guard runningTotal < MultiClipComposition.maxSeconds else { break }
                 guard let result = try? await item.loadTransferable(type: VideoPickerResult.self)
                 else { continue }
-                let url = result.url
-                let dur = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
+                let tempURL = result.url
+                let dur = (try? await AVURLAsset(url: tempURL).load(.duration).seconds) ?? 0
                 guard dur > 0 else { continue }
-                let thumb = await VideoExportService.firstFrame(of: url)
-                var recipe = ClipRecipe(url: url, fullDuration: dur, thumbnail: thumb)
-                recipe.assetIdentifier = item.itemIdentifier
+                let thumb = await VideoExportService.firstFrame(of: tempURL)
+
+                var recipe: ClipRecipe
+
+                if let assetID = item.itemIdentifier {
+                    // PHPicker(photoLibrary: .shared()) → assetIdentifier 사용 가능
+                    // 임시 URL로 레시피 생성 후 즉시 AVAsset 해석 → resolvedAsset 바인딩
+                    recipe = ClipRecipe(url: tempURL, fullDuration: dur, thumbnail: thumb)
+                    recipe.assetIdentifier = assetID
+                    if let avAsset = try? await MultiClipComposition.resolveAVAsset(assetID: assetID) {
+                        recipe.resolvedAsset = avAsset
+                    }
+                } else {
+                    // 라이브러리 밖(AirDrop 등): 임시 파일을 앱 Documents로 복사 → 안정 URL 확보
+                    let ref = ClipVideoStore.save(from: tempURL)
+                    let stableURL = ref.flatMap { ClipVideoStore.fileURL(ref: $0) } ?? tempURL
+                    recipe = ClipRecipe(url: stableURL, fullDuration: dur, thumbnail: thumb)
+                    recipe.clipVideoRef = ref
+                }
+
                 if let th = thumb { recipe.thumbRef = ClipThumbStore.save(th) }
+                let clipIdx = recipes.count + loaded.count
+                recipe.flyDirection = (clipIdx % 2 == 0) ? .trailing : .leading
                 if let prev = loaded.last ?? recipes.last {
                     recipe.fontChoice = prev.fontChoice
                     recipe.textColor  = prev.textColor
@@ -501,6 +595,8 @@ struct MultiClipEditorView: View {
                                         fullDuration: PhotoSlideComposition.photoDuration, thumbnail: img)
                 recipe.storedPhotoRef = photoRef
                 recipe.lines = ["", ""]
+                let clipIdx = recipes.count + loaded.count
+                recipe.flyDirection = (clipIdx % 2 == 0) ? .trailing : .leading
                 if let prev = loaded.last ?? recipes.last {
                     recipe.fontChoice = prev.fontChoice
                     recipe.textColor  = prev.textColor
@@ -517,6 +613,38 @@ struct MultiClipEditorView: View {
                 selectedClipIndex = firstNewIdx
                 isPhotoSlideMode = true
                 onSave()
+            }
+        }
+    }
+
+    // MARK: - PHAsset 비동기 해석 (리스트 전환·재진입 시 만료 URL 복원)
+
+    private func resolveVideoClips() {
+        for i in recipes.indices {
+            guard let assetID = recipes[i].assetIdentifier else { continue }
+            // clipVideoRef 안정 복사본이 있으면 PHAsset 해석 불필요
+            if let ref = recipes[i].clipVideoRef, ClipVideoStore.fileExists(ref: ref) { continue }
+            let urlOK = FileManager.default.fileExists(atPath: recipes[i].url.path)
+            guard !urlOK,
+                  recipes[i].resolvedAsset == nil,
+                  !resolvingIDs.contains(assetID),
+                  !failedIDs.contains(assetID) else { continue }
+            resolvingIDs.insert(assetID)
+            Task {
+                do {
+                    let avAsset = try await MultiClipComposition.resolveAVAsset(assetID: assetID)
+                    await MainActor.run {
+                        if let idx = recipes.firstIndex(where: { $0.assetIdentifier == assetID }) {
+                            recipes[idx].resolvedAsset = avAsset
+                        }
+                        resolvingIDs.remove(assetID)
+                    }
+                } catch {
+                    await MainActor.run {
+                        failedIDs.insert(assetID)
+                        resolvingIDs.remove(assetID)
+                    }
+                }
             }
         }
     }
@@ -595,6 +723,12 @@ enum ClipThumbStore {
         let name = String(ref.dropFirst(prefix.count))
         try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
     }
+
+    static func fileExists(ref: String) -> Bool {
+        guard ref.hasPrefix(prefix) else { return false }
+        let name = String(ref.dropFirst(prefix.count))
+        return FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path)
+    }
 }
 
 // MARK: - SavedRecipeSet / SavedClipDescriptor
@@ -617,6 +751,7 @@ struct SavedRecipeSet: Codable {
 
 struct SavedClipDescriptor: Codable {
     var assetID:      String?
+    var clipVideoRef: String? = nil  // ClipVideoStore ref — fallback when assetID unavailable
     var photoRef:     String?
     var thumbRef:     String?
     var trimStart:    Double
@@ -628,7 +763,41 @@ struct SavedClipDescriptor: Codable {
     var colorID:   String? = nil   // OneLinerTextColor.rawValue
     var anchorIdx: Int?    = nil   // index into CardPosition.allCases
     var sizeID:    String? = nil   // TextSizeLevel.rawValue
-    var effectID:  String? = nil   // "appearanceMode|decorEffect|outline(0/1)" e.g. "fade|pop|0"
+    var effectID:     String? = nil   // "appearanceMode|decorEffect|outline(0/1)" e.g. "fade|pop|0"
+    var plateColorID: String? = nil   // PlateColorPreset.rawValue
+}
+
+// MARK: - ClipVideoStore
+// Stable app-Documents storage for video clips whose PHAsset localIdentifier is unavailable.
+// Only used as fallback; PHAsset-based resolution is always preferred.
+
+enum ClipVideoStore {
+    static let prefix = "clipvideo:"
+    private static var dir: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let d = docs.appendingPathComponent("ClipVideos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }
+    static func save(from url: URL) -> String? {
+        let name = UUID().uuidString + ".mov"
+        let dest = dir.appendingPathComponent(name)
+        do { try FileManager.default.copyItem(at: url, to: dest) } catch { return nil }
+        return prefix + name
+    }
+    static func fileURL(ref: String) -> URL? {
+        guard ref.hasPrefix(prefix) else { return nil }
+        let name = String(ref.dropFirst(prefix.count))
+        return dir.appendingPathComponent(name)
+    }
+    static func fileExists(ref: String) -> Bool {
+        guard let url = fileURL(ref: ref) else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+    static func delete(ref: String) {
+        guard let url = fileURL(ref: ref) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
 }
 
 // MARK: - UIImage scale helper

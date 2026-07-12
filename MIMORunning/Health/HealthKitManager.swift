@@ -165,6 +165,8 @@ class HealthKitManager {
     func fetchActivities(forced: Bool = false) async {
         // 일회성 마이그레이션: 시간 범위 폴백 추가 이전에 저장된 부분적 HR 시리즈 캐시 삭제
         migrateHRSeriesCacheIfNeeded()
+        // 일회성 마이그레이션: 러닝 폼 쿼리 방식 변경(predicateForObjects→timeRange) 후 캐시 재빌드
+        migrateRunningMetricCacheIfNeeded()
 
         // 메모리에 데이터 있고 완료 태그 있으면 즉시 반환 — 디스크 I/O·락 없음
         // scenePhase.active 등 반복 호출이 발열·배터리 낭비로 이어지는 것을 방지
@@ -1047,6 +1049,15 @@ class HealthKitManager {
         UserDefaults.standard.set(6, forKey: key)
     }
 
+    // 러닝 폼 지표 쿼리를 predicateForObjects → predicateForSamples(timeRange) 로 변경 후
+    // 기존 캐시(workout-linked 기준)를 1회 삭제해 새 방식으로 재빌드
+    private func migrateRunningMetricCacheIfNeeded() {
+        let key = "mimo.runningMetricQueryVersion"
+        guard UserDefaults.standard.integer(forKey: key) < 1 else { return }
+        invalidateRunningMetricHistoryCache()
+        UserDefaults.standard.set(1, forKey: key)
+    }
+
     // MARK: - Workout time-series (for share card panels)
 
     func fetchWorkoutTimeSeries(for workoutID: UUID, identifier: HKQuantityTypeIdentifier, unit: HKUnit) async -> [(offset: TimeInterval, value: Double)] {
@@ -1255,6 +1266,38 @@ class HealthKitManager {
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(identifier),
             predicate: HKQuery.predicateForObjects(from: workout)
+        )
+        let descriptor = HKStatisticsQueryDescriptor(predicate: pred, options: .discreteAverage)
+        guard let stats = try? await descriptor.result(for: store),
+              let avg = stats.averageQuantity() else { return nil }
+        return avg.doubleValue(for: unit)
+    }
+
+    // workout-linked 쿼리 대신 시간 범위로 조회 — Garmin 등 서드파티 standalone 샘플 포함
+    private func querySumInRange(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        from startDate: Date,
+        to endDate: Date
+    ) async -> Double {
+        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(identifier),
+            predicate: HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+        )
+        let descriptor = HKStatisticsQueryDescriptor(predicate: pred, options: .cumulativeSum)
+        guard let stats = try? await descriptor.result(for: store) else { return 0 }
+        return stats.sumQuantity()?.doubleValue(for: unit) ?? 0
+    }
+
+    private func queryAvgQuantityInRange(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        from startDate: Date,
+        to endDate: Date
+    ) async -> Double? {
+        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(identifier),
+            predicate: HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
         )
         let descriptor = HKStatisticsQueryDescriptor(predicate: pred, options: .discreteAverage)
         guard let stats = try? await descriptor.result(for: store),
@@ -1852,22 +1895,25 @@ class HealthKitManager {
             await withTaskGroup(of: (Date, Double?).self) { group in
                 for workout in sortedWorkouts {
                     group.addTask {
+                        // predicateForObjects 대신 시간 범위 — Garmin 등 비연결 standalone 샘플 포함
+                        let wStart = workout.startDate
+                        let wEnd   = workout.endDate
                         let val: Double?
                         switch m {
                         case .cadence:
-                            let steps = await self.querySum(.stepCount, unit: .count(), workout: workout)
+                            let steps = await self.querySumInRange(.stepCount, unit: .count(), from: wStart, to: wEnd)
                             let mins = workout.duration / 60
                             val = (steps > 0 && mins > 0) ? steps / mins : nil
                         case .power:
-                            val = await self.queryAvgQuantity(.runningPower, unit: .watt(), workout: workout)
+                            val = await self.queryAvgQuantityInRange(.runningPower, unit: .watt(), from: wStart, to: wEnd)
                         case .groundContactTime:
-                            val = await self.queryAvgQuantity(.runningGroundContactTime,
-                                                             unit: .secondUnit(with: .milli), workout: workout)
+                            val = await self.queryAvgQuantityInRange(.runningGroundContactTime,
+                                                                     unit: .secondUnit(with: .milli), from: wStart, to: wEnd)
                         case .strideLength:
-                            val = await self.queryAvgQuantity(.runningStrideLength, unit: .meter(), workout: workout)
+                            val = await self.queryAvgQuantityInRange(.runningStrideLength, unit: .meter(), from: wStart, to: wEnd)
                         case .verticalOscillation:
-                            val = await self.queryAvgQuantity(.runningVerticalOscillation,
-                                                             unit: .meterUnit(with: .centi), workout: workout)
+                            val = await self.queryAvgQuantityInRange(.runningVerticalOscillation,
+                                                                     unit: .meterUnit(with: .centi), from: wStart, to: wEnd)
                         default:
                             val = nil
                         }

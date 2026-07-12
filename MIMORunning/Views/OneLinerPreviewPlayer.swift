@@ -79,9 +79,15 @@ final class OneLinerPreviewPlayer {
                 titleStyle:   titleStyle)
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
+            player?.isMuted = muteAudio
         } catch {
             print("[OneLinerPreview] Video clip build failed: \(error)")
         }
+    }
+
+    // MARK: Mute — apply instantly without rebuild
+    func setMuted(_ muted: Bool) {
+        player?.isMuted = muted
     }
 
     // MARK: Playback control
@@ -165,7 +171,9 @@ struct OneLinerPreviewView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: PreviewHostView, context: Context) {}
+    func updateUIView(_ uiView: PreviewHostView, context: Context) {
+        uiView.configure(player: player, contentLayer: contentLayer, renderSize: renderSize)
+    }
 }
 
 // MARK: - PreviewHostView
@@ -185,6 +193,10 @@ final class PreviewHostView: UIView {
     func configure(player: AVPlayer, contentLayer: CALayer, renderSize: CGSize) {
         self.renderSize   = renderSize
         self.contentLayer = contentLayer
+
+        // 이전 syncLayer 제거 — updateUIView로 재호출 시 누적 방지
+        syncLayer?.removeFromSuperlayer()
+        syncLayer = nil
 
         avPlayerLayer.player       = player
         avPlayerLayer.videoGravity = .resizeAspectFill
