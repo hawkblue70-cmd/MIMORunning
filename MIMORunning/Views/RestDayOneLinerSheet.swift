@@ -999,7 +999,8 @@ struct RestDayOneLinerSheet: View {
                 anchorIdx: CardPosition.allCases.firstIndex(of: r.position),
                 sizeID: r.sizeLevel.rawValue,
                 effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)P\(r.plateOn ? 1 : 0)|\(r.flyDirection.rawValue)",
-                plateColorID: r.plateColorPreset.rawValue)
+                plateColorID: r.plateColorPreset.rawValue,
+                speed: r.speed)
         }
         return SavedRecipeSet(
             isPhotoSlide: isPhotoSlide || (mode == "story"),
@@ -1097,6 +1098,7 @@ struct RestDayOneLinerSheet: View {
                 recipe.plateOn        = false
             }
             recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
+            recipe.speed = desc.speed
             restored.append(recipe)
         }
         return restored
@@ -1258,6 +1260,7 @@ struct RestDayOneLinerSheet: View {
                         // Video clips: multi-clip compose or single-pass
                         let hasResolvedAssets = recipes.contains { $0.resolvedAsset != nil }
                         let needsCompose = recipes.count > 1 || recipes.contains { $0.isTrimmed } || hasResolvedAssets
+                            || recipes.contains { abs($0.speed - 1.0) > 0.01 }   // 배속도 합성 필요
                         let exportURL:  URL
                         var cleanupURL: URL? = nil
                         if needsCompose {

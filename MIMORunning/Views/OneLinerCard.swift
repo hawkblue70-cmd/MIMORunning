@@ -229,13 +229,18 @@ enum DecorEffect: String, CaseIterable, Codable {
 enum FlyInDirection: String, CaseIterable, Codable {
     case leading  = "leading"   // 왼쪽에서 슬라이드 인
     case trailing = "trailing"  // 오른쪽에서 슬라이드 인
+    case bottom   = "bottom"    // 아래에서 슬라이드 인(위로)
 
     var chipLabel: String {
         switch self {
         case .leading:  return AppLanguage.shared.s("왼쪽에서", "From Left")
         case .trailing: return AppLanguage.shared.s("오른쪽에서", "From Right")
+        case .bottom:   return AppLanguage.shared.s("아래에서", "From Below")
         }
     }
+
+    /// 세로(아래에서) 방향이면 true → 애니메이션을 y축으로.
+    var isVertical: Bool { self == .bottom }
 }
 
 // MARK: - ReadabilityStyle
@@ -403,10 +408,10 @@ struct EffectTextView: View {
         }
         // pop/wobble은 fade 모드 전용 — 다른 애니메이션 모드에서는 잔여 변형 없이 1.0 고정
         .scaleEffect(appearanceMode == .fade && decorEffect == .pop
-            ? (popAppeared ? 1.0 : 1.25)
+            ? (popAppeared ? 1.0 : 1.4)
             : 1.0)
         .rotationEffect(appearanceMode == .fade && decorEffect == .wobble
-            ? .degrees(wobblePhase ? 1.5 : -1.5)
+            ? .degrees(wobblePhase ? 2.5 : -2.5)
             : .zero)
         .opacity(opacity)
         .onAppear {
@@ -433,7 +438,8 @@ struct EffectTextView: View {
         let lines  = text.components(separatedBy: "\n")
         let hAlign: HorizontalAlignment = alignment == .trailing ? .trailing
             : alignment == .leading ? .leading : .center
-        let initX:  CGFloat = flyDirection == .trailing ? 280 : -280
+        let vertical: Bool  = flyDirection.isVertical
+        let initX:  CGFloat = vertical ? 280 : (flyDirection == .trailing ? 280 : -280)
         VStack(alignment: hAlign, spacing: plateOn ? 3 : lineSpacing) {
             ForEach(lines.indices, id: \.self) { i in
                 let line = lines[i]
@@ -444,22 +450,22 @@ struct EffectTextView: View {
                             .lineLimit(1).minimumScaleFactor(0.65)
                             .padding(.horizontal, 8).padding(.vertical, 2)
                             .background(RoundedRectangle(cornerRadius: 5).fill(plateBgColor))
-                            .offset(x: off)
+                            .offset(x: vertical ? 0 : off, y: vertical ? off : 0)
                     } else {
                         lineContent(line)
                             .multilineTextAlignment(alignment)
                             .lineLimit(1).minimumScaleFactor(0.65)
-                            .offset(x: off)
+                            .offset(x: vertical ? 0 : off, y: vertical ? off : 0)
                     }
                 }
             }
         }
         .onAppear {
-            let initOff: CGFloat = flyDirection == .trailing ? 280 : -280
+            let initOff: CGFloat = flyDirection.isVertical ? 280 : (flyDirection == .trailing ? 280 : -280)
             lineOffsets = Array(repeating: initOff, count: lines.count)
             for i in lines.indices {
                 guard !lines[i].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-                withAnimation(.easeOut(duration: 0.3).delay(Double(i) * 0.25)) {
+                withAnimation(.easeOut(duration: 0.45).delay(Double(i) * 0.25)) {
                     lineOffsets[i] = 0
                 }
             }

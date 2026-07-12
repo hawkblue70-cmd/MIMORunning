@@ -765,6 +765,7 @@ struct SavedClipDescriptor: Codable {
     var sizeID:    String? = nil   // TextSizeLevel.rawValue
     var effectID:     String? = nil   // "appearanceMode|decorEffect|outline(0/1)" e.g. "fade|pop|0"
     var plateColorID: String? = nil   // PlateColorPreset.rawValue
+    var speed:        Double  = 1.0   // 재생 배속 (하위호환: 미존재 시 1.0)
 }
 
 // MARK: - ClipVideoStore

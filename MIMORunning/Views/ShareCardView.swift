@@ -4575,6 +4575,7 @@ struct ShareCardScreen: View {
                     exportedVideoFile = SharableVideoFile(url: out)
                 } else {
                     let needsCompose = recipes.count > 1 || recipes.contains { $0.isTrimmed }
+                        || recipes.contains { abs($0.speed - 1.0) > 0.01 }   // 배속도 합성 필요
                     let exportSrc: URL
                     var cleanup: URL? = nil
                     if needsCompose {

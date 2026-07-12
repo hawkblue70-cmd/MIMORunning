@@ -360,8 +360,8 @@ enum PhotoSlideComposition {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
             guard !nonEmpty.isEmpty else { continue }
-            let clipPages  = stride(from: 0, to: nonEmpty.count, by: 2).map { i in
-                Array(nonEmpty[i..<min(i + 2, nonEmpty.count)])
+            let clipPages  = stride(from: 0, to: nonEmpty.count, by: 4).map { i in   // 한 페이지 최대 4줄
+                Array(nonEmpty[i..<min(i + 4, nonEmpty.count)])
             }
             let nPages     = clipPages.count
             let tPerPage   = recipe.trimmedDuration / Double(nPages)
@@ -584,7 +584,7 @@ enum PhotoSlideComposition {
                     // 팝: 페이드 완료 직후 1회 1.25→1.0 스프링 (반동 강화)
                     if clip.decorEffect == .pop {
                         let pop = CAKeyframeAnimation(keyPath: "transform.scale")
-                        pop.values          = [1.25, 1.10, 0.94, 1.03, 1.0]
+                        pop.values          = [1.40, 1.14, 0.90, 1.05, 1.0]   // 반동 강화
                         pop.keyTimes        = [0.0,  0.3,  0.6,  0.82, 1.0] as [NSNumber]
                         pop.duration        = 0.45
                         pop.beginTime       = AVCoreAnimationBeginTimeAtZero + appearEnd
@@ -596,7 +596,7 @@ enum PhotoSlideComposition {
                     // 흔들림 ±1.5° (주기 유지)
                     if clip.decorEffect == .wobble {
                         let wob = CAKeyframeAnimation(keyPath: "transform.rotation.z")
-                        wob.values           = [0.0, 0.026, 0.0, -0.026, 0.0]  // ±1.5°
+                        wob.values           = [0.0, 0.044, 0.0, -0.044, 0.0]  // ±2.5° (강화)
                         wob.keyTimes         = [0.0, 0.25,  0.5,  0.75,  1.0]
                         wob.duration         = 0.5
                         wob.repeatCount      = .infinity
@@ -611,9 +611,11 @@ enum PhotoSlideComposition {
                     // ── 날아오기 모드: 줄별 순차 ─────────────────────────────────
                     // 줄마다 독립 레이어, 0.25 s 간격 stagger.
                     let lineDelay:    Double  = 0.25
-                    let flyDur:       Double  = 0.30
+                    let flyDur:       Double  = 0.45   // 날아오기 속도 완화(느리게)
                     // 켄번즈 반대 자동: 짝수 클립은 오른쪽에서(W), 홀수는 왼쪽에서(-W) 진입
-                    let slideX:       CGFloat = page.clipIdx % 2 == 0 ? W : -W
+                    let flyVertical   = clip.flyDirection.isVertical
+                    let flyKey        = flyVertical ? "transform.translation.y" : "transform.translation.x"
+                    let slideX:       CGFloat = flyVertical ? H * 0.3 : (page.clipIdx % 2 == 0 ? W : -W)
                     let lineTexts     = page.text.components(separatedBy: "\n")
                     let lineRenderer  = UIGraphicsImageRenderer(
                         size: CGSize(width: textMaxW, height: ceil(lineH)), format: imgFormat)
@@ -642,7 +644,7 @@ enum PhotoSlideComposition {
                             pLayer.cornerRadius    = pl.cornerR
                             pLayer.masksToBounds   = true
                             pageLayer.addSublayer(pLayer)
-                            let pFly                     = CABasicAnimation(keyPath: "transform.translation.x")
+                            let pFly                     = CABasicAnimation(keyPath: flyKey)
                             pFly.beginTime               = AVCoreAnimationBeginTimeAtZero + flyBegin
                             pFly.duration                = flyDur
                             pFly.fromValue               = Float(slideX)
@@ -671,7 +673,7 @@ enum PhotoSlideComposition {
                         lineLayer.contentsGravity        = .topLeft
                         lineLayer.masksToBounds          = false
                         lineLayer.contents               = lineImg
-                        let fly                          = CABasicAnimation(keyPath: "transform.translation.x")
+                        let fly                          = CABasicAnimation(keyPath: flyKey)
                         fly.beginTime                    = AVCoreAnimationBeginTimeAtZero + flyBegin
                         fly.duration                     = flyDur
                         fly.fromValue                    = Float(slideX)

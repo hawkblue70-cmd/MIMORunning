@@ -49,6 +49,8 @@ struct ClipRecipe: Identifiable {
     }
     var flyDirection:     FlyInDirection   = .trailing
     var plateColorPreset: PlateColorPreset = .blackWhite
+    /// 재생 배속. 1.0=원본. 0.5(슬로우)~2.0(패스트). 출력 길이 = trimmedDuration / speed.
+    var speed:            Double            = 1.0
 
     init(url: URL, fullDuration: Double, thumbnail: UIImage? = nil) {
         self.url          = url
@@ -245,7 +247,7 @@ enum MultiClipComposition {
 
     /// Sync total of trimmed durations — no async needed since durations are already in the recipes.
     static func totalDuration(recipes: [ClipRecipe]) -> Double {
-        recipes.reduce(0) { $0 + $1.trimmedDuration }
+        recipes.reduce(0) { $0 + $1.trimmedDuration / max(0.1, $1.speed) }
     }
 
     // MARK: - composeAndExport (recipes — supports trim)
@@ -300,9 +302,18 @@ enum MultiClipComposition {
                 scaleFillTransform(naturalSize: natSz, preferredTransform: prefTf),
                 at: insertAt)
 
-            clips.append(ClipDescriptor(url: recipe.url, duration: recipe.trimmedDuration,
+            // 배속: 삽입된 구간을 리타임(출력 길이 = 트림 길이 / speed). 영상·오디오 동시.
+            var outDur = clipRange.duration
+            if abs(recipe.speed - 1.0) > 0.01 {
+                outDur = CMTimeMultiplyByFloat64(clipRange.duration, multiplier: 1.0 / recipe.speed)
+                let insertedRange = CMTimeRange(start: insertAt, duration: clipRange.duration)
+                compVideo.scaleTimeRange(insertedRange, toDuration: outDur)
+                compAudio?.scaleTimeRange(insertedRange, toDuration: outDur)
+            }
+
+            clips.append(ClipDescriptor(url: recipe.url, duration: recipe.trimmedDuration / recipe.speed,
                                         trimStart: recipe.trimStart, trimEnd: recipe.trimEnd))
-            insertAt = CMTimeAdd(insertAt, clipRange.duration)
+            insertAt = CMTimeAdd(insertAt, outDur)
             clipIdx += 1
         }
         guard !clips.isEmpty else { throw MCError.noVideoTrack }

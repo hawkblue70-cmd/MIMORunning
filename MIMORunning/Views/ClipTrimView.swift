@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import AVFoundation
 import AVKit
 import PhotosUI
@@ -63,7 +64,8 @@ struct ClipTrimSheet: View {
         if recipe.storedPhotoRef != nil || isStoryMode {
             return (hideTimePicker || isStoryMode || recipe.fullDuration >= 4.0) ? 2 : 1
         }
-        return max(1, min(20, Int(max(0.1, recipe.trimEnd - recipe.trimStart) / 3.0)))
+        // 줄 수를 영상 길이에서 분리: 항상 최소 4줄 허용(짧게 잘라도 4줄 유지), 긴 클립은 더.
+        return min(20, max(4, Int(max(0.1, recipe.trimEnd - recipe.trimStart) / 3.0)))
     }
 
     private var droppedWarning: String? {
@@ -233,6 +235,7 @@ struct ClipTrimSheet: View {
                 decorEffect: recipe.decorEffect,
                 hasBorder: recipe.hasBorder,
                 plateOn: recipe.plateOn,
+                plateColorPreset: recipe.plateColorPreset,   // 음영판 색 반영(누락 버그 수정)
                 showDate: true,
                 captionMode: true
             )
@@ -494,10 +497,14 @@ struct ClipTrimSheet: View {
                 .padding(.horizontal)
 
             HStack(alignment: .top, spacing: 12) {
-                // 왼쪽: 위치 그리드
-                positionGrid
-                // 오른쪽: 크기 → 글꼴 → 색상 → 등장 방식 → 꾸밈/방향 → 가독성
+                // 왼쪽: 위치 그리드 + 모든 클립 적용(그리드 바로 밑)
+                VStack(alignment: .leading, spacing: 8) {
+                    positionGrid
+                    if workingRecipes.count > 1 { applyStyleToAllButton }
+                }
+                // 오른쪽: 배속(소중대 위) → 크기 → 글꼴 → 색상 → 등장 방식 → 꾸밈/방향 → 가독성
                 VStack(alignment: .leading, spacing: 5) {
+                    if !isStoryMode, !isPhotoClip, currentRecipeValid { speedChips }
                     sizeChips
                     fontChips
                     if currentRecipeValid && workingRecipes[currentPage].plateOn {
@@ -521,6 +528,65 @@ struct ClipTrimSheet: View {
             }
             .padding(.horizontal)
         }
+    }
+
+    // 현재 클립 스타일을 모든 클립에 복사 (문구·트림·썸네일은 제외)
+    private var applyStyleToAllButton: some View {
+        Button {
+            guard currentRecipeValid else { return }
+            let src = workingRecipes[currentPage]
+            for i in workingRecipes.indices where i != currentPage {
+                workingRecipes[i].fontChoice       = src.fontChoice
+                workingRecipes[i].textColor        = src.textColor
+                workingRecipes[i].sizeLevel        = src.sizeLevel
+                workingRecipes[i].position         = src.position
+                workingRecipes[i].appearanceMode   = src.appearanceMode
+                workingRecipes[i].decorEffect      = src.decorEffect
+                workingRecipes[i].hasBorder        = src.hasBorder
+                workingRecipes[i].plateOn          = src.plateOn
+                workingRecipes[i].plateColorPreset = src.plateColorPreset
+                workingRecipes[i].flyDirection     = src.flyDirection
+                workingRecipes[i].speed            = src.speed
+            }
+            let gen = UIImpactFeedbackGenerator(style: .medium); gen.impactOccurred()
+        } label: {
+            Label(AppLanguage.shared.s("모든 클립 적용", "Apply all"),
+                  systemImage: "square.on.square")
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .background(Color.white.opacity(0.08))
+                .foregroundStyle(Color.white.opacity(0.85))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // 배속 칩: 0.5x / 1x / 1.5x / 2x (현재 클립)
+    private var speedChips: some View {
+        let speeds: [Double] = [0.5, 1.0, 1.5, 2.0]
+        return HStack(spacing: 6) {
+            Image(systemName: "gauge.with.dots.needle.67percent")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+            ForEach(speeds, id: \.self) { sp in
+                let isSel = currentRecipeValid && abs(workingRecipes[currentPage].speed - sp) < 0.01
+                Button { if currentRecipeValid { workingRecipes[currentPage].speed = sp } } label: {
+                    Text(speedLabel(sp))
+                        .font(.system(size: 12, weight: isSel ? .semibold : .regular))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
+                        .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.55))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().strokeBorder(
+                            isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func speedLabel(_ s: Double) -> String {
+        if s == s.rounded() { return "\(Int(s))x" }   // 1x, 2x
+        return String(format: "%gx", s)               // 0.5x, 1.5x
     }
 
     private var positionGrid: some View {
@@ -1044,7 +1110,7 @@ struct TrimBarView: View {
     @Binding var trimStart: Double
     @Binding var trimEnd:   Double
 
-    private let barHeight: CGFloat = 48
+    private let barHeight: CGFloat = 24
     private let handleW:   CGFloat = 18
     private let minTrim:   Double  = 0.5
 

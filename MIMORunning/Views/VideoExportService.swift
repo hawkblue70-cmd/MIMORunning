@@ -1267,8 +1267,8 @@ struct VideoExportService {
             }
             guard !nonEmpty.isEmpty else { continue }
 
-            let clipPages  = stride(from: 0, to: nonEmpty.count, by: 2).map { i in
-                Array(nonEmpty[i..<min(i + 2, nonEmpty.count)])
+            let clipPages  = stride(from: 0, to: nonEmpty.count, by: 4).map { i in   // 한 페이지 최대 4줄
+                Array(nonEmpty[i..<min(i + 4, nonEmpty.count)])
             }
             let nPages     = clipPages.count
             let tPerPage   = recipe.trimmedDuration / Double(nPages)
@@ -1471,8 +1471,8 @@ struct VideoExportService {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
             guard !nonEmpty.isEmpty else { continue }
-            let clipPages  = stride(from: 0, to: nonEmpty.count, by: 2).map { i in
-                Array(nonEmpty[i..<min(i + 2, nonEmpty.count)])
+            let clipPages  = stride(from: 0, to: nonEmpty.count, by: 4).map { i in   // 한 페이지 최대 4줄
+                Array(nonEmpty[i..<min(i + 4, nonEmpty.count)])
             }
             let nPages     = clipPages.count
             let tPerPage   = recipe.trimmedDuration / Double(nPages)
@@ -1693,7 +1693,7 @@ struct VideoExportService {
                     // 팝: 페이드 완료 직후 1회 1.25→1.0 스프링 (반동 강화)
                     if clip.decorEffect == .pop {
                         let pop = CAKeyframeAnimation(keyPath: "transform.scale")
-                        pop.values          = [1.25, 1.10, 0.94, 1.03, 1.0]
+                        pop.values          = [1.40, 1.14, 0.90, 1.05, 1.0]   // 반동 강화
                         pop.keyTimes        = [0.0,  0.3,  0.6,  0.82, 1.0] as [NSNumber]
                         pop.duration        = 0.45
                         pop.beginTime       = AVCoreAnimationBeginTimeAtZero + appearEnd
@@ -1705,7 +1705,7 @@ struct VideoExportService {
                     // 흔들림 ±1.5° (주기 유지)
                     if clip.decorEffect == .wobble {
                         let wob = CAKeyframeAnimation(keyPath: "transform.rotation.z")
-                        wob.values           = [0.0, 0.026, 0.0, -0.026, 0.0]  // ±1.5°
+                        wob.values           = [0.0, 0.044, 0.0, -0.044, 0.0]  // ±2.5° (강화)
                         wob.keyTimes         = [0.0, 0.25,  0.5,  0.75,  1.0]
                         wob.duration         = 0.5
                         wob.repeatCount      = .infinity
@@ -1720,8 +1720,10 @@ struct VideoExportService {
                     // ── 날아오기 모드: 줄별 순차 ─────────────────────────────────
                     // 줄마다 독립 레이어, 0.25 s 간격 stagger.
                     let lineDelay:    Double  = 0.25
-                    let flyDur:       Double  = 0.30
-                    let slideX:       CGFloat = clip.flyDirection == .trailing ? W : -W
+                    let flyDur:       Double  = 0.45   // 날아오기 속도 완화(느리게)
+                    let flyVertical   = clip.flyDirection.isVertical
+                    let flyKey        = flyVertical ? "transform.translation.y" : "transform.translation.x"
+                    let slideX:       CGFloat = flyVertical ? H * 0.3 : (clip.flyDirection == .trailing ? W : -W)
                     let lineTexts     = page.text.components(separatedBy: "\n")
                     let lineRenderer  = UIGraphicsImageRenderer(
                         size: CGSize(width: textMaxW, height: ceil(lineH)), format: imgFormat)
@@ -1750,7 +1752,7 @@ struct VideoExportService {
                             pLayer.cornerRadius    = pl.cornerR
                             pLayer.masksToBounds   = true
                             pageLayer.addSublayer(pLayer)
-                            let pFly                     = CABasicAnimation(keyPath: "transform.translation.x")
+                            let pFly                     = CABasicAnimation(keyPath: flyKey)
                             pFly.beginTime               = AVCoreAnimationBeginTimeAtZero + flyBegin
                             pFly.duration                = flyDur
                             pFly.fromValue               = Float(slideX)
@@ -1779,7 +1781,7 @@ struct VideoExportService {
                         lineLayer.contentsGravity        = .topLeft
                         lineLayer.masksToBounds          = false
                         lineLayer.contents               = lineImg
-                        let fly                          = CABasicAnimation(keyPath: "transform.translation.x")
+                        let fly                          = CABasicAnimation(keyPath: flyKey)
                         fly.beginTime                    = AVCoreAnimationBeginTimeAtZero + flyBegin
                         fly.duration                     = flyDur
                         fly.fromValue                    = Float(slideX)
@@ -2100,7 +2102,7 @@ struct VideoExportService {
         let oneLinerSize = CGSize(width: 1080, height: 1920)
         var clipOffsets: [Double] = []
         var offset = 0.0
-        for r in recipes { clipOffsets.append(offset); offset += r.trimmedDuration }
+        for r in recipes { clipOffsets.append(offset); offset += r.trimmedDuration / max(0.1, r.speed) }
         let D = offset
 
         let composition = AVMutableComposition()
@@ -2163,7 +2165,15 @@ struct VideoExportService {
             tf = tf.concatenating(CGAffineTransform(translationX: txOff, y: tyOff))
             layerInstr.setTransform(tf, at: insertAt)
 
-            insertAt = CMTimeAdd(insertAt, clipRange.duration)
+            // 배속: 삽입 구간 리타임(출력 길이 = 트림 길이 / speed). 영상·오디오 동시.
+            var outDur = clipRange.duration
+            if abs(recipe.speed - 1.0) > 0.01 {
+                outDur = CMTimeMultiplyByFloat64(clipRange.duration, multiplier: 1.0 / recipe.speed)
+                let insertedRange = CMTimeRange(start: insertAt, duration: clipRange.duration)
+                compVideo.scaleTimeRange(insertedRange, toDuration: outDur)
+                compAudio?.scaleTimeRange(insertedRange, toDuration: outDur)
+            }
+            insertAt = CMTimeAdd(insertAt, outDur)
             clipIdx += 1
         }
 
