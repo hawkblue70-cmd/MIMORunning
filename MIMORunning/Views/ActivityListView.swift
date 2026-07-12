@@ -346,54 +346,54 @@ private struct SwipeableRestDayRow: View {
     let onTap:    () -> Void
     let onDelete: () -> Void
 
-    @GestureState private var dragX: CGFloat = 0
-    @State private var baseOffset: CGFloat = 0
+    // @State(not @GestureState) — 손 떼는 순간 0 리셋 없음, overlay가 히트테스트 담당
+    @State private var offset: CGFloat = 0
+    @State private var dragStartOffset: CGFloat = 0
     private let deleteWidth: CGFloat = 72
 
-    private var currentOffset: CGFloat {
-        min(0, max(-deleteWidth, baseOffset + dragX))
-    }
-
     var body: some View {
-        ZStack(alignment: .trailing) {
-            // Delete button revealed on left-swipe
-            Button(role: .destructive) {
-                withAnimation(.spring(response: 0.22)) { baseOffset = 0 }
-                onDelete()
-            } label: {
-                Image(systemName: "trash.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: deleteWidth)
-                    .frame(maxHeight: .infinity)
+        RestDayListRow(entry: entry, date: date, isDiary: isDiary) {
+            if offset != 0 {
+                withAnimation(.spring(response: 0.22)) { offset = 0 }
+            } else {
+                onTap()
             }
-            .background(Color.red)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-
-            // Row slides left
-            RestDayListRow(entry: entry, date: date, isDiary: isDiary) {
-                if baseOffset != 0 {
-                    withAnimation(.spring(response: 0.22)) { baseOffset = 0 }
-                } else {
-                    onTap()
+        }
+        .offset(x: offset)
+        // overlay: 행의 원래 frame 기준 trailing에 붙음 — offset이 만든 빈 공간에 정확히 위치
+        .overlay(alignment: .trailing) {
+            if offset < -4 {
+                Button(role: .destructive) {
+                    withAnimation(.spring(response: 0.22)) { offset = 0 }
+                    onDelete()
+                } label: {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: max(0, -offset))
+                        .frame(maxHeight: .infinity)
+                        .background(
+                            Color.red.clipShape(RoundedRectangle(cornerRadius: 10))
+                        )
+                        .clipped()
                 }
             }
-            .offset(x: currentOffset)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 20)
-                    .updating($dragX) { v, state, _ in
-                        guard abs(v.translation.width) > abs(v.translation.height) else { return }
-                        state = v.translation.width
-                    }
-                    .onEnded { v in
-                        guard abs(v.translation.width) > abs(v.translation.height) else { return }
-                        let target = baseOffset + v.translation.width
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                            baseOffset = target < -deleteWidth / 3 ? -deleteWidth : 0
-                        }
-                    }
-            )
         }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 20)
+                .onChanged { v in
+                    guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                    // 첫 이벤트(이동 작음)에서 시작 offset 캡처
+                    if abs(v.translation.width) < 30 { dragStartOffset = offset }
+                    offset = min(0, max(-deleteWidth, dragStartOffset + v.translation.width))
+                }
+                .onEnded { v in
+                    guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                        offset = offset < -deleteWidth / 3 ? -deleteWidth : 0
+                    }
+                }
+        )
     }
 }
 
