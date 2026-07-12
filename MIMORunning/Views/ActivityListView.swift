@@ -157,6 +157,14 @@ private struct ActivityListContent: View {
 
     private var visibleActivities: [Activity] { Array(filteredActivities.prefix(displayCount)) }
 
+    private func deleteRestDayEntries(for date: Date) {
+        let wid = OneLinerEntry.restDayWorkoutID(for: date)
+        allOneLinerEntries
+            .filter { $0.workoutID == wid }
+            .forEach { modelContext.delete($0) }
+        try? modelContext.save()
+    }
+
     /// True when today has no recorded workout (running, walking, or hiking).
     private var isTodayRestDay: Bool {
         !manager.activities.contains { Calendar.current.isDateInToday($0.date) }
@@ -270,6 +278,13 @@ private struct ActivityListContent: View {
                                 case .restDay(let date, let entry, let isDiary):
                                     RestDayListRow(entry: entry, date: date, isDiary: isDiary) {
                                         restDaySheetDate = date
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            deleteRestDayEntries(for: date)
+                                        } label: {
+                                            Label(AppLanguage.shared.s("삭제", "Delete"), systemImage: "trash")
+                                        }
                                     }
                                 }
                             }
