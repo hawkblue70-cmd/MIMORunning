@@ -26,11 +26,11 @@ extension Color {
     }
 }
 
-/// 9:16 preview frame for video/slide clips — matches VideoExportService/PhotoSlideComposition (1080×1920).
-/// Story mode uses OneLinerCard directly (300×375 = 4:5) for WYSIWYG accuracy.
+/// 프리뷰 카드 크기 — 스토리 카드(4:5)와 통일. 영상/슬라이드도 동일 크기로 표시.
+/// 실제 export는 VideoExportService/PhotoSlideComposition에서 독립적으로 1080×1920 사용.
 enum CardPreviewFrame {
-    static var height: CGFloat { UIScreen.main.bounds.height * 0.40 }
-    static var width:  CGFloat { height * 9 / 16 }
+    static let width:  CGFloat = OneLinerCard.cardWidth   // 300
+    static let height: CGFloat = OneLinerCard.cardHeight  // 375
 }
 
 enum Theme {

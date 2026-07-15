@@ -2,6 +2,7 @@ import AVFoundation
 import Observation
 import SwiftUI
 import UIKit
+import CoreLocation
 
 // MARK: - OneLinerPreviewPlayer
 //
@@ -28,26 +29,40 @@ final class OneLinerPreviewPlayer {
     // MARK: Build
 
     func buildForPhotoSlides(
-        photos:       [UIImage],
-        recipes:      [ClipRecipe],
-        activityDate: Date,
-        showDate:     Bool,
-        metricChips:  [VideoMetricChip] = [],
-        videoTitle:   String            = "",
-        titleStyle:   OneLinerTitleStyle = OneLinerTitleStyle()
+        photos:           [UIImage],
+        recipes:          [ClipRecipe],
+        activityDate:     Date,
+        showDate:         Bool,
+        metricChips:      [VideoMetricChip] = [],
+        metricLookup:     [String: VideoMetricChip] = [:],
+        routeCoords:      [CLLocationCoordinate2D] = [],
+        hrSamples:        [(offset: TimeInterval, bpm: Int)] = [],
+        splits:           [SplitData] = [],
+        chartSeriesData:  [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:],
+        hrZones:          [HRZoneData] = [],
+        intervalSegments: [IntervalSegment] = [],
+        videoTitle:       String            = "",
+        titleStyle:       OneLinerTitleStyle = OneLinerTitleStyle()
     ) async {
         invalidate()
         isBuilding = true
         defer { isBuilding = false }
         do {
             let result = try await PhotoSlideComposition.buildPreviewItem(
-                photos:       photos,
-                recipes:      recipes,
-                activityDate: activityDate,
-                showDate:     showDate,
-                metricChips:  metricChips,
-                videoTitle:   videoTitle,
-                titleStyle:   titleStyle)
+                photos:           photos,
+                recipes:          recipes,
+                activityDate:     activityDate,
+                showDate:         showDate,
+                metricChips:      metricChips,
+                metricLookup:     metricLookup,
+                routeCoords:      routeCoords,
+                hrSamples:        hrSamples,
+                splits:           splits,
+                chartSeriesData:  chartSeriesData,
+                hrZones:          hrZones,
+                intervalSegments: intervalSegments,
+                videoTitle:       videoTitle,
+                titleStyle:       titleStyle)
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
             tempURL = result.tempURL
@@ -57,26 +72,40 @@ final class OneLinerPreviewPlayer {
     }
 
     func buildForVideoClips(
-        recipes:      [ClipRecipe],
-        activityDate: Date,
-        showDate:     Bool,
-        muteAudio:    Bool = false,
-        metricChips:  [VideoMetricChip] = [],
-        videoTitle:   String            = "",
-        titleStyle:   OneLinerTitleStyle = OneLinerTitleStyle()
+        recipes:          [ClipRecipe],
+        activityDate:     Date,
+        showDate:         Bool,
+        muteAudio:        Bool = false,
+        metricChips:      [VideoMetricChip] = [],
+        metricLookup:     [String: VideoMetricChip] = [:],
+        routeCoords:      [CLLocationCoordinate2D] = [],
+        hrSamples:        [(offset: TimeInterval, bpm: Int)] = [],
+        splits:           [SplitData] = [],
+        chartSeriesData:  [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:],
+        hrZones:          [HRZoneData] = [],
+        intervalSegments: [IntervalSegment] = [],
+        videoTitle:       String            = "",
+        titleStyle:       OneLinerTitleStyle = OneLinerTitleStyle()
     ) async {
         invalidate()
         isBuilding = true
         defer { isBuilding = false }
         do {
             let result = try await VideoExportService.buildVideoPreviewItem(
-                recipes:      recipes,
-                activityDate: activityDate,
-                showDate:     showDate,
-                muteAudio:    muteAudio,
-                metricChips:  metricChips,
-                videoTitle:   videoTitle,
-                titleStyle:   titleStyle)
+                recipes:          recipes,
+                activityDate:     activityDate,
+                showDate:         showDate,
+                muteAudio:        muteAudio,
+                metricChips:      metricChips,
+                metricLookup:     metricLookup,
+                routeCoords:      routeCoords,
+                hrSamples:        hrSamples,
+                splits:           splits,
+                hrZones:          hrZones,
+                intervalSegments: intervalSegments,
+                chartSeriesData:  chartSeriesData,
+                videoTitle:       videoTitle,
+                titleStyle:       titleStyle)
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
             player?.isMuted = muteAudio

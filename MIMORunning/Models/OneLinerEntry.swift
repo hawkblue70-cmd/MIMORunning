@@ -105,6 +105,21 @@ final class OneLinerEntry {
             return Self.firstLine(fromV4JSON: String(raw.dropFirst("v4recipes\n".count)))
         } else if raw.hasPrefix("v3recipes\n") {
             return Self.firstLine(fromV3JSON: String(raw.dropFirst("v3recipes\n".count)))
+        } else if raw.hasPrefix("v3slide\n") {
+            let json = String(raw.dropFirst("v3slide\n".count))
+            if let data = json.data(using: .utf8),
+               let obj  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let lines = obj["lines"] as? [String] {
+                return lines.first(where: {
+                    let t = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !t.isEmpty else { return false }
+                    if t.hasPrefix("v3slide") || t.hasPrefix("v3recipes")
+                        || t.hasPrefix("v4recipes") || t.hasPrefix("v2clips")
+                        || (t.count > 30 && t.hasPrefix("{") && t.hasSuffix("}")) { return false }
+                    return true
+                }) ?? ""
+            }
+            return ""
         } else if raw.hasPrefix("v2clips\n") {
             return ""
         } else {

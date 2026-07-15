@@ -1723,7 +1723,7 @@ struct ShareCardScreen: View {
         guard let sid = story?.shoeID else { return nil }
         return allShoes.first { $0.id.uuidString == sid }
     }
-    private var storyPhotos: [UIImage] { story?.allPhotoImages ?? [] }
+    private var storyPhotos: [UIImage] { allPickedPhotos.isEmpty ? (story?.allPhotoImages ?? []) : allPickedPhotos }
     private var storyPhoto: UIImage? { storyPhotos.first }
     private var oneLinerEntries: [OneLinerEntry] {
         OneLinerEntry.visible(from: allOneLinerEntries, workoutID: activity.id.uuidString)
@@ -1780,6 +1780,8 @@ struct ShareCardScreen: View {
     @State private var videoPreviewImage: UIImage?
     @State private var isExportingVideo = false
     @State private var exportedVideoFile: SharableVideoFile?
+    @State private var videoExportError: String?
+    @State private var showVideoExportError = false
     @State private var isBatchExporting = false
     @State private var showExportedVideoWarning = false
     // Route video
@@ -1793,6 +1795,7 @@ struct ShareCardScreen: View {
     @State private var cardPanel: CardChartPanel = .map
     @State private var shareHRSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var shareWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
+    @State private var chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:]
     // Card index (0 = template card, 1 = big number)
     @State private var cardIndex = 0
     @State private var cardPhotoIndex: [Int: Int] = [:]
@@ -1818,7 +1821,26 @@ struct ShareCardScreen: View {
             m.append(MetricItem(id: "pace", value: pace, label: "/km",
                                 color: Color.cyan, uiColor: UIColor.systemCyan))
         }
+        // T = 소요시간
+        let dur = Int(activity.duration)
+        let timeVal = dur >= 3600
+            ? String(format: "%d:%02d:%02d", dur / 3600, (dur % 3600) / 60, dur % 60)
+            : String(format: "%d:%02d", dur / 60, dur % 60)
+        m.append(MetricItem(id: "time", value: timeVal, label: "",
+                            color: Color.yellow, uiColor: UIColor.systemYellow))
+        // B = 평균 심박수
+        if let hr = activity.avgHeartRate {
+            m.append(MetricItem(id: "heartrate", value: "\(hr)", label: "bpm",
+                                color: Theme.heartRate, uiColor: UIColor.systemRed))
+        }
         return m
+    }
+
+    /// id → VideoMetricChip 조회 (클립별 P/D/T 오버레이용)
+    private var oneLinerMetricLookup: [String: VideoMetricChip] {
+        Dictionary(uniqueKeysWithValues: oneLinerAvailableMetrics.map {
+            ($0.id, VideoMetricChip(value: $0.value, label: $0.label, uiColor: $0.uiColor))
+        })
     }
 
     /// VideoMetricChip array for export — only enabled IDs, in display order.
@@ -1827,6 +1849,124 @@ struct ShareCardScreen: View {
             .filter { oneLinerEnabledMetricIDs.contains($0.id) }
             .map { $0.asVideoChip }
     }
+
+    /// 슬라이드 레시피의 per-clip 메트릭 설정을 VideoMetricChip 배열로 변환.
+    /// 한 클립이라도 해당 메트릭을 켜면 슬라이드 전체에 표시.
+    private func metricChipsFromSlideRecipes(_ recipes: [ClipRecipe]) -> [VideoMetricChip] {
+        let hasPace     = recipes.contains { $0.metricPace }
+        let hasDistance = recipes.contains { $0.metricDistance }
+        let hasTime     = recipes.contains { $0.metricTime }
+        let lookup      = oneLinerMetricLookup
+        var chips: [VideoMetricChip] = []
+        if hasDistance, let c = lookup["distance"] { chips.append(c) }
+        if hasPace,     let c = lookup["pace"]     { chips.append(c) }
+        if hasTime,     let c = lookup["time"]     { chips.append(c) }
+        return chips
+    }
+
+    /// Story/Slide 정적 카드용: photoIndex번 사진의 ClipRecipe를 entry에서 직접 읽어 반환.
+    /// v3slide\n JSON 포맷 및 레거시 플레인텍스트 포맷 모두 지원.
+    private func photoRecipe(at photoIndex: Int, prefix: String = "photo:") -> ClipRecipe? {
+        guard photoIndex < storyPhotoUUIDs.count else { return nil }
+        let ref = "\(prefix)\(storyPhotoUUIDs[photoIndex])"
+        guard let entry = oneLinerEntries.first(where: { $0.mediaRef == ref }),
+              !entry.text.isEmpty else { return nil }
+
+        var recipe = ClipRecipe(url: URL(fileURLWithPath: "/dev/null"), fullDuration: 4.0)
+        if entry.text.hasPrefix("v3slide\n"),
+           let data = entry.text.dropFirst("v3slide\n".count).data(using: .utf8),
+           let desc = try? JSONDecoder().decode(SavedClipDescriptor.self, from: data) {
+            recipe.lines      = desc.lines.map { line in
+                let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.hasPrefix("v3slide") || t.hasPrefix("v3recipes")
+                    || t.hasPrefix("v4recipes") || t.hasPrefix("v2clips")
+                    || (t.count > 30 && t.hasPrefix("{") && t.hasSuffix("}")) { return "" }
+                return line
+            }
+            recipe.fontChoice = OneLinerFont.migrate(desc.fontID)
+            recipe.textColor  = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? .white
+            if let aIdx = desc.anchorIdx, CardPosition.allCases.indices.contains(aIdx) {
+                recipe.position = CardPosition.allCases[aIdx]
+            }
+            recipe.sizeLevel  = desc.sizeID.flatMap { TextSizeLevel(rawValue: $0) } ?? .large
+            if let eid = desc.effectID, eid.contains("|") {
+                let parts = eid.split(separator: "|", maxSplits: 3).map(String.init)
+                recipe.appearanceMode = parts.count > 0 ? (AppearanceMode(rawValue: parts[0]) ?? .typing) : .typing
+                recipe.decorEffect    = parts.count > 1 ? (DecorEffect(rawValue: parts[1]) ?? .none) : .none
+                if parts.count > 2 {
+                    recipe.hasBorder = parts[2].contains("B1")
+                    recipe.plateOn   = parts[2].contains("P1")
+                }
+                recipe.flyDirection = parts.count > 3 ? (FlyInDirection(rawValue: parts[3]) ?? .trailing) : .trailing
+            }
+            recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
+            recipe.metricPace      = desc.metricPace
+            recipe.metricDistance  = desc.metricDistance
+            recipe.metricTime      = desc.metricTime
+            recipe.metricHeartRate = desc.metricHeartRate
+            if let idx = desc.pdtAnchorIdx, CardPosition.allCases.indices.contains(idx) {
+                recipe.pdtPosition = CardPosition.allCases[idx]
+            }
+            // 차트 오버레이 복원: chartTypeID 우선, 없으면 레거시 fallback
+            if let ct = desc.chartTypeID, let type = ChartOverlayType(rawValue: ct) {
+                recipe.chartOverlayType = type
+            } else if desc.showRoute {
+                recipe.chartOverlayType = .route
+            } else if desc.showHRChart {
+                recipe.chartOverlayType = .hrChart
+            }
+            if let idx = desc.routeAnchorIdx, CardPosition.allCases.indices.contains(idx) {
+                recipe.routePosition = CardPosition.allCases[idx]
+            }
+            if let ps = desc.pdtSizeID2, let size = TextSizeLevel(rawValue: ps) {
+                recipe.pdtSizeLevel = size
+            }
+            if let de = desc.dataEffectID, let mode = AppearanceMode(rawValue: de) {
+                recipe.dataAppearanceMode = mode
+            }
+        } else {
+            recipe.lines      = entry.text.components(separatedBy: "\n")
+            recipe.fontChoice = entry.font
+            recipe.textColor  = entry.textColor
+            recipe.position   = entry.position
+        }
+        return recipe
+    }
+
+    private var slideStaticRecipe: ClipRecipe? {
+        photoRecipe(at: cardPhotoIndex[1] ?? 0, prefix: "slide:")
+    }
+
+    /// 스토리 카드 차트 예약 높이 — captionMode 텍스트·PDT칩이 차트와 겹치지 않도록.
+    /// OneLinerCard.genericChartOverlay / HRLineChart 모두 botPad=10 기준으로 통일.
+    private func storyChartBottomReserved(for recipe: ClipRecipe?) -> CGFloat {
+        guard let r = recipe else { return 0 }
+        let cH: CGFloat = OneLinerCard.cardHeight  // 375
+        let botPad: CGFloat = 10
+        if r.showHRChart && !shareHRSamples.isEmpty { return cH * 0.264 + botPad }
+        if r.chartOverlayType == .intervals {
+            let segs = detail?.intervalSegments ?? []
+            if !segs.isEmpty {
+                let displayCount = segs.count > 10 ? (segs.count + 1) / 2 : segs.count
+                let panH: CGFloat = 16 + 8 + CGFloat(displayCount) * 6.5 + 10
+                return panH + botPad
+            }
+        }
+        if r.chartOverlayType == .splits {
+            let fc = (detail?.splits ?? []).filter { $0.distanceM >= 900 }.count
+            if fc >= 2 {
+                let displayCount = fc > 21 ? (fc / 2) : fc
+                // titleH(16) + colHH(8) + rows*rowH(7) + vPad*2(10) — splitsChartPanel과 동일
+                let panH: CGFloat = 16 + 8 + CGFloat(displayCount) * 7 + 10
+                return panH + botPad
+            }
+        }
+        let gt = r.chartOverlayType
+        if ![ChartOverlayType.none, .route, .hrChart, .splits, .intervals].contains(gt),
+           let s = chartSeriesData[gt], s.count >= 2 { return cH * 0.264 + botPad }
+        return 0
+    }
+
     private var isSky: Bool        { cardIndex == 4 }
     private var isECG: Bool        { cardIndex == 5 }
     private var isTicket: Bool     { cardIndex == 6 }
@@ -1872,15 +2012,32 @@ struct ShareCardScreen: View {
     /// Indices of story photos whose backing PHAsset has been deleted from Photos.
     @State private var deletedPhotoIndices:    Set<Int>         = []
     @FocusState private var oneLinerFieldFocused: Bool
+    @FocusState private var oneLinerFocusedLine: Int?
     /// Per-slot texts for video multi-page typing animation. One text field per slot.
     @State private var oneLinerVideoSlotTexts: [String]        = ["", ""]
     /// Number of video slots, auto-calculated from video duration (~3.5 s / slot).
     @State private var oneLinerVideoSlotCount: Int             = 2
     /// Multi-clip recipes for running-day OneLiner (empty = use single-video typing path).
-    @State private var oneLinerClipRecipes:    [ClipRecipe]    = []
+    @State private var oneLinerClipRecipes:      [ClipRecipe]    = []
+    /// 영상 템플릿 전환 시 클립 보존용 백업 — 스토리/슬라이드로 전환해도 유지됨.
+    @State private var oneLinerVideoModeRecipes: [ClipRecipe]    = []
+    @State private var showOneLinerSheet:      Bool            = false
+    @State private var storyClipEditRecipes:   [ClipRecipe]    = []
+    @State private var storyClipEditIndex:     Int             = 0
+    @State private var showStoryClipEdit:      Bool            = false
+    /// 클립 편집 직후 @Query 갱신 대기 없이 즉시 렌더용 캐시
+    @State private var cachedStoryRecipes:     [ClipRecipe]    = []
+    /// true = opened from slide mode (hideTimePicker:false, isStoryMode:false)
+    /// false = opened from story mode (hideTimePicker:true,  isStoryMode:true)
+    @State private var storyClipEditIsSlide:   Bool            = false
     private var oneLinerIsPhotoSlide: Bool { template == .slide }
+    /// 슬라이드 = storyPhotos, 영상 = oneLinerClipRecipes 기반 '사진/클립 있음' 여부
+    private var oneLinerHasPhotos: Bool {
+        oneLinerIsPhotoSlide ? !storyPhotos.isEmpty : !oneLinerClipRecipes.isEmpty
+    }
     @State private var oneLinerMuteAudio:      Bool            = false
-    @State private var oneLinerEnabledMetricIDs: Set<String>   = ["distance", "pace"]
+    // 지표는 클립별(클립 편집기)에서만 → 영상전역 지표 비활성(옛 하단고정 칩 제거)
+    @State private var oneLinerEnabledMetricIDs: Set<String>   = []
     @State private var currentOneLinerClipIndex: Int           = 0
     @State private var previewPlayer: OneLinerPreviewPlayer    = OneLinerPreviewPlayer()
 
@@ -1986,73 +2143,122 @@ struct ShareCardScreen: View {
             HStack(spacing: 8) {
                 ForEach(storyPhotos.indices, id: \.self) { i in
                     let isSelected = (cardPhotoIndex[cardIndex] ?? 0) == i
-                    Button {
-                        if isOneLiner {
-                            // ① 저장 — cardPhotoIndex 커밋 전이므로 이전 사진의 ref 사용
-                            let oldRef   = computeOneLinerMediaRef() ?? "nil"
-                            let oldTxt   = oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
-                            saveOneLinerSettings()
-
-                            // ② 포커스 해제 — 키보드 열려 있으면 TextField 내부 버퍼가 바인딩 갱신을 씹음
-                            oneLinerFieldFocused = false
-
-                            // ③ 인덱스 갱신 + ④ 새 사진 entry 로드 (명시적 index로 배치 이전에 확정 로드)
-                            cardPhotoIndex[cardIndex] = i
-                            loadOneLinerSettingsFor(photoIndex: i)
-                        } else {
-                            cardPhotoIndex[cardIndex] = i
+                    ZStack(alignment: .topTrailing) {
+                        Button {
+                            // 원라이너 스토리·슬라이드 모드: 탭 → 카드를 해당 사진으로 즉시 전환 후 ClipTrimSheet 열기
+                            if isOneLiner, template == .story || template == .slide {
+                                for ci in [0, 1, 2, 3] { cardPhotoIndex[ci] = i }
+                                let isSlide = (template == .slide)
+                                storyClipEditIsSlide = isSlide
+                                storyClipEditRecipes = makeStoryClipRecipes(isSlide: isSlide)
+                                storyClipEditIndex = i
+                                showStoryClipEdit = true
+                            } else {
+                                // 통일 선택: 모든 카드(Placeable/OneLiner/Athletic/BigNumber) 동시 적용
+                                if isOneLiner {
+                                    saveOneLinerSettings()
+                                    oneLinerFieldFocused = false
+                                    for ci in [0, 1, 2, 3] { cardPhotoIndex[ci] = i }
+                                    loadOneLinerSettingsFor(photoIndex: i)
+                                } else {
+                                    for ci in [0, 1, 2, 3] { cardPhotoIndex[ci] = i }
+                                }
+                                Task { await renderCard(showSpinner: false) }
+                            }
+                        } label: {
+                            Image(uiImage: storyPhotos[i])
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 46, height: 46)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(isSelected ? Theme.violet : Color.clear, lineWidth: 2)
+                                )
+                                .overlay {
+                                    if deletedPhotoIndices.contains(i) {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.55))
+                                            Image(systemName: "icloud.slash")
+                                                .font(.system(size: 12)).foregroundStyle(.white)
+                                        }
+                                    }
+                                }
+                                // 슬라이드 모드: 좌하단 "4s" 배지
+                                .overlay(alignment: .bottomLeading) {
+                                    if template == .slide {
+                                        Text("4s")
+                                            .font(.system(size: 9, weight: .semibold))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 4).padding(.vertical, 2)
+                                            .background(Color.black.opacity(0.6))
+                                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                                            .padding(3)
+                                    }
+                                }
+                                // 한마디 연결 여부 표시: 문구 있는 사진은 우하단 바이올렛 도트
+                                .overlay(alignment: .bottomTrailing) {
+                                    if isOneLiner, template != .slide, i < storyPhotoUUIDs.count {
+                                        let ref = "photo:\(storyPhotoUUIDs[i])"
+                                        let hasText = oneLinerEntries.contains {
+                                            $0.mediaRef == ref &&
+                                            !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        }
+                                        if hasText {
+                                            Circle()
+                                                .fill(Theme.violet)
+                                                .frame(width: 9, height: 9)
+                                                .overlay(Circle().strokeBorder(.black.opacity(0.25), lineWidth: 1))
+                                                .offset(x: 3, y: 3)
+                                        }
+                                    }
+                                }
                         }
-                        Task { await renderCard(showSpinner: false) }
-                    } label: {
-                        Image(uiImage: storyPhotos[i])
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 46, height: 46)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(isSelected ? Theme.violet : Color.clear, lineWidth: 2)
-                            )
-                            .overlay {
-                                if deletedPhotoIndices.contains(i) {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.55))
-                                        Image(systemName: "icloud.slash")
-                                            .font(.system(size: 12)).foregroundStyle(.white)
-                                    }
-                                }
+                        .buttonStyle(.plain)
+                        // X 삭제 버튼
+                        Button { deleteStoryPhoto(at: i) } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: "1A1A28").opacity(0.90))
+                                    .frame(width: 18, height: 18)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white)
                             }
-                            // 한마디 연결 여부 표시: 문구 있는 사진은 우하단 바이올렛 도트
-                            .overlay(alignment: .bottomTrailing) {
-                                if isOneLiner, i < storyPhotoUUIDs.count {
-                                    let ref = "photo:\(storyPhotoUUIDs[i])"
-                                    let hasText = oneLinerEntries.contains {
-                                        $0.mediaRef == ref &&
-                                        !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    }
-                                    if hasText {
-                                        Circle()
-                                            .fill(Theme.violet)
-                                            .frame(width: 9, height: 9)
-                                            .overlay(Circle().strokeBorder(.black.opacity(0.25), lineWidth: 1))
-                                            .offset(x: 3, y: 3)
-                                    }
-                                }
-                            }
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: 4, y: -4)
+                    }
+                }
+                if storyPhotos.isEmpty {
+                    // 빈 상태: 사진 아이콘 + 텍스트 캡슐 버튼
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 5, matching: .images, photoLibrary: .shared()) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "photo.badge.plus")
+                                .font(.system(size: 17))
+                            Text(AppLanguage.shared.s("사진 선택", "Select Photos"))
+                                .font(.subheadline)
+                        }
+                        .foregroundStyle(Color.white.opacity(0.55))
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(Color.white.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(.plain)
-                }
-                PhotosPicker(selection: $pickerItems, maxSelectionCount: 5, matching: .images, photoLibrary: .shared()) {
-                    ZStack {
+                } else {
+                    // 비어있지 않으면: 썸네일 바로 옆 + 버튼
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 5, matching: .images, photoLibrary: .shared()) {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(Color.white.opacity(0.08))
                             .frame(width: 46, height: 46)
-                        Image(systemName: storyPhotos.isEmpty ? "photo.badge.plus" : "plus")
-                            .font(.system(size: storyPhotos.isEmpty ? 20 : 16))
-                            .foregroundStyle(Theme.violet)
+                            .overlay(
+                                Image(systemName: "plus")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Theme.violet)
+                            )
                     }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 4)
@@ -2403,18 +2609,201 @@ struct ShareCardScreen: View {
     @ViewBuilder
     private var oneLinerCardPreview: some View {
         if template == .video {
-            oneLinerVideoPreviewCard
+            // 9:16 → 4:5 높이(375pt)에 비례 축소 (≈211×375pt)
+            let pH: CGFloat = CardPreviewFrame.width * 16 / 9
+            let scale: CGFloat = CardPreviewFrame.height / pH
+            let previewW: CGFloat = CardPreviewFrame.height * 9.0 / 16.0
+            if previewPlayer.isReady,
+               let pl = previewPlayer.player, let cl = previewPlayer.contentLayer {
+                OneLinerPreviewView(player: pl, contentLayer: cl, renderSize: previewPlayer.renderSize)
+                    .frame(width: previewW, height: CardPreviewFrame.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .overlay(alignment: .bottom) {
+                        GeometryReader { geo in
+                            Rectangle()
+                                .fill(Theme.violet)
+                                .frame(width: geo.size.width * previewPlayer.progress, height: 3)
+                                .animation(.linear(duration: 0.1), value: previewPlayer.progress)
+                        }
+                        .frame(height: 3)
+                        .clipShape(RoundedRectangle(cornerRadius: 1.5))
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                    }
+                    .overlay {
+                        Button { previewPlayer.togglePlayPause() } label: {
+                            Image(systemName: previewPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                .font(.system(size: 44))
+                                .foregroundStyle(.white.opacity(previewPlayer.isPlaying ? 0 : 0.85))
+                                .shadow(color: .black.opacity(0.5), radius: 8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .onTapGesture { previewPlayer.togglePlayPause() }
+            } else {
+                // 정적 미리보기(썸네일 or 플레이스홀더) — scaleEffect로 4:5 높이에 맞게 축소
+                oneLinerVideoPreviewCard
+                    .frame(width: CardPreviewFrame.width, height: pH)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .overlay {
+                        if previewPlayer.isBuilding {
+                            ProgressView().tint(.white)
+                                .padding(14)
+                                .background(.black.opacity(0.45))
+                                .clipShape(Circle())
+                        } else if !oneLinerClipRecipes.isEmpty {
+                            Button { buildPreview() } label: {
+                                Image(systemName: "play.circle.fill")
+                                    .font(.system(size: 44))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .shadow(color: .black.opacity(0.5), radius: 8)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .scaleEffect(scale)
+                    .frame(width: previewW, height: CardPreviewFrame.height)
+            }
+        } else if template == .slide, oneLinerHasPhotos {
+            // 슬라이드: 준비된 경우 animated preview, 아닌 경우 정적 카드 + ▶ 버튼(수동)
+            if previewPlayer.isReady,
+               let pl = previewPlayer.player, let cl = previewPlayer.contentLayer {
+                // 9:16 → 4:5 높이(375pt)에 비례 축소 (≈211×375pt)
+                let previewW: CGFloat = CardPreviewFrame.height * 9.0 / 16.0
+                OneLinerPreviewView(player: pl, contentLayer: cl, renderSize: previewPlayer.renderSize)
+                    .frame(width: previewW, height: CardPreviewFrame.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .overlay(alignment: .bottom) {
+                        GeometryReader { geo in
+                            Rectangle()
+                                .fill(Theme.violet)
+                                .frame(width: geo.size.width * previewPlayer.progress, height: 3)
+                                .animation(.linear(duration: 0.1), value: previewPlayer.progress)
+                        }
+                        .frame(height: 3)
+                        .clipShape(RoundedRectangle(cornerRadius: 1.5))
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                    }
+                    .overlay {
+                        Button { previewPlayer.togglePlayPause() } label: {
+                            Image(systemName: previewPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                .font(.system(size: 44))
+                                .foregroundStyle(.white.opacity(previewPlayer.isPlaying ? 0 : 0.85))
+                                .shadow(color: .black.opacity(0.5), radius: 8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .onTapGesture { previewPlayer.togglePlayPause() }
+            } else {
+                // 슬라이드 정적 대기 카드: 9:16(533pt) 렌더 → 4:5 높이(375pt)에 비례 축소
+                let idx   = cardPhotoIndex[1]
+                let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
+                let sr    = slideStaticRecipe
+                let sPH: CGFloat = CardPreviewFrame.width * 16 / 9
+                let sScale: CGFloat = CardPreviewFrame.height / sPH
+                OneLinerCard(
+                    activity: activity,
+                    backgroundPhoto: photo,
+                    text: sr?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n") ?? "",
+                    position: sr?.position ?? oneLinerPosition,
+                    textColor: sr?.textColor ?? oneLinerColor,
+                    fontChoice: sr?.fontChoice ?? oneLinerFont,
+                    sizeLevel: sr?.sizeLevel ?? .large,
+                    appearanceMode: sr?.appearanceMode ?? .typing,
+                    decorEffect: sr?.decorEffect ?? .none,
+                    hasBorder: sr?.hasBorder ?? false,
+                    plateOn: sr?.plateOn ?? false,
+                    plateColorPreset: sr?.plateColorPreset ?? .blackWhite,
+                    showDate: oneLinerShowDate,
+                    captionMode: true,
+                    videoTitle: oneLinerVideoTitle,
+                    titleStyle: oneLinerTitleStyle,
+                    cardHeightOverride: sPH,
+                    metricPace: false,
+                    metricDistance: false,
+                    metricTime: false,
+                    metricHeartRate: false,
+                    pdtPosition: sr?.pdtPosition ?? .bottomLeading,
+                    pdtSizeLevel: sr?.pdtSizeLevel ?? .medium,
+                    availableMetrics: oneLinerAvailableMetrics,
+                    showRoute: false,
+                    routeCoords: [],
+                    routePosition: sr?.routePosition ?? .bottomTrailing,
+                    showHRChart: false,
+                    hrSamples: [],
+                    hrZones: [],
+                    chartOverlayType: .none,
+                    chartSeriesData: [:],
+                    chartSplits: [],
+                    intervalSegments: []
+                )
+                .frame(width: CardPreviewFrame.width, height: sPH)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .overlay {
+                    if previewPlayer.isBuilding {
+                        ProgressView().tint(.white)
+                            .padding(14)
+                            .background(.black.opacity(0.45))
+                            .clipShape(Circle())
+                    } else {
+                        Button { buildPreview() } label: {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .shadow(color: .black.opacity(0.55), radius: 10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .scaleEffect(sScale)
+                .frame(width: CardPreviewFrame.width * sScale, height: CardPreviewFrame.height)
+            }
         } else {
             let idx   = cardPhotoIndex[1]
             let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
+                     ?? (!storyPhotos.isEmpty ? storyPhotos[0] : nil)
+            // @Query 갱신 타이밍 이슈 우회: 편집 직후엔 cachedStoryRecipes 사용 (클로저로 계산)
+            let pr: ClipRecipe? = {
+                let i = idx ?? 0
+                if !cachedStoryRecipes.isEmpty, cachedStoryRecipes.indices.contains(i) {
+                    return cachedStoryRecipes[i]
+                }
+                return photoRecipe(at: i, prefix: "photo:")
+            }()
             OneLinerCard(
                 activity: activity,
                 backgroundPhoto: photo,
-                text: oneLinerText,
-                position: oneLinerPosition,
-                textColor: oneLinerColor,
-                fontChoice: oneLinerFont,
-                showDate: oneLinerShowDate
+                text: pr?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n") ?? oneLinerText,
+                position: pr?.position ?? oneLinerPosition,
+                textColor: pr?.textColor ?? oneLinerColor,
+                fontChoice: pr?.fontChoice ?? oneLinerFont,
+                sizeLevel: pr?.sizeLevel ?? .large,
+                appearanceMode: pr?.appearanceMode ?? .typing,
+                decorEffect: pr?.decorEffect ?? .none,
+                hasBorder: pr?.hasBorder ?? false,
+                plateOn: pr?.plateOn ?? false,
+                plateColorPreset: pr?.plateColorPreset ?? .blackWhite,
+                showDate: oneLinerShowDate,
+                captionMode: true,
+                chartBottomReserved: storyChartBottomReserved(for: pr),
+                metricPace: pr?.metricPace ?? false,
+                metricDistance: pr?.metricDistance ?? false,
+                metricTime: pr?.metricTime ?? false,
+                metricHeartRate: pr?.metricHeartRate ?? false,
+                pdtPosition: pr?.pdtPosition ?? .bottomLeading,
+                pdtSizeLevel: pr?.pdtSizeLevel ?? .medium,
+                availableMetrics: oneLinerAvailableMetrics,
+                showRoute: pr?.showRoute ?? false,
+                routeCoords: routeCoords,
+                routePosition: pr?.routePosition ?? .bottomTrailing,
+                showHRChart: pr?.showHRChart ?? false,
+                hrSamples: shareHRSamples,
+                hrZones: detail?.hrZones ?? [],
+                chartOverlayType: pr?.chartOverlayType ?? .none,
+                chartSeriesData: chartSeriesData,
+                chartSplits: detail?.splits ?? [],
+                intervalSegments: detail?.intervalSegments ?? []
             )
         }
     }
@@ -2434,9 +2823,8 @@ struct ShareCardScreen: View {
         let pW:          CGFloat = 300
         let pH:          CGFloat = pW * 16 / 9           // ≈ 533.33
         let scale:       CGFloat = pW / 1080             // 300/1080 ≈ 0.2778
-        let safeTopPt    = CardVisual.videoSafeTop    * scale  // ≈ 72.2pt
-        let safeBottomPt = CardVisual.videoSafeBottom * scale  // ≈ 61.1pt
-        let safeZoneH    = pH - safeTopPt - safeBottomPt      // ≈ 400pt
+        let safeTopPt    = CardVisual.videoSafeTop    * scale  // ≈ 72.2pt (safe zone guide visual)
+        let safeBottomPt = CardVisual.videoSafeBottom * scale  // ≈ 75pt (date padding + safe zone guide)
 
         let fontSize     = 24 * oneLinerFont.sizeScale
         let lineSpacing  = fontSize * 0.4
@@ -2453,9 +2841,10 @@ struct ShareCardScreen: View {
         let dateStr = df.string(from: activity.date)
 
         #if DEBUG
-        let previewY: CGFloat = safeTopPt + (oneLinerPosition.isTop ? 4 :
-                                              oneLinerPosition.isBottom ? safeZoneH :
-                                              safeZoneH / 2)
+        let previewY: CGFloat = oneLinerPosition.isTop
+            ? (CardVisual.videoSafeTop + 4) * scale
+            : oneLinerPosition.isBottom ? pH - CardVisual.videoSafeBottom * scale
+            : pH / 2
         let exportY:  CGFloat = (oneLinerPosition.isTop  ? max(31.6 + 4, CardVisual.videoSafeTop + 4) :
                                   oneLinerPosition.isBottom ? 1920 - CardVisual.videoSafeBottom :
                                   (CardVisual.videoSafeTop + 1920 - CardVisual.videoSafeBottom) / 2) * scale
@@ -2512,8 +2901,9 @@ struct ShareCardScreen: View {
             .offset(y: 12)
             .allowsHitTesting(false)
 
-            // ── Text: safe-zone container — exactly mirrors export pixel coordinates ──
-            if !oneLinerText.isEmpty {
+            // ── Text: safe-zone anchored — mirrors export pixel coordinates ─────
+            // oneLinerVideoTitle이 있으면 그쪽이 제목 역할 → oneLinerText 숨김 (중복 렌더 방지)
+            if !oneLinerText.isEmpty, oneLinerVideoTitle.isEmpty {
                 Text(oneLinerText)
                     .font(.custom(oneLinerFont.fontName, size: fontSize))
                     .lineSpacing(lineSpacing)
@@ -2522,15 +2912,13 @@ struct ShareCardScreen: View {
                     .shadow(color: .black.opacity(0.55), radius: 5, x: 1, y: 2)
                     .lineLimit(2)
                     .padding(.horizontal, 24)
-                    // +4pt top inset for .top mirrors export: max(safeTop+4, wMarkZone+4)
-                    .padding(.top, oneLinerPosition.isTop ? 4 : 0)
-                    .frame(width: pW, height: safeZoneH, alignment: oneLinerPosition.alignment)
-                    .offset(y: safeTopPt)
+                    .padding(.top, oneLinerPosition.isTop ? (CardVisual.videoSafeTop + 4) * scale : 0)
+                    .padding(.bottom, oneLinerPosition.isBottom ? CardVisual.videoSafeBottom * scale : 0)
+                    .frame(width: pW, height: pH, alignment: oneLinerPosition.alignment)
                     .allowsHitTesting(false)
             }
 
-            // ── Full-video title: same safe-zone container as clip text, always center-aligned.
-            // Mirrors export: hPad=10pt at vScale=1, +4pt top inset for .top position.
+            // ── Full-video title: mirrors export safe-zone positioning ─────────
             if !oneLinerVideoTitle.isEmpty {
                 let tFontSize = 20 * oneLinerTitleStyle.fontChoice.sizeScale * oneLinerTitleStyle.sizeLevel.scale
                 Text(oneLinerVideoTitle)
@@ -2544,26 +2932,91 @@ struct ShareCardScreen: View {
                     .shadow(color: .black.opacity(oneLinerTitleStyle.outline ? 0.55 : 0), radius: 0.5, x: 0, y: -1.5)
                     .lineLimit(2)
                     .padding(.horizontal, 10)
-                    .padding(.top, oneLinerTitleStyle.position.isTop ? 4 : 0)
-                    .frame(width: pW, height: safeZoneH, alignment: oneLinerTitleStyle.position.alignment)
-                    .offset(y: safeTopPt)
+                    .padding(.top, oneLinerTitleStyle.position.isTop ? CardVisual.videoSafeTop * 0.6 * scale : 0)
+                    .padding(.bottom, oneLinerTitleStyle.position.isBottom ? CardVisual.videoSafeBottom * scale : 0)
+                    .frame(width: pW, height: pH, alignment: oneLinerTitleStyle.position.alignment)
                     .allowsHitTesting(false)
             }
 
-            // ── Date: container bottom - 14pt matches export datePad (14 * vScale * scale = 14pt)
+            // ── Date: safe-zone bottom - 14pt ────────────────────────────────
             if oneLinerShowDate {
                 Text(dateStr)
                     .font(.system(size: 11, weight: .light))
                     .foregroundStyle(.white.opacity(0.55))
                     .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
                     .frame(width: pW - 28, alignment: .trailing)
-                    .padding(.bottom, 14)
-                    .frame(height: safeZoneH, alignment: .bottom)
-                    .offset(y: safeTopPt)
+                    .padding(.bottom, safeBottomPt + 14)
+                    .frame(width: pW, height: pH, alignment: .bottom)
+                    .allowsHitTesting(false)
+            }
+
+            // ── PDT chips (첫 클립 recipe) ────────────────────────────────────
+            if let recipe = oneLinerClipRecipes.first,
+               recipe.metricPace || recipe.metricDistance || recipe.metricTime || recipe.metricHeartRate {
+                let lookup = Dictionary(uniqueKeysWithValues: oneLinerAvailableMetrics.map { ($0.id, $0) })
+                let items: [MetricItem] = [
+                    recipe.metricDistance  ? lookup["distance"]  : nil,
+                    recipe.metricPace      ? lookup["pace"]       : nil,
+                    recipe.metricTime      ? lookup["time"]       : nil,
+                    recipe.metricHeartRate ? lookup["heartrate"]  : nil,
+                ].compactMap { $0 }
+                if !items.isEmpty {
+                    let sz = recipe.pdtSizeLevel.scale
+                    let topPad: CGFloat = {
+                        guard recipe.pdtPosition.isTop else { return 0 }
+                        let base = (CardVisual.videoSafeTop + 4) * scale
+                        // 제목이 상단에 있으면 제목 하단 아래로 칩을 밀어냄 (export 동일 기준)
+                        guard !oneLinerVideoTitle.isEmpty, oneLinerTitleStyle.position.isTop else { return base }
+                        let tFontSize = 20 * oneLinerTitleStyle.fontChoice.sizeScale * oneLinerTitleStyle.sizeLevel.scale
+                        let titleH = tFontSize * 1.4 * 2 + 8  // 최대 2줄 여유
+                        let titleEndY = CardVisual.videoSafeTop * 0.6 * scale + titleH
+                        return max(base, titleEndY + 4)
+                    }()
+                    let botPad: CGFloat = recipe.pdtPosition.isBottom ? CardVisual.videoSafeBottom * scale : 0
+                    HStack(spacing: 6 * sz) {
+                        ForEach(items) { m in
+                            HStack(spacing: 3 * sz) {
+                                Text(m.value)
+                                    .font(.system(size: 11 * sz, weight: .bold, design: .rounded).monospacedDigit())
+                                    .foregroundStyle(.white)
+                                if !m.label.isEmpty {
+                                    Text(m.label)
+                                        .font(.system(size: 9 * sz))
+                                        .foregroundStyle(.white.opacity(0.7))
+                                }
+                            }
+                            .padding(.horizontal, 8 * sz)
+                            .padding(.vertical, 4 * sz)
+                            .background(RoundedRectangle(cornerRadius: 8 * sz).fill(m.color.opacity(0.30)))
+                            .overlay(RoundedRectangle(cornerRadius: 8 * sz)
+                                .strokeBorder(m.color.opacity(0.55), lineWidth: 0.5))
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, topPad)
+                    .padding(.bottom, botPad)
+                    .frame(width: pW, height: pH, alignment: recipe.pdtPosition.alignment)
+                    .allowsHitTesting(false)
+                }
+            }
+
+            // ── Route minimap (첫 클립 recipe) ───────────────────────────────
+            if let recipe = oneLinerClipRecipes.first, recipe.showRoute,
+               recipe.chartOverlayType != .route, !routeCoords.isEmpty {
+                let topPad: CGFloat = recipe.routePosition.isTop    ? (CardVisual.videoSafeTop + 4) * scale : 0
+                let botPad: CGFloat = recipe.routePosition.isBottom ? CardVisual.videoSafeBottom * scale : 0
+                RouteMiniMap(coords: routeCoords)
+                    .frame(width: 54, height: 54)
+                    .padding(.horizontal, 18)
+                    .padding(.top, topPad)
+                    .padding(.bottom, botPad)
+                    .frame(width: pW, height: pH, alignment: recipe.routePosition.alignment)
                     .allowsHitTesting(false)
             }
 
             // ── Safe zone guides ──────────────────────────────────────
+            // 오늘의 한마디(카드2)는 쉬는날과 동일하게 "인스타 UI 영역" 가이드 미표시
+            if !isOneLiner {
             VStack(spacing: 0) {
                 // Top danger zone (Instagram UI — profile, icons)
                 ZStack(alignment: .bottomLeading) {
@@ -2605,6 +3058,7 @@ struct ShareCardScreen: View {
             }
             .frame(width: pW, height: pH)
             .allowsHitTesting(false)
+            }
 
             // ── Export progress ───────────────────────────────────────
             if isExportingVideo {
@@ -2692,18 +3146,30 @@ struct ShareCardScreen: View {
     }
 
     private var cardPageDots: some View {
+        // 탭 가능: 카드2(인라인 편집)에서 캐러셀이 숨겨질 때도 다른 카드로 이동 가능하게.
         HStack(spacing: 7) {
-            Circle().fill(cardIndex == 0 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // Placeable
-            Circle().fill(cardIndex == 1 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // OneLiner
-            Circle().fill(cardIndex == 2 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // Athletic
-            Circle().fill(cardIndex == 3 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // BigNumber
-            Circle().fill(cardIndex == 4 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // Sky
-            if ecgDataAvailable != false {
-                Circle().fill(cardIndex == 5 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // ECG
-            }
-            Circle().fill(cardIndex == 6 ? Theme.violet : Color(hex: "6E6E78")).frame(width: 6, height: 6) // Ticket
+            pageDot(0) // Placeable
+            pageDot(1) // OneLiner
+            pageDot(2) // Athletic
+            pageDot(3) // BigNumber
+            pageDot(4) // Sky
+            if ecgDataAvailable != false { pageDot(5) } // ECG
+            pageDot(6) // Ticket
         }
         .padding(.top, 6)
+    }
+
+    private func pageDot(_ i: Int) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { cardIndex = i }
+        } label: {
+            Circle()
+                .fill(cardIndex == i ? Theme.violet : Color(hex: "6E6E78"))
+                .frame(width: cardIndex == i ? 7 : 6, height: cardIndex == i ? 7 : 6)
+                .frame(width: 11, height: 18) // 탭 영역(간격 절반으로 축소)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Big Number chip row (cardIndex == 3)
@@ -3257,9 +3723,9 @@ struct ShareCardScreen: View {
         .buttonStyle(.plain)
     }
 
-    // Height of the card section: 9:16 (≈533pt) when showing OneLiner video, 375pt otherwise.
+    // Height of the card section: 9:16 (≈533pt) for slide/video templates, 375pt otherwise.
     private var oneLinerCardHeight: CGFloat {
-        cardIndex == 1 && (template == .video || template == .slide) ? 300 * 16 / 9 : 375
+        CardPreviewFrame.height  // 모든 템플릿 375pt — 영상/슬라이드 9:16은 비례 축소(≈211×375)
     }
 
     // 문구가 연결된 사진(story template) 개수 — 2장 이상이면 일괄 저장 모드.
@@ -3280,49 +3746,81 @@ struct ShareCardScreen: View {
     //   [9-grid | font 3-chips (VStack) / color 3-chips]
     //   [재사용 칩 — 이 미디어에 entry가 없고 다른 entry가 있을 때만 표시]
     //   [text input field full-width]
+    // 다른 카드와 동일하게 인라인 편집 — 쉬는날과 같은 MultiClipEditorView(스토리/영상/슬라이드 공용)
     private var oneLinerChipRow: some View {
-        VStack(spacing: 8) {
-            // Video template: disable overlay controls until video or clips are selected
-            if template == .video, sourceVideoURL == nil, oneLinerClipRecipes.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "video.badge.plus").font(.system(size: 12))
-                    Text(AppLanguage.shared.s("영상을 먼저 선택해 주세요", "Select a video first"))
-                        .font(.caption)
+        MultiClipEditorView(
+            recipes: $oneLinerClipRecipes,
+            isPhotoSlideMode: Binding<Bool>(get: { template == .slide || template == .story }, set: { _ in }),
+            muteAudio: $oneLinerMuteAudio,
+            selectedClipIndex: $currentOneLinerClipIndex,
+            savedClipLines: [],
+            availableMetrics: oneLinerAvailableMetrics,
+            enabledMetricIDs: $oneLinerEnabledMetricIDs,
+            routeCoords: routeCoords,
+            hrSamples: shareHRSamples,
+            splits: detail?.splits ?? [],
+            chartSeriesData: chartSeriesData,
+            hrZones: detail?.hrZones ?? [],
+            intervalSegments: detail?.intervalSegments ?? [],
+            onSave: {
+                if previewPlayer.isReady || previewPlayer.isBuilding {
+                    previewPlayer.pause()
+                    previewPlayer.invalidate()
                 }
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-            }
-            // Clip mode with clips: per-clip style controls live in MultiClipEditorView
-            let isClipMode = template == .video || template == .slide
-            if !(isOneLiner && isClipMode && !oneLinerClipRecipes.isEmpty) {
-                oneLinerGridAndChips
-            }
-            oneLinerReuseChipRow
-            // Video / slide template: multi-clip editor
-            if isOneLiner && isClipMode {
-                MultiClipEditorView(
-                    recipes: $oneLinerClipRecipes,
-                    isPhotoSlideMode: Binding<Bool>(get: { template == .slide }, set: { _ in }),
-                    muteAudio: $oneLinerMuteAudio,
-                    selectedClipIndex: $currentOneLinerClipIndex,
-                    savedClipLines: [],
-                    availableMetrics: oneLinerAvailableMetrics,
-                    enabledMetricIDs: $oneLinerEnabledMetricIDs,
-                    onSave: { },
-                    videoTitle: $oneLinerVideoTitle,
-                    titleStyle: $oneLinerTitleStyle
-                )
-                .padding(.horizontal, 24)
-                // Single-source typing path: only when no multi-clips (video only)
-                if template == .video, oneLinerClipRecipes.isEmpty, sourceVideoURL != nil {
-                    oneLinerVideoSlotInput
+                // 영상 템플릿: 첫 클립 썸네일 정적 배경 세팅 + 자동 라이브 프리뷰 빌드
+                if template == .video {
+                    if let thumb = oneLinerClipRecipes.first?.thumbnail {
+                        videoPreviewImage = thumb
+                    }
+                    if !oneLinerClipRecipes.isEmpty {
+                        buildPreview()
+                    }
                 }
-            } else {
-                oneLinerTextField
-            }
-        }
+                // 영상 모드에서만 저장 — 스토리/슬라이드 전환 시 빈 배열로 덮어쓰기 방지
+                if template == .video { saveOneLinerClipRecipes() }
+            },
+            isStoryMode: template == .story,
+            showPickerButton: template != .story && template != .slide,
+            showTitleEvenWhenEmpty: template == .slide && !storyPhotos.isEmpty,
+            videoTitle: $oneLinerVideoTitle,
+            titleStyle: $oneLinerTitleStyle
+        )
+        .padding(.horizontal, 24)
         .padding(.vertical, 4)
+    }
+
+    // 2번째 카드 = 쉬는날 편집화면을 인라인으로 이식(embedded). 미리보기·편집폼·저장 모두 쉬는날과 동일.
+    // 러닝 데이터(P/D/T/M/H)는 클립 편집 그리드 다음에 노출.
+    private var oneLinerRestDayEditor: some View {
+        RestDayOneLinerSheet(
+            date: activity.date,
+            activity: activity,
+            availableMetrics: oneLinerAvailableMetrics,
+            routeCoords: routeCoords,
+            hrSamples: shareHRSamples,
+            splits: detail?.splits ?? [],
+            chartSeriesData: chartSeriesData,
+            hrZones: detail?.hrZones ?? [],
+            intervalSegments: detail?.intervalSegments ?? [],
+            embedded: true,
+            belowPreview: AnyView(cardPageDots)
+        )
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 520)
+    }
+
+    // 메인 편집(클립 추가·스타일·데이터)은 쉬는날 방식 전용 시트로
+    private var oneLinerEditButton: some View {
+        Button { showOneLinerSheet = true } label: {
+            Label(AppLanguage.shared.s("한마디 편집", "Edit one-liner"), systemImage: "slider.horizontal.3")
+                .font(.headline)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .background(Theme.violet)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 24)
     }
 
     /// Multi-slot text input for video template OneLiner.
@@ -3543,51 +4041,73 @@ struct ShareCardScreen: View {
         .buttonStyle(.plain)
     }
 
-    // Text input field with 40-char limit, character counter, and memo guidance
+    private let oneLinerLineCharLimit = 30
+    private var oneLinerLineCount: Int { max(1, oneLinerText.components(separatedBy: "\n").count) }
+
+    private func oneLinerLineBinding(for index: Int) -> Binding<String> {
+        Binding {
+            let lines = oneLinerText.components(separatedBy: "\n")
+            return index < lines.count ? lines[index] : ""
+        } set: { newVal in
+            var lines = oneLinerText.components(separatedBy: "\n")
+            while lines.count <= index { lines.append("") }
+            lines[index] = String(newVal.prefix(oneLinerLineCharLimit))
+            oneLinerText = lines.prefix(oneLinerLineCount).joined(separator: "\n")
+            saveOneLinerSettings()
+            Task { await renderCard(showSpinner: false) }
+        }
+    }
+
+    // Text input field with per-line 30-char limit and + button for adding lines
     @ViewBuilder
     private var oneLinerTextField: some View {
-        HStack(spacing: 8) {
-            TextField(
-                AppLanguage.shared.s("오늘의 한마디", "Your one-liner"),
-                text: $oneLinerText,
-                axis: .vertical
-            )
-            .lineLimit(1...2)
-            .focused($oneLinerFieldFocused)
-            .font(.system(size: 15))
-            .foregroundStyle(.white)
-            .tint(Theme.violet)
-            .onChange(of: oneLinerText) { _, newValue in
-                // Block 3rd line: strip everything after the second \n
-                let lines = newValue.components(separatedBy: "\n")
-                if lines.count > 2 {
-                    oneLinerText = String(lines.prefix(2).joined(separator: "\n").prefix(40))
-                    return  // onChange fires again with the corrected value
+        HStack(alignment: .center, spacing: 8) {
+            VStack(spacing: 6) {
+                ForEach(0..<oneLinerLineCount, id: \.self) { i in
+                    let lineText = { () -> String in
+                        let lines = oneLinerText.components(separatedBy: "\n")
+                        return i < lines.count ? lines[i] : ""
+                    }()
+                    HStack(spacing: 8) {
+                        TextField(
+                            AppLanguage.shared.s(i == 0 ? "오늘의 한마디" : "\(i + 1)번째 줄",
+                                                 i == 0 ? "Your one-liner" : "Line \(i + 1)"),
+                            text: oneLinerLineBinding(for: i)
+                        )
+                        .focused($oneLinerFocusedLine, equals: i)
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white)
+                        .tint(Theme.violet)
+                        Spacer(minLength: 0)
+                        Text("\(lineText.count)/\(oneLinerLineCharLimit)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(hex: "6E6E78"))
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "1E1E28"))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                if newValue.count > 40 { oneLinerText = String(newValue.prefix(40)); return }
-                saveOneLinerSettings()
-                Task { await renderCard(showSpinner: false) }
             }
-            Spacer(minLength: 0)
-            Text("\(oneLinerText.count)/40")
-                .font(.system(size: 11))
-                .foregroundStyle(Color(hex: "6E6E78"))
-                .monospacedDigit()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color(hex: "1E1E28"))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .padding(.horizontal, 24)
-        .padding(.bottom, (oneLinerText.count >= 38 || oneLinerText.contains("\n")) ? 2 : 4)
 
-        if oneLinerText.components(separatedBy: "\n").count >= 2 {
-            Text(AppLanguage.shared.s("두 줄까지 쓸 수 있어요", "Two lines maximum"))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 4)
+            if oneLinerLineCount < 3 {
+                Button {
+                    oneLinerText += "\n"
+                    saveOneLinerSettings()
+                    Task { await renderCard(showSpinner: false) }
+                    let idx = oneLinerLineCount - 1
+                    Task { @MainActor in oneLinerFocusedLine = idx }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Theme.violet)
+                        .frame(width: 36, height: 36)
+                }
+            }
         }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 4)
     }
 
     // Chip row for ECG card: pace / HR source radio + accent selector
@@ -3667,20 +4187,19 @@ struct ShareCardScreen: View {
         .buttonStyle(.plain)
     }
 
+    // 오늘의 한마디(카드2)는 쉬는날과 동일하게 3개 탭(스토리/영상/슬라이드)만.
+    private var templateTabs: [ShareTemplate] {
+        isOneLiner ? [.story, .video, .slide] : ShareTemplate.allCases
+    }
+
     private var templatePicker: some View {
         HStack(spacing: 0) {
-            ForEach(ShareTemplate.allCases, id: \.self) { t in
+            ForEach(templateTabs, id: \.self) { t in
                 let available = ShareCard(rawValue: cardIndex)?.supportedTemplates.contains(t) ?? true
                 let selected  = template == t
                 Button {
                     guard available else { return }
                     if isOneLiner {
-                        let old = template
-                        // Clear recipes when switching between incompatible clip modes
-                        if (old == .video && t == .slide) || (old == .slide && t == .video) {
-                            oneLinerClipRecipes = []
-                            previewPlayer.invalidate()
-                        }
                         previewPlayer.pause()
                     }
                     withAnimation(.easeInOut(duration: 0.15)) { template = t }
@@ -3717,29 +4236,11 @@ struct ShareCardScreen: View {
     @ViewBuilder
     private var bottomControls: some View {
         if template == .video {
-            VStack(spacing: 0) {
-                HStack(spacing: 14) {
-                    PhotosPicker(selection: $videoPickerItem, matching: .videos, photoLibrary: .shared()) {
-                        Label(sourceVideoURL == nil ? AppLanguage.shared.s("영상 선택", "Select Video") : AppLanguage.shared.s("영상 변경", "Change Video"),
-                              systemImage: sourceVideoURL == nil ? "video.badge.plus" : "video")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Theme.violet)
-                    }
-                    if sourceVideoURL != nil {
-                        Button {
-                            sourceVideoURL = nil; videoPickerItem = nil
-                            videoPreviewImage = nil; exportedVideoFile = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.title3)
-                        }
-                    }
-                }
-                Text(AppLanguage.shared.s("최대 30초 · 영상 길이에 따라 합성 시간이 소요됩니다", "Max 30s · Processing time varies by length"))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
-            }
-            .padding(.bottom, 8)
+            Text(AppLanguage.shared.s("영상 선택과 공유시 영상 길이에 따라 시간이 소요됩니다.", "Processing time varies by video length."))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.bottom, 8)
         } else {
             Color.clear.frame(height: 20)
         }
@@ -3758,13 +4259,42 @@ struct ShareCardScreen: View {
                     cardSection
                     cardPageDots
                     Color.clear.frame(height: 10)
-                    activeChipRow.padding(.bottom, 3)
-                    templatePicker
-                    if template == .story {
-                        photoStrip
-                            .padding(.bottom, 8)
+                    if isOneLiner {
+                        // 쉬는날과 동일한 순서: [미리보기] → [3탭] → [편집기]
+                        templatePicker
+                        Color.clear.frame(height: 8)
+                        activeChipRow
+                        // 스토리·슬라이드 모드: 사진 썸네일 스트립 (X 삭제 + + 추가, 사진 없을 때도 표시)
+                        if template == .story || template == .slide {
+                            photoStrip.padding(.bottom, storyPhotos.isEmpty ? 4 : 0)
+                            if template == .story, !storyPhotos.isEmpty {
+                                Text(AppLanguage.shared.s("사진 \(storyPhotos.count)장 · 탭하면 편집", "\(storyPhotos.count) photo(s) · Tap to edit"))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 24)
+                                    .padding(.bottom, 4)
+                            }
+                            if template == .slide, !storyPhotos.isEmpty {
+                                let totalSec = Int(Double(storyPhotos.count) * PhotoSlideComposition.photoDuration)
+                                Text(AppLanguage.shared.s("클립 \(storyPhotos.count)개 · \(totalSec)초 · 탭하면 편집", "\(storyPhotos.count) clips · \(totalSec)s · Tap to edit"))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 24)
+                                    .padding(.bottom, 4)
+                            }
+                        }
+                        bottomControls
+                    } else {
+                        activeChipRow.padding(.bottom, 3)
+                        templatePicker
+                        if template == .story {
+                            photoStrip
+                                .padding(.bottom, 8)
+                        }
+                        bottomControls
                     }
-                    bottomControls
                     Color.clear.frame(height: 8)
                 }
             }
@@ -3776,7 +4306,7 @@ struct ShareCardScreen: View {
                 .padding(.bottom, 16)
                 .background(Theme.background.ignoresSafeArea())
         }
-        .navigationTitle(AppLanguage.shared.s("공유", "Share"))
+        .navigationTitle(AppLanguage.shared.s("공유 카드", "Share Card"))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -3793,10 +4323,32 @@ struct ShareCardScreen: View {
                 Task { await renderCard() }
             }
         }
+        .sheet(isPresented: $showStoryClipEdit, onDismiss: {
+            saveStoryClipEdits(storyClipEditRecipes, isSlide: storyClipEditIsSlide)
+            // 완료 후 마지막으로 선택된 클립(사진)을 카드 미리보기에 반영
+            for ci in [0, 1, 2, 3] { cardPhotoIndex[ci] = storyClipEditIndex }
+        }) {
+            ClipTrimSheet(
+                recipes: $storyClipEditRecipes,
+                selectedClipIndex: $storyClipEditIndex,
+                hideTimePicker: !storyClipEditIsSlide,
+                isStoryMode: !storyClipEditIsSlide,
+                isPhotoSlideMode: storyClipEditIsSlide,
+                availableMetrics: oneLinerAvailableMetrics,
+                routeCoords: routeCoords,
+                hrSamples: shareHRSamples,
+                splits: detail?.splits ?? [],
+                chartSeriesData: chartSeriesData,
+                hrZones: detail?.hrZones ?? [],
+                intervalSegments: detail?.intervalSegments ?? [],
+                videoTitle: oneLinerVideoTitle,
+                titleStyle: oneLinerTitleStyle
+            )
+        }
         .task { await onAppear() }
         .onChange(of: pickerItems) { _, newItems in onPickerItemsChanged(newItems) }
         .onChange(of: videoPickerItem) { _, newItem in onVideoPickerItemChanged(newItem) }
-        .onChange(of: template) { _, _ in onTemplateChanged() }
+        .onChange(of: template) { old, new in syncOneLinerVideoBacking(from: old, to: new); onTemplateChanged() }
         .onChange(of: cardPanel) { _, newPanel in
             Task {
                 await loadChartData(for: newPanel)
@@ -3886,6 +4438,7 @@ struct ShareCardScreen: View {
         }
         .onChange(of: oneLinerVideoTitle) { _, _ in previewPlayer.invalidate() }
         .onChange(of: oneLinerTitleStyle) { _, _ in previewPlayer.invalidate() }
+        .interactiveDismissDisabled(previewPlayer.isBuilding)
         .task(id: template) { await animateRouteVideoPreview() }
         .alert(AppLanguage.shared.s("이미 내보낸 영상이에요", "Already exported video"),
                isPresented: $showExportedVideoWarning) {
@@ -3895,6 +4448,12 @@ struct ShareCardScreen: View {
                 "원본 영상을 선택해 주세요. 내보낸 영상을 다시 선택하면 내용이 두 번 나타납니다.",
                 "Please select the original video. Selecting an exported video again will duplicate the overlay."
             ))
+        }
+        .alert(AppLanguage.shared.s("내보내기 실패", "Export Failed"),
+               isPresented: $showVideoExportError) {
+            Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { showVideoExportError = false }
+        } message: {
+            Text(videoExportError ?? "")
         }
     }
 
@@ -3937,7 +4496,9 @@ struct ShareCardScreen: View {
             let mergedUUIDs = Array((existingUUIDs + newItemIDs).prefix(5))
             storyPhotoUUIDs = mergedUUIDs
             persistStoryPhotos(merged, uuids: mergedUUIDs)
-            cardPhotoIndex[cardIndex] = min(existing.count, merged.count - 1)
+            let newIdx = min(existing.count, merged.count - 1)
+            for ci in [0, 1, 2, 3] { cardPhotoIndex[ci] = newIdx }
+            if template == .slide { previewPlayer.invalidate() }
             await renderCard()
         }
     }
@@ -4000,7 +4561,7 @@ struct ShareCardScreen: View {
            !card.supportedTemplates.contains(template) {
             template = card.defaultTemplate
         }
-        // OneLiner 카드 진입 시 현재 미디어(그라데이션 포함) 저장값 로드
+        // OneLiner 카드 진입 시 현재 미디어(그라데이션 포함) 저장값 로드 (인라인 편집, 모달 없음)
         if newIndex == 1 { loadOneLinerSettings() }
         Task { await renderCard(showSpinner: false) }
     }
@@ -4174,37 +4735,9 @@ struct ShareCardScreen: View {
         let km = activity.distance / 1000
         let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
 
-        // OneLiner multi-clip live preview
-        if isOneLiner, !oneLinerClipRecipes.isEmpty,
-           previewPlayer.isReady,
-           let pl = previewPlayer.player, let cl = previewPlayer.contentLayer {
-            OneLinerPreviewView(player: pl, contentLayer: cl, renderSize: previewPlayer.renderSize)
-                .aspectRatio(9/16, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(alignment: .bottom) {
-                    GeometryReader { geo in
-                        Rectangle()
-                            .fill(Theme.violet)
-                            .frame(width: geo.size.width * previewPlayer.progress, height: 3)
-                            .animation(.linear(duration: 0.1), value: previewPlayer.progress)
-                    }
-                    .frame(height: 3)
-                    .clipShape(RoundedRectangle(cornerRadius: 1.5))
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
-                }
-                .overlay {
-                    Button { previewPlayer.togglePlayPause() } label: {
-                        Image(systemName: previewPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 44))
-                            .foregroundStyle(.white.opacity(previewPlayer.isPlaying ? 0 : 0.85))
-                            .shadow(color: .black.opacity(0.5), radius: 8)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture { previewPlayer.togglePlayPause() }
-        } else if isOneLiner, !oneLinerClipRecipes.isEmpty {
+        // OneLiner: 카드 1(oneLinerCardPreview)이 contentLayer를 독점 소유.
+        // 카드 2는 항상 정적 미리보기 + ▶ 버튼만 표시 → contentLayer 충돌(검은 화면) 방지.
+        if isOneLiner, oneLinerHasPhotos {
             // 재생 전에도 실제 라이브 프리뷰와 동일한 9:16 한마디 카드 표시 → 창·크기 일치
             // oneLinerVideoPreviewCard는 고정 300pt 폭 → 컨테이너 폭에 맞춰 스케일(라이브의 aspectRatio fit과 동일 크기)
             GeometryReader { geo in
@@ -4297,7 +4830,7 @@ struct ShareCardScreen: View {
                 }
 
                 // ▶ play button for OneLiner multi-clip preview
-                if isOneLiner, !oneLinerClipRecipes.isEmpty, !isExportingVideo {
+                if isOneLiner, oneLinerHasPhotos, !isExportingVideo {
                     if previewPlayer.isBuilding {
                         ProgressView().tint(.white)
                             .padding(14)
@@ -4341,14 +4874,7 @@ struct ShareCardScreen: View {
                         .background(Theme.violet)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
-            } else if template == .video, sourceVideoURL == nil, oneLinerClipRecipes.isEmpty {
-                Text(AppLanguage.shared.s("영상을 선택해 주세요", "Select a video first"))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-            } else if template == .slide, oneLinerClipRecipes.isEmpty {
+            } else if template == .slide, storyPhotos.isEmpty {
                 Text(AppLanguage.shared.s("사진을 선택해 주세요", "Select photos first"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -4359,8 +4885,10 @@ struct ShareCardScreen: View {
                 Button {
                     Task { await exportVideo() }
                 } label: {
-                    Label(AppLanguage.shared.s("합성하기", "Export Video"),
-                          systemImage: "film")
+                    // 쉬는날과 동일 문구: 오늘의 한마디는 "공유하기"
+                    Label(isOneLiner ? AppLanguage.shared.s("공유하기", "Share")
+                                     : AppLanguage.shared.s("합성하기", "Export Video"),
+                          systemImage: isOneLiner ? "square.and.arrow.up" : "film")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -4474,8 +5002,8 @@ struct ShareCardScreen: View {
                 // · 2장 이상: "N장 저장" / 1장: "저장" / 0장: 비활성
                 let count = linkedOneLinerPhotoCount
                 let btnLabel = count >= 2
-                    ? AppLanguage.shared.s("\(count)장 저장", "Save \(count) cards")
-                    : AppLanguage.shared.s("저장", "Save")
+                    ? AppLanguage.shared.s("\(count)장 저장(사진첩)", "Save \(count) to Photos")
+                    : AppLanguage.shared.s("저장(사진첩)", "Save to Photos")
                 let btnIcon = count >= 2 ? "photo.on.rectangle.angled" : "square.and.arrow.down"
                 Button { Task { await batchExportOneLinerCards() } } label: {
                     Label(btnLabel, systemImage: btnIcon)
@@ -4529,13 +5057,23 @@ struct ShareCardScreen: View {
         guard !previewPlayer.isBuilding else { return }
         Task {
             if oneLinerIsPhotoSlide {
-                // 슬라이드: 썸네일(정지사진) 기반 프리뷰
-                let photos = oneLinerClipRecipes.compactMap { $0.thumbnail }
+                // 슬라이드: 쉬는날 카드와 동일하게 라이브 인메모리 레시피 우선 사용.
+                // storyClipEditRecipes가 비어있으면(첫 실행·세션 재진입) SwiftData에서 복원.
+                let photos = storyPhotos
                 guard !photos.isEmpty else { return }
+                let slideRecipes  = (storyClipEditRecipes.isEmpty || storyClipEditRecipes.count != photos.count)
+                    ? makeStoryClipRecipes(isSlide: true)
+                    : storyClipEditRecipes
                 await previewPlayer.buildForPhotoSlides(
-                    photos: photos, recipes: oneLinerClipRecipes,
+                    photos: photos, recipes: slideRecipes,
                     activityDate: activity.date, showDate: oneLinerShowDate,
-                    metricChips: oneLinerActiveMetricChips,
+                    metricLookup: oneLinerMetricLookup,
+                    routeCoords: routeCoords,
+                    hrSamples: shareHRSamples,
+                    splits: detail?.splits ?? [],
+                    chartSeriesData: chartSeriesData,
+                    hrZones: detail?.hrZones ?? [],
+                    intervalSegments: detail?.intervalSegments ?? [],
                     videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
             } else {
                 // 영상: 실제 클립 재생 (export와 동일한 필믹 파이프라인 — resolvedAsset 사용)
@@ -4544,10 +5082,27 @@ struct ShareCardScreen: View {
                     activityDate: activity.date, showDate: oneLinerShowDate,
                     muteAudio: oneLinerMuteAudio,
                     metricChips: oneLinerActiveMetricChips,
+                    metricLookup: oneLinerMetricLookup,
+                    routeCoords: routeCoords,
+                    hrSamples: shareHRSamples,
+                    splits: detail?.splits ?? [],
+                    chartSeriesData: chartSeriesData,
+                    hrZones: detail?.hrZones ?? [],
+                    intervalSegments: detail?.intervalSegments ?? [],
                     videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
             }
             previewPlayer.play()
         }
+    }
+
+    private func presentShareSheet(url: URL) {
+        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        guard let scene = UIApplication.shared.connectedScenes
+            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+              let rootVC = scene.keyWindow?.rootViewController else { return }
+        var topVC = rootVC
+        while let presented = topVC.presentedViewController { topVC = presented }
+        topVC.present(activityVC, animated: true)
     }
 
     @MainActor
@@ -4556,47 +5111,82 @@ struct ShareCardScreen: View {
         isExportingVideo = true
         exportedVideoFile = nil
 
-        // ── OneLiner multi-clip path (running day) ──────────────────────────
+        // ── OneLiner 슬라이드 (storyPhotos 기반) ────────────────────────────
+        if isOneLiner, oneLinerIsPhotoSlide {
+            let photos = storyPhotos
+            guard !photos.isEmpty else { isExportingVideo = false; return }
+            do {
+                // 편집된 문구·스타일 — 라이브 인메모리 우선, 없으면 SwiftData 복원
+                let slideRecipes = (storyClipEditRecipes.isEmpty || storyClipEditRecipes.count != photos.count)
+                    ? makeStoryClipRecipes(isSlide: true)
+                    : storyClipEditRecipes
+                let out = try await PhotoSlideComposition.exportSlideWithText(
+                    photos: photos, recipes: slideRecipes,
+                    fontChoice: oneLinerFont, textColor: oneLinerColor,
+                    position: oneLinerPosition,
+                    activityDate: activity.date, showDate: oneLinerShowDate,
+                    metricLookup: oneLinerMetricLookup,
+                    routeCoords: routeCoords,
+                    hrSamples: shareHRSamples,
+                    splits: detail?.splits ?? [],
+                    chartSeriesData: chartSeriesData,
+                    hrZones: detail?.hrZones ?? [],
+                    intervalSegments: detail?.intervalSegments ?? [],
+                    videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
+                exportedVideoFile = SharableVideoFile(url: out)
+                presentShareSheet(url: out)
+            } catch { /* fall through */ }
+            isExportingVideo = false
+            return
+        }
+
+        // ── OneLiner multi-clip path (영상, running day) ────────────────────
         if isOneLiner, !oneLinerClipRecipes.isEmpty {
             do {
-                let recipes = oneLinerClipRecipes
-                let chips   = oneLinerActiveMetricChips
-
-                if oneLinerIsPhotoSlide {
-                    let photos = recipes.compactMap { $0.thumbnail }
-                    guard !photos.isEmpty else { isExportingVideo = false; return }
-                    let out = try await PhotoSlideComposition.exportSlideWithText(
-                        photos: photos, recipes: recipes,
-                        fontChoice: oneLinerFont, textColor: oneLinerColor,
-                        position: oneLinerPosition,
-                        activityDate: activity.date, showDate: oneLinerShowDate,
-                        metricChips: chips,
-                        videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
-                    exportedVideoFile = SharableVideoFile(url: out)
-                } else {
-                    let needsCompose = recipes.count > 1 || recipes.contains { $0.isTrimmed }
-                        || recipes.contains { abs($0.speed - 1.0) > 0.01 }   // 배속도 합성 필요
-                    let exportSrc: URL
-                    var cleanup: URL? = nil
-                    if needsCompose {
-                        let (composed, _) = try await MultiClipComposition.composeAndExport(
-                            recipes: recipes, muteAudio: oneLinerMuteAudio)
-                        exportSrc = composed; cleanup = composed
-                    } else {
-                        exportSrc = recipes[0].url
+                var recipes = oneLinerClipRecipes
+                // URL이 없는 클립은 resolvedAsset이나 assetIdentifier로 재해석
+                for i in recipes.indices {
+                    guard !FileManager.default.fileExists(atPath: recipes[i].url.path) else { continue }
+                    if recipes[i].resolvedAsset != nil { continue }
+                    if let assetID = recipes[i].assetIdentifier {
+                        recipes[i].resolvedAsset = try await MultiClipComposition.resolveAVAsset(assetID: assetID)
                     }
-                    defer { cleanup.map { try? FileManager.default.removeItem(at: $0) } }
-                    let isMuted = oneLinerMuteAudio
-                    let out = try await VideoExportService.exportOneLinerClipBoundVideo(
-                        sourceURL: exportSrc, recipes: recipes,
-                        fontChoice: oneLinerFont, textColor: oneLinerColor,
-                        position: oneLinerPosition,
-                        activityDate: activity.date, showDate: oneLinerShowDate,
-                        muteAudio: isMuted, metricChips: chips,
-                        videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
-                    exportedVideoFile = SharableVideoFile(url: out)
                 }
-            } catch { /* fall through */ }
+                let chips   = oneLinerActiveMetricChips
+                // resolvedAsset이 있으면 반드시 composeAndExport 경로 사용 (URL 직접 사용 금지)
+                let hasResolvedAssets = recipes.contains { $0.resolvedAsset != nil }
+                let needsCompose = recipes.count > 1 || recipes.contains { $0.isTrimmed }
+                    || recipes.contains { abs($0.speed - 1.0) > 0.01 } || hasResolvedAssets
+                let exportSrc: URL
+                var cleanup: URL? = nil
+                if needsCompose {
+                    let (composed, _) = try await MultiClipComposition.composeAndExport(
+                        recipes: recipes, muteAudio: oneLinerMuteAudio)
+                    exportSrc = composed; cleanup = composed
+                } else {
+                    exportSrc = recipes[0].url
+                }
+                defer { cleanup.map { try? FileManager.default.removeItem(at: $0) } }
+                let isMuted = oneLinerMuteAudio
+                let out = try await VideoExportService.exportOneLinerClipBoundVideo(
+                    sourceURL: exportSrc, recipes: recipes,
+                    fontChoice: oneLinerFont, textColor: oneLinerColor,
+                    position: oneLinerPosition,
+                    activityDate: activity.date, showDate: oneLinerShowDate,
+                    muteAudio: isMuted, metricChips: chips,
+                    metricLookup: oneLinerMetricLookup,
+                    routeCoords: routeCoords,
+                    hrSamples: shareHRSamples,
+                    hrZones: detail?.hrZones ?? [],
+                    videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
+                exportedVideoFile = SharableVideoFile(url: out)
+                presentShareSheet(url: out)
+            } catch {
+                videoExportError = AppLanguage.shared.s(
+                    "내보내기 중 오류가 발생했습니다: \(error.localizedDescription)",
+                    "Export error: \(error.localizedDescription)")
+                showVideoExportError = true
+            }
             isExportingVideo = false
             return
         }
@@ -4833,6 +5423,11 @@ struct ShareCardScreen: View {
         if storyPhotoUUIDs.isEmpty {
             storyPhotoUUIDs = story?.sortedPhotoUUIDs ?? []
         }
+        // Pre-populate cachedStoryRecipes from disk so preview shows saved state immediately,
+        // avoiding a visible flash before the first edit dismiss populates the cache.
+        if cachedStoryRecipes.isEmpty, !storyPhotoUUIDs.isEmpty {
+            cachedStoryRecipes = makeStoryClipRecipes()
+        }
         // Auto-select first available panel when no route
         if routeCoords.isEmpty && cardPanel == .map {
             let first = CardChartPanel.allCases.first { isChartPanelAvailable($0) }
@@ -4844,6 +5439,22 @@ struct ShareCardScreen: View {
         // HR 시계열 미리 로드 — 공유 카드 경로 그라데이션용 (패널 무관)
         if activity.avgHeartRate != nil, let mgr = manager, shareHRSamples.isEmpty {
             shareHRSamples = await mgr.fetchHRTimeSeries(for: activity.id)
+        }
+        // 차트 시계열 fetch (케이던스·지면접촉·보폭·수직진폭·파워 + 고도)
+        if chartSeriesData.isEmpty, let mgr = manager {
+            async let cadence = mgr.fetchCadenceTimeSeries(for: activity.id)
+            async let stride  = mgr.fetchWorkoutTimeSeries(for: activity.id, identifier: .runningStrideLength, unit: .meter())
+            async let vo      = mgr.fetchWorkoutTimeSeries(for: activity.id, identifier: .runningVerticalOscillation, unit: .meterUnit(with: .centi))
+            var newData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:]
+            let (cad, strRes, voRes) = await (cadence, stride, vo)
+            if cad.count    >= 2 { newData[.cadence]             = cad    }
+            if strRes.count >= 2 { newData[.strideLength]        = strRes }
+            if voRes.count  >= 2 { newData[.verticalOscillation] = voRes  }
+            // 고도: ActivityDetail에서 바로 가져옴
+            if let alt = detail?.altitudeTimeProfile, alt.count >= 2 {
+                newData[.elevation] = alt.map { (offset: $0.offset, value: $0.altitude) }
+            }
+            chartSeriesData = newData
         }
         await renderCard()
         await loadECGWaveforms()
@@ -4885,12 +5496,218 @@ struct ShareCardScreen: View {
         return entry
     }
 
+    // MARK: - OneLiner 클립 저장/복원 (영상 템플릿 전용)
+
+    private var oneLinerClipsEntry: OneLinerEntry? {
+        oneLinerEntries.first { $0.mediaRef == "oneliner:clips" }
+    }
+
+    private func saveOneLinerClipRecipes() {
+        let validRecipes = oneLinerClipRecipes.filter {
+            $0.assetIdentifier != nil || $0.clipVideoRef != nil || $0.storedPhotoRef != nil
+        }
+        if validRecipes.isEmpty {
+            if let entry = oneLinerClipsEntry {
+                modelContext.delete(entry)
+                try? modelContext.save()
+            }
+            return
+        }
+        let descs = validRecipes.map { r in
+            SavedClipDescriptor(
+                assetID: r.assetIdentifier, clipVideoRef: r.clipVideoRef,
+                photoRef: r.storedPhotoRef, thumbRef: r.thumbRef,
+                trimStart: r.trimStart, trimEnd: r.trimEnd, fullDuration: r.fullDuration,
+                lines: r.lines,
+                fontID: r.fontChoice.rawValue, colorID: r.textColor.rawValue,
+                anchorIdx: CardPosition.allCases.firstIndex(of: r.position),
+                sizeID: r.sizeLevel.rawValue,
+                effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)P\(r.plateOn ? 1 : 0)|\(r.flyDirection.rawValue)",
+                plateColorID: r.plateColorPreset.rawValue, speed: r.speed,
+                metricPace: r.metricPace, metricDistance: r.metricDistance, metricTime: r.metricTime,
+                metricHeartRate: r.metricHeartRate,
+                pdtAnchorIdx: CardPosition.allCases.firstIndex(of: r.pdtPosition),
+                showRoute: r.showRoute,
+                routeAnchorIdx: CardPosition.allCases.firstIndex(of: r.routePosition),
+                showHRChart: r.showHRChart,
+                chartTypeID:  r.chartOverlayType == .none ? nil : r.chartOverlayType.rawValue,
+                pdtSizeID2:   r.pdtSizeLevel.rawValue,
+                dataEffectID: r.dataAppearanceMode.rawValue)
+        }
+        let saved = SavedRecipeSet(
+            isPhotoSlide: false, muteAudio: oneLinerMuteAudio, clips: descs,
+            videoTitle: oneLinerVideoTitle,
+            titleAnchorIdx: CardPosition.allCases.firstIndex(of: oneLinerTitleStyle.position),
+            titleFontID: oneLinerTitleStyle.fontChoice.rawValue,
+            titleColorID: oneLinerTitleStyle.textColor.rawValue,
+            titleSizeID: oneLinerTitleStyle.sizeLevel.rawValue,
+            titleOutline: oneLinerTitleStyle.outline)
+        guard let data = try? JSONEncoder().encode(saved),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let payload = "v4recipes\n" + json
+        if let existing = oneLinerClipsEntry {
+            existing.text = payload
+        } else {
+            let entry = OneLinerEntry(workoutID: activity.id.uuidString, mediaRef: "oneliner:clips")
+            entry.text = payload
+            modelContext.insert(entry)
+        }
+        try? modelContext.save()
+    }
+
+    private func loadOneLinerClipRecipes() {
+        guard let entry = oneLinerClipsEntry,
+              entry.text.hasPrefix("v4recipes\n"),
+              let data = entry.text.dropFirst("v4recipes\n".count).data(using: .utf8),
+              let saved = try? JSONDecoder().decode(SavedRecipeSet.self, from: data),
+              !saved.clips.isEmpty else { return }
+        oneLinerMuteAudio  = saved.muteAudio
+        oneLinerVideoTitle = saved.videoTitle
+        var style = OneLinerTitleStyle()
+        if let idx = saved.titleAnchorIdx, CardPosition.allCases.indices.contains(idx) {
+            style.position = CardPosition.allCases[idx]
+        }
+        if let fid = saved.titleFontID  { style.fontChoice = OneLinerFont.migrate(fid) }
+        if let cid = saved.titleColorID { style.textColor  = OneLinerTextColor(rawValue: cid) ?? .white }
+        if let sid = saved.titleSizeID  { style.sizeLevel  = TextSizeLevel(rawValue: sid) ?? .medium }
+        style.outline = saved.titleOutline
+        oneLinerTitleStyle = style
+        var restored: [ClipRecipe] = []
+        for desc in saved.clips {
+            let thumb: UIImage?
+            if let pr = desc.photoRef { thumb = OneLinerPhotoStore.load(mediaRef: pr) }
+            else if let tr = desc.thumbRef { thumb = ClipThumbStore.load(ref: tr) }
+            else { thumb = nil }
+            let recipeURL: URL
+            if let ref = desc.clipVideoRef,
+               let stableURL = ClipVideoStore.fileURL(ref: ref),
+               FileManager.default.fileExists(atPath: stableURL.path) {
+                recipeURL = stableURL
+            } else {
+                recipeURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("mimo_placeholder_\(UUID().uuidString)")
+            }
+            var recipe = ClipRecipe(url: recipeURL, fullDuration: desc.fullDuration, thumbnail: thumb)
+            recipe.trimStart       = desc.trimStart
+            recipe.trimEnd         = desc.trimEnd
+            recipe.lines           = desc.lines.map { line in
+                let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.hasPrefix("v3slide") || t.hasPrefix("v3recipes")
+                    || t.hasPrefix("v4recipes") || t.hasPrefix("v2clips")
+                    || (t.count > 30 && t.hasPrefix("{") && t.hasSuffix("}")) { return "" }
+                return line
+            }
+            recipe.assetIdentifier = desc.assetID
+            recipe.clipVideoRef    = desc.clipVideoRef
+            recipe.storedPhotoRef  = desc.photoRef
+            recipe.thumbRef        = desc.thumbRef
+            recipe.fontChoice      = OneLinerFont.migrate(desc.fontID)
+            recipe.textColor       = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? oneLinerColor
+            if let idx = desc.anchorIdx, CardPosition.allCases.indices.contains(idx) {
+                recipe.position = CardPosition.allCases[idx]
+            } else {
+                recipe.position = oneLinerPosition
+            }
+            recipe.sizeLevel = desc.sizeID.flatMap { TextSizeLevel(rawValue: $0) } ?? .medium
+            if let eid = desc.effectID, eid.contains("|") {
+                let parts = eid.split(separator: "|", maxSplits: 3).map(String.init)
+                recipe.appearanceMode = parts.count > 0 ? (AppearanceMode(rawValue: parts[0]) ?? .typing) : .typing
+                recipe.decorEffect    = parts.count > 1 ? (DecorEffect(rawValue: parts[1]) ?? .none) : .none
+                if parts.count > 2 {
+                    let r = parts[2]
+                    if r.hasPrefix("B") {
+                        recipe.hasBorder = r.contains("B1")
+                        recipe.plateOn   = r.contains("P1")
+                    } else {
+                        switch r {
+                        case "1", "outline": recipe.hasBorder = true;  recipe.plateOn = false
+                        case "plate":        recipe.hasBorder = false; recipe.plateOn = true
+                        default:             recipe.hasBorder = false; recipe.plateOn = false
+                        }
+                    }
+                }
+                recipe.flyDirection = parts.count > 3 ? (FlyInDirection(rawValue: parts[3]) ?? .trailing) : .trailing
+            } else {
+                recipe.appearanceMode = .typing
+                recipe.decorEffect    = .none
+                recipe.hasBorder      = false
+                recipe.plateOn        = false
+            }
+            recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
+            recipe.speed            = desc.speed
+            recipe.metricPace       = desc.metricPace
+            recipe.metricDistance   = desc.metricDistance
+            recipe.metricTime       = desc.metricTime
+            recipe.metricHeartRate  = desc.metricHeartRate
+            if let a = desc.pdtAnchorIdx, CardPosition.allCases.indices.contains(a) {
+                recipe.pdtPosition = CardPosition.allCases[a]
+            }
+            if let ct = desc.chartTypeID, let type = ChartOverlayType(rawValue: ct) {
+                recipe.chartOverlayType = type
+            } else if desc.showRoute {
+                recipe.chartOverlayType = .route
+            } else if desc.showHRChart {
+                recipe.chartOverlayType = .hrChart
+            }
+            if let a = desc.routeAnchorIdx, CardPosition.allCases.indices.contains(a) {
+                recipe.routePosition = CardPosition.allCases[a]
+            }
+            if let ps = desc.pdtSizeID2, let size = TextSizeLevel(rawValue: ps) {
+                recipe.pdtSizeLevel = size
+            }
+            if let de = desc.dataEffectID, let mode = AppearanceMode(rawValue: de) {
+                recipe.dataAppearanceMode = mode
+            }
+            restored.append(recipe)
+        }
+        oneLinerVideoModeRecipes = restored
+        if template == .video { oneLinerClipRecipes = restored }
+        if let firstThumb = restored.first?.thumbnail {
+            videoPreviewImage = firstThumb
+        }
+    }
+
+    private func syncOneLinerVideoBacking(from oldTemplate: ShareTemplate, to newTemplate: ShareTemplate) {
+        guard isOneLiner else { return }
+        // 비디오 템플릿을 벗어날 때: active clips → 백업, active 비움
+        if oldTemplate == .video {
+            oneLinerVideoModeRecipes = oneLinerClipRecipes
+            oneLinerClipRecipes = []
+        }
+        // 비디오 템플릿으로 돌아올 때: 백업에서 복원 + 썸네일 갱신
+        if newTemplate == .video {
+            oneLinerClipRecipes = oneLinerVideoModeRecipes
+            if let thumb = oneLinerVideoModeRecipes.first?.thumbnail {
+                videoPreviewImage = thumb
+            }
+        }
+    }
+
     private func syncUIFromEntry(_ entry: OneLinerEntry) {
-        oneLinerText     = entry.text
-        oneLinerFont     = entry.font
-        oneLinerColor    = entry.textColor
-        oneLinerPosition = entry.position
-        oneLinerShowDate = entry.showDate
+        // v3slide\n 포맷(ClipTrimSheet 저장)이면 실제 텍스트와 스타일을 디코딩.
+        // 그렇지 않으면 레거시 플레인텍스트 방식 유지.
+        if entry.text.hasPrefix("v3slide\n"),
+           let data = entry.text.dropFirst("v3slide\n".count).data(using: .utf8),
+           let desc = try? JSONDecoder().decode(SavedClipDescriptor.self, from: data) {
+            oneLinerText     = desc.lines.filter { line in
+                let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.isEmpty || t.hasPrefix("v3slide") || t.hasPrefix("v3recipes")
+                    || t.hasPrefix("v4recipes") || t.hasPrefix("v2clips")
+                    || (t.count > 30 && t.hasPrefix("{") && t.hasSuffix("}")) { return false }
+                return true
+            }.joined(separator: "\n")
+            oneLinerFont     = OneLinerFont.migrate(desc.fontID)
+            oneLinerColor    = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? .white
+            if let aIdx = desc.anchorIdx, CardPosition.allCases.indices.contains(aIdx) {
+                oneLinerPosition = CardPosition.allCases[aIdx]
+            }
+        } else {
+            oneLinerText     = entry.text
+            oneLinerFont     = entry.font
+            oneLinerColor    = entry.textColor
+            oneLinerPosition = entry.position
+        }
+        oneLinerShowDate  = entry.showDate
     }
 
     private func loadOneLinerSettings() {
@@ -4920,6 +5737,7 @@ struct ShareCardScreen: View {
                 oneLinerVideoSlotTexts = Array(repeating: "", count: max(2, oneLinerVideoSlotCount))
             }
         }
+        loadOneLinerClipRecipes()
     }
 
     /// 명시적 photoIndex로 OneLiner entry 로드.
@@ -4941,6 +5759,176 @@ struct ShareCardScreen: View {
                 oneLinerColor = latest.textColor
             }
         }
+    }
+
+    // MARK: - Story clip edit helpers
+
+    /// storyPhotos를 ClipTrimSheet에 전달할 ClipRecipe 배열로 변환.
+    /// 기존 OneLinerEntry에서 text/style 복원, 없으면 기본값.
+    private func makeStoryClipRecipes(isSlide: Bool = false) -> [ClipRecipe] {
+        let photos = storyPhotos
+        let prefix = isSlide ? "slide:" : "photo:"
+        return photos.enumerated().map { i, photo in
+            let uuid = i < storyPhotoUUIDs.count ? storyPhotoUUIDs[i] : UUID().uuidString
+            let ref  = "\(prefix)\(uuid)"
+            // slide: prefix가 없으면 photo: 기존 항목으로 폴백 (마이그레이션 경로)
+            let entry = oneLinerEntries.first { $0.mediaRef == ref }
+                     ?? (isSlide ? oneLinerEntries.first { $0.mediaRef == "photo:\(uuid)" } : nil)
+            var recipe = ClipRecipe(
+                url: URL(fileURLWithPath: "/dev/null"),
+                fullDuration: 4.0,
+                thumbnail: photo
+            )
+            recipe.storedPhotoRef = ref
+            if let e = entry {
+                if e.text.hasPrefix("v3slide\n"),
+                   let data = e.text.dropFirst("v3slide\n".count).data(using: .utf8),
+                   let desc = try? JSONDecoder().decode(SavedClipDescriptor.self, from: data) {
+                    // 신규 포맷: 모든 스타일 (plateOn·sizeLevel·effectID 포함) 완전 복원
+                    recipe.lines      = desc.lines.map { line in
+                        let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if t.hasPrefix("v3slide") || t.hasPrefix("v3recipes")
+                            || t.hasPrefix("v4recipes") || t.hasPrefix("v2clips")
+                            || (t.count > 30 && t.hasPrefix("{") && t.hasSuffix("}")) { return "" }
+                        return line
+                    }
+                    recipe.fontChoice = OneLinerFont.migrate(desc.fontID)
+                    recipe.textColor  = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? .white
+                    if let idx = desc.anchorIdx, CardPosition.allCases.indices.contains(idx) {
+                        recipe.position = CardPosition.allCases[idx]
+                    }
+                    recipe.sizeLevel = desc.sizeID.flatMap { TextSizeLevel(rawValue: $0) } ?? .large
+                    if let eid = desc.effectID, eid.contains("|") {
+                        let parts = eid.split(separator: "|", maxSplits: 3).map(String.init)
+                        recipe.appearanceMode = parts.count > 0 ? (AppearanceMode(rawValue: parts[0]) ?? .typing) : .typing
+                        recipe.decorEffect    = parts.count > 1 ? (DecorEffect(rawValue: parts[1]) ?? .none) : .none
+                        if parts.count > 2 {
+                            recipe.hasBorder = parts[2].contains("B1")
+                            recipe.plateOn   = parts[2].contains("P1")
+                        }
+                        recipe.flyDirection = parts.count > 3 ? (FlyInDirection(rawValue: parts[3]) ?? .trailing) : .trailing
+                    }
+                    recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
+                    recipe.metricPace      = desc.metricPace
+                    recipe.metricDistance  = desc.metricDistance
+                    recipe.metricTime      = desc.metricTime
+                    recipe.metricHeartRate = desc.metricHeartRate
+                    if let idx = desc.pdtAnchorIdx, CardPosition.allCases.indices.contains(idx) {
+                        recipe.pdtPosition = CardPosition.allCases[idx]
+                    }
+                    if let ct = desc.chartTypeID, let type = ChartOverlayType(rawValue: ct) {
+                        recipe.chartOverlayType = type
+                    } else if desc.showRoute {
+                        recipe.chartOverlayType = .route
+                    } else if desc.showHRChart {
+                        recipe.chartOverlayType = .hrChart
+                    }
+                    if let idx = desc.routeAnchorIdx, CardPosition.allCases.indices.contains(idx) {
+                        recipe.routePosition = CardPosition.allCases[idx]
+                    }
+                    if let ps = desc.pdtSizeID2, let size = TextSizeLevel(rawValue: ps) {
+                        recipe.pdtSizeLevel = size
+                    }
+                    if let de = desc.dataEffectID, let mode = AppearanceMode(rawValue: de) {
+                        recipe.dataAppearanceMode = mode
+                    }
+                } else {
+                    // 구 포맷: 텍스트 + 기본 3개 스타일만 복원 (마이그레이션 경로)
+                    var lines = e.text.components(separatedBy: "\n")
+                    while lines.count < 2 { lines.append("") }
+                    recipe.lines      = Array(lines.prefix(2))
+                    recipe.fontChoice = e.font
+                    recipe.textColor  = e.textColor
+                    recipe.position   = e.position
+                }
+            } else {
+                recipe.lines = ["", ""]
+            }
+            return recipe
+        }
+    }
+
+    /// ClipTrimSheet 완료 후 편집 결과를 OneLinerEntry에 저장.
+    /// plateOn·sizeLevel·effectID 등 전체 스타일을 SavedClipDescriptor JSON("v3slide\n")으로 인코딩.
+    private func saveStoryClipEdits(_ recipes: [ClipRecipe], isSlide: Bool = false) {
+        let prefix = isSlide ? "slide:" : "photo:"
+        for (i, recipe) in recipes.enumerated() {
+            guard i < storyPhotoUUIDs.count else { continue }
+            let ref  = "\(prefix)\(storyPhotoUUIDs[i])"
+            let text = recipe.lines
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
+
+            // SavedClipDescriptor JSON으로 전체 스타일 직렬화 (쉬는 날 buildRecipeSet과 동일 포맷)
+            let cleanLines = recipe.lines.map { line -> String in
+                let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.hasPrefix("v3slide") || t.hasPrefix("v3recipes")
+                    || t.hasPrefix("v4recipes") || t.hasPrefix("v2clips")
+                    || (t.count > 30 && t.hasPrefix("{") && t.hasSuffix("}")) { return "" }
+                return line
+            }
+            let desc = SavedClipDescriptor(
+                assetID: nil, clipVideoRef: nil,
+                photoRef: recipe.storedPhotoRef, thumbRef: recipe.thumbRef,
+                trimStart: recipe.trimStart, trimEnd: recipe.trimEnd,
+                fullDuration: recipe.fullDuration,
+                lines: cleanLines,
+                fontID: recipe.fontChoice.rawValue,
+                colorID: recipe.textColor.rawValue,
+                anchorIdx: CardPosition.allCases.firstIndex(of: recipe.position),
+                sizeID: recipe.sizeLevel.rawValue,
+                effectID: "\(recipe.appearanceMode.rawValue)|\(recipe.decorEffect.rawValue)|B\(recipe.hasBorder ? 1 : 0)P\(recipe.plateOn ? 1 : 0)|\(recipe.flyDirection.rawValue)",
+                plateColorID: recipe.plateColorPreset.rawValue,
+                speed: recipe.speed,
+                metricPace: recipe.metricPace,
+                metricDistance: recipe.metricDistance,
+                metricTime: recipe.metricTime,
+                metricHeartRate: recipe.metricHeartRate,
+                pdtAnchorIdx: CardPosition.allCases.firstIndex(of: recipe.pdtPosition),
+                showRoute: recipe.showRoute,
+                routeAnchorIdx: CardPosition.allCases.firstIndex(of: recipe.routePosition),
+                showHRChart: recipe.showHRChart,
+                chartTypeID:  recipe.chartOverlayType == .none ? nil : recipe.chartOverlayType.rawValue,
+                pdtSizeID2:   recipe.pdtSizeLevel.rawValue,
+                dataEffectID: recipe.dataAppearanceMode.rawValue
+            )
+            let payload: String
+            if let data = try? JSONEncoder().encode(desc),
+               let json = String(data: data, encoding: .utf8) {
+                payload = "v3slide\n" + json
+            } else {
+                payload = text
+            }
+
+            let hasMetric = recipe.metricPace || recipe.metricDistance || recipe.metricTime
+                          || recipe.metricHeartRate || recipe.chartOverlayType != .none
+            let shouldSave = !text.isEmpty || hasMetric
+
+            if let existing = oneLinerEntries.first(where: { $0.mediaRef == ref }) {
+                if shouldSave {
+                    existing.text      = payload
+                    existing.font      = recipe.fontChoice
+                    existing.textColor = recipe.textColor
+                    existing.position  = recipe.position
+                } else {
+                    modelContext.delete(existing)
+                }
+            } else if shouldSave {
+                let entry = OneLinerEntry(workoutID: activity.id.uuidString, mediaRef: ref)
+                entry.text      = payload
+                entry.font      = recipe.fontChoice
+                entry.textColor = recipe.textColor
+                entry.position  = recipe.position
+                entry.showDate  = true
+                modelContext.insert(entry)
+            }
+        }
+        cachedStoryRecipes = recipes  // @Query 갱신 전 즉시 렌더용 캐시
+        try? modelContext.save()
+        Task { await renderCard() }
+        // 편집 완료 후 미리보기는 수동(▶ 버튼)으로 시작 — 자동 buildPreview 호출 없음
+        if template == .slide { previewPlayer.invalidate() }
     }
 
     // 저장 트리거 전체 (모두 이 함수를 경유 → upsert 또는 delete-on-empty, append 경로 없음):
@@ -5025,21 +6013,48 @@ struct ShareCardScreen: View {
 
         for i in storyPhotoUUIDs.indices {
             guard i < storyPhotos.count else { continue }
-            let ref = "photo:\(storyPhotoUUIDs[i])"
-            guard let entry = oneLinerEntries.first(where: {
-                $0.mediaRef == ref &&
-                !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            }) else { continue }
+            // 내보내기 시점엔 @Query 갱신 완료 — photoRecipe 사용
+            guard let pr = photoRecipe(at: i, prefix: "photo:") else { continue }
+            let hasText    = pr.lines.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let hasMetrics = pr.metricPace || pr.metricDistance || pr.metricTime || pr.metricHeartRate
+            let hasChart   = pr.showRoute || pr.showHRChart || pr.chartOverlayType != .none
+            guard hasText || hasMetrics || hasChart else { continue }
 
+            let text  = pr.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n")
             let photo = highQualityStoryPhotos[i] ?? storyPhotos[i]
             let card = OneLinerCard(
                 activity: activity,
                 backgroundPhoto: photo,
-                text: entry.text,
-                position: entry.position,
-                textColor: entry.textColor,
-                fontChoice: entry.font,
-                showDate: entry.showDate
+                text: text,
+                position: pr.position,
+                textColor: pr.textColor,
+                fontChoice: pr.fontChoice,
+                sizeLevel: pr.sizeLevel,
+                appearanceMode: pr.appearanceMode,
+                decorEffect: pr.decorEffect,
+                hasBorder: pr.hasBorder,
+                plateOn: pr.plateOn,
+                plateColorPreset: pr.plateColorPreset,
+                showDate: oneLinerShowDate,
+                captionMode: true,
+                chartBottomReserved: storyChartBottomReserved(for: pr),
+                metricPace: pr.metricPace,
+                metricDistance: pr.metricDistance,
+                metricTime: pr.metricTime,
+                metricHeartRate: pr.metricHeartRate,
+                pdtPosition: pr.pdtPosition,
+                pdtSizeLevel: pr.pdtSizeLevel,
+                availableMetrics: oneLinerAvailableMetrics,
+                showRoute: pr.showRoute,
+                routeCoords: routeCoords,
+                routePosition: pr.routePosition,
+                showHRChart: pr.showHRChart,
+                hrSamples: shareHRSamples,
+                hrZones: detail?.hrZones ?? [],
+                chartOverlayType: pr.chartOverlayType,
+                chartSeriesData: chartSeriesData,
+                chartSplits: detail?.splits ?? [],
+                intervalSegments: detail?.intervalSegments ?? []
             )
             let renderer = ImageRenderer(content: card.frame(width: OneLinerCard.cardWidth,
                                                               height: OneLinerCard.cardHeight))
@@ -5208,14 +6223,49 @@ struct ShareCardScreen: View {
             previewImage = nil
             let idx   = cardPhotoIndex[1]
             let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
+                     ?? (!storyPhotos.isEmpty ? storyPhotos[0] : nil)
+            // @Query 갱신 타이밍 이슈 우회: 편집 직후엔 cachedStoryRecipes 사용
+            let pr: ClipRecipe?
+            let prIdx = idx ?? 0
+            if !cachedStoryRecipes.isEmpty, cachedStoryRecipes.indices.contains(prIdx) {
+                pr = cachedStoryRecipes[prIdx]
+            } else {
+                pr = photoRecipe(at: prIdx, prefix: "photo:")
+            }
+            let text  = pr?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n") ?? oneLinerText
             let card = OneLinerCard(
                 activity: activity,
                 backgroundPhoto: photo,
-                text: oneLinerText,
-                position: oneLinerPosition,
-                textColor: oneLinerColor,
-                fontChoice: oneLinerFont,
-                showDate: oneLinerShowDate
+                text: text,
+                position: pr?.position ?? oneLinerPosition,
+                textColor: pr?.textColor ?? oneLinerColor,
+                fontChoice: pr?.fontChoice ?? oneLinerFont,
+                sizeLevel: pr?.sizeLevel ?? .large,
+                appearanceMode: pr?.appearanceMode ?? .typing,
+                decorEffect: pr?.decorEffect ?? .none,
+                hasBorder: pr?.hasBorder ?? false,
+                plateOn: pr?.plateOn ?? false,
+                plateColorPreset: pr?.plateColorPreset ?? .blackWhite,
+                showDate: oneLinerShowDate,
+                captionMode: true,
+                chartBottomReserved: storyChartBottomReserved(for: pr),
+                metricPace: pr?.metricPace ?? false,
+                metricDistance: pr?.metricDistance ?? false,
+                metricTime: pr?.metricTime ?? false,
+                metricHeartRate: pr?.metricHeartRate ?? false,
+                pdtPosition: pr?.pdtPosition ?? .bottomLeading,
+                pdtSizeLevel: pr?.pdtSizeLevel ?? .medium,
+                availableMetrics: oneLinerAvailableMetrics,
+                showRoute: pr?.showRoute ?? false,
+                routeCoords: routeCoords,
+                routePosition: pr?.routePosition ?? .bottomTrailing,
+                showHRChart: pr?.showHRChart ?? false,
+                hrSamples: shareHRSamples,
+                hrZones: detail?.hrZones ?? [],
+                chartOverlayType: pr?.chartOverlayType ?? .none,
+                chartSeriesData: chartSeriesData,
+                chartSplits: detail?.splits ?? [],
+                intervalSegments: detail?.intervalSegments ?? []
             )
             let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
             renderer.scale = 3
@@ -5423,6 +6473,48 @@ struct ShareCardScreen: View {
             s.updatedAt = Date()
             try? modelContext.save()
         }
+    }
+
+    /// 썸네일 X 버튼 — 특정 인덱스의 사진을 스토리에서 삭제하고 카드 인덱스를 정리.
+    private func deleteStoryPhoto(at index: Int) {
+        let allPhotos = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
+        guard index < allPhotos.count else { return }
+        var newPhotos = allPhotos
+        newPhotos.remove(at: index)
+
+        var newUUIDs = storyPhotoUUIDs
+        if index < newUUIDs.count { newUUIDs.remove(at: index) }
+        storyPhotoUUIDs = newUUIDs
+
+        // highQualityStoryPhotos 인덱스 재매핑
+        var remapped: [Int: UIImage] = [:]
+        for (k, v) in highQualityStoryPhotos where k != index {
+            remapped[k > index ? k - 1 : k] = v
+        }
+        highQualityStoryPhotos = remapped
+
+        // deletedPhotoIndices 재매핑
+        deletedPhotoIndices = Set(deletedPhotoIndices.compactMap { idx -> Int? in
+            if idx == index { return nil }
+            return idx > index ? idx - 1 : idx
+        })
+
+        if newPhotos.isEmpty {
+            allPickedPhotos = []
+            clearStoryPhoto()
+            for ci in [0, 1, 2, 3] { cardPhotoIndex[ci] = nil }
+        } else {
+            allPickedPhotos = newPhotos
+            persistStoryPhotos(newPhotos, uuids: newUUIDs)
+            // 삭제된 인덱스 기준으로 카드 인덱스 보정
+            for ci in [0, 1, 2, 3] {
+                guard let idx = cardPhotoIndex[ci] else { continue }
+                if idx >= newPhotos.count { cardPhotoIndex[ci] = max(0, newPhotos.count - 1) }
+                else if idx > index { cardPhotoIndex[ci] = idx - 1 }
+            }
+        }
+        if template == .slide { previewPlayer.invalidate() }
+        Task { await renderCard() }
     }
 
 }

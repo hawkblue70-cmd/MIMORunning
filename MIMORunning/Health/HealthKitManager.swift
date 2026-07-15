@@ -187,12 +187,8 @@ class HealthKitManager {
             userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
         }
 
-        // 완료 태그 확인: 태그가 있고 강제 갱신이 아니면 절대 HealthKit 재조회 안 함
-        if !forced, isWarmCache, lastSync != nil {
-            Task { await self.repairMissingMetrics() }
-            Task { await self.fetchAllOlderHistory() }
-            return
-        }
+        // 5분 이내 early return은 위에서 이미 처리됨.
+        // 5분 초과 시에는 오늘 자정부터 증분 조회를 실행해 새 운동을 자동 감지.
 
         // 캐시가 없는 첫 실행만 로딩 표시
         isLoading = !isWarmCache

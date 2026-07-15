@@ -11,6 +11,274 @@ struct ClipDescriptor {
     let trimEnd: Double
 }
 
+// MARK: - ChartOverlayType
+//
+// 클립 위에 표시할 차트 오버레이 단일 선택. .none = 없음.
+// splits/cadence/groundContact/strideLength/verticalOscillation/elevation은 렌더러 미구현(disabled).
+
+enum ChartOverlayType: String, CaseIterable, Codable {
+    case none                = "none"
+    case route               = "route"
+    case hrChart             = "hrChart"
+    case splits              = "splits"
+    case cadence             = "cadence"
+    case groundContact       = "groundContact" // enum 유지 (하위호환), UI 그리드 미노출
+    case strideLength        = "strideLength"
+    case verticalOscillation = "verticalOscillation"
+    case elevation           = "elevation"
+    case power               = "power"         // enum 유지 (하위호환), UI 그리드 미노출
+    case intervals           = "intervals"
+
+    var chartTitleKo: String {
+        switch self {
+        case .hrChart:             return "♥ 심박수"
+        case .splits:              return "⚡ 스플릿"
+        case .cadence:             return "🦵 케이던스"
+        case .strideLength:        return "→ 보폭"
+        case .verticalOscillation: return "↕ 수직진폭"
+        case .elevation:           return "⛰ 고도"
+        case .intervals:           return "↩ 인터벌"
+        default:                   return ""
+        }
+    }
+    var chartTitleEn: String {
+        switch self {
+        case .hrChart:             return "♥ HR"
+        case .splits:              return "⚡ Splits"
+        case .cadence:             return "Cadence"
+        case .strideLength:        return "Stride"
+        case .verticalOscillation: return "Vert. Osc."
+        case .elevation:           return "Elevation"
+        case .intervals:           return "↩ Intervals"
+        default:                   return ""
+        }
+    }
+    var lineUIColor: UIColor {
+        switch self {
+        case .cadence:             return UIColor(red: 0.486, green: 0.361, blue: 0.988, alpha: 0.90)
+        case .strideLength:        return UIColor.systemTeal.withAlphaComponent(0.90)
+        case .verticalOscillation: return UIColor.systemOrange.withAlphaComponent(0.90)
+        case .elevation:           return UIColor.systemGreen.withAlphaComponent(0.90)
+        default:                   return UIColor.white.withAlphaComponent(0.85)
+        }
+    }
+    /// chart types shown in ClipTrimSheet grid (in order)
+    static var visibleInGrid: [ChartOverlayType] {
+        [.route, .hrChart, .splits, .cadence, .strideLength, .verticalOscillation, .elevation, .intervals]
+    }
+
+    // Generic binned-bar chart panel (UIKit/CoreGraphics) — matches MetricBarPanelChart style.
+    // Called from VideoExportService + PhotoSlideComposition.
+    // useRangeBar=true (stride/VO): floating min~max bars. false (cadence): domainLo→avg bars.
+    // elevation: area/line chart. All charts include X/Y axis labels + grid lines.
+    static func renderGenericChartPanel(
+        type: ChartOverlayType,
+        series: [(offset: TimeInterval, value: Double)],
+        panW: CGFloat, panH: CGFloat,
+        panPad: CGFloat, panCR: CGFloat,
+        vScale: CGFloat
+    ) -> UIImage? {
+        let useRangeBar: Bool
+        switch type {
+        case .strideLength, .verticalOscillation, .power, .groundContact: useRangeBar = true
+        default: useRangeBar = false
+        }
+        let isElevation = (type == .elevation)
+
+        let src = series.filter { $0.value > 0 }
+        guard src.count >= 2 else { return nil }
+
+        let t0    = src.first!.offset
+        let dt    = max(1.0, src.last!.offset - t0)
+        let dtMin = dt / 60.0
+        let bN    = 80
+        let bSz   = dt / Double(bN)
+
+        struct Bucket { let id: Int; let avg: Double; let lo: Double; let hi: Double }
+        let buckets: [Bucket] = (0..<bN).compactMap { i in
+            let lo   = t0 + Double(i) * bSz
+            let hi   = lo + bSz
+            let vals = src
+                .filter { $0.offset >= lo && ($0.offset < hi || (i == bN - 1 && $0.offset <= t0 + dt)) }
+                .map(\.value)
+            guard !vals.isEmpty else { return nil }
+            return Bucket(id: i,
+                          avg: vals.reduce(0, +) / Double(vals.count),
+                          lo:  vals.min()!,
+                          hi:  vals.max()!)
+        }
+        guard !buckets.isEmpty else { return nil }
+
+        let avgAll = src.map(\.value).reduce(0, +) / Double(src.count)
+
+        // Y domain
+        let yLo: Double
+        let yHi: Double
+        if useRangeBar {
+            let oMin = buckets.map(\.lo).min()!
+            let oMax = buckets.map(\.hi).max()!
+            let rng  = max(oMax - oMin, oMin * 0.02)
+            yLo = max(0, oMin - rng * 0.4)
+            yHi = oMax + rng * 0.2
+        } else {
+            let avgs = buckets.map(\.avg)
+            let lo2  = avgs.min()!, hi2 = avgs.max()!
+            let rng  = max(hi2 - lo2, lo2 * 0.02)
+            yLo = max(0, lo2 - rng * 0.6)
+            yHi = hi2 + rng * 0.2
+        }
+        let yRange = max(1e-6, yHi - yLo)
+
+        // Number formatting
+        let fmtY: (Double) -> String = { v in
+            if isElevation { return String(format: "%.0fm", v) }
+            if abs(v) >= 100 { return String(format: "%.0f", v) }
+            if abs(v) >= 10  { return String(format: "%.1f", v) }
+            return String(format: "%.2f", v)
+        }
+        let fmtX: (Double) -> String = { m in
+            AppLanguage.shared.isEnglish
+                ? String(format: "%.0fm", m)
+                : String(format: "%.0f분", m)
+        }
+
+        // Fonts & colors
+        let axisFont  = UIFont.monospacedDigitSystemFont(ofSize: 8 * vScale, weight: .regular)
+        let axisColor = UIColor.white.withAlphaComponent(0.55)
+        let axisAttrs: [NSAttributedString.Key: Any] = [.font: axisFont, .foregroundColor: axisColor]
+        let lineColor = type.lineUIColor
+
+        // Right-side Y label width
+        let yLblW: CGFloat = [fmtY(yLo), fmtY(yHi), fmtY((yLo + yHi) / 2)]
+            .map { ($0 as NSString).size(withAttributes: axisAttrs).width }
+            .max()! + 5 * vScale
+
+        let titleH: CGFloat = 12 * vScale
+        let xLblH:  CGFloat = 12 * vScale
+        let chartX: CGFloat = panPad
+        let chartW: CGFloat = panW - chartX - yLblW - panPad
+        let chartY: CGFloat = panPad + titleH
+        let chartH: CGFloat = panH - chartY - xLblH - panPad * 0.5
+
+        func ptY(_ v: Double) -> CGFloat { chartY + CGFloat(1 - (v - yLo) / yRange) * chartH }
+
+        let yMarkCount = 4
+        let yStep = (yHi - yLo) / Double(yMarkCount - 1)
+        let xMarkCount = 4
+
+        let imgFmt = UIGraphicsImageRendererFormat()
+        imgFmt.scale = 1.0; imgFmt.opaque = false
+        let rnd = UIGraphicsImageRenderer(size: CGSize(width: panW, height: panH), format: imgFmt)
+        return rnd.image { ctx in
+            let cg = ctx.cgContext
+
+            // Background
+            let bg = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: panW, height: panH), cornerRadius: panCR)
+            UIColor.black.withAlphaComponent(0.40).setFill(); bg.fill()
+
+            // Title
+            let titleFont  = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
+            let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont,
+                                                              .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
+            let titleStr = AppLanguage.shared.s(type.chartTitleKo, type.chartTitleEn)
+            (titleStr as NSString).draw(at: CGPoint(x: chartX, y: panPad), withAttributes: titleAttrs)
+
+            // Horizontal grid lines + right Y labels
+            for i in 0..<yMarkCount {
+                let yVal = yLo + Double(i) * yStep
+                let yPos = ptY(yVal)
+                cg.setStrokeColor(UIColor.white.withAlphaComponent(0.10).cgColor)
+                cg.setLineWidth(0.5)
+                cg.move(to: CGPoint(x: chartX, y: yPos))
+                cg.addLine(to: CGPoint(x: chartX + chartW, y: yPos))
+                cg.strokePath()
+                let text = fmtY(yVal)
+                let sz   = (text as NSString).size(withAttributes: axisAttrs)
+                let ly   = min(chartY + chartH - sz.height, max(chartY, yPos - sz.height / 2))
+                (text as NSString).draw(at: CGPoint(x: chartX + chartW + 3 * vScale, y: ly), withAttributes: axisAttrs)
+            }
+
+            // Vertical grid lines + bottom X labels
+            for i in 0..<xMarkCount {
+                let frac = Double(i) / Double(xMarkCount - 1)
+                let xPos = chartX + CGFloat(frac) * chartW
+                let tMin = frac * dtMin
+                cg.setStrokeColor(UIColor.white.withAlphaComponent(0.10).cgColor)
+                cg.setLineWidth(0.5)
+                cg.move(to: CGPoint(x: xPos, y: chartY))
+                cg.addLine(to: CGPoint(x: xPos, y: chartY + chartH))
+                cg.strokePath()
+                let text = fmtX(tMin)
+                let sz   = (text as NSString).size(withAttributes: axisAttrs)
+                var lx   = xPos - sz.width / 2
+                if i == 0 { lx = xPos }
+                if i == xMarkCount - 1 { lx = xPos - sz.width }
+                (text as NSString).draw(at: CGPoint(x: lx, y: chartY + chartH + 2 * vScale),
+                                        withAttributes: axisAttrs)
+            }
+
+            // Chart content
+            if isElevation {
+                // Area/line chart (matches ElevationPanelChart)
+                let ptX: (TimeInterval) -> CGFloat = { t in chartX + CGFloat((t - t0) / dt) * chartW }
+                let colorSpace = CGColorSpaceCreateDeviceRGB()
+                let gradColors = [lineColor.withAlphaComponent(0.35).cgColor,
+                                  lineColor.withAlphaComponent(0.04).cgColor] as CFArray
+                let gradient   = CGGradient(colorsSpace: colorSpace, colors: gradColors, locations: [0, 1])!
+
+                let fillPath = CGMutablePath()
+                fillPath.move(to: CGPoint(x: ptX(src[0].offset), y: chartY + chartH))
+                fillPath.addLine(to: CGPoint(x: ptX(src[0].offset), y: ptY(src[0].value)))
+                for pt in src.dropFirst() { fillPath.addLine(to: CGPoint(x: ptX(pt.offset), y: ptY(pt.value))) }
+                fillPath.addLine(to: CGPoint(x: ptX(src.last!.offset), y: chartY + chartH))
+                fillPath.closeSubpath()
+                cg.saveGState()
+                cg.addPath(fillPath); cg.clip()
+                cg.drawLinearGradient(gradient,
+                                      start: CGPoint(x: chartX, y: chartY),
+                                      end:   CGPoint(x: chartX, y: chartY + chartH),
+                                      options: [])
+                cg.restoreGState()
+
+                cg.setLineWidth(1.5 * vScale); cg.setLineCap(.round); cg.setLineJoin(.round)
+                cg.setStrokeColor(lineColor.cgColor)
+                cg.move(to: CGPoint(x: ptX(src[0].offset), y: ptY(src[0].value)))
+                for pt in src.dropFirst() { cg.addLine(to: CGPoint(x: ptX(pt.offset), y: ptY(pt.value))) }
+                cg.strokePath()
+
+            } else {
+                // Bar chart
+                let barGap   = chartW / CGFloat(bN)
+                let barW     = max(1.5 * vScale, barGap - 0.8 * vScale)
+                let baseline = ptY(yLo)
+
+                cg.setFillColor(lineColor.withAlphaComponent(0.80).cgColor)
+                for bucket in buckets {
+                    let bx = chartX + CGFloat(bucket.id) * barGap + (barGap - barW) / 2
+                    if useRangeBar {
+                        let topY = ptY(bucket.hi)
+                        let botY = ptY(bucket.lo)
+                        cg.fill(CGRect(x: bx, y: topY, width: barW, height: max(1.5 * vScale, botY - topY)))
+                    } else {
+                        let topY = ptY(bucket.avg)
+                        cg.fill(CGRect(x: bx, y: topY, width: barW, height: max(1.5 * vScale, baseline - topY)))
+                    }
+                }
+
+                // Avg dashed line
+                let avgY = ptY(avgAll)
+                cg.setStrokeColor(lineColor.withAlphaComponent(0.60).cgColor)
+                cg.setLineWidth(1.2 * vScale)
+                cg.setLineDash(phase: 0, lengths: [5 * vScale, 3 * vScale])
+                cg.move(to: CGPoint(x: chartX, y: avgY))
+                cg.addLine(to: CGPoint(x: chartX + chartW, y: avgY))
+                cg.strokePath()
+                cg.setLineDash(phase: 0, lengths: [])
+            }
+        }
+    }
+}
+
 // MARK: - ClipRecipe
 //
 // User-editable descriptor for one clip.
@@ -51,6 +319,33 @@ struct ClipRecipe: Identifiable {
     var plateColorPreset: PlateColorPreset = .blackWhite
     /// 재생 배속. 1.0=원본. 0.5(슬로우)~2.0(패스트). 출력 길이 = trimmedDuration / speed.
     var speed:            Double            = 1.0
+
+    // ── 러닝 데이터 오버레이 (운동한 날 전용, 클립별) ─────────────────
+    // P/D/T/B = 가로 그룹(pdtPosition 한 위치). 차트는 chartOverlayType 단일 선택(경로/심박수/기타).
+    var metricPace:      Bool              = false   // P
+    var metricDistance:  Bool              = false   // D
+    var metricTime:      Bool              = false   // T
+    var metricHeartRate: Bool              = false   // B
+    var pdtPosition:     CardPosition      = .top
+    var pdtSizeLevel:    TextSizeLevel     = .medium  // PDT 뱃지 크기 (소/중/대)
+    var pdtAppearanceMode:  AppearanceMode = .fade    // PDT 등장 방식 (PDTB 전용)
+    var pdtDecorEffect:     DecorEffect    = .none    // PDT 꾸밈 (페이드 모드)
+    var pdtFlyDirection:    FlyInDirection = .trailing // PDT 날아오기 방향
+    var dataAppearanceMode: AppearanceMode = .fade    // 차트 등장 방식
+    var chartDecorEffect:   DecorEffect    = .none    // 차트 꾸밈 (페이드 모드)
+    var chartFlyDirection:  FlyInDirection = .trailing // 차트 날아오기 방향
+    var chartOverlayType: ChartOverlayType = .none    // 차트 오버레이 단일 선택
+    var routePosition:  CardPosition = .bottomTrailing
+
+    // 하위호환 computed 접근자 — 기존 코드가 showRoute/showHRChart를 읽고 쓸 수 있도록 유지
+    var showRoute: Bool {
+        get { chartOverlayType == .route }
+        set { chartOverlayType = newValue ? .route : (chartOverlayType == .route ? .none : chartOverlayType) }
+    }
+    var showHRChart: Bool {
+        get { chartOverlayType == .hrChart }
+        set { chartOverlayType = newValue ? .hrChart : (chartOverlayType == .hrChart ? .none : chartOverlayType) }
+    }
 
     init(url: URL, fullDuration: Double, thumbnail: UIImage? = nil) {
         self.url          = url

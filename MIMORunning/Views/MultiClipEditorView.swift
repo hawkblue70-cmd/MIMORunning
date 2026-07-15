@@ -3,6 +3,7 @@ import Photos
 import PhotosUI
 import AVFoundation
 import UIKit
+import CoreLocation
 
 // MARK: - MetricItem
 // A metric that can be toggled as a chip in MultiClipEditorView and overlaid on video.
@@ -53,11 +54,26 @@ struct MultiClipEditorView: View {
     let availableMetrics: [MetricItem]
     @Binding var enabledMetricIDs: Set<String>
 
+    /// 경로 좌표 (M 미니맵). 빈 배열 = 없음(쉬는날).
+    var routeCoords: [CLLocationCoordinate2D] = []
+    /// 심박 샘플 (H 차트). 빈 배열 = 없음.
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+    /// 스플릿 데이터 (S 차트). 빈 배열 = 없음.
+    var splits: [SplitData] = []
+    /// 기타 시계열 차트 데이터 (케이던스·지면접촉·보폭·수직진폭·고도·파워).
+    var chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:]
+    var hrZones: [HRZoneData] = []
+    var intervalSegments: [IntervalSegment] = []
+
     /// Called after any change so the parent can persist.
     let onSave: () -> Void
 
     /// When true: photo-slide editor in story mode — hides duration row and mute button.
     var isStoryMode: Bool = false
+    /// When false: hides the picker button row (parent handles photo selection itself).
+    var showPickerButton: Bool = true
+    /// When true: shows title section even when recipes is empty (slide mode — photos live in parent).
+    var showTitleEvenWhenEmpty: Bool = false
 
     /// Full-video title (영상·슬라이드 only; hidden when isStoryMode).
     @Binding var videoTitle: String
@@ -86,27 +102,35 @@ struct MultiClipEditorView: View {
             if !recipes.isEmpty { clipStrip }
             if !recipes.isEmpty, isStoryMode  { storyHintRow }
             if !recipes.isEmpty, !isStoryMode { durationRow }
-            if !availableMetrics.isEmpty { metricChipsRow }
-            if !isStoryMode, !recipes.isEmpty { titleSection }
+            // 영상·슬라이드 메인은 '전체 제목'만 — 지표(P/D/T/M/H)는 클립별(클립 편집기)에서
+            // showTitleEvenWhenEmpty: 슬라이드 모드에서 photos가 storyPhotos에 있고 recipes는 비어있을 때
+            if !isStoryMode, !recipes.isEmpty || showTitleEvenWhenEmpty { titleSection }
         }
-        .sheet(isPresented: $isEditing) {
+        // onDismiss: 사용 — onChange(of: isEditing)보다 늦게 호출되어
+        // commitWorkingRecipes()의 @Binding 쓰기가 부모 @State에 반영된 뒤 onSave()를 보장.
+        .sheet(isPresented: $isEditing, onDismiss: {
+            onSave()
+            // ClipTrimSheet.Done이 workingRecipes를 쓰면서 resolvedAsset을 덮어쓸 수 있음.
+            // 이전 실패 기록을 지워 재해석을 허용한다 (export가 성공 = 원본 존재).
+            failedIDs.removeAll()
+            resolveVideoClips()
+        }) {
             ClipTrimSheet(
                 recipes: $recipes,
                 selectedClipIndex: $selectedClipIndex,
                 hideTimePicker: isStoryMode,
                 isStoryMode: isStoryMode,
+                isPhotoSlideMode: isPhotoSlideMode,
+                availableMetrics: availableMetrics,
+                routeCoords: routeCoords,
+                hrSamples: hrSamples,
+                splits: splits,
+                chartSeriesData: chartSeriesData,
+                hrZones: hrZones,
+                intervalSegments: intervalSegments,
                 videoTitle: isStoryMode ? "" : videoTitle,
                 titleStyle: titleStyle
             )
-        }
-        .onChange(of: isEditing) { _, v in
-            if !v {
-                onSave()
-                // ClipTrimSheet.Done이 workingRecipes를 쓰면서 resolvedAsset을 덮어쓸 수 있음.
-                // 이전 실패 기록을 지워 재해석을 허용한다 (export가 성공 = 원본 존재).
-                failedIDs.removeAll()
-                resolveVideoClips()
-            }
         }
         .onChange(of: videoPickerItems)      { _, items in loadVideoClips(items) }
         .onChange(of: photoSlidePickerItems) { _, items in loadPhotoSlides(items) }
@@ -123,27 +147,73 @@ struct MultiClipEditorView: View {
     }
 
     // MARK: - Picker button row
+    // 비어있을 때: 사진 아이콘 + 텍스트 버튼 (전체 폭)
+    // 클립 있을 때: 뮤트 버튼만 (영상 전용) — 추가 버튼은 clipStrip 끝으로 이동
 
+    @ViewBuilder
     private var pickerButtonRow: some View {
-        HStack(spacing: 8) {
+        // slide mode with showPickerButton=false → parent handles picker; render nothing
+        if showPickerButton || !isPhotoSlideMode {
+            HStack(spacing: 8) {
+                if recipes.isEmpty { addEmptyButton }
+            }
+        }
+    }
+
+    // 비어있을 때 표시하는 큰 추가 버튼 (사진 아이콘 통일)
+    @ViewBuilder
+    private var addEmptyButton: some View {
+        if isPhotoSlideMode {
+            Button {
+                photoSlidePickerItems = []
+                showPhotoSlidePicker  = true
+            } label: { emptyButtonFace }
+            .buttonStyle(.plain)
+            .photosPicker(isPresented: $showPhotoSlidePicker,
+                          selection: $photoSlidePickerItems,
+                          maxSelectionCount: PhotoSlideComposition.maxPhotos,
+                          matching: .images, photoLibrary: .shared())
+        } else {
+            PhotosPicker(selection: $videoPickerItems,
+                         maxSelectionCount: 10, matching: .videos,
+                         photoLibrary: .shared()) { emptyButtonFace }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var emptyButtonFace: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "photo.badge.plus")
+                .font(.system(size: 17))
+            Text(isPhotoSlideMode
+                 ? AppLanguage.shared.s("사진 선택", "Select Photos")
+                 : AppLanguage.shared.s("영상 선택", "Select Video"))
+                .font(.subheadline)
+        }
+        .foregroundStyle(Color.white.opacity(0.55))
+        .padding(.horizontal, 14).padding(.vertical, 9)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    // 클립 스트립 끝에 인라인으로 붙는 + 추가 버튼
+    @ViewBuilder
+    private var addInlineButton: some View {
+        let canAdd = isPhotoSlideMode
+            ? recipes.count < PhotoSlideComposition.maxPhotos
+            : totalSeconds < MultiClipComposition.maxSeconds
+        if showPickerButton, canAdd {
+            let btnFace = RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.08))
+                .frame(width: 52, height: 52)
+                .overlay(Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.violet))
             if isPhotoSlideMode {
                 Button {
-                    // 이전 선택 상태 초기화 후 열기 → 스토리/슬라이드 이전 선택 물려받지 않음
                     photoSlidePickerItems = []
                     showPhotoSlidePicker  = true
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "photo.stack.fill")
-                        Text(recipes.isEmpty
-                             ? AppLanguage.shared.s("사진 선택", "Select Photos")
-                             : AppLanguage.shared.s("사진 추가", "Add Photos"))
-                            .font(.subheadline)
-                    }
-                    .foregroundStyle(recipes.isEmpty ? Color.white.opacity(0.55) : Theme.violet)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(recipes.isEmpty ? Color.white.opacity(0.06) : Theme.violet.opacity(0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
+                } label: { btnFace }
                 .buttonStyle(.plain)
                 .photosPicker(isPresented: $showPhotoSlidePicker,
                               selection: $photoSlidePickerItems,
@@ -152,30 +222,7 @@ struct MultiClipEditorView: View {
             } else {
                 PhotosPicker(selection: $videoPickerItems,
                              maxSelectionCount: 10, matching: .videos,
-                             photoLibrary: .shared()) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "video.badge.plus")
-                        Text(recipes.isEmpty
-                             ? AppLanguage.shared.s("영상 선택", "Select Videos")
-                             : AppLanguage.shared.s("영상 추가", "Add Videos"))
-                            .font(.subheadline)
-                    }
-                    .foregroundStyle(recipes.isEmpty ? Color.white.opacity(0.55) : Theme.violet)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(recipes.isEmpty ? Color.white.opacity(0.06) : Theme.violet.opacity(0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(.plain)
-            }
-
-            Spacer(minLength: 0)
-
-            if !recipes.isEmpty, !isPhotoSlideMode, !isStoryMode {
-                Button { muteAudio.toggle(); onSave() } label: {
-                    Image(systemName: muteAudio ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                        .foregroundStyle(muteAudio ? Color.secondary : Theme.violet)
-                        .font(.title3)
-                }
+                             photoLibrary: .shared()) { btnFace }
                 .buttonStyle(.plain)
             }
         }
@@ -203,6 +250,8 @@ struct MultiClipEditorView: View {
                     .animation(.easeInOut(duration: 0.1), value: isDragging)
                     .highPriorityGesture(dragGesture(for: i))
                 }
+                // 클립 바로 옆에 + 추가 버튼 (비어있을 때는 pickerButtonRow에 표시)
+                addInlineButton
             }
             .padding(.vertical, 4)
         }
@@ -303,6 +352,7 @@ struct MultiClipEditorView: View {
             .font(.caption).foregroundStyle(.secondary)
     }
 
+
     // MARK: - Duration row
 
     private var durationRow: some View {
@@ -325,24 +375,30 @@ struct MultiClipEditorView: View {
 
     // MARK: - Metric chips
 
+    private func metricLetter(_ id: String) -> String {
+        switch id {
+        case "pace":     return "P"
+        case "distance": return "D"
+        case "time":     return "T"
+        default:         return String(id.prefix(1)).uppercased()
+        }
+    }
+
+    // 지표 = P/D/T 대문자 원문자 토글 배지 (값은 영상 오버레이에 표시)
     private var metricChipsRow: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             ForEach(availableMetrics) { m in
                 let on = enabledMetricIDs.contains(m.id)
                 Button {
                     if on { enabledMetricIDs.remove(m.id) } else { enabledMetricIDs.insert(m.id) }
                     onSave()
                 } label: {
-                    HStack(spacing: 4) {
-                        if on { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
-                        Text(m.value).font(.system(size: 12, weight: .semibold).monospacedDigit())
-                        Text(m.label).font(.system(size: 10)).opacity(0.7)
-                    }
-                    .foregroundStyle(on ? .white : Color.white.opacity(0.5))
-                    .padding(.horizontal, 9).padding(.vertical, 5)
-                    .background(on ? m.color.opacity(0.35) : Color.white.opacity(0.08))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().strokeBorder(on ? m.color.opacity(0.6) : .clear, lineWidth: 1))
+                    Text(metricLetter(m.id))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(on ? m.color.opacity(0.9) : Color.white.opacity(0.08)))
+                        .foregroundStyle(on ? .white : Color.white.opacity(0.5))
+                        .overlay(Circle().strokeBorder(on ? m.color : .clear, lineWidth: 1.5))
                 }
                 .buttonStyle(.plain)
             }
@@ -364,7 +420,18 @@ struct MultiClipEditorView: View {
             HStack(alignment: .top, spacing: 10) {
                 titlePositionGrid
                 VStack(alignment: .leading, spacing: 5) {
-                    titleSizeChips
+                    HStack(spacing: 0) {
+                        titleSizeChips
+                        Spacer(minLength: 8)
+                        if !isPhotoSlideMode {
+                            Button { muteAudio.toggle(); onSave() } label: {
+                                Image(systemName: muteAudio ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                    .foregroundStyle(muteAudio ? Color.secondary : Theme.violet)
+                                    .font(.system(size: 16))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                     titleFontChips
                     titleColorCircles
                     titleOutlineChip
@@ -766,6 +833,19 @@ struct SavedClipDescriptor: Codable {
     var effectID:     String? = nil   // "appearanceMode|decorEffect|outline(0/1)" e.g. "fade|pop|0"
     var plateColorID: String? = nil   // PlateColorPreset.rawValue
     var speed:        Double  = 1.0   // 재생 배속 (하위호환: 미존재 시 1.0)
+    // 러닝 데이터 오버레이 (운동한 날, 클립별) — 하위호환 기본값
+    var metricPace:      Bool = false
+    var metricDistance:  Bool = false
+    var metricTime:      Bool = false
+    var metricHeartRate: Bool = false
+    var pdtAnchorIdx:    Int? = nil    // CardPosition.allCases index
+    var showRoute:      Bool = false   // 하위호환 레거시 (chartTypeID 우선)
+    var routeAnchorIdx: Int? = nil
+    var showHRChart:    Bool = false   // 하위호환 레거시 (chartTypeID 우선)
+    // 신규 데이터 오버레이 필드 (하위호환: nil = 레거시 fallback)
+    var chartTypeID:   String? = nil   // ChartOverlayType.rawValue
+    var pdtSizeID2:    String? = nil   // TextSizeLevel.rawValue (PDT 뱃지 크기)
+    var dataEffectID:  String? = nil   // AppearanceMode.rawValue (데이터 등장 방식)
 }
 
 // MARK: - ClipVideoStore

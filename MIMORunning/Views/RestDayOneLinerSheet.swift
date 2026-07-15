@@ -5,6 +5,7 @@ import Photos
 import PhotosUI
 import AVFoundation
 import UIKit
+import CoreLocation
 
 // MARK: - RestDayTemplate
 
@@ -33,12 +34,29 @@ private final class RestDayLoadGuard: ObservableObject {
 struct RestDayOneLinerSheet: View {
     let date: Date
 
+    // 운동한 날 지원 (nil = 쉬는날). 있으면 러닝 데이터 오버레이 토글까지 노출.
+    var activity:         Activity? = nil
+    var availableMetrics: [MetricItem] = []
+    var routeCoords:      [CLLocationCoordinate2D] = []
+    var hrSamples:         [(offset: TimeInterval, bpm: Int)] = []
+    var splits:            [SplitData] = []
+    var chartSeriesData:   [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:]
+    var hrZones:           [HRZoneData] = []
+    var intervalSegments:  [IntervalSegment] = []
+    /// true = 공유 카드(2번째 카드)에 인라인으로 심을 때. 시트 껍데기(NavigationStack·닫기 툴바) 제거.
+    var embedded:         Bool = false
+    /// 미리보기 바로 아래에 끼워 넣을 뷰(공유 카드의 페이지 점 등). embedded일 때만 사용.
+    var belowPreview:     AnyView? = nil
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss)      private var dismiss
 
     @Query private var allEntries: [OneLinerEntry]
 
-    private var workoutID: String { OneLinerEntry.restDayWorkoutID(for: date) }
+    // 운동한 날이면 activity.id, 쉬는날이면 date 기반 ID로 저장 분리.
+    private var workoutID: String {
+        activity.map { $0.id.uuidString } ?? OneLinerEntry.restDayWorkoutID(for: date)
+    }
 
     private var gradientEntry: OneLinerEntry? {
         allEntries.first { $0.workoutID == workoutID && $0.mediaRef == nil }
@@ -84,6 +102,7 @@ struct RestDayOneLinerSheet: View {
     @State private var exportError:     String?              = nil
 
     @FocusState private var fieldFocused: Bool
+    @FocusState private var focusedLineIndex: Int?
 
     // MARK: Computed
     private var isVideoMode: Bool { !clipRecipes.isEmpty }
@@ -131,6 +150,13 @@ struct RestDayOneLinerSheet: View {
 
     private var isClipMode: Bool { selectedTemplate == .video || selectedTemplate == .slide }
     private var isPhotoSlideMode: Bool { selectedTemplate == .slide || selectedTemplate == .story }
+
+    /// availableMetrics → VideoMetricChip 조회 (export의 per-clip P/D/T/B 칩 렌더링용)
+    private var metricLookup: [String: VideoMetricChip] {
+        Dictionary(uniqueKeysWithValues: availableMetrics.map {
+            ($0.id, VideoMetricChip(value: $0.value, label: $0.label, uiColor: $0.uiColor))
+        })
+    }
 
     // Per-clip preview style — used by OneLinerCard when in video/slide/story mode
     private var previewFont: OneLinerFont {
@@ -186,6 +212,32 @@ struct RestDayOneLinerSheet: View {
         return .blackWhite
     }
 
+    // 슬라이드/영상 미리보기(9:16)에서 현재 클립의 차트가 차지하는 하단 높이(pt).
+    // captionContent가 이 값으로 텍스트를 차트 위로 밀어 올려 겹침을 방지한다.
+    private var isClipChartBottomReserved: CGFloat {
+        guard clipRecipes.indices.contains(currentClipIndex) else { return 0 }
+        let recipe = clipRecipes[currentClipIndex]
+        let pH: CGFloat = CardPreviewFrame.width * 16 / 9
+        let botPad: CGFloat = 10
+        if recipe.showHRChart && hrSamples.count >= 2 { return pH * 0.264 + botPad }
+        if recipe.chartOverlayType == .route && !routeCoords.isEmpty { return pH * 0.264 + botPad }
+        if recipe.chartOverlayType == .splits {
+            let fc = splits.filter { $0.distanceM >= 900 }.count
+            if fc >= 2 {
+                let dc = fc > 21 ? fc / 2 : fc
+                return 34 + CGFloat(dc) * 7 + botPad
+            }
+        }
+        if recipe.chartOverlayType == .intervals {
+            let d = intervalSegments.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+            if d > 0 { return pH * 0.42 + botPad }
+        }
+        let gt = recipe.chartOverlayType
+        if ![.none, .route, .hrChart, .splits, .intervals].contains(gt),
+           let s = chartSeriesData[gt], s.count >= 2 { return pH * 0.264 + botPad }
+        return 0
+    }
+
     // MARK: Body
     var body: some View { mainContent }
 
@@ -221,25 +273,47 @@ struct RestDayOneLinerSheet: View {
             }
     }
 
+    @ViewBuilder
     private var navStack: some View {
-        NavigationStack {
+        if embedded {
+            // 공유 카드에 인라인 심기: NavigationStack·닫기 툴바 없이 편집 본문만.
+            // 영상 미리보기 중이면 닫기 대신 미리보기 종료 버튼만 상단에 노출.
             VStack(spacing: 0) {
+                if previewPlayer.isReady {
+                    HStack {
+                        Button(AppLanguage.shared.s("미리보기 닫기", "Close preview")) {
+                            previewPlayer.pause()
+                            previewPlayer.invalidate()
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20).padding(.top, 4)
+                }
                 scrollArea
                 shareBar
             }
-            .navigationTitle(dateTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) {
-                        if previewPlayer.isReady {
-                            previewPlayer.pause()
-                            previewPlayer.invalidate()
-                        } else {
-                            dismiss()
+        } else {
+            NavigationStack {
+                VStack(spacing: 0) {
+                    scrollArea
+                    shareBar
+                }
+                .navigationTitle(dateTitle)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(AppLanguage.shared.s("닫기", "Close")) {
+                            if previewPlayer.isReady {
+                                previewPlayer.pause()
+                                previewPlayer.invalidate()
+                            } else {
+                                dismiss()
+                            }
                         }
+                        .foregroundStyle(.secondary)
                     }
-                    .foregroundStyle(.secondary)
                 }
             }
         }
@@ -260,7 +334,10 @@ struct RestDayOneLinerSheet: View {
             Color(hex: "0E0E18").ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 20) {
-                    cardPreview.padding(.top, 16)
+                    cardPreview
+                        .frame(height: OneLinerCard.cardHeight)
+                        .padding(.top, 16)
+                    if let belowPreview { belowPreview }   // 공유 카드 페이지 점(미리보기 바로 밑)
                     controlsArea
                         .padding(.horizontal, 24)
                         .padding(.bottom, 16)
@@ -279,8 +356,10 @@ struct RestDayOneLinerSheet: View {
         if previewPlayer.isReady,
            let pl = previewPlayer.player,
            let cl = previewPlayer.contentLayer {
+            // 9:16 영상을 4:5 높이에 맞게 비례 축소 (≈211×375pt) — 아래 편집 영역이 가려지지 않도록
+            let previewW = OneLinerCard.cardHeight * 9.0 / 16.0
             OneLinerPreviewView(player: pl, contentLayer: cl, renderSize: previewPlayer.renderSize)
-                .frame(width: CardPreviewFrame.width, height: CardPreviewFrame.height)
+                .frame(width: previewW, height: OneLinerCard.cardHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
                 .overlay(alignment: .bottom) {
@@ -308,8 +387,11 @@ struct RestDayOneLinerSheet: View {
                 .onTapGesture { previewPlayer.togglePlayPause() }
                 .frame(maxWidth: .infinity)
         } else if isClipMode {
-            // 영상/슬라이드 대기화면: OneLinerCard를 9:16(300×533)로 렌더 후 CardPreviewFrame 크기로 스케일
-            //  → 라이브 프리뷰와 크기 일치 + 제목·문구·워드마크·날짜 모두 표시(제목 속성 편집 시 즉시 보임)
+            // 9:16 카드를 4:5 높이(375pt)에 맞게 비례 축소 — 라이브 프리뷰와 동일한 높이 유지
+            let pH: CGFloat = CardPreviewFrame.width * 16 / 9
+            let scale: CGFloat = OneLinerCard.cardHeight / pH
+            let scaledW: CGFloat = CardPreviewFrame.width * scale
+            let clipRecipe = clipRecipes.indices.contains(currentClipIndex) ? clipRecipes[currentClipIndex] : nil
             OneLinerCard(
                 displayDate: date,
                 backgroundPhoto: cardBackground,
@@ -325,12 +407,20 @@ struct RestDayOneLinerSheet: View {
                 plateColorPreset: previewPlatePreset,
                 showDate: true,
                 captionMode: true,
+                chartBottomReserved: isClipChartBottomReserved,
                 videoTitle: selectedTemplate != .story ? videoTitle : "",
                 titleStyle: titleStyle,
-                cardHeightOverride: 300.0 * 16.0 / 9.0
+                cardHeightOverride: pH,
+                routeCoords: routeCoords,
+                showHRChart: clipRecipe?.showHRChart ?? false,
+                hrSamples: hrSamples,
+                hrZones: hrZones,
+                chartOverlayType: clipRecipe?.chartOverlayType ?? .none,
+                chartSeriesData: chartSeriesData,
+                chartSplits: splits,
+                intervalSegments: intervalSegments
             )
-            .scaleEffect(CardPreviewFrame.width / 300.0, anchor: .topLeading)
-            .frame(width: CardPreviewFrame.width, height: CardPreviewFrame.height, alignment: .topLeading)
+            .frame(width: CardPreviewFrame.width, height: pH)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
             .overlay(alignment: .center) {
@@ -349,6 +439,8 @@ struct RestDayOneLinerSheet: View {
                     .buttonStyle(.plain)
                 }
             }
+            .scaleEffect(scale)
+            .frame(width: scaledW, height: OneLinerCard.cardHeight)
             .frame(maxWidth: .infinity)
         } else {
             OneLinerCard(
@@ -416,37 +508,66 @@ struct RestDayOneLinerSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
+    private let textLineCharLimit = 30
+    private var textLineCount: Int { max(1, text.components(separatedBy: "\n").count) }
+
+    /// Binding for an individual line within `text` (newline-joined).
+    private func textLineBinding(for index: Int) -> Binding<String> {
+        Binding {
+            let lines = text.components(separatedBy: "\n")
+            return index < lines.count ? lines[index] : ""
+        } set: { newVal in
+            var lines = text.components(separatedBy: "\n")
+            while lines.count <= index { lines.append("") }
+            lines[index] = String(newVal.prefix(textLineCharLimit))
+            text = lines.prefix(textLineCount).joined(separator: "\n")
+            saveEntry()
+        }
+    }
+
     /// Single text field used in gradient (no-photo) mode.
     private var oneLinerTextField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                TextField(
-                    AppLanguage.shared.s("오늘의 한마디", "Your one-liner"),
-                    text: $text,
-                    axis: .vertical
-                )
-                .lineLimit(1...2)
-                .focused($fieldFocused)
-                .font(.system(size: 15))
-                .foregroundStyle(.white)
-                .tint(Theme.violet)
-                .onChange(of: text) { _, newVal in
-                    let lines = newVal.components(separatedBy: "\n")
-                    if lines.count > 2 {
-                        text = String(lines.prefix(2).joined(separator: "\n").prefix(40)); return
+        HStack(alignment: .center, spacing: 8) {
+            VStack(spacing: 6) {
+                ForEach(0..<textLineCount, id: \.self) { i in
+                    let lineText = { () -> String in
+                        let lines = text.components(separatedBy: "\n")
+                        return i < lines.count ? lines[i] : ""
+                    }()
+                    HStack(spacing: 8) {
+                        TextField(
+                            AppLanguage.shared.s(i == 0 ? "오늘의 한마디" : "\(i + 1)번째 줄",
+                                                 i == 0 ? "Your one-liner" : "Line \(i + 1)"),
+                            text: textLineBinding(for: i)
+                        )
+                        .focused($focusedLineIndex, equals: i)
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white)
+                        .tint(Theme.violet)
+                        Spacer(minLength: 0)
+                        Text("\(lineText.count)/\(textLineCharLimit)")
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(Color(hex: "6E6E78"))
                     }
-                    if newVal.count > 40 { text = String(newVal.prefix(40)); return }
-                    saveEntry()
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(Color(hex: "1E1E28"))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                Spacer(minLength: 0)
-                Text("\(text.count)/40")
-                    .font(.system(size: 11).monospacedDigit())
-                    .foregroundStyle(Color(hex: "6E6E78"))
             }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(Color(hex: "1E1E28"))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
 
+            if textLineCount < 3 {
+                Button {
+                    text += "\n"
+                    saveEntry()
+                    let idx = textLineCount - 1
+                    Task { @MainActor in focusedLineIndex = idx }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Theme.violet)
+                        .frame(width: 36, height: 36)
+                }
+            }
         }
     }
 
@@ -650,8 +771,14 @@ struct RestDayOneLinerSheet: View {
             muteAudio: $muteVideoAudio,
             selectedClipIndex: $currentClipIndex,
             savedClipLines: savedClipLines,
-            availableMetrics: [],
+            availableMetrics: availableMetrics,
             enabledMetricIDs: $enabledMetricIDs,
+            routeCoords: routeCoords,
+            hrSamples: hrSamples,
+            splits: splits,
+            chartSeriesData: chartSeriesData,
+            hrZones: hrZones,
+            intervalSegments: intervalSegments,
             onSave: handleRecipesChanged,
             isStoryMode: selectedTemplate == .story,
             videoTitle: $videoTitle,
@@ -669,7 +796,7 @@ struct RestDayOneLinerSheet: View {
         } set: { newVal in
             var v = newVal
             let lines = v.components(separatedBy: "\n")
-            if lines.count > 2 { v = String(lines.prefix(2).joined(separator: "\n").prefix(40)) }
+            if lines.count > 3 { v = String(lines.prefix(3).joined(separator: "\n").prefix(40)) }
             if v.count > 40   { v = String(v.prefix(40)) }
             guard index < slotTexts.count else { return }
             slotTexts[index]   = v
@@ -721,12 +848,17 @@ struct RestDayOneLinerSheet: View {
     }
 
     private var dateTitle: String {
+        let d = activity?.date ?? date
         let f = DateFormatter()
         f.dateFormat = "M월 d일"; f.locale = Locale(identifier: "ko_KR")
         let e = DateFormatter()
         e.dateFormat = "MMM d";  e.locale = Locale(identifier: "en_US")
-        return AppLanguage.shared.s(f.string(from: date), e.string(from: date))
-             + " " + AppLanguage.shared.s("쉬는 날", "Rest Day")
+        let base = AppLanguage.shared.s(f.string(from: d), e.string(from: d))
+        // 운동한 날 = "오늘의 한마디", 쉬는날 = "쉬는 날"
+        let suffix = activity != nil
+            ? AppLanguage.shared.s("오늘의 한마디", "Today's One-liner")
+            : AppLanguage.shared.s("쉬는 날", "Rest Day")
+        return base + " " + suffix
     }
 
     private func loadEntry() {
@@ -744,13 +876,17 @@ struct RestDayOneLinerSheet: View {
         selectedTemplate    = .story
         currentClipIndex    = 0
 
-        // Migrate legacy gradient entry for style only
+        // Load gradient entry — restore text + style.
+        // Delete only when videoTextEntry also exists (true migration); otherwise keep it.
         if let entry = gradientEntry {
+            text       = entry.text
             fontChoice = entry.font
-            textColor  = entry.textColor
-            position   = entry.position
-            modelContext.delete(entry)
-            try? modelContext.save()
+            textColor     = entry.textColor
+            position      = entry.position
+            if videoTextEntry != nil {
+                modelContext.delete(entry)
+                try? modelContext.save()
+            }
         }
 
         guard let vEntry = videoTextEntry else { return }
@@ -781,6 +917,8 @@ struct RestDayOneLinerSheet: View {
             case .slide: muteVideoAudio = store.slide?.muteAudio ?? false
             case .story: break
             }
+            // 오염 데이터 자동 정리: 로드 직후 sanitized 상태를 DB에 재기록
+            Task { @MainActor in saveEntry() }
         } else if raw.hasPrefix("v3recipes\n") {
             // Migration: single-mode save → slot into the right backing store
             let jsonStr = String(raw.dropFirst("v3recipes\n".count))
@@ -799,6 +937,7 @@ struct RestDayOneLinerSheet: View {
             selectedTemplate = mode
             clipRecipes = restored
             currentClipIndex = 0
+            Task { @MainActor in saveEntry() }
         } else if raw.hasPrefix("v2clips\n") {
             let section = String(raw.dropFirst("v2clips\n".count))
             savedClipLines = section
@@ -927,10 +1066,6 @@ struct RestDayOneLinerSheet: View {
         previewPlayer.invalidate()
         withAnimation(.easeInOut(duration: 0.15)) { selectedTemplate = newTemplate }
         loadFromBackingStore(for: newTemplate)
-        // 영상/슬라이드로 전환 시 클립이 있으면 미리보기 자동 시작
-        if (newTemplate == .video || newTemplate == .slide), !clipRecipes.isEmpty {
-            buildPreview()
-        }
     }
 
     private func syncActiveToBackingStore() {
@@ -1000,7 +1135,15 @@ struct RestDayOneLinerSheet: View {
                 sizeID: r.sizeLevel.rawValue,
                 effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)P\(r.plateOn ? 1 : 0)|\(r.flyDirection.rawValue)",
                 plateColorID: r.plateColorPreset.rawValue,
-                speed: r.speed)
+                speed: r.speed,
+                metricPace: r.metricPace, metricDistance: r.metricDistance, metricTime: r.metricTime,
+                pdtAnchorIdx: CardPosition.allCases.firstIndex(of: r.pdtPosition),
+                showRoute: r.showRoute,
+                routeAnchorIdx: CardPosition.allCases.firstIndex(of: r.routePosition),
+                showHRChart: r.showHRChart,
+                chartTypeID:  r.chartOverlayType == .none ? nil : r.chartOverlayType.rawValue,
+                pdtSizeID2:   r.pdtSizeLevel.rawValue,
+                dataEffectID: r.dataAppearanceMode.rawValue)
         }
         return SavedRecipeSet(
             isPhotoSlide: isPhotoSlide || (mode == "story"),
@@ -1054,7 +1197,18 @@ struct RestDayOneLinerSheet: View {
                                    thumbnail: thumb)
             recipe.trimStart       = desc.trimStart
             recipe.trimEnd         = desc.trimEnd
-            recipe.lines           = desc.lines
+            // Sanitize: old code versions sometimes stored format prefix strings or raw JSON
+            // into the lines field. Clear any such corrupted values so they don't appear as card text.
+            recipe.lines = desc.lines.map { line in
+                let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                // hasPrefix: catches both bare "v3slide" and "v3slide\n{json}" stored as one element
+                if t.hasPrefix("v3slide") || t.hasPrefix("v3recipes")
+                    || t.hasPrefix("v4recipes") || t.hasPrefix("v2clips")
+                    || (t.count > 30 && t.hasPrefix("{") && t.hasSuffix("}")) {
+                    return ""
+                }
+                return line
+            }
             recipe.assetIdentifier = desc.assetID
             recipe.clipVideoRef    = desc.clipVideoRef
             recipe.storedPhotoRef  = desc.photoRef
@@ -1099,6 +1253,29 @@ struct RestDayOneLinerSheet: View {
             }
             recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
             recipe.speed = desc.speed
+            recipe.metricPace     = desc.metricPace
+            recipe.metricDistance = desc.metricDistance
+            recipe.metricTime     = desc.metricTime
+            if let a = desc.pdtAnchorIdx, CardPosition.allCases.indices.contains(a) {
+                recipe.pdtPosition = CardPosition.allCases[a]
+            }
+            // 차트 오버레이 복원: chartTypeID 우선, 없으면 레거시 showRoute/showHRChart fallback
+            if let ct = desc.chartTypeID, let type = ChartOverlayType(rawValue: ct) {
+                recipe.chartOverlayType = type
+            } else if desc.showRoute {
+                recipe.chartOverlayType = .route
+            } else if desc.showHRChart {
+                recipe.chartOverlayType = .hrChart
+            }
+            if let a = desc.routeAnchorIdx, CardPosition.allCases.indices.contains(a) {
+                recipe.routePosition = CardPosition.allCases[a]
+            }
+            if let ps = desc.pdtSizeID2, let size = TextSizeLevel(rawValue: ps) {
+                recipe.pdtSizeLevel = size
+            }
+            if let de = desc.dataEffectID, let mode = AppearanceMode(rawValue: de) {
+                recipe.dataAppearanceMode = mode
+            }
             restored.append(recipe)
         }
         return restored
@@ -1162,7 +1339,10 @@ struct RestDayOneLinerSheet: View {
                 }
                 await previewPlayer.buildForVideoClips(
                     recipes: resolved, activityDate: date, showDate: true,
-                    muteAudio: muteVideoAudio, videoTitle: videoTitle, titleStyle: titleStyle)
+                    muteAudio: muteVideoAudio,
+                    routeCoords: routeCoords, hrSamples: hrSamples, splits: splits,
+                    chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
+                    videoTitle: videoTitle, titleStyle: titleStyle)
             } else {
                 // 슬라이드·스토리: 썸네일 기반 슬라이드 미리보기
                 let photos = clipRecipes.compactMap { $0.thumbnail }
@@ -1170,6 +1350,8 @@ struct RestDayOneLinerSheet: View {
                 await previewPlayer.buildForPhotoSlides(
                     photos: photos, recipes: clipRecipes,
                     activityDate: date, showDate: true,
+                    hrSamples: hrSamples, splits: splits,
+                    chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
                     videoTitle: videoTitle, titleStyle: titleStyle)
             }
             previewPlayer.play()
@@ -1253,6 +1435,9 @@ struct RestDayOneLinerSheet: View {
                             photos: photos, recipes: recipes,
                             fontChoice: fontChoice, textColor: textColor, position: position,
                             activityDate: date, showDate: true,
+                            metricLookup: metricLookup,
+                            hrSamples: hrSamples, splits: splits,
+                            chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
                             videoTitle: videoTitle, titleStyle: titleStyle)
                         markAsShared()
                         presentShareSheet(url: outputURL)
@@ -1279,6 +1464,9 @@ struct RestDayOneLinerSheet: View {
                             recipes: recipes,
                             fontChoice: fontChoice, textColor: textColor, position: position,
                             activityDate: date, showDate: true, muteAudio: isMuted,
+                            metricLookup: metricLookup,
+                            routeCoords: routeCoords, hrSamples: hrSamples, splits: splits,
+                            hrZones: hrZones, intervalSegments: intervalSegments, chartSeriesData: chartSeriesData,
                             videoTitle: videoTitle, titleStyle: titleStyle)
                         markAsShared()
                         presentShareSheet(url: outputURL)
@@ -1330,30 +1518,29 @@ struct RestDayOneLinerSheet: View {
         presentShareSheet(images: rendered)
     }
 
-    /// Presents UIActivityViewController directly from the topmost VC.
-    /// Avoids the SwiftUI .sheet + UIActivityViewController embedding hang.
     private func presentShareSheet(url: URL) {
-        let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        guard let scene = UIApplication.shared.connectedScenes
-                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-              let root = scene.windows.first(where: \.isKeyWindow)?.rootViewController
-        else { return }
-        var top = root
-        while let p = top.presentedViewController { top = p }
-        vc.popoverPresentationController?.sourceView = top.view
-        top.present(vc, animated: true)
+        presentActivityController(items: [url])
     }
 
     private func presentShareSheet(images: [UIImage]) {
-        let vc = UIActivityViewController(activityItems: images, applicationActivities: nil)
-        guard let scene = UIApplication.shared.connectedScenes
-                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-              let root = scene.windows.first(where: \.isKeyWindow)?.rootViewController
-        else { return }
-        var top = root
-        while let p = top.presentedViewController { top = p }
-        vc.popoverPresentationController?.sourceView = top.view  // required on iPad
-        top.present(vc, animated: true)
+        presentActivityController(items: images)
+    }
+
+    private func presentActivityController(items: [Any]) {
+        // Delay to let the SwiftUI state update (isExportingVideo = false from defer)
+        // settle before UIKit presents, otherwise the first presentation is swallowed.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let root = windowScene.windows.first?.rootViewController else { return }
+            var top = root
+            while let next = top.presentedViewController { top = next }
+            if let pop = vc.popoverPresentationController {
+                pop.sourceView = top.view
+                pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+            }
+            top.present(vc, animated: true)
+        }
     }
 }
 

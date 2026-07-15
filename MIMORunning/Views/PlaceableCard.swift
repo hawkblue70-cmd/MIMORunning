@@ -40,6 +40,7 @@ enum CardPosition: CaseIterable {
     var isTop:    Bool { self == .topLeading    || self == .top    || self == .topTrailing }
     var isBottom: Bool { self == .bottomLeading || self == .bottom || self == .bottomTrailing }
     var isLeading: Bool { self == .topLeading   || self == .leading || self == .bottomLeading }
+    var isTrailing: Bool { self == .topTrailing || self == .trailing || self == .bottomTrailing }
 }
 
 // MARK: - CardAccent

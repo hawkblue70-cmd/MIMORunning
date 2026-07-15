@@ -232,8 +232,11 @@ struct ActivityDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showShareCard = true } label: {
                     Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Theme.violet, in: Circle())
                 }
-                .foregroundStyle(Theme.violet)
                 .disabled(isLoadingDetail)
             }
         }
@@ -2554,7 +2557,7 @@ private struct OneLinerListDisplay: View {
         var order = [String]()
         var map   = [String: [OneLinerEntry]]()
         for entry in entries {
-            let key = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = entry.previewText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !key.isEmpty else { continue }
             if seen.insert(key).inserted { order.append(key) }
             map[key, default: []].append(entry)
@@ -2682,7 +2685,7 @@ private struct OneLinerGroupRow: View {
                 .padding(.top, 6)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(rep.text)
+                Text(rep.previewText)
                     .font(.custom(rep.font.fontName, size: 17))
                     .foregroundStyle(rep.textColor.color)
                     .lineLimit(3)

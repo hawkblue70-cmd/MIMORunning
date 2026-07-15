@@ -3,6 +3,7 @@ import Photos
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import CoreLocation
 
 // MARK: - VideoPickerResult
 
@@ -1233,6 +1234,13 @@ struct VideoExportService {
         showDate: Bool,
         muteAudio: Bool = false,
         metricChips: [VideoMetricChip] = [],
+        metricLookup: [String: VideoMetricChip] = [:],
+        routeCoords: [CLLocationCoordinate2D] = [],
+        hrSamples: [(offset: TimeInterval, bpm: Int)] = [],
+        splits: [SplitData] = [],
+        hrZones: [HRZoneData] = [],
+        intervalSegments: [IntervalSegment] = [],
+        chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:],
         videoTitle: String = "",
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
     ) async throws -> URL {
@@ -1286,12 +1294,8 @@ struct VideoExportService {
             }
         }
 
-        guard !pageSpecs.isEmpty else {
-            return try await exportOneLinerTypingVideo(
-                sourceURL: sourceURL, text: "",
-                fontChoice: fontChoice, textColor: textColor, position: position,
-                activityDate: activityDate, showDate: showDate, muteAudio: muteAudio)
-        }
+        // Note: no fallback to exportOneLinerTypingVideo — buildClipTextContentLayer renders
+        // charts/chips independently of text, so proceed even when pageSpecs is empty.
 
         // ── 1. Asset ──────────────────────────────────────────────────────────
         let sourceURL   = try await preprocessHDRToSDR(url: sourceURL)
@@ -1349,7 +1353,9 @@ struct VideoExportService {
         let contentLayer = buildClipTextContentLayer(
             recipes: recipes, renderSize: oneLinerSize, totalDuration: D,
             activityDate: activityDate, showDate: showDate, metricChips: metricChips,
-            videoTitle: videoTitle, titleStyle: titleStyle)
+            metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples,
+            splits: splits, hrZones: hrZones, intervalSegments: intervalSegments,
+            chartSeriesData: chartSeriesData, videoTitle: videoTitle, titleStyle: titleStyle)
 
         let videoLayer = CALayer()
         videoLayer.frame = CGRect(origin: .zero, size: oneLinerSize)
@@ -1409,6 +1415,13 @@ struct VideoExportService {
         activityDate: Date,
         showDate: Bool,
         metricChips: [VideoMetricChip] = [],
+        metricLookup: [String: VideoMetricChip] = [:],
+        routeCoords: [CLLocationCoordinate2D] = [],
+        hrSamples: [(offset: TimeInterval, bpm: Int)] = [],
+        splits: [SplitData] = [],
+        hrZones: [HRZoneData] = [],
+        intervalSegments: [IntervalSegment] = [],
+        chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:],
         videoTitle: String = "",
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
     ) -> CALayer {
@@ -1452,10 +1465,24 @@ struct VideoExportService {
             return a
         }
 
+        // ── Precompute title bottom Y (top-positioned videoTitle이 있으면 클립 텍스트/칩 시작점 아래로 밀기) ─
+        let titleTopEndY: CGFloat = {
+            guard !videoTitle.isEmpty, titleStyle.position.isTop else { return 0 }
+            let tFontPx  = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale * vScale
+            let tUIFont  = titleStyle.fontChoice.uiFont(size: tFontPx)
+            let tAttrs: [NSAttributedString.Key: Any] = [.font: tUIFont, .foregroundColor: UIColor.white]
+            let tBounds  = NSAttributedString(string: videoTitle, attributes: tAttrs).boundingRect(
+                with: CGSize(width: textMaxW, height: 4000),
+                options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+            let tLayerH  = ceil(tBounds.height) + 20
+            let tFrameY  = max(wMZoneH + 12 * vScale, safeTop * 0.6)
+            return tFrameY + tLayerH + 8 * vScale
+        }()
+
         // ── Page plan ─────────────────────────────────────────────────────────
         var clipOffsets: [Double] = []
         var runningOffset = 0.0
-        for recipe in recipes { clipOffsets.append(runningOffset); runningOffset += recipe.trimmedDuration }
+        for recipe in recipes { clipOffsets.append(runningOffset); runningOffset += recipe.trimmedDuration / max(0.1, recipe.speed) }
         var lastTextClipIdx = -1
         for (i, recipe) in recipes.enumerated() { if recipe.hasText { lastTextClipIdx = i } }
 
@@ -1491,7 +1518,6 @@ struct VideoExportService {
         }
 
         // ── Per-page text layers ───────────────────────────────────────────────
-        let startDelay: Double = 0.20
         let holdTime:   Double = 0.40
         let fadeTime:   Double = 0.25
 
@@ -1501,6 +1527,9 @@ struct VideoExportService {
             let windowDur = page.winEnd - page.winStart
 
             let clip        = page.clipIdx < recipes.count ? recipes[page.clipIdx] : recipes[0]
+            // 등장 순서: PDTB(즉시) → 문구(30%~1s) → 차트(60%~2s)
+            let clipDur     = clip.trimmedDuration / max(0.1, clip.speed)
+            let startDelay  = min(1.0, clipDur * 0.30)
             let fontSize    = OneLinerFont.basePt * clip.fontChoice.sizeScale * clip.sizeLevel.scale * vScale
             let uiFont      = clip.fontChoice.boldUIFont(size: fontSize)
             let plateLayout = clip.plateOn ? PlateLayout(uiFont: uiFont, vScale: vScale) : nil
@@ -1580,11 +1609,29 @@ struct VideoExportService {
                                   options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
                 return ceil(r.height) + lineSpacing + 20
             }()
+            // Chart-aware 9-grid: 차트 활성화 시 차트 제외한 공간에서 9포지션 작동
+            let (pageChartActive, pageChartPanH): (Bool, CGFloat) = {
+                if clip.showHRChart && hrSamples.count >= 2 { return (true, H * 0.22) }
+                if clip.chartOverlayType == .route && routeCoords.count >= 2 { return (true, H * 0.22) }
+                if clip.chartOverlayType == .splits && splits.filter({ $0.distanceM >= 900 }).count >= 2 { return (true, H * 0.22) }
+                if clip.chartOverlayType == .intervals {
+                    let d = intervalSegments.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+                    if d > 0 { return (true, H * 0.35) }
+                }
+                let gt = clip.chartOverlayType
+                if ![.none, .route, .hrChart, .splits, .intervals].contains(gt),
+                   let s = chartSeriesData[gt], s.count >= 2 { return (true, H * 0.22) }
+                return (false, 0)
+            }()
+            let clipEffBot: CGFloat = pageChartActive
+                ? pageChartPanH + safeBot + 12 * vScale + 8 * vScale
+                : safeBot
+            let defaultTopY = max(wMZoneH + 4 * vScale, safeTop + 4 * vScale)
             let textFrameY: CGFloat = clip.position.isTop
-                ? max(wMZoneH + 4 * vScale, safeTop + 4 * vScale)
+                ? (titleTopEndY > 0 ? titleTopEndY : defaultTopY)
                 : clip.position.isBottom
-                    ? H - safeBot - textLayerH
-                    : (safeTop + (H - safeBot)) / 2 - textLayerH / 2
+                    ? H - clipEffBot - textLayerH
+                    : (safeTop + (H - clipEffBot)) / 2 - textLayerH / 2
             let textFrame = CGRect(x: hPad, y: textFrameY, width: textMaxW, height: textLayerH)
 
             let imgRenderer = UIGraphicsImageRenderer(
@@ -1929,6 +1976,12 @@ struct VideoExportService {
         wMLayer.contents        = wMImg.cgImage
         wMLayer.contentsGravity = .topLeft
         wMLayer.masksToBounds   = false
+        wMLayer.opacity         = 0.0
+        let wMFadeEnd = NSNumber(value: min(0.3 / D, 0.99))
+        wMLayer.add(linearAnim(keyPath: "opacity",
+            keyTimes: [0.0, 0.0001, wMFadeEnd, 1.0],
+            values:   [Float(0), Float(0), Float(1), Float(1)]),
+            forKey: "wMFade")
         contentLayer.addSublayer(wMLayer)
 
         // ── Metric chips ───────────────────────────────────────────────────────
@@ -2008,6 +2061,12 @@ struct VideoExportService {
             dateLayer.contents        = dateImg.cgImage
             dateLayer.contentsGravity = .topLeft
             dateLayer.masksToBounds   = false
+            dateLayer.opacity         = 0.0
+            let dateFadeEnd = NSNumber(value: min(0.3 / D, 0.99))
+            dateLayer.add(linearAnim(keyPath: "opacity",
+                keyTimes: [0.0, 0.0001, dateFadeEnd, 1.0],
+                values:   [Float(0), Float(0), Float(1), Float(1)]),
+                forKey: "dateFade")
             contentLayer.addSublayer(dateLayer)
         }
 
@@ -2080,6 +2139,660 @@ struct VideoExportService {
             contentLayer.addSublayer(titleLayer)
         }
 
+        // ── 러닝 데이터 오버레이 (per-clip: PDT칩 / 경로 M / 심박 H), 클립 시간창에만 표시 ──
+        func frameFor(_ pos: CardPosition, size: CGSize, effBot: CGFloat = safeBot) -> CGRect {
+            let x: CGFloat = pos.isLeading  ? hPad
+                          : pos.isTrailing ? (W - hPad - size.width)
+                          : (W - size.width) / 2
+            let y: CGFloat = pos.isTop     ? (titleTopEndY > 0 ? titleTopEndY : safeTop)
+                          : pos.isBottom  ? (H - effBot - size.height)
+                          : (safeTop + (H - effBot) - size.height) / 2
+            return CGRect(x: x, y: y, width: size.width, height: size.height)
+        }
+        func applyDataAnim(_ layer: CALayer, start: Double, end: Double, delay: Double = 0,
+                           mode: AppearanceMode = .fade,
+                           decorEffect: DecorEffect = .none,
+                           flyDirection: FlyInDirection = .trailing) {
+            layer.opacity = 0
+            let visStart = start + delay
+            let clipDur  = max(0.001, end - visStart)
+            let fadeDur  = min(0.4, clipDur * 0.25)
+            let s  = max(0.0, min(1.0, visStart / D))
+            let s2 = min(1.0, max(s  + 0.001, (visStart + fadeDur) / D))
+            // When this layer covers the very end of the video, skip the fade-out so the last
+            // frame stays fully visible (prevents chart disappearing + black last frame).
+            if end >= D - 0.5 {
+                layer.add(linearAnim(keyPath: "opacity",
+                    keyTimes: [0, NSNumber(value: s), NSNumber(value: s2), 1],
+                    values: [Float(0), Float(0), Float(1), Float(1)]),
+                    forKey: "runDataOpacity")
+            } else {
+                let e2 = min(1.0, max(s2 + 0.001, (end - fadeDur * 0.5) / D))
+                let e  = min(1.0, max(e2 + 0.001, end / D))
+                layer.add(linearAnim(keyPath: "opacity",
+                    keyTimes: [0, NSNumber(value: s), NSNumber(value: s2), NSNumber(value: e2), NSNumber(value: e), 1],
+                    values: [Float(0), Float(0), Float(1), Float(1), Float(0), Float(0)]),
+                    forKey: "runDataOpacity")
+            }
+            if mode == .flyIn {
+                let slideW  = max(layer.bounds.width  * 0.6, 50 * vScale)
+                let slideH  = max(layer.bounds.height * 2.0, 80 * vScale)
+                let finalX  = layer.position.x
+                let finalY  = layer.position.y
+                let kt: [NSNumber] = [0, NSNumber(value: s), NSNumber(value: s2), 1]
+                switch flyDirection {
+                case .leading:
+                    layer.add(linearAnim(keyPath: "position.x", keyTimes: kt,
+                        values: [finalX - slideW, finalX - slideW, finalX, finalX]), forKey: "runDataSlide")
+                case .trailing:
+                    layer.add(linearAnim(keyPath: "position.x", keyTimes: kt,
+                        values: [finalX + slideW, finalX + slideW, finalX, finalX]), forKey: "runDataSlide")
+                case .bottom:
+                    layer.add(linearAnim(keyPath: "position.y", keyTimes: kt,
+                        values: [finalY + slideH, finalY + slideH, finalY, finalY]), forKey: "runDataSlide")
+                }
+            } else {
+                let appearEnd = visStart + fadeDur
+                switch decorEffect {
+                case .pop:
+                    let pop = CAKeyframeAnimation(keyPath: "transform.scale")
+                    pop.values = [1.40, 1.14, 0.90, 1.05, 1.0]
+                    pop.keyTimes = [0.0, 0.3, 0.6, 0.82, 1.0] as [NSNumber]
+                    pop.duration = 0.45
+                    pop.beginTime = AVCoreAnimationBeginTimeAtZero + appearEnd
+                    pop.fillMode = .both; pop.isRemovedOnCompletion = false; pop.calculationMode = .linear
+                    layer.add(pop, forKey: "runDataPop")
+                case .wobble:
+                    let wob = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+                    wob.values = [0.0, 0.044, 0.0, -0.044, 0.0]
+                    wob.keyTimes = [0.0, 0.25, 0.5, 0.75, 1.0] as [NSNumber]
+                    wob.duration = 0.5; wob.repeatCount = .infinity; wob.calculationMode = .linear
+                    wob.beginTime = AVCoreAnimationBeginTimeAtZero + appearEnd
+                    wob.fillMode = .both; wob.isRemovedOnCompletion = false
+                    layer.add(wob, forKey: "runDataWobble")
+                case .none:
+                    break
+                }
+            }
+        }
+        func renderChipRow(_ chips: [VideoMetricChip], sizeScale: CGFloat = 1.0) -> UIImage? {
+            guard !chips.isEmpty else { return nil }
+            let fPx: CGFloat = 11 * vScale * sizeScale, padH = 8 * vScale * sizeScale, padV = 4 * vScale * sizeScale
+            let gap = 6 * vScale * sizeScale, cr = 9 * vScale * sizeScale
+            struct Piece { let s: NSAttributedString; let w: CGFloat; let h: CGFloat; let c: UIColor }
+            var ps: [Piece] = []
+            for chip in chips {
+                let vAt: [NSAttributedString.Key: Any] = [.font: UIFont.monospacedDigitSystemFont(ofSize: fPx, weight: .bold), .foregroundColor: UIColor.white]
+                let lAt: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: fPx * 0.85, weight: .regular), .foregroundColor: UIColor.white.withAlphaComponent(0.75)]
+                let m = NSMutableAttributedString(attributedString: NSAttributedString(string: chip.value, attributes: vAt))
+                if !chip.label.isEmpty { m.append(NSAttributedString(string: " \(chip.label)", attributes: lAt)) }
+                let sz = m.size()
+                ps.append(Piece(s: m, w: ceil(sz.width) + padH * 2, h: ceil(sz.height) + padV * 2, c: chip.uiColor))
+            }
+            let totalW = ps.reduce(0) { $0 + $1.w } + gap * CGFloat(max(0, ps.count - 1))
+            let totalH = ps.map { $0.h }.max() ?? 0
+            let rnd = UIGraphicsImageRenderer(size: CGSize(width: ceil(totalW), height: ceil(totalH)), format: imgFormat)
+            return rnd.image { _ in
+                var x: CGFloat = 0
+                for p in ps {
+                    let rect = CGRect(x: x, y: 0, width: p.w, height: p.h)
+                    let path = UIBezierPath(roundedRect: rect, cornerRadius: cr)
+                    p.c.withAlphaComponent(0.30).setFill(); path.fill()
+                    p.c.withAlphaComponent(0.55).setStroke(); path.lineWidth = max(1, vScale); path.stroke()
+                    p.s.draw(in: CGRect(x: x + padH, y: padV, width: p.w - padH * 2, height: p.h - padV * 2))
+                    x += p.w + gap
+                }
+            }
+        }
+        func renderRouteImage(_ coords: [CLLocationCoordinate2D], side: CGFloat) -> UIImage? {
+            guard coords.count >= 2 else { return nil }
+            let lats = coords.map { $0.latitude }, lons = coords.map { $0.longitude }
+            let minLat = lats.min()!, maxLat = lats.max()!, minLon = lons.min()!, maxLon = lons.max()!
+            let range = max(1e-6, max(maxLat - minLat, maxLon - minLon))
+            let padX = (range - (maxLon - minLon)) / 2, padY = (range - (maxLat - minLat)) / 2
+            let inset = side * 0.12, dim = side - inset * 2
+            func pt(_ c: CLLocationCoordinate2D) -> CGPoint {
+                let nx = (c.longitude - minLon + padX) / range
+                let ny = (c.latitude  - minLat + padY) / range
+                return CGPoint(x: inset + nx * dim, y: inset + (1 - ny) * dim)
+            }
+            let rnd = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: imgFormat)
+            return rnd.image { ctx in
+                let cg = ctx.cgContext
+                cg.setLineWidth(2 * vScale); cg.setLineCap(.round); cg.setLineJoin(.round)
+                cg.setStrokeColor(UIColor.white.cgColor)
+                cg.setShadow(offset: .zero, blur: 2 * vScale, color: UIColor.black.withAlphaComponent(0.5).cgColor)
+                cg.move(to: pt(coords[0]))
+                for c in coords.dropFirst() { cg.addLine(to: pt(c)) }
+                cg.strokePath()
+            }
+        }
+        // 차트 패널 공통 크기: 좌우여백 동일, 높이=26.4%(인터벌=42%)
+        let panW: CGFloat = W - 20 * vScale
+        let panH: CGFloat = H * 0.264
+        let intervalPanH: CGFloat = H * 0.42
+        let panPad: CGFloat = 14 * vScale
+        let panCR:  CGFloat = 12 * vScale
+
+        func renderRoutePanel(_ coords: [CLLocationCoordinate2D]) -> UIImage? {
+            guard coords.count >= 2 else { return nil }
+            let lats = coords.map { $0.latitude }, lons = coords.map { $0.longitude }
+            let minLat = lats.min()!, maxLat = lats.max()!, minLon = lons.min()!, maxLon = lons.max()!
+            let range = max(1e-6, max(maxLat - minLat, maxLon - minLon))
+            let padX = (range - (maxLon - minLon)) / 2, padY = (range - (maxLat - minLat)) / 2
+
+            let titleH: CGFloat = 12 * vScale
+            let chartX: CGFloat = panPad
+            let chartW: CGFloat = panW - chartX - panPad
+            let chartY: CGFloat = panPad + titleH
+            let chartH: CGFloat = panH - chartY - panPad
+            let inset:  CGFloat = chartH * 0.06
+            let dim     = min(chartW, chartH) - inset * 2
+            let xOff    = (chartW - dim) / 2
+
+            func pt(_ c: CLLocationCoordinate2D) -> CGPoint {
+                let nx = CGFloat((c.longitude - minLon + padX) / range)
+                let ny = CGFloat((c.latitude  - minLat + padY) / range)
+                return CGPoint(x: chartX + xOff + inset + nx * dim,
+                               y: chartY + inset + (1 - ny) * dim)
+            }
+
+            let titleFont  = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
+            let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont,
+                                                              .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
+            let rnd = UIGraphicsImageRenderer(size: CGSize(width: panW, height: panH), format: imgFormat)
+            return rnd.image { ctx in
+                let cg = ctx.cgContext
+                let bg = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: panW, height: panH), cornerRadius: panCR)
+                UIColor.black.withAlphaComponent(0.30).setFill(); bg.fill()
+                (AppLanguage.shared.s("↗ 경로", "↗ Route") as NSString)
+                    .draw(at: CGPoint(x: chartX, y: panPad), withAttributes: titleAttrs)
+                cg.setStrokeColor(UIColor.white.withAlphaComponent(0.88).cgColor)
+                cg.setLineWidth(2 * vScale); cg.setLineCap(.round); cg.setLineJoin(.round)
+                cg.move(to: pt(coords[0]))
+                for c in coords.dropFirst() { cg.addLine(to: pt(c)) }
+                cg.strokePath()
+                let dotR: CGFloat = 4 * vScale
+                let sPt = pt(coords.first!); let ePt = pt(coords.last!)
+                cg.setFillColor(UIColor.systemGreen.withAlphaComponent(0.90).cgColor)
+                cg.fillEllipse(in: CGRect(x: sPt.x - dotR, y: sPt.y - dotR, width: dotR * 2, height: dotR * 2))
+                cg.setFillColor(UIColor.systemRed.withAlphaComponent(0.90).cgColor)
+                cg.fillEllipse(in: CGRect(x: ePt.x - dotR, y: ePt.y - dotR, width: dotR * 2, height: dotR * 2))
+            }
+        }
+
+        func renderHRPanel(_ samples: [(offset: TimeInterval, bpm: Int)], zones: [HRZoneData] = []) -> UIImage? {
+            // Convert to Double for bucketing
+            let src = samples.map { (offset: $0.offset, value: Double($0.bpm)) }.filter { $0.value > 0 }
+            guard src.count >= 2 else { return nil }
+
+            let t0    = src.first!.offset
+            let dt    = max(1.0, src.last!.offset - t0)
+            let dtMin = dt / 60.0
+            let bN    = 80
+            let bSz   = dt / Double(bN)
+
+            struct HRBucket { let id: Int; let avg: Double; let lo: Double; let hi: Double }
+            let buckets: [HRBucket] = (0..<bN).compactMap { i in
+                let lo   = t0 + Double(i) * bSz
+                let hi   = lo + bSz
+                let vals = src
+                    .filter { $0.offset >= lo && ($0.offset < hi || (i == bN - 1 && $0.offset <= t0 + dt)) }
+                    .map(\.value)
+                guard !vals.isEmpty else { return nil }
+                return HRBucket(id: i,
+                                avg: vals.reduce(0, +) / Double(vals.count),
+                                lo:  vals.min()!,
+                                hi:  vals.max()!)
+            }
+            guard !buckets.isEmpty else { return nil }
+
+            let avgBpm = src.map(\.value).reduce(0, +) / Double(src.count)
+
+            // Y domain (range bars)
+            let oMin  = buckets.map(\.lo).min()!
+            let oMax  = buckets.map(\.hi).max()!
+            let rng   = max(oMax - oMin, oMin * 0.02)
+            let yLo   = max(0, oMin - rng * 0.4)
+            let yHi   = oMax + rng * 0.2
+            let yRange = max(1, yHi - yLo)
+
+            // Zone bar colors (Z1→Z5: blue, green, yellow-green, orange, pink)
+            let zoneBarColors: [UIColor] = [
+                UIColor(red: 0.30, green: 0.55, blue: 1.00, alpha: 0.85),
+                UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.85),
+                UIColor(red: 0.75, green: 0.88, blue: 0.20, alpha: 0.85),
+                UIColor(red: 1.00, green: 0.55, blue: 0.10, alpha: 0.85),
+                UIColor(red: 1.00, green: 0.25, blue: 0.45, alpha: 0.85),
+            ]
+            let defaultBarColor = UIColor(red: 1.0, green: 0.35, blue: 0.35, alpha: 0.85)
+            func zoneBarColor(for bpm: Double) -> UIColor {
+                guard !zones.isEmpty else { return defaultBarColor }
+                for zone in zones.sorted(by: { $0.id < $1.id }) {
+                    if bpm <= Double(zone.maxBPM) {
+                        let idx = min(zone.id - 1, zoneBarColors.count - 1)
+                        return idx >= 0 ? zoneBarColors[idx] : defaultBarColor
+                    }
+                }
+                return zoneBarColors.last ?? defaultBarColor
+            }
+
+            // Layout (right Y labels, bottom X labels — same as renderGenericChartPanel)
+            let axisFont  = UIFont.monospacedDigitSystemFont(ofSize: 8 * vScale, weight: .regular)
+            let axisColor = UIColor.white.withAlphaComponent(0.55)
+            let axisAttrs: [NSAttributedString.Key: Any] = [.font: axisFont, .foregroundColor: axisColor]
+            let yLblW: CGFloat = ("180" as NSString).size(withAttributes: axisAttrs).width + 5 * vScale
+            let titleH: CGFloat = 12 * vScale
+            let xLblH:  CGFloat = 12 * vScale
+            let chartX: CGFloat = panPad
+            let chartW: CGFloat = panW - chartX - yLblW - panPad
+            let chartY: CGFloat = panPad + titleH
+            let chartH: CGFloat = panH - chartY - xLblH - panPad * 0.5
+
+            func ptY(_ bpm: Double) -> CGFloat { chartY + CGFloat(1 - (bpm - yLo) / yRange) * chartH }
+
+            let yMarkCount = 4
+            let yStep = (yHi - yLo) / Double(yMarkCount - 1)
+            let xMarkCount = 4
+
+            let rnd = UIGraphicsImageRenderer(size: CGSize(width: panW, height: panH), format: imgFormat)
+            return rnd.image { ctx in
+                let cg = ctx.cgContext
+
+                let bg = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: panW, height: panH), cornerRadius: panCR)
+                UIColor.black.withAlphaComponent(0.30).setFill(); bg.fill()
+
+                let titleFont  = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
+                let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont,
+                                                                  .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
+                (AppLanguage.shared.s("♥ 심박수", "♥ HR") as NSString).draw(at: CGPoint(x: chartX, y: panPad),
+                                                                              withAttributes: titleAttrs)
+
+                // H grid + right Y labels
+                for i in 0..<yMarkCount {
+                    let yVal = yLo + Double(i) * yStep
+                    let yPos = ptY(yVal)
+                    cg.setStrokeColor(UIColor.white.withAlphaComponent(0.10).cgColor)
+                    cg.setLineWidth(0.5)
+                    cg.move(to: CGPoint(x: chartX, y: yPos))
+                    cg.addLine(to: CGPoint(x: chartX + chartW, y: yPos))
+                    cg.strokePath()
+                    let text = "\(Int(yVal.rounded()))"
+                    let sz   = (text as NSString).size(withAttributes: axisAttrs)
+                    let ly   = min(chartY + chartH - sz.height, max(chartY, yPos - sz.height / 2))
+                    (text as NSString).draw(at: CGPoint(x: chartX + chartW + 3 * vScale, y: ly), withAttributes: axisAttrs)
+                }
+
+                // V grid + bottom X labels
+                for i in 0..<xMarkCount {
+                    let frac = Double(i) / Double(xMarkCount - 1)
+                    let xPos = chartX + CGFloat(frac) * chartW
+                    let tMin = frac * dtMin
+                    cg.setStrokeColor(UIColor.white.withAlphaComponent(0.10).cgColor)
+                    cg.setLineWidth(0.5)
+                    cg.move(to: CGPoint(x: xPos, y: chartY))
+                    cg.addLine(to: CGPoint(x: xPos, y: chartY + chartH))
+                    cg.strokePath()
+                    let text = AppLanguage.shared.isEnglish
+                        ? String(format: "%.0fm", tMin)
+                        : String(format: "%.0f분", tMin)
+                    let sz   = (text as NSString).size(withAttributes: axisAttrs)
+                    var lx   = xPos - sz.width / 2
+                    if i == 0 { lx = xPos }
+                    if i == xMarkCount - 1 { lx = xPos - sz.width }
+                    (text as NSString).draw(at: CGPoint(x: lx, y: chartY + chartH + 2 * vScale), withAttributes: axisAttrs)
+                }
+
+                // Zone-colored range bars
+                let barGap = chartW / CGFloat(bN)
+                let barW   = max(1.5 * vScale, barGap - 0.8 * vScale)
+                for bucket in buckets {
+                    let bx   = chartX + CGFloat(bucket.id) * barGap + (barGap - barW) / 2
+                    let topY = ptY(bucket.hi)
+                    let botY = ptY(bucket.lo)
+                    cg.setFillColor(zoneBarColor(for: bucket.avg).cgColor)
+                    cg.fill(CGRect(x: bx, y: topY, width: barW, height: max(1.5 * vScale, botY - topY)))
+                }
+
+                // Avg dashed line (red)
+                let avgY    = ptY(avgBpm)
+                let redLine = UIColor(red: 1, green: 0.35, blue: 0.35, alpha: 0.70)
+                cg.setStrokeColor(redLine.cgColor)
+                cg.setLineWidth(1.2 * vScale)
+                cg.setLineDash(phase: 0, lengths: [5 * vScale, 3 * vScale])
+                cg.move(to: CGPoint(x: chartX, y: avgY))
+                cg.addLine(to: CGPoint(x: chartX + chartW, y: avgY))
+                cg.strokePath()
+                cg.setLineDash(phase: 0, lengths: [])
+
+                // "avg NNN" label (red, right side)
+                let avgText  = "avg \(Int(avgBpm.rounded()))"
+                let avgAttrs: [NSAttributedString.Key: Any] = [.font: axisFont,
+                                                                .foregroundColor: UIColor(red: 1, green: 0.35, blue: 0.35, alpha: 0.90)]
+                let avgSz    = (avgText as NSString).size(withAttributes: avgAttrs)
+                let avgLy    = min(chartY + chartH - avgSz.height, max(chartY, avgY - avgSz.height / 2))
+                (avgText as NSString).draw(at: CGPoint(x: chartX + chartW + 3 * vScale, y: avgLy), withAttributes: avgAttrs)
+            }
+        }
+
+        func renderSplitsPanel(_ splits: [SplitData], hrZones: [HRZoneData]) -> UIImage? {
+            let full = splits.filter { $0.distanceM >= 900 }
+            guard full.count >= 2 else { return nil }
+
+            let displaySplits = full.count > 21 ? full.filter { $0.id % 2 == 0 } : full
+            guard !displaySplits.isEmpty else { return nil }
+
+            let paces      = displaySplits.map { $0.paceSecPerKm }
+            let minP       = paces.min()!
+            let rangeP     = max(1.0, (paces.max()!) - minP)
+            let avgP       = paces.reduce(0, +) / Double(paces.count)
+            let fastestIdx = paces.indices.min(by: { paces[$0] < paces[$1] }) ?? 0
+
+            let hasHR  = displaySplits.contains { $0.avgHeartRate != nil }
+            let hasCad = displaySplits.contains { $0.avgCadence != nil }
+            let hasPwr = displaySplits.contains { $0.avgPower != nil }
+
+            let hPadV: CGFloat = 8  * vScale
+            let gapV:  CGFloat = 3  * vScale
+            let kmW:   CGFloat = 18 * vScale
+            let colW:  CGFloat = 24 * vScale
+            let rowH:  CGFloat = 7  * vScale
+            let titleH: CGFloat = 16 * vScale
+            let colHH:  CGFloat = 8  * vScale
+            let vPadV:  CGFloat = 5  * vScale
+
+            let fixedW = 2 * hPadV + kmW + 2 * gapV + colW
+            let optW   = (hasHR  ? gapV + colW : 0)
+                       + (hasCad ? gapV + colW : 0)
+                       + (hasPwr ? gapV + colW : 0)
+            let barAreaW = max(20 * vScale, panW - fixedW - optW)
+            let imgH = titleH + colHH + CGFloat(displaySplits.count) * rowH + vPadV * 2
+
+            // Colors
+            let gold   = UIColor(red: 1.000, green: 0.780, blue: 0.302, alpha: 1.0)
+            let violet = UIColor(red: 0.486, green: 0.361, blue: 0.988, alpha: 0.85)
+            let cyan   = UIColor(red: 0.376, green: 0.910, blue: 0.800, alpha: 1.0)
+            let lime   = UIColor(red: 0.745, green: 0.980, blue: 0.416, alpha: 1.0)
+            func zoneUIColor(_ hr: Int?) -> UIColor {
+                guard let hr = hr,
+                      let zid = hrZones.first(where: { hr >= $0.minBPM && hr <= $0.maxBPM })?.id
+                else { return UIColor.red.withAlphaComponent(0.70) }
+                switch zid {
+                case 1: return UIColor(red: 0.310, green: 0.765, blue: 0.969, alpha: 1)
+                case 2: return UIColor(red: 0.506, green: 0.780, blue: 0.518, alpha: 1)
+                case 3: return UIColor(red: 1.000, green: 0.718, blue: 0.302, alpha: 1)
+                case 4: return UIColor(red: 1.000, green: 0.439, blue: 0.263, alpha: 1)
+                default: return UIColor(red: 0.898, green: 0.224, blue: 0.208, alpha: 1)
+                }
+            }
+
+            let rnd = UIGraphicsImageRenderer(size: CGSize(width: panW, height: imgH), format: imgFormat)
+            return rnd.image { _ in
+                // Background
+                let bg = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: panW, height: imgH), cornerRadius: panCR)
+                UIColor.black.withAlphaComponent(0.40).setFill(); bg.fill()
+
+                // Title
+                let titleFont = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
+                let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
+                let titleStr = AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits") as NSString
+                let tSz = titleStr.size(withAttributes: titleAttrs)
+                titleStr.draw(at: CGPoint(x: hPadV, y: (titleH - tSz.height) / 2), withAttributes: titleAttrs)
+
+                // Column headers
+                let hdrFont  = UIFont.systemFont(ofSize: 5.5 * vScale, weight: .medium)
+                let hdrAttrs: [NSAttributedString.Key: Any] = [.font: hdrFont, .foregroundColor: UIColor.white.withAlphaComponent(0.75)]
+                let hdrY = titleH + (colHH - hdrFont.lineHeight) / 2
+                let paceColX = hPadV + kmW + gapV + barAreaW + gapV
+                func drawRightAligned(_ str: String, x: CGFloat, y: CGFloat, w: CGFloat, attrs: [NSAttributedString.Key: Any]) {
+                    let s = str as NSString; let sz = s.size(withAttributes: attrs)
+                    s.draw(at: CGPoint(x: x + w - sz.width, y: y), withAttributes: attrs)
+                }
+                drawRightAligned(AppLanguage.shared.s("페이스", "Pace"), x: paceColX, y: hdrY, w: colW, attrs: hdrAttrs)
+                var hdrCurX = paceColX + colW + gapV
+                if hasHR  { drawRightAligned(AppLanguage.shared.s("심박", "HR"),   x: hdrCurX, y: hdrY, w: colW, attrs: hdrAttrs); hdrCurX += colW + gapV }
+                if hasCad { drawRightAligned(AppLanguage.shared.s("케이던스", "Cad"), x: hdrCurX, y: hdrY, w: colW, attrs: hdrAttrs); hdrCurX += colW + gapV }
+                if hasPwr { drawRightAligned(AppLanguage.shared.s("파워", "Pwr"),    x: hdrCurX, y: hdrY, w: colW, attrs: hdrAttrs) }
+
+                // Data rows
+                let kmFont   = UIFont.monospacedDigitSystemFont(ofSize: 6.5 * vScale, weight: .medium)
+                let paceFont = UIFont.monospacedDigitSystemFont(ofSize: 7   * vScale, weight: .bold)
+                let dataFont = UIFont.monospacedDigitSystemFont(ofSize: 6.5 * vScale, weight: .regular)
+
+                for (idx, split) in displaySplits.enumerated() {
+                    let rowY = titleH + colHH + CGFloat(idx) * rowH
+                    let midY = rowY + rowH / 2
+
+                    let isFastest = idx == fastestIdx
+                    let pace = split.paceSecPerKm
+                    let barFrac = CGFloat(0.28 + 0.72 * (pace - minP) / rangeP)
+                    let barColor: UIColor = isFastest ? gold
+                        : (pace <= avgP ? violet : UIColor.white.withAlphaComponent(0.30))
+
+                    // km label (right-aligned in kmW)
+                    let kmStr = "\(split.id)k" as NSString
+                    let kmAttrs: [NSAttributedString.Key: Any] = [.font: kmFont, .foregroundColor: UIColor.white.withAlphaComponent(0.80)]
+                    let kmSz = kmStr.size(withAttributes: kmAttrs)
+                    kmStr.draw(at: CGPoint(x: hPadV + kmW - kmSz.width, y: midY - kmSz.height / 2), withAttributes: kmAttrs)
+
+                    // Pace bar
+                    let barX = hPadV + kmW + gapV
+                    let barBg = UIBezierPath(roundedRect: CGRect(x: barX, y: midY - 1.5 * vScale, width: barAreaW, height: 3 * vScale), cornerRadius: vScale)
+                    UIColor.white.withAlphaComponent(0.10).setFill(); barBg.fill()
+                    let barFilled = UIBezierPath(roundedRect: CGRect(x: barX, y: midY - 1.5 * vScale, width: max(3, barAreaW * barFrac), height: 3 * vScale), cornerRadius: vScale)
+                    barColor.setFill(); barFilled.fill()
+
+                    // Pace time (right-aligned in colW)
+                    let paceStr = split.formattedPace as NSString
+                    let paceAttrs: [NSAttributedString.Key: Any] = [.font: paceFont, .foregroundColor: isFastest ? gold : UIColor.white]
+                    let paceSz = paceStr.size(withAttributes: paceAttrs)
+                    paceStr.draw(at: CGPoint(x: paceColX + colW - paceSz.width, y: midY - paceSz.height / 2), withAttributes: paceAttrs)
+
+                    var dataCurX = paceColX + colW + gapV
+
+                    // HR + zone dot
+                    if hasHR {
+                        if let hr = split.avgHeartRate {
+                            let zc = zoneUIColor(hr)
+                            let dotR = 1.75 * vScale
+                            let dotPath = UIBezierPath(ovalIn: CGRect(x: dataCurX, y: midY - dotR, width: dotR * 2, height: dotR * 2))
+                            zc.setFill(); dotPath.fill()
+                            let hrStr = "\(hr)" as NSString
+                            let hrAttrs: [NSAttributedString.Key: Any] = [.font: dataFont, .foregroundColor: zc]
+                            let hrSz = hrStr.size(withAttributes: hrAttrs)
+                            hrStr.draw(at: CGPoint(x: dataCurX + colW - hrSz.width, y: midY - hrSz.height / 2), withAttributes: hrAttrs)
+                        }
+                        dataCurX += colW + gapV
+                    }
+
+                    // Cadence
+                    if hasCad {
+                        let s = (split.avgCadence.map { "\($0)" } ?? "—") as NSString
+                        let a: [NSAttributedString.Key: Any] = [.font: dataFont, .foregroundColor: cyan]
+                        let sz = s.size(withAttributes: a)
+                        s.draw(at: CGPoint(x: dataCurX + colW - sz.width, y: midY - sz.height / 2), withAttributes: a)
+                        dataCurX += colW + gapV
+                    }
+
+                    // Power
+                    if hasPwr {
+                        let s = (split.avgPower.map { "\($0)" } ?? "—") as NSString
+                        let a: [NSAttributedString.Key: Any] = [.font: dataFont, .foregroundColor: lime]
+                        let sz = s.size(withAttributes: a)
+                        s.draw(at: CGPoint(x: dataCurX + colW - sz.width, y: midY - sz.height / 2), withAttributes: a)
+                    }
+                }
+            }
+        }
+
+        func renderIntervalPanel(_ segments: [IntervalSegment]) -> UIImage? {
+            guard segments.count >= 2 else { return nil }
+            let totalDuration = segments.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+            guard totalDuration > 0 else { return nil }
+
+            let violet   = UIColor(red: 0.486, green: 0.361, blue: 0.988, alpha: 0.90)
+            let darkGray = UIColor(white: 0.28, alpha: 0.90)
+            let lblFont  = UIFont.monospacedDigitSystemFont(ofSize: 8 * vScale, weight: .regular)
+
+            let titleH: CGFloat   = 13 * vScale
+            let barAreaX: CGFloat = panPad
+            let barAreaY: CGFloat = panPad + titleH + 4 * vScale
+            let barAreaW: CGFloat = panW - barAreaX - panPad
+            let barAreaH: CGFloat = intervalPanH - barAreaY - panPad
+            let barGap: CGFloat   = 2 * vScale
+            let totalGapW         = barGap * CGFloat(max(0, segments.count - 1))
+
+            let rnd = UIGraphicsImageRenderer(size: CGSize(width: panW, height: intervalPanH), format: imgFormat)
+            return rnd.image { ctx in
+                let cg = ctx.cgContext
+
+                // Background
+                let bg = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: panW, height: intervalPanH), cornerRadius: panCR)
+                UIColor.black.withAlphaComponent(0.30).setFill(); bg.fill()
+
+                // Title
+                let titleFont = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
+                let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
+                (AppLanguage.shared.s("⚙ 인터벌", "⚙ Intervals") as NSString).draw(at: CGPoint(x: barAreaX, y: panPad), withAttributes: titleAttrs)
+
+                var xCursor: CGFloat = barAreaX
+                for seg in segments {
+                    let dur      = seg.endDate.timeIntervalSince(seg.startDate)
+                    let fraction = CGFloat(dur / totalDuration)
+                    let bW       = (barAreaW - totalGapW) * fraction
+                    let isWork   = seg.stepLabel == "운동"
+                    let barColor = isWork ? violet : darkGray
+
+                    let barRect = CGRect(x: xCursor, y: barAreaY, width: bW, height: barAreaH)
+                    let barPath = UIBezierPath(roundedRect: barRect, cornerRadius: 4 * vScale)
+                    barColor.setFill(); barPath.fill()
+
+                    // Text inside bar (only if wide enough)
+                    if bW > 28 * vScale {
+                        var lines: [String] = []
+                        if let distM = seg.distanceM, distM > 0 {
+                            let pSec = dur / (distM / 1000)
+                            lines.append("\(Int(pSec) / 60)'\(String(format: "%02d", Int(pSec) % 60))\"")
+                        }
+                        if let hr = seg.avgHeartRate  { lines.append("\(hr)♥") }
+                        if let cd = seg.avgCadence    { lines.append("\(cd)spm") }
+
+                        let lineH: CGFloat = 9 * vScale
+                        let totalTextH = CGFloat(lines.count) * lineH + CGFloat(max(0, lines.count - 1)) * 2 * vScale
+                        var ty = barAreaY + (barAreaH - totalTextH) / 2
+                        for line in lines {
+                            let attrs: [NSAttributedString.Key: Any] = [.font: lblFont, .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
+                            let sz = (line as NSString).size(withAttributes: attrs)
+                            (line as NSString).draw(at: CGPoint(x: xCursor + (bW - sz.width) / 2, y: ty), withAttributes: attrs)
+                            ty += lineH + 2 * vScale
+                        }
+                    }
+                    xCursor += bW + barGap
+                }
+                _ = cg  // suppress unused warning
+            }
+        }
+
+        for (clipIdx, recipe) in recipes.enumerated() {
+            let cStart = clipOffsets[clipIdx]
+            let cEnd   = cStart + recipe.trimmedDuration / max(0.1, recipe.speed)
+            // Chart-aware 9-grid: 차트 활성화 시 차트 제외한 공간에서 9포지션 작동
+            let (recipeChartActive, recipeChartPanH): (Bool, CGFloat) = {
+                if recipe.showHRChart && hrSamples.count >= 2 { return (true, H * 0.264) }
+                if recipe.chartOverlayType == .route && routeCoords.count >= 2 { return (true, H * 0.264) }
+                if recipe.chartOverlayType == .splits {
+                    let fc = splits.filter { $0.distanceM >= 900 }.count
+                    if fc >= 2 {
+                        let dc = fc > 21 ? fc / 2 : fc
+                        return (true, (34 + CGFloat(dc) * 7) * vScale)
+                    }
+                }
+                if recipe.chartOverlayType == .intervals {
+                    let d = intervalSegments.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+                    if d > 0 { return (true, H * 0.42) }
+                }
+                let gt = recipe.chartOverlayType
+                if ![.none, .route, .hrChart, .splits, .intervals].contains(gt),
+                   let s = chartSeriesData[gt], s.count >= 2 { return (true, H * 0.264) }
+                return (false, 0)
+            }()
+            let recipeEffBot: CGFloat = recipeChartActive
+                ? recipeChartPanH + 18 * vScale   // 10*vScale botPad + 8*vScale gap
+                : safeBot
+            // PDT 칩
+            let pdt: [VideoMetricChip] = [
+                recipe.metricDistance  ? metricLookup["distance"]  : nil,
+                recipe.metricPace      ? metricLookup["pace"]      : nil,
+                recipe.metricTime      ? metricLookup["time"]      : nil,
+                recipe.metricHeartRate ? metricLookup["heartrate"] : nil
+            ].compactMap { $0 }
+            if !pdt.isEmpty, let img = renderChipRow(pdt, sizeScale: recipe.pdtSizeLevel.scale) {
+                let sz = img.size
+                let layer = CALayer()
+                layer.frame = frameFor(recipe.pdtPosition, size: sz, effBot: recipeEffBot)
+                layer.contents = img.cgImage; layer.contentsGravity = .topLeft
+                let pdtDelay = min(2.0, (cEnd - cStart) * 0.40)
+                applyDataAnim(layer, start: cStart, end: cEnd, delay: pdtDelay,
+                              mode: recipe.pdtAppearanceMode, decorEffect: recipe.pdtDecorEffect, flyDirection: recipe.pdtFlyDirection)
+                contentLayer.addSublayer(layer)
+            }
+            // 차트 패널 — 등장 순서: 워드마크(0s) → 문구(30%) → 러닝데이터(40%) → 차트(60%)
+            let chartDelay: Double = min(3.0, (cEnd - cStart) * 0.60)
+            if recipe.showHRChart, hrSamples.count >= 2,
+               let img = renderHRPanel(hrSamples, zones: hrZones) {
+                let layer = CALayer()
+                layer.frame = CGRect(x: (W - panW) / 2, y: H - 10 * vScale - panH, width: panW, height: panH)
+                layer.contents = img.cgImage; layer.contentsGravity = .topLeft
+                applyDataAnim(layer, start: cStart, end: cEnd, delay: chartDelay,
+                              mode: recipe.dataAppearanceMode, decorEffect: recipe.chartDecorEffect, flyDirection: recipe.chartFlyDirection)
+                contentLayer.addSublayer(layer)
+            }
+            if recipe.chartOverlayType == .splits, !splits.isEmpty {
+                let full = splits.filter { $0.distanceM >= 900 }
+                if full.count >= 2, let img = renderSplitsPanel(splits, hrZones: hrZones) {
+                    let dc = full.count > 21 ? full.count / 2 : full.count
+                    let splitsPanH = (34 + CGFloat(dc) * 7) * vScale
+                    let layer = CALayer()
+                    layer.frame = CGRect(x: (W - panW) / 2, y: H - 10 * vScale - splitsPanH, width: panW, height: splitsPanH)
+                    layer.contents = img.cgImage; layer.contentsGravity = .topLeft
+                    applyDataAnim(layer, start: cStart, end: cEnd, delay: chartDelay,
+                                  mode: recipe.dataAppearanceMode, decorEffect: recipe.chartDecorEffect, flyDirection: recipe.chartFlyDirection)
+                    contentLayer.addSublayer(layer)
+                }
+            }
+            if recipe.chartOverlayType == .intervals, !intervalSegments.isEmpty,
+               let img = renderIntervalPanel(intervalSegments) {
+                let layer = CALayer()
+                layer.frame = CGRect(x: (W - panW) / 2, y: H - 10 * vScale - intervalPanH, width: panW, height: intervalPanH)
+                layer.contents = img.cgImage; layer.contentsGravity = .topLeft
+                applyDataAnim(layer, start: cStart, end: cEnd, delay: chartDelay,
+                              mode: recipe.dataAppearanceMode, decorEffect: recipe.chartDecorEffect, flyDirection: recipe.chartFlyDirection)
+                contentLayer.addSublayer(layer)
+            }
+            if recipe.chartOverlayType == .route, routeCoords.count >= 2,
+               let img = renderRoutePanel(routeCoords) {
+                let layer = CALayer()
+                layer.frame = CGRect(x: (W - panW) / 2, y: H - 10 * vScale - panH, width: panW, height: panH)
+                layer.contents = img.cgImage; layer.contentsGravity = .topLeft
+                applyDataAnim(layer, start: cStart, end: cEnd, delay: chartDelay,
+                              mode: recipe.dataAppearanceMode, decorEffect: recipe.chartDecorEffect, flyDirection: recipe.chartFlyDirection)
+                contentLayer.addSublayer(layer)
+            }
+            let genericType = recipe.chartOverlayType
+            if ![.none, .route, .hrChart, .splits, .intervals].contains(genericType),
+               let series = chartSeriesData[genericType],
+               let img = ChartOverlayType.renderGenericChartPanel(
+                   type: genericType, series: series,
+                   panW: panW, panH: panH, panPad: panPad, panCR: panCR, vScale: vScale) {
+                let layer = CALayer()
+                layer.frame = CGRect(x: (W - panW) / 2, y: H - 10 * vScale - panH, width: panW, height: panH)
+                layer.contents = img.cgImage; layer.contentsGravity = .topLeft
+                applyDataAnim(layer, start: cStart, end: cEnd, delay: chartDelay,
+                              mode: recipe.dataAppearanceMode, decorEffect: recipe.chartDecorEffect, flyDirection: recipe.chartFlyDirection)
+                contentLayer.addSublayer(layer)
+            }
+        }
+
         return contentLayer
     }
 
@@ -2094,6 +2807,13 @@ struct VideoExportService {
         showDate: Bool,
         muteAudio: Bool = false,
         metricChips: [VideoMetricChip] = [],
+        metricLookup: [String: VideoMetricChip] = [:],
+        routeCoords: [CLLocationCoordinate2D] = [],
+        hrSamples: [(offset: TimeInterval, bpm: Int)] = [],
+        splits: [SplitData] = [],
+        hrZones: [HRZoneData] = [],
+        intervalSegments: [IntervalSegment] = [],
+        chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:],
         videoTitle: String = "",
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
     ) async throws -> (playerItem: AVPlayerItem, layer: CALayer, size: CGSize, duration: Double) {
@@ -2198,7 +2918,9 @@ struct VideoExportService {
         let contentLayer = buildClipTextContentLayer(
             recipes: recipes, renderSize: oneLinerSize, totalDuration: D,
             activityDate: activityDate, showDate: showDate, metricChips: metricChips,
-            videoTitle: videoTitle, titleStyle: titleStyle)
+            metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples,
+            splits: splits, hrZones: hrZones, intervalSegments: intervalSegments,
+            chartSeriesData: chartSeriesData, videoTitle: videoTitle, titleStyle: titleStyle)
 
         let playerItem = AVPlayerItem(asset: composition)
         playerItem.videoComposition = videoComp
