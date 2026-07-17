@@ -50,7 +50,8 @@ enum PhotoSlideComposition {
         hrZones: [HRZoneData] = [],
         intervalSegments: [IntervalSegment] = [],
         videoTitle: String = "",
-        titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
+        titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
+        dataOverlayImage: UIImage? = nil
     ) async throws -> URL {
 
         guard !photos.isEmpty else { throw SlideError.noPhotos }
@@ -82,7 +83,8 @@ enum PhotoSlideComposition {
             activityDate: activityDate, showDate: showDate, metricChips: metricChips,
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples, splits: splits,
             chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
-            videoTitle: videoTitle, titleStyle: titleStyle)
+            videoTitle: videoTitle, titleStyle: titleStyle,
+            dataOverlayImage: dataOverlayImage)
 
         let videoLayer = CALayer()
         videoLayer.frame = CGRect(origin: .zero, size: size)
@@ -168,7 +170,8 @@ enum PhotoSlideComposition {
         hrZones: [HRZoneData] = [],
         intervalSegments: [IntervalSegment] = [],
         videoTitle: String = "",
-        titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
+        titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
+        dataOverlayImage: UIImage? = nil
     ) async throws -> (playerItem: AVPlayerItem, layer: CALayer, size: CGSize,
                        duration: Double, tempURL: URL) {
         guard !photos.isEmpty else { throw SlideError.noPhotos }
@@ -190,7 +193,8 @@ enum PhotoSlideComposition {
             activityDate: activityDate, showDate: showDate, metricChips: metricChips,
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples, splits: splits,
             chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
-            videoTitle: videoTitle, titleStyle: titleStyle)
+            videoTitle: videoTitle, titleStyle: titleStyle,
+            dataOverlayImage: dataOverlayImage)
 
         let baseURL = try await writeBlackBaseVideo(size: size, duration: D)
 
@@ -253,7 +257,8 @@ enum PhotoSlideComposition {
         hrZones: [HRZoneData] = [],
         intervalSegments: [IntervalSegment] = [],
         videoTitle: String = "",
-        titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
+        titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
+        dataOverlayImage: UIImage? = nil
     ) -> CALayer {
         let size = renderSize
         let W    = size.width
@@ -361,6 +366,20 @@ enum PhotoSlideComposition {
             photoLayer.add(linearAnim("opacity", keyTimes: opKeyTimes, values: opValues),
                            forKey: "opacity")
             contentLayer.addSublayer(photoLayer)
+        }
+
+        // ── PlaceableCard 데이터 오버레이 (Placeable 슬라이드 전용) ─────────────────────
+        // 사진 레이어 위, 텍스트 레이어 아래에 배치 → 텍스트가 데이터 위에 렌더링됨.
+        if let overlayImg = dataOverlayImage, let cgImg = overlayImg.cgImage {
+            let cardLayerH: CGFloat = 375.0 * vScale   // PlaceableCard.cardHeight * vScale
+            let cardMargin: CGFloat = H * 0.03
+            let dataLayer             = CALayer()
+            dataLayer.frame           = CGRect(x: 0, y: H - cardLayerH - cardMargin,
+                                               width: W, height: cardLayerH)
+            dataLayer.contents        = cgImg
+            dataLayer.contentsGravity = .resize
+            dataLayer.masksToBounds   = false
+            contentLayer.addSublayer(dataLayer)
         }
 
         // ── Precompute title bottom Y (top-positioned videoTitle이 있으면 클립 텍스트/칩 시작점 아래로 밀기) ─
@@ -478,7 +497,7 @@ enum PhotoSlideComposition {
             let fadeStart: Double
             let fadeEnd:   Double
             if isFade {
-                let fi = page.winStart + startDelay + max(0.30, windowDur * 0.30)
+                let fi = page.winStart + startDelay
                 appearEnd = fi
                 // 페이드 모드: 클립(페이지) 끝까지 유지, 마지막 순간에만 짧게 페이드아웃
                 fadeStart = page.isLast ? D : max(fi + 0.05, page.winEnd - fadeTime)
@@ -546,14 +565,15 @@ enum PhotoSlideComposition {
                     ctx.cgContext.setLineJoin(.round)
                     let str  = String(chars.prefix(k))
                     let rect = CGRect(x: 0, y: 0, width: textMaxW, height: textLayerH)
+                    let drawOpts: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
                     if let ba = borderAttrs {
                         let bStr = NSAttributedString(string: str, attributes: ba)
                         let o = borderOffset
                         for (ox, oy): (CGFloat, CGFloat) in [(-o,-o),(o,-o),(-o,o),(o,o),(-o,0),(o,0),(0,-o),(0,o)] {
-                            bStr.draw(in: rect.offsetBy(dx: ox, dy: oy))
+                            bStr.draw(with: rect.offsetBy(dx: ox, dy: oy), options: drawOpts, context: nil)
                         }
                     }
-                    NSAttributedString(string: str, attributes: textAttrs).draw(in: rect)
+                    NSAttributedString(string: str, attributes: textAttrs).draw(with: rect, options: drawOpts, context: nil)
                 }.cgImage
                 charImages.append(cgImg ?? fallbackImg)
             }
@@ -669,13 +689,10 @@ enum PhotoSlideComposition {
                     // 줄마다 독립 레이어, 0.25 s 간격 stagger.
                     let lineDelay:    Double  = 0.25
                     let flyDur:       Double  = 0.45   // 날아오기 속도 완화(느리게)
-                    // 켄번즈 반대 자동: 짝수 클립은 오른쪽에서(W), 홀수는 왼쪽에서(-W) 진입
                     let flyVertical   = clip.flyDirection.isVertical
                     let flyKey        = flyVertical ? "transform.translation.y" : "transform.translation.x"
-                    let slideX:       CGFloat = flyVertical ? H * 0.3 : (page.clipIdx % 2 == 0 ? W : -W)
+                    let slideX:       CGFloat = flyVertical ? H * 0.3 : (clip.flyDirection == .trailing ? W : -W)
                     let lineTexts     = page.text.components(separatedBy: "\n")
-                    let lineRenderer  = UIGraphicsImageRenderer(
-                        size: CGSize(width: textMaxW, height: ceil(lineH)), format: imgFormat)
                     let anchorX:    CGFloat
                     let anchorPosX: CGFloat
                     switch nsAlign {
@@ -683,20 +700,37 @@ enum PhotoSlideComposition {
                     case .right:  anchorX = 1.0; anchorPosX = hPad + textMaxW
                     default:      anchorX = 0.0; anchorPosX = hPad
                     }
+                    // 줄별 실제 높이(줄바꿈 고려) + 누적 Y 오프셋 사전 계산
+                    let flyDrawOpts: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+                    var flyLineHs: [CGFloat] = []
+                    var flyLineYs: [CGFloat] = []
+                    var flyCumY: CGFloat = 0
+                    for rawLine in lineTexts {
+                        let tr = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if tr.isEmpty { flyLineHs.append(0); flyLineYs.append(flyCumY); continue }
+                        let r = NSAttributedString(string: tr, attributes: textAttrs)
+                            .boundingRect(with: CGSize(width: textMaxW, height: 4000),
+                                          options: flyDrawOpts, context: nil)
+                        let h = max(ceil(r.height) + 4, lineH)
+                        flyLineHs.append(h); flyLineYs.append(flyCumY)
+                        flyCumY += h + lineSpacing
+                    }
                     var staggerIdx = 0
                     for (i, rawLine) in lineTexts.enumerated() {
                         let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { continue }
                         let flyBegin = page.winStart + startDelay + Double(staggerIdx) * lineDelay
                         staggerIdx  += 1
-                        let lineTopY = textFrame.minY + CGFloat(i) * lineH
+                        let lineTopY  = textFrame.minY + flyLineYs[i]
+                        let actualLineH = flyLineHs[i]
                         // 판 레이어 (텍스트보다 먼저 → z-order 아래)
                         if let pl = plateLayout {
-                            let lineW  = min(ceil(NSAttributedString(string: trimmed, attributes: textAttrs).size().width), textMaxW)
+                            let measuredW = min(ceil(NSAttributedString(string: trimmed, attributes: textAttrs).size().width), textMaxW)
+                            let wrappedPlateH = actualLineH + 2 * pl.padV
                             let pLayer = CALayer()
                             pLayer.anchorPoint     = CGPoint(x: anchorX, y: 0.5)
-                            pLayer.position        = CGPoint(x: anchorPosX, y: lineTopY - pl.padV + pl.plateH / 2)
-                            pLayer.bounds          = CGRect(x: 0, y: 0, width: lineW + 2 * pl.padH, height: pl.plateH)
+                            pLayer.position        = CGPoint(x: anchorPosX, y: lineTopY - pl.padV + wrappedPlateH / 2)
+                            pLayer.bounds          = CGRect(x: 0, y: 0, width: measuredW + 2 * pl.padH, height: wrappedPlateH)
                             pLayer.backgroundColor = clip.plateColorPreset.plateUIColorWithAlpha.cgColor
                             pLayer.cornerRadius    = pl.cornerR
                             pLayer.masksToBounds   = true
@@ -711,22 +745,25 @@ enum PhotoSlideComposition {
                             pFly.isRemovedOnCompletion   = false
                             pLayer.add(pFly, forKey: "flyIn")
                         }
-                        // 텍스트 레이어
+                        // 텍스트 레이어 — 줄별 실제 높이로 렌더링
+                        let lineRenderer = UIGraphicsImageRenderer(
+                            size: CGSize(width: textMaxW, height: actualLineH), format: imgFormat)
                         let lineImg = lineRenderer.image { ctx in
                             ctx.cgContext.setLineJoin(.round)
-                            let lRect = CGRect(x: 0, y: 0, width: textMaxW, height: ceil(lineH))
+                            let lRect = CGRect(x: 0, y: 0, width: textMaxW, height: actualLineH)
                             if let ba = borderAttrs {
                                 let bStr = NSAttributedString(string: trimmed, attributes: ba)
                                 let o = borderOffset
                                 for (ox, oy): (CGFloat, CGFloat) in [(-o,-o),(o,-o),(-o,o),(o,o),(-o,0),(o,0),(0,-o),(0,o)] {
-                                    bStr.draw(in: lRect.offsetBy(dx: ox, dy: oy))
+                                    bStr.draw(with: lRect.offsetBy(dx: ox, dy: oy), options: flyDrawOpts, context: nil)
                                 }
                             }
-                            NSAttributedString(string: trimmed, attributes: textAttrs).draw(in: lRect)
+                            NSAttributedString(string: trimmed, attributes: textAttrs)
+                                .draw(with: lRect, options: flyDrawOpts, context: nil)
                         }.cgImage ?? fallbackImg
                         let lineLayer                    = CALayer()
                         lineLayer.frame                  = CGRect(x: textFrame.origin.x, y: lineTopY,
-                                                                  width: textMaxW, height: ceil(lineH))
+                                                                  width: textMaxW, height: actualLineH)
                         lineLayer.contentsGravity        = .topLeft
                         lineLayer.masksToBounds          = false
                         lineLayer.contents               = lineImg
@@ -990,7 +1027,7 @@ enum PhotoSlideComposition {
                 stripLayer.frame = CGRect(x: startX, y: chipY, width: totalW, height: chipLineH)
                 stripLayer.opacity = 0
 
-                let pdtDelay = max(0.55, recipe.trimmedDuration * 0.20)
+                let pdtDelay = max(0.65, recipe.trimmedDuration * 0.25)
                 let showFrac = min(1.0, (clipStart + pdtDelay) / D)
                 let endFrac  = min(1.0, clipEnd / D)
                 let hideStart = max(showFrac + 0.0001, endFrac - (0.15 / D))

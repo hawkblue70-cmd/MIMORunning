@@ -74,6 +74,11 @@ struct MultiClipEditorView: View {
     var showPickerButton: Bool = true
     /// When true: shows title section even when recipes is empty (slide mode — photos live in parent).
     var showTitleEvenWhenEmpty: Bool = false
+    /// When false: hides the '전체 제목' section (e.g. Placeable — per-clip text only, no global title).
+    var showTitle: Bool = true
+    /// When false: tapping a clip only selects it (updates selectedClipIndex) without opening the edit sheet.
+    /// Used in Placeable video where trim/text controls are inline below the strip.
+    var openEditOnTap: Bool = true
 
     /// Full-video title (영상·슬라이드 only; hidden when isStoryMode).
     @Binding var videoTitle: String
@@ -104,7 +109,7 @@ struct MultiClipEditorView: View {
             if !recipes.isEmpty, !isStoryMode { durationRow }
             // 영상·슬라이드 메인은 '전체 제목'만 — 지표(P/D/T/M/H)는 클립별(클립 편집기)에서
             // showTitleEvenWhenEmpty: 슬라이드 모드에서 photos가 storyPhotos에 있고 recipes는 비어있을 때
-            if !isStoryMode, !recipes.isEmpty || showTitleEvenWhenEmpty { titleSection }
+            if showTitle, !isStoryMode, !recipes.isEmpty || showTitleEvenWhenEmpty { titleSection }
         }
         // onDismiss: 사용 — onChange(of: isEditing)보다 늦게 호출되어
         // commitWorkingRecipes()의 @Binding 쓰기가 부모 @State에 반영된 뒤 onSave()를 보장.
@@ -266,7 +271,7 @@ struct MultiClipEditorView: View {
                 showReAddAlert = true
             } else {
                 selectedClipIndex = i
-                isEditing = true
+                if openEditOnTap { isEditing = true }
             }
         } label: {
             Group {
@@ -307,7 +312,7 @@ struct MultiClipEditorView: View {
                         .tint(.white)
                         .padding(.bottom, 3)
                 } else if !isStoryMode {
-                    Text("\(Int(recipes[i].trimmedDuration))s")
+                    Text("\(Int((recipes[i].trimmedDuration / max(0.1, recipes[i].speed)).rounded()))s")
                         .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 3).padding(.vertical, 1)
                         .background(Color.black.opacity(0.55))
@@ -410,13 +415,38 @@ struct MultiClipEditorView: View {
 
     private var titleSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Divider()
-            TextField(AppLanguage.shared.s("전체 제목 (선택)", "Title (optional)"),
-                      text: $videoTitle)
-                .font(.system(size: 14))
-                .foregroundStyle(.white)
-                .tint(Theme.violet)
-                .onChange(of: videoTitle) { _, _ in onSave() }
+            if isPhotoSlideMode {
+                // 슬라이드: 눈에 띄는 박스형 입력 + 섹션 레이블
+                HStack {
+                    Text(AppLanguage.shared.s("문구 (선택)", "Caption (optional)"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                TextField(AppLanguage.shared.s("영상에 넣을 문구를 입력하세요", "Enter a caption for the video"),
+                          text: $videoTitle,
+                          axis: .vertical)
+                    .lineLimit(1...3)
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white)
+                    .tint(Theme.violet)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color.white.opacity(0.07))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .onChange(of: videoTitle) { _, _ in onSave() }
+            } else {
+                // 영상: 기존 미니멀 스타일
+                Divider()
+                TextField(AppLanguage.shared.s("전체 제목 (선택)", "Title (optional)"),
+                          text: $videoTitle,
+                          axis: .vertical)
+                    .lineLimit(1...2)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white)
+                    .tint(Theme.violet)
+                    .onChange(of: videoTitle) { _, _ in onSave() }
+            }
             HStack(alignment: .top, spacing: 10) {
                 titlePositionGrid
                 VStack(alignment: .leading, spacing: 5) {

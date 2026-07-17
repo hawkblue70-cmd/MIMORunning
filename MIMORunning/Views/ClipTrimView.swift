@@ -130,6 +130,32 @@ struct ClipTrimSheet: View {
         }
     }
 
+    // UIKit NSLayoutManager로 줄 바꿈 위치를 계산해 명시적 \n 삽입.
+    // CALayer(UIKit)와 SwiftUI가 같은 폰트·크기에서 자폭을 다르게 측정하므로
+    // 편집 프리뷰를 UIKit 기준으로 강제해 애니메이션 미리보기와 줄 바꿈을 맞춘다.
+    private func uikitLineBreakText(_ text: String, uiFont: UIFont, maxWidth: CGFloat) -> String {
+        text.components(separatedBy: "\n").map { para -> String in
+            guard !para.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return para }
+            let storage = NSTextStorage(string: para, attributes: [.font: uiFont])
+            let manager = NSLayoutManager()
+            storage.addLayoutManager(manager)
+            let container = NSTextContainer(size: CGSize(width: maxWidth, height: 100_000))
+            container.lineFragmentPadding = 0
+            manager.addTextContainer(container)
+            _ = manager.glyphRange(for: container)
+            var lines: [String] = []
+            var gi = 0
+            while gi < manager.numberOfGlyphs {
+                var gr = NSRange()
+                manager.lineFragmentRect(forGlyphAt: gi, effectiveRange: &gr)
+                let cr = manager.characterRange(forGlyphRange: gr, actualGlyphRange: nil)
+                lines.append((para as NSString).substring(with: cr).trimmingCharacters(in: .newlines))
+                gi = NSMaxRange(gr)
+            }
+            return lines.isEmpty ? para : lines.joined(separator: "\n")
+        }.joined(separator: "\n")
+    }
+
     private func lineCount(at i: Int) -> Int {
         guard currentRecipeValid, i < workingRecipes[currentPage].lines.count else { return 0 }
         return workingRecipes[currentPage].lines[i].count
@@ -154,17 +180,11 @@ struct ClipTrimSheet: View {
             let newIdx = max(0, min(selectedClipIndex, max(0, fresh.count - 1)))
             workingRecipes = fresh
             currentPage    = newIdx
+            gridDataMode   = false  // 이전 세션 data mode 잔류 방지 → 항상 문구 패널로 시작
             FontLoader.registerBundledFonts()
             for i in workingRecipes.indices {
                 resolveClipInSheet(i)
                 resolvePreviewFrame(i)  // PHAsset 포스터 프레임 → 해석 전 배경 즉시 표시
-                // 영상 클립만 cap 적용 — 사진·스토리 클립은 user-added 줄 보존
-                if workingRecipes[i].storedPhotoRef == nil && !isStoryMode {
-                    let cap = projectedCountFor(workingRecipes[i])
-                    if workingRecipes[i].lines.count > cap {
-                        workingRecipes[i].lines = Array(workingRecipes[i].lines.prefix(cap))
-                    }
-                }
             }
         }
         .onChange(of: currentPage) { _, new in
@@ -173,13 +193,8 @@ struct ClipTrimSheet: View {
             resolvePreviewFrame(new)
             userAddedLines = 0
         }
-        .onChange(of: projectedCount) { _, newCap in
+        .onChange(of: projectedCount) { _, _ in
             userAddedLines = 0
-            guard currentRecipeValid else { return }
-            // 영상 클립만 cap 적용 — 사진·스토리 클립은 user-added 줄 보존
-            guard workingRecipes[currentPage].storedPhotoRef == nil, !isStoryMode else { return }
-            guard workingRecipes[currentPage].lines.count > newCap else { return }
-            workingRecipes[currentPage].lines = Array(workingRecipes[currentPage].lines.prefix(newCap))
         }
         .onChange(of: replacePhotoPicker) { _, items in
             guard let item = items.first else { return }
@@ -314,9 +329,7 @@ struct ClipTrimSheet: View {
         } else {
             let maxH: CGFloat  = CardPreviewFrame.width * 16 / 9  // 9:16 좌표계, 4:5 컨테이너에 축소 표시
             let w: CGFloat     = CardPreviewFrame.width
-            let count          = projectedCountFor(recipe)
-            let displayText    = (0..<count)
-                .map { j in j < recipe.lines.count ? recipe.lines[j] : "" }
+            let displayText    = recipe.lines
                 .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                 .joined(separator: "\n")
             let align          = textAlignmentFor(recipe)
@@ -405,8 +418,13 @@ struct ClipTrimSheet: View {
                 let clipContentH: CGFloat   = max(0, maxH - clipContentTop - clipEffBottomPad)
                 // 텍스트 없을 때도 위치를 미리볼 수 있도록 플레이스홀더 표시
                 let effectiveDisplayText = displayText.isEmpty ? "···" : displayText
+                // UIKit 기준 줄 바꿈을 미리 계산해 CALayer 애니메이션 미리보기와 일치시킨다.
+                let previewText = displayText.isEmpty ? effectiveDisplayText
+                    : uikitLineBreakText(effectiveDisplayText,
+                                         uiFont: recipe.fontChoice.uiFont(size: base),
+                                         maxWidth: w - 48 * previewScale)
                 EffectTextView(
-                    text:           effectiveDisplayText,
+                    text:           previewText,
                     font:           recipe.fontChoice.boldSwiftUIFont(size: base),
                     lineSpacing:    base * 0.1,
                     alignment:      align,
@@ -490,12 +508,6 @@ struct ClipTrimSheet: View {
                     .allowsHitTesting(false)
                 }
                 dataPreviewOverlay(recipe, w: w, maxH: maxH)
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 4]),
-                                  antialiased: false)
-                    .foregroundStyle(.white.opacity(0.22))
-                    .padding(14)
-                    .allowsHitTesting(false)
             }
             .frame(width: w, height: maxH)
             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -560,26 +572,32 @@ struct ClipTrimSheet: View {
 
     // MARK: - Text inputs
 
-    private var effectiveLineCount: Int { min(3, projectedCount + userAddedLines) }
+    private var effectiveLineCount: Int {
+        guard currentRecipeValid else { return max(1, projectedCount + userAddedLines) }
+        // 이미 저장된 줄이 기본 cap보다 많으면 그만큼 표시 (사용자가 추가한 줄 보존)
+        let savedCount = workingRecipes[currentPage].lines.count
+        return min(3, max(savedCount, projectedCount) + userAddedLines)
+    }
 
     private var textInputSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(0..<effectiveLineCount, id: \.self) { i in
-                HStack(alignment: .center, spacing: 8) {
-                    HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
                         TextField(
                             AppLanguage.shared.s("\(i + 1)번째 줄", "Line \(i + 1)"),
-                            text: lineBinding(for: i)
+                            text: lineBinding(for: i),
+                            axis: .vertical
                         )
-                        .lineLimit(1)
+                        .lineLimit(1...2)
                         .font(.system(size: 15))
                         .foregroundStyle(.white)
                         .tint(Theme.violet)
 
-                        Spacer(minLength: 0)
                         Text("\(lineCount(at: i))/\(charLimit)")
                             .font(.system(size: 11).monospacedDigit())
                             .foregroundStyle(Color(hex: "6E6E78"))
+                            .padding(.top, 2)
                     }
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(Color(hex: "1E1E28"))
@@ -592,6 +610,7 @@ struct ClipTrimSheet: View {
                                 .foregroundStyle(Theme.violet)
                                 .frame(width: 36, height: 36)
                         }
+                        .padding(.top, 6)
                     }
                 }
                 .padding(.horizontal)
@@ -2183,6 +2202,8 @@ struct TrimBarView: View {
     let duration: Double
     @Binding var trimStart: Double
     @Binding var trimEnd:   Double
+    /// 드래그 완료 시 호출 — 미리보기 재빌드 트리거에 사용.
+    var onEditingEnded: (() -> Void)? = nil
 
     private let barHeight: CGFloat = 24
     private let handleW:   CGFloat = 18
@@ -2217,6 +2238,7 @@ struct TrimBarView: View {
                             let raw = Double((v.location.x - handleW) / usable) * duration
                             trimStart = max(0, min(raw, trimEnd - minTrim))
                         }
+                        .onEnded { _ in onEditingEnded?() }
                     )
 
                 // End handle
@@ -2227,6 +2249,7 @@ struct TrimBarView: View {
                             let raw = Double((v.location.x - handleW) / usable) * duration
                             trimEnd = min(duration, max(raw, trimStart + minTrim))
                         }
+                        .onEnded { _ in onEditingEnded?() }
                     )
             }
             .frame(height: barHeight)

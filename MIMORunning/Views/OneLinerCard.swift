@@ -108,7 +108,7 @@ enum OneLinerTextColor: String, CaseIterable, Codable {
         case .violet: return Color(hex: "5E35B1")
         case .gold:   return Color(hex: "FFC74D")
         case .lime:   return Theme.power
-        case .blue:   return Color(hex: "2196F3")
+        case .blue:   return Color(hex: "1976D2")
         }
     }
 
@@ -118,7 +118,7 @@ enum OneLinerTextColor: String, CaseIterable, Codable {
         case .violet: return UIColor(red: 0x5E/255.0, green: 0x35/255.0, blue: 0xB1/255.0, alpha: 1)
         case .gold:   return UIColor(red: 0xFF/255.0, green: 0xC7/255.0, blue: 0x4D/255.0, alpha: 1)
         case .lime:   return UIColor(red: 0xA3/255.0, green: 0xE6/255.0, blue: 0x35/255.0, alpha: 1)
-        case .blue:   return UIColor(red: 0x21/255.0, green: 0x96/255.0, blue: 0xF3/255.0, alpha: 1)
+        case .blue:   return UIColor(red: 0x19/255.0, green: 0x76/255.0, blue: 0xD2/255.0, alpha: 1)
         }
     }
 
@@ -439,6 +439,8 @@ struct EffectTextView: View {
         let lines  = text.components(separatedBy: "\n")
         let hAlign: HorizontalAlignment = alignment == .trailing ? .trailing
             : alignment == .leading ? .leading : .center
+        let frameAlign: Alignment = alignment == .trailing ? .trailing
+            : alignment == .leading ? .leading : .center
         let vertical: Bool  = flyDirection.isVertical
         let initX:  CGFloat = vertical ? 280 : (flyDirection == .trailing ? 280 : -280)
         VStack(alignment: hAlign, spacing: plateOn ? 3 : lineSpacing) {
@@ -448,14 +450,15 @@ struct EffectTextView: View {
                     let off: CGFloat = i < lineOffsets.count ? lineOffsets[i] : initX
                     if plateOn {
                         lineContent(line)
-                            .lineLimit(1).minimumScaleFactor(0.65)
+                            .multilineTextAlignment(alignment)
                             .padding(.horizontal, 8).padding(.vertical, 2)
                             .background(RoundedRectangle(cornerRadius: 5).fill(plateBgColor))
+                            .frame(maxWidth: .infinity, alignment: frameAlign)
                             .offset(x: vertical ? 0 : off, y: vertical ? off : 0)
                     } else {
                         lineContent(line)
                             .multilineTextAlignment(alignment)
-                            .lineLimit(1).minimumScaleFactor(0.65)
+                            .frame(maxWidth: .infinity, alignment: frameAlign)
                             .offset(x: vertical ? 0 : off, y: vertical ? off : 0)
                     }
                 }
@@ -478,14 +481,17 @@ struct EffectTextView: View {
     private var plateView: some View {
         let hAlign: HorizontalAlignment = alignment == .trailing ? .trailing
             : alignment == .leading ? .leading : .center
+        let frameAlign: Alignment = alignment == .trailing ? .trailing
+            : alignment == .leading ? .leading : .center
         let lines = text.components(separatedBy: "\n")
         VStack(alignment: hAlign, spacing: 3) {
             ForEach(lines.indices, id: \.self) { i in
                 if !lines[i].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     lineContent(lines[i])
-                        .lineLimit(1).minimumScaleFactor(0.65)
+                        .multilineTextAlignment(alignment)
                         .padding(.horizontal, 8).padding(.vertical, 2)
                         .background(RoundedRectangle(cornerRadius: 5).fill(plateBgColor))
+                        .frame(maxWidth: .infinity, alignment: frameAlign)
                 }
             }
         }
@@ -496,20 +502,22 @@ struct EffectTextView: View {
         }
     }
 
-    // 테두리/없음: 줄별 VStack + lineLimit(1).
-    // 이전: lineLimit(2) 단일 Text → 짧은 줄까지 긴 줄 기준으로 minimumScaleFactor 강제 축소.
-    // 수정: plateView와 동일한 줄 분할·독립 축소. 줄마다 개별적으로 fit 결정.
+    // 테두리/없음: 줄별 VStack, lineLimit 없음 → 각 입력줄이 카드 폭에서 자유롭게 줄바꿈.
+    // lineLimit(1): 긴 줄이 축소(minimumScaleFactor)되어 작게 표시되는 문제 → 제거.
+    // VideoExportService(NSAttributedString)와 동일하게 줄바꿈으로 처리.
     @ViewBuilder
     private func singleTextView() -> some View {
         let lines  = text.components(separatedBy: "\n")
         let hAlign: HorizontalAlignment = alignment == .trailing ? .trailing
             : alignment == .leading ? .leading : .center
+        let frameAlign: Alignment = alignment == .trailing ? .trailing
+            : alignment == .leading ? .leading : .center
         VStack(alignment: hAlign, spacing: lineSpacing) {
             ForEach(lines.indices, id: \.self) { i in
                 if !lines[i].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     lineContent(lines[i])
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
+                        .multilineTextAlignment(alignment)
+                        .frame(maxWidth: .infinity, alignment: frameAlign)
                 }
             }
         }
@@ -561,11 +569,14 @@ struct OneLinerCard: View {
     var plateColorPreset: PlateColorPreset = .blackWhite
     var showDate: Bool = true
     var showBackground: Bool = true
+    var showWordmark: Bool = true
     /// When true, text + date are pinned together at the bottom-left (caption layout).
     /// The `position` parameter is ignored in this mode.
     var captionMode: Bool = false
     /// 스토리 모드에서 차트 패널이 하단에 배치될 때 해당 영역 높이(pt). > 0이면 문구를 차트 위 공간에 배치.
     var chartBottomReserved: CGFloat = 0
+    /// 스토리 모드에서 차트 패널이 상단에 배치될 때 해당 영역 높이(pt). > 0이면 문구를 차트 아래 공간에 배치.
+    var chartTopReserved: CGFloat = 0
     /// Full-video title overlay (영상·슬라이드 미리보기). Empty = hidden.
     var videoTitle: String = ""
     var titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
@@ -620,7 +631,7 @@ struct OneLinerCard: View {
             if showBackground { background }
 
             // ── Wordmark: MIMO (white) + RUNNING (violet) ──────
-            wordmark
+            if showWordmark { wordmark }
 
             // ── Full-video title (영상·슬라이드 정지 미리보기) ─
             if !videoTitle.isEmpty { titleOverlay }
@@ -967,6 +978,8 @@ struct OneLinerCard: View {
                     .padding(.horizontal, 24)
                     .padding(.top, textTopInset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
+                    .padding(.bottom, chartBottomReserved > 0 ? chartBottomReserved + 8 : 0)
+                    .padding(.top,    chartTopReserved    > 0 ? chartTopReserved    + 8 : 0)
                     if showDate {
                         // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 → 문구와 겹침 방지
                         Text(cardDate.oneLinerDateString)
@@ -1054,6 +1067,30 @@ struct OneLinerCard: View {
         }
     }
 
+    // UIKit NSLayoutManager로 줄바꿈 위치를 미리 계산해 \n 삽입.
+    // CALayer 렌더러(영상 출력)와 SwiftUI EffectTextView의 줄바꿈이 일치하도록 맞춤.
+    private func uikitLineBreakText(_ text: String, uiFont: UIFont, maxWidth: CGFloat) -> String {
+        text.components(separatedBy: "\n").map { para -> String in
+            guard !para.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return para }
+            let storage   = NSTextStorage(string: para, attributes: [.font: uiFont])
+            let manager   = NSLayoutManager()
+            storage.addLayoutManager(manager)
+            let container = NSTextContainer(size: CGSize(width: maxWidth, height: 100_000))
+            container.lineFragmentPadding = 0
+            manager.addTextContainer(container)
+            _ = manager.glyphRange(for: container)
+            var lines: [String] = []; var gi = 0
+            while gi < manager.numberOfGlyphs {
+                var gr = NSRange()
+                manager.lineFragmentRect(forGlyphAt: gi, effectiveRange: &gr)
+                let cr = manager.characterRange(forGlyphRange: gr, actualGlyphRange: nil)
+                lines.append((para as NSString).substring(with: cr).trimmingCharacters(in: .newlines))
+                gi = NSMaxRange(gr)
+            }
+            return lines.isEmpty ? para : lines.joined(separator: "\n")
+        }.joined(separator: "\n")
+    }
+
     // Text just above date — the text+date unit moves together to `position`.
     // Horizontal alignment follows the position column; vertical follows the row.
     @ViewBuilder
@@ -1061,6 +1098,10 @@ struct OneLinerCard: View {
         let isTrailing = (position == .topTrailing || position == .trailing || position == .bottomTrailing)
         let hAlign: HorizontalAlignment = position.isLeading ? .leading : isTrailing ? .trailing : .center
         let tAlign: TextAlignment       = position.isLeading ? .leading : isTrailing ? .trailing : .center
+        // 9:16 클립 모드에서는 UIKit 줄바꿈을 미리 계산해 CALayer 출력과 일치시킴
+        let clipText: String = (cardHeightOverride != nil && !text.isEmpty)
+            ? uikitLineBreakText(text, uiFont: fontChoice.uiFont(size: baseFontSize), maxWidth: Self.cardWidth - 48)
+            : text
         VStack(alignment: hAlign, spacing: 4) {
             if text.isEmpty {
                 if showBackground {
@@ -1087,7 +1128,7 @@ struct OneLinerCard: View {
                 }
             } else {
                 EffectTextView(
-                    text: text, font: fontChoice.swiftUIFont(size: baseFontSize),
+                    text: clipText, font: fontChoice.swiftUIFont(size: baseFontSize),
                     lineSpacing: lineSpacing, alignment: tAlign,
                     color: plateOn ? plateColorPreset.textSwiftColor : textColor.color,
                     appearanceMode: appearanceMode,
@@ -1102,22 +1143,35 @@ struct OneLinerCard: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, cardHeightOverride != nil ? 24 : 14)
         .padding(.top, {
-            // 제목(videoTitle)이 상단에 있으면 캡션이 제목 아래에서 시작하도록 여유 확보
+            let s = Self.cardWidth / 1080.0
+            if cardHeightOverride != nil {
+                // 9:16 클립 모드: ClipTrimView · CALayer와 동일한 안전 여백 사용
+                let clipTop = (CardVisual.videoSafeTop + 4) * s  // ≈ 73.3 pt
+                if !videoTitle.isEmpty && titleStyle.position.isTop && position.isTop {
+                    let titlePad  = CardVisual.videoSafeTop * 0.6 * s
+                    let titleFont = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
+                    let titleH    = titleFont * 1.4 * 2 + 8
+                    return max(clipTop, titlePad + titleH)
+                }
+                return clipTop
+            }
+            // 4:5 일반 모드
             if !videoTitle.isEmpty && titleStyle.position.isTop && position.isTop {
-                let s = Self.cardWidth / 1080.0
                 let titlePad  = CardVisual.videoSafeTop * 0.6 * s
                 let titleFont = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
-                let titleH    = titleFont * 1.4 * 2 + 8   // 최대 2줄 여유
+                let titleH    = titleFont * 1.4 * 2 + 8
                 return max(32, titlePad + titleH)
             }
             return position.isTop ? 32 : 12
         }())
-        // 차트 영역이 하단에 있으면 차트 위 공간에 배치; 없으면 기존 여유값 유지
+        // 차트 있으면 차트 위로 배치; 없으면 9:16은 CALayer 안전 여백, 4:5는 기존값
         .padding(.bottom, chartBottomReserved > 0
             ? chartBottomReserved + 8
-            : (position.isBottom ? 34 : 12))
+            : cardHeightOverride != nil
+                ? CardVisual.videoSafeBottom * (Self.cardWidth / 1080.0)  // ≈ 75 pt
+                : (position.isBottom ? 34 : 12))
     }
 
 
@@ -1129,8 +1183,6 @@ struct OneLinerCard: View {
                 .scaledToFill()
                 .frame(width: Self.cardWidth, height: cardHeightOverride ?? Self.cardHeight)
                 .clipped()
-                // 9:16(영상·슬라이드) 모드는 편집화면(ClipTrimView)과 동일하게 오버레이 없음
-                .overlay(cardHeightOverride == nil ? Color.black.opacity(0.22) : Color.clear)
         } else {
             LinearGradient(
                 colors: SkyPalette.colors(for: cardDate),

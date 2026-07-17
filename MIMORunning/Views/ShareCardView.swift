@@ -7246,7 +7246,6 @@ struct ShareCardScreen: View {
         let mediaRef: String? = photoIndex < storyPhotoUUIDs.count
             ? "photo:\(storyPhotoUUIDs[photoIndex])"
             : nil
-        let suffix = String((mediaRef ?? "nil").suffix(4))
         if let entry = oneLinerEntries.first(where: { $0.mediaRef == mediaRef }) {
             syncUIFromEntry(entry)
             oneLinerPhAssetDeleted = !entry.isPHAssetAvailable
@@ -7780,8 +7779,6 @@ struct ShareCardScreen: View {
         previewImage = nil
 
         // Use in-memory array if available (avoids @Query timing gap); fall back to disk on restart.
-        let photos = allPickedPhotos.isEmpty ? storyPhotos : allPickedPhotos
-
         // Athletic card + story template: render athletic card with selected photo background.
         // Share only the single rendered card (no extra plain photos).
         if template == .story, let selPhoto = photoFor(2) {

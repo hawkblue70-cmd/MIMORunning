@@ -1142,7 +1142,6 @@ struct VideoExportService {
             ]
             let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
             let dateSize    = dateAttrStr.size()
-            let datePad: CGFloat = 14 * vScale
             let dateImgW = ceil(dateSize.width) + 4
             let dateImgH = ceil(dateSize.height) + 4
 
@@ -1571,7 +1570,6 @@ struct VideoExportService {
             ]
             let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
             let dateSize    = dateAttrStr.size()
-            let datePad: CGFloat = 14 * vScale
             let dateImgW = ceil(dateSize.width) + 4
             let dateImgH = ceil(dateSize.height) + 4
             let dateRenderer = UIGraphicsImageRenderer(
@@ -2482,7 +2480,6 @@ struct VideoExportService {
             ]
             let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
             let dateSz      = dateAttrStr.size()
-            let datePad: CGFloat = 14 * vScale
             let dateImgW = ceil(dateSz.width) + 4; let dateImgH = ceil(dateSz.height) + 4
             let dateRenderer = UIGraphicsImageRenderer(
                 size: CGSize(width: dateImgW, height: dateImgH), format: imgFormat)

@@ -128,19 +128,13 @@ struct RestDayOneLinerSheet: View {
     }
 
     /// Text shown on the card preview.
-    /// Story mode: joins all non-empty lines so both lines appear (matching export).
-    /// Video/slide mode: shows first non-empty line only (video animation handles pagination).
+    /// Joins all non-empty lines so the static preview matches what the user entered.
     private var cardText: String {
-        if selectedTemplate == .story {
+        if selectedTemplate == .story || selectedTemplate == .video || selectedTemplate == .slide {
             let safeIdx = clipRecipes.indices.contains(currentClipIndex) ? currentClipIndex : 0
             let clip = clipRecipes.indices.contains(safeIdx) ? clipRecipes[safeIdx] : clipRecipes.first
             return clip?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                 .joined(separator: "\n") ?? ""
-        }
-        if selectedTemplate == .video || selectedTemplate == .slide {
-            let safeIdx = clipRecipes.indices.contains(currentClipIndex) ? currentClipIndex : 0
-            let clip = clipRecipes.indices.contains(safeIdx) ? clipRecipes[safeIdx] : clipRecipes.first
-            return clip?.lines.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? ""
         }
         if !backgroundPhotos.isEmpty, selectedPhotoIndex < slotTexts.count {
             return slotTexts[selectedPhotoIndex]
