@@ -78,6 +78,7 @@ struct PlaceableCard: View {
     var metricsPosition: CardPosition = .topLeading
     var accent: CardAccent = .none
     var showBackground: Bool = true
+    var showWordmark: Bool = true
     var shoeName: String? = nil
     var weather: WeatherSnapshot? = nil
     var size: PlaceableSize = .large
@@ -119,10 +120,12 @@ struct PlaceableCard: View {
             // Route art at opposite corner from metrics
             routeArtLayer
 
-            // Wordmark — always top-leading
-            wordmarkView
-                .padding(14)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // Wordmark — 영상 오버레이 시 별도 배치하므로 선택적으로 표시
+            if showWordmark {
+                wordmarkView
+                    .padding(14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
 
             // Metrics block at chosen position (shifted to avoid wordmark when top)
             metricsView
@@ -421,9 +424,9 @@ struct PlaceableCard: View {
         let botClear: CGFloat = 26   // clears footer
         if layout == .horizontal {
             switch horizTextRow {
-            case .top:    return EdgeInsets(top: p + topClear, leading: p, bottom: p, trailing: p)
-            case .bottom: return EdgeInsets(top: p, leading: p, bottom: p + botClear, trailing: p)
-            case .middle: return EdgeInsets(top: p, leading: p, bottom: p, trailing: p)
+            case .top:    return EdgeInsets(top: p + topClear, leading: p, bottom: p + topClear, trailing: p)
+            case .bottom: return EdgeInsets(top: p + botClear, leading: p, bottom: p + botClear, trailing: p)
+            case .middle: return EdgeInsets(top: p,            leading: p, bottom: p,            trailing: p)
             }
         }
         switch metricsPosition {
