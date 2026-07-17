@@ -266,7 +266,421 @@ struct VideoExportService {
         (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
     }
 
+    // MARK: Concatenate clips (overlay 없이 연결만) — Placeable 멀티클립 전처리
+    static func concatenateClipsRaw(recipes: [ClipRecipe]) async throws -> URL {
+        let composition = AVMutableComposition()
+        guard let compVideo = composition.addMutableTrack(
+            withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { throw ExportError.compositionFailed }
+        let compAudio = composition.addMutableTrack(
+            withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+
+        var insertTime = CMTime.zero
+        for r in recipes {
+            // URL 해석: 임시파일 → resolvedAsset → assetIdentifier 재해석
+            var resolvedURL: URL = r.url
+            if !FileManager.default.fileExists(atPath: r.url.path) {
+                if let urlAsset = r.resolvedAsset as? AVURLAsset {
+                    resolvedURL = urlAsset.url
+                } else if let assetID = r.assetIdentifier,
+                          let resolved = try? await MultiClipComposition.resolveAVAsset(assetID: assetID),
+                          let urlAsset = resolved as? AVURLAsset {
+                    resolvedURL = urlAsset.url
+                } else {
+                    continue
+                }
+            }
+            let asset  = AVURLAsset(url: resolvedURL)
+            guard let vt = try? await asset.loadTracks(withMediaType: .video).first else { continue }
+            let dur    = (try? await asset.load(.duration)) ?? .zero
+            let start  = CMTime(seconds: r.trimStart, preferredTimescale: 600)
+            let end    = CMTime(seconds: min(r.trimEnd, dur.seconds), preferredTimescale: 600)
+            let range  = CMTimeRange(start: start, end: end)
+            try compVideo.insertTimeRange(range, of: vt, at: insertTime)
+            if let at = try? await asset.loadTracks(withMediaType: .audio).first {
+                try? compAudio?.insertTimeRange(range, of: at, at: insertTime)
+            }
+            insertTime = CMTimeAdd(insertTime, CMTimeSubtract(end, start))
+        }
+
+        let outURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("placeable_concat_\(UUID().uuidString).mp4")
+        guard let session = AVAssetExportSession(
+            asset: composition, presetName: AVAssetExportPresetHighestQuality)
+        else { throw ExportError.sessionFailed }
+        session.outputURL      = outURL
+        session.outputFileType = .mp4
+        await session.export()
+        if let err = session.error { throw err }
+        return outURL
+    }
+
+    /// In-memory concatenated AVPlayerItem from multiple clips with per-clip preferredTransform.
+    /// No file export — used for Placeable multi-clip preview only.
+    static func buildConcatenatedPreviewItem(recipes: [ClipRecipe]) async throws -> (playerItem: AVPlayerItem, duration: Double) {
+        let composition = AVMutableComposition()
+        guard let compVideo = composition.addMutableTrack(
+            withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { throw ExportError.compositionFailed }
+        let compAudio = composition.addMutableTrack(
+            withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
+        var insertTime = CMTime.zero
+
+        for r in recipes {
+            var resolvedURL: URL = r.url
+            if !FileManager.default.fileExists(atPath: r.url.path) {
+                if let ua = r.resolvedAsset as? AVURLAsset {
+                    resolvedURL = ua.url
+                } else if let assetID = r.assetIdentifier,
+                          let resolved = try? await MultiClipComposition.resolveAVAsset(assetID: assetID),
+                          let ua = resolved as? AVURLAsset {
+                    resolvedURL = ua.url
+                } else {
+                    continue
+                }
+            }
+
+            let asset = AVURLAsset(url: resolvedURL)
+            guard let vt = try? await asset.loadTracks(withMediaType: .video).first else { continue }
+            let dur      = (try? await asset.load(.duration)) ?? .zero
+            let clipStart = CMTime(seconds: max(0, r.trimStart), preferredTimescale: 600)
+            let clipEnd   = CMTime(seconds: min(r.trimEnd, dur.seconds), preferredTimescale: 600)
+            guard clipEnd > clipStart else { continue }
+            let srcRange  = CMTimeRange(start: clipStart, end: clipEnd)
+            let clipDur   = CMTimeSubtract(clipEnd, clipStart)
+            let spVal     = max(0.1, r.speed)
+            let scaledDur = abs(spVal - 1.0) > 0.01
+                ? CMTimeMultiplyByFloat64(clipDur, multiplier: 1.0 / spVal)
+                : clipDur
+
+            try compVideo.insertTimeRange(srcRange, of: vt, at: insertTime)
+            if let at = try? await asset.loadTracks(withMediaType: .audio).first {
+                try? compAudio?.insertTimeRange(srcRange, of: at, at: insertTime)
+            }
+
+            // 배속 적용 (scaleTimeRange: 삽입 직후, transform 설정 전)
+            if abs(spVal - 1.0) > 0.01 {
+                let insertedRange = CMTimeRange(start: insertTime, duration: clipDur)
+                compVideo.scaleTimeRange(insertedRange, toDuration: scaledDur)
+                compAudio?.scaleTimeRange(insertedRange, toDuration: scaledDur)
+            }
+
+            // Per-clip preferredTransform → fill 1080×1920
+            let naturalSize        = (try? await vt.load(.naturalSize)) ?? .zero
+            let preferredTransform = (try? await vt.load(.preferredTransform)) ?? .identity
+            let transformedRect    = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+            let displayW = abs(transformedRect.width)
+            let displayH = abs(transformedRect.height)
+            if displayW > 0, displayH > 0 {
+                let fillScale = max(targetSize.width / displayW, targetSize.height / displayH)
+                let txOff = (targetSize.width  - displayW * fillScale) / 2
+                let tyOff = (targetSize.height - displayH * fillScale) / 2
+                var t = preferredTransform
+                t.tx -= transformedRect.origin.x
+                t.ty -= transformedRect.origin.y
+                t = t.concatenating(CGAffineTransform(scaleX: fillScale, y: fillScale))
+                t = t.concatenating(CGAffineTransform(translationX: txOff, y: tyOff))
+                layerInstruction.setTransform(t, at: insertTime)
+            }
+            insertTime = CMTimeAdd(insertTime, scaledDur)
+        }
+
+        guard CMTimeGetSeconds(insertTime) > 0 else { throw ExportError.compositionFailed }
+
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange         = CMTimeRange(start: .zero, duration: insertTime)
+        instruction.layerInstructions = [layerInstruction]
+
+        let videoComposition           = AVMutableVideoComposition()
+        videoComposition.renderSize    = targetSize
+        videoComposition.frameDuration = CMTimeMake(value: 1, timescale: 30)
+        videoComposition.instructions  = [instruction]
+
+        let playerItem = AVPlayerItem(asset: composition)
+        playerItem.videoComposition = videoComposition
+        return (playerItem: playerItem, duration: CMTimeGetSeconds(insertTime))
+    }
+
     // MARK: Export (static overlay)
+
+    /// Trims a single clip to trimStart…trimEnd and composites a static overlay.
+    /// Used for Placeable per-clip export where each clip carries its own text.
+    ///
+    /// HDR 소스(iPhone 15+ Dolby Vision/HLG) 처리 방식:
+    ///   · SDR 소스 → 기존 필믹 파이프라인(preprocessHDRToSDR) → BT.709 SDR 출력.
+    ///   · HDR 소스 → preprocessHDRToSDR 생략, AVFoundation 내장 HDR→BT.709 톤매핑 사용.
+    ///     프리뷰(buildConcatenatedPreviewItem)도 동일 경로를 사용하므로 출력이 프리뷰 밝기와 근접.
+    ///     animationTool 오버레이 합성은 sRGB 공간에서 처리되나(CALayer 제약),
+    ///     텍스트·로고는 반투명 오버레이이므로 시각적으로 허용 범위.
+    static func exportClipWithOverlay(sourceURL: URL, overlay: UIImage,
+                                      trimStart: Double, trimEnd: Double,
+                                      muteAudio: Bool = false,
+                                      speed: Double = 1.0) async throws -> URL {
+        // HDR 소스 여부 먼저 확인 (재사용 — 아래 asset 로드와 중복 없이 한 번만)
+        let rawAsset  = AVURLAsset(url: sourceURL)
+        let rawTracks = try await rawAsset.loadTracks(withMediaType: .video)
+        guard let rawVideoTrack = rawTracks.first else { throw ExportError.noVideoTrack }
+        let sourceIsHDR = await isHDRSource(track: rawVideoTrack)
+
+        // HDR: 필믹 전처리 생략 → 원본 밝기 유지 / SDR: 필믹 파이프라인 적용
+        let preparedURL = sourceIsHDR ? sourceURL : try await preprocessHDRToSDR(url: sourceURL)
+        let asset       = AVURLAsset(url: preparedURL)
+
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
+
+        let assetDur  = CMTimeGetSeconds(try await asset.load(.duration))
+        let start     = CMTime(seconds: max(0, trimStart), preferredTimescale: 600)
+        let end       = CMTime(seconds: min(trimEnd, assetDur), preferredTimescale: 600)
+        let srcRange   = CMTimeRange(start: start, end: end)           // asset timeline
+        let compDur    = CMTimeSubtract(end, start)
+        let spVal      = max(0.1, speed)
+        let scaledDur  = abs(spVal - 1.0) > 0.01
+            ? CMTimeMultiplyByFloat64(compDur, multiplier: 1.0 / spVal)
+            : compDur
+        let compRange  = CMTimeRange(start: .zero, duration: scaledDur)  // 배속 적용된 composition timeline
+
+        let naturalSize        = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
+        let transformedRect    = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+        let displayWidth       = abs(transformedRect.width)
+        let displayHeight      = abs(transformedRect.height)
+        let scaleX             = targetSize.width  / displayWidth
+        let scaleY             = targetSize.height / displayHeight
+        let fillScale          = max(scaleX, scaleY)
+        let txOffset           = (targetSize.width  - displayWidth  * fillScale) / 2
+        let tyOffset           = (targetSize.height - displayHeight * fillScale) / 2
+
+        let composition = AVMutableComposition()
+        guard let compVideo = composition.addMutableTrack(
+            withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { throw ExportError.compositionFailed }
+        try compVideo.insertTimeRange(srcRange, of: videoTrack, at: .zero)
+        if abs(spVal - 1.0) > 0.01 {
+            compVideo.scaleTimeRange(CMTimeRange(start: .zero, duration: compDur), toDuration: scaledDur)
+        }
+        if !muteAudio,
+           let audioTracks = try? await asset.loadTracks(withMediaType: .audio),
+           let audioTrack  = audioTracks.first,
+           let compAudio   = composition.addMutableTrack(
+            withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            try? compAudio.insertTimeRange(srcRange, of: audioTrack, at: .zero)
+            if abs(spVal - 1.0) > 0.01 {
+                compAudio.scaleTimeRange(CMTimeRange(start: .zero, duration: compDur), toDuration: scaledDur)
+            }
+        }
+
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
+        var t  = preferredTransform
+        t.tx  -= transformedRect.origin.x
+        t.ty  -= transformedRect.origin.y
+        t      = t.concatenating(CGAffineTransform(scaleX: fillScale, y: fillScale))
+        t      = t.concatenating(CGAffineTransform(translationX: txOffset, y: tyOffset))
+        layerInstruction.setTransform(t, at: .zero)
+
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange         = compRange
+        instruction.layerInstructions = [layerInstruction]
+
+        let videoComposition              = AVMutableVideoComposition()
+        videoComposition.renderSize       = targetSize
+        videoComposition.frameDuration    = CMTimeMake(value: 1, timescale: 30)
+        videoComposition.instructions     = [instruction]
+        await applySDROutputProps(videoComposition, track: videoTrack)
+
+        let parentLayer  = CALayer()
+        parentLayer.frame = CGRect(origin: .zero, size: targetSize)
+        parentLayer.isGeometryFlipped = true
+        let videoLayer    = CALayer(); videoLayer.frame   = CGRect(origin: .zero, size: targetSize)
+        let overlayLayer  = CALayer(); overlayLayer.frame = CGRect(origin: .zero, size: targetSize)
+        overlayLayer.contents = overlay.cgImage
+        parentLayer.addSublayer(videoLayer)
+        parentLayer.addSublayer(overlayLayer)
+        videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
+            postProcessingAsVideoLayer: videoLayer, in: parentLayer)
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_clipexport_\(UUID().uuidString).mov")
+        try? FileManager.default.removeItem(at: outputURL)
+        guard let session = AVAssetExportSession(
+            asset: composition, presetName: AVAssetExportPresetHEVCHighestQuality)
+        else { throw ExportError.sessionFailed }
+        session.outputURL        = outputURL
+        session.outputFileType   = .mov
+        session.videoComposition = videoComposition
+        session.timeRange        = compRange
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            session.exportAsynchronously {
+                switch session.status {
+                case .completed: cont.resume()
+                case .failed:    cont.resume(throwing: session.error ?? ExportError.exportFailed)
+                case .cancelled: cont.resume(throwing: ExportError.cancelled)
+                default:         cont.resume(throwing: ExportError.exportFailed)
+                }
+            }
+        }
+        return outputURL
+    }
+
+    /// Exports a Placeable card clip with a static data overlay + animated text layer.
+    /// The textLayer is built by `buildClipTextContentLayer` and contains CALayer animations
+    /// that play over the clip's full duration (typing / fade / flyIn).
+    static func exportPlaceableClipAnimated(
+        sourceURL:     URL,
+        staticOverlay: UIImage?,
+        textLayer:     CALayer?,
+        trimStart:     Double,
+        trimEnd:       Double,
+        muteAudio:     Bool   = false,
+        speed:         Double = 1.0
+    ) async throws -> URL {
+        let rawAsset  = AVURLAsset(url: sourceURL)
+        let rawTracks = try await rawAsset.loadTracks(withMediaType: .video)
+        guard let rawVideoTrack = rawTracks.first else { throw ExportError.noVideoTrack }
+        let sourceIsHDR = await isHDRSource(track: rawVideoTrack)
+        let preparedURL = sourceIsHDR ? sourceURL : try await preprocessHDRToSDR(url: sourceURL)
+        let asset       = AVURLAsset(url: preparedURL)
+
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
+
+        let assetDur  = CMTimeGetSeconds(try await asset.load(.duration))
+        let start     = CMTime(seconds: max(0, trimStart), preferredTimescale: 600)
+        let end       = CMTime(seconds: min(trimEnd, assetDur), preferredTimescale: 600)
+        let srcRange  = CMTimeRange(start: start, end: end)
+        let compDur   = CMTimeSubtract(end, start)
+        let spVal     = max(0.1, speed)
+        let scaledDur = abs(spVal - 1.0) > 0.01
+            ? CMTimeMultiplyByFloat64(compDur, multiplier: 1.0 / spVal)
+            : compDur
+        let compRange = CMTimeRange(start: .zero, duration: scaledDur)
+
+        let naturalSize        = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
+        let transformedRect    = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+        let displayWidth       = abs(transformedRect.width)
+        let displayHeight      = abs(transformedRect.height)
+        let fillScale          = max(targetSize.width / displayWidth, targetSize.height / displayHeight)
+        let txOffset           = (targetSize.width  - displayWidth  * fillScale) / 2
+        let tyOffset           = (targetSize.height - displayHeight * fillScale) / 2
+
+        let composition = AVMutableComposition()
+        guard let compVideo = composition.addMutableTrack(
+            withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { throw ExportError.compositionFailed }
+        try compVideo.insertTimeRange(srcRange, of: videoTrack, at: .zero)
+        if abs(spVal - 1.0) > 0.01 {
+            compVideo.scaleTimeRange(CMTimeRange(start: .zero, duration: compDur), toDuration: scaledDur)
+        }
+        if !muteAudio,
+           let audioTracks = try? await asset.loadTracks(withMediaType: .audio),
+           let audioTrack  = audioTracks.first,
+           let compAudio   = composition.addMutableTrack(
+               withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            try? compAudio.insertTimeRange(srcRange, of: audioTrack, at: .zero)
+            if abs(spVal - 1.0) > 0.01 {
+                compAudio.scaleTimeRange(CMTimeRange(start: .zero, duration: compDur), toDuration: scaledDur)
+            }
+        }
+
+        var t  = preferredTransform
+        t.tx  -= transformedRect.origin.x
+        t.ty  -= transformedRect.origin.y
+        t      = t.concatenating(CGAffineTransform(scaleX: fillScale, y: fillScale))
+        t      = t.concatenating(CGAffineTransform(translationX: txOffset, y: tyOffset))
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
+        layerInstruction.setTransform(t, at: .zero)
+
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange         = compRange
+        instruction.layerInstructions = [layerInstruction]
+
+        let videoComposition           = AVMutableVideoComposition()
+        videoComposition.renderSize    = targetSize
+        videoComposition.frameDuration = CMTimeMake(value: 1, timescale: 30)
+        videoComposition.instructions  = [instruction]
+        await applySDROutputProps(videoComposition, track: videoTrack)
+
+        let parentLayer = CALayer()
+        parentLayer.frame             = CGRect(origin: .zero, size: targetSize)
+        parentLayer.isGeometryFlipped = true
+        let videoLayer = CALayer(); videoLayer.frame = CGRect(origin: .zero, size: targetSize)
+        parentLayer.addSublayer(videoLayer)
+
+        if let overlay = staticOverlay {
+            let ol = CALayer(); ol.frame = CGRect(origin: .zero, size: targetSize)
+            ol.contents = overlay.cgImage
+            parentLayer.addSublayer(ol)
+        }
+        if let tl = textLayer {
+            parentLayer.addSublayer(tl)
+        }
+
+        videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
+            postProcessingAsVideoLayer: videoLayer, in: parentLayer)
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_plcanim_\(UUID().uuidString).mov")
+        try? FileManager.default.removeItem(at: outputURL)
+        guard let session = AVAssetExportSession(
+            asset: composition, presetName: AVAssetExportPresetHEVCHighestQuality)
+        else { throw ExportError.sessionFailed }
+        session.outputURL        = outputURL
+        session.outputFileType   = .mov
+        session.videoComposition = videoComposition
+        session.timeRange        = compRange
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            session.exportAsynchronously {
+                switch session.status {
+                case .completed: cont.resume()
+                case .failed:    cont.resume(throwing: session.error ?? ExportError.exportFailed)
+                case .cancelled: cont.resume(throwing: ExportError.cancelled)
+                default:         cont.resume(throwing: ExportError.exportFailed)
+                }
+            }
+        }
+        return outputURL
+    }
+
+    /// Concatenates already-processed clip URLs (no trim, no overlay).
+    static func concatenateURLs(_ urls: [URL]) async throws -> URL {
+        let composition = AVMutableComposition()
+        guard let compVideo = composition.addMutableTrack(
+            withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { throw ExportError.compositionFailed }
+        // 오디오 트랙은 실제 오디오 콘텐츠가 있을 때만 생성 (빈 트랙은 export 실패 원인)
+        var compAudio: AVMutableCompositionTrack? = nil
+        var insertTime = CMTime.zero
+        for url in urls {
+            let asset = AVURLAsset(url: url)
+            guard let vt = try? await asset.loadTracks(withMediaType: .video).first else { continue }
+            let dur   = (try? await asset.load(.duration)) ?? .zero
+            let range = CMTimeRange(start: .zero, duration: dur)
+            try compVideo.insertTimeRange(range, of: vt, at: insertTime)
+            if let at = try? await asset.loadTracks(withMediaType: .audio).first {
+                if compAudio == nil {
+                    compAudio = composition.addMutableTrack(
+                        withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+                }
+                try? compAudio?.insertTimeRange(range, of: at, at: insertTime)
+            }
+            insertTime = CMTimeAdd(insertTime, dur)
+        }
+        let outURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_concat_urls_\(UUID().uuidString).mp4")
+        guard let session = AVAssetExportSession(
+            asset: composition, presetName: AVAssetExportPresetHighestQuality)
+        else { throw ExportError.sessionFailed }
+        session.outputURL      = outURL
+        session.outputFileType = .mp4
+        await session.export()
+        if let err = session.error { throw err }
+        return outURL
+    }
 
     static func exportVideo(sourceURL: URL, overlay: UIImage) async throws -> URL {
         let sourceURL   = try await preprocessHDRToSDR(url: sourceURL)
@@ -1250,9 +1664,9 @@ struct VideoExportService {
         var runningOffset = 0.0
         for recipe in recipes {
             clipOffsets.append(runningOffset)
-            runningOffset += recipe.trimmedDuration
+            runningOffset += recipe.trimmedDuration / max(0.1, recipe.speed)
         }
-        let D = runningOffset   // total composed duration
+        let D = runningOffset   // total composed duration (speed-adjusted)
 
         // Last clip that has non-empty text
         var lastTextClipIdx = -1
@@ -1269,7 +1683,7 @@ struct VideoExportService {
 
         for (clipIdx, recipe) in recipes.enumerated() {
             let clipStart = clipOffsets[clipIdx]
-            let clipEnd   = clipStart + recipe.trimmedDuration
+            let clipEnd   = clipStart + recipe.trimmedDuration / max(0.1, recipe.speed)
             let nonEmpty  = recipe.lines.filter {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
@@ -1302,12 +1716,16 @@ struct VideoExportService {
         let asset       = AVURLAsset(url: sourceURL)
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
-        let naturalSize   = try await videoTrack.load(.naturalSize)
-        let prefTransform = try await videoTrack.load(.preferredTransform)
-        let audioTracks   = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        let naturalSize      = try await videoTrack.load(.naturalSize)
+        let prefTransform    = try await videoTrack.load(.preferredTransform)
+        let trackTimeRange   = try await videoTrack.load(.timeRange)
+        let audioTracks      = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
 
-        let timeRange = CMTimeRange(start: .zero,
-                                    duration: CMTimeMakeWithSeconds(D, preferredTimescale: 600))
+        // 실제 트랙 길이를 기준으로 삽입 범위 결정. D(Double) 반올림 오차나 배속으로
+        // 구성 영상이 D보다 짧을 수 있어 끝 부분이 검게 나오는 문제를 방지.
+        let timeRange = CMTimeRange(
+            start: .zero,
+            duration: min(trackTimeRange.duration, CMTimeMakeWithSeconds(D, preferredTimescale: 600)))
 
         // ── 2. Composition ────────────────────────────────────────────────────
         let oneLinerSize = CGSize(width: 1080, height: 1920)
@@ -1423,13 +1841,15 @@ struct VideoExportService {
         intervalSegments: [IntervalSegment] = [],
         chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:],
         videoTitle: String = "",
-        titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
+        titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
+        safeTopOverride: CGFloat? = nil,
+        safeBotOverride: CGFloat? = nil
     ) -> CALayer {
         let W = renderSize.width
         let H = renderSize.height
         let vScale: CGFloat   = W / 300.0
-        let safeTop: CGFloat  = CardVisual.videoSafeTop
-        let safeBot: CGFloat  = CardVisual.videoSafeBottom
+        let safeTop: CGFloat  = safeTopOverride ?? CardVisual.videoSafeTop
+        let safeBot: CGFloat  = safeBotOverride ?? CardVisual.videoSafeBottom
         let hPad: CGFloat     = 24 * vScale
         let wMTopPad: CGFloat = 12 * vScale
         let wMFontPx: CGFloat = 9  * vScale
@@ -1493,7 +1913,7 @@ struct VideoExportService {
         var pageSpecs: [PageSpec] = []
         for (clipIdx, recipe) in recipes.enumerated() {
             let clipStart = clipOffsets[clipIdx]
-            let clipEnd   = clipStart + recipe.trimmedDuration
+            let clipEnd   = clipStart + recipe.trimmedDuration / max(0.1, recipe.speed)
             let nonEmpty  = recipe.lines.filter {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
@@ -1578,7 +1998,7 @@ struct VideoExportService {
             let fadeStart: Double
             let fadeEnd:   Double
             if isFade {
-                let fi = page.winStart + startDelay + max(0.30, windowDur * 0.30)
+                let fi = page.winStart + startDelay
                 appearEnd = fi
                 // 페이드 모드: 클립(페이지) 끝까지 유지, 마지막 순간에만 짧게 페이드아웃
                 fadeStart = page.isLast ? D : max(fi + 0.05, page.winEnd - fadeTime)
@@ -1647,14 +2067,15 @@ struct VideoExportService {
                     ctx.cgContext.setLineJoin(.round)
                     let str  = String(chars.prefix(k))
                     let rect = CGRect(x: 0, y: 0, width: textMaxW, height: textLayerH)
+                    let drawOpts: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
                     if let ba = borderAttrs {
                         let bStr = NSAttributedString(string: str, attributes: ba)
                         let o = borderOffset
                         for (ox, oy): (CGFloat, CGFloat) in [(-o,-o),(o,-o),(-o,o),(o,o),(-o,0),(o,0),(0,-o),(0,o)] {
-                            bStr.draw(in: rect.offsetBy(dx: ox, dy: oy))
+                            bStr.draw(with: rect.offsetBy(dx: ox, dy: oy), options: drawOpts, context: nil)
                         }
                     }
-                    NSAttributedString(string: str, attributes: textAttrs).draw(in: rect)
+                    NSAttributedString(string: str, attributes: textAttrs).draw(with: rect, options: drawOpts, context: nil)
                 }.cgImage
                 charImages.append(cgImg ?? fallbackImg)
             }
@@ -1772,8 +2193,6 @@ struct VideoExportService {
                     let flyKey        = flyVertical ? "transform.translation.y" : "transform.translation.x"
                     let slideX:       CGFloat = flyVertical ? H * 0.3 : (clip.flyDirection == .trailing ? W : -W)
                     let lineTexts     = page.text.components(separatedBy: "\n")
-                    let lineRenderer  = UIGraphicsImageRenderer(
-                        size: CGSize(width: textMaxW, height: ceil(lineH)), format: imgFormat)
                     let anchorX:    CGFloat
                     let anchorPosX: CGFloat
                     switch nsAlign {
@@ -1781,20 +2200,37 @@ struct VideoExportService {
                     case .right:  anchorX = 1.0; anchorPosX = hPad + textMaxW
                     default:      anchorX = 0.0; anchorPosX = hPad
                     }
+                    // 줄별 실제 높이(줄바꿈 고려) + 누적 Y 오프셋 사전 계산
+                    let flyDrawOpts: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+                    var flyLineHs: [CGFloat] = []
+                    var flyLineYs: [CGFloat] = []
+                    var flyCumY: CGFloat = 0
+                    for rawLine in lineTexts {
+                        let tr = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if tr.isEmpty { flyLineHs.append(0); flyLineYs.append(flyCumY); continue }
+                        let r = NSAttributedString(string: tr, attributes: textAttrs)
+                            .boundingRect(with: CGSize(width: textMaxW, height: 4000),
+                                          options: flyDrawOpts, context: nil)
+                        let h = max(ceil(r.height) + 4, lineH)
+                        flyLineHs.append(h); flyLineYs.append(flyCumY)
+                        flyCumY += h + lineSpacing
+                    }
                     var staggerIdx = 0
                     for (i, rawLine) in lineTexts.enumerated() {
                         let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { continue }
                         let flyBegin = page.winStart + startDelay + Double(staggerIdx) * lineDelay
                         staggerIdx  += 1
-                        let lineTopY = textFrame.minY + CGFloat(i) * lineH
+                        let lineTopY  = textFrame.minY + flyLineYs[i]
+                        let actualLineH = flyLineHs[i]
                         // 판 레이어 (텍스트보다 먼저 → z-order 아래)
                         if let pl = plateLayout {
-                            let lineW  = min(ceil(NSAttributedString(string: trimmed, attributes: textAttrs).size().width), textMaxW)
+                            let measuredW = min(ceil(NSAttributedString(string: trimmed, attributes: textAttrs).size().width), textMaxW)
+                            let wrappedPlateH = actualLineH + 2 * pl.padV
                             let pLayer = CALayer()
                             pLayer.anchorPoint     = CGPoint(x: anchorX, y: 0.5)
-                            pLayer.position        = CGPoint(x: anchorPosX, y: lineTopY - pl.padV + pl.plateH / 2)
-                            pLayer.bounds          = CGRect(x: 0, y: 0, width: lineW + 2 * pl.padH, height: pl.plateH)
+                            pLayer.position        = CGPoint(x: anchorPosX, y: lineTopY - pl.padV + wrappedPlateH / 2)
+                            pLayer.bounds          = CGRect(x: 0, y: 0, width: measuredW + 2 * pl.padH, height: wrappedPlateH)
                             pLayer.backgroundColor = clip.plateColorPreset.plateUIColorWithAlpha.cgColor
                             pLayer.cornerRadius    = pl.cornerR
                             pLayer.masksToBounds   = true
@@ -1809,22 +2245,25 @@ struct VideoExportService {
                             pFly.isRemovedOnCompletion   = false
                             pLayer.add(pFly, forKey: "flyIn")
                         }
-                        // 텍스트 레이어
+                        // 텍스트 레이어 — 줄별 실제 높이로 렌더링
+                        let lineRenderer = UIGraphicsImageRenderer(
+                            size: CGSize(width: textMaxW, height: actualLineH), format: imgFormat)
                         let lineImg = lineRenderer.image { ctx in
                             ctx.cgContext.setLineJoin(.round)
-                            let lRect = CGRect(x: 0, y: 0, width: textMaxW, height: ceil(lineH))
+                            let lRect = CGRect(x: 0, y: 0, width: textMaxW, height: actualLineH)
                             if let ba = borderAttrs {
                                 let bStr = NSAttributedString(string: trimmed, attributes: ba)
                                 let o = borderOffset
                                 for (ox, oy): (CGFloat, CGFloat) in [(-o,-o),(o,-o),(-o,o),(o,o),(-o,0),(o,0),(0,-o),(0,o)] {
-                                    bStr.draw(in: lRect.offsetBy(dx: ox, dy: oy))
+                                    bStr.draw(with: lRect.offsetBy(dx: ox, dy: oy), options: flyDrawOpts, context: nil)
                                 }
                             }
-                            NSAttributedString(string: trimmed, attributes: textAttrs).draw(in: lRect)
+                            NSAttributedString(string: trimmed, attributes: textAttrs)
+                                .draw(with: lRect, options: flyDrawOpts, context: nil)
                         }.cgImage ?? fallbackImg
                         let lineLayer                    = CALayer()
                         lineLayer.frame                  = CGRect(x: textFrame.origin.x, y: lineTopY,
-                                                                  width: textMaxW, height: ceil(lineH))
+                                                                  width: textMaxW, height: actualLineH)
                         lineLayer.contentsGravity        = .topLeft
                         lineLayer.masksToBounds          = false
                         lineLayer.contents               = lineImg
