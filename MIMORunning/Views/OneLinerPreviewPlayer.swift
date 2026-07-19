@@ -222,24 +222,35 @@ final class PreviewHostView: UIView {
     private var avPlayerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 
     func configure(player: AVPlayer, contentLayer: CALayer, renderSize: CGSize) {
-        self.renderSize   = renderSize
-        self.contentLayer = contentLayer
-
-        // 이전 syncLayer 제거 — updateUIView로 재호출 시 누적 방지
-        syncLayer?.removeFromSuperlayer()
-        syncLayer = nil
-
+        self.renderSize = renderSize
         avPlayerLayer.player       = player
         avPlayerLayer.videoGravity = .resizeAspectFill
 
-        guard let item = player.currentItem else { return }
-        let sync = AVSynchronizedLayer(playerItem: item)
-        sync.frame = bounds
-        layer.addSublayer(sync)
-        syncLayer = sync
+        guard let item = player.currentItem else {
+            syncLayer?.removeFromSuperlayer()
+            syncLayer = nil
+            self.contentLayer = nil
+            return
+        }
 
-        applyContentScale()
-        sync.addSublayer(contentLayer)
+        // playerItem이 바뀔 때만 syncLayer 재생성 — progress 변경으로 updateUIView가
+        // 매 프레임 호출되어도 AVSynchronizedLayer를 재생성하지 않음 → 애니메이션 리셋 방지
+        if syncLayer?.playerItem !== item {
+            syncLayer?.removeFromSuperlayer()
+            let sync = AVSynchronizedLayer(playerItem: item)
+            sync.frame = bounds
+            layer.addSublayer(sync)
+            syncLayer = sync
+            applyContentScale()
+        }
+
+        // contentLayer가 교체됐을 때만 재연결
+        if self.contentLayer !== contentLayer {
+            self.contentLayer?.removeFromSuperlayer()
+            self.contentLayer = contentLayer
+            syncLayer?.addSublayer(contentLayer)
+            applyContentScale()
+        }
     }
 
     override func layoutSubviews() {

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct ContentView: View {
     @State private var manager = HealthKitManager()
@@ -29,7 +30,10 @@ struct ContentView: View {
             guard newPhase == .active, manager.authorizationStatus == .authorized else { return }
             Task { await manager.fetchActivities() }
         }
+        .background(KeyboardDismissInstaller())
     }
+
+    // MARK: Private helpers
 
     // 앱 시작 시: imageData > 300 KB인 StoryPhoto를 800px 썸네일로 재압축.
     // 300 KB 초과 결과는 write-back하지 않아 다음 시작 시 자동 재시도.
@@ -69,5 +73,42 @@ struct ContentView: View {
         let failNote = failCount > 0 ? ", 실패 \(failCount)건 재시도 예정" : ""
         print("[PhotoMigration] 완료 \(successCount)/\(oversized.count)건\(failNote)")
         #endif
+    }
+}
+
+// MARK: - KeyboardDismissInstaller
+//
+// 창(Window) 레벨에서 탭 제스처를 설치해 텍스트 필드 외 영역 터치 시 키보드를 전역 해제.
+// cancelsTouchesInView = false 로 다른 제스처를 방해하지 않음.
+// .background()에 사용하면 ContentView 생명주기와 일치.
+
+private struct KeyboardDismissInstaller: UIViewRepresentable {
+    func makeUIView(context: Context) -> _KeyboardDismissHelperView {
+        _KeyboardDismissHelperView()
+    }
+    func updateUIView(_ uiView: _KeyboardDismissHelperView, context: Context) {}
+}
+
+private final class _KeyboardDismissHelperView: UIView {
+    private weak var installedGesture: UITapGestureRecognizer?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if let prev = installedGesture {
+            prev.view?.removeGestureRecognizer(prev)
+            installedGesture = nil
+        }
+        guard let window else { return }
+        let rec = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        rec.cancelsTouchesInView = false
+        window.addGestureRecognizer(rec)
+        installedGesture = rec
+    }
+
+    @objc private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil, from: nil, for: nil
+        )
     }
 }

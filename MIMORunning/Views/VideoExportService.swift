@@ -682,7 +682,8 @@ struct VideoExportService {
         return outURL
     }
 
-    static func exportVideo(sourceURL: URL, overlay: UIImage) async throws -> URL {
+    static func exportVideo(sourceURL: URL, overlay: UIImage,
+                            startTime: Double = 0, endTime: Double? = nil) async throws -> URL {
         let sourceURL   = try await preprocessHDRToSDR(url: sourceURL)
         let asset       = AVURLAsset(url: sourceURL)
 
@@ -690,9 +691,13 @@ struct VideoExportService {
         guard let videoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
 
         let duration    = try await asset.load(.duration)
-        let trimEnd     = min(CMTimeGetSeconds(duration), trimDuration)
-        let timeRange   = CMTimeRange(start: .zero,
-                                      duration: CMTimeMakeWithSeconds(trimEnd, preferredTimescale: 600))
+        let assetSec    = CMTimeGetSeconds(duration)
+        let clampedEnd  = min(assetSec, endTime ?? trimDuration)
+        let clampedStart = max(0, min(startTime, clampedEnd))
+        let timeRange   = CMTimeRange(
+            start:    CMTimeMakeWithSeconds(clampedStart, preferredTimescale: 600),
+            duration: CMTimeMakeWithSeconds(clampedEnd - clampedStart, preferredTimescale: 600)
+        )
 
         let naturalSize        = try await videoTrack.load(.naturalSize)
         let preferredTransform = try await videoTrack.load(.preferredTransform)
@@ -1997,9 +2002,10 @@ struct VideoExportService {
             let fadeEnd:   Double
             if isFade {
                 let fi = page.winStart + startDelay
-                appearEnd = fi
-                // 페이드 모드: 클립(페이지) 끝까지 유지, 마지막 순간에만 짧게 페이드아웃
-                fadeStart = page.isLast ? D : max(fi + 0.05, page.winEnd - fadeTime)
+                let fadeInDur: Double = 0.35  // 서서히 등장하는 시간 (350ms)
+                appearEnd = fi + fadeInDur
+                // 페이드 모드: fadeInDur 동안 서서히 등장, 클립 끝에 짧게 페이드아웃
+                fadeStart = page.isLast ? D : max(appearEnd + 0.05, page.winEnd - fadeTime)
                 fadeEnd   = page.isLast ? D : min(page.winEnd, fadeStart + fadeTime)
             } else if isFlyIn {
                 // 줄 수만큼 stagger 반영: 마지막 줄 시작 + 0.30 s
@@ -2242,6 +2248,13 @@ struct VideoExportService {
                             pFly.fillMode                = .both
                             pFly.isRemovedOnCompletion   = false
                             pLayer.add(pFly, forKey: "flyIn")
+                            // 수직 방향: fly 전에 화면 내에 위치하므로 시작 전까지 숨김
+                            if flyVertical {
+                                let t = max(0.0001, flyBegin / D)
+                                pLayer.add(linearAnim(keyPath: "opacity",
+                                    keyTimes: [0.0, NSNumber(value: t - 0.0001), NSNumber(value: t), 1.0],
+                                    values: [Float(0), Float(0), Float(1), Float(1)]), forKey: "revealOnFly")
+                            }
                         }
                         // 텍스트 레이어 — 줄별 실제 높이로 렌더링
                         let lineRenderer = UIGraphicsImageRenderer(
@@ -2274,6 +2287,13 @@ struct VideoExportService {
                         fly.fillMode                     = .both
                         fly.isRemovedOnCompletion        = false
                         lineLayer.add(fly, forKey: "flyIn")
+                        // 수직 방향: fly 전에 화면 내에 위치하므로 시작 전까지 숨김
+                        if flyVertical {
+                            let t = max(0.0001, flyBegin / D)
+                            lineLayer.add(linearAnim(keyPath: "opacity",
+                                keyTimes: [0.0, NSNumber(value: t - 0.0001), NSNumber(value: t), 1.0],
+                                values: [Float(0), Float(0), Float(1), Float(1)]), forKey: "revealOnFly")
+                        }
                         pageLayer.addSublayer(lineLayer)
                     }
                 } else {

@@ -2193,6 +2193,12 @@ struct ClipTrimSheet: View {
 
 }
 
+/// 초 → "m:ss" 형식 (TrimBarView 레이블 공용)
+func trimFormatSec(_ s: Double) -> String {
+    let i = Int(max(0, s))
+    return "\(i / 60):\(String(format: "%02d", i % 60))"
+}
+
 // MARK: - TrimBarView
 //
 // Orange-highlighted range bar between two draggable handles.

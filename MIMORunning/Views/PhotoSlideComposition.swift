@@ -18,7 +18,8 @@ import CoreLocation
 
 enum PhotoSlideComposition {
 
-    static let photoDuration:    Double = 4.0   // kept for callers; individual clips use recipe.trimmedDuration
+    static let photoDuration:         Double = 4.0   // OneLiner/RestDay 기본값 — kept for callers; individual clips use recipe.trimmedDuration
+    static let placeableSlideDuration: Double = 3.0   // Placeable 슬라이드 전용 기본값
     static let maxPhotos:        Int    = 15
 
     private static let targetSize:       CGSize  = CGSize(width: 1080, height: 1920)

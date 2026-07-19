@@ -450,10 +450,9 @@ struct EffectTextView: View {
                     let off: CGFloat = i < lineOffsets.count ? lineOffsets[i] : initX
                     if plateOn {
                         lineContent(line)
-                            .multilineTextAlignment(alignment)
+                            .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 8).padding(.vertical, 2)
                             .background(RoundedRectangle(cornerRadius: 5).fill(plateBgColor))
-                            .frame(maxWidth: .infinity, alignment: frameAlign)
                             .offset(x: vertical ? 0 : off, y: vertical ? off : 0)
                     } else {
                         lineContent(line)
@@ -481,17 +480,14 @@ struct EffectTextView: View {
     private var plateView: some View {
         let hAlign: HorizontalAlignment = alignment == .trailing ? .trailing
             : alignment == .leading ? .leading : .center
-        let frameAlign: Alignment = alignment == .trailing ? .trailing
-            : alignment == .leading ? .leading : .center
         let lines = text.components(separatedBy: "\n")
         VStack(alignment: hAlign, spacing: 3) {
             ForEach(lines.indices, id: \.self) { i in
                 if !lines[i].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     lineContent(lines[i])
-                        .multilineTextAlignment(alignment)
+                        .fixedSize(horizontal: true, vertical: false)
                         .padding(.horizontal, 8).padding(.vertical, 2)
                         .background(RoundedRectangle(cornerRadius: 5).fill(plateBgColor))
-                        .frame(maxWidth: .infinity, alignment: frameAlign)
                 }
             }
         }
