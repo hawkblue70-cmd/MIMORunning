@@ -87,7 +87,9 @@ final class OneLinerPreviewPlayer {
         hrZones:          [HRZoneData] = [],
         intervalSegments: [IntervalSegment] = [],
         videoTitle:       String            = "",
-        titleStyle:       OneLinerTitleStyle = OneLinerTitleStyle()
+        titleStyle:       OneLinerTitleStyle = OneLinerTitleStyle(),
+        safeTopOverride:  CGFloat?           = nil,
+        safeBotOverride:  CGFloat?           = nil
     ) async {
         invalidate()
         isBuilding = true
@@ -107,7 +109,9 @@ final class OneLinerPreviewPlayer {
                 intervalSegments: intervalSegments,
                 chartSeriesData:  chartSeriesData,
                 videoTitle:       videoTitle,
-                titleStyle:       titleStyle)
+                titleStyle:       titleStyle,
+                safeTopOverride:  safeTopOverride,
+                safeBotOverride:  safeBotOverride)
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
             player?.isMuted = muteAudio

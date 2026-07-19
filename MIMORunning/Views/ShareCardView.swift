@@ -4683,12 +4683,21 @@ struct ShareCardScreen: View {
         }
 
         // 재생 중에는 OneLinerPreviewView(CALayer)만 표시되고 SwiftUI 텍스트 오버레이가 없으므로
-        // lines를 그대로 넘겨 페이드/날아오기/타이핑 애니메이션을 미리보기에서도 표시
+        // lines를 그대로 넘겨 페이드/날아오기/타이핑 애니메이션을 미리보기에서도 표시.
+        // safe zone은 내보내기와 동일하게 카드 레이아웃에서 계산 → 미리보기 = 내보내기 위치 일치.
+        let previewVScale: CGFloat    = VideoExportService.targetSize.width / PlaceableCard.cardWidth
+        let previewOverlayPadPx: CGFloat = 384 * 0.03 * 5.0
+        let previewSafeBotPx = max(CardVisual.videoSafeBottom,
+                                   previewOverlayPadPx + placeableVM.storyBottomReserved * previewVScale)
+        let previewSafeTopPx = max(CardVisual.videoSafeTop,
+                                   previewOverlayPadPx + placeableVM.storyTopReserved    * previewVScale)
         await previewPlayer.buildForVideoClips(
-            recipes:      placeableVM.placeableClipRecipes,
-            activityDate: activity.date,
-            showDate:     false,
-            muteAudio:    placeableVM.placeableMuteAudio
+            recipes:        placeableVM.placeableClipRecipes,
+            activityDate:   activity.date,
+            showDate:       false,
+            muteAudio:      placeableVM.placeableMuteAudio,
+            safeTopOverride: previewSafeTopPx,
+            safeBotOverride: previewSafeBotPx
         )
     }
 

@@ -3271,7 +3271,9 @@ struct VideoExportService {
         intervalSegments: [IntervalSegment] = [],
         chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:],
         videoTitle: String = "",
-        titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
+        titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
+        safeTopOverride: CGFloat? = nil,
+        safeBotOverride: CGFloat? = nil
     ) async throws -> (playerItem: AVPlayerItem, layer: CALayer, size: CGSize, duration: Double) {
         guard !recipes.isEmpty else { throw ExportError.compositionFailed }
 
@@ -3376,7 +3378,8 @@ struct VideoExportService {
             activityDate: activityDate, showDate: showDate, metricChips: metricChips,
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples,
             splits: splits, hrZones: hrZones, intervalSegments: intervalSegments,
-            chartSeriesData: chartSeriesData, videoTitle: videoTitle, titleStyle: titleStyle)
+            chartSeriesData: chartSeriesData, videoTitle: videoTitle, titleStyle: titleStyle,
+            safeTopOverride: safeTopOverride, safeBotOverride: safeBotOverride)
 
         let playerItem = AVPlayerItem(asset: composition)
         playerItem.videoComposition = videoComp
