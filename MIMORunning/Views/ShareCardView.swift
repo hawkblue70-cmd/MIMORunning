@@ -1231,7 +1231,7 @@ private enum ShareTemplate: String, CaseIterable {
 
 // MARK: - Share Card (카드별 지원 템플릿 단일 소스)
 
-private enum HorizGridMode { case text, route }
+enum HorizGridMode { case text, route }
 
 private enum ShareCard: Int {
     case placeable = 0
