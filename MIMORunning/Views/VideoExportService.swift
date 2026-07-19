@@ -3273,7 +3273,8 @@ struct VideoExportService {
         videoTitle: String = "",
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
         safeTopOverride: CGFloat? = nil,
-        safeBotOverride: CGFloat? = nil
+        safeBotOverride: CGFloat? = nil,
+        dataOverlayImage: UIImage? = nil
     ) async throws -> (playerItem: AVPlayerItem, layer: CALayer, size: CGSize, duration: Double) {
         guard !recipes.isEmpty else { throw ExportError.compositionFailed }
 
@@ -3380,6 +3381,21 @@ struct VideoExportService {
             splits: splits, hrZones: hrZones, intervalSegments: intervalSegments,
             chartSeriesData: chartSeriesData, videoTitle: videoTitle, titleStyle: titleStyle,
             safeTopOverride: safeTopOverride, safeBotOverride: safeBotOverride)
+
+        // PlaceableCard 데이터 오버레이 — 텍스트 레이어 아래에 배치(index 0)
+        // → SwiftUI 오버레이 없이도 미리보기에서 데이터가 보이고, 텍스트가 가려지지 않음
+        if let overlayImg = dataOverlayImage, let cgImg = overlayImg.cgImage {
+            let W = oneLinerSize.width; let H = oneLinerSize.height
+            let cardLayerH: CGFloat = 375.0 * (W / 300.0)  // PlaceableCard.cardHeight * vScale
+            let cardMargin: CGFloat = H * 0.03
+            let dataLayer             = CALayer()
+            dataLayer.frame           = CGRect(x: 0, y: H - cardLayerH - cardMargin,
+                                               width: W, height: cardLayerH)
+            dataLayer.contents        = cgImg
+            dataLayer.contentsGravity = .resize
+            dataLayer.masksToBounds   = false
+            contentLayer.insertSublayer(dataLayer, at: 0)
+        }
 
         let playerItem = AVPlayerItem(asset: composition)
         playerItem.videoComposition = videoComp

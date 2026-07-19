@@ -89,7 +89,8 @@ final class OneLinerPreviewPlayer {
         videoTitle:       String            = "",
         titleStyle:       OneLinerTitleStyle = OneLinerTitleStyle(),
         safeTopOverride:  CGFloat?           = nil,
-        safeBotOverride:  CGFloat?           = nil
+        safeBotOverride:  CGFloat?           = nil,
+        dataOverlayImage: UIImage?           = nil
     ) async {
         invalidate()
         isBuilding = true
@@ -111,7 +112,8 @@ final class OneLinerPreviewPlayer {
                 videoTitle:       videoTitle,
                 titleStyle:       titleStyle,
                 safeTopOverride:  safeTopOverride,
-                safeBotOverride:  safeBotOverride)
+                safeBotOverride:  safeBotOverride,
+                dataOverlayImage: dataOverlayImage)
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
             player?.isMuted = muteAudio
