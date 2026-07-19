@@ -50,4 +50,43 @@ final class PlaceableViewModel {
     var placeableSlideAppearance: AppearanceMode = .typing
     var slideDecorEffect: DecorEffect = .none
     var slideFlyDirection: FlyInDirection = .trailing
+
+    // MARK: - Computed layout insets (story text overlay)
+
+    // OneLinerCard 내부에서 각 값에 8pt를 추가로 더함.
+    var storyBottomReserved: CGFloat {
+        let vf: CGFloat = placeableSize == .large ? 24 : 17
+        let lineH = ceil(vf * 1.3)
+        if placeableLayout == .horizontal {
+            switch placeableHorizTextRow {
+            case .bottom: return 14 + 26 + lineH - 8
+            case .top:    return 14 + 50 - 8
+            case .middle: return 0
+            }
+        } else {
+            if placeableMetricsPosition.isBottom {
+                let labelH = ceil(CGFloat(placeableSize == .large ? 12 : 8) * 1.2)
+                return 14 + 26 + (lineH + 12 + labelH) * 3 - 8
+            }
+            return 0
+        }
+    }
+
+    var storyTopReserved: CGFloat {
+        let vf: CGFloat = placeableSize == .large ? 24 : 17
+        let lineH = ceil(vf * 1.3)
+        if placeableLayout == .horizontal {
+            switch placeableHorizTextRow {
+            case .top:    return 14 + 50 + lineH - 8
+            case .bottom: return 14 + 26 - 8
+            case .middle: return 0
+            }
+        } else {
+            if placeableMetricsPosition.isTop {
+                let labelH = ceil(CGFloat(placeableSize == .large ? 12 : 8) * 1.2)
+                return 14 + 50 + (lineH + 12 + labelH) * 3 - 8
+            }
+            return 0
+        }
+    }
 }

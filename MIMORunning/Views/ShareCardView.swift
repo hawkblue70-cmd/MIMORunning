@@ -1779,7 +1779,7 @@ struct ShareCardScreen: View {
     @State private var showShoeOnCard = true
     @State private var carouselPage = 0
     // Placeable card ViewModel (cardIndex == 0 전용)
-    @State private var placeableVM = PlaceableViewModel()
+    @State var placeableVM = PlaceableViewModel()
     // Video
     @State private var videoPickerItem: PhotosPickerItem?
     @State private var sourceVideoURL: URL?
@@ -2670,8 +2670,8 @@ struct ShareCardScreen: View {
                         showDate: false,
                         showBackground: false,
                         showWordmark: false,
-                        chartBottomReserved: placeableStoryBottomReserved,
-                        chartTopReserved: placeableStoryTopReserved
+                        chartBottomReserved: placeableVM.storyBottomReserved,
+                        chartTopReserved: placeableVM.storyTopReserved
                     )
                     .frame(width: PlaceableCard.cardWidth, height: PlaceableCard.cardHeight)
                     .scaleEffect(pvScale, anchor: .center)
@@ -2855,8 +2855,8 @@ struct ShareCardScreen: View {
                         showDate: false,
                         showBackground: false,
                         showWordmark: false,
-                        chartBottomReserved: placeableStoryBottomReserved,
-                        chartTopReserved: placeableStoryTopReserved
+                        chartBottomReserved: placeableVM.storyBottomReserved,
+                        chartTopReserved: placeableVM.storyTopReserved
                     )
                     .frame(width: 300, height: 375)
                 }
@@ -2880,8 +2880,8 @@ struct ShareCardScreen: View {
                             showDate: false,
                             showBackground: false,
                             showWordmark: false,
-                            chartBottomReserved: placeableStoryBottomReserved,
-                            chartTopReserved: placeableStoryTopReserved
+                            chartBottomReserved: placeableVM.storyBottomReserved,
+                            chartTopReserved: placeableVM.storyTopReserved
                         )
                         .frame(width: PlaceableCard.cardWidth, height: PlaceableCard.cardHeight)
                     }
@@ -2941,51 +2941,12 @@ struct ShareCardScreen: View {
                     plateColorPreset: placeableVM.placeableStoryPlatePreset,
                     showDate: false,
                     showBackground: false,
-                    chartBottomReserved: placeableStoryBottomReserved,
-                    chartTopReserved: placeableStoryTopReserved
+                    chartBottomReserved: placeableVM.storyBottomReserved,
+                    chartTopReserved: placeableVM.storyTopReserved
                 )
             }
         }
         .frame(width: 300, height: 375)
-    }
-
-    // chartBottomReserved / chartTopReserved for the story text overlay.
-    // metricsInsets is now symmetric: bottom row → top=bottom=p+botClear=40, top row → top=bottom=p+topClear=64.
-    // OneLinerCard adds 8pt to each value internally.
-    private var placeableStoryBottomReserved: CGFloat {
-        let vf: CGFloat = placeableVM.placeableSize == .large ? 24 : 17
-        let lineH = ceil(vf * 1.3)
-        if placeableVM.placeableLayout == .horizontal {
-            switch placeableVM.placeableHorizTextRow {
-            case .bottom: return 14 + 26 + lineH - 8   // data at bottom: keep text above data strip
-            case .top:    return 14 + 50 - 8           // symmetric bottom zone matches top inset
-            case .middle: return 0
-            }
-        } else {
-            if placeableVM.placeableMetricsPosition.isBottom {
-                let labelH = ceil(CGFloat(placeableVM.placeableSize == .large ? 12 : 8) * 1.2)
-                return 14 + 26 + (lineH + 12 + labelH) * 3 - 8
-            }
-            return 0
-        }
-    }
-
-    private var placeableStoryTopReserved: CGFloat {
-        let vf: CGFloat = placeableVM.placeableSize == .large ? 24 : 17
-        let lineH = ceil(vf * 1.3)
-        if placeableVM.placeableLayout == .horizontal {
-            switch placeableVM.placeableHorizTextRow {
-            case .top:    return 14 + 50 + lineH - 8   // data at top: keep text below data strip
-            case .bottom: return 14 + 26 - 8           // symmetric top zone matches bottom inset
-            case .middle: return 0
-            }
-        } else {
-            if placeableVM.placeableMetricsPosition.isTop {
-                let labelH = ceil(CGFloat(placeableVM.placeableSize == .large ? 12 : 8) * 1.2)
-                return 14 + 50 + (lineH + 12 + labelH) * 3 - 8
-            }
-            return 0
-        }
     }
 
     // Text overlay chips for Placeable story template.
@@ -3341,30 +3302,6 @@ struct ShareCardScreen: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 4)
-    }
-
-    private func placeableStoryTabChip(_ label: String, on: Bool, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 11, weight: on ? .semibold : .regular))
-                .padding(.horizontal, 9).padding(.vertical, 4)
-                .background(on ? Theme.violet.opacity(0.22) : Color.white.opacity(0.08))
-                .foregroundStyle(on ? Theme.violet : Color.white.opacity(0.55))
-                .clipShape(Capsule())
-                .overlay(Capsule().strokeBorder(on ? Theme.violet.opacity(0.55) : .clear, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func placeableStorySmallChip(_ label: String, isSelected: Bool) -> some View {
-        HStack(spacing: 4) {
-            if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
-            Text(label).font(.caption.weight(.semibold))
-        }
-        .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
-        .padding(.horizontal, 8).padding(.vertical, 6)
-        .background(isSelected ? Theme.violet : Color.white.opacity(0.08))
-        .clipShape(Capsule())
     }
 
     private var placeableStoryTextField: some View {
@@ -6704,9 +6641,9 @@ struct ShareCardScreen: View {
             let exportVScale: CGFloat = VideoExportService.targetSize.width / PlaceableCard.cardWidth
             let overlayBottomPadPx:   CGFloat = 384 * 0.03 * 5.0  // 오버레이 하단 여백 57.5px
             let safeBotPx = max(CardVisual.videoSafeBottom,
-                                overlayBottomPadPx + placeableStoryBottomReserved * exportVScale)
+                                overlayBottomPadPx + placeableVM.storyBottomReserved * exportVScale)
             let safeTopPx = max(CardVisual.videoSafeTop,
-                                overlayBottomPadPx + placeableStoryTopReserved    * exportVScale)
+                                overlayBottomPadPx + placeableVM.storyTopReserved    * exportVScale)
 
             // 클립별 오버레이 적용 후 연결
             // URL 해석 우선순위: 임시파일(PHPicker) → resolvedAsset(PHImageManager) → assetIdentifier 재해석
