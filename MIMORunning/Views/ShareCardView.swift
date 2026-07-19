@@ -1780,6 +1780,8 @@ struct ShareCardScreen: View {
     @State private var carouselPage = 0
     // Placeable card ViewModel (cardIndex == 0 전용)
     @State var placeableVM = PlaceableViewModel()
+    // OneLiner card ViewModel (cardIndex == 1 전용)
+    @State var oneLinerVM = OneLinerViewModel()
     // Video
     @State private var videoPickerItem: PhotosPickerItem?
     @State private var sourceVideoURL: URL?
@@ -1862,7 +1864,7 @@ struct ShareCardScreen: View {
     /// VideoMetricChip array for export — only enabled IDs, in display order.
     private var oneLinerActiveMetricChips: [VideoMetricChip] {
         oneLinerAvailableMetrics
-            .filter { oneLinerEnabledMetricIDs.contains($0.id) }
+            .filter { oneLinerVM.oneLinerEnabledMetricIDs.contains($0.id) }
             .map { $0.asVideoChip }
     }
 
@@ -1883,8 +1885,8 @@ struct ShareCardScreen: View {
     /// Story/Slide 정적 카드용: photoIndex번 사진의 ClipRecipe를 entry에서 직접 읽어 반환.
     /// v3slide\n JSON 포맷 및 레거시 플레인텍스트 포맷 모두 지원.
     private func photoRecipe(at photoIndex: Int, prefix: String = "photo:") -> ClipRecipe? {
-        guard photoIndex < storyPhotoUUIDs.count else { return nil }
-        let ref = "\(prefix)\(storyPhotoUUIDs[photoIndex])"
+        guard photoIndex < oneLinerVM.storyPhotoUUIDs.count else { return nil }
+        let ref = "\(prefix)\(oneLinerVM.storyPhotoUUIDs[photoIndex])"
         guard let entry = oneLinerEntries.first(where: { $0.mediaRef == ref }),
               !entry.text.isEmpty else { return nil }
 
@@ -2007,50 +2009,15 @@ struct ShareCardScreen: View {
     @State private var ticketDepartureName: String = "RUN"
     @State private var ticketAccent: CardAccent = .none    // race ticket ignores this (gold fixed)
     // OneLiner card
-    @State private var oneLinerText:          String           = ""
-    @State private var oneLinerPosition:      CardPosition     = .center
-    @State private var oneLinerColor:         OneLinerTextColor = .white
-    @State private var oneLinerFont:          OneLinerFont     = .pen
-    @State private var oneLinerShowDate:      Bool             = true
-    @State private var oneLinerVideoTitle:    String           = ""
-    @State private var oneLinerTitleStyle:    OneLinerTitleStyle = OneLinerTitleStyle()
-    /// Photo UUIDs parallel to storyPhotos; used as stable keys for OneLinerEntry.mediaRef.
-    @State private var storyPhotoUUIDs:       [String]         = []
-    /// True when the linked video PHAsset has been deleted from Photos app.
-    @State private var oneLinerPhAssetDeleted: Bool            = false
-    /// PHAsset-loaded full-res images by story photo index (overrides SwiftData thumbnail for rendering).
-    @State private var highQualityStoryPhotos: [Int: UIImage]  = [:]
-    /// Indices of story photos whose backing PHAsset has been deleted from Photos.
-    @State private var deletedPhotoIndices:    Set<Int>         = []
     @FocusState private var oneLinerFieldFocused: Bool
     @FocusState private var oneLinerFocusedLine: Int?
     @FocusState private var placeableStoryFocused: Bool
-    /// Per-slot texts for video multi-page typing animation. One text field per slot.
-    @State private var oneLinerVideoSlotTexts: [String]        = ["", ""]
-    /// Number of video slots, auto-calculated from video duration (~3.5 s / slot).
-    @State private var oneLinerVideoSlotCount: Int             = 2
-    /// Multi-clip recipes for running-day OneLiner (empty = use single-video typing path).
-    @State private var oneLinerClipRecipes:      [ClipRecipe]    = []
-    /// 영상 템플릿 전환 시 클립 보존용 백업 — 스토리/슬라이드로 전환해도 유지됨.
-    @State private var oneLinerVideoModeRecipes: [ClipRecipe]    = []
-    @State private var showOneLinerSheet:      Bool            = false
-    @State private var storyClipEditRecipes:   [ClipRecipe]    = []
-    @State private var storyClipEditIndex:     Int             = 0
-    @State private var showStoryClipEdit:      Bool            = false
-    /// 클립 편집 직후 @Query 갱신 대기 없이 즉시 렌더용 캐시
-    @State private var cachedStoryRecipes:     [ClipRecipe]    = []
-    /// true = opened from slide mode (hideTimePicker:false, isStoryMode:false)
-    /// false = opened from story mode (hideTimePicker:true,  isStoryMode:true)
-    @State private var storyClipEditIsSlide:   Bool            = false
+
     private var oneLinerIsPhotoSlide: Bool { template == .slide }
-    /// 슬라이드 = storyPhotos, 영상 = oneLinerClipRecipes 기반 '사진/클립 있음' 여부
+    /// 슬라이드 = storyPhotos, 영상 = oneLinerVM.oneLinerClipRecipes 기반 '사진/클립 있음' 여부
     private var oneLinerHasPhotos: Bool {
-        oneLinerIsPhotoSlide ? !storyPhotos.isEmpty : !oneLinerClipRecipes.isEmpty
+        oneLinerIsPhotoSlide ? !storyPhotos.isEmpty : !oneLinerVM.oneLinerClipRecipes.isEmpty
     }
-    @State private var oneLinerMuteAudio:      Bool            = false
-    // 지표는 클립별(클립 편집기)에서만 → 영상전역 지표 비활성(옛 하단고정 칩 제거)
-    @State private var oneLinerEnabledMetricIDs: Set<String>   = []
-    @State private var currentOneLinerClipIndex: Int           = 0
     @State private var previewPlayer: OneLinerPreviewPlayer    = OneLinerPreviewPlayer()
 
     private var routeCoords: [CLLocationCoordinate2D] { detail?.routeCoordinates ?? [] }
@@ -2146,7 +2113,7 @@ struct ShareCardScreen: View {
         guard !storyPhotos.isEmpty else { return selectedPhoto }
         let idx = cardPhotoIndex[cIdx] ?? 0
         // PHAsset-loaded high-res photo takes priority over SwiftData thumbnail
-        if let hq = highQualityStoryPhotos[idx] { return hq }
+        if let hq = oneLinerVM.highQualityStoryPhotos[idx] { return hq }
         return idx < storyPhotos.count ? storyPhotos[idx] : storyPhotos.first
     }
 
@@ -2161,10 +2128,10 @@ struct ShareCardScreen: View {
                             if isOneLiner, template == .story || template == .slide {
                                 for ci in [0, 1, 2, 3] { cardPhotoIndex[ci] = i }
                                 let isSlide = (template == .slide)
-                                storyClipEditIsSlide = isSlide
-                                storyClipEditRecipes = makeStoryClipRecipes(isSlide: isSlide)
-                                storyClipEditIndex = i
-                                showStoryClipEdit = true
+                                oneLinerVM.storyClipEditIsSlide = isSlide
+                                oneLinerVM.storyClipEditRecipes = makeStoryClipRecipes(isSlide: isSlide)
+                                oneLinerVM.storyClipEditIndex = i
+                                oneLinerVM.showStoryClipEdit = true
                             } else {
                                 // 통일 선택: 모든 카드(Placeable/OneLiner/Athletic/BigNumber) 동시 적용
                                 if isOneLiner {
@@ -2188,7 +2155,7 @@ struct ShareCardScreen: View {
                                         .stroke(isSelected ? Theme.violet : Color.clear, lineWidth: 2)
                                 )
                                 .overlay {
-                                    if deletedPhotoIndices.contains(i) {
+                                    if oneLinerVM.deletedPhotoIndices.contains(i) {
                                         ZStack {
                                             RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.55))
                                             Image(systemName: "icloud.slash")
@@ -2213,8 +2180,8 @@ struct ShareCardScreen: View {
                                 }
                                 // 한마디 연결 여부 표시: 문구 있는 사진은 우하단 바이올렛 도트
                                 .overlay(alignment: .bottomTrailing) {
-                                    if isOneLiner, template != .slide, i < storyPhotoUUIDs.count {
-                                        let ref = "photo:\(storyPhotoUUIDs[i])"
+                                    if isOneLiner, template != .slide, i < oneLinerVM.storyPhotoUUIDs.count {
+                                        let ref = "photo:\(oneLinerVM.storyPhotoUUIDs[i])"
                                         let hasText = oneLinerEntries.contains {
                                             $0.mediaRef == ref &&
                                             !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -3523,7 +3490,7 @@ struct ShareCardScreen: View {
                                     .shadow(color: .black.opacity(0.5), radius: 8)
                             }
                             .buttonStyle(.plain)
-                        } else if !oneLinerClipRecipes.isEmpty {
+                        } else if !oneLinerVM.oneLinerClipRecipes.isEmpty {
                             // 미빌드 — 빌드 + 재생 버튼
                             Button { buildPreview() } label: {
                                 Image(systemName: "play.circle.fill")
@@ -3579,19 +3546,19 @@ struct ShareCardScreen: View {
                     activity: activity,
                     backgroundPhoto: photo,
                     text: sr?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n") ?? "",
-                    position: sr?.position ?? oneLinerPosition,
-                    textColor: sr?.textColor ?? oneLinerColor,
-                    fontChoice: sr?.fontChoice ?? oneLinerFont,
+                    position: sr?.position ?? oneLinerVM.oneLinerPosition,
+                    textColor: sr?.textColor ?? oneLinerVM.oneLinerColor,
+                    fontChoice: sr?.fontChoice ?? oneLinerVM.oneLinerFont,
                     sizeLevel: sr?.sizeLevel ?? .large,
                     appearanceMode: sr?.appearanceMode ?? .typing,
                     decorEffect: sr?.decorEffect ?? .none,
                     hasBorder: sr?.hasBorder ?? false,
                     plateOn: sr?.plateOn ?? false,
                     plateColorPreset: sr?.plateColorPreset ?? .blackWhite,
-                    showDate: oneLinerShowDate,
+                    showDate: oneLinerVM.oneLinerShowDate,
                     captionMode: true,
-                    videoTitle: oneLinerVideoTitle,
-                    titleStyle: oneLinerTitleStyle,
+                    videoTitle: oneLinerVM.oneLinerVideoTitle,
+                    titleStyle: oneLinerVM.oneLinerTitleStyle,
                     cardHeightOverride: sPH,
                     metricPace: false,
                     metricDistance: false,
@@ -3636,28 +3603,28 @@ struct ShareCardScreen: View {
             let idx   = cardPhotoIndex[1]
             let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
                      ?? (!storyPhotos.isEmpty ? storyPhotos[0] : nil)
-            // @Query 갱신 타이밍 이슈 우회: 편집 직후엔 cachedStoryRecipes 사용 (클로저로 계산)
+            // @Query 갱신 타이밍 이슈 우회: 편집 직후엔 oneLinerVM.cachedStoryRecipes 사용 (클로저로 계산)
             let pr: ClipRecipe? = {
                 let i = idx ?? 0
-                if !cachedStoryRecipes.isEmpty, cachedStoryRecipes.indices.contains(i) {
-                    return cachedStoryRecipes[i]
+                if !oneLinerVM.cachedStoryRecipes.isEmpty, oneLinerVM.cachedStoryRecipes.indices.contains(i) {
+                    return oneLinerVM.cachedStoryRecipes[i]
                 }
                 return photoRecipe(at: i, prefix: "photo:")
             }()
             OneLinerCard(
                 activity: activity,
                 backgroundPhoto: photo,
-                text: pr?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n") ?? oneLinerText,
-                position: pr?.position ?? oneLinerPosition,
-                textColor: pr?.textColor ?? oneLinerColor,
-                fontChoice: pr?.fontChoice ?? oneLinerFont,
+                text: pr?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n") ?? oneLinerVM.oneLinerText,
+                position: pr?.position ?? oneLinerVM.oneLinerPosition,
+                textColor: pr?.textColor ?? oneLinerVM.oneLinerColor,
+                fontChoice: pr?.fontChoice ?? oneLinerVM.oneLinerFont,
                 sizeLevel: pr?.sizeLevel ?? .large,
                 appearanceMode: pr?.appearanceMode ?? .typing,
                 decorEffect: pr?.decorEffect ?? .none,
                 hasBorder: pr?.hasBorder ?? false,
                 plateOn: pr?.plateOn ?? false,
                 plateColorPreset: pr?.plateColorPreset ?? .blackWhite,
-                showDate: oneLinerShowDate,
+                showDate: oneLinerVM.oneLinerShowDate,
                 captionMode: true,
                 chartBottomReserved: storyChartBottomReserved(for: pr),
                 metricPace: pr?.metricPace ?? false,
@@ -3700,13 +3667,13 @@ struct ShareCardScreen: View {
         let safeBottomPt = CardVisual.videoSafeBottom * scale  // ≈ 75pt (date padding + safe zone guide)
 
         // 정적 프리뷰는 per-clip recipe에서 스타일 읽기 (재생 전에도 현재 설정이 보여야 함)
-        let clipRecipe   = oneLinerClipRecipes.first
-        let clipFont     = clipRecipe?.fontChoice ?? oneLinerFont
-        let clipColor    = clipRecipe?.textColor  ?? oneLinerColor
-        let clipPos      = clipRecipe?.position   ?? oneLinerPosition
+        let clipRecipe   = oneLinerVM.oneLinerClipRecipes.first
+        let clipFont     = clipRecipe?.fontChoice ?? oneLinerVM.oneLinerFont
+        let clipColor    = clipRecipe?.textColor  ?? oneLinerVM.oneLinerColor
+        let clipPos      = clipRecipe?.position   ?? oneLinerVM.oneLinerPosition
         let clipText     = clipRecipe?.lines
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .joined(separator: "\n") ?? oneLinerText
+            .joined(separator: "\n") ?? oneLinerVM.oneLinerText
         let fontSize     = 24 * clipFont.sizeScale
         let lineSpacing  = fontSize * 0.4
         let multiAlign: TextAlignment = {
@@ -3746,15 +3713,15 @@ struct ShareCardScreen: View {
                     .frame(width: pW, height: pH)
                 if !isExportingVideo {
                     VStack(spacing: 10) {
-                        Image(systemName: oneLinerPhAssetDeleted ? "video.slash" : "video.badge.plus")
+                        Image(systemName: oneLinerVM.oneLinerPhAssetDeleted ? "video.slash" : "video.badge.plus")
                             .font(.system(size: 32))
-                            .foregroundStyle(oneLinerPhAssetDeleted ? .orange : Theme.violet)
-                        Text(oneLinerPhAssetDeleted
+                            .foregroundStyle(oneLinerVM.oneLinerPhAssetDeleted ? .orange : Theme.violet)
+                        Text(oneLinerVM.oneLinerPhAssetDeleted
                              ? AppLanguage.shared.s("원본이 삭제되었어요", "Original deleted")
                              : AppLanguage.shared.s("영상을 선택해 주세요", "Select a video"))
                             .font(.caption)
-                            .foregroundStyle(oneLinerPhAssetDeleted ? .orange : .secondary)
-                        if oneLinerPhAssetDeleted {
+                            .foregroundStyle(oneLinerVM.oneLinerPhAssetDeleted ? .orange : .secondary)
+                        if oneLinerVM.oneLinerPhAssetDeleted {
                             Text(AppLanguage.shared.s("한마디는 유지됩니다", "Your text is preserved"))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -3784,7 +3751,7 @@ struct ShareCardScreen: View {
 
             // ── Text: safe-zone anchored — mirrors export pixel coordinates ─────
             // oneLinerVideoTitle이 있으면 그쪽이 제목 역할 → clipText 숨김 (중복 렌더 방지)
-            if !clipText.isEmpty, oneLinerVideoTitle.isEmpty {
+            if !clipText.isEmpty, oneLinerVM.oneLinerVideoTitle.isEmpty {
                 Text(clipText)
                     .font(.custom(clipFont.fontName, size: fontSize))
                     .lineSpacing(lineSpacing)
@@ -3800,27 +3767,27 @@ struct ShareCardScreen: View {
             }
 
             // ── Full-video title: mirrors export safe-zone positioning ─────────
-            if !oneLinerVideoTitle.isEmpty {
-                let tFontSize = 20 * oneLinerTitleStyle.fontChoice.sizeScale * oneLinerTitleStyle.sizeLevel.scale
-                Text(oneLinerVideoTitle)
-                    .font(oneLinerTitleStyle.fontChoice.swiftUIFont(size: tFontSize))
+            if !oneLinerVM.oneLinerVideoTitle.isEmpty {
+                let tFontSize = 20 * oneLinerVM.oneLinerTitleStyle.fontChoice.sizeScale * oneLinerVM.oneLinerTitleStyle.sizeLevel.scale
+                Text(oneLinerVM.oneLinerVideoTitle)
+                    .font(oneLinerVM.oneLinerTitleStyle.fontChoice.swiftUIFont(size: tFontSize))
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(oneLinerTitleStyle.textColor.color)
+                    .foregroundStyle(oneLinerVM.oneLinerTitleStyle.textColor.color)
                     .shadow(color: .black.opacity(0.55), radius: 5, x: 1, y: 2)
-                    .shadow(color: .black.opacity(oneLinerTitleStyle.outline ? 0.55 : 0), radius: 0.5, x:  1.5, y: 0)
-                    .shadow(color: .black.opacity(oneLinerTitleStyle.outline ? 0.55 : 0), radius: 0.5, x: -1.5, y: 0)
-                    .shadow(color: .black.opacity(oneLinerTitleStyle.outline ? 0.55 : 0), radius: 0.5, x: 0, y:  1.5)
-                    .shadow(color: .black.opacity(oneLinerTitleStyle.outline ? 0.55 : 0), radius: 0.5, x: 0, y: -1.5)
+                    .shadow(color: .black.opacity(oneLinerVM.oneLinerTitleStyle.outline ? 0.55 : 0), radius: 0.5, x:  1.5, y: 0)
+                    .shadow(color: .black.opacity(oneLinerVM.oneLinerTitleStyle.outline ? 0.55 : 0), radius: 0.5, x: -1.5, y: 0)
+                    .shadow(color: .black.opacity(oneLinerVM.oneLinerTitleStyle.outline ? 0.55 : 0), radius: 0.5, x: 0, y:  1.5)
+                    .shadow(color: .black.opacity(oneLinerVM.oneLinerTitleStyle.outline ? 0.55 : 0), radius: 0.5, x: 0, y: -1.5)
                     .lineLimit(2)
                     .padding(.horizontal, 10)
-                    .padding(.top, oneLinerTitleStyle.position.isTop ? CardVisual.videoSafeTop * 0.6 * scale : 0)
-                    .padding(.bottom, oneLinerTitleStyle.position.isBottom ? CardVisual.videoSafeBottom * scale : 0)
-                    .frame(width: pW, height: pH, alignment: oneLinerTitleStyle.position.alignment)
+                    .padding(.top, oneLinerVM.oneLinerTitleStyle.position.isTop ? CardVisual.videoSafeTop * 0.6 * scale : 0)
+                    .padding(.bottom, oneLinerVM.oneLinerTitleStyle.position.isBottom ? CardVisual.videoSafeBottom * scale : 0)
+                    .frame(width: pW, height: pH, alignment: oneLinerVM.oneLinerTitleStyle.position.alignment)
                     .allowsHitTesting(false)
             }
 
             // ── Date: safe-zone bottom - 14pt ────────────────────────────────
-            if oneLinerShowDate {
+            if oneLinerVM.oneLinerShowDate {
                 Text(dateStr)
                     .font(.system(size: 11, weight: .light))
                     .foregroundStyle(.white.opacity(0.55))
@@ -3832,7 +3799,7 @@ struct ShareCardScreen: View {
             }
 
             // ── PDT chips (첫 클립 recipe) ────────────────────────────────────
-            if let recipe = oneLinerClipRecipes.first,
+            if let recipe = oneLinerVM.oneLinerClipRecipes.first,
                recipe.metricPace || recipe.metricDistance || recipe.metricTime || recipe.metricHeartRate {
                 let lookup = Dictionary(uniqueKeysWithValues: oneLinerAvailableMetrics.map { ($0.id, $0) })
                 let items: [MetricItem] = [
@@ -3847,8 +3814,8 @@ struct ShareCardScreen: View {
                         guard recipe.pdtPosition.isTop else { return 0 }
                         let base = (CardVisual.videoSafeTop + 4) * scale
                         // 제목이 상단에 있으면 제목 하단 아래로 칩을 밀어냄 (export 동일 기준)
-                        guard !oneLinerVideoTitle.isEmpty, oneLinerTitleStyle.position.isTop else { return base }
-                        let tFontSize = 20 * oneLinerTitleStyle.fontChoice.sizeScale * oneLinerTitleStyle.sizeLevel.scale
+                        guard !oneLinerVM.oneLinerVideoTitle.isEmpty, oneLinerVM.oneLinerTitleStyle.position.isTop else { return base }
+                        let tFontSize = 20 * oneLinerVM.oneLinerTitleStyle.fontChoice.sizeScale * oneLinerVM.oneLinerTitleStyle.sizeLevel.scale
                         let titleH = tFontSize * 1.4 * 2 + 8  // 최대 2줄 여유
                         let titleEndY = CardVisual.videoSafeTop * 0.6 * scale + titleH
                         return max(base, titleEndY + 4)
@@ -3882,7 +3849,7 @@ struct ShareCardScreen: View {
             }
 
             // ── Route minimap (첫 클립 recipe) ───────────────────────────────
-            if let recipe = oneLinerClipRecipes.first, recipe.showRoute,
+            if let recipe = oneLinerVM.oneLinerClipRecipes.first, recipe.showRoute,
                recipe.chartOverlayType != .route, !routeCoords.isEmpty {
                 let topPad: CGFloat = recipe.routePosition.isTop    ? (CardVisual.videoSafeTop + 4) * scale : 0
                 let botPad: CGFloat = recipe.routePosition.isBottom ? CardVisual.videoSafeBottom * scale : 0
@@ -4622,8 +4589,8 @@ struct ShareCardScreen: View {
     // 문구가 연결된 사진(story template) 개수 — 2장 이상이면 일괄 저장 모드.
     private var linkedOneLinerPhotoCount: Int {
         guard isOneLiner, template == .story else { return 0 }
-        return storyPhotoUUIDs.indices.filter { i in
-            let ref = "photo:\(storyPhotoUUIDs[i])"
+        return oneLinerVM.storyPhotoUUIDs.indices.filter { i in
+            let ref = "photo:\(oneLinerVM.storyPhotoUUIDs[i])"
             return oneLinerEntries.contains {
                 $0.mediaRef == ref &&
                 !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -4640,13 +4607,13 @@ struct ShareCardScreen: View {
     // 다른 카드와 동일하게 인라인 편집 — 쉬는날과 같은 MultiClipEditorView(스토리/영상/슬라이드 공용)
     private var oneLinerChipRow: some View {
         MultiClipEditorView(
-            recipes: $oneLinerClipRecipes,
+            recipes: Bindable(oneLinerVM).oneLinerClipRecipes,
             isPhotoSlideMode: Binding<Bool>(get: { template == .slide || template == .story }, set: { _ in }),
-            muteAudio: $oneLinerMuteAudio,
-            selectedClipIndex: $currentOneLinerClipIndex,
+            muteAudio: Bindable(oneLinerVM).oneLinerMuteAudio,
+            selectedClipIndex: Bindable(oneLinerVM).currentOneLinerClipIndex,
             savedClipLines: [],
             availableMetrics: oneLinerAvailableMetrics,
-            enabledMetricIDs: $oneLinerEnabledMetricIDs,
+            enabledMetricIDs: Bindable(oneLinerVM).oneLinerEnabledMetricIDs,
             routeCoords: routeCoords,
             hrSamples: shareHRSamples,
             splits: detail?.splits ?? [],
@@ -4660,10 +4627,10 @@ struct ShareCardScreen: View {
                 }
                 // 영상 템플릿: 첫 클립 썸네일 정적 배경 세팅 + 자동 라이브 프리뷰 빌드
                 if template == .video {
-                    if let thumb = oneLinerClipRecipes.first?.thumbnail {
+                    if let thumb = oneLinerVM.oneLinerClipRecipes.first?.thumbnail {
                         videoPreviewImage = thumb
                     }
-                    if !oneLinerClipRecipes.isEmpty {
+                    if !oneLinerVM.oneLinerClipRecipes.isEmpty {
                         buildPreview()
                     }
                 }
@@ -4675,8 +4642,8 @@ struct ShareCardScreen: View {
             isStoryMode: template == .story,
             showPickerButton: template != .story && template != .slide,
             showTitleEvenWhenEmpty: template == .slide && !storyPhotos.isEmpty,
-            videoTitle: $oneLinerVideoTitle,
-            titleStyle: $oneLinerTitleStyle
+            videoTitle: Bindable(oneLinerVM).oneLinerVideoTitle,
+            titleStyle: Bindable(oneLinerVM).oneLinerTitleStyle
         )
         .padding(.horizontal, 24)
         .padding(.vertical, 4)
@@ -4704,7 +4671,7 @@ struct ShareCardScreen: View {
 
     // 메인 편집(클립 추가·스타일·데이터)은 쉬는날 방식 전용 시트로
     private var oneLinerEditButton: some View {
-        Button { showOneLinerSheet = true } label: {
+        Button { oneLinerVM.showOneLinerSheet = true } label: {
             Label(AppLanguage.shared.s("한마디 편집", "Edit one-liner"), systemImage: "slider.horizontal.3")
                 .font(.headline)
                 .foregroundStyle(.white)
@@ -4722,7 +4689,7 @@ struct ShareCardScreen: View {
     private var oneLinerVideoSlotInput: some View {
         let L = AppLanguage.shared
         VStack(spacing: 6) {
-            ForEach(0..<oneLinerVideoSlotCount, id: \.self) { idx in
+            ForEach(0..<oneLinerVM.oneLinerVideoSlotCount, id: \.self) { idx in
                 HStack(spacing: 8) {
                     Text("\(idx + 1)")
                         .font(.system(size: 11, weight: .semibold).monospacedDigit())
@@ -4731,15 +4698,15 @@ struct ShareCardScreen: View {
                     let placeholder = L.s("슬롯 \(idx + 1)", "Slot \(idx + 1)")
                     TextField(placeholder, text: Binding(
                         get: {
-                            idx < oneLinerVideoSlotTexts.count ? oneLinerVideoSlotTexts[idx] : ""
+                            idx < oneLinerVM.oneLinerVideoSlotTexts.count ? oneLinerVM.oneLinerVideoSlotTexts[idx] : ""
                         },
                         set: { newVal in
                             let capped = String(newVal.prefix(24))
-                            if idx < oneLinerVideoSlotTexts.count {
-                                oneLinerVideoSlotTexts[idx] = capped
+                            if idx < oneLinerVM.oneLinerVideoSlotTexts.count {
+                                oneLinerVM.oneLinerVideoSlotTexts[idx] = capped
                             }
-                            // Sync joined text → oneLinerText for preview & storage
-                            oneLinerText = oneLinerVideoSlotTexts
+                            // Sync joined text → oneLinerVM.oneLinerText for preview & storage
+                            oneLinerVM.oneLinerText = oneLinerVM.oneLinerVideoSlotTexts
                                 .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                                 .joined(separator: "\n")
                             saveOneLinerSettings()
@@ -4786,19 +4753,19 @@ struct ShareCardScreen: View {
     // · 다중 사진 연재 모드(사진 2장 이상)에서는 숨김 — 각 사진마다 독립 입력이 의도된 설계.
     @ViewBuilder
     private var oneLinerReuseChipRow: some View {
-        let isMultiPhotoStory = template == .story && storyPhotoUUIDs.count > 1
+        let isMultiPhotoStory = template == .story && oneLinerVM.storyPhotoUUIDs.count > 1
         if !uniqueOneLinerEntries.isEmpty && !isMultiPhotoStory {
-            let currentText = oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let currentText = oneLinerVM.oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(uniqueOneLinerEntries) { entry in
                         let isCurrent = entry.text.trimmingCharacters(in: .whitespacesAndNewlines) == currentText
                         Button {
-                            oneLinerText     = entry.text
-                            oneLinerFont     = entry.font
-                            oneLinerColor    = entry.textColor
-                            oneLinerPosition = entry.position
-                            oneLinerShowDate = entry.showDate
+                            oneLinerVM.oneLinerText     = entry.text
+                            oneLinerVM.oneLinerFont     = entry.font
+                            oneLinerVM.oneLinerColor    = entry.textColor
+                            oneLinerVM.oneLinerPosition = entry.position
+                            oneLinerVM.oneLinerShowDate = entry.showDate
                             saveOneLinerSettings()           // 현재 사진 entry에 upsert
                             Task { await renderCard(showSpinner: false) }
                         } label: {
@@ -4833,7 +4800,7 @@ struct ShareCardScreen: View {
 
     // Position grid + font/color chips — extracted for type-checker
     private var oneLinerGridAndChips: some View {
-        let shouldDisable = template == .video && sourceVideoURL == nil && oneLinerClipRecipes.isEmpty
+        let shouldDisable = template == .video && sourceVideoURL == nil && oneLinerVM.oneLinerClipRecipes.isEmpty
         let rows: [[CardPosition]] = [
             [.topLeading, .top, .topTrailing],
             [.leading, .center, .trailing],
@@ -4846,9 +4813,9 @@ struct ShareCardScreen: View {
                     HStack(spacing: 4) {
                         ForEach(rows[row].indices, id: \.self) { col in
                             let pos = rows[row][col]
-                            let isSelected = oneLinerPosition == pos
+                            let isSelected = oneLinerVM.oneLinerPosition == pos
                             Button {
-                                withAnimation(.easeInOut(duration: 0.15)) { oneLinerPosition = pos }
+                                withAnimation(.easeInOut(duration: 0.15)) { oneLinerVM.oneLinerPosition = pos }
                                 saveOneLinerSettings()
                                 Task { await renderCard(showSpinner: false) }
                             } label: {
@@ -4882,9 +4849,9 @@ struct ShareCardScreen: View {
 
     // Font chip — label rendered IN the font so users preview each style before tapping
     private func oneLinerFontChip(_ font: OneLinerFont) -> some View {
-        let isSelected = oneLinerFont == font
+        let isSelected = oneLinerVM.oneLinerFont == font
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { oneLinerFont = font }
+            withAnimation(.easeInOut(duration: 0.15)) { oneLinerVM.oneLinerFont = font }
             saveOneLinerSettings()
             Task { await renderCard(showSpinner: false) }
         } label: {
@@ -4906,9 +4873,9 @@ struct ShareCardScreen: View {
 
     // Color chip — same Capsule style as accent chips
     private func oneLinerColorChip(_ textColor: OneLinerTextColor) -> some View {
-        let isSelected = oneLinerColor == textColor
+        let isSelected = oneLinerVM.oneLinerColor == textColor
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { oneLinerColor = textColor }
+            withAnimation(.easeInOut(duration: 0.15)) { oneLinerVM.oneLinerColor = textColor }
             saveOneLinerSettings()
             Task { await renderCard(showSpinner: false) }
         } label: {
@@ -4935,17 +4902,17 @@ struct ShareCardScreen: View {
     }
 
     private let oneLinerLineCharLimit = 30
-    private var oneLinerLineCount: Int { max(1, oneLinerText.components(separatedBy: "\n").count) }
+    private var oneLinerLineCount: Int { max(1, oneLinerVM.oneLinerText.components(separatedBy: "\n").count) }
 
     private func oneLinerLineBinding(for index: Int) -> Binding<String> {
         Binding {
-            let lines = oneLinerText.components(separatedBy: "\n")
+            let lines = oneLinerVM.oneLinerText.components(separatedBy: "\n")
             return index < lines.count ? lines[index] : ""
         } set: { newVal in
-            var lines = oneLinerText.components(separatedBy: "\n")
+            var lines = oneLinerVM.oneLinerText.components(separatedBy: "\n")
             while lines.count <= index { lines.append("") }
             lines[index] = String(newVal.prefix(oneLinerLineCharLimit))
-            oneLinerText = lines.prefix(oneLinerLineCount).joined(separator: "\n")
+            oneLinerVM.oneLinerText = lines.prefix(oneLinerLineCount).joined(separator: "\n")
             saveOneLinerSettings()
             Task { await renderCard(showSpinner: false) }
         }
@@ -4958,7 +4925,7 @@ struct ShareCardScreen: View {
             VStack(spacing: 6) {
                 ForEach(0..<oneLinerLineCount, id: \.self) { i in
                     let lineText = { () -> String in
-                        let lines = oneLinerText.components(separatedBy: "\n")
+                        let lines = oneLinerVM.oneLinerText.components(separatedBy: "\n")
                         return i < lines.count ? lines[i] : ""
                     }()
                     HStack(spacing: 8) {
@@ -4986,7 +4953,7 @@ struct ShareCardScreen: View {
 
             if oneLinerLineCount < 3 {
                 Button {
-                    oneLinerText += "\n"
+                    oneLinerVM.oneLinerText += "\n"
                     saveOneLinerSettings()
                     Task { await renderCard(showSpinner: false) }
                     let idx = oneLinerLineCount - 1
@@ -5398,10 +5365,10 @@ struct ShareCardScreen: View {
                 Task { await renderCard() }
             }
         }
-        .sheet(isPresented: $showStoryClipEdit, onDismiss: onStoryClipEditDismiss) {
+        .sheet(isPresented: Bindable(oneLinerVM).showStoryClipEdit, onDismiss: onStoryClipEditDismiss) {
             ClipTrimSheet(
-                recipes: $storyClipEditRecipes,
-                selectedClipIndex: $storyClipEditIndex,
+                recipes: Bindable(oneLinerVM).storyClipEditRecipes,
+                selectedClipIndex: Bindable(oneLinerVM).storyClipEditIndex,
                 hideTimePicker: template == .story,
                 isStoryMode: template == .story,
                 isPhotoSlideMode: template == .slide,
@@ -5412,8 +5379,8 @@ struct ShareCardScreen: View {
                 chartSeriesData: chartSeriesData,
                 hrZones: detail?.hrZones ?? [],
                 intervalSegments: detail?.intervalSegments ?? [],
-                videoTitle: oneLinerVideoTitle,
-                titleStyle: oneLinerTitleStyle
+                videoTitle: oneLinerVM.oneLinerVideoTitle,
+                titleStyle: oneLinerVM.oneLinerTitleStyle
             )
         }
     }
@@ -5442,27 +5409,27 @@ struct ShareCardScreen: View {
         // Athletic 클립 변경 시 미리보기 플레이어 리셋
         .onChange(of: athleticClipRecipes.count) { _, _ in athleticVideoState.invalidate() }
         // OneLiner 설정 변경 시 기존 export 무효화 — .video와 .slide 모두 포함
-        .onChange(of: oneLinerText) { _, _ in
+        .onChange(of: oneLinerVM.oneLinerText) { _, _ in
             guard isOneLiner, template == .video || template == .slide else { return }
             exportedVideoFile = nil
         }
-        .onChange(of: oneLinerPosition) { _, _ in
+        .onChange(of: oneLinerVM.oneLinerPosition) { _, _ in
             guard isOneLiner, template == .video || template == .slide else { return }
             exportedVideoFile = nil
         }
-        .onChange(of: oneLinerColor) { _, _ in
+        .onChange(of: oneLinerVM.oneLinerColor) { _, _ in
             guard isOneLiner, template == .video || template == .slide else { return }
             exportedVideoFile = nil
         }
-        .onChange(of: oneLinerFont) { _, _ in
+        .onChange(of: oneLinerVM.oneLinerFont) { _, _ in
             guard isOneLiner, template == .video || template == .slide else { return }
             exportedVideoFile = nil
         }
-        .onChange(of: oneLinerShowDate) { _, _ in
+        .onChange(of: oneLinerVM.oneLinerShowDate) { _, _ in
             guard isOneLiner, template == .video || template == .slide else { return }
             exportedVideoFile = nil
         }
-        .onChange(of: oneLinerClipRecipes.count) { _, _ in
+        .onChange(of: oneLinerVM.oneLinerClipRecipes.count) { _, _ in
             previewPlayer.invalidate()
             exportedVideoFile = nil
         }
@@ -5640,8 +5607,8 @@ struct ShareCardScreen: View {
             guard isTicket else { return }
             Task { await renderCard(showSpinner: false) }
         }
-        .onChange(of: oneLinerVideoTitle) { _, _ in previewPlayer.invalidate(); if isOneLiner { exportedVideoFile = nil } }
-        .onChange(of: oneLinerTitleStyle) { _, _ in previewPlayer.invalidate(); if isOneLiner { exportedVideoFile = nil } }
+        .onChange(of: oneLinerVM.oneLinerVideoTitle) { _, _ in previewPlayer.invalidate(); if isOneLiner { exportedVideoFile = nil } }
+        .onChange(of: oneLinerVM.oneLinerTitleStyle) { _, _ in previewPlayer.invalidate(); if isOneLiner { exportedVideoFile = nil } }
         .interactiveDismissDisabled(previewPlayer.isBuilding)
         .task(id: template) { await animateRouteVideoPreview() }
         .alert(AppLanguage.shared.s("이미 내보낸 영상이에요", "Already exported video"),
@@ -5693,12 +5660,12 @@ struct ShareCardScreen: View {
             let merged = Array((existing + newImages).prefix(5))
             selectedPhoto = merged[0]
             allPickedPhotos = merged
-            // Extend storyPhotoUUIDs: preserve existing, append new
-            let existingUUIDs = storyPhotoUUIDs.isEmpty
+            // Extend oneLinerVM.storyPhotoUUIDs: preserve existing, append new
+            let existingUUIDs = oneLinerVM.storyPhotoUUIDs.isEmpty
                 ? (story?.sortedPhotoUUIDs ?? (0..<existing.count).map { _ in UUID().uuidString })
-                : storyPhotoUUIDs
+                : oneLinerVM.storyPhotoUUIDs
             let mergedUUIDs = Array((existingUUIDs + newItemIDs).prefix(5))
-            storyPhotoUUIDs = mergedUUIDs
+            oneLinerVM.storyPhotoUUIDs = mergedUUIDs
             persistStoryPhotos(merged, uuids: mergedUUIDs)
             let newIdx = min(existing.count, merged.count - 1)
             for ci in [0, 1, 2, 3] { cardPhotoIndex[ci] = newIdx }
@@ -5727,9 +5694,9 @@ struct ShareCardScreen: View {
             if isOneLiner {
                 let dur = (try? await AVURLAsset(url: result.url).load(.duration).seconds) ?? 7.0
                 let count = max(2, min(20, Int(ceil(dur / 3.5))))
-                let existing = oneLinerVideoSlotTexts
-                oneLinerVideoSlotCount = count
-                oneLinerVideoSlotTexts = (0..<count).map { i in
+                let existing = oneLinerVM.oneLinerVideoSlotTexts
+                oneLinerVM.oneLinerVideoSlotCount = count
+                oneLinerVM.oneLinerVideoSlotTexts = (0..<count).map { i in
                     i < existing.count ? existing[i] : ""
                 }
             }
@@ -5743,9 +5710,9 @@ struct ShareCardScreen: View {
     }
 
     private func onStoryClipEditDismiss() {
-        saveStoryClipEdits(storyClipEditRecipes, isSlide: storyClipEditIsSlide)
+        saveStoryClipEdits(oneLinerVM.storyClipEditRecipes, isSlide: oneLinerVM.storyClipEditIsSlide)
         exportedVideoFile = nil
-        for i in 0..<4 { cardPhotoIndex[i] = storyClipEditIndex }
+        for i in 0..<4 { cardPhotoIndex[i] = oneLinerVM.storyClipEditIndex }
     }
 
     private func onAthleticPickerItemsChanged(_ newItems: [PhotosPickerItem]) {
@@ -6360,7 +6327,7 @@ struct ShareCardScreen: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 18)
-            } else if isOneLiner && template == .story && !storyPhotoUUIDs.isEmpty {
+            } else if isOneLiner && template == .story && !oneLinerVM.storyPhotoUUIDs.isEmpty {
                 // 사진 연결 OneLiner: 문구 있는 사진 수 기준 저장 버튼
                 // · 2장 이상: "N장 저장" / 1장: "저장" / 0장: 비활성
                 let count = linkedOneLinerPhotoCount
@@ -6378,7 +6345,7 @@ struct ShareCardScreen: View {
                 }
                 .disabled(count == 0)
             } else {
-                let shareDisabled = isOneLiner && oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                let shareDisabled = isOneLiner && oneLinerVM.oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 Button { showShareSheet = true } label: {
                     Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
                         .font(.headline)
@@ -6424,12 +6391,12 @@ struct ShareCardScreen: View {
                 // storyClipEditRecipes가 비어있으면(첫 실행·세션 재진입) SwiftData에서 복원.
                 let photos = storyPhotos
                 guard !photos.isEmpty else { return }
-                let slideRecipes  = (storyClipEditRecipes.isEmpty || storyClipEditRecipes.count != photos.count)
+                let slideRecipes  = (oneLinerVM.storyClipEditRecipes.isEmpty || oneLinerVM.storyClipEditRecipes.count != photos.count)
                     ? makeStoryClipRecipes(isSlide: true)
-                    : storyClipEditRecipes
+                    : oneLinerVM.storyClipEditRecipes
                 await previewPlayer.buildForPhotoSlides(
                     photos: photos, recipes: slideRecipes,
-                    activityDate: activity.date, showDate: oneLinerShowDate,
+                    activityDate: activity.date, showDate: oneLinerVM.oneLinerShowDate,
                     metricLookup: oneLinerMetricLookup,
                     routeCoords: routeCoords,
                     hrSamples: shareHRSamples,
@@ -6437,13 +6404,13 @@ struct ShareCardScreen: View {
                     chartSeriesData: chartSeriesData,
                     hrZones: detail?.hrZones ?? [],
                     intervalSegments: detail?.intervalSegments ?? [],
-                    videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
+                    videoTitle: oneLinerVM.oneLinerVideoTitle, titleStyle: oneLinerVM.oneLinerTitleStyle)
             } else {
                 // 영상: 실제 클립 재생 (export와 동일한 필믹 파이프라인 — resolvedAsset 사용)
                 await previewPlayer.buildForVideoClips(
-                    recipes: oneLinerClipRecipes,
-                    activityDate: activity.date, showDate: oneLinerShowDate,
-                    muteAudio: oneLinerMuteAudio,
+                    recipes: oneLinerVM.oneLinerClipRecipes,
+                    activityDate: activity.date, showDate: oneLinerVM.oneLinerShowDate,
+                    muteAudio: oneLinerVM.oneLinerMuteAudio,
                     metricChips: oneLinerActiveMetricChips,
                     metricLookup: oneLinerMetricLookup,
                     routeCoords: routeCoords,
@@ -6452,7 +6419,7 @@ struct ShareCardScreen: View {
                     chartSeriesData: chartSeriesData,
                     hrZones: detail?.hrZones ?? [],
                     intervalSegments: detail?.intervalSegments ?? [],
-                    videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
+                    videoTitle: oneLinerVM.oneLinerVideoTitle, titleStyle: oneLinerVM.oneLinerTitleStyle)
             }
             previewPlayer.play()
         }
@@ -6480,14 +6447,14 @@ struct ShareCardScreen: View {
             guard !photos.isEmpty else { isExportingVideo = false; return }
             do {
                 // 편집된 문구·스타일 — 라이브 인메모리 우선, 없으면 SwiftData 복원
-                let slideRecipes = (storyClipEditRecipes.isEmpty || storyClipEditRecipes.count != photos.count)
+                let slideRecipes = (oneLinerVM.storyClipEditRecipes.isEmpty || oneLinerVM.storyClipEditRecipes.count != photos.count)
                     ? makeStoryClipRecipes(isSlide: true)
-                    : storyClipEditRecipes
+                    : oneLinerVM.storyClipEditRecipes
                 let out = try await PhotoSlideComposition.exportSlideWithText(
                     photos: photos, recipes: slideRecipes,
-                    fontChoice: oneLinerFont, textColor: oneLinerColor,
-                    position: oneLinerPosition,
-                    activityDate: activity.date, showDate: oneLinerShowDate,
+                    fontChoice: oneLinerVM.oneLinerFont, textColor: oneLinerVM.oneLinerColor,
+                    position: oneLinerVM.oneLinerPosition,
+                    activityDate: activity.date, showDate: oneLinerVM.oneLinerShowDate,
                     metricLookup: oneLinerMetricLookup,
                     routeCoords: routeCoords,
                     hrSamples: shareHRSamples,
@@ -6495,7 +6462,7 @@ struct ShareCardScreen: View {
                     chartSeriesData: chartSeriesData,
                     hrZones: detail?.hrZones ?? [],
                     intervalSegments: detail?.intervalSegments ?? [],
-                    videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
+                    videoTitle: oneLinerVM.oneLinerVideoTitle, titleStyle: oneLinerVM.oneLinerTitleStyle)
                 exportedVideoFile = SharableVideoFile(url: out)
                 presentShareSheet(url: out)
             } catch { /* fall through */ }
@@ -6504,9 +6471,9 @@ struct ShareCardScreen: View {
         }
 
         // ── OneLiner multi-clip path (영상, running day) ────────────────────
-        if isOneLiner, !oneLinerClipRecipes.isEmpty {
+        if isOneLiner, !oneLinerVM.oneLinerClipRecipes.isEmpty {
             do {
-                var recipes = oneLinerClipRecipes
+                var recipes = oneLinerVM.oneLinerClipRecipes
                 // URL이 없는 클립은 resolvedAsset이나 assetIdentifier로 재해석
                 for i in recipes.indices {
                     guard !FileManager.default.fileExists(atPath: recipes[i].url.path) else { continue }
@@ -6524,18 +6491,18 @@ struct ShareCardScreen: View {
                 var cleanup: URL? = nil
                 if needsCompose {
                     let (composed, _) = try await MultiClipComposition.composeAndExport(
-                        recipes: recipes, muteAudio: oneLinerMuteAudio)
+                        recipes: recipes, muteAudio: oneLinerVM.oneLinerMuteAudio)
                     exportSrc = composed; cleanup = composed
                 } else {
                     exportSrc = recipes[0].url
                 }
                 defer { cleanup.map { try? FileManager.default.removeItem(at: $0) } }
-                let isMuted = oneLinerMuteAudio
+                let isMuted = oneLinerVM.oneLinerMuteAudio
                 let out = try await VideoExportService.exportOneLinerClipBoundVideo(
                     sourceURL: exportSrc, recipes: recipes,
-                    fontChoice: oneLinerFont, textColor: oneLinerColor,
-                    position: oneLinerPosition,
-                    activityDate: activity.date, showDate: oneLinerShowDate,
+                    fontChoice: oneLinerVM.oneLinerFont, textColor: oneLinerVM.oneLinerColor,
+                    position: oneLinerVM.oneLinerPosition,
+                    activityDate: activity.date, showDate: oneLinerVM.oneLinerShowDate,
                     muteAudio: isMuted, metricChips: chips,
                     metricLookup: oneLinerMetricLookup,
                     routeCoords: routeCoords,
@@ -6544,7 +6511,7 @@ struct ShareCardScreen: View {
                     hrZones: detail?.hrZones ?? [],
                     intervalSegments: detail?.intervalSegments ?? [],
                     chartSeriesData: chartSeriesData,
-                    videoTitle: oneLinerVideoTitle, titleStyle: oneLinerTitleStyle)
+                    videoTitle: oneLinerVM.oneLinerVideoTitle, titleStyle: oneLinerVM.oneLinerTitleStyle)
                 exportedVideoFile = SharableVideoFile(url: out)
                 presentShareSheet(url: out)
             } catch {
@@ -6763,9 +6730,9 @@ struct ShareCardScreen: View {
 
         if isOneLiner {
             // Multi-slot mode (3+ slots = 2+ pages): group into pages of 2 and use multi-page export
-            let filledSlots = oneLinerVideoSlotTexts
+            let filledSlots = oneLinerVM.oneLinerVideoSlotTexts
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            if oneLinerVideoSlotCount >= 3 && filledSlots.contains(where: { !$0.isEmpty }) {
+            if oneLinerVM.oneLinerVideoSlotCount >= 3 && filledSlots.contains(where: { !$0.isEmpty }) {
                 var pages: [[String]] = []
                 var i = 0
                 while i < filledSlots.count {
@@ -6779,11 +6746,11 @@ struct ShareCardScreen: View {
                     if let out = try? await VideoExportService.exportOneLinerMultiPageVideo(
                         sourceURL: url,
                         pages: pages,
-                        fontChoice: oneLinerFont,
-                        textColor: oneLinerColor,
-                        position: oneLinerPosition,
+                        fontChoice: oneLinerVM.oneLinerFont,
+                        textColor: oneLinerVM.oneLinerColor,
+                        position: oneLinerVM.oneLinerPosition,
                         activityDate: activity.date,
-                        showDate: oneLinerShowDate) {
+                        showDate: oneLinerVM.oneLinerShowDate) {
                         exportedVideoFile = SharableVideoFile(url: out)
                     }
                     isExportingVideo = false
@@ -6793,12 +6760,12 @@ struct ShareCardScreen: View {
             // Single-text fallback: 2 slots or fewer, or all content resolves to 1 page
             if let out = try? await VideoExportService.exportOneLinerTypingVideo(
                 sourceURL: url,
-                text: oneLinerText,
-                fontChoice: oneLinerFont,
-                textColor: oneLinerColor,
-                position: oneLinerPosition,
+                text: oneLinerVM.oneLinerText,
+                fontChoice: oneLinerVM.oneLinerFont,
+                textColor: oneLinerVM.oneLinerColor,
+                position: oneLinerVM.oneLinerPosition,
                 activityDate: activity.date,
-                showDate: oneLinerShowDate) {
+                showDate: oneLinerVM.oneLinerShowDate) {
                 exportedVideoFile = SharableVideoFile(url: out)
             }
             isExportingVideo = false
@@ -6985,13 +6952,13 @@ struct ShareCardScreen: View {
             }
         }
         // Load stable photo UUIDs from SwiftData (used by OneLinerEntry cross-references)
-        if storyPhotoUUIDs.isEmpty {
-            storyPhotoUUIDs = story?.sortedPhotoUUIDs ?? []
+        if oneLinerVM.storyPhotoUUIDs.isEmpty {
+            oneLinerVM.storyPhotoUUIDs = story?.sortedPhotoUUIDs ?? []
         }
-        // Pre-populate cachedStoryRecipes from disk so preview shows saved state immediately,
+        // Pre-populate oneLinerVM.cachedStoryRecipes from disk so preview shows saved state immediately,
         // avoiding a visible flash before the first edit dismiss populates the cache.
-        if cachedStoryRecipes.isEmpty, !storyPhotoUUIDs.isEmpty {
-            cachedStoryRecipes = makeStoryClipRecipes()
+        if oneLinerVM.cachedStoryRecipes.isEmpty, !oneLinerVM.storyPhotoUUIDs.isEmpty {
+            oneLinerVM.cachedStoryRecipes = makeStoryClipRecipes()
         }
         // Auto-select first available panel when no route
         if routeCoords.isEmpty && cardPanel == .map {
@@ -7062,7 +7029,7 @@ struct ShareCardScreen: View {
         }
         if template == .story {
             let idx = cardPhotoIndex[1] ?? 0
-            if idx < storyPhotoUUIDs.count { return "photo:\(storyPhotoUUIDs[idx])" }
+            if idx < oneLinerVM.storyPhotoUUIDs.count { return "photo:\(oneLinerVM.storyPhotoUUIDs[idx])" }
         }
         return nil   // gradient
     }
@@ -7083,7 +7050,7 @@ struct ShareCardScreen: View {
     }
 
     private func saveOneLinerClipRecipes() {
-        let validRecipes = oneLinerClipRecipes.filter {
+        let validRecipes = oneLinerVM.oneLinerClipRecipes.filter {
             $0.assetIdentifier != nil || $0.clipVideoRef != nil || $0.storedPhotoRef != nil
         }
         if validRecipes.isEmpty {
@@ -7115,13 +7082,13 @@ struct ShareCardScreen: View {
                 dataEffectID: r.dataAppearanceMode.rawValue)
         }
         let saved = SavedRecipeSet(
-            isPhotoSlide: false, muteAudio: oneLinerMuteAudio, clips: descs,
-            videoTitle: oneLinerVideoTitle,
-            titleAnchorIdx: CardPosition.allCases.firstIndex(of: oneLinerTitleStyle.position),
-            titleFontID: oneLinerTitleStyle.fontChoice.rawValue,
-            titleColorID: oneLinerTitleStyle.textColor.rawValue,
-            titleSizeID: oneLinerTitleStyle.sizeLevel.rawValue,
-            titleOutline: oneLinerTitleStyle.outline)
+            isPhotoSlide: false, muteAudio: oneLinerVM.oneLinerMuteAudio, clips: descs,
+            videoTitle: oneLinerVM.oneLinerVideoTitle,
+            titleAnchorIdx: CardPosition.allCases.firstIndex(of: oneLinerVM.oneLinerTitleStyle.position),
+            titleFontID: oneLinerVM.oneLinerTitleStyle.fontChoice.rawValue,
+            titleColorID: oneLinerVM.oneLinerTitleStyle.textColor.rawValue,
+            titleSizeID: oneLinerVM.oneLinerTitleStyle.sizeLevel.rawValue,
+            titleOutline: oneLinerVM.oneLinerTitleStyle.outline)
         guard let data = try? JSONEncoder().encode(saved),
               let json = String(data: data, encoding: .utf8) else { return }
         let payload = "v4recipes\n" + json
@@ -7141,8 +7108,8 @@ struct ShareCardScreen: View {
               let data = entry.text.dropFirst("v4recipes\n".count).data(using: .utf8),
               let saved = try? JSONDecoder().decode(SavedRecipeSet.self, from: data),
               !saved.clips.isEmpty else { return }
-        oneLinerMuteAudio  = saved.muteAudio
-        oneLinerVideoTitle = saved.videoTitle
+        oneLinerVM.oneLinerMuteAudio  = saved.muteAudio
+        oneLinerVM.oneLinerVideoTitle = saved.videoTitle
         var style = OneLinerTitleStyle()
         if let idx = saved.titleAnchorIdx, CardPosition.allCases.indices.contains(idx) {
             style.position = CardPosition.allCases[idx]
@@ -7151,7 +7118,7 @@ struct ShareCardScreen: View {
         if let cid = saved.titleColorID { style.textColor  = OneLinerTextColor(rawValue: cid) ?? .white }
         if let sid = saved.titleSizeID  { style.sizeLevel  = TextSizeLevel(rawValue: sid) ?? .medium }
         style.outline = saved.titleOutline
-        oneLinerTitleStyle = style
+        oneLinerVM.oneLinerTitleStyle = style
         var restored: [ClipRecipe] = []
         for desc in saved.clips {
             let thumb: UIImage?
@@ -7182,11 +7149,11 @@ struct ShareCardScreen: View {
             recipe.storedPhotoRef  = desc.photoRef
             recipe.thumbRef        = desc.thumbRef
             recipe.fontChoice      = OneLinerFont.migrate(desc.fontID)
-            recipe.textColor       = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? oneLinerColor
+            recipe.textColor       = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? oneLinerVM.oneLinerColor
             if let idx = desc.anchorIdx, CardPosition.allCases.indices.contains(idx) {
                 recipe.position = CardPosition.allCases[idx]
             } else {
-                recipe.position = oneLinerPosition
+                recipe.position = oneLinerVM.oneLinerPosition
             }
             recipe.sizeLevel = desc.sizeID.flatMap { TextSizeLevel(rawValue: $0) } ?? .medium
             if let eid = desc.effectID, eid.contains("|") {
@@ -7240,8 +7207,8 @@ struct ShareCardScreen: View {
             }
             restored.append(recipe)
         }
-        oneLinerVideoModeRecipes = restored
-        if template == .video { oneLinerClipRecipes = restored }
+        oneLinerVM.oneLinerVideoModeRecipes = restored
+        if template == .video { oneLinerVM.oneLinerClipRecipes = restored }
         // videoPreviewImage는 OneLiner 카드에서만 적용 — 다른 카드(Athletic 등)에 OneLiner 썸네일이 표시되는 버그 방지
         if isOneLiner, let firstThumb = restored.first?.thumbnail {
             videoPreviewImage = firstThumb
@@ -7252,13 +7219,13 @@ struct ShareCardScreen: View {
         guard isOneLiner else { return }
         // 비디오 템플릿을 벗어날 때: active clips → 백업, active 비움
         if oldTemplate == .video {
-            oneLinerVideoModeRecipes = oneLinerClipRecipes
-            oneLinerClipRecipes = []
+            oneLinerVM.oneLinerVideoModeRecipes = oneLinerVM.oneLinerClipRecipes
+            oneLinerVM.oneLinerClipRecipes = []
         }
         // 비디오 템플릿으로 돌아올 때: 백업에서 복원 + 썸네일 갱신
         if newTemplate == .video {
-            oneLinerClipRecipes = oneLinerVideoModeRecipes
-            if let thumb = oneLinerVideoModeRecipes.first?.thumbnail {
+            oneLinerVM.oneLinerClipRecipes = oneLinerVM.oneLinerVideoModeRecipes
+            if let thumb = oneLinerVM.oneLinerVideoModeRecipes.first?.thumbnail {
                 videoPreviewImage = thumb
             }
         }
@@ -7270,25 +7237,25 @@ struct ShareCardScreen: View {
         if entry.text.hasPrefix("v3slide\n"),
            let data = entry.text.dropFirst("v3slide\n".count).data(using: .utf8),
            let desc = try? JSONDecoder().decode(SavedClipDescriptor.self, from: data) {
-            oneLinerText     = desc.lines.filter { line in
+            oneLinerVM.oneLinerText     = desc.lines.filter { line in
                 let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
                 if t.isEmpty || t.hasPrefix("v3slide") || t.hasPrefix("v3recipes")
                     || t.hasPrefix("v4recipes") || t.hasPrefix("v2clips")
                     || (t.count > 30 && t.hasPrefix("{") && t.hasSuffix("}")) { return false }
                 return true
             }.joined(separator: "\n")
-            oneLinerFont     = OneLinerFont.migrate(desc.fontID)
-            oneLinerColor    = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? .white
+            oneLinerVM.oneLinerFont     = OneLinerFont.migrate(desc.fontID)
+            oneLinerVM.oneLinerColor    = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? .white
             if let aIdx = desc.anchorIdx, CardPosition.allCases.indices.contains(aIdx) {
-                oneLinerPosition = CardPosition.allCases[aIdx]
+                oneLinerVM.oneLinerPosition = CardPosition.allCases[aIdx]
             }
         } else {
-            oneLinerText     = entry.text
-            oneLinerFont     = entry.font
-            oneLinerColor    = entry.textColor
-            oneLinerPosition = entry.position
+            oneLinerVM.oneLinerText     = entry.text
+            oneLinerVM.oneLinerFont     = entry.font
+            oneLinerVM.oneLinerColor    = entry.textColor
+            oneLinerVM.oneLinerPosition = entry.position
         }
-        oneLinerShowDate  = entry.showDate
+        oneLinerVM.oneLinerShowDate  = entry.showDate
     }
 
     private func loadOneLinerSettings() {
@@ -7296,26 +7263,26 @@ struct ShareCardScreen: View {
         let mediaRef = computeOneLinerMediaRef()
         if let entry = oneLinerEntries.first(where: { $0.mediaRef == mediaRef }) {
             syncUIFromEntry(entry)
-            oneLinerPhAssetDeleted = !entry.isPHAssetAvailable
+            oneLinerVM.oneLinerPhAssetDeleted = !entry.isPHAssetAvailable
             // Video slot mode: split saved text back into individual slot fields
-            if template == .video && oneLinerVideoSlotCount > 2 {
+            if template == .video && oneLinerVM.oneLinerVideoSlotCount > 2 {
                 let lines = entry.text.components(separatedBy: "\n")
-                oneLinerVideoSlotTexts = (0..<oneLinerVideoSlotCount).map { i in
+                oneLinerVM.oneLinerVideoSlotTexts = (0..<oneLinerVM.oneLinerVideoSlotCount).map { i in
                     i < lines.count ? lines[i] : ""
                 }
             }
         } else {
-            oneLinerText = ""
-            oneLinerPhAssetDeleted = false
+            oneLinerVM.oneLinerText = ""
+            oneLinerVM.oneLinerPhAssetDeleted = false
             // 연재 연속성: 새 사진에 처음 문구를 쓸 때 폰트·색은 직전 entry 기본값으로.
             // 위치(9앵커)는 사진마다 독립 — 사진 구도가 다르므로 그대로 유지.
             if let latest = oneLinerEntries.last {
-                oneLinerFont  = latest.font
-                oneLinerColor = latest.textColor
+                oneLinerVM.oneLinerFont  = latest.font
+                oneLinerVM.oneLinerColor = latest.textColor
             }
             // Video slot mode: clear all slot fields
             if template == .video {
-                oneLinerVideoSlotTexts = Array(repeating: "", count: max(2, oneLinerVideoSlotCount))
+                oneLinerVM.oneLinerVideoSlotTexts = Array(repeating: "", count: max(2, oneLinerVM.oneLinerVideoSlotCount))
             }
         }
         loadOneLinerClipRecipes()
@@ -7595,18 +7562,18 @@ struct ShareCardScreen: View {
     /// cardPhotoIndex가 아직 커밋되지 않은 Button 액션 내에서 호출 시 사용.
     private func loadOneLinerSettingsFor(photoIndex: Int) {
         migrateUserDefaultsOneLiner()
-        let mediaRef: String? = photoIndex < storyPhotoUUIDs.count
-            ? "photo:\(storyPhotoUUIDs[photoIndex])"
+        let mediaRef: String? = photoIndex < oneLinerVM.storyPhotoUUIDs.count
+            ? "photo:\(oneLinerVM.storyPhotoUUIDs[photoIndex])"
             : nil
         if let entry = oneLinerEntries.first(where: { $0.mediaRef == mediaRef }) {
             syncUIFromEntry(entry)
-            oneLinerPhAssetDeleted = !entry.isPHAssetAvailable
+            oneLinerVM.oneLinerPhAssetDeleted = !entry.isPHAssetAvailable
         } else {
-            oneLinerText = ""
-            oneLinerPhAssetDeleted = false
+            oneLinerVM.oneLinerText = ""
+            oneLinerVM.oneLinerPhAssetDeleted = false
             if let latest = oneLinerEntries.last {
-                oneLinerFont  = latest.font
-                oneLinerColor = latest.textColor
+                oneLinerVM.oneLinerFont  = latest.font
+                oneLinerVM.oneLinerColor = latest.textColor
             }
         }
     }
@@ -7619,7 +7586,7 @@ struct ShareCardScreen: View {
         let photos = storyPhotos
         let prefix = isSlide ? "slide:" : "photo:"
         return photos.enumerated().map { i, photo in
-            let uuid = i < storyPhotoUUIDs.count ? storyPhotoUUIDs[i] : UUID().uuidString
+            let uuid = i < oneLinerVM.storyPhotoUUIDs.count ? oneLinerVM.storyPhotoUUIDs[i] : UUID().uuidString
             let ref  = "\(prefix)\(uuid)"
             // slide: prefix가 없으면 photo: 기존 항목으로 폴백 (마이그레이션 경로)
             let entry = oneLinerEntries.first { $0.mediaRef == ref }
@@ -7703,8 +7670,8 @@ struct ShareCardScreen: View {
     private func saveStoryClipEdits(_ recipes: [ClipRecipe], isSlide: Bool = false) {
         let prefix = isSlide ? "slide:" : "photo:"
         for (i, recipe) in recipes.enumerated() {
-            guard i < storyPhotoUUIDs.count else { continue }
-            let ref  = "\(prefix)\(storyPhotoUUIDs[i])"
+            guard i < oneLinerVM.storyPhotoUUIDs.count else { continue }
+            let ref  = "\(prefix)\(oneLinerVM.storyPhotoUUIDs[i])"
             let text = recipe.lines
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
@@ -7774,7 +7741,7 @@ struct ShareCardScreen: View {
                 modelContext.insert(entry)
             }
         }
-        cachedStoryRecipes = recipes  // @Query 갱신 전 즉시 렌더용 캐시
+        oneLinerVM.cachedStoryRecipes = recipes  // @Query 갱신 전 즉시 렌더용 캐시
         try? modelContext.save()
         Task { await renderCard() }
         // 편집 완료 후 미리보기는 수동(▶ 버튼)으로 시작 — 자동 buildPreview 호출 없음
@@ -7782,7 +7749,7 @@ struct ShareCardScreen: View {
     }
 
     // 저장 트리거 전체 (모두 이 함수를 경유 → upsert 또는 delete-on-empty, append 경로 없음):
-    // ① onChange(of: oneLinerText)   — 키 입력마다
+    // ① onChange(of: oneLinerVM.oneLinerText)   — 키 입력마다
     // ② 9앵커(position) 칩 탭
     // ③ 폰트 칩 탭
     // ④ 색 칩 탭
@@ -7790,7 +7757,7 @@ struct ShareCardScreen: View {
     // ⑥ 날짜 토글                    — showDate 변경 시 (해당 버튼 액션에 포함)
     private func saveOneLinerSettings() {
         let mediaRef = computeOneLinerMediaRef()
-        let trimmed  = oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed  = oneLinerVM.oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let existing = oneLinerEntries.first(where: { $0.mediaRef == mediaRef }) {
             // 빈 문구: 기존 entry 삭제 — 빈 텍스트 entry 잔류 방지
@@ -7800,16 +7767,16 @@ struct ShareCardScreen: View {
                 return
             }
             // 변경 없으면 스킵
-            guard existing.text      != oneLinerText     ||
-                  existing.font      != oneLinerFont     ||
-                  existing.textColor != oneLinerColor    ||
-                  existing.position  != oneLinerPosition ||
-                  existing.showDate  != oneLinerShowDate else { return }
-            existing.text      = oneLinerText
-            existing.font      = oneLinerFont
-            existing.textColor = oneLinerColor
-            existing.position  = oneLinerPosition
-            existing.showDate  = oneLinerShowDate
+            guard existing.text      != oneLinerVM.oneLinerText     ||
+                  existing.font      != oneLinerVM.oneLinerFont     ||
+                  existing.textColor != oneLinerVM.oneLinerColor    ||
+                  existing.position  != oneLinerVM.oneLinerPosition ||
+                  existing.showDate  != oneLinerVM.oneLinerShowDate else { return }
+            existing.text      = oneLinerVM.oneLinerText
+            existing.font      = oneLinerVM.oneLinerFont
+            existing.textColor = oneLinerVM.oneLinerColor
+            existing.position  = oneLinerVM.oneLinerPosition
+            existing.showDate  = oneLinerVM.oneLinerShowDate
             try? modelContext.save()
             return
         }
@@ -7817,11 +7784,11 @@ struct ShareCardScreen: View {
         // 신규 entry: 문구가 있고 5개 미만일 때만 생성
         guard !trimmed.isEmpty, oneLinerEntries.count < 5 else { return }
         let entry = OneLinerEntry(workoutID: activity.id.uuidString, mediaRef: mediaRef)
-        entry.text      = oneLinerText
-        entry.font      = oneLinerFont
-        entry.textColor = oneLinerColor
-        entry.position  = oneLinerPosition
-        entry.showDate  = oneLinerShowDate
+        entry.text      = oneLinerVM.oneLinerText
+        entry.font      = oneLinerVM.oneLinerFont
+        entry.textColor = oneLinerVM.oneLinerColor
+        entry.position  = oneLinerVM.oneLinerPosition
+        entry.showDate  = oneLinerVM.oneLinerShowDate
         modelContext.insert(entry)
         try? modelContext.save()
     }
@@ -7861,7 +7828,7 @@ struct ShareCardScreen: View {
         isBatchExporting = true
         defer { isBatchExporting = false }
 
-        for i in storyPhotoUUIDs.indices {
+        for i in oneLinerVM.storyPhotoUUIDs.indices {
             guard i < storyPhotos.count else { continue }
             // 내보내기 시점엔 @Query 갱신 완료 — photoRecipe 사용
             guard let pr = photoRecipe(at: i, prefix: "photo:") else { continue }
@@ -7871,7 +7838,7 @@ struct ShareCardScreen: View {
             guard hasText || hasMetrics || hasChart else { continue }
 
             let text  = pr.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n")
-            let photo = highQualityStoryPhotos[i] ?? storyPhotos[i]
+            let photo = oneLinerVM.highQualityStoryPhotos[i] ?? storyPhotos[i]
             let card = OneLinerCard(
                 activity: activity,
                 backgroundPhoto: photo,
@@ -7885,7 +7852,7 @@ struct ShareCardScreen: View {
                 hasBorder: pr.hasBorder,
                 plateOn: pr.plateOn,
                 plateColorPreset: pr.plateColorPreset,
-                showDate: oneLinerShowDate,
+                showDate: oneLinerVM.oneLinerShowDate,
                 captionMode: true,
                 chartBottomReserved: storyChartBottomReserved(for: pr),
                 metricPace: pr.metricPace,
@@ -8075,29 +8042,29 @@ struct ShareCardScreen: View {
             let idx   = cardPhotoIndex[1]
             let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
                      ?? (!storyPhotos.isEmpty ? storyPhotos[0] : nil)
-            // @Query 갱신 타이밍 이슈 우회: 편집 직후엔 cachedStoryRecipes 사용
+            // @Query 갱신 타이밍 이슈 우회: 편집 직후엔 oneLinerVM.cachedStoryRecipes 사용
             let pr: ClipRecipe?
             let prIdx = idx ?? 0
-            if !cachedStoryRecipes.isEmpty, cachedStoryRecipes.indices.contains(prIdx) {
-                pr = cachedStoryRecipes[prIdx]
+            if !oneLinerVM.cachedStoryRecipes.isEmpty, oneLinerVM.cachedStoryRecipes.indices.contains(prIdx) {
+                pr = oneLinerVM.cachedStoryRecipes[prIdx]
             } else {
                 pr = photoRecipe(at: prIdx, prefix: "photo:")
             }
-            let text  = pr?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n") ?? oneLinerText
+            let text  = pr?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n") ?? oneLinerVM.oneLinerText
             let card = OneLinerCard(
                 activity: activity,
                 backgroundPhoto: photo,
                 text: text,
-                position: pr?.position ?? oneLinerPosition,
-                textColor: pr?.textColor ?? oneLinerColor,
-                fontChoice: pr?.fontChoice ?? oneLinerFont,
+                position: pr?.position ?? oneLinerVM.oneLinerPosition,
+                textColor: pr?.textColor ?? oneLinerVM.oneLinerColor,
+                fontChoice: pr?.fontChoice ?? oneLinerVM.oneLinerFont,
                 sizeLevel: pr?.sizeLevel ?? .large,
                 appearanceMode: pr?.appearanceMode ?? .typing,
                 decorEffect: pr?.decorEffect ?? .none,
                 hasBorder: pr?.hasBorder ?? false,
                 plateOn: pr?.plateOn ?? false,
                 plateColorPreset: pr?.plateColorPreset ?? .blackWhite,
-                showDate: oneLinerShowDate,
+                showDate: oneLinerVM.oneLinerShowDate,
                 captionMode: true,
                 chartBottomReserved: storyChartBottomReserved(for: pr),
                 metricPace: pr?.metricPace ?? false,
@@ -8288,12 +8255,12 @@ struct ShareCardScreen: View {
             guard photo.photoUUID.contains("/") else { continue }
             let assets = PHAsset.fetchAssets(withLocalIdentifiers: [photo.photoUUID], options: nil)
             if assets.count == 0 {
-                deletedPhotoIndices.insert(idx)
+                oneLinerVM.deletedPhotoIndices.insert(idx)
                 continue
             }
             guard let asset = assets.firstObject else { continue }
             if let img = await loadImageFromPHAsset(asset) {
-                highQualityStoryPhotos[idx] = img
+                oneLinerVM.highQualityStoryPhotos[idx] = img
             }
         }
     }
@@ -8331,19 +8298,19 @@ struct ShareCardScreen: View {
         var newPhotos = allPhotos
         newPhotos.remove(at: index)
 
-        var newUUIDs = storyPhotoUUIDs
+        var newUUIDs = oneLinerVM.storyPhotoUUIDs
         if index < newUUIDs.count { newUUIDs.remove(at: index) }
-        storyPhotoUUIDs = newUUIDs
+        oneLinerVM.storyPhotoUUIDs = newUUIDs
 
-        // highQualityStoryPhotos 인덱스 재매핑
+        // oneLinerVM.highQualityStoryPhotos 인덱스 재매핑
         var remapped: [Int: UIImage] = [:]
-        for (k, v) in highQualityStoryPhotos where k != index {
+        for (k, v) in oneLinerVM.highQualityStoryPhotos where k != index {
             remapped[k > index ? k - 1 : k] = v
         }
-        highQualityStoryPhotos = remapped
+        oneLinerVM.highQualityStoryPhotos = remapped
 
-        // deletedPhotoIndices 재매핑
-        deletedPhotoIndices = Set(deletedPhotoIndices.compactMap { idx -> Int? in
+        // oneLinerVM.deletedPhotoIndices 재매핑
+        oneLinerVM.deletedPhotoIndices = Set(oneLinerVM.deletedPhotoIndices.compactMap { idx -> Int? in
             if idx == index { return nil }
             return idx > index ? idx - 1 : idx
         })
