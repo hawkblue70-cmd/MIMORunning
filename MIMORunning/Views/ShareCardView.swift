@@ -4042,54 +4042,14 @@ struct ShareCardScreen: View {
         .padding(.horizontal, 24)
     }
 
-    /// Multi-slot text input for video template OneLiner.
-    /// Each slot becomes one line in the multi-page typing animation.
+    // → OneLinerControls.swift: OneLinerVideoSlotInputView
     @ViewBuilder
     private var oneLinerVideoSlotInput: some View {
-        let L = AppLanguage.shared
-        VStack(spacing: 6) {
-            ForEach(0..<oneLinerVM.oneLinerVideoSlotCount, id: \.self) { idx in
-                HStack(spacing: 8) {
-                    Text("\(idx + 1)")
-                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(Color(hex: "6E6E78"))
-                        .frame(width: 18, alignment: .trailing)
-                    let placeholder = L.s("슬롯 \(idx + 1)", "Slot \(idx + 1)")
-                    TextField(placeholder, text: Binding(
-                        get: {
-                            idx < oneLinerVM.oneLinerVideoSlotTexts.count ? oneLinerVM.oneLinerVideoSlotTexts[idx] : ""
-                        },
-                        set: { newVal in
-                            let capped = String(newVal.prefix(24))
-                            if idx < oneLinerVM.oneLinerVideoSlotTexts.count {
-                                oneLinerVM.oneLinerVideoSlotTexts[idx] = capped
-                            }
-                            // Sync joined text → oneLinerVM.oneLinerText for preview & storage
-                            oneLinerVM.oneLinerText = oneLinerVM.oneLinerVideoSlotTexts
-                                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                                .joined(separator: "\n")
-                            saveOneLinerSettings()
-                            Task { await renderCard(showSpinner: false) }
-                        }
-                    ))
-                    .font(.system(size: 14))
-                    .foregroundStyle(.white)
-                    .tint(Theme.violet)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(Color(hex: "1E1E28"))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-        }
-        .padding(.horizontal, 24)
-
-        Text(L.s("각 칸이 영상에서 차례로 타이핑됩니다", "Each slot types in sequence on the video"))
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 4)
+        OneLinerVideoSlotInputView(
+            vm: oneLinerVM,
+            onSave:   { saveOneLinerSettings() },
+            onRender: { await renderCard(showSpinner: false) }
+        )
     }
 
     // 이 러닝의 고유 문구 풀 (같은 텍스트 중복 제거, 최신순).
@@ -4157,176 +4117,26 @@ struct ShareCardScreen: View {
         }
     }
 
-    // Position grid + font/color chips — extracted for type-checker
+    // → OneLinerControls.swift: OneLinerGridAndChipsView
     private var oneLinerGridAndChips: some View {
-        let shouldDisable = template == .video && sourceVideoURL == nil && oneLinerVM.oneLinerClipRecipes.isEmpty
-        let rows: [[CardPosition]] = [
-            [.topLeading, .top, .topTrailing],
-            [.leading, .center, .trailing],
-            [.bottomLeading, .bottom, .bottomTrailing]
-        ]
-        return HStack(alignment: .center, spacing: 20) {
-            // 3×3 position grid (same UI as placeableChipRow)
-            VStack(spacing: 4) {
-                ForEach(rows.indices, id: \.self) { row in
-                    HStack(spacing: 4) {
-                        ForEach(rows[row].indices, id: \.self) { col in
-                            let pos = rows[row][col]
-                            let isSelected = oneLinerVM.oneLinerPosition == pos
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.15)) { oneLinerVM.oneLinerPosition = pos }
-                                saveOneLinerSettings()
-                                Task { await renderCard(showSpinner: false) }
-                            } label: {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(isSelected ? Theme.violet : Color(hex: "26262E"))
-                                    .frame(width: 23, height: 23)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-            // Font chips + color chips stacked vertically
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    ForEach(OneLinerFont.allCases, id: \.self) { f in
-                        oneLinerFontChip(f)
-                    }
-                }
-                HStack(spacing: 8) {
-                    ForEach(OneLinerTextColor.allCases, id: \.self) { c in
-                        oneLinerColorChip(c)
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 24)
-        .opacity(shouldDisable ? 0.35 : 1.0)
-        .disabled(shouldDisable)
+        OneLinerGridAndChipsView(
+            vm:             oneLinerVM,
+            template:       template,
+            hasSourceVideo: sourceVideoURL != nil || !oneLinerVM.oneLinerClipRecipes.isEmpty,
+            onSave:         { saveOneLinerSettings() },
+            onRender:       { await renderCard(showSpinner: false) }
+        )
     }
 
-    // Font chip — label rendered IN the font so users preview each style before tapping
-    private func oneLinerFontChip(_ font: OneLinerFont) -> some View {
-        let isSelected = oneLinerVM.oneLinerFont == font
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { oneLinerVM.oneLinerFont = font }
-            saveOneLinerSettings()
-            Task { await renderCard(showSpinner: false) }
-        } label: {
-            HStack(spacing: 4) {
-                if isSelected {
-                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
-                }
-                Text(font.chipLabel)
-                    .font(.custom(font.fontName, size: 13))
-            }
-            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(isSelected ? Color(hex: "3A3A44") : Color.white.opacity(0.08))
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    // Color chip — same Capsule style as accent chips
-    private func oneLinerColorChip(_ textColor: OneLinerTextColor) -> some View {
-        let isSelected = oneLinerVM.oneLinerColor == textColor
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { oneLinerVM.oneLinerColor = textColor }
-            saveOneLinerSettings()
-            Task { await renderCard(showSpinner: false) }
-        } label: {
-            HStack(spacing: 6) {
-                if isSelected {
-                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
-                }
-                if textColor != .white {
-                    Circle().fill(textColor.color).frame(width: 8, height: 8)
-                }
-                Text(textColor.chipLabel).font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                isSelected
-                    ? (textColor == .white ? Color(hex: "3A3A44") : textColor.color.opacity(0.25))
-                    : Color.white.opacity(0.08)
-            )
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private let oneLinerLineCharLimit = 30
-    private var oneLinerLineCount: Int { max(1, oneLinerVM.oneLinerText.components(separatedBy: "\n").count) }
-
-    private func oneLinerLineBinding(for index: Int) -> Binding<String> {
-        Binding {
-            let lines = oneLinerVM.oneLinerText.components(separatedBy: "\n")
-            return index < lines.count ? lines[index] : ""
-        } set: { newVal in
-            var lines = oneLinerVM.oneLinerText.components(separatedBy: "\n")
-            while lines.count <= index { lines.append("") }
-            lines[index] = String(newVal.prefix(oneLinerLineCharLimit))
-            oneLinerVM.oneLinerText = lines.prefix(oneLinerLineCount).joined(separator: "\n")
-            saveOneLinerSettings()
-            Task { await renderCard(showSpinner: false) }
-        }
-    }
-
-    // Text input field with per-line 30-char limit and + button for adding lines
+    // → OneLinerControls.swift: OneLinerTextFieldView
     @ViewBuilder
     private var oneLinerTextField: some View {
-        HStack(alignment: .center, spacing: 8) {
-            VStack(spacing: 6) {
-                ForEach(0..<oneLinerLineCount, id: \.self) { i in
-                    let lineText = { () -> String in
-                        let lines = oneLinerVM.oneLinerText.components(separatedBy: "\n")
-                        return i < lines.count ? lines[i] : ""
-                    }()
-                    HStack(spacing: 8) {
-                        TextField(
-                            AppLanguage.shared.s(i == 0 ? "오늘의 한마디" : "\(i + 1)번째 줄",
-                                                 i == 0 ? "Your one-liner" : "Line \(i + 1)"),
-                            text: oneLinerLineBinding(for: i)
-                        )
-                        .focused($oneLinerFocusedLine, equals: i)
-                        .font(.system(size: 15))
-                        .foregroundStyle(.white)
-                        .tint(Theme.violet)
-                        Spacer(minLength: 0)
-                        Text("\(lineText.count)/\(oneLinerLineCharLimit)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color(hex: "6E6E78"))
-                            .monospacedDigit()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color(hex: "1E1E28"))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-            }
-
-            if oneLinerLineCount < 3 {
-                Button {
-                    oneLinerVM.oneLinerText += "\n"
-                    saveOneLinerSettings()
-                    Task { await renderCard(showSpinner: false) }
-                    let idx = oneLinerLineCount - 1
-                    Task { @MainActor in oneLinerFocusedLine = idx }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(Theme.violet)
-                        .frame(width: 36, height: 36)
-                }
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 4)
+        OneLinerTextFieldView(
+            vm:          oneLinerVM,
+            focusedLine: $oneLinerFocusedLine,
+            onSave:      { saveOneLinerSettings() },
+            onRender:    { await renderCard(showSpinner: false) }
+        )
     }
 
     // Chip row for ECG card: pace / HR source radio + accent selector
