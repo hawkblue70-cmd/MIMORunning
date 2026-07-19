@@ -3845,40 +3845,9 @@ struct ShareCardScreen: View {
         }
     }
 
+    // → SkyControls.swift: SkyAccentRowView
     private var skyAccentRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                skyAccentChip(.none,   AppLanguage.shared.s("자동", "Auto"),   .white)
-                skyAccentChip(.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF"))
-                skyAccentChip(.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 2)
-        }
-    }
-
-    private func skyAccentChip(_ accent: CardAccent, _ label: String, _ color: Color) -> some View {
-        let isSelected = skyVM.skyAccent == accent
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { skyVM.skyAccent = accent }
-            Task { await renderCard(showSpinner: false) }
-        } label: {
-            HStack(spacing: 6) {
-                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
-                Circle().fill(color).frame(width: 8, height: 8)
-                Text(label).font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                isSelected
-                    ? (accent == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
-                    : Color.white.opacity(0.08)
-            )
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
+        SkyAccentRowView(vm: skyVM, onRender: { await renderCard(showSpinner: false) })
     }
 
     // Chip row selector — extracted from body to keep the body's type-check surface small.
@@ -3898,41 +3867,10 @@ struct ShareCardScreen: View {
         // Race ticket → EmptyView (gold fixed, no accent selection needed)
     }
 
-    // Chip row for Ticket card (non-race only): accent colour for FROM text + route line
-    // Race ticket hides this row entirely — gold is always fixed.
+    // → TicketControls.swift: TicketAccentRowView
+    // Race ticket hides this row entirely (confirmedRace != nil) — gold is always fixed.
     private var ticketAccentRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ticketAccentChip(.none, AppLanguage.shared.s("자동", "Auto"),   .white)
-                ticketAccentChip(.gold, AppLanguage.shared.s("골드", "Gold"),   Color(hex: "FFC74D"))
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 2)
-        }
-    }
-
-    private func ticketAccentChip(_ a: CardAccent, _ label: String, _ color: Color) -> some View {
-        let isSelected = ticketVM.ticketAccent == a
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { ticketVM.ticketAccent = a }
-            Task { await renderCard(showSpinner: false) }
-        } label: {
-            HStack(spacing: 6) {
-                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
-                if a != .none  { Circle().fill(color).frame(width: 8, height: 8) }
-                Text(label).font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                isSelected
-                    ? (a == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
-                    : Color.white.opacity(0.08)
-            )
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
+        TicketAccentRowView(vm: ticketVM, onRender: { await renderCard(showSpinner: false) })
     }
 
     // Height of the card section: 9:16 (≈533pt) for slide/video templates, 375pt otherwise.
@@ -4139,81 +4077,9 @@ struct ShareCardScreen: View {
         )
     }
 
-    // Chip row for ECG card: pace / HR source radio + accent selector
+    // → ECGControls.swift: ECGChipRowView
     private var ecgChipRow: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ecgSourceChip(label: AppLanguage.shared.s("페이스", "Pace"), icon: "figure.run", isPace: true)
-                    ecgSourceChip(label: AppLanguage.shared.s("심박", "HR"),  icon: "heart.fill",  isPace: false)
-                        .opacity(ecgVM.hrWaveform == nil ? 0.4 : 1.0)
-                        .disabled(ecgVM.hrWaveform == nil)
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 2)
-            }
-            ecgAccentRow
-        }
-    }
-
-    private var ecgAccentRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ecgAccentChip(.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF"))
-                ecgAccentChip(.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
-                ecgAccentChip(.none,   AppLanguage.shared.s("흰색",     "White"),  .white)
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 2)
-        }
-    }
-
-    private func ecgAccentChip(_ accent: CardAccent, _ label: String, _ color: Color) -> some View {
-        let isSelected = ecgVM.ecgAccent == accent
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { ecgVM.ecgAccent = accent }
-            Task { await renderCard(showSpinner: false) }
-        } label: {
-            HStack(spacing: 6) {
-                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
-                Circle().fill(color).frame(width: 8, height: 8)
-                Text(label).font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                isSelected
-                    ? (accent == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
-                    : Color.white.opacity(0.08)
-            )
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func ecgSourceChip(label: String, icon: String, isPace: Bool) -> some View {
-        let isSelected = ecgVM.ecgShowPace == isPace
-        let available  = isPace ? true : ecgVM.hrWaveform != nil
-        return Button {
-            guard available else { return }
-            withAnimation(.easeInOut(duration: 0.15)) { ecgVM.ecgShowPace = isPace }
-            Task { await renderCard(showSpinner: false) }
-        } label: {
-            HStack(spacing: 4) {
-                if isSelected {
-                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
-                }
-                Image(systemName: icon).font(.system(size: 10))
-                Text(label).font(.caption.weight(.semibold)).lineLimit(1)
-            }
-            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.4))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(isSelected ? Theme.violet : Color.white.opacity(available ? 0.08 : 0.04))
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
+        ECGChipRowView(vm: ecgVM, onRender: { await renderCard(showSpinner: false) })
     }
 
     // Placeable·OneLiner는 3탭(스토리/영상/슬라이드)만, 그 외 카드는 전체 목록.
