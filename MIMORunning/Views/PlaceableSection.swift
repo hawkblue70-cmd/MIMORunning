@@ -40,3 +40,10 @@ func placeableStorySmallChip(_ label: String, isSelected: Bool) -> some View {
     .background(isSelected ? Theme.violet : Color.white.opacity(0.08))
     .clipShape(Capsule())
 }
+
+// CardPosition → HorizRow 변환 유틸리티 — Placeable 가로 레이아웃 전용.
+func posRow(_ pos: CardPosition) -> HorizRow {
+    if pos.isTop    { return .top }
+    if pos.isBottom { return .bottom }
+    return .middle
+}

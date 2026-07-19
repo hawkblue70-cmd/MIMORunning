@@ -3030,7 +3030,7 @@ struct ShareCardScreen: View {
                                         Button {
                                             withAnimation(.easeInOut(duration: 0.15)) {
                                                 placeableVM.placeableHorizTextRow = pr
-                                                handleHorizTextRowChange(pr)
+                                                placeableVM.handleHorizTextRowChange(pr)
                                             }
                                             Task { await renderCard(showSpinner: false) }
                                         } label: {
@@ -4245,20 +4245,6 @@ struct ShareCardScreen: View {
 
     // MARK: - Placeable card horizontal mode helpers
 
-    private func posRow(_ pos: CardPosition) -> HorizRow {
-        if pos.isTop    { return .top }
-        if pos.isBottom { return .bottom }
-        return .middle
-    }
-
-    private func handleHorizTextRowChange(_ newRow: HorizRow) {
-        guard posRow(placeableVM.placeableHorizRoutePos) == newRow else { return }
-        switch newRow {
-        case .top, .bottom: placeableVM.placeableHorizRoutePos = .center
-        case .middle:       placeableVM.placeableHorizRoutePos = .bottom
-        }
-    }
-
     // MARK: - Placeable card chip row (position grid + size + accent chips)
 
     private var placeableChipRow: some View {
@@ -4322,7 +4308,7 @@ struct ShareCardScreen: View {
                                         Button {
                                             withAnimation(.easeInOut(duration: 0.15)) {
                                                 placeableVM.placeableHorizTextRow = pr
-                                                handleHorizTextRowChange(pr)
+                                                placeableVM.handleHorizTextRowChange(pr)
                                             }
                                             Task { await renderCard(showSpinner: false) }
                                         } label: {

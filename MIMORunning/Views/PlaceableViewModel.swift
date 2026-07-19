@@ -51,6 +51,17 @@ final class PlaceableViewModel {
     var slideDecorEffect: DecorEffect = .none
     var slideFlyDirection: FlyInDirection = .trailing
 
+    // MARK: - Actions
+
+    // 가로 레이아웃에서 데이터 행이 변경될 때 경로 위치 충돌 방지.
+    func handleHorizTextRowChange(_ newRow: HorizRow) {
+        guard posRow(placeableHorizRoutePos) == newRow else { return }
+        switch newRow {
+        case .top, .bottom: placeableHorizRoutePos = .center
+        case .middle:       placeableHorizRoutePos = .bottom
+        }
+    }
+
     // MARK: - Computed layout insets (story text overlay)
 
     // OneLinerCard 내부에서 각 값에 8pt를 추가로 더함.
