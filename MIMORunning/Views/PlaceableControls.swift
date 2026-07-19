@@ -81,34 +81,37 @@ struct PlaceableTrimRowView: View {
                     onSaveVideoClips()
                 }
             )
-            let lineText = vm.placeableClipRecipes[idx].lines.first ?? ""
             VStack(spacing: 6) {
-                HStack(spacing: 8) {
-                    TextField(
-                        AppLanguage.shared.s(
-                            vm.placeableClipRecipes.count > 1
-                                ? "\(idx + 1)번 클립 한마디"
-                                : "클립 한마디",
-                            vm.placeableClipRecipes.count > 1
-                                ? "Clip \(idx + 1) caption"
-                                : "Caption"),
-                        text: lineBinding
-                    )
-                    .font(.system(size: 15))
-                    .foregroundStyle(.white)
-                    .tint(Theme.violet)
-                    .onSubmit { Task { await onLoadPreview() } }
-                    Spacer(minLength: 0)
-                    Text("\(lineText.count)/30")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color(hex: "6E6E78"))
-                        .monospacedDigit()
+                // 텍스트 필드: "문구" 탭 선택 시 chip row에 이미 표시되므로 여기서는 숨김
+                if !vm.placeableStoryTabIsText {
+                    let lineText = vm.placeableClipRecipes[idx].lines.first ?? ""
+                    HStack(spacing: 8) {
+                        TextField(
+                            AppLanguage.shared.s(
+                                vm.placeableClipRecipes.count > 1
+                                    ? "\(idx + 1)번 클립 한마디"
+                                    : "클립 한마디",
+                                vm.placeableClipRecipes.count > 1
+                                    ? "Clip \(idx + 1) caption"
+                                    : "Caption"),
+                            text: lineBinding
+                        )
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white)
+                        .tint(Theme.violet)
+                        .onSubmit { Task { await onLoadPreview() } }
+                        Spacer(minLength: 0)
+                        Text("\(lineText.count)/30")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(hex: "6E6E78"))
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "1E1E28"))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal, 24)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color(hex: "1E1E28"))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .padding(.horizontal, 24)
                 HStack {
                     Text("\(fmt(r.trimStart)) – \(fmt(r.trimEnd))  ·  \(fmt(used)) 사용")
                         .font(.system(size: 13, weight: .medium))
@@ -505,6 +508,41 @@ struct PlaceableStoryModeChipRowView: View {
     // 오른쪽: 문구 스타일 컨트롤
     private var textStyleControls: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // 영상 템플릿: 텍스트 입력 필드를 스타일 컨트롤 최상단에 표시
+            if template == .video, !vm.placeableClipRecipes.isEmpty {
+                let idx = min(vm.selectedPlaceableClipIndex, vm.placeableClipRecipes.count - 1)
+                let lineBinding = Binding<String>(
+                    get: { vm.placeableClipRecipes[idx].lines.first ?? "" },
+                    set: { val in
+                        if vm.placeableClipRecipes[idx].lines.isEmpty {
+                            vm.placeableClipRecipes[idx].lines = [String(val.prefix(30))]
+                        } else {
+                            vm.placeableClipRecipes[idx].lines[0] = String(val.prefix(30))
+                        }
+                        onSaveVideoClips()
+                    }
+                )
+                HStack(spacing: 6) {
+                    TextField(
+                        vm.placeableClipRecipes.count > 1
+                            ? AppLanguage.shared.s("\(idx + 1)번 클립 한마디", "Clip \(idx + 1) caption")
+                            : AppLanguage.shared.s("클립 한마디", "Caption"),
+                        text: lineBinding
+                    )
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white)
+                    .tint(Theme.violet)
+                    .onSubmit { Task { await onLoadPreview() } }
+                    Text("\((vm.placeableClipRecipes[idx].lines.first ?? "").count)/30")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(Color(hex: "1E1E28"))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
             // 크기 + 음소거 (영상)
             HStack(spacing: 6) {
                 ForEach(TextSizeLevel.allCases, id: \.self) { sz in
