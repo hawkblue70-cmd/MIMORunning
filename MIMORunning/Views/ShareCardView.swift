@@ -1782,6 +1782,16 @@ struct ShareCardScreen: View {
     @State var placeableVM = PlaceableViewModel()
     // OneLiner card ViewModel (cardIndex == 1 전용)
     @State var oneLinerVM = OneLinerViewModel()
+    // Athletic card ViewModel (cardIndex == 2; athleticClipRecipes는 BigNumber와 공유)
+    @State var athleticVM = AthleticViewModel()
+    // BigNumber card ViewModel (cardIndex == 3)
+    @State var bigNumberVM = BigNumberViewModel()
+    // Sky card ViewModel (cardIndex == 4)
+    @State var skyVM = SkyViewModel()
+    // ECG card ViewModel (cardIndex == 5)
+    @State var ecgVM = ECGViewModel()
+    // Ticket card ViewModel (cardIndex == 6)
+    @State var ticketVM = TicketViewModel()
     // Video
     @State private var videoPickerItem: PhotosPickerItem?
     @State private var sourceVideoURL: URL?
@@ -1791,12 +1801,6 @@ struct ShareCardScreen: View {
     @State private var videoExportError: String?
     @State private var showVideoExportError = false
     @State private var isBatchExporting = false
-    // Athletic 영상 템플릿 멀티 클립 (최대 5개)
-    @State private var athleticClipRecipes: [ClipRecipe] = []
-    @State private var athleticPickerItems: [PhotosPickerItem] = []
-    @State private var athleticVideoState  = PlaceableVideoState()
-    @State private var athleticPreviewBuilding = false
-    @State private var athleticMuted: Bool = false
     @State private var showExportedVideoWarning = false
     // Route video
     @State private var routeSnapshot: UIImage?
@@ -1814,9 +1818,6 @@ struct ShareCardScreen: View {
     @State private var cardIndex = 0
     @State private var cardPhotoIndex: [Int: Int] = [:]
     @State private var heroMetric: HeroMetric = .distance
-    @State private var bigNumberShowMood: Bool = true
-    @State private var bigNumberShowMemo: Bool = true
-    @State private var bigNumberAccent: CardAccent = .violet
 
     private var isPlaceable: Bool  { cardIndex == 0 }
     private var isOneLiner: Bool   { cardIndex == 1 }
@@ -1997,17 +1998,6 @@ struct ShareCardScreen: View {
     }
 
     // Placeable story text overlay
-    // ECG card
-    @State private var paceWaveform:     ECGWaveform? = nil
-    @State private var hrWaveform:       ECGWaveform? = nil
-    @State private var ecgShowPace:      Bool         = true
-    @State private var ecgDataAvailable: Bool?        = nil
-    @State private var ecgAccent:        CardAccent   = .violet
-    // Sky card
-    @State private var skyAccent:        CardAccent   = .none
-    // Ticket card
-    @State private var ticketDepartureName: String = "RUN"
-    @State private var ticketAccent: CardAccent = .none    // race ticket ignores this (gold fixed)
     // OneLiner card
     @FocusState private var oneLinerFieldFocused: Bool
     @FocusState private var oneLinerFocusedLine: Int?
@@ -2495,13 +2485,13 @@ struct ShareCardScreen: View {
                 snapshotPoints: routeSnapshotPoints,
                 routeProgress: routePreviewProgress,
                 activity: activity, detail: detail, heroMetric: heroMetric,
-                mood: bigNumberShowMood ? story?.mood : nil,
-                memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
+                mood: bigNumberVM.bigNumberShowMood ? story?.mood : nil,
+                memoText: bigNumberVM.bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                 weatherText: condition?.weather?.formattedTemp,
                 weatherIcon: condition?.weather?.systemIcon,
                 date: activity.date,
                 shoeName: displayShoeName,
-                accent: bigNumberAccent,
+                accent: bigNumberVM.bigNumberAccent,
                 hrSamplesForRoute: shareHRSamples,
                 routeWorkoutDuration: activity.duration,
                 routeZoneBounds: shareZoneBounds,
@@ -2512,8 +2502,8 @@ struct ShareCardScreen: View {
         } else {
             BigNumberCard(
                 activity: activity, detail: detail, heroMetric: heroMetric,
-                mood: bigNumberShowMood ? story?.mood : nil,
-                memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
+                mood: bigNumberVM.bigNumberShowMood ? story?.mood : nil,
+                memoText: bigNumberVM.bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
                 weatherText: condition?.weather?.formattedTemp,
                 weatherIcon: condition?.weather?.systemIcon,
                 date: activity.date,
@@ -2521,7 +2511,7 @@ struct ShareCardScreen: View {
                 photo: template == .video ? videoPreviewImage : template == .story ? photoFor(3) : nil,
                 chartPanel: .map,
                 routeCoordinates: routeCoords,
-                accent: bigNumberAccent,
+                accent: bigNumberVM.bigNumberAccent,
                 showHRGradient: showHRGradientForRoute,
                 hrSamplesForRoute: shareHRSamples,
                 routeWorkoutDuration: activity.duration,
@@ -3379,25 +3369,25 @@ struct ShareCardScreen: View {
             activity: activity,
             weather: condition?.weather,
             shoeName: displayShoeName,
-            accent: skyAccent
+            accent: skyVM.skyAccent
         )
     }
 
     @ViewBuilder
     private var ecgCardPreview: some View {
-        let activeWaveform = ecgShowPace ? (paceWaveform ?? hrWaveform) : (hrWaveform ?? paceWaveform)
+        let activeWaveform = ecgVM.ecgShowPace ? (ecgVM.paceWaveform ?? ecgVM.hrWaveform) : (ecgVM.hrWaveform ?? ecgVM.paceWaveform)
         if let waveform = activeWaveform {
             ECGSignatureCard(
                 activity: activity,
                 waveform: waveform,
                 weather: condition?.weather,
                 shoeName: displayShoeName,
-                accent: ecgAccent
+                accent: ecgVM.ecgAccent
             )
         } else {
             ZStack {
                 Color(hex: "0D0D12")
-                if ecgDataAvailable == nil {
+                if ecgVM.ecgDataAvailable == nil {
                     ProgressView().tint(Theme.violet)
                 } else {
                     Image(systemName: "waveform.path.ecg")
@@ -3415,10 +3405,10 @@ struct ShareCardScreen: View {
             splits: detail?.splits ?? [],
             raceName: confirmedRace?.raceName,
             shoeName: displayShoeName,
-            departureName: ticketDepartureName,
+            departureName: ticketVM.ticketDepartureName,
             raceDistanceKm: confirmedRace?.distanceKm,
             raceStartTimeString: confirmedBundledRace?.startTimeString,
-            accent: ticketAccent
+            accent: ticketVM.ticketAccent
         )
     }
 
@@ -3967,7 +3957,7 @@ struct ShareCardScreen: View {
                         .frame(width: w, height: 375)
                         .id(4)
                     // 5: ECG (데이터 없으면 숨김)
-                    if ecgDataAvailable != false {
+                    if ecgVM.ecgDataAvailable != false {
                         AnyView(ecgCardPreview)
                             .frame(width: 300, height: 375)
                             .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -4001,7 +3991,7 @@ struct ShareCardScreen: View {
             pageDot(2) // Athletic
             pageDot(3) // BigNumber
             pageDot(4) // Sky
-            if ecgDataAvailable != false { pageDot(5) } // ECG
+            if ecgVM.ecgDataAvailable != false { pageDot(5) } // ECG
             pageDot(6) // Ticket
         }
         .padding(.top, 6)
@@ -4089,10 +4079,10 @@ struct ShareCardScreen: View {
                     lockedChip(AppLanguage.shared.s("인사이트", "Insight"), icon: "sparkles")
                     if let s = story {
                         Button {
-                            bigNumberShowMood.toggle()
+                            bigNumberVM.bigNumberShowMood.toggle()
                             Task { await renderCard(showSpinner: false) }
                         } label: {
-                            if bigNumberShowMood {
+                            if bigNumberVM.bigNumberShowMood {
                                 activeChip(AppLanguage.shared.s("느낌", "Mood"), icon: s.mood.sfSymbol)
                             } else {
                                 availableChip(AppLanguage.shared.s("느낌", "Mood"), icon: s.mood.sfSymbol)
@@ -4101,10 +4091,10 @@ struct ShareCardScreen: View {
                         .buttonStyle(.plain)
                         if !s.memo.isEmpty {
                             Button {
-                                bigNumberShowMemo.toggle()
+                                bigNumberVM.bigNumberShowMemo.toggle()
                                 Task { await renderCard(showSpinner: false) }
                             } label: {
-                                if bigNumberShowMemo {
+                                if bigNumberVM.bigNumberShowMemo {
                                     activeChip(AppLanguage.shared.s("메모", "Memo"))
                                 } else {
                                     availableChip(AppLanguage.shared.s("메모", "Memo"))
@@ -4185,9 +4175,9 @@ struct ShareCardScreen: View {
     }
 
     private func bigNumberAccentChip(_ accent: CardAccent, _ label: String, _ color: Color) -> some View {
-        let isSelected = bigNumberAccent == accent
+        let isSelected = bigNumberVM.bigNumberAccent == accent
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { bigNumberAccent = accent }
+            withAnimation(.easeInOut(duration: 0.15)) { bigNumberVM.bigNumberAccent = accent }
             Task { await renderCard(showSpinner: false) }
         } label: {
             HStack(spacing: 6) {
@@ -4499,9 +4489,9 @@ struct ShareCardScreen: View {
     }
 
     private func skyAccentChip(_ accent: CardAccent, _ label: String, _ color: Color) -> some View {
-        let isSelected = skyAccent == accent
+        let isSelected = skyVM.skyAccent == accent
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { skyAccent = accent }
+            withAnimation(.easeInOut(duration: 0.15)) { skyVM.skyAccent = accent }
             Task { await renderCard(showSpinner: false) }
         } label: {
             HStack(spacing: 6) {
@@ -4553,9 +4543,9 @@ struct ShareCardScreen: View {
     }
 
     private func ticketAccentChip(_ a: CardAccent, _ label: String, _ color: Color) -> some View {
-        let isSelected = ticketAccent == a
+        let isSelected = ticketVM.ticketAccent == a
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { ticketAccent = a }
+            withAnimation(.easeInOut(duration: 0.15)) { ticketVM.ticketAccent = a }
             Task { await renderCard(showSpinner: false) }
         } label: {
             HStack(spacing: 6) {
@@ -4977,8 +4967,8 @@ struct ShareCardScreen: View {
                 HStack(spacing: 8) {
                     ecgSourceChip(label: AppLanguage.shared.s("페이스", "Pace"), icon: "figure.run", isPace: true)
                     ecgSourceChip(label: AppLanguage.shared.s("심박", "HR"),  icon: "heart.fill",  isPace: false)
-                        .opacity(hrWaveform == nil ? 0.4 : 1.0)
-                        .disabled(hrWaveform == nil)
+                        .opacity(ecgVM.hrWaveform == nil ? 0.4 : 1.0)
+                        .disabled(ecgVM.hrWaveform == nil)
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 2)
@@ -5000,9 +4990,9 @@ struct ShareCardScreen: View {
     }
 
     private func ecgAccentChip(_ accent: CardAccent, _ label: String, _ color: Color) -> some View {
-        let isSelected = ecgAccent == accent
+        let isSelected = ecgVM.ecgAccent == accent
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { ecgAccent = accent }
+            withAnimation(.easeInOut(duration: 0.15)) { ecgVM.ecgAccent = accent }
             Task { await renderCard(showSpinner: false) }
         } label: {
             HStack(spacing: 6) {
@@ -5024,11 +5014,11 @@ struct ShareCardScreen: View {
     }
 
     private func ecgSourceChip(label: String, icon: String, isPace: Bool) -> some View {
-        let isSelected = ecgShowPace == isPace
-        let available  = isPace ? true : hrWaveform != nil
+        let isSelected = ecgVM.ecgShowPace == isPace
+        let available  = isPace ? true : ecgVM.hrWaveform != nil
         return Button {
             guard available else { return }
-            withAnimation(.easeInOut(duration: 0.15)) { ecgShowPace = isPace }
+            withAnimation(.easeInOut(duration: 0.15)) { ecgVM.ecgShowPace = isPace }
             Task { await renderCard(showSpinner: false) }
         } label: {
             HStack(spacing: 4) {
@@ -5191,7 +5181,7 @@ struct ShareCardScreen: View {
                     // 썸네일 row
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            ForEach($athleticClipRecipes) { $recipe in
+                            ForEach(Bindable(athleticVM).athleticClipRecipes) { $recipe in
                                 ZStack(alignment: .topTrailing) {
                                     ZStack(alignment: .bottomTrailing) {
                                         Group {
@@ -5218,13 +5208,13 @@ struct ShareCardScreen: View {
                                     }
                                     Button {
                                         let rid = recipe.id
-                                        athleticClipRecipes.removeAll { $0.id == rid }
-                                        if athleticClipRecipes.isEmpty {
+                                        athleticVM.athleticClipRecipes.removeAll { $0.id == rid }
+                                        if athleticVM.athleticClipRecipes.isEmpty {
                                             sourceVideoURL    = nil
                                             videoPreviewImage = nil
                                         } else {
-                                            sourceVideoURL    = athleticClipRecipes.first?.url
-                                            videoPreviewImage = athleticClipRecipes.first?.thumbnail
+                                            sourceVideoURL    = athleticVM.athleticClipRecipes.first?.url
+                                            videoPreviewImage = athleticVM.athleticClipRecipes.first?.thumbnail
                                         }
                                         exportedVideoFile = nil
                                     } label: {
@@ -5240,10 +5230,10 @@ struct ShareCardScreen: View {
                                 }
                             }
                             // + 추가 버튼 (최대 5개)
-                            if athleticClipRecipes.count < 5 {
+                            if athleticVM.athleticClipRecipes.count < 5 {
                                 PhotosPicker(
-                                    selection: $athleticPickerItems,
-                                    maxSelectionCount: 5 - athleticClipRecipes.count,
+                                    selection: Bindable(athleticVM).athleticPickerItems,
+                                    maxSelectionCount: 5 - athleticVM.athleticClipRecipes.count,
                                     matching: .videos,
                                     photoLibrary: .shared()
                                 ) {
@@ -5261,36 +5251,36 @@ struct ShareCardScreen: View {
                     }
                     // 음소거 토글
                     Button {
-                        athleticMuted.toggle()
-                        athleticVideoState.player?.isMuted = athleticMuted
+                        athleticVM.athleticMuted.toggle()
+                        athleticVM.athleticVideoState.player?.isMuted = athleticVM.athleticMuted
                         exportedVideoFile = nil
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: athleticMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            Image(systemName: athleticVM.athleticMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                                 .font(.system(size: 13, weight: .medium))
                             Text(AppLanguage.shared.s(
-                                athleticMuted ? "음소거" : "소리 켜짐",
-                                athleticMuted ? "Muted" : "Sound On"
+                                athleticVM.athleticMuted ? "음소거" : "소리 켜짐",
+                                athleticVM.athleticMuted ? "Muted" : "Sound On"
                             ))
                             .font(.system(size: 13, weight: .medium))
                         }
-                        .foregroundStyle(athleticMuted ? .secondary : Theme.violet)
+                        .foregroundStyle(athleticVM.athleticMuted ? .secondary : Theme.violet)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(athleticMuted ? Color.white.opacity(0.08) : Theme.violet.opacity(0.15))
+                                .fill(athleticVM.athleticMuted ? Color.white.opacity(0.08) : Theme.violet.opacity(0.15))
                         )
                     }
                     .buttonStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // 클립별 트림 바
-                    ForEach($athleticClipRecipes) { $recipe in
-                        let idx    = athleticClipRecipes.firstIndex(where: { $0.id == recipe.id }) ?? 0
+                    ForEach(Bindable(athleticVM).athleticClipRecipes) { $recipe in
+                        let idx    = athleticVM.athleticClipRecipes.firstIndex(where: { $0.id == recipe.id }) ?? 0
                         let maxSec = min(recipe.fullDuration, VideoExportService.trimDuration)
                         let used   = max(0, recipe.trimEnd - recipe.trimStart)
                         VStack(spacing: 4) {
-                            if athleticClipRecipes.count > 1 {
+                            if athleticVM.athleticClipRecipes.count > 1 {
                                 Text(AppLanguage.shared.s("클립 \(idx + 1)", "Clip \(idx + 1)"))
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundStyle(Theme.violet)
@@ -5391,7 +5381,7 @@ struct ShareCardScreen: View {
         .task { await onAppear() }
         .onChange(of: pickerItems) { _, newItems in onPickerItemsChanged(newItems) }
         .onChange(of: videoPickerItem) { _, newItem in onVideoPickerItemChanged(newItem) }
-        .onChange(of: athleticPickerItems) { _, newItems in onAthleticPickerItemsChanged(newItems) }
+        .onChange(of: athleticVM.athleticPickerItems) { _, newItems in onAthleticPickerItemsChanged(newItems) }
         .onChange(of: template) { old, new in syncOneLinerVideoBacking(from: old, to: new); onTemplateChanged() }
         .onChange(of: cardPanel) { _, newPanel in
             Task {
@@ -5407,7 +5397,7 @@ struct ShareCardScreen: View {
     private var bodyWithEventHandlers: some View {
         bodyWithPickerHandlers
         // Athletic 클립 변경 시 미리보기 플레이어 리셋
-        .onChange(of: athleticClipRecipes.count) { _, _ in athleticVideoState.invalidate() }
+        .onChange(of: athleticVM.athleticClipRecipes.count) { _, _ in athleticVM.athleticVideoState.invalidate() }
         // OneLiner 설정 변경 시 기존 export 무효화 — .video와 .slide 모두 포함
         .onChange(of: oneLinerVM.oneLinerText) { _, _ in
             guard isOneLiner, template == .video || template == .slide else { return }
@@ -5567,15 +5557,15 @@ struct ShareCardScreen: View {
             guard isBigNumber else { return }
             Task { await renderCard(showSpinner: false) }
         }
-        .onChange(of: bigNumberShowMood) { _, _ in
+        .onChange(of: bigNumberVM.bigNumberShowMood) { _, _ in
             guard isBigNumber else { return }
             Task { await renderCard(showSpinner: false) }
         }
-        .onChange(of: bigNumberShowMemo) { _, _ in
+        .onChange(of: bigNumberVM.bigNumberShowMemo) { _, _ in
             guard isBigNumber else { return }
             Task { await renderCard(showSpinner: false) }
         }
-        .onChange(of: bigNumberAccent) { _, _ in
+        .onChange(of: bigNumberVM.bigNumberAccent) { _, _ in
             guard isBigNumber else { return }
             Task { await renderCard(showSpinner: false) }
         }
@@ -5595,15 +5585,15 @@ struct ShareCardScreen: View {
             guard isPlaceable else { return }
             Task { await renderCard(showSpinner: false) }
         }
-        .onChange(of: ecgAccent) { _, _ in
+        .onChange(of: ecgVM.ecgAccent) { _, _ in
             guard isECG else { return }
             Task { await renderCard(showSpinner: false) }
         }
-        .onChange(of: skyAccent) { _, _ in
+        .onChange(of: skyVM.skyAccent) { _, _ in
             guard isSky else { return }
             Task { await renderCard(showSpinner: false) }
         }
-        .onChange(of: ticketAccent) { _, _ in
+        .onChange(of: ticketVM.ticketAccent) { _, _ in
             guard isTicket else { return }
             Task { await renderCard(showSpinner: false) }
         }
@@ -5726,7 +5716,7 @@ struct ShareCardScreen: View {
                 let thumb = await VideoExportService.firstFrame(of: url)
                 var r = ClipRecipe(url: url, fullDuration: dur, thumbnail: thumb)
                 r.trimEnd = min(dur, VideoExportService.trimDuration)
-                athleticClipRecipes.append(r)
+                athleticVM.athleticClipRecipes.append(r)
                 // 첫 번째 클립 처리 직후 프리뷰 즉시 업데이트 (전체 루프 끝까지 기다리지 않음)
                 if isFirst {
                     isFirst = false
@@ -5735,28 +5725,28 @@ struct ShareCardScreen: View {
                     if template != .video { template = .video }
                 }
             }
-            athleticPickerItems = []
+            athleticVM.athleticPickerItems = []
             // 프리뷰가 아직 없으면 레시피 첫 항목 썸네일로 보완
             if videoPreviewImage == nil {
-                videoPreviewImage = athleticClipRecipes.first?.thumbnail
-                sourceVideoURL    = athleticClipRecipes.first?.url
+                videoPreviewImage = athleticVM.athleticClipRecipes.first?.thumbnail
+                sourceVideoURL    = athleticVM.athleticClipRecipes.first?.url
                 if template != .video { template = .video }
             }
             exportedVideoFile = nil
-            athleticVideoState.invalidate()
+            athleticVM.athleticVideoState.invalidate()
         }
     }
 
     @MainActor
     private func buildAthleticPreview() async {
-        guard !athleticClipRecipes.isEmpty, !athleticPreviewBuilding else { return }
-        athleticPreviewBuilding = true
-        defer { athleticPreviewBuilding = false }
-        athleticVideoState.invalidate()
-        if let result = try? await VideoExportService.buildConcatenatedPreviewItem(recipes: athleticClipRecipes) {
-            athleticVideoState.loadPlayerItem(result.playerItem, duration: result.duration)
-            athleticVideoState.player?.isMuted = athleticMuted
-            athleticVideoState.togglePlayPause()
+        guard !athleticVM.athleticClipRecipes.isEmpty, !athleticVM.athleticPreviewBuilding else { return }
+        athleticVM.athleticPreviewBuilding = true
+        defer { athleticVM.athleticPreviewBuilding = false }
+        athleticVM.athleticVideoState.invalidate()
+        if let result = try? await VideoExportService.buildConcatenatedPreviewItem(recipes: athleticVM.athleticClipRecipes) {
+            athleticVM.athleticVideoState.loadPlayerItem(result.playerItem, duration: result.duration)
+            athleticVM.athleticVideoState.player?.isMuted = athleticVM.athleticMuted
+            athleticVM.athleticVideoState.togglePlayPause()
         }
     }
 
@@ -5781,12 +5771,12 @@ struct ShareCardScreen: View {
         if isPlaceable, template != .video { previewPlayer.pause() }
         // Athletic 영상 템플릿 진입 시 레시피 복원 — sourceVideoURL이 있는데 recipes가 비어 있으면 재구성
         if !isPlaceable, !isOneLiner, template == .video,
-           let url = sourceVideoURL, athleticClipRecipes.isEmpty {
+           let url = sourceVideoURL, athleticVM.athleticClipRecipes.isEmpty {
             Task {
                 let dur = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 30.0
                 var r = ClipRecipe(url: url, fullDuration: dur, thumbnail: videoPreviewImage)
                 r.trimEnd = min(dur, VideoExportService.trimDuration)
-                athleticClipRecipes = [r]
+                athleticVM.athleticClipRecipes = [r]
             }
         }
         // Placeable 슬라이드: 항상 재빌드 (previewPlayer가 영상과 공유되므로 isReady 체크 불가)
@@ -5834,14 +5824,14 @@ struct ShareCardScreen: View {
         }
         // Athletic 카드 진입 시 — 이전 영상 설정이 있으면 영상 템플릿 복원, 레시피 없으면 재구성
         if newIndex == 2 {
-            if !athleticClipRecipes.isEmpty {
+            if !athleticVM.athleticClipRecipes.isEmpty {
                 template = .video   // 영상을 이미 설정한 적 있으면 영상 모드 복원
             } else if let url = sourceVideoURL {
                 Task {
                     let dur = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 30.0
                     var r = ClipRecipe(url: url, fullDuration: dur, thumbnail: videoPreviewImage)
                     r.trimEnd = min(dur, VideoExportService.trimDuration)
-                    athleticClipRecipes = [r]
+                    athleticVM.athleticClipRecipes = [r]
                 }
             }
         }
@@ -6063,11 +6053,11 @@ struct ShareCardScreen: View {
                 Color.black
                 // 영상이 준비된 경우 RawVideoPlayerView를 썸네일 대신 배경으로 사용
                 // (VideoOverlayCard 아래 배치하여 데이터 오버레이가 항상 위에 표시되도록)
-                if !isOneLiner, athleticVideoState.isReady, let avPlayer = athleticVideoState.player {
+                if !isOneLiner, athleticVM.athleticVideoState.isReady, let avPlayer = athleticVM.athleticVideoState.player {
                     RawVideoPlayerView(player: avPlayer)
                         .frame(width: vidW, height: 375)
                 } else {
-                    let previewThumb = videoPreviewImage ?? athleticClipRecipes.first?.thumbnail
+                    let previewThumb = videoPreviewImage ?? athleticVM.athleticClipRecipes.first?.thumbnail
                     if let preview = previewThumb {
                         Image(uiImage: preview)
                             .resizable()
@@ -6148,18 +6138,18 @@ struct ShareCardScreen: View {
                 }
 
                 // ▶ Athletic 멀티클립 미리보기 컨트롤 (플레이어는 배경 레이어에 있음)
-                if !isOneLiner, !athleticClipRecipes.isEmpty, !isExportingVideo {
-                    if athleticVideoState.isReady {
+                if !isOneLiner, !athleticVM.athleticClipRecipes.isEmpty, !isExportingVideo {
+                    if athleticVM.athleticVideoState.isReady {
                         Button {
-                            athleticVideoState.togglePlayPause()
+                            athleticVM.athleticVideoState.togglePlayPause()
                         } label: {
-                            Image(systemName: athleticVideoState.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            Image(systemName: athleticVM.athleticVideoState.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                 .font(.system(size: 48))
-                                .foregroundStyle(.white.opacity(athleticVideoState.isPlaying ? 0 : 0.85))
+                                .foregroundStyle(.white.opacity(athleticVM.athleticVideoState.isPlaying ? 0 : 0.85))
                                 .shadow(color: .black.opacity(0.55), radius: 10)
                         }
                         .buttonStyle(.plain)
-                    } else if athleticPreviewBuilding {
+                    } else if athleticVM.athleticPreviewBuilding {
                         ProgressView().tint(.white)
                             .padding(14)
                             .background(.black.opacity(0.45))
@@ -6374,8 +6364,8 @@ struct ShareCardScreen: View {
     private func makeBigNumberOverlayView() -> BigNumberVideoOverlayView {
         BigNumberVideoOverlayView(
             activity: activity, detail: detail, heroMetric: heroMetric,
-            mood: bigNumberShowMood ? story?.mood : nil,
-            memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
+            mood: bigNumberVM.bigNumberShowMood ? story?.mood : nil,
+            memoText: bigNumberVM.bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
             weatherText: condition?.weather?.formattedTemp,
             weatherIcon: condition?.weather?.systemIcon,
             date: activity.date,
@@ -6651,8 +6641,8 @@ struct ShareCardScreen: View {
             return
         }
 
-        // ── Athletic 멀티 클립 합성 (athleticClipRecipes 기반) ──────────────
-        if !isOneLiner, !isPlaceable, !isBigNumber, template == .video, !athleticClipRecipes.isEmpty {
+        // ── Athletic 멀티 클립 합성 (athleticVM.athleticClipRecipes 기반) ──────────────
+        if !isOneLiner, !isPlaceable, !isBigNumber, template == .video, !athleticVM.athleticClipRecipes.isEmpty {
             let km = activity.distance / 1000
             let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
             // 미리보기와 동일한 9:16 비율(216×384pt)로 오버레이 렌더링
@@ -6688,7 +6678,7 @@ struct ShareCardScreen: View {
                 isExportingVideo = false; return
             }
             var processedURLs: [URL] = []
-            for recipe in athleticClipRecipes {
+            for recipe in athleticVM.athleticClipRecipes {
                 var srcURL = recipe.url
                 if !FileManager.default.fileExists(atPath: srcURL.path) {
                     if let urlAsset = recipe.resolvedAsset as? AVURLAsset {
@@ -6704,7 +6694,7 @@ struct ShareCardScreen: View {
                 if let u = try? await VideoExportService.exportClipWithOverlay(
                     sourceURL: srcURL, overlay: overlayImage,
                     trimStart: recipe.trimStart, trimEnd: recipe.trimEnd,
-                    muteAudio: athleticMuted) {
+                    muteAudio: athleticVM.athleticMuted) {
                     processedURLs.append(u)
                 }
             }
@@ -6772,8 +6762,8 @@ struct ShareCardScreen: View {
             return
         }
 
-        // ── BigNumber 멀티 클립 합성 (athleticClipRecipes 공유) ──────────────
-        if isBigNumber, !athleticClipRecipes.isEmpty {
+        // ── BigNumber 멀티 클립 합성 (athleticVM.athleticClipRecipes 공유) ──────────────
+        if isBigNumber, !athleticVM.athleticClipRecipes.isEmpty {
             let overlayRenderer = ImageRenderer(content:
                 makeBigNumberOverlayView().frame(width: 216, height: 384)
             )
@@ -6782,7 +6772,7 @@ struct ShareCardScreen: View {
                 isExportingVideo = false; return
             }
             var processedURLs: [URL] = []
-            for recipe in athleticClipRecipes {
+            for recipe in athleticVM.athleticClipRecipes {
                 var srcURL = recipe.url
                 if !FileManager.default.fileExists(atPath: srcURL.path) {
                     if let urlAsset = recipe.resolvedAsset as? AVURLAsset {
@@ -6798,7 +6788,7 @@ struct ShareCardScreen: View {
                 if let u = try? await VideoExportService.exportClipWithOverlay(
                     sourceURL: srcURL, overlay: overlayImage,
                     trimStart: recipe.trimStart, trimEnd: recipe.trimEnd,
-                    muteAudio: athleticMuted) {
+                    muteAudio: athleticVM.athleticMuted) {
                     processedURLs.append(u)
                 }
             }
@@ -6852,8 +6842,8 @@ struct ShareCardScreen: View {
             return
         }
 
-        let trimStart = athleticClipRecipes.first?.trimStart ?? 0
-        let trimEnd   = athleticClipRecipes.first?.trimEnd
+        let trimStart = athleticVM.athleticClipRecipes.first?.trimStart ?? 0
+        let trimEnd   = athleticVM.athleticClipRecipes.first?.trimEnd
         if let outputURL = try? await VideoExportService.exportVideo(
             sourceURL: url, overlay: overlayImage,
             startTime: trimStart, endTime: trimEnd) {
@@ -6877,8 +6867,8 @@ struct ShareCardScreen: View {
                     activity: activity,
                     detail: detail,
                     heroMetric: heroMetric,
-                    mood: bigNumberShowMood ? story?.mood : nil,
-                    memoText: bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
+                    mood: bigNumberVM.bigNumberShowMood ? story?.mood : nil,
+                    memoText: bigNumberVM.bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                     weatherText: condition?.weather?.formattedTemp,
                     weatherIcon: condition?.weather?.systemIcon,
                     date: activity.date,
@@ -6888,7 +6878,7 @@ struct ShareCardScreen: View {
                     routeWorkoutDuration: activity.duration,
                     showHRGradient: showHRGradientForRoute,
                     miniMeImage: activeMiniMeImage,
-                    accent: bigNumberAccent,
+                    accent: bigNumberVM.bigNumberAccent,
                     progressHandler: { p in routeVideoProgress = p }
                 )
             } else {
@@ -6927,16 +6917,16 @@ struct ShareCardScreen: View {
 
     @MainActor
     private func loadECGWaveforms() async {
-        guard let mgr = manager else { ecgDataAvailable = false; return }
+        guard let mgr = manager else { ecgVM.ecgDataAvailable = false; return }
         async let pace = ECGWaveform.fromPace(activity: activity, using: mgr)
         async let hr   = ECGWaveform.fromHeartRate(activity: activity, using: mgr)
         let p = await pace
         let h = await hr
-        paceWaveform      = p
-        hrWaveform        = h
-        ecgDataAvailable  = (p != nil || h != nil)
-        if paceWaveform == nil, hrWaveform != nil { ecgShowPace = false }
-        if ecgDataAvailable == false && cardIndex == 5 { withAnimation { cardIndex = 4 } }
+        ecgVM.paceWaveform      = p
+        ecgVM.hrWaveform        = h
+        ecgVM.ecgDataAvailable  = (p != nil || h != nil)
+        if ecgVM.paceWaveform == nil, ecgVM.hrWaveform != nil { ecgVM.ecgShowPace = false }
+        if ecgVM.ecgDataAvailable == false && cardIndex == 5 { withAnimation { cardIndex = 4 } }
         if isECG { await renderCard(showSpinner: false) }
     }
 
@@ -7015,7 +7005,7 @@ struct ShareCardScreen: View {
         guard let placemarks = try? await geocoder.reverseGeocodeLocation(location),
               let pm = placemarks.first else { return }
         let name = pm.subLocality ?? pm.locality ?? pm.administrativeArea ?? "RUN"
-        ticketDepartureName = name
+        ticketVM.ticketDepartureName = name
         if isTicket { await renderCard(showSpinner: false) }
     }
 
@@ -7950,8 +7940,8 @@ struct ShareCardScreen: View {
                 : nil
             let bnCard = BigNumberCard(
                 activity: activity, detail: detail, heroMetric: heroMetric,
-                mood: bigNumberShowMood ? story?.mood : nil,
-                memoText: bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
+                mood: bigNumberVM.bigNumberShowMood ? story?.mood : nil,
+                memoText: bigNumberVM.bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
                 weatherText: condition?.weather?.formattedTemp,
                 weatherIcon: condition?.weather?.systemIcon,
                 date: activity.date,
@@ -7959,7 +7949,7 @@ struct ShareCardScreen: View {
                 photo: bnPhoto,
                 chartPanel: .map,
                 routeCoordinates: routeCoords,
-                accent: bigNumberAccent,
+                accent: bigNumberVM.bigNumberAccent,
                 showHRGradient: showHRGradientForRoute,
                 hrSamplesForRoute: shareHRSamples,
                 routeWorkoutDuration: activity.duration,
@@ -7981,7 +7971,7 @@ struct ShareCardScreen: View {
                 activity: activity,
                 weather: condition?.weather,
                 shoeName: displayShoeName,
-                accent: skyAccent
+                accent: skyVM.skyAccent
             )
             let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
             renderer.scale = 3
@@ -7992,7 +7982,7 @@ struct ShareCardScreen: View {
 
         // ECG card — "심전도 시그니처"
         if cardIndex == 5 {
-            let activeWaveform = ecgShowPace ? (paceWaveform ?? hrWaveform) : (hrWaveform ?? paceWaveform)
+            let activeWaveform = ecgVM.ecgShowPace ? (ecgVM.paceWaveform ?? ecgVM.hrWaveform) : (ecgVM.hrWaveform ?? ecgVM.paceWaveform)
             guard let waveform = activeWaveform else { isRendering = false; return }
             if showSpinner { isRendering = true }
             storyShareImages = []
@@ -8002,7 +7992,7 @@ struct ShareCardScreen: View {
                 waveform: waveform,
                 weather: condition?.weather,
                 shoeName: displayShoeName,
-                accent: ecgAccent
+                accent: ecgVM.ecgAccent
             )
             let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
             renderer.scale = 3
@@ -8022,10 +8012,10 @@ struct ShareCardScreen: View {
                 splits: detail?.splits ?? [],
                 raceName: confirmedRace?.raceName,
                 shoeName: displayShoeName,
-                departureName: ticketDepartureName,
+                departureName: ticketVM.ticketDepartureName,
                 raceDistanceKm: confirmedRace?.distanceKm,
                 raceStartTimeString: confirmedBundledRace?.startTimeString,
-                accent: ticketAccent
+                accent: ticketVM.ticketAccent
             )
             let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
             renderer.scale = 3
