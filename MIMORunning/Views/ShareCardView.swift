@@ -3734,42 +3734,9 @@ struct ShareCardScreen: View {
         }
     }
 
+    // → BigNumberControls.swift: BigNumberAccentRowView
     private var bigNumberAccentRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                bigNumberAccentChip(.none,   AppLanguage.shared.s("흰색",     "White"),  Color.white)
-                bigNumberAccentChip(.violet, AppLanguage.shared.s("바이올렛", "Violet"), Color(hex: "9B7DFF"))
-                bigNumberAccentChip(.gold,   AppLanguage.shared.s("골드",     "Gold"),   Color(hex: "FFC74D"))
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 2)
-        }
-    }
-
-    private func bigNumberAccentChip(_ accent: CardAccent, _ label: String, _ color: Color) -> some View {
-        let isSelected = bigNumberVM.bigNumberAccent == accent
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { bigNumberVM.bigNumberAccent = accent }
-            Task { await renderCard(showSpinner: false) }
-        } label: {
-            HStack(spacing: 6) {
-                if isSelected {
-                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
-                }
-                Circle().fill(color).frame(width: 8, height: 8)
-                Text(label).font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                isSelected
-                    ? (accent == .none ? Color(hex: "3A3A44") : color.opacity(0.25))
-                    : Color.white.opacity(0.08)
-            )
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
+        BigNumberAccentRowView(vm: bigNumberVM, onRender: { await renderCard(showSpinner: false) })
     }
 
     // MARK: - Placeable card horizontal mode helpers
