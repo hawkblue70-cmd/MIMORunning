@@ -226,6 +226,21 @@ struct VideoExportService {
         }
     }
 
+    static func frame(of url: URL, at time: Double) async -> UIImage? {
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 400, height: 400)
+        generator.requestedTimeToleranceBefore = CMTimeMakeWithSeconds(0.3, preferredTimescale: 600)
+        generator.requestedTimeToleranceAfter  = CMTimeMakeWithSeconds(0.3, preferredTimescale: 600)
+        let t = CMTimeMakeWithSeconds(max(0.1, time), preferredTimescale: 600)
+        return await withCheckedContinuation { cont in
+            generator.generateCGImageAsynchronously(for: t) { img, _, _ in
+                cont.resume(returning: img.map { UIImage(cgImage: $0) })
+            }
+        }
+    }
+
     /// PHAsset(localIdentifier) → 포스터 프레임 (빠른 시트 배경 표시용, 트림 미적용)
     static func quickFrame(assetID: String) async -> UIImage? {
         guard let phAsset = PHAsset.fetchAssets(

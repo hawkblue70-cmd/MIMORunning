@@ -1067,6 +1067,7 @@ struct RestDayOneLinerSheet: View {
         let valid = clipRecipes.filter {
             $0.assetIdentifier != nil || $0.clipVideoRef != nil || $0.storedPhotoRef != nil
         }
+        print("[DUR-TRACE] syncActiveToBackingStore clipRecipes trimEnd=\(clipRecipes.map { $0.trimEnd }) template=\(selectedTemplate)")
         switch selectedTemplate {
         case .story:
             storyModeRecipes = valid

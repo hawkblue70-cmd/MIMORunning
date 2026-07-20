@@ -109,34 +109,16 @@ struct MultiClipEditorView: View {
             if !recipes.isEmpty, !isStoryMode { durationRow }
             // 영상·슬라이드 메인은 '전체 제목'만 — 지표(P/D/T/M/H)는 클립별(클립 편집기)에서
             // showTitleEvenWhenEmpty: 슬라이드 모드에서 photos가 storyPhotos에 있고 recipes는 비어있을 때
-            if showTitle, !isStoryMode, !recipes.isEmpty || showTitleEvenWhenEmpty { titleSection }
+            if showTitle && !isStoryMode && (!recipes.isEmpty || showTitleEvenWhenEmpty) { titleSection }
         }
-        // onDismiss: 사용 — onChange(of: isEditing)보다 늦게 호출되어
-        // commitWorkingRecipes()의 @Binding 쓰기가 부모 @State에 반영된 뒤 onSave()를 보장.
+        // onDismiss: cleanup 전용(failedIDs, resolveVideoClips).
+        // 저장은 ClipTrimSheet.onCommit → "완료" 직후 동기 실행으로 보장.
         .sheet(isPresented: $isEditing, onDismiss: {
-            onSave()
             // ClipTrimSheet.Done이 workingRecipes를 쓰면서 resolvedAsset을 덮어쓸 수 있음.
             // 이전 실패 기록을 지워 재해석을 허용한다 (export가 성공 = 원본 존재).
             failedIDs.removeAll()
             resolveVideoClips()
-        }) {
-            ClipTrimSheet(
-                recipes: $recipes,
-                selectedClipIndex: $selectedClipIndex,
-                hideTimePicker: isStoryMode,
-                isStoryMode: isStoryMode,
-                isPhotoSlideMode: isPhotoSlideMode,
-                availableMetrics: availableMetrics,
-                routeCoords: routeCoords,
-                hrSamples: hrSamples,
-                splits: splits,
-                chartSeriesData: chartSeriesData,
-                hrZones: hrZones,
-                intervalSegments: intervalSegments,
-                videoTitle: isStoryMode ? "" : videoTitle,
-                titleStyle: titleStyle
-            )
-        }
+        }) { clipTrimSheet }
         .onChange(of: videoPickerItems)      { _, items in loadVideoClips(items) }
         .onChange(of: photoSlidePickerItems) { _, items in loadPhotoSlides(items) }
         .alert(AppLanguage.shared.s("영상을 다시 추가해 주세요", "Re-add This Video"),
@@ -149,6 +131,33 @@ struct MultiClipEditorView: View {
         }
         .onAppear { resolveVideoClips() }
         .onChange(of: recipes.map { $0.assetIdentifier }) { _, _ in resolveVideoClips() }
+    }
+
+    @ViewBuilder
+    private var clipTrimSheet: some View {
+        ClipTrimSheet(
+            recipes: $recipes,
+            selectedClipIndex: $selectedClipIndex,
+            hideTimePicker: isStoryMode,
+            isStoryMode: isStoryMode,
+            isPhotoSlideMode: isPhotoSlideMode,
+            availableMetrics: availableMetrics,
+            routeCoords: routeCoords,
+            hrSamples: hrSamples,
+            splits: splits,
+            chartSeriesData: chartSeriesData,
+            hrZones: hrZones,
+            intervalSegments: intervalSegments,
+            videoTitle: isStoryMode ? "" : videoTitle,
+            titleStyle: titleStyle,
+            onCommit: { newRecipes in
+                // newRecipes = commitWorkingRecipes()가 방금 쓴 toSave.
+                // @State 배치 처리 전에 binding을 직접 갱신하여 saveEntry가 최신 값을 읽도록 보장.
+                print("[DUR-TRACE] MultiClipEditor.onCommit newRecipes trimEnd=\(newRecipes.map { $0.trimEnd })")
+                recipes = newRecipes
+                onSave()
+            }
+        )
     }
 
     // MARK: - Picker button row

@@ -524,10 +524,14 @@ struct ShareCardScreen: View {
                                 // 슬라이드 모드: 좌하단 duration 배지
                                 .overlay(alignment: .bottomLeading) {
                                     if template == .slide {
-                                        let sec = isPlaceable
+                                        let defaultSec = isPlaceable
                                             ? PhotoSlideComposition.placeableSlideDuration
                                             : PhotoSlideComposition.photoDuration
-                                        Text("\(Int(sec))s")
+                                        // OneLiner: cachedStoryRecipes에서 per-clip 실제 duration 읽기
+                                        let sec: Double = (isOneLiner && oneLinerVM.cachedStoryRecipes.indices.contains(i))
+                                            ? oneLinerVM.cachedStoryRecipes[i].trimmedDuration
+                                            : defaultSec
+                                        Text("\(Int(sec.rounded()))s")
                                             .font(.system(size: 9, weight: .semibold))
                                             .foregroundStyle(.white)
                                             .padding(.horizontal, 4).padding(.vertical, 2)
@@ -2070,7 +2074,13 @@ struct ShareCardScreen: View {
                     .padding(.bottom, 4)
             }
             if template == .slide, !storyPhotos.isEmpty {
-                let totalSec = Int(Double(storyPhotos.count) * PhotoSlideComposition.placeableSlideDuration)
+                // cachedStoryRecipes에 실제 per-clip duration이 있으면 합산, 없으면 photoDuration 기본값 사용
+                let totalSec: Int = {
+                    if oneLinerVM.cachedStoryRecipes.count == storyPhotos.count {
+                        return Int(oneLinerVM.cachedStoryRecipes.reduce(0) { $0 + $1.trimmedDuration }.rounded())
+                    }
+                    return Int(Double(storyPhotos.count) * PhotoSlideComposition.photoDuration)
+                }()
                 Text(AppLanguage.shared.s("클립 \(storyPhotos.count)개 · \(totalSec)초 · 탭하면 편집", "\(storyPhotos.count) clips · \(totalSec)s · Tap to edit"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -4324,6 +4334,10 @@ struct ShareCardScreen: View {
                     if let de = desc.dataEffectID, let mode = AppearanceMode(rawValue: de) {
                         recipe.dataAppearanceMode = mode
                     }
+                    // 사진 클립 재생 시간 복원 (3/4/5초 사용자 선택값)
+                    recipe.fullDuration = desc.fullDuration
+                    recipe.trimStart    = desc.trimStart
+                    recipe.trimEnd      = desc.trimEnd
                 } else {
                     // 구 포맷: 텍스트 + 기본 3개 스타일만 복원 (마이그레이션 경로)
                     var lines = e.text.components(separatedBy: "\n")
@@ -4395,7 +4409,8 @@ struct ShareCardScreen: View {
 
             let hasMetric = recipe.metricPace || recipe.metricDistance || recipe.metricTime
                           || recipe.metricHeartRate || recipe.chartOverlayType != .none
-            let shouldSave = !text.isEmpty || hasMetric
+            let hasDurationChange = abs(recipe.trimEnd - PhotoSlideComposition.photoDuration) > 0.01
+            let shouldSave = !text.isEmpty || hasMetric || hasDurationChange
 
             if let existing = oneLinerEntries.first(where: { $0.mediaRef == ref }) {
                 if shouldSave {

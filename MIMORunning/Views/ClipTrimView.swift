@@ -30,6 +30,9 @@ struct ClipTrimSheet: View {
     /// Full-video title shown in non-story clip previews (scaled to previewScale).
     var videoTitle:     String              = ""
     var titleStyle:     OneLinerTitleStyle  = OneLinerTitleStyle()
+    /// "완료" 직후 새 recipes를 직접 전달하는 콜백.
+    /// clipRecipes @State 갱신을 기다리지 않고 toSave 값을 그대로 전달하여 저장 타이밍 문제를 우회한다.
+    var onCommit: (([ClipRecipe]) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -53,7 +56,8 @@ struct ClipTrimSheet: View {
         hrZones:           [HRZoneData]                      = [],
         intervalSegments:  [IntervalSegment]                 = [],
         videoTitle:        String                            = "",
-        titleStyle:        OneLinerTitleStyle                = OneLinerTitleStyle()
+        titleStyle:        OneLinerTitleStyle                = OneLinerTitleStyle(),
+        onCommit:          (([ClipRecipe]) -> Void)?         = nil
     ) {
         _recipes           = recipes
         _selectedClipIndex = selectedClipIndex
@@ -69,6 +73,7 @@ struct ClipTrimSheet: View {
         self.intervalSegments = intervalSegments
         self.videoTitle       = videoTitle
         self.titleStyle       = titleStyle
+        self.onCommit         = onCommit
         let r   = recipes.wrappedValue
         let idx = max(0, min(selectedClipIndex.wrappedValue, r.count - 1))
         _workingRecipes = State(initialValue: r)
@@ -563,7 +568,8 @@ struct ClipTrimSheet: View {
             TrimBarView(
                 duration:  r.fullDuration,
                 trimStart: $workingRecipes[currentPage].trimStart,
-                trimEnd:   $workingRecipes[currentPage].trimEnd
+                trimEnd:   $workingRecipes[currentPage].trimEnd,
+                onEditingEnded: { updateThumbnailAtTrimEnd(currentPage) }
             )
             .padding(.horizontal)
 
@@ -1927,6 +1933,43 @@ struct ClipTrimSheet: View {
         }
     }
 
+    // MARK: - Thumbnail at trim end
+
+    /// 트림 핸들 드래그 완료 시, 클립 스트립 썸네일을 trimEnd 시점 프레임으로 갱신.
+    private func updateThumbnailAtTrimEnd(_ idx: Int) {
+        guard workingRecipes.indices.contains(idx) else { return }
+        let r = workingRecipes[idx]
+        guard r.storedPhotoRef == nil else { return }   // 사진 클립은 정지 이미지라 갱신 불필요
+        let snapTime = max(0.1, r.trimEnd)
+
+        func applyNewThumbnail(_ img: UIImage) {
+            guard self.workingRecipes.indices.contains(idx) else { return }
+            let newRef = ClipThumbStore.save(img)
+            self.workingRecipes[idx].thumbnail = img
+            if let newRef { self.workingRecipes[idx].thumbRef = newRef }
+        }
+
+        if let avAsset = r.resolvedAsset {
+            let gen = AVAssetImageGenerator(asset: avAsset)
+            gen.appliesPreferredTrackTransform = true
+            gen.maximumSize = CGSize(width: 400, height: 400)
+            gen.requestedTimeToleranceBefore = CMTimeMakeWithSeconds(0.3, preferredTimescale: 600)
+            gen.requestedTimeToleranceAfter  = CMTimeMakeWithSeconds(0.3, preferredTimescale: 600)
+            let t = CMTimeMakeWithSeconds(snapTime, preferredTimescale: 600)
+            gen.generateCGImageAsynchronously(for: t) { cgImg, _, _ in
+                guard let cgImg else { return }
+                let img = UIImage(cgImage: cgImg)
+                DispatchQueue.main.async { applyNewThumbnail(img) }
+            }
+        } else if let ref = r.clipVideoRef, let url = ClipVideoStore.fileURL(ref: ref) {
+            Task {
+                if let img = await VideoExportService.frame(of: url, at: snapTime) {
+                    await MainActor.run { applyNewThumbnail(img) }
+                }
+            }
+        }
+    }
+
     // MARK: - Commit
 
     /// 완료 버튼: workingRecipes를 binding에 커밋. 시트가 열려 있는 동안 부모가 async로 주입한
@@ -1938,7 +1981,15 @@ struct ClipTrimSheet: View {
                 toSave[i].resolvedAsset = resolved
             }
         }
+        print("[DUR-TRACE] commitWorkingRecipes toSave trimEnd=\(toSave.map { $0.trimEnd })")
         recipes = toSave
+        // toSave를 직접 전달 — @State 갱신 배치 타이밍에 무관하게 새 값 즉시 사용 가능
+        if onCommit != nil {
+            print("[DUR-TRACE] onCommit 호출")
+            onCommit?(toSave)
+        } else {
+            print("[DUR-TRACE] onCommit nil — 저장 콜백 없음")
+        }
     }
 
     // MARK: - Sheet-local PHAsset resolution
@@ -2159,35 +2210,58 @@ struct ClipTrimSheet: View {
     @ViewBuilder
     private var photoDurationPicker: some View {
         if currentRecipeValid {
-            let dur = workingRecipes[currentPage].fullDuration
-            HStack(spacing: 8) {
-                ForEach([3.0, 4.0, 5.0], id: \.self) { sec in
-                    Button {
-                        workingRecipes[currentPage].fullDuration = sec
-                        workingRecipes[currentPage].trimEnd      = sec
-                        workingRecipes[currentPage].trimStart    = 0
-                    } label: {
-                        Text(AppLanguage.shared.s("\(Int(sec))초", "\(Int(sec)) s"))
-                            .font(.system(size: 13, weight: .semibold))
-                            .padding(.horizontal, 14).padding(.vertical, 7)
-                            .background(dur == sec ? Theme.violet : Color(hex: "1E1E28"))
-                            .foregroundStyle(dur == sec ? Color.white : Color.secondary)
-                            .clipShape(Capsule())
+            let dur = workingRecipes[currentPage].trimmedDuration
+            let photoCount = workingRecipes.filter { $0.storedPhotoRef != nil }.count
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    ForEach([3.0, 4.0, 5.0], id: \.self) { sec in
+                        Button {
+                            workingRecipes[currentPage].fullDuration = sec
+                            workingRecipes[currentPage].trimEnd      = sec
+                            print("[DUR-TRACE] 클립\(currentPage) \(Int(sec))초 선택 → trimEnd=\(workingRecipes[currentPage].trimEnd)")
+                            workingRecipes[currentPage].trimStart    = 0
+                        } label: {
+                            Text(AppLanguage.shared.s("\(Int(sec))초", "\(Int(sec)) s"))
+                                .font(.system(size: 13, weight: .semibold))
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(dur == sec ? Theme.violet : Color(hex: "1E1E28"))
+                                .foregroundStyle(dur == sec ? Color.white : Color.secondary)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                    PhotosPicker(selection: $replacePhotoPicker,
+                                 maxSelectionCount: 1, matching: .images) {
+                        Label(AppLanguage.shared.s("사진 교체", "Replace"),
+                              systemImage: "photo.badge.arrow.down")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
                 }
-                Spacer()
-                PhotosPicker(selection: $replacePhotoPicker,
-                             maxSelectionCount: 1, matching: .images) {
-                    Label(AppLanguage.shared.s("사진 교체", "Replace"),
-                          systemImage: "photo.badge.arrow.down")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                // 사진이 2장 이상일 때: 현재 설정값을 전체에 일괄 적용하는 버튼
+                if photoCount > 1 {
+                    Button {
+                        let sec = workingRecipes[currentPage].trimmedDuration
+                        for i in workingRecipes.indices {
+                            guard workingRecipes[i].storedPhotoRef != nil else { continue }
+                            workingRecipes[i].fullDuration = sec
+                            workingRecipes[i].trimEnd      = sec
+                            workingRecipes[i].trimStart    = 0
+                        }
+                    } label: {
+                        Label(AppLanguage.shared.s(
+                                "전체 \(photoCount)장에 \(Int(dur))초 적용",
+                                "Apply \(Int(dur))s to all \(photoCount) photos"),
+                              systemImage: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal)
-
         }
     }
 
