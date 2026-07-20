@@ -85,6 +85,7 @@ struct PlaceableCard: View {
     var layout: PlaceableLayout = .vertical
     var horizTextRow:  HorizRow     = .bottom    // horizontal mode: which row text occupies
     var horizRoutePos: CardPosition = .center    // horizontal mode: explicit route anchor cell
+    var cropOffsetX:   CGFloat      = 0.5        // 0=left, 0.5=center, 1=right (landscape photo)
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
@@ -150,9 +151,14 @@ struct PlaceableCard: View {
     private var backgroundView: some View {
         if showBackground {
             if let photo {
+                let s    = max(Self.cardWidth / photo.size.width, Self.cardHeight / photo.size.height)
+                let imgW = photo.size.width  * s
+                let imgH = photo.size.height * s
+                let ox   = -(cropOffsetX * max(0, imgW - Self.cardWidth))
                 Image(uiImage: photo)
                     .resizable()
-                    .scaledToFill()
+                    .frame(width: imgW, height: imgH)
+                    .offset(x: ox)
                     .frame(width: Self.cardWidth, height: Self.cardHeight)
                     .clipped()
                     .brightness(0.05)

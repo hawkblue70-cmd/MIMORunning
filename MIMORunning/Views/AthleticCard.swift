@@ -29,6 +29,7 @@ struct AthleticCard: View {
     var weather: WeatherSnapshot? = nil
     var shoeName: String? = nil
     var photo: UIImage? = nil
+    var cropOffsetX: CGFloat = 0.5
 
     private var hasMiniMe: Bool { customMiniMeImage != nil || miniMeVariant != nil }
 
@@ -73,9 +74,14 @@ struct AthleticCard: View {
     var body: some View {
         ZStack {
             if let photo = photo {
+                let s  = max(300 / photo.size.width, 375 / photo.size.height)
+                let iW = photo.size.width  * s
+                let iH = photo.size.height * s
+                let ox = -(cropOffsetX * max(0, iW - 300))
                 Image(uiImage: photo)
                     .resizable()
-                    .scaledToFill()
+                    .frame(width: iW, height: iH)
+                    .offset(x: ox)
                     .frame(width: 300, height: 375)
                     .clipped()
                 CardVisual.topScrim

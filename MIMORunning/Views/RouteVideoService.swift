@@ -34,6 +34,9 @@ struct RouteVideoFrameView: View {
     var routeWorkoutDuration: TimeInterval = 0
     var routeZoneBounds: [(id: Int, minBPM: Int)] = []
     var showHRGradient: Bool = false
+    // nil → videoSafeTopRef/BottomRef * scale (export 기본값). 값 지정 시 그대로 사용 (preview 전용).
+    var topInset: CGFloat? = nil
+    var bottomInset: CGFloat? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -75,7 +78,9 @@ struct RouteVideoFrameView: View {
                         chartIntervalSegments: chartIntervalSegments,
                         weather: weather,
                         shoeName: shoeName,
-                        scale: scale
+                        scale: scale,
+                        topInset: topInset,
+                        bottomInset: bottomInset
                     )
                     .frame(width: w, height: h)
                 }
@@ -246,6 +251,9 @@ struct BigNumberRouteVideoFrameView: View {
     var routeWorkoutDuration: TimeInterval = 0
     var routeZoneBounds: [(id: Int, minBPM: Int)] = []
     var showHRGradient: Bool = false
+    // nil → videoSafeTopRef/BottomRef * s (export 기본값). 값 지정 시 그대로 사용 (preview 전용).
+    var topInset: CGFloat? = nil
+    var bottomInset: CGFloat? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -272,6 +280,8 @@ struct BigNumberRouteVideoFrameView: View {
                     mood: mood, memoText: memoText,
                     weatherText: weatherText, weatherIcon: weatherIcon,
                     date: date, shoeName: shoeName,
+                    topInset: topInset,
+                    bottomInset: bottomInset,
                     accent: accent
                 )
                 .frame(width: w, height: h)
@@ -382,6 +392,7 @@ struct RouteVideoExportService {
         let t0 = CACurrentMediaTime()
 
         // 1. Pre-render overlay once (main thread, SwiftUI → CGImage)
+        let exportInset = renderSize.height * 0.05   // 5% = 48pt → 96px at renderScale 2 (preview 일치)
         let overlayView = VideoOverlayCard(
             insightTitle: insightTitle, distanceKm: distanceKm, date: date,
             metrics: metrics, raceName: raceName,
@@ -391,7 +402,9 @@ struct RouteVideoExportService {
             chartHRSamples: chartHRSamples, chartHRZones: chartHRZones,
             chartWorkoutSeries: chartWorkoutSeries, chartIntervalSegments: chartIntervalSegments,
             weather: weather, shoeName: shoeName,
-            scale: renderSize.width / 300
+            scale: renderSize.width / 300,
+            topInset: exportInset,
+            bottomInset: exportInset
         )
         .frame(width: renderSize.width, height: renderSize.height)
         let overlayRenderer = ImageRenderer(content: overlayView)
@@ -456,11 +469,14 @@ struct RouteVideoExportService {
     ) async throws -> URL {
         let t0 = CACurrentMediaTime()
 
+        let exportInset = renderSize.height * 0.05   // 5% = 48pt → 96px at renderScale 2 (preview 일치)
         let overlayView = BigNumberVideoOverlayView(
             activity: activity, detail: detail, heroMetric: heroMetric,
             mood: mood, memoText: memoText,
             weatherText: weatherText, weatherIcon: weatherIcon,
             date: date, shoeName: shoeName,
+            topInset: exportInset,
+            bottomInset: exportInset,
             accent: accent
         )
         .frame(width: renderSize.width, height: renderSize.height)

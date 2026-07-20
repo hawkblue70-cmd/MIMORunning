@@ -547,8 +547,8 @@ class HealthKitManager {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_detail", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // v3: 구간 심박 2패스 시리즈 쿼리 + 케이던스 2배 보정 적용. 기존 v2 캐시 자동 무효화.
-        return dir.appendingPathComponent("v3_\(id.uuidString).json")
+        // v7: 인터벌 goal 거리 기반 lookahead 매칭. 기존 v6 캐시 자동 무효화.
+        return dir.appendingPathComponent("v7_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
@@ -1760,43 +1760,54 @@ class HealthKitManager {
     // MARK: - Interval segments (WorkoutKit plan composition)
 
     /// Reads the WorkoutKit plan attached to the workout, maps each planned step to a
-    /// workoutActivity, and returns labelled IntervalSegments.  Returns [] when:
-    /// • no plan is stored on the workout
-    /// • the plan is not a CustomWorkout
-    /// • the activity count doesn't match the flattened step count
+    /// workoutActivity using goal-distance-based lookahead matching, and returns labelled
+    /// IntervalSegments. Returns [] when no plan is stored or the plan is not a CustomWorkout.
+    ///
+    /// Lookahead matching: if a workout activity's distance is much closer to a future plan
+    /// step than the current one, skip ahead — this prevents label-shifting when the Watch
+    /// merges activities (e.g. during an unexpected pause between intervals).
     private func queryIntervalSegments(workout: HKWorkout) async -> [IntervalSegment] {
-        guard let plan = try? await workout.workoutPlan else {
-            return []
+        guard let plan = try? await workout.workoutPlan else { return [] }
+        guard case .custom(let custom) = plan.workout else { return [] }
+
+        // Plan step with goal distance for smarter activity matching
+        struct PlanStep {
+            let label: String
+            let isWork: Bool
+            let goalDistanceM: Double?
         }
 
-        guard case .custom(let custom) = plan.workout else {
-            return []
+        func goalDist(_ goal: WorkoutGoal) -> Double? {
+            if case .distance(let value, let unit) = goal {
+                return Measurement(value: value, unit: unit).converted(to: .meters).value
+            }
+            return nil
         }
 
         // Flatten: optional warmup · blocks×iterations×steps · optional cooldown
-        var flatLabels: [(label: String, isWork: Bool)] = []
-        if custom.warmup != nil { flatLabels.append(("준비운동", false)) }
+        var flatSteps: [PlanStep] = []
+        if let w = custom.warmup {
+            flatSteps.append(PlanStep(label: "준비운동", isWork: false, goalDistanceM: goalDist(w.goal)))
+        }
         for block in custom.blocks {
             for _ in 0..<block.iterations {
                 for step in block.steps {
+                    let gd = goalDist(step.step.goal)
                     switch step.purpose {
-                    case .work:     flatLabels.append(("운동", true))
-                    case .recovery: flatLabels.append(("회복", false))
-                    @unknown default: flatLabels.append(("구간", false))
+                    case .work:     flatSteps.append(PlanStep(label: "운동", isWork: true,  goalDistanceM: gd))
+                    case .recovery: flatSteps.append(PlanStep(label: "회복", isWork: false, goalDistanceM: gd))
+                    @unknown default: flatSteps.append(PlanStep(label: "구간", isWork: false, goalDistanceM: gd))
                     }
                 }
             }
         }
-        if custom.cooldown != nil { flatLabels.append(("정리운동", false)) }
-
-        guard workout.workoutActivities.count == flatLabels.count else {
-            return []
+        if let c = custom.cooldown {
+            flatSteps.append(PlanStep(label: "정리운동", isWork: false, goalDistanceM: goalDist(c.goal)))
         }
 
-        let hrUnit = Self.bpmUnit
+        guard !workout.workoutActivities.isEmpty, !flatSteps.isEmpty else { return [] }
 
-        // Fetch step count samples for the whole workout; filter per segment below.
-        // workoutActivity.statistics(for: .stepCount) is not stored per activity segment.
+        let hrUnit = Self.bpmUnit
         let stepPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.stepCount),
             predicate: HKQuery.predicateForObjects(from: workout)
@@ -1808,14 +1819,41 @@ class HealthKitManager {
         let stepSamples = (try? await stepDesc.result(for: store)) ?? []
 
         var result: [IntervalSegment] = []
+        var planIdx = 0
 
-        for (i, (activity, labelPair)) in zip(workout.workoutActivities, flatLabels).enumerated() {
+        for (i, activity) in workout.workoutActivities.enumerated() {
+            guard planIdx < flatSteps.count else { break }
+
             let distM: Double? = {
                 guard let qty = activity.statistics(for: HKQuantityType(.distanceWalkingRunning))?
                     .sumQuantity() else { return nil }
                 let m = qty.doubleValue(for: .meter())
                 return m > 0 ? m : nil
             }()
+
+            // Lookahead: only when current step has a known goal distance.
+            // If a step within the next 4 is >3× better match by distance ratio, skip ahead.
+            // This corrects label-shifting caused by Watch merging activities on a bad interval.
+            var bestIdx = planIdx
+            if let actDist = distM,
+               let currentGoal = flatSteps[planIdx].goalDistanceM, currentGoal > 0 {
+                let currentScore = abs(actDist / currentGoal - 1.0)
+                var bestScore = currentScore
+                let lookahead = min(4, flatSteps.count - planIdx)
+                for ahead in 1..<lookahead {
+                    guard let aheadGoal = flatSteps[planIdx + ahead].goalDistanceM,
+                          aheadGoal > 0 else { break }
+                    let score = abs(actDist / aheadGoal - 1.0)
+                    if score < bestScore * 0.3 {
+                        bestScore = score
+                        bestIdx = planIdx + ahead
+                    }
+                }
+            }
+
+            let step = flatSteps[bestIdx]
+            planIdx = bestIdx + 1
+
             let hr: Int? = {
                 guard let qty = activity.statistics(for: HKQuantityType(.heartRate))?
                     .averageQuantity() else { return nil }
@@ -1833,11 +1871,6 @@ class HealthKitManager {
                 return Int((steps / (segDuration / 60)).rounded())
             }()
 
-            var paceStr = "—"
-            if let d = distM, d > 0, activity.duration > 0 {
-                let sPerKm = activity.duration / (d / 1000)
-                paceStr = String(format: "%d'%02d\"/km", Int(sPerKm) / 60, Int(sPerKm) % 60)
-            }
             result.append(IntervalSegment(
                 id: i + 1,
                 startDate: activity.startDate,
@@ -1845,7 +1878,7 @@ class HealthKitManager {
                 distanceM: distM,
                 avgHeartRate: hr,
                 avgCadence: cadence,
-                stepLabel: labelPair.label
+                stepLabel: step.label
             ))
         }
         return result

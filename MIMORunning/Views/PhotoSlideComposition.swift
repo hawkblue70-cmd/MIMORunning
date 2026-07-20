@@ -59,7 +59,9 @@ enum PhotoSlideComposition {
 
         let size       = targetSize
         let actualN    = min(photos.count, maxPhotos)
-        let imgs       = Array(photos.prefix(actualN)).compactMap { scaleFill($0, to: size) }
+        let imgs       = zip(photos.prefix(actualN), recipes.prefix(actualN)).compactMap { photo, recipe in
+            scaleFill(photo, to: size, cropOffsetX: recipe.cropOffsetX)
+        }
         guard !imgs.isEmpty else { throw SlideError.noPhotos }
         let n          = imgs.count
         let useRecipes = Array(recipes.prefix(n))
@@ -179,7 +181,9 @@ enum PhotoSlideComposition {
 
         let size       = targetSize
         let n          = min(photos.count, maxPhotos)
-        let imgs       = Array(photos.prefix(n)).compactMap { scaleFill($0, to: size) }
+        let imgs       = zip(photos.prefix(n), recipes.prefix(n)).compactMap { photo, recipe in
+            scaleFill(photo, to: size, cropOffsetX: recipe.cropOffsetX)
+        }
         guard !imgs.isEmpty else { throw SlideError.noPhotos }
         let useRecipes = Array(recipes.prefix(imgs.count))
         let D          = useRecipes.reduce(0.0) { $0 + $1.trimmedDuration }
@@ -1256,68 +1260,162 @@ enum PhotoSlideComposition {
             }
 
             func renderSplitsPanel(_ splitsData: [SplitData]) -> UIImage? {
-                let full = splitsData.filter { $0.distanceM >= 900 }
+                var full = splitsData.filter { $0.distanceM >= 900 }
                 guard full.count >= 2 else { return nil }
-                let paces  = full.map { $0.paceSecPerKm }
-                let minP   = paces.min()!, maxP = paces.max()!
-                let rangeP = max(1, maxP - minP)
-                let avgP   = paces.reduce(0, +) / Double(paces.count)
+                if full.count > 21 { full = full.filter { $0.id % 2 == 0 } }
                 let n      = full.count
-                let lblFont  = UIFont.monospacedDigitSystemFont(ofSize: 8 * vScale, weight: .regular)
-                let lblColor = UIColor.white.withAlphaComponent(0.55)
-                let lblAttrs: [NSAttributedString.Key: Any] = [.font: lblFont, .foregroundColor: lblColor]
-                let titleH  = 13 * vScale
-                let xLblH   = 12 * vScale
-                let barAreaX = panPad + 24 * vScale
-                let barAreaY = panPad + titleH
-                let barAreaW = panW - barAreaX - panPad
-                let barAreaH = panH - barAreaY - xLblH - panPad
-                let barGap: CGFloat = 3 * vScale
-                let barW = max(4 * vScale, (barAreaW - barGap * CGFloat(n - 1)) / CGFloat(n))
-                let violet = UIColor(red: 0.486, green: 0.361, blue: 0.988, alpha: 0.85)
-                let rnd = UIGraphicsImageRenderer(size: CGSize(width: panW, height: panH), format: imgFormat)
-                return rnd.image { ctx in
-                    let cg = ctx.cgContext
-                    let bg = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: panW, height: panH), cornerRadius: panCR)
-                    UIColor.black.withAlphaComponent(0.30).setFill(); bg.fill()
-                    let titleFont  = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
-                    let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
-                    (AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits") as NSString).draw(at: CGPoint(x: barAreaX, y: panPad), withAttributes: titleAttrs)
-                    for (i, split) in full.enumerated() {
-                        let frac   = CGFloat((split.paceSecPerKm - minP) / rangeP)
-                        let bH     = barAreaH * max(0.12, frac * 0.82 + 0.12)
-                        let bX     = barAreaX + CGFloat(i) * (barW + barGap)
-                        let bY     = barAreaY + barAreaH - bH
-                        let color  = split.paceSecPerKm <= avgP ? violet : UIColor.white.withAlphaComponent(0.40)
-                        let path   = UIBezierPath(roundedRect: CGRect(x: bX, y: bY, width: barW, height: bH), cornerRadius: 3 * vScale)
-                        color.setFill(); path.fill()
-                        let lbl = "\(split.id)"
-                        let lsz = (lbl as NSString).size(withAttributes: lblAttrs)
-                        (lbl as NSString).draw(at: CGPoint(x: bX + (barW - lsz.width) / 2, y: barAreaY + barAreaH + 2 * vScale), withAttributes: lblAttrs)
+                let paces  = full.map { $0.paceSecPerKm }
+                let minP   = paces.min()!
+                let maxP   = paces.max()!
+                let rangeP = max(1.0, maxP - minP)
+                let avgP   = paces.reduce(0.0, +) / Double(paces.count)
+                let fastestIdx = paces.indices.min(by: { paces[$0] < paces[$1] }) ?? 0
+
+                let hasHR  = full.contains { $0.avgHeartRate != nil }
+                let hasCad = full.contains { $0.avgCadence   != nil }
+                let hasPwr = full.contains { $0.avgPower     != nil }
+
+                // Layout constants matching splitsChartPanel (scaled by vScale)
+                let rowH:    CGFloat = 7  * vScale
+                let titleH:  CGFloat = 16 * vScale
+                let colHH:   CGFloat = 8  * vScale
+                let vPad:    CGFloat = 5  * vScale
+                let sHPad:   CGFloat = 8  * vScale
+                let gap:     CGFloat = 3  * vScale
+                let kmW:     CGFloat = 18 * vScale
+                let colW:    CGFloat = 24 * vScale
+
+                let fixedW   = 2 * sHPad + kmW + 2 * gap + colW
+                let optW     = (hasHR  ? gap + colW : 0)
+                             + (hasCad ? gap + colW : 0)
+                             + (hasPwr ? gap + colW : 0)
+                let barAreaW = max(20 * vScale, panW - fixedW - optW)
+                let myPanH   = titleH + colHH + CGFloat(n) * rowH + vPad * 2
+
+                // Colors
+                let violet   = UIColor(red: 0.486, green: 0.361, blue: 0.988, alpha: 0.85)
+                let gold     = UIColor(red: 1.0,   green: 0.780, blue: 0.302, alpha: 1.0)   // FFC74D
+                let dimWhite = UIColor.white.withAlphaComponent(0.30)
+                let cyanClr  = UIColor(red: 0.376, green: 0.910, blue: 0.800, alpha: 1.0)   // 60E8CC
+                let limeClr  = UIColor(red: 0.745, green: 0.980, blue: 0.416, alpha: 1.0)   // BEFA6A
+
+                func zoneUIColor(hr: Int) -> UIColor {
+                    if let z = hrZones.first(where: { hr >= $0.minBPM && hr <= $0.maxBPM }) {
+                        switch z.id {
+                        case 1: return UIColor(red: 0.310, green: 0.765, blue: 0.969, alpha: 1.0)
+                        case 2: return UIColor(red: 0.506, green: 0.784, blue: 0.518, alpha: 1.0)
+                        case 3: return UIColor(red: 1.000, green: 0.718, blue: 0.302, alpha: 1.0)
+                        case 4: return UIColor(red: 1.000, green: 0.439, blue: 0.263, alpha: 1.0)
+                        default: return UIColor(red: 0.898, green: 0.224, blue: 0.208, alpha: 1.0)
+                        }
                     }
-                    let avgFrac  = CGFloat((avgP - minP) / rangeP)
-                    let avgLineH = barAreaH * max(0.12, avgFrac * 0.82 + 0.12)
-                    let avgLineY = barAreaY + barAreaH - avgLineH
-                    cg.setStrokeColor(UIColor.white.withAlphaComponent(0.38).cgColor)
-                    cg.setLineWidth(1 * vScale)
-                    cg.setLineDash(phase: 0, lengths: [5 * vScale, 3 * vScale])
-                    cg.move(to: CGPoint(x: barAreaX, y: avgLineY))
-                    cg.addLine(to: CGPoint(x: barAreaX + barAreaW, y: avgLineY))
-                    cg.strokePath()
-                    if let bestIdx = paces.indices.min(by: { paces[$0] < paces[$1] }),
-                       let bestPaceSec = paces.min() {
-                        let bpSec = Int(bestPaceSec)
-                        let bpStr = "\(bpSec / 60)'\(String(format: "%02d", bpSec % 60))\""
-                        let bpFont  = UIFont.monospacedDigitSystemFont(ofSize: 8 * vScale, weight: .medium)
-                        let bpAttrs: [NSAttributedString.Key: Any] = [.font: bpFont, .foregroundColor: violet]
-                        let bpSz = (bpStr as NSString).size(withAttributes: bpAttrs)
-                        let bpX  = barAreaX + CGFloat(bestIdx) * (barW + barGap)
-                        let bestFrac = CGFloat((paces[bestIdx] - minP) / rangeP)
-                        let bestBarH = barAreaH * max(0.12, bestFrac * 0.82 + 0.12)
-                        let bestBarY = barAreaY + barAreaH - bestBarH
-                        (bpStr as NSString).draw(
-                            at: CGPoint(x: min(bpX, barAreaX + barAreaW - bpSz.width), y: bestBarY - bpSz.height - 2 * vScale),
-                            withAttributes: bpAttrs)
+                    return UIColor(red: 1.0, green: 0.43, blue: 0.27, alpha: 1.0)
+                }
+
+                // Fonts
+                let titleFont = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
+                let colHFont  = UIFont.systemFont(ofSize: 5.5 * vScale, weight: .medium)
+                let kmFont    = UIFont.monospacedDigitSystemFont(ofSize: 6.5 * vScale, weight: .medium)
+                let paceFont  = UIFont.monospacedDigitSystemFont(ofSize: 7 * vScale, weight: .bold)
+                let numFont   = UIFont.monospacedDigitSystemFont(ofSize: 6.5 * vScale, weight: .regular)
+
+                let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
+                let colHAttrs:  [NSAttributedString.Key: Any] = [.font: colHFont,  .foregroundColor: UIColor.white.withAlphaComponent(0.75)]
+
+                // Column X positions
+                let barStartX  = sHPad + kmW + gap
+                let paceColX   = barStartX + barAreaW + gap
+
+                let rnd = UIGraphicsImageRenderer(size: CGSize(width: panW, height: myPanH), format: imgFormat)
+                return rnd.image { _ in
+                    // Background
+                    let bg = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: panW, height: myPanH), cornerRadius: panCR)
+                    UIColor.black.withAlphaComponent(0.30).setFill(); bg.fill()
+
+                    // Title
+                    (AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits") as NSString)
+                        .draw(at: CGPoint(x: sHPad, y: vPad), withAttributes: titleAttrs)
+
+                    // Column headers (right-aligned in each colW)
+                    let colHY = vPad + titleH
+                    func drawHeaderRight(_ text: String, atX: CGFloat) {
+                        let s = text as NSString
+                        let sz = s.size(withAttributes: colHAttrs)
+                        s.draw(at: CGPoint(x: atX + colW - sz.width,
+                                           y: colHY + (colHH - sz.height) / 2), withAttributes: colHAttrs)
+                    }
+                    drawHeaderRight(AppLanguage.shared.s("페이스", "Pace"), atX: paceColX)
+                    var nextColX = paceColX + colW
+                    if hasHR  { drawHeaderRight(AppLanguage.shared.s("심박", "HR"),       atX: nextColX + gap); nextColX += gap + colW }
+                    if hasCad { drawHeaderRight(AppLanguage.shared.s("케이던스", "Cad"),   atX: nextColX + gap); nextColX += gap + colW }
+                    if hasPwr { drawHeaderRight(AppLanguage.shared.s("파워", "Pwr"),       atX: nextColX + gap) }
+
+                    // Rows
+                    for (i, split) in full.enumerated() {
+                        let rowY      = vPad + titleH + colHH + CGFloat(i) * rowH
+                        let isFastest = i == fastestIdx
+                        let pace      = split.paceSecPerKm
+                        let barFrac   = CGFloat(0.28 + 0.72 * (pace - minP) / rangeP)
+                        let barColor: UIColor = isFastest ? gold
+                            : (pace <= avgP ? violet : dimWhite)
+
+                        // km label (right-aligned in kmW)
+                        let kmStr   = "\(split.id)k" as NSString
+                        let kmAttrs: [NSAttributedString.Key: Any] = [.font: kmFont, .foregroundColor: UIColor.white.withAlphaComponent(0.80)]
+                        let kmSz    = kmStr.size(withAttributes: kmAttrs)
+                        kmStr.draw(at: CGPoint(x: sHPad + kmW - kmSz.width,
+                                               y: rowY + (rowH - kmSz.height) / 2), withAttributes: kmAttrs)
+
+                        // Bar track (background) + fill
+                        let barH: CGFloat = 3 * vScale
+                        let barY  = rowY + (rowH - barH) / 2
+                        let trackPath = UIBezierPath(roundedRect: CGRect(x: barStartX, y: barY, width: barAreaW, height: barH), cornerRadius: 1)
+                        UIColor.white.withAlphaComponent(0.10).setFill(); trackPath.fill()
+                        let fillPath = UIBezierPath(roundedRect: CGRect(x: barStartX, y: barY, width: max(3 * vScale, barAreaW * barFrac), height: barH), cornerRadius: 1)
+                        barColor.setFill(); fillPath.fill()
+
+                        // Pace text (right-aligned)
+                        let paceAttrs: [NSAttributedString.Key: Any] = [.font: paceFont, .foregroundColor: isFastest ? gold : UIColor.white]
+                        let paceStr = split.formattedPace as NSString
+                        let paceSz  = paceStr.size(withAttributes: paceAttrs)
+                        paceStr.draw(at: CGPoint(x: paceColX + colW - paceSz.width,
+                                                 y: rowY + (rowH - paceSz.height) / 2), withAttributes: paceAttrs)
+
+                        // Optional columns
+                        var oX = paceColX + colW
+                        if hasHR {
+                            let hrStr: NSString
+                            let hrColor: UIColor
+                            if let hr = split.avgHeartRate {
+                                hrStr   = "\(hr)" as NSString
+                                hrColor = zoneUIColor(hr: hr)
+                            } else {
+                                hrStr   = "—" as NSString
+                                hrColor = UIColor.white.withAlphaComponent(0.30)
+                            }
+                            let hrAttrs: [NSAttributedString.Key: Any] = [.font: numFont, .foregroundColor: hrColor]
+                            let hrSz = hrStr.size(withAttributes: hrAttrs)
+                            hrStr.draw(at: CGPoint(x: oX + gap + colW - hrSz.width,
+                                                   y: rowY + (rowH - hrSz.height) / 2), withAttributes: hrAttrs)
+                            oX += gap + colW
+                        }
+                        if hasCad {
+                            let cadStr   = (split.avgCadence.map { "\($0)" } ?? "—") as NSString
+                            let cadColor = split.avgCadence != nil ? cyanClr : UIColor.white.withAlphaComponent(0.30)
+                            let cadAttrs: [NSAttributedString.Key: Any] = [.font: numFont, .foregroundColor: cadColor]
+                            let cadSz = cadStr.size(withAttributes: cadAttrs)
+                            cadStr.draw(at: CGPoint(x: oX + gap + colW - cadSz.width,
+                                                    y: rowY + (rowH - cadSz.height) / 2), withAttributes: cadAttrs)
+                            oX += gap + colW
+                        }
+                        if hasPwr {
+                            let pwrStr   = (split.avgPower.map { "\($0)" } ?? "—") as NSString
+                            let pwrColor = split.avgPower != nil ? limeClr : UIColor.white.withAlphaComponent(0.30)
+                            let pwrAttrs: [NSAttributedString.Key: Any] = [.font: numFont, .foregroundColor: pwrColor]
+                            let pwrSz = pwrStr.size(withAttributes: pwrAttrs)
+                            pwrStr.draw(at: CGPoint(x: oX + gap + colW - pwrSz.width,
+                                                    y: rowY + (rowH - pwrSz.height) / 2), withAttributes: pwrAttrs)
+                        }
                     }
                 }
             }
@@ -1389,6 +1487,7 @@ enum PhotoSlideComposition {
                     panelImage = renderRoutePanel(routeCoords)
                 } else if overlayType == .splits, !splits.isEmpty {
                     panelImage = renderSplitsPanel(splits)
+                    activePanH = panelImage?.size.height ?? panH
                 } else if overlayType == .intervals, !intervalSegments.isEmpty {
                     panelImage = renderIntervalPanel(intervalSegments)
                     activePanH = intervalPanH
@@ -1666,15 +1765,170 @@ enum PhotoSlideComposition {
 
     // MARK: - Scale-fill helper
 
-    static func scaleFill(_ image: UIImage, to size: CGSize) -> CGImage? {
+    static func scaleFill(_ image: UIImage, to size: CGSize, cropOffsetX: CGFloat = 0.5) -> CGImage? {
         let s  = max(size.width / image.size.width, size.height / image.size.height)
         let sw = image.size.width  * s
         let sh = image.size.height * s
-        let ox = (size.width  - sw) / 2
+        let ox = (size.width  - sw) * cropOffsetX
         let oy = (size.height - sh) / 2
         let renderer = UIGraphicsImageRenderer(size: size)
         return renderer.image { _ in
             image.draw(in: CGRect(x: ox, y: oy, width: sw, height: sh))
         }.cgImage
+    }
+
+    // MARK: - exportAthleticSlide
+    //
+    // 사진 배열 + 사진별 크롭 오프셋 + 미리 렌더링된 VideoOverlayCard 이미지 →
+    // 1080×1920 MOV (Ken Burns + cross-dissolve + 정적 오버레이).
+    // Athletic 슬라이드 전용 — 문구/데이터 레이어 없이 사진·오버레이만 합성.
+
+    static func exportAthleticSlide(
+        photos:       [UIImage],
+        cropOffsets:  [CGFloat],
+        overlayImage: UIImage,
+        clipDuration: Double = 3.0
+    ) async throws -> URL {
+        guard !photos.isEmpty else { throw SlideError.noPhotos }
+
+        let sz       = targetSize
+        let total    = Double(photos.count) * clipDuration
+        let dissolve = dissolveDuration
+
+        // ── 1. Black base video ────────────────────────────────────────────────
+        let baseURL = try await writeBlackBaseVideo(size: sz, duration: total)
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        // ── 2. CALayer tree ────────────────────────────────────────────────────
+        // contentLayer holds photo sublayers + overlay; videoLayer receives video frames.
+        // exportParent (flipped) wraps both, matching the pattern used by exportSlideWithText.
+        let contentLayer = CALayer()
+        contentLayer.frame = CGRect(origin: .zero, size: sz)
+
+        // Helper matching buildContentLayer's linearAnim — beginTime is critical for AVFoundation
+        func linearAnim(_ keyPath: String, keyTimes: [NSNumber], values: [Any]) -> CAKeyframeAnimation {
+            let a = CAKeyframeAnimation(keyPath: keyPath)
+            a.beginTime             = AVCoreAnimationBeginTimeAtZero
+            a.duration              = total
+            a.calculationMode       = .linear
+            a.fillMode              = .both
+            a.isRemovedOnCompletion = false
+            a.keyTimes              = keyTimes
+            a.values                = values
+            return a
+        }
+
+        let cx = sz.width / 2, cy = sz.height / 2
+
+        for (i, photo) in photos.enumerated() {
+            let cropX  = i < cropOffsets.count ? cropOffsets[i] : 0.5
+            let cg     = scaleFill(photo, to: sz, cropOffsetX: cropX)
+            let sf     = Double(i) * clipDuration / total
+            let ef     = Double(i + 1) * clipDuration / total
+
+            let pl                = CALayer()
+            pl.frame              = CGRect(origin: .zero, size: sz)
+            pl.contents           = cg
+            pl.contentsGravity    = .resize
+
+            let (startSc, startPanX) = kenBurns(idx: i, progress: 0.0)
+            let (endSc,   endPanX)   = kenBurns(idx: i, progress: 1.0)
+
+            let scKT: [NSNumber] = [NSNumber(value: sf), NSNumber(value: ef), 1.0]
+            pl.add(linearAnim("transform.scale", keyTimes: scKT,
+                              values: [NSNumber(value: Float(startSc)),
+                                       NSNumber(value: Float(endSc)),
+                                       NSNumber(value: Float(endSc))]),
+                   forKey: "kbScale")
+            pl.add(linearAnim("position", keyTimes: scKT,
+                              values: [NSValue(cgPoint: CGPoint(x: cx + startPanX, y: cy)),
+                                       NSValue(cgPoint: CGPoint(x: cx + endPanX,   y: cy)),
+                                       NSValue(cgPoint: CGPoint(x: cx + endPanX,   y: cy))]),
+                   forKey: "kbPos")
+
+            // cross-dissolve opacity
+            let opKT: [NSNumber]
+            let opVal: [Float]
+            let fisFrac = max((sf - dissolve / total), 0.0)
+            let fosFrac = ef - dissolve / total
+            if i == 0 {
+                opKT  = [0.0, NSNumber(value: fosFrac), NSNumber(value: ef), 1.0]
+                opVal = [1.0, 1.0, 0.0, 0.0]
+            } else if i == photos.count - 1 {
+                opKT  = [0.0, NSNumber(value: fisFrac), NSNumber(value: sf), 1.0]
+                opVal = [0.0, 0.0, 1.0, 1.0]
+            } else {
+                opKT  = [0.0, NSNumber(value: fisFrac), NSNumber(value: sf),
+                         NSNumber(value: fosFrac), NSNumber(value: ef), 1.0]
+                opVal = [0.0, 0.0, 1.0, 1.0, 0.0, 0.0]
+            }
+            pl.add(linearAnim("opacity", keyTimes: opKT, values: opVal), forKey: "opacity")
+
+            contentLayer.addSublayer(pl)
+        }
+
+        // Overlay (VideoOverlayCard pre-rendered image), always on top
+        let ovLayer               = CALayer()
+        ovLayer.frame             = CGRect(origin: .zero, size: sz)
+        ovLayer.contents          = overlayImage.cgImage
+        ovLayer.contentsGravity   = .resize
+        contentLayer.addSublayer(ovLayer)
+
+        let videoLayer       = CALayer()
+        videoLayer.frame     = CGRect(origin: .zero, size: sz)
+        let exportParent     = CALayer()
+        exportParent.frame   = CGRect(origin: .zero, size: sz)
+        exportParent.isGeometryFlipped = true
+        exportParent.addSublayer(videoLayer)
+        exportParent.addSublayer(contentLayer)
+
+        // ── 3. Composition ────────────────────────────────────────────────────
+        let bgAsset  = AVURLAsset(url: baseURL)
+        let bgTracks = try await bgAsset.loadTracks(withMediaType: .video)
+        guard let bgTrack = bgTracks.first else { throw SlideError.writeFailed }
+        let bgRange  = try await bgTrack.load(.timeRange)
+
+        let comp = AVMutableComposition()
+        guard let ct = comp.addMutableTrack(
+            withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { throw SlideError.writeFailed }
+        try ct.insertTimeRange(bgRange, of: bgTrack, at: .zero)
+
+        let vcInstr = AVMutableVideoCompositionInstruction()
+        vcInstr.timeRange         = bgRange
+        vcInstr.layerInstructions = [AVMutableVideoCompositionLayerInstruction(assetTrack: ct)]
+
+        let videoComp           = AVMutableVideoComposition()
+        videoComp.renderSize    = sz
+        videoComp.frameDuration = CMTimeMake(value: 1, timescale: 30)
+        videoComp.instructions  = [vcInstr]
+        videoComp.animationTool = AVVideoCompositionCoreAnimationTool(
+            postProcessingAsVideoLayer: videoLayer, in: exportParent)
+
+        // ── 4. Export ─────────────────────────────────────────────────────────
+        let outURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_athletic_slide_\(UUID().uuidString).mov")
+        try? FileManager.default.removeItem(at: outURL)
+
+        guard let session = AVAssetExportSession(
+            asset: comp, presetName: AVAssetExportPresetHEVCHighestQuality)
+        else { throw SlideError.writeFailed }
+
+        session.outputURL        = outURL
+        session.outputFileType   = .mov
+        session.videoComposition = videoComp
+        session.timeRange        = bgRange
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            session.exportAsynchronously {
+                switch session.status {
+                case .completed: cont.resume()
+                case .failed:    cont.resume(throwing: session.error ?? SlideError.writeFailed)
+                case .cancelled: cont.resume(throwing: SlideError.writeFailed)
+                default:         cont.resume(throwing: SlideError.writeFailed)
+                }
+            }
+        }
+        return outURL
     }
 }

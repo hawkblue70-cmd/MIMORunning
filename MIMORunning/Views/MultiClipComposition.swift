@@ -319,6 +319,8 @@ struct ClipRecipe: Identifiable {
     var plateColorPreset: PlateColorPreset = .blackWhite
     /// 재생 배속. 1.0=원본. 0.5(슬로우)~2.0(패스트). 출력 길이 = trimmedDuration / speed.
     var speed:            Double            = 1.0
+    /// 가로(landscape) 콘텐츠 좌우 크롭 위치. 0=왼쪽, 0.5=중앙, 1=오른쪽.
+    var cropOffsetX:      CGFloat           = 0.5
 
     // ── 러닝 데이터 오버레이 (운동한 날 전용, 클립별) ─────────────────
     // P/D/T/B = 가로 그룹(pdtPosition 한 위치). 차트는 chartOverlayType 단일 선택(경로/심박수/기타).
@@ -594,7 +596,8 @@ enum MultiClipComposition {
             }
 
             layerInstr.setTransform(
-                scaleFillTransform(naturalSize: natSz, preferredTransform: prefTf),
+                scaleFillTransform(naturalSize: natSz, preferredTransform: prefTf,
+                                   cropOffsetX: recipe.cropOffsetX),
                 at: insertAt)
 
             // 배속: 삽입된 구간을 리타임(출력 길이 = 트림 길이 / speed). 영상·오디오 동시.
@@ -683,12 +686,13 @@ enum MultiClipComposition {
     // MARK: - Private
 
     private static func scaleFillTransform(naturalSize: CGSize,
-                                            preferredTransform: CGAffineTransform) -> CGAffineTransform {
+                                            preferredTransform: CGAffineTransform,
+                                            cropOffsetX: CGFloat = 0.5) -> CGAffineTransform {
         let displayRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
         let dw    = abs(displayRect.width)
         let dh    = abs(displayRect.height)
         let scale = max(targetSize.width / dw, targetSize.height / dh)
-        let txOff = (targetSize.width  - dw * scale) / 2
+        let txOff = (targetSize.width  - dw * scale) * cropOffsetX
         let tyOff = (targetSize.height - dh * scale) / 2
 
         var tf = preferredTransform

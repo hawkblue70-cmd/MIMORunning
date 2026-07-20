@@ -552,6 +552,7 @@ struct OneLinerCard: View {
     /// Date used for the date stamp and gradient when `activity` is nil (rest-day mode).
     var displayDate: Date = Date()
     var backgroundPhoto: UIImage? = nil
+    var cropOffsetX: CGFloat = 0.5
     var text: String = ""
     var position: CardPosition = .center
     var textColor: OneLinerTextColor = .white
@@ -1174,10 +1175,16 @@ struct OneLinerCard: View {
     @ViewBuilder
     private var background: some View {
         if let photo = backgroundPhoto {
+            let cH = cardHeightOverride ?? Self.cardHeight
+            let s  = max(Self.cardWidth / photo.size.width, cH / photo.size.height)
+            let iW = photo.size.width  * s
+            let iH = photo.size.height * s
+            let ox = -(cropOffsetX * max(0, iW - Self.cardWidth))
             Image(uiImage: photo)
                 .resizable()
-                .scaledToFill()
-                .frame(width: Self.cardWidth, height: cardHeightOverride ?? Self.cardHeight)
+                .frame(width: iW, height: iH)
+                .offset(x: ox)
+                .frame(width: Self.cardWidth, height: cH)
                 .clipped()
         } else {
             LinearGradient(

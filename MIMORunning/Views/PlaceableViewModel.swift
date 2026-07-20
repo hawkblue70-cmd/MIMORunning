@@ -44,6 +44,9 @@ final class PlaceableViewModel {
     var placeableStoryPlateOn: Bool = false
     var placeableStoryPlatePreset: PlateColorPreset = .blackWhite
     var placeableStoryTabIsText: Bool = false
+    /// 사진별 좌우 크롭 위치. 0=왼쪽, 0.5=중앙, 1=오른쪽. 가로 사진에만 유효.
+    var placeableStoryCropOffsets: [Int: CGFloat] = [:]
+    var storyCropDragBase: CGFloat? = nil
 
     // MARK: - Slide animation
 

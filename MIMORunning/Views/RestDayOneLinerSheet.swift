@@ -100,6 +100,7 @@ struct RestDayOneLinerSheet: View {
     @StateObject private var loadGuard:  RestDayLoadGuard     = RestDayLoadGuard()
     @State private var previewPlayer:    OneLinerPreviewPlayer = OneLinerPreviewPlayer()
     @State private var exportError:     String?              = nil
+    @State private var cropDragBase:    CGFloat?             = nil
 
     @FocusState private var fieldFocused: Bool
     @FocusState private var focusedLineIndex: Int?
@@ -386,9 +387,17 @@ struct RestDayOneLinerSheet: View {
             let scale: CGFloat = OneLinerCard.cardHeight / pH
             let scaledW: CGFloat = CardPreviewFrame.width * scale
             let clipRecipe = clipRecipes.indices.contains(currentClipIndex) ? clipRecipes[currentClipIndex] : nil
+            let safeClipIdx = clipRecipes.indices.contains(currentClipIndex) ? currentClipIndex : 0
+            let clipCropX   = clipRecipe?.cropOffsetX ?? 0.5
+            let clipExcess: CGFloat = {
+                guard let t = cardBackground else { return 0 }
+                let s = max(CardPreviewFrame.width / t.size.width, pH / t.size.height)
+                return max(0, t.size.width * s - CardPreviewFrame.width) * scale
+            }()
             OneLinerCard(
                 displayDate: date,
                 backgroundPhoto: cardBackground,
+                cropOffsetX: clipCropX,
                 text: cardText,
                 position: previewPosition,
                 textColor: previewTextColor,
@@ -435,11 +444,35 @@ struct RestDayOneLinerSheet: View {
             }
             .scaleEffect(scale)
             .frame(width: scaledW, height: OneLinerCard.cardHeight)
+            .gesture(
+                clipExcess > 0 ? DragGesture(minimumDistance: 1)
+                    .onChanged { drag in
+                        if cropDragBase == nil { cropDragBase = clipCropX }
+                        guard let base = cropDragBase,
+                              clipRecipes.indices.contains(safeClipIdx) else { return }
+                        clipRecipes[safeClipIdx].cropOffsetX = max(0, min(1,
+                            base - drag.translation.width / clipExcess))
+                    }
+                    .onEnded { _ in
+                        cropDragBase = nil
+                        handleRecipesChanged()
+                    }
+                : nil
+            )
             .frame(maxWidth: .infinity)
         } else {
+            let storySafeIdx = clipRecipes.indices.contains(currentClipIndex) ? currentClipIndex : 0
+            let storyCropX   = clipRecipes.indices.contains(storySafeIdx) ? clipRecipes[storySafeIdx].cropOffsetX : 0.5
+            let storyExcess: CGFloat = {
+                guard let t = cardBackground else { return 0 }
+                let s = max(OneLinerCard.cardWidth / t.size.width,
+                            OneLinerCard.cardHeight / t.size.height)
+                return max(0, t.size.width * s - OneLinerCard.cardWidth)
+            }()
             OneLinerCard(
                 displayDate: date,
                 backgroundPhoto: cardBackground,
+                cropOffsetX: storyCropX,
                 text: cardText,
                 position: previewPosition,
                 textColor: previewTextColor,
@@ -473,6 +506,21 @@ struct RestDayOneLinerSheet: View {
                     .buttonStyle(.plain)
                 }
             }
+            .gesture(
+                storyExcess > 0 ? DragGesture(minimumDistance: 1)
+                    .onChanged { drag in
+                        if cropDragBase == nil { cropDragBase = storyCropX }
+                        guard let base = cropDragBase,
+                              clipRecipes.indices.contains(storySafeIdx) else { return }
+                        clipRecipes[storySafeIdx].cropOffsetX = max(0, min(1,
+                            base - drag.translation.width / storyExcess))
+                    }
+                    .onEnded { _ in
+                        cropDragBase = nil
+                        handleRecipesChanged()
+                    }
+                : nil
+            )
             .frame(maxWidth: .infinity)
         }
     }
@@ -1130,7 +1178,7 @@ struct RestDayOneLinerSheet: View {
                 sizeID: r.sizeLevel.rawValue,
                 effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)P\(r.plateOn ? 1 : 0)|\(r.flyDirection.rawValue)",
                 plateColorID: r.plateColorPreset.rawValue,
-                speed: r.speed,
+                speed: r.speed, cropOffsetX: Double(r.cropOffsetX),
                 metricPace: r.metricPace, metricDistance: r.metricDistance, metricTime: r.metricTime,
                 pdtAnchorIdx: CardPosition.allCases.firstIndex(of: r.pdtPosition),
                 showRoute: r.showRoute,
@@ -1247,7 +1295,8 @@ struct RestDayOneLinerSheet: View {
                 recipe.plateOn        = false
             }
             recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
-            recipe.speed = desc.speed
+            recipe.speed       = desc.speed
+            recipe.cropOffsetX = CGFloat(desc.cropOffsetX)
             recipe.metricPace     = desc.metricPace
             recipe.metricDistance = desc.metricDistance
             recipe.metricTime     = desc.metricTime

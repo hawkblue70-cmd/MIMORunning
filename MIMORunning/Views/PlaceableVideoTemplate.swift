@@ -48,9 +48,17 @@ extension ShareCardScreen {
                         .padding(.bottom, 10)
                     }
             } else {
-                Image(uiImage: storyPhotos[0])
+                let slideIdx = min(placeableCurrentPhotoIdx, storyPhotos.count - 1)
+                let sp0      = storyPhotos[slideIdx]
+                let sCropX   = placeableVM.placeableStoryCropOffsets[slideIdx] ?? 0.5
+                let sp0Scale = max(previewW / sp0.size.width, cardH / sp0.size.height)
+                let sp0ImgW  = sp0.size.width  * sp0Scale
+                let sp0ImgH  = sp0.size.height * sp0Scale
+                let sp0Ox    = -(sCropX * max(0, sp0ImgW - previewW))
+                Image(uiImage: sp0)
                     .resizable()
-                    .scaledToFill()
+                    .frame(width: sp0ImgW, height: sp0ImgH)
+                    .offset(x: sp0Ox)
                     .frame(width: previewW, height: cardH)
                     .clipped()
 
@@ -169,7 +177,32 @@ extension ShareCardScreen {
         AnyView(
             Group {
                 if template == .slide {
+                    let slideH    = cardSectionH
+                    let slideW    = slideH * 9.0 / 16.0
+                    let curIdx    = min(placeableCurrentPhotoIdx, max(0, storyPhotos.count - 1))
+                    let slideExcess: CGFloat = {
+                        guard storyPhotos.indices.contains(curIdx) else { return 0 }
+                        let p = storyPhotos[curIdx]
+                        let s = max(slideW / p.size.width, slideH / p.size.height)
+                        return max(0, p.size.width * s - slideW)
+                    }()
                     ZStack { placeableSlidePreview }
+                        .gesture(
+                            slideExcess > 0 ? DragGesture(minimumDistance: 1)
+                                .onChanged { drag in
+                                    if placeableVM.storyCropDragBase == nil {
+                                        placeableVM.storyCropDragBase = placeableVM.placeableStoryCropOffsets[curIdx] ?? 0.5
+                                    }
+                                    guard let base = placeableVM.storyCropDragBase else { return }
+                                    let newVal = max(0, min(1, base - drag.translation.width / slideExcess))
+                                    placeableVM.placeableStoryCropOffsets[curIdx] = newVal
+                                }
+                                .onEnded { _ in
+                                    placeableVM.storyCropDragBase = nil
+                                    rebuildPlaceableSlidePreview()
+                                }
+                            : nil
+                        )
                 } else {
                     placeableNonSlideCardPreview
                 }
@@ -404,11 +437,18 @@ extension ShareCardScreen {
 
             } else {
                 // 스토리 템플릿: 4:5 그대로
+                let storyPhoto = photoFor(0)
+                let storyCropX = placeableVM.placeableStoryCropOffsets[placeableCurrentPhotoIdx] ?? 0.5
+                let storyExcess: CGFloat = {
+                    guard let p = storyPhoto else { return 0 }
+                    let s = max(300 / p.size.width, 375 / p.size.height)
+                    return max(0, p.size.width * s - 300)
+                }()
                 PlaceableCard(
                     activity: activity,
                     detail: detail,
                     routeCoords: routeCoords.isEmpty ? nil : routeCoords,
-                    photo: photoFor(0),
+                    photo: storyPhoto,
                     date: activity.date,
                     metricsPosition: placeableVM.placeableMetricsPosition,
                     accent: placeableVM.placeableAccent,
@@ -417,7 +457,24 @@ extension ShareCardScreen {
                     size: placeableVM.placeableSize,
                     layout: placeableVM.placeableLayout,
                     horizTextRow: placeableVM.placeableHorizTextRow,
-                    horizRoutePos: placeableVM.placeableHorizRoutePos
+                    horizRoutePos: placeableVM.placeableHorizRoutePos,
+                    cropOffsetX: storyCropX
+                )
+                .gesture(
+                    storyExcess > 0 ? DragGesture(minimumDistance: 1)
+                        .onChanged { drag in
+                            if placeableVM.storyCropDragBase == nil {
+                                placeableVM.storyCropDragBase = storyCropX
+                            }
+                            guard let base = placeableVM.storyCropDragBase else { return }
+                            let newVal = max(0, min(1, base - drag.translation.width / storyExcess))
+                            placeableVM.placeableStoryCropOffsets[placeableCurrentPhotoIdx] = newVal
+                        }
+                        .onEnded { _ in
+                            placeableVM.storyCropDragBase = nil
+                            Task { await renderCard(showSpinner: false) }
+                        }
+                    : nil
                 )
                 if !placeableCurrentText.isEmpty {
                     OneLinerCard(
@@ -438,6 +495,7 @@ extension ShareCardScreen {
                         chartTopReserved: placeableVM.storyTopReserved
                     )
                     .frame(width: 300, height: 375)
+                    .allowsHitTesting(false)
                 }
             }
         }
@@ -446,8 +504,9 @@ extension ShareCardScreen {
     // MARK: - Placeable 정적 내보내기 뷰
 
     // text: 사진별 문구. nil이면 placeableCurrentText(현재 선택 사진 문구) 사용.
+    // photoIndex: storyPhotos 인덱스 — cropOffsetX 조회에 사용.
     @ViewBuilder
-    func placeableExportView(photo: UIImage?, text: String? = nil) -> some View {
+    func placeableExportView(photo: UIImage?, text: String? = nil, photoIndex: Int = 0) -> some View {
         let overlayText = text ?? placeableCurrentText
         ZStack {
             PlaceableCard(
@@ -463,7 +522,8 @@ extension ShareCardScreen {
                 size: placeableVM.placeableSize,
                 layout: placeableVM.placeableLayout,
                 horizTextRow: placeableVM.placeableHorizTextRow,
-                horizRoutePos: placeableVM.placeableHorizRoutePos
+                horizRoutePos: placeableVM.placeableHorizRoutePos,
+                cropOffsetX: placeableVM.placeableStoryCropOffsets[photoIndex] ?? 0.5
             )
             if (template == .story || template == .video), !overlayText.isEmpty {
                 OneLinerCard(
@@ -646,6 +706,7 @@ extension ShareCardScreen {
                 sizeID: r.sizeLevel.rawValue,
                 effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)P\(r.plateOn ? 1 : 0)|\(r.flyDirection.rawValue)",
                 plateColorID: r.plateColorPreset.rawValue, speed: r.speed,
+                cropOffsetX: Double(r.cropOffsetX),
                 metricPace: false, metricDistance: false,
                 metricTime: false, metricHeartRate: false,
                 pdtAnchorIdx: nil, showRoute: false, routeAnchorIdx: nil,
@@ -701,6 +762,7 @@ extension ShareCardScreen {
             }
             recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
             recipe.speed            = desc.speed
+            recipe.cropOffsetX      = CGFloat(desc.cropOffsetX)
             restored.append(recipe)
         }
         placeableVM.placeableClipRecipes = restored
@@ -731,6 +793,7 @@ extension ShareCardScreen {
             r.appearanceMode   = placeableVM.placeableSlideAppearance
             r.decorEffect      = placeableVM.placeableSlideAppearance == .fade ? placeableVM.slideDecorEffect : .none
             r.flyDirection     = placeableVM.slideFlyDirection
+            r.cropOffsetX      = placeableVM.placeableStoryCropOffsets[i] ?? 0.5
             return r
         }
     }

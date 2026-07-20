@@ -183,7 +183,7 @@ struct BigNumberCard: View {
                                     Text(secondaryLabel(for: m))
                                         .font(.system(size: 11, weight: .bold))
                                         .fontWidth(.condensed)
-                                        .foregroundStyle(Color(hex: "6E6E78"))
+                                        .foregroundStyle(.white)
                                 }
                                 .cardTextShadow()
                                 .frame(maxWidth: .infinity)
@@ -252,6 +252,9 @@ struct BigNumberVideoOverlayView: View {
     var weatherIcon: String? = nil
     let date: Date
     var shoeName: String? = nil
+    // nil → videoSafeTopRef/BottomRef * s (export 기본값). 값 지정 시 scale 미적용 그대로 사용 (preview 전용).
+    var topInset: CGFloat? = nil
+    var bottomInset: CGFloat? = nil
 
     var accent: CardAccent = .violet
 
@@ -295,7 +298,7 @@ struct BigNumberVideoOverlayView: View {
                             .foregroundStyle(Theme.violet)
                     }
                     .padding(.horizontal, CardVisual.videoSafeHorizRef * s)
-                    .padding(.top, CardVisual.videoSafeTopRef * s)
+                    .padding(.top, topInset ?? (CardVisual.videoSafeTopRef * s))
 
                     // Mood + Memo
                     if mood != nil || memoText != nil {
@@ -360,7 +363,7 @@ struct BigNumberVideoOverlayView: View {
                                         Text(secondaryLabel(for: m))
                                             .font(.system(size: 11 * s, weight: .bold))
                                             .fontWidth(.condensed)
-                                            .foregroundStyle(Color(hex: "6E6E78"))
+                                            .foregroundStyle(.white)
                                     }
                                     .cardTextShadow()
                                     .frame(maxWidth: .infinity)
@@ -382,7 +385,7 @@ struct BigNumberVideoOverlayView: View {
                         }
                     }
                     .padding(.horizontal, CardVisual.videoSafeHorizRef * s)
-                    .padding(.bottom, CardVisual.videoSafeBottomRef * s)
+                    .padding(.bottom, bottomInset ?? (CardVisual.videoSafeBottomRef * s))
                 }
             }
         }

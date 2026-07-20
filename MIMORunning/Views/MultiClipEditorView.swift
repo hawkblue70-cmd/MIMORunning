@@ -872,6 +872,7 @@ struct SavedClipDescriptor: Codable {
     var effectID:     String? = nil   // "appearanceMode|decorEffect|outline(0/1)" e.g. "fade|pop|0"
     var plateColorID: String? = nil   // PlateColorPreset.rawValue
     var speed:        Double  = 1.0   // 재생 배속 (하위호환: 미존재 시 1.0)
+    var cropOffsetX:  Double  = 0.5   // 가로 크롭 위치 (하위호환: 미존재 시 0.5=중앙)
     // 러닝 데이터 오버레이 (운동한 날, 클립별) — 하위호환 기본값
     var metricPace:      Bool = false
     var metricDistance:  Bool = false

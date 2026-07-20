@@ -38,9 +38,11 @@ struct ClipTrimSheet: View {
 
     // Local working copies — written back to recipes binding only on "완료"
     // init에서 즉시 초기화해 첫 렌더부터 currentRecipeValid == true 보장
-    @State private var workingRecipes: [ClipRecipe]
-    @State private var currentPage:    Int
-    @State private var userAddedLines: Int = 0
+    @State private var workingRecipes:      [ClipRecipe]
+    @State private var currentPage:         Int
+    @State private var userAddedLines:      Int = 0
+    @State private var cropDragBase:        [Int: CGFloat] = [:]
+    @State private var pageForward:         Bool = true
 
     init(
         recipes:           Binding<[ClipRecipe]>,
@@ -253,15 +255,39 @@ struct ClipTrimSheet: View {
     private var previewCarousel: some View {
         let carouselH: CGFloat = isStoryMode
             ? OneLinerCard.cardHeight + 16
-            : CardPreviewFrame.height + 16  // 슬라이드 9:16도 4:5 컨테이너 — 비례 축소
-        return TabView(selection: $currentPage) {
-            ForEach(workingRecipes.indices, id: \.self) { i in
-                clipPreviewPage(i)
-                    .tag(i)
-            }
+            : CardPreviewFrame.height + 16
+        return ZStack {
+            clipPreviewPage(currentPage)
+                .id(currentPage)
+                .transition(.asymmetric(
+                    insertion: .move(edge: pageForward ? .trailing : .leading),
+                    removal:   .move(edge: pageForward ? .leading  : .trailing)
+                ))
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: carouselH)
+        .frame(maxWidth: .infinity, minHeight: carouselH, maxHeight: carouselH)
+        .contentShape(Rectangle())
+        .clipped()
+        // 가로 스와이프 → 페이지 이동 (simultaneousGesture로 crop과 동시 인식)
+        // minimumDistance: 60 이상의 확실한 스와이프만 navigation으로 처리
+        .simultaneousGesture(
+            workingRecipes.count > 1 ? DragGesture(minimumDistance: 60)
+                .onEnded { drag in
+                    let w = drag.translation.width
+                    let h = drag.translation.height
+                    guard abs(w) > abs(h) * 1.5 else { return }
+                    if w < -60, currentPage < workingRecipes.count - 1 {
+                        navigate(to: currentPage + 1)
+                    } else if w > 60, currentPage > 0 {
+                        navigate(to: currentPage - 1)
+                    }
+                }
+            : nil
+        )
+    }
+
+    private func navigate(to idx: Int) {
+        pageForward = idx >= currentPage
+        withAnimation(.easeInOut(duration: 0.25)) { currentPage = idx }
     }
 
     @ViewBuilder
@@ -295,10 +321,16 @@ struct ClipTrimSheet: View {
                    let s = chartSeriesData[gt], s.count >= 2 { return cH * 0.264 + storyBotPad }
                 return 0
             }()
+            let storyCropExcess: CGFloat = {
+                guard let t = workingRecipes[i].thumbnail else { return 0 }
+                let s = max(cW / t.size.width, cH / t.size.height)
+                return max(0, t.size.width * s - cW)
+            }()
             ZStack {
                 OneLinerCard(
                     displayDate: Date(),
                     backgroundPhoto: recipe.thumbnail,
+                    cropOffsetX: workingRecipes[i].cropOffsetX,
                     text: txt,
                     position: recipe.position,
                     textColor: recipe.textColor,
@@ -327,7 +359,19 @@ struct ClipTrimSheet: View {
                 )
                 // 차트 패널 오버레이: splits/HR zone/경로/cadence 등 — PDT칩은 OneLinerCard가 담당
                 dataPreviewOverlay(recipe, w: cW, maxH: cH, skipLeafOverlays: true)
+                    .allowsHitTesting(false)
             }
+            .highPriorityGesture(
+                storyCropExcess > 0 ? DragGesture(minimumDistance: 1)
+                    .onChanged { drag in
+                        if cropDragBase[i] == nil { cropDragBase[i] = workingRecipes[i].cropOffsetX }
+                        guard let base = cropDragBase[i] else { return }
+                        workingRecipes[i].cropOffsetX = max(0, min(1,
+                            base - drag.translation.width / storyCropExcess))
+                    }
+                    .onEnded { _ in cropDragBase.removeValue(forKey: i) }
+                : nil
+            )
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .shadow(color: .black.opacity(0.45), radius: 10, y: 4)
             .frame(maxWidth: .infinity)
@@ -344,11 +388,28 @@ struct ClipTrimSheet: View {
                 let isFailed = assetID.map { failedClipIDs.contains($0) } ?? false
                 if let frame = sheetPreviewFrames[i] {
                     // ① 정지 프레임 확보됨 → 최우선 표시
+                    let fScale  = max(w / frame.size.width, maxH / frame.size.height)
+                    let fImgW   = frame.size.width  * fScale
+                    let fImgH   = frame.size.height * fScale
+                    let fExcess = max(0, fImgW - w)
+                    let cropX   = workingRecipes[i].cropOffsetX
                     Image(uiImage: frame)
                         .resizable()
-                        .scaledToFill()
+                        .frame(width: fImgW, height: fImgH)
+                        .offset(x: -(cropX * fExcess))
                         .frame(width: w, height: maxH)
                         .clipped()
+                        .highPriorityGesture(
+                            fExcess > 0 ? DragGesture(minimumDistance: 1)
+                                .onChanged { drag in
+                                    if cropDragBase[i] == nil { cropDragBase[i] = cropX }
+                                    guard let base = cropDragBase[i] else { return }
+                                    workingRecipes[i].cropOffsetX = max(0, min(1,
+                                        base - drag.translation.width / fExcess))
+                                }
+                                .onEnded { _ in cropDragBase.removeValue(forKey: i) }
+                            : nil
+                        )
                 } else if isFailed {
                     // ② 해석 실패(notFound) → 재추가 안내
                     VStack(spacing: 12) {
@@ -367,9 +428,25 @@ struct ClipTrimSheet: View {
                     .background(Color(hex: "1A1A24"))
                 } else if let thumb = recipe.thumbnail {
                     // ③ 사진/썸네일 표시 — 사진 클립은 바로 완료, 영상 클립은 해석 중 스피너
+                    let tExcessCheck: CGFloat = {
+                        let sc = max(w / thumb.size.width, maxH / thumb.size.height)
+                        return max(0, thumb.size.width * sc - w)
+                    }()
                     clipThumbnailView(thumb: thumb,
                                       isPhoto: recipe.storedPhotoRef != nil,
-                                      w: w, h: maxH)
+                                      w: w, h: maxH,
+                                      cropOffsetX: recipe.cropOffsetX)
+                    .highPriorityGesture(
+                        tExcessCheck > 0 ? DragGesture(minimumDistance: 1)
+                            .onChanged { drag in
+                                if cropDragBase[i] == nil { cropDragBase[i] = recipe.cropOffsetX }
+                                guard let base = cropDragBase[i] else { return }
+                                workingRecipes[i].cropOffsetX = max(0, min(1,
+                                    base - drag.translation.width / tExcessCheck))
+                            }
+                            .onEnded { _ in cropDragBase.removeValue(forKey: i) }
+                        : nil
+                    )
                 } else {
                     // ④ 해석 중 + 썸네일 없음 → 어두운 배경 + 스피너
                     Color(hex: "1A1A24")
@@ -529,13 +606,42 @@ struct ClipTrimSheet: View {
 
     private var pageIndicator: some View {
         HStack(spacing: 6) {
-            ForEach(workingRecipes.indices, id: \.self) { i in
-                Circle()
-                    .fill(i == currentPage ? Color.white : Color.white.opacity(0.30))
-                    .frame(width: i == currentPage ? 7 : 5,
-                           height: i == currentPage ? 7 : 5)
-                    .animation(.easeInOut(duration: 0.15), value: currentPage)
+            Button {
+                if currentPage > 0 { navigate(to: currentPage - 1) }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(currentPage > 0 ? .white : .white.opacity(0.2))
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 3) {
+                ForEach(workingRecipes.indices, id: \.self) { i in
+                    Button { navigate(to: i) } label: {
+                        Circle()
+                            .fill(i == currentPage ? Color.white : Color.white.opacity(0.30))
+                            .frame(width: i == currentPage ? 7 : 5,
+                                   height: i == currentPage ? 7 : 5)
+                            .animation(.easeInOut(duration: 0.15), value: currentPage)
+                            .frame(width: 20, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Button {
+                if currentPage < workingRecipes.count - 1 { navigate(to: currentPage + 1) }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(currentPage < workingRecipes.count - 1 ? .white : .white.opacity(0.2))
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -702,49 +808,6 @@ struct ClipTrimSheet: View {
         .fixedSize(horizontal: true, vertical: false)
     }
 
-    // 현재 클립 스타일을 모든 클립에 복사 (문구·트림·썸네일은 제외)
-    private var applyStyleToAllButton: some View {
-        Button {
-            guard currentRecipeValid else { return }
-            let src = workingRecipes[currentPage]
-            for i in workingRecipes.indices where i != currentPage {
-                workingRecipes[i].fontChoice          = src.fontChoice
-                workingRecipes[i].textColor           = src.textColor
-                workingRecipes[i].sizeLevel           = src.sizeLevel
-                workingRecipes[i].position            = src.position
-                workingRecipes[i].appearanceMode      = src.appearanceMode
-                workingRecipes[i].decorEffect         = src.decorEffect
-                workingRecipes[i].hasBorder           = src.hasBorder
-                workingRecipes[i].plateOn             = src.plateOn
-                workingRecipes[i].plateColorPreset    = src.plateColorPreset
-                workingRecipes[i].flyDirection        = src.flyDirection
-                workingRecipes[i].speed               = src.speed
-                workingRecipes[i].metricPace          = src.metricPace
-                workingRecipes[i].metricDistance      = src.metricDistance
-                workingRecipes[i].metricTime          = src.metricTime
-                workingRecipes[i].metricHeartRate     = src.metricHeartRate
-                workingRecipes[i].pdtPosition         = src.pdtPosition
-                workingRecipes[i].pdtSizeLevel        = src.pdtSizeLevel
-                workingRecipes[i].pdtAppearanceMode   = src.pdtAppearanceMode
-                workingRecipes[i].pdtDecorEffect      = src.pdtDecorEffect
-                workingRecipes[i].pdtFlyDirection     = src.pdtFlyDirection
-                workingRecipes[i].dataAppearanceMode  = src.dataAppearanceMode
-                workingRecipes[i].chartDecorEffect    = src.chartDecorEffect
-                workingRecipes[i].chartFlyDirection   = src.chartFlyDirection
-                workingRecipes[i].chartOverlayType    = src.chartOverlayType
-            }
-            let gen = UIImpactFeedbackGenerator(style: .medium); gen.impactOccurred()
-        } label: {
-            Label(AppLanguage.shared.s("모두 적용", "Apply all"),
-                  systemImage: "square.on.square")
-                .font(.system(size: 12, weight: .medium))
-                .padding(.horizontal, 10).padding(.vertical, 7)
-                .background(Color.white.opacity(0.08))
-                .foregroundStyle(Color.white.opacity(0.85))
-                .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
 
     // 배속 칩: 0.5x / 1x / 1.5x / 2x (현재 클립)
     private var speedChips: some View {
@@ -805,12 +868,11 @@ struct ClipTrimSheet: View {
         }
     }
 
-    // 왼쪽 통합 컬럼: [문구|데이터] 토글 + 단일 위치 그리드 + 모두 적용
+    // 왼쪽 통합 컬럼: [문구|데이터] 토글 + 단일 위치 그리드
     private var unifiedGridColumn: some View {
         VStack(spacing: 8) {
             if hasRunData { gridModeToggle }
             positionGridFor(gridDataMode ? .pdt : .text)
-            if workingRecipes.count > 1 { applyStyleToAllButton }
         }
         .frame(minWidth: 90, alignment: .center)
     }
@@ -1904,14 +1966,24 @@ struct ClipTrimSheet: View {
 
     /// 썸네일 배경 표시. 사진 클립은 즉시 완료(스피너 없음), 영상 클립은 해석 중 스피너.
     @ViewBuilder
-    private func clipThumbnailView(thumb: UIImage, isPhoto: Bool, w: CGFloat, h: CGFloat) -> some View {
+    private func clipThumbnailView(thumb: UIImage, isPhoto: Bool, w: CGFloat, h: CGFloat,
+                                   cropOffsetX: CGFloat = 0.5) -> some View {
+        let tScale  = max(w / thumb.size.width, h / thumb.size.height)
+        let tImgW   = thumb.size.width  * tScale
+        let tImgH   = thumb.size.height * tScale
+        let tExcess = max(0, tImgW - w)
+        let tOx     = -(cropOffsetX * tExcess)
         if isPhoto {
             Image(uiImage: thumb)
-                .resizable().scaledToFill()
+                .resizable()
+                .frame(width: tImgW, height: tImgH)
+                .offset(x: tOx)
                 .frame(width: w, height: h).clipped()
         } else {
             Image(uiImage: thumb)
-                .resizable().scaledToFill()
+                .resizable()
+                .frame(width: tImgW, height: tImgH)
+                .offset(x: tOx)
                 .frame(width: w, height: h).clipped()
                 .overlay(ProgressView().tint(.white).scaleEffect(1.4))
         }
@@ -2438,7 +2510,7 @@ private struct KeyboardDismissBackground: UIViewRepresentable {
             // belt-and-suspenders: 텍스트 필드/뷰 계층 터치는 명시적으로 거부
             var v: UIView? = touch.view
             while let view = v {
-                if view is UITextField || view is UITextView { return false }
+                if view is UITextField || view is UITextView || view is UIControl { return false }
                 v = view.superview
             }
             return true
