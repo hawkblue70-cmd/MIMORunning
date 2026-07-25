@@ -79,6 +79,7 @@ struct PlaceableTrimRowView: View {
                     } else {
                         vm.placeableClipRecipes[idx].lines[0] = String(val.prefix(30))
                     }
+                    vm.placeableVideoTextDirty = true
                     onSaveVideoClips()
                 }
             )
@@ -102,6 +103,9 @@ struct PlaceableTrimRowView: View {
                         .tint(Theme.violet)
                         .focused($textFocused)
                         .onSubmit { Task { await onLoadPreview() } }
+                        .onChange(of: textFocused) { _, focused in
+                            if !focused { Task { await onLoadPreview() } }
+                        }
                         Spacer(minLength: 0)
                         Text("\(lineText.count)/30")
                             .font(.system(size: 11))
@@ -393,13 +397,18 @@ struct PlaceableStoryModeChipRowView: View {
             if template == .video, vm.placeableStoryTabIsText, !vm.placeableClipRecipes.isEmpty {
                 let idx = min(vm.selectedPlaceableClipIndex, vm.placeableClipRecipes.count - 1)
                 let lineBinding = Binding<String>(
-                    get: { vm.placeableClipRecipes[idx].lines.first ?? "" },
+                    get: {
+                        guard idx < vm.placeableClipRecipes.count else { return "" }
+                        return vm.placeableClipRecipes[idx].lines.first ?? ""
+                    },
                     set: { val in
+                        guard idx < vm.placeableClipRecipes.count else { return }
                         if vm.placeableClipRecipes[idx].lines.isEmpty {
                             vm.placeableClipRecipes[idx].lines = [String(val.prefix(30))]
                         } else {
                             vm.placeableClipRecipes[idx].lines[0] = String(val.prefix(30))
                         }
+                        vm.placeableVideoTextDirty = true
                         onSaveVideoClips()
                     }
                 )
@@ -415,6 +424,9 @@ struct PlaceableStoryModeChipRowView: View {
                     .tint(Theme.violet)
                     .focused($clipTextFocused)
                     .onSubmit { Task { await onLoadPreview() } }
+                    .onChange(of: clipTextFocused) { _, focused in
+                        if !focused { Task { await onLoadPreview() } }
+                    }
                     Spacer(minLength: 0)
                     Text("\((vm.placeableClipRecipes[idx].lines.first ?? "").count)/30")
                         .font(.system(size: 11))
@@ -487,17 +499,35 @@ struct PlaceableStoryModeChipRowView: View {
 
     @ViewBuilder private func gridCell(pos: CardPosition) -> some View {
         if vm.placeableStoryTabIsText {
-            // 문구 위치
-            let isSel = vm.placeableStoryPosition == pos
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { vm.placeableStoryPosition = pos }
-                Task { await onRender() }
-            } label: {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isSel ? Theme.violet : Color(hex: "26262E"))
-                    .frame(width: 23, height: 23)
+            if template == .video, !vm.placeableClipRecipes.isEmpty {
+                // 영상: 선택된 클립별 독립 위치
+                let safeIdx = min(vm.selectedPlaceableClipIndex, vm.placeableClipRecipes.count - 1)
+                let isSel = vm.placeableClipRecipes[safeIdx].position == pos
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        vm.placeableClipRecipes[safeIdx].position = pos
+                    }
+                    onSaveVideoClips()
+                    Task { await onLoadPreview() }
+                } label: {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(isSel ? Theme.violet : Color(hex: "26262E"))
+                        .frame(width: 23, height: 23)
+                }
+                .buttonStyle(.plain)
+            } else {
+                // 스토리·슬라이드: 전역 위치
+                let isSel = vm.placeableStoryPosition == pos
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { vm.placeableStoryPosition = pos }
+                    Task { await onRender() }
+                } label: {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(isSel ? Theme.violet : Color(hex: "26262E"))
+                        .frame(width: 23, height: 23)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         } else if vm.placeableLayout == .horizontal {
             // 데이터 위치 — 가로: 이중 모드
             let pr = posRow(pos)
@@ -665,33 +695,58 @@ struct PlaceableStoryModeChipRowView: View {
             }
             // 애니메이션 (슬라이드·영상)
             if template == .slide || template == .video {
+                // 영상: 선택된 클립별 독립 / 슬라이드: 전역
+                let safeIdx: Int = (template == .video && !vm.placeableClipRecipes.isEmpty)
+                    ? min(vm.selectedPlaceableClipIndex, vm.placeableClipRecipes.count - 1)
+                    : -1
+                let curAppearance: AppearanceMode = safeIdx >= 0
+                    ? vm.placeableClipRecipes[safeIdx].appearanceMode
+                    : vm.placeableSlideAppearance
                 HStack(spacing: 6) {
                     ForEach(AppearanceMode.allCases, id: \.self) { mode in
-                        let isSel = vm.placeableSlideAppearance == mode
+                        let isSel = curAppearance == mode
                         Button {
-                            withAnimation(.easeInOut(duration: 0.15)) { vm.placeableSlideAppearance = mode }
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                if safeIdx >= 0 { vm.placeableClipRecipes[safeIdx].appearanceMode = mode }
+                                else { vm.placeableSlideAppearance = mode }
+                            }
+                            if safeIdx >= 0 { onSaveVideoClips(); Task { await onLoadPreview() } }
                         } label: { placeableStorySmallChip(mode.chipLabel, isSelected: isSel) }
                         .buttonStyle(.plain)
                     }
                 }
-                if vm.placeableSlideAppearance == .fade {
+                if curAppearance == .fade {
+                    let curDecor: DecorEffect = safeIdx >= 0
+                        ? vm.placeableClipRecipes[safeIdx].decorEffect
+                        : vm.slideDecorEffect
                     HStack(spacing: 6) {
                         ForEach(DecorEffect.allCases, id: \.self) { effect in
-                            let isSel = vm.slideDecorEffect == effect
+                            let isSel = curDecor == effect
                             Button {
-                                withAnimation(.easeInOut(duration: 0.15)) { vm.slideDecorEffect = effect }
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    if safeIdx >= 0 { vm.placeableClipRecipes[safeIdx].decorEffect = effect }
+                                    else { vm.slideDecorEffect = effect }
+                                }
+                                if safeIdx >= 0 { onSaveVideoClips(); Task { await onLoadPreview() } }
                             } label: { placeableStorySmallChip(effect.chipLabel, isSelected: isSel) }
                             .buttonStyle(.plain)
                         }
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                if vm.placeableSlideAppearance == .flyIn {
+                if curAppearance == .flyIn {
+                    let curDir: FlyInDirection = safeIdx >= 0
+                        ? vm.placeableClipRecipes[safeIdx].flyDirection
+                        : vm.slideFlyDirection
                     HStack(spacing: 6) {
                         ForEach(FlyInDirection.allCases, id: \.self) { dir in
-                            let isSel = vm.slideFlyDirection == dir
+                            let isSel = curDir == dir
                             Button {
-                                withAnimation(.easeInOut(duration: 0.15)) { vm.slideFlyDirection = dir }
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    if safeIdx >= 0 { vm.placeableClipRecipes[safeIdx].flyDirection = dir }
+                                    else { vm.slideFlyDirection = dir }
+                                }
+                                if safeIdx >= 0 { onSaveVideoClips(); Task { await onLoadPreview() } }
                             } label: { placeableStorySmallChip(dir.chipLabel, isSelected: isSel) }
                             .buttonStyle(.plain)
                         }

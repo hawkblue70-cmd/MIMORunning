@@ -344,6 +344,7 @@ struct ClipTrimSheet: View {
                     showDate: true,
                     captionMode: true,
                     chartBottomReserved: storyChartReserved,
+                    isStaticPreview: true,   // 편집 시트는 정적 표시 — 애니 없음
                     metricPace: recipe.metricPace,
                     metricDistance: recipe.metricDistance,
                     metricTime: recipe.metricTime,
@@ -453,7 +454,7 @@ struct ClipTrimSheet: View {
                         .frame(width: w, height: maxH)
                         .overlay(ProgressView().tint(.white).scaleEffect(1.4))
                 }
-                // ── 워드마크 — export과 동일 위치 (y=12pt, leading=14pt) ─────────
+                // ── 워드마크 — 모든 영상/슬라이드 통일: 상단 6% (32pt at natural maxH=533pt) ─────────
                 HStack(spacing: 0) {
                     Text("MIMO")
                         .font(.system(size: 9, weight: .black))
@@ -465,7 +466,7 @@ struct ClipTrimSheet: View {
                         .foregroundStyle(Theme.violet)
                 }
                 .shadow(color: .black.opacity(0.45), radius: 3, x: 0, y: 1)
-                .padding(.top, 12)
+                .padding(.top, maxH * 0.06)
                 .padding(.leading, 14)
                 .frame(width: w, height: maxH, alignment: .topLeading)
                 .allowsHitTesting(false)
@@ -2053,14 +2054,11 @@ struct ClipTrimSheet: View {
                 toSave[i].resolvedAsset = resolved
             }
         }
-        print("[DUR-TRACE] commitWorkingRecipes toSave trimEnd=\(toSave.map { $0.trimEnd })")
         recipes = toSave
         // toSave를 직접 전달 — @State 갱신 배치 타이밍에 무관하게 새 값 즉시 사용 가능
         if onCommit != nil {
-            print("[DUR-TRACE] onCommit 호출")
             onCommit?(toSave)
         } else {
-            print("[DUR-TRACE] onCommit nil — 저장 콜백 없음")
         }
     }
 
@@ -2290,7 +2288,6 @@ struct ClipTrimSheet: View {
                         Button {
                             workingRecipes[currentPage].fullDuration = sec
                             workingRecipes[currentPage].trimEnd      = sec
-                            print("[DUR-TRACE] 클립\(currentPage) \(Int(sec))초 선택 → trimEnd=\(workingRecipes[currentPage].trimEnd)")
                             workingRecipes[currentPage].trimStart    = 0
                         } label: {
                             Text(AppLanguage.shared.s("\(Int(sec))초", "\(Int(sec)) s"))

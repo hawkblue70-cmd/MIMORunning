@@ -153,17 +153,25 @@ struct OneLinerVideoSlotInputView: View {
 // 스토리·슬라이드 템플릿: 3×3 위치 그리드 + 폰트·색상 칩.
 
 struct OneLinerGridAndChipsView: View {
-    @Bindable var vm:     OneLinerViewModel
-    let template:         ShareTemplate
-    let hasSourceVideo:   Bool   // sourceVideoURL != nil || !oneLinerClipRecipes.isEmpty
-    let onSave:           () -> Void
-    let onRender:         () async -> Void
+    @Bindable var vm:            OneLinerViewModel
+    let template:                ShareTemplate
+    let hasSourceVideo:          Bool   // sourceVideoURL != nil || !oneLinerClipRecipes.isEmpty
+    let onSave:                  () -> Void
+    let onRender:                () async -> Void
+    /// 영상 모드에서 클립별 스타일(위치·폰트·색상)이 변경될 때 호출. nil = 전역 모드(슬라이드·스토리).
+    var onVideoStyleChange:      (() -> Void)? = nil
 
     private let rows: [[CardPosition]] = [
         [.topLeading, .top, .topTrailing],
         [.leading, .center, .trailing],
         [.bottomLeading, .bottom, .bottomTrailing]
     ]
+
+    /// 영상 모드 선택 클립 인덱스. -1 = 전역 모드(슬라이드·스토리 또는 클립 없음).
+    private var safeIdx: Int {
+        guard template == .video, !vm.oneLinerClipRecipes.isEmpty else { return -1 }
+        return min(vm.currentOneLinerClipIndex, vm.oneLinerClipRecipes.count - 1)
+    }
 
     var body: some View {
         let shouldDisable = template == .video && !hasSourceVideo
@@ -174,9 +182,18 @@ struct OneLinerGridAndChipsView: View {
                     HStack(spacing: 4) {
                         ForEach(rows[row].indices, id: \.self) { col in
                             let pos = rows[row][col]
-                            let isSelected = vm.oneLinerPosition == pos
+                            let isSelected: Bool = safeIdx >= 0
+                                ? vm.oneLinerClipRecipes[safeIdx].position == pos
+                                : vm.oneLinerPosition == pos
                             Button {
-                                withAnimation(.easeInOut(duration: 0.15)) { vm.oneLinerPosition = pos }
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    if safeIdx >= 0 {
+                                        vm.oneLinerClipRecipes[safeIdx].position = pos
+                                        onVideoStyleChange?()
+                                    } else {
+                                        vm.oneLinerPosition = pos
+                                    }
+                                }
                                 onSave()
                                 Task { await onRender() }
                             } label: {
@@ -209,9 +226,18 @@ struct OneLinerGridAndChipsView: View {
     }
 
     private func fontChip(_ font: OneLinerFont) -> some View {
-        let isSelected = vm.oneLinerFont == font
+        let isSelected: Bool = safeIdx >= 0
+            ? vm.oneLinerClipRecipes[safeIdx].fontChoice == font
+            : vm.oneLinerFont == font
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { vm.oneLinerFont = font }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if safeIdx >= 0 {
+                    vm.oneLinerClipRecipes[safeIdx].fontChoice = font
+                    onVideoStyleChange?()
+                } else {
+                    vm.oneLinerFont = font
+                }
+            }
             onSave()
             Task { await onRender() }
         } label: {
@@ -228,9 +254,18 @@ struct OneLinerGridAndChipsView: View {
     }
 
     private func colorChip(_ textColor: OneLinerTextColor) -> some View {
-        let isSelected = vm.oneLinerColor == textColor
+        let isSelected: Bool = safeIdx >= 0
+            ? vm.oneLinerClipRecipes[safeIdx].textColor == textColor
+            : vm.oneLinerColor == textColor
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { vm.oneLinerColor = textColor }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if safeIdx >= 0 {
+                    vm.oneLinerClipRecipes[safeIdx].textColor = textColor
+                    onVideoStyleChange?()
+                } else {
+                    vm.oneLinerColor = textColor
+                }
+            }
             onSave()
             Task { await onRender() }
         } label: {

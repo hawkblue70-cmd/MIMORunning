@@ -42,12 +42,6 @@ struct VideoOverlayCard: View {
             Color.clear
 
             CardVisual.videoBottomScrim
-            // Use wider, darker scrim when memo pushes the top block to 3+ lines.
-            if memoText?.isEmpty == false {
-                CardVisual.topScrimWide
-            } else {
-                CardVisual.topScrim
-            }
 
             VStack(alignment: .leading, spacing: 0) {
 
@@ -96,9 +90,8 @@ struct VideoOverlayCard: View {
                         }
                         if let memo = memoText, !memo.isEmpty {
                             Text(memo)
-                                .font(.system(size: 10 * scale, weight: .regular, design: .serif).italic())
-                                .foregroundStyle(.white.opacity(0.80))
-                                .cardTextShadow()
+                                .font(.system(size: 10 * scale, weight: .bold, design: .serif).italic())
+                                .foregroundStyle(.white)
                         }
                     }
                     Spacer(minLength: 3 * scale)

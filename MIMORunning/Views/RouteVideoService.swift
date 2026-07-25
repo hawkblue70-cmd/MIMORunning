@@ -83,6 +83,7 @@ struct RouteVideoFrameView: View {
                         bottomInset: bottomInset
                     )
                     .frame(width: w, height: h)
+                    .preferredColorScheme(.dark)
                 }
             }
         }
@@ -164,7 +165,7 @@ private struct RoutePolylineOverlay: View {
                 guard totalPxLen > 0 else { return }
 
                 let totalKm = totalDistanceM / 1000
-                let interval: Double = totalKm <= 10 ? 1 : totalKm <= 21.5 ? 2 : 5
+                let interval: Double = totalKm <= 22 ? 1 : totalKm <= 35 ? 2 : 5
                 let intervalM = interval * 1000
 
                 func previewInterp(_ targetLen: Double) -> CGPoint {
@@ -314,6 +315,18 @@ struct RouteVideoExportService {
     static var videoDuration: Double { Double(frameCount) / Double(fps) }   // 15.0 s
     static var routeDuration: Double  { videoDuration - 1.0 }               // 14.0 s
 
+    // MARK: - Stamp overlay config (애니메이션 분리 레이어용)
+
+    /// 경로 영상 출력 시 스탬프·문구를 별도 CALayer로 애니메이션하기 위한 설정.
+    /// 스탬프와 문구 각각 하나씩 생성해서 exportFast에 전달.
+    struct StampLayerConfig {
+        let image: UIImage             // renderOnlyStamp 또는 renderOnlyText로 렌더된 UIImage
+        let entranceMode: StampEntranceMode
+        let flyDirection: FlyInDirection
+        let startTime: Double          // 영상 시작 기준 초 단위 (절대값)
+        let animDuration: Double       // 애니메이션 지속 초 단위
+    }
+
     // MARK: Map snapshot + coordinate mapping
 
     static func mapSnapshot(
@@ -340,7 +353,18 @@ struct RouteVideoExportService {
         opts.mapType    = .mutedStandard
         opts.showsBuildings = false
 
-        let snap = try await MKMapSnapshotter(options: opts).start()
+        // 시스템 라이트/다크 모드·시간대 무관하게 지도 외관을 항상 라이트로 고정
+        let snap = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<MKMapSnapshotter.Snapshot, Error>) in
+            UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+                MKMapSnapshotter(options: opts).start { snapshot, error in
+                    if let error { cont.resume(throwing: error); return }
+                    guard let snapshot else {
+                        cont.resume(throwing: NSError(domain: "RouteVideoExport", code: -4)); return
+                    }
+                    cont.resume(returning: snapshot)
+                }
+            }
+        }
 
         let step = max(1, coordinates.count / 500)
         let points = Swift.stride(from: 0, to: coordinates.count, by: step).map { i in
@@ -387,31 +411,40 @@ struct RouteVideoExportService {
         hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = [],
         routeWorkoutDuration: TimeInterval = 0,
         showHRGradient: Bool = false,
+        stampLayers: [StampLayerConfig] = [],
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
         let t0 = CACurrentMediaTime()
 
         // 1. Pre-render overlay once (main thread, SwiftUI → CGImage)
-        let exportInset = renderSize.height * 0.05   // 5% = 48pt → 96px at renderScale 2 (preview 일치)
-        let overlayView = VideoOverlayCard(
-            insightTitle: insightTitle, distanceKm: distanceKm, date: date,
-            metrics: metrics, raceName: raceName,
-            miniMeVariant: miniMeVariant, miniMeImage: customMiniMeImage,
-            mood: mood, memoText: memoText,
-            chartPanel: chartPanel, chartSplits: chartSplits,
-            chartHRSamples: chartHRSamples, chartHRZones: chartHRZones,
-            chartWorkoutSeries: chartWorkoutSeries, chartIntervalSegments: chartIntervalSegments,
-            weather: weather, shoeName: shoeName,
-            scale: renderSize.width / 300,
-            topInset: exportInset,
-            bottomInset: exportInset
-        )
-        .frame(width: renderSize.width, height: renderSize.height)
-        let overlayRenderer = ImageRenderer(content: overlayView)
-        overlayRenderer.scale = renderScale
-        guard let overlayImage = overlayRenderer.uiImage,
-              let overlayCGImage = overlayImage.cgImage else {
-            throw NSError(domain: "RouteVideoExport", code: -2)
+        // stampLayers 있으면 VideoOverlayCard 생략 — 스탬프 레이어가 별도 CALayer로 합성됨
+        let overlayCGImage: CGImage?
+        if stampLayers.isEmpty {
+            let exportInset = renderSize.height * 0.05   // 5% = 48pt → 96px at renderScale 2 (preview 일치)
+            let overlayView = VideoOverlayCard(
+                insightTitle: insightTitle, distanceKm: distanceKm, date: date,
+                metrics: metrics, raceName: raceName,
+                miniMeVariant: miniMeVariant, miniMeImage: customMiniMeImage,
+                mood: mood, memoText: memoText,
+                chartPanel: chartPanel, chartSplits: chartSplits,
+                chartHRSamples: chartHRSamples, chartHRZones: chartHRZones,
+                chartWorkoutSeries: chartWorkoutSeries, chartIntervalSegments: chartIntervalSegments,
+                weather: weather, shoeName: shoeName,
+                scale: renderSize.width / 300,
+                topInset: exportInset,
+                bottomInset: exportInset
+            )
+            .frame(width: renderSize.width, height: renderSize.height)
+            .preferredColorScheme(.dark)
+            let overlayRenderer = ImageRenderer(content: overlayView)
+            overlayRenderer.scale = renderScale
+            guard let overlayImage = overlayRenderer.uiImage,
+                  let cg = overlayImage.cgImage else {
+                throw NSError(domain: "RouteVideoExport", code: -2)
+            }
+            overlayCGImage = cg
+        } else {
+            overlayCGImage = nil
         }
 
         // 2. Convert Metal-backed snapshot to CPU CGImage via CIContext
@@ -438,6 +471,7 @@ struct RouteVideoExportService {
             workoutDuration: routeWorkoutDuration,
             showHRGradient: showHRGradient,
             miniMeImage: customMiniMeImage,
+            stampLayers: stampLayers,
             outputURL: outputURL,
             progressHandler: progressHandler
         )
@@ -480,6 +514,7 @@ struct RouteVideoExportService {
             accent: accent
         )
         .frame(width: renderSize.width, height: renderSize.height)
+        .preferredColorScheme(.dark)
         let overlayRenderer = ImageRenderer(content: overlayView)
         overlayRenderer.scale = renderScale
         guard let overlayImage = overlayRenderer.uiImage,
@@ -521,7 +556,7 @@ struct RouteVideoExportService {
 
     private static func exportWithCAShapeLayer(
         mapCGImage: CGImage,
-        overlayCGImage: CGImage,
+        overlayCGImage: CGImage?,
         scaledPoints: [CGPoint],
         totalDistanceM: Double,
         hrSamples: [(offset: TimeInterval, bpm: Int)] = [],
@@ -529,6 +564,7 @@ struct RouteVideoExportService {
         showHRGradient: Bool = false,
         miniMeImage: UIImage? = nil,
         showKmMarkers: Bool = true,
+        stampLayers: [StampLayerConfig] = [],
         outputURL: URL,
         progressHandler: @escaping (Double) -> Void
     ) async throws {
@@ -720,11 +756,20 @@ struct RouteVideoExportService {
             }
         }
 
-        // Overlay layer: static, on top of everything
-        let overlayLayer = CALayer()
-        overlayLayer.frame = parentLayer.frame
-        overlayLayer.contents = overlayCGImage
-        parentLayer.addSublayer(overlayLayer)
+        // Overlay layer: static, on top of everything (nil = no static overlay, e.g. stamp mode)
+        if let cg = overlayCGImage {
+            let overlayLayer = CALayer()
+            overlayLayer.frame = parentLayer.frame
+            overlayLayer.contents = cg
+            parentLayer.addSublayer(overlayLayer)
+        }
+
+        // Stamp animated layers: 스탬프·문구 각각 별도 CALayer로 애니메이션
+        for config in stampLayers {
+            if let stampLayer = makeStampAnimatedLayer(config: config, px: px, vidDur: vidDur) {
+                parentLayer.addSublayer(stampLayer)
+            }
+        }
 
         // C. Load background video track
         let bgAsset  = AVURLAsset(url: bgURL)
@@ -905,6 +950,124 @@ struct RouteVideoExportService {
         return container
     }
 
+    // MARK: - Stamp animated layer
+
+    /// StampLayerConfig의 image를 CALayer contents로 설정하고 입장 애니메이션을 적용한다.
+    /// km 마커와 동일한 full-span keyframe 방식(AVVideoCompositionCoreAnimationTool 호환).
+    private static func makeStampAnimatedLayer(config: StampLayerConfig, px: CGSize, vidDur: Double) -> CALayer? {
+        // Metal 백 이미지 대응: .cgImage 실패 시 CIContext 변환 (경로 스냅샷과 동일한 패턴)
+        let cgImage: CGImage
+        if let direct = config.image.cgImage {
+            cgImage = direct
+        } else if let ci = CIImage(image: config.image),
+                  let converted = CIContext().createCGImage(ci, from: ci.extent) {
+            cgImage = converted
+        } else {
+            return nil
+        }
+
+        let layer = CALayer()
+        layer.frame = CGRect(origin: .zero, size: px)
+        layer.contents = cgImage
+        // opacity는 모델 값을 건드리지 않음 — km 마커와 동일하게 keyframe 애니메이션만으로 제어
+        // (opacity=0 을 직접 설정하면 AVVideoCompositionCoreAnimationTool 이 레이어를 합성 제외할 수 있음)
+
+        let tStart = config.startTime / vidDur
+        let tEnd   = min(tStart + config.animDuration / vidDur, 0.9999)
+        let tMid1  = tStart + (tEnd - tStart) * 0.5
+        let tMid2  = tStart + (tEnd - tStart) * 0.8
+        func kf(_ t: Double) -> NSNumber { NSNumber(value: max(0, min(1, t))) }
+
+        // 공통 helper: full-span keyframe 기준값 세팅
+        func applyCommon(_ anim: CAKeyframeAnimation) {
+            anim.duration = vidDur
+            anim.beginTime = AVCoreAnimationBeginTimeAtZero
+            anim.fillMode = .forwards
+            anim.isRemovedOnCompletion = false
+        }
+
+        switch config.entranceMode {
+        case .none:
+            // tStart 시점에 즉시 등장
+            let op = CAKeyframeAnimation(keyPath: "opacity")
+            op.values   = [0, 0, 1, 1]
+            op.keyTimes = [kf(0), kf(tStart - 0.0001), kf(tStart + 0.0001), kf(1)]
+            applyCommon(op)
+            layer.add(op, forKey: "opacity")
+
+        case .fade:
+            // tStart → tEnd 동안 페이드인
+            let op = CAKeyframeAnimation(keyPath: "opacity")
+            op.values   = [0, 0, 1, 1]
+            op.keyTimes = [kf(0), kf(tStart), kf(tEnd), kf(1)]
+            applyCommon(op)
+            layer.add(op, forKey: "opacity")
+
+        case .stamp:
+            // 즉시 등장 + 스프링 스케일 0 → 1.15 → 0.95 → 1
+            let op = CAKeyframeAnimation(keyPath: "opacity")
+            op.values   = [0, 0, 1, 1]
+            op.keyTimes = [kf(0), kf(tStart - 0.0001), kf(tStart), kf(1)]
+            applyCommon(op)
+            layer.add(op, forKey: "opacity")
+
+            let sc = CAKeyframeAnimation(keyPath: "transform.scale")
+            sc.values   = [0.001, 0.001, 1.15, 0.95, 1.0, 1.0]
+            sc.keyTimes = [kf(0), kf(tStart), kf(tMid1), kf(tMid2), kf(tEnd), kf(1)]
+            sc.timingFunctions = [
+                CAMediaTimingFunction(name: .linear),
+                CAMediaTimingFunction(name: .easeOut),
+                CAMediaTimingFunction(name: .easeIn),
+                CAMediaTimingFunction(name: .easeOut),
+                CAMediaTimingFunction(name: .linear)
+            ]
+            applyCommon(sc)
+            layer.add(sc, forKey: "scale")
+
+        case .flyIn:
+            // 즉시 등장 + 방향에서 슬라이드 인
+            let op = CAKeyframeAnimation(keyPath: "opacity")
+            op.values   = [0, 0, 1, 1]
+            op.keyTimes = [kf(0), kf(tStart - 0.0001), kf(tStart), kf(1)]
+            applyCommon(op)
+            layer.add(op, forKey: "opacity")
+
+            let (dx, dy): (CGFloat, CGFloat)
+            switch config.flyDirection {
+            case .leading:  (dx, dy) = (-px.width, 0)
+            case .trailing: (dx, dy) = ( px.width, 0)
+            case .bottom:   (dx, dy) = (0, px.height)
+            }
+
+            if dx != 0 {
+                let tx = CAKeyframeAnimation(keyPath: "transform.translation.x")
+                tx.values   = [0, dx, 0, 0]
+                tx.keyTimes = [kf(0), kf(tStart), kf(tEnd), kf(1)]
+                tx.timingFunctions = [
+                    CAMediaTimingFunction(name: .linear),
+                    CAMediaTimingFunction(name: .easeOut),
+                    CAMediaTimingFunction(name: .linear)
+                ]
+                applyCommon(tx)
+                layer.add(tx, forKey: "translateX")
+            }
+            if dy != 0 {
+                let ty = CAKeyframeAnimation(keyPath: "transform.translation.y")
+                ty.values   = [0, dy, 0, 0]
+                ty.keyTimes = [kf(0), kf(tStart), kf(tEnd), kf(1)]
+                ty.timingFunctions = [
+                    CAMediaTimingFunction(name: .linear),
+                    CAMediaTimingFunction(name: .easeOut),
+                    CAMediaTimingFunction(name: .linear)
+                ]
+                applyCommon(ty)
+                layer.add(ty, forKey: "translateY")
+            }
+        }
+
+        return layer
+    }
+
     /// Position animation synchronized to the gradient segment draw.
     /// Gradient segments divide scaledPoints into `segCount` groups of `step` points each.
     /// Each group draws over 1/segCount of routeDur. Within a group the progress is arc-length-keyed
@@ -1028,7 +1191,7 @@ struct RouteVideoExportService {
         guard snapshotPoints.count > 1, totalDistanceM > 100 else { return [] }
 
         let totalKm   = totalDistanceM / 1000
-        let interval: Double = totalKm <= 10 ? 1 : totalKm <= 21.5 ? 2 : 5
+        let interval: Double = totalKm <= 22 ? 1 : totalKm <= 35 ? 2 : 5
         let intervalM = interval * 1000
 
         // Cumulative pixel-path length for each point

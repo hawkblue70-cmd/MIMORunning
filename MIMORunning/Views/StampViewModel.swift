@@ -1,0 +1,166 @@
+// 스탬프 카드 전용 상태 클래스.
+// ShareCardView에서 @State private var stampVM = StampViewModel() 로 보유.
+// StampCard / StampControls / Stamp*Template 뷰에서 @Bindable 로 전달.
+//
+// ⚠️ 이 파일은 스탬프 카드 전용.
+//    Placeable · OneLiner · Athletic · BigNumber · Sky · ECG · Ticket 관련 코드 작성 금지.
+
+import SwiftUI
+
+@Observable
+@MainActor
+final class StampViewModel {
+
+    // MARK: - Per-photo Configs
+
+    /// 사진 인덱스 → 스탬프 속성 전체. story/slide 에서 사진마다 독립 저장.
+    var photoConfigs: [Int: StampPhotoConfig] = [:]
+
+    /// 새 사진 진입 시 초기값. 스타일 속성 변경 시 함께 갱신(마지막 사용 스타일 유지).
+    var baseConfig: StampPhotoConfig = .init()
+
+    /// 현재 선택 사진의 config (읽기·쓰기)
+    var currentConfig: StampPhotoConfig {
+        get { photoConfigs[selectedClipIndex] ?? baseConfig }
+        set { photoConfigs[selectedClipIndex] = newValue }
+    }
+
+    /// 특정 인덱스의 config 반환 (없으면 baseConfig)
+    func photoConfig(at index: Int) -> StampPhotoConfig {
+        photoConfigs[index] ?? baseConfig
+    }
+
+    // MARK: - 템플릿 (스토리·슬라이드·비디오 공통, per-photo)
+
+    var storyTemplate: StampTemplate {
+        get { currentConfig.template }
+        set {
+            var c = currentConfig; c.template = newValue; currentConfig = c
+            baseConfig.template = newValue  // 새 사진도 이 템플릿에서 시작
+        }
+    }
+
+    /// videoTemplate — 비디오 모드 별칭 (selectedClipIndex 기반, 동일 동작)
+    var videoTemplate: StampTemplate {
+        get { currentConfig.template }
+        set {
+            var c = currentConfig; c.template = newValue; currentConfig = c
+            baseConfig.template = newValue
+        }
+    }
+
+    func photoTemplate(at index: Int) -> StampTemplate { photoConfig(at: index).template }
+
+    // MARK: - 스타일 속성 (per-photo + baseConfig 갱신)
+
+    var colorMode: StampColorMode {
+        get { currentConfig.colorMode }
+        set { var c = currentConfig; c.colorMode = newValue; currentConfig = c; baseConfig.colorMode = newValue }
+    }
+
+    var position: CardPosition {
+        get { currentConfig.position }
+        set { var c = currentConfig; c.position = newValue; currentConfig = c; baseConfig.position = newValue }
+    }
+
+    var sizeLevel: TextSizeLevel {
+        get { currentConfig.sizeLevel }
+        set { var c = currentConfig; c.sizeLevel = newValue; currentConfig = c; baseConfig.sizeLevel = newValue }
+    }
+
+    var showHeartRate: Bool {
+        get { currentConfig.showHeartRate }
+        set { var c = currentConfig; c.showHeartRate = newValue; currentConfig = c; baseConfig.showHeartRate = newValue }
+    }
+
+    var showCalories: Bool {
+        get { currentConfig.showCalories }
+        set { var c = currentConfig; c.showCalories = newValue; currentConfig = c; baseConfig.showCalories = newValue }
+    }
+
+    var showTextOutline: Bool {
+        get { currentConfig.showTextOutline }
+        set { var c = currentConfig; c.showTextOutline = newValue; currentConfig = c; baseConfig.showTextOutline = newValue }
+    }
+
+    // MARK: - 문구 텍스트 오버레이 (per-photo, baseConfig 갱신 없음)
+
+    var stampText: String {
+        get { currentConfig.text }
+        set { var c = currentConfig; c.text = newValue; currentConfig = c }
+    }
+
+    func photoText(at index: Int) -> String { photoConfig(at: index).text }
+
+    var stampTextPosition: CardPosition {
+        get { currentConfig.textPosition }
+        set { var c = currentConfig; c.textPosition = newValue; currentConfig = c; baseConfig.textPosition = newValue }
+    }
+
+    var stampTextFont: OneLinerFont {
+        get { currentConfig.textFont }
+        set { var c = currentConfig; c.textFont = newValue; currentConfig = c; baseConfig.textFont = newValue }
+    }
+
+    var stampTextSize: TextSizeLevel {
+        get { currentConfig.textSize }
+        set { var c = currentConfig; c.textSize = newValue; currentConfig = c; baseConfig.textSize = newValue }
+    }
+
+    var stampTextColor: OneLinerTextColor {
+        get { currentConfig.textColor }
+        set { var c = currentConfig; c.textColor = newValue; currentConfig = c; baseConfig.textColor = newValue }
+    }
+
+    var stampTextHasBorder: Bool {
+        get { currentConfig.textHasBorder }
+        set { var c = currentConfig; c.textHasBorder = newValue; currentConfig = c; baseConfig.textHasBorder = newValue }
+    }
+
+    // MARK: - 미디어
+
+    var storyCropOffsetX: CGFloat = 0.5
+    var storyPhoto: UIImage? = nil
+    var clipRecipes: [ClipRecipe] = []
+    var selectedClipIndex: Int = 0 {
+        didSet {
+            // 첫 진입 시 baseConfig 스냅샷 저장 → 이후 다른 사진 변경이 소급 적용되는 것을 방지
+            if photoConfigs[selectedClipIndex] == nil {
+                photoConfigs[selectedClipIndex] = baseConfig
+            }
+        }
+    }
+    var muteAudio: Bool = false
+
+    // MARK: - 애니메이션 옵션 (현재 클립 기준, per-clip)
+
+    var stampEntranceMode: StampEntranceMode {
+        get { currentConfig.entranceMode }
+        set { var c = currentConfig; c.entranceMode = newValue; currentConfig = c; baseConfig.entranceMode = newValue }
+    }
+    var stampFlyDirection: FlyInDirection {
+        get { currentConfig.flyDirection }
+        set { var c = currentConfig; c.flyDirection = newValue; currentConfig = c; baseConfig.flyDirection = newValue }
+    }
+    var stampAnimated: Bool { stampEntranceMode != .none }
+
+    var stampTextEntranceMode: StampEntranceMode {
+        get { currentConfig.textEntranceMode }
+        set { var c = currentConfig; c.textEntranceMode = newValue; currentConfig = c; baseConfig.textEntranceMode = newValue }
+    }
+    var stampTextFlyDirection: FlyInDirection {
+        get { currentConfig.textFlyDirection }
+        set { var c = currentConfig; c.textFlyDirection = newValue; currentConfig = c; baseConfig.textFlyDirection = newValue }
+    }
+
+    // MARK: - 출력 상태
+
+    var isExporting: Bool = false
+    var exportProgress: Double = 0
+    var exportError: String? = nil
+
+    // MARK: - 헬퍼
+
+    var allowsColorChoice: Bool { !storyTemplate.isColorFixed }
+    var showsPositionGrid: Bool { storyTemplate.positionMode != .fixed }
+}

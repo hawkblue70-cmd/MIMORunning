@@ -16,6 +16,9 @@ final class OneLinerPreviewPlayer {
     var isPlaying:  Bool   = false
     var progress:   Double = 0
     var isReady:    Bool   = false
+    // player가 교체될 때마다 갱신 — stampSlidePreviewSection의 OneLinerPreviewView에
+    // .id(buildToken)을 걸어 UIView 재생성 → onAppear 재발동 → seek 보장
+    private(set) var buildToken: UUID = UUID()
 
     private(set) var player:       AVPlayer?
     private(set) var contentLayer: CALayer?
@@ -25,6 +28,10 @@ final class OneLinerPreviewPlayer {
     private var tempURL: URL?
     private var timeObserver: Any?
     private var endObserver:  NSObjectProtocol?
+    // 빌드 중 setMuted 호출이 발생해도 완료 시 반영되도록 원하는 상태를 별도 추적
+    private var targetMuted: Bool = false
+    // 빌드 세대 카운터 — invalidate() 마다 증가, 이전 빌드가 setUpPlayer를 덮어쓰는 race 방지
+    private var buildGeneration: Int = 0
 
     // MARK: Build
 
@@ -43,9 +50,12 @@ final class OneLinerPreviewPlayer {
         intervalSegments: [IntervalSegment] = [],
         videoTitle:       String            = "",
         titleStyle:       OneLinerTitleStyle = OneLinerTitleStyle(),
-        dataOverlayImage: UIImage?           = nil
+        dataOverlayImage: UIImage?           = nil,
+        fastBase:         Bool               = false
     ) async {
-        invalidate()
+        invalidate()                         // buildGeneration 증가 → 이전 빌드 무효화
+        buildGeneration += 1
+        let myGen = buildGeneration
         isBuilding = true
         defer { isBuilding = false }
         do {
@@ -64,12 +74,13 @@ final class OneLinerPreviewPlayer {
                 intervalSegments: intervalSegments,
                 videoTitle:       videoTitle,
                 titleStyle:       titleStyle,
-                dataOverlayImage: dataOverlayImage)
+                dataOverlayImage: dataOverlayImage,
+                fastBase:         fastBase)
+            guard buildGeneration == myGen else { return }  // 대기 중 invalidate 됐으면 폐기
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
             tempURL = result.tempURL
         } catch {
-            print("[OneLinerPreview] Photo slide build failed: \(error)")
         }
     }
 
@@ -77,7 +88,7 @@ final class OneLinerPreviewPlayer {
         recipes:          [ClipRecipe],
         activityDate:     Date,
         showDate:         Bool,
-        muteAudio:        Bool = false,
+        muteAudio:        Bool = false,  // 빌드 시작 시 초기 상태; 빌드 중 setMuted 호출이 있으면 그 값이 우선
         metricChips:      [VideoMetricChip] = [],
         metricLookup:     [String: VideoMetricChip] = [:],
         routeCoords:      [CLLocationCoordinate2D] = [],
@@ -90,9 +101,14 @@ final class OneLinerPreviewPlayer {
         titleStyle:       OneLinerTitleStyle = OneLinerTitleStyle(),
         safeTopOverride:  CGFloat?           = nil,
         safeBotOverride:  CGFloat?           = nil,
-        dataOverlayImage: UIImage?           = nil
+        wordmarkTopPad:   CGFloat?           = nil,
+        dataOverlayImage: UIImage?           = nil,
+        fullSizeOverlayImage: UIImage?       = nil
     ) async {
-        invalidate()
+        targetMuted = muteAudio   // 초기 상태 기록; 빌드 중 setMuted 호출로 덮어쓸 수 있음
+        invalidate()                         // buildGeneration 증가 → 이전 빌드 무효화
+        buildGeneration += 1
+        let myGen = buildGeneration
         isBuilding = true
         defer { isBuilding = false }
         do {
@@ -100,7 +116,7 @@ final class OneLinerPreviewPlayer {
                 recipes:          recipes,
                 activityDate:     activityDate,
                 showDate:         showDate,
-                muteAudio:        muteAudio,
+                muteAudio:        false,   // 프리뷰는 항상 오디오 트랙 포함; 음소거는 player.isMuted로 제어
                 metricChips:      metricChips,
                 metricLookup:     metricLookup,
                 routeCoords:      routeCoords,
@@ -111,19 +127,40 @@ final class OneLinerPreviewPlayer {
                 chartSeriesData:  chartSeriesData,
                 videoTitle:       videoTitle,
                 titleStyle:       titleStyle,
-                safeTopOverride:  safeTopOverride,
-                safeBotOverride:  safeBotOverride,
-                dataOverlayImage: dataOverlayImage)
+                safeTopOverride:      safeTopOverride,
+                safeBotOverride:      safeBotOverride,
+                wordmarkTopPad:       wordmarkTopPad,
+                dataOverlayImage:     dataOverlayImage,
+                fullSizeOverlayImage: fullSizeOverlayImage)
+            guard buildGeneration == myGen else { return }  // 대기 중 invalidate 됐으면 폐기
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
-            player?.isMuted = muteAudio
+            player?.isMuted = targetMuted   // 캡처된 muteAudio 대신 현재 상태 적용
         } catch {
-            print("[OneLinerPreview] Video clip build failed: \(error)")
+        }
+    }
+
+    /// 이미 완성된 영상 URL을 플레이어에 로드한다.
+    /// exportStampSlide 등 외부에서 렌더된 파일을 로드할 때 사용.
+    /// 호출 전 invalidate() 불필요 — 내부에서 정리 후 로드.
+    func loadPrebuiltURL(_ url: URL, videoSize: CGSize = CGSize(width: 1080, height: 1920)) async {
+        invalidate()
+        isBuilding = true
+        defer { isBuilding = false }
+        do {
+            let asset = AVURLAsset(url: url)
+            let dur   = try await asset.load(.duration)
+            let item  = AVPlayerItem(asset: asset)
+            setUpPlayer(playerItem: item, animLayer: CALayer(),
+                        renderSize: videoSize, duration: CMTimeGetSeconds(dur))
+            tempURL = url
+        } catch {
         }
     }
 
     // MARK: Mute — apply instantly without rebuild
     func setMuted(_ muted: Bool) {
+        targetMuted = muted   // 빌드 중이더라도 완료 시 반영됨
         player?.isMuted = muted
     }
 
@@ -133,9 +170,19 @@ final class OneLinerPreviewPlayer {
 
     func play() {
         guard let player else { return }
-        if progress >= 1.0 { player.seek(to: .zero) }
-        player.play()
-        isPlaying = true
+        isPlaying = true   // UI 즉시 업데이트 (버튼 → 일시정지 표시)
+        if progress >= 0.95 {
+            // 끝이거나 거의 끝(95%+) → 처음부터 재시작.
+            // seek 이전에 play() 호출하면 끝 위치부터 재생 → endObserver 즉시 발동
+            // → isPlaying = false 루프에 빠져 재생 불가 상태가 됨.
+            player.seek(to: .zero) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.player?.play()
+                }
+            }
+        } else {
+            player.play()
+        }
     }
 
     func pause() {
@@ -144,6 +191,7 @@ final class OneLinerPreviewPlayer {
     }
 
     func invalidate() {
+        buildGeneration += 1  // 진행 중인 빌드의 guard 체크를 무효화
         if let obs = timeObserver { player?.removeTimeObserver(obs) }
         timeObserver = nil
         if let obs = endObserver { NotificationCenter.default.removeObserver(obs) }
@@ -191,6 +239,7 @@ final class OneLinerPreviewPlayer {
         self.contentLayer = animLayer
         self.renderSize   = renderSize
         self.duration     = duration
+        self.buildToken   = UUID()
         self.isReady      = true
     }
 }
@@ -251,6 +300,69 @@ final class PreviewHostView: UIView {
         }
 
         // contentLayer가 교체됐을 때만 재연결
+        if self.contentLayer !== contentLayer {
+            self.contentLayer?.removeFromSuperlayer()
+            self.contentLayer = contentLayer
+            syncLayer?.addSublayer(contentLayer)
+            applyContentScale()
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        syncLayer?.frame = bounds
+        applyContentScale()
+    }
+
+    private func applyContentScale() {
+        guard let cl = contentLayer, renderSize.width > 0, !bounds.isEmpty else { return }
+        let scale = min(bounds.width / renderSize.width, bounds.height / renderSize.height)
+        cl.bounds      = CGRect(origin: .zero, size: renderSize)
+        cl.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        cl.position    = CGPoint(x: bounds.midX, y: bounds.midY)
+        cl.transform   = CATransform3DMakeScale(scale, scale, 1)
+    }
+}
+
+// MARK: - SyncLayerView
+//
+// 투명 UIView + AVSynchronizedLayer. AVPlayerLayer 없이 contentLayer(Ken Burns 등)만 렌더.
+// AVPlayerLayer(검은 배경)을 쓰지 않으므로, 뒤의 SwiftUI 배경 사진이 그대로 비침.
+// 슬라이드 미리보기에서 검은 화면 없이 Ken Burns 애니메이션을 표시할 때 사용.
+
+struct SyncLayerView: UIViewRepresentable {
+    let playerItem:   AVPlayerItem
+    let contentLayer: CALayer
+    let renderSize:   CGSize
+
+    func makeUIView(context: Context) -> SyncHostView {
+        let view = SyncHostView()
+        view.configure(playerItem: playerItem, contentLayer: contentLayer, renderSize: renderSize)
+        return view
+    }
+
+    func updateUIView(_ uiView: SyncHostView, context: Context) {
+        uiView.configure(playerItem: playerItem, contentLayer: contentLayer, renderSize: renderSize)
+    }
+}
+
+final class SyncHostView: UIView {
+    private var syncLayer:    AVSynchronizedLayer?
+    private var contentLayer: CALayer?
+    private var renderSize:   CGSize = .zero
+
+    func configure(playerItem: AVPlayerItem, contentLayer: CALayer, renderSize: CGSize) {
+        self.renderSize = renderSize
+
+        if syncLayer?.playerItem !== playerItem {
+            syncLayer?.removeFromSuperlayer()
+            let sync = AVSynchronizedLayer(playerItem: playerItem)
+            sync.frame = bounds
+            layer.addSublayer(sync)
+            syncLayer = sync
+            applyContentScale()
+        }
+
         if self.contentLayer !== contentLayer {
             self.contentLayer?.removeFromSuperlayer()
             self.contentLayer = contentLayer

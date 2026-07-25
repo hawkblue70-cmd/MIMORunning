@@ -94,8 +94,14 @@ struct VideoExportService {
         vc.colorPrimaries        = AVVideoColorPrimaries_ITU_R_709_2
         vc.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
         vc.colorYCbCrMatrix      = AVVideoYCbCrMatrix_ITU_R_709_2
-        let hdr = await isHDRSource(track: track)
-        print("[SDR] \(hdr ? "HDR→BT.709 톤매핑(롤오프)" : "SDR/필믹→BT.709 레이블")")
+    }
+
+    /// Stamps BT.2020 + HLG HDR output properties on `vc`.
+    /// animationTool이 이 설정을 지원하는지 실험적 경로 — 성공 시 HDR 출력, 실패 시 export 에러.
+    private static func applyHDROutputProps(_ vc: AVMutableVideoComposition) {
+        vc.colorPrimaries        = AVVideoColorPrimaries_ITU_R_2020
+        vc.colorTransferFunction = AVVideoTransferFunction_ITU_R_2100_HLG
+        vc.colorYCbCrMatrix      = AVVideoYCbCrMatrix_ITU_R_2020
     }
 
     /// Pre-processes an HDR video file: filmic tone curve + local contrast + saturation → BT.709 SDR.
@@ -178,7 +184,6 @@ struct VideoExportService {
                 }
             }
         }
-        print("[SDR] HDR→필믹 완료: lift=\(lift) ceil=\(ceil) clarity=\(clarity) sat=\(saturation)")
         return outputURL
     }
 
@@ -432,15 +437,26 @@ struct VideoExportService {
     static func exportClipWithOverlay(sourceURL: URL, overlay: UIImage,
                                       trimStart: Double, trimEnd: Double,
                                       muteAudio: Bool = false,
-                                      speed: Double = 1.0) async throws -> URL {
-        // HDR 소스 여부 먼저 확인 (재사용 — 아래 asset 로드와 중복 없이 한 번만)
+                                      speed: Double = 1.0,
+                                      brightenHDR: Bool = false,
+                                      outputHDR: Bool = false) async throws -> URL {
         let rawAsset  = AVURLAsset(url: sourceURL)
         let rawTracks = try await rawAsset.loadTracks(withMediaType: .video)
         guard let rawVideoTrack = rawTracks.first else { throw ExportError.noVideoTrack }
         let sourceIsHDR = await isHDRSource(track: rawVideoTrack)
 
-        // HDR: 필믹 전처리 생략 → 원본 밝기 유지 / SDR: 필믹 파이프라인 적용
-        let preparedURL = sourceIsHDR ? sourceURL : try await preprocessHDRToSDR(url: sourceURL)
+        // outputHDR + HDR source: 원본 HDR 유지, BT.2020+HLG 속성으로 출력 시도 (experimental)
+        // SDR source: preprocessHDRToSDR 내부 guard에서 즉시 반환 (처리 없음)
+        // HDR + brightenHDR=true: 필믹 S-커브 파이프라인 적용 → 밝은 SDR 출력
+        // HDR + brightenHDR=false: 원본 HDR → applySDROutputProps BT.709 톤매핑 (기본)
+        let preparedURL: URL
+        if outputHDR && sourceIsHDR {
+            preparedURL = sourceURL  // HDR 원본 그대로 유지
+        } else {
+            preparedURL = (!sourceIsHDR || brightenHDR)
+                ? try await preprocessHDRToSDR(url: sourceURL)
+                : sourceURL
+        }
         let asset       = AVURLAsset(url: preparedURL)
 
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
@@ -503,7 +519,11 @@ struct VideoExportService {
         videoComposition.renderSize       = targetSize
         videoComposition.frameDuration    = CMTimeMake(value: 1, timescale: 30)
         videoComposition.instructions     = [instruction]
-        await applySDROutputProps(videoComposition, track: videoTrack)
+        if outputHDR && sourceIsHDR {
+            applyHDROutputProps(videoComposition)
+        } else {
+            await applySDROutputProps(videoComposition, track: videoTrack)
+        }
 
         let parentLayer  = CALayer()
         parentLayer.frame = CGRect(origin: .zero, size: targetSize)
@@ -550,13 +570,20 @@ struct VideoExportService {
         trimStart:     Double,
         trimEnd:       Double,
         muteAudio:     Bool   = false,
-        speed:         Double = 1.0
+        speed:         Double = 1.0,
+        brightenHDR:   Bool   = false
     ) async throws -> URL {
         let rawAsset  = AVURLAsset(url: sourceURL)
         let rawTracks = try await rawAsset.loadTracks(withMediaType: .video)
         guard let rawVideoTrack = rawTracks.first else { throw ExportError.noVideoTrack }
         let sourceIsHDR = await isHDRSource(track: rawVideoTrack)
-        let preparedURL = sourceIsHDR ? sourceURL : try await preprocessHDRToSDR(url: sourceURL)
+        // exportClipWithOverlay와 동일한 로직:
+        // SDR: preprocessHDRToSDR 내부 guard에서 즉시 반환 (처리 없음)
+        // HDR + brightenHDR=true: 필믹 S-커브 파이프라인 적용 → 밝은 SDR 출력
+        // HDR + brightenHDR=false: 원본 HDR → applySDROutputProps BT.709 톤매핑 (기본)
+        let preparedURL = (!sourceIsHDR || brightenHDR)
+            ? try await preprocessHDRToSDR(url: sourceURL)
+            : sourceURL
         let asset       = AVURLAsset(url: preparedURL)
 
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
@@ -1659,9 +1686,6 @@ struct VideoExportService {
     static func exportOneLinerClipBoundVideo(
         sourceURL: URL,
         recipes: [ClipRecipe],
-        fontChoice: OneLinerFont,
-        textColor: OneLinerTextColor,
-        position: CardPosition,
         activityDate: Date,
         showDate: Bool,
         muteAudio: Bool = false,
@@ -1791,7 +1815,9 @@ struct VideoExportService {
             activityDate: activityDate, showDate: showDate, metricChips: metricChips,
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples,
             splits: splits, hrZones: hrZones, intervalSegments: intervalSegments,
-            chartSeriesData: chartSeriesData, videoTitle: videoTitle, titleStyle: titleStyle)
+            chartSeriesData: chartSeriesData, videoTitle: videoTitle, titleStyle: titleStyle,
+            safeTopOverride: oneLinerSize.height * 0.06, safeBotOverride: oneLinerSize.height * 0.06,
+            wordmarkTopPad: oneLinerSize.height * 0.06)
 
         let videoLayer = CALayer()
         videoLayer.frame = CGRect(origin: .zero, size: oneLinerSize)
@@ -1850,6 +1876,7 @@ struct VideoExportService {
         totalDuration D: Double,
         activityDate: Date,
         showDate: Bool,
+        showWordmark: Bool = true,
         metricChips: [VideoMetricChip] = [],
         metricLookup: [String: VideoMetricChip] = [:],
         routeCoords: [CLLocationCoordinate2D] = [],
@@ -1861,7 +1888,8 @@ struct VideoExportService {
         videoTitle: String = "",
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
         safeTopOverride: CGFloat? = nil,
-        safeBotOverride: CGFloat? = nil
+        safeBotOverride: CGFloat? = nil,
+        wordmarkTopPad: CGFloat? = nil
     ) -> CALayer {
         let W = renderSize.width
         let H = renderSize.height
@@ -1869,7 +1897,7 @@ struct VideoExportService {
         let safeTop: CGFloat  = safeTopOverride ?? CardVisual.videoSafeTop
         let safeBot: CGFloat  = safeBotOverride ?? CardVisual.videoSafeBottom
         let hPad: CGFloat     = 24 * vScale
-        let wMTopPad: CGFloat = 12 * vScale
+        let wMTopPad: CGFloat = wordmarkTopPad ?? (12 * vScale)
         let wMFontPx: CGFloat = 9  * vScale
         let wMZoneH: CGFloat  = wMTopPad + ceil(wMFontPx * 1.5) + 6 * vScale
         let textMaxW: CGFloat = W - 2 * hPad
@@ -1913,7 +1941,7 @@ struct VideoExportService {
                 with: CGSize(width: textMaxW, height: 4000),
                 options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
             let tLayerH  = ceil(tBounds.height) + 20
-            let tFrameY  = max(wMZoneH + 12 * vScale, safeTop * 0.6)
+            let tFrameY  = wMZoneH + 12 * vScale
             return tFrameY + tLayerH + 8 * vScale
         }()
 
@@ -2421,40 +2449,42 @@ struct VideoExportService {
 
         // ── Wordmark ───────────────────────────────────────────────────────────
         let wMLayerH = ceil(wMFontPx * 1.5)
-        let wMarkW   = W - 2 * hPad
-        let wMRenderer = UIGraphicsImageRenderer(
-            size: CGSize(width: wMarkW, height: wMLayerH), format: imgFormat)
-        let wMImg = wMRenderer.image { ctx in
-            let mimoAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: wMFontPx, weight: .black),
-                .foregroundColor: UIColor.white, .kern: NSNumber(value: 2.0)
-            ]
-            let runAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: wMFontPx, weight: .bold),
-                .foregroundColor: UIColor(red: 0x7C/255.0, green: 0x5C/255.0,
-                                          blue: 0xFC/255.0, alpha: 1),
-                .kern: NSNumber(value: 2.0)
-            ]
-            let combined = NSMutableAttributedString(
-                attributedString: NSAttributedString(string: "MIMO", attributes: mimoAttrs))
-            combined.append(NSAttributedString(string: " RUNNING", attributes: runAttrs))
-            ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
-                                    blur: 3 * vScale,
-                                    color: UIColor.black.withAlphaComponent(0.4).cgColor)
-            combined.draw(in: CGRect(x: 0, y: 0, width: wMarkW, height: wMLayerH))
+        if showWordmark {
+            let wMarkW   = W - 2 * hPad
+            let wMRenderer = UIGraphicsImageRenderer(
+                size: CGSize(width: wMarkW, height: wMLayerH), format: imgFormat)
+            let wMImg = wMRenderer.image { ctx in
+                let mimoAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: wMFontPx, weight: .black),
+                    .foregroundColor: UIColor.white, .kern: NSNumber(value: 2.0)
+                ]
+                let runAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: wMFontPx, weight: .bold),
+                    .foregroundColor: UIColor(red: 0x7C/255.0, green: 0x5C/255.0,
+                                              blue: 0xFC/255.0, alpha: 1),
+                    .kern: NSNumber(value: 2.0)
+                ]
+                let combined = NSMutableAttributedString(
+                    attributedString: NSAttributedString(string: "MIMO", attributes: mimoAttrs))
+                combined.append(NSAttributedString(string: " RUNNING", attributes: runAttrs))
+                ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
+                                        blur: 3 * vScale,
+                                        color: UIColor.black.withAlphaComponent(0.4).cgColor)
+                combined.draw(in: CGRect(x: 0, y: 0, width: wMarkW, height: wMLayerH))
+            }
+            let wMLayer = CALayer()
+            wMLayer.frame           = CGRect(x: hPad, y: wMTopPad, width: wMarkW, height: wMLayerH)
+            wMLayer.contents        = wMImg.cgImage
+            wMLayer.contentsGravity = .topLeft
+            wMLayer.masksToBounds   = false
+            wMLayer.opacity         = 0.0
+            let wMFadeEnd = NSNumber(value: min(0.3 / D, 0.99))
+            wMLayer.add(linearAnim(keyPath: "opacity",
+                keyTimes: [0.0, 0.0001, wMFadeEnd, 1.0],
+                values:   [Float(0), Float(0), Float(1), Float(1)]),
+                forKey: "wMFade")
+            contentLayer.addSublayer(wMLayer)
         }
-        let wMLayer = CALayer()
-        wMLayer.frame           = CGRect(x: hPad, y: wMTopPad, width: wMarkW, height: wMLayerH)
-        wMLayer.contents        = wMImg.cgImage
-        wMLayer.contentsGravity = .topLeft
-        wMLayer.masksToBounds   = false
-        wMLayer.opacity         = 0.0
-        let wMFadeEnd = NSNumber(value: min(0.3 / D, 0.99))
-        wMLayer.add(linearAnim(keyPath: "opacity",
-            keyTimes: [0.0, 0.0001, wMFadeEnd, 1.0],
-            values:   [Float(0), Float(0), Float(1), Float(1)]),
-            forKey: "wMFade")
-        contentLayer.addSublayer(wMLayer)
 
         // ── Metric chips ───────────────────────────────────────────────────────
         if !metricChips.isEmpty {
@@ -2578,7 +2608,7 @@ struct VideoExportService {
                                                   context: nil)
             let tLayerH   = ceil(bound.height) + 20
             let tFrameY: CGFloat = titleStyle.position.isTop
-                ? max(wMZoneH + 12 * vScale, safeTop * 0.6)   // 제목 위로: safeTop→0.6배
+                ? wMZoneH + 12 * vScale   // 워드마크 존 하단 + 여유 → 항상 로고 아래
                 : titleStyle.position.isBottom
                     ? H - safeBot - tLayerH
                     : (safeTop + (H - safeBot)) / 2 - tLayerH / 2
@@ -3188,7 +3218,7 @@ struct VideoExportService {
                 return (false, 0)
             }()
             let recipeEffBot: CGFloat = recipeChartActive
-                ? recipeChartPanH + 18 * vScale   // 10*vScale botPad + 8*vScale gap
+                ? recipeChartPanH + safeBot + 8 * vScale   // safeBot + 8*vScale gap above chart
                 : safeBot
             // PDT 칩
             let pdt: [VideoMetricChip] = [
@@ -3212,7 +3242,7 @@ struct VideoExportService {
             if recipe.showHRChart, hrSamples.count >= 2,
                let img = renderHRPanel(hrSamples, zones: hrZones) {
                 let layer = CALayer()
-                layer.frame = CGRect(x: (W - panW) / 2, y: H - 10 * vScale - panH, width: panW, height: panH)
+                layer.frame = CGRect(x: (W - panW) / 2, y: H - safeBot - panH, width: panW, height: panH)
                 layer.contents = img.cgImage; layer.contentsGravity = .topLeft
                 applyDataAnim(layer, start: cStart, end: cEnd, delay: chartDelay,
                               mode: recipe.dataAppearanceMode, decorEffect: recipe.chartDecorEffect, flyDirection: recipe.chartFlyDirection)
@@ -3224,7 +3254,7 @@ struct VideoExportService {
                     let dc = full.count > 21 ? full.count / 2 : full.count
                     let splitsPanH = (34 + CGFloat(dc) * 7) * vScale
                     let layer = CALayer()
-                    layer.frame = CGRect(x: (W - panW) / 2, y: H - 10 * vScale - splitsPanH, width: panW, height: splitsPanH)
+                    layer.frame = CGRect(x: (W - panW) / 2, y: H - safeBot - splitsPanH, width: panW, height: splitsPanH)
                     layer.contents = img.cgImage; layer.contentsGravity = .topLeft
                     applyDataAnim(layer, start: cStart, end: cEnd, delay: chartDelay,
                                   mode: recipe.dataAppearanceMode, decorEffect: recipe.chartDecorEffect, flyDirection: recipe.chartFlyDirection)
@@ -3234,7 +3264,7 @@ struct VideoExportService {
             if recipe.chartOverlayType == .intervals, !intervalSegments.isEmpty,
                let img = renderIntervalPanel(intervalSegments) {
                 let layer = CALayer()
-                layer.frame = CGRect(x: (W - panW) / 2, y: H - 10 * vScale - intervalPanH, width: panW, height: intervalPanH)
+                layer.frame = CGRect(x: (W - panW) / 2, y: H - safeBot - intervalPanH, width: panW, height: intervalPanH)
                 layer.contents = img.cgImage; layer.contentsGravity = .topLeft
                 applyDataAnim(layer, start: cStart, end: cEnd, delay: chartDelay,
                               mode: recipe.dataAppearanceMode, decorEffect: recipe.chartDecorEffect, flyDirection: recipe.chartFlyDirection)
@@ -3243,7 +3273,7 @@ struct VideoExportService {
             if recipe.chartOverlayType == .route, routeCoords.count >= 2,
                let img = renderRoutePanel(routeCoords) {
                 let layer = CALayer()
-                layer.frame = CGRect(x: (W - panW) / 2, y: H - 10 * vScale - panH, width: panW, height: panH)
+                layer.frame = CGRect(x: (W - panW) / 2, y: H - safeBot - panH, width: panW, height: panH)
                 layer.contents = img.cgImage; layer.contentsGravity = .topLeft
                 applyDataAnim(layer, start: cStart, end: cEnd, delay: chartDelay,
                               mode: recipe.dataAppearanceMode, decorEffect: recipe.chartDecorEffect, flyDirection: recipe.chartFlyDirection)
@@ -3256,7 +3286,7 @@ struct VideoExportService {
                    type: genericType, series: series,
                    panW: panW, panH: panH, panPad: panPad, panCR: panCR, vScale: vScale) {
                 let layer = CALayer()
-                layer.frame = CGRect(x: (W - panW) / 2, y: H - 10 * vScale - panH, width: panW, height: panH)
+                layer.frame = CGRect(x: (W - panW) / 2, y: H - safeBot - panH, width: panW, height: panH)
                 layer.contents = img.cgImage; layer.contentsGravity = .topLeft
                 applyDataAnim(layer, start: cStart, end: cEnd, delay: chartDelay,
                               mode: recipe.dataAppearanceMode, decorEffect: recipe.chartDecorEffect, flyDirection: recipe.chartFlyDirection)
@@ -3289,7 +3319,9 @@ struct VideoExportService {
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
         safeTopOverride: CGFloat? = nil,
         safeBotOverride: CGFloat? = nil,
-        dataOverlayImage: UIImage? = nil
+        wordmarkTopPad: CGFloat? = nil,
+        dataOverlayImage: UIImage? = nil,
+        fullSizeOverlayImage: UIImage? = nil
     ) async throws -> (playerItem: AVPlayerItem, layer: CALayer, size: CGSize, duration: Double) {
         guard !recipes.isEmpty else { throw ExportError.compositionFailed }
 
@@ -3371,7 +3403,6 @@ struct VideoExportService {
             clipIdx += 1
         }
 
-        print("[MultiClip] 미리보기 음소거=\(muteAudio) 삽입오디오=\(audioInserted)개")
 
         let totalDuration = insertAt
         let vcInstr = AVMutableVideoCompositionInstruction()
@@ -3395,7 +3426,8 @@ struct VideoExportService {
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples,
             splits: splits, hrZones: hrZones, intervalSegments: intervalSegments,
             chartSeriesData: chartSeriesData, videoTitle: videoTitle, titleStyle: titleStyle,
-            safeTopOverride: safeTopOverride, safeBotOverride: safeBotOverride)
+            safeTopOverride: safeTopOverride, safeBotOverride: safeBotOverride,
+            wordmarkTopPad: wordmarkTopPad)
 
         // PlaceableCard 데이터 오버레이 — 텍스트 레이어 아래에 배치(index 0)
         // → SwiftUI 오버레이 없이도 미리보기에서 데이터가 보이고, 텍스트가 가려지지 않음
@@ -3410,6 +3442,17 @@ struct VideoExportService {
             dataLayer.contentsGravity = .resize
             dataLayer.masksToBounds   = false
             contentLayer.insertSublayer(dataLayer, at: 0)
+        }
+
+        // 풀사이즈 오버레이 (스탬프 카드 전용) — 1080×1920 전체 크기로 contentLayer 위에 올림
+        if let overlayImg = fullSizeOverlayImage, let cgImg = overlayImg.cgImage {
+            let stampLayer             = CALayer()
+            stampLayer.frame           = CGRect(origin: .zero, size: oneLinerSize)
+            stampLayer.contents        = cgImg
+            stampLayer.contentsGravity = .resize
+            stampLayer.masksToBounds   = false
+            stampLayer.contentsScale   = 1.0
+            contentLayer.addSublayer(stampLayer)
         }
 
         let playerItem = AVPlayerItem(asset: composition)

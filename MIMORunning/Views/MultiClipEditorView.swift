@@ -79,6 +79,8 @@ struct MultiClipEditorView: View {
     /// When false: tapping a clip only selects it (updates selectedClipIndex) without opening the edit sheet.
     /// Used in Placeable video where trim/text controls are inline below the strip.
     var openEditOnTap: Bool = true
+    /// When false: hides the "(탭하면 상세 편집)" hint in the duration row.
+    var showEditHint: Bool = true
 
     /// Full-video title (영상·슬라이드 only; hidden when isStoryMode).
     @Binding var videoTitle: String
@@ -153,7 +155,6 @@ struct MultiClipEditorView: View {
             onCommit: { newRecipes in
                 // newRecipes = commitWorkingRecipes()가 방금 쓴 toSave.
                 // @State 배치 처리 전에 binding을 직접 갱신하여 saveEntry가 최신 값을 읽도록 보장.
-                print("[DUR-TRACE] MultiClipEditor.onCommit newRecipes trimEnd=\(newRecipes.map { $0.trimEnd })")
                 recipes = newRecipes
                 onSave()
             }
@@ -321,7 +322,7 @@ struct MultiClipEditorView: View {
                         .tint(.white)
                         .padding(.bottom, 3)
                 } else if !isStoryMode {
-                    Text("\(Int((recipes[i].trimmedDuration / max(0.1, recipes[i].speed)).rounded()))s")
+                    Text("\(Int(recipes[i].trimmedDuration / max(0.1, recipes[i].speed)))s")
                         .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 3).padding(.vertical, 1)
                         .background(Color.black.opacity(0.55))
@@ -361,7 +362,7 @@ struct MultiClipEditorView: View {
 
     private var storyHintRow: some View {
         Text(AppLanguage.shared.s(
-            "사진 \(recipes.count)장  (탭하면 편집)",
+            "사진 \(recipes.count)장  (탭하면 상세 편집)",
             "\(recipes.count) photos  (tap to edit)"))
             .font(.caption).foregroundStyle(.secondary)
     }
@@ -378,10 +379,15 @@ struct MultiClipEditorView: View {
                     "전체 60초를 넘어요 — \(overBy)초 초과",
                     "Over 60s limit — \(overBy)s too long"))
                     .font(.caption).foregroundStyle(.red)
+            } else if showEditHint {
+                Text(AppLanguage.shared.s(
+                    "클립 \(recipes.count)개 · \(Int(totalSeconds))초  (탭하면 상세 편집)",
+                    "\(recipes.count) clips · \(Int(totalSeconds))s  (tap to edit)"))
+                    .font(.caption).foregroundStyle(.secondary)
             } else {
                 Text(AppLanguage.shared.s(
-                    "클립 \(recipes.count)개 · \(Int(totalSeconds))초  (탭하면 편집)",
-                    "\(recipes.count) clips · \(Int(totalSeconds))s  (tap to edit)"))
+                    "클립 \(recipes.count)개 · \(Int(totalSeconds))초",
+                    "\(recipes.count) clips · \(Int(totalSeconds))s"))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -673,7 +679,6 @@ struct MultiClipEditorView: View {
             }
             guard !loaded.isEmpty else { return }
             let firstNewIdx = recipes.count
-            print("[OneLinerVideo] 추가=\(loaded.count)클립 전체합산=\(Int(runningTotal))초")
             await MainActor.run {
                 recipes.append(contentsOf: loaded)
                 selectedClipIndex = firstNewIdx
@@ -713,7 +718,6 @@ struct MultiClipEditorView: View {
             }
             guard !loaded.isEmpty else { return }
             let firstNewIdx = recipes.count
-            print("[OneLinerVideo] type=photo 추가=\(loaded.count)장 전체=\(recipes.count + loaded.count)장")
             await MainActor.run {
                 recipes.append(contentsOf: loaded)
                 selectedClipIndex = firstNewIdx

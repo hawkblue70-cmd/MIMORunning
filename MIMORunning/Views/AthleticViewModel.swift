@@ -18,8 +18,9 @@ final class AthleticViewModel {
 
     // MARK: - 멀티 클립 (최대 5개, BigNumber와 공유)
 
-    var athleticClipRecipes:    [ClipRecipe]       = []
-    var athleticPickerItems:    [PhotosPickerItem]  = []
+    var athleticClipRecipes:         [ClipRecipe]       = []
+    var athleticPickerItems:         [PhotosPickerItem]  = []
+    var selectedAthleticClipIndex:   Int                = 0
 
     // MARK: - 영상 미리보기
 

@@ -37,9 +37,6 @@ enum PhotoSlideComposition {
     static func exportSlideWithText(
         photos: [UIImage],
         recipes: [ClipRecipe],
-        fontChoice: OneLinerFont,
-        textColor: OneLinerTextColor,
-        position: CardPosition,
         activityDate: Date,
         showDate: Bool,
         metricChips: [VideoMetricChip] = [],
@@ -66,10 +63,6 @@ enum PhotoSlideComposition {
         let n          = imgs.count
         let useRecipes = Array(recipes.prefix(n))
         let D          = useRecipes.reduce(0.0) { $0 + $1.trimmedDuration }
-        print("[Slide] 총\(n)장 D=\(String(format: "%.1f", D))s")
-        for (i, r) in useRecipes.enumerated() {
-            print("[Slide] 클립\(i): 설정=\(r.fullDuration)s trimStart=\(r.trimStart) trimEnd=\(r.trimEnd) 실제=\(String(format: "%.1f", r.trimmedDuration))s")
-        }
 
         // ── 1. Black base video ─────────────────────────────────────────────────────────
         let baseURL = try await writeBlackBaseVideo(size: size, duration: D)
@@ -174,7 +167,8 @@ enum PhotoSlideComposition {
         intervalSegments: [IntervalSegment] = [],
         videoTitle: String = "",
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
-        dataOverlayImage: UIImage? = nil
+        dataOverlayImage: UIImage? = nil,
+        fastBase: Bool = false
     ) async throws -> (playerItem: AVPlayerItem, layer: CALayer, size: CGSize,
                        duration: Double, tempURL: URL) {
         guard !photos.isEmpty else { throw SlideError.noPhotos }
@@ -201,7 +195,9 @@ enum PhotoSlideComposition {
             videoTitle: videoTitle, titleStyle: titleStyle,
             dataOverlayImage: dataOverlayImage)
 
-        let baseURL = try await writeBlackBaseVideo(size: size, duration: D)
+        let baseURL = fastBase
+            ? try await writeBlackBaseVideoFast(duration: D)
+            : try await writeBlackBaseVideo(size: size, duration: D)
 
         let bgAsset  = AVURLAsset(url: baseURL)
         let bgTracks = try await bgAsset.loadTracks(withMediaType: .video)
@@ -220,18 +216,26 @@ enum PhotoSlideComposition {
         }
         try compTrack.insertTimeRange(bgRange, of: bgTrack, at: .zero)
 
-        let vcInstr = AVMutableVideoCompositionInstruction()
-        vcInstr.timeRange         = bgRange
-        vcInstr.layerInstructions = [AVMutableVideoCompositionLayerInstruction(assetTrack: compTrack)]
-
-        let videoComp           = AVMutableVideoComposition()
-        videoComp.renderSize    = size
-        videoComp.frameDuration = CMTimeMake(value: 1, timescale: 30)
-        videoComp.instructions  = [vcInstr]
-        // NO animationTool — live preview uses AVSynchronizedLayer
-
+        // ── VideoComposition: fastBase일 때는 미설정 ───────────────────────────────────────
+        // 이유: fastBase는 2×2px 영상. videoComposition.renderSize=1080×1920을 강제하면
+        // 2×2 트랙을 1080×1920으로 업스케일하는 과정에서 AVFoundation이 연속 재생 시
+        // AVSynchronizedLayer 프레임 렌더를 실패시켜 검은 화면이 됨.
+        // (seek 1프레임은 통과하지만 play 연속 재생 시 실패 — 재현 방지를 위해 이 주석 유지)
+        // fastBase일 때는 videoComposition 없이 2×2 원본 그대로 재생:
+        //   · AVPlayerLayer: 2×2→흑색 채움(resizeAspectFill), 시각적으로 문제없음
+        //   · AVSynchronizedLayer: playerItem 타임베이스만으로 contentLayer를 정상 구동
         let playerItem = AVPlayerItem(asset: composition)
-        playerItem.videoComposition = videoComp
+        if !fastBase {
+            let vcInstr = AVMutableVideoCompositionInstruction()
+            vcInstr.timeRange         = bgRange
+            vcInstr.layerInstructions = [AVMutableVideoCompositionLayerInstruction(assetTrack: compTrack)]
+            let videoComp           = AVMutableVideoComposition()
+            videoComp.renderSize    = size
+            videoComp.frameDuration = CMTimeMake(value: 1, timescale: 30)
+            videoComp.instructions  = [vcInstr]
+            // NO animationTool — live preview uses AVSynchronizedLayer
+            playerItem.videoComposition = videoComp
+        }
 
         return (playerItem, contentLayer, size, D, baseURL)
     }
@@ -272,9 +276,9 @@ enum PhotoSlideComposition {
 
         let vScale: CGFloat   = W / 300.0
         let safeTop: CGFloat  = CardVisual.videoSafeTop
-        let safeBot: CGFloat  = CardVisual.videoSafeBottom
+        let safeBot: CGFloat  = H * 0.06
         let hPad: CGFloat     = 24 * vScale
-        let wMTopPad: CGFloat = 12 * vScale
+        let wMTopPad: CGFloat = H * 0.06
         let wMFontPx: CGFloat = 9  * vScale
         let wMZoneH: CGFloat  = wMTopPad + ceil(wMFontPx * 1.5) + 6 * vScale
         let textMaxW: CGFloat = W - 2 * hPad
@@ -375,7 +379,11 @@ enum PhotoSlideComposition {
 
         // ── PlaceableCard 데이터 오버레이 (Placeable 슬라이드 전용) ─────────────────────
         // 사진 레이어 위, 텍스트 레이어 아래에 배치 → 텍스트가 데이터 위에 렌더링됨.
-        if let overlayImg = dataOverlayImage, let cgImg = overlayImg.cgImage {
+        // Metal 백 이미지 대응: ImageRenderer가 Metal-backed UIImage를 반환하면 .cgImage == nil.
+        // CIContext로 변환해 폴백.
+        if let overlayImg = dataOverlayImage,
+           let cgImg: CGImage = overlayImg.cgImage
+               ?? { if let ci = CIImage(image: overlayImg) { return CIContext().createCGImage(ci, from: ci.extent) } else { return nil } }() {
             let cardLayerH: CGFloat = 375.0 * vScale   // PlaceableCard.cardHeight * vScale
             let cardMargin: CGFloat = H * 0.03
             let dataLayer             = CALayer()
@@ -416,11 +424,7 @@ enum PhotoSlideComposition {
         for (clipIdx, recipe) in useRecipes.enumerated() {
             let clipStart = clipOffsets[clipIdx]
             let clipEnd   = clipStart + recipe.trimmedDuration
-            // 3 s photo clips: only use first slot (second slot is preserved in recipe.lines but not shown)
-            let effectiveLines = recipe.trimmedDuration < 3.5
-                ? Array(recipe.lines.prefix(1))
-                : recipe.lines
-            let nonEmpty = effectiveLines.filter {
+            let nonEmpty = recipe.lines.filter {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
             guard !nonEmpty.isEmpty else { continue }
@@ -1752,6 +1756,56 @@ enum PhotoSlideComposition {
         return url
     }
 
+    // 프리뷰 전용: 2×2 픽셀, 1fps — CALayer 애니메이션 타이밍 컨테이너만 필요하므로 고해상도 불필요.
+    // 9s 기준 9프레임 → 기존(270프레임 HEVC 1080×1920) 대비 수십 배 빠름.
+    private static func writeBlackBaseVideoFast(duration: Double) async throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo_slidebg_fast_\(UUID().uuidString).mov")
+        try? FileManager.default.removeItem(at: url)
+
+        var pb: CVPixelBuffer?
+        let attrs: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, 2, 2,
+                                  kCVPixelFormatType_32BGRA, attrs as CFDictionary, &pb) == kCVReturnSuccess,
+              let buf = pb else { throw SlideError.writeFailed }
+
+        CVPixelBufferLockBaseAddress(buf, [])
+        if let base = CVPixelBufferGetBaseAddress(buf) {
+            memset(base, 0, CVPixelBufferGetBytesPerRow(buf) * 2)
+        }
+        CVPixelBufferUnlockBaseAddress(buf, [])
+
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input  = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: 2,
+            AVVideoHeightKey: 2,
+        ])
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: input, sourcePixelBufferAttributes: nil)
+        writer.add(input)
+        writer.startWriting()
+        writer.startSession(atSourceTime: .zero)
+
+        let frameCount = max(2, Int(ceil(duration)))   // 1fps
+        for i in 0..<frameCount {
+            while !input.isReadyForMoreMediaData { await Task.yield() }
+            adaptor.append(buf, withPresentationTime: CMTime(value: CMTimeValue(i), timescale: 1))
+        }
+        input.markAsFinished()
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            writer.finishWriting { cont.resume() }
+        }
+        guard writer.status == .completed else {
+            throw writer.error ?? SlideError.writeFailed
+        }
+        return url
+    }
+
     // MARK: - Ken Burns
 
     private static func kenBurns(idx: Int, progress: Double) -> (scale: CGFloat, panX: CGFloat) {
@@ -1764,6 +1818,11 @@ enum PhotoSlideComposition {
     }
 
     // MARK: - Scale-fill helper
+    //
+    // scaledToFill: 항상 캔버스 전체를 사진으로 채움 → 사진 밖의 검은 여백 없음.
+    // cropOffsetX: 넘치는 가로 영역 중 어느 부분을 보여줄지 (0=left, 0.5=center, 1=right).
+    // 가로 사진은 height를 맞추면 width가 크게 넘침 → cropOffsetX로 좌우 위치 선택.
+    // [미리보기 일치 원칙] stampSlidePreviewSection의 정적 Image 및 contentLayer 모두 동일 분기.
 
     static func scaleFill(_ image: UIImage, to size: CGSize, cropOffsetX: CGFloat = 0.5) -> CGImage? {
         let s  = max(size.width / image.size.width, size.height / image.size.height)

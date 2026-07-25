@@ -616,7 +616,6 @@ enum MultiClipComposition {
         }
         guard !clips.isEmpty else { throw MCError.noVideoTrack }
 
-        print("[MultiClip] export 음소거=\(muteAudio) 삽입오디오=\(audioInserted)개")
 
         let totalDuration = insertAt
 

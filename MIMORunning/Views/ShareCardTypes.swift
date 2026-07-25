@@ -100,34 +100,34 @@ enum CardChartPanel: String, CaseIterable, Equatable {
 // MARK: - Shared overlay constants (cards + video, single source of truth)
 
 enum CardVisual {
-    /// Top scrim (short block, ≤2 lines): black 20% at top edge, fades to clear at 22% of height.
+    /// Top scrim (short block, ≤2 lines): black 8% at top edge, fades to clear at 22% of height.
     static var topScrim: LinearGradient {
         LinearGradient(
-            colors: [Color.black.opacity(0.20), .clear],
+            colors: [Color.black.opacity(0.08), .clear],
             startPoint: .top,
             endPoint: UnitPoint(x: 0.5, y: 0.22)
         )
     }
-    /// Top scrim (tall block, 3+ lines with memo): black 35%, fades to clear at 30% of height.
+    /// Top scrim (tall block, 3+ lines with memo): black 15%, fades to clear at 30% of height.
     static var topScrimWide: LinearGradient {
         LinearGradient(
-            colors: [Color.black.opacity(0.35), .clear],
+            colors: [Color.black.opacity(0.15), .clear],
             startPoint: .top,
             endPoint: UnitPoint(x: 0.5, y: 0.30)
         )
     }
-    /// Bottom scrim for photo cards: black 50%, clears at 60% from top.
+    /// Bottom scrim for photo cards: black 8%, clears at 60% from top.
     static var bottomScrim: LinearGradient {
         LinearGradient(
-            colors: [Color.black.opacity(0.18), .clear],
+            colors: [Color.black.opacity(0.08), .clear],
             startPoint: .bottom,
             endPoint: UnitPoint(x: 0.5, y: 0.40)
         )
     }
-    /// Bottom scrim for video cards: lighter (40%) and narrower — clears at 70% from top.
+    /// Bottom scrim for video cards: removed — text shadows handle readability.
     static var videoBottomScrim: LinearGradient {
         LinearGradient(
-            colors: [Color.black.opacity(0.18), .clear],
+            colors: [Color.black.opacity(0.00), .clear],
             startPoint: .bottom,
             endPoint: UnitPoint(x: 0.5, y: 0.30)
         )

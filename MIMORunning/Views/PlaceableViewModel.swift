@@ -1,5 +1,48 @@
 import SwiftUI
 
+// MARK: - PlaceableSlideClipStyle
+// 슬라이드 클립별 독립 스타일 — 폰트/색/위치/크기/애니메이션을 사진마다 개별 저장.
+
+struct PlaceableSlideClipStyle: Codable {
+    var fontID: String         = OneLinerFont.gothic.rawValue
+    var colorID: String        = OneLinerTextColor.gold.rawValue
+    var positionIdx: Int       = 0
+    var sizeLevelID: String    = TextSizeLevel.large.rawValue
+    var hasBorder: Bool        = true
+    var plateOn: Bool          = false
+    var platePresetID: String  = PlateColorPreset.blackWhite.rawValue
+    var appearanceModeID: String = AppearanceMode.typing.rawValue
+    var decorEffectID: String  = DecorEffect.none.rawValue
+    var flyDirectionID: String = FlyInDirection.trailing.rawValue
+
+    var font: OneLinerFont          { OneLinerFont(rawValue: fontID) ?? .gothic }
+    var color: OneLinerTextColor    { OneLinerTextColor(rawValue: colorID) ?? .gold }
+    var position: CardPosition      {
+        let cases = Array(CardPosition.allCases)
+        return cases.indices.contains(positionIdx) ? cases[positionIdx] : .bottom
+    }
+    var sizeLevel: TextSizeLevel    { TextSizeLevel(rawValue: sizeLevelID) ?? .large }
+    var platePreset: PlateColorPreset { PlateColorPreset(rawValue: platePresetID) ?? .blackWhite }
+    var appearanceMode: AppearanceMode { AppearanceMode(rawValue: appearanceModeID) ?? .typing }
+    var decorEffect: DecorEffect    { DecorEffect(rawValue: decorEffectID) ?? .none }
+    var flyDirection: FlyInDirection { FlyInDirection(rawValue: flyDirectionID) ?? .trailing }
+
+    init() {}
+
+    init(from vm: PlaceableViewModel) {
+        fontID           = vm.placeableStoryFont.rawValue
+        colorID          = vm.placeableStoryColor.rawValue
+        positionIdx      = Array(CardPosition.allCases).firstIndex(of: vm.placeableStoryPosition) ?? 0
+        sizeLevelID      = vm.placeableStorySize.rawValue
+        hasBorder        = vm.placeableStoryHasBorder
+        plateOn          = vm.placeableStoryPlateOn
+        platePresetID    = vm.placeableStoryPlatePreset.rawValue
+        appearanceModeID = vm.placeableSlideAppearance.rawValue
+        decorEffectID    = vm.slideDecorEffect.rawValue
+        flyDirectionID   = vm.slideFlyDirection.rawValue
+    }
+}
+
 // MARK: - PlaceableViewModel
 //
 // Placeable 카드(cardIndex == 0)의 전용 상태 클래스.
@@ -19,6 +62,8 @@ final class PlaceableViewModel {
     var placeableClipRecipes: [ClipRecipe] = []
     var selectedPlaceableClipIndex: Int = 0
     var placeableMuteAudio: Bool = false
+    /// 텍스트가 변경됐지만 아직 CALayer에 반영되지 않은 상태. play 전 rebuild 트리거용.
+    var placeableVideoTextDirty: Bool = false
     var placeableEnabledMetricIDs: Set<String> = []
     var placeableVideoTitle: String = ""
     var placeableTitleStyle: OneLinerTitleStyle = .init()
@@ -32,6 +77,35 @@ final class PlaceableViewModel {
     var placeableHorizTextRow: HorizRow = .bottom
     var placeableHorizRoutePos: CardPosition = .center
     var horizGridMode: HorizGridMode = .text
+
+    // MARK: - Slide clip styles (클립별 독립 스타일)
+
+    var placeableSlideClipStyles: [Int: PlaceableSlideClipStyle] = [:]
+
+    /// 인덱스의 클립 스타일 — 저장값 없으면 현재 전역값으로 폴백.
+    func slideClipStyle(for index: Int) -> PlaceableSlideClipStyle {
+        placeableSlideClipStyles[index] ?? PlaceableSlideClipStyle(from: self)
+    }
+
+    /// 전역 스타일 props → 지정 클립 인덱스 저장.
+    func saveGlobalsToSlideClip(_ index: Int) {
+        placeableSlideClipStyles[index] = PlaceableSlideClipStyle(from: self)
+    }
+
+    /// 지정 클립 인덱스 스타일(없으면 기본값) → 전역 스타일 props에 동기화.
+    func syncGlobalsToSlideClip(_ index: Int) {
+        let s = slideClipStyle(for: index)
+        placeableStoryFont        = s.font
+        placeableStoryColor       = s.color
+        placeableStoryPosition    = s.position
+        placeableStorySize        = s.sizeLevel
+        placeableStoryHasBorder   = s.hasBorder
+        placeableStoryPlateOn     = s.plateOn
+        placeableStoryPlatePreset = s.platePreset
+        placeableSlideAppearance  = s.appearanceMode
+        slideDecorEffect          = s.decorEffect
+        slideFlyDirection         = s.flyDirection
+    }
 
     // MARK: - Story text overlay
 
