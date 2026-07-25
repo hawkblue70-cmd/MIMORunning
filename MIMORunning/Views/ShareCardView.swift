@@ -306,11 +306,9 @@ struct ShareCardScreen: View {
                 recipe.decorEffect    = parts.count > 1 ? (DecorEffect(rawValue: parts[1]) ?? .none) : .none
                 if parts.count > 2 {
                     recipe.hasBorder = parts[2].contains("B1")
-                    recipe.plateOn   = parts[2].contains("P1")
                 }
                 recipe.flyDirection = parts.count > 3 ? (FlyInDirection(rawValue: parts[3]) ?? .trailing) : .trailing
             }
-            recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
             recipe.metricPace      = desc.metricPace
             recipe.metricDistance  = desc.metricDistance
             recipe.metricTime      = desc.metricTime
@@ -1385,8 +1383,6 @@ struct ShareCardScreen: View {
                     appearanceMode: sr?.appearanceMode ?? .typing,
                     decorEffect: sr?.decorEffect ?? .none,
                     hasBorder: sr?.hasBorder ?? false,
-                    plateOn: sr?.plateOn ?? false,
-                    plateColorPreset: sr?.plateColorPreset ?? .blackWhite,
                     showDate: oneLinerVM.oneLinerShowDate,
                     captionMode: true,
                     chartBottomReserved: storyChartBottomReserved(for: sr),
@@ -1466,8 +1462,6 @@ struct ShareCardScreen: View {
                 appearanceMode: pr?.appearanceMode ?? .typing,
                 decorEffect: pr?.decorEffect ?? .none,
                 hasBorder: pr?.hasBorder ?? false,
-                plateOn: pr?.plateOn ?? false,
-                plateColorPreset: pr?.plateColorPreset ?? .blackWhite,
                 showDate: oneLinerVM.oneLinerShowDate,
                 captionMode: true,
                 chartBottomReserved: storyChartBottomReserved(for: pr),
@@ -2830,8 +2824,6 @@ struct ShareCardScreen: View {
             .onChange(of: placeableVM.placeableStorySize)     { _, _ in savePlaceableStoryOverlay(); applyStyleToVideoClips(); rebuildPlaceableSlidePreview(); if isPlaceable { exportedVideoFile = nil; if template == .video { Task { await loadPlaceablePreview() } } } }
             .onChange(of: placeableVM.placeableStoryPosition) { _, _ in savePlaceableStoryOverlay(); applyStyleToVideoClips(); rebuildPlaceableSlidePreview(); if isPlaceable { exportedVideoFile = nil; if template == .video { Task { await loadPlaceablePreview() } } } }
             .onChange(of: placeableVM.placeableStoryHasBorder)   { _, _ in savePlaceableStoryOverlay(); applyStyleToVideoClips(); rebuildPlaceableSlidePreview(); if isPlaceable { exportedVideoFile = nil; if template == .video { Task { await loadPlaceablePreview() } } } }
-            .onChange(of: placeableVM.placeableStoryPlateOn)     { _, _ in savePlaceableStoryOverlay(); applyStyleToVideoClips(); rebuildPlaceableSlidePreview(); if isPlaceable { exportedVideoFile = nil; if template == .video { Task { await loadPlaceablePreview() } } } }
-            .onChange(of: placeableVM.placeableStoryPlatePreset) { _, _ in savePlaceableStoryOverlay(); applyStyleToVideoClips(); rebuildPlaceableSlidePreview(); if isPlaceable { exportedVideoFile = nil; if template == .video { Task { await loadPlaceablePreview() } } } }
             .onChange(of: placeableVM.placeableMuteAudio) { _, newVal in
                 guard isPlaceable, template == .video else { return }
                 // 토글 즉시 live player에 반영 — 재빌드 불필요
@@ -2961,16 +2953,15 @@ struct ShareCardScreen: View {
             }
     }
 
-    // Cross-card clip propagation: 클립 추가 시 다른 카드의 빈 클립 배열에 전이 (1/2)
+    // Cross-card clip propagation: 추가·삭제 모두 전파 (1/2)
     // ClipRecipe 는 UIImage? / AVAsset? 을 포함하므로 Equatable 불가 → .count(Int) 감시
+    // count=0(전체 삭제)도 포함 — propagateClips 내부에서 빈 배열을 모두에 동기화
     private var bodyWithClipPropHandlers: some View {
         bodyWithClipPropHandlers2
-            .onChange(of: oneLinerVM.oneLinerClipRecipes.count) { _, new in
-                guard new > 0 else { return }
+            .onChange(of: oneLinerVM.oneLinerClipRecipes.count) { _, _ in
                 propagateClips(oneLinerVM.oneLinerClipRecipes)
             }
-            .onChange(of: placeableVM.placeableClipRecipes.count) { _, new in
-                guard new > 0 else { return }
+            .onChange(of: placeableVM.placeableClipRecipes.count) { _, _ in
                 propagateClips(placeableVM.placeableClipRecipes)
             }
     }
@@ -2978,12 +2969,10 @@ struct ShareCardScreen: View {
     // Cross-card clip propagation (2/2)
     private var bodyWithClipPropHandlers2: some View {
         bodyWithVideoAnimHandlers
-            .onChange(of: athleticVM.athleticClipRecipes.count) { _, new in
-                guard new > 0 else { return }
+            .onChange(of: athleticVM.athleticClipRecipes.count) { _, _ in
                 propagateClips(athleticVM.athleticClipRecipes)
             }
-            .onChange(of: stampVM.clipRecipes.count) { _, new in
-                guard new > 0 else { return }
+            .onChange(of: stampVM.clipRecipes.count) { _, _ in
                 propagateClips(stampVM.clipRecipes)
             }
     }
@@ -3039,12 +3028,11 @@ struct ShareCardScreen: View {
     }
 
     // MARK: - Cross-card clip propagation
-    // 클립 식별자(assetID / clipVideoRef) 기준으로 순서가 다른 카드는 항상 덮어쓰기.
+    // 클립 식별자(assetID / clipVideoRef) 기준으로 순서·개수가 다른 카드는 항상 덮어쓰기.
+    // 빈 배열(전체 삭제)도 전파 — 어느 카드에서 삭제해도 모든 카드에 반영됨.
     // "같은 러닝 공유카드에서 선택한 클립은 모두 동일해야 한다"는 원칙을 보장.
     func propagateClips(_ recipes: [ClipRecipe]) {
-        guard !recipes.isEmpty else { return }
-
-        // 클립 식별자 배열 비교 (순서 포함)
+        // 클립 식별자 배열 비교 (순서 포함, 빈 배열도 허용)
         func ids(_ rs: [ClipRecipe]) -> [String] {
             rs.map { $0.assetIdentifier ?? $0.clipVideoRef ?? $0.storedPhotoRef ?? $0.url.lastPathComponent }
         }
@@ -5346,7 +5334,7 @@ struct ShareCardScreen: View {
                 photoRef: nil, thumbRef: nil,
                 trimStart: r.trimStart, trimEnd: r.trimEnd, fullDuration: r.fullDuration,
                 lines: [], fontID: nil, colorID: nil, anchorIdx: nil, sizeID: nil,
-                effectID: nil, plateColorID: nil, speed: 1.0, cropOffsetX: 0.0,
+                effectID: nil, speed: 1.0, cropOffsetX: 0.0,
                 metricPace: false, metricDistance: false, metricTime: false, metricHeartRate: false,
                 pdtAnchorIdx: nil, showRoute: false, routeAnchorIdx: nil, showHRChart: false,
                 chartTypeID: nil, pdtSizeID2: nil, dataEffectID: nil)
@@ -5556,8 +5544,6 @@ struct ShareCardScreen: View {
                 appearanceMode: pr?.appearanceMode ?? .typing,
                 decorEffect: pr?.decorEffect ?? .none,
                 hasBorder: pr?.hasBorder ?? false,
-                plateOn: pr?.plateOn ?? false,
-                plateColorPreset: pr?.plateColorPreset ?? .blackWhite,
                 showDate: oneLinerVM.oneLinerShowDate,
                 captionMode: true,
                 chartBottomReserved: storyChartBottomReserved(for: pr),

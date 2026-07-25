@@ -252,73 +252,18 @@ enum FlyInDirection: String, CaseIterable, Codable {
 
 // MARK: - ReadabilityStyle
 //
-// 가독성 처리 배타 선택 (없음 / 외곽선 / 음영판). 한 번에 하나만 활성.
-// plate = 문구 뒤 어두운 rounded rect (불투명도 55%, 상하좌우 패딩, 코너 6pt).
+// 가독성 처리 배타 선택 (없음 / 외곽선). 한 번에 하나만 활성.
 
 enum ReadabilityStyle: String, CaseIterable, Codable {
     case none    = "none"
     case outline = "outline"
-    case plate   = "plate"
 
     var chipLabel: String {
         switch self {
         case .none:    return AppLanguage.shared.s("없음",   "None")
         case .outline: return AppLanguage.shared.s("테두리", "Border")
-        case .plate:   return AppLanguage.shared.s("음영판", "Plate")
         }
     }
-}
-
-// MARK: - PlateColorPreset
-//
-// 음영판(plate) 가독성 모드에서 사용하는 판+글자 색상 쌍.
-// 판 불투명도: 흰 판만 0.80, 나머지 0.55.
-
-enum PlateColorPreset: String, CaseIterable, Codable {
-    case blackWhite = "blackWhite"
-    case greenWhite = "greenWhite"
-    case blueWhite  = "blueWhite"
-    case redWhite   = "redWhite"
-    case whiteBlack = "whiteBlack"
-
-    var plateOpacity: Double { self == .whiteBlack ? 0.80 : 0.55 }
-
-    var plateSwiftColor: Color {
-        switch self {
-        case .blackWhite: return Color.black
-        case .greenWhite: return Color(hex: "1B5E20")
-        case .blueWhite:  return Color(hex: "1565C0")
-        case .redWhite:   return Color(hex: "B71C1C")
-        case .whiteBlack: return Color.white
-        }
-    }
-
-    var textSwiftColor: Color {
-        switch self {
-        case .blackWhite, .greenWhite, .blueWhite, .redWhite: return Color.white
-        case .whiteBlack: return Color.black
-        }
-    }
-
-    var plateUIColor: UIColor {
-        switch self {
-        case .blackWhite: return .black
-        case .greenWhite: return UIColor(red: 0x1B/255.0, green: 0x5E/255.0, blue: 0x20/255.0, alpha: 1)
-        case .blueWhite:  return UIColor(red: 0x15/255.0, green: 0x65/255.0, blue: 0xC0/255.0, alpha: 1)
-        case .redWhite:   return UIColor(red: 0xB7/255.0, green: 0x1C/255.0, blue: 0x1C/255.0, alpha: 1)
-        case .whiteBlack: return .white
-        }
-    }
-
-    var textUIColor: UIColor {
-        switch self {
-        case .blackWhite, .greenWhite, .blueWhite, .redWhite: return .white
-        case .whiteBlack: return .black
-        }
-    }
-
-    var plateBgColor: Color        { plateSwiftColor.opacity(plateOpacity) }
-    var plateUIColorWithAlpha: UIColor { plateUIColor.withAlphaComponent(plateOpacity) }
 }
 
 // MARK: - EffectTextView
@@ -326,8 +271,7 @@ enum PlateColorPreset: String, CaseIterable, Codable {
 // appearanceMode: fade → 0.5s 페이드인 on appear (SwiftUI 미리보기용; 영상은 UIKit).
 // decorEffect: fade 모드에서만 유효.
 // hasBorder: 독립 토글 — 8방향 오프셋 복제(blur 0, 크리스프 글리프 외곽선).
-// plateOn:   독립 토글 — 줄별 음영판(rounded rect 배경).
-// 둘 다 켤 수 있음. 소프트 그림자 없음.
+// 소프트 그림자 없음.
 
 struct EffectTextView: View {
     let text:             String
@@ -338,9 +282,7 @@ struct EffectTextView: View {
     let appearanceMode:   AppearanceMode
     let decorEffect:      DecorEffect
     var hasBorder:        Bool          = false
-    var plateOn:          Bool          = false
     var flyDirection:     FlyInDirection = .trailing
-    var plateBgColor:     Color         = Color.black.opacity(0.55)
     var syntheticBoldStroke: CGFloat    = 0
     var borderColor:      Color         = .clear
     var borderOffset:     CGFloat       = 0     // 호출측: max(1.5, baseFontSize * 0.10)
@@ -416,8 +358,6 @@ struct EffectTextView: View {
         Group {
             if appearanceMode == .flyIn {
                 perLineFlyView()
-            } else if plateOn {
-                plateView
             } else {
                 singleTextView()
             }
@@ -472,23 +412,15 @@ struct EffectTextView: View {
             : alignment == .leading ? .leading : .center
         let vertical: Bool  = flyDirection.isVertical
         let initX:  CGFloat = vertical ? 280 : (flyDirection == .trailing ? 280 : -280)
-        VStack(alignment: hAlign, spacing: plateOn ? 3 : lineSpacing) {
+        VStack(alignment: hAlign, spacing: lineSpacing) {
             ForEach(lines.indices, id: \.self) { i in
                 let line = lines[i]
                 if !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     let off: CGFloat = isStaticPreview ? 0 : (i < lineOffsets.count ? lineOffsets[i] : initX)
-                    if plateOn {
-                        lineContent(line)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .padding(.horizontal, 8).padding(.vertical, 2)
-                            .background(RoundedRectangle(cornerRadius: 5).fill(plateBgColor))
-                            .offset(x: vertical ? 0 : off, y: vertical ? off : 0)
-                    } else {
-                        lineContent(line)
-                            .multilineTextAlignment(alignment)
-                            .frame(maxWidth: .infinity, alignment: frameAlign)
-                            .offset(x: vertical ? 0 : off, y: vertical ? off : 0)
-                    }
+                    lineContent(line)
+                        .multilineTextAlignment(alignment)
+                        .frame(maxWidth: .infinity, alignment: frameAlign)
+                        .offset(x: vertical ? 0 : off, y: vertical ? off : 0)
                 }
             }
         }
@@ -502,29 +434,6 @@ struct EffectTextView: View {
                     lineOffsets[i] = 0
                 }
             }
-        }
-    }
-
-    // 음영판: 줄별 rounded rect 배경
-    @ViewBuilder
-    private var plateView: some View {
-        let hAlign: HorizontalAlignment = alignment == .trailing ? .trailing
-            : alignment == .leading ? .leading : .center
-        let lines = renderText.components(separatedBy: "\n")
-        VStack(alignment: hAlign, spacing: 3) {
-            ForEach(lines.indices, id: \.self) { i in
-                if !lines[i].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    lineContent(lines[i])
-                        .fixedSize(horizontal: true, vertical: false)
-                        .padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(plateBgColor))
-                }
-            }
-        }
-        .background {
-            #if DEBUG
-            auditRenderHeight("음영판")
-            #endif
         }
     }
 
@@ -547,25 +456,5 @@ struct EffectTextView: View {
                 }
             }
         }
-        .background {
-            #if DEBUG
-            auditRenderHeight("테두리/없음")
-            #endif
-        }
     }
-
-#if DEBUG
-    @ViewBuilder
-    private func auditRenderHeight(_ label: String) -> some View {
-        GeometryReader { g in
-            Color.clear
-                .onAppear {
-                    print("[SizeAudit-Render] \(label) h=\(String(format:"%.1f",g.size.height))pt  w=\(String(format:"%.1f",g.size.width))pt")
-                }
-                .onChange(of: g.size) { _, sz in
-                    print("[SizeAudit-Render] \(label) → h=\(String(format:"%.1f",sz.height))pt  w=\(String(format:"%.1f",sz.width))pt")
-                }
-        }
-    }
-#endif
 }

@@ -72,8 +72,12 @@ struct PlaceableTrimRowView: View {
                 let i = Int(s); return "\(i / 60):\(String(format: "%02d", i % 60))"
             }
             let lineBinding = Binding<String>(
-                get: { vm.placeableClipRecipes[idx].lines.first ?? "" },
+                get: {
+                    guard vm.placeableClipRecipes.indices.contains(idx) else { return "" }
+                    return vm.placeableClipRecipes[idx].lines.first ?? ""
+                },
                 set: { val in
+                    guard vm.placeableClipRecipes.indices.contains(idx) else { return }
                     if vm.placeableClipRecipes[idx].lines.isEmpty {
                         vm.placeableClipRecipes[idx].lines = [String(val.prefix(30))]
                     } else {
@@ -638,36 +642,8 @@ struct PlaceableStoryModeChipRowView: View {
                     .buttonStyle(.plain)
                 }
             }
-            // 색상 — 음영판 켜면 프리셋, 아니면 색상 서클
-            if vm.placeableStoryPlateOn {
-                HStack(spacing: 8) {
-                    ForEach(PlateColorPreset.allCases, id: \.self) { preset in
-                        let isSel = vm.placeableStoryPlatePreset == preset
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) { vm.placeableStoryPlatePreset = preset }
-                            Task { await onRender() }
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(preset.plateSwiftColor.opacity(preset.plateOpacity))
-                                    .frame(width: 22, height: 22)
-                                    .overlay(Circle().strokeBorder(
-                                        preset == .whiteBlack ? Color.gray.opacity(0.5) : Color.clear,
-                                        lineWidth: 1))
-                                Circle().fill(preset.textSwiftColor).frame(width: 8, height: 8)
-                                if isSel {
-                                    Circle()
-                                        .strokeBorder(Color.white.opacity(0.9), lineWidth: 2)
-                                        .frame(width: 28, height: 28)
-                                }
-                            }
-                            .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            } else {
-                HStack(spacing: 8) {
+            // 색상
+            HStack(spacing: 8) {
                     ForEach(OneLinerTextColor.allCases, id: \.self) { c in
                         let isSel = vm.placeableStoryColor == c
                         Button {
@@ -692,7 +668,6 @@ struct PlaceableStoryModeChipRowView: View {
                         .buttonStyle(.plain)
                     }
                 }
-            }
             // 애니메이션 (슬라이드·영상)
             if template == .slide || template == .video {
                 // 영상: 선택된 클립별 독립 / 슬라이드: 전역
@@ -754,23 +729,14 @@ struct PlaceableStoryModeChipRowView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            // 테두리 / 음영판 (상호 배타)
+            // 테두리
             HStack(spacing: 6) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         vm.placeableStoryHasBorder.toggle()
-                        if vm.placeableStoryHasBorder { vm.placeableStoryPlateOn = false }
                     }
                     Task { await onRender() }
                 } label: { placeableStorySmallChip(AppLanguage.shared.s("테두리", "Outline"), isSelected: vm.placeableStoryHasBorder) }
-                .buttonStyle(.plain)
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        vm.placeableStoryPlateOn.toggle()
-                        if vm.placeableStoryPlateOn { vm.placeableStoryHasBorder = false }
-                    }
-                    Task { await onRender() }
-                } label: { placeableStorySmallChip(AppLanguage.shared.s("음영판", "Plate"), isSelected: vm.placeableStoryPlateOn) }
                 .buttonStyle(.plain)
             }
         }
