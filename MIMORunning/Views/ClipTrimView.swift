@@ -339,8 +339,6 @@ struct ClipTrimSheet: View {
                     appearanceMode: recipe.appearanceMode,
                     decorEffect: recipe.decorEffect,
                     hasBorder: recipe.hasBorder,
-                    plateOn: recipe.plateOn,
-                    plateColorPreset: recipe.plateColorPreset,
                     showDate: true,
                     captionMode: true,
                     chartBottomReserved: storyChartReserved,
@@ -511,15 +509,11 @@ struct ClipTrimSheet: View {
                     font:           recipe.fontChoice.boldSwiftUIFont(size: base),
                     lineSpacing:    base * 0.1,
                     alignment:      align,
-                    color:          recipe.plateOn
-                                        ? recipe.plateColorPreset.textSwiftColor
-                                        : recipe.textColor.color,
+                    color:          recipe.textColor.color,
                     appearanceMode:   recipe.appearanceMode,
                     decorEffect:      recipe.decorEffect,
                     hasBorder:        recipe.hasBorder,
-                    plateOn:          recipe.plateOn,
                     flyDirection:     recipe.flyDirection,
-                    plateBgColor:     recipe.plateColorPreset.plateBgColor,
                     syntheticBoldStroke: recipe.fontChoice.syntheticBoldStroke(for: base),
                     borderColor:  recipe.hasBorder ? recipe.textColor.borderSwiftColor : .clear,
                     borderOffset: recipe.hasBorder ? max(0.8, base * recipe.textColor.borderOffsetFactor) : 0
@@ -755,11 +749,7 @@ struct ClipTrimSheet: View {
             if !isStoryMode, !isPhotoClip, currentRecipeValid { speedChips }
             sizeChips
             fontChips
-            if currentRecipeValid && workingRecipes[currentPage].plateOn {
-                platePresetSwatches
-            } else {
-                colorCircles
-            }
+            colorCircles
             if !isStoryMode {
                 appearanceChips
                 if currentRecipeValid {
@@ -1763,11 +1753,7 @@ struct ClipTrimSheet: View {
                 Button {
                     guard currentRecipeValid else { return }
                     workingRecipes[currentPage].fontChoice = f
-                    // 나눔펜 선택 시 테두리 OFF + 음영판 ON (펜=음영판 전용)
-                    if f == .pen {
-                        workingRecipes[currentPage].hasBorder = false
-                        workingRecipes[currentPage].plateOn   = true
-                    }
+
                     #if DEBUG
                     sizeAuditLog("폰트 전환")
                     #endif
@@ -1857,7 +1843,7 @@ struct ClipTrimSheet: View {
         }
     }
 
-    // 가독성: 테두리·음영판 독립 토글 — 폰트 자동 전환 없음 (크기 계산과 완전 독립)
+    // 가독성: 테두리 독립 토글 — 폰트 자동 전환 없음 (크기 계산과 완전 독립)
     private var readabilityChips: some View {
         HStack(spacing: 6) {
             // 테두리 토글 — 폰트·크기 유지. 크기는 sizeLevel·fontChoice만으로 결정.
@@ -1877,26 +1863,6 @@ struct ClipTrimSheet: View {
                     .clipShape(Capsule())
                     .overlay(Capsule().strokeBorder(
                         borderOn ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-
-            // 음영판 토글
-            let plateOn = currentRecipeValid && workingRecipes[currentPage].plateOn
-            Button {
-                guard currentRecipeValid else { return }
-                workingRecipes[currentPage].plateOn.toggle()
-                #if DEBUG
-                sizeAuditLog("음영판 토글")
-                #endif
-            } label: {
-                Text(AppLanguage.shared.s("음영판", "Plate"))
-                    .font(.system(size: 12, weight: plateOn ? .semibold : .regular))
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(plateOn ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                    .foregroundStyle(plateOn ? Theme.violet : Color.white.opacity(0.55))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().strokeBorder(
-                        plateOn ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
@@ -1921,40 +1887,6 @@ struct ClipTrimSheet: View {
                         }
                     }
                     .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    // 음영판 프리셋: 판색(바깥 링) + 글자색(안 점) 쌍 선택 — plate 모드에서만 표시
-    private var platePresetSwatches: some View {
-        HStack(spacing: 8) {
-            ForEach(PlateColorPreset.allCases, id: \.self) { preset in
-                let isSel = currentRecipeValid && workingRecipes[currentPage].plateColorPreset == preset
-                Button {
-                    if currentRecipeValid { workingRecipes[currentPage].plateColorPreset = preset }
-                } label: {
-                    ZStack {
-                        // 바깥 링: 판 색상
-                        Circle()
-                            .fill(preset.plateSwiftColor.opacity(preset.plateOpacity))
-                            .frame(width: 22, height: 22)
-                            .overlay(Circle().strokeBorder(
-                                preset == .whiteBlack ? Color.gray.opacity(0.5) : Color.clear,
-                                lineWidth: 1))
-                        // 안 점: 글자 색상
-                        Circle()
-                            .fill(preset.textSwiftColor)
-                            .frame(width: 8, height: 8)
-                        // 선택 링
-                        if isSel {
-                            Circle()
-                                .strokeBorder(Color.white.opacity(0.9), lineWidth: 2)
-                                .frame(width: 28, height: 28)
-                        }
-                    }
-                    .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
             }
@@ -2273,7 +2205,7 @@ struct ClipTrimSheet: View {
         case .blackGothic: capH30 = 21.03
         }
         let capHpx = capH30 * (base / 30.0) * 3
-        print("[SizeAudit] \(label): \(r.fontChoice.rawValue)/\(r.sizeLevel.rawValue) border=\(r.hasBorder) plate=\(r.plateOn) → \(String(format: "%.2f", base))pt capH=\(String(format: "%.1f", capHpx))px@3x")
+        print("[SizeAudit] \(label): \(r.fontChoice.rawValue)/\(r.sizeLevel.rawValue) border=\(r.hasBorder) → \(String(format: "%.2f", base))pt capH=\(String(format: "%.1f", capHpx))px@3x")
     }
     #endif
 

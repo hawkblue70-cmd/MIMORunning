@@ -130,6 +130,8 @@ struct RestDayOneLinerSheet: View {
 
     var isClipMode: Bool { selectedTemplate == .video || selectedTemplate == .slide }
     var isPhotoSlideMode: Bool { selectedTemplate == .slide || selectedTemplate == .story }
+    /// 팝업 없이 인라인으로 편집하는 모드 (쉬는날 전체 — 러닝 데이터 없음)
+    var isInlineEditMode: Bool { true }
 
     /// availableMetrics → VideoMetricChip 조회 (export의 per-clip P/D/T/B 칩 렌더링용)
     var metricLookup: [String: VideoMetricChip] {
@@ -180,18 +182,6 @@ struct RestDayOneLinerSheet: View {
               clipRecipes.indices.contains(currentClipIndex) else { return false }
         return clipRecipes[currentClipIndex].hasBorder
     }
-    var previewPlateOn: Bool {
-        guard (isClipMode || selectedTemplate == .story),
-              clipRecipes.indices.contains(currentClipIndex) else { return false }
-        return clipRecipes[currentClipIndex].plateOn
-    }
-    var previewPlatePreset: PlateColorPreset {
-        if (isClipMode || selectedTemplate == .story), clipRecipes.indices.contains(currentClipIndex) {
-            return clipRecipes[currentClipIndex].plateColorPreset
-        }
-        return .blackWhite
-    }
-
     // 슬라이드/영상 미리보기(9:16)에서 현재 클립의 차트가 차지하는 하단 높이(pt).
     // captionContent가 이 값으로 텍스트를 차트 위로 밀어 올려 겹침을 방지한다.
     var isClipChartBottomReserved: CGFloat {
@@ -391,8 +381,6 @@ struct RestDayOneLinerSheet: View {
                 appearanceMode: previewAppearanceMode,
                 decorEffect: previewDecorEffect,
                 hasBorder: previewHasBorder,
-                plateOn: previewPlateOn,
-                plateColorPreset: previewPlatePreset,
                 showDate: true,
                 captionMode: true,
                 chartBottomReserved: isClipChartBottomReserved,
@@ -466,12 +454,11 @@ struct RestDayOneLinerSheet: View {
                 appearanceMode: previewAppearanceMode,
                 decorEffect: previewDecorEffect,
                 hasBorder: previewHasBorder,
-                plateOn: previewPlateOn,
-                plateColorPreset: previewPlatePreset,
                 showDate: true,
                 captionMode: true,
                 videoTitle: selectedTemplate != .story ? videoTitle : "",
-                titleStyle: titleStyle
+                titleStyle: titleStyle,
+                isStaticPreview: true
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
@@ -515,6 +502,7 @@ struct RestDayOneLinerSheet: View {
         VStack(spacing: 12) {
             templateTabs
             if !clipRecipes.isEmpty { gridAndChips }
+            if isInlineEditMode, !clipRecipes.isEmpty { storyClipTextInput }
             templateMediaRow
         }
     }
@@ -720,7 +708,7 @@ struct RestDayOneLinerSheet: View {
             [.bottomLeading, .bottom, .bottomTrailing]
         ]
         let safeIdx = clipRecipes.indices.contains(currentClipIndex) ? currentClipIndex : -1
-        let hasClip = safeIdx >= 0 && (isClipMode || selectedTemplate == .story)
+        let hasClip = safeIdx >= 0 && (isClipMode || isInlineEditMode)
         return HStack(alignment: .center, spacing: 12) {
             VStack(spacing: 4) {
                 ForEach(rows.indices, id: \.self) { row in
@@ -746,11 +734,53 @@ struct RestDayOneLinerSheet: View {
                 }
             }
             VStack(alignment: .leading, spacing: 6) {
+                if isInlineEditMode, hasClip {
+                    HStack(spacing: 4) {
+                        ForEach(TextSizeLevel.allCases, id: \.self) { sz in storySizeChip(sz, safeIdx: safeIdx) }
+                        storyBorderChip(safeIdx: safeIdx)
+                    }
+                }
                 HStack(spacing: 8) {
                     ForEach(OneLinerFont.allCases, id: \.self) { f in fontChip(f, hasClip: hasClip, safeIdx: safeIdx) }
                 }
-                HStack(spacing: 8) {
-                    ForEach(OneLinerTextColor.allCases, id: \.self) { c in colorChip(c, hasClip: hasClip, safeIdx: safeIdx) }
+                if isInlineEditMode, hasClip {
+                    HStack(spacing: 10) {
+                        ForEach(OneLinerTextColor.allCases, id: \.self) { c in storyColorSwatch(c, safeIdx: safeIdx) }
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        ForEach(OneLinerTextColor.allCases, id: \.self) { c in colorChip(c, hasClip: hasClip, safeIdx: safeIdx) }
+                    }
+                }
+                if isClipMode, hasClip {
+                    HStack(spacing: 4) {
+                        ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                            storyAppearanceModeChip(mode, safeIdx: safeIdx)
+                        }
+                        if selectedTemplate == .video {
+                            Spacer(minLength: 4)
+                            Button {
+                                muteVideoAudio.toggle()
+                                handleRecipesChanged()
+                            } label: {
+                                Image(systemName: muteVideoAudio ? "speaker.slash.fill" : "speaker.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(muteVideoAudio ? .white : .white.opacity(0.55))
+                                    .padding(.horizontal, 8).padding(.vertical, 5)
+                                    .background(muteVideoAudio ? Color(hex: "3A3A44") : Color.white.opacity(0.08))
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    if clipRecipes.indices.contains(safeIdx),
+                       clipRecipes[safeIdx].appearanceMode == .flyIn {
+                        HStack(spacing: 4) {
+                            ForEach(FlyInDirection.allCases, id: \.self) { dir in
+                                storyFlyDirectionChip(dir, safeIdx: safeIdx)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -821,9 +851,153 @@ struct RestDayOneLinerSheet: View {
             intervalSegments: intervalSegments,
             onSave: handleRecipesChanged,
             isStoryMode: selectedTemplate == .story,
+            showTitle: false,
+            openEditOnTap: false,
+            showEditHint: false,
             videoTitle: $videoTitle,
             titleStyle: $titleStyle
         )
+    }
+
+    // MARK: - Story mode inline text input
+
+    @ViewBuilder
+    private var storyClipTextInput: some View {
+        let safeIdx = clipRecipes.indices.contains(currentClipIndex) ? currentClipIndex : 0
+        if clipRecipes.indices.contains(safeIdx) {
+            let currentText = clipRecipes[safeIdx].lines.first ?? ""
+            let textBinding = Binding<String>(
+                get: {
+                    guard clipRecipes.indices.contains(safeIdx) else { return "" }
+                    return clipRecipes[safeIdx].lines.first ?? ""
+                },
+                set: { val in
+                    guard clipRecipes.indices.contains(safeIdx) else { return }
+                    clipRecipes[safeIdx].lines = [String(val.prefix(30))]
+                    handleRecipesChanged()
+                }
+            )
+            HStack(spacing: 8) {
+                TextField(AppLanguage.shared.s("사진 위에 문구", "Text on photo"),
+                          text: textBinding)
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white)
+                    .tint(Theme.violet)
+                Spacer(minLength: 0)
+                Text("\(currentText.count)/30")
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(Color(hex: "6E6E78"))
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(Color(hex: "1E1E28"))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    // MARK: - Story mode size/border chip helpers
+
+    private func storySizeChip(_ sz: TextSizeLevel, safeIdx: Int) -> some View {
+        let isSelected = clipRecipes.indices.contains(safeIdx) && clipRecipes[safeIdx].sizeLevel == sz
+        return Button {
+            guard clipRecipes.indices.contains(safeIdx) else { return }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                clipRecipes[safeIdx].sizeLevel = sz
+                handleRecipesChanged()
+            }
+        } label: {
+            Text(sz.chipLabel)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(isSelected ? .white : .white.opacity(0.55))
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(isSelected ? Theme.violet : Color.white.opacity(0.08))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func storyBorderChip(safeIdx: Int) -> some View {
+        let isOn = clipRecipes.indices.contains(safeIdx) && clipRecipes[safeIdx].hasBorder
+        return Button {
+            guard clipRecipes.indices.contains(safeIdx) else { return }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                clipRecipes[safeIdx].hasBorder.toggle()
+                handleRecipesChanged()
+            }
+        } label: {
+            Text(AppLanguage.shared.s("테두리", "Outline"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(isOn ? .white : .white.opacity(0.55))
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(isOn ? Theme.violet : Color.white.opacity(0.08))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func storyColorSwatch(_ tc: OneLinerTextColor, safeIdx: Int) -> some View {
+        let isSelected = clipRecipes.indices.contains(safeIdx) && clipRecipes[safeIdx].textColor == tc
+        return Button {
+            guard clipRecipes.indices.contains(safeIdx) else { return }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                clipRecipes[safeIdx].textColor = tc
+                handleRecipesChanged()
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(tc.color)
+                    .frame(width: 20, height: 20)
+                    .overlay(Circle().strokeBorder(
+                        tc == .white ? Color.gray.opacity(0.4) : Color.clear,
+                        lineWidth: 1))
+                if isSelected {
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.9), lineWidth: 2)
+                        .frame(width: 26, height: 26)
+                }
+            }
+            .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+
+    private func storyAppearanceModeChip(_ mode: AppearanceMode, safeIdx: Int) -> some View {
+        let isSelected = clipRecipes.indices.contains(safeIdx) && clipRecipes[safeIdx].appearanceMode == mode
+        return Button {
+            guard clipRecipes.indices.contains(safeIdx) else { return }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                clipRecipes[safeIdx].appearanceMode = mode
+                handleRecipesChanged()
+            }
+        } label: {
+            Text(mode.chipLabel)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(isSelected ? .white : .white.opacity(0.55))
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(isSelected ? Theme.violet : Color.white.opacity(0.08))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func storyFlyDirectionChip(_ dir: FlyInDirection, safeIdx: Int) -> some View {
+        let isSelected = clipRecipes.indices.contains(safeIdx) && clipRecipes[safeIdx].flyDirection == dir
+        return Button {
+            guard clipRecipes.indices.contains(safeIdx) else { return }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                clipRecipes[safeIdx].flyDirection = dir
+                handleRecipesChanged()
+            }
+        } label: {
+            Text(dir.chipLabel)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(isSelected ? .white : .white.opacity(0.55))
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(isSelected ? Color(hex: "3A3A44") : Color.white.opacity(0.08))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Bindings

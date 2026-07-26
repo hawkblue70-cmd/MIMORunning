@@ -45,9 +45,7 @@ private struct PlaceableVideoTextOverlay: View {
             appearanceMode:   recipe.appearanceMode,
             decorEffect:      isFade ? recipe.decorEffect : .none,
             hasBorder:        recipe.hasBorder,
-            plateOn:          recipe.plateOn,
             flyDirection:     recipe.flyDirection,
-            plateColorPreset: recipe.plateColorPreset,
             showDate: false,
             showBackground: false,
             showWordmark: false,
@@ -360,9 +358,7 @@ extension ShareCardScreen {
                         appearanceMode:   vRecipe.appearanceMode,
                         decorEffect:      vRecipe.decorEffect,
                         hasBorder:        vRecipe.hasBorder,
-                        plateOn:          vRecipe.plateOn,
                         flyDirection:     vRecipe.flyDirection,
-                        plateColorPreset: vRecipe.plateColorPreset,
                         showDate: false,
                         showBackground: false,
                         showWordmark: false,
@@ -568,8 +564,8 @@ extension ShareCardScreen {
                 fontID: r.fontChoice.rawValue, colorID: r.textColor.rawValue,
                 anchorIdx: CardPosition.allCases.firstIndex(of: r.position),
                 sizeID: r.sizeLevel.rawValue,
-                effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)P\(r.plateOn ? 1 : 0)|\(r.flyDirection.rawValue)",
-                plateColorID: r.plateColorPreset.rawValue, speed: r.speed,
+                effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)|\(r.flyDirection.rawValue)",
+                speed: r.speed,
                 cropOffsetX: Double(r.cropOffsetX),
                 metricPace: false, metricDistance: false,
                 metricTime: false, metricHeartRate: false,
@@ -620,11 +616,9 @@ extension ShareCardScreen {
                 if parts.count > 2 {
                     let r = parts[2]
                     recipe.hasBorder = r.contains("B1")
-                    recipe.plateOn   = r.contains("P1")
                 }
                 recipe.flyDirection = parts.count > 3 ? (FlyInDirection(rawValue: parts[3]) ?? .trailing) : .trailing
             }
-            recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
             recipe.speed            = desc.speed
             recipe.cropOffsetX      = CGFloat(desc.cropOffsetX)
             restored.append(recipe)
@@ -650,7 +644,7 @@ extension ShareCardScreen {
         }
     }
 
-    /// 전역 문구 스타일(폰트·색상·크기·테두리·음영판)을 영상 클립 레시피 전체에 동기화.
+    /// 전역 문구 스타일(폰트·색상·크기·테두리)을 영상 클립 레시피 전체에 동기화.
     /// position 제외 — 클립별 독립 설정.
     func applyStyleToVideoClips() {
         guard isPlaceable, template == .video else { return }
@@ -659,8 +653,6 @@ extension ShareCardScreen {
             placeableVM.placeableClipRecipes[i].textColor        = placeableVM.placeableStoryColor
             placeableVM.placeableClipRecipes[i].sizeLevel        = placeableVM.placeableStorySize
             placeableVM.placeableClipRecipes[i].hasBorder        = placeableVM.placeableStoryHasBorder
-            placeableVM.placeableClipRecipes[i].plateOn          = placeableVM.placeableStoryPlateOn
-            placeableVM.placeableClipRecipes[i].plateColorPreset = placeableVM.placeableStoryPlatePreset
         }
     }
 

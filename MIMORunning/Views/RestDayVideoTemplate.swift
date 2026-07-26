@@ -64,8 +64,6 @@ extension RestDayOneLinerSheet {
                     appearanceMode: recipe.appearanceMode,
                     decorEffect: recipe.decorEffect,
                     hasBorder: recipe.hasBorder,
-                    plateOn: recipe.plateOn,
-                    plateColorPreset: recipe.plateColorPreset,
                     showDate: true,
                     captionMode: true
                 )
@@ -183,8 +181,6 @@ extension RestDayOneLinerSheet {
                 textColor: textColor,
                 fontChoice: fontChoice,
                 hasBorder: rp?.hasBorder ?? previewHasBorder,
-                plateOn: rp?.plateOn ?? previewPlateOn,
-                plateColorPreset: rp?.plateColorPreset ?? previewPlatePreset,
                 showDate: true,
                 captionMode: true
             )

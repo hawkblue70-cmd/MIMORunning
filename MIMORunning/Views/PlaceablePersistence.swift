@@ -28,8 +28,6 @@ extension ShareCardScreen {
         let posAll = Array(CardPosition.allCases)
         if posIdx >= 0, posIdx < posAll.count { placeableVM.placeableStoryPosition = posAll[posIdx] }
         if let bv = ud.object(forKey: p + "border") as? Bool { placeableVM.placeableStoryHasBorder = bv }
-        if let pv = ud.object(forKey: p + "plate")  as? Bool { placeableVM.placeableStoryPlateOn   = pv }
-        if let pr = ud.string(forKey: p + "platePreset"), let pv = PlateColorPreset(rawValue: pr) { placeableVM.placeableStoryPlatePreset = pv }
         // 슬라이드 클립별 스타일 복원
         if let data = ud.data(forKey: p + "slideClipStyles"),
            let styles = try? JSONDecoder().decode([String: PlaceableSlideClipStyle].self, from: data) {
@@ -51,8 +49,6 @@ extension ShareCardScreen {
         let posAll = Array(CardPosition.allCases)
         ud.set(posAll.firstIndex(of: placeableVM.placeableStoryPosition) ?? 0, forKey: p + "pos")
         ud.set(placeableVM.placeableStoryHasBorder,                   forKey: p + "border")
-        ud.set(placeableVM.placeableStoryPlateOn,                     forKey: p + "plate")
-        ud.set(placeableVM.placeableStoryPlatePreset.rawValue,        forKey: p + "platePreset")
         // 슬라이드 클립별 스타일 저장
         let stylesDict = Dictionary(uniqueKeysWithValues: placeableVM.placeableSlideClipStyles.map { (String($0.key), $0.value) })
         if let data = try? JSONEncoder().encode(stylesDict) { ud.set(data, forKey: p + "slideClipStyles") }

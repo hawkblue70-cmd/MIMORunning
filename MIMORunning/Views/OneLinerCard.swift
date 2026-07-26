@@ -24,9 +24,7 @@ struct OneLinerCard: View {
     var appearanceMode: AppearanceMode = .typing
     var decorEffect:    DecorEffect    = .none
     var hasBorder:      Bool           = false
-    var plateOn:        Bool           = false
     var flyDirection:   FlyInDirection = .trailing
-    var plateColorPreset: PlateColorPreset = .blackWhite
     var showDate: Bool = true
     var showBackground: Bool = true
     var showWordmark: Bool = true
@@ -420,12 +418,11 @@ struct OneLinerCard: View {
                     EffectTextView(
                         text: text, font: fontChoice.swiftUIFont(size: baseFontSize),
                         lineSpacing: lineSpacing, alignment: textAlignment,
-                        color: plateOn ? plateColorPreset.textSwiftColor : textColor.color,
+                        color: textColor.color,
                         appearanceMode: appearanceMode,
                         decorEffect: decorEffect,
-                        hasBorder: hasBorder, plateOn: plateOn,
+                        hasBorder: hasBorder,
                         flyDirection: flyDirection,
-                        plateBgColor: plateColorPreset.plateBgColor,
                         syntheticBoldStroke: fontChoice.syntheticBoldStroke(for: baseFontSize),
                         borderColor: hasBorder ? textColor.borderSwiftColor : .clear,
                         borderOffset: hasBorder ? max(0.8, baseFontSize * textColor.borderOffsetFactor) : 0,
@@ -436,6 +433,10 @@ struct OneLinerCard: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
                     .padding(.bottom, chartBottomReserved > 0 ? chartBottomReserved + 8 : 0)
                     .padding(.top,    chartTopReserved    > 0 ? chartTopReserved    + 8 : 0)
+                    .offset(y: position == .center
+                        ? ((chartBottomReserved > 0 ? chartBottomReserved + 8 : 0) -
+                           (chartTopReserved    > 0 ? chartTopReserved    + 8 : 0)) / 2
+                        : 0)
                     if showDate {
                         // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 → 문구와 겹침 방지
                         Text(cardDate.oneLinerDateString)
@@ -558,51 +559,8 @@ struct OneLinerCard: View {
         let clipText: String = (cardHeightOverride != nil && !text.isEmpty)
             ? uikitLineBreakText(text, uiFont: fontChoice.uiFont(size: baseFontSize), maxWidth: Self.cardWidth - 48)
             : text
-        VStack(alignment: hAlign, spacing: 4) {
-            if text.isEmpty {
-                if showBackground {
-                    if plateOn {
-                        // plate 켜진 상태 + 텍스트 없음 → ClipTrimSheet 프리뷰와 동일하게 "···" + 음영판 표시.
-                        // 사용자에게 "음영판 설정이 저장됐다"는 시각적 피드백을 제공.
-                        EffectTextView(
-                            text: "···",
-                            font: fontChoice.swiftUIFont(size: baseFontSize),
-                            lineSpacing: lineSpacing, alignment: tAlign,
-                            color: plateColorPreset.textSwiftColor,
-                            appearanceMode: .typing, decorEffect: .none,
-                            hasBorder: false, plateOn: true, flyDirection: .trailing,
-                            plateBgColor: plateColorPreset.plateBgColor,
-                            syntheticBoldStroke: fontChoice.syntheticBoldStroke(for: baseFontSize),
-                            borderColor: .clear, borderOffset: 0
-                        )
-                        .opacity(0.35)
-                    } else {
-                        Text(AppLanguage.shared.s("한마디를 입력해 주세요", "Enter your one-liner"))
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.35))
-                    }
-                }
-            } else {
-                EffectTextView(
-                    text: clipText, font: fontChoice.swiftUIFont(size: baseFontSize),
-                    lineSpacing: lineSpacing, alignment: tAlign,
-                    color: plateOn ? plateColorPreset.textSwiftColor : textColor.color,
-                    appearanceMode: appearanceMode,
-                    decorEffect: decorEffect,
-                    hasBorder: hasBorder, plateOn: plateOn,
-                    flyDirection: flyDirection,
-                    plateBgColor: plateColorPreset.plateBgColor,
-                    syntheticBoldStroke: fontChoice.syntheticBoldStroke(for: baseFontSize),
-                    borderColor: hasBorder ? textColor.borderSwiftColor : .clear,
-                    borderOffset: hasBorder ? max(0.8, baseFontSize * textColor.borderOffsetFactor) : 0,
-                    isStaticPreview: isStaticPreview
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
-        .padding(.horizontal, cardHeightOverride != nil ? 24 : 14)
-        .padding(.top, {
-            let s = Self.cardWidth / 1080.0
+        let s = Self.cardWidth / 1080.0
+        let captionTopPad: CGFloat = {
             if cardHeightOverride != nil {
                 // 9:16 클립 모드: ClipTrimView · CALayer와 동일한 안전 여백 사용
                 let clipTop = (CardVisual.videoSafeTop + 4) * s  // ≈ 73.3 pt
@@ -622,13 +580,41 @@ struct OneLinerCard: View {
                 return max(32, titlePad + titleH)
             }
             return position.isTop ? 30 : 12
-        }())
+        }()
         // 차트 있으면 차트 위로 배치; 없으면 9:16은 CALayer 안전 여백, 4:5는 기존값
-        .padding(.bottom, chartBottomReserved > 0
+        let captionBotPad: CGFloat = chartBottomReserved > 0
             ? chartBottomReserved + 8
             : cardHeightOverride != nil
-                ? CardVisual.videoSafeBottom * (Self.cardWidth / 1080.0)  // ≈ 75 pt
-                : (position.isBottom ? 34 : 12))
+                ? CardVisual.videoSafeBottom * s  // ≈ 75 pt
+                : (position.isBottom ? 34 : 12)
+        VStack(alignment: hAlign, spacing: 4) {
+            if text.isEmpty {
+                if showBackground {
+                    Text(AppLanguage.shared.s("한마디를 입력해 주세요", "Enter your one-liner"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+            } else {
+                EffectTextView(
+                    text: clipText, font: fontChoice.swiftUIFont(size: baseFontSize),
+                    lineSpacing: lineSpacing, alignment: tAlign,
+                    color: textColor.color,
+                    appearanceMode: appearanceMode,
+                    decorEffect: decorEffect,
+                    hasBorder: hasBorder,
+                    flyDirection: flyDirection,
+                    syntheticBoldStroke: fontChoice.syntheticBoldStroke(for: baseFontSize),
+                    borderColor: hasBorder ? textColor.borderSwiftColor : .clear,
+                    borderOffset: hasBorder ? max(0.8, baseFontSize * textColor.borderOffsetFactor) : 0,
+                    isStaticPreview: isStaticPreview
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
+        .padding(.horizontal, cardHeightOverride != nil ? 24 : 14)
+        .padding(.top, captionTopPad)
+        .padding(.bottom, captionBotPad)
+        .offset(y: position == .center ? (captionBotPad - captionTopPad) / 2 : 0)
     }
 
 

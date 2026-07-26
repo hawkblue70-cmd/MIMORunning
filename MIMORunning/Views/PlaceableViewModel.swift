@@ -9,8 +9,6 @@ struct PlaceableSlideClipStyle: Codable {
     var positionIdx: Int       = 0
     var sizeLevelID: String    = TextSizeLevel.large.rawValue
     var hasBorder: Bool        = true
-    var plateOn: Bool          = false
-    var platePresetID: String  = PlateColorPreset.blackWhite.rawValue
     var appearanceModeID: String = AppearanceMode.typing.rawValue
     var decorEffectID: String  = DecorEffect.none.rawValue
     var flyDirectionID: String = FlyInDirection.trailing.rawValue
@@ -22,7 +20,6 @@ struct PlaceableSlideClipStyle: Codable {
         return cases.indices.contains(positionIdx) ? cases[positionIdx] : .bottom
     }
     var sizeLevel: TextSizeLevel    { TextSizeLevel(rawValue: sizeLevelID) ?? .large }
-    var platePreset: PlateColorPreset { PlateColorPreset(rawValue: platePresetID) ?? .blackWhite }
     var appearanceMode: AppearanceMode { AppearanceMode(rawValue: appearanceModeID) ?? .typing }
     var decorEffect: DecorEffect    { DecorEffect(rawValue: decorEffectID) ?? .none }
     var flyDirection: FlyInDirection { FlyInDirection(rawValue: flyDirectionID) ?? .trailing }
@@ -35,8 +32,6 @@ struct PlaceableSlideClipStyle: Codable {
         positionIdx      = Array(CardPosition.allCases).firstIndex(of: vm.placeableStoryPosition) ?? 0
         sizeLevelID      = vm.placeableStorySize.rawValue
         hasBorder        = vm.placeableStoryHasBorder
-        plateOn          = vm.placeableStoryPlateOn
-        platePresetID    = vm.placeableStoryPlatePreset.rawValue
         appearanceModeID = vm.placeableSlideAppearance.rawValue
         decorEffectID    = vm.slideDecorEffect.rawValue
         flyDirectionID   = vm.slideFlyDirection.rawValue
@@ -100,8 +95,6 @@ final class PlaceableViewModel {
         placeableStoryPosition    = s.position
         placeableStorySize        = s.sizeLevel
         placeableStoryHasBorder   = s.hasBorder
-        placeableStoryPlateOn     = s.plateOn
-        placeableStoryPlatePreset = s.platePreset
         placeableSlideAppearance  = s.appearanceMode
         slideDecorEffect          = s.decorEffect
         slideFlyDirection         = s.flyDirection
@@ -115,8 +108,6 @@ final class PlaceableViewModel {
     var placeableStoryPosition: CardPosition = .bottom
     var placeableStorySize: TextSizeLevel = .large
     var placeableStoryHasBorder: Bool = true
-    var placeableStoryPlateOn: Bool = false
-    var placeableStoryPlatePreset: PlateColorPreset = .blackWhite
     var placeableStoryTabIsText: Bool = false
     /// 사진별 좌우 크롭 위치. 0=왼쪽, 0.5=중앙, 1=오른쪽. 가로 사진에만 유효.
     var placeableStoryCropOffsets: [Int: CGFloat] = [:]

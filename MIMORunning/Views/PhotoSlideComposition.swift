@@ -459,8 +459,7 @@ enum PhotoSlideComposition {
             let clip        = page.clipIdx < useRecipes.count ? useRecipes[page.clipIdx] : useRecipes[0]
             let fontSize    = OneLinerFont.basePt * clip.fontChoice.sizeScale * clip.sizeLevel.scale * vScale
             let uiFont      = clip.fontChoice.boldUIFont(size: fontSize)
-            let plateLayout = clip.plateOn ? PlateLayout(uiFont: uiFont, vScale: vScale) : nil
-            let lineSpacing = plateLayout?.lineSpacing ?? (fontSize * 0.1)
+            let lineSpacing: CGFloat = fontSize * 0.1
             let lineH       = uiFont.lineHeight + lineSpacing
             let nsAlign: NSTextAlignment = {
                 switch clip.position {
@@ -472,9 +471,7 @@ enum PhotoSlideComposition {
             let pStyle = NSMutableParagraphStyle()
             pStyle.lineSpacing = lineSpacing
             pStyle.alignment   = nsAlign
-            let textUIColor = clip.plateOn
-                ? clip.plateColorPreset.textUIColor
-                : clip.textColor.uiColor
+            let textUIColor = clip.textColor.uiColor
             var textAttrs: [NSAttributedString.Key: Any] = [
                 .font: uiFont, .foregroundColor: textUIColor, .paragraphStyle: pStyle
             ]
@@ -530,13 +527,14 @@ enum PhotoSlideComposition {
                 fadeEnd   = page.isLast ? D : min(page.winEnd, fadeStart + fadeTime)
             }
 
-            let textLayerH: CGFloat = {
+            let textContentH: CGFloat = {
                 guard !page.text.isEmpty else { return lineH }
                 let r = NSAttributedString(string: page.text, attributes: textAttrs)
                     .boundingRect(with: CGSize(width: textMaxW, height: 4000),
                                   options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
-                return ceil(r.height) + lineSpacing + 20
+                return ceil(r.height)
             }()
+            let textLayerH: CGFloat = page.text.isEmpty ? lineH : textContentH + lineSpacing + 20
             // Chart-aware 9-grid: 차트 활성화 시 차트 제외한 공간에서 9포지션 작동
             let (pageChartActive, pageChartPanH): (Bool, CGFloat) = {
                 if clip.showHRChart && hrSamples.count >= 2 { return (true, H * 0.22) }
@@ -558,7 +556,8 @@ enum PhotoSlideComposition {
                 ? (titleTopEndY > 0 ? titleTopEndY : defaultTopY)
                 : clip.position.isBottom
                     ? H - clipEffBot - textLayerH
-                    : (safeTop + (H - clipEffBot)) / 2 - textLayerH / 2
+                    : max(defaultTopY, min(H - clipEffBot - textLayerH,
+                                          H / 2 - textContentH / 2))
             let textFrame = CGRect(x: hPad, y: textFrameY, width: textMaxW, height: textLayerH)
 
             let imgRenderer = UIGraphicsImageRenderer(
@@ -610,42 +609,6 @@ enum PhotoSlideComposition {
                           forKey: "opacity")
 
             if N > 0 {
-                // 음영판 줄별 판: textLayer보다 먼저 추가, 애니메이션 동기화를 위해 참조 보관
-                var plateLayers:      [CALayer] = []
-                var plateLineIndices: [Int]     = []
-                // 날아오기 모드는 줄별 루프 내에서 판+텍스트를 동시 생성.
-                if !isFlyIn, let pl = plateLayout {
-                    let platePadH = pl.padH
-                    let platePadV = pl.padV
-                    let cornerR   = pl.cornerR
-                    let lineStep  = pl.lineStep
-                    let plateH    = pl.plateH
-                    let anchorX: CGFloat
-                    let anchorPosX: CGFloat
-                    switch nsAlign {
-                    case .center: anchorX = 0.5; anchorPosX = hPad + textMaxW / 2
-                    case .right:  anchorX = 1.0; anchorPosX = hPad + textMaxW
-                    default:      anchorX = 0.0; anchorPosX = hPad
-                    }
-                    for (i, rawLine) in page.text.components(separatedBy: "\n").enumerated() {
-                        let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { continue }
-                        let lineW  = min(ceil(NSAttributedString(string: trimmed, attributes: textAttrs).size().width), textMaxW)
-                        let plateW = lineW + 2 * platePadH
-                        let lineTopY = textFrame.minY + CGFloat(i) * lineStep
-                        let pLayer = CALayer()
-                        pLayer.anchorPoint     = CGPoint(x: anchorX, y: 0.5)
-                        pLayer.position        = CGPoint(x: anchorPosX, y: lineTopY - platePadV + plateH / 2)
-                        pLayer.bounds          = CGRect(x: 0, y: 0, width: plateW, height: plateH)
-                        pLayer.backgroundColor = clip.plateColorPreset.plateUIColorWithAlpha.cgColor
-                        pLayer.cornerRadius    = cornerR
-                        pLayer.masksToBounds   = true
-                        pageLayer.addSublayer(pLayer)
-                        plateLayers.append(pLayer)
-                        plateLineIndices.append(i)
-                    }
-                }
-
                 let textLayer = CALayer()
                 textLayer.frame           = textFrame
                 textLayer.contentsGravity = .topLeft
@@ -661,12 +624,6 @@ enum PhotoSlideComposition {
                     let fadeV:  [Any]      = [Float(0), Float(0), Float(1), Float(1)]
                     textLayer.add(linearAnim("opacity", keyTimes: fadeKT, values: fadeV),
                                   forKey: "textFade")
-                    // 음영판도 함께 페이드인
-                    for pLayer in plateLayers {
-                        pLayer.opacity = 0.0
-                        pLayer.add(linearAnim("opacity", keyTimes: fadeKT, values: fadeV),
-                                   forKey: "plateFade")
-                    }
                     // 팝: 페이드 완료 직후 1회 1.25→1.0 스프링 (반동 강화)
                     if clip.decorEffect == .pop {
                         let pop = CAKeyframeAnimation(keyPath: "transform.scale")
@@ -702,13 +659,6 @@ enum PhotoSlideComposition {
                     let flyKey        = flyVertical ? "transform.translation.y" : "transform.translation.x"
                     let slideX:       CGFloat = flyVertical ? H * 0.3 : (clip.flyDirection == .trailing ? W : -W)
                     let lineTexts     = page.text.components(separatedBy: "\n")
-                    let anchorX:    CGFloat
-                    let anchorPosX: CGFloat
-                    switch nsAlign {
-                    case .center: anchorX = 0.5; anchorPosX = hPad + textMaxW / 2
-                    case .right:  anchorX = 1.0; anchorPosX = hPad + textMaxW
-                    default:      anchorX = 0.0; anchorPosX = hPad
-                    }
                     // 줄별 실제 높이(줄바꿈 고려) + 누적 Y 오프셋 사전 계산
                     let flyDrawOpts: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
                     var flyLineHs: [CGFloat] = []
@@ -732,29 +682,7 @@ enum PhotoSlideComposition {
                         staggerIdx  += 1
                         let lineTopY  = textFrame.minY + flyLineYs[i]
                         let actualLineH = flyLineHs[i]
-                        // 판 레이어 (텍스트보다 먼저 → z-order 아래)
-                        if let pl = plateLayout {
-                            let measuredW = min(ceil(NSAttributedString(string: trimmed, attributes: textAttrs).size().width), textMaxW)
-                            let wrappedPlateH = actualLineH + 2 * pl.padV
-                            let pLayer = CALayer()
-                            pLayer.anchorPoint     = CGPoint(x: anchorX, y: 0.5)
-                            pLayer.position        = CGPoint(x: anchorPosX, y: lineTopY - pl.padV + wrappedPlateH / 2)
-                            pLayer.bounds          = CGRect(x: 0, y: 0, width: measuredW + 2 * pl.padH, height: wrappedPlateH)
-                            pLayer.backgroundColor = clip.plateColorPreset.plateUIColorWithAlpha.cgColor
-                            pLayer.cornerRadius    = pl.cornerR
-                            pLayer.masksToBounds   = true
-                            pageLayer.addSublayer(pLayer)
-                            let pFly                     = CABasicAnimation(keyPath: flyKey)
-                            pFly.beginTime               = AVCoreAnimationBeginTimeAtZero + flyBegin
-                            pFly.duration                = flyDur
-                            pFly.fromValue               = Float(slideX)
-                            pFly.toValue                 = Float(0)
-                            pFly.timingFunction          = CAMediaTimingFunction(name: .easeOut)
-                            pFly.fillMode                = .both
-                            pFly.isRemovedOnCompletion   = false
-                            pLayer.add(pFly, forKey: "flyIn")
-                        }
-                        // 텍스트 레이어 — 줄별 실제 높이로 렌더링
+                        // 텍스트 레이어 — 줄별 실제 높이로 렌더링 (음영판 베이크 포함)
                         let lineRenderer = UIGraphicsImageRenderer(
                             size: CGSize(width: textMaxW, height: actualLineH), format: imgFormat)
                         let lineImg = lineRenderer.image { ctx in
@@ -850,47 +778,6 @@ enum PhotoSlideComposition {
                                     forKey: "opacity")
                     pageLayer.addSublayer(cursorLayer)
 
-                    // ── 음영판 타이핑 동기화: 판 폭이 글자를 따라 늘어남 ──────────────
-                    if !plateLayers.isEmpty {
-                        let textLines = page.text.components(separatedBy: "\n")
-                        var lineCharStarts: [Int] = []
-                        var lineCharEnds:   [Int] = []
-                        var cur = 0
-                        for line in textLines {
-                            lineCharStarts.append(cur)
-                            cur += line.count
-                            lineCharEnds.append(cur)
-                            cur += 1  // \n 건너뜀
-                        }
-                        let platePadH: CGFloat = 8 * vScale
-                        for (j, pLayer) in plateLayers.enumerated() {
-                            let lineIdx = plateLineIndices[j]
-                            guard lineIdx < lineCharStarts.count else { continue }
-                            let s  = lineCharStarts[lineIdx]
-                            let e  = lineCharEnds[lineIdx]
-                            let fH = pLayer.bounds.height
-                            let fW = pLayer.bounds.width
-                            var wKeyTimes: [NSNumber] = [0.0]
-                            var wValues:   [Any]      = [NSValue(cgRect: CGRect(x: 0, y: 0, width: 0, height: fH))]
-                            for k in 1...N {
-                                let typed = max(0, min(k, e) - s)
-                                let pW: CGFloat
-                                if typed > 0 {
-                                    let t = String(chars[s..<(s + typed)])
-                                    let w = min(ceil(NSAttributedString(string: t, attributes: textAttrs).size().width), textMaxW)
-                                    pW = w + 2 * platePadH
-                                } else {
-                                    pW = 0
-                                }
-                                wKeyTimes.append(NSNumber(value: max(0.0001, charAppearTimes[k - 1] / D)))
-                                wValues.append(NSValue(cgRect: CGRect(x: 0, y: 0, width: pW, height: fH)))
-                            }
-                            wKeyTimes.append(1.0)
-                            wValues.append(NSValue(cgRect: CGRect(x: 0, y: 0, width: fW, height: fH)))
-                            pLayer.bounds = CGRect(x: 0, y: 0, width: 0, height: fH)
-                            pLayer.add(discreteAnim("bounds", keyTimes: wKeyTimes, values: wValues), forKey: "plateBounds")
-                        }
-                    }
                 }
             }
             contentLayer.addSublayer(pageLayer)

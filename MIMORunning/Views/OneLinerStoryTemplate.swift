@@ -31,7 +31,7 @@ extension ShareCardScreen {
                 if e.text.hasPrefix("v3slide\n"),
                    let data = e.text.dropFirst("v3slide\n".count).data(using: .utf8),
                    let desc = try? JSONDecoder().decode(SavedClipDescriptor.self, from: data) {
-                    // 신규 포맷: 모든 스타일 (plateOn·sizeLevel·effectID 포함) 완전 복원
+                    // 신규 포맷: 모든 스타일 (sizeLevel·effectID 포함) 완전 복원
                     recipe.lines      = desc.lines.map { line in
                         let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
                         if t.hasPrefix("v3slide") || t.hasPrefix("v3recipes")
@@ -51,11 +51,9 @@ extension ShareCardScreen {
                         recipe.decorEffect    = parts.count > 1 ? (DecorEffect(rawValue: parts[1]) ?? .none) : .none
                         if parts.count > 2 {
                             recipe.hasBorder = parts[2].contains("B1")
-                            recipe.plateOn   = parts[2].contains("P1")
                         }
                         recipe.flyDirection = parts.count > 3 ? (FlyInDirection(rawValue: parts[3]) ?? .trailing) : .trailing
                     }
-                    recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
                     recipe.metricPace      = desc.metricPace
                     recipe.metricDistance  = desc.metricDistance
                     recipe.metricTime      = desc.metricTime
@@ -101,7 +99,7 @@ extension ShareCardScreen {
     }
 
     /// ClipTrimSheet 완료 후 편집 결과를 OneLinerEntry에 저장.
-    /// plateOn·sizeLevel·effectID 등 전체 스타일을 SavedClipDescriptor JSON("v3slide\n")으로 인코딩.
+    /// sizeLevel·effectID 등 전체 스타일을 SavedClipDescriptor JSON("v3slide\n")으로 인코딩.
     func saveStoryClipEdits(_ recipes: [ClipRecipe], isSlide: Bool = false) {
         let prefix = isSlide ? "slide:" : "photo:"
         for (i, recipe) in recipes.enumerated() {
@@ -130,8 +128,7 @@ extension ShareCardScreen {
                 colorID: recipe.textColor.rawValue,
                 anchorIdx: CardPosition.allCases.firstIndex(of: recipe.position),
                 sizeID: recipe.sizeLevel.rawValue,
-                effectID: "\(recipe.appearanceMode.rawValue)|\(recipe.decorEffect.rawValue)|B\(recipe.hasBorder ? 1 : 0)P\(recipe.plateOn ? 1 : 0)|\(recipe.flyDirection.rawValue)",
-                plateColorID: recipe.plateColorPreset.rawValue,
+                effectID: "\(recipe.appearanceMode.rawValue)|\(recipe.decorEffect.rawValue)|B\(recipe.hasBorder ? 1 : 0)|\(recipe.flyDirection.rawValue)",
                 speed: recipe.speed, cropOffsetX: Double(recipe.cropOffsetX),
                 metricPace: recipe.metricPace,
                 metricDistance: recipe.metricDistance,

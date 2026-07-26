@@ -35,8 +35,8 @@ extension ShareCardScreen {
                 fontID: r.fontChoice.rawValue, colorID: r.textColor.rawValue,
                 anchorIdx: CardPosition.allCases.firstIndex(of: r.position),
                 sizeID: r.sizeLevel.rawValue,
-                effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)P\(r.plateOn ? 1 : 0)|\(r.flyDirection.rawValue)",
-                plateColorID: r.plateColorPreset.rawValue, speed: r.speed,
+                effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)|\(r.flyDirection.rawValue)",
+                speed: r.speed,
                 cropOffsetX: Double(r.cropOffsetX),
                 metricPace: r.metricPace, metricDistance: r.metricDistance, metricTime: r.metricTime,
                 metricHeartRate: r.metricHeartRate,
@@ -131,12 +131,10 @@ extension ShareCardScreen {
                     let r = parts[2]
                     if r.hasPrefix("B") {
                         recipe.hasBorder = r.contains("B1")
-                        recipe.plateOn   = r.contains("P1")
                     } else {
                         switch r {
-                        case "1", "outline": recipe.hasBorder = true;  recipe.plateOn = false
-                        case "plate":        recipe.hasBorder = false; recipe.plateOn = true
-                        default:             recipe.hasBorder = false; recipe.plateOn = false
+                        case "1", "outline": recipe.hasBorder = true
+                        default:             recipe.hasBorder = false
                         }
                     }
                 }
@@ -145,9 +143,7 @@ extension ShareCardScreen {
                 recipe.appearanceMode = .typing
                 recipe.decorEffect    = .none
                 recipe.hasBorder      = false
-                recipe.plateOn        = false
             }
-            recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
             recipe.speed            = desc.speed
             recipe.cropOffsetX      = CGFloat(desc.cropOffsetX)
             recipe.metricPace       = desc.metricPace
@@ -234,8 +230,6 @@ extension ShareCardScreen {
                 appearanceMode: pr.appearanceMode,
                 decorEffect: pr.decorEffect,
                 hasBorder: pr.hasBorder,
-                plateOn: pr.plateOn,
-                plateColorPreset: pr.plateColorPreset,
                 showDate: oneLinerVM.oneLinerShowDate,
                 captionMode: true,
                 chartBottomReserved: storyChartBottomReserved(for: pr),

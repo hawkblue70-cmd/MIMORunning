@@ -37,9 +37,7 @@ private struct SlideTextOverlay: View {
             appearanceMode: style.appearanceMode,
             decorEffect: isFade ? style.decorEffect : .none,
             hasBorder: style.hasBorder,
-            plateOn: style.plateOn,
             flyDirection: style.flyDirection,
-            plateColorPreset: style.platePreset,
             showDate: false,
             showBackground: false,
             showWordmark: false,
@@ -167,8 +165,6 @@ extension ShareCardScreen {
                 .onChange(of: placeableVM.placeableStoryPosition)    { _, _ in guard template == .slide else { return }; placeableVM.saveGlobalsToSlideClip(placeableCurrentPhotoIdx) }
                 .onChange(of: placeableVM.placeableStorySize)        { _, _ in guard template == .slide else { return }; placeableVM.saveGlobalsToSlideClip(placeableCurrentPhotoIdx) }
                 .onChange(of: placeableVM.placeableStoryHasBorder)   { _, _ in guard template == .slide else { return }; placeableVM.saveGlobalsToSlideClip(placeableCurrentPhotoIdx) }
-                .onChange(of: placeableVM.placeableStoryPlateOn)     { _, _ in guard template == .slide else { return }; placeableVM.saveGlobalsToSlideClip(placeableCurrentPhotoIdx) }
-                .onChange(of: placeableVM.placeableStoryPlatePreset) { _, _ in guard template == .slide else { return }; placeableVM.saveGlobalsToSlideClip(placeableCurrentPhotoIdx) }
                 .onChange(of: placeableVM.placeableSlideAppearance)  { _, _ in guard template == .slide else { return }; placeableVM.saveGlobalsToSlideClip(placeableCurrentPhotoIdx) }
                 .onChange(of: placeableVM.slideDecorEffect)          { _, _ in guard template == .slide else { return }; placeableVM.saveGlobalsToSlideClip(placeableCurrentPhotoIdx) }
                 .onChange(of: placeableVM.slideFlyDirection)         { _, _ in guard template == .slide else { return }; placeableVM.saveGlobalsToSlideClip(placeableCurrentPhotoIdx) }
@@ -328,8 +324,6 @@ extension ShareCardScreen {
             r.position         = style.position
             r.sizeLevel        = style.sizeLevel
             r.hasBorder        = style.hasBorder
-            r.plateOn          = style.plateOn
-            r.plateColorPreset = style.platePreset
             r.appearanceMode   = style.appearanceMode
             r.decorEffect      = style.appearanceMode == .fade ? style.decorEffect : .none
             r.flyDirection     = style.flyDirection

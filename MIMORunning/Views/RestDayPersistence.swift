@@ -216,12 +216,12 @@ extension RestDayOneLinerSheet {
             titleStyle  = OneLinerTitleStyle()
         case .video:
             clipRecipes = videoModeRecipes
-            videoTitle  = videoModeTitle
-            titleStyle  = videoModeTitleStyle
+            videoTitle  = ""
+            titleStyle  = OneLinerTitleStyle()
         case .slide:
             clipRecipes = slideModeRecipes
-            videoTitle  = slideModeTitle
-            titleStyle  = slideModeTitleStyle
+            videoTitle  = ""
+            titleStyle  = OneLinerTitleStyle()
         }
         currentClipIndex = 0
     }
@@ -246,8 +246,7 @@ extension RestDayOneLinerSheet {
                 colorID: r.textColor.rawValue,
                 anchorIdx: CardPosition.allCases.firstIndex(of: r.position),
                 sizeID: r.sizeLevel.rawValue,
-                effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)P\(r.plateOn ? 1 : 0)|\(r.flyDirection.rawValue)",
-                plateColorID: r.plateColorPreset.rawValue,
+                effectID: "\(r.appearanceMode.rawValue)|\(r.decorEffect.rawValue)|B\(r.hasBorder ? 1 : 0)|\(r.flyDirection.rawValue)",
                 speed: r.speed, cropOffsetX: Double(r.cropOffsetX),
                 metricPace: r.metricPace, metricDistance: r.metricDistance, metricTime: r.metricTime,
                 pdtAnchorIdx: CardPosition.allCases.firstIndex(of: r.pdtPosition),
@@ -335,12 +334,10 @@ extension RestDayOneLinerSheet {
                     let r = parts[2]
                     if r.hasPrefix("B") {
                         recipe.hasBorder = r.contains("B1")
-                        recipe.plateOn   = r.contains("P1")
                     } else {
                         switch r {
-                        case "1", "outline": recipe.hasBorder = true;  recipe.plateOn = false
-                        case "plate":        recipe.hasBorder = false; recipe.plateOn = true
-                        default:             recipe.hasBorder = false; recipe.plateOn = false
+                        case "1", "outline": recipe.hasBorder = true
+                        default:             recipe.hasBorder = false
                         }
                     }
                 }
@@ -349,9 +346,7 @@ extension RestDayOneLinerSheet {
                 recipe.appearanceMode = .typing
                 recipe.decorEffect    = .none
                 recipe.hasBorder      = false
-                recipe.plateOn        = false
             }
-            recipe.plateColorPreset = desc.plateColorID.flatMap { PlateColorPreset(rawValue: $0) } ?? .blackWhite
             recipe.speed       = desc.speed
             recipe.cropOffsetX = CGFloat(desc.cropOffsetX)
             recipe.metricPace     = desc.metricPace

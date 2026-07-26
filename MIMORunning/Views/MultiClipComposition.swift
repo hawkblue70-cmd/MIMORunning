@@ -309,14 +309,8 @@ struct ClipRecipe: Identifiable {
     var sizeLevel:  TextSizeLevel     = .large
     var appearanceMode:   AppearanceMode   = .typing
     var decorEffect:      DecorEffect      = .none
-    var hasBorder: Bool = true {        // 8방향 오프셋 테두리 (plateOn과 상호 배타)
-        didSet { if hasBorder { plateOn = false } }
-    }
-    var plateOn: Bool = false {         // 음영판 (hasBorder와 상호 배타)
-        didSet { if plateOn { hasBorder = false } }
-    }
+    var hasBorder: Bool = true
     var flyDirection:     FlyInDirection   = .trailing
-    var plateColorPreset: PlateColorPreset = .blackWhite
     /// 재생 배속. 1.0=원본. 0.5(슬로우)~2.0(패스트). 출력 길이 = trimmedDuration / speed.
     var speed:            Double            = 1.0
     /// 가로(landscape) 콘텐츠 좌우 크롭 위치. 0=왼쪽, 0.5=중앙, 1=오른쪽.
@@ -364,37 +358,6 @@ struct ClipRecipe: Identifiable {
     /// Number of text slots based on trimmed duration (1 slot per 3 s).
     var linesCount: Int { max(1, min(20, Int(trimmedDuration / 3.0))) }
     var hasText: Bool { lines.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
-}
-
-// MARK: - PlateLayout
-//
-// 음영판(plate) CALayer 배치 공통 상수.
-// PhotoSlideComposition과 VideoExportService에서 동일 인스턴스를 사용.
-//
-// 미리보기(SwiftUI) 기준: VStack spacing=3, .padding(.vertical, 2), cornerRadius 5.
-// lineSpacing = 2*padV + gap = 7 pt (vScale=1) → NSParagraphStyle.lineSpacing에 사용.
-// 이 값을 pStyle.lineSpacing으로 설정하면 boundingRect도 자동으로 올바른 높이를 반환.
-
-struct PlateLayout {
-    let padH:        CGFloat   // 좌우 패딩 (= 8 * vScale)
-    let padV:        CGFloat   // 상하 패딩 (= 2 * vScale)
-    let gap:         CGFloat   // 판 간 세로 간격 (= 3 * vScale)
-    let cornerR:     CGFloat   // 코너 반경 (= 5 * vScale)
-    let plateH:      CGFloat   // 판 rect 높이 = ceil(lineHeight) + 2*padV
-    let lineStep:    CGFloat   // 줄 간 Y 거리 = lineHeight + 2*padV + gap
-    let lineSpacing: CGFloat   // NSParagraphStyle.lineSpacing = 2*padV + gap
-
-    init(uiFont: UIFont, vScale: CGFloat) {
-        let padV_  = 2 * vScale
-        let gap_   = 3 * vScale
-        padH       = 8 * vScale
-        padV       = padV_
-        gap        = gap_
-        cornerR    = 5 * vScale
-        lineSpacing = 2 * padV_ + gap_
-        plateH     = ceil(uiFont.lineHeight) + 2 * padV_
-        lineStep   = uiFont.lineHeight + lineSpacing
-    }
 }
 
 // MARK: - OneLinerTitleStyle

@@ -2334,15 +2334,6 @@ private struct StorySection: View {
         guard let sid = story?.shoeID else { return nil }
         return shoes.first { $0.id.uuidString == sid }
     }
-    private var oneLinerEntries: [OneLinerEntry] {
-        let validPhotoUUIDs = Set(story?.sortedPhotoUUIDs ?? [])
-        return OneLinerEntry.visible(from: allOneLinerEntries, workoutID: workoutID).filter { entry in
-            guard let ref = entry.mediaRef, ref.hasPrefix("photo:") else { return true }
-            let uuid = String(ref.dropFirst("photo:".count))
-            return validPhotoUUIDs.contains(uuid)
-        }
-    }
-
     /// 스토리에 존재하지 않는 photo UUID를 가진 OneLinerEntry를 DB에서 삭제.
     private func cleanupOrphanedEntries() {
         let validPhotoUUIDs = Set(story?.sortedPhotoUUIDs ?? [])
@@ -2385,16 +2376,6 @@ private struct StorySection: View {
             }
             if let s = story {
                 StoryDisplay(story: s)
-            }
-            if !oneLinerEntries.isEmpty {
-                HStack {
-                    Label(AppLanguage.shared.s("오늘의 한마디", "One-Liners"),
-                          systemImage: "text.bubble.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                OneLinerListDisplay(entries: oneLinerEntries)
             }
         }
         .padding(.horizontal, 16)

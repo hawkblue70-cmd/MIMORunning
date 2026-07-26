@@ -107,7 +107,7 @@ struct MultiClipEditorView: View {
         VStack(alignment: .leading, spacing: 8) {
             pickerButtonRow
             if !recipes.isEmpty { clipStrip }
-            if !recipes.isEmpty, isStoryMode  { storyHintRow }
+            if !recipes.isEmpty, isStoryMode, openEditOnTap { storyHintRow }
             if !recipes.isEmpty, !isStoryMode { durationRow }
             // 영상·슬라이드 메인은 '전체 제목'만 — 지표(P/D/T/M/H)는 클립별(클립 편집기)에서
             // showTitleEvenWhenEmpty: 슬라이드 모드에서 photos가 storyPhotos에 있고 recipes는 비어있을 때
@@ -874,7 +874,6 @@ struct SavedClipDescriptor: Codable {
     var anchorIdx: Int?    = nil   // index into CardPosition.allCases
     var sizeID:    String? = nil   // TextSizeLevel.rawValue
     var effectID:     String? = nil   // "appearanceMode|decorEffect|outline(0/1)" e.g. "fade|pop|0"
-    var plateColorID: String? = nil   // PlateColorPreset.rawValue
     var speed:        Double  = 1.0   // 재생 배속 (하위호환: 미존재 시 1.0)
     var cropOffsetX:  Double  = 0.5   // 가로 크롭 위치 (하위호환: 미존재 시 0.5=중앙)
     // 러닝 데이터 오버레이 (운동한 날, 클립별) — 하위호환 기본값
