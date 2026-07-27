@@ -5573,6 +5573,33 @@ struct ShareCardScreen: View {
             return
         }
 
+        // Stamp card: on-demand export via makeStampStoryImage() in the share button.
+        // For story template, pre-render here (async context) so the SwiftUI ImageRenderer
+        // pipeline is warmed before the user taps share.  First-ever ImageRenderer call for
+        // a view tree produces a black image; the 50 ms gap after the warm-up render lets
+        // the pipeline fully initialize, making the synchronous share-button render correct.
+        if isStamp {
+            if template == .story {
+                let photo = storyPhotos.first
+                let wuView = StampStoryRenderView(
+                    photo: photo, data: stampPreviewData, vm: stampVM,
+                    cropOffsetX: stampVM.storyCropOffsetX,
+                    configOverride: stampVM.photoConfig(at: 0),
+                    displayDate: activity.date).frame(width: 300, height: 375)
+                let wu = ImageRenderer(content: wuView)
+                wu.scale = 1
+                _ = wu.uiImage
+                try? await Task.sleep(nanoseconds: 50_000_000)   // 50 ms — let pipeline settle
+                guard isStamp, template == .story else { return } // guard: card may have changed
+                previewImage = makeStampStoryImage(
+                    photo: photo, data: stampPreviewData, vm: stampVM,
+                    cropOffsetX: stampVM.storyCropOffsetX,
+                    configOverride: stampVM.photoConfig(at: 0),
+                    displayDate: activity.date)
+            }
+            isRendering = false; return
+        }
+
         guard template != .video && template != .routeVideo else { return }
         if showSpinner { isRendering = true }
         storyShareImages = []

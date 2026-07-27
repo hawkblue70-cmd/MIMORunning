@@ -279,9 +279,6 @@ func makeStampStoryImage(photo: UIImage?, data: StampData, vm: StampViewModel,
                          configOverride: StampPhotoConfig? = nil,
                          displayDate: Date? = nil) -> UIImage? {
     FontLoader.registerBundledFonts()
-    // StampCard uses Canvas views (brackets, waveforms). ImageRenderer produces a blank image
-    // on the very first Canvas render. Calling uiImage twice forces the graphics context to
-    // initialize fully before the actual export render.
     let view = StampStoryRenderView(photo: photo, data: data, vm: vm,
                                     cropOffsetX: cropOffsetX,
                                     configOverride: configOverride,
@@ -290,6 +287,5 @@ func makeStampStoryImage(photo: UIImage?, data: StampData, vm: StampViewModel,
     let renderer = ImageRenderer(content: view)
     renderer.proposedSize = .init(width: 300, height: 375)
     renderer.scale = 3
-    _ = renderer.uiImage   // warm-up: initializes Canvas graphics context
     return renderer.uiImage
 }

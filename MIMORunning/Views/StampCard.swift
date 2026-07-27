@@ -100,6 +100,95 @@ func stampColors(_ mode: StampColorMode, isBrightBackground: Bool) -> (fill: Col
 // 명시된 pt 크기는 medium(sizeLevel.scale == 0.8) 기준; 헬퍼로 레벨별 스케일.
 private func sz(_ pt: CGFloat, _ scale: CGFloat) -> CGFloat { pt * scale / 0.8 }
 
+// MARK: - Shape helpers (Canvas 대체 — ImageRenderer 오프스크린에서 Canvas 첫 렌더 블랙 방지)
+
+private struct BracketsShape: Shape {
+    let inset: CGFloat; let bw: CGFloat; let bh: CGFloat
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        // ┌
+        p.move(to: CGPoint(x: rect.minX + inset + bw, y: rect.minY + inset))
+        p.addLine(to: CGPoint(x: rect.minX + inset,   y: rect.minY + inset))
+        p.addLine(to: CGPoint(x: rect.minX + inset,   y: rect.minY + inset + bh))
+        // ┐
+        p.move(to: CGPoint(x: rect.maxX - inset - bw, y: rect.minY + inset))
+        p.addLine(to: CGPoint(x: rect.maxX - inset,   y: rect.minY + inset))
+        p.addLine(to: CGPoint(x: rect.maxX - inset,   y: rect.minY + inset + bh))
+        // └
+        p.move(to: CGPoint(x: rect.minX + inset,      y: rect.maxY - inset - bh))
+        p.addLine(to: CGPoint(x: rect.minX + inset,   y: rect.maxY - inset))
+        p.addLine(to: CGPoint(x: rect.minX + inset + bw, y: rect.maxY - inset))
+        // ┘
+        p.move(to: CGPoint(x: rect.maxX - inset,      y: rect.maxY - inset - bh))
+        p.addLine(to: CGPoint(x: rect.maxX - inset,   y: rect.maxY - inset))
+        p.addLine(to: CGPoint(x: rect.maxX - inset - bw, y: rect.maxY - inset))
+        return p
+    }
+}
+
+private struct WaveLineShape: Shape {
+    let series: [Double]
+    func path(in rect: CGRect) -> Path {
+        guard series.count > 1 else { return Path() }
+        var p = Path()
+        for (i, v) in series.enumerated() {
+            let pt = CGPoint(x: rect.width * CGFloat(i) / CGFloat(series.count - 1),
+                             y: rect.height * (1.0 - v))
+            if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+        }
+        return p
+    }
+}
+
+private struct ElevFillShape: Shape {
+    let series: [Double]
+    func path(in rect: CGRect) -> Path {
+        guard series.count > 1 else { return Path() }
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: rect.height))
+        for (i, v) in series.enumerated() {
+            p.addLine(to: CGPoint(x: rect.width * CGFloat(i) / CGFloat(series.count - 1),
+                                  y: rect.height * (1.0 - v)))
+        }
+        p.addLine(to: CGPoint(x: rect.width, y: rect.height))
+        p.closeSubpath()
+        return p
+    }
+}
+
+private struct ElevLineShape: Shape {
+    let series: [Double]
+    func path(in rect: CGRect) -> Path {
+        guard series.count > 1 else { return Path() }
+        var p = Path()
+        for (i, v) in series.enumerated() {
+            let pt = CGPoint(x: rect.width * CGFloat(i) / CGFloat(series.count - 1),
+                             y: rect.height * (1.0 - v))
+            if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+        }
+        return p
+    }
+}
+
+private struct EQBarShape: Shape {
+    let barHeights: [Double]
+    func path(in rect: CGRect) -> Path {
+        let count = barHeights.count
+        guard count > 1 else { return Path() }
+        let totalGap = rect.width * 0.4
+        let barW = (rect.width - totalGap) / CGFloat(count)
+        let gap = totalGap / CGFloat(count - 1)
+        var p = Path()
+        for i in 0..<count {
+            let x = CGFloat(i) * (barW + gap)
+            let h = rect.height * barHeights[i]
+            p.addRoundedRect(in: CGRect(x: x, y: rect.height - h, width: barW, height: h),
+                             cornerSize: CGSize(width: 1, height: 1))
+        }
+        return p
+    }
+}
+
 // HR / 칼로리 푸터 문자열 (켜진 것만, " · " 연결)
 private func stampMetricFooter(data: StampData, hr: Bool, cal: Bool) -> String? {
     var parts: [String] = []
@@ -626,38 +715,10 @@ private struct StampHUDView: View {
 
     var body: some View {
         ZStack(alignment: position.alignment) {
-            // 네 모서리 브래킷 (Canvas) — 항상 전체 프레임을 채움
-            Canvas { ctx, size in
-                let inset: CGFloat = sz(12, scale)
-                let bw:    CGFloat = sz(14, scale)
-                let bh:    CGFloat = sz(12, scale)
-                let lw:    CGFloat = max(1, sz(1.5, scale))
-
-                var path = Path()
-
-                // 좌상 ┌
-                path.move(to:    CGPoint(x: inset + bw, y: inset))
-                path.addLine(to: CGPoint(x: inset,      y: inset))
-                path.addLine(to: CGPoint(x: inset,      y: inset + bh))
-
-                // 우상 ┐
-                path.move(to:    CGPoint(x: size.width - inset - bw, y: inset))
-                path.addLine(to: CGPoint(x: size.width - inset,      y: inset))
-                path.addLine(to: CGPoint(x: size.width - inset,      y: inset + bh))
-
-                // 좌하 └
-                path.move(to:    CGPoint(x: inset, y: size.height - inset - bh))
-                path.addLine(to: CGPoint(x: inset, y: size.height - inset))
-                path.addLine(to: CGPoint(x: inset + bw, y: size.height - inset))
-
-                // 우하 ┘
-                path.move(to:    CGPoint(x: size.width - inset,      y: size.height - inset - bh))
-                path.addLine(to: CGPoint(x: size.width - inset,      y: size.height - inset))
-                path.addLine(to: CGPoint(x: size.width - inset - bw, y: size.height - inset))
-
-                ctx.stroke(path, with: .color(outline.opacity(0.9)),
-                           style: StrokeStyle(lineWidth: lw, lineCap: .square))
-            }
+            // 네 모서리 브래킷
+            BracketsShape(inset: sz(12, scale), bw: sz(14, scale), bh: sz(12, scale))
+                .stroke(outline.opacity(0.9),
+                        style: StrokeStyle(lineWidth: max(1, sz(1.5, scale)), lineCap: .square))
 
             // 데이터 블록 — position.alignment에 따라 배치됨
             VStack(spacing: sz(4, scale)) {
@@ -730,19 +791,9 @@ private struct StampHRWaveView: View {
     }
 
     private var waveCanvas: some View {
-        let series = data.hrSeries ?? defaultSeries
-        return Canvas { ctx, size in
-            guard series.count > 1 else { return }
-            var path = Path()
-            for (i, v) in series.enumerated() {
-                let x = size.width * CGFloat(i) / CGFloat(series.count - 1)
-                let y = size.height * (1.0 - v)
-                if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
-                else       { path.addLine(to: CGPoint(x: x, y: y)) }
-            }
-            ctx.stroke(path, with: .color(Color(hex: "FF2E2E")),
-                       style: StrokeStyle(lineWidth: max(1, sz(1.5, scale)), lineCap: .round, lineJoin: .round))
-        }
+        WaveLineShape(series: data.hrSeries ?? defaultSeries)
+            .stroke(Color(hex: "FF2E2E"),
+                    style: StrokeStyle(lineWidth: max(1, sz(1.5, scale)), lineCap: .round, lineJoin: .round))
     }
 
     // ECG 톱니 더미 파형
@@ -829,28 +880,11 @@ private struct StampElevProfileView: View {
 
     private var elevCanvas: some View {
         let series = data.elevSeries ?? defaultSeries
-        return Canvas { ctx, size in
-            guard series.count > 1 else { return }
-            let lime = Color(hex: "C6FF00")
-            var fill = Path()
-            fill.move(to: CGPoint(x: 0, y: size.height))
-            for (i, v) in series.enumerated() {
-                let x = size.width * CGFloat(i) / CGFloat(series.count - 1)
-                let y = size.height * (1.0 - v)
-                fill.addLine(to: CGPoint(x: x, y: y))
-            }
-            fill.addLine(to: CGPoint(x: size.width, y: size.height))
-            fill.closeSubpath()
-            ctx.fill(fill, with: .color(lime.opacity(0.18)))
-            var line = Path()
-            for (i, v) in series.enumerated() {
-                let x = size.width * CGFloat(i) / CGFloat(series.count - 1)
-                let y = size.height * (1.0 - v)
-                if i == 0 { line.move(to: CGPoint(x: x, y: y)) }
-                else       { line.addLine(to: CGPoint(x: x, y: y)) }
-            }
-            ctx.stroke(line, with: .color(lime),
-                       style: StrokeStyle(lineWidth: max(1, sz(1.5, scale)), lineCap: .round, lineJoin: .round))
+        let lime = Color(hex: "C6FF00")
+        return ZStack {
+            ElevFillShape(series: series).fill(lime.opacity(0.18))
+            ElevLineShape(series: series)
+                .stroke(lime, style: StrokeStyle(lineWidth: max(1, sz(1.5, scale)), lineCap: .round, lineJoin: .round))
         }
     }
 
@@ -896,18 +930,7 @@ private struct StampCadenceEqView: View {
     }
 
     private var eqCanvas: some View {
-        Canvas { ctx, size in
-            let count = barHeights.count
-            let totalGap = size.width * 0.4
-            let barW = (size.width - totalGap) / CGFloat(count)
-            let gap = totalGap / CGFloat(count - 1)
-            for i in 0..<count {
-                let x = CGFloat(i) * (barW + gap)
-                let h = size.height * barHeights[i]
-                let rect = CGRect(x: x, y: size.height - h, width: barW, height: h)
-                ctx.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(.white.opacity(0.82)))
-            }
-        }
+        EQBarShape(barHeights: barHeights).fill(Color.white.opacity(0.82))
     }
 }
 
