@@ -47,19 +47,41 @@ enum Theme {
     static let power = Color(hex: "A3E635")   // lime
     static let calories = Color.pink
     static let runningForm = Color.teal      // 러닝 다이내믹스 3종 (민트/청록 계열)
-    static let cadence = Color(hex: "5CE5D5") // 케이던스 (Apple Fitness 틸 계열)
+    static let cadence      = Color(hex: "5CE5D5") // 케이던스 (Apple Fitness 틸 계열)
+    static let strideLength  = Color(hex: "38BDF8") // 보폭 — 스카이블루
+    static let verticalOsc   = Color(hex: "C084FC") // 수직진폭 — 라벤더
+    static let elevationFill = Color(hex: "B98A3A") // 고도 채움 — 갈색
 
     /// HR 존 색상 (Z1..Z5) — 지도 경로, HR 차트, 카드 렌더러가 공유하는 팔레트.
     static let hrZoneColors: [Color] = [
-        Color(red: 0.30, green: 0.60, blue: 1.00),  // Z1 Blue
-        Color(red: 0.20, green: 0.85, blue: 0.85),  // Z2 Cyan
-        Color(red: 0.70, green: 1.00, blue: 0.10),  // Z3 Lime
-        Color(red: 1.00, green: 0.60, blue: 0.15),  // Z4 Orange
-        Color(red: 1.00, green: 0.30, blue: 0.55),  // Z5 Pink
+        Color(hex: "3B82F6"),  // Z1 Blue
+        Color(hex: "5CE5D5"),  // Z2 Cyan
+        Color(hex: "C6FF00"),  // Z3 Lime
+        Color(hex: "FF9A1F"),  // Z4 Orange
+        Color(hex: "FF2E6B"),  // Z5 Pink
     ]
 
     static func hrZoneColor(_ zoneID: Int) -> Color {
         hrZoneColors[min(max(zoneID - 1, 0), 4)]
     }
+}
+
+// MARK: - Chart-specific palette (RunCombinedChartView 전용)
+extension Theme {
+    static let chartPace     = Color(hex: "3DDCFF")  // 형광 시안
+    static let chartCadence  = Color(hex: "FFE83D")  // 형광 옐로
+    static let chartPower    = Color(hex: "B4FF3D")  // 형광 라임그린
+    static let chartElev     = Color(hex: "4DFF7A")  // 네온 그린 (고도 라인 + 그라디언트 fill)
+    static let chartElevFill = Color(hex: "4DFF7A")  // 고도 fill (chartElev 와 동일)
+    static let chartStride   = Color(hex: "FF8A3D")  // 붉은 주황 (케이던스 노랑과 분리)
+    static let chartVertOsc  = Color(hex: "E86BFF")  // 형광 퍼플 (Z5 레드와 구분)
+
+    static let chartHRZones: [Color] = [
+        Color(hex: "3D9BFF"),  // Z1 블루
+        Color(hex: "4DFFF0"),  // Z2 아쿠아
+        Color(hex: "B4FF3D"),  // Z3 라임
+        Color(hex: "FFB43D"),  // Z4 오렌지
+        Color(hex: "FF5247"),  // Z5 레드
+    ]
 }
 

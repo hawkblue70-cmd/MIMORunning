@@ -168,20 +168,21 @@ struct RunChartShareSheet: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 22)
 
-                    // (c) 레이어 칩 — data.availableLayers 만, RunCombinedPanelView 와 동일 디자인
-                    HStack(spacing: 6) {
-                        ForEach(data.availableLayers) { layer in
-                            ShareLayerChip(
-                                layer: layer,
-                                isOn: store.enabled.contains(layer)
-                            ) {
-                                store.toggle(layer)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    // (c) 레이어 칩 — 한 줄 가로 스크롤
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(data.availableLayers) { layer in
+                                ShareLayerChip(
+                                    layer: layer,
+                                    isOn: store.enabled.contains(layer)
+                                ) {
+                                    store.toggle(layer)
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
                             }
                         }
-                        Spacer(minLength: 0)
+                        .padding(.horizontal, 20)
                     }
-                    .padding(.horizontal, 20)
                     .padding(.top, 8)
 
                     Spacer()
@@ -244,7 +245,7 @@ struct RunChartShareSheet: View {
             weatherText: weatherText,
             dateText: dateText
         )
-        let renderer = ImageRenderer(content: card)
+        let renderer = ImageRenderer(content: card.preferredColorScheme(.dark))
         renderer.scale = 3
         renderer.proposedSize = ProposedViewSize(width: cardW, height: cardH)
         renderedImage = renderer.uiImage
@@ -270,6 +271,8 @@ private struct ShareLayerChip: View {
                 Text(layer.shortLabel)
                     .font(.system(size: 10.5))
                     .foregroundStyle(isOn ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -297,19 +300,19 @@ private struct ShareStatTile: View {
                     .frame(width: 6, height: 6)
                 Text(layer.shortLabel)
                     .font(.system(size: 9.5))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.white.opacity(0.50))
             }
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(layer.formatted(series.avgValue))
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.white)
                 Text(layer.unit)
                     .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.white.opacity(0.55))
             }
             Text("\(layer.formatted(series.minValue)) – \(layer.formatted(series.maxValue))")
                 .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.white.opacity(0.40))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 9)

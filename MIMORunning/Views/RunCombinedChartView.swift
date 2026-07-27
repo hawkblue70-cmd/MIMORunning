@@ -11,10 +11,10 @@ struct RunCombinedChartView: View {
 
     @State private var selectedKm: Double? = nil
 
-    private let padL: CGFloat = 6
+    private let padL: CGFloat = 26   // Z1–Z5 labels at x=0–22; plot starts at 26
     private let padR: CGFloat = 40   // reserved for right-side end-point labels
     private let padT: CGFloat = 16
-    private let padB: CGFloat = 18
+    private let padB: CGFloat = 48
 
     var body: some View {
         let activeLayers = data.availableLayers.filter { enabledLayers.contains($0) }
@@ -29,17 +29,16 @@ struct RunCombinedChartView: View {
                 )
                 ZStack(alignment: .topLeading) {
                     Canvas { ctx, _ in
-                        drawZoneBands(ctx: ctx, rect: rect, activeLayers: activeLayers)
                         drawWorkSegments(ctx: ctx, rect: rect)
+                        drawPaceColumns(ctx: ctx, rect: rect)
                         drawElevation(ctx: ctx, rect: rect, activeLayers: activeLayers)
-                        drawPaceBars(ctx: ctx, rect: rect)
                         drawLines(ctx: ctx, rect: rect, activeLayers: activeLayers)
                         drawFadeMarker(ctx: ctx, rect: rect)
                         drawEndLabels(ctx: ctx, rect: rect, activeLayers: activeLayers)
-                        drawPaceLabels(ctx: ctx, rect: rect)
+                        drawHRAxisLabels(ctx: ctx, rect: rect, activeLayers: activeLayers)
                         drawXAxis(ctx: ctx, rect: rect)
                         if let km = selectedKm {
-                            drawCrosshair(ctx: ctx, rect: rect, km: km)
+                            drawCrosshair(ctx: ctx, rect: rect, km: km, activeLayers: activeLayers)
                         }
                     }
                     .contentShape(Rectangle())
@@ -57,9 +56,6 @@ struct RunCombinedChartView: View {
                             }
                     )
 
-                    if let km = selectedKm {
-                        tooltipView(km: km, rect: rect, totalWidth: geo.size.width, activeLayers: activeLayers)
-                    }
                 }
             }
             .frame(height: chartHeight)
@@ -95,10 +91,65 @@ struct RunCombinedChartView: View {
         return rect.minY + CGFloat(t) * rect.height
     }
 
-    /// Line layers use their own band unless ≤2 line layers are active — then full height (0.08, 0.92).
-    private func lineBand(for layer: RunChartLayer, activeLayers: [RunChartLayer]) -> (top: Double, bottom: Double) {
-        let lineCount = activeLayers.filter { $0 != .pace && $0 != .elevation }.count
-        return lineCount <= 2 ? (0.08, 0.92) : layer.band
+    /// Returns 0-based zone index (0=Z1…4=Z5) for the given BPM, or -1 if no zone data.
+    private func zoneIndex(for bpm: Double) -> Int {
+        guard !data.hrZoneBands.isEmpty else { return -1 }
+        let sorted = data.hrZoneBands.sorted { $0.lowerBPM < $1.lowerBPM }
+        for band in sorted {
+            if bpm < Double(band.upperBPM) { return max(0, min(4, band.zone - 1)) }
+        }
+        return max(0, min(4, (sorted.last?.zone ?? 1) - 1))
+    }
+
+    /// Zone color for a BPM value; falls back to Theme.heartRate when zone data is absent.
+    private func zoneColor(for bpm: Double) -> Color {
+        let idx = zoneIndex(for: bpm)
+        return idx >= 0 ? Theme.chartHRZones[idx] : Theme.heartRate
+    }
+
+    /// Dynamic vertical bands. Layer order top→bottom: power → cadence → verticalOsc → strideLength.
+    /// HR active  : heartRate (0.04, 0.96); active line layers share 0.40–0.82 equally (gap 0.02).
+    /// HR inactive: active line layers share 0.10–0.82 equally (gap 0.02).
+    /// Elevation  : always (0.34, 1.00) — fill/overlap allowed.
+    private func bands(for activeLayers: [RunChartLayer]) -> [RunChartLayer: (top: Double, bottom: Double)] {
+        var result: [RunChartLayer: (top: Double, bottom: Double)] = [:]
+
+        let lineOrder: [RunChartLayer] = [.power, .cadence, .verticalOsc, .strideLength]
+        let activeLines = lineOrder.filter { activeLayers.contains($0) }
+
+        if activeLayers.contains(.heartRate) {
+            result[.heartRate] = (top: 0.04, bottom: 0.96)
+            if !activeLines.isEmpty {
+                let rangeStart = 0.40
+                let totalRange = 0.42   // 0.82 – 0.40
+                let gap        = 0.02
+                let n          = activeLines.count
+                let bandH      = n > 1
+                    ? (totalRange - gap * Double(n - 1)) / Double(n)
+                    : totalRange
+                for (i, layer) in activeLines.enumerated() {
+                    let top = rangeStart + Double(i) * (bandH + gap)
+                    result[layer] = (top: top, bottom: top + bandH)
+                }
+            }
+        } else {
+            if !activeLines.isEmpty {
+                let rangeStart = 0.10
+                let totalRange = 0.72   // 0.82 – 0.10
+                let gap        = 0.02
+                let n          = activeLines.count
+                let bandH      = n > 1
+                    ? (totalRange - gap * Double(n - 1)) / Double(n)
+                    : totalRange
+                for (i, layer) in activeLines.enumerated() {
+                    let top = rangeStart + Double(i) * (bandH + gap)
+                    result[layer] = (top: top, bottom: top + bandH)
+                }
+            }
+        }
+
+        result[.elevation] = (top: 0.34, bottom: 1.00)
+        return result
     }
 
     // MARK: - Catmull-Rom smooth path
@@ -117,10 +168,10 @@ struct RunCombinedChartView: View {
         for i in 1..<(pts.count - 2) {
             let p0 = pts[i - 1], p1 = pts[i], p2 = pts[i + 1]
             let p3 = pts[min(i + 2, pts.count - 1)]
-            let cp1 = CGPoint(x: p1.x + (p2.x - p0.x) / 6.0,
-                              y: p1.y + (p2.y - p0.y) / 6.0)
-            let cp2 = CGPoint(x: p2.x - (p3.x - p1.x) / 6.0,
-                              y: p2.y - (p3.y - p1.y) / 6.0)
+            let cp1 = CGPoint(x: p1.x + (p2.x - p0.x) / 4.5,
+                              y: p1.y + (p2.y - p0.y) / 4.5)
+            let cp2 = CGPoint(x: p2.x - (p3.x - p1.x) / 4.5,
+                              y: p2.y - (p3.y - p1.y) / 4.5)
             path.addCurve(to: p2, control1: cp1, control2: cp2)
         }
         return path
@@ -155,121 +206,254 @@ struct RunCombinedChartView: View {
         }
     }
 
-    // MARK: - HR zone bands (aligned to HR layer band)
-
-    private func drawZoneBands(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
-        guard !data.hrZoneBands.isEmpty, activeLayers.contains(.heartRate) else { return }
-        let range = data.hrMax - data.hrMin
-        guard range > 0 else { return }
-
-        let hrBand = lineBand(for: .heartRate, activeLayers: activeLayers)
-        for band in data.hrZoneBands {
-            let lo   = (Double(band.lowerBPM) - data.hrMin) / range
-            let hi   = (Double(band.upperBPM) - data.hrMin) / range
-            let yTop = yForBand(norm: hi, band: hrBand, in: rect)
-            let yBot = yForBand(norm: lo, band: hrBand, in: rect)
-            let h    = max(0, yBot - yTop)
-            let idx  = max(0, min(4, band.zone - 1))
-            ctx.fill(Path(CGRect(x: rect.minX, y: yTop, width: rect.width, height: h)),
-                     with: .color(Theme.hrZoneColors[idx].opacity(0.028)))
-            ctx.draw(
-                Text("Z\(band.zone)").font(.system(size: 6.5)).foregroundStyle(Color.secondary.opacity(0.5)),
-                at: CGPoint(x: rect.minX + 4, y: (yTop + yBot) / 2), anchor: .leading
-            )
-        }
-    }
-
-    // MARK: - Elevation fill (Catmull-Rom)
+    // MARK: - Elevation fill+line (neon green gradient fill)
 
     private func drawElevation(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
         guard enabledLayers.contains(.elevation),
               let series = data.series[.elevation], !series.isEmpty else { return }
 
-        let band  = RunChartLayer.elevation.band
+        let band  = bands(for: activeLayers)[.elevation] ?? (top: 0.34, bottom: 1.00)
         let cgPts = series.points.map { p in
             CGPoint(x: xFor(km: p.km, in: rect), y: yForBand(norm: p.norm, band: band, in: rect))
         }
+        let linePath = smoothPath(points: cgPts)
 
-        var curvePath = smoothPath(points: cgPts)
+        // Closed path for gradient fill
+        var fillPath = linePath
         if let last = cgPts.last, let first = cgPts.first {
-            curvePath.addLine(to: CGPoint(x: last.x,  y: rect.maxY))
-            curvePath.addLine(to: CGPoint(x: first.x, y: rect.maxY))
-            curvePath.closeSubpath()
+            fillPath.addLine(to: CGPoint(x: last.x,  y: rect.maxY))
+            fillPath.addLine(to: CGPoint(x: first.x, y: rect.maxY))
+            fillPath.closeSubpath()
         }
 
-        let opacity: Double
-        if let solo = soloLayer { opacity = (solo == .elevation) ? 0.20 : 0.04 }
-        else                    { opacity = RunChartLayer.elevation.opacity }
-        ctx.fill(curvePath, with: .color(Theme.elevation.opacity(opacity)))
-    }
+        let green = Theme.chartElev
+        // Gradient top anchor = highest elevation point (lowest Y on screen)
+        let topY = cgPts.map { $0.y }.min() ?? rect.minY
 
-    // MARK: - Pace bars
-
-    private func drawPaceBars(ctx: GraphicsContext, rect: CGRect) {
-        guard enabledLayers.contains(.pace),
-              let series = data.series[.pace], !series.isEmpty else { return }
-
-        let baseOp: Double      = soloLayer == nil ? 0.20 : (soloLayer == .pace ? 0.28 : 0.06)
-        let highlightOp: Double = soloLayer == nil ? 0.38 : (soloLayer == .pace ? 0.38 : 0.06)
-
-        let pts = series.points
-        for (i, p) in pts.enumerated() {
-            let leftKm  = i == 0             ? 0            : (pts[i-1].km + p.km) / 2
-            let rightKm = i == pts.count - 1 ? data.totalKm : (p.km + pts[i+1].km) / 2
-            let fullW   = xFor(km: rightKm, in: rect) - xFor(km: leftKm, in: rect)
-            let barW    = fullW * 0.62
-            let barH    = CGFloat(p.norm) * rect.height
-            let cx      = xFor(km: p.km, in: rect)
-            let barRect = CGRect(x: cx - barW / 2, y: rect.maxY - barH, width: barW, height: barH)
-            let op      = (i == series.minIndex || i == series.maxIndex) ? highlightOp : baseOp
-            ctx.fill(Path(roundedRect: barRect, cornerRadius: 1), with: .color(Theme.pace.opacity(op)))
+        if let solo = soloLayer, solo != .elevation {
+            // Faded when another layer is soloed
+            ctx.fill(fillPath, with: .color(green.opacity(0.04)))
+            ctx.stroke(linePath, with: .color(green.opacity(0.12)),
+                       style: StrokeStyle(lineWidth: 1.0, lineCap: .round, lineJoin: .round))
+        } else {
+            // Gradient fill: bright at peaks → transparent at baseline
+            ctx.fill(fillPath, with: .linearGradient(
+                Gradient(stops: [
+                    .init(color: green.opacity(0.42), location: 0.0),
+                    .init(color: green.opacity(0.16), location: 0.52),
+                    .init(color: green.opacity(0.00), location: 1.0)
+                ]),
+                startPoint: CGPoint(x: rect.midX, y: topY),
+                endPoint:   CGPoint(x: rect.midX, y: rect.maxY)
+            ))
+            // Neon green line on top
+            ctx.stroke(linePath, with: .color(green.opacity(0.95)),
+                       style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
         }
     }
 
-    // MARK: - Line layers (Catmull-Rom, band-aware, solo-aware)
+    // MARK: - Pace columns (time-proportional background)
+
+    private func drawPaceColumns(ctx: GraphicsContext, rect: CGRect) {
+        guard enabledLayers.contains(.pace), !data.paceColumns.isEmpty else { return }
+
+        let baseOp: Double = soloLayer == nil ? 0.14 : (soloLayer == .pace ? 0.24 : 0.05)
+        let inset: CGFloat = 0.40   // 40% margin on each side → 60% fill
+
+        for col in data.paceColumns {
+            let fullW = CGFloat(col.endX - col.startX) * rect.width
+            let w     = max(6, fullW * (1 - inset))
+            let x     = rect.minX + CGFloat(col.startX) * rect.width + (fullW - w) / 2
+
+            let h       = rect.height * CGFloat(0.20 + col.norm * 0.80)
+            let barRect = CGRect(x: x, y: rect.maxY - h, width: w, height: h)
+            let barPath = Path(roundedRect: barRect, cornerRadius: 2)
+            ctx.fill(barPath, with: .color(Theme.chartPace.opacity(baseOp)))
+            ctx.stroke(barPath, with: .color(Color.white.opacity(0.32)),
+                       style: StrokeStyle(lineWidth: 1.0))
+
+            // Label centred under column; skip if too narrow
+            if w >= 14 {
+                ctx.draw(
+                    Text(col.label)
+                        .font(.system(size: 8.5, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(1.0)),
+                    at: CGPoint(x: x + w / 2, y: rect.maxY + 3),
+                    anchor: .top
+                )
+            }
+        }
+    }
+
+    // MARK: - Line layers (HR: zone-colored segments; others: single-color smooth line)
 
     private func drawLines(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
-        for layer in [RunChartLayer.heartRate, .cadence, .power] {
-            guard activeLayers.contains(layer),
-                  let series = data.series[layer], !series.isEmpty else { continue }
+        let bandMap = bands(for: activeLayers)
 
-            let band  = lineBand(for: layer, activeLayers: activeLayers)
+        // Non-HR layers: bottom→top order, each with black casing then colour line
+        for layer in [RunChartLayer.strideLength, .verticalOsc, .cadence, .power] {
+            guard activeLayers.contains(layer),
+                  let series = data.series[layer], !series.isEmpty,
+                  let band   = bandMap[layer] else { continue }
+
             let cgPts = series.points.map { p in
                 CGPoint(x: xFor(km: p.km, in: rect), y: yForBand(norm: p.norm, band: band, in: rect))
             }
-            let path  = smoothPath(points: cgPts)
+            let path = smoothPath(points: cgPts)
 
             let effectiveOp: Double
             if let solo = soloLayer { effectiveOp = (layer == solo) ? 1.0 : 0.15 }
             else                    { effectiveOp = layer.opacity }
 
             if case .line(let w) = layer.drawStyle {
+                // Casing: black outline drawn first
+                ctx.stroke(path, with: .color(.black.opacity(0.85)),
+                           style: StrokeStyle(lineWidth: w + 2.4, lineCap: .round, lineJoin: .round))
+                // Colour line on top
                 ctx.stroke(path, with: .color(layer.color.opacity(effectiveOp)),
                            style: StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round))
             }
         }
+
+        // HR drawn last (on top): zone-coloured with casing
+        if activeLayers.contains(.heartRate),
+           let series = data.series[.heartRate], !series.isEmpty,
+           let band = bandMap[.heartRate] {
+            let op: Double = soloLayer == nil ? 1.0 : (soloLayer == .heartRate ? 1.0 : 0.15)
+            drawHRSegments(ctx: ctx, rect: rect, series: series, band: band, opacity: op)
+        }
     }
 
-    // MARK: - Right-side end-point value labels
+    /// Draws the HR line as Catmull-Rom segments coloured by heart-rate zone.
+    /// Two-pass: all casings first, then all colour lines — clean zone transitions.
+    private func drawHRSegments(ctx: GraphicsContext, rect: CGRect,
+                                 series: RunChartSeries,
+                                 band: (top: Double, bottom: Double),
+                                 opacity: Double) {
+        let pts = series.points
+        guard pts.count >= 2 else { return }
 
-    private func drawEndLabels(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
-        let lineLayers = [RunChartLayer.heartRate, .cadence, .power].filter { activeLayers.contains($0) }
-        guard !lineLayers.isEmpty else { return }
+        let cgPts = pts.map { p -> CGPoint in
+            CGPoint(x: xFor(km: p.km, in: rect), y: yForBand(norm: p.norm, band: band, in: rect))
+        }
+        let padded = [cgPts[0]] + cgPts + [cgPts[cgPts.count - 1]]
 
-        struct Slot { let layer: RunChartLayer; let text: String; var y: CGFloat }
+        // Collect zone-coloured path segments
+        var zonePaths: [(path: Path, zone: Int)] = []
+        var currentZone: Int = Int.min
+        var currentPath = Path()
+        var hasPath = false
 
-        var slots: [Slot] = lineLayers.compactMap { layer in
-            guard let series = data.series[layer], !series.isEmpty,
-                  let lastPt = series.points.last else { return nil }
-            let band = lineBand(for: layer, activeLayers: activeLayers)
-            return Slot(layer: layer,
-                        text: layer.formatted(series.lastValue),
-                        y: yForBand(norm: lastPt.norm, band: band, in: rect))
+        func flush() {
+            guard hasPath else { return }
+            zonePaths.append((path: currentPath, zone: currentZone))
+            currentPath = Path()
+            hasPath = false
         }
 
-        // Sort top-to-bottom, nudge overlapping labels downward
+        for i in 0..<(pts.count - 1) {
+            let midBPM = (pts[i].value + pts[i + 1].value) / 2
+            let segZone = zoneIndex(for: midBPM)
+            let p0 = padded[i], p1 = padded[i + 1], p2 = padded[i + 2], p3 = padded[i + 3]
+            let cp1 = CGPoint(x: p1.x + (p2.x - p0.x) / 4.5, y: p1.y + (p2.y - p0.y) / 4.5)
+            let cp2 = CGPoint(x: p2.x - (p3.x - p1.x) / 4.5, y: p2.y - (p3.y - p1.y) / 4.5)
+            if segZone != currentZone {
+                flush()
+                currentZone = segZone
+                currentPath.move(to: p1)
+                hasPath = true
+            }
+            currentPath.addCurve(to: p2, control1: cp1, control2: cp2)
+        }
+        flush()
+
+        // Pass 1: all casings (thick black, drawn first)
+        for (path, _) in zonePaths {
+            ctx.stroke(path, with: .color(.black.opacity(0.85)),
+                       style: StrokeStyle(lineWidth: 2.6 + 3.0, lineCap: .round, lineJoin: .round))
+        }
+        // Pass 2: all coloured lines on top
+        for (path, zone) in zonePaths {
+            let c = zone >= 0 ? Theme.chartHRZones[zone] : Theme.heartRate
+            ctx.stroke(path, with: .color(c.opacity(opacity)),
+                       style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
+        }
+
+        // Zone transition tick marks — only when transitions are rare (≤ 3)
+        var transitions: [(x: CGFloat, zone: Int)] = []
+        for i in 0..<(pts.count - 2) {
+            let z1 = zoneIndex(for: (pts[i].value + pts[i + 1].value) / 2)
+            let z2 = zoneIndex(for: (pts[i + 1].value + pts[i + 2].value) / 2)
+            if z1 != z2, z2 >= 0 {
+                transitions.append((x: cgPts[i + 1].x, zone: z2))
+            }
+        }
+        if transitions.count <= 3 {
+            let tickBase = yForBand(norm: 0.0, band: band, in: rect)
+            for (x, zone) in transitions {
+                let col = Theme.chartHRZones[zone]
+                var tick = Path()
+                tick.move(to:    CGPoint(x: x, y: tickBase - 4))
+                tick.addLine(to: CGPoint(x: x, y: tickBase))
+                ctx.stroke(tick, with: .color(col.opacity(0.5 * opacity)),
+                           style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            }
+        }
+
+        // Data dots — zone-coloured with black outer circle (5 equidistant)
+        guard cgPts.count >= 2 else { return }
+        let dotCount = min(5, cgPts.count)
+        let outerR: CGFloat = 3.0
+        let innerR: CGFloat = 2.4
+        let indices = dotCount <= 1 ? [0] : (0..<dotCount).map { j in
+            Int(Double(j) / Double(dotCount - 1) * Double(cgPts.count - 1))
+        }
+        for idx in indices {
+            let pt  = cgPts[idx]
+            let col = zoneColor(for: pts[idx].value)
+            // Black backing
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: pt.x - outerR, y: pt.y - outerR,
+                                       width: outerR * 2, height: outerR * 2)),
+                with: .color(.black.opacity(opacity))
+            )
+            // Zone colour fill
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: pt.x - innerR, y: pt.y - innerR,
+                                       width: innerR * 2, height: innerR * 2)),
+                with: .color(col.opacity(opacity))
+            )
+        }
+    }
+
+    // MARK: - Right-side end-point value labels (line layers + elevation)
+
+    private func drawEndLabels(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
+        var labelLayers = [RunChartLayer.heartRate, .cadence, .power, .strideLength, .verticalOsc]
+            .filter { activeLayers.contains($0) }
+        if activeLayers.contains(.elevation) { labelLayers.append(.elevation) }
+        guard !labelLayers.isEmpty else { return }
+
+        let bandMap = bands(for: activeLayers)
+        struct Slot { let text: String; var y: CGFloat; let color: Color }
+
+        var slots: [Slot] = labelLayers.compactMap { layer in
+            guard let series = data.series[layer], !series.isEmpty,
+                  let lastPt = series.points.last,
+                  let band   = bandMap[layer] else { return nil }
+            let text = (layer == .elevation)
+                ? "\(Int(series.lastValue.rounded()))m"
+                : layer.formatted(series.lastValue)
+            let y: CGFloat = yForBand(norm: lastPt.norm, band: band, in: rect)
+            let color: Color = (layer == .heartRate)
+                ? zoneColor(for: series.lastValue)
+                : layer.color
+            return Slot(text: text, y: y, color: color)
+        }
+
+        // Sort top-to-bottom, nudge overlapping labels downward (11pt minimum gap)
         slots.sort { $0.y < $1.y }
-        let minGap: CGFloat = 10
+        let minGap: CGFloat = 11
         for i in 1..<slots.count {
             if slots[i].y - slots[i-1].y < minGap {
                 slots[i].y = slots[i-1].y + minGap
@@ -279,40 +463,36 @@ struct RunCombinedChartView: View {
         let labelX = rect.maxX + 4
         for slot in slots {
             ctx.draw(
-                Text(slot.text).font(.system(size: 8, weight: .medium)).foregroundStyle(slot.layer.color),
+                Text(slot.text).font(.system(size: 8, weight: .medium)).foregroundStyle(slot.color),
                 at: CGPoint(x: labelX, y: slot.y), anchor: .leading
             )
         }
     }
 
-    // MARK: - Pace fastest / slowest labels
+    // MARK: - HR axis labels (left gutter, two ticks only)
 
-    private func drawPaceLabels(ctx: GraphicsContext, rect: CGRect) {
-        guard enabledLayers.contains(.pace),
-              let series = data.series[.pace], !series.isEmpty else { return }
-
-        let pts = series.points
-        func draw(index: Int?, label: String, color: Color) {
-            guard let idx = index, idx < pts.count else { return }
-            let p  = pts[idx]
-            let cx = max(rect.minX + 12, min(rect.maxX - 12, xFor(km: p.km, in: rect)))
-            ctx.draw(
-                Text("\(RunChartLayer.pace.formatted(p.value)) \(label)")
-                    .font(.system(size: 8, weight: .medium)).foregroundStyle(color),
-                at: CGPoint(x: cx, y: rect.maxY - CGFloat(p.norm) * rect.height - 3),
-                anchor: .bottom
-            )
-        }
-        draw(index: series.minIndex, label: "최고", color: Theme.pace)
-        draw(index: series.maxIndex, label: "최저", color: .orange)
+    private func drawHRAxisLabels(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
+        guard activeLayers.contains(.heartRate),
+              let hrSeries = data.series[.heartRate] else { return }
+        let bandMap = bands(for: activeLayers)
+        guard let hrBand = bandMap[.heartRate] else { return }
+        let axisStyle = Color.white.opacity(0.85)
+        ctx.draw(
+            Text("\(Int(hrSeries.maxValue.rounded()))").font(.system(size: 7.5)).foregroundStyle(axisStyle),
+            at: CGPoint(x: 22, y: yForBand(norm: 1.0, band: hrBand, in: rect)), anchor: .trailing
+        )
+        ctx.draw(
+            Text("\(Int(hrSeries.minValue.rounded()))").font(.system(size: 7.5)).foregroundStyle(axisStyle),
+            at: CGPoint(x: 22, y: yForBand(norm: 0.0, band: hrBand, in: rect)), anchor: .trailing
+        )
     }
 
-    // MARK: - X axis ticks
+    // MARK: - X axis ticks (time row above, distance row below)
 
     private func drawXAxis(ctx: GraphicsContext, rect: CGRect) {
         guard data.totalKm > 0 else { return }
         let km = data.totalKm
-        func label(_ v: Double) -> String {
+        func distLabel(_ v: Double) -> String {
             if v == 0 { return "0" }
             let r = v.rounded()
             return v == r ? "\(Int(r))km" : String(format: "%.1fkm", v)
@@ -323,54 +503,170 @@ struct RunCombinedChartView: View {
             (km,     .topTrailing)
         ]
         for tick in ticks {
+            let x = xFor(km: tick.km, in: rect)
+            // Time row — pace labels occupy +3..+13, time starts at +16
             ctx.draw(
-                Text(label(tick.km)).font(.system(size: 7)).foregroundStyle(Color.secondary),
-                at: CGPoint(x: xFor(km: tick.km, in: rect), y: rect.maxY + 4),
+                Text(formatElapsed(elapsedTime(atKm: tick.km)))
+                    .font(.system(size: 8))
+                    .foregroundStyle(Color.white.opacity(0.72)),
+                at: CGPoint(x: x, y: rect.maxY + 16),
+                anchor: tick.anchor
+            )
+            // Distance row — below time row
+            ctx.draw(
+                Text(distLabel(tick.km))
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(1.0)),
+                at: CGPoint(x: x, y: rect.maxY + 27),
                 anchor: tick.anchor
             )
         }
     }
 
-    // MARK: - Crosshair
+    /// Interpolates elapsed time (seconds) at the given km position using paceColumns.
+    private func elapsedTime(atKm km: Double) -> TimeInterval {
+        guard data.totalKm > 0 else { return 0 }
+        if km <= 0 { return 0 }
+        if km >= data.totalKm { return data.totalDuration }
 
-    private func drawCrosshair(ctx: GraphicsContext, rect: CGRect, km: Double) {
-        let x = xFor(km: km, in: rect)
-        var path = Path()
-        path.move(to: CGPoint(x: x, y: rect.minY))
-        path.addLine(to: CGPoint(x: x, y: rect.maxY))
-        ctx.stroke(path, with: .color(Color.white.opacity(0.25)), lineWidth: 1)
-    }
-
-    // MARK: - Tooltip
-
-    @ViewBuilder
-    private func tooltipView(
-        km: Double, rect: CGRect, totalWidth: CGFloat, activeLayers: [RunChartLayer]
-    ) -> some View {
-        let tipW: CGFloat = 126
-        let rawX     = xFor(km: km, in: rect)
-        let leftEdge = max(padL, min(totalWidth - padR - tipW, rawX - tipW / 2))
-
-        VStack(alignment: .leading, spacing: 3) {
-            Text(String(format: "%.1fkm", km))
-                .font(.system(size: 9, weight: .semibold)).foregroundStyle(.white)
-            ForEach(activeLayers, id: \.id) { layer in
-                if let val = nearestValue(km: km, layer: layer) {
-                    HStack(spacing: 4) {
-                        Circle().fill(layer.color).frame(width: 6, height: 6)
-                        Text("\(layer.shortLabel) \(layer.formatted(val)) \(layer.unit)")
-                            .font(.system(size: 8))
-                            .foregroundStyle(Color.white.opacity(0.85))
-                            .lineLimit(1)
-                    }
-                }
+        // Accurate path: interpolate within pace columns
+        if !data.paceColumns.isEmpty, data.totalDuration > 0 {
+            for col in data.paceColumns {
+                guard km >= col.startKm, km <= col.endKm else { continue }
+                let span = col.endKm - col.startKm
+                let frac = span > 0 ? (km - col.startKm) / span : 0.0
+                return (col.startX + frac * (col.endX - col.startX)) * data.totalDuration
             }
         }
-        .padding(8)
-        .frame(width: tipW, alignment: .leading)
-        .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .offset(x: leftEdge, y: padT)
-        .allowsHitTesting(false)
+
+        // Fallback: linear interpolation
+        guard data.totalDuration > 0 else { return 0 }
+        return km / data.totalKm * data.totalDuration
+    }
+
+    /// Formats seconds as "M:SS" or "H:MM:SS".
+    private func formatElapsed(_ seconds: TimeInterval) -> String {
+        let s = Int(seconds.rounded())
+        let h = s / 3600
+        let m = (s % 3600) / 60
+        let sec = s % 60
+        return h > 0
+            ? String(format: "%d:%02d:%02d", h, m, sec)
+            : String(format: "%d:%02d", m, sec)
+    }
+
+    // MARK: - Crosshair with inline labels
+
+    private func drawCrosshair(ctx: GraphicsContext, rect: CGRect, km: Double, activeLayers: [RunChartLayer]) {
+        let x = xFor(km: km, in: rect)
+        let goLeft = x > rect.midX   // labels sit on the opposite side from where the finger is
+
+        // Vertical line
+        var linePath = Path()
+        linePath.move(to: CGPoint(x: x, y: rect.minY))
+        linePath.addLine(to: CGPoint(x: x, y: rect.maxY))
+        ctx.stroke(linePath, with: .color(.white.opacity(0.60)),
+                   style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+
+        // Header: km · elapsed
+        let elapsed  = elapsedTime(atKm: km)
+        let hdrText  = String(format: "%.1fkm · %@", km, formatElapsed(elapsed))
+        let hdrX: CGFloat = goLeft ? x - 6 : x + 6
+        ctx.draw(
+            Text(hdrText)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.95)),
+            at: CGPoint(x: hdrX, y: rect.minY + 1),
+            anchor: goLeft ? .topTrailing : .topLeading
+        )
+
+        // Inline dots + labels for line layers
+        let bandMap  = bands(for: activeLayers)
+        let labelX: CGFloat = goLeft ? x - 7 : x + 7
+        let labelAnchor: UnitPoint = goLeft ? .trailing : .leading
+
+        struct Slot {
+            var y: CGFloat
+            let text: String
+            let color: Color
+            let hasDot: Bool
+        }
+
+        var slots: [Slot] = []
+
+        // Pace: label near the pace bar area (bottom of chart), no dot
+        if activeLayers.contains(.pace),
+           let paceVal = nearestValue(km: km, layer: .pace) {
+            let text = "\(RunChartLayer.pace.formatted(paceVal)) /km"
+            slots.append(Slot(y: rect.maxY - 8, text: text, color: Theme.chartPace, hasDot: false))
+        }
+
+        // Line layers: dot at intersection height + label
+        let lineOrder: [RunChartLayer] = [.heartRate, .power, .cadence, .verticalOsc, .strideLength]
+        for layer in lineOrder {
+            guard activeLayers.contains(layer),
+                  let series = data.series[layer], !series.isEmpty,
+                  let band   = bandMap[layer],
+                  let pt     = series.points.min(by: { abs($0.km - km) < abs($1.km - km) })
+            else { continue }
+
+            let y       = yForBand(norm: pt.norm, band: band, in: rect)
+            let dotCol  = (layer == .heartRate) ? zoneColor(for: pt.value) : layer.color
+            let text    = "\(layer.formatted(pt.value)) \(layer.unit)"
+            slots.append(Slot(y: y, text: text, color: dotCol, hasDot: true))
+        }
+
+        // Elevation: dot + label
+        if activeLayers.contains(.elevation),
+           let series = data.series[.elevation], !series.isEmpty,
+           let band   = bandMap[.elevation],
+           let pt     = series.points.min(by: { abs($0.km - km) < abs($1.km - km) }) {
+            let y    = yForBand(norm: pt.norm, band: band, in: rect)
+            let text = "\(Int(pt.value.rounded())) m"
+            slots.append(Slot(y: y, text: text, color: Theme.chartElev, hasDot: true))
+        }
+
+        // Sort top → bottom, then nudge overlapping slots apart
+        slots.sort { $0.y < $1.y }
+        let minGap: CGFloat = 12
+        for i in 1..<slots.count {
+            if slots[i].y - slots[i-1].y < minGap {
+                slots[i].y = slots[i-1].y + minGap
+            }
+        }
+        // Reverse pass prevents overflow at bottom
+        for i in stride(from: slots.count - 2, through: 0, by: -1) {
+            if slots[i+1].y - slots[i].y < minGap {
+                slots[i].y = slots[i+1].y - minGap
+            }
+        }
+        // Clamp to chart area
+        for i in 0..<slots.count {
+            slots[i].y = max(rect.minY + 14, min(rect.maxY - 4, slots[i].y))
+        }
+
+        // Draw dots first (layer behind labels)
+        for slot in slots where slot.hasDot {
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: x - 4, y: slot.y - 4, width: 8, height: 8)),
+                with: .color(.black.opacity(0.9))
+            )
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: x - 3, y: slot.y - 3, width: 6, height: 6)),
+                with: .color(slot.color)
+            )
+        }
+
+        // Draw labels
+        for slot in slots {
+            ctx.draw(
+                Text(slot.text)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(slot.color),
+                at: CGPoint(x: labelX, y: slot.y),
+                anchor: labelAnchor
+            )
+        }
     }
 
     private func nearestValue(km: Double, layer: RunChartLayer) -> Double? {
