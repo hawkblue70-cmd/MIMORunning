@@ -492,7 +492,7 @@ struct StampVisualPickerSheet: View {
             GeometryReader { geo in
                 let hPad: CGFloat = 16
                 let gap:  CGFloat = 12
-                let cellW = (geo.size.width - hPad * 2 - gap) / 2
+                let cellW = max(0, (geo.size.width - hPad * 2 - gap) / 2)
                 let cellH = cellW * (naturalH / naturalW)
                 let scale = cellW / naturalW
 
