@@ -1,5 +1,25 @@
 import SwiftUI
 
+// MARK: - Category Localization
+
+extension InsightCategory {
+    var localizedLabel: String {
+        let L = AppLanguage.shared
+        switch self {
+        case .cardio:          return L.s("심폐 컨디션",    "Cardio")
+        case .intensity:       return L.s("강도 · 페이스",  "Intensity")
+        case .form:            return L.s("주법",           "Form")
+        case .endurance:       return L.s("지구력 · 후반부","Endurance")
+        case .efficiency:      return L.s("심박 효율",      "Efficiency")
+        case .environment:     return L.s("환경",           "Environment")
+        case .load:            return L.s("훈련량",         "Load")
+        case .intervalQuality: return L.s("인터벌 수행",    "Intervals")
+        case .recovery:        return L.s("회복",           "Recovery")
+        case .fadeCause:       return L.s("후반 감속 원인", "Fade Cause")
+        }
+    }
+}
+
 // MARK: - Category Icon
 
 extension InsightCategory {
@@ -10,8 +30,11 @@ extension InsightCategory {
         case .form:        return "figure.run"
         case .endurance:   return "chart.line.uptrend.xyaxis"
         case .efficiency:  return "bolt.heart"
-        case .environment: return "thermometer.medium"
-        case .load:        return "calendar"
+        case .environment:     return "thermometer.medium"
+        case .load:            return "calendar"
+        case .intervalQuality: return "repeat"
+        case .recovery:        return "arrow.down.heart"
+        case .fadeCause:       return "arrow.down.right.circle"
         }
     }
 }
@@ -40,7 +63,7 @@ struct RunInsightCard: View {
                 Image(systemName: insight.category.icon)
                     .font(.system(size: 13))
                     .foregroundStyle(insight.tone.color)
-                Text(insight.category.rawValue)
+                Text(insight.category.localizedLabel)
                     .font(.system(size: 12, weight: .medium))
                 Spacer()
                 Text(insight.badge)
@@ -79,14 +102,25 @@ struct RunInsightCard: View {
 
 struct RunInsightSection: View {
     let insights: [RunInsight]
+    var workoutTypeLabel: String? = nil
+    var isAutoDetected: Bool = false
 
     var body: some View {
         if !insights.isEmpty {
             let L = AppLanguage.shared
             VStack(alignment: .leading, spacing: 8) {
-                Text(L.s("오늘의 러닝", "Today's Run"))
-                    .font(.system(size: 13, weight: .medium))
-                    .padding(.horizontal, 16)
+                HStack(spacing: 6) {
+                    let base  = L.s("오늘의 러닝", "Today's Run")
+                    let title = workoutTypeLabel.map { "\(base) · \($0)" } ?? base
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                    if isAutoDetected {
+                        Text(L.s("자동 감지", "Auto-detected"))
+                            .font(.system(size: 9))
+                            .foregroundStyle(Color.secondary)
+                    }
+                }
+                .padding(.horizontal, 16)
 
                 VStack(spacing: 8) {
                     ForEach(insights) { insight in
@@ -97,8 +131,8 @@ struct RunInsightSection: View {
 
                 // 면책 문구 — 반드시 포함
                 Text(L.s(
-                    "참고용 피트니스 인사이트입니다. 연령대 평균과 추정 최대심박은 개인차가 큰 추정치이며 의학적 판단이 아니에요.",
-                    "Reference-only fitness insights. Age-group norms and estimated max HR are rough estimates with high individual variation and are not medical advice."
+                    "참고용 피트니스 인사이트입니다. 연령대 평균과 추정 최대심박은 개인차가 큰 추정치이며 의학적 판단이 아니에요. 유산소 피트니스 기준은 FRIEND(Fitness Registry and Importance of Exercise National Database)를 따릅니다.",
+                    "Reference-only fitness insights. Age-group norms and estimated max HR are rough estimates with high individual variation and are not medical advice. Cardio fitness norms follow FRIEND (Fitness Registry and Importance of Exercise National Database)."
                 ))
                 .font(.system(size: 9.5))
                 .foregroundStyle(Color.secondary)

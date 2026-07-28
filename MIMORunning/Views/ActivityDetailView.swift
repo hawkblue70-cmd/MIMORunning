@@ -11,6 +11,7 @@ import ImagePlayground
 // MARK: - Detail Panel
 
 enum DetailPanel: String, CaseIterable {
+    case combined            = "종합"
     case map                 = "경로"
     case splits              = "스플릿"
     case heartRate           = "심박수"
@@ -26,6 +27,7 @@ enum DetailPanel: String, CaseIterable {
         let L = AppLanguage.shared
         return switch self {
         case .map:                  L.s("경로",     "Route")
+        case .combined:             L.s("종합",     "Combined")
         case .splits:               L.s("스플릿",   "Splits")
         case .heartRate:            L.s("심박수",   "HR")
         case .cadence:              L.s("케이던스", "Cadence")
@@ -41,6 +43,7 @@ enum DetailPanel: String, CaseIterable {
     var icon: String {
         switch self {
         case .map:                  return "map.fill"
+        case .combined:             return "chart.xyaxis.line"
         case .splits:               return "chart.bar.fill"
         case .heartRate:            return "heart.fill"
         case .cadence:              return "figure.run"
@@ -68,7 +71,8 @@ struct ActivityDetailView: View {
     @State private var raceSuggestion: RaceSuggestion?
     @State private var showManualRaceEntry = false
     @State private var showPanelShareCard = false
-    @State private var activePanel: DetailPanel = .map
+    @State private var showChartShare = false
+    @State private var activePanel: DetailPanel = .combined
     @State private var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var hrFetchDone = false
     /// 비동기 computeHRZonesForDate 결과 전용 상태. detail?.hrZones보다 우선.
@@ -78,7 +82,14 @@ struct ActivityDetailView: View {
     @State private var panelSeriesCache: [DetailPanel: [(offset: TimeInterval, value: Double)]] = [:]
     @State private var isLoadingPanelSeries = false
     @State private var hillMatch: HillMatch?
+    @State private var chartData: RunChartData = .empty
+    @State private var isLoadingChart = false
+    @State private var runInsights: [RunInsight] = []
+    @State private var runSegmentSource: RunSegmentSource = .none
+    @State private var runFadeStartKm: Double? = nil
     @Environment(RaceDetector.self) private var raceDetector
+    @Query private var panelAllStories: [WorkoutStory]
+    @Query private var panelAllShoes: [Shoe]
     @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
 
     private var level: LevelBucket { manager.userLevel.bucket }
@@ -106,6 +117,33 @@ struct ActivityDetailView: View {
     private var isDismissedRace: Bool {
         guard activity.type == .running, !isLoadingDetail else { return false }
         return raceDetector.matchFor(activityID: activity.id)?.isDismissed == true
+    }
+
+    private var panelShoeText: String? {
+        let wid = activity.id.uuidString
+        guard let sid = panelAllStories.first(where: { $0.workoutID == wid })?.shoeID else { return nil }
+        return panelAllShoes.first { $0.id.uuidString == sid }?.displayName
+    }
+
+    private var panelDateText: String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: AppLanguage.shared.s("ko_KR", "en_US"))
+        df.dateFormat = AppLanguage.shared.s("yyyy. M. d", "MMM d, yyyy")
+        return df.string(from: activity.date)
+    }
+
+    private var panelWeekdayText: String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: AppLanguage.shared.s("ko_KR", "en_US"))
+        df.dateFormat = "EEEE"
+        return df.string(from: activity.date)
+    }
+
+    private var panelTimeText: String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: AppLanguage.shared.s("ko_KR", "en_US"))
+        df.dateFormat = AppLanguage.shared.s("a h:mm", "h:mm a")
+        return df.string(from: activity.date)
     }
 
     var body: some View {
@@ -148,6 +186,13 @@ struct ActivityDetailView: View {
                     StorySection(workoutID: activity.id.uuidString)
                     panelShareHeader
                     panelSection
+                    if activePanel == .combined {
+                        RunInsightSection(
+                            insights: runInsights,
+                            workoutTypeLabel: detail?.workoutType.koreanLabel,
+                            isAutoDetected: runSegmentSource == .detected
+                        )
+                    }
                     panelChipRow
                     if showRaceBanner {
                         RaceDetectionBanner(
@@ -264,6 +309,19 @@ struct ActivityDetailView: View {
                 condition: condition
             )
         }
+        .sheet(isPresented: $showChartShare) {
+            RunChartShareSheet(
+                data: chartData,
+                distanceText: activity.formattedDistance,
+                durationText: activity.formattedDuration,
+                weatherText: activity.weatherBadgeText,
+                weatherIcon: condition?.weather?.systemIcon,
+                dateText: panelDateText,
+                weekdayText: panelWeekdayText,
+                startTimeText: panelTimeText,
+                shoeText: panelShoeText
+            )
+        }
         .onChange(of: activePanel) { _, newPanel in
             if newPanel == .heartRate, !hrFetchDone {
                 Task {
@@ -280,6 +338,8 @@ struct ActivityDetailView: View {
                 }
             }
             switch newPanel {
+            case .combined:
+                Task { await loadCombinedChart() }
             case .cadence, .power, .groundContact, .strideLength, .verticalOscillation:
                 // synchronous cache hit — no Task, no frame delay
                 if let cached = panelSeriesCache[newPanel] {
@@ -299,6 +359,8 @@ struct ActivityDetailView: View {
             guard activity.type == .running else {
                 detail = await manager.fetchDetail(for: activity.id)
                 isLoadingDetail = false
+                loadInsights()
+                Task { await loadCombinedChart() }
                 return
             }
 
@@ -311,6 +373,8 @@ struct ActivityDetailView: View {
             // Fetch detail regardless (route map, splits, hill annotation)
             detail = await manager.fetchDetail(for: activity.id)
             isLoadingDetail = false
+            loadInsights()
+            Task { await loadCombinedChart() }
 
             // 존 분포: detail?.hrZones 우선, 없으면 HR 시리즈로 비동기 재계산 → displayZones
             isComputingZones = true
@@ -411,6 +475,29 @@ struct ActivityDetailView: View {
                 withAnimation(.easeInOut(duration: 0.4)) { insight = aiResult }
             }
         }
+        .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
+            Task {
+                let lang = AppLanguage.shared.isEnglish ? "en" : "ko"
+                if let cached = await InsightCache.shared.result(for: activity.id, isRefined: true, language: lang) {
+                    withAnimation { insight = cached }
+                } else if activity.type == .running {
+                    let result = await InsightEngine.computeBackground(
+                        activity: activity, history: manager.activities, level: level,
+                        workoutType: detail?.workoutType ?? .general,
+                        splits: detail?.splits ?? [],
+                        intervalSegments: detail?.intervalSegments ?? [],
+                        condition: condition,
+                        raceMatch: raceDetector.matchFor(activityID: activity.id),
+                        detail: detail,
+                        historyComplete: manager.isHistoryLoadComplete
+                    )
+                    await InsightCache.shared.cache(result, for: activity.id, isRefined: true, language: lang)
+                    withAnimation { insight = result }
+                }
+                runInsights = []
+                loadInsights()
+            }
+        }
     }
 
     private var userAge: Int? {
@@ -501,11 +588,57 @@ struct ActivityDetailView: View {
         isLoadingPanelSeries = false
     }
 
+    private func loadInsights() {
+        guard runInsights.isEmpty else { return }
+        let result = RunInsightEngine.insights(
+            for: activity,
+            detail: detail,
+            history: manager.activities,
+            age: userAge,
+            isMale: manager.userIsMale,
+            restingHR: manager.restingHeartRate,
+            hrSamples: hrSamples
+        )
+        runInsights = result.insights
+        runSegmentSource = result.segmentSource
+        runFadeStartKm = result.fadeStartKm
+    }
+
+    private func loadCombinedChart() async {
+        guard chartData.availableLayers.isEmpty, !isLoadingChart else { return }
+        isLoadingChart = true
+        defer { isLoadingChart = false }
+
+        async let hr     = manager.fetchHRTimeSeries(for: activity.id)
+        async let cad    = manager.fetchCadenceTimeSeries(for: activity.id)
+        async let pow    = manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                          identifier: .runningPower,
+                                                          unit: .watt())
+        async let stride = manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                          identifier: .runningStrideLength,
+                                                          unit: .meter())
+        async let vosc   = manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                          identifier: .runningVerticalOscillation,
+                                                          unit: HKUnit.meterUnit(with: .centi))
+        let (h, c, p, s, v) = await (hr, cad, pow, stride, vosc)
+        chartData = RunChartBuilder.build(
+            activity: activity,
+            detail: detail,
+            hrSamples: h,
+            cadenceSamples: c,
+            powerSamples: p,
+            strideSamples: s,
+            vertOscSamples: v,
+            fadeStartKm: runFadeStartKm
+        )
+    }
+
     // MARK: - Panel availability
 
     private func isAvailable(_ panel: DetailPanel) -> Bool {
         guard !isLoadingDetail else { return false }
         switch panel {
+        case .combined:             return true
         case .map:                  return !(detail?.routeCoordinates ?? []).isEmpty
         case .splits:               return !(detail?.splits ?? []).isEmpty
         case .heartRate:            return activity.avgHeartRate != nil
@@ -546,6 +679,8 @@ struct ActivityDetailView: View {
                     } else {
                         panelPlaceholder(icon: "map.fill", message: AppLanguage.shared.s("경로 없음", "No Route"))
                     }
+                } else if activePanel == .combined {
+                    panelInnerContent
                 } else {
                     ZStack {
                         Theme.cardBackground
@@ -572,6 +707,23 @@ struct ActivityDetailView: View {
         switch activePanel {
         case .map:
             EmptyView()
+        case .combined:
+            if isLoadingChart && chartData.availableLayers.isEmpty {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: 190)
+            } else {
+                RunCombinedPanelView(
+                    data: chartData,
+                    distanceText: activity.formattedDistance,
+                    durationText: activity.formattedDuration,
+                    weatherText: activity.weatherBadgeText,
+                    weatherIcon: condition?.weather?.systemIcon,
+                    dateText: panelDateText,
+                    weekdayText: panelWeekdayText,
+                    startTimeText: panelTimeText,
+                    shoeText: panelShoeText
+                )
+            }
         case .splits:
             if let splits = detail?.splits, !splits.isEmpty {
                 SplitsPanelChart(splits: splits, compact: true, isLargeDisplay: true)
@@ -723,7 +875,10 @@ struct ActivityDetailView: View {
                     .foregroundStyle(.white)
             }
             Spacer()
-            Button { showPanelShareCard = true } label: {
+            Button {
+                if activePanel == .combined { showChartShare = true }
+                else { showPanelShareCard = true }
+            } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.caption.weight(.semibold))

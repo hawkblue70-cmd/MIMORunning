@@ -29,6 +29,7 @@ struct RunCombinedChartView: View {
                 )
                 ZStack(alignment: .topLeading) {
                     Canvas { ctx, _ in
+                        drawGridLines(ctx: ctx, rect: rect, activeLayers: activeLayers)
                         drawWorkSegments(ctx: ctx, rect: rect)
                         drawPaceColumns(ctx: ctx, rect: rect)
                         drawElevation(ctx: ctx, rect: rect, activeLayers: activeLayers)
@@ -120,9 +121,9 @@ struct RunCombinedChartView: View {
         if activeLayers.contains(.heartRate) {
             result[.heartRate] = (top: 0.04, bottom: 0.96)
             if !activeLines.isEmpty {
-                let rangeStart = 0.40
-                let totalRange = 0.42   // 0.82 – 0.40
-                let gap        = 0.02
+                let rangeStart = 0.36
+                let totalRange = 0.56   // 0.92 – 0.36
+                let gap        = 0.03
                 let n          = activeLines.count
                 let bandH      = n > 1
                     ? (totalRange - gap * Double(n - 1)) / Double(n)
@@ -134,9 +135,9 @@ struct RunCombinedChartView: View {
             }
         } else {
             if !activeLines.isEmpty {
-                let rangeStart = 0.10
-                let totalRange = 0.72   // 0.82 – 0.10
-                let gap        = 0.02
+                let rangeStart = 0.08
+                let totalRange = 0.84   // 0.92 – 0.08
+                let gap        = 0.03
                 let n          = activeLines.count
                 let bandH      = n > 1
                     ? (totalRange - gap * Double(n - 1)) / Double(n)
@@ -148,7 +149,7 @@ struct RunCombinedChartView: View {
             }
         }
 
-        result[.elevation] = (top: 0.34, bottom: 1.00)
+        result[.elevation] = (top: 0.42, bottom: 1.00)
         return result
     }
 
@@ -175,6 +176,25 @@ struct RunCombinedChartView: View {
             path.addCurve(to: p2, control1: cp1, control2: cp2)
         }
         return path
+    }
+
+    // MARK: - Grid lines (구분선)
+
+    private func drawGridLines(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
+        let lineColor = Color.white.opacity(0.45)
+        let style = StrokeStyle(lineWidth: 1.0)
+
+        // 가로선 1개 — 페이스 막대 위 / 차트 아래 경계
+        var hPath = Path()
+        hPath.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        hPath.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        ctx.stroke(hPath, with: .color(lineColor), style: style)
+
+        // 세로선 1개 — 심박 레이블 오른쪽 / 차트 왼쪽 경계
+        var vPath = Path()
+        vPath.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        vPath.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        ctx.stroke(vPath, with: .color(lineColor), style: style)
     }
 
     // MARK: - Fade start marker
@@ -476,13 +496,13 @@ struct RunCombinedChartView: View {
               let hrSeries = data.series[.heartRate] else { return }
         let bandMap = bands(for: activeLayers)
         guard let hrBand = bandMap[.heartRate] else { return }
-        let axisStyle = Color.white.opacity(0.85)
+        let axisStyle = Color.white
         ctx.draw(
-            Text("\(Int(hrSeries.maxValue.rounded()))").font(.system(size: 7.5)).foregroundStyle(axisStyle),
+            Text("\(Int(hrSeries.maxValue.rounded()))").font(.system(size: 9, weight: .medium)).foregroundStyle(axisStyle),
             at: CGPoint(x: 22, y: yForBand(norm: 1.0, band: hrBand, in: rect)), anchor: .trailing
         )
         ctx.draw(
-            Text("\(Int(hrSeries.minValue.rounded()))").font(.system(size: 7.5)).foregroundStyle(axisStyle),
+            Text("\(Int(hrSeries.minValue.rounded()))").font(.system(size: 9, weight: .medium)).foregroundStyle(axisStyle),
             at: CGPoint(x: 22, y: yForBand(norm: 0.0, band: hrBand, in: rect)), anchor: .trailing
         )
     }
@@ -508,7 +528,7 @@ struct RunCombinedChartView: View {
             ctx.draw(
                 Text(formatElapsed(elapsedTime(atKm: tick.km)))
                     .font(.system(size: 8))
-                    .foregroundStyle(Color.white.opacity(0.72)),
+                    .foregroundStyle(Color.yellow.opacity(0.85)),
                 at: CGPoint(x: x, y: rect.maxY + 16),
                 anchor: tick.anchor
             )

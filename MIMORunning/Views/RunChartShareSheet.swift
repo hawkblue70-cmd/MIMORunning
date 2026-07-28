@@ -36,84 +36,132 @@ final class RunChartShareStore {
 }
 
 // MARK: - RunChartShareCard
-// 미리보기와 출력이 동일한 뷰 — ImageRenderer 에 직접 전달
+// RunCombinedPanelView 와 동일한 레이아웃 — 미리보기·ImageRenderer 출력 공용
 
 struct RunChartShareCard: View {
     let data: RunChartData
     let enabledLayers: Set<RunChartLayer>
-    let summaryText: String
+    let distanceText: String
+    let durationText: String
     let weatherText: String?
-    let dateText: String
+    let weatherIcon: String?
+    let dateText: String?
+    let weekdayText: String?
+    let startTimeText: String?
+    let shoeText: String?
 
     private let cardW: CGFloat = 300
-    private let cardH: CGFloat = 375
     private let tileColumns = [
-        GridItem(.flexible(), spacing: 6),
-        GridItem(.flexible(), spacing: 6),
+        GridItem(.flexible(), spacing: 4),
+        GridItem(.flexible(), spacing: 4),
+        GridItem(.flexible(), spacing: 4)
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // (a) 워드마크
-            HStack(spacing: 0) {
-                Text("MIMO")
-                    .font(.system(size: 9, weight: .black))
-                    .tracking(2)
-                    .foregroundStyle(.white)
-                Text(" RUNNING")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(Theme.violet)
+        VStack(spacing: 0) {
+            // 차트 영역 — 검정 배경 (RunCombinedPanelView 동일)
+            VStack(spacing: 0) {
+                contextRow
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+
+                RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: 190)
+                    .padding(.top, 6)
+                    .padding(.bottom, 6)
             }
+            .background(Color.black)
 
-            Spacer().frame(height: 12)
-
-            // (b) 요약 + 날짜 + 날씨 뱃지
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(summaryText)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(.white)
-                    Text(dateText)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if let weather = weatherText {
-                    Text(weather)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.07), in: Capsule())
-                }
+            // 지표 타일 — 값 전용(유산소·칼로리) 항상 표시, 나머지는 켜진 레이어만
+            let activeTiles = data.availableLayers.filter {
+                $0.isValueOnly || enabledLayers.contains($0)
             }
-
-            Spacer().frame(height: 10)
-
-            // (c) 차트 — RunCombinedChartView 재사용 (미리보기·출력 동일성 보장)
-            RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: 160)
-
-            Spacer().frame(height: 8)
-
-            // (d) 켜진 레이어 타일 2열
-            let activeTiles = data.availableLayers.filter { enabledLayers.contains($0) }
             if !activeTiles.isEmpty {
-                LazyVGrid(columns: tileColumns, spacing: 6) {
+                LazyVGrid(columns: tileColumns, spacing: 4) {
                     ForEach(activeTiles) { layer in
                         if let series = data.series[layer] {
                             ShareStatTile(layer: layer, series: series)
                         }
                     }
                 }
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+                .padding(.bottom, 6)
+            }
+        }
+        .frame(width: cardW)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+
+    private var contextRow: some View {
+        HStack(alignment: .top, spacing: 0) {
+            // 왼쪽: MIMO RUNNING 워드마크 → 거리/시간 → 날짜/요일/시간
+            VStack(alignment: .leading, spacing: 4) {
+                // 워드마크 — 거리 위
+                HStack(spacing: 2) {
+                    Text("MIMO")
+                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                        .foregroundStyle(Theme.violet)
+                    Text("RUNNING")
+                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Color.white)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(distanceText)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.chartElev)
+                    Text(" · ")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                    Text(durationText)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.yellow)
+                }
+                if dateText != nil || weekdayText != nil || startTimeText != nil {
+                    HStack(spacing: 4) {
+                        if let d = dateText {
+                            Text(d)
+                                .font(.system(size: 9))
+                                .foregroundStyle(Color.white.opacity(0.72))
+                        }
+                        if let w = weekdayText {
+                            Text(w)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(Color.yellow.opacity(0.85))
+                        }
+                        if let t = startTimeText {
+                            Text(t)
+                                .font(.system(size: 9))
+                                .foregroundStyle(Color.white.opacity(0.72))
+                        }
+                    }
+                }
             }
 
-            Spacer(minLength: 0)
+            Spacer(minLength: 6)
+
+            // 오른쪽: 날씨(기온) 위, 러닝화 아래
+            VStack(alignment: .trailing, spacing: 4) {
+                if let weather = weatherText {
+                    HStack(spacing: 3) {
+                        Image(systemName: weatherIcon ?? "thermometer.medium")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(Color.white)
+                        Text(weather)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(Color(hex: "5CE5D5"))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(hex: "5CE5D5").opacity(0.12), in: Capsule())
+                }
+                if let shoe = shoeText {
+                    Label(shoe, systemImage: "shoe.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Theme.chartElev.opacity(0.90))
+                }
+            }
         }
-        .padding(16)
-        .frame(width: cardW, height: cardH)
-        .background(Theme.background)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 }
 
@@ -121,9 +169,14 @@ struct RunChartShareCard: View {
 
 struct RunChartShareSheet: View {
     let data: RunChartData
-    let summaryText: String
+    let distanceText: String
+    let durationText: String
     let weatherText: String?
-    let dateText: String
+    let weatherIcon: String?
+    let dateText: String?
+    let weekdayText: String?
+    let startTimeText: String?
+    let shoeText: String?
 
     @State private var store = RunChartShareStore.shared
     @Environment(\.dismiss) private var dismiss
@@ -132,7 +185,6 @@ struct RunChartShareSheet: View {
     @State private var showActivitySheet = false
 
     private let cardW: CGFloat = 300
-    private let cardH: CGFloat = 375
     private let L = AppLanguage.shared
 
     var body: some View {
@@ -147,15 +199,19 @@ struct RunChartShareSheet: View {
                         RunChartShareCard(
                             data: data,
                             enabledLayers: store.enabled,
-                            summaryText: summaryText,
+                            distanceText: distanceText,
+                            durationText: durationText,
                             weatherText: weatherText,
-                            dateText: dateText
+                            weatherIcon: weatherIcon,
+                            dateText: dateText,
+                            weekdayText: weekdayText,
+                            startTimeText: startTimeText,
+                            shoeText: shoeText
                         )
-                        .frame(width: cardW, height: cardH)
                         .scaleEffect(scale, anchor: .top)
-                        .frame(width: geo.size.width, height: cardH * scale, alignment: .top)
+                        .frame(width: geo.size.width, alignment: .center)
                     }
-                    .frame(height: scaledCardHeight)
+                    .frame(height: previewHeight)
                     .padding(.top, 20)
 
                     // (b) 지표 선택 레이블
@@ -168,10 +224,10 @@ struct RunChartShareSheet: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 22)
 
-                    // (c) 레이어 칩 — 한 줄 가로 스크롤
+                    // (c) 레이어 칩 — 값 전용 제외, 한 줄 가로 스크롤
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(data.availableLayers) { layer in
+                            ForEach(data.availableLayers.filter { !$0.isValueOnly }) { layer in
                                 ShareLayerChip(
                                     layer: layer,
                                     isOn: store.enabled.contains(layer)
@@ -228,11 +284,11 @@ struct RunChartShareSheet: View {
         }
     }
 
-    // 미리보기 카드 높이 (scale 적용 후)
-    private var scaledCardHeight: CGFloat {
+    // 카드 자연 높이 추정값: contextRow(50) + chart(165+12) + tiles(~140) ≈ 367
+    private var previewHeight: CGFloat {
         let screenW = UIScreen.main.bounds.width
         let scale = (screenW - 48) / cardW
-        return cardH * scale
+        return 385 * scale
     }
 
     private func renderAndShare() {
@@ -241,13 +297,18 @@ struct RunChartShareSheet: View {
         let card = RunChartShareCard(
             data: data,
             enabledLayers: store.enabled,
-            summaryText: summaryText,
+            distanceText: distanceText,
+            durationText: durationText,
             weatherText: weatherText,
-            dateText: dateText
+            weatherIcon: weatherIcon,
+            dateText: dateText,
+            weekdayText: weekdayText,
+            startTimeText: startTimeText,
+            shoeText: shoeText
         )
         let renderer = ImageRenderer(content: card.preferredColorScheme(.dark))
         renderer.scale = 3
-        renderer.proposedSize = ProposedViewSize(width: cardW, height: cardH)
+        renderer.proposedSize = ProposedViewSize(width: cardW, height: nil)
         renderedImage = renderer.uiImage
         isRendering = false
         if renderedImage != nil { showActivitySheet = true }
@@ -255,7 +316,6 @@ struct RunChartShareSheet: View {
 }
 
 // MARK: - ShareLayerChip
-// RunCombinedPanelView 의 RunLayerChip 과 동일 디자인
 
 private struct ShareLayerChip: View {
     let layer: RunChartLayer
@@ -286,38 +346,46 @@ private struct ShareLayerChip: View {
 }
 
 // MARK: - ShareStatTile
-// RunCombinedPanelView 의 RunStatTile 과 동일 디자인
 
 private struct ShareStatTile: View {
     let layer: RunChartLayer
     let series: RunChartSeries
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(layer.color)
                     .frame(width: 6, height: 6)
                 Text(layer.shortLabel)
                     .font(.system(size: 9.5))
-                    .foregroundStyle(Color.white.opacity(0.50))
+                    .foregroundStyle(Color.white.opacity(0.70))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: 2)
+                if !layer.isValueOnly {
+                    Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
+                        .font(.system(size: 8.5))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.70)
+                }
             }
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(layer.formatted(series.avgValue))
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.white)
+                    .minimumScaleFactor(0.80)
+                    .lineLimit(1)
                 Text(layer.unit)
-                    .font(.system(size: 9))
-                    .foregroundStyle(Color.white.opacity(0.55))
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(Color.white.opacity(0.65))
             }
-            Text("\(layer.formatted(series.minValue)) – \(layer.formatted(series.maxValue))")
-                .font(.system(size: 9))
-                .foregroundStyle(Color.white.opacity(0.40))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
     }
 }
 
@@ -353,9 +421,14 @@ private struct ShareStatTile: View {
     )
     RunChartShareSheet(
         data: data,
-        summaryText: "7.05 km · 47:44",
-        weatherText: "23° · 습도 65%",
-        dateText: "2026. 7. 27"
+        distanceText: "7.05 km",
+        durationText: "47:44",
+        weatherText: "23°C",
+        weatherIcon: "cloud.sun.fill",
+        dateText: "2026. 7. 27",
+        weekdayText: "일요일",
+        startTimeText: "오전 7:06",
+        shoeText: nil
     )
 }
 
@@ -392,9 +465,14 @@ private struct ShareStatTile: View {
         RunChartShareCard(
             data: data,
             enabledLayers: [.heartRate, .pace],
-            summaryText: "7.05 km · 47:44",
-            weatherText: "23° · 습도 65%",
-            dateText: "2026. 7. 27"
+            distanceText: "7.05 km",
+            durationText: "47:44",
+            weatherText: "23°C",
+            weatherIcon: "cloud.sun.fill",
+            dateText: "2026. 7. 27",
+            weekdayText: "일요일",
+            startTimeText: "오전 7:06",
+            shoeText: nil
         )
     }
     .preferredColorScheme(.dark)

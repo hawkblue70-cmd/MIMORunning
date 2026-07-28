@@ -167,6 +167,8 @@ class HealthKitManager {
         migrateHRSeriesCacheIfNeeded()
         // 일회성 마이그레이션: 러닝 폼 쿼리 방식 변경(predicateForObjects→timeRange) 후 캐시 재빌드
         migrateRunningMetricCacheIfNeeded()
+        // 일회성 마이그레이션: 기온·습도 소급 적용
+        migrateWeatherBackfillIfNeeded()
 
         // 메모리에 데이터 있고 완료 태그가 최근(5분 이내)이면 즉시 반환 — 디스크 I/O·락 없음
         // 5분 초과 시 웜캐시 갱신 허용 — 운동 완료 후 포그라운드 복귀 시 새 운동 감지
@@ -328,7 +330,8 @@ class HealthKitManager {
             let a = activities[idx]
             let updated = Activity(id: a.id, type: a.type, date: a.date,
                                    duration: a.duration, distance: a.distance,
-                                   calories: a.calories, avgHeartRate: hr)
+                                   calories: a.calories, avgHeartRate: hr,
+                                   temperatureC: a.temperatureC, humidityPercent: a.humidityPercent)
             activities[idx] = updated
             saveToCache([CachedActivity(from: updated)])  // upsert via @Attribute(.unique)
         }
@@ -764,6 +767,23 @@ class HealthKitManager {
     // MARK: - Activity builders
 
     /// Fast build from the workout's own embedded statistics — zero extra queries.
+    private func weatherFrom(_ workout: HKWorkout) -> (tempC: Double?, humidity: Double?) {
+        let meta = workout.metadata
+        var t: Double? = nil
+        var h: Double? = nil
+        if let q = meta?[HKMetadataKeyWeatherTemperature] as? HKQuantity,
+           q.is(compatibleWith: .degreeCelsius()) {
+            let v = q.doubleValue(for: .degreeCelsius())
+            if v > -50 && v < 60 { t = v }
+        }
+        if let q = meta?[HKMetadataKeyWeatherHumidity] as? HKQuantity,
+           q.is(compatibleWith: .percent()) {
+            let v = q.doubleValue(for: .percent()) * 100
+            if v >= 0 && v <= 100 { h = v }
+        }
+        return (t, h)
+    }
+
     private func buildSummary(from workout: HKWorkout) -> Activity {
         workoutCache[workout.uuid] = workout
         let distID = distanceTypeID(for: workout.workoutActivityType)
@@ -773,6 +793,7 @@ class HealthKitManager {
             ?? 0
         let hrBpm = workout.statistics(for: HKQuantityType(.heartRate))?
             .averageQuantity()?.doubleValue(for: Self.bpmUnit)
+        let (tempC, humidity) = weatherFrom(workout)
         return Activity(
             id: workout.uuid,
             type: mapType(workout.workoutActivityType),
@@ -780,7 +801,9 @@ class HealthKitManager {
             duration: workout.duration,
             distance: distance,
             calories: nil,
-            avgHeartRate: hrBpm.map { Int($0.rounded()) }
+            avgHeartRate: hrBpm.map { Int($0.rounded()) },
+            temperatureC: tempC,
+            humidityPercent: humidity
         )
     }
 
@@ -818,6 +841,7 @@ class HealthKitManager {
             distance = td.doubleValue(for: .meter())
         }
 
+        let (tempC, humidity) = weatherFrom(workout)
         return Activity(
             id: activity.id,
             type: activity.type,
@@ -825,7 +849,9 @@ class HealthKitManager {
             duration: activity.duration,
             distance: distance,
             calories: cal > 0 ? cal : nil,
-            avgHeartRate: finalHR ?? activity.avgHeartRate
+            avgHeartRate: finalHR ?? activity.avgHeartRate,
+            temperatureC: tempC ?? activity.temperatureC,
+            humidityPercent: humidity ?? activity.humidityPercent
         )
     }
 
@@ -1089,6 +1115,29 @@ class HealthKitManager {
         guard UserDefaults.standard.integer(forKey: key) < 1 else { return }
         invalidateRunningMetricHistoryCache()
         UserDefaults.standard.set(1, forKey: key)
+    }
+
+    private func migrateWeatherBackfillIfNeeded() {
+        let key = "mimo.weatherBackfill.v1"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        Task {
+            let candidates = activities.filter { $0.temperatureC == nil && $0.humidityPercent == nil }
+            for activity in candidates.prefix(50) {
+                if workoutCache[activity.id] == nil { await fetchSingleWorkout(id: activity.id) }
+                guard let workout = workoutCache[activity.id] else { continue }
+                let (tempC, humidity) = weatherFrom(workout)
+                guard tempC != nil || humidity != nil else { continue }
+                guard let idx = activities.firstIndex(where: { $0.id == activity.id }) else { continue }
+                let a = activities[idx]
+                let updated = Activity(id: a.id, type: a.type, date: a.date,
+                                       duration: a.duration, distance: a.distance,
+                                       calories: a.calories, avgHeartRate: a.avgHeartRate,
+                                       temperatureC: tempC, humidityPercent: humidity)
+                activities[idx] = updated
+                saveToCache([CachedActivity(from: updated)])
+            }
+        }
     }
 
     // MARK: - Workout time-series (for share card panels)

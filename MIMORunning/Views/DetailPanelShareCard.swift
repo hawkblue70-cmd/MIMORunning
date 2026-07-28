@@ -154,6 +154,9 @@ struct DetailPanelShareCard: View {
                     IntervalPanelChart(segments: segs, compact: true)
                 } else { placeholder("repeat") }
 
+            case .combined:
+                placeholder("chart.xyaxis.line")
+
             case .cadence, .power, .groundContact, .strideLength, .verticalOscillation:
                 if !panelSeriesData.isEmpty {
                     MetricBarPanelChart(

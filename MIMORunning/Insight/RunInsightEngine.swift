@@ -12,6 +12,7 @@ enum InsightCategory: String {
     case load            = "훈련량"
     case intervalQuality = "인터벌 수행"
     case recovery        = "회복"
+    case fadeCause       = "후반 감속 원인"
 }
 
 enum InsightTone { case good, neutral, caution }
@@ -58,6 +59,26 @@ struct RunBaseline {
     let vo2MaxThen: Double?
     let weeklyLoadKm: Double
     let prevWeeklyLoadKm: Double
+}
+
+// MARK: - Fade Analysis Types
+
+enum FadeCause {
+    case overpace       // 초반 오버페이스
+    case threshold      // 역치 초과
+    case enduranceGap   // 지구력 부족
+    case mixed          // 복합 요인
+    case unclear        // 판단 어려움
+}
+
+struct FadeAnalysis {
+    let dropPercent: Double       // 후반 감속률 (%)
+    let fadeStartKm: Double?      // 감속 시작 지점
+    let hrHeldUp: Bool            // 심박은 유지됐는가
+    let earlyOverpace: Bool       // 초반 평균보다 빨랐는가
+    let earlyHighHR: Bool         // 전반부 Z4+ 심박 여부
+    let recentLongRunKm: Double   // 최근 4주 최장 거리
+    let cause: FadeCause
 }
 
 // MARK: - Engine
@@ -290,7 +311,7 @@ enum RunInsightEngine {
         isMale: Bool?,
         restingHR: Int?,
         hrSamples: [(offset: TimeInterval, bpm: Int)] = []
-    ) -> (insights: [RunInsight], segmentSource: RunSegmentSource) {
+    ) -> (insights: [RunInsight], segmentSource: RunSegmentSource, fadeStartKm: Double?) {
         let base        = Self.baseline(for: activity, history: history)
         let workoutType = detail?.workoutType ?? .general
         var results:   [RunInsight]       = []
@@ -317,7 +338,8 @@ enum RunInsightEngine {
                 }
             } else {
                 appendGeneralInsights(into: &results, activity: activity, detail: detail,
-                                      history: history, base: base, age: age, isMale: isMale)
+                                      history: history, base: base, age: age, isMale: isMale,
+                                      hrSamples: hrSamples)
             }
 
         case .tempo:
@@ -344,8 +366,11 @@ enum RunInsightEngine {
             }
 
         case .longRun, .lsd:
+            let mhrLL = age.map { 220 - $0 }
             let generators: [() -> RunInsight?] = [
                 { cardiacDriftInsight(activity: activity, hrSamples: hrSamples, category: .efficiency) },
+                { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrLL)
+                  ?? enduranceInsight(detail: detail) },
                 { cardioInsight(detail: detail, age: age, isMale: isMale) },
                 { environmentInsight(activity: activity) },
                 { loadInsight(baseline: base) },
@@ -366,9 +391,11 @@ enum RunInsightEngine {
             }
 
         case .distanceRun:
+            let mhrDR = age.map { 220 - $0 }
             let generators: [() -> RunInsight?] = [
                 { distanceRunInsight(activity: activity, baseline: base) },
-                { enduranceInsight(detail: detail) },
+                { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrDR)
+                  ?? enduranceInsight(detail: detail) },
                 { efficiencyInsight(activity: activity, history: history) },
                 { cardioInsight(detail: detail, age: age, isMale: isMale) },
             ]
@@ -378,10 +405,14 @@ enum RunInsightEngine {
 
         default:
             appendGeneralInsights(into: &results, activity: activity, detail: detail,
-                                  history: history, base: base, age: age, isMale: isMale)
+                                  history: history, base: base, age: age, isMale: isMale,
+                                  hrSamples: hrSamples)
         }
 
-        return (Array(results.prefix(4)), segSource)
+        let maxHRForFade = age.map { 220 - $0 }
+        let fadeKm = analyzeFade(activity: activity, detail: detail, history: history,
+                                 hrSamples: hrSamples, maxHR: maxHRForFade)?.fadeStartKm
+        return (Array(results.prefix(4)), segSource, fadeKm)
     }
 
     private static func appendGeneralInsights(
@@ -391,12 +422,15 @@ enum RunInsightEngine {
         history: [Activity],
         base: RunBaseline,
         age: Int?,
-        isMale: Bool?
+        isMale: Bool?,
+        hrSamples: [(offset: TimeInterval, bpm: Int)]
     ) {
+        let maxHR = age.map { 220 - $0 }
         let generators: [() -> RunInsight?] = [
             { cardioInsight(detail: detail, age: age, isMale: isMale) },
             { intensityInsight(activity: activity, detail: detail, age: age) },
-            { enduranceInsight(detail: detail) },
+            { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: maxHR)
+              ?? enduranceInsight(detail: detail) },
             { efficiencyInsight(activity: activity, history: history) },
             { formInsight(detail: detail) },
             { environmentInsight(activity: activity) },
@@ -665,37 +699,276 @@ enum RunInsightEngine {
                           message: msg, highlights: [currentStr, diffStr])
     }
 
+    // MARK: - Fade Cause Analysis
+
+    static func analyzeFade(
+        activity: Activity,
+        detail: ActivityDetail?,
+        history: [Activity],
+        hrSamples: [(offset: TimeInterval, bpm: Int)],
+        maxHR: Int?
+    ) -> FadeAnalysis? {
+        // 인터벌·빌드업은 감속이 정상 — 분석 제외
+        let wt = detail?.workoutType ?? .general
+        switch wt {
+        case .longRun, .lsd, .distanceRun, .general: break
+        default: return nil
+        }
+
+        guard let splits = detail?.splits, splits.count >= 6 else { return nil }
+
+        // 전반/후반 페이스 드리프트
+        let half      = splits.count / 2
+        let frontPaces = Array(splits[..<half]).map { $0.paceSecPerKm }.filter { $0 > 0 }
+        let backPaces  = Array(splits[half...]).map { $0.paceSecPerKm }.filter { $0 > 0 }
+        guard !frontPaces.isEmpty, !backPaces.isEmpty else { return nil }
+
+        let avgFront = frontPaces.reduce(0.0, +) / Double(frontPaces.count)
+        let avgBack  = backPaces.reduce(0.0,  +) / Double(backPaces.count)
+        guard avgFront > 0 else { return nil }
+
+        let dropPercent = (avgBack - avgFront) / avgFront * 100
+        guard dropPercent >= 8 else { return nil }
+
+        // fadeStartKm: 앞 1/3 중앙 페이스 대비 연속 2구간 이상 10% 이상 느린 첫 지점
+        let frontThirdCount = max(1, splits.count / 3)
+        var ftSorted = Array(splits[..<frontThirdCount]).map { $0.paceSecPerKm }.filter { $0 > 0 }
+        ftSorted.sort()
+        let frontMedian: Double = ftSorted.isEmpty ? avgFront : ftSorted[ftSorted.count / 2]
+
+        var fadeStartKm: Double? = nil
+        if frontMedian > 0 {
+            var cumKm: Double = 0; var consecutiveSlow = 0; var candidateKm: Double? = nil
+            for split in splits {
+                if split.paceSecPerKm > frontMedian * 1.10 {
+                    consecutiveSlow += 1
+                    if consecutiveSlow == 1 { candidateKm = cumKm }
+                    if consecutiveSlow >= 2 { fadeStartKm = candidateKm; break }
+                } else {
+                    consecutiveSlow = 0; candidateKm = nil
+                }
+                cumKm += split.distanceM / 1000.0
+            }
+        }
+
+        // HR 분석
+        let mid      = activity.duration / 2
+        let frontHRs = hrSamples.filter { $0.offset < mid  }.map(\.bpm)
+        let backHRs  = hrSamples.filter { $0.offset >= mid }.map(\.bpm)
+
+        let hrHeldUp: Bool
+        if !frontHRs.isEmpty, !backHRs.isEmpty {
+            let fAvg = Double(frontHRs.reduce(0, +)) / Double(frontHRs.count)
+            let bAvg = Double(backHRs.reduce(0,  +)) / Double(backHRs.count)
+            hrHeldUp = fAvg > 0 && bAvg >= fAvg * 0.95
+        } else {
+            hrHeldUp = false
+        }
+
+        // earlyOverpace: 전반 페이스가 최근 8주 중앙보다 5%+ 빠른가
+        let eightWeeksAgo = Calendar.current.date(byAdding: .weekOfYear, value: -8, to: activity.date) ?? .distantPast
+        var recentPaces = history.filter {
+            $0.type == .running && $0.id != activity.id &&
+            $0.date >= eightWeeksAgo && $0.date < activity.date
+        }.compactMap { $0.paceSecPerKm }
+        recentPaces.sort()
+
+        let earlyOverpace: Bool
+        if !recentPaces.isEmpty {
+            let recentMedian = recentPaces[recentPaces.count / 2]
+            earlyOverpace = recentMedian > 0 && avgFront < recentMedian * 0.95
+        } else {
+            earlyOverpace = false
+        }
+
+        // earlyHighHR: 전반 평균 심박 >= maxHR * 0.85
+        let earlyHighHR: Bool
+        if let mhr = maxHR, mhr > 0, !frontHRs.isEmpty {
+            let fAvg = Double(frontHRs.reduce(0, +)) / Double(frontHRs.count)
+            earlyHighHR = fAvg >= Double(mhr) * 0.85
+        } else {
+            earlyHighHR = false
+        }
+
+        // 최근 4주 최장 거리
+        let fourWeeksAgo = Calendar.current.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
+        let recentLongRunKm = history.filter {
+            $0.type == .running && $0.id != activity.id &&
+            $0.date >= fourWeeksAgo && $0.date < activity.date
+        }.map { $0.distance / 1000.0 }.max() ?? 0
+
+        // 원인 판정
+        let actDistKm = activity.distance / 1000.0
+        let cause: FadeCause
+        if earlyOverpace && earlyHighHR {
+            cause = .overpace
+        } else if earlyHighHR && !hrHeldUp {
+            cause = .threshold
+        } else if hrHeldUp && actDistKm > 0 && recentLongRunKm < actDistKm * 0.6 {
+            cause = .enduranceGap
+        } else if earlyOverpace || earlyHighHR {
+            cause = .mixed
+        } else {
+            cause = .unclear
+        }
+
+        return FadeAnalysis(
+            dropPercent: dropPercent,
+            fadeStartKm: fadeStartKm,
+            hrHeldUp: hrHeldUp,
+            earlyOverpace: earlyOverpace,
+            earlyHighHR: earlyHighHR,
+            recentLongRunKm: recentLongRunKm,
+            cause: cause
+        )
+    }
+
+    private static func fadeCauseInsight(
+        activity: Activity,
+        detail: ActivityDetail?,
+        history: [Activity],
+        hrSamples: [(offset: TimeInterval, bpm: Int)],
+        maxHR: Int?
+    ) -> RunInsight? {
+        guard let fa = analyzeFade(activity: activity, detail: detail, history: history,
+                                   hrSamples: hrSamples, maxHR: maxHR) else { return nil }
+        let L = AppLanguage.shared
+        let suffix = L.s(" 당일 컨디션이나 날씨 영향일 수도 있어요.",
+                         " Day-of conditions or weather may also have played a role.")
+        let fkmStr     = fa.fadeStartKm.map { String(format: "%.1f", $0) + "km" }
+        let recentStr  = String(format: "%.1f", fa.recentLongRunKm) + "km"
+
+        let tone: InsightTone; let badge: String; let msg: String; var highlights: [String] = []
+
+        switch fa.cause {
+        case .overpace:
+            tone = .caution; badge = L.s("페이스 배분", "Pacing")
+            if let fkm = fkmStr {
+                msg = L.s(
+                    "초반 페이스가 최근 평균보다 빨랐고 심박도 높게 시작했어요. \(fkm) 부터 감속이 시작된 걸 보면 초반 배분이 원인일 가능성이 있어요." + suffix,
+                    "Early pace was faster than recent average and HR started high. Deceleration appeared around \(fkm), which may suggest pacing was too aggressive early on." + suffix
+                )
+                highlights = [fkm]
+            } else {
+                msg = L.s(
+                    "초반 페이스가 최근 평균보다 빨랐고 심박도 높게 시작했어요. 초반 배분이 원인일 가능성이 있어요." + suffix,
+                    "Early pace was faster than recent average and HR started high. This may suggest pacing was too aggressive early on." + suffix
+                )
+            }
+
+        case .threshold:
+            tone = .caution; badge = L.s("강도", "Intensity")
+            msg = L.s(
+                "전반부터 심박이 역치 구간(최대심박 85% 이상)에 머물렀어요. 그 강도를 오래 유지하기 어려워 후반에 느려진 것으로 보여요." + suffix,
+                "HR stayed in the threshold zone (85%+ of max HR) from the start. Sustaining that intensity may have led to the slowdown." + suffix
+            )
+
+        case .enduranceGap:
+            tone = .neutral; badge = L.s("지구력", "Endurance")
+            msg = L.s(
+                "심박은 끝까지 유지됐는데 페이스만 떨어졌어요. 최근 4주 최장 거리가 \(recentStr)라, 이 거리에 대한 지구력이 아직 쌓이는 중일 수 있어요. 롱런 거리를 조금씩 늘려가면 도움이 될 수 있어요." + suffix,
+                "HR held steady but pace dropped. Your longest run in the past 4 weeks was \(recentStr), so endurance at this distance may still be building. Gradually increasing long run distance may help." + suffix
+            )
+            highlights = [recentStr]
+
+        case .mixed:
+            tone = .neutral; badge = L.s("복합", "Mixed")
+            msg = L.s(
+                "초반 강도와 지구력 요인이 함께 작용한 것으로 보여요." + suffix,
+                "Both early intensity and endurance factors may have contributed." + suffix
+            )
+
+        case .unclear:
+            tone = .neutral; badge = L.s("참고", "Note")
+            if let fkm = fkmStr {
+                msg = L.s(
+                    "\(fkm) 부터 감속이 있었어요. 컨디션·기온·보급 등 기록에 없는 요인도 영향을 줬을 수 있어요.",
+                    "Deceleration appeared around \(fkm). Factors not in the record — such as conditions, temperature, or fueling — may also have had an effect."
+                )
+                highlights = [fkm]
+            } else {
+                msg = L.s(
+                    "후반 감속이 있었어요. 컨디션·기온·보급 등 기록에 없는 요인도 영향을 줬을 수 있어요.",
+                    "Deceleration in the second half. Factors not in the record — such as conditions, temperature, or fueling — may also have had an effect."
+                )
+            }
+        }
+
+        return RunInsight(category: .fadeCause, tone: tone, badge: badge,
+                          message: msg, highlights: highlights)
+    }
+
     // MARK: - General Insights (existing rules)
 
-    private static func cardioInsight(detail: ActivityDetail?, age: Int?, isMale: Bool?) -> RunInsight? {
-        guard let vo2 = detail?.vo2Max else { return nil }
+    private static func cardioInsight(
+        detail: ActivityDetail?,
+        age: Int?,
+        isMale: Bool?
+    ) -> RunInsight? {
+        guard let vo2 = detail?.vo2Max, let age else { return nil }
         let L = AppLanguage.shared
         let voStr = String(format: "%.1f", vo2)
+        let useMale = isMale ?? true
+        let (level, norm) = vo2MaxLevel(vo2: vo2, age: age, isMale: useMale)
+        let levelLabel = L.s(level.rawValue, level.enLabel)
 
-        if let age {
-            let level = vo2Level(vo2: vo2, age: age, isMale: isMale ?? true)
-            let levelLabel = L.s(level.korLabel, level.enLabel)
-            let badge: String; let tone: InsightTone
-            switch level {
-            case .poor, .belowAverage: badge = L.s("참고", "Note");         tone = .neutral
-            case .average:             badge = L.s("평균", "Average");       tone = .neutral
-            case .good:                badge = L.s("평균 이상", "Above Avg"); tone = .good
-            case .excellent:           badge = L.s("우수", "Excellent");      tone = .good
-            }
-            let msg = L.s(
-                "유산소 피트니스 \(voStr)는 같은 연령대 기준 \(levelLabel)에 해당해요. (추정값)",
-                "Cardio fitness \(voStr) is \(levelLabel) for your age group. (estimated)"
-            )
-            return RunInsight(category: .cardio, tone: tone, badge: badge,
-                              message: msg, highlights: [voStr, levelLabel])
+        // Age group string (e.g. "50대" / "50s")
+        let ageDecade: String
+        if let n = norm {
+            let lo = n.range.lowerBound
+            ageDecade = lo >= 60 ? L.s("60대 이상", "60+") : L.s("\(lo / 10 * 10)대", "\(lo)s")
         } else {
-            let msg = L.s(
-                "유산소 피트니스(VO2max 추정값)는 \(voStr) mL/kg·min이에요.",
-                "Estimated cardio fitness (VO2max) is \(voStr) mL/kg·min."
-            )
-            return RunInsight(category: .cardio, tone: .neutral, badge: L.s("확인", "Info"),
-                              message: msg, highlights: [voStr])
+            ageDecade = L.s("해당 연령대", "your age group")
         }
+        let genderSuffix = isMale == nil ? "" : L.s(useMale ? " 남성" : " 여성", useMale ? " male" : " female")
+
+        // "(높음 기준 X 이상 · 추정값)" for high/aboveAvg; just "(추정값)" for belowAvg/low
+        let suffix: String
+        switch level {
+        case .high, .aboveAvg:
+            if let n = norm {
+                suffix = L.s(
+                    " (높음 기준 \(Int(n.high)) 이상 · 추정값)",
+                    " (High: \(Int(n.high)) or above · estimated)"
+                )
+            } else {
+                suffix = L.s(" (추정값)", " (estimated)")
+            }
+        case .belowAvg, .low:
+            suffix = L.s(" (추정값)", " (estimated)")
+        }
+
+        let mainMsg: String
+        switch level {
+        case .high:
+            mainMsg = L.s(
+                "유산소 피트니스 \(voStr)는 \(ageDecade)\(genderSuffix) 기준 '높음'이에요.",
+                "Cardio fitness \(voStr) is 'High' for \(ageDecade)\(genderSuffix)."
+            )
+        case .aboveAvg:
+            mainMsg = L.s(
+                "유산소 피트니스 \(voStr)는 \(ageDecade)\(genderSuffix) 기준 '평균 이상'이에요.",
+                "Cardio fitness \(voStr) is 'Above Average' for \(ageDecade)\(genderSuffix)."
+            )
+        case .belowAvg:
+            mainMsg = L.s(
+                "유산소 피트니스 \(voStr)는 \(ageDecade)\(genderSuffix) 기준 '평균 이하'예요. 꾸준한 유산소 운동으로 올릴 수 있어요.",
+                "Cardio fitness \(voStr) is 'Below Average' for \(ageDecade)\(genderSuffix). Consistent aerobic training can help."
+            )
+        case .low:
+            mainMsg = L.s(
+                "유산소 피트니스 \(voStr)는 \(ageDecade)\(genderSuffix) 기준 '낮음' 구간이에요. 가벼운 유산소부터 쌓아가면 좋아요.",
+                "Cardio fitness \(voStr) is in the 'Low' range for \(ageDecade)\(genderSuffix). Building up with easy aerobic runs will help."
+            )
+        }
+
+        return RunInsight(
+            category: .cardio,
+            tone: level.tone,
+            badge: levelLabel,
+            message: mainMsg + suffix,
+            highlights: [voStr, levelLabel]
+        )
     }
 
     private static func intensityInsight(
@@ -934,56 +1207,54 @@ enum RunInsightEngine {
                           message: msg, highlights: [thisStr + "km", absPct])
     }
 
-    // MARK: - VO2max Norm Table
+    // MARK: - VO2max Norm Table (FRIEND / Apple Health)
 
-    private enum VO2Level {
-        case poor, belowAverage, average, good, excellent
-        var korLabel: String {
-            switch self {
-            case .poor:         return "낮은 편"
-            case .belowAverage: return "평균 이하"
-            case .average:      return "평균 수준"
-            case .good:         return "평균 이상"
-            case .excellent:    return "우수한 수준"
-            }
-        }
+    // FRIEND = Fitness Registry and Importance of Exercise National Database
+    // Thresholds confirmed against Apple Health cardio fitness norms
+    private enum VO2MaxLevel: String {
+        case high = "높음"; case aboveAvg = "평균 이상"; case belowAvg = "평균 이하"; case low = "낮음"
         var enLabel: String {
             switch self {
-            case .poor:         return "below average"
-            case .belowAverage: return "slightly below average"
-            case .average:      return "average"
-            case .good:         return "above average"
-            case .excellent:    return "excellent"
+            case .high:     return "High"
+            case .aboveAvg: return "Above Average"
+            case .belowAvg: return "Below Average"
+            case .low:      return "Low"
             }
+        }
+        var tone: InsightTone {
+            switch self { case .high, .aboveAvg: return .good; case .belowAvg, .low: return .neutral }
         }
     }
 
-    private static let normsMale: [(ageMax: Int, t: [Double])] = [
-        (25,  [38, 42, 46, 52]),
-        (35,  [36, 40, 44, 50]),
-        (45,  [34, 38, 42, 47]),
-        (55,  [32, 35, 40, 46]),
-        (65,  [28, 32, 37, 44]),
-        (999, [25, 29, 34, 40]),
+    // (ageRange, High threshold, Above Average threshold, Below Average threshold)
+    // vo2 >= high → .high; >= aboveAvg → .aboveAvg; >= belowAvg → .belowAvg; else → .low
+    // Values confirmed against Apple Health cardio fitness screens (FRIEND database)
+    private static let maleNormsFriend: [(range: ClosedRange<Int>, high: Double, aboveAvg: Double, belowAvg: Double)] = [
+        (20...29, 57, 48, 38),
+        (30...39, 52, 43, 34),
+        (40...49, 47, 38, 31),
+        (50...59, 41, 33, 26),
+        (60...120, 36, 28, 18)
     ]
-    private static let normsFemale: [(ageMax: Int, t: [Double])] = [
-        (25,  [31, 35, 39, 44]),
-        (35,  [30, 33, 37, 41]),
-        (45,  [28, 31, 35, 40]),
-        (55,  [25, 28, 32, 37]),
-        (65,  [22, 25, 29, 35]),
-        (999, [20, 23, 27, 32]),
+    private static let femaleNormsFriend: [(range: ClosedRange<Int>, high: Double, aboveAvg: Double, belowAvg: Double)] = [
+        (20...29, 47, 38, 29),
+        (30...39, 38, 30, 24),
+        (40...49, 34, 27, 21),
+        (50...59, 29, 23, 19),
+        (60...120, 25, 20, 15)
     ]
 
-    private static func vo2Level(vo2: Double, age: Int, isMale: Bool) -> VO2Level {
-        let table = isMale ? normsMale : normsFemale
-        guard let row = table.first(where: { age <= $0.ageMax }) else { return .average }
-        let t = row.t
-        if vo2 < t[0] { return .poor }
-        if vo2 < t[1] { return .belowAverage }
-        if vo2 < t[2] { return .average }
-        if vo2 < t[3] { return .good }
-        return .excellent
+    private static func vo2MaxLevel(
+        vo2: Double, age: Int, isMale: Bool
+    ) -> (level: VO2MaxLevel, norm: (range: ClosedRange<Int>, high: Double, aboveAvg: Double, belowAvg: Double)?) {
+        let norms = isMale ? maleNormsFriend : femaleNormsFriend
+        guard let row = norms.first(where: { $0.range.contains(age) }) else { return (.belowAvg, nil) }
+        let level: VO2MaxLevel
+        if vo2 >= row.high          { level = .high }
+        else if vo2 >= row.aboveAvg { level = .aboveAvg }
+        else if vo2 >= row.belowAvg { level = .belowAvg }
+        else                        { level = .low }
+        return (level, row)
     }
 
     // MARK: - Helpers

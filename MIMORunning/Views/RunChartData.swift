@@ -10,18 +10,23 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
     case power        = "파워"
     case strideLength = "보폭"
     case verticalOsc  = "진폭"
+    case aerobic      = "유산소"
+    case calories     = "칼로리"
 
     var id: String { rawValue }
 
+    /// Color used for toggle chips, stat tiles, and chart lines (zone gradient for HR).
     var color: Color {
         switch self {
         case .heartRate:    return Theme.heartRate
-        case .pace:         return Theme.pace
-        case .cadence:      return Theme.cadence
-        case .elevation:    return Theme.elevation
-        case .power:        return Theme.power
-        case .strideLength: return Theme.strideLength
-        case .verticalOsc:  return Theme.verticalOsc
+        case .pace:         return Theme.chartPace
+        case .cadence:      return Theme.chartCadence
+        case .elevation:    return Theme.chartElev
+        case .power:        return Theme.chartPower
+        case .strideLength: return Theme.chartStride
+        case .verticalOsc:  return Theme.chartVertOsc
+        case .aerobic:      return Theme.chartAerobic
+        case .calories:     return Theme.calories
         }
     }
 
@@ -29,17 +34,20 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         case line(width: CGFloat)
         case bars
         case fill
+        case fillWithLine(fillOpacity: Double, lineWidth: CGFloat)
     }
 
     var drawStyle: DrawStyle {
         switch self {
-        case .heartRate:    return .line(width: 1.6)
-        case .cadence:      return .line(width: 1.1)
-        case .power:        return .line(width: 1.1)
-        case .strideLength: return .line(width: 1.0)
-        case .verticalOsc:  return .line(width: 1.0)
+        case .heartRate:    return .line(width: 2.6)
+        case .cadence:      return .line(width: 2.0)
+        case .power:        return .line(width: 2.0)
+        case .strideLength: return .line(width: 1.8)
+        case .verticalOsc:  return .line(width: 1.8)
+        case .aerobic:      return .line(width: 1.8)
+        case .calories:     return .line(width: 1.8)
         case .pace:         return .bars
-        case .elevation:    return .fill
+        case .elevation:    return .fillWithLine(fillOpacity: 0.38, lineWidth: 1.0)
         }
     }
 
@@ -47,26 +55,14 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
     var opacity: Double {
         switch self {
         case .heartRate:    return 1.00
-        case .cadence:      return 0.75
-        case .power:        return 0.65
-        case .strideLength: return 0.60
-        case .verticalOsc:  return 0.60
+        case .cadence:      return 1.00
+        case .power:        return 1.00
+        case .strideLength: return 0.92
+        case .verticalOsc:  return 0.92
+        case .aerobic:      return 0.92
+        case .calories:     return 0.92
         case .pace:         return 0.20
         case .elevation:    return 0.10
-        }
-    }
-
-    // Vertical band (0 = top, 1 = bottom of chart).
-    // norm mapped: t = top + (1 - norm) * (bottom - top)
-    var band: (top: Double, bottom: Double) {
-        switch self {
-        case .heartRate:    return (0.06, 0.42)
-        case .cadence:      return (0.48, 0.62)
-        case .strideLength: return (0.64, 0.74)
-        case .verticalOsc:  return (0.76, 0.86)
-        case .power:        return (0.88, 0.96)
-        case .pace:         return (0.00, 1.00)
-        case .elevation:    return (0.86, 1.00)
         }
     }
 
@@ -79,10 +75,33 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         case .power:        return "W"
         case .strideLength: return "m"
         case .verticalOsc:  return "cm"
+        case .aerobic:      return "mL/kg·min"
+        case .calories:     return "kcal"
         }
     }
 
-    var shortLabel: String { rawValue }
+    var shortLabel: String {
+        let L = AppLanguage.shared
+        switch self {
+        case .heartRate:    return L.s("심박",    "HR")
+        case .pace:         return L.s("페이스",  "Pace")
+        case .cadence:      return L.s("케이던스","Cadence")
+        case .elevation:    return L.s("고도",    "Elev.")
+        case .power:        return L.s("파워",    "Power")
+        case .strideLength: return L.s("보폭",    "Stride")
+        case .verticalOsc:  return L.s("진폭",    "Vert.Osc")
+        case .aerobic:      return L.s("유산소",  "Aerobic")
+        case .calories:     return L.s("칼로리",  "kcal")
+        }
+    }
+
+    /// 차트에 선으로 그리지 않고 타일에만 값 표시하는 레이어
+    var isValueOnly: Bool {
+        switch self {
+        case .aerobic, .calories: return true
+        default:                  return false
+        }
+    }
 }
 
 extension RunChartLayer {
@@ -91,13 +110,22 @@ extension RunChartLayer {
         case .pace:
             let total = Int(value.rounded())
             return "\(total / 60)'\(String(format: "%02d", total % 60))\""
-        case .heartRate, .cadence, .power, .elevation:
+        case .heartRate, .cadence, .power, .elevation, .calories:
             return "\(Int(value.rounded()))"
         case .strideLength:
             return String(format: "%.2f", value)
         case .verticalOsc:
             return String(format: "%.1f", value)
+        case .aerobic:
+            return String(format: "%.1f", value)
         }
+    }
+
+    /// 타일 범위 표시용 — 페이스의 trailing `"` 제거해 공간 절약
+    func formattedRange(_ value: Double) -> String {
+        guard self == .pace else { return formatted(value) }
+        let total = Int(value.rounded())
+        return "\(total / 60)'\(String(format: "%02d", total % 60))"
     }
 }
 
@@ -149,6 +177,24 @@ struct RunChartSeries {
     var isEmpty: Bool { points.count < 2 }
 }
 
+// MARK: - PaceColumn
+
+/// Time-proportional background column for pace visualization.
+/// x-positions are based on cumulative duration (slow km = wider column).
+struct PaceColumn {
+    let startKm: Double
+    let endKm: Double
+    /// Fraction of total duration at column start (0–1).
+    let startX: Double
+    /// Fraction of total duration at column end (0–1).
+    let endX: Double
+    let paceSecPerKm: Double
+    /// 0–1, faster = 1 (taller column).
+    let norm: Double
+    /// Formatted pace label, e.g. "6'27\""
+    let label: String
+}
+
 // MARK: - RunChartData
 
 struct RunChartData {
@@ -160,6 +206,10 @@ struct RunChartData {
     let availableLayers: [RunChartLayer]
     let workSegments: [(startKm: Double, endKm: Double)]
     let fadeStartKm: Double?
+    let paceColumns: [PaceColumn]
+    let bucketKm: Int
+    /// Total workout duration in seconds — used for elapsed-time x-axis labels.
+    let totalDuration: TimeInterval
 
     init(
         totalKm: Double,
@@ -169,7 +219,10 @@ struct RunChartData {
         hrMax: Double,
         availableLayers: [RunChartLayer],
         workSegments: [(startKm: Double, endKm: Double)] = [],
-        fadeStartKm: Double? = nil
+        fadeStartKm: Double? = nil,
+        paceColumns: [PaceColumn] = [],
+        bucketKm: Int = 1,
+        totalDuration: TimeInterval = 0
     ) {
         self.totalKm         = totalKm
         self.series          = series
@@ -179,6 +232,9 @@ struct RunChartData {
         self.availableLayers = availableLayers
         self.workSegments    = workSegments
         self.fadeStartKm     = fadeStartKm
+        self.paceColumns     = paceColumns
+        self.bucketKm        = bucketKm
+        self.totalDuration   = totalDuration
     }
 
     static let empty = RunChartData(
@@ -228,43 +284,50 @@ enum RunChartBuilder {
                 : buildTimeSeriesPoints(samples: samples, timeDistanceMap: tdMap)
         }
 
-        // Heart rate — 2–98 percentile clamp, window 9
+        // Heart rate — 2–98 percentile clamp, median 9 → mean 7
         let hrRaw = rawPoints(hrSamples.map { (offset: $0.offset, value: Double($0.bpm)) })
         if let s = makeSmoothedSeries(layer: .heartRate, rawPoints: hrRaw,
                                       smoothWindow: 9,
-                                      clamp: .percentile(lo: 0.02, hi: 0.98)) {
+                                      clamp: .percentile(lo: 0.02, hi: 0.98),
+                                      meanWindow: 7) {
             allSeries[.heartRate] = s
         }
 
-        // Cadence — physiological hard clamp 150–200 spm, window 21
+        // Cadence — hard clamp 150–200 spm, median 21 → mean 11
         let cadRaw = rawPoints(cadenceSamples)
         if let s = makeSmoothedSeries(layer: .cadence, rawPoints: cadRaw,
                                       smoothWindow: 21,
-                                      clamp: .hard(min: 150, max: 200)) {
+                                      clamp: .hard(min: 150, max: 200),
+                                      meanWindow: 11) {
             allSeries[.cadence] = s
         }
 
-        // Power — 5–95 percentile clamp, window 15
+        // Power — 5–95 percentile clamp, median 15 → mean 9
         let powRaw = rawPoints(powerSamples)
         if let s = makeSmoothedSeries(layer: .power, rawPoints: powRaw,
                                       smoothWindow: 15,
-                                      clamp: .percentile(lo: 0.05, hi: 0.95)) {
+                                      clamp: .percentile(lo: 0.05, hi: 0.95),
+                                      meanWindow: 9) {
             allSeries[.power] = s
         }
 
-        // Stride length — physiological hard clamp 0.4–1.6 m, window 21
+        // Stride — hard clamp 0.4–1.6 m → 20–80 percentile (amplitude expansion) → median 21 → mean 9
         let strRaw = rawPoints(strideSamples)
         if let s = makeSmoothedSeries(layer: .strideLength, rawPoints: strRaw,
                                       smoothWindow: 21,
-                                      clamp: .hard(min: 0.4, max: 1.6)) {
+                                      clamp: .hard(min: 0.4, max: 1.6),
+                                      secondaryClamp: .percentile(lo: 0.20, hi: 0.80),
+                                      meanWindow: 9) {
             allSeries[.strideLength] = s
         }
 
-        // Vertical oscillation — physiological hard clamp 4–16 cm, window 21
+        // Vert osc — hard clamp 4–16 cm → 20–80 percentile (amplitude expansion) → median 21 → mean 9
         let vocRaw = rawPoints(vertOscSamples)
         if let s = makeSmoothedSeries(layer: .verticalOsc, rawPoints: vocRaw,
                                       smoothWindow: 21,
-                                      clamp: .hard(min: 4, max: 16)) {
+                                      clamp: .hard(min: 4, max: 16),
+                                      secondaryClamp: .percentile(lo: 0.20, hi: 0.80),
+                                      meanWindow: 9) {
             allSeries[.verticalOsc] = s
         }
 
@@ -273,12 +336,30 @@ enum RunChartBuilder {
             allSeries[.pace] = paceSeries
         }
 
-        // Elevation — already distance-keyed, no smoothing
+        // Elevation — already distance-keyed, light mean smoothing
         if let altProfile = detail?.altitudeProfile, altProfile.count >= 2 {
             let raw = altProfile.map { (km: $0.distanceKm, value: $0.altitude) }
-            if let s = makeSeries(layer: .elevation, rawPoints: raw, invertNorm: false) {
+            if let s = makeSeries(layer: .elevation, rawPoints: raw, invertNorm: false, meanWindow: 11) {
                 allSeries[.elevation] = s
             }
+        }
+
+        // 유산소 피트니스 (VO2max) — HealthKit 최신 추정값, detail에서 직접 사용
+        if let vo2 = detail?.vo2Max, vo2 > 0 {
+            let pt0 = RunChartPoint(km: 0,       value: vo2, norm: 0.5)
+            let ptN = RunChartPoint(km: totalKm, value: vo2, norm: 0.5)
+            allSeries[.aerobic] = RunChartSeries(layer: .aerobic, points: [pt0, ptN],
+                                                 minValue: vo2, maxValue: vo2,
+                                                 avgValue: vo2, lastValue: vo2)
+        }
+
+        // 칼로리 (총합) — activity.calories 직접 사용
+        if let totalCal = activity.calories, totalCal > 0 {
+            let pt0 = RunChartPoint(km: 0,       value: totalCal, norm: 0.5)
+            let ptN = RunChartPoint(km: totalKm, value: totalCal, norm: 0.5)
+            allSeries[.calories] = RunChartSeries(layer: .calories, points: [pt0, ptN],
+                                                  minValue: totalCal, maxValue: totalCal,
+                                                  avgValue: totalCal, lastValue: totalCal)
         }
 
         // HR zone bands
@@ -311,6 +392,8 @@ enum RunChartBuilder {
             }
         }
 
+        let (pcols, bkm) = buildPaceColumns(splits: splits, totalDuration: activity.duration)
+
         return RunChartData(
             totalKm: totalKm,
             series: allSeries,
@@ -319,8 +402,73 @@ enum RunChartBuilder {
             hrMax: hrMax,
             availableLayers: availableLayers,
             workSegments: workSegs,
-            fadeStartKm: fadeStartKm
+            fadeStartKm: fadeStartKm,
+            paceColumns: pcols,
+            bucketKm: bkm,
+            totalDuration: activity.duration
         )
+    }
+
+    // MARK: - Pace columns (time-proportional background)
+
+    private static func buildPaceColumns(
+        splits: [SplitData],
+        totalDuration: TimeInterval
+    ) -> ([PaceColumn], Int) {
+        guard !splits.isEmpty, totalDuration > 0 else { return ([], 1) }
+
+        let totalKm  = splits.reduce(0.0) { $0 + $1.distanceM / 1000 }
+        let bucketKm = max(1, Int(ceil(totalKm / 14.0)))
+
+        // Group splits into chunks of bucketKm splits each
+        var chunks: [[SplitData]] = []
+        var i = 0
+        while i < splits.count {
+            let end = min(i + bucketKm, splits.count)
+            chunks.append(Array(splits[i..<end]))
+            i = end
+        }
+
+        // Compute timing and pace per chunk
+        var cumulativeTime: Double = 0
+        var cumulativeKm: Double   = 0
+        var rawPaces: [Double]                       = []
+        var timings:  [(start: Double, end: Double)] = []
+        var kmRanges: [(start: Double, end: Double)] = []
+
+        for chunk in chunks {
+            let chunkKm   = chunk.reduce(0.0) { $0 + $1.distanceM / 1000 }
+            let chunkTime = chunk.reduce(0.0) { $0 + $1.duration }
+            let pace      = chunkKm > 0 ? chunkTime / chunkKm : 0
+            rawPaces.append(pace)
+            timings.append((start: cumulativeTime, end: cumulativeTime + chunkTime))
+            kmRanges.append((start: cumulativeKm,  end: cumulativeKm + chunkKm))
+            cumulativeTime += chunkTime
+            cumulativeKm   += chunkKm
+        }
+
+        let validPaces = rawPaces.filter { $0 > 0 }
+        guard !validPaces.isEmpty else { return ([], bucketKm) }
+
+        let minPace   = validPaces.min()!
+        let maxPace   = validPaces.max()!
+        let paceRange = maxPace - minPace
+
+        let columns: [PaceColumn] = rawPaces.indices.compactMap { idx in
+            let pace = rawPaces[idx]
+            guard pace > 0 else { return nil }
+            let norm  = paceRange > 0 ? 1.0 - (pace - minPace) / paceRange : 0.5
+            let sec   = Int(pace.rounded())
+            let label = "\(sec / 60)'\(String(format: "%02d", sec % 60))\""
+            return PaceColumn(
+                startKm: kmRanges[idx].start, endKm: kmRanges[idx].end,
+                startX:  timings[idx].start / totalDuration,
+                endX:    min(1.0, timings[idx].end / totalDuration),
+                paceSecPerKm: pace, norm: norm, label: label
+            )
+        }
+
+        return (columns, bucketKm)
     }
 
     // MARK: - Smoothed series builder (line layers)
@@ -329,7 +477,9 @@ enum RunChartBuilder {
         layer: RunChartLayer,
         rawPoints: [(km: Double, value: Double)],
         smoothWindow: Int,
-        clamp: ClampMode
+        clamp: ClampMode,
+        secondaryClamp: ClampMode? = nil,
+        meanWindow: Int = 0
     ) -> RunChartSeries? {
         guard rawPoints.count >= 2 else { return nil }
 
@@ -340,7 +490,7 @@ enum RunChartBuilder {
         let maxVal = rawValues.max()!
         let avgVal = rawValues.reduce(0, +) / Double(rawValues.count)
 
-        // Clamp for display (original values preserved for stats)
+        // Primary clamp (outlier removal)
         let clamped: [Double]
         switch clamp {
         case .percentile(let lo, let hi):
@@ -349,7 +499,22 @@ enum RunChartBuilder {
             clamped = rawValues.map { max(mn, min(mx, $0)) }
         }
 
-        let smoothed  = movingMedian(clamped, window: smoothWindow)
+        // Secondary clamp (amplitude expansion — narrows display range)
+        let doubleClamped: [Double]
+        if let sec = secondaryClamp {
+            switch sec {
+            case .percentile(let lo, let hi):
+                doubleClamped = percentileClamp(clamped, lo: lo, hi: hi)
+            case .hard(let mn, let mx):
+                doubleClamped = clamped.map { max(mn, min(mx, $0)) }
+            }
+        } else {
+            doubleClamped = clamped
+        }
+
+        // Two-pass smoothing: median removes spikes, mean removes step artifacts
+        var smoothed = movingMedian(doubleClamped, window: smoothWindow)
+        if meanWindow > 1 { smoothed = movingMean(smoothed, window: meanWindow) }
         let lastValue = smoothed.last ?? avgVal
 
         let smMin   = smoothed.min()!
@@ -377,7 +542,7 @@ enum RunChartBuilder {
         return values.map { max(loVal, min(hiVal, $0)) }
     }
 
-    // MARK: - Moving median smoothing
+    // MARK: - Smoothing helpers
 
     private static func movingMedian(_ values: [Double], window: Int) -> [Double] {
         let half = window / 2
@@ -387,6 +552,17 @@ enum RunChartBuilder {
             var slice = Array(values[lo...hi])
             slice.sort()
             return slice[slice.count / 2]
+        }
+    }
+
+    private static func movingMean(_ values: [Double], window: Int) -> [Double] {
+        guard window > 1 else { return values }
+        let half = window / 2
+        return values.indices.map { i in
+            let lo = max(0, i - half)
+            let hi = min(values.count - 1, i + half)
+            let slice = values[lo...hi]
+            return slice.reduce(0, +) / Double(slice.count)
         }
     }
 
@@ -498,19 +674,25 @@ enum RunChartBuilder {
     private static func makeSeries(
         layer: RunChartLayer,
         rawPoints: [(km: Double, value: Double)],
-        invertNorm: Bool
+        invertNorm: Bool,
+        meanWindow: Int = 0
     ) -> RunChartSeries? {
         guard rawPoints.count >= 2 else { return nil }
-        let values    = rawPoints.map { $0.value }
-        let minVal    = values.min()!
-        let maxVal    = values.max()!
-        let avgVal    = values.reduce(0, +) / Double(values.count)
-        let lastValue = rawPoints.last?.value ?? avgVal
-        let range     = maxVal - minVal
-        let points    = rawPoints.map { p -> RunChartPoint in
-            var t = range > 0 ? (p.value - minVal) / range : 0.5
+        let values = rawPoints.map { $0.value }
+        let minVal = values.min()!
+        let maxVal = values.max()!
+        let avgVal = values.reduce(0, +) / Double(values.count)
+
+        // Optional mean smoothing for display (stats use original values)
+        let display   = meanWindow > 1 ? movingMean(values, window: meanWindow) : values
+        let lastValue = display.last ?? avgVal
+        let dispMin   = display.min()!
+        let dispRange = display.max()! - dispMin
+        let points    = rawPoints.indices.map { i -> RunChartPoint in
+            let sv = display[i]
+            var t = dispRange > 0 ? (sv - dispMin) / dispRange : 0.5
             if invertNorm { t = 1.0 - t }
-            return RunChartPoint(km: p.km, value: p.value, norm: t)
+            return RunChartPoint(km: rawPoints[i].km, value: sv, norm: t)
         }
         return RunChartSeries(layer: layer, points: points,
                               minValue: minVal, maxValue: maxVal, avgValue: avgVal,

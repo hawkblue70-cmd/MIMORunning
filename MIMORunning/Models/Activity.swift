@@ -34,6 +34,31 @@ struct Activity: Identifiable, Hashable {
     let distance: Double        // meters
     let calories: Double?
     let avgHeartRate: Int?
+    let temperatureC: Double?    // 섭씨, HKMetadataKeyWeatherTemperature
+    let humidityPercent: Double? // 0~100, HKMetadataKeyWeatherHumidity
+
+    init(id: UUID, type: ActivityType, date: Date, duration: TimeInterval,
+         distance: Double, calories: Double?, avgHeartRate: Int?,
+         temperatureC: Double? = nil, humidityPercent: Double? = nil) {
+        self.id              = id
+        self.type            = type
+        self.date            = date
+        self.duration        = duration
+        self.distance        = distance
+        self.calories        = calories
+        self.avgHeartRate    = avgHeartRate
+        self.temperatureC    = temperatureC
+        self.humidityPercent = humidityPercent
+    }
+
+    var weatherBadgeText: String? {
+        switch (temperatureC, humidityPercent) {
+        case let (t?, h?):  return "\(Int(t.rounded()))° · 습도 \(Int(h.rounded()))%"
+        case let (t?, nil): return "\(Int(t.rounded()))°"
+        case let (nil, h?): return "습도 \(Int(h.rounded()))%"
+        case (nil, nil):    return nil
+        }
+    }
 
     var formattedDistance: String {
         let km = distance / 1000

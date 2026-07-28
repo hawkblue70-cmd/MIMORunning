@@ -38,8 +38,14 @@ final class RunChartLayerStore {
 
 struct RunCombinedPanelView: View {
     let data: RunChartData
+    var distanceText: String
+    var durationText: String
     var weatherText: String? = nil
-    var summaryText: String
+    var weatherIcon: String? = nil
+    var dateText: String? = nil
+    var weekdayText: String? = nil
+    var startTimeText: String? = nil
+    var shoeText: String? = nil
 
     @State private var store = RunChartLayerStore.shared
 
@@ -60,31 +66,37 @@ struct RunCombinedPanelView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
 
-                    RunCombinedChartView(data: data, enabledLayers: store.enabled)
+                    RunCombinedChartView(data: data, enabledLayers: store.enabled, chartHeight: 215)
                         .padding(.top, 6)
-                        .padding(.bottom, 10)
+                        .padding(.bottom, 6)
                 }
                 .background(Color.black)
 
                 // Stat tiles — all layers always shown, tap to toggle
-                LazyVGrid(columns: tileColumns, spacing: 6) {
+                LazyVGrid(columns: tileColumns, spacing: 4) {
                     ForEach(data.availableLayers) { layer in
                         if let series = data.series[layer] {
-                            RunStatTile(
-                                layer: layer,
-                                series: series,
-                                isOn: store.enabled.contains(layer)
-                            ) {
-                                store.toggle(layer)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            if layer.isValueOnly {
+                                // 값 전용 타일: 항상 밝게, 차트 토글 없음
+                                RunStatTile(layer: layer, series: series, isOn: true) { }
+                                    .allowsHitTesting(false)
+                            } else {
+                                RunStatTile(
+                                    layer: layer,
+                                    series: series,
+                                    isOn: store.enabled.contains(layer)
+                                ) {
+                                    store.toggle(layer)
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
                             }
                         }
                     }
                 }
                 .padding(.horizontal, 10)
-                .padding(.top, 10)
+                .padding(.top, 6)
 
-                Spacer(minLength: 12)
+                Spacer(minLength: 6)
             }
             .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 16))
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -95,18 +107,63 @@ struct RunCombinedPanelView: View {
     // MARK: - Context row
 
     private var contextRow: some View {
-        HStack {
-            Text(summaryText)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.92))
-            Spacer()
-            if let weather = weatherText {
-                Text(weather)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.92))
+        HStack(alignment: .top, spacing: 0) {
+            // 왼쪽: 거리/시간 위, 날짜/요일/시간 아래
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(distanceText)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.chartElev)
+                    Text(" · ")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                    Text(durationText)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.yellow)
+                }
+                if dateText != nil || weekdayText != nil || startTimeText != nil {
+                    HStack(spacing: 5) {
+                        if let d = dateText {
+                            Text(d)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.white.opacity(0.72))
+                        }
+                        if let w = weekdayText {
+                            Text(w)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.yellow.opacity(0.85))
+                        }
+                        if let t = startTimeText {
+                            Text(t)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.white.opacity(0.72))
+                        }
+                    }
+                }
+            }
+
+            Spacer(minLength: 6)
+
+            // 오른쪽: 날씨(기온) 위, 러닝화 아래 — 기온 밑줄에 표시
+            VStack(alignment: .trailing, spacing: 4) {
+                if let weather = weatherText {
+                    HStack(spacing: 3) {
+                        Image(systemName: weatherIcon ?? "thermometer.medium")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.white)
+                        Text(weather)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color(hex: "5CE5D5"))
+                    }
                     .padding(.horizontal, 9)
                     .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.10), in: Capsule())
+                    .background(Color(hex: "5CE5D5").opacity(0.12), in: Capsule())
+                }
+                if let shoe = shoeText {
+                    Label(shoe, systemImage: "shoe.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.chartElev.opacity(0.90))
+                }
             }
         }
     }
@@ -150,25 +207,27 @@ private struct RunStatTile: View {
                         .foregroundStyle(Color.white.opacity(isOn ? 0.55 : 0.28))
                         .lineLimit(1)
                     Spacer(minLength: 2)
-                    Text("\(layer.formatted(series.minValue))–\(layer.formatted(series.maxValue))")
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(Color.white.opacity(isOn ? 0.38 : 0.20))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+                    if !layer.isValueOnly {
+                        Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(Color.white.opacity(isOn ? 0.38 : 0.20))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
                 }
                 // Row 2: avg value + unit
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text(layer.formatted(series.avgValue))
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Color.white.opacity(isOn ? 1.0 : 0.28))
                     Text(layer.unit)
-                        .font(.system(size: 9.5))
+                        .font(.system(size: 9))
                         .foregroundStyle(Color.white.opacity(isOn ? 0.52 : 0.22))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 9)
-            .padding(.vertical, 9)
+            .padding(.vertical, 6)
             .background(
                 Color.white.opacity(isOn ? 0.08 : 0.04),
                 in: RoundedRectangle(cornerRadius: 9)
@@ -275,8 +334,13 @@ private struct RunStatTile: View {
         ScrollView {
             RunCombinedPanelView(
                 data: chartData,
-                weatherText: "☁️ 28° · 습도 70%",
-                summaryText: "6.03 km · 37:50"
+                distanceText: "6.03 km",
+                durationText: "37:50",
+                weatherText: "☁️ 28°",
+                dateText: "2026. 7. 28",
+                weekdayText: "월요일",
+                startTimeText: "오전 7:23",
+                shoeText: "Nike Pegasus 40"
             )
             .padding(.vertical, 16)
         }

@@ -70,11 +70,12 @@ enum Theme {
 extension Theme {
     static let chartPace     = Color(hex: "3DDCFF")  // 형광 시안
     static let chartCadence  = Color(hex: "FFE83D")  // 형광 옐로
-    static let chartPower    = Color(hex: "B4FF3D")  // 형광 라임그린
+    static let chartPower    = Color(hex: "38BDF8")  // 하늘색
     static let chartElev     = Color(hex: "4DFF7A")  // 네온 그린 (고도 라인 + 그라디언트 fill)
     static let chartElevFill = Color(hex: "4DFF7A")  // 고도 fill (chartElev 와 동일)
     static let chartStride   = Color(hex: "FF8A3D")  // 붉은 주황 (케이던스 노랑과 분리)
     static let chartVertOsc  = Color(hex: "E86BFF")  // 형광 퍼플 (Z5 레드와 구분)
+    static let chartAerobic  = Color(hex: "40C0FF")  // 하늘색 (유산소 효율)
 
     static let chartHRZones: [Color] = [
         Color(hex: "3D9BFF"),  // Z1 블루
