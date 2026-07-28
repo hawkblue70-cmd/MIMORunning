@@ -8,6 +8,10 @@ struct RunCombinedChartView: View {
     var chartHeight: CGFloat = 190
     /// When non-nil, that layer is shown at full opacity; all others fade to 0.15.
     var soloLayer: RunChartLayer? = nil
+    /// 0–1 fraction of total distance. When non-nil, chart draws progressively up to this point.
+    var playProgress: Double? = nil
+    /// Called at the start of any drag gesture (used to stop playback from parent).
+    var onInteraction: (() -> Void)? = nil
 
     @State private var selectedKm: Double? = nil
 
@@ -31,14 +35,19 @@ struct RunCombinedChartView: View {
                     Canvas { ctx, _ in
                         drawGridLines(ctx: ctx, rect: rect, activeLayers: activeLayers)
                         drawWorkSegments(ctx: ctx, rect: rect)
-                        drawPaceColumns(ctx: ctx, rect: rect)
-                        drawElevation(ctx: ctx, rect: rect, activeLayers: activeLayers)
-                        drawLines(ctx: ctx, rect: rect, activeLayers: activeLayers)
+                        drawPaceColumns(ctx: ctx, rect: rect, playProgress: playProgress)
+                        drawElevation(ctx: ctx, rect: rect, activeLayers: activeLayers, playProgress: playProgress)
+                        drawLines(ctx: ctx, rect: rect, activeLayers: activeLayers, playProgress: playProgress)
                         drawFadeMarker(ctx: ctx, rect: rect)
-                        drawEndLabels(ctx: ctx, rect: rect, activeLayers: activeLayers)
+                        if playProgress == nil {
+                            drawEndLabels(ctx: ctx, rect: rect, activeLayers: activeLayers)
+                        }
                         drawHRAxisLabels(ctx: ctx, rect: rect, activeLayers: activeLayers)
                         drawXAxis(ctx: ctx, rect: rect)
-                        if let km = selectedKm {
+                        if let progress = playProgress {
+                            drawPlaybackScrubber(ctx: ctx, rect: rect, progress: progress)
+                            drawPlaybackDots(ctx: ctx, rect: rect, activeLayers: activeLayers, progress: progress)
+                        } else if let km = selectedKm {
                             drawCrosshair(ctx: ctx, rect: rect, km: km, activeLayers: activeLayers)
                         }
                     }
@@ -46,6 +55,7 @@ struct RunCombinedChartView: View {
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { v in
+                                onInteraction?()
                                 guard data.totalKm > 0 else { return }
                                 let raw = (v.location.x - rect.minX) / rect.width * data.totalKm
                                 selectedKm = max(0, min(data.totalKm, raw))
@@ -178,6 +188,18 @@ struct RunCombinedChartView: View {
         return path
     }
 
+    // MARK: - Binary search helper (playback performance)
+
+    /// Returns the count of points with km ≤ maxKm (i.e., use `points.prefix(result)` for visible slice).
+    private func binarySearchIndex(points: [RunChartPoint], upToKm maxKm: Double) -> Int {
+        var lo = 0, hi = points.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if points[mid].km <= maxKm { lo = mid + 1 } else { hi = mid }
+        }
+        return lo
+    }
+
     // MARK: - Grid lines (구분선)
 
     private func drawGridLines(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
@@ -228,12 +250,21 @@ struct RunCombinedChartView: View {
 
     // MARK: - Elevation fill+line (neon green gradient fill)
 
-    private func drawElevation(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
+    private func drawElevation(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer], playProgress: Double? = nil) {
         guard enabledLayers.contains(.elevation),
               let series = data.series[.elevation], !series.isEmpty else { return }
 
-        let band  = bands(for: activeLayers)[.elevation] ?? (top: 0.34, bottom: 1.00)
-        let cgPts = series.points.map { p in
+        let band   = bands(for: activeLayers)[.elevation] ?? (top: 0.34, bottom: 1.00)
+        let allPts = series.points
+        let visPts: ArraySlice<RunChartPoint>
+        if let progress = playProgress, data.totalKm > 0 {
+            let idx = binarySearchIndex(points: allPts, upToKm: progress * data.totalKm)
+            visPts = allPts.prefix(idx)
+        } else {
+            visPts = allPts[...]
+        }
+        guard !visPts.isEmpty else { return }
+        let cgPts = visPts.map { p in
             CGPoint(x: xFor(km: p.km, in: rect), y: yForBand(norm: p.norm, band: band, in: rect))
         }
         let linePath = smoothPath(points: cgPts)
@@ -274,13 +305,17 @@ struct RunCombinedChartView: View {
 
     // MARK: - Pace columns (time-proportional background)
 
-    private func drawPaceColumns(ctx: GraphicsContext, rect: CGRect) {
+    private func drawPaceColumns(ctx: GraphicsContext, rect: CGRect, playProgress: Double? = nil) {
         guard enabledLayers.contains(.pace), !data.paceColumns.isEmpty else { return }
 
         let baseOp: Double = soloLayer == nil ? 0.14 : (soloLayer == .pace ? 0.24 : 0.05)
         let inset: CGFloat = 0.40   // 40% margin on each side → 60% fill
+        let maxKm: Double? = playProgress.map { $0 * data.totalKm }
 
         for col in data.paceColumns {
+            if let maxKm, col.startKm > maxKm { continue }
+            let isInProgress: Bool = maxKm.map { col.startKm <= $0 && col.endKm > $0 } ?? false
+
             let fullW = CGFloat(col.endX - col.startX) * rect.width
             let w     = max(6, fullW * (1 - inset))
             let x     = rect.minX + CGFloat(col.startX) * rect.width + (fullW - w) / 2
@@ -288,12 +323,14 @@ struct RunCombinedChartView: View {
             let h       = rect.height * CGFloat(0.20 + col.norm * 0.80)
             let barRect = CGRect(x: x, y: rect.maxY - h, width: w, height: h)
             let barPath = Path(roundedRect: barRect, cornerRadius: 2)
-            ctx.fill(barPath, with: .color(Theme.chartPace.opacity(baseOp)))
-            ctx.stroke(barPath, with: .color(Color.white.opacity(0.32)),
+            let fillOp  = isInProgress ? baseOp * 0.5 : baseOp
+            let strkOp  = isInProgress ? 0.16 : 0.32
+            ctx.fill(barPath, with: .color(Theme.chartPace.opacity(fillOp)))
+            ctx.stroke(barPath, with: .color(Color.white.opacity(strkOp)),
                        style: StrokeStyle(lineWidth: 1.0))
 
-            // Label centred under column; skip if too narrow
-            if w >= 14 {
+            // Label centred under column; skip if too narrow or in-progress bar
+            if w >= 14, !isInProgress {
                 ctx.draw(
                     Text(col.label)
                         .font(.system(size: 8.5, weight: .semibold))
@@ -307,7 +344,7 @@ struct RunCombinedChartView: View {
 
     // MARK: - Line layers (HR: zone-colored segments; others: single-color smooth line)
 
-    private func drawLines(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
+    private func drawLines(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer], playProgress: Double? = nil) {
         let bandMap = bands(for: activeLayers)
 
         // Non-HR layers: bottom→top order, each with black casing then colour line
@@ -316,7 +353,16 @@ struct RunCombinedChartView: View {
                   let series = data.series[layer], !series.isEmpty,
                   let band   = bandMap[layer] else { continue }
 
-            let cgPts = series.points.map { p in
+            let allPts = series.points
+            let visPts: ArraySlice<RunChartPoint>
+            if let progress = playProgress, data.totalKm > 0 {
+                let idx = binarySearchIndex(points: allPts, upToKm: progress * data.totalKm)
+                visPts = allPts.prefix(idx)
+            } else {
+                visPts = allPts[...]
+            }
+            guard !visPts.isEmpty else { continue }
+            let cgPts = visPts.map { p in
                 CGPoint(x: xFor(km: p.km, in: rect), y: yForBand(norm: p.norm, band: band, in: rect))
             }
             let path = smoothPath(points: cgPts)
@@ -340,7 +386,7 @@ struct RunCombinedChartView: View {
            let series = data.series[.heartRate], !series.isEmpty,
            let band = bandMap[.heartRate] {
             let op: Double = soloLayer == nil ? 1.0 : (soloLayer == .heartRate ? 1.0 : 0.15)
-            drawHRSegments(ctx: ctx, rect: rect, series: series, band: band, opacity: op)
+            drawHRSegments(ctx: ctx, rect: rect, series: series, band: band, opacity: op, playProgress: playProgress)
         }
     }
 
@@ -349,8 +395,16 @@ struct RunCombinedChartView: View {
     private func drawHRSegments(ctx: GraphicsContext, rect: CGRect,
                                  series: RunChartSeries,
                                  band: (top: Double, bottom: Double),
-                                 opacity: Double) {
-        let pts = series.points
+                                 opacity: Double,
+                                 playProgress: Double? = nil) {
+        let allPts = series.points
+        let pts: [RunChartPoint]
+        if let progress = playProgress, data.totalKm > 0 {
+            let idx = binarySearchIndex(points: allPts, upToKm: progress * data.totalKm)
+            pts = Array(allPts.prefix(idx))
+        } else {
+            pts = allPts
+        }
         guard pts.count >= 2 else { return }
 
         let cgPts = pts.map { p -> CGPoint in
@@ -573,6 +627,117 @@ struct RunCombinedChartView: View {
         return h > 0
             ? String(format: "%d:%02d:%02d", h, m, sec)
             : String(format: "%d:%02d", m, sec)
+    }
+
+    // MARK: - Playback: scrubber line + top label
+
+    private func drawPlaybackScrubber(ctx: GraphicsContext, rect: CGRect, progress: Double) {
+        guard data.totalKm > 0 else { return }
+        let km = progress * data.totalKm
+        let x  = xFor(km: km, in: rect)
+
+        // Vertical white scrubber line
+        var line = Path()
+        line.move(to: CGPoint(x: x, y: rect.minY))
+        line.addLine(to: CGPoint(x: x, y: rect.maxY))
+        ctx.stroke(line, with: .color(.white.opacity(0.5)),
+                   style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+
+        // Top label: "2.0km · 12:48" with black capsule background
+        let elapsed   = elapsedTime(atKm: km)
+        let labelText = String(format: "%.1fkm · %@", km, formatElapsed(elapsed))
+        let goLeft    = progress > 0.70
+
+        let bgH: CGFloat = 22
+        let bgW: CGFloat = CGFloat(labelText.count) * 7.5 + 20
+        let bgY: CGFloat = rect.minY + 2
+        let bgX: CGFloat = goLeft ? x - bgW - 4 : x + 4
+
+        ctx.fill(
+            Path(roundedRect: CGRect(x: bgX, y: bgY, width: bgW, height: bgH), cornerRadius: 11),
+            with: .color(.black.opacity(0.7))
+        )
+        ctx.draw(
+            Text(labelText)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.white),
+            at: CGPoint(x: bgX + bgW / 2, y: bgY + bgH / 2),
+            anchor: .center
+        )
+    }
+
+    // MARK: - Playback: endpoint dots + value labels
+
+    private func drawPlaybackDots(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer], progress: Double) {
+        guard data.totalKm > 0 else { return }
+        let maxKm  = progress * data.totalKm
+        let bandMap = bands(for: activeLayers)
+        let goLeft  = progress > 0.70
+        let scrubX  = xFor(km: maxKm, in: rect)
+        let labelX: CGFloat    = goLeft ? scrubX - 7 : scrubX + 7
+        let labelAnchor: UnitPoint = goLeft ? .trailing : .leading
+
+        struct DotInfo { var labelY: CGFloat; let text: String; let color: Color }
+        var dotInfos: [DotInfo] = []
+
+        let lineOrder: [RunChartLayer] = [.heartRate, .power, .cadence, .verticalOsc, .strideLength, .elevation]
+        for layer in lineOrder {
+            guard activeLayers.contains(layer),
+                  let series = data.series[layer], !series.isEmpty,
+                  let band   = bandMap[layer] else { continue }
+
+            let allPts = series.points
+            let idx = binarySearchIndex(points: allPts, upToKm: maxKm)
+            guard idx > 0 else { continue }
+
+            let pt   = allPts[idx - 1]
+            let dotX = xFor(km: pt.km, in: rect)
+            let dotY = yForBand(norm: pt.norm, band: band, in: rect)
+
+            let color: Color
+            let text: String
+            if layer == .heartRate {
+                color = zoneColor(for: pt.value)
+                text  = "\(layer.formatted(pt.value)) \(layer.unit)"
+            } else if layer == .elevation {
+                color = Theme.chartElev
+                text  = "\(Int(pt.value.rounded())) m"
+            } else {
+                color = layer.color
+                text  = "\(layer.formatted(pt.value)) \(layer.unit)"
+            }
+
+            // Dot: layer color fill + black stroke 1.2
+            let r: CGFloat = 3.5
+            let dotRect = CGRect(x: dotX - r, y: dotY - r, width: r * 2, height: r * 2)
+            ctx.fill(Path(ellipseIn: dotRect), with: .color(color))
+            ctx.stroke(Path(ellipseIn: dotRect), with: .color(.black),
+                       style: StrokeStyle(lineWidth: 1.2))
+
+            dotInfos.append(DotInfo(labelY: dotY, text: text, color: color))
+        }
+
+        // Sort top→bottom, nudge overlapping labels, clamp to chart area
+        dotInfos.sort { $0.labelY < $1.labelY }
+        let minGap: CGFloat = 11
+        for i in 1..<dotInfos.count {
+            if dotInfos[i].labelY - dotInfos[i-1].labelY < minGap {
+                dotInfos[i].labelY = dotInfos[i-1].labelY + minGap
+            }
+        }
+        for i in 0..<dotInfos.count {
+            dotInfos[i].labelY = max(rect.minY + 14, min(rect.maxY - 4, dotInfos[i].labelY))
+        }
+
+        for info in dotInfos {
+            ctx.draw(
+                Text(info.text)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(info.color),
+                at: CGPoint(x: labelX, y: info.labelY),
+                anchor: labelAnchor
+            )
+        }
     }
 
     // MARK: - Crosshair with inline labels

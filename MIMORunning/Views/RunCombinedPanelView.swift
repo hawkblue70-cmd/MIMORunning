@@ -48,6 +48,9 @@ struct RunCombinedPanelView: View {
     var shoeText: String? = nil
 
     @State private var store = RunChartLayerStore.shared
+    @State private var playProgress: Double? = nil
+    @State private var isPlaying = false
+    @State private var playTask: Task<Void, Never>? = nil
 
     private let tileColumns = [
         GridItem(.flexible(), spacing: 6),
@@ -66,9 +69,15 @@ struct RunCombinedPanelView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
 
-                    RunCombinedChartView(data: data, enabledLayers: store.enabled, chartHeight: 255)
-                        .padding(.top, 6)
-                        .padding(.bottom, 4)
+                    RunCombinedChartView(
+                        data: data,
+                        enabledLayers: store.enabled,
+                        chartHeight: 255,
+                        playProgress: playProgress,
+                        onInteraction: { if isPlaying { stopPlay() } }
+                    )
+                    .padding(.top, 6)
+                    .padding(.bottom, 4)
                 }
                 .background(Color.black)
 
@@ -86,6 +95,7 @@ struct RunCombinedPanelView: View {
                                     series: series,
                                     isOn: store.enabled.contains(layer)
                                 ) {
+                                    stopPlay()
                                     store.toggle(layer)
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 }
@@ -101,7 +111,36 @@ struct RunCombinedPanelView: View {
             .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 16))
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .padding(.horizontal, 16)
+            .onDisappear { stopPlay() }
         }
+    }
+
+    // MARK: - Playback
+
+    private func startPlay(duration: TimeInterval = 6) {
+        playTask?.cancel()
+        isPlaying = true
+        playTask = Task { @MainActor in
+            let start = Date()
+            while !Task.isCancelled {
+                let t = Date().timeIntervalSince(start) / duration
+                if t >= 1 {
+                    playProgress = 1
+                    try? await Task.sleep(for: .seconds(0.8))
+                    playProgress = nil
+                    isPlaying = false
+                    break
+                }
+                playProgress = t
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
+    }
+
+    private func stopPlay() {
+        playTask?.cancel()
+        playProgress = nil
+        isPlaying = false
     }
 
     // MARK: - Context row
@@ -144,20 +183,31 @@ struct RunCombinedPanelView: View {
 
             Spacer(minLength: 6)
 
-            // 오른쪽: 날씨(기온) 위, 러닝화 아래 — 기온 밑줄에 표시
+            // 오른쪽: 재생 버튼 + 날씨 위, 러닝화 아래
             VStack(alignment: .trailing, spacing: 4) {
-                if let weather = weatherText {
-                    HStack(spacing: 3) {
-                        Image(systemName: weatherIcon ?? "thermometer.medium")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Color.white)
-                        Text(weather)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color(hex: "5CE5D5"))
+                HStack(spacing: 6) {
+                    // Play / Stop button — left of weather badge
+                    Button(action: { isPlaying ? stopPlay() : startPlay() }) {
+                        Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.white.opacity(0.85))
                     }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 3)
-                    .background(Color(hex: "5CE5D5").opacity(0.12), in: Capsule())
+                    .frame(width: 36, height: 28)
+                    .background(Color.white.opacity(0.10), in: Capsule())
+
+                    if let weather = weatherText {
+                        HStack(spacing: 3) {
+                            Image(systemName: weatherIcon ?? "thermometer.medium")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.white)
+                            Text(weather)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color(hex: "5CE5D5"))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(Color(hex: "5CE5D5").opacity(0.12), in: Capsule())
+                    }
                 }
                 if let shoe = shoeText {
                     Label(shoe, systemImage: "shoe.fill")
