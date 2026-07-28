@@ -49,6 +49,7 @@ struct RunChartShareCard: View {
     let weekdayText: String?
     let startTimeText: String?
     let shoeText: String?
+    var playProgress: Double? = nil
 
     private let cardW: CGFloat = 300
     private let tileColumns = [
@@ -65,7 +66,8 @@ struct RunChartShareCard: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
 
-                RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: 218)
+                RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: 218,
+                                    playProgress: playProgress)
                     .padding(.top, 6)
                     .padding(.bottom, 4)
             }
@@ -184,6 +186,15 @@ struct RunChartShareSheet: View {
     @State private var renderedImage: UIImage? = nil
     @State private var showActivitySheet = false
 
+    // Video export
+    private enum ExportMode { case image, video }
+    @State private var exportMode: ExportMode = .image
+    @State private var videoDuration: TimeInterval = 10
+    @State private var isExportingVideo = false
+    @State private var videoProgress: Double = 0
+    @State private var exportedVideo: SharableVideoFile? = nil
+    @State private var videoExportTask: Task<Void, Never>? = nil
+
     private let cardW: CGFloat = 300
     private let L = AppLanguage.shared
 
@@ -241,31 +252,80 @@ struct RunChartShareSheet: View {
                     }
                     .padding(.top, 8)
 
+                    // (d) 이미지 / 영상 모드 선택
+                    Picker("", selection: $exportMode) {
+                        Text(L.s("이미지", "Image")).tag(ExportMode.image)
+                        Text(L.s("영상", "Video")).tag(ExportMode.video)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .onChange(of: exportMode) { _, _ in
+                        videoExportTask?.cancel()
+                        exportedVideo = nil
+                        isExportingVideo = false
+                        videoProgress = 0
+                    }
+
+                    // (e) 영상 길이 칩 (영상 모드만)
+                    if exportMode == .video {
+                        HStack {
+                            Text(L.s("영상 길이", "Duration"))
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach([6.0, 10.0, 15.0], id: \.self) { d in
+                                    Button("\(Int(d))s") { videoDuration = d }
+                                        .font(.system(size: 11,
+                                                      weight: videoDuration == d ? .semibold : .regular))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 5)
+                                        .background(videoDuration == d
+                                                    ? Theme.violet.opacity(0.18)
+                                                    : Color.white.opacity(0.06))
+                                        .foregroundStyle(videoDuration == d ? Theme.violet : .secondary)
+                                        .clipShape(Capsule())
+                                        .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                        }
+                        .padding(.top, 6)
+                    }
+
                     Spacer()
 
-                    // (d) 공유하기 버튼
-                    Button(action: renderAndShare) {
-                        HStack(spacing: 8) {
-                            if isRendering {
-                                ProgressView()
-                                    .tint(.white)
-                                    .scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 15, weight: .semibold))
+                    // (f) 공유 버튼 (이미지) / 내보내기+공유 버튼 (영상)
+                    if exportMode == .image {
+                        Button(action: renderAndShare) {
+                            HStack(spacing: 8) {
+                                if isRendering {
+                                    ProgressView().tint(.white).scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 15, weight: .semibold))
+                                }
+                                Text(L.s("공유하기", "Share"))
+                                    .font(.system(size: 16, weight: .semibold))
                             }
-                            Text(L.s("공유하기", "Share"))
-                                .font(.system(size: 16, weight: .semibold))
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                            .foregroundStyle(.white)
+                            .background(Theme.violet)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
-                        .frame(maxWidth: .infinity, minHeight: 46)
-                        .foregroundStyle(.white)
-                        .background(Theme.violet)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .buttonStyle(.plain)
+                        .disabled(isRendering)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                    } else {
+                        videoExportArea
                     }
-                    .buttonStyle(.plain)
-                    .disabled(isRendering)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
                 }
             }
             .navigationTitle(L.s("차트 공유", "Share Chart"))
@@ -281,6 +341,90 @@ struct RunChartShareSheet: View {
             if let img = renderedImage {
                 ShareSheet(images: [img])
             }
+        }
+        .onDisappear {
+            videoExportTask?.cancel()
+        }
+    }
+
+    // MARK: - Video export
+
+    private var videoExportArea: some View {
+        Group {
+            if let video = exportedVideo {
+                // Export complete: show ShareLink
+                ShareLink(
+                    item: video,
+                    preview: SharePreview(L.s("차트 영상", "Chart Video"),
+                                         image: Image(systemName: "video"))
+                ) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(L.s("공유하기", "Share"))
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .foregroundStyle(.white)
+                    .background(Theme.violet)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+            } else {
+                Button(action: startVideoExport) {
+                    HStack(spacing: 8) {
+                        if isExportingVideo {
+                            ProgressView(value: videoProgress)
+                                .progressViewStyle(.linear)
+                                .tint(.white)
+                                .frame(width: 80)
+                        } else {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        Text(isExportingVideo
+                             ? L.s("렌더링 중…", "Rendering…")
+                             : L.s("영상 만들기", "Export Video"))
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .foregroundStyle(.white)
+                    .background(isExportingVideo ? Theme.violet.opacity(0.55) : Theme.violet)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .disabled(isExportingVideo)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 20)
+    }
+
+    private func startVideoExport() {
+        guard !isExportingVideo else { return }
+        isExportingVideo = true
+        exportedVideo = nil
+        videoProgress = 0
+        videoExportTask = Task { @MainActor in
+            do {
+                let url = try await RunChartReplayExporter.export(
+                    data: data,
+                    enabledLayers: store.enabled,
+                    distanceText: distanceText,
+                    durationText: durationText,
+                    weatherText: weatherText,
+                    weatherIcon: weatherIcon,
+                    dateText: dateText,
+                    weekdayText: weekdayText,
+                    startTimeText: startTimeText,
+                    shoeText: shoeText,
+                    duration: videoDuration,
+                    onProgress: { p in videoProgress = p }
+                )
+                exportedVideo = SharableVideoFile(url: url)
+            } catch {
+                // silently reset on cancellation or failure
+            }
+            isExportingVideo = false
         }
     }
 
