@@ -52,9 +52,9 @@ struct RunChartShareCard: View {
 
     private let cardW: CGFloat = 300
     private let tileColumns = [
-        GridItem(.flexible(), spacing: 4),
-        GridItem(.flexible(), spacing: 4),
-        GridItem(.flexible(), spacing: 4)
+        GridItem(.flexible(), spacing: 3),
+        GridItem(.flexible(), spacing: 3),
+        GridItem(.flexible(), spacing: 3)
     ]
 
     var body: some View {
@@ -65,9 +65,9 @@ struct RunChartShareCard: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
 
-                RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: 190)
+                RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: 218)
                     .padding(.top, 6)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 4)
             }
             .background(Color.black)
 
@@ -76,7 +76,7 @@ struct RunChartShareCard: View {
                 $0.isValueOnly || enabledLayers.contains($0)
             }
             if !activeTiles.isEmpty {
-                LazyVGrid(columns: tileColumns, spacing: 4) {
+                LazyVGrid(columns: tileColumns, spacing: 3) {
                     ForEach(activeTiles) { layer in
                         if let series = data.series[layer] {
                             ShareStatTile(layer: layer, series: series)
@@ -84,8 +84,8 @@ struct RunChartShareCard: View {
                     }
                 }
                 .padding(.horizontal, 10)
-                .padding(.top, 6)
-                .padding(.bottom, 6)
+                .padding(.top, 4)
+                .padding(.bottom, 4)
             }
         }
         .frame(width: cardW)
@@ -284,11 +284,13 @@ struct RunChartShareSheet: View {
         }
     }
 
-    // 카드 자연 높이 추정값: contextRow(50) + chart(165+12) + tiles(~140) ≈ 367
+    // 미리보기 높이 추정 (타일 수에 따라 가변)
     private var previewHeight: CGFloat {
         let screenW = UIScreen.main.bounds.width
         let scale = (screenW - 48) / cardW
-        return 385 * scale
+        let tileRows = (data.availableLayers.count + 2) / 3
+        let tilesH = CGFloat(tileRows) * 44 + CGFloat(max(0, tileRows - 1)) * 3 + 8
+        return (52 + 228 + tilesH) * scale
     }
 
     private func renderAndShare() {
@@ -306,8 +308,10 @@ struct RunChartShareSheet: View {
             startTimeText: startTimeText,
             shoeText: shoeText
         )
+        // 폭 1080px 고정 (scale 3.6), 높이는 콘텐츠에 맞게 자연 결정
+        // Instagram 업로드 시 자체 크롭 UI로 4:5 조정 가능
         let renderer = ImageRenderer(content: card.preferredColorScheme(.dark))
-        renderer.scale = 3
+        renderer.scale = 1080.0 / cardW   // 정확히 1080px 폭
         renderer.proposedSize = ProposedViewSize(width: cardW, height: nil)
         renderedImage = renderer.uiImage
         isRendering = false

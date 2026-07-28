@@ -66,14 +66,14 @@ struct RunCombinedPanelView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
 
-                    RunCombinedChartView(data: data, enabledLayers: store.enabled, chartHeight: 215)
+                    RunCombinedChartView(data: data, enabledLayers: store.enabled, chartHeight: 255)
                         .padding(.top, 6)
-                        .padding(.bottom, 6)
+                        .padding(.bottom, 4)
                 }
                 .background(Color.black)
 
                 // Stat tiles — all layers always shown, tap to toggle
-                LazyVGrid(columns: tileColumns, spacing: 4) {
+                LazyVGrid(columns: tileColumns, spacing: 3) {
                     ForEach(data.availableLayers) { layer in
                         if let series = data.series[layer] {
                             if layer.isValueOnly {
@@ -94,9 +94,9 @@ struct RunCombinedPanelView: View {
                     }
                 }
                 .padding(.horizontal, 10)
-                .padding(.top, 6)
+                .padding(.top, 4)
 
-                Spacer(minLength: 6)
+                Spacer(minLength: 4)
             }
             .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 16))
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -196,7 +196,7 @@ private struct RunStatTile: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 3) {
                 // Row 1: dot + name + range
                 HStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 2)
@@ -227,7 +227,7 @@ private struct RunStatTile: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 9)
-            .padding(.vertical, 6)
+            .padding(.vertical, 4)
             .background(
                 Color.white.opacity(isOn ? 0.08 : 0.04),
                 in: RoundedRectangle(cornerRadius: 9)
