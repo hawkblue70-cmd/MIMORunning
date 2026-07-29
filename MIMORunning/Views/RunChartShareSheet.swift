@@ -289,8 +289,10 @@ struct RunChartShareSheet: View {
 
                         HStack(spacing: 6) {
                             ForEach(ReplayContent.allCases, id: \.self) { mode in
-                                let disabled = (mode == .route) && !hasRoute
-                                let label = mode == .data ? L.s("데이터", "Data") : L.s("경로", "Route")
+                                let disabled = (mode != .data) && !hasRoute
+                                let label = mode == .data ? L.s("데이터", "Data")
+                                    : mode == .route ? L.s("경로", "Route")
+                                    : L.s("둘 다", "Both")
                                 Button(label) {
                                     videoContent = mode
                                     refreshVideoPreview()

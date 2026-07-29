@@ -8,6 +8,7 @@ import SwiftUI
 enum ReplayContent: String, CaseIterable {
     case data  = "데이터"
     case route = "경로"
+    case both  = "둘 다"
 }
 
 // MARK: - RunChartReplayExporter
@@ -28,27 +29,39 @@ enum RunChartReplayExporter {
     // MARK: - Layout
 
     struct SectionLayout {
-        let topPad:   Int
-        let headerH:  Int
-        let chartH:   Int   // 0 when mode = .route
-        let routeH:   Int   // 0 when mode = .data
-        let tilesH:   Int
-        let botPad:   Int
-        let maxTiles: Int   // max stat tiles to render
+        let topPad:        Int
+        let headerH:       Int
+        let routeH:        Int   // 0 when mode = .data; map section
+        let mapChartGap:   Int   // gap between map and chart (non-zero only in .both)
+        let chartH:        Int   // 0 when mode = .route
+        let chartTilesGap: Int   // gap between chart and tiles (non-zero only in .both)
+        let tilesH:        Int
+        let botPad:        Int
+        let maxTiles:      Int   // max stat tiles to render
+        let compact:       Bool  // 0.85× tile scale (true only in .both)
 
         var headerTop: Int { topPad }
-        var chartTop:  Int { headerTop + headerH }
-        var routeTop:  Int { chartTop  + chartH  }
-        var tilesTop:  Int { routeTop  + routeH  }
+        var routeTop:  Int { headerTop + headerH }
+        var chartTop:  Int { routeTop  + routeH  + mapChartGap   }
+        var tilesTop:  Int { chartTop  + chartH  + chartTilesGap }
 
         static func make(_ content: ReplayContent) -> SectionLayout {
             switch content {
             case .data:
-                // 24+190+620+460+56 = 1350
-                return SectionLayout(topPad:24,headerH:190,chartH:620,routeH:0,  tilesH:460,botPad:56,maxTiles:12)
+                // 24+190 | r=0 g=0 | 620 g=0 | 460+56 = 1350
+                return SectionLayout(topPad:24, headerH:190, routeH:0,   mapChartGap:0,
+                                     chartH:620, chartTilesGap:0, tilesH:460, botPad:56,
+                                     maxTiles:12, compact:false)
             case .route:
-                // 24+190+0+700+380+56 = 1350
-                return SectionLayout(topPad:24,headerH:190,chartH:0,  routeH:700,tilesH:380,botPad:56,maxTiles:6)
+                // 24+190 | 700 g=0 | c=0 g=0 | 380+56 = 1350
+                return SectionLayout(topPad:24, headerH:190, routeH:700, mapChartGap:0,
+                                     chartH:0,   chartTilesGap:0, tilesH:380, botPad:56,
+                                     maxTiles:6, compact:false)
+            case .both:
+                // 20+160 | 400 g=12 | 440 g=12 | 260+46 = 1350
+                return SectionLayout(topPad:20, headerH:160, routeH:400, mapChartGap:12,
+                                     chartH:440, chartTilesGap:12, tilesH:260, botPad:46,
+                                     maxTiles:6, compact:true)
             }
         }
     }
@@ -132,15 +145,15 @@ enum RunChartReplayExporter {
         let tilesImg = renderCGImage(
             ReplayTilesView(
                 data: data, enabledLayers: enabledLayers,
-                height: tilesPtH, maxTiles: layout.maxTiles
+                height: tilesPtH, maxTiles: layout.maxTiles, compact: layout.compact
             ),
             width: cardW, height: tilesPtH
         )
 
         // ── Map snapshot (once, if needed) ────────────────────────────────────
-        var mapCGImage:  CGImage? = nil
-        var mapPoints:   [CGPoint] = []
-        var cumDist:     [Double] = []
+        var mapUIImage: UIImage? = nil
+        var mapPoints:  [CGPoint] = []
+        var cumDist:    [Double] = []
 
         if actual != .data && hasRoute {
             let routePtH = CGFloat(layout.routeH) / scale
@@ -148,7 +161,7 @@ enum RunChartReplayExporter {
                 coordinates: routeCoordinates,
                 ptSize: CGSize(width: cardW, height: routePtH)
             ) {
-                mapCGImage = img.cgImage
+                mapUIImage = img
                 mapPoints  = pts
             }
             cumDist = buildCumulativeDistances(routeCoordinates)
@@ -169,7 +182,8 @@ enum RunChartReplayExporter {
                         data: data,
                         enabledLayers: enabledLayers,
                         chartHeight: chartPtH,
-                        playProgress: t
+                        playProgress: t,
+                        endLabelMinGap: layout.compact ? 9 : 11
                     )
                     .frame(width: cardW, height: chartPtH)
                     .background(Color.black),
@@ -182,7 +196,7 @@ enum RunChartReplayExporter {
                     totalDuration: totalDuration,
                     headerImage: headerImg,
                     chartImage:  chartImg,
-                    mapCGImage:  mapCGImage,
+                    mapUIImage:  mapUIImage,
                     mapPoints:   mapPoints,
                     cumDist:     cumDist,
                     routeProgress: t,
@@ -250,7 +264,8 @@ enum RunChartReplayExporter {
         let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
             RunCombinedChartView(
                 data: data, enabledLayers: enabledLayers,
-                chartHeight: chartPtH, playProgress: 0
+                chartHeight: chartPtH, playProgress: 0,
+                endLabelMinGap: layout.compact ? 9 : 11
             )
             .frame(width: cardW, height: chartPtH)
             .background(Color.black),
@@ -258,13 +273,13 @@ enum RunChartReplayExporter {
         ) : nil
         let tilesImg = renderCGImage(
             ReplayTilesView(data: data, enabledLayers: enabledLayers,
-                            height: tilesPtH, maxTiles: layout.maxTiles),
+                            height: tilesPtH, maxTiles: layout.maxTiles, compact: layout.compact),
             width: cardW, height: tilesPtH
         )
         return compositeFrame(
             layout: layout, data: data, totalDuration: totalDuration,
             headerImage: headerImg, chartImage: chartImg,
-            mapCGImage: nil, mapPoints: [], cumDist: [], routeProgress: 0,
+            mapUIImage: nil, mapPoints: [], cumDist: [], routeProgress: 0,
             tilesImage: tilesImg
         ).flatMap { pb -> CGImage? in
             CVPixelBufferLockBaseAddress(pb, .readOnly)
@@ -290,7 +305,7 @@ enum RunChartReplayExporter {
         totalDuration: TimeInterval,
         headerImage: CGImage?,
         chartImage:  CGImage?,
-        mapCGImage:  CGImage?,
+        mapUIImage:  UIImage?,
         mapPoints:   [CGPoint],
         cumDist:     [Double],
         routeProgress: Double,
@@ -342,16 +357,19 @@ enum RunChartReplayExporter {
             ctx.saveGState()
             ctx.clip(to: routeRect)
 
-            if let mapImg = mapCGImage {
-                // aspectFill map image into route rect
-                let iw = CGFloat(mapImg.width), ih = CGFloat(mapImg.height)
-                let s  = max(routeRect.width / iw, routeRect.height / ih)
+            if let mapImg = mapUIImage {
+                // aspectFill via UIKit so orientation metadata is respected
+                let pixW = mapImg.size.width * mapImg.scale
+                let pixH = mapImg.size.height * mapImg.scale
+                let s    = max(routeRect.width / pixW, routeRect.height / pixH)
                 let drawn = CGRect(
-                    x: routeRect.midX - iw * s / 2,
-                    y: routeRect.midY - ih * s / 2,
-                    width: iw * s, height: ih * s
+                    x: routeRect.midX - pixW * s / 2,
+                    y: routeRect.midY - pixH * s / 2,
+                    width: pixW * s, height: pixH * s
                 )
-                ctx.draw(mapImg, in: drawn)
+                UIGraphicsPushContext(ctx)
+                mapImg.draw(in: drawn)
+                UIGraphicsPopContext()
             } else {
                 // Dark placeholder when no map
                 ctx.setFillColor(UIColor(red:0.07, green:0.06, blue:0.14, alpha:1).cgColor)
@@ -661,9 +679,10 @@ private struct ReplayTilesView: View {
     let enabledLayers: Set<RunChartLayer>
     let height:       CGFloat   // pt
     let maxTiles:     Int
+    let compact:      Bool      // 0.85× tile scale when true
 
     private let spacing: CGFloat = 3
-    private let tileScale: CGFloat = 1.0
+    private var tileScale: CGFloat { compact ? 0.85 : 1.0 }
 
     private var activeTiles: [RunChartLayer] {
         Array(data.availableLayers

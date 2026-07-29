@@ -12,6 +12,8 @@ struct RunCombinedChartView: View {
     var playProgress: Double? = nil
     /// Called at the start of any drag gesture (used to stop playback from parent).
     var onInteraction: (() -> Void)? = nil
+    /// Minimum vertical gap (pt) between right-side end-point labels. Default 11, use 9 when chart is short.
+    var endLabelMinGap: CGFloat = 11
 
     @State private var selectedKm: Double? = nil
 
@@ -525,9 +527,9 @@ struct RunCombinedChartView: View {
             return Slot(text: text, y: y, color: color)
         }
 
-        // Sort top-to-bottom, nudge overlapping labels downward (11pt minimum gap)
+        // Sort top-to-bottom, nudge overlapping labels downward
         slots.sort { $0.y < $1.y }
-        let minGap: CGFloat = 11
+        let minGap: CGFloat = endLabelMinGap
         for i in 1..<slots.count {
             if slots[i].y - slots[i-1].y < minGap {
                 slots[i].y = slots[i-1].y + minGap
