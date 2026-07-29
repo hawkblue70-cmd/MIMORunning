@@ -192,7 +192,7 @@ struct RunChartShareSheet: View {
     // Video export
     private enum ExportMode { case image, video }
     @State private var exportMode: ExportMode = .image
-    @State private var videoContent: ReplayContent = .data
+    @State private var videoContent: ReplayContent = .chartData
     @State private var videoDuration: TimeInterval = 10
     @State private var isExportingVideo = false
     @State private var videoProgress: Double = 0
@@ -289,10 +289,10 @@ struct RunChartShareSheet: View {
 
                         HStack(spacing: 6) {
                             ForEach(ReplayContent.allCases, id: \.self) { mode in
-                                let disabled = (mode != .data) && !hasRoute
-                                let label = mode == .data ? L.s("데이터", "Data")
-                                    : mode == .route ? L.s("경로", "Route")
-                                    : L.s("둘 다", "Both")
+                                let disabled = (mode == .routeData || mode == .routeChart) && !hasRoute
+                                let label = mode == .chartData ? L.s("차트+데이터", "Chart+Data")
+                                    : mode == .routeData ? L.s("경로+데이터", "Route+Data")
+                                    : L.s("경로+차트", "Route+Chart")
                                 Button(label) {
                                     videoContent = mode
                                     refreshVideoPreview()
