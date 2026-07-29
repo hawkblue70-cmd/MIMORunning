@@ -180,6 +180,7 @@ struct RunChartShareSheet: View {
     let weekdayText: String?
     let startTimeText: String?
     let shoeText: String?
+    var totalDuration: TimeInterval = 0
     var routeCoordinates: [CLLocationCoordinate2D] = []
 
     @State private var store = RunChartShareStore.shared
@@ -286,28 +287,27 @@ struct RunChartShareSheet: View {
                         .padding(.horizontal, 20)
                         .padding(.top, 12)
 
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(ReplayContent.allCases, id: \.self) { mode in
-                                    let disabled = (mode != .data) && !hasRoute
-                                    Button(L.s(mode.rawValue, mode == .data ? "Data" : mode == .route ? "Route" : "Both")) {
-                                        videoContent = mode
-                                        refreshVideoPreview()
-                                    }
-                                    .font(.system(size: 11, weight: videoContent == mode ? .semibold : .regular))
-                                    .padding(.horizontal, 14).padding(.vertical, 5)
-                                    .background(videoContent == mode
-                                                ? Theme.violet.opacity(0.18)
-                                                : Color.white.opacity(0.06))
-                                    .foregroundStyle(disabled ? Color.secondary.opacity(0.4)
-                                                    : videoContent == mode ? Theme.violet : .secondary)
-                                    .clipShape(Capsule())
-                                    .buttonStyle(.plain)
-                                    .disabled(disabled)
+                        HStack(spacing: 6) {
+                            ForEach(ReplayContent.allCases, id: \.self) { mode in
+                                let disabled = (mode == .route) && !hasRoute
+                                let label = mode == .data ? L.s("데이터", "Data") : L.s("경로", "Route")
+                                Button(label) {
+                                    videoContent = mode
+                                    refreshVideoPreview()
                                 }
+                                .font(.system(size: 11, weight: videoContent == mode ? .semibold : .regular))
+                                .padding(.horizontal, 14).padding(.vertical, 5)
+                                .background(videoContent == mode
+                                            ? Theme.violet.opacity(0.18)
+                                            : Color.white.opacity(0.06))
+                                .foregroundStyle(disabled ? Color.secondary.opacity(0.4)
+                                                : videoContent == mode ? Theme.violet : .secondary)
+                                .clipShape(Capsule())
+                                .buttonStyle(.plain)
+                                .disabled(disabled)
                             }
-                            .padding(.horizontal, 20)
                         }
+                        .padding(.horizontal, 20)
                         .padding(.top, 6)
 
                         // (e-2) 영상 길이
@@ -470,6 +470,7 @@ struct RunChartShareSheet: View {
                     weekdayText: weekdayText,
                     startTimeText: startTimeText,
                     shoeText: shoeText,
+                    totalDuration: totalDuration,
                     routeCoordinates: routeCoordinates,
                     content: videoContent,
                     duration: videoDuration,
@@ -490,6 +491,7 @@ struct RunChartShareSheet: View {
             weatherText: weatherText, weatherIcon: weatherIcon,
             dateText: dateText, weekdayText: weekdayText,
             startTimeText: startTimeText, shoeText: shoeText,
+            totalDuration: totalDuration,
             content: videoContent,
             routeCoordinates: routeCoordinates
         )

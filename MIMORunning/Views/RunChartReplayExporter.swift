@@ -8,7 +8,6 @@ import SwiftUI
 enum ReplayContent: String, CaseIterable {
     case data  = "데이터"
     case route = "경로"
-    case both  = "둘 다"
 }
 
 // MARK: - RunChartReplayExporter
@@ -29,17 +28,16 @@ enum RunChartReplayExporter {
     // MARK: - Layout
 
     struct SectionLayout {
-        let topPad:  Int
-        let headerH: Int
-        let chartH:  Int   // 0 when mode = .route
-        let routeH:  Int   // 0 when mode = .data
-        let tilesH:  Int
-        let botPad:  Int
-        let compact: Bool  // .both: 3-col × 2-row, 0.85× tile scale
+        let topPad:   Int
+        let headerH:  Int
+        let chartH:   Int   // 0 when mode = .route
+        let routeH:   Int   // 0 when mode = .data
+        let tilesH:   Int
+        let botPad:   Int
+        let maxTiles: Int   // max stat tiles to render
 
         var headerTop: Int { topPad }
         var chartTop:  Int { headerTop + headerH }
-        // Route comes after chart (chartH may be 0)
         var routeTop:  Int { chartTop  + chartH  }
         var tilesTop:  Int { routeTop  + routeH  }
 
@@ -47,13 +45,10 @@ enum RunChartReplayExporter {
             switch content {
             case .data:
                 // 24+190+620+460+56 = 1350
-                return SectionLayout(topPad:24,headerH:190,chartH:620,routeH:0,  tilesH:460,botPad:56,compact:false)
+                return SectionLayout(topPad:24,headerH:190,chartH:620,routeH:0,  tilesH:460,botPad:56,maxTiles:12)
             case .route:
-                // 24+190+0+720+360+56 = 1350
-                return SectionLayout(topPad:24,headerH:190,chartH:0,  routeH:720,tilesH:360,botPad:56,compact:false)
-            case .both:
-                // 20+170+480+420+240+20 = 1350
-                return SectionLayout(topPad:20,headerH:170,chartH:480,routeH:420,tilesH:240,botPad:20,compact:true)
+                // 24+190+0+700+380+56 = 1350
+                return SectionLayout(topPad:24,headerH:190,chartH:0,  routeH:700,tilesH:380,botPad:56,maxTiles:6)
             }
         }
     }
@@ -73,6 +68,7 @@ enum RunChartReplayExporter {
         weekdayText: String?,
         startTimeText: String?,
         shoeText: String?,
+        totalDuration: TimeInterval = 0,
         routeCoordinates: [CLLocationCoordinate2D] = [],
         content: ReplayContent = .data,
         duration: TimeInterval = 10,
@@ -136,7 +132,7 @@ enum RunChartReplayExporter {
         let tilesImg = renderCGImage(
             ReplayTilesView(
                 data: data, enabledLayers: enabledLayers,
-                height: tilesPtH, compact: layout.compact
+                height: tilesPtH, maxTiles: layout.maxTiles
             ),
             width: cardW, height: tilesPtH
         )
@@ -182,6 +178,8 @@ enum RunChartReplayExporter {
 
                 guard let pb = compositeFrame(
                     layout: layout,
+                    data: data,
+                    totalDuration: totalDuration,
                     headerImage: headerImg,
                     chartImage:  chartImg,
                     mapCGImage:  mapCGImage,
@@ -229,6 +227,7 @@ enum RunChartReplayExporter {
         weekdayText: String?,
         startTimeText: String?,
         shoeText: String?,
+        totalDuration: TimeInterval = 0,
         content: ReplayContent,
         routeCoordinates: [CLLocationCoordinate2D]
     ) -> CGImage? {
@@ -259,11 +258,12 @@ enum RunChartReplayExporter {
         ) : nil
         let tilesImg = renderCGImage(
             ReplayTilesView(data: data, enabledLayers: enabledLayers,
-                            height: tilesPtH, compact: layout.compact),
+                            height: tilesPtH, maxTiles: layout.maxTiles),
             width: cardW, height: tilesPtH
         )
         return compositeFrame(
-            layout: layout, headerImage: headerImg, chartImage: chartImg,
+            layout: layout, data: data, totalDuration: totalDuration,
+            headerImage: headerImg, chartImage: chartImg,
             mapCGImage: nil, mapPoints: [], cumDist: [], routeProgress: 0,
             tilesImage: tilesImg
         ).flatMap { pb -> CGImage? in
@@ -286,6 +286,8 @@ enum RunChartReplayExporter {
 
     private static func compositeFrame(
         layout: SectionLayout,
+        data: RunChartData,
+        totalDuration: TimeInterval,
         headerImage: CGImage?,
         chartImage:  CGImage?,
         mapCGImage:  CGImage?,
@@ -364,7 +366,9 @@ enum RunChartReplayExporter {
                     points: mapPoints,
                     progress: routeProgress,
                     cumDist: cumDist,
-                    routeRect: routeRect
+                    routeRect: routeRect,
+                    totalKm: data.totalKm,
+                    totalDuration: totalDuration
                 )
             }
         }
@@ -381,7 +385,9 @@ enum RunChartReplayExporter {
         points: [CGPoint],    // in snapshot pt-space (cardW wide)
         progress: Double,
         cumDist: [Double],
-        routeRect: CGRect     // pixel rect, top-left origin after ctx flip
+        routeRect: CGRect,    // pixel rect, top-left origin after ctx flip
+        totalKm: Double,
+        totalDuration: TimeInterval
     ) {
         guard points.count > 1 else { return }
 
@@ -436,6 +442,50 @@ enum RunChartReplayExporter {
         // Violet fill
         ctx.setFillColor(violet.cgColor)
         ctx.fillEllipse(in: CGRect(x: tip.x-5, y: tip.y-5, width: 10, height: 10))
+
+        // ── km · time label at top of route section ──
+        drawRouteProgressLabel(
+            ctx: ctx, progress: progress,
+            totalKm: totalKm, totalDuration: totalDuration,
+            routeRect: routeRect
+        )
+    }
+
+    private static func drawRouteProgressLabel(
+        ctx: CGContext,
+        progress: Double,
+        totalKm: Double,
+        totalDuration: TimeInterval,
+        routeRect: CGRect
+    ) {
+        guard totalKm > 0, progress > 0 else { return }
+        let km = progress * totalKm
+        let elapsed = progress * totalDuration
+        let s = Int(elapsed.rounded())
+        let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
+        let timeStr = h > 0
+            ? String(format: "%d:%02d:%02d", h, m, sec)
+            : String(format: "%d:%02d", m, sec)
+        let text = String(format: "%.1fkm · %@", km, timeStr)
+
+        let font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        let attrStr = NSAttributedString(string: text, attributes: [
+            .font: font,
+            .foregroundColor: UIColor.white
+        ])
+        let textSize = attrStr.size()
+        let padH: CGFloat = 10, padV: CGFloat = 6
+        let bgW = textSize.width + padH * 2
+        let bgH = textSize.height + padV * 2
+        let bgX = routeRect.midX - bgW / 2
+        let bgY = routeRect.minY + 14
+
+        UIGraphicsPushContext(ctx)
+        UIColor.black.withAlphaComponent(0.70).setFill()
+        UIBezierPath(roundedRect: CGRect(x: bgX, y: bgY, width: bgW, height: bgH),
+                     cornerRadius: bgH / 2).fill()
+        attrStr.draw(at: CGPoint(x: bgX + padH, y: bgY + padV))
+        UIGraphicsPopContext()
     }
 
     // MARK: - Cumulative distance helpers
@@ -610,11 +660,10 @@ private struct ReplayTilesView: View {
     let data:         RunChartData
     let enabledLayers: Set<RunChartLayer>
     let height:       CGFloat   // pt
-    let compact:      Bool      // 0.85× scale, max 6 tiles
+    let maxTiles:     Int
 
     private let spacing: CGFloat = 3
-    private var maxTiles: Int { compact ? 6 : 12 }
-    private var tileScale: CGFloat { compact ? 0.85 : 1.0 }
+    private let tileScale: CGFloat = 1.0
 
     private var activeTiles: [RunChartLayer] {
         Array(data.availableLayers

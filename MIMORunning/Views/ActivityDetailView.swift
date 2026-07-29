@@ -319,7 +319,9 @@ struct ActivityDetailView: View {
                 dateText: panelDateText,
                 weekdayText: panelWeekdayText,
                 startTimeText: panelTimeText,
-                shoeText: panelShoeText
+                shoeText: panelShoeText,
+                totalDuration: activity.duration,
+                routeCoordinates: detail?.routeCoordinates ?? []
             )
         }
         .onChange(of: activePanel) { _, newPanel in
