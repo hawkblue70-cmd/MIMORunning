@@ -157,21 +157,20 @@ enum RunChartReplayExporter {
 
         if layout.routeH > 0 && hasRoute {
             let routePtH = CGFloat(layout.routeH) / scale
-            if let (img, pts) = try? await chartMapSnapshot(
-                coordinates: routeCoordinates,
-                ptSize: CGSize(width: cardW, height: routePtH)
-            ) {
+            do {
+                let (img, pts) = try await chartMapSnapshot(
+                    coordinates: routeCoordinates,
+                    ptSize: CGSize(width: cardW, height: routePtH)
+                )
                 mapUIImage = img
                 mapPoints  = pts
-            } else {
-                print("[Replay] snapshot FAILED — dark placeholder used")
+            } catch {
+                print("[Replay] snapshot FAILED:", error)
             }
             cumDist = buildCumulativeDistances(routeCoordinates)
         }
-        print("[Replay] mapUIImage:", mapUIImage?.size ?? CGSize.zero, "scale:", mapUIImage?.scale ?? 0)
-        let mapLogRect = layout.routeH > 0
-            ? CGRect(x: 0, y: layout.routeTop, width: videoW, height: layout.routeH) : CGRect.zero
-        print("[Replay] mapRect:", mapLogRect)
+        logMapDiagnostics(routeCoordCount: routeCoordinates.count,
+                          mapUIImage: mapUIImage, layout: layout)
 
         let timeDistTable = buildTimeDistanceTable(data: data, totalDuration: totalDuration)
         let videoSize = CGSize(width: videoW, height: videoH)
@@ -203,6 +202,7 @@ enum RunChartReplayExporter {
                     headerImage: headerImg, chartImage: chartImg,
                     mapUIImage: mapUIImage, mapPoints: mapPoints,
                     cumDist: cumDist, timeDistTable: timeDistTable,
+                    routeCoordinates: routeCoordinates,
                     timeProgress: t, tilesImage: tilesImg
                 )
 
@@ -290,7 +290,8 @@ enum RunChartReplayExporter {
             layout: layout, data: data, totalDuration: totalDuration,
             headerImage: headerImg, chartImage: chartImg,
             mapUIImage: nil, mapPoints: [], cumDist: [],
-            timeDistTable: [], timeProgress: 0, tilesImage: tilesImg
+            timeDistTable: [], routeCoordinates: [],
+            timeProgress: 0, tilesImage: tilesImg
         ).cgImage
     }
 
@@ -354,15 +355,20 @@ enum RunChartReplayExporter {
 
         if layout.routeH > 0 && hasRoute {
             let routePtH = CGFloat(layout.routeH) / scale
-            if let (img, pts) = try? await chartMapSnapshot(
-                coordinates: routeCoordinates,
-                ptSize: CGSize(width: cardW, height: routePtH)
-            ) {
+            do {
+                let (img, pts) = try await chartMapSnapshot(
+                    coordinates: routeCoordinates,
+                    ptSize: CGSize(width: cardW, height: routePtH)
+                )
                 mapUIImage = img
                 mapPoints  = pts
+            } catch {
+                print("[Preview] snapshot FAILED:", error)
             }
             cumDist = buildCumulativeDistances(routeCoordinates)
         }
+        logMapDiagnostics(routeCoordCount: routeCoordinates.count,
+                          mapUIImage: mapUIImage, layout: layout)
 
         let timeDistTable = buildTimeDistanceTable(data: data, totalDuration: totalDuration)
         return composeFrame(
@@ -370,6 +376,7 @@ enum RunChartReplayExporter {
             headerImage: headerImg, chartImage: chartImg,
             mapUIImage: mapUIImage, mapPoints: mapPoints,
             cumDist: cumDist, timeDistTable: timeDistTable,
+            routeCoordinates: routeCoordinates,
             timeProgress: progress, tilesImage: tilesImg
         )
     }
@@ -381,6 +388,32 @@ enum RunChartReplayExporter {
         UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
     }
     #endif
+
+    private static func logMapDiagnostics(routeCoordCount: Int,
+                                          mapUIImage: UIImage?,
+                                          layout: SectionLayout) {
+        print("[Replay] routeCoords =", routeCoordCount)
+        print("[Replay] mapImage =", String(describing: mapUIImage?.size))
+        guard layout.routeH > 0 else { print("[Replay] mapRect = N/A (no route section)"); return }
+        let mapRect = CGRect(x: 0, y: CGFloat(layout.routeTop),
+                             width: CGFloat(videoW), height: CGFloat(layout.routeH))
+        print("[Replay] mapRect =", mapRect)
+        if let img = mapUIImage {
+            let pixW = img.size.width * img.scale
+            let pixH = img.size.height * img.scale
+            if pixW > 0, pixH > 0 {
+                let s = max(mapRect.width / pixW, mapRect.height / pixH)
+                let fittedRect = CGRect(x: mapRect.midX - pixW*s/2,
+                                        y: mapRect.midY - pixH*s/2,
+                                        width: pixW*s, height: pixH*s)
+                print("[Replay] fittedRect =", fittedRect)
+            } else {
+                print("[Replay] fittedRect = INVALID (pixW:\(pixW) pixH:\(pixH))")
+            }
+        } else {
+            print("[Replay] fittedRect = N/A (no map — coordinate fallback will render)")
+        }
+    }
 
     // MARK: - Frame composition (UIKit coordinate space — top-left origin)
 
@@ -394,6 +427,7 @@ enum RunChartReplayExporter {
         mapPoints:   [CGPoint],
         cumDist:     [Double],
         timeDistTable: [(timeRatio: Double, distanceRatio: Double)],
+        routeCoordinates: [CLLocationCoordinate2D] = [],
         timeProgress: Double,
         tilesImage:  CGImage?
     ) -> UIImage {
@@ -431,13 +465,18 @@ enum RunChartReplayExporter {
                 if let mapImg = mapUIImage {
                     let pixW = mapImg.size.width * mapImg.scale
                     let pixH = mapImg.size.height * mapImg.scale
-                    let s = max(routeRect.width / pixW, routeRect.height / pixH)
-                    let drawn = CGRect(
-                        x: routeRect.midX - pixW * s / 2,
-                        y: routeRect.midY - pixH * s / 2,
-                        width: pixW * s, height: pixH * s
-                    )
-                    mapImg.draw(in: drawn)
+                    if pixW > 0, pixH > 0 {
+                        let s = max(routeRect.width / pixW, routeRect.height / pixH)
+                        let drawn = CGRect(
+                            x: routeRect.midX - pixW * s / 2,
+                            y: routeRect.midY - pixH * s / 2,
+                            width: pixW * s, height: pixH * s
+                        )
+                        mapImg.draw(in: drawn)
+                    } else {
+                        UIColor(red: 0.07, green: 0.06, blue: 0.14, alpha: 1).setFill()
+                        UIRectFill(routeRect)
+                    }
                 } else {
                     UIColor(red: 0.07, green: 0.06, blue: 0.14, alpha: 1).setFill()
                     UIRectFill(routeRect)
@@ -445,15 +484,21 @@ enum RunChartReplayExporter {
 
                 ctx.restoreGState()
 
-                // Route polyline + progress label (drawn after clip restored)
+                let distRatio = timeToDistanceRatio(timeRatio: timeProgress, table: timeDistTable)
                 if mapPoints.count > 1 {
-                    let distRatio = timeToDistanceRatio(timeRatio: timeProgress,
-                                                       table: timeDistTable)
+                    // Snapshot-derived points: use them directly
                     drawRoutePolyline(ctx: ctx, points: mapPoints,
                                       distanceProgress: distRatio,
                                       timeProgress: timeProgress,
                                       cumDist: cumDist, routeRect: routeRect,
                                       totalKm: data.totalKm, totalDuration: totalDuration)
+                } else if routeCoordinates.count >= 2 {
+                    // Fallback: draw route from raw lat/lon (no map tile background)
+                    drawRouteFromCoordinates(ctx: ctx, coordinates: routeCoordinates,
+                                             distanceProgress: distRatio,
+                                             timeProgress: timeProgress,
+                                             cumDist: cumDist, routeRect: routeRect,
+                                             totalKm: data.totalKm, totalDuration: totalDuration)
                 }
             }
 
@@ -555,6 +600,88 @@ enum RunChartReplayExporter {
         drawRouteProgressLabel(timeProgress: timeProgress, distanceProgress: distanceProgress,
                                totalKm: totalKm, totalDuration: totalDuration,
                                routeRect: routeRect)
+    }
+
+    // Fallback: draw route directly from lat/lon when map snapshot is unavailable
+    private static func drawRouteFromCoordinates(
+        ctx: CGContext,
+        coordinates: [CLLocationCoordinate2D],
+        distanceProgress: Double,
+        timeProgress: Double,
+        cumDist: [Double],
+        routeRect: CGRect,
+        totalKm: Double,
+        totalDuration: TimeInterval
+    ) {
+        guard coordinates.count >= 2 else { return }
+
+        let lats = coordinates.map(\.latitude)
+        let lons = coordinates.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max()
+        else { return }
+
+        let latRange = max(maxLat - minLat, 0.0001)
+        let lonRange = max(maxLon - minLon, 0.0001)
+
+        // Aspect-preserving fit within 85% of routeRect
+        let latAspect = CGFloat(latRange / lonRange)
+        let availW    = routeRect.width  * 0.85
+        let availH    = routeRect.height * 0.85
+        let boxW: CGFloat
+        let boxH: CGFloat
+        if latAspect * availW > availH {
+            boxH = availH; boxW = boxH / latAspect
+        } else {
+            boxW = availW; boxH = boxW * latAspect
+        }
+        let ox = routeRect.midX - boxW / 2
+        let oy = routeRect.midY - boxH / 2
+
+        func toPixel(_ c: CLLocationCoordinate2D) -> CGPoint {
+            let nx = CGFloat((c.longitude - minLon) / lonRange)
+            let ny = CGFloat(1.0 - (c.latitude - minLat) / latRange)  // y-flip: lat↑ = y↓
+            return CGPoint(x: ox + nx * boxW, y: oy + ny * boxH)
+        }
+
+        // Downsample for performance (~500 pts max)
+        let step = max(1, coordinates.count / 500)
+        let sampled = stride(from: 0, to: coordinates.count, by: step).map { coordinates[$0] }
+        let allPx   = sampled.map { toPixel($0) }
+        let endIdx  = distanceIndex(at: distanceProgress, cumDist: cumDist, total: allPx.count)
+
+        // Ghost route
+        let fullPath = CGMutablePath()
+        fullPath.move(to: allPx[0])
+        allPx.dropFirst().forEach { fullPath.addLine(to: $0) }
+        ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.22).cgColor)
+        ctx.setLineWidth(2); ctx.setLineCap(.round); ctx.setLineJoin(.round)
+        ctx.addPath(fullPath); ctx.strokePath()
+
+        if endIdx > 0 {
+            let travPx = Array(allPx.prefix(endIdx + 1))
+            let travPath = CGMutablePath()
+            travPath.move(to: travPx[0])
+            travPx.dropFirst().forEach { travPath.addLine(to: $0) }
+
+            ctx.setStrokeColor(UIColor.black.withAlphaComponent(0.85).cgColor)
+            ctx.setLineWidth(5.5); ctx.addPath(travPath); ctx.strokePath()
+
+            ctx.setStrokeColor(UIColor(Theme.chartPace).cgColor)
+            ctx.setLineWidth(3.5); ctx.addPath(travPath); ctx.strokePath()
+
+            let tip = travPx.last!
+            let violet = UIColor(Theme.violet)
+            ctx.setFillColor(violet.withAlphaComponent(0.25).cgColor)
+            ctx.fillEllipse(in: CGRect(x: tip.x-14, y: tip.y-14, width: 28, height: 28))
+            ctx.setFillColor(UIColor.white.cgColor)
+            ctx.fillEllipse(in: CGRect(x: tip.x-7, y: tip.y-7, width: 14, height: 14))
+            ctx.setFillColor(violet.cgColor)
+            ctx.fillEllipse(in: CGRect(x: tip.x-5, y: tip.y-5, width: 10, height: 10))
+        }
+
+        drawRouteProgressLabel(timeProgress: timeProgress, distanceProgress: distanceProgress,
+                               totalKm: totalKm, totalDuration: totalDuration, routeRect: routeRect)
     }
 
     private static func drawRouteProgressLabel(
