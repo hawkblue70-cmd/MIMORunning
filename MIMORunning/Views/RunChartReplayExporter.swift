@@ -7,7 +7,6 @@ import SwiftUI
 
 enum ReplayContent: String, CaseIterable {
     case chartData  = "차트+데이터"
-    case routeData  = "경로+데이터"
     case routeChart = "경로+차트"
 }
 
@@ -48,19 +47,14 @@ enum RunChartReplayExporter {
         static func make(_ content: ReplayContent) -> SectionLayout {
             switch content {
             case .chartData:
-                // 24+190 | 620 | 460 | 56 = 1350
-                return SectionLayout(topPad:24, headerH:190, routeH:0,   mapChartGap:0,
-                                     chartH:620, chartTilesGap:0, tilesH:460, botPad:56,
+                // 24+120 | 690 | 460 | 56 = 1350
+                return SectionLayout(topPad:24, headerH:120, routeH:0,   mapChartGap:0,
+                                     chartH:690, chartTilesGap:0, tilesH:460, botPad:56,
                                      maxTiles:12, compact:false)
-            case .routeData:
-                // 24+190 | 700 | 380 | 56 = 1350
-                return SectionLayout(topPad:24, headerH:190, routeH:700, mapChartGap:0,
-                                     chartH:0,   chartTilesGap:0, tilesH:380, botPad:56,
-                                     maxTiles:6, compact:false)
             case .routeChart:
-                // 24+170 | 520 | 12 | 570 | 54 = 1350
-                return SectionLayout(topPad:24, headerH:170, routeH:520, mapChartGap:12,
-                                     chartH:570, chartTilesGap:0, tilesH:0, botPad:54,
+                // 24+120 | 520 | 12 | 620 | 54 = 1350
+                return SectionLayout(topPad:24, headerH:120, routeH:520, mapChartGap:12,
+                                     chartH:620, chartTilesGap:0, tilesH:0, botPad:54,
                                      maxTiles:0, compact:false)
             }
         }
@@ -87,7 +81,7 @@ enum RunChartReplayExporter {
     ) async throws -> URL {
 
         let hasRoute = routeCoordinates.count >= 2
-        let needsRoute = content == .routeData || content == .routeChart
+        let needsRoute = content == .routeChart
         let actual   = (needsRoute && !hasRoute) ? ReplayContent.chartData : content
         let layout   = SectionLayout.make(actual)
         print("[Replay] content:\(actual) coords:\(routeCoordinates.count) routeH:\(layout.routeH)")
@@ -168,7 +162,11 @@ enum RunChartReplayExporter {
             } catch {
                 print("[Replay] snapshot FAILED:", error)
             }
-            cumDist = buildCumulativeDistances(routeCoordinates)
+            // cumDist must match the same sample step used by chartMapSnapshot (max 500 pts)
+            let snapStep = max(1, routeCoordinates.count / 500)
+            let sampledCoords = stride(from: 0, to: routeCoordinates.count, by: snapStep)
+                .map { routeCoordinates[$0] }
+            cumDist = buildCumulativeDistances(sampledCoords)
         }
         logMapDiagnostics(routeCoordCount: routeCoordinates.count,
                           mapUIImage: mapUIImage, layout: layout)
@@ -185,12 +183,16 @@ enum RunChartReplayExporter {
                     ? Double(frameIdx) / Double(max(1, animFrames - 1))
                     : 1.0
 
+                // Convert animation time → km distance ratio so chart scrubber and
+                // route marker use the same coordinate (chart X-axis is km-based).
+                let distRatio = timeToDistanceRatio(timeRatio: t, table: timeDistTable)
+
                 let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
                     RunCombinedChartView(
                         data: data,
                         enabledLayers: enabledLayers,
                         chartHeight: chartPtH,
-                        playProgress: t,
+                        playProgress: distRatio,
                         endLabelMinGap: 11
                     )
                     .frame(width: cardW, height: chartPtH)
@@ -202,14 +204,10 @@ enum RunChartReplayExporter {
                     layout: layout, data: data, totalDuration: totalDuration,
                     headerImage: headerImg, chartImage: chartImg,
                     mapUIImage: mapUIImage, mapPoints: mapPoints,
-                    cumDist: cumDist, timeDistTable: timeDistTable,
+                    cumDist: cumDist, distanceProgress: distRatio,
                     routeCoordinates: routeCoordinates,
                     timeProgress: t, tilesImage: tilesImg
                 )
-
-                #if DEBUG
-                if frameIdx == 0 { debugSaveFirstFrame(frame) }
-                #endif
 
                 guard let pb = pixelBuffer(from: frame, size: videoSize) else { continue }
 
@@ -255,7 +253,7 @@ enum RunChartReplayExporter {
         content: ReplayContent,
         routeCoordinates: [CLLocationCoordinate2D]
     ) -> CGImage? {
-        let needsRoute = content == .routeData || content == .routeChart
+        let needsRoute = content == .routeChart
         let actual = (needsRoute && routeCoordinates.count < 2) ? ReplayContent.chartData : content
         let layout = SectionLayout.make(actual)
         let headerPtH = CGFloat(layout.headerH) / scale
@@ -291,7 +289,7 @@ enum RunChartReplayExporter {
             layout: layout, data: data, totalDuration: totalDuration,
             headerImage: headerImg, chartImage: chartImg,
             mapUIImage: nil, mapPoints: [], cumDist: [],
-            timeDistTable: [], routeCoordinates: [],
+            distanceProgress: 0, routeCoordinates: [],
             timeProgress: 0, tilesImage: tilesImg
         ).cgImage
     }
@@ -317,7 +315,7 @@ enum RunChartReplayExporter {
         progress: Double = 0.45
     ) async -> UIImage? {
         let hasRoute = routeCoordinates.count >= 2
-        let needsRoute = content == .routeData || content == .routeChart
+        let needsRoute = content == .routeChart
         let actual = (needsRoute && !hasRoute) ? ReplayContent.chartData : content
         let layout = SectionLayout.make(actual)
 
@@ -366,29 +364,25 @@ enum RunChartReplayExporter {
             } catch {
                 print("[Preview] snapshot FAILED:", error)
             }
-            cumDist = buildCumulativeDistances(routeCoordinates)
+            let snapStep = max(1, routeCoordinates.count / 500)
+            let sampledCoords = stride(from: 0, to: routeCoordinates.count, by: snapStep)
+                .map { routeCoordinates[$0] }
+            cumDist = buildCumulativeDistances(sampledCoords)
         }
         logMapDiagnostics(routeCoordCount: routeCoordinates.count,
                           mapUIImage: mapUIImage, layout: layout)
 
         let timeDistTable = buildTimeDistanceTable(data: data, totalDuration: totalDuration)
+        let distRatio = timeToDistanceRatio(timeRatio: progress, table: timeDistTable)
         return composeFrame(
             layout: layout, data: data, totalDuration: totalDuration,
             headerImage: headerImg, chartImage: chartImg,
             mapUIImage: mapUIImage, mapPoints: mapPoints,
-            cumDist: cumDist, timeDistTable: timeDistTable,
+            cumDist: cumDist, distanceProgress: distRatio,
             routeCoordinates: routeCoordinates,
             timeProgress: progress, tilesImage: tilesImg
         )
     }
-
-    // MARK: - Debug helpers
-
-    #if DEBUG
-    static func debugSaveFirstFrame(_ image: UIImage) {
-        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-    }
-    #endif
 
     private static func logMapDiagnostics(routeCoordCount: Int,
                                           mapUIImage: UIImage?,
@@ -427,9 +421,9 @@ enum RunChartReplayExporter {
         mapUIImage:  UIImage?,
         mapPoints:   [CGPoint],
         cumDist:     [Double],
-        timeDistTable: [(timeRatio: Double, distanceRatio: Double)],
+        distanceProgress: Double,  // pre-computed distance ratio (0–1) for both chart and route marker
         routeCoordinates: [CLLocationCoordinate2D] = [],
-        timeProgress: Double,
+        timeProgress: Double,      // time ratio (0–1) used only for elapsed-time label
         tilesImage:  CGImage?
     ) -> UIImage {
         let size = CGSize(width: videoW, height: videoH)
@@ -458,26 +452,25 @@ enum RunChartReplayExporter {
                 let routeRect = CGRect(x: 0, y: CGFloat(layout.routeTop),
                                        width: CGFloat(videoW), height: CGFloat(layout.routeH))
 
-                // Clip then draw map (aspectFill)
+                // Draw map with 5% horizontal margin each side (black background shows through)
                 let ctx = UIGraphicsGetCurrentContext()!
                 ctx.saveGState()
                 UIBezierPath(rect: routeRect).addClip()
 
+                let hMargin = routeRect.width * 0.05
+                let mapCornerRadius: CGFloat = 20   // px, visual ~5.5pt at 1080px width
                 if let mapImg = mapUIImage {
-                    let pixW = mapImg.size.width * mapImg.scale
-                    let pixH = mapImg.size.height * mapImg.scale
-                    if pixW > 0, pixH > 0 {
-                        let s = max(routeRect.width / pixW, routeRect.height / pixH)
-                        let drawn = CGRect(
-                            x: routeRect.midX - pixW * s / 2,
-                            y: routeRect.midY - pixH * s / 2,
-                            width: pixW * s, height: pixH * s
-                        )
-                        mapImg.draw(in: drawn)
-                    } else {
-                        UIColor(red: 0.07, green: 0.06, blue: 0.14, alpha: 1).setFill()
-                        UIRectFill(routeRect)
-                    }
+                    // Draw map in narrower inset rect with rounded corners
+                    let mapDrawRect = CGRect(
+                        x: routeRect.minX + hMargin,
+                        y: routeRect.minY,
+                        width: routeRect.width - hMargin * 2,
+                        height: routeRect.height
+                    )
+                    ctx.saveGState()
+                    UIBezierPath(roundedRect: mapDrawRect, cornerRadius: mapCornerRadius).addClip()
+                    mapImg.draw(in: mapDrawRect)
+                    ctx.restoreGState()
                 } else {
                     UIColor(red: 0.07, green: 0.06, blue: 0.14, alpha: 1).setFill()
                     UIRectFill(routeRect)
@@ -485,18 +478,17 @@ enum RunChartReplayExporter {
 
                 ctx.restoreGState()
 
-                let distRatio = timeToDistanceRatio(timeRatio: timeProgress, table: timeDistTable)
                 if mapPoints.count > 1 {
                     // Snapshot-derived points: use them directly
                     drawRoutePolyline(ctx: ctx, points: mapPoints,
-                                      distanceProgress: distRatio,
+                                      distanceProgress: distanceProgress,
                                       timeProgress: timeProgress,
                                       cumDist: cumDist, routeRect: routeRect,
                                       totalKm: data.totalKm, totalDuration: totalDuration)
                 } else if routeCoordinates.count >= 2 {
                     // Fallback: draw route from raw lat/lon (no map tile background)
                     drawRouteFromCoordinates(ctx: ctx, coordinates: routeCoordinates,
-                                             distanceProgress: distRatio,
+                                             distanceProgress: distanceProgress,
                                              timeProgress: timeProgress,
                                              cumDist: cumDist, routeRect: routeRect,
                                              totalKm: data.totalKm, totalDuration: totalDuration)
@@ -599,6 +591,9 @@ enum RunChartReplayExporter {
             ctx.fillEllipse(in: CGRect(x: tip.x-5, y: tip.y-5, width: 10, height: 10))
         }
 
+        drawKmMarkers(ctx: ctx, allPx: allPx, cumDist: cumDist,
+                      routeRect: routeRect, totalKm: totalKm,
+                      distanceProgress: distanceProgress)
         drawRouteProgressLabel(timeProgress: timeProgress, distanceProgress: distanceProgress,
                                totalKm: totalKm, totalDuration: totalDuration,
                                routeRect: routeRect)
@@ -650,7 +645,9 @@ enum RunChartReplayExporter {
         let step = max(1, coordinates.count / 500)
         let sampled = stride(from: 0, to: coordinates.count, by: step).map { coordinates[$0] }
         let allPx   = sampled.map { toPixel($0) }
-        let endIdx  = distanceIndex(at: distanceProgress, cumDist: cumDist, total: allPx.count)
+        // cumDist must be built from the same sampled set so indices align with allPx
+        let localCumDist = buildCumulativeDistances(sampled)
+        let endIdx  = distanceIndex(at: distanceProgress, cumDist: localCumDist, total: allPx.count)
 
         // Ghost route
         let fullPath = CGMutablePath()
@@ -682,6 +679,9 @@ enum RunChartReplayExporter {
             ctx.fillEllipse(in: CGRect(x: tip.x-5, y: tip.y-5, width: 10, height: 10))
         }
 
+        drawKmMarkers(ctx: ctx, allPx: allPx, cumDist: localCumDist,
+                      routeRect: routeRect, totalKm: totalKm,
+                      distanceProgress: distanceProgress)
         drawRouteProgressLabel(timeProgress: timeProgress, distanceProgress: distanceProgress,
                                totalKm: totalKm, totalDuration: totalDuration, routeRect: routeRect)
     }
@@ -720,27 +720,115 @@ enum RunChartReplayExporter {
         attrStr.draw(at: CGPoint(x: bgX + padH, y: bgY + padV))
     }
 
-    // MARK: - Time ↔ Distance (splits-based)
+    // MARK: - Km markers on route
+
+    private static func drawKmMarkers(
+        ctx: CGContext,
+        allPx: [CGPoint],
+        cumDist: [Double],
+        routeRect: CGRect,
+        totalKm: Double,
+        distanceProgress: Double
+    ) {
+        guard totalKm > 0, allPx.count > 1, !cumDist.isEmpty else { return }
+        guard let totalDist = cumDist.last, totalDist > 0 else { return }
+
+        let interval: Int
+        if totalKm >= 30 { interval = 5 }
+        else if totalKm >= 20 { interval = 2 }
+        else { interval = 1 }
+
+        let maxKm = Int(totalKm)
+        guard maxKm >= interval else { return }
+
+        let passedDist = distanceProgress * totalDist
+        let font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+        let padH: CGFloat = 8, padV: CGFloat = 5
+        let corner: CGFloat = 6
+
+        for km in stride(from: interval, through: maxKm, by: interval) {
+            let targetDist = Double(km) * 1000.0
+            guard targetDist <= totalDist else { break }
+            // Only render markers that have been passed by the animated route
+            guard targetDist <= passedDist else { break }
+
+            // Binary search for the index where cumDist first reaches targetDist
+            var lo = 0, hi = cumDist.count - 1
+            while lo < hi {
+                let mid = (lo + hi + 1) / 2
+                if cumDist[mid] <= targetDist { lo = mid } else { hi = mid - 1 }
+            }
+            let idx = min(lo, allPx.count - 1)
+            let pt = allPx[idx]
+
+            // Small anchor dot at the km point
+            let dotR: CGFloat = 4.0
+            ctx.setFillColor(UIColor.black.withAlphaComponent(0.75).cgColor)
+            ctx.fillEllipse(in: CGRect(x: pt.x - dotR - 1.5, y: pt.y - dotR - 1.5,
+                                       width: (dotR + 1.5) * 2, height: (dotR + 1.5) * 2))
+            ctx.setFillColor(UIColor.white.cgColor)
+            ctx.fillEllipse(in: CGRect(x: pt.x - dotR, y: pt.y - dotR,
+                                       width: dotR * 2, height: dotR * 2))
+
+            // Rounded rect badge — placed to the right of travel direction
+            let label = "\(km)km"
+            let attrStr = NSAttributedString(string: label, attributes: [
+                .font: font,
+                .foregroundColor: UIColor.white
+            ])
+            let textSize = attrStr.size()
+            let bgW = textSize.width + padH * 2
+            let bgH = textSize.height + padV * 2
+
+            // Determine travel direction by comparing neighboring pts
+            let prevIdx = max(0, idx - 1)
+            let nextIdx = min(allPx.count - 1, idx + 1)
+            let travelDy = allPx[nextIdx].y - allPx[prevIdx].y
+            // Going up on screen (dy < 0) → badge to the right (+x)
+            // Going down on screen (dy >= 0) → badge to the left (-x)
+            let goRight = travelDy < 0
+            let gap: CGFloat = dotR + 8
+            var bgX = goRight ? pt.x + gap : pt.x - gap - bgW
+            var bgY = pt.y - bgH / 2   // vertically centered on dot
+
+            // Clamp within routeRect
+            bgX = max(routeRect.minX + 3, min(routeRect.maxX - bgW - 3, bgX))
+            bgY = max(routeRect.minY + 3, min(routeRect.maxY - bgH - 3, bgY))
+
+            // Draw badge background
+            UIColor.black.withAlphaComponent(0.70).setFill()
+            UIBezierPath(roundedRect: CGRect(x: bgX, y: bgY, width: bgW, height: bgH),
+                         cornerRadius: corner).fill()
+
+            attrStr.draw(at: CGPoint(x: bgX + padH, y: bgY + padV))
+        }
+    }
+
+    // MARK: - Time ↔ Distance (paceColumns-based — same source as chart's elapsedTime)
 
     private static func buildTimeDistanceTable(
         data: RunChartData,
         totalDuration: TimeInterval
     ) -> [(timeRatio: Double, distanceRatio: Double)] {
-        guard let paceSeries = data.series[.pace],
-              !paceSeries.points.isEmpty,
-              data.totalKm > 0,
-              totalDuration > 0 else { return [] }
+        guard data.totalKm > 0, !data.paceColumns.isEmpty else { return [] }
 
-        let pts = paceSeries.points.sorted { $0.km < $1.km }
-        var entries: [(km: Double, sec: Double)] = [(0, 0)]
-        for i in 0..<pts.count {
-            let prevKm = i == 0 ? 0.0 : pts[i-1].km
-            let delta  = max(0, pts[i].km - prevKm)
-            let added  = delta * pts[i].value   // pace is sec/km
-            entries.append((pts[i].km, entries.last!.sec + added))
+        // Each PaceColumn already stores startX/endX as fractions of totalDuration,
+        // and startKm/endKm as absolute km. Convert to parallel (timeRatio, distanceRatio) pairs.
+        // This mirrors chart's elapsedTime(atKm:), guaranteeing the same mapping.
+        var entries: [(timeRatio: Double, distanceRatio: Double)] = [(0.0, 0.0)]
+        for col in data.paceColumns.sorted(by: { $0.startX < $1.startX }) {
+            entries.append((timeRatio: col.startX, distanceRatio: col.startKm / data.totalKm))
+            entries.append((timeRatio: col.endX,   distanceRatio: col.endKm   / data.totalKm))
         }
-        let totalSec = max(1, entries.last?.sec ?? totalDuration)
-        return entries.map { (timeRatio: $0.sec / totalSec, distanceRatio: $0.km / data.totalKm) }
+        entries.append((1.0, 1.0))
+
+        // Sort and deduplicate by timeRatio
+        entries.sort { $0.timeRatio < $1.timeRatio }
+        var deduped: [(timeRatio: Double, distanceRatio: Double)] = []
+        for e in entries where deduped.isEmpty || deduped.last!.timeRatio < e.timeRatio {
+            deduped.append(e)
+        }
+        return deduped
     }
 
     private static func timeToDistanceRatio(
@@ -798,6 +886,10 @@ enum RunChartReplayExporter {
               let minLon = lons.min(), let maxLon = lons.max()
         else { return (placeholderMapImage(size: pixelSize), []) }
 
+        // Request 10% narrower snapshot (5% each side) — drawn centered with black margins.
+        let hMargin: CGFloat = 0.05
+        let requestSize = CGSize(width: pixelSize.width * (1 - 2 * hMargin), height: pixelSize.height)
+
         let opts = MKMapSnapshotter.Options()
         opts.region = MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: (minLat+maxLat)/2,
@@ -807,7 +899,7 @@ enum RunChartReplayExporter {
                 longitudeDelta: max((maxLon-minLon)*1.6, 0.005)
             )
         )
-        opts.size         = pixelSize
+        opts.size         = requestSize
         opts.scale        = 1   // fractional scales (e.g. 3.6) are rejected by MKMapSnapshotter
         opts.mapType      = .mutedStandard
         opts.showsBuildings = false
@@ -828,7 +920,11 @@ enum RunChartReplayExporter {
         let step = max(1, coordinates.count / 500)
         let pts = stride(from: 0, to: coordinates.count, by: step)
             .map { snap.point(for: coordinates[$0]) }
-        return (snap.image, pts)
+        // Snapshot is 95% wide; mapDrawRect starts at +hMargin in the full routeRect.
+        // Shift points right so they align with the drawn map position.
+        let marginOffset = pixelSize.width * hMargin
+        let adjustedPts = pts.map { CGPoint(x: $0.x + marginOffset, y: $0.y) }
+        return (snap.image, adjustedPts)
     }
 
     private static func placeholderMapImage(size: CGSize) -> UIImage {
@@ -863,7 +959,8 @@ private struct ReplayHeaderView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
+            // 왼쪽: 워드마크 + 거리·소요시간
+            VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 2) {
                     Text("MIMO")
                         .font(.system(size: 8, weight: .black, design: .monospaced))
@@ -874,16 +971,21 @@ private struct ReplayHeaderView: View {
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text(distanceText)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Theme.chartElev)
                     Text(" · ")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.45))
                     Text(durationText)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.yellow)
                 }
-                if dateText != nil || weekdayText != nil || startTimeText != nil {
+            }
+            Spacer(minLength: 6)
+            // 오른쪽: 날짜·요일·시간·기온 한 줄 → 신발
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 4) {
+                    // 날짜·요일·시간 — 공간 부족 시 truncate
                     HStack(spacing: 4) {
                         if let d = dateText {
                             Text(d).font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.72))
@@ -896,21 +998,24 @@ private struct ReplayHeaderView: View {
                             Text(t).font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.72))
                         }
                     }
-                }
-            }
-            Spacer(minLength: 6)
-            VStack(alignment: .trailing, spacing: 4) {
-                if let weather = weatherText {
-                    HStack(spacing: 3) {
-                        Image(systemName: weatherIcon ?? "thermometer.medium")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(Color.white)
-                        Text(weather)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(Color(hex: "5CE5D5"))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    // 기온 배지 — 항상 완전 표시
+                    if let weather = weatherText {
+                        HStack(spacing: 3) {
+                            Image(systemName: weatherIcon ?? "thermometer.medium")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(Color.white)
+                            Text(weather)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(Color(hex: "5CE5D5"))
+                                .fixedSize()
+                        }
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Color(hex: "5CE5D5").opacity(0.12), in: Capsule())
+                        .fixedSize()
+                        .layoutPriority(1)
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Color(hex: "5CE5D5").opacity(0.12), in: Capsule())
                 }
                 if let shoe = shoeText {
                     Label(shoe, systemImage: "shoe.fill")

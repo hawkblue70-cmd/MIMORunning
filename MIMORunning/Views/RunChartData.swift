@@ -39,13 +39,13 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
 
     var drawStyle: DrawStyle {
         switch self {
-        case .heartRate:    return .line(width: 2.6)
-        case .cadence:      return .line(width: 2.0)
-        case .power:        return .line(width: 2.0)
-        case .strideLength: return .line(width: 1.8)
-        case .verticalOsc:  return .line(width: 1.8)
-        case .aerobic:      return .line(width: 1.8)
-        case .calories:     return .line(width: 1.8)
+        case .heartRate:    return .line(width: 2.2)
+        case .cadence:      return .line(width: 1.7)
+        case .power:        return .line(width: 1.7)
+        case .strideLength: return .line(width: 1.5)
+        case .verticalOsc:  return .line(width: 1.5)
+        case .aerobic:      return .line(width: 1.5)
+        case .calories:     return .line(width: 1.5)
         case .pace:         return .bars
         case .elevation:    return .fillWithLine(fillOpacity: 0.38, lineWidth: 1.0)
         }

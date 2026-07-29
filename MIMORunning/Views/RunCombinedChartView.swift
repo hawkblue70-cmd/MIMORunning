@@ -18,8 +18,8 @@ struct RunCombinedChartView: View {
     @State private var selectedKm: Double? = nil
 
     private let padL: CGFloat = 26   // Z1–Z5 labels at x=0–22; plot starts at 26
-    private let padR: CGFloat = 40   // reserved for right-side end-point labels
-    private let padT: CGFloat = 16
+    private var padR: CGFloat { playProgress != nil ? 8 : 40 }  // collapse right pad during playback (no end labels)
+    private let padT: CGFloat = 26   // increased from 16: room for scrubber label above chart rect
     private let padB: CGFloat = 48
 
     var body: some View {
@@ -301,7 +301,7 @@ struct RunCombinedChartView: View {
             ))
             // Neon green line on top
             ctx.stroke(linePath, with: .color(green.opacity(0.95)),
-                       style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                       style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
         }
     }
 
@@ -376,7 +376,7 @@ struct RunCombinedChartView: View {
             if case .line(let w) = layer.drawStyle {
                 // Casing: black outline drawn first
                 ctx.stroke(path, with: .color(.black.opacity(0.85)),
-                           style: StrokeStyle(lineWidth: w + 2.4, lineCap: .round, lineJoin: .round))
+                           style: StrokeStyle(lineWidth: w + 2.0, lineCap: .round, lineJoin: .round))
                 // Colour line on top
                 ctx.stroke(path, with: .color(layer.color.opacity(effectiveOp)),
                            style: StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round))
@@ -446,13 +446,13 @@ struct RunCombinedChartView: View {
         // Pass 1: all casings (thick black, drawn first)
         for (path, _) in zonePaths {
             ctx.stroke(path, with: .color(.black.opacity(0.85)),
-                       style: StrokeStyle(lineWidth: 2.6 + 3.0, lineCap: .round, lineJoin: .round))
+                       style: StrokeStyle(lineWidth: 2.2 + 2.6, lineCap: .round, lineJoin: .round))
         }
         // Pass 2: all coloured lines on top
         for (path, zone) in zonePaths {
             let c = zone >= 0 ? Theme.chartHRZones[zone] : Theme.heartRate
             ctx.stroke(path, with: .color(c.opacity(opacity)),
-                       style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
+                       style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
         }
 
         // Zone transition tick marks — only when transitions are rare (≤ 3)
@@ -472,11 +472,13 @@ struct RunCombinedChartView: View {
                 tick.move(to:    CGPoint(x: x, y: tickBase - 4))
                 tick.addLine(to: CGPoint(x: x, y: tickBase))
                 ctx.stroke(tick, with: .color(col.opacity(0.5 * opacity)),
-                           style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                           style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
             }
         }
 
         // Data dots — zone-coloured with black outer circle (5 equidistant)
+        // During playback the endpoint is already shown by drawPlaybackDots, skip here.
+        guard playProgress == nil else { return }
         guard cgPts.count >= 2 else { return }
         let dotCount = min(5, cgPts.count)
         let outerR: CGFloat = 3.0
@@ -643,7 +645,7 @@ struct RunCombinedChartView: View {
         line.move(to: CGPoint(x: x, y: rect.minY))
         line.addLine(to: CGPoint(x: x, y: rect.maxY))
         ctx.stroke(line, with: .color(.white.opacity(0.5)),
-                   style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                   style: StrokeStyle(lineWidth: 1.0, lineCap: .round))
 
         // Top label: "2.0km · 12:48" with black capsule background
         let elapsed   = elapsedTime(atKm: km)
@@ -652,7 +654,8 @@ struct RunCombinedChartView: View {
 
         let bgH: CGFloat = 22
         let bgW: CGFloat = CGFloat(labelText.count) * 7.5 + 20
-        let bgY: CGFloat = rect.minY + 2
+        // Place above the chart rect (padT = 26, bgH = 22 → sits at y ≈ 2..24, rect.minY = 26)
+        let bgY: CGFloat = rect.minY - bgH - 2
         let bgX: CGFloat = goLeft ? x - bgW - 4 : x + 4
 
         ctx.fill(
@@ -714,7 +717,7 @@ struct RunCombinedChartView: View {
             let dotRect = CGRect(x: dotX - r, y: dotY - r, width: r * 2, height: r * 2)
             ctx.fill(Path(ellipseIn: dotRect), with: .color(color))
             ctx.stroke(Path(ellipseIn: dotRect), with: .color(.black),
-                       style: StrokeStyle(lineWidth: 1.2))
+                       style: StrokeStyle(lineWidth: 1.0))
 
             dotInfos.append(DotInfo(labelY: dotY, text: text, color: color))
         }
@@ -753,7 +756,7 @@ struct RunCombinedChartView: View {
         linePath.move(to: CGPoint(x: x, y: rect.minY))
         linePath.addLine(to: CGPoint(x: x, y: rect.maxY))
         ctx.stroke(linePath, with: .color(.white.opacity(0.60)),
-                   style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                   style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
 
         // Header: km · elapsed
         let elapsed  = elapsedTime(atKm: km)

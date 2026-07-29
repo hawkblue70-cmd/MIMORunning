@@ -65,11 +65,11 @@ struct RunChartShareCard: View {
             VStack(spacing: 0) {
                 contextRow
                     .padding(.horizontal, 12)
-                    .padding(.top, 12)
+                    .padding(.top, 8)
 
-                RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: 218,
+                RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: 226,
                                     playProgress: playProgress)
-                    .padding(.top, 6)
+                    .padding(.top, 2)
                     .padding(.bottom, 4)
             }
             .background(Color.black)
@@ -98,9 +98,8 @@ struct RunChartShareCard: View {
 
     private var contextRow: some View {
         HStack(alignment: .top, spacing: 0) {
-            // 왼쪽: MIMO RUNNING 워드마크 → 거리/시간 → 날짜/요일/시간
+            // 왼쪽: 워드마크 + 거리·소요시간
             VStack(alignment: .leading, spacing: 4) {
-                // 워드마크 — 거리 위
                 HStack(spacing: 2) {
                     Text("MIMO")
                         .font(.system(size: 8, weight: .black, design: .monospaced))
@@ -120,7 +119,14 @@ struct RunChartShareCard: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.yellow)
                 }
-                if dateText != nil || weekdayText != nil || startTimeText != nil {
+            }
+
+            Spacer(minLength: 6)
+
+            // 오른쪽: 날짜·요일·시간·기온 한 줄 → 신발
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 4) {
+                    // 날짜·요일·시간 — 공간 부족 시 truncate
                     HStack(spacing: 4) {
                         if let d = dateText {
                             Text(d)
@@ -138,25 +144,24 @@ struct RunChartShareCard: View {
                                 .foregroundStyle(Color.white.opacity(0.72))
                         }
                     }
-                }
-            }
-
-            Spacer(minLength: 6)
-
-            // 오른쪽: 날씨(기온) 위, 러닝화 아래
-            VStack(alignment: .trailing, spacing: 4) {
-                if let weather = weatherText {
-                    HStack(spacing: 3) {
-                        Image(systemName: weatherIcon ?? "thermometer.medium")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(Color.white)
-                        Text(weather)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(Color(hex: "5CE5D5"))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    // 기온 배지 — 항상 완전 표시
+                    if let weather = weatherText {
+                        HStack(spacing: 3) {
+                            Image(systemName: weatherIcon ?? "thermometer.medium")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(Color.white)
+                            Text(weather)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(Color(hex: "5CE5D5"))
+                                .fixedSize()
+                        }
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Color(hex: "5CE5D5").opacity(0.12), in: Capsule())
+                        .fixedSize()
+                        .layoutPriority(1)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color(hex: "5CE5D5").opacity(0.12), in: Capsule())
                 }
                 if let shoe = shoeText {
                     Label(shoe, systemImage: "shoe.fill")
@@ -191,8 +196,8 @@ struct RunChartShareSheet: View {
 
     // Video export
     private enum ExportMode { case image, video }
-    @State private var exportMode: ExportMode = .image
-    @State private var videoContent: ReplayContent = .chartData
+    @State private var exportMode: ExportMode = .video
+    @State private var videoContent: ReplayContent = .routeChart
     @State private var videoDuration: TimeInterval = 10
     @State private var isExportingVideo = false
     @State private var videoProgress: Double = 0
@@ -211,26 +216,45 @@ struct RunChartShareSheet: View {
                 Theme.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // (a) 미리보기 — 화면 폭에 맞게 축소, 실제 렌더 뷰와 동일
-                    GeometryReader { geo in
-                        let scale = (geo.size.width - 48) / cardW
-                        RunChartShareCard(
-                            data: data,
-                            enabledLayers: store.enabled,
-                            distanceText: distanceText,
-                            durationText: durationText,
-                            weatherText: weatherText,
-                            weatherIcon: weatherIcon,
-                            dateText: dateText,
-                            weekdayText: weekdayText,
-                            startTimeText: startTimeText,
-                            shoeText: shoeText
-                        )
-                        .scaleEffect(scale, anchor: .top)
-                        .frame(width: geo.size.width, alignment: .center)
+                    // (a) 미리보기 — 이미지 모드: 정적 카드 / 영상 모드: 실제 렌더 프레임
+                    if exportMode == .image {
+                        GeometryReader { geo in
+                            let scale = (geo.size.width - 48) / cardW
+                            RunChartShareCard(
+                                data: data,
+                                enabledLayers: store.enabled,
+                                distanceText: distanceText,
+                                durationText: durationText,
+                                weatherText: weatherText,
+                                weatherIcon: weatherIcon,
+                                dateText: dateText,
+                                weekdayText: weekdayText,
+                                startTimeText: startTimeText,
+                                shoeText: shoeText
+                            )
+                            .scaleEffect(scale, anchor: .top)
+                            .frame(width: geo.size.width, alignment: .center)
+                        }
+                        .frame(height: previewHeight)
+                        .padding(.top, 20)
+                    } else {
+                        // 영상 모드: 실제 프레임(비동기 로딩)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.white.opacity(0.04))
+                            if isLoadingPreview {
+                                ProgressView().tint(.secondary)
+                            } else if let img = previewImage {
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                        .aspectRatio(1080.0 / 1350.0, contentMode: .fit)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
                     }
-                    .frame(height: previewHeight)
-                    .padding(.top, 20)
 
                     // (b) 지표 선택 레이블
                     HStack {
@@ -240,7 +264,7 @@ struct RunChartShareSheet: View {
                         Spacer()
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 22)
+                    .padding(.top, 4)
 
                     // (c) 레이어 칩 — 값 전용 제외, 한 줄 가로 스크롤
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -267,6 +291,9 @@ struct RunChartShareSheet: View {
                     .pickerStyle(.segmented)
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
+                    .onAppear {
+                        if exportMode == .video { refreshPreview() }
+                    }
                     .onChange(of: exportMode) { _, newMode in
                         videoExportTask?.cancel()
                         exportedVideo = nil
@@ -277,29 +304,29 @@ struct RunChartShareSheet: View {
                     .onChange(of: store.enabled) { _, _ in
                         if exportMode == .video { refreshPreview() }
                     }
+                    .onChange(of: videoDuration) { _, _ in
+                        videoExportTask?.cancel()
+                        exportedVideo = nil
+                        isExportingVideo = false
+                        videoProgress = 0
+                    }
 
                     // (e) 영상 옵션 (영상 모드만)
                     if exportMode == .video {
                         let hasRoute = routeCoordinates.count >= 2
 
-                        // (e-1) 내용 선택: 데이터 / 경로 / 둘 다
-                        HStack {
-                            Text(L.s("내용", "Content"))
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 12)
-
+                        // (e-1) 내용 선택: 데이터 / 경로
                         HStack(spacing: 6) {
                             ForEach(ReplayContent.allCases, id: \.self) { mode in
-                                let disabled = (mode == .routeData || mode == .routeChart) && !hasRoute
+                                let disabled = mode == .routeChart && !hasRoute
                                 let label = mode == .chartData ? L.s("차트+데이터", "Chart+Data")
-                                    : mode == .routeData ? L.s("경로+데이터", "Route+Data")
                                     : L.s("경로+차트", "Route+Chart")
                                 Button(label) {
                                     videoContent = mode
+                                    videoExportTask?.cancel()
+                                    exportedVideo = nil
+                                    isExportingVideo = false
+                                    videoProgress = 0
                                     refreshPreview()
                                 }
                                 .font(.system(size: 11, weight: videoContent == mode ? .semibold : .regular))
@@ -315,7 +342,7 @@ struct RunChartShareSheet: View {
                             }
                         }
                         .padding(.horizontal, 20)
-                        .padding(.top, 6)
+                        .padding(.top, 12)
 
                         // (e-2) 영상 길이
                         HStack {
@@ -347,22 +374,6 @@ struct RunChartShareSheet: View {
                         }
                         .padding(.top, 6)
 
-                        // (e-3) 모드 미리보기 (실제 지도 포함 — 비동기 로딩)
-                        Group {
-                            if isLoadingPreview {
-                                ProgressView()
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 24)
-                            } else if let img = previewImage {
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(maxWidth: .infinity)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 10)
                     }
 
                     Spacer()

@@ -67,16 +67,16 @@ struct RunCombinedPanelView: View {
                 VStack(spacing: 0) {
                     contextRow
                         .padding(.horizontal, 12)
-                        .padding(.top, 12)
+                        .padding(.top, 8)
 
                     RunCombinedChartView(
                         data: data,
                         enabledLayers: store.enabled,
-                        chartHeight: 255,
+                        chartHeight: 263,
                         playProgress: playProgress,
                         onInteraction: { if isPlaying { stopPlay() } }
                     )
-                    .padding(.top, 6)
+                    .padding(.top, 2)
                     .padding(.bottom, 4)
                 }
                 .background(Color.black)
@@ -117,7 +117,7 @@ struct RunCombinedPanelView: View {
 
     // MARK: - Playback
 
-    private func startPlay(duration: TimeInterval = 6) {
+    private func startPlay(duration: TimeInterval = 10) {
         playTask?.cancel()
         isPlaying = true
         playTask = Task { @MainActor in
@@ -126,7 +126,7 @@ struct RunCombinedPanelView: View {
                 let t = Date().timeIntervalSince(start) / duration
                 if t >= 1 {
                     playProgress = 1
-                    try? await Task.sleep(for: .seconds(0.8))
+                    try? await Task.sleep(for: .seconds(1.2))
                     playProgress = nil
                     isPlaying = false
                     break
@@ -254,13 +254,13 @@ private struct RunStatTile: View {
                         .frame(width: 7, height: 7)
                     Text(layer.shortLabel)
                         .font(.system(size: 10))
-                        .foregroundStyle(Color.white.opacity(isOn ? 0.55 : 0.28))
+                        .foregroundStyle(Color.white.opacity(isOn ? 0.72 : 0.32))
                         .lineLimit(1)
                     Spacer(minLength: 2)
                     if !layer.isValueOnly {
                         Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
                             .font(.system(size: 9.5))
-                            .foregroundStyle(Color.white.opacity(isOn ? 0.38 : 0.20))
+                            .foregroundStyle(Color.white.opacity(isOn ? 0.55 : 0.24))
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                     }
@@ -272,7 +272,7 @@ private struct RunStatTile: View {
                         .foregroundStyle(Color.white.opacity(isOn ? 1.0 : 0.28))
                     Text(layer.unit)
                         .font(.system(size: 9))
-                        .foregroundStyle(Color.white.opacity(isOn ? 0.52 : 0.22))
+                        .foregroundStyle(Color.white.opacity(isOn ? 0.68 : 0.26))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
