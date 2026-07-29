@@ -156,11 +156,12 @@ enum RunChartReplayExporter {
         var cumDist:    [Double] = []
 
         if layout.routeH > 0 && hasRoute {
-            let routePtH = CGFloat(layout.routeH) / scale
+            // Request at pixel dimensions, scale=1 (MKMapSnapshotter rejects fractional scales)
+            let snapSize = CGSize(width: CGFloat(videoW), height: CGFloat(layout.routeH))
             do {
                 let (img, pts) = try await chartMapSnapshot(
                     coordinates: routeCoordinates,
-                    ptSize: CGSize(width: cardW, height: routePtH)
+                    pixelSize: snapSize
                 )
                 mapUIImage = img
                 mapPoints  = pts
@@ -354,11 +355,11 @@ enum RunChartReplayExporter {
         var cumDist:    [Double] = []
 
         if layout.routeH > 0 && hasRoute {
-            let routePtH = CGFloat(layout.routeH) / scale
+            let snapSize = CGSize(width: CGFloat(videoW), height: CGFloat(layout.routeH))
             do {
                 let (img, pts) = try await chartMapSnapshot(
                     coordinates: routeCoordinates,
-                    ptSize: CGSize(width: cardW, height: routePtH)
+                    pixelSize: snapSize
                 )
                 mapUIImage = img
                 mapPoints  = pts
@@ -555,9 +556,10 @@ enum RunChartReplayExporter {
     ) {
         guard points.count > 1 else { return }
 
-        // snapshot-pt → video-pixel (UIKit, y from top)
+        // snapshot points are already in pixel space (scale=1 request),
+        // so just offset by routeRect.minY for the vertical section position
         func px(_ p: CGPoint) -> CGPoint {
-            CGPoint(x: p.x * scale, y: routeRect.minY + p.y * scale)
+            CGPoint(x: p.x, y: routeRect.minY + p.y)
         }
         let allPx = points.map { px($0) }
         let endIdx = distanceIndex(at: distanceProgress, cumDist: cumDist, total: points.count)
@@ -787,14 +789,14 @@ enum RunChartReplayExporter {
 
     private static func chartMapSnapshot(
         coordinates: [CLLocationCoordinate2D],
-        ptSize: CGSize
+        pixelSize: CGSize   // pixel dimensions; scale=1 so points returned are in pixel space
     ) async throws -> (UIImage, [CGPoint]) {
-        guard coordinates.count > 1 else { return (placeholderMapImage(size: ptSize), []) }
+        guard coordinates.count > 1 else { return (placeholderMapImage(size: pixelSize), []) }
         let lats = coordinates.map(\.latitude)
         let lons = coordinates.map(\.longitude)
         guard let minLat = lats.min(), let maxLat = lats.max(),
               let minLon = lons.min(), let maxLon = lons.max()
-        else { return (placeholderMapImage(size: ptSize), []) }
+        else { return (placeholderMapImage(size: pixelSize), []) }
 
         let opts = MKMapSnapshotter.Options()
         opts.region = MKCoordinateRegion(
@@ -805,8 +807,8 @@ enum RunChartReplayExporter {
                 longitudeDelta: max((maxLon-minLon)*1.6, 0.005)
             )
         )
-        opts.size         = ptSize
-        opts.scale        = scale
+        opts.size         = pixelSize
+        opts.scale        = 1   // fractional scales (e.g. 3.6) are rejected by MKMapSnapshotter
         opts.mapType      = .mutedStandard
         opts.showsBuildings = false
 
