@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 
 // MARK: - RunChartShareStore
@@ -179,6 +180,7 @@ struct RunChartShareSheet: View {
     let weekdayText: String?
     let startTimeText: String?
     let shoeText: String?
+    var routeCoordinates: [CLLocationCoordinate2D] = []
 
     @State private var store = RunChartShareStore.shared
     @Environment(\.dismiss) private var dismiss
@@ -189,11 +191,13 @@ struct RunChartShareSheet: View {
     // Video export
     private enum ExportMode { case image, video }
     @State private var exportMode: ExportMode = .image
+    @State private var videoContent: ReplayContent = .data
     @State private var videoDuration: TimeInterval = 10
     @State private var isExportingVideo = false
     @State private var videoProgress: Double = 0
     @State private var exportedVideo: SharableVideoFile? = nil
     @State private var videoExportTask: Task<Void, Never>? = nil
+    @State private var videoPreviewImage: CGImage? = nil
 
     private let cardW: CGFloat = 300
     private let L = AppLanguage.shared
@@ -260,15 +264,53 @@ struct RunChartShareSheet: View {
                     .pickerStyle(.segmented)
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
-                    .onChange(of: exportMode) { _, _ in
+                    .onChange(of: exportMode) { _, newMode in
                         videoExportTask?.cancel()
                         exportedVideo = nil
                         isExportingVideo = false
                         videoProgress = 0
+                        if newMode == .video { refreshVideoPreview() }
                     }
 
-                    // (e) 영상 길이 칩 (영상 모드만)
+                    // (e) 영상 옵션 (영상 모드만)
                     if exportMode == .video {
+                        let hasRoute = routeCoordinates.count >= 2
+
+                        // (e-1) 내용 선택: 데이터 / 경로 / 둘 다
+                        HStack {
+                            Text(L.s("내용", "Content"))
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(ReplayContent.allCases, id: \.self) { mode in
+                                    let disabled = (mode != .data) && !hasRoute
+                                    Button(L.s(mode.rawValue, mode == .data ? "Data" : mode == .route ? "Route" : "Both")) {
+                                        videoContent = mode
+                                        refreshVideoPreview()
+                                    }
+                                    .font(.system(size: 11, weight: videoContent == mode ? .semibold : .regular))
+                                    .padding(.horizontal, 14).padding(.vertical, 5)
+                                    .background(videoContent == mode
+                                                ? Theme.violet.opacity(0.18)
+                                                : Color.white.opacity(0.06))
+                                    .foregroundStyle(disabled ? Color.secondary.opacity(0.4)
+                                                    : videoContent == mode ? Theme.violet : .secondary)
+                                    .clipShape(Capsule())
+                                    .buttonStyle(.plain)
+                                    .disabled(disabled)
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                        }
+                        .padding(.top, 6)
+
+                        // (e-2) 영상 길이
                         HStack {
                             Text(L.s("영상 길이", "Duration"))
                                 .font(.system(size: 10))
@@ -276,7 +318,7 @@ struct RunChartShareSheet: View {
                             Spacer()
                         }
                         .padding(.horizontal, 20)
-                        .padding(.top, 12)
+                        .padding(.top, 10)
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -297,6 +339,17 @@ struct RunChartShareSheet: View {
                             .padding(.horizontal, 20)
                         }
                         .padding(.top, 6)
+
+                        // (e-3) 첫 프레임 미리보기
+                        if let cgPrev = videoPreviewImage {
+                            Image(cgPrev, scale: 1, label: Text(""))
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity)
+                                .cornerRadius(10)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 10)
+                        }
                     }
 
                     Spacer()
@@ -417,6 +470,8 @@ struct RunChartShareSheet: View {
                     weekdayText: weekdayText,
                     startTimeText: startTimeText,
                     shoeText: shoeText,
+                    routeCoordinates: routeCoordinates,
+                    content: videoContent,
                     duration: videoDuration,
                     onProgress: { p in videoProgress = p }
                 )
@@ -426,6 +481,18 @@ struct RunChartShareSheet: View {
             }
             isExportingVideo = false
         }
+    }
+
+    private func refreshVideoPreview() {
+        videoPreviewImage = RunChartReplayExporter.previewCGImage(
+            data: data, enabledLayers: store.enabled,
+            distanceText: distanceText, durationText: durationText,
+            weatherText: weatherText, weatherIcon: weatherIcon,
+            dateText: dateText, weekdayText: weekdayText,
+            startTimeText: startTimeText, shoeText: shoeText,
+            content: videoContent,
+            routeCoordinates: routeCoordinates
+        )
     }
 
     // 미리보기 높이 추정 (타일 수에 따라 가변)
