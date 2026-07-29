@@ -1211,10 +1211,9 @@ class HealthKitManager {
     }
 
     func fetchCadenceTimeSeries(for workoutID: UUID) async -> [(offset: TimeInterval, value: Double)] {
-        let key = "\(workoutID)_cadence"
+        let key = "\(workoutID)_cadence_v4"
         if let cached = panelSeriesCache[key] { return cached }
 
-        // workout 먼저 확보 — 디스크 캐시 유효성 검증에 필요
         if workoutCache[workoutID] == nil { await fetchSingleWorkout(id: workoutID) }
         let cachedWorkout = workoutCache[workoutID]
 
@@ -1236,70 +1235,76 @@ class HealthKitManager {
         let workoutDuration = workout.duration
         let minExpected = max(Int(workoutDuration / 60), 1)
 
-        // 1차: 워크아웃 연결 계단 샘플 (보통 km 단위 집계)
-        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
-            type: HKQuantityType(.stepCount),
-            predicate: HKQuery.predicateForObjects(from: workout)
-        )
-        let descriptor = HKSampleQueryDescriptor(
-            predicates: [pred],
-            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
-        )
+        // 1차: runningSpeed / runningStrideLength — Apple Watch 직접 측정, 분당 샘플 수십 개
+        let speedSamples  = await fetchWorkoutTimeSeries(for: workoutID, identifier: .runningSpeed,
+                                                         unit: .meter().unitDivided(by: .second()))
+        let strideSamples = await fetchWorkoutTimeSeries(for: workoutID, identifier: .runningStrideLength,
+                                                         unit: .meter())
+
         var result: [(offset: TimeInterval, value: Double)] = []
-        if let samples = try? await descriptor.result(for: store) {
-            for s in samples {
-                guard !isPaused(s.startDate, in: paused) else { continue }
-                let dur = s.endDate.timeIntervalSince(s.startDate)
-                guard dur > 0 else { continue }
-                let steps = s.quantity.doubleValue(for: .count())
-                let spm = (steps / dur) * 60
-                let startOffset = s.startDate.timeIntervalSince(workout.startDate)
-                if dur >= workoutDuration * 0.25 {
-                    let endOffset = min(startOffset + dur, workoutDuration)
-                    let n = max(2, min(40, Int(dur / 20)))
-                    for j in 0..<n {
-                        let t = startOffset + (endOffset - startOffset) * (Double(j) + 0.5) / Double(n)
-                        result.append((offset: t, value: spm))
+
+        if !speedSamples.isEmpty && !strideSamples.isEmpty {
+            let sortedSpeed  = speedSamples.sorted  { $0.offset < $1.offset }
+            let sortedStride = strideSamples.sorted { $0.offset < $1.offset }
+
+            if sortedSpeed.count == sortedStride.count {
+                for (sp, st) in zip(sortedSpeed, sortedStride) {
+                    guard !isPaused(workout.startDate.addingTimeInterval(sp.offset), in: paused), st.value > 0 else { continue }
+                    let spm = sp.value / st.value * 60
+                    if spm >= 100 && spm <= 250 { result.append((offset: sp.offset, value: spm)) }
+                }
+            } else {
+                for sp in sortedSpeed {
+                    guard !isPaused(workout.startDate.addingTimeInterval(sp.offset), in: paused) else { continue }
+                    var lo = 0, hi = sortedStride.count - 1
+                    while lo < hi {
+                        let mid = (lo + hi) / 2
+                        if sortedStride[mid].offset < sp.offset { lo = mid + 1 } else { hi = mid }
                     }
-                } else {
-                    result.append((offset: startOffset + dur / 2, value: spm))
+                    var best = sortedStride[lo]
+                    if lo > 0 && abs(sortedStride[lo - 1].offset - sp.offset) < abs(best.offset - sp.offset) {
+                        best = sortedStride[lo - 1]
+                    }
+                    guard abs(best.offset - sp.offset) < 5, best.value > 0 else { continue }
+                    let spm = sp.value / best.value * 60
+                    if spm >= 100 && spm <= 250 { result.append((offset: sp.offset, value: spm)) }
                 }
             }
-            result = result.filter { $0.offset >= 0 }
         }
 
-        // 2차 시리즈 폴백: Apple Watch 고주파 계단 시리즈 → 30초 버켓으로 집계해 SPM 계산
+        // 2차: stepCount 폴백 (runningSpeed/StrideLength 없는 구형 기기)
         if result.count < minExpected {
-            let seriesPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
                 type: HKQuantityType(.stepCount),
-                predicate: HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: .strictStartDate)
+                predicate: HKQuery.predicateForObjects(from: workout)
             )
-            let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: seriesPred, options: [])
-            var buckets: [Double: (steps: Double, dur: Double)] = [:]
-            let bucketSize: Double = 30
-            do {
-                for try await entry in seriesDesc.results(for: store) {
-                    guard !isPaused(entry.dateInterval.start, in: paused) else { continue }
-                    let offset = entry.dateInterval.start.timeIntervalSince(workout.startDate)
-                    guard offset >= 0 else { continue }
-                    let mid = floor(offset / bucketSize) * bucketSize + bucketSize / 2
-                    let dur = entry.dateInterval.duration
-                    let steps = entry.quantity.doubleValue(for: .count())
-                    if var b = buckets[mid] {
-                        b.steps += steps; b.dur += dur; buckets[mid] = b
+            let descriptor = HKSampleQueryDescriptor(
+                predicates: [pred],
+                sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+            )
+            var stepResult: [(offset: TimeInterval, value: Double)] = []
+            if let samples = try? await descriptor.result(for: store) {
+                for s in samples {
+                    guard !isPaused(s.startDate, in: paused) else { continue }
+                    let dur = s.endDate.timeIntervalSince(s.startDate)
+                    guard dur > 0 else { continue }
+                    let steps = s.quantity.doubleValue(for: .count())
+                    let spm = (steps / dur) * 60
+                    let startOffset = s.startDate.timeIntervalSince(workout.startDate)
+                    if dur >= workoutDuration * 0.25 {
+                        let endOffset = min(startOffset + dur, workoutDuration)
+                        let n = max(2, min(40, Int(dur / 20)))
+                        for j in 0..<n {
+                            let t = startOffset + (endOffset - startOffset) * (Double(j) + 0.5) / Double(n)
+                            stepResult.append((offset: t, value: spm))
+                        }
                     } else {
-                        buckets[mid] = (steps, dur)
+                        stepResult.append((offset: startOffset + dur / 2, value: spm))
                     }
                 }
-            } catch {}
-            let seriesResult: [(offset: TimeInterval, value: Double)] = buckets
-                .sorted { $0.key < $1.key }
-                .compactMap { mid, b in
-                    guard b.dur > 0 else { return nil }
-                    let spm = (b.steps / b.dur) * 60
-                    return spm > 60 ? (offset: mid, value: spm) : nil
-                }
-            if seriesResult.count > result.count { result = seriesResult }
+                stepResult = stepResult.filter { $0.offset >= 0 }
+            }
+            if stepResult.count > result.count { result = stepResult }
         }
 
         panelSeriesCache[key] = result
@@ -1467,18 +1472,18 @@ class HealthKitManager {
             predicates: [powerPred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
-        let stepPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+        let cadPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.stepCount),
             predicate: HKQuery.predicateForObjects(from: workout)
         )
-        let stepDesc = HKSampleQueryDescriptor(
-            predicates: [stepPred],
+        let cadDesc = HKSampleQueryDescriptor(
+            predicates: [cadPred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
         async let powerFetch = powerDesc.result(for: store)
-        async let stepFetch  = stepDesc.result(for: store)
+        async let cadFetch   = cadDesc.result(for: store)
         let powerSamples = (try? await powerFetch) ?? []
-        let stepSamples  = (try? await stepFetch)  ?? []
+        let cadSamples   = (try? await cadFetch)   ?? []
         let paused = pausedIntervals(for: workout)
 
         // Build cumulative distance timeline: (date, cumulative meters)
@@ -1514,7 +1519,7 @@ class HealthKitManager {
             result.append(SplitData(
                 id: crossing.km, distanceM: 1000, duration: activeDur,
                 avgHeartRate: hr,
-                avgCadence: splitAvgCadence(from: prevDate, to: crossing.date, duration: activeDur, samples: stepSamples, paused: paused),
+                avgCadence: splitAvgCadence(from: prevDate, to: crossing.date, samples: cadSamples, paused: paused),
                 avgPower: splitAvgPower(from: prevDate, to: crossing.date, samples: powerSamples, paused: paused)
             ))
             prevDate = crossing.date
@@ -1530,7 +1535,7 @@ class HealthKitManager {
                 result.append(SplitData(
                     id: lastKm + 1, distanceM: remaining, duration: activeDur,
                     avgHeartRate: hr,
-                    avgCadence: splitAvgCadence(from: prevDate, to: lastDate, duration: activeDur, samples: stepSamples, paused: paused),
+                    avgCadence: splitAvgCadence(from: prevDate, to: lastDate, samples: cadSamples, paused: paused),
                     avgPower: splitAvgPower(from: prevDate, to: lastDate, samples: powerSamples, paused: paused)
                 ))
             }
@@ -1561,14 +1566,15 @@ class HealthKitManager {
         return Int((sum / Double(relevant.count)).rounded())
     }
 
-    private func splitAvgCadence(from start: Date, to end: Date, duration: TimeInterval, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Int? {
+    private func splitAvgCadence(from start: Date, to end: Date, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Int? {
         let relevant = samples.filter { $0.startDate >= start && $0.startDate < end && !isPaused($0.startDate, in: paused) }
-        guard !relevant.isEmpty, duration > 0 else { return nil }
-        // duration은 이미 정지 제외된 활성 시간 — 추가 차감 없이 직접 사용
-        let totalSteps = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: .count()) }
-        let spm = Int((totalSteps / (duration / 60)).rounded())
-        // 일부 기기는 좌우 발을 각각 카운트 → 2배 보정
-        return spm > 200 ? spm / 2 : spm
+        guard !relevant.isEmpty else { return nil }
+        let totalSteps  = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: .count()) }
+        let totalDurSec = relevant.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+        guard totalDurSec > 0 else { return nil }
+        let spm = (totalSteps / totalDurSec) * 60
+        let corrected = spm > 200 ? spm / 2 : spm
+        return corrected > 60 ? Int(corrected.rounded()) : nil
     }
 
     // MARK: - VO2max (most recent estimate at/before a given date)
@@ -1857,15 +1863,15 @@ class HealthKitManager {
         guard !workout.workoutActivities.isEmpty, !flatSteps.isEmpty else { return [] }
 
         let hrUnit = Self.bpmUnit
-        let stepPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+        let cadPred2 = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.stepCount),
             predicate: HKQuery.predicateForObjects(from: workout)
         )
-        let stepDesc = HKSampleQueryDescriptor(
-            predicates: [stepPred],
+        let cadDesc2 = HKSampleQueryDescriptor(
+            predicates: [cadPred2],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
-        let stepSamples = (try? await stepDesc.result(for: store)) ?? []
+        let cadSamples2 = (try? await cadDesc2.result(for: store)) ?? []
 
         var result: [IntervalSegment] = []
         var planIdx = 0
@@ -1911,13 +1917,14 @@ class HealthKitManager {
             let cadence: Int? = {
                 let segStart = activity.startDate
                 let segEnd = activity.endDate ?? workout.endDate
-                let segDuration = segEnd.timeIntervalSince(segStart)
-                guard segDuration > 10 else { return nil }
-                let steps = stepSamples
-                    .filter { $0.startDate >= segStart && $0.endDate <= segEnd }
-                    .reduce(0.0) { $0 + $1.quantity.doubleValue(for: .count()) }
-                guard steps > 0 else { return nil }
-                return Int((steps / (segDuration / 60)).rounded())
+                let relevant = cadSamples2.filter { $0.startDate >= segStart && $0.startDate < segEnd }
+                guard !relevant.isEmpty else { return nil }
+                let totalSteps  = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: .count()) }
+                let totalDurSec = relevant.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+                guard totalDurSec > 0 else { return nil }
+                let spm = (totalSteps / totalDurSec) * 60
+                let corrected = spm > 200 ? spm / 2 : spm
+                return corrected > 60 ? Int(corrected.rounded()) : nil
             }()
 
             result.append(IntervalSegment(
@@ -2017,8 +2024,9 @@ class HealthKitManager {
                         switch m {
                         case .cadence:
                             let steps = await self.querySumInRange(.stepCount, unit: .count(), from: wStart, to: wEnd)
-                            let mins = workout.duration / 60
-                            val = (steps > 0 && mins > 0) ? steps / mins : nil
+                            let mins  = workout.duration / 60
+                            let spm   = mins > 0 ? steps / mins : 0
+                            val = spm > 200 ? spm / 2 : (spm > 60 ? spm : nil)
                         case .power:
                             val = await self.queryAvgQuantityInRange(.runningPower, unit: .watt(), from: wStart, to: wEnd)
                         case .groundContactTime:

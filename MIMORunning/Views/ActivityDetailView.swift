@@ -320,6 +320,7 @@ struct ActivityDetailView: View {
                 weekdayText: panelWeekdayText,
                 startTimeText: panelTimeText,
                 shoeText: panelShoeText,
+                paceText: activity.formattedPace,
                 totalDuration: activity.duration,
                 routeCoordinates: detail?.routeCoordinates ?? []
             )
@@ -623,6 +624,11 @@ struct ActivityDetailView: View {
                                                           identifier: .runningVerticalOscillation,
                                                           unit: HKUnit.meterUnit(with: .centi))
         let (h, c, p, s, v) = await (hr, cad, pow, stride, vosc)
+        // 패널 탭 전환 시 재조회 방지 — 이미 가져온 시리즈를 패널 캐시에 등록
+        if !c.isEmpty { panelSeriesCache[.cadence] = c }
+        if !p.isEmpty { panelSeriesCache[.power] = p }
+        if !s.isEmpty { panelSeriesCache[.strideLength] = s }
+        if !v.isEmpty { panelSeriesCache[.verticalOscillation] = v }
         chartData = RunChartBuilder.build(
             activity: activity,
             detail: detail,
@@ -723,7 +729,8 @@ struct ActivityDetailView: View {
                     dateText: panelDateText,
                     weekdayText: panelWeekdayText,
                     startTimeText: panelTimeText,
-                    shoeText: panelShoeText
+                    shoeText: panelShoeText,
+                    paceText: activity.formattedPace
                 )
             }
         case .splits:
