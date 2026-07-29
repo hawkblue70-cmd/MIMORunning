@@ -90,6 +90,7 @@ enum RunChartReplayExporter {
         let needsRoute = content == .routeData || content == .routeChart
         let actual   = (needsRoute && !hasRoute) ? ReplayContent.chartData : content
         let layout   = SectionLayout.make(actual)
+        print("[Replay] content:\(actual) coords:\(routeCoordinates.count) routeH:\(layout.routeH)")
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("mimo_chart_\(UUID().uuidString).mp4")
@@ -163,10 +164,14 @@ enum RunChartReplayExporter {
                 mapUIImage = img
                 mapPoints  = pts
             } else {
-                print("[RunChartReplayExporter] map snapshot nil — dark placeholder used")
+                print("[Replay] snapshot FAILED — dark placeholder used")
             }
             cumDist = buildCumulativeDistances(routeCoordinates)
         }
+        print("[Replay] mapUIImage:", mapUIImage?.size ?? CGSize.zero, "scale:", mapUIImage?.scale ?? 0)
+        let mapLogRect = layout.routeH > 0
+            ? CGRect(x: 0, y: layout.routeTop, width: videoW, height: layout.routeH) : CGRect.zero
+        print("[Replay] mapRect:", mapLogRect)
 
         let timeDistTable = buildTimeDistanceTable(data: data, totalDuration: totalDuration)
         let videoSize = CGSize(width: videoW, height: videoH)
@@ -200,6 +205,10 @@ enum RunChartReplayExporter {
                     cumDist: cumDist, timeDistTable: timeDistTable,
                     timeProgress: t, tilesImage: tilesImg
                 )
+
+                #if DEBUG
+                if frameIdx == 0 { debugSaveFirstFrame(frame) }
+                #endif
 
                 guard let pb = pixelBuffer(from: frame, size: videoSize) else { continue }
 
@@ -284,6 +293,94 @@ enum RunChartReplayExporter {
             timeDistTable: [], timeProgress: 0, tilesImage: tilesImg
         ).cgImage
     }
+
+    // MARK: - Preview frame with real map (async — used for sheet preview)
+
+    /// Renders a single frame at `progress` (0–1) including the actual map snapshot.
+    /// Use `progress ≈ 0.45` for a mid-run preview that shows polyline + marker clearly.
+    static func previewFrame(
+        data: RunChartData,
+        enabledLayers: Set<RunChartLayer>,
+        distanceText: String,
+        durationText: String,
+        weatherText: String?,
+        weatherIcon: String?,
+        dateText: String?,
+        weekdayText: String?,
+        startTimeText: String?,
+        shoeText: String?,
+        totalDuration: TimeInterval = 0,
+        routeCoordinates: [CLLocationCoordinate2D] = [],
+        content: ReplayContent,
+        progress: Double = 0.45
+    ) async -> UIImage? {
+        let hasRoute = routeCoordinates.count >= 2
+        let needsRoute = content == .routeData || content == .routeChart
+        let actual = (needsRoute && !hasRoute) ? ReplayContent.chartData : content
+        let layout = SectionLayout.make(actual)
+
+        let headerPtH = CGFloat(layout.headerH) / scale
+        let chartPtH  = CGFloat(layout.chartH)  / scale
+        let tilesPtH  = CGFloat(layout.tilesH)  / scale
+
+        let headerImg = renderCGImage(
+            ReplayHeaderView(
+                distanceText: distanceText, durationText: durationText,
+                weatherText: weatherText,   weatherIcon: weatherIcon,
+                dateText: dateText,         weekdayText: weekdayText,
+                startTimeText: startTimeText, shoeText: shoeText,
+                height: headerPtH
+            ),
+            width: cardW, height: headerPtH
+        )
+        let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
+            RunCombinedChartView(
+                data: data, enabledLayers: enabledLayers,
+                chartHeight: chartPtH, playProgress: progress, endLabelMinGap: 11
+            )
+            .frame(width: cardW, height: chartPtH)
+            .background(Color.black),
+            width: cardW, height: chartPtH
+        ) : nil
+        let tilesImg: CGImage? = layout.tilesH > 0 ? renderCGImage(
+            ReplayTilesView(data: data, enabledLayers: enabledLayers,
+                            height: tilesPtH, maxTiles: layout.maxTiles, compact: layout.compact),
+            width: cardW, height: tilesPtH
+        ) : nil
+
+        var mapUIImage: UIImage? = nil
+        var mapPoints:  [CGPoint] = []
+        var cumDist:    [Double] = []
+
+        if layout.routeH > 0 && hasRoute {
+            let routePtH = CGFloat(layout.routeH) / scale
+            if let (img, pts) = try? await chartMapSnapshot(
+                coordinates: routeCoordinates,
+                ptSize: CGSize(width: cardW, height: routePtH)
+            ) {
+                mapUIImage = img
+                mapPoints  = pts
+            }
+            cumDist = buildCumulativeDistances(routeCoordinates)
+        }
+
+        let timeDistTable = buildTimeDistanceTable(data: data, totalDuration: totalDuration)
+        return composeFrame(
+            layout: layout, data: data, totalDuration: totalDuration,
+            headerImage: headerImg, chartImage: chartImg,
+            mapUIImage: mapUIImage, mapPoints: mapPoints,
+            cumDist: cumDist, timeDistTable: timeDistTable,
+            timeProgress: progress, tilesImage: tilesImg
+        )
+    }
+
+    // MARK: - Debug helpers
+
+    #if DEBUG
+    static func debugSaveFirstFrame(_ image: UIImage) {
+        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+    }
+    #endif
 
     // MARK: - Frame composition (UIKit coordinate space — top-left origin)
 
@@ -390,11 +487,12 @@ enum RunChartReplayExporter {
                               CGImageAlphaInfo.premultipliedFirst.rawValue
         ) else { return nil }
 
-        // Flip so UIImage (top-left origin) lands correctly in CG context (bottom-left origin)
+        // UIKit top-left origin → CG bottom-left origin conversion
         ctx.translateBy(x: 0, y: size.height)
         ctx.scaleBy(x: 1, y: -1)
-        guard let cg = image.cgImage else { return nil }
-        ctx.draw(cg, in: CGRect(origin: .zero, size: size))
+        UIGraphicsPushContext(ctx)
+        image.draw(in: CGRect(origin: .zero, size: size))
+        UIGraphicsPopContext()
         return pixelBuffer
     }
 

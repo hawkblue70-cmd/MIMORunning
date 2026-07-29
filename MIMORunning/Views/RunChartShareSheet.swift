@@ -198,7 +198,9 @@ struct RunChartShareSheet: View {
     @State private var videoProgress: Double = 0
     @State private var exportedVideo: SharableVideoFile? = nil
     @State private var videoExportTask: Task<Void, Never>? = nil
-    @State private var videoPreviewImage: CGImage? = nil
+    @State private var previewImage: UIImage? = nil
+    @State private var isLoadingPreview = false
+    @State private var previewTask: Task<Void, Never>? = nil
 
     private let cardW: CGFloat = 300
     private let L = AppLanguage.shared
@@ -270,7 +272,10 @@ struct RunChartShareSheet: View {
                         exportedVideo = nil
                         isExportingVideo = false
                         videoProgress = 0
-                        if newMode == .video { refreshVideoPreview() }
+                        if newMode == .video { refreshPreview() }
+                    }
+                    .onChange(of: store.enabled) { _, _ in
+                        if exportMode == .video { refreshPreview() }
                     }
 
                     // (e) 영상 옵션 (영상 모드만)
@@ -295,7 +300,7 @@ struct RunChartShareSheet: View {
                                     : L.s("경로+차트", "Route+Chart")
                                 Button(label) {
                                     videoContent = mode
-                                    refreshVideoPreview()
+                                    refreshPreview()
                                 }
                                 .font(.system(size: 11, weight: videoContent == mode ? .semibold : .regular))
                                 .padding(.horizontal, 14).padding(.vertical, 5)
@@ -342,16 +347,22 @@ struct RunChartShareSheet: View {
                         }
                         .padding(.top, 6)
 
-                        // (e-3) 첫 프레임 미리보기
-                        if let cgPrev = videoPreviewImage {
-                            Image(cgPrev, scale: 1, label: Text(""))
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: .infinity)
-                                .cornerRadius(10)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 10)
+                        // (e-3) 모드 미리보기 (실제 지도 포함 — 비동기 로딩)
+                        Group {
+                            if isLoadingPreview {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 24)
+                            } else if let img = previewImage {
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: .infinity)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
                     }
 
                     Spacer()
@@ -399,6 +410,7 @@ struct RunChartShareSheet: View {
         }
         .onDisappear {
             videoExportTask?.cancel()
+            previewTask?.cancel()
         }
     }
 
@@ -486,17 +498,26 @@ struct RunChartShareSheet: View {
         }
     }
 
-    private func refreshVideoPreview() {
-        videoPreviewImage = RunChartReplayExporter.previewCGImage(
-            data: data, enabledLayers: store.enabled,
-            distanceText: distanceText, durationText: durationText,
-            weatherText: weatherText, weatherIcon: weatherIcon,
-            dateText: dateText, weekdayText: weekdayText,
-            startTimeText: startTimeText, shoeText: shoeText,
-            totalDuration: totalDuration,
-            content: videoContent,
-            routeCoordinates: routeCoordinates
-        )
+    private func refreshPreview() {
+        previewTask?.cancel()
+        isLoadingPreview = true
+        previewImage = nil
+        previewTask = Task { @MainActor in
+            let img = await RunChartReplayExporter.previewFrame(
+                data: data, enabledLayers: store.enabled,
+                distanceText: distanceText, durationText: durationText,
+                weatherText: weatherText, weatherIcon: weatherIcon,
+                dateText: dateText, weekdayText: weekdayText,
+                startTimeText: startTimeText, shoeText: shoeText,
+                totalDuration: totalDuration,
+                routeCoordinates: routeCoordinates,
+                content: videoContent,
+                progress: 0.45
+            )
+            guard !Task.isCancelled else { return }
+            previewImage = img
+            isLoadingPreview = false
+        }
     }
 
     // 미리보기 높이 추정 (타일 수에 따라 가변)
