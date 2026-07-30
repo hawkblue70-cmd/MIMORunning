@@ -40,10 +40,10 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
     var drawStyle: DrawStyle {
         switch self {
         case .heartRate:    return .line(width: 2.2)
-        case .cadence:      return .line(width: 1.7)
-        case .power:        return .line(width: 1.7)
-        case .strideLength: return .line(width: 1.5)
-        case .verticalOsc:  return .line(width: 1.5)
+        case .cadence:      return .line(width: 2.1)
+        case .power:        return .line(width: 2.1)
+        case .strideLength: return .line(width: 1.8)
+        case .verticalOsc:  return .line(width: 1.8)
         case .aerobic:      return .line(width: 1.5)
         case .calories:     return .line(width: 1.5)
         case .pace:         return .bars

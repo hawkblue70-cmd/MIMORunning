@@ -1209,8 +1209,9 @@ struct ShareCardScreen: View {
         d.placeName     = stampPlaceName
         d.placeRegion   = stampPlaceRegion
         d.coordText     = stampCoordText
-        d.mapImage      = stampMapImage
-        d.routePoints   = stampRoutePoints
+        d.mapImage           = stampMapImage
+        d.routePoints        = stampRoutePoints
+        d.routeCoordinates   = routeCoords.count >= 2 ? routeCoords : nil
         return d
     }
 

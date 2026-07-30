@@ -478,7 +478,9 @@ struct StampVisualPickerSheet: View {
                     case .location:
                         if data.placeName == nil && data.coordText == nil { return false }
                     case .route:
-                        if data.routePoints == nil && data.mapImage == nil { return false }
+                        let hasMap   = data.routePoints != nil || data.mapImage != nil
+                        let hasCoord = (data.routeCoordinates?.count ?? 0) >= 2
+                        if !hasMap && !hasCoord { return false }
                     }
                 }
                 return true

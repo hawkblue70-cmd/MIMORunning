@@ -1,6 +1,7 @@
 // 스탬프 카드 렌더러. 미리보기와 영상 합성이 모두 이 뷰를 사용한다(렌더 경로 단일화).
 // ⚠️ 스탬프 카드 전용. 다른 카드 코드 작성 금지.
 
+import CoreLocation
 import SwiftUI
 
 // MARK: - StampData
@@ -31,6 +32,7 @@ struct StampData {
     // 지도 배경
     var mapImage: UIImage?       = nil
     var routePoints: [CGPoint]?  = nil   // mapImage 좌표계의 경로점
+    var routeCoordinates: [CLLocationCoordinate2D]? = nil   // 경로 라인아트용 원시 좌표
 
     static let sample = StampData(
         distance: "10.13",
@@ -52,7 +54,18 @@ struct StampData {
         hrSeries: [0.5, 0.52, 0.6, 0.8, 1.0, 0.12, 0.62, 0.68, 0.72, 0.68, 0.62, 0.6, 0.5, 0.52, 0.6, 0.8, 1.0, 0.12, 0.62, 0.68],
         placeName: "ANSAN",
         placeRegion: "GYEONGGI",
-        coordText: "37.32°N 126.83°E"
+        coordText: "37.32°N 126.83°E",
+        routeCoordinates: [
+            CLLocationCoordinate2D(latitude: 37.325, longitude: 126.818),
+            CLLocationCoordinate2D(latitude: 37.328, longitude: 126.824),
+            CLLocationCoordinate2D(latitude: 37.334, longitude: 126.827),
+            CLLocationCoordinate2D(latitude: 37.340, longitude: 126.824),
+            CLLocationCoordinate2D(latitude: 37.343, longitude: 126.818),
+            CLLocationCoordinate2D(latitude: 37.340, longitude: 126.812),
+            CLLocationCoordinate2D(latitude: 37.334, longitude: 126.809),
+            CLLocationCoordinate2D(latitude: 37.328, longitude: 126.812),
+            CLLocationCoordinate2D(latitude: 37.325, longitude: 126.818),
+        ]
     )
 }
 
@@ -186,6 +199,64 @@ private struct EQBarShape: Shape {
                              cornerSize: CGSize(width: 1, height: 1))
         }
         return p
+    }
+}
+
+// MARK: - Route Line Art
+
+private struct StampRoutePathShape: Shape {
+    let coords: [CLLocationCoordinate2D]
+
+    func path(in rect: CGRect) -> Path {
+        guard coords.count > 1 else { return Path() }
+        let lats = coords.map(\.latitude)
+        let lons = coords.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return Path() }
+        let latRange = maxLat - minLat
+        let lonRange = maxLon - minLon
+        let latScale = latRange > 0 ? rect.height / latRange : rect.height
+        let lonScale = lonRange > 0 ? rect.width  / lonRange : rect.width
+        let s = min(latScale, lonScale)
+        let usedW = lonRange * s
+        let usedH = latRange * s
+        let ox = rect.minX + (rect.width  - usedW) / 2
+        let oy = rect.minY + (rect.height - usedH) / 2
+        var path = Path()
+        for (i, c) in coords.enumerated() {
+            let x = ox + (c.longitude - minLon) * s
+            let y = oy + (maxLat - c.latitude) * s   // y축 반전 (위도↑ → 화면 위)
+            let pt = CGPoint(x: x, y: y)
+            if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+        }
+        return path
+    }
+}
+
+struct StampRouteArt: View {
+    let coords: [CLLocationCoordinate2D]
+    let lineWidth: CGFloat
+    let color: Color
+
+    var body: some View {
+        StampRoutePathShape(coords: Self.downsample(coords))
+            .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+    }
+
+    static func downsample(_ coords: [CLLocationCoordinate2D], maxCount: Int = 300) -> [CLLocationCoordinate2D] {
+        guard coords.count > maxCount else { return coords }
+        let step = max(1, coords.count / maxCount)
+        return stride(from: 0, to: coords.count, by: step).map { coords[$0] }
+    }
+
+    static func isPortraitRoute(_ coords: [CLLocationCoordinate2D]) -> Bool {
+        guard coords.count > 1 else { return true }
+        let lats = coords.map(\.latitude); let lons = coords.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return true }
+        let latDist = (maxLat - minLat) * 111_000.0
+        let lonDist = (maxLon - minLon) * 111_000.0 * cos(((minLat + maxLat) / 2) * .pi / 180)
+        return latDist >= lonDist
     }
 }
 
@@ -352,6 +423,21 @@ struct StampCard: View {
         case .mapBackground:
             StampMapBackgroundView(data: data, fill: fill, outline: outline, scale: scale,
                                    showTextOutline: showTextOutline)
+        case .routeHero:
+            StampRouteHeroView(data: data, fill: fill, outline: outline, scale: scale,
+                               showTextOutline: showTextOutline)
+        case .routeRows:
+            StampRouteRowsView(data: data, fill: fill, outline: outline, scale: scale,
+                               showHeartRate: showHeartRate, showCalories: showCalories,
+                               showTextOutline: showTextOutline)
+        case .routeVertical:
+            StampRouteVerticalView(data: data, fill: fill, outline: outline, scale: scale,
+                                   showHeartRate: showHeartRate, showCalories: showCalories,
+                                   showTextOutline: showTextOutline)
+        case .routeSide:
+            StampRouteSideView(data: data, fill: fill, outline: outline, scale: scale,
+                               showHeartRate: showHeartRate, showCalories: showCalories,
+                               showTextOutline: showTextOutline)
         }
     }
 }
@@ -1206,6 +1292,155 @@ private struct StampMapBackgroundView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, sz(14, scale))
             .padding(.bottom, sz(16, scale))
+        }
+    }
+}
+
+// MARK: - Route Hero
+
+private struct StampRouteHeroView: View {
+    let data: StampData
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    var showTextOutline: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            StampRouteArt(
+                coords: data.routeCoordinates ?? [],
+                lineWidth: max(1, sz(2.6, scale)),
+                color: outline
+            )
+            .frame(width: sz(46, scale), height: sz(60, scale))
+            .padding(.bottom, sz(7, scale))
+
+            Text(data.distance)
+                .font(.system(size: sz(38, scale), weight: .heavy))
+                .tracking(-1.5)
+                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+
+            Text("KM")
+                .font(.system(size: sz(9, scale), weight: .bold))
+                .tracking(1.6)
+                .opacity(0.85)
+                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+                .padding(.top, sz(3, scale))
+
+            HStack(alignment: .top, spacing: sz(20, scale)) {
+                VStack(alignment: .leading, spacing: sz(1, scale)) {
+                    Text(data.time)
+                        .font(.system(size: sz(17, scale), weight: .heavy))
+                        .tracking(-0.5)
+                    Text("TIME")
+                        .font(.system(size: sz(8, scale), weight: .bold))
+                        .tracking(1.6)
+                        .opacity(0.85)
+                }
+                VStack(alignment: .leading, spacing: sz(1, scale)) {
+                    Text(data.pace)
+                        .font(.system(size: sz(17, scale), weight: .heavy))
+                        .tracking(-0.5)
+                    Text("AVG PACE")
+                        .font(.system(size: sz(8, scale), weight: .bold))
+                        .tracking(1.6)
+                        .opacity(0.85)
+                }
+            }
+            .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+            .padding(.top, sz(8, scale))
+        }
+    }
+}
+
+// MARK: - Route Rows
+
+private struct StampRouteRowsView: View {
+    let data: StampData
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    let showHeartRate: Bool
+    let showCalories: Bool
+    var showTextOutline: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            StampRouteArt(
+                coords: data.routeCoordinates ?? [],
+                lineWidth: max(1, sz(2.4, scale)),
+                color: outline
+            )
+            .frame(width: sz(34, scale), height: sz(44, scale))
+            .padding(.bottom, sz(7, scale))
+
+            StampLabeledRowsView(data: data, fill: fill, outline: outline, scale: scale,
+                                 showHeartRate: showHeartRate, showCalories: showCalories,
+                                 showTextOutline: showTextOutline)
+        }
+    }
+}
+
+// MARK: - Route Vertical
+
+private struct StampRouteVerticalView: View {
+    let data: StampData
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    let showHeartRate: Bool
+    let showCalories: Bool
+    var showTextOutline: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            StampRouteArt(
+                coords: data.routeCoordinates ?? [],
+                lineWidth: max(1, sz(2.4, scale)),
+                color: outline
+            )
+            .frame(width: sz(34, scale), height: sz(42, scale))
+            .padding(.bottom, sz(7, scale))
+
+            StampVerticalLabelView(data: data, fill: fill, outline: outline, scale: scale,
+                                   showHeartRate: showHeartRate, showCalories: showCalories,
+                                   showTextOutline: showTextOutline)
+        }
+    }
+}
+
+// MARK: - Route Side
+
+private struct StampRouteSideView: View {
+    let data: StampData
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    let showHeartRate: Bool
+    let showCalories: Bool
+    var showTextOutline: Bool = true
+
+    var body: some View {
+        let isPortrait = StampRouteArt.isPortraitRoute(data.routeCoordinates ?? [])
+        let art = StampRouteArt(
+            coords: data.routeCoordinates ?? [],
+            lineWidth: max(1, sz(2.6, scale)),
+            color: outline
+        )
+        .frame(width: sz(44, scale), height: sz(70, scale))
+        let hero = StampDistanceHeroView(data: data, fill: fill, outline: outline, scale: scale,
+                                         showHeartRate: showHeartRate, showCalories: showCalories,
+                                         showTextOutline: showTextOutline)
+        if isPortrait {
+            HStack(alignment: .center, spacing: sz(12, scale)) {
+                hero
+                art
+            }
+        } else {
+            VStack(alignment: .leading, spacing: sz(8, scale)) {
+                art
+                hero
+            }
         }
     }
 }

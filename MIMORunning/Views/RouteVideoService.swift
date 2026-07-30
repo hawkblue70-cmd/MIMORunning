@@ -165,7 +165,7 @@ private struct RoutePolylineOverlay: View {
                 guard totalPxLen > 0 else { return }
 
                 let totalKm = totalDistanceM / 1000
-                let interval: Double = totalKm <= 22 ? 1 : totalKm <= 35 ? 2 : 5
+                let interval: Double = totalKm <= 22 ? 1 : totalKm <= 35 ? 2 : 3
                 let intervalM = interval * 1000
 
                 func previewInterp(_ targetLen: Double) -> CGPoint {
@@ -1191,7 +1191,7 @@ struct RouteVideoExportService {
         guard snapshotPoints.count > 1, totalDistanceM > 100 else { return [] }
 
         let totalKm   = totalDistanceM / 1000
-        let interval: Double = totalKm <= 22 ? 1 : totalKm <= 35 ? 2 : 5
+        let interval: Double = totalKm <= 22 ? 1 : totalKm <= 35 ? 2 : 3
         let intervalM = interval * 1000
 
         // Cumulative pixel-path length for each point

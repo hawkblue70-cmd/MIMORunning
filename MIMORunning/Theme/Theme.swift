@@ -68,13 +68,13 @@ enum Theme {
 
 // MARK: - Chart-specific palette (RunCombinedChartView 전용)
 extension Theme {
-    static let chartPace     = Color(hex: "3DDCFF")  // 형광 시안
-    static let chartCadence  = Color(hex: "FFE83D")  // 형광 옐로
-    static let chartPower    = Color(hex: "38BDF8")  // 하늘색
-    static let chartElev     = Color(hex: "4DFF7A")  // 네온 그린 (고도 라인 + 그라디언트 fill)
-    static let chartElevFill = Color(hex: "4DFF7A")  // 고도 fill (chartElev 와 동일)
-    static let chartStride   = Color(hex: "FF8A3D")  // 붉은 주황 (케이던스 노랑과 분리)
-    static let chartVertOsc  = Color(hex: "E86BFF")  // 형광 퍼플 (Z5 레드와 구분)
+    static let chartPace     = Color(hex: "4DD0F5")  // 시안 (dark 기준)
+    static let chartCadence  = Color(hex: "F0D840")  // 옐로
+    static let chartPower    = Color(hex: "5AA9FF")  // 파랑
+    static let chartElev     = Color(hex: "8FE04D")  // 라임 그린
+    static let chartElevFill = Color(hex: "8FE04D")  // 고도 fill (chartElev 와 동일)
+    static let chartStride   = Color(hex: "FFA84D")  // 주황
+    static let chartVertOsc  = Color(hex: "D97FF0")  // 마젠타
     static let chartAerobic  = Color(hex: "40C0FF")  // 하늘색 (유산소 효율)
 
     static let chartHRZones: [Color] = [

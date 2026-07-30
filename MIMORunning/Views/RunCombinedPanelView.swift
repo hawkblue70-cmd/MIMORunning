@@ -46,6 +46,7 @@ struct RunCombinedPanelView: View {
     var weekdayText: String? = nil
     var startTimeText: String? = nil
     var shoeText: String? = nil
+    var paceText: String? = nil
 
     @State private var store = RunChartLayerStore.shared
     @State private var playProgress: Double? = nil
@@ -159,6 +160,14 @@ struct RunCombinedPanelView: View {
                     Text(durationText)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.yellow)
+                    if let pace = paceText {
+                        Text(" · ")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.45))
+                        Text(pace)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color(hex: "5CE5D5"))
+                    }
                 }
                 if dateText != nil || weekdayText != nil || startTimeText != nil {
                     HStack(spacing: 5) {

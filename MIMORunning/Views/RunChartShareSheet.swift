@@ -50,7 +50,9 @@ struct RunChartShareCard: View {
     let weekdayText: String?
     let startTimeText: String?
     let shoeText: String?
+    let paceText: String?
     var playProgress: Double? = nil
+    var palette: ShareChartPalette = .dark
 
     private let cardW: CGFloat = 300
     private let tileColumns = [
@@ -61,7 +63,7 @@ struct RunChartShareCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 차트 영역 — 검정 배경 (RunCombinedPanelView 동일)
+            // 차트 영역
             VStack(spacing: 0) {
                 contextRow
                     .padding(.horizontal, 12)
@@ -69,10 +71,11 @@ struct RunChartShareCard: View {
 
                 RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: 226,
                                     playProgress: playProgress)
+                    .environment(\.shareChartPalette, palette)
                     .padding(.top, 2)
                     .padding(.bottom, 4)
             }
-            .background(Color.black)
+            .background(palette.background)
 
             // 지표 타일 — 값 전용(유산소·칼로리) 항상 표시, 나머지는 켜진 레이어만
             let activeTiles = data.availableLayers.filter {
@@ -82,7 +85,7 @@ struct RunChartShareCard: View {
                 LazyVGrid(columns: tileColumns, spacing: 3) {
                     ForEach(activeTiles) { layer in
                         if let series = data.series[layer] {
-                            ShareStatTile(layer: layer, series: series)
+                            ShareStatTile(layer: layer, series: series, palette: palette)
                         }
                     }
                 }
@@ -92,81 +95,166 @@ struct RunChartShareCard: View {
             }
         }
         .frame(width: cardW)
-        .background(Theme.cardBackground)
+        .background(palette.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
+    private var distanceNumStr: String {
+        distanceText.components(separatedBy: " ").first ?? distanceText
+    }
+    private var distanceUnitStr: String {
+        let parts = distanceText.components(separatedBy: " ")
+        return parts.count > 1 ? parts[1...].joined(separator: " ") : ""
+    }
+
+    @ViewBuilder
     private var contextRow: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // 왼쪽: 워드마크 + 거리·소요시간
+        if palette.isLight {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 2) {
-                    Text("MIMO")
-                        .font(.system(size: 8, weight: .black, design: .monospaced))
-                        .foregroundStyle(Theme.violet)
-                    Text("RUNNING")
-                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(Color.white)
+                // Row 1: 워드마크 ← → 날씨 배지 + 신발 (우측 상단 세로)
+                HStack(alignment: .top, spacing: 0) {
+                    HStack(spacing: 2) {
+                        Text("MIMO")
+                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                            .kerning(0.5)
+                            .foregroundStyle(palette.wordmarkMIMO)
+                        Text("RUNNING")
+                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                            .kerning(0.5)
+                            .foregroundStyle(palette.wordmarkRunning)
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if let weather = weatherText {
+                            let celsius = parseCelsius(from: weather)
+                            let iColor = weatherIconColor(systemName: weatherIcon, celsius: celsius, isLight: true)
+                            let tColor: Color = celsius.map { temperatureColor($0, isLight: true) } ?? iColor
+                            HStack(spacing: 3) {
+                                Image(systemName: weatherIcon ?? "thermometer.medium")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(iColor)
+                                Text(weather)
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(tColor)
+                                    .fixedSize()
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color(hex: "F2F1ED"), in: RoundedRectangle(cornerRadius: 11))
+                        }
+                        if let shoe = shoeText {
+                            Label(shoe, systemImage: "shoe.fill")
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(Color(hex: "9A9A9A"))
+                                .lineLimit(1)
+                        }
+                    }
                 }
+                // Row 2: 거리(히어로) · 시간 · 페이스 — no metric colors
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
-                    Text(distanceText)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.chartElev)
+                    Text(distanceNumStr)
+                        .font(.system(size: 23, weight: .heavy))
+                        .foregroundStyle(Color(hex: "111111"))
+                    if !distanceUnitStr.isEmpty {
+                        Text(distanceUnitStr)
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundStyle(Color(hex: "9A9A9A"))
+                            .padding(.leading, 2)
+                    }
                     Text(" · ")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.45))
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color(hex: "D5D3CD"))
                     Text(durationText)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.yellow)
+                        .font(.system(size: 16, weight: .heavy))
+                        .foregroundStyle(Color(hex: "555555"))
+                    if let pace = paceText {
+                        Text(" · ")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color(hex: "D5D3CD"))
+                        Text(pace)
+                            .font(.system(size: 16, weight: .heavy))
+                            .foregroundStyle(Color(hex: "555555"))
+                    }
+                    Spacer(minLength: 0)
                 }
-            }
-
-            Spacer(minLength: 6)
-
-            // 오른쪽: 날짜·요일·시간·기온 한 줄 → 신발
-            VStack(alignment: .trailing, spacing: 4) {
+                // Row 3: 날짜 전체 그레이 — uniform, no weekday emphasis
                 HStack(spacing: 4) {
-                    // 날짜·요일·시간 — 공간 부족 시 truncate
+                    if let d = dateText    { Text(d) }
+                    if let w = weekdayText { Text(w) }
+                    if let t = startTimeText { Text(t) }
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(Color(hex: "9A9A9A"))
+            }
+        } else {
+            // 다크: neutral hierarchy — no metric-color tinting
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .center, spacing: 0) {
+                    HStack(spacing: 2) {
+                        Text("MIMO")
+                            .font(.system(size: 8, weight: .black, design: .monospaced))
+                            .foregroundStyle(palette.wordmarkMIMO)
+                        Text("RUNNING")
+                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(palette.wordmarkRunning)
+                    }
+                    Spacer(minLength: 8)
                     HStack(spacing: 4) {
+                        // Date row — all uniform gray
                         if let d = dateText {
-                            Text(d)
-                                .font(.system(size: 9))
-                                .foregroundStyle(Color.white.opacity(0.72))
+                            Text(d).font(.system(size: 9)).foregroundStyle(.white.opacity(0.5))
                         }
                         if let w = weekdayText {
-                            Text(w)
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(Color.yellow.opacity(0.85))
+                            Text(w).font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.5))
                         }
                         if let t = startTimeText {
-                            Text(t)
-                                .font(.system(size: 9))
-                                .foregroundStyle(Color.white.opacity(0.72))
+                            Text(t).font(.system(size: 9)).foregroundStyle(.white.opacity(0.5))
+                        }
+                        if let weather = weatherText {
+                            let celsius = parseCelsius(from: weather)
+                            let iColor = weatherIconColor(systemName: weatherIcon, celsius: celsius, isLight: false)
+                            HStack(spacing: 3) {
+                                Image(systemName: weatherIcon ?? "thermometer.medium")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(iColor)
+                                Text(weather)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.8))
+                                    .fixedSize()
+                            }
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(.white.opacity(0.10), in: Capsule())
+                            .fixedSize()
                         }
                     }
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    // 기온 배지 — 항상 완전 표시
-                    if let weather = weatherText {
-                        HStack(spacing: 3) {
-                            Image(systemName: weatherIcon ?? "thermometer.medium")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(Color.white)
-                            Text(weather)
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(Color(hex: "5CE5D5"))
-                                .fixedSize()
-                        }
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(Color(hex: "5CE5D5").opacity(0.12), in: Capsule())
-                        .fixedSize()
-                        .layoutPriority(1)
-                    }
                 }
-                if let shoe = shoeText {
-                    Label(shoe, systemImage: "shoe.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(Theme.chartElev.opacity(0.90))
+                HStack(alignment: .center, spacing: 0) {
+                    // Neutral hierarchy — no metric colors
+                    Text(distanceText)
+                        .font(.system(size: 14, weight: .heavy))
+                        .foregroundStyle(.white)
+                    Text(" · ")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.25))
+                    Text(durationText)
+                        .font(.system(size: 14, weight: .heavy))
+                        .foregroundStyle(.white.opacity(0.75))
+                    if let pace = paceText {
+                        Text(" · ")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.25))
+                        Text(pace)
+                            .font(.system(size: 14, weight: .heavy))
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                    Spacer(minLength: 6)
+                    if let shoe = shoeText {
+                        Label(shoe, systemImage: "shoe.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .lineLimit(1)
+                    }
                 }
             }
         }
@@ -185,6 +273,7 @@ struct RunChartShareSheet: View {
     let weekdayText: String?
     let startTimeText: String?
     let shoeText: String?
+    let paceText: String?
     var totalDuration: TimeInterval = 0
     var routeCoordinates: [CLLocationCoordinate2D] = []
 
@@ -198,7 +287,7 @@ struct RunChartShareSheet: View {
     private enum ExportMode { case image, video }
     @State private var exportMode: ExportMode = .video
     @State private var videoContent: ReplayContent = .routeChart
-    @State private var videoDuration: TimeInterval = 10
+    @State private var videoDuration: TimeInterval = 15
     @State private var isExportingVideo = false
     @State private var videoProgress: Double = 0
     @State private var exportedVideo: SharableVideoFile? = nil
@@ -206,6 +295,7 @@ struct RunChartShareSheet: View {
     @State private var previewImage: UIImage? = nil
     @State private var isLoadingPreview = false
     @State private var previewTask: Task<Void, Never>? = nil
+    @State private var shareTheme: ShareTheme = .light
 
     private let cardW: CGFloat = 300
     private let L = AppLanguage.shared
@@ -230,7 +320,9 @@ struct RunChartShareSheet: View {
                                 dateText: dateText,
                                 weekdayText: weekdayText,
                                 startTimeText: startTimeText,
-                                shoeText: shoeText
+                                shoeText: shoeText,
+                                paceText: paceText,
+                                palette: shareTheme.palette
                             )
                             .scaleEffect(scale, anchor: .top)
                             .frame(width: geo.size.width, alignment: .center)
@@ -283,12 +375,41 @@ struct RunChartShareSheet: View {
                     }
                     .padding(.top, 8)
 
-                    // (d) 이미지 / 영상 모드 선택
-                    Picker("", selection: $exportMode) {
-                        Text(L.s("이미지", "Image")).tag(ExportMode.image)
-                        Text(L.s("영상", "Video")).tag(ExportMode.video)
+                    // (d) 통합 컨트롤 바 — 이미지/영상/내용/테마 한 줄 동일 크기
+                    let hasRoute = routeCoordinates.count >= 2
+                    HStack(spacing: 5) {
+                        controlChip(L.s("이미지", "Image"),
+                                    isOn: exportMode == .image) {
+                            exportMode = .image
+                        }
+                        controlChip(L.s("영상", "Video"),
+                                    isOn: exportMode == .video) {
+                            exportMode = .video
+                        }
+                        controlChip(L.s("차트+데이터", "Chart+Data"),
+                                    isOn: exportMode == .video && videoContent == .chartData,
+                                    isDisabled: exportMode == .image) {
+                            videoContent = .chartData
+                            videoExportTask?.cancel()
+                            exportedVideo = nil; isExportingVideo = false; videoProgress = 0
+                            refreshPreview()
+                        }
+                        controlChip(L.s("경로+차트", "Route+Chart"),
+                                    isOn: exportMode == .video && videoContent == .routeChart,
+                                    isDisabled: exportMode == .image || !hasRoute) {
+                            videoContent = .routeChart
+                            videoExportTask?.cancel()
+                            exportedVideo = nil; isExportingVideo = false; videoProgress = 0
+                            refreshPreview()
+                        }
+                        controlChip(shareTheme == .light ? L.s("라이트", "Light") : L.s("다크", "Dark"),
+                                    isOn: shareTheme == .light) {
+                            shareTheme = shareTheme == .light ? .dark : .light
+                            videoExportTask?.cancel()
+                            exportedVideo = nil; isExportingVideo = false; videoProgress = 0
+                            if exportMode == .video { refreshPreview() }
+                        }
                     }
-                    .pickerStyle(.segmented)
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
                     .onAppear {
@@ -310,39 +431,16 @@ struct RunChartShareSheet: View {
                         isExportingVideo = false
                         videoProgress = 0
                     }
+                    .onChange(of: shareTheme) { _, _ in
+                        videoExportTask?.cancel()
+                        exportedVideo = nil
+                        isExportingVideo = false
+                        videoProgress = 0
+                        if exportMode == .video { refreshPreview() }
+                    }
 
                     // (e) 영상 옵션 (영상 모드만)
                     if exportMode == .video {
-                        let hasRoute = routeCoordinates.count >= 2
-
-                        // (e-1) 내용 선택: 데이터 / 경로
-                        HStack(spacing: 6) {
-                            ForEach(ReplayContent.allCases, id: \.self) { mode in
-                                let disabled = mode == .routeChart && !hasRoute
-                                let label = mode == .chartData ? L.s("차트+데이터", "Chart+Data")
-                                    : L.s("경로+차트", "Route+Chart")
-                                Button(label) {
-                                    videoContent = mode
-                                    videoExportTask?.cancel()
-                                    exportedVideo = nil
-                                    isExportingVideo = false
-                                    videoProgress = 0
-                                    refreshPreview()
-                                }
-                                .font(.system(size: 11, weight: videoContent == mode ? .semibold : .regular))
-                                .padding(.horizontal, 14).padding(.vertical, 5)
-                                .background(videoContent == mode
-                                            ? Theme.violet.opacity(0.18)
-                                            : Color.white.opacity(0.06))
-                                .foregroundStyle(disabled ? Color.secondary.opacity(0.4)
-                                                : videoContent == mode ? Theme.violet : .secondary)
-                                .clipShape(Capsule())
-                                .buttonStyle(.plain)
-                                .disabled(disabled)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 12)
 
                         // (e-2) 영상 길이
                         HStack {
@@ -356,7 +454,7 @@ struct RunChartShareSheet: View {
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                ForEach([6.0, 10.0, 15.0], id: \.self) { d in
+                                ForEach([10.0, 15.0], id: \.self) { d in
                                     Button("\(Int(d))s") { videoDuration = d }
                                         .font(.system(size: 11,
                                                       weight: videoDuration == d ? .semibold : .regular))
@@ -495,10 +593,12 @@ struct RunChartShareSheet: View {
                     weekdayText: weekdayText,
                     startTimeText: startTimeText,
                     shoeText: shoeText,
+                    paceText: paceText,
                     totalDuration: totalDuration,
                     routeCoordinates: routeCoordinates,
                     content: videoContent,
                     duration: videoDuration,
+                    palette: shareTheme.palette,
                     onProgress: { p in videoProgress = p }
                 )
                 exportedVideo = SharableVideoFile(url: url)
@@ -520,10 +620,12 @@ struct RunChartShareSheet: View {
                 weatherText: weatherText, weatherIcon: weatherIcon,
                 dateText: dateText, weekdayText: weekdayText,
                 startTimeText: startTimeText, shoeText: shoeText,
+                paceText: paceText,
                 totalDuration: totalDuration,
                 routeCoordinates: routeCoordinates,
                 content: videoContent,
-                progress: 0.45
+                progress: 0.45,
+                palette: shareTheme.palette
             )
             guard !Task.isCancelled else { return }
             previewImage = img
@@ -540,9 +642,31 @@ struct RunChartShareSheet: View {
         return (52 + 228 + tilesH) * scale
     }
 
+    private func controlChip(_ label: String, isOn: Bool, isDisabled: Bool = false,
+                             action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            Text(label)
+                .font(.system(size: 10.5, weight: isOn ? .semibold : .regular))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(isOn ? Theme.violet.opacity(0.18) : Color.white.opacity(0.06),
+                            in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(isDisabled ? Color.secondary.opacity(0.3)
+                                 : isOn ? Theme.violet : .secondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+    }
+
     private func renderAndShare() {
         guard !isRendering else { return }
         isRendering = true
+        let palette = shareTheme.palette
         let card = RunChartShareCard(
             data: data,
             enabledLayers: store.enabled,
@@ -553,7 +677,9 @@ struct RunChartShareSheet: View {
             dateText: dateText,
             weekdayText: weekdayText,
             startTimeText: startTimeText,
-            shoeText: shoeText
+            shoeText: shoeText,
+            paceText: paceText,
+            palette: palette
         )
         // 폭 1080px 고정 (scale 3.6), 높이는 콘텐츠에 맞게 자연 결정
         // Instagram 업로드 시 자체 크롭 UI로 4:5 조정 가능
@@ -601,23 +727,24 @@ private struct ShareLayerChip: View {
 private struct ShareStatTile: View {
     let layer: RunChartLayer
     let series: RunChartSeries
+    let palette: ShareChartPalette
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(layer.color)
+                    .fill(palette.layerColor(layer))
                     .frame(width: 6, height: 6)
                 Text(layer.shortLabel)
                     .font(.system(size: 9.5))
-                    .foregroundStyle(Color.white.opacity(0.70))
+                    .foregroundStyle(palette.textPrimary.opacity(0.70))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Spacer(minLength: 2)
                 if !layer.isValueOnly {
                     Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
                         .font(.system(size: 8.5))
-                        .foregroundStyle(Color.white.opacity(0.55))
+                        .foregroundStyle(palette.textPrimary.opacity(0.55))
                         .lineLimit(1)
                         .minimumScaleFactor(0.70)
                 }
@@ -625,18 +752,18 @@ private struct ShareStatTile: View {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(layer.formatted(series.avgValue))
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(palette.textPrimary)
                     .minimumScaleFactor(0.80)
                     .lineLimit(1)
                 Text(layer.unit)
                     .font(.system(size: 8.5))
-                    .foregroundStyle(Color.white.opacity(0.65))
+                    .foregroundStyle(palette.textPrimary.opacity(0.65))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
+        .background(palette.textPrimary.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
     }
 }
 
@@ -679,7 +806,8 @@ private struct ShareStatTile: View {
         dateText: "2026. 7. 27",
         weekdayText: "일요일",
         startTimeText: "오전 7:06",
-        shoeText: nil
+        shoeText: nil,
+        paceText: "6'46\""
     )
 }
 
@@ -723,7 +851,8 @@ private struct ShareStatTile: View {
             dateText: "2026. 7. 27",
             weekdayText: "일요일",
             startTimeText: "오전 7:06",
-            shoeText: nil
+            shoeText: nil,
+            paceText: "6'46\""
         )
     }
     .preferredColorScheme(.dark)

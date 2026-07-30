@@ -17,10 +17,12 @@ struct RunCombinedChartView: View {
 
     @State private var selectedKm: Double? = nil
 
+    @Environment(\.shareChartPalette) private var p
+
     private let padL: CGFloat = 26   // Z1–Z5 labels at x=0–22; plot starts at 26
     private var padR: CGFloat { playProgress != nil ? 8 : 40 }  // collapse right pad during playback (no end labels)
     private let padT: CGFloat = 26   // increased from 16: room for scrubber label above chart rect
-    private let padB: CGFloat = 48
+    private let padB: CGFloat = 38
 
     var body: some View {
         let activeLayers = data.availableLayers.filter { enabledLayers.contains($0) }
@@ -117,7 +119,7 @@ struct RunCombinedChartView: View {
     /// Zone color for a BPM value; falls back to Theme.heartRate when zone data is absent.
     private func zoneColor(for bpm: Double) -> Color {
         let idx = zoneIndex(for: bpm)
-        return idx >= 0 ? Theme.chartHRZones[idx] : Theme.heartRate
+        return idx >= 0 ? p.hrZones[idx] : Theme.heartRate
     }
 
     /// Dynamic vertical bands. Layer order top→bottom: power → cadence → verticalOsc → strideLength.
@@ -205,7 +207,7 @@ struct RunCombinedChartView: View {
     // MARK: - Grid lines (구분선)
 
     private func drawGridLines(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
-        let lineColor = Color.white.opacity(0.45)
+        let lineColor = p.gridLine
         let style = StrokeStyle(lineWidth: 1.0)
 
         // 가로선 1개 — 페이스 막대 위 / 차트 아래 경계
@@ -279,29 +281,30 @@ struct RunCombinedChartView: View {
             fillPath.closeSubpath()
         }
 
-        let green = Theme.chartElev
+        let elevFillColor = p.elevFill
+        let elevLineColor = p.elevation
         // Gradient top anchor = highest elevation point (lowest Y on screen)
         let topY = cgPts.map { $0.y }.min() ?? rect.minY
 
         if let solo = soloLayer, solo != .elevation {
             // Faded when another layer is soloed
-            ctx.fill(fillPath, with: .color(green.opacity(0.04)))
-            ctx.stroke(linePath, with: .color(green.opacity(0.12)),
+            ctx.fill(fillPath, with: .color(elevFillColor.opacity(0.04)))
+            ctx.stroke(linePath, with: .color(elevLineColor.opacity(0.12)),
                        style: StrokeStyle(lineWidth: 1.0, lineCap: .round, lineJoin: .round))
         } else {
             // Gradient fill: bright at peaks → transparent at baseline
             ctx.fill(fillPath, with: .linearGradient(
                 Gradient(stops: [
-                    .init(color: green.opacity(0.42), location: 0.0),
-                    .init(color: green.opacity(0.16), location: 0.52),
-                    .init(color: green.opacity(0.00), location: 1.0)
+                    .init(color: elevFillColor.opacity(p.elevFillMaxOp), location: 0.0),
+                    .init(color: elevFillColor.opacity(p.elevFillMaxOp * 0.38), location: 0.52),
+                    .init(color: elevFillColor.opacity(0.00), location: 1.0)
                 ]),
                 startPoint: CGPoint(x: rect.midX, y: topY),
                 endPoint:   CGPoint(x: rect.midX, y: rect.maxY)
             ))
-            // Neon green line on top
-            ctx.stroke(linePath, with: .color(green.opacity(0.95)),
-                       style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
+            // Elevation line on top
+            ctx.stroke(linePath, with: .color(elevLineColor.opacity(0.95)),
+                       style: StrokeStyle(lineWidth: max(0.8, 1.6 + p.lineWidthAdjust), lineCap: .round, lineJoin: .round))
         }
     }
 
@@ -310,7 +313,7 @@ struct RunCombinedChartView: View {
     private func drawPaceColumns(ctx: GraphicsContext, rect: CGRect, playProgress: Double? = nil) {
         guard enabledLayers.contains(.pace), !data.paceColumns.isEmpty else { return }
 
-        let baseOp: Double = soloLayer == nil ? 0.14 : (soloLayer == .pace ? 0.24 : 0.05)
+        let baseOp: Double = soloLayer == nil ? p.paceColFillOp : (soloLayer == .pace ? p.paceColFillOp * 1.7 : p.paceColFillOp * 0.36)
         let inset: CGFloat = 0.40   // 40% margin on each side → 60% fill
         let maxKm: Double? = playProgress.map { $0 * data.totalKm }
 
@@ -325,18 +328,18 @@ struct RunCombinedChartView: View {
             let h       = rect.height * CGFloat(0.20 + col.norm * 0.80)
             let barRect = CGRect(x: x, y: rect.maxY - h, width: w, height: h)
             let barPath = Path(roundedRect: barRect, cornerRadius: 2)
-            let fillOp  = isInProgress ? baseOp * 0.5 : baseOp
-            let strkOp  = isInProgress ? 0.16 : 0.32
-            ctx.fill(barPath, with: .color(Theme.chartPace.opacity(fillOp)))
-            ctx.stroke(barPath, with: .color(Color.white.opacity(strkOp)),
-                       style: StrokeStyle(lineWidth: 1.0))
+            let fillOp   = isInProgress ? baseOp * 0.5 : baseOp
+            let borderOp = isInProgress ? p.paceColBorderOp * 0.5 : p.paceColBorderOp
+            ctx.fill(barPath, with: .color(p.pace.opacity(fillOp)))
+            ctx.stroke(barPath, with: .color(p.textPrimary.opacity(borderOp)),
+                       style: StrokeStyle(lineWidth: p.paceColBorderWidth))
 
             // Label centred under column; skip if too narrow or in-progress bar
             if w >= 14, !isInProgress {
                 ctx.draw(
                     Text(col.label)
                         .font(.system(size: 8.5, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(1.0)),
+                        .foregroundStyle(p.paceColLabelColor),
                     at: CGPoint(x: x + w / 2, y: rect.maxY + 3),
                     anchor: .top
                 )
@@ -374,12 +377,13 @@ struct RunCombinedChartView: View {
             else                    { effectiveOp = layer.opacity }
 
             if case .line(let w) = layer.drawStyle {
-                // Casing: black outline drawn first
-                ctx.stroke(path, with: .color(.black.opacity(0.85)),
-                           style: StrokeStyle(lineWidth: w + 2.0, lineCap: .round, lineJoin: .round))
+                let lw = max(0.8, w + p.lineWidthAdjust)
+                // Casing: outline drawn first
+                ctx.stroke(path, with: .color(p.chartCasing),
+                           style: StrokeStyle(lineWidth: lw + p.casingWidthAdd, lineCap: .round, lineJoin: .round))
                 // Colour line on top
-                ctx.stroke(path, with: .color(layer.color.opacity(effectiveOp)),
-                           style: StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round))
+                ctx.stroke(path, with: .color(p.layerColor(layer).opacity(effectiveOp)),
+                           style: StrokeStyle(lineWidth: lw, lineCap: .round, lineJoin: .round))
             }
         }
 
@@ -443,16 +447,16 @@ struct RunCombinedChartView: View {
         }
         flush()
 
-        // Pass 1: all casings (thick black, drawn first)
+        // Pass 1: all casings (thick, drawn first) — HR casing is +2.6pt, thicker than other layers
         for (path, _) in zonePaths {
-            ctx.stroke(path, with: .color(.black.opacity(0.85)),
-                       style: StrokeStyle(lineWidth: 2.2 + 2.6, lineCap: .round, lineJoin: .round))
+            ctx.stroke(path, with: .color(p.chartCasing),
+                       style: StrokeStyle(lineWidth: p.hrLineWidth + 2.6, lineCap: .round, lineJoin: .round))
         }
         // Pass 2: all coloured lines on top
         for (path, zone) in zonePaths {
-            let c = zone >= 0 ? Theme.chartHRZones[zone] : Theme.heartRate
+            let c = zone >= 0 ? p.hrZones[zone] : Theme.heartRate
             ctx.stroke(path, with: .color(c.opacity(opacity)),
-                       style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                       style: StrokeStyle(lineWidth: p.hrLineWidth, lineCap: .round, lineJoin: .round))
         }
 
         // Zone transition tick marks — only when transitions are rare (≤ 3)
@@ -467,7 +471,7 @@ struct RunCombinedChartView: View {
         if transitions.count <= 3 {
             let tickBase = yForBand(norm: 0.0, band: band, in: rect)
             for (x, zone) in transitions {
-                let col = Theme.chartHRZones[zone]
+                let col = p.hrZones[zone]
                 var tick = Path()
                 tick.move(to:    CGPoint(x: x, y: tickBase - 4))
                 tick.addLine(to: CGPoint(x: x, y: tickBase))
@@ -489,11 +493,11 @@ struct RunCombinedChartView: View {
         for idx in indices {
             let pt  = cgPts[idx]
             let col = zoneColor(for: pts[idx].value)
-            // Black backing
+            // Casing backing
             ctx.fill(
                 Path(ellipseIn: CGRect(x: pt.x - outerR, y: pt.y - outerR,
                                        width: outerR * 2, height: outerR * 2)),
-                with: .color(.black.opacity(opacity))
+                with: .color(p.chartCasing.opacity(opacity))
             )
             // Zone colour fill
             ctx.fill(
@@ -525,7 +529,7 @@ struct RunCombinedChartView: View {
             let y: CGFloat = yForBand(norm: lastPt.norm, band: band, in: rect)
             let color: Color = (layer == .heartRate)
                 ? zoneColor(for: series.lastValue)
-                : layer.color
+                : p.layerColor(layer)
             return Slot(text: text, y: y, color: color)
         }
 
@@ -540,10 +544,21 @@ struct RunCombinedChartView: View {
 
         let labelX = rect.maxX + 4
         for slot in slots {
-            ctx.draw(
-                Text(slot.text).font(.system(size: 8, weight: .medium)).foregroundStyle(slot.color),
-                at: CGPoint(x: labelX, y: slot.y), anchor: .leading
-            )
+            let resolved = ctx.resolve(Text(slot.text)
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(slot.color))
+            let tSz = resolved.measure(in: CGSize(width: 100, height: 20))
+            let textRect = CGRect(x: labelX, y: slot.y - tSz.height / 2,
+                                  width: tSz.width, height: tSz.height)
+            if p.valueLabelBgOp > 0 {
+                let casing = ctx.resolve(Text(slot.text)
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(p.valueLabelBgOp)))
+                for (dx, dy) in [(-1.5,-1.5),(-1.5,0.0),(-1.5,1.5),(0.0,-1.5),(0.0,1.5),(1.5,-1.5),(1.5,0.0),(1.5,1.5)] as [(CGFloat,CGFloat)] {
+                    ctx.draw(casing, in: textRect.offsetBy(dx: dx, dy: dy))
+                }
+            }
+            ctx.draw(resolved, in: textRect)
         }
     }
 
@@ -554,7 +569,7 @@ struct RunCombinedChartView: View {
               let hrSeries = data.series[.heartRate] else { return }
         let bandMap = bands(for: activeLayers)
         guard let hrBand = bandMap[.heartRate] else { return }
-        let axisStyle = Color.white
+        let axisStyle = p.axisLabelColor
         ctx.draw(
             Text("\(Int(hrSeries.maxValue.rounded()))").font(.system(size: 9, weight: .medium)).foregroundStyle(axisStyle),
             at: CGPoint(x: 22, y: yForBand(norm: 1.0, band: hrBand, in: rect)), anchor: .trailing
@@ -585,8 +600,8 @@ struct RunCombinedChartView: View {
             // Time row — pace labels occupy +3..+13, time starts at +16
             ctx.draw(
                 Text(formatElapsed(elapsedTime(atKm: tick.km)))
-                    .font(.system(size: 8))
-                    .foregroundStyle(Color.yellow.opacity(0.85)),
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .foregroundStyle(p.xAxisTimeColor),
                 at: CGPoint(x: x, y: rect.maxY + 16),
                 anchor: tick.anchor
             )
@@ -594,7 +609,7 @@ struct RunCombinedChartView: View {
             ctx.draw(
                 Text(distLabel(tick.km))
                     .font(.system(size: 8.5, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(1.0)),
+                    .foregroundStyle(p.xAxisDistColor),
                 at: CGPoint(x: x, y: rect.maxY + 27),
                 anchor: tick.anchor
             )
@@ -640,11 +655,11 @@ struct RunCombinedChartView: View {
         let km = progress * data.totalKm
         let x  = xFor(km: km, in: rect)
 
-        // Vertical white scrubber line
+        // Vertical scrubber line
         var line = Path()
         line.move(to: CGPoint(x: x, y: rect.minY))
         line.addLine(to: CGPoint(x: x, y: rect.maxY))
-        ctx.stroke(line, with: .color(.white.opacity(0.5)),
+        ctx.stroke(line, with: .color(p.textPrimary.opacity(0.5)),
                    style: StrokeStyle(lineWidth: 1.0, lineCap: .round))
 
         // Top label: "2.0km · 12:48" with black capsule background
@@ -652,20 +667,28 @@ struct RunCombinedChartView: View {
         let labelText = String(format: "%.1fkm · %@", km, formatElapsed(elapsed))
         let goLeft    = progress > 0.70
 
-        let bgH: CGFloat = 22
-        let bgW: CGFloat = CGFloat(labelText.count) * 7.5 + 20
-        // Place above the chart rect (padT = 26, bgH = 22 → sits at y ≈ 2..24, rect.minY = 26)
+        let bgH: CGFloat = 20
+        let bgW: CGFloat = CGFloat(labelText.count) * 6.9 + 18
+        // Place above the chart rect (padT = 26, bgH = 20 → sits at y ≈ 4..24, rect.minY = 26)
         let bgY: CGFloat = rect.minY - bgH - 2
         let bgX: CGFloat = goLeft ? x - bgW - 4 : x + 4
 
+        let scrubberCapsRect = CGRect(x: bgX, y: bgY, width: bgW, height: bgH)
         ctx.fill(
-            Path(roundedRect: CGRect(x: bgX, y: bgY, width: bgW, height: bgH), cornerRadius: 11),
-            with: .color(.black.opacity(0.7))
+            Path(roundedRect: scrubberCapsRect, cornerRadius: 10),
+            with: .color(p.chartCasing)
         )
+        if p.scrubberBorderOp > 0 {
+            ctx.stroke(
+                Path(roundedRect: scrubberCapsRect, cornerRadius: 10),
+                with: .color(p.textPrimary.opacity(p.scrubberBorderOp)),
+                style: StrokeStyle(lineWidth: 0.8)
+            )
+        }
         ctx.draw(
             Text(labelText)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.white),
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(p.textPrimary),
             at: CGPoint(x: bgX + bgW / 2, y: bgY + bgH / 2),
             anchor: .center
         )
@@ -680,7 +703,6 @@ struct RunCombinedChartView: View {
         let goLeft  = progress > 0.70
         let scrubX  = xFor(km: maxKm, in: rect)
         let labelX: CGFloat    = goLeft ? scrubX - 7 : scrubX + 7
-        let labelAnchor: UnitPoint = goLeft ? .trailing : .leading
 
         struct DotInfo { var labelY: CGFloat; let text: String; let color: Color }
         var dotInfos: [DotInfo] = []
@@ -705,19 +727,21 @@ struct RunCombinedChartView: View {
                 color = zoneColor(for: pt.value)
                 text  = "\(layer.formatted(pt.value)) \(layer.unit)"
             } else if layer == .elevation {
-                color = Theme.chartElev
+                color = p.elevation
                 text  = "\(Int(pt.value.rounded())) m"
             } else {
-                color = layer.color
+                color = p.layerColor(layer)
                 text  = "\(layer.formatted(pt.value)) \(layer.unit)"
             }
 
-            // Dot: layer color fill + black stroke 1.2
-            let r: CGFloat = 3.5
-            let dotRect = CGRect(x: dotX - r, y: dotY - r, width: r * 2, height: r * 2)
-            ctx.fill(Path(ellipseIn: dotRect), with: .color(color))
-            ctx.stroke(Path(ellipseIn: dotRect), with: .color(.black),
-                       style: StrokeStyle(lineWidth: 1.0))
+            // Dot: only HR gets a positional dot
+            if layer == .heartRate {
+                let r: CGFloat = 3.2
+                let dotRect = CGRect(x: dotX - r, y: dotY - r, width: r * 2, height: r * 2)
+                ctx.fill(Path(ellipseIn: dotRect), with: .color(color))
+                ctx.stroke(Path(ellipseIn: dotRect), with: .color(p.chartCasing),
+                           style: StrokeStyle(lineWidth: 1.2))
+            }
 
             dotInfos.append(DotInfo(labelY: dotY, text: text, color: color))
         }
@@ -735,13 +759,22 @@ struct RunCombinedChartView: View {
         }
 
         for info in dotInfos {
-            ctx.draw(
-                Text(info.text)
+            let resolved = ctx.resolve(Text(info.text)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(info.color))
+            let tSz = resolved.measure(in: CGSize(width: 200, height: 20))
+            let textOriginX: CGFloat = goLeft ? labelX - tSz.width : labelX
+            let textRect = CGRect(x: textOriginX, y: info.labelY - tSz.height / 2,
+                                  width: tSz.width, height: tSz.height)
+            if p.valueLabelBgOp > 0 {
+                let casing = ctx.resolve(Text(info.text)
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(info.color),
-                at: CGPoint(x: labelX, y: info.labelY),
-                anchor: labelAnchor
-            )
+                    .foregroundStyle(Color.white.opacity(p.valueLabelBgOp)))
+                for (dx, dy) in [(-1.5,-1.5),(-1.5,0.0),(-1.5,1.5),(0.0,-1.5),(0.0,1.5),(1.5,-1.5),(1.5,0.0),(1.5,1.5)] as [(CGFloat,CGFloat)] {
+                    ctx.draw(casing, in: textRect.offsetBy(dx: dx, dy: dy))
+                }
+            }
+            ctx.draw(resolved, in: textRect)
         }
     }
 
@@ -755,7 +788,7 @@ struct RunCombinedChartView: View {
         var linePath = Path()
         linePath.move(to: CGPoint(x: x, y: rect.minY))
         linePath.addLine(to: CGPoint(x: x, y: rect.maxY))
-        ctx.stroke(linePath, with: .color(.white.opacity(0.60)),
+        ctx.stroke(linePath, with: .color(p.textPrimary.opacity(0.60)),
                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
 
         // Header: km · elapsed
@@ -765,7 +798,7 @@ struct RunCombinedChartView: View {
         ctx.draw(
             Text(hdrText)
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.95)),
+                .foregroundStyle(p.textPrimary.opacity(0.95)),
             at: CGPoint(x: hdrX, y: rect.minY + 1),
             anchor: goLeft ? .topTrailing : .topLeading
         )
@@ -773,7 +806,6 @@ struct RunCombinedChartView: View {
         // Inline dots + labels for line layers
         let bandMap  = bands(for: activeLayers)
         let labelX: CGFloat = goLeft ? x - 7 : x + 7
-        let labelAnchor: UnitPoint = goLeft ? .trailing : .leading
 
         struct Slot {
             var y: CGFloat
@@ -788,10 +820,10 @@ struct RunCombinedChartView: View {
         if activeLayers.contains(.pace),
            let paceVal = nearestValue(km: km, layer: .pace) {
             let text = "\(RunChartLayer.pace.formatted(paceVal)) /km"
-            slots.append(Slot(y: rect.maxY - 8, text: text, color: Theme.chartPace, hasDot: false))
+            slots.append(Slot(y: rect.maxY - 8, text: text, color: p.pace, hasDot: false))
         }
 
-        // Line layers: dot at intersection height + label
+        // Line layers: dot only for HR (radius 3.2); others get label only
         let lineOrder: [RunChartLayer] = [.heartRate, .power, .cadence, .verticalOsc, .strideLength]
         for layer in lineOrder {
             guard activeLayers.contains(layer),
@@ -801,19 +833,19 @@ struct RunCombinedChartView: View {
             else { continue }
 
             let y       = yForBand(norm: pt.norm, band: band, in: rect)
-            let dotCol  = (layer == .heartRate) ? zoneColor(for: pt.value) : layer.color
+            let dotCol  = (layer == .heartRate) ? zoneColor(for: pt.value) : p.layerColor(layer)
             let text    = "\(layer.formatted(pt.value)) \(layer.unit)"
-            slots.append(Slot(y: y, text: text, color: dotCol, hasDot: true))
+            slots.append(Slot(y: y, text: text, color: dotCol, hasDot: layer == .heartRate))
         }
 
-        // Elevation: dot + label
+        // Elevation: label only, no dot
         if activeLayers.contains(.elevation),
            let series = data.series[.elevation], !series.isEmpty,
            let band   = bandMap[.elevation],
            let pt     = series.points.min(by: { abs($0.km - km) < abs($1.km - km) }) {
             let y    = yForBand(norm: pt.norm, band: band, in: rect)
             let text = "\(Int(pt.value.rounded())) m"
-            slots.append(Slot(y: y, text: text, color: Theme.chartElev, hasDot: true))
+            slots.append(Slot(y: y, text: text, color: p.elevation, hasDot: false))
         }
 
         // Sort top → bottom, then nudge overlapping slots apart
@@ -835,27 +867,38 @@ struct RunCombinedChartView: View {
             slots[i].y = max(rect.minY + 14, min(rect.maxY - 4, slots[i].y))
         }
 
-        // Draw dots first (layer behind labels)
+        // Draw HR dot only (radius 3.2, larger than before for emphasis)
         for slot in slots where slot.hasDot {
+            let r: CGFloat = 3.2
             ctx.fill(
-                Path(ellipseIn: CGRect(x: x - 4, y: slot.y - 4, width: 8, height: 8)),
-                with: .color(.black.opacity(0.9))
+                Path(ellipseIn: CGRect(x: x - (r + 1.5), y: slot.y - (r + 1.5),
+                                       width: (r + 1.5) * 2, height: (r + 1.5) * 2)),
+                with: .color(p.chartCasing)
             )
             ctx.fill(
-                Path(ellipseIn: CGRect(x: x - 3, y: slot.y - 3, width: 6, height: 6)),
+                Path(ellipseIn: CGRect(x: x - r, y: slot.y - r, width: r * 2, height: r * 2)),
                 with: .color(slot.color)
             )
         }
 
         // Draw labels
         for slot in slots {
-            ctx.draw(
-                Text(slot.text)
+            let resolved = ctx.resolve(Text(slot.text)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(slot.color))
+            let tSz = resolved.measure(in: CGSize(width: 200, height: 20))
+            let textOriginX: CGFloat = goLeft ? labelX - tSz.width : labelX
+            let textRect = CGRect(x: textOriginX, y: slot.y - tSz.height / 2,
+                                  width: tSz.width, height: tSz.height)
+            if p.valueLabelBgOp > 0 {
+                let casing = ctx.resolve(Text(slot.text)
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(slot.color),
-                at: CGPoint(x: labelX, y: slot.y),
-                anchor: labelAnchor
-            )
+                    .foregroundStyle(Color.white.opacity(p.valueLabelBgOp)))
+                for (dx, dy) in [(-1.5,-1.5),(-1.5,0.0),(-1.5,1.5),(0.0,-1.5),(0.0,1.5),(1.5,-1.5),(1.5,0.0),(1.5,1.5)] as [(CGFloat,CGFloat)] {
+                    ctx.draw(casing, in: textRect.offsetBy(dx: dx, dy: dy))
+                }
+            }
+            ctx.draw(resolved, in: textRect)
         }
     }
 

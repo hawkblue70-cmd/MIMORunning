@@ -44,6 +44,11 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     case placeHeadline
     case pinInline
     case mapBackground
+    // 경로 결합 4종
+    case routeHero
+    case routeRows
+    case routeVertical
+    case routeSide
 
     var id: String { rawValue }
 
@@ -68,6 +73,10 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .placeHeadline: return "지명 헤드라인"
         case .pinInline:     return "핀 인라인"
         case .mapBackground: return "지도 배경"
+        case .routeHero:     return "루트 히어로"
+        case .routeRows:     return "루트 + 행 라벨"
+        case .routeVertical: return "루트 + 세로 라벨"
+        case .routeSide:     return "루트 사이드"
         }
     }
 
@@ -107,7 +116,8 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .vitals:                    return [.heartRate]
         case .watchHud:                  return [.heartRate]
         case .placeHeadline, .pinInline: return [.location]
-        case .mapBackground:             return [.route]
+        case .mapBackground,
+             .routeHero, .routeRows, .routeVertical, .routeSide: return [.route]
         default:                         return [.none]
         }
     }
