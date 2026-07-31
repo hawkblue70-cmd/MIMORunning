@@ -161,10 +161,8 @@ struct MetricTrendView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if !isLoading && !dataPoints.isEmpty {
-                        Button {
+                        Button(AppLanguage.shared.s("내보내기", "Export")) {
                             showShareCard = true
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
                         }
                         .foregroundStyle(Theme.violet)
                     }

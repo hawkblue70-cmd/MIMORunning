@@ -150,21 +150,95 @@ struct SummaryPeriodStats {
     var isEmpty: Bool { activities.isEmpty }
 }
 
+// MARK: - Palette
+
+struct SummaryCardPalette {
+    let background:    Color
+    let accentBar:     Color
+    let textPrimary:   Color
+    let textSecondary: Color
+    let divider:       Color
+    let brand:         Color
+    let boxFill:       Color
+    let positive:      Color
+    let negative:      Color
+    let neutral:       Color
+    let accentGold:    Color
+    let accentTeal:    Color
+    let watermark:     Color
+    // 거리·연속 카드 전용
+    let barChart:      Color   // 일간 거리 / 시간 막대
+    let gridLine:      Color   // 차트 그리드선
+    let axisLabel:     Color   // 축 숫자
+    let heatEmpty:     Color   // 잔디 빈 칸
+    let heatLow:       Color   // 잔디 1단계
+    let heatMid:       Color   // 잔디 2단계
+    let heatHigh:      Color   // 잔디 3단계
+
+    static let dark = SummaryCardPalette(
+        background:    Color(hex: "131320"),
+        accentBar:     Color(hex: "7C5CFC"),
+        textPrimary:   .white,
+        textSecondary: Color(hex: "8A8F99"),
+        divider:       Color.white.opacity(0.14),
+        brand:         Color(hex: "8B7FF0"),
+        boxFill:       Color.white.opacity(0.06),
+        positive:      Color(hex: "5CE08A"),
+        negative:      Color(hex: "FF9A3C"),
+        neutral:       Color(hex: "8A8F99"),
+        accentGold:    Color(hex: "F5C542"),
+        accentTeal:    Color(hex: "5CE5D5"),
+        watermark:     Color(hex: "6B6B8A"),
+        barChart:      Color(hex: "F5C542"),
+        gridLine:      Color.white.opacity(0.10),
+        axisLabel:     Color(hex: "6B7280"),
+        heatEmpty:     Color(hex: "2A2A40"),
+        heatLow:       Color(hex: "4A3E9E"),
+        heatMid:       Color(hex: "6B57D6"),
+        heatHigh:      Color(hex: "7C5CFC")
+    )
+
+    static let light = SummaryCardPalette(
+        background:    Color(hex: "FFFFFF"),
+        accentBar:     Color(hex: "5B3FD9"),
+        textPrimary:   Color(hex: "0D0D0D"),
+        textSecondary: Color(hex: "8A8A8A"),
+        divider:       Color.black.opacity(0.10),
+        brand:         Color(hex: "5B3FD9"),
+        boxFill:       Color(hex: "F7F6F3"),
+        positive:      Color(hex: "1B7F3B"),
+        negative:      Color(hex: "D9600A"),
+        neutral:       Color(hex: "8A8A8A"),
+        accentGold:    Color(hex: "C98A00"),
+        accentTeal:    Color(hex: "0E7C8A"),
+        watermark:     Color(hex: "B0AEA8"),
+        barChart:      Color(hex: "C98A00"),
+        gridLine:      Color.black.opacity(0.08),
+        axisLabel:     Color(hex: "9A9A9A"),
+        heatEmpty:     Color(hex: "E4E2DC"),
+        heatLow:       Color(hex: "C3B8F0"),
+        heatMid:       Color(hex: "8E76E5"),
+        heatHigh:      Color(hex: "5B3FD9")
+    )
+}
+
 // MARK: - Athletic share card (300 × 375, rendered via ImageRenderer)
-// Scale applied: width 5/6 (fonts), height 375/520 ≈ 0.721 (vertical spacing)
 
 struct SummaryShareCardView: View {
     let stats: SummaryPeriodStats
     var miniMeImage: UIImage? = nil
+    var theme: ShareTheme = .dark
+
+    private var p: SummaryCardPalette { theme == .light ? .light : .dark }
 
     var body: some View {
         ZStack(alignment: .top) {
-            Theme.background
+            p.background
 
             VStack(alignment: .leading, spacing: 0) {
-                // Violet accent bar
+                // Accent bar
                 Rectangle()
-                    .fill(Theme.violet)
+                    .fill(p.accentBar)
                     .frame(height: 3)
 
                 VStack(alignment: .leading, spacing: 0) {
@@ -175,11 +249,11 @@ struct SummaryShareCardView: View {
                                 Text("MIMO")
                                     .font(.system(size: 8, weight: .black))
                                     .tracking(2)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(p.textPrimary)
                                 Text(" RUNNING")
                                     .font(.system(size: 8, weight: .bold))
                                     .tracking(2)
-                                    .foregroundStyle(Theme.violet)
+                                    .foregroundStyle(p.brand)
                             }
                         }
                         Spacer()
@@ -192,16 +266,16 @@ struct SummaryShareCardView: View {
                     // Period
                     Text(stats.kind.title)
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(p.textPrimary)
                     Text(stats.kind.subtitle)
                         .font(.system(size: 11, weight: .semibold))
                         .tracking(0.5)
-                        .foregroundStyle(Theme.violet)
+                        .foregroundStyle(p.brand)
                         .padding(.top, 2)
 
                     // Divider
                     Rectangle()
-                        .fill(Theme.violet.opacity(0.35))
+                        .fill(p.divider)
                         .frame(height: 0.5)
                         .padding(.top, 13)
                         .padding(.bottom, 16)
@@ -210,17 +284,17 @@ struct SummaryShareCardView: View {
                     HStack(alignment: .lastTextBaseline, spacing: 5) {
                         Text(stats.distanceStr)
                             .font(.system(size: 55, weight: .black, design: .default).width(.compressed))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(p.textPrimary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.55)
                         Text(stats.distanceUnit)
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(Theme.violet)
+                            .foregroundStyle(p.brand)
                     }
                     Text(AppLanguage.shared.s("총 거리", "TOTAL"))
                         .font(.system(size: 11, weight: .semibold))
                         .tracking(1)
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(p.textSecondary)
 
                     if let delta = stats.distanceDeltaStr {
                         HStack(spacing: 3) {
@@ -229,9 +303,7 @@ struct SummaryShareCardView: View {
                             Text(delta)
                                 .font(.system(size: 9, weight: .semibold))
                         }
-                        .foregroundStyle(stats.distanceDeltaIsUp
-                            ? Color.green
-                            : Color(red: 1, green: 0.45, blue: 0.45))
+                        .foregroundStyle(p.neutral)
                         .padding(.top, 1)
                     }
 
@@ -239,39 +311,45 @@ struct SummaryShareCardView: View {
 
                     // Thin separator
                     Rectangle()
-                        .fill(Color.white.opacity(0.08))
+                        .fill(p.divider)
                         .frame(height: 0.5)
                         .padding(.top, 14)
                         .padding(.bottom, 12)
 
                     // Secondary stats
                     HStack(spacing: 0) {
-                        secondaryCell(value: stats.durationStr,    label: AppLanguage.shared.s("운동 시간", "TIME"),     color: Theme.time)
+                        secondaryCell(value: stats.durationStr,
+                                      label: AppLanguage.shared.s("운동 시간", "TIME"),
+                                      labelColor: p.accentGold)
                         cellDivider
-                        secondaryCell(value: AppLanguage.shared.s("\(stats.runCount)회", "\(stats.runCount)"), label: AppLanguage.shared.s("러닝 횟수", "RUNS"), color: Theme.violet)
+                        secondaryCell(value: AppLanguage.shared.s("\(stats.runCount)회", "\(stats.runCount)"),
+                                      label: AppLanguage.shared.s("러닝 횟수", "RUNS"),
+                                      labelColor: p.brand)
                         if let pace = stats.avgPaceStr {
                             cellDivider
-                            secondaryCell(value: pace, label: AppLanguage.shared.s("평균 페이스", "AVG PACE"), color: Theme.pace)
+                            secondaryCell(value: pace,
+                                          label: AppLanguage.shared.s("평균 페이스", "AVG PACE"),
+                                          labelColor: p.accentTeal)
                         }
                     }
 
                     // Longest run
                     if let longest = stats.longestStr {
                         Rectangle()
-                            .fill(Color.white.opacity(0.07))
+                            .fill(p.divider)
                             .frame(height: 0.5)
                             .padding(.vertical, 9)
                         HStack(spacing: 5) {
                             Image(systemName: "arrow.right.circle.fill")
                                 .font(.system(size: 8))
-                                .foregroundStyle(Theme.violet)
+                                .foregroundStyle(p.brand)
                             Text(AppLanguage.shared.s("최장 거리", "LONGEST"))
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.4))
+                                .foregroundStyle(p.textSecondary)
                             Spacer()
                             Text(longest)
                                 .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(p.textPrimary)
                         }
                     }
 
@@ -281,7 +359,7 @@ struct SummaryShareCardView: View {
                         Text(ytd)
                             .font(.system(size: 9, weight: .medium))
                             .tracking(0.5)
-                            .foregroundStyle(Theme.violet.opacity(0.6))
+                            .foregroundStyle(p.brand.opacity(0.6))
                             .padding(.bottom, 3)
                     }
 
@@ -290,7 +368,7 @@ struct SummaryShareCardView: View {
                         Spacer()
                         Image(systemName: "figure.run")
                             .font(.system(size: 7))
-                            .foregroundStyle(Theme.violet.opacity(0.35))
+                            .foregroundStyle(p.brand.opacity(0.35))
                     }
                     .padding(.bottom, 2)
                 }
@@ -309,30 +387,30 @@ struct SummaryShareCardView: View {
                 .scaledToFill()
                 .frame(width: 43, height: 43)
                 .clipShape(Circle())
-                .overlay(Circle().stroke(Theme.violet.opacity(0.4), lineWidth: 1.2))
+                .overlay(Circle().stroke(p.brand.opacity(0.4), lineWidth: 1.2))
         } else {
             MiniMeView(variant: .celebrating, size: 43)
         }
     }
 
-    private func secondaryCell(value: String, label: String, color: Color) -> some View {
+    private func secondaryCell(value: String, label: String, labelColor: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(value)
                 .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(p.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(label)
                 .font(.system(size: 11, weight: .medium))
                 .tracking(0.3)
-                .foregroundStyle(color.opacity(0.75))
+                .foregroundStyle(labelColor.opacity(0.75))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var cellDivider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.1))
+            .fill(p.divider)
             .frame(width: 0.5, height: 27)
             .padding(.horizontal, 8)
     }
@@ -341,13 +419,24 @@ struct SummaryShareCardView: View {
 // MARK: - Share screen (presented as sheet)
 
 struct SummaryShareCardScreen: View {
-    let stats: SummaryPeriodStats
+    let statsList: [SummaryPeriodStats]
     var miniMeImage: UIImage? = nil
 
     @Environment(\.dismiss) private var dismiss
-    @State private var previewImage: UIImage?
+    @State private var summaryTheme: ShareTheme = .dark
+    @State private var previewImages: [UIImage] = []
     @State private var isRendering = false
-    @State private var showShareSheet = false
+    @State private var activeShare: SingleShareConfig? = nil
+
+    private struct SingleShareConfig: Identifiable {
+        let id: Int
+        let image: UIImage
+    }
+
+    private var isMonthly: Bool {
+        if let first = statsList.first, case .monthly = first.kind { return true }
+        return false
+    }
 
     var body: some View {
         ZStack {
@@ -355,17 +444,28 @@ struct SummaryShareCardScreen: View {
             VStack(spacing: 0) {
                 topBar
                 ScrollView {
-                    VStack(spacing: 28) {
-                        cardPreview
-                        shareButton
-                            .padding(.horizontal, 24)
-                        Spacer(minLength: 32)
+                    VStack(spacing: 0) {
+                        ForEach(statsList.indices, id: \.self) { i in
+                            VStack(spacing: 12) {
+                                cardPreview(index: i)
+                                themeToggle
+                                    .padding(.horizontal, 24)
+                                cardShareButton(index: i)
+                                    .padding(.horizontal, 24)
+                            }
+                            .padding(.bottom, 32)
+                        }
+                        Spacer(minLength: 16)
                     }
                     .padding(.top, 20)
                 }
             }
         }
-        .task { await renderCard() }
+        .task { await renderCards() }
+        .onChange(of: summaryTheme) { Task { await renderCards() } }
+        .sheet(item: $activeShare) { config in
+            ShareSheet(images: [config.image])
+        }
     }
 
     private var topBar: some View {
@@ -374,11 +474,12 @@ struct SummaryShareCardScreen: View {
                 .font(.body)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text(AppLanguage.shared.s("결산 카드", "Summary Card"))
+            Text(isMonthly
+                 ? AppLanguage.shared.s("월말 결산 데이터", "Monthly Summary")
+                 : AppLanguage.shared.s("연말 결산 데이터", "Yearly Summary"))
                 .font(.headline)
                 .foregroundStyle(.white)
             Spacer()
-            // Balance alignment
             Text(AppLanguage.shared.s("닫기", "Close")).foregroundStyle(.clear)
         }
         .padding(.horizontal, 20)
@@ -387,33 +488,59 @@ struct SummaryShareCardScreen: View {
     }
 
     @ViewBuilder
-    private var cardPreview: some View {
-        if let img = previewImage {
-            Image(uiImage: img)
+    private func cardPreview(index: Int) -> some View {
+        if index < previewImages.count {
+            Image(uiImage: previewImages[index])
                 .resizable()
                 .scaledToFit()
                 .frame(maxWidth: 300)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         } else {
-            SummaryShareCardView(stats: stats, miniMeImage: miniMeImage)
+            SummaryShareCardView(stats: statsList[index], miniMeImage: miniMeImage, theme: summaryTheme)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
-                .frame(maxWidth: 300, maxHeight: 435)
-                .scaleEffect(300.0 / 360.0)
-                .frame(maxWidth: 300, maxHeight: 435)
+                .frame(maxWidth: 300, maxHeight: 375)
         }
     }
 
+    private var themeToggle: some View {
+        HStack(spacing: 0) {
+            themeSegment(label: AppLanguage.shared.s("다크", "Dark"),
+                         selected: summaryTheme == .dark) { summaryTheme = .dark }
+            themeSegment(label: AppLanguage.shared.s("라이트", "Light"),
+                         selected: summaryTheme == .light) { summaryTheme = .light }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func themeSegment(label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(selected ? Theme.violet : Color.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(selected ? Theme.violet.opacity(0.22) : Color.white.opacity(0.08))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: selected)
+    }
+
     @ViewBuilder
-    private var shareButton: some View {
+    private func cardShareButton(index: Int) -> some View {
         if isRendering {
             ProgressView()
                 .tint(Theme.violet)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-        } else if previewImage != nil {
-            Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+        } else if index < previewImages.count {
+            let title = statsList[index].kind.title
+            Button {
+                activeShare = SingleShareConfig(id: index, image: previewImages[index])
+            } label: {
+                Label(title + " " + AppLanguage.shared.s("러닝 마일리지 내보내기", "Running Mileage Export"),
+                      systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -421,19 +548,22 @@ struct SummaryShareCardScreen: View {
                     .background(Theme.violet)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
-            .sheet(isPresented: $showShareSheet) {
-                if let img = previewImage { ShareSheet(images: [img]) }
-            }
         }
     }
 
     @MainActor
-    private func renderCard() async {
+    private func renderCards() async {
         isRendering = true
-        let card = SummaryShareCardView(stats: stats, miniMeImage: miniMeImage)
-        let renderer = ImageRenderer(content: card)
-        renderer.scale = 3
-        previewImage = renderer.uiImage
+        previewImages = []
+        await Task.yield()
+        var images: [UIImage] = []
+        for stats in statsList {
+            let card = SummaryShareCardView(stats: stats, miniMeImage: miniMeImage, theme: summaryTheme)
+            let renderer = ImageRenderer(content: card)
+            renderer.scale = 3
+            if let img = renderer.uiImage { images.append(img) }
+        }
+        previewImages = images
         isRendering = false
     }
 }

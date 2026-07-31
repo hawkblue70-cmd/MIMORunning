@@ -9,7 +9,9 @@ struct GrowthTrendChart: View {
     let dataPoints: [(date: Date, value: Double)]
     let age: Int?
     let isMale: Bool?
-    var gridColor: Color = Color.white.opacity(0.12)
+    var gridColor: Color       = Color.white.opacity(0.12)
+    var axisLabelColor: Color  = Color.white.opacity(0.40)
+    var lineColor: Color       = Theme.violet
 
     var body: some View {
         Group {
@@ -27,7 +29,7 @@ struct GrowthTrendChart: View {
                     if let d = value.as(Date.self) {
                         Text(d, format: xLabelFormat)
                             .font(.system(size: 8))
-                            .foregroundStyle(Color.white.opacity(0.40))
+                            .foregroundStyle(axisLabelColor)
                     }
                 }
             }
@@ -38,7 +40,7 @@ struct GrowthTrendChart: View {
                     .foregroundStyle(gridColor)
                 AxisValueLabel()
                     .font(.system(size: 8))
-                    .foregroundStyle(Color.white.opacity(0.40))
+                    .foregroundStyle(axisLabelColor)
             }
         }
     }
@@ -47,11 +49,11 @@ struct GrowthTrendChart: View {
         Chart {
             ForEach(dataPoints, id: \.date) { pt in
                 LineMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(lineColor)
                     .interpolationMethod(.catmullRom)
                 PointMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
                     .symbol(HollowCircle())
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(lineColor)
                     .symbolSize(dataPoints.count > 15 ? 12 : 28)
             }
         }
@@ -78,11 +80,11 @@ struct GrowthTrendChart: View {
             }
             ForEach(dataPoints, id: \.date) { pt in
                 LineMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(lineColor)
                     .interpolationMethod(.catmullRom)
                 PointMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
                     .symbol(HollowCircle())
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(lineColor)
                     .symbolSize(dataPoints.count > 15 ? 12 : 28)
             }
         }
@@ -97,7 +99,7 @@ struct GrowthTrendChart: View {
     }
 }
 
-// MARK: - Growth Share Card (renderable — dark + photo modes)
+// MARK: - Growth Share Card (renderable — dark / light / photo modes)
 
 struct GrowthShareCard: View {
     let metric: TrendMetric
@@ -107,24 +109,31 @@ struct GrowthShareCard: View {
     let age: Int?
     let isMale: Bool?
     var photo: UIImage? = nil
+    var theme: ShareTheme = .dark
+
+    private var p: SummaryCardPalette { theme == .light ? .light : .dark }
 
     var body: some View {
-        if let p = photo {
-            photoCard(photo: p)
+        if let ph = photo {
+            photoCard(photo: ph)
         } else {
-            darkCard
+            themedCard
         }
     }
 
-    // MARK: - Dark card (no photo)
+    // MARK: - Themed card (dark or light)
 
-    private var darkCard: some View {
+    private var themedCard: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            if theme == .light {
+                p.background
+            } else {
+                LinearGradient(
+                    colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
 
             VStack(alignment: .leading, spacing: 0) {
                 wordmarkRow
@@ -132,7 +141,7 @@ struct GrowthShareCard: View {
                     .padding(.top, 18)
 
                 Rectangle()
-                    .fill(Theme.violet.opacity(0.35))
+                    .fill(p.divider)
                     .frame(height: 0.5)
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
@@ -148,7 +157,10 @@ struct GrowthShareCard: View {
                     selectedRange: selectedRange,
                     dataPoints: dataPoints,
                     age: age,
-                    isMale: isMale
+                    isMale: isMale,
+                    gridColor: p.gridLine,
+                    axisLabelColor: p.axisLabel,
+                    lineColor: p.brand
                 )
                 .frame(height: 112)
                 .padding(.horizontal, 16)
@@ -158,16 +170,12 @@ struct GrowthShareCard: View {
                 statsBlock
                     .padding(.horizontal, 20)
 
-                Spacer(minLength: 10)
-
-                footerRow
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 14)
+                Spacer(minLength: 18)
             }
         }
     }
 
-    // MARK: - Photo card
+    // MARK: - Photo card (always dark overlay — theme doesn't apply)
 
     private func photoCard(photo: UIImage) -> some View {
         ZStack(alignment: .bottom) {
@@ -175,7 +183,6 @@ struct GrowthShareCard: View {
                 .resizable()
                 .scaledToFill()
 
-            // Scrim so the panel text is readable
             LinearGradient(
                 colors: [
                     Color.black.opacity(0.92),
@@ -187,7 +194,6 @@ struct GrowthShareCard: View {
             )
 
             VStack(spacing: 0) {
-                // Wordmark pill at top
                 wordmarkRow
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -197,7 +203,6 @@ struct GrowthShareCard: View {
 
                 Spacer()
 
-                // Glass-style stats panel
                 VStack(alignment: .leading, spacing: 8) {
                     metricTitle
 
@@ -207,7 +212,9 @@ struct GrowthShareCard: View {
                         dataPoints: dataPoints,
                         age: age,
                         isMale: isMale,
-                        gridColor: .white.opacity(0.08)
+                        gridColor: .white.opacity(0.08),
+                        axisLabelColor: .white.opacity(0.40),
+                        lineColor: Theme.violet
                     )
                     .frame(height: 88)
 
@@ -216,7 +223,6 @@ struct GrowthShareCard: View {
                         .frame(height: 0.5)
 
                     statsBlock
-                    footerRow
                 }
                 .padding(14)
                 .background(Color(red: 0.06, green: 0.03, blue: 0.12, opacity: 0.80))
@@ -236,23 +242,23 @@ struct GrowthShareCard: View {
                 Text("MIMO")
                     .font(.system(size: 11, weight: .black))
                     .tracking(2)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(p.textPrimary)
                 Text(" RUNNING")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(2)
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(p.brand)
             }
             Spacer()
             Text(Date(), format: .dateTime.month(.abbreviated).day())
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(p.textSecondary)
         }
     }
 
     private var metricTitle: some View {
         Text("\(metric.koreanLabel) · \(selectedRange.label)")
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.65))
+            .foregroundStyle(p.textSecondary)
     }
 
     private var statsBlock: some View {
@@ -260,7 +266,7 @@ struct GrowthShareCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(currentDisplayValue)
                     .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(p.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 if let change = periodChangeString {
@@ -272,26 +278,8 @@ struct GrowthShareCard: View {
             if let grade = vo2Grade {
                 Text(grade)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(p.brand)
             }
-        }
-    }
-
-    private var footerRow: some View {
-        HStack {
-            ZStack {
-                Circle()
-                    .fill(Color(hex: "3DFF7A").opacity(0.12))
-                    .frame(width: 34, height: 34)
-                Image(systemName: "figure.run")
-                    .font(.system(size: 15, weight: .light))
-                    .foregroundStyle(Color(hex: "3DFF7A"))
-            }
-            Spacer()
-            Text("mimorunning")
-                .font(.system(size: 8, weight: .medium))
-                .tracking(1)
-                .foregroundStyle(.white.opacity(0.18))
         }
     }
 
@@ -330,7 +318,7 @@ struct GrowthShareCard: View {
     }
 
     private var changeColor: Color {
-        guard let change = periodChange else { return .white }
+        guard let change = periodChange else { return p.textPrimary }
         let positive = change > 0
         return (metric.lowerIsBetter ? !positive : positive)
             ? Color.green : Color(red: 1, green: 0.4, blue: 0.4)
@@ -357,6 +345,7 @@ struct GrowthShareCardScreen: View {
     @State private var previewImage: UIImage?
     @State private var isRendering = true
     @State private var showShareSheet = false
+    @State private var cardTheme: ShareTheme = .dark
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
@@ -370,27 +359,33 @@ struct GrowthShareCardScreen: View {
                 VStack(spacing: 0) {
                     Spacer()
 
-                    // Live card preview
+                    // Live card preview — same component as export
                     GrowthShareCard(
                         metric: metric,
                         selectedRange: selectedRange,
                         dataPoints: dataPoints,
                         currentValue: currentValue,
                         age: age,
-                        isMale: isMale
+                        isMale: isMale,
+                        theme: cardTheme
                     )
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
 
-                    Spacer(minLength: 24)
+                    Spacer(minLength: 20)
+
+                    themeToggle
+                        .padding(.horizontal, 24)
+
+                    Spacer(minLength: 12)
 
                     shareCTA
                         .padding(.horizontal, 24)
                         .padding(.bottom, 36)
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("성장 카드 공유", "Growth Card"))
+            .navigationTitle(AppLanguage.shared.s("\(metric.koreanLabel) 내보내기", "\(metric.koreanLabel) Export"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -400,6 +395,33 @@ struct GrowthShareCardScreen: View {
             }
         }
         .task { await renderCard() }
+        .onChange(of: cardTheme) { Task { await renderCard() } }
+    }
+
+    // MARK: - Theme toggle
+
+    private var themeToggle: some View {
+        HStack(spacing: 0) {
+            themeSegment(label: AppLanguage.shared.s("다크", "Dark"),
+                         selected: cardTheme == .dark) { cardTheme = .dark }
+            themeSegment(label: AppLanguage.shared.s("라이트", "Light"),
+                         selected: cardTheme == .light) { cardTheme = .light }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func themeSegment(label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(selected ? Theme.violet : Color.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(selected ? Theme.violet.opacity(0.22) : Color.white.opacity(0.08))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: selected)
     }
 
     // MARK: - Share CTA
@@ -417,7 +439,7 @@ struct GrowthShareCardScreen: View {
             .padding(.vertical, 18)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("내보내기", "Export"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -442,22 +464,20 @@ struct GrowthShareCardScreen: View {
     private func renderCard() async {
         isRendering = true
         previewImage = nil
-
-        let renderer = ImageRenderer(content: renderableCard())
+        let renderer = ImageRenderer(content:
+            GrowthShareCard(
+                metric: metric,
+                selectedRange: selectedRange,
+                dataPoints: dataPoints,
+                currentValue: currentValue,
+                age: age,
+                isMale: isMale,
+                theme: cardTheme
+            )
+            .frame(width: cardW, height: cardH)
+        )
         renderer.scale = 3
         previewImage = renderer.uiImage
         isRendering = false
-    }
-
-    private func renderableCard() -> some View {
-        GrowthShareCard(
-            metric: metric,
-            selectedRange: selectedRange,
-            dataPoints: dataPoints,
-            currentValue: currentValue,
-            age: age,
-            isMale: isMale
-        )
-        .frame(width: cardW, height: cardH)
     }
 }

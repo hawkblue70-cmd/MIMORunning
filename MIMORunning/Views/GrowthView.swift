@@ -243,7 +243,8 @@ struct GrowthView: View {
                 heatmapColumns: shareHeatmapColumns,
                 streak: weekStreakCache,
                 activeDays: activeDaysInHeatmap(columns: heatmapColumnsCache),
-                heatmapWeekCount: Self.heatmapWeeks
+                heatmapWeekCount: Self.heatmapWeeks,
+                screenTitle: mileageScreenTitle
             )
         }
         .sheet(isPresented: $showWeeklyShareCard) {
@@ -306,8 +307,9 @@ struct GrowthView: View {
                 VStack(alignment: .trailing, spacing: 6) {
                     HStack(spacing: 10) {
                         Button { showMileageStreakShareCard = true } label: {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 14))
+                            Label(AppLanguage.shared.s("거리 내보내기", "Export Distance"),
+                                  systemImage: "square.and.arrow.up")
+                                .font(.system(size: 12, weight: .medium))
                         }
                         .foregroundStyle(Theme.violet)
                         periodToggle
@@ -330,6 +332,15 @@ struct GrowthView: View {
         let period = showMonthly ? L.s("월간", "Monthly") : L.s("주간", "Weekly")
         let mode   = showTimeMileage ? L.s("시간", "Time") : L.s("거리", "Distance")
         return "\(period) \(mode)"
+    }
+
+    private var mileageScreenTitle: String {
+        let L = AppLanguage.shared
+        if showDaily { return L.s("일간 거리 정보", "Daily Distance") }
+        if showMonthly {
+            return showTimeMileage ? L.s("월간 시간 정보", "Monthly Time") : L.s("월간 거리 정보", "Monthly Distance")
+        }
+        return showTimeMileage ? L.s("주간 시간 정보", "Weekly Time") : L.s("주간 거리 정보", "Weekly Distance")
     }
 
     private var dailyMonthLabel: String {
@@ -370,7 +381,7 @@ struct GrowthView: View {
             if showTimeMileage {
                 return timeSummary(mins: weeklyMinsCache.last?.mins ?? 0, isMonth: false)
             } else {
-                return L.s("최근 8주 러닝 km", "Last 8 weeks (km)")
+                return L.s("최근 12주 러닝 km", "Last 12 weeks (km)")
             }
         }
     }
@@ -495,13 +506,13 @@ struct GrowthView: View {
         } else {
             if showTimeMileage {
                 if weeklyMinsCache.allSatisfy({ $0.mins == 0 }) {
-                    EmptyChartPlaceholder(message: L.s("이번 8주간 러닝 기록이 없어요", "No runs in the last 8 weeks"))
+                    EmptyChartPlaceholder(message: L.s("이번 12주간 러닝 기록이 없어요", "No runs in the last 12 weeks"))
                 } else {
                     WeeklyTimeChart(data: weeklyMinsCache)
                 }
             } else {
                 if weeklyKmsCache.allSatisfy({ $0.km == 0 }) {
-                    EmptyChartPlaceholder(message: L.s("이번 8주간 러닝 기록이 없어요", "No runs in the last 8 weeks"))
+                    EmptyChartPlaceholder(message: L.s("이번 12주간 러닝 기록이 없어요", "No runs in the last 12 weeks"))
                 } else {
                     WeeklyDistanceChart(data: weeklyKmsCache)
                 }
@@ -577,7 +588,8 @@ struct GrowthView: View {
                 }
                 Spacer()
                 Button { showWeeklyShareCard = true } label: {
-                    Image(systemName: "square.and.arrow.up")
+                    Label(L.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
+                        .font(.system(size: 12, weight: .medium))
                 }
                 .foregroundStyle(Theme.violet)
                 .padding(.top, 4)
@@ -1154,7 +1166,7 @@ struct GrowthView: View {
     private func weeklyKms() -> [WeeklyKm] {
         let cal = mondayCal
         let now = Date()
-        let starts: [Date] = (0..<8).reversed().compactMap { ago -> Date? in
+        let starts: [Date] = (0..<12).reversed().compactMap { ago -> Date? in
             guard let ref = cal.date(byAdding: .weekOfYear, value: -ago, to: now) else { return nil }
             return cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: ref))
         }
@@ -1169,7 +1181,7 @@ struct GrowthView: View {
     private func weeklyMins() -> [WeeklyMins] {
         let cal = mondayCal
         let now = Date()
-        let starts: [Date] = (0..<8).reversed().compactMap { ago -> Date? in
+        let starts: [Date] = (0..<12).reversed().compactMap { ago -> Date? in
             guard let ref = cal.date(byAdding: .weekOfYear, value: -ago, to: now) else { return nil }
             return cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: ref))
         }

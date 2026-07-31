@@ -41,6 +41,89 @@ private struct ShareSparkline: View {
     }
 }
 
+// MARK: - WeeklyPalette (dark / light theme for weekly share card)
+
+private struct WeeklyPalette {
+    let isLight:         Bool
+    let background:      Color          // solid color; dark uses gradient separately
+    let textPrimary:     Color
+    let textSecondary:   Color
+    let wordmarkMIMO:    Color
+    let wordmarkRunning: Color
+    let divider:         Color
+    let weekLabel:       Color
+    let tileBg:          Color
+    let tileValue:       Color
+    let tileLabel:       Color
+    let sparkBg:         Color
+    let sparkMetricLabel: Color
+    let sparkValue:      Color
+    let sparkRatio:      Color
+    let insightBg:       Color
+    let insightText:     Color
+    let insightIcon:     Color
+    let trendGood:       Color
+    let trendBad:        Color
+    let trendNeutral:    Color
+    let runnerIcon:      Color
+    let runnerIconBg:    Color
+    let watermark:       Color
+
+    static let dark = WeeklyPalette(
+        isLight:          false,
+        background:       Color(hex: "0D0D12"),
+        textPrimary:      .white,
+        textSecondary:    .white.opacity(0.50),
+        wordmarkMIMO:     .white,
+        wordmarkRunning:  Color(hex: "8B7FF0"),
+        divider:          Theme.violet.opacity(0.35),
+        weekLabel:        .white.opacity(0.75),
+        tileBg:           Color.white.opacity(0.07),
+        tileValue:        .white,
+        tileLabel:        .white.opacity(0.40),
+        sparkBg:          Color.white.opacity(0.05),
+        sparkMetricLabel: .white.opacity(0.50),
+        sparkValue:       .white,
+        sparkRatio:       Color(hex: "6E6E78"),
+        insightBg:        Theme.violet.opacity(0.16),
+        insightText:      Color(hex: "D5CEFF"),
+        insightIcon:      Color(hex: "8B7FF0"),
+        trendGood:        Color(hex: "5CE08A"),
+        trendBad:         Color(hex: "FF9A3C"),
+        trendNeutral:     Color(hex: "8B7FF0"),
+        runnerIcon:       Color(hex: "5CE08A"),
+        runnerIconBg:     Color(hex: "5CE08A").opacity(0.12),
+        watermark:        Color(hex: "5A5F6B")
+    )
+
+    static let light = WeeklyPalette(
+        isLight:          true,
+        background:       Color(hex: "FFFFFF"),
+        textPrimary:      Color(hex: "111111"),
+        textSecondary:    Color(hex: "8A8A8A"),
+        wordmarkMIMO:     Color(hex: "111111"),
+        wordmarkRunning:  Color(hex: "5B3FD9"),
+        divider:          Color.black.opacity(0.10),
+        weekLabel:        Color(hex: "111111").opacity(0.75),
+        tileBg:           Color(hex: "F4F3EF"),
+        tileValue:        Color(hex: "111111"),
+        tileLabel:        Color(hex: "8A8A8A"),
+        sparkBg:          Color(hex: "F7F6F3"),
+        sparkMetricLabel: Color(hex: "8A8A8A"),
+        sparkValue:       Color(hex: "111111"),
+        sparkRatio:       Color(hex: "8A8A8A"),
+        insightBg:        Color(hex: "F0EDFC"),
+        insightText:      Color(hex: "3D2E8A"),
+        insightIcon:      Color(hex: "5B3FD9"),
+        trendGood:        Color(hex: "1B7F3B"),
+        trendBad:         Color(hex: "D9600A"),
+        trendNeutral:     Color(hex: "5B3FD9"),
+        runnerIcon:       Color(hex: "1B7F3B"),
+        runnerIconBg:     Color(hex: "1B7F3B").opacity(0.12),
+        watermark:        Color(hex: "B0AEA8")
+    )
+}
+
 // MARK: - Weekly Growth Share Card
 
 struct WeeklyGrowthShareCard: View {
@@ -50,49 +133,68 @@ struct WeeklyGrowthShareCard: View {
     let streak: Int
     let insightText: String?
     let insightSymbol: String?
-    let insightColor: Color?
+    let insightColor: Color?   // kept for API compat; palette drives icon color
     let sparkData: [(metric: TrendMetric, points: [(date: Date, value: Double)])]
+    var theme: ShareTheme = .dark
+    /// true 이면 체중·체지방을 sparkGrid에서 제외 (내보내기 전용)
+    var excludeBodyMetrics: Bool = false
+
+    private var pal: WeeklyPalette { theme == .light ? .light : .dark }
+
+    private var visibleSparkData: [(metric: TrendMetric, points: [(date: Date, value: Double)])] {
+        excludeBodyMetrics
+            ? sparkData.filter { $0.metric != .bodyMass && $0.metric != .bodyFatPercentage }
+            : sparkData
+    }
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            // Dark uses gradient; light uses solid white
+            if pal.isLight {
+                pal.background
+            } else {
+                LinearGradient(
+                    colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+
             VStack(alignment: .leading, spacing: 0) {
-                wordmarkRow
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
+                HStack(alignment: .center) {
+                    wordmarkRow
+                    Spacer()
+                    weekLabel
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
 
-                divider.padding(.top, 7)
+                divider.padding(.top, 10)
 
-                weekLabel
-                    .padding(.horizontal, 20)
-                    .padding(.top, 7)
+            Text(AppLanguage.shared.s("주간 트렌드", "Weekly Trend"))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(pal.wordmarkRunning)
+                .padding(.horizontal, 20)
+                .padding(.top, 6)
 
-                statTiles
-                    .padding(.horizontal, 16)
-                    .padding(.top, 7)
+            statTiles
+                .padding(.horizontal, 16)
+                .padding(.top, 7)
 
                 if let text = insightText {
                     insightBanner(text: text)
                         .padding(.horizontal, 16)
-                        .padding(.top, 7)
+                        .padding(.top, 10)
                 }
 
-                if !sparkData.isEmpty {
-                    divider.padding(.top, 7)
+                if !visibleSparkData.isEmpty {
+                    divider.padding(.top, 10)
                     sparkGrid
                         .padding(.horizontal, 16)
-                        .padding(.top, 7)
+                        .padding(.top, 10)
                 }
 
-                Spacer(minLength: 5)
-
-                footerRow
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 9)
+                Spacer(minLength: 10)
             }
         }
     }
@@ -104,17 +206,17 @@ struct WeeklyGrowthShareCard: View {
             Text("MIMO")
                 .font(.system(size: 11, weight: .black))
                 .tracking(2)
-                .foregroundStyle(.white)
+                .foregroundStyle(pal.wordmarkMIMO)
             Text(" RUNNING")
                 .font(.system(size: 11, weight: .bold))
                 .tracking(2)
-                .foregroundStyle(Theme.violet)
+                .foregroundStyle(pal.wordmarkRunning)
         }
     }
 
     private var divider: some View {
         Rectangle()
-            .fill(Theme.violet.opacity(0.35))
+            .fill(pal.divider)
             .frame(height: 0.5)
             .padding(.horizontal, 20)
     }
@@ -122,7 +224,7 @@ struct WeeklyGrowthShareCard: View {
     private var weekLabel: some View {
         Text(weekRangeString)
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.75))
+            .foregroundStyle(pal.weekLabel)
     }
 
     private var statTiles: some View {
@@ -144,46 +246,45 @@ struct WeeklyGrowthShareCard: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(pal.tileValue)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             Text(label)
                 .font(.system(size: 8))
-                .foregroundStyle(.white.opacity(0.40))
+                .foregroundStyle(pal.tileLabel)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(Color.white.opacity(0.06))
+        .background(pal.tileBg)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
     private func insightBanner(text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            if let sym = insightSymbol, let col = insightColor {
+            if let sym = insightSymbol {
                 Image(systemName: sym)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(col)
+                    .foregroundStyle(pal.insightIcon)
                     .padding(.top, 1)
             }
             Text(text)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(2)
+                .foregroundStyle(pal.insightText)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(Theme.violet.opacity(0.15))
+        .background(pal.insightBg)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     // 2-column grid using HStack/VStack — LazyVGrid는 ImageRenderer 비호환
     private var sparkGrid: some View {
-        let rows = stride(from: 0, to: sparkData.count, by: 2).map { i in
-            Array(sparkData[i..<min(i + 2, sparkData.count)])
+        let rows = stride(from: 0, to: visibleSparkData.count, by: 2).map { i in
+            Array(visibleSparkData[i..<min(i + 2, visibleSparkData.count)])
         }
         return VStack(spacing: 4) {
             ForEach(0..<rows.count, id: \.self) { r in
@@ -204,8 +305,14 @@ struct WeeklyGrowthShareCard: View {
         let sentiment = trendSentiment(direction: analysis.direction,
                                        lowerIsBetter: metric.lowerIsBetter,
                                        isNeutral: isNeutral)
-        let sparkColor: Color = sentiment == .good ? .green : Theme.violet
-        let arrowColor: Color = sentiment == .good ? .green : Color(hex: "8A8A92")
+        // 좋아짐/나빠짐/중립 판정에 따라 색 통일
+        let trendColor: Color = {
+            switch sentiment {
+            case .good:    return pal.trendGood
+            case .bad:     return pal.trendBad
+            default:       return pal.trendNeutral
+            }
+        }()
         let arrow: String? = {
             switch analysis.direction {
             case .up:   return "↑"
@@ -222,53 +329,35 @@ struct WeeklyGrowthShareCard: View {
             HStack {
                 Text(metric.koreanLabel)
                     .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.50))
+                    .foregroundStyle(pal.sparkMetricLabel)
                 Spacer()
                 if let a = arrow {
                     Text(a)
                         .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(arrowColor)
+                        .foregroundStyle(trendColor)
                 }
             }
             if let cur = dataPoints.last?.value {
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text(metric.formattedValue(cur))
                         .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(pal.sparkValue)
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                     if let r = ratioStr {
                         Text(r)
                             .font(.system(size: 7))
-                            .foregroundStyle(Color(hex: "6E6E78"))
+                            .foregroundStyle(pal.sparkRatio)
                     }
                 }
             }
-            ShareSparkline(dataPoints: dataPoints, color: sparkColor)
-                .frame(height: 16)
+            ShareSparkline(dataPoints: dataPoints, color: trendColor)
+                .frame(height: 18)
         }
         .padding(4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.white.opacity(0.05))
+        .background(pal.sparkBg)
         .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private var footerRow: some View {
-        HStack {
-            ZStack {
-                Circle()
-                    .fill(Color(hex: "3DFF7A").opacity(0.12))
-                    .frame(width: 20, height: 20)
-                Image(systemName: "figure.run")
-                    .font(.system(size: 8, weight: .light))
-                    .foregroundStyle(Color(hex: "3DFF7A"))
-            }
-            Spacer()
-            Text("mimorunning")
-                .font(.system(size: 8, weight: .medium))
-                .tracking(1)
-                .foregroundStyle(.white.opacity(0.18))
-        }
     }
 
     // MARK: - Computed helpers
@@ -328,6 +417,7 @@ struct WeeklyGrowthShareCardScreen: View {
     @State private var previewImage: UIImage?
     @State private var isRendering = true
     @State private var showShareSheet = false
+    @State private var weeklyTheme: ShareTheme = .dark
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
@@ -339,25 +429,34 @@ struct WeeklyGrowthShareCardScreen: View {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
                     Spacer()
+
+                    // Card preview — always the live view for instant theme switching
                     WeeklyGrowthShareCard(
                         km: km, mins: mins, count: count, streak: streak,
                         insightText: insightText,
                         insightSymbol: insightSymbol,
                         insightColor: insightColor,
-                        sparkData: sparkData
+                        sparkData: sparkData,
+                        theme: weeklyTheme,
+                        excludeBodyMetrics: true
                     )
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
 
-                    Spacer(minLength: 24)
+                    Spacer(minLength: 20)
+
+                    themeToggle
+                        .padding(.horizontal, 24)
+
+                    Spacer(minLength: 12)
 
                     shareCTA
                         .padding(.horizontal, 24)
                         .padding(.bottom, 36)
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("이번 주 공유", "Share This Week"))
+            .navigationTitle(AppLanguage.shared.s("이번주 러닝 데이터", "This Week's Running"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -376,6 +475,37 @@ struct WeeklyGrowthShareCardScreen: View {
             }
             await renderCard()
         }
+        .onChange(of: weeklyTheme) {
+            Task { await renderCard() }
+        }
+    }
+
+    // MARK: - Theme toggle
+
+    private var themeToggle: some View {
+        HStack(spacing: 0) {
+            themeSegment(label: AppLanguage.shared.s("다크", "Dark"), selected: weeklyTheme == .dark) {
+                weeklyTheme = .dark
+            }
+            themeSegment(label: AppLanguage.shared.s("라이트", "Light"), selected: weeklyTheme == .light) {
+                weeklyTheme = .light
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func themeSegment(label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(selected ? Theme.violet : Color.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(selected ? Theme.violet.opacity(0.22) : Color.white.opacity(0.08))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: selected)
     }
 
     // MARK: - Share CTA
@@ -393,7 +523,7 @@ struct WeeklyGrowthShareCardScreen: View {
             .padding(.vertical, 18)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("이번주 러닝 내보내기", "Export This Week"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -452,7 +582,9 @@ struct WeeklyGrowthShareCardScreen: View {
                 insightText: insightText,
                 insightSymbol: insightSymbol,
                 insightColor: insightColor,
-                sparkData: sparkData
+                sparkData: sparkData,
+                theme: weeklyTheme,
+                excludeBodyMetrics: true
             )
             .frame(width: cardW, height: cardH)
         )
@@ -492,18 +624,25 @@ struct MileageStreakShareCard: View {
     let streak: Int
     let activeDays: Int
     let heatmapWeekCount: Int
+    var theme: ShareTheme = .dark
 
-    private static let cellSize: CGFloat = 7
+    private var p: SummaryCardPalette { theme == .light ? .light : .dark }
+
+    private static let cellSize: CGFloat = 10
     private static let cellGap:  CGFloat = 2
     private static let labelW:   CGFloat = 10
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            if theme == .light {
+                p.background
+            } else {
+                LinearGradient(
+                    colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
             VStack(alignment: .leading, spacing: 0) {
                 wordmarkRow
                     .padding(.horizontal, 20)
@@ -544,17 +683,17 @@ struct MileageStreakShareCard: View {
             Text("MIMO")
                 .font(.system(size: 11, weight: .black))
                 .tracking(2)
-                .foregroundStyle(.white)
+                .foregroundStyle(p.textPrimary)
             Text(" RUNNING")
                 .font(.system(size: 11, weight: .bold))
                 .tracking(2)
-                .foregroundStyle(Theme.violet)
+                .foregroundStyle(p.brand)
         }
     }
 
     private var divider: some View {
         Rectangle()
-            .fill(Theme.violet.opacity(0.35))
+            .fill(p.divider)
             .frame(height: 0.5)
             .padding(.horizontal, 20)
     }
@@ -569,19 +708,22 @@ struct MileageStreakShareCard: View {
             period = showMonthly ? L.s("월간", "Monthly") : L.s("주간", "Weekly")
         }
         let mode = (showDaily || !showTimeMileage) ? L.s("거리", "Distance") : L.s("시간", "Time")
-        return VStack(alignment: .leading, spacing: 1) {
+        return HStack(alignment: .center) {
             Text("\(period) \(mode)")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(p.textPrimary)
+            Spacer()
             Text(mileageSubtitle)
-                .font(.system(size: 10))
-                .foregroundStyle(.white.opacity(0.50))
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(p.textPrimary)
         }
     }
 
     private var barChart: some View {
         let items = barData.map { MileageBarPoint(label: $0.label, value: $0.value) }
-        let color: Color = (showDaily || showTimeMileage) ? Theme.time : Theme.violet
+        let color: Color = (showDaily || showTimeMileage) ? p.barChart : p.accentBar
+        let maxVal = barData.map(\.value).max() ?? 1
+        let yMax = maxVal > 0 ? maxVal / 0.9 : 1.0
         return Chart(items) { item in
             BarMark(
                 x: .value("x", item.label),
@@ -590,31 +732,32 @@ struct MileageStreakShareCard: View {
             .foregroundStyle(item.value > 0 ? color.gradient : Color.secondary.opacity(0.25).gradient)
             .cornerRadius(3)
         }
-        .frame(height: 85)
+        .chartYScale(domain: 0...yMax)
+        .frame(height: 110)
         .chartXAxis {
             AxisMarks { value in
                 AxisValueLabel {
                     Text(value.as(String.self) ?? "")
                         .font(.system(size: 7))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(p.axisLabel)
                 }
             }
         }
         .chartYAxis {
             AxisMarks(values: .automatic(desiredCount: 3)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(.white.opacity(0.08))
+                    .foregroundStyle(p.gridLine)
                 AxisValueLabel {
                     if let v = value.as(Double.self) {
                         Text(yLabel(v))
                             .font(.system(size: 7))
-                            .foregroundStyle(.white.opacity(0.45))
+                            .foregroundStyle(p.axisLabel)
                     }
                 }
             }
         }
         .padding(7)
-        .background(Color.white.opacity(0.04))
+        .background(p.boxFill)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
@@ -640,13 +783,14 @@ struct MileageStreakShareCard: View {
         } else {
             detail = L.s("\(heatmapWeekCount)주간 기록 없음", "No runs in \(heatmapWeekCount) wks")
         }
-        return VStack(alignment: .leading, spacing: 1) {
+        return HStack(alignment: .center) {
             Text(L.s("연속 달리기", "Streak"))
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.70))
+                .foregroundStyle(p.textPrimary)
+            Spacer()
             Text(detail)
-                .font(.system(size: 10))
-                .foregroundStyle(.white.opacity(0.40))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(p.textPrimary)
         }
     }
 
@@ -662,7 +806,7 @@ struct MileageStreakShareCard: View {
                     if idx == 0 || heatmapMonthChanges(at: idx) {
                         Text(heatmapShortDate(col.id))
                             .font(.system(size: 6, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.40))
+                            .foregroundStyle(p.textSecondary)
                             .frame(width: cs, alignment: .leading)
                             .fixedSize()
                     } else {
@@ -675,7 +819,7 @@ struct MileageStreakShareCard: View {
                 HStack(spacing: gap) {
                     Text(heatmapDayLabels[dayIdx])
                         .font(.system(size: 7, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(p.textSecondary)
                         .frame(width: lw, height: cs, alignment: .trailing)
                     ForEach(heatmapColumns) { col in
                         let cell = col.days[dayIdx]
@@ -690,7 +834,7 @@ struct MileageStreakShareCard: View {
                 Spacer()
                 Text(AppLanguage.shared.s("적음", "Less"))
                     .font(.system(size: 6))
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(p.textSecondary)
                 ForEach([0.0, 2.0, 5.0, 8.0, 12.0], id: \.self) { km in
                     RoundedRectangle(cornerRadius: 2)
                         .fill(cellColor(km: km, isFuture: false))
@@ -698,11 +842,11 @@ struct MileageStreakShareCard: View {
                 }
                 Text(AppLanguage.shared.s("많음", "More"))
                     .font(.system(size: 6))
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(p.textSecondary)
             }
         }
         .padding(7)
-        .background(Color.white.opacity(0.04))
+        .background(p.boxFill)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
@@ -728,12 +872,12 @@ struct MileageStreakShareCard: View {
     }
 
     private func cellColor(km: Double, isFuture: Bool) -> Color {
-        if isFuture { return Color.white.opacity(0.04) }
-        if km == 0  { return Theme.violet.opacity(0.10) }
-        if km < 3   { return Theme.violet.opacity(0.32) }
-        if km < 6   { return Theme.violet.opacity(0.56) }
-        if km < 10  { return Theme.violet.opacity(0.80) }
-        return Theme.violet
+        if isFuture { return theme == .light ? Color.black.opacity(0.04) : Color.white.opacity(0.04) }
+        if km == 0  { return p.heatEmpty }
+        if km < 3   { return p.heatLow }
+        if km < 6   { return p.heatMid }
+        if km < 10  { return p.heatHigh }
+        return p.accentBar
     }
 
     // MARK: Footer
@@ -741,17 +885,12 @@ struct MileageStreakShareCard: View {
         HStack {
             ZStack {
                 Circle()
-                    .fill(Color(hex: "3DFF7A").opacity(0.12))
+                    .fill(p.positive.opacity(0.15))
                     .frame(width: 20, height: 20)
                 Image(systemName: "figure.run")
                     .font(.system(size: 8, weight: .light))
-                    .foregroundStyle(Color(hex: "3DFF7A"))
+                    .foregroundStyle(p.positive)
             }
-            Spacer()
-            Text("mimorunning")
-                .font(.system(size: 8, weight: .medium))
-                .tracking(1)
-                .foregroundStyle(.white.opacity(0.18))
         }
     }
 }
@@ -768,10 +907,12 @@ struct MileageStreakShareCardScreen: View {
     let streak: Int
     let activeDays: Int
     let heatmapWeekCount: Int
+    var screenTitle: String = AppLanguage.shared.s("거리 정보", "Distance Info")
 
     @State private var previewImage: UIImage?
     @State private var isRendering = true
     @State private var showShareSheet = false
+    @State private var cardTheme: ShareTheme = .dark
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
@@ -792,20 +933,26 @@ struct MileageStreakShareCardScreen: View {
                         heatmapColumns: heatmapColumns,
                         streak: streak,
                         activeDays: activeDays,
-                        heatmapWeekCount: heatmapWeekCount
+                        heatmapWeekCount: heatmapWeekCount,
+                        theme: cardTheme
                     )
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
 
-                    Spacer(minLength: 24)
+                    Spacer(minLength: 20)
+
+                    themeToggle
+                        .padding(.horizontal, 24)
+
+                    Spacer(minLength: 12)
 
                     shareCTA
                         .padding(.horizontal, 24)
                         .padding(.bottom, 36)
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("거리 · 연속 공유", "Mileage & Streak"))
+            .navigationTitle(screenTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -815,6 +962,33 @@ struct MileageStreakShareCardScreen: View {
             }
         }
         .task { await renderCard() }
+        .onChange(of: cardTheme) { Task { await renderCard() } }
+    }
+
+    // MARK: - Theme toggle
+
+    private var themeToggle: some View {
+        HStack(spacing: 0) {
+            themeSegment(label: AppLanguage.shared.s("다크", "Dark"),
+                         selected: cardTheme == .dark) { cardTheme = .dark }
+            themeSegment(label: AppLanguage.shared.s("라이트", "Light"),
+                         selected: cardTheme == .light) { cardTheme = .light }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func themeSegment(label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(selected ? Theme.violet : Color.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(selected ? Theme.violet.opacity(0.22) : Color.white.opacity(0.08))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: selected)
     }
 
     @ViewBuilder
@@ -830,7 +1004,7 @@ struct MileageStreakShareCardScreen: View {
             .padding(.vertical, 18)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("거리 내보내기", "Export Distance"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -862,7 +1036,8 @@ struct MileageStreakShareCardScreen: View {
                 heatmapColumns: heatmapColumns,
                 streak: streak,
                 activeDays: activeDays,
-                heatmapWeekCount: heatmapWeekCount
+                heatmapWeekCount: heatmapWeekCount,
+                theme: cardTheme
             )
             .frame(width: cardW, height: cardH)
         )

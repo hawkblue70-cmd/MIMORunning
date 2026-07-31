@@ -323,7 +323,9 @@ enum RunChartReplayExporter {
         let needsRoute = content == .routeChart || content == .routeData
         let actual   = (needsRoute && !hasRoute) ? ReplayContent.chartData : content
         let layout   = SectionLayout.make(actual)
+        #if DEBUG
         print("[Replay] content:\(actual) coords:\(routeCoordinates.count) routeH:\(layout.routeH)")
+        #endif
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("mimo_chart_\(UUID().uuidString).mp4")
@@ -403,7 +405,9 @@ enum RunChartReplayExporter {
                 mapUIImage = img
                 mapPoints  = pts
             } catch {
+                #if DEBUG
                 print("[Replay] snapshot FAILED:", error)
+                #endif
             }
             // cumDist must match the same sample step used by chartMapSnapshot (max 500 pts)
             let snapStep = max(1, routeCoordinates.count / 500)
@@ -411,8 +415,10 @@ enum RunChartReplayExporter {
                 .map { routeCoordinates[$0] }
             cumDist = buildCumulativeDistances(sampledCoords)
         }
+        #if DEBUG
         logMapDiagnostics(routeCoordCount: routeCoordinates.count,
                           mapUIImage: mapUIImage, layout: layout)
+        #endif
 
         let timeDistTable = buildTimeDistanceTable(data: data, totalDuration: totalDuration)
         let videoSize = CGSize(width: videoW, height: videoH)
@@ -618,15 +624,19 @@ enum RunChartReplayExporter {
                 mapUIImage = img
                 mapPoints  = pts
             } catch {
+                #if DEBUG
                 print("[Preview] snapshot FAILED:", error)
+                #endif
             }
             let snapStep = max(1, routeCoordinates.count / 500)
             let sampledCoords = stride(from: 0, to: routeCoordinates.count, by: snapStep)
                 .map { routeCoordinates[$0] }
             cumDist = buildCumulativeDistances(sampledCoords)
         }
+        #if DEBUG
         logMapDiagnostics(routeCoordCount: routeCoordinates.count,
                           mapUIImage: mapUIImage, layout: layout)
+        #endif
 
         let timeDistTable = buildTimeDistanceTable(data: data, totalDuration: totalDuration)
         let distRatio = timeToDistanceRatio(timeRatio: progress, table: timeDistTable)
@@ -641,6 +651,7 @@ enum RunChartReplayExporter {
         )
     }
 
+    #if DEBUG
     private static func logMapDiagnostics(routeCoordCount: Int,
                                           mapUIImage: UIImage?,
                                           layout: SectionLayout) {
@@ -666,6 +677,7 @@ enum RunChartReplayExporter {
             print("[Replay] fittedRect = N/A (no map — coordinate fallback will render)")
         }
     }
+    #endif
 
     // MARK: - Frame composition (UIKit coordinate space — top-left origin)
 

@@ -1979,7 +1979,7 @@ class HealthKitManager {
         let fullStart = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
         let fetchTask = Task<[(date: Date, value: Double)], Never> {
             let result = await fetchMetricHistoryFromHealthKit(metric, from: fullStart, usePounds: usePounds)
-            saveMetricHistoryToDisk(result, metric: metric, usePounds: usePounds)
+            saveMetricHistoryToDisk(result, metric: metric, usePounds: usePounds, coveredFrom: fullStart)
             metricFetchTasks.removeValue(forKey: taskKey)
             return result
         }
@@ -2001,12 +2001,14 @@ class HealthKitManager {
         case .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation:
             // workoutCache is in-memory only; it's empty on warm restart (early return path).
             // Fall back to a direct HK workout query so we can actually build the disk cache.
-            var runWorkouts = workoutCache.values
-                .filter { $0.workoutActivityType == .running && $0.startDate >= startDate }
+            // 메트릭 히스토리 빌드 시에는 항상 HK 전체 조회 — workoutCache는 최근만 가질 수 있음
+            let fetched = (try? await queryWorkouts(since: startDate)) ?? []
+            var runWorkouts = fetched.filter { $0.workoutActivityType == .running }
+            for w in runWorkouts { workoutCache[w.uuid] = w }
             if runWorkouts.isEmpty {
-                let fetched = (try? await queryWorkouts(since: startDate)) ?? []
-                runWorkouts = fetched.filter { $0.workoutActivityType == .running }
-                for w in runWorkouts { workoutCache[w.uuid] = w }
+                // HK 조회 실패 시 인메모리 캐시 폴백
+                runWorkouts = workoutCache.values
+                    .filter { $0.workoutActivityType == .running && $0.startDate >= startDate }
             }
             let sortedWorkouts = runWorkouts.sorted { $0.startDate < $1.startDate }
             guard !sortedWorkouts.isEmpty else { return [] }
@@ -2063,6 +2065,7 @@ class HealthKitManager {
     private struct MetricHistoryCacheFile: Codable {
         let points: [MetricDataPoint]
         let cachedAt: Date
+        var coveredFrom: Date?  // nil = 레거시 캐시 → 자동 무효화 대상
     }
 
     private static let metricCacheDir: URL = {
@@ -2082,6 +2085,13 @@ class HealthKitManager {
         let url = metricHistoryCacheURL(metric, usePounds: usePounds)
         guard let data = try? Data(contentsOf: url),
               let file = try? JSONDecoder().decode(MetricHistoryCacheFile.self, from: data) else { return nil }
+        // coveredFrom 없는 레거시 캐시, 또는 1년치를 커버하지 않는 부분 캐시는 무효화
+        let requiredStart = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+        guard let coveredFrom = file.coveredFrom,
+              coveredFrom <= requiredStart.addingTimeInterval(86_400 * 7) else {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
         return file.points.map { ($0.date, $0.value) }
     }
 
@@ -2106,10 +2116,11 @@ class HealthKitManager {
         for file in files { try? FileManager.default.removeItem(at: file) }
     }
 
-    private func saveMetricHistoryToDisk(_ points: [(date: Date, value: Double)], metric: TrendMetric, usePounds: Bool) {
+    private func saveMetricHistoryToDisk(_ points: [(date: Date, value: Double)], metric: TrendMetric, usePounds: Bool, coveredFrom: Date) {
         let file = MetricHistoryCacheFile(
             points: points.map { MetricDataPoint(date: $0.date, value: $0.value) },
-            cachedAt: Date()
+            cachedAt: Date(),
+            coveredFrom: coveredFrom
         )
         guard let data = try? JSONEncoder().encode(file) else { return }
         try? data.write(to: metricHistoryCacheURL(metric, usePounds: usePounds), options: .atomic)

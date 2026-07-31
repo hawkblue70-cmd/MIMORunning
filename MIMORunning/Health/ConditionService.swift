@@ -159,7 +159,7 @@ struct ConditionService {
         let baseURL = daysSince < 7
             ? "https://api.open-meteo.com/v1/forecast"
             : "https://archive-api.open-meteo.com/v1/archive"
-        var comps = URLComponents(string: baseURL)!
+        guard var comps = URLComponents(string: baseURL) else { return nil }
         comps.queryItems = [
             URLQueryItem(name: "latitude",        value: String(format: "%.4f", coord.latitude)),
             URLQueryItem(name: "longitude",       value: String(format: "%.4f", coord.longitude)),
@@ -188,7 +188,7 @@ struct ConditionService {
 
         // Match the hour closest to the run start (UTC)
         var utcCal = Calendar(identifier: .gregorian)
-        utcCal.timeZone = TimeZone(identifier: "UTC")!
+        utcCal.timeZone = TimeZone(identifier: "UTC") ?? .current
         let runHour = utcCal.component(.hour, from: date)
 
         var bestIdx = 0, bestDiff = 24
