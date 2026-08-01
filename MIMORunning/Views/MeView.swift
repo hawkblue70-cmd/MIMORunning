@@ -16,19 +16,23 @@ private struct BadgeInfo: Identifiable {
     let achievedDate: Date?
 }
 
+private struct SelectedSummaryStats: Identifiable {
+    let id = UUID()
+    let stats: SummaryPeriodStats
+}
+
 // MARK: - MeView
 
 struct MeView: View {
     var manager: HealthKitManager
 
     @Environment(CustomMiniMeStore.self) private var miniMeStore
+    @Environment(RaceDetector.self) private var raceDetector
+    @Query(sort: \MyPlannedRace.dateString) private var plannedRaces: [MyPlannedRace]
     @Query private var shoes: [Shoe]
     @Query private var allStories: [WorkoutStory]
-    @State private var showShare0 = false
-    @State private var showShare1 = false
-    @State private var showShare2 = false
-    @State private var showYearShare0 = false
-    @State private var showYearShare1 = false
+    @State private var selectedSummaryStats: SelectedSummaryStats? = nil
+    @State private var showRaceSearch = false
     @State private var showAddShoe = false
     @State private var shoeToDelete: Shoe?
     @State private var shoeKmCache: [UUID: Double] = [:]
@@ -43,6 +47,10 @@ struct MeView: View {
     @AppStorage("showWalking")  private var showWalking  = false
     @AppStorage("showHiking")   private var showHiking   = false
     @AppStorage("cloudKitSyncAvailable") private var cloudKitSyncAvailable = false
+    @AppStorage("goalTime10k")   private var goalTime10k  = ""
+    @AppStorage("goalTimeHalf")  private var goalTimeHalf = ""
+    @AppStorage("goalTimeFull")  private var goalTimeFull = ""
+    @State private var editingGoal: RaceGoalKind? = nil
 
     // MARK: - Period stats
 
@@ -130,6 +138,11 @@ struct MeView: View {
 
     // MARK: - Cache refresh
 
+    private func deletePastRaces() {
+        let today = Calendar.current.startOfDay(for: Date())
+        plannedRaces.filter { ($0.raceDate ?? .distantFuture) < today }.forEach { modelContext.delete($0) }
+    }
+
     private func refreshStatsAndBadges() {
         let key = "\(manager.activities.count)-\(useMiles)"
         guard key != lastStatsCacheKey else { return }
@@ -189,6 +202,8 @@ struct MeView: View {
                             garminNoticeSection
                         }
                         miniMeSection
+                        plannedRacesSection
+                        raceGoalsSection
                         statsSection
                         shoesSection
                         milestonesSection
@@ -201,7 +216,7 @@ struct MeView: View {
             .navigationTitle(AppLanguage.shared.s("나", "Me"))
             .navigationBarTitleDisplayMode(.large)
         }
-        .task { refreshShoeKmCache(); refreshStatsAndBadges(); await refreshFormMetrics() }
+        .task { refreshShoeKmCache(); refreshStatsAndBadges(); await refreshFormMetrics(); deletePastRaces() }
         .onChange(of: manager.activities.count) {
             refreshShoeKmCache()
             refreshStatsAndBadges()
@@ -209,6 +224,109 @@ struct MeView: View {
         }
         .onChange(of: allStories.count) { refreshShoeKmCache() }
         .onChange(of: useMiles) { refreshStatsAndBadges() }
+        .sheet(isPresented: $showRaceSearch) {
+            RaceSearchSheet(raceDetector: raceDetector, existing: Set(plannedRaces.map { $0.raceName + $0.dateString }))
+        }
+        .sheet(item: $editingGoal) { kind in
+            GoalTimeEditSheet(kind: kind, current: binding(for: kind))
+                .presentationDetents([.height(320)])
+        }
+    }
+
+    private func binding(for kind: RaceGoalKind) -> Binding<String> {
+        switch kind {
+        case .tenK: return $goalTime10k
+        case .half: return $goalTimeHalf
+        case .full: return $goalTimeFull
+        }
+    }
+
+    // MARK: - Planned races section
+
+    private var plannedRacesSection: some View {
+        let L = AppLanguage.shared
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(L.s("참가 대회", "My Races"))
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Spacer()
+                Button { showRaceSearch = true } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(Theme.violet)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+
+            if plannedRaces.isEmpty {
+                Text(L.s("참가 예정 대회를 등록하세요", "Add races you plan to join"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .padding(.horizontal, 16)
+            } else {
+                ForEach(plannedRaces) { race in
+                    PlannedRaceRow(race: race) {
+                        modelContext.delete(race)
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+    }
+
+    // MARK: - Race Goals
+
+    private var raceGoalsSection: some View {
+        let L = AppLanguage.shared
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(L.s("목표 기록", "Goal Times"))
+                .font(.headline)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+
+            HStack(spacing: 10) {
+                ForEach(RaceGoalKind.allCases) { kind in
+                    let goalStr = goalString(for: kind)
+                    Button { editingGoal = kind } label: {
+                        VStack(spacing: 6) {
+                            Text(kind.label)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Text(goalStr.isEmpty ? L.s("미설정", "Set goal") : goalStr)
+                                .font(.system(size: goalStr.isEmpty ? 12 : 15, weight: .bold, design: .monospaced))
+                                .foregroundStyle(goalStr.isEmpty ? Color.secondary.opacity(0.5) : Color.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Theme.cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .strokeBorder(goalStr.isEmpty ? Color.white.opacity(0.08) : Theme.violet.opacity(0.30), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func goalString(for kind: RaceGoalKind) -> String {
+        switch kind {
+        case .tenK: return goalTime10k
+        case .half: return goalTimeHalf
+        case .full: return goalTimeFull
+        }
     }
 
     // MARK: - Garmin notice
@@ -339,33 +457,21 @@ struct MeView: View {
                 .padding(.horizontal, 16)
 
             SummarySectionCard(stats: s0, manager: manager,
-                               preloadedFormMetrics: cachedMonthFormMetrics[s0.kind.title]) { showShare0 = true }
+                               preloadedFormMetrics: cachedMonthFormMetrics[s0.kind.title]) { selectedSummaryStats = SelectedSummaryStats(stats: s0) }
                 .padding(.horizontal, 16)
             SummarySectionCard(stats: s1, manager: manager,
-                               preloadedFormMetrics: cachedMonthFormMetrics[s1.kind.title]) { showShare1 = true }
+                               preloadedFormMetrics: cachedMonthFormMetrics[s1.kind.title]) { selectedSummaryStats = SelectedSummaryStats(stats: s1) }
                 .padding(.horizontal, 16)
             SummarySectionCard(stats: s2, manager: manager,
-                               preloadedFormMetrics: cachedMonthFormMetrics[s2.kind.title]) { showShare2 = true }
+                               preloadedFormMetrics: cachedMonthFormMetrics[s2.kind.title]) { selectedSummaryStats = SelectedSummaryStats(stats: s2) }
                 .padding(.horizontal, 16)
-            SummarySectionCard(stats: y0, manager: manager) { showYearShare0 = true }
+            SummarySectionCard(stats: y0, manager: manager) { selectedSummaryStats = SelectedSummaryStats(stats: y0) }
                 .padding(.horizontal, 16)
-            SummarySectionCard(stats: y1, manager: manager) { showYearShare1 = true }
+            SummarySectionCard(stats: y1, manager: manager) { selectedSummaryStats = SelectedSummaryStats(stats: y1) }
                 .padding(.horizontal, 16)
         }
-        .sheet(isPresented: $showShare0) {
-            SummaryShareCardScreen(stats: s0, miniMeImage: miniMeStore.image)
-        }
-        .sheet(isPresented: $showShare1) {
-            SummaryShareCardScreen(stats: s1, miniMeImage: miniMeStore.image)
-        }
-        .sheet(isPresented: $showShare2) {
-            SummaryShareCardScreen(stats: s2, miniMeImage: miniMeStore.image)
-        }
-        .sheet(isPresented: $showYearShare0) {
-            SummaryShareCardScreen(stats: y0, miniMeImage: miniMeStore.image)
-        }
-        .sheet(isPresented: $showYearShare1) {
-            SummaryShareCardScreen(stats: y1, miniMeImage: miniMeStore.image)
+        .sheet(item: $selectedSummaryStats) { sel in
+            SummaryShareCardScreen(statsList: [sel.stats], miniMeImage: miniMeStore.image)
         }
     }
 
@@ -786,8 +892,13 @@ private struct SummarySectionCard: View {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.caption.weight(.semibold))
-                        Text(AppLanguage.shared.s("공유", "Share"))
-                            .font(.caption.weight(.semibold))
+                        Text({
+                            if case .monthly = stats.kind {
+                                return AppLanguage.shared.s("월말 결산", "Monthly")
+                            }
+                            return AppLanguage.shared.s("연말 결산", "Yearly")
+                        }())
+                        .font(.caption.weight(.semibold))
                     }
                     .foregroundStyle(Theme.violet)
                     .padding(.horizontal, 10)
@@ -1512,4 +1623,368 @@ private struct AddShoeSheet: View {
         }
     }
     return SyncCardPreview().preferredColorScheme(.dark)
+}
+
+// MARK: - Planned Race Row
+
+private struct PlannedRaceRow: View {
+    @Bindable var race: MyPlannedRace
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                // 날짜 배지
+                VStack(spacing: 2) {
+                    if let d = race.raceDate {
+                        Text(d, format: .dateTime.month(.abbreviated))
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(race.isPast ? .secondary : Theme.violet)
+                        Text(d, format: .dateTime.day())
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(race.isPast ? Color.secondary : Color.white)
+                    } else {
+                        Text("—")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 40)
+
+                Rectangle()
+                    .fill(race.isPast ? Color.white.opacity(0.12) : Theme.violet.opacity(0.40))
+                    .frame(width: 1.5)
+                    .padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(race.raceName)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(race.isPast ? Color.secondary : Color.white)
+                            .lineLimit(2)
+                        if race.isPast {
+                            Text(AppLanguage.shared.s("완료", "Done"))
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.white.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+                    HStack(spacing: 8) {
+                        if let time = race.startTime, !time.isEmpty {
+                            Label(time, systemImage: "clock")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        if !race.startPlace.isEmpty {
+                            Label(race.startPlace, systemImage: "mappin")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Button(action: onDelete) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Color.white.opacity(0.25))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // 거리 선택 칩
+            if !race.distancesKm.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(race.distancesKm, id: \.self) { km in
+                        let selected = race.selectedDistanceKm == km
+                        Button {
+                            race.selectedDistanceKm = selected ? 0 : km
+                        } label: {
+                            Text(distanceLabel(km))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(selected ? Color.white : Color.white.opacity(0.5))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(selected ? Theme.violet : Color.white.opacity(0.08))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.leading, 54)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(race.isPast ? Color.clear : Theme.violet.opacity(0.20), lineWidth: 1)
+        )
+    }
+
+    private func distanceLabel(_ km: Double) -> String {
+        if km == 42.195  { return AppLanguage.shared.s("풀", "Full") }
+        if km == 21.0975 { return AppLanguage.shared.s("하프", "Half") }
+        let i = Int(km)
+        return km == Double(i) ? "\(i)K" : "\(km)K"
+    }
+}
+
+// MARK: - Race Search Sheet
+
+struct RaceSearchSheet: View {
+    let raceDetector: RaceDetector
+    let existing: Set<String>
+
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @State private var query: String = ""
+
+    private var filteredRaces: [BundledRace] {
+        let today = Calendar.current.startOfDay(for: Date())
+        let words = query.trimmingCharacters(in: .whitespaces)
+            .split(separator: " ").map(String.init)
+
+        return raceDetector.races.filter { race in
+            guard let d = race.date, d >= today else { return false }
+            guard !existing.contains(race.name + race.dateString) else { return false }
+            if words.isEmpty { return true }
+            return words.allSatisfy { race.name.localizedCaseInsensitiveContains($0) }
+        }
+        .sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField(AppLanguage.shared.s("대회 이름 검색", "Search race name"), text: $query)
+                            .foregroundStyle(.white)
+                            .autocorrectionDisabled()
+                        if !query.isEmpty {
+                            Button { query = "" } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(12)
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+
+                    if filteredRaces.isEmpty {
+                        Spacer()
+                        Text(AppLanguage.shared.s("검색 결과 없음", "No results"))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    } else {
+                        List {
+                            ForEach(filteredRaces) { race in
+                                RaceSearchRow(race: race)
+                                    .listRowBackground(Theme.cardBackground)
+                                    .listRowSeparatorTint(Color.white.opacity(0.08))
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { add(race) }
+                            }
+                        }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                    }
+                }
+            }
+            .navigationTitle(AppLanguage.shared.s("대회 등록", "Add Race"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                        .foregroundStyle(Theme.violet)
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+
+    private func add(_ race: BundledRace) {
+        modelContext.insert(MyPlannedRace(from: race))
+        dismiss()
+    }
+}
+
+// MARK: - Race Search Row
+
+private struct RaceSearchRow: View {
+    let race: BundledRace
+
+    var body: some View {
+        HStack(spacing: 14) {
+            VStack(spacing: 1) {
+                if let d = race.date {
+                    Text(d, format: .dateTime.month(.abbreviated))
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.violet)
+                    Text(d, format: .dateTime.day())
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 36)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(race.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                HStack(spacing: 8) {
+                    if let time = race.startTimeString, !time.isEmpty {
+                        Label(time, systemImage: "clock")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Label(race.start, systemImage: "mappin")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if !race.distancesKm.isEmpty {
+                    let dist = race.distancesKm.map { km -> String in
+                        if km == 42.195  { return AppLanguage.shared.s("풀", "Full") }
+                        if km == 21.0975 { return AppLanguage.shared.s("하프", "Half") }
+                        let i = Int(km)
+                        return km == Double(i) ? "\(i)K" : "\(km)K"
+                    }.joined(separator: " · ")
+                    Text(dist)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.pace.opacity(0.9))
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "plus.circle")
+                .font(.system(size: 20))
+                .foregroundStyle(Theme.violet)
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+// MARK: - Race Goal Types
+
+enum RaceGoalKind: String, CaseIterable, Identifiable {
+    case tenK, half, full
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .tenK: return "10K"
+        case .half: return AppLanguage.shared.s("하프", "Half")
+        case .full: return AppLanguage.shared.s("풀", "Full")
+        }
+    }
+}
+
+// MARK: - Goal Time Edit Sheet
+
+private struct GoalTimeEditSheet: View {
+    let kind: RaceGoalKind
+    @Binding var current: String
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var hours = 0
+    @State private var minutes = 30
+    @State private var seconds = 0
+
+    private var maxHours: Int { kind == .tenK ? 4 : 9 }
+
+    var body: some View {
+        let L = AppLanguage.shared
+        NavigationStack {
+            VStack(spacing: 20) {
+                Text(kind.label)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 0) {
+                    Picker(L.s("시간", "h"), selection: $hours) {
+                        ForEach(0...maxHours, id: \.self) { h in
+                            Text("\(h)\(L.s("시간", "h"))").tag(h)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(maxWidth: .infinity)
+
+                    Picker(L.s("분", "m"), selection: $minutes) {
+                        ForEach(0...59, id: \.self) { m in
+                            Text("\(m)\(L.s("분", "m"))").tag(m)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(maxWidth: .infinity)
+
+                    Picker(L.s("초", "s"), selection: $seconds) {
+                        ForEach(0...59, id: \.self) { s in
+                            Text("\(s)\(L.s("초", "s"))").tag(s)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(maxWidth: .infinity)
+                }
+                .frame(height: 150)
+            }
+            .padding(.top, 8)
+            .navigationTitle(L.s("목표 기록 설정", "Set Goal Time"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L.s("취소", "Cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L.s("저장", "Save")) {
+                        current = String(format: "%d:%02d:%02d", hours, minutes, seconds)
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .bottomBar) {
+                    if !current.isEmpty {
+                        Button(role: .destructive) {
+                            current = ""
+                            dismiss()
+                        } label: {
+                            Text(L.s("목표 삭제", "Remove Goal"))
+                                .foregroundStyle(.red)
+                        }
+                    }
+                }
+            }
+            .onAppear { parseCurrentTime() }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func parseCurrentTime() {
+        let parts = current.split(separator: ":").compactMap { Int($0) }
+        if parts.count == 3 {
+            hours = parts[0]; minutes = parts[1]; seconds = parts[2]
+        } else if parts.count == 2 {
+            hours = 0; minutes = parts[0]; seconds = parts[1]
+        } else {
+            hours = kind == .tenK ? 0 : 1
+            minutes = kind == .tenK ? 50 : 30
+            seconds = 0
+        }
+    }
 }

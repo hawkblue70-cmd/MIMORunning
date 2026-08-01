@@ -514,7 +514,12 @@ struct RestDayOneLinerSheet: View {
                 Text(AppLanguage.shared.s("내보내는 중...", "Exporting...")).fontWeight(.semibold)
             } else {
                 Image(systemName: "square.and.arrow.up")
-                Text(AppLanguage.shared.s("공유하기", "Share")).fontWeight(.semibold)
+                Text(selectedTemplate == .slide
+                     ? AppLanguage.shared.s("슬라이드 내보내기", "Export Slides")
+                     : selectedTemplate == .video
+                     ? AppLanguage.shared.s("영상 내보내기", "Export Video")
+                     : AppLanguage.shared.s("스토리 내보내기", "Export Story"))
+                    .fontWeight(.semibold)
             }
         }
         .foregroundStyle(.white)

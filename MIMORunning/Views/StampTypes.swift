@@ -22,6 +22,11 @@ enum StampOccupancy {
 // MARK: - Template
 
 enum StampTemplate: String, CaseIterable, Identifiable {
+    // 경로 결합 4종
+    case routeHero
+    case routeRows
+    case routeVertical
+    case routeSide
     // 기본 9종
     case hud
     case receipt
@@ -40,15 +45,9 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     case vitals
     case hrBadge
     case watchHud
-    // 지명 3종
+    // 지명 2종
     case placeHeadline
     case pinInline
-    case mapBackground
-    // 경로 결합 4종
-    case routeHero
-    case routeRows
-    case routeVertical
-    case routeSide
 
     var id: String { rawValue }
 
@@ -72,7 +71,6 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .watchHud:      return "워치 HUD"
         case .placeHeadline: return "지명 헤드라인"
         case .pinInline:     return "핀 인라인"
-        case .mapBackground: return "지도 배경"
         case .routeHero:     return "루트 히어로"
         case .routeRows:     return "루트 + 행 라벨"
         case .routeVertical: return "루트 + 세로 라벨"
@@ -82,7 +80,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
 
     var positionMode: StampPositionMode {
         switch self {
-        case .hud, .watchHud, .mapBackground:
+        case .hud, .watchHud:
             return .fixed
         default:
             return .free9
@@ -116,8 +114,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .vitals:                    return [.heartRate]
         case .watchHud:                  return [.heartRate]
         case .placeHeadline, .pinInline: return [.location]
-        case .mapBackground,
-             .routeHero, .routeRows, .routeVertical, .routeSide: return [.route]
+        case .routeHero, .routeRows, .routeVertical, .routeSide: return [.route]
         default:                         return [.none]
         }
     }

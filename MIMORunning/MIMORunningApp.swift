@@ -17,7 +17,7 @@ struct MIMORunningApp: App {
     private static let container: ModelContainer = {
         let schema = Schema([
             WorkoutStory.self, StoryPhoto.self, Shoe.self,
-            OneLinerEntry.self, PersistedRaceMatchRecord.self
+            OneLinerEntry.self, PersistedRaceMatchRecord.self, MyPlannedRace.self
         ])
         let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "MIMORunning", category: "CloudKit")
         do {

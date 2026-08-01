@@ -122,44 +122,35 @@ struct RunCombinedChartView: View {
         return idx >= 0 ? p.hrZones[idx] : Theme.heartRate
     }
 
-    /// Dynamic vertical bands. Layer order top→bottom: power → cadence → verticalOsc → strideLength.
-    /// HR active  : heartRate (0.04, 0.96); active line layers share 0.40–0.82 equally (gap 0.02).
-    /// HR inactive: active line layers share 0.10–0.82 equally (gap 0.02).
-    /// Elevation  : always (0.34, 1.00) — fill/overlap allowed.
+    /// Fixed vertical bands. Layer order top→bottom: power → cadence → verticalOsc → strideLength.
+    /// Band positions are always computed as if all 4 line layers exist — toggling a layer
+    /// only hides its line, never repositions the remaining ones.
+    /// HR active  : heartRate (0.04, 0.96); line layers share 0.36–0.92 in 4 fixed slots.
+    /// HR inactive: line layers share 0.08–0.92 in 4 fixed slots.
+    /// Elevation  : always (0.42, 1.00) — fill/overlap allowed.
     private func bands(for activeLayers: [RunChartLayer]) -> [RunChartLayer: (top: Double, bottom: Double)] {
         var result: [RunChartLayer: (top: Double, bottom: Double)] = [:]
 
         let lineOrder: [RunChartLayer] = [.power, .cadence, .verticalOsc, .strideLength]
-        let activeLines = lineOrder.filter { activeLayers.contains($0) }
+        let n   = lineOrder.count   // always 4 — fixed layout
+        let gap = 0.03
 
         if activeLayers.contains(.heartRate) {
             result[.heartRate] = (top: 0.04, bottom: 0.96)
-            if !activeLines.isEmpty {
-                let rangeStart = 0.36
-                let totalRange = 0.56   // 0.92 – 0.36
-                let gap        = 0.03
-                let n          = activeLines.count
-                let bandH      = n > 1
-                    ? (totalRange - gap * Double(n - 1)) / Double(n)
-                    : totalRange
-                for (i, layer) in activeLines.enumerated() {
-                    let top = rangeStart + Double(i) * (bandH + gap)
-                    result[layer] = (top: top, bottom: top + bandH)
-                }
+            let rangeStart = 0.36
+            let totalRange = 0.56   // 0.92 – 0.36
+            let bandH = (totalRange - gap * Double(n - 1)) / Double(n)
+            for (i, layer) in lineOrder.enumerated() {
+                let top = rangeStart + Double(i) * (bandH + gap)
+                result[layer] = (top: top, bottom: top + bandH)
             }
         } else {
-            if !activeLines.isEmpty {
-                let rangeStart = 0.08
-                let totalRange = 0.84   // 0.92 – 0.08
-                let gap        = 0.03
-                let n          = activeLines.count
-                let bandH      = n > 1
-                    ? (totalRange - gap * Double(n - 1)) / Double(n)
-                    : totalRange
-                for (i, layer) in activeLines.enumerated() {
-                    let top = rangeStart + Double(i) * (bandH + gap)
-                    result[layer] = (top: top, bottom: top + bandH)
-                }
+            let rangeStart = 0.08
+            let totalRange = 0.84   // 0.92 – 0.08
+            let bandH = (totalRange - gap * Double(n - 1)) / Double(n)
+            for (i, layer) in lineOrder.enumerated() {
+                let top = rangeStart + Double(i) * (bandH + gap)
+                result[layer] = (top: top, bottom: top + bandH)
             }
         }
 

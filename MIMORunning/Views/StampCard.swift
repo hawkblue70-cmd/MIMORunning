@@ -72,12 +72,11 @@ struct StampData {
 // MARK: - Stamp Outline (4방향 그림자로 text-stroke 시뮬레이션)
 
 extension View {
-    // shadow가 더 넓게 퍼져 "채움"처럼 보이고, foreground가 좁아 "외곽선"처럼 보인다.
-    // → fill(배경색)을 shadow로, outline(외곽 텍스트색)을 foreground로 올바르게 배치.
-    // 8방향 0.45pt + opacity 0.5: 완전한 커버리지 유지하면서 번짐 최소화.
+    // fill = 텍스트 주색(경로선과 동일), outline = 외곽 그림자색(경로 케이싱과 동일).
+    // 8방향 0.45pt shadow가 외곽선처럼 보이고, foreground fill이 주색으로 드러남.
     func stampOutline(fill: Color, outline: Color) -> some View {
-        let c = fill.opacity(0.50)
-        return self.foregroundStyle(outline)
+        let c = outline.opacity(0.50)
+        return self.foregroundStyle(fill)
             .shadow(color: c, radius: 0.2, x:  0.45, y:  0)
             .shadow(color: c, radius: 0.2, x: -0.45, y:  0)
             .shadow(color: c, radius: 0.2, x:  0,    y:  0.45)
@@ -91,7 +90,7 @@ extension View {
     @ViewBuilder
     func stampTextOutline(show: Bool, fill: Color, outline: Color) -> some View {
         if show { self.stampOutline(fill: fill, outline: outline) }
-        else    { self.foregroundStyle(outline) }
+        else    { self.foregroundStyle(fill) }
     }
 }
 
@@ -204,43 +203,63 @@ private struct EQBarShape: Shape {
 
 // MARK: - Route Line Art
 
-private struct StampRoutePathShape: Shape {
-    let coords: [CLLocationCoordinate2D]
-
-    func path(in rect: CGRect) -> Path {
-        guard coords.count > 1 else { return Path() }
-        let lats = coords.map(\.latitude)
-        let lons = coords.map(\.longitude)
-        guard let minLat = lats.min(), let maxLat = lats.max(),
-              let minLon = lons.min(), let maxLon = lons.max() else { return Path() }
-        let latRange = maxLat - minLat
-        let lonRange = maxLon - minLon
-        let latScale = latRange > 0 ? rect.height / latRange : rect.height
-        let lonScale = lonRange > 0 ? rect.width  / lonRange : rect.width
-        let s = min(latScale, lonScale)
-        let usedW = lonRange * s
-        let usedH = latRange * s
-        let ox = rect.minX + (rect.width  - usedW) / 2
-        let oy = rect.minY + (rect.height - usedH) / 2
-        var path = Path()
-        for (i, c) in coords.enumerated() {
-            let x = ox + (c.longitude - minLon) * s
-            let y = oy + (maxLat - c.latitude) * s   // y축 반전 (위도↑ → 화면 위)
-            let pt = CGPoint(x: x, y: y)
-            if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
-        }
-        return path
-    }
-}
-
 struct StampRouteArt: View {
     let coords: [CLLocationCoordinate2D]
     let lineWidth: CGFloat
-    let color: Color
+    let color: Color       // 경로 선 색 (= stampColors의 fill)
+    let casingColor: Color // 경로 케이싱 색 (= stampColors의 outline), lineWidth + 2.8pt
 
     var body: some View {
-        StampRoutePathShape(coords: Self.downsample(coords))
-            .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+        GeometryReader { geo in
+            let pts = Self.routePoints(Self.downsample(coords), in: geo.size)
+            if pts.count > 1 {
+                let dotR = lineWidth * 1.3
+                let path = Self.buildPath(pts)
+                ZStack(alignment: .topLeading) {
+                    // 케이싱 (하단)
+                    path.stroke(casingColor, style: StrokeStyle(lineWidth: lineWidth + 2.8,
+                                                                 lineCap: .round, lineJoin: .round))
+                    // 경로 선
+                    path.stroke(color, style: StrokeStyle(lineWidth: lineWidth,
+                                                           lineCap: .round, lineJoin: .round))
+                    // 시작점 — 빈 원
+                    Circle()
+                        .stroke(color, lineWidth: max(0.5, lineWidth * 0.45))
+                        .frame(width: dotR * 2, height: dotR * 2)
+                        .position(pts[0])
+                    // 끝점 — 채운 원
+                    Circle()
+                        .fill(color)
+                        .frame(width: dotR * 2.2, height: dotR * 2.2)
+                        .position(pts.last!)
+                }
+            }
+        }
+    }
+
+    private static func buildPath(_ pts: [CGPoint]) -> Path {
+        var p = Path()
+        p.move(to: pts[0])
+        pts.dropFirst().forEach { p.addLine(to: $0) }
+        return p
+    }
+
+    static func routePoints(_ coords: [CLLocationCoordinate2D], in size: CGSize) -> [CGPoint] {
+        guard coords.count > 1 else { return [] }
+        let lats = coords.map(\.latitude); let lons = coords.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return [] }
+        let latRange = maxLat - minLat
+        let lonRange = maxLon - minLon
+        let latScale = latRange > 0 ? size.height / latRange : size.height
+        let lonScale = lonRange > 0 ? size.width  / lonRange : size.width
+        let s = min(latScale, lonScale)
+        let usedW = lonRange * s; let usedH = latRange * s
+        let ox = (size.width - usedW) / 2; let oy = (size.height - usedH) / 2
+        return coords.map {
+            CGPoint(x: ox + ($0.longitude - minLon) * s,
+                    y: oy + (maxLat - $0.latitude) * s)
+        }
     }
 
     static func downsample(_ coords: [CLLocationCoordinate2D], maxCount: Int = 300) -> [CLLocationCoordinate2D] {
@@ -420,9 +439,6 @@ struct StampCard: View {
         case .pinInline:
             StampPinInlineView(data: data, fill: fill, outline: outline, scale: scale,
                                showTextOutline: showTextOutline)
-        case .mapBackground:
-            StampMapBackgroundView(data: data, fill: fill, outline: outline, scale: scale,
-                                   showTextOutline: showTextOutline)
         case .routeHero:
             StampRouteHeroView(data: data, fill: fill, outline: outline, scale: scale,
                                showTextOutline: showTextOutline)
@@ -1234,68 +1250,6 @@ private struct StampPinInlineView: View {
     }
 }
 
-// MARK: - Map Background (fixed)
-
-private struct StampMapBackgroundView: View {
-    let data: StampData
-    let fill: Color
-    let outline: Color
-    let scale: CGFloat
-    var showTextOutline: Bool = true
-
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            // 지도 배경
-            if let img = data.mapImage {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFill()
-                    .clipped()
-
-                // 경로 라인 오버레이
-                if let pts = data.routePoints, pts.count > 1 {
-                    GeometryReader { geo in
-                        let sx = geo.size.width / img.size.width
-                        let sy = geo.size.height / img.size.height
-                        Path { path in
-                            for (i, pt) in pts.enumerated() {
-                                let p = CGPoint(x: pt.x * sx, y: pt.y * sy)
-                                if i == 0 { path.move(to: p) }
-                                else       { path.addLine(to: p) }
-                            }
-                        }
-                        .stroke(Color(hex: "FF2E2E"),
-                                style: StrokeStyle(lineWidth: sz(2.5, scale), lineCap: .round, lineJoin: .round))
-                    }
-                }
-            } else {
-                Color(hex: "1A2030")
-            }
-
-            // 하단 그라데이션 + 레이블
-            LinearGradient(colors: [.black.opacity(0), .black.opacity(0.70)],
-                           startPoint: .center, endPoint: .bottom)
-
-            VStack(alignment: .leading, spacing: sz(2, scale)) {
-                if let name = data.placeName ?? data.coordText {
-                    Text(name.uppercased())
-                        .font(.system(size: sz(18, scale), weight: .black))
-                        .shadow(color: .black.opacity(0.5), radius: 2)
-                }
-                Text("\(data.distance) \(data.distanceUnit)  \(data.pace)  \(data.time)")
-                    .font(.system(size: sz(9, scale), weight: .medium, design: .monospaced))
-                    .tracking(1.2)
-                    .opacity(0.92)
-                    .shadow(color: .black.opacity(0.5), radius: 2)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .foregroundStyle(.white)
-            .padding(.horizontal, sz(14, scale))
-            .padding(.bottom, sz(16, scale))
-        }
-    }
-}
-
 // MARK: - Route Hero
 
 private struct StampRouteHeroView: View {
@@ -1310,7 +1264,8 @@ private struct StampRouteHeroView: View {
             StampRouteArt(
                 coords: data.routeCoordinates ?? [],
                 lineWidth: max(1, sz(2.6, scale)),
-                color: outline
+                color: fill,
+                casingColor: outline
             )
             .frame(width: sz(46, scale), height: sz(60, scale))
             .padding(.bottom, sz(7, scale))
@@ -1369,7 +1324,8 @@ private struct StampRouteRowsView: View {
             StampRouteArt(
                 coords: data.routeCoordinates ?? [],
                 lineWidth: max(1, sz(2.4, scale)),
-                color: outline
+                color: fill,
+                casingColor: outline
             )
             .frame(width: sz(34, scale), height: sz(44, scale))
             .padding(.bottom, sz(7, scale))
@@ -1397,7 +1353,8 @@ private struct StampRouteVerticalView: View {
             StampRouteArt(
                 coords: data.routeCoordinates ?? [],
                 lineWidth: max(1, sz(2.4, scale)),
-                color: outline
+                color: fill,
+                casingColor: outline
             )
             .frame(width: sz(34, scale), height: sz(42, scale))
             .padding(.bottom, sz(7, scale))
@@ -1425,7 +1382,8 @@ private struct StampRouteSideView: View {
         let art = StampRouteArt(
             coords: data.routeCoordinates ?? [],
             lineWidth: max(1, sz(2.6, scale)),
-            color: outline
+            color: fill,
+            casingColor: outline
         )
         .frame(width: sz(44, scale), height: sz(70, scale))
         let hero = StampDistanceHeroView(data: data, fill: fill, outline: outline, scale: scale,

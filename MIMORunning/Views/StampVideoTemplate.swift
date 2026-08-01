@@ -600,26 +600,28 @@ extension ShareCardScreen {
         // [필수] scaledToFill로 항상 채움 — "사진 밖의 공간이 보이지 않게".
         // 가로 사진: height를 맞추면 너비가 크게 넘침 → DragGesture로 좌우 이동해 크롭 위치 선택.
         let previewW: CGFloat = cardSectionH * 9.0 / 16.0
-        let selectedIdx  = max(0, min(stampVM.selectedClipIndex, storyPhotos.count - 1))
-        let currentPhoto = storyPhotos.isEmpty ? nil : storyPhotos[selectedIdx]
+        // storyPhotos는 SwiftData JPEG 디코딩을 포함하므로 한 번만 평가해 재사용.
+        let photos       = storyPhotos
+        let selectedIdx  = max(0, min(stampVM.selectedClipIndex, photos.count - 1))
+        let currentPhoto = photos.isEmpty ? nil : photos[selectedIdx]
         // 재생 중이면 현재 재생 장(playingIdx)의 config를 사용 → 장마다 다른 스탬프·문구 표시
         let playingIdx: Int = {
-            guard previewPlayer.isPlaying, storyPhotos.count > 0 else { return selectedIdx }
-            return min(Int(previewPlayer.progress * Double(storyPhotos.count)), storyPhotos.count - 1)
+            guard previewPlayer.isPlaying, photos.count > 0 else { return selectedIdx }
+            return min(Int(previewPlayer.progress * Double(photos.count)), photos.count - 1)
         }()
         let displayConfig = stampVM.photoConfig(at: playingIdx)
-        let displayPhoto  = storyPhotos.indices.contains(playingIdx) ? storyPhotos[playingIdx] : currentPhoto
+        let displayPhoto  = photos.indices.contains(playingIdx) ? photos[playingIdx] : currentPhoto
         let isBright      = stampBackgroundIsBright(photo: displayPhoto, position: displayConfig.position)
         // 배경으로 표시할 사진: 재생 중에는 현재 재생 장, 정지 중에는 선택된 장
         // OneLinerPreviewView(AVSynchronizedLayer) 없이 배경 사진 직접 표시 → 검은 화면 방지
         let bgIdx         = previewPlayer.isPlaying ? playingIdx : selectedIdx
-        let bgPhoto       = storyPhotos.isEmpty ? nil : storyPhotos[bgIdx]
+        let bgPhoto       = photos.isEmpty ? nil : photos[bgIdx]
         let bgCropOffsetX = stampSlideCropOffsets[bgIdx] ?? 0.5
         // Ken Burns: PhotoSlideComposition.kenBurns와 동일한 상수·공식으로 SwiftUI 구동.
         // previewPlayer.progress가 @Observable로 매 프레임 변경 → 자동 재계산.
         let kbEndScale: CGFloat = 1.08
         let photoDur    = PhotoSlideComposition.placeableSlideDuration
-        let totalDur    = photoDur * Double(max(1, storyPhotos.count))
+        let totalDur    = photoDur * Double(max(1, photos.count))
         let photoStartT = photoDur * Double(bgIdx)
         let photoProgress = CGFloat(max(0, min(1,
             (previewPlayer.progress * totalDur - photoStartT) / photoDur)))

@@ -503,7 +503,7 @@ struct RunChartShareSheet: View {
                     }
                 }
             }
-            .navigationTitle(L.s("차트 공유", "Share Chart"))
+            .navigationTitle(L.s("차트 내보내기", "Export Chart"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -537,7 +537,7 @@ struct RunChartShareSheet: View {
                     HStack(spacing: 8) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 15, weight: .semibold))
-                        Text(L.s("공유하기", "Share"))
+                        Text(L.s("영상 내보내기", "Export Video"))
                             .font(.system(size: 16, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity, minHeight: 46)
@@ -558,8 +558,8 @@ struct RunChartShareSheet: View {
                                 .font(.system(size: 15, weight: .semibold))
                         }
                         Text(isExportingVideo
-                             ? L.s("렌더링 중…", "Rendering…")
-                             : L.s("영상 만들기", "Export Video"))
+                             ? L.s("영상 만드는 중…", "Rendering…")
+                             : L.s("영상 내보내기", "Export Video"))
                             .font(.system(size: 16, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity, minHeight: 46)
@@ -602,11 +602,23 @@ struct RunChartShareSheet: View {
                     onProgress: { p in videoProgress = p }
                 )
                 exportedVideo = SharableVideoFile(url: url)
+                presentShareSheet(url: url)
             } catch {
                 // silently reset on cancellation or failure
             }
             isExportingVideo = false
         }
+    }
+
+    private func presentShareSheet(url: URL) {
+        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        guard let scene = UIApplication.shared.connectedScenes
+            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+              let rootVC = scene.keyWindow?.rootViewController else { return }
+        var topVC = rootVC
+        while let presented = topVC.presentedViewController { topVC = presented }
+        guard !(topVC is UIActivityViewController) else { return }
+        topVC.present(activityVC, animated: true)
     }
 
     private func refreshPreview() {

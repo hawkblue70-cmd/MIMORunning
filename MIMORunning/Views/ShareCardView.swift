@@ -2672,7 +2672,7 @@ struct ShareCardScreen: View {
                 .padding(.bottom, 16)
                 .background(Theme.background.ignoresSafeArea())
         }
-        .navigationTitle(AppLanguage.shared.s("공유 카드", "Share Card"))
+        .navigationTitle(AppLanguage.shared.s("카드 만들기", "Create Card"))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -2896,10 +2896,15 @@ struct ShareCardScreen: View {
                 if template == .video || template == .routeVideo { exportedVideoFile = nil }
             }
             .onChange(of: storyPhotos.count) { _, _ in
-                guard isStamp, template == .slide else { return }
+                guard isStamp else { return }
                 exportedVideoFile = nil
-                let data = stampPreviewData
-                Task { await loadStampSlidePreview(data: data) }
+                if template == .slide {
+                    let data = stampPreviewData
+                    Task { await loadStampSlidePreview(data: data) }
+                } else {
+                    // 스토리/영상 모드에서 사진이 바뀌면 프리빌드된 슬라이드 플레이어 무효화
+                    previewPlayer.invalidate()
+                }
             }
     }
 
@@ -3443,13 +3448,16 @@ struct ShareCardScreen: View {
         if isOneLiner, template == .video, !oneLinerVM.oneLinerClipRecipes.isEmpty {
             buildPreview()
         }
-        // Stamp 슬라이드: 항상 재빌드.
-        // previewPlayer는 영상·슬라이드·플레이서블이 공유하므로 isReady 체크만으로는 불충분.
-        // [검은 화면 방지] → StampVideoTemplate.swift loadStampSlidePreview 주석 참고.
+        // Stamp 슬라이드: 프리빌드가 완료/진행 중이면 재빌드 생략, 없을 때만 빌드.
+        // · isReady=true: 카드 진입 시 프리빌드가 완료 → 슬라이드 탭 즉시 전환.
+        // · isBuilding=true: 카드 진입 시 프리빌드 진행 중 → 그 결과를 그대로 사용, 이중 빌드 방지.
+        // · 둘 다 false: 프리빌드 없음(예: 영상 탭 경유) → 새로 빌드.
         if isStamp, template == .slide {
             if !storyPhotos.isEmpty {
-                let data = stampPreviewData
-                Task { await loadStampSlidePreview(data: data) }
+                if !previewPlayer.isReady, !previewPlayer.isBuilding {
+                    let data = stampPreviewData
+                    Task { await loadStampSlidePreview(data: data) }
+                }
             } else {
                 previewPlayer.invalidate()
             }
@@ -3506,6 +3514,11 @@ struct ShareCardScreen: View {
                 Task { await loadStampSlidePreview(data: data) }
             } else if template == .slide {
                 previewPlayer.invalidate()
+            } else if template == .story, !storyPhotos.isEmpty {
+                // 스토리 모드에서 카드 진입 시 슬라이드 프리뷰를 백그라운드에서 미리 빌드.
+                // 사용자가 슬라이드 탭을 누를 때 이미 isReady=true → 스피너 없이 즉시 전환.
+                let data = stampPreviewData
+                Task { await loadStampSlidePreview(data: data) }
             } else if template == .video {
                 // 다른 카드(OneLiner 등)가 metricChips·routeCoords 포함 contentLayer를 남긴 채로
                 // Stamp 카드로 돌아오면 Athletic 데이터가 표시되는 버그 방지.
@@ -4118,20 +4131,31 @@ struct ShareCardScreen: View {
             if isExportingVideo {
                 HStack(spacing: 10) {
                     ProgressView().tint(Theme.violet)
-                    Text(AppLanguage.shared.s("영상 합성 중...", "Exporting video..."))
+                    Text(template == .slide
+                         ? AppLanguage.shared.s("슬라이드 만드는 중...", "Creating slides...")
+                         : AppLanguage.shared.s("영상 만드는 중...", "Exporting video..."))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
             } else if let vf = exportedVideoFile {
-                ShareLink(item: vf, preview: SharePreview(AppLanguage.shared.s("러닝 영상", "Running Video"))) {
-                    Label(AppLanguage.shared.s("영상 공유하기", "Share Video"), systemImage: "square.and.arrow.up")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 46)
-                        .background(Theme.violet)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                ShareLink(item: vf, preview: SharePreview(
+                    template == .slide
+                        ? AppLanguage.shared.s("러닝 슬라이드", "Running Slides")
+                        : AppLanguage.shared.s("러닝 영상", "Running Video")
+                )) {
+                    Label(
+                        template == .slide
+                            ? AppLanguage.shared.s("슬라이드 내보내기", "Export Slides")
+                            : AppLanguage.shared.s("영상 내보내기", "Export Video"),
+                        systemImage: "square.and.arrow.up"
+                    )
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .background(Theme.violet)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
             } else if template == .slide, storyPhotos.isEmpty {
                 Text(AppLanguage.shared.s("사진을 선택해 주세요", "Select photos first"))
@@ -4151,10 +4175,10 @@ struct ShareCardScreen: View {
                 Button {
                     Task { await exportVideo() }
                 } label: {
-                    // 쉬는날과 동일 문구: 오늘의 한마디는 "공유하기"
-                    Label(isOneLiner ? AppLanguage.shared.s("공유하기", "Share")
-                                     : AppLanguage.shared.s("합성하기", "Export Video"),
-                          systemImage: isOneLiner ? "square.and.arrow.up" : "film")
+                    Label(template == .slide
+                              ? AppLanguage.shared.s("슬라이드 내보내기", "Export Slides")
+                              : AppLanguage.shared.s("영상 내보내기", "Export Video"),
+                          systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -4183,7 +4207,7 @@ struct ShareCardScreen: View {
                 .padding(.vertical, 14)
             } else if let vf = routeVideoFile {
                 Button { showRouteVideoShareSheet = true } label: {
-                    Label(AppLanguage.shared.s("경로 영상 공유하기", "Share Route Video"), systemImage: "square.and.arrow.up")
+                    Label(AppLanguage.shared.s("경로 영상 내보내기", "Export Route Video"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -4197,7 +4221,7 @@ struct ShareCardScreen: View {
                 Button {
                     Task { await exportRouteVideo() }
                 } label: {
-                    Label(AppLanguage.shared.s("경로 영상 만들기", "Create Route Video"), systemImage: "film")
+                    Label(AppLanguage.shared.s("경로 영상 내보내기", "Export Route Video"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -4219,7 +4243,10 @@ struct ShareCardScreen: View {
                 .padding(.vertical, 18)
             } else if let img = previewImage {
                 Button { showShareSheet = true } label: {
-                    Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                    Label(template == .story
+                          ? AppLanguage.shared.s("스토리 내보내기", "Export Story")
+                          : AppLanguage.shared.s("카드 내보내기", "Export Card"),
+                          systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -4247,7 +4274,10 @@ struct ShareCardScreen: View {
         } else if storyShareImages.count >= 1 {
             VStack(spacing: 10) {
                 Button { showShareSheet = true } label: {
-                    Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                    Label(template == .story
+                          ? AppLanguage.shared.s("스토리 내보내기", "Export Story")
+                          : AppLanguage.shared.s("카드 내보내기", "Export Card"),
+                          systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -4285,7 +4315,7 @@ struct ShareCardScreen: View {
                     showShareSheet = true
                 }
             } label: {
-                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("스토리 내보내기", "Export Story"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 46)
@@ -4311,7 +4341,7 @@ struct ShareCardScreen: View {
                 // 사진 연결 OneLiner: 문구 있는 사진 렌더링 후 공유 시트 표시
                 let count = linkedOneLinerPhotoCount
                 Button { Task { await batchExportOneLinerCards() } } label: {
-                    Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                    Label(AppLanguage.shared.s("스토리 내보내기", "Export Story"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(count == 0 ? Color.white.opacity(0.4) : .white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -4322,7 +4352,10 @@ struct ShareCardScreen: View {
             } else {
                 let shareDisabled = isOneLiner && oneLinerVM.oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 Button { showShareSheet = true } label: {
-                    Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                    Label(template == .story
+                          ? AppLanguage.shared.s("스토리 내보내기", "Export Story")
+                          : AppLanguage.shared.s("카드 내보내기", "Export Card"),
+                          systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(shareDisabled ? Color.white.opacity(0.4) : .white)
                         .frame(maxWidth: .infinity)

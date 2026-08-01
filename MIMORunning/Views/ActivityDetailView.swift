@@ -276,11 +276,17 @@ struct ActivityDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showShareCard = true } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
-                        .background(Theme.violet, in: Circle())
+                    HStack(spacing: 5) {
+                        Image(systemName: "rectangle.stack.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(AppLanguage.shared.s("카드 만들기", "Create Card"))
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Theme.violet)
+                    .clipShape(Capsule())
                 }
                 .disabled(isLoadingDetail)
             }
@@ -889,10 +895,14 @@ struct ActivityDetailView: View {
                 else { showPanelShareCard = true }
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "square.and.arrow.up")
+                    Image(systemName: "square.and.arrow.up.on.square")
                         .font(.caption.weight(.semibold))
-                    Text(AppLanguage.shared.s("공유", "Share"))
+                    Text(activePanel == .combined
+                         ? AppLanguage.shared.s("차트 내보내기", "Export Chart")
+                         : AppLanguage.shared.s("공유", "Share"))
                         .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
                 }
                 .foregroundStyle(Theme.violet)
                 .padding(.horizontal, 10)
@@ -2020,10 +2030,12 @@ private struct SplitsSection: View {
                 if activity != nil {
                     Button { showSplitsShare = true } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "square.and.arrow.up")
+                            Image(systemName: "square.and.arrow.up.on.square")
                                 .font(.caption.weight(.semibold))
-                            Text(AppLanguage.shared.s("공유", "Share"))
+                            Text(AppLanguage.shared.s("구간 내보내기", "Export Splits"))
                                 .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.9)
                         }
                         .foregroundStyle(Theme.violet)
                         .padding(.horizontal, 10)
@@ -2525,7 +2537,7 @@ private struct StorySection: View {
                 shoePicker
             }
             HStack {
-                Label(AppLanguage.shared.s("스토리", "Story"), systemImage: "quote.bubble")
+                Label(AppLanguage.shared.s("오늘의 러닝 일기", "Running Journal"), systemImage: "quote.bubble")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -2889,7 +2901,7 @@ private struct StoryEditorSheet: View {
                     .padding(16)
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("스토리", "Story"))
+            .navigationTitle(AppLanguage.shared.s("러닝 일기", "Running Journal"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

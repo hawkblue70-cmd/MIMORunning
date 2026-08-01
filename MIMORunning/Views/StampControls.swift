@@ -427,27 +427,30 @@ struct StampControlsView: View {
 
     @ViewBuilder
     private func swatchCircle(_ mode: StampColorMode) -> some View {
-        // stampOutline: outline=foregroundStyle(글자색), fill=shadow(테두리/채움 효과색)
-        // 원안=outline(글자색), 바깥 링=fill(테두리색)
+        // 원안=fill색(그림자/채움), 바깥 링=outline색(글자색) — stampColors 반환값과 동일
         switch mode {
         case .auto:
             Circle().fill(Color(hex: "3A3A4A"))   // 자동: "A" 텍스트는 colorSwatch에서 오버레이
         case .brand:
-            Circle().fill(Theme.violet)
-                .padding(3)
-                .background(Circle().fill(Color.white))
-        case .ink:
+            // fill=white, outline=violet → 흰 원 + 바이올렛 링
             Circle().fill(Color.white)
                 .padding(3)
-                .background(Circle().fill(Color.black))
+                .background(Circle().fill(Theme.violet))
+        case .ink:
+            // fill=black, outline=white → 검정 원 + 흰 링
+            Circle().fill(Color.black)
+                .padding(3)
+                .background(Circle().fill(Color.white))
         case .lime:
-            Circle().fill(Color(hex: "14122B"))
+            // fill=lime, outline=navy → 라임 원 + 남색 링
+            Circle().fill(Color(hex: "C6FF00"))
                 .padding(3)
-                .background(Circle().fill(Color(hex: "C6FF00")))
+                .background(Circle().fill(Color(hex: "14122B")))
         case .red:
-            Circle().fill(Color(hex: "14122B"))
+            // fill=red, outline=navy → 레드 원 + 남색 링
+            Circle().fill(Color(hex: "FF2E2E"))
                 .padding(3)
-                .background(Circle().fill(Color(hex: "FF2E2E")))
+                .background(Circle().fill(Color(hex: "14122B")))
         }
     }
 }
@@ -461,7 +464,7 @@ struct StampVisualPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private let naturalW: CGFloat = 300
-    private let naturalH: CGFloat = 280
+    private let naturalH: CGFloat = 180
 
     // 현재 activity 데이터가 충족하지 못하는 템플릿 제외 + isVideoOnly 필터
     private var filteredTemplates: [StampTemplate] {
@@ -549,6 +552,9 @@ private struct StampPreviewCell: View {
     let naturalH: CGFloat
     let onTap:    () -> Void
 
+    @State private var cachedImg: UIImage? = nil
+    private var renderKey: String { "\(tpl.rawValue)-\(vm.colorMode.rawValue)" }
+
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 6) {
@@ -556,20 +562,18 @@ private struct StampPreviewCell: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Color(hex: "1A1828"))
 
-                    StampCard(
-                        data: data,
-                        template: tpl,
-                        colorMode: vm.colorMode,
-                        position: vm.position,
-                        sizeLevel: .large,
-                        isBrightBackground: false,
-                        showHeartRate: false,
-                        showCalories: false
-                    )
-                    .frame(width: naturalW, height: naturalH)
-                    .scaleEffect(scale, anchor: .center)
-                    .frame(width: naturalW * scale, height: naturalH * scale)
-                    .clipped()
+                    if let img = cachedImg {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: cellW, height: cellH)
+                            .clipped()
+                    } else {
+                        // 렌더 완료 전에는 단순 플레이스홀더만 표시.
+                        // 라이브 StampCard는 shadow 8개 × 텍스트 수 = 스크롤 중 심각한 MainActor 블로킹.
+                        ProgressView()
+                            .tint(.white.opacity(0.25))
+                    }
                 }
                 .frame(width: cellW, height: cellH)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -596,5 +600,44 @@ private struct StampPreviewCell: View {
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.15), value: isSel)
+        .task(id: renderKey) {
+            await renderCell()
+        }
+    }
+
+    @MainActor
+    private func renderCell() async {
+        cachedImg = nil
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+
+        // MainActor에서 뷰 값 생성 (vm 접근 필요)
+        // showTextOutline: false → 텍스트 1개당 shadow 8개 제거 → 렌더 2~4x 빠름
+        let card = StampCard(
+            data: data,
+            template: tpl,
+            colorMode: vm.colorMode,
+            position: vm.position,
+            sizeLevel: .large,
+            isBrightBackground: false,
+            showHeartRate: false,
+            showCalories: false,
+            showTextOutline: false
+        )
+        .frame(width: naturalW, height: naturalH)
+        .background(Color(hex: "1A1828"))
+
+        // ImageRenderer를 백그라운드 스레드에서 실행 → MainActor 해방 → 스크롤 끊김 없음
+        // Swift 5 모드: @MainActor 경고는 발생하지만 컴파일·실행 정상 (Core Graphics는 스레드 안전)
+        let img: UIImage? = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let renderer = ImageRenderer(content: card)
+                renderer.scale = 2.0
+                continuation.resume(returning: renderer.uiImage)
+            }
+        }
+
+        guard !Task.isCancelled else { return }
+        cachedImg = img
     }
 }

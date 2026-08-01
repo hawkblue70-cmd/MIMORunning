@@ -298,51 +298,51 @@ enum RunChartBuilder {
         let storedStrAvg   = detail?.avgStrideLength
         let storedVocAvg   = detail?.avgVerticalOscillation
 
-        // Heart rate — 2–98 percentile clamp, median 9 → mean 7
+        // Heart rate — 2–98 percentile clamp, median 15 → mean 13
         let hrRaw = rawPoints(hrSamples.map { (offset: $0.offset, value: Double($0.bpm)) })
         if let s = makeSmoothedSeries(layer: .heartRate, rawPoints: hrRaw,
-                                      smoothWindow: 9,
+                                      smoothWindow: 15,
                                       clamp: .percentile(lo: 0.02, hi: 0.98),
-                                      meanWindow: 7) {
+                                      meanWindow: 13) {
             allSeries[.heartRate] = storedHRAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Cadence — hard clamp 140–220, 상하 3% percentile 제거 → median 9 → mean 5
+        // Cadence — hard clamp 140–220, 상하 3% percentile 제거 → median 15 → mean 9
         let cadRaw = rawPoints(cadenceSamples)
         if let s = makeSmoothedSeries(layer: .cadence, rawPoints: cadRaw,
-                                      smoothWindow: 9,
+                                      smoothWindow: 15,
                                       clamp: .hard(min: 140, max: 220),
                                       secondaryClamp: .percentile(lo: 0.01, hi: 0.92),
-                                      meanWindow: 5) {
+                                      meanWindow: 9) {
             allSeries[.cadence] = storedCadAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Power — 5–95 percentile clamp, median 9 → mean 5
+        // Power — 5–95 percentile clamp, median 15 → mean 9
         let powRaw = rawPoints(powerSamples)
         if let s = makeSmoothedSeries(layer: .power, rawPoints: powRaw,
-                                      smoothWindow: 9,
+                                      smoothWindow: 15,
                                       clamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 5) {
+                                      meanWindow: 9) {
             allSeries[.power] = storedPowAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Stride — hard clamp 0.4–1.6 m → 5–95 percentile → median 9 → mean 5
+        // Stride — hard clamp 0.4–1.6 m → 5–95 percentile → median 15 → mean 9
         let strRaw = rawPoints(strideSamples)
         if let s = makeSmoothedSeries(layer: .strideLength, rawPoints: strRaw,
-                                      smoothWindow: 9,
+                                      smoothWindow: 15,
                                       clamp: .hard(min: 0.4, max: 1.6),
                                       secondaryClamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 5) {
+                                      meanWindow: 9) {
             allSeries[.strideLength] = storedStrAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Vert osc — hard clamp 4–16 cm → 5–95 percentile → median 9 → mean 5
+        // Vert osc — hard clamp 4–16 cm → 5–95 percentile → median 15 → mean 9
         let vocRaw = rawPoints(vertOscSamples)
         if let s = makeSmoothedSeries(layer: .verticalOsc, rawPoints: vocRaw,
-                                      smoothWindow: 9,
+                                      smoothWindow: 15,
                                       clamp: .hard(min: 4, max: 16),
                                       secondaryClamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 5) {
+                                      meanWindow: 9) {
             allSeries[.verticalOsc] = storedVocAvg.map { s.withAvg($0) } ?? s
         }
 
@@ -527,19 +527,23 @@ enum RunChartBuilder {
         if meanWindow > 1 { smoothed = movingMean(smoothed, window: meanWindow) }
         let lastValue = smoothed.last ?? doubleClamped.reduce(0, +) / Double(doubleClamped.count)
 
+        // Chart normalization: smoothed range (line fills chart height naturally)
         let smMin   = smoothed.min()!
         let smMax   = smoothed.max()!
         let smRange = smMax - smMin
         let smAvg   = smoothed.reduce(0, +) / Double(smoothed.count)
 
-        // Stats는 스무딩된 라인 기준 — 타일이 차트에 보이는 값과 항상 일치
+        // Stats display: clamped raw data = actual HealthKit range, not smoothed
+        let rawMin = doubleClamped.min()!
+        let rawMax = doubleClamped.max()!
+
         let points = zip(rawPoints, smoothed).map { (rp, sv) -> RunChartPoint in
             RunChartPoint(km: rp.km, value: sv,
                           norm: smRange > 0 ? (sv - smMin) / smRange : 0.5)
         }
 
         return RunChartSeries(layer: layer, points: points,
-                              minValue: smMin, maxValue: smMax, avgValue: smAvg,
+                              minValue: rawMin, maxValue: rawMax, avgValue: smAvg,
                               lastValue: lastValue)
     }
 

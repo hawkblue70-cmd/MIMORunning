@@ -1811,6 +1811,16 @@ private struct DailyDistanceChart: View {
 private struct PaceTrendChart: View {
     let points: [PacePoint]
 
+    private var yDomain: ClosedRange<Double> {
+        guard points.count >= 2 else { return 5...15 }
+        let speeds = points.map(\.speedKmh)
+        let minSpeed = speeds.min() ?? 5
+        let maxSpeed = speeds.max() ?? 15
+        let spread = max(maxSpeed - minSpeed, 1.0)
+        let padding = spread * 0.4
+        return (minSpeed - padding)...(maxSpeed + padding)
+    }
+
     var body: some View {
         Chart(points) { pt in
             AreaMark(
@@ -1836,6 +1846,7 @@ private struct PaceTrendChart: View {
             .foregroundStyle(Theme.pace)
             .symbolSize(36)
         }
+        .chartYScale(domain: yDomain)
         .frame(height: 180)
         .chartXAxis {
             AxisMarks(values: .stride(by: .day, count: strideCount)) { value in
