@@ -118,6 +118,7 @@ private enum OneLinerListLabels {
 
 private struct ActivityListContent: View {
     var manager: HealthKitManager
+    @EnvironmentObject private var engine: MREngineStore
     @Environment(RaceDetector.self) private var raceDetector
     @Environment(\.modelContext) private var modelContext
     private let pro = ProManager.shared
@@ -240,6 +241,12 @@ private struct ActivityListContent: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 4)
+
+                        if let rc = engine.raceDayCard, MRRaceDayView.shouldShow(rc) {
+                            MRRaceDayView(card: rc)
+                        }
+
+                        MRTodayCardView()
 
                         if !pro.isPro {
                             TrialBannerView(

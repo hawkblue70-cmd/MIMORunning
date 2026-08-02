@@ -26,6 +26,7 @@ private struct SelectedSummaryStats: Identifiable {
 struct MeView: View {
     var manager: HealthKitManager
 
+    @EnvironmentObject private var engine: MREngineStore
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @Environment(RaceDetector.self) private var raceDetector
     @Query(sort: \MyPlannedRace.dateString) private var plannedRaces: [MyPlannedRace]
@@ -204,6 +205,8 @@ struct MeView: View {
                         miniMeSection
                         plannedRacesSection
                         raceGoalsSection
+                        MRRacePlanSection()
+                            .padding(.horizontal, 16)
                         statsSection
                         shoesSection
                         milestonesSection
@@ -216,7 +219,7 @@ struct MeView: View {
             .navigationTitle(AppLanguage.shared.s("나", "Me"))
             .navigationBarTitleDisplayMode(.large)
         }
-        .task { refreshShoeKmCache(); refreshStatsAndBadges(); await refreshFormMetrics(); deletePastRaces() }
+        .task { syncAndRecompute(); refreshShoeKmCache(); refreshStatsAndBadges(); await refreshFormMetrics(); deletePastRaces() }
         .onChange(of: manager.activities.count) {
             refreshShoeKmCache()
             refreshStatsAndBadges()
@@ -224,6 +227,11 @@ struct MeView: View {
         }
         .onChange(of: allStories.count) { refreshShoeKmCache() }
         .onChange(of: useMiles) { refreshStatsAndBadges() }
+        .onChange(of: racePlanKey) { syncAndRecompute() }
+        .onChange(of: goalTime10k) { syncAndRecompute() }
+        .onChange(of: goalTimeHalf) { syncAndRecompute() }
+        .onChange(of: goalTimeFull) { syncAndRecompute() }
+        .onChange(of: engine.isReady) { if engine.isReady { syncAndRecompute() } }
         .sheet(isPresented: $showRaceSearch) {
             RaceSearchSheet(raceDetector: raceDetector, existing: Set(plannedRaces.map { $0.raceName + $0.dateString }))
         }
@@ -319,6 +327,33 @@ struct MeView: View {
             }
             .padding(.horizontal, 16)
         }
+    }
+
+    // MARK: - Engine sync
+
+    private var racePlanKey: String {
+        plannedRaces.map { "\($0.dateString)-\(Int($0.selectedDistanceKm * 1000))" }.joined(separator: "|")
+    }
+
+    private func syncAndRecompute() {
+        engine.userInput.races = plannedRaces.compactMap { mrTargetRace(from: $0) }
+        engine.userInput.goals = parseGoals()
+        engine.recomputePlans()
+    }
+
+    private func parseGoals() -> MRGoals {
+        func sec(_ s: String) -> Int? {
+            guard !s.isEmpty else { return nil }
+            let p = s.split(separator: ":").compactMap { Int($0) }
+            switch p.count {
+            case 3: return p[0] * 3600 + p[1] * 60 + p[2]
+            case 2: return p[0] * 60 + p[1]
+            default: return nil
+            }
+        }
+        return MRGoals(tenKSec: sec(goalTime10k),
+                       halfSec: sec(goalTimeHalf),
+                       fullSec: sec(goalTimeFull))
     }
 
     private func goalString(for kind: RaceGoalKind) -> String {

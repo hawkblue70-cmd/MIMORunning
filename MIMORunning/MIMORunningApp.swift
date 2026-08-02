@@ -6,6 +6,7 @@ import OSLog
 struct MIMORunningApp: App {
     @State private var raceDetector = RaceDetector()
     @State private var miniMeStore = CustomMiniMeStore()
+    @StateObject private var engine = MREngineStore()
 
     init() {
         FontLoader.registerBundledFonts()
@@ -41,9 +42,11 @@ struct MIMORunningApp: App {
         WindowGroup {
             PhoneWidthWrapper {
                 ContentView()
+                    .environmentObject(engine)
                     .environment(raceDetector)
                     .environment(miniMeStore)
-                    .environment(AppLanguage.shared)
+                    .task { await engine.refresh() }
+                    .preferredColorScheme(.dark)
             }
         }
         .modelContainer(Self.container)

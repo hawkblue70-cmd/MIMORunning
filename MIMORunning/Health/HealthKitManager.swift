@@ -83,6 +83,19 @@ class HealthKitManager {
         }
     }
 
+    /// 최근 4주 근력운동 주당 횟수. workoutCache에서 계산 — HealthKit 재조회 없음.
+    var strengthPerWeek4w: Double {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -28, to: Date()) ?? Date()
+        let strengthTypes: Set<HKWorkoutActivityType> = [
+            .traditionalStrengthTraining, .functionalStrengthTraining,
+            .coreTraining, .crossTraining,
+        ]
+        let count = workoutCache.values.filter {
+            strengthTypes.contains($0.workoutActivityType) && $0.startDate >= cutoff
+        }.count
+        return Double(count) / 4.0
+    }
+
     enum AuthStatus {
         case notDetermined, authorized, denied
     }

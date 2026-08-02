@@ -71,6 +71,7 @@ private struct MilestoneEvent: Identifiable {
 
 struct GrowthView: View {
     var manager: HealthKitManager
+    @EnvironmentObject private var engine: MREngineStore
 
     @State private var showTimeMileage: Bool = false
     @State private var showMonthly: Bool = false
@@ -193,6 +194,9 @@ struct GrowthView: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
+                            MRBacktestView(rows: engine.backtest)
+                            MRHealthMetricsView(m: engine.healthMetrics)
+                            MRDriftView(drift: engine.drift)
                             growthInsightBanner
                             weeklySection
                             heatmapSection
@@ -205,6 +209,10 @@ struct GrowthView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
+                    }
+                    .onAppear {
+                        engine.computeBacktestIfNeeded()
+                        engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w)
                     }
                 }
             }

@@ -11,8 +11,19 @@
 		EEADA2AA2FEA21CF000BDF08 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EEADA2A92FEA21CF000BDF08 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		EE2ED4DF301E355700DE49A8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = EE9799382FE54EFD005A90B8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EE97993F2FE54EFD005A90B8;
+			remoteInfo = MIMORunning;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		EE25E4802FEAC714009C7CEA /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
+		EE2ED4DB301E355700DE49A8 /* MIMORunningTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MIMORunningTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EE9799402FE54EFD005A90B8 /* MIMORunning.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MIMORunning.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EEADA2A92FEA21CF000BDF08 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -28,6 +39,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		EE2ED4DC301E355700DE49A8 /* MIMORunningTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MIMORunningTests;
+			sourceTree = "<group>";
+		};
 		EE9799422FE54EFD005A90B8 /* MIMORunning */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -39,6 +55,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		EE2ED4D8301E355700DE49A8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EE97993D2FE54EFD005A90B8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -53,6 +76,7 @@
 			isa = PBXGroup;
 			children = (
 				EE9799422FE54EFD005A90B8 /* MIMORunning */,
+				EE2ED4DC301E355700DE49A8 /* MIMORunningTests */,
 				EE9799412FE54EFD005A90B8 /* Products */,
 				EEADA2A92FEA21CF000BDF08 /* PrivacyInfo.xcprivacy */,
 				EE25E4802FEAC714009C7CEA /* AppLanguage.swift */,
@@ -63,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				EE9799402FE54EFD005A90B8 /* MIMORunning.app */,
+				EE2ED4DB301E355700DE49A8 /* MIMORunningTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +95,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		EE2ED4DA301E355700DE49A8 /* MIMORunningTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EE2ED4E1301E355700DE49A8 /* Build configuration list for PBXNativeTarget "MIMORunningTests" */;
+			buildPhases = (
+				EE2ED4D7301E355700DE49A8 /* Sources */,
+				EE2ED4D8301E355700DE49A8 /* Frameworks */,
+				EE2ED4D9301E355700DE49A8 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				EE2ED4E0301E355700DE49A8 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				EE2ED4DC301E355700DE49A8 /* MIMORunningTests */,
+			);
+			name = MIMORunningTests;
+			packageProductDependencies = (
+			);
+			productName = MIMORunningTests;
+			productReference = EE2ED4DB301E355700DE49A8 /* MIMORunningTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		EE97993F2FE54EFD005A90B8 /* MIMORunning */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = EE97994B2FE54EFD005A90B8 /* Build configuration list for PBXNativeTarget "MIMORunning" */;
@@ -99,9 +147,13 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2650;
+				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2650;
 				TargetAttributes = {
+					EE2ED4DA301E355700DE49A8 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = EE97993F2FE54EFD005A90B8;
+					};
 					EE97993F2FE54EFD005A90B8 = {
 						CreatedOnToolsVersion = 26.5;
 					};
@@ -122,11 +174,19 @@
 			projectRoot = "";
 			targets = (
 				EE97993F2FE54EFD005A90B8 /* MIMORunning */,
+				EE2ED4DA301E355700DE49A8 /* MIMORunningTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		EE2ED4D9301E355700DE49A8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EE97993E2FE54EFD005A90B8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -138,6 +198,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		EE2ED4D7301E355700DE49A8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EE97993C2FE54EFD005A90B8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -148,7 +215,57 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		EE2ED4E0301E355700DE49A8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EE97993F2FE54EFD005A90B8 /* MIMORunning */;
+			targetProxy = EE2ED4DF301E355700DE49A8 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		EE2ED4E2301E355700DE49A8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 42LZ7F8332;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.denny.MIMORunningTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MIMORunning.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MIMORunning";
+			};
+			name = Debug;
+		};
+		EE2ED4E3301E355700DE49A8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 42LZ7F8332;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.denny.MIMORunningTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MIMORunning.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MIMORunning";
+			};
+			name = Release;
+		};
 		EE9799492FE54EFD005A90B8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -353,6 +470,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		EE2ED4E1301E355700DE49A8 /* Build configuration list for PBXNativeTarget "MIMORunningTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EE2ED4E2301E355700DE49A8 /* Debug */,
+				EE2ED4E3301E355700DE49A8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		EE97993B2FE54EFD005A90B8 /* Build configuration list for PBXProject "MIMORunning" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
