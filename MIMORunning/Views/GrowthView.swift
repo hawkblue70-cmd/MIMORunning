@@ -90,7 +90,6 @@ struct GrowthView: View {
     @State private var monthlyMinsCache: [MonthlyMins] = []
     @State private var pacePointsCache: [PacePoint] = []
     @State private var heatmapColumnsCache: [WeekColumn] = []
-    @State private var weekStreakCache: Int = 0
     @State private var metricAnalyses: [TrendMetric: (direction: TrendDirection, changeRatio: Double)] = [:]
     @State private var metricDataPoints: [TrendMetric: [(date: Date, value: Double)]] = [:]
     @State private var weeklySparkData: [(metric: TrendMetric, points: [(date: Date, value: Double)])] = []
@@ -157,7 +156,6 @@ struct GrowthView: View {
         pacePointsCache  = pacePoints()
         let cols = heatmapColumns()
         heatmapColumnsCache = cols
-        weekStreakCache  = weekStreak()
 
         // Pace/HR trend — 날짜 기반(-14일): 6개 폼 지표·구성 게이트와 동일 윈도우
         let trendWindow14 = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
@@ -194,17 +192,22 @@ struct GrowthView: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
-                            MRBacktestView(rows: engine.backtest)
+                            // ⚠ 성장 탭의 주어는 **사용자**다. 맨 위가 앱의 성적표면 안 된다.
+                            //   다만 대회 직후 2주는 "앱이 맞췄나"가 가장 궁금한 시점이므로 위로 올린다.
+                            let justRaced = engine.backtest.contains {
+                                (Calendar.current.dateComponents([.day], from: $0.date, to: Date()).day ?? 99) <= 14
+                            }
+                            if justRaced { MRBacktestView(rows: engine.backtest) }
                             MRHealthMetricsView(m: engine.healthMetrics)
                             MRDriftView(drift: engine.drift)
-                            growthInsightBanner
-                            weeklySection
                             heatmapSection
+                            weeklySection
                             paceSection
                             weekSummarySection
                             metricTrendsSection
                             prSection
                             journeySection
+                            if !justRaced { MRBacktestView(rows: engine.backtest) }
                             Spacer(minLength: 32)
                         }
                         .padding(.horizontal, 16)
@@ -249,7 +252,7 @@ struct GrowthView: View {
                 mileageSubtitle: mileageSubtitle,
                 barData: currentBarData,
                 heatmapColumns: shareHeatmapColumns,
-                streak: weekStreakCache,
+                streak: engine.streakWeeks,
                 activeDays: activeDaysInHeatmap(columns: heatmapColumnsCache),
                 heatmapWeekCount: Self.heatmapWeeks,
                 screenTitle: mileageScreenTitle
@@ -261,7 +264,7 @@ struct GrowthView: View {
                 km: weeklyKmsCache.last?.km ?? 0,
                 mins: weeklyMinsCache.last?.mins ?? 0,
                 count: thisWeekRunCount,
-                streak: weekStreakCache,
+                streak: engine.streakWeeks,
                 insightText: weeklyCommentText.isEmpty ? nil : weeklyCommentText,
                 insightSymbol: style?.symbol,
                 insightColor: style?.color,
@@ -556,14 +559,65 @@ struct GrowthView: View {
     }
 
     private var heatmapSection: some View {
+        let L = AppLanguage.shared
         let columns = heatmapColumnsCache
-        let streak = weekStreakCache
+        let streak = engine.streakWeeks
         let activeDays = activeDaysInHeatmap(columns: columns)
-        let summary = heatmapSummary(streak: streak, activeDays: activeDays)
-        return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: AppLanguage.shared.s("연속 달리기", "Streak"), subtitle: summary)
+        let weekKm = weeklyKmsCache.last?.km ?? 0
+        let prevKm = weeklyKmsCache.dropLast().last?.km ?? 0
+        let weekDelta: Double? = prevKm > 0 ? weekKm - prevKm : nil
+        let weekCount = thisWeekRunCount
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(L.s("연속 달리기", "Streak"))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+
+            // ⚠ 한 줄 요약 대신 라벨+값 배치 — 글씨 크기를 유지하면서 숫자가 충돌하지 않는다.
+            HStack(alignment: .top, spacing: 28) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L.s("연속", "Streak"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.4))
+                    Text(streak >= 2 ? L.s("\(streak)주", "\(streak)wk") : L.s("1주", "1wk"))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L.s("최근 \(Self.heatmapWeeks)주간", "\(Self.heatmapWeeks) wks"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.4))
+                    Text(L.s("\(activeDays)일", "\(activeDays)d"))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L.s("이번 주", "This Week"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.4))
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Text(L.s("\(weekCount)회 \(Int(weekKm))km", "\(weekCount)× \(Int(weekKm))km"))
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                        if let d = weekDelta, abs(d) >= 1 {
+                            Text(String(format: "%@%.0f", d >= 0 ? "+" : "", d))
+                                .font(.system(size: 12))
+                                .foregroundStyle(d >= 0
+                                    ? Color(red: 0.30, green: 0.80, blue: 0.55)
+                                    : .white.opacity(0.45))
+                        }
+                    }
+                }
+                Spacer()
+            }
+            .padding(.top, 4)
+
             RunHeatmap(columns: columns)
         }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private var thisWeekRunCount: Int { thisWeekRunCountCache }
@@ -582,7 +636,7 @@ struct GrowthView: View {
         let km   = weeklyKmsCache.last?.km ?? 0
         let mins = weeklyMinsCache.last?.mins ?? 0
         let count  = thisWeekRunCount
-        let streak = weekStreakCache
+        let streak = engine.streakWeeks
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
@@ -771,7 +825,7 @@ struct GrowthView: View {
 
     private func computeGrowthInsightText() -> String? {
         let L = AppLanguage.shared
-        let streak = weekStreakCache
+        let streak = engine.streakWeeks
         if streak >= 3 {
             return L.s("\(streak)주 연속 달리고 있어요 — 루틴이 자리 잡고 있어요",
                        "\(streak) weeks in a row — you're building a routine")
@@ -925,7 +979,7 @@ struct GrowthView: View {
             paceChangeRatio:       paceAnalysisCache.changeRatio,
             hrChangeRatio:         hrAnalysisCache.changeRatio,
             metricChangeRatios:    results.mapValues { $0.changeRatio },
-            weekStreak:            weekStreakCache,
+            weekStreak:            engine.streakWeeks,
             runCount:              thisWeekRuns.count,
             thisWeekDistanceKm:    thisWeekLongestKmCache,
             thisWindowIntenseCount: thisWindowIntenseCount,
@@ -1303,24 +1357,6 @@ struct GrowthView: View {
             }
             return WeekColumn(id: monday, days: days)
         }
-    }
-
-    private func weekStreak() -> Int {
-        let cal = Calendar.current
-        let now = Date()
-        var streak = 0
-        var offset = 0
-        while offset < 52 {
-            guard let ref = cal.date(byAdding: .weekOfYear, value: -offset, to: now),
-                  let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: ref)),
-                  let we = cal.date(byAdding: .weekOfYear, value: 1, to: ws) else { break }
-            if runs.contains(where: { $0.date >= ws && $0.date < we }) {
-                streak += 1; offset += 1
-            } else {
-                break
-            }
-        }
-        return streak
     }
 
     private func activeDaysInHeatmap(columns: [WeekColumn]) -> Int {

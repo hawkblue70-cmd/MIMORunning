@@ -269,38 +269,53 @@ struct MRWeekTable: View {
 struct MRGoalLinksView: View {
     let links: [MRGoalLink]
 
+    // ⚠ 다 맞으면 그리지 않는다.
+    //   "문제 없습니다"를 말하려고 카드를 쓰지 않는다 —
+    //   묻지도 않은 질문에 답하는 셈이 된다.
+    private var problems: [MRGoalLink] { links.filter { !$0.inRange } }
+
     var body: some View {
-        if !links.isEmpty {
+        if !problems.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text("목표끼리 앞뒤가 맞나요")
+                Text("목표 하나가 나머지와 어긋나 있습니다")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
-                ForEach(links, id: \.name) { l in
+
+                // 어긋난 것만 보여준다. 맞는 것까지 나열할 이유가 없다.
+                ForEach(problems, id: \.name) { l in
                     HStack {
                         Text(l.name).font(.system(size: 13))
                             .foregroundStyle(.white.opacity(0.6))
                         Spacer()
                         Text(l.note).font(.system(size: 12))
-                            .foregroundStyle(l.isImpossible ? mrWarn : (l.inRange ? mrGood : mrWarn))
+                            .foregroundStyle(l.isImpossible ? mrWarn : mrAccent)
                     }
                 }
-                if links.contains(where: \.isImpossible) {
-                    Text("셋 중 하나가 나머지와 어긋나 있습니다. 서로 맞는 두 목표가 가리키는 값을 기준으로 보시면 됩니다.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color(red: 0.95, green: 0.68, blue: 0.25))
-                        .padding(.top, 8)
+
+                // 병목이 어느 목표인지 짚어준다 — 이게 이 카드의 존재 이유다.
+                if let bottleneck = bottleneckName {
+                    Text("\(bottleneck) 목표를 조정하시면 나머지 둘과 맞아떨어집니다.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.5))
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text("세 거리 목표 사이에는 암묵적인 관계가 있습니다. 하나가 유독 야심차면 그게 병목이 됩니다.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.3))
-                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(mrCard)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
+    }
+
+    /// 세 관계 중 두 개에 등장하는 거리가 병목이다.
+    private var bottleneckName: String? {
+        var count: [String: Int] = [:]
+        for p in problems {
+            for part in p.name.components(separatedBy: " → ") {
+                count[part.trimmingCharacters(in: .whitespaces), default: 0] += 1
+            }
+        }
+        return count.filter { $0.value >= 2 }.max { $0.value < $1.value }?.key
     }
 }
 

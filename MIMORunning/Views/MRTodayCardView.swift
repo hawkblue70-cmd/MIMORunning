@@ -2,7 +2,6 @@ import SwiftUI
 
 struct MRTodayCardView: View {
     @EnvironmentObject var engine: MREngineStore
-    @State private var showBasis = false
 
     var body: some View {
         if let c = engine.todayCard {
@@ -20,56 +19,26 @@ struct MRTodayCardView: View {
                     .foregroundStyle(.white.opacity(0.45))
                     .padding(.top, 4)
 
-                Divider()
-                    .overlay(Color.white.opacity(0.08))
-                    .padding(.vertical, 18)
-
-                // ② 오늘 + 목표 연결
-                Text(c.headline)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                if let link = c.linkLine {
-                    Text(link)
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color(red: 0.55, green: 0.42, blue: 0.98))
-                        .padding(.top, 8)
-                }
-
-                // ③ 짚어보기 — 없으면 아무것도 그리지 않는다.
-                //   "특별한 조언 없음" 같은 문구를 넣지 말 것.
-                //   빈 자리를 결핍으로 만들지 않기 위해서다.
-                if let obs = c.observation {
+                // ⚠ 구분선은 아래에 내용이 있을 때만 그린다.
+                //   sessionLine과 linkLine이 둘 다 nil이면(안 뛴 날 + 등록 대회 없음)
+                //   빈 구분선이 남아 카드 아래쪽이 텅 빈다.
+                if c.sessionLine != nil || c.linkLine != nil {
                     Divider()
                         .overlay(Color.white.opacity(0.08))
                         .padding(.vertical, 18)
 
-                    Text(obs)
-                        .font(.system(size: 15))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if let basis = c.observationBasis {
-                        Button {
-                            withAnimation(.easeOut(duration: 0.18)) { showBasis.toggle() }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(showBasis ? "근거 접기" : "왜 이렇게 나왔나요")
-                                Image(systemName: showBasis ? "chevron.up" : "chevron.down")
-                                    .font(.system(size: 9, weight: .semibold))
-                            }
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.4))
-                        }
-                        .padding(.top, 10)
-
-                        if showBasis {
-                            Text(basis)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.5))
-                                .padding(.top, 6)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                    // ② 오늘 기록 — 오늘 뛴 날에만.
+                    //   어제 러닝을 매일 보는 건 아래 목록과 중복이다.
+                    if let session = c.sessionLine {
+                        Text(session)
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                    }
+                    if let link = c.linkLine {
+                        Text(link)
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color(red: 0.55, green: 0.42, blue: 0.98))
+                            .padding(.top, c.sessionLine != nil ? 8 : 0)
                     }
                 }
             }

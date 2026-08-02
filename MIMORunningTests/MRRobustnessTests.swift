@@ -165,4 +165,37 @@ final class MRRobustnessTests: XCTestCase {
         // ★ 주간 거리가 4주치를 넘으면 미래가 샌 것이다
         XCTAssertLessThan(prof.weeklyKm4w, 8 * 4, "미래 데이터가 새어 들어왔다")
     }
+
+    // MARK: ⑩ 연속 주 — 오늘 안 뛰어도 이번 주 러닝이 있으면 끊기면 안 된다
+
+    func testStreakConsistency() {
+        // 매주 1회씩 10주 — 마지막 런은 오늘이 아니라 3일 전(주 중간)
+        // ⚠ ISO 주(월요일 시작) 기준: 3일 전 러닝은 이번 주 안에 있다.
+        //   오늘 아직 안 뛰었다고 이번 주를 0으로 보면 안 된다.
+        let runs = makeRuns(count: 10, km: 5, paceSecPerKm: 400,
+                            hr: 150, temp: 15, endingDaysAgo: 3, everyNDays: 7)
+        let s = mrActiveWeekStreak(runs: runs, asOf: Date())
+        XCTAssertGreaterThanOrEqual(s, 9, "오늘 안 뛰었다고 연속이 끊기면 안 된다")
+    }
+
+    func testStreakSundayBoundary() {
+        // 일요일에 특히 취약하다 — Calendar.current(일요일 시작)와 ISO(월요일 시작)가
+        // 이번 주 범위를 다르게 잡아 금·토 러닝이 "지난 주"로 밀릴 수 있다.
+        // mrActiveWeekStreak는 ISO 기준이므로 일요일에도 같은 주를 유지해야 한다.
+        var cal = Calendar(identifier: .iso8601)
+        cal.timeZone = .current
+        // 이번 주 월요일
+        let monday = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date()))!
+        // 이번 주 토요일(+5일)
+        let saturday = cal.date(byAdding: .day, value: 5, to: monday)!
+        // 이번 주 일요일(+6일)
+        let sunday   = cal.date(byAdding: .day, value: 6, to: monday)!
+        // 토요일에 달린 런 하나
+        let run = MRWorkout(start: saturday, durationMin: 30, distanceKm: 5,
+                            hrAvg: 150, hrMax: 175, tempC: 20, humidity: nil,
+                            indoor: false, isInterval: false)
+        // 일요일 기준으로 계산해도 이번 주 러닝이 있어야 한다
+        let s = mrActiveWeekStreak(runs: [run], asOf: sunday)
+        XCTAssertEqual(s, 1, "일요일 기준으로도 토요일 런은 이번 주에 속해야 한다")
+    }
 }

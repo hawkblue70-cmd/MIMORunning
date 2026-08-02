@@ -7,9 +7,20 @@ private let mrBtWarn   = Color(red: 0.95, green: 0.68, blue: 0.25)
 
 struct MRBacktestView: View {
     let rows: [MRBacktestRow]
+    @State private var showAll = false
 
     private var scored: [MRBacktestRow] { rows.filter { $0.predictedMin != nil } }
     private var hit: Int { scored.filter(\.inBand).count }
+    private var meanAbsErr: Double {
+        let e = scored.compactMap(\.errorPct).map(abs)
+        return e.isEmpty ? 0 : e.reduce(0, +) / Double(e.count)
+    }
+    // ⚠ 대회가 쌓이면 15건, 20건이 된다. 전부 나열하면 스크롤만 길어지고
+    //   오래된 건 의미도 줄어든다(그 사이 몸이 바뀌었다).
+    //   최근 5건만 보이고 나머지는 접는다.
+    private var visible: [MRBacktestRow] {
+        showAll ? Array(scored.reversed()) : Array(scored.reversed().prefix(5))
+    }
 
     var body: some View {
         if !scored.isEmpty {
@@ -29,14 +40,24 @@ struct MRBacktestView: View {
                     Text("/ \(scored.count)").font(.system(size: 15))
                         .foregroundStyle(.white.opacity(0.4))
                         .padding(.bottom, 4)
-                    Text("95% 구간 안").font(.system(size: 12))
+                    Text("구간 안 · 평균 오차 \(String(format: "%.1f", meanAbsErr))%")
+                        .font(.system(size: 12))
                         .foregroundStyle(.white.opacity(0.4))
                         .padding(.leading, 6).padding(.bottom, 5)
                 }
                 .padding(.top, 14)
 
-                ForEach(scored) { r in
+                ForEach(visible) { r in
                     MRBacktestRowView(row: r).padding(.top, 14)
+                }
+
+                if scored.count > 5 {
+                    Button(showAll ? "접기" : "전체 \(scored.count)건 보기") {
+                        withAnimation { showAll.toggle() }
+                    }
+                    .font(.system(size: 13))
+                    .foregroundStyle(mrBtAccent)
+                    .padding(.top, 14)
                 }
 
                 // ⚠ 예측하지 못한 건도 숨기지 않는다.

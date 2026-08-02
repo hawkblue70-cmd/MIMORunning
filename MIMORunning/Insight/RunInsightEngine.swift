@@ -301,6 +301,18 @@ enum RunInsightEngine {
         }
     }
 
+    // MARK: - HRmax 추정
+    //
+    // ⚠ 220−나이는 쓰지 않는다.
+    //   Tanaka 2001 (JACC 37(1):153–156, 351편 메타 / 18,712명):
+    //   220−나이는 50대 이상에서 체계적으로 과소추정한다.
+    //   우선순위: (1) 엔진이 관측한 값, (2) 208−0.7×나이(Tanaka), (3) nil.
+    private static func estimatedHRMax(hrMax: Double?, age: Int?) -> Int? {
+        if let h = hrMax { return Int(h.rounded()) }
+        guard let a = age else { return nil }
+        return Int((208.0 - 0.7 * Double(a)).rounded())
+    }
+
     // MARK: - Insights (main entry point)
 
     static func insights(
@@ -310,7 +322,11 @@ enum RunInsightEngine {
         age: Int?,
         isMale: Bool?,
         restingHR: Int?,
-        hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+        hrSamples: [(offset: TimeInterval, bpm: Int)] = [],
+        hrMax: Double? = nil,
+        lt1HR: Double? = nil,
+        lt1SD: Double = 0,
+        easyCeilingHR: Double? = nil
     ) -> (insights: [RunInsight], segmentSource: RunSegmentSource, fadeStartKm: Double?) {
         let base        = Self.baseline(for: activity, history: history)
         let workoutType = detail?.workoutType ?? .general
@@ -356,7 +372,7 @@ enum RunInsightEngine {
 
         case .easy:
             let generators: [() -> RunInsight?] = [
-                { easyOverpaceInsight(activity: activity, age: age) },
+                { easyOverpaceInsight(activity: activity, age: age, hrMax: hrMax) },
                 { environmentInsight(activity: activity) },
                 { cardioInsight(detail: detail, age: age, isMale: isMale) },
                 { loadInsight(baseline: base) },
@@ -366,7 +382,7 @@ enum RunInsightEngine {
             }
 
         case .longRun, .lsd:
-            let mhrLL = age.map { 220 - $0 }
+            let mhrLL = estimatedHRMax(hrMax: hrMax, age: age)
             let generators: [() -> RunInsight?] = [
                 { cardiacDriftInsight(activity: activity, hrSamples: hrSamples, category: .efficiency) },
                 { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrLL)
@@ -391,7 +407,7 @@ enum RunInsightEngine {
             }
 
         case .distanceRun:
-            let mhrDR = age.map { 220 - $0 }
+            let mhrDR = estimatedHRMax(hrMax: hrMax, age: age)
             let generators: [() -> RunInsight?] = [
                 { distanceRunInsight(activity: activity, baseline: base) },
                 { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrDR)
@@ -406,10 +422,11 @@ enum RunInsightEngine {
         default:
             appendGeneralInsights(into: &results, activity: activity, detail: detail,
                                   history: history, base: base, age: age, isMale: isMale,
-                                  hrSamples: hrSamples)
+                                  hrSamples: hrSamples, hrMax: hrMax,
+                                  lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR)
         }
 
-        let maxHRForFade = age.map { 220 - $0 }
+        let maxHRForFade = estimatedHRMax(hrMax: hrMax, age: age)
         let fadeKm = analyzeFade(activity: activity, detail: detail, history: history,
                                  hrSamples: hrSamples, maxHR: maxHRForFade)?.fadeStartKm
         return (Array(results.prefix(4)), segSource, fadeKm)
@@ -423,12 +440,17 @@ enum RunInsightEngine {
         base: RunBaseline,
         age: Int?,
         isMale: Bool?,
-        hrSamples: [(offset: TimeInterval, bpm: Int)]
+        hrSamples: [(offset: TimeInterval, bpm: Int)],
+        hrMax: Double? = nil,
+        lt1HR: Double? = nil,
+        lt1SD: Double = 0,
+        easyCeilingHR: Double? = nil
     ) {
-        let maxHR = age.map { 220 - $0 }
+        let maxHR = estimatedHRMax(hrMax: hrMax, age: age)
         let generators: [() -> RunInsight?] = [
             { cardioInsight(detail: detail, age: age, isMale: isMale) },
-            { intensityInsight(activity: activity, detail: detail, age: age) },
+            { intensityInsight(activity: activity, detail: detail, age: age,
+                               hrMax: hrMax, lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR) },
             { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: maxHR)
               ?? enduranceInsight(detail: detail) },
             { efficiencyInsight(activity: activity, history: history) },
@@ -620,12 +642,11 @@ enum RunInsightEngine {
 
     // MARK: - Easy Run Insight
 
-    private static func easyOverpaceInsight(activity: Activity, age: Int?) -> RunInsight? {
-        guard let avgHR = activity.avgHeartRate, let age = age else { return nil }
+    private static func easyOverpaceInsight(activity: Activity, age: Int?, hrMax: Double? = nil) -> RunInsight? {
+        guard let avgHR = activity.avgHeartRate,
+              let mhr = estimatedHRMax(hrMax: hrMax, age: age), mhr > 0 else { return nil }
         let L = AppLanguage.shared
-        let maxHR  = 220 - age
-        guard maxHR > 0 else { return nil }
-        let pct    = Double(avgHR) / Double(maxHR) * 100
+        let pct    = Double(avgHR) / Double(mhr) * 100
         let pctStr = String(format: "%.0f%%", pct)
 
         if pct > 75 {
@@ -974,7 +995,11 @@ enum RunInsightEngine {
     private static func intensityInsight(
         activity: Activity,
         detail: ActivityDetail?,
-        age: Int?
+        age: Int?,
+        hrMax: Double? = nil,
+        lt1HR: Double? = nil,
+        lt1SD: Double = 0,
+        easyCeilingHR: Double? = nil
     ) -> RunInsight? {
         guard let avgHR = activity.avgHeartRate else { return nil }
         let L = AppLanguage.shared
@@ -982,17 +1007,39 @@ enum RunInsightEngine {
         var highlights: [String] = []
         var tone: InsightTone = .neutral
 
-        if let age {
-            let maxHR = 220 - age
-            guard maxHR > 0 else { return nil }
-            let pct = Double(avgHR) / Double(maxHR) * 100
+        // ⚠ LT1이 있으면 인구 평균(%HRmax)이 아니라 **본인 역치**로 말한다.
+        //   Nuuttila 2025 (n=165): LT1은 남 78.5% · 여 80.0% HRmax.
+        //   같은 82%라도 LT1이 80%면 임계 위, 84%면 임계 아래다. %HRmax는 구분 못 한다.
+        if let ceil = easyCeilingHR, let lt1 = lt1HR {
+            let text: String
+            if Double(avgHR) < ceil {
+                text = L.s(
+                    "유산소 구간 안에서 달리셨어요. 이런 날이 오래 가는 다리를 만듭니다.",
+                    "You stayed in the aerobic zone. Runs like this build lasting endurance.")
+                tone = .good
+            } else if Double(avgHR) < lt1 + lt1SD {
+                text = L.s(
+                    "이지보다 템포에 가까운 날이었습니다. 나쁜 건 아니고, 다음 한 번을 조금 느리게 잡아두면 균형이 맞아요.",
+                    "Closer to tempo than easy today. Nothing wrong with that — one easy session next time keeps the balance.")
+                tone = .neutral
+            } else {
+                text = L.s(
+                    "꽤 강하게 밀어붙이셨네요. 내일은 가볍게 가셔도 좋습니다.",
+                    "You pushed pretty hard today. Tomorrow can be an easy one.")
+                tone = .good
+            }
+            parts.append(text)
+            highlights.append("\(avgHR)bpm")
+        } else if let mhr = estimatedHRMax(hrMax: hrMax, age: age), mhr > 0 {
+            // LT1 없음 — %HRmax 폴백 (Tanaka, 엔진 관측값 우선)
+            let pct = Double(avgHR) / Double(mhr) * 100
             let zoneName: String
             switch pct {
             case ..<60:   zoneName = L.s("저강도", "low intensity")
             case 60..<70: zoneName = L.s("저강도", "low-moderate")
             case 70..<80: zoneName = L.s("중강도", "moderate");        tone = .good
-            case 80..<90: zoneName = L.s("고강도", "high intensity");   tone = .good
-            default:      zoneName = L.s("최고 강도", "max effort");    tone = .caution
+            case 80..<90: zoneName = L.s("중고강도", "moderate-high"); tone = .good
+            default:      zoneName = L.s("고강도", "high intensity");  tone = .caution
             }
             let pctStr = String(format: "%.0f%%", pct)
             parts.append(L.s(
@@ -1111,20 +1158,12 @@ enum RunInsightEngine {
         var tone: InsightTone = .good
         let cadStr = "\(cadence)"
 
-        if cadence < 175 {
-            tone = .caution
-            parts.append(L.s(
-                "케이던스 \(cadStr)은 권장 범위(175~185)보다 \(175 - cadence) 낮아요. 조금 올려볼 수 있어요.",
-                "Cadence \(cadStr) is \(175 - cadence) below the suggested range (175–185)."
-            ))
-        } else if cadence <= 185 {
-            parts.append(L.s(
-                "케이던스 \(cadStr)은 권장 범위(175~185)에 있어요.",
-                "Cadence \(cadStr) is within the suggested range (175–185)."
-            ))
-        } else {
-            parts.append(L.s("케이던스 \(cadStr)은 높은 편이에요.", "Cadence \(cadStr) is on the higher side."))
-        }
+        // ⚠ "175~185로 올려보세요"를 근거 없이 말하지 않는다.
+        //   최적 케이던스는 신장·다리길이·페이스에 따라 달라진다.
+        //   Cavanagh & Williams (1982 Med Sci Sports Exerc): 선수들은 자신에게 맞는 케이던스를 자연스럽게 선택.
+        //   Heiderscheit (2011 J Orthop Sports Phys Ther): 5–10% 증가로 하중 감소 — 목표 수치는 제시 안 함.
+        //   180spm은 Daniels의 엘리트 선수 관찰값이지, 일반 러너 처방 범위가 아니다.
+        parts.append(L.s("케이던스 \(cadStr)spm", "Cadence \(cadStr) spm"))
         highlights.append(cadStr)
 
         if let gct = detail?.avgGroundContactTime {

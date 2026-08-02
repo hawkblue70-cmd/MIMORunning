@@ -91,6 +91,7 @@ struct ActivityDetailView: View {
     @Query private var panelAllStories: [WorkoutStory]
     @Query private var panelAllShoes: [Shoe]
     @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
+    @EnvironmentObject private var engine: MREngineStore
 
     private var level: LevelBucket { manager.userLevel.bucket }
 
@@ -606,7 +607,11 @@ struct ActivityDetailView: View {
             age: userAge,
             isMale: manager.userIsMale,
             restingHR: manager.restingHeartRate,
-            hrSamples: hrSamples
+            hrSamples: hrSamples,
+            hrMax: engine.phys.hrMax?.value,
+            lt1HR: engine.phys.lt1HR?.value,
+            lt1SD: engine.phys.lt1SD,
+            easyCeilingHR: engine.phys.easyCeilingHR
         )
         runInsights = result.insights
         runSegmentSource = result.segmentSource

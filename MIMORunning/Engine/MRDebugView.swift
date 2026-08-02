@@ -185,11 +185,8 @@ struct MRDebugView: View {
                     \(c.streakLine)
                     \(c.cumulativeLine)
 
-                    \(c.headline)
+                    \(c.sessionLine ?? "(쉬는 날 — 이번 주 러닝 없음)")
                     \(c.linkLine ?? "")
-
-                    \(c.observation ?? "(③ 없음 — 그리지 않음)")
-                      └ \(c.observationBasis ?? "")
                     """
                 }
             } catch {

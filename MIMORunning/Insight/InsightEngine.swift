@@ -698,29 +698,55 @@ struct InsightEngine {
             return a.distance > avg * 1.20
         }()
 
-        let variants: [(String, String)] = isLong
-            ? [(L.s("더위 속 장거리 — 잘 해냈어요", "Long Run in the Heat — Well Done"),
-                L.s("더운 날 장거리는 심박을 더 올려요. 수분과 염분을 충분히 보충하세요",
-                    "Heat raises HR on long runs. Rehydrate and replenish electrolytes")),
-               (L.s("열기를 이겨낸 장거리", "Enduring the Heat"),
-                L.s("고온 장거리는 몸에 더 큰 자극 — 오늘 충분히 쉬세요",
-                    "Long runs in heat hit harder — make sure to rest well today")),
-               (L.s("더운 날의 긴 거리", "Distance in the Heat"),
-                L.s("고온 장거리 완주. 심박이 더 올라가는 건 정상이에요. 수분 잊지 마세요",
-                    "Distance in heat done. Elevated HR is normal — stay hydrated"))]
-            : [(L.s("더운 날 잘 뛰었어요", "Great Run in the Heat"),
-                L.s("더운 날씨엔 심박이 자연스럽게 올라요 — 수분 잊지 마세요",
-                    "Heat naturally raises HR — don't forget to hydrate")),
-               (L.s("열기 속 러닝 완료", "Run Complete in the Heat"),
-                L.s("고온에서도 완주 — 가벼운 음식과 수분으로 회복하세요",
-                    "Finished in the heat — recover with fluids and light food")),
-               (L.s("더위와 함께 달린 러닝", "Running Through the Heat"),
-                L.s("더운 날 나선 것 자체가 이미 대단해요. 충분히 수분 보충하세요",
-                    "Getting out in the heat is already impressive — keep hydrating"))]
+        // ⚠ 제안(수분·염분·회복 권고)은 조언 큐가 담당한다.
+        //   여기서 하면 근거 등급·신선도·주 5개 상한이 적용되지 않는다.
+        //   Hew-Butler 2015(EAH 3차 국제합의) 기반 수분 조언은 이미 큐에 있어
+        //   같은 주제를 근거 없이 두 번 말하게 된다.
+        //   인사이트는 관찰만 한다.
+        let title = isLong
+            ? L.s("더운 날 장거리 완주", "Long Run in the Heat — Done")
+            : L.s("더운 날 완주", "Finished in the Heat")
 
-        let idx = Int(abs(a.date.timeIntervalSinceReferenceDate)) % variants.count
-        let (title, detail) = variants[idx]
+        // 기온 비교: 현재 기온 vs 예년 이맘때(±10일 중앙값)
+        let detail: String
+        if let tempC = a.temperatureC {
+            let tempInt = Int(tempC.rounded())
+            let seasonal = Self.seasonalTempBaseline(for: a.date, prior: prior)
+            if let base = seasonal, abs(tempC - base) >= 1 {
+                let diff = Int((tempC - base).rounded())
+                let sign = diff > 0 ? "+" : ""
+                detail = L.s(
+                    "\(tempInt)°C — 예년 이맘때보다 \(sign)\(diff)도",
+                    "\(tempInt)°C — \(sign)\(diff)° vs seasonal avg"
+                )
+            } else {
+                detail = L.s("\(tempInt)°C에서 완주", "Finished at \(tempInt)°C")
+            }
+        } else {
+            detail = L.s(
+                "더운 환경에서도 예정한 거리를 소화했어요",
+                "You covered your distance despite the heat"
+            )
+        }
         return InsightResult(theme: .safety, title: title, detail: detail)
+    }
+
+    /// 예년 이맘때(±10일, 이전 연도 한정) 기온 중앙값.
+    /// 표본이 3개 미만이면 nil — 침묵이 왜곡된 비교보다 낫다.
+    private static func seasonalTempBaseline(for date: Date, prior: [Activity]) -> Double? {
+        let cal = Calendar.current
+        guard let targetDOY = cal.ordinality(of: .day, in: .year, for: date) else { return nil }
+        let currentYear = cal.component(.year, from: date)
+        let samples = prior.compactMap { a -> Double? in
+            guard let t = a.temperatureC,
+                  cal.component(.year, from: a.date) < currentYear else { return nil }
+            let doy = cal.ordinality(of: .day, in: .year, for: a.date) ?? 0
+            let diff = abs(doy - targetDOY)
+            return min(diff, 365 - diff) <= 10 ? t : nil
+        }
+        guard samples.count >= 3 else { return nil }
+        let sorted = samples.sorted()
+        return sorted[sorted.count / 2]
     }
 
     // MARK: - Tradeoff interpretation

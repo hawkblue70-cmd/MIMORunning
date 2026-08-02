@@ -48,6 +48,7 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var checks: [MRGoalCheck] = []
     @Published private(set) var planlessRaces: [MRTargetRace] = []
     @Published private(set) var advice: [MRAdvice] = []
+    @Published private(set) var streakWeeks: Int = 0
     @Published private(set) var todayCard: MRTodayCard?
     @Published private(set) var raceDayCard: MRRaceDayCard?
     @Published private(set) var backtest: [MRBacktestRow] = []
@@ -125,6 +126,9 @@ final class MREngineStore: ObservableObject {
         let sex: MRSex = sexRaw == .female ? .female : (sexRaw == .male ? .male : .unknown)
 
         runs = fetched
+        // ⚠ 연속 주는 한 곳에서만 계산한다.
+        //   홈·성장 탭·공유 카드가 같은 값을 가리켜야 사용자가 믿을 수 있다.
+        streakWeeks = mrActiveWeekStreak(runs: fetched, asOf: now)
         rhrSamples = rhr
         storedDob = dob
         storedSex = sex
