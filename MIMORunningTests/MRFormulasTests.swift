@@ -23,6 +23,6 @@ final class MRFormulasTests: XCTestCase {
     func testFormat() {
         XCTAssertEqual(mrFormatHMS(295.95), "4:55:57")
         XCTAssertEqual(mrFormatHMS(117.883), "1:57:53")
-        XCTAssertEqual(mrFormatPace(379.67), "6:20")
+        XCTAssertEqual(mrFormatPace(379.67), "6'19\"")  // 버림(Int) + '/" 기호
     }
 }

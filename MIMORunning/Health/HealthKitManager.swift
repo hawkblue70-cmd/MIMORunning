@@ -528,6 +528,30 @@ class HealthKitManager {
         UserDefaults.standard.set(dict, forKey: Self.workoutTypeCacheKey)
     }
 
+    /// engine.runs(WorkoutKit 플랜 기반)에서 인터벌 여부를 읽어 캐시에 없는 항목을 1회 보완한다.
+    /// cachedWorkoutType은 .interval만 표시하므로 인터벌 판정만 복원하면 충분하다.
+    // TODO: remove after v1.x ships (migration no longer needed)
+    func backfillIntervalTypes(from runs: [MRWorkout]) {
+        let migKey = "mimo.migration.intervalBackfill.v1"
+        guard !UserDefaults.standard.bool(forKey: migKey) else { return }
+        let intervalStarts = Set(runs.filter(\.isInterval).map(\.start))
+        var dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+        var added = 0
+        for activity in activities where activity.type == .running {
+            guard dict[activity.id.uuidString] == nil else { continue }
+            if intervalStarts.contains(activity.date) {
+                dict[activity.id.uuidString] = WorkoutType.interval.rawValue
+                added += 1
+            }
+        }
+        UserDefaults.standard.set(dict, forKey: Self.workoutTypeCacheKey)
+        UserDefaults.standard.set(true, forKey: migKey)
+        #if DEBUG
+        let total = dict.values.filter { $0 == "interval" }.count
+        print("[마이그레이션] 인터벌 백필 완료: \(added)건 추가 / 누계 \(total)건")
+        #endif
+    }
+
     /// Returns the workout type for display in the list. Checks memory → UserDefaults (persists across launches).
     func cachedWorkoutType(for activityID: UUID) -> WorkoutType? {
         let type: WorkoutType
@@ -542,6 +566,16 @@ class HealthKitManager {
     }
 
     func fetchDetail(for activityID: UUID) async -> ActivityDetail? {
+        #if DEBUG
+        // 캐시히트 여부와 관계없이 workoutTypeCache 누적 현황 출력
+        defer {
+            let _d = UserDefaults.standard
+                .dictionary(forKey: "mimo.workoutTypeCache.v1")
+                as? [String: String] ?? [:]
+            let _ic = _d.values.filter { $0 == "interval" }.count
+            print("[유형] 인터벌 \(_ic)/\(_d.count)건")
+        }
+        #endif
         if let cached = detailCache[activityID], cached.isComplete { return cached }
         if let disk = loadDetailFromDisk(activityID), disk.isComplete {
             detailCache[activityID] = disk
@@ -1705,10 +1739,9 @@ class HealthKitManager {
     /// 러닝 날짜 기준 나이. HealthKit DOB → 수동 입력 → nil 순.
     /// nil이면 존 계산 불가 → 뷰에서 안내 메시지 표시.
     private func effectiveAge(at date: Date) -> (age: Int, source: String)? {
-        if let dob = userDateOfBirth, let year = dob.year, year > 1900 {
-            let age = Calendar.current.dateComponents([.year],
-                from: Calendar.current.date(from: DateComponents(year: year, month: 6, day: 15))!,
-                to: date).year ?? 35
+        if let dob = userDateOfBirth, let year = dob.year, year > 1900,
+           let midYear = Calendar.current.date(from: DateComponents(year: year, month: 6, day: 15)) {
+            let age = Calendar.current.dateComponents([.year], from: midYear, to: date).year ?? 35
             return (max(15, age), "HealthKit DOB")
         }
         if manualAge > 0 { return (manualAge, "수동입력") }
@@ -2038,10 +2071,13 @@ class HealthKitManager {
                         let val: Double?
                         switch m {
                         case .cadence:
-                            let steps = await self.querySumInRange(.stepCount, unit: .count(), from: wStart, to: wEnd)
-                            let mins  = workout.duration / 60
-                            let spm   = mins > 0 ? steps / mins : 0
-                            val = spm > 200 ? spm / 2 : (spm > 60 ? spm : nil)
+                            // ⚠ querySumInRange는 시간 범위 내 모든 소스(iPhone·Watch·서드파티)를
+                            //   중복 합산해 실제의 2-3배가 나올 수 있다.
+                            //   queryCadence는 predicateForObjects(from: workout)으로
+                            //   워크아웃에 연결된 샘플만 읽어 중복이 없다.
+                            //   Garmin 등 비연결 워크아웃은 nil → 그 운동만 트렌드에서 빠진다.
+                            //   2배 오류로 틀린 값을 표시하는 것보다 낫다.
+                            val = await self.queryCadence(workout: workout).map { Double($0) }
                         case .power:
                             val = await self.queryAvgQuantityInRange(.runningPower, unit: .watt(), from: wStart, to: wEnd)
                         case .groundContactTime:

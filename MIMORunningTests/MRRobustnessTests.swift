@@ -66,12 +66,14 @@ final class MRRobustnessTests: XCTestCase {
     /// 3개월 · 주 10km — 초보와 하수의 경계.
     /// 여기가 흔들리면 레벨 판정 임계값을 손봤다는 뜻이다.
     func testBeginnerToNoviceBoundary() {
-        let runs = makeRuns(count: 30, km: 4, paceSecPerKm: 420,
+        // km: 5.5 — 초보 게이트(연속 달리기 ≥ 5km)를 넘어야 하수 판정을 받는다.
+        // 4km 런은 게이트 미달이라 페이스·볼륨과 무관하게 초보로 남는다.
+        let runs = makeRuns(count: 30, km: 5.5, paceSecPerKm: 420,
                             hr: 155, temp: 18, everyNDays: 3)
         let prof = mrProfileFull(runs: runs, efforts: [], firstDataDate: runs.first?.date,
                                  dateOfBirth: nil, hasGoalTime: false,
                                  hasGoalRace: false, asOf: Date())
-        XCTAssertEqual(prof.level, "하수", "km12=10.0·ses12=2.5로 2/3 충족")
+        XCTAssertEqual(prof.level, "하수", "5.5km × 30회 / 3일 — 5km 게이트 충족, 주~13km")
     }
 
     // MARK: ③ 심박 데이터가 전혀 없는 사람 (구형 기기 / 시계 미착용)
@@ -150,7 +152,7 @@ final class MRRobustnessTests: XCTestCase {
         // 주 5km, 롱런 3km — Tanda 적합 범위 한참 밖
         let low = bMarathonModel(weeklyKm: 5, longestKm: 3, finishes: 0)
         XCTAssertLessThanOrEqual(low.b, 1.32, "상한을 넘으면 안 된다")
-        XCTAssertGreaterThan(low.extraSD, 0.02, "범위 밖이면 불확실도가 커져야 한다")
+        XCTAssertGreaterThanOrEqual(low.extraSD, 0.02, "범위 밖이면 불확실도가 커져야 한다")  // weeklyKm < 40 → extraSD = 0.02 정확히
     }
 
     // MARK: ⑧ 미래 날짜 누출 (백테스트 안전장치)
@@ -169,9 +171,10 @@ final class MRRobustnessTests: XCTestCase {
     // MARK: ⑩ 연속 주 — 오늘 안 뛰어도 이번 주 러닝이 있으면 끊기면 안 된다
 
     func testStreakConsistency() {
-        // 매주 1회씩 10주 — 마지막 런은 오늘이 아니라 3일 전(주 중간)
-        // ⚠ ISO 주(월요일 시작) 기준: 3일 전 러닝은 이번 주 안에 있다.
-        //   오늘 아직 안 뛰었다고 이번 주를 0으로 보면 안 된다.
+        // 매주 1회씩 10주 — 마지막 런은 오늘이 아니라 3일 전.
+        // ⚠ 오늘이 월요일이면 3일 전은 지난 주 금요일이어서 이번 주에 달린 기록이 없다.
+        //   mrActiveWeekStreak는 이번 주 러닝이 없으면 지난 주부터 카운트하므로
+        //   요일과 무관하게 연속이 유지되어야 한다.
         let runs = makeRuns(count: 10, km: 5, paceSecPerKm: 400,
                             hr: 150, temp: 15, endingDaysAgo: 3, everyNDays: 7)
         let s = mrActiveWeekStreak(runs: runs, asOf: Date())

@@ -243,7 +243,7 @@ extension ActivityDetail: Codable {
         case altTimeOffset, altTimeAlt
     }
 
-    init(from decoder: any Decoder) throws {
+    nonisolated init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let lats = try c.decode([Double].self, forKey: .routeLat)
         let lons = try c.decode([Double].self, forKey: .routeLon)

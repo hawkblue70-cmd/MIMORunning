@@ -102,6 +102,10 @@ func mrRaceDayCard(race: MRTargetRace,
                       .map { ($0, paceMinPerM * $0 * 1000) }
     }
 
+    // 4주 평균 주간거리 — 테이퍼 주차별 권장 거리 계산에 사용
+    let cutoff28 = cal.date(byAdding: .day, value: -28, to: asOf)!
+    let vol4w = runs.filter { $0.start > cutoff28 }.compactMap(\.distanceKm).reduce(0, +) / 4.0
+
     var lines: [String] = []
     var headline = ""
 
@@ -116,6 +120,10 @@ func mrRaceDayCard(race: MRTargetRace,
         headline = "D-\(d) · 이제 쌓는 게 아니라 아끼는 시기입니다"
         lines.append("거리는 절반 가까이 줄이시되 **페이스는 그대로** 두세요. 완전히 쉬면 오히려 둔해집니다.")
         lines.append("여기서 늘려도 대회 날 몸에 남지 않습니다. 지금까지 쌓은 것이 다입니다.")
+        // ■4 테이퍼 안내 — 2주 테이퍼 기준 첫 번째 주(2주 남음), 볼륨 ~84% of 4w avg
+        lines.append(vol4w >= 5
+            ? "테이퍼 2주차 — 이번 주는 \(Int((vol4w * 0.84).rounded()))km 정도로."
+            : "테이퍼 2주차 — 이번 주는 평소의 80% 정도로.")
 
     case .finalWeek:
         headline = "D-\(d) · 마지막 한 주"
@@ -124,6 +132,10 @@ func mrRaceDayCard(race: MRTargetRace,
         if let t = base, t >= 150 {
             lines.append("보급은 시간당 \(t >= 150 ? "60~90g" : "30~60g") — 15~20분 간격으로 나누시고요.")
         }
+        // ■4 테이퍼 안내 — 2주 테이퍼 기준 두 번째 주(1주 남음), 볼륨 ~51% of 4w avg
+        lines.append(vol4w >= 5
+            ? "테이퍼 1주차 — 이번 주는 \(Int((vol4w * 0.51).rounded()))km 정도로."
+            : "테이퍼 1주차 — 이번 주는 평소의 50% 정도로.")
 
     case .eve:
         headline = "내일입니다"
@@ -140,13 +152,15 @@ func mrRaceDayCard(race: MRTargetRace,
             let pace = t * 60 / (race.distanceM / 1000)
             let cap = pace * 0.98
             // ⚠ 이 앱이 대회 당일 할 수 있는 가장 중요한 말이다.
-            //   Smyth 2018 (n=1,724,109): 첫 5km를 10% 빠르게 가면 **+37분**.
-            //   3%만 넘어도 약 11분이다. 대부분의 완주자가 여기서 무너진다.
+            //   Smyth 2018 (J Sports Analytics 4(3), n=1,724,109):
+            //   첫 5km를 10% 빠르게 가면 완주 시간 평균 +37분.
+            //   세 명 중 한 명(33%)이 첫 5km를 가장 빠른 구간으로 달렸고,
+            //   이들의 평균 과속률은 12%였다.
             lines.append("첫 5km를 \(mrFormatPace(cap))/km보다 빠르게 가지 마세요.")
-            lines.append("172만 명 기록에서 초반 10% 과속은 완주 시간을 평균 37분 늘렸습니다. 3%만 넘어도 11분입니다.")
-            lines.append("예상 평균은 \(mrFormatPace(pace))/km. 초반에 아낀 것은 후반에 돌아옵니다.")
+            lines.append("172만 명 기록에서 초반 10% 과속은 완주 시간을 평균 37분 늘렸습니다. 세 명 중 한 명이 첫 5km를 가장 빠르게 달립니다.")
+            // ■1 균등 배분 설명 — 배분표가 같은 페이스임을 명시, 네거티브 스플릿 암시 제거
+            lines.append("위 배분은 처음부터 끝까지 같은 페이스입니다. 초반에 빨라지는 쪽이 후반 감속으로 돌아옵니다.")
         }
-        lines.append("좋은 레이스 되세요.")
 
     case .recovery:
         // done은 phase 결정 시 guard로 검증됐으므로 nil이 아니다
@@ -180,16 +194,34 @@ func mrRaceDayCard(race: MRTargetRace,
         splits = []      // 끝난 대회에 스플릿은 필요 없다
     }
 
-    // 목표가 예상보다 3% 이상 빠르면: 배분 기준이 후자임을 명시
-    // (finalWeek·eve·raceDay에서만 — splits가 실제로 표시되는 단계)
-    if let g = goalMin, let p = base, (p - g) / g > 0.03 {
+    // ■2 목표-예상 차이를 구간별로 정직하게 표현 (finalWeek·eve·raceDay)
+    // ≤0%: 달성 예상 / ≤3%: 사정권 / ≤8%: 부족분 있음 / >8%: 거리 있음
+    // ⚠ base가 goalMin 자체로 낙착한 경우(예측·계획 모두 없음)는 gap=0이므로
+    //   p < g(gapPct < 0)일 때만 "목표 안에 들어옵니다"를 표시한다.
+    if let g = goalMin, let p = base {
+        let gapPct = (p - g) / g * 100
         switch phase {
         case .finalWeek, .eve, .raceDay:
-            lines.append("입력하신 목표는 \(mrFormatDisplay(g))인데, 지금 몸으로는 "
-                + "\(mrFormatDisplay(p)) 부근입니다. 위 배분은 후자 기준입니다. "
-                + "몸이 좋으면 30km 지나서 올리시면 됩니다 — 반대는 되돌릴 수 없습니다.")
+            if gapPct < 0 {
+                lines.append("목표 안에 들어옵니다.")
+            } else if gapPct <= 3 {
+                lines.append("사정권입니다. 당일 컨디션에 따라 갈립니다.")
+                // "30km 지나서" 조언은 마라톤에만 적용
+                if race.distanceM >= MRDistance.dF {
+                    lines.append("몸이 좋으면 30km 지나서 올리시면 됩니다 — 반대는 되돌릴 수 없습니다.")
+                }
+            } else if gapPct <= 8 {
+                lines.append("입력하신 목표는 \(mrFormatDisplay(g))인데 지금 몸으로는 \(mrFormatDisplay(p)) 부근입니다. 부족분이 있습니다. 이 배분으로 완주부터 확보하시죠.")
+            } else {
+                lines.append("입력하신 목표는 \(mrFormatDisplay(g))인데 지금 몸으로는 \(mrFormatDisplay(p)) 부근입니다. 이번 대회에서 목표까지는 거리가 있습니다. 오늘 배분은 완주 기준입니다.")
+            }
         default: break
         }
+    }
+
+    // ■2 순서: "좋은 레이스 되세요"는 목표 대비 부족 문구 뒤에 붙는 마지막 인사
+    if case .raceDay = phase {
+        lines.append("좋은 레이스 되세요.")
     }
 
     return MRRaceDayCard(race: race, phase: phase, daysLeft: d,

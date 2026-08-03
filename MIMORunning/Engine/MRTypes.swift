@@ -1,5 +1,64 @@
 import Foundation
 
+// MARK: - 모델 버전
+
+/// 계산식이 바뀔 때마다 current를 +1 한다.
+/// [파생] 캐시 키 맨 앞에 prefix("m{N}_")를 붙여 구버전 캐시와 자동 격리.
+///
+/// 히스토리:
+///   1 — 최초 포팅
+///   2 — LT1 0.785/0.800, HRmax 관측 상위5 중앙값,
+///       더위 모델 심박 공변량 제거, 마라톤 지수 v3(롱런 계단+Tanda),
+///       드리프트 세션 중심화, 테이퍼 2주 지수,
+///       인터벌 판정 앱 기존 로직 통일, 폼 문구 개편
+enum MRModelVersion {
+    static let current = 2
+    static var prefix: String { "m\(current)_" }
+
+    // ★ prefix 를 붙이면 안 되는 것 — 모델과 무관한 원본 또는 사용자 이력
+    //   mimo.workoutTypeCache.v1  — 앱 기존 판정, 모델이 바뀌어도 재분류 불필요
+    //   mimo_panel_*              — 시계열 원본 (HK에서 읽은 것, 재계산 불필요)
+    //   LevelEngine 레벨 버킷     — 사용자 이력 (강등 방지 목적)
+    //   mimo_insight_theme_history — 사용자 이력
+    //   mimo.adviceLog.v2         — 사용자 이력 (신선도·반복 방지)
+}
+
+// MARK: - 캐시 정리 (MainActor 전용)
+
+/// 앱 시작 시 1회 호출. Caches 디렉터리에서 구버전 [파생] 캐시를 삭제한다.
+/// ⚠ [원본] 캐시(workouts/steps/HR 등)·사용자 이력(어드바이스/레벨)은 건드리지 않는다.
+///
+/// MRModelVersion 에서 분리한 이유:
+///   purgeStaleCaches 를 같은 enum 에 두면 @main init() 에서의 호출로 인해
+///   Swift 가 MRModelVersion 전체를 @MainActor 로 추론한다.
+///   prefix/current 가 @MainActor 가 되면 nonisolated 컨텍스트(InsightCache 등)에서
+///   참조 시 경고가 발생한다. 별도 @MainActor enum 으로 분리해 오염을 차단.
+enum MRCacheMaintenance {
+    static func purgeStale() {
+        let fm = FileManager.default
+        let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+
+        // ① prefix 없던 시절 드리프트·백테스트 파일
+        for name in ["mr_drift_cache.json", "mr_backtest_cache.json"] {
+            try? fm.removeItem(at: caches.appendingPathComponent(name))
+        }
+
+        // ② mX_ prefix는 있지만 현재 버전이 아닌 파일 (m1_, m3_, ...)
+        if let files = try? fm.contentsOfDirectory(at: caches, includingPropertiesForKeys: nil) {
+            for url in files {
+                let name = url.lastPathComponent
+                // "m" + 숫자 + "_" 패턴이되 현재 prefix(m2_)가 아닌 것
+                if name.count >= 3,
+                   name.hasPrefix("m"),
+                   name.dropFirst().first?.isNumber == true,
+                   !name.hasPrefix(MRModelVersion.prefix) {
+                    try? fm.removeItem(at: url)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - 워크아웃 한 건
 //
 // HealthKit에서 읽어온 러닝 한 건. 계산 엔진은 이 타입만 본다.

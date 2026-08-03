@@ -147,6 +147,8 @@ func mrFitHeatModel(runs: [MRWorkout]) -> MRHeatModel {
         m.rejectReason = String(format: "기울기 %+.2f%%/°C · 30°C %+.1f%% — 문헌 범위 밖이라 쓰지 않는다",
                                 slope, m.rawPct(30))
     }
+    #if DEBUG
     print("[더위] \(m.ok ? "채택" : "거부") · 기울기 \(String(format: "%+.3f", m.slopePerC))%/°C · n=\(m.n)")
+    #endif
     return m
 }

@@ -15,13 +15,10 @@ import Foundation
 //   [이력] runs.prefix(14) 개수 기반을 사용하던 시기에 pace·HR 방향 판정이 오래된 런에
 //   오염돼 WeeklyInsightInputs의 paceDirection·hrDirection이 왜곡됐음 (2025-07 수정).
 //
-// ▶ 조합 패턴 조건 (p5-p9, compositionChange)
-//   p5 fatigueSign  : GCT↑ AND 수직진폭↑ AND 페이스 flat — 구성변화 게이트로 억제
-//   p6 overstride   : 보폭↑ AND 케이던스↓ AND GCT↑       — 구성변화 게이트로 억제
-//   p7 economyPlus  : (GCT↓ OR 수직진폭↓) AND 페이스 not-up
-//   p8 propulsion   : 보폭↑ AND 케이던스 up-or-flat AND GCT↓-or-flat
-//   p9 turnover     : 케이던스↑ AND 보폭 flat-or-down
+// ▶ 신호 패턴 (compositionChange)
 //   compositionChange: 이번/직전 2주 고강도 횟수 차 ≥ 2 (prevWindowRunCount ≥ 3 충분성 게이트)
+//   형태 지표(수직진폭·GCT·케이던스·보폭·파워)는 MDC 검증 결과 측정 오차 범위 안에 있어
+//   패턴 판정에 사용하지 않는다. (잔차 차 / MDC = 0.09~0.60배 — 노이즈로 주의 성격을 정하는 것을 방지)
 //
 // ▶ 구성 게이트 (compositionChanged = true)
 //   p5·p6를 억제 — 훈련 구성이 바뀌면 폼 신호가 구성 효과와 혼동될 수 있으므로.
@@ -62,12 +59,29 @@ struct WeeklyInsightInputs {
     let thisWindowIntenseCount: Int   // 이번 2주 고강도(인터벌/템포) 횟수
     let prevWindowIntenseCount: Int   // 직전 2주 고강도 횟수
     let prevWindowRunCount: Int       // 직전 2주 러닝 횟수 (게이트 충분성)
+
+    // p21 기온 보정 페이스 (heatOk=true일 때만 유효)
+    let heatOk: Bool
+    let heatAvgTempC: Double          // 이번 주 야외 런 평균 기온 (°C)
+    let heatActualPaceSec: Double     // 실제 평균 페이스 (sec/km)
+    let heatRefPaceSec: Double        // 15°C 환산 페이스 (sec/km)
+    let heatBasisText: String         // "본인 러닝 N회로 계산한 기온 계수 X%/°C 기준"
+
+    // p22 심박 드리프트 (driftOk=true일 때만 유효)
+    let driftOk: Bool
+    let driftBpmActual: Double        // 이번 주 롱런 기온에서의 드리프트 (bpm/10min)
+    let driftBpmRef: Double           // 15°C 기준 드리프트 (bpm/10min)
+    let driftTempC: Double            // 이번 주 롱런 평균 기온
+
+    // p23 같은 심박에서의 속도 비교
+    let hrPaceDeltaSec: Double?       // 양수=최근 더 빠름, 음수=느림, nil=데이터 부족
 }
 
 struct WeeklyPattern {
     let priority: Int          // 낮을수록 우선
     let key: String
     let factSummary: String    // AI 입력용 사실 문자열 (확정 수치)
+    var basis: String = ""     // 근거줄 (카드 하단 소자 — "" 이면 미표시)
     let shortNames: [String]   // 헤드라인 이름 풀 — weekOfYear로 순환
     let koTemplates: [String]
     let enTemplates: [String]
@@ -98,9 +112,7 @@ struct WeeklySummary {
     let weekDistanceTrend: TrendDirection
     let topPatternKey: String       // detectWeeklyPatterns 최상위 key
 
-    private static let comboKeys: Set<String> = [
-        "fatigueSign","overstride","economyPlus","propulsion","turnover","compositionChange"
-    ]
+    private static let comboKeys: Set<String> = ["compositionChange"]
 
     /// shortName 선택용 key — 조합 패턴 신호(있으면) > 전체 top 패턴
     var shortNamePatternKey: String {
@@ -186,9 +198,9 @@ struct WeeklySummary {
                     "착지가 앞으로 나갔어요. 발 회전을 조금 높이면 자연스럽게 정리될 수 있어요.",
                     "스트라이드가 앞서고 접촉이 길어졌어요. 발이 무릎 아래에 오는 느낌으로 달려봐요."][p]
         case "economyPlus":
-            return ["지면접촉이나 수직진폭이 줄어 효율이 좋아지는 흐름이에요.",
-                    "힘이 덜 들면서 더 가볍게 달리고 있어요.",
-                    "접촉과 진폭이 함께 줄고 있어요. 에너지가 앞으로 잘 가고 있어요."][p]
+            return ["달리는 방식이 조금씩 달라지고 있어요. 몸이 리듬을 잡아가는 흐름이에요.",
+                    "폼이 안정적으로 이어지고 있어요. 몸이 달리기에 익숙해지는 중이에요.",
+                    "달리는 흐름이 자리를 잡아가고 있어요."][p]
         case "propulsion":
             return ["보폭이 자라고 추진력이 붙는 흐름이에요.",
                     "밀고 나가는 힘이 붙으면서 보폭이 넓어졌어요.",
@@ -202,9 +214,9 @@ struct WeeklySummary {
                     "구성 변화에 몸이 적응 중이라 지표 변동은 자연스러워요.",
                     "고강도가 늘면 지표가 흔들려요. 몸이 적응하는 과정이에요."][p]
         default:
-            return ["지표는 전반적으로 안정적이었어요.",
-                    "폼 지표에 큰 변화 없이 안정된 2주였어요.",
-                    "수치 변화 없이 안정적으로 달린 2주예요."][p]
+            // 폼 지표 안정 메시지는 MRFormObservationCard가 담당한다.
+            // 이 위치에서 "지표" 언급은 중복이므로 침묵.
+            return ""
         }
     }
 
@@ -255,9 +267,9 @@ struct WeeklySummary {
                     "Landing shifted forward. A slightly quicker turnover may sort it out naturally.",
                     "Stride ahead, contact longer. Focus on your foot landing under your knee."][p]
         case "economyPlus":
-            return ["Contact or oscillation reduced — efficiency is improving.",
-                    "Less effort, lighter movement. Running economy is growing.",
-                    "Contact and oscillation both coming down — energy going forward more cleanly."][p]
+            return ["Running rhythm shifting. Your body is finding its pattern.",
+                    "Form settling in consistently. Movement becoming familiar.",
+                    "A steady stretch of running. The rhythm is taking shape."][p]
         case "propulsion":
             return ["Stride growing, more push-off force developing.",
                     "Push-off power building as stride widens.",
@@ -271,9 +283,7 @@ struct WeeklySummary {
                     "With training composition changing, metric swings are expected. Body is adapting.",
                     "More intense sessions change the metrics. This is the adaptation phase."][p]
         default:
-            return ["Form metrics were generally stable.",
-                    "No significant form changes — a steady 2 weeks.",
-                    "Metrics held steady across the 2 weeks."][p]
+            return ""  // MRFormObservationCard handles form metric stability messaging
         }
     }
     private func enFlowSentence(_ woy: Int) -> String {
@@ -306,9 +316,7 @@ func assembleWeeklySummary(
     recentWeeklyKms: [Double]   // oldest → newest, up to 4 values
 ) -> WeeklySummary? {
     guard !thisWindowRuns.isEmpty else { return nil }
-    let comboKeys: Set<String> = [
-        "fatigueSign","overstride","economyPlus","propulsion","turnover","compositionChange"
-    ]
+    let comboKeys: Set<String> = ["compositionChange"]
     let bodySignalPattern = patterns.first { comboKeys.contains($0.key) }
     let distanceTrend: TrendDirection = recentWeeklyKms.count >= 3
         ? trendDirection(values: Array(recentWeeklyKms.suffix(4))).direction
@@ -336,80 +344,15 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
     let streak = inputs.weekStreak
     let count  = inputs.runCount
 
+    #if DEBUG
+    print("[폼] GCT=\(inputs.groundContactTime) VO=\(inputs.vertOsc) cadence=\(inputs.cadence) stride=\(inputs.strideLength) power=\(inputs.power) — 패턴 선택에 미사용")
+    #endif
+
     // 구성 변화 게이트: 이번/직전 2주 고강도 횟수 차이 ≥ 2 (직전 2주 데이터 충분할 때만)
     let intenseCountDiff = inputs.thisWindowIntenseCount - inputs.prevWindowIntenseCount
     let compositionChanged = inputs.prevWindowRunCount >= 3 && abs(intenseCountDiff) >= 2
 
-    // p5 피로 신호: GCT↑ AND 수직진폭↑ AND 페이스 flat — 부정 계열, insufficient 제외, 구성변화 게이트
-    let p5Conditions = inputs.groundContactTime != .insufficient
-        && inputs.vertOsc != .insufficient
-        && inputs.paceDirection != .insufficient
-        && inputs.groundContactTime == .up
-        && inputs.vertOsc == .up
-        && inputs.paceDirection == .flat
-    if p5Conditions && !compositionChanged {
-        var facts: [String] = []
-        if let r = inputs.metricChangeRatios[.groundContactTime] { facts.append("지면접촉 \(pct(r))") }
-        if let r = inputs.metricChangeRatios[.verticalOscillation] { facts.append("수직진폭 \(pct(r))") }
-        patterns.append(WeeklyPattern(
-            priority: 5, key: "fatigueSign",
-            factSummary: facts.joined(separator: ", "),
-            shortNames: ["쉼표가 필요한 즈음", "몸이 말을 거는 주"],
-            koTemplates: [
-                "이번 2주는 몸이 조금 무거웠을 수 있어요. 다음 러닝은 가볍게 가도 좋아요.",
-                "지면접촉이 늘고 진폭이 커졌어요. 충분한 쉬어감이 도움이 될 수 있어요.",
-                "페이스는 유지됐지만 폼이 달라졌어요. 몸이 신호를 보내는 중일 수 있어요.",
-                "폼이 조금 무거워진 2주였어요. 가볍게 달리는 날을 한 번 넣어봐도 좋아요.",
-                "지면접촉과 진폭이 함께 늘었어요. 짧고 가볍게 달려보는 것도 좋은 선택이에요.",
-                "몸이 피로를 표현하는 방식이에요. 천천히 달리는 날로 응답해줘도 좋아요."
-            ],
-            enTemplates: [
-                "Your form felt a bit heavier this 2 weeks. An easy run next time might be just right.",
-                "Ground contact up, oscillation up. Some lighter running could help.",
-                "Pace held, but form shifted. Your body might be sending a signal.",
-                "Form got a little heavier these 2 weeks. A gentle day could be a good reset.",
-                "Both contact and oscillation went up. A short, easy run might be a good next step.",
-                "This is how your body expresses fatigue. A slower run is a valid response."
-            ]
-        ))
-    }
-
-    // p6 오버스트라이드: 보폭↑ AND 케이던스↓ AND GCT↑ — 부정 계열, insufficient 제외, 구성변화 게이트
-    let p6Conditions = inputs.strideLength != .insufficient
-        && inputs.cadence != .insufficient
-        && inputs.groundContactTime != .insufficient
-        && inputs.strideLength == .up
-        && inputs.cadence == .down
-        && inputs.groundContactTime == .up
-    if p6Conditions && !compositionChanged {
-        var facts: [String] = []
-        if let r = inputs.metricChangeRatios[.strideLength] { facts.append("보폭 \(pct(r))") }
-        if let r = inputs.metricChangeRatios[.cadence] { facts.append("케이던스 \(pct(r))") }
-        if let r = inputs.metricChangeRatios[.groundContactTime] { facts.append("지면접촉 \(pct(r))") }
-        patterns.append(WeeklyPattern(
-            priority: 6, key: "overstride",
-            factSummary: facts.joined(separator: ", "),
-            shortNames: ["착지를 돌아볼 때", "보폭이 앞서간 주"],
-            koTemplates: [
-                "보폭이 커지면서 착지가 길어졌어요. 발이 몸 아래에 떨어지는 느낌을 살려보면 좋아요.",
-                "보폭이 앞서고 케이던스가 줄었어요. 발 회전을 조금 높여보는 게 도움이 될 수 있어요.",
-                "스트라이드가 길어졌어요. 발이 무릎 아래에 떨어지는지 한 번 살펴보면 좋아요.",
-                "지면접촉이 늘고 보폭이 앞섰어요. 케이던스를 먼저 챙기면 자연스럽게 정리될 수 있어요.",
-                "보폭과 접촉이 함께 늘었어요. 짧고 빠른 발 회전을 한 번 의식해보면 어떨까요.",
-                "착지가 앞으로 나간 2주였어요. 발이 몸 무게 중심 아래로 오는 느낌에 집중해보세요."
-            ],
-            enTemplates: [
-                "Stride lengthened, ground contact extended. Try landing closer to under your body.",
-                "Stride ahead, cadence down. A slightly quicker turnover might help.",
-                "Stride got longer. Worth checking if your foot lands under your knee.",
-                "More contact, more stride. Focusing on cadence first may naturally tighten things up.",
-                "Stride and contact both went up. A short drill on quick, light steps could be useful.",
-                "Your landing shifted forward these 2 weeks. Focus on keeping your foot under your center."
-            ]
-        ))
-    }
-
-    // 구성 변화 패턴: p5/p6 억제 대체 (priority 5)
+    // 구성 변화 패턴 (priority 5)
     if compositionChanged {
         let factStr = intenseCountDiff > 0
             ? "인터벌/템포 \(intenseCountDiff)회 증가"
@@ -437,132 +380,12 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
         ))
     }
 
-    // p7 이코노미 개선: GCT↓ AND 수직진폭↓. power flat/down이면 factSummary 보강
-    if inputs.groundContactTime == .down && inputs.vertOsc == .down {
-        var facts: [String] = []
-        if let r = inputs.metricChangeRatios[.groundContactTime] { facts.append("지면접촉 \(pct(r))") }
-        if let r = inputs.metricChangeRatios[.verticalOscillation] { facts.append("수직진폭 \(pct(r))") }
-        if (inputs.power == .flat || inputs.power == .down),
-           let r = inputs.metricChangeRatios[.power] { facts.append("파워 \(pct(r))") }
-        patterns.append(WeeklyPattern(
-            priority: 7, key: "economyPlus",
-            factSummary: facts.joined(separator: ", "),
-            shortNames: ["가벼워지는 러닝", "힘이 덜 드는 러닝", "스미는 리듬"],
-            koTemplates: [
-                "접촉이 짧아지고 진폭도 줄었어요 — 같은 힘으로 더 가볍게 달리는 중이에요.",
-                "지면 접촉과 수직 진폭이 함께 줄었어요. 러닝 이코노미가 올라가고 있어요.",
-                "더 낮게, 더 조용하게 달리고 있어요. 폼이 자리를 잡아가는 중이에요.",
-                "발이 가볍게 땅을 짚고 있어요. 자연스럽게 폼이 정리되고 있어요.",
-                "접촉 시간이 줄고 탄성도 줄었어요 — 에너지가 앞으로 더 잘 가고 있어요.",
-                "폼이 경제적으로 바뀌고 있어요. 이게 쌓이면 오랫동안 달릴 수 있어요."
-            ],
-            enTemplates: [
-                "Contact shorter, oscillation down — running the same with less effort.",
-                "Ground contact and vertical oscillation both reduced. Economy is improving.",
-                "Running lower and quieter. Your form is finding its place.",
-                "Feet landing light. Form naturally tidying itself up.",
-                "Less contact, less bounce — energy is channeling forward more efficiently.",
-                "Your form is becoming more economical. That compounds over time."
-            ]
-        ))
-    }
-
-    // p8 추진력 발달: 보폭↑ AND 케이던스 flat AND 심박 flat/down
-    if inputs.strideLength == .up
-        && inputs.cadence == .flat
-        && (inputs.hrDirection == .flat || inputs.hrDirection == .down) {
-        var facts: [String] = []
-        if let r = inputs.metricChangeRatios[.strideLength] { facts.append("보폭 \(pct(r))") }
-        if inputs.hrDirection == .down { facts.append("심박 \(pct(inputs.hrChangeRatio))") }
-        patterns.append(WeeklyPattern(
-            priority: 8, key: "propulsion",
-            factSummary: facts.joined(separator: ", "),
-            shortNames: ["보폭이 자라는 러닝", "밀고 나가는 러닝"],
-            koTemplates: [
-                "케이던스는 안정되고 보폭만 넓어졌어요. 추진력이 자라고 있어요.",
-                "같은 리듬에 발걸음이 길어졌어요. 힘이 붙고 있는 증거예요.",
-                "리듬은 그대로, 보폭만 자랐어요. 땅을 미는 힘이 좋아지고 있어요.",
-                "심박이 안정된 채로 보폭이 늘었어요. 효율이 올라가는 신호예요.",
-                "케이던스를 지키며 보폭이 커졌어요. 러닝이 점점 힘차게 변하고 있어요.",
-                "발걸음이 자라는 2주였어요. 같은 노력에 앞으로 더 나아가고 있어요."
-            ],
-            enTemplates: [
-                "Cadence steady, stride widening. Propulsion is growing.",
-                "Same rhythm, longer stride. A sign that strength is building.",
-                "Rhythm held, stride expanded. Push-off power is improving.",
-                "Stride grew with steady heart rate. An efficiency signal.",
-                "Cadence kept, stride larger. Your running is getting more powerful.",
-                "Growing stride these 2 weeks — covering more ground on the same effort."
-            ]
-        ))
-    }
-
-    // p9 턴오버 개선: 케이던스↑ AND 보폭 flat/down AND 페이스 flat
-    if inputs.cadence == .up
-        && (inputs.strideLength == .flat || inputs.strideLength == .down)
-        && inputs.paceDirection == .flat {
-        var facts: [String] = []
-        if let r = inputs.metricChangeRatios[.cadence] { facts.append("케이던스 \(pct(r))") }
-        patterns.append(WeeklyPattern(
-            priority: 9, key: "turnover",
-            factSummary: facts.joined(separator: ", "),
-            shortNames: ["리듬이 잡히는 러닝", "잰걸음이 몸에 붙는 중"],
-            koTemplates: [
-                "케이던스가 올라가고 있어요. 빠른 발 회전이 몸에 익어가는 중이에요.",
-                "발 회전이 빨라지며 폼이 안정되고 있어요. 좋은 방향이에요.",
-                "리듬이 빨라지고 있어요. 자연스럽게 몸이 효율적인 폼을 찾아가고 있어요.",
-                "케이던스가 높아지며 발이 가벼워지고 있어요. 잰걸음이 익숙해지는 중이에요.",
-                "빠른 발 회전이 자리 잡혀가고 있어요. 러닝 폼의 기반이 단단해지고 있어요.",
-                "케이던스가 자라는 2주였어요. 이 리듬이 쌓이면 폼 전체가 가벼워져요."
-            ],
-            enTemplates: [
-                "Cadence is climbing. Quick turnover is becoming natural.",
-                "Faster footfall, steadier form. Moving in the right direction.",
-                "Rhythm is picking up. Your body is finding a more efficient stride naturally.",
-                "Higher cadence, lighter feet. Quick steps are becoming familiar.",
-                "Quick turnover is settling in. The foundation of your form is getting solid.",
-                "Cadence grew these 2 weeks. As this builds, your whole stride gets lighter."
-            ]
-        ))
-    }
-
-    // p10 이코노미향상: power↑ + (GCT↓ or 보폭↑)
-    if inputs.power == .up && (inputs.groundContactTime == .down || inputs.strideLength == .up) {
-        var facts: [String] = []
-        if let r = inputs.metricChangeRatios[.power] { facts.append("파워 \(pct(r))") }
-        if inputs.groundContactTime == .down, let r = inputs.metricChangeRatios[.groundContactTime] { facts.append("지면접촉 \(pct(r))") }
-        if inputs.strideLength == .up, let r = inputs.metricChangeRatios[.strideLength] { facts.append("보폭 \(pct(r))") }
-        patterns.append(WeeklyPattern(
-            priority: 10, key: "economy",
-            factSummary: facts.joined(separator: ", "),
-            shortNames: ["힘차고 가벼운 러닝", "추진력이 붙는 러닝"],
-            koTemplates: [
-                "힘차게 밀어내며 발걸음이 가벼워졌어요",
-                "추진력이 좋아지고 접촉 시간이 짧아졌어요",
-                "더 힘있게, 더 가볍게 — 러닝이 효율적으로 바뀌고 있어요",
-                "추진력이 붙고 발이 가벼워졌어요",
-                "땅을 미는 힘이 좋아지고 있어요",
-                "러닝 이코노미가 살아나는 2주였어요",
-                "힘은 늘고 접촉은 짧아졌어요",
-                "몸이 점점 효율적으로 달리고 있어요"
-            ],
-            enTemplates: [
-                "Pushing off stronger, landing lighter",
-                "More drive, shorter ground contact time",
-                "Stronger and lighter — your running is getting more efficient",
-                "More propulsion, lighter footfall",
-                "Getting better at pushing off the ground",
-                "Two weeks of improving running economy"
-            ]
-        ))
-    }
-
     // p20 스피드향상: 페이스↓(값=빨라짐) + 심박 flat or ↓
     if inputs.paceDirection == .down && (inputs.hrDirection == .flat || inputs.hrDirection == .down) {
         var facts: [String] = ["페이스 \(pct(inputs.paceChangeRatio))"]
         if inputs.hrDirection == .down { facts.append("심박 \(pct(inputs.hrChangeRatio))") }
         patterns.append(WeeklyPattern(
-            priority: 20, key: "speed",
+            priority: 30, key: "speed",
             factSummary: facts.joined(separator: ", "),
             shortNames: ["빨라지는 러닝", "페이스가 오르는 러닝", "수월해진 러닝"],
             koTemplates: [
@@ -585,32 +408,71 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
         ))
     }
 
-    // p30 폼개선: 보폭↑ + 케이던스 flat + (수직진동 flat or ↓)
-    if inputs.strideLength == .up && inputs.cadence == .flat
-        && (inputs.vertOsc == .flat || inputs.vertOsc == .down) {
-        var facts: [String] = []
-        if let r = inputs.metricChangeRatios[.strideLength] { facts.append("보폭 \(pct(r))") }
-        if inputs.vertOsc == .down, let r = inputs.metricChangeRatios[.verticalOscillation] { facts.append("수직진폭 \(pct(r))") }
+    // p21 기온 보정 페이스: 최근 7일 평균 기온 ≥20°C + heat.ok + ≥3 런 + 보정 차 ≥10초
+    if inputs.heatOk {
+        let actual = mrFormatPace(inputs.heatActualPaceSec)
+        let ref    = mrFormatPace(inputs.heatRefPaceSec)
+        let temp   = String(format: "%.0f", inputs.heatAvgTempC)
         patterns.append(WeeklyPattern(
-            priority: 30, key: "form",
-            factSummary: facts.joined(separator: ", "),
-            shortNames: ["폼이 잡히는 러닝", "발걸음이 넓어진 러닝"],
+            priority: 21, key: "heatAdjusted",
+            factSummary: "\(temp)°C, 실제 \(actual)/km → 15°C 환산 \(ref)/km",
+            basis: inputs.heatBasisText,
+            shortNames: ["더운 날의 러닝", "기온 보정 페이스"],
             koTemplates: [
-                "보폭이 넓어지고 자세가 안정됐어요",
-                "케이던스를 지키며 보폭이 효율적으로 늘었어요",
-                "더 곧게, 더 넓게 — 폼이 자리 잡히고 있어요",
-                "발걸음이 넓어지면서 리듬이 유지됐어요",
-                "보폭이 늘어나고 폼이 안정되고 있어요",
-                "자세가 바르게 잡히며 보폭도 넓어졌어요",
-                "리듬은 그대로, 보폭만 넓어졌어요"
+                "최근 7일 평균 \(actual)/km, 기온은 \(temp)°C였어요. 15°C였다면 \(ref) 정도예요.",
+                "\(temp)°C에서 \(actual)/km로 달렸어요. 같은 몸으로 15°C에서 뛰면 \(ref)쯤 됩니다.",
+                "이번 더위에서 \(actual)/km. 기온을 걷어내면 \(ref) 수준이에요.",
+                "\(temp)°C의 최근 7일, 평균 \(actual)/km — 같은 노력이라면 15°C에서 \(ref)예요.",
             ],
             enTemplates: [
-                "Wider stride, steadier posture",
-                "Cadence held, stride length growing efficiently",
-                "Taller and wider — your form is settling in",
-                "Stride widening while rhythm stays consistent",
-                "Stride lengthening as form gets more stable",
-                "Better posture, longer stride"
+                "Averaged \(actual)/km over the last 7 days at \(temp)°C. At 15°C, that would be about \(ref).",
+                "Running \(actual)/km at \(temp)°C this week. Same effort at 15°C: around \(ref).",
+                "\(actual)/km in this heat. Strip away the temperature and you're at \(ref).",
+                "\(temp)°C this week, \(actual)/km avg — same effort at 15°C would be \(ref).",
+            ]
+        ))
+    }
+
+    // p22 심박 드리프트: 이번 주 야외 롱런(≥40분) + drift.ok + 기온 ≥20°C
+    if inputs.driftOk {
+        let actual = String(format: "%.1f", inputs.driftBpmActual)
+        let ref    = String(format: "%.1f", inputs.driftBpmRef)
+        let temp   = String(format: "%.0f", inputs.driftTempC)
+        patterns.append(WeeklyPattern(
+            priority: 22, key: "driftWeek",
+            factSummary: "\(temp)°C 롱런, 드리프트 \(actual)bpm/10분 (기준 \(ref)bpm/10분)",
+            shortNames: ["드리프트 알림", "심박 드리프트"],
+            koTemplates: [
+                "긴 러닝에서 심박이 10분당 \(actual)bpm 올랐어요. \(temp)°C에서 평소는 \(ref) 정도예요.",
+                "\(temp)°C 롱런에서 10분마다 \(actual)bpm씩 심박이 올랐어요. 15°C 기준으론 \(ref)bpm이에요.",
+                "이번 주 롱런(\(temp)°C)에서 심박 드리프트가 10분당 \(actual)bpm이었어요. 기준 \(ref)bpm.",
+            ],
+            enTemplates: [
+                "Heart rate drifted \(actual) bpm/10 min in your long run at \(temp)°C. Usual: \(ref).",
+                "Long run at \(temp)°C: \(actual) bpm drift per 10 min. Reference (15°C): \(ref) bpm.",
+                "This week's long run at \(temp)°C showed \(actual) bpm/10 min drift — baseline \(ref).",
+            ]
+        ))
+    }
+
+    // p23 같은 심박 속도: 최근 4주 vs 직전 4주 정규화 페이스 차 ≥5초
+    if let delta = inputs.hrPaceDeltaSec {
+        let secs  = Int(abs(delta).rounded())
+        let dir   = delta > 0 ? "빠릅니다" : "느립니다"
+        let enDir = delta > 0 ? "faster" : "slower"
+        patterns.append(WeeklyPattern(
+            priority: 23, key: "hrPaceWeek",
+            factSummary: "같은 심박에서 8주 전보다 \(secs)초 \(dir)",
+            shortNames: ["심박 기준 속도", "유산소 효율"],
+            koTemplates: [
+                "같은 심박에서 지난 8주보다 \(secs)초 \(dir).",
+                "심박이 같아도 \(secs)초 \(dir). 유산소 효율이 달라졌어요.",
+                "8주 전과 같은 심박인데 속도가 \(secs)초 \(dir).",
+            ],
+            enTemplates: [
+                "At the same heart rate, you're \(secs) sec/km \(enDir) than the past 8 weeks.",
+                "\(secs) sec/km \(enDir) at the same heart rate — aerobic efficiency shifted.",
+                "Same heart rate, \(secs) sec/km \(enDir) vs 8 weeks ago.",
             ]
         ))
     }

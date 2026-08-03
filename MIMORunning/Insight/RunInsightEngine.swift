@@ -244,7 +244,7 @@ enum RunInsightEngine {
 
         // Build cumulative km boundary array
         var cumKm: [Double] = [0]
-        for split in splits { cumKm.append(cumKm.last! + split.distanceM / 1000.0) }
+        for split in splits { cumKm.append((cumKm.last ?? 0) + split.distanceM / 1000.0) }
 
         // Group consecutive same-tag splits
         struct Group { let isWork: Bool; let startIdx: Int; var endIdx: Int }
@@ -326,7 +326,8 @@ enum RunInsightEngine {
         hrMax: Double? = nil,
         lt1HR: Double? = nil,
         lt1SD: Double = 0,
-        easyCeilingHR: Double? = nil
+        easyCeilingHR: Double? = nil,
+        heat: MRHeatModel
     ) -> (insights: [RunInsight], segmentSource: RunSegmentSource, fadeStartKm: Double?) {
         let base        = Self.baseline(for: activity, history: history)
         let workoutType = detail?.workoutType ?? .general
@@ -409,7 +410,8 @@ enum RunInsightEngine {
         case .distanceRun:
             let mhrDR = estimatedHRMax(hrMax: hrMax, age: age)
             let generators: [() -> RunInsight?] = [
-                { distanceRunInsight(activity: activity, baseline: base) },
+                { distanceRunInsight(activity: activity, baseline: base, heat: heat,
+                                     lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR) },
                 { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrDR)
                   ?? enduranceInsight(detail: detail) },
                 { efficiencyInsight(activity: activity, history: history) },
@@ -698,26 +700,90 @@ enum RunInsightEngine {
 
     // MARK: - Distance Run Insight
 
-    private static func distanceRunInsight(activity: Activity, baseline: RunBaseline) -> RunInsight? {
+    private static func distanceRunInsight(
+        activity: Activity,
+        baseline: RunBaseline,
+        heat: MRHeatModel,
+        lt1HR: Double? = nil,
+        lt1SD: Double = 0,
+        easyCeilingHR: Double? = nil
+    ) -> RunInsight? {
         guard let currentPace = activity.paceSecPerKm,
               let medianPace  = baseline.medianPaceSec,
               medianPace > 0, baseline.sampleCount >= 3 else { return nil }
         let L = AppLanguage.shared
+        let tempC = activity.temperatureC
 
-        let diff    = currentPace - medianPace  // positive = slower than history
-        let absDiff = abs(diff)
-        guard absDiff > 5 else { return nil }
+        // ① 기온 보정: 오늘 페이스 → 15°C 기준 환산
+        // ⚠ 여름 러닝은 기온 탓에 항상 "느렸어요"가 나온다.
+        //   본인 더위 계수로 보정 후 비교해야 공정하다.
+        let adjustedPace = currentPace * exp(heat.logDelta(tempC))
+        let raw  = currentPace - medianPace    // 미보정 차이 (양수 = 느림)
+        let diff = adjustedPace - medianPace   // 보정 후 차이
+        let heatExplains = heat.ok
+            && (tempC.map { abs($0 - MR_REF_TEMP) >= 5 } ?? false)
+            && abs(raw - diff) >= 5            // 보정이 5초 이상 차이를 만들었을 때
 
-        let diffStr    = "\(Int(absDiff.rounded()))초"
+        let diffToShow = heatExplains ? diff : raw
+        guard heatExplains || abs(diffToShow) > 5 else { return nil }
+
         let currentStr = String(format: "%d'%02d\"", Int(currentPace) / 60, Int(currentPace) % 60)
-        let direction  = diff < 0 ? L.s("빨랐어요", "faster") : L.s("느렸어요", "slower")
-        let tone: InsightTone = diff < 0 ? .good : .neutral
-        let msg = L.s(
-            "평균 페이스 \(currentStr) — 최근 평균보다 \(diffStr) \(direction).",
-            "Avg pace \(currentStr) — \(diffStr) \(direction) than recent average."
-        )
-        return RunInsight(category: .intensity, tone: tone, badge: L.s("페이스 비교", "Pace vs History"),
-                          message: msg, highlights: [currentStr, diffStr])
+        var parts: [String] = []
+        var highlights: [String] = [currentStr]
+        var tone: InsightTone = .neutral
+
+        // ① 페이스 비교 문장
+        if heatExplains && abs(diff) < 5 {
+            let tempStr = tempC.map { "\(Int($0.rounded()))°C" } ?? ""
+            parts.append(L.s(
+                "평균 페이스 \(currentStr) — \(tempStr)를 감안하면 평소와 같습니다.",
+                "Avg pace \(currentStr) — on par with recent average for \(tempStr)."
+            ))
+            tone = .good
+        } else {
+            let absDiff = abs(diffToShow)
+            let diffStr = "\(Int(absDiff.rounded()))초"
+            highlights.append(diffStr)
+            let direction = diffToShow < 0 ? L.s("빨랐어요", "faster") : L.s("느렸어요", "slower")
+            tone = diffToShow < 0 ? .good : .neutral
+            if heatExplains {
+                let tempStr = tempC.map { "\(Int($0.rounded()))°C" } ?? ""
+                parts.append(L.s(
+                    "평균 페이스 \(currentStr) — \(tempStr) 감안해도 \(diffStr) \(direction).",
+                    "Avg pace \(currentStr) — \(diffStr) \(direction) even after heat adjustment."
+                ))
+            } else {
+                parts.append(L.s(
+                    "평균 페이스 \(currentStr) — 최근 평균보다 \(diffStr) \(direction).",
+                    "Avg pace \(currentStr) — \(diffStr) \(direction) than recent average."
+                ))
+            }
+        }
+
+        // ② 심박 / LT1 해석 문장
+        if let ceil = easyCeilingHR, let lt1 = lt1HR, let avgHR = activity.avgHeartRate {
+            let hrText: String
+            if Double(avgHR) < ceil {
+                hrText = L.s(
+                    "유산소 구간 안에서 달리셨어요.",
+                    "You stayed in the aerobic zone.")
+                tone = .good
+            } else if Double(avgHR) < lt1 + lt1SD {
+                hrText = L.s(
+                    "이지보다 템포에 가까운 날이었습니다.",
+                    "Closer to tempo than easy today.")
+            } else {
+                hrText = L.s(
+                    "꽤 강하게 밀어붙이셨네요.",
+                    "You pushed pretty hard today.")
+            }
+            parts.append(hrText)
+            highlights.append("\(avgHR)bpm")
+        }
+
+        let badge = heatExplains ? L.s("기온 감안", "Heat-Adjusted") : L.s("페이스 비교", "Pace vs History")
+        return RunInsight(category: .intensity, tone: tone, badge: badge,
+                          message: parts.joined(separator: " "), highlights: highlights)
     }
 
     // MARK: - Fade Cause Analysis
@@ -1155,7 +1221,7 @@ enum RunInsightEngine {
         let L = AppLanguage.shared
         var parts: [String] = []
         var highlights: [String] = []
-        var tone: InsightTone = .good
+        let tone: InsightTone = .good
         let cadStr = "\(cadence)"
 
         // ⚠ "175~185로 올려보세요"를 근거 없이 말하지 않는다.
@@ -1167,9 +1233,8 @@ enum RunInsightEngine {
         highlights.append(cadStr)
 
         if let gct = detail?.avgGroundContactTime {
-            let ms  = Int(gct.rounded())
-            let feel = ms > 280 ? L.s("긴 편이에요", "on the longer side") : L.s("적절해요", "looks good")
-            parts.append(L.s("지면접촉 \(ms)ms로 \(feel).", "Ground contact \(ms)ms — \(feel)."))
+            let ms = Int(gct.rounded())
+            parts.append(L.s("지면접촉 \(ms)ms.", "Ground contact \(ms)ms."))
             highlights.append("\(ms)ms")
         }
 
@@ -1179,7 +1244,7 @@ enum RunInsightEngine {
             highlights.append(strideStr)
         }
 
-        let badge = tone == .good ? L.s("좋은 주법", "Good Form") : L.s("참고", "Note")
+        let badge = L.s("주법", "Form")
         return RunInsight(category: .form, tone: tone, badge: badge,
                           message: parts.joined(separator: " "), highlights: highlights)
     }

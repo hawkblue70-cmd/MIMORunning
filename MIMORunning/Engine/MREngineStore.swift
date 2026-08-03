@@ -137,7 +137,9 @@ final class MREngineStore: ObservableObject {
                             dateOfBirth: dob, sex: sex, asOf: now)
         heat = mrFitHeatModel(runs: fetched)
         hrPace = mrFitHRPaceModel(runs: fetched, asOf: now)
+        #if DEBUG
         print("[HRPace] tier=\(hrPace.tier) · 이지페이스=\(easyPaceSecPerKm.map { mrFormatPace($0) } ?? "-")")
+        #endif
 
         efforts = mrApplyHeat(mrDetectEfforts(runs: fetched, phys: phys), heat: heat)
         fit = mrFitExponent(efforts)
@@ -190,15 +192,19 @@ final class MREngineStore: ObservableObject {
         advice = mrBuildAdvice(runs: fetched, phys: phys, plans: plans,
                                gaps: [], strengthPerWeek: storedStrengthPerWeek,
                                log: adviceLog, asOf: now)
-        adviceLog.record(advice.map(\.key), asOf: now)
-        MRAdviceLogStore.save(adviceLog)
+        // ⚠ record()는 여기서 호출하지 않는다.
+        //   조언 카드가 화면에 실제로 그려지는 .onAppear에서 호출해야 한다.
+        //   판정 시점에 기록하면 화면에 뜬 적 없는 항목이 "보여줬다"로 기록돼
+        //   신선도가 차감되어 영영 노출되지 않는다.
         raceDayCard = computeRaceDayCard(plans: plans, asOf: now)
         let raceDayVisible = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
         todayCard = mrTodayCard(runs: fetched, phys: phys, plans: plans,
                                 raceDayCardVisible: raceDayVisible,
                                 advice: advice, asOf: now)
 
+        #if DEBUG
         print("[추론] 레벨 \(profileFull.level) · 모드 \(profileFull.mode) · 노력 \(efforts.count)건 · 예측 \(predictions.count)건")
+        #endif
 
         // ★ 여기서 화면이 그려진다
         state = .ready
@@ -210,11 +216,23 @@ final class MREngineStore: ObservableObject {
         guard case .ready = state else { return }
         let now = Date()
 
-        // ① 걸음 수 증분 fetch — 어제까지는 캐시, 오늘만 새로 읽는다
-        // 경력 추정의 '기기 구매일 함정 회피'를 위해 첫 런보다 1년 앞에서 시작한다
         let floor = Calendar.current.date(byAdding: .year, value: -1,
                                           to: runs.first?.start ?? now) ?? now
-        let steps = (try? await timed("fetchDailySteps") { try await hk.fetchDailyStepsIncremental(floor: floor) }) ?? [:]
+
+        // ① steps·VO2 fetch를 먼저 시작한다.
+        //   HK 콜백은 백그라운드 스레드에서 오므로, 아래 드리프트·백테스트가
+        //   메인 액터에서 실행되는 동안 실제로 병렬 진행된다.
+        async let stepsTask = hk.fetchDailyStepsIncremental(floor: floor)
+        async let vo2Task   = hk.fetchVO2Max()
+
+        // ④ 드리프트 (stepsDaily 불필요 — 대기 없이 실행)
+        await timed("refreshDrift") { await self.refreshDrift() }
+
+        // ⑤ 백테스트 (stepsDaily 불필요)
+        await timed("refreshBacktest") { await self.refreshBacktest() }
+
+        // steps 결과 수거 — 드리프트·백테스트와 겹쳐 있었으면 이미 도착했을 것
+        let steps = (try? await stepsTask) ?? [:]
         stepsDaily = steps
 
         // ② profileFull 재계산 (firstDataDate 포함) + gaps
@@ -234,17 +252,18 @@ final class MREngineStore: ObservableObject {
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
                                gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
                                log: adviceLog, asOf: now)
-        adviceLog.record(advice.map(\.key), asOf: now)
-        MRAdviceLogStore.save(adviceLog)
+        // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         let raceDayVisible2 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
         todayCard = mrTodayCard(runs: runs, phys: phys, plans: plans,
                                 raceDayCardVisible: raceDayVisible2,
                                 advice: advice, asOf: now)
 
+        #if DEBUG
         print("[추론] firstData=\(firstData.map(mrYMD) ?? "-") · 경력 \(String(format: "%.2f", profileFull.trainingAgeYears?.value ?? 0))년 · 공백 \(gaps.count)건")
+        #endif
 
-        // ③ VO2max + 건강 지표
-        let vo2 = (try? await hk.fetchVO2Max()) ?? []
+        // ③ VO2max + 건강 지표 (vo2도 ①에서 시작했으므로 이미 도착했을 것)
+        let vo2 = (try? await vo2Task) ?? []
         healthMetrics = mrHealthMetrics(runs: runs,
                                         restingHRSamples: rhrSamples,
                                         vo2Samples: vo2,
@@ -252,30 +271,55 @@ final class MREngineStore: ObservableObject {
                                         asOf: now)
         let h = healthMetrics
         let dn = ["", "일", "월", "화", "수", "목", "금", "토"]
+        #if DEBUG
         print("[건강] 루틴 \(h.habitDays.map { dn[$0] }.joined(separator: "·")) · 30일 중 \(h.days30)일 · 90일 \(h.sessions90)회 \(Int(h.km90))km")
-
-        // ④ 드리프트 (세그먼트 병렬 fetch + 캐시)
-        await timed("refreshDrift") { await self.refreshDrift() }
-
-        // ⑤ 백테스트 (노력 핑거프린트 캐시)
-        await timed("refreshBacktest") { await self.refreshBacktest() }
+        #endif
     }
 
     // MARK: - 드리프트 (세그먼트 fetch 병렬화 + 캐시)
 
     private func refreshDrift() async {
-        let cutoff = Date().addingTimeInterval(-90 * 86400)
+        // ⚠ 기온 범위 15°C 이상이 필요하므로 1년으로 확대.
+        //   캐시가 있으면 재계산 안 하므로 첫 실행만 느리다.
 
-        // 90일 HKWorkout만 직접 읽는다 (WorkoutKit 쿼리 없음, 빠름)
+        // 빠른 캐시 확인: self.runs는 이미 채워져 있으므로
+        // HealthKit 쿼리 없이 마지막 런 시작일로 캐시 적중 여부를 먼저 판단한다.
+        let t0 = Date()
+        if let lastRunStart = runs.last?.start,
+           let cached = MRDriftCacheStore.load(),
+           abs(cached.lastWorkoutStart.timeIntervalSince(lastRunStart)) < 1 {
+            let m = cached.drift.model
+            drift = m
+            let elapsed = Date().timeIntervalSince(t0)
+            #if DEBUG
+            print(String(format: "[드리프트] 캐시 히트 · %@ · %d세션 [⏱ drift-캐시읽기] %.3fs",
+                         m.ok ? "성공" : "실패", m.sessions, elapsed))
+            #endif
+            return
+        }
+        #if DEBUG
+        print(String(format: "[드리프트] [⏱ drift-캐시읽기] %.3fs → 미스, HealthKit 쿼리 시작",
+                     Date().timeIntervalSince(t0)))
+        #endif
+
+        // 캐시 미스: 365일 HKWorkout 목록을 읽어 세그먼트 계산
+        let cutoff = Date().addingTimeInterval(-365 * 86400)
+        let tHK = Date()
         let recent: [HKWorkout] = (try? await hk.fetchRawRunsSince(cutoff)) ?? []
+        #if DEBUG
+        print(String(format: "[드리프트] [⏱ drift-HK쿼리] %.3fs · %d건",
+                     Date().timeIntervalSince(tHK), recent.count))
+        #endif
 
-        // 캐시 확인: 마지막 워크아웃 시작일이 같으면 재사용
+        // 드물게 runs와 recent의 마지막 워크아웃이 1초 이내면 캐시 재사용
         if let cached = MRDriftCacheStore.load(),
            let lastStart = recent.last?.startDate,
            abs(cached.lastWorkoutStart.timeIntervalSince(lastStart)) < 1 {
             let m = cached.drift.model
             drift = m
-            print("[드리프트] 캐시 히트 · \(m.ok ? "성공" : "실패") · \(m.sessions)세션")
+            #if DEBUG
+            print("[드리프트] 캐시 히트(HK확인 후) · \(m.ok ? "성공" : "실패") · \(m.sessions)세션")
+            #endif
             return
         }
 
@@ -302,7 +346,9 @@ final class MREngineStore: ObservableObject {
             }
             return results.sorted { $0.0 < $1.0 }.flatMap(\.1)
         }
+        #if DEBUG
         print("[T3] 대상 \(recent.count)건 · 세그먼트 \(segs.count)점")
+        #endif
 
         let intervalStarts = Set(runs.filter(\.isInterval).map(\.start))
         let m = mrFitDrift(segments: segs, excludeIntervalStarts: intervalStarts)
@@ -312,7 +358,9 @@ final class MREngineStore: ObservableObject {
             MRDriftCacheStore.save(MRDriftCache(lastWorkoutStart: last,
                                                 drift: MRDriftModelCodable(m)))
         }
-        print("[드리프트] \(m.ok ? "성공" : "실패") · 10분당 \(String(format: "%.1f", m.bpmPer10Min))bpm · \(m.sessions)세션")
+        #if DEBUG
+        print("[드리프트] \(m.ok ? "성공" : "실패") · 15°C기준 \(String(format: "%.1f", m.bpmPer10MinAtRef))bpm/10분 · 기온범위 \(Int(m.tempSpanC))°C · \(m.sessions)세션")
+        #endif
     }
 
     // MARK: - 백테스트 (노력 핑거프린트 캐시)
@@ -322,7 +370,9 @@ final class MREngineStore: ObservableObject {
 
         if let cached = MRBacktestCacheStore.load(), cached.effortKey == key {
             backtest = cached.rows.map(\.row)
+            #if DEBUG
             print("[백테스트] 캐시 히트 · \(backtest.count)건")
+            #endif
             return
         }
 
@@ -337,7 +387,9 @@ final class MREngineStore: ObservableObject {
             effortKey: key,
             rows: result.map(MRBacktestRowCodable.init)
         ))
+        #if DEBUG
         print("[백테스트] 완료 · \(result.count)건")
+        #endif
     }
 
     // MARK: - 성장 탭에서 수동 트리거
@@ -356,8 +408,7 @@ final class MREngineStore: ObservableObject {
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
                                gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
                                log: adviceLog, asOf: now)
-        adviceLog.record(advice.map(\.key), asOf: now)
-        MRAdviceLogStore.save(adviceLog)
+        // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         let raceDayVisible3 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
         todayCard = mrTodayCard(runs: runs, phys: phys, plans: plans,
                                 raceDayCardVisible: raceDayVisible3,
@@ -396,8 +447,7 @@ final class MREngineStore: ObservableObject {
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
                                gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
                                log: adviceLog, asOf: now)
-        adviceLog.record(advice.map(\.key), asOf: now)
-        MRAdviceLogStore.save(adviceLog)
+        // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         raceDayCard = computeRaceDayCard(plans: plans, asOf: now)
         let raceDayVisible4 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
         todayCard = mrTodayCard(runs: runs, phys: phys, plans: plans,
@@ -439,7 +489,9 @@ final class MREngineStore: ObservableObject {
     private func timed<T>(_ label: String, _ work: () async throws -> T) async rethrows -> T {
         let t0 = CFAbsoluteTimeGetCurrent()
         let result = try await work()
+        #if DEBUG
         print(String(format: "[⏱ %@] %.2fs", label, CFAbsoluteTimeGetCurrent() - t0))
+        #endif
         return result
     }
 }

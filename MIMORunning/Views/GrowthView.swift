@@ -101,6 +101,8 @@ struct GrowthView: View {
     @State private var weeklyCommentCache: [String: String] = [:]
     @State private var isRefreshingMetrics = false
     @State private var lastAnalyzedRunCount: Int = -1
+    @State private var formObservation: (text: String, basis: String, isStable: Bool)? = nil
+    @State private var formComputedForRunCount: Int? = nil  // ■2: 동일 run count 재계산 방지
     @State private var lastChartRefreshCount: Int = -1
     @State private var runsCache: [Activity] = []
     @State private var prEntriesCache: [PREntry] = []
@@ -110,10 +112,17 @@ struct GrowthView: View {
     @State private var showWeeklyShareCard = false
     @State private var showMileageStreakShareCard = false
 
-    // 버전을 올리면 해당 주의 코멘트 캐시(메모리·디스크)가 자동 무효화됨
-    private static let weeklyCommentVersion = 7
+    // 자료 구조가 바뀔 때만 올린다. 템플릿 문구 변경은 stableHash가 자동 처리.
+    private static let weeklyCommentVersion = 11
     private static let debugBypassCache = false
     private static let debugBypassDailyLimit = false
+
+    /// FNV-1a 32-bit — Swift의 hashValue는 실행마다 달라지므로 쓰지 않는다.
+    private static func stableHash(_ s: String) -> UInt32 {
+        var h: UInt32 = 2166136261
+        for b in s.utf8 { h = (h ^ UInt32(b)) &* 16777619 }
+        return h
+    }
     // 2026-07 검증: 온디바이스 모델이 3요소 총평 규격을 재시도에도 못 맞춤
     // (감사합니다 종결, 동일 출력 반복). 템플릿 확정. 모델 개선 시 true로 재평가.
     private static let useAITotalComment = false
@@ -222,8 +231,24 @@ struct GrowthView: View {
             .navigationTitle(AppLanguage.shared.s("성장", "Growth"))
             .navigationBarTitleDisplayMode(.large)
         }
-        .onChange(of: manager.activities) { Task { refreshChartCache(); await refreshMetricAnalyses() } }
-        .onChange(of: dailyMonth) { dailyKmsCache = dailyKms(for: dailyMonth) }
+        .onChange(of: manager.activities) { oldActivities, newActivities in
+            // 개수가 같으면 Task 자체를 생성하지 않는다.
+            // (같은 프레임에 onChange가 여러 번 오면 SwiftUI가 "multiple updates per frame" 경고를 낸다)
+            guard oldActivities.count != newActivities.count else { return }
+            Task { refreshChartCache(); await refreshMetricAnalyses() }
+        }
+        // engine.runs가 나중에 채워질 때(race condition) 폼 관찰 재시도
+        .onChange(of: engine.runs.count) { _, newCount in
+            guard newCount > 0, formComputedForRunCount != newCount else { return }
+            Task { await refreshFormObservation() }
+        }
+        // engine 준비 완료 시 패턴·코멘트 재계산 (engine.streakWeeks 등이 0이었을 수 있음)
+        .onChange(of: engine.isReady) { _, isReady in
+            guard isReady else { return }
+            lastAnalyzedRunCount = -1
+            Task { refreshChartCache(); await refreshMetricAnalyses() }
+        }
+        .onChange(of: dailyMonth) { _, _ in dailyKmsCache = dailyKms(for: dailyMonth) }
         .task {
             refreshChartCache()
             let bucket = manager.userLevel.bucket
@@ -306,6 +331,62 @@ struct GrowthView: View {
                 days: col.days.map { ShareHeatmapDay(km: $0.km, isFuture: $0.isFuture) }
             )
         }
+    }
+
+    // MARK: - 폼 스타일 관찰
+
+    private func computeFormObservation(
+        voData:  [(date: Date, value: Double)],
+        cadData: [(date: Date, value: Double)],
+        gctData: [(date: Date, value: Double)]
+    ) -> (text: String, basis: String, isStable: Bool)? {
+        // engine.runs가 아직 비어있으면 계산하지 않는다.
+        // (manager.activities와 engine.runs는 독립된 async 흐름 — race condition 방어)
+        guard !engine.runs.isEmpty else {
+            #if DEBUG
+            print("[폼] engine.runs 미충전 — 스킵 (engine.state=\(engine.state))")
+            #endif
+            return nil
+        }
+
+        // engine.runs에서 유효한 야외 정상 런만 추출 (startOfDay → speed 맵)
+        // ⚠ r.date는 startOfDay(midnight)이고,
+        //   fetchMetricHistory는 workout.startDate(정확한 시각)를 반환한다.
+        //   buildObs에서 pt.date도 startOfDay로 정규화해야 키가 맞는다.
+        let cal = Calendar.current
+        let speedByDate: [Date: Double] = Dictionary(uniqueKeysWithValues:
+            engine.runs.compactMap { r -> (Date, Double)? in
+                guard !r.indoor, !r.isInterval,
+                      r.durationMin >= 20, (r.distanceKm ?? 0) >= 3,
+                      let speed = r.speedMPerMin else { return nil }
+                return (r.date, speed)   // r.date == startOfDay
+            }
+        )
+        #if DEBUG
+        print("[폼] 호출 runs=\(engine.runs.count) 유효속도맵=\(speedByDate.count)")
+        #endif
+
+        func buildObs(_ pts: [(date: Date, value: Double)]) -> [MRFormObs] {
+            pts.compactMap { pt in
+                let day = cal.startOfDay(for: pt.date)   // 정규화 — fetchMetricHistory는 exact timestamp 반환
+                guard let speed = speedByDate[day] else { return nil }
+                return MRFormObs(date: day, speedMPerMin: speed, metricValue: pt.value)
+            }
+        }
+
+        let now = Date()
+        var shifts: [MRFormShift] = []
+        for (metric, obs) in [(mrFormMetrics[0], buildObs(voData)),
+                              (mrFormMetrics[1], buildObs(cadData)),
+                              (mrFormMetrics[2], buildObs(gctData))] {
+            let residuals = mrFormResiduals(obs: obs, asOf: now)
+            if let shift = mrFormShift(residuals, metric: metric, asOf: now) {
+                shifts.append(shift)
+            }
+        }
+
+        guard let result = mrFormObservation(shifts) else { return nil }
+        return (text: result.text, basis: result.basis, isStable: result.isStable)
     }
 
     // MARK: - Sections
@@ -697,7 +778,10 @@ struct GrowthView: View {
             .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max
         ]
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: L.s("주간 지표 추세", "Weekly Metric Trends"), subtitle: L.s("탭하면 상세 보기", "Tap for details"))
+            SectionLabel(title: L.s("주간 지표 추세", "Weekly Metric Trends"), subtitle: L.s("최근 7일 기준", "Last 7 days"))
+            if let obs = formObservation {
+                MRFormObservationCard(text: obs.text, basis: obs.basis, isStable: obs.isStable)
+            }
             weeklyPatternCommentCard
             LazyVGrid(columns: cols, spacing: 12) {
                 ForEach(runningMetrics) { metric in
@@ -741,7 +825,11 @@ struct GrowthView: View {
                 Text(weeklyCommentText)
                     .font(.system(size: 13))
                     .foregroundStyle(Color(hex: "AEAEB2"))
-                    .lineLimit(3)
+                if !pattern.basis.isEmpty {
+                    Text(pattern.basis)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(hex: "636366"))
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -765,6 +853,9 @@ struct GrowthView: View {
         case "propulsion":        return ("arrow.up.forward.circle.fill", Theme.violet)
         case "turnover":          return ("arrow.clockwise.circle.fill",  Color(hex: "64D2FF"))
         case "compositionChange": return ("chart.bar.fill",               Color(hex: "FF9F0A"))
+        case "heatAdjusted":      return ("thermometer.sun.fill",         Color(hex: "FF9F0A"))
+        case "driftWeek":         return ("waveform.path.ecg",            Color(hex: "FF453A"))
+        case "hrPaceWeek":        return ("bolt.heart.fill",              Color(hex: "5AC8FA"))
         default:                  return ("figure.walk",                  Color(hex: "8A8A92"))
         }
     }
@@ -894,9 +985,24 @@ struct GrowthView: View {
     // MARK: - Metric trend analyses
 
     private func refreshMetricAnalyses() async {
+        // engine 미준비 시 스킵 — lastAnalyzedRunCount를 업데이트하지 않아
+        // onChange(of: engine.isReady)가 준비 후 재시도를 보장한다
+        guard engine.isReady else {
+            #if DEBUG
+            print("[패턴] engine 미준비 — 분석 스킵")
+            #endif
+            return
+        }
         guard !isRefreshingMetrics else { return }
         let currentCount = runsCache.count
         guard currentCount != lastAnalyzedRunCount else { return }
+        // runsCache 미충전 시 스킵 — lastAnalyzedRunCount를 업데이트하지 않아 재시도 보장
+        guard currentCount > 0 else {
+            #if DEBUG
+            print("[패턴] runsCache 미충전 — 분석 스킵")
+            #endif
+            return
+        }
         // 런이 새로 추가됐을 때만 캐시 무효화 (첫 실행은 제외)
         if currentCount > lastAnalyzedRunCount && lastAnalyzedRunCount >= 0 {
             manager.invalidateRunningMetricHistoryCache()
@@ -947,6 +1053,10 @@ struct GrowthView: View {
             return (metric: m, points: pts)
         }
 
+        // 폼 스타일 관찰 — 1년 데이터가 필요하므로 별도 fetch
+        // engine.runs가 비어있으면 스킵 (computeFormObservation 내부 guard와 이중 방어)
+        await refreshFormObservation()
+
         // Build WeeklyInsightInputs and detect patterns
         let cal = mondayCal
         let nowComps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
@@ -967,6 +1077,86 @@ struct GrowthView: View {
             manager.cachedWorkoutType(for: $0.id).map { intenseTypes.contains($0) } ?? false
         }.count
 
+        // p21·p22·p23 입력: engine.runs 기반 (Activity가 아닌 MRWorkout)
+        // ⚠ "이번 주"(ISO 주) 대신 "최근 7일"을 쓴다.
+        //   월요일 첫 러닝 전이면 이번 주 런이 0개라 p21/p22 조건을 항상 미달한다.
+        let sevenDaysAgo  = Calendar.current.date(byAdding: .day, value: -7,  to: Date()) ?? .distantPast
+        let eightWeeksAgo = Calendar.current.date(byAdding: .day, value: -56, to: Date()) ?? .distantPast
+        let recent7dRuns = engine.runs.filter { $0.start >= sevenDaysAgo }
+
+        // p21: 최근 7일 야외 런 평균 기온 ≥20°C + heat.ok + ≥3 런 + 보정 차 ≥10초
+        let heat = engine.heat
+        let (heatOk, heatAvgTempC, heatActualPaceSec, heatRefPaceSec, heatBasisText): (Bool, Double, Double, Double, String) = {
+            let outdoor = recent7dRuns.filter { !$0.indoor && $0.tempC != nil }
+            guard heat.ok, recent7dRuns.count >= 3, !outdoor.isEmpty else { return (false, 0, 0, 0, "") }
+            let temps = outdoor.compactMap(\.tempC)
+            let avgTemp = temps.reduce(0, +) / Double(temps.count)
+            guard avgTemp >= 20 else { return (false, 0, 0, 0, "") }
+            // (b) 런별로 각자 기온으로 보정 후 평균
+            // hot² 항 때문에 평균기온 1회 보정(a)과 결과가 다르다.
+            var actualPaces: [Double] = []
+            var refPaces: [Double] = []
+            for r in outdoor {
+                guard let d = r.distanceKm, d > 0, let t = r.tempC else { continue }
+                let pace = r.durationMin * 60.0 / d
+                actualPaces.append(pace)
+                refPaces.append(pace * heat.toRef(timeMin: 1.0, tempC: t))
+            }
+            guard !actualPaces.isEmpty else { return (false, 0, 0, 0, "") }
+            let avgPace    = actualPaces.reduce(0, +) / Double(actualPaces.count)
+            let avgRefPace = refPaces.reduce(0, +) / Double(refPaces.count)
+            // 10초 미만 차이는 말할 가치 없음 → 미발동
+            guard abs(avgPace - avgRefPace) >= 10 else { return (false, 0, 0, 0, "") }
+            // 이번 계산에 실제로 적용된 보정률 → 사용자가 검산 가능
+            let corrPct = (avgPace - avgRefPace) / avgPace * 100
+            let tempStr = String(format: "%.0f", avgTemp)
+            let corrStr = String(format: "%.1f", corrPct)
+            let basis = "본인 러닝 \(heat.n)회로 계산 · \(tempStr)°C에서 \(corrStr)% 보정"
+            return (true, avgTemp, avgPace, avgRefPace, basis)
+        }()
+        #if DEBUG
+        let _dbgOutdoor = recent7dRuns.filter { !$0.indoor && $0.tempC != nil }
+        let _dbgTemps   = _dbgOutdoor.compactMap(\.tempC)
+        let _dbgAvgTemp = _dbgTemps.isEmpty ? "기온없음" : String(format: "%.1f°C", _dbgTemps.reduce(0,+)/Double(_dbgTemps.count))
+        print("[패턴] p21 heatAdjusted — 최근 7일 런 \(recent7dRuns.count)회(≥3 \(recent7dRuns.count >= 3 ? "✓":"✗")), 야외평균기온 \(_dbgAvgTemp)(≥20 \((_dbgTemps.reduce(0,+)/max(1,Double(_dbgTemps.count))) >= 20 ? "✓":"✗")), heat.ok=\(heat.ok) → \(heatOk ? "발동":"미발동")")
+        #endif
+
+        // p22: 최근 7일 야외 롱런(≥40분) + drift.ok + 기온 ≥20°C
+        let drift = engine.drift
+        let (driftOk, driftBpmActual, driftBpmRef, driftTempC): (Bool, Double, Double, Double) = {
+            let longOutdoor = recent7dRuns.filter { !$0.indoor && $0.tempC != nil && $0.durationMin >= 40 }
+            guard drift.ok, !longOutdoor.isEmpty else { return (false, 0, 0, 0) }
+            let temps = longOutdoor.compactMap(\.tempC)
+            let avgTemp = temps.reduce(0, +) / Double(temps.count)
+            guard avgTemp >= 20 else { return (false, 0, 0, 0) }
+            return (true, drift.bpmPer10Min(atC: avgTemp), drift.bpmPer10MinAtRef, avgTemp)
+        }()
+
+        // p23: 최근 4주 vs 직전 4주 정규화 페이스(150bpm 기준) 차 ≥5초
+        let hrPaceDeltaSec: Double? = {
+            guard engine.hrPace.ok, recent7dRuns.count >= 3 else { return nil }
+            func normPace(_ rs: [MRWorkout]) -> Double? {
+                let valid = rs.filter {
+                    $0.hrAvg != nil && $0.distanceKm != nil && !$0.isInterval && !$0.indoor && $0.durationMin >= 20
+                }
+                guard valid.count >= 3 else { return nil }
+                let refHR = 150.0
+                let scaled = valid.compactMap { r -> Double? in
+                    guard let hr = r.hrAvg, let d = r.distanceKm, d > 0, hr > 0 else { return nil }
+                    let pace = r.durationMin * 60.0 / d
+                    return pace * (hr / refHR)   // 150bpm 기준으로 정규화
+                }
+                guard !scaled.isEmpty else { return nil }
+                return scaled.reduce(0, +) / Double(scaled.count)
+            }
+            let recentRuns = engine.runs.filter { $0.start >= fourWeeksAgo }
+            let prevRuns   = engine.runs.filter { $0.start >= eightWeeksAgo && $0.start < fourWeeksAgo }
+            guard let recentNorm = normPace(recentRuns),
+                  let prevNorm   = normPace(prevRuns) else { return nil }
+            let delta = prevNorm - recentNorm   // 양수 = 최근이 더 빠름
+            return abs(delta) >= 5 ? delta : nil
+        }()
+
         let inputs = WeeklyInsightInputs(
             paceDirection:         paceAnalysisCache.direction,
             hrDirection:           hrAnalysisCache.direction,
@@ -984,10 +1174,32 @@ struct GrowthView: View {
             thisWeekDistanceKm:    thisWeekLongestKmCache,
             thisWindowIntenseCount: thisWindowIntenseCount,
             prevWindowIntenseCount: prevWindowIntenseCount,
-            prevWindowRunCount:    prevWindowRuns.count
+            prevWindowRunCount:    prevWindowRuns.count,
+            heatOk:               heatOk,
+            heatAvgTempC:         heatAvgTempC,
+            heatActualPaceSec:    heatActualPaceSec,
+            heatRefPaceSec:       heatRefPaceSec,
+            heatBasisText:        heatBasisText,
+            driftOk:              driftOk,
+            driftBpmActual:       driftBpmActual,
+            driftBpmRef:          driftBpmRef,
+            driftTempC:           driftTempC,
+            hrPaceDeltaSec:       hrPaceDeltaSec
         )
+        // ■4 engine.runs 미충전 시 encourage(p99) 오발 방지
+        //   engine.isReady 가드만으로는 runs가 완전히 채워지지 않은 타이밍을 막지 못한다.
+        //   runsCache(manager 기반)와 engine.runs는 별개 캐시라 race가 발생할 수 있다.
+        guard !engine.runs.isEmpty else {
+            weeklyPatternCache = []
+            weeklyCommentText = ""
+            return
+        }
         weeklyPatternCache = applyPatternRepeatGuard(detectWeeklyPatterns(inputs))
-        InsightEngine.updateFatigueSignal(active: weeklyPatternCache.contains { $0.key == "fatigueSign" })
+        #if DEBUG
+        let _allKeys = weeklyPatternCache.map { "\($0.key)(p\($0.priority))" }
+        print("[패턴] 발동 \(_allKeys.count)개: \(_allKeys.joined(separator: ", "))")
+        #endif
+        InsightEngine.updateFatigueSignal(active: false)  // fatigueSign 패턴 제거됨
         weeklySummary = assembleWeeklySummary(
             patterns: weeklyPatternCache,
             inputs: inputs,
@@ -1001,11 +1213,24 @@ struct GrowthView: View {
             weeklyCommentText = ""
             return
         }
-        weeklyCommentText = summary.template(for: weekOfYear, isEnglish: AppLanguage.shared.isEnglish)
+        // p21/p22/p23는 WeeklySummary 3문장 구조가 아닌 패턴 자체 템플릿을 쓴다.
+        let standaloneKeys: Set<String> = ["heatAdjusted", "driftWeek", "hrPaceWeek"]
+        if let top = weeklyPatternCache.first, standaloneKeys.contains(top.key) {
+            weeklyCommentText = top.template(for: weekOfYear, isEnglish: AppLanguage.shared.isEnglish)
+        } else {
+            weeklyCommentText = summary.template(for: weekOfYear, isEnglish: AppLanguage.shared.isEnglish)
+        }
 
         // ② 같은 주·같은 패턴이면 메모리 캐시 사용
         let year = mondayCal.component(.year, from: Date())
-        let cacheKey = "v\(Self.weeklyCommentVersion)_\(year)W\(weekOfYear)_\(summary.topPatternKey)"
+        // 템플릿 해시: 문구를 한 글자만 고쳐도 키가 자동으로 바뀐다.
+        // · 패턴 koTemplates/enTemplates (동적 값 포함) + WeeklySummary 폴백 문장 → 정렬 후 FNV-1a
+        // · 동적 값(페이스·기온 등)이 바뀌어도 키가 갱신되므로 데이터 변경 시 자동 재생성.
+        var _hashSources = weeklyPatternCache.flatMap { $0.koTemplates + $0.enTemplates }
+        _hashSources.append(summary.template(for: weekOfYear, isEnglish: false))
+        _hashSources.append(summary.template(for: weekOfYear, isEnglish: true))
+        let _tHash = String(format: "%08x", Self.stableHash(_hashSources.sorted().joined(separator: "|")))
+        let cacheKey = "v\(Self.weeklyCommentVersion)_\(_tHash)_\(year)W\(weekOfYear)_\(summary.topPatternKey)"
 
         // 중복 실행 방지: 직전 호출과 동일 입력이면 AI 재시도 스킵 (onChange 이중 실행 등 방어)
         let inputKey = "\(cacheKey)|\(summary.aiFacts)"
@@ -1026,7 +1251,7 @@ struct GrowthView: View {
         }
 
         // ③ 디스크(UserDefaults) 캐시 — 앱 재시작 후에도 AI 재실행 방지
-        let udKey = "mimo_weekly_comment_\(cacheKey)"
+        let udKey = "\(MRModelVersion.prefix)mimo_weekly_comment_\(cacheKey)"
         let udDateKey = "\(udKey)_date"
         if !Self.debugBypassCache, let persisted = UserDefaults.standard.string(forKey: udKey) {
             #if DEBUG
@@ -1039,6 +1264,14 @@ struct GrowthView: View {
             return
         }
 
+        // ★ 쓰기 차단 — engine 미준비 상태의 불완전한 패턴은 디스크에 저장하지 않는다.
+        // (engine.isReady 후 onChange가 재계산을 트리거함)
+        guard engine.isReady else {
+            #if DEBUG
+            print("[WeeklyComment] ★ 쓰기 차단: engine 미준비 — 메모리만 표시")
+            #endif
+            return
+        }
         #if DEBUG
         print("[WeeklyComment] 경로=① 새 템플릿 생성 key=\(cacheKey) pattern=\(summary.topPatternKey)")
         #endif
@@ -1116,6 +1349,32 @@ struct GrowthView: View {
             weeklyCommentCache[cacheKey] = weeklyCommentText
             UserDefaults.standard.set(weeklyCommentText, forKey: udKey)
             UserDefaults.standard.set(Date(), forKey: udDateKey)
+        }
+    }
+
+    // MARK: - Form observation (engine.runs 의존 — engine 준비 후 실행)
+
+    /// 폼 스타일 관찰.
+    /// - engine.runs 미충전 시 스킵 (빈 결과가 formObservation에 쓰이는 것 방지)
+    /// - 동일 runs.count 재호출 시 스킵 (이중실행 방지: 안정 분기 기록 후 즉시 재호출하면 4주 rule에 막힘)
+    /// - nil 결과(침묵)는 기존 formObservation을 덮어쓰지 않음
+    private func refreshFormObservation() async {
+        guard !engine.runs.isEmpty else { return }
+        guard formComputedForRunCount != engine.runs.count else {
+            #if DEBUG
+            print("[폼] 이미 계산됨 runs=\(engine.runs.count) — 스킵")
+            #endif
+            return
+        }
+        formComputedForRunCount = engine.runs.count
+        let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+        async let voFetch  = manager.fetchMetricHistory(.verticalOscillation, from: oneYearAgo)
+        async let cadFetch = manager.fetchMetricHistory(.cadence, from: oneYearAgo)
+        async let gctFetch = manager.fetchMetricHistory(.groundContactTime, from: oneYearAgo)
+        let (voData, cadData, gctData) = await (voFetch, cadFetch, gctFetch)
+        // nil(침묵)은 기존 결과를 유지 — 안정 분기 기록 직후 재호출로 덮어쓰이는 것을 방지
+        if let result = computeFormObservation(voData: voData, cadData: cadData, gctData: gctData) {
+            formObservation = result
         }
     }
 
@@ -1947,34 +2206,32 @@ private struct MetricSparkCard: View {
         metric == .bodyMass || metric == .bodyFatPercentage
     }
 
-    private var analysis: (direction: TrendDirection, changeRatio: Double) {
-        trendDirection(values: dataPoints.map(\.value))
-    }
-
-    private var sentiment: TrendSentiment {
-        trendSentiment(direction: analysis.direction,
-                       lowerIsBetter: metric.lowerIsBetter,
-                       isNeutral: isNeutral)
-    }
-
-    private var arrowText: String? {
-        switch analysis.direction {
-        case .up:   return "↑"
-        case .down: return "↓"
-        default:    return nil
-        }
-    }
-
-    private var arrowColor: Color {
-        switch sentiment {
-        case .good:    return .green
-        case .bad:     return Color(hex: "8A8A92")
-        case .neutral: return Color(hex: "6E6E78")
-        }
+    // MDC₉₅ = 1.96 × SD × √(1/n_recent + 1/n_base) — 절대값 비교, % 아님
+    // ⚠ % 기반 문턱은 CV가 작은 지표(케이던스)는 너무 민감하고
+    //   CV가 큰 지표(VO2max)는 너무 둔감하다. 절대 스케일이 공정하다.
+    private var mdcTest: (isSignificant: Bool, ratio: Double)? {
+        guard dataPoints.count >= 4 else { return nil }
+        let values = dataPoints.map(\.value)
+        let half = values.count / 2
+        guard half > 0 else { return nil }
+        let base   = Array(values.prefix(half))
+        let recent = Array(values.suffix(values.count - half))
+        let rMean  = recent.reduce(0, +) / Double(recent.count)
+        let bMean  = base.reduce(0, +)   / Double(base.count)
+        let mean   = values.reduce(0, +) / Double(values.count)
+        let sd     = values.count > 1
+            ? (values.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(values.count - 1)).squareRoot()
+            : 0
+        let mdc95  = 1.96 * sd * (1.0 / Double(recent.count) + 1.0 / Double(base.count)).squareRoot()
+        let delta  = rMean - bMean
+        let ratio  = bMean != 0 ? delta / abs(bMean) : 0
+        return (isSignificant: abs(delta) >= mdc95, ratio: ratio)
     }
 
     private var sparklineColor: Color {
-        sentiment == .good ? .green : Theme.violet
+        guard !isNeutral, let t = mdcTest, t.isSignificant else { return Theme.violet }
+        let up = t.ratio > 0
+        return (metric.lowerIsBetter ? !up : up) ? .green : Theme.violet
     }
 
     var body: some View {
@@ -1985,11 +2242,6 @@ private struct MetricSparkCard: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    if let arrow = arrowText {
-                        Text(arrow)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(arrowColor)
-                    }
                 }
                 if isLoading {
                     Color.clear
@@ -1999,16 +2251,22 @@ private struct MetricSparkCard: View {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(metric.formattedValue(cur, usePounds: usePounds))
                             .font(.system(.subheadline, design: .rounded).weight(.bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(isNeutral ? Color.secondary : .white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
-                        if analysis.direction != .insufficient {
-                            let ratio = analysis.changeRatio
-                            let sign: String = ratio >= 0 ? "+" : "−"
-                            Text(String(format: "%@%.1f%%", sign, abs(ratio * 100)))
-                                .font(.system(size: 11))
-                                .foregroundStyle(Color(hex: "6E6E78"))
-                                .lineLimit(1)
+                        if !isNeutral, let t = mdcTest {
+                            if t.isSignificant {
+                                let sign: String = t.ratio >= 0 ? "+" : "−"
+                                Text(String(format: "%@%.1f%%", sign, abs(t.ratio * 100)))
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color(hex: "6E6E78"))
+                                    .lineLimit(1)
+                            } else {
+                                Text("변화 없음")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.white.opacity(0.45))
+                                    .lineLimit(1)
+                            }
                         }
                     }
                     sparkline
@@ -2137,6 +2395,68 @@ private struct WeekStatTile: View {
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
+}
+
+#Preview("안정 문장 카드") {
+    ZStack {
+        Theme.background.ignoresSafeArea()
+        MRFormObservationCard(
+            text: "최근 14일간 케이던스와 보폭이 안정적으로 유지되고 있어요. 큰 변화 없이 꾸준한 달리기 스타일이 자리를 잡고 있습니다.",
+            basis: "14일 창·분석 지표 6개(케이던스·파워·지면접촉·보폭·수직진폭·VO2max) 중 5개 이상 ±5% 이내 → 안정 판정",
+            isStable: true
+        )
+        .padding(16)
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("주간 패턴 — p21 기온 보정 (8월 시뮬레이션)") {
+    let woy = Calendar.current.component(.weekOfYear, from: Date())
+    let pattern = WeeklyPattern(
+        priority: 21, key: "heatAdjusted",
+        factSummary: "28°C, 실제 6'21\"/km → 15°C 환산 6'06\"/km",
+        basis: "본인 러닝 493회로 계산 · 28°C에서 4.5% 보정",
+        shortNames: ["더운 날의 러닝", "기온 보정 페이스"],
+        koTemplates: [
+            "최근 7일 평균 6'21\"/km, 기온은 28°C였어요. 15°C였다면 6'06\" 정도예요.",
+            "28°C에서 6'21\"/km로 달렸어요. 같은 몸으로 15°C에서 뛰면 6'06\"쯤 됩니다.",
+            "이번 더위에서 6'21\"/km. 기온을 걷어내면 6'06\" 수준이에요.",
+            "28°C의 최근 7일, 평균 6'21\"/km — 같은 노력이라면 15°C에서 6'06\"예요.",
+        ],
+        enTemplates: ["28°C week, 6'21\"/km avg — same effort at 15°C would be 6'06\"."]
+    )
+    let commentText = pattern.template(for: woy, isEnglish: false)
+    let symbol = "thermometer.sun.fill"
+    let iconColor = Color(hex: "FF9F0A")
+
+    ZStack {
+        Theme.background.ignoresSafeArea()
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(iconColor)
+                Text(pattern.shortName(for: woy))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+            }
+            Text(commentText)
+                .font(.system(size: 13))
+                .foregroundStyle(Color(hex: "AEAEB2"))
+            if !pattern.basis.isEmpty {
+                Text(pattern.basis)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color(hex: "636366"))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(16)
+    }
+    .preferredColorScheme(.dark)
 }
 
 #Preview("주간 지표 추세 카드") {

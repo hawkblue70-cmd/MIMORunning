@@ -59,6 +59,16 @@
 				<string>CA92.1</string>
 			</array>
 		</dict>
+		<!-- 파일 타임스탬프: JSON 캐시(걸음·드리프트·백테스트) 만료 관리
+		     3B52.1: 로컬 캐시 만료 확인 목적 -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>3B52.1</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

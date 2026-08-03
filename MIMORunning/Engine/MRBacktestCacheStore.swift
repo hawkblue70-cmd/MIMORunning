@@ -31,9 +31,11 @@ struct MRBacktestRowCodable: Codable {
 }
 
 enum MRBacktestCacheStore {
+    static var cacheFileName: String { "\(MRModelVersion.prefix)mr_backtest_cache.json" }
+
     private static let url: URL = {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return dir.appendingPathComponent("mr_backtest_cache.json")
+        return dir.appendingPathComponent(cacheFileName)
     }()
 
     static func load() -> MRBacktestCache? {

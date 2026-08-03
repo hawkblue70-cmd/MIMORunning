@@ -18,7 +18,9 @@ struct MRHRPaceModel {
         guard v > 60 else {
             // ⚠ 여기 걸리면 절편이 목표 심박보다 높다는 뜻 —
             //   회귀가 잘못된 관계를 잡았다는 신호다. 조용히 넘기지 말 것.
+            #if DEBUG
             print("[HRPace] paceAtHR(\(hr)) 실패: b0=\(b0) bSpeed=\(bSpeed) v=\(v)")
+            #endif
             return nil
         }
         return 60_000.0 / v
@@ -75,28 +77,68 @@ func mrFitHRPaceModel(runs: [MRWorkout], asOf: Date) -> MRHRPaceModel {
 /// ⚠ 예측식에는 넣지 않는다. Smyth & Muniz-Pumares 2022의 decoupling은
 ///   마라톤 레이스 전후반 비교이고, 훈련 주행의 드리프트가 같은 것이라는
 ///   근거가 없다. 화면에 **보여주기만** 한다.
+/// 심혈관 드리프트 — 같은 페이스에서 시간이 갈수록 심박이 오르는 정도.
+///
+///   (HR − 세션평균) ~ (speed − 세션평균) + (elapsed − 세션평균)
+///                     + 기온 × (elapsed − 세션평균)
+///
+/// ⚠ 두 가지를 고쳤다:
+///
+/// ① **세션 중심화(within-session centering)**
+///    v1은 세션 구분 없이 pooled 회귀였다. 긴 세션이 더운 날에 몰려 있으면
+///    "시간이 지나 심박이 올랐다"와 "그날이 더워 처음부터 높았다"가
+///    구분되지 않는다.
+///
+/// ② **기온 상호작용**
+///    드리프트는 고정 형질이 아니라 조건에 따라 변한다. 더위·탈수가
+///    주된 기전이다(Coyle & González-Alonso 2001, Exerc Sport Sci Rev 29(2):88–92).
+///    90일 창이면 여름만 담겨 "여름 값"을 그 사람 값으로 보고하게 된다.
+///    → 창을 365일로 넓히고 기온을 넣어 15°C 기준으로 보고한다.
 struct MRDriftModel {
     var ok = false
-    var bpmPer10Min = 0.0
+    var bpmPer10MinAtRef = 0.0      // 15°C 기준
+    var bpmPer10MinPerDegC = 0.0    // 기온 1°C당 증가분
     var sessions = 0
+    var tempSpanC = 0.0             // 기온 범위 — 좁으면 신뢰 못 함
+
+    func bpmPer10Min(atC t: Double) -> Double {
+        bpmPer10MinAtRef + bpmPer10MinPerDegC * (t - MR_REF_TEMP)
+    }
 }
 
 func mrFitDrift(segments: [MRSegment],
                 excludeIntervalStarts: Set<Date>) -> MRDriftModel {
     var m = MRDriftModel()
     let rows = segments.filter { !excludeIntervalStarts.contains($0.workoutStart) }
-    let sessions = Set(rows.map(\.workoutStart))
-    guard rows.count >= 200, sessions.count >= 8 else { return m }
+    let bySession = Dictionary(grouping: rows, by: \.workoutStart)
+    guard rows.count >= 300, bySession.count >= 15 else { return m }
 
     var X: [[Double]] = [], y: [Double] = []
-    for s in rows {
-        X.append([1.0, s.speedMPerMin, s.elapsedMin])
-        y.append(s.hr)
+    for (_, segs) in bySession {
+        guard segs.count >= 8 else { continue }
+        let n = Double(segs.count)
+        let mHR = segs.map(\.hr).reduce(0, +) / n
+        let mSp = segs.map(\.speedMPerMin).reduce(0, +) / n
+        let mEl = segs.map(\.elapsedMin).reduce(0, +) / n
+        let t = segs.first?.tempC ?? MR_REF_TEMP
+        for s in segs {
+            let dEl = s.elapsedMin - mEl
+            // 세션 중심화 → 절편 없음. [속도편차, 경과시간편차, 기온×경과시간편차]
+            X.append([s.speedMPerMin - mSp, dEl, dEl * (t - MR_REF_TEMP)])
+            y.append(s.hr - mHR)
+        }
     }
+    // ⚠ 세션 중심화를 했으므로 절편이 없다. lstsq에 절편 열 넣지 말 것.
     guard let c = MRLinAlg.lstsq(X: X, y: y) else { return m }
-    m.bpmPer10Min = c[2] * 10.0
-    m.sessions = sessions.count
-    m.ok = m.bpmPer10Min > 0 && m.bpmPer10Min < 15
+
+    m.bpmPer10MinAtRef    = c[1] * 10.0
+    m.bpmPer10MinPerDegC  = c[2] * 10.0
+    m.sessions = bySession.count
+    let temps = bySession.values.compactMap { $0.first?.tempC }
+    m.tempSpanC = (temps.max() ?? 0) - (temps.min() ?? 0)
+
+    // ⚠ 기온 범위가 좁으면 기온 항을 분리할 수 없다 — 외삽보다 침묵.
+    m.ok = m.bpmPer10MinAtRef > 0 && m.bpmPer10MinAtRef < 15 && m.tempSpanC >= 15
     return m
 }
 

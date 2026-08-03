@@ -46,7 +46,6 @@ struct MeView: View {
     @AppStorage("garminNoticeDismissed") private var garminNoticeDismissed = false
     @AppStorage("showRunning")  private var showRunning  = true
     @AppStorage("showWalking")  private var showWalking  = false
-    @AppStorage("showHiking")   private var showHiking   = false
     @AppStorage("cloudKitSyncAvailable") private var cloudKitSyncAvailable = false
     @AppStorage("goalTime10k")   private var goalTime10k  = ""
     @AppStorage("goalTimeHalf")  private var goalTimeHalf = ""
@@ -639,12 +638,6 @@ struct MeView: View {
                     Label(AppLanguage.shared.s("걷기", "Walking"), systemImage: "figure.walk").foregroundStyle(.white)
                     Spacer()
                     Toggle("", isOn: $showWalking).labelsHidden().tint(Theme.violet)
-                }
-                thinDivider
-                settingRow {
-                    Label(AppLanguage.shared.s("하이킹", "Hiking"), systemImage: "figure.hiking").foregroundStyle(.white)
-                    Spacer()
-                    Toggle("", isOn: $showHiking).labelsHidden().tint(Theme.violet)
                 }
             }
             .background(Theme.cardBackground)

@@ -68,7 +68,9 @@ struct MRHealthKit {
             Date(timeIntervalSince1970: $0.newestStart.timeIntervalSince1970 + 1)
         }
         let fresh = try await fetchRawRunsSince(since)
+        #if DEBUG
         print("[캐시] 워크아웃 캐시 \(cache == nil ? "없음" : "있음(\(cache!.runs.count)건, ~\(mrYMD(cache!.newestStart)))") · 새로 읽은 것 \(fresh.count)건")
+        #endif
 
         // 새 워크아웃만 isInterval 판정
         let freshMR = await convertToMRWorkouts(fresh)
@@ -220,9 +222,37 @@ struct MRHealthKit {
         guard let t = HKQuantityType.quantityType(forIdentifier: .stepCount) else { return [:] }
         let cal = Calendar.current
         let start = cal.startOfDay(for: from)
+        let dayCount = max(1, cal.dateComponents([.day], from: start, to: to).day ?? 999)
+
+        // 구간 ≤ 7일: HKStatisticsQuery 날짜별 호출.
+        //   HKStatisticsCollectionQuery는 predicate를 걸어도 초기화 비용이 수 초다.
+        //   캐시 히트 후 이틀치라면 단순 쿼리 2회가 훨씬 빠르다.
+        if dayCount <= 7 {
+            var m: [Date: Double] = [:]
+            var day = start
+            while day < to {
+                let nextDay = cal.date(byAdding: .day, value: 1, to: day)!
+                let pred = HKQuery.predicateForSamples(withStart: day, end: nextDay,
+                                                       options: .strictStartDate)
+                let thisDay = day
+                let v: Double = try await withCheckedThrowingContinuation { cont in
+                    let q = HKStatisticsQuery(quantityType: t, quantitySamplePredicate: pred,
+                                              options: .cumulativeSum) { _, stats, err in
+                        if let err { cont.resume(throwing: err); return }
+                        cont.resume(returning: stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0)
+                    }
+                    store.execute(q)
+                }
+                if v > 0 { m[thisDay] = v }
+                day = nextDay
+            }
+            return m
+        }
+
+        // 구간 > 7일: HKStatisticsCollectionQuery
         // ⚠ quantitySamplePredicate: nil이면 HealthKit이 전체 이력을 스캔한다.
         //   enumerateStatistics(from:to:)는 출력만 자를 뿐 쿼리 범위를 줄이지 않는다.
-        //   2일치만 필요한데 7년치를 훑느라 8초가 걸렸다 — predicate로 범위를 잘라야 한다.
+        //   predicate로 범위를 잘라야 한다.
         let samplePred = HKQuery.predicateForSamples(withStart: start, end: to,
                                                      options: .strictStartDate)
         let stats: [(Date, HKStatistics)] = try await withCheckedThrowingContinuation { cont in
@@ -249,10 +279,24 @@ struct MRHealthKit {
 
     /// 증분 걸음 수 fetch. 어제까지의 확정값은 캐시에서, 오늘은 항상 새로 읽는다.
     ///
-    /// 캐시 히트 시 하루치(~2일)만 읽는다. epoch day 정수 키로 DateFormatter 직렬화 제거.
+    /// 같은 날 두 번째 실행부터는 HK 쿼리를 생략한다.
+    /// 단, 어제 값이 0(미동기화)이면 재시도한다.
     func fetchDailyStepsIncremental(floor: Date) async throws -> [Date: Double] {
         let cal = Calendar.current
         let cache = MRStepsCacheStore.load()
+
+        // ★ 오늘 이미 읽었고 어제 값도 있으면 HK 쿼리 완전 생략
+        if let cache {
+            let today = cal.startOfDay(for: Date())
+            let yesterday = cal.date(byAdding: .day, value: -1, to: today)!
+            let yesterdayEpoch = mrEpochDay(yesterday)
+            if cache.lastDay == today && (cache.daily[yesterdayEpoch] ?? 0) > 0 {
+                var out: [Date: Double] = [:]
+                out.reserveCapacity(cache.daily.count)
+                for (k, v) in cache.daily { out[mrFromEpochDay(k)] = v }
+                return out
+            }
+        }
 
         // 캐시에서 하루 전부터 다시 읽는다 (오늘은 아직 확정 전이므로 재확인)
         let freshFrom = cache.map {
@@ -260,7 +304,9 @@ struct MRHealthKit {
         } ?? floor
 
         let fresh = try await fetchDailySteps(from: freshFrom)
+        #if DEBUG
         print("[캐시] 걸음 캐시 \(cache == nil ? "없음" : "있음(\(cache!.daily.count)일)") · 새로 읽은 \(fresh.count)일")
+        #endif
 
         // 캐시(Int 키) + 새 데이터 병합 — DateFormatter 없음
         var merged: [Int: Double] = cache?.daily ?? [:]

@@ -64,11 +64,16 @@ actor InsightCache {
     // Bump this when insight generation logic changes to invalidate stale cache files.
     private static let cacheVersion = 13
 
-    private func diskURL(activityID: UUID, isRefined: Bool, language: String) -> URL {
+    /// 테스트에서 파일명 패턴을 검증하기 위해 internal 로 노출.
+    static func cacheFileName(activityID: UUID, isRefined: Bool, language: String) -> String {
         let refined  = isRefined ? "1" : "0"
         let safeLang = language.replacingOccurrences(of: "/", with: "_")
-        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_insight_\(activityID.uuidString)_\(refined)_\(safeLang)_v\(Self.cacheVersion).json")
+        return "\(MRModelVersion.prefix)mimo_insight_\(activityID.uuidString)_\(refined)_\(safeLang)_v\(cacheVersion).json"
+    }
+
+    private func diskURL(activityID: UUID, isRefined: Bool, language: String) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(Self.cacheFileName(activityID: activityID, isRefined: isRefined, language: language))
     }
 
     private func loadFromDisk(activityID: UUID, isRefined: Bool, language: String) -> InsightResult? {

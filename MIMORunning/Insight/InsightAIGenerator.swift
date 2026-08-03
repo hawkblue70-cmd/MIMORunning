@@ -114,6 +114,7 @@ enum InsightAIGenerator {
             3) 절대적 기준이 아닌 본인의 2주 변화만 말한다.
             4) 같은 단어를 반복하지 마라.
             5) 헤드라인·구호 형태 금지. 반드시 서술형 문장으로 끝낸다.
+            6) 수직 진폭, 지면 접촉 시간, 케이던스, 보폭의 변화를 효율·경제성·개선·좋아짐의 근거로 쓰지 마라. 이 지표들은 손목 측정 오차가 크고, 어떤 방향이 더 좋다는 연구 결과가 없다. 러닝 이코노미를 말해야 한다면 페이스 대비 심박, 같은 심박에서의 속도 변화만 근거로 삼아라.
             좋은 예: "인터벌 2회를 섞은 5회 구성이었어요. 보폭이 늘어나는 흐름이에요. 4주째 이어지고 있어요."
             나쁜 예: "5회 완주! 최고였어요."
             """
@@ -181,9 +182,9 @@ enum InsightAIGenerator {
         case "consistent":        return "이 패턴은 '꾸준한 훈련 횟수'에 대한 것이다."
         case "fatigueSign":       return "이 패턴은 '폼 피로 관찰'에 대한 것이다. 단정·경고가 아니라 관찰과 부드러운 제안만 한다."
         case "overstride":        return "이 패턴은 '착지·발 위치 관찰'에 대한 것이다. 부드러운 폼 제안만 하고 결함을 진단하지 않는다."
-        case "economyPlus":       return "이 패턴은 '러닝 이코노미 자연 개선'에 대한 것이다. 효율·가벼움·접촉에 집중한다."
+        case "economyPlus":       return "이 패턴은 '달리는 리듬·감각 관찰'에 대한 것이다. 페이스·심박 관계와 꾸준함을 중심으로 묘사한다. 지면접촉·수직진폭·케이던스·보폭을 효율이나 개선의 근거로 쓰지 마라."
         case "propulsion":        return "이 패턴은 '추진력·보폭 성장'에 대한 것이다. 보폭이 자란다는 것을 긍정적으로 표현한다."
-        case "turnover":          return "이 패턴은 '케이던스·잰걸음 발달'에 대한 것이다. 리듬과 발 회전에 집중한다."
+        case "turnover":          return "이 패턴은 '회전수 변화 관찰'에 대한 것이다. 리듬과 발 회전 속도를 중립적으로 묘사한다."
         case "compositionChange": return "이 패턴은 '훈련 구성 변화·적응'에 대한 것이다. 지표 출렁임이 자연스럽다고 안심시킨다."
         default:                  return ""
         }
@@ -209,22 +210,7 @@ enum InsightAIGenerator {
     }
 
     private static func requiredVocab(for key: String) -> [String] {
-        switch key {
-        case "economy":           return ["힘", "추진", "밀어", "접촉", "가벼", "효율", "이코노미"]
-        case "form":              return ["보폭", "자세", "폼", "케이던스", "안정"]
-        case "speed":             return ["페이스", "빨라", "같은 노력", "수월"]
-        case "cardio":            return ["심폐", "유산소", "숨", "오래"]
-        case "easy":              return ["편하", "가볍게", "회복", "여유", "천천"]
-        case "streak":            return ["연속", "꾸준", "이어", "쉬지"]
-        case "consistent":        return ["꾸준", "쌓이", "차곡"]
-        case "fatigueSign":       return ["회복", "가볍", "쉬", "몸", "신호"]
-        case "overstride":        return ["착지", "발", "몸 아래", "케이던스", "회전"]
-        case "economyPlus":       return ["효율", "가벼", "접촉", "이코노미", "조용"]
-        case "propulsion":        return ["추진", "보폭", "리듬", "자라", "힘"]
-        case "turnover":          return ["리듬", "잰걸음", "케이던스", "발 회전", "분산"]
-        case "compositionChange": return ["강약", "훈련", "자연", "적응", "출렁"]
-        default:                  return []
-        }
+        return []
     }
 
     /// 검증 결과와 탈락 사유를 함께 반환. [AI-C] 진단에 사용.
@@ -242,7 +228,7 @@ enum InsightAIGenerator {
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         guard segments.count >= 2 else { return (false, "문장수 부족: \(segments.count)개 < 2개") }
         guard segments.count <= 3 else { return (false, "문장수 초과: \(segments.count)개 > 3개") }
-        let banned = ["더 멀리", "멀리", "더 빨리", "빠르게", "더 많이", "더 길게", "치고", "위험", "과훈련", "부상"]
+        let banned = ["더 멀리", "멀리", "더 빨리", "빠르게", "더 많이", "더 길게", "치고", "위험", "과훈련", "부상", "효율", "이코노미", "개선", "최적", "이상적"]
         for word in banned where trimmed.contains(word) {
             return (false, "금지어: 「\(word)」")
         }

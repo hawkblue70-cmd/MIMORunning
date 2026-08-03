@@ -715,9 +715,12 @@ struct InsightEngine {
             if let base = seasonal, abs(tempC - base) >= 1 {
                 let diff = Int((tempC - base).rounded())
                 let sign = diff > 0 ? "+" : ""
+                let ending = diff > 0
+                    ? L.s("높았어요", "warmer than usual")
+                    : L.s("낮았어요", "cooler than usual")
                 detail = L.s(
-                    "\(tempInt)°C — 예년 이맘때보다 \(sign)\(diff)도",
-                    "\(tempInt)°C — \(sign)\(diff)° vs seasonal avg"
+                    "\(tempInt)°C · 예년 이맘때보다 \(sign)\(diff)도 \(ending)",
+                    "\(tempInt)°C — \(sign)\(diff)° \(ending)"
                 )
             } else {
                 detail = L.s("\(tempInt)°C에서 완주", "Finished at \(tempInt)°C")
@@ -1019,9 +1022,9 @@ struct InsightEngine {
             let titles = [L.s("가장 더운 축의 러닝", "One of Your Hottest Runs"),
                           L.s("기온 상위 5%의 러닝", "Top 5% Heat Run"),
                           L.s("뜨거운 날의 러닝", "Peak Heat Run")]
-            let details = [L.s("오늘 기온은 본인 러닝 기온 분포 상위 5% 이내예요", "Today's temp is within your top 5% running conditions"),
+            let details = [L.s("기록 중 가장 더운 날 축이에요 — 이 더위에 뛰어낸 게 맞습니다", "One of the hottest days in your running history — finishing counts"),
                            L.s("이 더위에 달린 건 \(n)번의 기록 중 드문 편이에요", "Running in this heat is rare across your \(n) recorded runs"),
-                           L.s("본인 기온 분포 극단 — 더위 속 완주", "Near the extreme of your personal temperature range")]
+                           L.s("달린 날 중 가장 더운 상위 5%에 드는 날이에요", "Today ranks among the hottest 5% of your running days")]
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
         if percentile <= 0.05 {
@@ -1029,9 +1032,9 @@ struct InsightEngine {
             let titles = [L.s("가장 추운 축의 러닝", "One of Your Coldest Runs"),
                           L.s("기온 하위 5%의 러닝", "Bottom 5% Cold Run"),
                           L.s("혹한 속 러닝", "Into the Cold")]
-            let details = [L.s("오늘 기온은 본인 러닝 기온 분포 하위 5% 이내예요", "Today's temp is within your bottom 5% running conditions"),
+            let details = [L.s("기록 중 가장 추운 날 축이에요 — 이 추위에 뛰어낸 게 맞습니다", "One of the coldest days in your running history — finishing counts"),
                            L.s("이 추위에 달린 건 \(n)번의 기록 중 드문 편이에요", "Running in this cold is rare across your \(n) recorded runs"),
-                           L.s("본인 기온 분포 극단 — 혹한 속 완주", "Near the extreme of your personal temperature range")]
+                           L.s("달린 날 중 가장 추운 하위 5%에 드는 날이에요", "Today ranks among the coldest 5% of your running days")]
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
         return nil

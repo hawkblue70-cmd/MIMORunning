@@ -32,6 +32,12 @@ func mrActiveWeekStreak(runs: [MRWorkout], asOf: Date) -> Int {
     let weeksWithRuns = Set(runs.map { key($0.date) })
     var streak = 0
     var cursor = cal.startOfDay(for: asOf)
+    // 이번 주에 러닝이 아직 없으면 지난 주부터 카운트를 시작한다.
+    // (주 초(월요일)에 아직 달리기 전이어도 직전 연속이 유지됨)
+    if !weeksWithRuns.contains(key(cursor)),
+       let prev = cal.date(byAdding: .day, value: -7, to: cursor) {
+        cursor = prev
+    }
     while weeksWithRuns.contains(key(cursor)) {
         streak += 1
         guard let prev = cal.date(byAdding: .day, value: -7, to: cursor) else { break }

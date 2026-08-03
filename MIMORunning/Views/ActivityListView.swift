@@ -22,6 +22,9 @@ struct ActivityListView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            // ■3 iOS 26 Liquid Glass에서 glass bar가 safe area를 기여하지 않아
+            //   스크롤 시 카드 텍스트가 상태바 시계와 겹치는 문제 방지
+            .toolbarBackground(.visible, for: .navigationBar)
             .navigationDestination(for: Activity.self) { activity in
                 ActivityDetailView(activity: activity, manager: manager)
             }
@@ -318,6 +321,10 @@ private struct ActivityListContent: View {
         .onChange(of: showRunning)  { _, _ in displayCount = 50 }
         .onChange(of: showWalking)  { _, _ in displayCount = 50 }
         .onChange(of: showHiking)   { _, _ in displayCount = 50 }
+        .onChange(of: engine.isReady) { _, isReady in
+            guard isReady else { return }
+            manager.backfillIntervalTypes(from: engine.runs)
+        }
         .task {
             if let all = try? modelContext.fetch(FetchDescriptor<OneLinerEntry>()) {
                 // ── stale 키("restDay-") 정리 ──

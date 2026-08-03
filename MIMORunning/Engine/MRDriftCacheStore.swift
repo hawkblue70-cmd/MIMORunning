@@ -4,14 +4,25 @@ import Foundation
 
 struct MRDriftModelCodable: Codable {
     var ok: Bool
-    var bpmPer10Min: Double
+    var bpmPer10MinAtRef: Double
+    var bpmPer10MinPerDegC: Double
     var sessions: Int
+    var tempSpanC: Double
 
     init(_ m: MRDriftModel) {
-        ok = m.ok; bpmPer10Min = m.bpmPer10Min; sessions = m.sessions
+        ok = m.ok
+        bpmPer10MinAtRef   = m.bpmPer10MinAtRef
+        bpmPer10MinPerDegC = m.bpmPer10MinPerDegC
+        sessions  = m.sessions
+        tempSpanC = m.tempSpanC
     }
     var model: MRDriftModel {
-        var m = MRDriftModel(); m.ok = ok; m.bpmPer10Min = bpmPer10Min; m.sessions = sessions
+        var m = MRDriftModel()
+        m.ok = ok
+        m.bpmPer10MinAtRef   = bpmPer10MinAtRef
+        m.bpmPer10MinPerDegC = bpmPer10MinPerDegC
+        m.sessions  = sessions
+        m.tempSpanC = tempSpanC
         return m
     }
 }
@@ -26,9 +37,11 @@ struct MRDriftCache: Codable {
 }
 
 enum MRDriftCacheStore {
+    static var cacheFileName: String { "\(MRModelVersion.prefix)mr_drift_cache.json" }
+
     private static let url: URL = {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return dir.appendingPathComponent("mr_drift_cache.json")
+        return dir.appendingPathComponent(cacheFileName)
     }()
 
     static func load() -> MRDriftCache? {
