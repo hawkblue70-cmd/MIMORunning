@@ -409,7 +409,7 @@ struct OneLinerCard: View {
                     if showBackground {
                         Text(AppLanguage.shared.s("한마디를 입력해 주세요", "Enter your one-liner"))
                             .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.35))
+                            .foregroundStyle(.white.opacity(0.45))
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
@@ -592,7 +592,7 @@ struct OneLinerCard: View {
                 if showBackground {
                     Text(AppLanguage.shared.s("한마디를 입력해 주세요", "Enter your one-liner"))
                         .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(.white.opacity(0.45))
                 }
             } else {
                 EffectTextView(
@@ -860,7 +860,7 @@ struct OneLinerCard: View {
                         ? Color(hex: "FFC74D")
                         : (pace <= avgP
                             ? Color(red: 0.486, green: 0.361, blue: 0.988).opacity(0.85)
-                            : Color.white.opacity(0.30))
+                            : Color.white.opacity(0.45))
                     let zc = zoneColor(split.avgHeartRate)
                     HStack(spacing: gap) {
                         Text("\(split.id)k")
@@ -887,7 +887,7 @@ struct OneLinerCard: View {
                                     .frame(width: 3.5 * ps, height: 3.5 * ps)
                                 Text(split.avgHeartRate.map { "\($0)" } ?? "—")
                                     .font(.system(size: 6.5 * ps, design: .monospaced))
-                                    .foregroundStyle(split.avgHeartRate != nil ? zc : Color.white.opacity(0.30))
+                                    .foregroundStyle(split.avgHeartRate != nil ? zc : Color.white.opacity(0.45))
                             }
                             .frame(width: colW, alignment: .trailing)
                         }
@@ -1034,7 +1034,7 @@ struct OneLinerCard: View {
                         HStack(spacing: 2 * ps) {
                             Text("\(seg.id)")
                                 .font(.system(size: 5.5 * ps, weight: .regular, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.40))
+                                .foregroundStyle(.white.opacity(0.45))
                                 .frame(width: 10 * ps, alignment: .trailing)
                             Text(shortLabel)
                                 .font(.system(size: 6.5 * ps, weight: isWork ? .semibold : .regular))
@@ -1067,7 +1067,7 @@ struct OneLinerCard: View {
                                     .frame(width: 3.5 * ps, height: 3.5 * ps)
                                 Text(seg.avgHeartRate.map { "\($0)" } ?? "—")
                                     .font(.system(size: 6 * ps, design: .monospaced))
-                                    .foregroundStyle(seg.avgHeartRate != nil ? zc : .white.opacity(0.30))
+                                    .foregroundStyle(seg.avgHeartRate != nil ? zc : .white.opacity(0.45))
                             }
                             .frame(width: colW, alignment: .trailing)
                         }

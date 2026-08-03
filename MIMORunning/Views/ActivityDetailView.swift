@@ -611,7 +611,8 @@ struct ActivityDetailView: View {
             hrMax: engine.phys.hrMax?.value,
             lt1HR: engine.phys.lt1HR?.value,
             lt1SD: engine.phys.lt1SD,
-            easyCeilingHR: engine.phys.easyCeilingHR
+            easyCeilingHR: engine.phys.easyCeilingHR,
+            heat: engine.heat
         )
         runInsights = result.insights
         runSegmentSource = result.segmentSource
@@ -1070,13 +1071,17 @@ private struct InsightCard: View {
         if let cond = condition, cond.weather != nil || cond.sleepScore != nil {
             HStack(alignment: .center, spacing: 6) {
                 if let w = cond.weather {
+                    // ⚠ 숫자·색상 모두 HK 메타데이터(activity.temperatureC)로 통일.
+                    //   condition?.weather는 외부 API라 값이 다를 수 있다 — 아이콘만 차용.
+                    let hkTemp = activity.temperatureC
                     let wColor: Color = {
-                        if w.isRainy { return Theme.pace }
-                        if w.isHot   { return Theme.calories }
-                        if w.isCold  { return .blue }
+                        if w.isRainy            { return Theme.pace }
+                        if (hkTemp ?? 0) >= 28  { return Theme.calories }
+                        if (hkTemp ?? 99) <= 2  { return .blue }
                         return .secondary
                     }()
-                    ConditionChip(icon: w.systemIcon, label: w.formattedTemp, color: wColor)
+                    let tempLabel = hkTemp.map { String(format: "%.0f°C", $0) } ?? w.formattedTemp
+                    ConditionChip(icon: w.systemIcon, label: tempLabel, color: wColor)
                 }
                 if let slp = cond.sleepScore, let vh = validHRV {
                     Text(recoveryLine(sleep: slp, hrv: vh))
@@ -1922,7 +1927,7 @@ private struct IntervalSegmentsSection: View {
                                 } else {
                                     Text("\(seg.id)")
                                         .font(.system(.subheadline, design: .rounded).weight(work ? .bold : .regular))
-                                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.35))
+                                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.45))
                                         .frame(width: 20, alignment: .leading)
                                 }
                                 if hasDist {
@@ -1979,7 +1984,7 @@ private struct IntervalSegmentsSection: View {
         .sheet(isPresented: $showIntervalsShare) {
             if let act = activity {
                 IntervalsShareCardScreen(activity: act, segments: segments, miniMeImage: miniMeStore.image,
-                                        weatherText: condition?.weather?.formattedTemp,
+                                        weatherText: act.temperatureC.map { String(format: "%.0f°C", $0) },
                                         weatherIcon: condition?.weather?.systemIcon,
                                         shoeName: shoeName,
                                         firstCoordinate: firstCoordinate)
@@ -2072,7 +2077,7 @@ private struct SplitsSection: View {
         .sheet(isPresented: $showSplitsShare) {
             if let act = activity {
                 SplitsShareCardScreen(activity: act, splits: splits, zones: zones, miniMeImage: miniMeStore.image, shoeName: shoeName,
-                                      weatherText: condition?.weather?.formattedTemp,
+                                      weatherText: act.temperatureC.map { String(format: "%.0f°C", $0) },
                                       weatherIcon: condition?.weather?.systemIcon,
                                       firstCoordinate: firstCoordinate)
             }
@@ -2401,7 +2406,7 @@ private struct HRZonesSection: View {
                             // Zone label
                             Text(AppLanguage.shared.s("영역 \(zone.id)", "Z\(zone.id)"))
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(hasTime ? color : color.opacity(0.35))
+                                .foregroundStyle(hasTime ? color : color.opacity(0.45))
                                 .frame(width: 44, alignment: .leading)
 
                             // Bar — RoundedRectangle so tiny fractions stay as short bars, not dots
@@ -2934,10 +2939,10 @@ private struct StoryEditorSheet: View {
                         VStack(spacing: 5) {
                             Image(systemName: m.sfSymbol)
                                 .font(.system(size: 20))
-                                .foregroundStyle(mood == m ? moodColor(m) : Color.white.opacity(0.3))
+                                .foregroundStyle(mood == m ? moodColor(m) : Color.white.opacity(0.45))
                             Text(m.label)
                                 .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(mood == m ? moodColor(m) : Color.white.opacity(0.3))
+                                .foregroundStyle(mood == m ? moodColor(m) : Color.white.opacity(0.45))
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -3488,7 +3493,7 @@ struct SplitsPanelChart: View {
             }
             RuleMark(y: .value("평균", avgInv))
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                .foregroundStyle(Color.white.opacity(0.35))
+                .foregroundStyle(Color.white.opacity(0.45))
                 .annotation(position: .bottom, alignment: .trailing) {
                     Text("avg " + paceLabel(avgPace))
                         .font(.system(size: isLargeDisplay ? 11 : 6.5 * labelScale))

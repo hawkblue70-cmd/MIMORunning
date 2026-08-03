@@ -456,7 +456,7 @@ struct GrowthView: View {
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(isAtCurrentMonth ? Theme.violet.opacity(0.30) : Theme.violet)
+                    .foregroundStyle(isAtCurrentMonth ? Theme.violet.opacity(0.45) : Theme.violet)
             }
         }
     }
@@ -1648,7 +1648,7 @@ private struct WeeklyDistanceChart: View {
                 x: .value("주", item.label),
                 y: .value("거리(km)", item.km)
             )
-            .foregroundStyle(item.km > 0 ? Theme.violet.gradient : Color.secondary.opacity(0.3).gradient)
+            .foregroundStyle(item.km > 0 ? Theme.violet.gradient : Color.secondary.opacity(0.45).gradient)
             .cornerRadius(4)
         }
         .frame(height: 180)
@@ -1686,7 +1686,7 @@ private struct WeeklyTimeChart: View {
                 x: .value("주", item.label),
                 y: .value("시간(분)", item.mins)
             )
-            .foregroundStyle(item.mins > 0 ? Theme.time.gradient : Color.secondary.opacity(0.3).gradient)
+            .foregroundStyle(item.mins > 0 ? Theme.time.gradient : Color.secondary.opacity(0.45).gradient)
             .cornerRadius(4)
         }
         .frame(height: 180)
@@ -1735,7 +1735,7 @@ private struct MonthlyDistanceChart: View {
                 x: .value("월", item.label),
                 y: .value("거리(km)", item.km)
             )
-            .foregroundStyle(item.km > 0 ? Theme.violet.gradient : Color.secondary.opacity(0.3).gradient)
+            .foregroundStyle(item.km > 0 ? Theme.violet.gradient : Color.secondary.opacity(0.45).gradient)
             .cornerRadius(4)
         }
         .frame(height: 180)
@@ -1773,7 +1773,7 @@ private struct MonthlyTimeChart: View {
                 x: .value("월", item.label),
                 y: .value("시간(분)", item.mins)
             )
-            .foregroundStyle(item.mins > 0 ? Theme.time.gradient : Color.secondary.opacity(0.3).gradient)
+            .foregroundStyle(item.mins > 0 ? Theme.time.gradient : Color.secondary.opacity(0.45).gradient)
             .cornerRadius(4)
         }
         .frame(height: 180)
@@ -1822,7 +1822,7 @@ private struct DailyDistanceChart: View {
                 x: .value("일", item.day),
                 y: .value("거리(km)", item.km)
             )
-            .foregroundStyle(item.km > 0 ? Theme.time.gradient : Color.secondary.opacity(0.3).gradient)
+            .foregroundStyle(item.km > 0 ? Theme.time.gradient : Color.secondary.opacity(0.45).gradient)
             .cornerRadius(2)
         }
         .frame(height: 180)

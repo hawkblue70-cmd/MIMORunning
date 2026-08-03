@@ -1,6 +1,11 @@
 import SwiftUI
 
 extension Color {
+    // 잉크 3단계 — 다크 카드 위 텍스트 명도 표준 (0.45 하한)
+    static let mrInk1 = Color.white                     // 값·제목
+    static let mrInk2 = Color.white.opacity(0.72)       // 본문
+    static let mrInk3 = Color.white.opacity(0.45)       // 라벨·각주 (하한)
+
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0

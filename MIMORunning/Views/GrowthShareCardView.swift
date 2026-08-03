@@ -10,7 +10,7 @@ struct GrowthTrendChart: View {
     let age: Int?
     let isMale: Bool?
     var gridColor: Color       = Color.white.opacity(0.12)
-    var axisLabelColor: Color  = Color.white.opacity(0.40)
+    var axisLabelColor: Color  = Color.white.opacity(0.45)
     var lineColor: Color       = Theme.violet
 
     var body: some View {
@@ -213,7 +213,7 @@ struct GrowthShareCard: View {
                         age: age,
                         isMale: isMale,
                         gridColor: .white.opacity(0.08),
-                        axisLabelColor: .white.opacity(0.40),
+                        axisLabelColor: .white.opacity(0.45),
                         lineColor: Theme.violet
                     )
                     .frame(height: 88)

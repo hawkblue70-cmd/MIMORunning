@@ -169,7 +169,7 @@ struct MRRacePlanCard: View {
             // 근거 — 숨기지 않는다
             ForEach(plan.notes, id: \.self) { n in
                 Text(n).font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(.white.opacity(0.45))
                     .padding(.top, 10)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -205,7 +205,7 @@ struct MRWeekTable: View {
                 Text("예상").frame(width: 62, alignment: .trailing)
             }
             .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.3))
+            .foregroundStyle(.white.opacity(0.45))
             .padding(.bottom, 8)
 
             ForEach(weeks, id: \.idx) { w in
@@ -257,7 +257,7 @@ struct MRWeekTable: View {
 
             Text("행 탭 → 실행 안내 · 연한 배경 = 새 최장 롱런 주 · 거리는 이지 페이스 기준")
                 .font(.system(size: 10))
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(.white.opacity(0.45))
                 .padding(.top, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -359,7 +359,7 @@ struct MRPlanlessRaceCard: View {
                     .font(.system(size: 14)).foregroundStyle(.white)
                     .padding(.top, 2)
                 Text(String(format: "대회 날 기온을 %.0f°C로 봤습니다 (예년 이맘때 본인 러닝 기준)", raceTemp))
-                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.35))
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
             }
         }
         .padding(20).frame(maxWidth: .infinity, alignment: .leading)

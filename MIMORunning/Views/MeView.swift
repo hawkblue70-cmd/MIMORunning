@@ -197,12 +197,11 @@ struct MeView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: 16) {
                         profileHeader
                         if manager.hasGarminSource && !garminNoticeDismissed {
                             garminNoticeSection
                         }
-                        miniMeSection
                         plannedRacesSection
                         raceGoalsSection
                         MRRacePlanSection()
@@ -423,58 +422,22 @@ struct MeView: View {
                         .foregroundStyle(Theme.violet)
                 }
             }
-            Text(AppLanguage.shared.s("나의 러닝", "My Runs"))
-                .font(.title3.bold())
-                .foregroundStyle(.white)
+            HStack(alignment: .center, spacing: 8) {
+                Text(AppLanguage.shared.s("나의 러닝", "My Runs"))
+                    .font(.title3.bold())
+                    .foregroundStyle(.white)
+                #if canImport(ImagePlayground)
+                if #available(iOS 18.2, *) {
+                    MiniMeEditButton()
+                }
+                #endif
+            }
             Text(AppLanguage.shared.s("\(manager.activities.count)개 활동 기록", "\(manager.activities.count) activities"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-    }
-
-    // MARK: - MiniMe section
-
-    private var miniMeSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(AppLanguage.shared.s("내 미니미", "My Mini-Me"))
-                .font(.headline)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-
-            #if canImport(ImagePlayground)
-            if #available(iOS 18.2, *) {
-                MiniMeCreatorView()
-                    .padding(.horizontal, 16)
-            } else {
-                miniMeFallback
-            }
-            #else
-            miniMeFallback
-            #endif
-        }
-    }
-
-    private var miniMeFallback: some View {
-        HStack(spacing: 16) {
-            MiniMeView(variant: .running, size: 60)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(AppLanguage.shared.s("기본 미니미", "Default Mini-Me"))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                Text(AppLanguage.shared.s("iOS 18.2 이상 기기에서 나만의 미니미를 만들 수 있어요", "Create your own Mini-Me on iOS 18.2+ devices"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Stats section
@@ -1237,11 +1200,11 @@ private struct BadgeCell: View {
     }
 }
 
-// MARK: - MiniMe creator (iOS 18.2+, Apple Intelligence)
+// MARK: - MiniMe 편집 버튼 (iOS 18.2+, Apple Intelligence)
 
 #if canImport(ImagePlayground)
 @available(iOS 18.2, *)
-private struct MiniMeCreatorView: View {
+private struct MiniMeEditButton: View {
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @Environment(\.supportsImagePlayground) private var supportsImagePlayground
 
@@ -1250,107 +1213,51 @@ private struct MiniMeCreatorView: View {
     @State private var showPlayground = false
 
     var body: some View {
-        VStack(spacing: 10) {
-            currentPreview
-
-            if supportsImagePlayground {
-                creatorButtons
-            } else {
-                Text(AppLanguage.shared.s("Apple Intelligence가 지원되는 기기(iPhone 15 Pro 이상, iOS 18.2+)에서 나만의 미니미를 만들 수 있어요", "Create your Mini-Me on Apple Intelligence devices (iPhone 15 Pro+, iOS 18.2+)"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(14)
-                    .frame(maxWidth: .infinity)
-                    .background(Theme.cardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-        }
-        .onChange(of: pickerItem) { _, newItem in
-            Task {
-                guard let item = newItem,
-                      let data = try? await item.loadTransferable(type: Data.self),
-                      let img = UIImage(data: data) else { return }
-                sourceUIImage = img
-                showPlayground = true
-            }
-        }
-        .imagePlaygroundSheet(
-            isPresented: $showPlayground,
-            concepts: [.text("러너, 귀여운 캐릭터, 바이올렛 색깔, 만화체, 밝고 귀여운 스타일")],
-            sourceImage: sourceUIImage.map { Image(uiImage: $0) }
-        ) { url in
-            if let data = try? Data(contentsOf: url), let img = UIImage(data: data) {
-                miniMeStore.save(img)
-            }
-            showPlayground = false
-            pickerItem = nil
-            sourceUIImage = nil
-        }
-    }
-
-    private var currentPreview: some View {
-        HStack(spacing: 16) {
-            if let img = miniMeStore.image {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 64, height: 64)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(Theme.violet.opacity(0.5), lineWidth: 2))
-            } else {
-                MiniMeView(variant: .running, size: 64)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(miniMeStore.image != nil
-                     ? AppLanguage.shared.s("내 미니미", "My Mini-Me")
-                     : AppLanguage.shared.s("기본 미니미", "Default Mini-Me"))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                Text(miniMeStore.image != nil
-                     ? AppLanguage.shared.s("인사이트·공유 카드에 표시돼요", "Shown in insights & share cards")
-                     : AppLanguage.shared.s("사진으로 나만의 미니미를 만들어 보세요", "Create your Mini-Me from a photo"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
-    private var creatorButtons: some View {
-        HStack(spacing: 10) {
-            PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
-                Label(miniMeStore.image != nil
-                      ? AppLanguage.shared.s("다시 만들기", "Redo")
-                      : AppLanguage.shared.s("사진으로 만들기", "Create from Photo"),
-                      systemImage: miniMeStore.image != nil ? "arrow.clockwise" : "sparkles")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Theme.violet)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
-
-            if miniMeStore.image != nil {
-                Button {
-                    miniMeStore.clear()
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .padding(12)
-                        .background(Color.white.opacity(0.07))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+        if supportsImagePlayground {
+            HStack(spacing: 6) {
+                PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
+                    Label(
+                        miniMeStore.image != nil
+                            ? AppLanguage.shared.s("다시 만들기", "Redo")
+                            : AppLanguage.shared.s("만들기", "Create"),
+                        systemImage: miniMeStore.image != nil ? "arrow.clockwise" : "sparkles"
+                    )
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.violet)
                 }
                 .buttonStyle(.plain)
+
+                if miniMeStore.image != nil {
+                    Button {
+                        miniMeStore.clear()
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .onChange(of: pickerItem) { _, newItem in
+                Task {
+                    guard let item = newItem,
+                          let data = try? await item.loadTransferable(type: Data.self),
+                          let img = UIImage(data: data) else { return }
+                    sourceUIImage = img
+                    showPlayground = true
+                }
+            }
+            .imagePlaygroundSheet(
+                isPresented: $showPlayground,
+                concepts: [.text("러너, 귀여운 캐릭터, 바이올렛 색깔, 만화체, 밝고 귀여운 스타일")],
+                sourceImage: sourceUIImage.map { Image(uiImage: $0) }
+            ) { url in
+                if let data = try? Data(contentsOf: url), let img = UIImage(data: data) {
+                    miniMeStore.save(img)
+                }
+                showPlayground = false
+                pickerItem = nil
+                sourceUIImage = nil
             }
         }
     }

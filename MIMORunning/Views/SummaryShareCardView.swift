@@ -368,7 +368,7 @@ struct SummaryShareCardView: View {
                         Spacer()
                         Image(systemName: "figure.run")
                             .font(.system(size: 7))
-                            .foregroundStyle(p.brand.opacity(0.35))
+                            .foregroundStyle(p.brand.opacity(0.45))
                     }
                     .padding(.bottom, 2)
                 }

@@ -104,11 +104,11 @@ struct DetailPanelShareCard: View {
             if let weather = condition?.weather {
                 Text("·")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.30))
+                    .foregroundStyle(.white.opacity(0.45))
                 Image(systemName: weather.systemIcon)
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.55))
-                Text(weather.formattedTemp)
+                Text(activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? weather.formattedTemp)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.55))
             }

@@ -30,7 +30,7 @@ struct MRBacktestView: View {
                     .foregroundStyle(.white)
                 Text("각 기록을 **그 전날까지의 데이터만으로** 예측했다면 얼마였을지 다시 계산한 것입니다.")
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(Color.mrInk3)
                     .padding(.top, 4)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -38,11 +38,11 @@ struct MRBacktestView: View {
                     Text("\(hit)").font(.system(size: 30, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                     Text("/ \(scored.count)").font(.system(size: 15))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(Color.mrInk3)
                         .padding(.bottom, 4)
                     Text("구간 안 · 평균 오차 \(String(format: "%.1f", meanAbsErr))%")
                         .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(Color.mrInk3)
                         .padding(.leading, 6).padding(.bottom, 5)
                 }
                 .padding(.top, 14)
@@ -65,13 +65,13 @@ struct MRBacktestView: View {
                 if !skipped.isEmpty {
                     Text("\(skipped.count)건은 그 시점에 사전 기록이 부족해 예측하지 못했습니다.")
                         .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.3))
+                        .foregroundStyle(Color.mrInk3)
                         .padding(.top, 16)
                 }
 
                 Text("표본이 \(scored.count)건뿐입니다. 예측은 참고용이고, 특히 마라톤은 ±20분 이상 벌어질 수 있습니다.")
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(Color.mrInk3)
                     .padding(.top, 10)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -96,7 +96,7 @@ struct MRBacktestRowView: View {
             HStack {
                 Text(row.date.formatted(.dateTime.year().month().day()
                                         .locale(Locale(identifier: "ko_KR"))))
-                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.4))
+                    .font(.system(size: 12)).foregroundStyle(Color.mrInk3)
                 Text(row.label)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(mrBtAccent)
@@ -111,13 +111,13 @@ struct MRBacktestRowView: View {
             }
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("실제").font(.system(size: 10)).foregroundStyle(.white.opacity(0.35))
+                    Text("실제").font(.system(size: 10)).foregroundStyle(Color.mrInk3)
                     Text(mrFormatDisplay(row.actualMin))
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("예측").font(.system(size: 10)).foregroundStyle(.white.opacity(0.35))
+                    Text("예측").font(.system(size: 10)).foregroundStyle(Color.mrInk3)
                     Text(mrFormatDisplay(row.predictedMin ?? 0))
                         .font(.system(size: 15, design: .rounded))
                         .foregroundStyle(.white.opacity(0.6))
@@ -175,14 +175,14 @@ struct MRHealthMetricsView: View {
                 HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("최근 90일")
-                            .font(.system(size: 10)).foregroundStyle(.white.opacity(0.4))
+                            .font(.system(size: 10)).foregroundStyle(Color.mrInk3)
                         Text("\(m.sessions90)회  \(Int(m.km90))km")
                             .font(.system(size: 13, design: .rounded)).foregroundStyle(.white)
                     }
                     if m.sessions90LY > 0 {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("작년 같은 기간")
-                                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.4))
+                                .font(.system(size: 10)).foregroundStyle(Color.mrInk3)
                             Text("\(m.sessions90LY)회  \(Int(m.km90LY))km")
                                 .font(.system(size: 13, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.55))
@@ -218,13 +218,13 @@ struct MRHealthMetricsView: View {
     @ViewBuilder
     private func metricPair(label: String, current: String, last: String?, unit: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.system(size: 10)).foregroundStyle(.white.opacity(0.4))
+            Text(label).font(.system(size: 10)).foregroundStyle(Color.mrInk3)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(current + (unit.isEmpty ? "" : " \(unit)"))
                     .font(.system(size: 13, design: .rounded)).foregroundStyle(.white)
                 if let l = last {
                     Text("(작년 \(l))")
-                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.4))
+                        .font(.system(size: 11)).foregroundStyle(Color.mrInk3)
                 }
             }
         }
@@ -237,26 +237,57 @@ struct MRDriftView: View {
     let drift: MRDriftModel
 
     var body: some View {
+        // ⚠ 기온 범위 15°C 미만이면 15°C 기준값을 말할 수 없다 — 침묵.
         if drift.ok {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("심박 드리프트")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Spacer()
-                    Text(String(format: "10분당 %.1f bpm", drift.bpmPer10Min))
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(mrBtAccent)
+            VStack(alignment: .leading, spacing: 16) {
+                Text("심박 드리프트")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.mrInk1)
+
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("선선한 날 15°C")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.mrInk3)
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text(String(format: "%.1f", drift.bpmPer10MinAtRef))
+                                .font(.system(size: 26, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.mrInk1)
+                            Text("bpm/10분")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.mrInk3)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if drift.bpmPer10MinPerDegC > 0 {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("더운 날 30°C")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color.mrInk3)
+                            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                                Text(String(format: "%.1f", drift.bpmPer10Min(atC: 30)))
+                                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Color.mrInk1)
+                                Text("bpm/10분")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.mrInk3)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                Text(String(format: "같은 페이스로 뛰어도 45분이면 심박이 %.0f 올라갑니다.",
-                            drift.bpmPer10Min * 4.5))
+
+                Text(String(format: "같은 페이스로 45분이면 심박이 %.0fbpm 올라갑니다",
+                            drift.bpmPer10MinAtRef * 4.5))
                     .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.7))
-                // ⚠ 근거 없는 해석을 붙이지 않는다. 이 값이 좋다/나쁘다고 말할
-                //   문헌 기준이 없다. 관측값과 표본만 적는다.
-                Text("최근 180일 \(drift.sessions)개 세션에서 측정했습니다. 더운 날과 강도 높은 날에 커집니다.")
+                    .foregroundStyle(Color.mrInk2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // ⚠ 근거 없는 해석을 붙이지 않는다. 관측값과 표본만 적는다.
+                Text("최근 1년 \(drift.sessions)개 세션 · 기온 범위 \(Int(drift.tempSpanC))°C")
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(Color.mrInk3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(20)

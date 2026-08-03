@@ -487,7 +487,7 @@ private struct RestDayListRow: View {
                         .overlay {
                             Image(systemName: info.isSlide ? "photo.stack" : "photo")
                                 .font(.system(size: 15))
-                                .foregroundStyle(.white.opacity(0.35))
+                                .foregroundStyle(.white.opacity(0.45))
                         }
                 }
             }

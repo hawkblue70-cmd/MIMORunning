@@ -668,7 +668,7 @@ struct RunChartShareSheet: View {
                 .padding(.vertical, 7)
                 .background(isOn ? Theme.violet.opacity(0.18) : Color.white.opacity(0.06),
                             in: RoundedRectangle(cornerRadius: 8))
-                .foregroundStyle(isDisabled ? Color.secondary.opacity(0.3)
+                .foregroundStyle(isDisabled ? Color.secondary.opacity(0.45)
                                  : isOn ? Theme.violet : .secondary)
         }
         .buttonStyle(.plain)

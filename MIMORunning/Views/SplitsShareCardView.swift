@@ -271,7 +271,7 @@ struct SplitsShareCardView: View {
                     HStack(spacing: 5) {
                         Image(systemName: "figure.run")
                             .font(.system(size: 7))
-                            .foregroundStyle(pal.accentBar.opacity(0.35))
+                            .foregroundStyle(pal.accentBar.opacity(0.45))
                         Spacer()
                         if let shoe = shoeName {
                             HStack(spacing: 3) {
@@ -711,7 +711,7 @@ struct IntervalsShareCardView: View {
                         }
                     }
                     .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.38))
+                    .foregroundStyle(Color.white.opacity(0.45))
                     .padding(.bottom, 3)
 
                     ForEach(segments) { seg in segmentRow(seg) }
@@ -733,7 +733,7 @@ struct IntervalsShareCardView: View {
 
                     HStack(spacing: 5) {
                         Image(systemName: "figure.highintensity.intervaltraining")
-                            .font(.system(size: 7)).foregroundStyle(Theme.violet.opacity(0.35))
+                            .font(.system(size: 7)).foregroundStyle(Theme.violet.opacity(0.45))
                         Spacer()
                         if let shoe = shoeName {
                             HStack(spacing: 3) {
@@ -783,7 +783,7 @@ struct IntervalsShareCardView: View {
                 } else {
                     Text("\(seg.id)")
                         .font(.system(size: 10, weight: work ? .bold : .regular, design: .rounded))
-                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.30))
+                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.45))
                         .frame(width: labelW, alignment: .leading)
                 }
                 if hasDist {

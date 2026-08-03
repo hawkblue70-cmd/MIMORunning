@@ -1472,7 +1472,7 @@ struct ClipTrimSheet: View {
                                             .frame(width: 3.5 * ps, height: 3.5 * ps)
                                         Text(split.avgHeartRate.map { "\($0)" } ?? "—")
                                             .font(.system(size: 6.5 * ps, design: .monospaced))
-                                            .foregroundStyle(split.avgHeartRate != nil ? zc : Color.white.opacity(0.30))
+                                            .foregroundStyle(split.avgHeartRate != nil ? zc : Color.white.opacity(0.45))
                                     }
                                     .frame(width: colW, alignment: .trailing)
                                 }
