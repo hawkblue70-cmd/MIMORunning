@@ -75,7 +75,8 @@ func mrCheckGoal(race: MRTargetRace,
                  profile: MRProfile,
                  halfEquivMin: Double,
                  heat: MRHeatModel,
-                 raceTempC: Double) -> MRGoalCheck {
+                 raceTempC: Double,
+                 otherPlans: [(MRTargetRace, MRRacePlan)] = []) -> MRGoalCheck {
 
     guard let goal = goals.minutes(for: race.distanceM) else {
         return MRGoalCheck(race: race, plan: plan, goalMin: nil, gapMin: nil,
@@ -124,7 +125,7 @@ func mrCheckGoal(race: MRTargetRace,
         let needHalf = goal / pow(race.distanceM / MRDistance.dH, 1.06)
         levers = ["이 목표는 하프 등가 \(mrFormatDisplay(needHalf))를 요구합니다 (지금 \(mrFormatDisplay(halfEquivMin)))"]
     } else if gap > 0 && race.distanceM >= MRDistance.dF {
-        let volPeak = min(profile.weeklyKm4w * 1.35, 60.0)
+        let volPeak = plan.peakWeeklyKm
 
         // 계획후와 동일하게: 테이퍼 이득 + 레이스 기온 환산
         func finish(_ b: Double) -> Double {
@@ -137,22 +138,59 @@ func mrCheckGoal(race: MRTargetRace,
         //   거기까지다) 28km와 32km는 **같은 값이 나오는 게 정상**이다.
         //   그런데 나란히 보여주면 버그처럼 보인다. 같은 값은 하나만 남긴다.
         var seen = Set<Int>()
-        func add(_ text: String, _ t: Double) {
+        func add(_ text: String, _ t: Double, suffix: String = "") {
             let key = Int(t.rounded())
             guard !seen.contains(key), t < plan.projectedFinal - 0.2 else { return }
             seen.insert(key)
-            levers.append("\(text) → \(mrFormatDisplay(t))")
+            levers.append("\(text) → \(mrFormatDisplay(t))\(suffix)")
+        }
+
+        // 도달 불가 레버: 사유를 구별한다
+        //   (a) 시간 부족: lr <= targetLongKm이지만 주 수로 못 닿음 → "N주로는 도달 불가"
+        //   (b) 계획 상한: lr > targetLongKm (아무리 기다려도 플래너가 거기까지 안 올림)
+        func longRunSuffix(_ lr: Double) -> String {
+            if lr > plan.targetLongKm {
+                return " ⚠ 계획 상한이 \(Int(plan.targetLongKm))km입니다"
+            }
+            let nWeeks = plan.weeks.count
+            var s = " ⚠ \(nWeeks)주로는 도달 불가"
+            if let next = otherPlans
+                .filter({ p in
+                    p.0.date > plan.raceDate &&
+                    p.0.distanceM >= MRDistance.dF &&
+                    p.1.reachableLongKm >= lr
+                })
+                .min(by: { $0.0.date < $1.0.date }) {
+                s += " · \(next.0.name)에서는 가능"
+            }
+            return s
         }
 
         for lr in [25.0, 28.0, 32.0] where lr > plan.reachableLongKm {
             add("롱런 \(Int(lr))km",
                 finish(bMarathonModel(weeklyKm: volPeak, longestKm: lr,
-                                      finishes: profile.marathonFinishes).b))
+                                      finishes: profile.marathonFinishes).b),
+                suffix: longRunSuffix(lr))
         }
+        func weeklyKmSuffix(_ wk: Double) -> String {
+            var s = " ⚠ \(plan.weeks.count)주로는 도달 불가"
+            if let next = otherPlans
+                .filter({ p in
+                    p.0.date > plan.raceDate &&
+                    p.0.distanceM >= MRDistance.dF &&
+                    p.1.peakWeeklyKm >= wk
+                })
+                .min(by: { $0.0.date < $1.0.date }) {
+                s += " · \(next.0.name)에서는 가능"
+            }
+            return s
+        }
+
         for wk in [40.0, 50.0, 60.0] where wk > volPeak {
             add("주 \(Int(wk))km",
-                finish(bMarathonModel(weeklyKm: wk, longestKm: plan.targetLongKm,
-                                      finishes: profile.marathonFinishes).b))
+                finish(bMarathonModel(weeklyKm: wk, longestKm: plan.reachableLongKm,
+                                      finishes: profile.marathonFinishes).b),
+                suffix: weeklyKmSuffix(wk))
         }
     } else if gap > 0 && pct > 3 {
         // ⚠ 사정권(3% 이내)에는 레버를 붙이지 않는다.

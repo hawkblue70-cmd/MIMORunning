@@ -63,7 +63,7 @@ enum MRCacheMaintenance {
 //
 // HealthKit에서 읽어온 러닝 한 건. 계산 엔진은 이 타입만 본다.
 // (HealthKit 의존성을 여기서 끊어야 테스트에 가짜 데이터를 넣을 수 있다)
-struct MRWorkout: Codable {
+struct MRWorkout: Codable, Sendable {
     let start: Date
     let durationMin: Double
     let distanceKm: Double?
@@ -135,7 +135,7 @@ struct MRInference {
 //
 // 실제 대회이거나, 대회에 준하는 강도로 달린 기록.
 // 지수 적합과 예측의 재료가 된다.
-struct MRRaceEffort {
+struct MRRaceEffort: Sendable {
     let date: Date
     let distanceM: Double
     let timeMin: Double

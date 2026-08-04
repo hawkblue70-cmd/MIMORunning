@@ -31,14 +31,21 @@ func mrBacktest(runs: [MRWorkout],
                 dateOfBirth: Date?,
                 sex: MRSex,
                 heat: MRHeatModel,
+                additionalTargets: [MRRaceEffort] = [],
                 asOf: Date) -> [MRBacktestRow] {
 
     let cal = Calendar.current
 
-    // 지금 시점의 노력 목록을 대상으로 삼는다
+    // 자동 감지 타겟
     let physNow = mrPhysiology(runs: runs, restingHRSamples: restingHRSamples,
                                dateOfBirth: dateOfBirth, sex: sex, asOf: asOf)
-    let targets = mrApplyHeat(mrDetectEfforts(runs: runs, phys: physNow), heat: heat)
+    let autoTargets = mrApplyHeat(mrDetectEfforts(runs: runs, phys: physNow), heat: heat)
+
+    // 확인된 대회가 있는 날은 자동 감지를 제외 (중복 방지)
+    let confirmedDays = Set(additionalTargets.map { cal.startOfDay(for: $0.date) })
+    let targets = (mrApplyHeat(additionalTargets, heat: heat)
+                   + autoTargets.filter { !confirmedDays.contains(cal.startOfDay(for: $0.date)) })
+        .sorted { $0.date < $1.date }
 
     let standardDistances: [String: Double] = [
         "5K": MRDistance.d5, "10K": MRDistance.d10,

@@ -2,7 +2,7 @@ import Foundation
 
 let MR_REF_TEMP = 15.0      // 표준 조건
 
-struct MRHeatModel {
+struct MRHeatModel: Sendable {
     var ok = false
     var bHot1 = 0.0
     var bHot2 = 0.0

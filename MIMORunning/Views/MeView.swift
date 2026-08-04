@@ -32,6 +32,9 @@ struct MeView: View {
     @Query(sort: \MyPlannedRace.dateString) private var plannedRaces: [MyPlannedRace]
     @Query private var shoes: [Shoe]
     @Query private var allStories: [WorkoutStory]
+    @Query private var allSnapshots: [RacePlanSnapshot]
+    @Query private var allArchives: [RaceArchive]
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedSummaryStats: SelectedSummaryStats? = nil
     @State private var showRaceSearch = false
     @State private var showAddShoe = false
@@ -217,7 +220,16 @@ struct MeView: View {
             .navigationTitle(AppLanguage.shared.s("나", "Me"))
             .navigationBarTitleDisplayMode(.large)
         }
-        .task { syncAndRecompute(); refreshShoeKmCache(); refreshStatsAndBadges(); await refreshFormMetrics(); deletePastRaces() }
+        .task {
+            syncAndRecompute()
+            await createArchivesIfNeeded()
+            mrDeduplicateSnapshots(allSnapshots, context: modelContext)
+            mrDeduplicateArchives(allArchives,   context: modelContext)
+            refreshShoeKmCache()
+            refreshStatsAndBadges()
+            await refreshFormMetrics()
+            deletePastRaces()
+        }
         .onChange(of: manager.activities.count) {
             refreshShoeKmCache()
             refreshStatsAndBadges()
@@ -337,6 +349,7 @@ struct MeView: View {
         engine.userInput.races = plannedRaces.compactMap { mrTargetRace(from: $0) }
         engine.userInput.goals = parseGoals()
         engine.recomputePlans()
+        saveSnapshotsIfNeeded()
     }
 
     private func parseGoals() -> MRGoals {
@@ -359,6 +372,90 @@ struct MeView: View {
         case .tenK: return goalTime10k
         case .half: return goalTimeHalf
         case .full: return goalTimeFull
+        }
+    }
+
+    // MARK: - 스냅샷·아카이브
+
+    private func saveSnapshotsIfNeeded() {
+        guard case .ready = engine.state else { return }
+        let existingKeys = Set(allSnapshots.map {
+            mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM)
+        })
+        for check in engine.checks {
+            let key = mrArchiveKey(raceDate: check.race.date, distanceM: check.race.distanceM)
+            guard !existingKeys.contains(key) else { continue }
+            let data = mrBuildSnapshotData(check: check)
+            let snap = RacePlanSnapshot(
+                raceDate: check.race.date,
+                raceName: check.race.name,
+                distanceM: check.race.distanceM,
+                projectedFinalMin: data.projectedFinalMin,
+                projectedNowMin: data.projectedNowMin,
+                goalMin: data.goalMin,
+                weeksJSON: data.weeksJSON,
+                metaJSON: data.metaJSON
+            )
+            modelContext.insert(snap)
+            #if DEBUG
+            print("[스냅샷] 저장: \(check.race.name) \(check.race.distanceM / 1000)km → \(mrFormatDisplay(data.projectedFinalMin))")
+            #endif
+        }
+    }
+
+    private func createArchivesIfNeeded() async {
+        guard case .ready = engine.state else { return }
+        let today = Calendar.current.startOfDay(for: Date())
+        let existingArchiveKeys = Set(allArchives.map {
+            mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM)
+        })
+
+        // 지난 대회가 있는 스냅샷만 대상
+        let pastSnapshots = allSnapshots.filter {
+            Calendar.current.startOfDay(for: $0.raceDate) < today
+        }
+
+        for snap in pastSnapshots {
+            let key = mrArchiveKey(raceDate: snap.raceDate, distanceM: snap.distanceM)
+            guard !existingArchiveKeys.contains(key) else { continue }
+
+            let daysSinceRace = Calendar.current.dateComponents([.day],
+                from: Calendar.current.startOfDay(for: snap.raceDate), to: today).day ?? 0
+
+            let run = mrFindRaceDayRun(runs: engine.runs,
+                                        raceDate: snap.raceDate,
+                                        distanceM: snap.distanceM)
+            let hasRun = run != nil
+
+            // 기록 없음 처리: 14일 지나도 기록이 없으면 "기록 없음"으로 저장
+            guard hasRun || daysSinceRace >= 14 else { continue }
+
+            let actualMin = run.map { $0.durationMin }
+
+            // 대회 직전 예측: 지금 엔진의 예측 (아카이브 생성 시점 = 대회 직후)
+            let label = mrLabelFor(distanceM: snap.distanceM)
+            let preRaceMin = engine.predictions.first { $0.label == label }?.midMin
+
+            let md = mrBuildArchiveMarkdown(
+                snapshot: snap,
+                actualMin: actualMin,
+                preRaceProjectedMin: preRaceMin,
+                runs: engine.runs
+            )
+
+            let archive = RaceArchive(
+                raceDate: snap.raceDate,
+                raceName: snap.raceName,
+                distanceM: snap.distanceM,
+                markdown: md,
+                hasResult: hasRun,
+                actualMin: actualMin ?? 0,
+                snapshotProjectedFinalMin: snap.projectedFinalMin
+            )
+            modelContext.insert(archive)
+            #if DEBUG
+            print("[아카이브] 저장: \(snap.raceName) · 실제 \(actualMin.map { mrFormatDisplay($0) } ?? "없음")")
+            #endif
         }
     }
 
@@ -473,8 +570,6 @@ struct MeView: View {
     }
 
     // MARK: - Shoes section
-
-    @Environment(\.modelContext) private var modelContext
 
     private func refreshShoeKmCache() {
         var dict: [UUID: Double] = [:]

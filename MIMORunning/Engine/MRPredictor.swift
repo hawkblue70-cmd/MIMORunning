@@ -181,9 +181,16 @@ struct MRProfile {
     var marathonFinishes = 0
     /// 최근 4주 주당 러닝 횟수. 지시가 아니라 **관찰값**이다.
     var runsPerWeek = 0.0
+    /// 최근 52주(12개월) 최대 주간 거리. 판단이 아니라 사실 전달용.
+    var maxWeeklyKm52w = 0.0
+    /// OLS d²=a+b·T 분해 (T단위: 주). a: 관측 노이즈 분산(백테스트로 고정), b: 체력 변동 속도 분산/주.
+    /// 셋 다 0이면 데이터 부족.
+    var sigma8A: Double = 0    // intercept: 관측 노이즈 분산 (= 2·σ_obs²)
+    var sigma8B: Double = 0    // slope: 체력 변동 분산/주
+    var sigma8BSE: Double = 0  // SE(b): b 추정 표준오차
 }
 
-func mrProfile(runs: [MRWorkout], efforts: [MRRaceEffort], asOf: Date) -> MRProfile {
+func mrProfile(runs: [MRWorkout], efforts: [MRRaceEffort], sigmaObs: Double = 0, asOf: Date) -> MRProfile {
     var p = MRProfile()
     let cal = Calendar.current
     func days(_ d: Date) -> Int {
@@ -201,7 +208,115 @@ func mrProfile(runs: [MRWorkout], efforts: [MRRaceEffort], asOf: Date) -> MRProf
     p.longestRun16wKm = last16w.compactMap(\.distanceKm).max() ?? 0
 
     p.marathonFinishes = efforts.filter { $0.distanceM >= 40_000 }.count
+
+    // 52주 최대 주간 거리 — Calendar.iso8601 (mrActiveWeekStreak와 동일한 기준)
+    // ⚠ Calendar.current 는 firstWeekday 로케일 의존 → yearForWeekOfYear 가 0이 나올 수 있다.
+    var isoCal = Calendar(identifier: .iso8601)
+    isoCal.timeZone = .current
+    let runs12m = runs.filter { let d = days($0.date); return d >= 0 && d < 364 }
+    print(String(format: "[계획] 52주최대 — 입력 runs=%d건 · 12개월내=%d건",
+                 runs.count, runs12m.count))
+    var weekBins = [String: Double]()
+    for r in runs12m {
+        let c = isoCal.dateComponents([.weekOfYear, .yearForWeekOfYear], from: r.date)
+        let key = "\(c.yearForWeekOfYear ?? 0)-\(c.weekOfYear ?? 0)"
+        weekBins[key, default: 0] += r.distanceKm ?? 0
+    }
+    let maxEntry = weekBins.max(by: { $0.value < $1.value })
+    p.maxWeeklyKm52w = maxEntry?.value ?? 0
+    print(String(format: "[계획] 52주최대 — 주 버킷 %d개 · 최대 %.1fkm (%@)",
+                 weekBins.count, p.maxWeeklyKm52w, maxEntry?.key ?? "-"))
+
+    // d²=a+b·T 분해 (T단위: 주, d=log(하프등가비))
+    // a = 2·σ_obs² — 백테스트 잔차로 고정 (관측 노이즈)
+    // b 만 절편 고정 최소제곱: b = Σ((d²-a)·T) / Σ(T²), b<0이면 0 클램프
+    // 12개월 노력 3건 미만이면 24개월로 확장
+    let efforts12m = efforts.filter { let d = days($0.date); return d >= 0 && d < 364 }
+    let efforts24m = efforts.filter { let d = days($0.date); return d >= 0 && d < 728 }
+    let effortsForSigma: [MRRaceEffort]
+    let sigmaWindowLabel: String
+    if efforts12m.count >= 3 {
+        effortsForSigma = efforts12m
+        sigmaWindowLabel = "12개월내 \(efforts12m.count)건"
+    } else if efforts24m.count >= 3 {
+        effortsForSigma = efforts24m
+        sigmaWindowLabel = "12개월 \(efforts12m.count)건→24개월 확장 \(efforts24m.count)건"
+    } else {
+        effortsForSigma = efforts24m
+        sigmaWindowLabel = "24개월내 \(efforts24m.count)건(부족)"
+    }
+
+    // 모든 쌍 (i < j), 2주(14일) 이상 간격 → (T, d²) 수집
+    var olsPairs = [(T: Double, dSq: Double)]()
+    if effortsForSigma.count >= 2 {
+        let sortedHE = effortsForSigma.sorted { $0.date < $1.date }.compactMap { e -> (Date, Double)? in
+            guard e.distanceM > 0, e.timeMinRef > 0 else { return nil }
+            let he = e.timeMinRef * pow(MRDistance.dH / e.distanceM, 1.06)
+            return (e.date, he)
+        }
+        for i in 0..<sortedHE.count {
+            for j in (i + 1)..<sortedHE.count {
+                let (d1, h1) = sortedHE[i]
+                let (d2, h2) = sortedHE[j]
+                let dayGap = Double(cal.dateComponents([.day], from: d1, to: d2).day ?? 0)
+                guard dayGap >= 14, h1 > 0, h2 > 0 else { continue }
+                let T = dayGap / 7.0
+                let delta = log(h2 / h1)
+                olsPairs.append((T: T, dSq: delta * delta))
+            }
+        }
+    }
+
+    let aFixed = 2.0 * sigmaObs * sigmaObs
+    if olsPairs.count >= 3 {
+        let Tmin = olsPairs.map(\.T).min() ?? 0
+        let Tmax = olsPairs.map(\.T).max() ?? 0
+        let Tsq  = olsPairs.map { $0.T * $0.T }.reduce(0, +)
+        let sumNumer = olsPairs.map { ($0.dSq - aFixed) * $0.T }.reduce(0, +)
+
+        if Tsq > 1e-9 {
+            let b = max(0, sumNumer / Tsq)
+            // SE(b): 잔차 표준오차 / √Σ(T²)
+            let residSS = olsPairs.map { pair -> Double in
+                let e = pair.dSq - aFixed - b * pair.T; return e * e
+            }.reduce(0, +)
+            let seB = sqrt(residSS / max(1, Double(olsPairs.count) - 1) / Tsq)
+
+            p.sigma8A   = aFixed
+            p.sigma8B   = b
+            p.sigma8BSE = seB
+
+            // 진단 로그 — 노력이 쌓일수록 폭이 좁아지는지 확인용
+            let pct12 = (exp(sqrt(max(0, aFixed + b * 12))) - 1) * 100
+            let pct32 = (exp(sqrt(max(0, aFixed + b * 32))) - 1) * 100
+            print(String(format: "[예측] 쌍 %d개 · a=%.5f · b=%.7f · 12주 ±%.1f%% · 32주 ±%.1f%%",
+                         olsPairs.count, aFixed, b, pct12, pct32))
+            if seB > b {
+                print(String(format: "[예측] ⚠ SE(b)=%.7f > b=%.7f", seB, b))
+            }
+        } else {
+            print("[예측] σ8 — 실패 사유: T 분산 없음(\(sigmaWindowLabel))")
+        }
+    } else if effortsForSigma.count < 2 {
+        print("[예측] σ8 — 실패 사유: 노력 부족(\(sigmaWindowLabel), 최소 2건)")
+    } else {
+        print("[예측] σ8 — 실패 사유: 쌍 부족(\(sigmaWindowLabel), 2주 이상 간격 쌍 \(olsPairs.count)개, 최소 3개)")
+    }
+
     return p
+}
+
+/// 백테스트 잔차에서 단일 레이스 관측 노이즈 σ_obs (log 단위)를 추출한다.
+/// 반환값 0이면 데이터 없음 — mrProfile의 sigmaObs 기본값과 동일하게 처리됨.
+func mrSigmaObs(backtest: [MRBacktestRow]) -> Double {
+    let logResiduals = backtest.compactMap { row -> Double? in
+        guard let pred = row.predictedMin, pred > 0, row.actualMin > 0 else { return nil }
+        return log(pred / row.actualMin)
+    }
+    guard logResiduals.count >= 2 else { return 0 }
+    let mean = logResiduals.reduce(0, +) / Double(logResiduals.count)
+    let ss   = logResiduals.map { ($0 - mean) * ($0 - mean) }.reduce(0, +)
+    return sqrt(ss / Double(logResiduals.count - 1))
 }
 
 func mrPredict(efforts: [MRRaceEffort],

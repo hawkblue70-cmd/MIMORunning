@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import SwiftData
 
 // MARK: - File-private data models
 
@@ -72,6 +73,8 @@ private struct MilestoneEvent: Identifiable {
 struct GrowthView: View {
     var manager: HealthKitManager
     @EnvironmentObject private var engine: MREngineStore
+    @Environment(RaceDetector.self) private var raceDetector
+    @Query private var allArchives: [RaceArchive]
 
     @State private var showTimeMileage: Bool = false
     @State private var showMonthly: Bool = false
@@ -206,7 +209,7 @@ struct GrowthView: View {
                             let justRaced = engine.backtest.contains {
                                 (Calendar.current.dateComponents([.day], from: $0.date, to: Date()).day ?? 99) <= 14
                             }
-                            if justRaced { MRBacktestView(rows: engine.backtest) }
+                            if justRaced { MRBacktestView(rows: engine.backtest, confirmedMatches: Array(raceDetector.matches.values), archives: allArchives) }
                             MRHealthMetricsView(m: engine.healthMetrics)
                             MRDriftView(drift: engine.drift)
                             heatmapSection
@@ -216,13 +219,14 @@ struct GrowthView: View {
                             metricTrendsSection
                             prSection
                             journeySection
-                            if !justRaced { MRBacktestView(rows: engine.backtest) }
+                            if !justRaced { MRBacktestView(rows: engine.backtest, confirmedMatches: Array(raceDetector.matches.values), archives: allArchives) }
                             Spacer(minLength: 32)
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
                     }
                     .onAppear {
+                        engine.updateConfirmedMatches(Array(raceDetector.matches.values))
                         engine.computeBacktestIfNeeded()
                         engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w)
                     }

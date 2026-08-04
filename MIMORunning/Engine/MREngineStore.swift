@@ -64,6 +64,7 @@ final class MREngineStore: ObservableObject {
     private var storedDob: Date? = nil
     private var storedSex: MRSex = .unknown
     private var storedStrengthPerWeek: Double = 0
+    private var storedConfirmedMatches: [PersistedRaceMatch] = []
 
     var isReady: Bool {
         if case .ready = state { return true }
@@ -157,11 +158,14 @@ final class MREngineStore: ObservableObject {
         // gaps는 stepsDaily가 필요 — 2단계에서 채워진다
         gaps = []
 
-        profile = MRProfile(weeklyKm4w: profileFull.weeklyKm4w,
-                            longestRun30d: profileFull.longestRun30d,
-                            longestRun16wKm: profileFull.longestRun16wKm,
-                            marathonFinishes: profileFull.marathonFinishes,
-                            runsPerWeek: profileFull.runsPerWeek)
+        // 캐시 백테스트에서 관측 노이즈를 추출 — 첫 실행시 캐시 없으면 0(순수 드리프트 모델)
+        let cachedBT = MRBacktestCacheStore.load()?.rows.map(\.row) ?? []
+        let sigmaObs = mrSigmaObs(backtest: cachedBT)
+        #if DEBUG
+        print(String(format: "[σ_obs] 백테스트 %d건 → σ_obs=%.4f (±%.1f%%)",
+                     cachedBT.count, sigmaObs, (exp(sigmaObs) - 1) * 100))
+        #endif
+        profile = mrProfile(runs: fetched, efforts: efforts, sigmaObs: sigmaObs, asOf: now)
 
         predictions = mrPredict(efforts: efforts, fit: fit, profile: profile,
                                 heat: heat, asOf: now)
@@ -171,12 +175,18 @@ final class MREngineStore: ObservableObject {
         let raceTempByID = Dictionary(uniqueKeysWithValues: upcoming.map { r in
             (r.id, mrSeasonalTemp(runs: fetched, for: r.date) ?? MR_REF_TEMP)
         })
+        // 날짜 순으로 대회를 처리하며 앞 대회의 피크 상태를 다음 대회 플랜에 전달한다.
+        var prevPlanInfo: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil
         let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in
             let rt = raceTempByID[r.id] ?? MR_REF_TEMP
-            return (r, mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
-                                   profile: profile, halfEquivMin: he,
-                                   easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
-                                   raceTempC: rt, runsPerWeek: profile.runsPerWeek))
+            let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
+                                 profile: profile, halfEquivMin: he,
+                                 easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
+                                 raceTempC: rt, runsPerWeek: profile.runsPerWeek,
+                                 priorRace: prevPlanInfo)
+            if let pl { prevPlanInfo = (date: r.date, name: r.name,
+                                        peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }
+            return (r, pl)
         }
         let validPairs = paired.compactMap { p -> (MRTargetRace, MRRacePlan)? in
             guard let pl = p.plan else { return nil }
@@ -184,9 +194,11 @@ final class MREngineStore: ObservableObject {
         }
         plans = validPairs.map(\.1)
         checks = validPairs.map { (r, pl) in
-            mrCheckGoal(race: r, plan: pl, goals: userInput.goals,
-                        profile: profile, halfEquivMin: he, heat: heat,
-                        raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP)
+            let others = validPairs.filter { $0.0.id != r.id }
+            return mrCheckGoal(race: r, plan: pl, goals: userInput.goals,
+                               profile: profile, halfEquivMin: he, heat: heat,
+                               raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP,
+                               otherPlans: others)
         }
         planlessRaces = paired.filter { $0.plan == nil }.map(\.race)
         advice = mrBuildAdvice(runs: fetched, phys: phys, plans: plans,
@@ -366,7 +378,14 @@ final class MREngineStore: ObservableObject {
     // MARK: - 백테스트 (노력 핑거프린트 캐시)
 
     private func refreshBacktest() async {
-        let key = MRBacktestCacheStore.effortKey(efforts)
+        // 캐시 키: 자동 감지 노력 핑거프린트 + 확인된 대회 목록
+        let effortPart = MRBacktestCacheStore.effortKey(efforts)
+        let matchPart = storedConfirmedMatches
+            .filter { $0.isConfirmed }
+            .sorted { $0.activityID.uuidString < $1.activityID.uuidString }
+            .map { "\($0.activityID.uuidString)_\(Int($0.distanceKm * 10))" }
+            .joined(separator: "|")
+        let key = effortPart + "||" + matchPart
 
         if let cached = MRBacktestCacheStore.load(), cached.effortKey == key {
             backtest = cached.rows.map(\.row)
@@ -376,10 +395,14 @@ final class MREngineStore: ObservableObject {
             return
         }
 
+        // 변환은 main actor에서 미리 처리 → Task.detached에는 Sendable [MRRaceEffort]만 전달
+        let addl = mrEffortsFromConfirmedMatches(storedConfirmedMatches, runs: runs)
         let r = runs, rhr = rhrSamples, d = storedDob, s = storedSex, h = heat
+        let matchCount = addl.count
         let result = await Task.detached(priority: .userInitiated) {
             mrBacktest(runs: r, restingHRSamples: rhr,
-                       dateOfBirth: d, sex: s, heat: h, asOf: Date())
+                       dateOfBirth: d, sex: s, heat: h,
+                       additionalTargets: addl, asOf: Date())
         }.value
 
         backtest = result
@@ -388,7 +411,7 @@ final class MREngineStore: ObservableObject {
             rows: result.map(MRBacktestRowCodable.init)
         ))
         #if DEBUG
-        print("[백테스트] 완료 · \(result.count)건")
+        print("[백테스트] 완료 · \(result.count)건 (확인 대회 \(matchCount)건 포함)")
         #endif
     }
 
@@ -396,6 +419,13 @@ final class MREngineStore: ObservableObject {
 
     func computeBacktestIfNeeded() {
         guard backtest.isEmpty, case .ready = state else { return }
+        Task { await self.refreshBacktest() }
+    }
+
+    /// 확인된 대회 목록이 바뀌면 캐시 키가 달라져 자동으로 재계산된다.
+    func updateConfirmedMatches(_ matches: [PersistedRaceMatch]) {
+        guard case .ready = state else { return }
+        storedConfirmedMatches = matches
         Task { await self.refreshBacktest() }
     }
 
@@ -426,12 +456,18 @@ final class MREngineStore: ObservableObject {
         let raceTempByID = Dictionary(uniqueKeysWithValues: upcoming.map { r in
             (r.id, mrSeasonalTemp(runs: runs, for: r.date) ?? MR_REF_TEMP)
         })
+        // 날짜 순으로 대회를 처리하며 앞 대회의 피크 상태를 다음 대회 플랜에 전달한다.
+        var prevPlanInfo2: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil
         let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in
             let rt = raceTempByID[r.id] ?? MR_REF_TEMP
-            return (r, mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
-                                   profile: profile, halfEquivMin: he,
-                                   easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
-                                   raceTempC: rt, runsPerWeek: profile.runsPerWeek))
+            let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
+                                 profile: profile, halfEquivMin: he,
+                                 easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
+                                 raceTempC: rt, runsPerWeek: profile.runsPerWeek,
+                                 priorRace: prevPlanInfo2)
+            if let pl { prevPlanInfo2 = (date: r.date, name: r.name,
+                                         peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }
+            return (r, pl)
         }
         let validPairs = paired.compactMap { p -> (MRTargetRace, MRRacePlan)? in
             guard let pl = p.plan else { return nil }
@@ -439,9 +475,11 @@ final class MREngineStore: ObservableObject {
         }
         plans = validPairs.map(\.1)
         checks = validPairs.map { (r, pl) in
-            mrCheckGoal(race: r, plan: pl, goals: userInput.goals,
-                        profile: profile, halfEquivMin: he, heat: heat,
-                        raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP)
+            let others = validPairs.filter { $0.0.id != r.id }
+            return mrCheckGoal(race: r, plan: pl, goals: userInput.goals,
+                               profile: profile, halfEquivMin: he, heat: heat,
+                               raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP,
+                               otherPlans: others)
         }
         planlessRaces = paired.filter { $0.plan == nil }.map(\.race)
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
@@ -483,6 +521,30 @@ final class MREngineStore: ObservableObject {
                              goalMin: goalMin,
                              runs: runs,
                              asOf: asOf)
+    }
+
+    // 대회 매칭 → MRRaceEffort 변환 (main actor에서 실행, Sendable 타입만 Task.detached로 전달)
+    private func mrEffortsFromConfirmedMatches(_ matches: [PersistedRaceMatch],
+                                               runs: [MRWorkout]) -> [MRRaceEffort] {
+        let cal = Calendar.current
+        return matches
+            .filter { $0.isConfirmed }
+            .compactMap { match -> MRRaceEffort? in
+                let stdDistM = match.distanceKm * 1000
+                let label = mrLabelFor(distanceM: stdDistM)
+                guard ["5K", "10K", "하프", "풀"].contains(label) else { return nil }
+
+                let sameDayRuns = runs.filter { cal.isDate($0.start, inSameDayAs: match.raceDate) }
+                guard let run = sameDayRuns.min(by: {
+                    abs(($0.distanceKm ?? 0) - match.distanceKm) < abs(($1.distanceKm ?? 0) - match.distanceKm)
+                }), let km = run.distanceKm, km > 0 else { return nil }
+
+                let timeMin = run.durationMin * (stdDistM / (km * 1000))
+                return MRRaceEffort(date: run.date, distanceM: stdDistM,
+                                   timeMin: timeMin, timeMinRef: timeMin,
+                                   tempC: run.tempC, label: label,
+                                   isConfirmedRace: true)
+            }
     }
 
     @discardableResult

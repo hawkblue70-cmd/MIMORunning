@@ -1,6 +1,6 @@
 import Foundation
 
-struct MRPhysiology {
+struct MRPhysiology: Sendable {
     var age: Double?
     var restingHR: MRInference?
     var hrMax: MRInference?
@@ -14,7 +14,7 @@ struct MRPhysiology {
     }
 }
 
-enum MRSex { case male, female, unknown }
+enum MRSex: Sendable { case male, female, unknown }
 
 func mrPhysiology(runs: [MRWorkout],
                   restingHRSamples: [(date: Date, value: Double)],

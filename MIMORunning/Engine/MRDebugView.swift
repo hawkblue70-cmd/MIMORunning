@@ -1,6 +1,7 @@
 import SwiftUI
 import HealthKit
 
+
 struct MRDebugView: View {
     @State private var log = "권한 요청 대기 중"
     private let hk = MRHealthKit()

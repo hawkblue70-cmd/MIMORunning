@@ -57,7 +57,7 @@ struct RaceSuggestion {
 
 // MARK: - Persisted match
 
-struct PersistedRaceMatch: Codable, Equatable {
+struct PersistedRaceMatch: Codable, Equatable, Sendable {
     let activityID: UUID
     var raceName: String
     var distanceKm: Double

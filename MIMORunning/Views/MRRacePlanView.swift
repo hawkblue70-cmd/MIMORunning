@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// H:MM 형식 — 범위 표시용 (mrFormatDisplay보다 짧게)
+private func mrFormatHM(_ minutes: Double) -> String {
+    let total = Int(minutes.rounded())
+    return "\(total / 60):\(String(format: "%02d", total % 60))"
+}
+
 private let mrAccent = Color(red: 0.48, green: 0.36, blue: 0.98)
 private let mrCard   = Color(red: 0.11, green: 0.11, blue: 0.12)
 private let mrGood   = Color(red: 0.30, green: 0.80, blue: 0.55)
@@ -9,6 +15,8 @@ private let mrWarn   = Color(red: 0.95, green: 0.68, blue: 0.25)
 
 struct MRRacePlanCard: View {
     let check: MRGoalCheck
+    var isExpanded: Bool = true
+    var onToggleCollapse: (() -> Void)? = nil
     @State private var showWeeks = false
 
     private var plan: MRRacePlan { check.plan }
@@ -27,7 +35,18 @@ struct MRRacePlanCard: View {
         return pct <= 0 ? mrGood : (pct <= 3 ? mrAccent : mrWarn)
     }
 
+    private func bridgeTextColor(_ text: String) -> Color {
+        if text.hasPrefix("회복") { return Color(red: 0.35, green: 0.65, blue: 0.95) }
+        if text.hasPrefix("유지") { return Color(red: 0.45, green: 0.80, blue: 0.55) }
+        if text.hasPrefix("이 계획 시작") { return mrAccent }
+        return .white.opacity(0.45)
+    }
+
     var body: some View {
+        if !isExpanded {
+            MRRaceCollapsedRow(name: race.name, date: race.date,
+                               weekCount: plan.weeks.count, onTap: onToggleCollapse ?? {})
+        } else {
         VStack(alignment: .leading, spacing: 0) {
 
             // 헤더
@@ -42,11 +61,46 @@ struct MRRacePlanCard: View {
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(mrAccent.opacity(0.15))
                     .clipShape(Capsule())
+                if onToggleCollapse != nil {
+                    Button(action: onToggleCollapse!) {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.3))
+                            .padding(.leading, 6)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            Text("D-\(daysLeft) · \(plan.weeks.count)주 남음")
+            Text("D-\(daysLeft) · \(plan.weeks.count)주 계획")
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.4))
                 .padding(.top, 3)
+
+            if !plan.startNote.isEmpty {
+                Text(plan.startNote)
+                    .font(.system(size: 12))
+                    .foregroundStyle(mrAccent.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+            }
+
+            if !plan.bridgeRows.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(plan.bridgeRows.indices, id: \.self) { i in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(plan.bridgeRows[i].range)
+                                .foregroundStyle(.white.opacity(0.28))
+                                .frame(minWidth: 110, maxWidth: 110, alignment: .leading)
+                                .monospacedDigit()
+                            Text(plan.bridgeRows[i].text)
+                                .foregroundStyle(bridgeTextColor(plan.bridgeRows[i].text))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .font(.system(size: 11))
+                .padding(.top, 10)
+            }
 
             // 지금 → 계획후
             HStack(spacing: 10) {
@@ -67,6 +121,15 @@ struct MRRacePlanCard: View {
                     Text(mrFormatDisplay(plan.projectedFinal))
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
+                    if plan.projectedFinalLo > 0 {
+                        Text("(\(mrFormatHM(plan.projectedFinalLo)) ~ \(mrFormatHM(plan.projectedFinalHi)))")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.35))
+                    } else if !plan.projectedFinalNote.isEmpty {
+                        Text(plan.projectedFinalNote)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.35))
+                    }
                 }
                 Spacer()
             }
@@ -116,7 +179,7 @@ struct MRRacePlanCard: View {
                         .foregroundStyle(.white.opacity(0.4))
                     Spacer()
                     Text(String(format: "%.0f → %.0fkm",
-                                plan.weeks.first?.longRunKm ?? 0,
+                                plan.startingLongKm > 0 ? plan.startingLongKm : (plan.weeks.first?.longRunKm ?? 0),
                                 plan.reachableLongKm))
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(.white.opacity(0.55))
@@ -163,7 +226,7 @@ struct MRRacePlanCard: View {
             .padding(.top, 16)
 
             if showWeeks {
-                MRWeekTable(weeks: plan.weeks).padding(.top, 12)
+                MRWeekTable(weeks: plan.weeks, histMaxWeeklyKm: plan.histMaxWeeklyKm).padding(.top, 12)
             }
 
             // 근거 — 숨기지 않는다
@@ -178,6 +241,7 @@ struct MRRacePlanCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(mrCard)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        } // end isExpanded
     }
 }
 
@@ -185,24 +249,46 @@ struct MRRacePlanCard: View {
 
 struct MRWeekTable: View {
     let weeks: [MRPlanWeek]
+    var histMaxWeeklyKm: Double = 0
     @State private var expanded: Set<Int> = []
+
+    private let dateFmt: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "ko_KR")
+        df.dateFormat = "M/d"
+        return df
+    }()
 
     private func phaseColor(_ p: String) -> Color {
         switch p {
-        case "테이퍼": return mrAccent
-        case "회복":   return Color(red: 0.35, green: 0.65, blue: 0.95)
-        default:       return .white.opacity(0.5)
+        case "테이퍼":      return mrAccent
+        case "회복":        return Color(red: 0.35, green: 0.65, blue: 0.95)
+        case "대회 페이스": return mrWarn
+        case "유지":        return Color(red: 0.45, green: 0.80, blue: 0.55)
+        default:            return .white.opacity(0.5)
         }
+    }
+
+    private var legendItems: [(phase: String, desc: String)] {
+        let present = Set(weeks.map(\.phase))
+        return [
+            (phase: "늘리기",       desc: "롱런을 매주 조금씩 늘립니다"),
+            (phase: "유지",         desc: "롱런을 더 늘리지 않고 그 거리에 익숙해집니다"),
+            (phase: "대회 페이스",   desc: "롱런 안에 대회 페이스로 달리는 구간이 들어갑니다"),
+            (phase: "회복",         desc: "롱런과 주간 거리를 줄입니다. 몸은 쉴 때 좋아집니다"),
+            (phase: "테이퍼",       desc: "대회 전 2주, 거리를 절반 이하로 줄입니다"),
+        ].filter { present.contains($0.phase) }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("주").frame(width: 26, alignment: .leading)
-                Text("단계").frame(width: 44, alignment: .leading)
+                Text("주").frame(width: 20, alignment: .leading)
+                Text("날짜").frame(width: 40, alignment: .leading)
+                Text("단계").frame(width: 64, alignment: .leading)
                 Text("롱런").frame(maxWidth: .infinity, alignment: .trailing)
                 Text("주간").frame(maxWidth: .infinity, alignment: .trailing)
-                Text("예상").frame(width: 62, alignment: .trailing)
+                Text("예상").frame(width: 56, alignment: .trailing)
             }
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.white.opacity(0.45))
@@ -212,10 +298,14 @@ struct MRWeekTable: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         Text("\(w.idx)")
-                            .frame(width: 26, alignment: .leading)
+                            .frame(width: 20, alignment: .leading)
                             .foregroundStyle(.white.opacity(0.4))
+                        Text(dateFmt.string(from: w.monday))
+                            .frame(width: 40, alignment: .leading)
+                            .foregroundStyle(.white.opacity(0.28))
+                            .monospacedDigit()
                         Text(w.phase)
-                            .frame(width: 44, alignment: .leading)
+                            .frame(width: 64, alignment: .leading)
                             .foregroundStyle(phaseColor(w.phase))
                         // ⚠ 새 최장 롱런을 세우는 주는 표시해 준다.
                         //   Frandsen 2025의 참조 밴드(10%) 안에서만 세운다.
@@ -229,7 +319,7 @@ struct MRWeekTable: View {
                             .frame(maxWidth: .infinity, alignment: .trailing)
                             .foregroundStyle(.white.opacity(0.5))
                         Text(mrFormatDisplay(w.projectedMin))
-                            .frame(width: 62, alignment: .trailing)
+                            .frame(width: 56, alignment: .trailing)
                             .foregroundStyle(.white.opacity(0.55))
                     }
                     .font(.system(size: 12, design: .rounded))
@@ -242,11 +332,19 @@ struct MRWeekTable: View {
                         }
                     }
 
+                    if w.isVolRecord && histMaxWeeklyKm > 0 {
+                        Text("└ 지난 1년 최고치(\(Int(histMaxWeeklyKm.rounded()))km)에 도달")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.45))
+                            .padding(.leading, 64)
+                            .padding(.bottom, 2)
+                    }
+
                     if expanded.contains(w.idx) && !w.breakdown.isEmpty {
                         Text(w.breakdown)
                             .font(.system(size: 11))
                             .foregroundStyle(mrAccent.opacity(0.85))
-                            .padding(.leading, 70)
+                            .padding(.leading, 64)
                             .padding(.bottom, 4)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                     }
@@ -260,6 +358,22 @@ struct MRWeekTable: View {
                 .foregroundStyle(.white.opacity(0.45))
                 .padding(.top, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            // 범례
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(legendItems, id: \.phase) { item in
+                    HStack(alignment: .top, spacing: 6) {
+                        Text(item.phase)
+                            .foregroundStyle(phaseColor(item.phase))
+                            .frame(width: 68, alignment: .leading)
+                        Text(item.desc)
+                            .foregroundStyle(.white.opacity(0.4))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.system(size: 10))
+                }
+            }
+            .padding(.top, 8)
         }
     }
 }
@@ -372,6 +486,8 @@ struct MRPlanlessRaceCard: View {
 
 struct MRRacePlanSection: View {
     @EnvironmentObject var engine: MREngineStore
+    // 가장 가까운 대회 하나만 기본 펼침. nil이면 전체 접힘
+    @State private var expandedId: String? = nil
 
     var body: some View {
         VStack(spacing: 14) {
@@ -385,16 +501,138 @@ struct MRRacePlanSection: View {
                 }
                 MRGoalLinksView(links: mrGoalLinks(engine.userInput.goals))
                 ForEach(engine.raceItems) { item in
+                    let isExpanded = expandedId == item.id
                     switch item {
                     case .planned(let c):
-                        MRRacePlanCard(check: c)
+                        MRRacePlanCard(check: c, isExpanded: isExpanded) {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                expandedId = isExpanded ? nil : item.id
+                            }
+                        }
                     case .planless(let r):
-                        MRPlanlessRaceCard(race: r)
+                        if isExpanded {
+                            MRPlanlessRaceCard(race: r)
+                        } else {
+                            MRRaceCollapsedRow(name: r.name, date: r.date, weekCount: nil) {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    expandedId = item.id
+                                }
+                            }
+                        }
                     }
                 }
             } else if case .loading = engine.state {
                 ProgressView().tint(.white).frame(height: 80)
             }
         }
+        .onAppear {
+            // 처음 또는 아이템이 바뀌었을 때 — 가장 가까운 대회를 기본 펼침
+            if expandedId == nil || !engine.raceItems.map(\.id).contains(expandedId ?? "") {
+                expandedId = engine.raceItems.first?.id
+            }
+        }
+        .onChange(of: engine.raceItems.map(\.id)) { _, ids in
+            if let curr = expandedId, ids.contains(curr) { return }
+            expandedId = ids.first
+        }
     }
+}
+
+// MARK: - 접힌 행
+
+private struct MRRaceCollapsedRow: View {
+    let name: String
+    let date: Date
+    let weekCount: Int?
+    let onTap: () -> Void
+
+    private var daysLeft: Int {
+        Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text("D-\(daysLeft)")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(mrAccent)
+                        if let w = weekCount {
+                            Text("· \(w)주")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.4))
+                        }
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.3))
+            }
+            .padding(16)
+            .background(mrCard)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 프리뷰
+
+private func _previewGoalCheck() -> MRGoalCheck {
+    let race = MRTargetRace(
+        date: Calendar.current.date(byAdding: .weekOfYear, value: 32, to: Date())!,
+        distanceM: MRDistance.dF, name: "JTBC 마라톤"
+    )
+    var plan = MRRacePlan(raceDate: race.date, distanceM: MRDistance.dF)
+    plan.projectedNow     = 4 * 60 + 27
+    plan.projectedFinal   = 4 * 60 + 7.4
+    plan.projectedFinalLo = 4 * 60 + 1.5
+    plan.projectedFinalHi = 4 * 60 + 13.8
+    plan.reachableLongKm  = 22.0
+    plan.targetLongKm     = 28.0
+    plan.peakWeeklyKm     = 48.3
+    plan.histMaxWeeklyKm  = 39.1
+    plan.verdict = "완주는 충분, 기록은 다음 대회에"
+    return MRGoalCheck(
+        race: race, plan: plan,
+        goalMin: 4 * 60, gapMin: 7.4,
+        verdict: "조금 모자랍니다. 아래를 바꾸면 메워집니다",
+        levers: ["롱런 25km → 4:03:12 ⚠ 32주로는 도달 불가 · 2027 서울마라톤에서는 가능"]
+    )
+}
+
+private func _previewWeeks() -> [MRPlanWeek] {
+    let cal = Calendar.current
+    return (1...8).map { i in
+        let mon = cal.date(byAdding: .weekOfYear, value: i, to: Date())!
+        var w = MRPlanWeek(
+            idx: i, monday: mon,
+            phase: i > 6 ? "테이퍼" : (i % 4 == 0 ? "회복" : (Double(i) > 6 * 0.75 ? "대회 페이스" : "늘리기")),
+            longRunKm: Double(10 + i), longRunMin: Double(70 + i * 5),
+            weeklyKm: Double(30 + i * 3),
+            projectedMin: 4 * 60 + 18 - Double(i) * 1.5,
+            isNewMax: i == 3
+        )
+        w.isVolRecord = (i == 5)
+        w.breakdown = String(format: "롱런 %.0fkm + 이지 7km × 3회", Double(10 + i))
+        return w
+    }
+}
+
+#Preview("플랜 카드 — 예측 범위") {
+    MRRacePlanCard(check: _previewGoalCheck())
+        .padding()
+        .background(Color.black)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("주차 표 — 과거 최대 초과 표시") {
+    ScrollView { MRWeekTable(weeks: _previewWeeks(), histMaxWeeklyKm: 39.1).padding() }
+        .background(Color.black).preferredColorScheme(.dark)
 }
