@@ -54,6 +54,9 @@ struct MeView: View {
     @AppStorage("goalTimeHalf")  private var goalTimeHalf = ""
     @AppStorage("goalTimeFull")  private var goalTimeFull = ""
     @State private var editingGoal: RaceGoalKind? = nil
+    #if DEBUG
+    @State private var showDebug = false
+    #endif
 
     // MARK: - Period stats
 
@@ -856,6 +859,27 @@ struct MeView: View {
             .background(Theme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 16)
+
+            #if DEBUG
+            Button {
+                showDebug = true
+            } label: {
+                Text("🛠 Debug")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal, 16)
+            }
+            .sheet(isPresented: $showDebug) {
+                MRDebugView()
+                    .environmentObject(engine)
+                    .environment(raceDetector)
+                    .preferredColorScheme(.dark)
+            }
+            #endif
         }
     }
 
