@@ -1,3 +1,4 @@
+#if DEBUG
 import SwiftUI
 import SwiftData
 import HealthKit
@@ -356,3 +357,4 @@ struct MRDebugView: View {
         #endif
     }
 }
+#endif // DEBUG
