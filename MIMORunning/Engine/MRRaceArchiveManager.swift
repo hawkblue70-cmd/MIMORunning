@@ -211,6 +211,11 @@ func mrDeduplicateArchives(_ archives: [RaceArchive],
 /// 백테스트의 마지막 N건에 대해 소급 아카이브를 만든다.
 /// 대회 당시에는 계획 기능이 없었을 때 과거를 재구성하는 용도.
 /// 이미 아카이브가 있는 대회는 건너뛴다.
+///
+/// **2패스 방식**
+/// 1패스: asOf = 대회 − 20주 로 계획을 시도 → 엔진이 돌려준 시작일을 읽는다.
+/// 2패스: 그 시작일을 asOf 로 해서 계획을 다시 생성한다.
+/// 1패스 실패 시 폴백: 풀=−16주, 그 이하=−12주.
 func mrCreateRetroactiveArchives(
     backtestRows: [MRBacktestRow],
     runs: [MRWorkout],
@@ -226,6 +231,9 @@ func mrCreateRetroactiveArchives(
     let cal = Calendar.current
     let dateFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+    let encoder: JSONEncoder = {
+        let e = JSONEncoder(); e.dateEncodingStrategy = .secondsSince1970; return e
     }()
 
     let scored = backtestRows.filter { $0.predictedMin != nil }.sorted { $0.date < $1.date }
@@ -249,69 +257,80 @@ func mrCreateRetroactiveArchives(
             $0.isConfirmed && cal.isDate($0.raceDate, inSameDayAs: row.date)
         }?.raceName ?? "\(row.label) \(dateFmt.string(from: row.date))"
 
-        let asOf = cal.date(byAdding: .day, value: -1, to: row.date)!
-        let pastRuns = runs.filter { $0.start <= asOf }
+        logLines.append("\n[\(row.label) \(dateFmt.string(from: row.date))] \(raceName)")
 
-        let phys2 = mrPhysiology(runs: pastRuns, restingHRSamples: rhrSamples,
-                                  dateOfBirth: dateOfBirth, sex: sex, asOf: asOf)
-        let prior = mrApplyHeat(mrDetectEfforts(runs: pastRuns, phys: phys2), heat: heat)
-                        .filter { $0.date < row.date }
-        let fit2  = mrFitExponent(prior)
-        let prof2 = mrProfile(runs: pastRuns, efforts: prior, asOf: asOf)
-        let preds2 = mrPredict(efforts: prior, fit: fit2, profile: prof2, heat: heat, asOf: asOf)
-        let hrp2   = mrFitHRPaceModel(runs: pastRuns, asOf: asOf)
-        let easyPace2 = phys2.easyCeilingHR.flatMap { hrp2.paceAtHR($0) }
-        let halfEquiv = preds2.first { $0.label == "하프" }?.midMin ?? 0
+        // ── 1패스: 대회 20주 전 시점으로 계획 시도 → 시작일을 얻기 위한 탐색
+        let asOf1 = cal.date(byAdding: .weekOfYear, value: -20, to: row.date)!
+        let pastRuns1 = runs.filter { $0.date <= asOf1 }
+        let phys1     = mrPhysiology(runs: pastRuns1, restingHRSamples: rhrSamples,
+                                     dateOfBirth: dateOfBirth, sex: sex, asOf: asOf1)
+        let prior1    = mrApplyHeat(mrDetectEfforts(runs: pastRuns1, phys: phys1), heat: heat)
+                            .filter { $0.date < row.date }
+        let fit1      = mrFitExponent(prior1)
+        let prof1     = mrProfile(runs: pastRuns1, efforts: prior1, asOf: asOf1)
+        let preds1    = mrPredict(efforts: prior1, fit: fit1, profile: prof1, heat: heat, asOf: asOf1)
+        let hrp1      = mrFitHRPaceModel(runs: pastRuns1, asOf: asOf1)
+        let easy1     = phys1.easyCeilingHR.flatMap { hrp1.paceAtHR($0) }
+        let half1     = preds1.first { $0.label == "하프" }?.midMin ?? 0
 
-        guard let plan = mrBuildPlan(
-            raceDate: row.date,
-            distanceM: distM,
-            today: asOf,
-            profile: prof2,
-            halfEquivMin: halfEquiv,
-            easyPaceSecPerKm: easyPace2,
-            heat: heat,
-            raceTempC: MR_REF_TEMP,
-            runsPerWeek: prof2.runsPerWeek
+        let plan1 = mrBuildPlan(
+            raceDate: row.date, distanceM: distM, today: asOf1,
+            profile: prof1, halfEquivMin: half1,
+            easyPaceSecPerKm: easy1, heat: heat,
+            raceTempC: MR_REF_TEMP, runsPerWeek: prof1.runsPerWeek
+        )
+
+        // 1패스에서 얻은 실제 시작일
+        let asOf2: Date
+        if let p1 = plan1 {
+            let planStart = p1.weeks.first.map { cal.startOfDay(for: $0.monday) } ?? asOf1
+            asOf2 = planStart
+            logLines.append(
+                "  1패스 asOf \(dateFmt.string(from: asOf1)) → \(p1.weeks.count)주, 시작일 \(dateFmt.string(from: planStart))"
+            )
+        } else {
+            // 폴백: 데이터 부족 등으로 1패스 실패
+            let fbWeeks = distM >= MRDistance.dF * 0.99 ? -16 : -12
+            asOf2 = cal.date(byAdding: .weekOfYear, value: fbWeeks, to: row.date)!
+            logLines.append(
+                "  1패스 asOf \(dateFmt.string(from: asOf1)) → 실패, 폴백 \(abs(fbWeeks))주 전 = \(dateFmt.string(from: asOf2))"
+            )
+        }
+
+        // ── 2패스: 그 시작일부터 계획 생성 (이게 "당시 앱이 만들었을 계획")
+        let pastRuns2 = runs.filter { $0.date <= asOf2 }
+        let phys2     = mrPhysiology(runs: pastRuns2, restingHRSamples: rhrSamples,
+                                     dateOfBirth: dateOfBirth, sex: sex, asOf: asOf2)
+        let prior2    = mrApplyHeat(mrDetectEfforts(runs: pastRuns2, phys: phys2), heat: heat)
+                            .filter { $0.date < row.date }
+        let fit2      = mrFitExponent(prior2)
+        let prof2     = mrProfile(runs: pastRuns2, efforts: prior2, asOf: asOf2)
+        let preds2    = mrPredict(efforts: prior2, fit: fit2, profile: prof2, heat: heat, asOf: asOf2)
+        let hrp2      = mrFitHRPaceModel(runs: pastRuns2, asOf: asOf2)
+        let easy2     = phys2.easyCeilingHR.flatMap { hrp2.paceAtHR($0) }
+        let half2     = preds2.first { $0.label == "하프" }?.midMin ?? 0
+
+        guard let plan2 = mrBuildPlan(
+            raceDate: row.date, distanceM: distM, today: asOf2,
+            profile: prof2, halfEquivMin: half2,
+            easyPaceSecPerKm: easy2, heat: heat,
+            raceTempC: MR_REF_TEMP, runsPerWeek: prof2.runsPerWeek
         ) else {
-            logLines.append("  → \(row.label) \(dateFmt.string(from: row.date)) — 계획 불가 (준비기간 3주 미만)")
+            logLines.append("  2패스 asOf \(dateFmt.string(from: asOf2)) → 계획 생성 실패 (데이터 부족)")
             continue
         }
 
-        // 주차 요약 JSON
-        let planWeeks = plan.weeks.map { w in
+        logLines.append("  2패스 asOf \(dateFmt.string(from: asOf2)) → \(plan2.weeks.count)주 계획 생성 완료")
+
+        // ── 주차 이행 통계
+        let planWeeks = plan2.weeks.map { w in
             MRPlanWeekSummary(idx: w.idx, monday: w.monday,
                               phase: w.phase, longRunKm: w.longRunKm, weeklyKm: w.weeklyKm)
         }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .secondsSince1970
         let weeksJSON = (try? encoder.encode(planWeeks)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
 
-        // 임시 스냅샷 (context 삽입 없음 — 마크다운 빌드용)
-        let snap = RacePlanSnapshot(
-            raceDate: row.date, raceName: raceName, distanceM: distM,
-            projectedFinalMin: plan.projectedFinal, projectedNowMin: plan.projectedNow,
-            goalMin: 0, weeksJSON: weeksJSON, metaJSON: ""
-        )
-
-        var md = mrBuildArchiveMarkdown(
-            snapshot: snap, actualMin: row.actualMin,
-            preRaceProjectedMin: nil, runs: runs
-        )
-        // 소급 재구성임을 명시
-        let note = "> 이 계획은 나중에 소급 재구성한 것입니다.\n> 대회 당시에는 앱에 계획 기능이 없었습니다.\n\n"
-        md = note + md
-
-        let archive = RaceArchive(
-            raceDate: row.date, raceName: raceName, distanceM: distM,
-            markdown: md, hasResult: true, actualMin: row.actualMin,
-            snapshotProjectedFinalMin: plan.projectedFinal, reconstructed: true
-        )
-        context.insert(archive)
-        count += 1
-
-        // 이행 통계 집계
         var hitBoth = 0, hitOne = 0, hitNone = 0, hitOver = 0
+        var matchedWeeks = 0
         let raceDayStart = cal.startOfDay(for: row.date)
         for w in planWeeks {
             let weekStart = cal.startOfDay(for: w.monday)
@@ -326,10 +345,32 @@ func mrCreateRetroactiveArchives(
             case symbolNone: hitNone += 1
             default:         hitOver += 1
             }
+            matchedWeeks += 1
         }
-        logLines.append(
-            "[아카이브] \(dateFmt.string(from: row.date)) \(raceName) · \(plan.weeks.count)주 · \(symbolBoth) \(hitBoth) \(symbolOne) \(hitOne) \(symbolNone) \(hitNone) \(symbolOver) \(hitOver)"
+
+        logLines.append("  실제 기록 매칭 \(matchedWeeks)주 / \(planWeeks.count)주")
+        logLines.append("  \(symbolBoth) \(hitBoth) \(symbolOne) \(hitOne) \(symbolNone) \(hitNone) \(symbolOver) \(hitOver)")
+
+        // ── 마크다운 생성 + 아카이브 저장
+        let snap = RacePlanSnapshot(
+            raceDate: row.date, raceName: raceName, distanceM: distM,
+            projectedFinalMin: plan2.projectedFinal, projectedNowMin: plan2.projectedNow,
+            goalMin: 0, weeksJSON: weeksJSON, metaJSON: ""
         )
+
+        let retroNote = "> 이 계획은 나중에 소급 재구성한 것입니다.\n> 대회 당시에는 앱에 계획 기능이 없었습니다.\n\n"
+        let md = retroNote + mrBuildArchiveMarkdown(
+            snapshot: snap, actualMin: row.actualMin,
+            preRaceProjectedMin: nil, runs: runs
+        )
+
+        let archive = RaceArchive(
+            raceDate: row.date, raceName: raceName, distanceM: distM,
+            markdown: md, hasResult: true, actualMin: row.actualMin,
+            snapshotProjectedFinalMin: plan2.projectedFinal, reconstructed: true
+        )
+        context.insert(archive)
+        count += 1
     }
 
     return (["[아카이브] 소급 \(count)건 생성"] + logLines).joined(separator: "\n")
