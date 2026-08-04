@@ -11,6 +11,7 @@ struct MRDebugView: View {
     @State private var log = "권한 요청 대기 중"
     @State private var archiveLog = ""
     @State private var isCreatingArchives = false
+    @State private var isDeletingArchives = false
 
     // 버튼에서 재사용할 fetched 데이터
     @State private var fetchedRuns: [MRWorkout] = []
@@ -25,15 +26,13 @@ struct MRDebugView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
 
-                // 소급 아카이브 생성 버튼
+                // 소급 아카이브 생성 / 삭제 버튼
                 VStack(alignment: .leading, spacing: 8) {
                     Button {
                         Task { await createRetroactiveArchives() }
                     } label: {
                         HStack {
-                            if isCreatingArchives {
-                                ProgressView().tint(.white)
-                            }
+                            if isCreatingArchives { ProgressView().tint(.white) }
                             Text(isCreatingArchives ? "생성 중…" : "지난 대회 아카이브 소급 생성")
                         }
                         .frame(maxWidth: .infinity)
@@ -43,7 +42,23 @@ struct MRDebugView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    .disabled(isCreatingArchives || fetchedRuns.isEmpty)
+                    .disabled(isCreatingArchives || isDeletingArchives || fetchedRuns.isEmpty)
+
+                    Button {
+                        Task { await deleteRetroactiveArchives() }
+                    } label: {
+                        HStack {
+                            if isDeletingArchives { ProgressView().tint(.white) }
+                            Text(isDeletingArchives ? "삭제 중…" : "소급 아카이브 삭제")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.red.opacity(0.75))
+                        .foregroundStyle(.white)
+                        .font(.system(size: 14, weight: .semibold))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .disabled(isCreatingArchives || isDeletingArchives)
 
                     if !archiveLog.isEmpty {
                         Text(archiveLog)
@@ -305,6 +320,39 @@ struct MRDebugView: View {
 
         #if DEBUG
         print(archiveLog)
+        #endif
+    }
+
+    @MainActor
+    private func deleteRetroactiveArchives() async {
+        isDeletingArchives = true
+        defer { isDeletingArchives = false }
+
+        // reconstructed == true 인 아카이브만 삭제
+        let toDelete = allArchives.filter { $0.reconstructed }
+        for arch in toDelete { modelContext.delete(arch) }
+
+        // 소급 과정에서 RacePlanSnapshot 은 context 에 삽입하지 않으므로
+        // 실제로는 0건이지만 혹시 모를 고아 스냅샷(날짜+거리 매칭)도 정리
+        // (소급 아카이브와 같은 raceDate+distanceM을 가진 스냅샷)
+        // Note: saveSnapshotsIfNeeded는 engine.checks(미래 대회)만 저장하므로
+        //       과거 소급 아카이브와 겹치는 스냅샷은 생기지 않지만 방어적으로 확인
+        let deletedKeys = Set(toDelete.map {
+            mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM)
+        })
+        // allSnapshots는 @Query로 접근 불가 (MRDebugView에 Query 없음)
+        // → log에 안내만 표기
+
+        let remaining = allArchives.count - toDelete.count
+        archiveLog = """
+        [아카이브] 소급 \(toDelete.count)건 삭제 · 남은 아카이브 \(remaining)건
+        [아카이브] 소급 스냅샷 0건 삭제 (소급 과정에서 스냅샷은 저장되지 않습니다)
+        [CloudKit] 삭제는 자동으로 다른 기기에 동기화됩니다
+        """
+
+        #if DEBUG
+        print(archiveLog)
+        print("[삭제된 키]", deletedKeys.sorted().joined(separator: ", "))
         #endif
     }
 }
