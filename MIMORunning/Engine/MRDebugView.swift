@@ -1,41 +1,98 @@
 import SwiftUI
+import SwiftData
 import HealthKit
 
-
 struct MRDebugView: View {
+    @EnvironmentObject private var engine: MREngineStore
+    @Environment(RaceDetector.self) private var raceDetector
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allArchives: [RaceArchive]
+
     @State private var log = "권한 요청 대기 중"
+    @State private var archiveLog = ""
+    @State private var isCreatingArchives = false
+
+    // 버튼에서 재사용할 fetched 데이터
+    @State private var fetchedRuns: [MRWorkout] = []
+    @State private var fetchedRHR: [(date: Date, value: Double)] = []
+    @State private var fetchedDob: Date? = nil
+    @State private var fetchedSex: MRSex = .unknown
+    @State private var fetchedHeat: MRHeatModel = MRHeatModel()
+
     private let hk = MRHealthKit()
 
     var body: some View {
         ScrollView {
-            Text(log)
-                .font(.system(.footnote, design: .monospaced))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
+            VStack(alignment: .leading, spacing: 12) {
+
+                // 소급 아카이브 생성 버튼
+                VStack(alignment: .leading, spacing: 8) {
+                    Button {
+                        Task { await createRetroactiveArchives() }
+                    } label: {
+                        HStack {
+                            if isCreatingArchives {
+                                ProgressView().tint(.white)
+                            }
+                            Text(isCreatingArchives ? "생성 중…" : "지난 대회 아카이브 소급 생성")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color(red: 0.48, green: 0.36, blue: 0.98))
+                        .foregroundStyle(.white)
+                        .font(.system(size: 14, weight: .semibold))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .disabled(isCreatingArchives || fetchedRuns.isEmpty)
+
+                    if !archiveLog.isEmpty {
+                        Text(archiveLog)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.green)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.horizontal)
+
+                Divider().background(.white.opacity(0.2))
+
+                // 기존 진단 로그
+                Text(log)
+                    .font(.system(.footnote, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+            }
+            .padding(.vertical)
         }
         .task {
             do {
                 try await hk.requestAuthorization()
                 let runs = try await hk.fetchRuns()
-                let rhr = try await hk.fetchRestingHR()
-                let outdoor = runs.filter { !$0.indoor }
-                let withHR = runs.filter { $0.hrAvg != nil }
-                let withTemp = runs.filter { $0.tempC != nil }
-                let totalKm = runs.compactMap(\.distanceKm).reduce(0, +)
-
-                let dob = hk.dateOfBirth()
+                let rhr  = try await hk.fetchRestingHR()
+                let dob  = hk.dateOfBirth()
                 let sexRaw = hk.biologicalSex()
                 let sex: MRSex = sexRaw == .female ? .female : (sexRaw == .male ? .male : .unknown)
+                let heat = mrFitHeatModel(runs: runs)
+
+                // 버튼에서 재사용
+                fetchedRuns = runs
+                fetchedRHR  = rhr
+                fetchedDob  = dob
+                fetchedSex  = sex
+                fetchedHeat = heat
+
+                let outdoor  = runs.filter { !$0.indoor }
+                let withHR   = runs.filter { $0.hrAvg != nil }
+                let withTemp = runs.filter { $0.tempC != nil }
+                let totalKm  = runs.compactMap(\.distanceKm).reduce(0, +)
+
                 let phys = mrPhysiology(runs: runs, restingHRSamples: rhr,
                                         dateOfBirth: dob, sex: sex, asOf: Date())
-
-                let heat = mrFitHeatModel(runs: runs)
                 let hrp = mrFitHRPaceModel(runs: runs, asOf: Date())
                 let easyPace = phys.easyCeilingHR.flatMap { hrp.paceAtHR($0) }
 
                 let rawEfforts = mrDetectEfforts(runs: runs, phys: phys)
                 let efforts = mrApplyHeat(rawEfforts, heat: heat)
-
                 let fit = mrFitExponent(efforts)
                 let prof = mrProfile(runs: runs, efforts: efforts, asOf: Date())
                 let preds = mrPredict(efforts: efforts, fit: fit, profile: prof,
@@ -190,9 +247,64 @@ struct MRDebugView: View {
                     \(c.linkLine ?? "")
                     """
                 }
+
+                // 백테스트 행 요약
+                log += "\n\n── 백테스트 \(engine.backtest.count)건\n"
+                for row in engine.backtest.filter({ $0.predictedMin != nil }).suffix(5) {
+                    let e = row.errorPct.map { String(format: "%+.1f%%", $0) } ?? "-"
+                    log += "  \(row.date.formatted(date: .numeric, time: .omitted))  \(row.label)  실제 \(mrFormatDisplay(row.actualMin))  예측 \(mrFormatDisplay(row.predictedMin ?? 0))  \(e)\n"
+                }
+
+                // 아카이브 현황
+                log += "\n── 아카이브 \(allArchives.count)건\n"
+                for arch in allArchives.sorted(by: { $0.raceDate < $1.raceDate }) {
+                    let tag = arch.reconstructed ? "[소급]" : "[실제]"
+                    log += "  \(tag)  \(arch.raceDate.formatted(date: .numeric, time: .omitted))  \(arch.raceName)\n"
+                }
+
             } catch {
                 log = "실패: \(error.localizedDescription)"
             }
         }
+    }
+
+    @MainActor
+    private func createRetroactiveArchives() async {
+        isCreatingArchives = true
+        defer { isCreatingArchives = false }
+
+        let existingKeys = Set(allArchives.map {
+            mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM)
+        })
+        let confirmed = raceDetector.matches.values
+            .compactMap { $0.isConfirmed ? $0 : nil }
+
+        archiveLog = await Task.detached(priority: .userInitiated) { [
+            rows  = engine.backtest,
+            runs  = fetchedRuns,
+            rhr   = fetchedRHR,
+            dob   = fetchedDob,
+            sex   = fetchedSex,
+            heat  = fetchedHeat,
+            conf  = Array(confirmed),
+            keys  = existingKeys,
+            ctx   = modelContext
+        ] in
+            mrCreateRetroactiveArchives(
+                backtestRows: rows,
+                runs: runs,
+                rhrSamples: rhr,
+                dateOfBirth: dob,
+                sex: sex,
+                heat: heat,
+                confirmedMatches: conf,
+                existingArchiveKeys: keys,
+                context: ctx
+            )
+        }.value
+
+        #if DEBUG
+        print(archiveLog)
+        #endif
     }
 }

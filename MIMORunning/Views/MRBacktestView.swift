@@ -242,11 +242,22 @@ struct MRBacktestRowView: View {
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     if let arch = archive {
-                        // 아카이브 있음: 계획 시작 시점 예측
-                        Text("그때 앱 예측").font(.system(size: 10)).foregroundStyle(Color.mrInk3)
-                        Text(mrFormatDisplay(arch.snapshotProjectedFinalMin))
-                            .font(.system(size: 15, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.6))
+                        if arch.reconstructed {
+                            // 소급 재구성: 당시 앱 예측이 아님
+                            Text("소급 계획 예측").font(.system(size: 10)).foregroundStyle(Color.mrInk3)
+                            Text(mrFormatDisplay(arch.snapshotProjectedFinalMin))
+                                .font(.system(size: 15, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.6))
+                            Text("지금 모델로 소급 계산")
+                                .font(.system(size: 9))
+                                .foregroundStyle(Color.mrInk3.opacity(0.7))
+                        } else {
+                            // 실제 아카이브: 당시 앱이 예측한 값
+                            Text("그때 앱 예측").font(.system(size: 10)).foregroundStyle(Color.mrInk3)
+                            Text(mrFormatDisplay(arch.snapshotProjectedFinalMin))
+                                .font(.system(size: 15, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
                     } else {
                         // 아카이브 없음: 현재 모델 역산
                         Text("예측").font(.system(size: 10)).foregroundStyle(Color.mrInk3)

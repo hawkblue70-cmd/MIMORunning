@@ -3,18 +3,30 @@ import SwiftData
 
 // MARK: - 주차 이행 기호
 
-private let symbolBoth = "●"
-private let symbolOne  = "◐"
-private let symbolNone = "○"
-private let symbolOver = "▲"
+let symbolBoth = "●"
+let symbolOne  = "◐"
+let symbolNone = "○"
+let symbolOver = "▲"
 
-private func weekSymbol(plan: MRPlanWeekSummary, actualLong: Double, actualWeekly: Double) -> String {
+func weekSymbol(plan: MRPlanWeekSummary, actualLong: Double, actualWeekly: Double) -> String {
     if actualLong > plan.longRunKm * 1.10 { return symbolOver }
     let longOk   = actualLong   >= plan.longRunKm
     let weeklyOk = actualWeekly >= plan.weeklyKm
     if longOk && weeklyOk { return symbolBoth }
     if longOk || weeklyOk { return symbolOne  }
     return symbolNone
+}
+
+// MARK: - 레이블 ↔ 거리 역변환 (소급 생성용)
+
+func mrDistanceForLabel(_ label: String) -> Double {
+    switch label {
+    case "5K":  return MRDistance.d5
+    case "10K": return MRDistance.d10
+    case "하프": return MRDistance.dH
+    case "풀":  return MRDistance.dF
+    default:    return 0
+    }
 }
 
 // MARK: - 계획 스냅샷 생성
@@ -192,4 +204,133 @@ func mrDeduplicateArchives(_ archives: [RaceArchive],
             context.delete(arch)
         }
     }
+}
+
+// MARK: - 소급 아카이브 생성 (디버그 전용)
+
+/// 백테스트의 마지막 N건에 대해 소급 아카이브를 만든다.
+/// 대회 당시에는 계획 기능이 없었을 때 과거를 재구성하는 용도.
+/// 이미 아카이브가 있는 대회는 건너뛴다.
+func mrCreateRetroactiveArchives(
+    backtestRows: [MRBacktestRow],
+    runs: [MRWorkout],
+    rhrSamples: [(date: Date, value: Double)],
+    dateOfBirth: Date?,
+    sex: MRSex,
+    heat: MRHeatModel,
+    confirmedMatches: [PersistedRaceMatch],
+    existingArchiveKeys: Set<String>,
+    context: ModelContext,
+    maxCount: Int = 3
+) -> String {
+    let cal = Calendar.current
+    let dateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+
+    let scored = backtestRows.filter { $0.predictedMin != nil }.sorted { $0.date < $1.date }
+    let targets = Array(scored.suffix(maxCount))
+
+    var logLines: [String] = []
+    var count = 0
+
+    for row in targets {
+        let distM = mrDistanceForLabel(row.label)
+        guard distM > 0 else { continue }
+
+        let key = mrArchiveKey(raceDate: row.date, distanceM: distM)
+        guard !existingArchiveKeys.contains(key) else {
+            logLines.append("  → \(dateFmt.string(from: row.date)) \(row.label) — 이미 존재, 건너뜀")
+            continue
+        }
+
+        // 레이스 이름: 확인된 매칭에서 찾기, 없으면 레이블+날짜
+        let raceName: String = confirmedMatches.first {
+            $0.isConfirmed && cal.isDate($0.raceDate, inSameDayAs: row.date)
+        }?.raceName ?? "\(row.label) \(dateFmt.string(from: row.date))"
+
+        let asOf = cal.date(byAdding: .day, value: -1, to: row.date)!
+        let pastRuns = runs.filter { $0.start <= asOf }
+
+        let phys2 = mrPhysiology(runs: pastRuns, restingHRSamples: rhrSamples,
+                                  dateOfBirth: dateOfBirth, sex: sex, asOf: asOf)
+        let prior = mrApplyHeat(mrDetectEfforts(runs: pastRuns, phys: phys2), heat: heat)
+                        .filter { $0.date < row.date }
+        let fit2  = mrFitExponent(prior)
+        let prof2 = mrProfile(runs: pastRuns, efforts: prior, asOf: asOf)
+        let preds2 = mrPredict(efforts: prior, fit: fit2, profile: prof2, heat: heat, asOf: asOf)
+        let hrp2   = mrFitHRPaceModel(runs: pastRuns, asOf: asOf)
+        let easyPace2 = phys2.easyCeilingHR.flatMap { hrp2.paceAtHR($0) }
+        let halfEquiv = preds2.first { $0.label == "하프" }?.midMin ?? 0
+
+        guard let plan = mrBuildPlan(
+            raceDate: row.date,
+            distanceM: distM,
+            today: asOf,
+            profile: prof2,
+            halfEquivMin: halfEquiv,
+            easyPaceSecPerKm: easyPace2,
+            heat: heat,
+            raceTempC: MR_REF_TEMP,
+            runsPerWeek: prof2.runsPerWeek
+        ) else {
+            logLines.append("  → \(row.label) \(dateFmt.string(from: row.date)) — 계획 불가 (준비기간 3주 미만)")
+            continue
+        }
+
+        // 주차 요약 JSON
+        let planWeeks = plan.weeks.map { w in
+            MRPlanWeekSummary(idx: w.idx, monday: w.monday,
+                              phase: w.phase, longRunKm: w.longRunKm, weeklyKm: w.weeklyKm)
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        let weeksJSON = (try? encoder.encode(planWeeks)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+
+        // 임시 스냅샷 (context 삽입 없음 — 마크다운 빌드용)
+        let snap = RacePlanSnapshot(
+            raceDate: row.date, raceName: raceName, distanceM: distM,
+            projectedFinalMin: plan.projectedFinal, projectedNowMin: plan.projectedNow,
+            goalMin: 0, weeksJSON: weeksJSON, metaJSON: ""
+        )
+
+        var md = mrBuildArchiveMarkdown(
+            snapshot: snap, actualMin: row.actualMin,
+            preRaceProjectedMin: nil, runs: runs
+        )
+        // 소급 재구성임을 명시
+        let note = "> 이 계획은 나중에 소급 재구성한 것입니다.\n> 대회 당시에는 앱에 계획 기능이 없었습니다.\n\n"
+        md = note + md
+
+        let archive = RaceArchive(
+            raceDate: row.date, raceName: raceName, distanceM: distM,
+            markdown: md, hasResult: true, actualMin: row.actualMin,
+            snapshotProjectedFinalMin: plan.projectedFinal, reconstructed: true
+        )
+        context.insert(archive)
+        count += 1
+
+        // 이행 통계 집계
+        var hitBoth = 0, hitOne = 0, hitNone = 0, hitOver = 0
+        let raceDayStart = cal.startOfDay(for: row.date)
+        for w in planWeeks {
+            let weekStart = cal.startOfDay(for: w.monday)
+            let weekEnd   = cal.date(byAdding: .day, value: 7, to: weekStart)!
+            guard weekEnd <= raceDayStart else { break }
+            let weekRuns    = runs.filter { $0.start >= weekStart && $0.start < weekEnd }
+            let actualLong  = weekRuns.compactMap(\.distanceKm).max() ?? 0
+            let actualTotal = weekRuns.compactMap(\.distanceKm).reduce(0, +)
+            switch weekSymbol(plan: w, actualLong: actualLong, actualWeekly: actualTotal) {
+            case symbolBoth: hitBoth += 1
+            case symbolOne:  hitOne  += 1
+            case symbolNone: hitNone += 1
+            default:         hitOver += 1
+            }
+        }
+        logLines.append(
+            "[아카이브] \(dateFmt.string(from: row.date)) \(raceName) · \(plan.weeks.count)주 · \(symbolBoth) \(hitBoth) \(symbolOne) \(hitOne) \(symbolNone) \(hitNone) \(symbolOver) \(hitOver)"
+        )
+    }
+
+    return (["[아카이브] 소급 \(count)건 생성"] + logLines).joined(separator: "\n")
 }

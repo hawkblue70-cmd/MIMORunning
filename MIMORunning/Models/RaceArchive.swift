@@ -12,10 +12,11 @@ import SwiftData
     var hasResult: Bool = true
     var actualMin: Double = 0                  // 실제 기록 (분). hasResult=false면 0
     var snapshotProjectedFinalMin: Double = 0  // 계획 시작 시점 예측 — 백테스트 행에 표시
+    var reconstructed: Bool = false            // true = 소급 재구성 (당시 앱 예측 아님)
 
     init(raceDate: Date, raceName: String, distanceM: Double,
          markdown: String, hasResult: Bool, actualMin: Double,
-         snapshotProjectedFinalMin: Double) {
+         snapshotProjectedFinalMin: Double, reconstructed: Bool = false) {
         self.raceDate = raceDate
         self.raceName = raceName
         self.distanceM = distanceM
@@ -24,5 +25,6 @@ import SwiftData
         self.hasResult = hasResult
         self.actualMin = actualMin
         self.snapshotProjectedFinalMin = snapshotProjectedFinalMin
+        self.reconstructed = reconstructed
     }
 }
