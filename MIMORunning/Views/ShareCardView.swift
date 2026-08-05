@@ -4697,6 +4697,10 @@ struct ShareCardScreen: View {
             )
             .frame(width: 216, height: exportH)
             .preferredColorScheme(.dark)
+            // Warmup: 첫 번째 ImageRenderer 호출로 SwiftUI 파이프라인 초기화.
+            let wuR = ImageRenderer(content: overlayView); wuR.scale = 1.0; _ = wuR.uiImage
+            try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms
+            guard !isOneLiner, !isPlaceable, !isStamp, !isBigNumber, template == .video else { isExportingVideo = false; return }
             let overlayRenderer = ImageRenderer(content: overlayView)
             overlayRenderer.scale = 5.0
             guard let overlayImage = overlayRenderer.uiImage else {
@@ -4744,9 +4748,13 @@ struct ShareCardScreen: View {
         // ── BigNumber 슬라이드 (사진 → 영상, cross-dissolve) ──────────────────────
         if isBigNumber, template == .slide, !storyPhotos.isEmpty {
             let exportH: CGFloat = 384
-            let overlayRenderer = ImageRenderer(content:
-                makeBigNumberOverlayView(topInset: exportH * 0.05, bottomInset: exportH * 0.05).frame(width: 216, height: exportH).preferredColorScheme(.dark)
-            )
+            let bnOverlayView = makeBigNumberOverlayView(topInset: exportH * 0.05, bottomInset: exportH * 0.05)
+                .frame(width: 216, height: exportH).preferredColorScheme(.dark)
+            // Warmup: 첫 번째 ImageRenderer 호출로 SwiftUI 파이프라인 초기화.
+            let wuR = ImageRenderer(content: bnOverlayView); wuR.scale = 1.0; _ = wuR.uiImage
+            try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms
+            guard isBigNumber, template == .slide, !storyPhotos.isEmpty else { isExportingVideo = false; return }
+            let overlayRenderer = ImageRenderer(content: bnOverlayView)
             overlayRenderer.scale = 5.0
             guard let overlayImage = overlayRenderer.uiImage else {
                 isExportingVideo = false; return
@@ -4797,6 +4805,10 @@ struct ShareCardScreen: View {
             )
             .frame(width: 216, height: exportH)
             .preferredColorScheme(.dark)
+            // Warmup: 첫 번째 ImageRenderer 호출로 SwiftUI 파이프라인 초기화.
+            let wuR = ImageRenderer(content: overlayView); wuR.scale = 1.0; _ = wuR.uiImage
+            try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms
+            guard !isOneLiner, !isPlaceable, !isBigNumber, !isStamp, template == .slide, !storyPhotos.isEmpty else { isExportingVideo = false; return }
             let overlayRenderer = ImageRenderer(content: overlayView)
             overlayRenderer.scale = 5.0
             guard let overlayImage = overlayRenderer.uiImage else {
@@ -4825,6 +4837,17 @@ struct ShareCardScreen: View {
             // [필수] exportStampSlide sz(1080×1920)와 반드시 일치.
             // makeStampOverlayImage는 renderSize로 스탬프 pt 높이를 역산(height/width*300).
             let renderSz = CGSize(width: 1080, height: 1920)
+            // Warmup: 첫 번째 ImageRenderer 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환함.
+            // 1회 워밍업 후 50ms 대기로 파이프라인 초기화 (story 모드 renderCard 동일 패턴).
+            if let firstPhoto = storyPhotos.first {
+                let firstCfg = stampVM.photoConfig(at: 0)
+                let wuBright = stampBackgroundIsBright(photo: firstPhoto, position: firstCfg.position)
+                _ = makeStampOverlayImage(data: stampPreviewData, vm: stampVM,
+                                          isBright: wuBright, renderSize: renderSz,
+                                          configOverride: firstCfg, renderOnlyStamp: true)
+                try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms — 파이프라인 안정화
+                guard isStamp, template == .slide else { isExportingVideo = false; return }
+            }
             var photos:       [UIImage]   = []
             var cropOffsets:      [CGFloat]             = []
             var overlays:         [UIImage]             = []
