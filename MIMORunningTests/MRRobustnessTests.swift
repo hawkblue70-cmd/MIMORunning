@@ -201,4 +201,51 @@ final class MRRobustnessTests: XCTestCase {
         let s = mrActiveWeekStreak(runs: [run], asOf: sunday)
         XCTAssertEqual(s, 1, "일요일 기준으로도 토요일 런은 이번 주에 속해야 한다")
     }
+
+    // MARK: - mrFormSpeedByDate 회귀 테스트
+
+    /// 같은 날 야외 런 두 개 → 크래시 없이 1개 항목, 더 빠른 쪽 유지
+    func testFormSpeedByDate_sameDayDoesNotCrash() {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        // 아침 런: 5km 30분 (10.0 km/h)
+        let morning = MRWorkout(start: today,
+                                durationMin: 30, distanceKm: 5,
+                                hrAvg: 140, hrMax: 165, tempC: 20, humidity: nil,
+                                indoor: false, isInterval: false)
+        // 저녁 런: 6km 24분 (15.0 km/h — 더 빠름)
+        let evening = MRWorkout(start: today.addingTimeInterval(8 * 3600),
+                                durationMin: 24, distanceKm: 6,
+                                hrAvg: 155, hrMax: 178, tempC: 20, humidity: nil,
+                                indoor: false, isInterval: false)
+
+        let result = mrFormSpeedByDate([morning, evening])
+
+        XCTAssertEqual(result.count, 1, "같은 날 두 런은 딕셔너리 항목 1개여야 한다")
+        // 저녁 런: 6000m / 24min ≈ 250 m/min, 아침 런: 5000m / 30min ≈ 166.7 m/min
+        let speed = result[today]
+        XCTAssertNotNil(speed)
+        XCTAssertGreaterThan(speed ?? 0, 200, "더 빠른 저녁 런(≈250 m/min)이 남아야 한다")
+    }
+
+    /// 야외/실내/인터벌 혼합 시 야외 비인터벌만 남는다
+    func testFormSpeedByDate_filtersCorrectly() {
+        let base = Calendar.current.startOfDay(for: Date())
+        let outdoor = MRWorkout(start: base, durationMin: 30, distanceKm: 5,
+                                hrAvg: 140, hrMax: 165, tempC: 20, humidity: nil,
+                                indoor: false, isInterval: false)
+        let indoor = MRWorkout(start: base.addingTimeInterval(3600), durationMin: 30, distanceKm: 5,
+                               hrAvg: 140, hrMax: 165, tempC: 20, humidity: nil,
+                               indoor: true, isInterval: false)
+        let interval = MRWorkout(start: base.addingTimeInterval(7200), durationMin: 40, distanceKm: 8,
+                                 hrAvg: 160, hrMax: 185, tempC: 20, humidity: nil,
+                                 indoor: false, isInterval: true)
+        let shortRun = MRWorkout(start: base.addingTimeInterval(10800), durationMin: 15, distanceKm: 2,
+                                 hrAvg: 140, hrMax: 165, tempC: 20, humidity: nil,
+                                 indoor: false, isInterval: false)
+
+        let result = mrFormSpeedByDate([outdoor, indoor, interval, shortRun])
+
+        XCTAssertEqual(result.count, 1, "실내·인터벌·단거리는 제외, 야외 정상런 1개만 남아야 한다")
+    }
 }

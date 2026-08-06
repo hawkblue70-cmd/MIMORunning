@@ -358,16 +358,7 @@ struct GrowthView: View {
         //   fetchMetricHistory는 workout.startDate(정확한 시각)를 반환한다.
         //   buildObs에서 pt.date도 startOfDay로 정규화해야 키가 맞는다.
         let cal = Calendar.current
-        // 같은 날 두 번 뛴 경우: 더 빠른 런을 대표값으로 사용 (VO2/폼 메트릭과 고강도 상관)
-        let speedByDate: [Date: Double] = Dictionary(
-            engine.runs.compactMap { r -> (Date, Double)? in
-                guard !r.indoor, !r.isInterval,
-                      r.durationMin >= 20, (r.distanceKm ?? 0) >= 3,
-                      let speed = r.speedMPerMin else { return nil }
-                return (r.date, speed)   // r.date == startOfDay
-            },
-            uniquingKeysWith: { old, new in max(old, new) }
-        )
+        let speedByDate = mrFormSpeedByDate(engine.runs)
         #if DEBUG
         print("[폼] 호출 runs=\(engine.runs.count) 유효속도맵=\(speedByDate.count)")
         #endif

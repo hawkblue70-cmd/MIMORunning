@@ -55,6 +55,22 @@ struct MRFormObs {
     let metricValue: Double
 }
 
+// MARK: - 0. 날짜별 대표 속도 맵
+
+/// 야외·비인터벌·20분+·3km+ 런에서 날짜(startOfDay) → 속도(m/min) 맵을 만든다.
+/// 같은 날 런이 여럿이면 더 빠른 쪽을 유지한다 (VO2/폼 메트릭과 고강도 상관).
+func mrFormSpeedByDate(_ runs: [MRWorkout]) -> [Date: Double] {
+    Dictionary(
+        runs.compactMap { r -> (Date, Double)? in
+            guard !r.indoor, !r.isInterval,
+                  r.durationMin >= 20, (r.distanceKm ?? 0) >= 3,
+                  let speed = r.speedMPerMin else { return nil }
+            return (r.date, speed)
+        },
+        uniquingKeysWith: { old, new in max(old, new) }
+    )
+}
+
 // MARK: - 1. 개인 회귀와 잔차
 
 /// 지표를 본인 페이스에 회귀시키고 잔차를 낸다.
