@@ -171,9 +171,9 @@ final class RaceDetector {
     private func loadMatchesFromSwiftData(_ context: ModelContext) async {
         let descriptor = FetchDescriptor<PersistedRaceMatchRecord>()
         if let records = try? context.fetch(descriptor), !records.isEmpty {
-            matches = Dictionary(uniqueKeysWithValues: records.compactMap { r in
+            matches = Dictionary(records.compactMap { r in
                 r.asPersistedRaceMatch.map { (r.activityID, $0) }
-            })
+            }, uniquingKeysWith: { _, new in new })
             return
         }
         guard let data = UserDefaults.standard.data(forKey: Self.matchesKey),

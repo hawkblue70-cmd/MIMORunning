@@ -453,9 +453,9 @@ final class MREngineStore: ObservableObject {
         let now = Date()
         let he = halfEquivMin
         let upcoming = userInput.upcomingRaces(asOf: now)
-        let raceTempByID = Dictionary(uniqueKeysWithValues: upcoming.map { r in
+        let raceTempByID = Dictionary(upcoming.map { r in
             (r.id, mrSeasonalTemp(runs: runs, for: r.date) ?? MR_REF_TEMP)
-        })
+        }, uniquingKeysWith: { old, _ in old })
         // 날짜 순으로 대회를 처리하며 앞 대회의 피크 상태를 다음 대회 플랜에 전달한다.
         var prevPlanInfo2: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil
         let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in

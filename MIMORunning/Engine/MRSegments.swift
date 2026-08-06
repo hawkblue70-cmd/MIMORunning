@@ -46,7 +46,7 @@ extension MRHealthKit {
 
         let hrStats = try await collect(hrType, .discreteAverage)
         let dStats  = try await collect(dType,  .cumulativeSum)
-        let dMap = Dictionary(uniqueKeysWithValues: dStats.map { ($0.0, $0.1) })
+        let dMap = Dictionary(dStats.map { ($0.0, $0.1) }, uniquingKeysWith: { _, new in new })
 
         var temp: Double? = nil
         if let q = w.metadata?[HKMetadataKeyWeatherTemperature] as? HKQuantity {
