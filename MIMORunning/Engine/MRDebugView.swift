@@ -13,6 +13,7 @@ struct MRDebugView: View {
     @State private var archiveLog = ""
     @State private var isCreatingArchives = false
     @State private var isDeletingArchives = false
+    @State private var dupDiagLog = ""
 
     // 버튼에서 재사용할 fetched 데이터
     @State private var fetchedRuns: [MRWorkout] = []
@@ -65,6 +66,57 @@ struct MRDebugView: View {
                         Text(archiveLog)
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.green)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.horizontal)
+
+                Divider().background(.white.opacity(0.2))
+
+                // 같은 날 중복 런 진단 (Dictionary 크래시 가설 검증)
+                VStack(alignment: .leading, spacing: 8) {
+                    Button {
+                        let cal = Calendar.current
+                        // mrFormSpeedByDate 필터와 동일 조건
+                        let qualifying = fetchedRuns.filter { r in
+                            !r.indoor && !r.isInterval
+                            && r.durationMin >= 20
+                            && (r.distanceKm ?? 0) >= 3
+                            && r.speedMPerMin != nil
+                        }
+                        // 날짜별 그룹
+                        var byDay: [Date: [MRWorkout]] = [:]
+                        for r in qualifying {
+                            let day = cal.startOfDay(for: r.start)
+                            byDay[day, default: []].append(r)
+                        }
+                        let dups = byDay.filter { $0.value.count >= 2 }
+                            .sorted { $0.key < $1.key }
+                        if dups.isEmpty {
+                            dupDiagLog = "[진단] 필터 통과 런 \(qualifying.count)건 중\n중복 날짜: 0일 → 크래시 미재현 환경"
+                        } else {
+                            let lines = dups.map { (day, ws) in
+                                let ds = day.formatted(date: .numeric, time: .omitted)
+                                let km = ws.map { String(format: "%.1f", $0.distanceKm ?? 0) + "km" }.joined(separator: "+")
+                                return "  \(ds) ×\(ws.count) [\(km)]"
+                            }.joined(separator: "\n")
+                            dupDiagLog = "[진단] 필터 통과 런 \(qualifying.count)건 중\n중복 날짜: \(dups.count)일\n\(lines)"
+                        }
+                    } label: {
+                        Text("같은 날 중복 런 진단")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color.orange.opacity(0.85))
+                            .foregroundStyle(.white)
+                            .font(.system(size: 14, weight: .semibold))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .disabled(fetchedRuns.isEmpty)
+
+                    if !dupDiagLog.isEmpty {
+                        Text(dupDiagLog)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.yellow)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
