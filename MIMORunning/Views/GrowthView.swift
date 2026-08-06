@@ -358,13 +358,15 @@ struct GrowthView: View {
         //   fetchMetricHistory는 workout.startDate(정확한 시각)를 반환한다.
         //   buildObs에서 pt.date도 startOfDay로 정규화해야 키가 맞는다.
         let cal = Calendar.current
-        let speedByDate: [Date: Double] = Dictionary(uniqueKeysWithValues:
+        // 같은 날 두 번 뛴 경우: 더 빠른 런을 대표값으로 사용 (VO2/폼 메트릭과 고강도 상관)
+        let speedByDate: [Date: Double] = Dictionary(
             engine.runs.compactMap { r -> (Date, Double)? in
                 guard !r.indoor, !r.isInterval,
                       r.durationMin >= 20, (r.distanceKm ?? 0) >= 3,
                       let speed = r.speedMPerMin else { return nil }
                 return (r.date, speed)   // r.date == startOfDay
-            }
+            },
+            uniquingKeysWith: { old, new in max(old, new) }
         )
         #if DEBUG
         print("[폼] 호출 runs=\(engine.runs.count) 유효속도맵=\(speedByDate.count)")
@@ -1495,7 +1497,7 @@ struct GrowthView: View {
             guard let ref = cal.date(byAdding: .weekOfYear, value: -ago, to: now) else { return nil }
             return cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: ref))
         }
-        var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
+        var totals: [Date: Double] = Dictionary(starts.map { ($0, 0.0) }, uniquingKeysWith: { old, _ in old })
         for a in runs {
             guard let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)) else { continue }
             totals[ws] = totals[ws].map { $0 + a.distance / 1000 }
@@ -1510,7 +1512,7 @@ struct GrowthView: View {
             guard let ref = cal.date(byAdding: .weekOfYear, value: -ago, to: now) else { return nil }
             return cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: ref))
         }
-        var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
+        var totals: [Date: Double] = Dictionary(starts.map { ($0, 0.0) }, uniquingKeysWith: { old, _ in old })
         for a in runs {
             guard let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)) else { continue }
             totals[ws] = totals[ws].map { $0 + a.duration / 60 }
@@ -1527,7 +1529,7 @@ struct GrowthView: View {
             guard let ref = cal.date(byAdding: .month, value: -ago, to: now) else { return nil }
             return cal.date(from: cal.dateComponents([.year, .month], from: ref))
         }
-        var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
+        var totals: [Date: Double] = Dictionary(starts.map { ($0, 0.0) }, uniquingKeysWith: { old, _ in old })
         for a in runs {
             guard let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date)) else { continue }
             totals[ms] = totals[ms].map { $0 + a.distance / 1000 }
@@ -1542,7 +1544,7 @@ struct GrowthView: View {
             guard let ref = cal.date(byAdding: .month, value: -ago, to: now) else { return nil }
             return cal.date(from: cal.dateComponents([.year, .month], from: ref))
         }
-        var totals: [Date: Double] = Dictionary(uniqueKeysWithValues: starts.map { ($0, 0.0) })
+        var totals: [Date: Double] = Dictionary(starts.map { ($0, 0.0) }, uniquingKeysWith: { old, _ in old })
         for a in runs {
             guard let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date)) else { continue }
             totals[ms] = totals[ms].map { $0 + a.duration / 60 }

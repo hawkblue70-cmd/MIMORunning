@@ -210,7 +210,7 @@ class HealthKitManager {
         defer { isLoading = false }
 
         do {
-            let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
+            let cacheDict = Dictionary(cached.map { ($0.workoutID, $0) }, uniquingKeysWith: { _, new in new })
 
             if isWarmCache {
                 if forced {
@@ -236,7 +236,7 @@ class HealthKitManager {
                     let newWorkouts = allHK.filter { !survivingIDs.contains($0.uuid.uuidString) }
                     if !newWorkouts.isEmpty {
                         activities = newWorkouts.map { buildSummary(from: $0) } + activities
-                        let survivingDict = Dictionary(uniqueKeysWithValues: survivingCache.map { ($0.workoutID, $0) })
+                        let survivingDict = Dictionary(survivingCache.map { ($0.workoutID, $0) }, uniquingKeysWith: { _, new in new })
                         await enrichAndCache(newWorkouts, cacheDict: survivingDict)
                     }
                     userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
@@ -407,7 +407,7 @@ class HealthKitManager {
         UserDefaults.standard.set(0, forKey: Self.emptyMonthCountKey)
 
         let cached = loadActivityCache()
-        let cacheDict = Dictionary(uniqueKeysWithValues: cached.map { ($0.workoutID, $0) })
+        let cacheDict = Dictionary(cached.map { ($0.workoutID, $0) }, uniquingKeysWith: { _, new in new })
         let existingIDs = Set(activities.map { $0.id.uuidString })
         let toAdd = workouts.compactMap { w -> Activity? in
             guard !existingIDs.contains(w.uuid.uuidString) else { return nil }
