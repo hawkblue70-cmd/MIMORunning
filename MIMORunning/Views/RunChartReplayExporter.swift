@@ -424,6 +424,8 @@ enum RunChartReplayExporter {
         let videoSize = CGSize(width: videoW, height: videoH)
 
         // ── Frame loop ────────────────────────────────────────────────────────
+        // autoreleasepool: 프레임마다 생성되는 UIImage/CGImage를 즉시 해제.
+        // 없으면 300+프레임 × 5~20MB가 메모리에 쌓여 OOM kill(iPhone 11 Pro 등)을 유발함.
         do {
             for frameIdx in 0..<totalFrames {
                 try Task.checkCancellation()
@@ -432,41 +434,48 @@ enum RunChartReplayExporter {
                     ? Double(frameIdx) / Double(max(1, animFrames - 1))
                     : 1.0
 
-                // Convert animation time → km distance ratio so chart scrubber and
-                // route marker use the same coordinate (chart X-axis is km-based).
                 let distRatio = timeToDistanceRatio(timeRatio: t, table: timeDistTable)
 
-                let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
-                    RunCombinedChartView(
-                        data: data,
-                        enabledLayers: enabledLayers,
-                        chartHeight: chartPtH,
-                        playProgress: distRatio,
-                        endLabelMinGap: 11
-                    )
-                    .frame(width: cardW, height: chartPtH)
-                    .background(palette.sectionBackground),
-                    width: cardW, height: chartPtH, palette: palette
-                ) : nil
-
-                let frame = composeFrame(
-                    layout: layout, data: data, totalDuration: totalDuration,
-                    headerImage: headerImg, chartImage: chartImg,
-                    mapUIImage: mapUIImage, mapPoints: mapPoints,
-                    cumDist: cumDist, distanceProgress: distRatio,
-                    routeCoordinates: routeCoordinates,
-                    timeProgress: t, tilesImage: tilesImg,
-                    palette: palette
-                )
-
-                guard let pb = pixelBuffer(from: frame, size: videoSize) else { continue }
-
+                // isReadyForMoreMediaData는 async await 필요 → autoreleasepool 밖에서 먼저 대기
                 while !videoIn.isReadyForMoreMediaData {
                     try await Task.sleep(for: .milliseconds(5))
                 }
-                let pts = CMTime(value: CMTimeValue(frameIdx), timescale: CMTimeScale(videoFPS))
-                adaptor.append(pb, withPresentationTime: pts)
-                onProgress(Double(frameIdx + 1) / Double(totalFrames))
+
+                // 렌더링·합성·append를 한 pool로 묶어 즉시 해제
+                // (UIImage/CGImage/CVPixelBuffer가 쌓이면 300+프레임에서 OOM kill 발생)
+                let appended: Bool = autoreleasepool {
+                    let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
+                        RunCombinedChartView(
+                            data: data,
+                            enabledLayers: enabledLayers,
+                            chartHeight: chartPtH,
+                            playProgress: distRatio,
+                            endLabelMinGap: 11
+                        )
+                        .frame(width: cardW, height: chartPtH)
+                        .background(palette.sectionBackground),
+                        width: cardW, height: chartPtH, palette: palette
+                    ) : nil
+
+                    let frame = composeFrame(
+                        layout: layout, data: data, totalDuration: totalDuration,
+                        headerImage: headerImg, chartImage: chartImg,
+                        mapUIImage: mapUIImage, mapPoints: mapPoints,
+                        cumDist: cumDist, distanceProgress: distRatio,
+                        routeCoordinates: routeCoordinates,
+                        timeProgress: t, tilesImage: tilesImg,
+                        palette: palette
+                    )
+
+                    guard let pb = pixelBuffer(from: frame, size: videoSize) else { return false }
+                    let pts = CMTime(value: CMTimeValue(frameIdx), timescale: CMTimeScale(videoFPS))
+                    adaptor.append(pb, withPresentationTime: pts)
+                    return true
+                }
+
+                if appended {
+                    onProgress(Double(frameIdx + 1) / Double(totalFrames))
+                }
                 await Task.yield()
             }
         } catch {
