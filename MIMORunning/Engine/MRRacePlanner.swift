@@ -188,7 +188,7 @@ func mrBuildPlan(raceDate: Date,
         let daysToNextMon = (9 - priorWD) % 7   // 일(1)→1, 월(2)→7로 처리
         let priorNext = cal.date(byAdding: .day,
                                   value: daysToNextMon == 0 ? 7 : daysToNextMon,
-                                  to: cal.startOfDay(for: prior.date))!
+                                  to: cal.startOfDay(for: prior.date)) ?? cal.startOfDay(for: prior.date)
         let pLong     = max(prior.peakLong, simStartLong)
         let pVol      = max(prior.peakVol,  simStartVol)
 
@@ -206,14 +206,14 @@ func mrBuildPlan(raceDate: Date,
         print("[계획] \(raceDate.formatted(date:.abbreviated,time:.omitted)) · \(prior.name) 다음 주 시작")
     } else if neededTotal < totalWeeks {
         // 앞 대회 없음 — 대회일에서 필요 기간만큼 역산해 시작
-        let deferredStart = cal.date(byAdding: .day, value: -(neededTotal * 7), to: raceDate)!
+        guard let deferredStart = cal.date(byAdding: .day, value: -(neededTotal * 7), to: raceDate) else { return nil }
         planToday   = deferredStart
         p.startDate = deferredStart
 
         let df = DateFormatter()
         df.locale = Locale(identifier: "ko_KR"); df.dateFormat = "yyyy-MM-dd"
         p.startNote = "이 계획은 \(neededTotal)주짜리입니다. \(df.string(from: deferredStart))에 시작합니다."
-        let waitEnd = cal.date(byAdding: .day, value: -1, to: deferredStart)!
+        let waitEnd = cal.date(byAdding: .day, value: -1, to: deferredStart) ?? deferredStart
         p.bridgeRows = [
             ("\(sfmt(today)) ~ \(sfmt(waitEnd))", "유지 — 지금처럼 달리시면 됩니다"),
             ("\(sfmt(deferredStart)) ~", "이 계획 시작")
@@ -244,8 +244,8 @@ func mrBuildPlan(raceDate: Date,
     var seenVolRecord = false            // 12개월 최대 주간거리를 처음 넘는 주 — 한 번만 표시
     // planToday 가 이미 월요일이면 그대로 사용, 아니면 그 다음 월요일
     let offset = (7 - cal.component(.weekday, from: planToday) + 2) % 7
-    let monday0 = cal.date(byAdding: .day, value: offset,
-                           to: cal.startOfDay(for: planToday))!
+    guard let monday0 = cal.date(byAdding: .day, value: offset,
+                                 to: cal.startOfDay(for: planToday)) else { return nil }
 
     // 마라톤 후 회복 3주와 30/50/70% 는 관행이다.
     // 통제된 연구를 찾지 못했다. 근거가 나오면 바꿀 것.
@@ -253,7 +253,7 @@ func mrBuildPlan(raceDate: Date,
         let rPcts: [(l: Double, v: Double)] = [(0.25, 0.30), (0.40, 0.50), (0.60, 0.70)]
         for r in 0..<recoveryWeekCount {
             let ri   = r + 1
-            let mon  = cal.date(byAdding: .weekOfYear, value: r, to: monday0)!
+            guard let mon = cal.date(byAdding: .weekOfYear, value: r, to: monday0) else { continue }
             let lr   = (recoveryPriorLong * rPcts[r].l * 10).rounded() / 10
             let wkV  = (recoveryPriorVol  * rPcts[r].v * 10).rounded() / 10
             let mins = lr * (easyPaceSecPerKm ?? 420) / 60.0
@@ -273,7 +273,7 @@ func mrBuildPlan(raceDate: Date,
     // 회복 주가 있으면 주 4부터 시작 (stride는 loopStart > planTotalWeeks면 자동 비어 있음)
     let loopStart = 1 + recoveryWeekCount
     for i in stride(from: loopStart, through: planTotalWeeks, by: 1) {
-        let mon = cal.date(byAdding: .weekOfYear, value: i - 1, to: monday0)!
+        guard let mon = cal.date(byAdding: .weekOfYear, value: i - 1, to: monday0) else { continue }
         var lr = 0.0, wkVol = 0.0, phase = "", newMax = false, recovery = false
 
         if i <= buildWeeks {

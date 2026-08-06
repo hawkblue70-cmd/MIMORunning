@@ -105,7 +105,13 @@ struct MIMORunningApp: App {
             do {
                 return try ModelContainer(for: schema)
             } catch let fallbackError {
-                fatalError("ModelContainer 초기화 실패: \(fallbackError)")
+                log.error("[CoreData] 로컬 스토어도 실패 — 인메모리 폴백: \(fallbackError.localizedDescription, privacy: .public)")
+                // 인메모리라 재시작하면 데이터 없음. 그래도 앱이 죽는 것보다 낫다.
+                if let mem = try? ModelContainer(for: schema,
+                    configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)) {
+                    return mem
+                }
+                fatalError("[CoreData] 인메모리 컨테이너도 실패 — 복구 불가: \(fallbackError)")
             }
         }
     }()

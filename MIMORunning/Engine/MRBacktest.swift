@@ -62,7 +62,7 @@ func mrBacktest(runs: [MRWorkout],
         // ★ 그 대회 **전날**을 기준일로 삼는다.
         //   여기서 날짜 필터에 하한이 없으면 미래 데이터가 새어 들어온다.
         //   (파이썬에서 실제로 터졌던 버그다 — 마라톤 오차가 −19%였다)
-        let y = cal.date(byAdding: .day, value: -1, to: t.date)!
+        guard let y = cal.date(byAdding: .day, value: -1, to: t.date) else { continue }
         let pastRuns = runs.filter { $0.date <= y }
 
         let phys2 = mrPhysiology(runs: pastRuns, restingHRSamples: restingHRSamples,

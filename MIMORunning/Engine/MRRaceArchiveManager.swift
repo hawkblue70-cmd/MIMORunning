@@ -101,7 +101,7 @@ func mrBuildArchiveMarkdown(
     let raceDayStart = cal.startOfDay(for: snapshot.raceDate)
     let pastWeeks = planWeeks.filter { w in
         let weekEnd = cal.date(byAdding: .day, value: 7,
-                               to: cal.startOfDay(for: w.monday))!
+                               to: cal.startOfDay(for: w.monday)) ?? cal.startOfDay(for: w.monday)
         return weekEnd <= raceDayStart
     }
 
@@ -113,7 +113,7 @@ func mrBuildArchiveMarkdown(
 
         for w in pastWeeks {
             let weekStart = cal.startOfDay(for: w.monday)
-            let weekEnd   = cal.date(byAdding: .day, value: 7, to: weekStart)!
+            let weekEnd   = cal.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
             let weekRuns  = runs.filter { $0.start >= weekStart && $0.start < weekEnd }
             let actualLong   = weekRuns.compactMap(\.distanceKm).max() ?? 0
             let actualWeekly = weekRuns.compactMap(\.distanceKm).reduce(0, +)
@@ -260,7 +260,7 @@ func mrCreateRetroactiveArchives(
         logLines.append("\n[\(row.label) \(dateFmt.string(from: row.date))] \(raceName)")
 
         // ── 1패스: 대회 20주 전 시점으로 계획 시도 → 시작일을 얻기 위한 탐색
-        let asOf1 = cal.date(byAdding: .weekOfYear, value: -20, to: row.date)!
+        guard let asOf1 = cal.date(byAdding: .weekOfYear, value: -20, to: row.date) else { continue }
         let pastRuns1 = runs.filter { $0.date <= asOf1 }
         let phys1     = mrPhysiology(runs: pastRuns1, restingHRSamples: rhrSamples,
                                      dateOfBirth: dateOfBirth, sex: sex, asOf: asOf1)
@@ -291,7 +291,7 @@ func mrCreateRetroactiveArchives(
         } else {
             // 폴백: 데이터 부족 등으로 1패스 실패
             let fbWeeks = distM >= MRDistance.dF * 0.99 ? -16 : -12
-            asOf2 = cal.date(byAdding: .weekOfYear, value: fbWeeks, to: row.date)!
+            asOf2 = cal.date(byAdding: .weekOfYear, value: fbWeeks, to: row.date) ?? row.date
             logLines.append(
                 "  1패스 asOf \(dateFmt.string(from: asOf1)) → 실패, 폴백 \(abs(fbWeeks))주 전 = \(dateFmt.string(from: asOf2))"
             )
@@ -334,7 +334,7 @@ func mrCreateRetroactiveArchives(
         let raceDayStart = cal.startOfDay(for: row.date)
         for w in planWeeks {
             let weekStart = cal.startOfDay(for: w.monday)
-            let weekEnd   = cal.date(byAdding: .day, value: 7, to: weekStart)!
+            let weekEnd   = cal.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
             guard weekEnd <= raceDayStart else { break }
             let weekRuns    = runs.filter { $0.start >= weekStart && $0.start < weekEnd }
             let actualLong  = weekRuns.compactMap(\.distanceKm).max() ?? 0
