@@ -116,12 +116,6 @@ class HealthKitManager {
             HKQuantityType(.runningVerticalOscillation),
             HKQuantityType(.runningGroundContactTime),
             HKQuantityType(.vo2Max),
-            HKQuantityType(.distanceCycling),
-            HKQuantityType(.cyclingPower),
-            HKQuantityType(.cyclingSpeed),
-            HKQuantityType(.cyclingCadence),
-            HKQuantityType(.distanceSwimming),
-            HKQuantityType(.swimmingStrokeCount),
             HKCharacteristicType(.dateOfBirth),
             HKCharacteristicType(.biologicalSex),
             HKCategoryType(.sleepAnalysis),
@@ -650,7 +644,6 @@ class HealthKitManager {
                 routeCoordinates: locations.map(\.coordinate),
                 routeTimeOffsets: computeRouteTimeOffsets(from: locations, workoutStart: workout.startDate),
                 elevationGain: computeElevationGain(from: locations),
-                avgSpeed: nil,
                 avgPower: powerVal.map { Int($0.rounded()) },
                 avgCadence: cadence,
                 splits: splits,
@@ -661,83 +654,8 @@ class HealthKitManager {
                 avgStrideLength: strideLen,
                 avgVerticalOscillation: vertOsc,
                 vo2Max: vo2,
-                poolLength: nil,
-                swimmingStrokeCount: nil,
-                swimLapCount: nil,
-                swolfScore: nil,
                 altitudeProfile: computeAltitudeProfile(from: locations),
                 altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate)
-            )
-
-        case .cycling:
-            async let locTask   = fetchRouteLocations(for: workout)
-            async let speedTask = queryAvgQuantity(.cyclingSpeed, unit: HKUnit(from: "m/s"), workout: workout)
-            async let powerTask = queryAvgQuantity(.cyclingPower, unit: .watt(), workout: workout)
-            async let cadTask   = queryAvgQuantity(.cyclingCadence,
-                                                    unit: Self.bpmUnit,
-                                                    workout: workout)
-
-            let (locations, speed, power, cad, zones) = await (locTask, speedTask, powerTask, cadTask, zonesTask)
-
-            return ActivityDetail(
-                routeCoordinates: locations.map(\.coordinate),
-                routeTimeOffsets: computeRouteTimeOffsets(from: locations, workoutStart: workout.startDate),
-                elevationGain: computeElevationGain(from: locations),
-                avgSpeed: speed.map { $0 * 3.6 },
-                avgPower: power.map { Int($0.rounded()) },
-                avgCadence: cad.map { Int($0.rounded()) },
-                splits: [],
-                hrZones: zones,
-                intervalSegments: [],
-                workoutType: .general,
-                avgGroundContactTime: nil,
-                avgStrideLength: nil,
-                avgVerticalOscillation: nil,
-                vo2Max: nil,
-                poolLength: nil,
-                swimmingStrokeCount: nil,
-                swimLapCount: nil,
-                swolfScore: nil,
-                altitudeProfile: computeAltitudeProfile(from: locations),
-                altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate)
-            )
-
-        case .swimming:
-            let zones = await zonesTask
-            let strokeDouble = await querySum(.swimmingStrokeCount, unit: .count(), workout: workout)
-            let lapCount = workout.workoutEvents?.filter { $0.type == .lap }.count ?? 0
-            let poolLength = (workout.metadata?[HKMetadataKeyLapLength] as? HKQuantity)?
-                .doubleValue(for: .meter())
-            let intStrokeCount = strokeDouble > 0 ? Int(strokeDouble.rounded()) : nil
-
-            var swolf: Double? = nil
-            if lapCount > 0, strokeDouble > 0 {
-                let avgSecsPerLap    = workout.duration / Double(lapCount)
-                let avgStrokesPerLap = strokeDouble / Double(lapCount)
-                swolf = avgSecsPerLap + avgStrokesPerLap
-            }
-
-            return ActivityDetail(
-                routeCoordinates: [],
-                routeTimeOffsets: [],
-                elevationGain: nil,
-                avgSpeed: nil,
-                avgPower: nil,
-                avgCadence: nil,
-                splits: [],
-                hrZones: zones,
-                intervalSegments: [],
-                workoutType: .general,
-                avgGroundContactTime: nil,
-                avgStrideLength: nil,
-                avgVerticalOscillation: nil,
-                vo2Max: nil,
-                poolLength: poolLength,
-                swimmingStrokeCount: intStrokeCount,
-                swimLapCount: lapCount > 0 ? lapCount : nil,
-                swolfScore: swolf,
-                altitudeProfile: [],
-                altitudeTimeProfile: []
             )
 
         default: // walking, hiking
@@ -746,7 +664,6 @@ class HealthKitManager {
                 routeCoordinates: locations.map(\.coordinate),
                 routeTimeOffsets: computeRouteTimeOffsets(from: locations, workoutStart: workout.startDate),
                 elevationGain: computeElevationGain(from: locations),
-                avgSpeed: nil,
                 avgPower: nil,
                 avgCadence: nil,
                 splits: [],
@@ -757,10 +674,6 @@ class HealthKitManager {
                 avgStrideLength: nil,
                 avgVerticalOscillation: nil,
                 vo2Max: nil,
-                poolLength: nil,
-                swimmingStrokeCount: nil,
-                swimLapCount: nil,
-                swolfScore: nil,
                 altitudeProfile: computeAltitudeProfile(from: locations),
                 altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate)
             )
@@ -797,8 +710,6 @@ class HealthKitManager {
             HKQuery.predicateForWorkouts(with: .walking),
             HKQuery.predicateForWorkouts(with: .running),
             HKQuery.predicateForWorkouts(with: .hiking),
-            HKQuery.predicateForWorkouts(with: .cycling),
-            HKQuery.predicateForWorkouts(with: .swimming),
         ])
         let combined = NSCompoundPredicate(
             andPredicateWithSubpredicates: [datePred, typePred]
@@ -855,11 +766,7 @@ class HealthKitManager {
     }
 
     private func distanceTypeID(for type: HKWorkoutActivityType) -> HKQuantityTypeIdentifier {
-        switch type {
-        case .cycling:  return .distanceCycling
-        case .swimming: return .distanceSwimming
-        default:        return .distanceWalkingRunning
-        }
+        return .distanceWalkingRunning
     }
 
     /// Add calories + heart rate. Runs two stat queries concurrently.
@@ -2003,8 +1910,6 @@ class HealthKitManager {
         switch type {
         case .running:  .running
         case .hiking:   .hiking
-        case .cycling:  .cycling
-        case .swimming: .swimming
         default:        .walking
         }
     }

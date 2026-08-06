@@ -153,8 +153,6 @@ private struct ActivityListContent: View {
             case .running:  return showRunning
             case .walking:  return showWalking
             case .hiking:   return showHiking
-            case .cycling:  return false
-            case .swimming: return false
             }
         }
     }
@@ -788,25 +786,14 @@ private struct ActivityCard: View {
                 .foregroundStyle(.white)
                 .contentTransition(.numericText())
             HStack(spacing: 5) {
-                switch activity.type {
-                case .cycling:
-                    if let speed = activity.formattedSpeed {
-                        MetricChip(value: speed, label: "km/h", color: Theme.pace)
-                    }
-                case .swimming:
-                    if let pace = activity.formattedPace100m {
-                        MetricChip(value: pace, label: "/100m", color: Theme.pace)
-                    }
-                default:
-                    if level >= .novice, let pace = activity.formattedPace {
-                        MetricChip(value: pace, label: "/km", color: Theme.pace)
-                    }
+                if level >= .novice, let pace = activity.formattedPace {
+                    MetricChip(value: pace, label: "/km", color: Theme.pace)
                 }
                 MetricChip(value: activity.formattedDuration, label: AppLanguage.shared.s("시간", "TIME"), color: Theme.time)
                 if level >= .novice, let hr = activity.avgHeartRate {
                     MetricChip(value: "\(hr)", label: "bpm", color: Theme.heartRate)
                 }
-                if level >= .intermediate, activity.type != .swimming,
+                if level >= .intermediate,
                    let cal = activity.calories {
                     MetricChip(value: String(format: "%.0f", cal), label: "kcal", color: Theme.calories)
                 }

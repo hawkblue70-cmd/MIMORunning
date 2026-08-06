@@ -1630,13 +1630,7 @@ private struct MetricGrid: View {
         var compactValue: Bool = false  // true → title3, false → title2
     }
 
-    private var items: [Item] {
-        switch activity.type {
-        case .cycling:  return cyclingItems
-        case .swimming: return swimmingItems
-        default:        return generalItems
-        }
-    }
+    private var items: [Item] { generalItems }
 
     private var generalItems: [Item] {
         let L = AppLanguage.shared
@@ -1693,70 +1687,6 @@ private struct MetricGrid: View {
         return list
     }
 
-    private var cyclingItems: [Item] {
-        let L = AppLanguage.shared
-        var list: [Item] = [
-            Item(icon: "ruler", label: L.s("거리", "Dist."), value: activity.formattedDistance, color: .white),
-            Item(icon: "clock", label: L.s("시간", "Time"), value: activity.formattedDuration, color: Theme.time),
-        ]
-        let speedKmh = detail?.avgSpeed ?? activity.avgSpeedKmh
-        if let speed = speedKmh {
-            list.append(Item(icon: "speedometer", label: L.s("평균 속도", "Avg Speed"),
-                             value: String(format: "%.1f km/h", speed), color: Theme.pace))
-        }
-        if let hr = activity.avgHeartRate {
-            list.append(Item(icon: "heart.fill", label: L.s("평균 심박", "Avg HR"), value: "\(hr) bpm", color: Theme.heartRate))
-        }
-        if let power = detail?.avgPower {
-            list.append(Item(icon: "bolt.fill", label: L.s("파워", "Power"), value: "\(power) W", color: Theme.power))
-        }
-        if let cadence = detail?.avgCadence {
-            list.append(Item(icon: "arrow.clockwise", label: L.s("케이던스", "Cadence"), value: "\(cadence) rpm", color: .white))
-        }
-        if let cal = activity.calories {
-            list.append(Item(icon: "flame.fill", label: L.s("칼로리", "Cals"),
-                             value: String(format: "%.0f kcal", cal), color: Theme.calories))
-        }
-        if let elev = detail?.elevationGain {
-            list.append(Item(icon: "arrow.up.right", label: L.s("고도 획득", "Elev. Gain"),
-                             value: String(format: "%.0f m", elev), color: Theme.elevation))
-        }
-        return list
-    }
-
-    private var swimmingItems: [Item] {
-        let L = AppLanguage.shared
-        var list: [Item] = [
-            Item(icon: "ruler", label: L.s("거리", "Dist."), value: activity.formattedDistance, color: .white),
-            Item(icon: "clock", label: L.s("시간", "Time"), value: activity.formattedDuration, color: Theme.time),
-        ]
-        if let pace = activity.formattedPace100m {
-            list.append(Item(icon: "timer", label: L.s("페이스", "Pace"), value: "\(pace)/100m", color: Theme.pace))
-        }
-        if let hr = activity.avgHeartRate {
-            list.append(Item(icon: "heart.fill", label: L.s("평균 심박", "Avg HR"), value: "\(hr) bpm", color: Theme.heartRate))
-        }
-        if let laps = detail?.swimLapCount {
-            list.append(Item(icon: "repeat", label: L.s("랩", "Laps"), value: L.s("\(laps)회", "\(laps)"), color: .white))
-        }
-        if let pool = detail?.poolLength {
-            list.append(Item(icon: "arrow.left.and.right", label: L.s("풀 길이", "Pool Length"),
-                             value: "\(Int(pool))m", color: .white))
-        }
-        if let strokes = detail?.swimmingStrokeCount {
-            list.append(Item(icon: "hand.draw", label: L.s("총 스트로크", "Strokes"),
-                             value: L.s("\(strokes)회", "\(strokes)"), color: .white))
-        }
-        if let swolf = detail?.swolfScore {
-            list.append(Item(icon: "waveform", label: "SWOLF",
-                             value: String(format: "%.0f", swolf), color: Theme.pace))
-        }
-        if let cal = activity.calories {
-            list.append(Item(icon: "flame.fill", label: L.s("칼로리", "Cals"),
-                             value: String(format: "%.0f kcal", cal), color: Theme.calories))
-        }
-        return list
-    }
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {

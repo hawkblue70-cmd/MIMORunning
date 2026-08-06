@@ -2,15 +2,13 @@ import Foundation
 import CoreLocation
 
 enum ActivityType: String {
-    case walking, running, hiking, cycling, swimming
+    case walking, running, hiking
 
     var icon: String {
         switch self {
         case .walking:  "figure.walk"
         case .running:  "figure.run"
         case .hiking:   "figure.hiking"
-        case .cycling:  "figure.outdoor.cycle"
-        case .swimming: "figure.pool.swim"
         }
     }
 
@@ -20,8 +18,6 @@ enum ActivityType: String {
         case .walking:  L.s("걷기",   "Walk")
         case .running:  L.s("러닝",   "Run")
         case .hiking:   L.s("하이킹", "Hike")
-        case .cycling:  L.s("자전거", "Cycle")
-        case .swimming: L.s("수영",   "Swim")
         }
     }
 }
@@ -97,11 +93,6 @@ struct Activity: Identifiable, Hashable {
         return String(format: "%.1f", speed)
     }
 
-    var formattedPace100m: String? {
-        guard distance > 0, duration > 0 else { return nil }
-        let sec = duration / (distance / 100)
-        return String(format: "%d'%02d\"", Int(sec) / 60, Int(sec) % 60)
-    }
 }
 
 // MARK: - Workout Type
@@ -137,7 +128,6 @@ struct ActivityDetail {
     let routeCoordinates: [CLLocationCoordinate2D]
     let routeTimeOffsets: [TimeInterval]           // 워크아웃 시작 기준 각 좌표의 초(seconds)
     let elevationGain: Double?
-    let avgSpeed: Double?            // km/h — cycling
     let avgPower: Int?
     let avgCadence: Int?
     let splits: [SplitData]
@@ -149,10 +139,6 @@ struct ActivityDetail {
     let avgStrideLength: Double?       // m
     let avgVerticalOscillation: Double? // cm
     let vo2Max: Double?                // mL/kg·min — most recent estimate at/before this run
-    let poolLength: Double?          // m — swimming
-    let swimmingStrokeCount: Int?    // total strokes — swimming
-    let swimLapCount: Int?           // number of laps — swimming
-    let swolfScore: Double?          // avg per length (strokes + seconds) — swimming
     let altitudeProfile: [(distanceKm: Double, altitude: Double)]  // elevation chart data
     let altitudeTimeProfile: [(offset: TimeInterval, altitude: Double)]  // time-based for share card
 
@@ -160,7 +146,7 @@ struct ActivityDetail {
     /// An incomplete cache (all empty) means HealthKit hadn't finished processing — re-fetch needed.
     var isComplete: Bool {
         !routeCoordinates.isEmpty || !splits.isEmpty || !hrZones.isEmpty ||
-        avgPower != nil || avgCadence != nil || swimmingStrokeCount != nil
+        avgPower != nil || avgCadence != nil
     }
 }
 
@@ -235,10 +221,10 @@ struct HRZoneData: Identifiable, Codable {
 extension ActivityDetail: Codable {
     private enum CodingKeys: String, CodingKey {
         case routeLat, routeLon, routeTimeOffsets
-        case elevationGain, avgSpeed, avgPower, avgCadence
+        case elevationGain, avgPower, avgCadence
         case splits, hrZones, intervalSegments, workoutType
         case avgGroundContactTime, avgStrideLength, avgVerticalOscillation
-        case vo2Max, poolLength, swimmingStrokeCount, swimLapCount, swolfScore
+        case vo2Max
         case altProfileDist, altProfileAlt
         case altTimeOffset, altTimeAlt
     }
@@ -250,7 +236,6 @@ extension ActivityDetail: Codable {
         routeCoordinates = zip(lats, lons).map { CLLocationCoordinate2D(latitude: $0, longitude: $1) }
         routeTimeOffsets = (try? c.decode([TimeInterval].self, forKey: .routeTimeOffsets)) ?? []
         elevationGain           = try c.decodeIfPresent(Double.self, forKey: .elevationGain)
-        avgSpeed                = try c.decodeIfPresent(Double.self, forKey: .avgSpeed)
         avgPower                = try c.decodeIfPresent(Int.self,    forKey: .avgPower)
         avgCadence              = try c.decodeIfPresent(Int.self,    forKey: .avgCadence)
         splits                  = try c.decode([SplitData].self,       forKey: .splits)
@@ -261,10 +246,6 @@ extension ActivityDetail: Codable {
         avgStrideLength         = try c.decodeIfPresent(Double.self, forKey: .avgStrideLength)
         avgVerticalOscillation  = try c.decodeIfPresent(Double.self, forKey: .avgVerticalOscillation)
         vo2Max                  = try c.decodeIfPresent(Double.self, forKey: .vo2Max)
-        poolLength              = try c.decodeIfPresent(Double.self, forKey: .poolLength)
-        swimmingStrokeCount     = try c.decodeIfPresent(Int.self,    forKey: .swimmingStrokeCount)
-        swimLapCount            = try c.decodeIfPresent(Int.self,    forKey: .swimLapCount)
-        swolfScore              = try c.decodeIfPresent(Double.self, forKey: .swolfScore)
         let dists   = try c.decode([Double].self, forKey: .altProfileDist)
         let alts    = try c.decode([Double].self, forKey: .altProfileAlt)
         altitudeProfile = zip(dists, alts).map { (distanceKm: $0, altitude: $1) }
@@ -279,7 +260,6 @@ extension ActivityDetail: Codable {
         try c.encode(routeCoordinates.map(\.longitude), forKey: .routeLon)
         try c.encode(routeTimeOffsets,                  forKey: .routeTimeOffsets)
         try c.encodeIfPresent(elevationGain,          forKey: .elevationGain)
-        try c.encodeIfPresent(avgSpeed,               forKey: .avgSpeed)
         try c.encodeIfPresent(avgPower,               forKey: .avgPower)
         try c.encodeIfPresent(avgCadence,             forKey: .avgCadence)
         try c.encode(splits,           forKey: .splits)
@@ -290,10 +270,6 @@ extension ActivityDetail: Codable {
         try c.encodeIfPresent(avgStrideLength,        forKey: .avgStrideLength)
         try c.encodeIfPresent(avgVerticalOscillation, forKey: .avgVerticalOscillation)
         try c.encodeIfPresent(vo2Max,                 forKey: .vo2Max)
-        try c.encodeIfPresent(poolLength,             forKey: .poolLength)
-        try c.encodeIfPresent(swimmingStrokeCount,    forKey: .swimmingStrokeCount)
-        try c.encodeIfPresent(swimLapCount,           forKey: .swimLapCount)
-        try c.encodeIfPresent(swolfScore,             forKey: .swolfScore)
         try c.encode(altitudeProfile.map(\.distanceKm), forKey: .altProfileDist)
         try c.encode(altitudeProfile.map(\.altitude),   forKey: .altProfileAlt)
         try c.encode(altitudeTimeProfile.map(\.offset),   forKey: .altTimeOffset)
