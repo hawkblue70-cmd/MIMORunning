@@ -15,12 +15,17 @@ struct MRHealthKit {
             HKSeriesType.workoutRoute(),
         ]
         let q: [HKQuantityTypeIdentifier] = [
-            .heartRate, .restingHeartRate, .vo2Max,
-            .stepCount, .distanceWalkingRunning,
+            .heartRate, .restingHeartRate, .heartRateVariabilitySDNN,
+            .vo2Max, .stepCount, .distanceWalkingRunning,
+            .activeEnergyBurned,
+            .runningPower, .runningSpeed, .runningStrideLength,
+            .runningVerticalOscillation, .runningGroundContactTime,
+            .bodyMass, .bodyFatPercentage,
         ]
         q.forEach { if let t = HKQuantityType.quantityType(forIdentifier: $0) { s.insert(t) } }
         let c: [HKCharacteristicTypeIdentifier] = [.dateOfBirth, .biologicalSex]
         c.forEach { if let t = HKCharacteristicType.characteristicType(forIdentifier: $0) { s.insert(t) } }
+        if let sleep = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) { s.insert(sleep) }
         return s
     }
 

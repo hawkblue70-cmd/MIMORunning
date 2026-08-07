@@ -330,23 +330,41 @@ struct StampCard: View {
                     stampContent(fill: fill, outline: outline, scale: scale)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    ZStack(alignment: position.alignment) {
-                        Color.clear
-                        stampContent(fill: fill, outline: outline, scale: scale)
-                            .padding(12)
+                    // ImageRenderer에서 .frame(alignment:)의 bottom 앵커가 무시되는 SwiftUI 버그를
+                    // 회피하기 위해 VStack/HStack/Spacer로 9격 위치 결정.
+                    // 상단: top Spacer 없음, 하단: bottom Spacer 없음 (Spacer가 공간을 채움).
+                    let stampPadded = stampContent(fill: fill, outline: outline, scale: scale)
+                        .padding(EdgeInsets(
+                            top: position.isTop ? wordmarkTopInset : 12,
+                            leading: 12, bottom: 12, trailing: 12))
+                    VStack(spacing: 0) {
+                        if !position.isTop    { Spacer(minLength: 0) }
+                        HStack(spacing: 0) {
+                            if !position.isLeading   { Spacer(minLength: 0) }
+                            stampPadded
+                            if !position.isTrailing  { Spacer(minLength: 0) }
+                        }
+                        if !position.isBottom { Spacer(minLength: 0) }
                     }
                 }
             } else {
-                Color.clear   // 문구만 렌더 시에도 프레임 유지
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             if !renderOnlyStamp, !stampText.isEmpty {
-                ZStack(alignment: stampTextPosition.alignment) {
-                    Color.clear
-                    textOverlay
-                        .padding(EdgeInsets(
-                            top: stampTextPosition.isTop ? wordmarkTopInset : 14,
-                            leading: 14, bottom: 14, trailing: 14))
+                let textPadded = textOverlay
+                    .padding(EdgeInsets(
+                        top: stampTextPosition.isTop ? wordmarkTopInset : 14,
+                        leading: 14, bottom: 14, trailing: 14))
+                VStack(spacing: 0) {
+                    if !stampTextPosition.isTop    { Spacer(minLength: 0) }
+                    HStack(spacing: 0) {
+                        if !stampTextPosition.isLeading   { Spacer(minLength: 0) }
+                        textPadded
+                        if !stampTextPosition.isTrailing  { Spacer(minLength: 0) }
+                    }
+                    if !stampTextPosition.isBottom { Spacer(minLength: 0) }
                 }
             }
         }

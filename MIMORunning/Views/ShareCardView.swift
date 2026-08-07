@@ -2889,11 +2889,32 @@ struct ShareCardScreen: View {
                 guard isStamp else { return }
                 saveStampConfig()
                 if template == .video || template == .routeVideo { exportedVideoFile = nil }
+                if template == .story {
+                    storyShareImages = []
+                    previewImage = nil
+                    // ImageRenderer 레이아웃 엔진을 새 position으로 reprime.
+                    // renderCard()가 이전 position으로 파이프라인을 초기화한 뒤 position이 바뀌면,
+                    // 다음 내보내기의 첫 번째 render가 stale 레이아웃을 반환하는 버그를 방지.
+                    // photo: nil — 배경 없이 레이아웃만 초기화(빠름).
+                    let cfg = stampVM.baseConfig
+                    let wuView = StampStoryRenderView(
+                        photo: nil, data: stampPreviewData, vm: stampVM,
+                        cropOffsetX: stampVM.storyCropOffsetX,
+                        configOverride: cfg).frame(width: 300, height: 375)
+                    let wu = ImageRenderer(content: wuView)
+                    wu.scale = 1
+                    _ = wu.uiImage
+                    _ = wu.uiImage
+                }
             }
             .onChange(of: stampVM.photoConfigs) { _, _ in
                 guard isStamp else { return }
                 saveStampConfig()
                 if template == .video || template == .routeVideo { exportedVideoFile = nil }
+                if template == .story {
+                    storyShareImages = []
+                    previewImage = nil
+                }
             }
             .onChange(of: storyPhotos.count) { _, _ in
                 guard isStamp else { return }
@@ -3380,6 +3401,12 @@ struct ShareCardScreen: View {
         routePreviewProgress = 1.0
         previewStampVisible = true
         previewTextVisible = true
+        // Stamp 스토리 모드 진입 시 selectedClipIndex를 사진 인덱스와 동기화.
+        // 영상 모드에서 non-0 클립이 선택된 채로 스토리로 전환하면 위치·템플릿 변경이
+        // photoConfigs[selectedClipIndex]에 저장되지만 내보내기는 photoConfig(at: 0)을 읽어 값이 엇갈림.
+        if isStamp, template == .story {
+            stampVM.selectedClipIndex = cardPhotoIndex[0] ?? 0
+        }
         // 템플릿 전환 시 이전 템플릿의 내보내기 결과를 항상 초기화
         // videoPreviewImage는 .video 진입 시 유지 (영상 클립 썸네일 보존)
         if isPlaceable {
@@ -3507,6 +3534,10 @@ struct ShareCardScreen: View {
         }
         // Stamp 카드 진입 시 — 지명·지도 사전 로드 + 미리보기 재빌드
         if newIndex == 0 {
+            // 스토리 모드 진입 시 selectedClipIndex 동기화 (onTemplateChanged와 동일 이유)
+            if template == .story {
+                stampVM.selectedClipIndex = cardPhotoIndex[0] ?? 0
+            }
             fetchStampPlaceIfNeeded()
             fetchStampMapIfNeeded()
             if template == .slide, !storyPhotos.isEmpty {
@@ -4290,29 +4321,48 @@ struct ShareCardScreen: View {
             }
         } else if isStamp && template == .story {
             Button {
-                if storyPhotos.count > 1 {
-                    // 다중 사진: 각 사진별 고유 config(스탬프·위치·색상·문구 등 전체)로 개별 렌더
-                    var rendered: [UIImage] = []
-                    for (i, photo) in storyPhotos.enumerated() {
-                        if let img = makeStampStoryImage(
-                            photo: photo, data: stampPreviewData, vm: stampVM,
-                            cropOffsetX: stampVM.storyCropOffsetX,
-                            configOverride: stampVM.photoConfig(at: i),
-                            displayDate: activity.date) {
-                            rendered.append(img)
+                // 버튼 탭 시점(동기)에 baseConfig 캡처.
+                // baseConfig는 모든 스타일 setter(position·template·colorMode 등)가 항상 최신값으로 갱신하므로
+                // selectedClipIndex 불일치로 photoConfigs[0]이 구식이 되더라도 올바른 값을 보장한다.
+                let exportCfg  = stampVM.baseConfig
+                let exportCropX = stampVM.storyCropOffsetX
+                Task { @MainActor in
+                    // Warmup: 첫 번째 ImageRenderer 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환함.
+                    // 1회 워밍업 후 50ms 대기로 파이프라인 초기화 (slide 내보내기와 동일 패턴).
+                    let wuPhoto = storyPhotos.first ?? storyPhoto
+                    _ = makeStampStoryImage(photo: wuPhoto, data: stampPreviewData, vm: stampVM,
+                                            cropOffsetX: exportCropX,
+                                            configOverride: exportCfg, displayDate: activity.date)
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    guard isStamp, template == .story else { return }
+
+                    if storyPhotos.count > 1 {
+                        // 다중 사진: 스타일은 baseConfig(항상 최신), 문구는 사진별 독립 유지
+                        var rendered: [UIImage] = []
+                        for (i, photo) in storyPhotos.enumerated() {
+                            var cfg = exportCfg
+                            cfg.text = stampVM.photoText(at: i)
+                            if let img = makeStampStoryImage(
+                                photo: photo, data: stampPreviewData, vm: stampVM,
+                                cropOffsetX: exportCropX,
+                                configOverride: cfg,
+                                displayDate: activity.date) {
+                                rendered.append(img)
+                            }
                         }
-                    }
-                    if !rendered.isEmpty {
-                        storyShareImages = rendered
+                        if !rendered.isEmpty {
+                            storyShareImages = rendered
+                            showShareSheet = true
+                        }
+                    } else if let img = makeStampStoryImage(
+                        photo: storyPhoto, data: stampPreviewData, vm: stampVM,
+                        cropOffsetX: exportCropX,
+                        configOverride: exportCfg,
+                        displayDate: activity.date) {
+                        // previewImage 대신 storyShareImages 사용 — onChange의 previewImage=nil 무관하게 안전.
+                        storyShareImages = [img]
                         showShareSheet = true
                     }
-                } else if let img = makeStampStoryImage(
-                    photo: storyPhoto, data: stampPreviewData, vm: stampVM,
-                    cropOffsetX: stampVM.storyCropOffsetX,
-                    configOverride: stampVM.photoConfig(at: 0),
-                    displayDate: activity.date) {
-                    previewImage = img
-                    showShareSheet = true
                 }
             } label: {
                 Label(AppLanguage.shared.s("스토리 내보내기", "Export Story"), systemImage: "square.and.arrow.up")
@@ -4323,10 +4373,10 @@ struct ShareCardScreen: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
             .sheet(isPresented: $showShareSheet) {
-                if storyShareImages.count > 1 {
+                if !storyShareImages.isEmpty {
                     ShareSheet(images: storyShareImages)
-                } else if let img = previewImage {
-                    ShareSheet(images: [img])
+                } else {
+                    Text("🚨 이미지 없음").padding()
                 }
             }
         } else if let img = previewImage {
@@ -4448,6 +4498,12 @@ struct ShareCardScreen: View {
         while let presented = topVC.presentedViewController { topVC = presented }
         // 이미 UIActivityViewController가 표시 중이면 중복 표시 방지
         guard !(topVC is UIActivityViewController) else { return }
+        // iPad: popover 앵커 없으면 크래시 → 화면 중앙 고정
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = topVC.view
+            popover.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
         topVC.present(activityVC, animated: true)
     }
 
@@ -4910,6 +4966,18 @@ struct ShareCardScreen: View {
             // 프리뷰 플레이어를 일시 정지해 AVAssetExportSession과 소스 파일 경합 방지
             previewPlayer.pause()
             let renderSz = VideoExportService.targetSize
+
+            // Warmup: 첫 번째 ImageRenderer 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환함.
+            if let firstRecipe = stampVM.clipRecipes.first {
+                let wuCfg = stampVM.photoConfig(at: 0)
+                let wuBright = stampBackgroundIsBright(photo: firstRecipe.thumbnail, position: wuCfg.position)
+                _ = makeStampOverlayImage(data: stampPreviewData, vm: stampVM,
+                                          isBright: wuBright, renderSize: renderSz,
+                                          configOverride: wuCfg, renderOnlyStamp: true)
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                guard isStamp, template == .video else { isExportingVideo = false; return }
+            }
+
             let stampLogoImg = makeStampLogoOverlay(date: activity.date, renderSize: renderSz)
 
             var processedURLs: [URL] = []
@@ -5637,11 +5705,18 @@ struct ShareCardScreen: View {
         // the pipeline fully initialize, making the synchronous share-button render correct.
         if isStamp {
             if template == .story {
+                // 이전 다중-사진 내보내기 캐시를 무효화. 여기를 지나면 내보내기 버튼이 항상 fresh 렌더 경로를 탐.
+                storyShareImages = []
+                previewImage = nil
                 let photo = storyPhotos.first
+                // baseConfig는 position·template 등 모든 스타일 setter가 항상 최신값으로 갱신하므로
+                // photoConfig(at:0) 대신 baseConfig를 사용하면 selectedClipIndex 불일치로 인한
+                // 구식 값 사용 문제를 방지할 수 있다.
+                let cfg = stampVM.baseConfig
                 let wuView = StampStoryRenderView(
                     photo: photo, data: stampPreviewData, vm: stampVM,
                     cropOffsetX: stampVM.storyCropOffsetX,
-                    configOverride: stampVM.photoConfig(at: 0),
+                    configOverride: cfg,
                     displayDate: activity.date).frame(width: 300, height: 375)
                 let wu = ImageRenderer(content: wuView)
                 wu.scale = 1
@@ -5651,7 +5726,7 @@ struct ShareCardScreen: View {
                 previewImage = makeStampStoryImage(
                     photo: photo, data: stampPreviewData, vm: stampVM,
                     cropOffsetX: stampVM.storyCropOffsetX,
-                    configOverride: stampVM.photoConfig(at: 0),
+                    configOverride: stampVM.baseConfig,
                     displayDate: activity.date)
             }
             isRendering = false; return

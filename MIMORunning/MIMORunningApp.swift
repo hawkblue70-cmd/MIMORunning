@@ -104,14 +104,28 @@ struct MIMORunningApp: App {
             UserDefaults.standard.set(false, forKey: "cloudKitSyncAvailable")
             do {
                 return try ModelContainer(for: schema)
-            } catch let fallbackError {
-                log.error("[CoreData] 로컬 스토어도 실패 — 인메모리 폴백: \(fallbackError.localizedDescription, privacy: .public)")
-                // 인메모리라 재시작하면 데이터 없음. 그래도 앱이 죽는 것보다 낫다.
-                if let mem = try? ModelContainer(for: schema,
-                    configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)) {
-                    return mem
+            } catch let storeError {
+                // WAL 손상(OOM 킬 등) → 스토어 파일 삭제 후 빈 상태로 재생성
+                log.error("[CoreData] 로컬 스토어 열기 실패 — 스토어 재생성 시도: \(storeError.localizedDescription, privacy: .public)")
+                let fm = FileManager.default
+                if let supportDir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                    for suffix in ["default.store", "default.store-wal", "default.store-shm"] {
+                        try? fm.removeItem(at: supportDir.appending(path: suffix))
+                    }
                 }
-                fatalError("[CoreData] 인메모리 컨테이너도 실패 — 복구 불가: \(fallbackError)")
+                do {
+                    let fresh = try ModelContainer(for: schema)
+                    log.warning("[CoreData] 스토어 재생성 성공 — 사용자 메모/스토리 초기화됨")
+                    return fresh
+                } catch let rebuildError {
+                    // 재생성도 실패하면 인메모리(앱 재시작까지만 유지)
+                    log.error("[CoreData] 재생성 실패 — 인메모리 폴백: \(rebuildError.localizedDescription, privacy: .public)")
+                    if let mem = try? ModelContainer(for: schema,
+                        configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)) {
+                        return mem
+                    }
+                    fatalError("[CoreData] 인메모리 컨테이너도 실패 — 복구 불가: \(rebuildError)")
+                }
             }
         }
     }()

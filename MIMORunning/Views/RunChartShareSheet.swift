@@ -618,6 +618,12 @@ struct RunChartShareSheet: View {
         var topVC = rootVC
         while let presented = topVC.presentedViewController { topVC = presented }
         guard !(topVC is UIActivityViewController) else { return }
+        // iPad: popover 앵커 없으면 크래시 → 화면 중앙 고정
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = topVC.view
+            popover.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
         topVC.present(activityVC, animated: true)
     }
 

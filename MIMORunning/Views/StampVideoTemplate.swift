@@ -43,6 +43,7 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
     renderer.proposedSize = .init(width: 300, height: ptH)
     renderer.scale = renderSize.width / 300  // 3.6 for 1080-wide video → 1080×1920 px
     renderer.isOpaque = false
+    _ = renderer.uiImage   // 첫 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환할 수 있음 — 버림
     return renderer.uiImage
 }
 

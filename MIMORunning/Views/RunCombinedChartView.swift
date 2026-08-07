@@ -740,7 +740,7 @@ struct RunCombinedChartView: View {
         // Sort top→bottom, nudge overlapping labels, clamp to chart area
         dotInfos.sort { $0.labelY < $1.labelY }
         let minGap: CGFloat = 11
-        for i in 1..<dotInfos.count {
+        for i in 1..<max(1, dotInfos.count) {
             if dotInfos[i].labelY - dotInfos[i-1].labelY < minGap {
                 dotInfos[i].labelY = dotInfos[i-1].labelY + minGap
             }

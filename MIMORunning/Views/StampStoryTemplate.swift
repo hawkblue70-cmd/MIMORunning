@@ -279,6 +279,7 @@ func makeStampStoryImage(photo: UIImage?, data: StampData, vm: StampViewModel,
                          configOverride: StampPhotoConfig? = nil,
                          displayDate: Date? = nil) -> UIImage? {
     FontLoader.registerBundledFonts()
+    let resolved = configOverride ?? vm.currentConfig
     let view = StampStoryRenderView(photo: photo, data: data, vm: vm,
                                     cropOffsetX: cropOffsetX,
                                     configOverride: configOverride,
@@ -287,5 +288,7 @@ func makeStampStoryImage(photo: UIImage?, data: StampData, vm: StampViewModel,
     let renderer = ImageRenderer(content: view)
     renderer.proposedSize = .init(width: 300, height: 375)
     renderer.scale = 3
+    _ = renderer.uiImage   // 첫 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환할 수 있음 — 버림
+    _ = renderer.uiImage   // 두 번째 워밍업 — VStack/HStack Spacer 레이아웃이 완전히 정착되도록
     return renderer.uiImage
 }

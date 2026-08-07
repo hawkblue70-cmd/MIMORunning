@@ -281,7 +281,9 @@ struct StampControlsView: View {
                         ForEach(0..<3, id: \.self) { row in
                             let pos = positions[row * 3 + col]
                             let isSelected = vm.position == pos
-                            Button { vm.position = pos } label: {
+                            Button {
+                                vm.position = pos
+                            } label: {
                                 RoundedRectangle(cornerRadius: 4)
                                     .fill(isSelected ? Theme.violet : Color(hex: "26262E"))
                                     .frame(width: 23, height: 23)
