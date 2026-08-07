@@ -4337,11 +4337,12 @@ struct ShareCardScreen: View {
                     guard isStamp, template == .story else { return }
 
                     if storyPhotos.count > 1 {
-                        // 다중 사진: 스타일은 baseConfig(항상 최신), 문구는 사진별 독립 유지
+                        // 다중 사진: 각 사진의 독립 config(위치·템플릿·문구 등) 사용.
+                        // makeStampStoryImage 내부 2회 warmup이 사진마다 레이아웃을 정착시키므로
+                        // 사진 간 stale 레이아웃 문제 없이 per-photo config 적용 가능.
                         var rendered: [UIImage] = []
                         for (i, photo) in storyPhotos.enumerated() {
-                            var cfg = exportCfg
-                            cfg.text = stampVM.photoText(at: i)
+                            let cfg = stampVM.photoConfig(at: i)
                             if let img = makeStampStoryImage(
                                 photo: photo, data: stampPreviewData, vm: stampVM,
                                 cropOffsetX: exportCropX,
