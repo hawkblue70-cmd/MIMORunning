@@ -68,11 +68,11 @@ struct ShareChartPalette {
         if isLight {
             switch layer {
             case .pace:         return pace                     // #00A8C8 cyan
-            case .cadence:      return Color(hex: "D4A700")    // yellow
+            case .cadence:      return Color(hex: "B8860B")    // 딥 골드
             case .elevation:    return elevation                // #4FA82E green
             case .power:        return Color(hex: "2E5FD4")    // blue
-            case .strideLength: return Color(hex: "E08A1E")    // orange
-            case .verticalOsc:  return Color(hex: "B455E0")    // magenta
+            case .strideLength: return Color(hex: "C0392B")    // 딥 레드 (HR 주황과 구분)
+            case .verticalOsc:  return Color(hex: "8E24AA")    // 딥 퍼플
             default:            return layer.color
             }
         }

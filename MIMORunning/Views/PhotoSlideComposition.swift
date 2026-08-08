@@ -57,7 +57,7 @@ enum PhotoSlideComposition {
         let size       = targetSize
         let actualN    = min(photos.count, maxPhotos)
         let imgs       = zip(photos.prefix(actualN), recipes.prefix(actualN)).compactMap { photo, recipe in
-            scaleFill(photo, to: size, cropOffsetX: recipe.cropOffsetX)
+            scaleFill(photo, to: size, cropOffsetX: recipe.cropOffsetX, cropOffsetY: recipe.cropOffsetY)
         }
         guard !imgs.isEmpty else { throw SlideError.noPhotos }
         let n          = imgs.count
@@ -176,7 +176,7 @@ enum PhotoSlideComposition {
         let size       = targetSize
         let n          = min(photos.count, maxPhotos)
         let imgs       = zip(photos.prefix(n), recipes.prefix(n)).compactMap { photo, recipe in
-            scaleFill(photo, to: size, cropOffsetX: recipe.cropOffsetX)
+            scaleFill(photo, to: size, cropOffsetX: recipe.cropOffsetX, cropOffsetY: recipe.cropOffsetY)
         }
         guard !imgs.isEmpty else { throw SlideError.noPhotos }
         let useRecipes = Array(recipes.prefix(imgs.count))
@@ -1707,16 +1707,18 @@ enum PhotoSlideComposition {
     // MARK: - Scale-fill helper
     //
     // scaledToFill: 항상 캔버스 전체를 사진으로 채움 → 사진 밖의 검은 여백 없음.
-    // cropOffsetX: 넘치는 가로 영역 중 어느 부분을 보여줄지 (0=left, 0.5=center, 1=right).
-    // 가로 사진은 height를 맞추면 width가 크게 넘침 → cropOffsetX로 좌우 위치 선택.
+    // cropOffsetX: 가로 초과 시 좌우 위치 (0=left, 0.5=center, 1=right). 가로 사진에 유효.
+    // cropOffsetY: 세로 초과 시 상하 위치 (0=top,  0.5=center, 1=bottom). 세로 사진에 유효.
     // [미리보기 일치 원칙] stampSlidePreviewSection의 정적 Image 및 contentLayer 모두 동일 분기.
 
-    static func scaleFill(_ image: UIImage, to size: CGSize, cropOffsetX: CGFloat = 0.5) -> CGImage? {
+    static func scaleFill(_ image: UIImage, to size: CGSize,
+                           cropOffsetX: CGFloat = 0.5,
+                           cropOffsetY: CGFloat = 0.5) -> CGImage? {
         let s  = max(size.width / image.size.width, size.height / image.size.height)
         let sw = image.size.width  * s
         let sh = image.size.height * s
         let ox = (size.width  - sw) * cropOffsetX
-        let oy = (size.height - sh) / 2
+        let oy = (size.height - sh) * cropOffsetY
         let renderer = UIGraphicsImageRenderer(size: size)
         return renderer.image { _ in
             image.draw(in: CGRect(x: ox, y: oy, width: sw, height: sh))

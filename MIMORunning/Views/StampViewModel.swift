@@ -120,6 +120,8 @@ final class StampViewModel {
     // MARK: - 미디어
 
     var storyCropOffsetX: CGFloat = 0.5
+    /// 사진 인덱스별 가로 크롭 위치 — 사진 전환 시 각자 독립 유지.
+    var storyCropOffsets: [Int: CGFloat] = [:]
     var storyPhoto: UIImage? = nil
     var clipRecipes: [ClipRecipe] = []
     var selectedClipIndex: Int = 0 {

@@ -8,7 +8,7 @@ import SwiftUI
 
 /// 사진에서 position 에 해당하는 9칸 영역의 평균 밝기를 판정한다.
 /// 상대 휘도(0.299R + 0.587G + 0.114B) > 0.55 이면 true(밝음)
-func stampBackgroundIsBright(photo: UIImage?, position: CardPosition) -> Bool {
+nonisolated func stampBackgroundIsBright(photo: UIImage?, position: CardPosition) -> Bool {
     guard let photo else { return false }
     let all = CardPosition.allCases
     guard let idx = all.firstIndex(of: position) else { return false }
@@ -62,6 +62,15 @@ struct StampStoryRenderView: View {
     private let renderWidth: CGFloat = 300
     private var resolved: StampPhotoConfig { configOverride ?? vm.currentConfig }
 
+    // 배경 밝기 캐시 — photo+position 조합 변경 시 비동기 재계산
+    // 뷰 body에서 직접 계산하면 풀해상도 사진 디코딩이 메인스레드를 블로킹하므로 분리.
+    @State private var isBrightBackground: Bool = false
+
+    private var brightnessKey: String {
+        let posIdx = CardPosition.allCases.firstIndex(of: resolved.position) ?? 0
+        return "\(photo.map { ObjectIdentifier($0).hashValue } ?? 0)_\(posIdx)"
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             // 배경 (가로 사진 크롭 지원)
@@ -87,7 +96,7 @@ struct StampStoryRenderView: View {
                 colorMode: resolved.colorMode,
                 position: resolved.position,
                 sizeLevel: resolved.sizeLevel,
-                isBrightBackground: stampBackgroundIsBright(photo: photo, position: resolved.position),
+                isBrightBackground: isBrightBackground,
                 showHeartRate: resolved.showHeartRate,
                 showCalories: resolved.showCalories,
                 showTextOutline: resolved.showTextOutline,
@@ -124,6 +133,14 @@ struct StampStoryRenderView: View {
             .padding(.horizontal, 14)
             .padding(.top, 14)
             .allowsHitTesting(false)
+        }
+        .task(id: brightnessKey) {
+            let p = photo
+            let pos = resolved.position
+            let result = await Task.detached(priority: .userInitiated) {
+                stampBackgroundIsBright(photo: p, position: pos)
+            }.value
+            isBrightBackground = result
         }
     }
 }

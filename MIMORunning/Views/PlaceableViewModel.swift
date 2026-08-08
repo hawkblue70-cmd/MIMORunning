@@ -110,8 +110,11 @@ final class PlaceableViewModel {
     var placeableStoryHasBorder: Bool = true
     var placeableStoryTabIsText: Bool = false
     /// 사진별 좌우 크롭 위치. 0=왼쪽, 0.5=중앙, 1=오른쪽. 가로 사진에만 유효.
-    var placeableStoryCropOffsets: [Int: CGFloat] = [:]
-    var storyCropDragBase: CGFloat? = nil
+    var placeableStoryCropOffsets:  [Int: CGFloat] = [:]
+    /// 사진별 상하 크롭 위치. 0=상단, 0.5=중앙, 1=하단. 세로 사진에만 유효.
+    var placeableStoryCropOffsetsY: [Int: CGFloat] = [:]
+    var storyCropDragBase:  CGFloat? = nil   // 드래그 시작 시 X 기준값
+    var storyCropDragBaseY: CGFloat? = nil   // 드래그 시작 시 Y 기준값
 
     // MARK: - Slide animation
 

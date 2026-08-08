@@ -192,20 +192,28 @@ final class OneLinerPreviewPlayer {
 
     func invalidate() {
         buildGeneration += 1  // 진행 중인 빌드의 guard 체크를 무효화
+        // isReady/isPlaying을 먼저 false로: SwiftUI observation이 player=nil 보다 앞서
+        // 뷰를 다시 그리더라도 player를 사용하는 분기에 진입하지 않도록 보장
+        isReady   = false
+        isPlaying = false
         if let obs = timeObserver { player?.removeTimeObserver(obs) }
         timeObserver = nil
         if let obs = endObserver { NotificationCenter.default.removeObserver(obs) }
         endObserver  = nil
         player?.pause()
+        // AVPlayer dealloc과 파일 삭제를 백그라운드에서 처리 — 메인 스레드 블로킹 방지
+        let oldPlayer = player
+        let oldURL    = tempURL
         player       = nil
         contentLayer = nil
         renderSize   = .zero
         duration     = 0
-        isReady      = false
-        isPlaying    = false
         progress     = 0
-        if let url = tempURL { try? FileManager.default.removeItem(at: url) }
         tempURL = nil
+        Task.detached {
+            _ = oldPlayer  // 백그라운드에서 dealloc
+            if let url = oldURL { try? FileManager.default.removeItem(at: url) }
+        }
     }
 
 

@@ -196,13 +196,14 @@ struct ShareCardScreen: View {
     @State private var cardIndex = 0
     @State var cardPhotoIndex: [Int: Int] = [:]
     @State private var heroMetric: HeroMetric = .distance
-    @State private var athleticCropOffsetX: CGFloat = 0.5
+    @State var athleticCropOffsetX: CGFloat = 0.5
     @State private var athleticCropDragBase: CGFloat? = nil
-    @State private var athleticSlideCropOffsets: [Int: CGFloat] = [:]
+    @State var athleticSlideCropOffsets: [Int: CGFloat] = [:]
     @State private var athleticSlideCropDragBase: CGFloat? = nil
     @State private var stampStoryCropDragBase: CGFloat? = nil
     @State var stampSlideCropDragBase: CGFloat? = nil
     @State var stampSlideCropOffsets: [Int: CGFloat] = [:]
+    @State var stampSlideBrightMap: [Int: Bool] = [:]
     // 스탬프 지명·지도 비동기 캐시 (위치/경로 템플릿용)
     @State private var stampPlaceName: String?      = nil
     @State private var stampPlaceRegion: String?    = nil
@@ -380,12 +381,6 @@ struct ShareCardScreen: View {
     private var isSky: Bool        { cardIndex == 5 }
     private var isECG: Bool        { cardIndex == 6 }
     private var isTicket: Bool     { cardIndex == 7 }
-
-    // Binding<Int?> used by scrollPosition(id:); reads/writes cardIndex directly
-    // so programmatic cardIndex changes scroll the card, and user swipes update cardIndex.
-    private var scrollCardBinding: Binding<Int?> {
-        Binding(get: { cardIndex }, set: { if let v = $0 { cardIndex = v } })
-    }
 
     // Placeable story text overlay
     // OneLiner card
@@ -1022,7 +1017,11 @@ struct ShareCardScreen: View {
                         stampVM.storyCropOffsetX = max(0, min(1,
                             base - drag.translation.width / excess))
                     }
-                    .onEnded { _ in stampStoryCropDragBase = nil }
+                    .onEnded { _ in
+                        stampStoryCropDragBase = nil
+                        stampVM.storyCropOffsets[selectedIdx] = stampVM.storyCropOffsetX
+                        saveStampConfig()
+                    }
                 : nil)
         } else {
             StampStoryRenderView(photo: nil, data: stampPreviewData, vm: stampVM,
@@ -1442,19 +1441,28 @@ struct ShareCardScreen: View {
             }
         } else {
             let idx   = cardPhotoIndex[2]
+            let photoI = idx ?? 0
             let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
                      ?? (!storyPhotos.isEmpty ? storyPhotos[0] : nil)
             // @Query 갱신 타이밍 이슈 우회: 편집 직후엔 oneLinerVM.cachedStoryRecipes 사용 (클로저로 계산)
             let pr: ClipRecipe? = {
-                let i = idx ?? 0
+                let i = photoI
                 if !oneLinerVM.cachedStoryRecipes.isEmpty, oneLinerVM.cachedStoryRecipes.indices.contains(i) {
                     return oneLinerVM.cachedStoryRecipes[i]
                 }
                 return photoRecipe(at: i, prefix: "photo:")
             }()
+            let cropX = oneLinerVM.oneLinerStoryCropOffsets[photoI]
+                     ?? CGFloat(pr?.cropOffsetX ?? 0.5)
+            let olExcessX: CGFloat = {
+                guard let p = photo else { return 0 }
+                let s = max(300.0 / p.size.width, 375.0 / p.size.height)
+                return max(0, p.size.width * s - 300)
+            }()
             OneLinerCard(
                 activity: activity,
                 backgroundPhoto: photo,
+                cropOffsetX: cropX,
                 text: pr?.lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n") ?? oneLinerVM.oneLinerText,
                 position: pr?.position ?? oneLinerVM.oneLinerPosition,
                 textColor: pr?.textColor ?? oneLinerVM.oneLinerColor,
@@ -1466,7 +1474,7 @@ struct ShareCardScreen: View {
                 showDate: oneLinerVM.oneLinerShowDate,
                 captionMode: true,
                 chartBottomReserved: storyChartBottomReserved(for: pr),
-                isStaticPreview: true,   // 스토리는 정적 카드 — 애니 없이 즉시 표시
+                isStaticPreview: true,
                 metricPace: pr?.metricPace ?? false,
                 metricDistance: pr?.metricDistance ?? false,
                 metricTime: pr?.metricTime ?? false,
@@ -1484,6 +1492,24 @@ struct ShareCardScreen: View {
                 chartSeriesData: chartSeriesData,
                 chartSplits: detail?.splits ?? [],
                 intervalSegments: detail?.intervalSegments ?? []
+            )
+            .simultaneousGesture(
+                olExcessX > 0 ? DragGesture(minimumDistance: 8)
+                    .onChanged { drag in
+                        if oneLinerVM.oneLinerCropDragBase == nil {
+                            guard abs(drag.predictedEndTranslation.width) <= abs(drag.translation.width) * 3.0 else { return }
+                            oneLinerVM.oneLinerCropDragBase = cropX
+                        }
+                        guard let base = oneLinerVM.oneLinerCropDragBase else { return }
+                        oneLinerVM.oneLinerStoryCropOffsets[photoI] =
+                            max(0, min(1, base - drag.translation.width / olExcessX))
+                    }
+                    .onEnded { _ in
+                        let didCrop = oneLinerVM.oneLinerCropDragBase != nil
+                        oneLinerVM.oneLinerCropDragBase = nil
+                        if didCrop { saveOneLinerCropX(photoIndex: photoI, offsetX: oneLinerVM.oneLinerStoryCropOffsets[photoI] ?? cropX) }
+                    }
+                : nil
             )
         }
     }
@@ -1750,6 +1776,7 @@ struct ShareCardScreen: View {
     private var cardSection: some View {
         GeometryReader { proxy in
             let w = proxy.size.width
+            ScrollViewReader { scrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
                     // 0: Stamp
@@ -1819,29 +1846,71 @@ struct ShareCardScreen: View {
                         .frame(width: w, height: 375)
                         .id(7)
                 }
-                .scrollTargetLayout()
             }
-            .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: scrollCardBinding)
+            .scrollDisabled(true)
             .frame(width: w, height: cardSectionH)
+            .onAppear { scrollProxy.scrollTo(cardIndex, anchor: .center) }
+            .onChange(of: cardIndex) { _, new in
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    scrollProxy.scrollTo(new, anchor: .center)
+                }
+            }
+            } // ScrollViewReader
         }
         .frame(height: cardSectionH)
         .animation(.easeInOut(duration: 0.3), value: cardSectionH)
     }
 
     private var cardPageDots: some View {
-        // 탭 가능: 카드2(인라인 편집)에서 캐러셀이 숨겨질 때도 다른 카드로 이동 가능하게.
-        HStack(spacing: 7) {
-            pageDot(0) // Stamp
-            pageDot(1) // Placeable
-            pageDot(2) // OneLiner
-            pageDot(3) // Athletic
-            pageDot(4) // BigNumber
-            pageDot(5) // Sky
-            if ecgVM.ecgDataAvailable != false { pageDot(6) } // ECG
-            pageDot(7) // Ticket
+        HStack(spacing: 0) {
+            // ← 이전 카드
+            Button { navigateCard(by: -1) } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(cardIndex > 0 ? 0.55 : 0.15))
+                    .frame(width: 36, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(cardIndex == 0)
+
+            Spacer(minLength: 0)
+
+            // 점 인디케이터 — 탭으로 카드 직접 이동 가능
+            HStack(spacing: 7) {
+                pageDot(0) // Stamp
+                pageDot(1) // Placeable
+                pageDot(2) // OneLiner
+                pageDot(3) // Athletic
+                pageDot(4) // BigNumber
+                pageDot(5) // Sky
+                if ecgVM.ecgDataAvailable != false { pageDot(6) } // ECG
+                pageDot(7) // Ticket
+            }
+
+            Spacer(minLength: 0)
+
+            // → 다음 카드
+            Button { navigateCard(by: +1) } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(cardIndex < 7 ? 0.55 : 0.15))
+                    .frame(width: 36, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(cardIndex == 7)
         }
+        .padding(.horizontal, 8)
         .padding(.top, 6)
+    }
+
+    // ECG 없을 때 인덱스 6 건너뜀
+    private func navigateCard(by delta: Int) {
+        var target = cardIndex + delta
+        if target == 6, ecgVM.ecgDataAvailable == false { target += delta }
+        guard target >= 0, target <= 7 else { return }
+        cardIndex = target  // onChange(of: cardIndex)가 ScrollViewReader로 애니메이션 처리
     }
 
     private func pageDot(_ i: Int) -> some View {
@@ -2805,7 +2874,7 @@ struct ShareCardScreen: View {
                 // selectedClipIndex가 photo 인덱스와 일치해야 currentConfig(get/set)가
                 // 올바른 photoConfigs[idx]를 읽고 쓴다. story·slide 모두 동기화.
                 stampVM.selectedClipIndex = idx
-                if template == .story { stampVM.storyCropOffsetX = 0.5 }
+                if template == .story { stampVM.storyCropOffsetX = stampVM.storyCropOffsets[idx] ?? 0.5 }
                 // slide: 선택 사진의 시작 시각(+0.5s)으로 이동해 해당 사진이 미리보기에 보이게 함
                 if template == .slide, previewPlayer.isReady {
                     let t = Double(idx) * PhotoSlideComposition.placeableSlideDuration + 0.5
@@ -3441,23 +3510,9 @@ struct ShareCardScreen: View {
                 athleticVM.athleticClipRecipes = [r]
             }
         }
-        // Placeable 슬라이드: 항상 재빌드 (previewPlayer가 영상과 공유되므로 isReady 체크 불가)
-        if isPlaceable, template == .slide {
-            let photos = storyPhotos
-            if !photos.isEmpty {
-                Task {
-                    let overlay = makePlaceableDataOverlay()
-                    let recipes = makePlaceableSlideRecipes(for: photos)
-                    await previewPlayer.buildForPhotoSlides(
-                        photos: photos, recipes: recipes,
-                        activityDate: activity.date, showDate: false,
-                        dataOverlayImage: overlay,
-                        fastBase: true)
-                }
-            } else {
-                previewPlayer.invalidate()
-            }
-        }
+        // Placeable 슬라이드: 즉시 전환 — 이전 player 초기화만, 빌드는 ▶ 탭 시 시작.
+        // (Athletic 패턴과 동일: 탭 전환 시 사진 즉시 표시, 스피너 없음)
+        if isPlaceable, template == .slide { previewPlayer.invalidate() }
         if isPlaceable, template != .slide { previewPlayer.pause() }
         // Stamp 영상: 진입 시 항상 초기화 후 재빌드.
         // [필수] 슬라이드→영상 전환 시 슬라이드 player가 previewPlayer에 잔존하면
@@ -3475,20 +3530,9 @@ struct ShareCardScreen: View {
         if isOneLiner, template == .video, !oneLinerVM.oneLinerClipRecipes.isEmpty {
             buildPreview()
         }
-        // Stamp 슬라이드: 프리빌드가 완료/진행 중이면 재빌드 생략, 없을 때만 빌드.
-        // · isReady=true: 카드 진입 시 프리빌드가 완료 → 슬라이드 탭 즉시 전환.
-        // · isBuilding=true: 카드 진입 시 프리빌드 진행 중 → 그 결과를 그대로 사용, 이중 빌드 방지.
-        // · 둘 다 false: 프리빌드 없음(예: 영상 탭 경유) → 새로 빌드.
-        if isStamp, template == .slide {
-            if !storyPhotos.isEmpty {
-                if !previewPlayer.isReady, !previewPlayer.isBuilding {
-                    let data = stampPreviewData
-                    Task { await loadStampSlidePreview(data: data) }
-                }
-            } else {
-                previewPlayer.invalidate()
-            }
-        }
+        // Stamp 슬라이드: 즉시 전환 — 빌드는 ▶ 탭 또는 카드 진입 시 프리빌드에 위임.
+        // 사진이 없을 때만 초기화. 프리빌드(onCardIndexChanged)가 완료·진행 중이면 그 결과를 사용.
+        if isStamp, template == .slide, storyPhotos.isEmpty { previewPlayer.invalidate() }
         if template == .routeVideo, routeSnapshot == nil, !routeCoords.isEmpty {
             Task {
                 if let result = try? await RouteVideoExportService.mapSnapshot(coordinates: routeCoords) {
@@ -3540,16 +3584,20 @@ struct ShareCardScreen: View {
             }
             fetchStampPlaceIfNeeded()
             fetchStampMapIfNeeded()
-            if template == .slide, !storyPhotos.isEmpty {
+            if template == .story, !storyPhotos.isEmpty {
+                // 스크롤 애니메이션(0.3s) 완료 후 슬라이드 프리뷰를 백그라운드에서 미리 빌드.
+                // 카드 전환 중 AVAssetWriter 초기화가 메인스레드를 블로킹하지 않도록 지연 실행.
+                let data = stampPreviewData
+                Task {
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    guard !previewPlayer.isReady, !previewPlayer.isBuilding else { return }
+                    await loadStampSlidePreview(data: data)
+                }
+            } else if template == .slide, !storyPhotos.isEmpty {
                 let data = stampPreviewData
                 Task { await loadStampSlidePreview(data: data) }
             } else if template == .slide {
                 previewPlayer.invalidate()
-            } else if template == .story, !storyPhotos.isEmpty {
-                // 스토리 모드에서 카드 진입 시 슬라이드 프리뷰를 백그라운드에서 미리 빌드.
-                // 사용자가 슬라이드 탭을 누를 때 이미 isReady=true → 스피너 없이 즉시 전환.
-                let data = stampPreviewData
-                Task { await loadStampSlidePreview(data: data) }
             } else if template == .video {
                 // 다른 카드(OneLiner 등)가 metricChips·routeCoords 포함 contentLayer를 남긴 채로
                 // Stamp 카드로 돌아오면 Athletic 데이터가 표시되는 버그 방지.
@@ -3654,7 +3702,10 @@ struct ShareCardScreen: View {
                             athleticCropOffsetX = max(0, min(1,
                                 base - drag.translation.width / excess))
                         }
-                        .onEnded { _ in athleticCropDragBase = nil }
+                        .onEnded { _ in
+                            athleticCropDragBase = nil
+                            saveAthleticCropOffsets()
+                        }
                     : nil)
             } else if let s = story {
                 StoryShareCardView(activity: activity, routeCoordinates: routeCoords,
@@ -3855,7 +3906,10 @@ struct ShareCardScreen: View {
                                         athleticSlideCropOffsets[idx] = max(0, min(1,
                                             base - drag.translation.width / excess))
                                     }
-                                    .onEnded { _ in athleticSlideCropDragBase = nil }
+                                    .onEnded { _ in
+                                        athleticSlideCropDragBase = nil
+                                        saveAthleticCropOffsets()
+                                    }
                                 : nil)
                         } else if !isExportingVideo {
                             VStack(spacing: 10) {
@@ -4046,7 +4100,10 @@ struct ShareCardScreen: View {
                                     athleticSlideCropOffsets[idx] = max(0, min(1,
                                         base - drag.translation.width / excess))
                                 }
-                                .onEnded { _ in athleticSlideCropDragBase = nil }
+                                .onEnded { _ in
+                                    athleticSlideCropDragBase = nil
+                                    saveAthleticCropOffsets()
+                                }
                             : nil)
                     } else if !isExportingVideo {
                         VStack(spacing: 10) {
@@ -4353,6 +4410,10 @@ struct ShareCardScreen: View {
                         }
                         if !rendered.isEmpty {
                             storyShareImages = rendered
+                            // storyShareImages 설정으로 분기가 isStamp→storyShareImages≥1로 바뀜.
+                            // 같은 tick에 showShareSheet=true를 설정하면 사라지는 뷰의 .sheet가 요청되어
+                            // 화면이 검게 변하는 race condition 발생 → yield로 뷰 전환 완료 후 표시.
+                            await Task.yield()
                             showShareSheet = true
                         }
                     } else if let img = makeStampStoryImage(
@@ -4362,6 +4423,7 @@ struct ShareCardScreen: View {
                         displayDate: activity.date) {
                         // previewImage 대신 storyShareImages 사용 — onChange의 previewImage=nil 무관하게 안전.
                         storyShareImages = [img]
+                        await Task.yield()
                         showShareSheet = true
                     }
                 }
@@ -5387,6 +5449,7 @@ struct ShareCardScreen: View {
             propagateClips(clips)
         }
         loadStampConfig()
+        loadAthleticCropOffsets()
         if isStamp { await loadStampClipRecipes() }
         // Stamp 저장소가 비어있어도 propagate된 클립이 있으면 프리뷰 빌드 + 저장소 동기화
         if isStamp, template == .video, !stampVM.clipRecipes.isEmpty {

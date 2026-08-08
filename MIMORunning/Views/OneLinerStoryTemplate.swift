@@ -181,4 +181,56 @@ extension ShareCardScreen {
         // 편집 완료 후 미리보기는 수동(▶ 버튼)으로 시작 — 자동 buildPreview 호출 없음
         if template == .slide { previewPlayer.invalidate() }
     }
+
+    /// 드래그 완료 시 단일 사진 cropOffsetX를 SwiftData에 저장.
+    /// 기존 v3slide 엔트리: 디코딩 → cropOffsetX 수정 → 재인코딩.
+    /// 엔트리 없음: 레시피 기반 신규 생성 (center 이면 저장 생략).
+    func saveOneLinerCropX(photoIndex: Int, offsetX: CGFloat) {
+        guard photoIndex < oneLinerVM.storyPhotoUUIDs.count else { return }
+        let ref = "photo:\(oneLinerVM.storyPhotoUUIDs[photoIndex])"
+
+        func reEncode(_ desc: SavedClipDescriptor) -> String? {
+            guard let data = try? JSONEncoder().encode(desc),
+                  let json = String(data: data, encoding: .utf8) else { return nil }
+            return "v3slide\n" + json
+        }
+
+        if let existing = oneLinerEntries.first(where: { $0.mediaRef == ref }),
+           existing.text.hasPrefix("v3slide\n") {
+            let body = String(existing.text.dropFirst("v3slide\n".count))
+            if var desc = try? JSONDecoder().decode(SavedClipDescriptor.self, from: Data(body.utf8)) {
+                desc.cropOffsetX = Double(offsetX)
+                if let payload = reEncode(desc) { existing.text = payload }
+            }
+        } else {
+            guard abs(offsetX - 0.5) > 0.001 else { return }
+            let pr = photoRecipe(at: photoIndex, prefix: "photo:")
+            let desc = SavedClipDescriptor(
+                assetID: nil, clipVideoRef: nil,
+                photoRef: pr?.storedPhotoRef, thumbRef: pr?.thumbRef,
+                trimStart: 0, trimEnd: PhotoSlideComposition.photoDuration,
+                fullDuration: PhotoSlideComposition.photoDuration,
+                lines: pr?.lines ?? [],
+                fontID: pr?.fontChoice.rawValue,
+                colorID: pr?.textColor.rawValue,
+                anchorIdx: pr.flatMap { CardPosition.allCases.firstIndex(of: $0.position) },
+                cropOffsetX: Double(offsetX)
+            )
+            if let payload = reEncode(desc) {
+                let entry = OneLinerEntry(workoutID: activity.id.uuidString, mediaRef: ref)
+                entry.text      = payload
+                entry.font      = pr?.fontChoice ?? .gothic
+                entry.textColor = pr?.textColor  ?? .white
+                entry.position  = pr?.position   ?? .center
+                modelContext.insert(entry)
+            }
+        }
+
+        try? modelContext.save()
+        // 인메모리 캐시 즉시 반영
+        oneLinerVM.oneLinerStoryCropOffsets[photoIndex] = offsetX
+        if oneLinerVM.cachedStoryRecipes.indices.contains(photoIndex) {
+            oneLinerVM.cachedStoryRecipes[photoIndex].cropOffsetX = offsetX
+        }
+    }
 }

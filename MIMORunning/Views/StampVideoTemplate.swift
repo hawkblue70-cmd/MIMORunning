@@ -612,7 +612,7 @@ extension ShareCardScreen {
         }()
         let displayConfig = stampVM.photoConfig(at: playingIdx)
         let displayPhoto  = photos.indices.contains(playingIdx) ? photos[playingIdx] : currentPhoto
-        let isBright      = stampBackgroundIsBright(photo: displayPhoto, position: displayConfig.position)
+        let isBright      = stampSlideBrightMap[playingIdx] ?? false
         // 배경으로 표시할 사진: 재생 중에는 현재 재생 장, 정지 중에는 선택된 장
         // OneLinerPreviewView(AVSynchronizedLayer) 없이 배경 사진 직접 표시 → 검은 화면 방지
         let bgIdx         = previewPlayer.isPlaying ? playingIdx : selectedIdx
@@ -664,7 +664,7 @@ extension ShareCardScreen {
                             stampSlideCropOffsets[selectedIdx] = max(0, min(1,
                                 base - drag.translation.width / excess))
                         }
-                        .onEnded { _ in stampSlideCropDragBase = nil }
+                        .onEnded { _ in stampSlideCropDragBase = nil; saveStampConfig() }
                     : nil)
             } else {
                 Color.black
@@ -683,7 +683,10 @@ extension ShareCardScreen {
                 )
                 .padding(.vertical, cardSectionH * 0.06)   // 위아래 8% 여백 (출력과 동일)
             }
-            // 재생 버튼 / 빌드 스피너
+            // 재생 버튼 / 빌드 스피너 / ▶ 시작 버튼
+            // isBuilding: 빌드 진행 중 (▶ 탭 또는 프리빌드) → 스피너
+            // isReady: 빌드 완료 → 재생·일시정지
+            // else + 사진 있음: 아직 빌드 안 됨 → ▶ 탭하면 빌드 후 재생
             if previewPlayer.isBuilding {
                 ProgressView().tint(.white)
                     .padding(14)
@@ -710,7 +713,19 @@ extension ShareCardScreen {
                         .shadow(color: .black.opacity(0.5), radius: 8)
                 }
                 .buttonStyle(.plain)
-            } else if currentPhoto == nil {
+            } else if currentPhoto != nil {
+                // 빌드 전 ▶ 버튼 — Athletic 슬라이드와 동일 패턴
+                Button {
+                    let data = stampPreviewData
+                    Task { await loadStampSlidePreview(data: data) }
+                } label: {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .shadow(color: .black.opacity(0.5), radius: 8)
+                }
+                .buttonStyle(.plain)
+            } else {
                 VStack(spacing: 8) {
                     Image(systemName: "photo.badge.plus")
                         .font(.system(size: 32))
@@ -739,6 +754,16 @@ extension ShareCardScreen {
         }
         .frame(width: previewW, height: cardSectionH)
         .clipped()
+        .task(id: "\(playingIdx)-\(CardPosition.allCases.firstIndex(of: displayConfig.position) ?? 0)") {
+            let idx   = playingIdx
+            let photo = displayPhoto
+            let pos   = displayConfig.position
+            let result = await Task.detached(priority: .userInitiated) {
+                stampBackgroundIsBright(photo: photo, position: pos)
+            }.value
+            guard !Task.isCancelled else { return }
+            stampSlideBrightMap[idx] = result
+        }
         // 워드마크(좌) + 날짜(우) — 8% 여백 바로 아래에 배치
         .overlay(alignment: .topLeading) {
             HStack(alignment: .firstTextBaseline, spacing: 0) {

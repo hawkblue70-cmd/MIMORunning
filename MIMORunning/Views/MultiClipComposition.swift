@@ -315,6 +315,8 @@ struct ClipRecipe: Identifiable {
     var speed:            Double            = 1.0
     /// 가로(landscape) 콘텐츠 좌우 크롭 위치. 0=왼쪽, 0.5=중앙, 1=오른쪽.
     var cropOffsetX:      CGFloat           = 0.5
+    /// 세로(portrait) 콘텐츠 상하 크롭 위치. 0=상단, 0.5=중앙, 1=하단.
+    var cropOffsetY:      CGFloat           = 0.5
 
     // ── 러닝 데이터 오버레이 (운동한 날 전용, 클립별) ─────────────────
     // P/D/T/B = 가로 그룹(pdtPosition 한 위치). 차트는 chartOverlayType 단일 선택(경로/심박수/기타).

@@ -59,4 +59,7 @@ final class OneLinerViewModel {
     var cachedStoryRecipes:      [ClipRecipe]    = []
     /// true = 슬라이드 모드에서 열림 / false = 스토리 모드에서 열림.
     var storyClipEditIsSlide:    Bool            = false
+    /// 스토리 사진별 인메모리 가로 크롭 위치. 0=왼쪽, 0.5=중앙, 1=오른쪽.
+    var oneLinerStoryCropOffsets: [Int: CGFloat] = [:]
+    var oneLinerCropDragBase:     CGFloat?       = nil
 }

@@ -120,26 +120,43 @@ extension ShareCardScreen {
                     let slideH    = cardSectionH
                     let slideW    = slideH * 9.0 / 16.0
                     let curIdx    = min(placeableCurrentPhotoIdx, max(0, storyPhotos.count - 1))
-                    let slideExcess: CGFloat = {
+                    let slideExcessX: CGFloat = {
                         guard storyPhotos.indices.contains(curIdx) else { return 0 }
                         let p = storyPhotos[curIdx]
                         let s = max(slideW / p.size.width, slideH / p.size.height)
                         return max(0, p.size.width * s - slideW)
                     }()
+                    let slideExcessY: CGFloat = {
+                        guard storyPhotos.indices.contains(curIdx) else { return 0 }
+                        let p = storyPhotos[curIdx]
+                        let s = max(slideW / p.size.width, slideH / p.size.height)
+                        return max(0, p.size.height * s - slideH)
+                    }()
                     ZStack { placeableSlidePreview }
-                        .gesture(
-                            slideExcess > 0 ? DragGesture(minimumDistance: 1)
+                        .simultaneousGesture(
+                            (slideExcessX > 0 || slideExcessY > 0) ? DragGesture(minimumDistance: 8)
                                 .onChanged { drag in
-                                    if placeableVM.storyCropDragBase == nil {
-                                        placeableVM.storyCropDragBase = placeableVM.placeableStoryCropOffsets[curIdx] ?? 0.5
+                                    if placeableVM.storyCropDragBase == nil, placeableVM.storyCropDragBaseY == nil {
+                                        if slideExcessX > 0 {
+                                            guard abs(drag.predictedEndTranslation.width) <= abs(drag.translation.width) * 3.0 else { return }
+                                            placeableVM.storyCropDragBase = placeableVM.placeableStoryCropOffsets[curIdx] ?? 0.5
+                                        } else {
+                                            placeableVM.storyCropDragBaseY = placeableVM.placeableStoryCropOffsetsY[curIdx] ?? 0.5
+                                        }
                                     }
-                                    guard let base = placeableVM.storyCropDragBase else { return }
-                                    let newVal = max(0, min(1, base - drag.translation.width / slideExcess))
-                                    placeableVM.placeableStoryCropOffsets[curIdx] = newVal
+                                    if slideExcessX > 0, let base = placeableVM.storyCropDragBase {
+                                        placeableVM.placeableStoryCropOffsets[curIdx] =
+                                            max(0, min(1, base - drag.translation.width / slideExcessX))
+                                    } else if slideExcessY > 0, let baseY = placeableVM.storyCropDragBaseY {
+                                        placeableVM.placeableStoryCropOffsetsY[curIdx] =
+                                            max(0, min(1, baseY - drag.translation.height / slideExcessY))
+                                    }
                                 }
                                 .onEnded { _ in
-                                    placeableVM.storyCropDragBase = nil
-                                    rebuildPlaceableSlidePreview()
+                                    let didCrop = placeableVM.storyCropDragBase != nil || placeableVM.storyCropDragBaseY != nil
+                                    placeableVM.storyCropDragBase  = nil
+                                    placeableVM.storyCropDragBaseY = nil
+                                    if didCrop { savePlaceableStoryOverlay(); rebuildPlaceableSlidePreview() }
                                 }
                             : nil
                         )
@@ -163,9 +180,19 @@ extension ShareCardScreen {
 
     @ViewBuilder
     var placeableNonSlideCardPreview: some View {
+        // @Observable previewPlayer 속성을 ZStack 진입 전에 스냅샷 — ZStack 클로저 안에서
+        // observation이 중간 상태를 읽어 PAC 크래시가 발생하는 것을 방지.
+        let pvIsReady    = previewPlayer.isReady
+        let pvIsPlaying  = previewPlayer.isPlaying
+        let pvPlayer     = previewPlayer.player
+        let pvLayer      = previewPlayer.contentLayer
+        let pvProgress   = previewPlayer.progress
+        let pvDuration   = previewPlayer.duration
+        let pvIsBuilding = previewPlayer.isBuilding
+        let pvRenderSize = previewPlayer.renderSize
         ZStack {
-            if template == .video, previewPlayer.isReady, previewPlayer.isPlaying,
-               let vp = previewPlayer.player, let contentLayer = previewPlayer.contentLayer {
+            if template == .video, pvIsReady, pvIsPlaying,
+               let vp = pvPlayer, let contentLayer = pvLayer {
                 let previewW: CGFloat  = cardSectionH * 9.0 / 16.0
                 let pvScale:  CGFloat  = previewW / PlaceableCard.cardWidth
                 let overlayH: CGFloat  = PlaceableCard.cardHeight * pvScale
@@ -178,13 +205,13 @@ extension ShareCardScreen {
 
                 // 영상 재생 — 비디오 레이어 (contentLayer는 차트/PDT 전용, 문구는 SwiftUI 오버레이 담당)
                 OneLinerPreviewView(player: vp, contentLayer: contentLayer,
-                                    renderSize: previewPlayer.renderSize)
+                                    renderSize: pvRenderSize)
                     .frame(width: previewW, height: cardH)
                     .overlay(alignment: .bottom) {
                         GeometryReader { geo in
                             Rectangle()
                                 .fill(Theme.violet)
-                                .frame(width: geo.size.width * previewPlayer.progress, height: 3)
+                                .frame(width: geo.size.width * pvProgress, height: 3)
                         }
                         .frame(height: 3)
                         .clipShape(RoundedRectangle(cornerRadius: 1.5))
@@ -218,11 +245,11 @@ extension ShareCardScreen {
                 // 재생 중인 클립의 문구 — 스탬프 카드와 동일한 SwiftUI 오버레이 + 애니메이션 방식
                 let playingClipIdx: Int = {
                     guard !placeableVM.placeableClipRecipes.isEmpty,
-                          previewPlayer.duration > 0 else {
+                          pvDuration > 0 else {
                         return min(placeableVM.selectedPlaceableClipIndex,
                                    max(0, placeableVM.placeableClipRecipes.count - 1))
                     }
-                    let currentTime = previewPlayer.progress * previewPlayer.duration
+                    let currentTime = pvProgress * pvDuration
                     var elapsed = 0.0
                     for (i, recipe) in placeableVM.placeableClipRecipes.enumerated() {
                         elapsed += recipe.trimmedDuration / max(0.1, recipe.speed)
@@ -244,8 +271,8 @@ extension ShareCardScreen {
                         cardH: cardH,
                         chartBottomReserved: PlaceableCard.cardWidth * (16.0 / 9.0) * 0.06 + placeableVM.storyBottomReserved,
                         chartTopReserved: placeableVM.storyTopReserved,
-                        previewProgress: previewPlayer.progress,
-                        isVideoPlaying: previewPlayer.isPlaying
+                        previewProgress: pvProgress,
+                        isVideoPlaying: pvIsPlaying
                     )
                 }
 
@@ -373,12 +400,12 @@ extension ShareCardScreen {
                     .id(safeIdx_v)
                 }
 
-                if previewPlayer.isBuilding {
+                if pvIsBuilding {
                     ProgressView().tint(.white)
                         .padding(14)
                         .background(.black.opacity(0.45))
                         .clipShape(Circle())
-                } else if previewPlayer.isReady {
+                } else if pvIsReady {
                     Button {
                         if placeableVM.placeableVideoTextDirty {
                             Task { await loadPlaceablePreview(); previewPlayer.play() }

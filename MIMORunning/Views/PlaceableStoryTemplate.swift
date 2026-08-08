@@ -15,11 +15,17 @@ extension ShareCardScreen {
     @ViewBuilder
     var placeableStoryPreview: some View {
         let storyPhoto = photoFor(1)
-        let storyCropX = placeableVM.placeableStoryCropOffsets[placeableCurrentPhotoIdx] ?? 0.5
-        let storyExcess: CGFloat = {
+        let storyCropX = placeableVM.placeableStoryCropOffsets[placeableCurrentPhotoIdx]  ?? 0.5
+        let storyCropY = placeableVM.placeableStoryCropOffsetsY[placeableCurrentPhotoIdx] ?? 0.5
+        let storyExcessX: CGFloat = {
             guard let p = storyPhoto else { return 0 }
             let s = max(300 / p.size.width, 375 / p.size.height)
             return max(0, p.size.width * s - 300)
+        }()
+        let storyExcessY: CGFloat = {
+            guard let p = storyPhoto else { return 0 }
+            let s = max(300 / p.size.width, 375 / p.size.height)
+            return max(0, p.size.height * s - 375)
         }()
         PlaceableCard(
             activity: activity,
@@ -36,21 +42,35 @@ extension ShareCardScreen {
             layout: placeableVM.placeableLayout,
             horizTextRow: placeableVM.placeableHorizTextRow,
             horizRoutePos: placeableVM.placeableHorizRoutePos,
-            cropOffsetX: storyCropX
+            cropOffsetX: storyCropX,
+            cropOffsetY: storyCropY
         )
-        .gesture(
-            storyExcess > 0 ? DragGesture(minimumDistance: 1)
+        .simultaneousGesture(
+            (storyExcessX > 0 || storyExcessY > 0) ? DragGesture(minimumDistance: 8)
                 .onChanged { drag in
-                    if placeableVM.storyCropDragBase == nil {
-                        placeableVM.storyCropDragBase = storyCropX
+                    if placeableVM.storyCropDragBase == nil, placeableVM.storyCropDragBaseY == nil {
+                        if storyExcessX > 0 {
+                            // 가로 초과: 빠른 수평 스와이프는 카드 전환에 양보
+                            guard abs(drag.predictedEndTranslation.width) <= abs(drag.translation.width) * 3.0 else { return }
+                            placeableVM.storyCropDragBase = storyCropX
+                        } else {
+                            // 세로 초과: 수직 드래그, 카드 전환과 충돌 없음
+                            placeableVM.storyCropDragBaseY = storyCropY
+                        }
                     }
-                    guard let base = placeableVM.storyCropDragBase else { return }
-                    let newVal = max(0, min(1, base - drag.translation.width / storyExcess))
-                    placeableVM.placeableStoryCropOffsets[placeableCurrentPhotoIdx] = newVal
+                    if storyExcessX > 0, let base = placeableVM.storyCropDragBase {
+                        placeableVM.placeableStoryCropOffsets[placeableCurrentPhotoIdx] =
+                            max(0, min(1, base - drag.translation.width / storyExcessX))
+                    } else if storyExcessY > 0, let baseY = placeableVM.storyCropDragBaseY {
+                        placeableVM.placeableStoryCropOffsetsY[placeableCurrentPhotoIdx] =
+                            max(0, min(1, baseY - drag.translation.height / storyExcessY))
+                    }
                 }
                 .onEnded { _ in
-                    placeableVM.storyCropDragBase = nil
-                    Task { await renderCard(showSpinner: false) }
+                    let didCrop = placeableVM.storyCropDragBase != nil || placeableVM.storyCropDragBaseY != nil
+                    placeableVM.storyCropDragBase  = nil
+                    placeableVM.storyCropDragBaseY = nil
+                    if didCrop { savePlaceableStoryOverlay(); Task { await renderCard(showSpinner: false) } }
                 }
             : nil
         )
@@ -74,25 +94,18 @@ extension ShareCardScreen {
             .frame(width: 300, height: 375)
             .allowsHitTesting(false)
         }
-        // 워드마크 + 날짜: 스탬프 스토리와 동일한 단일 HStack
-        HStack {
-            HStack(spacing: 0) {
-                Text("MIMO")
-                    .font(.system(size: 9, weight: .black))
-                    .tracking(2)
-                    .foregroundStyle(.white)
-                Text(" RUNNING")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(Theme.violet)
-            }
-            .cardTextShadow()
-            Spacer()
-            Text(activity.date.oneLinerDateString)
-                .font(.system(size: 11, weight: .regular))
+        // 워드마크: 상단 좌측 (날짜는 하단과 중복되므로 제거)
+        HStack(spacing: 0) {
+            Text("MIMO")
+                .font(.system(size: 9, weight: .black))
+                .tracking(2)
                 .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+            Text(" RUNNING")
+                .font(.system(size: 9, weight: .bold))
+                .tracking(2)
+                .foregroundStyle(Theme.violet)
         }
+        .cardTextShadow()
         .padding(.horizontal, 14)
         .padding(.top, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -122,7 +135,8 @@ extension ShareCardScreen {
                 layout: placeableVM.placeableLayout,
                 horizTextRow: placeableVM.placeableHorizTextRow,
                 horizRoutePos: placeableVM.placeableHorizRoutePos,
-                cropOffsetX: placeableVM.placeableStoryCropOffsets[photoIndex] ?? 0.5
+                cropOffsetX: placeableVM.placeableStoryCropOffsets[photoIndex]  ?? 0.5,
+                cropOffsetY: placeableVM.placeableStoryCropOffsetsY[photoIndex] ?? 0.5
             )
             if (template == .story || template == .video || template == .slide), !overlayText.isEmpty {
                 OneLinerCard(
@@ -142,25 +156,18 @@ extension ShareCardScreen {
                     isStaticPreview: true
                 )
             }
-            // 워드마크 + 날짜: 스탬프 스토리와 동일한 단일 HStack
-            HStack {
-                HStack(spacing: 0) {
-                    Text("MIMO")
-                        .font(.system(size: 9, weight: .black))
-                        .tracking(2)
-                        .foregroundStyle(.white)
-                    Text(" RUNNING")
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(2)
-                        .foregroundStyle(Theme.violet)
-                }
-                .cardTextShadow()
-                Spacer()
-                Text(activity.date.oneLinerDateString)
-                    .font(.system(size: 11, weight: .regular))
+            // 워드마크: 상단 좌측 (날짜는 하단과 중복되므로 제거)
+            HStack(spacing: 0) {
+                Text("MIMO")
+                    .font(.system(size: 9, weight: .black))
+                    .tracking(2)
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                Text(" RUNNING")
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(2)
+                    .foregroundStyle(Theme.violet)
             }
+            .cardTextShadow()
             .padding(.horizontal, 14)
             .padding(.top, 14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

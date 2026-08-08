@@ -121,11 +121,13 @@ extension ShareCardScreen {
                 ? min(Int(previewPlayer.progress * Double(storyPhotos.count)), storyPhotos.count - 1)
                 : min(placeableCurrentPhotoIdx, storyPhotos.count - 1)
             let sp0      = storyPhotos[bgIdx]
-            let sCropX   = placeableVM.placeableStoryCropOffsets[bgIdx] ?? 0.5
+            let sCropX   = placeableVM.placeableStoryCropOffsets[bgIdx]  ?? 0.5
+            let sCropY   = placeableVM.placeableStoryCropOffsetsY[bgIdx] ?? 0.5
             let sp0Scale = max(previewW / sp0.size.width, cardH / sp0.size.height)
             let sp0ImgW  = sp0.size.width  * sp0Scale
             let sp0ImgH  = sp0.size.height * sp0Scale
             let sp0Ox    = -(sCropX * max(0, sp0ImgW - previewW))
+            let sp0Oy    = -(sCropY * max(0, sp0ImgH - cardH))
             // Ken Burns: PhotoSlideComposition.kenBurns와 동일한 상수·공식으로 SwiftUI 구동
             let kbEndScale: CGFloat = 1.08
             let kbPanRange: CGFloat = 60.0          // PhotoSlideComposition.kbPanRange 동일
@@ -173,7 +175,7 @@ extension ShareCardScreen {
                 .resizable()
                 .frame(width: sp0ImgW, height: sp0ImgH)
                 .scaleEffect(isKB ? kbScale : 1.0, anchor: .center)
-                .offset(x: sp0Ox + (isKB ? kbPanX : 0))
+                .offset(x: sp0Ox + (isKB ? kbPanX : 0), y: sp0Oy)
                 .frame(width: previewW, height: cardH, alignment: .topLeading)
                 .clipped()
                 .id(bgIdx)
@@ -327,7 +329,8 @@ extension ShareCardScreen {
             r.appearanceMode   = style.appearanceMode
             r.decorEffect      = style.appearanceMode == .fade ? style.decorEffect : .none
             r.flyDirection     = style.flyDirection
-            r.cropOffsetX      = placeableVM.placeableStoryCropOffsets[i] ?? 0.5
+            r.cropOffsetX      = placeableVM.placeableStoryCropOffsets[i]  ?? 0.5
+            r.cropOffsetY      = placeableVM.placeableStoryCropOffsetsY[i] ?? 0.5
             return r
         }
     }

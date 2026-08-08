@@ -34,6 +34,17 @@ extension ShareCardScreen {
             placeableVM.placeableSlideClipStyles = Dictionary(uniqueKeysWithValues:
                 styles.compactMap { k, v in Int(k).map { ($0, v) } })
         }
+        // 사진별 크롭 오프셋 복원
+        if let data = ud.data(forKey: p + "cropOffsetsX"),
+           let dict = try? JSONDecoder().decode([String: Double].self, from: data) {
+            placeableVM.placeableStoryCropOffsets = Dictionary(uniqueKeysWithValues:
+                dict.compactMap { k, v in Int(k).map { ($0, CGFloat(v)) } })
+        }
+        if let data = ud.data(forKey: p + "cropOffsetsY"),
+           let dict = try? JSONDecoder().decode([String: Double].self, from: data) {
+            placeableVM.placeableStoryCropOffsetsY = Dictionary(uniqueKeysWithValues:
+                dict.compactMap { k, v in Int(k).map { ($0, CGFloat(v)) } })
+        }
     }
 
     func savePlaceableStoryOverlay() {
@@ -52,5 +63,35 @@ extension ShareCardScreen {
         // 슬라이드 클립별 스타일 저장
         let stylesDict = Dictionary(uniqueKeysWithValues: placeableVM.placeableSlideClipStyles.map { (String($0.key), $0.value) })
         if let data = try? JSONEncoder().encode(stylesDict) { ud.set(data, forKey: p + "slideClipStyles") }
+        // 사진별 크롭 오프셋 저장
+        let cxDict = Dictionary(uniqueKeysWithValues: placeableVM.placeableStoryCropOffsets.map  { (String($0.key), Double($0.value)) })
+        let cyDict = Dictionary(uniqueKeysWithValues: placeableVM.placeableStoryCropOffsetsY.map { (String($0.key), Double($0.value)) })
+        if let data = try? JSONEncoder().encode(cxDict) { ud.set(data, forKey: p + "cropOffsetsX") }
+        if let data = try? JSONEncoder().encode(cyDict) { ud.set(data, forKey: p + "cropOffsetsY") }
+    }
+
+    // MARK: - Athletic 크롭 저장·복원
+
+    var athleticCropPrefix: String { "athletic_\(activity.id.uuidString)_" }
+
+    func saveAthleticCropOffsets() {
+        let ud = UserDefaults.standard
+        let p  = athleticCropPrefix
+        ud.set(Double(athleticCropOffsetX), forKey: p + "cropX")
+        let dict = Dictionary(uniqueKeysWithValues: athleticSlideCropOffsets.map { (String($0.key), Double($0.value)) })
+        if let data = try? JSONEncoder().encode(dict) { ud.set(data, forKey: p + "slideCropOffsets") }
+    }
+
+    func loadAthleticCropOffsets() {
+        let ud = UserDefaults.standard
+        let p  = athleticCropPrefix
+        if ud.object(forKey: p + "cropX") != nil {
+            athleticCropOffsetX = CGFloat(ud.double(forKey: p + "cropX"))
+        }
+        if let data = ud.data(forKey: p + "slideCropOffsets"),
+           let dict = try? JSONDecoder().decode([String: Double].self, from: data) {
+            athleticSlideCropOffsets = Dictionary(uniqueKeysWithValues:
+                dict.compactMap { k, v in Int(k).map { ($0, CGFloat(v)) } })
+        }
     }
 }
