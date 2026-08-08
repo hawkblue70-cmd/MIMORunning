@@ -13,9 +13,10 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
                            isBright: Bool, renderSize: CGSize,
                            configOverride: StampPhotoConfig? = nil,
                            renderOnlyStamp: Bool = false,
-                           renderOnlyText: Bool = false) -> UIImage? {
-    // 9:16 캔버스를 300pt 폭으로 고정, 높이는 비례 계산
-    let ptH = renderSize.height / renderSize.width * 300
+                           renderOnlyText: Bool = false,
+                           logicalWidth: CGFloat = 300) -> UIImage? {
+    // logicalWidth: 슬라이드=300pt(슬라이드 미리보기 동일), 영상=375*9/16≈211pt(영상 미리보기 동일)
+    let ptH = renderSize.height / renderSize.width * logicalWidth
     let cfg = configOverride ?? vm.currentConfig
     let card = StampCard(
         data: data,
@@ -37,11 +38,11 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
         renderOnlyText: renderOnlyText
     )
     // 위아래 6% 여백: 88% 높이로 렌더 후 전체 높이로 감쌈 → 자동으로 6% top/bottom 마진
-    .frame(width: 300, height: ptH * 0.88)
-    .frame(width: 300, height: ptH)
+    .frame(width: logicalWidth, height: ptH * 0.88)
+    .frame(width: logicalWidth, height: ptH)
     let renderer = ImageRenderer(content: card)
-    renderer.proposedSize = .init(width: 300, height: ptH)
-    renderer.scale = renderSize.width / 300  // 3.6 for 1080-wide video → 1080×1920 px
+    renderer.proposedSize = .init(width: logicalWidth, height: ptH)
+    renderer.scale = renderSize.width / logicalWidth
     renderer.isOpaque = false
     _ = renderer.uiImage   // 첫 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환할 수 있음 — 버림
     return renderer.uiImage
@@ -86,34 +87,37 @@ func makeStampLogoDateOverlay(date: Date, renderSize: CGSize) -> UIImage? {
 }
 
 /// 영상 출력에 얹히는 MIMO 워드마크(좌) + 날짜(우) 정적 이미지.
+/// 영상 미리보기(previewW=375*9/16≈211pt, 7pt/6pt)와 동일한 논리 크기로 렌더.
 @MainActor
 func makeStampLogoOverlay(date: Date, renderSize: CGSize) -> UIImage? {
-    let ptH  = renderSize.height / renderSize.width * 300
-    let vPad = ptH * 0.06
+    // 영상 미리보기 컨테이너와 동일한 논리 폭 → 미리보기·출력 워드마크 크기 일치
+    let baseW: CGFloat = 375.0 * 9.0 / 16.0  // ≈ 210.94pt
+    let ptH  = renderSize.height / renderSize.width * baseW  // ≈ 375pt for 1080×1920
+    let vPad = ptH * 0.06  // ≈ 22.5pt (미리보기: cardSectionH * 0.06)
     let df = DateFormatter(); df.dateFormat = "yyyy.MM.dd"
     let dateStr = df.string(from: date)
     let overlay = HStack(alignment: .firstTextBaseline, spacing: 0) {
         Text("MIMO")
-            .font(.system(size: 9, weight: .black))
+            .font(.system(size: 7, weight: .black))  // 미리보기 7pt
             .tracking(2)
             .foregroundStyle(.white)
         Text(" RUNNING")
-            .font(.system(size: 9, weight: .bold))
+            .font(.system(size: 7, weight: .bold))   // 미리보기 7pt
             .tracking(2)
             .foregroundStyle(Theme.violet)
         Spacer()
         Text(dateStr)
-            .font(.system(size: 8, weight: .medium))
+            .font(.system(size: 6, weight: .medium)) // 미리보기 6pt
             .foregroundStyle(.white)
     }
     .cardTextShadow()
-    .padding(.leading, 14)
-    .padding(.trailing, 14)
+    .padding(.leading, baseW * 0.047)  // ≈ 9.9pt (미리보기: previewW * 0.047)
+    .padding(.trailing, baseW * 0.05)  // ≈ 10.5pt (미리보기: previewW * 0.05)
     .padding(.top, vPad)
-    .frame(width: 300, height: ptH, alignment: .topLeading)
+    .frame(width: baseW, height: ptH, alignment: .topLeading)
     let renderer = ImageRenderer(content: overlay)
-    renderer.proposedSize = .init(width: 300, height: ptH)
-    renderer.scale = renderSize.width / 300
+    renderer.proposedSize = .init(width: baseW, height: ptH)
+    renderer.scale = renderSize.width / baseW  // ≈ 5.12x for 1080px
     renderer.isOpaque = false
     return renderer.uiImage
 }
@@ -135,11 +139,12 @@ func makeStampVideoThumbnail(data: StampData, vm: StampViewModel) -> UIImage? {
     // 배경: 첫 클립 썸네일. 없으면 어두운 단색으로 대체.
     let bgImage = vm.clipRecipes.first?.thumbnail
 
-    // 스탬프 오버레이 (투명 배경)
+    // 스탬프 오버레이 — 영상 미리보기와 동일한 논리 폭(≈211pt)으로 렌더
     let isBright = stampVideoIsBright(vm: vm)
     guard let overlay = makeStampOverlayImage(
         data: data, vm: vm,
-        isBright: isBright, renderSize: outSize)
+        isBright: isBright, renderSize: outSize,
+        logicalWidth: 375.0 * 9.0 / 16.0)
     else { return nil }
 
     let format = UIGraphicsImageRendererFormat()

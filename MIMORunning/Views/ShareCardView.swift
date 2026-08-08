@@ -5031,12 +5031,15 @@ struct ShareCardScreen: View {
             let renderSz = VideoExportService.targetSize
 
             // Warmup: 첫 번째 ImageRenderer 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환함.
+            // logicalWidth: 영상 미리보기 컨테이너(375*9/16≈211pt)와 동일하게 → 미리보기·출력 크기 일치
+            let stampVideoLogicalW: CGFloat = 375.0 * 9.0 / 16.0
             if let firstRecipe = stampVM.clipRecipes.first {
                 let wuCfg = stampVM.photoConfig(at: 0)
                 let wuBright = stampBackgroundIsBright(photo: firstRecipe.thumbnail, position: wuCfg.position)
                 _ = makeStampOverlayImage(data: stampPreviewData, vm: stampVM,
                                           isBright: wuBright, renderSize: renderSz,
-                                          configOverride: wuCfg, renderOnlyStamp: true)
+                                          configOverride: wuCfg, renderOnlyStamp: true,
+                                          logicalWidth: stampVideoLogicalW)
                 try? await Task.sleep(nanoseconds: 50_000_000)
                 guard isStamp, template == .video else { isExportingVideo = false; return }
             }
@@ -5052,13 +5055,15 @@ struct ShareCardScreen: View {
                     data: stampPreviewData, vm: stampVM,
                     isBright: isBright, renderSize: renderSz,
                     configOverride: cfg,
-                    renderOnlyStamp: true)
+                    renderOnlyStamp: true,
+                    logicalWidth: stampVideoLogicalW)
                 else { continue }
                 let textImg: UIImage? = cfg.text.isEmpty ? nil : makeStampOverlayImage(
                     data: stampPreviewData, vm: stampVM,
                     isBright: isBright, renderSize: renderSz,
                     configOverride: cfg,
-                    renderOnlyText: true)
+                    renderOnlyText: true,
+                    logicalWidth: stampVideoLogicalW)
 
                 var srcURL: URL = recipe.url
                 if !FileManager.default.fileExists(atPath: recipe.url.path) {
