@@ -56,6 +56,9 @@ struct MeView: View {
     @AppStorage("goalTimeFull")  private var goalTimeFull = ""
     @State private var editingGoal: RaceGoalKind? = nil
     @State private var nicknameInput: String = ""
+    @State private var nicknameSavedFlash = false
+    @FocusState private var nicknameFieldFocused: Bool
+    @State private var showCreateCrew = false
     #if DEBUG
     @State private var showDebug = false
     #endif
@@ -714,7 +717,6 @@ struct MeView: View {
     private var crewNicknameSection: some View {
         let L = AppLanguage.shared
         let isValid = crewNicknameManager.isValid(nicknameInput)
-        let unchanged = nicknameInput.trimmingCharacters(in: .whitespaces) == (crewNicknameManager.nickname ?? "")
         return VStack(alignment: .leading, spacing: 12) {
             Text(L.s("크루", "Crew"))
                 .font(.headline)
@@ -735,6 +737,7 @@ struct MeView: View {
                         .foregroundStyle(.white)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .focused($nicknameFieldFocused)
 
                         if !nicknameInput.isEmpty && !isValid {
                             Text(L.s("2~12자로 입력해주세요", "Enter 2–12 characters"))
@@ -743,12 +746,18 @@ struct MeView: View {
                         }
                     }
 
-                    Button(L.s("저장", "Save")) {
+                    Button(nicknameSavedFlash ? L.s("저장됨 ✓", "Saved ✓") : L.s("저장", "Save")) {
                         crewNicknameManager.save(nicknameInput)
+                        nicknameFieldFocused = false
+                        nicknameSavedFlash = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.5))
+                            nicknameSavedFlash = false
+                        }
                     }
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(isValid && !unchanged ? Theme.violet : Color.secondary.opacity(0.4))
-                    .disabled(!isValid || unchanged)
+                    .foregroundStyle(isValid ? (nicknameSavedFlash ? Color.green : Theme.violet) : Color.secondary.opacity(0.4))
+                    .disabled(!isValid)
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
@@ -757,6 +766,34 @@ struct MeView: View {
             .background(Theme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 16)
+
+            // 임시 진입점 — 크루 탭 연결 전까지
+            Button {
+                showCreateCrew = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Theme.violet)
+                    Text(AppLanguage.shared.s("크루 만들기 (임시)", "Create Crew (temp)"))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.violet)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, 16)
+            }
+            .buttonStyle(.plain)
+        }
+        .sheet(isPresented: $showCreateCrew) {
+            CreateCrewView()
+                .environment(crewNicknameManager)
         }
     }
 
