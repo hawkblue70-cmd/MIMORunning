@@ -4379,9 +4379,11 @@ struct ShareCardScreen: View {
         } else if isStamp && template == .story {
             Button {
                 // 버튼 탭 시점(동기)에 baseConfig 캡처.
-                // baseConfig는 모든 스타일 setter(position·template·colorMode 등)가 항상 최신값으로 갱신하므로
-                // selectedClipIndex 불일치로 photoConfigs[0]이 구식이 되더라도 올바른 값을 보장한다.
-                let exportCfg  = stampVM.baseConfig
+                // baseConfig는 position·template·colorMode 등 스타일 setter가 항상 최신값으로 갱신하지만,
+                // stampText는 per-photo라 currentConfig에만 저장되고 baseConfig.text는 빈 문자열.
+                // 두 값을 병합: 스타일은 baseConfig, 문구는 currentConfig.text.
+                var exportCfg  = stampVM.baseConfig
+                exportCfg.text = stampVM.currentConfig.text
                 let exportCropX = stampVM.storyCropOffsetX
                 Task { @MainActor in
                     // Warmup: 첫 번째 ImageRenderer 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환함.
@@ -5525,7 +5527,7 @@ struct ShareCardScreen: View {
         let descs = validRecipes.map { r in
             SavedClipDescriptor(
                 assetID: r.assetIdentifier, clipVideoRef: nil,
-                photoRef: nil, thumbRef: nil,
+                photoRef: nil, thumbRef: r.thumbRef,
                 trimStart: r.trimStart, trimEnd: r.trimEnd, fullDuration: r.fullDuration,
                 lines: [], fontID: nil, colorID: nil, anchorIdx: nil, sizeID: nil,
                 effectID: nil, speed: 1.0, cropOffsetX: 0.0,
@@ -5565,7 +5567,13 @@ struct ShareCardScreen: View {
             let url = (avAsset as? AVURLAsset)?.url
                 ?? FileManager.default.temporaryDirectory
                     .appendingPathComponent("mimo_ath_\(UUID().uuidString).mov")
-            let thumb = await VideoExportService.firstFrame(of: url)
+            // ClipThumbStore 디스크 캐시 우선 — PHAsset이 AVURLAsset이 아닌 경우에도 썸네일 표시
+            let thumb: UIImage?
+            if let tr = desc.thumbRef, let stored = ClipThumbStore.load(ref: tr) {
+                thumb = stored
+            } else {
+                thumb = await VideoExportService.firstFrame(of: url)
+            }
             var recipe = ClipRecipe(url: url, fullDuration: desc.fullDuration, thumbnail: thumb)
             recipe.trimStart      = desc.trimStart
             recipe.trimEnd        = desc.trimEnd
@@ -5778,10 +5786,11 @@ struct ShareCardScreen: View {
                 storyShareImages = []
                 previewImage = nil
                 let photo = storyPhotos.first
-                // baseConfig는 position·template 등 모든 스타일 setter가 항상 최신값으로 갱신하므로
-                // photoConfig(at:0) 대신 baseConfig를 사용하면 selectedClipIndex 불일치로 인한
-                // 구식 값 사용 문제를 방지할 수 있다.
-                let cfg = stampVM.baseConfig
+                // baseConfig는 position·template 등 스타일 setter가 항상 최신값으로 갱신하지만,
+                // stampText는 per-photo라 currentConfig에만 저장되고 baseConfig.text는 빈 문자열.
+                // 두 값을 병합: 스타일은 baseConfig, 문구는 currentConfig.text.
+                var cfg = stampVM.baseConfig
+                cfg.text = stampVM.currentConfig.text
                 let wuView = StampStoryRenderView(
                     photo: photo, data: stampPreviewData, vm: stampVM,
                     cropOffsetX: stampVM.storyCropOffsetX,
@@ -5795,7 +5804,7 @@ struct ShareCardScreen: View {
                 previewImage = makeStampStoryImage(
                     photo: photo, data: stampPreviewData, vm: stampVM,
                     cropOffsetX: stampVM.storyCropOffsetX,
-                    configOverride: stampVM.baseConfig,
+                    configOverride: cfg,
                     displayDate: activity.date)
             }
             isRendering = false; return
