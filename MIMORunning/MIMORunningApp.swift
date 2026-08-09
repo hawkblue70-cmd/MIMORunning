@@ -6,6 +6,7 @@ import OSLog
 struct MIMORunningApp: App {
     @State private var raceDetector = RaceDetector()
     @State private var miniMeStore = CustomMiniMeStore()
+    @State private var crewNickname = CrewNicknameManager()
     @StateObject private var engine = MREngineStore()
 
     init() {
@@ -137,6 +138,7 @@ struct MIMORunningApp: App {
                     .environmentObject(engine)
                     .environment(raceDetector)
                     .environment(miniMeStore)
+                    .environment(crewNickname)
                     .task { await engine.refresh() }
                     .preferredColorScheme(.dark)
             }

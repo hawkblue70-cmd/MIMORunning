@@ -29,6 +29,7 @@ struct MeView: View {
     @EnvironmentObject private var engine: MREngineStore
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @Environment(RaceDetector.self) private var raceDetector
+    @Environment(CrewNicknameManager.self) private var crewNicknameManager
     @Query(sort: \MyPlannedRace.dateString) private var plannedRaces: [MyPlannedRace]
     @Query private var shoes: [Shoe]
     @Query private var allStories: [WorkoutStory]
@@ -54,6 +55,7 @@ struct MeView: View {
     @AppStorage("goalTimeHalf")  private var goalTimeHalf = ""
     @AppStorage("goalTimeFull")  private var goalTimeFull = ""
     @State private var editingGoal: RaceGoalKind? = nil
+    @State private var nicknameInput: String = ""
     #if DEBUG
     @State private var showDebug = false
     #endif
@@ -214,6 +216,7 @@ struct MeView: View {
                         statsSection
                         shoesSection
                         milestonesSection
+                        crewNicknameSection
                         settingsSection
                         Spacer(minLength: 32)
                     }
@@ -224,6 +227,7 @@ struct MeView: View {
             .navigationBarTitleDisplayMode(.large)
         }
         .task {
+            nicknameInput = crewNicknameManager.nickname ?? ""
             syncAndRecompute()
             await createArchivesIfNeeded()
             mrDeduplicateSnapshots(allSnapshots, context: modelContext)
@@ -701,6 +705,57 @@ struct MeView: View {
                     BadgeCell(badge: badge)
                 }
             }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    // MARK: - Crew section
+
+    private var crewNicknameSection: some View {
+        let L = AppLanguage.shared
+        let isValid = crewNicknameManager.isValid(nicknameInput)
+        let unchanged = nicknameInput.trimmingCharacters(in: .whitespaces) == (crewNicknameManager.nickname ?? "")
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(L.s("크루", "Crew"))
+                .font(.headline)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(L.s("닉네임", "Nickname"))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        TextField(
+                            L.s("크루에서 사용할 이름", "Name for crew"),
+                            text: $nicknameInput
+                        )
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+
+                        if !nicknameInput.isEmpty && !isValid {
+                            Text(L.s("2~12자로 입력해주세요", "Enter 2–12 characters"))
+                                .font(.caption2)
+                                .foregroundStyle(Theme.heartRate)
+                        }
+                    }
+
+                    Button(L.s("저장", "Save")) {
+                        crewNicknameManager.save(nicknameInput)
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isValid && !unchanged ? Theme.violet : Color.secondary.opacity(0.4))
+                    .disabled(!isValid || unchanged)
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+            }
+            .background(Theme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 16)
         }
     }
@@ -2041,4 +2096,66 @@ private struct GoalTimeEditSheet: View {
             seconds = 0
         }
     }
+}
+
+// MARK: - Preview: 크루 닉네임 섹션
+
+#Preview("크루 닉네임") {
+    struct CrewPreview: View {
+        @State private var manager = CrewNicknameManager()
+        @State private var input: String = ""
+
+        var body: some View {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("크루")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+
+                    VStack(spacing: 0) {
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("닉네임")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                TextField("크루에서 사용할 이름", text: $input)
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(.white)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                if !input.isEmpty && !manager.isValid(input) {
+                                    Text("2~12자로 입력해주세요")
+                                        .font(.caption2)
+                                        .foregroundStyle(Theme.heartRate)
+                                }
+                            }
+                            let isValid = manager.isValid(input)
+                            let unchanged = input.trimmingCharacters(in: .whitespaces) == (manager.nickname ?? "")
+                            Button("저장") { manager.save(input) }
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(isValid && !unchanged ? Theme.violet : Color.secondary.opacity(0.4))
+                                .disabled(!isValid || unchanged)
+                                .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 13)
+                    }
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .padding(.horizontal, 16)
+
+                    if let saved = manager.nickname {
+                        Text("저장된 닉네임: \(saved)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                    }
+                }
+                .padding(.top, 40)
+            }
+        }
+    }
+    return CrewPreview()
 }
