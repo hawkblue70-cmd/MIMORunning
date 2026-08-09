@@ -2850,10 +2850,12 @@ struct ShareCardScreen: View {
             if newTpl.requires.contains(.route)    { fetchStampMapIfNeeded() }
         }
         .onChange(of: stampVM.clipRecipes.count) { _, _ in
-            guard isStamp, template == .video else { return }
+            guard isStamp else { return }
+            // 클립 수 변경 시 항상 저장 — template이 .video가 아닌 상태에서 클립을 추가해도 유지.
+            saveStampConfig()
+            guard template == .video else { return }
             previewPlayer.invalidate()
             exportedVideoFile = nil
-            saveStampConfig()
             Task { await loadStampVideoPreview(data: stampPreviewData) }
         }
         .onChange(of: stampVM.muteAudio) { _, newVal in

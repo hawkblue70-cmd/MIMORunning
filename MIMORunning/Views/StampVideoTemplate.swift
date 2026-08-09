@@ -565,6 +565,7 @@ extension ShareCardScreen {
                     trimStart: Bindable(stampVM).clipRecipes[idx].trimStart,
                     trimEnd:   Bindable(stampVM).clipRecipes[idx].trimEnd,
                     onEditingEnded: {
+                        saveStampConfig()
                         Task { await loadStampVideoPreview(data: stampPreviewData) }
                     }
                 )
