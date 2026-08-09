@@ -11,13 +11,28 @@ struct ContentView: View {
     var body: some View {
         TabView {
             ActivityListView(manager: manager)
-                .tabItem { Label(AppLanguage.shared.s("기록", "Log"), systemImage: "figure.run") }
+                .tabItem {
+                    Image(systemName: "figure.run").imageScale(.large)
+                    Text(AppLanguage.shared.s("기록", "Log"))
+                }
 
             GrowthView(manager: manager)
-                .tabItem { Label(AppLanguage.shared.s("성장", "Growth"), systemImage: "chart.line.uptrend.xyaxis") }
+                .tabItem {
+                    Image(systemName: "chart.line.uptrend.xyaxis").imageScale(.large)
+                    Text(AppLanguage.shared.s("성장", "Growth"))
+                }
+
+            CrewTabView(manager: manager)
+                .tabItem {
+                    Image(systemName: "person.2.fill").imageScale(.large)
+                    Text(AppLanguage.shared.s("크루", "Crew"))
+                }
 
             MeView(manager: manager)
-                .tabItem { Label(AppLanguage.shared.s("나", "Me"), systemImage: "person") }
+                .tabItem {
+                    Image(systemName: "person").imageScale(.large)
+                    Text(AppLanguage.shared.s("나", "Me"))
+                }
         }
         .tint(Theme.violet)
         .preferredColorScheme(.dark)

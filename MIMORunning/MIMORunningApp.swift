@@ -11,6 +11,10 @@ struct MIMORunningApp: App {
 
     init() {
         FontLoader.registerBundledFonts()
+        UITabBar.appearance().itemPositioning = .centered
+        UITabBar.appearance().itemWidth = 76
+        UITabBar.appearance().itemSpacing = 0
+        UITabBarItem.appearance().imageInsets = UIEdgeInsets(top: -4, left: 0, bottom: 4, right: 0)
         MRCacheMaintenance.purgeStale()
         MIMORunningApp.migrateFormStable()
         MIMORunningApp.mergeAndPurgeStaleWorkoutTypeKey()

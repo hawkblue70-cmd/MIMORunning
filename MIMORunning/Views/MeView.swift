@@ -58,8 +58,7 @@ struct MeView: View {
     @State private var nicknameInput: String = ""
     @State private var nicknameSavedFlash = false
     @FocusState private var nicknameFieldFocused: Bool
-    @State private var showCreateCrew = false
-    #if DEBUG
+#if DEBUG
     @State private var showDebug = false
     #endif
 
@@ -767,33 +766,6 @@ struct MeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 16)
 
-            // 임시 진입점 — 크루 탭 연결 전까지
-            Button {
-                showCreateCrew = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Theme.violet)
-                    Text(AppLanguage.shared.s("크루 만들기 (임시)", "Create Crew (temp)"))
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.violet)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Theme.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .padding(.horizontal, 16)
-            }
-            .buttonStyle(.plain)
-        }
-        .sheet(isPresented: $showCreateCrew) {
-            CreateCrewView()
-                .environment(crewNicknameManager)
         }
     }
 
