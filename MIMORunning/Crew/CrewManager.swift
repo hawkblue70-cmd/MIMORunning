@@ -243,15 +243,48 @@ final class CrewManager {
         try await db.deleteRecord(withID: member.recordID)
     }
 
-    // MARK: - Leave (일반 멤버)
+    // MARK: - Leave (방장 승계 포함)
 
-    func leaveCrew(crewCode: String) async throws {
+    /// 크루 나가기.
+    /// - 방장 아님: 내 CrewMember만 삭제.
+    /// - 방장 + 다른 멤버 있음: joinedAt 가장 이른 사람에게 ownerID 승계 후 내 레코드 삭제.
+    /// - 방장 + 나 혼자: Crew 레코드 + 내 CrewMember 삭제(해체).
+    func leaveCrew(crew: Crew) async throws {
         let myID = try await userRecordID()
-        let pred = NSPredicate(format: "crewCode == %@ AND icloudID == %@", crewCode, myID)
+
+        // 크루 전체 멤버 조회
+        let pred = NSPredicate(format: "crewCode == %@", crew.code)
         let query = CKQuery(recordType: "CrewMember", predicate: pred)
-        let results = try await safeQuery(query, limit: 1)
-        guard let first = results.first, let record = try? first.1.get() else { return }
-        try await db.deleteRecord(withID: record.recordID)
+        let results = try await safeQuery(query, limit: 200)
+        let allMembers = results.compactMap { _, result in try? result.get() }.map { memberFrom($0) }
+
+        guard let myMember = allMembers.first(where: { $0.icloudID == myID }) else { return }
+
+        let amOwner = crew.ownerID == myID
+
+        if !amOwner {
+            // 일반 멤버: 내 레코드만 삭제
+            try await db.deleteRecord(withID: myMember.recordID)
+            return
+        }
+
+        let others = allMembers.filter { $0.icloudID != myID }
+
+        if others.isEmpty {
+            // 방장 + 나 혼자: 크루 해체
+            try await db.deleteRecord(withID: myMember.recordID)
+            try await db.deleteRecord(withID: crew.recordID)
+            return
+        }
+
+        // 방장 + 다른 멤버: joinedAt 가장 이른 사람에게 승계
+        let nextOwner = others.min(by: { $0.joinedAt < $1.joinedAt })!
+        let crewRecord = try await db.record(for: crew.recordID)
+        crewRecord["ownerID"] = nextOwner.icloudID
+        _ = try await db.save(crewRecord)
+
+        // 승계 완료 후 내 레코드 삭제
+        try await db.deleteRecord(withID: myMember.recordID)
     }
 
     private func crewFrom(_ record: CKRecord) -> Crew {

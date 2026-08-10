@@ -128,6 +128,9 @@ struct CrewRankingView: View {
                 renameText = crew.name
                 showRenameAlert = true
             }
+            Button(AppLanguage.shared.s("크루 나가기", "Leave Crew"), role: .destructive) {
+                showLeaveConfirm = true
+            }
             Button(AppLanguage.shared.s("크루 해체", "Disband Crew"), role: .destructive) {
                 showDisbandConfirm = true
             }
@@ -172,7 +175,7 @@ struct CrewRankingView: View {
             }
             Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
         } message: {
-            Text(AppLanguage.shared.s("크루에서 나가시겠어요?", "Leave this crew?"))
+            Text(leaveConfirmMessage)
         }
         // 멤버 강퇴 확인
         .alert(
@@ -460,10 +463,28 @@ struct CrewRankingView: View {
         }
     }
 
+    private var leaveConfirmMessage: String {
+        guard store.isOwner else {
+            return AppLanguage.shared.s("크루에서 나가시겠어요?", "Leave this crew?")
+        }
+        let hasOthers = store.members.contains { $0.icloudID != store.myID }
+        if hasOthers {
+            return AppLanguage.shared.s(
+                "나가면 다음 분에게 방장이 넘어가요.",
+                "Ownership will transfer to the next member."
+            )
+        } else {
+            return AppLanguage.shared.s(
+                "나가면 크루가 사라져요.",
+                "Leaving will disband the crew."
+            )
+        }
+    }
+
     private func doLeave() async {
         isWorking = true
         do {
-            try await CrewManager.shared.leaveCrew(crewCode: crew.code)
+            try await CrewManager.shared.leaveCrew(crew: crew)
             onCrewDataChanged()
             dismiss()
         } catch {
