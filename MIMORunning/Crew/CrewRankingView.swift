@@ -6,6 +6,7 @@ import CloudKit
 @Observable final class RankingStore {
     var members: [CrewMember] = []
     var myID: String = ""
+    var isOwner: Bool = false
     var isLoading = false
     var errorMessage: String?
 
@@ -15,6 +16,7 @@ import CloudKit
         errorMessage = nil
         do {
             myID = try await CrewManager.shared.userRecordID()
+            isOwner = crew.ownerID == myID
             let km = Self.periodDistanceKm(cycle: crew.resetCycle, activities: activities)
             try await CrewManager.shared.updateMyDistance(crewCode: crew.code, distanceKm: km)
             members = try await CrewManager.shared.fetchRanking(crewCode: crew.code)
@@ -33,7 +35,6 @@ import CloudKit
         isLoading = false
     }
 
-    // GrowthView.mondayCal과 동일한 월요일 시작 캘린더
     private static var mondayCal: Calendar = {
         var c = Calendar(identifier: .gregorian)
         c.firstWeekday = 2
@@ -62,10 +63,29 @@ import CloudKit
 // MARK: - View
 
 struct CrewRankingView: View {
-    let crew: Crew
+    @State private var crew: Crew
     let activities: [Activity]
+    let onCrewDataChanged: () -> Void
 
     @State private var store = RankingStore()
+    @Environment(\.dismiss) private var dismiss
+
+    // Dialog / alert state
+    @State private var showManageSheet = false
+    @State private var showRenameAlert = false
+    @State private var renameText = ""
+    @State private var showDisbandConfirm = false
+    @State private var showLeaveConfirm = false
+    @State private var memberToKick: CrewMember?
+    @State private var showKickConfirm = false
+    @State private var opError: String?
+    @State private var isWorking = false
+
+    init(crew: Crew, activities: [Activity], onCrewDataChanged: @escaping () -> Void = {}) {
+        _crew = State(initialValue: crew)
+        self.activities = activities
+        self.onCrewDataChanged = onCrewDataChanged
+    }
 
     private var rankedMembers: [CrewMember] {
         store.members.filter { $0.periodDistance > 0 }
@@ -89,10 +109,122 @@ struct CrewRankingView: View {
             } else {
                 content
             }
+            if isWorking {
+                Color.black.opacity(0.35).ignoresSafeArea()
+                ProgressView().tint(Theme.violet)
+            }
         }
         .navigationTitle(crew.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbarContent }
         .task { await store.load(crew: crew, activities: activities) }
+        // 방장 관리 액션시트
+        .confirmationDialog(
+            AppLanguage.shared.s("관리", "Manage"),
+            isPresented: $showManageSheet,
+            titleVisibility: .visible
+        ) {
+            Button(AppLanguage.shared.s("방 이름 변경", "Rename Crew")) {
+                renameText = crew.name
+                showRenameAlert = true
+            }
+            Button(AppLanguage.shared.s("크루 해체", "Disband Crew"), role: .destructive) {
+                showDisbandConfirm = true
+            }
+            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
+        }
+        // 이름 변경 알럿
+        .alert(AppLanguage.shared.s("방 이름 변경", "Rename Crew"), isPresented: $showRenameAlert) {
+            TextField(AppLanguage.shared.s("크루 이름", "Crew name"), text: $renameText)
+            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
+            Button(AppLanguage.shared.s("변경", "Rename")) {
+                let trimmed = renameText.trimmingCharacters(in: .whitespaces)
+                guard (2...20).contains(trimmed.count) else { return }
+                Task { await doRename(newName: trimmed) }
+            }
+        } message: {
+            Text(AppLanguage.shared.s("2~20자로 입력해 주세요", "Enter 2–20 characters"))
+        }
+        // 크루 해체 확인
+        .confirmationDialog(
+            AppLanguage.shared.s("크루 해체", "Disband Crew"),
+            isPresented: $showDisbandConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(AppLanguage.shared.s("해체", "Disband"), role: .destructive) {
+                Task { await doDisband() }
+            }
+            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
+        } message: {
+            Text(AppLanguage.shared.s(
+                "정말 해체할까요? 모든 기록이 사라지고 되돌릴 수 없어요.",
+                "Are you sure? All data will be lost and cannot be undone."
+            ))
+        }
+        // 크루 나가기 확인
+        .confirmationDialog(
+            AppLanguage.shared.s("크루 나가기", "Leave Crew"),
+            isPresented: $showLeaveConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(AppLanguage.shared.s("나가기", "Leave"), role: .destructive) {
+                Task { await doLeave() }
+            }
+            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
+        } message: {
+            Text(AppLanguage.shared.s("크루에서 나가시겠어요?", "Leave this crew?"))
+        }
+        // 멤버 강퇴 확인
+        .alert(
+            AppLanguage.shared.s("멤버 내보내기", "Remove Member"),
+            isPresented: $showKickConfirm
+        ) {
+            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) { memberToKick = nil }
+            Button(AppLanguage.shared.s("내보내기", "Remove"), role: .destructive) {
+                guard let m = memberToKick else { return }
+                Task { await doKick(m) }
+            }
+        } message: {
+            if let m = memberToKick {
+                Text(AppLanguage.shared.s(
+                    "\(m.nickname)을(를) 크루에서 내보낼까요?",
+                    "Remove \(m.nickname) from the crew?"
+                ))
+            }
+        }
+        // 작업 오류 알럿
+        .alert(AppLanguage.shared.s("오류", "Error"), isPresented: Binding(
+            get: { opError != nil },
+            set: { if !$0 { opError = nil } }
+        )) {
+            Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { opError = nil }
+        } message: {
+            if let e = opError { Text(e) }
+        }
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            if !store.isLoading {
+                if store.isOwner {
+                    Button { showManageSheet = true } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(Theme.violet)
+                    }
+                } else {
+                    Button {
+                        showLeaveConfirm = true
+                    } label: {
+                        Text(AppLanguage.shared.s("나가기", "Leave"))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Content
@@ -176,8 +308,9 @@ struct CrewRankingView: View {
 
     private func rankRow(rank: Int, member: CrewMember) -> some View {
         let isMe = member.icloudID == store.myID
+        let canKick = store.isOwner && !isMe
+
         return HStack(spacing: 14) {
-            // 순위 숫자
             ZStack {
                 if rank <= 3 {
                     Circle()
@@ -190,7 +323,6 @@ struct CrewRankingView: View {
                     .frame(width: 32)
             }
 
-            // 닉네임
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(member.nickname)
@@ -209,7 +341,6 @@ struct CrewRankingView: View {
 
             Spacer()
 
-            // 거리
             Text(String(format: "%.1f km", member.periodDistance))
                 .font(.system(size: 15, weight: .semibold, design: .monospaced))
                 .foregroundStyle(isMe ? Theme.violet : .white)
@@ -220,13 +351,26 @@ struct CrewRankingView: View {
             Color(hex: "1C1C22").opacity(1.0)
             if isMe { Theme.violet.opacity(0.08) }
         }
+        .contextMenu {
+            if canKick {
+                Button(role: .destructive) {
+                    memberToKick = member
+                    showKickConfirm = true
+                } label: {
+                    Label(
+                        AppLanguage.shared.s("내보내기", "Remove"),
+                        systemImage: "person.fill.xmark"
+                    )
+                }
+            }
+        }
     }
 
     private func rankColor(_ rank: Int) -> Color {
         switch rank {
-        case 1: return Color(red: 1.00, green: 0.84, blue: 0.00) // gold
-        case 2: return Color(red: 0.75, green: 0.75, blue: 0.75) // silver
-        case 3: return Color(red: 0.80, green: 0.50, blue: 0.20) // bronze
+        case 1: return Color(red: 1.00, green: 0.84, blue: 0.00)
+        case 2: return Color(red: 0.75, green: 0.75, blue: 0.75)
+        case 3: return Color(red: 0.80, green: 0.50, blue: 0.20)
         default: return .secondary
         }
     }
@@ -289,5 +433,55 @@ struct CrewRankingView: View {
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(Theme.violet)
         }
+    }
+
+    // MARK: - Operations
+
+    private func doRename(newName: String) async {
+        isWorking = true
+        do {
+            crew = try await CrewManager.shared.renameCrew(crew: crew, newName: newName)
+            onCrewDataChanged()
+        } catch {
+            opError = error.localizedDescription
+        }
+        isWorking = false
+    }
+
+    private func doDisband() async {
+        isWorking = true
+        do {
+            try await CrewManager.shared.disbandCrew(crew: crew)
+            onCrewDataChanged()
+            dismiss()
+        } catch {
+            opError = error.localizedDescription
+            isWorking = false
+        }
+    }
+
+    private func doLeave() async {
+        isWorking = true
+        do {
+            try await CrewManager.shared.leaveCrew(crewCode: crew.code)
+            onCrewDataChanged()
+            dismiss()
+        } catch {
+            opError = error.localizedDescription
+            isWorking = false
+        }
+    }
+
+    private func doKick(_ member: CrewMember) async {
+        isWorking = true
+        memberToKick = nil
+        do {
+            try await CrewManager.shared.kickMember(member)
+            store.members.removeAll { $0.recordID == member.recordID }
+            onCrewDataChanged()
+        } catch {
+            opError = error.localizedDescription
+        }
+        isWorking = false
     }
 }

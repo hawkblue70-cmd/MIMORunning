@@ -210,6 +210,50 @@ final class CrewManager {
         }
     }
 
+    // MARK: - Owner
+
+    func isOwner(crew: Crew) async throws -> Bool {
+        let myID = try await userRecordID()
+        return crew.ownerID == myID
+    }
+
+    // MARK: - Rename
+
+    func renameCrew(crew: Crew, newName: String) async throws -> Crew {
+        let record = try await db.record(for: crew.recordID)
+        record["name"] = newName
+        let saved = try await db.save(record)
+        return crewFrom(saved)
+    }
+
+    // MARK: - Disband (방장 전용)
+
+    func disbandCrew(crew: Crew) async throws {
+        let pred = NSPredicate(format: "crewCode == %@", crew.code)
+        let query = CKQuery(recordType: "CrewMember", predicate: pred)
+        let results = try await safeQuery(query, limit: 200)
+        let ids = results.compactMap { _, result in (try? result.get())?.recordID }
+        for id in ids { try? await db.deleteRecord(withID: id) }
+        try await db.deleteRecord(withID: crew.recordID)
+    }
+
+    // MARK: - Kick (방장 전용)
+
+    func kickMember(_ member: CrewMember) async throws {
+        try await db.deleteRecord(withID: member.recordID)
+    }
+
+    // MARK: - Leave (일반 멤버)
+
+    func leaveCrew(crewCode: String) async throws {
+        let myID = try await userRecordID()
+        let pred = NSPredicate(format: "crewCode == %@ AND icloudID == %@", crewCode, myID)
+        let query = CKQuery(recordType: "CrewMember", predicate: pred)
+        let results = try await safeQuery(query, limit: 1)
+        guard let first = results.first, let record = try? first.1.get() else { return }
+        try await db.deleteRecord(withID: record.recordID)
+    }
+
     private func crewFrom(_ record: CKRecord) -> Crew {
         Crew(
             recordID: record.recordID,

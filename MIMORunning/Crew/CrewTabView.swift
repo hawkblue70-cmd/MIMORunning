@@ -50,7 +50,9 @@ struct CrewTabView: View {
             .navigationTitle(AppLanguage.shared.s("크루", "Crew"))
             .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: Crew.self) { crew in
-                CrewRankingView(crew: crew, activities: manager.activities)
+                CrewRankingView(crew: crew, activities: manager.activities) {
+                    Task { await store.load() }
+                }
             }
         }
         .task { await store.load() }
