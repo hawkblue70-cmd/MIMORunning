@@ -175,10 +175,14 @@ final class CrewManager {
         let pred = NSPredicate(format: "crewCode == %@", crewCode)
         let query = CKQuery(recordType: "CrewMember", predicate: pred)
         let results = try await safeQuery(query, limit: 200)
-        return results
+        let members = results
             .compactMap { _, result in try? result.get() }
             .map { memberFrom($0) }
             .sorted { $0.periodDistance > $1.periodDistance }
+        #if DEBUG
+        print("[CrewManager] fetchRanking code=\(crewCode) rawResults=\(results.count) parsed=\(members.count)")
+        #endif
+        return members
     }
 
     private func memberFrom(_ record: CKRecord) -> CrewMember {

@@ -18,8 +18,15 @@ import CloudKit
             myID = try await CrewManager.shared.userRecordID()
             isOwner = crew.ownerID == myID
             let km = Self.periodDistanceKm(cycle: crew.resetCycle, activities: activities)
-            try await CrewManager.shared.updateMyDistance(crewCode: crew.code, distanceKm: km)
-            members = try await CrewManager.shared.fetchRanking(crewCode: crew.code)
+            // activities가 빈 배열(HealthKit 로드 전)이면 0km으로 덮어쓰지 않는다.
+            if !activities.isEmpty {
+                try await CrewManager.shared.updateMyDistance(crewCode: crew.code, distanceKm: km)
+            }
+            let fetched = try await CrewManager.shared.fetchRanking(crewCode: crew.code)
+            #if DEBUG
+            print("[Ranking] code=\(crew.code) activities=\(activities.count) km=\(km) fetched=\(fetched.count): \(fetched.map { "\($0.nickname)/\($0.periodDistance)km" })")
+            #endif
+            members = fetched
         } catch let ckError as CKError {
             switch ckError.code {
             case .notAuthenticated:
@@ -72,12 +79,11 @@ struct CrewRankingView: View {
 
     // Dialog / alert state
     @State private var showManageSheet = false
+    @State private var showMembersView = false
     @State private var showRenameAlert = false
     @State private var renameText = ""
     @State private var showDisbandConfirm = false
     @State private var showLeaveConfirm = false
-    @State private var memberToKick: CrewMember?
-    @State private var showKickConfirm = false
     @State private var opError: String?
     @State private var isWorking = false
 
@@ -91,12 +97,12 @@ struct CrewRankingView: View {
         store.members.filter { $0.periodDistance > 0 }
     }
 
-    private var myMember: CrewMember? {
-        store.members.first { $0.icloudID == store.myID }
+    private var unrankedMembers: [CrewMember] {
+        store.members.filter { $0.periodDistance == 0 }
     }
 
-    private var iAmRanked: Bool {
-        (myMember?.periodDistance ?? 0) > 0
+    private var myMember: CrewMember? {
+        store.members.first { $0.icloudID == store.myID }
     }
 
     var body: some View {
@@ -124,6 +130,9 @@ struct CrewRankingView: View {
             isPresented: $showManageSheet,
             titleVisibility: .visible
         ) {
+            Button(AppLanguage.shared.s("멤버 관리", "Manage Members")) {
+                showMembersView = true
+            }
             Button(AppLanguage.shared.s("방 이름 변경", "Rename Crew")) {
                 renameText = crew.name
                 showRenameAlert = true
@@ -177,24 +186,6 @@ struct CrewRankingView: View {
         } message: {
             Text(leaveConfirmMessage)
         }
-        // 멤버 강퇴 확인
-        .alert(
-            AppLanguage.shared.s("멤버 내보내기", "Remove Member"),
-            isPresented: $showKickConfirm
-        ) {
-            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) { memberToKick = nil }
-            Button(AppLanguage.shared.s("내보내기", "Remove"), role: .destructive) {
-                guard let m = memberToKick else { return }
-                Task { await doKick(m) }
-            }
-        } message: {
-            if let m = memberToKick {
-                Text(AppLanguage.shared.s(
-                    "\(m.nickname)을(를) 크루에서 내보낼까요?",
-                    "Remove \(m.nickname) from the crew?"
-                ))
-            }
-        }
         // 작업 오류 알럿
         .alert(AppLanguage.shared.s("오류", "Error"), isPresented: Binding(
             get: { opError != nil },
@@ -203,6 +194,14 @@ struct CrewRankingView: View {
             Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { opError = nil }
         } message: {
             if let e = opError { Text(e) }
+        }
+        // 멤버 관리 시트
+        .sheet(isPresented: $showMembersView, onDismiss: {
+            Task { await store.load(crew: crew, activities: activities) }
+        }) {
+            NavigationStack {
+                CrewMembersView(crew: crew, myID: store.myID)
+            }
         }
     }
 
@@ -237,14 +236,7 @@ struct CrewRankingView: View {
         ScrollView {
             VStack(spacing: 16) {
                 periodHeader
-                if rankedMembers.isEmpty {
-                    emptyState
-                } else {
-                    rankingList
-                }
-                if !iAmRanked {
-                    notYetNotice
-                }
+                rankingCard
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -294,14 +286,28 @@ struct CrewRankingView: View {
         }
     }
 
-    // MARK: - Ranking list
+    // MARK: - Combined ranking card (뛴 사람 + 안 뛴 사람)
 
-    private var rankingList: some View {
+    private var rankingCard: some View {
         VStack(spacing: 0) {
-            ForEach(Array(rankedMembers.enumerated()), id: \.element.recordID) { index, member in
-                rankRow(rank: index + 1, member: member)
-                if index < rankedMembers.count - 1 {
-                    Divider().background(Color.white.opacity(0.06))
+            // 뛴 사람 섹션
+            if rankedMembers.isEmpty {
+                noRunYetHeader
+            } else {
+                ForEach(Array(rankedMembers.enumerated()), id: \.element.recordID) { index, member in
+                    rankRow(rank: index + 1, member: member)
+                    if index < rankedMembers.count - 1 {
+                        Divider().background(Color.white.opacity(0.06))
+                    }
+                }
+            }
+            // 안 뛴 사람 섹션 (0km)
+            if !unrankedMembers.isEmpty {
+                Rectangle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(height: 1)
+                ForEach(unrankedMembers, id: \.recordID) { member in
+                    unrankedRow(member: member)
                 }
             }
         }
@@ -309,9 +315,23 @@ struct CrewRankingView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
+    // 전원 0km일 때 카드 상단 헤더
+    private var noRunYetHeader: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "figure.run.circle")
+                .font(.system(size: 18))
+                .foregroundStyle(Theme.violet.opacity(0.4))
+            Text(AppLanguage.shared.s("아직 아무도 안 뛰었어요", "No one has run yet"))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+
     private func rankRow(rank: Int, member: CrewMember) -> some View {
         let isMe = member.icloudID == store.myID
-        let canKick = store.isOwner && !isMe
 
         return HStack(spacing: 14) {
             ZStack {
@@ -354,19 +374,36 @@ struct CrewRankingView: View {
             Color(hex: "1C1C22").opacity(1.0)
             if isMe { Theme.violet.opacity(0.08) }
         }
-        .contextMenu {
-            if canKick {
-                Button(role: .destructive) {
-                    memberToKick = member
-                    showKickConfirm = true
-                } label: {
-                    Label(
-                        AppLanguage.shared.s("내보내기", "Remove"),
-                        systemImage: "person.fill.xmark"
-                    )
+    }
+
+    // MARK: - Unranked row (0km, 흐리게)
+
+    @ViewBuilder
+    private func unrankedRow(member: CrewMember) -> some View {
+        let isMe = member.icloudID == store.myID
+        HStack(spacing: 14) {
+            Color.clear.frame(width: 32, height: 32)
+            HStack(spacing: 6) {
+                Text(member.nickname)
+                    .font(.system(size: 15))
+                    .foregroundStyle(isMe ? Theme.violet.opacity(0.55) : Color(white: 0.42))
+                if isMe {
+                    Text(AppLanguage.shared.s("나", "me"))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.violet.opacity(0.45))
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Theme.violet.opacity(0.07))
+                        .clipShape(Capsule())
                 }
             }
+            Spacer()
+            Text(AppLanguage.shared.s("아직", "—"))
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Color(white: 0.32))
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(hex: "1C1C22").opacity(1.0))
     }
 
     private func rankColor(_ rank: Int) -> Color {
@@ -376,47 +413,6 @@ struct CrewRankingView: View {
         case 3: return Color(red: 0.80, green: 0.50, blue: 0.20)
         default: return .secondary
         }
-    }
-
-    // MARK: - Empty / notice states
-
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "figure.run.circle")
-                .font(.system(size: 44))
-                .foregroundStyle(Theme.violet.opacity(0.4))
-            Text(AppLanguage.shared.s(
-                "아직 아무도 안 뛰었어요\n첫 주자가 되어보세요!",
-                "No one has run yet\nBe the first!"
-            ))
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-        }
-        .padding(.vertical, 40)
-    }
-
-    private var notYetNotice: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "info.circle")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-            Text(crew.resetCycle == "weekly"
-                 ? AppLanguage.shared.s(
-                    "이번 주 첫 러닝을 하면 순위에 올라요",
-                    "Run this week to appear on the leaderboard"
-                 )
-                 : AppLanguage.shared.s(
-                    "이번 달 첫 러닝을 하면 순위에 올라요",
-                    "Run this month to appear on the leaderboard"
-                 ))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(hex: "1C1C22").opacity(1.0))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Error state
@@ -493,16 +489,4 @@ struct CrewRankingView: View {
         }
     }
 
-    private func doKick(_ member: CrewMember) async {
-        isWorking = true
-        memberToKick = nil
-        do {
-            try await CrewManager.shared.kickMember(member)
-            store.members.removeAll { $0.recordID == member.recordID }
-            onCrewDataChanged()
-        } catch {
-            opError = error.localizedDescription
-        }
-        isWorking = false
-    }
 }
