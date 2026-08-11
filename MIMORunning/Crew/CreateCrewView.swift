@@ -6,7 +6,7 @@ struct CreateCrewView: View {
     @Environment(CrewNicknameManager.self) private var nicknameManager
 
     @State private var crewName = ""
-    @State private var resetCycle = "weekly"
+    @State private var resetCycle = "30"
     @State private var isLoading = false
     @State private var createdCrew: Crew?
     @State private var errorMessage: String?
@@ -79,11 +79,13 @@ struct CreateCrewView: View {
                         }
                         Spacer()
                         Picker("", selection: $resetCycle) {
-                            Text(AppLanguage.shared.s("주간", "Weekly")).tag("weekly")
-                            Text(AppLanguage.shared.s("월간", "Monthly")).tag("monthly")
+                            Text("5일").tag("5")
+                            Text("10일").tag("10")
+                            Text("20일").tag("20")
+                            Text("30일").tag("30")
                         }
                         .pickerStyle(.segmented)
-                        .frame(width: 110)
+                        .frame(width: 170)
                         .disabled(isLoading)
                     }
                     .padding(.horizontal, 16)
@@ -264,7 +266,8 @@ struct CreateCrewView: View {
         do {
             let crew = try await CrewManager.shared.createCrew(
                 name: crewName.trimmingCharacters(in: .whitespaces),
-                resetCycle: resetCycle
+                resetCycle: resetCycle,
+                nickname: nicknameManager.nickname ?? ""
             )
             createdCrew = crew
         } catch let ckError as CKError {

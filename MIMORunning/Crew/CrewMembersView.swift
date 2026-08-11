@@ -9,11 +9,13 @@ import CloudKit
     var errorMessage: String?
 
     @MainActor
-    func load(crewCode: String) async {
+    func load(crew: Crew) async {
         isLoading = true
         errorMessage = nil
         do {
-            members = try await CrewManager.shared.fetchRanking(crewCode: crewCode)
+            // 최신 kickedMemberIDs 반영을 위해 Crew 재조회
+            let freshCrew = (try? await CrewManager.shared.findCrew(byCode: crew.code)) ?? crew
+            members = try await CrewManager.shared.fetchRanking(crew: freshCrew)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -51,7 +53,7 @@ struct CrewMembersView: View {
         }
         .navigationTitle(AppLanguage.shared.s("멤버 관리", "Manage Members"))
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.load(crewCode: crew.code) }
+        .task { await store.load(crew: crew) }
         .alert(
             AppLanguage.shared.s("멤버 내보내기", "Remove Member"),
             isPresented: Binding(
@@ -171,8 +173,8 @@ struct CrewMembersView: View {
         isKicking = true
         memberToKick = nil
         do {
-            try await CrewManager.shared.kickMember(member)
-            await store.load(crewCode: crew.code)
+            try await CrewManager.shared.kickMember(member, fromCrew: crew)
+            await store.load(crew: crew)
         } catch {
             kickError = error.localizedDescription
         }
@@ -191,7 +193,7 @@ struct CrewMembersView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Button(AppLanguage.shared.s("다시 시도", "Retry")) {
-                Task { await store.load(crewCode: crew.code) }
+                Task { await store.load(crew: crew) }
             }
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(Theme.violet)

@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// H:MM 형식 — 범위 표시용 (mrFormatDisplay보다 짧게)
 private func mrFormatHM(_ minutes: Double) -> String {
@@ -16,7 +17,11 @@ private let mrWarn   = Color(red: 0.95, green: 0.68, blue: 0.25)
 struct MRRacePlanCard: View {
     let check: MRGoalCheck
     var isExpanded: Bool = true
-    var onToggleCollapse: (() -> Void)? = nil
+    /// 실제 러닝 기록 — 이행 기호 계산용
+    var runs: [MRWorkout] = []
+    /// 계획 시작 시점 스냅샷 — 이행 비교 기준
+    var snapshot: RacePlanSnapshot? = nil
+    var onToggleCollapse: (() -> Void)? = nil   // trailing closure 를 위해 마지막에
     @State private var showWeeks = false
 
     private var plan: MRRacePlan { check.plan }
@@ -226,7 +231,9 @@ struct MRRacePlanCard: View {
             .padding(.top, 16)
 
             if showWeeks {
-                MRWeekTable(weeks: plan.weeks, histMaxWeeklyKm: plan.histMaxWeeklyKm).padding(.top, 12)
+                MRWeekTable(weeks: plan.weeks, histMaxWeeklyKm: plan.histMaxWeeklyKm,
+                            runs: runs, snapshotWeeks: snapshot?.planWeeks ?? [])
+                    .padding(.top, 12)
             }
 
             // 근거 — 숨기지 않는다
@@ -250,6 +257,10 @@ struct MRRacePlanCard: View {
 struct MRWeekTable: View {
     let weeks: [MRPlanWeek]
     var histMaxWeeklyKm: Double = 0
+    /// 실제 러닝 기록 — 과거 주 이행 기호 계산에 사용
+    var runs: [MRWorkout] = []
+    /// 스냅샷 주차 계획 — 비교 기준. 없으면 기호 표시 안 함
+    var snapshotWeeks: [MRPlanWeekSummary] = []
     @State private var expanded: Set<Int> = []
 
     private let dateFmt: DateFormatter = {
@@ -258,6 +269,50 @@ struct MRWeekTable: View {
         df.dateFormat = "M/d"
         return df
     }()
+
+    private func isCurrent(_ w: MRPlanWeek) -> Bool {
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: Date())
+        let weekStart  = cal.startOfDay(for: w.monday)
+        guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else { return false }
+        return todayStart >= weekStart && todayStart < weekEnd
+    }
+
+    /// 지난 주에만 기호를 반환한다.
+    /// 이번 주·앞으로의 주는 nil → 기호 없음.
+    /// 스냅샷에 해당 주가 없으면 nil (구버전 사용자 보호).
+    private func complianceSymbol(for w: MRPlanWeek) -> String? {
+        let cal = Calendar.current
+        let today     = cal.startOfDay(for: Date())
+        let weekStart = cal.startOfDay(for: w.monday)
+        guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart),
+              weekEnd <= today                           // 이번 주·미래 주 제외
+        else { return nil }
+        guard let snap = snapshotWeeks.first(where: {
+            cal.startOfDay(for: $0.monday) == weekStart
+        }) else { return nil }                          // 스냅샷 없으면 표시 안 함
+        let weekRuns     = runs.filter { $0.start >= weekStart && $0.start < weekEnd }
+        let actualLong   = weekRuns.compactMap(\.distanceKm).max() ?? 0
+        let actualWeekly = weekRuns.compactMap(\.distanceKm).reduce(0, +)
+        return weekSymbol(plan: snap, actualLong: actualLong, actualWeekly: actualWeekly)
+    }
+
+    /// 표 아래 집계 한 줄. 기호가 하나도 없으면 nil.
+    private var complianceSummary: String? {
+        let syms = weeks.compactMap { complianceSymbol(for: $0) }
+        guard !syms.isEmpty else { return nil }
+        let both = syms.filter { $0 == symbolBoth }.count
+        let one  = syms.filter { $0 == symbolOne  }.count
+        let none = syms.filter { $0 == symbolNone }.count
+        let over = syms.filter { $0 == symbolOver }.count
+        var parts: [String] = []
+        if over > 0 { parts.append("\(symbolOver) \(over)") }
+        if both > 0 { parts.append("\(symbolBoth) \(both)") }
+        if one  > 0 { parts.append("\(symbolOne) \(one)")  }
+        if none > 0 { parts.append("\(symbolNone) \(none)") }
+        let n = syms.count
+        return "지난 \(n)주: \(parts.joined(separator: " · "))"
+    }
 
     private func phaseColor(_ p: String) -> Color {
         switch p {
@@ -283,7 +338,7 @@ struct MRWeekTable: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("주").frame(width: 20, alignment: .leading)
+                Text("주").frame(width: 36, alignment: .leading)
                 Text("날짜").frame(width: 40, alignment: .leading)
                 Text("단계").frame(width: 64, alignment: .leading)
                 Text("롱런").frame(maxWidth: .infinity, alignment: .trailing)
@@ -297,12 +352,19 @@ struct MRWeekTable: View {
             ForEach(weeks, id: \.idx) { w in
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Text("\(w.idx)")
-                            .frame(width: 20, alignment: .leading)
-                            .foregroundStyle(.white.opacity(0.4))
+                        HStack(spacing: 0) {
+                            Text(complianceSymbol(for: w) ?? "")
+                                .frame(width: 14, alignment: .leading)
+                                .foregroundStyle(.white.opacity(0.6))
+                            Text("\(w.idx)")
+                                .frame(width: 22, alignment: .leading)
+                                .foregroundStyle(isCurrent(w) ? .white : .white.opacity(0.4))
+                                .fontWeight(isCurrent(w) ? .semibold : .regular)
+                        }
+                        .frame(width: 36, alignment: .leading)
                         Text(dateFmt.string(from: w.monday))
                             .frame(width: 40, alignment: .leading)
-                            .foregroundStyle(.white.opacity(0.28))
+                            .foregroundStyle(isCurrent(w) ? .white.opacity(0.7) : .white.opacity(0.28))
                             .monospacedDigit()
                         Text(w.phase)
                             .frame(width: 64, alignment: .leading)
@@ -350,10 +412,22 @@ struct MRWeekTable: View {
                     }
                 }
                 .padding(.vertical, 5)
-                .background(w.isNewMax ? mrAccent.opacity(0.07) : .clear)
+                .background(
+                    w.isNewMax
+                    ? mrAccent.opacity(0.07)
+                    : (isCurrent(w) ? .white.opacity(0.05) : .clear)
+                )
             }
 
-            Text("행 탭 → 실행 안내 · 연한 배경 = 새 최장 롱런 주 · 거리는 이지 페이스 기준")
+            if let summary = complianceSummary {
+                Text(summary)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .padding(.top, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Text("행 탭 → 실행 안내 · 진한 주 번호 = 이번 주 · 연한 배경 = 새 최장 롱런 주 · 거리는 이지 페이스 기준")
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.45))
                 .padding(.top, 10)
@@ -486,8 +560,14 @@ struct MRPlanlessRaceCard: View {
 
 struct MRRacePlanSection: View {
     @EnvironmentObject var engine: MREngineStore
+    @Query private var snapshots: [RacePlanSnapshot]
     // 가장 가까운 대회 하나만 기본 펼침. nil이면 전체 접힘
     @State private var expandedId: String? = nil
+
+    private func snapshot(for check: MRGoalCheck) -> RacePlanSnapshot? {
+        let key = mrArchiveKey(raceDate: check.race.date, distanceM: check.race.distanceM)
+        return snapshots.first { mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM) == key }
+    }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -504,7 +584,8 @@ struct MRRacePlanSection: View {
                     let isExpanded = expandedId == item.id
                     switch item {
                     case .planned(let c):
-                        MRRacePlanCard(check: c, isExpanded: isExpanded) {
+                        MRRacePlanCard(check: c, isExpanded: isExpanded,
+                                       runs: engine.runs, snapshot: snapshot(for: c)) {
                             withAnimation(.easeOut(duration: 0.2)) {
                                 expandedId = isExpanded ? nil : item.id
                             }

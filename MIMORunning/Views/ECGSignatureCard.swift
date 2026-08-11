@@ -288,7 +288,7 @@ struct ECGSignatureCard: View {
             if let w = weather {
                 Text("·").opacity(0.4)
                 Image(systemName: w.systemIcon).font(.system(size: 8))
-                Text(w.formattedTemp).font(.system(size: 8, weight: .medium))
+                Text(activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? w.formattedTemp).font(.system(size: 8, weight: .medium))
             }
             if let shoe = shoeName {
                 Spacer()

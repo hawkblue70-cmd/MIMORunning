@@ -165,7 +165,7 @@ struct PhotoShareCardView: View {
                         HStack(spacing: 3) {
                             Image(systemName: w.systemIcon)
                                 .font(.system(size: 8))
-                            Text(w.formattedTemp)
+                            Text(activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? w.formattedTemp)
                                 .font(.system(size: 8, weight: .medium))
                         }
                         .foregroundStyle(.white.opacity(0.65))

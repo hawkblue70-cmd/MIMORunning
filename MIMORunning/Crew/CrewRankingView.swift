@@ -17,16 +17,45 @@ import CloudKit
         do {
             myID = try await CrewManager.shared.userRecordID()
             isOwner = crew.ownerID == myID
-            let km = Self.periodDistanceKm(cycle: crew.resetCycle, activities: activities)
-            // activities가 빈 배열(HealthKit 로드 전)이면 0km으로 덮어쓰지 않는다.
-            if !activities.isEmpty {
-                try await CrewManager.shared.updateMyDistance(crewCode: crew.code, distanceKm: km)
+
+            // findCrew와 fetchRanking을 병렬로 실행 (순차 → 동시)
+            async let freshCrewFetch = CrewManager.shared.findCrew(byCode: crew.code)
+            async let rankingFetch   = CrewManager.shared.fetchRanking(crew: crew)
+
+            let freshCrew = (try? await freshCrewFetch) ?? crew
+            var fetched   = try await rankingFetch
+
+            // freshCrew의 최신 kickedMemberIDs로 재필터링·재정렬
+            if !freshCrew.kickedMemberIDs.isEmpty {
+                fetched = fetched
+                    .filter { !freshCrew.kickedMemberIDs.contains($0.icloudID) }
+                    .sorted { $0.periodDistance > $1.periodDistance }
             }
-            let fetched = try await CrewManager.shared.fetchRanking(crewCode: crew.code)
+
+            members  = fetched
+            isOwner  = freshCrew.ownerID == myID
+            isLoading = false   // 데이터 표시 후 로딩 해제
+
+            // 내 거리 계산 및 낙관적 UI 즉시 반영
+            guard !activities.isEmpty else { return }
+            let km     = Self.periodDistanceKm(crew: freshCrew, activities: activities)
+            let lastKm = Self.lastPeriodDistanceKm(crew: freshCrew, activities: activities)
+
+            if let idx = members.firstIndex(where: { $0.icloudID == myID }) {
+                members[idx].periodDistance     = km
+                members[idx].lastPeriodDistance = lastKm
+                members.sort { $0.periodDistance > $1.periodDistance }
+            }
+
+            // CloudKit 저장은 백그라운드 (화면 차단 안 함)
+            Task {
+                try? await CrewManager.shared.updateMyDistance(
+                    crewCode: freshCrew.code, distanceKm: km, lastDistanceKm: lastKm
+                )
+            }
             #if DEBUG
-            print("[Ranking] code=\(crew.code) activities=\(activities.count) km=\(km) fetched=\(fetched.count): \(fetched.map { "\($0.nickname)/\($0.periodDistance)km" })")
+            print("[Ranking] code=\(crew.code) activities=\(activities.count) km=\(km) members=\(members.count)")
             #endif
-            members = fetched
         } catch let ckError as CKError {
             switch ckError.code {
             case .notAuthenticated:
@@ -36,34 +65,44 @@ import CloudKit
             default:
                 errorMessage = ckError.localizedDescription
             }
+            isLoading = false
         } catch {
             errorMessage = error.localizedDescription
+            isLoading = false
         }
-        isLoading = false
     }
 
-    private static var mondayCal: Calendar = {
-        var c = Calendar(identifier: .gregorian)
-        c.firstWeekday = 2
-        c.locale = Locale.current
-        return c
-    }()
+    /// 크루 생성일 기준으로 N일 주기의 현재 기간을 계산해 러닝 거리를 반환.
+    static func periodDistanceKm(crew: Crew, activities: [Activity]) -> Double {
+        let (start, end) = currentPeriod(crew: crew)
+        return activities
+            .filter { $0.type == .running && $0.date >= start && $0.date < end }
+            .reduce(0) { $0 + $1.distance / 1000 }
+    }
 
-    static func periodDistanceKm(cycle: String, activities: [Activity]) -> Double {
-        let cal = mondayCal
+    /// 직전 기간(현재 기간 시작 - N일 ~ 현재 기간 시작)의 러닝 거리를 반환.
+    /// 첫 번째 기간이라 직전이 없으면 0 반환.
+    static func lastPeriodDistanceKm(crew: Crew, activities: [Activity]) -> Double {
+        let intervalDays = max(1, Int(crew.resetCycle) ?? 30)
+        let interval = TimeInterval(intervalDays * 24 * 3600)
+        let (currentStart, _) = currentPeriod(crew: crew)
+        let lastStart = currentStart.addingTimeInterval(-interval)
+        guard lastStart >= crew.createdAt else { return 0 }
+        return activities
+            .filter { $0.type == .running && $0.date >= lastStart && $0.date < currentStart }
+            .reduce(0) { $0 + $1.distance / 1000 }
+    }
+
+    /// 생성일로부터 N일 단위로 현재 기간의 시작·끝을 반환.
+    static func currentPeriod(crew: Crew) -> (start: Date, end: Date) {
+        let intervalDays = max(1, Int(crew.resetCycle) ?? 30)
+        let interval = TimeInterval(intervalDays * 24 * 3600)
         let now = Date()
-        let runs = activities.filter { $0.type == .running }
-        if cycle == "weekly" {
-            let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)
-            return runs
-                .filter { cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.date) == comps }
-                .reduce(0) { $0 + $1.distance / 1000 }
-        } else {
-            guard let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: now)) else { return 0 }
-            return runs
-                .filter { $0.date >= monthStart }
-                .reduce(0) { $0 + $1.distance / 1000 }
-        }
+        let elapsed = now.timeIntervalSince(crew.createdAt)
+        let periodIndex = elapsed >= 0 ? floor(elapsed / interval) : 0
+        let start = crew.createdAt.addingTimeInterval(periodIndex * interval)
+        let end   = start.addingTimeInterval(interval)
+        return (start, end)
     }
 }
 
@@ -81,6 +120,7 @@ struct CrewRankingView: View {
     @State private var showManageSheet = false
     @State private var showMembersView = false
     @State private var showRenameAlert = false
+    @State private var codeCopied = false
     @State private var renameText = ""
     @State private var showDisbandConfirm = false
     @State private var showLeaveConfirm = false
@@ -236,6 +276,7 @@ struct CrewRankingView: View {
         ScrollView {
             VStack(spacing: 16) {
                 periodHeader
+                inviteCodeRow
                 rankingCard
             }
             .padding(.horizontal, 16)
@@ -248,9 +289,10 @@ struct CrewRankingView: View {
 
     private var periodHeader: some View {
         HStack(spacing: 10) {
-            Text(crew.resetCycle == "weekly"
-                 ? AppLanguage.shared.s("주간", "Weekly")
-                 : AppLanguage.shared.s("월간", "Monthly"))
+            Text(AppLanguage.shared.s(
+                "\(Int(crew.resetCycle) ?? 30)일 주기",
+                "\(Int(crew.resetCycle) ?? 30)d cycle"
+            ))
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.violet)
                 .padding(.horizontal, 8).padding(.vertical, 4)
@@ -269,21 +311,43 @@ struct CrewRankingView: View {
     }
 
     private var periodDateString: String {
-        if crew.resetCycle == "weekly" {
-            var cal = Calendar(identifier: .gregorian)
-            cal.firstWeekday = 2
-            let now = Date()
-            let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)
-            guard let weekStart = cal.date(from: comps),
-                  let weekEnd = cal.date(byAdding: .day, value: 6, to: weekStart) else {
-                return AppLanguage.shared.s("이번 주", "This week")
+        let (start, end) = RankingStore.currentPeriod(crew: crew)
+        let fmt = DateFormatter(); fmt.dateFormat = "M.d"
+        // end는 다음 기간 시작이므로 1초 빼서 마지막 날 표시
+        let displayEnd = end.addingTimeInterval(-1)
+        return "\(fmt.string(from: start)) ~ \(fmt.string(from: displayEnd))"
+    }
+
+    // MARK: - Invite code row
+
+    private var inviteCodeRow: some View {
+        HStack(spacing: 12) {
+            Text(AppLanguage.shared.s("초대 코드", "Invite code"))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(crew.code)
+                .font(.system(size: 18, weight: .black, design: .monospaced))
+                .foregroundStyle(Theme.violet)
+                .tracking(4)
+            Button {
+                UIPasteboard.general.string = crew.code
+                codeCopied = true
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    codeCopied = false
+                }
+            } label: {
+                Image(systemName: codeCopied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 14))
+                    .foregroundStyle(codeCopied ? Color.green : Theme.violet)
             }
-            let fmt = DateFormatter(); fmt.dateFormat = "M.d"
-            return "\(fmt.string(from: weekStart)) ~ \(fmt.string(from: weekEnd))"
-        } else {
-            let fmt = DateFormatter(); fmt.dateFormat = "yyyy.M"
-            return fmt.string(from: Date())
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color(hex: "1C1C22").opacity(1.0))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Combined ranking card (뛴 사람 + 안 뛴 사람)
@@ -364,12 +428,23 @@ struct CrewRankingView: View {
 
             Spacer()
 
-            Text(String(format: "%.1f km", member.periodDistance))
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(isMe ? Theme.violet : .white)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(String(format: "%.1f km", member.periodDistance))
+                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(isMe ? Theme.violet : .white)
+                if member.lastPeriodDistance > 0 {
+                    Text(String(format: AppLanguage.shared.s("지난 %.1f", "prev %.1f"), member.lastPeriodDistance))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Color(white: 0.40))
+                } else {
+                    Text(AppLanguage.shared.s("지난 —", "prev —"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(white: 0.28))
+                }
+            }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.vertical, 12)
         .background {
             Color(hex: "1C1C22").opacity(1.0)
             if isMe { Theme.violet.opacity(0.08) }

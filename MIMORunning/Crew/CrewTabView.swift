@@ -10,21 +10,26 @@ import CloudKit
 
     @MainActor
     func load() async {
-        isLoading = true
+        // 캐시가 있으면 로딩 인디케이터 없이 즉시 표시하고 백그라운드 갱신
+        let hasCache = !entries.isEmpty
+        if !hasCache { isLoading = true }
         errorMessage = nil
         do {
-            entries = try await CrewManager.shared.fetchMyCrews()
+            let fresh = try await CrewManager.shared.fetchMyCrews()
+            entries = fresh
         } catch let ckError as CKError {
-            switch ckError.code {
-            case .notAuthenticated:
-                errorMessage = AppLanguage.shared.s("iCloud 로그인이 필요해요.", "iCloud sign-in required.")
-            case .networkUnavailable, .networkFailure:
-                errorMessage = AppLanguage.shared.s("네트워크 연결을 확인해 주세요.", "Check your network connection.")
-            default:
-                errorMessage = ckError.localizedDescription
+            if !hasCache {
+                switch ckError.code {
+                case .notAuthenticated:
+                    errorMessage = AppLanguage.shared.s("iCloud 로그인이 필요해요.", "iCloud sign-in required.")
+                case .networkUnavailable, .networkFailure:
+                    errorMessage = AppLanguage.shared.s("네트워크 연결을 확인해 주세요.", "Check your network connection.")
+                default:
+                    errorMessage = ckError.localizedDescription
+                }
             }
         } catch {
-            errorMessage = error.localizedDescription
+            if !hasCache { errorMessage = error.localizedDescription }
         }
         isLoading = false
     }
@@ -183,9 +188,8 @@ struct CrewTabView: View {
     }
 
     private func cycleBadge(cycle: String) -> some View {
-        let label = cycle == "weekly"
-            ? AppLanguage.shared.s("주간", "Weekly")
-            : AppLanguage.shared.s("월간", "Monthly")
+        let days = Int(cycle) ?? 30
+        let label = AppLanguage.shared.s("\(days)일 주기", "\(days)d cycle")
         return Text(label)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Theme.violet)

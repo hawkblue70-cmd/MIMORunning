@@ -203,7 +203,9 @@ func mrBuildPlan(raceDate: Date,
         recoveryWeekCount = 3
         priorRaceName     = prior.name
         p.bridgeRows      = []   // 빈 기간이 없으므로 타임라인 불필요
+        #if DEBUG
         print("[계획] \(raceDate.formatted(date:.abbreviated,time:.omitted)) · \(prior.name) 다음 주 시작")
+        #endif
     } else if neededTotal < totalWeeks {
         // 앞 대회 없음 — 대회일에서 필요 기간만큼 역산해 시작
         guard let deferredStart = cal.date(byAdding: .day, value: -(neededTotal * 7), to: raceDate) else { return nil }
@@ -218,11 +220,35 @@ func mrBuildPlan(raceDate: Date,
             ("\(sfmt(today)) ~ \(sfmt(waitEnd))", "유지 — 지금처럼 달리시면 됩니다"),
             ("\(sfmt(deferredStart)) ~", "이 계획 시작")
         ]
+        #if DEBUG
         print("[계획] \(raceDate.formatted(date:.abbreviated,time:.omitted)) 역산=\(neededTotal)주 · \(df.string(from: deferredStart)) 시작 (대기 \(totalWeeks - neededTotal)주)")
+        #endif
     }
 
-    // planToday → raceDate 실제 계획 기간
-    let planDays = cal.dateComponents([.day], from: cal.startOfDay(for: planToday),
+    // ── 기준 월요일(monday0) ──────────────────────────────────────────
+    // 일반(오늘 기준): 이번 주 월요일로 역산.
+    //   · 화요일에 앱을 열어도 이번 주 1주차가 유지된다.
+    //   · 월요일이면 daysSinceMon = 0 이라 그대로.
+    // defer/prior race: planToday(미래 날짜)의 다음 월요일 — 역산하지 않음.
+    let monday0: Date
+    let planWD = cal.component(.weekday, from: planToday)   // Sun=1, Mon=2 … Sat=7
+    if planToday == today && recoveryWeekCount == 0 {
+        let daysSinceMon = (planWD + 5) % 7               // Mon=0, Tue=1, … Sun=6
+        guard let m = cal.date(byAdding: .day, value: -daysSinceMon,
+                               to: cal.startOfDay(for: planToday)) else { return nil }
+        monday0 = m
+    } else {
+        let offset = (7 - planWD + 2) % 7
+        guard let m = cal.date(byAdding: .day, value: offset,
+                               to: cal.startOfDay(for: planToday)) else { return nil }
+        monday0 = m
+    }
+
+    // 계획 기간 계산
+    // 일반: monday0 기준 → 주 안에서 날짜가 바뀌어도 총 주 수가 변하지 않는다.
+    // defer/prior race: planToday 기준 — monday0이 planToday보다 늦으면 주 수가 줄기 때문.
+    let planRef = (planToday == today && recoveryWeekCount == 0) ? monday0 : planToday
+    let planDays = cal.dateComponents([.day], from: cal.startOfDay(for: planRef),
                                        to: cal.startOfDay(for: raceDate)).day ?? 0
     let planTotalWeeks = planDays / 7
     // 회복 주가 있으면 그만큼 더 필요 (최소 build 1주 + taperWeeks + recoveryWeekCount)
@@ -242,10 +268,6 @@ func mrBuildPlan(raceDate: Date,
     var currentBuildVol = planStartVol   // 매 빌드주 +5%로 유기적 증가
     var longNow = peakLong
     var seenVolRecord = false            // 12개월 최대 주간거리를 처음 넘는 주 — 한 번만 표시
-    // planToday 가 이미 월요일이면 그대로 사용, 아니면 그 다음 월요일
-    let offset = (7 - cal.component(.weekday, from: planToday) + 2) % 7
-    guard let monday0 = cal.date(byAdding: .day, value: offset,
-                                 to: cal.startOfDay(for: planToday)) else { return nil }
 
     // 마라톤 후 회복 3주와 30/50/70% 는 관행이다.
     // 통제된 연구를 찾지 못했다. 근거가 나오면 바꿀 것.

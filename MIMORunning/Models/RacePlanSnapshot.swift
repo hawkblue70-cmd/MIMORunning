@@ -42,9 +42,12 @@ struct MRPlanWeekSummary: Codable {
 
     var planWeeks: [MRPlanWeekSummary] {
         guard !weeksJSON.isEmpty,
-              let data = weeksJSON.data(using: .utf8),
-              let weeks = try? JSONDecoder().decode([MRPlanWeekSummary].self, from: data)
+              let data = weeksJSON.data(using: .utf8)
         else { return [] }
-        return weeks
+        // ⚠ 인코더가 .secondsSince1970을 쓰므로 디코더도 반드시 맞춰야 한다.
+        //   기본값(.deferredToDate = 2001 기준)과 섞이면 날짜가 31년 어긋난다.
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        return (try? decoder.decode([MRPlanWeekSummary].self, from: data)) ?? []
     }
 }

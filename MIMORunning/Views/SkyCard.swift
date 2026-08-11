@@ -148,7 +148,7 @@ struct SkyCard: View {
             if let w = weather {
                 HStack(spacing: 3) {
                     Image(systemName: w.systemIcon).font(.system(size: 8))
-                    Text(w.formattedTemp).font(.system(size: 8, weight: .medium))
+                    Text(activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? w.formattedTemp).font(.system(size: 8, weight: .medium))
                 }
                 .foregroundStyle(textColor.opacity(0.65))
                 .padding(.leading, 6)
