@@ -326,8 +326,8 @@ struct RestDayOneLinerSheet: View {
         if previewPlayer.isReady,
            let pl = previewPlayer.player,
            let cl = previewPlayer.contentLayer {
-            // 9:16 영상을 4:5 높이에 맞게 비례 축소 (≈211×375pt) — 아래 편집 영역이 가려지지 않도록
-            let previewW = OneLinerCard.cardHeight * 9.0 / 16.0
+            // 9:16 영상을 4:5 높이에 맞게 비례 축소 (211×375pt) — 아래 편집 영역이 가려지지 않도록
+            let previewW: CGFloat = 211
             OneLinerPreviewView(player: pl, contentLayer: cl, renderSize: previewPlayer.renderSize)
                 .frame(width: previewW, height: OneLinerCard.cardHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -366,7 +366,9 @@ struct RestDayOneLinerSheet: View {
             let clipCropX   = clipRecipe?.cropOffsetX ?? 0.5
             let clipExcess: CGFloat = {
                 guard let t = cardBackground else { return 0 }
-                let s = max(CardPreviewFrame.width / t.size.width, pH / t.size.height)
+                let s: CGFloat = t.size.height >= t.size.width
+                    ? pH / t.size.height
+                    : CardPreviewFrame.width / t.size.width
                 return max(0, t.size.width * s - CardPreviewFrame.width) * scale
             }()
             OneLinerCard(
@@ -438,8 +440,9 @@ struct RestDayOneLinerSheet: View {
             let storyCropX   = clipRecipes.indices.contains(storySafeIdx) ? clipRecipes[storySafeIdx].cropOffsetX : 0.5
             let storyExcess: CGFloat = {
                 guard let t = cardBackground else { return 0 }
-                let s = max(OneLinerCard.cardWidth / t.size.width,
-                            OneLinerCard.cardHeight / t.size.height)
+                let s: CGFloat = t.size.height >= t.size.width
+                    ? OneLinerCard.cardHeight / t.size.height
+                    : OneLinerCard.cardWidth  / t.size.width
                 return max(0, t.size.width * s - OneLinerCard.cardWidth)
             }()
             OneLinerCard(
@@ -1097,5 +1100,16 @@ struct RestDayOneLinerSheet: View {
         previewPlayer.invalidate()
         withAnimation(.easeInOut(duration: 0.15)) { selectedTemplate = newTemplate }
         loadFromBackingStore(for: newTemplate)
+        // 스토리→슬라이드: 스토리 사진이 있으면 항상 슬라이드에 동기화
+        // 슬라이드→스토리: 슬라이드 사진이 있고 스토리가 비어있을 때만 복사 (스토리 독립 편집 보존)
+        if newTemplate == .slide, !storyModeRecipes.isEmpty {
+            clipRecipes = storyModeRecipes
+            slideModeRecipes = storyModeRecipes
+            saveEntry()
+        } else if newTemplate == .story, clipRecipes.isEmpty, !slideModeRecipes.isEmpty {
+            clipRecipes = slideModeRecipes
+            storyModeRecipes = slideModeRecipes
+            saveEntry()
+        }
     }
 }

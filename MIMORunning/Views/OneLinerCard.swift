@@ -38,9 +38,17 @@ struct OneLinerCard: View {
     /// Full-video title overlay (영상·슬라이드 미리보기). Empty = hidden.
     var videoTitle: String = ""
     var titleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
-    /// 카드 높이 오버라이드. nil=기본 375(4:5). 영상/슬라이드 9:16 프리뷰는 300*16/9=533.33 전달.
-    /// 폭은 300 고정(폰트 기준 유지) → 호출부에서 scaleEffect로 목표 크기에 맞춤.
+    /// 카드 높이 오버라이드. nil=기본 375(4:5). 영상/슬라이드 미리보기는 실제 표시 높이를 전달.
     var cardHeightOverride: CGFloat? = nil
+    /// 카드 폭 오버라이드. nil=기본 300pt. 영상·슬라이드 미리보기에서 scaleEffect 없이 실제
+    /// 표시 폭으로 렌더할 때 사용. baseFontSize가 (cardWidthOverride/300) 비율로 스케일됨.
+    var cardWidthOverride: CGFloat? = nil
+    /// 위쪽 포지션 텍스트 안전 여백. 외부 워드마크가 있으면 호출처에서 반드시 명시.
+    /// nil = showWordmark:true → 64pt 고정 / showWordmark:false → 42pt(4:5 기본).
+    var safeTopInset: CGFloat? = nil
+    /// 아래쪽 포지션 텍스트 안전 여백. 바닥에 붙지 않게 호출처에서 명시.
+    /// nil = 0pt (chartBottomReserved로 대신 처리하는 경우 포함).
+    var safeBottomInset: CGFloat? = nil
     /// 정지 미리보기 모드: 텍스트를 즉시 전체 표시. 타이핑 딜레이·페이드인·슬라이드인 없음.
     /// Placeable/OneLiner 영상 정지 상태에서 사용 — 실제 애니메이션은 재생 시 CALayer가 담당.
     var isStaticPreview: Bool = false
@@ -72,7 +80,11 @@ struct OneLinerCard: View {
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
 
-    private var baseFontSize: CGFloat { OneLinerFont.basePt * fontChoice.sizeScale * sizeLevel.scale }
+    private var actualCardWidth: CGFloat { cardWidthOverride ?? Self.cardWidth }
+    private var baseFontSize: CGFloat {
+        OneLinerFont.basePt * fontChoice.sizeScale * sizeLevel.scale
+            * (actualCardWidth / Self.cardWidth)
+    }
     private var lineSpacing:  CGFloat { baseFontSize * 0.1 }
 
     private var textAlignment: TextAlignment {
@@ -83,8 +95,46 @@ struct OneLinerCard: View {
         }
     }
 
-    // Wordmark sits at .padding(.top, 32) + ~11pt height ≈ 43pt; text must start below that.
-    private var textTopInset: CGFloat { position.isTop ? 48 : 0 }
+    // 위쪽·아래쪽 안전 여백 — 추론 없이 호출처가 safeTopInset/safeBottomInset으로 명시.
+    // showWordmark=true: 워드마크 존(32+26+6)+여백(4) = 68pt (CALayer defaultTopY와 동일).
+    // 기본값(nil): 상단 42pt(외부 워드마크 없는 4:5 기본) / 하단 0pt.
+    // 제목(videoTitle)이 위쪽에 있으면 문구를 제목 아래로 밀기 — export(titleTopEndY)와 동일 논리.
+    private var textTopInset: CGFloat {
+        guard position.isTop else { return 0 }
+        // 워드마크 존(32) + MIMOWordmark 높이(≈26) + 간격(6) + 여백(4) = 68pt
+        let base: CGFloat = showWordmark ? 68 : (safeTopInset ?? 42)
+        guard !videoTitle.isEmpty, titleStyle.position.isTop else { return base }
+        // CALayer와 동일한 UIKit 실측: tLayerH_pt = ceil(bounds) + 20px*(300/1080)
+        let titleFontSize = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
+        let tFont  = titleStyle.fontChoice.uiFont(size: titleFontSize)
+        let maxW   = Self.cardWidth - 48.0  // 24pt 양쪽 여백 (= CALayer textMaxW 기준)
+        let tBounds = (videoTitle as NSString).boundingRect(
+            with: CGSize(width: maxW, height: 4000),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: tFont], context: nil)
+        let tLayerH = ceil(tBounds.height) + 20.0 * (Self.cardWidth / 1080.0)  // 20px → pt 환산
+        return max(base, 76 + tLayerH + 8)
+    }
+
+    private var textBottomInset: CGFloat {
+        guard position.isBottom else { return 0 }
+        if cardHeightOverride != nil {
+            let s = Self.cardWidth / 1080.0
+            let base = cardHeightOverride! * 0.06  // H * 0.06 = export safeBot (~32pt)
+            guard !videoTitle.isEmpty, titleStyle.position.isBottom else { return base }
+            // 아래-아래: 제목이 맨 아래, 문구가 바로 위 (UIKit 실측 높이 기준)
+            let titleFontSize = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
+            let tFont  = titleStyle.fontChoice.uiFont(size: titleFontSize)
+            let maxW   = Self.cardWidth - 48.0
+            let tBounds = (videoTitle as NSString).boundingRect(
+                with: CGSize(width: maxW, height: 4000),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: tFont], context: nil)
+            let tLayerH = ceil(tBounds.height) + 20.0 * s
+            return base + tLayerH + 8
+        }
+        return safeBottomInset ?? 0
+    }
 
     var body: some View {
         ZStack {
@@ -428,10 +478,10 @@ struct OneLinerCard: View {
                         borderOffset: hasBorder ? max(0.8, baseFontSize * textColor.borderOffsetFactor) : 0,
                         isStaticPreview: isStaticPreview
                     )
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, cardHeightOverride != nil ? 24 : 14)  // 9:16 = CALayer hPad 24 기준
                     .padding(.top, textTopInset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
-                    .padding(.bottom, chartBottomReserved > 0 ? chartBottomReserved + 8 : 0)
+                    .padding(.bottom, max(textBottomInset, chartBottomReserved > 0 ? chartBottomReserved + 8 : 0))
                     .padding(.top,    chartTopReserved    > 0 ? chartTopReserved    + 8 : 0)
                     .offset(y: position == .center
                         ? ((chartBottomReserved > 0 ? chartBottomReserved + 8 : 0) -
@@ -450,7 +500,7 @@ struct OneLinerCard: View {
                 }
             }
         }
-        .frame(width: Self.cardWidth, height: cardHeightOverride ?? Self.cardHeight)
+        .frame(width: actualCardWidth, height: cardHeightOverride ?? Self.cardHeight)
     }
 
     // Full-video title overlay — 9위치(3×3 그리드) 완전 반영.
@@ -458,9 +508,14 @@ struct OneLinerCard: View {
     private var titleOverlay: some View {
         let scale1080: CGFloat = Self.cardWidth / 1080.0   // 300/1080 ≈ 0.2778
         let fontSize   = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
-        // export와 동일 기준: wMZoneH + 12pt (워드마크 top=32pt ≈6% cardH, h=ceil(9*1.5)=14pt, gap=6pt → zone=52pt, +12 = 64pt)
-        let topPad:    CGFloat = titleStyle.position.isTop    ? (32 + ceil(9 * 1.5) + 6 + 12) : 0
-        let bottomPad: CGFloat = titleStyle.position.isBottom ? CardVisual.videoSafeBottom    * scale1080 : 0
+        // 영상(non-captionMode): tFrameY = 76pt (wMZoneH+12, VideoExportService 기준)
+        // 슬라이드(captionMode):  tFrameY = 68pt (defaultTopY, PhotoSlideComposition 기준)
+        let topPad: CGFloat = titleStyle.position.isTop
+            ? (captionMode ? (32 + ceil(11.0 * 2.3) + 6 + 4) : (32 + ceil(11.0 * 2.3) + 6 + 12))
+            : 0
+        let bottomPad: CGFloat = titleStyle.position.isBottom
+            ? (cardHeightOverride != nil ? cardHeightOverride! * 0.06 : CardVisual.videoSafeBottom * scale1080)
+            : 0
         let titleTextAlign: TextAlignment = {
             switch titleStyle.position {
             case .topLeading, .leading, .bottomLeading:    return .leading
@@ -472,7 +527,7 @@ struct OneLinerCard: View {
             .multilineTextAlignment(titleTextAlign)
             .lineLimit(2)
             .minimumScaleFactor(0.65)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 24)   // CALayer hPad = 24 기준
             .padding(.top, topPad)
             .padding(.bottom, bottomPad)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: titleStyle.position.alignment)
@@ -562,30 +617,58 @@ struct OneLinerCard: View {
         let s = Self.cardWidth / 1080.0
         let captionTopPad: CGFloat = {
             if cardHeightOverride != nil {
-                // 9:16 클립 모드: ClipTrimView · CALayer와 동일한 안전 여백 사용
-                let clipTop = (CardVisual.videoSafeTop + 4) * s  // ≈ 73.3 pt
+                // 9:16 클립 모드: 워드마크 존(32+26+6) + 여백(4) = 68pt (CALayer defaultTopY 기준)
+                let clipTop = (32.0 + ceil(11.0 * 2.3) + 6 + 4) * (Self.cardWidth / 300.0)
                 if !videoTitle.isEmpty && titleStyle.position.isTop && position.isTop {
-                    let titlePad  = CardVisual.videoSafeTop * 0.6 * s
+                    // UIKit 실측으로 CALayer titleTopEndY와 동일하게 계산
                     let titleFont = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
-                    let titleH    = titleFont * 1.4 * 2 + 8
-                    return max(clipTop, titlePad + titleH)
+                    let tFont  = titleStyle.fontChoice.uiFont(size: titleFont)
+                    let maxW   = Self.cardWidth - 48.0
+                    let tBounds = (videoTitle as NSString).boundingRect(
+                        with: CGSize(width: maxW, height: 4000),
+                        options: [.usesLineFragmentOrigin, .usesFontLeading],
+                        attributes: [.font: tFont], context: nil)
+                    let tLayerH = ceil(tBounds.height) + 20.0 * (Self.cardWidth / 1080.0)
+                    // 슬라이드(captionMode): 제목 tFrameY = 68pt(defaultTopY). 영상: 76pt(tFrameY).
+                    let titleTop: CGFloat = captionMode ? clipTop : 76
+                    return max(clipTop, titleTop + tLayerH + 8)
                 }
                 return clipTop
             }
             // 4:5 일반 모드
             if !videoTitle.isEmpty && titleStyle.position.isTop && position.isTop {
-                let titlePad  = CardVisual.videoSafeTop * 0.6 * s
                 let titleFont = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
-                let titleH    = titleFont * 1.4 * 2 + 8
-                return max(32, titlePad + titleH)
+                let tFont  = titleStyle.fontChoice.uiFont(size: titleFont)
+                let maxW   = Self.cardWidth - 48.0
+                let tBounds = (videoTitle as NSString).boundingRect(
+                    with: CGSize(width: maxW, height: 4000),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: [.font: tFont], context: nil)
+                let tLayerH = ceil(tBounds.height) + 20.0 * (Self.cardWidth / 1080.0)
+                return max(32, 64 + tLayerH + 8)
             }
-            return position.isTop ? 30 : 12
+            // captionWordmarkRow가 상단 14pt에 배치될 때(showWordmark=true) 하단은 39.3pt
+            // → 42pt로 2.7pt 여백 확보 (외부 워드마크 기준 textTopInset=42와 동일 논리).
+            return position.isTop ? (showWordmark ? 42 : 30) : 12
         }()
         // 차트 있으면 차트 위로 배치; 없으면 9:16은 CALayer 안전 여백, 4:5는 기존값
         let captionBotPad: CGFloat = chartBottomReserved > 0
             ? chartBottomReserved + 8
             : cardHeightOverride != nil
-                ? CardVisual.videoSafeBottom * s  // ≈ 75 pt
+                ? {
+                    let base = cardHeightOverride! * 0.06  // H * 0.06 = export safeBot (~32pt)
+                    guard !videoTitle.isEmpty, titleStyle.position.isBottom, position.isBottom else { return base }
+                    // 아래-아래: 제목이 맨 아래, 문구가 바로 위 (UIKit 실측)
+                    let titleFontSize = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
+                    let tFont  = titleStyle.fontChoice.uiFont(size: titleFontSize)
+                    let maxW   = Self.cardWidth - 48.0
+                    let tBounds = (videoTitle as NSString).boundingRect(
+                        with: CGSize(width: maxW, height: 4000),
+                        options: [.usesLineFragmentOrigin, .usesFontLeading],
+                        attributes: [.font: tFont], context: nil)
+                    let tLayerH = ceil(tBounds.height) + 20.0 * s
+                    return base + tLayerH + 8
+                  }()
                 : (position.isBottom ? 34 : 12)
         VStack(alignment: hAlign, spacing: 4) {
             if text.isEmpty {
@@ -611,7 +694,7 @@ struct OneLinerCard: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
-        .padding(.horizontal, cardHeightOverride != nil ? 24 : 14)
+        .padding(.horizontal, cardHeightOverride != nil ? 24 : 14)  // 9:16 = CALayer hPad 24 기준
         .padding(.top, captionTopPad)
         .padding(.bottom, captionBotPad)
         .offset(y: position == .center ? (captionBotPad - captionTopPad) / 2 : 0)
@@ -622,16 +705,24 @@ struct OneLinerCard: View {
     private var background: some View {
         if let photo = backgroundPhoto {
             let cH = cardHeightOverride ?? Self.cardHeight
-            let s  = max(Self.cardWidth / photo.size.width, cH / photo.size.height)
+            // 세로 큰(portrait) 사진 → 세로 기준 fill / 가로 큰(landscape) 사진 → 가로 기준 fill
+            let s: CGFloat = photo.size.height >= photo.size.width
+                ? cH / photo.size.height
+                : Self.cardWidth / photo.size.width
             let iW = photo.size.width  * s
             let iH = photo.size.height * s
             let ox = -(cropOffsetX * max(0, iW - Self.cardWidth))
-            Image(uiImage: photo)
-                .resizable()
-                .frame(width: iW, height: iH)
-                .offset(x: ox)
-                .frame(width: Self.cardWidth, height: cH)
-                .clipped()
+            ZStack {
+                // 레터박스 여백에 그라디언트 배경
+                LinearGradient(colors: SkyPalette.colors(for: cardDate), startPoint: .top, endPoint: .bottom)
+                    .overlay(Color.black.opacity(0.12))
+                Image(uiImage: photo)
+                    .resizable()
+                    .frame(width: iW, height: iH)
+                    .offset(x: ox)
+            }
+            .frame(width: Self.cardWidth, height: cH)
+            .clipped()
         } else {
             LinearGradient(
                 colors: SkyPalette.colors(for: cardDate),
@@ -1117,18 +1208,11 @@ struct OneLinerCard: View {
         }
         .padding(.horizontal, cardHeightOverride != nil ? 20 : 14)
         .padding(.top, pdtPosition.isTop
-            ? (cardHeightOverride != nil ? {
-                let base = (CardVisual.videoSafeTop + 4) * (Self.cardWidth / 1080)
-                guard !videoTitle.isEmpty, titleStyle.position.isTop else { return base }
-                let tFontSize = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
-                let titleH = tFontSize * 1.4 * 2 + 8
-                let titleEndY = CardVisual.videoSafeTop * 0.6 * (Self.cardWidth / 1080) + titleH
-                return max(base, titleEndY + 4)
-            }() : 28)
+            ? (cardHeightOverride != nil ? (CardVisual.videoSafeTop + 4) * (Self.cardWidth / 1080) : 28)
             : 4)
         .padding(.bottom, pdtPosition.isBottom
             ? (cardHeightOverride != nil
-                ? CardVisual.videoSafeBottom * (Self.cardWidth / 1080)
+                ? cardHeightOverride! * 0.06
                 : (chartBottomReserved > 0 ? chartBottomReserved + 4 : 24))
             : 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: pdtPosition.alignment)
@@ -1136,36 +1220,18 @@ struct OneLinerCard: View {
     }
 
     private var wordmark: some View {
-        HStack(spacing: 0) {
-            Text("MIMO")
-                .font(.system(size: 9, weight: .black))
-                .tracking(2)
-                .foregroundStyle(.white)
-            Text(" RUNNING")
-                .font(.system(size: 9, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(Theme.violet)
-        }
-        .cardTextShadow()
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(.leading, 14)
-        .padding(.top, 32)
+        MIMOWordmark(size: 11)
+            .cardTextShadow()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.leading, 24)   // CALayer hPad = 24 기준
+            .padding(.top, 32)
     }
 
-    // captionMode 전용: 워드마크 + 날짜를 단일 HStack으로, 14pt 위 여백 (스탬프 스토리와 동일)
+    // captionMode 전용: 워드마크 + 날짜를 단일 HStack으로, 14pt 위 여백 (스탬프·플레이서블 스토리와 동일)
     private var captionWordmarkRow: some View {
         HStack {
-            HStack(spacing: 0) {
-                Text("MIMO")
-                    .font(.system(size: 9, weight: .black))
-                    .tracking(2)
-                    .foregroundStyle(.white)
-                Text(" RUNNING")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(Theme.violet)
-            }
-            .cardTextShadow()
+            MIMOWordmark(size: 11)
+                .cardTextShadow()
             if showDate {
                 Spacer()
                 Text(cardDate.oneLinerDateString)

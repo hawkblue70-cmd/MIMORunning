@@ -49,7 +49,8 @@ enum PhotoSlideComposition {
         intervalSegments: [IntervalSegment] = [],
         videoTitle: String = "",
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
-        dataOverlayImage: UIImage? = nil
+        dataOverlayImage: UIImage? = nil,
+        dataOverlayIsTop: Bool = false
     ) async throws -> URL {
 
         guard !photos.isEmpty else { throw SlideError.noPhotos }
@@ -80,7 +81,7 @@ enum PhotoSlideComposition {
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples, splits: splits,
             chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
             videoTitle: videoTitle, titleStyle: titleStyle,
-            dataOverlayImage: dataOverlayImage)
+            dataOverlayImage: dataOverlayImage, dataOverlayIsTop: dataOverlayIsTop)
 
         let videoLayer = CALayer()
         videoLayer.frame = CGRect(origin: .zero, size: size)
@@ -168,6 +169,7 @@ enum PhotoSlideComposition {
         videoTitle: String = "",
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
         dataOverlayImage: UIImage? = nil,
+        dataOverlayIsTop: Bool = false,
         fastBase: Bool = false
     ) async throws -> (playerItem: AVPlayerItem, layer: CALayer, size: CGSize,
                        duration: Double, tempURL: URL) {
@@ -193,7 +195,7 @@ enum PhotoSlideComposition {
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples, splits: splits,
             chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
             videoTitle: videoTitle, titleStyle: titleStyle,
-            dataOverlayImage: dataOverlayImage)
+            dataOverlayImage: dataOverlayImage, dataOverlayIsTop: dataOverlayIsTop)
 
         let baseURL = fastBase
             ? try await writeBlackBaseVideoFast(duration: D)
@@ -267,7 +269,8 @@ enum PhotoSlideComposition {
         intervalSegments: [IntervalSegment] = [],
         videoTitle: String = "",
         titleStyle: OneLinerTitleStyle = OneLinerTitleStyle(),
-        dataOverlayImage: UIImage? = nil
+        dataOverlayImage: UIImage? = nil,
+        dataOverlayIsTop: Bool = false
     ) -> CALayer {
         let size = renderSize
         let W    = size.width
@@ -276,11 +279,11 @@ enum PhotoSlideComposition {
 
         let vScale: CGFloat   = W / 300.0
         let safeTop: CGFloat  = CardVisual.videoSafeTop
-        let safeBot: CGFloat  = H * 0.06
+        let safeBot: CGFloat  = H * 0.06   // preview SlideTextOverlay chartBottomReserved:22 → 30pt ≈ H*0.06/vScale
         let hPad: CGFloat     = 24 * vScale
-        let wMTopPad: CGFloat = H * 0.06
-        let wMFontPx: CGFloat = 9  * vScale
-        let wMZoneH: CGFloat  = wMTopPad + ceil(wMFontPx * 1.5) + 6 * vScale
+        let wMTopPad: CGFloat = H * 22.0 / 375.0   // 미리보기 kClipTopM(22pt)/kClipH(375pt) 비율에 맞춤
+        let wMFontPx: CGFloat = 11 * vScale
+        let wMZoneH: CGFloat  = wMTopPad + ceil(wMFontPx * 2.3) + 6 * vScale
         let textMaxW: CGFloat = W - 2 * hPad
         let imgFormat   = UIGraphicsImageRendererFormat()
         imgFormat.scale = 1.0; imgFormat.opaque = false
@@ -384,10 +387,13 @@ enum PhotoSlideComposition {
         if let overlayImg = dataOverlayImage,
            let cgImg: CGImage = overlayImg.cgImage
                ?? { if let ci = CIImage(image: overlayImg) { return CIContext().createCGImage(ci, from: ci.extent) } else { return nil } }() {
-            let cardLayerH: CGFloat = 375.0 * vScale   // PlaceableCard.cardHeight * vScale
-            let cardMargin: CGFloat = H * 0.03
+            // dataOverlayIsTop: 카드가 9:16 전체 높이로 렌더링됐을 때 프레임 전체 덮기(y=0).
+            // 아닐 때: 기존 하단 배치(H - cardLayerH - cardMargin).
+            let cardLayerH: CGFloat = dataOverlayIsTop ? H : 375.0 * vScale
+            let cardMargin: CGFloat = dataOverlayIsTop ? 0 : H * 0.03
             let dataLayer             = CALayer()
-            dataLayer.frame           = CGRect(x: 0, y: H - cardLayerH - cardMargin,
+            dataLayer.frame           = CGRect(x: 0,
+                                               y: dataOverlayIsTop ? 0 : H - cardLayerH - cardMargin,
                                                width: W, height: cardLayerH)
             dataLayer.contents        = cgImg
             dataLayer.contentsGravity = .resize
@@ -395,7 +401,7 @@ enum PhotoSlideComposition {
             contentLayer.addSublayer(dataLayer)
         }
 
-        // ── Precompute title bottom Y (top-positioned videoTitle이 있으면 클립 텍스트/칩 시작점 아래로 밀기) ─
+        // ── Precompute title metrics (위-위: 문구를 제목 아래로, 아래-아래: 문구를 제목 위로) ─
         let titleTopEndY: CGFloat = {
             guard !videoTitle.isEmpty, titleStyle.position.isTop else { return 0 }
             let tFontPx  = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale * vScale
@@ -407,6 +413,17 @@ enum PhotoSlideComposition {
             let tLayerH  = ceil(tBounds.height) + 20
             let tFrameY  = max(wMZoneH + 4 * vScale, safeTop + 4 * vScale)
             return tFrameY + tLayerH + 8 * vScale
+        }()
+        // 아래-아래 쌓기: 제목이 맨 아래일 때 문구를 제목 위로 밀 여분 높이
+        let titleBotEndH: CGFloat = {
+            guard !videoTitle.isEmpty, titleStyle.position.isBottom else { return 0 }
+            let tFontPx  = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale * vScale
+            let tUIFont  = titleStyle.fontChoice.uiFont(size: tFontPx)
+            let tAttrs: [NSAttributedString.Key: Any] = [.font: tUIFont, .foregroundColor: UIColor.white]
+            let tBounds  = NSAttributedString(string: videoTitle, attributes: tAttrs).boundingRect(
+                with: CGSize(width: textMaxW, height: 4000),
+                options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+            return ceil(tBounds.height) + 20 + 8 * vScale  // tLayerH + 간격
         }()
 
         // ── Text overlay ───────────────────────────────────────────────────────────────
@@ -550,7 +567,9 @@ enum PhotoSlideComposition {
             }()
             let clipEffBot: CGFloat = pageChartActive
                 ? pageChartPanH + safeBot + 12 * vScale + 8 * vScale
-                : safeBot
+                : clip.position.isBottom && titleBotEndH > 0
+                    ? safeBot + titleBotEndH  // 아래-아래: 제목 위로 문구 밀기
+                    : safeBot
             let defaultTopY = max(wMZoneH + 4 * vScale, safeTop + 4 * vScale)
             let textFrameY: CGFloat = clip.position.isTop
                 ? (titleTopEndY > 0 ? titleTopEndY : defaultTopY)
@@ -784,41 +803,22 @@ enum PhotoSlideComposition {
         }
 
         // ── Wordmark ───────────────────────────────────────────────────────────────────
-        let wMLayerH  = ceil(wMFontPx * 1.5)
-        let wMarkW    = W - 2 * hPad
-        let wMRenderer = UIGraphicsImageRenderer(
-            size: CGSize(width: wMarkW, height: wMLayerH), format: imgFormat)
-        let wMImg = wMRenderer.image { ctx in
-            let mimoAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: wMFontPx, weight: .black),
-                .foregroundColor: UIColor.white, .kern: NSNumber(value: 2.0)
-            ]
-            let runAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: wMFontPx, weight: .bold),
-                .foregroundColor: UIColor(red: 0x7C/255.0, green: 0x5C/255.0,
-                                          blue: 0xFC/255.0, alpha: 1),
-                .kern: NSNumber(value: 2.0)
-            ]
-            let combined = NSMutableAttributedString(
-                attributedString: NSAttributedString(string: "MIMO", attributes: mimoAttrs))
-            combined.append(NSAttributedString(string: " RUNNING", attributes: runAttrs))
-            ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
-                                    blur: 3 * vScale,
-                                    color: UIColor.black.withAlphaComponent(0.4).cgColor)
-            combined.draw(in: CGRect(x: 0, y: 0, width: wMarkW, height: wMLayerH))
+        let wMLayerH  = ceil(wMFontPx * 2.3)
+        if let wmImg = UIImage(named: "MIMOWordmark") {
+            let imgW = wMLayerH * wmImg.size.width / max(wmImg.size.height, 1)
+            let wMLayer = CALayer()
+            wMLayer.frame           = CGRect(x: hPad, y: wMTopPad, width: imgW, height: wMLayerH)
+            wMLayer.contents        = wmImg.cgImage
+            wMLayer.contentsGravity = .resizeAspect
+            wMLayer.masksToBounds   = false
+            wMLayer.opacity         = 0.0
+            let wMFadeEnd = NSNumber(value: min(0.3 / D, 0.99))
+            wMLayer.add(linearAnim("opacity",
+                keyTimes: [0.0, 0.0001, wMFadeEnd, 1.0],
+                values:   [Float(0), Float(0), Float(1), Float(1)]),
+                forKey: "wMFade")
+            contentLayer.addSublayer(wMLayer)
         }
-        let wMLayer = CALayer()
-        wMLayer.frame           = CGRect(x: hPad, y: wMTopPad, width: wMarkW, height: wMLayerH)
-        wMLayer.contents        = wMImg.cgImage
-        wMLayer.contentsGravity = .topLeft
-        wMLayer.masksToBounds   = false
-        wMLayer.opacity         = 0.0
-        let wMFadeEnd = NSNumber(value: min(0.3 / D, 0.99))
-        wMLayer.add(linearAnim("opacity",
-            keyTimes: [0.0, 0.0001, wMFadeEnd, 1.0],
-            values:   [Float(0), Float(0), Float(1), Float(1)]),
-            forKey: "wMFade")
-        contentLayer.addSublayer(wMLayer)
 
         // ── Per-clip metric chips (문구와 동일한 방식: 클립별 pdtPosition에 위치) ─────────
         // metricLookup이 있으면 각 클립의 recipe.metricPace/Distance/Time 플래그로 칩을 렌더링.
@@ -901,9 +901,7 @@ enum PhotoSlideComposition {
                 let pos = recipe.pdtPosition
                 let chipY: CGFloat
                 if pos.isTop {
-                    chipY = titleTopEndY > 0
-                        ? titleTopEndY
-                        : max(wMZoneH + 4 * vScale, safeTop + metricPad)
+                    chipY = max(wMZoneH + 4 * vScale, safeTop + metricPad)  // PDT 칩 절대 위치 (제목 무관)
                 } else if pos.isBottom {
                     chipY = H - rcEffBot - metricPad - chipLineH
                 } else {
@@ -1714,13 +1712,18 @@ enum PhotoSlideComposition {
     static func scaleFill(_ image: UIImage, to size: CGSize,
                            cropOffsetX: CGFloat = 0.5,
                            cropOffsetY: CGFloat = 0.5) -> CGImage? {
-        let s  = max(size.width / image.size.width, size.height / image.size.height)
+        // OneLinerCard.background와 동일 논리: portrait → fill height, landscape → fill width
+        let s: CGFloat = image.size.height >= image.size.width
+            ? size.height / image.size.height
+            : size.width  / image.size.width
         let sw = image.size.width  * s
         let sh = image.size.height * s
         let ox = (size.width  - sw) * cropOffsetX
         let oy = (size.height - sh) * cropOffsetY
         let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { _ in
+        return renderer.image { ctx in
+            UIColor.black.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
             image.draw(in: CGRect(x: ox, y: oy, width: sw, height: sh))
         }.cgImage
     }
