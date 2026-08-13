@@ -4613,9 +4613,9 @@ struct ShareCardScreen: View {
                 : placeableVM.placeableMetricsPosition.isTop
             let exportFullH: CGFloat = 384.0 / scale  // 9:16 전체 높이를 카드 좌표계로 환산
             let staticOverlayContent = ZStack {
-                LinearGradient(colors: [.black.opacity(0.5), .clear], startPoint: .top, endPoint: .bottom)
+                LinearGradient(colors: [.black.opacity(0.15), .clear], startPoint: .top, endPoint: .bottom)
                     .frame(width: 216, height: 24).frame(width: 216, height: 384, alignment: .top)
-                LinearGradient(colors: [.clear, .black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+                LinearGradient(colors: [.clear, .black.opacity(0.15)], startPoint: .top, endPoint: .bottom)
                     .frame(width: 216, height: 24).frame(width: 216, height: 384, alignment: .bottom)
                 PlaceableCard(
                     activity: activity, detail: detail,
@@ -4640,7 +4640,7 @@ struct ShareCardScreen: View {
             let staticOverlay = staticRenderer.uiImage
 
             // 문구 safe zone — 스토리처럼 데이터 위치와 독립적으로 자유 배치
-            let safeBotPx = VideoExportService.targetSize.height * 0.06   // ≈32pt, preview chartBottomReserved:22 → 30pt 와 일치
+            let safeBotPx = CardVisual.videoSafeBottom
             let safeTopPx = CardVisual.videoSafeTop
 
             // 클립별 오버레이 적용 후 연결
