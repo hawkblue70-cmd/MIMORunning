@@ -16,6 +16,12 @@ final class OneLinerPreviewPlayer {
     var isPlaying:  Bool   = false
     var progress:   Double = 0
     var isReady:    Bool   = false
+    // 어느 카드가 이 player를 빌드했는지 추적 (0=Stamp, 1=Placeable, 2=OneLiner, -1=없음)
+    // 같은 카드로 복귀 시 불필요한 재빌드를 생략하는 데 사용
+    var builtForCardIndex: Int = -1
+    // 슬라이드(사진) 빌드였으면 true, 영상 클립 빌드였으면 false
+    // OneLiner 재진입 시 player 컨텐츠가 현재 template과 불일치하면 invalidate하기 위해 사용
+    var builtForPhotoSlide: Bool = false
     // player가 교체될 때마다 갱신 — stampSlidePreviewSection의 OneLinerPreviewView에
     // .id(buildToken)을 걸어 UIView 재생성 → onAppear 재발동 → seek 보장
     private(set) var buildToken: UUID = UUID()
@@ -51,7 +57,9 @@ final class OneLinerPreviewPlayer {
         videoTitle:       String            = "",
         titleStyle:       OneLinerTitleStyle = OneLinerTitleStyle(),
         dataOverlayImage: UIImage?           = nil,
-        fastBase:         Bool               = false
+        dataOverlayIsTop: Bool               = false,
+        fastBase:         Bool               = false,
+        forCardIndex:     Int               = -1
     ) async {
         invalidate()                         // buildGeneration 증가 → 이전 빌드 무효화
         buildGeneration += 1
@@ -75,10 +83,13 @@ final class OneLinerPreviewPlayer {
                 videoTitle:       videoTitle,
                 titleStyle:       titleStyle,
                 dataOverlayImage: dataOverlayImage,
+                dataOverlayIsTop: dataOverlayIsTop,
                 fastBase:         fastBase)
             guard buildGeneration == myGen else { return }  // 대기 중 invalidate 됐으면 폐기
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
+            builtForCardIndex = forCardIndex
+            builtForPhotoSlide = true
             tempURL = result.tempURL
         } catch {
         }
@@ -88,6 +99,7 @@ final class OneLinerPreviewPlayer {
         recipes:          [ClipRecipe],
         activityDate:     Date,
         showDate:         Bool,
+        showWordmark:     Bool = true,
         muteAudio:        Bool = false,  // 빌드 시작 시 초기 상태; 빌드 중 setMuted 호출이 있으면 그 값이 우선
         metricChips:      [VideoMetricChip] = [],
         metricLookup:     [String: VideoMetricChip] = [:],
@@ -103,7 +115,8 @@ final class OneLinerPreviewPlayer {
         safeBotOverride:  CGFloat?           = nil,
         wordmarkTopPad:   CGFloat?           = nil,
         dataOverlayImage: UIImage?           = nil,
-        fullSizeOverlayImage: UIImage?       = nil
+        fullSizeOverlayImage: UIImage?       = nil,
+        forCardIndex:     Int               = -1
     ) async {
         targetMuted = muteAudio   // 초기 상태 기록; 빌드 중 setMuted 호출로 덮어쓸 수 있음
         invalidate()                         // buildGeneration 증가 → 이전 빌드 무효화
@@ -116,6 +129,7 @@ final class OneLinerPreviewPlayer {
                 recipes:          recipes,
                 activityDate:     activityDate,
                 showDate:         showDate,
+                showWordmark:     showWordmark,
                 muteAudio:        false,   // 프리뷰는 항상 오디오 트랙 포함; 음소거는 player.isMuted로 제어
                 metricChips:      metricChips,
                 metricLookup:     metricLookup,
@@ -135,6 +149,8 @@ final class OneLinerPreviewPlayer {
             guard buildGeneration == myGen else { return }  // 대기 중 invalidate 됐으면 폐기
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
+            builtForCardIndex = forCardIndex
+            builtForPhotoSlide = false
             player?.isMuted = targetMuted   // 캡처된 muteAudio 대신 현재 상태 적용
         } catch {
         }
@@ -194,8 +210,10 @@ final class OneLinerPreviewPlayer {
         buildGeneration += 1  // 진행 중인 빌드의 guard 체크를 무효화
         // isReady/isPlaying을 먼저 false로: SwiftUI observation이 player=nil 보다 앞서
         // 뷰를 다시 그리더라도 player를 사용하는 분기에 진입하지 않도록 보장
-        isReady   = false
-        isPlaying = false
+        isReady           = false
+        isPlaying         = false
+        builtForCardIndex = -1
+        builtForPhotoSlide = false
         if let obs = timeObserver { player?.removeTimeObserver(obs) }
         timeObserver = nil
         if let obs = endObserver { NotificationCenter.default.removeObserver(obs) }

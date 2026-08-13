@@ -5,24 +5,30 @@
 
 import SwiftUI
 
+// MARK: — 9:16 클립 미리보기 고정 규격
+private let kClipW:     CGFloat = 211      // 너비 (375 × 9/16)
+private let kClipH:     CGFloat = 375      // 높이
+private let kClipScale: CGFloat = 211.0 / PlaceableCard.cardWidth   // ≈ 0.703
+private let kClipFullH: CGFloat = 533      // PlaceableCard 전체 높이 (kClipH / kClipScale)
+private let kClipOvlH:  CGFloat = 264      // 오버레이 높이 (PlaceableCard.cardHeight × kClipScale)
+private let kClipTopM:  CGFloat = 22       // MIMO 워드마크 상단 여백
+private let kClipBotM:  CGFloat = 11       // 데이터 카드 하단 여백
+
+
 // MARK: - 슬라이드 문구 오버레이 (사진 전환마다 진입 애니메이션)
 // bgIdx 변경 시 .id(bgIdx)로 뷰를 재생성 → @State phase 리셋 → .task 재실행
 private struct SlideTextOverlay: View {
     let activity: Activity?
     let text: String
     let style: PlaceableSlideClipStyle
-    let pvScale: CGFloat
     let previewW: CGFloat
     let cardH: CGFloat
-    let chartBottomReserved: CGFloat
-    let chartTopReserved: CGFloat
     let isPlaying: Bool
 
     @State private var phase: Double = 0
     // 이미 진입 애니메이션을 재생했는지 추적 (일시정지→재개 시 중복 애니 방지)
     @State private var hasAnimated: Bool = false
 
-    private var videoCardH: CGFloat { PlaceableCard.cardWidth * 16.0 / 9.0 }
     private var isFade:  Bool { style.appearanceMode == .fade }
     private var isFlyIn: Bool { style.appearanceMode == .flyIn }
 
@@ -41,13 +47,13 @@ private struct SlideTextOverlay: View {
             showDate: false,
             showBackground: false,
             showWordmark: false,
-            chartBottomReserved: chartBottomReserved,
-            chartTopReserved: chartTopReserved,
-            cardHeightOverride: videoCardH,
+            chartBottomReserved: 15,
+            cardHeightOverride: cardH,
+            cardWidthOverride: previewW,
+            safeTopInset: 54,
+            safeBottomInset: 14,
             isStaticPreview: !(style.appearanceMode == .typing)
         )
-        .frame(width: PlaceableCard.cardWidth, height: videoCardH)
-        .scaleEffect(pvScale, anchor: .center)
         .frame(width: previewW, height: cardH)
         .opacity(isFade || isFlyIn ? phase : 1.0)
         .offset(flyOffset)
@@ -81,7 +87,7 @@ private struct SlideTextOverlay: View {
 
     private var flyOffset: CGSize {
         guard isFlyIn else { return .zero }
-        let t = (1.0 - phase) * 220.0 * pvScale
+        let t = (1.0 - phase) * 220.0
         switch style.flyDirection {
         case .leading:  return CGSize(width: -t, height: 0)
         case .trailing: return CGSize(width:  t, height: 0)
@@ -104,12 +110,9 @@ extension ShareCardScreen {
 
     @ViewBuilder
     var placeableSlidePreview: some View {
-        let previewW: CGFloat  = cardSectionH * 9.0 / 16.0
-        let pvScale:  CGFloat  = previewW / PlaceableCard.cardWidth
-        let overlayH: CGFloat  = PlaceableCard.cardHeight * pvScale
-        let cardH:    CGFloat  = cardSectionH
-        let topMargin: CGFloat = cardH * 0.06
-        let botMargin: CGFloat = cardH * 0.06
+        let cardIsTop: Bool = placeableVM.placeableLayout == .horizontal
+            ? placeableVM.placeableHorizTextRow == .top
+            : placeableVM.placeableMetricsPosition.isTop
         // currentText는 bgIdx 확정 후 블록 내에서 계산
 
         if !storyPhotos.isEmpty {
@@ -123,11 +126,11 @@ extension ShareCardScreen {
             let sp0      = storyPhotos[bgIdx]
             let sCropX   = placeableVM.placeableStoryCropOffsets[bgIdx]  ?? 0.5
             let sCropY   = placeableVM.placeableStoryCropOffsetsY[bgIdx] ?? 0.5
-            let sp0Scale = max(previewW / sp0.size.width, cardH / sp0.size.height)
+            let sp0Scale = max(kClipW / sp0.size.width, kClipH / sp0.size.height)
             let sp0ImgW  = sp0.size.width  * sp0Scale
             let sp0ImgH  = sp0.size.height * sp0Scale
-            let sp0Ox    = -(sCropX * max(0, sp0ImgW - previewW))
-            let sp0Oy    = -(sCropY * max(0, sp0ImgH - cardH))
+            let sp0Ox    = -(sCropX * max(0, sp0ImgW - kClipW))
+            let sp0Oy    = -(sCropY * max(0, sp0ImgH - kClipH))
             // Ken Burns: PhotoSlideComposition.kenBurns와 동일한 상수·공식으로 SwiftUI 구동
             let kbEndScale: CGFloat = 1.08
             let kbPanRange: CGFloat = 60.0          // PhotoSlideComposition.kbPanRange 동일
@@ -141,7 +144,7 @@ extension ShareCardScreen {
                 : kbEndScale - (kbEndScale - 1.0) * photoProgress
             // Pan: 1080px 공간 → previewW 비율 변환 (PhotoSlideComposition.kenBurns 동일 공식)
             let kbPanX: CGFloat = {
-                let panPt = kbPanRange * (previewW / 1080)
+                let panPt = kbPanRange * (kClipW / 1080)
                 return bgIdx % 2 == 0
                     ? -panPt / 2 + panPt * photoProgress
                     :  panPt / 2 - panPt * photoProgress
@@ -176,7 +179,7 @@ extension ShareCardScreen {
                 .frame(width: sp0ImgW, height: sp0ImgH)
                 .scaleEffect(isKB ? kbScale : 1.0, anchor: .center)
                 .offset(x: sp0Ox + (isKB ? kbPanX : 0), y: sp0Oy)
-                .frame(width: previewW, height: cardH, alignment: .topLeading)
+                .frame(width: kClipW, height: kClipH, alignment: .topLeading)
                 .clipped()
                 .id(bgIdx)
                 .transition(.opacity.animation(.easeInOut(duration: 0.4)))
@@ -184,27 +187,18 @@ extension ShareCardScreen {
             // ③ SwiftUI 데이터 오버레이: 항상 표시 (재생 중에도 정적 카드 표시)
             //    OneLinerPreviewView(AVPlayerLayer) 제거 → 검은 화면 방지.
             LinearGradient(colors: [.black.opacity(0.15), .clear], startPoint: .top, endPoint: .bottom)
-                .frame(width: previewW, height: 24)
-                .frame(width: previewW, height: cardH, alignment: .top)
+                .frame(width: kClipW, height: 24)
+                .frame(width: kClipW, height: kClipH, alignment: .top)
             LinearGradient(colors: [.clear, .black.opacity(0.15)], startPoint: .top, endPoint: .bottom)
-                .frame(width: previewW, height: 24)
-                .frame(width: previewW, height: cardH, alignment: .bottom)
+                .frame(width: kClipW, height: 24)
+                .frame(width: kClipW, height: kClipH, alignment: .bottom)
 
-            HStack(spacing: 0) {
-                Text("MIMO")
-                    .font(.system(size: 9 * pvScale, weight: .black))
-                    .tracking(2)
-                    .foregroundStyle(.white)
-                Text(" RUNNING")
-                    .font(.system(size: 9 * pvScale, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(Theme.violet)
-            }
+            MIMOWordmark(size: 11)
             .shadow(color: .black.opacity(0.50), radius: 4, x: 0, y: 2)
             .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 1)
-            .padding(.top, topMargin)
-            .padding(.leading, 14 * pvScale)
-            .frame(width: previewW, height: cardH, alignment: .topLeading)
+            .padding(.top, kClipTopM)
+            .padding(.leading, 14)
+            .frame(width: kClipW, height: kClipH, alignment: .topLeading)
 
             PlaceableCard(
                 activity: activity,
@@ -221,24 +215,22 @@ extension ShareCardScreen {
                 size: placeableVM.placeableSize,
                 layout: placeableVM.placeableLayout,
                 horizTextRow: placeableVM.placeableHorizTextRow,
-                horizRoutePos: placeableVM.placeableHorizRoutePos
+                horizRoutePos: placeableVM.placeableHorizRoutePos,
+                heightOverride: cardIsTop ? kClipFullH : nil
             )
-            .frame(width: PlaceableCard.cardWidth, height: PlaceableCard.cardHeight)
-            .scaleEffect(pvScale, anchor: .center)
-            .frame(width: previewW, height: overlayH)
-            .padding(.bottom, botMargin)
-            .frame(width: previewW, height: cardH, alignment: .bottom)
+            .frame(width: PlaceableCard.cardWidth, height: cardIsTop ? kClipFullH : PlaceableCard.cardHeight)
+            .scaleEffect(kClipScale, anchor: .center)
+            .frame(width: kClipW, height: cardIsTop ? kClipH : kClipOvlH)
+            .padding(.bottom, cardIsTop ? 0 : kClipBotM)
+            .frame(width: kClipW, height: kClipH, alignment: cardIsTop ? .center : .bottom)
 
             if !currentText.isEmpty {
                 SlideTextOverlay(
                     activity: activity,
                     text: currentText,
                     style: placeableVM.slideClipStyle(for: bgIdx),
-                    pvScale: pvScale,
-                    previewW: previewW,
-                    cardH: cardH,
-                    chartBottomReserved: placeableVM.storyBottomReserved,
-                    chartTopReserved: placeableVM.storyTopReserved,
+                    previewW: kClipW,
+                    cardH: kClipH,
                     isPlaying: previewPlayer.isPlaying
                 )
                 .id(bgIdx)
@@ -255,7 +247,7 @@ extension ShareCardScreen {
                 .clipShape(RoundedRectangle(cornerRadius: 1.5))
                 .padding(.horizontal, 8)
                 .animation(.linear(duration: 0.1), value: previewPlayer.progress)
-                .frame(width: previewW, height: cardH, alignment: .bottom)
+                .frame(width: kClipW, height: kClipH, alignment: .bottom)
                 .padding(.bottom, 10)
             }
 
@@ -339,12 +331,17 @@ extension ShareCardScreen {
         guard isPlaceable, template == .slide, !storyPhotos.isEmpty else { return }
         let photos = storyPhotos
         Task {
-            let overlay = makePlaceableDataOverlay()
+            let overlayIsTop = placeableVM.placeableLayout == .horizontal
+                ? placeableVM.placeableHorizTextRow == .top
+                : placeableVM.placeableMetricsPosition.isTop
+            let overlay = makePlaceableDataOverlay(fullHeight: overlayIsTop)
             let recipes = makePlaceableSlideRecipes(for: photos)
             await previewPlayer.buildForPhotoSlides(
                 photos: photos, recipes: recipes,
                 activityDate: activity.date, showDate: false,
-                dataOverlayImage: overlay)
+                dataOverlayImage: overlay,
+                dataOverlayIsTop: overlayIsTop,
+                forCardIndex: 1)
             if thenPlay { previewPlayer.play() }
         }
     }

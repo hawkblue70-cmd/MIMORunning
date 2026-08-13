@@ -6,6 +6,9 @@
 import SwiftUI
 import AVFoundation
 
+// MARK: — 9:16 클립 미리보기 고정 규격
+private let kClipW: CGFloat = 211   // 9:16 미리보기 폭 (375 × 9/16)
+
 // MARK: - StampCard → UIImage (1080×1920 px 기준)
 
 @MainActor
@@ -15,9 +18,45 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
                            renderOnlyStamp: Bool = false,
                            renderOnlyText: Bool = false,
                            logicalWidth: CGFloat = 300) -> UIImage? {
-    // logicalWidth: 슬라이드=300pt(슬라이드 미리보기 동일), 영상=375*9/16≈211pt(영상 미리보기 동일)
-    let ptH = renderSize.height / renderSize.width * logicalWidth
     let cfg = configOverride ?? vm.currentConfig
+
+    // 문구 레이어: logicalWidth 기준으로 렌더 — 미리보기(StampVideoTextOverlay)와 동일 폭.
+    // 영상=211pt, 슬라이드=300pt. cardWidthOverride를 함께 전달해 폰트 스케일이 일치하도록 함.
+    if renderOnlyText {
+        let textW: CGFloat = logicalWidth
+        let textH = renderSize.height / renderSize.width * textW
+        // safeTopInset: logicalWidth에 비례 (300pt 기준 77pt → 211pt 기준 ≈54pt)
+        let safeTop = round(77.0 * textW / 300.0)
+        let card = OneLinerCard(
+            text: cfg.text,
+            position: cfg.textPosition,
+            textColor: cfg.textColor,
+            fontChoice: cfg.textFont,
+            sizeLevel: cfg.textSize,
+            appearanceMode: .typing,
+            decorEffect: .none,
+            hasBorder: cfg.textHasBorder,
+            showDate: false,
+            showBackground: false,
+            showWordmark: false,
+            cardHeightOverride: textH,
+            cardWidthOverride: textW,
+            safeTopInset: safeTop,
+            isStaticPreview: true
+        )
+        .frame(width: textW, height: textH)
+        let renderer = ImageRenderer(content: card)
+        renderer.proposedSize = .init(width: textW, height: textH)
+        renderer.scale = renderSize.width / textW
+        renderer.isOpaque = false
+        _ = renderer.uiImage
+        return renderer.uiImage
+    }
+
+    // 스탬프 레이어: 기존 logicalWidth 기반 렌더 유지
+    // logicalWidth: 슬라이드=300pt, 영상=375*9/16≈211pt
+    let ptH = renderSize.height / renderSize.width * logicalWidth
+    let wMarkBottom = ceil(ptH * 0.06 + 25.3)
     let card = StampCard(
         data: data,
         template: cfg.template,
@@ -34,11 +73,10 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
         stampTextSize: cfg.textSize,
         stampTextColor: cfg.textColor,
         stampTextHasBorder: cfg.textHasBorder,
+        wordmarkTopInset: wMarkBottom + 6,
         renderOnlyStamp: renderOnlyStamp,
-        renderOnlyText: renderOnlyText
+        renderOnlyText: false
     )
-    // 위아래 6% 여백: 88% 높이로 렌더 후 전체 높이로 감쌈 → 자동으로 6% top/bottom 마진
-    .frame(width: logicalWidth, height: ptH * 0.88)
     .frame(width: logicalWidth, height: ptH)
     let renderer = ImageRenderer(content: card)
     renderer.proposedSize = .init(width: logicalWidth, height: ptH)
@@ -59,15 +97,8 @@ func makeStampLogoDateOverlay(date: Date, renderSize: CGSize) -> UIImage? {
     let df = DateFormatter(); df.dateFormat = "yyyy.MM.dd"
     let dateStr = df.string(from: date)
 
-    let overlay = HStack(alignment: .firstTextBaseline, spacing: 0) {
-        Text("MIMO")
-            .font(.system(size: 9, weight: .black))
-            .tracking(2)
-            .foregroundStyle(.white)
-        Text(" RUNNING")
-            .font(.system(size: 9, weight: .bold))
-            .tracking(2)
-            .foregroundStyle(Theme.violet)
+    let overlay = HStack(alignment: .center, spacing: 0) {
+        MIMOWordmark(size: 11)
         Spacer()
         Text(dateStr)
             .font(.system(size: 8, weight: .medium))
@@ -96,18 +127,11 @@ func makeStampLogoOverlay(date: Date, renderSize: CGSize) -> UIImage? {
     let vPad = ptH * 0.06  // ≈ 22.5pt (미리보기: cardSectionH * 0.06)
     let df = DateFormatter(); df.dateFormat = "yyyy.MM.dd"
     let dateStr = df.string(from: date)
-    let overlay = HStack(alignment: .firstTextBaseline, spacing: 0) {
-        Text("MIMO")
-            .font(.system(size: 7, weight: .black))  // 미리보기 7pt
-            .tracking(2)
-            .foregroundStyle(.white)
-        Text(" RUNNING")
-            .font(.system(size: 7, weight: .bold))   // 미리보기 7pt
-            .tracking(2)
-            .foregroundStyle(Theme.violet)
+    let overlay = HStack(alignment: .center, spacing: 0) {
+        MIMOWordmark(size: 11)
         Spacer()
         Text(dateStr)
-            .font(.system(size: 6, weight: .medium)) // 미리보기 6pt
+            .font(.system(size: 8, weight: .medium))
             .foregroundStyle(.white)
     }
     .cardTextShadow()
@@ -272,6 +296,92 @@ func buildStampOverlayLayer(
     return layer
 }
 
+// MARK: - StampVideoTextOverlay
+
+/// 문구 레이어 전용 뷰 — OneLinerCard, 9:16 절대값 위치(safeTopInset·safeBottomInset).
+/// 컨테이너·글자 크기를 Placeable과 통일한다.
+private struct StampVideoTextOverlay: View {
+    let cfg: StampPhotoConfig
+    let previewProgress: Double
+    let isVideoPlaying: Bool
+    let startDelay: Double
+    let photoIndex: Int
+
+    @State private var phase: Double = 0
+    @State private var loopCounter: Int = 0
+
+    private var isFade:  Bool { cfg.textEntranceMode == .fade }
+    private var isFlyIn: Bool { cfg.textEntranceMode == .flyIn }
+    private var hasAnim: Bool { isFade || isFlyIn }
+
+    private var animKey: String {
+        "\(cfg.textEntranceMode.rawValue)-\(cfg.textFlyDirection.rawValue)-\(loopCounter)-\(startDelay)-\(photoIndex)"
+    }
+
+    var body: some View {
+        // cardWidthOverride는 kClipW(211pt) 명시 — GeometryReader의 geo.size.width는
+        // 상위 ZStack 구조에 따라 300pt를 반환할 수 있어 Placeable과 크기가 달라지는 버그 방지.
+        GeometryReader { geo in
+            OneLinerCard(
+                text: cfg.text,
+                position: cfg.textPosition,
+                textColor: cfg.textColor,
+                fontChoice: cfg.textFont,
+                sizeLevel: cfg.textSize,
+                appearanceMode: .typing,
+                decorEffect: .none,
+                hasBorder: cfg.textHasBorder,
+                showDate: false,
+                showBackground: false,
+                showWordmark: false,
+                cardHeightOverride: geo.size.height,
+                cardWidthOverride: kClipW,
+                safeTopInset: 54,
+                safeBottomInset: 14,
+                isStaticPreview: true
+            )
+            .frame(width: kClipW, height: geo.size.height)
+            .id("\(photoIndex)-\(loopCounter)")
+            .opacity(hasAnim ? phase : 1.0)
+            .offset(flyOffset())
+            .allowsHitTesting(false)
+            .task(id: animKey) {
+                guard hasAnim else { phase = 1.0; return }
+                phase = 0.0
+                let delayNs = UInt64((0.12 + startDelay) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: delayNs)
+                guard !Task.isCancelled else { return }
+                withAnimation(animCurve) { phase = 1.0 }
+            }
+            .onChange(of: previewProgress) { old, new in
+                if old > 0.85, new < 0.1, hasAnim { loopCounter += 1 }
+            }
+            .onChange(of: isVideoPlaying) { old, new in
+                if !old, new, previewProgress < 0.1, hasAnim { loopCounter += 1 }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func flyOffset() -> CGSize {
+        guard isFlyIn else { return .zero }
+        let t = (1.0 - phase) * 220.0
+        switch cfg.textFlyDirection {
+        case .leading:  return CGSize(width: -t, height: 0)
+        case .trailing: return CGSize(width:  t, height: 0)
+        case .bottom:   return CGSize(width: 0,  height: t)
+        }
+    }
+
+    private var animCurve: Animation {
+        switch cfg.textEntranceMode {
+        case .fade:  return .easeInOut(duration: 0.45)
+        case .flyIn: return .spring(duration: 0.45, bounce: 0.20)
+        default:     return .linear(duration: 0)
+        }
+    }
+}
+
 // MARK: - AnimatedStampPreviewCard
 
 /// 영상 미리보기 전용 — 스탬프 레이어와 문구 레이어를 독립적으로 애니메이트.
@@ -302,14 +412,10 @@ struct AnimatedStampPreviewCard: View {
                 isVideoPlaying: isVideoPlaying,
                 photoIndex: currentPhotoIndex
             )
-            // 문구 레이어 (현재 장 텍스트가 있는 경우만) — 스탬프 완료 후 등장
+            // 문구 레이어 — OneLinerCard, 9:16 절대값 위치
             if !cfg.text.isEmpty {
-                AnimatedStampLayer(
-                    data: data, vm: vm, isBright: isBright,
-                    entranceMode: cfg.textEntranceMode,
-                    flyDirection: cfg.textFlyDirection,
-                    configOverride: configOverride,
-                    renderOnlyText: true,
+                StampVideoTextOverlay(
+                    cfg: cfg,
                     previewProgress: previewProgress,
                     isVideoPlaying: isVideoPlaying,
                     startDelay: stampDur,
@@ -403,6 +509,7 @@ private struct AnimatedStampLayer: View {
 
     private var card: some View {
         let cfg = configOverride ?? vm.currentConfig
+        // 미리보기 프레임 375pt, 워드마크 오버레이 top=375*0.06=22.5pt, h=25.3pt → 하단 47.8pt + 6pt 여백 = 54
         return StampCard(
             data: data,
             template: cfg.template,
@@ -419,6 +526,7 @@ private struct AnimatedStampLayer: View {
             stampTextSize: cfg.textSize,
             stampTextColor: cfg.textColor,
             stampTextHasBorder: cfg.textHasBorder,
+            wordmarkTopInset: 54,
             renderOnlyStamp: renderOnlyStamp,
             renderOnlyText: renderOnlyText
         )
@@ -433,7 +541,6 @@ extension ShareCardScreen {
 
     @ViewBuilder
     var stampVideoPreviewSection: some View {
-        let previewW: CGFloat = cardSectionH * 9.0 / 16.0
         ZStack {
             Color.black
             if previewPlayer.isBuilding {
@@ -480,32 +587,24 @@ extension ShareCardScreen {
                         previewProgress: previewPlayer.progress,
                         isVideoPlaying: previewPlayer.isPlaying
                     )
-                    .padding(.vertical, cardSectionH * 0.06)   // 위아래 6% 여백
                 }
-                .frame(width: previewW, height: cardSectionH)
+                .frame(width: kClipW, height: cardSectionH)
                 .clipped()
                 .overlay(alignment: .topLeading) {
                     let videoDateStr: String = {
                         let df = DateFormatter(); df.dateFormat = "yyyy.MM.dd"
                         return df.string(from: activity.date)
                     }()
-                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        Text("MIMO")
-                            .font(.system(size: 7, weight: .black))
-                            .tracking(2)
-                            .foregroundStyle(.white)
-                        Text(" RUNNING")
-                            .font(.system(size: 7, weight: .bold))
-                            .tracking(2)
-                            .foregroundStyle(Theme.violet)
+                    HStack(alignment: .center, spacing: 0) {
+                        MIMOWordmark(size: 11)
                         Spacer()
                         Text(videoDateStr)
-                            .font(.system(size: 6, weight: .medium))
+                            .font(.system(size: 8, weight: .medium))
                             .foregroundStyle(.white)
                     }
                     .cardTextShadow()
-                    .padding(.leading, previewW * 0.047)
-                    .padding(.trailing, previewW * 0.05)
+                    .padding(.leading, 10)
+                    .padding(.trailing, 11)
                     .padding(.top, cardSectionH * 0.06)
                 }
                 .overlay(alignment: .bottom) {
@@ -606,7 +705,6 @@ extension ShareCardScreen {
         // 9:16 창을 두어 좌우에 여백이 생기는 것은 의도된 동작.
         // [필수] scaledToFill로 항상 채움 — "사진 밖의 공간이 보이지 않게".
         // 가로 사진: height를 맞추면 너비가 크게 넘침 → DragGesture로 좌우 이동해 크롭 위치 선택.
-        let previewW: CGFloat = cardSectionH * 9.0 / 16.0
         // storyPhotos는 SwiftData JPEG 디코딩을 포함하므로 한 번만 평가해 재사용.
         let photos       = storyPhotos
         let selectedIdx  = max(0, min(stampVM.selectedClipIndex, photos.count - 1))
@@ -646,18 +744,18 @@ extension ShareCardScreen {
             //    SyncLayerView(AVSynchronizedLayer) 제거: fastBase 플레이어에서 animation 구동 불안정.
             //    [필수] Image에 명시적 frame을 두 겹 지정해 ZStack 크기를 previewW×cardSectionH로 고정.
             if let photo = bgPhoto {
-                let scale  = max(previewW / photo.size.width, cardSectionH / photo.size.height)
+                let scale  = max(kClipW / photo.size.width, cardSectionH / photo.size.height)
                 let scaledW = photo.size.width  * scale
                 let scaledH = photo.size.height * scale
-                let xOffset = (previewW - scaledW) * bgCropOffsetX
-                let excess  = max(0.0, scaledW - previewW)
+                let xOffset = (kClipW - scaledW) * bgCropOffsetX
+                let excess  = max(0.0, scaledW - kClipW)
                 Image(uiImage: photo)
                     .resizable()
                     .frame(width: scaledW, height: scaledH)
                     // Ken Burns: 재생 중에만 scaleEffect 적용. .clipped()가 넘치는 부분 잘라냄.
                     .scaleEffect(isKB ? kbScale : 1.0, anchor: .center)
                     .offset(x: xOffset)
-                    .frame(width: previewW, height: cardSectionH, alignment: .topLeading)
+                    .frame(width: kClipW, height: cardSectionH, alignment: .topLeading)
                     .clipped()
                     .brightness(CardVisual.videoBrightnessBoost)
                     // 크롭 드래그: 재생 중에는 비활성화
@@ -687,7 +785,6 @@ extension ShareCardScreen {
                     previewProgress: previewPlayer.isPlaying ? previewPlayer.progress : 0,
                     isVideoPlaying: previewPlayer.isPlaying
                 )
-                .padding(.vertical, cardSectionH * 0.06)   // 위아래 8% 여백 (출력과 동일)
             }
             // 재생 버튼 / 빌드 스피너 / ▶ 시작 버튼
             // isBuilding: 빌드 진행 중 (▶ 탭 또는 프리빌드) → 스피너
@@ -758,7 +855,7 @@ extension ShareCardScreen {
                 }
             }
         }
-        .frame(width: previewW, height: cardSectionH)
+        .frame(width: kClipW, height: cardSectionH)
         .clipped()
         .task(id: "\(playingIdx)-\(CardPosition.allCases.firstIndex(of: displayConfig.position) ?? 0)") {
             let idx   = playingIdx
@@ -772,23 +869,16 @@ extension ShareCardScreen {
         }
         // 워드마크(좌) + 날짜(우) — 8% 여백 바로 아래에 배치
         .overlay(alignment: .topLeading) {
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text("MIMO")
-                    .font(.system(size: 7, weight: .black))
-                    .tracking(2)
-                    .foregroundStyle(.white)
-                Text(" RUNNING")
-                    .font(.system(size: 7, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(Theme.violet)
+            HStack(alignment: .center, spacing: 0) {
+                MIMOWordmark(size: 11)
                 Spacer()
                 Text(dateStr)
-                    .font(.system(size: 6, weight: .medium))
+                    .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(.white)
             }
             .cardTextShadow()
-            .padding(.leading, previewW * 0.047)
-            .padding(.trailing, previewW * 0.05)
+            .padding(.leading, 10)
+            .padding(.trailing, 11)
             .padding(.top, cardSectionH * 0.06)
         }
     }
@@ -813,7 +903,8 @@ extension ShareCardScreen {
         await previewPlayer.buildForPhotoSlides(
             photos: photos, recipes: recipes,
             activityDate: activity.date, showDate: false,
-            fastBase: true)
+            fastBase: true,
+            forCardIndex: 0)
     }
 
     // MARK: 미리보기 빌더 — 영상 컴포지션만 빌드, 스탬프는 SwiftUI 오버레이로 표시
@@ -827,6 +918,8 @@ extension ShareCardScreen {
             recipes: stampVM.clipRecipes,
             activityDate: activity.date,
             showDate: false,
-            muteAudio: stampVM.muteAudio)
+            showWordmark: false,
+            muteAudio: stampVM.muteAudio,
+            forCardIndex: 0)
     }
 }

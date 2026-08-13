@@ -2,6 +2,15 @@ import SwiftUI
 import AVFoundation
 import Photos
 
+// MARK: — 9:16 클립 미리보기 고정 규격
+private let kClipW:     CGFloat = 211      // 너비 (375 × 9/16)
+private let kClipH:     CGFloat = 375      // 높이
+private let kClipScale: CGFloat = 211.0 / PlaceableCard.cardWidth   // ≈ 0.703
+private let kClipFullH: CGFloat = 533      // PlaceableCard 전체 높이 (kClipH / kClipScale)
+private let kClipOvlH:  CGFloat = 264      // 오버레이 높이 (PlaceableCard.cardHeight × kClipScale)
+private let kClipTopM:  CGFloat = 22       // MIMO 워드마크 상단 여백
+private let kClipBotM:  CGFloat = 11       // 데이터 카드 하단 여백
+
 // MARK: - PlaceableVideoTextOverlay
 //
 // 영상 재생 중 현재 클립의 문구를 SwiftUI로 오버레이하는 뷰.
@@ -15,18 +24,13 @@ private struct PlaceableVideoTextOverlay: View {
     let text: String
     let recipe: ClipRecipe
     let clipIdx: Int
-    let pvScale: CGFloat
     let previewW: CGFloat
     let cardH: CGFloat
-    let chartBottomReserved: CGFloat
-    let chartTopReserved: CGFloat
     let previewProgress: Double
     let isVideoPlaying: Bool
 
     @State private var phase: Double = 0
     @State private var loopCounter: Int = 0
-
-    private var videoCardH: CGFloat { PlaceableCard.cardWidth * 16.0 / 9.0 }
 
     private var animKey: String {
         "\(recipe.appearanceMode)-\(recipe.flyDirection)-\(loopCounter)-\(clipIdx)"
@@ -49,13 +53,13 @@ private struct PlaceableVideoTextOverlay: View {
             showDate: false,
             showBackground: false,
             showWordmark: false,
-            chartBottomReserved: chartBottomReserved,
-            chartTopReserved: chartTopReserved,
-            cardHeightOverride: videoCardH,
+            chartBottomReserved: 15,
+            cardHeightOverride: cardH,
+            cardWidthOverride: previewW,
+            safeTopInset: 54,
+            safeBottomInset: 14,
             isStaticPreview: !(recipe.appearanceMode == .typing)  // typing: EffectTextView 내장 애니메이션
         )
-        .frame(width: PlaceableCard.cardWidth, height: videoCardH)
-        .scaleEffect(pvScale, anchor: .center)
         .frame(width: previewW, height: cardH)
         .id("\(clipIdx)-\(loopCounter)")  // loopCounter 변경 시 뷰 재생성 → typing 타이핑 재시작
         .opacity(isFade || isFlyIn ? phase : 1.0)
@@ -80,7 +84,7 @@ private struct PlaceableVideoTextOverlay: View {
 
     private var flyOffset: CGSize {
         guard isFlyIn else { return .zero }
-        let t = (1.0 - phase) * 220.0 * pvScale
+        let t = (1.0 - phase) * 220.0
         switch recipe.flyDirection {
         case .leading:  return CGSize(width: -t, height: 0)
         case .trailing: return CGSize(width:  t, height: 0)
@@ -180,8 +184,8 @@ extension ShareCardScreen {
 
     @ViewBuilder
     var placeableNonSlideCardPreview: some View {
-        // @Observable previewPlayer 속성을 ZStack 진입 전에 스냅샷 — ZStack 클로저 안에서
-        // observation이 중간 상태를 읽어 PAC 크래시가 발생하는 것을 방지.
+        // @Observable previewPlayer + placeableVM 속성을 ZStack 진입 전에 모두 스냅샷.
+        // ZStack 클로저 안에서 observation이 중간 상태를 읽어 PAC 크래시가 발생하는 것을 방지.
         let pvIsReady    = previewPlayer.isReady
         let pvIsPlaying  = previewPlayer.isPlaying
         let pvPlayer     = previewPlayer.player
@@ -190,23 +194,27 @@ extension ShareCardScreen {
         let pvDuration   = previewPlayer.duration
         let pvIsBuilding = previewPlayer.isBuilding
         let pvRenderSize = previewPlayer.renderSize
+        // placeableVM 스냅샷 — 이하 ZStack 안에서 placeableVM.* 직접 접근 금지
+        let pvClipRecipes     = placeableVM.placeableClipRecipes
+        let pvSelIdx          = placeableVM.selectedPlaceableClipIndex
+        let pvMetricsPos      = placeableVM.placeableMetricsPosition
+        let pvAccent          = placeableVM.placeableAccent
+        let pvSize            = placeableVM.placeableSize
+        let pvLayout          = placeableVM.placeableLayout
+        let pvHorizTextRow    = placeableVM.placeableHorizTextRow
+        let pvHorizRoutePos   = placeableVM.placeableHorizRoutePos
+        // 가로 레이아웃은 HorizTextRow, 세로는 metricsPosition으로 상단 여부 판단
+        let cardIsTop: Bool = pvLayout == .horizontal
+            ? pvHorizTextRow == .top
+            : pvMetricsPos.isTop
         ZStack {
-            if template == .video, pvIsReady, pvIsPlaying,
+            if isPlaceable, template == .video, pvIsReady, pvIsPlaying,
                let vp = pvPlayer, let contentLayer = pvLayer {
-                let previewW: CGFloat  = cardSectionH * 9.0 / 16.0
-                let pvScale:  CGFloat  = previewW / PlaceableCard.cardWidth
-                let overlayH: CGFloat  = PlaceableCard.cardHeight * pvScale
-                let cardH:    CGFloat  = cardSectionH
-                let topMargin: CGFloat = cardH * 0.06
-                let botMargin: CGFloat = cardH * 0.06
-
-                // 검정 배경 (필러박스)
                 Color.black
 
-                // 영상 재생 — 비디오 레이어 (contentLayer는 차트/PDT 전용, 문구는 SwiftUI 오버레이 담당)
                 OneLinerPreviewView(player: vp, contentLayer: contentLayer,
                                     renderSize: pvRenderSize)
-                    .frame(width: previewW, height: cardH)
+                    .frame(width: kClipW, height: kClipH)
                     .overlay(alignment: .bottom) {
                         GeometryReader { geo in
                             Rectangle()
@@ -220,45 +228,34 @@ extension ShareCardScreen {
                     }
 
                 LinearGradient(colors: [.black.opacity(0.15), .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(width: previewW, height: 24)
-                    .frame(width: previewW, height: cardH, alignment: .top)
+                    .frame(width: kClipW, height: 24)
+                    .frame(width: kClipW, height: kClipH, alignment: .top)
                 LinearGradient(colors: [.clear, .black.opacity(0.15)], startPoint: .top, endPoint: .bottom)
-                    .frame(width: previewW, height: 24)
-                    .frame(width: previewW, height: cardH, alignment: .bottom)
+                    .frame(width: kClipW, height: 24)
+                    .frame(width: kClipW, height: kClipH, alignment: .bottom)
 
-                HStack(spacing: 0) {
-                    Text("MIMO")
-                        .font(.system(size: 9 * pvScale, weight: .black))
-                        .tracking(2)
-                        .foregroundStyle(.white)
-                    Text(" RUNNING")
-                        .font(.system(size: 9 * pvScale, weight: .bold))
-                        .tracking(2)
-                        .foregroundStyle(Theme.violet)
-                }
+                MIMOWordmark(size: 11)
                 .shadow(color: .black.opacity(0.50), radius: 4, x: 0, y: 2)
                 .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 1)
-                .padding(.top, topMargin)
-                .padding(.leading, 14 * pvScale)
-                .frame(width: previewW, height: cardH, alignment: .topLeading)
+                .padding(.top, kClipTopM)
+                .padding(.leading, 14)
+                .frame(width: kClipW, height: kClipH, alignment: .topLeading)
 
-                // 재생 중인 클립의 문구 — 스탬프 카드와 동일한 SwiftUI 오버레이 + 애니메이션 방식
+                // 재생 중인 클립의 문구 — 스냅샷된 pvClipRecipes 사용
                 let playingClipIdx: Int = {
-                    guard !placeableVM.placeableClipRecipes.isEmpty,
-                          pvDuration > 0 else {
-                        return min(placeableVM.selectedPlaceableClipIndex,
-                                   max(0, placeableVM.placeableClipRecipes.count - 1))
+                    guard !pvClipRecipes.isEmpty, pvDuration > 0 else {
+                        return min(pvSelIdx, max(0, pvClipRecipes.count - 1))
                     }
                     let currentTime = pvProgress * pvDuration
                     var elapsed = 0.0
-                    for (i, recipe) in placeableVM.placeableClipRecipes.enumerated() {
+                    for (i, recipe) in pvClipRecipes.enumerated() {
                         elapsed += recipe.trimmedDuration / max(0.1, recipe.speed)
                         if currentTime < elapsed { return i }
                     }
-                    return placeableVM.placeableClipRecipes.count - 1
+                    return pvClipRecipes.count - 1
                 }()
-                let playRecipe = placeableVM.placeableClipRecipes.indices.contains(playingClipIdx)
-                    ? placeableVM.placeableClipRecipes[playingClipIdx] : nil
+                let playRecipe = pvClipRecipes.indices.contains(playingClipIdx)
+                    ? pvClipRecipes[playingClipIdx] : nil
                 let playText = playRecipe?.lines.first ?? ""
                 if !playText.isEmpty, let pr = playRecipe {
                     PlaceableVideoTextOverlay(
@@ -266,52 +263,42 @@ extension ShareCardScreen {
                         text: playText,
                         recipe: pr,
                         clipIdx: playingClipIdx,
-                        pvScale: pvScale,
-                        previewW: previewW,
-                        cardH: cardH,
-                        chartBottomReserved: PlaceableCard.cardWidth * (16.0 / 9.0) * 0.06 + placeableVM.storyBottomReserved,
-                        chartTopReserved: placeableVM.storyTopReserved,
+                        previewW: kClipW,
+                        cardH: kClipH,
                         previewProgress: pvProgress,
                         isVideoPlaying: pvIsPlaying
                     )
                 }
 
-                // SwiftUI 데이터 오버레이: PlaceableCard
                 PlaceableCard(
                     activity: activity,
                     detail: detail,
                     routeCoords: routeCoords.isEmpty ? nil : routeCoords,
                     photo: nil,
                     date: activity.date,
-                    metricsPosition: placeableVM.placeableMetricsPosition,
-                    accent: placeableVM.placeableAccent,
+                    metricsPosition: pvMetricsPos,
+                    accent: pvAccent,
                     showBackground: false,
                     showWordmark: false,
                     shoeName: displayShoeName,
                     weather: condition?.weather,
-                    size: placeableVM.placeableSize,
-                    layout: placeableVM.placeableLayout,
-                    horizTextRow: placeableVM.placeableHorizTextRow,
-                    horizRoutePos: placeableVM.placeableHorizRoutePos
+                    size: pvSize,
+                    layout: pvLayout,
+                    horizTextRow: pvHorizTextRow,
+                    horizRoutePos: pvHorizRoutePos,
+                    heightOverride: cardIsTop ? kClipFullH : nil
                 )
-                .frame(width: PlaceableCard.cardWidth, height: PlaceableCard.cardHeight)
-                .scaleEffect(pvScale, anchor: .center)
-                .frame(width: previewW, height: overlayH)
-                .padding(.bottom, botMargin)
-                .frame(width: previewW, height: cardH, alignment: .bottom)
+                .frame(width: PlaceableCard.cardWidth, height: cardIsTop ? kClipFullH : PlaceableCard.cardHeight)
+                .scaleEffect(kClipScale, anchor: .center)
+                .frame(width: kClipW, height: cardIsTop ? kClipH : kClipOvlH)
+                .padding(.bottom, cardIsTop ? 0 : kClipBotM)
+                .frame(width: kClipW, height: kClipH, alignment: cardIsTop ? .center : .bottom)
 
             } else if template == .video {
                 // 영상 템플릿 정지 대기: 재생 상태와 동일한 9:16 pillarbox 레이아웃
-                let previewW: CGFloat  = cardSectionH * 9.0 / 16.0
-                let pvScale:  CGFloat  = previewW / PlaceableCard.cardWidth
-                let overlayH: CGFloat  = PlaceableCard.cardHeight * pvScale
-                let cardH:    CGFloat  = cardSectionH
-                let topMargin: CGFloat = cardH * 0.06
-                let botMargin: CGFloat = cardH * 0.06
-                let safeIdx_v = min(max(0, placeableVM.selectedPlaceableClipIndex),
-                                    max(0, placeableVM.placeableClipRecipes.count - 1))
-                let vText = placeableVM.placeableClipRecipes.indices.contains(safeIdx_v)
-                    ? (placeableVM.placeableClipRecipes[safeIdx_v].lines.first ?? "") : ""
+                let safeIdx_v = min(max(0, pvSelIdx), max(0, pvClipRecipes.count - 1))
+                let vText = pvClipRecipes.indices.contains(safeIdx_v)
+                    ? (pvClipRecipes[safeIdx_v].lines.first ?? "") : ""
 
                 Color.black
 
@@ -319,32 +306,23 @@ extension ShareCardScreen {
                     Image(uiImage: thumb)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: previewW, height: cardH)
+                        .frame(width: kClipW, height: kClipH)
                         .clipped()
                 }
 
                 LinearGradient(colors: [.black.opacity(0.15), .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(width: previewW, height: 24)
-                    .frame(width: previewW, height: cardH, alignment: .top)
+                    .frame(width: kClipW, height: 24)
+                    .frame(width: kClipW, height: kClipH, alignment: .top)
                 LinearGradient(colors: [.clear, .black.opacity(0.15)], startPoint: .top, endPoint: .bottom)
-                    .frame(width: previewW, height: 24)
-                    .frame(width: previewW, height: cardH, alignment: .bottom)
+                    .frame(width: kClipW, height: 24)
+                    .frame(width: kClipW, height: kClipH, alignment: .bottom)
 
-                HStack(spacing: 0) {
-                    Text("MIMO")
-                        .font(.system(size: 9 * pvScale, weight: .black))
-                        .tracking(2)
-                        .foregroundStyle(.white)
-                    Text(" RUNNING")
-                        .font(.system(size: 9 * pvScale, weight: .bold))
-                        .tracking(2)
-                        .foregroundStyle(Theme.violet)
-                }
+                MIMOWordmark(size: 11)
                 .shadow(color: .black.opacity(0.50), radius: 4, x: 0, y: 2)
                 .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 1)
-                .padding(.top, topMargin)
-                .padding(.leading, 14 * pvScale)
-                .frame(width: previewW, height: cardH, alignment: .topLeading)
+                .padding(.top, kClipTopM)
+                .padding(.leading, 14)
+                .frame(width: kClipW, height: kClipH, alignment: .topLeading)
 
                 PlaceableCard(
                     activity: activity,
@@ -352,29 +330,27 @@ extension ShareCardScreen {
                     routeCoords: routeCoords.isEmpty ? nil : routeCoords,
                     photo: nil,
                     date: activity.date,
-                    metricsPosition: placeableVM.placeableMetricsPosition,
-                    accent: placeableVM.placeableAccent,
+                    metricsPosition: pvMetricsPos,
+                    accent: pvAccent,
                     showBackground: false,
                     showWordmark: false,
                     shoeName: displayShoeName,
                     weather: condition?.weather,
-                    size: placeableVM.placeableSize,
-                    layout: placeableVM.placeableLayout,
-                    horizTextRow: placeableVM.placeableHorizTextRow,
-                    horizRoutePos: placeableVM.placeableHorizRoutePos
+                    size: pvSize,
+                    layout: pvLayout,
+                    horizTextRow: pvHorizTextRow,
+                    horizRoutePos: pvHorizRoutePos,
+                    heightOverride: cardIsTop ? kClipFullH : nil
                 )
-                .frame(width: PlaceableCard.cardWidth, height: PlaceableCard.cardHeight)
-                .scaleEffect(pvScale, anchor: .center)
-                .frame(width: previewW, height: overlayH)
-                .padding(.bottom, botMargin)
-                .frame(width: previewW, height: cardH, alignment: .bottom)
+                .frame(width: PlaceableCard.cardWidth, height: cardIsTop ? kClipFullH : PlaceableCard.cardHeight)
+                .scaleEffect(kClipScale, anchor: .center)
+                .frame(width: kClipW, height: cardIsTop ? kClipH : kClipOvlH)
+                .padding(.bottom, cardIsTop ? 0 : kClipBotM)
+                .frame(width: kClipW, height: kClipH, alignment: cardIsTop ? .center : .bottom)
 
                 if !vText.isEmpty {
-                    // 9:16 좌표계로 내보내기와 동일한 위치에 글자·음영판 표시
-                    // 클립별 독립 속성(position·animation)을 recipe에서 직접 읽어 정적 프리뷰와 출력 일치.
-                    // .id(safeIdx_v): 클립 전환 시 SwiftUI 뷰 재생성 → 애니메이션 재실행 보장.
-                    let videoCardH  = PlaceableCard.cardWidth * 16.0 / 9.0  // ≈533pt
-                    let vRecipe     = placeableVM.placeableClipRecipes[safeIdx_v]
+                    // 클립별 독립 속성을 스냅샷된 pvClipRecipes에서 읽음
+                    let vRecipe = pvClipRecipes[safeIdx_v]
                     OneLinerCard(
                         activity: activity,
                         text: vText,
@@ -389,14 +365,14 @@ extension ShareCardScreen {
                         showDate: false,
                         showBackground: false,
                         showWordmark: false,
-                        chartBottomReserved: PlaceableCard.cardWidth * (16.0 / 9.0) * 0.06 + placeableVM.storyBottomReserved,
-                        chartTopReserved: placeableVM.storyTopReserved,
-                        cardHeightOverride: videoCardH,
+                        chartBottomReserved: 15,
+                        cardHeightOverride: kClipH,
+                        cardWidthOverride: kClipW,
+                        safeTopInset: 54,
+                        safeBottomInset: 14,
                         isStaticPreview: true
                     )
-                    .frame(width: PlaceableCard.cardWidth, height: videoCardH)
-                    .scaleEffect(pvScale, anchor: .center)
-                    .frame(width: previewW, height: cardH)
+                    .frame(width: kClipW, height: kClipH)
                     .id(safeIdx_v)
                 }
 
@@ -406,6 +382,7 @@ extension ShareCardScreen {
                         .background(.black.opacity(0.45))
                         .clipShape(Circle())
                 } else if pvIsReady {
+                    // Button 액션 클로저는 탭 시 실행되므로 placeableVM 직접 접근 가능
                     Button {
                         if placeableVM.placeableVideoTextDirty {
                             Task { await loadPlaceablePreview(); previewPlayer.play() }
@@ -506,12 +483,17 @@ extension ShareCardScreen {
 
     @MainActor
     func loadPlaceablePreview() async {
+        // 설정 변경 시 이전 내보내기 캐시 무효화 — ShareLink가 구버전 영상을 재사용하지 않도록.
+        invalidatePlaceableVideoExport()
         guard !placeableVM.placeableClipRecipes.isEmpty else {
             previewPlayer.invalidate()
             videoPreviewImage = nil
             sourceVideoURL = nil
             return
         }
+        // 빌드 전 현재 문구·스타일을 디스크에 반드시 저장.
+        // 텍스트 바인딩 onChange 타이밍 미스로 저장이 빠질 수 있는 엣지케이스 방지.
+        savePlaceableVideoClips()
 
         let firstRecipe = placeableVM.placeableClipRecipes[0]
         videoPreviewImage = firstRecipe.thumbnail
@@ -522,20 +504,19 @@ extension ShareCardScreen {
             }
         }
 
-        let previewVScale: CGFloat       = VideoExportService.targetSize.width / PlaceableCard.cardWidth
-        let previewOverlayPadPx: CGFloat = VideoExportService.targetSize.height * 0.06
-        let previewSafeBotPx: CGFloat    = max(CardVisual.videoSafeBottom,
-                                               previewOverlayPadPx + placeableVM.storyBottomReserved * previewVScale)
-        let previewSafeTopPx: CGFloat    = max(CardVisual.videoSafeTop,
-                                               previewOverlayPadPx + placeableVM.storyTopReserved    * previewVScale)
+        // 문구는 PlaceableVideoTextOverlay(SwiftUI)가 렌더 → 비디오 컴포지션에서는 lines 제외
+        let recipesForPreview: [ClipRecipe] = placeableVM.placeableClipRecipes.map { r in
+            var empty = r; empty.lines = []; return empty
+        }
         await previewPlayer.buildForVideoClips(
-            recipes:          placeableVM.placeableClipRecipes,
+            recipes:          recipesForPreview,
             activityDate:     activity.date,
             showDate:         false,
+            showWordmark:     false,
             muteAudio:        placeableVM.placeableMuteAudio,
-            safeTopOverride:  previewSafeTopPx,
-            safeBotOverride:  previewSafeBotPx,
-            wordmarkTopPad:   VideoExportService.targetSize.height * 0.06
+            safeTopOverride:  CardVisual.videoSafeTop,
+            safeBotOverride:  CardVisual.videoSafeBottom,
+            forCardIndex:     1
         )
         // 빌드 중 mute 토글이 발생했을 경우 현재 상태를 재적용
         previewPlayer.setMuted(placeableVM.placeableMuteAudio)
@@ -550,17 +531,13 @@ extension ShareCardScreen {
             sourceVideoURL = srcURL
             videoPreviewImage = await VideoExportService.firstFrame(of: srcURL)
             if placeableVM.placeableClipRecipes.indices.contains(idx) {
-                let previewVScale: CGFloat       = VideoExportService.targetSize.width / PlaceableCard.cardWidth
-                let previewOverlayPadPx: CGFloat = VideoExportService.targetSize.height * 0.06
-                let previewSafeBotPx: CGFloat    = max(CardVisual.videoSafeBottom,
-                                                       previewOverlayPadPx + placeableVM.storyBottomReserved * previewVScale)
-                let previewSafeTopPx: CGFloat    = max(CardVisual.videoSafeTop,
-                                                       previewOverlayPadPx + placeableVM.storyTopReserved    * previewVScale)
+                var emptyRecipe = placeableVM.placeableClipRecipes[idx]
+                emptyRecipe.lines = []
                 await previewPlayer.buildForVideoClips(
-                    recipes: [placeableVM.placeableClipRecipes[idx]], activityDate: activity.date, showDate: false,
-                    safeTopOverride: previewSafeTopPx,
-                    safeBotOverride: previewSafeBotPx,
-                    wordmarkTopPad:  VideoExportService.targetSize.height * 0.06)
+                    recipes: [emptyRecipe], activityDate: activity.date, showDate: false,
+                    showWordmark: false,
+                    safeTopOverride: CardVisual.videoSafeTop,
+                    safeBotOverride: CardVisual.videoSafeBottom)
             }
         }
     }
@@ -580,6 +557,17 @@ extension ShareCardScreen {
     func savePlaceableVideoClips() {
         let ud = UserDefaults.standard
         let p  = pvcPrefix
+        // 텍스트 별도 저장 — 스토리/슬라이드(pso_*_textsArr)와 동일한 패턴.
+        // placeableVideoTexts가 비어 있으면 pvc_*_texts를 건드리지 않음.
+        // 이유: 세션 중 video 템플릿을 열지 않으면 texts가 메모리에 로드되지 않은 상태로
+        // onDisappear가 발화 → 빈 {}로 덮어쓰면 이전에 저장된 텍스트가 손실됨.
+        let textsToSave = Dictionary(uniqueKeysWithValues:
+            placeableVM.placeableVideoTexts.compactMap { idx, t in t.isEmpty ? nil : (String(idx), t) })
+        if !textsToSave.isEmpty {
+            if let data = try? JSONEncoder().encode(textsToSave) {
+                ud.set(data, forKey: p + "texts")
+            }
+        }
         let valid = placeableVM.placeableClipRecipes.filter { $0.assetIdentifier != nil || $0.clipVideoRef != nil }
         guard !valid.isEmpty else { ud.removeObject(forKey: p + "clips"); return }
         let descs = valid.map { r in
@@ -604,58 +592,86 @@ extension ShareCardScreen {
     }
 
     func loadPlaceableVideoClips() {
-        guard placeableVM.placeableClipRecipes.isEmpty else { return }
         let ud = UserDefaults.standard
         let p  = pvcPrefix
-        guard let data  = ud.data(forKey: p + "clips"),
-              let descs = try? JSONDecoder().decode([SavedClipDescriptor].self, from: data),
-              !descs.isEmpty else { return }
-        placeableVM.placeableMuteAudio = ud.bool(forKey: p + "mute")
-        var restored: [ClipRecipe] = []
-        for desc in descs {
-            let thumb: UIImage? = desc.thumbRef.flatMap { ClipThumbStore.load(ref: $0) }
-            let recipeURL: URL
-            if let ref = desc.clipVideoRef,
-               let stableURL = ClipVideoStore.fileURL(ref: ref),
-               FileManager.default.fileExists(atPath: stableURL.path) {
-                recipeURL = stableURL
-            } else {
-                recipeURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("mimo_pvc_\(UUID().uuidString)")
-            }
-            var recipe = ClipRecipe(url: recipeURL, fullDuration: desc.fullDuration, thumbnail: thumb)
-            recipe.trimStart       = desc.trimStart
-            recipe.trimEnd         = desc.trimEnd
-            recipe.lines           = desc.lines
-            recipe.assetIdentifier = desc.assetID
-            recipe.clipVideoRef    = desc.clipVideoRef
-            recipe.thumbRef        = desc.thumbRef
-            recipe.fontChoice      = OneLinerFont.migrate(desc.fontID)
-            recipe.textColor       = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? .white
-            if let idx = desc.anchorIdx, CardPosition.allCases.indices.contains(idx) {
-                recipe.position = CardPosition.allCases[idx]
-            }
-            recipe.sizeLevel = desc.sizeID.flatMap { TextSizeLevel(rawValue: $0) } ?? .medium
-            if let eid = desc.effectID, eid.contains("|") {
-                let parts = eid.split(separator: "|", maxSplits: 3).map(String.init)
-                recipe.appearanceMode = parts.count > 0 ? (AppearanceMode(rawValue: parts[0]) ?? .typing) : .typing
-                recipe.decorEffect    = parts.count > 1 ? (DecorEffect(rawValue: parts[1]) ?? .none) : .none
-                if parts.count > 2 {
-                    let r = parts[2]
-                    recipe.hasBorder = r.contains("B1")
+
+        // ① 클립: 메모리에 없을 때만 UserDefaults에서 복원
+        if placeableVM.placeableClipRecipes.isEmpty {
+            guard let data  = ud.data(forKey: p + "clips"),
+                  let descs = try? JSONDecoder().decode([SavedClipDescriptor].self, from: data),
+                  !descs.isEmpty else { return }
+            placeableVM.placeableMuteAudio = ud.bool(forKey: p + "mute")
+            var restored: [ClipRecipe] = []
+            for desc in descs {
+                let thumb: UIImage? = desc.thumbRef.flatMap { ClipThumbStore.load(ref: $0) }
+                let recipeURL: URL
+                if let ref = desc.clipVideoRef,
+                   let stableURL = ClipVideoStore.fileURL(ref: ref),
+                   FileManager.default.fileExists(atPath: stableURL.path) {
+                    recipeURL = stableURL
+                } else {
+                    recipeURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("mimo_pvc_\(UUID().uuidString)")
                 }
-                recipe.flyDirection = parts.count > 3 ? (FlyInDirection(rawValue: parts[3]) ?? .trailing) : .trailing
+                var recipe = ClipRecipe(url: recipeURL, fullDuration: desc.fullDuration, thumbnail: thumb)
+                recipe.trimStart       = desc.trimStart
+                recipe.trimEnd         = desc.trimEnd
+                recipe.lines           = desc.lines
+                recipe.assetIdentifier = desc.assetID
+                recipe.clipVideoRef    = desc.clipVideoRef
+                recipe.thumbRef        = desc.thumbRef
+                recipe.fontChoice      = OneLinerFont.migrate(desc.fontID)
+                recipe.textColor       = desc.colorID.flatMap { OneLinerTextColor(rawValue: $0) } ?? .white
+                if let idx = desc.anchorIdx, CardPosition.allCases.indices.contains(idx) {
+                    recipe.position = CardPosition.allCases[idx]
+                }
+                recipe.sizeLevel = desc.sizeID.flatMap { TextSizeLevel(rawValue: $0) } ?? .medium
+                if let eid = desc.effectID, eid.contains("|") {
+                    let parts = eid.split(separator: "|", maxSplits: 3).map(String.init)
+                    recipe.appearanceMode = parts.count > 0 ? (AppearanceMode(rawValue: parts[0]) ?? .typing) : .typing
+                    recipe.decorEffect    = parts.count > 1 ? (DecorEffect(rawValue: parts[1]) ?? .none) : .none
+                    if parts.count > 2 {
+                        let r = parts[2]
+                        recipe.hasBorder = r.contains("B1")
+                    }
+                    recipe.flyDirection = parts.count > 3 ? (FlyInDirection(rawValue: parts[3]) ?? .trailing) : .trailing
+                }
+                recipe.speed      = desc.speed
+                recipe.cropOffsetX = CGFloat(desc.cropOffsetX)
+                restored.append(recipe)
             }
-            recipe.speed            = desc.speed
-            recipe.cropOffsetX      = CGFloat(desc.cropOffsetX)
-            restored.append(recipe)
+            placeableVM.placeableClipRecipes = restored
+            if let firstThumb = restored.first?.thumbnail { videoPreviewImage = firstThumb }
+            if let first = restored.first {
+                placeableVM.placeableSlideAppearance = first.appearanceMode
+                placeableVM.slideDecorEffect         = first.decorEffect
+                placeableVM.slideFlyDirection        = first.flyDirection
+            }
         }
-        placeableVM.placeableClipRecipes = restored
-        if let firstThumb = restored.first?.thumbnail { videoPreviewImage = firstThumb }
-        if let first = restored.first {
-            placeableVM.placeableSlideAppearance = first.appearanceMode
-            placeableVM.slideDecorEffect         = first.decorEffect
-            placeableVM.slideFlyDirection        = first.flyDirection
+
+        // ② 텍스트: placeableVideoTexts가 비어 있을 때만 UserDefaults에서 복원.
+        // 클립이 메모리에 있어도 propagateClips 등으로 texts가 초기화된 경우를 복구하는 안전망.
+        // texts가 이미 채워져 있으면 사용자 입력 중일 수 있으므로 덮어쓰지 않음.
+        guard !placeableVM.placeableClipRecipes.isEmpty,
+              placeableVM.placeableVideoTexts.isEmpty else { return }
+        if let data = ud.data(forKey: p + "texts"),
+           let dict = try? JSONDecoder().decode([String: String].self, from: data) {
+            let indexedTexts = Dictionary(uniqueKeysWithValues:
+                dict.compactMap { k, v in v.isEmpty ? nil : Int(k).map { ($0, v) } })
+            if !indexedTexts.isEmpty {
+                placeableVM.placeableVideoTexts = indexedTexts
+                for (i, text) in indexedTexts where placeableVM.placeableClipRecipes.indices.contains(i) {
+                    placeableVM.placeableClipRecipes[i].lines = [text]
+                }
+            } else {
+                // pvc_*_texts가 빈 dict → clip.lines에서 복원 (onDisappear 덮어쓰기 보정)
+                placeableVM.placeableVideoTexts = Dictionary(uniqueKeysWithValues:
+                    placeableVM.placeableClipRecipes.enumerated().compactMap { i, r in r.lines.first.map { (i, $0) } })
+            }
+        } else {
+            // 레거시 호환: pvc_*_texts 없으면 clip.lines에서 복원
+            placeableVM.placeableVideoTexts = Dictionary(uniqueKeysWithValues:
+                placeableVM.placeableClipRecipes.enumerated().compactMap { i, r in r.lines.first.map { (i, $0) } })
         }
     }
 
@@ -674,7 +690,9 @@ extension ShareCardScreen {
     /// 전역 문구 스타일(폰트·색상·크기·테두리)을 영상 클립 레시피 전체에 동기화.
     /// position 제외 — 클립별 독립 설정.
     func applyStyleToVideoClips() {
-        guard isPlaceable, template == .video else { return }
+        guard template == .video else { return }
+        // isPlaceable 체크 제거: placeableClipRecipes만 수정하므로 다른 카드에서 호출해도 안전
+        // (다른 카드가 활성일 때도 Placeable 클립 스타일을 동기화해야 카드 전환 시 올바르게 표시됨)
         for i in placeableVM.placeableClipRecipes.indices {
             placeableVM.placeableClipRecipes[i].fontChoice       = placeableVM.placeableStoryFont
             placeableVM.placeableClipRecipes[i].textColor        = placeableVM.placeableStoryColor
@@ -685,8 +703,12 @@ extension ShareCardScreen {
 
 
     // PlaceableCard(showBackground: false) → UIImage @3x — 슬라이드 영상 CALayer 오버레이용.
+    // fullHeight=true 시 9:16 비율(300×533pt)로 렌더링 → 데이터 상단 배치 시 CALayer가 전체 프레임을 덮음.
     @MainActor
-    func makePlaceableDataOverlay() -> UIImage? {
+    func makePlaceableDataOverlay(fullHeight: Bool = false) -> UIImage? {
+        let cardH: CGFloat = fullHeight
+            ? PlaceableCard.cardWidth * 16.0 / 9.0
+            : PlaceableCard.cardHeight
         let renderer = ImageRenderer(content:
             PlaceableCard(
                 activity: activity,
@@ -703,9 +725,10 @@ extension ShareCardScreen {
                 size: placeableVM.placeableSize,
                 layout: placeableVM.placeableLayout,
                 horizTextRow: placeableVM.placeableHorizTextRow,
-                horizRoutePos: placeableVM.placeableHorizRoutePos
+                horizRoutePos: placeableVM.placeableHorizRoutePos,
+                heightOverride: fullHeight ? cardH : nil
             )
-            .frame(width: PlaceableCard.cardWidth, height: PlaceableCard.cardHeight)
+            .frame(width: PlaceableCard.cardWidth, height: cardH)
         )
         renderer.scale = 3.0
         return renderer.uiImage
