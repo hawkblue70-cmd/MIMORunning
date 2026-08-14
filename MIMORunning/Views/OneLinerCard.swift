@@ -160,7 +160,7 @@ struct OneLinerCard: View {
                     .frame(width: 54, height: 54)
                     .padding(.horizontal, 18)
                     .padding(.top, routePosition.isTop
-                        ? (cardHeightOverride != nil ? (CardVisual.videoSafeTop + 4) * (Self.cardWidth / 1080) : 28)
+                        ? (cardHeightOverride != nil ? CardVisual.videoSafeTop * (Self.cardWidth / 1080) + 14 : 28)
                         : 4)
                     .padding(.bottom, routePosition.isBottom
                         ? (cardHeightOverride != nil ? CardVisual.videoSafeBottom * (Self.cardWidth / 1080) : 24)
@@ -619,6 +619,7 @@ struct OneLinerCard: View {
             if cardHeightOverride != nil {
                 // 9:16 클립 모드: 워드마크 존(32+26+6) + 여백(4) = 68pt (CALayer defaultTopY 기준)
                 let clipTop = (32.0 + ceil(11.0 * 2.3) + 6 + 4) * (Self.cardWidth / 300.0)
+                var minTop = clipTop
                 if !videoTitle.isEmpty && titleStyle.position.isTop && position.isTop {
                     // UIKit 실측으로 CALayer titleTopEndY와 동일하게 계산
                     let titleFont = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
@@ -631,9 +632,19 @@ struct OneLinerCard: View {
                     let tLayerH = ceil(tBounds.height) + 20.0 * (Self.cardWidth / 1080.0)
                     // 슬라이드(captionMode): 제목 tFrameY = 68pt(defaultTopY). 영상: 76pt(tFrameY).
                     let titleTop: CGFloat = captionMode ? clipTop : 76
-                    return max(clipTop, titleTop + tLayerH + 8)
+                    minTop = max(minTop, titleTop + tLayerH + 8)
                 }
-                return clipTop
+                // PDT 칩이 위쪽일 때: 문구가 칩 영역 아래에 오도록 밀기
+                if (metricPace || metricDistance || metricTime || metricHeartRate),
+                   pdtPosition.isTop, position.isTop {
+                    // 제목 있으면 cardHeight 28% 절대 위치, 없으면 워드마크 아래
+                    let chipTop: CGFloat = (!videoTitle.isEmpty && titleStyle.position.isTop)
+                        ? cardHeightOverride! * 0.28
+                        : CardVisual.videoSafeTop * (Self.cardWidth / 1080) + 14
+                    let chipH   = 22.0 * pdtSizeLevel.scale
+                    minTop = max(minTop, chipTop + chipH + 8)
+                }
+                return minTop
             }
             // 4:5 일반 모드
             if !videoTitle.isEmpty && titleStyle.position.isTop && position.isTop {
@@ -649,7 +660,15 @@ struct OneLinerCard: View {
             }
             // captionWordmarkRow가 상단 14pt에 배치될 때(showWordmark=true) 하단은 39.3pt
             // → 42pt로 2.7pt 여백 확보 (외부 워드마크 기준 textTopInset=42와 동일 논리).
-            return position.isTop ? (showWordmark ? 42 : 30) : 12
+            let base4: CGFloat = position.isTop ? (showWordmark ? 42 : 30) : 12
+            // 4:5 captionMode: PDT 칩이 위쪽이면 칩 아래로 문구 밀기
+            // (4:5 칩 top=28pt; 22*sz ≈ SwiftUI 시스템폰트 11pt*sz 실제 행높이+패딩)
+            if captionMode && position.isTop && pdtPosition.isTop &&
+               (metricPace || metricDistance || metricTime || metricHeartRate) {
+                let chipH = 22.0 * pdtSizeLevel.scale
+                return max(base4, 28 + chipH + 8)
+            }
+            return base4
         }()
         // 차트 있으면 차트 위로 배치; 없으면 9:16은 CALayer 안전 여백, 4:5는 기존값
         let captionBotPad: CGFloat = chartBottomReserved > 0
@@ -705,24 +724,17 @@ struct OneLinerCard: View {
     private var background: some View {
         if let photo = backgroundPhoto {
             let cH = cardHeightOverride ?? Self.cardHeight
-            // 세로 큰(portrait) 사진 → 세로 기준 fill / 가로 큰(landscape) 사진 → 가로 기준 fill
-            let s: CGFloat = photo.size.height >= photo.size.width
-                ? cH / photo.size.height
-                : Self.cardWidth / photo.size.width
+            // 항상 카드를 완전히 채우도록 w/h 중 큰 스케일 사용 (레터박스 없음)
+            let s: CGFloat = max(cH / photo.size.height, Self.cardWidth / photo.size.width)
             let iW = photo.size.width  * s
             let iH = photo.size.height * s
             let ox = -(cropOffsetX * max(0, iW - Self.cardWidth))
-            ZStack {
-                // 레터박스 여백에 그라디언트 배경
-                LinearGradient(colors: SkyPalette.colors(for: cardDate), startPoint: .top, endPoint: .bottom)
-                    .overlay(Color.black.opacity(0.12))
-                Image(uiImage: photo)
-                    .resizable()
-                    .frame(width: iW, height: iH)
-                    .offset(x: ox)
-            }
-            .frame(width: Self.cardWidth, height: cH)
-            .clipped()
+            Image(uiImage: photo)
+                .resizable()
+                .frame(width: iW, height: iH)
+                .offset(x: ox)
+                .frame(width: Self.cardWidth, height: cH)
+                .clipped()
         } else {
             LinearGradient(
                 colors: SkyPalette.colors(for: cardDate),
@@ -1208,7 +1220,11 @@ struct OneLinerCard: View {
         }
         .padding(.horizontal, cardHeightOverride != nil ? 20 : 14)
         .padding(.top, pdtPosition.isTop
-            ? (cardHeightOverride != nil ? (CardVisual.videoSafeTop + 4) * (Self.cardWidth / 1080) : 28)
+            ? (cardHeightOverride != nil
+                ? (!videoTitle.isEmpty && titleStyle.position.isTop
+                    ? cardHeightOverride! * 0.28
+                    : CardVisual.videoSafeTop * (Self.cardWidth / 1080) + 14)
+                : 28)
             : 4)
         .padding(.bottom, pdtPosition.isBottom
             ? (cardHeightOverride != nil

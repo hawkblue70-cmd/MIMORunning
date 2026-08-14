@@ -467,6 +467,7 @@ struct MultiClipEditorView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 0) {
                         titleSizeChips
+                        titleOutlineChip.padding(.leading, 6)
                         Spacer(minLength: 8)
                         if !isPhotoSlideMode {
                             Button { muteAudio.toggle(); onSave() } label: {
@@ -479,7 +480,6 @@ struct MultiClipEditorView: View {
                     }
                     titleFontChips
                     titleColorCircles
-                    titleOutlineChip
                 }
             }
         }
@@ -573,7 +573,7 @@ struct MultiClipEditorView: View {
     private var titleOutlineChip: some View {
         let isSel = titleStyle.outline
         return Button { titleStyle.outline.toggle(); onSave() } label: {
-            Text(AppLanguage.shared.s("외곽선", "Outline"))
+            Text(AppLanguage.shared.s("테두리", "Border"))
                 .font(.system(size: 12, weight: isSel ? .semibold : .regular))
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))

@@ -3407,8 +3407,8 @@ struct ShareCardScreen: View {
         // OneLiner 슬라이드: 진입 시 영상 플레이어 초기화 — 영상 클립 잔상 방지.
         if isOneLiner, template == .slide { previewPlayer.invalidate() }
         // Stamp 슬라이드: 즉시 전환 — 빌드는 ▶ 탭 또는 카드 진입 시 프리빌드에 위임.
-        // 사진이 없을 때만 초기화. 프리빌드(onCardIndexChanged)가 완료·진행 중이면 그 결과를 사용.
-        if isStamp, template == .slide, storyPhotos.isEmpty { previewPlayer.invalidate() }
+        // 영상 플레이어가 잔존하면 반드시 무효화해 음성 차단. 슬라이드 프리빌드는 유지.
+        if isStamp, template == .slide, !previewPlayer.builtForPhotoSlide { previewPlayer.invalidate() }
         if template == .routeVideo, routeSnapshot == nil, !routeCoords.isEmpty {
             Task {
                 if let result = try? await RouteVideoExportService.mapSnapshot(coordinates: routeCoords) {

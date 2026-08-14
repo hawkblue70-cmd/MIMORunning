@@ -960,8 +960,8 @@ struct VideoExportService {
         // 값 변경 시 CardVisual.videoSafeHoriz * vScale (= 60 * 3.6 = 216px) 이상 유지.
         let hPad:         CGFloat = 24 * vScale
         let wMarkTopPad:  CGFloat = 12 * vScale
-        let wMarkFontPx:  CGFloat = 9  * vScale
-        let wMarkZoneH:   CGFloat = wMarkTopPad + ceil(wMarkFontPx * 1.5) + 6 * vScale
+        let wMarkFontPx:  CGFloat = 11 * vScale
+        let wMarkZoneH:   CGFloat = wMarkTopPad + ceil(wMarkFontPx * 2.3) + 6 * vScale
 
         let fontSize:    CGFloat = OneLinerFont.basePt * fontChoice.sizeScale * vScale
         let lineSpacing: CGFloat = fontSize * 0.1
@@ -1142,38 +1142,15 @@ struct VideoExportService {
         }
 
         // ── Wordmark ──────────────────────────────────────────────────────────
-        let wMarkLayerH = ceil(wMarkFontPx * 1.5)
-        let wMarkW      = W - 2 * hPad
-
-        let wMarkRenderer = UIGraphicsImageRenderer(
-            size: CGSize(width: wMarkW, height: wMarkLayerH), format: imgFormat)
-        let wMarkImg = wMarkRenderer.image { ctx in
-            let mimoAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: wMarkFontPx, weight: .black),
-                .foregroundColor: UIColor.white,
-                .kern: NSNumber(value: 2.0)
-            ]
-            let runAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: wMarkFontPx, weight: .bold),
-                .foregroundColor: UIColor(red: 0x7C/255.0, green: 0x5C/255.0,
-                                          blue: 0xFC/255.0, alpha: 1),
-                .kern: NSNumber(value: 2.0)
-            ]
-            let combined = NSMutableAttributedString(
-                attributedString: NSAttributedString(string: "MIMO", attributes: mimoAttrs))
-            combined.append(NSAttributedString(string: " RUNNING", attributes: runAttrs))
-
-            ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
-                                    blur: 3 * vScale,
-                                    color: UIColor.black.withAlphaComponent(0.4).cgColor)
-            combined.draw(in: CGRect(x: 0, y: 0, width: wMarkW, height: wMarkLayerH))
-        }
-
+        let wMarkLayerH = ceil(wMarkFontPx * 2.3)
         let wMarkLayer = CALayer()
-        wMarkLayer.frame           = CGRect(x: hPad, y: wMarkTopPad, width: wMarkW, height: wMarkLayerH)
-        wMarkLayer.contents        = wMarkImg.cgImage
-        wMarkLayer.contentsGravity = .topLeft
-        wMarkLayer.masksToBounds   = false
+        if let wmImg = UIImage(named: "MIMOWordmark") {
+            let imgW = wMarkLayerH * wmImg.size.width / max(wmImg.size.height, 1)
+            wMarkLayer.frame           = CGRect(x: hPad, y: wMarkTopPad, width: imgW, height: wMarkLayerH)
+            wMarkLayer.contents        = wmImg.cgImage
+            wMarkLayer.contentsGravity = .resizeAspect
+            wMarkLayer.masksToBounds   = false
+        }
         parentLayer.addSublayer(wMarkLayer)
 
         // ── Date stamp ────────────────────────────────────────────────────────
@@ -1350,8 +1327,8 @@ struct VideoExportService {
         let safeBottom: CGFloat = CardVisual.videoSafeBottom
         let hPad:         CGFloat = 24 * vScale
         let wMarkTopPad:  CGFloat = 12 * vScale
-        let wMarkFontPx:  CGFloat = 9  * vScale
-        let wMarkZoneH:   CGFloat = wMarkTopPad + ceil(wMarkFontPx * 1.5) + 6 * vScale
+        let wMarkFontPx:  CGFloat = 11 * vScale
+        let wMarkZoneH:   CGFloat = wMarkTopPad + ceil(wMarkFontPx * 2.3) + 6 * vScale
 
         let fontSize:    CGFloat = OneLinerFont.basePt * fontChoice.sizeScale * vScale
         let lineSpacing: CGFloat = fontSize * 0.1
@@ -1575,34 +1552,15 @@ struct VideoExportService {
         }
 
         // ── Wordmark (static, same as single-page) ────────────────────────────
-        let wMarkLayerH = ceil(wMarkFontPx * 1.5)
-        let wMarkW      = W - 2 * hPad
-        let wMarkRenderer = UIGraphicsImageRenderer(
-            size: CGSize(width: wMarkW, height: wMarkLayerH), format: imgFormat)
-        let wMarkImg = wMarkRenderer.image { ctx in
-            let mimoAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: wMarkFontPx, weight: .black),
-                .foregroundColor: UIColor.white,
-                .kern: NSNumber(value: 2.0)
-            ]
-            let runAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: wMarkFontPx, weight: .bold),
-                .foregroundColor: UIColor(red: 0x7C/255.0, green: 0x5C/255.0, blue: 0xFC/255.0, alpha: 1),
-                .kern: NSNumber(value: 2.0)
-            ]
-            let combined = NSMutableAttributedString(
-                attributedString: NSAttributedString(string: "MIMO", attributes: mimoAttrs))
-            combined.append(NSAttributedString(string: " RUNNING", attributes: runAttrs))
-            ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
-                                    blur: 3 * vScale,
-                                    color: UIColor.black.withAlphaComponent(0.4).cgColor)
-            combined.draw(in: CGRect(x: 0, y: 0, width: wMarkW, height: wMarkLayerH))
-        }
+        let wMarkLayerH = ceil(wMarkFontPx * 2.3)
         let wMarkLayer = CALayer()
-        wMarkLayer.frame           = CGRect(x: hPad, y: wMarkTopPad, width: wMarkW, height: wMarkLayerH)
-        wMarkLayer.contents        = wMarkImg.cgImage
-        wMarkLayer.contentsGravity = .topLeft
-        wMarkLayer.masksToBounds   = false
+        if let wmImg = UIImage(named: "MIMOWordmark") {
+            let imgW = wMarkLayerH * wmImg.size.width / max(wmImg.size.height, 1)
+            wMarkLayer.frame           = CGRect(x: hPad, y: wMarkTopPad, width: imgW, height: wMarkLayerH)
+            wMarkLayer.contents        = wmImg.cgImage
+            wMarkLayer.contentsGravity = .resizeAspect
+            wMarkLayer.masksToBounds   = false
+        }
         parentLayer.addSublayer(wMarkLayer)
 
         // ── Date stamp (static) ───────────────────────────────────────────────
@@ -1898,8 +1856,8 @@ struct VideoExportService {
         let safeBot: CGFloat  = safeBotOverride ?? CardVisual.videoSafeBottom
         let hPad: CGFloat     = 24 * vScale
         let wMTopPad: CGFloat = wordmarkTopPad ?? (12 * vScale)
-        let wMFontPx: CGFloat = 9  * vScale
-        let wMZoneH: CGFloat  = wMTopPad + ceil(wMFontPx * 1.5) + 6 * vScale
+        let wMFontPx: CGFloat = 11 * vScale
+        let wMZoneH: CGFloat  = wMTopPad + ceil(wMFontPx * 2.3) + 6 * vScale
         let textMaxW: CGFloat = W - 2 * hPad
         let imgFormat   = UIGraphicsImageRendererFormat()
         imgFormat.scale = 1.0; imgFormat.opaque = false
@@ -1931,7 +1889,7 @@ struct VideoExportService {
             return a
         }
 
-        // ── Precompute title bottom Y (top-positioned videoTitle이 있으면 클립 텍스트/칩 시작점 아래로 밀기) ─
+        // ── Precompute title metrics (위-위: 문구를 제목 아래로, 아래-아래: 문구를 제목 위로) ─
         let titleTopEndY: CGFloat = {
             guard !videoTitle.isEmpty, titleStyle.position.isTop else { return 0 }
             let tFontPx  = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale * vScale
@@ -1943,6 +1901,17 @@ struct VideoExportService {
             let tLayerH  = ceil(tBounds.height) + 20
             let tFrameY  = wMZoneH + 12 * vScale
             return tFrameY + tLayerH + 8 * vScale
+        }()
+        // 아래-아래 쌓기: 제목이 맨 아래일 때 문구를 제목 위로 밀 여분 높이
+        let titleBotEndH: CGFloat = {
+            guard !videoTitle.isEmpty, titleStyle.position.isBottom else { return 0 }
+            let tFontPx  = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale * vScale
+            let tUIFont  = titleStyle.fontChoice.uiFont(size: tFontPx)
+            let tAttrs: [NSAttributedString.Key: Any] = [.font: tUIFont, .foregroundColor: UIColor.white]
+            let tBounds  = NSAttributedString(string: videoTitle, attributes: tAttrs).boundingRect(
+                with: CGSize(width: textMaxW, height: 4000),
+                options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+            return ceil(tBounds.height) + 20 + 8 * vScale  // tLayerH + 간격
         }()
 
         // ── Page plan ─────────────────────────────────────────────────────────
@@ -2092,7 +2061,9 @@ struct VideoExportService {
             }()
             let clipEffBot: CGFloat = pageChartActive
                 ? pageChartPanH + safeBot + 12 * vScale + 8 * vScale
-                : safeBot
+                : clip.position.isBottom && titleBotEndH > 0
+                    ? safeBot + titleBotEndH  // 아래-아래: 제목 위로 문구 밀기
+                    : safeBot
             let defaultTopY = max(wMZoneH + 4 * vScale, safeTop + 4 * vScale)
             let textFrameY: CGFloat = clip.position.isTop
                 ? (titleTopEndY > 0 ? titleTopEndY : defaultTopY)
@@ -2330,34 +2301,13 @@ struct VideoExportService {
         }
 
         // ── Wordmark ───────────────────────────────────────────────────────────
-        let wMLayerH = ceil(wMFontPx * 1.5)
-        if showWordmark {
-            let wMarkW   = W - 2 * hPad
-            let wMRenderer = UIGraphicsImageRenderer(
-                size: CGSize(width: wMarkW, height: wMLayerH), format: imgFormat)
-            let wMImg = wMRenderer.image { ctx in
-                let mimoAttrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: wMFontPx, weight: .black),
-                    .foregroundColor: UIColor.white, .kern: NSNumber(value: 2.0)
-                ]
-                let runAttrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: wMFontPx, weight: .bold),
-                    .foregroundColor: UIColor(red: 0x7C/255.0, green: 0x5C/255.0,
-                                              blue: 0xFC/255.0, alpha: 1),
-                    .kern: NSNumber(value: 2.0)
-                ]
-                let combined = NSMutableAttributedString(
-                    attributedString: NSAttributedString(string: "MIMO", attributes: mimoAttrs))
-                combined.append(NSAttributedString(string: " RUNNING", attributes: runAttrs))
-                ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
-                                        blur: 3 * vScale,
-                                        color: UIColor.black.withAlphaComponent(0.4).cgColor)
-                combined.draw(in: CGRect(x: 0, y: 0, width: wMarkW, height: wMLayerH))
-            }
+        let wMLayerH = ceil(wMFontPx * 2.3)
+        if showWordmark, let wmImg = UIImage(named: "MIMOWordmark") {
+            let imgW = wMLayerH * wmImg.size.width / max(wmImg.size.height, 1)
             let wMLayer = CALayer()
-            wMLayer.frame           = CGRect(x: hPad, y: wMTopPad, width: wMarkW, height: wMLayerH)
-            wMLayer.contents        = wMImg.cgImage
-            wMLayer.contentsGravity = .topLeft
+            wMLayer.frame           = CGRect(x: hPad, y: wMTopPad, width: imgW, height: wMLayerH)
+            wMLayer.contents        = wmImg.cgImage
+            wMLayer.contentsGravity = .resizeAspect
             wMLayer.masksToBounds   = false
             wMLayer.opacity         = 0.0
             let wMFadeEnd = NSNumber(value: min(0.3 / D, 0.99))
@@ -2527,7 +2477,8 @@ struct VideoExportService {
             let x: CGFloat = pos.isLeading  ? hPad
                           : pos.isTrailing ? (W - hPad - size.width)
                           : (W - size.width) / 2
-            let y: CGFloat = pos.isTop     ? (titleTopEndY > 0 ? titleTopEndY : safeTop)
+            let chipTopY: CGFloat = (!videoTitle.isEmpty && titleStyle.position.isTop) ? H * 0.28 : safeTop
+            let y: CGFloat = pos.isTop     ? chipTopY  // 제목 있으면 H 28%, 없으면 워드마크 아래
                           : pos.isBottom  ? (H - effBot - size.height)
                           : (safeTop + (H - effBot) - size.height) / 2
             return CGRect(x: x, y: y, width: size.width, height: size.height)
@@ -3188,6 +3139,7 @@ struct VideoExportService {
         recipes: [ClipRecipe],
         activityDate: Date,
         showDate: Bool,
+        showWordmark: Bool = true,
         muteAudio: Bool = false,
         metricChips: [VideoMetricChip] = [],
         metricLookup: [String: VideoMetricChip] = [:],
@@ -3324,7 +3276,8 @@ struct VideoExportService {
 
         let contentLayer = buildClipTextContentLayer(
             recipes: recipes, renderSize: oneLinerSize, totalDuration: D,
-            activityDate: activityDate, showDate: showDate, metricChips: metricChips,
+            activityDate: activityDate, showDate: showDate, showWordmark: showWordmark,
+            metricChips: metricChips,
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples,
             splits: splits, hrZones: hrZones, intervalSegments: intervalSegments,
             chartSeriesData: chartSeriesData, videoTitle: videoTitle, titleStyle: titleStyle,
