@@ -197,16 +197,7 @@ struct SplitsShareCardView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     // Wordmark + MiniMe
                     HStack(alignment: .top) {
-                        HStack(spacing: 0) {
-                            Text("MIMO")
-                                .font(.system(size: 8, weight: .black))
-                                .tracking(2)
-                                .foregroundStyle(pal.wordmarkMIMO)
-                            Text(" RUNNING")
-                                .font(.system(size: 8, weight: .bold))
-                                .tracking(2)
-                                .foregroundStyle(pal.wordmarkRunning)
-                        }
+                        MIMOWordmark(size: 8)
                         Spacer()
                         miniMeContent
                             .frame(width: 37, height: 37)
@@ -655,12 +646,7 @@ struct IntervalsShareCardView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     // Wordmark + MiniMe
                     HStack(alignment: .top) {
-                        HStack(spacing: 0) {
-                            Text("MIMO")
-                                .font(.system(size: 8, weight: .black)).tracking(2).foregroundStyle(.white)
-                            Text(" RUNNING")
-                                .font(.system(size: 8, weight: .bold)).tracking(2).foregroundStyle(Theme.violet)
-                        }
+                        MIMOWordmark(size: 8)
                         Spacer()
                         miniMeContent.frame(width: 37, height: 37)
                     }

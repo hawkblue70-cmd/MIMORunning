@@ -202,16 +202,7 @@ struct WeeklyGrowthShareCard: View {
     // MARK: - Subviews
 
     private var wordmarkRow: some View {
-        HStack(spacing: 0) {
-            Text("MIMO")
-                .font(.system(size: 11, weight: .black))
-                .tracking(2)
-                .foregroundStyle(pal.wordmarkMIMO)
-            Text(" RUNNING")
-                .font(.system(size: 11, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(pal.wordmarkRunning)
-        }
+        MIMOWordmark(size: 9)
     }
 
     private var divider: some View {
@@ -351,7 +342,7 @@ struct WeeklyGrowthShareCard: View {
                     }
                 }
             }
-            ShareSparkline(dataPoints: dataPoints, color: trendColor)
+            ShareSparkline(dataPoints: dataPoints, color: metric.sparkColor)
                 .frame(height: 18)
         }
         .padding(4)
@@ -679,16 +670,7 @@ struct MileageStreakShareCard: View {
 
     // MARK: Wordmark
     private var wordmarkRow: some View {
-        HStack(spacing: 0) {
-            Text("MIMO")
-                .font(.system(size: 11, weight: .black))
-                .tracking(2)
-                .foregroundStyle(p.textPrimary)
-            Text(" RUNNING")
-                .font(.system(size: 11, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(p.brand)
-        }
+        MIMOWordmark(size: 9)
     }
 
     private var divider: some View {
@@ -721,7 +703,14 @@ struct MileageStreakShareCard: View {
 
     private var barChart: some View {
         let items = barData.map { MileageBarPoint(label: $0.label, value: $0.value) }
-        let color: Color = (showDaily || showTimeMileage) ? p.barChart : p.accentBar
+        let color: Color
+        if showDaily || showTimeMileage {
+            color = p.barChart
+        } else if showMonthly {
+            color = p.monthlyBarColor
+        } else {
+            color = p.weeklyBarColor
+        }
         let maxVal = barData.map(\.value).max() ?? 1
         let yMax = maxVal > 0 ? maxVal / 0.9 : 1.0
         return Chart(items) { item in
@@ -877,7 +866,7 @@ struct MileageStreakShareCard: View {
         if km < 3   { return p.heatLow }
         if km < 6   { return p.heatMid }
         if km < 10  { return p.heatHigh }
-        return p.accentBar
+        return p.heatFull
     }
 
     // MARK: Footer

@@ -167,6 +167,18 @@ final class MREngineStore: ObservableObject {
         #endif
         profile = mrProfile(runs: fetched, efforts: efforts, sigmaObs: sigmaObs, asOf: now)
 
+        // 플래너 전용 프로필: 이번 주 월요일 자정 기준으로 계산.
+        // 주 중간에 뛰어도 계획의 시작 수치(롱런·주간거리)가 바뀌지 않는다.
+        // 다음 월요일이 되면 이번 주 실적이 자연스럽게 반영된다.
+        let planCutoff: Date = {
+            let cal = Calendar.current
+            let wd = cal.component(.weekday, from: now)   // Sun=1, Mon=2 … Sat=7
+            let daysSinceMon = (wd + 5) % 7               // Mon=0, Tue=1 … Sun=6
+            return cal.date(byAdding: .day, value: -daysSinceMon,
+                            to: cal.startOfDay(for: now)) ?? now
+        }()
+        let planProfile = mrProfile(runs: fetched, efforts: efforts, sigmaObs: sigmaObs, asOf: planCutoff)
+
         predictions = mrPredict(efforts: efforts, fit: fit, profile: profile,
                                 heat: heat, asOf: now)
 
@@ -180,9 +192,9 @@ final class MREngineStore: ObservableObject {
         let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in
             let rt = raceTempByID[r.id] ?? MR_REF_TEMP
             let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
-                                 profile: profile, halfEquivMin: he,
+                                 profile: planProfile, halfEquivMin: he,
                                  easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
-                                 raceTempC: rt, runsPerWeek: profile.runsPerWeek,
+                                 raceTempC: rt, runsPerWeek: planProfile.runsPerWeek,
                                  priorRace: prevPlanInfo)
             if let pl { prevPlanInfo = (date: r.date, name: r.name,
                                         peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }
@@ -451,6 +463,14 @@ final class MREngineStore: ObservableObject {
         guard case .ready = state else { return }
         MRUserInputStore.save(userInput)
         let now = Date()
+        let planCutoff2: Date = {
+            let cal = Calendar.current
+            let wd = cal.component(.weekday, from: now)
+            let daysSinceMon = (wd + 5) % 7
+            return cal.date(byAdding: .day, value: -daysSinceMon,
+                            to: cal.startOfDay(for: now)) ?? now
+        }()
+        let planProfile2 = mrProfile(runs: runs, efforts: efforts, asOf: planCutoff2)
         let he = halfEquivMin
         let upcoming = userInput.upcomingRaces(asOf: now)
         let raceTempByID = Dictionary(upcoming.map { r in
@@ -461,9 +481,9 @@ final class MREngineStore: ObservableObject {
         let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in
             let rt = raceTempByID[r.id] ?? MR_REF_TEMP
             let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
-                                 profile: profile, halfEquivMin: he,
+                                 profile: planProfile2, halfEquivMin: he,
                                  easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
-                                 raceTempC: rt, runsPerWeek: profile.runsPerWeek,
+                                 raceTempC: rt, runsPerWeek: planProfile2.runsPerWeek,
                                  priorRace: prevPlanInfo2)
             if let pl { prevPlanInfo2 = (date: r.date, name: r.name,
                                          peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }

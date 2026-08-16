@@ -173,10 +173,10 @@ enum TextSizeLevel: String, CaseIterable, Codable {
 
     var scale: CGFloat {
         switch self {
-        case .small:  return 0.65
-        case .medium: return 0.8
-        case .large:  return 1.0
-        case .xlarge: return 1.25
+        case .small:  return 0.60   // 소: 8.0pt @ 211pt
+        case .medium: return 0.75   // 중: 9.9pt @ 211pt  (대 대비 −25%)
+        case .large:  return 1.00   // 대: 13.3pt @ 211pt (기준)
+        case .xlarge: return 1.38   // 특대: 18.3pt @ 211pt (대 대비 +38%)
         }
     }
 
@@ -362,11 +362,12 @@ struct EffectTextView: View {
                 singleTextView()
             }
         }
-        // pop/wobble은 fade 모드 전용 — 다른 애니메이션 모드에서는 잔여 변형 없이 1.0 고정
-        .scaleEffect(appearanceMode == .fade && decorEffect == .pop
+        // pop/wobble은 fade 모드 전용 — 다른 애니메이션 모드 또는 isStaticPreview 시 잔여 변형 없이 1.0 고정
+        // isStaticPreview: true이면 onAppear 애니메이션이 실행되지 않아 초기값(1.4·-2.5°)이 고착되므로 중립값 사용
+        .scaleEffect(appearanceMode == .fade && !isStaticPreview && decorEffect == .pop
             ? (popAppeared ? 1.0 : 1.4)
             : 1.0)
-        .rotationEffect(appearanceMode == .fade && decorEffect == .wobble
+        .rotationEffect(appearanceMode == .fade && !isStaticPreview && decorEffect == .wobble
             ? .degrees(wobblePhase ? 2.5 : -2.5)
             : .zero)
         .opacity(isStaticPreview ? 1.0 : opacity)

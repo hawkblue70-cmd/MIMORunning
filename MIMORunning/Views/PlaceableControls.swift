@@ -72,25 +72,24 @@ struct PlaceableTrimRowView: View {
                 let i = Int(s); return "\(i / 60):\(String(format: "%02d", i % 60))"
             }
             let lineBinding = Binding<String>(
-                get: {
-                    guard vm.placeableClipRecipes.indices.contains(idx) else { return "" }
-                    return vm.placeableClipRecipes[idx].lines.first ?? ""
-                },
+                get: { vm.placeableVideoTexts[idx] ?? "" },
                 set: { val in
                     guard vm.placeableClipRecipes.indices.contains(idx) else { return }
+                    let capped = String(val.prefix(30))
+                    // lines 즉시 업데이트: onDisappear 등 동기 경로의 save에 대비
                     if vm.placeableClipRecipes[idx].lines.isEmpty {
-                        vm.placeableClipRecipes[idx].lines = [String(val.prefix(30))]
+                        vm.placeableClipRecipes[idx].lines = [capped]
                     } else {
-                        vm.placeableClipRecipes[idx].lines[0] = String(val.prefix(30))
+                        vm.placeableClipRecipes[idx].lines[0] = capped
                     }
-                    vm.placeableVideoTextDirty = true
-                    onSaveVideoClips()
+                    // observable 프로퍼티 업데이트 → onChange(of: placeableVideoTexts) 자동 발화 → 자동 저장
+                    vm.placeableVideoTexts[idx] = capped
                 }
             )
             VStack(spacing: 6) {
                 // 텍스트 필드: "문구" 탭 선택 시 chip row에 이미 표시되므로 여기서는 숨김
                 if !vm.placeableStoryTabIsText {
-                    let lineText = vm.placeableClipRecipes[idx].lines.first ?? ""
+                    let lineText = vm.placeableVideoTexts[idx] ?? ""
                     HStack(spacing: 8) {
                         TextField(
                             AppLanguage.shared.s(
@@ -401,19 +400,16 @@ struct PlaceableStoryModeChipRowView: View {
             if template == .video, vm.placeableStoryTabIsText, !vm.placeableClipRecipes.isEmpty {
                 let idx = min(vm.selectedPlaceableClipIndex, vm.placeableClipRecipes.count - 1)
                 let lineBinding = Binding<String>(
-                    get: {
-                        guard idx < vm.placeableClipRecipes.count else { return "" }
-                        return vm.placeableClipRecipes[idx].lines.first ?? ""
-                    },
+                    get: { vm.placeableVideoTexts[idx] ?? "" },
                     set: { val in
                         guard idx < vm.placeableClipRecipes.count else { return }
+                        let capped = String(val.prefix(30))
                         if vm.placeableClipRecipes[idx].lines.isEmpty {
-                            vm.placeableClipRecipes[idx].lines = [String(val.prefix(30))]
+                            vm.placeableClipRecipes[idx].lines = [capped]
                         } else {
-                            vm.placeableClipRecipes[idx].lines[0] = String(val.prefix(30))
+                            vm.placeableClipRecipes[idx].lines[0] = capped
                         }
-                        vm.placeableVideoTextDirty = true
-                        onSaveVideoClips()
+                        vm.placeableVideoTexts[idx] = capped
                     }
                 )
                 HStack(spacing: 8) {
@@ -432,7 +428,7 @@ struct PlaceableStoryModeChipRowView: View {
                         if !focused { Task { await onLoadPreview() } }
                     }
                     Spacer(minLength: 0)
-                    Text("\((vm.placeableClipRecipes[idx].lines.first ?? "").count)/30")
+                    Text("\((vm.placeableVideoTexts[idx] ?? "").count)/30")
                         .font(.system(size: 11))
                         .foregroundStyle(Color(hex: "6E6E78"))
                         .monospacedDigit()
@@ -586,7 +582,7 @@ struct PlaceableStoryModeChipRowView: View {
     // 오른쪽: 문구 스타일 컨트롤
     private var textStyleControls: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // 크기 + 음소거 (영상)
+            // 크기 + 테두리
             HStack(spacing: 6) {
                 ForEach(TextSizeLevel.allCases, id: \.self) { sz in
                     let isSel = vm.placeableStorySize == sz
@@ -596,25 +592,17 @@ struct PlaceableStoryModeChipRowView: View {
                     } label: { placeableStorySmallChip(sz.chipLabel, isSelected: isSel) }
                     .buttonStyle(.plain)
                 }
-                if template == .video {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { vm.placeableMuteAudio.toggle() }
-                    } label: {
-                        Image(systemName: vm.placeableMuteAudio ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(vm.placeableMuteAudio ? Color.orange : Color.white.opacity(0.75))
-                            .frame(width: 28, height: 24)
-                            .background(vm.placeableMuteAudio ? Color.orange.opacity(0.18) : Color.white.opacity(0.08))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.plain)
-                }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { vm.placeableStoryHasBorder.toggle() }
+                    Task { await onRender() }
+                } label: { placeableStorySmallChip(AppLanguage.shared.s("테두리", "Outline"), isSelected: vm.placeableStoryHasBorder) }
+                .buttonStyle(.plain)
             }
-            // 배속 (영상, 선택된 클립)
+            // 배속 + 음소거 (영상, 선택된 클립)
             if template == .video, !vm.placeableClipRecipes.isEmpty {
                 let safeIdx = min(vm.selectedPlaceableClipIndex, vm.placeableClipRecipes.count - 1)
                 let curSpeed = vm.placeableClipRecipes[safeIdx].speed
-                HStack(spacing: 6) {
+                HStack(spacing: 3) {
                     Image(systemName: "gauge.with.dots.needle.67percent")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                     ForEach([0.5, 1.0, 1.5, 2.0] as [Double], id: \.self) { sp in
@@ -629,6 +617,17 @@ struct PlaceableStoryModeChipRowView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { vm.placeableMuteAudio.toggle() }
+                    } label: {
+                        Image(systemName: vm.placeableMuteAudio ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(vm.placeableMuteAudio ? Color.orange : Color.white.opacity(0.75))
+                            .frame(width: 28, height: 24)
+                            .background(vm.placeableMuteAudio ? Color.orange.opacity(0.18) : Color.white.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             // 폰트
@@ -728,16 +727,6 @@ struct PlaceableStoryModeChipRowView: View {
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-            }
-            // 테두리
-            HStack(spacing: 6) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        vm.placeableStoryHasBorder.toggle()
-                    }
-                    Task { await onRender() }
-                } label: { placeableStorySmallChip(AppLanguage.shared.s("테두리", "Outline"), isSelected: vm.placeableStoryHasBorder) }
-                .buttonStyle(.plain)
             }
         }
     }

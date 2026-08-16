@@ -46,14 +46,7 @@ struct StoryShareCardView: View {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 0) {
-                            Text("MIMO")
-                                .font(.system(size: 9, weight: .black))
-                                .tracking(2)
-                                .foregroundStyle(.white)
-                            Text(" RUNNING")
-                                .font(.system(size: 9, weight: .bold))
-                                .tracking(2)
-                                .foregroundStyle(Theme.violet)
+                            MIMOWordmark(size: 11)
                         }
 
                         if !insightTitle.isEmpty {

@@ -10,7 +10,8 @@ import SwiftUI
 //   카드별로 다른 크기가 필요한 경우 scale 파라미터만 조정할 것.
 //
 // scale 기준값 (scale=1.0)
-//   워드마크: 9pt  인사이트 제목: 13pt  차트: 160×100pt  MiniMe: 54pt
+//   워드마크: 11pt (scale 무관 고정)
+//   인사이트 제목: 13pt  차트: 160×100pt  MiniMe: 54pt
 //   아이콘/레이블: 7pt/8pt  수평 패딩: 10pt
 
 struct VideoOverlayCard: View {
@@ -49,14 +50,7 @@ struct VideoOverlayCard: View {
                 HStack(alignment: .top, spacing: 4 * scale) {
                     VStack(alignment: .leading, spacing: 2 * scale) {
                         HStack(spacing: 0) {
-                            Text("MIMO")
-                                .font(.system(size: 9 * scale, weight: .black))
-                                .tracking(2)
-                                .foregroundStyle(.white)
-                            Text(" RUNNING")
-                                .font(.system(size: 9 * scale, weight: .bold))
-                                .tracking(2)
-                                .foregroundStyle(Theme.violet)
+                            MIMOWordmark(size: 11)
                         }
                         if !insightTitle.isEmpty {
                             Text(insightTitle)
@@ -222,7 +216,7 @@ struct VideoOverlayCard: View {
                 .padding(.bottom, bottomInset ?? (CardVisual.videoSafeBottomRef * scale))
             }
             .cardTextShadow()
-            .padding(.horizontal, CardVisual.videoSafeHorizRef * scale)
+            .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }

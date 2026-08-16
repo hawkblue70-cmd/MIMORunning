@@ -19,7 +19,7 @@ extension ShareCardScreen {
         let validRecipes = oneLinerVM.oneLinerClipRecipes.filter {
             $0.assetIdentifier != nil || $0.clipVideoRef != nil || $0.storedPhotoRef != nil
         }
-        if validRecipes.isEmpty {
+        if validRecipes.isEmpty && oneLinerVM.oneLinerVideoTitle.isEmpty {
             if let entry = oneLinerClipsEntry {
                 modelContext.delete(entry)
                 try? modelContext.save()
@@ -73,8 +73,7 @@ extension ShareCardScreen {
         guard let entry = oneLinerClipsEntry,
               entry.text.hasPrefix("v4recipes\n"),
               let data = entry.text.dropFirst("v4recipes\n".count).data(using: .utf8),
-              let saved = try? JSONDecoder().decode(SavedRecipeSet.self, from: data),
-              !saved.clips.isEmpty else { return }
+              let saved = try? JSONDecoder().decode(SavedRecipeSet.self, from: data) else { return }
         oneLinerVM.oneLinerMuteAudio  = saved.muteAudio
         oneLinerVM.oneLinerVideoTitle = saved.videoTitle
         var style = OneLinerTitleStyle()
@@ -86,6 +85,7 @@ extension ShareCardScreen {
         if let sid = saved.titleSizeID  { style.sizeLevel  = TextSizeLevel(rawValue: sid) ?? .medium }
         style.outline = saved.titleOutline
         oneLinerVM.oneLinerTitleStyle = style
+        guard !saved.clips.isEmpty else { return }
         var restored: [ClipRecipe] = []
         for desc in saved.clips {
             let thumb: UIImage?
@@ -176,18 +176,19 @@ extension ShareCardScreen {
         if oneLinerVM.oneLinerClipRecipes.isEmpty {
             if template == .video { oneLinerVM.oneLinerClipRecipes = restored }
         }
-        // videoPreviewImage는 OneLiner 카드에서만 적용 — 다른 카드(Athletic 등)에 OneLiner 썸네일이 표시되는 버그 방지
-        if isOneLiner, let firstThumb = restored.first?.thumbnail {
+        // videoPreviewImage는 OneLiner 영상 탭에서만 적용 — 슬라이드·스토리 탭에서는 표시 안 함
+        if isOneLiner, template == .video, let firstThumb = restored.first?.thumbnail {
             videoPreviewImage = firstThumb
         }
     }
 
     func syncOneLinerVideoBacking(from oldTemplate: ShareTemplate, to newTemplate: ShareTemplate) {
         guard isOneLiner else { return }
-        // 비디오 템플릿을 벗어날 때: active clips → 백업, active 비움
+        // 비디오 템플릿을 벗어날 때: active clips → 백업, active 비움, 썸네일 제거
         if oldTemplate == .video {
             oneLinerVM.oneLinerVideoModeRecipes = oneLinerVM.oneLinerClipRecipes
             oneLinerVM.oneLinerClipRecipes = []
+            videoPreviewImage = nil
         }
         // 비디오 템플릿으로 돌아올 때: 백업에서 복원 + 썸네일 갱신
         if newTemplate == .video {
@@ -222,6 +223,7 @@ extension ShareCardScreen {
             let card = OneLinerCard(
                 activity: activity,
                 backgroundPhoto: photo,
+                cropOffsetX: pr.cropOffsetX,
                 text: text,
                 position: pr.position,
                 textColor: pr.textColor,

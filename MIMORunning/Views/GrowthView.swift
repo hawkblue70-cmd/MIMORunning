@@ -206,20 +206,16 @@ struct GrowthView: View {
                         VStack(alignment: .leading, spacing: 20) {
                             // ⚠ 성장 탭의 주어는 **사용자**다. 맨 위가 앱의 성적표면 안 된다.
                             //   다만 대회 직후 2주는 "앱이 맞췄나"가 가장 궁금한 시점이므로 위로 올린다.
-                            let justRaced = engine.backtest.contains {
-                                (Calendar.current.dateComponents([.day], from: $0.date, to: Date()).day ?? 99) <= 14
-                            }
-                            if justRaced { MRBacktestView(rows: engine.backtest, confirmedMatches: Array(raceDetector.matches.values), archives: allArchives) }
-                            MRHealthMetricsView(m: engine.healthMetrics)
-                            MRDriftView(drift: engine.drift)
+                            weekSummarySection
                             heatmapSection
                             weeklySection
                             paceSection
-                            weekSummarySection
                             metricTrendsSection
+                            MRHealthMetricsView(m: engine.healthMetrics)
+                            MRDriftView(drift: engine.drift)
                             prSection
                             journeySection
-                            if !justRaced { MRBacktestView(rows: engine.backtest, confirmedMatches: Array(raceDetector.matches.values), archives: allArchives) }
+                            MRBacktestView(rows: engine.backtest, confirmedMatches: Array(raceDetector.matches.values), archives: allArchives)
                             Spacer(minLength: 32)
                         }
                         .padding(.horizontal, 16)
@@ -495,7 +491,7 @@ struct GrowthView: View {
                     .foregroundStyle(isWeekly ? Color.white : Color.secondary)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(isWeekly ? Theme.violet : Color.clear)
+                    .background(isWeekly ? Theme.cadence : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             Button { showDaily = false; showMonthly = true } label: {
@@ -504,7 +500,7 @@ struct GrowthView: View {
                     .foregroundStyle(isMonthly ? Color.white : Color.secondary)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(isMonthly ? Theme.violet : Color.clear)
+                    .background(isMonthly ? Color(hex: "30D158") : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
         }
@@ -1706,12 +1702,13 @@ private struct RunHeatmap: View {
 
     // Color intensity scale (5 levels)
     private func cellColor(km: Double, isFuture: Bool) -> Color {
+        let streak = Color(hex: "FF9F0A")
         if isFuture    { return Color.white.opacity(0.04) }
-        if km == 0     { return Theme.violet.opacity(0.10) }
-        if km < 3      { return Theme.violet.opacity(0.32) }
-        if km < 6      { return Theme.violet.opacity(0.56) }
-        if km < 10     { return Theme.violet.opacity(0.80) }
-        return Theme.violet
+        if km == 0     { return streak.opacity(0.10) }
+        if km < 3      { return streak.opacity(0.32) }
+        if km < 6      { return streak.opacity(0.56) }
+        if km < 10     { return streak.opacity(0.80) }
+        return streak
     }
 
     // Color scale legend
@@ -1904,7 +1901,7 @@ private struct WeeklyDistanceChart: View {
                 x: .value("주", item.label),
                 y: .value("거리(km)", item.km)
             )
-            .foregroundStyle(item.km > 0 ? Theme.violet.gradient : Color.secondary.opacity(0.45).gradient)
+            .foregroundStyle(item.km > 0 ? Theme.cadence.gradient : Color.secondary.opacity(0.45).gradient)
             .cornerRadius(4)
         }
         .frame(height: 180)
@@ -1991,7 +1988,7 @@ private struct MonthlyDistanceChart: View {
                 x: .value("월", item.label),
                 y: .value("거리(km)", item.km)
             )
-            .foregroundStyle(item.km > 0 ? Theme.violet.gradient : Color.secondary.opacity(0.45).gradient)
+            .foregroundStyle(item.km > 0 ? Color(hex: "30D158").gradient : Color.secondary.opacity(0.45).gradient)
             .cornerRadius(4)
         }
         .frame(height: 180)
@@ -2117,34 +2114,19 @@ private struct PaceTrendChart: View {
         let minSpeed = speeds.min() ?? 5
         let maxSpeed = speeds.max() ?? 15
         let spread = max(maxSpeed - minSpeed, 1.0)
-        let padding = spread * 0.4
+        let padding = spread * 0.3
         return (minSpeed - padding)...(maxSpeed + padding)
     }
 
     var body: some View {
         Chart(points) { pt in
-            AreaMark(
-                x: .value("날짜", pt.date),
-                y: .value("스피드", pt.speedKmh)
+            BarMark(
+                x: .value("날짜", pt.date, unit: .day),
+                yStart: .value("기준", yDomain.lowerBound),
+                yEnd: .value("스피드", pt.speedKmh)
             )
-            .foregroundStyle(Theme.pace.opacity(0.12).gradient)
-            .interpolationMethod(.catmullRom)
-
-            LineMark(
-                x: .value("날짜", pt.date),
-                y: .value("스피드", pt.speedKmh)
-            )
-            .foregroundStyle(Theme.pace)
-            .lineStyle(StrokeStyle(lineWidth: 2))
-            .interpolationMethod(.catmullRom)
-
-            PointMark(
-                x: .value("날짜", pt.date),
-                y: .value("스피드", pt.speedKmh)
-            )
-            .symbol(HollowCircle())
-            .foregroundStyle(Theme.pace)
-            .symbolSize(36)
+            .foregroundStyle(Theme.pace.opacity(0.9).gradient)
+            .cornerRadius(3)
         }
         .chartYScale(domain: yDomain)
         .frame(height: 180)
@@ -2226,9 +2208,7 @@ private struct MetricSparkCard: View {
     }
 
     private var sparklineColor: Color {
-        guard !isNeutral, let t = mdcTest, t.isSignificant else { return Theme.violet }
-        let up = t.ratio > 0
-        return (metric.lowerIsBetter ? !up : up) ? .green : Theme.violet
+        isNeutral ? Color(hex: "6E6E78") : metric.sparkColor
     }
 
     var body: some View {
@@ -2254,14 +2234,15 @@ private struct MetricSparkCard: View {
                         if !isNeutral, let t = mdcTest {
                             if t.isSignificant {
                                 let sign: String = t.ratio >= 0 ? "+" : "−"
+                                let isGood = metric.lowerIsBetter ? t.ratio < 0 : t.ratio > 0
                                 Text(String(format: "%@%.1f%%", sign, abs(t.ratio * 100)))
                                     .font(.system(size: 11))
-                                    .foregroundStyle(Color(hex: "6E6E78"))
+                                    .foregroundStyle(isGood ? metric.sparkColor : Color(hex: "FF9F0A"))
                                     .lineLimit(1)
                             } else {
-                                Text("변화 없음")
+                                Text(AppLanguage.shared.s("변화 없음", "No change"))
                                     .font(.system(size: 11))
-                                    .foregroundStyle(Color.white.opacity(0.45))
+                                    .foregroundStyle(Color.white.opacity(0.30))
                                     .lineLimit(1)
                             }
                         }
@@ -2316,7 +2297,7 @@ private struct MetricSparkCard: View {
                     y: .value(metric.unit, pt.value)
                 )
                 .foregroundStyle(sparklineColor)
-                .lineStyle(StrokeStyle(lineWidth: 1.5))
+                .lineStyle(StrokeStyle(lineWidth: 2.0))
                 .interpolationMethod(.catmullRom)
 
                 PointMark(
@@ -2325,12 +2306,12 @@ private struct MetricSparkCard: View {
                 )
                 .symbol(HollowCircle())
                 .foregroundStyle(sparklineColor)
-                .symbolSize(14)
+                .symbolSize(28)
             }
             .chartYScale(domain: (minVal - padding)...(maxVal + padding))
             .chartXAxis(.hidden)
             .chartYAxis(.hidden)
-            .frame(height: 32)
+            .frame(height: 36)
         } else {
             Color.clear.frame(height: 32)
         }

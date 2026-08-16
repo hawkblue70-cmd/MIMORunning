@@ -50,23 +50,7 @@ private struct ConnectView: View {
                         .foregroundStyle(Color(hex: "3DFF7A"))
                 }
                 VStack(spacing: 6) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("MIMO")
-                            .font(.system(size: 58, weight: .black))
-                            .fontWidth(.condensed)
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [Theme.violet, Color(red: 0.72, green: 0.52, blue: 1.0)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                        Text("Running")
-                            .font(.system(size: 40, weight: .black))
-                            .fontWidth(.condensed)
-                            .foregroundStyle(.white)
-                            .tracking(2)
-                    }
+                    MIMOWordmark(size: 40)
                     Text(AppLanguage.shared.s("걷고 뛰기만 하세요.\n정리는 MIMO Running이 합니다.",
                                               "Just walk and run.\nMIMO Running handles the rest."))
                         .font(.body)
@@ -230,16 +214,7 @@ private struct ActivityListContent: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        HStack(spacing: 0) {
-                            Text("MIMO")
-                                .font(.system(size: 38, weight: .black))
-                                .fontWidth(.condensed)
-                                .foregroundStyle(Theme.violet)
-                            Text(" Running")
-                                .font(.system(size: 38, weight: .black))
-                                .fontWidth(.condensed)
-                                .foregroundStyle(.white)
-                        }
+                        MIMOWordmark(size: 22)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 4)
 

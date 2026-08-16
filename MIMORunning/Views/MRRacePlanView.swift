@@ -297,6 +297,20 @@ struct MRWeekTable: View {
         return weekSymbol(plan: snap, actualLong: actualLong, actualWeekly: actualWeekly)
     }
 
+    /// 지난 주 또는 이번 주의 실제 달린 거리를 반환한다. 미래 주는 nil.
+    private func actualData(for w: MRPlanWeek) -> (long: Double, weekly: Double)? {
+        let cal = Calendar.current
+        let today     = cal.startOfDay(for: Date())
+        let weekStart = cal.startOfDay(for: w.monday)
+        guard weekStart <= today else { return nil }   // 미래 주 제외
+        guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else { return nil }
+        let cutoff = min(weekEnd, cal.date(byAdding: .day, value: 1, to: today) ?? weekEnd)
+        let weekRuns = runs.filter { $0.start >= weekStart && $0.start < cutoff }
+        let long   = weekRuns.compactMap(\.distanceKm).max() ?? 0
+        let weekly = weekRuns.compactMap(\.distanceKm).reduce(0, +)
+        return (long, weekly)
+    }
+
     /// 표 아래 집계 한 줄. 기호가 하나도 없으면 nil.
     private var complianceSummary: String? {
         let syms = weeks.compactMap { complianceSymbol(for: $0) }
@@ -320,7 +334,7 @@ struct MRWeekTable: View {
         case "회복":        return Color(red: 0.35, green: 0.65, blue: 0.95)
         case "대회 페이스": return mrWarn
         case "유지":        return Color(red: 0.45, green: 0.80, blue: 0.55)
-        default:            return .white.opacity(0.5)
+        default:            return .white.opacity(0.65)
         }
     }
 
@@ -346,7 +360,7 @@ struct MRWeekTable: View {
                 Text("예상").frame(width: 56, alignment: .trailing)
             }
             .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.45))
+            .foregroundStyle(.white.opacity(0.55))
             .padding(.bottom, 8)
 
             ForEach(weeks, id: \.idx) { w in
@@ -358,13 +372,13 @@ struct MRWeekTable: View {
                                 .foregroundStyle(.white.opacity(0.6))
                             Text("\(w.idx)")
                                 .frame(width: 22, alignment: .leading)
-                                .foregroundStyle(isCurrent(w) ? .white : .white.opacity(0.4))
+                                .foregroundStyle(isCurrent(w) ? .white : .white.opacity(0.55))
                                 .fontWeight(isCurrent(w) ? .semibold : .regular)
                         }
                         .frame(width: 36, alignment: .leading)
                         Text(dateFmt.string(from: w.monday))
                             .frame(width: 40, alignment: .leading)
-                            .foregroundStyle(isCurrent(w) ? .white.opacity(0.7) : .white.opacity(0.28))
+                            .foregroundStyle(isCurrent(w) ? .white.opacity(0.8) : .white.opacity(0.55))
                             .monospacedDigit()
                         Text(w.phase)
                             .frame(width: 64, alignment: .leading)
@@ -373,21 +387,21 @@ struct MRWeekTable: View {
                         //   Frandsen 2025의 참조 밴드(10%) 안에서만 세운다.
                         VStack(alignment: .trailing, spacing: 2) {
                             Text(String(format: "%.1f", w.longRunKm))
-                                .foregroundStyle(w.isNewMax ? .white : .white.opacity(0.6))
+                                .foregroundStyle(w.isNewMax ? .white : .white.opacity(0.70))
                                 .fontWeight(w.isNewMax ? .semibold : .regular)
                         }
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         Text(String(format: "%.0f", w.weeklyKm))
                             .frame(maxWidth: .infinity, alignment: .trailing)
-                            .foregroundStyle(.white.opacity(0.5))
+                            .foregroundStyle(.white.opacity(0.65))
                         Text(mrFormatDisplay(w.projectedMin))
                             .frame(width: 56, alignment: .trailing)
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(.white.opacity(0.65))
                     }
                     .font(.system(size: 12, design: .rounded))
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        guard !w.breakdown.isEmpty else { return }
+                        guard !w.breakdown.isEmpty || actualData(for: w) != nil else { return }
                         withAnimation(.easeOut(duration: 0.18)) {
                             if expanded.contains(w.idx) { expanded.remove(w.idx) }
                             else { expanded.insert(w.idx) }
@@ -402,13 +416,60 @@ struct MRWeekTable: View {
                             .padding(.bottom, 2)
                     }
 
-                    if expanded.contains(w.idx) && !w.breakdown.isEmpty {
-                        Text(w.breakdown)
-                            .font(.system(size: 11))
-                            .foregroundStyle(mrAccent.opacity(0.85))
-                            .padding(.leading, 64)
-                            .padding(.bottom, 4)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    if expanded.contains(w.idx) {
+                        let actual = actualData(for: w)
+                        let longOver   = actual.map { $0.long   > w.longRunKm * 1.05 } ?? false
+                        let weeklyOver = actual.map { $0.weekly > w.weeklyKm  * 1.05 } ?? false
+                        VStack(alignment: .leading, spacing: 4) {
+                            // 수치 행: 실제(흰색 굵게) / 계획(accent 희미)
+                            HStack(spacing: 12) {
+                                HStack(spacing: 3) {
+                                    Text("롱런")
+                                        .foregroundStyle(.white.opacity(0.35))
+                                    if let a = actual {
+                                        Text(String(format: "%.1f", a.long))
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.white)
+                                        if longOver { Text(symbolOver).foregroundStyle(.white.opacity(0.7)) }
+                                    } else {
+                                        Text("—").foregroundStyle(.white.opacity(0.2))
+                                    }
+                                    Text(String(format: "/%.1fkm", w.longRunKm))
+                                        .foregroundStyle(mrAccent.opacity(0.55))
+                                }
+                                HStack(spacing: 3) {
+                                    Text("주간")
+                                        .foregroundStyle(.white.opacity(0.35))
+                                    if let a = actual {
+                                        Text(String(format: "%.1f", a.weekly))
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.white)
+                                        if weeklyOver { Text(symbolOver).foregroundStyle(.white.opacity(0.7)) }
+                                    } else {
+                                        Text("—").foregroundStyle(.white.opacity(0.2))
+                                    }
+                                    Text(String(format: "/%.0fkm", w.weeklyKm))
+                                        .foregroundStyle(mrAccent.opacity(0.55))
+                                }
+                                if isCurrent(w) {
+                                    Text("진행 중")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundStyle(mrAccent.opacity(0.7))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(mrAccent.opacity(0.12), in: Capsule())
+                                }
+                            }
+                            .font(.system(size: 11, design: .rounded))
+                            if !w.breakdown.isEmpty {
+                                Text(w.breakdown)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.white.opacity(0.4))
+                            }
+                        }
+                        .padding(.leading, 36)
+                        .padding(.bottom, 4)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
                 .padding(.vertical, 5)
@@ -427,7 +488,7 @@ struct MRWeekTable: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Text("행 탭 → 실행 안내 · 진한 주 번호 = 이번 주 · 연한 배경 = 새 최장 롱런 주 · 거리는 이지 페이스 기준")
+            Text("행 탭 → 실제 기록 또는 실행 안내 · 진한 주 번호 = 이번 주 · 연한 배경 = 새 최장 롱런 주 · 거리는 이지 페이스 기준")
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.45))
                 .padding(.top, 10)

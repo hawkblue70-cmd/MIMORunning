@@ -72,12 +72,7 @@ struct DetailPanelShareCard: View {
 
     private var headerRow: some View {
         HStack {
-            HStack(spacing: 0) {
-                Text("MIMO")
-                    .font(.system(size: 10, weight: .black)).tracking(1.2).foregroundStyle(.white)
-                Text(" RUNNING")
-                    .font(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(Theme.violet)
-            }
+            MIMOWordmark(size: 9)
             Spacer()
             HStack(spacing: 3) {
                 Text(headerDateStr)

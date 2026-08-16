@@ -83,13 +83,13 @@ struct StampStoryRenderView: View {
                     .resizable()
                     .frame(width: iW, height: iH)
                     .offset(x: ox)
-                    .frame(width: renderWidth, height: renderHeight)
+                    .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                     .clipped()
             } else {
                 Color(hex: "3A4038")
             }
 
-            // 스탬프 오버레이
+            // 스탬프 레이어
             StampCard(
                 data: data,
                 template: resolved.template,
@@ -106,20 +106,34 @@ struct StampStoryRenderView: View {
                 stampTextSize: resolved.textSize,
                 stampTextColor: resolved.textColor,
                 stampTextHasBorder: resolved.textHasBorder,
-                wordmarkTopInset: 28
+                wordmarkTopInset: 42,
+                renderOnlyStamp: true
             )
+            // 문구 레이어 — OneLinerCard(영상·슬라이드와 동일 컴포넌트·폰트 공식)
+            if !resolved.text.isEmpty {
+                OneLinerCard(
+                    text: resolved.text,
+                    position: resolved.textPosition,
+                    textColor: resolved.textColor,
+                    fontChoice: resolved.textFont,
+                    sizeLevel: resolved.textSize,
+                    appearanceMode: .typing,
+                    decorEffect: .none,
+                    hasBorder: resolved.textHasBorder,
+                    showDate: false,
+                    showBackground: false,
+                    showWordmark: false,
+                    cardHeightOverride: renderHeight,
+                    safeTopInset: renderHeight > 400 ? 77 : 42,
+                    safeBottomInset: 20,
+                    isStaticPreview: true
+                )
+            }
 
             // 워드마크 + 날짜: 동일 줄, 로고 좌측 / 날짜 우측
             HStack {
                 HStack(spacing: 0) {
-                    Text("MIMO")
-                        .font(.system(size: 9, weight: .black))
-                        .tracking(2)
-                        .foregroundStyle(.white)
-                    Text(" RUNNING")
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(2)
-                        .foregroundStyle(Theme.violet)
+                    MIMOWordmark(size: 11)
                 }
                 .cardTextShadow()
                 if let d = displayDate {
@@ -179,7 +193,7 @@ struct StampAnimPreviewCard: View {
                     .resizable()
                     .frame(width: iW, height: iH)
                     .offset(x: ox)
-                    .frame(width: renderWidth, height: renderHeight)
+                    .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                     .clipped()
             } else {
                 Color(hex: "3A4038")
@@ -202,18 +216,24 @@ struct StampAnimPreviewCard: View {
             .opacity(cfg.entranceMode == .none ? 1 : (stampVisible ? 1 : 0))
             .animation(animFor(cfg.entranceMode), value: stampVisible)
 
-            // 문구 레이어 (독립 애니메이션)
+            // 문구 레이어 — OneLinerCard(영상·슬라이드와 동일 컴포넌트·폰트 공식)
             if !cfg.text.isEmpty {
-                StampCard(
-                    data: data, template: cfg.template, colorMode: cfg.colorMode,
-                    position: cfg.position, sizeLevel: cfg.sizeLevel,
-                    isBrightBackground: stampBackgroundIsBright(photo: photo, position: cfg.position),
-                    showHeartRate: cfg.showHeartRate, showCalories: cfg.showCalories,
-                    showTextOutline: cfg.showTextOutline,
-                    stampText: cfg.text, stampTextPosition: cfg.textPosition,
-                    stampTextFont: cfg.textFont, stampTextSize: cfg.textSize,
-                    stampTextColor: cfg.textColor, stampTextHasBorder: cfg.textHasBorder,
-                    wordmarkTopInset: 28, renderOnlyText: true
+                OneLinerCard(
+                    text: cfg.text,
+                    position: cfg.textPosition,
+                    textColor: cfg.textColor,
+                    fontChoice: cfg.textFont,
+                    sizeLevel: cfg.textSize,
+                    appearanceMode: .typing,
+                    decorEffect: .none,
+                    hasBorder: cfg.textHasBorder,
+                    showDate: false,
+                    showBackground: false,
+                    showWordmark: false,
+                    cardHeightOverride: renderHeight,
+                    safeTopInset: renderHeight > 400 ? 77 : 42,
+                    safeBottomInset: 20,
+                    isStaticPreview: true
                 )
                 .scaleEffect(scaleFor(textVisible, mode: cfg.textEntranceMode))
                 .offset(offsetFor(textVisible, mode: cfg.textEntranceMode, dir: cfg.textFlyDirection))
@@ -224,14 +244,7 @@ struct StampAnimPreviewCard: View {
             // 워드마크 + 날짜
             HStack {
                 HStack(spacing: 0) {
-                    Text("MIMO")
-                        .font(.system(size: 9, weight: .black))
-                        .tracking(2)
-                        .foregroundStyle(.white)
-                    Text(" RUNNING")
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(2)
-                        .foregroundStyle(Theme.violet)
+                    MIMOWordmark(size: 11)
                 }
                 .cardTextShadow()
                 if let d = displayDate {
@@ -296,7 +309,6 @@ func makeStampStoryImage(photo: UIImage?, data: StampData, vm: StampViewModel,
                          configOverride: StampPhotoConfig? = nil,
                          displayDate: Date? = nil) -> UIImage? {
     FontLoader.registerBundledFonts()
-    let resolved = configOverride ?? vm.currentConfig
     let view = StampStoryRenderView(photo: photo, data: data, vm: vm,
                                     cropOffsetX: cropOffsetX,
                                     configOverride: configOverride,

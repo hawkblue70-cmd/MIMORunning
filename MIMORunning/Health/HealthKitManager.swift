@@ -591,8 +591,8 @@ class HealthKitManager {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_detail", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // v7: 인터벌 goal 거리 기반 lookahead 매칭. 기존 v6 캐시 자동 무효화.
-        return dir.appendingPathComponent("v7_\(id.uuidString).json")
+        // v8: VO2Max 조회 윈도우 +24h 확장(워크아웃 종료 후 기록된 샘플 포함). 기존 v7 캐시 자동 무효화.
+        return dir.appendingPathComponent("v8_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
@@ -628,7 +628,9 @@ class HealthKitManager {
             async let strTask      = queryAvgQuantity(.runningStrideLength, unit: .meter(), workout: workout)
             async let voTask       = queryAvgQuantity(.runningVerticalOscillation,
                                                        unit: .meterUnit(with: .centi), workout: workout)
-            async let vo2Task      = queryLatestVO2Max(before: workout.endDate)
+            // +24h: Apple Watch가 워크아웃 종료 후 수 분~수십 분 뒤 VO2Max를 계산해 HealthKit에 기록하므로
+            // workout.endDate 이후에 생성된 샘플도 포함시켜 가장 최신값을 가져옴
+            async let vo2Task      = queryLatestVO2Max(before: workout.endDate.addingTimeInterval(24 * 3600))
 
             let (locations, splits, zones, powerVal, cadence) =
                 await (locTask, splitsTask, zonesTask, powerTask, cadTask)

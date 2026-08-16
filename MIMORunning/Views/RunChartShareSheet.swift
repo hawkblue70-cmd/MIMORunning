@@ -113,16 +113,7 @@ struct RunChartShareCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Row 1: 워드마크 ← → 날씨 배지 + 신발 (우측 상단 세로)
                 HStack(alignment: .top, spacing: 0) {
-                    HStack(spacing: 2) {
-                        Text("MIMO")
-                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                            .kerning(0.5)
-                            .foregroundStyle(palette.wordmarkMIMO)
-                        Text("RUNNING")
-                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                            .kerning(0.5)
-                            .foregroundStyle(palette.wordmarkRunning)
-                    }
+                    MIMOWordmark(size: 9)
                     Spacer(minLength: 8)
                     VStack(alignment: .trailing, spacing: 4) {
                         if let weather = weatherText {
@@ -189,14 +180,7 @@ struct RunChartShareCard: View {
             // 다크: neutral hierarchy — no metric-color tinting
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .center, spacing: 0) {
-                    HStack(spacing: 2) {
-                        Text("MIMO")
-                            .font(.system(size: 8, weight: .black, design: .monospaced))
-                            .foregroundStyle(palette.wordmarkMIMO)
-                        Text("RUNNING")
-                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(palette.wordmarkRunning)
-                    }
+                    MIMOWordmark(size: 9)
                     Spacer(minLength: 8)
                     HStack(spacing: 4) {
                         // Date row — all uniform gray

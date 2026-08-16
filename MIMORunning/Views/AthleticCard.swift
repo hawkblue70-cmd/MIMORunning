@@ -99,16 +99,7 @@ struct AthleticCard: View {
                 // ── TOP: Wordmark + Insight + MiniMe ─────────────
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 0) {
-                            Text("MIMO")
-                                .font(.system(size: 9, weight: .black))
-                                .tracking(2)
-                                .foregroundStyle(.white)
-                            Text(" RUNNING")
-                                .font(.system(size: 9, weight: .bold))
-                                .tracking(2)
-                                .foregroundStyle(Theme.violet)
-                        }
+                        MIMOWordmark(size: 11)
                         if !insightTitle.isEmpty {
                             Text(insightTitle)
                                 .font(.system(size: 13, weight: .bold))
@@ -152,8 +143,8 @@ struct AthleticCard: View {
                             .padding(.top, 2)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
 
                 Spacer()
 
@@ -235,7 +226,7 @@ struct AthleticCard: View {
                                 }
                             }
                             .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 20)
                             .frame(maxWidth: .infinity)
                         }
                     }
@@ -244,7 +235,7 @@ struct AthleticCard: View {
 
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 8)
+                .padding(.bottom, 20)
             }
         }
         .frame(width: 300, height: 375)

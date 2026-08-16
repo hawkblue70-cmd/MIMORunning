@@ -87,9 +87,14 @@ struct PlaceableCard: View {
     var horizRoutePos: CardPosition = .center    // horizontal mode: explicit route anchor cell
     var cropOffsetX:   CGFloat      = 0.5        // 0=left,  0.5=center, 1=right  (landscape photo)
     var cropOffsetY:   CGFloat      = 0.5        // 0=top,   0.5=center, 1=bottom (portrait photo)
+    // 영상·슬라이드 오버레이에서 카드가 프레임 전체를 채워야 할 때 사용 (상단 배치 시 footer가 프레임 하단에 자연스럽게 위치하도록).
+    // nil이면 기본 cardHeight(375pt)를 사용하고 모서리를 클리핑. 값이 있으면 clipShape 생략.
+    var heightOverride: CGFloat? = nil
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
+
+    private var effectiveHeight: CGFloat { heightOverride ?? Self.cardHeight }
 
     private var labelFontSize:    CGFloat { size == .large ? 12   : 8.4  }
     private var valueFontSize:    CGFloat { size == .large ? 24   : 16.8 }
@@ -137,12 +142,12 @@ struct PlaceableCard: View {
 
             // Footer — date + activity icon, always bottom
             footerView
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
-        .frame(width: Self.cardWidth, height: Self.cardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .frame(width: Self.cardWidth, height: effectiveHeight)
+        .clipShape(RoundedRectangle(cornerRadius: heightOverride == nil ? 20 : 0))
     }
 
     // MARK: - Background
@@ -161,7 +166,7 @@ struct PlaceableCard: View {
                     .resizable()
                     .frame(width: imgW, height: imgH)
                     .offset(x: ox, y: oy)
-                    .frame(width: Self.cardWidth, height: Self.cardHeight)
+                    .frame(width: Self.cardWidth, height: Self.cardHeight, alignment: .topLeading)
                     .clipped()
                     .brightness(0.05)
                     .saturation(1.10)
@@ -204,18 +209,7 @@ struct PlaceableCard: View {
 
     // MARK: - Wordmark
     private var wordmarkView: some View {
-        HStack(spacing: 0) {
-            Text("MIMO")
-                .font(.system(size: 9, weight: .black))
-                .tracking(2)
-                .foregroundStyle(.white)
-            Text(" RUNNING")
-                .font(.system(size: 9, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(Theme.violet)
-        }
-        .brightCardText()
-        .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 1)
+        MIMOWordmark(size: 11)
     }
 
     // MARK: - Metrics

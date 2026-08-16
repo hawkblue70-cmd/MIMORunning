@@ -59,6 +59,8 @@ final class PlaceableViewModel {
     var placeableMuteAudio: Bool = false
     /// 텍스트가 변경됐지만 아직 CALayer에 반영되지 않은 상태. play 전 rebuild 트리거용.
     var placeableVideoTextDirty: Bool = false
+    /// 클립별 문구 (index → text). @Observable 프로퍼티라 onChange(of:)가 자동 발화 — Stamp의 photoConfigs 패턴과 동일.
+    var placeableVideoTexts: [Int: String] = [:]
     var placeableEnabledMetricIDs: Set<String> = []
     var placeableVideoTitle: String = ""
     var placeableTitleStyle: OneLinerTitleStyle = .init()
@@ -106,7 +108,7 @@ final class PlaceableViewModel {
     var placeableStoryFont: OneLinerFont = .gothic
     var placeableStoryColor: OneLinerTextColor = .gold
     var placeableStoryPosition: CardPosition = .bottom
-    var placeableStorySize: TextSizeLevel = .large
+    var placeableStorySize: TextSizeLevel = .medium
     var placeableStoryHasBorder: Bool = true
     var placeableStoryTabIsText: Bool = false
     /// 사진별 좌우 크롭 위치. 0=왼쪽, 0.5=중앙, 1=오른쪽. 가로 사진에만 유효.

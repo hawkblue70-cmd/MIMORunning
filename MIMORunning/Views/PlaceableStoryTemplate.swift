@@ -87,8 +87,7 @@ extension ShareCardScreen {
                 showDate: false,
                 showBackground: false,
                 showWordmark: false,
-                chartBottomReserved: placeableVM.storyBottomReserved,
-                chartTopReserved: placeableVM.storyTopReserved,
+                chartBottomReserved: 22,
                 isStaticPreview: true
             )
             .frame(width: 300, height: 375)
@@ -96,14 +95,7 @@ extension ShareCardScreen {
         }
         // 워드마크: 상단 좌측 (날짜는 하단과 중복되므로 제거)
         HStack(spacing: 0) {
-            Text("MIMO")
-                .font(.system(size: 9, weight: .black))
-                .tracking(2)
-                .foregroundStyle(.white)
-            Text(" RUNNING")
-                .font(.system(size: 9, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(Theme.violet)
+            MIMOWordmark(size: 11)
         }
         .cardTextShadow()
         .padding(.horizontal, 14)
@@ -151,21 +143,13 @@ extension ShareCardScreen {
                     showDate: false,
                     showBackground: false,
                     showWordmark: false,
-                    chartBottomReserved: placeableVM.storyBottomReserved,
-                    chartTopReserved: placeableVM.storyTopReserved,
+                    chartBottomReserved: 22,
                     isStaticPreview: true
                 )
             }
             // 워드마크: 상단 좌측 (날짜는 하단과 중복되므로 제거)
             HStack(spacing: 0) {
-                Text("MIMO")
-                    .font(.system(size: 9, weight: .black))
-                    .tracking(2)
-                    .foregroundStyle(.white)
-                Text(" RUNNING")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(Theme.violet)
+                MIMOWordmark(size: 11)
             }
             .cardTextShadow()
             .padding(.horizontal, 14)

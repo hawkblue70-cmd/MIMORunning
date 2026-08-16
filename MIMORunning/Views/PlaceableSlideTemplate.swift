@@ -12,7 +12,7 @@ private let kClipScale: CGFloat = 211.0 / PlaceableCard.cardWidth   // ≈ 0.703
 private let kClipFullH: CGFloat = 533      // PlaceableCard 전체 높이 (kClipH / kClipScale)
 private let kClipOvlH:  CGFloat = 264      // 오버레이 높이 (PlaceableCard.cardHeight × kClipScale)
 private let kClipTopM:  CGFloat = 22       // MIMO 워드마크 상단 여백
-private let kClipBotM:  CGFloat = 11       // 데이터 카드 하단 여백
+private let kClipBotM:  CGFloat = 14       // 데이터 카드 하단 여백
 
 
 // MARK: - 슬라이드 문구 오버레이 (사진 전환마다 진입 애니메이션)
@@ -52,30 +52,33 @@ private struct SlideTextOverlay: View {
             cardWidthOverride: previewW,
             safeTopInset: 54,
             safeBottomInset: 14,
-            isStaticPreview: !(style.appearanceMode == .typing)
+            horizontalPadding: 14,
+            // 재생 중 fade: isStaticPreview=false → EffectTextView가 opacity·pop·wobble 직접 처리
+            // 정지 또는 flyIn: isStaticPreview=true → 정적 표시 (flyIn은 SlideTextOverlay의 phase로 제어)
+            isStaticPreview: !isPlaying || style.appearanceMode == .flyIn
         )
         .frame(width: previewW, height: cardH)
-        .opacity(isFade || isFlyIn ? phase : 1.0)
+        // fade: EffectTextView 내부 opacity 담당 → 외부 opacity 제거 (이중 제어 방지)
+        .opacity(isFlyIn ? phase : 1.0)
         .offset(flyOffset)
         .allowsHitTesting(false)
         .task {
-            if isPlaying, isFade || isFlyIn {
-                // 슬라이드 전환(bgIdx 변경)으로 뷰가 재생성된 경우 — 즉시 애니메이션
+            if isPlaying, isFlyIn {
+                // 슬라이드 전환(bgIdx 변경)으로 뷰가 재생성된 경우 — flyIn만 phase 제어
                 hasAnimated = true
                 phase = 0.0
                 try? await Task.sleep(for: .seconds(0.3))
                 guard !Task.isCancelled else { return }
                 withAnimation(animCurve) { phase = 1.0 }
             } else {
-                // 정지 상태로 진입 — 즉시 표시, 아직 애니 미재생 상태로 표시
+                // 정지 상태 또는 fade: 즉시 표시 (fade는 EffectTextView가 내부에서 처리)
                 phase = 1.0
                 hasAnimated = false
             }
         }
         .onChange(of: isPlaying) { _, newVal in
-            // 재생 시작 시점에 첫 번째 슬라이드의 애니메이션 트리거
-            // (bgIdx=0이라 뷰 재생성 없이 isPlaying만 바뀌는 경우)
-            guard newVal, !hasAnimated, isFade || isFlyIn else { return }
+            // flyIn 전용: 재생 시작 시점에 phase 트리거 (뷰 재생성 없이 isPlaying만 바뀌는 경우 대비)
+            guard newVal, !hasAnimated, isFlyIn else { return }
             hasAnimated = true
             phase = 0.0
             Task {
@@ -113,6 +116,10 @@ extension ShareCardScreen {
         let cardIsTop: Bool = placeableVM.placeableLayout == .horizontal
             ? placeableVM.placeableHorizTextRow == .top
             : placeableVM.placeableMetricsPosition.isTop
+        // 상단 배치: 하단 kClipBotM 여백 확보를 위해 카드 높이를 kClipBotM만큼 줄임
+        // → 날짜(footer)가 항상 동일 위치(프리뷰 하단에서 kClipBotM+14pt)에 표시되도록 보정
+        let pvCardInnerH: CGFloat = kClipH - kClipBotM              // 364: 상단 배치 시 스케일 후 카드 높이
+        let pvCardFullH:  CGFloat = pvCardInnerH / kClipScale        // ≈518: heightOverride (스케일 역산)
         // currentText는 bgIdx 확정 후 블록 내에서 계산
 
         if !storyPhotos.isEmpty {
@@ -181,6 +188,20 @@ extension ShareCardScreen {
                 .offset(x: sp0Ox + (isKB ? kbPanX : 0), y: sp0Oy)
                 .frame(width: kClipW, height: kClipH, alignment: .topLeading)
                 .clipped()
+                .gesture(!isKB && (sp0ImgW - kClipW) > 1 ? DragGesture(minimumDistance: 1)
+                    .onChanged { drag in
+                        if placeableVM.storyCropDragBase == nil {
+                            placeableVM.storyCropDragBase = placeableVM.placeableStoryCropOffsets[bgIdx] ?? 0.5
+                        }
+                        guard let base = placeableVM.storyCropDragBase else { return }
+                        placeableVM.placeableStoryCropOffsets[bgIdx] = max(0, min(1,
+                            base - drag.translation.width / (sp0ImgW - kClipW)))
+                    }
+                    .onEnded { _ in
+                        placeableVM.storyCropDragBase = nil
+                        savePlaceableStoryOverlay()
+                    }
+                : nil)
                 .id(bgIdx)
                 .transition(.opacity.animation(.easeInOut(duration: 0.4)))
 
@@ -216,13 +237,13 @@ extension ShareCardScreen {
                 layout: placeableVM.placeableLayout,
                 horizTextRow: placeableVM.placeableHorizTextRow,
                 horizRoutePos: placeableVM.placeableHorizRoutePos,
-                heightOverride: cardIsTop ? kClipFullH : nil
+                heightOverride: cardIsTop ? pvCardFullH : nil
             )
-            .frame(width: PlaceableCard.cardWidth, height: cardIsTop ? kClipFullH : PlaceableCard.cardHeight)
+            .frame(width: PlaceableCard.cardWidth, height: cardIsTop ? pvCardFullH : PlaceableCard.cardHeight)
             .scaleEffect(kClipScale, anchor: .center)
-            .frame(width: kClipW, height: cardIsTop ? kClipH : kClipOvlH)
-            .padding(.bottom, cardIsTop ? 0 : kClipBotM)
-            .frame(width: kClipW, height: kClipH, alignment: cardIsTop ? .center : .bottom)
+            .frame(width: kClipW, height: cardIsTop ? pvCardInnerH : kClipOvlH)
+            .padding(.bottom, kClipBotM)
+            .frame(width: kClipW, height: kClipH, alignment: .bottom)
 
             if !currentText.isEmpty {
                 SlideTextOverlay(
@@ -233,7 +254,8 @@ extension ShareCardScreen {
                     cardH: kClipH,
                     isPlaying: previewPlayer.isPlaying
                 )
-                .id(bgIdx)
+                // isPlaying 변경 시 뷰를 재생성 → EffectTextView.onAppear 재발화 → fade pop/wobble 재시작
+                .id("\(bgIdx)-\(previewPlayer.isPlaying ? 1 : 0)")
             }
 
             // 진행 바: 재생 중 또는 재생 후 표시

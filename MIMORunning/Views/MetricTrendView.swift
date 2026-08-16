@@ -13,7 +13,9 @@ struct HollowCircle: ChartSymbolShape {
 }
 
 // MARK: - Cardio Fitness Classifier (internal — shared with ActivityDetailView)
-// Thresholds from Apple's Cardio Fitness classification (ACSM norms, mL/kg·min)
+// Thresholds from FRIEND database (Kaminsky et al. 2015, Mayo Clin Proc).
+// Bands = P25 / P50 / P75 percentiles by age & sex (mL/kg·min).
+// Male P50/P75 verified against Apple Health image; female from published table.
 
 enum CardioFitnessClassifier {
     struct Band: Identifiable {
@@ -46,31 +48,33 @@ enum CardioFitnessClassifier {
         let L = AppLanguage.shared
         let t = thresholds(age: age, isMale: isMale)
         return [
-            Band(label: L.s("낮음",      "Low"),       color: .red,    low: yMin,       high: t.belowAvg),
-            Band(label: L.s("평균 이하", "Below Avg"), color: .orange, low: t.belowAvg, high: t.aboveAvg),
-            Band(label: L.s("평균 이상", "Above Avg"), color: .yellow, low: t.aboveAvg, high: t.high),
-            Band(label: L.s("높음",      "High"),      color: .green,  low: t.high,     high: yMax),
+            Band(label: L.s("낮음",      "Low"),       color: Color(hex: "FF453A"), low: yMin,       high: t.belowAvg),
+            Band(label: L.s("평균 이하", "Below Avg"), color: Color(hex: "FF9F0A"), low: t.belowAvg, high: t.aboveAvg),
+            Band(label: L.s("평균 이상", "Above Avg"), color: Color(hex: "FFD60A"), low: t.aboveAvg, high: t.high),
+            Band(label: L.s("높음",      "High"),      color: Color(hex: "30D158"), low: t.high,     high: yMax),
         ]
     }
 
     static func thresholds(age: Int, isMale: Bool) -> Thresholds {
         if isMale {
+            // FRIEND 기반 (낮음/평균이하/평균이상/높음 경계, mL/kg·min)
             switch age {
-            case ..<30:   return Thresholds(belowAvg: 37.1, aboveAvg: 44.3, high: 51.4)
-            case 30..<40: return Thresholds(belowAvg: 35.1, aboveAvg: 42.0, high: 49.0)
-            case 40..<50: return Thresholds(belowAvg: 33.1, aboveAvg: 40.0, high: 47.1)
-            case 50..<60: return Thresholds(belowAvg: 30.1, aboveAvg: 36.8, high: 43.7)
-            case 60..<70: return Thresholds(belowAvg: 27.1, aboveAvg: 33.7, high: 40.6)
-            default:      return Thresholds(belowAvg: 24.1, aboveAvg: 30.8, high: 37.7)
+            case ..<30:   return Thresholds(belowAvg: 37, aboveAvg: 48, high: 57)
+            case 30..<40: return Thresholds(belowAvg: 34, aboveAvg: 42, high: 52)
+            case 40..<50: return Thresholds(belowAvg: 30, aboveAvg: 38, high: 47)
+            case 50..<60: return Thresholds(belowAvg: 26, aboveAvg: 33, high: 41)
+            case 60..<70: return Thresholds(belowAvg: 22, aboveAvg: 28, high: 36)
+            default:      return Thresholds(belowAvg: 19, aboveAvg: 24, high: 33)
             }
         } else {
+            // FRIEND 기반 (여성, mL/kg·min)
             switch age {
-            case ..<30:   return Thresholds(belowAvg: 29.1, aboveAvg: 36.0, high: 43.0)
-            case 30..<40: return Thresholds(belowAvg: 27.1, aboveAvg: 33.8, high: 40.7)
-            case 40..<50: return Thresholds(belowAvg: 24.1, aboveAvg: 31.0, high: 38.0)
-            case 50..<60: return Thresholds(belowAvg: 21.1, aboveAvg: 28.0, high: 35.0)
-            case 60..<70: return Thresholds(belowAvg: 18.1, aboveAvg: 25.0, high: 32.0)
-            default:      return Thresholds(belowAvg: 15.1, aboveAvg: 22.0, high: 29.0)
+            case ..<30:   return Thresholds(belowAvg: 27, aboveAvg: 37, high: 45)
+            case 30..<40: return Thresholds(belowAvg: 24, aboveAvg: 30, high: 38)
+            case 40..<50: return Thresholds(belowAvg: 21, aboveAvg: 27, high: 34)
+            case 50..<60: return Thresholds(belowAvg: 19, aboveAvg: 23, high: 29)
+            case 60..<70: return Thresholds(belowAvg: 16, aboveAvg: 20, high: 25)
+            default:      return Thresholds(belowAvg: 15, aboveAvg: 18, high: 22)
             }
         }
     }
@@ -106,6 +110,19 @@ enum TrendRange: String, CaseIterable, Identifiable {
         case .year:     return cal.date(byAdding: .year,  value: -1,  to: now) ?? now
         }
     }
+
+    /// 0 = 개별 런, 1 = 1주 평균, 2 = 2주 평균
+    var bucketWeeks: Int {
+        switch self {
+        case .week, .month:    return 0
+        case .sixMonth:        return 1
+        case .year:            return 2
+        }
+    }
+    var granularity: Granularity {
+        bucketWeeks == 0 ? .day : .week
+    }
+    enum Granularity { case day, week }
 }
 
 // MARK: - MetricTrendView
@@ -130,6 +147,33 @@ struct MetricTrendView: View {
     private var periodAverage: Double? {
         guard !dataPoints.isEmpty else { return nil }
         return dataPoints.map(\.value).reduce(0, +) / Double(dataPoints.count)
+    }
+
+    /// 6개월/년은 주별 평균으로 집계, 주/월은 개별 런 그대로
+    private var displayPoints: [(date: Date, value: Double)] {
+        let bw = selectedRange.bucketWeeks
+        guard bw > 0 else { return dataPoints }
+        return averaged(dataPoints, bucketWeeks: bw)
+    }
+
+    private func averaged(_ pts: [(date: Date, value: Double)], bucketWeeks: Int) -> [(date: Date, value: Double)] {
+        guard bucketWeeks > 0, !pts.isEmpty else { return pts }
+        var cal = Calendar(identifier: .gregorian)
+        cal.firstWeekday = 2  // Monday
+        // 전체 기간의 첫 월요일을 epoch로 삼아 bucketWeeks 단위로 나눔
+        guard let firstMonday = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: pts.first!.date)) else { return pts }
+        let bucketSecs = TimeInterval(bucketWeeks * 7 * 86400)
+        var buckets: [Int: [Double]] = [:]
+        for pt in pts {
+            let idx = Int(pt.date.timeIntervalSince(firstMonday) / bucketSecs)
+            buckets[idx, default: []].append(pt.value)
+        }
+        return buckets
+            .map { idx, vals -> (date: Date, value: Double) in
+                let bucketStart = firstMonday.addingTimeInterval(Double(idx) * bucketSecs)
+                return (date: bucketStart, value: vals.reduce(0, +) / Double(vals.count))
+            }
+            .sorted { $0.date < $1.date }
     }
 
     var body: some View {
@@ -188,7 +232,7 @@ struct MetricTrendView: View {
             GrowthShareCardScreen(
                 metric: metric,
                 currentValue: currentValue,
-                dataPoints: dataPoints,
+                dataPoints: displayPoints,
                 selectedRange: selectedRange,
                 age: age,
                 isMale: isMale
@@ -208,35 +252,24 @@ struct MetricTrendView: View {
     }
 
     private var chartCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(AppLanguage.shared.s("\(dataPoints.count)개 기록", "\(dataPoints.count) records"))
+        let L = AppLanguage.shared
+        let countLabel: String = {
+            let bw = selectedRange.bucketWeeks
+            if bw == 2 {
+                return L.s("\(displayPoints.count)개 구간 (2주 평균)", "\(displayPoints.count) periods (2w avg)")
+            } else if bw == 1 {
+                return L.s("\(displayPoints.count)주 평균", "\(displayPoints.count)w avg")
+            } else {
+                return L.s("\(dataPoints.count)개 기록", "\(dataPoints.count) records")
+            }
+        }()
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(countLabel)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             chartView
                 .frame(height: 200)
-                .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                            .foregroundStyle(Color.white.opacity(0.1))
-                        AxisValueLabel {
-                            if let d = value.as(Date.self) {
-                                Text(d, format: xLabelFormat)
-                                    .font(.caption2)
-                                    .foregroundStyle(Color.secondary)
-                            }
-                        }
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                            .foregroundStyle(Color.white.opacity(0.1))
-                        AxisValueLabel()
-                            .foregroundStyle(Color.secondary)
-                            .font(.caption2)
-                    }
-                }
         }
         .padding(16)
         .background(Theme.cardBackground)
@@ -254,21 +287,47 @@ struct MetricTrendView: View {
     }
 
     private var baseChart: some View {
-        Chart {
-            ForEach(dataPoints, id: \.date) { pt in
+        let pts = displayPoints
+        let sz: CGFloat = pts.count > 30 ? 10 : pts.count > 15 ? 20 : 35
+        return Chart {
+            ForEach(pts, id: \.date) { pt in
                 LineMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(metric.sparkColor)
                     .interpolationMethod(.catmullRom)
                 PointMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
                     .symbol(HollowCircle())
-                    .foregroundStyle(Theme.violet)
-                    .symbolSize(dataPoints.count > 20 ? 15 : 35)
+                    .foregroundStyle(metric.sparkColor)
+                    .symbolSize(sz)
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color.white.opacity(0.1))
+                AxisValueLabel {
+                    if let d = value.as(Date.self) {
+                        Text(d, format: xLabelFormat)
+                            .font(.caption2)
+                            .foregroundStyle(Color.secondary)
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color.white.opacity(0.1))
+                AxisValueLabel()
+                    .foregroundStyle(Color.secondary)
+                    .font(.caption2)
             }
         }
     }
 
     private func vo2MaxChartWithBands(age: Int, isMale: Bool) -> some View {
-        let vals = dataPoints.map(\.value)
+        let pts = displayPoints
+        let sz: CGFloat = pts.count > 30 ? 10 : pts.count > 15 ? 20 : 35
+        let vals = pts.map(\.value)
         let dMin = vals.min() ?? 20.0
         let dMax = vals.max() ?? 55.0
         let t = CardioFitnessClassifier.thresholds(age: age, isMale: isMale)
@@ -284,19 +343,41 @@ struct MetricTrendView: View {
                     yStart: .value("", band.low),
                     yEnd: .value("", band.high)
                 )
-                .foregroundStyle(band.color.opacity(0.10))
+                .foregroundStyle(band.color.opacity(0.18))
             }
-            ForEach(dataPoints, id: \.date) { pt in
+            ForEach(pts, id: \.date) { pt in
                 LineMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(metric.sparkColor)
                     .interpolationMethod(.catmullRom)
                 PointMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
                     .symbol(HollowCircle())
-                    .foregroundStyle(Theme.violet)
-                    .symbolSize(dataPoints.count > 20 ? 15 : 35)
+                    .foregroundStyle(metric.sparkColor)
+                    .symbolSize(sz)
             }
         }
         .chartYScale(domain: yMin...yMax)
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color.white.opacity(0.1))
+                AxisValueLabel {
+                    if let d = value.as(Date.self) {
+                        Text(d, format: xLabelFormat)
+                            .font(.caption2)
+                            .foregroundStyle(Color.secondary)
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color.white.opacity(0.1))
+                AxisValueLabel()
+                    .foregroundStyle(Color.secondary)
+                    .font(.caption2)
+            }
+        }
     }
 
     private var xLabelFormat: Date.FormatStyle {
@@ -309,7 +390,7 @@ struct MetricTrendView: View {
     private var statsCard: some View {
         HStack(spacing: 0) {
             if let cur = effectiveCurrent {
-                statCell(label: AppLanguage.shared.s("현재값", "Current"), value: metric.formattedValue(cur, usePounds: useMiles), color: Theme.violet)
+                statCell(label: AppLanguage.shared.s("현재값", "Current"), value: metric.formattedValue(cur, usePounds: useMiles), color: metric.sparkColor)
                 if periodAverage != nil {
                     Rectangle()
                         .fill(Color.white.opacity(0.08))
@@ -384,6 +465,6 @@ struct MetricTrendView: View {
 
     private func trendColor(_ arrow: String) -> Color {
         let up = arrow == "↑"
-        return (metric.lowerIsBetter ? !up : up) ? Color.green : Color(red: 1, green: 0.4, blue: 0.4)
+        return (metric.lowerIsBetter ? !up : up) ? Color(hex: "30D158") : Color(hex: "FF453A")
     }
 }

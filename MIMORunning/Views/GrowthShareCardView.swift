@@ -14,11 +14,23 @@ struct GrowthTrendChart: View {
     var lineColor: Color       = Theme.violet
 
     var body: some View {
-        Group {
-            if metric == .vo2Max, let a = age, let m = isMale {
-                vo2MaxChartCore(age: a, isMale: m)
-            } else {
-                baseChartCore
+        if metric == .vo2Max, let a = age, let m = isMale {
+            vo2MaxChartCore(age: a, isMale: m)
+        } else {
+            baseChartCore
+        }
+    }
+
+    private var baseChartCore: some View {
+        Chart {
+            ForEach(dataPoints, id: \.date) { pt in
+                LineMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
+                    .foregroundStyle(lineColor)
+                    .interpolationMethod(.catmullRom)
+                PointMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
+                    .symbol(HollowCircle())
+                    .foregroundStyle(lineColor)
+                    .symbolSize(dataPoints.count > 15 ? 12 : 28)
             }
         }
         .chartXAxis {
@@ -41,20 +53,6 @@ struct GrowthTrendChart: View {
                 AxisValueLabel()
                     .font(.system(size: 8))
                     .foregroundStyle(axisLabelColor)
-            }
-        }
-    }
-
-    private var baseChartCore: some View {
-        Chart {
-            ForEach(dataPoints, id: \.date) { pt in
-                LineMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
-                    .foregroundStyle(lineColor)
-                    .interpolationMethod(.catmullRom)
-                PointMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
-                    .symbol(HollowCircle())
-                    .foregroundStyle(lineColor)
-                    .symbolSize(dataPoints.count > 15 ? 12 : 28)
             }
         }
     }
@@ -89,6 +87,28 @@ struct GrowthTrendChart: View {
             }
         }
         .chartYScale(domain: yMin...yMax)
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 3)) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(gridColor)
+                AxisValueLabel {
+                    if let d = value.as(Date.self) {
+                        Text(d, format: xLabelFormat)
+                            .font(.system(size: 8))
+                            .foregroundStyle(axisLabelColor)
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(values: .automatic(desiredCount: 3)) { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(gridColor)
+                AxisValueLabel()
+                    .font(.system(size: 8))
+                    .foregroundStyle(axisLabelColor)
+            }
+        }
     }
 
     private var xLabelFormat: Date.FormatStyle {
@@ -160,7 +180,7 @@ struct GrowthShareCard: View {
                     isMale: isMale,
                     gridColor: p.gridLine,
                     axisLabelColor: p.axisLabel,
-                    lineColor: p.brand
+                    lineColor: metric.sparkColor
                 )
                 .frame(height: 112)
                 .padding(.horizontal, 16)
@@ -214,7 +234,7 @@ struct GrowthShareCard: View {
                         isMale: isMale,
                         gridColor: .white.opacity(0.08),
                         axisLabelColor: .white.opacity(0.45),
-                        lineColor: Theme.violet
+                        lineColor: metric.sparkColor
                     )
                     .frame(height: 88)
 
@@ -237,17 +257,8 @@ struct GrowthShareCard: View {
     // MARK: - Shared subviews
 
     private var wordmarkRow: some View {
-        HStack(alignment: .firstTextBaseline) {
-            HStack(spacing: 0) {
-                Text("MIMO")
-                    .font(.system(size: 11, weight: .black))
-                    .tracking(2)
-                    .foregroundStyle(p.textPrimary)
-                Text(" RUNNING")
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(p.brand)
-            }
+        HStack(alignment: .center) {
+            MIMOWordmark(size: 9)
             Spacer()
             Text(Date(), format: .dateTime.month(.abbreviated).day())
                 .font(.system(size: 10, weight: .medium))

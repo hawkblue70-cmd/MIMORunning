@@ -134,6 +134,7 @@ struct TicketCard: View {
             }
         }
         .frame(width: Self.cardWidth, height: Self.cardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
     // MARK: - Top section
@@ -141,17 +142,10 @@ struct TicketCard: View {
     private var topSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Wordmark
-            HStack(spacing: 0) {
-                Text("MIMO")
-                    .font(.system(size: 9, weight: .black))
-                    .tracking(2)
-                    .foregroundStyle(.white)
-                Text(" RUNNING")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(accentColor)
+            HStack(spacing: 6) {
+                MIMOWordmark(size: 11)
                 if isRace {
-                    Text(" · RACE")
+                    Text("· RACE")
                         .font(.system(size: 9, weight: .bold))
                         .tracking(2)
                         .foregroundStyle(Color(hex: "FFC74D").opacity(0.7))

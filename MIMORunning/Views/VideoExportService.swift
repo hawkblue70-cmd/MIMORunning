@@ -956,10 +956,11 @@ struct VideoExportService {
 
         let safeTop:    CGFloat = CardVisual.videoSafeTop    // 260 px
         let safeBottom: CGFloat = CardVisual.videoSafeBottom // 220 px
-        // hPad (86.4px) > CardVisual.videoSafeHoriz (60px) — horiz safe zone satisfied.
-        // 값 변경 시 CardVisual.videoSafeHoriz * vScale (= 60 * 3.6 = 216px) 이상 유지.
-        let hPad:         CGFloat = 24 * vScale
-        let wMarkTopPad:  CGFloat = 12 * vScale
+        // hPad (72px) > CardVisual.videoSafeHoriz (60px) — horiz safe zone satisfied.
+        // 14pt preview × (1080/211) = 71.6px → 20 * vScale = 72px (미리보기 14pt와 비례 일치).
+        // wMarkTopPad: 32 * vScale = 115px → preview scale 0.195 × 115 = 22.5pt (ClipTrimView .top 32 기준 일치).
+        let hPad:         CGFloat = 20 * vScale
+        let wMarkTopPad:  CGFloat = 32 * vScale
         let wMarkFontPx:  CGFloat = 11 * vScale
         let wMarkZoneH:   CGFloat = wMarkTopPad + ceil(wMarkFontPx * 2.3) + 6 * vScale
 
@@ -1159,7 +1160,7 @@ struct VideoExportService {
             df.dateFormat = "yyyy. M. d."
             let dateStr = df.string(from: activityDate)
 
-            let dateFontPx: CGFloat = 11 * vScale
+            let dateFontPx: CGFloat = 16 * vScale  // 16×vScale×0.195 ≈ 11pt visual (OneLinerCard 기준 일치)
             let dateAttrs: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
                 .foregroundColor: UIColor.white
@@ -1325,8 +1326,8 @@ struct VideoExportService {
 
         let safeTop:    CGFloat = CardVisual.videoSafeTop
         let safeBottom: CGFloat = CardVisual.videoSafeBottom
-        let hPad:         CGFloat = 24 * vScale
-        let wMarkTopPad:  CGFloat = 12 * vScale
+        let hPad:         CGFloat = 20 * vScale
+        let wMarkTopPad:  CGFloat = 32 * vScale
         let wMarkFontPx:  CGFloat = 11 * vScale
         let wMarkZoneH:   CGFloat = wMarkTopPad + ceil(wMarkFontPx * 2.3) + 6 * vScale
 
@@ -1568,7 +1569,7 @@ struct VideoExportService {
             let df = DateFormatter()
             df.dateFormat = "yyyy. M. d."
             let dateStr = df.string(from: activityDate)
-            let dateFontPx: CGFloat = 11 * vScale
+            let dateFontPx: CGFloat = 16 * vScale  // 16×vScale×0.195 ≈ 11pt visual (OneLinerCard 기준 일치)
             let dateAttrs: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
                 .foregroundColor: UIColor.white
@@ -1854,8 +1855,8 @@ struct VideoExportService {
         let vScale: CGFloat   = W / 300.0
         let safeTop: CGFloat  = safeTopOverride ?? CardVisual.videoSafeTop
         let safeBot: CGFloat  = safeBotOverride ?? CardVisual.videoSafeBottom
-        let hPad: CGFloat     = 24 * vScale
-        let wMTopPad: CGFloat = wordmarkTopPad ?? (12 * vScale)
+        let hPad: CGFloat     = 20 * vScale
+        let wMTopPad: CGFloat = wordmarkTopPad ?? (32 * vScale)
         let wMFontPx: CGFloat = 11 * vScale
         let wMZoneH: CGFloat  = wMTopPad + ceil(wMFontPx * 2.3) + 6 * vScale
         let textMaxW: CGFloat = W - 2 * hPad
@@ -2370,7 +2371,7 @@ struct VideoExportService {
         if showDate {
             let df = DateFormatter(); df.dateFormat = "yyyy. M. d."
             let dateStr     = df.string(from: activityDate)
-            let dateFontPx: CGFloat = 11 * vScale
+            let dateFontPx: CGFloat = 16 * vScale  // 16×vScale×0.195 ≈ 11pt visual (OneLinerCard 기준 일치)
             let dateAttrs: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
                 .foregroundColor: UIColor.white

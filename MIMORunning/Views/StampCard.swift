@@ -359,11 +359,7 @@ struct StampCard: View {
                         leading: 14, bottom: 14, trailing: 14))
                 VStack(spacing: 0) {
                     if !stampTextPosition.isTop    { Spacer(minLength: 0) }
-                    HStack(spacing: 0) {
-                        if !stampTextPosition.isLeading   { Spacer(minLength: 0) }
-                        textPadded
-                        if !stampTextPosition.isTrailing  { Spacer(minLength: 0) }
-                    }
+                    textPadded
                     if !stampTextPosition.isBottom { Spacer(minLength: 0) }
                 }
             }
@@ -373,26 +369,22 @@ struct StampCard: View {
     @ViewBuilder
     private var textOverlay: some View {
         let fontSize = OneLinerFont.basePt * stampTextFont.sizeScale * stampTextSize.scale
-        if stampTextHasBorder {
-            let bc = stampTextColor.borderSwiftColor.opacity(0.70)
-            Text(stampText)
-                .font(stampTextFont.swiftUIFont(size: fontSize))
-                .foregroundStyle(stampTextColor.color)
-                .shadow(color: bc, radius: 0.25, x:  0.5, y:  0)
-                .shadow(color: bc, radius: 0.25, x: -0.5, y:  0)
-                .shadow(color: bc, radius: 0.25, x:  0,   y:  0.5)
-                .shadow(color: bc, radius: 0.25, x:  0,   y: -0.5)
-                .shadow(color: bc, radius: 0.25, x:  0.5, y:  0.5)
-                .shadow(color: bc, radius: 0.25, x: -0.5, y: -0.5)
-                .shadow(color: bc, radius: 0.25, x:  0.5, y: -0.5)
-                .shadow(color: bc, radius: 0.25, x: -0.5, y:  0.5)
-                .multilineTextAlignment(.center)
-        } else {
-            Text(stampText)
-                .font(stampTextFont.swiftUIFont(size: fontSize))
-                .foregroundStyle(stampTextColor.color)
-                .multilineTextAlignment(.center)
-        }
+        let textAlign: TextAlignment = stampTextPosition.isLeading ? .leading
+            : stampTextPosition.isTrailing ? .trailing : .center
+        EffectTextView(
+            text: stampText,
+            font: stampTextFont.swiftUIFont(size: fontSize),
+            lineSpacing: fontSize * 0.1,
+            alignment: textAlign,
+            color: stampTextColor.color,
+            appearanceMode: .typing,
+            decorEffect: .none,
+            hasBorder: stampTextHasBorder,
+            syntheticBoldStroke: stampTextFont.syntheticBoldStroke(for: fontSize),
+            borderColor: stampTextHasBorder ? stampTextColor.borderSwiftColor : .clear,
+            borderOffset: stampTextHasBorder ? max(0.8, fontSize * stampTextColor.borderOffsetFactor) : 0,
+            isStaticPreview: true
+        )
     }
 
     @ViewBuilder

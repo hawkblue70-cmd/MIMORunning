@@ -307,42 +307,42 @@ enum RunChartBuilder {
             allSeries[.heartRate] = storedHRAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Cadence — hard clamp 140–220, 상하 3% percentile 제거 → median 15 → mean 9
+        // Cadence — hard clamp 140–220, 상하 3% percentile 제거 → median 25 → mean 25
         let cadRaw = rawPoints(cadenceSamples)
         if let s = makeSmoothedSeries(layer: .cadence, rawPoints: cadRaw,
-                                      smoothWindow: 15,
+                                      smoothWindow: 25,
                                       clamp: .hard(min: 140, max: 220),
                                       secondaryClamp: .percentile(lo: 0.01, hi: 0.92),
-                                      meanWindow: 9) {
+                                      meanWindow: 25) {
             allSeries[.cadence] = storedCadAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Power — 5–95 percentile clamp, median 15 → mean 9
+        // Power — 5–95 percentile clamp, median 25 → mean 25
         let powRaw = rawPoints(powerSamples)
         if let s = makeSmoothedSeries(layer: .power, rawPoints: powRaw,
-                                      smoothWindow: 15,
+                                      smoothWindow: 25,
                                       clamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 9) {
+                                      meanWindow: 25) {
             allSeries[.power] = storedPowAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Stride — hard clamp 0.4–1.6 m → 5–95 percentile → median 15 → mean 9
+        // Stride — hard clamp 0.4–1.6 m → 5–95 percentile → median 25 → mean 25
         let strRaw = rawPoints(strideSamples)
         if let s = makeSmoothedSeries(layer: .strideLength, rawPoints: strRaw,
-                                      smoothWindow: 15,
+                                      smoothWindow: 25,
                                       clamp: .hard(min: 0.4, max: 1.6),
                                       secondaryClamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 9) {
+                                      meanWindow: 25) {
             allSeries[.strideLength] = storedStrAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Vert osc — hard clamp 4–16 cm → 5–95 percentile → median 15 → mean 9
+        // Vert osc — hard clamp 4–16 cm → 5–95 percentile → median 25 → mean 25
         let vocRaw = rawPoints(vertOscSamples)
         if let s = makeSmoothedSeries(layer: .verticalOsc, rawPoints: vocRaw,
-                                      smoothWindow: 15,
+                                      smoothWindow: 25,
                                       clamp: .hard(min: 4, max: 16),
                                       secondaryClamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 9) {
+                                      meanWindow: 25) {
             allSeries[.verticalOsc] = storedVocAvg.map { s.withAvg($0) } ?? s
         }
 
@@ -354,7 +354,7 @@ enum RunChartBuilder {
         // Elevation — already distance-keyed, light mean smoothing
         if let altProfile = detail?.altitudeProfile, altProfile.count >= 2 {
             let raw = altProfile.map { (km: $0.distanceKm, value: $0.altitude) }
-            if let s = makeSeries(layer: .elevation, rawPoints: raw, invertNorm: false, meanWindow: 11) {
+            if let s = makeSeries(layer: .elevation, rawPoints: raw, invertNorm: false, smoothWindow: 25, meanWindow: 25) {
                 allSeries[.elevation] = s
             }
         }
@@ -691,6 +691,7 @@ enum RunChartBuilder {
         layer: RunChartLayer,
         rawPoints: [(km: Double, value: Double)],
         invertNorm: Bool,
+        smoothWindow: Int = 0,
         meanWindow: Int = 0
     ) -> RunChartSeries? {
         guard rawPoints.count >= 2 else { return nil }
@@ -699,8 +700,9 @@ enum RunChartBuilder {
         let maxVal = values.max()!
         let avgVal = values.reduce(0, +) / Double(values.count)
 
-        // Optional mean smoothing for display (stats use original values)
-        let display   = meanWindow > 1 ? movingMean(values, window: meanWindow) : values
+        // Optional two-pass smoothing: median removes spikes, mean smooths the curve
+        var display = smoothWindow > 1 ? movingMedian(values, window: smoothWindow) : values
+        display     = meanWindow   > 1 ? movingMean(display, window: meanWindow)    : display
         let lastValue = display.last ?? avgVal
         let dispMin   = display.min()!
         let dispRange = display.max()! - dispMin

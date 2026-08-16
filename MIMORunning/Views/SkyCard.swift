@@ -122,17 +122,7 @@ struct SkyCard: View {
     // MARK: Subviews
 
     private var wordmark: some View {
-        HStack(spacing: 0) {
-            Text("MIMO")
-                .font(.system(size: 9, weight: .black))
-                .tracking(2)
-                .foregroundStyle(.white)         // top gradient is always dark enough
-            Text(" RUNNING")
-                .font(.system(size: 9, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(Theme.violet)
-        }
-        .cardTextShadow()
+        MIMOWordmark(size: 11)
     }
 
     private var bottomRow: some View {

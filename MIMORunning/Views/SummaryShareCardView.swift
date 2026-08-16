@@ -167,58 +167,67 @@ struct SummaryCardPalette {
     let accentTeal:    Color
     let watermark:     Color
     // 거리·연속 카드 전용
-    let barChart:      Color   // 일간 거리 / 시간 막대
-    let gridLine:      Color   // 차트 그리드선
-    let axisLabel:     Color   // 축 숫자
-    let heatEmpty:     Color   // 잔디 빈 칸
-    let heatLow:       Color   // 잔디 1단계
-    let heatMid:       Color   // 잔디 2단계
-    let heatHigh:      Color   // 잔디 3단계
+    let barChart:       Color   // 일간 거리 / 시간 막대
+    let weeklyBarColor: Color   // 주간 거리 막대
+    let monthlyBarColor:Color   // 월간 거리 막대
+    let gridLine:       Color   // 차트 그리드선
+    let axisLabel:      Color   // 축 숫자
+    let heatEmpty:      Color   // 잔디 빈 칸
+    let heatLow:        Color   // 잔디 1단계
+    let heatMid:        Color   // 잔디 2단계
+    let heatHigh:       Color   // 잔디 3단계
+    let heatFull:       Color   // 잔디 4단계 (최대)
 
     static let dark = SummaryCardPalette(
-        background:    Color(hex: "131320"),
-        accentBar:     Color(hex: "7C5CFC"),
-        textPrimary:   .white,
-        textSecondary: Color(hex: "8A8F99"),
-        divider:       Color.white.opacity(0.14),
-        brand:         Color(hex: "8B7FF0"),
-        boxFill:       Color.white.opacity(0.06),
-        positive:      Color(hex: "5CE08A"),
-        negative:      Color(hex: "FF9A3C"),
-        neutral:       Color(hex: "8A8F99"),
-        accentGold:    Color(hex: "F5C542"),
-        accentTeal:    Color(hex: "5CE5D5"),
-        watermark:     Color(hex: "6B6B8A"),
-        barChart:      Color(hex: "F5C542"),
-        gridLine:      Color.white.opacity(0.10),
-        axisLabel:     Color(hex: "6B7280"),
-        heatEmpty:     Color(hex: "2A2A40"),
-        heatLow:       Color(hex: "4A3E9E"),
-        heatMid:       Color(hex: "6B57D6"),
-        heatHigh:      Color(hex: "7C5CFC")
+        background:     Color(hex: "131320"),
+        accentBar:      Color(hex: "7C5CFC"),
+        textPrimary:    .white,
+        textSecondary:  Color(hex: "8A8F99"),
+        divider:        Color.white.opacity(0.14),
+        brand:          Color(hex: "8B7FF0"),
+        boxFill:        Color.white.opacity(0.06),
+        positive:       Color(hex: "5CE08A"),
+        negative:       Color(hex: "FF9A3C"),
+        neutral:        Color(hex: "8A8F99"),
+        accentGold:     Color(hex: "F5C542"),
+        accentTeal:     Color(hex: "5CE5D5"),
+        watermark:      Color(hex: "6B6B8A"),
+        barChart:       Color(hex: "F5C542"),
+        weeklyBarColor: Color(hex: "5CE5D5"),
+        monthlyBarColor:Color(hex: "30D158"),
+        gridLine:       Color.white.opacity(0.10),
+        axisLabel:      Color(hex: "6B7280"),
+        heatEmpty:      Color(hex: "FF9F0A").opacity(0.10),
+        heatLow:        Color(hex: "FF9F0A").opacity(0.32),
+        heatMid:        Color(hex: "FF9F0A").opacity(0.56),
+        heatHigh:       Color(hex: "FF9F0A").opacity(0.80),
+        heatFull:       Color(hex: "FF9F0A")
     )
 
     static let light = SummaryCardPalette(
-        background:    Color(hex: "FFFFFF"),
-        accentBar:     Color(hex: "5B3FD9"),
-        textPrimary:   Color(hex: "0D0D0D"),
-        textSecondary: Color(hex: "8A8A8A"),
-        divider:       Color.black.opacity(0.10),
-        brand:         Color(hex: "5B3FD9"),
-        boxFill:       Color(hex: "F7F6F3"),
-        positive:      Color(hex: "1B7F3B"),
-        negative:      Color(hex: "D9600A"),
-        neutral:       Color(hex: "8A8A8A"),
-        accentGold:    Color(hex: "C98A00"),
-        accentTeal:    Color(hex: "0E7C8A"),
-        watermark:     Color(hex: "B0AEA8"),
-        barChart:      Color(hex: "C98A00"),
-        gridLine:      Color.black.opacity(0.08),
-        axisLabel:     Color(hex: "9A9A9A"),
-        heatEmpty:     Color(hex: "E4E2DC"),
-        heatLow:       Color(hex: "C3B8F0"),
-        heatMid:       Color(hex: "8E76E5"),
-        heatHigh:      Color(hex: "5B3FD9")
+        background:     Color(hex: "FFFFFF"),
+        accentBar:      Color(hex: "5B3FD9"),
+        textPrimary:    Color(hex: "0D0D0D"),
+        textSecondary:  Color(hex: "8A8A8A"),
+        divider:        Color.black.opacity(0.10),
+        brand:          Color(hex: "5B3FD9"),
+        boxFill:        Color(hex: "F7F6F3"),
+        positive:       Color(hex: "1B7F3B"),
+        negative:       Color(hex: "D9600A"),
+        neutral:        Color(hex: "8A8A8A"),
+        accentGold:     Color(hex: "C98A00"),
+        accentTeal:     Color(hex: "0E7C8A"),
+        watermark:      Color(hex: "B0AEA8"),
+        barChart:       Color(hex: "C98A00"),
+        weeklyBarColor: Color(hex: "0E7C8A"),
+        monthlyBarColor:Color(hex: "248A3D"),
+        gridLine:       Color.black.opacity(0.08),
+        axisLabel:      Color(hex: "9A9A9A"),
+        heatEmpty:      Color(hex: "FF9F0A").opacity(0.10),
+        heatLow:        Color(hex: "FF9F0A").opacity(0.32),
+        heatMid:        Color(hex: "FF9F0A").opacity(0.56),
+        heatHigh:       Color(hex: "FF9F0A").opacity(0.80),
+        heatFull:       Color(hex: "FF9F0A")
     )
 }
 
@@ -246,14 +255,7 @@ struct SummaryShareCardView: View {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 0) {
-                                Text("MIMO")
-                                    .font(.system(size: 8, weight: .black))
-                                    .tracking(2)
-                                    .foregroundStyle(p.textPrimary)
-                                Text(" RUNNING")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .tracking(2)
-                                    .foregroundStyle(p.brand)
+                                MIMOWordmark(size: 14, mimoColor: p.textPrimary, runColor: p.brand)
                             }
                         }
                         Spacer()

@@ -174,6 +174,7 @@ struct ECGSignatureCard: View {
                         .padding(.horizontal, 20)
                         .padding(.bottom, 4)
                 }
+                .frame(maxWidth: .infinity)
                 .frame(height: bandTop)
 
                 // ── Middle: waveform band (Canvas draws here) ───────────────
@@ -187,7 +188,7 @@ struct ECGSignatureCard: View {
                     Spacer()
                     bottomRow
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 18)
+                        .padding(.bottom, 20)
                 }
                 .frame(height: bandTop)
             }
@@ -215,17 +216,7 @@ struct ECGSignatureCard: View {
     // MARK: - Subviews
 
     private var wordmarkRow: some View {
-        HStack(spacing: 0) {
-            Text("MIMO")
-                .font(.system(size: 11, weight: .black))
-                .tracking(2)
-                .foregroundStyle(.white)
-            Text(" RUNNING")
-                .font(.system(size: 11, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(Theme.violet)
-        }
-        .cardTextShadow()
+        MIMOWordmark(size: 11)
     }
 
     @ViewBuilder

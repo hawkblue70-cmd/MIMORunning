@@ -23,12 +23,18 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
     // 문구 레이어: logicalWidth 기준으로 렌더 — 미리보기(StampVideoTextOverlay)와 동일 폭.
     // 영상=211pt, 슬라이드=300pt. cardWidthOverride를 함께 전달해 폰트 스케일이 일치하도록 함.
     if renderOnlyText {
-        let textW: CGFloat = logicalWidth
-        let textH = renderSize.height / renderSize.width * textW
-        // safeTopInset: logicalWidth에 비례 (300pt 기준 77pt → 211pt 기준 ≈54pt)
-        let safeTop = round(77.0 * textW / 300.0)
+        // UIKit NSLayoutManager로 줄바꿈 위치를 미리 계산 → ImageRenderer와 live SwiftUI 양쪽에서
+        // 동일한 줄 수를 보장. (ImageRenderer가 live SwiftUI보다 약간 좁게 측정하는 문제 해소)
+        let textW: CGFloat = kClipW   // 211pt — 미리보기와 동일
+        let textH: CGFloat = 375.0    // cardSectionH — 미리보기와 동일
+        let fontPt = OneLinerFont.basePt * cfg.textFont.sizeScale * cfg.textSize.scale
+            * (kClipW / 300.0)
+        let prebroken = uikitLineBreakText(
+            cfg.text,
+            uiFont: cfg.textFont.uiFont(size: fontPt),
+            maxWidth: kClipW - 28)  // 14pt padding × 2
         let card = OneLinerCard(
-            text: cfg.text,
+            text: prebroken,
             position: cfg.textPosition,
             textColor: cfg.textColor,
             fontChoice: cfg.textFont,
@@ -41,16 +47,25 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
             showWordmark: false,
             cardHeightOverride: textH,
             cardWidthOverride: textW,
-            safeTopInset: safeTop,
+            safeTopInset: 54,
+            safeBottomInset: 14,
+            horizontalPadding: 14,
             isStaticPreview: true
         )
         .frame(width: textW, height: textH)
+        // 3×로 렌더 → 미리보기(화면 3×)와 동일한 폰트 메트릭스 → 줄바꿈 일치 보장
         let renderer = ImageRenderer(content: card)
         renderer.proposedSize = .init(width: textW, height: textH)
-        renderer.scale = renderSize.width / textW
+        renderer.scale = 3.0
         renderer.isOpaque = false
-        _ = renderer.uiImage
-        return renderer.uiImage
+        _ = renderer.uiImage  // warmup
+        guard let lowRes = renderer.uiImage else { return nil }
+        // 3×이미지(633×1125px)를 비디오 캔버스(1080×1920px)로 업스케일
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1.0
+        return UIGraphicsImageRenderer(size: renderSize, format: fmt).image { _ in
+            lowRes.draw(in: CGRect(origin: .zero, size: renderSize))
+        }
     }
 
     // 스탬프 레이어: 기존 logicalWidth 기반 렌더 유지
@@ -135,8 +150,8 @@ func makeStampLogoOverlay(date: Date, renderSize: CGSize) -> UIImage? {
             .foregroundStyle(.white)
     }
     .cardTextShadow()
-    .padding(.leading, baseW * 0.047)  // ≈ 9.9pt (미리보기: previewW * 0.047)
-    .padding(.trailing, baseW * 0.05)  // ≈ 10.5pt (미리보기: previewW * 0.05)
+    .padding(.leading, 14)
+    .padding(.trailing, 14)
     .padding(.top, vPad)
     .frame(width: baseW, height: ptH, alignment: .topLeading)
     let renderer = ImageRenderer(content: overlay)
@@ -319,11 +334,18 @@ private struct StampVideoTextOverlay: View {
     }
 
     var body: some View {
+        // UIKit 줄바꿈으로 export와 동일한 텍스트 분절 → 미리보기·출력 일치 보장.
+        let fontPt = OneLinerFont.basePt * cfg.textFont.sizeScale * cfg.textSize.scale
+            * (kClipW / 300.0)
+        let prebroken = uikitLineBreakText(
+            cfg.text,
+            uiFont: cfg.textFont.uiFont(size: fontPt),
+            maxWidth: kClipW - 28)
         // cardWidthOverride는 kClipW(211pt) 명시 — GeometryReader의 geo.size.width는
         // 상위 ZStack 구조에 따라 300pt를 반환할 수 있어 Placeable과 크기가 달라지는 버그 방지.
         GeometryReader { geo in
             OneLinerCard(
-                text: cfg.text,
+                text: prebroken,
                 position: cfg.textPosition,
                 textColor: cfg.textColor,
                 fontChoice: cfg.textFont,
@@ -338,6 +360,7 @@ private struct StampVideoTextOverlay: View {
                 cardWidthOverride: kClipW,
                 safeTopInset: 54,
                 safeBottomInset: 14,
+                horizontalPadding: 14,
                 isStaticPreview: true
             )
             .frame(width: kClipW, height: geo.size.height)
@@ -603,8 +626,8 @@ extension ShareCardScreen {
                             .foregroundStyle(.white)
                     }
                     .cardTextShadow()
-                    .padding(.leading, 10)
-                    .padding(.trailing, 11)
+                    .padding(.leading, 14)
+                    .padding(.trailing, 14)
                     .padding(.top, cardSectionH * 0.06)
                 }
                 .overlay(alignment: .bottom) {
@@ -617,7 +640,7 @@ extension ShareCardScreen {
                     .frame(height: 3)
                     .clipShape(RoundedRectangle(cornerRadius: 1.5))
                     .padding(.horizontal, 8)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 14)
                 }
                 Button { previewPlayer.togglePlayPause() } label: {
                     Image(systemName: previewPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
@@ -851,7 +874,7 @@ extension ShareCardScreen {
                     .frame(height: 3)
                     .clipShape(RoundedRectangle(cornerRadius: 1.5))
                     .padding(.horizontal, 8)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 14)
                 }
             }
         }
@@ -914,8 +937,14 @@ extension ShareCardScreen {
             previewPlayer.invalidate()
             return
         }
+        // 스탬프 텍스트는 AnimatedStampPreviewCard(SwiftUI 오버레이)가 전담.
+        // ClipRecipe.lines에 이전 문구가 남아있으면 buildClipTextContentLayer가 CALayer에
+        // 구워 이중으로 표시됨 → lines를 지우고 빈 레이어만 생성.
+        let blankRecipes = stampVM.clipRecipes.map { r -> ClipRecipe in
+            var r2 = r; r2.lines = []; return r2
+        }
         await previewPlayer.buildForVideoClips(
-            recipes: stampVM.clipRecipes,
+            recipes: blankRecipes,
             activityDate: activity.date,
             showDate: false,
             showWordmark: false,

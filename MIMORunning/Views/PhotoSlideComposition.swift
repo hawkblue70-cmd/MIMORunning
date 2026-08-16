@@ -571,8 +571,22 @@ enum PhotoSlideComposition {
                     ? safeBot + titleBotEndH  // 아래-아래: 제목 위로 문구 밀기
                     : safeBot
             let defaultTopY = max(wMZoneH + 4 * vScale, safeTop + 4 * vScale)
+            // PDT 칩이 위쪽일 때 텍스트 시작점을 칩 아래로 밀기 (SwiftUI captionTopPad와 동일 논리)
+            let pdtChipEndY: CGFloat = {
+                guard clip.position.isTop,
+                      clip.pdtPosition.isTop,
+                      (clip.metricPace || clip.metricDistance || clip.metricTime || clip.metricHeartRate)
+                else { return 0 }
+                let sz        = clip.pdtSizeLevel.scale
+                let chipFontPx: CGFloat = 10 * vScale * sz
+                let chipPadV:   CGFloat = 4  * vScale * sz
+                let chipH:      CGFloat = ceil(chipFontPx * 1.6) + chipPadV * 2
+                // 제목 있으면 H 28% 절대 위치, 없으면 워드마크 아래 기본값
+                let chipY: CGFloat = (!videoTitle.isEmpty && titleStyle.position.isTop) ? H * 0.28 : defaultTopY
+                return chipY + chipH + 6 * vScale
+            }()
             let textFrameY: CGFloat = clip.position.isTop
-                ? (titleTopEndY > 0 ? titleTopEndY : defaultTopY)
+                ? max(titleTopEndY > 0 ? titleTopEndY : defaultTopY, pdtChipEndY)
                 : clip.position.isBottom
                     ? H - clipEffBot - textLayerH
                     : max(defaultTopY, min(H - clipEffBot - textLayerH,
@@ -901,7 +915,7 @@ enum PhotoSlideComposition {
                 let pos = recipe.pdtPosition
                 let chipY: CGFloat
                 if pos.isTop {
-                    chipY = max(wMZoneH + 4 * vScale, safeTop + metricPad)  // PDT 칩 절대 위치 (제목 무관)
+                    chipY = (!videoTitle.isEmpty && titleStyle.position.isTop) ? H * 0.28 : (safeTop + 4 * vScale)  // 제목 아래 절대 위치 28%
                 } else if pos.isBottom {
                     chipY = H - rcEffBot - metricPad - chipLineH
                 } else {
@@ -1544,7 +1558,7 @@ enum PhotoSlideComposition {
             let df = DateFormatter()
             df.dateFormat = "yyyy. M. d."
             let dateStr     = df.string(from: activityDate)
-            let dateFontPx: CGFloat = 11 * vScale
+            let dateFontPx: CGFloat = 16 * vScale  // 16×vScale×0.195 ≈ 11pt visual (OneLinerCard 기준 일치)
             let dateAttrs: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
                 .foregroundColor: UIColor.white
@@ -1712,10 +1726,8 @@ enum PhotoSlideComposition {
     static func scaleFill(_ image: UIImage, to size: CGSize,
                            cropOffsetX: CGFloat = 0.5,
                            cropOffsetY: CGFloat = 0.5) -> CGImage? {
-        // OneLinerCard.background와 동일 논리: portrait → fill height, landscape → fill width
-        let s: CGFloat = image.size.height >= image.size.width
-            ? size.height / image.size.height
-            : size.width  / image.size.width
+        // aspect-fill: 가로·세로 중 더 큰 배율로 스케일 → 캔버스 전체를 반드시 채움, 초과분 크롭
+        let s: CGFloat = max(size.width / image.size.width, size.height / image.size.height)
         let sw = image.size.width  * s
         let sh = image.size.height * s
         let ox = (size.width  - sw) * cropOffsetX

@@ -78,18 +78,9 @@ struct BigNumberCard: View {
             VStack(alignment: .leading, spacing: 0) {
 
                 // 1) Wordmark
-                HStack(spacing: 0) {
-                    Text("MIMO")
-                        .font(.system(size: 9, weight: .black))
-                        .tracking(2)
-                        .foregroundStyle(.white)
-                    Text(" RUNNING")
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(2)
-                        .foregroundStyle(Theme.violet)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
+                MIMOWordmark(size: 11)
+                .padding(.horizontal, 20)
+                .padding(.top, 14)
 
                 // 2) Mood icon (gold) + Memo (white semibold)
                 if mood != nil || memoText != nil {
@@ -190,22 +181,24 @@ struct BigNumberCard: View {
                             }
                         }
                     }
-                    metaRow
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    if let shoe = shoeName {
-                        HStack(spacing: 3) {
-                            Image(systemName: "shoe.fill")
-                                .font(.system(size: 8))
-                            Text(shoe)
+                    HStack {
+                        metaRow
+                        if let shoe = shoeName {
+                            Spacer()
+                            HStack(spacing: 3) {
+                                Image(systemName: "shoe.fill")
+                                    .font(.system(size: 8))
+                                Text(shoe)
+                            }
+                            .font(.system(size: 9))
+                            .foregroundStyle(.white)
+                            .cardTextShadow()
                         }
-                        .font(.system(size: 9))
-                        .foregroundStyle(.white)
-                        .cardTextShadow()
-                        .frame(maxWidth: .infinity, alignment: .center)
                     }
+                    .frame(maxWidth: .infinity)
                 }
                 .padding(.horizontal, 20)
-                .padding(.bottom, 24)
+                .padding(.bottom, 20)
             }
         }
         .frame(width: Self.cardWidth, height: Self.cardHeight)
@@ -286,18 +279,8 @@ struct BigNumberVideoOverlayView: View {
                 CardVisual.bottomScrim
 
                 VStack(alignment: .leading, spacing: 0) {
-                    // Wordmark — positioned inside the video safe zone top edge
-                    HStack(spacing: 0) {
-                        Text("MIMO")
-                            .font(.system(size: 9 * s, weight: .black))
-                            .tracking(2)
-                            .foregroundStyle(.white)
-                        Text(" RUNNING")
-                            .font(.system(size: 9 * s, weight: .bold))
-                            .tracking(2)
-                            .foregroundStyle(Theme.violet)
-                    }
-                    .padding(.horizontal, CardVisual.videoSafeHorizRef * s)
+                    MIMOWordmark(size: 11)
+                    .padding(.horizontal, 14)
                     .padding(.top, topInset ?? (CardVisual.videoSafeTopRef * s))
 
                     // Mood + Memo
@@ -384,7 +367,7 @@ struct BigNumberVideoOverlayView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                         }
                     }
-                    .padding(.horizontal, CardVisual.videoSafeHorizRef * s)
+                    .padding(.horizontal, 14)
                     .padding(.bottom, bottomInset ?? (CardVisual.videoSafeBottomRef * s))
                 }
             }

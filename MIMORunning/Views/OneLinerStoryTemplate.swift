@@ -185,9 +185,10 @@ extension ShareCardScreen {
     /// 드래그 완료 시 단일 사진 cropOffsetX를 SwiftData에 저장.
     /// 기존 v3slide 엔트리: 디코딩 → cropOffsetX 수정 → 재인코딩.
     /// 엔트리 없음: 레시피 기반 신규 생성 (center 이면 저장 생략).
-    func saveOneLinerCropX(photoIndex: Int, offsetX: CGFloat) {
+    func saveOneLinerCropX(photoIndex: Int, offsetX: CGFloat, isSlide: Bool = false) {
         guard photoIndex < oneLinerVM.storyPhotoUUIDs.count else { return }
-        let ref = "photo:\(oneLinerVM.storyPhotoUUIDs[photoIndex])"
+        let mediaPrefix = isSlide ? "slide:" : "photo:"
+        let ref = "\(mediaPrefix)\(oneLinerVM.storyPhotoUUIDs[photoIndex])"
 
         func reEncode(_ desc: SavedClipDescriptor) -> String? {
             guard let data = try? JSONEncoder().encode(desc),
@@ -204,7 +205,7 @@ extension ShareCardScreen {
             }
         } else {
             guard abs(offsetX - 0.5) > 0.001 else { return }
-            let pr = photoRecipe(at: photoIndex, prefix: "photo:")
+            let pr = photoRecipe(at: photoIndex, prefix: mediaPrefix)
             let desc = SavedClipDescriptor(
                 assetID: nil, clipVideoRef: nil,
                 photoRef: pr?.storedPhotoRef, thumbRef: pr?.thumbRef,

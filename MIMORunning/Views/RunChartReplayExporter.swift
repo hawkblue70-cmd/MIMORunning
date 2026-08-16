@@ -1263,16 +1263,7 @@ private struct ReplayHeaderView: View {
 
             // ── Row 1: MIMO RUNNING (좌) | 날짜 (중앙) | 기온 배지 (우) ──
             HStack(spacing: 0) {
-                HStack(spacing: 4) {
-                    Text("MIMO")
-                        .font(.system(size: 8, weight: .heavy))
-                        .tracking(0.5)
-                        .foregroundStyle(palette.wordmarkMIMO)
-                    Text("RUNNING")
-                        .font(.system(size: 8, weight: .heavy))
-                        .tracking(0.5)
-                        .foregroundStyle(palette.wordmarkRunning)
-                }
+                MIMOWordmark(size: 9)
 
                 Spacer(minLength: 4)
 

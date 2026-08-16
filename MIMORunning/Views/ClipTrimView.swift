@@ -396,7 +396,7 @@ struct ClipTrimSheet: View {
                         .resizable()
                         .frame(width: fImgW, height: fImgH)
                         .offset(x: -(cropX * fExcess))
-                        .frame(width: w, height: maxH)
+                        .frame(width: w, height: maxH, alignment: .topLeading)
                         .clipped()
                         .highPriorityGesture(
                             fExcess > 0 ? DragGesture(minimumDistance: 1)
@@ -452,25 +452,17 @@ struct ClipTrimSheet: View {
                         .frame(width: w, height: maxH)
                         .overlay(ProgressView().tint(.white).scaleEffect(1.4))
                 }
-                // ── 워드마크 — 모든 영상/슬라이드 통일: 상단 6% (32pt at natural maxH=533pt) ─────────
-                HStack(spacing: 0) {
-                    Text("MIMO")
-                        .font(.system(size: 9, weight: .black))
-                        .tracking(2)
-                        .foregroundStyle(.white)
-                    Text(" RUNNING")
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(2)
-                        .foregroundStyle(Theme.violet)
-                }
-                .shadow(color: .black.opacity(0.45), radius: 3, x: 0, y: 1)
-                .padding(.top, maxH * 0.06)
-                .padding(.leading, 14)
+                // ── 워드마크 — size는 scale 보정, top/leading은 CALayer·정적 대기화면과 동일 값 ─
+                MIMOWordmark(size: 11 * maxH / CardPreviewFrame.height)
+                .padding(.top, 32)    // visual = 32 × scale ≈ 22.5pt (= CALayer wMTopPad 기준)
+                .padding(.leading, 20) // visual = 20 × scale ≈ 14.1pt (= CALayer hPad 기준)
                 .frame(width: w, height: maxH, alignment: .topLeading)
                 .allowsHitTesting(false)
                 // previewScale = w/300: 비디오 vScale(1080/300)과 동일 기준으로 비율 맞춤
                 let previewScale: CGFloat = w / 300.0
                 let scale1080:    CGFloat = w / 1080.0  // 1080px → preview pt 변환
+                // 워드마크 존 높이: top(32) + MIMOWordmark 높이(size×2.3) + 하단 여백(6)
+                let wMH: CGFloat = ceil(11.0 * 2.3)  // = 26pt (MIMOWordmark(size:11) 실제 높이)
                 let base: CGFloat = OneLinerFont.basePt * recipe.fontChoice.sizeScale * recipe.sizeLevel.scale * previewScale
                 // Chart-aware 9-grid: 차트 활성화 시 차트 제외한 공간에서 9포지션 작동
                 let (clipHasChart, clipChartPanH): (Bool, CGFloat) = {
@@ -492,10 +484,52 @@ struct ClipTrimSheet: View {
                        let s = chartSeriesData[gt], s.count >= 2 { return (true, maxH * 0.264) }
                     return (false, 0)
                 }()
+                // 제목·문구 겹침 방지: UIKit 실측으로 CALayer와 동일하게 계산
+                let titleFontForStack = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale
+                let titleHForStack: CGFloat = {
+                    guard !videoTitle.isEmpty else { return 0 }
+                    let tFont   = titleStyle.fontChoice.uiFont(size: titleFontForStack)
+                    let maxW    = w - 40.0 * previewScale  // 20pt 양쪽
+                    let tBounds = (videoTitle as NSString).boundingRect(
+                        with: CGSize(width: maxW, height: 4000),
+                        options: [.usesLineFragmentOrigin, .usesFontLeading],
+                        attributes: [.font: tFont], context: nil)
+                    return ceil(tBounds.height) + 20.0 * (w / 1080.0)  // CALayer tLayerH pt 환산
+                }()
+                // 데이터·문구 공통 기준: 워드마크+제목 아래 콘텐츠 존 시작
+                let clipContentBase: CGFloat = {
+                    let base = (32 + wMH + 6 + 4) * previewScale  // 68pt
+                    var minTop = base
+                    if !videoTitle.isEmpty && titleStyle.position.isTop && recipe.position.isTop {
+                        minTop = max(minTop, 76 + titleHForStack + 8)
+                    }
+                    return minTop
+                }()
+                // 데이터 칩 절대 위치: 제목 있으면 maxH 28%, 없으면 워드마크 아래
+                // export H * 0.28 = 537px, preview maxH * 0.28 = 149pt — 동일 28% 비율로 일치
+                let chipAbsTop: CGFloat = (!videoTitle.isEmpty && titleStyle.position.isTop && recipe.pdtPosition.isTop)
+                    ? maxH * 0.28
+                    : clipContentBase
+                // 문구 시작: 데이터 칩이 위쪽이면 칩 높이만큼 아래로 밀기
+                let clipContentTop: CGFloat = {
+                    guard recipe.position.isTop && recipe.pdtPosition.isTop &&
+                          (recipe.metricPace || recipe.metricDistance || recipe.metricTime || recipe.metricHeartRate) else {
+                        return clipContentBase
+                    }
+                    let chipH = 22.0 * previewScale * recipe.pdtSizeLevel.scale
+                    return chipAbsTop + chipH + 8 * previewScale
+                }()
+                // 제목 하단 여백: H * 0.06 = export safeBot (~32pt). 차트가 있으면 차트 영역 확보.
+                let titleBottomPad: CGFloat = clipHasChart
+                    ? clipChartPanH + 36 * scale1080 + 8
+                    : maxH * 0.06
+                // 문구 하단 여백: H * 0.06 = export safeBot (~32pt). 아래-아래: 제목 위로 밀기.
                 let clipEffBottomPad: CGFloat = clipHasChart
-                    ? clipChartPanH + 36 * scale1080 + 8   // 36 * scale1080 = 10 * ps = chartBotPad
-                    : CardVisual.videoSafeBottom * scale1080
-                let clipContentTop: CGFloat = (CardVisual.videoSafeTop + 4) * scale1080
+                    ? clipChartPanH + 36 * scale1080 + 8
+                    : {
+                        guard !videoTitle.isEmpty, titleStyle.position.isBottom, recipe.position.isBottom else { return maxH * 0.06 }
+                        return maxH * 0.06 + titleHForStack + 8
+                    }()
                 let clipContentH: CGFloat   = max(0, maxH - clipContentTop - clipEffBottomPad)
                 // 텍스트 없을 때도 위치를 미리볼 수 있도록 플레이스홀더 표시
                 let effectiveDisplayText = displayText.isEmpty ? "···" : displayText
@@ -503,7 +537,7 @@ struct ClipTrimSheet: View {
                 let previewText = displayText.isEmpty ? effectiveDisplayText
                     : uikitLineBreakText(effectiveDisplayText,
                                          uiFont: recipe.fontChoice.uiFont(size: base),
-                                         maxWidth: w - 48 * previewScale)
+                                         maxWidth: w - 40 * previewScale)
                 EffectTextView(
                     text:           previewText,
                     font:           recipe.fontChoice.boldSwiftUIFont(size: base),
@@ -518,7 +552,7 @@ struct ClipTrimSheet: View {
                     borderColor:  recipe.hasBorder ? recipe.textColor.borderSwiftColor : .clear,
                     borderOffset: recipe.hasBorder ? max(0.8, base * recipe.textColor.borderOffsetFactor) : 0
                 )
-                .padding(.horizontal, 24 * previewScale)
+                .padding(.horizontal, 20 * previewScale)
                 .frame(width: w, height: clipContentH, alignment: recipe.position.alignment)
                 .frame(width: w, height: maxH, alignment: .topLeading)
                 .offset(y: clipContentTop)
@@ -526,11 +560,11 @@ struct ClipTrimSheet: View {
                 // Full-video title overlay — same scale basis (w/300, w/1080) as clip text.
                 if !videoTitle.isEmpty {
                     let tPS:       CGFloat  = w / 300.0
-                    let tS1080:    CGFloat  = w / 1080.0
                     let tFontSize           = OneLinerFont.basePt * titleStyle.fontChoice.sizeScale * titleStyle.sizeLevel.scale * tPS
-                    // 차트-인식 콘텐츠 영역: clipEffBottomPad 재사용 (tS1080 == scale1080)
-                    let titleContentTop: CGFloat = CardVisual.videoSafeTop * 0.6 * tS1080
-                    let titleContentH: CGFloat   = max(0, maxH - titleContentTop - clipEffBottomPad)
+                    // 제목 시작: 워드마크 존(32+wMH+6) + 12pt 여백 (= CALayer tFrameY 기준)
+                    let titleContentTop: CGFloat = (32 + wMH + 6 + 12) * tPS
+                    // 제목 하단은 절대값(titleBottomPad) 기준 — 문구 위치와 무관
+                    let titleContentH: CGFloat   = max(0, maxH - titleContentTop - titleBottomPad)
                     let tTextAlign: TextAlignment = {
                         switch titleStyle.position {
                         case .topLeading, .leading, .bottomLeading:    return .leading
@@ -578,13 +612,13 @@ struct ClipTrimSheet: View {
                     .multilineTextAlignment(tTextAlign)
                     .lineLimit(2)
                     .minimumScaleFactor(0.65)
-                    .padding(.horizontal, 10 * tPS)
+                    .padding(.horizontal, 20 * tPS)   // CALayer hPad = 20 기준
                     .frame(width: w, height: titleContentH, alignment: titleStyle.position.alignment)
                     .frame(width: w, height: maxH, alignment: .topLeading)
                     .offset(y: titleContentTop)
                     .allowsHitTesting(false)
                 }
-                dataPreviewOverlay(recipe, w: w, maxH: maxH)
+                dataPreviewOverlay(recipe, w: w, maxH: maxH, chipTop: chipAbsTop)
             }
             .frame(width: w, height: maxH)
             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -746,8 +780,8 @@ struct ClipTrimSheet: View {
     // 문구 모드 오른쪽 패널 (기존 스타일 옵션)
     private var textStylePanel: some View {
         VStack(alignment: .leading, spacing: 5) {
+            sizeChips   // 소|중|대|특대|테두리
             if !isStoryMode, !isPhotoClip, currentRecipeValid { speedChips }
-            sizeChips
             fontChips
             colorCircles
             if !isStoryMode {
@@ -760,7 +794,6 @@ struct ClipTrimSheet: View {
                     }
                 }
             }
-            readabilityChips
         }
     }
 
@@ -1138,16 +1171,14 @@ struct ClipTrimSheet: View {
     // skipLeafOverlays=true: PDT칩·경로 미니맵 제외, 차트 패널만 렌더 (story 모드 오버레이용)
     @ViewBuilder
     private func dataPreviewOverlay(_ recipe: ClipRecipe, w: CGFloat, maxH: CGFloat,
+                                    chipTop: CGFloat? = nil,
                                     skipLeafOverlays: Bool = false) -> some View {
         let ps    = w / 300.0
         let s1080 = w / 1080.0
         // story/video 공통: 좌우 동일 여백, 차트를 카드 바닥에 배치
         let chartPanelW: CGFloat = w - 20 * ps
         let chartBotPad: CGFloat = 10 * ps
-        // Push PDT chips below clip text when both are anchored to the top row
-        let clipBase    = OneLinerFont.basePt * recipe.fontChoice.sizeScale * recipe.sizeLevel.scale * ps
-        let pdtTopExtra: CGFloat = (recipe.pdtPosition.isTop && recipe.position.isTop)
-            ? (clipBase * 1.4 + 4 * ps) : 0
+        // PDT 칩: 워드마크 존 아래, 문구와 동일한 콘텐츠 존 안에 배치 (safeTop*s+14·export와 동일)
         // Chart-aware bottom: 차트 활성화 시 차트 상단 바로 위로 bottom 포지션 이동
         let (overlayHasChart, overlayChartPanH): (Bool, CGFloat) = {
             if recipe.showHRChart && hrSamples.count >= 2 { return (true, maxH * 0.264) }
@@ -1170,12 +1201,12 @@ struct ClipTrimSheet: View {
         }()
         let overlayEffBottomPad: CGFloat = overlayHasChart
             ? overlayChartPanH + chartBotPad + 8
-            : CardVisual.videoSafeBottom * s1080
+            : maxH * 0.06
         if !skipLeafOverlays {
             if recipe.metricPace || recipe.metricDistance || recipe.metricTime || recipe.metricHeartRate {
                 pdtChipsView(recipe, scale: ps)
                     .padding(.horizontal, 20 * ps)
-                    .padding(.top,    recipe.pdtPosition.isTop    ? (CardVisual.videoSafeTop + 4) * s1080 + pdtTopExtra : 0)
+                    .padding(.top,    recipe.pdtPosition.isTop    ? (chipTop ?? CardVisual.videoSafeTop * s1080 + 14 * ps) : 0)
                     .padding(.bottom, recipe.pdtPosition.isBottom ? overlayEffBottomPad : 0)
                     .frame(width: w, height: maxH, alignment: recipe.pdtPosition.alignment)
                     .allowsHitTesting(false)
@@ -1715,8 +1746,14 @@ struct ClipTrimSheet: View {
                     Text(m.value)
                         .font(.system(size: 11 * scale * sz, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if !m.label.isEmpty {
-                        Text(m.label).font(.system(size: 9 * scale * sz)).foregroundStyle(.white.opacity(0.7))
+                        Text(m.label)
+                            .font(.system(size: 9 * scale * sz))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 }
                 .padding(.horizontal, 8 * scale * sz).padding(.vertical, 4 * scale * sz)
@@ -1728,7 +1765,8 @@ struct ClipTrimSheet: View {
     }
 
     private var sizeChips: some View {
-        HStack(spacing: 6) {
+        let borderOn = currentRecipeValid && workingRecipes[currentPage].hasBorder
+        return HStack(spacing: 6) {
             ForEach(TextSizeLevel.allCases, id: \.self) { s in
                 let isSel = currentRecipeValid && workingRecipes[currentPage].sizeLevel == s
                 Button { if currentRecipeValid { workingRecipes[currentPage].sizeLevel = s } } label: {
@@ -1743,6 +1781,24 @@ struct ClipTrimSheet: View {
                 }
                 .buttonStyle(.plain)
             }
+            // 테두리 — 특대 바로 옆
+            Button {
+                guard currentRecipeValid else { return }
+                workingRecipes[currentPage].hasBorder.toggle()
+                #if DEBUG
+                sizeAuditLog("테두리 토글")
+                #endif
+            } label: {
+                Text(AppLanguage.shared.s("테두리", "Border"))
+                    .font(.system(size: 12, weight: borderOn ? .semibold : .regular))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(borderOn ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
+                    .foregroundStyle(borderOn ? Theme.violet : Color.white.opacity(0.55))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(
+                        borderOn ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -1911,13 +1967,13 @@ struct ClipTrimSheet: View {
                 .resizable()
                 .frame(width: tImgW, height: tImgH)
                 .offset(x: tOx)
-                .frame(width: w, height: h).clipped()
+                .frame(width: w, height: h, alignment: .topLeading).clipped()
         } else {
             Image(uiImage: thumb)
                 .resizable()
                 .frame(width: tImgW, height: tImgH)
                 .offset(x: tOx)
-                .frame(width: w, height: h).clipped()
+                .frame(width: w, height: h, alignment: .topLeading).clipped()
                 .overlay(ProgressView().tint(.white).scaleEffect(1.4))
         }
     }

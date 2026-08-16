@@ -9,15 +9,16 @@ private let kClipScale: CGFloat = 211.0 / PlaceableCard.cardWidth   // ≈ 0.703
 private let kClipFullH: CGFloat = 533      // PlaceableCard 전체 높이 (kClipH / kClipScale)
 private let kClipOvlH:  CGFloat = 264      // 오버레이 높이 (PlaceableCard.cardHeight × kClipScale)
 private let kClipTopM:  CGFloat = 22       // MIMO 워드마크 상단 여백
-private let kClipBotM:  CGFloat = 11       // 데이터 카드 하단 여백
+private let kClipBotM:  CGFloat = 14       // 데이터 카드 하단 여백
 
 // MARK: - PlaceableVideoTextOverlay
 //
 // 영상 재생 중 현재 클립의 문구를 SwiftUI로 오버레이하는 뷰.
 // 스탬프 카드의 AnimatedStampLayer와 동일한 패턴:
-//   • .fade / .flyIn  → phase(0→1) 전환으로 opacity·offset 애니메이션
-//   • .typing         → EffectTextView(isStaticPreview: false)의 타이핑 애니메이션
-//   • loopCounter     → 영상 루프·재생 시작 감지 → 뷰 재생성으로 애니메이션 재시작
+//   • .fade    → EffectTextView(isStaticPreview: false)가 opacity·pop·wobble 직접 처리
+//   • .flyIn   → phase(0→1) 전환으로 opacity·offset 처리 (EffectTextView는 정적)
+//   • .typing  → EffectTextView(isStaticPreview: false)의 타이핑 애니메이션
+//   • loopCounter → 영상 루프·재생 시작 감지 → 뷰 재생성으로 애니메이션 재시작
 
 private struct PlaceableVideoTextOverlay: View {
     let activity: Activity?
@@ -58,15 +59,16 @@ private struct PlaceableVideoTextOverlay: View {
             cardWidthOverride: previewW,
             safeTopInset: 54,
             safeBottomInset: 14,
-            isStaticPreview: !(recipe.appearanceMode == .typing)  // typing: EffectTextView 내장 애니메이션
+            horizontalPadding: 14,
+            isStaticPreview: recipe.appearanceMode == .flyIn  // flyIn만 정적(외부 phase 제어), fade·typing은 EffectTextView 직접 처리
         )
         .frame(width: previewW, height: cardH)
         .id("\(clipIdx)-\(loopCounter)")  // loopCounter 변경 시 뷰 재생성 → typing 타이핑 재시작
-        .opacity(isFade || isFlyIn ? phase : 1.0)
+        .opacity(isFlyIn ? phase : 1.0)   // fade는 EffectTextView가 내부 opacity 담당, flyIn만 외부 phase 사용
         .offset(flyOffset)
         .allowsHitTesting(false)
         .task(id: animKey) {
-            guard isFade || isFlyIn else { phase = 1.0; return }
+            guard isFlyIn else { phase = 1.0; return }  // fade·typing: EffectTextView가 처리하므로 phase 불필요
             phase = 0.0
             try? await Task.sleep(for: .seconds(0.3))
             guard !Task.isCancelled else { return }
@@ -137,6 +139,8 @@ extension ShareCardScreen {
                         return max(0, p.size.height * s - slideH)
                     }()
                     ZStack { placeableSlidePreview }
+                        .frame(width: kClipW, height: kClipH)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
                         .simultaneousGesture(
                             (slideExcessX > 0 || slideExcessY > 0) ? DragGesture(minimumDistance: 8)
                                 .onChanged { drag in
@@ -207,6 +211,10 @@ extension ShareCardScreen {
         let cardIsTop: Bool = pvLayout == .horizontal
             ? pvHorizTextRow == .top
             : pvMetricsPos.isTop
+        // 상단 배치: 하단 kClipBotM 여백 확보를 위해 카드 높이를 kClipBotM만큼 줄임
+        // → 날짜(footer)가 항상 동일 위치(프리뷰 하단에서 kClipBotM+14pt)에 표시되도록 보정
+        let pvCardInnerH: CGFloat = kClipH - kClipBotM              // 364: 상단 배치 시 스케일 후 카드 높이
+        let pvCardFullH:  CGFloat = pvCardInnerH / kClipScale        // ≈518: heightOverride (스케일 역산)
         ZStack {
             if isPlaceable, template == .video, pvIsReady, pvIsPlaying,
                let vp = pvPlayer, let contentLayer = pvLayer {
@@ -286,13 +294,13 @@ extension ShareCardScreen {
                     layout: pvLayout,
                     horizTextRow: pvHorizTextRow,
                     horizRoutePos: pvHorizRoutePos,
-                    heightOverride: cardIsTop ? kClipFullH : nil
+                    heightOverride: cardIsTop ? pvCardFullH : nil
                 )
-                .frame(width: PlaceableCard.cardWidth, height: cardIsTop ? kClipFullH : PlaceableCard.cardHeight)
+                .frame(width: PlaceableCard.cardWidth, height: cardIsTop ? pvCardFullH : PlaceableCard.cardHeight)
                 .scaleEffect(kClipScale, anchor: .center)
-                .frame(width: kClipW, height: cardIsTop ? kClipH : kClipOvlH)
-                .padding(.bottom, cardIsTop ? 0 : kClipBotM)
-                .frame(width: kClipW, height: kClipH, alignment: cardIsTop ? .center : .bottom)
+                .frame(width: kClipW, height: cardIsTop ? pvCardInnerH : kClipOvlH)
+                .padding(.bottom, kClipBotM)
+                .frame(width: kClipW, height: kClipH, alignment: .bottom)
 
             } else if template == .video {
                 // 영상 템플릿 정지 대기: 재생 상태와 동일한 9:16 pillarbox 레이아웃
@@ -340,13 +348,13 @@ extension ShareCardScreen {
                     layout: pvLayout,
                     horizTextRow: pvHorizTextRow,
                     horizRoutePos: pvHorizRoutePos,
-                    heightOverride: cardIsTop ? kClipFullH : nil
+                    heightOverride: cardIsTop ? pvCardFullH : nil
                 )
-                .frame(width: PlaceableCard.cardWidth, height: cardIsTop ? kClipFullH : PlaceableCard.cardHeight)
+                .frame(width: PlaceableCard.cardWidth, height: cardIsTop ? pvCardFullH : PlaceableCard.cardHeight)
                 .scaleEffect(kClipScale, anchor: .center)
-                .frame(width: kClipW, height: cardIsTop ? kClipH : kClipOvlH)
-                .padding(.bottom, cardIsTop ? 0 : kClipBotM)
-                .frame(width: kClipW, height: kClipH, alignment: cardIsTop ? .center : .bottom)
+                .frame(width: kClipW, height: cardIsTop ? pvCardInnerH : kClipOvlH)
+                .padding(.bottom, kClipBotM)
+                .frame(width: kClipW, height: kClipH, alignment: .bottom)
 
                 if !vText.isEmpty {
                     // 클립별 독립 속성을 스냅샷된 pvClipRecipes에서 읽음
@@ -370,6 +378,7 @@ extension ShareCardScreen {
                         cardWidthOverride: kClipW,
                         safeTopInset: 54,
                         safeBottomInset: 14,
+                        horizontalPadding: 14,
                         isStaticPreview: true
                     )
                     .frame(width: kClipW, height: kClipH)

@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import SwiftUI
 
 enum ActivityType: String {
     case walking, running, hiking
@@ -314,6 +315,19 @@ enum TrendMetric: String, CaseIterable, Identifiable {
 
     var lowerIsBetter: Bool {
         self == .groundContactTime || self == .verticalOscillation
+    }
+
+    var sparkColor: Color {
+        switch self {
+        case .cadence:             Theme.cadence
+        case .power:               Theme.power
+        case .groundContactTime:   Theme.time
+        case .strideLength:        Theme.strideLength
+        case .verticalOscillation: Theme.verticalOsc
+        case .vo2Max:              Theme.elevation
+        case .bodyMass:            Color(hex: "8A8A92")
+        case .bodyFatPercentage:   Color(hex: "8A8A92")
+        }
     }
 
     func formattedValue(_ val: Double, usePounds: Bool = false) -> String {

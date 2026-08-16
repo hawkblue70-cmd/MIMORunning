@@ -164,7 +164,7 @@ func mrBuildPlan(raceDate: Date,
     let baseYear = cal.component(.year, from: today)
     func sfmt(_ d: Date) -> String {
         let y = cal.component(.year, from: d)
-        var fmtr = DateFormatter()
+        let fmtr = DateFormatter()
         fmtr.locale = Locale(identifier: "ko_KR")
         fmtr.dateFormat = y == baseYear ? "M-d" : "yyyy-M-d"
         return fmtr.string(from: d)
@@ -357,16 +357,22 @@ func mrBuildPlan(raceDate: Date,
 
         let mins = lr * (easyPaceSecPerKm ?? 420) / 60.0
         let n = max(Int(runsPerWeek.rounded()), 2)
-        let rest = max(wkVol - lr, 0)
         let others = max(n - 1, 1)
-        let each = rest / Double(others)
+        // 표시값 기준으로 역산 — "롱런 A + 이지 B × N = 주간" 합산이 일치하도록
+        let lrDisplay = lr.rounded()
+        let wkDisplay = (wkVol * 10).rounded() / 10
+        let each = max(wkDisplay - lrDisplay, 0) / Double(others)
         // ⚠ 테이퍼 주는 볼륨만 줄인다 — 강도·빈도 유지가 핵심(Bosquet 2007).
         //   "이지 1km × 3회" 같은 숫자는 의미 없고 오히려 혼란스럽다.
+        let eachStr: String = {
+            if each == each.rounded() { return String(format: "%.0fkm", each) }
+            return String(format: "%.1fkm", each)
+        }()
         var breakdown = each >= 1.5
-            ? String(format: "롱런 %.0fkm + 이지 %.0fkm × %d회", lr, each, others)
-            : String(format: "롱런 %.0fkm + 이지 %d회", lr, others)
+            ? "롱런 \(Int(lrDisplay))km + 이지 \(eachStr) × \(others)회"
+            : String(format: "롱런 %.0fkm + 이지 %d회", lrDisplay, others)
         if phase == "테이퍼" {
-            breakdown = String(format: "롱런 %.0fkm + 짧게 %d회 · 강도는 그대로", lr, others)
+            breakdown = String(format: "롱런 %.0fkm + 짧게 %d회 · 강도는 그대로", lrDisplay, others)
         }
         // 12개월 최대 주간거리를 처음 초과하는 주를 표시 — 경고가 아니라 사실 전달
         var isVR = false
