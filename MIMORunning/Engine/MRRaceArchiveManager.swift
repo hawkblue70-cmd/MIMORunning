@@ -39,7 +39,8 @@ func mrBuildSnapshotData(check: MRGoalCheck) -> (
     let plan = check.plan
     let weeksData = plan.weeks.map { w in
         MRPlanWeekSummary(idx: w.idx, monday: w.monday,
-                          phase: w.phase, longRunKm: w.longRunKm, weeklyKm: w.weeklyKm)
+                          phase: w.phase, longRunKm: w.longRunKm, weeklyKm: w.weeklyKm,
+                          breakdown: w.breakdown)
     }
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .secondsSince1970
@@ -52,6 +53,8 @@ func mrBuildSnapshotData(check: MRGoalCheck) -> (
         "reachableLongKm": String(format: "%.1f", plan.reachableLongKm),
         "projectedNow": String(format: "%.2f", plan.projectedNow),
         "projectedFinal": String(format: "%.2f", plan.projectedFinal),
+        "targetLongKm": String(format: "%.1f", plan.targetLongKm),
+        "startingLongKm": String(format: "%.2f", plan.startingLongKm),
     ]
     let metaJSON = (try? encoder.encode(meta)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
 
@@ -325,7 +328,8 @@ func mrCreateRetroactiveArchives(
         // ── 주차 이행 통계
         let planWeeks = plan2.weeks.map { w in
             MRPlanWeekSummary(idx: w.idx, monday: w.monday,
-                              phase: w.phase, longRunKm: w.longRunKm, weeklyKm: w.weeklyKm)
+                              phase: w.phase, longRunKm: w.longRunKm, weeklyKm: w.weeklyKm,
+                              breakdown: w.breakdown)
         }
         let weeksJSON = (try? encoder.encode(planWeeks)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
 

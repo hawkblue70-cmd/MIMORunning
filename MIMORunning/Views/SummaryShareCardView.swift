@@ -255,7 +255,7 @@ struct SummaryShareCardView: View {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 0) {
-                                MIMOWordmark(size: 14, mimoColor: p.textPrimary, runColor: p.brand)
+                                MIMOWordmark(size: 14, strokeMIMO: theme == .light)
                             }
                         }
                         Spacer()
@@ -379,6 +379,7 @@ struct SummaryShareCardView: View {
             }
         }
         .frame(width: 300, height: 375)
+        .environment(\.colorScheme, theme == .dark ? .dark : .light)
     }
 
     @ViewBuilder
@@ -500,6 +501,7 @@ struct SummaryShareCardScreen: View {
                 .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         } else {
             SummaryShareCardView(stats: statsList[index], miniMeImage: miniMeImage, theme: summaryTheme)
+                .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .frame(maxWidth: 300, maxHeight: 375)
         }
@@ -561,6 +563,7 @@ struct SummaryShareCardScreen: View {
         var images: [UIImage] = []
         for stats in statsList {
             let card = SummaryShareCardView(stats: stats, miniMeImage: miniMeImage, theme: summaryTheme)
+                .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
             let renderer = ImageRenderer(content: card)
             renderer.scale = 3
             if let img = renderer.uiImage { images.append(img) }

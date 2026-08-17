@@ -357,7 +357,16 @@ struct MeView: View {
     private func syncAndRecompute() {
         engine.userInput.races = plannedRaces.compactMap { mrTargetRace(from: $0) }
         engine.userInput.goals = parseGoals()
-        engine.recomputePlans()
+        // 스냅샷이 있는 대회는 최초 저장 시점의 월요일을 고정 앵커로 사용.
+        // 이로써 매 월요일마다 주차 구조가 재시작되는 문제를 방지한다.
+        let anchors = Dictionary(
+            allSnapshots.compactMap { snap -> (String, Date)? in
+                guard let firstMonday = snap.planWeeks.first?.monday else { return nil }
+                return (mrArchiveKey(raceDate: snap.raceDate, distanceM: snap.distanceM), firstMonday)
+            },
+            uniquingKeysWith: { a, _ in a }
+        )
+        engine.recomputePlans(snapshotAnchors: anchors)
         saveSnapshotsIfNeeded()
     }
 
@@ -388,27 +397,122 @@ struct MeView: View {
 
     private func saveSnapshotsIfNeeded() {
         guard case .ready = engine.state else { return }
-        let existingKeys = Set(allSnapshots.map {
-            mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM)
-        })
+        let existingByKey = Dictionary(
+            allSnapshots.map { (mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM), $0) },
+            uniquingKeysWith: { a, _ in a }
+        )
+        let cal          = Calendar.current
+        let todayStart   = cal.startOfDay(for: Date())
+        let daysSinceMon = (cal.component(.weekday, from: todayStart) + 5) % 7
+        let thisMonday   = cal.date(byAdding: .day, value: -daysSinceMon, to: todayStart) ?? todayStart
+
         for check in engine.checks {
-            let key = mrArchiveKey(raceDate: check.race.date, distanceM: check.race.distanceM)
-            guard !existingKeys.contains(key) else { continue }
+            let key  = mrArchiveKey(raceDate: check.race.date, distanceM: check.race.distanceM)
             let data = mrBuildSnapshotData(check: check)
-            let snap = RacePlanSnapshot(
-                raceDate: check.race.date,
-                raceName: check.race.name,
-                distanceM: check.race.distanceM,
-                projectedFinalMin: data.projectedFinalMin,
-                projectedNowMin: data.projectedNowMin,
-                goalMin: data.goalMin,
-                weeksJSON: data.weeksJSON,
-                metaJSON: data.metaJSON
-            )
-            modelContext.insert(snap)
-            #if DEBUG
-            print("[스냅샷] 저장: \(check.race.name) \(check.race.distanceM / 1000)km → \(mrFormatDisplay(data.projectedFinalMin))")
-            #endif
+
+            guard let existing = existingByKey[key] else {
+                // 신규 스냅샷 저장
+                let snap = RacePlanSnapshot(
+                    raceDate: check.race.date,
+                    raceName: check.race.name,
+                    distanceM: check.race.distanceM,
+                    projectedFinalMin: data.projectedFinalMin,
+                    projectedNowMin: data.projectedNowMin,
+                    goalMin: data.goalMin,
+                    weeksJSON: data.weeksJSON,
+                    metaJSON: data.metaJSON
+                )
+                modelContext.insert(snap)
+                #if DEBUG
+                print("[스냅샷] 저장: \(check.race.name) \(check.race.distanceM / 1000)km → \(mrFormatDisplay(data.projectedFinalMin))")
+                #endif
+                continue
+            }
+
+            // ── Trigger 1: targetLongKm 규칙 변경 → 미래 주 조정 ──────────────
+            // 프로필 변화(더 많이 달림)는 targetLongKm에 영향을 주지 않으므로 갱신 안 함.
+            let liveTarget = check.plan.targetLongKm
+            let snapTarget = existing.storedTargetLongKm ?? 21.0
+            if abs(liveTarget - snapTarget) > 0.5 {
+                let oldWeeks = existing.planWeeks
+                if oldWeeks.isEmpty {
+                    existing.weeksJSON = data.weeksJSON
+                    existing.metaJSON  = data.metaJSON
+                } else {
+                    let liveByMonday: [Date: MRPlanWeek] = Dictionary(
+                        check.plan.weeks.map { (cal.startOfDay(for: $0.monday), $0) },
+                        uniquingKeysWith: { a, _ in a }
+                    )
+                    let merged: [MRPlanWeekSummary] = oldWeeks.map { snap in
+                        let snapMon = cal.startOfDay(for: snap.monday)
+                        if snapMon <= thisMonday { return snap }
+                        if snap.phase == "회복" { return snap }
+                        if snap.phase == "테이퍼" {
+                            let newLr = (liveTarget * 0.65 * 10).rounded() / 10
+                            let bd    = liveByMonday[snapMon]?.breakdown ?? snap.breakdown
+                            return MRPlanWeekSummary(idx: snap.idx, monday: snap.monday,
+                                                     phase: "테이퍼", longRunKm: newLr,
+                                                     weeklyKm: snap.weeklyKm, breakdown: bd)
+                        }
+                        if snap.longRunKm > liveTarget {
+                            let bd = liveByMonday[snapMon]?.breakdown ?? snap.breakdown
+                            return MRPlanWeekSummary(idx: snap.idx, monday: snap.monday,
+                                                     phase: "유지", longRunKm: liveTarget,
+                                                     weeklyKm: snap.weeklyKm, breakdown: bd)
+                        }
+                        return snap
+                    }
+                    let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
+                    if let wd = try? enc.encode(merged), let wj = String(data: wd, encoding: .utf8) {
+                        existing.weeksJSON = wj
+                    }
+                    existing.metaJSON = data.metaJSON
+                    #if DEBUG
+                    print("[스냅샷] 규칙 변경 → 미래 주 갱신: \(check.race.name) targetLongKm \(snapTarget)→\(liveTarget)")
+                    #endif
+                }
+            }
+
+            // ── Trigger 2: 구버전 스냅샷(startingLongKm 없음) → 과거 주 일회성 보정 ──
+            // targetLongKm 변화와 독립적으로 실행. 한 번 실행되면 metaJSON에 startingLongKm이
+            // 기록되어 다음 실행에서는 이 블록에 진입하지 않는다.
+            if existing.storedStartingLongKm == nil {
+                let liveStart = check.plan.startingLongKm
+                if liveStart > 1.0 {
+                    // 등록 시점 이전 16주 구간에서 최장 런 → 계획 수립 당시 fitness 추산
+                    let cutoffDate  = cal.startOfDay(for: existing.createdAt)
+                    let lookback    = cal.date(byAdding: .day, value: -112, to: cutoffDate) ?? cutoffDate
+                    let prevMaxLong = engine.runs
+                        .filter { $0.start >= lookback && $0.start < cutoffDate }
+                        .compactMap { $0.distanceKm }
+                        .max() ?? 0
+
+                    if prevMaxLong > 1.0 {
+                        let originalStart = max(prevMaxLong, 5.0)
+                        let scaleFactor   = originalStart / liveStart
+                        if abs(scaleFactor - 1.0) > 0.03 {
+                            let corrected: [MRPlanWeekSummary] = existing.planWeeks.map { snap in
+                                let snapMon = cal.startOfDay(for: snap.monday)
+                                guard snapMon <= thisMonday else { return snap }
+                                guard snap.phase == "늘리기" || snap.phase == "유지" else { return snap }
+                                let newLr = (snap.longRunKm * scaleFactor * 10).rounded() / 10
+                                return MRPlanWeekSummary(idx: snap.idx, monday: snap.monday,
+                                                         phase: snap.phase, longRunKm: newLr,
+                                                         weeklyKm: snap.weeklyKm, breakdown: snap.breakdown)
+                            }
+                            let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
+                            if let wd = try? enc.encode(corrected), let wj = String(data: wd, encoding: .utf8) {
+                                existing.weeksJSON = wj
+                                #if DEBUG
+                                print("[스냅샷] 과거 주 보정: \(check.race.name) scale=\(String(format: "%.3f", scaleFactor)) original=\(String(format: "%.2f", originalStart)) live=\(String(format: "%.2f", liveStart))")
+                                #endif
+                            }
+                        }
+                    }
+                }
+                // startingLongKm 기록 — 다음 실행에서 migration 재실행 방지
+                existing.metaJSON = data.metaJSON
+            }
         }
     }
 

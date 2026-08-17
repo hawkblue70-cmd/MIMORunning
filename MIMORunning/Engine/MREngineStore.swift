@@ -174,8 +174,12 @@ final class MREngineStore: ObservableObject {
             let cal = Calendar.current
             let wd = cal.component(.weekday, from: now)   // Sun=1, Mon=2 … Sat=7
             let daysSinceMon = (wd + 5) % 7               // Mon=0, Tue=1 … Sun=6
-            return cal.date(byAdding: .day, value: -daysSinceMon,
-                            to: cal.startOfDay(for: now)) ?? now
+            let mondayStart = cal.date(byAdding: .day, value: -daysSinceMon,
+                                       to: cal.startOfDay(for: now)) ?? now
+            // ⚠ days()는 startOfDay(asOf)를 기준으로 계산한다.
+            //   asOf = 월요일 00:00:00 이면 당일 런(date=월요일 00:00:00)도 days=0으로 포함된다.
+            //   1초 빼면 startOfDay(asOf) = 일요일 → 이번 주 런 전체가 제외된다.
+            return mondayStart.addingTimeInterval(-1)
         }()
         let planProfile = mrProfile(runs: fetched, efforts: efforts, sigmaObs: sigmaObs, asOf: planCutoff)
 
@@ -459,7 +463,10 @@ final class MREngineStore: ObservableObject {
 
     // MARK: - 대회·목표 변경 (HealthKit 재읽기 없음)
 
-    func recomputePlans() {
+    /// 대회·목표가 바뀌거나 앱 재기동 직후 플랜만 다시 계산한다.
+    /// snapshotAnchors: 대회별 고정 시작 월요일 (mrArchiveKey → monday).
+    /// 키가 있으면 계획이 재시작되지 않는다 — 스냅샷 저장 이후 주차 구조가 동결된다.
+    func recomputePlans(snapshotAnchors: [String: Date] = [:]) {
         guard case .ready = state else { return }
         MRUserInputStore.save(userInput)
         let now = Date()
@@ -467,8 +474,9 @@ final class MREngineStore: ObservableObject {
             let cal = Calendar.current
             let wd = cal.component(.weekday, from: now)
             let daysSinceMon = (wd + 5) % 7
-            return cal.date(byAdding: .day, value: -daysSinceMon,
-                            to: cal.startOfDay(for: now)) ?? now
+            let mondayStart2 = cal.date(byAdding: .day, value: -daysSinceMon,
+                                        to: cal.startOfDay(for: now)) ?? now
+            return mondayStart2.addingTimeInterval(-1)  // 이번 주 런 전체 제외 (월요일 포함)
         }()
         let planProfile2 = mrProfile(runs: runs, efforts: efforts, asOf: planCutoff2)
         let he = halfEquivMin
@@ -480,11 +488,14 @@ final class MREngineStore: ObservableObject {
         var prevPlanInfo2: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil
         let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in
             let rt = raceTempByID[r.id] ?? MR_REF_TEMP
+            let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
+            let anchor = snapshotAnchors[key]
             let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
                                  profile: planProfile2, halfEquivMin: he,
                                  easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
                                  raceTempC: rt, runsPerWeek: planProfile2.runsPerWeek,
-                                 priorRace: prevPlanInfo2)
+                                 priorRace: prevPlanInfo2,
+                                 forcedMonday: anchor)
             if let pl { prevPlanInfo2 = (date: r.date, name: r.name,
                                          peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }
             return (r, pl)

@@ -9,6 +9,26 @@ struct MRPlanWeekSummary: Codable {
     let phase: String
     let longRunKm: Double
     let weeklyKm: Double
+    var breakdown: String   // 실행 안내
+
+    init(idx: Int, monday: Date, phase: String,
+         longRunKm: Double, weeklyKm: Double, breakdown: String = "") {
+        self.idx = idx; self.monday = monday; self.phase = phase
+        self.longRunKm = longRunKm; self.weeklyKm = weeklyKm
+        self.breakdown = breakdown
+    }
+
+    // breakdown은 신규 필드 — 구버전 스냅샷 JSON에 없을 때 빈 문자열로 폴백.
+    // Swift 자동 합성 Decodable은 키 누락 시 keyNotFound를 던지므로 커스텀 구현이 필요하다.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        idx       = try c.decode(Int.self,    forKey: .idx)
+        monday    = try c.decode(Date.self,   forKey: .monday)
+        phase     = try c.decode(String.self, forKey: .phase)
+        longRunKm = try c.decode(Double.self, forKey: .longRunKm)
+        weeklyKm  = try c.decode(Double.self, forKey: .weeklyKm)
+        breakdown = (try? c.decodeIfPresent(String.self, forKey: .breakdown)) ?? ""
+    }
 }
 
 // MARK: - 계획 시작 시점 스냅샷
@@ -38,6 +58,23 @@ struct MRPlanWeekSummary: Codable {
         self.goalMin = goalMin
         self.weeksJSON = weeksJSON
         self.metaJSON = metaJSON
+    }
+
+    /// metaJSON에서 저장된 targetLongKm을 읽는다.
+    /// 구버전 스냅샷(키 없음)은 nil → 호출자가 기본값(21.0)으로 폴백.
+    var storedTargetLongKm: Double? { metaDouble("targetLongKm") }
+
+    /// metaJSON에서 저장된 startingLongKm(계획 수립 시점 fitness)을 읽는다.
+    /// 구버전 스냅샷(키 없음)은 nil → 과거 주 보정 migration 트리거.
+    var storedStartingLongKm: Double? { metaDouble("startingLongKm") }
+
+    private func metaDouble(_ key: String) -> Double? {
+        guard !metaJSON.isEmpty,
+              let data = metaJSON.data(using: .utf8),
+              let dict = try? JSONDecoder().decode([String: String].self, from: data),
+              let v = dict[key],
+              let d = Double(v) else { return nil }
+        return d
     }
 
     var planWeeks: [MRPlanWeekSummary] {

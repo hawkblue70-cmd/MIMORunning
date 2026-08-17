@@ -99,7 +99,8 @@ func mrBuildPlan(raceDate: Date,
                  heat: MRHeatModel,
                  raceTempC: Double,
                  runsPerWeek: Double = 3.0,
-                 priorRace: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil) -> MRRacePlan? {
+                 priorRace: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil,
+                 forcedMonday: Date? = nil) -> MRRacePlan? {
 
     let cal = Calendar.current
     let totalDays = cal.dateComponents([.day], from: cal.startOfDay(for: today),
@@ -110,17 +111,28 @@ func mrBuildPlan(raceDate: Date,
     //   0을 그리면 "0분 00초에 완주"라는 말이 되어 신뢰가 통째로 무너진다.
     //   계획을 아예 만들지 않고, 화면은 그 대회를 조용히 건너뛴다.
     guard halfEquivMin > 10 else { return nil }
-    // 완전 입문자(주간 5km 미만 + 최근 30일 최장 3km 미만)에게는 계획을 내놓지 않는다.
+    // 완전 입문자(주간 5km 미만 + 최근 16주 최장 3km 미만)에게는 계획을 내놓지 않는다.
+    // 부상·휴식으로 최근 4주가 비어 있어도 16주 안에 기록이 있으면 복귀자로 판단한다.
     // 플래너의 목적은 "지금 뛸 수 있는가"가 아니라 "여기까지 쌓을 수 있는가"이므로
     // 롱런 35% 하한선은 쓰지 않는다 — 훈련으로 도달할 수 있는 사람의 계획까지 없애기 때문.
-    if profile.weeklyKm4w < 5 && profile.longestRun30d < 3 { return nil }
+    if profile.weeklyKm4w < 5 && profile.longestRun16wKm < 3 { return nil }
     if distanceM >= MRDistance.dF && profile.weeklyKm4w < 15 { return nil }
 
     var p = MRRacePlan(raceDate: raceDate, distanceM: distanceM)
     p.taperWeeks = distanceM >= MRDistance.dH ? 2 : 1
     let stepPct = 0.10
     let cycleLen = 4                    // 3주 부하 + 1주 회복
-    p.targetLongKm = distanceM >= MRDistance.dF ? 28.0 : 21.0
+    // 목표 롱런: 레이스 거리별 상한. 짧은 레이스에 과도한 부하를 막는다.
+    // 5K ≤ 12km(2.4×) · 10K ≤ 16km(1.6×) · 하프 ≤ 21km(1.0×) · 풀 ≤ 28km(0.66×)
+    if distanceM >= MRDistance.dF {
+        p.targetLongKm = 28.0
+    } else if distanceM >= MRDistance.dH {
+        p.targetLongKm = 21.0
+    } else if distanceM >= MRDistance.d10 {
+        p.targetLongKm = 16.0
+    } else {
+        p.targetLongKm = 12.0   // 5K 이하
+    }
 
     // '지금 상태로 나가면' — 거리별로 다르게 계산한다.
     // 풀만 durability 지수를 쓰고, 하프 이하는 하프 등가에서 직접 환산한다.
@@ -226,22 +238,24 @@ func mrBuildPlan(raceDate: Date,
     }
 
     // ── 기준 월요일(monday0) ──────────────────────────────────────────
-    // 일반(오늘 기준): 이번 주 월요일로 역산.
-    //   · 화요일에 앱을 열어도 이번 주 1주차가 유지된다.
-    //   · 월요일이면 daysSinceMon = 0 이라 그대로.
-    // defer/prior race: planToday(미래 날짜)의 다음 월요일 — 역산하지 않음.
+    // forcedMonday가 있으면 스냅샷에서 고정된 시작 월요일을 사용 — 계획이 재시작되지 않는다.
+    // 없으면 기존 로직: 이번 주 월요일로 역산.
     let monday0: Date
-    let planWD = cal.component(.weekday, from: planToday)   // Sun=1, Mon=2 … Sat=7
-    if planToday == today && recoveryWeekCount == 0 {
-        let daysSinceMon = (planWD + 5) % 7               // Mon=0, Tue=1, … Sun=6
-        guard let m = cal.date(byAdding: .day, value: -daysSinceMon,
-                               to: cal.startOfDay(for: planToday)) else { return nil }
-        monday0 = m
+    if let forced = forcedMonday, recoveryWeekCount == 0, planToday == today {
+        monday0 = cal.startOfDay(for: forced)
     } else {
-        let offset = (7 - planWD + 2) % 7
-        guard let m = cal.date(byAdding: .day, value: offset,
-                               to: cal.startOfDay(for: planToday)) else { return nil }
-        monday0 = m
+        let planWD = cal.component(.weekday, from: planToday)   // Sun=1, Mon=2 … Sat=7
+        if planToday == today && recoveryWeekCount == 0 {
+            let daysSinceMon = (planWD + 5) % 7               // Mon=0, Tue=1, … Sun=6
+            guard let m = cal.date(byAdding: .day, value: -daysSinceMon,
+                                   to: cal.startOfDay(for: planToday)) else { return nil }
+            monday0 = m
+        } else {
+            let offset = (7 - planWD + 2) % 7
+            guard let m = cal.date(byAdding: .day, value: offset,
+                                   to: cal.startOfDay(for: planToday)) else { return nil }
+            monday0 = m
+        }
     }
 
     // 계획 기간 계산
