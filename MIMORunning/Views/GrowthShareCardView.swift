@@ -258,7 +258,7 @@ struct GrowthShareCard: View {
 
     private var wordmarkRow: some View {
         HStack(alignment: .center) {
-            MIMOWordmark(size: 9)
+            MIMOWordmark(size: 9, strokeMIMO: theme == .light)
             Spacer()
             Text(Date(), format: .dateTime.month(.abbreviated).day())
                 .font(.system(size: 10, weight: .medium))
@@ -380,6 +380,7 @@ struct GrowthShareCardScreen: View {
                         isMale: isMale,
                         theme: cardTheme
                     )
+                    .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
@@ -485,6 +486,7 @@ struct GrowthShareCardScreen: View {
                 isMale: isMale,
                 theme: cardTheme
             )
+            .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
             .frame(width: cardW, height: cardH)
         )
         renderer.scale = 3

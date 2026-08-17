@@ -113,7 +113,7 @@ struct RunChartShareCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Row 1: 워드마크 ← → 날씨 배지 + 신발 (우측 상단 세로)
                 HStack(alignment: .top, spacing: 0) {
-                    MIMOWordmark(size: 9)
+                    MIMOWordmark(size: 9, strokeMIMO: true)
                     Spacer(minLength: 8)
                     VStack(alignment: .trailing, spacing: 4) {
                         if let weather = weatherText {
@@ -308,6 +308,7 @@ struct RunChartShareSheet: View {
                                 paceText: paceText,
                                 palette: shareTheme.palette
                             )
+                            .environment(\.colorScheme, shareTheme == .dark ? .dark : .light)
                             .scaleEffect(scale, anchor: .top)
                             .frame(width: geo.size.width, alignment: .center)
                         }
@@ -685,7 +686,7 @@ struct RunChartShareSheet: View {
         )
         // 폭 1080px 고정 (scale 3.6), 높이는 콘텐츠에 맞게 자연 결정
         // Instagram 업로드 시 자체 크롭 UI로 4:5 조정 가능
-        let renderer = ImageRenderer(content: card.preferredColorScheme(.dark))
+        let renderer = ImageRenderer(content: card.environment(\.colorScheme, shareTheme == .dark ? .dark : .light))
         renderer.scale = 1080.0 / cardW   // 정확히 1080px 폭
         renderer.proposedSize = ProposedViewSize(width: cardW, height: nil)
         renderedImage = renderer.uiImage

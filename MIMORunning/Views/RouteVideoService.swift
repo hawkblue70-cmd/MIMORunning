@@ -242,6 +242,7 @@ struct BigNumberRouteVideoFrameView: View {
     let heroMetric: HeroMetric
     var mood: Mood? = nil
     var memoText: String? = nil
+    var insightTitle: String = ""
     var weatherText: String? = nil
     var weatherIcon: String? = nil
     let date: Date
@@ -279,6 +280,7 @@ struct BigNumberRouteVideoFrameView: View {
                 BigNumberVideoOverlayView(
                     activity: activity, detail: detail, heroMetric: heroMetric,
                     mood: mood, memoText: memoText,
+                    insightTitle: insightTitle,
                     weatherText: weatherText, weatherIcon: weatherIcon,
                     date: date, shoeName: shoeName,
                     topInset: topInset,
@@ -489,6 +491,7 @@ struct RouteVideoExportService {
         heroMetric: HeroMetric,
         mood: Mood?,
         memoText: String?,
+        insightTitle: String = "",
         weatherText: String?,
         weatherIcon: String?,
         date: Date,
@@ -507,6 +510,7 @@ struct RouteVideoExportService {
         let overlayView = BigNumberVideoOverlayView(
             activity: activity, detail: detail, heroMetric: heroMetric,
             mood: mood, memoText: memoText,
+            insightTitle: insightTitle,
             weatherText: weatherText, weatherIcon: weatherIcon,
             date: date, shoeName: shoeName,
             topInset: exportInset,

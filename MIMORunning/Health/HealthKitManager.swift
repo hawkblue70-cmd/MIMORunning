@@ -2041,6 +2041,12 @@ class HealthKitManager {
         let url = metricHistoryCacheURL(metric, usePounds: usePounds)
         guard let data = try? Data(contentsOf: url),
               let file = try? JSONDecoder().decode(MetricHistoryCacheFile.self, from: data) else { return nil }
+        // VO2Max: Apple Watch가 워크아웃 종료 후 수십 분 뒤 계산 → 2h TTL.
+        // 워크아웃 직후 캐시 재구성 시 아직 새 VO2Max가 없어 이전값이 저장되는 문제 방지.
+        if metric == .vo2Max, Date().timeIntervalSince(file.cachedAt) > 7_200 {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
         // coveredFrom 없는 레거시 캐시, 또는 1년치를 커버하지 않는 부분 캐시는 무효화
         let requiredStart = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
         guard let coveredFrom = file.coveredFrom,

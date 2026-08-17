@@ -241,6 +241,7 @@ struct BigNumberVideoOverlayView: View {
     let heroMetric: HeroMetric
     var mood: Mood? = nil
     var memoText: String? = nil
+    var insightTitle: String = ""
     var weatherText: String? = nil
     var weatherIcon: String? = nil
     let date: Date
@@ -275,32 +276,36 @@ struct BigNumberVideoOverlayView: View {
         GeometryReader { proxy in
             let s = proxy.size.width / 300  // scale relative to standard 300-pt card width
             ZStack {
-                CardVisual.topScrim
                 CardVisual.bottomScrim
 
                 VStack(alignment: .leading, spacing: 0) {
-                    MIMOWordmark(size: 11)
+                    // Logo + insight + mood + memo — unified left edge (matches VideoOverlayCard)
+                    VStack(alignment: .leading, spacing: 2 * s) {
+                        MIMOWordmark(size: 11 * s)
+                        if !insightTitle.isEmpty {
+                            Text(insightTitle)
+                                .font(.system(size: 13 * s, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.90))
+                                .lineLimit(2)
+                        }
+                        if let m = mood {
+                            HStack(spacing: 3 * s) {
+                                Image(systemName: m.sfSymbol)
+                                    .font(.system(size: 10 * s, weight: .medium))
+                                Text(m.label)
+                                    .font(.system(size: 10 * s, weight: .medium))
+                            }
+                            .foregroundStyle(m.cardColor)
+                        }
+                        if let memo = memoText, !memo.isEmpty {
+                            Text(memo)
+                                .font(.system(size: 10 * s, weight: .bold, design: .serif).italic())
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .cardTextShadow()
                     .padding(.horizontal, 14)
                     .padding(.top, topInset ?? (CardVisual.videoSafeTopRef * s))
-
-                    // Mood + Memo
-                    if mood != nil || memoText != nil {
-                        HStack(alignment: .top, spacing: 6 * s) {
-                            if let mood = mood {
-                                Image(systemName: mood.sfSymbol)
-                                    .font(.system(size: 10 * s, weight: .semibold))
-                                    .foregroundStyle(Color(hex: "FFC74D"))
-                            }
-                            if let memo = memoText, !memo.isEmpty {
-                                Text(memo)
-                                    .font(.system(size: 11 * s, weight: .semibold))
-                                    .foregroundStyle(.white)
-                            }
-                        }
-                        .cardTextShadow()
-                        .padding(.horizontal, 16 * s)
-                        .padding(.top, 10 * s)
-                    }
 
                     Spacer()
 

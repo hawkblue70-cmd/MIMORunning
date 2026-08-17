@@ -202,7 +202,7 @@ struct WeeklyGrowthShareCard: View {
     // MARK: - Subviews
 
     private var wordmarkRow: some View {
-        MIMOWordmark(size: 9)
+        MIMOWordmark(size: 9, strokeMIMO: pal.isLight)
     }
 
     private var divider: some View {
@@ -431,6 +431,7 @@ struct WeeklyGrowthShareCardScreen: View {
                         theme: weeklyTheme,
                         excludeBodyMetrics: true
                     )
+                    .environment(\.colorScheme, weeklyTheme == .dark ? .dark : .light)
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
@@ -577,6 +578,7 @@ struct WeeklyGrowthShareCardScreen: View {
                 theme: weeklyTheme,
                 excludeBodyMetrics: true
             )
+            .environment(\.colorScheme, weeklyTheme == .dark ? .dark : .light)
             .frame(width: cardW, height: cardH)
         )
         renderer.scale = 3
@@ -670,7 +672,7 @@ struct MileageStreakShareCard: View {
 
     // MARK: Wordmark
     private var wordmarkRow: some View {
-        MIMOWordmark(size: 9)
+        MIMOWordmark(size: 9, strokeMIMO: theme == .light)
     }
 
     private var divider: some View {
@@ -925,6 +927,7 @@ struct MileageStreakShareCardScreen: View {
                         heatmapWeekCount: heatmapWeekCount,
                         theme: cardTheme
                     )
+                    .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
@@ -1028,6 +1031,7 @@ struct MileageStreakShareCardScreen: View {
                 heatmapWeekCount: heatmapWeekCount,
                 theme: cardTheme
             )
+            .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
             .frame(width: cardW, height: cardH)
         )
         renderer.scale = 3
