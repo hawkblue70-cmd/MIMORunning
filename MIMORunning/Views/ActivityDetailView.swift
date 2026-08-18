@@ -1954,11 +1954,11 @@ private struct SplitsSection: View {
         return splits.map(\.paceSecPerKm).reduce(0, +) / Double(splits.count)
     }
 
-    // Slower pace = more seconds per km = longer bar. Range: 0.28 (fastest) … 1.0 (slowest).
+    // Faster pace = fewer seconds per km = longer bar. Range: 0.28 (slowest) … 1.0 (fastest).
     private func barFraction(for pace: Double) -> Double {
         let range = maxPace - minPace
         guard range > 0.5 else { return 0.65 }
-        return 0.28 + 0.72 * (pace - minPace) / range
+        return 0.28 + 0.72 * (maxPace - pace) / range
     }
 
     var body: some View {
@@ -3342,132 +3342,151 @@ struct SplitsPanelChart: View {
         }
     }
 
-    // MARK: - Compact line chart (공유 모드)
-
-    private struct LinePoint: Identifiable {
-        let id: Int
-        let midMinute: Double
-        let invPace: Double   // offset - pace: 빠를수록 큰 값 → 차트 위쪽
-        let realPace: Double
-        let isFastest: Bool
-    }
-
-    private var lineData: (points: [LinePoint], totalMinutes: Double) {
-        let offset = minPace + maxPace
-        var cum: Double = 0
-        var pts: [LinePoint] = []
-        for (idx, split) in splits.enumerated() {
-            let mid = (cum + split.duration / 2) / 60
-            pts.append(LinePoint(
-                id: idx,
-                midMinute: mid,
-                invPace: offset - split.paceSecPerKm,
-                realPace: split.paceSecPerKm,
-                isFastest: idx == fastestIdx
-            ))
-            cum += split.duration
-        }
-        return (pts, cum / 60)
-    }
-
-    private func paceLabel(_ seconds: Double) -> String {
-        let s = Int(seconds.rounded())
-        return String(format: "%d'%02d\"", s / 60, s % 60)
-    }
+    // MARK: - Compact vertical bar chart (panel + share card)
 
     @ViewBuilder
     private var compactLineChart: some View {
-        let (pts, totalMin) = lineData
-        if pts.count < 2 {
+        if splits.isEmpty {
             EmptyView()
+        } else if isLargeDisplay {
+            panelVerticalBarChart
         } else {
-        let offset   = minPace + maxPace
-        let pad      = max((maxPace - minPace) * 0.22, 12.0)
-        let domLo    = minPace - pad          // invPace for slowest + padding below
-        let domHi    = maxPace + pad          // invPace for fastest + padding above
-        let avgInv   = offset - avgPace
-        let fastest  = pts.first(where: { $0.isFastest })
-        let xStep: Double = totalMin <= 20 ? 5 : totalMin <= 50 ? 10 : 15
+            shareCardVerticalBarChart
+        }
+    }
 
-        Chart {
-            ForEach(pts) { p in
-                AreaMark(
-                    x: .value("분", p.midMinute),
-                    yStart: .value("pace", p.invPace),
-                    yEnd: .value("base", domLo)
-                )
-                .foregroundStyle(LinearGradient(
-                    colors: [Self.panelVioletHi.opacity(0.30), Self.panelVioletHi.opacity(0.0)],
-                    startPoint: .top, endPoint: .bottom
-                ))
-                .interpolationMethod(.catmullRom)
-            }
-            ForEach(pts) { p in
-                LineMark(
-                    x: .value("분", p.midMinute),
-                    y: .value("pace", p.invPace)
-                )
-                .foregroundStyle(Self.panelVioletHi)
-                .lineStyle(StrokeStyle(lineWidth: 1.5))
-                .interpolationMethod(.catmullRom)
-            }
-            if let fp = fastest {
-                PointMark(x: .value("분", fp.midMinute), y: .value("pace", fp.invPace))
-                    .foregroundStyle(Self.panelGold)
-                    .symbolSize(18)
-                    .annotation(position: .top, alignment: .center) {
-                        Text(paceLabel(fp.realPace))
-                            .font(.system(size: isLargeDisplay ? 13 : 7 * labelScale, weight: .semibold))
-                            .foregroundStyle(Self.panelGold)
-                    }
-            }
-            RuleMark(y: .value("평균", avgInv))
-                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                .foregroundStyle(Color.white.opacity(0.45))
-                .annotation(position: .bottom, alignment: .trailing) {
-                    Text("avg " + paceLabel(avgPace))
-                        .font(.system(size: isLargeDisplay ? 11 : 6.5 * labelScale))
-                        .foregroundStyle(Color.white.opacity(0.55))
-                }
-        }
-        .chartYScale(domain: domLo...domHi)
-        .chartXScale(domain: 0...totalMin)
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { val in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color.white.opacity(0.08))
-                AxisValueLabel {
-                    if let v = val.as(Double.self) {
-                        let real = offset - v
-                        if real > 60 {
-                            Text(paceLabel(real))
-                                .font(.system(size: isLargeDisplay ? 11 : 6 * labelScale))
-                                .foregroundStyle(Color.white.opacity(0.55))
+    // MARK: Panel vertical bar chart
+
+    private func splitBarH(_ split: SplitData, chartH: CGFloat) -> CGFloat {
+        let range = maxPace - minPace
+        guard range > 0.5 else { return chartH * 0.6 }
+        return chartH * CGFloat(0.18 + 0.82 * (maxPace - split.paceSecPerKm) / range)
+    }
+
+    private func avgBarH(chartH: CGFloat) -> CGFloat {
+        let range = maxPace - minPace
+        guard range > 0.5 else { return chartH * 0.6 }
+        return chartH * CGFloat(0.18 + 0.82 * (maxPace - avgPace) / range)
+    }
+
+    @ViewBuilder
+    private var panelVerticalBarChart: some View {
+        let chartH: CGFloat = 130
+        let barW: CGFloat = 28
+        let avgH = avgBarH(chartH: chartH)
+
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .bottom, spacing: 5) {
+                ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
+                    let isFastest = idx == fastestIdx
+                    let isSlowerAvg = split.paceSecPerKm > avgPace
+                    let bH = splitBarH(split, chartH: chartH)
+                    let barOpacity: Double = (!isFastest && isSlowerAvg) ? 0.58 : 1.0
+                    let fillGradient = isFastest
+                        ? LinearGradient(colors: [Self.panelGoldDark, Self.panelGold],
+                                         startPoint: .bottom, endPoint: .top)
+                        : LinearGradient(colors: [Self.panelVioletLo.opacity(barOpacity),
+                                                  Self.panelVioletHi.opacity(barOpacity)],
+                                         startPoint: .bottom, endPoint: .top)
+                    VStack(spacing: 3) {
+                        Text(split.formattedPace)
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundStyle(isFastest ? Self.panelGold : .white.opacity(0.82))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .frame(width: barW + 4)
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.white.opacity(0.07))
+                                .frame(width: barW, height: chartH)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(fillGradient)
+                                .frame(width: barW, height: max(bH, 6))
+                            Rectangle()
+                                .fill(Color.white.opacity(0.28))
+                                .frame(width: barW, height: 1)
+                                .offset(y: -avgH)
                         }
+                        .frame(width: barW, height: chartH)
+                        .clipped()
+                        Text(split.distanceM < 990
+                             ? String(format: "%.1f", split.distanceM / 1000)
+                             : (split.id == 1 ? "1" : "\(split.id)"))
+                            .font(.system(size: 10, weight: isFastest ? .bold : .regular, design: .rounded))
+                            .foregroundStyle(isFastest ? Self.panelGold : Self.panelKmColor)
+                            .frame(width: barW + 4)
                     }
                 }
             }
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
         }
-        .chartXAxis {
-            AxisMarks(values: stride(from: xStep, through: totalMin, by: xStep).map { $0 }) { val in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color.white.opacity(0.08))
-                AxisValueLabel {
-                    if let m = val.as(Double.self) {
-                        Text(AppLanguage.shared.isEnglish
-                             ? String(format: "%.0fm", m)
-                             : String(format: "%.0f분", m))
-                            .font(.system(size: isLargeDisplay ? 11 : 6 * labelScale))
-                            .foregroundStyle(Color.white.opacity(0.55))
+    }
+
+    // MARK: Share card vertical bar chart
+
+    @ViewBuilder
+    private var shareCardVerticalBarChart: some View {
+        GeometryReader { geo in
+            let hPad: CGFloat = 8
+            let vPad: CGFloat = 4
+            let spacing: CGFloat = max(1.5, 3 * labelScale)
+            let n = max(splits.count, 1)
+            let available = geo.size.width - hPad * 2
+            let barW = max(3, (available - spacing * CGFloat(n - 1)) / CGFloat(n))
+            let paceFs: CGFloat = max(5.5, 7 * labelScale)
+            let labelH: CGFloat = (paceFs + 3) * 2
+            let chartH = max(15, geo.size.height - labelH - vPad * 2 - 4)
+            let computedAvgH = avgBarH(chartH: chartH)
+
+            HStack(alignment: .bottom, spacing: spacing) {
+                ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
+                    let isFastest = idx == fastestIdx
+                    let isSlowerAvg = split.paceSecPerKm > avgPace
+                    let bH = splitBarH(split, chartH: chartH)
+                    let barOpacity: Double = (!isFastest && isSlowerAvg) ? 0.58 : 1.0
+                    let fillGradient = isFastest
+                        ? LinearGradient(colors: [Self.panelGoldDark, Self.panelGold],
+                                         startPoint: .bottom, endPoint: .top)
+                        : LinearGradient(colors: [Self.panelVioletLo.opacity(barOpacity),
+                                                  Self.panelVioletHi.opacity(barOpacity)],
+                                         startPoint: .bottom, endPoint: .top)
+                    VStack(spacing: max(1.5, 3 * labelScale)) {
+                        Text(split.formattedPace)
+                            .font(.system(size: paceFs, weight: .semibold, design: .rounded))
+                            .foregroundStyle(isFastest ? Self.panelGold : .white.opacity(0.82))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                            .frame(width: barW + 2)
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: max(1.5, 2 * labelScale))
+                                .fill(Color.white.opacity(0.07))
+                                .frame(width: barW, height: chartH)
+                            RoundedRectangle(cornerRadius: max(1.5, 2 * labelScale))
+                                .fill(fillGradient)
+                                .frame(width: barW, height: max(bH, 4))
+                            Rectangle()
+                                .fill(Color.white.opacity(0.28))
+                                .frame(width: barW, height: 0.5)
+                                .offset(y: -computedAvgH)
+                        }
+                        .frame(width: barW, height: chartH)
+                        .clipped()
+                        Text(split.distanceM < 990
+                             ? String(format: "%.1f", split.distanceM / 1000)
+                             : (split.id == 1 ? "1" : "\(split.id)"))
+                            .font(.system(size: paceFs, weight: isFastest ? .bold : .regular, design: .rounded))
+                            .foregroundStyle(isFastest ? Self.panelGold : Self.panelKmColor)
+                            .frame(width: barW + 2)
                     }
                 }
             }
+            .padding(.horizontal, hPad)
+            .padding(.top, vPad)
+            .padding(.bottom, vPad)
+            .frame(width: geo.size.width, alignment: .bottom)
         }
-        .padding(.horizontal, 4)
-        .padding(.top, 8)
-        .padding(.bottom, 2)
-        .frame(maxWidth: .infinity)
-        } // end else
     }
 
     // MARK: - Normal row (앱 내 상세)

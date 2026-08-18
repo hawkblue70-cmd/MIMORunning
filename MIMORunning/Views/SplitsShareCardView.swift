@@ -149,11 +149,11 @@ struct SplitsShareCardView: View {
 
     private static let barW: CGFloat = 92
 
-    // Slower pace (more sec/km) = longer bar — matches SplitBarRow
+    // Faster pace (fewer sec/km) = longer bar — matches SplitBarRow
     private func barFraction(for pace: Double) -> CGFloat {
         let range = maxPaceSec - minPaceSec
         guard range > 0.5 else { return 0.65 }
-        return CGFloat(0.28 + 0.72 * (pace - minPaceSec) / range)
+        return CGFloat(0.28 + 0.72 * (maxPaceSec - pace) / range)
     }
 
     private func kmLabel(for split: SplitData) -> String {
@@ -197,7 +197,7 @@ struct SplitsShareCardView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     // Wordmark + MiniMe
                     HStack(alignment: .top) {
-                        MIMOWordmark(size: 8)
+                        MIMOWordmark(size: 8, strokeMIMO: pal.isLight)
                         Spacer()
                         miniMeContent
                             .frame(width: 37, height: 37)
