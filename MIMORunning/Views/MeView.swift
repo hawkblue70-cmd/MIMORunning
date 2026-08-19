@@ -51,9 +51,7 @@ struct MeView: View {
     @AppStorage("showRunning")  private var showRunning  = true
     @AppStorage("showWalking")  private var showWalking  = false
     @AppStorage("cloudKitSyncAvailable") private var cloudKitSyncAvailable = false
-    @AppStorage("goalTime10k")   private var goalTime10k  = ""
-    @AppStorage("goalTimeHalf")  private var goalTimeHalf = ""
-    @AppStorage("goalTimeFull")  private var goalTimeFull = ""
+    @Query private var goalRecords: [UserGoalRecord]
     @State private var editingGoal: RaceGoalKind? = nil
     @State private var nicknameInput: String = ""
     @State private var nicknameSavedFlash = false
@@ -230,6 +228,7 @@ struct MeView: View {
         }
         .task {
             nicknameInput = crewNicknameManager.nickname ?? ""
+            migrateGoalsIfNeeded()
             syncAndRecompute()
             await createArchivesIfNeeded()
             mrDeduplicateSnapshots(allSnapshots, context: modelContext)
@@ -247,9 +246,7 @@ struct MeView: View {
         .onChange(of: allStories.count) { refreshShoeKmCache() }
         .onChange(of: useMiles) { refreshStatsAndBadges() }
         .onChange(of: racePlanKey) { syncAndRecompute() }
-        .onChange(of: goalTime10k) { syncAndRecompute() }
-        .onChange(of: goalTimeHalf) { syncAndRecompute() }
-        .onChange(of: goalTimeFull) { syncAndRecompute() }
+        .onChange(of: goalHash) { syncAndRecompute() }
         .onChange(of: engine.isReady) { if engine.isReady { syncAndRecompute() } }
         .sheet(isPresented: $showRaceSearch) {
             RaceSearchSheet(raceDetector: raceDetector, existing: Set(plannedRaces.map { $0.raceName + $0.dateString }))
@@ -261,11 +258,16 @@ struct MeView: View {
     }
 
     private func binding(for kind: RaceGoalKind) -> Binding<String> {
-        switch kind {
-        case .tenK: return $goalTime10k
-        case .half: return $goalTimeHalf
-        case .full: return $goalTimeFull
-        }
+        Binding(
+            get: {
+                switch kind {
+                case .tenK: return self.goalRecords.first?.tenKGoal  ?? ""
+                case .half: return self.goalRecords.first?.halfGoal ?? ""
+                case .full: return self.goalRecords.first?.fullGoal ?? ""
+                }
+            },
+            set: { self.setGoal(kind: kind, value: $0) }
+        )
     }
 
     // MARK: - Planned races section
@@ -370,6 +372,40 @@ struct MeView: View {
         saveSnapshotsIfNeeded()
     }
 
+    // UserDefaults(구버전) → SwiftData 1회 마이그레이션. 이미 레코드 있으면 스킵.
+    private func migrateGoalsIfNeeded() {
+        guard goalRecords.isEmpty else { return }
+        let ud10k  = UserDefaults.standard.string(forKey: "goalTime10k")  ?? ""
+        let udHalf = UserDefaults.standard.string(forKey: "goalTimeHalf") ?? ""
+        let udFull = UserDefaults.standard.string(forKey: "goalTimeFull") ?? ""
+        guard !ud10k.isEmpty || !udHalf.isEmpty || !udFull.isEmpty else { return }
+        let rec = UserGoalRecord()
+        rec.tenKGoal = ud10k
+        rec.halfGoal = udHalf
+        rec.fullGoal = udFull
+        modelContext.insert(rec)
+    }
+
+    // 목표 저장: 레코드가 없으면 신규 생성, 있으면 업데이트
+    private func setGoal(kind: RaceGoalKind, value: String) {
+        let rec: UserGoalRecord
+        if goalRecords.count > 1 {
+            goalRecords.dropFirst().forEach { modelContext.delete($0) }
+        }
+        if let existing = goalRecords.first {
+            rec = existing
+        } else {
+            rec = UserGoalRecord()
+            modelContext.insert(rec)
+        }
+        switch kind {
+        case .tenK: rec.tenKGoal = value
+        case .half: rec.halfGoal = value
+        case .full: rec.fullGoal = value
+        }
+        syncAndRecompute()
+    }
+
     private func parseGoals() -> MRGoals {
         func sec(_ s: String) -> Int? {
             guard !s.isEmpty else { return nil }
@@ -380,17 +416,24 @@ struct MeView: View {
             default: return nil
             }
         }
-        return MRGoals(tenKSec: sec(goalTime10k),
-                       halfSec: sec(goalTimeHalf),
-                       fullSec: sec(goalTimeFull))
+        let r = goalRecords.first
+        return MRGoals(tenKSec: sec(r?.tenKGoal  ?? ""),
+                       halfSec: sec(r?.halfGoal ?? ""),
+                       fullSec: sec(r?.fullGoal ?? ""))
     }
 
     private func goalString(for kind: RaceGoalKind) -> String {
+        let r = goalRecords.first
         switch kind {
-        case .tenK: return goalTime10k
-        case .half: return goalTimeHalf
-        case .full: return goalTimeFull
+        case .tenK: return r?.tenKGoal  ?? ""
+        case .half: return r?.halfGoal ?? ""
+        case .full: return r?.fullGoal ?? ""
         }
+    }
+
+    private var goalHash: String {
+        let r = goalRecords.first
+        return "\(r?.tenKGoal ?? "")|\(r?.halfGoal ?? "")|\(r?.fullGoal ?? "")"
     }
 
     // MARK: - 스냅샷·아카이브

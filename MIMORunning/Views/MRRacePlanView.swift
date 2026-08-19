@@ -464,7 +464,6 @@ struct MRWeekTable: View {
                         .font(.system(size: 12, design: .rounded))
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            guard actual != nil || !snap.breakdown.isEmpty else { return }
                             withAnimation(.easeOut(duration: 0.18)) {
                                 if expanded.contains(snap.idx) { expanded.remove(snap.idx) }
                                 else { expanded.insert(snap.idx) }
@@ -558,7 +557,6 @@ struct MRWeekTable: View {
                         .font(.system(size: 12, design: .rounded))
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            guard !w.breakdown.isEmpty || actualData(for: w) != nil else { return }
                             withAnimation(.easeOut(duration: 0.18)) {
                                 if expanded.contains(w.idx) { expanded.remove(w.idx) }
                                 else { expanded.insert(w.idx) }
