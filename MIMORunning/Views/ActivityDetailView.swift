@@ -81,6 +81,8 @@ struct ActivityDetailView: View {
     @State private var panelSeriesData: [(offset: TimeInterval, value: Double)] = []
     @State private var panelSeriesCache: [DetailPanel: [(offset: TimeInterval, value: Double)]] = [:]
     @State private var isLoadingPanelSeries = false
+    @State private var showPanelGrid4Card = false
+    @State private var panelScrollTrigger: Int = 0
     @State private var hillMatch: HillMatch?
     @State private var chartData: RunChartData = .empty
     @State private var isLoadingChart = false
@@ -168,6 +170,7 @@ struct ActivityDetailView: View {
     }
 
     private var detailContent: some View {
+        ScrollViewReader { proxy in
         ZStack {
             Theme.background.ignoresSafeArea()
             ScrollView {
@@ -186,6 +189,7 @@ struct ActivityDetailView: View {
                     }
                     StorySection(workoutID: activity.id.uuidString)
                     panelShareHeader
+                        .id("panelAnchor")
                     panelSection
                     if activePanel == .combined {
                         RunInsightSection(
@@ -313,6 +317,15 @@ struct ActivityDetailView: View {
                 activity: activity, detail: detail,
                 activePanel: activePanel,
                 hrSamples: hrSamples, panelSeriesData: panelSeriesData,
+                condition: condition
+            )
+        }
+        .sheet(isPresented: $showPanelGrid4Card) {
+            DetailPanelGrid4ShareCardScreen(
+                activity: activity, detail: detail,
+                availablePanels: availablePanelsForGrid,
+                hrSamples: hrSamples,
+                panelSeriesCache: panelSeriesCache,
                 condition: condition
             )
         }
@@ -508,6 +521,12 @@ struct ActivityDetailView: View {
                 loadInsights()
             }
         }
+        .onChange(of: panelScrollTrigger) {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo("panelAnchor", anchor: .top)
+            }
+        }
+        }   // ScrollViewReader
     }
 
     private var userAge: Int? {
@@ -598,6 +617,44 @@ struct ActivityDetailView: View {
         isLoadingPanelSeries = false
     }
 
+    // 공유 카드 열 때 모든 시리즈 패널을 캐시에 미리 올림 (display 상태 건드리지 않음)
+    private func prefetchAllSeriesForShareCard() {
+        if !hrFetchDone {
+            Task {
+                hrSamples = await manager.fetchHRTimeSeries(for: activity.id)
+                hrFetchDone = true
+            }
+        }
+        let seriesPanels: [DetailPanel] = [.cadence, .power, .groundContact, .strideLength, .verticalOscillation]
+        for panel in seriesPanels where isAvailable(panel) && (panelSeriesCache[panel]?.isEmpty != false) {
+            Task { await loadSeriesIntoCache(panel) }
+        }
+    }
+
+    private func loadSeriesIntoCache(_ panel: DetailPanel) async {
+        let fetched: [(offset: TimeInterval, value: Double)]
+        switch panel {
+        case .cadence:
+            fetched = await manager.fetchCadenceTimeSeries(for: activity.id)
+        case .power:
+            fetched = await manager.fetchWorkoutTimeSeries(for: activity.id, identifier: .runningPower, unit: .watt())
+        case .groundContact:
+            fetched = await manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                           identifier: .runningGroundContactTime,
+                                                           unit: .secondUnit(with: .milli))
+        case .strideLength:
+            fetched = await manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                           identifier: .runningStrideLength, unit: .meter())
+        case .verticalOscillation:
+            fetched = await manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                           identifier: .runningVerticalOscillation,
+                                                           unit: HKUnit.meterUnit(with: .centi))
+        default:
+            return
+        }
+        if !fetched.isEmpty { panelSeriesCache[panel] = fetched }
+    }
+
     private func loadInsights() {
         guard runInsights.isEmpty else { return }
         let result = RunInsightEngine.insights(
@@ -670,6 +727,10 @@ struct ActivityDetailView: View {
         case .elevation:            return !(detail?.altitudeProfile ?? []).isEmpty
         case .intervals:            return !(detail?.intervalSegments ?? []).isEmpty
         }
+    }
+
+    private var availablePanelsForGrid: [DetailPanel] {
+        DetailPanel.allCases.filter { $0 != .combined && isAvailable($0) }
     }
 
     // MARK: - Panel section (replaces mapSection)
@@ -856,6 +917,7 @@ struct ActivityDetailView: View {
                     Button {
                         guard available else { return }
                         withAnimation(.easeInOut(duration: 0.2)) { activePanel = panel }
+                        panelScrollTrigger += 1
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: panel.icon)
@@ -897,8 +959,13 @@ struct ActivityDetailView: View {
             }
             Spacer()
             Button {
-                if activePanel == .combined { showChartShare = true }
-                else { showPanelShareCard = true }
+                if activePanel == .combined {
+                    showChartShare = true
+                } else {
+                    // 공유 카드용 시리즈 전체 사전 로드
+                    prefetchAllSeriesForShareCard()
+                    showPanelGrid4Card = true
+                }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "square.and.arrow.up.on.square")
@@ -3318,6 +3385,36 @@ struct SplitsPanelChart: View {
         return 0.28 + 0.72 * (pace - minPace) / range
     }
 
+    // MARK: - Grouped splits (≤15km→1km, ≤30km→2km, >30km→3km)
+
+    private var displayGroupSize: Int {
+        let km = splits.map(\.distanceM).reduce(0, +) / 1000
+        if km <= 15 { return 1 }
+        if km <= 30 { return 2 }
+        return 3
+    }
+
+    private var displaySplits: [SplitData] {
+        let g = displayGroupSize
+        guard g > 1 else { return splits }
+        var result: [SplitData] = []
+        var i = 0
+        while i < splits.count {
+            let end = min(i + g, splits.count)
+            let chunk = splits[i..<end]
+            let totalDist = chunk.map(\.distanceM).reduce(0, +)
+            let totalDur  = chunk.map(\.duration).reduce(0, +)
+            result.append(SplitData(
+                id: end,
+                distanceM: totalDist,
+                duration: totalDur,
+                avgHeartRate: nil, avgCadence: nil, avgPower: nil
+            ))
+            i = end
+        }
+        return result
+    }
+
     // Row height × count for layout decision
     private static let rowHeight: CGFloat = 12
     private static let rowSpacing: CGFloat = 1
@@ -3371,16 +3468,32 @@ struct SplitsPanelChart: View {
 
     @ViewBuilder
     private var panelVerticalBarChart: some View {
-        let chartH: CGFloat = 130
-        let barW: CGFloat = 28
-        let avgH = avgBarH(chartH: chartH)
+        let ds: [SplitData] = displaySplits
+        let dMin: Double = ds.map(\.paceSecPerKm).min() ?? 0
+        let dMax: Double = ds.map(\.paceSecPerKm).max() ?? 0
+        let dAvg: Double = ds.isEmpty ? 0 : ds.map(\.paceSecPerKm).reduce(0, +) / Double(ds.count)
+        let dFastIdx: Int? = ds.indices.min(by: { ds[$0].paceSecPerKm < ds[$1].paceSecPerKm })
+        let dRange: Double = dMax - dMin
+        let chartH: CGFloat = 105
+        let paceH: CGFloat = 38    // -90° 회전 후 높이
+        let spacing: CGFloat = 5
 
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .bottom, spacing: 5) {
-                ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
-                    let isFastest = idx == fastestIdx
-                    let isSlowerAvg = split.paceSecPerKm > avgPace
-                    let bH = splitBarH(split, chartH: chartH)
+        GeometryReader { geo in
+            let n = max(ds.count, 1)
+            let hPad: CGFloat = 14
+            let available = geo.size.width - hPad * 2
+            let barW: CGFloat = max(14, min(32, (available - spacing * CGFloat(n - 1)) / CGFloat(n)))
+            let avgH: CGFloat = dRange > 0.5
+                ? chartH * CGFloat(0.18 + 0.82 * (dMax - dAvg) / dRange)
+                : chartH * 0.6
+
+            HStack(alignment: .bottom, spacing: spacing) {
+                ForEach(Array(ds.enumerated()), id: \.element.id) { idx, split in
+                    let isFastest = idx == dFastIdx
+                    let isSlowerAvg = split.paceSecPerKm > dAvg
+                    let bH: CGFloat = dRange > 0.5
+                        ? chartH * CGFloat(0.18 + 0.82 * (dMax - split.paceSecPerKm) / dRange)
+                        : chartH * 0.6
                     let barOpacity: Double = (!isFastest && isSlowerAvg) ? 0.58 : 1.0
                     let fillGradient = isFastest
                         ? LinearGradient(colors: [Self.panelGoldDark, Self.panelGold],
@@ -3393,8 +3506,10 @@ struct SplitsPanelChart: View {
                             .font(.system(size: 9, weight: .semibold, design: .rounded))
                             .foregroundStyle(isFastest ? Self.panelGold : .white.opacity(0.82))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                            .frame(width: barW + 4)
+                            .minimumScaleFactor(0.6)
+                            .frame(width: paceH, height: barW + 2)
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: barW + 2, height: paceH)
                         ZStack(alignment: .bottom) {
                             RoundedRectangle(cornerRadius: 3)
                                 .fill(Color.white.opacity(0.07))
@@ -3411,81 +3526,109 @@ struct SplitsPanelChart: View {
                         .clipped()
                         Text(split.distanceM < 990
                              ? String(format: "%.1f", split.distanceM / 1000)
-                             : (split.id == 1 ? "1" : "\(split.id)"))
+                             : "\(split.id)")
                             .font(.system(size: 10, weight: isFastest ? .bold : .regular, design: .rounded))
                             .foregroundStyle(isFastest ? Self.panelGold : Self.panelKmColor)
                             .frame(width: barW + 4)
                     }
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, hPad)
             .padding(.top, 8)
             .padding(.bottom, 2)
         }
+        .frame(height: 172)
     }
 
     // MARK: Share card vertical bar chart
 
     @ViewBuilder
     private var shareCardVerticalBarChart: some View {
+        let ds: [SplitData] = displaySplits
+        let dMin: Double = ds.map(\.paceSecPerKm).min() ?? 0
+        let dMax: Double = ds.map(\.paceSecPerKm).max() ?? 0
+        let dAvg: Double = ds.isEmpty ? 0 : ds.map(\.paceSecPerKm).reduce(0, +) / Double(ds.count)
+        let dFastIdx: Int? = ds.indices.min(by: { ds[$0].paceSecPerKm < ds[$1].paceSecPerKm })
+        let dRange: Double = dMax - dMin
+        let avgSec = Int(dAvg)
+        let avgLabel: String = "avg \(avgSec / 60)'\(String(format: "%02d", avgSec % 60))\""
         GeometryReader { geo in
             let hPad: CGFloat = 8
             let vPad: CGFloat = 4
-            let spacing: CGFloat = max(1.5, 3 * labelScale)
-            let n = max(splits.count, 1)
+            let spacing: CGFloat = max(1, 2 * labelScale)
+            let n = max(ds.count, 1)
             let available = geo.size.width - hPad * 2
-            let barW = max(3, (available - spacing * CGFloat(n - 1)) / CGFloat(n))
+            let barW = max(2, (available - spacing * CGFloat(n - 1)) / CGFloat(n) - 2)
             let paceFs: CGFloat = max(5.5, 7 * labelScale)
-            let labelH: CGFloat = (paceFs + 3) * 2
-            let chartH = max(15, geo.size.height - labelH - vPad * 2 - 4)
-            let computedAvgH = avgBarH(chartH: chartH)
+            let paceH: CGFloat = paceFs * 4
+            let kmH: CGFloat = paceFs + 3
+            let chartH = max(15, geo.size.height - paceH - kmH - vPad * 2 - spacing * 2)
+            let computedAvgH: CGFloat = dRange > 0.5
+                ? chartH * CGFloat(0.18 + 0.82 * (dMax - dAvg) / dRange)
+                : chartH * 0.6
+            // avg 텍스트 y 위치: 상단패딩 + 페이스라벨 높이 + 간격 + (차트에서 avg선까지)
+            let avgTextY: CGFloat = vPad + paceH + spacing + (chartH - computedAvgH) - paceFs
 
-            HStack(alignment: .bottom, spacing: spacing) {
-                ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
-                    let isFastest = idx == fastestIdx
-                    let isSlowerAvg = split.paceSecPerKm > avgPace
-                    let bH = splitBarH(split, chartH: chartH)
-                    let barOpacity: Double = (!isFastest && isSlowerAvg) ? 0.58 : 1.0
-                    let fillGradient = isFastest
-                        ? LinearGradient(colors: [Self.panelGoldDark, Self.panelGold],
-                                         startPoint: .bottom, endPoint: .top)
-                        : LinearGradient(colors: [Self.panelVioletLo.opacity(barOpacity),
-                                                  Self.panelVioletHi.opacity(barOpacity)],
-                                         startPoint: .bottom, endPoint: .top)
-                    VStack(spacing: max(1.5, 3 * labelScale)) {
-                        Text(split.formattedPace)
-                            .font(.system(size: paceFs, weight: .semibold, design: .rounded))
-                            .foregroundStyle(isFastest ? Self.panelGold : .white.opacity(0.82))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.5)
-                            .frame(width: barW + 2)
-                        ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: max(1.5, 2 * labelScale))
-                                .fill(Color.white.opacity(0.07))
-                                .frame(width: barW, height: chartH)
-                            RoundedRectangle(cornerRadius: max(1.5, 2 * labelScale))
-                                .fill(fillGradient)
-                                .frame(width: barW, height: max(bH, 4))
-                            Rectangle()
-                                .fill(Color.white.opacity(0.28))
-                                .frame(width: barW, height: 0.5)
-                                .offset(y: -computedAvgH)
+            ZStack(alignment: .topLeading) {
+                HStack(alignment: .bottom, spacing: spacing) {
+                    ForEach(Array(ds.enumerated()), id: \.element.id) { idx, split in
+                        let isFastest = idx == dFastIdx
+                        let isSlowerAvg = split.paceSecPerKm > dAvg
+                        let bH: CGFloat = dRange > 0.5
+                            ? chartH * CGFloat(0.18 + 0.82 * (dMax - split.paceSecPerKm) / dRange)
+                            : chartH * 0.6
+                        let barOpacity: Double = (!isFastest && isSlowerAvg) ? 0.58 : 1.0
+                        let fillGradient = isFastest
+                            ? LinearGradient(colors: [Self.panelGoldDark, Self.panelGold],
+                                             startPoint: .bottom, endPoint: .top)
+                            : LinearGradient(colors: [Self.panelVioletLo.opacity(barOpacity),
+                                                      Self.panelVioletHi.opacity(barOpacity)],
+                                             startPoint: .bottom, endPoint: .top)
+                        VStack(spacing: max(1.5, 2 * labelScale)) {
+                            Text(split.formattedPace)
+                                .font(.system(size: paceFs, weight: .semibold, design: .rounded))
+                                .foregroundStyle(isFastest ? Self.panelGold : .clear)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
+                                .frame(width: paceH, height: barW + 2)
+                                .rotationEffect(.degrees(-90))
+                                .frame(width: barW + 2, height: paceH)
+                            ZStack(alignment: .bottom) {
+                                RoundedRectangle(cornerRadius: max(1.5, 2 * labelScale))
+                                    .fill(Color.white.opacity(0.07))
+                                    .frame(width: barW, height: chartH)
+                                RoundedRectangle(cornerRadius: max(1.5, 2 * labelScale))
+                                    .fill(fillGradient)
+                                    .frame(width: barW, height: max(bH, 4))
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.28))
+                                    .frame(width: barW, height: 0.5)
+                                    .offset(y: -computedAvgH)
+                            }
+                            .frame(width: barW, height: chartH)
+                            .clipped()
+                            Text(split.distanceM < 990
+                                 ? String(format: "%.1f", split.distanceM / 1000)
+                                 : "\(split.id)")
+                                .font(.system(size: paceFs, weight: isFastest ? .bold : .regular, design: .rounded))
+                                .foregroundStyle(isFastest ? Self.panelGold : Self.panelKmColor)
+                                .frame(width: barW + 2)
                         }
-                        .frame(width: barW, height: chartH)
-                        .clipped()
-                        Text(split.distanceM < 990
-                             ? String(format: "%.1f", split.distanceM / 1000)
-                             : (split.id == 1 ? "1" : "\(split.id)"))
-                            .font(.system(size: paceFs, weight: isFastest ? .bold : .regular, design: .rounded))
-                            .foregroundStyle(isFastest ? Self.panelGold : Self.panelKmColor)
-                            .frame(width: barW + 2)
                     }
                 }
+                .padding(.horizontal, hPad)
+                .padding(.top, vPad)
+                .padding(.bottom, vPad)
+                .frame(width: geo.size.width, alignment: .bottom)
+
+                // 평균 페이스 라벨 — 평균선 오른쪽 끝 가로 표시
+                Text(avgLabel)
+                    .font(.system(size: max(5, paceFs - 0.5), weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.55))
+                    .padding(.trailing, hPad + 2)
+                    .frame(width: geo.size.width, alignment: .trailing)
+                    .offset(y: avgTextY)
             }
-            .padding(.horizontal, hPad)
-            .padding(.top, vPad)
-            .padding(.bottom, vPad)
-            .frame(width: geo.size.width, alignment: .bottom)
         }
     }
 
@@ -3821,22 +3964,22 @@ struct MetricBarPanelChart: View {
             if let avg = avgValue {
                 HStack(spacing: 4) {
                     Text(String(format: format, avg))
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.system(size: compact ? 9 : 11, weight: .bold, design: .rounded))
                         .foregroundStyle(color)
                     Text("avg \(unit)")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: compact ? 8 : 9, weight: .medium))
                         .foregroundStyle(.secondary)
                     if useRangeBar, let lo = overallMin, let hi = overallMax {
                         Text("·")
-                            .font(.system(size: 9))
+                            .font(.system(size: compact ? 8 : 9))
                             .foregroundStyle(.secondary)
                         Text("\(String(format: format, lo))~\(String(format: format, hi))")
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.system(size: compact ? 8 : 9, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
+                .padding(.horizontal, compact ? 8 : 14)
+                .padding(.top, compact ? 6 : 10)
             }
         }
     }

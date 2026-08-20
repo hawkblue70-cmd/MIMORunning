@@ -56,6 +56,7 @@ struct MeView: View {
     @State private var nicknameInput: String = ""
     @State private var nicknameSavedFlash = false
     @FocusState private var nicknameFieldFocused: Bool
+    private let pro = ProManager.shared
 #if DEBUG
     @State private var showDebug = false
     #endif
@@ -301,7 +302,7 @@ struct MeView: View {
                     .padding(.horizontal, 16)
             } else {
                 ForEach(plannedRaces) { race in
-                    PlannedRaceRow(race: race) {
+                    PlannedRaceRow(race: race, locked: isRaceLocked(race)) {
                         modelContext.delete(race)
                     }
                     .padding(.horizontal, 16)
@@ -356,8 +357,14 @@ struct MeView: View {
         plannedRaces.map { "\($0.dateString)-\(Int($0.selectedDistanceKm * 1000))" }.joined(separator: "|")
     }
 
+    private func isRaceLocked(_ race: MyPlannedRace) -> Bool {
+        pro.isTrialExpired && race.addedAt >= pro.effectiveCutoffDate
+    }
+
     private func syncAndRecompute() {
-        engine.userInput.races = plannedRaces.compactMap { mrTargetRace(from: $0) }
+        engine.userInput.races = plannedRaces
+            .filter { !isRaceLocked($0) }
+            .compactMap { mrTargetRace(from: $0) }
         engine.userInput.goals = parseGoals()
         // 스냅샷이 있는 대회는 최초 저장 시점의 월요일을 고정 앵커로 사용.
         // 이로써 매 월요일마다 주차 구조가 재시작되는 문제를 방지한다.
@@ -1894,6 +1901,7 @@ private struct AddShoeSheet: View {
 
 private struct PlannedRaceRow: View {
     @Bindable var race: MyPlannedRace
+    var locked: Bool = false
     let onDelete: () -> Void
 
     var body: some View {
@@ -1992,6 +2000,23 @@ private struct PlannedRaceRow: View {
             RoundedRectangle(cornerRadius: 14)
                 .strokeBorder(race.isPast ? Color.clear : Theme.violet.opacity(0.20), lineWidth: 1)
         )
+        .overlay(alignment: .bottom) {
+            if locked {
+                HStack(spacing: 5) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 10))
+                    Text(AppLanguage.shared.s("훈련계획은 구독 후 이용 가능", "Training plan requires subscription"))
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(.white.opacity(0.75))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .background(.black.opacity(0.55))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+        .opacity(locked ? 0.75 : 1.0)
     }
 
     private func distanceLabel(_ km: Double) -> String {

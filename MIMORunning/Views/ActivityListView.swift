@@ -666,6 +666,10 @@ private struct ProPaywallSheet: View {
                                 icon: "chart.line.uptrend.xyaxis",
                                 text: AppLanguage.shared.s("성장 차트 및 개인 기록(PR) 추적", "Growth charts & personal record (PR) tracking")
                             )
+                            FeatureRow(
+                                icon: "flag.checkered",
+                                text: AppLanguage.shared.s("목표 대회 맞춤 훈련계획", "Personalized race training plans")
+                            )
                         }
                         .padding(16)
                         .background(Theme.cardBackground)
