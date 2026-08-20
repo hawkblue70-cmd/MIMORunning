@@ -972,7 +972,7 @@ struct ActivityDetailView: View {
                         .font(.caption.weight(.semibold))
                     Text(activePanel == .combined
                          ? AppLanguage.shared.s("차트 내보내기", "Export Chart")
-                         : AppLanguage.shared.s("공유", "Share"))
+                         : AppLanguage.shared.s("러닝 데이터 내보내기", "Export Data"))
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.9)
@@ -3454,90 +3454,96 @@ struct SplitsPanelChart: View {
 
     // MARK: Panel vertical bar chart
 
-    private func splitBarH(_ split: SplitData, chartH: CGFloat) -> CGFloat {
-        let range = maxPace - minPace
-        guard range > 0.5 else { return chartH * 0.6 }
-        return chartH * CGFloat(0.18 + 0.82 * (maxPace - split.paceSecPerKm) / range)
-    }
-
-    private func avgBarH(chartH: CGFloat) -> CGFloat {
-        let range = maxPace - minPace
-        guard range > 0.5 else { return chartH * 0.6 }
-        return chartH * CGFloat(0.18 + 0.82 * (maxPace - avgPace) / range)
-    }
-
     @ViewBuilder
     private var panelVerticalBarChart: some View {
         let ds: [SplitData] = displaySplits
-        let dMin: Double = ds.map(\.paceSecPerKm).min() ?? 0
         let dMax: Double = ds.map(\.paceSecPerKm).max() ?? 0
         let dAvg: Double = ds.isEmpty ? 0 : ds.map(\.paceSecPerKm).reduce(0, +) / Double(ds.count)
         let dFastIdx: Int? = ds.indices.min(by: { ds[$0].paceSecPerKm < ds[$1].paceSecPerKm })
-        let dRange: Double = dMax - dMin
-        let chartH: CGFloat = 105
-        let paceH: CGFloat = 38    // -90° 회전 후 높이
+        let dRange: Double = dMax - (ds.map(\.paceSecPerKm).min() ?? 0)
+        let paceH:   CGFloat = 16
+        let kmH:     CGFloat = 14
+        let vPad:    CGFloat = 12  // top + bottom
         let spacing: CGFloat = 5
 
         GeometryReader { geo in
             let n = max(ds.count, 1)
             let hPad: CGFloat = 14
             let available = geo.size.width - hPad * 2
-            let barW: CGFloat = max(14, min(32, (available - spacing * CGFloat(n - 1)) / CGFloat(n)))
+            let barW: CGFloat = max(14, min(40, (available - spacing * CGFloat(n - 1)) / CGFloat(n)))
+            // barH = 막대만의 높이, colH = 페이스 텍스트 + 간격 + 막대 총 컬럼 높이
+            let barH  = max(44, geo.size.height - paceH - 3 - kmH - 5 - vPad)
+            let colH  = barH + paceH + 3
             let avgH: CGFloat = dRange > 0.5
-                ? chartH * CGFloat(0.18 + 0.82 * (dMax - dAvg) / dRange)
-                : chartH * 0.6
+                ? barH * CGFloat(0.18 + 0.82 * (dMax - dAvg) / dRange)
+                : barH * 0.6
 
-            HStack(alignment: .bottom, spacing: spacing) {
-                ForEach(Array(ds.enumerated()), id: \.element.id) { idx, split in
-                    let isFastest = idx == dFastIdx
-                    let isSlowerAvg = split.paceSecPerKm > dAvg
-                    let bH: CGFloat = dRange > 0.5
-                        ? chartH * CGFloat(0.18 + 0.82 * (dMax - split.paceSecPerKm) / dRange)
-                        : chartH * 0.6
-                    let barOpacity: Double = (!isFastest && isSlowerAvg) ? 0.58 : 1.0
-                    let fillGradient = isFastest
-                        ? LinearGradient(colors: [Self.panelGoldDark, Self.panelGold],
-                                         startPoint: .bottom, endPoint: .top)
-                        : LinearGradient(colors: [Self.panelVioletLo.opacity(barOpacity),
-                                                  Self.panelVioletHi.opacity(barOpacity)],
-                                         startPoint: .bottom, endPoint: .top)
-                    VStack(spacing: 3) {
-                        Text(split.formattedPace)
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
-                            .foregroundStyle(isFastest ? Self.panelGold : .white.opacity(0.82))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                            .frame(width: paceH, height: barW + 2)
-                            .rotationEffect(.degrees(-90))
-                            .frame(width: barW + 2, height: paceH)
-                        ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.white.opacity(0.07))
-                                .frame(width: barW, height: chartH)
-                            RoundedRectangle(cornerRadius: 3)
+            VStack(spacing: 0) {
+                // 막대 + 페이스 라벨
+                HStack(alignment: .bottom, spacing: spacing) {
+                    ForEach(Array(ds.enumerated()), id: \.element.id) { idx, split in
+                        let isFastest  = idx == dFastIdx
+                        let isSlower   = split.paceSecPerKm > dAvg
+                        let bH: CGFloat = dRange > 0.5
+                            ? barH * CGFloat(0.18 + 0.82 * (dMax - split.paceSecPerKm) / dRange)
+                            : barH * 0.6
+                        let fillGradient = isFastest
+                            ? LinearGradient(colors: [Self.panelGoldDark, Self.panelGold],
+                                             startPoint: .bottom, endPoint: .top)
+                            : isSlower
+                            ? LinearGradient(colors: [Color.white.opacity(0.11), Color.white.opacity(0.17)],
+                                             startPoint: .bottom, endPoint: .top)
+                            : LinearGradient(colors: [Self.panelVioletLo, Self.panelVioletHi],
+                                             startPoint: .bottom, endPoint: .top)
+                        VStack(spacing: 3) {
+                            Spacer(minLength: 0)
+                            Text(split.formattedPace)
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .foregroundStyle(isFastest ? Self.panelGold : .white.opacity(0.78))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
+                                .frame(height: paceH)
+                            RoundedRectangle(cornerRadius: 4)
                                 .fill(fillGradient)
                                 .frame(width: barW, height: max(bH, 6))
-                            Rectangle()
-                                .fill(Color.white.opacity(0.28))
-                                .frame(width: barW, height: 1)
-                                .offset(y: -avgH)
                         }
-                        .frame(width: barW, height: chartH)
-                        .clipped()
+                        .frame(width: barW, height: colH)
+                    }
+                }
+                .padding(.horizontal, hPad)
+                .frame(height: colH)
+                .overlay(alignment: .top) {
+                    // 평균 페이스 점선 — 전체 폭에 걸쳐 하나만
+                    GeometryReader { lineGeo in
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: 0.5))
+                            path.addLine(to: CGPoint(x: lineGeo.size.width, y: 0.5))
+                        }
+                        .stroke(style: StrokeStyle(lineWidth: 1, lineCap: .round, dash: [4, 3]))
+                        .foregroundStyle(Self.panelKmColor.opacity(0.6))
+                    }
+                    .frame(height: 1)
+                    .padding(.top, colH - avgH)
+                    .allowsHitTesting(false)
+                }
+
+                // km 라벨
+                HStack(spacing: spacing) {
+                    ForEach(Array(ds.enumerated()), id: \.element.id) { idx, split in
                         Text(split.distanceM < 990
                              ? String(format: "%.1f", split.distanceM / 1000)
                              : "\(split.id)")
-                            .font(.system(size: 10, weight: isFastest ? .bold : .regular, design: .rounded))
-                            .foregroundStyle(isFastest ? Self.panelGold : Self.panelKmColor)
-                            .frame(width: barW + 4)
+                            .font(.system(size: 10, weight: idx == dFastIdx ? .bold : .regular, design: .rounded))
+                            .foregroundStyle(idx == dFastIdx ? Self.panelGold : Self.panelKmColor)
+                            .frame(width: barW, height: kmH)
                     }
                 }
+                .padding(.horizontal, hPad)
+                .padding(.top, 5)
             }
-            .padding(.horizontal, hPad)
-            .padding(.top, 8)
-            .padding(.bottom, 2)
+            .padding(.vertical, vPad / 2)
         }
-        .frame(height: 172)
+        .frame(maxHeight: .infinity)
     }
 
     // MARK: Share card vertical bar chart

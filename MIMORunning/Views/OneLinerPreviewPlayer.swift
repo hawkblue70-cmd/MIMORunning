@@ -452,7 +452,7 @@ final class PlaceableVideoState {
     func load(url: URL) {
         invalidate()
         let p = AVPlayer(url: url)
-        p.isMuted = true
+        p.isMuted = false
         setupObservers(player: p, playerItem: p.currentItem, knownDuration: nil)
         player  = p
         isReady = true
@@ -462,7 +462,7 @@ final class PlaceableVideoState {
     func loadPlayerItem(_ item: AVPlayerItem, duration: Double) {
         invalidate()
         let p = AVPlayer(playerItem: item)
-        p.isMuted = true
+        p.isMuted = false
         setupObservers(player: p, playerItem: item, knownDuration: duration)
         player  = p
         isReady = true

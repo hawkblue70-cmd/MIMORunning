@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import OSLog
+import AVFoundation
 
 @main
 struct MIMORunningApp: App {
@@ -10,6 +11,10 @@ struct MIMORunningApp: App {
     @StateObject private var engine = MREngineStore()
 
     init() {
+        // 영상 미리보기 오디오: .ambient = 무음 스위치 자동 반영, 백그라운드 음악과 혼합.
+        // .playback 대신 .ambient를 사용해야 링/무음 스위치가 설정한 대로 동작한다.
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [])
+        try? AVAudioSession.sharedInstance().setActive(true)
         FontLoader.registerBundledFonts()
         UITabBar.appearance().itemPositioning = .centered
         UITabBar.appearance().itemWidth = 76
