@@ -314,6 +314,14 @@ struct MRWeekTable: View {
         return weeks.first { cal.startOfDay(for: $0.monday) == snapStart }?.projectedMin
     }
 
+    /// 스냅샷 주의 실행 안내 — 구버전 스냅샷(breakdown=="")은 라이브 플랜 주에서 폴백.
+    private func breakdownForSnap(_ snap: MRPlanWeekSummary) -> String {
+        if !snap.breakdown.isEmpty { return snap.breakdown }
+        let cal = Calendar.current
+        let snapStart = cal.startOfDay(for: snap.monday)
+        return weeks.first { cal.startOfDay(for: $0.monday) == snapStart }?.breakdown ?? ""
+    }
+
     // MARK: - 라이브 플랜 헬퍼 (스냅샷 없을 때)
 
     private func isCurrent(_ w: MRPlanWeek) -> Bool {
@@ -399,6 +407,39 @@ struct MRWeekTable: View {
     }
 
     // MARK: - Body
+
+    private func autoExpandCurrent() {
+        guard expanded.isEmpty else { return }
+        if !snapshotWeeks.isEmpty {
+            // 이번 주와 다음 주 자동 펼침
+            for (i, snap) in snapshotWeeks.enumerated() {
+                if isCurrentSnap(snap) {
+                    expanded.insert(snap.idx)
+                    if i + 1 < snapshotWeeks.count {
+                        expanded.insert(snapshotWeeks[i + 1].idx)
+                    }
+                    break
+                }
+            }
+            // 이번 주가 없으면(미래 계획) 첫 주 펼침
+            if expanded.isEmpty, let first = snapshotWeeks.first {
+                expanded.insert(first.idx)
+            }
+        } else {
+            for (i, w) in weeks.enumerated() {
+                if isCurrent(w) {
+                    expanded.insert(w.idx)
+                    if i + 1 < weeks.count {
+                        expanded.insert(weeks[i + 1].idx)
+                    }
+                    break
+                }
+            }
+            if expanded.isEmpty, let first = weeks.first {
+                expanded.insert(first.idx)
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -506,8 +547,9 @@ struct MRWeekTable: View {
                                     }
                                 }
                                 .font(.system(size: 11, design: .rounded))
-                                if !snap.breakdown.isEmpty {
-                                    Text(snap.breakdown)
+                                let bd = breakdownForSnap(snap)
+                                if !bd.isEmpty {
+                                    Text(bd)
                                         .font(.system(size: 11))
                                         .foregroundStyle(.white.opacity(0.60))
                                 }
@@ -664,6 +706,7 @@ struct MRWeekTable: View {
             }
             .padding(.top, 8)
         }
+        .onAppear { autoExpandCurrent() }
     }
 }
 
