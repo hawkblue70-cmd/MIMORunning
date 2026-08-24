@@ -67,19 +67,37 @@ struct MRHealthKit {
     /// 두 번째 실행부터 "새로 읽은 것 0건" 로그가 나와야 정상이다.
     func fetchRunsIncremental() async throws -> [MRWorkout] {
         let cache = MRWorkoutCacheStore.load()
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: Date())
 
         // newestStart 이미 캐시됨 → 1초 이후부터만 새로 읽는다
         let since: Date? = cache.map {
             Date(timeIntervalSince1970: $0.newestStart.timeIntervalSince1970 + 1)
         }
-        let fresh = try await fetchRawRunsSince(since)
+
+        // 증분 fetch + 오늘 실시간 fetch 병렬 실행
+        // 오늘 것은 항상 HealthKit에서 재조회해 삭제된 워크아웃을 감지한다
+        async let freshTask   = fetchRawRunsSince(since)
+        async let todayTask   = fetchRawRunsSince(todayStart)
+        let fresh    = try await freshTask
+        let todayHK  = (try? await todayTask) ?? []
+
         #if DEBUG
-        print("[캐시] 워크아웃 캐시 \(cache == nil ? "없음" : "있음(\(cache!.runs.count)건, ~\(mrYMD(cache!.newestStart)))") · 새로 읽은 것 \(fresh.count)건")
+        print("[캐시] 워크아웃 캐시 \(cache == nil ? "없음" : "있음(\(cache!.runs.count)건, ~\(mrYMD(cache!.newestStart)))") · 증분 \(fresh.count)건 · 오늘 HK \(todayHK.count)건")
         #endif
 
-        // 새 워크아웃만 isInterval 판정
-        let freshMR = await convertToMRWorkouts(fresh)
-        let merged = (cache?.runs ?? []) + freshMR
+        // 오늘 이전 캐시 보존 + 오늘 것은 HK 실시간값으로 교체
+        let baseRuns  = (cache?.runs ?? []).filter { !cal.isDate($0.start, inSameDayAs: Date()) }
+        // 증분 중 오늘 이전 것만 추가 (오늘 이후는 todayHK로 대체)
+        let freshOldHK = fresh.filter { !cal.isDate($0.startDate, inSameDayAs: Date()) }
+
+        // isInterval 판정은 새 워크아웃만
+        async let freshOldMRTask = convertToMRWorkouts(freshOldHK)
+        async let todayMRTask    = convertToMRWorkouts(todayHK)
+        let freshOldMR = await freshOldMRTask
+        let todayMR    = await todayMRTask
+
+        let merged = (baseRuns + freshOldMR + todayMR).sorted { $0.start < $1.start }
 
         if let newest = merged.last?.start {
             MRWorkoutCacheStore.save(MRWorkoutCache(newestStart: newest, runs: merged))
