@@ -1023,11 +1023,9 @@ struct InsightExportSheet: View {
 
             Spacer()
 
-            Text(koreanDateTimeString)
+            koreanDateTimeText
                 .font(.system(size: 9))
-                .foregroundStyle(.white.opacity(0.65))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
+                .lineLimit(1)
 
             Spacer()
 
@@ -1059,16 +1057,14 @@ struct InsightExportSheet: View {
         .padding(.horizontal, 14).padding(.vertical, 12)
     }
 
-    private var koreanDateTimeString: String {
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "ko_KR")
-        df.dateFormat = "yyyy. M. d EEEE"
-        let datePart = df.string(from: activity.date)
-        let tf = DateFormatter()
-        tf.locale = Locale(identifier: "ko_KR")
-        tf.dateFormat = "a h:mm"
-        let timePart = tf.string(from: activity.date)
-        return datePart + "\n" + timePart
+    private var koreanDateTimeText: Text {
+        let ko = Locale(identifier: "ko_KR")
+        let fDate = DateFormatter(); fDate.locale = ko; fDate.dateFormat = "yyyy. M. d "
+        let fDay  = DateFormatter(); fDay.locale  = ko; fDay.dateFormat  = "EEEE"
+        let fTime = DateFormatter(); fTime.locale = ko; fTime.dateFormat = " a h:mm"
+        return Text(fDate.string(from: activity.date)).foregroundStyle(.white.opacity(0.65))
+             + Text(fDay.string(from: activity.date)).foregroundStyle(Color.yellow)
+             + Text(fTime.string(from: activity.date)).foregroundStyle(.white.opacity(0.65))
     }
 
     private func weatherIcon(for tempC: Double) -> String {
