@@ -105,40 +105,31 @@ struct RunInsightSection: View {
     var workoutTypeLabel: String? = nil
     var isAutoDetected: Bool = false
 
+    // Additional inputs for the tab card
+    var activity: Activity? = nil
+    var detail: ActivityDetail? = nil
+    var history: [Activity] = []
+    var age: Int? = nil
+    var isMale: Bool? = nil
+    var hrZones: [HRZoneData] = []
+    var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
+    var isBackfilling: Bool = false
+
     var body: some View {
-        if !insights.isEmpty {
-            let L = AppLanguage.shared
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    let base  = L.s("오늘의 러닝", "Today's Run")
-                    let title = workoutTypeLabel.map { "\(base) · \($0)" } ?? base
-                    Text(title)
-                        .font(.system(size: 13, weight: .medium))
-                    if isAutoDetected {
-                        Text(L.s("자동 감지", "Auto-detected"))
-                            .font(.system(size: 9))
-                            .foregroundStyle(Color.secondary)
-                    }
-                }
-                .padding(.horizontal, 16)
-
-                VStack(spacing: 8) {
-                    ForEach(insights) { insight in
-                        RunInsightCard(insight: insight)
-                    }
-                }
-                .padding(.horizontal, 16)
-
-                // 면책 문구 — 반드시 포함
-                Text(L.s(
-                    "참고용 피트니스 인사이트입니다. 연령대 평균과 추정 최대심박은 개인차가 큰 추정치이며 의학적 판단이 아니에요. 유산소 피트니스 기준은 FRIEND(Fitness Registry and Importance of Exercise National Database)를 따릅니다.",
-                    "Reference-only fitness insights. Age-group norms and estimated max HR are rough estimates with high individual variation and are not medical advice. Cardio fitness norms follow FRIEND (Fitness Registry and Importance of Exercise National Database)."
-                ))
-                .font(.system(size: 9.5))
-                .foregroundStyle(Color.secondary)
-                .lineSpacing(2)
-                .padding(.horizontal, 16)
-            }
+        if !insights.isEmpty, let act = activity {
+            RunInsightTabCard(
+                activity: act,
+                detail: detail,
+                history: history,
+                age: age,
+                isMale: isMale,
+                hrZones: hrZones,
+                insights: insights,
+                workoutTypeLabel: workoutTypeLabel,
+                isAutoDetected: isAutoDetected,
+                workoutTypeFn: workoutTypeFn,
+                isBackfilling: isBackfilling
+            )
         }
     }
 }

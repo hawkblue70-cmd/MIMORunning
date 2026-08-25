@@ -89,6 +89,7 @@ struct ActivityDetailView: View {
     @State private var runInsights: [RunInsight] = []
     @State private var runSegmentSource: RunSegmentSource = .none
     @State private var runFadeStartKm: Double? = nil
+    @State private var isInsightBackfilling = false
     @Environment(RaceDetector.self) private var raceDetector
     @Query private var panelAllStories: [WorkoutStory]
     @Query private var panelAllShoes: [Shoe]
@@ -195,7 +196,15 @@ struct ActivityDetailView: View {
                         RunInsightSection(
                             insights: runInsights,
                             workoutTypeLabel: detail?.workoutType.koreanLabel,
-                            isAutoDetected: runSegmentSource == .detected
+                            isAutoDetected: runSegmentSource == .detected,
+                            activity: activity,
+                            detail: detail,
+                            history: manager.activities,
+                            age: userAge,
+                            isMale: manager.userIsMale,
+                            hrZones: effectiveHRZones,
+                            workoutTypeFn: { manager.cachedWorkoutTypeForStats(for: $0) },
+                            isBackfilling: isInsightBackfilling
                         )
                     }
                     panelChipRow
@@ -398,6 +407,11 @@ struct ActivityDetailView: View {
             isLoadingDetail = false
             loadInsights()
             Task { await loadCombinedChart() }
+            Task {
+                isInsightBackfilling = true
+                await manager.backfillWorkoutTypes()
+                isInsightBackfilling = false
+            }
 
             // 존 분포: detail?.hrZones 우선, 없으면 HR 시리즈로 비동기 재계산 → displayZones
             isComputingZones = true

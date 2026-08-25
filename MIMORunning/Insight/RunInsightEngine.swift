@@ -1361,6 +1361,41 @@ enum RunInsightEngine {
         return (level, row)
     }
 
+    // MARK: - Public VO2 Fitness Info
+
+    struct VO2FitnessInfo {
+        let levelLabel: String
+        let normBelowAvg: Double
+        let normAboveAvg: Double
+        let normHigh: Double
+        let ageDecade: String
+        let genderLabel: String
+    }
+
+    static func vo2FitnessInfo(vo2: Double, age: Int, isMale: Bool?) -> VO2FitnessInfo? {
+        let male = isMale ?? true
+        let result = vo2MaxLevel(vo2: vo2, age: age, isMale: male)
+        guard let norm = result.norm else { return nil }
+        let L = AppLanguage.shared
+        let decade: String
+        switch age {
+        case ..<30: decade = L.s("20대", "20s")
+        case ..<40: decade = L.s("30대", "30s")
+        case ..<50: decade = L.s("40대", "40s")
+        case ..<60: decade = L.s("50대", "50s")
+        default:    decade = L.s("60대+", "60s+")
+        }
+        let gender = isMale == nil ? "" : (male ? L.s("남성", "M") : L.s("여성", "F"))
+        return VO2FitnessInfo(
+            levelLabel: result.level.rawValue,
+            normBelowAvg: norm.belowAvg,
+            normAboveAvg: norm.aboveAvg,
+            normHigh: norm.high,
+            ageDecade: decade,
+            genderLabel: gender
+        )
+    }
+
     // MARK: - Helpers
 
     private static func interpolateKm(

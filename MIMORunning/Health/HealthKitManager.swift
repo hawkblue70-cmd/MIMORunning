@@ -559,6 +559,60 @@ class HealthKitManager {
         return type == .interval ? .interval : nil
     }
 
+    /// Returns all workout types from cache (for training distribution stats).
+    /// Unlike cachedWorkoutType, this returns every type — not just .interval.
+    func cachedWorkoutTypeForStats(for id: UUID) -> WorkoutType? {
+        if let detail = detailCache[id] { return detail.workoutType }
+        let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+        guard let raw = dict[id.uuidString] else { return nil }
+        return WorkoutType(rawValue: raw)
+    }
+
+    /// Classifies uncached runs in the last `weeks` (minimum 8) weeks for training distribution.
+    /// Processes up to 20 runs sequentially, yielding between each to avoid UI jank.
+    func backfillWorkoutTypes(weeks: Int = 4) async {
+        let processedKey = "mimo.workoutTypeBackfill.processed.v1"
+        let processed = Set(UserDefaults.standard.stringArray(forKey: processedKey) ?? [])
+        let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -max(weeks, 8), to: Date()) ?? .distantPast
+        let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+
+        let toProcess = activities
+            .filter { $0.type == .running && $0.date >= cutoff }
+            .filter { dict[$0.id.uuidString] == nil && !processed.contains($0.id.uuidString) }
+            .sorted { $0.date > $1.date }
+            .prefix(20)
+
+        guard !toProcess.isEmpty else { return }
+
+        let recentHistory = Array(activities
+            .filter { $0.type == .running }
+            .sorted { $0.date > $1.date }
+            .prefix(30))
+
+        // Pre-load splits from disk cache before classifying
+        var splitsByID: [UUID: [SplitData]] = [:]
+        for act in toProcess {
+            if let cached = detailCache[act.id] {
+                splitsByID[act.id] = cached.splits ?? []
+            } else if let disk = loadDetailFromDisk(act.id) {
+                splitsByID[act.id] = disk.splits ?? []
+            }
+        }
+
+        var newProcessed = Array(processed)
+        for act in toProcess {
+            let type = WorkoutTypeClassifier.classify(
+                activity: act,
+                history: recentHistory,
+                splits: splitsByID[act.id] ?? []
+            )
+            persistWorkoutType(type, for: act.id)
+            newProcessed.append(act.id.uuidString)
+            await Task.yield()
+        }
+        UserDefaults.standard.set(newProcessed, forKey: processedKey)
+    }
+
     func fetchDetail(for activityID: UUID) async -> ActivityDetail? {
         #if DEBUG
         // 캐시히트 여부와 관계없이 workoutTypeCache 누적 현황 출력
