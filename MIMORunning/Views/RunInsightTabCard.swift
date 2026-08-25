@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import SwiftData
 
 // MARK: - Tab Enum
 
@@ -936,6 +937,15 @@ struct InsightExportSheet: View {
     var startTab: InsightTabKind = .rhythm
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
 
+    @Query private var allStories: [WorkoutStory]
+    @Query private var allShoes: [Shoe]
+
+    private var shoeName: String? {
+        let sid = allStories.first(where: { $0.workoutID == activity.id.uuidString })?.shoeID
+        guard let sid else { return nil }
+        return allShoes.first { $0.id.uuidString == sid }?.displayName
+    }
+
     @State private var tab: InsightTabKind = .rhythm
     @State private var exportImage: UIImage? = nil
     @State private var isRendering = false
@@ -1008,26 +1018,64 @@ struct InsightExportSheet: View {
     }
 
     private var exportHeader: some View {
-        let L = AppLanguage.shared
-        let df = DateFormatter()
-        df.dateStyle = .medium
-        df.locale = Locale.current
-        return HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("MIMO RUNNING")
-                    .font(.system(size: 9, weight: .heavy))
-                    .tracking(1.5)
-                    .foregroundStyle(Theme.violet)
-                Text(df.string(from: activity.date))
-                    .font(.system(size: 9))
-                    .foregroundStyle(IC.label)
-            }
+        HStack(alignment: .top, spacing: 8) {
+            MIMOWordmark(size: 9)
+
             Spacer()
-            Image(systemName: tab == .rhythm ? "waveform.path.ecg" : "chart.xyaxis.line")
-                .font(.system(size: 16))
-                .foregroundStyle(Theme.violet.opacity(0.6))
+
+            Text(koreanDateTimeString)
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.65))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 4) {
+                if let temp = activity.temperatureC {
+                    HStack(spacing: 4) {
+                        Image(systemName: weatherIcon(for: temp))
+                            .font(.system(size: 9))
+                        Text(String(format: "%.0f°", temp))
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Color(hex: "2C1F0E"))
+                    .clipShape(Capsule())
+                }
+                if let sn = shoeName {
+                    HStack(spacing: 3) {
+                        Image(systemName: "shoe")
+                            .font(.system(size: 8))
+                        Text(sn)
+                            .font(.system(size: 8))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(.white.opacity(0.6))
+                }
+            }
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
+        .padding(.horizontal, 14).padding(.vertical, 12)
+    }
+
+    private var koreanDateTimeString: String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "ko_KR")
+        df.dateFormat = "yyyy. M. d EEEE"
+        let datePart = df.string(from: activity.date)
+        let tf = DateFormatter()
+        tf.locale = Locale(identifier: "ko_KR")
+        tf.dateFormat = "a h:mm"
+        let timePart = tf.string(from: activity.date)
+        return datePart + "\n" + timePart
+    }
+
+    private func weatherIcon(for tempC: Double) -> String {
+        if let h = activity.humidityPercent, h >= 80 { return "cloud.rain.fill" }
+        if tempC >= 28 { return "sun.max.fill" }
+        if tempC <= 2  { return "snowflake" }
+        return "cloud.sun.fill"
     }
 
     @ViewBuilder
