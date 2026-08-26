@@ -154,7 +154,6 @@ private struct CadenceRPMGaugeView: View {
     private let trackMax = 200.0
     private let recMin   = 160.0
     private let recMax   = 180.0
-    private let thickness: CGFloat = 10
 
     // 140 → 180°(9시), 200 → 360°(3시), 상단 반원 시계방향
     private func angle(for value: Double) -> Double {
@@ -164,41 +163,47 @@ private struct CadenceRPMGaugeView: View {
 
     var body: some View {
         let L = AppLanguage.shared
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 6) {
             Canvas { ctx, size in
                 let cx = size.width / 2
-                let cy = size.height - 2
+                let cy = size.height - 4
                 let center = CGPoint(x: cx, y: cy)
-                let r = cx - thickness / 2 - 1
 
-                // 배경 아크 (전체 반원)
+                // ── 바깥 링 (배경 + 권장 밴드) ────────────────────────
+                let outerThick: CGFloat = 9
+                let rOuter = cx - outerThick / 2 - 1
+
+                // (1) 배경 아크
                 var bg = Path()
-                bg.addArc(center: center, radius: r,
+                bg.addArc(center: center, radius: rOuter,
                           startAngle: .degrees(180), endAngle: .degrees(360),
                           clockwise: true)
                 ctx.stroke(bg, with: .color(.white.opacity(0.09)),
-                           style: StrokeStyle(lineWidth: thickness, lineCap: .round))
+                           style: StrokeStyle(lineWidth: outerThick, lineCap: .round))
 
-                // 권장 밴드 (160–180 spm)
+                // (2) 권장 밴드 160–180
                 var band = Path()
-                band.addArc(center: center, radius: r,
+                band.addArc(center: center, radius: rOuter,
                             startAngle: .degrees(angle(for: recMin)),
                             endAngle:   .degrees(angle(for: recMax)),
                             clockwise: true)
-                ctx.stroke(band, with: .color(Color(hex: "5CE08A").opacity(0.30)),
-                           style: StrokeStyle(lineWidth: thickness, lineCap: .butt))
+                ctx.stroke(band, with: .color(Color(hex: "5CE08A").opacity(0.35)),
+                           style: StrokeStyle(lineWidth: outerThick, lineCap: .butt))
 
-                // 현재값 아크
+                // ── 안쪽 링 (현재값 아크) ──────────────────────────────
+                let innerThick: CGFloat = 6
+                let rInner = rOuter - 12
+
                 let valEnd = angle(for: Double(cadence))
                 var val = Path()
-                val.addArc(center: center, radius: r,
+                val.addArc(center: center, radius: rInner,
                            startAngle: .degrees(180), endAngle: .degrees(valEnd),
                            clockwise: true)
                 ctx.stroke(val, with: .color(Color(hex: "5CE5D5")),
-                           style: StrokeStyle(lineWidth: thickness, lineCap: .round))
+                           style: StrokeStyle(lineWidth: innerThick, lineCap: .round))
 
-                // 바늘
-                let needleLen = r - 4
+                // ── 바늘 (바깥 링 기준 길이) ───────────────────────────
+                let needleLen = rOuter - 2
                 let rad = valEnd * .pi / 180.0
                 let tip = CGPoint(x: center.x + needleLen * CGFloat(cos(rad)),
                                   y: center.y + needleLen * CGFloat(sin(rad)))
@@ -208,7 +213,7 @@ private struct CadenceRPMGaugeView: View {
                 ctx.stroke(needle, with: .color(.white.opacity(0.9)),
                            style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
 
-                // 중심 원
+                // ── 중심 원 ─────────────────────────────────────────────
                 let dotR: CGFloat = 4
                 ctx.fill(
                     Path(ellipseIn: CGRect(x: cx - dotR, y: cy - dotR,
@@ -216,30 +221,32 @@ private struct CadenceRPMGaugeView: View {
                     with: .color(.white)
                 )
 
-                // 중앙 값 텍스트
+                // ── 중앙 값 텍스트 (바늘보다 10pt 위) ──────────────────
                 ctx.draw(
                     Text("\(cadence)")
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(Color(hex: "5CE5D5")),
-                    at: CGPoint(x: cx, y: cy - 24),
+                    at: CGPoint(x: cx, y: cy - 34),
                     anchor: .center
                 )
             }
-            .frame(width: 110, height: 62)
-
-            // 좌우 눈금
-            HStack {
-                Text("140").font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
-                Spacer()
-                Text("200").font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+            .frame(width: 118, height: 76)
+            .overlay(alignment: .bottom) {
+                // 좌우 눈금 — 아크 끝보다 아래 +10pt
+                HStack {
+                    Text("140").font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                    Spacer()
+                    Text("200").font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                }
+                .frame(width: 118)
+                .offset(y: 10)
             }
-            .frame(width: 110)
-            .padding(.top, 1)
 
             // 하단 메모
             Text(L.s("권장 160–180", "Rec. 160–180"))
                 .font(.system(size: 8.5))
                 .foregroundStyle(Color(hex: "8A8F99"))
+                .padding(.top, 10)
         }
     }
 }
