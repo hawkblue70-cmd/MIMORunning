@@ -61,24 +61,49 @@ private struct KPICell: View {
     }
 }
 
-private struct ZoneBarView: View {
+private struct ZoneDonutView: View {
     let zones: [HRZoneData]
+
+    private let thickness: CGFloat = 10
 
     var body: some View {
         let visible = zones.filter { $0.fraction > 0.01 }
-        let total = max(1e-6, visible.map(\.fraction).reduce(0.0, +))
-        GeometryReader { geo in
-            let n = max(0, visible.count - 1)
-            let usableW = geo.size.width - 2.0 * CGFloat(n)
-            HStack(spacing: 2) {
-                ForEach(visible) { zone in
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(IC.zone(zone.id))
-                        .frame(width: max(4, usableW * zone.fraction / total), height: 10)
+        let total   = max(1e-9, visible.map(\.fraction).reduce(0, +))
+        let dominant = visible.max(by: { $0.fraction < $1.fraction })
+        ZStack {
+            Canvas { ctx, size in
+                let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                let r = size.width / 2 - thickness / 2
+                var bg = Path()
+                bg.addArc(center: center, radius: r,
+                          startAngle: .degrees(-90), endAngle: .degrees(270), clockwise: false)
+                ctx.stroke(bg, with: .color(.white.opacity(0.08)),
+                           style: StrokeStyle(lineWidth: thickness))
+                var startDeg: Double = -90
+                for zone in visible {
+                    let sweep = 360 * zone.fraction / total
+                    var arc = Path()
+                    arc.addArc(center: center, radius: r,
+                               startAngle: .degrees(startDeg),
+                               endAngle:   .degrees(startDeg + sweep),
+                               clockwise: false)
+                    ctx.stroke(arc, with: .color(IC.zone(zone.id)),
+                               style: StrokeStyle(lineWidth: thickness, lineCap: .butt))
+                    startDeg += sweep
+                }
+            }
+            if let dom = dominant {
+                let pct = Int((dom.fraction / total * 100).rounded())
+                VStack(spacing: 1) {
+                    Text("\(pct)%")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(IC.zone(dom.id))
+                    Text("Zone \(dom.id)")
+                        .font(.system(size: 7.5))
+                        .foregroundStyle(.white.opacity(0.55))
                 }
             }
         }
-        .frame(height: 10)
     }
 }
 
@@ -332,15 +357,15 @@ private struct RhythmInsightCard: View {
     let insights: [RunInsight]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let hasZones = !hrZones.filter({ $0.fraction > 0.01 }).isEmpty
+        return VStack(alignment: .leading, spacing: 14) {
             heroSection
             divider
             kpiRow
-            if !hrZones.filter({ $0.fraction > 0.01 }).isEmpty {
+            if hasZones {
                 divider
-                zoneSection
-            }
-            if let cad = detail?.avgCadence {
+                zoneAndCadenceSection
+            } else if let cad = detail?.avgCadence {
                 divider
                 cadenceSection(cad)
             }
@@ -405,24 +430,72 @@ private struct RhythmInsightCard: View {
         }
     }
 
-    private var zoneSection: some View {
-        let visible = hrZones.filter { $0.fraction > 0.01 }
-        let total = visible.map(\.seconds).reduce(0.0, +)
-        let z2 = hrZones.first(where: { $0.id == 2 })
-        let z2Pct: Int = {
-            if total > 0, let z = z2 { return Int((z.seconds / total * 100).rounded()) }
-            return z2.map { Int(($0.fraction * 100).rounded()) } ?? 0
-        }()
-        return VStack(alignment: .leading, spacing: 6) {
-            Text(AppLanguage.shared.s("심박 존 분포", "HR Zone Distribution"))
-                .font(.system(size: 10)).foregroundStyle(IC.label)
-            ZoneBarView(zones: hrZones)
-            HStack {
-                if z2 != nil {
-                    Text("Zone 2 · \(z2Pct)%")
-                        .font(.system(size: 9.5)).foregroundStyle(IC.green)
+    @ViewBuilder
+    private var zoneAndCadenceSection: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZoneDonutView(zones: hrZones)
+                .frame(width: 86, height: 86)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(zoneVerdictLabel)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(zoneVerdictColor)
+
+                Spacer(minLength: 6)
+
+                if let cad = detail?.avgCadence {
+                    cadenceInline(cad)
                 }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var zoneVerdictLabel: String {
+        let L = AppLanguage.shared
+        let visible = hrZones.filter { $0.fraction > 0.01 }
+        let total = max(1e-9, visible.map(\.fraction).reduce(0, +))
+        let z2frac = (hrZones.first(where: { $0.id == 2 })?.fraction ?? 0) / total
+        if z2frac >= 0.60 { return L.s("딱 좋은 강도였어요", "Just the right intensity") }
+        guard let dom = visible.max(by: { $0.fraction < $1.fraction }) else { return "" }
+        switch dom.id {
+        case 1: return L.s("가벼운 회복 강도였어요", "Light recovery run")
+        case 2: return L.s("딱 좋은 강도였어요", "Just the right intensity")
+        case 3: return L.s("조금 힘있게 달렸어요", "Pushed a bit harder")
+        default: return L.s("고강도 구간이 많았어요", "High-intensity effort")
+        }
+    }
+
+    private var zoneVerdictColor: Color {
+        let visible = hrZones.filter { $0.fraction > 0.01 }
+        let total = max(1e-9, visible.map(\.fraction).reduce(0, +))
+        let z2frac = (hrZones.first(where: { $0.id == 2 })?.fraction ?? 0) / total
+        if z2frac >= 0.60 { return IC.zone(2) }
+        guard let dom = visible.max(by: { $0.fraction < $1.fraction }) else { return IC.label }
+        return IC.zone(dom.id)
+    }
+
+    @ViewBuilder
+    private func cadenceInline(_ cadence: Int) -> some View {
+        let L = AppLanguage.shared
+        let inRange = (160...175).contains(cadence)
+        let statusText = inRange
+            ? L.s("권장 범위 안이에요", "In recommended range")
+            : cadence < 160
+                ? L.s("권장 범위보다 낮아요", "Below recommended range")
+                : L.s("권장 범위보다 높아요", "Above recommended range")
+        let statusColor: Color = inRange ? IC.green : IC.label
+
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L.s("케이던스 \(cadence) spm", "Cadence \(cadence) spm"))
+                .font(.system(size: 8)).foregroundStyle(IC.label)
+            CadenceTrackView(cadence: cadence)
+            HStack {
+                Text("130").font(.system(size: 8.5)).foregroundStyle(IC.label)
                 Spacer()
+                Text(statusText).font(.system(size: 8.5)).foregroundStyle(statusColor)
+                Spacer()
+                Text("195+").font(.system(size: 8.5)).foregroundStyle(IC.label)
             }
         }
     }
