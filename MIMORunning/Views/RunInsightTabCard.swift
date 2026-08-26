@@ -173,12 +173,13 @@ private struct CadenceRPMGaugeView: View {
         VStack(alignment: .leading, spacing: 6) {
             Canvas { ctx, size in
                 let cx = size.width / 2
-                let cy = size.height - 4
+                let outerThick: CGFloat = 9
+                let rOuter = cx - outerThick / 2 - 1
+                // cy를 충분히 안쪽으로: 끝점 획 절반(4.5pt)이 프레임을 초과하지 않도록
+                let cy = size.height - outerThick / 2 - 1
                 let center = CGPoint(x: cx, y: cy)
 
                 // ── 바깥 링 (배경 + 권장 밴드) ────────────────────────
-                let outerThick: CGFloat = 9
-                let rOuter = cx - outerThick / 2 - 1
 
                 // (1) 배경 아크
                 var bg = Path()
@@ -207,7 +208,7 @@ private struct CadenceRPMGaugeView: View {
                            startAngle: .degrees(180), endAngle: .degrees(valEnd),
                            clockwise: true)
                 ctx.stroke(val, with: .color(Color(hex: "5CE5D5")),
-                           style: StrokeStyle(lineWidth: innerThick, lineCap: .round))
+                           style: StrokeStyle(lineWidth: innerThick, lineCap: .butt))
 
                 // ── 바늘 (바깥 링 기준 길이) ───────────────────────────
                 let needleLen = rOuter - 2
@@ -441,37 +442,49 @@ private struct VO2RPMGaugeView: View {
         let L = AppLanguage.shared
         let g = fi.genderLabel.isEmpty ? "" : " \(fi.genderLabel)"
         let vc = valueColor
-        let tMin = trackMin; let tMax = trackMax
+        let mn = trackMin, mx = trackMax
+        let nLow = fi.normBelowAvg, nMid = fi.normAboveAvg, nHigh = fi.normHigh
+        // 각도 계산 클로저 (Canvas 내부에서 캡처)
+        let ang: (Double) -> Double = { v in
+            let c = max(mn, min(mx, v))
+            return 180 + (c - mn) / (mx - mn) * 180
+        }
         VStack(alignment: .leading, spacing: 6) {
             Canvas { ctx, size in
                 let cx = size.width / 2
-                let cy = size.height - 4
-                let center = CGPoint(x: cx, y: cy)
                 let outerThick: CGFloat = 9
                 let rOuter = cx - outerThick / 2 - 1
+                let cy = size.height - outerThick / 2 - 1   // 끝점 클립 방지
+                let center = CGPoint(x: cx, y: cy)
 
-                var bg = Path()
-                bg.addArc(center: center, radius: rOuter,
-                          startAngle: .degrees(180), endAngle: .degrees(360), clockwise: true)
-                ctx.stroke(bg, with: .color(.white.opacity(0.09)),
-                           style: StrokeStyle(lineWidth: outerThick, lineCap: .butt))
+                // 바깥 링: 구간별 색 (낮음→평균이하→평균이상→높음)
+                let segs: [(from: Double, to: Double, col: Color)] = [
+                    (180,         ang(nLow),  IC.vo2Colors[0]),
+                    (ang(nLow),   ang(nMid),  IC.vo2Colors[1]),
+                    (ang(nMid),   ang(nHigh), IC.vo2Colors[2]),
+                    (ang(nHigh),  360,        IC.vo2Colors[3]),
+                ]
+                for seg in segs {
+                    var arc = Path()
+                    arc.addArc(center: center, radius: rOuter,
+                               startAngle: .degrees(seg.from),
+                               endAngle:   .degrees(seg.to),
+                               clockwise: true)
+                    ctx.stroke(arc, with: .color(seg.col.opacity(0.5)),
+                               style: StrokeStyle(lineWidth: outerThick, lineCap: .butt))
+                }
 
-                var band = Path()
-                band.addArc(center: center, radius: rOuter,
-                            startAngle: .degrees(angle(for: fi.normAboveAvg)),
-                            endAngle:   .degrees(angle(for: fi.normHigh)), clockwise: true)
-                ctx.stroke(band, with: .color(IC.vo2Colors[3].opacity(0.35)),
-                           style: StrokeStyle(lineWidth: outerThick, lineCap: .butt))
-
+                // 안쪽 링: 현재값 아크 (구간 색)
                 let innerThick: CGFloat = 6
                 let rInner = rOuter - 12
-                let valEnd = angle(for: vo2)
+                let valEnd = ang(vo2)
                 var val = Path()
                 val.addArc(center: center, radius: rInner,
                            startAngle: .degrees(180), endAngle: .degrees(valEnd), clockwise: true)
                 ctx.stroke(val, with: .color(vc),
-                           style: StrokeStyle(lineWidth: innerThick, lineCap: .round))
+                           style: StrokeStyle(lineWidth: innerThick, lineCap: .butt))
 
+                // 바늘
                 let needleLen = rOuter - 2
                 let rad = valEnd * .pi / 180.0
                 let tip = CGPoint(x: center.x + needleLen * CGFloat(cos(rad)),
@@ -480,12 +493,14 @@ private struct VO2RPMGaugeView: View {
                 ctx.stroke(needle, with: .color(.white.opacity(0.9)),
                            style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
 
+                // 중심 원
                 let dotR: CGFloat = 4
                 ctx.fill(
                     Path(ellipseIn: CGRect(x: cx - dotR, y: cy - dotR,
                                           width: dotR * 2, height: dotR * 2)),
                     with: .color(.white)
                 )
+                // 값 텍스트
                 ctx.draw(
                     Text(String(format: "%.0f", vo2))
                         .font(.system(size: 17, weight: .medium))
@@ -496,17 +511,17 @@ private struct VO2RPMGaugeView: View {
             .frame(width: 110, height: 76)
             .overlay(alignment: .bottom) {
                 HStack {
-                    Text(String(format: "%.0f", tMin))
+                    Text(String(format: "%.0f", mn))
                         .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
                     Spacer()
-                    Text(String(format: "%.0f", tMax))
+                    Text(String(format: "%.0f", mx))
                         .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
                 }
                 .frame(width: 110).offset(y: 10)
             }
 
-            Text(L.s("평균이상 \(Int(fi.normAboveAvg))+ · \(fi.ageDecade)\(g)",
-                     "Avg+ \(Int(fi.normAboveAvg)) · \(fi.ageDecade)\(g)"))
+            Text(L.s("평균이상 \(Int(nMid))+ · \(fi.ageDecade)\(g)",
+                     "Avg+ \(Int(nMid)) · \(fi.ageDecade)\(g)"))
                 .font(.system(size: 8.5))
                 .foregroundStyle(Color(hex: "8A8F99"))
                 .padding(.top, 10)
