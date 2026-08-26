@@ -418,6 +418,102 @@ private struct VO2GaugeView: View {
     }
 }
 
+private struct VO2RPMGaugeView: View {
+    let fi: RunInsightEngine.VO2FitnessInfo
+    let vo2: Double
+
+    private var trackMin: Double { max(15.0, fi.normBelowAvg - (fi.normHigh - fi.normBelowAvg) * 0.8) }
+    private var trackMax: Double { min(70.0, fi.normHigh + (fi.normHigh - fi.normAboveAvg) * 2.0) }
+
+    private func angle(for value: Double) -> Double {
+        let clamped = max(trackMin, min(trackMax, value))
+        return 180 + (clamped - trackMin) / (trackMax - trackMin) * 180
+    }
+
+    private var valueColor: Color {
+        if vo2 >= fi.normHigh     { return IC.vo2Colors[3] }
+        if vo2 >= fi.normAboveAvg { return IC.vo2Colors[2] }
+        if vo2 >= fi.normBelowAvg { return IC.vo2Colors[1] }
+        return IC.vo2Colors[0]
+    }
+
+    var body: some View {
+        let L = AppLanguage.shared
+        let g = fi.genderLabel.isEmpty ? "" : " \(fi.genderLabel)"
+        let vc = valueColor
+        let tMin = trackMin; let tMax = trackMax
+        VStack(alignment: .leading, spacing: 6) {
+            Canvas { ctx, size in
+                let cx = size.width / 2
+                let cy = size.height - 4
+                let center = CGPoint(x: cx, y: cy)
+                let outerThick: CGFloat = 9
+                let rOuter = cx - outerThick / 2 - 1
+
+                var bg = Path()
+                bg.addArc(center: center, radius: rOuter,
+                          startAngle: .degrees(180), endAngle: .degrees(360), clockwise: true)
+                ctx.stroke(bg, with: .color(.white.opacity(0.09)),
+                           style: StrokeStyle(lineWidth: outerThick, lineCap: .butt))
+
+                var band = Path()
+                band.addArc(center: center, radius: rOuter,
+                            startAngle: .degrees(angle(for: fi.normAboveAvg)),
+                            endAngle:   .degrees(angle(for: fi.normHigh)), clockwise: true)
+                ctx.stroke(band, with: .color(IC.vo2Colors[3].opacity(0.35)),
+                           style: StrokeStyle(lineWidth: outerThick, lineCap: .butt))
+
+                let innerThick: CGFloat = 6
+                let rInner = rOuter - 12
+                let valEnd = angle(for: vo2)
+                var val = Path()
+                val.addArc(center: center, radius: rInner,
+                           startAngle: .degrees(180), endAngle: .degrees(valEnd), clockwise: true)
+                ctx.stroke(val, with: .color(vc),
+                           style: StrokeStyle(lineWidth: innerThick, lineCap: .round))
+
+                let needleLen = rOuter - 2
+                let rad = valEnd * .pi / 180.0
+                let tip = CGPoint(x: center.x + needleLen * CGFloat(cos(rad)),
+                                  y: center.y + needleLen * CGFloat(sin(rad)))
+                var needle = Path(); needle.move(to: center); needle.addLine(to: tip)
+                ctx.stroke(needle, with: .color(.white.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+
+                let dotR: CGFloat = 4
+                ctx.fill(
+                    Path(ellipseIn: CGRect(x: cx - dotR, y: cy - dotR,
+                                          width: dotR * 2, height: dotR * 2)),
+                    with: .color(.white)
+                )
+                ctx.draw(
+                    Text(String(format: "%.0f", vo2))
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(vc),
+                    at: CGPoint(x: cx, y: cy - 34), anchor: .center
+                )
+            }
+            .frame(width: 110, height: 76)
+            .overlay(alignment: .bottom) {
+                HStack {
+                    Text(String(format: "%.0f", tMin))
+                        .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                    Spacer()
+                    Text(String(format: "%.0f", tMax))
+                        .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                }
+                .frame(width: 110).offset(y: 10)
+            }
+
+            Text(L.s("평균이상 \(Int(fi.normAboveAvg))+ · \(fi.ageDecade)\(g)",
+                     "Avg+ \(Int(fi.normAboveAvg)) · \(fi.ageDecade)\(g)"))
+                .font(.system(size: 8.5))
+                .foregroundStyle(Color(hex: "8A8F99"))
+                .padding(.top, 10)
+        }
+    }
+}
+
 private struct MetricRow: View {
     let label: String
     let value: String
@@ -574,21 +670,16 @@ private struct RhythmInsightCard: View {
     var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
 
     var body: some View {
-        let hasZones = !hrZones.filter({ $0.fraction > 0.01 }).isEmpty
+        let hasRhythmRow = !hrZones.filter({ $0.fraction > 0.01 }).isEmpty
+            || detail?.avgCadence != nil
+            || (vo2Info != nil && detail?.vo2Max != nil)
         return VStack(alignment: .leading, spacing: 14) {
             heroSection
             divider
             kpiRow
-            if hasZones {
+            if hasRhythmRow {
                 divider
-                zoneDonutSection        // 도넛 + 판정 + RPM 게이지 (우측)
-            } else if let cad = detail?.avgCadence {
-                divider
-                CadenceRPMGaugeView(cadence: cad)   // 존 없을 때 전체 폭 게이지
-            }
-            if let info = vo2Info, let vo2 = detail?.vo2Max {
-                divider
-                cardioSection(info: info, vo2: vo2)
+                rhythmRow
             }
             if let line = oneLiner {
                 divider
@@ -668,19 +759,26 @@ private struct RhythmInsightCard: View {
     }
 
     @ViewBuilder
-    private var zoneDonutSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 14) {
-                ZoneDonutView(zones: hrZones)
-                    .frame(width: 86, height: 86)
-                if let cad = detail?.avgCadence {
-                    CadenceRPMGaugeView(cadence: cad)
+    private var rhythmRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            if !hrZones.filter({ $0.fraction > 0.01 }).isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ZoneDonutView(zones: hrZones)
+                        .frame(width: 80, height: 80)
+                    Text(zoneVerdictLabel)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(zoneVerdictColor)
+                        .frame(width: 80)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
             }
-            Text(zoneVerdictLabel)
-                .font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(zoneVerdictColor)
+            if let cad = detail?.avgCadence {
+                CadenceRPMGaugeView(cadence: cad)
+            }
+            if let info = vo2Info, let vo2 = detail?.vo2Max {
+                VO2RPMGaugeView(fi: info, vo2: vo2)
+            }
+            Spacer()
         }
     }
 
