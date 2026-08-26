@@ -28,6 +28,13 @@ private enum IC {
     static let hrRed      = Color(hex: "FF6B6B")
     static let cadCyan    = Color(hex: "5CE5D5")
 
+    static let vo2Colors: [Color] = [
+        Color(hex: "FF5247").opacity(0.6),
+        Color(hex: "FF9A3C").opacity(0.7),
+        Color(hex: "F5C542").opacity(0.8),
+        Color(hex: "5CE08A"),
+    ]
+
     static let zoneColors: [Color] = [
         Color(hex: "4C8DFF"), Color(hex: "5CE08A"),
         Color(hex: "F5C542"), Color(hex: "FF9A3C"), Color(hex: "FF5247"),
@@ -179,7 +186,7 @@ private struct CadenceRPMGaugeView: View {
                           startAngle: .degrees(180), endAngle: .degrees(360),
                           clockwise: true)
                 ctx.stroke(bg, with: .color(.white.opacity(0.09)),
-                           style: StrokeStyle(lineWidth: outerThick, lineCap: .round))
+                           style: StrokeStyle(lineWidth: outerThick, lineCap: .butt))
 
                 // (2) 권장 밴드 160–180
                 var band = Path()
@@ -361,10 +368,7 @@ private struct VO2GaugeView: View {
     let vo2: Double
     var prevVo2: Double? = nil
 
-    private let segColors: [Color] = [
-        Color.white.opacity(0.10), Color.white.opacity(0.14),
-        Color(hex: "5CE08A").opacity(0.30), Color(hex: "5CE08A"),
-    ]
+    private let segColors: [Color] = IC.vo2Colors
 
     var body: some View {
         GeometryReader { geo in
@@ -665,18 +669,18 @@ private struct RhythmInsightCard: View {
 
     @ViewBuilder
     private var zoneDonutSection: some View {
-        HStack(alignment: .top, spacing: 14) {
-            ZoneDonutView(zones: hrZones)
-                .frame(width: 86, height: 86)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(zoneVerdictLabel)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(zoneVerdictColor)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 14) {
+                ZoneDonutView(zones: hrZones)
+                    .frame(width: 86, height: 86)
                 if let cad = detail?.avgCadence {
                     CadenceRPMGaugeView(cadence: cad)
                 }
+                Spacer()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Text(zoneVerdictLabel)
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(zoneVerdictColor)
         }
     }
 
@@ -731,8 +735,14 @@ private struct RhythmInsightCard: View {
     private func cardioSection(info: RunInsightEngine.VO2FitnessInfo, vo2: Double) -> some View {
         let L = AppLanguage.shared
         let g = info.genderLabel.isEmpty ? "" : " \(info.genderLabel)"
-        let note = L.s("\(info.ageDecade)\(g) 기준 · 높음은 \(Int(info.normHigh)) 이상",
-                       "\(info.ageDecade)\(g) · High ≥ \(Int(info.normHigh))")
+        let refNote = L.s("\(info.ageDecade)\(g) 기준 · FRIEND DB",
+                          "\(info.ageDecade)\(g) · FRIEND DB")
+        let levelLabels = [L.s("낮음", "Low"), L.s("평균이하", "Below"),
+                           L.s("평균이상", "Above"), L.s("높음", "High")]
+        let thresholds = ["<\(Int(info.normBelowAvg))",
+                          "\(Int(info.normBelowAvg))–\(Int(info.normAboveAvg))",
+                          "\(Int(info.normAboveAvg))–\(Int(info.normHigh))",
+                          "≥\(Int(info.normHigh))"]
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(String(format: "%.1f", vo2))
@@ -747,11 +757,19 @@ private struct RhythmInsightCard: View {
             }
             VO2GaugeView(fi: info, vo2: vo2)
             HStack(spacing: 0) {
-                ForEach([L.s("낮음", "Low"), L.s("평균이하", "Below"), L.s("평균이상", "Above"), L.s("높음", "High")], id: \.self) { l in
-                    Text(l).font(.system(size: 7.5)).foregroundStyle(IC.label).frame(maxWidth: .infinity)
+                ForEach(0..<4, id: \.self) { i in
+                    VStack(spacing: 2) {
+                        Text(levelLabels[i])
+                            .font(.system(size: 7.5))
+                            .foregroundStyle(IC.vo2Colors[i])
+                        Text(thresholds[i])
+                            .font(.system(size: 7))
+                            .foregroundStyle(IC.label)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
-            Text(note).font(.system(size: 9)).foregroundStyle(IC.label)
+            Text(refNote).font(.system(size: 9)).foregroundStyle(IC.label)
         }
     }
 
@@ -972,8 +990,14 @@ private struct PerformanceInsightCard: View {
     private func cardioSection(info: RunInsightEngine.VO2FitnessInfo, vo2: Double) -> some View {
         let L = AppLanguage.shared
         let g = info.genderLabel.isEmpty ? "" : " \(info.genderLabel)"
-        let note = L.s("\(info.ageDecade)\(g) 기준 · 높음은 \(Int(info.normHigh)) 이상",
-                       "\(info.ageDecade)\(g) · High ≥ \(Int(info.normHigh))")
+        let refNote = L.s("\(info.ageDecade)\(g) 기준 · FRIEND DB",
+                          "\(info.ageDecade)\(g) · FRIEND DB")
+        let levelLabels = [L.s("낮음", "Low"), L.s("평균이하", "Below"),
+                           L.s("평균이상", "Above"), L.s("높음", "High")]
+        let thresholds = ["<\(Int(info.normBelowAvg))",
+                          "\(Int(info.normBelowAvg))–\(Int(info.normAboveAvg))",
+                          "\(Int(info.normAboveAvg))–\(Int(info.normHigh))",
+                          "≥\(Int(info.normHigh))"]
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(String(format: "%.1f", vo2))
@@ -988,11 +1012,19 @@ private struct PerformanceInsightCard: View {
             }
             VO2GaugeView(fi: info, vo2: vo2)
             HStack(spacing: 0) {
-                ForEach([L.s("낮음", "Low"), L.s("평균이하", "Below"), L.s("평균이상", "Above"), L.s("높음", "High")], id: \.self) { l in
-                    Text(l).font(.system(size: 7.5)).foregroundStyle(IC.label).frame(maxWidth: .infinity)
+                ForEach(0..<4, id: \.self) { i in
+                    VStack(spacing: 2) {
+                        Text(levelLabels[i])
+                            .font(.system(size: 7.5))
+                            .foregroundStyle(IC.vo2Colors[i])
+                        Text(thresholds[i])
+                            .font(.system(size: 7))
+                            .foregroundStyle(IC.label)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
-            Text(note).font(.system(size: 9)).foregroundStyle(IC.label)
+            Text(refNote).font(.system(size: 9)).foregroundStyle(IC.label)
         }
     }
 
