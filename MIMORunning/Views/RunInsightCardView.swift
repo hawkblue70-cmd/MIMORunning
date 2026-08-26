@@ -114,6 +114,7 @@ struct RunInsightSection: View {
     var hrZones: [HRZoneData] = []
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     var isBackfilling: Bool = false
+    var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
 
     var body: some View {
         if !insights.isEmpty, let act = activity {
@@ -128,7 +129,8 @@ struct RunInsightSection: View {
                 workoutTypeLabel: workoutTypeLabel,
                 isAutoDetected: isAutoDetected,
                 workoutTypeFn: workoutTypeFn,
-                isBackfilling: isBackfilling
+                isBackfilling: isBackfilling,
+                cadenceSeries: cadenceSeries
             )
         }
     }

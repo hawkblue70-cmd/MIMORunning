@@ -147,6 +147,111 @@ private struct CadenceTrackView: View {
     }
 }
 
+private struct CadenceBar: Identifiable {
+    let id: Int
+    let value: Double
+    let isOutlier: Bool
+}
+
+private struct CadenceEqualizerView: View {
+    let bars: [CadenceBar]
+    let avgCadence: Double
+    let totalKm: Double
+
+    private var normRange: (min: Double, range: Double) {
+        let vals = bars.filter { !$0.isOutlier }.map(\.value)
+        guard !vals.isEmpty else { return (avgCadence * 0.9, 20) }
+        let lo = vals.min()!, hi = vals.max()!
+        var r = hi - lo
+        if r < 15 { r = 15 }
+        return ((lo + hi) / 2 - r / 2, r)
+    }
+
+    private var steadyRatio: Double {
+        let valid = bars.filter { !$0.isOutlier }
+        guard !valid.isEmpty else { return 0 }
+        let avg = avgCadence
+        let steady = valid.filter { abs($0.value - avg) / max(1, avg) <= 0.05 }.count
+        return Double(steady) / Double(valid.count)
+    }
+
+    var body: some View {
+        let L = AppLanguage.shared
+        let (nMin, nRange) = normRange
+        VStack(alignment: .leading, spacing: 5) {
+            // Header row
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(String(format: "%.0f", avgCadence))
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(IC.cadCyan)
+                Text("spm").font(.system(size: 9)).foregroundStyle(IC.label)
+                Spacer()
+                if steadyRatio >= 0.70 {
+                    Text(L.s("일정하게 유지", "Steady"))
+                        .font(.system(size: 8.5, weight: .medium))
+                        .foregroundStyle(IC.green)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(IC.green.opacity(0.16))
+                        .clipShape(Capsule())
+                }
+            }
+            // Equalizer bars
+            Canvas { ctx, size in
+                guard !bars.isEmpty else { return }
+                let n = bars.count
+                let gap: CGFloat = 7
+                let barW = max(1, (size.width - gap * CGFloat(n - 1)) / CGFloat(n))
+                func barH(_ v: Double) -> CGFloat {
+                    let norm = max(0, min(1, (v - nMin) / max(1, nRange)))
+                    return norm * 38 + 10
+                }
+                // background band avg ±5%
+                let bandTopY = size.height - barH(avgCadence * 1.05)
+                let bandBotY = size.height - barH(avgCadence * 0.95)
+                if bandBotY > bandTopY {
+                    ctx.fill(
+                        Path(CGRect(x: 0, y: bandTopY,
+                                   width: size.width, height: bandBotY - bandTopY)),
+                        with: .color(Color(hex: "5CE08A").opacity(0.07))
+                    )
+                }
+                // bars
+                for (i, bar) in bars.enumerated() {
+                    let x = CGFloat(i) * (barW + gap)
+                    let displayVal = bar.isOutlier ? nMin : bar.value
+                    let h = barH(displayVal)
+                    let inBand = !bar.isOutlier &&
+                        abs(bar.value - avgCadence) / max(1, avgCadence) <= 0.05
+                    let col: Color = bar.isOutlier
+                        ? Color(hex: "4A5560")
+                        : inBand ? Color(hex: "5CE5D5") : Color(hex: "5CE5D5").opacity(0.45)
+                    ctx.fill(
+                        Path(roundedRect: CGRect(x: x, y: size.height - h, width: barW, height: h),
+                             cornerRadius: 2.5),
+                        with: .color(col)
+                    )
+                }
+            }
+            .frame(height: 52)
+            // Bottom labels
+            HStack {
+                Text(L.s("시작", "Start"))
+                    .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                Spacer()
+                if totalKm > 10 {
+                    let perBar = totalKm / Double(max(1, bars.count))
+                    Text(L.s("구간당 \(String(format: "%.1f", perBar))km",
+                             "\(String(format: "%.1f", perBar))km/bar"))
+                        .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                    Spacer()
+                }
+                Text(L.s("종료", "End"))
+                    .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+            }
+        }
+    }
+}
+
 private struct VO2GaugeView: View {
     let fi: RunInsightEngine.VO2FitnessInfo
     let vo2: Double
@@ -239,6 +344,7 @@ struct RunInsightTabCard: View {
     var isAutoDetected: Bool = false
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     var isBackfilling: Bool = false
+    var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
 
     @State private var tab: InsightTabKind = .rhythm
     @State private var showExport = false
@@ -262,7 +368,8 @@ struct RunInsightTabCard: View {
                 activity: activity, detail: detail, history: history,
                 age: age, isMale: isMale, hrZones: hrZones,
                 insights: insights, startTab: tab,
-                workoutTypeFn: workoutTypeFn
+                workoutTypeFn: workoutTypeFn,
+                cadenceSeries: cadenceSeries
             )
         }
     }
@@ -320,7 +427,8 @@ struct RunInsightTabCard: View {
             RhythmInsightCard(
                 activity: activity, detail: detail,
                 history: history, age: age, isMale: isMale,
-                hrZones: hrZones, insights: insights
+                hrZones: hrZones, insights: insights,
+                cadenceSeries: cadenceSeries
             )
         } else {
             PerformanceInsightCard(
@@ -355,16 +463,24 @@ private struct RhythmInsightCard: View {
     var isMale: Bool? = nil
     var hrZones: [HRZoneData] = []
     let insights: [RunInsight]
+    var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
 
     var body: some View {
         let hasZones = !hrZones.filter({ $0.fraction > 0.01 }).isEmpty
+        let cadBars  = buildCadenceBars(from: cadenceSeries)
+        let avgCad   = Double(detail?.avgCadence ?? 0)
         return VStack(alignment: .leading, spacing: 14) {
             heroSection
             divider
             kpiRow
             if hasZones {
                 divider
-                zoneAndCadenceSection
+                zoneDonutSection
+            }
+            if !cadBars.isEmpty && avgCad > 0 {
+                divider
+                CadenceEqualizerView(bars: cadBars, avgCadence: avgCad,
+                                     totalKm: activity.distance / 1000)
             } else if let cad = detail?.avgCadence {
                 divider
                 cadenceSection(cad)
@@ -381,6 +497,25 @@ private struct RhythmInsightCard: View {
         .padding(16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func buildCadenceBars(
+        from samples: [(offset: TimeInterval, value: Double)]
+    ) -> [CadenceBar] {
+        guard samples.count >= 5 else { return [] }
+        let target = min(20, samples.count)
+        var bars: [CadenceBar] = []
+        for i in 0..<target {
+            let lo = i * samples.count / target
+            let hi = (i + 1) * samples.count / target
+            let chunk = samples[lo..<hi].map(\.value).sorted()
+            let mid = chunk.count / 2
+            let median = chunk.count % 2 == 0 && chunk.count > 1
+                ? (chunk[mid - 1] + chunk[mid]) / 2
+                : chunk[mid]
+            bars.append(CadenceBar(id: i, value: median, isOutlier: median < 100))
+        }
+        return bars
     }
 
     private var heroSection: some View {
@@ -431,21 +566,14 @@ private struct RhythmInsightCard: View {
     }
 
     @ViewBuilder
-    private var zoneAndCadenceSection: some View {
+    private var zoneDonutSection: some View {
         HStack(alignment: .top, spacing: 12) {
             ZoneDonutView(zones: hrZones)
                 .frame(width: 86, height: 86)
-
             VStack(alignment: .leading, spacing: 4) {
                 Text(zoneVerdictLabel)
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(zoneVerdictColor)
-
-                Spacer(minLength: 6)
-
-                if let cad = detail?.avgCadence {
-                    cadenceInline(cad)
-                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -473,31 +601,6 @@ private struct RhythmInsightCard: View {
         if z2frac >= 0.60 { return IC.zone(2) }
         guard let dom = visible.max(by: { $0.fraction < $1.fraction }) else { return IC.label }
         return IC.zone(dom.id)
-    }
-
-    @ViewBuilder
-    private func cadenceInline(_ cadence: Int) -> some View {
-        let L = AppLanguage.shared
-        let inRange = (160...175).contains(cadence)
-        let statusText = inRange
-            ? L.s("권장 범위 안이에요", "In recommended range")
-            : cadence < 160
-                ? L.s("권장 범위보다 낮아요", "Below recommended range")
-                : L.s("권장 범위보다 높아요", "Above recommended range")
-        let statusColor: Color = inRange ? IC.green : IC.label
-
-        VStack(alignment: .leading, spacing: 4) {
-            Text(L.s("케이던스 \(cadence) spm", "Cadence \(cadence) spm"))
-                .font(.system(size: 8)).foregroundStyle(IC.label)
-            CadenceTrackView(cadence: cadence)
-            HStack {
-                Text("130").font(.system(size: 8.5)).foregroundStyle(IC.label)
-                Spacer()
-                Text(statusText).font(.system(size: 8.5)).foregroundStyle(statusColor)
-                Spacer()
-                Text("195+").font(.system(size: 8.5)).foregroundStyle(IC.label)
-            }
-        }
     }
 
     private func cadenceSection(_ cadence: Int) -> some View {
@@ -1009,6 +1112,7 @@ struct InsightExportSheet: View {
     let insights: [RunInsight]
     var startTab: InsightTabKind = .rhythm
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
+    var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -1153,7 +1257,8 @@ struct InsightExportSheet: View {
             RhythmInsightCard(
                 activity: activity, detail: detail,
                 history: history, age: age, isMale: isMale,
-                hrZones: hrZones, insights: insights
+                hrZones: hrZones, insights: insights,
+                cadenceSeries: cadenceSeries
             )
         } else {
             PerformanceInsightCard(

@@ -204,7 +204,8 @@ struct ActivityDetailView: View {
                             isMale: manager.userIsMale,
                             hrZones: effectiveHRZones,
                             workoutTypeFn: { manager.cachedWorkoutTypeForStats(for: $0) },
-                            isBackfilling: isInsightBackfilling
+                            isBackfilling: isInsightBackfilling,
+                            cadenceSeries: panelSeriesCache[.cadence] ?? []
                         )
                     }
                     panelChipRow
