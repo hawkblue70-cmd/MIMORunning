@@ -147,6 +147,103 @@ private struct CadenceTrackView: View {
     }
 }
 
+private struct CadenceRPMGaugeView: View {
+    let cadence: Int
+
+    private let trackMin = 140.0
+    private let trackMax = 200.0
+    private let recMin   = 160.0
+    private let recMax   = 180.0
+    private let thickness: CGFloat = 10
+
+    // 140 → 180°(9시), 200 → 360°(3시), 상단 반원 시계방향
+    private func angle(for value: Double) -> Double {
+        let clamped = max(trackMin, min(trackMax, value))
+        return 180 + (clamped - trackMin) / (trackMax - trackMin) * 180
+    }
+
+    var body: some View {
+        let L = AppLanguage.shared
+        VStack(alignment: .leading, spacing: 2) {
+            Canvas { ctx, size in
+                let cx = size.width / 2
+                let cy = size.height - 2
+                let center = CGPoint(x: cx, y: cy)
+                let r = cx - thickness / 2 - 1
+
+                // 배경 아크 (전체 반원)
+                var bg = Path()
+                bg.addArc(center: center, radius: r,
+                          startAngle: .degrees(180), endAngle: .degrees(360),
+                          clockwise: true)
+                ctx.stroke(bg, with: .color(.white.opacity(0.09)),
+                           style: StrokeStyle(lineWidth: thickness, lineCap: .round))
+
+                // 권장 밴드 (160–180 spm)
+                var band = Path()
+                band.addArc(center: center, radius: r,
+                            startAngle: .degrees(angle(for: recMin)),
+                            endAngle:   .degrees(angle(for: recMax)),
+                            clockwise: true)
+                ctx.stroke(band, with: .color(Color(hex: "5CE08A").opacity(0.30)),
+                           style: StrokeStyle(lineWidth: thickness, lineCap: .butt))
+
+                // 현재값 아크
+                let valEnd = angle(for: Double(cadence))
+                var val = Path()
+                val.addArc(center: center, radius: r,
+                           startAngle: .degrees(180), endAngle: .degrees(valEnd),
+                           clockwise: true)
+                ctx.stroke(val, with: .color(Color(hex: "5CE5D5")),
+                           style: StrokeStyle(lineWidth: thickness, lineCap: .round))
+
+                // 바늘
+                let needleLen = r - 4
+                let rad = valEnd * .pi / 180.0
+                let tip = CGPoint(x: center.x + needleLen * CGFloat(cos(rad)),
+                                  y: center.y + needleLen * CGFloat(sin(rad)))
+                var needle = Path()
+                needle.move(to: center)
+                needle.addLine(to: tip)
+                ctx.stroke(needle, with: .color(.white.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+
+                // 중심 원
+                let dotR: CGFloat = 4
+                ctx.fill(
+                    Path(ellipseIn: CGRect(x: cx - dotR, y: cy - dotR,
+                                          width: dotR * 2, height: dotR * 2)),
+                    with: .color(.white)
+                )
+
+                // 중앙 값 텍스트
+                ctx.draw(
+                    Text("\(cadence)")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color(hex: "5CE5D5")),
+                    at: CGPoint(x: cx, y: cy - 24),
+                    anchor: .center
+                )
+            }
+            .frame(width: 110, height: 62)
+
+            // 좌우 눈금
+            HStack {
+                Text("140").font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                Spacer()
+                Text("200").font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+            }
+            .frame(width: 110)
+            .padding(.top, 1)
+
+            // 하단 메모
+            Text(L.s("권장 160–180", "Rec. 160–180"))
+                .font(.system(size: 8.5))
+                .foregroundStyle(Color(hex: "8A8F99"))
+        }
+    }
+}
+
 private struct CadenceBar: Identifiable {
     let id: Int
     let value: Double
@@ -467,23 +564,16 @@ private struct RhythmInsightCard: View {
 
     var body: some View {
         let hasZones = !hrZones.filter({ $0.fraction > 0.01 }).isEmpty
-        let cadBars  = buildCadenceBars(from: cadenceSeries)
-        let avgCad   = Double(detail?.avgCadence ?? 0)
         return VStack(alignment: .leading, spacing: 14) {
             heroSection
             divider
             kpiRow
             if hasZones {
                 divider
-                zoneDonutSection
-            }
-            if !cadBars.isEmpty && avgCad > 0 {
-                divider
-                CadenceEqualizerView(bars: cadBars, avgCadence: avgCad,
-                                     totalKm: activity.distance / 1000)
+                zoneDonutSection        // 도넛 + 판정 + RPM 게이지 (우측)
             } else if let cad = detail?.avgCadence {
                 divider
-                cadenceSection(cad)
+                CadenceRPMGaugeView(cadence: cad)   // 존 없을 때 전체 폭 게이지
             }
             if let info = vo2Info, let vo2 = detail?.vo2Max {
                 divider
@@ -499,7 +589,8 @@ private struct RhythmInsightCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    private func buildCadenceBars(
+    // buildCadenceBars — 퍼포먼스 카드에서 CadenceEqualizerView 재사용 예정
+    func buildCadenceBars(
         from samples: [(offset: TimeInterval, value: Double)]
     ) -> [CadenceBar] {
         guard samples.count >= 5 else { return [] }
@@ -567,13 +658,16 @@ private struct RhythmInsightCard: View {
 
     @ViewBuilder
     private var zoneDonutSection: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 14) {
             ZoneDonutView(zones: hrZones)
                 .frame(width: 86, height: 86)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(zoneVerdictLabel)
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(zoneVerdictColor)
+                if let cad = detail?.avgCadence {
+                    CadenceRPMGaugeView(cadence: cad)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -589,7 +683,7 @@ private struct RhythmInsightCard: View {
         switch dom.id {
         case 1: return L.s("가벼운 회복 강도였어요", "Light recovery run")
         case 2: return L.s("딱 좋은 강도였어요", "Just the right intensity")
-        case 3: return L.s("조금 힘있게 달렸어요", "Pushed a bit harder")
+        case 3: return L.s("템포 성향으로 달렸어요", "Tempo-paced run")
         default: return L.s("고강도 구간이 많았어요", "High-intensity effort")
         }
     }
