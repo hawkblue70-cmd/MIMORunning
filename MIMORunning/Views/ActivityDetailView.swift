@@ -205,7 +205,8 @@ struct ActivityDetailView: View {
                             hrZones: effectiveHRZones,
                             workoutTypeFn: { manager.cachedWorkoutTypeForStats(for: $0) },
                             isBackfilling: isInsightBackfilling,
-                            cadenceSeries: panelSeriesCache[.cadence] ?? []
+                            cadenceSeries: panelSeriesCache[.cadence] ?? [],
+                            hrSamples: hrSamples
                         )
                     }
                     panelChipRow
@@ -709,6 +710,7 @@ struct ActivityDetailView: View {
                                                           unit: HKUnit.meterUnit(with: .centi))
         let (h, c, p, s, v) = await (hr, cad, pow, stride, vosc)
         // 패널 탭 전환 시 재조회 방지 — 이미 가져온 시리즈를 패널 캐시에 등록
+        if !h.isEmpty { hrSamples = h; hrFetchDone = true }
         if !c.isEmpty { panelSeriesCache[.cadence] = c }
         if !p.isEmpty { panelSeriesCache[.power] = p }
         if !s.isEmpty { panelSeriesCache[.strideLength] = s }
@@ -1099,57 +1101,9 @@ private struct InsightCard: View {
         return MiniMeVariant.from(theme: insight.theme, workoutType: insight.workoutType)
     }
 
-    private var effectiveHRV: HRVRecovery? {
-        condition?.hrvRecovery
-    }
-
-    private func pick(_ options: [String]) -> String {
-        let seed = Int(abs(activity.date.timeIntervalSinceReferenceDate))
-        return options[seed % options.count]
-    }
-
-    private func recoveryLine(sleep: SleepScore, hrv: HRVRecovery) -> String {
-        let L = AppLanguage.shared
-        let sleepGood = sleep.score >= 70
-        switch hrv.level {
-        case .high:
-            return pick([
-                L.s("컨디션이 좋은 날이었네요", "Your body was primed today"),
-                L.s("회복이 잘 된 좋은 날이었어요", "Well-rested and ready to go"),
-            ])
-        case .normal:
-            return sleepGood
-                ? pick([
-                    L.s("잘 회복된 상태로 달렸어요", "You ran well-recovered"),
-                    L.s("회복이 잘 된 상태였어요", "Your body was nicely recovered"),
-                  ])
-                : pick([
-                    L.s("수면은 짧았지만 회복은 괜찮았어요", "Short sleep, but recovery held up"),
-                    L.s("수면이 적었어도 회복 상태는 나쁘지 않았어요", "Less sleep, but recovery was decent"),
-                  ])
-        case .low:
-            return sleepGood
-                ? pick([
-                    L.s("잘 잤지만 회복은 평소보다 더뎠을 수 있어요", "Good sleep, but recovery may have lagged a bit"),
-                    L.s("수면은 충분했어도 회복이 조금 더 필요했을 수 있어요", "Enough sleep, but recovery may have needed more time"),
-                  ])
-                : pick([
-                    L.s("평소보다 피로가 남아있었을 수 있어요 (가볍게도 좋아요)", "Some lingering fatigue — easy effort works too"),
-                    L.s("몸이 평소보다 조금 더 피로했을 수 있어요", "Your body may have carried a bit more fatigue"),
-                  ])
-        case .insufficient:
-            return L.s("잘 회복된 상태로 달렸어요", "You ran well-recovered")
-        }
-    }
-
-    // ── 컨디션 행: 날씨 칩 + (수면+HRV 통합 문구 or 수면 칩) ──
+    // ── 컨디션 행: 날씨 칩 + 수면 칩(등급) + 러닝 의견 ──
     @ViewBuilder
     private var conditionRow: some View {
-        let hrv = effectiveHRV
-        let validHRV: HRVRecovery? = {
-            guard let h = hrv, h.level != .insufficient else { return nil }
-            return h
-        }()
         if let cond = condition, cond.weather != nil || cond.sleepScore != nil {
             HStack(alignment: .center, spacing: 6) {
                 if let w = cond.weather {
@@ -1165,16 +1119,20 @@ private struct InsightCard: View {
                     let tempLabel = hkTemp.map { String(format: "%.0f°C", $0) } ?? w.formattedTemp
                     ConditionChip(icon: w.systemIcon, label: tempLabel, color: wColor)
                 }
-                if let slp = cond.sleepScore, let vh = validHRV {
-                    Text(recoveryLine(sleep: slp, hrv: vh))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                } else if let slp = cond.sleepScore {
+                if let slp = cond.sleepScore {
+                    // 등급 라벨 칩 (숫자 없음 — Apple Health 스타일)
                     ConditionChip(
                         icon: "bed.double.fill",
-                        label: AppLanguage.shared.s("수면 \(slp.chipLabel)", "Sleep \(slp.chipLabel)"),
+                        label: AppLanguage.shared.s(
+                            "수면 \(slp.chipLabel)",
+                            "Sleep \(slp.chipLabel)"
+                        ),
                         color: slp.isInsufficient ? Theme.time : .secondary
                     )
+                    // 등급별 러닝 의견
+                    Text(slp.grade.runningComment)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
             }
         }

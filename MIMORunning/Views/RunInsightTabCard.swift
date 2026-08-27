@@ -29,10 +29,10 @@ private enum IC {
     static let cadCyan    = Color(hex: "5CE5D5")
 
     static let vo2Colors: [Color] = [
-        Color(hex: "FF5247").opacity(0.6),
-        Color(hex: "FF9A3C").opacity(0.7),
-        Color(hex: "F5C542").opacity(0.8),
-        Color(hex: "5CE08A"),
+        Color(hex: "FF5247"),   // 낮음: 빨강
+        Color(hex: "FF9A3C"),   // 평균이하: 주황
+        Color(hex: "F5C542"),   // 평균이상: 노랑
+        Color(hex: "5CE08A"),   // 높음: 녹색
     ]
 
     static let zoneColors: [Color] = [
@@ -40,6 +40,26 @@ private enum IC {
         Color(hex: "F5C542"), Color(hex: "FF9A3C"), Color(hex: "FF5247"),
     ]
     static func zone(_ id: Int) -> Color { zoneColors[min(max(id - 1, 0), 4)] }
+}
+
+// MARK: - Card Number Font
+
+fileprivate enum CardNumberFont {
+    case systemHeavy, blackGothic
+    static let current: CardNumberFont = .systemHeavy
+
+    func swiftUIFont(_ size: CGFloat) -> Font {
+        switch self {
+        case .systemHeavy:
+            return .system(size: size, weight: .heavy, design: .default).monospacedDigit()
+        case .blackGothic:
+            return .custom("AppleSDGothicNeo-Heavy", size: size)
+        }
+    }
+}
+
+fileprivate func cardNumFont(_ size: CGFloat) -> Font {
+    CardNumberFont.current.swiftUIFont(size)
 }
 
 // MARK: - Shared Subviews
@@ -54,12 +74,12 @@ private struct KPICell: View {
     var body: some View {
         VStack(spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value).font(.system(size: 15, weight: .medium)).foregroundStyle(color)
+                Text(value).font(cardNumFont(15)).foregroundStyle(color)
                 if let u = unit {
                     Text(u).font(.system(size: 10)).foregroundStyle(IC.label)
                 }
             }
-            Text(label).font(.system(size: 8.5)).foregroundStyle(IC.label)
+            Text(label).font(.system(size: 8.5)).foregroundStyle(.white.opacity(0.70))
             if let ctx = context {
                 Text(ctx).font(.system(size: 8)).foregroundStyle(IC.green)
             }
@@ -103,11 +123,11 @@ private struct ZoneDonutView: View {
                 let pct = Int((dom.fraction / total * 100).rounded())
                 VStack(spacing: 1) {
                     Text("\(pct)%")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(cardNumFont(20))
                         .foregroundStyle(IC.zone(dom.id))
                     Text("Zone \(dom.id)")
-                        .font(.system(size: 7.5))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .font(.system(size: 8))
+                        .foregroundStyle(.white.opacity(0.75))
                 }
             }
         }
@@ -157,104 +177,82 @@ private struct CadenceTrackView: View {
 private struct CadenceRPMGaugeView: View {
     let cadence: Int
 
-    private let trackMin = 140.0
-    private let trackMax = 200.0
-    private let recMin   = 160.0
-    private let recMax   = 180.0
+    private let trackMin = 140.0, trackMax = 200.0
+    private let recMin   = 160.0, recMax   = 180.0
 
-    // 140 → 180°(9시), 200 → 360°(3시), 상단 반원 시계방향
-    private func angle(for value: Double) -> Double {
-        let clamped = max(trackMin, min(trackMax, value))
-        return 180 + (clamped - trackMin) / (trackMax - trackMin) * 180
+    // 140→180°(9시), 200→360°(3시). clockwise:false 로 단거리 경로(상단 반원)
+    private func ang(_ v: Double) -> Double {
+        let c = max(trackMin, min(trackMax, v))
+        return 180 + (c - trackMin) / (trackMax - trackMin) * 180
     }
 
+    private var inRec: Bool { Double(cadence) >= recMin && Double(cadence) <= recMax }
+
     var body: some View {
-        let L = AppLanguage.shared
         VStack(alignment: .leading, spacing: 6) {
             Canvas { ctx, size in
-                let cx = size.width / 2
-                let outerThick: CGFloat = 9
-                let rOuter = cx - outerThick / 2 - 1
-                // cy를 충분히 안쪽으로: 끝점 획 절반(4.5pt)이 프레임을 초과하지 않도록
-                let cy = size.height - outerThick / 2 - 1
+                let cx    = size.width / 2
+                let thick: CGFloat = 10
+                let r     = cx - thick / 2 - 1
+                let cy    = size.height - thick / 2 - 1
                 let center = CGPoint(x: cx, y: cy)
 
-                // ── 바깥 링 (배경 + 권장 밴드) ────────────────────────
+                // 3구간 고정색 아크 — clockwise:false = 단거리(상단) 경로
+                let segs: [(Double, Double, Color)] = [
+                    (trackMin, recMin,   Color(hex: "5AC8FA")),  // 140-160 하늘색
+                    (recMin,   recMax,   Color(hex: "7FD98A")),  // 160-180 초록(권장)
+                    (recMax,   trackMax, Color(hex: "3A7BD5")),  // 180-200 파랑
+                ]
+                for s in segs {
+                    var arc = Path()
+                    arc.addArc(center: center, radius: r,
+                               startAngle: .degrees(ang(s.0)),
+                               endAngle:   .degrees(ang(s.1)),
+                               clockwise: false)
+                    ctx.stroke(arc, with: .color(s.2),
+                               style: StrokeStyle(lineWidth: thick, lineCap: .butt))
+                }
 
-                // (1) 배경 아크
-                var bg = Path()
-                bg.addArc(center: center, radius: rOuter,
-                          startAngle: .degrees(180), endAngle: .degrees(360),
-                          clockwise: true)
-                ctx.stroke(bg, with: .color(.white.opacity(0.09)),
-                           style: StrokeStyle(lineWidth: outerThick, lineCap: .butt))
-
-                // (2) 권장 밴드 160–180
-                var band = Path()
-                band.addArc(center: center, radius: rOuter,
-                            startAngle: .degrees(angle(for: recMin)),
-                            endAngle:   .degrees(angle(for: recMax)),
-                            clockwise: true)
-                ctx.stroke(band, with: .color(Color(hex: "5CE08A").opacity(0.35)),
-                           style: StrokeStyle(lineWidth: outerThick, lineCap: .butt))
-
-                // ── 안쪽 링 (현재값 아크) ──────────────────────────────
-                let innerThick: CGFloat = 6
-                let rInner = rOuter - 12
-
-                let valEnd = angle(for: Double(cadence))
-                var val = Path()
-                val.addArc(center: center, radius: rInner,
-                           startAngle: .degrees(180), endAngle: .degrees(valEnd),
-                           clockwise: true)
-                ctx.stroke(val, with: .color(Color(hex: "5CE5D5")),
-                           style: StrokeStyle(lineWidth: innerThick, lineCap: .butt))
-
-                // ── 바늘 (바깥 링 기준 길이) ───────────────────────────
-                let needleLen = rOuter - 2
-                let rad = valEnd * .pi / 180.0
-                let tip = CGPoint(x: center.x + needleLen * CGFloat(cos(rad)),
-                                  y: center.y + needleLen * CGFloat(sin(rad)))
+                // 바늘
+                let needleColor: Color = inRec ? .white : Color(hex: "F0913C")
+                let valRad = ang(Double(cadence)) * .pi / 180
+                let needleLen = r
+                let tip = CGPoint(x: center.x + needleLen * CGFloat(cos(valRad)),
+                                  y: center.y + needleLen * CGFloat(sin(valRad)))
                 var needle = Path()
                 needle.move(to: center)
                 needle.addLine(to: tip)
-                ctx.stroke(needle, with: .color(.white.opacity(0.9)),
+                ctx.stroke(needle, with: .color(needleColor.opacity(0.9)),
                            style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
 
-                // ── 중심 원 ─────────────────────────────────────────────
+                // 중심 원
                 let dotR: CGFloat = 4
                 ctx.fill(
                     Path(ellipseIn: CGRect(x: cx - dotR, y: cy - dotR,
-                                          width: dotR * 2, height: dotR * 2)),
+                                          width: dotR*2, height: dotR*2)),
                     with: .color(.white)
                 )
 
-                // ── 중앙 값 텍스트 (바늘보다 10pt 위) ──────────────────
+                // 값 텍스트
                 ctx.draw(
                     Text("\(cadence)")
-                        .font(.system(size: 17, weight: .medium))
+                        .font(cardNumFont(17))
                         .foregroundStyle(Color(hex: "5CE5D5")),
                     at: CGPoint(x: cx, y: cy - 34),
                     anchor: .center
                 )
             }
-            .frame(width: 118, height: 76)
+            .frame(width: 128, height: 76)
             .overlay(alignment: .bottom) {
-                // 좌우 눈금 — 아크 끝보다 아래 +10pt
                 HStack {
-                    Text("140").font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                    Text("140").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
                     Spacer()
-                    Text("200").font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                    Text("200").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
                 }
-                .frame(width: 118)
+                .frame(width: 128)
                 .offset(y: 10)
             }
 
-            // 하단 메모
-            Text(L.s("권장 160–180", "Rec. 160–180"))
-                .font(.system(size: 8.5))
-                .foregroundStyle(Color(hex: "8A8F99"))
-                .padding(.top, 10)
         }
     }
 }
@@ -423,73 +421,63 @@ private struct VO2RPMGaugeView: View {
     let fi: RunInsightEngine.VO2FitnessInfo
     let vo2: Double
 
-    private var trackMin: Double { max(15.0, fi.normBelowAvg - (fi.normHigh - fi.normBelowAvg) * 0.8) }
-    private var trackMax: Double { min(70.0, fi.normHigh + (fi.normHigh - fi.normAboveAvg) * 2.0) }
+    // 하드코딩 경계값으로 4구간 렌더 검증 (이후 fi 규준값으로 교체)
+    private let bounds: [Double]   = [15, 26, 33, 41, 57]
+    private let segColors: [Color] = [
+        Color(hex: "E8564A"),  // 낮음
+        Color(hex: "F0913C"),  // 평균이하
+        Color(hex: "EDC84B"),  // 평균이상
+        Color(hex: "7FD98A"),  // 높음
+    ]
+    private let segLabels   = ["낮음", "평균이하", "평균이상", "높음"]
+    private let segLabelsEn = ["Low", "Below avg", "Above avg", "High"]
 
-    private func angle(for value: Double) -> Double {
-        let clamped = max(trackMin, min(trackMax, value))
-        return 180 + (clamped - trackMin) / (trackMax - trackMin) * 180
+    // 15→180°(9시), 57→360°(3시). clockwise:false 로 단거리 경로(상단 반원)
+    private func ang(_ v: Double) -> Double {
+        180 + (min(max(v, 15), 57) - 15) / 42 * 180
     }
 
-    private var valueColor: Color {
-        if vo2 >= fi.normHigh     { return IC.vo2Colors[3] }
-        if vo2 >= fi.normAboveAvg { return IC.vo2Colors[2] }
-        if vo2 >= fi.normBelowAvg { return IC.vo2Colors[1] }
-        return IC.vo2Colors[0]
+    private var zoneIndex: Int {
+        for i in 0..<(bounds.count - 1) {
+            if vo2 < bounds[i + 1] { return i }
+        }
+        return bounds.count - 2
     }
 
     var body: some View {
-        let L = AppLanguage.shared
-        let g = fi.genderLabel.isEmpty ? "" : " \(fi.genderLabel)"
-        let vc = valueColor
-        let mn = trackMin, mx = trackMax
-        let nLow = fi.normBelowAvg, nMid = fi.normAboveAvg, nHigh = fi.normHigh
-        // 각도 계산 클로저 (Canvas 내부에서 캡처)
-        let ang: (Double) -> Double = { v in
-            let c = max(mn, min(mx, v))
-            return 180 + (c - mn) / (mx - mn) * 180
+        let zIdx = zoneIndex
+        let vc   = segColors[zIdx]
+        let segs: [(Double, Double, Color)] = (0..<segColors.count).map {
+            (bounds[$0], bounds[$0 + 1], segColors[$0])
         }
+
         VStack(alignment: .leading, spacing: 6) {
             Canvas { ctx, size in
-                let cx = size.width / 2
-                let outerThick: CGFloat = 9
-                let rOuter = cx - outerThick / 2 - 1
-                let cy = size.height - outerThick / 2 - 1   // 끝점 클립 방지
+                let cx    = size.width / 2
+                let thick: CGFloat = 10
+                let r     = cx - thick / 2 - 1
+                let cy    = size.height - thick / 2 - 1
                 let center = CGPoint(x: cx, y: cy)
 
-                // 바깥 링: 구간별 색 (낮음→평균이하→평균이상→높음)
-                let segs: [(from: Double, to: Double, col: Color)] = [
-                    (180,         ang(nLow),  IC.vo2Colors[0]),
-                    (ang(nLow),   ang(nMid),  IC.vo2Colors[1]),
-                    (ang(nMid),   ang(nHigh), IC.vo2Colors[2]),
-                    (ang(nHigh),  360,        IC.vo2Colors[3]),
-                ]
-                for seg in segs {
+                // 4구간 고정색 아크 — clockwise:false = 단거리(상단) 경로
+                for s in segs {
                     var arc = Path()
-                    arc.addArc(center: center, radius: rOuter,
-                               startAngle: .degrees(seg.from),
-                               endAngle:   .degrees(seg.to),
-                               clockwise: true)
-                    ctx.stroke(arc, with: .color(seg.col.opacity(0.5)),
-                               style: StrokeStyle(lineWidth: outerThick, lineCap: .butt))
+                    arc.addArc(center: center, radius: r,
+                               startAngle: .degrees(ang(s.0)),
+                               endAngle:   .degrees(ang(s.1)),
+                               clockwise: false)
+                    ctx.stroke(arc, with: .color(s.2),
+                               style: StrokeStyle(lineWidth: thick, lineCap: .butt))
                 }
 
-                // 안쪽 링: 현재값 아크 (구간 색)
-                let innerThick: CGFloat = 6
-                let rInner = rOuter - 12
-                let valEnd = ang(vo2)
-                var val = Path()
-                val.addArc(center: center, radius: rInner,
-                           startAngle: .degrees(180), endAngle: .degrees(valEnd), clockwise: true)
-                ctx.stroke(val, with: .color(vc),
-                           style: StrokeStyle(lineWidth: innerThick, lineCap: .butt))
-
                 // 바늘
-                let needleLen = rOuter - 2
-                let rad = valEnd * .pi / 180.0
-                let tip = CGPoint(x: center.x + needleLen * CGFloat(cos(rad)),
-                                  y: center.y + needleLen * CGFloat(sin(rad)))
-                var needle = Path(); needle.move(to: center); needle.addLine(to: tip)
+                let valRad    = ang(vo2) * .pi / 180
+                let needleLen = r
+                let tip = CGPoint(x: center.x + needleLen * CGFloat(cos(valRad)),
+                                  y: center.y + needleLen * CGFloat(sin(valRad)))
+                var needle = Path()
+                needle.move(to: center)
+                needle.addLine(to: tip)
                 ctx.stroke(needle, with: .color(.white.opacity(0.9)),
                            style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
 
@@ -497,34 +485,29 @@ private struct VO2RPMGaugeView: View {
                 let dotR: CGFloat = 4
                 ctx.fill(
                     Path(ellipseIn: CGRect(x: cx - dotR, y: cy - dotR,
-                                          width: dotR * 2, height: dotR * 2)),
+                                          width: dotR*2, height: dotR*2)),
                     with: .color(.white)
                 )
-                // 값 텍스트
+
+                // 값 텍스트 — 현재값 구간 색
                 ctx.draw(
                     Text(String(format: "%.0f", vo2))
-                        .font(.system(size: 17, weight: .medium))
+                        .font(cardNumFont(17))
                         .foregroundStyle(vc),
-                    at: CGPoint(x: cx, y: cy - 34), anchor: .center
+                    at: CGPoint(x: cx, y: cy - 34),
+                    anchor: .center
                 )
             }
-            .frame(width: 110, height: 76)
+            .frame(width: 128, height: 76)
             .overlay(alignment: .bottom) {
                 HStack {
-                    Text(String(format: "%.0f", mn))
-                        .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                    Text("15").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
                     Spacer()
-                    Text(String(format: "%.0f", mx))
-                        .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
+                    Text("57").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
                 }
-                .frame(width: 110).offset(y: 10)
+                .frame(width: 128).offset(y: 10)
             }
 
-            Text(L.s("평균이상 \(Int(nMid))+ · \(fi.ageDecade)\(g)",
-                     "Avg+ \(Int(nMid)) · \(fi.ageDecade)\(g)"))
-                .font(.system(size: 8.5))
-                .foregroundStyle(Color(hex: "8A8F99"))
-                .padding(.top, 10)
         }
     }
 }
@@ -549,6 +532,110 @@ private struct MetricRow: View {
     }
 }
 
+// MARK: - Achievement Badge
+
+private enum AchievementBadgeKind {
+    case longestEver
+    case bestPace
+    case longestThisMonth
+    case streak(Int)
+
+    var text: String {
+        let L = AppLanguage.shared
+        switch self {
+        case .longestEver:      return L.s("🏅 최장 거리",    "🏅 All-time Longest")
+        case .bestPace:         return L.s("⚡ 페이스 최고",   "⚡ Best Pace")
+        case .longestThisMonth: return L.s("🏅 이번 달 최장", "🏅 Month Longest")
+        case .streak(let n):    return L.s("🔥 \(n)일 연속",  "🔥 \(n)-day Streak")
+        }
+    }
+
+    var bgColor: Color {
+        switch self {
+        case .longestEver, .longestThisMonth:
+            return Color(red: 245/255, green: 197/255, blue: 66/255).opacity(0.18)
+        case .bestPace:
+            return Color(red: 139/255, green: 127/255, blue: 240/255).opacity(0.20)
+        case .streak:
+            return Color(red: 255/255, green: 154/255, blue: 60/255).opacity(0.18)
+        }
+    }
+
+    var fgColor: Color {
+        switch self {
+        case .longestEver, .longestThisMonth: return Color(hex: "F5C542")
+        case .bestPace:                       return Color(hex: "B5A9FF")
+        case .streak:                         return Color(hex: "FF9A3C")
+        }
+    }
+}
+
+private func computeAchievementBadge(activity: Activity, history: [Activity]) -> AchievementBadgeKind? {
+    let runs = history.filter { $0.type == .running && $0.id != activity.id }
+    let km = activity.distance
+
+    // 1. 최장 거리 (전체 기록)
+    if !runs.isEmpty, km >= (runs.map(\.distance).max() ?? 0) {
+        return .longestEver
+    }
+
+    // 2. 최고 페이스 (같은 거리대 ±20%)
+    if let pace = activity.paceSecPerKm {
+        let similar = runs.filter {
+            $0.distance > 0 &&
+            abs($0.distance - km) / max(1, km) <= 0.20 &&
+            $0.paceSecPerKm != nil
+        }
+        if !similar.isEmpty, pace <= (similar.compactMap(\.paceSecPerKm).min() ?? .infinity) {
+            return .bestPace
+        }
+    }
+
+    // 3. 이번 달 최장 거리
+    let cal = Calendar.current
+    let monthRuns = runs.filter {
+        cal.isDate($0.date, equalTo: activity.date, toGranularity: .month)
+    }
+    if !monthRuns.isEmpty, km >= (monthRuns.map(\.distance).max() ?? 0) {
+        return .longestThisMonth
+    }
+
+    // 4. 연속 달리기 (3일 이상)
+    let streak = computeRunningStreak(activity: activity, history: history)
+    if streak >= 3 { return .streak(streak) }
+
+    return nil
+}
+
+private func computeRunningStreak(activity: Activity, history: [Activity]) -> Int {
+    let cal = Calendar.current
+    let runDays = Set(
+        history.filter { $0.type == .running }
+               .map { cal.startOfDay(for: $0.date) }
+    )
+    var day = cal.startOfDay(for: activity.date)
+    var count = 0
+    while runDays.contains(day) {
+        count += 1
+        guard let prev = cal.date(byAdding: .day, value: -1, to: day) else { break }
+        day = prev
+    }
+    return count
+}
+
+private struct AchievementBadgeView: View {
+    let badge: AchievementBadgeKind
+
+    var body: some View {
+        Text(badge.text)
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(badge.fgColor)
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(badge.bgColor)
+            .clipShape(Capsule())
+    }
+}
+
 // MARK: - RunInsightTabCard (entry point)
 
 struct RunInsightTabCard: View {
@@ -564,6 +651,7 @@ struct RunInsightTabCard: View {
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     var isBackfilling: Bool = false
     var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
 
     @State private var tab: InsightTabKind = .rhythm
     @State private var showExport = false
@@ -588,7 +676,8 @@ struct RunInsightTabCard: View {
                 age: age, isMale: isMale, hrZones: hrZones,
                 insights: insights, startTab: tab,
                 workoutTypeFn: workoutTypeFn,
-                cadenceSeries: cadenceSeries
+                cadenceSeries: cadenceSeries,
+                hrSamples: hrSamples
             )
         }
     }
@@ -647,7 +736,8 @@ struct RunInsightTabCard: View {
                 activity: activity, detail: detail,
                 history: history, age: age, isMale: isMale,
                 hrZones: hrZones, insights: insights,
-                cadenceSeries: cadenceSeries
+                cadenceSeries: cadenceSeries,
+                hrSamples: hrSamples
             )
         } else {
             PerformanceInsightCard(
@@ -672,6 +762,223 @@ struct RunInsightTabCard: View {
     }
 }
 
+// MARK: - HR Time Series View
+
+private struct HRTimeSeriesView: View {
+    let samples: [(offset: TimeInterval, bpm: Int)]
+    var zones: [HRZoneData] = []
+
+    private func movingMedian(_ data: [Int], window: Int) -> [Double] {
+        guard !data.isEmpty else { return [] }
+        return data.indices.map { i in
+            let lo = max(0, i - window / 2)
+            let hi = min(data.count - 1, i + window / 2)
+            let slice = data[lo...hi].sorted()
+            let m = slice.count / 2
+            return slice.count % 2 == 0 && slice.count > 1
+                ? Double(slice[m - 1] + slice[m]) / 2
+                : Double(slice[m])
+        }
+    }
+
+    private func movingAverage(_ data: [Double], window: Int) -> [Double] {
+        guard !data.isEmpty else { return [] }
+        return data.indices.map { i in
+            let lo = max(0, i - window / 2)
+            let hi = min(data.count - 1, i + window / 2)
+            let slice = data[lo...hi]
+            return slice.reduce(0, +) / Double(slice.count)
+        }
+    }
+
+    private func zoneColor(for bpm: Double) -> Color {
+        guard !zones.isEmpty else { return Color(hex: "FF6B6B") }
+        for z in zones.sorted(by: { $0.id < $1.id }) {
+            if bpm <= Double(z.maxBPM) { return IC.zone(z.id) }
+        }
+        return IC.zone(5)
+    }
+
+    var body: some View {
+        guard samples.count >= 5 else {
+            return AnyView(
+                Text(AppLanguage.shared.s("심박 데이터 없음", "No HR data"))
+                    .font(.system(size: 9))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            )
+        }
+
+        // 2단 평활화: 이동 중앙값(9) → 이동 평균(25)
+        let rawBPM = samples.map(\.bpm)
+        let smoothed = movingAverage(movingMedian(rawBPM, window: 9), window: 25)
+
+        // 오프셋과 결합 후 최대 200개로 다운샘플 (평활화 후 축소)
+        var pts: [(offset: TimeInterval, bpm: Double)] = zip(samples.map(\.offset), smoothed)
+            .map { (offset: $0, bpm: $1) }
+        if pts.count > 200 {
+            let step = Double(pts.count - 1) / 199.0
+            pts = (0..<200).map { pts[Int((Double($0) * step).rounded())] }
+        }
+
+        let minBPM = smoothed.min() ?? 0
+        let maxBPM = smoothed.max() ?? 1
+        let valRange = max(1.0, maxBPM - minBPM)
+        let totalDur = max(1.0, pts.last?.offset ?? 1)
+        return AnyView(
+            Canvas { ctx, size in
+                let w = size.width
+                let h = size.height
+                let xPad: CGFloat = 22
+                let chartW = w - xPad
+                let chartH = h - 14
+
+                // 축선
+                var xAxisPath = Path()
+                xAxisPath.move(to: CGPoint(x: xPad, y: chartH))
+                xAxisPath.addLine(to: CGPoint(x: w, y: chartH))
+                ctx.stroke(xAxisPath, with: .color(.white.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: 0.8))
+                var yAxisPath = Path()
+                yAxisPath.move(to: CGPoint(x: xPad, y: 0))
+                yAxisPath.addLine(to: CGPoint(x: xPad, y: chartH))
+                ctx.stroke(yAxisPath, with: .color(.white.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: 0.8))
+
+                // 화면 좌표 계산
+                let cpts: [(x: CGFloat, y: CGFloat, bpm: Double)] = pts.map { s in
+                    let x = xPad + CGFloat(s.offset / totalDur) * chartW
+                    let y = chartH - CGFloat((s.bpm - minBPM) / valRange) * chartH
+                    return (x: x, y: y, bpm: s.bpm)
+                }
+
+                // Catmull-Rom → 베지어 변환, 구간별 존 색
+                if cpts.count >= 2 {
+                    for i in 0..<(cpts.count - 1) {
+                        let p0 = cpts[max(0, i - 1)]
+                        let p1 = cpts[i]
+                        let p2 = cpts[i + 1]
+                        let p3 = cpts[min(cpts.count - 1, i + 2)]
+                        let cp1 = CGPoint(x: p1.x + (p2.x - p0.x) / 5,
+                                          y: p1.y + (p2.y - p0.y) / 5)
+                        let cp2 = CGPoint(x: p2.x - (p3.x - p1.x) / 5,
+                                          y: p2.y - (p3.y - p1.y) / 5)
+                        var seg = Path()
+                        seg.move(to: CGPoint(x: p1.x, y: p1.y))
+                        seg.addCurve(to: CGPoint(x: p2.x, y: p2.y),
+                                     control1: cp1, control2: cp2)
+                        ctx.stroke(seg, with: .color(zoneColor(for: p1.bpm)),
+                                   style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                    }
+                }
+
+                // 끝점 마커
+                if let last = cpts.last {
+                    let dotR: CGFloat = 3
+                    ctx.fill(Path(ellipseIn: CGRect(x: last.x - dotR, y: last.y - dotR,
+                                                     width: dotR * 2, height: dotR * 2)),
+                             with: .color(zoneColor(for: last.bpm)))
+                }
+
+                // Y축 라벨
+                ctx.draw(Text("\(Int(maxBPM.rounded()))").font(.system(size: 8))
+                    .foregroundStyle(.white.opacity(0.70)),
+                    at: CGPoint(x: xPad - 3, y: 0), anchor: .topTrailing)
+                ctx.draw(Text("\(Int(minBPM.rounded()))").font(.system(size: 8))
+                    .foregroundStyle(.white.opacity(0.70)),
+                    at: CGPoint(x: xPad - 3, y: chartH), anchor: .bottomTrailing)
+
+                // X축 라벨
+                let fmt: (TimeInterval) -> String = { t in
+                    let s = Int(t); return String(format: "%d:%02d", s / 60, s % 60)
+                }
+                ctx.draw(Text("0:00").font(.system(size: 8))
+                    .foregroundStyle(.white.opacity(0.70)),
+                    at: CGPoint(x: xPad, y: h), anchor: .bottomLeading)
+                ctx.draw(Text(fmt(totalDur / 2)).font(.system(size: 8))
+                    .foregroundStyle(.white.opacity(0.70)),
+                    at: CGPoint(x: xPad + chartW / 2, y: h), anchor: .bottom)
+                ctx.draw(Text(fmt(totalDur)).font(.system(size: 8))
+                    .foregroundStyle(.white.opacity(0.70)),
+                    at: CGPoint(x: w, y: h), anchor: .bottomTrailing)
+            }
+        )
+    }
+}
+
+// MARK: - Week Strip
+
+private struct WeekStripView: View {
+    let activity: Activity
+    let history: [Activity]
+
+    private let cellSize: CGFloat = 12
+    private let gap: CGFloat = 3
+    private let streakColor = Color(hex: "FF9F0A")
+
+    private struct DayInfo: Identifiable {
+        let id: Int
+        let km: Double
+        let isFuture: Bool
+        let isToday: Bool
+    }
+
+    private var dayInfos: [DayInfo] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: activity.date)
+        let weekday = cal.component(.weekday, from: today) // 1=Sun...7=Sat
+        let daysFromMonday = (weekday + 5) % 7             // 0=Mon...6=Sun
+        guard let monday = cal.date(byAdding: .day, value: -daysFromMonday, to: today) else { return [] }
+        var kmByDay: [Date: Double] = [:]
+        for act in history {
+            let day = cal.startOfDay(for: act.date)
+            kmByDay[day, default: 0] += act.distance / 1000
+        }
+        kmByDay[today, default: 0] += activity.distance / 1000
+        return (0..<7).compactMap { i -> DayInfo? in
+            guard let day = cal.date(byAdding: .day, value: i, to: monday) else { return nil }
+            return DayInfo(id: i,
+                           km: kmByDay[day] ?? 0,
+                           isFuture: day > today,
+                           isToday: day == today)
+        }
+    }
+
+    private func cellColor(km: Double, isFuture: Bool) -> Color {
+        if isFuture { return Color.white.opacity(0.04) }
+        if km == 0  { return streakColor.opacity(0.10) }
+        if km < 3   { return streakColor.opacity(0.32) }
+        if km < 6   { return streakColor.opacity(0.56) }
+        if km < 10  { return streakColor.opacity(0.80) }
+        return streakColor
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: gap) {
+                ForEach(dayInfos) { info in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(cellColor(km: info.km, isFuture: info.isFuture))
+                        .frame(width: cellSize, height: cellSize)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 2)
+                                .stroke(info.isToday ? Color.white.opacity(0.70) : Color.clear,
+                                        lineWidth: 1)
+                        )
+                }
+            }
+            HStack(spacing: gap) {
+                ForEach(dayInfos) { info in
+                    Text(info.isToday ? AppLanguage.shared.s("오늘", "Today") : "")
+                        .font(.system(size: 6, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .frame(width: cellSize)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Rhythm Card
 
 private struct RhythmInsightCard: View {
@@ -683,11 +990,16 @@ private struct RhythmInsightCard: View {
     var hrZones: [HRZoneData] = []
     let insights: [RunInsight]
     var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+
+    @State private var heroBadge: AchievementBadgeKind? = nil
+    @State private var heroBadgeLoaded = false
 
     var body: some View {
         let hasRhythmRow = !hrZones.filter({ $0.fraction > 0.01 }).isEmpty
             || detail?.avgCadence != nil
             || (vo2Info != nil && detail?.vo2Max != nil)
+            || hrSamples.count >= 5
         return VStack(alignment: .leading, spacing: 14) {
             heroSection
             divider
@@ -704,6 +1016,11 @@ private struct RhythmInsightCard: View {
         .padding(16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .onAppear {
+            guard !heroBadgeLoaded else { return }
+            heroBadge = computeAchievementBadge(activity: activity, history: history)
+            heroBadgeLoaded = true
+        }
     }
 
     // buildCadenceBars — 퍼포먼스 카드에서 CadenceEqualizerView 재사용 예정
@@ -729,20 +1046,36 @@ private struct RhythmInsightCard: View {
     private var heroSection: some View {
         let km = activity.distance / 1000
         let kmStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
-        return VStack(alignment: .leading, spacing: 3) {
-            Text(AppLanguage.shared.s("오늘", "Today"))
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(IC.label)
-                .tracking(1.2)
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(kmStr)
-                    .font(.system(size: 40, weight: .medium))
-                    .tracking(-1.8)
-                Text("km").font(.system(size: 16)).foregroundStyle(IC.label)
+        let coords = detail?.routeCoordinates ?? []
+        let hasRoute = coords.count >= 2
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                WeekStripView(activity: activity, history: history)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(kmStr)
+                        .font(cardNumFont(40))
+                        .tracking(-1.6)
+                    Text("km").font(.system(size: 16)).foregroundStyle(IC.label)
+                }
+                .foregroundStyle(Color.white)
+                if let ctx = distanceContext {
+                    Text(ctx).font(.system(size: 10)).foregroundStyle(IC.green)
+                }
             }
-            .foregroundStyle(Color.white)
-            if let ctx = distanceContext {
-                Text(ctx).font(.system(size: 10)).foregroundStyle(IC.green)
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 8) {
+                if let badge = heroBadge {
+                    AchievementBadgeView(badge: badge)
+                }
+                if hasRoute {
+                    StampRouteArt(
+                        coords: coords,
+                        lineWidth: 2.2,
+                        color: Color(hex: "5CE08A"),
+                        casingColor: Theme.cardBackground
+                    )
+                    .frame(width: 52, height: 62)
+                }
             }
         }
     }
@@ -775,25 +1108,92 @@ private struct RhythmInsightCard: View {
 
     @ViewBuilder
     private var rhythmRow: some View {
-        HStack(alignment: .top, spacing: 8) {
-            if !hrZones.filter({ $0.fraction > 0.01 }).isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ZoneDonutView(zones: hrZones)
-                        .frame(width: 80, height: 80)
-                    Text(zoneVerdictLabel)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(zoneVerdictColor)
-                        .frame(width: 80)
-                        .fixedSize(horizontal: false, vertical: true)
+        let visibleZones = hrZones.filter { $0.fraction > 0.01 }
+        let hasZones = !visibleZones.isEmpty
+        let hasHR = hrSamples.count >= 5
+        let sep = Color.white.opacity(0.1)
+
+        // 2×2 그리드: [심박존 | 심박수] / [케이던스 | 유산소]
+        VStack(spacing: 0) {
+            // 상단 행: 심박존(좌) + 심박수 HR 시계열(우)
+            HStack(alignment: .center, spacing: 0) {
+                // 심박존 도넛
+                VStack(alignment: .center, spacing: 4) {
+                    if hasZones {
+                        ZoneDonutView(zones: hrZones)
+                            .frame(width: 100, height: 100)
+                        Color.clear.frame(height: 8)
+                        Text(zoneVerdictLabel)
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundStyle(zoneVerdictColor)
+                            .multilineTextAlignment(.center)
+                    }
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+
+                // 세로 구분선
+                Rectangle().fill(sep).frame(width: 0.5)
+
+                // 심박수 HR 시계열 + 판정 문구
+                VStack(alignment: .center, spacing: 3) {
+                    if hasHR {
+                        HRTimeSeriesView(
+                            samples: hrSamples,
+                            zones: hasZones ? hrZones : []
+                        )
+                        .padding(.horizontal, 6)
+                        .frame(height: 86)
+                        if let v = hrVerdictText {
+                            Text(v.text)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(v.color)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
             }
-            if let cad = detail?.avgCadence {
-                CadenceRPMGaugeView(cadence: cad)
+
+            // 가로 구분선
+            Rectangle().fill(sep).frame(height: 0.5)
+
+            // 하단 행: 케이던스(좌) + 유산소 VO2(우)
+            HStack(alignment: .center, spacing: 0) {
+                // 케이던스 게이지 + 권장 문구
+                VStack(alignment: .center, spacing: 4) {
+                    if let cad = detail?.avgCadence {
+                        CadenceRPMGaugeView(cadence: cad)
+                        Color.clear.frame(height: 8)
+                        Text(AppLanguage.shared.s("권장 케이던스 160–180", "Rec. Cadence 160–180"))
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(Color.white.opacity(0.6))
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+
+                // 세로 구분선
+                Rectangle().fill(sep).frame(width: 0.5)
+
+                // 유산소 VO2 게이지 + FRIEND DB + 등급 문구
+                VStack(alignment: .center, spacing: 4) {
+                    if let info = vo2Info, let vo2 = detail?.vo2Max {
+                        VO2RPMGaugeView(fi: info, vo2: vo2)
+                        Color.clear.frame(height: 8)
+                        let sub = vo2SubLabel(fi: info, vo2: vo2)
+                        Text(sub.text)
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(sub.color)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
             }
-            if let info = vo2Info, let vo2 = detail?.vo2Max {
-                VO2RPMGaugeView(fi: info, vo2: vo2)
-            }
-            Spacer()
         }
     }
 
@@ -890,7 +1290,7 @@ private struct RhythmInsightCard: View {
     private func oneLiner(text: String, bg: Color, fg: Color, accent: Color) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text("✦").font(.system(size: 10)).foregroundStyle(accent)
-            Text(text).font(.system(size: 10.5)).foregroundStyle(fg).lineSpacing(2)
+            Text(text).font(.system(size: 10)).foregroundStyle(fg).lineSpacing(2)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(bg)
@@ -927,11 +1327,62 @@ private struct RhythmInsightCard: View {
         return RunInsightEngine.vo2FitnessInfo(vo2: vo2, age: a, isMale: isMale)
     }
 
+    private var hrVerdictText: (text: String, color: Color)? {
+        guard hrSamples.count >= 10 else { return nil }
+        let L = AppLanguage.shared
+        let n = hrSamples.count
+        let half = n / 2
+        let avgFirst  = hrSamples.prefix(half).map { Double($0.bpm) }.reduce(0, +) / Double(half)
+        let avgSecond = hrSamples.suffix(n - half).map { Double($0.bpm) }.reduce(0, +) / Double(n - half)
+        let diff = avgSecond - avgFirst
+        if let a = age {
+            let peakBPM = Double(hrSamples.map(\.bpm).max() ?? 0)
+            if peakBPM / Double(220 - a) >= 0.90 {
+                return (L.s("최고 강도까지 올렸어요", "Pushed to max intensity"), Color(hex: "FF9A3C"))
+            }
+        }
+        if diff >= 8  { return (L.s("후반에 심박이 올랐어요", "HR climbed in the 2nd half"), Color(hex: "FF9A3C")) }
+        if diff <= -5 { return (L.s("후반에 여유가 있었어요", "Plenty left in the 2nd half"), Color(hex: "4C8DFF")) }
+        return (L.s("끝까지 안정적이었어요", "Steady throughout"), Color(hex: "5CE08A"))
+    }
+
+    private func vo2SubLabel(fi: RunInsightEngine.VO2FitnessInfo, vo2: Double) -> (text: String, color: Color) {
+        let L = AppLanguage.shared
+        let bounds: [Double]   = [15, 26, 33, 41, 57]
+        let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Color(hex: "7FD98A")]
+        let levelNames = [L.s("낮음","Low"), L.s("평균이하","Below avg"), L.s("평균이상","Above avg"), L.s("높음","High")]
+        var idx = bounds.count - 2
+        for i in 0..<(bounds.count - 1) { if vo2 < bounds[i + 1] { idx = i; break } }
+        let g = fi.genderLabel.isEmpty ? "" : " \(fi.genderLabel)"
+        let valStr = String(format: "%.1f", vo2)
+        return (L.s("\(valStr)은 \(fi.ageDecade)\(g) 기준 \(levelNames[idx])",
+                    "\(valStr) is \(levelNames[idx]) for \(fi.ageDecade)\(g)"), levelColors[idx])
+    }
+
     private var oneLiner: String? {
-        for cat: InsightCategory in [.cardio, .efficiency, .intensity, .endurance] {
+        let L = AppLanguage.shared
+        // 1) 연속 기록
+        let streak = computeRunningStreak(activity: activity, history: history)
+        if streak >= 3 {
+            return L.s("\(streak)일 연속 달리고 있어요", "\(streak) consecutive days")
+        }
+        // 2) 거리 기록
+        if let ctx = distanceContext { return ctx }
+        // 3) 강도 배분 조언 (고강도 ≥ 40%)
+        let visible = hrZones.filter { $0.fraction > 0.01 }
+        if !visible.isEmpty {
+            let tot = visible.map(\.fraction).reduce(0, +)
+            let highFrac = visible.filter { $0.id >= 4 }.map(\.fraction).reduce(0, +) / max(1e-9, tot)
+            if highFrac >= 0.40 {
+                return L.s("고강도 구간이 많았어요. 다음엔 여유롭게 가도 좋아요",
+                           "High-intensity run. An easy run next time is great.")
+            }
+        }
+        // 4) 그 외 — efficiency/intensity/endurance 인사이트
+        for cat: InsightCategory in [.efficiency, .intensity, .endurance] {
             if let m = insights.first(where: { $0.category == cat })?.message { return m }
         }
-        return insights.first?.message
+        return L.s("편안한 강도로 잘 쌓고 있어요", "Building fitness at a comfortable pace")
     }
 }
 
@@ -947,6 +1398,9 @@ private struct PerformanceInsightCard: View {
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     var isBackfilling: Bool = false
 
+    @State private var heroBadge: AchievementBadgeKind? = nil
+    @State private var heroBadgeLoaded = false
+
     private struct HRTrendPt: Identifiable {
         let id = UUID()
         let index: Int
@@ -954,32 +1408,68 @@ private struct PerformanceInsightCard: View {
         let isToday: Bool
     }
 
+    private struct SplitBarItem {
+        let index: Int
+        let paceSecPerKm: Double
+        let distanceM: Double
+        let isFirstHalf: Bool
+    }
+
+    private enum ScatterGroup { case past, recent, today }
+    private struct ScatterPt {
+        let pace: Double
+        let hr: Double
+        let group: ScatterGroup
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             heroSection
             divider
             kpiRow
-            let trend = hrTrendPts
-            if trend.count >= 2 {
+            let scatter = scatterData
+            let dist = trainingDistData
+            if scatter.count >= 6 {
                 divider
-                hrEffSection(trend)
+                HStack(alignment: .top, spacing: 10) {
+                    hrScatterSection(data: scatter)
+                        .frame(maxWidth: .infinity)
+                    if dist != nil || isBackfilling {
+                        Rectangle().fill(.white.opacity(0.08))
+                            .frame(width: 0.5)
+                            .padding(.vertical, 2)
+                        if let d = dist {
+                            distribHorizontalSection(items: d.items, weeks: d.weeks)
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            backfillingPlaceholder
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
             }
-            if let info = vo2Info, let vo2 = detail?.vo2Max {
+            let iSegs  = intervalChartData
+            let voInf  = vo2Info
+            let voDet  = detail?.vo2Max
+            if let s = iSegs {
                 divider
-                cardioSection(info: info, vo2: vo2)
+                if let vi = voInf, let vd = voDet {
+                    HStack(alignment: .top, spacing: 10) {
+                        cardioSection(info: vi, vo2: vd).frame(maxWidth: .infinity)
+                        Rectangle().fill(.white.opacity(0.08)).frame(width: 0.5).padding(.vertical, 2)
+                        intervalBarSection(segments: s).frame(maxWidth: .infinity)
+                    }
+                } else {
+                    intervalBarSection(segments: s)
+                }
+            } else if let splitData = splitChartData, voInf == nil || voDet == nil {
+                // VO2 없을 때만 full-width 스플릿 차트 표시 (VO2 있으면 cardioSection 우측에 compact로 표시)
+                divider
+                splitPaceSection(data: splitData)
             }
-            let hasMetrics = paceConsistencySec != nil || backHalfPct != nil
-            let base = weeklyBase
-            if hasMetrics || base.weeklyLoadKm > 0 {
+            if iSegs == nil, let vi = voInf, let vd = voDet {
                 divider
-                metricsSection(base: base)
-            }
-            if let dist = trainingDistData {
-                divider
-                distribSection(items: dist.items, weeks: dist.weeks)
-            } else if isBackfilling {
-                divider
-                backfillingPlaceholder
+                cardioSection(info: vi, vo2: vd)
             }
             if let line = oneLiner {
                 divider
@@ -989,27 +1479,102 @@ private struct PerformanceInsightCard: View {
         .padding(16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .onAppear {
+            guard !heroBadgeLoaded else { return }
+            heroBadge = computeAchievementBadge(activity: activity, history: history)
+            heroBadgeLoaded = true
+        }
     }
 
     private var heroSection: some View {
         let km = activity.distance / 1000
         let kmStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
-        return VStack(alignment: .leading, spacing: 3) {
-            Text(AppLanguage.shared.s("오늘", "Today"))
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(IC.label)
-                .tracking(1.2)
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(kmStr)
-                    .font(.system(size: 40, weight: .medium))
-                    .tracking(-1.8)
-                Text("km").font(.system(size: 16)).foregroundStyle(IC.label)
+        let coords = detail?.routeCoordinates ?? []
+        let hasRoute = coords.count >= 2
+        let base = weeklyBase
+        let wkKm = String(format: "%.1f", base.weeklyLoadKm)
+        let moKm = String(format: "%.1f", monthlyLoadKm)
+        let L = AppLanguage.shared
+
+        return HStack(alignment: .top, spacing: 12) {
+            // 히어로 거리 블록 (왼쪽)
+            VStack(alignment: .leading, spacing: 3) {
+                WeekStripView(activity: activity, history: history)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(kmStr)
+                        .font(cardNumFont(40))
+                        .tracking(-1.6)
+                    Text("km").font(.system(size: 16)).foregroundStyle(IC.label)
+                }
+                .foregroundStyle(Color.white)
+                if let ctx = heroContext {
+                    Text(ctx).font(.system(size: 10)).foregroundStyle(IC.green)
+                }
             }
-            .foregroundStyle(Color.white)
-            if let ctx = heroContext {
-                Text(ctx).font(.system(size: 10)).foregroundStyle(IC.green)
+            Spacer(minLength: 8)
+            // 우측: 3줄 블록 + 경로 아트 (세로 중앙 정렬)
+            HStack(alignment: .center, spacing: 8) {
+                // 3줄 블록
+                VStack(alignment: .trailing, spacing: 5) {
+                    // 1줄: 이번 주
+                    HStack(spacing: 4) {
+                        Text(L.s("이번 주", "This wk"))
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(.white.opacity(0.70))
+                        Text(wkKm)
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(.white)
+                            .monospacedDigit()
+                        Text("km")
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(.white.opacity(0.70))
+                    }
+                    // 2줄: 이번 달
+                    HStack(spacing: 4) {
+                        Text(L.s("이번 달", "This mo"))
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(.white.opacity(0.70))
+                        Text(moKm)
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(.white)
+                            .monospacedDigit()
+                        Text("km")
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(.white.opacity(0.70))
+                    }
+                    // 3줄: 배지 (없으면 예약 공간)
+                    if let badge = heroBadge {
+                        AchievementBadgeView(badge: badge)
+                    } else {
+                        Color.clear.frame(height: 22)
+                    }
+                }
+                // 경로 아트 (최우측)
+                if hasRoute {
+                    StampRouteArt(
+                        coords: coords,
+                        lineWidth: 2.2,
+                        color: Color(hex: "8B7FF0"),
+                        casingColor: Theme.cardBackground
+                    )
+                    .frame(width: 44, height: 46)
+                }
             }
         }
+    }
+
+    private var monthlyLoadKm: Double {
+        let cal = Calendar.current
+        guard let startOfMonth = cal.date(
+            from: cal.dateComponents([.year, .month], from: activity.date)
+        ) else { return 0 }
+        var seen = Set<UUID>()
+        var total = 0.0
+        for act in (history + [activity]) where act.type == .running {
+            guard act.date >= startOfMonth, act.date <= activity.date else { continue }
+            if seen.insert(act.id).inserted { total += act.distance / 1000 }
+        }
+        return total
     }
 
     private var kpiRow: some View {
@@ -1021,12 +1586,8 @@ private struct PerformanceInsightCard: View {
                     value: activity.formattedPace ?? "--'--\"")
             kpiSep
             if let hr = activity.avgHeartRate {
-                let ctx: String? = hrDelta.map { d in
-                    AppLanguage.shared.s("동일 페이스 −\(d)bpm", "−\(d)bpm vs similar")
-                }
                 KPICell(label: AppLanguage.shared.s("심박", "HR"),
-                        value: "\(hr)", unit: "bpm", color: IC.hrRed,
-                        context: ctx)
+                        value: "\(hr)", unit: "bpm", color: IC.hrRed)
             } else {
                 KPICell(label: AppLanguage.shared.s("심박", "HR"),
                         value: "--", color: .secondary)
@@ -1042,60 +1603,182 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    private func hrEffSection(_ pts: [HRTrendPt]) -> some View {
-        let historical = pts.filter { !$0.isToday }
-        let todayPt = pts.first(where: { $0.isToday })
-        let improving = historical.last.map { $0.hr > (todayPt?.hr ?? 0) } ?? false
+    @ViewBuilder
+    private func hrScatterSection(data: [ScatterPt]) -> some View {
         let L = AppLanguage.shared
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+        let paces = data.map(\.pace)
+        let hrs   = data.map(\.hr)
+        let rawPMin = paces.min() ?? 300
+        let rawPMax = paces.max() ?? 400
+        let rawHMin = hrs.min() ?? 120
+        let rawHMax = hrs.max() ?? 180
+        let pSpan = max(1.0, rawPMax - rawPMin)
+        let hSpan = max(1.0, rawHMax - rawHMin)
+        let pMin  = rawPMin - pSpan * 0.05
+        let pMax  = rawPMax + pSpan * 0.05
+        let hMin  = rawHMin - hSpan * 0.05
+        let hMax  = rawHMax + hSpan * 0.05
+
+        let pastPts   = data.filter { $0.group == .past }
+        let recentPts = data.filter { $0.group == .recent }
+        let todayPts  = data.filter { $0.group == .today }
+
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 0) {
+                Spacer()
                 if let d = hrDelta, d > 0 {
-                    Text("−\(d) bpm")
-                        .font(.system(size: 15, weight: .medium)).foregroundStyle(IC.green)
-                    Text(L.s("같은 페이스 기준", "vs. similar pace"))
-                        .font(.system(size: 9)).foregroundStyle(IC.label)
+                    (Text(L.s("심박 효율: ", "HR Efficiency: "))
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.90))
+                    + Text("↓\(d) bpm")
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(IC.green)
+                    + Text(L.s(" (동일 페이스 기준)", " (vs. similar pace)"))
+                        .font(.system(size: 8)).foregroundStyle(.white.opacity(0.55)))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 } else {
-                    Text(L.s("심박 효율 추이", "HR Efficiency Trend"))
-                        .font(.system(size: 11, weight: .medium)).foregroundStyle(.white)
+                    Text(L.s("심박 효율", "HR Efficiency"))
+                        .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 }
                 Spacer()
-                Text(L.s("↓ 낮을수록 좋아요", "↓ lower is better"))
-                    .font(.system(size: 8.5)).foregroundStyle(IC.label)
             }
-            Chart {
-                ForEach(pts) { pt in
-                    LineMark(x: .value("idx", pt.index), y: .value("HR", pt.hr))
-                        .foregroundStyle(Color.white.opacity(0.25))
-                        .lineStyle(StrokeStyle(lineWidth: 1.5))
-                    if pt.isToday {
-                        PointMark(x: .value("idx", pt.index), y: .value("HR", pt.hr))
-                            .foregroundStyle(IC.green.opacity(0.30))
-                            .symbolSize(180)
-                        PointMark(x: .value("idx", pt.index), y: .value("HR", pt.hr))
-                            .foregroundStyle(IC.green)
-                            .symbolSize(64)
-                    } else {
-                        PointMark(x: .value("idx", pt.index), y: .value("HR", pt.hr))
-                            .foregroundStyle(Color.white.opacity(0.45))
-                            .symbolSize(20)
+            Canvas { ctx, size in
+                let w = size.width
+                let canvasH = size.height
+                let botPad:   CGFloat = 14
+                let topPad:   CGFloat = 3
+                let chartW = w
+                let chartH = canvasH - botPad - topPad
+
+                let cx: (Double) -> CGFloat = { pace in
+                    let denom = pMax - pMin
+                    let norm = denom < 1 ? 0.5 : (pMax - pace) / denom
+                    return CGFloat(norm) * chartW
+                }
+                let cy: (Double) -> CGFloat = { hr in
+                    let denom = hMax - hMin
+                    let norm = denom < 1 ? 0.5 : (hr - hMin) / denom
+                    return topPad + chartH - CGFloat(norm) * chartH
+                }
+
+                // Axis lines
+                var xAxis = Path()
+                xAxis.move(to: CGPoint(x: 0, y: topPad + chartH))
+                xAxis.addLine(to: CGPoint(x: w, y: topPad + chartH))
+                ctx.stroke(xAxis, with: .color(.white.opacity(0.35)), style: StrokeStyle(lineWidth: 0.8))
+                var yAxis = Path()
+                yAxis.move(to: CGPoint(x: 0, y: topPad))
+                yAxis.addLine(to: CGPoint(x: 0, y: topPad + chartH))
+                ctx.stroke(yAxis, with: .color(.white.opacity(0.35)), style: StrokeStyle(lineWidth: 0.8))
+
+                // Arrow: past centroid → recent centroid
+                if pastPts.count >= 3 && recentPts.count >= 3 {
+                    let pCX = pastPts.map { cx($0.pace) }.reduce(0, +) / CGFloat(pastPts.count)
+                    let pCY = pastPts.map { cy($0.hr) }.reduce(0, +) / CGFloat(pastPts.count)
+                    let rCX = recentPts.map { cx($0.pace) }.reduce(0, +) / CGFloat(recentPts.count)
+                    let rCY = recentPts.map { cy($0.hr) }.reduce(0, +) / CGFloat(recentPts.count)
+
+                    var arrowLine = Path()
+                    arrowLine.move(to: CGPoint(x: pCX, y: pCY))
+                    arrowLine.addLine(to: CGPoint(x: rCX, y: rCY))
+                    ctx.stroke(arrowLine, with: .color(IC.green.opacity(0.5)),
+                               style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+                    let dxF = rCX - pCX
+                    let dyF = rCY - pCY
+                    let lenF = sqrt(dxF * dxF + dyF * dyF)
+                    if lenF > 2 {
+                        let nx = dxF / lenF
+                        let ny = dyF / lenF
+                        let al: CGFloat = 6
+                        let aa = 0.4
+                        let cosA = CGFloat(cos(aa))
+                        let sinA = CGFloat(sin(aa))
+                        var head = Path()
+                        head.move(to: CGPoint(x: rCX, y: rCY))
+                        head.addLine(to: CGPoint(x: rCX - al * (nx * cosA + ny * sinA),
+                                                  y: rCY - al * (ny * cosA - nx * sinA)))
+                        head.move(to: CGPoint(x: rCX, y: rCY))
+                        head.addLine(to: CGPoint(x: rCX - al * (nx * cosA - ny * sinA),
+                                                  y: rCY - al * (ny * cosA + nx * sinA)))
+                        ctx.stroke(head, with: .color(IC.green.opacity(0.5)),
+                                   style: StrokeStyle(lineWidth: 1))
                     }
                 }
-            }
-            .chartYAxis(.hidden)
-            .chartXAxis(.hidden)
-            .frame(height: 60)
 
-            HStack {
-                if let f = historical.first {
-                    Text(L.s("8주 전 \(Int(f.hr))", "8w ago \(Int(f.hr))"))
-                        .font(.system(size: 8.5)).foregroundStyle(IC.label)
+                // Past dots (white)
+                for pt in pastPts {
+                    let r: CGFloat = 3.4
+                    ctx.fill(
+                        Path(ellipseIn: CGRect(x: cx(pt.pace)-r, y: cy(pt.hr)-r, width: r*2, height: r*2)),
+                        with: .color(.white.opacity(0.55))
+                    )
+                }
+                // Recent dots (violet)
+                for pt in recentPts {
+                    let r: CGFloat = 3.8
+                    ctx.fill(
+                        Path(ellipseIn: CGRect(x: cx(pt.pace)-r, y: cy(pt.hr)-r, width: r*2, height: r*2)),
+                        with: .color(IC.violet)
+                    )
+                }
+                // Today dot (green + ring) — drawn last
+                for pt in todayPts {
+                    let rO: CGFloat = 8.6
+                    let rI: CGFloat = 5.4
+                    ctx.stroke(
+                        Path(ellipseIn: CGRect(x: cx(pt.pace)-rO, y: cy(pt.hr)-rO, width: rO*2, height: rO*2)),
+                        with: .color(IC.green.opacity(0.35)), style: StrokeStyle(lineWidth: 1)
+                    )
+                    ctx.fill(
+                        Path(ellipseIn: CGRect(x: cx(pt.pace)-rI, y: cy(pt.hr)-rI, width: rI*2, height: rI*2)),
+                        with: .color(IC.green)
+                    )
+                }
+
+                // Y-axis labels — inside chart, top-left / bottom-left
+                ctx.draw(
+                    Text("\(Int(rawHMax))").font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
+                    at: CGPoint(x: 3, y: topPad + 1), anchor: .topLeading
+                )
+                ctx.draw(
+                    Text("\(Int(rawHMin))").font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
+                    at: CGPoint(x: 3, y: topPad + chartH - 1), anchor: .bottomLeading
+                )
+
+                // X-axis labels (slow left / fast right — x-axis is inverted)
+                func fmtPace(_ sec: Double) -> String {
+                    let m = Int(sec) / 60; let s = Int(sec) % 60
+                    return String(format: "%d'%02d\"", m, s)
+                }
+                ctx.draw(
+                    Text(fmtPace(rawPMax)).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
+                    at: CGPoint(x: 3, y: topPad + chartH + 3), anchor: .topLeading
+                )
+                ctx.draw(
+                    Text(fmtPace(rawPMin)).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
+                    at: CGPoint(x: w - 3, y: topPad + chartH + 3), anchor: .topTrailing
+                )
+            }
+            .frame(height: 110)
+
+            // 범례
+            HStack(spacing: 0) {
+                Spacer()
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        Circle().fill(Color.white.opacity(0.55)).frame(width: 6, height: 6)
+                        Text(L.s("8주 전", "8w ago")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
+                    }
+                    HStack(spacing: 4) {
+                        Circle().fill(IC.violet).frame(width: 6, height: 6)
+                        Text(L.s("최근", "Recent")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
+                    }
+                    HStack(spacing: 4) {
+                        Circle().fill(IC.green).frame(width: 6, height: 6)
+                        Text(L.s("오늘", "Today")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
+                    }
                 }
                 Spacer()
-                if let t = todayPt {
-                    Text(L.s("오늘 \(Int(t.hr))", "Today \(Int(t.hr))"))
-                        .font(.system(size: 8.5))
-                        .foregroundStyle(improving ? IC.green : IC.label)
-                }
             }
         }
     }
@@ -1103,65 +1786,48 @@ private struct PerformanceInsightCard: View {
     private func cardioSection(info: RunInsightEngine.VO2FitnessInfo, vo2: Double) -> some View {
         let L = AppLanguage.shared
         let g = info.genderLabel.isEmpty ? "" : " \(info.genderLabel)"
-        let refNote = L.s("\(info.ageDecade)\(g) 기준 · FRIEND DB",
-                          "\(info.ageDecade)\(g) · FRIEND DB")
-        let levelLabels = [L.s("낮음", "Low"), L.s("평균이하", "Below"),
-                           L.s("평균이상", "Above"), L.s("높음", "High")]
-        let thresholds = ["<\(Int(info.normBelowAvg))",
-                          "\(Int(info.normBelowAvg))–\(Int(info.normAboveAvg))",
-                          "\(Int(info.normAboveAvg))–\(Int(info.normHigh))",
-                          "≥\(Int(info.normHigh))"]
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(String(format: "%.1f", vo2))
-                    .font(.system(size: 17, weight: .medium)).foregroundStyle(IC.green)
-                Text("mL/kg·min").font(.system(size: 9)).foregroundStyle(IC.label)
-                Spacer()
-                Text(info.levelLabel)
-                    .font(.system(size: 10, weight: .medium)).foregroundStyle(IC.green)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(IC.green.opacity(0.18))
-                    .clipShape(Capsule())
+        let bounds: [Double] = [15, 26, 33, 41, 57]
+        let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Color(hex: "7FD98A")]
+        let levelNames = [L.s("낮음","Low"), L.s("평균이하","Below avg"), L.s("평균이상","Above avg"), L.s("높음","High")]
+        var gradeIdx = bounds.count - 2
+        for i in 0..<(bounds.count - 1) { if vo2 < bounds[i + 1] { gradeIdx = i; break } }
+        let valStr = String(format: "%.1f", vo2)
+        let gradeText = L.s("\(valStr)은 \(info.ageDecade)\(g) 기준 \(levelNames[gradeIdx])",
+                            "\(valStr) is \(levelNames[gradeIdx]) for \(info.ageDecade)\(g)")
+        let gradeColor = levelColors[gradeIdx]
+        let splitData = splitChartData
+        return HStack(alignment: .top, spacing: 10) {
+            // 좌: VO2 반원 게이지
+            VStack(alignment: .center, spacing: 3) {
+                Text(L.s("유산소 피트니스", "Aerobic Fitness"))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                VO2RPMGaugeView(fi: info, vo2: vo2)
+                Color.clear.frame(height: 12)
+                Text(gradeText)
+                    .font(.system(size: 8.5)).foregroundStyle(gradeColor)
+                    .multilineTextAlignment(.center)
             }
-            VO2GaugeView(fi: info, vo2: vo2)
-            HStack(spacing: 0) {
-                ForEach(0..<4, id: \.self) { i in
-                    VStack(spacing: 2) {
-                        Text(levelLabels[i])
-                            .font(.system(size: 7.5))
-                            .foregroundStyle(IC.vo2Colors[i])
-                        Text(thresholds[i])
-                            .font(.system(size: 7))
-                            .foregroundStyle(IC.label)
-                    }
+            .frame(maxWidth: .infinity)
+            // 우: 스플릿 페이스 차트 (축소)
+            if let sd = splitData {
+                Rectangle().fill(.white.opacity(0.1))
+                    .frame(width: 0.5)
+                    .padding(.vertical, 4)
+                splitPaceCompact(data: sd)
                     .frame(maxWidth: .infinity)
-                }
             }
-            Text(refNote).font(.system(size: 9)).foregroundStyle(IC.label)
         }
     }
 
     private func metricsSection(base: RunBaseline) -> some View {
         let L = AppLanguage.shared
-        return VStack(spacing: 8) {
-            if let sd = paceConsistencySec {
-                MetricRow(label: L.s("페이스 일관성", "Pace Consistency"),
-                          value: "±\(sd)" + L.s("초", "s"))
-            }
-            if let pct = backHalfPct {
-                MetricRow(label: L.s("후반 유지율", "Back-Half Retention"),
-                          value: String(format: "%.0f%%", pct))
-            }
-            if base.weeklyLoadKm > 0 {
-                let prevCtx: String? = base.prevWeeklyLoadKm > 0
-                    ? L.s("지난주 \(String(format: "%.1f", base.prevWeeklyLoadKm))km",
-                          "Last wk \(String(format: "%.1f", base.prevWeeklyLoadKm))km")
-                    : nil
-                MetricRow(label: L.s("이번 주 훈련량", "Weekly Load"),
-                          value: String(format: "%.1fkm", base.weeklyLoadKm),
-                          context: prevCtx)
-            }
-        }
+        let prevCtx: String? = base.prevWeeklyLoadKm > 0
+            ? L.s("지난주 \(String(format: "%.1f", base.prevWeeklyLoadKm))km",
+                  "Last wk \(String(format: "%.1f", base.prevWeeklyLoadKm))km")
+            : nil
+        return MetricRow(label: L.s("이번 주 훈련량", "Weekly Load"),
+                         value: String(format: "%.1fkm", base.weeklyLoadKm),
+                         context: prevCtx)
     }
 
     @ViewBuilder
@@ -1224,6 +1890,36 @@ private struct PerformanceInsightCard: View {
         return pts
     }
 
+    private var scatterData: [ScatterPt] {
+        let cal = Calendar.current
+        let cutoff8w = cal.date(byAdding: .weekOfYear, value: -8, to: activity.date) ?? .distantPast
+        let cutoff4w = cal.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
+        var result: [ScatterPt] = []
+        if let tp = activity.paceSecPerKm, tp > 0, let th = activity.avgHeartRate {
+            result.append(ScatterPt(pace: tp, hr: Double(th), group: .today))
+        }
+        let eligible = history
+            .filter {
+                $0.type == .running &&
+                $0.id != activity.id &&
+                $0.date >= cutoff8w && $0.date < activity.date &&
+                $0.distance / 1000 >= 3 &&
+                $0.avgHeartRate != nil &&
+                $0.paceSecPerKm != nil
+            }
+            .filter {
+                guard let wt = workoutTypeFn?($0.id) else { return true }
+                return wt != .interval && wt != .buildUp
+            }
+            .sorted { $0.date > $1.date }
+            .prefix(39)
+        for act in eligible {
+            let grp: ScatterGroup = act.date >= cutoff4w ? .recent : .past
+            result.append(ScatterPt(pace: act.paceSecPerKm!, hr: Double(act.avgHeartRate!), group: grp))
+        }
+        return result
+    }
+
     private var hrDelta: Int? {
         guard let curHR = activity.avgHeartRate else { return nil }
         let pts = hrTrendPts.filter { !$0.isToday }
@@ -1256,8 +1952,374 @@ private struct PerformanceInsightCard: View {
         return bAvg / fAvg * 100
     }
 
+    @ViewBuilder
+    private func intervalBarSection(segments: [IntervalSegment]) -> some View {
+        let L = AppLanguage.shared
+        let workPaces = segments.filter { $0.stepLabel == "운동" }.compactMap { $0.paceSecPerKm }
+        let maxPace = workPaces.max() ?? 1
+        let paceRange = max(1.0, (workPaces.max() ?? 1) - (workPaces.min() ?? 0))
+        let warmCool = segments.filter { let l = $0.stepLabel ?? ""; return !l.isEmpty && l != "운동" && l != "회복" }
+        let mainSegs = segments.filter { $0.stepLabel == "운동" || $0.stepLabel == "회복" }
+
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L.s("인터벌 구간", "Interval Segments"))
+                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            VStack(alignment: .leading, spacing: 1) {
+                // 준비운동·정리운동 — one compact line
+                if !warmCool.isEmpty {
+                    let wcText = warmCool.map { seg -> String in
+                        let lbl = seg.stepLabel ?? ""
+                        if let p = seg.paceSecPerKm {
+                            return "\(lbl) \(String(format: "%d'%02d\"", Int(p)/60, Int(p)%60))"
+                        }
+                        return lbl
+                    }.joined(separator: "  ·  ")
+                    Text(wcText)
+                        .font(.system(size: 7.5))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .monospacedDigit()
+                }
+
+                // 운동·회복 rows
+                ForEach(Array(mainSegs.enumerated()), id: \.0) { _, seg in
+                    let isWork = seg.stepLabel == "운동"
+                    let paceStr = seg.paceSecPerKm.map { String(format: "%d'%02d\"", Int($0)/60, Int($0)%60) } ?? ""
+                    let norm: Double = {
+                        guard let pace = seg.paceSecPerKm else { return 0.08 }
+                        return max(0.08, (maxPace - pace) / paceRange)
+                    }()
+                    if isWork {
+                        HStack(spacing: 6) {
+                            Text("운동")
+                                .font(.system(size: 8, weight: .medium))
+                                .foregroundStyle(Color(hex: "5CE08A"))
+                                .frame(width: 24, alignment: .leading)
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(.white.opacity(0.06))
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Color(hex: "5CE08A"))
+                                        .frame(width: max(4, geo.size.width * CGFloat(norm)))
+                                }
+                            }
+                            .frame(height: 6)
+                            Text(paceStr)
+                                .font(.system(size: 8.5, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.90))
+                                .monospacedDigit()
+                                .frame(width: 38, alignment: .trailing)
+                        }
+                    } else {
+                        // 회복 — label 숨김, 얇은 dim 바만
+                        HStack(spacing: 6) {
+                            Color.clear.frame(width: 24)
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(.white.opacity(0.04))
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(.white.opacity(0.12))
+                                        .frame(width: geo.size.width * 0.12)
+                                }
+                            }
+                            .frame(height: 4)
+                            Color.clear.frame(width: 38)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var weeklyBase: RunBaseline {
         RunInsightEngine.baseline(for: activity, history: history)
+    }
+
+    private var splitChartData: [SplitBarItem]? {
+        if let wt = workoutTypeFn?(activity.id), wt == .interval { return nil }
+        guard let splits = detail?.splits else { return nil }
+        let valid = splits.filter { $0.distanceM >= 900 }
+        guard valid.count >= 4 else { return nil }
+        let maxBars = 16
+        let total = valid.count
+        if total <= maxBars {
+            let half = total / 2
+            return valid.enumerated().map { i, s in
+                SplitBarItem(index: i, paceSecPerKm: s.paceSecPerKm,
+                             distanceM: s.distanceM, isFirstHalf: i < half)
+            }
+        } else {
+            let half = maxBars / 2
+            let groupSize = Double(total) / Double(maxBars)
+            return (0..<maxBars).map { b in
+                let start = Int((Double(b) * groupSize).rounded())
+                let end   = min(total, Int((Double(b + 1) * groupSize).rounded()))
+                let group = Array(valid[start..<end])
+                let avgPace  = group.map { $0.paceSecPerKm }.reduce(0, +) / Double(group.count)
+                let totalDist = group.map { $0.distanceM }.reduce(0, +)
+                return SplitBarItem(index: b, paceSecPerKm: avgPace,
+                                    distanceM: totalDist, isFirstHalf: b < half)
+            }
+        }
+    }
+
+    private var intervalChartData: [IntervalSegment]? {
+        guard let wt = workoutTypeFn?(activity.id), wt == .interval else { return nil }
+        let segs = (detail?.intervalSegments ?? []).filter { $0.paceSecPerKm != nil }
+        guard segs.count >= 2 else { return nil }
+        return segs
+    }
+
+    @ViewBuilder
+    private func splitPaceSection(data: [SplitBarItem]) -> some View {
+        let L = AppLanguage.shared
+        let paces = data.map(\.paceSecPerKm)
+        let minPace = paces.min() ?? 0
+        let maxPace = paces.max() ?? 1
+        let paceRange = max(1.0, maxPace - minPace)
+        let avgPace = paces.reduce(0, +) / Double(paces.count)
+        let half = data.filter(\.isFirstHalf).count
+        let fPaces = data.prefix(half).map(\.paceSecPerKm)
+        let bPaces = data.suffix(data.count - half).map(\.paceSecPerKm)
+        let fAvg = fPaces.isEmpty ? avgPace : fPaces.reduce(0, +) / Double(fPaces.count)
+        let bAvg = bPaces.isEmpty ? avgPace : bPaces.reduce(0, +) / Double(bPaces.count)
+        let backPct = bAvg > 0 ? fAvg / bAvg * 100 : 100.0
+        let sdSec: Int = {
+            let variance = paces.map { pow($0 - avgPace, 2) }.reduce(0, +) / Double(paces.count)
+            return Int(variance.squareRoot().rounded())
+        }()
+        let totalKm = data.map(\.distanceM).reduce(0, +) / 1000
+
+        let backColor: Color = backPct > 100 ? IC.green
+                               : backPct >= 95 ? IC.green
+                               : backPct >= 90 ? .white.opacity(0.7)
+                               : Color(hex: "FF9A3C")
+        let backSuffix: String = backPct > 100
+            ? L.s(" · 네거티브 스플릿", " · Negative split")
+            : backPct < 90 ? L.s(" · 후반 감속", " · Fade") : ""
+
+        VStack(alignment: .leading, spacing: 5) {
+            Canvas { ctx, size in
+                let w = size.width
+                let chartH = size.height
+                let xPad: CGFloat = 4
+                let n = data.count
+                let slotW = (w - xPad) / CGFloat(n)
+                let barW  = slotW * 0.62
+                let barGap = (slotW - barW) / 2
+
+                func normBarH(_ pace: Double) -> CGFloat {
+                    let norm = paceRange > 0 ? (maxPace - pace) / paceRange : 0.5
+                    return 12 + CGFloat(norm) * 30
+                }
+
+                let halfCount = data.filter(\.isFirstHalf).count
+                let halfX = xPad + CGFloat(halfCount) * slotW
+
+                // (a) 전·후반 배경
+                ctx.fill(Path(CGRect(x: xPad, y: 0, width: halfX - xPad, height: chartH)),
+                         with: .color(.white.opacity(0.03)))
+                ctx.fill(Path(CGRect(x: halfX, y: 0, width: w - halfX, height: chartH)),
+                         with: .color(Color(hex: "5BB8FF").opacity(0.06)))
+
+                // (b) 막대
+                for bar in data {
+                    let bx = xPad + CGFloat(bar.index) * slotW + barGap
+                    let bh = normBarH(bar.paceSecPerKm)
+                    let by = chartH - bh
+                    let opacity: Double = bar.paceSecPerKm < avgPace - 3 ? 0.85
+                                          : bar.paceSecPerKm <= avgPace + 3 ? 0.65
+                                          : 0.45
+                    ctx.fill(
+                        Path(roundedRect: CGRect(x: bx, y: by, width: barW, height: bh),
+                             cornerRadius: 2),
+                        with: .color(Color(hex: "5BB8FF").opacity(opacity))
+                    )
+                }
+
+                // (c) 평균 점선
+                let avgBH = normBarH(avgPace)
+                let avgLineY = chartH - avgBH
+                var dashPath = Path()
+                dashPath.move(to: CGPoint(x: xPad, y: avgLineY))
+                dashPath.addLine(to: CGPoint(x: w - 24, y: avgLineY))
+                ctx.stroke(dashPath, with: .color(Color(hex: "5BB8FF").opacity(0.7)),
+                           style: StrokeStyle(lineWidth: 0.8, dash: [4, 3]))
+                ctx.draw(
+                    Text(L.s("평균", "avg"))
+                        .font(.system(size: 6.5))
+                        .foregroundStyle(Color(hex: "5BB8FF").opacity(0.8)),
+                    at: CGPoint(x: w - 10, y: avgLineY),
+                    anchor: .center
+                )
+
+                // (d) 축선
+                var xAxis = Path()
+                xAxis.move(to: CGPoint(x: xPad, y: chartH))
+                xAxis.addLine(to: CGPoint(x: w, y: chartH))
+                ctx.stroke(xAxis, with: .color(.white.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: 0.8))
+                var yAxis = Path()
+                yAxis.move(to: CGPoint(x: xPad, y: 0))
+                yAxis.addLine(to: CGPoint(x: xPad, y: chartH))
+                ctx.stroke(yAxis, with: .color(.white.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: 0.8))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 75)
+
+            // x축 라벨
+            HStack {
+                Text("1").font(.system(size: 6.5)).foregroundStyle(.white.opacity(0.5))
+                Spacer()
+                Text(L.s("전반 │ 후반", "1H │ 2H"))
+                    .font(.system(size: 6.5)).foregroundStyle(.white.opacity(0.5))
+                Spacer()
+                Text(String(format: "%.0fkm", totalKm))
+                    .font(.system(size: 6.5)).foregroundStyle(.white.opacity(0.5))
+            }
+
+            // 페이스 편차 가로 막대
+            let sdColor: Color = sdSec <= 8 ? IC.green
+                               : sdSec <= 15 ? Color(hex: "F5C542")
+                               : Color(hex: "FF9A3C")
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(L.s("편차", "SD"))
+                        .font(.system(size: 8.5)).foregroundStyle(IC.label)
+                        .frame(width: 22, alignment: .leading)
+                    GeometryReader { geo in
+                        let fill = min(1.0, CGFloat(sdSec) / 25.0)
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
+                            RoundedRectangle(cornerRadius: 2.5).fill(sdColor.opacity(0.8))
+                                .frame(width: max(4, geo.size.width * fill))
+                        }
+                    }
+                    .frame(height: 7)
+                    Text("±\(sdSec)" + L.s("초", "s"))
+                        .font(.system(size: 9, weight: .medium)).foregroundStyle(sdColor)
+                        .frame(width: 30, alignment: .trailing)
+                }
+                HStack {
+                    Spacer()
+                    Text(L.s("후반 유지", "2H retention")
+                         + " " + String(format: "%.0f%%", backPct) + backSuffix)
+                        .font(.system(size: 9)).foregroundStyle(backColor)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func splitPaceCompact(data: [SplitBarItem]) -> some View {
+        let L = AppLanguage.shared
+        let paces = data.map(\.paceSecPerKm)
+        let avgPace = paces.reduce(0, +) / Double(paces.count)
+        let totalKm = data.map(\.distanceM).reduce(0, +) / 1000
+        let sdSec: Int = {
+            let variance = paces.map { pow($0 - avgPace, 2) }.reduce(0, +) / Double(paces.count)
+            return Int(variance.squareRoot().rounded())
+        }()
+
+        VStack(alignment: .leading, spacing: 4) {
+            ZStack(alignment: .trailing) {
+                Text(L.s("페이스 분포", "Pace Distribution"))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                Text("±\(sdSec)" + L.s("초", "s"))
+                    .font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.85))
+            }
+            Canvas { ctx, size in
+                let w = size.width
+                let chartH = size.height
+                let xPad: CGFloat = 2
+                let slotTarget: CGFloat = 9
+                let barCount = max(4, min(data.count, Int((w - xPad) / slotTarget)))
+
+                // Inline downsample: group original bars into barCount buckets
+                let displayBars: [(pace: Double, isFirstHalf: Bool)]
+                if data.count <= barCount {
+                    displayBars = data.map { ($0.paceSecPerKm, $0.isFirstHalf) }
+                } else {
+                    let gs = Double(data.count) / Double(barCount)
+                    let halfB = barCount / 2
+                    displayBars = (0..<barCount).map { b in
+                        let start = Int((Double(b) * gs).rounded())
+                        let end = min(data.count, Int((Double(b + 1) * gs).rounded()))
+                        let group = Array(data[start..<end])
+                        let avg = group.map { $0.paceSecPerKm }.reduce(0, +) / Double(group.count)
+                        return (pace: avg, isFirstHalf: b < halfB)
+                    }
+                }
+
+                let dPaces = displayBars.map(\.pace)
+                let dMin = dPaces.min() ?? 0
+                let dMax = dPaces.max() ?? 1
+                let dRange = max(1.0, dMax - dMin)
+                let dAvg = dPaces.reduce(0, +) / Double(dPaces.count)
+                let n = displayBars.count
+                let slotW = (w - xPad) / CGFloat(n)
+                let barW  = slotW * 0.65
+                let barGap = (slotW - barW) / 2
+
+                func normBarH(_ pace: Double) -> CGFloat {
+                    let norm = dRange > 0 ? (dMax - pace) / dRange : 0.5
+                    return 8 + CGFloat(norm) * (chartH - 12)
+                }
+
+                let halfCount = displayBars.filter(\.isFirstHalf).count
+                let halfX = xPad + CGFloat(halfCount) * slotW
+
+                ctx.fill(Path(CGRect(x: xPad, y: 0, width: halfX - xPad, height: chartH)),
+                         with: .color(.white.opacity(0.03)))
+                ctx.fill(Path(CGRect(x: halfX, y: 0, width: w - halfX, height: chartH)),
+                         with: .color(Color(hex: "5BB8FF").opacity(0.06)))
+
+                for (i, bar) in displayBars.enumerated() {
+                    let bx = xPad + CGFloat(i) * slotW + barGap
+                    let bh = normBarH(bar.pace)
+                    let opacity: Double = bar.pace < dAvg - 3 ? 0.85
+                                        : bar.pace <= dAvg + 3 ? 0.65 : 0.45
+                    ctx.fill(
+                        Path(roundedRect: CGRect(x: bx, y: chartH - bh, width: barW, height: bh),
+                             cornerRadius: 1.5),
+                        with: .color(Color(hex: "5BB8FF").opacity(opacity))
+                    )
+                }
+
+                let avgBH = normBarH(dAvg)
+                let avgY  = chartH - avgBH
+                var dash = Path()
+                dash.move(to: CGPoint(x: xPad, y: avgY))
+                dash.addLine(to: CGPoint(x: w - 32, y: avgY))
+                ctx.stroke(dash, with: .color(Color(hex: "5BB8FF").opacity(0.6)),
+                           style: StrokeStyle(lineWidth: 0.7, dash: [3, 2]))
+                let fmtAvg = String(format: "%d'%02d\"", Int(dAvg) / 60, Int(dAvg) % 60)
+                ctx.draw(
+                    Text(fmtAvg).font(.system(size: 7)).foregroundStyle(Color(hex: "5BB8FF").opacity(0.85)),
+                    at: CGPoint(x: w, y: avgY), anchor: .trailing
+                )
+
+                var xAxis = Path()
+                xAxis.move(to: CGPoint(x: xPad, y: chartH))
+                xAxis.addLine(to: CGPoint(x: w, y: chartH))
+                ctx.stroke(xAxis, with: .color(.white.opacity(0.3)), style: StrokeStyle(lineWidth: 0.7))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 82)
+
+            HStack {
+                Text("1").font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
+                Spacer()
+                Text(L.s("전반│후반", "1H│2H")).font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
+                Spacer()
+                Text(String(format: "%.0fkm", totalKm)).font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
+            }
+        }
     }
 
     private struct TrainingDistItem {
@@ -1269,7 +2331,10 @@ private struct PerformanceInsightCard: View {
 
         func evaluate(weeks: Int) -> [TrainingDistItem]? {
             let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -weeks, to: activity.date) ?? .distantPast
-            let runs = history.filter { $0.type == .running && $0.date >= cutoff && $0.date <= activity.date }
+            var runs = history.filter { $0.type == .running && $0.date >= cutoff && $0.date <= activity.date }
+            if activity.type == .running, !runs.contains(where: { $0.id == activity.id }) {
+                runs.append(activity)
+            }
             let known = runs.filter { fn($0.id) != nil }
             guard known.count >= 8 else { return nil }
             var groups: [String: (count: Int, color: Color)] = [:]
@@ -1295,38 +2360,48 @@ private struct PerformanceInsightCard: View {
         case .interval:                    return (L.s("인터벌", "Interval"), Color(hex: "FF9A3C"))
         case .tempo, .buildUp:             return (L.s("템포",   "Tempo"),    Color(hex: "F5C542"))
         case .lsd, .longRun, .distanceRun: return (L.s("LSD",   "LSD"),      Color(hex: "8B7FF0"))
-        case .easy, .general:              return (L.s("데일리런", "Daily"),   Color(hex: "6B7280"))
+        case .easy:                        return (L.s("이지런",    "Easy"),    Color(hex: "6B7280"))
+        case .general:                     return (L.s("일반 러닝", "General"), Color(hex: "8A8A92"))
         }
     }
 
     @ViewBuilder
-    private func distribSection(items: [TrainingDistItem], weeks: Int) -> some View {
+    private func distribHorizontalSection(items: [TrainingDistItem], weeks: Int) -> some View {
         let total = items.map(\.count).reduce(0, +)
-        let L = AppLanguage.shared
         let maxCount = max(1, items.map(\.count).max() ?? 1)
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L.s("훈련 배분 · 최근 \(weeks)주 \(total)회",
-                     "Training Mix · \(weeks)w · \(total) runs"))
-                .font(.system(size: 10)).foregroundStyle(IC.label)
-            HStack(alignment: .bottom, spacing: 4) {
-                ForEach(items, id: \.label) { item in
-                    VStack(spacing: 4) {
-                        Text("\(item.count)")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(item.color)
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(item.color.opacity(0.85))
-                            .frame(height: max(8, 44 * CGFloat(item.count) / CGFloat(maxCount)))
-                        Text(item.label)
-                            .font(.system(size: 8))
-                            .foregroundStyle(IC.label)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+        let L = AppLanguage.shared
+        VStack(alignment: .leading, spacing: 5) {
+            Text(L.s("훈련 배분 · \(weeks)주", "Training · \(weeks)w"))
+                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                .frame(maxWidth: .infinity, alignment: .center)
+            ForEach(items, id: \.label) { item in
+                HStack(spacing: 6) {
+                    Text(item.label)
+                        .font(.system(size: 8)).foregroundStyle(IC.label)
+                        .frame(width: 38, alignment: .leading)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2.5)
+                                .fill(.white.opacity(0.06))
+                            RoundedRectangle(cornerRadius: 2.5)
+                                .fill(item.color.opacity(0.85))
+                                .frame(width: max(4, geo.size.width * CGFloat(item.count) / CGFloat(maxCount)))
+                        }
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(height: 8)
+                    Text("\(item.count)")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(item.color)
+                        .frame(width: 14, alignment: .trailing)
                 }
             }
-            .frame(height: 72)
+            Text(L.s("총 \(total)회", "\(total) runs"))
+                .font(.system(size: 8)).foregroundStyle(IC.label)
+            if let wt = workoutTypeFn?(activity.id) {
+                Text(L.s("오늘의 러닝은 \(wt.koreanLabel)입니다", "Today: \(wt.koreanLabel)"))
+                    .font(.system(size: 8, weight: .medium)).foregroundStyle(.white.opacity(0.80))
+            }
         }
     }
 
@@ -1339,8 +2414,13 @@ private struct PerformanceInsightCard: View {
     }
 
     private var oneLiner: String? {
+        let L = AppLanguage.shared
         for cat: InsightCategory in [.efficiency, .endurance, .load, .cardio] {
-            if let m = insights.first(where: { $0.category == cat })?.message { return m }
+            guard let m = insights.first(where: { $0.category == cat })?.message else { continue }
+            if cat == .cardio && (age == nil || isMale == nil) {
+                return L.s("애플 건강 앱에서 나이와 성별 입력 필요합니다.", "Enter age & gender in Apple Health.")
+            }
+            return m
         }
         return insights.first?.message
     }
@@ -1359,6 +2439,7 @@ struct InsightExportSheet: View {
     var startTab: InsightTabKind = .rhythm
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -1435,7 +2516,6 @@ struct InsightExportSheet: View {
         VStack(spacing: 0) {
             exportHeader
             cardBody
-            exportFooter
         }
         .background(Theme.cardBackground)
     }
@@ -1444,13 +2524,11 @@ struct InsightExportSheet: View {
         HStack(alignment: .top, spacing: 8) {
             MIMOWordmark(size: 9)
 
-            Spacer()
-
             koreanDateTimeText
-                .font(.system(size: 9))
+                .font(.system(size: 11))
                 .lineLimit(1)
-
-            Spacer()
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, alignment: .center)
 
             VStack(alignment: .trailing, spacing: 4) {
                 if let temp = activity.temperatureC {
@@ -1504,7 +2582,8 @@ struct InsightExportSheet: View {
                 activity: activity, detail: detail,
                 history: history, age: age, isMale: isMale,
                 hrZones: hrZones, insights: insights,
-                cadenceSeries: cadenceSeries
+                cadenceSeries: cadenceSeries,
+                hrSamples: hrSamples
             )
         } else {
             PerformanceInsightCard(
@@ -1516,15 +2595,6 @@ struct InsightExportSheet: View {
         }
     }
 
-    private var exportFooter: some View {
-        Text(AppLanguage.shared.s(
-            "참고용 피트니스 인사이트. 의학적 판단이 아니에요.",
-            "Reference-only fitness insights. Not medical advice."
-        ))
-        .font(.system(size: 8.5))
-        .foregroundStyle(IC.label)
-        .padding(.horizontal, 16).padding(.vertical, 10)
-    }
 
     private var shareBar: some View {
         Button {
@@ -1555,13 +2625,37 @@ struct InsightExportSheet: View {
     @MainActor
     private func renderCard() {
         isRendering = true
+
+        // 1) 카드를 자연 높이로 렌더
         let renderer = ImageRenderer(content:
             exportCardView
                 .frame(width: 360)
                 .background(Theme.cardBackground)
         )
         renderer.scale = 3
-        exportImage = renderer.uiImage
+        guard let raw = renderer.uiImage else { isRendering = false; return }
+
+        // 2) 인스타그램 4:5 캔버스 (1080×1350px) 에 맞춤 합성
+        //    - 카드가 짧으면 하단을 배경색으로 채움
+        //    - 카드가 길면 비율 유지 축소 후 가운데 배치
+        let canvas = CGSize(width: 1080, height: 1350)
+        let bgColor = UIColor(Theme.cardBackground)
+
+        let scale = min(canvas.width / raw.size.width, canvas.height / raw.size.height)
+        let drawW = raw.size.width * scale
+        let drawH = raw.size.height * scale
+        let drawX = (canvas.width - drawW) / 2
+        let drawY: CGFloat = 0  // 상단 정렬
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+
+        exportImage = UIGraphicsImageRenderer(size: canvas, format: format).image { ctx in
+            bgColor.setFill()
+            ctx.fill(CGRect(origin: .zero, size: canvas))
+            raw.draw(in: CGRect(x: drawX, y: drawY, width: drawW, height: drawH))
+        }
         isRendering = false
     }
 }

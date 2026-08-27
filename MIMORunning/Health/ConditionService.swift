@@ -16,11 +16,25 @@ enum SleepGrade: String, Codable {
         case .poor:         L.s("매우낮음", "Very Poor")
         }
     }
+
+    // 수면 등급별 러닝 의견 (숫자 없이 등급만 표시하는 칩 옆에 노출)
+    var runningComment: String {
+        let L = AppLanguage.shared
+        return switch self {
+        case .excellent:    L.s("오늘 힘껏 달려도 좋아요",     "Great day to push hard")
+        case .good:         L.s("컨디션이 좋아요",             "Good condition today")
+        case .fair:         L.s("무리하지 않게 달리세요",       "Keep it comfortable")
+        case .insufficient: L.s("가볍게 달리는 걸 추천해요",   "Easy run recommended")
+        case .poor:         L.s("충분한 휴식 후 달리세요",     "Rest up before running")
+        }
+    }
 }
 
-/// 0–100 composite sleep quality score built from three weighted components.
-/// Labelled "수면상태" (not "수면 점수") to distinguish it from Apple Health's
-/// proprietary sleep score — values will differ.
+/// 애플 수면 점수와 동일한 3요소 구조(시간 50 / 일관성 30 / 중단 20)를
+/// 따르되, 애플의 실제 알고리즘은 비공개이므로 값은 일치하지 않는다.
+/// 관측 오차 범위: 대체로 ±10점, 수면이 분절된 날은 더 벌어질 수 있음.
+/// 앱 내부에서 일관된 상대 비교 지표로 사용한다.
+/// Labelled "수면상태" (not "수면 점수") to distinguish from Apple's proprietary score.
 struct SleepScore: Codable {
     let score: Int         // 0–100
     let grade: SleepGrade
@@ -28,29 +42,44 @@ struct SleepScore: Codable {
 
     static let displayName = "수면상태"
 
-    var isInsufficient: Bool { score < 55 }
+    var isInsufficient: Bool { score < 61 }  // 낮음(41-60) + 매우낮음(≤40) 모두 경고
     var chipLabel: String { grade.label }
 
     // MARK: Factory
 
     static func compute(durationHours: Double, consistencyPts: Int, interruptionPts: Int) -> SleepScore {
-        let durPts = durationScore(hours: durationHours)
+        let durPts = durationScore(hours: durationHours, goalHours: sleepGoalHours())
         let total  = max(0, min(100, durPts + consistencyPts + interruptionPts))
         let grade: SleepGrade
+        // iOS 26.2 기준: 80=보통, 81=높음 / 95=높음, 96=매우높음
         switch total {
-        case 85...: grade = .excellent
-        case 70..<85: grade = .good
-        case 55..<70: grade = .fair
-        case 40..<55: grade = .insufficient
-        default: grade = .poor
+        case 96...: grade = .excellent      // 매우높음: ≥96
+        case 81..<96: grade = .good         // 높음: 81–95
+        case 61..<81: grade = .fair         // 보통: 61–80
+        case 41..<61: grade = .insufficient // 낮음: 41–60
+        default: grade = .poor              // 매우낮음: ≤40
         }
+        // 디버그 로그는 querySleepScore 에서 출력 (편차·이력 수·각성 횟수까지 포함)
         return SleepScore(score: total, grade: grade, sleepHours: durationHours)
     }
 
-    // 0 pts at ≤4h, 50 pts at ≥7.5h, linear between
-    static func durationScore(hours: Double) -> Int {
-        let pts = (hours - 4.0) / (7.5 - 4.0) * 50.0
-        return max(0, min(50, Int(pts.rounded())))
+    /// 수면 목표 대비 비선형 배점 (0–50점). Apple 역산 기반 구간.
+    static func durationScore(hours: Double, goalHours: Double = 8.0) -> Int {
+        let ratio = hours / goalHours
+        switch ratio {
+        case 0.95...:     return 50
+        case 0.85..<0.95: return 44 + Int(((ratio - 0.85) / 0.10 * 6).rounded())
+        case 0.75..<0.85: return 37 + Int(((ratio - 0.75) / 0.10 * 7).rounded())
+        case 0.65..<0.75: return 29 + Int(((ratio - 0.65) / 0.10 * 8).rounded())
+        case 0.50..<0.65: return 16 + Int(((ratio - 0.50) / 0.15 * 13).rounded())
+        default:          return max(0, Int((ratio / 0.50 * 16).rounded()))
+        }
+    }
+
+    /// HealthKit 수면 스케줄 → UserDefaults → 기본 8시간 순으로 목표 시간 조회.
+    static func sleepGoalHours() -> Double {
+        // TODO: iOS 17+ HKSleepScheduleQuery 지원 시 HealthKit 우선 조회로 교체
+        return UserDefaults.standard.object(forKey: "sleepGoalHours") as? Double ?? 8.0
     }
 }
 
@@ -84,12 +113,18 @@ struct ActivityCondition: Codable {
     var hrvRecovery: HRVRecovery?
     /// 수면/HRV 조회를 완료했음을 표시. 이전 캐시는 false로 디코딩되어 1회 재조회 후 true로 갱신.
     var sleepChecked: Bool = false
+    /// 수면 점수 계산 공식 버전. 공식 변경 시 올려서 기존 캐시를 자동 무효화.
+    /// 이전 캐시는 필드 없으므로 0으로 디코딩 → 자동 재계산 트리거.
+    var sleepVersion: Int = 0
 
-    nonisolated init(weather: WeatherSnapshot? = nil, sleepScore: SleepScore? = nil, hrvRecovery: HRVRecovery? = nil, sleepChecked: Bool = false) {
+    static let currentSleepVersion = 19  // v19: 과보정 롤백 — asleep 합산·순환편차·26.2 등급만 유지
+
+    nonisolated init(weather: WeatherSnapshot? = nil, sleepScore: SleepScore? = nil, hrvRecovery: HRVRecovery? = nil, sleepChecked: Bool = false, sleepVersion: Int = 0) {
         self.weather = weather
         self.sleepScore = sleepScore
         self.hrvRecovery = hrvRecovery
         self.sleepChecked = sleepChecked
+        self.sleepVersion = sleepVersion
     }
 
     var hasAdverseSignal: Bool {

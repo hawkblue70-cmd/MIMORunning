@@ -1009,21 +1009,7 @@ enum RunInsightEngine {
         }
         let genderSuffix = isMale == nil ? "" : L.s(useMale ? " 남성" : " 여성", useMale ? " male" : " female")
 
-        // "(높음 기준 X 이상 · 추정값)" for high/aboveAvg; just "(추정값)" for belowAvg/low
-        let suffix: String
-        switch level {
-        case .high, .aboveAvg:
-            if let n = norm {
-                suffix = L.s(
-                    " (높음 기준 \(Int(n.high)) 이상 · 추정값)",
-                    " (High: \(Int(n.high)) or above · estimated)"
-                )
-            } else {
-                suffix = L.s(" (추정값)", " (estimated)")
-            }
-        case .belowAvg, .low:
-            suffix = L.s(" (추정값)", " (estimated)")
-        }
+        let suffix = ""
 
         let mainMsg: String
         switch level {

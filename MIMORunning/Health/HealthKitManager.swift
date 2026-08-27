@@ -2179,7 +2179,8 @@ class HealthKitManager {
         let cached = await ConditionCache.shared.condition(for: activity.id)
         if let cached {
             let needsWeather = cached.weather == nil && firstCoordinate != nil
-            let needsSleep   = !cached.sleepChecked
+            let needsSleep   = !cached.sleepChecked ||
+                               cached.sleepVersion < ActivityCondition.currentSleepVersion
 
             // Cache is complete — return immediately
             if !needsWeather && !needsSleep { return cached }
@@ -2195,6 +2196,7 @@ class HealthKitManager {
                 updated.sleepScore   = await sleepFetch
                 updated.hrvRecovery  = await hrvFetch
                 updated.sleepChecked = true
+                updated.sleepVersion = ActivityCondition.currentSleepVersion
             }
             await ConditionCache.shared.cache(updated, for: activity.id)
             return updated
@@ -2204,7 +2206,8 @@ class HealthKitManager {
         async let sleep   = querySleepScore(nightBefore: activity.date)
         async let hrv     = queryHRVRecovery(nightBefore: activity.date)
         let result = ActivityCondition(weather: await weather, sleepScore: await sleep,
-                                       hrvRecovery: await hrv, sleepChecked: true)
+                                       hrvRecovery: await hrv, sleepChecked: true,
+                                       sleepVersion: ActivityCondition.currentSleepVersion)
         await ConditionCache.shared.cache(result, for: activity.id)
         return result
     }
@@ -2278,9 +2281,12 @@ class HealthKitManager {
               let nightEnd   = cal.date(byAdding: .hour, value:  12, to: dayStart)
         else { return nil }
 
-        // Fetch tonight's samples and 14-day bedtime history concurrently
+        let dbFmt = DateFormatter(); dbFmt.dateFormat = "M/d"
+        print("[Sleep:진입] \(dbFmt.string(from: date)) 윈도우 \(dbFmt.string(from: nightStart))~\(dbFmt.string(from: nightEnd))")
+
+        // Fetch tonight's samples and 13-day bedtime history concurrently
         async let sleepTask   = fetchSleepSamples(from: nightStart, to: nightEnd)
-        async let historyTask = fetchBedtimeHistory(before: date, daysBack: 14)
+        async let historyTask = fetchBedtimeHistory(before: date, daysBack: 13)
         let (samples, bedtimeHistory) = await (sleepTask, historyTask)
 
         let asleepValues: Set<Int> = [
@@ -2291,11 +2297,12 @@ class HealthKitManager {
         ]
         let asleepSamples = samples.filter { asleepValues.contains($0.value) }
         let awakeSamples  = samples.filter { $0.value == HKCategoryValueSleepAnalysis.awake.rawValue }
-        guard !asleepSamples.isEmpty else { return nil }
+        print("[Sleep:샘플] 전체 \(samples.count)개, asleep \(asleepSamples.count)개, awake \(awakeSamples.count)개, 이력 \(bedtimeHistory.count)일")
+        guard !asleepSamples.isEmpty else { print("[Sleep:중단] asleep 샘플 없음"); return nil }
 
-        // Union-merge with 5-min gap tolerance (eliminates duplicate-source overlap)
+        // Union-merge asleep samples — 30분 갭 허용: 정상 각성 구간도 하나로 묶음
         let sorted = asleepSamples.map { ($0.startDate, $0.endDate) }.sorted { $0.0 < $1.0 }
-        let gapTolerance: TimeInterval = 5 * 60
+        let gapTolerance: TimeInterval = 30 * 60
         var merged: [(start: Date, end: Date)] = []
         for (s, e) in sorted {
             if let last = merged.last, s <= last.end.addingTimeInterval(gapTolerance) {
@@ -2313,16 +2320,28 @@ class HealthKitManager {
             return (blk.start, effEnd, effEnd.timeIntervalSince(blk.start) / 3600.0)
         }
         guard let main = candidates.max(by: { $0.hours < $1.hours }) else { return nil }
-        let hours = main.hours
+
+        // 실제 수면 시간 = 주 블록 안 asleep 샘플 합산
+        // (취침 시간 ≠ 수면 시간 — 각성·비수면 구간을 제외해야 Apple과 일치)
+        let inBlock = asleepSamples.filter { $0.endDate > main.start && $0.startDate < main.end }
+        let sleepIntervals = inBlock
+            .map { (max($0.startDate, main.start), min($0.endDate, main.end)) }
+            .sorted { $0.0 < $1.0 }
+        var mergedSleep: [(start: Date, end: Date)] = []
+        for (s, e) in sleepIntervals {
+            if let last = mergedSleep.last, s <= last.end {
+                mergedSleep[mergedSleep.count - 1] = (last.start, max(last.end, e))
+            } else {
+                mergedSleep.append((s, e))
+            }
+        }
+        let hours = mergedSleep.reduce(0.0) { $0 + $1.end.timeIntervalSince($1.start) } / 3600.0
         guard hours > 0.5, hours <= 12.0 else { return nil }
 
-        // Component 2 — consistency (max 30): bedtime deviation from 14-day average
-        let consistencyPts = sleepConsistencyScore(currentBedtime: main.start, history: bedtimeHistory)
+        // Component 2 — consistency (max 30): circular bedtime deviation from 13-day median
+        let (consistencyPts, devMinutes) = sleepConsistencyScore(currentBedtime: main.start, history: bedtimeHistory)
 
-        // Component 3 — interruptions (max 20): awake events inside main block.
-        // Union-merge awake samples first to deduplicate multiple sources (e.g. Watch + third-party
-        // app each writing their own awake stages). Then count only events lasting ≥ 5 min — brief
-        // arousals between sleep stages are physiologically normal and should not be penalised.
+        // Component 3 — interruptions (max 20): awake events inside main block
         let hasWatchData = asleepSamples.contains {
             $0.value == HKCategoryValueSleepAnalysis.asleepCore.rawValue ||
             $0.value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue ||
@@ -2337,15 +2356,24 @@ class HealthKitManager {
                 mergedAwake.append((start: s, end: e))
             }
         }
-        let minAwakeDuration: TimeInterval = 5 * 60
-        let awakeInBlock = mergedAwake.filter {
+        let minAwakeDuration: TimeInterval = 5 * 60   // 5분 미만 각성은 정상 수면 전환
+        let significantAwake = mergedAwake.filter {
             $0.start >= main.start && $0.start < main.end &&
             $0.end.timeIntervalSince($0.start) >= minAwakeDuration
-        }.count
-        let interruptionPts = sleepInterruptionScore(awakeCount: awakeInBlock, hasWatchData: hasWatchData)
+        }
+        let awakeInBlock = significantAwake.count
+        let bedSeconds   = main.end.timeIntervalSince(main.start)
+        let awakeMinutes = Int(max(0, (bedSeconds - hours * 3600.0) / 60.0))
+        let interruptionPts = sleepInterruptionScore(awakeCount: awakeInBlock, awakeMinutes: awakeMinutes, hasWatchData: hasWatchData)
 
         let score = SleepScore.compute(durationHours: hours, consistencyPts: consistencyPts,
                                        interruptionPts: interruptionPts)
+        let goalH    = SleepScore.sleepGoalHours()
+        let durPts   = SleepScore.durationScore(hours: hours, goalHours: goalH)
+        let devStr   = devMinutes >= 0 ? "\(devMinutes)분" : "이력부족"
+        let bedHours = bedSeconds / 3600.0
+        let dbFmt2   = DateFormatter(); dbFmt2.dateFormat = "M/d"
+        print("[Sleep] \(dbFmt2.string(from: date)) 취침 \(String(format: "%.2f", bedHours))h / 수면 \(String(format: "%.2f", hours))h(목표 \(String(format: "%.1f", goalH))h) / 각성 \(awakeMinutes)분 \(awakeInBlock)회 | 시간 \(durPts)/50 | 일관성 \(consistencyPts)/30 (편차 \(devStr)) | 각성 \(interruptionPts)/20 = \(score.score)")
         return score
     }
 
@@ -2399,41 +2427,82 @@ class HealthKitManager {
                 merged.append((start: s, end: e))
             }
         }
+        let cal2 = Calendar.current
         return merged.compactMap { blk -> Date? in
-            blk.end.timeIntervalSince(blk.start) / 3600 >= 3.0 ? blk.start : nil
+            guard blk.end.timeIntervalSince(blk.start) / 3600 >= 3.0 else { return nil }
+            // 낮잠·오전 회복수면 제외: 취침시각이 오후 6시(18시) ~ 새벽 5시 59분인 블록만
+            // (아침 달리기 후 낮잠이 3h+ 이상이면 평균 취침시각을 낮게 왜곡해 consistency=0 유발)
+            let h = cal2.component(.hour, from: blk.start)
+            guard h >= 18 || h < 6 else { return nil }
+            return blk.start
         }
     }
 
-    private func sleepInterruptionScore(awakeCount: Int, hasWatchData: Bool) -> Int {
-        guard hasWatchData else { return 10 } // phone-only: unknown → neutral
-        switch awakeCount {
-        case 0:  return 20
-        case 1:  return 16
-        case 2:  return 12
-        case 3:  return 7
-        default: return 2
+    /// 각성 점수 = 시간점수(max 14) + 횟수점수(max 6).
+    /// 워치 데이터 없으면 중간값 15점 고정.
+    private func sleepInterruptionScore(awakeCount: Int, awakeMinutes: Int, hasWatchData: Bool) -> Int {
+        guard hasWatchData else { return 15 }
+        let timePts: Int = switch awakeMinutes {
+        case ..<8:   14
+        case ..<15:  12
+        case ..<22:  9
+        case ..<30:  6
+        case ..<40:  3
+        case ..<55:  1
+        default:     0
         }
+        let countPts: Int = switch awakeCount {
+        case 0:  6
+        case 1:  5
+        case 2:  3
+        case 3:  2
+        default: 0
+        }
+        return max(0, timePts + countPts)
     }
 
-    private func sleepConsistencyScore(currentBedtime: Date, history: [Date]) -> Int {
-        guard history.count >= 3 else { return 15 } // not enough history → neutral
+    /// 취침 일관성 점수 (max 30). 반환값: (점수, 편차분) — 편차 -1 은 이력 부족.
+    /// 정오(12:00)를 기준점으로 순환 비교해 23:50↔00:10 같은 자정 넘김 오계산을 방지.
+    /// 중앙값 기준이라 하루 이상치에 덜 민감. 최저 6점 (Apple 정합 완화 곡선).
+    private func sleepConsistencyScore(currentBedtime: Date, history: [Date]) -> (score: Int, deviationMinutes: Int) {
+        guard history.count >= 5 else { return (21, -1) }  // 이력 부족 → 중간값 21
         let cal = Calendar.current
-        let toMins: (Date) -> Int = { d in
-            var h = cal.component(.hour, from: d)
+        // 정오를 원점으로 분 단위 환산 (0=12:00, 720=24:00/00:00, 1439=11:59)
+        let toMinsFromNoon: (Date) -> Int = { d in
+            let h = cal.component(.hour, from: d)
             let m = cal.component(.minute, from: d)
-            if h < 6 { h += 24 } // AM bedtimes normalized past midnight
-            return h * 60 + m
+            return ((h * 60 + m) - 12 * 60 + 1440) % 1440
         }
-        let historyMins = history.map(toMins)
-        let avgMins  = historyMins.reduce(0, +) / historyMins.count
-        let deviation = abs(toMins(currentBedtime) - avgMins)
-        switch deviation {
-        case ..<20:  return 30
-        case ..<40:  return 25
-        case ..<60:  return 18
-        case ..<90:  return 10
-        case ..<120: return 4
-        default:     return 0
+        // 순환 거리: 23:50 vs 00:10 → 20분 (1430분이 아님)
+        let circularDist: (Int, Int) -> Int = { a, b in
+            let diff = abs(a - b); return min(diff, 1440 - diff)
         }
+        // 중앙값 기준 (outlier에 덜 민감)
+        let sortedMins = history.map(toMinsFromNoon).sorted()
+        let median = sortedMins.count % 2 == 0
+            ? (sortedMins[sortedMins.count / 2 - 1] + sortedMins[sortedMins.count / 2]) / 2
+            : sortedMins[sortedMins.count / 2]
+        let deviation = circularDist(toMinsFromNoon(currentBedtime), median)
+
+        // 취침시각 디버그 로그
+        let tf = DateFormatter(); tf.dateFormat = "HH:mm"
+        let histStr = history.map { tf.string(from: $0) }.joined(separator: ", ")
+        let medFromMidnight = (median + 720) % 1440
+        let medStr = String(format: "%02d:%02d", medFromMidnight / 60, medFromMidnight % 60)
+        print("[Sleep:취침] 오늘 \(tf.string(from: currentBedtime)) | 이력 \(histStr) | 중앙값 \(medStr) | 편차 \(deviation)분")
+
+        // Apple 정합 곡선: 82분 편차 → 21점 (실측 일치)
+        let score: Int = switch deviation {
+        case ..<21:  30
+        case ..<36:  28
+        case ..<51:  26
+        case ..<71:  23
+        case ..<91:  21   // 82분이 여기 — Apple 값(21/30)과 일치
+        case ..<121: 17
+        case ..<151: 13
+        case ..<181: 9
+        default:     6    // 최저 6
+        }
+        return (score, deviation)
     }
 }

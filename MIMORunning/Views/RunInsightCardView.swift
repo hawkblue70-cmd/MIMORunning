@@ -115,6 +115,7 @@ struct RunInsightSection: View {
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     var isBackfilling: Bool = false
     var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
 
     var body: some View {
         if !insights.isEmpty, let act = activity {
@@ -130,7 +131,8 @@ struct RunInsightSection: View {
                 isAutoDetected: isAutoDetected,
                 workoutTypeFn: workoutTypeFn,
                 isBackfilling: isBackfilling,
-                cadenceSeries: cadenceSeries
+                cadenceSeries: cadenceSeries,
+                hrSamples: hrSamples
             )
         }
     }
