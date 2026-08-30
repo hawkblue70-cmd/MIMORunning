@@ -32,8 +32,14 @@ class HealthKitManager {
         (userDateOfBirth?.year ?? 0) > 1900 || manualAge > 0
     }
     var userLevel: UserLevel = UserLevel(bucket: .beginner, ageGrade: nil, best5KEquivSec: nil, best5KDate: nil, vdot: nil)
+    /// 유형 캐시 버전이 올라간 직후 8주 스플릿 포함 재분류 진행 중 여부.
+    var isWorkoutTypeReclassifying = false
+    /// 온디맨드 분류 완료 시 1 증가 → 리스트 배지 재렌더링 트리거.
+    var workoutTypeRevision: Int = 0
     /// Latest resting HR from HealthKit — used as RHR in Karvonen zone calc
     var restingHeartRate: Int? = nil
+    /// 폼 백필 진행 상황. nil = 백필 안 하는 중.
+    var formBackfillProgress: (done: Int, total: Int)? = nil
 
     private let store = HKHealthStore()
     @ObservationIgnored private var workoutCache: [UUID: HKWorkout] = [:]
@@ -47,6 +53,8 @@ class HealthKitManager {
     @ObservationIgnored private var panelSeriesCache: [String: [(offset: TimeInterval, value: Double)]] = [:]
     // 동일 지표 동시 요청 시 하나의 Task만 실행 — HealthKit 중복 조회 방지
     @ObservationIgnored private var metricFetchTasks: [String: Task<[(date: Date, value: Double)], Never>] = [:]
+    // 백필 중복 실행 방지 — 화면 전환 시 이전 Task 취소 후 새 Task 시작
+    @ObservationIgnored private var workoutTypeBackfillTask: Task<Void, Never>?
 
     // Codable proxies for disk serialization of time-series tuples
     private struct HRPoint: Codable { var offset: Double; var bpm: Int }
@@ -176,6 +184,8 @@ class HealthKitManager {
         migrateRunningMetricCacheIfNeeded()
         // 일회성 마이그레이션: 기온·습도 소급 적용
         migrateWeatherBackfillIfNeeded()
+        // 일회성 마이그레이션: 옛 JSON 형식 운동 유형 캐시 → 새 문자열 형식
+        migrateWorkoutTypeCacheEntries()
 
         // 메모리에 데이터 있고 완료 태그가 최근(5분 이내)이면 즉시 반환 — 디스크 I/O·락 없음
         // 5분 초과 시 웜캐시 갱신 허용 — 운동 완료 후 포그라운드 복귀 시 새 운동 감지
@@ -194,6 +204,15 @@ class HealthKitManager {
             activities = cached.map { $0.toActivity() }
             // 캐시 로드 직후 레벨 계산 — 아래 조기 return 경로에서도 레벨이 반영되도록
             userLevel = LevelEngine.compute(activities: activities, dateOfBirth: userDateOfBirth, isMale: userIsMale)
+            #if DEBUG
+            logWorkoutTypeCacheStats()
+            #endif
+            // 유형 캐시 버전이 올라간 뒤 처음 실행 → 8주를 스플릿 포함으로 즉시 재분류
+            if !UserDefaults.standard.bool(forKey: Self.workoutTypeReadyKey) {
+                isWorkoutTypeReclassifying = true
+                workoutTypeBackfillTask?.cancel()
+                workoutTypeBackfillTask = Task { await self.backfillWorkoutTypes(weeks: 8, forceReclassify: true) }
+            }
         }
 
         // 5분 이내 early return은 위에서 이미 처리됨.
@@ -514,11 +533,91 @@ class HealthKitManager {
 
     // MARK: - Detail (on demand)
 
-    private static let workoutTypeCacheKey = "mimo.workoutTypeCache.v1"
+    private static let workoutTypeCacheKey  = "mimo.workoutTypeCache.v7"  // v7: hasSplits=true 포함 전량 무효화 → Zone2 이지런 재분류
+    private static let workoutTypeReadyKey  = workoutTypeCacheKey + ".ready"  // true = 8주 스플릿 포함 재분류 완료
+    private static let formCacheKey         = "mimo.formCache.v1"
 
-    private func persistWorkoutType(_ type: WorkoutType, for id: UUID) {
+    // MARK: Form Metrics Cache
+
+    func cachedForm(for id: UUID) -> CachedFormMetrics? {
+        loadFormCacheDict()[id.uuidString]
+    }
+
+    private func persistForm(_ m: CachedFormMetrics, for id: UUID) {
+        var dict = loadFormCacheDict()
+        dict[id.uuidString] = m
+        saveFormCacheDict(dict)
+    }
+
+    /// fetchDetail 결과에서 폼 지표를 추출해 persistForm 호출.
+    private func persistFormFromDetail(_ detail: ActivityDetail, for id: UUID) {
+        guard detail.avgCadence != nil else { return }
+        let act = activities.first { $0.id == id }
+        persistForm(CachedFormMetrics(
+            cadence:       detail.avgCadence,
+            strideLength:  detail.avgStrideLength,
+            groundContact: detail.avgGroundContactTime,
+            verticalOsc:   detail.avgVerticalOscillation,
+            heartRate:     act?.avgHeartRate,
+            paceSecPerKm:  act?.paceSecPerKm,
+            date:          act?.date ?? Date()
+        ), for: id)
+    }
+
+    private func loadFormCacheDict() -> [String: CachedFormMetrics] {
+        guard let data = UserDefaults.standard.data(forKey: Self.formCacheKey),
+              let dict = try? JSONDecoder().decode([String: CachedFormMetrics].self, from: data)
+        else { return [:] }
+        return dict
+    }
+
+    private func saveFormCacheDict(_ dict: [String: CachedFormMetrics]) {
+        guard let data = try? JSONEncoder().encode(dict) else { return }
+        UserDefaults.standard.set(data, forKey: Self.formCacheKey)
+    }
+
+    /// 캐시 값 파싱: "tempo:1" → (tempo, true) / "tempo" 구형 포맷도 처리 (hasSplits=false)
+    private func parseWorkoutTypeEntry(_ raw: String) -> (type: WorkoutType, hasSplits: Bool)? {
+        let parts = raw.split(separator: ":", maxSplits: 1)
+        guard let typeRaw = parts.first, let t = WorkoutType(rawValue: String(typeRaw)) else { return nil }
+        return (t, parts.count > 1 && parts[1] == "1")
+    }
+
+    /// 옛 JSON 형식(CachedType{type, hasSplits}) 엔트리를 새 문자열 형식으로 마이그레이션.
+    /// 변환 불가 시 해당 키 삭제. 1회만 실행.
+    func migrateWorkoutTypeCacheEntries() {
+        let migKey = "mimo.migration.workoutTypeCache.jsonFormat.v1"
+        guard !UserDefaults.standard.bool(forKey: migKey) else { return }
+        struct LegacyCachedType: Codable { let type: String; let hasSplits: Bool }
         var dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
-        dict[id.uuidString] = type.rawValue
+        var migratedCount = 0, deletedCount = 0
+        for (key, raw) in dict {
+            guard parseWorkoutTypeEntry(raw) == nil else { continue }
+            if let data = raw.data(using: .utf8),
+               let legacy = try? JSONDecoder().decode(LegacyCachedType.self, from: data),
+               WorkoutType(rawValue: legacy.type) != nil {
+                dict[key] = "\(legacy.type):\(legacy.hasSplits ? "1" : "0")"
+                migratedCount += 1
+            } else {
+                dict.removeValue(forKey: key)
+                deletedCount += 1
+            }
+        }
+        UserDefaults.standard.set(dict, forKey: Self.workoutTypeCacheKey)
+        UserDefaults.standard.set(true, forKey: migKey)
+        #if DEBUG
+        print("[리스트:유형] 마이그레이션 \(migratedCount)건 / 삭제 \(deletedCount)건")
+        #endif
+    }
+
+    /// hasSplits=true 엔트리는 hasSplits=false 분류로 덮어쓰지 않는다 — 스플릿 없는 백필 오염 방지
+    private func persistWorkoutType(_ type: WorkoutType, hasSplits: Bool, for id: UUID) {
+        var dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+        let key = id.uuidString
+        if let existing = dict[key], parseWorkoutTypeEntry(existing)?.hasSplits == true, !hasSplits {
+            return
+        }
+        dict[key] = "\(type.rawValue):\(hasSplits ? "1" : "0")"
         UserDefaults.standard.set(dict, forKey: Self.workoutTypeCacheKey)
     }
 
@@ -546,6 +645,142 @@ class HealthKitManager {
         #endif
     }
 
+    // MARK: - On-demand list classification
+    private var onDemandClassifiedCount = 0
+    private var onDemandQueue: [Activity] = []
+    private var onDemandProcessing = false
+    var isOnDemandClassifying: Bool = false
+    private var _sortedRunHistory: [Activity] = []
+    private var _sortedRunHistoryCount = 0
+
+    /// activities.count 변화 시 1회 재정렬. 이진 탐색용 캐시.
+    private var sortedRunHistory: [Activity] {
+        if _sortedRunHistory.isEmpty || _sortedRunHistoryCount != activities.count {
+            _sortedRunHistory = activities.filter { $0.type == .running }.sorted { $0.date > $1.date }
+            _sortedRunHistoryCount = activities.count
+        }
+        return _sortedRunHistory
+    }
+
+    /// 시점 고정 — date 이전 러닝만 반환. 내림차순 정렬 배열에서 이진 탐색.
+    private func historyBefore(date: Date, in sorted: [Activity]) -> [Activity] {
+        var lo = 0, hi = sorted.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if sorted[mid].date >= date { lo = mid + 1 } else { hi = mid }
+        }
+        return Array(sorted[lo...])
+    }
+
+    /// 리스트 셀 등장 시 호출. 미분류 또는 잠정(hasSplits=false)이면 큐에 추가 후 확정 분류 실행.
+    func enqueueOnDemandClassification(activity: Activity) {
+        guard activity.type == .running else { return }
+        guard !onDemandQueue.contains(where: { $0.id == activity.id }) else { return }
+        // 이미 확정(hasSplits=true)인 건은 건너뜀
+        let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+        if let raw = dict[activity.id.uuidString], parseWorkoutTypeEntry(raw)?.hasSplits == true { return }
+        onDemandQueue.append(activity)
+        guard !onDemandProcessing else { return }
+        Task { await processOnDemandQueue() }
+    }
+
+    private func processOnDemandQueue() async {
+        guard !onDemandProcessing else { return }
+        onDemandProcessing = true
+        isOnDemandClassifying = true
+        defer { onDemandProcessing = false; isOnDemandClassifying = false }
+        let sorted = sortedRunHistory
+        while !onDemandQueue.isEmpty {
+            let batch = Array(onDemandQueue.prefix(10))
+            onDemandQueue.removeFirst(min(10, onDemandQueue.count))
+            var batchCounts: [String: Int] = [:]
+            for act in batch {
+                // 배치 집어들 때 다른 경로(백필 등)가 확정으로 저장했을 수도 있으므로 재확인
+                let dict2 = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+                if let raw = dict2[act.id.uuidString], parseWorkoutTypeEntry(raw)?.hasSplits == true { continue }
+
+                var actSplits: [SplitData] = []
+                var actSegments: [IntervalSegment] = []
+                var actHRZones: [HRZoneData] = []
+                if let cached = detailCache[act.id] {
+                    actSplits = cached.splits; actSegments = cached.intervalSegments; actHRZones = cached.hrZones
+                } else if let disk = loadDetailFromDisk(act.id) {
+                    actSplits = disk.splits; actSegments = disk.intervalSegments; actHRZones = disk.hrZones
+                }
+                if actSplits.isEmpty {
+                    let fetched = await fetchSplitsAndSegmentsForBackfill(activity: act)
+                    actSplits = fetched.splits
+                    if actSegments.isEmpty { actSegments = fetched.segments }
+                }
+                if actHRZones.isEmpty {
+                    if workoutCache[act.id] == nil { let _ = await fetchSplitsAndSegmentsForBackfill(activity: act) }
+                    if let wo = workoutCache[act.id] { actHRZones = await queryHRZones(workout: wo) }
+                }
+                let hist = historyBefore(date: act.date, in: sorted)
+                let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
+                let wt = WorkoutTypeClassifier.classify(
+                    activity: act, history: hist,
+                    splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify
+                )
+                persistWorkoutType(wt, hasSplits: !actSplits.isEmpty, for: act.id)
+                onDemandClassifiedCount += 1
+                batchCounts[wt.rawValue, default: 0] += 1
+            }
+            let savedCount = batchCounts.values.reduce(0, +)
+            if savedCount > 0 { workoutTypeRevision += 1 }
+            #if DEBUG
+            if !batchCounts.isEmpty {
+                let totalRuns = activities.filter { $0.type == .running }.count
+                let typeStr = batchCounts.sorted { $0.value > $1.value }
+                    .map { "\($0.key) \($0.value)" }.joined(separator: " · ")
+                print("[리스트:유형] 확정분류 +\(savedCount)건 (누적 \(onDemandClassifiedCount)/\(totalRuns)) · \(typeStr)")
+            }
+            #endif
+            await Task.yield()
+        }
+    }
+
+    /// 폼 기준선 입력 데이터.
+    /// 상세 캐시(detailCache) 우선, 없으면 UserDefaults 폼 캐시 사용.
+    var formInputs: [FormInput] {
+        let formDict = loadFormCacheDict()
+        return activities.compactMap { a -> FormInput? in
+            if let det = detailCache[a.id] { return FormInput(activity: a, detail: det) }
+            guard let f = formDict[a.id.uuidString] else { return nil }
+            return FormInput(activity: a, cached: f)
+        }
+    }
+
+#if DEBUG
+    /// [리스트:유형] 운동 유형 캐시 적중률 로그. Phase 0 캐시 로드 직후 1회 호출.
+    private func logWorkoutTypeCacheStats() {
+        let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+        let runs = activities.filter { $0.type == .running }
+        var success = 0, missingCount = 0, parseFailCount = 0, failReasons: [String] = []
+        for run in runs {
+            let key = run.id.uuidString
+            if let raw = dict[key] {
+                if parseWorkoutTypeEntry(raw) != nil { success += 1 }
+                else { parseFailCount += 1; failReasons.append("파싱실패(\(raw))") }
+            } else {
+                missingCount += 1
+            }
+        }
+        let failCount = missingCount + parseFailCount
+        print("[리스트:유형] 캐시 조회 \(runs.count)건 / 디코딩 성공 \(success)건 / 실패 \(failCount)건 (미등록 \(missingCount)건 · 파싱실패 \(parseFailCount)건)")
+        if !failReasons.isEmpty {
+            print("[리스트:유형] 디코딩 실패 사유: \(failReasons.prefix(5).joined(separator: ", "))")
+        }
+        var confirmed = 0, provisional = 0
+        for run in runs {
+            guard let raw = dict[run.id.uuidString],
+                  let entry = parseWorkoutTypeEntry(raw) else { continue }
+            if entry.hasSplits { confirmed += 1 } else { provisional += 1 }
+        }
+        print("[리스트:배지] 확정 \(confirmed)건 · 잠정 \(provisional)건")
+    }
+    #endif
+
     /// Returns the workout type for display in the list. Checks memory → UserDefaults (persists across launches).
     func cachedWorkoutType(for activityID: UUID) -> WorkoutType? {
         let type: WorkoutType
@@ -553,64 +788,414 @@ class HealthKitManager {
             type = detail.workoutType
         } else {
             let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
-            guard let raw = dict[activityID.uuidString], let t = WorkoutType(rawValue: raw) else { return nil }
-            type = t
+            guard let raw = dict[activityID.uuidString],
+                  let entry = parseWorkoutTypeEntry(raw) else { return nil }
+            type = entry.type
         }
         return type == .interval ? .interval : nil
     }
 
     /// Returns all workout types from cache (for training distribution stats).
-    /// Unlike cachedWorkoutType, this returns every type — not just .interval.
+    /// UserDefaults hasSplits=true (백필) 최우선 → detailCache → on-demand(hasSplits=false) 순서.
+    /// detailCache에 구버전 분류가 있어도 백필이 저장한 최신 값이 우선한다.
     func cachedWorkoutTypeForStats(for id: UUID) -> WorkoutType? {
-        if let detail = detailCache[id] { return detail.workoutType }
         let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
-        guard let raw = dict[id.uuidString] else { return nil }
-        return WorkoutType(rawValue: raw)
+        if let raw = dict[id.uuidString], let entry = parseWorkoutTypeEntry(raw), entry.hasSplits {
+            return entry.type   // 스플릿 포함 확정 — 최우선
+        }
+        if let detail = detailCache[id] { return detail.workoutType }  // detailCache 폴백
+        if let raw = dict[id.uuidString], let entry = parseWorkoutTypeEntry(raw) {
+            return entry.type   // on-demand 잠정
+        }
+        return nil
     }
 
-    /// Classifies uncached runs in the last `weeks` (minimum 8) weeks for training distribution.
-    /// Processes up to 20 runs sequentially, yielding between each to avoid UI jank.
-    func backfillWorkoutTypes(weeks: Int = 4) async {
-        let processedKey = "mimo.workoutTypeBackfill.processed.v1"
-        let processed = Set(UserDefaults.standard.stringArray(forKey: processedKey) ?? [])
+    /// hasSplits=false 로 저장된 엔트리는 잠정 분류 — 배지를 흐리게 표시.
+    /// 상세 진입 후 스플릿 포함 재분류 시 false 로 바뀌어 확정됨.
+    func isProvisionalWorkoutType(for id: UUID) -> Bool {
+        if detailCache[id] != nil { return false }
+        let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+        guard let raw = dict[id.uuidString],
+              let entry = parseWorkoutTypeEntry(raw) else { return false }
+        return !entry.hasSplits
+    }
+
+    /// 백필 전용 — 워크아웃 한 건의 스플릿·인터벌 세그먼트를 HealthKit에서 가볍게 조회.
+    /// `workoutCache`에 없으면 `fetchSingleWorkout`으로 보완. 실패 시 빈 튜플 반환.
+    private func fetchSplitsAndSegmentsForBackfill(activity: Activity) async -> (splits: [SplitData], segments: [IntervalSegment]) {
+        if workoutCache[activity.id] == nil { await fetchSingleWorkout(id: activity.id) }
+        guard let workout = workoutCache[activity.id] else { return ([], []) }
+        async let splitsTask   = querySplits(workout: workout)
+        async let segmentsTask = queryIntervalSegments(workout: workout)
+        return await (splitsTask, segmentsTask)
+    }
+
+    /// 8주 이내 러닝을 스플릿 포함으로 분류해 저장.
+    /// - forceReclassify: true → hasSplits=false 잠정 분류도 재처리 (캐시 버전 교체 후 즉시 정확화)
+    /// 배치당 10건, 최대 8배치(강제재분류 시), 배치 사이 5초 대기.
+    func backfillWorkoutTypes(weeks: Int = 4, forceReclassify: Bool = false) async {
         let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -max(weeks, 8), to: Date()) ?? .distantPast
         let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
 
-        let toProcess = activities
-            .filter { $0.type == .running && $0.date >= cutoff }
-            .filter { dict[$0.id.uuidString] == nil && !processed.contains($0.id.uuidString) }
-            .sorted { $0.date > $1.date }
-            .prefix(20)
+        let allRuns = activities.filter { $0.type == .running && $0.date >= cutoff }
+        let toProcess: [Activity]
+        if forceReclassify {
+            // hasSplits=false(잠정) 및 nil 모두 대상
+            toProcess = allRuns.filter { act in
+                guard let raw = dict[act.id.uuidString] else { return true }
+                return parseWorkoutTypeEntry(raw)?.hasSplits == false
+            }.sorted { $0.date > $1.date }
+        } else {
+            // 미분류(nil)와 잠정(hasSplits=false) 모두 대상 — 8주 창은 항상 확정으로 수렴
+            toProcess = allRuns.filter { act in
+                guard let raw = dict[act.id.uuidString] else { return true }
+                return parseWorkoutTypeEntry(raw)?.hasSplits == false
+            }.sorted { $0.date > $1.date }
+        }
 
-        guard !toProcess.isEmpty else { return }
+        #if DEBUG
+        let df = DateFormatter(); df.dateFormat = "M/d"
+        if forceReclassify {
+            print("[유형:재분류] \(max(weeks, 8))주 \(allRuns.count)건 — 스플릿 포함 배치 처리 (대상 \(toProcess.count)건)")
+        } else {
+            let nilCount = allRuns.filter { dict[$0.id.uuidString] == nil }.count
+            let provisionalInTarget = toProcess.count - nilCount
+            print("[유형:재분류] \(max(weeks, 8))주 \(allRuns.count)건 중 대상 \(toProcess.count)건 (미분류 \(nilCount) · 잠정 \(provisionalInTarget))")
+        }
+        if !toProcess.isEmpty {
+            let dates = toProcess.map { df.string(from: $0.date) }.joined(separator: ", ")
+            print("[유형:재분류] 캐시 없는/잠정 \(toProcess.count)건 = \(dates)")
+        }
+        #endif
 
-        let recentHistory = Array(activities
+        guard !toProcess.isEmpty else {
+            if forceReclassify {
+                UserDefaults.standard.set(true, forKey: Self.workoutTypeReadyKey)
+                isWorkoutTypeReclassifying = false
+            }
+            return
+        }
+
+        // prefix(30) 제거: 7/19 같은 과거 런을 분류할 때 그 이전 히스토리가 0건이 되는 버그 수정
+        let allRunHistory = activities
             .filter { $0.type == .running }
             .sorted { $0.date > $1.date }
-            .prefix(30))
 
-        // Pre-load splits from disk cache before classifying
-        var splitsByID: [UUID: [SplitData]] = [:]
-        for act in toProcess {
-            if let cached = detailCache[act.id] {
-                splitsByID[act.id] = cached.splits ?? []
-            } else if let disk = loadDetailFromDisk(act.id) {
-                splitsByID[act.id] = disk.splits ?? []
+        let batchSize = 10
+        let maxBatches = forceReclassify ? 12 : 5  // 강제재분류 시 최대 120건 처리
+
+        #if DEBUG
+        let logDF = DateFormatter(); logDF.dateFormat = "M/d"
+        #endif
+
+        for batchIdx in 0..<maxBatches {
+            guard !Task.isCancelled else {
+                #if DEBUG
+                print("[유형:재분류] 취소됨 (배치 \(batchIdx + 1) 이전)")
+                #endif
+                return
+            }
+            let start = batchIdx * batchSize
+            guard start < toProcess.count else { break }
+            let batch = Array(toProcess[start..<min(start + batchSize, toProcess.count)])
+
+            #if DEBUG
+            print("[훈련배분] 배치 \(batchIdx + 1): \(batch.count)건 (히스토리 \(allRunHistory.count)건 · 스플릿 조회 포함)")
+            #endif
+
+            var confirmedCount = 0, provisionalCount = 0
+            for act in batch {
+                var actSplits: [SplitData] = []
+                var actSegments: [IntervalSegment] = []
+                var actHRZones: [HRZoneData] = []
+                if let cached = detailCache[act.id] {
+                    actSplits    = cached.splits
+                    actSegments  = cached.intervalSegments
+                    actHRZones   = cached.hrZones
+                } else if let disk = loadDetailFromDisk(act.id) {
+                    actSplits    = disk.splits
+                    actSegments  = disk.intervalSegments
+                    actHRZones   = disk.hrZones
+                } else {
+                    let fetched  = await fetchSplitsAndSegmentsForBackfill(activity: act)
+                    actSplits    = fetched.splits
+                    actSegments  = fetched.segments
+                    // fetchSplitsAndSegmentsForBackfill이 workoutCache를 채워줬으므로 hrZones 즉시 조회
+                    if let wo = workoutCache[act.id] {
+                        actHRZones = await queryHRZones(workout: wo)
+                    }
+                }
+                // 디스크 캐시 구버전이라 splits가 비어있으면 HK에서 보완 — hasSplits=true 보장
+                if actSplits.isEmpty {
+                    let fetched = await fetchSplitsAndSegmentsForBackfill(activity: act)
+                    actSplits = fetched.splits
+                    if actSegments.isEmpty { actSegments = fetched.segments }
+                }
+                // 디스크 캐시가 구버전이라 hrZones가 비어있는 경우 HK에서 보완
+                if actHRZones.isEmpty {
+                    if workoutCache[act.id] == nil {
+                        let _ = await fetchSplitsAndSegmentsForBackfill(activity: act)
+                    }
+                    if let wo = workoutCache[act.id] {
+                        actHRZones = await queryHRZones(workout: wo)
+                    }
+                }
+                let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
+                #if DEBUG
+                let (type, trace) = WorkoutTypeClassifier.classifyWithTrace(
+                    activity: act, history: allRunHistory,
+                    splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify
+                )
+                #else
+                let type = WorkoutTypeClassifier.classify(
+                    activity: act, history: allRunHistory,
+                    splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify
+                )
+                #endif
+                persistWorkoutType(type, hasSplits: !actSplits.isEmpty, for: act.id)
+                if actSplits.isEmpty { provisionalCount += 1 } else { confirmedCount += 1 }
+                #if DEBUG
+                let distKm  = String(format: "%.1f", act.distance / 1000)
+                let paceStr = act.paceSecPerKm.map { "\(Int($0)/60)'\(String(format: "%02d", Int($0)%60))\"" } ?? "?"
+                let planStr = actSegments.filter { $0.stepLabel == "운동" }.count
+                let z2Str: String = {
+                    guard let z = zones4Classify, !z.isEmpty else { return " Zone2 없음" }
+                    let pct = Int((z.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +) * 100).rounded())
+                    return " Zone2 \(pct)%"
+                }()
+                let hrStr = act.avgHeartRate.map { " 심박\($0)" } ?? ""
+                if let oldType = detailCache[act.id]?.workoutType, oldType != type {
+                    print("[유형:판정:상세] \(logDF.string(from: act.date)) \(distKm)km → \(oldType.koreanLabel) → \(type.koreanLabel) (detailCache 재판정)")
+                }
+                print("[유형:판정] \(logDF.string(from: act.date)) \(distKm)km \(paceStr)\(z2Str)\(hrStr) splits=\(actSplits.count) 플랜=\(planStr > 0 ? "\(planStr)회" : "없음") → \(type.koreanLabel) (\(trace))")
+                #endif
+                await Task.yield()
+            }
+            #if DEBUG
+            print("[훈련배분] 배치 \(batchIdx + 1) 완료: \(batch.count)건 → 확정 저장 \(confirmedCount)건 · 잠정 \(provisionalCount)건")
+            #endif
+
+            let hasMore = (start + batchSize) < toProcess.count
+            if hasMore && batchIdx + 1 < maxBatches {
+                try? await Task.sleep(for: .seconds(5))
             }
         }
 
-        var newProcessed = Array(processed)
+        #if DEBUG
+        let processed = min(toProcess.count, batchSize * maxBatches)
+        if forceReclassify {
+            print("[유형:재분류] 완료 — \(processed)건 스플릿 포함 재분류")
+        } else {
+            print("[훈련배분] 백필 완료 — 총 \(processed)건")
+        }
+        #endif
+
+        workoutTypeRevision += 1
+        if forceReclassify {
+            UserDefaults.standard.set(true, forKey: Self.workoutTypeReadyKey)
+            isWorkoutTypeReclassifying = false
+        }
+    }
+
+    /// 열람 러닝 기준 4주 창의 미분류(hasSplits=false 포함) 러닝을 스플릿 포함으로 즉시 백필.
+    /// 이미 hasSplits=true 캐시가 있는 항목은 건너뜀 — 두 번째 방문부터 비용 0.
+    func backfillWorkoutTypesAroundActivity(_ activity: Activity) async {
+        guard activity.type == .running else { return }
+        let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
+        let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+        let windowRuns = activities
+            .filter { $0.type == .running && $0.date >= cutoff && $0.date <= activity.date }
+        let toProcess = windowRuns.filter { act in
+            guard let raw = dict[act.id.uuidString],
+                  let entry = parseWorkoutTypeEntry(raw) else { return true }
+            return !entry.hasSplits  // 잠정 분류 → 재분류
+        }.sorted { $0.date > $1.date }
+
+        guard !toProcess.isEmpty else {
+            #if DEBUG
+            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+            print("[훈련배분] 창 \(df.string(from: cutoff)) ~ \(df.string(from: activity.date)) · 미분류 0건 → 건너뜀")
+            #endif
+            return
+        }
+        #if DEBUG
+        let df2 = DateFormatter(); df2.dateFormat = "yyyy-MM-dd"
+        print("[훈련배분] 창 \(df2.string(from: cutoff)) ~ \(df2.string(from: activity.date)) · 미분류 \(toProcess.count)건 → 온디맨드 백필")
+        #endif
+
+        let allRunHistory = activities
+            .filter { $0.type == .running }
+            .sorted { $0.date > $1.date }
+
         for act in toProcess {
+            guard !Task.isCancelled else { return }
+            var actSplits: [SplitData] = []
+            var actSegments: [IntervalSegment] = []
+            var actHRZones: [HRZoneData] = []
+            if let cached = detailCache[act.id] {
+                actSplits = cached.splits; actSegments = cached.intervalSegments; actHRZones = cached.hrZones
+            } else if let disk = loadDetailFromDisk(act.id) {
+                actSplits = disk.splits; actSegments = disk.intervalSegments; actHRZones = disk.hrZones
+            }
+            if actSplits.isEmpty {
+                let fetched = await fetchSplitsAndSegmentsForBackfill(activity: act)
+                actSplits = fetched.splits
+                if actSegments.isEmpty { actSegments = fetched.segments }
+            }
+            if actHRZones.isEmpty {
+                if workoutCache[act.id] == nil { let _ = await fetchSplitsAndSegmentsForBackfill(activity: act) }
+                if let wo = workoutCache[act.id] { actHRZones = await queryHRZones(workout: wo) }
+            }
+            let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
             let type = WorkoutTypeClassifier.classify(
                 activity: act,
-                history: recentHistory,
-                splits: splitsByID[act.id] ?? []
+                history: historyBefore(date: act.date, in: allRunHistory),
+                splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify
             )
-            persistWorkoutType(type, for: act.id)
-            newProcessed.append(act.id.uuidString)
+            persistWorkoutType(type, hasSplits: !actSplits.isEmpty, for: act.id)
             await Task.yield()
         }
-        UserDefaults.standard.set(newProcessed, forKey: processedKey)
+        workoutTypeRevision += 1
+    }
+
+    // MARK: - Form Metrics Backfill
+
+    /// 최근 N개월 러닝의 폼 지표(케이던스·보폭·지면접촉·수직진폭)를
+    /// HealthKit에서 가볍게 조회해 UserDefaults 캐시에 저장.
+    /// 배치당 50건, 최대 5배치(250건). 배치 사이 3초 대기.
+    /// 전체 ActivityDetail(무거움)은 부르지 않음.
+    /// - Returns: 이번 호출에서 새로 처리한 항목 수 (기준선 재계산 여부 판단에 사용)
+    @discardableResult
+    func backfillFormMetrics(months: Int = 12) async -> Int {
+        // v2: processed 키 변경 → 과거 편중 세트 리셋, 균등 샘플링으로 재시도
+        let processedKey = "mimo.formBackfill.processed.v2"
+        var processed = Set(UserDefaults.standard.stringArray(forKey: processedKey) ?? [])
+        let cutoff = Calendar.current.date(byAdding: .month, value: -months, to: Date()) ?? .distantPast
+
+        let batchSize = 50
+        let maxBatches = 5
+        var totalDone = 0
+
+        // 세션 전체 처리 예정량 (진행 표시용, 최대 250)
+        let initialDict = loadFormCacheDict()
+        let total12m   = activities.filter { $0.type == .running && $0.date >= cutoff }.count
+        let total12m3k = activities.filter { $0.type == .running && $0.date >= cutoff && $0.distance >= 3000 }.count
+        print("[FormBackfill] 12개월 러닝 \(total12m)건 / 3km이상 \(total12m3k)건 / 캐시 \(initialDict.count)건")
+
+        let sessionTotal = min(
+            activities
+                .filter { $0.type == .running && $0.date >= cutoff }
+                .filter { initialDict[$0.id.uuidString] == nil && !processed.contains($0.id.uuidString) }
+                .count,
+            batchSize * maxBatches
+        )
+
+        guard sessionTotal > 0 else {
+            print("[FormBackfill] 처리할 항목 없음 (캐시 \(initialDict.count)건)")
+            return 0
+        }
+
+        for batchIndex in 1...maxBatches {
+            guard !Task.isCancelled else { break }
+
+            var formDict = loadFormCacheDict()
+
+            // 대상: 러닝 + 기간 내 + 폼 캐시 없음 + 미처리 — 오름차순 후 균등 stride 샘플링
+            let available = activities
+                .filter { $0.type == .running && $0.date >= cutoff }
+                .filter { formDict[$0.id.uuidString] == nil && !processed.contains($0.id.uuidString) }
+                .sorted { $0.date < $1.date }  // 오래된 것부터 → 12개월 전체 고르게 커버
+
+            guard !available.isEmpty else { break }
+
+            let step = max(1, available.count / batchSize)
+            let targets = stride(from: 0, to: available.count, by: step)
+                .prefix(batchSize)
+                .map { available[$0] }
+
+            print("[FormBackfill] 배치 \(batchIndex)/\(maxBatches) — \(targets.count)건 시작 (stride \(step), 누적 \(totalDone)/\(sessionTotal))")
+
+            let targetIDs = Set(targets.map(\.id))
+            // 가장 오래된 선택 활동 기준으로 쿼리 기간 설정 (오름차순 정렬 → first가 최고오래됨)
+            let minDate = targets.first?.date.addingTimeInterval(-3600) ?? cutoff
+
+            // 해당 기간 HKWorkout 일괄 조회
+            let hkWorkouts: [HKWorkout]
+            do { hkWorkouts = try await queryWorkouts(since: minDate, until: Date()) }
+            catch {
+                print("[FormBackfill] workout 조회 실패: \(error)")
+                break
+            }
+
+            let workoutMap = Dictionary(
+                hkWorkouts
+                    .filter { targetIDs.contains($0.uuid) && $0.workoutActivityType == .running }
+                    .map { ($0.uuid, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+
+            var batchDone = 0
+            for act in targets {
+                guard !Task.isCancelled else { break }
+                defer { processed.insert(act.id.uuidString) }
+
+                guard let workout = workoutMap[act.id] else { continue }
+
+                // 4지표 동시 조회 (같은 workout → 단일 기간)
+                async let cad  = queryCadence(workout: workout)
+                async let gct  = queryAvgQuantity(.runningGroundContactTime,
+                                                   unit: .secondUnit(with: .milli), workout: workout)
+                async let str  = queryAvgQuantity(.runningStrideLength,
+                                                   unit: .meter(), workout: workout)
+                async let vOsc = queryAvgQuantity(.runningVerticalOscillation,
+                                                   unit: .meterUnit(with: .centi), workout: workout)
+
+                let (cadence, groundContact, strideLen, vertOsc) = await (cad, gct, str, vOsc)
+                formDict[act.id.uuidString] = CachedFormMetrics(
+                    cadence:       cadence,
+                    strideLength:  strideLen,
+                    groundContact: groundContact,
+                    verticalOsc:   vertOsc,
+                    heartRate:     act.avgHeartRate,
+                    paceSecPerKm:  act.paceSecPerKm,
+                    date:          act.date
+                )
+                batchDone += 1
+                totalDone += 1
+                formBackfillProgress = (done: totalDone, total: sessionTotal)
+
+                #if DEBUG
+                if batchDone % 5 == 0 || batchDone == targets.count {
+                    print("[FormBackfill] \(batchDone)/\(targets.count) (배치 \(batchIndex)) 케이던스 있음: \(cadence != nil)")
+                }
+                #endif
+
+                await Task.yield()
+            }
+
+            saveFormCacheDict(formDict)
+            UserDefaults.standard.set(Array(processed), forKey: processedKey)
+            print("[FormBackfill] 배치 \(batchIndex)/\(maxBatches) 완료 — 누적 \(totalDone)건, 캐시 총 \(loadFormCacheDict().count)건")
+
+            // Task가 취소됐거나 배치가 중간에 끊겼으면 종료
+            if Task.isCancelled || batchDone < targets.count { break }
+
+            // 남은 항목 확인 — 없으면 종료, 있으면 다음 배치
+            let nextDict = loadFormCacheDict()
+            let remaining = activities
+                .filter { $0.type == .running && $0.date >= cutoff }
+                .filter { nextDict[$0.id.uuidString] == nil && !processed.contains($0.id.uuidString) }
+                .count
+            guard remaining > 0, batchIndex < maxBatches else { break }
+
+            print("[FormBackfill] \(remaining)건 남음 — \(batchIndex + 1)번째 배치 (3초 대기)")
+            do { try await Task.sleep(nanoseconds: 3_000_000_000) }
+            catch { break }  // 취소 시 즉시 종료
+        }
+
+        formBackfillProgress = nil
+        print("[FormBackfill] 세션 완료 — 총 처리 \(totalDone)건")
+        return totalDone
     }
 
     func fetchDetail(for activityID: UUID) async -> ActivityDetail? {
@@ -618,16 +1203,43 @@ class HealthKitManager {
         // 캐시히트 여부와 관계없이 workoutTypeCache 누적 현황 출력
         defer {
             let _d = UserDefaults.standard
-                .dictionary(forKey: "mimo.workoutTypeCache.v1")
+                .dictionary(forKey: Self.workoutTypeCacheKey)
                 as? [String: String] ?? [:]
-            let _ic = _d.values.filter { $0 == "interval" }.count
+            let _ic = _d.values.filter { parseWorkoutTypeEntry($0)?.type == .interval }.count
             print("[유형] 인터벌 \(_ic)/\(_d.count)건")
         }
         #endif
         if let cached = detailCache[activityID], cached.isComplete { return cached }
-        if let disk = loadDetailFromDisk(activityID), disk.isComplete {
+        if var disk = loadDetailFromDisk(activityID), disk.isComplete {
+            // 디스크의 workoutType은 구버전 분류기 결과일 수 있으므로 현재 분류기로 재계산
+            var actHRZones = disk.hrZones
+            if actHRZones.isEmpty, let wo = workoutCache[activityID] {
+                actHRZones = await queryHRZones(workout: wo)
+            }
+            let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
+            let oldType = disk.workoutType
+            if let act = activities.first(where: { $0.id == activityID }) {
+                let hist = historyBefore(date: act.date, in: sortedRunHistory)
+                let type = WorkoutTypeClassifier.classify(
+                    activity: act, history: hist,
+                    splits: disk.splits, intervalSegments: disk.intervalSegments, hrZones: zones4Classify
+                )
+                disk.workoutType = type
+                #if DEBUG
+                let df = DateFormatter(); df.dateFormat = "M/d"
+                let paceStr = act.paceSecPerKm.map { "\(Int($0)/60)'\(String(format: "%02d", Int($0)%60))\"" } ?? "?"
+                let z2Str: String = zones4Classify.map { z in
+                    "Zone2 \(Int((z.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +) * 100).rounded()))% "
+                } ?? ""
+                let cacheTag = type != oldType ? " · 상세캐시 갱신" : ""
+                print("[유형:판정:상세] \(df.string(from: act.date)) \(String(format: "%.1f", act.distance/1000))km \(paceStr) \(z2Str)splits=\(disk.splits.count) → \(type.koreanLabel) (디스크 재판정\(cacheTag))")
+                #endif
+                // 재판정 결과가 바뀌었으면 디스크 캐시도 갱신 — 다음 실행에서 또 재판정 방지
+                if type != oldType { saveDetailToDisk(disk, id: activityID) }
+            }
             detailCache[activityID] = disk
-            persistWorkoutType(disk.workoutType, for: activityID)
+            persistWorkoutType(disk.workoutType, hasSplits: !disk.splits.isEmpty, for: activityID)
+            persistFormFromDetail(disk, for: activityID)
             return disk
         }
         let result = await fetchDetailFromHealthKit(for: activityID)
@@ -636,7 +1248,33 @@ class HealthKitManager {
             // Only persist when data is complete so the next visit retries HealthKit
             // if fields like GPS route were still being processed at the time of fetch.
             if result.isComplete { saveDetailToDisk(result, id: activityID) }
-            persistWorkoutType(result.workoutType, for: activityID)
+            #if DEBUG
+            let _oldDict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+            let _oldType = _oldDict[activityID.uuidString].flatMap { WorkoutType(rawValue: $0) }
+            let _act = activities.first { $0.id == activityID }
+            let _df  = DateFormatter(); _df.dateFormat = "M/d"
+            let _ds  = _act.map { _df.string(from: $0.date) } ?? "?"
+            let _km  = _act.map { String(format: "%.1f", $0.distance/1000) } ?? "?"
+            let _ps: String
+            if let a = _act, let sec = a.paceSecPerKm {
+                _ps = "\(Int(sec)/60)'\(String(format: "%02d", Int(sec)%60))\""
+            } else { _ps = "?" }
+            let _sn = result.splits.count
+            let _in = result.intervalSegments.filter { $0.stepLabel == "운동" }.count
+            let _z2: String = {
+                let zones = result.hrZones
+                guard !zones.isEmpty else { return "" }
+                let pct = Int((zones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +) * 100).rounded())
+                return " Zone2 \(pct)%"
+            }()
+            let _hrTag = _act.flatMap(\.avgHeartRate).map { " 심박\($0)" } ?? ""
+            if let old = _oldType, old != result.workoutType {
+                print("[유형] 재분류 \(_ds) \(old.koreanLabel) → \(result.workoutType.koreanLabel) (상세데이터 반영) 캐시갱신")
+            }
+            print("[유형:판정] \(_ds) \(_km)km \(_ps)\(_z2)\(_hrTag) splits=\(_sn) 플랜=\(_in > 0 ? "\(_in)회" : "없음") → \(result.workoutType.koreanLabel)")
+            #endif
+            persistWorkoutType(result.workoutType, hasSplits: !result.splits.isEmpty, for: activityID)
+            persistFormFromDetail(result, for: activityID)
         }
         return result
     }
@@ -645,14 +1283,20 @@ class HealthKitManager {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_detail", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // v8: VO2Max 조회 윈도우 +24h 확장(워크아웃 종료 후 기록된 샘플 포함). 기존 v7 캐시 자동 무효화.
-        return dir.appendingPathComponent("v8_\(id.uuidString).json")
+        // v9: SplitData에 avgGroundContactTime·avgStrideLength 추가. 기존 v8 캐시 자동 무효화.
+        return dir.appendingPathComponent("v9_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
         let url = detailCacheURL(id)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(ActivityDetail.self, from: data)
+    }
+
+    /// 메모리 캐시 → 디스크 캐시 순서로 조회. RaceInsightCard 등 외부에서 splits 로드 시 사용.
+    func detailFromCache(_ id: UUID) -> ActivityDetail? {
+        if let cached = detailCache[id] { return cached }
+        return loadDetailFromDisk(id)
     }
 
     private func saveDetailToDisk(_ detail: ActivityDetail, id: UUID) {
@@ -693,8 +1337,20 @@ class HealthKitManager {
 
             let workoutType: WorkoutType = {
                 guard let activity = activities.first(where: { $0.id == activityID }) else { return .general }
+                #if DEBUG
+                let (wt, trace) = WorkoutTypeClassifier.classifyWithTrace(
+                    activity: activity, history: activities,
+                    splits: splits, intervalSegments: intervals, hrZones: zones)
+                let z2dbg = zones.isEmpty ? "hrZones없음"
+                    : "Zone2 \(Int((zones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +) * 100).rounded()))%"
+                let dfdbg = DateFormatter(); dfdbg.dateFormat = "M/d"
+                print("[유형:판정:상세] \(dfdbg.string(from: activity.date)) \(z2dbg) splits=\(splits.count) → \(wt.koreanLabel) (\(trace))")
+                return wt
+                #else
                 return WorkoutTypeClassifier.classify(activity: activity, history: activities,
-                                                      splits: splits, intervalSegments: intervals)
+                                                      splits: splits, intervalSegments: intervals,
+                                                      hrZones: zones)
+                #endif
             }()
             return ActivityDetail(
                 routeCoordinates: locations.map(\.coordinate),
@@ -1490,10 +2146,30 @@ class HealthKitManager {
             predicates: [cadPred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
-        async let powerFetch = powerDesc.result(for: store)
-        async let cadFetch   = cadDesc.result(for: store)
-        let powerSamples = (try? await powerFetch) ?? []
-        let cadSamples   = (try? await cadFetch)   ?? []
+        let gctPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.runningGroundContactTime),
+            predicate: HKQuery.predicateForObjects(from: workout)
+        )
+        let gctDesc = HKSampleQueryDescriptor(
+            predicates: [gctPred],
+            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+        )
+        let stridePred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.runningStrideLength),
+            predicate: HKQuery.predicateForObjects(from: workout)
+        )
+        let strideDesc = HKSampleQueryDescriptor(
+            predicates: [stridePred],
+            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+        )
+        async let powerFetch  = powerDesc.result(for: store)
+        async let cadFetch    = cadDesc.result(for: store)
+        async let gctFetch    = gctDesc.result(for: store)
+        async let strideFetch = strideDesc.result(for: store)
+        let powerSamples  = (try? await powerFetch)  ?? []
+        let cadSamples    = (try? await cadFetch)    ?? []
+        let gctSamples    = (try? await gctFetch)    ?? []
+        let strideSamples = (try? await strideFetch) ?? []
         let paused = pausedIntervals(for: workout)
 
         // Build cumulative distance timeline: (date, cumulative meters)
@@ -1530,7 +2206,9 @@ class HealthKitManager {
                 id: crossing.km, distanceM: 1000, duration: activeDur,
                 avgHeartRate: hr,
                 avgCadence: splitAvgCadence(from: prevDate, to: crossing.date, samples: cadSamples, paused: paused),
-                avgPower: splitAvgPower(from: prevDate, to: crossing.date, samples: powerSamples, paused: paused)
+                avgPower: splitAvgPower(from: prevDate, to: crossing.date, samples: powerSamples, paused: paused),
+                avgGroundContactTime: splitAvgGCT(from: prevDate, to: crossing.date, samples: gctSamples, paused: paused),
+                avgStrideLength: splitAvgStrideLength(from: prevDate, to: crossing.date, samples: strideSamples, paused: paused)
             ))
             prevDate = crossing.date
         }
@@ -1546,7 +2224,9 @@ class HealthKitManager {
                     id: lastKm + 1, distanceM: remaining, duration: activeDur,
                     avgHeartRate: hr,
                     avgCadence: splitAvgCadence(from: prevDate, to: lastDate, samples: cadSamples, paused: paused),
-                    avgPower: splitAvgPower(from: prevDate, to: lastDate, samples: powerSamples, paused: paused)
+                    avgPower: splitAvgPower(from: prevDate, to: lastDate, samples: powerSamples, paused: paused),
+                    avgGroundContactTime: splitAvgGCT(from: prevDate, to: lastDate, samples: gctSamples, paused: paused),
+                    avgStrideLength: splitAvgStrideLength(from: prevDate, to: lastDate, samples: strideSamples, paused: paused)
                 ))
             }
         }
@@ -1585,6 +2265,21 @@ class HealthKitManager {
         let spm = (totalSteps / totalDurSec) * 60
         let corrected = spm > 200 ? spm / 2 : spm
         return corrected > 60 ? Int(corrected.rounded()) : nil
+    }
+
+    private func splitAvgGCT(from start: Date, to end: Date, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Double? {
+        let relevant = samples.filter { $0.startDate >= start && $0.startDate < end && !isPaused($0.startDate, in: paused) }
+        guard !relevant.isEmpty else { return nil }
+        let unit = HKUnit.secondUnit(with: .milli)
+        let sum = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: unit) }
+        return sum / Double(relevant.count)
+    }
+
+    private func splitAvgStrideLength(from start: Date, to end: Date, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Double? {
+        let relevant = samples.filter { $0.startDate >= start && $0.startDate < end && !isPaused($0.startDate, in: paused) }
+        guard !relevant.isEmpty else { return nil }
+        let sum = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: .meter()) }
+        return sum / Double(relevant.count)
     }
 
     // MARK: - VO2max (most recent estimate at/before a given date)
@@ -2341,6 +3036,18 @@ class HealthKitManager {
         // Component 2 — consistency (max 30): circular bedtime deviation from 13-day median
         let (consistencyPts, devMinutes) = sleepConsistencyScore(currentBedtime: main.start, history: bedtimeHistory)
 
+        // 이상값 판정: 수면 > 10h (낮잠 합산·측정 오류) 또는 취침 편차 ≥ 170분(≈2.5h) → 일관성 계산 제외
+        let isHoursOutlier    = hours > 10.0
+        let isBedtimeOutlier  = devMinutes >= 170
+        if isHoursOutlier || isBedtimeOutlier {
+            let dbFmtOut = DateFormatter(); dbFmtOut.dateFormat = "M/d"
+            let outlierReason = isHoursOutlier
+                ? "수면 \(String(format: "%.2f", hours))h > 10h"
+                : "편차 \(devMinutes)분"
+            print("[Sleep] \(dbFmtOut.string(from: date)) 이상값(\(outlierReason)) → 일관성 계산 제외")
+            return nil
+        }
+
         // Component 3 — interruptions (max 20): awake events inside main block
         let hasWatchData = asleepSamples.contains {
             $0.value == HKCategoryValueSleepAnalysis.asleepCore.rawValue ||
@@ -2463,7 +3170,7 @@ class HealthKitManager {
 
     /// 취침 일관성 점수 (max 30). 반환값: (점수, 편차분) — 편차 -1 은 이력 부족.
     /// 정오(12:00)를 기준점으로 순환 비교해 23:50↔00:10 같은 자정 넘김 오계산을 방지.
-    /// 중앙값 기준이라 하루 이상치에 덜 민감. 최저 6점 (Apple 정합 완화 곡선).
+    /// 2패스 중앙값: 예비 중앙값 기준 ±180분 초과 이력 제거 후 재계산. 최저 6점 (Apple 정합 완화 곡선).
     private func sleepConsistencyScore(currentBedtime: Date, history: [Date]) -> (score: Int, deviationMinutes: Int) {
         guard history.count >= 5 else { return (21, -1) }  // 이력 부족 → 중간값 21
         let cal = Calendar.current
@@ -2477,19 +3184,40 @@ class HealthKitManager {
         let circularDist: (Int, Int) -> Int = { a, b in
             let diff = abs(a - b); return min(diff, 1440 - diff)
         }
-        // 중앙값 기준 (outlier에 덜 민감)
-        let sortedMins = history.map(toMinsFromNoon).sorted()
-        let median = sortedMins.count % 2 == 0
-            ? (sortedMins[sortedMins.count / 2 - 1] + sortedMins[sortedMins.count / 2]) / 2
-            : sortedMins[sortedMins.count / 2]
+        let medianOf: ([Int]) -> Int = { sorted in
+            sorted.count % 2 == 0
+                ? (sorted[sorted.count / 2 - 1] + sorted[sorted.count / 2]) / 2
+                : sorted[sorted.count / 2]
+        }
+
+        // Pass 1: 예비 중앙값
+        let allMins = history.map(toMinsFromNoon).sorted()
+        let preliminaryMedian = medianOf(allMins)
+
+        // 이력 중 이상값(예비 중앙값에서 ±3h 초과) 제거 후 재계산
+        let tf = DateFormatter(); tf.dateFormat = "M/d HH:mm"
+        let filteredHistory = history.filter { d in
+            circularDist(toMinsFromNoon(d), preliminaryMedian) <= 180
+        }
+        let removedCount = history.count - filteredHistory.count
+        if removedCount > 0 {
+            let removedStrs = history.filter { d in
+                circularDist(toMinsFromNoon(d), preliminaryMedian) > 180
+            }.map { tf.string(from: $0) }.joined(separator: ", ")
+            print("[Sleep:이력] 이상값 \(removedCount)건 제거 → \(removedStrs)")
+        }
+
+        // Pass 2: 정제된 이력으로 최종 중앙값
+        let cleanedMins = (filteredHistory.count >= 3 ? filteredHistory : history).map(toMinsFromNoon).sorted()
+        let median = medianOf(cleanedMins)
         let deviation = circularDist(toMinsFromNoon(currentBedtime), median)
 
         // 취침시각 디버그 로그
-        let tf = DateFormatter(); tf.dateFormat = "HH:mm"
-        let histStr = history.map { tf.string(from: $0) }.joined(separator: ", ")
+        let tf2 = DateFormatter(); tf2.dateFormat = "HH:mm"
+        let histStr = history.map { tf2.string(from: $0) }.joined(separator: ", ")
         let medFromMidnight = (median + 720) % 1440
         let medStr = String(format: "%02d:%02d", medFromMidnight / 60, medFromMidnight % 60)
-        print("[Sleep:취침] 오늘 \(tf.string(from: currentBedtime)) | 이력 \(histStr) | 중앙값 \(medStr) | 편차 \(deviation)분")
+        print("[Sleep:취침] 오늘 \(tf2.string(from: currentBedtime)) | 이력 \(histStr) | 중앙값 \(medStr) | 편차 \(deviation)분")
 
         // Apple 정합 곡선: 82분 편차 → 21점 (실측 일치)
         let score: Int = switch deviation {

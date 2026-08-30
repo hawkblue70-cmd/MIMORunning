@@ -75,12 +75,16 @@ struct MRHealthKit {
             Date(timeIntervalSince1970: $0.newestStart.timeIntervalSince1970 + 1)
         }
 
+        let t0 = CFAbsoluteTimeGetCurrent()
+
         // 증분 fetch + 오늘 실시간 fetch 병렬 실행
         // 오늘 것은 항상 HealthKit에서 재조회해 삭제된 워크아웃을 감지한다
         async let freshTask   = fetchRawRunsSince(since)
         async let todayTask   = fetchRawRunsSince(todayStart)
         let fresh    = try await freshTask
         let todayHK  = (try? await todayTask) ?? []
+
+        let tHKQuery = CFAbsoluteTimeGetCurrent() - t0
 
         #if DEBUG
         print("[캐시] 워크아웃 캐시 \(cache == nil ? "없음" : "있음(\(cache!.runs.count)건, ~\(mrYMD(cache!.newestStart)))") · 증분 \(fresh.count)건 · 오늘 HK \(todayHK.count)건")
@@ -97,11 +101,20 @@ struct MRHealthKit {
         let freshOldMR = await freshOldMRTask
         let todayMR    = await todayMRTask
 
+        let tConvert = CFAbsoluteTimeGetCurrent() - t0 - tHKQuery
+
         let merged = (baseRuns + freshOldMR + todayMR).sorted { $0.start < $1.start }
 
         if let newest = merged.last?.start {
             MRWorkoutCacheStore.save(MRWorkoutCache(newestStart: newest, runs: merged))
         }
+
+        #if DEBUG
+        let tTotal = CFAbsoluteTimeGetCurrent() - t0
+        let tRest = tTotal - tHKQuery - tConvert
+        print("[⏱ fetchRunsIncremental] 증분 \(fresh.count)건 · 합계 \(String(format: "%.2f", tTotal))s (HK쿼리 \(String(format: "%.2f", tHKQuery))s · 변환 \(String(format: "%.2f", tConvert))s · 나머지 \(String(format: "%.2f", tRest))s)")
+        #endif
+
         return merged
     }
 

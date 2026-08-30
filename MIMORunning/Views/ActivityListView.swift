@@ -208,6 +208,8 @@ private struct ActivityListContent: View {
     }
 
     var body: some View {
+        // workoutTypeRevision 접근 → 온디맨드 분류 완료 시 배지 자동 갱신
+        let _ = manager.workoutTypeRevision
         Group {
             if manager.isLoading && manager.activities.isEmpty {
                 ProgressView().tint(Theme.violet)
@@ -251,13 +253,19 @@ private struct ActivityListContent: View {
                                             activity: activity,
                                             level: manager.userLevel.bucket,
                                             shoeName: shoeByWorkout[activity.id.uuidString],
-                                            workoutType: manager.cachedWorkoutType(for: activity.id),
+                                            workoutType: manager.cachedWorkoutTypeForStats(for: activity.id),
+                                            isProvisionalType: manager.isProvisionalWorkoutType(for: activity.id),
                                             raceName: raceDetector.matchFor(activityID: activity.id).flatMap {
                                                 $0.isConfirmed ? $0.raceName : nil
                                             }
                                         )
                                     }
                                     .buttonStyle(.plain)
+                                    .task(id: activity.id) {
+                                        // 셀 등장 시 0.3s 대기 후 큐 삽입 — 빠른 스크롤은 task 취소로 무시됨
+                                        try? await Task.sleep(nanoseconds: 300_000_000)
+                                        manager.enqueueOnDemandClassification(activity: activity)
+                                    }
                                 case .restDay(let date, let entry, let isDiary):
                                     SwipeableRestDayRow(
                                         entry: entry, date: date, isDiary: isDiary,
@@ -519,9 +527,7 @@ private struct RestDayListRow: View {
         return f.string(from: d)
     }
     private func weekdayStr(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR"); f.dateFormat = "EEEEE"
-        return f.string(from: d)
+        d.weekdayString
     }
     private func timeStr(_ d: Date) -> String {
         let f = DateFormatter()
@@ -701,18 +707,13 @@ private struct ActivityCard: View {
     var level: LevelBucket = .beginner
     var shoeName: String? = nil
     var workoutType: WorkoutType? = nil
+    var isProvisionalType: Bool = false
     var raceName: String? = nil
 
     private static let datePart: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US")
         df.dateFormat = "yyyy. M. d"
-        return df
-    }()
-    private static let weekdayPart: DateFormatter = {
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "ko_KR")
-        df.dateFormat = "EEEEE"  // 요일 한 글자: 월화수목금토일
         return df
     }()
     private static let timePart: DateFormatter = {
@@ -723,7 +724,7 @@ private struct ActivityCard: View {
     }()
 
     private var formattedDatePart:    String { Self.datePart.string(from: activity.date) }
-    private var formattedWeekday:     String { Self.weekdayPart.string(from: activity.date) }
+    private var formattedWeekday:     String { activity.date.weekdayString }
     private var formattedTimePart:    String { Self.timePart.string(from: activity.date) }
 
     var body: some View {
@@ -736,7 +737,7 @@ private struct ActivityCard: View {
                         .foregroundStyle(Theme.violet)
                     if let wt = workoutType {
                         Text("- \(wt.koreanLabel)")
-                            .foregroundStyle(Color(hex: "FFC74D"))
+                            .foregroundStyle(Color(hex: "FFC74D").opacity(isProvisionalType ? 0.45 : 1.0))
                     }
                 }
                 .font(.system(size: 12, weight: .semibold))
@@ -768,7 +769,7 @@ private struct ActivityCard: View {
                 if level >= .novice, let pace = activity.formattedPace {
                     MetricChip(value: pace, label: "/km", color: Theme.pace)
                 }
-                MetricChip(value: activity.formattedDuration, label: AppLanguage.shared.s("시간", "TIME"), color: Theme.time)
+                MetricChip(value: activity.formattedDuration, label: AppLanguage.shared.s("시간", "time"), color: Theme.time)
                 if level >= .novice, let hr = activity.avgHeartRate {
                     MetricChip(value: "\(hr)", label: "bpm", color: Theme.heartRate)
                 }

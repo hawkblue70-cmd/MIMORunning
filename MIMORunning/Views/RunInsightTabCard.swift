@@ -692,12 +692,14 @@ struct RunInsightTabCard: View {
     var isAutoDetected: Bool = false
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     var isBackfilling: Bool = false
+    var isClassifying: Bool = false
     var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
     var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     var formBaseline: RunningFormBaseline? = nil
     var formBackfillProgress: (done: Int, total: Int)? = nil
     var heatModel: MRHeatModel? = nil
     var formShifts: [MRFormShift] = []
+    var weatherSnapshot: WeatherSnapshot? = nil
     var confirmedRace: PersistedRaceMatch? = nil
     var confirmedRaces: [PersistedRaceMatch] = []
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
@@ -742,6 +744,7 @@ struct RunInsightTabCard: View {
                 hrSamples: hrSamples,
                 heatModel: heatModel,
                 formShifts: formShifts,
+                weatherSnapshot: weatherSnapshot,
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
                 raceDetailFn: raceDetailFn
@@ -858,6 +861,18 @@ struct RunInsightTabCard: View {
                 guard !cads.isEmpty else { return detail?.avgCadence }
                 return Int((Double(cads.reduce(0, +)) / Double(cads.count)).rounded())
             }()
+            let hasFormGap: Bool = {
+                let cal = Calendar.current
+                guard let threeMonthsAgo = cal.date(byAdding: .month, value: -3, to: activity.date) else { return false }
+                let recent = history
+                    .filter { $0.type == .running && $0.date >= threeMonthsAgo && $0.date <= activity.date }
+                    .sorted { $0.date < $1.date }
+                for i in 0..<(recent.count - 1) {
+                    let gap = cal.dateComponents([.day], from: recent[i].date, to: recent[i + 1].date).day ?? 0
+                    if gap >= 14 { return true }
+                }
+                return false
+            }()
             RunFormCardView(
                 activity: activity,
                 splits: detail?.splits ?? [],
@@ -871,7 +886,9 @@ struct RunInsightTabCard: View {
                 hrSamples: hrSamples,
                 typicalDistanceKm: typicalRunDistanceKm,
                 heatModel: heatModel,
-                formShifts: formShifts
+                formShifts: formShifts,
+                hasRecentGap: hasFormGap,
+                weatherSnapshot: weatherSnapshot
             )
         case .performance:
             PerformanceInsightCard(
@@ -879,7 +896,8 @@ struct RunInsightTabCard: View {
                 history: history, age: age, isMale: isMale,
                 insights: insights,
                 workoutTypeFn: workoutTypeFn,
-                isBackfilling: isBackfilling
+                isBackfilling: isBackfilling,
+                isClassifying: isClassifying
             )
         case .race:
             RaceInsightCard(
@@ -1306,7 +1324,19 @@ private struct RhythmInsightCard: View {
         VStack(spacing: 0) {
             Color.clear.frame(height: 0).onAppear {
                 #if DEBUG
-                print("[Baseline:카드] formBaseline=\(formBaseline == nil ? "nil" : "있음"), band=\(formBaseline?.band(for: activity).rawValue ?? "-"), summaryParts=\(formSummaryParts?.count ?? -1)")
+                if let bl = formBaseline {
+                    if let band = bl.band(for: activity) {
+                        let hasBl = bl.bands[band] != nil
+                        let blMark = hasBl ? "" : " ⚠ 기준선 없음"
+                        print("[Baseline:카드] formBaseline=있음, band=\(band.rawValue)\(blMark), summaryParts=\(formSummaryParts?.count ?? -1)")
+                    } else if let pace = activity.paceSecPerKm {
+                        func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s)/60, Int(s)%60) }
+                        let cap = bl.cutoffs.verySlowMax < .greatestFiniteMagnitude ? pf(bl.cutoffs.verySlowMax) : "∞"
+                        print("[Baseline:카드] band=범위밖 (\(pf(pace)) > 상한 \(cap)) — 폼 판정 생략")
+                    }
+                } else {
+                    print("[Baseline:카드] formBaseline=nil, summaryParts=\(formSummaryParts?.count ?? -1)")
+                }
                 #endif
             }
             // 상단 행: 심박존(좌) + 심박수 HR 시계열(우)
@@ -1624,7 +1654,12 @@ private struct RhythmInsightCard: View {
                 #endif
                 return nil
             }
-            let band = baseline.cutoffs.band(of: sp)
+            guard let band = baseline.cutoffs.band(of: sp) else {
+                #if DEBUG
+                print("[Form:종류] 생략 — 후반 페이스 범위밖, type=\(wtName)")
+                #endif
+                return nil
+            }
             guard let bandBl = baseline.bands[band],
                   let cadStat = bandBl.cadence,
                   bandBl.sampleCount >= FormBaselineEngine.minSamples else {
@@ -1660,7 +1695,10 @@ private struct RhythmInsightCard: View {
             let result: (text: String, color: Color)
             if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second) {
                 let gctRise = sg - fg
-                if gctRise < 8 {
+                if gctRise <= -7 {
+                    result = (L.s("후반으로 갈수록 지면접촉이 짧아졌어요. 템포 페이스가 잘 맞았어요",
+                                  "Ground contact shortened — tempo pace was well-matched"), Color(hex: "7FD98A"))
+                } else if gctRise < 8 {
                     result = (L.s("후반까지 폼이 흔들리지 않았어요. 역치 페이스가 몸에 익었어요", "Form held — tempo pace feels natural"), Color(hex: "7FD98A"))
                 } else {
                     let rise = Int(gctRise.rounded())
@@ -1708,7 +1746,9 @@ private struct RhythmInsightCard: View {
             let result: (text: String, color: Color)
             if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second) {
                 let gctRise = sg - fg
-                if gctRise < 10 {
+                if gctRise <= -7 {
+                    result = (L.s("장거리인데 후반으로 갈수록 지면접촉이 짧아졌어요", "Ground contact shortened through the long run"), Color(hex: "7FD98A"))
+                } else if gctRise < 10 {
                     result = (L.s("장거리인데 후반까지 폼이 버텼어요", "Form held through the long run"), Color(hex: "7FD98A"))
                 } else {
                     result = (L.s("후반에 폼이 조금 무거워졌어요", "Form got a bit heavier in the second half"), Color.white.opacity(0.75))
@@ -1835,7 +1875,7 @@ private struct RhythmInsightCard: View {
                 return nil
             }
             let paceDelta = sp - fp
-            let result: (text: String, color: Color)
+            var result: (text: String, color: Color)
             if paceDelta <= 0 {
                 result = (L.s("후반에도 페이스가 떨어지지 않았어요", "Pace held through the finish"), Color(hex: "7FD98A"))
             } else if paceDelta <= 25 {
@@ -1843,8 +1883,18 @@ private struct RhythmInsightCard: View {
             } else {
                 result = (L.s("후반 페이스가 많이 떨어졌어요. 초반이 빨랐을 수 있어요", "Big pace drop — may have gone out too fast"), Color(hex: "FFD166"))
             }
+            // ⓪ GCT 개선 구절 — 페이스 하락이 있어도 접지 단축이면 덧붙임
+            let fGCT = halfAvgGCT(first); let sGCT = halfAvgGCT(second)
+            if let fg = fGCT, let sg = sGCT, (sg - fg) <= -7 {
+                let delta = Int(abs((sg - fg).rounded()))
+                result = (result.text + L.s(" 지면접촉은 \(delta)ms 짧아졌고요.", " Ground contact shortened by \(delta) ms though."),
+                          result.color)
+            }
             #if DEBUG
-            print("[Form:종류] type=\(wtName) splits=\(fullSplits.count) 전반P=\(pf(fp)) 후반P=\(pf(sp)) 차이=\(Int(paceDelta.rounded()))초 → \"\(result.text)\"")
+            let gctNote = (fGCT != nil && sGCT != nil)
+                ? " GCT\(Int(fGCT!))→\(Int(sGCT!))ms(\(sGCT! - fGCT! >= 0 ? "+" : "")\(Int((sGCT! - fGCT!).rounded())))"
+                : ""
+            print("[Form:종류] type=\(wtName) splits=\(fullSplits.count) 전반P=\(pf(fp)) 후반P=\(pf(sp)) 차이=\(Int(paceDelta.rounded()))초\(gctNote) → \"\(result.text)\"")
             #endif
             return [typePrefix, result]
 
@@ -1865,23 +1915,29 @@ private struct RhythmInsightCard: View {
                 let sd = sqrt(paces.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(paces.count))
                 cv = sd / mean * 100
             }
-            // 분기① GCT 우선, 없으면 케이던스 폴백 (임계값 2)
+            // 분기⓪ GCT 우선, 없으면 케이던스 폴백 (임계값 2)
             let fGCT = halfAvgGCT(first); let sGCT = halfAvgGCT(second)
             let firstCad = halfAvgCadence(first); let secondCad = halfAvgCadence(second)
             let formHeavy: Bool
+            let formImproved: Bool   // ⓪ 후반 GCT ≤ -7ms — 개선
             let formHeavyMethod: String
             if let fg = fGCT, let sg = sGCT {
-                formHeavy = (sg - fg) >= 10
+                formHeavy    = (sg - fg) >= 10
+                formImproved = (sg - fg) <= -7
                 let sign = (sg - fg) >= 0 ? "+" : ""
                 formHeavyMethod = "GCT \(Int(fg))→\(Int(sg))ms(\(sign)\(Int((sg - fg).rounded())))"
             } else {
                 let cadDrop: Double = (firstCad != nil && secondCad != nil) ? (firstCad! - secondCad!) : 0
-                formHeavy = cadDrop >= 2
+                formHeavy    = cadDrop >= 2
+                formImproved = false  // 케이던스만으론 개선 판정 안 함
                 formHeavyMethod = "케이던스폴백 \(firstCad.map{Int($0)} ?? 0)→\(secondCad.map{Int($0)} ?? 0)(\(Int(cadDrop.rounded()))spm)"
             }
             let result: (text: String, color: Color)?
             let branch: Int
-            if formHeavy {
+            if formImproved {
+                result = (L.s("후반으로 갈수록 지면접촉이 짧아졌어요", "Ground contact shortened as the run progressed"), Color(hex: "7FD98A"))
+                branch = 0
+            } else if formHeavy {
                 result = (L.s("후반에 폼이 조금 무거워졌어요", "Form got a bit heavier in the second half"), Color.white.opacity(0.75))
                 branch = 1
             } else if cv > 5 {
@@ -2272,10 +2328,11 @@ private struct PerformanceInsightCard: View {
     let insights: [RunInsight]
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     var isBackfilling: Bool = false
+    var isClassifying: Bool = false
 
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
-    @State private var _distResult: (items: [TrainingDistItem], weeks: Int, todayBucket: String?)? = nil
+    @State private var _distResult: (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)? = nil
     @State private var _distComputed = false
 
     private struct HRTrendPt: Identifiable {
@@ -2311,12 +2368,12 @@ private struct PerformanceInsightCard: View {
                 HStack(alignment: .top, spacing: 10) {
                     hrScatterSection(data: scatter)
                         .frame(maxWidth: .infinity)
-                    if dist != nil || isBackfilling {
+                    if dist != nil || isBackfilling || isClassifying {
                         Rectangle().fill(.white.opacity(0.08))
                             .frame(width: 0.5)
                             .padding(.vertical, 2)
                         if let d = dist {
-                            distribHorizontalSection(items: d.items, weeks: d.weeks, todayBucket: d.todayBucket)
+                            distribHorizontalSection(items: d.items, weeks: d.weeks, totalRuns: d.totalRuns, todayBucket: d.todayBucket)
                                 .frame(maxWidth: .infinity)
                         } else {
                             backfillingPlaceholder
@@ -2324,6 +2381,10 @@ private struct PerformanceInsightCard: View {
                         }
                     }
                 }
+            }
+            if let intensDist = intensityDistData {
+                divider
+                intensityDistSection(data: intensDist)
             }
             let iSegs  = intervalChartData
             let voInf  = vo2Info
@@ -2352,6 +2413,15 @@ private struct PerformanceInsightCard: View {
                 divider
                 oneLiner(text: line, bg: IC.violetBg, fg: IC.violetText, accent: IC.violet)
             }
+            if let ri = returnInsight {
+                if ri.hrRecovered {
+                    divider
+                    returnRecoveredRow
+                } else {
+                    divider
+                    returnInsightRow(ri)
+                }
+            }
         }
         .padding(16)
         .background(Theme.cardBackground)
@@ -2360,11 +2430,16 @@ private struct PerformanceInsightCard: View {
             guard !heroBadgeLoaded else { return }
             heroBadge = computeAchievementBadge(activity: activity, history: history)
             heroBadgeLoaded = true
-            _distResult   = computeTrainingDistData()
+            if !isBackfilling && !isClassifying {
+                _distResult = computeTrainingDistData()
+            }
             _distComputed = true
         }
         .onChange(of: isBackfilling) { _, newValue in
-            if !newValue { _distResult = computeTrainingDistData() }
+            if !newValue && !isClassifying { _distResult = computeTrainingDistData() }
+        }
+        .onChange(of: isClassifying) { _, newValue in
+            if !newValue && !isBackfilling { _distResult = computeTrainingDistData() }
         }
     }
 
@@ -3208,11 +3283,49 @@ private struct PerformanceInsightCard: View {
         let label: String; let count: Int; let color: Color
     }
 
-    private var trainingDistData: (items: [TrainingDistItem], weeks: Int, todayBucket: String?)? {
+    // MARK: - Intensity Distribution Types
+
+    private enum IntensityTier: CaseIterable {
+        case easy, medium, hard
+        var label: String {
+            let L = AppLanguage.shared
+            switch self {
+            case .easy:   return L.s("쉬움", "Easy")
+            case .medium: return L.s("중간", "Medium")
+            case .hard:   return L.s("강함", "Hard")
+            }
+        }
+        static func of(_ type: WorkoutType) -> IntensityTier {
+            switch type {
+            case .lsd, .easy:                              return .easy
+            case .general, .distanceRun, .longRun, .buildUp: return .medium
+            case .tempo, .interval, .race:                 return .hard
+            }
+        }
+    }
+
+    private struct IntensityCount: Identifiable {
+        let id: IntensityTier
+        let tier: IntensityTier
+        let count: Int
+    }
+
+    private struct IntensityDistData {
+        let counts: [IntensityCount]
+        let weeks: Int
+        let total: Int          // 실제 러닝 수 (분류 여부 무관)
+        let unclassified: Int   // 분류 전 러닝 수 — 분모 보정용
+        let consecutiveSkewedWeeks: Int
+        let isSkewedAtLeast: Bool       // 판정보류 주 직전까지만 확인 — "N주 이상"
+        let paceMin: Double?
+        let paceMax: Double?
+    }
+
+    private var trainingDistData: (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)? {
         _distResult ?? computeTrainingDistData()
     }
 
-    private func computeTrainingDistData() -> (items: [TrainingDistItem], weeks: Int, todayBucket: String?)? {
+    private func computeTrainingDistData() -> (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)? {
         guard let fn = workoutTypeFn else { return nil }
 
         // 오늘 런: fn 미캐시여도 detail이 있으면 workoutType 사용
@@ -3222,7 +3335,7 @@ private struct PerformanceInsightCard: View {
             return nil
         }
 
-        func evaluate(weeks: Int) -> (items: [TrainingDistItem], todayBucket: String?)? {
+        func evaluate(weeks: Int) -> (items: [TrainingDistItem], totalRuns: Int, todayBucket: String?)? {
             let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -weeks, to: activity.date) ?? .distantPast
             var runs = history.filter { $0.type == .running && $0.date >= cutoff && $0.date <= activity.date }
             if activity.type == .running, !runs.contains(where: { $0.id == activity.id }) {
@@ -3273,12 +3386,134 @@ private struct PerformanceInsightCard: View {
             guard !groups.isEmpty else { return nil }
             let items = groups.map { TrainingDistItem(label: $0.key, count: $0.value.count, color: $0.value.color) }
                 .sorted { $0.count > $1.count }
-            return (items, todayBucket)
+            return (items, runs.count, todayBucket)
         }
 
-        if let r = evaluate(weeks: 4) { return (r.items, 4, r.todayBucket) }
-        if let r = evaluate(weeks: 8) { return (r.items, 8, r.todayBucket) }
+        if let r = evaluate(weeks: 4) { return (r.items, 4, r.totalRuns, r.todayBucket) }
+        if let r = evaluate(weeks: 8) { return (r.items, 8, r.totalRuns, r.todayBucket) }
         return nil
+    }
+
+    // MARK: - Intensity Distribution Data
+
+    private var intensityDistData: IntensityDistData? {
+        guard let fn = workoutTypeFn,
+              let weeks = trainingDistData?.weeks else { return nil }
+
+        func typeFor(_ run: Activity) -> WorkoutType? {
+            if let t = fn(run.id) { return t }
+            if run.id == activity.id, let det = detail { return det.workoutType }
+            return nil
+        }
+
+        let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -weeks, to: activity.date) ?? .distantPast
+        var runs = history.filter { $0.type == .running && $0.date >= cutoff && $0.date <= activity.date }
+        if activity.type == .running, !runs.contains(where: { $0.id == activity.id }) {
+            runs.append(activity)
+        }
+        let known = runs.filter { typeFor($0) != nil }
+        guard known.count >= 8 else { return nil }
+
+        var tierCounts: [IntensityTier: Int] = [.easy: 0, .medium: 0, .hard: 0]
+        for run in known {
+            guard let t = typeFor(run) else { continue }
+            tierCounts[IntensityTier.of(t), default: 0] += 1
+        }
+        let counts = IntensityTier.allCases.map { IntensityCount(id: $0, tier: $0, count: tierCounts[$0] ?? 0) }
+        let total  = runs.count          // 실제 러닝 수 (분류 전 포함)
+        let unclassified = runs.count - known.count
+
+        var fullRuns = history.filter { $0.type == .running }
+        if activity.type == .running, !fullRuns.contains(where: { $0.id == activity.id }) {
+            fullRuns.append(activity)
+        }
+        let (consec, consecAtLeast) = consecutiveSkewedWeeks(fullHistory: fullRuns, typeFor: typeFor)
+        let paces  = known.compactMap { $0.paceSecPerKm }
+
+        let result = IntensityDistData(
+            counts: counts, weeks: weeks, total: total, unclassified: unclassified,
+            consecutiveSkewedWeeks: consec,
+            isSkewedAtLeast: consecAtLeast,
+            paceMin: paces.min(), paceMax: paces.max()
+        )
+
+        #if DEBUG
+        let classified = known.count
+        let eC = counts.first(where: { $0.tier == .easy   })?.count ?? 0
+        let mC = counts.first(where: { $0.tier == .medium })?.count ?? 0
+        let hC = counts.first(where: { $0.tier == .hard   })?.count ?? 0
+        func pct(_ n: Int) -> Int { classified > 0 ? Int(Double(n) / Double(classified) * 100 + 0.5) : 0 }
+        func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60) }
+        let pRange = paces.isEmpty ? "-" : "\(pf(paces.min()!))~\(pf(paces.max()!))"
+        let medP = paces.sorted().isEmpty ? "-" : pf(paces.sorted()[paces.count / 2])
+        let unclassStr = unclassified > 0 ? " (분류 중 \(unclassified)건)" : ""
+        print("[강도분포] \(weeks)주 총 \(total)회\(unclassStr) — 쉬움 \(eC)(\(pct(eC))%) 중간 \(mC) 강함 \(hC)")
+        print("           페이스 범위 \(pRange) 중앙 \(medP)")
+        let skewed = Double(eC) / Double(max(1, classified)) < 0.20 && classified >= 12
+        if skewed {
+            let consecStr = consec > 0 ? "(\(consec)주\(consecAtLeast ? " 이상" : "")째)" : "(첫 발생 또는 연속 끊김)"
+            print("           → 편중 알림 표시 \(consecStr)")
+        } else {
+            let why = classified < 12 ? "분류된 \(classified)회 < 12" : "쉬움 \(pct(eC))% ≥ 20%"
+            print("           → 미표시 (\(why))")
+        }
+        #endif
+
+        return result
+    }
+
+    private func consecutiveSkewedWeeks(fullHistory: [Activity], typeFor: (Activity) -> WorkoutType?) -> (count: Int, isAtLeast: Bool) {
+        var isoCal = Calendar(identifier: .iso8601)
+        isoCal.timeZone = TimeZone.current
+        var count = 0
+        var isAtLeast = false
+        #if DEBUG
+        var logParts: [String] = []
+        #endif
+        for weekOffset in 0..<52 {
+            guard let ref = isoCal.date(byAdding: .weekOfYear, value: -weekOffset, to: activity.date) else { break }
+            let wy = isoCal.component(.weekOfYear,        from: ref)
+            let yr = isoCal.component(.yearForWeekOfYear, from: ref)
+            let wStr = "\(yr)-W\(String(format: "%02d", wy))"
+            // 해당 주의 러닝 전체 (유형 불문) vs 유형이 확인된 것만
+            let allWeekRuns = fullHistory.filter {
+                $0.date <= activity.date &&
+                isoCal.component(.weekOfYear,        from: $0.date) == wy &&
+                isoCal.component(.yearForWeekOfYear, from: $0.date) == yr
+            }
+            let typedWeekRuns = allWeekRuns.filter { typeFor($0) != nil }
+            if allWeekRuns.isEmpty {
+                // 진짜 러닝 없는 주 → 연속 끊김
+                #if DEBUG
+                logParts.append("\(wStr) 런없음 ✗")
+                #endif
+                break
+            }
+            if typedWeekRuns.isEmpty {
+                // 러닝은 있으나 유형 캐시 미확보 → 판정보류, "N주 이상"
+                isAtLeast = true
+                #if DEBUG
+                logParts.append("\(wStr) 러닝\(allWeekRuns.count)건·유형없음 → 판정보류")
+                #endif
+                break
+            }
+            let easyCount = typedWeekRuns.filter { typeFor($0).map { IntensityTier.of($0) == .easy } ?? false }.count
+            if easyCount > 0 {
+                #if DEBUG
+                logParts.append("\(wStr) 쉬움\(easyCount) ✗")
+                #endif
+                break
+            }
+            count += 1
+            #if DEBUG
+            logParts.append("\(wStr) 쉬움0 ✓")
+            #endif
+        }
+        #if DEBUG
+        let suffix = isAtLeast ? " 이상" : ""
+        print("[강도분포] 연속 판정 — 주 단위 역순 검사 (ISO)\n    \(logParts.joined(separator: " / "))\n    → \(count)주째\(suffix)")
+        #endif
+        return (count, isAtLeast)
     }
 
     private func displayBucket(for type: WorkoutType) -> (label: String, color: Color) {
@@ -3297,14 +3532,21 @@ private struct PerformanceInsightCard: View {
     }
 
     @ViewBuilder
-    private func distribHorizontalSection(items: [TrainingDistItem], weeks: Int, todayBucket: String?) -> some View {
-        let total = items.map(\.count).reduce(0, +)
+    private func distribHorizontalSection(items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?) -> some View {
+        let classified = items.map(\.count).reduce(0, +)
+        let unclassified = totalRuns - classified
         let maxCount = max(1, items.map(\.count).max() ?? 1)
         let L = AppLanguage.shared
         VStack(alignment: .leading, spacing: 5) {
-            Text(L.s("이 러닝 기준 \(weeks)주", "Before this run · \(weeks)w"))
-                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
-                .frame(maxWidth: .infinity, alignment: .center)
+            HStack(spacing: 4) {
+                Text(L.s("이 러닝 기준 \(weeks)주 · \(totalRuns)회", "Before this run · \(weeks)w · \(totalRuns)"))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                if unclassified > 0 {
+                    Text(L.s("분류 중 \(unclassified)건", "+\(unclassified) pending"))
+                        .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
             ForEach(items, id: \.label) { item in
                 let isToday = item.label == todayBucket
                 HStack(spacing: 6) {
@@ -3334,8 +3576,86 @@ private struct PerformanceInsightCard: View {
                         .frame(width: 14, alignment: .trailing)
                 }
             }
-            Text(L.s("총 \(total)회", "\(total) runs"))
-                .font(.system(size: 8)).foregroundStyle(IC.label)
+            if unclassified > 0 {
+                Text(L.s("총 \(totalRuns)회 (분류 중 \(unclassified)건)", "\(totalRuns) runs (\(unclassified) pending)"))
+                    .font(.system(size: 8)).foregroundStyle(IC.label)
+            } else {
+                Text(L.s("총 \(totalRuns)회", "\(totalRuns) runs"))
+                    .font(.system(size: 8)).foregroundStyle(IC.label)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func intensityDistSection(data: IntensityDistData) -> some View {
+        let L = AppLanguage.shared
+        let total = data.total
+        let classified = total - data.unclassified
+        let maxCount = max(1, data.counts.map(\.count).max() ?? 1)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 4) {
+                Text(L.s("강도 분포 · \(data.weeks)주 · \(total)회", "Intensity · \(data.weeks)w · \(total)"))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                if data.unclassified > 0 {
+                    Text(L.s("분류 중 \(data.unclassified)건", "+\(data.unclassified) pending"))
+                        .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            ForEach(data.counts) { item in
+                let pct = classified > 0 ? Int(Double(item.count) / Double(classified) * 100 + 0.5) : 0
+                HStack(spacing: 6) {
+                    Text(item.tier.label)
+                        .font(.system(size: 8)).foregroundStyle(IC.label)
+                        .frame(width: 26, alignment: .leading)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
+                            RoundedRectangle(cornerRadius: 2.5)
+                                .fill(intensityColor(item.tier).opacity(0.85))
+                                .frame(width: max(4, geo.size.width * CGFloat(item.count) / CGFloat(maxCount)))
+                        }
+                    }
+                    .frame(height: 8)
+                    Text("\(item.count) · \(pct)%")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(intensityColor(item.tier))
+                        .frame(width: 40, alignment: .trailing)
+                }
+            }
+            // Skew alert: easy < 20% AND classified >= 12 (분류된 건수 기준)
+            let easyCount = data.counts.first(where: { $0.tier == .easy })?.count ?? 0
+            let isSkewed  = classified >= 12 && Double(easyCount) / Double(classified) < 0.20
+            if isSkewed {
+                let weeks = data.consecutiveSkewedWeeks
+                let atLeast = data.isSkewedAtLeast
+                let weeksSuffix: String = {
+                    guard weeks > 1 || (weeks == 1 && atLeast) else { return "" }
+                    return L.s(" · \(weeks)주\(atLeast ? " 이상" : "")째",
+                               " · \(weeks)\(atLeast ? "+" : "") w in a row")
+                }()
+                Text(L.s(
+                    "최근 \(data.weeks)주 \(total)회 중 쉬운 러닝이 \(easyCount)회예요\(weeksSuffix).",
+                    "\(easyCount) easy run(s) out of \(total) in the last \(data.weeks) weeks\(weeksSuffix)."
+                ))
+                .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+                if let pMin = data.paceMin, let pMax = data.paceMax, pMax > pMin {
+                    let pMinStr = String(format: "%d'%02d\"", Int(pMin) / 60, Int(pMin) % 60)
+                    let pMaxStr = String(format: "%d'%02d\"", Int(pMax) / 60, Int(pMax) % 60)
+                    Text(L.s("페이스도 \(pMinStr)~\(pMaxStr)에 몰려 있어요.", "Pace also clustered at \(pMinStr)–\(pMaxStr)."))
+                        .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func intensityColor(_ tier: IntensityTier) -> Color {
+        switch tier {
+        case .easy:   return Color(hex: "#6BAED6")   // 연한 파랑 — 쉬움
+        case .medium: return Color(hex: "#4A7FC1")   // 중간 파랑
+        case .hard:   return Color(hex: "#2C4E8A")   // 진한 파랑 — 강함
         }
     }
 
@@ -3357,6 +3677,180 @@ private struct PerformanceInsightCard: View {
             return m
         }
         return insights.first?.message
+    }
+
+    // MARK: - Return insight (복귀 인사이트)
+
+    private struct ReturnInsightInfo {
+        let gapDays: Int
+        let preGapHR: Double?
+        let todayHR: Double?
+        let isExpiredByTime: Bool
+        let hrRecovered: Bool
+    }
+
+    private var returnInsight: ReturnInsightInfo? {
+        guard activity.type == .running else { return nil }
+        let cal = Calendar.current
+        let sorted = history.filter { $0.type == .running }.sorted { $0.date < $1.date }
+        guard let idx = sorted.firstIndex(where: { $0.id == activity.id }), idx > 0 else {
+            #if DEBUG
+            let runCount = history.filter { $0.type == .running }.count
+            print("[복귀] 미발동: history 러닝 \(runCount)회, activity.id 찾기 실패 또는 첫 러닝")
+            #endif
+            return nil
+        }
+
+        let prev = sorted[idx - 1]
+        let gapFromPrev = cal.dateComponents([.day], from: prev.date, to: activity.date).day ?? 0
+
+        // ── 1번째 복귀 러닝: "N일 만의 러닝이에요" ───────────────────────────
+        if gapFromPrev >= 14 {
+            let preGapRuns = sorted.filter {
+                $0.date < prev.date && $0.date >= prev.date.addingTimeInterval(-28 * 86_400)
+            }
+            let preGapHR: Double? = preGapRuns.count >= 3 ? {
+                if let todayPace = activity.paceSecPerKm {
+                    let matched = preGapRuns.filter {
+                        guard let p = $0.paceSecPerKm else { return false }
+                        return abs(p - todayPace) / todayPace <= 0.20
+                    }
+                    if matched.count >= 2 {
+                        let hrs = matched.compactMap { $0.avgHeartRate }
+                        if !hrs.isEmpty { return Double(hrs.reduce(0, +)) / Double(hrs.count) }
+                    }
+                }
+                let hrs = preGapRuns.compactMap { $0.avgHeartRate }
+                return hrs.isEmpty ? nil : Double(hrs.reduce(0, +)) / Double(hrs.count)
+            }() : nil
+            let daysSince = cal.dateComponents([.day], from: activity.date, to: Date()).day ?? 0
+            #if DEBUG
+            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+            let matchedCount: Int = {
+                guard let todayPace = activity.paceSecPerKm else { return 0 }
+                return preGapRuns.filter {
+                    guard let p = $0.paceSecPerKm else { return false }
+                    return abs(p - todayPace) / todayPace <= 0.20
+                }.count
+            }()
+            print("[복귀] 직전 러닝 \(df.string(from: prev.date)) · 간격 \(gapFromPrev)일 (기준 14일) → 발동")
+            print("[복귀] 공백 전 4주: 러닝 \(preGapRuns.count)회 · 같은 페이스 심박 \(matchedCount)회 · 공백 전 심박 \(preGapHR.map { String(Int($0)) } ?? "없음")")
+            if let today = activity.avgHeartRate {
+                if let pre = preGapHR {
+                    let diff = today - Int(pre)
+                    print("[복귀] 오늘 심박 \(today) vs 공백 전 \(Int(pre)) → \(diff >= 0 ? "+" : "")\(diff)bpm")
+                } else {
+                    print("[복귀] 오늘 심박 \(today) · 공백 전 심박 없음 (공백 전 런 \(preGapRuns.count)회 < 3 or HR data 없음)")
+                }
+            } else {
+                print("[복귀] 오늘 심박 없음")
+            }
+            #endif
+            return ReturnInsightInfo(
+                gapDays: gapFromPrev,
+                preGapHR: preGapHR,
+                todayHR: activity.avgHeartRate.map(Double.init),
+                isExpiredByTime: daysSince >= 28,
+                hrRecovered: false  // 첫 복귀 런에서는 심박 회복 메시지 절대 표시 안 함
+            )
+        }
+
+        // ── 2회차 이상 복귀 러닝: "심박이 돌아왔어요" ──────────────────────
+        // 최근 28일 안에 ≥14일 공백이 있었고, 그 복귀 후 2번째 이상 런인 경우에만 평가
+        for i in stride(from: idx - 1, through: 1, by: -1) {
+            let daysSinceI = cal.dateComponents([.day], from: sorted[i].date, to: activity.date).day ?? 0
+            guard daysSinceI <= 28 else { break }
+            let prevToI = cal.dateComponents([.day], from: sorted[i - 1].date, to: sorted[i].date).day ?? 0
+            guard prevToI >= 14 else { continue }
+            // sorted[i]가 첫 복귀 런 — activity는 2회차 이상
+            let preGapEnd = sorted[i - 1]
+            let preGapRuns = sorted.filter {
+                $0.date < preGapEnd.date && $0.date >= preGapEnd.date.addingTimeInterval(-28 * 86_400)
+            }
+            guard preGapRuns.count >= 3 else { return nil }
+            let preGapHR: Double? = {
+                if let todayPace = activity.paceSecPerKm {
+                    let matched = preGapRuns.filter {
+                        guard let p = $0.paceSecPerKm else { return false }
+                        return abs(p - todayPace) / todayPace <= 0.20
+                    }
+                    if matched.count >= 2 {
+                        let hrs = matched.compactMap { $0.avgHeartRate }
+                        if !hrs.isEmpty { return Double(hrs.reduce(0, +)) / Double(hrs.count) }
+                    }
+                }
+                let hrs = preGapRuns.compactMap { $0.avgHeartRate }
+                return hrs.isEmpty ? nil : Double(hrs.reduce(0, +)) / Double(hrs.count)
+            }()
+            guard let pre = preGapHR else { return nil }
+            // 첫 복귀 런부터 현재까지 (2회 이상) — 심박 평균이 공백 전 대비 ≤+3bpm이면 회복
+            let postRuns = sorted.filter { $0.date >= sorted[i].date && $0.date <= activity.date }
+            guard postRuns.count >= 2 else { return nil }
+            let postHRs = postRuns.compactMap { $0.avgHeartRate }
+            guard !postHRs.isEmpty else { return nil }
+            let postAvgHR = Double(postHRs.reduce(0, +)) / Double(postHRs.count)
+            guard (postAvgHR - pre) <= 3 else { return nil }
+            let daysSince = cal.dateComponents([.day], from: sorted[i].date, to: Date()).day ?? 0
+            return ReturnInsightInfo(
+                gapDays: prevToI,
+                preGapHR: preGapHR,
+                todayHR: activity.avgHeartRate.map(Double.init),
+                isExpiredByTime: daysSince >= 28,
+                hrRecovered: true
+            )
+        }
+        return nil
+    }
+
+    private var returnRecoveredRow: some View {
+        let L = AppLanguage.shared
+        return HStack(spacing: 8) {
+            Image(systemName: "heart.circle.fill")
+                .font(.system(size: 13))
+                .foregroundStyle(Color(hex: "30D158"))
+            Text(L.s("심박이 공백 전 수준으로 돌아왔어요", "Your HR is back to pre-break levels"))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color(hex: "30D158"))
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(hex: "1A3020"))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private func returnInsightRow(_ ri: ReturnInsightInfo) -> some View {
+        let L = AppLanguage.shared
+        let blue = Color(hex: "0A84FF")
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "arrow.counterclockwise.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(blue)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L.s("\(ri.gapDays)일 만의 러닝이에요", "First run in \(ri.gapDays) days"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                if let pre = ri.preGapHR, let today = ri.todayHR {
+                    Text(L.s("공백 전 같은 페이스에서 심박 \(Int(pre.rounded()))이었는데 오늘은 \(Int(today.rounded()))이에요",
+                             "Pre-gap HR was \(Int(pre.rounded())) at this pace — today \(Int(today.rounded()))"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.white.opacity(0.65))
+                }
+                if ri.gapDays >= 28 {
+                    Text(L.s("체력이 돌아오는 데 보통 공백만큼의 시간이 걸려요. 2~3주에 걸쳐 천천히 올려도 괜찮아요",
+                             "Fitness takes about as long as the break to return. Build back gradually over 2–3 weeks."))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.white.opacity(0.40))
+                        .padding(.top, 2)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(blue.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -3871,6 +4365,24 @@ private struct RaceInsightCard: View {
             Text(L.s("거리별 폼 유지력 (전체 기록)", "Form by Distance (All Races)"))
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.5))
+            // 열 제목
+            HStack(spacing: 6) {
+                Text(L.s("부문", "Dist."))
+                    .frame(width: 44, alignment: .leading)
+                Text(L.s("날짜", "Date"))
+                    .frame(width: 44, alignment: .leading)
+                Text(L.s("케이던스", "Cadence"))
+                    .foregroundStyle(Theme.cadence.opacity(0.65))
+                    .frame(width: 54, alignment: .leading)
+                Text(L.s("보폭", "Stride"))
+                    .foregroundStyle(Theme.strideLength.opacity(0.65))
+                    .frame(width: 46, alignment: .leading)
+                Spacer()
+                Text(L.s("상태", "Status"))
+            }
+            .font(.system(size: 9))
+            .foregroundStyle(Color.white.opacity(0.4))
+            .padding(.bottom, 1)
             ForEach(rows, id: \.division) { row in
                 let comps = cal.dateComponents([.year, .month], from: row.raceDate)
                 let dateStr = "\(comps.year ?? 0).\(comps.month ?? 0)"
@@ -3886,13 +4398,23 @@ private struct RaceInsightCard: View {
                     if let cd = row.cadDrop, let sd = row.strideDrop {
                         let cadSign = cd >= 0 ? "−" : "+"
                         let strSign = sd >= 0 ? "−" : "+"
-                        Text("케\(cadSign)\(String(format: "%.1f", abs(cd)))%  보\(strSign)\(String(format: "%.1f", abs(sd)))%")
+                        Text("\(cadSign)\(String(format: "%.1f", abs(cd)))%")
                             .font(.system(size: 9.5, design: .monospaced))
-                            .foregroundStyle(Color.white.opacity(0.50))
+                            .foregroundStyle(Theme.cadence.opacity(0.80))
+                            .frame(width: 54, alignment: .leading)
+                        Text("\(strSign)\(String(format: "%.1f", abs(sd)))%")
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundStyle(Theme.strideLength.opacity(0.80))
+                            .frame(width: 46, alignment: .leading)
                     } else {
                         Text("–")
                             .font(.system(size: 9.5))
                             .foregroundStyle(Color.white.opacity(0.30))
+                            .frame(width: 54, alignment: .leading)
+                        Text("–")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(Color.white.opacity(0.30))
+                            .frame(width: 46, alignment: .leading)
                     }
                     Spacer()
                     distanceFormBadge(row.form)
@@ -3990,6 +4512,7 @@ struct InsightExportSheet: View {
     var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     var heatModel: MRHeatModel? = nil
     var formShifts: [MRFormShift] = []
+    var weatherSnapshot: WeatherSnapshot? = nil
     var confirmedRace: PersistedRaceMatch? = nil
     var confirmedRaces: [PersistedRaceMatch] = []
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
@@ -4187,6 +4710,18 @@ struct InsightExportSheet: View {
                 guard !cads.isEmpty else { return detail?.avgCadence }
                 return Int((Double(cads.reduce(0, +)) / Double(cads.count)).rounded())
             }()
+            let exportFormHasGap: Bool = {
+                let cal = Calendar.current
+                guard let threeMonthsAgo = cal.date(byAdding: .month, value: -3, to: activity.date) else { return false }
+                let recent = history
+                    .filter { $0.type == .running && $0.date >= threeMonthsAgo && $0.date <= activity.date }
+                    .sorted { $0.date < $1.date }
+                for i in 0..<(recent.count - 1) {
+                    let gap = cal.dateComponents([.day], from: recent[i].date, to: recent[i + 1].date).day ?? 0
+                    if gap >= 14 { return true }
+                }
+                return false
+            }()
             RunFormCardView(
                 activity: activity,
                 splits: detail?.splits ?? [],
@@ -4200,7 +4735,9 @@ struct InsightExportSheet: View {
                 hrSamples: hrSamples,
                 typicalDistanceKm: typicalRunDistanceKm,
                 heatModel: heatModel,
-                formShifts: formShifts
+                formShifts: formShifts,
+                hasRecentGap: exportFormHasGap,
+                weatherSnapshot: weatherSnapshot
             )
         case .performance:
             PerformanceInsightCard(

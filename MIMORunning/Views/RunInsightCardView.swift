@@ -114,8 +114,17 @@ struct RunInsightSection: View {
     var hrZones: [HRZoneData] = []
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     var isBackfilling: Bool = false
+    var isClassifying: Bool = false
     var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
     var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var formBaseline: RunningFormBaseline? = nil
+    var formBackfillProgress: (done: Int, total: Int)? = nil
+    var heatModel: MRHeatModel? = nil
+    var formShifts: [MRFormShift] = []
+    var weatherSnapshot: WeatherSnapshot? = nil
+    var confirmedRace: PersistedRaceMatch? = nil
+    var confirmedRaces: [PersistedRaceMatch] = []
+    var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
 
     var body: some View {
         if !insights.isEmpty, let act = activity {
@@ -131,8 +140,17 @@ struct RunInsightSection: View {
                 isAutoDetected: isAutoDetected,
                 workoutTypeFn: workoutTypeFn,
                 isBackfilling: isBackfilling,
+                isClassifying: isClassifying,
                 cadenceSeries: cadenceSeries,
-                hrSamples: hrSamples
+                hrSamples: hrSamples,
+                formBaseline: formBaseline,
+                formBackfillProgress: formBackfillProgress,
+                heatModel: heatModel,
+                formShifts: formShifts,
+                weatherSnapshot: weatherSnapshot,
+                confirmedRace: confirmedRace,
+                confirmedRaces: confirmedRaces,
+                raceDetailFn: raceDetailFn
             )
         }
     }

@@ -653,14 +653,14 @@ enum RunInsightEngine {
 
         if pct > 75 {
             let msg = L.s(
-                "회복런 기준 심박이 \(pctStr)로 다소 높았어요 — 더 여유롭게 가도 좋아요.",
+                "이지런 기준 심박이 \(pctStr)로 다소 높았어요 — 더 여유롭게 가도 좋아요.",
                 "HR at \(pctStr) of max for an easy run — it's fine to go a bit easier."
             )
             return RunInsight(category: .intensity, tone: .caution, badge: L.s("강도 참고", "Effort Note"),
                               message: msg, highlights: [pctStr])
         }
         let msg = L.s(
-            "심박 \(pctStr)로 여유 있는 강도의 회복런이었어요.",
+            "심박 \(pctStr)로 여유 있는 강도의 이지런이었어요.",
             "HR at \(pctStr) of max — good easy effort level."
         )
         return RunInsight(category: .intensity, tone: .good, badge: L.s("좋은 강도", "Good Effort"),
@@ -1193,9 +1193,19 @@ enum RunInsightEngine {
             return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient"),
                               message: msg, highlights: [diffStr + "bpm", sampleStr + "회"])
         } else {
+            // 직전 런과의 공백이 14일 이상이면 원인을 공백으로 귀속
+            let gapDays: Int? = {
+                let sorted = history.filter { $0.type == .running && $0.date < activity.date }
+                                    .sorted { $0.date < $1.date }
+                guard let last = sorted.last else { return nil }
+                let g = Calendar.current.dateComponents([.day], from: last.date, to: activity.date).day ?? 0
+                return g >= 14 ? g : nil
+            }()
+            let cause = gapDays.map { L.s("\($0)일 공백의 영향일 수 있어요.", "\($0)-day break may be a factor.") }
+                     ?? L.s("오늘 컨디션을 반영한 것일 수 있어요.", "may reflect today's condition.")
             let msg = L.s(
-                "비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높아요. 오늘 컨디션을 반영한 것일 수 있어요.",
-                "HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — may reflect today's condition."
+                "비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높아요. \(cause)",
+                "HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)"
             )
             return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note"),
                               message: msg, highlights: [diffStr + "bpm", sampleStr + "회"])

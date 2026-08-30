@@ -106,6 +106,7 @@ enum WorkoutType: String, Codable {
     case buildUp     // 빌드업 (점진적 가속 구조)
     case lsd         // LSD — long slow distance
     case distanceRun // 거리주 (레이스페이스 장거리)
+    case race        // 대회 — 기록에 도전한 대회
     case general     // 일반
 
     var koreanLabel: String {
@@ -113,11 +114,12 @@ enum WorkoutType: String, Codable {
         return switch self {
         case .interval:    L.s("인터벌",   "Interval")
         case .longRun:     L.s("롱런",     "Long Run")
-        case .easy:        L.s("회복런",   "Easy Run")
+        case .easy:        L.s("이지런",   "Easy Run")
         case .tempo:       L.s("템포런",   "Tempo Run")
         case .buildUp:     L.s("빌드업",   "Build-Up")
         case .lsd:         L.s("LSD",      "LSD")
         case .distanceRun: L.s("거리주",   "Distance Run")
+        case .race:        L.s("대회",     "Race")
         case .general:     L.s("일반 러닝", "General Run")
         }
     }
@@ -134,7 +136,7 @@ struct ActivityDetail {
     let splits: [SplitData]
     var hrZones: [HRZoneData]
     let intervalSegments: [IntervalSegment]
-    let workoutType: WorkoutType       // classified from splits + history
+    var workoutType: WorkoutType       // classified from splits + history
     // Running dynamics — Watch only, nil when unavailable
     let avgGroundContactTime: Double?  // ms
     let avgStrideLength: Double?       // m
@@ -167,6 +169,13 @@ struct IntervalSegment: Identifiable, Codable {
         return duration / (d / 1000)
     }
 
+    // 계산 보폭 (m) = speed(m/min) / cadence(spm)
+    // 케이던스·페이스 중 하나라도 없으면 nil.
+    var computedStride: Double? {
+        guard let cad = avgCadence, cad > 0, let pace = paceSecPerKm, pace > 0 else { return nil }
+        return (1000.0 / pace) * 60.0 / Double(cad)
+    }
+
     var formattedPace: String? {
         guard let sec = paceSecPerKm else { return nil }
         return String(format: "%d'%02d\"", Int(sec) / 60, Int(sec) % 60)
@@ -191,8 +200,10 @@ struct SplitData: Identifiable, Codable {
     let distanceM: Double    // meters (< 1000 for last partial split)
     let duration: TimeInterval
     let avgHeartRate: Int?
-    let avgCadence: Int?     // spm — nil when Watch data unavailable
-    let avgPower: Int?       // W  — nil when Watch data unavailable
+    let avgCadence: Int?              // spm — nil when Watch data unavailable
+    let avgPower: Int?                // W   — nil when Watch data unavailable
+    let avgGroundContactTime: Double? // ms  — nil when Watch data unavailable
+    let avgStrideLength: Double?      // m   — nil when Watch data unavailable
 
     var paceSecPerKm: Double { duration / (distanceM / 1000) }
 
@@ -321,7 +332,7 @@ enum TrendMetric: String, CaseIterable, Identifiable {
         switch self {
         case .cadence:             Theme.cadence
         case .power:               Theme.power
-        case .groundContactTime:   Theme.time
+        case .groundContactTime:   Theme.groundContact
         case .strideLength:        Theme.strideLength
         case .verticalOscillation: Theme.verticalOsc
         case .vo2Max:              Theme.elevation

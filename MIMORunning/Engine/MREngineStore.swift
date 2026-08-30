@@ -61,6 +61,28 @@ final class MREngineStore: ObservableObject {
 
     // 로컬 저장: backtest / advice 재계산용
     private var rhrSamples: [(date: Date, value: Double)] = []
+    private var rhrLastFetchedAt: Date? = nil
+
+    private static let rhrCacheDateKey    = "mimo.rhrCache.fetchedAt"
+    private static let rhrCacheSamplesKey = "mimo.rhrCache.samples"
+
+    private func loadPersistedRHR() -> (fetchedAt: Date, samples: [(date: Date, value: Double)])? {
+        let ud = UserDefaults.standard
+        guard let ts = ud.object(forKey: Self.rhrCacheDateKey) as? Double,
+              let rawArr = ud.array(forKey: Self.rhrCacheSamplesKey) as? [[Double]] else { return nil }
+        let samples = rawArr.compactMap { arr -> (date: Date, value: Double)? in
+            guard arr.count == 2 else { return nil }
+            return (Date(timeIntervalSince1970: arr[0]), arr[1])
+        }
+        guard !samples.isEmpty else { return nil }
+        return (Date(timeIntervalSince1970: ts), samples)
+    }
+
+    private func persistRHR(fetchedAt: Date, samples: [(date: Date, value: Double)]) {
+        let ud = UserDefaults.standard
+        ud.set(fetchedAt.timeIntervalSince1970, forKey: Self.rhrCacheDateKey)
+        ud.set(samples.map { [$0.date.timeIntervalSince1970, $0.value] }, forKey: Self.rhrCacheSamplesKey)
+    }
     private var storedDob: Date? = nil
     private var storedSex: MRSex = .unknown
     private var storedStrengthPerWeek: Double = 0
@@ -121,7 +143,33 @@ final class MREngineStore: ObservableObject {
             print("⚠ 인터벌 판정 \(flagged)/\(fetched.count) — 기준이 잘못됨. 무시함")
         }
 
-        let rhr = try await timed("fetchRestingHR") { try await hk.fetchRestingHR() }
+        // 앱 재시작 후에도 유효한 캐시가 있으면 복원
+        if rhrSamples.isEmpty, let persisted = loadPersistedRHR() {
+            rhrSamples    = persisted.samples
+            rhrLastFetchedAt = persisted.fetchedAt
+        }
+        let rhr: [(date: Date, value: Double)]
+        let rhrAge = rhrLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        if !rhrSamples.isEmpty && rhrAge < 24 * 3600 {
+            rhr = rhrSamples
+            #if DEBUG
+            let saveDateStr: String = {
+                let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+                return rhrLastFetchedAt.map { df.string(from: $0) } ?? "?"
+            }()
+            print("[⏱ fetchRestingHR] 캐시 히트(저장일 \(saveDateStr)) · \(rhrSamples.count)건")
+            #endif
+        } else {
+            let t0 = CFAbsoluteTimeGetCurrent()
+            rhr = try await hk.fetchRestingHR()
+            let fetchedAt = Date()
+            rhrLastFetchedAt = fetchedAt
+            persistRHR(fetchedAt: fetchedAt, samples: rhr)
+            #if DEBUG
+            print(String(format: "[⏱ fetchRestingHR] %.2fs · 조회범위 400일 · 결과 %d건 · 캐시 미스",
+                         CFAbsoluteTimeGetCurrent() - t0, rhr.count))
+            #endif
+        }
         let dob = hk.dateOfBirth()
         let sexRaw = hk.biologicalSex()
         let sex: MRSex = sexRaw == .female ? .female : (sexRaw == .male ? .male : .unknown)
@@ -287,7 +335,13 @@ final class MREngineStore: ObservableObject {
                                 advice: advice, asOf: now)
 
         #if DEBUG
-        print("[추론] firstData=\(firstData.map(mrYMD) ?? "-") · 경력 \(String(format: "%.2f", profileFull.trainingAgeYears?.value ?? 0))년 · 공백 \(gaps.count)건")
+        let sorted14 = runs.sorted { $0.date < $1.date }
+        let gap14 = sorted14.count > 1
+            ? (0..<(sorted14.count - 1)).filter { i in
+                (Calendar.current.dateComponents([.day], from: sorted14[i].date, to: sorted14[i + 1].date).day ?? 0) >= 14
+              }.count
+            : 0
+        print("[추론] firstData=\(firstData.map(mrYMD) ?? "-") · 경력 \(String(format: "%.2f", profileFull.trainingAgeYears?.value ?? 0))년 · 공백 \(gap14)건 (기준 14일)")
         #endif
 
         // ③ VO2max + 건강 지표 (vo2도 ①에서 시작했으므로 이미 도착했을 것)
@@ -317,13 +371,28 @@ final class MREngineStore: ObservableObject {
            let cached = MRDriftCacheStore.load(),
            abs(cached.lastWorkoutStart.timeIntervalSince(lastRunStart)) < 1 {
             let m = cached.drift.model
-            drift = m
             let elapsed = Date().timeIntervalSince(t0)
             #if DEBUG
             print(String(format: "[드리프트] 캐시 히트 · %@ · %d세션 [⏱ drift-캐시읽기] %.3fs",
                          m.ok ? "성공" : "실패", m.sessions, elapsed))
             #endif
-            return
+            if m.ok {
+                drift = m
+                return
+            }
+            // ok=false: 24h TTL 이내면 재계산 생략 — 7초짜리 HK 세그먼트 쿼리 반복 방지
+            let cacheAge = Date().timeIntervalSince(cached.computedAt ?? .distantPast)
+            if cacheAge < 24 * 3600 {
+                drift = m
+                #if DEBUG
+                print(String(format: "[드리프트] 캐시 재사용 (ok=false · %.0fh/24h TTL) → HK 쿼리 생략",
+                             cacheAge / 3600))
+                #endif
+                return
+            }
+            #if DEBUG
+            print("[드리프트] 캐시 ok=false 만료 (세션\(m.sessions) 기온범위\(Int(m.tempSpanC))°C · \(Int(cacheAge / 3600))h 경과) → 재계산")
+            #endif
         }
         #if DEBUG
         print(String(format: "[드리프트] [⏱ drift-캐시읽기] %.3fs → 미스, HealthKit 쿼리 시작",
@@ -345,6 +414,12 @@ final class MREngineStore: ObservableObject {
            abs(cached.lastWorkoutStart.timeIntervalSince(lastStart)) < 1 {
             let m = cached.drift.model
             drift = m
+            // computedAt이 nil이면 TTL 체크가 항상 만료로 판정 → 갱신해 반복 HK 쿼리 방지
+            if cached.computedAt == nil {
+                MRDriftCacheStore.save(MRDriftCache(
+                    lastWorkoutStart: lastStart, computedAt: Date(), drift: cached.drift
+                ))
+            }
             #if DEBUG
             print("[드리프트] 캐시 히트(HK확인 후) · \(m.ok ? "성공" : "실패") · \(m.sessions)세션")
             #endif
@@ -379,15 +454,41 @@ final class MREngineStore: ObservableObject {
         #endif
 
         let intervalStarts = Set(runs.filter(\.isInterval).map(\.start))
+        #if DEBUG
+        let nonIntSegs    = segs.filter { !intervalStarts.contains($0.workoutStart) }
+        let byNonInt      = Dictionary(grouping: nonIntSegs, by: \.workoutStart)
+        let goodSessions  = byNonInt.filter { $0.value.count >= 8 }.count
+        let thinSessions  = byNonInt.count - goodSessions
+        // 필터 단계: HK건수 → 인터벌 제외 → 세그<8 제외 → 최종 유효 세션
+        print(String(format: "[드리프트] HK %d건 → 인터벌%d건 제외 → %d세션(세그<8: %d제외) → 세그≥8 %d세션 · 세그먼트 %d점(임계 300점)",
+                     recent.count, intervalStarts.count,
+                     byNonInt.count, thinSessions, goodSessions, nonIntSegs.count))
+        #endif
         let m = mrFitDrift(segments: segs, excludeIntervalStarts: intervalStarts)
         drift = m
 
         if let last = recent.last?.startDate {
             MRDriftCacheStore.save(MRDriftCache(lastWorkoutStart: last,
+                                                computedAt: Date(),
                                                 drift: MRDriftModelCodable(m)))
         }
         #if DEBUG
         print("[드리프트] \(m.ok ? "성공" : "실패") · 15°C기준 \(String(format: "%.1f", m.bpmPer10MinAtRef))bpm/10분 · 기온범위 \(Int(m.tempSpanC))°C · \(m.sessions)세션")
+        if !m.ok {
+            var reasons = [String]()
+            if m.sessions < 15 {
+                reasons.append("세션 \(m.sessions)개 (최소 15개 필요)")
+            }
+            if m.tempSpanC < 15 {
+                reasons.append("기온범위 \(Int(m.tempSpanC))°C (최소 15°C 필요)")
+            }
+            if !(m.bpmPer10MinAtRef > 0 && m.bpmPer10MinAtRef < 15) {
+                reasons.append("드리프트 \(String(format: "%.1f", m.bpmPer10MinAtRef))bpm/10분 (0–15 범위 밖)")
+            }
+            if !reasons.isEmpty {
+                print("[드리프트] 실패 사유: \(reasons.joined(separator: " · "))")
+            }
+        }
         #endif
     }
 
@@ -458,6 +559,16 @@ final class MREngineStore: ObservableObject {
         let raceDayVisible3 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
         todayCard = mrTodayCard(runs: runs, phys: phys, plans: plans,
                                 raceDayCardVisible: raceDayVisible3,
+                                advice: advice, asOf: now)
+    }
+
+    // 언어가 바뀌었을 때 HealthKit 재읽기 없이 todayCard 문자열만 재생성한다.
+    func recomputeTodayCard() {
+        guard case .ready = state else { return }
+        let now = Date()
+        let raceDayVisible = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
+        todayCard = mrTodayCard(runs: runs, phys: phys, plans: plans,
+                                raceDayCardVisible: raceDayVisible,
                                 advice: advice, asOf: now)
     }
 

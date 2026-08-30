@@ -90,7 +90,11 @@ struct ActivityDetailView: View {
     @State private var runSegmentSource: RunSegmentSource = .none
     @State private var runFadeStartKm: Double? = nil
     @State private var isInsightBackfilling = false
+    @State private var formBaseline: RunningFormBaseline? = FormBaselineEngine.peekFromCache()
+    @State private var formShifts: [MRFormShift] = []
+    @State private var formBackfillTask: Task<Void, Never>?
     @Environment(RaceDetector.self) private var raceDetector
+    @Environment(\.scenePhase) private var scenePhase
     @Query private var panelAllStories: [WorkoutStory]
     @Query private var panelAllShoes: [Shoe]
     @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
@@ -168,6 +172,10 @@ struct ActivityDetailView: View {
             }
         }
         .ignoresSafeArea(edges: .bottom)
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { formBackfillTask?.cancel() }
+        }
+        .onDisappear { formBackfillTask?.cancel() }
     }
 
     private var detailContent: some View {
@@ -203,10 +211,23 @@ struct ActivityDetailView: View {
                             age: userAge,
                             isMale: manager.userIsMale,
                             hrZones: effectiveHRZones,
-                            workoutTypeFn: { manager.cachedWorkoutTypeForStats(for: $0) },
-                            isBackfilling: isInsightBackfilling,
+                            workoutTypeFn: { [rd = raceDetector, m = manager] id in
+                                // 확정된 대회 기록은 .race로 고정 — 거리주 등 훈련 분류 덮어씀
+                                if let match = rd.matchFor(activityID: id), match.isConfirmed { return .race }
+                                return m.cachedWorkoutTypeForStats(for: id)
+                            },
+                            isBackfilling: isInsightBackfilling || manager.isWorkoutTypeReclassifying,
+                            isClassifying: manager.isOnDemandClassifying,
                             cadenceSeries: panelSeriesCache[.cadence] ?? [],
-                            hrSamples: hrSamples
+                            hrSamples: hrSamples,
+                            formBaseline: formBaseline,
+                            formBackfillProgress: manager.formBackfillProgress,
+                            heatModel: engine.heat,
+                            formShifts: formShifts,
+                            weatherSnapshot: condition?.weather,
+                            confirmedRace: confirmedRaceMatch,
+                            confirmedRaces: raceDetector.matches.values.filter(\.isConfirmed),
+                            raceDetailFn: { [manager] id in manager.detailFromCache(id) }
                         )
                     }
                     panelChipRow
@@ -409,10 +430,69 @@ struct ActivityDetailView: View {
             isLoadingDetail = false
             loadInsights()
             Task { await loadCombinedChart() }
+            // @MainActor 컨텍스트에서 raceDetector 접근 — Task 진입 전에 미리 수집
+            let confirmedRaceIDs: Set<UUID> = Set(
+                manager.activities.compactMap { a -> UUID? in
+                    guard let m = raceDetector.matchFor(activityID: a.id), m.isConfirmed else { return nil }
+                    return a.id
+                }
+            )
+            let allFormInputs      = manager.formInputs
+            let excludedRaceInputs = allFormInputs.filter { confirmedRaceIDs.contains($0.activityID) }
+            let nonRaceInputs      = allFormInputs.filter { !confirmedRaceIDs.contains($0.activityID) }
+            #if DEBUG
+            // 대회 ID → km 맵: raceDetector 접근은 @MainActor에서만 (task 클로저 진입 전)
+            let raceKmByID: [UUID: Double] = confirmedRaceIDs.reduce(into: [:]) { d, id in
+                if let m = raceDetector.matchFor(activityID: id) { d[id] = m.distanceKm }
+            }
+            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+            let excludedDesc = excludedRaceInputs.map { inp -> String in
+                let km = raceKmByID[inp.activityID] ?? 0
+                let label: String
+                if abs(km - 42.195) < 3      { label = "풀코스" }
+                else if abs(km - 21.0975) < 2 { label = "하프" }
+                else if abs(km - 10) < 1      { label = "10km" }
+                else if abs(km - 5) < 0.5     { label = "5km" }
+                else                           { label = String(format: "%.1fkm", km) }
+                return "\(df.string(from: inp.date))(\(label))"
+            }.joined(separator: " · ")
+            print("[Baseline:뷰] loadOrCompute 호출 — activities=\(manager.activities.count), formInputs=\(allFormInputs.count) (대회제외후 \(nonRaceInputs.count)개)")
+            if !excludedRaceInputs.isEmpty { print("[Baseline:뷰] 대회 제외 목록: \(excludedDesc)") }
+            #endif
+            Task {
+                // 대회(confirmed race)는 baseline 계산에서 제외 — 마라톤 페이스가 느린 구간 왜곡 방지
+                let baseline = await FormBaselineEngine.loadOrCompute(inputs: nonRaceInputs,
+                                                                       excludedRaceInputs: excludedRaceInputs)
+                #if DEBUG
+                print("[Baseline:뷰] 결과 bands=\(baseline.bands.count)")
+                #endif
+                formBaseline = baseline
+                formShifts = await computeFormShifts()
+            }
             Task {
                 isInsightBackfilling = true
-                await manager.backfillWorkoutTypes()
+                await manager.backfillWorkoutTypesAroundActivity(activity)  // 열람 런 기준 4주 창
                 isInsightBackfilling = false
+            }
+            formBackfillTask = Task {
+                let newCount = await manager.backfillFormMetrics()
+                guard !Task.isCancelled, newCount > 0 else { return }
+                FormBaselineEngine.clearCache()
+                let raceIDsForRefresh: Set<UUID> = Set(
+                    manager.activities.compactMap { a -> UUID? in
+                        guard let m = raceDetector.matchFor(activityID: a.id), m.isConfirmed else { return nil }
+                        return a.id
+                    }
+                )
+                let allFormRefresh      = manager.formInputs
+                let excludedRaceRefresh = allFormRefresh.filter { raceIDsForRefresh.contains($0.activityID) }
+                let nonRaceRefresh      = allFormRefresh.filter { !raceIDsForRefresh.contains($0.activityID) }
+                let refreshed = await FormBaselineEngine.loadOrCompute(inputs: nonRaceRefresh,
+                                                                        excludedRaceInputs: excludedRaceRefresh)
+                formBaseline = refreshed
+                #if DEBUG
+                print("[Baseline:재계산] 백필 후 갱신 — 새 항목 \(newCount)건, bands=\(refreshed.bands.count)")
+                #endif
             }
 
             // 존 분포: detail?.hrZones 우선, 없으면 HR 시리즈로 비동기 재계산 → displayZones
@@ -690,6 +770,39 @@ struct ActivityDetailView: View {
         runInsights = result.insights
         runSegmentSource = result.segmentSource
         runFadeStartKm = result.fadeStartKm
+    }
+
+    private func computeFormShifts() async -> [MRFormShift] {
+        guard !engine.runs.isEmpty else { return [] }
+        // 열람 중인 러닝 기준 직전 1년 데이터만 가져온다 — 4년 전 러닝도 그 시점 폼을 본다
+        let asOf = activity.date
+        let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: asOf) ?? .distantPast
+        // vo는 추세 판정에서 제외 — Apple Watch 측정 오차 MAPE 19%로 신뢰도 낮음
+        async let cadFetch = manager.fetchMetricHistory(.cadence, from: oneYearAgo)
+        async let gctFetch = manager.fetchMetricHistory(.groundContactTime, from: oneYearAgo)
+        let (cadData, gctData) = await (cadFetch, gctFetch)
+
+        let cal = Calendar.current
+        let speedByDate = mrFormSpeedByDate(engine.runs)
+        let now = asOf
+
+        func buildObs(_ pts: [(date: Date, value: Double)]) -> [MRFormObs] {
+            pts.compactMap { pt in
+                let day = cal.startOfDay(for: pt.date)
+                guard let speed = speedByDate[day] else { return nil }
+                return MRFormObs(date: day, speedMPerMin: speed, metricValue: pt.value)
+            }
+        }
+
+        var shifts: [MRFormShift] = []
+        for (metric, obs) in [(mrFormMetrics[1], buildObs(cadData)),
+                               (mrFormMetrics[2], buildObs(gctData))] {
+            let residuals = mrFormResiduals(obs: obs, asOf: now)
+            if let shift = mrFormShift(residuals, metric: metric, asOf: now, obs: obs) {
+                shifts.append(shift)
+            }
+        }
+        return shifts
     }
 
     private func loadCombinedChart() async {
@@ -3381,7 +3494,8 @@ struct SplitsPanelChart: View {
                 id: end,
                 distanceM: totalDist,
                 duration: totalDur,
-                avgHeartRate: nil, avgCadence: nil, avgPower: nil
+                avgHeartRate: nil, avgCadence: nil, avgPower: nil,
+                avgGroundContactTime: nil, avgStrideLength: nil
             ))
             i = end
         }
