@@ -1,6 +1,21 @@
 import SwiftUI
 import Charts
 
+// MARK: - Shared: Long-Distance Context
+
+/// 거리 문맥 판정 — 단일 소스. 폼 탭·리듬 탭 공용.
+/// .longRun/.lsd 이거나 현재 거리 > 4주 평균 러닝 × 1.50 또는 절대 거리 ≥ 12km 이면 true.
+func isLongDistanceRunContext(
+    activity: Activity,
+    workoutType: WorkoutType,
+    recentAvgDistanceKm: Double?
+) -> Bool {
+    if workoutType == .longRun || workoutType == .lsd { return true }
+    guard let typical = recentAvgDistanceKm, typical > 0 else { return false }
+    let distKm = activity.distance / 1000
+    return distKm > typical * 1.50 || distKm >= 12.0
+}
+
 // MARK: - Run Form Card
 
 struct RunFormCardView: View {
@@ -12,11 +27,30 @@ struct RunFormCardView: View {
     var avgVerticalOscillation: Double? = nil
     var baseline: RunningFormBaseline? = nil
     var workoutType: WorkoutType = .general
+    var intervalSegments: [IntervalSegment] = []
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+    var typicalDistanceKm: Double? = nil  // 4주 평균 1회 러닝 거리(km). 장거리 문맥 판단에 사용.
+    var heatModel: MRHeatModel? = nil
+    var formShifts: [MRFormShift] = []
+    var hasRecentGap: Bool = false
+    var weatherSnapshot: WeatherSnapshot? = nil
+
+    // 버킷 계산은 러닝당 1회만 — onAppear 시 저장, splitFormTrendSection·logTrend에서 재사용
+    @State private var formSeriesCache: [FormSeries] = []
 
     // MARK: - Nested Types
 
     enum MetricDir { case cadence, stride, groundContact, verticalOsc }
     enum MetricStatus { case inRange, above, below, unknown }
+    enum RunningStyle { case quickStep, bigStride, normal, unknown }
+
+    struct FormInsightItem: Identifiable {
+        enum Kind: String { case temperature, weather, trend, distance, cadenceHR, style }
+        var id: Kind
+        var badgeText: String
+        var bodyText: String
+        var badgeColor: Color
+    }
 
     struct ChainChild: Identifiable {
         let id: Int
@@ -31,7 +65,8 @@ struct RunFormCardView: View {
 
     struct FormSeries {
         struct Point: Identifiable {
-            let id: Int   // 1-based km number
+            let id: Int         // bucket index
+            let kmEnd: Double   // [65] 버킷 끝 누적 km
             let value: Double
             let outOfRange: Bool
         }
@@ -44,14 +79,25 @@ struct RunFormCardView: View {
         let secondAvg: Double?
         let dir: MetricDir
         let lineColor: Color
+        let bandIsJudgeable: Bool   // 띠 판정 가능 여부
+        let bandSampleCount: Int    // 띠 표본 수 (라벨·로그용)
+        let bandPaceMin: Double?    // 띠 기준 페이스 하한 (sec/km) — 라벨용
+        let bandPaceMax: Double?    // 띠 기준 페이스 상한 (sec/km) — 라벨용
+        let totalSplitCount: Int    // 버킷 전체 수 (결측 표기용)
 
         var yDomain: ClosedRange<Double> {
             var lo = points.map(\.value).min() ?? 0
             var hi = points.map(\.value).max() ?? 1
             if let b = bandLo { lo = min(lo, b) }
             if let b = bandHi { hi = max(hi, b) }
-            let span = hi - lo
-            let pad = span > 0 ? span * 0.10 : 1.0
+            // 띠 폭의 25%를 위아래 여백으로 — 띠가 배경이 아닌 "범위"로 읽히도록
+            let pad: Double
+            if let bLo = bandLo, let bHi = bandHi, bHi > bLo {
+                pad = (bHi - bLo) * 0.25
+            } else {
+                let span = hi - lo
+                pad = span > 0 ? span * 0.10 : 1.0
+            }
             return (lo - pad)...(hi + pad)
         }
     }
@@ -59,8 +105,32 @@ struct RunFormCardView: View {
     // MARK: - Computed
 
     private var bb: BandBaseline? { baseline?.baseline(for: activity) }
+
+    /// 스플릿 차트용 참조 밴드. 페이스가 범위 밖이어도 장거리 문맥에선 가장 느린
+    /// 유효 밴드를 참고로 사용 — 띠 배경은 유지하고 OOB 강조만 끈다.
+    private var effectiveBb: BandBaseline? {
+        if let b = bb { return b }
+        guard isLongDistanceContext, let bl = baseline else { return nil }
+        for fallback in [PaceBand.verySlow, .jog, .daily, .tempo, .fast] {
+            if let found = bl.bands[fallback] { return found }
+        }
+        return nil
+    }
+
     private var isInterval: Bool { workoutType == .interval }
+
+    /// true → 장거리 문맥. 장거리에서는 지표 하락이 자주 나타남 — 상태 배지를 숨기고 조언을 유보.
+    private var isLongDistanceContext: Bool {
+        isLongDistanceRunContext(
+            activity: activity,
+            workoutType: workoutType,
+            recentAvgDistanceKm: typicalDistanceKm
+        )
+    }
     private let lineColor = Color.white.opacity(0.20)
+    // [57] 텍스트 열 고정 너비 — 가장 긴 「수직진폭 (참고) N.N cm」+ 들여쓰기를 수용
+    //      네 줄 모두 이 값에서 바가 시작 → 축 좌우 끝 픽셀 정렬
+    private let barTextColumnWidth: CGFloat = 120
 
     private var fullSplits: [SplitData] {
         splits.filter { $0.distanceM >= 900 }
@@ -69,14 +139,56 @@ struct RunFormCardView: View {
     private var showTrendSection: Bool {
         guard !isInterval, fullSplits.count >= 3 else { return false }
         return fullSplits.contains {
-            $0.avgCadence != nil || $0.avgStrideLength != nil || $0.avgGroundContactTime != nil
+            $0.avgCadence != nil || $0.avgStrideLength != nil ||
+            $0.avgGroundContactTime != nil || $0.avgVerticalOscillation != nil
         }
     }
 
+    /// 표시 전용 버킷. 판정 계산(전반/후반 비교 등)은 fullSplits를 직접 사용할 것.
+    private func bucketedDisplaySplits(_ splits: [SplitData]) -> [SplitData] {
+        guard splits.count > 10 else { return splits }
+        let step = splits.count > 20 ? 3 : 2
+
+        var buckets: [SplitData] = []
+        var i = 0; var idx = 1; let n = splits.count
+        while i < n {
+            let group = Array(splits[i..<min(i + step, n)])
+            func avgD(_ f: (SplitData) -> Double?) -> Double? {
+                let v = group.compactMap(f); return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
+            }
+            func avgI(_ f: (SplitData) -> Int?) -> Int? {
+                let v = group.compactMap(f)
+                return v.isEmpty ? nil : Int((Double(v.reduce(0, +)) / Double(v.count)).rounded())
+            }
+            buckets.append(SplitData(
+                id: idx,
+                distanceM: group.map(\.distanceM).reduce(0, +),
+                duration: group.map(\.duration).reduce(0, +),
+                avgHeartRate: avgI(\.avgHeartRate),
+                avgCadence: avgI(\.avgCadence),
+                avgPower: avgI(\.avgPower),
+                avgGroundContactTime: avgD(\.avgGroundContactTime),
+                avgStrideLength: avgD(\.avgStrideLength),
+                avgVerticalOscillation: avgD(\.avgVerticalOscillation)
+            ))
+            i += step; idx += 1
+        }
+        // 로그는 logTrend에서 출력 — 여기서 출력하면 렌더당 N회 중복
+
+        return buckets
+    }
+
     private var formSeries: [FormSeries] {
+        guard !isInterval else { return [] }
         let L = AppLanguage.shared
-        let fs = fullSplits
+        let fs = fullSplits              // 원본: 판정(전반/후반 비교) 전용
+        let bs = bucketedDisplaySplits(fs) // 버킷: 차트 포인트 표시 전용
         guard fs.count >= 3 else { return [] }
+
+        // [65] 버킷별 누적 km — x축 km 표기용
+        var accumKm = 0.0
+        var bucketKm = [Int: Double]()
+        for s in bs { accumKm += s.distanceM / 1000.0; bucketKm[s.id] = accumKm }
         let mid = fs.count / 2
         let firstHalf  = Array(fs.prefix(mid))
         let secondHalf = Array(fs.suffix(from: mid))
@@ -85,62 +197,308 @@ struct RunFormCardView: View {
             let v = vals.compactMap { $0 }
             return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
         }
+        // 판정가능 → ±1.2SD×factor / 판정불가(표본<minSamples) → P10-P90 관측 범위
+        let bbJudgeable   = bb?.isJudgeable ?? true
+        let bbSampleCount = bb?.sampleCount ?? 0
+        func splitBounds(_ formStat: FormStat?, dir: MetricDir)
+            -> (lo: Double, hi: Double)? {
+            guard let stat = formStat else { return nil }
+            if !bbJudgeable, let p10 = stat.p10, let p90 = stat.p90 {
+                return (lo: roundedDisplay(p10, dir: dir),
+                        hi: roundedDisplay(p90, dir: dir))
+            }
+            let factor: Double = dir == .groundContact ? 1.2 : 1.5
+            let halfWidth = (stat.upper - stat.lower) / 2.0 * factor
+            return (lo: roundedDisplay(stat.median - halfWidth, dir: dir),
+                    hi: roundedDisplay(stat.median + halfWidth, dir: dir))
+        }
         let isOOB: (Double, FormStat?, MetricDir) -> Bool = { v, stat, dir in
-            guard let stat else { return false }
+            guard bbJudgeable else { return false }
+            guard let b = splitBounds(stat, dir: dir) else { return false }
             let rv = self.roundedDisplay(v, dir: dir)
-            let lo = self.roundedDisplay(stat.lower, dir: dir)
-            let hi = self.roundedDisplay(stat.upper, dir: dir)
-            return rv < lo || rv > hi
+            return rv < b.lo || rv > b.hi
         }
 
         var result: [FormSeries] = []
 
         // Cadence
-        let cadPairs: [(Int, Double)] = fs.compactMap { s in s.avgCadence.map { (s.id, Double($0)) } }
+        let cadPairs: [(Int, Double)] = bs.compactMap { s in s.avgCadence.map { (s.id, Double($0)) } }
         if !cadPairs.isEmpty {
             let stat = bb?.cadence
+            let cb = splitBounds(stat, dir: .cadence)
             result.append(FormSeries(
                 label: L.s("케이던스", "Cadence"), unit: "spm",
-                points: cadPairs.map { km, v in .init(id: km, value: v, outOfRange: isOOB(v, stat, .cadence)) },
-                bandLo: stat.map { roundedDisplay($0.lower, dir: .cadence) },
-                bandHi: stat.map { roundedDisplay($0.upper, dir: .cadence) },
+                points: cadPairs.map { km, v in .init(id: km, kmEnd: bucketKm[km] ?? Double(km), value: v, outOfRange: isOOB(v, stat, .cadence)) },
+                bandLo: cb?.lo, bandHi: cb?.hi,
                 firstAvg:  avg(firstHalf.map  { $0.avgCadence.map(Double.init) }),
                 secondAvg: avg(secondHalf.map { $0.avgCadence.map(Double.init) }),
-                dir: .cadence, lineColor: Color(hex: "5CE5D5")
+                dir: .cadence, lineColor: Color(hex: "5CE5D5"),
+                bandIsJudgeable: bbJudgeable, bandSampleCount: bbSampleCount,
+                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count
             ))
         }
 
         // Stride
-        let slPairs: [(Int, Double)] = fs.compactMap { s in s.avgStrideLength.map { (s.id, $0) } }
+        let slPairs: [(Int, Double)] = bs.compactMap { s in s.avgStrideLength.map { (s.id, $0) } }
         if !slPairs.isEmpty {
             let stat = bb?.strideLength
+            let sb = splitBounds(stat, dir: .stride)
             result.append(FormSeries(
                 label: L.s("보폭", "Stride"), unit: "m",
-                points: slPairs.map { km, v in .init(id: km, value: v, outOfRange: isOOB(v, stat, .stride)) },
-                bandLo: stat.map { roundedDisplay($0.lower, dir: .stride) },
-                bandHi: stat.map { roundedDisplay($0.upper, dir: .stride) },
+                points: slPairs.map { km, v in .init(id: km, kmEnd: bucketKm[km] ?? Double(km), value: v, outOfRange: isOOB(v, stat, .stride)) },
+                bandLo: sb?.lo, bandHi: sb?.hi,
                 firstAvg:  avg(firstHalf.map(\.avgStrideLength)),
                 secondAvg: avg(secondHalf.map(\.avgStrideLength)),
-                dir: .stride, lineColor: Color.white.opacity(0.78)
+                dir: .stride, lineColor: Color(hex: "FFA94D"),
+                bandIsJudgeable: bbJudgeable, bandSampleCount: bbSampleCount,
+                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count
             ))
         }
 
         // GCT
-        let gctPairs: [(Int, Double)] = fs.compactMap { s in s.avgGroundContactTime.map { (s.id, $0) } }
+        let gctPairs: [(Int, Double)] = bs.compactMap { s in s.avgGroundContactTime.map { (s.id, $0) } }
         if !gctPairs.isEmpty {
             let stat = bb?.groundContact
+            let gb = splitBounds(stat, dir: .groundContact)
             result.append(FormSeries(
                 label: L.s("지면접촉", "GCT"), unit: "ms",
-                points: gctPairs.map { km, v in .init(id: km, value: v, outOfRange: isOOB(v, stat, .groundContact)) },
-                bandLo: stat.map { roundedDisplay($0.lower, dir: .groundContact) },
-                bandHi: stat.map { roundedDisplay($0.upper, dir: .groundContact) },
+                points: gctPairs.map { km, v in .init(id: km, kmEnd: bucketKm[km] ?? Double(km), value: v, outOfRange: isOOB(v, stat, .groundContact)) },
+                bandLo: gb?.lo, bandHi: gb?.hi,
                 firstAvg:  avg(firstHalf.map(\.avgGroundContactTime)),
                 secondAvg: avg(secondHalf.map(\.avgGroundContactTime)),
-                dir: .groundContact, lineColor: Color(hex: "FC9A56")
+                dir: .groundContact, lineColor: Color(hex: "A78BFA"),
+                bandIsJudgeable: bbJudgeable, bandSampleCount: bbSampleCount,
+                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count
             ))
         }
 
-        return result
+        // Vertical Oscillation (참고 전용 — 추세 표시, 판정·OOB 강조 없음)
+        let voPairs: [(Int, Double)] = bs.compactMap { s in s.avgVerticalOscillation.map { (s.id, $0) } }
+        if !voPairs.isEmpty {
+            let voBounds = splitBounds(bb?.verticalOsc, dir: .verticalOsc)
+            result.append(FormSeries(
+                label: L.s("수직진폭", "Vert Osc"), unit: "cm",
+                points: voPairs.map { km, v in .init(id: km, kmEnd: bucketKm[km] ?? Double(km), value: v, outOfRange: false) },
+                bandLo: voBounds?.lo, bandHi: voBounds?.hi,
+                firstAvg: avg(firstHalf.map(\.avgVerticalOscillation)),
+                secondAvg: avg(secondHalf.map(\.avgVerticalOscillation)),
+                dir: .verticalOsc, lineColor: Color.white.opacity(0.45),
+                bandIsJudgeable: false, bandSampleCount: bbSampleCount,
+                bandPaceMin: nil, bandPaceMax: nil, totalSplitCount: bs.count
+            ))
+        }
+
+        // 데이터 포인트 3개 이하는 추이 차트 자체가 무의미 — 제외 (VO 제외: 데이터 없음 칸 유지 필요)
+        return result.filter { s in
+            let include = s.dir == .verticalOsc || s.points.count > 3
+            #if DEBUG
+            if !include {
+                print("[폼:추이] \(s.label) 데이터 \(s.points.count)/\(fs.count)스플릿 → 3개 이하 제외")
+            }
+            #endif
+            return include
+        }
+    }
+
+    // MARK: - Style Classification
+
+    /// 주법 판정. 인터벌·장거리 문맥이면 .unknown. r ≤ -0.3 AND n ≥ 20 이 아니면 .unknown.
+    private var runningStyleClassification: RunningStyle {
+        guard !isInterval, !isLongDistanceContext,
+              let bb,
+              let r = bb.cadenceStrideR, r <= -0.3,
+              bb.sampleCount >= 20,
+              let cad = avgCadence,
+              let str = avgStrideLength,
+              let cadStat = bb.cadence,
+              let strStat = bb.strideLength
+        else { return .unknown }
+
+        let cadResidual = Double(cad) - cadStat.median
+        let strResidual = str - strStat.median
+
+        if let p90 = bb.cadenceResidualP90, let p25 = bb.strideResidualP25,
+           cadResidual >= p90 && strResidual <= p25 { return .quickStep }
+        if let p10 = bb.cadenceResidualP10, let p75 = bb.strideResidualP75,
+           cadResidual <= p10 && strResidual >= p75 { return .bigStride }
+        return .normal
+    }
+
+    private func styleBadgeInfo(for style: RunningStyle) -> (text: String, color: Color)? {
+        let L = AppLanguage.shared
+        switch style {
+        case .quickStep: return (L.s("잔발형", "Quick Step"), Color(hex: "4ECDC4"))
+        case .bigStride: return (L.s("큰보폭형", "Big Stride"), Color(hex: "FFA94D"))
+        case .normal:    return (L.s("평소 주법", "Typical"), Color.white.opacity(0.5))
+        case .unknown:   return nil
+        }
+    }
+
+    // MARK: - Insight Slot
+
+    private func paceString(_ secPerKm: Double) -> String {
+        let m = Int(secPerKm) / 60
+        let s = Int(secPerKm) % 60
+        return String(format: "%d'%02d\"", m, s)
+    }
+
+    private func trendInsightText(_ realShifts: [MRFormShift]) -> String {
+        let L = AppLanguage.shared
+        guard let shift = realShifts.first else { return "" }
+        let weeks = shift.weeksConsistent
+        let suffix = L.s("\(weeks)주째 ", "for \(weeks) wks ")
+        switch shift.metric.key {
+        case "vo":
+            return shift.delta > 0
+                ? L.s("위아래 움직임이 \(suffix)커지고 있어요.", "Vertical oscillation has been \(suffix)increasing.")
+                : L.s("위아래 움직임이 \(suffix)줄어들고 있어요.", "Vertical oscillation has been \(suffix)decreasing.")
+        case "cadence":
+            return shift.delta > 0
+                ? L.s("케이던스가 \(suffix)높아지고 있어요.", "Cadence has been \(suffix)increasing.")
+                : L.s("케이던스가 \(suffix)낮아지고 있어요.", "Cadence has been \(suffix)decreasing.")
+        case "gct":
+            return shift.delta > 0
+                ? L.s("지면접촉이 \(suffix)길어지고 있어요.", "Ground contact has been \(suffix)increasing.")
+                : L.s("지면접촉이 \(suffix)짧아지고 있어요.", "Ground contact has been \(suffix)decreasing.")
+        default:
+            return L.s("주법 지표에 변화가 있어요.", "A form metric is shifting.")
+        }
+    }
+
+    private var formInsights: [FormInsightItem] {
+        let L = AppLanguage.shared
+        var items: [FormInsightItem] = []
+
+        // [기온] 야외(temp != nil) AND (temp ≥ 25 OR ≤ 5) AND 모델 유효
+        // [날씨] 비 — 기온과 동시에 뜨면 한 슬롯으로 합치고, 기온 없으면 별도 슬롯
+        let isRainy = weatherSnapshot?.isRainy == true
+        var tempFired = false
+        if let temp = activity.temperatureC,
+           let model = heatModel, model.ok,
+           (temp >= 25 || temp <= 5),
+           let pace = activity.paceSecPerKm {
+            let corrected = pace * exp(model.logDelta(temp))
+            let diff = pace - corrected   // 양수 = 교정 페이스가 빠름
+            if diff >= 5 {
+                tempFired = true
+                let refStr = paceString(corrected)
+                let tempStr = String(format: "%.1f", temp)
+                let ctx = temp >= 25
+                    ? L.s("시원한 날이었다면", "On a cooler day")
+                    : L.s("따뜻한 날이었다면", "On a warmer day")
+                let text: String
+                if isRainy {
+                    text = L.s(
+                        "\(tempStr)°C에 비까지 왔어요. \(ctx) 같은 노력으로 \(refStr) 정도 나왔을 거예요.",
+                        "You ran in \(tempStr)°C rain. \(ctx), same effort might have produced \(refStr).")
+                } else {
+                    text = L.s(
+                        "\(tempStr)°C에서 뛰었어요. \(ctx) 같은 노력으로 \(refStr) 정도 나왔을 거예요.",
+                        "You ran at \(tempStr)°C. \(ctx), the same effort might have produced a \(refStr) pace.")
+                }
+                items.append(FormInsightItem(
+                    id: .temperature,
+                    badgeText: L.s(isRainy ? "기온·날씨" : "기온", isRainy ? "Temp & Rain" : "Heat"),
+                    bodyText: text,
+                    badgeColor: Color(hex: "FF8C42")))
+            }
+        }
+        if !tempFired, isRainy, items.count < 3 {
+            let text = L.s(
+                "비 오는 날이었어요. 노면이 젖으면 지면접촉과 페이스가 평소와 달라질 수 있어요.",
+                "It was raining. Wet pavement can affect ground contact and pace.")
+            items.append(FormInsightItem(
+                id: .weather,
+                badgeText: L.s("날씨", "Weather"),
+                bodyText: text,
+                badgeColor: Color(hex: "6BAED6")))
+        }
+
+        // [추세] 공백이 있으면 hasRecentGap=true → mrFormObservation 내에서 nil 반환
+        if let obs = mrFormObservation(formShifts, hasRecentGap: hasRecentGap, refCadence: avgCadence), items.count < 3 {
+            items.append(FormInsightItem(id: .trend,
+                                         badgeText: L.s("추세", "Trend"),
+                                         bodyText: obs.text,
+                                         badgeColor: Color(hex: "7FD98A")))
+        }
+
+        // [거리] distance ≥ 4주 평균 × 130%
+        if let typical = typicalDistanceKm, typical > 0,
+           (activity.distance / 1000) >= typical * 1.30,
+           items.count < 3 {
+            let distKm = activity.distance / 1000
+            let ratio  = distKm / typical
+            let text = L.s(
+                "\(String(format: "%.1f", distKm))km는 평소(\(String(format: "%.1f", typical))km)의 \(String(format: "%.1f", ratio))배예요.",
+                "\(String(format: "%.1f", distKm)) km is \(String(format: "%.1f", ratio))× your usual \(String(format: "%.1f", typical)) km.")
+            items.append(FormInsightItem(id: .distance,
+                                         badgeText: L.s("거리", "Distance"),
+                                         bodyText: text,
+                                         badgeColor: Color(hex: "6BAED6")))
+        }
+
+        // [케이던스 U자] 같은 페이스에서 심박 최저 케이던스 추정 (우선순위 4위)
+        if let item = cadenceHRInsight, items.count < 3 {
+            items.append(item)
+        }
+
+        // [주법] 잔발형 또는 큰보폭형
+        let style = runningStyleClassification
+        if (style == .quickStep || style == .bigStride), items.count < 3,
+           let badge = styleBadgeInfo(for: style) {
+            let text: String
+            switch style {
+            case .quickStep:
+                text = L.s("평소보다 발걸음이 빠르고 보폭이 짧았어요.", "Cadence was higher and stride shorter than usual.")
+            case .bigStride:
+                text = L.s("평소보다 보폭이 크고 발걸음이 느렸어요.", "Stride was longer and cadence slower than usual.")
+            default:
+                text = ""
+            }
+            items.append(FormInsightItem(id: .style,
+                                         badgeText: badge.text,
+                                         bodyText: text,
+                                         badgeColor: Color(hex: "A78BFA")))
+        }
+
+        // 총 4줄 상한: 논리적 줄 수 합산 후 초과하면 낮은 우선순위부터 제거
+        while items.map({ $0.bodyText.components(separatedBy: "\n").count }).reduce(0, +) > 4, !items.isEmpty {
+            items.removeLast()
+        }
+        return Array(items.prefix(3))
+    }
+
+    // MARK: - Cadence-HR U-Curve Insight
+
+    /// 케이던스–심박 U자 곡선 인사이트. 글로벌 조건 + 퍼액티비티 조건 모두 통과 시 반환.
+    private var cadenceHRInsight: FormInsightItem? {
+        guard !isInterval,
+              let diag = baseline?.cadenceHRDiag,
+              diag.isGloballyValid,
+              let vertex = diag.vertexResidual,
+              let bb = bb,
+              let cadStat = bb.cadence,
+              let actCad = avgCadence
+        else { return nil }
+
+        let optimalCadence = Int((cadStat.median + vertex).rounded())
+
+        // 퍼액티비티 조건
+        guard abs(optimalCadence - actCad) >= 2 else { return nil }
+        guard optimalCadence >= 160, optimalCadence <= 190 else { return nil }
+
+        let L = AppLanguage.shared
+        let direction = optimalCadence > actCad
+            ? L.s("조금 높은", "slightly higher")
+            : L.s("조금 낮은", "slightly lower")
+        let body = L.s(
+            "같은 페이스에서 케이던스 \(optimalCadence) 근처일 때 심박이 가장 낮았어요. 지금보다 \(direction) 편이 효율적일 수 있어요.",
+            "HR was lowest around a cadence of \(optimalCadence) at the same pace. A \(direction) cadence than now may be more efficient."
+        )
+        return FormInsightItem(id: .cadenceHR,
+                               badgeText: L.s("케이던스", "Cadence"),
+                               bodyText: body,
+                               badgeColor: Color(hex: "4ECDC4"))
     }
 
     private var chainChildren: [ChainChild] {
@@ -199,23 +557,39 @@ struct RunFormCardView: View {
         VStack(alignment: .leading, spacing: 14) {
             topSummary
             divider
-            causalChain
-            divider
-            if showTrendSection {
-                splitFormTrendSection
+            if isInterval {
+                if intervalSegments.contains(where: { $0.stepLabel == "운동" }) {
+                    IntervalFatigueCard(segments: intervalSegments,
+                                       hrSamples: hrSamples,
+                                       workoutStart: activity.date)
+                }
+            } else {
+                causalChain
                 divider
+                formInsightSection
+                if showTrendSection {
+                    splitFormTrendSection
+                }
             }
-            placeholderSection(
-                title: AppLanguage.shared.s("주법 판정", "Running Form"),
-                icon: "figure.run"
-            )
         }
         .padding(16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear {
+            formSeriesCache = formSeries  // 버킷 1회 계산 → 이후 재사용
+            logDistanceContext()
             logChain()
             logTrend()
+            logStyleClassification()
+            logInsightSlot()
+            logUCurve()
+            logRangeBar()
+        }
+        .onChange(of: formShifts.count) { _, _ in
+            #if DEBUG
+            // formShifts는 async 완료 후 설정됨 — onAppear 이후 도착하면 재로그
+            logInsightSlot()
+            #endif
         }
     }
 
@@ -244,7 +618,8 @@ struct RunFormCardView: View {
                     kpiSep
                     KPICell(label: AppLanguage.shared.s("케이던스", "Cadence"),
                             value: "\(cad)", unit: "spm",
-                            color: Color(hex: "5CE5D5"))
+                            color: Color(hex: "5CE5D5"),
+                            context: isInterval ? AppLanguage.shared.s("전력 구간", "work segs") : nil)
                 }
                 if let sl = avgStrideLength {
                     kpiSep
@@ -264,13 +639,26 @@ struct RunFormCardView: View {
         let children = chainChildren
         VStack(alignment: .leading, spacing: 0) {
             if let cad = avgCadence {
-                rootNodeView(label: L.s("케이던스", "Cadence"),
+                rootNodeView(label: isInterval ? L.s("케이던스 (전력)", "Cadence (work)") : L.s("케이던스", "Cadence"),
                              rawValue: Double(cad), formatted: "\(cad)", unit: "spm",
-                             stat: bb?.cadence, dir: .cadence)
+                             stat: bb?.isJudgeable == true ? bb?.cadence : nil, dir: .cadence)
             }
             ForEach(children) { child in
                 connectorView
                 childNodeView(child: child)
+            }
+            // [70] 범위 바 설명: 바 아래, 축 시작 x에 맞춰 들여씀
+            if let summary = barSummaryText() {
+                Color.clear.frame(height: 5)
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: barTextColumnWidth + 8)
+                    Text(summary)
+                        .font(.system(size: 8))
+                        .foregroundStyle(Color.white.opacity(0.60))
+                        .lineSpacing(2.5)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
             }
             if let paceStr = activity.formattedPace {
                 resultArrowView
@@ -284,6 +672,26 @@ struct RunFormCardView: View {
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            let style = runningStyleClassification
+            if style != .unknown, let badge = styleBadgeInfo(for: style) {
+                Color.clear.frame(height: 8)
+                HStack(spacing: 6) {
+                    Text(badge.text)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(badge.color)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(badge.color.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                    if let cad = avgCadence, let str = avgStrideLength,
+                       let cadStat = bb?.cadence, let strStat = bb?.strideLength,
+                       bb?.isJudgeable == true {
+                        Text("\(cad) spm · \(String(format: "%.2f", str))m  (\(AppLanguage.shared.s("평소", "avg")) \(Int(cadStat.median.rounded())) · \(String(format: "%.2f", strStat.median)))")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Color.white.opacity(0.38))
+                    }
+                }
+            }
         }
     }
 
@@ -291,41 +699,58 @@ struct RunFormCardView: View {
 
     private func rootNodeView(label: String, rawValue: Double, formatted: String,
                               unit: String, stat: FormStat?, dir: MetricDir) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.50))
-                Text(formatted).font(cardNumFont(22)).foregroundStyle(Color.white)
-                Text(unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.45))
+        // [57] 텍스트 열을 barTextColumnWidth로 고정 → 네 줄 바가 같은 x에서 시작
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.50)).lineLimit(1)
+                    Text(formatted).font(cardNumFont(22)).foregroundStyle(Color.white).lineLimit(1)
+                    Text(unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.45)).lineLimit(1)
+                }
             }
-            if !isInterval, let stat { rangeRow(rawValue: rawValue, stat: stat, dir: dir) }
+            .frame(width: barTextColumnWidth, alignment: .leading)
+            if !isInterval, let stat {
+                rangeBarView(rawValue: rawValue, stat: stat, dir: dir,
+                             dotValues: recentDotsForBand(dir: dir),
+                             totalSamples: bb?.sampleCount ?? 0,
+                             bandName: bb?.band.rawValue ?? "")
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 
     private func childNodeView(child: ChainChild) -> some View {
-        HStack(alignment: .top, spacing: 0) {
-            Color.clear.frame(width: 14)
-                .overlay {
-                    Rectangle().fill(lineColor).frame(width: 0.5).frame(width: 14, alignment: .center)
-                }
-            Color.clear.frame(width: 6)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(child.label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.50))
-                    if child.isRef {
-                        Text(AppLanguage.shared.s("(참고)", "(ref)"))
-                            .font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.30))
+        // 바 정렬: 들여쓰기를 내부 sub-HStack에 격리하고 바는 바깥 HStack에 배치
+        // → 루트 노드와 동일한 x 위치에 바가 정렬됨
+        // [57] 들여쓰기 포함한 텍스트 열을 barTextColumnWidth로 고정
+        HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: 0) {
+                Color.clear.frame(width: 14)
+                    .overlay {
+                        Rectangle().fill(lineColor).frame(width: 0.5).frame(width: 14, alignment: .center)
                     }
-                    Text(child.formatted)
-                        .font(cardNumFont(20))
-                        .foregroundStyle(child.isRef ? Color.white.opacity(0.50) : Color.white)
-                    Text(child.unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.45))
-                }
-                if !child.isRef && !isInterval, let stat = child.stat {
-                    rangeRow(rawValue: child.rawValue, stat: stat, dir: child.dir)
+                Color.clear.frame(width: 6)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(child.label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.50)).lineLimit(1)
+                        Text(child.formatted)
+                            .font(cardNumFont(20))
+                            .foregroundStyle(Color.white)
+                            .lineLimit(1)
+                        Text(child.unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.45)).lineLimit(1)
+                    }
                 }
             }
-            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: barTextColumnWidth, alignment: .leading)
+            if !isInterval, let stat = child.stat {
+                rangeBarView(rawValue: child.rawValue, stat: stat, dir: child.dir,
+                             dotValues: recentDotsForBand(dir: child.dir),
+                             totalSamples: bb?.sampleCount ?? 0,
+                             bandName: bb?.band.rawValue ?? "")
+                    .frame(maxWidth: .infinity)
+            }
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var connectorView: some View {
@@ -359,72 +784,343 @@ struct RunFormCardView: View {
         }
     }
 
-    // MARK: - Range Row
+    // MARK: - Range Bar
 
-    private func rangeRow(rawValue: Double, stat: FormStat, dir: MetricDir) -> some View {
-        let lo = roundedDisplay(stat.lower, dir: dir)
-        let hi = roundedDisplay(stat.upper, dir: dir)
-        let rv = roundedDisplay(rawValue, dir: dir)
-        let loStr = metricFmt(lo, dir: dir), hiStr = metricFmt(hi, dir: dir)
-        let (badgeText, badgeColor) = badgeInfo(rv: rv, lo: lo, hi: hi, dir: dir)
-        return HStack(spacing: 5) {
-            Text(AppLanguage.shared.s("평소 \(loStr)–\(hiStr)", "Typical \(loStr)–\(hiStr)"))
-                .font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.38))
-            if let b = badgeText, let c = badgeColor {
-                Text(b).font(.system(size: 9, weight: .medium)).foregroundStyle(c)
+    /// 최근 실적 점: bb?.recentSamples 에서 오늘 거리 ±2배 필터 후 최신 5개 추출.
+    private func recentDotsForBand(dir: MetricDir) -> [Double] {
+        guard let samples = bb?.recentSamples, !samples.isEmpty else { return [] }
+        let todayDist = activity.distance
+        let filtered = samples.filter { s in
+            guard s.distanceM > 0, todayDist > 0 else { return false }
+            let ratio = todayDist / s.distanceM
+            return ratio >= 0.5 && ratio <= 2.0
+        }
+        return filtered.prefix(5).compactMap { s -> Double? in
+            switch dir {
+            case .cadence:       return s.cadence.map(Double.init)
+            case .stride:        return s.strideLength
+            case .groundContact: return s.groundContactTime
+            case .verticalOsc:   return s.verticalOscillation
             }
         }
     }
 
-    private func badgeInfo(rv: Double, lo: Double, hi: Double, dir: MetricDir) -> (String?, Color?) {
-        let L = AppLanguage.shared
-        let green = Color(hex: "7FD98A"); let muted = Color.white.opacity(0.75)
-        if rv >= lo && rv <= hi { return (L.s("✓ 평소 범위", "✓ Typical"), Color.white.opacity(0.50)) }
-        let above = rv > hi
-        switch dir {
-        case .cadence:      return above ? (L.s("↑ 평소보다 높음", "↑ Above typical"), green)  : (L.s("↓ 평소보다 낮음", "↓ Below typical"), muted)
-        case .stride:       return above ? (L.s("↑ 평소보다 큼",   "↑ Above typical"), muted)  : (L.s("↓ 평소보다 작음", "↓ Below typical"), muted)
-        case .groundContact:return above ? (L.s("↑ 평소보다 길음", "↑ Above typical"), muted)  : (L.s("↓ 평소보다 짧음", "↓ Below typical"), green)
-        case .verticalOsc:  return (nil, nil)
+    private func rangeBarView(rawValue: Double, stat: FormStat, dir: MetricDir,
+                              dotValues: [Double], totalSamples: Int, bandName: String) -> some View {
+        let bandLo = roundedDisplay(stat.lower, dir: dir)
+        let bandHi = roundedDisplay(stat.upper, dir: dir)
+        let rv     = roundedDisplay(rawValue, dir: dir)
+        let loStr  = metricFmt(bandLo, dir: dir)
+        let hiStr  = metricFmt(bandHi, dir: dir)
+
+        // [87] 축 범위: 평소 범위가 약 75% 차지 (최소 폭 1.3배, 여백 8%)
+        //   → 범위 밖 점도 잘리지 않고, 밴드가 넓게 표시됨
+        let allVals: [Double] = [bandLo, bandHi, rv] + dotValues
+        let rawLo = allVals.min() ?? bandLo
+        let rawHi = allVals.max() ?? bandHi
+        let bandWidth = max(bandHi - bandLo, 0.001)
+        let minSpan = bandWidth * 1.3
+        var axisLo: Double
+        var axisHi: Double
+        if rawHi - rawLo < minSpan {
+            let center = (rawLo + rawHi) / 2
+            axisLo = center - minSpan / 2
+            axisHi = center + minSpan / 2
+        } else {
+            axisLo = rawLo
+            axisHi = rawHi
+        }
+        let axisSpan = axisHi - axisLo
+        axisLo -= axisSpan * 0.08
+        axisHi += axisSpan * 0.08
+
+        let green: Color = Color(hex: "7FD98A")
+        let neutral: Color = Color.white.opacity(0.70)
+        let dotColor: Color = {
+            // [76] 범위 안 + 개선 방향 벗어남 = 녹색. 반대 방향만 회색.
+            // [79] 거리 문맥은 색에 영향 없음 — 색은 판정이 아니라 "범위 안" 사실 표시
+            switch dir {
+            case .cadence:
+                return rv >= bandLo ? green : neutral
+            case .groundContact:
+                return rv <= bandHi ? green : neutral
+            case .stride, .verticalOsc:
+                // .verticalOsc: 중립 = 방향을 따지지 않음. 범위 안이면 녹색, 벗어나면 회색.
+                return rv >= bandLo && rv <= bandHi ? green : neutral
+            }
+        }()
+        #if DEBUG
+        let inRange = rv >= bandLo && rv <= bandHi
+        let colorLabel = dotColor == green ? "녹색" : "회색"
+        print("[폼:범위바] \(dir) \(metricFmt(rv, dir: dir)) · 범위 \(metricFmt(bandLo, dir: dir))–\(metricFmt(bandHi, dir: dir)) · \(inRange ? "안" : "밖") → \(colorLabel)")
+        if isLongDistanceContext { print("[폼:범위바] 색 억제 없음 (거리문맥=적용, 바 색은 유지)") }
+        #endif
+
+        // [61] 줄별 라벨 삭제 — 카드 하단에 barSummaryText()로 통합
+
+        return VStack(alignment: .leading, spacing: 1) {
+            // [55] 축 숫자를 Canvas symbols로 평소 범위 끝 x에 정렬
+            Canvas { ctx, size in
+                let w = size.width
+                guard w > 0, bandHi > bandLo, axisHi > axisLo else { return }
+                let barL: CGFloat = 4
+                let barR: CGFloat = w - 4
+                let barW = barR - barL
+                let axisRange = axisHi - axisLo
+                let barY: CGFloat = 7
+
+                let posX = { (v: Double) -> CGFloat in
+                    barL + CGFloat((v - axisLo) / axisRange) * barW
+                }
+                let bandLoX = posX(bandLo)
+                let bandHiX = posX(bandHi)
+
+                // [63] 전체 축: 배경에 가까운 수준 — 눈금판 역할만
+                var fullLine = Path()
+                fullLine.move(to: CGPoint(x: barL, y: barY))
+                fullLine.addLine(to: CGPoint(x: barR, y: barY))
+                ctx.stroke(fullLine, with: .color(.white.opacity(0.04)), lineWidth: 0.5)
+                for x in [barL, barR] {
+                    var cap = Path()
+                    cap.move(to: CGPoint(x: x, y: barY - 2.5))
+                    cap.addLine(to: CGPoint(x: x, y: barY + 2.5))
+                    ctx.stroke(cap, with: .color(.white.opacity(0.07)), lineWidth: 1)
+                }
+
+                // [63] 평소 범위: 훨씬 밝고 굵게 — 축과 두 단계 이상 대비
+                var bandLine = Path()
+                bandLine.move(to: CGPoint(x: bandLoX, y: barY))
+                bandLine.addLine(to: CGPoint(x: bandHiX, y: barY))
+                ctx.stroke(bandLine, with: .color(.white.opacity(0.55)), lineWidth: 2.5)
+                for x in [bandLoX, bandHiX] {
+                    var tick = Path()
+                    tick.move(to: CGPoint(x: x, y: barY - 4))
+                    tick.addLine(to: CGPoint(x: x, y: barY + 4))
+                    ctx.stroke(tick, with: .color(.white.opacity(0.72)), lineWidth: 2.5)
+                }
+
+                // [52] 히스토리 점: 같은 y, 가까운 점끼리 가로 흩뿌림
+                let todayX = posX(rv)
+                var jxs: [CGFloat] = dotValues.map { posX($0) }
+                let jThr: CGFloat = 6; let jOfs: CGFloat = 3.5
+                for i in 0..<jxs.count {
+                    for j in (i+1)..<jxs.count where abs(jxs[j] - jxs[i]) < jThr {
+                        let mid = (jxs[i] + jxs[j]) / 2
+                        jxs[i] = mid - jOfs; jxs[j] = mid + jOfs
+                    }
+                }
+                for i in 0..<jxs.count where abs(jxs[i] - todayX) < jThr {
+                    jxs[i] = todayX + (i % 2 == 0 ? -jOfs : jOfs)
+                }
+                for hx in jxs {
+                    let r: CGFloat = 3.5
+                    ctx.stroke(Path(ellipseIn: CGRect(x: hx-r, y: barY-r, width: r*2, height: r*2)),
+                               with: .color(.white.opacity(0.60)), lineWidth: 1.2)
+                }
+                // 오늘 값: 채운 원, 항상 최상단
+                let tr: CGFloat = 4.5
+                ctx.fill(Path(ellipseIn: CGRect(x: todayX-tr, y: barY-tr, width: tr*2, height: tr*2)),
+                         with: .color(dotColor))
+
+                // [55] lo/hi 숫자: 평소 범위 끝 눈금 아래 가운데 정렬
+                if let loSym = ctx.resolveSymbol(id: 0) {
+                    let cx = min(max(bandLoX, barL + 8), barR - 8)
+                    ctx.draw(loSym, at: CGPoint(x: cx, y: barY + 7), anchor: .top)
+                }
+                if let hiSym = ctx.resolveSymbol(id: 1) {
+                    let cx = min(max(bandHiX, barL + 8), barR - 8)
+                    ctx.draw(hiSym, at: CGPoint(x: cx, y: barY + 7), anchor: .top)
+                }
+            } symbols: {
+                // [74] 축 숫자: 설명 문구와 동일 크기/밝기
+                Text(loStr).font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.60)).tag(0)
+                Text(hiStr).font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.60)).tag(1)
+            }
+            .frame(height: 26)
+
         }
     }
 
-    // MARK: - Split Form Trend
+    // MARK: - Form Insight Section
+
+    @ViewBuilder
+    private var formInsightSection: some View {
+        let items = formInsights
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(items) { item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(item.badgeText)
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .foregroundStyle(item.badgeColor)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(item.badgeColor.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                        Text(item.bodyText)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.white.opacity(0.68))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            divider
+        }
+    }
+
+    // MARK: - Split Form Trend (2×2 Grid)
 
     @ViewBuilder
     private var splitFormTrendSection: some View {
-        let all = formSeries
-        if !all.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(Array(all.enumerated()), id: \.offset) { idx, s in
-                    if idx > 0 {
-                        Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5)
+        // formSeriesCache가 비면 ImageRenderer(onAppear 미호출) 상황 — 직접 계산 폴백
+        let all = formSeriesCache.isEmpty ? formSeries : formSeriesCache
+        let cadS  = all.first { $0.dir == .cadence }
+        let gctS  = all.first { $0.dir == .groundContact }
+        let slS   = all.first { $0.dir == .stride }
+        let voS   = all.first { $0.dir == .verticalOsc }
+
+        let hasTopRow    = cadS != nil || gctS != nil
+        let hasBottomRow = slS  != nil || voS  != nil
+
+        if hasTopRow || hasBottomRow {
+            VStack(alignment: .leading, spacing: 10) {
+                // Row 1: 판정 지표
+                if hasTopRow {
+                    HStack(alignment: .top, spacing: 10) {
+                        if let s = cadS {
+                            formSeriesCell(s).frame(maxWidth: .infinity)
+                        } else {
+                            Color.clear.frame(maxWidth: .infinity)
+                        }
+                        if let s = gctS {
+                            formSeriesCell(s).frame(maxWidth: .infinity)
+                        } else {
+                            Color.clear.frame(maxWidth: .infinity)
+                        }
                     }
-                    formSeriesRow(s)
+                }
+                // Row 2: 참고 지표
+                if hasBottomRow {
+                    HStack(alignment: .top, spacing: 10) {
+                        if let s = slS {
+                            formSeriesCell(s).frame(maxWidth: .infinity)
+                        } else {
+                            Color.clear.frame(maxWidth: .infinity)
+                        }
+                        if let s = voS {
+                            formSeriesCell(s).frame(maxWidth: .infinity)
+                        } else {
+                            // 진폭 데이터 없음 placeholder — 칸을 숨기면 레이아웃이 깨짐
+                            voNoDataCell.frame(maxWidth: .infinity)
+                        }
+                    }
                 }
             }
         }
     }
 
-    private func formSeriesRow(_ s: FormSeries) -> some View {
-        let fs = fullSplits
-        let n = fs.last?.id ?? 1
-        let mid = fs.count / 2
-        let midX = Double(mid) + 0.5
-        let showOdd = n > 8
-        let xVals: [Double] = showOdd
-            ? Array(stride(from: 1.0, through: Double(n), by: 2.0))
-            : (1...max(1, n)).map(Double.init)
+    private var voNoDataCell: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(AppLanguage.shared.s("수직진폭", "Vert Osc"))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.30))
+            Text(AppLanguage.shared.s("데이터 없음", "No data"))
+                .font(.system(size: 9))
+                .foregroundStyle(Color.white.opacity(0.20))
+                .frame(height: 52, alignment: .center)
+        }
+    }
 
-        return VStack(alignment: .leading, spacing: 5) {
-            // Header: metric name + change indicator
-            HStack(alignment: .firstTextBaseline) {
+    private func formSeriesCell(_ s: FormSeries) -> some View {
+        let L = AppLanguage.shared
+        // [65] km x축 계산
+        let kmEnds = s.points.map(\.kmEnd)
+        let lastKm = kmEnds.last ?? 1.0
+        let half = s.points.count / 2
+        let midKm: Double = {
+            if half > 0, half < s.points.count {
+                return (s.points[half - 1].kmEnd + s.points[half].kmEnd) / 2.0
+            }
+            return lastKm / 2.0
+        }()
+        let showEveryOther = kmEnds.count > 6
+        var displayKms: [Double] = showEveryOther
+            ? kmEnds.enumerated().compactMap { i, km in i % 2 == 0 ? km : nil }
+            : kmEnds
+        if showEveryOther, let lastKmVal = kmEnds.last, displayKms.last != lastKmVal {
+            displayKms.append(lastKmVal)
+            // [68] 직전 라벨과 너무 가까우면 직전 제거 (예: 14 · 15.5 → 15.5만 유지)
+            if displayKms.count >= 3 {
+                let normalStep = displayKms[displayKms.count - 2] - displayKms[displayKms.count - 3]
+                let lastGap   = displayKms[displayKms.count - 1] - displayKms[displayKms.count - 2]
+                if normalStep > 0, lastGap < normalStep * 0.65 {
+                    displayKms.remove(at: displayKms.count - 2)
+                }
+            }
+        }
+        let kmStep = kmEnds.count > 1 ? (kmEnds[1] - kmEnds[0]) : 1.0
+        // 마지막 라벨을 실제 총 거리 위치로 교체 — 버킷 끝(예: 4.5km)과 총 거리(예: 5km)가
+        // 다르면 "4  5 km"이 겹쳐 보이는 현상 방지
+        let totalKm = activity.distance / 1000
+        if !displayKms.isEmpty {
+            displayKms[displayKms.count - 1] = totalKm
+            // 직전 라벨이 총 거리와 너무 가까우면 제거 (겹침 방지)
+            if displayKms.count >= 2 {
+                let gap = totalKm - displayKms[displayKms.count - 2]
+                if gap < kmStep * 0.7 {
+                    displayKms.remove(at: displayKms.count - 2)
+                }
+            }
+        }
+        let lastDisplayKm = displayKms.last ?? totalKm
+        // 위치 0에 "km" 단위 레이블 삽입 — 숫자 레이블에 "km" 붙이지 않아 겹침 원천 차단
+        let displayKmsWithUnit = [0.0] + displayKms
+        let totalBuckets = s.totalSplitCount
+        let dataCount = s.points.count
+
+        return VStack(alignment: .leading, spacing: 4) {
+            // [88] 제목 + 수치/추세 한 줄
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(s.label)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.50))
-                Spacer()
+                    .foregroundStyle(Color.white.opacity(0.65))
+                    .lineLimit(1)
                 if let f = s.firstAvg, let sec = s.secondAvg {
-                    trendChangeBadge(dir: s.dir, unit: s.unit, firstAvg: f, secondAvg: sec)
+                    let missingRate = Double(totalBuckets - dataCount) / Double(max(1, totalBuckets))
+                    if missingRate > 0.50 {
+                        Text(L.s("데이터 부족", "Low data"))
+                            .font(.system(size: 8))
+                            .foregroundStyle(Color.white.opacity(0.28))
+                    } else {
+                        trendChangeBadge(dir: s.dir, unit: s.unit, firstAvg: f, secondAvg: sec)
+                    }
+                } else if s.bandLo != nil {
+                    let bandLabel: String = {
+                        if s.dir == .verticalOsc || isLongDistanceContext {
+                            return L.s("평소 범위 (참고)", "Typical (ref)")
+                        }
+                        if s.bandIsJudgeable, let pLo = s.bandPaceMin, let pHi = s.bandPaceMax {
+                            func pf(_ sec: Double) -> String {
+                                let i = Int(sec.rounded())
+                                return "\(i / 60)'\(String(format: "%02d", i % 60))\""
+                            }
+                            return L.s("평소 범위 (\(pf(pLo))~\(pf(pHi)) 러닝 \(s.bandSampleCount)회)",
+                                       "Typical (\(pf(pLo))–\(pf(pHi)) · \(s.bandSampleCount) runs)")
+                        }
+                        if s.bandIsJudgeable {
+                            return L.s("평소 범위 n=\(s.bandSampleCount)", "Typical n=\(s.bandSampleCount)")
+                        }
+                        return L.s("참고 범위 n=\(s.bandSampleCount)", "Ref range n=\(s.bandSampleCount)")
+                    }()
+                    Text(bandLabel)
+                        .font(.system(size: 8))
+                        .foregroundStyle(Color.white.opacity(0.28))
+                }
+                Spacer(minLength: 0)
+                if dataCount < totalBuckets && totalBuckets > 0 {
+                    Text("(\(dataCount)/\(totalBuckets))")
+                        .font(.system(size: 8))
+                        .foregroundStyle(Color.white.opacity(0.22))
                 }
             }
 
@@ -433,8 +1129,8 @@ struct RunFormCardView: View {
                 // Normal-range band
                 if let lo = s.bandLo, let hi = s.bandHi {
                     RectangleMark(
-                        xStart: .value("", 0.5),
-                        xEnd: .value("", Double(n) + 0.5),
+                        xStart: .value("", 0.0),
+                        xEnd: .value("", max(lastKm + kmStep * 0.5, totalKm)),
                         yStart: .value("", lo),
                         yEnd: .value("", hi)
                     )
@@ -442,14 +1138,14 @@ struct RunFormCardView: View {
                 }
 
                 // Midpoint divider
-                RuleMark(x: .value("", midX))
+                RuleMark(x: .value("", midKm))
                     .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
                     .foregroundStyle(Color.white.opacity(0.15))
 
                 // Line
                 ForEach(s.points) { pt in
                     LineMark(
-                        x: .value("km", Double(pt.id)),
+                        x: .value("km", pt.kmEnd),
                         y: .value("val", pt.value)
                     )
                     .foregroundStyle(s.lineColor)
@@ -459,38 +1155,72 @@ struct RunFormCardView: View {
 
                 // In-range small dots
                 ForEach(s.points.filter { !$0.outOfRange }) { pt in
-                    PointMark(x: .value("km", Double(pt.id)), y: .value("val", pt.value))
+                    PointMark(x: .value("km", pt.kmEnd), y: .value("val", pt.value))
                         .foregroundStyle(s.lineColor.opacity(0.45))
                         .symbolSize(12)
                 }
 
-                // Out-of-range: white halo then colored inner
-                ForEach(s.points.filter(\.outOfRange)) { pt in
-                    PointMark(x: .value("km", Double(pt.id)), y: .value("val", pt.value))
-                        .foregroundStyle(Color.white)
-                        .symbolSize(64)
-                }
-                ForEach(s.points.filter(\.outOfRange)) { pt in
-                    PointMark(x: .value("km", Double(pt.id)), y: .value("val", pt.value))
-                        .foregroundStyle(s.lineColor)
-                        .symbolSize(32)
+                // Out-of-range: white halo then colored inner (장거리 문맥이면 OOB 강조 생략)
+                if !isLongDistanceContext {
+                    ForEach(s.points.filter(\.outOfRange)) { pt in
+                        PointMark(x: .value("km", pt.kmEnd), y: .value("val", pt.value))
+                            .foregroundStyle(Color.white)
+                            .symbolSize(64)
+                    }
+                    ForEach(s.points.filter(\.outOfRange)) { pt in
+                        PointMark(x: .value("km", pt.kmEnd), y: .value("val", pt.value))
+                            .foregroundStyle(s.lineColor)
+                            .symbolSize(32)
+                    }
                 }
             }
             .chartYScale(domain: s.yDomain)
-            .chartXScale(domain: 0.5...(Double(n) + 0.5))
+            .chartXScale(domain: 0...max(lastKm + kmStep * 0.5, totalKm))
             .chartXAxis {
-                AxisMarks(values: xVals) { val in
-                    AxisValueLabel(centered: false) {
-                        if let v = val.as(Double.self) {
-                            Text("\(Int(v))")
-                                .font(.system(size: 8))
-                                .foregroundStyle(Color.white.opacity(0.30))
+                AxisMarks(values: displayKmsWithUnit) { val in
+                    if let v = val.as(Double.self) {
+                        let isUnit = v < 0.01   // position 0 → "km" 단위 표시
+                        let isLast = !isUnit && abs(v - lastDisplayKm) < 0.01
+                        if isUnit {
+                            // "km" 단위 레이블: 맨 앞에 한번만, 숫자와 겹침 없음
+                            AxisValueLabel(anchor: .topLeading) {
+                                Text("km")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(Color.white.opacity(0.30))
+                            }
+                        } else {
+                            let fmtKm = v.truncatingRemainder(dividingBy: 1) < 0.05
+                                ? String(format: "%.0f", v)
+                                : String(format: "%.1f", v)
+                            if isLast {
+                                AxisValueLabel(anchor: .topTrailing) {
+                                    Text(fmtKm)
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(Color.white.opacity(0.55))
+                                }
+                            } else {
+                                AxisValueLabel(centered: false) {
+                                    Text(fmtKm)
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(Color.white.opacity(0.55))
+                                }
+                            }
                         }
                     }
                 }
             }
             .chartYAxis(.hidden)
             .frame(height: 52)
+
+            if isLongDistanceContext, let bandLo = s.bandLo {
+                let belowCount = s.points.filter { $0.value < bandLo }.count
+                if s.points.count > 0, Double(belowCount) / Double(s.points.count) >= 0.30 {
+                    Text(AppLanguage.shared.s("장거리라 평소 범위 아래에 머물러요",
+                                              "Long run — staying below normal range is natural"))
+                        .font(.system(size: 8.5))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
+            }
         }
     }
 
@@ -513,6 +1243,40 @@ struct RunFormCardView: View {
             .foregroundStyle(color)
     }
 
+    // MARK: - Bar Summary
+
+    /// [61] 범위 바 설명 — 카드 하단에 한 줄. 밴드 이름 대신 페이스 범위 사용.
+    private func barSummaryText() -> String? {
+        let L = AppLanguage.shared
+        guard !isInterval, let bb = bb, bb.sampleCount > 0 else { return nil }
+        let paceMin = bb.paceMin
+        let paceMax = bb.paceMax
+        guard paceMin > 0, paceMax > 0 else { return nil }
+        func pf(_ sec: Double) -> String {
+            let i = Int(sec.rounded())
+            return "\(i/60)'\(String(format: "%02d", i%60))\""
+        }
+        let n = bb.sampleCount
+        let pr = "\(pf(paceMin))~\(pf(paceMax))"
+        let todayDist = activity.distance
+        let recentCount = min(bb.recentSamples.filter { s in
+            guard s.distanceM > 0, todayDist > 0 else { return false }
+            let ratio = todayDist / s.distanceM
+            return ratio >= 0.5 && ratio <= 2.0
+        }.count, 5)
+        let line1 = L.s(
+            "눈금 사이 = 평소 범위 · \(pr) 러닝 \(n)회",
+            "Ticks = typical range · \(n) runs at \(pr)")
+        let dotLine: String = recentCount >= 2
+            ? L.s("\n흰 점 = 거리가 비슷한 최근 \(recentCount)회",
+                   "\nWhite dots = \(recentCount) recent similar-distance runs")
+            : ""
+        let caveat: String = n < 3
+            ? L.s("\n비교 대상이 적어 참고용이에요.", "\nLimited samples — treat as reference only.")
+            : ""
+        return line1 + dotLine + caveat
+    }
+
     // MARK: - Narrative
 
     private var narrative: String? {
@@ -525,42 +1289,157 @@ struct RunFormCardView: View {
         let gctStr  = avgGroundContactTime.map { String(format: "%.0f", $0) }
 
         if cadD < 160 {
-            return L.s("보폭이 큰 편이에요. 발걸음을 조금 빠르게 하면 무릎 부담이 줄어요.",
-                        "Your stride is on the long side. A slightly faster cadence can reduce knee stress.")
+            return L.s("케이던스가 \(cad)spm이에요. 보폭이 큰 편이에요.",
+                        "Cadence is \(cad) spm — stride is on the longer side.")
         }
-        guard bb != nil else {
+        // 인터벌: 회복 구간이 포함된 전체 평균이라 개인 기준 비교를 생략한다
+        if isInterval {
+            let base = slStr.map {
+                L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 \(paceStr) 페이스가 나왔어요.",
+                     "Cadence \(cadStr) spm and stride \($0) m produced a \(paceStr) pace.")
+            } ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스가 나왔어요.",
+                      "A cadence of \(cadStr) spm produced a \(paceStr) pace.")
+            return base + " " + L.s(
+                "인터벌은 회복 구간이 섞여 평균만으로는 폼을 판단하기 어려워요.",
+                "Mixed with recovery intervals — averages alone don't reflect form."
+            )
+        }
+        guard bb?.isJudgeable == true else {
             return slStr.map { L.s("케이던스 \(cadStr)spm으로 보폭 \($0)m를 만들어 \(paceStr) 페이스가 나왔어요.",
                                    "A cadence of \(cadStr) spm and \($0) m stride produced a \(paceStr) pace.") }
                 ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스가 나왔어요.",
                         "A cadence of \(cadStr) spm produced a \(paceStr) pace.")
         }
 
+        // 장거리 문맥: 장거리에서는 지표 하락이 자주 나타남 — 판단 유보, 사실 서술만 표시
+        if isLongDistanceContext {
+            let distKm = activity.distance / 1000
+            let typeName = workoutType.koreanLabel  // localized: "거리주" KO / "Distance Run" EN
+            let distKmStr = String(format: "%.0f", distKm)
+            // 실제로 범위 아래인 지표가 있는지 확인 — 없으면 "평소 범위 그대로" 문구 사용
+            let cadSt = metricStatus(rawValue: cadD, stat: bb?.cadence, dir: .cadence)
+            let gctSt: MetricStatus = avgGroundContactTime.map {
+                metricStatus(rawValue: $0, stat: bb?.groundContact, dir: .groundContact)
+            } ?? .unknown
+            let slSt: MetricStatus = avgStrideLength.map {
+                metricStatus(rawValue: $0, stat: bb?.strideLength, dir: .stride)
+            } ?? .unknown
+            let anyBelow = [cadSt, gctSt, slSt].contains(.below)
+            let allInRange = [cadSt, gctSt, slSt].allSatisfy { $0 == .inRange || $0 == .unknown }
+            if allInRange {
+                return L.s(
+                    "\(distKmStr)km를 뛰면서 폼이 평소 범위 그대로였어요.",
+                    "Your form stayed within the usual range throughout \(distKmStr) km.")
+            }
+            if !anyBelow {
+                // .above만 있고 .below 없음 — 사실 서술 (배지 생략)
+                if gctSt == .above {
+                    return L.s(
+                        "\(distKmStr)km를 뛰면서 지면접촉이 평소보다 조금 길었어요.",
+                        "Ground contact ran a bit longer than usual in this \(distKmStr) km run.")
+                }
+                return L.s(
+                    "\(distKmStr)km를 뛰면서 폼이 평소 범위 그대로였어요.",
+                    "Your form stayed within the usual range throughout \(distKmStr) km.")
+            }
+            // 사실 서술: 전반/후반 평균으로 실제 변화 표기
+            let splitMid = fullSplits.count / 2
+            let fHalf = Array(fullSplits.prefix(splitMid))
+            let sHalf = Array(fullSplits.suffix(fullSplits.count - splitMid))
+            func cadAvg(_ arr: [SplitData]) -> Int? {
+                let v = arr.compactMap { $0.avgCadence }
+                return v.isEmpty ? nil : Int((Double(v.reduce(0, +)) / Double(v.count)).rounded())
+            }
+            func slAvg(_ arr: [SplitData]) -> Double? {
+                let v = arr.compactMap { $0.avgStrideLength }
+                return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
+            }
+            let fstCad = cadAvg(fHalf); let sndCad = cadAvg(sHalf)
+            let fstSL  = slAvg(fHalf);  let sndSL  = slAvg(sHalf)
+            var korParts: [String] = []
+            var engParts: [String] = []
+            if let fc = fstCad, let sc = sndCad {
+                korParts.append("케이던스 \(fc)→\(sc)spm")
+                engParts.append("cadence \(fc)→\(sc) spm")
+            }
+            if let fs2 = fstSL, let ss2 = sndSL {
+                korParts.append("보폭 \(String(format: "%.2f", fs2))→\(String(format: "%.2f", ss2))m")
+                engParts.append("stride \(String(format: "%.2f", fs2))→\(String(format: "%.2f", ss2)) m")
+            }
+            if !korParts.isEmpty {
+                if let typical = typicalDistanceKm, (distKm > typical * 1.50 || distKm >= 12.0),
+                   !formInsights.contains(where: { $0.id == .distance }) {
+                    let delta = distKm - typical
+                    return L.s(
+                        "평소보다 \(String(format: "%.1f", delta))km 긴 \(typeName)이에요. \(korParts.joined(separator: ", "))로 줄었어요.",
+                        "This \(typeName) is \(String(format: "%.1f", delta)) km longer than usual — \(engParts.joined(separator: ", ")).")
+                }
+                return L.s(
+                    "\(distKmStr)km를 뛰면서 \(korParts.joined(separator: ", "))로 줄었어요.",
+                    "\(distKmStr) km run — \(engParts.joined(separator: ", ")).")
+            }
+            // 스플릿 데이터 없음 — 전체 평균으로 서술
+            return slStr.map {
+                L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 \(paceStr) 페이스를 달렸어요.",
+                    "Cadence \(cadStr) spm and stride \($0) m for the \(paceStr) pace.")
+            } ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스를 달렸어요.",
+                     "Cadence \(cadStr) spm for the \(paceStr) pace.")
+        }
+
         let cadStatus = metricStatus(rawValue: cadD, stat: bb?.cadence, dir: .cadence)
         let gctStatus: MetricStatus = avgGroundContactTime.map {
             metricStatus(rawValue: $0, stat: bb?.groundContact, dir: .groundContact)
         } ?? .unknown
+        let slStatus: MetricStatus = avgStrideLength.map {
+            metricStatus(rawValue: $0, stat: bb?.strideLength, dir: .stride)
+        } ?? .unknown
+
+        // 보폭 이탈 구절 — 사실 서술(중립). 케이던스·GCT 둘 다 이탈이면 3개 → 보폭 생략
+        let cadDeviated = cadStatus != .inRange && cadStatus != .unknown
+        let gctDeviated = gctStatus != .inRange && gctStatus != .unknown
+        let slDeviated  = slStatus  != .inRange && slStatus  != .unknown
+        let strideClause: String?
+        if slDeviated, !(cadDeviated && gctDeviated), let sl = slStr {
+            strideClause = slStatus == .above
+                ? L.s("보폭이 \(sl)m로 평소보다 컸어요.", "Stride was \(sl) m — longer than usual.")
+                : L.s("보폭이 \(sl)m로 평소보다 작았어요.", "Stride was \(sl) m — shorter than usual.")
+        } else {
+            strideClause = nil
+        }
 
         if let g = gctStr {
             if gctStatus == .below {
-                return cadStatus == .inRange
-                    ? L.s("평소 리듬대로 \(cadStr)spm을 유지하면서 지면접촉이 \(g)ms로 짧았어요. 탄력 있게 뛰었어요.",
-                           "Holding your usual \(cadStr) spm rhythm, ground contact stayed short at \(g) ms — a springy run.")
-                    : L.s("발걸음이 평소보다 빠르게 돌아 지면접촉이 \(g)ms로 짧아졌어요. 효율적인 주법이에요.",
-                           "A faster-than-usual cadence shortened ground contact to \(g) ms — an efficient form.")
+                if cadStatus == .inRange {
+                    let base = L.s("평소 리듬대로 \(cadStr)spm을 유지했고, 지면접촉이 \(g)ms로 짧았어요.",
+                                   "Cadence held at your usual \(cadStr) spm, with ground contact short at \(g) ms.")
+                    if let sc = strideClause { return base + " " + sc }
+                    return base
+                }
+                return L.s("발걸음이 평소보다 빠르게 돌았어요. 지면접촉이 \(g)ms로 짧았어요.",
+                            "Cadence was faster than usual. Ground contact was short at \(g) ms.")
             }
             if gctStatus == .above {
-                return L.s("지면 접촉 시간이 평소보다 길었어요. 발을 좀 더 빠르게 들어올리면 효율이 오를 수 있어요.",
-                            "Ground contact time was longer than usual. A quicker lift-off may improve efficiency.")
+                let base = L.s("지면접촉이 \(g)ms로 평소보다 길었어요.",
+                                "Ground contact was \(g) ms — longer than usual.")
+                if let sc = strideClause { return base + " " + sc }
+                return base
             }
         }
         if cadStatus == .below {
             let sfx = slStr.map { " \($0)m" } ?? ""
-            return L.s("발걸음이 평소보다 느려 보폭\(sfx)으로 페이스를 만들었어요. 무릎 부담이 조금 더 클 수 있어요.",
-                        "A slower-than-usual cadence meant relying more on stride length. This can increase knee load.")
+            return L.s("발걸음이 평소보다 느렸어요. 보폭\(sfx)으로 페이스를 만들었어요.",
+                        "Cadence was below your usual. Stride\(sfx) carried the pace.")
         }
         if cadStatus == .above {
-            return L.s("발걸음이 평소보다 빨랐어요. 작은 보폭으로 페이스를 만들어 관절에 부담이 적은 주법이에요.",
-                        "Cadence was above your usual pace. Smaller stride, less joint load — an efficient run.")
+            if slStatus == .inRange {
+                return L.s("발걸음이 평소보다 빨랐어요. 보폭은 평소 범위였고요.",
+                            "Cadence was above your usual. Stride length was within your typical range.")
+            }
+            if let sc = strideClause {
+                return L.s("발걸음이 평소보다 빨랐어요.", "Cadence was above your usual.") + " " + sc
+            }
+            return L.s("발걸음이 평소보다 빨랐어요.",
+                        "Cadence was above your usual.")
         }
         return slStr.map { L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 평소와 비슷한 \(paceStr) 페이스가 나왔어요.",
                                "Cadence \(cadStr) spm and stride \($0) m produced the usual \(paceStr) pace.") }
@@ -570,8 +1449,20 @@ struct RunFormCardView: View {
 
     // MARK: - Log
 
+    private func logDistanceContext() {
+        #if DEBUG
+        let distKm = activity.distance / 1000
+        let typical = typicalDistanceKm
+        let typicalStr = typical.map { String(format: "%.1f", $0) } ?? "-"
+        let pctStr: String = typical.map { t in t > 0 ? "\(Int(distKm / t * 100 + 0.5))%" : "-" } ?? "-"
+        let msg = isLongDistanceContext ? "→ 문맥 적용 (지표 배지·해석 생략)" : "→ 미적용"
+        print("[폼:거리문맥] \(String(format: "%.1f", distKm))km / 4주평균 \(typicalStr)km (\(pctStr)) type=\(workoutType.koreanLabel)  \(msg)")
+        #endif
+    }
+
     private func logChain() {
         #if DEBUG
+        guard !isInterval else { return }
         func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60) }
         func rng(_ s: FormStat?, _ fmt: String) -> String {
             guard let s else { return "기준없음" }
@@ -582,30 +1473,220 @@ struct RunFormCardView: View {
         let gctStr = avgGroundContactTime.map { String(format: "%.0f", $0) } ?? "-"
         let voStr  = avgVerticalOscillation.map { String(format: "%.1f", $0) } ?? "-"
         let pace   = activity.paceSecPerKm.map { pf($0) } ?? "--"
-        print("[폼:사슬] C=\(cStr)(\(rng(bb?.cadence, "%.0f"))) 보폭=\(slStr)(\(rng(bb?.strideLength, "%.2f")))")
-        print("         GCT=\(gctStr)(\(rng(bb?.groundContact, "%.0f"))) VO=\(voStr) 페이스=\(pace)")
-        print("         → \"\(narrative ?? "-")\"")
+        let narrativeStr = narrative ?? "-"  // evaluate first so [폼] observation logs fire before chain log
+        let chainLog = "[폼:사슬] C=\(cStr)(\(rng(bb?.cadence, "%.0f"))) 보폭=\(slStr)(\(rng(bb?.strideLength, "%.2f")))"
+            + "\n         GCT=\(gctStr)(\(rng(bb?.groundContact, "%.0f"))) VO=\(voStr) 페이스=\(pace)"
+            + "\n         → \"\(narrativeStr)\""
+        print(chainLog)
         #endif
     }
 
     private func logTrend() {
         #if DEBUG
-        let all = formSeries
+        let all = formSeriesCache  // onAppear에서 1회 계산된 캐시 사용
         guard !all.isEmpty else { return }
-        var line = "[폼:추이] splits=\(fullSplits.count)"
+        let totalBuckets = all[0].totalSplitCount
+        print("[폼:추이] \(String(format: "%.1f", activity.distance/1000))km splits=\(fullSplits.count) → 버킷 \(totalBuckets)개")
         for s in all {
+            let total   = s.points.count
+            let buckets = s.totalSplitCount  // [45] 분모를 전체 버킷 수로 통일
+            let oob     = s.points.filter(\.outOfRange).count
+            let pct     = total > 0 ? Int(Double(oob) / Double(total) * 100 + 0.5) : 0
+            var line1   = "  \(s.label)"
             if let f = s.firstAvg, let sec = s.secondAvg {
                 let diff = sec - f
                 let sign = diff > 0 ? "+" : ""
-                line += " \(s.label) \(metricFmt(f, dir: s.dir))→\(metricFmt(sec, dir: s.dir))(\(sign)\(metricFmt(diff, dir: s.dir)))"
+                line1 += "  \(metricFmt(f, dir: s.dir))→\(metricFmt(sec, dir: s.dir))(\(sign)\(metricFmt(diff, dir: s.dir)))"
             }
+            if let lo = s.bandLo, let hi = s.bandHi {
+                let width  = hi - lo
+                let method = s.dir == .verticalOsc ? "참고" : (s.bandIsJudgeable ? "평소범위" : "관측범위")
+                let nStr   = s.dir == .verticalOsc ? "" : " · n=\(s.bandSampleCount)"
+                let jStr   = (s.bandIsJudgeable || s.dir == .verticalOsc) ? "" : " · 판정불가"
+                line1 += "  띠(\(method)\(jStr)) \(metricFmt(lo, dir: s.dir))–\(metricFmt(hi, dir: s.dir))(폭\(metricFmt(width, dir: s.dir)))\(nStr)"
+            }
+            print(line1)
+            print("            띠밖 \(oob)/\(total)(\(pct)%) · 데이터 \(total)/\(buckets) 버킷")
         }
-        let oobParts = all.compactMap { s -> String? in
-            let n = s.points.filter(\.outOfRange).count
-            return n > 0 ? "\(s.label) \(n)개" : nil
+        #endif
+    }
+
+    private func logRangeBar() {
+        #if DEBUG
+        guard let bb = bb else { return }
+        let samples = bb.recentSamples
+        guard !samples.isEmpty else {
+            print("[폼:범위바] recentSamples 없음 — 캐시 재계산 후 사용 가능")
+            return
         }
-        line += " | 띠밖 지점: " + (oobParts.isEmpty ? "없음" : oobParts.joined(separator: " "))
-        print(line)
+        let todayDist = activity.distance
+        let filtered = samples.filter { s in
+            guard s.distanceM > 0, todayDist > 0 else { return false }
+            let ratio = todayDist / s.distanceM
+            return ratio >= 0.5 && ratio <= 2.0
+        }
+        let recent5 = Array(filtered.prefix(5))
+        let df = DateFormatter(); df.dateFormat = "M/d"
+        let cadCount = recent5.compactMap { $0.cadence }.count
+        let slCount  = recent5.compactMap { $0.strideLength }.count
+        let gctCount = recent5.compactMap { $0.groundContactTime }.count
+        let voCount  = recent5.compactMap { $0.verticalOscillation }.count
+        print("[폼:범위바] 4개 지표 렌더 — 케이던스 · 보폭 · 지면접촉 · 수직진폭")
+        print("[폼:범위바] \(bb.band.rawValue)(n=\(bb.sampleCount)) 거리 \(String(format:"%.1f",todayDist/1000))km 필터: \(filtered.count)/\(samples.count)건")
+        print("[폼:범위바] 히스토리 점: 케이던스 \(cadCount) · 보폭 \(slCount) · 지면접촉 \(gctCount) · 수직진폭 \(voCount)")
+        if !recent5.isEmpty {
+            let dots = recent5.map { s in "\(df.string(from: s.date))(\(String(format:"%.1f", s.distanceM/1000))km)" }
+            print("[폼:범위바] 샘플 = \(dots.joined(separator: " · "))")
+        }
+        #endif
+    }
+
+    private func logInsightSlot() {
+        #if DEBUG
+        let items = formInsights
+        let tempFiredDebug = items.contains { $0.id == .temperature }
+        let isRainyDebug = weatherSnapshot?.isRainy == true
+        let kinds: [FormInsightItem.Kind] = (tempFiredDebug && isRainyDebug)
+            ? [.temperature, .trend, .distance, .cadenceHR, .style]
+            : [.temperature, .weather, .trend, .distance, .cadenceHR, .style]
+        let candidates: [(FormInsightItem.Kind, String)] = kinds
+            .map { kind in
+                let found = items.first { $0.id == kind }
+                let label: String
+                switch kind {
+                case .temperature:
+                    if let t = activity.temperatureC {
+                        let suffix = (isRainyDebug && tempFiredDebug) ? " · 비 (날씨 통합)" : ""
+                        label = "\(String(format: "%.1f", t))°C\(suffix)"
+                    } else { label = "temp nil" }
+                case .weather:
+                    label = weatherSnapshot?.isRainy == true ? "비 있음" : "비 없음"
+                case .trend:
+                    let n = formShifts.filter(\.isReal).count
+                    if let obs = mrFormObservation(formShifts, hasRecentGap: hasRecentGap, refCadence: avgCadence) {
+                        label = obs.isStable ? "안정(\(formShifts.count)개)" : "실증 \(n)/\(formShifts.count)"
+                    } else {
+                        label = hasRecentGap ? "공백→침묵" : "실증 \(n)/\(formShifts.count)"
+                    }
+                case .distance:
+                    let km = activity.distance / 1000
+                    let typ = typicalDistanceKm.map { String(format: "%.1f", $0) } ?? "-"
+                    label = "\(String(format: "%.1f", km))km / 4주평균 \(typ)km"
+                case .cadenceHR:
+                    if let diag = baseline?.cadenceHRDiag, diag.isGloballyValid,
+                       let vertex = diag.vertexResidual,
+                       let cadStat = bb?.cadence {
+                        let opt = Int((cadStat.median + vertex).rounded())
+                        label = "최적케이던스 \(opt) (현재 \(avgCadence.map { "\($0)" } ?? "-"))"
+                    } else {
+                        label = "글로벌 조건 미충족"
+                    }
+                case .style:
+                    switch runningStyleClassification {
+                    case .quickStep: label = "잔발형"
+                    case .bigStride: label = "큰보폭형"
+                    case .normal:    label = "평소 주법"
+                    case .unknown:   label = "생략"
+                    }
+                }
+                let mark = found != nil ? "✓" : "✗"
+                return (kind, "\(mark) \(kind.rawValue)  \(label)")
+            }
+        print("[인사이트] 후보 \(kinds.count)개 검토")
+        candidates.forEach { print("  \($0.1)") }
+        if items.isEmpty {
+            print("[인사이트] 표시 없음")
+        } else {
+            print("[인사이트] 표시 \(items.count)개: \(items.map(\.id.rawValue).joined(separator: ", "))")
+        }
+        #endif
+    }
+
+    private func logUCurve() {
+        #if DEBUG
+        guard let diag = baseline?.cadenceHRDiag else {
+            print("[U자] 진단 없음 (HR 데이터 부족 또는 baseline 미계산)")
+            return
+        }
+        let rangeOK = diag.residualRangeP10P90 >= 10
+        let binsOK  = diag.binCount >= 5
+        var line1 = "[U자] 잔차범위 \(String(format: "%.1f", diag.residualRangeP10P90))spm(\(rangeOK ? "✓" : "<10 ✗")) bin=\(diag.binCount)(\(binsOK ? "✓" : "<5 ✗"))"
+        var reasons: [String] = []
+        if !rangeOK { reasons.append("잔차범위 부족") }
+        if !binsOK  { reasons.append("bin 부족") }
+
+        if let a = diag.a, let r2 = diag.r2 {
+            let aOK  = a > 0
+            let r2OK = r2 >= 0.3
+            line1 += " a=\(String(format: "%+.2f", a))(\(aOK ? "✓" : "✗")) R²=\(String(format: "%.2f", r2))(\(r2OK ? "✓" : "<0.3 ✗"))"
+            if !aOK  { reasons.append("아래로 볼록 아님") }
+            if !r2OK { reasons.append("R² 부족") }
+        }
+        print(line1)
+
+        if let vertex = diag.vertexResidual,
+           let cadStat = bb?.cadence {
+            let optCad = Int((cadStat.median + vertex).rounded())
+            print("      최저점 \(String(format: "%+.1f", vertex))spm → 최적 케이던스 \(optCad)")
+            if let actCad = avgCadence {
+                if abs(optCad - actCad) < 2 { reasons.append("현재 케이던스와 차이 <2spm") }
+                if optCad < 160 || optCad > 190 { reasons.append("절대 범위 밖 (\(optCad)spm)") }
+            }
+            print("      → \(reasons.isEmpty ? "표시" : "미표시: \(reasons.joined(separator: ", "))")")
+        } else {
+            if reasons.isEmpty { reasons.append("최저점 범위 밖 또는 회귀 실패") }
+            print("      → 미표시: \(reasons.joined(separator: ", "))")
+        }
+        #endif
+    }
+
+    private func logStyleClassification() {
+        #if DEBUG
+        guard let bb else { return }
+        let bandName = bb.band.rawValue
+        guard let r = bb.cadenceStrideR else {
+            print("[주법] 판정 생략 — \(bandName) 상관계수 없음")
+            return
+        }
+        if isLongDistanceContext {
+            print("[주법] 판정 생략 — 장거리 문맥 (\(bandName) r=\(String(format: "%+.3f", r)))")
+            return
+        }
+        if isInterval {
+            print("[주법] 판정 생략 — 인터벌")
+            return
+        }
+        if r > -0.3 {
+            print("[주법] 판정 생략 — \(bandName) r=\(String(format: "%+.3f", r)) (음의 상관 아님)")
+            return
+        }
+        if bb.sampleCount < 20 {
+            print("[주법] 판정 생략 — \(bandName) n=\(bb.sampleCount) < 20")
+            return
+        }
+        print("[주법] 구간=\(bandName) r=\(String(format: "%.3f", r)) n=\(bb.sampleCount) → 판정 수행")
+        guard let cad = avgCadence, let str = avgStrideLength,
+              let cadStat = bb.cadence, let strStat = bb.strideLength else { return }
+        let cadR = Double(cad) - cadStat.median
+        let strR = str - strStat.median
+        let p90c = bb.cadenceResidualP90.map { String(format: "P90=%+.1f", $0) } ?? "P90=?"
+        let p25s = bb.strideResidualP25.map  { String(format: "P25=%+.3f", $0) } ?? "P25=?"
+        let p10c = bb.cadenceResidualP10.map { String(format: "P10=%+.1f", $0) } ?? "P10=?"
+        let p75s = bb.strideResidualP75.map  { String(format: "P75=%+.3f", $0) } ?? "P75=?"
+        let cadCkQS = bb.cadenceResidualP90.map { cadR >= $0 ? "✓" : "✗" } ?? "?"
+        let strCkQS = bb.strideResidualP25.map  { strR <= $0 ? "✓" : "✗" } ?? "?"
+        let cadCkBS = bb.cadenceResidualP10.map { cadR <= $0 ? "✓" : "✗" } ?? "?"
+        let strCkBS = bb.strideResidualP75.map  { strR >= $0 ? "✓" : "✗" } ?? "?"
+        let styleStr: String
+        switch runningStyleClassification {
+        case .quickStep: styleStr = "잔발형"
+        case .bigStride: styleStr = "큰보폭형"
+        case .normal:    styleStr = "평소 주법"
+        case .unknown:   styleStr = "알 수 없음"
+        }
+        print("      잔발형 체크: 케이던스 잔차 \(String(format: "%+.1f", cadR)) (\(p90c) \(cadCkQS)) 보폭 잔차 \(String(format: "%+.3f", strR)) (\(p25s) \(strCkQS))")
+        print("      큰보폭형 체크: 케이던스 잔차 \(String(format: "%+.1f", cadR)) (\(p10c) \(cadCkBS)) 보폭 잔차 \(String(format: "%+.3f", strR)) (\(p75s) \(strCkBS))")
+        print("      → \(styleStr)")
         #endif
     }
 
