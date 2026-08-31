@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 // MARK: - Period stats model
 
@@ -148,6 +149,28 @@ struct SummaryPeriodStats {
     }
 
     var isEmpty: Bool { activities.isEmpty }
+
+    var dailyDistanceEntries: [(day: Int, value: Double)] {
+        guard case .monthly(let year, let month) = kind else { return [] }
+        let cal = Calendar.current
+        var comps = DateComponents()
+        comps.year = year; comps.month = month; comps.day = 1
+        guard let start = cal.date(from: comps),
+              let range = cal.range(of: .day, in: .month, for: start) else { return [] }
+        var kmByDay: [Date: Double] = [:]
+        for a in activities where a.type == .running {
+            let dayStart = cal.startOfDay(for: a.date)
+            let dc = cal.dateComponents([.year, .month], from: dayStart)
+            if dc.year == year && dc.month == month {
+                kmByDay[dayStart, default: 0] += a.distance / 1000
+            }
+        }
+        let factor = useMiles ? 0.621371 : 1.0
+        return range.compactMap { d -> (Int, Double)? in
+            guard let date = cal.date(byAdding: .day, value: d - 1, to: start) else { return nil }
+            return (d, (kmByDay[date] ?? 0) * factor)
+        }
+    }
 }
 
 // MARK: - Palette
@@ -279,8 +302,8 @@ struct SummaryShareCardView: View {
                     Rectangle()
                         .fill(p.divider)
                         .frame(height: 0.5)
-                        .padding(.top, 13)
-                        .padding(.bottom, 16)
+                        .padding(.top, 10)
+                        .padding(.bottom, 10)
 
                     // Hero distance
                     HStack(alignment: .lastTextBaseline, spacing: 5) {
@@ -315,8 +338,8 @@ struct SummaryShareCardView: View {
                     Rectangle()
                         .fill(p.divider)
                         .frame(height: 0.5)
-                        .padding(.top, 14)
-                        .padding(.bottom, 12)
+                        .padding(.top, 10)
+                        .padding(.bottom, 8)
 
                     // Secondary stats
                     HStack(spacing: 0) {
@@ -355,7 +378,29 @@ struct SummaryShareCardView: View {
                         }
                     }
 
-                    Spacer(minLength: 6)
+                    // Daily distance chart (monthly only)
+                    let chartData = stats.dailyDistanceEntries
+                    if chartData.contains(where: { $0.value > 0 }) {
+                        Rectangle()
+                            .fill(p.divider)
+                            .frame(height: 0.5)
+                            .padding(.top, 10)
+                            .padding(.bottom, 6)
+                        HStack {
+                            Text(AppLanguage.shared.s("일간 거리", "DAILY DIST"))
+                                .font(.system(size: 8, weight: .semibold))
+                                .tracking(0.6)
+                                .foregroundStyle(p.textSecondary)
+                            Spacer()
+                            Text(stats.distanceUnit.uppercased())
+                                .font(.system(size: 7, weight: .medium))
+                                .foregroundStyle(p.axisLabel)
+                        }
+                        .padding(.bottom, 3)
+                        SummaryDailyDistanceChart(data: chartData, palette: p)
+                    }
+
+                    Spacer(minLength: 0)
 
                     if let ytd = stats.ytdStr {
                         Text(ytd)
@@ -378,7 +423,7 @@ struct SummaryShareCardView: View {
                 .padding(.bottom, 13)
             }
         }
-        .frame(width: 300, height: 375)
+        .frame(width: 300, height: 480)
         .environment(\.colorScheme, theme == .dark ? .dark : .light)
     }
 
@@ -503,7 +548,7 @@ struct SummaryShareCardScreen: View {
             SummaryShareCardView(stats: statsList[index], miniMeImage: miniMeImage, theme: summaryTheme)
                 .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
-                .frame(maxWidth: 300, maxHeight: 375)
+                .frame(maxWidth: 300, maxHeight: 480)
         }
     }
 
@@ -570,5 +615,46 @@ struct SummaryShareCardScreen: View {
         }
         previewImages = images
         isRendering = false
+    }
+}
+
+// MARK: - Daily distance chart (summary card)
+
+private struct SummaryDailyDistanceChart: View {
+    let data: [(day: Int, value: Double)]
+    let palette: SummaryCardPalette
+
+    var body: some View {
+        Chart(data.indices, id: \.self) { i in
+            BarMark(
+                x: .value("일", data[i].day),
+                y: .value("거리", data[i].value),
+                width: .fixed(5)
+            )
+            .foregroundStyle(data[i].value > 0 ? palette.barChart.gradient : Color.clear.gradient)
+            .cornerRadius(2)
+        }
+        .chartXScale(domain: 1...31)
+        .chartXAxis {
+            AxisMarks(values: [1, 7, 14, 21, 28]) { value in
+                AxisValueLabel {
+                    Text("\(value.as(Int.self) ?? 0)")
+                        .font(.system(size: 7))
+                        .foregroundStyle(palette.axisLabel)
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(values: .automatic(desiredCount: 2)) { value in
+                AxisValueLabel {
+                    Text(String(format: "%.0f", value.as(Double.self) ?? 0))
+                        .font(.system(size: 7))
+                        .foregroundStyle(palette.axisLabel)
+                }
+                AxisGridLine()
+                    .foregroundStyle(palette.gridLine)
+            }
+        }
+        .frame(height: 100)
     }
 }
