@@ -39,12 +39,26 @@ struct MRFormResidual {
 
 struct MRFormShift {
     let metric: MRFormMetric
-    let recentMean: Double     // 최근 4주 잔차 평균
-    let baseMean: Double       // 그 이전 12주 잔차 평균
+    let recentMean: Double     // 최근 3개월 잔차 평균
+    let baseMean: Double       // 그 이전 3개월 잔차 평균
     let delta: Double
     let mdc: Double            // 최소검출가능변화
     let weeksConsistent: Int
-    var isReal: Bool { abs(delta) > mdc && weeksConsistent >= 4 }
+    let r2: Double?            // 잔차 모델 R² — GCT 보정 게이트용
+    /// MDC₉₅ 초과 — 통계적으로 유의미한 변화 (강한 근거)
+    var isMDCStrong: Bool  { abs(delta) > mdc }
+    /// 4주 이상 같은 방향 — 통계적으로는 미달이지만 방향성이 일관 (약한 근거)
+    var isConsistent: Bool { weeksConsistent >= 4 }
+    /// 실질적 최소 변화량 — 통계 유의성과 별개로 지표 단위에서 의미 있는 크기인지 확인
+    var isPractical: Bool {
+        switch metric.key {
+        case "cadence": return abs(delta) >= 1.0   // 1.0 spm
+        case "gct":     return abs(delta) >= 3.0   // 3.0 ms
+        default:        return true
+        }
+    }
+    /// 통계적 근거 OR 연속성 근거, AND 실질적 크기 충족
+    var isReal: Bool { (isMDCStrong || isConsistent) && isPractical }
 }
 
 // 한 워크아웃에서 페이스와 폼 지표를 짝지은 관측값.
@@ -130,20 +144,25 @@ func mrFormMDC(sd: Double, nRecent: Int, nBase: Int) -> Double {
 ///   MDC₉₅ = 1.96 × SD_resid × √(1/n_recent + 1/n_base)
 func mrFormShift(_ residuals: [MRFormResidual],
                  metric: MRFormMetric,
-                 asOf: Date) -> MRFormShift? {
+                 asOf: Date,
+                 obs: [MRFormObs] = []) -> MRFormShift? {
     let cal = Calendar.current
     let cutoff = cal.startOfDay(for: asOf)
     func days(_ d: Date) -> Int {
         cal.dateComponents([.day], from: d, to: cutoff).day ?? 999
     }
-    let recent = residuals.filter { let x = days($0.date); return x >= 0  && x < 28  }
-    let base   = residuals.filter { let x = days($0.date); return x >= 28 && x < 112 }
+    let recent = residuals.filter { let x = days($0.date); return x >= 0  && x < 90  }
+    let base   = residuals.filter { let x = days($0.date); return x >= 90 && x < 180 }
     #if DEBUG
-    if recent.count < 6 || base.count < 12 {
-        print("[폼] \(metric.key) n부족 (최근 4주 \(recent.count)런 최소 6, 이전 12주 \(base.count)런 최소 12)")
+    let _df = DateFormatter(); _df.dateFormat = "yyyy-MM-dd"
+    let _asOfStr = _df.string(from: asOf)
+    if recent.count < 20 || base.count < 20 {
+        print("[폼] \(metric.key) n부족 — 기준일 \(_asOfStr) · 최근 3개월 \(recent.count)개 최소 20 / 이전 3개월 \(base.count)개 최소 20")
+    } else {
+        print("[폼] \(metric.key) 잔차 — 기준일 \(_asOfStr) · 최근 3개월 \(recent.count)개 / 이전 3개월 \(base.count)개")
     }
     #endif
-    guard recent.count >= 6, base.count >= 12 else { return nil }
+    guard recent.count >= 20, base.count >= 20 else { return nil }
 
     let all = residuals.map(\.value)
     let mean = all.reduce(0, +) / Double(all.count)
@@ -165,12 +184,41 @@ func mrFormShift(_ residuals: [MRFormResidual],
         if (m - bMean) * dir > 0 { weeks += 1 } else { break }
     }
 
+    // R² — 잔차 모델 설명력. obs 있을 때만 계산. GCT 보정 게이트에 사용.
+    var r2: Double? = nil
+    if !obs.isEmpty {
+        let yVals = obs.filter { let x = days($0.date); return x >= 0 && x <= 365 }.map(\.metricValue)
+        if yVals.count == residuals.count, !yVals.isEmpty {
+            let ssRes = residuals.map { $0.value * $0.value }.reduce(0, +)
+            let yMean = yVals.reduce(0, +) / Double(yVals.count)
+            let ssTot = yVals.map { ($0 - yMean) * ($0 - yMean) }.reduce(0, +)
+            r2 = ssTot > 0 ? 1.0 - ssRes / ssTot : 0.0
+        }
+    }
     let shift = MRFormShift(metric: metric, recentMean: rMean, baseMean: bMean,
-                            delta: rMean - bMean, mdc: mdc, weeksConsistent: weeks)
+                            delta: rMean - bMean, mdc: mdc, weeksConsistent: weeks, r2: r2)
     #if DEBUG
-    let flag = shift.isReal ? "✓" : "✗"
-    print(String(format: "[폼] %@ resid최근 %+.2f 이전 %+.2f 차 %+.2f MDC %.2f 연속%d주 %@",
-                 metric.key, rMean, bMean, shift.delta, mdc, weeks, flag))
+    let _mdcOK  = shift.isMDCStrong
+    let _wOK    = shift.isConsistent
+    let _pracOK = shift.isPractical
+    let _pracThreshold: Double = metric.key == "cadence" ? 1.0 : metric.key == "gct" ? 3.0 : 0.0
+    let _verdict: String
+    switch (_mdcOK, _wOK, _pracOK) {
+    case (_, _, false):  _verdict = "미표시 (실질 미달)"
+    case (true,  _, _):  _verdict = "강한 추세 (MDC 근거)"
+    case (_, true, _):   _verdict = "약한 추세 (연속성 근거)"
+    default:             _verdict = "미표시"
+    }
+    print(String(format: "[폼] %@ 최근%+.2f 이전%+.2f 차%+.2f",
+                 metric.key, rMean, bMean, shift.delta))
+    print(String(format: "     MDC %.2f %@ | 실질 %.2f≥%.1f %@ | 연속 %d주 %@ (기준 4주)",
+                 mdc, _mdcOK ? "✓" : "✗",
+                 abs(shift.delta), _pracThreshold, _pracOK ? "✓" : "✗",
+                 weeks, _wOK ? "✓" : "✗"))
+    print("     → \(shift.isReal ? "표시" : "미표시"): \(_verdict)")
+    if let _r2 = r2 {
+        print(String(format: "[폼] %@ 잔차 모델 R²=%.3f (기준 0.2 %@)", metric.key, _r2, _r2 >= 0.2 ? "✓" : "✗"))
+    }
     #endif
     return shift
 }
@@ -180,77 +228,183 @@ func mrFormShift(_ residuals: [MRFormResidual],
 /// ⚠ "깡총 뛴다", "비효율적이다", "폼이 나쁘다"는 쓰지 않는다.
 ///   현상을 그대로 묘사하고, 원인은 후보만 제시하며 단정하지 않는다.
 ///   그리고 **두 지표가 서로 맞을 때만** 말한다 — 하나만으로는 우연이다.
-func mrFormObservation(_ shifts: [MRFormShift]) -> (text: String, basis: String, isStable: Bool)? {
+func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refCadence: Int? = nil) -> (text: String, basis: String, isStable: Bool)? {
+    let L = AppLanguage.shared
     let real = shifts.filter(\.isReal)
     #if DEBUG
-    print("[폼] 관찰 — 실증 지표 \(real.count)/\(shifts.count)개 \(real.map(\.metric.key).joined(separator: "·"))")
+    print("[폼] 관찰 — 실증 지표 \(real.count)/\(shifts.count)개 \(real.map(\.metric.key).joined(separator: "·"))\(hasRecentGap ? " [공백 있음 → 추세 침묵]" : "")")
+    if shifts.count >= 2, real.isEmpty { print("[폼] 안정 → 미표시 (실증 0개)") }
     #endif
+    // 14일 이상 공백이 있으면 추세 판단 불가 — 공백 전후 데이터가 섞여 변화가 상쇄됨
+    guard !hasRecentGap else { return nil }
+    // 관측 지표 2개 미만이면 "달리는 방식" 전체 논거 없음
+    guard shifts.count >= 2 else { return nil }
+    // 실증 변화가 없으면 침묵 — 안정은 기본 상태이므로 말할 필요 없음
+    guard real.count >= 1 else { return nil }
 
-    // ★ 안정 분기: 세 지표 모두 데이터가 충분한데 변화량이 모두 측정 오차 범위 안
-    //   "상태"이므로 조건 충족 시 항상 표시 — 신선도 게이트 없음.
-    if shifts.count == 3, real.isEmpty {
-        #if DEBUG
-        print("[폼] 안정 → 표시")
-        #endif
-        let stableText = "지난 3개월, 같은 페이스에서 달리는 방식이 거의 그대로예요.\n"
-                       + "흔들림 없이 자리 잡았다는 뜻입니다.\n"
-                       + "어느 쪽이 더 좋다는 뜻은 아니에요. "
-                       + "달리는 방식은 사람마다 다르고, "
-                       + "연구에서도 어떤 형태가 더 경제적이라는 결론은 나오지 않았습니다."
-        return (
-            text:     stableText,
-            basis:    "수직 진폭·케이던스·접지 시간이 모두 측정 오차 범위 안",
-            isStable: true
-        )
+    // 최대 2줄까지 표시 — 방향이 반대인 지표가 한 줄에 붙지 않도록 줄바꿈
+    let capped = Array(real.prefix(2))
+
+    // 케이던스 + 지면접촉이 함께 뜨면 공중 시간으로 연결한 단일 문장
+    // 공중 시간 = (60000 / 케이던스) − 지면접촉 (ms per step)
+    if let cs = capped.first(where: { $0.metric.key == "cadence" }),
+       let gs = capped.first(where: { $0.metric.key == "gct" }) {
+        let cadSpm = Double(refCadence ?? 170)
+        let stepTimeDeltaMs = -60_000.0 / (cadSpm * cadSpm) * cs.delta
+        let airtimeDeltaMs  = stepTimeDeltaMs - gs.delta
+        let airtimeMs = max(1, Int(abs(airtimeDeltaMs).rounded()))
+        let cadAbs    = max(1, Int(abs(cs.delta).rounded()))
+        let gctAbs    = max(1, Int(abs(gs.delta).rounded()))
+        let isStrong  = cs.isMDCStrong || gs.isMDCStrong
+        let wks       = max(cs.weeksConsistent, gs.weeksConsistent)
+        let durKor    = wks >= 12 ? "3개월째" : wks >= 8 ? "2개월째" : "\(wks)주째"
+        let durEng    = wks >= 12 ? "for 3 months" : wks >= 8 ? "for 2 months" : "for \(wks) weeks"
+        let timeKor   = isStrong ? " 3개월 새" : " \(durKor)"
+        let timeEng   = isStrong ? " over 3 months" : " \(durEng)"
+        let cadDirKor = cs.delta < 0 ? "내려가고" : "올라가고"
+        let gctDirKor = gs.delta < 0 ? "짧아졌어요." : "길어졌어요."
+        let airDirKor   = airtimeDeltaMs > 0 ? "길어졌어요." : "짧아졌어요."
+        let strideKor   = airtimeDeltaMs > 0 ? "더 큰 한 걸음으로" : "더 잦은 걸음으로"
+        let cadDirEng   = cs.delta < 0 ? "dropped" : "rose"
+        let gctDirEng   = gs.delta < 0 ? "shortened" : "lengthened"
+        let airDirEng   = airtimeDeltaMs > 0 ? "increased" : "decreased"
+        let strideEng   = airtimeDeltaMs > 0 ? "taking longer, bigger strides" : "stepping more frequently with shorter strides"
+        let korText = "같은 페이스에서 케이던스가\(timeKor) \(cadAbs)spm \(cadDirKor), 지면접촉이 \(gctAbs)ms \(gctDirKor)\n공중에 머무는 시간이 \(airtimeMs)ms \(airDirKor)\n같은 페이스를 \(strideKor) 만들고 있다는 뜻이에요."
+        let engText = "At similar pace, cadence\(timeEng) \(cadDirEng) \(cadAbs) spm, contact \(gctDirEng) \(gctAbs) ms.\nAirtime per step \(airDirEng) ~\(airtimeMs) ms.\nAt the same pace, you're \(strideEng)."
+        let text  = L.s(korText, engText)
+        let basis = [cs, gs].map { s in
+            let strength = s.isMDCStrong ? "강" : "약"
+            return L.isEnglish
+                ? String(format: "%@ %+.1f%@ [%@] (threshold %.1f · %dw consistent)",
+                         s.metric.key, s.delta, s.metric.unit, s.isMDCStrong ? "strong" : "weak", s.mdc, s.weeksConsistent)
+                : String(format: "%@ %+.1f%@ [%@] (임계 %.1f · %d주 연속)",
+                         s.metric.key, s.delta, s.metric.unit, strength, s.mdc, s.weeksConsistent)
+        }.joined(separator: " · ")
+        return (text, basis, false)
     }
 
-    guard real.count >= 2 else {
-        #if DEBUG
-        print("[폼] → 침묵 (실증 \(real.count)개 < 2)")
-        #endif
-        return nil
+    // 각 실증 지표마다 2줄 생성
+    // · 1줄 = 관찰: "같은 페이스에서 지면접촉이 3개월 새 8ms 짧아졌어요."
+    // · 2줄 = 의미: "지면에서 더 빨리 떨어지고 있다는 뜻이에요."
+    // ⚠ "같은 페이스에서"를 반드시 넣는다 — 페이스 효과가 아님을 밝히는 근거.
+    // ⚠ 메커니즘(근력·탄성·이코노미 등) 주장 금지 — 현상만 서술.
+    let korLines: [String] = capped.map { s in
+        let gctVal = "\(Int(abs(s.delta).rounded()))ms"
+        let cadVal = "\(Int(abs(s.delta).rounded()))spm"
+        if s.isMDCStrong {
+            switch s.metric.key {
+            case "cadence":
+                let l1 = s.delta > 0
+                    ? "같은 페이스에서 케이던스가 3개월 새 \(cadVal) 올랐어요."
+                    : "같은 페이스에서 케이던스가 3개월 새 \(cadVal) 내려갔어요."
+                let l2 = s.delta > 0
+                    ? "발걸음이 더 잦아지고 있다는 뜻이에요."
+                    : "발걸음이 느려지고 있다는 뜻이에요."
+                return "\(l1)\n\(l2)"
+            case "gct":
+                let l1 = s.delta < 0
+                    ? "같은 페이스에서 지면접촉이 3개월 새 \(gctVal) 짧아졌어요."
+                    : "같은 페이스에서 지면접촉이 3개월 새 \(gctVal) 길어졌어요."
+                let l2 = s.delta < 0
+                    ? "지면에서 더 빨리 떨어지고 있다는 뜻이에요."
+                    : "지면에 더 오래 닿고 있다는 뜻이에요."
+                return "\(l1)\n\(l2)"
+            default:
+                return s.delta > 0 ? "\(s.metric.label)이 3개월 새 증가했어요." : "\(s.metric.label)이 3개월 새 감소했어요."
+            }
+        } else {
+            let dur = s.weeksConsistent >= 12 ? "3개월째"
+                    : s.weeksConsistent >= 8  ? "2개월째"
+                    : "\(s.weeksConsistent)주째"
+            switch s.metric.key {
+            case "cadence":
+                let l1 = s.delta > 0
+                    ? "같은 페이스에서 케이던스가 \(dur) 조금씩 올라가고 있어요."
+                    : "같은 페이스에서 케이던스가 \(dur) 조금씩 내려가고 있어요."
+                let l2 = s.delta > 0
+                    ? "발걸음이 서서히 잦아지는 추세예요."
+                    : "발걸음이 서서히 느려지는 추세예요."
+                return "\(l1)\n\(l2)"
+            case "gct":
+                let l1 = s.delta < 0
+                    ? "같은 페이스에서 지면접촉이 \(dur) 조금씩 짧아지고 있어요."
+                    : "같은 페이스에서 지면접촉이 \(dur) 조금씩 길어지고 있어요."
+                let l2 = s.delta < 0
+                    ? "지면에서 서서히 더 빨리 떨어지는 추세예요."
+                    : "지면에 서서히 더 오래 닿는 추세예요."
+                return "\(l1)\n\(l2)"
+            default:
+                let dir = s.delta > 0 ? "증가하고" : "감소하고"
+                return "같은 페이스에서 \(s.metric.label)이 \(dur) 조금씩 \(dir) 있어요."
+            }
+        }
     }
-
-    let vo  = real.first { $0.metric.key == "vo" }
-    let cad = real.first { $0.metric.key == "cadence" }
-    let gct = real.first { $0.metric.key == "gct" }
-
-    let disclaimer = "\n어느 쪽이 더 좋다는 뜻은 아니에요. "
-                   + "달리는 방식은 사람마다 다르고, "
-                   + "연구에서도 어떤 형태가 더 경제적이라는 결론은 나오지 않았습니다."
-
-    var text: String? = nil
-
-    // ① vo↑ & cadence↑
-    if let v = vo, v.delta > 0, let c = cad, c.delta > 0 {
-        text = "같은 페이스인데 위아래 움직임이 커지고 걸음이 잦아졌어요.\n"
-             + "피로가 쌓였을 때, 신발을 바꿨을 때, 노면이 달라졌을 때 "
-             + "이런 모양이 나옵니다."
+    let engLines: [String] = capped.map { s in
+        let gctVal = "\(Int(abs(s.delta).rounded())) ms"
+        let cadVal = "\(Int(abs(s.delta).rounded())) spm"
+        if s.isMDCStrong {
+            switch s.metric.key {
+            case "cadence":
+                let l1 = s.delta > 0
+                    ? "At similar pace, cadence rose \(cadVal) over 3 months."
+                    : "At similar pace, cadence dropped \(cadVal) over 3 months."
+                let l2 = s.delta > 0
+                    ? "Your stride rate is getting faster."
+                    : "Your stride rate is getting slower."
+                return "\(l1)\n\(l2)"
+            case "gct":
+                let l1 = s.delta < 0
+                    ? "At similar pace, ground contact shortened \(gctVal) over 3 months."
+                    : "At similar pace, ground contact lengthened \(gctVal) over 3 months."
+                let l2 = s.delta < 0
+                    ? "You're pushing off the ground faster."
+                    : "You're spending more time on the ground."
+                return "\(l1)\n\(l2)"
+            default:
+                return s.delta > 0 ? "\(s.metric.label) increased over 3 months." : "\(s.metric.label) decreased over 3 months."
+            }
+        } else {
+            let dur = s.weeksConsistent >= 12 ? "for 3 months"
+                    : s.weeksConsistent >= 8  ? "for 2 months"
+                    : "for \(s.weeksConsistent) weeks"
+            switch s.metric.key {
+            case "cadence":
+                let l1 = s.delta > 0
+                    ? "At similar pace, cadence has been gradually rising \(dur)."
+                    : "At similar pace, cadence has been gradually dropping \(dur)."
+                let l2 = s.delta > 0
+                    ? "Your stride rate is slowly getting faster."
+                    : "Your stride rate is slowly getting slower."
+                return "\(l1)\n\(l2)"
+            case "gct":
+                let l1 = s.delta < 0
+                    ? "At similar pace, ground contact has been gradually shortening \(dur)."
+                    : "At similar pace, ground contact has been gradually lengthening \(dur)."
+                let l2 = s.delta < 0
+                    ? "A gradual trend of quicker push-off."
+                    : "A gradual trend of longer ground contact."
+                return "\(l1)\n\(l2)"
+            default:
+                let dir = s.delta > 0 ? "increasing" : "decreasing"
+                return "At similar pace, \(s.metric.label) has been gradually \(dir) \(dur)."
+            }
+        }
     }
-    // ② gct↑ & cadence↓
-    else if let g = gct, g.delta > 0, let c = cad, c.delta < 0 {
-        text = "같은 페이스에서 발이 땅에 닿아 있는 시간이 길어졌어요.\n"
-             + "다리가 무거운 시기에 자주 보이는 모양입니다."
-    }
-    // ③ vo↓ & gct↓
-    else if let v = vo, v.delta < 0, let g = gct, g.delta < 0 {
-        text = "같은 페이스에서 위아래 움직임과 접지 시간이 함께 줄었어요.\n"
-             + "몸이 그 속도를 다르게 다루기 시작했다는 뜻입니다."
-    }
-    // ④ cadence↑ & gct↓
-    else if let c = cad, c.delta > 0, let g = gct, g.delta < 0 {
-        text = "같은 페이스에서 걸음이 잦아지고 접지가 짧아졌어요.\n"
-             + "구르는 방식이 바뀌는 중입니다."
-    }
-    guard let t = text else { return nil }
+    let text = L.s(
+        korLines.joined(separator: "\n"),
+        engLines.joined(separator: "\n")
+    )
 
-    let body = t + disclaimer
-    let basis = real.map {
-        String(format: "%@ %+.1f%@ (임계 %.1f · %d주 연속)",
-               $0.metric.label, $0.delta, $0.metric.unit, $0.mdc, $0.weeksConsistent)
+    let basis = capped.map { s in
+        let strength = s.isMDCStrong ? "강" : "약"
+        return L.isEnglish
+            ? String(format: "%@ %+.1f%@ [%@] (threshold %.1f · %dw consistent)",
+                     s.metric.key, s.delta, s.metric.unit, s.isMDCStrong ? "strong" : "weak", s.mdc, s.weeksConsistent)
+            : String(format: "%@ %+.1f%@ [%@] (임계 %.1f · %d주 연속)",
+                     s.metric.key, s.delta, s.metric.unit, strength, s.mdc, s.weeksConsistent)
     }.joined(separator: " · ")
 
-    return (body, basis, false)
+    return (text, basis, false)
 }
 
 // MARK: - 4. 카드 뷰
@@ -263,19 +417,20 @@ struct MRFormObservationCard: View {
     @State private var expanded = false
 
     var body: some View {
+        let L = AppLanguage.shared
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "figure.run.circle")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.mrInk3)
-                Text(isStable ? "달리는 방식" : "달리기 스타일 변화")
+                Text(isStable ? L.s("달리는 방식", "Running Style") : L.s("달리기 스타일 변화", "Running Style Shift"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
                 } label: {
-                    Text(expanded ? "접기" : "근거")
+                    Text(expanded ? L.s("접기", "Collapse") : L.s("근거", "Basis"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Theme.violet)
                 }

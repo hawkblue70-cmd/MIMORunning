@@ -45,7 +45,7 @@ struct RunFormCardView: View {
     enum RunningStyle { case quickStep, bigStride, normal, unknown }
 
     struct FormInsightItem: Identifiable {
-        enum Kind: String { case temperature, weather, trend, distance, cadenceHR, style }
+        enum Kind: String { case temperature, weather, trend, distance, cadenceHR, style, formChange }
         var id: Kind
         var badgeText: String
         var bodyText: String
@@ -115,6 +115,22 @@ struct RunFormCardView: View {
             if let found = bl.bands[fallback] { return found }
         }
         return nil
+    }
+
+    /// GCT 밴드를 열람 시점 기준으로 보정한 FormStat.
+    /// GCT는 지난 1년간 9ms 이상 짧아지는 경우가 있어 현재 밴드로 과거 러닝을 판정하면 오류 발생.
+    /// drift = (열람 시점 잔차 3개월 평균) − (baseline 계산 시점 잔차 3개월 평균)
+    /// 안전장치: recent 표본 20개 미만(gctShift nil) · R²<0.2 · |drift|<2ms → 보정 없음
+    private var adjustedGctStat: FormStat? {
+        guard let stat = bb?.groundContact,
+              let baselineMean = baseline?.gctBaselineResidualMean else { return bb?.groundContact }
+        guard let gctShift = formShifts.first(where: { $0.metric.key == "gct" }) else { return bb?.groundContact }
+        if let r2 = gctShift.r2, r2 < 0.2 { return bb?.groundContact }
+        let rawDrift = gctShift.recentMean - baselineMean
+        guard abs(rawDrift) >= 2 else { return bb?.groundContact }
+        let drift = max(-15, min(15, rawDrift))
+        return FormStat(median: stat.median + drift, sd: stat.sd, count: stat.count,
+                        p10: stat.p10.map { $0 + drift }, p90: stat.p90.map { $0 + drift })
     }
 
     private var isInterval: Bool { workoutType == .interval }
@@ -255,10 +271,10 @@ struct RunFormCardView: View {
             ))
         }
 
-        // GCT
+        // GCT — [109] adjustedGctStat로 시점 보정 밴드 적용
         let gctPairs: [(Int, Double)] = bs.compactMap { s in s.avgGroundContactTime.map { (s.id, $0) } }
         if !gctPairs.isEmpty {
-            let stat = bb?.groundContact
+            let stat = adjustedGctStat
             let gb = splitBounds(stat, dir: .groundContact)
             result.append(FormSeries(
                 label: L.s("지면접촉", "GCT"), unit: "ms",
@@ -369,6 +385,11 @@ struct RunFormCardView: View {
         let L = AppLanguage.shared
         var items: [FormInsightItem] = []
 
+        // [96] 장거리 폼 변화 지점 — 거리문맥일 때만, 가장 먼저 삽입 ([97]: 거리문맥에도 표시)
+        if let changeItem = longDistanceFormChangeInsight {
+            items.append(changeItem)
+        }
+
         // [기온] 야외(temp != nil) AND (temp ≥ 25 OR ≤ 5) AND 모델 유효
         // [날씨] 비 — 기온과 동시에 뜨면 한 슬롯으로 합치고, 기온 없으면 별도 슬롯
         let isRainy = weatherSnapshot?.isRainy == true
@@ -465,7 +486,138 @@ struct RunFormCardView: View {
         while items.map({ $0.bodyText.components(separatedBy: "\n").count }).reduce(0, +) > 4, !items.isEmpty {
             items.removeLast()
         }
+
+        // [107] 후보 0개면 측정값 폴백 — 해석 없이 사실만
+        if items.isEmpty {
+            let distKm  = activity.distance / 1000
+            let distStr = String(format: "%.1f", distKm)
+            var text: String
+            if let pace = activity.paceSecPerKm, pace > 0 {
+                let i = Int(pace.rounded())
+                let pStr = "\(i / 60)'\(String(format: "%02d", i % 60))\""
+                text = L.s("\(distStr)km를 \(pStr) 페이스로 달렸어요.",
+                           "You ran \(distStr) km at \(pStr)/km.")
+            } else {
+                text = L.s("\(distStr)km를 달렸어요.", "You ran \(distStr) km.")
+            }
+            // 가장 큰 후반 변화 지표 한 줄 추가 (있으면)
+            let all = formSeriesCache.isEmpty ? formSeries : formSeriesCache
+            let notableChange: String? = all.compactMap { s -> (MetricDir, Double, Double)? in
+                guard let f = s.firstAvg, let sec = s.secondAvg, f > 0 else { return nil }
+                return (s.dir, f, sec)
+            }.max(by: { abs($0.2 - $0.1) / $0.1 < abs($1.2 - $1.1) / $1.1 }).flatMap { dir, f, sec in
+                let diff = sec - f
+                let absDiff = abs(diff)
+                switch dir {
+                case .cadence:
+                    guard absDiff >= 2 else { return nil }
+                    let d = String(format: "%.0f", absDiff)
+                    return diff < 0
+                        ? L.s("케이던스가 후반에 \(d)spm 낮아졌어요.", "Cadence was \(d) spm lower in the second half.")
+                        : L.s("케이던스가 후반에 \(d)spm 높아졌어요.", "Cadence was \(d) spm higher in the second half.")
+                case .groundContact:
+                    guard absDiff >= 5 else { return nil }
+                    let d = String(format: "%.0f", absDiff)
+                    return diff < 0
+                        ? L.s("지면접촉이 후반에 \(d)ms 짧아졌어요.", "Ground contact was \(d) ms shorter in the second half.")
+                        : L.s("지면접촉이 후반에 \(d)ms 길어졌어요.", "Ground contact was \(d) ms longer in the second half.")
+                case .stride:
+                    guard absDiff >= 0.03 else { return nil }
+                    let d = String(format: "%.2f", absDiff)
+                    return diff < 0
+                        ? L.s("보폭이 후반에 \(d)m 짧아졌어요.", "Stride was \(d) m shorter in the second half.")
+                        : L.s("보폭이 후반에 \(d)m 길어졌어요.", "Stride was \(d) m longer in the second half.")
+                case .verticalOsc:
+                    guard absDiff >= 0.3 else { return nil }
+                    let d = String(format: "%.1f", absDiff)
+                    return L.s("수직진폭이 후반에 \(d)cm 변했어요.", "Vertical oscillation changed by \(d) cm.")
+                }
+            }
+            if let change = notableChange { text += " " + change }
+            items.append(FormInsightItem(id: .trend,
+                                         badgeText: L.s("기록", "Stats"),
+                                         bodyText: text,
+                                         badgeColor: Color.white.opacity(0.45)))
+            #if DEBUG
+            print("[인사이트] 표시 0개 → 폴백: \(text)")
+            #endif
+        }
+
         return Array(items.prefix(3))
+    }
+
+    // MARK: - Long-Distance Form Change Insight [96]
+
+    /// 거리문맥 러닝에서 케이던스·보폭·지면접촉이 평소 범위를 벗어난 첫 버킷을 찾아
+    /// 관찰 문구를 생성한다. 세 지표 모두 범위 안이면 nil.
+    private var longDistanceFormChangeInsight: FormInsightItem? {
+        guard isLongDistanceContext else { return nil }
+        let L = AppLanguage.shared
+        let all = formSeriesCache.isEmpty ? formSeries : formSeriesCache
+
+        struct BandExit {
+            let dir: MetricDir
+            let kmStart: Double   // 버킷 시작 km
+            let kmEnd: Double     // 버킷 끝 km
+        }
+        var exits: [BandExit] = []
+        // [103] 전체 거리의 40% 이전 이탈은 "처음부터 다른 값" — 변화 판정 제외
+        let totalKm = activity.distance / 1000
+        let minKmForChange = totalKm * 0.40
+
+        for s in all {
+            guard s.dir != .verticalOsc else { continue }
+            guard let bandLo = s.bandLo, let bandHi = s.bandHi,
+                  !s.points.isEmpty else { continue }
+            for (i, pt) in s.points.enumerated() {
+                let exited: Bool
+                switch s.dir {
+                case .cadence, .stride:   exited = pt.value < bandLo
+                case .groundContact:       exited = pt.value > bandHi
+                case .verticalOsc:         exited = false
+                }
+                if exited {
+                    let start = i > 0 ? s.points[i - 1].kmEnd : 0.0
+                    guard start >= minKmForChange else { break }  // [103] 초반 이탈 제외
+                    exits.append(BandExit(dir: s.dir, kmStart: start, kmEnd: pt.kmEnd))
+                    break
+                }
+            }
+        }
+
+        guard !exits.isEmpty else { return nil }
+        let sorted = exits.sorted { $0.kmStart < $1.kmStart }
+
+        // 문구 — 관찰+위치만, 원인 표현 없음 [96 ⚠️]
+        let lines: [String] = sorted.enumerated().compactMap { idx, e in
+            let km = Int(e.kmStart.rounded())
+            switch e.dir {
+            case .cadence:
+                return idx == 0
+                    ? L.s("\(km)km 지점부터 케이던스가 평소 범위 아래로 내려갔어요.",
+                          "From \(km) km, cadence dropped below its normal range.")
+                    : L.s("케이던스는 \(km)km부터였어요.", "Cadence from \(km) km.")
+            case .stride:
+                return idx == 0
+                    ? L.s("\(km)km 지점부터 보폭이 평소 범위 아래로 내려갔어요.",
+                          "From \(km) km, stride length dropped below its normal range.")
+                    : L.s("보폭은 \(km)km부터였어요.", "Stride from \(km) km.")
+            case .groundContact:
+                return idx == 0
+                    ? L.s("\(km)km 지점부터 지면접촉이 평소 범위 위로 올라갔어요.",
+                          "From \(km) km, ground contact time rose above its normal range.")
+                    : L.s("지면접촉은 \(km)km부터였어요.", "Ground contact from \(km) km.")
+            case .verticalOsc:
+                return nil
+            }
+        }
+        guard !lines.isEmpty else { return nil }
+
+        return FormInsightItem(
+            id: .formChange,
+            badgeText: L.s("폼 변화", "Form Shift"),
+            bodyText: lines.joined(separator: "\n"),
+            badgeColor: Color(hex: "A78BFA"))
     }
 
     // MARK: - Cadence-HR U-Curve Insight
@@ -513,7 +665,7 @@ struct RunFormCardView: View {
         if let gct = avgGroundContactTime {
             items.append(ChainChild(id: n, label: L.s("지면접촉", "GCT"),
                 rawValue: gct, formatted: String(format: "%.0f", gct), unit: "ms",
-                stat: bb?.groundContact, dir: .groundContact, isRef: false)); n += 1
+                stat: adjustedGctStat, dir: .groundContact, isRef: false)); n += 1
         }
         if let vo = avgVerticalOscillation {
             items.append(ChainChild(id: n, label: L.s("수직진폭", "Vert Osc"),
@@ -584,11 +736,14 @@ struct RunFormCardView: View {
             logInsightSlot()
             logUCurve()
             logRangeBar()
+            logLongDistanceChange()
+            logGctCorrection()
         }
         .onChange(of: formShifts.count) { _, _ in
             #if DEBUG
             // formShifts는 async 완료 후 설정됨 — onAppear 이후 도착하면 재로그
             logInsightSlot()
+            logGctCorrection()
             #endif
         }
     }
@@ -792,6 +947,10 @@ struct RunFormCardView: View {
         let todayDist = activity.distance
         let filtered = samples.filter { s in
             guard s.distanceM > 0, todayDist > 0 else { return false }
+            // [92] 열람 중인 러닝 자신 제외
+            if Calendar.current.isDate(s.date, inSameDayAs: activity.date) { return false }
+            // [102] 시점 고정: 열람 러닝 이후 데이터 제외
+            if s.date >= activity.date { return false }
             let ratio = todayDist / s.distanceM
             return ratio >= 0.5 && ratio <= 2.0
         }
@@ -849,12 +1008,7 @@ struct RunFormCardView: View {
                 return rv >= bandLo && rv <= bandHi ? green : neutral
             }
         }()
-        #if DEBUG
-        let inRange = rv >= bandLo && rv <= bandHi
-        let colorLabel = dotColor == green ? "녹색" : "회색"
-        print("[폼:범위바] \(dir) \(metricFmt(rv, dir: dir)) · 범위 \(metricFmt(bandLo, dir: dir))–\(metricFmt(bandHi, dir: dir)) · \(inRange ? "안" : "밖") → \(colorLabel)")
-        if isLongDistanceContext { print("[폼:범위바] 색 억제 없음 (거리문맥=적용, 바 색은 유지)") }
-        #endif
+        // [94] 인라인 로그 제거 — 뷰 재렌더마다 반복 출력됨. logRangeBar()에서 onAppear 1회 출력.
 
         // [61] 줄별 라벨 삭제 — 카드 하단에 barSummaryText()로 통합
 
@@ -1259,18 +1413,28 @@ struct RunFormCardView: View {
         let n = bb.sampleCount
         let pr = "\(pf(paceMin))~\(pf(paceMax))"
         let todayDist = activity.distance
+        // [92] 자신 제외  [102] 시점 고정: 열람 러닝 이후 제외
         let recentCount = min(bb.recentSamples.filter { s in
             guard s.distanceM > 0, todayDist > 0 else { return false }
+            if Calendar.current.isDate(s.date, inSameDayAs: activity.date) { return false }
+            if s.date >= activity.date { return false }
             let ratio = todayDist / s.distanceM
             return ratio >= 0.5 && ratio <= 2.0
         }.count, 5)
         let line1 = L.s(
             "눈금 사이 = 평소 범위 · \(pr) 러닝 \(n)회",
             "Ticks = typical range · \(n) runs at \(pr)")
-        let dotLine: String = recentCount >= 2
-            ? L.s("\n흰 점 = 거리가 비슷한 최근 \(recentCount)회",
-                   "\nWhite dots = \(recentCount) recent similar-distance runs")
-            : ""
+        // [93] 0건일 때 "비교할 만한 거리의 러닝이 없어요", 2건 이상만 흰 점 표기
+        let dotLine: String
+        if recentCount == 0 {
+            dotLine = L.s("\n비교할 만한 거리의 러닝이 없어요",
+                          "\nNo runs of similar distance to compare")
+        } else if recentCount >= 2 {
+            dotLine = L.s("\n흰 점 = 거리가 비슷한 최근 \(recentCount)회",
+                          "\nWhite dots = \(recentCount) recent similar-distance runs")
+        } else {
+            dotLine = ""
+        }
         let caveat: String = n < 3
             ? L.s("\n비교 대상이 적어 참고용이에요.", "\nLimited samples — treat as reference only.")
             : ""
@@ -1319,7 +1483,7 @@ struct RunFormCardView: View {
             // 실제로 범위 아래인 지표가 있는지 확인 — 없으면 "평소 범위 그대로" 문구 사용
             let cadSt = metricStatus(rawValue: cadD, stat: bb?.cadence, dir: .cadence)
             let gctSt: MetricStatus = avgGroundContactTime.map {
-                metricStatus(rawValue: $0, stat: bb?.groundContact, dir: .groundContact)
+                metricStatus(rawValue: $0, stat: adjustedGctStat, dir: .groundContact)
             } ?? .unknown
             let slSt: MetricStatus = avgStrideLength.map {
                 metricStatus(rawValue: $0, stat: bb?.strideLength, dir: .stride)
@@ -1388,7 +1552,7 @@ struct RunFormCardView: View {
 
         let cadStatus = metricStatus(rawValue: cadD, stat: bb?.cadence, dir: .cadence)
         let gctStatus: MetricStatus = avgGroundContactTime.map {
-            metricStatus(rawValue: $0, stat: bb?.groundContact, dir: .groundContact)
+            metricStatus(rawValue: $0, stat: adjustedGctStat, dir: .groundContact)
         } ?? .unknown
         let slStatus: MetricStatus = avgStrideLength.map {
             metricStatus(rawValue: $0, stat: bb?.strideLength, dir: .stride)
@@ -1474,8 +1638,11 @@ struct RunFormCardView: View {
         let voStr  = avgVerticalOscillation.map { String(format: "%.1f", $0) } ?? "-"
         let pace   = activity.paceSecPerKm.map { pf($0) } ?? "--"
         let narrativeStr = narrative ?? "-"  // evaluate first so [폼] observation logs fire before chain log
+        let gctAdj = adjustedGctStat
+        let gctWasAdjusted = gctAdj?.median != bb?.groundContact?.median
+        let gctBandStr = gctWasAdjusted ? "\(rng(gctAdj, "%.0f")) [보정]" : rng(bb?.groundContact, "%.0f")
         let chainLog = "[폼:사슬] C=\(cStr)(\(rng(bb?.cadence, "%.0f"))) 보폭=\(slStr)(\(rng(bb?.strideLength, "%.2f")))"
-            + "\n         GCT=\(gctStr)(\(rng(bb?.groundContact, "%.0f"))) VO=\(voStr) 페이스=\(pace)"
+            + "\n         GCT=\(gctStr)(\(gctBandStr)) VO=\(voStr) 페이스=\(pace)"
             + "\n         → \"\(narrativeStr)\""
         print(chainLog)
         #endif
@@ -1511,6 +1678,39 @@ struct RunFormCardView: View {
         #endif
     }
 
+    private func logGctCorrection() {
+        #if DEBUG
+        guard let stat = bb?.groundContact else { return }
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+        let dateStr = df.string(from: activity.date)
+        guard let baselineMean = baseline?.gctBaselineResidualMean else {
+            print("[폼:GCT보정] baseline 없음 → 보정 안 함")
+            return
+        }
+        guard let gctShift = formShifts.first(where: { $0.metric.key == "gct" }) else {
+            print("[폼:GCT보정] 기준일 \(dateStr) · GCT shift 없음 (n부족 또는 미계산) → 보정 안 함")
+            return
+        }
+        let viewingMean = gctShift.recentMean
+        let rawDrift = viewingMean - baselineMean
+        if let r2 = gctShift.r2, r2 < 0.2 {
+            print(String(format: "[폼:GCT보정] 기준일 %@ · R²=%.2f (<0.2) → 보정 안 함", dateStr, r2))
+            return
+        }
+        if abs(rawDrift) < 2 {
+            print(String(format: "[폼:GCT보정] 기준일 %@ · drift %+.1fms (<2ms) → 보정 없음", dateStr, rawDrift))
+            return
+        }
+        let drift = max(-15, min(15, rawDrift))
+        let lo  = roundedDisplay(stat.lower, dir: .groundContact)
+        let hi  = roundedDisplay(stat.upper, dir: .groundContact)
+        let aLo = roundedDisplay(stat.lower + drift, dir: .groundContact)
+        let aHi = roundedDisplay(stat.upper + drift, dir: .groundContact)
+        print(String(format: "[폼:GCT보정] 기준일 %@ · 시점잔차 %+.2f · 기준잔차 %+.2f", dateStr, viewingMean, baselineMean))
+        print(String(format: "             drift %+.1fms → 밴드 %.0f–%.0f → %.0f–%.0f", drift, lo, hi, aLo, aHi))
+        #endif
+    }
+
     private func logRangeBar() {
         #if DEBUG
         guard let bb = bb else { return }
@@ -1520,24 +1720,86 @@ struct RunFormCardView: View {
             return
         }
         let todayDist = activity.distance
+        // [92] 자신 제외  [102] 시점 고정: 열람 러닝 이후 제외
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+        let cutoffStr = df.string(from: activity.date)
         let filtered = samples.filter { s in
             guard s.distanceM > 0, todayDist > 0 else { return false }
+            if Calendar.current.isDate(s.date, inSameDayAs: activity.date) { return false }
+            if s.date >= activity.date { return false }
             let ratio = todayDist / s.distanceM
             return ratio >= 0.5 && ratio <= 2.0
         }
         let recent5 = Array(filtered.prefix(5))
-        let df = DateFormatter(); df.dateFormat = "M/d"
         let cadCount = recent5.compactMap { $0.cadence }.count
         let slCount  = recent5.compactMap { $0.strideLength }.count
         let gctCount = recent5.compactMap { $0.groundContactTime }.count
         let voCount  = recent5.compactMap { $0.verticalOscillation }.count
-        print("[폼:범위바] 4개 지표 렌더 — 케이던스 · 보폭 · 지면접촉 · 수직진폭")
-        print("[폼:범위바] \(bb.band.rawValue)(n=\(bb.sampleCount)) 거리 \(String(format:"%.1f",todayDist/1000))km 필터: \(filtered.count)/\(samples.count)건")
+        // [102] 시점 고정 날짜 표시
+        print("[폼:범위바] 시점 고정 = \(cutoffStr) 이전 · 후보 \(samples.count)건")
+        print("[폼:범위바] \(bb.band.rawValue) n=\(bb.sampleCount) · 최근 \(samples.count)건 검사 · 자신제외+거리통과 \(filtered.count)건 · 표시 \(recent5.count)건")
         print("[폼:범위바] 히스토리 점: 케이던스 \(cadCount) · 보폭 \(slCount) · 지면접촉 \(gctCount) · 수직진폭 \(voCount)")
         if !recent5.isEmpty {
             let dots = recent5.map { s in "\(df.string(from: s.date))(\(String(format:"%.1f", s.distanceM/1000))km)" }
             print("[폼:범위바] 샘플 = \(dots.joined(separator: " · "))")
+        } else {
+            print("[폼:범위바] 샘플 없음 — 거리 비교 불가 (거리 \(String(format:"%.1f", todayDist/1000))km)")
         }
+        #endif
+    }
+
+    private func logLongDistanceChange() {
+        #if DEBUG
+        guard isLongDistanceContext else { return }
+        let all = formSeriesCache.isEmpty ? formSeries : formSeriesCache
+
+        struct BandExit {
+            let dir: MetricDir; let kmStart: Double; let kmEnd: Double; let bucketIdx: Int
+        }
+        var exits: [BandExit] = []
+        let totalKmLog = activity.distance / 1000
+        let minKmLog = totalKmLog * 0.40
+        for s in all {
+            guard s.dir != .verticalOsc else { continue }
+            guard let bandLo = s.bandLo, let bandHi = s.bandHi, !s.points.isEmpty else { continue }
+            for (i, pt) in s.points.enumerated() {
+                let exited: Bool
+                switch s.dir {
+                case .cadence, .stride: exited = pt.value < bandLo
+                case .groundContact: exited = pt.value > bandHi
+                case .verticalOsc: exited = false
+                }
+                if exited {
+                    let start = i > 0 ? s.points[i - 1].kmEnd : 0.0
+                    if start < minKmLog {
+                        // [103] 초반 이탈 로그
+                        let dirNames: [MetricDir: String] = [.cadence:"케이던스",.stride:"보폭",.groundContact:"지면접촉",.verticalOsc:"수직진폭"]
+                        print("[폼:장거리변화] \(dirNames[s.dir, default: "?"] ) 버킷\(i+1)부터 범위 밖 — 초반 이탈(40% 기준 \(String(format:"%.1f",minKmLog))km 미만)로 판정 제외")
+                        break
+                    }
+                    exits.append(BandExit(dir: s.dir, kmStart: start, kmEnd: pt.kmEnd, bucketIdx: i))
+                    break
+                }
+            }
+        }
+        if exits.isEmpty {
+            print("[폼:장거리변화] 세 지표 모두 범위 안(또는 초반 이탈) — 변화 없음")
+            return
+        }
+        let sorted = exits.sorted { $0.kmStart < $1.kmStart }
+        let dname: (MetricDir) -> String = {
+            switch $0 {
+            case .cadence: return "케이던스"
+            case .stride: return "보폭"
+            case .groundContact: return "지면접촉"
+            case .verticalOsc: return "수직진폭"
+            }
+        }
+        let parts = sorted.map { e in
+            "\(dname(e.dir)) = 버킷\(e.bucketIdx + 1)(\(Int(e.kmStart.rounded()))~\(Int(e.kmEnd.rounded()))km)"
+        }
+        let earliest = sorted.first!
+        print("[폼:장거리변화] \(parts.joined(separator: " · ")) → 변화 시작 \(Int(earliest.kmStart.rounded()))km")
         #endif
     }
 
@@ -1547,8 +1809,8 @@ struct RunFormCardView: View {
         let tempFiredDebug = items.contains { $0.id == .temperature }
         let isRainyDebug = weatherSnapshot?.isRainy == true
         let kinds: [FormInsightItem.Kind] = (tempFiredDebug && isRainyDebug)
-            ? [.temperature, .trend, .distance, .cadenceHR, .style]
-            : [.temperature, .weather, .trend, .distance, .cadenceHR, .style]
+            ? [.formChange, .temperature, .trend, .distance, .cadenceHR, .style]
+            : [.formChange, .temperature, .weather, .trend, .distance, .cadenceHR, .style]
         let candidates: [(FormInsightItem.Kind, String)] = kinds
             .map { kind in
                 let found = items.first { $0.id == kind }
@@ -1588,6 +1850,8 @@ struct RunFormCardView: View {
                     case .normal:    label = "평소 주법"
                     case .unknown:   label = "생략"
                     }
+                case .formChange:
+                    label = longDistanceFormChangeInsight != nil ? "변화 있음" : "변화 없음"
                 }
                 let mark = found != nil ? "✓" : "✗"
                 return (kind, "\(mark) \(kind.rawValue)  \(label)")

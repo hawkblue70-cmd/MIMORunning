@@ -14,17 +14,22 @@ enum PaceBand: String, CaseIterable, Codable, Hashable {
 // 경계는 개인 데이터의 25/50/75 백분위에서 계산. 하드코딩 금지.
 
 struct PaceBandCutoffs: Codable {
-    let jogMax: Double      // jog 구간 상한 (중앙값+1.2SD). 이 값 이상 = verySlow
-    let jogMin: Double      // 75th percentile — 이 값 이상 = jog 또는 verySlow
-    let dailyMin: Double    // 50th percentile — 이 값 이상 = daily
-    let tempoMin: Double    // 25th percentile — 이 값 이상 = tempo, 미만 = fast
+    let jogMax: Double       // jog 구간 상한 (중앙값+1.2SD). 이 값 이상 = verySlow
+    let verySlowMax: Double  // verySlow 상한 (중앙값+1.5SD). 이 값 초과 = 비교 대상 없음(nil)
+    let fastMin: Double      // fast 하한 (중앙값-1.5SD). 이 값 미만 = 비교 대상 없음(nil)
+    let jogMin: Double       // 75th percentile — 이 값 이상 = jog 또는 verySlow
+    let dailyMin: Double     // 50th percentile — 이 값 이상 = daily
+    let tempoMin: Double     // 25th percentile — 이 값 이상 = tempo, 미만 = fast
     let mergedBands: [PaceBand]  // 병합되어 사라진 구간 (gap < 30s)
 
-    func band(of pace: Double) -> PaceBand {
-        if pace >= jogMax   { return .verySlow }
-        if pace >= jogMin   { return .jog }
-        if pace >= dailyMin { return .daily }
-        if pace >= tempoMin { return .tempo }
+    /// nil = 범위 밖 (비교 대상 없음 — 폼 판정 생략)
+    func band(of pace: Double) -> PaceBand? {
+        if pace > verySlowMax  { return nil }
+        if fastMin > 0, pace < fastMin { return nil }
+        if pace >= jogMax      { return .verySlow }
+        if pace >= jogMin      { return .jog }
+        if pace >= dailyMin    { return .daily }
+        if pace >= tempoMin    { return .tempo }
         return .fast
     }
 
@@ -40,12 +45,25 @@ struct FormStat: Codable {
     let median: Double
     let sd: Double
     let count: Int
+    let p10: Double?   // 관측 P10 (표본 < 15건 띠에 사용)
+    let p90: Double?
     var lower: Double { median - 1.2 * sd }
     var upper: Double { median + 1.2 * sd }
 }
 
+/// 범위 바 히스토리 점용 경량 샘플. BandBaseline.recentSamples 에 최신 20건 저장.
+struct BandDotSample: Codable {
+    let date: Date
+    let distanceM: Double
+    let cadence: Int?
+    let strideLength: Double?
+    let groundContactTime: Double?
+    let verticalOscillation: Double?
+}
+
 struct BandBaseline: Codable {
     let band: PaceBand
+    let isJudgeable: Bool        // 표본 기준(minSamples) 충족 여부
     let sampleCount: Int
     let windowMonths: Int
     let paceMin: Double
@@ -65,17 +83,37 @@ struct BandBaseline: Codable {
     let strideResidualP25: Double?
     let strideResidualP75: Double?
     let strideResidualP90: Double?
+    let recentSamples: [BandDotSample]  // 최신 20건 — 범위 바 점 표시용
 
     var paceRange: ClosedRange<Double> { paceMin...paceMax }
 }
 
+// MARK: - Cadence-HR U-Curve Diagnostic
+
+/// 케이던스–심박 U자 곡선 진단 데이터. baseline 계산 시 항상 저장(글로벌 조건 불충족 포함).
+/// vertexResidual != nil ↔ 모든 글로벌 조건 충족 → 뷰에서 퍼액티비티 조건만 추가 검사.
+struct CadenceHRCurveDiag: Codable {
+    let residualRangeP10P90: Double   // P90-P10 of cadence residuals
+    let binCount: Int                 // bins with ≥3 samples
+    let a: Double?                    // 2차 계수 (nil = 회귀 미수행)
+    let r2: Double?                   // R² (nil = 회귀 미수행)
+    let vertexResidual: Double?       // -b/(2a), nil = 글로벌 조건 미충족
+    let residualDataMin: Double?      // 외삽 방지용 잔차 최솟값
+    let residualDataMax: Double?      // 외삽 방지용 잔차 최댓값
+
+    var isGloballyValid: Bool { vertexResidual != nil }
+}
+
 struct RunningFormBaseline: Codable {
-    static let currentVersion = 7
+    static let currentVersion = 14  // GCT baseline residual mean for drift correction
     let version: Int
     let computedAt: Date
     let cutoffs: PaceBandCutoffs
     let bands: [PaceBand: BandBaseline]
+    let cadenceHRDiag: CadenceHRCurveDiag?
     var isEmpty: Bool { bands.isEmpty }
+    // GCT 시점 보정용 — baseline 계산 시점의 GCT 잔차 3개월 평균
+    let gctBaselineResidualMean: Double?
 }
 
 // MARK: - Persistent Form Cache
@@ -96,8 +134,10 @@ struct CachedFormMetrics: Codable {
 // Activity에 폼 지표가 없어(ActivityDetail에 존재) 호출자가 둘을 합성해 전달.
 
 struct FormInput {
+    let activityID: UUID
     let date: Date
     let paceSecPerKm: Double
+    let distanceM: Double
     let avgHeartRate: Int?
     let avgCadence: Int?
     let avgStrideLength: Double?
@@ -110,8 +150,10 @@ struct FormInput {
               let pace = activity.paceSecPerKm,
               detail.avgCadence != nil          // 폼 데이터 없는 기록 제외
         else { return nil }
+        self.activityID             = activity.id
         self.date                   = activity.date
         self.paceSecPerKm           = pace
+        self.distanceM              = activity.distance
         self.avgHeartRate           = activity.avgHeartRate
         self.avgCadence             = detail.avgCadence
         self.avgStrideLength        = detail.avgStrideLength
@@ -127,8 +169,10 @@ extension FormInput {
               activity.distance >= 3000,
               let pace = activity.paceSecPerKm,
               cached.cadence != nil else { return nil }
+        self.activityID             = activity.id
         self.date                   = activity.date
         self.paceSecPerKm           = pace
+        self.distanceM              = activity.distance
         self.avgHeartRate           = cached.heartRate
         self.avgCadence             = cached.cadence
         self.avgStrideLength        = cached.strideLength
@@ -177,9 +221,16 @@ enum FormBaselineEngine {
 
     // MARK: Compute
 
-    static func compute(from inputs: [FormInput]) -> RunningFormBaseline {
+    static func compute(from inputs: [FormInput],
+                        excludedRaceInputs: [FormInput] = []) -> RunningFormBaseline {
         #if DEBUG
         print("[Baseline:계산] 입력 FormInput 총 \(inputs.count)개")
+        if !excludedRaceInputs.isEmpty {
+            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+            func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s)/60, Int(s)%60) }
+            let desc = excludedRaceInputs.map { "\(df.string(from: $0.date))(\(pf($0.paceSecPerKm)))" }.joined(separator: " · ")
+            print("[Baseline:계산] 대회 제외 \(excludedRaceInputs.count)건 = \(desc)")
+        }
         #endif
         let now = Date()
         let window12 = Calendar.current.date(byAdding: .month, value: -12, to: now) ?? .distantPast
@@ -203,6 +254,22 @@ enum FormBaselineEngine {
             let _fPct = Int(Double(all12.filter { cutoffs.band(of: $0.paceSecPerKm) == .fast    }.count) / _n * 100 + 0.5)
             print("  구간 비율: \(PaceBand.verySlow.rawValue) \(_vPct)% \(PaceBand.jog.rawValue) \(_jPct)% \(PaceBand.daily.rawValue) \(_dPct)% \(PaceBand.tempo.rawValue) \(_tPct)% \(PaceBand.fast.rawValue) \(_fPct)%")
         }
+        // 아주 느림 행방 추적 — jogMax-verySlowMax 범위 내 표본 수와 상한 초과 제외 건수를 기록
+        func _pfPace(_ s: Double) -> String {
+            guard s < .greatestFiniteMagnitude / 2 else { return "∞" }
+            return String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60)
+        }
+        if cutoffs.mergedBands.contains(.verySlow) {
+            print("[Baseline] 아주 느림 — 병합됨 (느린 편과 경계 차이 <30초)")
+        } else if cutoffs.activeBands.contains(.verySlow) {
+            let _vsInRange = all12.filter { $0.paceSecPerKm >= cutoffs.jogMax && $0.paceSecPerKm <= cutoffs.verySlowMax }
+            let _vsAbove   = all12.filter { $0.paceSecPerKm > cutoffs.verySlowMax }
+            if _vsInRange.count < minSamples {
+                print("[Baseline] 아주 느림 — 범위(\(_pfPace(cutoffs.jogMax))–\(_pfPace(cutoffs.verySlowMax))) 내 \(_vsInRange.count)건 (최소 \(minSamples)건 미달) · 상한 초과 \(_vsAbove.count)건 제외")
+            } else {
+                print("[Baseline] 아주 느림 — 범위 내 \(_vsInRange.count)건 OK · 상한(\(_pfPace(cutoffs.verySlowMax))) 초과 \(_vsAbove.count)건 제외")
+            }
+        }
         #endif
 
         var bands: [PaceBand: BandBaseline] = [:]
@@ -212,15 +279,24 @@ enum FormBaselineEngine {
             let samples6  = all12.filter { $0.date >= window6  && cutoffs.band(of: $0.paceSecPerKm) == band }
             let samples12 = all12.filter {                         cutoffs.band(of: $0.paceSecPerKm) == band }
 
-            let (samples, windowMonths): ([FormInput], Int)
+            let (samples, windowMonths, isJudgeable): ([FormInput], Int, Bool)
             if samples6.count >= minSamples {
-                (samples, windowMonths) = (samples6, 6)
+                (samples, windowMonths, isJudgeable) = (samples6, 6, true)
             } else if samples12.count >= minSamples {
-                (samples, windowMonths) = (samples12, 12)
+                (samples, windowMonths, isJudgeable) = (samples12, 12, true)
+            } else if !samples12.isEmpty {
+                // 표본 부족 — 띠는 표시하되 판정은 생략
+                (samples, windowMonths, isJudgeable) = (samples12, 12, false)
             } else {
                 continue
             }
 
+            #if DEBUG
+            let excludedInBand = excludedRaceInputs.filter { cutoffs.band(of: $0.paceSecPerKm) == band }.count
+            let excStr = excludedInBand > 0 ? ", 대회 \(excludedInBand)건 제외" : ""
+            let judgeStr = isJudgeable ? "" : " · 판정불가"
+            print("── \(band.rawValue) (\(samples.count)회 / \(windowMonths)개월\(excStr)\(judgeStr)) ──")
+            #endif
             let paces   = samples.map(\.paceSecPerKm)
             let cadStat = formStat(samples.compactMap { $0.avgCadence.map(Double.init) })
             let strStat = formStat(samples.compactMap { $0.avgStrideLength })
@@ -260,8 +336,16 @@ enum FormBaselineEngine {
                 #endif
             }
 
+            let recentSamples: [BandDotSample] = samples
+                .sorted { $0.date > $1.date }
+                .prefix(20)
+                .map { inp in BandDotSample(date: inp.date, distanceM: inp.distanceM,
+                                            cadence: inp.avgCadence, strideLength: inp.avgStrideLength,
+                                            groundContactTime: inp.avgGroundContactTime,
+                                            verticalOscillation: inp.avgVerticalOscillation) }
             bands[band] = BandBaseline(
                 band:         band,
+                isJudgeable:  isJudgeable,
                 sampleCount:  samples.count,
                 windowMonths: windowMonths,
                 paceMin:      paces.min() ?? 0,
@@ -279,14 +363,59 @@ enum FormBaselineEngine {
                 strideResidualP10:  strideResidualP10,
                 strideResidualP25:  strideResidualP25,
                 strideResidualP75:  strideResidualP75,
-                strideResidualP90:  strideResidualP90
+                strideResidualP90:  strideResidualP90,
+                recentSamples:      recentSamples
             )
         }
 
+        let curveDiag = computeCadenceHRCurve(inputs: all12, cutoffs: cutoffs, bands: bands)
+
+        // GCT 잔차 기준값 — 보정 게이트: 25개 이상 + 최근 3개월 20개 이상
+        let gctBaselineResidualMean: Double? = {
+            let gctObs: [MRFormObs] = all12.compactMap { inp in
+                guard let gct = inp.avgGroundContactTime else { return nil }
+                return MRFormObs(date: inp.date, speedMPerMin: 60000.0 / inp.paceSecPerKm, metricValue: gct)
+            }
+            guard gctObs.count >= 25 else { return nil }
+            let residuals = mrFormResiduals(obs: gctObs, asOf: now)
+            guard !residuals.isEmpty else { return nil }
+            let cal = Calendar.current
+            let cutoff = cal.startOfDay(for: now)
+            let recent = residuals.filter {
+                let d = cal.dateComponents([.day], from: $0.date, to: cutoff).day ?? 999
+                return d >= 0 && d < 90
+            }
+            guard recent.count >= 20 else { return nil }
+            let mean = recent.map(\.value).reduce(0, +) / Double(recent.count)
+            #if DEBUG
+            print(String(format: "[Baseline:GCT기준] 최근 3개월 %d개 · 잔차 평균 %+.2f", recent.count, mean))
+            #endif
+            return mean
+        }()
+
         let result = RunningFormBaseline(version: RunningFormBaseline.currentVersion,
-                                         computedAt: now, cutoffs: cutoffs, bands: bands)
+                                         computedAt: now, cutoffs: cutoffs, bands: bands,
+                                         cadenceHRDiag: curveDiag,
+                                         gctBaselineResidualMean: gctBaselineResidualMean)
         #if DEBUG
-        print("[Baseline:계산] 결과 구간 \(result.bands.count)개")
+        let _pf: (Double) -> String = { s in
+            guard s < Double.greatestFiniteMagnitude / 2 else { return "∞" }
+            return String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60)
+        }
+        let _activeNames = PaceBand.allCases.compactMap { result.bands[$0] != nil ? $0.rawValue : nil }
+        let _aboveMax = all12.filter { $0.paceSecPerKm > result.cutoffs.verySlowMax }.count
+        let _vsStr = result.cutoffs.verySlowMax < Double.greatestFiniteMagnitude / 2
+            ? "아주 느림 상한 \(_pf(result.cutoffs.verySlowMax)) · 상한 밖 \(_aboveMax)건 제외"
+            : ""
+        let _noSampleBands = result.cutoffs.activeBands.filter { result.bands[$0] == nil }.map(\.rawValue)
+        let _noSamplesStr = _noSampleBands.isEmpty ? "" : " · 표본 없음: \(_noSampleBands.joined(separator: ","))"
+        let _unjudgeableBands = PaceBand.allCases.compactMap { b in
+            result.bands[b].flatMap { !$0.isJudgeable ? "\($0.band.rawValue)(n=\($0.sampleCount))" : nil }
+        }
+        let _unjudgeStr = _unjudgeableBands.isEmpty ? "" : " · 판정불가: \(_unjudgeableBands.joined(separator: ","))"
+        let _mergedStr = result.cutoffs.mergedBands.isEmpty ? "" : " · 병합: \(result.cutoffs.mergedBands.map(\.rawValue).joined(separator: ","))"
+        let _detail = [_vsStr, _noSamplesStr, _unjudgeStr, _mergedStr].filter { !$0.isEmpty }.joined(separator: "")
+        print("[Baseline:계산] 구간 \(result.bands.count)개 (\(_activeNames.joined(separator: " · "))" + (_detail.isEmpty ? ")" : ") | \(_detail)"))
         logBaseline(result)
         #endif
         return result
@@ -294,7 +423,8 @@ enum FormBaselineEngine {
 
     // MARK: Load or Compute
 
-    static func loadOrCompute(inputs: [FormInput]) async -> RunningFormBaseline {
+    static func loadOrCompute(inputs: [FormInput],
+                               excludedRaceInputs: [FormInput] = []) async -> RunningFormBaseline {
         let cached = loadFromCache()
         let cacheValid = cached.map {
             !isStale($0) && $0.version == RunningFormBaseline.currentVersion
@@ -303,6 +433,14 @@ enum FormBaselineEngine {
         #if DEBUG
         if cacheValid && !forceRecompute, let c = cached {
             print("[Baseline] 캐시 사용 (계산일: \(c.computedAt), bands=\(c.bands.count))")
+            let _pf: (Double) -> String = { s in
+                guard s < .greatestFiniteMagnitude / 2 else { return "∞" }
+                return String(format: "%d'%02d\"", Int(s)/60, Int(s)%60)
+            }
+            let _list = PaceBand.allCases.compactMap { b in
+                c.bands[b].map { "\(b.rawValue)(n=\($0.sampleCount)\($0.isJudgeable ? "" : "·불가"))" }
+            }.joined(separator: " / ")
+            print("[Baseline] 구간 \(c.bands.count)개: \(_list) | 아주 느림 상한 = \(_pf(c.cutoffs.verySlowMax))")
             memo = .some(c)
             return c
         }
@@ -321,9 +459,149 @@ enum FormBaselineEngine {
         if cacheValid, let c = cached { memo = .some(c); return c }
         #endif
 
-        let baseline = compute(from: inputs)
+        let baseline = compute(from: inputs, excludedRaceInputs: excludedRaceInputs)
         saveToCache(baseline)
         return baseline
+    }
+
+    // MARK: Private — Cadence-HR U-Curve
+
+    /// 12개월 러닝 전체를 페이스 구간 잔차로 변환한 뒤 2차 회귀로 심박 최저 케이던스를 추정.
+    /// 표시 조건을 하나라도 충족 못 하면 vertexResidual = nil로 반환(CadenceHRCurveDiag는 항상 반환해 로그에 사용).
+    /// 케이던스·심박 모두 없는 경우에만 nil 반환.
+    private static func computeCadenceHRCurve(
+        inputs: [FormInput],
+        cutoffs: PaceBandCutoffs,
+        bands: [PaceBand: BandBaseline]
+    ) -> CadenceHRCurveDiag? {
+        // 케이던스 + 심박 둘 다 있는 기록만
+        let eligible = inputs.filter { $0.avgCadence != nil && $0.avgHeartRate != nil }
+        guard eligible.count >= 10 else {
+            #if DEBUG
+            print("[U자:계산] 데이터 부족 (\(eligible.count)개 케이던스+심박) → 진단 없음")
+            #endif
+            return nil
+        }
+
+        // 페이스 구간 중앙값으로 잔차 계산
+        var cadResiduals: [Double] = []
+        var hrResiduals:  [Double] = []
+        for inp in eligible {
+            guard let band = cutoffs.band(of: inp.paceSecPerKm),
+                  let bb   = bands[band],
+                  let cs   = bb.cadence,
+                  let hs   = bb.heartRate,
+                  let cad  = inp.avgCadence,
+                  let hr   = inp.avgHeartRate else { continue }
+            cadResiduals.append(Double(cad) - cs.median)
+            hrResiduals.append(Double(hr)  - hs.median)
+        }
+
+        guard cadResiduals.count >= 10 else {
+            #if DEBUG
+            print("[U자:계산] 잔차 계산 후 데이터 부족 (\(cadResiduals.count)개) → 진단 없음")
+            #endif
+            return nil
+        }
+
+        let cadSorted = cadResiduals.sorted()
+        let p10 = percentile(cadSorted, 0.10)
+        let p90 = percentile(cadSorted, 0.90)
+        let range = p90 - p10
+
+        // 2spm bin: binIdx = floor(cr/2), center = binIdx*2 + 1
+        var binDict: [Int: [Double]] = [:]
+        for (i, cr) in cadResiduals.enumerated() {
+            let binIdx = Int(floor(cr / 2.0))
+            binDict[binIdx, default: []].append(hrResiduals[i])
+        }
+        let validBins = binDict.filter { $0.value.count >= 3 }
+        let binCount  = validBins.count
+
+        let rangeOK = range >= 10
+        let binsOK  = binCount >= 5
+
+        #if DEBUG
+        var logParts = "[U자:계산] 잔차범위 \(String(format: "%.1f", range))spm(\(rangeOK ? "✓" : "<10 ✗")) bin=\(binCount)(\(binsOK ? "✓" : "<5 ✗"))"
+        #endif
+
+        guard rangeOK, binsOK else {
+            #if DEBUG
+            var reasons: [String] = []
+            if !rangeOK { reasons.append("잔차범위 부족") }
+            if !binsOK  { reasons.append("bin 부족") }
+            print("\(logParts) → 미표시: \(reasons.joined(separator: ", "))")
+            #endif
+            return CadenceHRCurveDiag(residualRangeP10P90: range, binCount: binCount,
+                                      a: nil, r2: nil, vertexResidual: nil,
+                                      residualDataMin: nil, residualDataMax: nil)
+        }
+
+        // 2차 회귀: y = a·x² + b·x + c, X 열 = [x², x, 1]
+        let sorted = validBins.sorted { $0.key < $1.key }
+        let xs = sorted.map { Double($0.key) * 2.0 + 1.0 }
+        let ys = sorted.map { pair in pair.value.reduce(0, +) / Double(pair.value.count) }
+
+        let X = xs.map { x in [x * x, x, 1.0] }
+        guard let coef = MRLinAlg.lstsq(X: X, y: ys), coef.count == 3 else {
+            #if DEBUG
+            print("\(logParts) 회귀 실패 → 미표시")
+            #endif
+            return CadenceHRCurveDiag(residualRangeP10P90: range, binCount: binCount,
+                                      a: nil, r2: nil, vertexResidual: nil,
+                                      residualDataMin: nil, residualDataMax: nil)
+        }
+        let a = coef[0], b = coef[1], c = coef[2]
+
+        // R²
+        let yMean = ys.reduce(0, +) / Double(ys.count)
+        let ssTot = ys.map { pow($0 - yMean, 2) }.reduce(0, +)
+        let ssRes = zip(xs, ys).map { x, y in pow(y - (a * x * x + b * x + c), 2) }.reduce(0, +)
+        let r2 = ssTot > 1e-12 ? 1.0 - ssRes / ssTot : 0.0
+
+        let aOK  = a > 0
+        let r2OK = r2 >= 0.3
+
+        #if DEBUG
+        logParts += " a=\(String(format: "%+.2f", a))(\(aOK ? "✓" : "✗")) R²=\(String(format: "%.2f", r2))(\(r2OK ? "✓" : "<0.3 ✗"))"
+        #endif
+
+        guard aOK, r2OK else {
+            #if DEBUG
+            var reasons: [String] = []
+            if !aOK  { reasons.append("아래로 볼록 아님") }
+            if !r2OK { reasons.append("R² 부족") }
+            print("\(logParts) → 미표시: \(reasons.joined(separator: ", "))")
+            #endif
+            return CadenceHRCurveDiag(residualRangeP10P90: range, binCount: binCount,
+                                      a: a, r2: r2, vertexResidual: nil,
+                                      residualDataMin: nil, residualDataMax: nil)
+        }
+
+        let vertex   = -b / (2.0 * a)
+        let dataMin  = cadResiduals.min() ?? vertex
+        let dataMax  = cadResiduals.max() ?? vertex
+        let inRange  = vertex >= dataMin && vertex <= dataMax
+
+        #if DEBUG
+        logParts += " 최저점 \(String(format: "%+.1f", vertex))spm(\(inRange ? "✓" : "외삽 ✗"))"
+        #endif
+
+        guard inRange else {
+            #if DEBUG
+            print("\(logParts) → 미표시: 외삽")
+            #endif
+            return CadenceHRCurveDiag(residualRangeP10P90: range, binCount: binCount,
+                                      a: a, r2: r2, vertexResidual: nil,
+                                      residualDataMin: dataMin, residualDataMax: dataMax)
+        }
+
+        #if DEBUG
+        print("\(logParts) → 글로벌 조건 충족")
+        #endif
+        return CadenceHRCurveDiag(residualRangeP10P90: range, binCount: binCount,
+                                  a: a, r2: r2, vertexResidual: vertex,
+                                  residualDataMin: dataMin, residualDataMax: dataMax)
     }
 
     // MARK: Private — Cutoffs
@@ -335,7 +613,8 @@ enum FormBaselineEngine {
     private static func computeCutoffs(from paces: [Double]) -> PaceBandCutoffs {
         guard paces.count >= 20 else {
             // 표본 부족 → 단일 구간 (모두 .jog 으로)
-            return PaceBandCutoffs(jogMax: .greatestFiniteMagnitude, jogMin: 0, dailyMin: 0, tempoMin: 0,
+            return PaceBandCutoffs(jogMax: .greatestFiniteMagnitude, verySlowMax: .greatestFiniteMagnitude,
+                                   fastMin: 0, jogMin: 0, dailyMin: 0, tempoMin: 0,
                                    mergedBands: [.daily, .tempo, .fast])
         }
 
@@ -350,11 +629,48 @@ enum FormBaselineEngine {
         // 최종 폴백: 중앙값 기준 2구간 (느림/빠름)
         let median = percentile(sorted, 0.50)
         let jogMax = computeJogMax(sortedAll: sorted, jogMin: median)
+        let verySlowMax = computeVerySlowMax(sortedAll: sorted, jogMax: jogMax)
+        let fastMin     = computeFastMin(sortedAll: sorted, tempoMin: median)
         #if DEBUG
         print("  [Baseline] 2구간 폴백 — 페이스 분포가 너무 좁음")
         #endif
-        return PaceBandCutoffs(jogMax: jogMax, jogMin: median, dailyMin: median, tempoMin: median,
+        return PaceBandCutoffs(jogMax: jogMax, verySlowMax: verySlowMax,
+                               fastMin: fastMin, jogMin: median, dailyMin: median, tempoMin: median,
                                mergedBands: [.daily, .tempo])
+    }
+
+    /// verySlow 구간(≥jogMax)의 중앙값+1.5SD → verySlowMax.
+    /// 샘플 < 3이면 상한 없음(greatestFiniteMagnitude).
+    private static func computeVerySlowMax(sortedAll: [Double], jogMax: Double) -> Double {
+        let vsPaces = sortedAll.filter { $0 >= jogMax }
+        guard vsPaces.count >= 3 else { return .greatestFiniteMagnitude }
+        let mean = vsPaces.reduce(0, +) / Double(vsPaces.count)
+        let sd   = sqrt(vsPaces.map { pow($0 - mean, 2) }.reduce(0, +) / Double(vsPaces.count))
+        let med  = percentile(vsPaces, 0.50)
+        let result = med + 1.5 * sd
+        #if DEBUG
+        func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s)/60, Int(s)%60) }
+        print("[Baseline] 아주 느림 상한 = \(pf(result)) (중앙 \(pf(med)) + 1.5SD \(String(format: "%.0f", sd))초)")
+        #endif
+        return result
+    }
+
+    /// fast 구간(＜tempoMin)의 중앙값-1.5SD → fastMin.
+    /// 샘플 < 3이면 하한 없음(0).
+    private static func computeFastMin(sortedAll: [Double], tempoMin: Double) -> Double {
+        let fastPaces = sortedAll.filter { $0 < tempoMin }
+        guard fastPaces.count >= 3 else { return 0 }
+        let mean = fastPaces.reduce(0, +) / Double(fastPaces.count)
+        let sd   = sqrt(fastPaces.map { pow($0 - mean, 2) }.reduce(0, +) / Double(fastPaces.count))
+        let med  = percentile(fastPaces, 0.50)
+        let result = max(0, med - 1.5 * sd)
+        #if DEBUG
+        func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s)/60, Int(s)%60) }
+        if result > 0 {
+            print("[Baseline] 가장 빠른 하한 = \(pf(result)) (중앙 \(pf(med)) - 1.5SD \(String(format: "%.0f", sd))초)")
+        }
+        #endif
+        return result
     }
 
     /// jog 구간 페이스(≥jogMin)의 중앙값+1.2SD → jogMax.
@@ -388,8 +704,11 @@ enum FormBaselineEngine {
         for (_, count) in bandCounts where Double(count) / n >= 0.70 {
             return nil
         }
-        let jogMax = computeJogMax(sortedAll: sorted, jogMin: pHi)
-        return PaceBandCutoffs(jogMax: jogMax, jogMin: pHi, dailyMin: pMid, tempoMin: pLo, mergedBands: [])
+        let jogMax      = computeJogMax(sortedAll: sorted, jogMin: pHi)
+        let verySlowMax = computeVerySlowMax(sortedAll: sorted, jogMax: jogMax)
+        let fastMin     = computeFastMin(sortedAll: sorted, tempoMin: pLo)
+        return PaceBandCutoffs(jogMax: jogMax, verySlowMax: verySlowMax,
+                               fastMin: fastMin, jogMin: pHi, dailyMin: pMid, tempoMin: pLo, mergedBands: [])
     }
 
     // MARK: Private — Statistics
@@ -401,7 +720,9 @@ enum FormBaselineEngine {
         let median = sorted[sorted.count / 2]
         let mean   = vals.reduce(0, +) / Double(vals.count)
         let sd     = sqrt(vals.map { pow($0 - mean, 2) }.reduce(0, +) / Double(vals.count))
-        return FormStat(median: median, sd: sd, count: vals.count)
+        let p10 = percentile(sorted, 0.10)
+        let p90 = percentile(sorted, 0.90)
+        return FormStat(median: median, sd: sd, count: vals.count, p10: p10, p90: p90)
     }
 
     private static func pearsonR(_ xs: [Double], _ ys: [Double]) -> Double? {
@@ -457,13 +778,14 @@ enum FormBaselineEngine {
 // MARK: - Query API
 
 extension RunningFormBaseline {
-    func band(for activity: Activity) -> PaceBand {
+    func band(for activity: Activity) -> PaceBand? {
         guard let pace = activity.paceSecPerKm else { return .jog }
         return cutoffs.band(of: pace)
     }
 
     func baseline(for activity: Activity) -> BandBaseline? {
-        bands[band(for: activity)]
+        guard let b = band(for: activity) else { return nil }
+        return bands[b]
     }
 
     /// 케이던스 권장 밴드.
@@ -490,7 +812,8 @@ extension FormBaselineEngine {
         }
         let c = b.cutoffs
         print("═══ [Baseline] \(b.computedAt) ═══")
-        print("구간 경계: \(PaceBand.fast.rawValue) <\(pf(c.tempoMin)) | \(PaceBand.tempo.rawValue) <\(pf(c.dailyMin)) | \(PaceBand.daily.rawValue) <\(pf(c.jogMin)) | \(PaceBand.jog.rawValue) \(pf(c.jogMin))–\(pf(c.jogMax)) | \(PaceBand.verySlow.rawValue) ≥\(pf(c.jogMax))")
+        let vsMax = c.verySlowMax < .greatestFiniteMagnitude ? "~\(pf(c.verySlowMax))" : "∞"
+        print("구간 경계: \(PaceBand.fast.rawValue) <\(pf(c.tempoMin)) | \(PaceBand.tempo.rawValue) <\(pf(c.dailyMin)) | \(PaceBand.daily.rawValue) <\(pf(c.jogMin)) | \(PaceBand.jog.rawValue) \(pf(c.jogMin))–\(pf(c.jogMax)) | \(PaceBand.verySlow.rawValue) \(pf(c.jogMax))\(vsMax) | 범위밖 >\(vsMax)")
         if !c.mergedBands.isEmpty { print("병합된 구간: \(c.mergedBands.map(\.rawValue))") }
 
         for band in PaceBand.allCases {
@@ -513,6 +836,22 @@ extension FormBaselineEngine {
                 let p90s  = bb.strideResidualP90.map  { String(format: "%+.3f", $0) } ?? "-"
                 print("  [주법] r=\(rStr) cadR P10=\(p10c) P90=\(p90c) strR P10=\(p10s) P90=\(p90s)")
             }
+        }
+        if let d = b.cadenceHRDiag {
+            let rangeOK = d.residualRangeP10P90 >= 10
+            let binsOK  = d.binCount >= 5
+            var line = "── [U자] 잔차범위 \(String(format: "%.1f", d.residualRangeP10P90))spm(\(rangeOK ? "✓" : "<10 ✗")) bin=\(d.binCount)(\(binsOK ? "✓" : "<5 ✗"))"
+            if let a = d.a, let r2 = d.r2 {
+                line += " a=\(String(format: "%+.2f", a))(\(a > 0 ? "✓" : "✗")) R²=\(String(format: "%.2f", r2))(\(r2 >= 0.3 ? "✓" : "<0.3 ✗"))"
+            }
+            if let v = d.vertexResidual {
+                line += " 최저점 \(String(format: "%+.1f", v))spm → 글로벌 조건 충족"
+            } else {
+                line += " → 글로벌 조건 미충족"
+            }
+            print(line)
+        } else {
+            print("── [U자] 진단 없음 (케이던스+심박 데이터 부족)")
         }
     }
 }
