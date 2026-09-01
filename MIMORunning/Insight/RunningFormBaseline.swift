@@ -51,10 +51,11 @@ struct FormStat: Codable {
     var upper: Double { median + 1.2 * sd }
 }
 
-/// 범위 바 히스토리 점용 경량 샘플. BandBaseline.recentSamples 에 최신 20건 저장.
+/// 범위 바 히스토리 점용 경량 샘플.
 struct BandDotSample: Codable {
     let date: Date
     let distanceM: Double
+    let paceSecPerKm: Double   // 페이스 구간 필터링용
     let cadence: Int?
     let strideLength: Double?
     let groundContactTime: Double?
@@ -105,7 +106,7 @@ struct CadenceHRCurveDiag: Codable {
 }
 
 struct RunningFormBaseline: Codable {
-    static let currentVersion = 14  // GCT baseline residual mean for drift correction
+    static let currentVersion = 15  // allFormSamples: 전체 폼 히스토리 풀 추가
     let version: Int
     let computedAt: Date
     let cutoffs: PaceBandCutoffs
@@ -114,6 +115,8 @@ struct RunningFormBaseline: Codable {
     var isEmpty: Bool { bands.isEmpty }
     // GCT 시점 보정용 — baseline 계산 시점의 GCT 잔차 3개월 평균
     let gctBaselineResidualMean: Double?
+    // 범위 바 후보 풀 — 전체 폼 히스토리 (날짜·페이스·거리 필터링은 뷰에서)
+    let allFormSamples: [BandDotSample]
 }
 
 // MARK: - Persistent Form Cache
@@ -340,6 +343,7 @@ enum FormBaselineEngine {
                 .sorted { $0.date > $1.date }
                 .prefix(20)
                 .map { inp in BandDotSample(date: inp.date, distanceM: inp.distanceM,
+                                            paceSecPerKm: inp.paceSecPerKm,
                                             cadence: inp.avgCadence, strideLength: inp.avgStrideLength,
                                             groundContactTime: inp.avgGroundContactTime,
                                             verticalOscillation: inp.avgVerticalOscillation) }
@@ -393,10 +397,25 @@ enum FormBaselineEngine {
             return mean
         }()
 
+        // 범위 바 후보 풀: 전체 입력에서 케이던스 있는 것, 날짜 내림차순 500건
+        let allFormSamples: [BandDotSample] = inputs
+            .filter { $0.avgCadence != nil }
+            .sorted { $0.date > $1.date }
+            .prefix(500)
+            .map { inp in BandDotSample(date: inp.date, distanceM: inp.distanceM,
+                                        paceSecPerKm: inp.paceSecPerKm,
+                                        cadence: inp.avgCadence, strideLength: inp.avgStrideLength,
+                                        groundContactTime: inp.avgGroundContactTime,
+                                        verticalOscillation: inp.avgVerticalOscillation) }
+        #if DEBUG
+        print("[Baseline:계산] allFormSamples \(allFormSamples.count)건 (전체 입력 \(inputs.count)건 중)")
+        #endif
+
         let result = RunningFormBaseline(version: RunningFormBaseline.currentVersion,
                                          computedAt: now, cutoffs: cutoffs, bands: bands,
                                          cadenceHRDiag: curveDiag,
-                                         gctBaselineResidualMean: gctBaselineResidualMean)
+                                         gctBaselineResidualMean: gctBaselineResidualMean,
+                                         allFormSamples: allFormSamples)
         #if DEBUG
         let _pf: (Double) -> String = { s in
             guard s < Double.greatestFiniteMagnitude / 2 else { return "∞" }

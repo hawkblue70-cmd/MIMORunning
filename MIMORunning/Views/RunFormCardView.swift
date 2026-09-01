@@ -941,16 +941,25 @@ struct RunFormCardView: View {
 
     // MARK: - Range Bar
 
-    /// 최근 실적 점: bb?.recentSamples 에서 오늘 거리 ±2배 필터 후 최신 5개 추출.
+    /// 범위 바 히스토리 점: baseline.allFormSamples에서 열람 러닝 이전 12개월 · 같은 페이스 구간 · 거리 0.5~2배 필터 후 최신 5개.
     private func recentDotsForBand(dir: MetricDir) -> [Double] {
-        guard let samples = bb?.recentSamples, !samples.isEmpty else { return [] }
+        guard let baseline = baseline, !baseline.allFormSamples.isEmpty else { return [] }
+        guard let actPace = activity.paceSecPerKm else { return [] }
+        let actBand = baseline.cutoffs.band(of: actPace)
         let todayDist = activity.distance
-        let filtered = samples.filter { s in
+        let viewDate = activity.date
+        let cal = Calendar.current
+        let oneYearAgo = cal.date(byAdding: .year, value: -1, to: viewDate) ?? .distantPast
+        let filtered = baseline.allFormSamples.filter { s in
             guard s.distanceM > 0, todayDist > 0 else { return false }
-            // [92] 열람 중인 러닝 자신 제외
-            if Calendar.current.isDate(s.date, inSameDayAs: activity.date) { return false }
-            // [102] 시점 고정: 열람 러닝 이후 데이터 제외
-            if s.date >= activity.date { return false }
+            // 자신 제외
+            if cal.isDate(s.date, inSameDayAs: viewDate) { return false }
+            // 열람 러닝 이전 12개월
+            if s.date >= viewDate { return false }
+            if s.date < oneYearAgo { return false }
+            // 같은 페이스 구간
+            guard baseline.cutoffs.band(of: s.paceSecPerKm) == actBand else { return false }
+            // 거리 0.5~2배
             let ratio = todayDist / s.distanceM
             return ratio >= 0.5 && ratio <= 2.0
         }
@@ -1413,11 +1422,18 @@ struct RunFormCardView: View {
         let n = bb.sampleCount
         let pr = "\(pf(paceMin))~\(pf(paceMax))"
         let todayDist = activity.distance
-        // [92] 자신 제외  [102] 시점 고정: 열람 러닝 이후 제외
-        let recentCount = min(bb.recentSamples.filter { s in
+        // [112] allFormSamples 풀에서 재필터 (페이스 구간 + 12개월 창 + 거리)
+        let actPaceBS = activity.paceSecPerKm ?? 0
+        let actBandBS = baseline?.cutoffs.band(of: actPaceBS)
+        let viewDateBS = activity.date
+        let oneYearAgoBS = Calendar.current.date(byAdding: .year, value: -1, to: viewDateBS) ?? .distantPast
+        let poolBS = baseline?.allFormSamples ?? []
+        let recentCount = min(poolBS.filter { s in
             guard s.distanceM > 0, todayDist > 0 else { return false }
-            if Calendar.current.isDate(s.date, inSameDayAs: activity.date) { return false }
-            if s.date >= activity.date { return false }
+            if Calendar.current.isDate(s.date, inSameDayAs: viewDateBS) { return false }
+            if s.date >= viewDateBS { return false }
+            if s.date < oneYearAgoBS { return false }
+            guard baseline?.cutoffs.band(of: s.paceSecPerKm) == actBandBS else { return false }
             let ratio = todayDist / s.distanceM
             return ratio >= 0.5 && ratio <= 2.0
         }.count, 5)
@@ -1713,37 +1729,53 @@ struct RunFormCardView: View {
 
     private func logRangeBar() {
         #if DEBUG
-        guard let bb = bb else { return }
-        let samples = bb.recentSamples
-        guard !samples.isEmpty else {
-            print("[폼:범위바] recentSamples 없음 — 캐시 재계산 후 사용 가능")
+        guard let baseline = baseline else { return }
+        let pool = baseline.allFormSamples
+        guard !pool.isEmpty else {
+            print("[폼:범위바] allFormSamples 없음 — 캐시 재계산 후 사용 가능")
             return
         }
+        guard let actPace = activity.paceSecPerKm else { return }
+        let actBand = baseline.cutoffs.band(of: actPace)
         let todayDist = activity.distance
-        // [92] 자신 제외  [102] 시점 고정: 열람 러닝 이후 제외
+        let viewDate = activity.date
+        let cal = Calendar.current
+        let oneYearAgo = cal.date(byAdding: .year, value: -1, to: viewDate) ?? .distantPast
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
-        let cutoffStr = df.string(from: activity.date)
-        let filtered = samples.filter { s in
+
+        // 1단계: 날짜 창 (자신 제외 + 이전 + 12개월)
+        let inWindow = pool.filter { s in
+            !cal.isDate(s.date, inSameDayAs: viewDate) &&
+            s.date < viewDate &&
+            s.date >= oneYearAgo
+        }
+        // 2단계: 페이스 구간
+        let inBand = inWindow.filter { baseline.cutoffs.band(of: $0.paceSecPerKm) == actBand }
+        // 3단계: 거리 0.5~2배
+        let inDist = inBand.filter { s in
             guard s.distanceM > 0, todayDist > 0 else { return false }
-            if Calendar.current.isDate(s.date, inSameDayAs: activity.date) { return false }
-            if s.date >= activity.date { return false }
             let ratio = todayDist / s.distanceM
             return ratio >= 0.5 && ratio <= 2.0
         }
-        let recent5 = Array(filtered.prefix(5))
-        let cadCount = recent5.compactMap { $0.cadence }.count
-        let slCount  = recent5.compactMap { $0.strideLength }.count
-        let gctCount = recent5.compactMap { $0.groundContactTime }.count
-        let voCount  = recent5.compactMap { $0.verticalOscillation }.count
-        // [102] 시점 고정 날짜 표시
-        print("[폼:범위바] 시점 고정 = \(cutoffStr) 이전 · 후보 \(samples.count)건")
-        print("[폼:범위바] \(bb.band.rawValue) n=\(bb.sampleCount) · 최근 \(samples.count)건 검사 · 자신제외+거리통과 \(filtered.count)건 · 표시 \(recent5.count)건")
-        print("[폼:범위바] 히스토리 점: 케이던스 \(cadCount) · 보폭 \(slCount) · 지면접촉 \(gctCount) · 수직진폭 \(voCount)")
+        let recent5 = Array(inDist.prefix(5))
+
+        let winStart = inWindow.last.map { df.string(from: $0.date) } ?? "?"
+        let winEnd   = df.string(from: viewDate)
+        print("[폼:범위바] 후보 풀 = \(winStart) ~ \(winEnd) · 러닝 \(inWindow.count)건")
+        print("             구간 통과 \(inBand.count)건 · 거리 통과 \(inDist.count)건 · 표시 \(recent5.count)건")
+
         if !recent5.isEmpty {
             let dots = recent5.map { s in "\(df.string(from: s.date))(\(String(format:"%.1f", s.distanceM/1000))km)" }
             print("[폼:범위바] 샘플 = \(dots.joined(separator: " · "))")
-        } else {
-            print("[폼:범위바] 샘플 없음 — 거리 비교 불가 (거리 \(String(format:"%.1f", todayDist/1000))km)")
+        }
+
+        // 거리 필터 탈락 상세 (통과 0건일 때)
+        if inDist.isEmpty, !inBand.isEmpty {
+            let loKm = (todayDist / 2) / 1000
+            let hiKm = (todayDist * 2) / 1000
+            let rejectExamples = inBand.prefix(5).map { String(format: "%.1f", $0.distanceM / 1000) + "km" }
+            print(String(format: "[폼:범위바] 거리 창 = %.1f~%.1fkm · 후보 \(inBand.count)건 → 통과 0건", loKm, hiKm))
+            print("             탈락 예시: " + rejectExamples.joined(separator: " · "))
         }
         #endif
     }
