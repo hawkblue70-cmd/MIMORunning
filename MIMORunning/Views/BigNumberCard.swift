@@ -213,7 +213,7 @@ struct BigNumberCard: View {
                 Text("\(w) ·")
             }
             Text(date.cardDateString)
-            Text(date.weekdayCharKo).foregroundStyle(Theme.time)
+            Text(date.weekdayString).foregroundStyle(Theme.time)
             Text(date.cardTimeString)
         }
         .font(.system(size: 10))
@@ -387,7 +387,7 @@ struct BigNumberVideoOverlayView: View {
                 Text("\(w) ·")
             }
             Text(date.cardDateString)
-            Text(date.weekdayCharKo).foregroundStyle(Theme.time)
+            Text(date.weekdayString).foregroundStyle(Theme.time)
             Text(date.cardTimeString)
         }
         .font(.system(size: 10 * s))

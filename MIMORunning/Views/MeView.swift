@@ -246,6 +246,10 @@ struct MeView: View {
         }
         .onChange(of: allStories.count) { refreshShoeKmCache() }
         .onChange(of: useMiles) { refreshStatsAndBadges() }
+        .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
+            badgesCache = computeBadges()
+            engine.recomputePlans()   // verdict·plan notes는 빌드 시 L.s()로 저장 → 재계산 필요
+        }
         .onChange(of: racePlanKey) { syncAndRecompute() }
         .onChange(of: goalHash) { syncAndRecompute() }
         .onChange(of: engine.isReady) { if engine.isReady { syncAndRecompute() } }
@@ -792,7 +796,8 @@ struct MeView: View {
                                 Text(shoe.displayName)
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.white)
-                                Text(shoe.addedDate, format: .dateTime.year().month().day())
+                                Text(shoe.addedDate, format: .dateTime.year().month().day()
+                                    .locale(AppLanguage.shared.isEnglish ? Locale(identifier: "en_US") : Locale(identifier: "ko_KR")))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }

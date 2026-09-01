@@ -204,6 +204,7 @@ struct SplitData: Identifiable, Codable {
     let avgPower: Int?                // W   — nil when Watch data unavailable
     let avgGroundContactTime: Double? // ms  — nil when Watch data unavailable
     let avgStrideLength: Double?      // m   — nil when Watch data unavailable
+    let avgVerticalOscillation: Double? // cm — nil when Watch data unavailable (added v10 disk cache)
 
     var paceSecPerKm: Double { duration / (distanceM / 1000) }
 

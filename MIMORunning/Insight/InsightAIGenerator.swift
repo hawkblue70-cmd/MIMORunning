@@ -52,14 +52,38 @@ enum InsightAIGenerator {
             사실: \(base.detail)
             """
 
+        let promptLen = prompt.count
         do {
             let session = LanguageModelSession(instructions: instructions)
             let response = try await session.respond(to: prompt, generating: AIInsightOutput.self)
             let output = response.content
-            guard !output.detail.isEmpty else { return nil }
+            guard !output.detail.isEmpty else {
+                #if DEBUG
+                print("[LLM] DetailInsight 프롬프트 길이 \(promptLen)자 · 결과 (빈 문자열 → 폴백)")
+                #endif
+                return nil
+            }
+            #if DEBUG
+            print("[LLM] DetailInsight 프롬프트 길이 \(promptLen)자 · 결과 (성공)")
+            #endif
             return InsightResult(theme: base.theme, workoutType: base.workoutType, title: base.title, detail: output.detail)
         } catch {
-            return nil
+            let errDesc = String(describing: error).lowercased()
+            let reason: String
+            if errDesc.contains("guardrail") || errDesc.contains("safety") || errDesc.contains("policy") || errDesc.contains("filtered") || errDesc.contains("content") {
+                reason = "가드레일"
+            } else if errDesc.contains("timeout") || errDesc.contains("timed out") || errDesc.contains("deadline") {
+                reason = "타임아웃"
+            } else {
+                reason = "실패"
+            }
+            #if DEBUG
+            print("[LLM] DetailInsight 프롬프트 길이 \(promptLen)자 · 결과 (\(reason))")
+            if reason == "가드레일" {
+                print("[LLM] 가드레일 발생 — 폴백 문구 사용 (오류: \(error))")
+            }
+            #endif
+            return nil  // caller keeps rule-based base.detail as fallback
         }
     }
 
@@ -79,6 +103,7 @@ enum InsightAIGenerator {
         case .rarityFact:        "희소성 사실 (기온 극값·시간대 재회)"
         case .milestone:         "평생 누적 이정표 (50km 단위 최초 돌파)"
         case .subThreshold:      "서브T 절제 인정 (인터벌 구간 페이스 일관성)"
+        case .returnGap:         "공백 후 복귀 러닝 (N일 만에 다시 시작)"
         }
     }
 

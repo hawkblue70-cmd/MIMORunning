@@ -1468,16 +1468,48 @@ private struct RhythmInsightCard: View {
             let hasAbsViolation = det.avgCadence.map { $0 < 160 } ?? false
             if !hasAbsViolation {
                 let distKm = activity.distance / 1000
+                let distKmStr = String(format: "%.0f", distKm)
+                // 전반/후반 평균 계산 — 실제 변화를 사실 서술
+                let fullSplits = det.splits.filter { $0.distanceM >= 900 }
+                let splitMid = fullSplits.count / 2
+                let fHalf = Array(fullSplits.prefix(splitMid))
+                let sHalf = Array(fullSplits.suffix(fullSplits.count - splitMid))
+                var korParts: [String] = []
+                var engParts: [String] = []
+                let fCads = fHalf.compactMap { $0.avgCadence }
+                let sCads = sHalf.compactMap { $0.avgCadence }
+                if !fCads.isEmpty, !sCads.isEmpty {
+                    let fc = Int((Double(fCads.reduce(0, +)) / Double(fCads.count)).rounded())
+                    let sc = Int((Double(sCads.reduce(0, +)) / Double(sCads.count)).rounded())
+                    korParts.append("케이던스 \(fc)→\(sc)spm")
+                    engParts.append("cadence \(fc)→\(sc) spm")
+                }
+                let fSLs = fHalf.compactMap { $0.avgStrideLength }
+                let sSLs = sHalf.compactMap { $0.avgStrideLength }
+                if !fSLs.isEmpty, !sSLs.isEmpty {
+                    let fs2 = fSLs.reduce(0, +) / Double(fSLs.count)
+                    let ss2 = sSLs.reduce(0, +) / Double(sSLs.count)
+                    korParts.append("보폭 \(String(format: "%.2f", fs2))→\(String(format: "%.2f", ss2))m")
+                    engParts.append("stride \(String(format: "%.2f", fs2))→\(String(format: "%.2f", ss2)) m")
+                }
                 let text: String
-                if let typical = typicalRunDistanceKm, distKm > typical * 1.30 {
-                    let delta = distKm - typical
-                    text = L.s(
-                        "평소보다 \(String(format: "%.1f", delta))km 긴 러닝이라 발걸음과 보폭이 낮아지는 건 자연스러워요",
-                        "In a run \(String(format: "%.1f", delta)) km longer than usual, lower cadence and shorter stride is natural")
+                if !korParts.isEmpty {
+                    if let typical = typicalRunDistanceKm, distKm > typical * 1.30 {
+                        let delta = distKm - typical
+                        text = L.s(
+                            "평소보다 \(String(format: "%.1f", delta))km 긴 러닝이에요. \(korParts.joined(separator: ", "))로 줄었어요.",
+                            "This run is \(String(format: "%.1f", delta)) km longer than usual — \(engParts.joined(separator: ", ")).")
+                    } else {
+                        text = L.s(
+                            "\(distKmStr)km를 뛰면서 \(korParts.joined(separator: ", "))로 줄었어요.",
+                            "\(distKmStr) km run — \(engParts.joined(separator: ", ")).")
+                    }
                 } else {
-                    text = L.s(
-                        "롱런에서 발걸음·보폭 변화는 자연스러운 에너지 절약이에요",
-                        "Changes in cadence and stride during a long run are a natural energy-saving adaptation")
+                    let cadStr = det.avgCadence.map { "\($0)" } ?? "--"
+                    text = det.avgStrideLength.map {
+                        L.s("케이던스 \(cadStr)spm, 보폭 \(String(format: "%.2f", $0))m로 달렸어요.",
+                            "Ran with cadence \(cadStr) spm and stride \(String(format: "%.2f", $0)) m.")
+                    } ?? L.s("케이던스 \(cadStr)spm으로 달렸어요.", "Ran with cadence \(cadStr) spm.")
                 }
                 return [(text: text, color: Color.white.opacity(0.75))]
             }

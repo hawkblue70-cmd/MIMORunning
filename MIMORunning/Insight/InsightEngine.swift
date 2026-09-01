@@ -74,6 +74,7 @@ enum InsightTheme: String, Codable {
     case rarityFact     // temperature extreme, time-of-day reunion
     case milestone      // lifetime cumulative distance milestone (once per crossing — always wins ties)
     case subThreshold   // controlled effort acknowledgment (interval-structured runs only)
+    case returnGap      // first run after ≥14 day gap — always highest contextual priority
 }
 
 struct InsightResult: Codable {
@@ -97,7 +98,7 @@ struct InsightResult: Codable {
 struct InsightEngine {
 
     /// Compute the highest-priority insight for `activity` against full history.
-    /// Priority: safety > firstAchievement > raceDay > recordImproved
+    /// Priority: safety > returnGap > firstAchievement > raceDay > recordImproved
     ///           > [adverseCondition ≈ tradeoff ≈ rarityFact ≈ milestone ≈ subThreshold]
     ///           > distanceExpanded > consistent > periodPositive > recovery > default
     /// Within the band, recency-based pick (oldest-shown theme wins); `.milestone` always wins ties.
@@ -126,6 +127,11 @@ struct InsightEngine {
         // raceDay), safety becomes the title and the achievement is embedded in the detail line.
         let safetyCandidate = safetyNote(activity, prior, condition: condition)
         if let safety = safetyCandidate {
+            #if DEBUG
+            _dbgFacts = "safety:\(safety.theme.rawValue)"
+            _dbgReason = "safety 발화"
+            print("[DetailInsight] facts 비어 있음 — 사유: safety 발화 (title=\"\(safety.title)\")")
+            #endif
             if let r = firstAchievement(activity, prior, raceMatch: raceMatch) {
                 base = InsightResult(theme: .safety, title: safety.title,
                                      detail: "\(safety.detail) · \(r.detail)")
@@ -136,6 +142,11 @@ struct InsightEngine {
             } else {
                 base = safety
             }
+        } else if let r = returnGapInsight(activity, prior) {
+            base = r
+            #if DEBUG
+            _dbgReason = "returnGap 우선"
+            #endif
         } else if let r = firstAchievement(activity, prior, raceMatch: raceMatch) {
             base = r
         } else if let rm = raceMatch, rm.isConfirmed {
@@ -352,6 +363,10 @@ struct InsightEngine {
                 : L.s("긴 거리를 페이스 잡아 완주 — \(activity.formattedDistance)",
                       "\(activity.formattedDistance) with race intent — well executed")
             return InsightResult(theme: base.theme, title: title, detail: detail)
+
+        case .race:
+            // 대회 기록은 InsightEngine의 기본 raceDay 인사이트를 유지
+            return base
         }
     }
 
@@ -409,6 +424,23 @@ struct InsightEngine {
         return L.s("인터벌 훈련으로 속도 자극", "Speed work complete")
     }
 
+    // MARK: - Return gap
+
+    /// 14일 이상 쉰 뒤 첫 복귀 런 — "쉬었다"를 부정적으로 서술하지 않는다. 복귀 자체가 좋은 일이다.
+    private static func returnGapInsight(_ activity: Activity, _ prior: [Activity]) -> InsightResult? {
+        guard activity.type == .running else { return nil }
+        let cal = Calendar.current
+        let before = prior.filter { $0.date < activity.date }.sorted { $0.date < $1.date }
+        guard let lastRun = before.last else { return nil }
+        let gap = cal.dateComponents([.day], from: lastRun.date, to: activity.date).day ?? 0
+        guard gap >= 14 else { return nil }
+        let L = AppLanguage.shared
+        let detail = L.s("\(gap)일 만에 다시 나섰어요", "Back out after \(gap) days")
+        return InsightResult(theme: .returnGap,
+                             title: L.s("다시 시작한 러닝", "Back on the Run"),
+                             detail: detail)
+    }
+
     // MARK: - Achievement checks
 
     private static func raceDayInsight(_ rm: PersistedRaceMatch) -> InsightResult {
@@ -420,7 +452,20 @@ struct InsightEngine {
         else if abs(km - 10) < 0.5      { title = L.s("10K 대회 러닝",   "10K Race") }
         else if abs(km - 5) < 0.3       { title = L.s("5K 대회 러닝",    "5K Race") }
         else                             { title = L.s("대회 러닝",       "Race Day") }
-        return InsightResult(theme: .raceDay, title: title, detail: rm.raceName)
+        // 대회명과 실제 거리 부문을 함께 표기 — 이름이 거리와 다를 때(예: "서울하프마라톤 10K 부문") 부문 명시
+        let division = raceDistanceDivision(km: km)
+        let detail = "\(rm.raceName) · \(division)"
+        return InsightResult(theme: .raceDay, title: title, detail: detail)
+    }
+
+    /// 거리(km)를 부문 라벨로 변환. "10K" / "하프" / "풀" / "5K" / "Xkm"
+    static func raceDistanceDivision(km: Double) -> String {
+        let L = AppLanguage.shared
+        if abs(km - 42.195) < 1.0       { return L.s("풀코스",  "Full") }
+        if abs(km - 21.0975) < 0.5      { return L.s("하프",    "Half") }
+        if abs(km - 10) < 0.5           { return "10K" }
+        if abs(km - 5) < 0.3            { return "5K" }
+        return String(format: "%.0fkm", km)
     }
 
     /// First time reaching a distance milestone (3K / 5K / 10K / half / full).
@@ -549,7 +594,7 @@ struct InsightEngine {
         let thisWeekStart = cal.date(
             from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)
         ) ?? a.date
-        let thisWeekCount = prior.filter { $0.date >= thisWeekStart }.count + 1
+        let thisWeekCount = prior.filter { $0.date >= thisWeekStart && $0.date < a.date }.count + 1
         let weekCountThreshold = level == .beginner ? 2 : 3
         if thisWeekCount >= weekCountThreshold {
             let idx = nextTitleIdx(for: "consistent", poolSize: 3)
@@ -679,9 +724,14 @@ struct InsightEngine {
         guard Double(currentHR) >= avgBandHR * 1.08 else { return nil }
         let L = AppLanguage.shared
         let excess = Int((Double(currentHR) - avgBandHR).rounded())
+        #if DEBUG
+        let distStr = String(format: "%.1fkm", a.distance / 1000)
+        print("[DetailInsight] hrElevated 발화: bandN=\(bandHRs.count) avgBand=\(Int(avgBandHR))bpm cur=\(currentHR)bpm excess=\(excess)bpm dist=\(distStr)")
+        #endif
+        let distLabel = String(format: "%.1fkm", a.distance / 1000)
         return InsightResult(
             theme: .safety,
-            title: L.s("오늘 심박이 평소보다 높았어요", "Heart Rate Above Your Norm"),
+            title: L.s("\(distLabel) 러닝", "\(distLabel) Run"),
             detail: L.s("같은 페이스대에서 평소보다 약 \(excess)bpm 높았어요. 충분한 회복을 챙기세요",
                         "Avg ~\(excess) bpm above your baseline at this pace. Prioritize recovery today")
         )
@@ -991,7 +1041,7 @@ struct InsightEngine {
         condition: ActivityCondition?,
         historyComplete: Bool = true
     ) -> InsightResult? {
-        if let tempC = condition?.weather?.tempC { recordTemperature(tempC, for: a.id) }
+        if let tempC = a.temperatureC ?? condition?.weather?.tempC { recordTemperature(tempC, for: a.id) }
         let historicalTemps = loadTemperatureHistory()
         // Temperature distribution and cumulative milestone require full history to avoid false triggers.
         if historyComplete {
@@ -1011,7 +1061,7 @@ struct InsightEngine {
         condition: ActivityCondition?,
         historicalTemps: [Double]
     ) -> InsightResult? {
-        guard let tempC = condition?.weather?.tempC, historicalTemps.count >= 20 else { return nil }
+        guard let tempC = a.temperatureC ?? condition?.weather?.tempC, historicalTemps.count >= 20 else { return nil }
         let sorted = historicalTemps.sorted()
         let n = sorted.count
         let rank = sorted.filter { $0 <= tempC }.count
@@ -1090,7 +1140,7 @@ struct InsightEngine {
         let nextMark = (Int(priorKm / 50) + 1) * 50
         #if DEBUG
         let fires = curKm >= Double(nextMark)
-        print("[Milestone] 타입=\(a.type.rawValue) 풀=\(priorFiltered.count)개 시점누적=\(String(format:"%.1f",curKm))km 다음=\(nextMark)km 발화=\(fires)")
+        print("[Milestone] 타입=\(a.type.rawValue) 풀=\(priorFiltered.count)개 시점누적=\(String(format:"%.1f",curKm))km \(fires ? "달성" : "다음")=\(nextMark)km 발화=\(fires)")
         #endif
         guard curKm >= Double(nextMark) else { return nil }
         let km = nextMark
@@ -1289,7 +1339,7 @@ struct InsightEngine {
 
         // temperature extreme
         let hTemps = loadTemperatureHistory()
-        if let tempC = condition?.weather?.tempC {
+        if let tempC = a.temperatureC ?? condition?.weather?.tempC {
             if hTemps.count < 20 {
                 parts.append("tempExtreme(침묵:표본\(hTemps.count)<20)")
             } else {

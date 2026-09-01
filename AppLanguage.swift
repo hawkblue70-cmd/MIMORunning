@@ -67,6 +67,19 @@ extension Date {
         return ["일", "월", "화", "수", "목", "금", "토"][(weekday - 1) % 7]
     }
 
+    /// 언어 설정에 따른 요일 약칭: 영어 "Fri" / 한국어 "금"
+    var weekdayString: String {
+        let df = DateFormatter()
+        if AppLanguage.shared.isEnglish {
+            df.locale = Locale(identifier: "en_US")
+            df.dateFormat = "EEE"
+        } else {
+            df.locale = Locale(identifier: "ko_KR")
+            df.dateFormat = "EEEEE"
+        }
+        return df.string(from: self)
+    }
+
     /// "M월 d일" (KO) / "MMM d" (EN) — used on splits share card
     var cardShortDateString: String {
         let df = DateFormatter()

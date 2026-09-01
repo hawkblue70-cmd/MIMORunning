@@ -796,13 +796,42 @@ enum RunInsightEngine {
         maxHR: Int?
     ) -> FadeAnalysis? {
         // 인터벌·빌드업은 감속이 정상 — 분석 제외
+        // [99] .race 추가: 대회 감속 분석 필요. .easy/.tempo: 감속이 의미 있는 신호.
         let wt = detail?.workoutType ?? .general
+        #if DEBUG
+        let df99 = DateFormatter(); df99.dateFormat = "M/d"
+        let dateStr99 = df99.string(from: activity.date)
+        let distStr99 = String(format: "%.1f", activity.distance / 1000)
+        func wtKo(_ w: WorkoutType) -> String {
+            switch w {
+            case .race: return "대회"
+            case .longRun: return "롱런"
+            case .lsd: return "LSD"
+            case .distanceRun: return "거리주"
+            case .general: return "일반"
+            case .easy: return "이지런"
+            case .tempo: return "템포"
+            case .interval: return "인터벌"
+            case .buildUp: return "빌드업"
+            }
+        }
+        #endif
         switch wt {
-        case .longRun, .lsd, .distanceRun, .general: break
-        default: return nil
+        case .race, .longRun, .lsd, .distanceRun, .easy, .tempo, .general: break
+        default:
+            #if DEBUG
+            print("[감속] \(dateStr99) \(distStr99)km type=\(wtKo(wt)) → 인터벌/빌드업 제외")
+            #endif
+            return nil
         }
 
-        guard let splits = detail?.splits, splits.count >= 6 else { return nil }
+        guard let splits = detail?.splits, splits.count >= 6 else {
+            #if DEBUG
+            let cnt = detail?.splits.count ?? 0
+            print("[감속] \(dateStr99) \(distStr99)km type=\(wtKo(wt)) → 스플릿 \(cnt)개 (최소 6개 필요) → 분석 안 함")
+            #endif
+            return nil
+        }
 
         // 전반/후반 페이스 드리프트
         let half      = splits.count / 2
@@ -815,7 +844,12 @@ enum RunInsightEngine {
         guard avgFront > 0 else { return nil }
 
         let dropPercent = (avgBack - avgFront) / avgFront * 100
-        guard dropPercent >= 8 else { return nil }
+        guard dropPercent >= 8 else {
+            #if DEBUG
+            print("[감속] \(dateStr99) \(distStr99)km type=\(wtKo(wt)) · 감속 \(String(format:"%.1f", dropPercent))% (기준 8% 미만) → 분석 안 함")
+            #endif
+            return nil
+        }
 
         // fadeStartKm: 앞 1/3 중앙 페이스 대비 연속 2구간 이상 10% 이상 느린 첫 지점
         let frontThirdCount = max(1, splits.count / 3)
@@ -891,7 +925,9 @@ enum RunInsightEngine {
             cause = .overpace
         } else if earlyHighHR && !hrHeldUp {
             cause = .threshold
-        } else if hrHeldUp && actDistKm > 0 && recentLongRunKm < actDistKm * 0.6 {
+        } else if actDistKm > 0 && recentLongRunKm < actDistKm * 0.6 {
+            // [106] hrHeldUp 조건 제거 — 심박이 오히려 떨어지면서 페이스가 무너지는 것이
+            //        근지구력 소진의 전형적 패턴. hrHeldUp 요구시 가장 명확한 사례를 놓침.
             cause = .enduranceGap
         } else if earlyOverpace || earlyHighHR {
             cause = .mixed
@@ -899,6 +935,27 @@ enum RunInsightEngine {
             cause = .unclear
         }
 
+        #if DEBUG
+        func causeKo(_ c: FadeCause) -> String {
+            switch c {
+            case .overpace: return "초반 과속"
+            case .threshold: return "젖산역치"
+            case .enduranceGap: return "지구력 부족"
+            case .mixed: return "복합"
+            case .unclear: return "원인 미상"
+            }
+        }
+        let fadeKmStr = fadeStartKm.map { String(format: "%.1f", $0) + "km" } ?? "특정 불가"
+        print("[감속] \(dateStr99) \(distStr99)km type=\(wtKo(wt)) · 후반 감속 \(String(format:"%.1f", dropPercent))%")
+        print("[감속]   감속 시작 = \(fadeKmStr) · 원인 = \(causeKo(cause))")
+        // [104] 원인 판정 근거 상세 로그
+        print("[감속]   hrHeldUp=\(hrHeldUp) · earlyOverpace=\(earlyOverpace) · earlyHighHR=\(earlyHighHR)")
+        print("[감속]   최근4주 최장=\(String(format:"%.1f",recentLongRunKm))km · 당일=\(distStr99)km")
+        if cause == .enduranceGap, recentLongRunKm > 0 {
+            let ratio = actDistKm / recentLongRunKm
+            print("[감속] 원인 = 지구력 부족 (준비 최장 \(String(format:"%.1f",recentLongRunKm))km / 당일 \(distStr99)km · \(String(format:"%.1f",ratio))배)")
+        }
+        #endif
         return FadeAnalysis(
             dropPercent: dropPercent,
             fadeStartKm: fadeStartKm,
@@ -952,9 +1009,12 @@ enum RunInsightEngine {
 
         case .enduranceGap:
             tone = .neutral; badge = L.s("지구력", "Endurance")
+            let ratio = fa.recentLongRunKm > 0 ? activity.distance / 1000 / fa.recentLongRunKm : 0
+            let ratioStr = String(format: "%.1f", ratio)
+            // [106] 문구: 관찰 수준만 — 메커니즘 표현 없음
             msg = L.s(
-                "심박은 끝까지 유지됐는데 페이스만 떨어졌어요. 최근 4주 최장 거리가 \(recentStr)라, 이 거리에 대한 지구력이 아직 쌓이는 중일 수 있어요. 롱런 거리를 조금씩 늘려가면 도움이 될 수 있어요." + suffix,
-                "HR held steady but pace dropped. Your longest run in the past 4 weeks was \(recentStr), so endurance at this distance may still be building. Gradually increasing long run distance may help." + suffix
+                "준비한 최장 거리(\(recentStr))의 \(ratioStr)배를 뛰었어요." + suffix,
+                "Today's run was \(ratioStr)× your longest preparation run (\(recentStr))." + suffix
             )
             highlights = [recentStr]
 

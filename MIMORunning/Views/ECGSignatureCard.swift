@@ -274,7 +274,7 @@ struct ECGSignatureCard: View {
     private var bottomRow: some View {
         HStack(spacing: 3) {
             Text(activity.date.cardDateString)
-            Text(activity.date.weekdayCharKo).foregroundStyle(Theme.time)
+            Text(activity.date.weekdayString).foregroundStyle(Theme.time)
             Text(activity.date.cardTimeString)
             if let w = weather {
                 Text("·").opacity(0.4)

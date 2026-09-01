@@ -442,7 +442,8 @@ private struct TicketSplitBarcode: View {
     let paceSecs: [Double] = [260, 254, 258, 252, 264, 256, 248]
     let splits = (1...7).map { i -> SplitData in
         SplitData(id: i, distanceM: i < 7 ? 1000 : 50, duration: paceSecs[i - 1],
-                  avgHeartRate: 158 + i, avgCadence: 172, avgPower: nil)
+                  avgHeartRate: 158 + i, avgCadence: 172, avgPower: nil,
+                  avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
     }
     TicketCard(activity: activity, splits: splits, shoeName: "Adidas Adizero")
         .frame(width: 300, height: 375)

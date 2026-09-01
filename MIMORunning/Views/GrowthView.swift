@@ -114,6 +114,8 @@ struct GrowthView: View {
     @State private var growthInsightBannerText: String? = nil
     @State private var showWeeklyShareCard = false
     @State private var showMileageStreakShareCard = false
+    @State private var displayGaps: [(start: Date, end: Date, days: Int)] = []
+    @State private var isGapExpanded: Bool = false
 
     // 자료 구조가 바뀔 때만 올린다. 템플릿 문구 변경은 stableHash가 자동 처리.
     private static let weeklyCommentVersion = 11
@@ -212,6 +214,7 @@ struct GrowthView: View {
                             paceSection
                             metricTrendsSection
                             MRHealthMetricsView(m: engine.healthMetrics)
+                            gapSection
                             MRDriftView(drift: engine.drift)
                             prSection
                             journeySection
@@ -225,21 +228,28 @@ struct GrowthView: View {
                         engine.updateConfirmedMatches(Array(raceDetector.matches.values))
                         engine.computeBacktestIfNeeded()
                         engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w)
+                        if !engine.runs.isEmpty {
+                            let gaps = Self.computeDisplayGaps(runs: engine.runs)
+                            displayGaps = gaps
+                        }
                     }
                 }
             }
             .navigationTitle(AppLanguage.shared.s("성장", "Growth"))
             .navigationBarTitleDisplayMode(.large)
         }
-        .onChange(of: manager.activities) { oldActivities, newActivities in
-            // 개수가 같으면 Task 자체를 생성하지 않는다.
-            // (같은 프레임에 onChange가 여러 번 오면 SwiftUI가 "multiple updates per frame" 경고를 낸다)
-            guard oldActivities.count != newActivities.count else { return }
+        .onChange(of: manager.activities.count) { _, _ in
             Task { refreshChartCache(); await refreshMetricAnalyses() }
         }
         // engine.runs가 나중에 채워질 때(race condition) 폼 관찰 재시도
         .onChange(of: engine.runs.count) { _, newCount in
-            guard newCount > 0, formComputedForRunCount != newCount else { return }
+            guard newCount > 0 else { return }
+            let gaps = Self.computeDisplayGaps(runs: engine.runs)
+            displayGaps = gaps
+            #if DEBUG
+            Self.logGapDiagnostic(gaps: gaps, runs: engine.runs)
+            #endif
+            guard formComputedForRunCount != newCount else { return }
             Task { await refreshFormObservation() }
         }
         // engine 준비 완료 시 패턴·코멘트 재계산 (engine.streakWeeks 등이 0이었을 수 있음)
@@ -249,6 +259,18 @@ struct GrowthView: View {
             Task { refreshChartCache(); await refreshMetricAnalyses() }
         }
         .onChange(of: dailyMonth) { _, _ in dailyKmsCache = dailyKms(for: dailyMonth) }
+        .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
+            // 언어가 바뀌면 캐시된 현지화 문자열을 즉시 재계산한다.
+            journeyMilestonesCache = journeyMilestones()
+            prEntriesCache = prEntries()
+            // 패턴 코멘트: 가드를 초기화하고 재분석
+            lastAnalyzedRunCount = -1
+            lastWeeklyCommentInputKey = ""
+            Task { await refreshMetricAnalyses() }
+            // 폼 관찰 텍스트
+            formComputedForRunCount = 0
+            Task { await refreshFormObservation() }
+        }
         .task {
             refreshChartCache()
             let bucket = manager.userLevel.bucket
@@ -336,7 +358,6 @@ struct GrowthView: View {
     // MARK: - 폼 스타일 관찰
 
     private func computeFormObservation(
-        voData:  [(date: Date, value: Double)],
         cadData: [(date: Date, value: Double)],
         gctData: [(date: Date, value: Double)]
     ) -> (text: String, basis: String, isStable: Bool)? {
@@ -368,17 +389,27 @@ struct GrowthView: View {
         }
 
         let now = Date()
+        // vo는 추세 판정에서 제외 — Apple Watch 측정 오차 MAPE 19%로 신뢰도 낮음
         var shifts: [MRFormShift] = []
-        for (metric, obs) in [(mrFormMetrics[0], buildObs(voData)),
-                              (mrFormMetrics[1], buildObs(cadData)),
+        for (metric, obs) in [(mrFormMetrics[1], buildObs(cadData)),
                               (mrFormMetrics[2], buildObs(gctData))] {
             let residuals = mrFormResiduals(obs: obs, asOf: now)
-            if let shift = mrFormShift(residuals, metric: metric, asOf: now) {
+            if let shift = mrFormShift(residuals, metric: metric, asOf: now, obs: obs) {
                 shifts.append(shift)
             }
         }
 
-        guard let result = mrFormObservation(shifts) else { return nil }
+        // 최근 3개월 안에 14일 이상 공백이 있으면 추세 판단 불가
+        let hasGapInWindow: Bool = {
+            let threeMonthsAgo = cal.date(byAdding: .month, value: -3, to: now) ?? .distantPast
+            let recent = engine.runs.filter { $0.date >= threeMonthsAgo }.sorted { $0.date < $1.date }
+            for i in 0..<(recent.count - 1) {
+                let gap = cal.dateComponents([.day], from: recent[i].date, to: recent[i + 1].date).day ?? 0
+                if gap >= 14 { return true }
+            }
+            return false
+        }()
+        guard let result = mrFormObservation(shifts, hasRecentGap: hasGapInWindow) else { return nil }
         return (text: result.text, basis: result.basis, isStable: result.isStable)
     }
 
@@ -771,7 +802,7 @@ struct GrowthView: View {
             .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max
         ]
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: L.s("주간 지표 추세", "Weekly Metric Trends"), subtitle: L.s("최근 7일 기준", "Last 7 days"))
+            SectionLabel(title: L.s("주간 지표 추세", "Weekly Metric Trends"), subtitle: L.s("최근 7일 대비 직전 7일", "Last 7 days vs prior 7 days"))
             if let obs = formObservation {
                 MRFormObservationCard(text: obs.text, basis: obs.basis, isStable: obs.isStable)
             }
@@ -804,7 +835,7 @@ struct GrowthView: View {
         if let pattern = weeklyPatternCache.first, !weeklyCommentText.isEmpty {
             let style = weeklyPatternStyle(for: pattern.key)
             let woy = mondayCal.component(.weekOfYear, from: Date())
-            let headline = pattern.shortName(for: woy)
+            let headline = pattern.shortName(for: woy, isEnglish: AppLanguage.shared.isEnglish)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Image(systemName: style.symbol)
@@ -1223,7 +1254,8 @@ struct GrowthView: View {
         _hashSources.append(summary.template(for: weekOfYear, isEnglish: false))
         _hashSources.append(summary.template(for: weekOfYear, isEnglish: true))
         let _tHash = String(format: "%08x", Self.stableHash(_hashSources.sorted().joined(separator: "|")))
-        let cacheKey = "v\(Self.weeklyCommentVersion)_\(_tHash)_\(year)W\(weekOfYear)_\(summary.topPatternKey)"
+        let langSuffix = AppLanguage.shared.isEnglish ? "_en" : "_ko"
+        let cacheKey = "v\(Self.weeklyCommentVersion)_\(_tHash)_\(year)W\(weekOfYear)_\(summary.topPatternKey)\(langSuffix)"
 
         // 중복 실행 방지: 직전 호출과 동일 입력이면 AI 재시도 스킵 (onChange 이중 실행 등 방어)
         let inputKey = "\(cacheKey)|\(summary.aiFacts)"
@@ -1361,12 +1393,12 @@ struct GrowthView: View {
         }
         formComputedForRunCount = engine.runs.count
         let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
-        async let voFetch  = manager.fetchMetricHistory(.verticalOscillation, from: oneYearAgo)
+        // vo는 추세 판정에서 제외 — Apple Watch 측정 오차 MAPE 19%로 신뢰도 낮음
         async let cadFetch = manager.fetchMetricHistory(.cadence, from: oneYearAgo)
         async let gctFetch = manager.fetchMetricHistory(.groundContactTime, from: oneYearAgo)
-        let (voData, cadData, gctData) = await (voFetch, cadFetch, gctFetch)
+        let (cadData, gctData) = await (cadFetch, gctFetch)
         // nil(침묵)은 기존 결과를 유지 — 안정 분기 기록 직후 재호출로 덮어쓰이는 것을 방지
-        if let result = computeFormObservation(voData: voData, cadData: cadData, gctData: gctData) {
+        if let result = computeFormObservation(cadData: cadData, gctData: gctData) {
             formObservation = result
         }
     }
@@ -1627,6 +1659,114 @@ struct GrowthView: View {
             return L.s("최근 \(Self.heatmapWeeks)주간 기록 없음",
                        "No runs in the last \(Self.heatmapWeeks) wks")
         }
+    }
+
+    // MARK: - 쉬어간 기간
+
+    private static func computeDisplayGaps(runs: [MRWorkout], minDays: Int = 14) -> [(start: Date, end: Date, days: Int)] {
+        guard runs.count >= 2 else { return [] }
+        let cal = Calendar.current
+        let sorted = runs.sorted { $0.date < $1.date }
+        var out: [(start: Date, end: Date, days: Int)] = []
+        for i in 0..<(sorted.count - 1) {
+            let a = sorted[i], b = sorted[i + 1]
+            let gap = cal.dateComponents([.day], from: a.date, to: b.date).day ?? 0
+            guard gap >= minDays else { continue }
+            out.append((start: a.date, end: b.date, days: gap))
+        }
+        return out
+    }
+
+    #if DEBUG
+    private static func logGapDiagnostic(gaps: [(start: Date, end: Date, days: Int)], runs: [MRWorkout]) {
+        print("[공백] 기준 = 14일 이상 러닝 없음")
+        guard !gaps.isEmpty else { print("[공백] 0건"); return }
+        print("[공백] \(gaps.count)건:")
+        let sorted = runs.sorted { $0.date < $1.date }
+        let ymd: (Date) -> String = { d in
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d)
+        }
+        let pf: (Double?) -> String = { sec in
+            guard let s = sec else { return "—" }
+            return String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60)
+        }
+        let hf: (Double?) -> String = { hr in hr.map { String(format: "%.0f", $0) } ?? "—" }
+        for gap in gaps {
+            let pre  = sorted.filter { $0.date < gap.start && $0.date >= gap.start.addingTimeInterval(-28 * 86_400) }
+            let post = sorted.filter { $0.date >= gap.end   && $0.date < gap.end.addingTimeInterval(28 * 86_400) }
+            let prePace:  Double? = { let v = pre.compactMap(\.paceSecPerKm).filter { $0 <= 720 };  return v.isEmpty ? nil : v.reduce(0,+)/Double(v.count) }()
+            let preHR:    Double? = { let v = pre.compactMap(\.hrAvg);                               return v.isEmpty ? nil : v.reduce(0,+)/Double(v.count) }()
+            let postPace: Double? = { let v = post.compactMap(\.paceSecPerKm).filter { $0 <= 720 }; return v.isEmpty ? nil : v.reduce(0,+)/Double(v.count) }()
+            let postHR:   Double? = { let v = post.compactMap(\.hrAvg);                              return v.isEmpty ? nil : v.reduce(0,+)/Double(v.count) }()
+            print("[공백] \(ymd(gap.start)) ~ \(ymd(gap.end)) (\(gap.days)일) | 전: 페이스 \(pf(prePace)) · 심박 \(hf(preHR)) | 후: 페이스 \(pf(postPace)) · 심박 \(hf(postHR))")
+        }
+    }
+    #endif
+
+    @ViewBuilder
+    private var gapSection: some View {
+        if !displayGaps.isEmpty {
+            let L = AppLanguage.shared
+            VStack(alignment: .leading, spacing: 10) {
+                // 헤더: 항상 표시, 탭하면 토글
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isGapExpanded.toggle()
+                    }
+                } label: {
+                    HStack(alignment: .bottom) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L.s("쉬어간 기간 · \(displayGaps.count)회", "Rest Periods · \(displayGaps.count)"))
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                            Text(L.s("14일 이상 러닝 없음", "14+ day running gaps"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isGapExpanded ? 90 : 0))
+                    }
+                }
+                .buttonStyle(.plain)
+
+                // 목록: 펼쳐졌을 때만 표시
+                if isGapExpanded {
+                    VStack(spacing: 0) {
+                        ForEach(Array(displayGaps.enumerated()), id: \.offset) { idx, gap in
+                            HStack {
+                                Text(gapMonthLabel(gap.start))
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Text(L.s("\(gap.days)일", "\(gap.days) days"))
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(Color(hex: "AEAEB2"))
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            if idx < displayGaps.count - 1 {
+                                Rectangle()
+                                    .fill(Color(hex: "3A3A3C"))
+                                    .frame(height: 0.5)
+                                    .padding(.horizontal, 14)
+                            }
+                        }
+                    }
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+        }
+    }
+
+    private func gapMonthLabel(_ date: Date) -> String {
+        let df = DateFormatter()
+        df.dateFormat = "''yy.MM"
+        return df.string(from: date)
     }
 }
 
@@ -2414,7 +2554,7 @@ private struct WeekStatTile: View {
                 Image(systemName: symbol)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(iconColor)
-                Text(pattern.shortName(for: woy))
+                Text(pattern.shortName(for: woy, isEnglish: AppLanguage.shared.isEnglish))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()

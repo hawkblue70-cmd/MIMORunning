@@ -14,6 +14,15 @@ private func mrBtStandardLabel(km: Double) -> String? {
     return standards.first { abs($0.0 - m) / $0.0 <= 0.02 }?.1
 }
 
+private func mrBtLocalizedLabel(_ raw: String) -> String {
+    guard AppLanguage.shared.isEnglish else { return raw }
+    switch raw {
+    case "하프": return "Half"
+    case "풀":   return "Full"
+    default:     return raw
+    }
+}
+
 struct MRBacktestView: View {
     let rows: [MRBacktestRow]
     let confirmedMatches: [PersistedRaceMatch]
@@ -58,13 +67,15 @@ struct MRBacktestView: View {
     }
 
     var body: some View {
+        let L = AppLanguage.shared
         let hasContent = !scored.isEmpty || !archives.isEmpty
         if hasContent {
             VStack(alignment: .leading, spacing: 0) {
-                Text("예측이 얼마나 맞았나")
+                Text(L.s("예측이 얼마나 맞았나", "Prediction Accuracy"))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
-                Text("각 기록을 **그 전날까지의 데이터만으로** 예측했다면 얼마였을지 다시 계산한 것입니다.")
+                Text(L.s("각 기록을 **그 전날까지의 데이터만으로** 예측했다면 얼마였을지 다시 계산한 것입니다.",
+                         "Each result re-calculated using **only data from before** that race."))
                     .font(.system(size: 12))
                     .foregroundStyle(Color.mrInk3)
                     .padding(.top, 4)
@@ -77,7 +88,8 @@ struct MRBacktestView: View {
                         Text("/ \(scored.count)").font(.system(size: 15))
                             .foregroundStyle(Color.mrInk3)
                             .padding(.bottom, 4)
-                        Text("구간 안 · 평균 오차 \(String(format: "%.1f", meanAbsErr))%")
+                        Text(L.s("구간 안 · 평균 오차 \(String(format: "%.1f", meanAbsErr))%",
+                                 "In range · Avg error \(String(format: "%.1f", meanAbsErr))%"))
                             .font(.system(size: 12))
                             .foregroundStyle(Color.mrInk3)
                             .padding(.leading, 6).padding(.bottom, 5)
@@ -95,7 +107,7 @@ struct MRBacktestView: View {
                     }
 
                     if scored.count > 5 {
-                        Button(showAll ? "접기" : "전체 \(scored.count)건 보기") {
+                        Button(showAll ? L.s("접기", "Collapse") : L.s("전체 \(scored.count)건 보기", "Show all \(scored.count)")) {
                             withAnimation { showAll.toggle() }
                         }
                         .font(.system(size: 13))
@@ -105,13 +117,15 @@ struct MRBacktestView: View {
 
                     let skipped = rows.filter { $0.predictedMin == nil }
                     if !skipped.isEmpty {
-                        Text("\(skipped.count)건은 그 시점에 사전 기록이 부족해 예측하지 못했습니다.")
+                        Text(L.s("\(skipped.count)건은 그 시점에 사전 기록이 부족해 예측하지 못했습니다.",
+                                 "\(skipped.count) race(s) lacked sufficient prior data for prediction."))
                             .font(.system(size: 11))
                             .foregroundStyle(Color.mrInk3)
                             .padding(.top, 16)
                     }
 
-                    Text("표본이 \(scored.count)건뿐입니다. 예측은 참고용이고, 특히 마라톤은 ±20분 이상 벌어질 수 있습니다.")
+                    Text(L.s("표본이 \(scored.count)건뿐입니다. 예측은 참고용이고, 특히 마라톤은 ±20분 이상 벌어질 수 있습니다.",
+                             "Only \(scored.count) sample(s). Estimates only — marathons can vary by ±20 min or more."))
                         .font(.system(size: 11))
                         .foregroundStyle(Color.mrInk3)
                         .padding(.top, 10)
@@ -120,7 +134,7 @@ struct MRBacktestView: View {
 
                 // 백테스트에 짝 없는 아카이브 (불참·예측 불가)
                 if !unmatchedArchives.isEmpty {
-                    Text(scored.isEmpty ? "기록 없는 대회" : "예측 없이 참가한 대회")
+                    Text(scored.isEmpty ? L.s("기록 없는 대회", "Races without times") : L.s("예측 없이 참가한 대회", "Races with no prediction"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.6))
                         .padding(.top, 20)
@@ -136,9 +150,9 @@ struct MRBacktestView: View {
                                         .foregroundStyle(.white)
                                     HStack(spacing: 6) {
                                         Text(arch.raceDate.formatted(.dateTime.year().month().day()
-                                                                     .locale(Locale(identifier: "ko_KR"))))
+                                                                     .locale(L.isEnglish ? Locale(identifier: "en_US") : Locale(identifier: "ko_KR"))))
                                             .font(.system(size: 11)).foregroundStyle(Color.mrInk3)
-                                        Text(mrLabelFor(distanceM: arch.distanceM))
+                                        Text(mrBtLocalizedLabel(mrLabelFor(distanceM: arch.distanceM)))
                                             .font(.system(size: 10, weight: .semibold))
                                             .foregroundStyle(mrBtAccent)
                                             .padding(.horizontal, 5).padding(.vertical, 1)
@@ -151,7 +165,7 @@ struct MRBacktestView: View {
                                         .font(.system(size: 14, design: .rounded))
                                         .foregroundStyle(.white)
                                 } else {
-                                    Text("기록 없음")
+                                    Text(L.s("기록 없음", "No result"))
                                         .font(.system(size: 12))
                                         .foregroundStyle(Color.mrInk3)
                                 }
@@ -200,12 +214,13 @@ struct MRBacktestRowView: View {
     }
 
     var body: some View {
+        let L = AppLanguage.shared
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(row.date.formatted(.dateTime.year().month().day()
-                                        .locale(Locale(identifier: "ko_KR"))))
+                                        .locale(L.isEnglish ? Locale(identifier: "en_US") : Locale(identifier: "ko_KR"))))
                     .font(.system(size: 12)).foregroundStyle(Color.mrInk3)
-                Text(row.label)
+                Text(mrBtLocalizedLabel(row.label))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(mrBtAccent)
                     .padding(.horizontal, 6).padding(.vertical, 2)
@@ -235,7 +250,7 @@ struct MRBacktestRowView: View {
             }
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("실제").font(.system(size: 10)).foregroundStyle(Color.mrInk3)
+                    Text(L.s("실제", "Actual")).font(.system(size: 10)).foregroundStyle(Color.mrInk3)
                     Text(mrFormatDisplay(row.actualMin))
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
@@ -244,33 +259,33 @@ struct MRBacktestRowView: View {
                     if let arch = archive {
                         if arch.reconstructed {
                             // 소급 재구성: 당시 앱 예측이 아님
-                            Text("소급 계획 예측").font(.system(size: 10)).foregroundStyle(Color.mrInk3)
+                            Text(L.s("소급 계획 예측", "Projected (retroactive)")).font(.system(size: 10)).foregroundStyle(Color.mrInk3)
                             Text(mrFormatDisplay(arch.snapshotProjectedFinalMin))
                                 .font(.system(size: 15, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.6))
-                            Text("지금 모델로 소급 계산")
+                            Text(L.s("지금 모델로 소급 계산", "Recalculated with current model"))
                                 .font(.system(size: 9))
                                 .foregroundStyle(Color.mrInk3.opacity(0.7))
                         } else {
                             // 실제 아카이브: 당시 앱이 예측한 값
-                            Text("그때 앱 예측").font(.system(size: 10)).foregroundStyle(Color.mrInk3)
+                            Text(L.s("그때 앱 예측", "App's prediction at the time")).font(.system(size: 10)).foregroundStyle(Color.mrInk3)
                             Text(mrFormatDisplay(arch.snapshotProjectedFinalMin))
                                 .font(.system(size: 15, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.6))
                         }
                     } else {
                         // 아카이브 없음: 현재 모델 역산
-                        Text("예측").font(.system(size: 10)).foregroundStyle(Color.mrInk3)
+                        Text(L.s("예측", "Predicted")).font(.system(size: 10)).foregroundStyle(Color.mrInk3)
                         Text(mrFormatDisplay(row.predictedMin ?? 0))
                             .font(.system(size: 15, design: .rounded))
                             .foregroundStyle(.white.opacity(0.6))
-                        Text("지금 모델로 역산")
+                        Text(L.s("지금 모델로 역산", "Back-calculated with current model"))
                             .font(.system(size: 9))
                             .foregroundStyle(Color.mrInk3.opacity(0.7))
                     }
                 }
                 Spacer()
-                Text(row.inBand ? "구간 안" : "구간 밖")
+                Text(row.inBand ? L.s("구간 안", "In range") : L.s("구간 밖", "Out of range"))
                     .font(.system(size: 11))
                     .foregroundStyle(row.inBand ? mrBtGood : mrBtWarn)
             }
@@ -312,7 +327,7 @@ struct MRArchiveDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("닫기") { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Done")) { dismiss() }
                 }
             }
         }
@@ -325,41 +340,62 @@ struct MRArchiveDetailView: View {
 struct MRHealthMetricsView: View {
     let m: MRHealthMetrics
 
-    private let dayNames = ["", "일", "월", "화", "수", "목", "금", "토"]
+    private var dayNames: [String] {
+        AppLanguage.shared.isEnglish
+            ? ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+            : ["", "일", "월", "화", "수", "목", "금", "토"]
+    }
+
+    private var habitDayText: String {
+        let L = AppLanguage.shared
+        if L.isEnglish {
+            let days = m.habitDays.map { dayNames[$0] }.joined(separator: ", ")
+            let hour = m.typicalHour.map { ", typically around \($0):00" } ?? ""
+            return "You usually run on \(days)\(hour)"
+        } else {
+            let days = m.habitDays.map { dayNames[$0] }.joined(separator: "·")
+            let hour = m.typicalHour.map { ", 보통 \($0)시쯤이고요" } ?? ""
+            return "주로 \(days)요일에 나가시네요\(hour)"
+        }
+    }
+
+    private var evenDayText: String {
+        let L = AppLanguage.shared
+        if L.isEnglish {
+            let hour = m.typicalHour.map { ", typically around \($0):00" } ?? ""
+            return "Your runs are evenly spread across the week\(hour)"
+        } else {
+            let hour = m.typicalHour.map { ". 보통 \($0)시쯤입니다" } ?? ""
+            return "특정 요일에 몰리지 않고 고르게 나가시네요\(hour)"
+        }
+    }
 
     var body: some View {
+        let L = AppLanguage.shared
         if m.sessions90 > 0 {
             VStack(alignment: .leading, spacing: 12) {
-                Text("러닝 습관")
+                Text(L.s("러닝 습관", "Running Habit"))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
 
                 // 습관 요일 / 균등 메시지
-                if !m.habitDays.isEmpty {
-                    Text("주로 \(m.habitDays.map { dayNames[$0] }.joined(separator: "·"))요일에 나가시네요"
-                         + (m.typicalHour.map { ", 보통 \($0)시쯤이고요" } ?? ""))
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.75))
-                } else {
-                    Text("특정 요일에 몰리지 않고 고르게 나가시네요"
-                         + (m.typicalHour.map { ". 보통 \($0)시쯤입니다" } ?? ""))
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.75))
-                }
+                Text(!m.habitDays.isEmpty ? habitDayText : evenDayText)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.75))
 
                 // 90일 통계
                 HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("최근 90일")
+                        Text(L.s("최근 90일", "Last 90 days"))
                             .font(.system(size: 10)).foregroundStyle(Color.mrInk3)
-                        Text("\(m.sessions90)회  \(Int(m.km90))km")
+                        Text(L.s("\(m.sessions90)회  \(Int(m.km90))km", "\(m.sessions90) runs  \(Int(m.km90)) km"))
                             .font(.system(size: 13, design: .rounded)).foregroundStyle(.white)
                     }
                     if m.sessions90LY > 0 {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("작년 같은 기간")
+                            Text(L.s("작년 같은 기간", "Same period last yr"))
                                 .font(.system(size: 10)).foregroundStyle(Color.mrInk3)
-                            Text("\(m.sessions90LY)회  \(Int(m.km90LY))km")
+                            Text(L.s("\(m.sessions90LY)회  \(Int(m.km90LY))km", "\(m.sessions90LY) runs  \(Int(m.km90LY)) km"))
                                 .font(.system(size: 13, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.55))
                         }
@@ -370,7 +406,7 @@ struct MRHealthMetricsView: View {
                 if m.restingHR != nil || m.vo2max != nil {
                     HStack(spacing: 16) {
                         if let rhr = m.restingHR {
-                            metricPair(label: "안정시 심박",
+                            metricPair(label: L.s("안정시 심박", "Resting HR"),
                                        current: String(format: "%.0f", rhr),
                                        last: m.restingHRLY.map { String(format: "%.0f", $0) },
                                        unit: "bpm")
@@ -399,7 +435,7 @@ struct MRHealthMetricsView: View {
                 Text(current + (unit.isEmpty ? "" : " \(unit)"))
                     .font(.system(size: 13, design: .rounded)).foregroundStyle(.white)
                 if let l = last {
-                    Text("(작년 \(l))")
+                    Text(AppLanguage.shared.s("(작년 \(l))", "(last yr \(l))"))
                         .font(.system(size: 11)).foregroundStyle(Color.mrInk3)
                 }
             }
@@ -414,22 +450,23 @@ struct MRDriftView: View {
 
     var body: some View {
         // ⚠ 기온 범위 15°C 미만이면 15°C 기준값을 말할 수 없다 — 침묵.
+        let L = AppLanguage.shared
         if drift.ok {
             VStack(alignment: .leading, spacing: 16) {
-                Text("심박 드리프트")
+                Text(L.s("심박 드리프트", "HR Drift"))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.mrInk1)
 
                 HStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("선선한 날 15°C")
+                        Text(L.s("선선한 날 15°C", "Cool day 15°C"))
                             .font(.system(size: 10))
                             .foregroundStyle(Color.mrInk3)
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text(String(format: "%.1f", drift.bpmPer10MinAtRef))
                                 .font(.system(size: 26, weight: .bold, design: .rounded))
                                 .foregroundStyle(Color.mrInk1)
-                            Text("bpm/10분")
+                            Text(L.s("bpm/10분", "bpm/10 min"))
                                 .font(.system(size: 11))
                                 .foregroundStyle(Color.mrInk3)
                         }
@@ -438,14 +475,14 @@ struct MRDriftView: View {
 
                     if drift.bpmPer10MinPerDegC > 0 {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("더운 날 30°C")
+                            Text(L.s("더운 날 30°C", "Hot day 30°C"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(Color.mrInk3)
                             HStack(alignment: .firstTextBaseline, spacing: 2) {
                                 Text(String(format: "%.1f", drift.bpmPer10Min(atC: 30)))
                                     .font(.system(size: 26, weight: .bold, design: .rounded))
                                     .foregroundStyle(Color.mrInk1)
-                                Text("bpm/10분")
+                                Text(L.s("bpm/10분", "bpm/10 min"))
                                     .font(.system(size: 11))
                                     .foregroundStyle(Color.mrInk3)
                             }
@@ -454,14 +491,16 @@ struct MRDriftView: View {
                     }
                 }
 
-                Text(String(format: "같은 페이스로 45분이면 심박이 %.0fbpm 올라갑니다",
+                Text(String(format: L.s("같은 페이스로 45분이면 심박이 %.0fbpm 올라갑니다",
+                                        "At the same pace for 45 min, HR rises by %.0f bpm"),
                             drift.bpmPer10MinAtRef * 4.5))
                     .font(.system(size: 13))
                     .foregroundStyle(Color.mrInk2)
                     .fixedSize(horizontal: false, vertical: true)
 
                 // ⚠ 근거 없는 해석을 붙이지 않는다. 관측값과 표본만 적는다.
-                Text("최근 1년 \(drift.sessions)개 세션 · 기온 범위 \(Int(drift.tempSpanC))°C")
+                Text(L.s("최근 1년 \(drift.sessions)개 세션 · 기온 범위 \(Int(drift.tempSpanC))°C",
+                         "Past year · \(drift.sessions) sessions · \(Int(drift.tempSpanC))°C range"))
                     .font(.system(size: 11))
                     .foregroundStyle(Color.mrInk3)
                     .fixedSize(horizontal: false, vertical: true)

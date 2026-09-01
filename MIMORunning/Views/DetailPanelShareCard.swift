@@ -51,15 +51,17 @@ struct DetailPanelShareCard: View {
     // MARK: Header
 
     private var headerDateStr: String {
+        let isEn = AppLanguage.shared.isEnglish
         let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "ko_KR")
-        fmt.dateFormat = "yyyy. M.d"
+        fmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        fmt.dateFormat = isEn ? "MMM d, yyyy" : "yyyy. M.d"
         return fmt.string(from: activity.date)
     }
 
     private var headerTimeStr: String {
+        let isEn = AppLanguage.shared.isEnglish
         let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "ko_KR")
+        fmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
         fmt.dateStyle = .none
         fmt.timeStyle = .short
         return fmt.string(from: activity.date)
@@ -67,6 +69,9 @@ struct DetailPanelShareCard: View {
 
     private var weekdayChar: String {
         let weekday = Calendar.current.component(.weekday, from: activity.date)
+        if AppLanguage.shared.isEnglish {
+            return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][(weekday - 1) % 7]
+        }
         return ["일", "월", "화", "수", "목", "금", "토"][(weekday - 1) % 7]
     }
 
@@ -391,11 +396,12 @@ struct DetailPanelShareCardScreen: View {
     }
 
     private var formattedDateText: String {
+        let isEn = AppLanguage.shared.isEnglish
         let dateFmt = DateFormatter()
-        dateFmt.locale = Locale(identifier: "ko_KR")
-        dateFmt.dateFormat = "yyyy. M.d"
+        dateFmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        dateFmt.dateFormat = isEn ? "MMM d, yyyy" : "yyyy. M.d"
         let timeFmt = DateFormatter()
-        timeFmt.locale = Locale(identifier: "ko_KR")
+        timeFmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
         timeFmt.dateStyle = .none
         timeFmt.timeStyle = .short
         return "\(dateFmt.string(from: activity.date))  \(timeFmt.string(from: activity.date))"
@@ -709,15 +715,17 @@ struct DetailPanelGrid4ShareCard: View {
     // MARK: Header
 
     private var headerDateStr: String {
+        let isEn = AppLanguage.shared.isEnglish
         let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "ko_KR")
-        fmt.dateFormat = "yyyy. M.d"
+        fmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        fmt.dateFormat = isEn ? "MMM d, yyyy" : "yyyy. M.d"
         return fmt.string(from: activity.date)
     }
 
     private var headerTimeStr: String {
+        let isEn = AppLanguage.shared.isEnglish
         let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "ko_KR")
+        fmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
         fmt.dateStyle = .none
         fmt.timeStyle = .short
         return fmt.string(from: activity.date)
@@ -725,6 +733,9 @@ struct DetailPanelGrid4ShareCard: View {
 
     private var weekdayChar: String {
         let weekday = Calendar.current.component(.weekday, from: activity.date)
+        if AppLanguage.shared.isEnglish {
+            return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][(weekday - 1) % 7]
+        }
         return ["일","월","화","수","목","금","토"][(weekday - 1) % 7]
     }
 

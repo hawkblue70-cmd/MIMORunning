@@ -283,9 +283,10 @@ final class RaceDetector {
         return R * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
-    // MARK: - Embedded CSV (공공데이터포털 "문화체육관광부_국내마라톤대회 정보", 2025–2026)
+    // MARK: - Embedded CSV (공공데이터포털 "문화체육관광부_국내마라톤대회 정보", 2024–2026)
     private static let racesCSV = #"""
 name,date,startTime,region,start,lat,lng,geoPrecision,distancesKm,tags,nonStandard
+제45회 조선일보 춘천마라톤,2024-10-27,09:00,강원,공지천 인조잔디구장,37.878,127.726,venue,"[10.0, 42.195]",[],FALSE
 2025 평창 대관령 알몸 마라톤,2025-02-01,08:00,강원,대관령면 횡계리 일원,37.677,128.715,district,"[10.0, 21.0975, 42.195]",[],FALSE
 대구 붕어빵트레일,2025-02-02,08:00,대구,대구 일원 (트레일),35.8714,128.6014,city,[],"[""트레일""]",TRUE
 2025 전마협 광주 첨단 무료 훈련마라톤,2025-02-08,08:00,광주,광주 첨단 일원,35.217,126.847,district,"[10.0, 21.0975, 42.195]",[],FALSE

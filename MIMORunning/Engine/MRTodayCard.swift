@@ -58,10 +58,11 @@ func mrTodayCard(runs: [MRWorkout],
     let cal = Calendar.current
 
     // ── ① 쌓인 것
+    let L = AppLanguage.shared
     let streak = mrActiveWeekStreak(runs: runs, asOf: asOf)
     let streakLine = streak >= 2
-        ? "\(streak)주 연속으로 달리고 있어요"
-        : "오늘도 나오셨네요"
+        ? L.s("\(streak)주 연속으로 달리고 있어요", "\(streak)-week streak")
+        : L.s("오늘도 나오셨네요", "Great to see you today")
 
     let totalKm = runs.compactMap(\.distanceKm).reduce(0, +)
 
@@ -86,9 +87,15 @@ func mrTodayCard(runs: [MRWorkout],
             cal.isDate($0.start, equalTo: last.start, toGranularity: .month)
             && $0.start <= last.start
         }.count
-        cumulativeLine = "이번 달 \(monthIdx)번째 · 누적 \(runs.count)회 \(Int(totalKm))km"
+        cumulativeLine = L.s(
+            "이번 달 \(monthIdx)번째 · 누적 \(runs.count)회 \(Int(totalKm))km",
+            "Run \(monthIdx) this month · \(runs.count) total · \(Int(totalKm))km"
+        )
     } else {
-        cumulativeLine = "누적 \(runs.count)회 \(Int(totalKm))km"
+        cumulativeLine = L.s(
+            "누적 \(runs.count)회 \(Int(totalKm))km",
+            "\(runs.count) runs · \(Int(totalKm))km"
+        )
     }
 
     // ⚠ "지금 상태"가 아니라 "계획대로 쌓았을 때"를 보여준다.
@@ -96,13 +103,21 @@ func mrTodayCard(runs: [MRWorkout],
     //   같은 화면에서 "D-13"과 "다음 대회까지 7주"가 나란히 뜨면
     //   서로 다른 대회를 가리키는 것으로 읽힌다(실제로 그렇게 나왔다).
     var linkLine: String? = nil
-    if !raceDayCardVisible, let next = plans.min(by: { $0.raceDate < $1.raceDate }) {
+    // 미래 대회만 대상 — 날짜가 지난 대회는 카운트다운에서 제외
+    let futurePlans = plans.filter { $0.raceDate > asOf }
+    if !raceDayCardVisible, let next = futurePlans.min(by: { $0.raceDate < $1.raceDate }) {
         let d = cal.dateComponents([.day], from: cal.startOfDay(for: asOf),
                                    to: cal.startOfDay(for: next.raceDate)).day ?? 0
         let weeks = d / 7
         linkLine = weeks >= 2
-            ? "다음 대회까지 \(weeks)주 — 오늘 같은 날이 쌓이면 \(mrFormatDisplay(next.projectedFinal))입니다"
-            : "대회가 \(d)일 남았어요. 이제는 쌓는 게 아니라 아끼는 시기입니다"
+            ? L.s(
+                "다음 대회까지 \(weeks)주 — 오늘 같은 날이 쌓이면 \(mrFormatDisplay(next.projectedFinal))입니다",
+                "\(weeks) weeks to race day — keep this up for \(mrFormatDisplay(next.projectedFinal))"
+              )
+            : L.s(
+                "대회가 \(d)일 남았어요. 이제는 쌓는 게 아니라 아끼는 시기입니다",
+                "\(d) days to race day — time to taper, not to push"
+              )
     }
 
     return MRTodayCard(streakLine: streakLine, cumulativeLine: cumulativeLine,

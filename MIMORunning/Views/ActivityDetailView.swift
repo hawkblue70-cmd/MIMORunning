@@ -431,12 +431,17 @@ struct ActivityDetailView: View {
             loadInsights()
             Task { await loadCombinedChart() }
             // @MainActor 컨텍스트에서 raceDetector 접근 — Task 진입 전에 미리 수집
+            // dual criterion: raceDetector(SwiftData) || workoutType 캐시(내구적 폴백) — 타이밍 이슈 대비
             let confirmedRaceIDs: Set<UUID> = Set(
                 manager.activities.compactMap { a -> UUID? in
-                    guard let m = raceDetector.matchFor(activityID: a.id), m.isConfirmed else { return nil }
+                    let byDetector = raceDetector.matchFor(activityID: a.id)?.isConfirmed == true
+                    let byCache    = manager.cachedWorkoutTypeForStats(for: a.id) == .race
+                    guard byDetector || byCache else { return nil }
                     return a.id
                 }
             )
+            // 확인된 대회 ID를 workoutType 캐시에 영속 저장 — 타이밍 이슈 복원 및 재분류 방지
+            manager.markConfirmedRaces(confirmedRaceIDs)
             let allFormInputs      = manager.formInputs
             let excludedRaceInputs = allFormInputs.filter { confirmedRaceIDs.contains($0.activityID) }
             let nonRaceInputs      = allFormInputs.filter { !confirmedRaceIDs.contains($0.activityID) }
@@ -447,7 +452,7 @@ struct ActivityDetailView: View {
             }
             let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
             let excludedDesc = excludedRaceInputs.map { inp -> String in
-                let km = raceKmByID[inp.activityID] ?? 0
+                let km = raceKmByID[inp.activityID] ?? (manager.activities.first { $0.id == inp.activityID }?.distance ?? 0) / 1000
                 let label: String
                 if abs(km - 42.195) < 3      { label = "풀코스" }
                 else if abs(km - 21.0975) < 2 { label = "하프" }
@@ -456,7 +461,7 @@ struct ActivityDetailView: View {
                 else                           { label = String(format: "%.1fkm", km) }
                 return "\(df.string(from: inp.date))(\(label))"
             }.joined(separator: " · ")
-            print("[Baseline:뷰] loadOrCompute 호출 — activities=\(manager.activities.count), formInputs=\(allFormInputs.count) (대회제외후 \(nonRaceInputs.count)개)")
+            print("[Baseline:뷰] 대회 제외 \(excludedRaceInputs.count)건 — 판별 기준: raceDetector.isConfirmed||workoutType==.race")
             if !excludedRaceInputs.isEmpty { print("[Baseline:뷰] 대회 제외 목록: \(excludedDesc)") }
             #endif
             Task {
@@ -480,7 +485,9 @@ struct ActivityDetailView: View {
                 FormBaselineEngine.clearCache()
                 let raceIDsForRefresh: Set<UUID> = Set(
                     manager.activities.compactMap { a -> UUID? in
-                        guard let m = raceDetector.matchFor(activityID: a.id), m.isConfirmed else { return nil }
+                        let byDetector = raceDetector.matchFor(activityID: a.id)?.isConfirmed == true
+                        let byCache    = manager.cachedWorkoutTypeForStats(for: a.id) == .race
+                        guard byDetector || byCache else { return nil }
                         return a.id
                     }
                 )
@@ -3495,7 +3502,7 @@ struct SplitsPanelChart: View {
                 distanceM: totalDist,
                 duration: totalDur,
                 avgHeartRate: nil, avgCadence: nil, avgPower: nil,
-                avgGroundContactTime: nil, avgStrideLength: nil
+                avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil
             ))
             i = end
         }

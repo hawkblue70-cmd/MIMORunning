@@ -23,9 +23,37 @@ struct MIMORunningApp: App {
         MRCacheMaintenance.purgeStale()
         MIMORunningApp.migrateFormStable()
         MIMORunningApp.mergeAndPurgeStaleWorkoutTypeKey()
+        MIMORunningApp.migrateWorkoutTypeCacheToV3()
         MIMORunningApp.backfillWorkoutTypeCacheFromDisk()
         #if DEBUG
         InsightEngine.auditTitlePools()
+        #endif
+    }
+
+    /// v1 키에 저장된 운동 유형 캐시를 현행 v3 키로 1회 복사한다.
+    /// v3 키가 추가되면서 기존 v1 데이터를 읽지 못하는 문제를 수정.
+    // TODO: remove after v1.x ships (migration no longer needed)
+    private static func migrateWorkoutTypeCacheToV3() {
+        let migKey = "mimo.migration.workoutTypeCacheV3.v1"
+        guard !UserDefaults.standard.bool(forKey: migKey) else { return }
+        let v1Key = "mimo.workoutTypeCache.v1"
+        let v3Key = "mimo.workoutTypeCache.v3"
+        let v1 = UserDefaults.standard.dictionary(forKey: v1Key) as? [String: String] ?? [:]
+        guard !v1.isEmpty else {
+            UserDefaults.standard.set(true, forKey: migKey)
+            return
+        }
+        var v3 = UserDefaults.standard.dictionary(forKey: v3Key) as? [String: String] ?? [:]
+        var copied = 0
+        for (k, v) in v1 where v3[k] == nil {
+            v3[k] = v
+            copied += 1
+        }
+        UserDefaults.standard.set(v3, forKey: v3Key)
+        UserDefaults.standard.set(true, forKey: migKey)
+        #if DEBUG
+        let intervals = v3.values.filter { $0.hasPrefix("interval") }.count
+        print("[마이그레이션] workoutTypeCache v1→v3 복사 완료: \(copied)건 / 인터벌 \(intervals)건")
         #endif
     }
 
@@ -34,7 +62,7 @@ struct MIMORunningApp: App {
     // TODO: remove after v1.x ships (migration no longer needed)
     private static func mergeAndPurgeStaleWorkoutTypeKey() {
         let staleKey = "m2_mimo.workoutTypeCache.v1"
-        let baseKey  = "mimo.workoutTypeCache.v1"
+        let baseKey  = "mimo.workoutTypeCache.v3"  // 현행 키로 통일
         guard let staleDict = UserDefaults.standard.dictionary(forKey: staleKey) as? [String: String] else { return }
         var current = UserDefaults.standard.dictionary(forKey: baseKey) as? [String: String] ?? [:]
         for (k, v) in staleDict { current[k] = v }
@@ -52,7 +80,7 @@ struct MIMORunningApp: App {
         let migKey = "mimo.migration.workoutTypeBackfill.v7"
         guard !UserDefaults.standard.bool(forKey: migKey) else { return }
         Task.detached(priority: .background) {
-            let baseKey = "mimo.workoutTypeCache.v1"
+            let baseKey = "mimo.workoutTypeCache.v3"  // 현행 키로 통일
             let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("mimo_detail", isDirectory: true)
             guard let files = try? FileManager.default.contentsOfDirectory(

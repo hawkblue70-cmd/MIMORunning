@@ -210,7 +210,7 @@ struct SplitsShareCardView: View {
                         Text(dateStr)
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(pal.textPrimary)
-                        Text(activity.date.weekdayCharKo)
+                        Text(activity.date.weekdayString)
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(pal.dateWeekday)
                         if let w = weatherText {

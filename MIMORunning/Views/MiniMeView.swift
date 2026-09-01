@@ -40,6 +40,7 @@ enum MiniMeVariant {
         case .buildUp:      return .sprinting
         case .lsd:          return .longDistance
         case .distanceRun:  return .longDistance
+        case .race:         return .sprinting
         case .general:      return .running
         }
     }

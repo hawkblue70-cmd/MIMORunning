@@ -149,7 +149,7 @@ struct PhotoShareCardView: View {
                 HStack(spacing: 0) {
                     HStack(spacing: 3) {
                         Text(activity.date.cardDateString)
-                        Text(activity.date.weekdayCharKo).foregroundStyle(Theme.time)
+                        Text(activity.date.weekdayString).foregroundStyle(Theme.time)
                         Text(activity.date.cardTimeString)
                     }
                     .font(.system(size: 9, weight: .medium))

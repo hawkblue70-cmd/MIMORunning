@@ -172,8 +172,10 @@ func mrFormatHMS(_ minutes: Double) -> String {
 func mrFormatDisplay(_ minutes: Double) -> String {
     let total = Int((minutes * 60).rounded())
     let h = total / 3600, m = (total % 3600) / 60, s = total % 60
-    return h > 0 ? String(format: "%d:%02d:%02d", h, m, s)
-                 : String(format: "%d분 %02d초", m, s)
+    if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+    return AppLanguage.shared.isEnglish
+        ? String(format: "%d:%02d", m, s)
+        : String(format: "%d분 %02d초", m, s)
 }
 
 func mrFormatPace(_ secPerKm: Double) -> String {

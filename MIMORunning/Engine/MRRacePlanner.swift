@@ -102,6 +102,7 @@ func mrBuildPlan(raceDate: Date,
                  priorRace: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil,
                  forcedMonday: Date? = nil) -> MRRacePlan? {
 
+    let L = AppLanguage.shared
     let cal = Calendar.current
     let totalDays = cal.dateComponents([.day], from: cal.startOfDay(for: today),
                                        to: cal.startOfDay(for: raceDate)).day ?? 0
@@ -226,11 +227,12 @@ func mrBuildPlan(raceDate: Date,
 
         let df = DateFormatter()
         df.locale = Locale(identifier: "ko_KR"); df.dateFormat = "yyyy-MM-dd"
-        p.startNote = "이 계획은 \(neededTotal)주짜리입니다. \(df.string(from: deferredStart))에 시작합니다."
+        p.startNote = L.s("이 계획은 \(neededTotal)주짜리입니다. \(df.string(from: deferredStart))에 시작합니다.",
+                          "This is a \(neededTotal)-week plan starting \(df.string(from: deferredStart)).")
         let waitEnd = cal.date(byAdding: .day, value: -1, to: deferredStart) ?? deferredStart
         p.bridgeRows = [
-            ("\(sfmt(today)) ~ \(sfmt(waitEnd))", "유지 — 지금처럼 달리시면 됩니다"),
-            ("\(sfmt(deferredStart)) ~", "이 계획 시작")
+            ("\(sfmt(today)) ~ \(sfmt(waitEnd))", L.s("유지 — 지금처럼 달리시면 됩니다", "Maintain — keep running as you are")),
+            ("\(sfmt(deferredStart)) ~", L.s("이 계획 시작", "Plan starts"))
         ]
         #if DEBUG
         print("[계획] \(raceDate.formatted(date:.abbreviated,time:.omitted)) 역산=\(neededTotal)주 · \(df.string(from: deferredStart)) 시작 (대기 \(totalWeeks - neededTotal)주)")
@@ -271,7 +273,8 @@ func mrBuildPlan(raceDate: Date,
 
     // 앞 대회 있을 때 startNote — planTotalWeeks 를 알아야 총 주 수 표시 가능
     if recoveryWeekCount > 0 {
-        p.startNote = "\(priorRaceName) 다음 주부터 이어집니다 · 회복 \(recoveryWeekCount)주 포함 \(planTotalWeeks)주"
+        p.startNote = L.s("\(priorRaceName) 다음 주부터 이어집니다 · 회복 \(recoveryWeekCount)주 포함 \(planTotalWeeks)주",
+                          "Continues after \(priorRaceName) · \(planTotalWeeks) weeks incl. \(recoveryWeekCount)-wk recovery")
     }
 
     // 롱런 게이지 왼쪽 값: 앞 대회가 있으면 그 대회의 peakLong (회복 구간은 의도적 저하)
@@ -297,8 +300,8 @@ func mrBuildPlan(raceDate: Date,
             let rest = max(wkV - lr, 0)
             let each = rest / Double(max(n - 1, 1))
             let bk   = each >= 1.5
-                ? String(format: "롱런 %.0fkm + 이지 %.0fkm × %d회", lr, each, max(n-1, 1))
-                : String(format: "롱런 %.0fkm + 이지 %d회", lr, max(n-1, 1))
+                ? String(format: L.s("롱런 %.0fkm + 이지 %.0fkm × %d회", "Long run %.0fkm + Easy %.0fkm × %dx"), lr, each, max(n-1, 1))
+                : String(format: L.s("롱런 %.0fkm + 이지 %d회", "Long run %.0fkm + Easy %dx"), lr, max(n-1, 1))
             p.weeks.append(MRPlanWeek(idx: ri, monday: mon, phase: "회복",
                                       longRunKm: lr, longRunMin: mins.rounded(),
                                       weeklyKm: wkV, projectedMin: p.projectedNow,
@@ -383,10 +386,12 @@ func mrBuildPlan(raceDate: Date,
             return String(format: "%.1fkm", each)
         }()
         var breakdown = each >= 1.5
-            ? "롱런 \(Int(lrDisplay))km + 이지 \(eachStr) × \(others)회"
-            : String(format: "롱런 %.0fkm + 이지 %d회", lrDisplay, others)
+            ? L.s("롱런 \(Int(lrDisplay))km + 이지 \(eachStr) × \(others)회",
+                  "Long run \(Int(lrDisplay))km + Easy \(eachStr) × \(others)x")
+            : String(format: L.s("롱런 %.0fkm + 이지 %d회", "Long run %.0fkm + Easy %dx"), lrDisplay, others)
         if phase == "테이퍼" {
-            breakdown = String(format: "롱런 %.0fkm + 짧게 %d회 · 강도는 그대로", lrDisplay, others)
+            breakdown = String(format: L.s("롱런 %.0fkm + 짧게 %d회 · 강도는 그대로",
+                                           "Long run %.0fkm + Short %dx · Keep the intensity"), lrDisplay, others)
         }
         // 12개월 최대 주간거리를 처음 초과하는 주를 표시 — 경고가 아니라 사실 전달
         var isVR = false
@@ -412,7 +417,9 @@ func mrBuildPlan(raceDate: Date,
     p.histMaxWeeklyKm = profile.maxWeeklyKm52w
     print(String(format: "[계획] 과거12개월 최대주간 = %.1fkm", profile.maxWeeklyKm52w))
     if profile.maxWeeklyKm52w > 0 {
-        p.notes.append(String(format: "주간 거리는 지난 1년 최고치(%.0fkm)까지 올립니다. 그 이상은 아직 해보신 적이 없습니다.", profile.maxWeeklyKm52w))
+        p.notes.append(String(format: L.s("주간 거리는 지난 1년 최고치(%.0fkm)까지 올립니다. 그 이상은 아직 해보신 적이 없습니다.",
+                                          "Weekly distance will reach your 1-yr high (%.0f km). You haven't gone beyond this before."),
+                             profile.maxWeeklyKm52w))
     }
     if distanceM >= MRDistance.dF {
         let bResult = bMarathonModel(weeklyKm: peakVol, longestKm: peakLong,
@@ -443,11 +450,14 @@ func mrBuildPlan(raceDate: Date,
                              mrFormatDisplay(finalRef), hm(p.projectedFinalLo), hm(p.projectedFinalHi)))
             } else {
                 let months = max(1, totalWeeks / 4)
-                p.projectedFinalNote = String(format: "%d개월 뒤라 예측 폭이 매우 넓습니다 (±%.0f%%). 대회를 치를수록 좁아집니다.", months, pct)
+                p.projectedFinalNote = L.isEnglish
+                    ? String(format: "Race is %d months away — prediction is wide (±%.0f%%). It will narrow as you race more.", months, pct)
+                    : String(format: "%d개월 뒤라 예측 폭이 매우 넓습니다 (±%.0f%%). 대회를 치를수록 좁아집니다.", months, pct)
                 print(String(format: "[예측] %d주 → ±%.1f%% → 표시 기준(10%%) 초과, 문장으로 대체", totalWeeks, pct))
             }
         } else {
-            p.projectedFinalNote = "최근 기록이 적어 예측 폭을 계산하지 못했습니다"
+            p.projectedFinalNote = L.s("최근 기록이 적어 예측 폭을 계산하지 못했습니다",
+                                       "Not enough recent data to calculate the prediction range")
             print(String(format: "[예측] %d주 → σ8 계산 불가", totalWeeks))
         }
     } else {
@@ -462,9 +472,10 @@ func mrBuildPlan(raceDate: Date,
                   : ratio >= 0.78 ? "완주는 충분, 기록은 다음 대회에"
                                   : "완주 중심 권장"
         if ratio < 0.78 {
-            p.notes.append("\(planTotalWeeks)주로는 롱런이 \(Int(peakLong))km까지밖에 못 올라갑니다. "
-                           + "근거가 있는 하한(28km)까지 가려면 "
-                           + "\(mrWeeksToReach(from: max(profile.longestRun16wKm, 5), to: p.targetLongKm, step: stepPct, cycle: cycleLen))주가 필요합니다.")
+            p.notes.append(L.s(
+                "\(planTotalWeeks)주로는 롱런이 \(Int(peakLong))km까지밖에 못 올라갑니다. 근거가 있는 하한(28km)까지 가려면 \(mrWeeksToReach(from: max(profile.longestRun16wKm, 5), to: p.targetLongKm, step: stepPct, cycle: cycleLen))주가 필요합니다.",
+                "In \(planTotalWeeks) weeks, the long run can only reach \(Int(peakLong)) km. Reaching the evidence-based minimum (28 km) requires \(mrWeeksToReach(from: max(profile.longestRun16wKm, 5), to: p.targetLongKm, step: stepPct, cycle: cycleLen)) weeks."
+            ))
         }
     } else {
         let need = distanceM / 1000.0
@@ -474,8 +485,10 @@ func mrBuildPlan(raceDate: Date,
             p.verdict = "완주 중심 권장"
         } else {
             p.verdict = "준비 기간이 짧습니다"
-            p.notes.append("\(planTotalWeeks)주로는 롱런이 \(Int(peakLong))km까지입니다. "
-                           + "\(Int(need))km 완주를 편하게 하려면 최소 \(Int(need * 0.6))km는 소화해 두는 편이 좋습니다.")
+            p.notes.append(L.s(
+                "\(planTotalWeeks)주로는 롱런이 \(Int(peakLong))km까지입니다. \(Int(need))km 완주를 편하게 하려면 최소 \(Int(need * 0.6))km는 소화해 두는 편이 좋습니다.",
+                "In \(planTotalWeeks) weeks, the long run reaches \(Int(peakLong)) km. To finish \(Int(need)) km comfortably, reaching at least \(Int(need * 0.6)) km first is recommended."
+            ))
         }
     }
     return p

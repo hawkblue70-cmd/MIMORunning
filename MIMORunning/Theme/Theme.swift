@@ -52,8 +52,9 @@ enum Theme {
     static let power = Color(hex: "A3E635")   // lime
     static let calories = Color.pink
     static let runningForm = Color.teal      // 러닝 다이내믹스 3종 (민트/청록 계열)
-    static let cadence      = Color(hex: "5CE5D5") // 케이던스 (Apple Fitness 틸 계열)
-    static let strideLength  = Color(hex: "38BDF8") // 보폭 — 스카이블루
+    static let cadence       = Color(hex: "5CE5D5") // 케이던스
+    static let strideLength  = Color(hex: "FFA94D") // 보폭 — 주황
+    static let groundContact = Color(hex: "A78BFA") // 지면접촉 — 보라
     static let verticalOsc   = Color(hex: "C084FC") // 수직진폭 — 라벤더
     static let elevationFill = Color(hex: "B98A3A") // 고도 채움 — 갈색
 

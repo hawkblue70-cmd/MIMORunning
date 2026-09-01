@@ -387,7 +387,7 @@ struct PlaceableCard: View {
         HStack(spacing: 0) {
             HStack(spacing: 3) {
                 Text(date.cardDateString)
-                Text(date.weekdayCharKo).foregroundStyle(Theme.time)
+                Text(date.weekdayString).foregroundStyle(Theme.time)
                 Text(date.cardTimeString)
             }
             .font(.system(size: 9, weight: .medium))

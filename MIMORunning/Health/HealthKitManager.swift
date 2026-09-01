@@ -610,12 +610,30 @@ class HealthKitManager {
         #endif
     }
 
+    /// 확인된 대회 ID를 workoutType 캐시에 race:1 로 영속 저장.
+    /// raceDetector 타이밍 이슈로 놓친 대회 ID를 복원해 baseline 계산에서 제외되도록 보장.
+    func markConfirmedRaces(_ ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        var dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+        var changed = false
+        for id in ids {
+            let key = id.uuidString
+            if let raw = dict[key], let entry = parseWorkoutTypeEntry(raw),
+               entry.type == .race, entry.hasSplits { continue }
+            dict[key] = "race:1"
+            changed = true
+        }
+        if changed { UserDefaults.standard.set(dict, forKey: Self.workoutTypeCacheKey) }
+    }
+
     /// hasSplits=true 엔트리는 hasSplits=false 분류로 덮어쓰지 않는다 — 스플릿 없는 백필 오염 방지
+    /// race 확정 엔트리는 어떤 값으로도 덮어쓰지 않는다 — markConfirmedRaces 이후 재분류 오염 방지
     private func persistWorkoutType(_ type: WorkoutType, hasSplits: Bool, for id: UUID) {
         var dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
         let key = id.uuidString
-        if let existing = dict[key], parseWorkoutTypeEntry(existing)?.hasSplits == true, !hasSplits {
-            return
+        if let existing = dict[key], let existingEntry = parseWorkoutTypeEntry(existing) {
+            if existingEntry.hasSplits && !hasSplits { return }
+            if existingEntry.type == .race { return }
         }
         dict[key] = "\(type.rawValue):\(hasSplits ? "1" : "0")"
         UserDefaults.standard.set(dict, forKey: Self.workoutTypeCacheKey)
@@ -941,15 +959,19 @@ class HealthKitManager {
                     }
                 }
                 let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
+                let cachedEntry = (UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey)
+                    as? [String: String] ?? [:])[act.id.uuidString].flatMap { parseWorkoutTypeEntry($0) }
                 #if DEBUG
                 let (type, trace) = WorkoutTypeClassifier.classifyWithTrace(
                     activity: act, history: allRunHistory,
-                    splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify
+                    splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
+                    existingType: cachedEntry?.type
                 )
                 #else
                 let type = WorkoutTypeClassifier.classify(
                     activity: act, history: allRunHistory,
-                    splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify
+                    splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
+                    existingType: cachedEntry?.type
                 )
                 #endif
                 persistWorkoutType(type, hasSplits: !actSplits.isEmpty, for: act.id)
@@ -1047,10 +1069,13 @@ class HealthKitManager {
                 if let wo = workoutCache[act.id] { actHRZones = await queryHRZones(workout: wo) }
             }
             let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
+            let backfillCached = (UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey)
+                as? [String: String] ?? [:])[act.id.uuidString].flatMap { parseWorkoutTypeEntry($0) }
             let type = WorkoutTypeClassifier.classify(
                 activity: act,
                 history: historyBefore(date: act.date, in: allRunHistory),
-                splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify
+                splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
+                existingType: backfillCached?.type
             )
             persistWorkoutType(type, hasSplits: !actSplits.isEmpty, for: act.id)
             await Task.yield()
@@ -1211,6 +1236,17 @@ class HealthKitManager {
         #endif
         if let cached = detailCache[activityID], cached.isComplete { return cached }
         if var disk = loadDetailFromDisk(activityID), disk.isComplete {
+            // [29] 이미 확정(hasSplits=true)된 분류가 있으면 재판정 건너뜀 — 매 실행 반복 방지
+            let wtDict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+            if let raw = wtDict[activityID.uuidString], let entry = parseWorkoutTypeEntry(raw), entry.hasSplits {
+                if disk.workoutType != entry.type {
+                    disk.workoutType = entry.type
+                    saveDetailToDisk(disk, id: activityID)
+                }
+                detailCache[activityID] = disk
+                persistFormFromDetail(disk, for: activityID)
+                return disk
+            }
             // 디스크의 workoutType은 구버전 분류기 결과일 수 있으므로 현재 분류기로 재계산
             var actHRZones = disk.hrZones
             if actHRZones.isEmpty, let wo = workoutCache[activityID] {
@@ -1283,8 +1319,8 @@ class HealthKitManager {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_detail", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // v9: SplitData에 avgGroundContactTime·avgStrideLength 추가. 기존 v8 캐시 자동 무효화.
-        return dir.appendingPathComponent("v9_\(id.uuidString).json")
+        // v10: SplitData에 avgVerticalOscillation 추가. 기존 v9 캐시 자동 무효화.
+        return dir.appendingPathComponent("v10_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
@@ -1337,10 +1373,13 @@ class HealthKitManager {
 
             let workoutType: WorkoutType = {
                 guard let activity = activities.first(where: { $0.id == activityID }) else { return .general }
+                let hkCached = (UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey)
+                    as? [String: String] ?? [:])[activityID.uuidString].flatMap { parseWorkoutTypeEntry($0) }
                 #if DEBUG
                 let (wt, trace) = WorkoutTypeClassifier.classifyWithTrace(
                     activity: activity, history: activities,
-                    splits: splits, intervalSegments: intervals, hrZones: zones)
+                    splits: splits, intervalSegments: intervals, hrZones: zones,
+                    existingType: hkCached?.type)
                 let z2dbg = zones.isEmpty ? "hrZones없음"
                     : "Zone2 \(Int((zones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +) * 100).rounded()))%"
                 let dfdbg = DateFormatter(); dfdbg.dateFormat = "M/d"
@@ -1349,7 +1388,7 @@ class HealthKitManager {
                 #else
                 return WorkoutTypeClassifier.classify(activity: activity, history: activities,
                                                       splits: splits, intervalSegments: intervals,
-                                                      hrZones: zones)
+                                                      hrZones: zones, existingType: hkCached?.type)
                 #endif
             }()
             return ActivityDetail(
@@ -2162,14 +2201,24 @@ class HealthKitManager {
             predicates: [stridePred],
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
         )
+        let voPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.runningVerticalOscillation),
+            predicate: HKQuery.predicateForObjects(from: workout)
+        )
+        let voDesc = HKSampleQueryDescriptor(
+            predicates: [voPred],
+            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+        )
         async let powerFetch  = powerDesc.result(for: store)
         async let cadFetch    = cadDesc.result(for: store)
         async let gctFetch    = gctDesc.result(for: store)
         async let strideFetch = strideDesc.result(for: store)
+        async let voFetch     = voDesc.result(for: store)
         let powerSamples  = (try? await powerFetch)  ?? []
         let cadSamples    = (try? await cadFetch)    ?? []
         let gctSamples    = (try? await gctFetch)    ?? []
         let strideSamples = (try? await strideFetch) ?? []
+        let voSamples     = (try? await voFetch)     ?? []
         let paused = pausedIntervals(for: workout)
 
         // Build cumulative distance timeline: (date, cumulative meters)
@@ -2208,7 +2257,8 @@ class HealthKitManager {
                 avgCadence: splitAvgCadence(from: prevDate, to: crossing.date, samples: cadSamples, paused: paused),
                 avgPower: splitAvgPower(from: prevDate, to: crossing.date, samples: powerSamples, paused: paused),
                 avgGroundContactTime: splitAvgGCT(from: prevDate, to: crossing.date, samples: gctSamples, paused: paused),
-                avgStrideLength: splitAvgStrideLength(from: prevDate, to: crossing.date, samples: strideSamples, paused: paused)
+                avgStrideLength: splitAvgStrideLength(from: prevDate, to: crossing.date, samples: strideSamples, paused: paused),
+                avgVerticalOscillation: splitAvgVO(from: prevDate, to: crossing.date, samples: voSamples, paused: paused)
             ))
             prevDate = crossing.date
         }
@@ -2226,7 +2276,8 @@ class HealthKitManager {
                     avgCadence: splitAvgCadence(from: prevDate, to: lastDate, samples: cadSamples, paused: paused),
                     avgPower: splitAvgPower(from: prevDate, to: lastDate, samples: powerSamples, paused: paused),
                     avgGroundContactTime: splitAvgGCT(from: prevDate, to: lastDate, samples: gctSamples, paused: paused),
-                    avgStrideLength: splitAvgStrideLength(from: prevDate, to: lastDate, samples: strideSamples, paused: paused)
+                    avgStrideLength: splitAvgStrideLength(from: prevDate, to: lastDate, samples: strideSamples, paused: paused),
+                    avgVerticalOscillation: splitAvgVO(from: prevDate, to: lastDate, samples: voSamples, paused: paused)
                 ))
             }
         }
@@ -2279,6 +2330,14 @@ class HealthKitManager {
         let relevant = samples.filter { $0.startDate >= start && $0.startDate < end && !isPaused($0.startDate, in: paused) }
         guard !relevant.isEmpty else { return nil }
         let sum = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: .meter()) }
+        return sum / Double(relevant.count)
+    }
+
+    private func splitAvgVO(from start: Date, to end: Date, samples: [HKQuantitySample], paused: [DateInterval] = []) -> Double? {
+        let relevant = samples.filter { $0.startDate >= start && $0.startDate < end && !isPaused($0.startDate, in: paused) }
+        guard !relevant.isEmpty else { return nil }
+        let unit = HKUnit.meterUnit(with: .centi)
+        let sum = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: unit) }
         return sum / Double(relevant.count)
     }
 

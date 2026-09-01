@@ -82,7 +82,8 @@ struct WeeklyPattern {
     let key: String
     let factSummary: String    // AI 입력용 사실 문자열 (확정 수치)
     var basis: String = ""     // 근거줄 (카드 하단 소자 — "" 이면 미표시)
-    let shortNames: [String]   // 헤드라인 이름 풀 — weekOfYear로 순환
+    let shortNames: [String]   // 헤드라인 이름 풀 (한국어) — weekOfYear로 순환
+    var enShortNames: [String] = []  // 헤드라인 이름 풀 (영어)
     let koTemplates: [String]
     let enTemplates: [String]
 
@@ -92,9 +93,10 @@ struct WeeklyPattern {
         return t[weekOfYear % t.count]
     }
 
-    func shortName(for weekOfYear: Int) -> String {
-        guard !shortNames.isEmpty else { return "" }
-        return shortNames[weekOfYear % shortNames.count]
+    func shortName(for weekOfYear: Int, isEnglish: Bool = false) -> String {
+        let names = isEnglish && !enShortNames.isEmpty ? enShortNames : shortNames
+        guard !names.isEmpty else { return "" }
+        return names[weekOfYear % names.count]
     }
 }
 
@@ -344,9 +346,6 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
     let streak = inputs.weekStreak
     let count  = inputs.runCount
 
-    #if DEBUG
-    print("[폼] GCT=\(inputs.groundContactTime) VO=\(inputs.vertOsc) cadence=\(inputs.cadence) stride=\(inputs.strideLength) power=\(inputs.power) — 패턴 선택에 미사용")
-    #endif
 
     // 구성 변화 게이트: 이번/직전 2주 고강도 횟수 차이 ≥ 2 (직전 2주 데이터 충분할 때만)
     let intenseCountDiff = inputs.thisWindowIntenseCount - inputs.prevWindowIntenseCount
@@ -361,6 +360,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             priority: 5, key: "compositionChange",
             factSummary: factStr,
             shortNames: ["강약이 있는 주", "훈련이 진해진 주"],
+            enShortNames: ["Intensity shift", "A harder week"],
             koTemplates: [
                 "이번 2주는 강한 훈련이 늘었어요. 지표가 출렁이는 건 자연스러운 반응이에요.",
                 "훈련 구성이 바뀌면 몸도 적응 중이에요. 숫자보다 느낌에 더 귀 기울여봐요.",
@@ -388,6 +388,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             priority: 30, key: "speed",
             factSummary: facts.joined(separator: ", "),
             shortNames: ["빨라지는 러닝", "페이스가 오르는 러닝", "수월해진 러닝"],
+            enShortNames: ["Getting faster", "Pace is rising", "Running easier"],
             koTemplates: [
                 "심박은 차분한데 페이스가 빨라졌어요",
                 "같은 노력에 더 빠르게 달리고 있어요",
@@ -418,6 +419,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             factSummary: "\(temp)°C, 실제 \(actual)/km → 15°C 환산 \(ref)/km",
             basis: inputs.heatBasisText,
             shortNames: ["더운 날의 러닝", "기온 보정 페이스"],
+            enShortNames: ["Running in the heat", "Heat-adjusted pace"],
             koTemplates: [
                 "최근 7일 평균 \(actual)/km, 기온은 \(temp)°C였어요. 15°C였다면 \(ref) 정도예요.",
                 "\(temp)°C에서 \(actual)/km로 달렸어요. 같은 몸으로 15°C에서 뛰면 \(ref)쯤 됩니다.",
@@ -442,6 +444,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             priority: 22, key: "driftWeek",
             factSummary: "\(temp)°C 롱런, 드리프트 \(actual)bpm/10분 (기준 \(ref)bpm/10분)",
             shortNames: ["드리프트 알림", "심박 드리프트"],
+            enShortNames: ["Drift alert", "HR drift"],
             koTemplates: [
                 "긴 러닝에서 심박이 10분당 \(actual)bpm 올랐어요. \(temp)°C에서 평소는 \(ref) 정도예요.",
                 "\(temp)°C 롱런에서 10분마다 \(actual)bpm씩 심박이 올랐어요. 15°C 기준으론 \(ref)bpm이에요.",
@@ -464,6 +467,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             priority: 23, key: "hrPaceWeek",
             factSummary: "같은 심박에서 8주 전보다 \(secs)초 \(dir)",
             shortNames: ["심박 기준 속도", "유산소 효율"],
+            enShortNames: ["HR-based speed", "Aerobic efficiency"],
             koTemplates: [
                 "같은 심박에서 지난 8주보다 \(secs)초 \(dir).",
                 "심박이 같아도 \(secs)초 \(dir). 유산소 효율이 달라졌어요.",
@@ -485,6 +489,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             priority: 40, key: "cardio",
             factSummary: facts.joined(separator: ", "),
             shortNames: ["심폐가 자라는 러닝", "숨이 고르는 러닝"],
+            enShortNames: ["Cardio is growing", "Breathing easy"],
             koTemplates: [
                 "유산소 기반이 탄탄해지고 있어요",
                 "심폐 능력이 꾸준히 오르고 있어요",
@@ -517,6 +522,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             priority: 50, key: "easy",
             factSummary: facts.joined(separator: ", "),
             shortNames: ["편해지는 페이스", "기반이 다져지는 중"],
+            enShortNames: ["Building the base", "Easy running week"],
             koTemplates: [
                 "오늘은 천천히, 내일을 위한 달리기예요",
                 "여유 있게 달렸고, 심박도 잘 관리됐어요",
@@ -543,6 +549,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             priority: 60, key: "streak",
             factSummary: "\(streak)주 연속",
             shortNames: ["쌓이는 러닝", "이어지는 러닝", "여무는 러닝"],
+            enShortNames: ["Stacking runs", "The streak continues", "Getting stronger"],
             koTemplates: [
                 "\(streak)주 연속 — 최장 기록을 경신 중이에요 🔥",
                 "\(streak)주 이어온 꾸준함, 그게 실력이에요",
@@ -568,6 +575,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             priority: 70, key: "consistent",
             factSummary: "이번 주 \(count)회 러닝",
             shortNames: ["오늘도 한 걸음", "꾸준한 두 주"],
+            enShortNames: ["One more step", "Steady two weeks"],
             koTemplates: [
                 "이번 2주, 꾸준히 달렸어요. 쌓이는 게 보여요",
                 "달리는 날이 쌓여 기반이 됩니다",
@@ -593,6 +601,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             priority: 99, key: "encourage",
             factSummary: "",
             shortNames: ["함께 달려요"],
+            enShortNames: ["Let's go run"],
             koTemplates: [
                 "2주간 데이터가 쌓이면 추세를 읽어드릴게요",
                 "오늘 달리면 2주 뒤 변화가 보여요",

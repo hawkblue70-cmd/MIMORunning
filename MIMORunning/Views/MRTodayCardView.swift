@@ -46,6 +46,9 @@ struct MRTodayCardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(red: 0.11, green: 0.11, blue: 0.12))
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
+                engine.recomputeTodayCard()
+            }
         }
     }
 }

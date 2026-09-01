@@ -52,29 +52,30 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var displayName: String {
+        let L = AppLanguage.shared
         switch self {
-        case .hud:           return "HUD 계기판"
-        case .receipt:       return "영수증"
-        case .scoreboard:    return "전광판"
-        case .passportStamp: return "여권 스탬프"
-        case .circleBadge:   return "서클 배지"
-        case .labeledRows:   return "행마다 라벨"
-        case .verticalLabel: return "세로 라벨"
-        case .distanceHero:  return "거리 몰아주기"
-        case .mixedAlign:    return "혼합 정렬"
-        case .hrWave:        return "심박 파형"
-        case .hrZone:        return "심박 존"
-        case .elevProfile:   return "고도 프로파일"
-        case .cadenceEq:     return "케이던스"
-        case .vitals:        return "바이탈 패널"
-        case .hrBadge:       return "심박 서클"
-        case .watchHud:      return "워치 HUD"
-        case .placeHeadline: return "지명 헤드라인"
-        case .pinInline:     return "핀 인라인"
-        case .routeHero:     return "루트 히어로"
-        case .routeRows:     return "루트 + 행 라벨"
-        case .routeVertical: return "루트 + 세로 라벨"
-        case .routeSide:     return "루트 사이드"
+        case .hud:           return L.s("HUD 계기판",      "HUD Gauge")
+        case .receipt:       return L.s("영수증",          "Receipt")
+        case .scoreboard:    return L.s("전광판",          "Scoreboard")
+        case .passportStamp: return L.s("여권 스탬프",     "Passport Stamp")
+        case .circleBadge:   return L.s("서클 배지",       "Circle Badge")
+        case .labeledRows:   return L.s("행마다 라벨",     "Row Labels")
+        case .verticalLabel: return L.s("세로 라벨",       "Vertical Label")
+        case .distanceHero:  return L.s("거리 몰아주기",   "Distance Hero")
+        case .mixedAlign:    return L.s("혼합 정렬",       "Mixed Align")
+        case .hrWave:        return L.s("심박 파형",       "HR Wave")
+        case .hrZone:        return L.s("심박 존",         "HR Zones")
+        case .elevProfile:   return L.s("고도 프로파일",   "Elevation Profile")
+        case .cadenceEq:     return L.s("케이던스",        "Cadence")
+        case .vitals:        return L.s("바이탈 패널",     "Vitals Panel")
+        case .hrBadge:       return L.s("심박 서클",       "HR Circle")
+        case .watchHud:      return L.s("워치 HUD",        "Watch HUD")
+        case .placeHeadline: return L.s("지명 헤드라인",   "Place Headline")
+        case .pinInline:     return L.s("핀 인라인",       "Pin Inline")
+        case .routeHero:     return L.s("루트 히어로",     "Route Hero")
+        case .routeRows:     return L.s("루트 + 행 라벨",  "Route + Row Labels")
+        case .routeVertical: return L.s("루트 + 세로 라벨","Route + Vertical")
+        case .routeSide:     return L.s("루트 사이드",     "Route Side")
         }
     }
 

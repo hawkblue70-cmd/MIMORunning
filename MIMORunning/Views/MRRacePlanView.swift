@@ -12,6 +12,31 @@ private let mrCard   = Color(red: 0.11, green: 0.11, blue: 0.12)
 private let mrGood   = Color(red: 0.30, green: 0.80, blue: 0.55)
 private let mrWarn   = Color(red: 0.95, green: 0.68, blue: 0.25)
 
+/// 플랜 빌드 시점에 한국어로 생성된 breakdown 문자열을 표시 시점에 번역.
+/// 캐시된 플랜에도 적용되도록 view layer에서 처리한다.
+private func localizedBreakdown(_ s: String) -> String {
+    guard AppLanguage.shared.isEnglish else { return s }
+    return s
+        .replacingOccurrences(of: "롱런", with: "Long run")
+        .replacingOccurrences(of: "이지", with: "Easy")
+        .replacingOccurrences(of: "짧게", with: "Short")
+        .replacingOccurrences(of: "강도는 그대로", with: "Keep the intensity")
+        .replacingOccurrences(of: "회", with: "x")
+        .replacingOccurrences(of: "× ", with: "× ")   // keep spacing
+}
+
+private func localizedPhase(_ p: String) -> String {
+    let L = AppLanguage.shared
+    switch p {
+    case "늘리기":       return L.s("늘리기", "Build")
+    case "유지":         return L.s("유지", "Maintain")
+    case "회복":         return L.s("회복", "Recovery")
+    case "테이퍼":       return L.s("테이퍼", "Taper")
+    case "대회 페이스":  return L.s("대회 페이스", "Race pace")
+    default:             return p
+    }
+}
+
 // MARK: - 대회 하나
 
 struct MRRacePlanCard: View {
@@ -48,6 +73,7 @@ struct MRRacePlanCard: View {
     }
 
     var body: some View {
+        let L = AppLanguage.shared
         if !isExpanded {
             MRRaceCollapsedRow(name: race.name, date: race.date,
                                weekCount: plan.weeks.count, onTap: onToggleCollapse ?? {})
@@ -76,7 +102,7 @@ struct MRRacePlanCard: View {
                     .buttonStyle(.plain)
                 }
             }
-            Text("D-\(daysLeft) · \(plan.weeks.count)주 계획")
+            Text("D-\(daysLeft) · \(L.s("\(plan.weeks.count)주 계획", "\(plan.weeks.count)-week plan"))")
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.60))
                 .padding(.top, 3)
@@ -110,7 +136,7 @@ struct MRRacePlanCard: View {
             // 지금 → 계획후
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("지금 나가면").font(.system(size: 11))
+                    Text(L.s("지금 나가면", "If I start now")).font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.60))
                     Text(mrFormatDisplay(plan.projectedNow))
                         .font(.system(size: 17, weight: .medium, design: .rounded))
@@ -121,7 +147,7 @@ struct MRRacePlanCard: View {
                     .foregroundStyle(.white.opacity(0.65))
                     .padding(.top, 14)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("계획대로 쌓으면").font(.system(size: 11))
+                    Text(L.s("계획대로 쌓으면", "On plan")).font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.60))
                     Text(mrFormatDisplay(plan.projectedFinal))
                         .font(.system(size: 24, weight: .bold, design: .rounded))
@@ -143,11 +169,11 @@ struct MRRacePlanCard: View {
             // 목표 대비
             if let goal = check.goalMin, let gap = check.gapMin {
                 HStack(spacing: 6) {
-                    Text("목표 \(mrFormatDisplay(goal))")
+                    Text(L.s("목표 \(mrFormatDisplay(goal))", "Goal: \(mrFormatDisplay(goal))"))
                         .foregroundStyle(.white.opacity(0.68))
                     Text(gap <= 0
-                         ? String(format: "%.0f분 여유", -gap)
-                         : String(format: "%.0f분 %02d초 모자람", floor(gap),
+                         ? String(format: L.s("%.0f분 여유", "%.0f min ahead"), -gap)
+                         : String(format: L.s("%.0f분 %02d초 모자람", "%.0f min %02d sec short"), floor(gap),
                                   Int((gap - floor(gap)) * 60)))
                         .foregroundStyle(gapColor)
                         .fontWeight(.semibold)
@@ -180,7 +206,7 @@ struct MRRacePlanCard: View {
             // 롱런 진행 막대
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("롱런").font(.system(size: 11))
+                    Text(L.s("롱런", "Long run")).font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.60))
                     Spacer()
                     Text(String(format: "%.0f → %.0fkm",
@@ -204,11 +230,11 @@ struct MRRacePlanCard: View {
                 Text({
                     switch plan.verdict {
                     case "기록 목표 가능":
-                        return "롱런 준비는 충분합니다"
+                        return L.s("롱런 준비는 충분합니다", "Long run prep is sufficient")
                     case "완주는 충분, 기록은 다음 대회에":
-                        return "완주에는 충분한 롱런입니다"
+                        return L.s("완주에는 충분한 롱런입니다", "Long run is enough for finishing")
                     default:
-                        return "이 기간에는 롱런을 여기까지 올릴 수 있습니다"
+                        return L.s("이 기간에는 롱런을 여기까지 올릴 수 있습니다", "This is how far the long run can reach in this timeframe")
                     }
                 }())
                 .font(.system(size: 11))
@@ -221,7 +247,7 @@ struct MRRacePlanCard: View {
                 withAnimation(.easeOut(duration: 0.2)) { showWeeks.toggle() }
             } label: {
                 HStack(spacing: 4) {
-                    Text(showWeeks ? "주차별 계획 접기" : "주차별 계획 보기")
+                    Text(L.s(showWeeks ? "주차별 계획 접기" : "주차별 계획 보기", showWeeks ? "Collapse weekly plan" : "Show weekly plan"))
                     Image(systemName: showWeeks ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
                 }
@@ -316,10 +342,10 @@ struct MRWeekTable: View {
 
     /// 스냅샷 주의 실행 안내 — 구버전 스냅샷(breakdown=="")은 라이브 플랜 주에서 폴백.
     private func breakdownForSnap(_ snap: MRPlanWeekSummary) -> String {
-        if !snap.breakdown.isEmpty { return snap.breakdown }
-        let cal = Calendar.current
-        let snapStart = cal.startOfDay(for: snap.monday)
-        return weeks.first { cal.startOfDay(for: $0.monday) == snapStart }?.breakdown ?? ""
+        let raw = snap.breakdown.isEmpty
+            ? (weeks.first { Calendar.current.startOfDay(for: $0.monday) == Calendar.current.startOfDay(for: snap.monday) }?.breakdown ?? "")
+            : snap.breakdown
+        return localizedBreakdown(raw)
     }
 
     // MARK: - 라이브 플랜 헬퍼 (스냅샷 없을 때)
@@ -363,6 +389,7 @@ struct MRWeekTable: View {
     // MARK: - 공통
 
     private var complianceSummary: String? {
+        let L = AppLanguage.shared
         let syms: [String]
         if !snapshotWeeks.isEmpty {
             syms = snapshotWeeks.compactMap { complianceSymbolForSnap($0) }
@@ -380,7 +407,7 @@ struct MRWeekTable: View {
         if one  > 0 { parts.append("\(symbolOne) \(one)")  }
         if none > 0 { parts.append("\(symbolNone) \(none)") }
         let n = syms.count
-        return "지난 \(n)주: \(parts.joined(separator: " · "))"
+        return L.s("지난 \(n)주:", "Last \(n) wks:") + " \(parts.joined(separator: " · "))"
     }
 
     private func phaseColor(_ p: String) -> Color {
@@ -394,15 +421,16 @@ struct MRWeekTable: View {
     }
 
     private var legendItems: [(phase: String, desc: String)] {
+        let L = AppLanguage.shared
         let present = snapshotWeeks.isEmpty
             ? Set(weeks.map(\.phase))
             : Set(snapshotWeeks.map(\.phase))
         return [
-            (phase: "늘리기",       desc: "롱런을 매주 조금씩 늘립니다"),
-            (phase: "유지",         desc: "롱런을 더 늘리지 않고 그 거리에 익숙해집니다"),
-            (phase: "대회 페이스",   desc: "롱런 안에 대회 페이스로 달리는 구간이 들어갑니다"),
-            (phase: "회복",         desc: "롱런과 주간 거리를 줄입니다. 몸은 쉴 때 좋아집니다"),
-            (phase: "테이퍼",       desc: "대회 전 2주, 거리를 절반 이하로 줄입니다"),
+            (phase: "늘리기",       desc: L.s("롱런을 매주 조금씩 늘립니다",                              "Gradually increase long run each week")),
+            (phase: "유지",         desc: L.s("롱런을 더 늘리지 않고 그 거리에 익숙해집니다",            "Get comfortable at the current long run distance")),
+            (phase: "대회 페이스",   desc: L.s("롱런 안에 대회 페이스로 달리는 구간이 들어갑니다",        "Includes race-pace segments within the long run")),
+            (phase: "회복",         desc: L.s("롱런과 주간 거리를 줄입니다. 몸은 쉴 때 좋아집니다",     "Reduce long run and weekly distance. Bodies improve with rest")),
+            (phase: "테이퍼",       desc: L.s("대회 전 2주, 거리를 절반 이하로 줄입니다",               "2 weeks before race, cut volume below half")),
         ].filter { present.contains($0.phase) }
     }
 
@@ -442,14 +470,15 @@ struct MRWeekTable: View {
     }
 
     var body: some View {
+        let L = AppLanguage.shared
         VStack(spacing: 0) {
             HStack {
-                Text("주").frame(width: 36, alignment: .leading)
-                Text("날짜").frame(width: 40, alignment: .leading)
-                Text("단계").frame(width: 64, alignment: .leading)
-                Text("롱런").frame(maxWidth: .infinity, alignment: .trailing)
-                Text("주간").frame(maxWidth: .infinity, alignment: .trailing)
-                Text("예상").frame(width: 56, alignment: .trailing)
+                Text(L.s("주", "Wk")).frame(width: 36, alignment: .leading)
+                Text(L.s("날짜", "Date")).frame(width: 40, alignment: .leading)
+                Text(L.s("단계", "Phase")).frame(width: 64, alignment: .leading)
+                Text(L.s("롱런", "Long")).frame(maxWidth: .infinity, alignment: .trailing)
+                Text(L.s("주간", "Weekly")).frame(maxWidth: .infinity, alignment: .trailing)
+                Text(L.s("예상", "Target")).frame(width: 56, alignment: .trailing)
             }
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.white.opacity(0.72))
@@ -483,7 +512,7 @@ struct MRWeekTable: View {
                                 .frame(width: 40, alignment: .leading)
                                 .foregroundStyle(isCurr ? .white.opacity(0.92) : .white.opacity(0.72))
                                 .monospacedDigit()
-                            Text(snap.phase)
+                            Text(localizedPhase(snap.phase))
                                 .frame(width: 64, alignment: .leading)
                                 .foregroundStyle(phaseColor(snap.phase))
                             Text(String(format: "%.1f", snap.longRunKm))
@@ -515,7 +544,7 @@ struct MRWeekTable: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 12) {
                                     HStack(spacing: 3) {
-                                        Text("롱런").foregroundStyle(.white.opacity(0.72))
+                                        Text(L.s("롱런", "Long")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.long))
                                                 .fontWeight(.semibold).foregroundStyle(.white)
@@ -527,7 +556,7 @@ struct MRWeekTable: View {
                                             .foregroundStyle(mrAccent.opacity(0.75))
                                     }
                                     HStack(spacing: 3) {
-                                        Text("주간").foregroundStyle(.white.opacity(0.72))
+                                        Text(L.s("주간", "Weekly")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.weekly))
                                                 .fontWeight(.semibold).foregroundStyle(.white)
@@ -539,7 +568,7 @@ struct MRWeekTable: View {
                                             .foregroundStyle(mrAccent.opacity(0.75))
                                     }
                                     if isCurr {
-                                        Text("진행 중")
+                                        Text(L.s("진행 중", "In progress"))
                                             .font(.system(size: 9, weight: .medium))
                                             .foregroundStyle(mrAccent.opacity(0.88))
                                             .padding(.horizontal, 5).padding(.vertical, 2)
@@ -580,7 +609,7 @@ struct MRWeekTable: View {
                                 .frame(width: 40, alignment: .leading)
                                 .foregroundStyle(isCurrent(w) ? .white.opacity(0.92) : .white.opacity(0.72))
                                 .monospacedDigit()
-                            Text(w.phase)
+                            Text(localizedPhase(w.phase))
                                 .frame(width: 64, alignment: .leading)
                                 .foregroundStyle(phaseColor(w.phase))
                             VStack(alignment: .trailing, spacing: 2) {
@@ -606,7 +635,7 @@ struct MRWeekTable: View {
                         }
 
                         if w.isVolRecord && histMaxWeeklyKm > 0 {
-                            Text("└ 지난 1년 최고치(\(Int(histMaxWeeklyKm.rounded()))km)에 도달")
+                            Text(L.s("└ 지난 1년 최고치(\(Int(histMaxWeeklyKm.rounded()))km)에 도달", "└ Reached 1-yr high (\(Int(histMaxWeeklyKm.rounded())) km)"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(.white.opacity(0.65))
                                 .padding(.leading, 64).padding(.bottom, 2)
@@ -619,7 +648,7 @@ struct MRWeekTable: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 12) {
                                     HStack(spacing: 3) {
-                                        Text("롱런").foregroundStyle(.white.opacity(0.72))
+                                        Text(L.s("롱런", "Long")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.long))
                                                 .fontWeight(.semibold).foregroundStyle(.white)
@@ -631,7 +660,7 @@ struct MRWeekTable: View {
                                             .foregroundStyle(mrAccent.opacity(0.75))
                                     }
                                     HStack(spacing: 3) {
-                                        Text("주간").foregroundStyle(.white.opacity(0.72))
+                                        Text(L.s("주간", "Weekly")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.weekly))
                                                 .fontWeight(.semibold).foregroundStyle(.white)
@@ -643,7 +672,7 @@ struct MRWeekTable: View {
                                             .foregroundStyle(mrAccent.opacity(0.75))
                                     }
                                     if isCurrent(w) {
-                                        Text("진행 중")
+                                        Text(L.s("진행 중", "In progress"))
                                             .font(.system(size: 9, weight: .medium))
                                             .foregroundStyle(mrAccent.opacity(0.88))
                                             .padding(.horizontal, 5).padding(.vertical, 2)
@@ -652,7 +681,7 @@ struct MRWeekTable: View {
                                 }
                                 .font(.system(size: 11, design: .rounded))
                                 if !w.breakdown.isEmpty {
-                                    Text(w.breakdown)
+                                    Text(localizedBreakdown(w.breakdown))
                                         .font(.system(size: 11))
                                         .foregroundStyle(.white.opacity(0.60))
                                 }
@@ -678,13 +707,13 @@ struct MRWeekTable: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Text("행 탭 → 실제 기록 또는 실행 안내 · 진한 주 번호 = 이번 주 · 거리는 이지 페이스 기준")
+            Text(L.s("행 탭 → 실제 기록 또는 실행 안내 · 진한 주 번호 = 이번 주 · 거리는 이지 페이스 기준", "Tap row → actual log or guidance · Bold = current week · Distance at easy pace"))
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.65))
                 .padding(.top, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text("● 둘 다 달성  ◐ 하나만 달성  ○ 미달성  ▲ 10% 초과")
+            Text(L.s("● 둘 다 달성  ◐ 하나만 달성  ○ 미달성  ▲ 10% 초과", "● Both met  ◐ One met  ○ Not met  ▲ 10% over"))
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.65))
                 .padding(.top, 4)
@@ -694,7 +723,7 @@ struct MRWeekTable: View {
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(legendItems, id: \.phase) { item in
                     HStack(alignment: .top, spacing: 6) {
-                        Text(item.phase)
+                        Text(localizedPhase(item.phase))
                             .foregroundStyle(phaseColor(item.phase))
                             .frame(width: 68, alignment: .leading)
                         Text(item.desc)
@@ -917,7 +946,7 @@ private struct MRRaceCollapsedRow: View {
                             .font(.system(size: 12, design: .rounded))
                             .foregroundStyle(mrAccent)
                         if let w = weekCount {
-                            Text("· \(w)주")
+                            Text("· \(AppLanguage.shared.s("\(w)주", "\(w) wks"))")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.white.opacity(0.60))
                         }
@@ -974,7 +1003,7 @@ private func _previewWeeks() -> [MRPlanWeek] {
             isNewMax: i == 3
         )
         w.isVolRecord = (i == 5)
-        w.breakdown = String(format: "롱런 %.0fkm + 이지 7km × 3회", Double(10 + i))
+        w.breakdown = String(format: AppLanguage.shared.s("롱런 %.0fkm + 이지 7km × 3회", "Long run %.0fkm + Easy 7km × 3x"), Double(10 + i))
         return w
     }
 }

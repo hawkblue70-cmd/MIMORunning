@@ -368,6 +368,16 @@ struct WeeklyGrowthShareCard: View {
         let mSun = cal.component(.month, from: sunday)
         let dSun = cal.component(.day,   from: sunday)
 
+        if AppLanguage.shared.isEnglish {
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "en_US")
+            df.dateFormat = "MMM d"
+            if mMon == mSun {
+                return "\(df.string(from: monday)) – \(dSun), \(year)"
+            } else {
+                return "\(df.string(from: monday)) – \(df.string(from: sunday)), \(year)"
+            }
+        }
         if mMon == mSun {
             return "\(year). \(mMon). \(dMon) ~ \(dSun)"
         } else {
