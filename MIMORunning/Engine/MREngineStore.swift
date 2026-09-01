@@ -380,18 +380,38 @@ final class MREngineStore: ObservableObject {
                 drift = m
                 return
             }
-            // ok=false: 24h TTL 이내면 재계산 생략 — 7초짜리 HK 세그먼트 쿼리 반복 방지
+            // ok=false: 실패 사유별 TTL — 세그먼트 쿼리 반복 방지
+            // 표본 부족·기온 범위 부족 → 7일 (계절 데이터 누적 필요)
+            // 기타 실패 → 24시간
+            let isSampleOrTempFailure = m.sessions < 15 || m.tempSpanC < 15
+            let ttl: TimeInterval = isSampleOrTempFailure ? 7 * 24 * 3600 : 24 * 3600
             let cacheAge = Date().timeIntervalSince(cached.computedAt ?? .distantPast)
-            if cacheAge < 24 * 3600 {
+            // 러닝 20건 이상 증가 시 TTL 무관 재시도 (계절성 데이터 누적 감지)
+            let runGrowth = runs.count - (cached.workoutCountAtCompute ?? runs.count)
+            if cacheAge < ttl, runGrowth < 20 {
                 drift = m
                 #if DEBUG
-                print(String(format: "[드리프트] 캐시 재사용 (ok=false · %.0fh/24h TTL) → HK 쿼리 생략",
-                             cacheAge / 3600))
+                let reasonStr: String
+                if m.sessions < 15 { reasonStr = "표본부족" }
+                else if m.tempSpanC < 15 { reasonStr = "기온범위" }
+                else { reasonStr = "기타" }
+                let retryDate = (cached.computedAt ?? Date()).addingTimeInterval(ttl)
+                let retryDf = DateFormatter(); retryDf.dateFormat = "yyyy-MM-dd"
+                print(String(format: "[드리프트] 실패(\(reasonStr)) · 다음 재시도 %@ · %.0fh/%.0fh → HK 쿼리 생략",
+                             retryDf.string(from: retryDate), cacheAge / 3600, ttl / 3600))
                 #endif
                 return
             }
             #if DEBUG
-            print("[드리프트] 캐시 ok=false 만료 (세션\(m.sessions) 기온범위\(Int(m.tempSpanC))°C · \(Int(cacheAge / 3600))h 경과) → 재계산")
+            if runGrowth >= 20 {
+                print("[드리프트] 캐시 ok=false · 런 \(runGrowth)건 증가 → TTL 무시, 재계산")
+            } else {
+                let reasonStr: String
+                if m.sessions < 15 { reasonStr = "표본부족" }
+                else if m.tempSpanC < 15 { reasonStr = "기온범위" }
+                else { reasonStr = "기타" }
+                print("[드리프트] 캐시 ok=false TTL 만료 · 실패(\(reasonStr)) · \(Int(cacheAge/3600))h/\(Int(ttl/3600))h → 재계산")
+            }
             #endif
         }
         #if DEBUG
@@ -417,7 +437,8 @@ final class MREngineStore: ObservableObject {
             // computedAt이 nil이면 TTL 체크가 항상 만료로 판정 → 갱신해 반복 HK 쿼리 방지
             if cached.computedAt == nil {
                 MRDriftCacheStore.save(MRDriftCache(
-                    lastWorkoutStart: lastStart, computedAt: Date(), drift: cached.drift
+                    lastWorkoutStart: lastStart, computedAt: Date(), drift: cached.drift,
+                    workoutCountAtCompute: cached.workoutCountAtCompute ?? recent.count
                 ))
             }
             #if DEBUG
@@ -470,7 +491,8 @@ final class MREngineStore: ObservableObject {
         if let last = recent.last?.startDate {
             MRDriftCacheStore.save(MRDriftCache(lastWorkoutStart: last,
                                                 computedAt: Date(),
-                                                drift: MRDriftModelCodable(m)))
+                                                drift: MRDriftModelCodable(m),
+                                                workoutCountAtCompute: recent.count))
         }
         #if DEBUG
         print("[드리프트] \(m.ok ? "성공" : "실패") · 15°C기준 \(String(format: "%.1f", m.bpmPer10MinAtRef))bpm/10분 · 기온범위 \(Int(m.tempSpanC))°C · \(m.sessions)세션")

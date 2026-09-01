@@ -33,7 +33,9 @@ struct MRDriftModelCodable: Codable {
 /// 90일 기준 최대 90건 × 2 = 180 쿼리 → 마지막 워크아웃 시작일이 바뀌지 않으면 재사용.
 struct MRDriftCache: Codable {
     var lastWorkoutStart: Date
+    var computedAt: Date?          // nil → 구버전 캐시, TTL 만료된 것으로 처리
     var drift: MRDriftModelCodable
+    var workoutCountAtCompute: Int? // 저장 시점 연간 HK 러닝 수 — 20건 이상 증가 시 TTL 우선 재시도
 }
 
 enum MRDriftCacheStore {
