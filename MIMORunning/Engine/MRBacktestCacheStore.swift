@@ -50,9 +50,11 @@ enum MRBacktestCacheStore {
     }
 
     /// 노력 목록 → 핑거프린트 문자열
+    /// v2|: 이전 3건짜리 캐시 무효화 (RHR 중앙값 전환 + σ_obs 재계산 적용)
     static func effortKey(_ efforts: [MRRaceEffort]) -> String {
-        efforts.map { e in
+        let body = efforts.map { e in
             "\(Int(e.date.timeIntervalSince1970))_\(Int(e.distanceM))_\(Int(e.timeMinRef * 10))"
         }.joined(separator: "|")
+        return "v2|\(body)"
     }
 }

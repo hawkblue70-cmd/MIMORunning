@@ -225,7 +225,13 @@ struct GrowthView: View {
                         .padding(.top, 8)
                     }
                     .onAppear {
-                        engine.updateConfirmedMatches(Array(raceDetector.matches.values))
+                        // refreshBacktest 진입부 폴백용 — 모든 호출 경로에서 대회 목록 보장
+                        engine.persistedMatchesProvider = { [manager] in manager.persistedConfirmedMatches() }
+                        // raceDetector 미준비 → 영속 키 폴백. 준비 완료 → onChange가 정식 목록으로 재실행
+                        let matches: [PersistedRaceMatch] = raceDetector.isReady
+                            ? Array(raceDetector.matches.values)
+                            : manager.persistedConfirmedMatches()
+                        engine.updateConfirmedMatches(matches, raceDetectorReady: raceDetector.isReady)
                         engine.computeBacktestIfNeeded()
                         engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w)
                         if !engine.runs.isEmpty {
@@ -237,6 +243,11 @@ struct GrowthView: View {
             }
             .navigationTitle(AppLanguage.shared.s("성장", "Growth"))
             .navigationBarTitleDisplayMode(.large)
+        }
+        .onChange(of: raceDetector.isReady) { _, ready in
+            guard ready else { return }
+            // raceDetector 로드 완료 후 대회 목록을 갱신 — 캐시 키가 바뀌면 백테스트 자동 재계산
+            engine.updateConfirmedMatches(Array(raceDetector.matches.values), raceDetectorReady: true)
         }
         .onChange(of: manager.activities.count) { _, _ in
             Task { refreshChartCache(); await refreshMetricAnalyses() }

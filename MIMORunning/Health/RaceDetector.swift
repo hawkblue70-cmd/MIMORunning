@@ -73,6 +73,7 @@ struct PersistedRaceMatch: Codable, Equatable, Sendable {
 final class RaceDetector {
     private(set) var races: [BundledRace] = []
     private(set) var matches: [String: PersistedRaceMatch] = [:]
+    private(set) var isReady: Bool = false
 
     private static let matchesKey = "raceDetector.matches.v1"
     private var modelContext: ModelContext?
@@ -83,6 +84,7 @@ final class RaceDetector {
         modelContext = context
         await loadMatchesFromSwiftData(context)
         races = Self.loadRacesFromCSV()
+        isReady = true
     }
 
     // MARK: - Assessment

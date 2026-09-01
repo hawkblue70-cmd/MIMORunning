@@ -431,17 +431,26 @@ struct ActivityDetailView: View {
             loadInsights()
             Task { await loadCombinedChart() }
             // @MainActor 컨텍스트에서 raceDetector 접근 — Task 진입 전에 미리 수집
-            // dual criterion: raceDetector(SwiftData) || workoutType 캐시(내구적 폴백) — 타이밍 이슈 대비
+            // triple criterion: raceDetector || workoutType 캐시 || 버전-무관 영속 키
+            let persistedRaceIDs = manager.persistedConfirmedRaceIDs()
             let confirmedRaceIDs: Set<UUID> = Set(
                 manager.activities.compactMap { a -> UUID? in
                     let byDetector = raceDetector.matchFor(activityID: a.id)?.isConfirmed == true
                     let byCache    = manager.cachedWorkoutTypeForStats(for: a.id) == .race
-                    guard byDetector || byCache else { return nil }
+                    let byPersist  = persistedRaceIDs.contains(a.id)
+                    guard byDetector || byCache || byPersist else { return nil }
                     return a.id
                 }
             )
-            // 확인된 대회 ID를 workoutType 캐시에 영속 저장 — 타이밍 이슈 복원 및 재분류 방지
+            #if DEBUG
+            print("[Baseline:계산] raceDetector 준비 = \(raceDetector.isReady) · 대회 제외 \(confirmedRaceIDs.count)건")
+            if !raceDetector.isReady { print("[Baseline:계산] raceDetector 미준비 — 영속 키 \(persistedRaceIDs.count)건으로 대체") }
+            #endif
+            // 확인된 대회 ID를 workoutType 캐시 + 영속 키에 함께 저장
             manager.markConfirmedRaces(confirmedRaceIDs)
+            // 전체 매치 JSON도 영속 저장 — 백테스트 폴백용 (raceDetector 미준비 시)
+            let confirmedMatchArray = Array(confirmedRaceIDs).compactMap { raceDetector.matchFor(activityID: $0) }
+            manager.updatePersistedRaceMatches(confirmedMatchArray)
             let allFormInputs      = manager.formInputs
             let excludedRaceInputs = allFormInputs.filter { confirmedRaceIDs.contains($0.activityID) }
             let nonRaceInputs      = allFormInputs.filter { !confirmedRaceIDs.contains($0.activityID) }
@@ -2541,10 +2550,10 @@ private struct HRZonesSection: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(AppLanguage.shared.s("각각의 심박수 영역에 머무르는 예상 시간입니다.", "Estimated time spent in each heart rate zone."))
                         .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                     Text(AppLanguage.shared.s("Karvonen(심박 예비율) 공식 기반 · 최근 30일 최소 안정시 심박(RHR) + 나이별 최대심박(MHR) 추정 적용. 개인 체력 및 측정 조건에 따라 실제 영역과 다를 수 있습니다.", "Based on Karvonen (HRR) formula · Uses lowest resting HR over last 30 days + age-estimated max HR. Zones may differ from actual values."))
                         .font(.system(size: 10))
-                        .foregroundStyle(.quaternary)
+                        .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)

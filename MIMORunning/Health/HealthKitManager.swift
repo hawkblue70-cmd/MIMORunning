@@ -533,9 +533,13 @@ class HealthKitManager {
 
     // MARK: - Detail (on demand)
 
-    private static let workoutTypeCacheKey  = "mimo.workoutTypeCache.v7"  // v7: hasSplits=true 포함 전량 무효화 → Zone2 이지런 재분류
+    private static let workoutTypeCacheKey  = "mimo.workoutTypeCache.v8"  // v8: RHR min→중앙값 전환 → Zone 경계 변동에 따른 전량 재분류
     private static let workoutTypeReadyKey  = workoutTypeCacheKey + ".ready"  // true = 8주 스플릿 포함 재분류 완료
     private static let formCacheKey         = "mimo.formCache.v1"
+    /// 캐시 버전과 무관하게 영속 — 대회 확정 ID는 여기에도 함께 저장해 버전 교체 후에도 baseline에서 제외 보장
+    private static let confirmedRaceIDsKey     = "mimo.confirmedRaceIDs.v1"
+    /// 전체 PersistedRaceMatch JSON — 백테스트 폴백용 (raceDetector 미준비 시)
+    private static let confirmedRaceMatchesKey = "mimo.confirmedRaceMatches.v1"
 
     // MARK: Form Metrics Cache
 
@@ -610,10 +614,11 @@ class HealthKitManager {
         #endif
     }
 
-    /// 확인된 대회 ID를 workoutType 캐시에 race:1 로 영속 저장.
-    /// raceDetector 타이밍 이슈로 놓친 대회 ID를 복원해 baseline 계산에서 제외되도록 보장.
+    /// 확인된 대회 ID를 workoutType 캐시 + 별도 영속 키 두 곳에 저장.
+    /// workoutType 캐시는 버전 교체로 소실될 수 있으므로, confirmedRaceIDsKey는 절대 지우지 않는다.
     func markConfirmedRaces(_ ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
+        // ① workoutTypeCache에 race:1 기록
         var dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
         var changed = false
         for id in ids {
@@ -624,6 +629,36 @@ class HealthKitManager {
             changed = true
         }
         if changed { UserDefaults.standard.set(dict, forKey: Self.workoutTypeCacheKey) }
+        // ② 버전-무관 영속 키에도 병합 저장
+        var persistent = (UserDefaults.standard.array(forKey: Self.confirmedRaceIDsKey) as? [String]) ?? []
+        let existingSet = Set(persistent)
+        let newEntries = ids.map(\.uuidString).filter { !existingSet.contains($0) }
+        if !newEntries.isEmpty {
+            persistent.append(contentsOf: newEntries)
+            UserDefaults.standard.set(persistent, forKey: Self.confirmedRaceIDsKey)
+        }
+    }
+
+    /// 캐시 버전과 무관하게 영속된 대회 확정 ID 집합을 반환.
+    func persistedConfirmedRaceIDs() -> Set<UUID> {
+        let raw = (UserDefaults.standard.array(forKey: Self.confirmedRaceIDsKey) as? [String]) ?? []
+        return Set(raw.compactMap { UUID(uuidString: $0) })
+    }
+
+    /// 확정 대회 전체 매치를 JSON으로 저장 — raceDetector 미준비 시 백테스트 폴백으로 사용.
+    func updatePersistedRaceMatches(_ matches: [PersistedRaceMatch]) {
+        guard !matches.isEmpty else { return }
+        if let data = try? JSONEncoder().encode(matches) {
+            UserDefaults.standard.set(data, forKey: Self.confirmedRaceMatchesKey)
+        }
+    }
+
+    /// 영속된 전체 매치 배열 반환 — raceDetector 미준비 시 백테스트 폴백.
+    func persistedConfirmedMatches() -> [PersistedRaceMatch] {
+        guard let data = UserDefaults.standard.data(forKey: Self.confirmedRaceMatchesKey),
+              let matches = try? JSONDecoder().decode([PersistedRaceMatch].self, from: data)
+        else { return [] }
+        return matches
     }
 
     /// hasSplits=true 엔트리는 hasSplits=false 분류로 덮어쓰지 않는다 — 스플릿 없는 백필 오염 방지
@@ -2396,24 +2431,42 @@ class HealthKitManager {
             )
             let desc = HKSampleQueryDescriptor(
                 predicates: [pred],
-                sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .reverse)],
-                limit: 7
+                sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .reverse)]
             )
             guard let samples = try? await desc.result(for: store) else { return [] }
-            return samples.map { Int($0.quantity.doubleValue(for: unit).rounded()) }.sorted()
+            return samples.map { Int($0.quantity.doubleValue(for: unit).rounded()) }
+        }
+
+        func median(_ values: [Int]) -> Int {
+            let s = values.sorted()
+            let n = s.count
+            return n % 2 == 0 ? (s[n/2 - 1] + s[n/2]) / 2 : s[n/2]
         }
 
         // 1차: anchor 직전 30일
         let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: anchor)
-        let recent = await fetchSamples(start: thirtyDaysAgo, end: anchor)
-        if !recent.isEmpty {
-            return max(40, recent.min() ?? 40)
+        let recent30 = await fetchSamples(start: thirtyDaysAgo, end: anchor)
+        if recent30.count >= 10 {
+            let med = max(40, median(recent30))
+            print("[존] RHR 중앙값 \(med) (30일 \(recent30.count)개 · 최소 \(recent30.min()!) · 최대 \(recent30.max()!))")
+            return med
         }
 
-        // 2차 폴백: anchor 이전 전체 기간
+        // 2차: 표본 부족 시 60일로 확장
+        let sixtyDaysAgo = Calendar.current.date(byAdding: .day, value: -60, to: anchor)
+        let recent60 = await fetchSamples(start: sixtyDaysAgo, end: anchor)
+        if !recent60.isEmpty {
+            let med = max(40, median(recent60))
+            print("[존] RHR 중앙값 \(med) (60일 \(recent60.count)개 · 최소 \(recent60.min()!) · 최대 \(recent60.max()!) — 30일 표본 부족)")
+            return med
+        }
+
+        // 3차 폴백: anchor 이전 전체 기간
         let allTime = await fetchSamples(start: nil, end: anchor)
         if !allTime.isEmpty {
-            return max(40, allTime.min() ?? 40)
+            let med = max(40, median(allTime))
+            print("[존] RHR 중앙값 \(med) (전체 \(allTime.count)개 — 60일 표본 없음)")
+            return med
         }
 
         return nil
@@ -2472,6 +2525,9 @@ class HealthKitManager {
         let _ = ageSrc  // consumed to silence unused-variable warning
 
         if let rhr = await queryLatestRestingHR(before: date), mhr > rhr {
+            let hrr = Double(mhr - rhr)
+            func bnd(_ r: Double) -> Int { Int((Double(rhr) + r * hrr).rounded()) }
+            print("[존] HRmax \(mhr) · 경계 <\(bnd(0.60)) / \(bnd(0.60))–\(bnd(0.70)-1) / \(bnd(0.70))–\(bnd(0.80)-1) / \(bnd(0.80))–\(bnd(0.90)-1) / \(bnd(0.90))+")
             return computeKarvonenZones(samples: samples, rhr: rhr, mhr: mhr)
         }
         return hrZonesMHR(mhr: mhr, samples: samples)

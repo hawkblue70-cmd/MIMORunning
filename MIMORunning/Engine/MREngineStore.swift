@@ -87,6 +87,11 @@ final class MREngineStore: ObservableObject {
     private var storedSex: MRSex = .unknown
     private var storedStrengthPerWeek: Double = 0
     private var storedConfirmedMatches: [PersistedRaceMatch] = []
+    private var storedSigmaObs: Double = 0
+
+    /// 뷰에서 주입 — HealthKitManager.persistedConfirmedMatches() 래퍼.
+    /// refreshBacktest 진입부에서 storedConfirmedMatches가 비었을 때 폴백으로 호출.
+    var persistedMatchesProvider: (() -> [PersistedRaceMatch]) = { [] }
 
     var isReady: Bool {
         if case .ready = state { return true }
@@ -209,6 +214,7 @@ final class MREngineStore: ObservableObject {
         // 캐시 백테스트에서 관측 노이즈를 추출 — 첫 실행시 캐시 없으면 0(순수 드리프트 모델)
         let cachedBT = MRBacktestCacheStore.load()?.rows.map(\.row) ?? []
         let sigmaObs = mrSigmaObs(backtest: cachedBT)
+        storedSigmaObs = sigmaObs
         #if DEBUG
         print(String(format: "[σ_obs] 백테스트 %d건 → σ_obs=%.4f (±%.1f%%)",
                      cachedBT.count, sigmaObs, (exp(sigmaObs) - 1) * 100))
@@ -517,6 +523,17 @@ final class MREngineStore: ObservableObject {
     // MARK: - 백테스트 (노력 핑거프린트 캐시)
 
     private func refreshBacktest() async {
+        // storedConfirmedMatches가 비었으면 영속 키 폴백 — 310·585·600 세 진입 경로 모두 보장
+        if storedConfirmedMatches.filter(\.isConfirmed).isEmpty {
+            let fallback = persistedMatchesProvider()
+            if !fallback.isEmpty {
+                storedConfirmedMatches = fallback
+                #if DEBUG
+                print("[백테스트] storedConfirmedMatches 비어 있음 → 영속 키 \(fallback.filter(\.isConfirmed).count)건 로드")
+                #endif
+            }
+        }
+
         // 캐시 키: 자동 감지 노력 핑거프린트 + 확인된 대회 목록
         let effortPart = MRBacktestCacheStore.effortKey(efforts)
         let matchPart = storedConfirmedMatches
@@ -526,32 +543,51 @@ final class MREngineStore: ObservableObject {
             .joined(separator: "|")
         let key = effortPart + "||" + matchPart
 
+        let rows: [MRBacktestRow]
         if let cached = MRBacktestCacheStore.load(), cached.effortKey == key {
-            backtest = cached.rows.map(\.row)
+            rows = cached.rows.map(\.row)
             #if DEBUG
-            print("[백테스트] 캐시 히트 · \(backtest.count)건")
+            print("[백테스트] 캐시 히트 · \(rows.count)건")
             #endif
-            return
+        } else {
+            // 변환은 main actor에서 미리 처리 → Task.detached에는 Sendable [MRRaceEffort]만 전달
+            let addl = mrEffortsFromConfirmedMatches(storedConfirmedMatches, runs: runs)
+            let r = runs, rhr = rhrSamples, d = storedDob, s = storedSex, h = heat
+            let matchCount = addl.count
+            let result = await Task.detached(priority: .userInitiated) {
+                mrBacktest(runs: r, restingHRSamples: rhr,
+                           dateOfBirth: d, sex: s, heat: h,
+                           additionalTargets: addl, asOf: Date())
+            }.value
+            rows = result
+            MRBacktestCacheStore.save(MRBacktestCache(
+                effortKey: key,
+                rows: result.map(MRBacktestRowCodable.init)
+            ))
+            #if DEBUG
+            print("[백테스트] 완료 · \(result.count)건 → 캐시 저장 (확인 대회 \(matchCount)건 포함)")
+            #endif
         }
 
-        // 변환은 main actor에서 미리 처리 → Task.detached에는 Sendable [MRRaceEffort]만 전달
-        let addl = mrEffortsFromConfirmedMatches(storedConfirmedMatches, runs: runs)
-        let r = runs, rhr = rhrSamples, d = storedDob, s = storedSex, h = heat
-        let matchCount = addl.count
-        let result = await Task.detached(priority: .userInitiated) {
-            mrBacktest(runs: r, restingHRSamples: rhr,
-                       dateOfBirth: d, sex: s, heat: h,
-                       additionalTargets: addl, asOf: Date())
-        }.value
+        backtest = rows
 
-        backtest = result
-        MRBacktestCacheStore.save(MRBacktestCache(
-            effortKey: key,
-            rows: result.map(MRBacktestRowCodable.init)
-        ))
-        #if DEBUG
-        print("[백테스트] 완료 · \(result.count)건 (확인 대회 \(matchCount)건 포함)")
-        #endif
+        // σ_obs 재계산 — 백테스트 결과가 startup 캐시와 다르면 profile·predictions 갱신
+        let newSigma = mrSigmaObs(backtest: rows)
+        if newSigma != storedSigmaObs {
+            storedSigmaObs = newSigma
+            let now = Date()
+            profile = mrProfile(runs: runs, efforts: efforts, sigmaObs: newSigma, asOf: now)
+            predictions = mrPredict(efforts: efforts, fit: fit, profile: profile, heat: heat, asOf: now)
+            #if DEBUG
+            print(String(format: "[σ_obs] 백테스트 %d건 → σ_obs=%.4f (±%.1f%%) · 재계산",
+                         rows.count, newSigma, (exp(newSigma) - 1) * 100))
+            #endif
+        } else {
+            #if DEBUG
+            print(String(format: "[σ_obs] 백테스트 %d건 → σ_obs=%.4f (±%.1f%%)",
+                         rows.count, newSigma, (exp(newSigma) - 1) * 100))
+            #endif
+        }
     }
 
     // MARK: - 성장 탭에서 수동 트리거
@@ -562,8 +598,16 @@ final class MREngineStore: ObservableObject {
     }
 
     /// 확인된 대회 목록이 바뀌면 캐시 키가 달라져 자동으로 재계산된다.
-    func updateConfirmedMatches(_ matches: [PersistedRaceMatch]) {
+    /// raceDetectorReady=false 시 영속 키 폴백 매치로 진행 — onChange(of: isReady)가 이후 정식 목록으로 재실행.
+    func updateConfirmedMatches(_ matches: [PersistedRaceMatch], raceDetectorReady: Bool = true) {
         guard case .ready = state else { return }
+        let confirmedCount = matches.filter(\.isConfirmed).count
+        #if DEBUG
+        print("[백테스트] raceDetector 준비 = \(raceDetectorReady) · 대회 \(confirmedCount)건")
+        if !raceDetectorReady && confirmedCount > 0 {
+            print("[백테스트] raceDetector 미준비 — 영속 키 \(confirmedCount)건으로 대체")
+        }
+        #endif
         storedConfirmedMatches = matches
         Task { await self.refreshBacktest() }
     }
