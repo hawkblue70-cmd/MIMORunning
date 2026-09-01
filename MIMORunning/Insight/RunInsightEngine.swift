@@ -121,15 +121,21 @@ enum RunInsightEngine {
             return sorted[sorted.count / 2]
         }()
 
-        let sevenDaysAgo    = calendar.date(byAdding: .day, value: -7,  to: now) ?? .distantPast
-        let fourteenDaysAgo = calendar.date(byAdding: .day, value: -14, to: now) ?? .distantPast
+        // 이번 주 / 지난 주: 7일 롤링이 아닌 월요일 시작 달력 주 기준
+        var mondayCal = calendar
+        mondayCal.firstWeekday = 2  // 월요일 시작
+        let startOfThisWeek = mondayCal.date(
+            from: mondayCal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)
+        ) ?? calendar.date(byAdding: .day, value: -7, to: now) ?? .distantPast
+        let startOfLastWeek = mondayCal.date(byAdding: .weekOfYear, value: -1, to: startOfThisWeek)
+            ?? calendar.date(byAdding: .day, value: -14, to: now) ?? .distantPast
 
         let thisWeekKm = (runHistory
-            .filter { $0.date >= sevenDaysAgo }
+            .filter { $0.date >= startOfThisWeek }
             .reduce(0.0) { $0 + $1.distance } + activity.distance) / 1000.0
 
         let prevWeekKm = runHistory
-            .filter { $0.date >= fourteenDaysAgo && $0.date < sevenDaysAgo }
+            .filter { $0.date >= startOfLastWeek && $0.date < startOfThisWeek }
             .reduce(0.0) { $0 + $1.distance } / 1000.0
 
         return RunBaseline(
