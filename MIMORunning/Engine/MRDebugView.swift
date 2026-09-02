@@ -258,7 +258,8 @@ struct MRDebugView: View {
                                                halfEquivMin: halfEquiv,
                                                easyPaceSecPerKm: easyPace, heat: heat,
                                                raceTempC: MR_REF_TEMP,
-                                               runsPerWeek: prof.runsPerWeek) else {
+                                               runsPerWeek: prof.runsPerWeek,
+                                               caller: "DebugView:루프1", raceName: r.name) else {
                         log += "\(r.name): 준비 기간 3주 미만\n"; continue
                     }
                     log += String(format: "%@ %d주\n  지금 %@ → 계획후 %@\n  롱런 %.1f/%.0fkm · %@\n",
@@ -272,7 +273,8 @@ struct MRDebugView: View {
                                 profile: prof, halfEquivMin: halfEquiv,
                                 easyPaceSecPerKm: easyPace, heat: heat,
                                 raceTempC: MR_REF_TEMP,
-                                runsPerWeek: prof.runsPerWeek)
+                                runsPerWeek: prof.runsPerWeek,
+                                caller: "DebugView:루프2", raceName: $0.name)
                 }
                 let advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
                                            gaps: [], strengthPerWeek: 0,

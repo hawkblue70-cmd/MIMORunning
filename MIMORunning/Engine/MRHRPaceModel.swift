@@ -1,18 +1,32 @@
 import Foundation
 
+// ⚠ 회귀를 적합 범위 밖으로 외삽하지 말 것.
+//   이 코드베이스에서 네 번 같은 실수가 있었다 —
+//   더위 모델 심박 공변량, T3 세그먼트, 드리프트 pooled, HRPace 저심박.
+//   데이터가 없는 구간의 값이 필요하면 회귀 대신
+//   실측 구간의 중앙값을 쓰고, 그 표본 수를 화면에 밝힌다.
 struct MRHRPaceModel {
     var ok = false
     var b0 = 0.0            // 절편 (30분 기준으로 흡수)
     var bSpeed = 0.0        // bpm per (m/min)
     var bTemp = 0.0
     var residSD = 0.0
+    var r2 = 0.0            // 회귀 결정계수 (심박 예측 정확도)
     var n = 0
     var speedSpan = 0.0     // m/s
     var tier = "T0"
+    var dataHRMin = 0.0     // 학습 데이터 심박 하한 — 이 아래는 외삽 구간
+    var dataHRMax = 0.0     // 학습 데이터 심박 상한
+    var dataSpeedMin = 0.0  // 학습 데이터 최저 속도 m/min (가장 느린 실측 페이스)
 
     /// 이 심박으로 달리면 페이스가 얼마인가 (초/km)
+    ///
+    /// ⚠ 목표 심박이 학습 데이터 심박 하한보다 낮으면 외삽이다.
+    ///   선형 외삽은 데이터 범위를 벗어날수록 오차가 제곱으로 커지므로 nil을 돌려준다.
     func paceAtHR(_ hr: Double, tempC: Double = 15.0) -> Double? {
         guard ok, bSpeed > 0 else { return nil }
+        // 목표 심박이 학습 데이터 하한보다 낮으면 외삽 → 계산 불가
+        if dataHRMin > 0 && hr < dataHRMin { return nil }
         let adj = hr - b0 - bTemp * max(0, tempC - MR_REF_TEMP)
         let v = adj / bSpeed        // m/min
         guard v > 60 else {
@@ -25,6 +39,134 @@ struct MRHRPaceModel {
         }
         return 60_000.0 / v
     }
+}
+
+// MARK: - 실측 구간 중앙값 (이지 페이스 추정 본체)
+
+/// 목표 심박 ±5bpm 구간 실측 런의 중앙값 결과.
+///
+/// 선형 회귀는 저심박 구간에 데이터가 적을 때 무너진다.
+/// 실측 구간 중앙값은 데이터가 없으면 nil을 돌려줄 뿐, 잘못된 값을 만들지 않는다.
+struct MRHRPaceLookup {
+    let paceSec: Double   // 이지 페이스 중앙값 (sec/km)
+    let n: Int            // 표본 수
+    let hrLo: Double      // 구간 하한
+    let hrHi: Double      // 구간 상한
+
+    /// 근거줄 — 화면 표시용
+    var basis: String {
+        "심박 \(Int(hrLo.rounded()))~\(Int(hrHi.rounded()))bpm 구간 러닝 \(n)회의 중앙값"
+    }
+}
+
+/// 목표 심박 ±5bpm 구간의 실측 페이스 중앙값.
+///
+/// ⚠ 회귀 대신 이 함수를 이지 페이스에 쓰는 이유:
+///   저심박 구간에 데이터가 적으면 선형 회귀는 데이터 범위 바깥으로 선을 늘인다.
+///   이 함수는 데이터가 있는 곳만 본다 — 부족하면 nil(계산 불가).
+///   n < 5 이면 중앙값이 개인 하루치에 크게 흔들리므로 반환하지 않는다.
+func mrEasyPaceFromRuns(
+    runs: [MRWorkout],
+    targetHR: Double,
+    asOf: Date,
+    halfBand: Double = 5.0,
+    minN: Int = 5
+) -> MRHRPaceLookup? {
+    let cal = Calendar.current
+    let lo = targetHR - halfBand
+    let hi = targetHR + halfBand
+
+    var paces: [Double] = []
+    #if DEBUG
+    struct _S { let date: Date; let hr: Double; let km: Double; let pac: Double }
+    var dbgPassed: [_S] = []
+    var rejRange = 0, rejIndoor = 0, rejNoData = 0, rejDur = 0, rejDist = 0, rejBand = 0, rejSpd = 0
+    #endif
+
+    for w in runs {
+        let days = cal.dateComponents([.day], from: w.date,
+                                      to: cal.startOfDay(for: asOf)).day ?? -1
+        guard days >= 0, days <= 365 else {
+            #if DEBUG
+            rejRange += 1
+            #endif
+            continue
+        }
+        guard !w.indoor, let hr = w.hrAvg, let km = w.distanceKm else {
+            #if DEBUG
+            if w.indoor { rejIndoor += 1 } else { rejNoData += 1 }
+            #endif
+            continue
+        }
+        guard w.durationMin >= 20 else {
+            #if DEBUG
+            rejDur += 1
+            #endif
+            continue
+        }
+        guard km >= 2.0 else {
+            #if DEBUG
+            rejDist += 1
+            #endif
+            continue
+        }
+        guard hr >= lo && hr < hi else {
+            #if DEBUG
+            rejBand += 1
+            #endif
+            continue
+        }
+        let speed = km * 1000.0 / w.durationMin
+        guard speed > 100, speed < 400 else {
+            #if DEBUG
+            rejSpd += 1
+            #endif
+            continue
+        }
+        let pac = 60_000.0 / speed
+        paces.append(pac)
+        #if DEBUG
+        dbgPassed.append(_S(date: w.date, hr: hr, km: km, pac: pac))
+        #endif
+    }
+
+    #if DEBUG
+    print(String(format: "[HRPace:이지] 목표 %.1fbpm · 경계 %.1f~%.1fbpm · 통과 %d건",
+                 targetHR, lo, hi, dbgPassed.count))
+    let dfS = DateFormatter(); dfS.dateFormat = "yyyy-MM-dd"
+    let sampleStr = dbgPassed.sorted { $0.date > $1.date }.prefix(8)
+        .map { s in "\(dfS.string(from: s.date))(HR\(Int(s.hr)) · \(String(format: "%.1f", s.km))km · \(mrFormatPace(s.pac)))" }
+        .joined(separator: " · ")
+    if !sampleStr.isEmpty { print("[HRPace:이지] 표본 = \(sampleStr)") }
+    var rej: [String] = []
+    if rejRange  > 0 { rej.append("365일초과 \(rejRange)건") }
+    if rejIndoor > 0 { rej.append("실내 \(rejIndoor)건") }
+    if rejNoData > 0 { rej.append("데이터없음 \(rejNoData)건") }
+    if rejDur    > 0 { rej.append("20분미만 \(rejDur)건") }
+    if rejDist   > 0 { rej.append("2km미만 \(rejDist)건") }
+    if rejBand   > 0 { rej.append("구간밖 \(rejBand)건") }
+    if rejSpd    > 0 { rej.append("속도이상 \(rejSpd)건") }
+    if !rej.isEmpty { print("[HRPace:이지] 제외 = \(rej.joined(separator: " · "))") }
+    #endif
+
+    guard paces.count >= minN else {
+        #if DEBUG
+        print(String(format: "[HRPace:이지] n=%d < %d → 계산 불가", paces.count, minN))
+        #endif
+        return nil
+    }
+
+    paces.sort()
+    let mid = paces.count / 2
+    let median = paces.count % 2 == 0
+        ? (paces[mid - 1] + paces[mid]) / 2.0
+        : paces[mid]
+
+    #if DEBUG
+    print("[HRPace:이지] 중앙값 \(mrFormatPace(median))")
+    #endif
+
+    return MRHRPaceLookup(paceSec: median, n: paces.count, hrLo: lo, hrHi: hi)
 }
 
 /// 워크아웃 단위 심박–속도 회귀.
@@ -42,6 +184,10 @@ func mrFitHRPaceModel(runs: [MRWorkout], asOf: Date) -> MRHRPaceModel {
     var X: [[Double]] = []
     var y: [Double] = []
     var speeds: [Double] = []
+    #if DEBUG
+    var allDates: [Date] = []
+    var allTemps: [Double] = []
+    #endif
 
     for w in runs {
         let days = cal.dateComponents([.day], from: w.date,
@@ -55,6 +201,10 @@ func mrFitHRPaceModel(runs: [MRWorkout], asOf: Date) -> MRHRPaceModel {
         X.append([1.0, speed, max(0, (w.tempC ?? MR_REF_TEMP) - MR_REF_TEMP), w.durationMin])
         y.append(hr)
         speeds.append(speed)
+        #if DEBUG
+        allDates.append(w.date)
+        allTemps.append(w.tempC ?? MR_REF_TEMP)
+        #endif
     }
     guard X.count >= 8, let c = MRLinAlg.lstsq(X: X, y: y) else { return m }
 
@@ -64,8 +214,81 @@ func mrFitHRPaceModel(runs: [MRWorkout], asOf: Date) -> MRHRPaceModel {
     m.residSD = MRLinAlg.residualSD(X: X, y: y, coef: c, ddof: min(4, X.count - 1))
     m.n = X.count
     m.speedSpan = (speeds.max()! - speeds.min()!) / 60.0
+    m.dataHRMin = y.min() ?? 0
+    m.dataHRMax = y.max() ?? 0
+    m.dataSpeedMin = speeds.min() ?? 0
+
+    // R² — 학습 데이터에서 심박을 얼마나 잘 설명하는가
+    let yMean = y.reduce(0.0, +) / Double(y.count)
+    let ssTot = y.reduce(0.0) { acc, yi in acc + (yi - yMean) * (yi - yMean) }
+    let yHat  = X.map { row in row.indices.reduce(0.0) { $0 + c[$1] * row[$1] } }
+    let ssRes = zip(y, yHat).reduce(0.0) { acc, pair in acc + (pair.0 - pair.1) * (pair.0 - pair.1) }
+    m.r2 = ssTot > 0 ? 1.0 - ssRes / ssTot : 0.0
+
     m.ok = m.bSpeed > 0.005 && m.speedSpan >= 0.35
     m.tier = !m.ok ? "T1" : ((m.n >= 20 && m.speedSpan >= 0.6) ? "T2" : "T1")
+
+    #if DEBUG
+    // ── 기울기를 sec/km per bpm으로 (데이터 중심 HR에서 선형화) ──
+    // dPace/dHR = -60000 × bSpeed / (HR - b0)²
+    let midHR = (m.dataHRMin + m.dataHRMax) * 0.5
+    let slopeSecPerBpm: Double = {
+        let denom = (midHR - m.b0) * (midHR - m.b0)
+        guard denom > 0 else { return 0 }
+        return -60_000.0 * m.bSpeed / denom
+    }()
+
+    let sortedDates = allDates.sorted()
+    let df = DateFormatter(); df.dateFormat = "yy.MM"
+    let dateRangeStr = sortedDates.isEmpty ? "—"
+        : "\(df.string(from: sortedDates.first!))~\(df.string(from: sortedDates.last!))"
+
+    print(String(format: "[HRPace:회귀] n=%d (%@) · b0=%.1f bpm · 기울기=%.1f초/bpm(%.0fbpm기준) · R²=%.2f  [회귀모델·고정버킷·평균]",
+                 m.n, dateRangeStr, m.b0, slopeSecPerBpm, midHR, m.r2))
+
+    // ── 심박 구간별 실측 분포 ──
+    let binDefs: [(lo: Double, hi: Double)] = [(0, 130), (130, 140), (140, 150), (150, 999)]
+    for bin in binDefs {
+        let pts = zip(y, speeds).filter { $0.0 >= bin.lo && $0.0 < bin.hi }
+        guard !pts.isEmpty else { continue }
+        let avgSpd = pts.map { $0.1 }.reduce(0.0, +) / Double(pts.count)
+        let label: String = {
+            if bin.lo == 0 { return String(format: "  ~%.0f  ", bin.hi) }
+            if bin.hi >= 999 { return String(format: "%.0f~    ", bin.lo) }
+            return String(format: "%.0f~%.0f", bin.lo, bin.hi)
+        }()
+        print(String(format: "[HRPace:회귀]   %@ : n=%-3d  평균 페이스 %@",
+                     label, pts.count, mrFormatPace(60_000.0 / avgSpd)))
+    }
+
+    // ── 135bpm 예측 vs 130~140 실측 ──
+    let pts130 = zip(y, speeds).filter { $0.0 >= 130 && $0.0 < 140 }
+    if !pts130.isEmpty {
+        let actualAvgSpd = pts130.map { $0.1 }.reduce(0.0, +) / Double(pts130.count)
+        let predStr = m.paceAtHR(135.0).map { mrFormatPace($0) } ?? "범위밖/nil"
+        print("[HRPace:회귀] 135bpm 예측 \(predStr) vs 130~140 실측 평균 \(mrFormatPace(60_000.0 / actualAvgSpd))")
+    }
+
+    // ── 저심박(<132) 런 상세 — 회귀를 당기는 아웃라이어 후보 ──
+    let lowIdxs = y.indices.filter { y[$0] < 132 }
+    if !lowIdxs.isEmpty {
+        let dfDay = DateFormatter(); dfDay.dateFormat = "MM.dd"
+        print("[HRPace:회귀] 저심박(<132) 런 \(lowIdxs.count)건:")
+        for i in lowIdxs.sorted(by: { y[$0] < y[$1] }) {
+            print(String(format: "[HRPace:회귀]   %@  HR=%.0f  페이스 %@",
+                         dfDay.string(from: allDates[i]), y[i],
+                         mrFormatPace(60_000.0 / speeds[i])))
+        }
+    }
+
+    // ── 기온 보정 상태 ──
+    if !allTemps.isEmpty {
+        print(String(format: "[HRPace:회귀] bTemp=%.4f / 기온 %.0f~%.0f°C (더위 보정 %@)",
+                     m.bTemp, allTemps.min()!, allTemps.max()!,
+                     m.bTemp > 0.05 ? "작동" : "약함/역전"))
+    }
+    #endif
+
     return m
 }
 

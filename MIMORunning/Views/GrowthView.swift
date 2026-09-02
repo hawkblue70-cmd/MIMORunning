@@ -68,6 +68,22 @@ private struct MilestoneEvent: Identifiable {
     let detail: String
 }
 
+private struct BodyMassPeakData {
+    let currentKg: Double
+    let peakKg: Double
+    let peakDate: Date
+    let diffKg: Double   // peakKg - currentKg (양수 = 최고치보다 가볍다)
+    let diffPct: Double  // |diff| / peak * 100
+    let isLighter: Bool  // currentKg < peakKg
+}
+
+private struct BodyMassStabilityData {
+    let minKg: Double
+    let maxKg: Double
+    let stdDev: Double
+    let count: Int
+}
+
 // MARK: - GrowthView
 
 struct GrowthView: View {
@@ -114,8 +130,17 @@ struct GrowthView: View {
     @State private var growthInsightBannerText: String? = nil
     @State private var showWeeklyShareCard = false
     @State private var showMileageStreakShareCard = false
-    @State private var displayGaps: [(start: Date, end: Date, days: Int)] = []
+    @State private var displayGaps: [(start: Date, end: Date, days: Int, prePace: Double?, postPace: Double?)] = []
     @State private var isGapExpanded: Bool = false
+
+    // MARK: 몸의 변화 섹션 state
+    @State private var bodyMassPeakData: BodyMassPeakData? = nil
+    @State private var bodyMassStabilityData: BodyMassStabilityData? = nil
+    @State private var shouldShowHealthStory: Bool = false
+    @State private var healthStoryIndex: Int = 0
+    @State private var healthStoryRecorded: Bool = false
+
+    private static let healthStoryIndexKey = "mimo.bodyChange.healthStory.index"
 
     // 자료 구조가 바뀔 때만 올린다. 템플릿 문구 변경은 stableHash가 자동 처리.
     private static let weeklyCommentVersion = 11
@@ -214,6 +239,7 @@ struct GrowthView: View {
                             paceSection
                             metricTrendsSection
                             MRHealthMetricsView(m: engine.healthMetrics)
+                            bodyChangeSectionView
                             gapSection
                             MRDriftView(drift: engine.drift)
                             prSection
@@ -257,9 +283,7 @@ struct GrowthView: View {
             guard newCount > 0 else { return }
             let gaps = Self.computeDisplayGaps(runs: engine.runs)
             displayGaps = gaps
-            #if DEBUG
-            Self.logGapDiagnostic(gaps: gaps, runs: engine.runs)
-            #endif
+            // 로그는 computeDisplayGaps 내부에서 출력됨
             guard formComputedForRunCount != newCount else { return }
             Task { await refreshFormObservation() }
         }
@@ -290,8 +314,13 @@ struct GrowthView: View {
             await refreshMetricAnalyses()
         }
         .onAppear {
-            // .task는 첫 진입 1회만 실행 — 탭 재진입 시 신체 측정 최신화
+            // .task는 첫 진입 1회만 실행 — 탭 재진입 시 신체 측정·몸의 변화 최신화
+            // ⚠ loadBodyChangeSectionData는 여기서만 호출한다.
+            //   .task에서도 호출하면 두 Task가 경쟁하여 healthStory를 기록한 직후
+            //   두 번째 완료 Task가 canShow=false를 덮어쓸 수 있다.
+            MRAdviceLogStore.runMigrationIfNeeded()
             Task { await checkBodyDataAvailability() }
+            Task { await loadBodyChangeSectionData() }
         }
         .sheet(item: $selectedTrend) { metric in
             MetricTrendView(
@@ -1674,26 +1703,61 @@ struct GrowthView: View {
 
     // MARK: - 쉬어간 기간
 
-    private static func computeDisplayGaps(runs: [MRWorkout], minDays: Int = 14) -> [(start: Date, end: Date, days: Int)] {
+    private static func computeDisplayGaps(runs: [MRWorkout], minDays: Int = 14, maxDays: Int = 365)
+        -> [(start: Date, end: Date, days: Int, prePace: Double?, postPace: Double?)] {
         guard runs.count >= 2 else { return [] }
-        let cal = Calendar.current
         let sorted = runs.sorted { $0.date < $1.date }
-        var out: [(start: Date, end: Date, days: Int)] = []
+        let window = 28.0 * 86_400.0
+        #if DEBUG
+        var skippedTooLong = 0
+        var skippedNoPace = 0
+        #endif
+        var out: [(start: Date, end: Date, days: Int, prePace: Double?, postPace: Double?)] = []
         for i in 0..<(sorted.count - 1) {
             let a = sorted[i], b = sorted[i + 1]
-            let gap = cal.dateComponents([.day], from: a.date, to: b.date).day ?? 0
+            let gap = Calendar.current.dateComponents([.day], from: a.date, to: b.date).day ?? 0
             guard gap >= minDays else { continue }
-            out.append((start: a.date, end: b.date, days: gap))
+            // ① 상한: 365일 초과 공백은 훈련 공백이 아닌 시작 전 시기로 분류
+            guard gap <= maxDays else {
+                #if DEBUG
+                skippedTooLong += 1
+                #endif
+                continue
+            }
+            // ② 전후 페이스 데이터 계산 (없으면 목록 제외)
+            let preRuns  = sorted.prefix(i + 1).filter { a.date.timeIntervalSince($0.date) < window }
+            let postRuns = sorted.dropFirst(i + 1).filter { $0.date.timeIntervalSince(b.date) < window }
+            let prePaces  = preRuns.compactMap(\.paceSecPerKm).filter { $0 <= 720 }
+            let postPaces = postRuns.compactMap(\.paceSecPerKm).filter { $0 <= 720 }
+            guard !prePaces.isEmpty && !postPaces.isEmpty else {
+                #if DEBUG
+                skippedNoPace += 1
+                #endif
+                continue
+            }
+            let prePace  = prePaces.reduce(0, +) / Double(prePaces.count)
+            let postPace = postPaces.reduce(0, +) / Double(postPaces.count)
+            out.append((start: a.date, end: b.date, days: gap, prePace: prePace, postPace: postPace))
         }
+        #if DEBUG
+        logGapDiagnostic(gaps: out, skippedTooLong: skippedTooLong, skippedNoPace: skippedNoPace)
+        #endif
         return out
     }
 
     #if DEBUG
-    private static func logGapDiagnostic(gaps: [(start: Date, end: Date, days: Int)], runs: [MRWorkout]) {
-        print("[공백] 기준 = 14일 이상 러닝 없음")
+    private static func logGapDiagnostic(
+        gaps: [(start: Date, end: Date, days: Int, prePace: Double?, postPace: Double?)],
+        skippedTooLong: Int = 0,
+        skippedNoPace: Int = 0
+    ) {
+        print("[공백] 기준 = 14일 이상 · 365일 이하 · 전후 데이터 모두 필요")
+        var skipParts: [String] = []
+        if skippedTooLong > 0 { skipParts.append("365일 초과 \(skippedTooLong)건") }
+        if skippedNoPace > 0  { skipParts.append("전후 데이터 불완전 \(skippedNoPace)건") }
+        if !skipParts.isEmpty { print("[공백] 제외 = " + skipParts.joined(separator: " · ")) }
         guard !gaps.isEmpty else { print("[공백] 0건"); return }
         print("[공백] \(gaps.count)건:")
-        let sorted = runs.sorted { $0.date < $1.date }
         let ymd: (Date) -> String = { d in
             let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d)
         }
@@ -1701,15 +1765,8 @@ struct GrowthView: View {
             guard let s = sec else { return "—" }
             return String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60)
         }
-        let hf: (Double?) -> String = { hr in hr.map { String(format: "%.0f", $0) } ?? "—" }
         for gap in gaps {
-            let pre  = sorted.filter { $0.date < gap.start && $0.date >= gap.start.addingTimeInterval(-28 * 86_400) }
-            let post = sorted.filter { $0.date >= gap.end   && $0.date < gap.end.addingTimeInterval(28 * 86_400) }
-            let prePace:  Double? = { let v = pre.compactMap(\.paceSecPerKm).filter { $0 <= 720 };  return v.isEmpty ? nil : v.reduce(0,+)/Double(v.count) }()
-            let preHR:    Double? = { let v = pre.compactMap(\.hrAvg);                               return v.isEmpty ? nil : v.reduce(0,+)/Double(v.count) }()
-            let postPace: Double? = { let v = post.compactMap(\.paceSecPerKm).filter { $0 <= 720 }; return v.isEmpty ? nil : v.reduce(0,+)/Double(v.count) }()
-            let postHR:   Double? = { let v = post.compactMap(\.hrAvg);                              return v.isEmpty ? nil : v.reduce(0,+)/Double(v.count) }()
-            print("[공백] \(ymd(gap.start)) ~ \(ymd(gap.end)) (\(gap.days)일) | 전: 페이스 \(pf(prePace)) · 심박 \(hf(preHR)) | 후: 페이스 \(pf(postPace)) · 심박 \(hf(postHR))")
+            print("[공백] \(ymd(gap.start)) ~ \(ymd(gap.end)) (\(gap.days)일) | 전 페이스 \(pf(gap.prePace)) · 후 페이스 \(pf(gap.postPace))")
         }
     }
     #endif
@@ -1743,18 +1800,29 @@ struct GrowthView: View {
                 }
                 .buttonStyle(.plain)
 
-                // 목록: 펼쳐졌을 때만 표시
+                // 목록: 펼쳐졌을 때만 표시 (최신순)
                 if isGapExpanded {
+                    let pf: (Double) -> String = { sec in
+                        let s = Int(sec.rounded())
+                        return String(format: "%d'%02d\"", s / 60, s % 60)
+                    }
+                    let reversedGaps = displayGaps.reversed()
                     VStack(spacing: 0) {
-                        ForEach(Array(displayGaps.enumerated()), id: \.offset) { idx, gap in
-                            HStack {
+                        ForEach(Array(reversedGaps.enumerated()), id: \.offset) { idx, gap in
+                            HStack(alignment: .center, spacing: 8) {
                                 Text(gapMonthLabel(gap.start))
                                     .font(.system(size: 14))
                                     .foregroundStyle(.white)
-                                Spacer()
                                 Text(L.s("\(gap.days)일", "\(gap.days) days"))
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(Color(hex: "AEAEB2"))
+                                Spacer()
+                                if let pre = gap.prePace, let post = gap.postPace {
+                                    Text(L.s("복귀 후 \(pf(post)) · 쉬기 전 \(pf(pre))",
+                                             "After \(pf(post)) · Before \(pf(pre))"))
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Color(hex: "8E8E93"))
+                                }
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
@@ -1778,6 +1846,295 @@ struct GrowthView: View {
         let df = DateFormatter()
         df.dateFormat = "''yy.MM"
         return df.string(from: date)
+    }
+
+    // MARK: - 몸의 변화 섹션
+
+    private func loadBodyChangeSectionData() async {
+        let allMass = await manager.fetchBodyMassAllTime()
+
+        let cal = Calendar.current
+        let now = Date()
+
+        // 체중 카드들
+        bodyMassPeakData      = nil
+        bodyMassStabilityData = nil
+        if allMass.count >= 8 {
+            let currentKg = allMass.last!.value
+            let peakEntry = allMass.max(by: { $0.value < $1.value })!
+            let diffKg    = peakEntry.value - currentKg
+            let diffPct   = abs(diffKg) / peakEntry.value * 100
+
+            if diffPct >= 3.0 {
+                bodyMassPeakData = BodyMassPeakData(
+                    currentKg: currentKg,
+                    peakKg: peakEntry.value,
+                    peakDate: peakEntry.date,
+                    diffKg: diffKg,
+                    diffPct: diffPct,
+                    isLighter: currentKg < peakEntry.value
+                )
+                let pc = cal.dateComponents([.year, .month], from: peakEntry.date)
+                #if DEBUG
+                print("[몸] 체중 최고 \(String(format: "%.1f", peakEntry.value))kg(\(pc.year ?? 0)년 \(pc.month ?? 0)월) · 현재 \(String(format: "%.1f", currentKg))kg · 차이 \(String(format: "%.1f", diffKg))kg \(String(format: "%.1f", diffPct))%")
+                #endif
+            }
+
+            let sixMonthsAgo = cal.date(byAdding: .month, value: -6, to: now) ?? .distantPast
+            let recent6m     = allMass.filter { $0.date >= sixMonthsAgo }
+            if recent6m.count >= 8 {
+                let vals   = recent6m.map { $0.value }
+                let sd     = bodyChangeStdDev(vals)
+                let branch = sd < 0.8 ? "A" : (sd <= 2.0 ? "B" : "C")
+                bodyMassStabilityData = BodyMassStabilityData(
+                    minKg: vals.min() ?? 0,
+                    maxKg: vals.max() ?? 0,
+                    stdDev: sd,
+                    count: recent6m.count
+                )
+                #if DEBUG
+                print("[몸] 6개월 SD \(String(format: "%.1f", sd))kg · 측정 \(recent6m.count)회 · 문장 갈래 \(branch)")
+                #endif
+            }
+        }
+
+        // 4. 건강 이야기 (4주 주기) — MRAdviceLog.canShow 사용
+        let idx      = UserDefaults.standard.integer(forKey: Self.healthStoryIndexKey)
+        let storyKey = idx == 0 ? "health.story.a" : "health.story.b"
+        let log      = MRAdviceLogStore.load()
+        let (canShow, reason) = log.canShow(storyKey, minDays: 28)
+        shouldShowHealthStory = canShow
+        healthStoryIndex      = idx
+        healthStoryRecorded   = false
+        #if DEBUG
+        let storyLabel = idx == 0 ? "(a)" : "(b)"
+        print("[몸] 건강 이야기 — 조건 확인 \(storyLabel) · canShow=\(canShow)/\(reason)")
+        #endif
+    }
+
+    // MARK: 몸의 변화 섹션 View
+
+    @ViewBuilder
+    private var bodyChangeSectionView: some View {
+        let hasAny = bodyMassPeakData != nil
+            || bodyMassStabilityData != nil
+            || shouldShowHealthStory
+        if hasAny {
+            let L = AppLanguage.shared
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(
+                    title: L.s("몸의 변화", "Body Changes"),
+                    subtitle: L.s("측정 기록 기반", "Based on health records")
+                )
+                if let pk  = bodyMassPeakData      { bodyMassPeakCard(pk) }
+                if let st  = bodyMassStabilityData  { bodyMassStabilityCard(st) }
+                if shouldShowHealthStory            { healthStoryCardView }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func bodyMassPeakCard(_ data: BodyMassPeakData) -> some View {
+        let L      = AppLanguage.shared
+        let curStr = String(format: "%.1f", data.currentKg)
+        let pkStr  = String(format: "%.1f", data.peakKg)
+        let dKgStr = String(format: "%.1f", abs(data.diffKg))
+        let dPctStr = String(format: "%.1f", data.diffPct)
+
+        let peakDateStr: String = {
+            let comps = Calendar.current.dateComponents([.year, .month], from: data.peakDate)
+            if L.isEnglish {
+                let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMM yyyy"
+                return df.string(from: data.peakDate)
+            }
+            return "\(comps.year ?? 0)년 \(comps.month ?? 0)월"
+        }()
+
+        let titleText: String = {
+            if L.isEnglish {
+                return data.isLighter
+                    ? "You are \(dKgStr) kg lighter than your recorded peak."
+                    : "Your weight is \(dKgStr) kg heavier than your recorded peak."
+            } else {
+                return data.isLighter
+                    ? "지금 체중은 기록이 있는 기간의 최고치보다 \(dKgStr)kg 가볍습니다"
+                    : "지금 체중은 기록이 있는 기간의 최고치보다 \(dKgStr)kg 무겁습니다"
+            }
+        }()
+        let basisText = L.s(
+            "기록이 있는 기간의 최고치 기준입니다. 그 전은 알 수 없습니다.",
+            "Based on your recorded peak. Earlier history is unknown."
+        )
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L.s("최고치 대비", "vs. Recorded Peak"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(titleText)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Table
+            VStack(alignment: .leading, spacing: 3) {
+                bodyMassRow(label: L.s("최고", "Peak"),
+                            value: "\(pkStr) kg",
+                            note: "(\(peakDateStr))")
+                bodyMassRow(label: L.s("지금", "Now"),
+                            value: "\(curStr) kg",
+                            note: nil)
+                bodyMassRow(label: L.s("차이", "Diff"),
+                            value: "\(data.isLighter ? "−" : "+")\(dKgStr) kg",
+                            note: "· \(dPctStr)%")
+            }
+            .padding(.top, 2)
+
+            Text(basisText)
+                .font(.system(size: 11))
+                .foregroundStyle(Color(hex: "636366"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func bodyMassRow(label: String, value: String, note: String?) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color(hex: "8A8A92"))
+                .frame(width: 28, alignment: .leading)
+            Text(value)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+            if let n = note {
+                Text(n)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(hex: "8A8A92"))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func bodyMassStabilityCard(_ data: BodyMassStabilityData) -> some View {
+        let L      = AppLanguage.shared
+        let minStr = String(format: "%.1f", data.minKg)
+        let maxStr = String(format: "%.1f", data.maxKg)
+        let sdStr  = String(format: "%.1f", data.stdDev)
+
+        let titleText = L.s(
+            "체중이 \(minStr) ~ \(maxStr)kg 사이에서 유지되고 있어요",
+            "Your weight has stayed between \(minStr) and \(maxStr) kg"
+        )
+        let sdSentence: String = {
+            if data.stdDev < 0.8 {
+                return L.s("흔들림이 거의 없습니다.", "Very stable — barely any fluctuation.")
+            } else if data.stdDev <= 2.0 {
+                return L.s("평소 범위 안에서 오르내리고 있어요.", "Normal day-to-day variation.")
+            } else {
+                return L.s("최근 폭이 조금 넓습니다.", "The range has been a bit wider lately.")
+            }
+        }()
+        let basisText = L.s(
+            "측정 \(data.count)회 · 표준편차 \(sdStr) kg · 최근 6개월",
+            "\(data.count) readings · SD \(sdStr) kg · last 6 months"
+        )
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L.s("유지", "Stability"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(titleText)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+            Text(sdSentence)
+                .font(.system(size: 13))
+                .foregroundStyle(Color(hex: "AEAEB2"))
+            Text(basisText)
+                .font(.system(size: 11))
+                .foregroundStyle(Color(hex: "636366"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private var healthStoryCardView: some View {
+        let L = AppLanguage.shared
+        let storyA = (
+            headline: L.s(
+                "체중이 크게 줄지 않아도 달리기만으로 간 지방이 줄었습니다.",
+                "Running alone reduces liver fat — even without significant weight loss."
+            ),
+            body: L.s(
+                "무작위 배정 연구 14편 551명에서 운동군의 평균 체중 감소는 2.8%뿐이었는데도, 간 지방이 30% 이상 줄어든 사람이 3.5배 많았습니다.",
+                "Across 14 randomized trials (551 people), the exercise group lost just 2.8% of body weight on average — yet were 3.5× more likely to reduce liver fat by 30% or more."
+            ),
+            cite: "Stine 2023, Am J Gastroenterol"
+        )
+        let storyB = (
+            headline: L.s(
+                "주 1시간 미만 달려도 주 3시간 이상 달리는 사람과 같은 이득을 얻었습니다.",
+                "Running less than 1 hour per week yields the same benefit as 3+ hours."
+            ),
+            body: L.s(
+                "55,137명을 15년 추적한 연구에서 러너는 전체 사망 위험이 30%, 심혈관 사망 위험이 45% 낮았고 평균 3년 더 살았습니다.",
+                "In a 15-year study of 55,137 adults, runners had 30% lower all-cause mortality and 45% lower cardiovascular mortality, living an average of 3 years longer."
+            ),
+            cite: "Lee 2014, J Am Coll Cardiol"
+        )
+        let story = healthStoryIndex == 0 ? storyA : storyB
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L.s("건강 이야기", "Health Insight"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(story.headline)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(story.body)
+                .font(.system(size: 13))
+                .foregroundStyle(Color(hex: "AEAEB2"))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(story.cite)
+                .font(.system(size: 11))
+                .foregroundStyle(Color(hex: "636366"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onAppear {
+            guard shouldShowHealthStory && !healthStoryRecorded else { return }
+            healthStoryRecorded = true
+            let key = healthStoryIndex == 0 ? "health.story.a" : "health.story.b"
+            var log = MRAdviceLogStore.load()
+            log.markShown(key)
+            MRAdviceLogStore.save(log)
+            let next = (healthStoryIndex + 1) % 2
+            UserDefaults.standard.set(next, forKey: Self.healthStoryIndexKey)
+            #if DEBUG
+            let label = healthStoryIndex == 0 ? "(a)" : "(b)"
+            print("[몸] 건강 이야기 \(label) 기록 완료 — 다음 표시 \(next == 0 ? "(a)" : "(b)")")
+            #endif
+        }
+    }
+
+    // MARK: 몸의 변화 헬퍼
+
+    private func bodyChangeStdDev(_ values: [Double]) -> Double {
+        guard values.count > 1 else { return 0 }
+        let mean = values.reduce(0, +) / Double(values.count)
+        let variance = values.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(values.count - 1)
+        return variance.squareRoot()
     }
 }
 

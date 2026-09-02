@@ -769,6 +769,26 @@ struct ActivityDetailView: View {
 
     private func loadInsights() {
         guard runInsights.isEmpty else { return }
+
+        // 이 러닝이 속한 주의 계획 목표 km 검색
+        let planWeeklyTargetKm: Double? = {
+            var mondayCal = Calendar.current
+            mondayCal.firstWeekday = 2
+            guard let activityMonday = mondayCal.date(
+                from: mondayCal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: activity.date)
+            ) else { return nil }
+            let activityMondayDay = Calendar.current.startOfDay(for: activityMonday)
+            for plan in engine.plans {
+                for week in plan.weeks {
+                    let weekMondayDay = Calendar.current.startOfDay(for: week.monday)
+                    if weekMondayDay == activityMondayDay {
+                        return week.weeklyKm
+                    }
+                }
+            }
+            return nil
+        }()
+
         let result = RunInsightEngine.insights(
             for: activity,
             detail: detail,
@@ -781,7 +801,8 @@ struct ActivityDetailView: View {
             lt1HR: engine.phys.lt1HR?.value,
             lt1SD: engine.phys.lt1SD,
             easyCeilingHR: engine.phys.easyCeilingHR,
-            heat: engine.heat
+            heat: engine.heat,
+            planWeeklyTargetKm: planWeeklyTargetKm
         )
         runInsights = result.insights
         runSegmentSource = result.segmentSource
@@ -2551,7 +2572,7 @@ private struct HRZonesSection: View {
                     Text(AppLanguage.shared.s("각각의 심박수 영역에 머무르는 예상 시간입니다.", "Estimated time spent in each heart rate zone."))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
-                    Text(AppLanguage.shared.s("Karvonen(심박 예비율) 공식 기반 · 최근 30일 최소 안정시 심박(RHR) + 나이별 최대심박(MHR) 추정 적용. 개인 체력 및 측정 조건에 따라 실제 영역과 다를 수 있습니다.", "Based on Karvonen (HRR) formula · Uses lowest resting HR over last 30 days + age-estimated max HR. Zones may differ from actual values."))
+                    Text(AppLanguage.shared.s("Karvonen(심박 예비율) 공식 기반 · 최근 30일 최소 휴식 시 심박수(RHR) + 나이별 최대심박(MHR) 추정 적용. 개인 체력 및 측정 조건에 따라 실제 영역과 다를 수 있습니다.", "Based on Karvonen (HRR) formula · Uses lowest resting HR over last 30 days + age-estimated max HR. Zones may differ from actual values."))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }

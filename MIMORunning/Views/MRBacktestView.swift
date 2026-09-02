@@ -406,10 +406,12 @@ struct MRHealthMetricsView: View {
                 if m.restingHR != nil || m.vo2max != nil {
                     HStack(spacing: 16) {
                         if let rhr = m.restingHR {
-                            metricPair(label: L.s("안정시 심박", "Resting HR"),
+                            metricPair(label: L.s("휴식 시 심박수", "Resting HR"),
                                        current: String(format: "%.0f", rhr),
                                        last: m.restingHRLY.map { String(format: "%.0f", $0) },
-                                       unit: "bpm")
+                                       unit: "bpm",
+                                       note: L.s("계절과 훈련량에 따라 몇 bpm씩 움직입니다",
+                                                 "Varies a few bpm with season and training load"))
                         }
                         if let v = m.vo2max {
                             metricPair(label: "VO2max",
@@ -428,7 +430,8 @@ struct MRHealthMetricsView: View {
     }
 
     @ViewBuilder
-    private func metricPair(label: String, current: String, last: String?, unit: String) -> some View {
+    private func metricPair(label: String, current: String, last: String?, unit: String,
+                             note: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).font(.system(size: 10)).foregroundStyle(Color.mrInk3)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -438,6 +441,12 @@ struct MRHealthMetricsView: View {
                     Text(AppLanguage.shared.s("(작년 \(l))", "(last yr \(l))"))
                         .font(.system(size: 11)).foregroundStyle(Color.mrInk3)
                 }
+            }
+            if let note {
+                Text(note)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.mrInk3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

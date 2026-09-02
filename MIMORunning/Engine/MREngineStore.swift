@@ -40,6 +40,7 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var phys = MRPhysiology()
     @Published private(set) var heat = MRHeatModel()
     @Published private(set) var hrPace = MRHRPaceModel()
+    @Published private(set) var easyPaceLookup: MRHRPaceLookup?
     @Published private(set) var efforts: [MRRaceEffort] = []
     @Published private(set) var fit = MRExponentFit()
     @Published private(set) var profile = MRProfile()
@@ -62,6 +63,9 @@ final class MREngineStore: ObservableObject {
     // 로컬 저장: backtest / advice 재계산용
     private var rhrSamples: [(date: Date, value: Double)] = []
     private var rhrLastFetchedAt: Date? = nil
+    // 대회별 계획 시작 월요일 고정값 (MeView에서 스냅샷 앵커로 업데이트).
+    // refreshCore와 recomputePlans가 동일한 앵커를 참조해 계획 길이를 일치시킨다.
+    private var storedSnapshotAnchors: [String: Date] = [:]
 
     private static let rhrCacheDateKey    = "mimo.rhrCache.fetchedAt"
     private static let rhrCacheSamplesKey = "mimo.rhrCache.samples"
@@ -101,9 +105,9 @@ final class MREngineStore: ObservableObject {
     var halfEquivMin: Double {
         predictions.first { $0.label == "하프" }?.midMin ?? 0
     }
-    var easyPaceSecPerKm: Double? {
-        phys.easyCeilingHR.flatMap { hrPace.paceAtHR($0) }
-    }
+    // 회귀(hrPace)는 그래프용으로만 쓴다.
+    // 이지 페이스 값은 항상 실측 구간 중앙값(easyPaceLookup)에서 가져온다.
+    var easyPaceSecPerKm: Double? { easyPaceLookup?.paceSec }
 
     var raceItems: [MRRaceItem] {
         (checks.map { MRRaceItem.planned($0) }
@@ -190,9 +194,28 @@ final class MREngineStore: ObservableObject {
         phys = mrPhysiology(runs: fetched, restingHRSamples: rhr,
                             dateOfBirth: dob, sex: sex, asOf: now)
         heat = mrFitHeatModel(runs: fetched)
+        // mrFitHRPaceModel 내부 #if DEBUG 에서 회귀 통계(n·구간별 실측·R²)가 출력된다.
         hrPace = mrFitHRPaceModel(runs: fetched, asOf: now)
+
+        // mrEasyPaceFromRuns 내부 #if DEBUG 에서 구간 중앙값 결과가 출력된다.
+        if let targetHR = phys.easyCeilingHR {
+            easyPaceLookup = mrEasyPaceFromRuns(runs: fetched, targetHR: targetHR, asOf: now)
+        } else {
+            easyPaceLookup = nil
+        }
+
         #if DEBUG
-        print("[HRPace] tier=\(hrPace.tier) · 이지페이스=\(easyPaceSecPerKm.map { mrFormatPace($0) } ?? "-")")
+        do {
+            let hrMaxStr = phys.hrMax.map { String(format: "%.0f", $0.value) } ?? "—"
+            let lt1Str   = phys.lt1HR.map  { String(format: "%.0f", $0.value) } ?? "—"
+            let thrStr   = phys.easyCeilingHR.map { String(format: "%.0f", $0) } ?? "—"
+            print("[HRPace] tier=\(hrPace.tier) n=\(hrPace.n) · HRmax=\(hrMaxStr) LT1=\(lt1Str) 목표심박=\(thrStr)")
+            if let lk = easyPaceLookup {
+                print("[HRPace] → 이지페이스 \(mrFormatPace(lk.paceSec))  근거: \(lk.basis)")
+            } else {
+                print("[HRPace] → 이지페이스 계산 불가 (구간 n<5 또는 목표심박 없음)")
+            }
+        }
         #endif
 
         efforts = mrApplyHeat(mrDetectEfforts(runs: fetched, phys: phys), heat: heat)
@@ -245,15 +268,40 @@ final class MREngineStore: ObservableObject {
         let raceTempByID = Dictionary(upcoming.map { r in
             (r.id, mrSeasonalTemp(runs: fetched, for: r.date) ?? MR_REF_TEMP)
         }, uniquingKeysWith: { old, _ in old })
+        #if DEBUG
+        do {
+            let goalFmt = DateFormatter(); goalFmt.dateFormat = "yyyy-MM-dd"
+            print(String(format: "[계획:등록대회] %d건", upcoming.count))
+            for r in upcoming {
+                let distStr = String(format: "%.1fkm", r.distanceM / 1000.0)
+                let goalMin = userInput.goals.minutes(for: r.distanceM)
+                let goalStr: String
+                if let gm = goalMin {
+                    let h = Int(gm) / 60; let m = Int(gm) % 60
+                    goalStr = h > 0 ? String(format: "%d:%02d:00", h, m) : String(format: "%02d:00", m)
+                } else { goalStr = "--:--" }
+                print("  · \(r.name) — \(goalFmt.string(from: r.date)) · \(distStr) · 목표 \(goalStr)")
+            }
+        }
+        #endif
         // 날짜 순으로 대회를 처리하며 앞 대회의 피크 상태를 다음 대회 플랜에 전달한다.
         var prevPlanInfo: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil
         let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in
             let rt = raceTempByID[r.id] ?? MR_REF_TEMP
+            let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
+            let anchor = storedSnapshotAnchors[key]
+            // 앞선 대회는 반드시 대상 대회보다 하루 이상 앞선 날이어야 한다.
+            // 같은 날짜나 중복 등록된 경우 자기 자신을 prior로 잡는 것을 방지한다.
+            let prior = prevPlanInfo.flatMap { p in
+                Calendar.current.startOfDay(for: p.date) < Calendar.current.startOfDay(for: r.date) ? p : nil
+            }
             let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
                                  profile: planProfile, halfEquivMin: he,
                                  easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
                                  raceTempC: rt, runsPerWeek: planProfile.runsPerWeek,
-                                 priorRace: prevPlanInfo)
+                                 priorRace: prior,
+                                 forcedMonday: anchor,
+                                 caller: "refreshCore", raceName: r.name)
             if let pl { prevPlanInfo = (date: r.date, name: r.name,
                                         peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }
             return (r, pl)
@@ -347,7 +395,9 @@ final class MREngineStore: ObservableObject {
                 (Calendar.current.dateComponents([.day], from: sorted14[i].date, to: sorted14[i + 1].date).day ?? 0) >= 14
               }.count
             : 0
-        print("[추론] firstData=\(firstData.map(mrYMD) ?? "-") · 경력 \(String(format: "%.2f", profileFull.trainingAgeYears?.value ?? 0))년 · 공백 \(gap14)건 (기준 14일)")
+        // 경력 상세는 mrProfileFull 내부 #if DEBUG 에서 출력됨
+        print(String(format: "[추론] 경력 %.2f년 · 레벨 %@",
+                     profileFull.trainingAgeYears?.value ?? 0, profileFull.level))
         #endif
 
         // ③ VO2max + 건강 지표 (vo2도 ①에서 시작했으므로 이미 도착했을 것)
@@ -361,6 +411,14 @@ final class MREngineStore: ObservableObject {
         let dn = ["", "일", "월", "화", "수", "목", "금", "토"]
         #if DEBUG
         print("[건강] 루틴 \(h.habitDays.map { dn[$0] }.joined(separator: "·")) · 30일 중 \(h.days30)일 · 90일 \(h.sessions90)회 \(Int(h.km90))km")
+        do {
+            let rhrNow = h.restingHR.map { String(format: "%.0f", $0) } ?? "없음"
+            let rhrLY  = h.restingHRLY.map { String(format: "%.0f", $0) } ?? "없음"
+            let vo2Now = h.vo2max.map { String(format: "%.1f", $0) } ?? "없음"
+            let vo2LY  = h.vo2maxLY.map { String(format: "%.1f", $0) } ?? "없음"
+            print("[성장] 안정시 심박 올해 \(rhrNow) (중앙값·90일) · 작년 \(rhrLY) (중앙값·재계산)")
+            print("[성장] VO2max 올해 \(vo2Now) · 작년 \(vo2LY)")
+        }
         #endif
     }
 
@@ -645,6 +703,7 @@ final class MREngineStore: ObservableObject {
     /// 키가 있으면 계획이 재시작되지 않는다 — 스냅샷 저장 이후 주차 구조가 동결된다.
     func recomputePlans(snapshotAnchors: [String: Date] = [:]) {
         guard case .ready = state else { return }
+        storedSnapshotAnchors = snapshotAnchors   // refreshCore가 같은 앵커를 쓸 수 있도록 저장
         MRUserInputStore.save(userInput)
         let now = Date()
         let planCutoff2: Date = {
@@ -667,12 +726,16 @@ final class MREngineStore: ObservableObject {
             let rt = raceTempByID[r.id] ?? MR_REF_TEMP
             let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
             let anchor = snapshotAnchors[key]
+            let prior2 = prevPlanInfo2.flatMap { p in
+                Calendar.current.startOfDay(for: p.date) < Calendar.current.startOfDay(for: r.date) ? p : nil
+            }
             let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
                                  profile: planProfile2, halfEquivMin: he,
                                  easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
                                  raceTempC: rt, runsPerWeek: planProfile2.runsPerWeek,
-                                 priorRace: prevPlanInfo2,
-                                 forcedMonday: anchor)
+                                 priorRace: prior2,
+                                 forcedMonday: anchor,
+                                 caller: "recomputePlans", raceName: r.name)
             if let pl { prevPlanInfo2 = (date: r.date, name: r.name,
                                          peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }
             return (r, pl)

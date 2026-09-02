@@ -280,7 +280,8 @@ func mrCreateRetroactiveArchives(
             raceDate: row.date, distanceM: distM, today: asOf1,
             profile: prof1, halfEquivMin: half1,
             easyPaceSecPerKm: easy1, heat: heat,
-            raceTempC: MR_REF_TEMP, runsPerWeek: prof1.runsPerWeek
+            raceTempC: MR_REF_TEMP, runsPerWeek: prof1.runsPerWeek,
+            caller: "백테스트:1패스 \(dateFmt.string(from: asOf1))", raceName: raceName
         )
 
         // 1패스에서 얻은 실제 시작일
@@ -317,7 +318,8 @@ func mrCreateRetroactiveArchives(
             raceDate: row.date, distanceM: distM, today: asOf2,
             profile: prof2, halfEquivMin: half2,
             easyPaceSecPerKm: easy2, heat: heat,
-            raceTempC: MR_REF_TEMP, runsPerWeek: prof2.runsPerWeek
+            raceTempC: MR_REF_TEMP, runsPerWeek: prof2.runsPerWeek,
+            caller: "백테스트:2패스 \(dateFmt.string(from: asOf2))", raceName: raceName
         ) else {
             logLines.append("  2패스 asOf \(dateFmt.string(from: asOf2)) → 계획 생성 실패 (데이터 부족)")
             continue

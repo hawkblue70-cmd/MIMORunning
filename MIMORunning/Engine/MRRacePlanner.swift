@@ -100,7 +100,9 @@ func mrBuildPlan(raceDate: Date,
                  raceTempC: Double,
                  runsPerWeek: Double = 3.0,
                  priorRace: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil,
-                 forcedMonday: Date? = nil) -> MRRacePlan? {
+                 forcedMonday: Date? = nil,
+                 caller: String = "unknown",
+                 raceName: String = "") -> MRRacePlan? {
 
     let L = AppLanguage.shared
     let cal = Calendar.current
@@ -193,6 +195,9 @@ func mrBuildPlan(raceDate: Date,
     var recoveryPriorVol  = 0.0
     var recoveryWeekCount = 0
     var priorRaceName     = ""
+    #if DEBUG
+    var dbgStartNote = "앞선 대회 없음 · 즉시 시작"
+    #endif
 
     if let prior = priorRace, prior.date > today, prior.date < raceDate {
         // 앞 대회 당일이 속한 주를 건너뛰고 그 다음 주 월요일부터 시작
@@ -217,7 +222,7 @@ func mrBuildPlan(raceDate: Date,
         priorRaceName     = prior.name
         p.bridgeRows      = []   // 빈 기간이 없으므로 타임라인 불필요
         #if DEBUG
-        print("[계획] \(raceDate.formatted(date:.abbreviated,time:.omitted)) · \(prior.name) 다음 주 시작")
+        dbgStartNote = "앞선 대회「\(prior.name)」 다음 주"
         #endif
     } else if neededTotal < totalWeeks {
         // 앞 대회 없음 — 대회일에서 필요 기간만큼 역산해 시작
@@ -235,7 +240,7 @@ func mrBuildPlan(raceDate: Date,
             ("\(sfmt(deferredStart)) ~", L.s("이 계획 시작", "Plan starts"))
         ]
         #if DEBUG
-        print("[계획] \(raceDate.formatted(date:.abbreviated,time:.omitted)) 역산=\(neededTotal)주 · \(df.string(from: deferredStart)) 시작 (대기 \(totalWeeks - neededTotal)주)")
+        dbgStartNote = "역산 \(neededTotal)주 · \(df.string(from: deferredStart)) (대기 \(totalWeeks - neededTotal)주)"
         #endif
     }
 
@@ -270,6 +275,15 @@ func mrBuildPlan(raceDate: Date,
     // 회복 주가 있으면 그만큼 더 필요 (최소 build 1주 + taperWeeks + recoveryWeekCount)
     guard planTotalWeeks >= 3 + recoveryWeekCount else { return nil }
     let buildWeeks = planTotalWeeks - p.taperWeeks
+
+    #if DEBUG
+    let _dbgDist = String(format: "%.1fkm", distanceM / 1000.0)
+    let _dbgDateFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
+    let _dbgLabel = raceName.isEmpty ? _dbgDist : "\(raceName)(\(_dbgDist))"
+    let _dbgForced = forcedMonday.map { " · forcedMonday=\(_dbgDateFmt.string(from: $0))" } ?? ""
+    print("[계획:\(caller)] 대상=\(_dbgLabel) · \(_dbgDateFmt.string(from: raceDate)) · \(planTotalWeeks)주 · asOf=\(_dbgDateFmt.string(from: today))\(_dbgForced) (totalDays=\(totalDays) planDays=\(planDays))")
+    print("  └ 시작=\(dbgStartNote)")
+    #endif
 
     // 앞 대회 있을 때 startNote — planTotalWeeks 를 알아야 총 주 수 표시 가능
     if recoveryWeekCount > 0 {

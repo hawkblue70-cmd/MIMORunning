@@ -58,7 +58,13 @@ struct RunBaseline {
     let medianCadence: Int?
     let vo2MaxThen: Double?
     let weeklyLoadKm: Double
-    let prevWeeklyLoadKm: Double
+    let prevWeeklyLoadKm: Double     // 지난주 전체 (RunInsightTabCard 등 다른 카드에서 사용)
+    let weekDayIndex: Int            // 1=월, 7=일
+    let prevSameDayKm: Double        // 지난주 같은 요일까지 누적 km
+    let planWeeklyTargetKm: Double?  // 이번 주 계획 목표 km (nil = 계획 없음)
+    let thisWeekRunCount: Int        // 이번 주 러닝 횟수 (현재 활동 포함)
+    let thisWeekFastestPaceSec: Double?  // 이번 주 최고(빠른) 페이스 sec/km
+    let thisWeekSlowestPaceSec: Double?  // 이번 주 최저(느린) 페이스 sec/km
 }
 
 // MARK: - Fade Analysis Types
@@ -88,7 +94,9 @@ enum RunInsightEngine {
 
     // MARK: - Baseline
 
-    static func baseline(for activity: Activity, history: [Activity]) -> RunBaseline {
+    static func baseline(for activity: Activity,
+                         history: [Activity],
+                         planWeeklyTargetKm: Double? = nil) -> RunBaseline {
         let calendar = Calendar.current
         let now = activity.date
 
@@ -138,6 +146,30 @@ enum RunInsightEngine {
             .filter { $0.date >= startOfLastWeek && $0.date < startOfThisWeek }
             .reduce(0.0) { $0 + $1.distance } / 1000.0
 
+        // 주 내 요일 인덱스: 1=월, 7=일 (Gregorian: Sun=1, Mon=2,..., Sat=7)
+        let gregWD = calendar.component(.weekday, from: now)
+        let weekDayIndex = gregWD == 1 ? 7 : gregWD - 1
+
+        // 지난 주 같은 요일까지 누적 (0 = 지난 주 데이터 없음)
+        let prevSameDayKm: Double = {
+            guard let sameWdStart = mondayCal.date(
+                byAdding: .day, value: weekDayIndex - 1, to: startOfLastWeek
+            ) else { return 0.0 }
+            let dayStart = calendar.startOfDay(for: sameWdStart)
+            let dayEnd = dayStart.addingTimeInterval(86_400)
+            return runHistory
+                .filter { $0.date >= startOfLastWeek && $0.date < dayEnd }
+                .reduce(0.0) { $0 + $1.distance } / 1000.0
+        }()
+
+        // 이번 주 러닝 구성: 횟수·페이스 범위 (현재 활동 포함)
+        let thisWeekPriorRuns = runHistory.filter { $0.date >= startOfThisWeek }
+        let thisWeekRunCount = thisWeekPriorRuns.count + 1
+        let thisWeekPaces = thisWeekPriorRuns.compactMap { $0.paceSecPerKm }
+            + [activity.paceSecPerKm].compactMap { $0 }
+        let thisWeekFastestPaceSec = thisWeekPaces.min()
+        let thisWeekSlowestPaceSec = thisWeekPaces.max()
+
         return RunBaseline(
             mode: mode,
             sampleCount: runHistory.count,
@@ -146,7 +178,13 @@ enum RunInsightEngine {
             medianCadence: nil,
             vo2MaxThen: nil,
             weeklyLoadKm: thisWeekKm,
-            prevWeeklyLoadKm: prevWeekKm
+            prevWeeklyLoadKm: prevWeekKm,
+            weekDayIndex: weekDayIndex,
+            prevSameDayKm: prevSameDayKm,
+            planWeeklyTargetKm: planWeeklyTargetKm,
+            thisWeekRunCount: thisWeekRunCount,
+            thisWeekFastestPaceSec: thisWeekFastestPaceSec,
+            thisWeekSlowestPaceSec: thisWeekSlowestPaceSec
         )
     }
 
@@ -333,9 +371,11 @@ enum RunInsightEngine {
         lt1HR: Double? = nil,
         lt1SD: Double = 0,
         easyCeilingHR: Double? = nil,
-        heat: MRHeatModel
+        heat: MRHeatModel,
+        planWeeklyTargetKm: Double? = nil
     ) -> (insights: [RunInsight], segmentSource: RunSegmentSource, fadeStartKm: Double?) {
-        let base        = Self.baseline(for: activity, history: history)
+        let base        = Self.baseline(for: activity, history: history,
+                                        planWeeklyTargetKm: planWeeklyTargetKm)
         let workoutType = detail?.workoutType ?? .general
         var results:   [RunInsight]       = []
         var segSource: RunSegmentSource   = .none
@@ -1349,28 +1389,115 @@ enum RunInsightEngine {
                           message: msg, highlights: [header])
     }
 
+    private static func paceStr(_ sec: Double) -> String {
+        let s = Int(sec.rounded())
+        return "\(s / 60)'\(String(format: "%02d", s % 60))\""
+    }
+
     private static func loadInsight(baseline: RunBaseline) -> RunInsight? {
         guard baseline.weeklyLoadKm > 0 else { return nil }
         let L = AppLanguage.shared
+        let badge = L.s("주간 거리", "Weekly Load")
         let thisStr = String(format: "%.1f", baseline.weeklyLoadKm)
+        let wd = baseline.weekDayIndex
+        let dayNames = ["", "월", "화", "수", "목", "금", "토", "일"]
 
-        if baseline.prevWeeklyLoadKm <= 0 {
-            let msg = L.s("이번 주 누적 거리 \(thisStr)km예요.", "This week's total: \(thisStr) km.")
-            return RunInsight(category: .load, tone: .neutral, badge: L.s("주간 거리", "Weekly Load"),
-                              message: msg, highlights: [thisStr + "km"])
+        // ── 1일차(월) ─────────────────────────────────────────────
+        if wd == 1 {
+            #if DEBUG
+            print("[주간] 1일차(월) → 문구 없음")
+            #endif
+            return nil
         }
-        let change   = (baseline.weeklyLoadKm - baseline.prevWeeklyLoadKm) / baseline.prevWeeklyLoadKm * 100
-        let absPct   = String(format: "%.0f%%", abs(change))
-        let prevStr  = String(format: "%.1f", baseline.prevWeeklyLoadKm)
-        let direction = change >= 0 ? L.s("많아요", "more") : L.s("적어요", "less")
-        let msg = L.s(
-            "이번 주 \(thisStr)km로 지난주(\(prevStr)km)보다 \(absPct) \(direction).",
-            "This week \(thisStr) km — \(absPct) \(direction) than last week (\(prevStr) km)."
-        )
-        let tone: InsightTone = change > 40 ? .caution : .neutral
-        let badge = change > 0 ? L.s("거리 증가", "Load Up") : L.s("주간 거리", "Weekly Load")
-        return RunInsight(category: .load, tone: tone, badge: badge,
-                          message: msg, highlights: [thisStr + "km", absPct])
+
+        // ── 7일차(일) : 마무리 ────────────────────────────────────
+        if wd == 7 {
+            let msg: String
+            var hi = [thisStr + "km"]
+            if let target = baseline.planWeeklyTargetKm, target > 0 {
+                let targetStr = String(format: "%.0f", target)
+                msg = L.s("이번 주 \(thisStr)km · 계획 \(targetStr)km.",
+                           "This week \(thisStr) km · plan \(targetStr) km.")
+                hi.append(targetStr + "km")
+                #if DEBUG
+                print("[주간] 7일차(일) · \(thisStr)km / 계획 \(targetStr)km → 마무리 문구")
+                #endif
+            } else {
+                msg = L.s("이번 주 \(thisStr)km 마쳤어요.", "This week: \(thisStr) km.")
+                #if DEBUG
+                print("[주간] 7일차(일) · \(thisStr)km → 마무리 문구 (계획 없음)")
+                #endif
+            }
+            return RunInsight(category: .load, tone: .neutral, badge: badge,
+                              message: msg, highlights: hi)
+        }
+
+        // ── 6일차(토) : 내일이 마지막 ────────────────────────────
+        if wd == 6 {
+            let msg: String
+            var hi = [thisStr + "km"]
+            if let target = baseline.planWeeklyTargetKm, target > 0 {
+                let targetStr = String(format: "%.0f", target)
+                msg = L.s("내일이 이번 주 마지막 날이에요 · \(thisStr) / \(targetStr)km.",
+                           "Tomorrow is the last day this week · \(thisStr) / \(targetStr) km.")
+                hi.append(targetStr + "km")
+                #if DEBUG
+                print("[주간] 6일차(토) · \(thisStr)/\(targetStr)km → 마지막 안내")
+                #endif
+            } else {
+                msg = L.s("내일이 이번 주 마지막 날이에요 · 지금까지 \(thisStr)km.",
+                           "Tomorrow is the last day this week · \(thisStr) km so far.")
+                #if DEBUG
+                print("[주간] 6일차(토) · \(thisStr)km → 마지막 안내 (계획 없음)")
+                #endif
+            }
+            return RunInsight(category: .load, tone: .neutral, badge: badge,
+                              message: msg, highlights: hi)
+        }
+
+        // ── 4~5일차(목·금) : 페이스 범위 구성 ───────────────────
+        if wd >= 4,
+           let fastest = baseline.thisWeekFastestPaceSec,
+           let slowest = baseline.thisWeekSlowestPaceSec,
+           baseline.thisWeekRunCount >= 2,
+           fastest < slowest {
+            let fastStr = paceStr(fastest)
+            let slowStr = paceStr(slowest)
+            let count = baseline.thisWeekRunCount
+            let msg = L.s("이번 주 \(count)회 · \(fastStr)~\(slowStr)에 걸쳐 있어요.",
+                           "This week \(count) runs · \(fastStr) to \(slowStr).")
+            #if DEBUG
+            print("[주간] \(wd)일차(\(dayNames[wd])) · \(count)회 · 페이스 \(fastStr)~\(slowStr) → 구성 문구")
+            #endif
+            return RunInsight(category: .load, tone: .neutral, badge: badge,
+                              message: msg, highlights: [fastStr, slowStr])
+        }
+
+        // ── 2~3일차(화·수) + 4~5일차 폴백 : 진행률 ──────────────
+        let daysLeft = 7 - wd
+        if let target = baseline.planWeeklyTargetKm, target > 0 {
+            let targetStr = String(format: "%.0f", target)
+            let msg = L.s("이번 주 \(thisStr) / \(targetStr)km · \(daysLeft)일 남았어요.",
+                           "This week \(thisStr) / \(targetStr) km · \(daysLeft) days left.")
+            #if DEBUG
+            print("[주간] \(wd)일차(\(dayNames[wd])) · \(thisStr)/\(targetStr)km · \(daysLeft)일 남음 → 진행률 문구")
+            #endif
+            return RunInsight(category: .load, tone: .neutral, badge: badge,
+                              message: msg, highlights: [thisStr + "km", targetStr + "km"])
+        }
+        if baseline.prevSameDayKm > 0 {
+            let prevStr = String(format: "%.1f", baseline.prevSameDayKm)
+            let msg = L.s("이번 주 \(wd)일째 \(thisStr)km — 지난주 같은 시점엔 \(prevStr)km였어요.",
+                           "Day \(wd) this week: \(thisStr) km — same point last week: \(prevStr) km.")
+            #if DEBUG
+            print("[주간] \(wd)일차(\(dayNames[wd])) · \(wd)일째 \(thisStr)km / 지난주 \(prevStr)km → 비교 문구")
+            #endif
+            return RunInsight(category: .load, tone: .neutral, badge: badge,
+                              message: msg, highlights: [thisStr + "km", prevStr + "km"])
+        }
+        let msg = L.s("이번 주 \(wd)일째 \(thisStr)km예요.", "Day \(wd) this week: \(thisStr) km.")
+        return RunInsight(category: .load, tone: .neutral, badge: badge,
+                          message: msg, highlights: [thisStr + "km"])
     }
 
     // MARK: - VO2max Norm Table (FRIEND / Apple Health)
