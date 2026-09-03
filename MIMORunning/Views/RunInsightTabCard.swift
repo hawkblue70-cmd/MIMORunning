@@ -888,7 +888,8 @@ struct RunInsightTabCard: View {
                 heatModel: heatModel,
                 formShifts: formShifts,
                 hasRecentGap: hasFormGap,
-                weatherSnapshot: weatherSnapshot
+                weatherSnapshot: weatherSnapshot,
+                historicalTemperatures: history.compactMap { $0.temperatureC }
             )
         case .performance:
             PerformanceInsightCard(
@@ -4769,7 +4770,8 @@ struct InsightExportSheet: View {
                 heatModel: heatModel,
                 formShifts: formShifts,
                 hasRecentGap: exportFormHasGap,
-                weatherSnapshot: weatherSnapshot
+                weatherSnapshot: weatherSnapshot,
+                historicalTemperatures: history.compactMap { $0.temperatureC }
             )
         case .performance:
             PerformanceInsightCard(

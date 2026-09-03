@@ -34,6 +34,7 @@ struct RunFormCardView: View {
     var formShifts: [MRFormShift] = []
     var hasRecentGap: Bool = false
     var weatherSnapshot: WeatherSnapshot? = nil
+    var historicalTemperatures: [Double] = []   // 야외 런 기온 이력 — 추위 슬롯 문맥 및 tempExtreme 중복 체크용
 
     // 버킷 계산은 러닝당 1회만 — onAppear 시 저장, splitFormTrendSection·logTrend에서 재사용
     @State private var formSeriesCache: [FormSeries] = []
@@ -340,15 +341,13 @@ struct RunFormCardView: View {
         return .normal
     }
 
-    private func styleBadgeInfo(for style: RunningStyle) -> (text: String, color: Color)? {
-        let L = AppLanguage.shared
-        switch style {
-        case .quickStep: return (L.s("잔발형", "Quick Step"), Color(hex: "4ECDC4"))
-        case .bigStride: return (L.s("큰보폭형", "Big Stride"), Color(hex: "FFA94D"))
-        case .normal:    return (L.s("평소 주법", "Typical"), Color.white.opacity(0.5))
-        case .unknown:   return nil
-        }
-    }
+    // 주법 유형 라벨(잔발형/큰보폭형)을 표시하지 않는 이유:
+    // - Patoz 2019의 유형 판정 밴드는 듀티팩터 27.6~28.8% (폭 1.2%p)
+    // - 애플워치 접지시간 MAPE 약 19% → 듀티팩터 오차 ±5.3%p = 밴드의 4.4배
+    //   즉 측정 정밀도가 판정 밴드보다 훨씬 커서 유형을 구분할 수 없다
+    // - Patoz 2022 (n=52)은 어떤 주법 패턴도 더 경제적이지 않다고 결론
+    // 따라서 "당신은 ○○형입니다"라는 판정은 하지 않고,
+    // 관찰된 사실만 서술한다 ("이 페이스에서 평소보다 걸음이 잦았어요")
 
     // MARK: - Insight Slot
 
@@ -390,38 +389,83 @@ struct RunFormCardView: View {
             items.append(changeItem)
         }
 
-        // [기온] 야외(temp != nil) AND (temp ≥ 25 OR ≤ 5) AND 모델 유효
-        // [날씨] 비 — 기온과 동시에 뜨면 한 슬롯으로 합치고, 기온 없으면 별도 슬롯
+        // [기온] 야외(temp != nil) AND (temp ≥ 25 OR ≤ 5)
+        // · 더위(≥25°C): 개인 모델로 보정 페이스 문장
+        // · 추위(≤5°C): bCold 미신뢰 — 보정 문장 없음, 사실 한 줄만
+        //   tempExtreme(하위 5%)가 DetailInsight에서 이미 발화 중이면 폼 카드 침묵
+        // [날씨] 비 — 기온 슬롯과 동시에 뜨면 합치고, 기온 없으면 별도 슬롯
         let isRainy = weatherSnapshot?.isRainy == true
         var tempFired = false
-        if let temp = activity.temperatureC,
-           let model = heatModel, model.ok,
-           (temp >= 25 || temp <= 5),
-           let pace = activity.paceSecPerKm {
-            let corrected = pace * exp(model.logDelta(temp))
-            let diff = pace - corrected   // 양수 = 교정 페이스가 빠름
-            if diff >= 5 {
-                tempFired = true
-                let refStr = paceString(corrected)
-                let tempStr = String(format: "%.1f", temp)
-                let ctx = temp >= 25
-                    ? L.s("시원한 날이었다면", "On a cooler day")
-                    : L.s("따뜻한 날이었다면", "On a warmer day")
-                let text: String
-                if isRainy {
-                    text = L.s(
-                        "\(tempStr)°C에 비까지 왔어요. \(ctx) 같은 노력으로 \(refStr) 정도 나왔을 거예요.",
-                        "You ran in \(tempStr)°C rain. \(ctx), same effort might have produced \(refStr).")
-                } else {
-                    text = L.s(
-                        "\(tempStr)°C에서 뛰었어요. \(ctx) 같은 노력으로 \(refStr) 정도 나왔을 거예요.",
-                        "You ran at \(tempStr)°C. \(ctx), the same effort might have produced a \(refStr) pace.")
+        if let temp = activity.temperatureC, (temp >= 25 || temp <= 5) {
+            if temp >= 25,
+               let model = heatModel, model.ok,
+               let pace = activity.paceSecPerKm {
+                // 더위 보정 — 기존 로직
+                let corrected = pace * exp(model.logDelta(temp))
+                let diff = pace - corrected   // 양수 = 교정 페이스가 빠름
+                if diff >= 5 {
+                    tempFired = true
+                    let refStr = paceString(corrected)
+                    let tempStr = String(format: "%.1f", temp)
+                    let text: String
+                    if isRainy {
+                        text = L.s(
+                            "\(tempStr)°C에 비까지 왔어요. 시원한 날이었다면 같은 노력으로 \(refStr) 정도 나왔을 거예요.",
+                            "You ran in \(tempStr)°C rain. On a cooler day, same effort might have produced \(refStr).")
+                    } else {
+                        text = L.s(
+                            "\(tempStr)°C에서 뛰었어요. 시원한 날이었다면 같은 노력으로 \(refStr) 정도 나왔을 거예요.",
+                            "You ran at \(tempStr)°C. On a cooler day, the same effort might have produced a \(refStr) pace.")
+                    }
+                    items.append(FormInsightItem(
+                        id: .temperature,
+                        badgeText: L.s(isRainy ? "기온·날씨" : "기온", isRainy ? "Temp & Rain" : "Heat"),
+                        bodyText: text,
+                        badgeColor: Color(hex: "FF8C42")))
                 }
-                items.append(FormInsightItem(
-                    id: .temperature,
-                    badgeText: L.s(isRainy ? "기온·날씨" : "기온", isRainy ? "Temp & Rain" : "Heat"),
-                    bodyText: text,
-                    badgeColor: Color(hex: "FF8C42")))
+            } else if temp <= 5 {
+                // 추위 — bCold 계수 미신뢰, 보정 문장 없음
+                let sortedTemps = historicalTemperatures.sorted()
+                // InsightEngine tempExtreme: 하위 5% → 같은 사실을 DetailInsight가 이미 발화 중 → 침묵
+                let isTempExtremeFiring = sortedTemps.count >= 20
+                    && Double(sortedTemps.filter { $0 <= temp }.count) / Double(sortedTemps.count) <= 0.05
+                #if DEBUG
+                let tempInt = Int(temp.rounded())
+                if isTempExtremeFiring {
+                    print("[기온] \(tempInt)°C · tempExtreme 발화 중 → 폼 카드 기온 슬롯 침묵")
+                } else {
+                    print("[기온] \(tempInt)°C · 기준 15°C 미만 → 보정 문장 생략 (추위 계수 미신뢰)")
+                }
+                #endif
+                if !isTempExtremeFiring {
+                    tempFired = true
+                    let tempInt = Int(temp.rounded())
+                    let baseLine = isRainy
+                        ? L.s("\(tempInt)°C에 비까지 왔어요.", "You ran in \(tempInt)°C rain.")
+                        : L.s("\(tempInt)°C에서 뛰었어요.", "You ran at \(tempInt)°C.")
+                    // 사실 문맥 — 인과 없음
+                    let contextLine: String = {
+                        guard sortedTemps.count >= 5 else { return "" }
+                        let pct = Double(sortedTemps.filter { $0 <= temp }.count) / Double(sortedTemps.count)
+                        if temp < 0 {
+                            let subZeroCount = sortedTemps.filter { $0 < 0 }.count
+                            if subZeroCount > 0 {
+                                return L.s("최근 기록 중 영하 러닝은 \(subZeroCount)번이에요.",
+                                           "\(subZeroCount) sub-zero run(s) in your history.")
+                            }
+                        } else if pct <= 0.20 {
+                            return L.s("최근 기록 중 가장 추운 축이에요.",
+                                       "One of your coldest runs on record.")
+                        }
+                        return ""
+                    }()
+                    let text = contextLine.isEmpty ? baseLine : "\(baseLine) \(contextLine)"
+                    items.append(FormInsightItem(
+                        id: .temperature,
+                        badgeText: L.s(isRainy ? "기온·날씨" : "기온", isRainy ? "Temp & Rain" : "Cold"),
+                        bodyText: text,
+                        badgeColor: Color(hex: "6BAED6")))
+                }
             }
         }
         if !tempFired, isRainy, items.count < 3 {
@@ -463,10 +507,9 @@ struct RunFormCardView: View {
             items.append(item)
         }
 
-        // [주법] 잔발형 또는 큰보폭형
+        // [주법] 평소 대비 걸음수/보폭 관찰 — 유형 라벨 없이 사실만
         let style = runningStyleClassification
-        if (style == .quickStep || style == .bigStride), items.count < 3,
-           let badge = styleBadgeInfo(for: style) {
+        if (style == .quickStep || style == .bigStride), items.count < 3 {
             let text: String
             switch style {
             case .quickStep:
@@ -477,7 +520,7 @@ struct RunFormCardView: View {
                 text = ""
             }
             items.append(FormInsightItem(id: .style,
-                                         badgeText: badge.text,
+                                         badgeText: L.s("걸음수/보폭", "Stride"),
                                          bodyText: text,
                                          badgeColor: Color(hex: "A78BFA")))
         }
@@ -826,26 +869,6 @@ struct RunFormCardView: View {
                     .foregroundStyle(Color.white.opacity(0.68))
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-            let style = runningStyleClassification
-            if style != .unknown, let badge = styleBadgeInfo(for: style) {
-                Color.clear.frame(height: 8)
-                HStack(spacing: 6) {
-                    Text(badge.text)
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(badge.color)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(badge.color.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
-                    if let cad = avgCadence, let str = avgStrideLength,
-                       let cadStat = bb?.cadence, let strStat = bb?.strideLength,
-                       bb?.isJudgeable == true {
-                        Text("\(cad) spm · \(String(format: "%.2f", str))m  (\(AppLanguage.shared.s("평소", "avg")) \(Int(cadStat.median.rounded())) · \(String(format: "%.2f", strStat.median)))")
-                            .font(.system(size: 9))
-                            .foregroundStyle(Color.white.opacity(0.38))
-                    }
-                }
             }
         }
     }
