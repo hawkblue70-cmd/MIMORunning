@@ -227,6 +227,11 @@ struct HRZoneData: Identifiable, Codable {
     let maxBPM: Int
     let seconds: TimeInterval
     let fraction: Double     // proportion of total tracked HR time (0.0–1.0)
+    /// Zone 4 전용 — AT2 경계 심박(Karvonen HRR 85%). 강도 분포에서 Zone 4를 이 값으로 나눈다.
+    /// 구버전 캐시에는 없음(nil) → 강도 분포 합산에서 재조회 대상.
+    var splitBPM: Int? = nil
+    /// Zone 4 전용 — `splitBPM` 이상 체류 시간(초).
+    var upperSeconds: TimeInterval? = nil
 }
 
 // MARK: - ActivityDetail Codable (manual — handles CLLocationCoordinate2D and named tuples)

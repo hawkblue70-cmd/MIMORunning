@@ -703,6 +703,8 @@ struct RunInsightTabCard: View {
     var confirmedRace: PersistedRaceMatch? = nil
     var confirmedRaces: [PersistedRaceMatch] = []
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
+    /// 과거 러닝의 존 체류 시간 (강도 분포 · 4주 합산용). 리듬 카드 도넛과 같은 캐시 데이터.
+    var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
 
     @State private var tab: InsightTabKind = .rhythm
     @State private var showExport = false
@@ -747,7 +749,8 @@ struct RunInsightTabCard: View {
                 weatherSnapshot: weatherSnapshot,
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
-                raceDetailFn: raceDetailFn
+                raceDetailFn: raceDetailFn,
+                hrZonesFn: hrZonesFn
             )
         }
         .onAppear {
@@ -897,6 +900,8 @@ struct RunInsightTabCard: View {
                 history: history, age: age, isMale: isMale,
                 insights: insights,
                 workoutTypeFn: workoutTypeFn,
+                hrZones: hrZones,
+                hrZonesFn: hrZonesFn,
                 isBackfilling: isBackfilling,
                 isClassifying: isClassifying
             )
@@ -914,10 +919,19 @@ struct RunInsightTabCard: View {
 
     private var disclaimer: some View {
         let L = AppLanguage.shared
-        return Text(L.s(
-            "참고용 피트니스 인사이트입니다. 연령대 평균과 추정 최대심박은 개인차가 큰 추정치이며 의학적 판단이 아니에요. 유산소 피트니스 기준은 FRIEND(Fitness Registry and Importance of Exercise National Database)를 따릅니다.",
-            "Reference-only fitness insights. Age-group norms and estimated max HR are rough estimates with high individual variation and are not medical advice. Cardio fitness norms follow FRIEND (Fitness Registry and Importance of Exercise National Database)."
-        ))
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(L.s(
+                "참고용 피트니스 인사이트입니다. 연령대 평균과 추정 최대심박은 개인차가 큰 추정치이며 의학적 판단이 아니에요. 유산소 피트니스 기준은 FRIEND(Fitness Registry and Importance of Exercise National Database)를 따릅니다.",
+                "Reference-only fitness insights. Age-group norms and estimated max HR are rough estimates with high individual variation and are not medical advice. Cardio fitness norms follow FRIEND (Fitness Registry and Importance of Exercise National Database)."
+            ))
+            // L-2: 강도 분포 참고선의 근거와 한계 — 퍼포먼스 탭에서만. 기존 각주와 같은 크기·색, 강조 없음.
+            if tab == .performance {
+                Text(L.s(
+                    "강도 분포의 점선은 지구력 종목 선수들에게서 반복 관찰된 분포입니다(저강도 80% · 중간 0~5% · 고강도 15~20%). 낮은 강도는 부담이 적어 오래 쌓을 수 있고, 높은 강도는 최대 능력을 올립니다. 가운데는 회복 부담에 비해 얻는 것이 적다고 알려져 있어요.\n\n주간 훈련량이 많은 선수를 관찰한 값이라 목표가 아니라 참고선입니다. 구간은 첫 젖산 역치(AT1)와 두 번째 역치(AT2)로 나눴고, 두 값은 안정시 심박과 추정 최대심박으로 계산한 추정치입니다.",
+                    "The dotted lines in the intensity distribution show a pattern repeatedly observed in endurance athletes (low 80% · mid 0–5% · high 15–20%). Low intensity is easy to accumulate with little strain; high intensity raises maximal capacity. The middle is known to return less for its recovery cost.\n\nThese values come from athletes with high weekly volume, so they are a reference, not a target. The bands are split at the first lactate threshold (AT1) and the second (AT2), both estimated from resting HR and an age-estimated max HR."
+                ))
+            }
+        }
         .font(.system(size: 9.5))
         .foregroundStyle(Color.secondary)
         .lineSpacing(2)
@@ -2360,12 +2374,17 @@ private struct PerformanceInsightCard: View {
     var isMale: Bool? = nil
     let insights: [RunInsight]
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
+    /// 이 러닝의 존 분포 (리듬 카드 도넛과 동일 소스)
+    var hrZones: [HRZoneData] = []
+    /// 과거 러닝의 존 분포 조회 — 강도 분포 4주 합산용
+    var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
     var isBackfilling: Bool = false
     var isClassifying: Bool = false
 
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
     @State private var _distResult: (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)? = nil
+    @State private var _intensityResult: IntensityTimeData? = nil
     @State private var _distComputed = false
 
     private struct HRTrendPt: Identifiable {
@@ -2415,7 +2434,7 @@ private struct PerformanceInsightCard: View {
                     }
                 }
             }
-            if let intensDist = intensityDistData {
+            if let intensDist = _intensityResult {
                 divider
                 intensityDistSection(data: intensDist)
             }
@@ -2464,16 +2483,22 @@ private struct PerformanceInsightCard: View {
             heroBadge = computeAchievementBadge(activity: activity, history: history)
             heroBadgeLoaded = true
             if !isBackfilling && !isClassifying {
-                _distResult = computeTrainingDistData()
+                recomputeDistributions()
             }
             _distComputed = true
         }
         .onChange(of: isBackfilling) { _, newValue in
-            if !newValue && !isClassifying { _distResult = computeTrainingDistData() }
+            if !newValue && !isClassifying { recomputeDistributions() }
         }
         .onChange(of: isClassifying) { _, newValue in
-            if !newValue && !isBackfilling { _distResult = computeTrainingDistData() }
+            if !newValue && !isBackfilling { recomputeDistributions() }
         }
+    }
+
+    /// 훈련 배분(유형 기준)과 강도 분포(존 시간 기준)를 같은 시점에 계산 — 창(weeks)을 공유한다.
+    private func recomputeDistributions() {
+        _distResult = computeTrainingDistData()
+        _intensityResult = _distResult.flatMap { computeIntensityTimeData(weeks: $0.weeks) }
     }
 
     private var heroSection: some View {
@@ -3323,9 +3348,9 @@ private struct PerformanceInsightCard: View {
         var label: String {
             let L = AppLanguage.shared
             switch self {
-            case .easy:   return L.s("쉬움", "Easy")
-            case .medium: return L.s("중간", "Medium")
-            case .hard:   return L.s("강함", "Hard")
+            case .easy:   return L.s("저강도", "Low")
+            case .medium: return L.s("중간",   "Mid")
+            case .hard:   return L.s("고강도", "High")
             }
         }
         static func of(_ type: WorkoutType) -> IntensityTier {
@@ -3337,21 +3362,22 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    private struct IntensityCount: Identifiable {
-        let id: IntensityTier
-        let tier: IntensityTier
-        let count: Int
-    }
-
-    private struct IntensityDistData {
-        let counts: [IntensityCount]
+    /// 심박 존 체류 시간 기준 강도 분포 (K-1). 회차가 아니라 시간 합산.
+    private struct IntensityTimeData {
         let weeks: Int
-        let total: Int          // 실제 러닝 수 (분류 여부 무관)
-        let unclassified: Int   // 분류 전 러닝 수 — 분모 보정용
-        let consecutiveSkewedWeeks: Int
-        let isSkewedAtLeast: Bool       // 판정보류 주 직전까지만 확인 — "N주 이상"
-        let paceMin: Double?
-        let paceMax: Double?
+        let policy: MRIntensityTime.Zone4Policy
+        let result: MRIntensityTime.Result
+        // ② 회차 기준 연속 알림 (K-7) — 유형이 이지런인 러닝의 주간 회차. 시간 기준 분포와는 별개 지표.
+        /// 창 안에서 유형이 확인된 러닝 수
+        let classified: Int
+        /// 창 안에서 유형이 이지런(easy 티어)인 러닝 수
+        let easyCount: Int
+        /// 이지런 0회인 주가 현재 주부터 연속 몇 주인가
+        let easyStreak: Int
+        /// 유형 미확보 주에서 멈춤 → "N주 이상"
+        let easyStreakAtLeast: Bool
+        /// 알림 표시 조건 — 기존 방식 유지: 분류 12회 이상 · 이지런 비율 20% 미만
+        var easyAlert: Bool { classified >= 12 && Double(easyCount) / Double(max(1, classified)) < 0.20 }
     }
 
     private var trainingDistData: (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)? {
@@ -3427,77 +3453,81 @@ private struct PerformanceInsightCard: View {
         return nil
     }
 
-    // MARK: - Intensity Distribution Data
+    // MARK: - Intensity Distribution (심박 존 체류 시간 · K-1)
 
-    private var intensityDistData: IntensityDistData? {
-        guard let fn = workoutTypeFn,
-              let weeks = trainingDistData?.weeks else { return nil }
+    /// Zone 4 처리 (K-4 채택) — AT2 심박값(HRR 85%)에서 분할. 러닝별 RHR 기준.
+    private static let intensityZone4Policy: MRIntensityTime.Zone4Policy = .at2Split
+    /// [강도분포:주간] 로그 창 (K-8 참고용 — 존 캐시가 있는 주만 숫자가 나온다)
+    private static let intensityWeeklyLogWeeks = 26
 
-        func typeFor(_ run: Activity) -> WorkoutType? {
-            if let t = fn(run.id) { return t }
-            if run.id == activity.id, let det = detail { return det.workoutType }
-            return nil
+    /// 이 러닝은 카드에 이미 들어온 존(도넛과 동일), 과거 러닝은 캐시 조회. 새로 계산하지 않는다.
+    /// AT2 분할 정보가 없는 구버전 존은 건너뛴다 (캐시 보충 경로가 채움).
+    private func cachedZones(for run: Activity) -> [HRZoneData]? {
+        func ok(_ z: [HRZoneData]?) -> [HRZoneData]? {
+            guard let z, !z.isEmpty, MRIntensityTime.hasAT2Split(z) else { return nil }
+            return z
         }
+        if run.id == activity.id {
+            if let z = ok(hrZones) { return z }
+            if let z = ok(detail?.hrZones) { return z }
+        }
+        return ok(hrZonesFn?(run.id))
+    }
 
+    private func intensityInput(_ run: Activity) -> MRIntensityTime.RunInput {
+        MRIntensityTime.RunInput(id: run.id, date: run.date, hasHR: run.avgHeartRate != nil) { [self] in
+            cachedZones(for: run)
+        }
+    }
+
+    private func computeIntensityTimeData(weeks: Int) -> IntensityTimeData? {
+        let policy = Self.intensityZone4Policy
         let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -weeks, to: activity.date) ?? .distantPast
         var runs = history.filter { $0.type == .running && $0.date >= cutoff && $0.date <= activity.date }
         if activity.type == .running, !runs.contains(where: { $0.id == activity.id }) {
             runs.append(activity)
         }
-        let known = runs.filter { typeFor($0) != nil }
-        guard known.count >= 8 else { return nil }
-
-        var tierCounts: [IntensityTier: Int] = [.easy: 0, .medium: 0, .hard: 0]
-        for run in known {
-            guard let t = typeFor(run) else { continue }
-            tierCounts[IntensityTier.of(t), default: 0] += 1
-        }
-        let counts = IntensityTier.allCases.map { IntensityCount(id: $0, tier: $0, count: tierCounts[$0] ?? 0) }
-        let total  = runs.count          // 실제 러닝 수 (분류 전 포함)
-        let unclassified = runs.count - known.count
+        let inputs = runs.map(intensityInput)
+        let result = MRIntensityTime.aggregate(runs: inputs, policy: policy)
 
         var fullRuns = history.filter { $0.type == .running }
         if activity.type == .running, !fullRuns.contains(where: { $0.id == activity.id }) {
             fullRuns.append(activity)
         }
-        let (consec, consecAtLeast) = consecutiveSkewedWeeks(fullHistory: fullRuns, typeFor: typeFor)
-        let paces  = known.compactMap { $0.paceSecPerKm }
 
-        let result = IntensityDistData(
-            counts: counts, weeks: weeks, total: total, unclassified: unclassified,
-            consecutiveSkewedWeeks: consec,
-            isSkewedAtLeast: consecAtLeast,
-            paceMin: paces.min(), paceMax: paces.max()
-        )
+        // ② 회차 기준 연속 알림 (K-7) — 유형 캐시로 이지런 회차를 센다. 시간 기준과 분리.
+        func typeFor(_ run: Activity) -> WorkoutType? {
+            if let t = workoutTypeFn?(run.id) { return t }
+            if run.id == activity.id, let det = detail { return det.workoutType }
+            return nil
+        }
+        let typed = runs.compactMap(typeFor)
+        let easyCount = typed.filter { IntensityTier.of($0) == .easy }.count
+        let (easyStreak, easyAtLeast) = consecutiveEasyZeroWeeks(fullHistory: fullRuns, typeFor: typeFor)
 
         #if DEBUG
-        let classified = known.count
-        let eC = counts.first(where: { $0.tier == .easy   })?.count ?? 0
-        let mC = counts.first(where: { $0.tier == .medium })?.count ?? 0
-        let hC = counts.first(where: { $0.tier == .hard   })?.count ?? 0
-        func pct(_ n: Int) -> Int { classified > 0 ? Int(Double(n) / Double(classified) * 100 + 0.5) : 0 }
-        func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60) }
-        let pRange = paces.isEmpty ? "-" : "\(pf(paces.min()!))~\(pf(paces.max()!))"
-        let medP = paces.sorted().isEmpty ? "-" : pf(paces.sorted()[paces.count / 2])
-        let unclassStr = unclassified > 0 ? " (분류 중 \(unclassified)건)" : ""
-        print("[강도분포] \(weeks)주 총 \(total)회\(unclassStr) — 쉬움 \(eC)(\(pct(eC))%) 중간 \(mC) 강함 \(hC)")
-        print("           페이스 범위 \(pRange) 중앙 \(medP)")
-        let skewed = Double(eC) / Double(max(1, classified)) < 0.20 && classified >= 12
-        if skewed {
-            let consecStr = consec > 0 ? "(\(consec)주\(consecAtLeast ? " 이상" : "")째)" : "(첫 발생 또는 연속 끊김)"
-            print("           → 편중 알림 표시 \(consecStr)")
-        } else {
-            let why = classified < 12 ? "분류된 \(classified)회 < 12" : "쉬움 \(pct(eC))% ≥ 20%"
-            print("           → 미표시 (\(why))")
-        }
+        // 주 단위 저강도 시간 비율 로그는 지연 조회 — 캐시 있는 주만 실제로 읽힌다
+        logIntensityDistribution(weeks: weeks, runs: runs, inputs: inputs, fullInputs: fullRuns.map(intensityInput),
+                                 result: result, policy: policy)
         #endif
 
-        return result
+        guard result.runsWithZones >= 8 else {
+            #if DEBUG
+            print("[강도분포] → 미표시 (존 있는 러닝 \(result.runsWithZones)회 < 8)")
+            #endif
+            return nil
+        }
+        return IntensityTimeData(weeks: weeks, policy: policy, result: result,
+                                 classified: typed.count, easyCount: easyCount,
+                                 easyStreak: easyStreak, easyStreakAtLeast: easyAtLeast)
     }
 
-    private func consecutiveSkewedWeeks(fullHistory: [Activity], typeFor: (Activity) -> WorkoutType?) -> (count: Int, isAtLeast: Bool) {
-        var isoCal = Calendar(identifier: .iso8601)
-        isoCal.timeZone = TimeZone.current
+    /// 「연속 N주째」— 유형이 이지런인 러닝이 0회인 주를 현재 주부터 ISO 역순으로 센다 (K-7 · 기존 방식).
+    ///   - 러닝 없는 주 → 끊김
+    ///   - 러닝은 있으나 유형 미확보 → 판정보류, "N주 이상"
+    ///   - 이지런 1회 이상 → 끊김
+    private func consecutiveEasyZeroWeeks(fullHistory: [Activity], typeFor: (Activity) -> WorkoutType?) -> (count: Int, isAtLeast: Bool) {
+        let isoCal = MRIntensityTime.isoCalendar
         var count = 0
         var isAtLeast = false
         #if DEBUG
@@ -3508,7 +3538,6 @@ private struct PerformanceInsightCard: View {
             let wy = isoCal.component(.weekOfYear,        from: ref)
             let yr = isoCal.component(.yearForWeekOfYear, from: ref)
             let wStr = "\(yr)-W\(String(format: "%02d", wy))"
-            // 해당 주의 러닝 전체 (유형 불문) vs 유형이 확인된 것만
             let allWeekRuns = fullHistory.filter {
                 $0.date <= activity.date &&
                 isoCal.component(.weekOfYear,        from: $0.date) == wy &&
@@ -3516,14 +3545,12 @@ private struct PerformanceInsightCard: View {
             }
             let typedWeekRuns = allWeekRuns.filter { typeFor($0) != nil }
             if allWeekRuns.isEmpty {
-                // 진짜 러닝 없는 주 → 연속 끊김
                 #if DEBUG
                 logParts.append("\(wStr) 런없음 ✗")
                 #endif
                 break
             }
             if typedWeekRuns.isEmpty {
-                // 러닝은 있으나 유형 캐시 미확보 → 판정보류, "N주 이상"
                 isAtLeast = true
                 #if DEBUG
                 logParts.append("\(wStr) 러닝\(allWeekRuns.count)건·유형없음 → 판정보류")
@@ -3533,21 +3560,89 @@ private struct PerformanceInsightCard: View {
             let easyCount = typedWeekRuns.filter { typeFor($0).map { IntensityTier.of($0) == .easy } ?? false }.count
             if easyCount > 0 {
                 #if DEBUG
-                logParts.append("\(wStr) 쉬움\(easyCount) ✗")
+                logParts.append("\(wStr) 이지런\(easyCount) ✗")
                 #endif
                 break
             }
             count += 1
             #if DEBUG
-            logParts.append("\(wStr) 쉬움0 ✓")
+            logParts.append("\(wStr) 이지런0 ✓")
             #endif
         }
         #if DEBUG
         let suffix = isAtLeast ? " 이상" : ""
-        print("[강도분포] 연속 판정 — 주 단위 역순 검사 (ISO)\n    \(logParts.joined(separator: " / "))\n    → \(count)주째\(suffix)")
+        print("[강도분포] 연속 판정 — 이지런 회차 기준 · 주 단위 역순 검사 (ISO)\n    \(logParts.joined(separator: " / "))\n    → \(count)주째\(suffix)")
         #endif
         return (count, isAtLeast)
     }
+
+    #if DEBUG
+    private func logIntensityDistribution(weeks: Int, runs: [Activity], inputs: [MRIntensityTime.RunInput],
+                                          fullInputs: [MRIntensityTime.RunInput],
+                                          result: MRIntensityTime.Result,
+                                          policy: MRIntensityTime.Zone4Policy) {
+        let df = DateFormatter(); df.dateFormat = "M/d"
+        func mins(_ sec: Double) -> String { Int((sec / 60).rounded()).formatted() }
+        func pct(_ f: Double) -> Int { Int((f * 100).rounded()) }
+        func line(_ b: MRIntensityTime.Buckets) -> String {
+            "저강도 \(mins(b.lowSec))분(\(pct(b.lowFrac))%) · 중간 \(mins(b.midSec))분(\(pct(b.midFrac))%) · 고강도 \(mins(b.highSec))분(\(pct(b.highFrac))%)"
+        }
+
+        print("[강도분포] 기준 = 심박 존 체류 시간 (\(weeks)주)")
+        if let z = cachedZones(for: activity), z.count == 5 {
+            let z1 = z[0], z2 = z[1], z3 = z[2], z4 = z[3], z5 = z[4]
+            print("[강도분포] 존 경계 Zone1<\(z2.minBPM) / Zone2 \(z2.minBPM)-\(z2.maxBPM) / Zone3 \(z3.minBPM)-\(z3.maxBPM) / Zone4 \(z4.minBPM)-\(z4.maxBPM) / Zone5 \(z5.minBPM)+ (이 러닝 기준 · 러닝별 RHR로 조금씩 다름)")
+            let at2 = z4.splitBPM.map(String.init) ?? "?"
+            let scheme = z1.minBPM > 0 ? "HRR 85%" : "%MHR 90% 폴백"
+            print("[강도분포] AT1=\(z2.maxBPM) · AT2=\(at2) (\(scheme)) · 저강도 ~\(z2.maxBPM) / 중간 \(z3.minBPM)~\(z4.splitBPM.map { "\($0 - 1)" } ?? "?") / 고강도 \(at2)~ · \(policy.label)")
+        } else {
+            print("[강도분포] 존 경계 — 이 러닝의 존 데이터 없음 (\(policy.label))")
+        }
+        print("[강도분포] \(result.runsTotal)회 중 심박 존 있음 \(result.runsWithZones)회 · 총 \(mins(result.buckets.totalSec))분")
+        print("           \(line(result.buckets))")
+        for alt in MRIntensityTime.Zone4Policy.allCases where alt != policy {
+            let b = MRIntensityTime.aggregate(runs: inputs, policy: alt).buckets
+            print("[강도분포] 대안 비교 — \(alt.label): \(line(b))")
+        }
+        if !result.runsNoHR.isEmpty {
+            let dates = result.runsNoHR.map { df.string(from: $0.date) }.joined(separator: ", ")
+            print("[강도분포] 심박 없음 \(result.runsNoHR.count)건 분모 제외 = \(dates)")
+        }
+        if !result.runsZonesMissing.isEmpty {
+            let dates = result.runsZonesMissing.map { df.string(from: $0.date) }.joined(separator: ", ")
+            print("[강도분포] 심박 있으나 존 캐시 없음 \(result.runsZonesMissing.count)건 분모 제외 = \(dates)")
+        }
+
+        // 참고 — 이전 기준(유형 → 쉬움/중간/강함 회차)
+        if let fn = workoutTypeFn {
+            func typeFor(_ run: Activity) -> WorkoutType? {
+                if let t = fn(run.id) { return t }
+                if run.id == activity.id, let det = detail { return det.workoutType }
+                return nil
+            }
+            var c: [IntensityTier: Int] = [:]
+            var unclassified = 0
+            for r in runs {
+                if let t = typeFor(r) { c[IntensityTier.of(t), default: 0] += 1 } else { unclassified += 1 }
+            }
+            let unc = unclassified > 0 ? " (분류 중 \(unclassified)건)" : ""
+            print("[강도분포] 참고 — 유형 기준으로는 쉬움\(c[.easy] ?? 0) 중간\(c[.medium] ?? 0) 강함\(c[.hard] ?? 0) 였음\(unc)")
+        }
+
+        // 주 단위 저강도 시간 비율 (K-8 참고 — 연속 판정에는 쓰지 않음)
+        let weekly = MRIntensityTime.weeklyLowFractions(
+            runs: fullInputs, anchor: activity.date, weeks: Self.intensityWeeklyLogWeeks, policy: policy)
+        let weekParts = weekly.map { w -> String in
+            guard let lf = w.lowFrac else { return "\(w.shortLabel) -" }
+            return "\(w.shortLabel) \(pct(lf))%\(w.inProgress ? "(진행중)" : "")"
+        }
+        var weeklyLog = "[강도분포:주간] 최근 \(Self.intensityWeeklyLogWeeks)주 저강도 시간 비율 (존 캐시 있는 주만)\n      \(weekParts.joined(separator: " · "))"
+        if let sm = MRIntensityTime.summary(of: weekly) {
+            weeklyLog += "\n      중앙값 \(pct(sm.median))% · 최소 \(pct(sm.min))% · 최대 \(pct(sm.max))% (완료 주 \(sm.count)개 · 진행 중 주 제외)"
+        }
+        print(weeklyLog)
+    }
+    #endif
 
     private func displayBucket(for type: WorkoutType) -> (label: String, color: Color) {
         let L = AppLanguage.shared
@@ -3620,66 +3715,95 @@ private struct PerformanceInsightCard: View {
     }
 
     @ViewBuilder
-    private func intensityDistSection(data: IntensityDistData) -> some View {
+    private func intensityDistSection(data: IntensityTimeData) -> some View {
         let L = AppLanguage.shared
-        let total = data.total
-        let classified = total - data.unclassified
-        let maxCount = max(1, data.counts.map(\.count).max() ?? 1)
+        let b = data.result.buckets
+        // L-1 참고선 — 지구력 종목 문헌값. 목표·권장이 아니라 참고선. (lo == hi 면 점선 하나, 아니면 옅은 밴드 + 양끝 점선)
+        let rows: [(tier: IntensityTier, sec: Double, frac: Double, refLo: Double, refHi: Double)] = [
+            (.easy,   b.lowSec,  b.lowFrac,  0.80, 0.80),
+            (.medium, b.midSec,  b.midFrac,  0.00, 0.05),
+            (.hard,   b.highSec, b.highFrac, 0.15, 0.20),
+        ]
+        let excluded = data.result.runsNoHR.count + data.result.runsZonesMissing.count
+        let totalMin = Int((b.totalSec / 60).rounded())
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 4) {
-                Text(L.s("강도 분포 · \(data.weeks)주 · \(total)회", "Intensity · \(data.weeks)w · \(total)"))
+                Text(L.s("강도 분포 · \(data.weeks)주 · 심박 존 \(totalMin)분", "Intensity · \(data.weeks)w · \(totalMin) min in HR zones"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
-                if data.unclassified > 0 {
-                    Text(L.s("분류 중 \(data.unclassified)건", "+\(data.unclassified) pending"))
+                if excluded > 0 {
+                    Text(L.s("심박 없음 \(excluded)건 제외", "\(excluded) w/o HR excluded"))
                         .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center)
-            ForEach(data.counts) { item in
-                let pct = classified > 0 ? Int(Double(item.count) / Double(classified) * 100 + 0.5) : 0
+            // 참고선 라벨 — 한 번만, 우측 상단. 「목표」「권장」 금지.
+            HStack {
+                Spacer(minLength: 0)
+                Text(L.s("점선 = 지구력 종목 문헌값", "dotted = endurance-sport literature"))
+                    .font(.system(size: 7)).foregroundStyle(.white.opacity(0.45))
+            }
+            ForEach(rows, id: \.tier) { row in
+                let pct = Int((row.frac * 100).rounded())
+                let mins = Int((row.sec / 60).rounded())
                 HStack(spacing: 6) {
-                    Text(item.tier.label)
+                    Text(row.tier.label)
                         .font(.system(size: 8)).foregroundStyle(IC.label)
-                        .frame(width: 26, alignment: .leading)
+                        .frame(width: 32, alignment: .leading)
                     GeometryReader { geo in
+                        let w = geo.size.width
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
+                            // 막대: 전체 시간 대비 비율 (참고선과 같은 축)
                             RoundedRectangle(cornerRadius: 2.5)
-                                .fill(intensityColor(item.tier).opacity(0.85))
-                                .frame(width: max(4, geo.size.width * CGFloat(item.count) / CGFloat(maxCount)))
+                                .fill(intensityColor(row.tier).opacity(0.85))
+                                .frame(width: max(4, w * CGFloat(row.frac)))
+                            // 참고 범위 밴드 — 옅은 흰색, 경고색 없음, 미달 강조 없음
+                            if row.refHi > row.refLo {
+                                Rectangle()
+                                    .fill(.white.opacity(0.10))
+                                    .frame(width: w * CGFloat(row.refHi - row.refLo))
+                                    .offset(x: w * CGFloat(row.refLo))
+                            }
+                            // 세로 점선 — 0 지점은 막대 왼쪽 끝이라 생략
+                            ForEach(Array(Set([row.refLo, row.refHi]).filter { $0 > 0 }.sorted()), id: \.self) { r in
+                                Path { path in
+                                    path.move(to: CGPoint(x: 0, y: -1))
+                                    path.addLine(to: CGPoint(x: 0, y: 9))
+                                }
+                                .stroke(.white.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [1.5, 1.5]))
+                                .frame(width: 1)
+                                .offset(x: w * CGFloat(r))
+                            }
                         }
                     }
                     .frame(height: 8)
-                    Text("\(item.count) · \(pct)%")
+                    Text(L.s("\(mins)분 · \(pct)%", "\(mins)m · \(pct)%"))
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(intensityColor(item.tier))
-                        .frame(width: 40, alignment: .trailing)
+                        .foregroundStyle(intensityColor(row.tier))
+                        .frame(width: 56, alignment: .trailing)
                 }
             }
-            // Skew alert: easy < 20% AND classified >= 12 (분류된 건수 기준)
-            let easyCount = data.counts.first(where: { $0.tier == .easy })?.count ?? 0
-            let isSkewed  = classified >= 12 && Double(easyCount) / Double(classified) < 0.20
-            if isSkewed {
-                let weeks = data.consecutiveSkewedWeeks
-                let atLeast = data.isSkewedAtLeast
-                let weeksSuffix: String = {
-                    guard weeks > 1 || (weeks == 1 && atLeast) else { return "" }
-                    return L.s(" · \(weeks)주\(atLeast ? " 이상" : "")째",
-                               " · \(weeks)\(atLeast ? "+" : "") w in a row")
+            // ① 시간 기준 (K-2) — 사실 한 줄. 평가어·참고선 없음. 연속 개념 없음.
+            let lowPct = Int((b.lowFrac * 100).rounded())
+            Text(L.s(
+                "최근 \(data.weeks)주 훈련 시간의 \(lowPct)%가 저강도예요.",
+                "\(lowPct)% of your training time in the last \(data.weeks) weeks was low intensity."
+            ))
+            .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+            .fixedSize(horizontal: false, vertical: true)
+            // ② 회차 기준 (K-7) — 유형이 이지런인 러닝의 회차. «19%인데 왜 0회?»로 읽히지 않게 라벨로 구분.
+            if data.easyAlert {
+                let w = data.easyStreak, atLeast = data.easyStreakAtLeast
+                let streakSuffix: String = {
+                    guard w > 1 || (w == 1 && atLeast) else { return "" }
+                    return L.s(" · \(w)주\(atLeast ? " 이상" : "")째", " · \(w)\(atLeast ? "+" : "") wk in a row")
                 }()
                 Text(L.s(
-                    "최근 \(data.weeks)주 \(total)회 중 쉬운 러닝이 \(easyCount)회예요\(weeksSuffix).",
-                    "\(easyCount) easy run(s) out of \(total) in the last \(data.weeks) weeks\(weeksSuffix)."
+                    "이지런으로 계획한 러닝 \(data.easyCount)회\(streakSuffix)",
+                    "Runs planned as easy: \(data.easyCount)\(streakSuffix)"
                 ))
                 .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
-                if let pMin = data.paceMin, let pMax = data.paceMax, pMax > pMin {
-                    let pMinStr = String(format: "%d'%02d\"", Int(pMin) / 60, Int(pMin) % 60)
-                    let pMaxStr = String(format: "%d'%02d\"", Int(pMax) / 60, Int(pMax) % 60)
-                    Text(L.s("페이스도 \(pMinStr)~\(pMaxStr)에 몰려 있어요.", "Pace also clustered at \(pMinStr)–\(pMaxStr)."))
-                        .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
         }
     }
@@ -4549,6 +4673,7 @@ struct InsightExportSheet: View {
     var confirmedRace: PersistedRaceMatch? = nil
     var confirmedRaces: [PersistedRaceMatch] = []
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
+    var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -4778,7 +4903,9 @@ struct InsightExportSheet: View {
                 activity: activity, detail: detail,
                 history: history, age: age, isMale: isMale,
                 insights: insights,
-                workoutTypeFn: workoutTypeFn
+                workoutTypeFn: workoutTypeFn,
+                hrZones: hrZones,
+                hrZonesFn: hrZonesFn
             )
         case .race:
             RaceInsightCard(

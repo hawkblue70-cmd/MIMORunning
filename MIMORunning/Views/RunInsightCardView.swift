@@ -113,6 +113,7 @@ struct RunInsightSection: View {
     var isMale: Bool? = nil
     var hrZones: [HRZoneData] = []
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
+    var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
     var isBackfilling: Bool = false
     var isClassifying: Bool = false
     var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
@@ -150,7 +151,8 @@ struct RunInsightSection: View {
                 weatherSnapshot: weatherSnapshot,
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
-                raceDetailFn: raceDetailFn
+                raceDetailFn: raceDetailFn,
+                hrZonesFn: hrZonesFn
             )
         }
     }

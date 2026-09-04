@@ -47,6 +47,8 @@ class HealthKitManager {
     @ObservationIgnored private var isFetchInProgress = false
     @ObservationIgnored private var pausedIntervalsCache: [UUID: [DateInterval]] = [:]
     @ObservationIgnored private var detailCache: [UUID: ActivityDetail] = [:]
+    /// 존 체류 시간 전용 캐시 — 분류 경로에서 계산한 hrZones를 버리지 않고 강도 분포(4주 합산)에 재사용. 지연 로드.
+    @ObservationIgnored private var hrZoneOnlyCache: [String: [HRZoneData]]? = nil
     @ObservationIgnored private var hrSeriesCache: [UUID: [(offset: TimeInterval, bpm: Int)]] = [:]
     /// 불완전(provisional) 캐시 ID — 다음 진입 시 HealthKit 재조회
     @ObservationIgnored private var hrSeriesProvisionalIDs: Set<UUID> = []
@@ -769,6 +771,7 @@ class HealthKitManager {
                     if workoutCache[act.id] == nil { let _ = await fetchSplitsAndSegmentsForBackfill(activity: act) }
                     if let wo = workoutCache[act.id] { actHRZones = await queryHRZones(workout: wo) }
                 }
+                persistHRZones(actHRZones, for: act.id)
                 let hist = historyBefore(date: act.date, in: sorted)
                 let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
                 let wt = WorkoutTypeClassifier.classify(
@@ -993,6 +996,7 @@ class HealthKitManager {
                         actHRZones = await queryHRZones(workout: wo)
                     }
                 }
+                persistHRZones(actHRZones, for: act.id)
                 let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
                 let cachedEntry = (UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey)
                     as? [String: String] ?? [:])[act.id.uuidString].flatMap { parseWorkoutTypeEntry($0) }
@@ -1103,6 +1107,7 @@ class HealthKitManager {
                 if workoutCache[act.id] == nil { let _ = await fetchSplitsAndSegmentsForBackfill(activity: act) }
                 if let wo = workoutCache[act.id] { actHRZones = await queryHRZones(workout: wo) }
             }
+            persistHRZones(actHRZones, for: act.id)
             let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
             let backfillCached = (UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey)
                 as? [String: String] ?? [:])[act.id.uuidString].flatMap { parseWorkoutTypeEntry($0) }
@@ -1287,6 +1292,7 @@ class HealthKitManager {
             if actHRZones.isEmpty, let wo = workoutCache[activityID] {
                 actHRZones = await queryHRZones(workout: wo)
             }
+            persistHRZones(actHRZones, for: activityID)
             let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
             let oldType = disk.workoutType
             if let act = activities.first(where: { $0.id == activityID }) {
@@ -1316,6 +1322,7 @@ class HealthKitManager {
         let result = await fetchDetailFromHealthKit(for: activityID)
         if let result {
             detailCache[activityID] = result
+            persistHRZones(result.hrZones, for: activityID)
             // Only persist when data is complete so the next visit retries HealthKit
             // if fields like GPS route were still being processed at the time of fetch.
             if result.isComplete { saveDetailToDisk(result, id: activityID) }
@@ -1368,6 +1375,71 @@ class HealthKitManager {
     func detailFromCache(_ id: UUID) -> ActivityDetail? {
         if let cached = detailCache[id] { return cached }
         return loadDetailFromDisk(id)
+    }
+
+    // MARK: - HR zone time store (존 체류 시간 전용 · 강도 분포 K-1)
+
+    private var hrZoneOnlyCacheURL: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_hrzones_v2.json")   // v2: Zone4 AT2 분할(splitBPM·upperSeconds) 포함
+    }
+
+    private func loadHRZoneOnlyCache() -> [String: [HRZoneData]] {
+        if let c = hrZoneOnlyCache { return c }
+        let loaded = (try? Data(contentsOf: hrZoneOnlyCacheURL))
+            .flatMap { try? JSONDecoder().decode([String: [HRZoneData]].self, from: $0) } ?? [:]
+        hrZoneOnlyCache = loaded
+        return loaded
+    }
+
+    /// 분류·상세 경로에서 HealthKit으로 계산한 존 분포를 보관.
+    /// 상세 캐시가 없는 러닝도 강도 분포 합산에 쓰인다. 빈 배열은 저장하지 않음.
+    private func persistHRZones(_ zones: [HRZoneData], for id: UUID) {
+        // AT2 분할 정보 없는 구버전 존(디스크 상세에서 온 것)은 저장 가치 없음 — 보충 경로가 재조회한다
+        guard !zones.isEmpty, MRIntensityTime.hasAT2Split(zones) else { return }
+        var dict = loadHRZoneOnlyCache()
+        dict[id.uuidString] = zones
+        hrZoneOnlyCache = dict
+        if let data = try? JSONEncoder().encode(dict) {
+            try? data.write(to: hrZoneOnlyCacheURL, options: .atomic)
+        }
+    }
+
+    /// 강도 분포(존 시간 합산)용 존 조회 — 메모리 상세 → 존 전용 캐시 → 디스크 상세 순. 없으면 nil.
+    /// 리듬 카드 도넛과 같은 데이터(queryHRZones 결과)이며 여기서 새로 계산하지 않는다.
+    /// AT2 분할 정보(K-4)가 없는 구버전 존은 nil로 취급 — `backfillHRZonesAroundActivity`가 재조회해 채운다.
+    func hrZonesFromCache(_ id: UUID) -> [HRZoneData]? {
+        func ok(_ z: [HRZoneData]?) -> [HRZoneData]? {
+            guard let z, !z.isEmpty, MRIntensityTime.hasAT2Split(z) else { return nil }
+            return z
+        }
+        if let z = ok(detailCache[id]?.hrZones) { return z }
+        if let z = ok(loadHRZoneOnlyCache()[id.uuidString]) { return z }
+        if let z = ok(loadDetailFromDisk(id)?.hrZones) { return z }
+        return nil
+    }
+
+    /// 열람 러닝 기준 4주 창에서 존 체류 시간이 어느 캐시에도 없는 러닝을 채운다.
+    /// 도넛이 쓰는 queryHRZones를 그대로 호출 — 새 계산이 아니라 캐시 보충.
+    /// 심박(avgHeartRate)이 없는 러닝은 건너뜀.
+    func backfillHRZonesAroundActivity(_ activity: Activity) async {
+        guard activity.type == .running else { return }
+        let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
+        let windowRuns = activities.filter { $0.type == .running && $0.date >= cutoff && $0.date <= activity.date }
+        let missing = windowRuns.filter { $0.avgHeartRate != nil && hrZonesFromCache($0.id) == nil }
+        guard !missing.isEmpty else { return }
+        var filled = 0
+        for act in missing {
+            guard !Task.isCancelled else { break }
+            if workoutCache[act.id] == nil { await fetchSingleWorkout(id: act.id) }
+            guard let wo = workoutCache[act.id] else { continue }
+            let zones = await queryHRZones(workout: wo)
+            if !zones.isEmpty { persistHRZones(zones, for: act.id); filled += 1 }
+            await Task.yield()
+        }
+        #if DEBUG
+        print("[강도분포] 존 캐시 보충 — 창 \(windowRuns.count)건 중 존 없음 \(missing.count)건 → 채움 \(filled)건")
+        #endif
     }
 
     private func saveDetailToDisk(_ detail: ActivityDetail, id: UUID) {
@@ -2496,11 +2568,14 @@ class HealthKitManager {
         }
         let total = secs.reduce(0, +)
         guard total > 0 else { return [] }
+        // %MHR 폴백에서 AT2 = HRmax × 0.90 = Zone 5 하한 → Zone 4 전체가 AT2 미만(상단 0초)
         return ratios.enumerated().map { z, r in
             HRZoneData(id: z + 1, name: r.name,
                        minBPM: z == 0 ? 0 : bnd(r.lo),
                        maxBPM: z == 4 ? mhr : bnd(r.hi) - 1,
-                       seconds: secs[z], fraction: secs[z] / total)
+                       seconds: secs[z], fraction: secs[z] / total,
+                       splitBPM: z == 3 ? bnd(0.90) : nil,
+                       upperSeconds: z == 3 ? 0 : nil)
         }
     }
 
@@ -2544,14 +2619,21 @@ class HealthKitManager {
             ("Z5 최대",   0.90, Double.infinity),  // 실제 MHR 초과 측정치도 Z5로 포함
         ]
         func boundary(_ ratio: Double) -> Int { Int((Double(rhr) + ratio * hrr).rounded()) }
+        // AT2 = HRR 85% — Zone 4(80~90%) 안의 실제 심박값. 강도 분포(K-4)가 Zone 4를 여기서 나눈다.
+        let at2Ratio = 0.85
         var zoneSecs = [Double](repeating: 0, count: 5)
+        var z4UpperSecs: Double = 0
         let sorted = samples.sorted { $0.offset < $1.offset }
         for i in 0..<sorted.count {
             let hrrF = (Double(sorted[i].bpm) - Double(rhr)) / hrr
             let next = i + 1 < sorted.count ? sorted[i + 1].offset : sorted[i].offset + 5
             let gap  = min(60, max(0, next - sorted[i].offset))
             for (z, ratio) in ratios.enumerated() {
-                if hrrF >= ratio.lo && hrrF < ratio.hi { zoneSecs[z] += gap; break }
+                if hrrF >= ratio.lo && hrrF < ratio.hi {
+                    zoneSecs[z] += gap
+                    if z == 3 && hrrF >= at2Ratio { z4UpperSecs += gap }
+                    break
+                }
             }
         }
         let total = zoneSecs.reduce(0, +)
@@ -2560,7 +2642,9 @@ class HealthKitManager {
             HRZoneData(id: z + 1, name: ratio.name,
                        minBPM: z == 0 ? rhr : boundary(ratio.lo),
                        maxBPM: z == 4 ? mhr : boundary(ratio.hi) - 1,
-                       seconds: zoneSecs[z], fraction: zoneSecs[z] / total)
+                       seconds: zoneSecs[z], fraction: zoneSecs[z] / total,
+                       splitBPM: z == 3 ? boundary(at2Ratio) : nil,
+                       upperSeconds: z == 3 ? z4UpperSecs : nil)
         }
     }
 

@@ -27,11 +27,11 @@ struct MRFormTests {
 
         // isReal = abs(delta) > mdc && weeksConsistent >= 4
         let realVo  = MRFormShift(metric: voMetric,  recentMean: 0, baseMean: 0,
-                                   delta: 2.0, mdc: 1.0, weeksConsistent: 4)
+                                   delta: 2.0, mdc: 1.0, weeksConsistent: 4, r2: nil)
         let realCad = MRFormShift(metric: cadMetric, recentMean: 0, baseMean: 0,
-                                   delta: 2.0, mdc: 1.0, weeksConsistent: 4)
+                                   delta: 2.0, mdc: 1.0, weeksConsistent: 4, r2: nil)
         let weakVo  = MRFormShift(metric: voMetric,  recentMean: 0, baseMean: 0,
-                                   delta: 0.5, mdc: 1.0, weeksConsistent: 4)  // delta < mdc → not real
+                                   delta: 0.5, mdc: 1.0, weeksConsistent: 4, r2: nil)  // delta < mdc → not real
 
         // 실증 지표 1개뿐 → 문장 없음
         #expect(mrFormObservation([realVo, weakVo]) == nil)

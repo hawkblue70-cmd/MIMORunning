@@ -216,6 +216,7 @@ struct ActivityDetailView: View {
                                 if let match = rd.matchFor(activityID: id), match.isConfirmed { return .race }
                                 return m.cachedWorkoutTypeForStats(for: id)
                             },
+                            hrZonesFn: { [m = manager] id in m.hrZonesFromCache(id) },
                             isBackfilling: isInsightBackfilling || manager.isWorkoutTypeReclassifying,
                             isClassifying: manager.isOnDemandClassifying,
                             cadenceSeries: panelSeriesCache[.cadence] ?? [],
@@ -486,6 +487,7 @@ struct ActivityDetailView: View {
             Task {
                 isInsightBackfilling = true
                 await manager.backfillWorkoutTypesAroundActivity(activity)  // 열람 런 기준 4주 창
+                await manager.backfillHRZonesAroundActivity(activity)      // 강도 분포용 존 캐시 보충
                 isInsightBackfilling = false
             }
             formBackfillTask = Task {
