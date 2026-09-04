@@ -51,6 +51,28 @@ struct MRAdviceLog: Codable {
     }
 }
 
+extension MRAdviceLog {
+    /// 이 키를 지금 보여줘도 되는가.
+    ///
+    /// ★ nil(미기록) = 최초 표시 허용.
+    ///   nil을 "방금 표시함"으로 처리하면 기록이 없는 사용자가 영원히 못 본다 — 이게 반복된 버그의 핵심이었다.
+    func canShow(_ key: String, minDays: Int, asOf: Date = Date()) -> (Bool, String) {
+        guard let last = entries[key]?.lastShown else {
+            return (true, "미기록 → 최초 표시")
+        }
+        let d = Calendar.current.dateComponents([.day], from: last, to: asOf).day ?? 0
+        return d >= minDays
+            ? (true, "\(d)일 경과 → 표시")
+            : (false, "\(d)일밖에 안 지남 → 침묵")
+    }
+
+    /// 카드가 화면에 나타난 시점(.onAppear)에만 호출.
+    /// 판정 시점(canShow 근처)에서 부르지 않는다 — 판정은 앱 켤 때마다 돈다.
+    mutating func markShown(_ key: String, asOf: Date = Date()) {
+        record([key], asOf: asOf)
+    }
+}
+
 enum MRAdviceLogStore {
     private static let key = "mimo.adviceLog.v2"
     static func load() -> MRAdviceLog {
@@ -61,5 +83,17 @@ enum MRAdviceLogStore {
     }
     static func save(_ v: MRAdviceLog) {
         if let d = try? JSONEncoder().encode(v) { UserDefaults.standard.set(d, forKey: key) }
+    }
+
+    // race condition으로 오염된 건강 이야기 항목 1회 삭제.
+    // 버전을 올릴 때는 migV1Key 뒤에 .v2, .v3 … 을 추가한다.
+    private static let migV1Key = "mimo.adviceLog.migration.healthStoryReset.v1"
+    static func runMigrationIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: migV1Key) else { return }
+        var log = load()
+        log.entries.removeValue(forKey: "health.story.a")
+        log.entries.removeValue(forKey: "health.story.b")
+        save(log)
+        UserDefaults.standard.set(true, forKey: migV1Key)
     }
 }

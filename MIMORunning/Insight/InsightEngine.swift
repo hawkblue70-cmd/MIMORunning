@@ -159,11 +159,11 @@ struct InsightEngine {
             var band: [InsightResult] = []
             if let r = adverseCondition(activity, condition) { band.append(r) }
             if let r = tradeoffInsight(activity, prior, detail: detail, splits: splits) { band.append(r) }
-            if let r = rarityFact(activity, prior, condition: condition, historyComplete: historyComplete) { band.append(r) }
+            if let r = rarityFact(activity, prior, workoutType: workoutType, condition: condition, historyComplete: historyComplete) { band.append(r) }
             if let r = subThresholdRecognition(activity, intervalSegments, detail) { band.append(r) }
 
             #if DEBUG
-            _dbgFacts = buildBandFactLog(activity, prior, condition: condition,
+            _dbgFacts = buildBandFactLog(activity, prior, workoutType: workoutType, condition: condition,
                                          intervalSegments: intervalSegments, detail: detail, splits: splits)
             let _histBefore = loadThemeHistory()
             #endif
@@ -1038,6 +1038,7 @@ struct InsightEngine {
     private static func rarityFact(
         _ a: Activity,
         _ prior: [Activity],
+        workoutType: WorkoutType = .general,
         condition: ActivityCondition?,
         historyComplete: Bool = true
     ) -> InsightResult? {
@@ -1051,7 +1052,90 @@ struct InsightEngine {
         if historyComplete {
             if let r = cumulativeMilestone(a, prior) { return r }
         }
+        if workoutType == .easy, let r = easyRunRarity(a, prior) { return r }
         return nil
+    }
+
+    /// 이지런 희소성 — 마지막 이지런 이후 경과 주수 또는 연간 횟수를 사실로 전달.
+    ///
+    /// 이지 근사: 이전 런 페이스 중앙값보다 10% 이상 느린 런.
+    /// (WorkoutTypeClassifier 15% 폴백보다 보수적 — 중앙값이 기준이므로 여유를 준다.)
+    /// ⚠ 기록이 10개 미만이면 기준선 부족으로 침묵.
+    /// ⚠ "잘하셨어요" 같은 칭찬 없음. 사실만.
+    private static func easyRunRarity(_ a: Activity, _ prior: [Activity]) -> InsightResult? {
+        let priorPaces = prior.compactMap { $0.paceSecPerKm }.sorted()
+        guard priorPaces.count >= 10 else { return nil }
+        let medianPace = priorPaces[priorPaces.count / 2]
+        guard let currentPace = a.paceSecPerKm, currentPace > medianPace else { return nil }
+        let easyThreshold = medianPace * 1.10
+
+        let cal = Calendar.current
+        let priorEasy = prior
+            .filter { ($0.paceSecPerKm ?? 0) > easyThreshold && $0.date < a.date }
+            .sorted { $0.date < $1.date }
+        let L = AppLanguage.shared
+
+        if priorEasy.isEmpty {
+            guard priorPaces.count >= 15 else { return nil }
+            let idx = nextTitleIdx(for: "easyRarity", poolSize: 3)
+            let titles = [L.s("기록 중 첫 이지런", "First Easy Run on Record"),
+                          L.s("처음 가져본 이지 페이스", "First Easy Pace"),
+                          L.s("첫 여유 페이스 러닝", "First Easy-Pace Run")]
+            let details = [L.s("지금까지 기록 중 처음으로 여유 페이스를 유지했어요", "First easy-paced run across all logged history"),
+                           L.s("기록 전체에서 처음 나온 이지 페이스예요", "First time an easy pace appears in your history"),
+                           L.s("기록 중 이지 페이스는 이번이 처음이에요", "Your history shows no prior easy-pace run")]
+            return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
+        }
+
+        guard let lastEasy = priorEasy.last else { return nil }
+        let days = cal.dateComponents([.day], from: lastEasy.date, to: a.date).day ?? 0
+        let weeks = max(1, days / 7)
+
+        if weeks >= 4 {
+            let idx = nextTitleIdx(for: "easyRarity", poolSize: 3)
+            let titles: [String]
+            let details: [String]
+            if weeks >= 26 {
+                titles = [L.s("반년 만의 이지런", "Easy Run After 6 Months"),
+                          L.s("\(weeks)주 만의 이지런", "Easy Run After \(weeks) Weeks"),
+                          L.s("오랜만에 돌아온 여유 페이스", "Easy Pace Returns After a Long Break")]
+                details = [L.s("\(weeks)주 만에 여유 페이스를 유지했어요", "Easy pace after \(weeks) weeks"),
+                           L.s("마지막 이지런이 \(weeks)주 전이었어요", "Your last easy run was \(weeks) weeks ago"),
+                           L.s("\(weeks)주 만에 나온 이지 페이스예요", "Easy pace after \(weeks) weeks")]
+            } else {
+                titles = [L.s("\(weeks)주 만의 이지런", "Easy Run After \(weeks) Weeks"),
+                          L.s("오랜만의 여유 페이스", "Easy Pace After a While"),
+                          L.s("\(weeks)주 만에 찾은 이지 페이스", "Easy Pace After \(weeks) Weeks")]
+                details = [L.s("\(weeks)주 만에 여유 페이스를 유지했어요", "Easy pace after \(weeks) weeks"),
+                           L.s("마지막 이지런이 \(weeks)주 전이었어요", "Your last easy run was \(weeks) weeks ago"),
+                           L.s("\(weeks)주 만에 나온 이지 페이스예요", "Easy pace after \(weeks) weeks")]
+            }
+            return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
+        }
+
+        // 간격이 4주 미만 — 올해 횟수가 적으면 발화
+        let currentYear = cal.component(.year, from: a.date)
+        let countThisYear = priorEasy.filter { cal.component(.year, from: $0.date) == currentYear }.count + 1
+        guard countThisYear <= 3 else { return nil }
+        let idx = nextTitleIdx(for: "easyRarity", poolSize: 3)
+        let titles = [L.s("올해 \(countThisYear)번째 이지런", "\(ordinalEn(countThisYear)) Easy Run This Year"),
+                      L.s("올해 \(countThisYear)회의 이지런", "\(countThisYear) Easy Run(s) This Year"),
+                      L.s("이지런 — 올해 \(countThisYear)번", "Easy Run \(countThisYear) This Year")]
+        let details = [L.s("올해 들어 여유 페이스를 유지한 게 \(countThisYear)번이에요",
+                           "\(countThisYear) easy-pace run(s) this year"),
+                       L.s("올해 이지런은 드물게 — 이번이 \(countThisYear)번째예요",
+                           "Easy runs are rare this year — this is number \(countThisYear)"),
+                       L.s("올해 \(countThisYear)번째 이지런이에요",
+                           "\(countThisYear)\(ordinalSuffix(countThisYear)) easy run of the year")]
+        return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
+    }
+
+    private static func ordinalEn(_ n: Int) -> String {
+        switch n { case 1: return "1st"; case 2: return "2nd"; case 3: return "3rd"; default: return "\(n)th" }
+    }
+
+    private static func ordinalSuffix(_ n: Int) -> String {
+        switch n { case 1: return "st"; case 2: return "nd"; case 3: return "rd"; default: return "th" }
     }
 
     /// Fires when today's temperature is in the top/bottom 5% of the user's personal run-temperature
@@ -1312,6 +1396,7 @@ struct InsightEngine {
     /// Called only in DEBUG builds; re-runs checks without side-effects (temp recording is idempotent).
     private static func buildBandFactLog(
         _ a: Activity, _ prior: [Activity],
+        workoutType: WorkoutType = .general,
         condition: ActivityCondition?,
         intervalSegments: [IntervalSegment],
         detail: ActivityDetail?,
@@ -1404,6 +1489,24 @@ struct InsightEngine {
             }
         }
 
+        // easyRarity (easy 워크아웃 타입일 때만)
+        if workoutType == .easy {
+            if let r = easyRunRarity(a, prior) {
+                parts.append("easyRarity(발화:\(r.title))")
+            } else {
+                let priorPaces = prior.compactMap { $0.paceSecPerKm }.sorted()
+                if priorPaces.count < 10 {
+                    parts.append("easyRarity(침묵:기준선\(priorPaces.count)개<10)")
+                } else if (a.paceSecPerKm ?? 0) <= priorPaces[priorPaces.count / 2] {
+                    parts.append("easyRarity(침묵:현재페이스≤중앙값)")
+                } else {
+                    parts.append("easyRarity(침묵:조건미달)")
+                }
+            }
+        } else {
+            parts.append("easyRarity(침묵:워크아웃\(workoutType.rawValue))")
+        }
+
         return "[" + parts.joined(separator: ", ") + "]"
     }
 
@@ -1444,6 +1547,10 @@ struct InsightEngine {
             "오늘 심박이 평소보다 높았어요",
             "더위 속 장거리 — 잘 해냈어요", "열기를 이겨낸 장거리", "더운 날의 긴 거리",
             "더운 날 잘 뛰었어요", "열기 속 러닝 완료", "더위와 함께 달린 러닝",
+            // easyRarity
+            "기록 중 첫 이지런", "처음 가져본 이지 페이스", "첫 여유 페이스 러닝",
+            "반년 만의 이지런", "오랜만에 돌아온 여유 페이스",
+            "오랜만의 여유 페이스",
             // applyWorkoutType
             "기록을 깬 인터벌", "차오르는 인터벌", "스피드를 깨운 인터벌", "호흡을 끌어올린 인터벌",
             "기록을 쓴 롱런", "멀리 나아간 롱런", "지구력을 쌓은 롱런",

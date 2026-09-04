@@ -52,8 +52,14 @@ struct MRFormShift {
     /// 실질적 최소 변화량 — 통계 유의성과 별개로 지표 단위에서 의미 있는 크기인지 확인
     var isPractical: Bool {
         switch metric.key {
-        case "cadence": return abs(delta) >= 1.0   // 1.0 spm
-        case "gct":     return abs(delta) >= 3.0   // 3.0 ms
+        // 임의로 정함. 페도미터는 정수 spm으로 반올림하므로 1.0 spm이 최소 관측 단위다.
+        // 그보다 작은 잔차 차이는 반올림 아티팩트일 수 있다는 보수적 근거는 있으나,
+        // "1.0 spm이 임상적으로 의미 있다"는 출처는 없다.
+        case "cadence": return abs(delta) >= 1.0
+        // 임의로 정함. 잔차(개인 회귀 보정 후) 기준 GCT 최소검출변화량을 다룬
+        // 연구가 없다. Apple Watch MAPE ~19%(인용값; 절대값 기준)는 잔차에 직접 적용 불가.
+        // 자기보정 잔차에서 3ms는 현저히 보수적이나 출처 없음.
+        case "gct":     return abs(delta) >= 3.0
         default:        return true
         }
     }
@@ -135,13 +141,19 @@ func mrFormMDC(sd: Double, nRecent: Int, nBase: Int) -> Double {
     1.96 * sd * (1.0/Double(nRecent) + 1.0/Double(nBase)).squareRoot()
 }
 
-/// 최근 4주 vs 그 이전 12주의 잔차 평균 차이가 잡음을 넘는가.
+/// 최근 3개월 vs 직전 3개월의 잔차 평균 차이가 잡음을 넘는가.
 ///
 /// ⚠ MDC를 문헌에서 가져오지 않는다. **본인 잔차 산포에서 직접 잰다.**
-///   기기 오차가 얼마든(Apple Watch GCT는 MAPE 19%로 알려져 있다)
+///   기기 오차가 얼마든(Apple Watch GCT는 MAPE 19%로 인용됨, 절대값 기준)
 ///   그 사람 데이터에 이미 반영되어 있으므로 자기교정된다.
 ///
 ///   MDC₉₅ = 1.96 × SD_resid × √(1/n_recent + 1/n_base)
+///
+/// **창 변경 이력**: 커밋 33b4109까지 4주/12주(비대칭), 커밋 fa60426에서 3개월/3개월으로 변경.
+///   근거: MDC 공식은 n_recent = n_base 일 때 최소 — 대칭 창이 검출력을 높인다.
+///   "3개월"이라는 기간 자체: **임의로 정함**. 훈련 적응 기간(8–12주)과 대략 일치하나
+///   해당 창 길이를 지지하는 출처는 없다.
+///   n_min 20도 **임의로 정함** (이전: 6/12). 잔차 SD 추정 안정성 기준.
 func mrFormShift(_ residuals: [MRFormResidual],
                  metric: MRFormMetric,
                  asOf: Date,
@@ -173,7 +185,11 @@ func mrFormShift(_ residuals: [MRFormResidual],
     let mdc   = mrFormMDC(sd: sd, nRecent: recent.count, nBase: base.count)
 
     // 주 단위로 같은 방향이 몇 주 이어졌는지
-    // ⚠ 3주로는 부족하다. 8지표 환경에서 "3주 연속"은 90% 확률로 우연히 생긴다.
+    // ⚠ 3주로는 부족하다. 2지표(cadence·gct) 독립, p=0.5 가정:
+    //   P(3연속 ≥1개) ≈ 1−(1−0.5³)² ≈ 23%. 실제로는 주차 간 자기상관이 있으므로 더 낮다.
+    //   "90%"는 오래된 주석의 계산 오류 — 정확하지 않다.
+    //   그러나 4주 기준도 **임의로 정함**: 임계값을 올릴수록 진짜 추세를 놓친다.
+    //   다중 비교 문제를 완전히 억제하지 못하며, 이 값은 경험적 타협이다.
     var weeks = 0
     let dir = (rMean - bMean) > 0 ? 1.0 : -1.0
     for w in 0..<12 {
@@ -184,7 +200,11 @@ func mrFormShift(_ residuals: [MRFormResidual],
         if (m - bMean) * dir > 0 { weeks += 1 } else { break }
     }
 
-    // R² — 잔차 모델 설명력. obs 있을 때만 계산. GCT 보정 게이트에 사용.
+    // R² — 잔차 모델 설명력. obs 있을 때만 계산.
+    // ⚠ isReal 판정에는 사용되지 않는다.
+    //   디버그 로그(기준 0.2)와 RunningFormBaseline의 GCT 드리프트 보정 게이트에서만 참조.
+    //   0.2라는 기준값: **임의로 정함**. Cohen 1988의 "작은 효과" 기준(f²=0.02)과 무관하며,
+    //   잔차 R²에 특화된 임계값 연구는 없다.
     var r2: Double? = nil
     if !obs.isEmpty {
         let yVals = obs.filter { let x = days($0.date); return x >= 0 && x <= 365 }.map(\.metricValue)

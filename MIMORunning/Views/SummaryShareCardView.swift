@@ -171,6 +171,19 @@ struct SummaryPeriodStats {
             return (d, (kmByDay[date] ?? 0) * factor)
         }
     }
+
+    var monthlyDistanceEntries: [(month: Int, value: Double)] {
+        guard case .yearly(let year) = kind else { return [] }
+        let cal = Calendar.current
+        var kmByMonth: [Int: Double] = [:]
+        for a in activities where a.type == .running {
+            let mo = cal.component(.month, from: a.date)
+            let yr = cal.component(.year, from: a.date)
+            if yr == year { kmByMonth[mo, default: 0] += a.distance / 1000 }
+        }
+        let factor = useMiles ? 0.621371 : 1.0
+        return (1...12).map { m in (m, (kmByMonth[m] ?? 0) * factor) }
+    }
 }
 
 // MARK: - Palette
@@ -378,16 +391,21 @@ struct SummaryShareCardView: View {
                         }
                     }
 
-                    // Daily distance chart (monthly only)
-                    let chartData = stats.dailyDistanceEntries
-                    if chartData.contains(where: { $0.value > 0 }) {
+                    // Distance chart: daily (월별 결산) / monthly (연간 결산)
+                    let dailyData   = stats.dailyDistanceEntries
+                    let monthData   = stats.monthlyDistanceEntries
+                    let showDaily   = dailyData.contains(where: { $0.value > 0 })
+                    let showMonthly = monthData.contains(where: { $0.value > 0 })
+                    if showDaily || showMonthly {
                         Rectangle()
                             .fill(p.divider)
                             .frame(height: 0.5)
                             .padding(.top, 10)
                             .padding(.bottom, 6)
                         HStack {
-                            Text(AppLanguage.shared.s("일간 거리", "DAILY DIST"))
+                            Text(showDaily
+                                 ? AppLanguage.shared.s("일간 거리", "DAILY DIST")
+                                 : AppLanguage.shared.s("월간 거리", "MONTHLY DIST"))
                                 .font(.system(size: 8, weight: .semibold))
                                 .tracking(0.6)
                                 .foregroundStyle(p.textSecondary)
@@ -397,7 +415,11 @@ struct SummaryShareCardView: View {
                                 .foregroundStyle(p.axisLabel)
                         }
                         .padding(.bottom, 3)
-                        SummaryDailyDistanceChart(data: chartData, palette: p)
+                        if showDaily {
+                            SummaryDailyDistanceChart(data: dailyData, palette: p)
+                        } else {
+                            SummaryMonthlyDistanceChart(data: monthData, palette: p)
+                        }
                     }
 
                     Spacer(minLength: 0)
@@ -618,6 +640,50 @@ struct SummaryShareCardScreen: View {
     }
 }
 
+// MARK: - Monthly distance chart (yearly summary card)
+
+private struct SummaryMonthlyDistanceChart: View {
+    let data: [(month: Int, value: Double)]
+    let palette: SummaryCardPalette
+
+    private static let monthAbbr = ["", "J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
+
+    var body: some View {
+        Chart(data.indices, id: \.self) { i in
+            BarMark(
+                x: .value("월", data[i].month),
+                y: .value("거리", data[i].value),
+                width: .fixed(14)
+            )
+            .foregroundStyle(data[i].value > 0 ? palette.monthlyBarColor.gradient : Color.clear.gradient)
+            .cornerRadius(2)
+        }
+        .chartXScale(domain: 1...12)
+        .chartXAxis {
+            AxisMarks(values: [1, 3, 5, 7, 9, 11]) { value in
+                AxisValueLabel {
+                    let m = value.as(Int.self) ?? 0
+                    Text(m > 0 && m < Self.monthAbbr.count ? Self.monthAbbr[m] : "")
+                        .font(.system(size: 7))
+                        .foregroundStyle(palette.axisLabel)
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(values: .automatic(desiredCount: 2)) { value in
+                AxisValueLabel {
+                    Text(String(format: "%.0f", value.as(Double.self) ?? 0))
+                        .font(.system(size: 7))
+                        .foregroundStyle(palette.axisLabel)
+                }
+                AxisGridLine()
+                    .foregroundStyle(palette.gridLine)
+            }
+        }
+        .frame(height: 100)
+    }
+}
+
 // MARK: - Daily distance chart (summary card)
 
 private struct SummaryDailyDistanceChart: View {
@@ -631,7 +697,7 @@ private struct SummaryDailyDistanceChart: View {
                 y: .value("거리", data[i].value),
                 width: .fixed(5)
             )
-            .foregroundStyle(data[i].value > 0 ? palette.barChart.gradient : Color.clear.gradient)
+            .foregroundStyle(data[i].value > 0 ? palette.monthlyBarColor.gradient : Color.clear.gradient)
             .cornerRadius(2)
         }
         .chartXScale(domain: 1...31)

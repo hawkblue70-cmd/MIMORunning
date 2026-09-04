@@ -128,24 +128,61 @@ struct SplitsShareCardView: View {
 
     // Scale factor 300/360 = 5/6 applied throughout
     // Base 4:5 (300×375), grows dynamically for more splits
-    static func cardHeight(splitCount: Int) -> CGFloat {
-        max(375, 198 + CGFloat(splitCount) * 18)
+    static func cardHeight(splitCount: Int, hasZones: Bool = false) -> CGFloat {
+        let zonesH: CGFloat = hasZones ? 130 : 0
+        return max(375, 198 + CGFloat(splitCount) * 16 + zonesH)
+    }
+
+    private var groupSize: Int {
+        if splits.count <= 16 { return 1 }
+        if splits.count <= 30 { return 2 }
+        return 3
+    }
+
+    private var displaySplits: [SplitData] {
+        let g = groupSize
+        guard g > 1 else { return splits }
+        var result: [SplitData] = []
+        var i = 0
+        var groupId = 1
+        while i < splits.count {
+            let chunk = Array(splits[i..<min(i + g, splits.count)])
+            let totalDist = chunk.reduce(0.0) { $0 + $1.distanceM }
+            let totalDur  = chunk.reduce(0.0) { $0 + $1.duration }
+            let hrs  = chunk.compactMap(\.avgHeartRate)
+            let cads = chunk.compactMap(\.avgCadence)
+            let pwrs = chunk.compactMap(\.avgPower)
+            result.append(SplitData(
+                id: groupId,
+                distanceM: totalDist,
+                duration: totalDur,
+                avgHeartRate:           hrs.isEmpty  ? nil : hrs.reduce(0, +)  / hrs.count,
+                avgCadence:             cads.isEmpty ? nil : cads.reduce(0, +) / cads.count,
+                avgPower:               pwrs.isEmpty ? nil : pwrs.reduce(0, +) / pwrs.count,
+                avgGroundContactTime:   nil,
+                avgStrideLength:        nil,
+                avgVerticalOscillation: nil
+            ))
+            groupId += 1
+            i += g
+        }
+        return result
     }
 
     private var fastestIdx: Int? {
-        splits.indices.min(by: { splits[$0].paceSecPerKm < splits[$1].paceSecPerKm })
+        displaySplits.indices.min(by: { displaySplits[$0].paceSecPerKm < displaySplits[$1].paceSecPerKm })
     }
 
     private var avgPace: Double {
-        guard !splits.isEmpty else { return 0 }
-        return splits.map(\.paceSecPerKm).reduce(0, +) / Double(splits.count)
+        guard !displaySplits.isEmpty else { return 0 }
+        return displaySplits.map(\.paceSecPerKm).reduce(0, +) / Double(displaySplits.count)
     }
 
-    private var bestPace: Double? { splits.map(\.paceSecPerKm).min() }
+    private var bestPace: Double? { displaySplits.map(\.paceSecPerKm).min() }
     private var totalDistanceKm: Double { splits.reduce(0) { $0 + $1.distanceM } / 1000 }
 
-    private var maxPaceSec: Double { splits.map(\.paceSecPerKm).max() ?? 1 }
-    private var minPaceSec: Double { splits.map(\.paceSecPerKm).min() ?? 1 }
+    private var maxPaceSec: Double { displaySplits.map(\.paceSecPerKm).max() ?? 1 }
+    private var minPaceSec: Double { displaySplits.map(\.paceSecPerKm).min() ?? 1 }
 
     private static let barW: CGFloat = 92
 
@@ -157,10 +194,12 @@ struct SplitsShareCardView: View {
     }
 
     private func kmLabel(for split: SplitData) -> String {
-        if split.distanceM < 990 {
+        let g = groupSize
+        if split.distanceM < Double(g) * 1000 - 50 {
             return String(format: "%.1f", split.distanceM / 1000)
         }
-        return split.id == 1 ? "1km" : "\(split.id)"
+        let km = split.id * g
+        return split.id == 1 ? "\(km)km" : "\(km)"
     }
 
     private var dateStr: String {
@@ -185,49 +224,44 @@ struct SplitsShareCardView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            pal.background
+        VStack(alignment: .leading, spacing: 0) {
+            // Accent bar
+            Rectangle()
+                .fill(pal.accentBar)
+                .frame(height: 3)
 
             VStack(alignment: .leading, spacing: 0) {
-                // Accent bar
-                Rectangle()
-                    .fill(pal.accentBar)
-                    .frame(height: 3)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    // Wordmark + MiniMe
+                    // Wordmark + date/weather (MiniMe 제거)
                     HStack(alignment: .top) {
                         MIMOWordmark(size: 8, strokeMIMO: pal.isLight)
                         Spacer()
-                        miniMeContent
-                            .frame(width: 37, height: 37)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(dateStr)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(pal.textPrimary)
+                            HStack(spacing: 4) {
+                                Text(activity.date.weekdayString)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(pal.dateWeekday)
+                                if let w = weatherText {
+                                    HStack(spacing: 2) {
+                                        Image(systemName: weatherIcon ?? "thermometer.medium")
+                                            .font(.system(size: 8))
+                                        Text(w)
+                                            .font(.system(size: 9, weight: .medium))
+                                    }
+                                    .foregroundStyle(pal.weather)
+                                }
+                            }
+                        }
                     }
                     .padding(.top, 13)
                     .padding(.bottom, 8)
 
-                    // Date + weather + title
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Text(dateStr)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(pal.textPrimary)
-                        Text(activity.date.weekdayString)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(pal.dateWeekday)
-                        if let w = weatherText {
-                            HStack(spacing: 3) {
-                                Image(systemName: weatherIcon ?? "thermometer.medium")
-                                    .font(.system(size: 9))
-                                Text(w)
-                                    .font(.system(size: 10, weight: .medium))
-                            }
-                            .foregroundStyle(pal.weather)
-                        }
-                    }
                     Text(AppLanguage.shared.s("구간 기록", "Splits"))
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.5)
                         .foregroundStyle(pal.accentLabel)
-                        .padding(.top, 2)
 
                     // Divider
                     Rectangle()
@@ -237,7 +271,7 @@ struct SplitsShareCardView: View {
                         .padding(.bottom, 3)
 
                     // Split rows
-                    ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
+                    ForEach(Array(displaySplits.enumerated()), id: \.element.id) { idx, split in
                         splitRow(split: split, idx: idx)
                     }
 
@@ -256,6 +290,11 @@ struct SplitsShareCardView: View {
                             Spacer()
                         }
                         footerStat(value: String(format: "%.1fkm", totalDistanceKm), label: AppLanguage.shared.s("총 거리", "TOTAL"), color: pal.footerTotal)
+                    }
+
+                    // HR zones (if available)
+                    if !zones.isEmpty {
+                        hrZonesSectionView
                     }
 
                     // Branding
@@ -282,22 +321,8 @@ struct SplitsShareCardView: View {
                 .padding(.horizontal, 18)
                 .padding(.bottom, 12)
             }
-        }
-        .frame(width: 300, height: Self.cardHeight(splitCount: splits.count))
-    }
-
-    @ViewBuilder
-    private var miniMeContent: some View {
-        if let img = miniMeImage {
-            Image(uiImage: img)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 37, height: 37)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(pal.accentBar.opacity(0.4), lineWidth: 1.2))
-        } else {
-            MiniMeView(variant: .celebrating, size: 37)
-        }
+        .background(pal.background)
+        .frame(width: 300)
     }
 
     private func splitRow(split: SplitData, idx: Int) -> some View {
@@ -376,7 +401,7 @@ struct SplitsShareCardView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .padding(.vertical, 1)
+            .padding(.vertical, 0)
             .background(pal.isLight && idx % 2 == 1 ? (pal.rowAlt ?? Color.clear) : Color.clear)
         }
     }
@@ -391,6 +416,84 @@ struct SplitsShareCardView: View {
                 .tracking(0.3)
                 .foregroundStyle(color.opacity(0.7))
         }
+    }
+
+    private func formatZoneTime(_ secs: TimeInterval) -> String {
+        let s = Int(secs)
+        guard s > 0 else { return "—" }
+        if s < 3600 { return String(format: "%d:%02d", s / 60, s % 60) }
+        return String(format: "%dh%02d", s / 3600, (s % 3600) / 60)
+    }
+
+    @ViewBuilder
+    private var hrZonesSectionView: some View {
+        Rectangle()
+            .fill(pal.dividerFooter)
+            .frame(height: 0.5)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+        // 헤더
+        HStack(spacing: 0) {
+            Text(AppLanguage.shared.s("심박 영역", "HR Zones"))
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(pal.textPrimary)
+            Spacer()
+            Text(AppLanguage.shared.s("존별 운동 시간", "Time per zone"))
+                .font(.system(size: 8))
+                .foregroundStyle(pal.kmLabel)
+        }
+        .padding(.bottom, 4)
+        // 존별 행
+        VStack(spacing: 0) {
+            ForEach(Array(zones.enumerated()), id: \.element.id) { idx, zone in
+                let color    = hrZoneColor(zone.id)
+                let hasTime  = zone.seconds > 0
+                let barAvail: CGFloat = 264 - 32 - 36 - 60 - 16 // label+time+bpm+spacing
+                VStack(spacing: 0) {
+                    if idx > 0 {
+                        Rectangle()
+                            .fill(pal.dividerRow)
+                            .frame(height: 0.5)
+                    }
+                    HStack(spacing: 4) {
+                        // 존 레이블
+                        Text(AppLanguage.shared.s("영역 \(zone.id)", "Z\(zone.id)"))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(hasTime ? color : color.opacity(0.4))
+                            .frame(width: 32, alignment: .leading)
+                        // 막대
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(pal.barTrack)
+                                .frame(height: 7)
+                            if hasTime {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(color)
+                                    .frame(width: max(6, barAvail * CGFloat(zone.fraction)), height: 7)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        // 시간
+                        Text(formatZoneTime(zone.seconds))
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundStyle(hasTime ? pal.textPrimary : pal.kmLabel.opacity(0.35))
+                            .frame(width: 36, alignment: .trailing)
+                        // BPM 범위
+                        Text(zoneBpmText(zone))
+                            .font(.system(size: 8))
+                            .foregroundStyle(hasTime ? pal.weather : pal.kmLabel.opacity(0.25))
+                            .frame(width: 60, alignment: .trailing)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private func zoneBpmText(_ zone: HRZoneData) -> String {
+        if zone.id == 1 { return "<\(zone.maxBPM)BPM" }
+        if zone.id == zones.last?.id { return "\(zone.minBPM)+BPM" }
+        return "\(zone.minBPM)~\(zone.maxBPM)BPM"
     }
 }
 

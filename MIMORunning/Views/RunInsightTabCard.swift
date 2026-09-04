@@ -2434,7 +2434,7 @@ private struct PerformanceInsightCard: View {
                     }
                 }
             }
-            if let intensDist = _intensityResult {
+            if let intensDist = intensityDistData {
                 divider
                 intensityDistSection(data: intensDist)
             }
@@ -3382,6 +3382,13 @@ private struct PerformanceInsightCard: View {
 
     private var trainingDistData: (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)? {
         _distResult ?? computeTrainingDistData()
+    }
+
+    /// ImageRenderer는 onAppear를 트리거하지 않으므로 _intensityResult가 nil인 채 렌더된다.
+    /// trainingDistData와 동일한 폴백 패턴으로 nil이어도 즉시 계산한다.
+    private var intensityDistData: IntensityTimeData? {
+        if let r = _intensityResult { return r }
+        return trainingDistData.flatMap { computeIntensityTimeData(weeks: $0.weeks) }
     }
 
     private func computeTrainingDistData() -> (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)? {

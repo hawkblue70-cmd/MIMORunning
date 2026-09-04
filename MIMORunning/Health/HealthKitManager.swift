@@ -3018,12 +3018,45 @@ class HealthKitManager {
         try? FileManager.default.removeItem(at: metricHistoryCacheURL(.bodyMass, usePounds: false))
         try? FileManager.default.removeItem(at: metricHistoryCacheURL(.bodyMass, usePounds: true))
         try? FileManager.default.removeItem(at: metricHistoryCacheURL(.bodyFatPercentage, usePounds: false))
+        try? FileManager.default.removeItem(at: Self.metricCacheDir.appendingPathComponent("bodyMass_allTime.json"))
     }
 
     /// 당기기 새로고침 시 호출 — 모든 지표 캐시 삭제 (체성분 포함)
     func invalidateAllMetricHistoryCache() {
         guard let files = try? FileManager.default.contentsOfDirectory(at: Self.metricCacheDir, includingPropertiesForKeys: nil) else { return }
         for file in files { try? FileManager.default.removeItem(at: file) }
+    }
+
+    // MARK: - Body Change Section Queries
+
+    /// 전체 기간 체중 기록 (오름차순). 24시간 디스크 캐시 사용.
+    func fetchBodyMassAllTime() async -> [(date: Date, value: Double)] {
+        let cacheURL = Self.metricCacheDir.appendingPathComponent("bodyMass_allTime.json")
+        if let data = try? Data(contentsOf: cacheURL),
+           let file = try? JSONDecoder().decode(MetricHistoryCacheFile.self, from: data),
+           Date().timeIntervalSince(file.cachedAt) < 86_400 {
+            return file.points.map { ($0.date, $0.value) }
+        }
+        let unit = HKUnit.gramUnit(with: .kilo)
+        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.bodyMass),
+            predicate: HKQuery.predicateForSamples(withStart: .distantPast, end: Date(), options: [])
+        )
+        let desc = HKSampleQueryDescriptor(
+            predicates: [pred],
+            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
+        )
+        guard let samples = try? await desc.result(for: store) else { return [] }
+        let result = samples.map { (date: $0.startDate, value: $0.quantity.doubleValue(for: unit)) }
+        let cacheFile = MetricHistoryCacheFile(
+            points: result.map { MetricDataPoint(date: $0.date, value: $0.value) },
+            cachedAt: Date(),
+            coveredFrom: .distantPast
+        )
+        if let encoded = try? JSONEncoder().encode(cacheFile) {
+            try? encoded.write(to: cacheURL, options: .atomic)
+        }
+        return result
     }
 
     private func saveMetricHistoryToDisk(_ points: [(date: Date, value: Double)], metric: TrendMetric, usePounds: Bool, coveredFrom: Date) {

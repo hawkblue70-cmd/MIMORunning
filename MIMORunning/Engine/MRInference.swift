@@ -105,31 +105,66 @@ func mrProfileFull(runs: [MRWorkout],
     p.longestRun16wKm = w16.compactMap(\.distanceKm).max() ?? 0
     p.marathonFinishes = efforts.filter { $0.distanceM >= 40_000 }.count
 
-    // ── 경력
+    // ── 경력 — 러닝이 1회 이상 있는 달의 수 / 12
     //
-    // ⚠ **기기 구매일 함정.** 애플워치를 산 날부터 데이터가 시작되므로
-    //   "첫 러닝 = 러닝 시작일"이 아니다. 그 전에 몇 년을 달렸을 수 있다.
-    //   → 걸음 수 같은 다른 데이터가 러닝보다 **60일 이상 먼저** 시작했다면
-    //     첫 러닝이 진짜 시작일에 가깝다고 본다(신뢰 높음).
-    //     겹치면 그 값은 **하한**일 뿐이다(신뢰 낮음).
-    //   그리고 대회급 노력이 있으면 그 앞에 준비 기간을 얹는다.
-    var cands: [(Double, MRConfidence, String)] = []
-    if let oldest = efforts.first?.date, let e0 = efforts.first {
-        let prep = e0.distanceM >= MRDistance.dH ? 0.33 : 0.25
-        let y = Double(cal.dateComponents([.day], from: oldest, to: asOf).day ?? 0) / 365.25 + prep
-        cands.append((y, .high, "가장 오래된 대회급 노력 \(mrYMD(oldest)) + 준비기간 \(Int(prep*12))개월"))
-    }
-    if let firstRun = runs.first?.date {
-        let fd = firstDataDate ?? firstRun
-        let trapAvoided = (cal.dateComponents([.day], from: fd, to: firstRun).day ?? 0) > 60
-        let y = Double(cal.dateComponents([.day], from: firstRun, to: asOf).day ?? 0) / 365.25
-        cands.append((y, trapAvoided ? .high : .low,
-                      "첫 러닝 \(mrYMD(firstRun))" +
-                      (trapAvoided ? " (기기 데이터는 \(mrYMD(fd))부터 — 함정 회피)"
-                                   : " (기기 구매일과 겹침 — 하한)")))
-    }
-    if let best = cands.max(by: { $0.0 < $1.0 }) {
-        p.trainingAgeYears = MRInference(value: best.0, confidence: best.1, basis: [best.2])
+    // ⚠ "첫 러닝부터 지금까지"로 세면 데니처럼 29개월 공백이 있을 때
+    //   실제 경력의 두 배 가까이 나온다.
+    //   "공백 N일 이상을 뺀다"는 방식은 N이 근거 없는 임의값이 된다.
+    //   달 단위로 세면 문턱 없이 공백을 정확히 제거한다.
+    //   기기 구매일 함정도 자연스럽게 피해간다 — 뛴 달만 세니까.
+    //   (firstDataDate 파라미터는 하위 호환을 위해 남겨두되 더 이상 쓰지 않는다)
+    let mdf = DateFormatter(); mdf.dateFormat = "yyyy-MM"
+    let activeMonthSet: Set<String> = Set(runs.compactMap { w -> String? in
+        let c = cal.dateComponents([.year, .month], from: w.date)
+        guard let y = c.year, let m = c.month else { return nil }
+        return "\(y)-\(String(format: "%02d", m))"
+    })
+    if !activeMonthSet.isEmpty {
+        let nActive = activeMonthSet.count
+        let years   = Double(nActive) / 12.0
+        p.trainingAgeYears = MRInference(
+            value: years, confidence: .high,
+            basis: ["러닝 기록이 있는 달 \(nActive)개월 기준"])
+
+        #if DEBUG
+        // 첫 활성 달 ~ 현재까지 모든 달 생성
+        let sortedActive = activeMonthSet.sorted()
+        let firstM = sortedActive.first!
+        var allMonths: [String] = []
+        if let startDate = mdf.date(from: firstM),
+           let endComp  = cal.date(from: cal.dateComponents([.year, .month], from: asOf)) {
+            var cur = startDate
+            while cur <= endComp {
+                allMonths.append(mdf.string(from: cur))
+                cur = cal.date(byAdding: .month, value: 1, to: cur)!
+            }
+        }
+        let totalMonths = allMonths.count
+
+        // 연속 공백 구간 찾기
+        let sortedInactive = allMonths.filter { !activeMonthSet.contains($0) }
+        var gapRanges: [(from: String, to: String, count: Int)] = []
+        if !sortedInactive.isEmpty {
+            var gs = sortedInactive[0], ge = sortedInactive[0], gc = 1
+            for i in 1..<sortedInactive.count {
+                let prev = sortedInactive[i - 1]
+                let expected = mdf.date(from: prev).flatMap {
+                    cal.date(byAdding: .month, value: 1, to: $0)
+                }.map { mdf.string(from: $0) }
+                if expected == sortedInactive[i] { ge = sortedInactive[i]; gc += 1 }
+                else { gapRanges.append((gs, ge, gc)); gs = sortedInactive[i]; ge = gs; gc = 1 }
+            }
+            gapRanges.append((gs, ge, gc))
+        }
+
+        print(String(format: "[추론] 경력 — 전체 %d개월 · 러닝 있는 달 %d개월 → %.2f년",
+                     totalMonths, nActive, years))
+        let sigGaps = gapRanges.filter { $0.count >= 2 }
+        if !sigGaps.isEmpty {
+            let parts = sigGaps.map { "\($0.from) ~ \($0.to) (\($0.count)개월)" }
+            print("[추론] 러닝 없는 달: \(parts.joined(separator: " · "))")
+        }
+        #endif
     }
 
     // ── 모드 점수
