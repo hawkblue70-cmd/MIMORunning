@@ -105,14 +105,22 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
 /// 슬라이드 출력에 얹히는 MIMO 워드마크(좌측 상단) 정적 이미지.
 /// 9:16 캔버스(renderSize) 기준으로 렌더 → scale 적용으로 px 출력.
 @MainActor
-func makeStampLogoDateOverlay(renderSize: CGSize) -> UIImage? {
+func makeStampLogoDateOverlay(renderSize: CGSize, date: Date? = nil) -> UIImage? {
     let ptH = renderSize.height / renderSize.width * 300
     let vPad = ptH * 0.06
 
-    let overlay = MIMOWordmark(size: 11)
-    .padding(.leading, 14)
-    .padding(.trailing, 14)
-    .padding(.top, vPad)
+    // date != nil → 워드마크 줄 오른쪽에 날짜·시간 (미리보기 StampDateLabel과 동일)
+    let overlay = ZStack(alignment: .topLeading) {
+        MIMOWordmark(size: 11)
+            .padding(.leading, 14)
+            .padding(.top, vPad)
+        if let d = date {
+            StampDateLabel(date: d)
+                .padding(.trailing, 14)
+                .padding(.top, vPad + 8)
+                .frame(width: 300, alignment: .topTrailing)
+        }
+    }
     .frame(width: 300, height: ptH, alignment: .topLeading)
 
     let renderer = ImageRenderer(content: overlay)
@@ -125,15 +133,22 @@ func makeStampLogoDateOverlay(renderSize: CGSize) -> UIImage? {
 /// 영상 출력에 얹히는 MIMO 워드마크(좌측 상단) 정적 이미지.
 /// 영상 미리보기(previewW=375*9/16≈211pt)와 동일한 논리 크기로 렌더.
 @MainActor
-func makeStampLogoOverlay(renderSize: CGSize) -> UIImage? {
+func makeStampLogoOverlay(renderSize: CGSize, date: Date? = nil) -> UIImage? {
     // 영상 미리보기 컨테이너와 동일한 논리 폭 → 미리보기·출력 워드마크 크기 일치
     let baseW: CGFloat = 375.0 * 9.0 / 16.0  // ≈ 210.94pt
     let ptH  = renderSize.height / renderSize.width * baseW  // ≈ 375pt for 1080×1920
     let vPad = ptH * 0.06  // ≈ 22.5pt (미리보기: cardSectionH * 0.06)
-    let overlay = MIMOWordmark(size: 11)
-    .padding(.leading, 14)
-    .padding(.trailing, 14)
-    .padding(.top, vPad)
+    let overlay = ZStack(alignment: .topLeading) {
+        MIMOWordmark(size: 11)
+            .padding(.leading, 14)
+            .padding(.top, vPad)
+        if let d = date {
+            StampDateLabel(date: d)
+                .padding(.trailing, 14)
+                .padding(.top, vPad + 8)
+                .frame(width: baseW, alignment: .topTrailing)
+        }
+    }
     .frame(width: baseW, height: ptH, alignment: .topLeading)
     let renderer = ImageRenderer(content: overlay)
     renderer.proposedSize = .init(width: baseW, height: ptH)
@@ -598,6 +613,13 @@ extension ShareCardScreen {
                         .padding(.leading, 14)
                         .padding(.top, cardSectionH * 0.06)
                 }
+                .overlay(alignment: .topTrailing) {
+                    if clipConfig.showDate {
+                        StampDateLabel(date: activity.date)
+                            .padding(.trailing, 14)
+                            .padding(.top, cardSectionH * 0.06 + 8)
+                    }
+                }
                 .overlay(alignment: .bottom) {
                     GeometryReader { geo in
                         Rectangle()
@@ -859,6 +881,13 @@ extension ShareCardScreen {
             MIMOWordmark(size: 11)
                 .padding(.leading, 10)
                 .padding(.top, cardSectionH * 0.06)
+        }
+        .overlay(alignment: .topTrailing) {
+            if displayConfig.showDate {
+                StampDateLabel(date: activity.date)
+                    .padding(.trailing, 11)
+                    .padding(.top, cardSectionH * 0.06 + 8)
+            }
         }
     }
 

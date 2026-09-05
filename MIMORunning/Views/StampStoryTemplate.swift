@@ -127,12 +127,19 @@ struct StampStoryRenderView: View {
                 )
             }
 
-            // 워드마크: 좌측 상단
+            // 워드마크: 좌측 상단 (+ 날짜 토글 시 같은 줄 오른쪽에 날짜·시간)
             MIMOWordmark(size: 11)
                 .padding(.horizontal, 14)
                 .padding(.top, 14)
                 .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                 .allowsHitTesting(false)
+            if resolved.showDate, let d = data.date {
+                StampDateLabel(date: d)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 14 + 8)   // 워드마크(25pt) 세로 중앙 근처
+                    .frame(width: renderWidth, height: renderHeight, alignment: .topTrailing)
+                    .allowsHitTesting(false)
+            }
         }
         .task(id: brightnessKey) {
             let p = photo
@@ -224,12 +231,19 @@ struct StampAnimPreviewCard: View {
                 .animation(animFor(cfg.textEntranceMode), value: textVisible)
             }
 
-            // 워드마크
+            // 워드마크 (+ 날짜 토글 시 같은 줄 오른쪽에 날짜·시간)
             MIMOWordmark(size: 11)
                 .padding(.horizontal, 14)
                 .padding(.top, 14)
                 .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                 .allowsHitTesting(false)
+            if cfg.showDate, let d = data.date {
+                StampDateLabel(date: d)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 14 + 8)
+                    .frame(width: renderWidth, height: renderHeight, alignment: .topTrailing)
+                    .allowsHitTesting(false)
+            }
         }
         .onChange(of: animTrigger) { _, _ in playAnim() }
     }

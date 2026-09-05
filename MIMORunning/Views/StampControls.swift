@@ -122,6 +122,10 @@ struct StampControlsView: View {
                 textOutlineChip
                 if data.heartRate != nil { heartRateChip }
             }
+            // 스토리: 크기 행 아래 날짜 칩
+            if template == .story {
+                HStack(spacing: 6) { dateChip }
+            }
             // 배속 — 영상, 클립이 있을 때
             if template == .video, !vm.clipRecipes.isEmpty {
                 let idx      = min(vm.selectedClipIndex, vm.clipRecipes.count - 1)
@@ -138,7 +142,10 @@ struct StampControlsView: View {
                         } label: { smallChip(String(format: "%gx", sp), isSelected: isSel) }
                         .buttonStyle(.plain)
                     }
+                    dateChip   // 영상: 2x 다음
                 }
+            } else if template == .video {
+                HStack(spacing: 6) { dateChip }   // 클립이 없을 때도 날짜 칩은 노출
             }
             // 애니메이션 모드 — 영상·슬라이드·경로 영상
             if template == .video || template == .slide || template == .routeVideo {
@@ -151,6 +158,9 @@ struct StampControlsView: View {
                             }
                         } label: { smallChip(mode.chipLabel, isSelected: isSel) }
                         .buttonStyle(.plain)
+                    }
+                    if template == .slide || template == .routeVideo {
+                        dateChip   // 슬라이드·경로 영상: '없음' 옆
                     }
                 }
                 // 방향 선택 — flyIn 모드일 때만
@@ -383,6 +393,28 @@ struct StampControlsView: View {
             HStack(spacing: 3) {
                 Image(systemName: "heart.fill").font(.system(size: 9))
                 Text(AppLanguage.shared.s("심박", "HR"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isOn ? .white : .white.opacity(0.55))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(isOn ? Theme.violet : Color.white.opacity(0.08))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isOn)
+    }
+
+    /// 날짜·시간 토글 — 워드마크 줄 오른쪽에 "2026. 9. 4 오후 6:16" 표시 (스토리·영상·슬라이드·경로 영상)
+    private var dateChip: some View {
+        let isOn = vm.showDate
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { vm.showDate.toggle() }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "calendar").font(.system(size: 9))
+                Text(AppLanguage.shared.s("날짜", "Date"))
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
             }

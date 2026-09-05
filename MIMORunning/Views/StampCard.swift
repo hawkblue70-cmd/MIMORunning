@@ -33,6 +33,8 @@ struct StampData {
     var mapImage: UIImage?       = nil
     var routePoints: [CGPoint]?  = nil   // mapImage 좌표계의 경로점
     var routeCoordinates: [CLLocationCoordinate2D]? = nil   // 경로 라인아트용 원시 좌표
+    // 날짜 라벨용 원본 날짜 (showDate 토글 시 워드마크 줄 오른쪽에 날짜·시간 표시)
+    var date: Date?              = nil
 
     static let sample = StampData(
         distance: "10.13",
@@ -67,6 +69,23 @@ struct StampData {
             CLLocationCoordinate2D(latitude: 37.325, longitude: 126.818),
         ]
     )
+}
+
+// MARK: - 날짜·시간 라벨 (워드마크 줄 오른쪽 · 스토리/영상/슬라이드/경로 영상 공용)
+
+/// 스탬프 카드의 날짜·시간 라벨. `StampPhotoConfig.showDate`가 켜져 있을 때만 배치한다.
+struct StampDateLabel: View {
+    let date: Date
+    var body: some View {
+        Text(StampDateLabel.string(for: date))
+            .font(.system(size: 8, weight: .medium))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+    }
+    /// 예: "2026. 9. 4 오후 6:16" (애슬레틱 카드 날짜 줄과 같은 포맷터)
+    static func string(for date: Date) -> String {
+        "\(date.cardDateString) \(date.cardTimeString)"
+    }
 }
 
 // MARK: - Stamp Outline (4방향 그림자로 text-stroke 시뮬레이션)

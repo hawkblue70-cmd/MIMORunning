@@ -996,6 +996,12 @@ struct ShareCardScreen: View {
                     .padding(.leading, vidW * 0.047)
                     .padding(.top, 375.0 * 0.06)
                     .frame(width: vidW, height: 375, alignment: .topLeading)
+                if stampVM.showDate {
+                    StampDateLabel(date: activity.date)
+                        .padding(.trailing, vidW * 0.05)
+                        .padding(.top, 375.0 * 0.06 + 8)
+                        .frame(width: vidW, height: 375, alignment: .topTrailing)
+                }
                 // 미리보기 재생 버튼
                 if !isRoutePreviewPlaying {
                     Button {
@@ -1085,6 +1091,7 @@ struct ShareCardScreen: View {
         d.mapImage           = stampMapImage
         d.routePoints        = stampRoutePoints
         d.routeCoordinates   = routeCoords.count >= 2 ? routeCoords : nil
+        d.date               = activity.date
         return d
     }
 
@@ -4778,7 +4785,7 @@ struct ShareCardScreen: View {
                 textFlyDirs.append(cfg.textFlyDirection)
             }
             guard !photos.isEmpty else { isExportingVideo = false; return }
-            let logoOverlay = makeStampLogoDateOverlay(renderSize: renderSz)
+            let logoOverlay = makeStampLogoDateOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil)
             if let out = try? await exportStampSlide(
                 photos: photos,
                 cropOffsets: cropOffsets,
@@ -4820,7 +4827,7 @@ struct ShareCardScreen: View {
                 guard isStamp, template == .video else { isExportingVideo = false; return }
             }
 
-            let stampLogoImg = makeStampLogoOverlay(renderSize: renderSz)
+            let stampLogoImg = makeStampLogoOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil)
 
             var processedURLs: [URL] = []
             for (i, recipe) in stampVM.clipRecipes.enumerated() {
@@ -5151,7 +5158,7 @@ struct ShareCardScreen: View {
                         ))
                     }
                     // 로고 정적 레이어 — stamp 모드에서만 필요 (VideoOverlayCard 없이 합성 시)
-                    if let logoImg = makeStampLogoOverlay(renderSize: VideoExportService.targetSize) {
+                    if let logoImg = makeStampLogoOverlay(renderSize: VideoExportService.targetSize, date: stampVM.showDate ? activity.date : nil) {
                         exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
                             image: logoImg,
                             entranceMode: .none,

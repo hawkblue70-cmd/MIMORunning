@@ -18,6 +18,7 @@ private struct StampConfigDTO: Codable {
     var showHeartRate: Bool
     var showCalories: Bool
     var showTextOutline: Bool
+    var showDate: Bool?          // 2026-09 추가 — 구 저장값에는 없음
     var text: String
     var textPositionIdx: Int
     var textFont: String
@@ -39,6 +40,7 @@ private struct StampConfigDTO: Codable {
         showHeartRate    = cfg.showHeartRate
         showCalories     = cfg.showCalories
         showTextOutline  = cfg.showTextOutline
+        showDate         = cfg.showDate
         text             = cfg.text
         textPositionIdx  = posAll.firstIndex(of: cfg.textPosition) ?? 0
         textFont         = cfg.textFont.rawValue
@@ -61,6 +63,7 @@ private struct StampConfigDTO: Codable {
             showHeartRate:   showHeartRate || StampTemplate.legacyImpliesHeartRate(template),
             showCalories:    showCalories,
             showTextOutline: showTextOutline,
+            showDate:        showDate ?? false,
             text:            text,
             textPosition:    posAll.indices.contains(textPositionIdx) ? posAll[textPositionIdx] : .top,
             textFont:        OneLinerFont(rawValue: textFont) ?? .gothic,

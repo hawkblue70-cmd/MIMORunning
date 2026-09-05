@@ -83,6 +83,11 @@ final class StampViewModel {
         set { var c = currentConfig; c.showTextOutline = newValue; currentConfig = c; baseConfig.showTextOutline = newValue }
     }
 
+    var showDate: Bool {
+        get { currentConfig.showDate }
+        set { var c = currentConfig; c.showDate = newValue; currentConfig = c; baseConfig.showDate = newValue }
+    }
+
     // MARK: - 문구 텍스트 오버레이 (per-photo, baseConfig 갱신 없음)
 
     var stampText: String {
