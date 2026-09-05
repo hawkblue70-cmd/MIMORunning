@@ -1,6 +1,42 @@
 import SwiftUI
 import MapKit
 
+// MARK: - BigNumber 타이포 토큰 (절제형: 액센트는 히어로 숫자·단위에만, 나머지는 무채색 위계)
+// 카드(BigNumberCard)와 영상 오버레이(BigNumberVideoOverlayView)가 동일 값을 공유한다.
+enum BigNumberStyle {
+    static let heroSize: CGFloat        = 92    // condensed·heavy — compressed·black보다 획이 부드럽고 카드를 덜 누름
+    static let heroTracking: CGFloat    = -1
+    static let unitSize: CGFloat        = 14
+    static let unitTracking: CGFloat    = 2
+    static let secondaryValueSize: CGFloat = 18
+    static let secondaryLabelSize: CGFloat = 9
+    static let metaSize: CGFloat        = 9
+    static let secondaryValueOpacity: Double = 0.80
+    static let secondaryLabelOpacity: Double = 0.50
+    static let metaOpacity: Double      = 0.60
+    static let dividerOpacity: Double   = 0.12
+
+    /// 히어로 숫자: 밝은 톤끼리의 얕은 그라디언트 (어두운 배경에서 하단이 묻히지 않도록)
+    static func heroGradient(_ accent: CardAccent) -> LinearGradient {
+        switch accent {
+        case .none:   return LinearGradient(colors: [.white, .white],
+                                            startPoint: .top, endPoint: .bottom)
+        case .violet: return LinearGradient(colors: [Color(hex: "A98BFF"), Color(hex: "8C6BFF")],
+                                            startPoint: .top, endPoint: .bottom)
+        case .gold:   return LinearGradient(colors: [Color(hex: "FFD166"), Color(hex: "FFC74D")],
+                                            startPoint: .top, endPoint: .bottom)
+        }
+    }
+    /// 단위: 액센트 색 90% (액센트 없음 → 흰색 70%)
+    static func unitColor(_ accent: CardAccent) -> Color {
+        switch accent {
+        case .none:   return .white.opacity(0.70)
+        case .violet: return Color(hex: "9B7DFF").opacity(0.90)
+        case .gold:   return Color(hex: "FFC74D").opacity(0.90)
+        }
+    }
+}
+
 struct BigNumberCard: View {
     let activity: Activity
     let detail: ActivityDetail?
@@ -38,16 +74,7 @@ struct BigNumberCard: View {
     var routeWorkoutDuration: TimeInterval = 0
     var routeZoneBounds: [(id: Int, minBPM: Int)] = []
 
-    private var heroGradient: LinearGradient {
-        switch accent {
-        case .none:   return LinearGradient(colors: [.white, .white],
-                                            startPoint: .top, endPoint: .bottom)
-        case .violet: return LinearGradient(colors: [Color(hex: "9B7DFF"), Color(hex: "6845E8")],
-                                            startPoint: .top, endPoint: .bottom)
-        case .gold:   return LinearGradient(colors: [Color(hex: "FFC74D"), Color(hex: "F2A33C")],
-                                            startPoint: .top, endPoint: .bottom)
-        }
-    }
+    private var heroGradient: LinearGradient { BigNumberStyle.heroGradient(accent) }
 
     private var routeLineColor: Color {
         switch accent {
@@ -124,23 +151,26 @@ struct BigNumberCard: View {
                     .padding(.bottom, 6)
                 }
 
-                VStack(spacing: 6) {
+                VStack(spacing: 0) {
                     Text(heroMetric.formattedValue(activity: activity, detail: detail))
-                        .font(.system(size: 96, weight: .black).monospacedDigit())
+                        .font(.system(size: BigNumberStyle.heroSize, weight: .heavy).monospacedDigit())
                         .fontWidth(.condensed)
-                        .tracking(-2)
+                        .tracking(BigNumberStyle.heroTracking)
                         .foregroundStyle(heroGradient)
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
-                        .cardLargeTextShadow()
+                        // 그림자는 사진 배경에서만 — 어두운 단색 배경에선 번짐만 생김
+                        .shadow(color: photo != nil ? CardVisual.textShadowColor : .clear,
+                                radius: CardVisual.largeTextShadowRadius, x: 0, y: CardVisual.textShadowY)
 
                     if !heroMetric.unit.isEmpty {
                         Text(heroMetric.unit)
-                            .font(.system(size: 20, weight: .black))
+                            .font(.system(size: BigNumberStyle.unitSize, weight: .bold))
                             .fontWidth(.condensed)
-                            .foregroundStyle(Color.white.opacity(0.9))
-                            .tracking(4)
-                            .cardTextShadow()
+                            .foregroundStyle(BigNumberStyle.unitColor(accent))
+                            .tracking(BigNumberStyle.unitTracking)
+                            .shadow(color: photo != nil ? CardVisual.textShadowColor : .clear,
+                                    radius: CardVisual.textShadowRadius, x: 0, y: CardVisual.textShadowY)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -155,18 +185,18 @@ struct BigNumberCard: View {
                             ForEach(Array(secondaryMetrics.enumerated()), id: \.offset) { idx, m in
                                 if idx > 0 {
                                     Rectangle()
-                                        .fill(Color(hex: "26262E").opacity(0.8))
-                                        .frame(width: 1, height: 36)
+                                        .fill(Color.white.opacity(BigNumberStyle.dividerOpacity))
+                                        .frame(width: 1, height: 32)
                                 }
                                 VStack(spacing: 3) {
                                     Text(m.formattedValue(activity: activity, detail: detail))
-                                        .font(.system(size: 22, weight: .black).monospacedDigit())
+                                        .font(.system(size: BigNumberStyle.secondaryValueSize, weight: .semibold).monospacedDigit())
                                         .fontWidth(.condensed)
-                                        .foregroundStyle(Color(hex: "EDEDED"))
-                                    Text(secondaryLabel(for: m))
-                                        .font(.system(size: 11, weight: .bold))
-                                        .fontWidth(.condensed)
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(.white.opacity(BigNumberStyle.secondaryValueOpacity))
+                                    Text(secondaryLabel(for: m).uppercased())
+                                        .font(.system(size: BigNumberStyle.secondaryLabelSize, weight: .medium))
+                                        .tracking(1)
+                                        .foregroundStyle(.white.opacity(BigNumberStyle.secondaryLabelOpacity))
                                 }
                                 .cardTextShadow()
                                 .frame(maxWidth: .infinity)
@@ -182,8 +212,8 @@ struct BigNumberCard: View {
                                     .font(.system(size: 8))
                                 Text(shoe)
                             }
-                            .font(.system(size: 9))
-                            .foregroundStyle(.white)
+                            .font(.system(size: BigNumberStyle.metaSize))
+                            .foregroundStyle(.white.opacity(BigNumberStyle.metaOpacity))
                             .cardTextShadow()
                         }
                     }
@@ -205,11 +235,11 @@ struct BigNumberCard: View {
                 Text("\(w) ·")
             }
             Text(date.cardDateString)
-            Text(date.weekdayString).foregroundStyle(Theme.time)
+            Text(date.weekdayString)
             Text(date.cardTimeString)
         }
-        .font(.system(size: 10))
-        .foregroundStyle(.white)
+        .font(.system(size: BigNumberStyle.metaSize))
+        .foregroundStyle(.white.opacity(BigNumberStyle.metaOpacity))
         .cardTextShadow()
     }
 
@@ -242,16 +272,7 @@ struct BigNumberVideoOverlayView: View {
 
     var accent: CardAccent = .violet
 
-    private var heroGradient: LinearGradient {
-        switch accent {
-        case .none:   return LinearGradient(colors: [.white, .white],
-                                            startPoint: .top, endPoint: .bottom)
-        case .violet: return LinearGradient(colors: [Color(hex: "9B7DFF"), Color(hex: "6845E8")],
-                                            startPoint: .top, endPoint: .bottom)
-        case .gold:   return LinearGradient(colors: [Color(hex: "FFC74D"), Color(hex: "F2A33C")],
-                                            startPoint: .top, endPoint: .bottom)
-        }
-    }
+    private var heroGradient: LinearGradient { BigNumberStyle.heroGradient(accent) }
 
     private var secondaryMetrics: [HeroMetric] {
         let order: [HeroMetric] = [.distance, .duration, .pace, .heartRate]
@@ -276,31 +297,31 @@ struct BigNumberVideoOverlayView: View {
                             Text(memo)
                                 .font(.system(size: 10 * s, weight: .bold, design: .serif).italic())
                                 .foregroundStyle(.white)
+                                .cardTextShadow()
                         }
                     }
-                    .cardTextShadow()
                     .padding(.horizontal, 14)
                     .padding(.top, topInset ?? (CardVisual.videoSafeTopRef * s))
 
                     Spacer()
 
                     // Hero number
-                    VStack(spacing: 6 * s) {
+                    VStack(spacing: 0) {
                         Text(heroMetric.formattedValue(activity: activity, detail: detail))
-                            .font(.system(size: 96 * s, weight: .black).monospacedDigit())
+                            .font(.system(size: BigNumberStyle.heroSize * s, weight: .heavy).monospacedDigit())
                             .fontWidth(.condensed)
-                            .tracking(-2)
+                            .tracking(BigNumberStyle.heroTracking * s)
                             .foregroundStyle(heroGradient)
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
-                            .cardLargeTextShadow()
+                            .cardLargeTextShadow()   // 영상·사진 배경 → 그림자 유지
 
                         if !heroMetric.unit.isEmpty {
                             Text(heroMetric.unit)
-                                .font(.system(size: 20 * s, weight: .black))
+                                .font(.system(size: BigNumberStyle.unitSize * s, weight: .bold))
                                 .fontWidth(.condensed)
-                                .foregroundStyle(Color.white.opacity(0.9))
-                                .tracking(4)
+                                .foregroundStyle(BigNumberStyle.unitColor(accent))
+                                .tracking(BigNumberStyle.unitTracking * s)
                                 .cardTextShadow()
                         }
                     }
@@ -315,18 +336,18 @@ struct BigNumberVideoOverlayView: View {
                                 ForEach(Array(secondaryMetrics.enumerated()), id: \.offset) { idx, m in
                                     if idx > 0 {
                                         Rectangle()
-                                            .fill(Color(hex: "26262E").opacity(0.8))
-                                            .frame(width: 1, height: 36 * s)
+                                            .fill(Color.white.opacity(BigNumberStyle.dividerOpacity))
+                                            .frame(width: 1, height: 32 * s)
                                     }
                                     VStack(spacing: 3 * s) {
                                         Text(m.formattedValue(activity: activity, detail: detail))
-                                            .font(.system(size: 22 * s, weight: .black).monospacedDigit())
+                                            .font(.system(size: BigNumberStyle.secondaryValueSize * s, weight: .semibold).monospacedDigit())
                                             .fontWidth(.condensed)
-                                            .foregroundStyle(Color(hex: "EDEDED"))
-                                        Text(secondaryLabel(for: m))
-                                            .font(.system(size: 11 * s, weight: .bold))
-                                            .fontWidth(.condensed)
-                                            .foregroundStyle(.white)
+                                            .foregroundStyle(.white.opacity(BigNumberStyle.secondaryValueOpacity))
+                                        Text(secondaryLabel(for: m).uppercased())
+                                            .font(.system(size: BigNumberStyle.secondaryLabelSize * s, weight: .medium))
+                                            .tracking(1 * s)
+                                            .foregroundStyle(.white.opacity(BigNumberStyle.secondaryLabelOpacity))
                                     }
                                     .cardTextShadow()
                                     .frame(maxWidth: .infinity)
@@ -341,8 +362,8 @@ struct BigNumberVideoOverlayView: View {
                                     .font(.system(size: 8 * s))
                                 Text(shoe)
                             }
-                            .font(.system(size: 9 * s))
-                            .foregroundStyle(.white)
+                            .font(.system(size: BigNumberStyle.metaSize * s))
+                            .foregroundStyle(.white.opacity(BigNumberStyle.metaOpacity))
                             .cardTextShadow()
                             .frame(maxWidth: .infinity, alignment: .center)
                         }
@@ -362,11 +383,11 @@ struct BigNumberVideoOverlayView: View {
                 Text("\(w) ·")
             }
             Text(date.cardDateString)
-            Text(date.weekdayString).foregroundStyle(Theme.time)
+            Text(date.weekdayString)
             Text(date.cardTimeString)
         }
-        .font(.system(size: 10 * s))
-        .foregroundStyle(.white)
+        .font(.system(size: BigNumberStyle.metaSize * s))
+        .foregroundStyle(.white.opacity(BigNumberStyle.metaOpacity))
         .cardTextShadow()
     }
 
