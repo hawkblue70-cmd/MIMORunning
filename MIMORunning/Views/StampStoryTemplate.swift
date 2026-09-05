@@ -56,8 +56,6 @@ struct StampStoryRenderView: View {
     var configOverride: StampPhotoConfig? = nil
     /// 렌더 높이: 스토리 4:5 = 375, 슬라이드 9:16 ≈ 533
     var renderHeight: CGFloat = 375
-    /// 워드마크 우측에 표시할 날짜. nil이면 날짜 생략.
-    var displayDate: Date? = nil
 
     private let renderWidth: CGFloat = 300
     private var resolved: StampPhotoConfig { configOverride ?? vm.currentConfig }
@@ -120,7 +118,6 @@ struct StampStoryRenderView: View {
                     appearanceMode: .typing,
                     decorEffect: .none,
                     hasBorder: resolved.textHasBorder,
-                    showDate: false,
                     showBackground: false,
                     showWordmark: false,
                     cardHeightOverride: renderHeight,
@@ -130,23 +127,12 @@ struct StampStoryRenderView: View {
                 )
             }
 
-            // 워드마크 + 날짜: 동일 줄, 로고 좌측 / 날짜 우측
-            HStack {
-                HStack(spacing: 0) {
-                    MIMOWordmark(size: 11)
-                }
-                .cardTextShadow()
-                if let d = displayDate {
-                    Spacer()
-                    Text(d.oneLinerDateString)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .allowsHitTesting(false)
+            // 워드마크: 좌측 상단
+            MIMOWordmark(size: 11)
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
+                .allowsHitTesting(false)
         }
         .task(id: brightnessKey) {
             let p = photo
@@ -172,8 +158,6 @@ struct StampAnimPreviewCard: View {
     var renderHeight: CGFloat = 375
     /// 부모에서 increment → 애니메이션 재생
     var animTrigger: Int = 0
-    /// 워드마크 우측에 표시할 날짜. nil이면 날짜 생략.
-    var displayDate: Date? = nil
 
     @State private var stampVisible: Bool = true
     @State private var textVisible:  Bool = true
@@ -227,7 +211,6 @@ struct StampAnimPreviewCard: View {
                     appearanceMode: .typing,
                     decorEffect: .none,
                     hasBorder: cfg.textHasBorder,
-                    showDate: false,
                     showBackground: false,
                     showWordmark: false,
                     cardHeightOverride: renderHeight,
@@ -241,23 +224,12 @@ struct StampAnimPreviewCard: View {
                 .animation(animFor(cfg.textEntranceMode), value: textVisible)
             }
 
-            // 워드마크 + 날짜
-            HStack {
-                HStack(spacing: 0) {
-                    MIMOWordmark(size: 11)
-                }
-                .cardTextShadow()
-                if let d = displayDate {
-                    Spacer()
-                    Text(d.oneLinerDateString)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .allowsHitTesting(false)
+            // 워드마크
+            MIMOWordmark(size: 11)
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
+                .allowsHitTesting(false)
         }
         .onChange(of: animTrigger) { _, _ in playAnim() }
     }
@@ -306,13 +278,11 @@ struct StampAnimPreviewCard: View {
 @MainActor
 func makeStampStoryImage(photo: UIImage?, data: StampData, vm: StampViewModel,
                          cropOffsetX: CGFloat = 0.5,
-                         configOverride: StampPhotoConfig? = nil,
-                         displayDate: Date? = nil) -> UIImage? {
+                         configOverride: StampPhotoConfig? = nil) -> UIImage? {
     FontLoader.registerBundledFonts()
     let view = StampStoryRenderView(photo: photo, data: data, vm: vm,
                                     cropOffsetX: cropOffsetX,
-                                    configOverride: configOverride,
-                                    displayDate: displayDate)
+                                    configOverride: configOverride)
         .frame(width: 300, height: 375)
     let renderer = ImageRenderer(content: view)
     renderer.proposedSize = .init(width: 300, height: 375)

@@ -20,7 +20,6 @@ final class OneLinerViewModel {
     var oneLinerPosition:   CardPosition      = .center
     var oneLinerColor:      OneLinerTextColor = .white
     var oneLinerFont:       OneLinerFont      = .pen
-    var oneLinerShowDate:   Bool              = true
     var oneLinerVideoTitle: String            = ""
     var oneLinerTitleStyle: OneLinerTitleStyle = OneLinerTitleStyle()
 

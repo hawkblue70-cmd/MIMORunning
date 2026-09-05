@@ -1009,8 +1009,7 @@ struct ShareCardScreen: View {
             let excess = max(0, ph.size.width * s - 300)
             StampStoryRenderView(photo: ph, data: stampPreviewData, vm: stampVM,
                                  cropOffsetX: stampVM.storyCropOffsetX,
-                                 configOverride: stampVM.photoConfig(at: selectedIdx),
-                                 displayDate: activity.date)
+                                 configOverride: stampVM.photoConfig(at: selectedIdx))
                 .gesture(excess > 0 ? DragGesture(minimumDistance: 1)
                     .onChanged { drag in
                         if stampStoryCropDragBase == nil { stampStoryCropDragBase = stampVM.storyCropOffsetX }
@@ -1025,8 +1024,7 @@ struct ShareCardScreen: View {
                     }
                 : nil)
         } else {
-            StampStoryRenderView(photo: nil, data: stampPreviewData, vm: stampVM,
-                                 displayDate: activity.date)
+            StampStoryRenderView(photo: nil, data: stampPreviewData, vm: stampVM)
         }
     }
 
@@ -1106,7 +1104,6 @@ struct ShareCardScreen: View {
                         appearanceMode: .typing,
                         decorEffect: .none,
                         hasBorder: stampVM.stampTextHasBorder,
-                        showDate: false,
                         showBackground: false,
                         showWordmark: false,
                         cardHeightOverride: 375,
@@ -1124,22 +1121,11 @@ struct ShareCardScreen: View {
                     .offset(stampVM.stampTextEntranceMode == .flyIn && !previewTextVisible
                         ? stampPreviewFlyOffset(for: stampVM.stampTextFlyDirection, w: vidW, h: 375) : .zero)
                 }
-                // 로고(좌) + 날짜(우) — 영상·슬라이드 미리보기와 동일 size: 11
-                HStack(alignment: .center, spacing: 0) {
-                    MIMOWordmark(size: 11)
-                    Spacer()
-                    Text({
-                        let df = DateFormatter(); df.dateFormat = "yyyy.MM.dd"
-                        return df.string(from: activity.date)
-                    }())
-                    .font(.system(size: 6, weight: .medium))
-                    .foregroundStyle(.white)
-                }
-                .cardTextShadow()
-                .padding(.leading, vidW * 0.047)
-                .padding(.trailing, vidW * 0.05)
-                .padding(.top, 375.0 * 0.06)
-                .frame(width: vidW, height: 375, alignment: .topLeading)
+                // 로고(좌측 상단) — 영상·슬라이드 미리보기와 동일 size: 11
+                MIMOWordmark(size: 11)
+                    .padding(.leading, vidW * 0.047)
+                    .padding(.top, 375.0 * 0.06)
+                    .frame(width: vidW, height: 375, alignment: .topLeading)
                 // 미리보기 재생 버튼
                 if !isRoutePreviewPlaying {
                     Button {
@@ -1296,7 +1282,6 @@ struct ShareCardScreen: View {
                     }
                     .overlay(alignment: .topLeading) {
                         MIMOWordmark(size: 11)
-                            .cardTextShadow()
                             .padding(.top, 22)
                             .padding(.leading, 14)
                     }
@@ -1347,7 +1332,6 @@ struct ShareCardScreen: View {
                     }
                     .overlay(alignment: .topLeading) {
                         MIMOWordmark(size: 11)
-                            .cardTextShadow()
                             .padding(.top, 22)
                             .padding(.leading, 14)
                     }
@@ -1416,7 +1400,6 @@ struct ShareCardScreen: View {
                     appearanceMode: sr?.appearanceMode ?? .typing,
                     decorEffect: sr?.decorEffect ?? .none,
                     hasBorder: sr?.hasBorder ?? false,
-                    showDate: oneLinerVM.oneLinerShowDate,
                     showWordmark: false,
                     chartBottomReserved: storyChartBottomReserved(for: sr, cardHeight: 375),
                     videoTitle: oneLinerVM.oneLinerVideoTitle,
@@ -1490,7 +1473,6 @@ struct ShareCardScreen: View {
                 }
                 .overlay(alignment: .topLeading) {
                     MIMOWordmark(size: 11)
-                        .cardTextShadow()
                         .padding(.top, 22)
                         .padding(.leading, 14)
                 }
@@ -1527,7 +1509,6 @@ struct ShareCardScreen: View {
                 appearanceMode: pr?.appearanceMode ?? .typing,
                 decorEffect: pr?.decorEffect ?? .none,
                 hasBorder: pr?.hasBorder ?? false,
-                showDate: oneLinerVM.oneLinerShowDate,
                 captionMode: true,
                 chartBottomReserved: storyChartBottomReserved(for: pr),
                 isStaticPreview: true,
@@ -1610,7 +1591,6 @@ struct ShareCardScreen: View {
             decorEffect: clipDecor,
             hasBorder: clipBorder,
             flyDirection: clipFly,
-            showDate: oneLinerVM.oneLinerShowDate,
             showWordmark: false,
             chartBottomReserved: clipChartBot,
             videoTitle: oneLinerVM.oneLinerVideoTitle,
@@ -2187,7 +2167,6 @@ struct ShareCardScreen: View {
                             oneLinerVM.oneLinerFont     = entry.font
                             oneLinerVM.oneLinerColor    = entry.textColor
                             oneLinerVM.oneLinerPosition = entry.position
-                            oneLinerVM.oneLinerShowDate = entry.showDate
                             saveOneLinerSettings()           // 현재 사진 entry에 upsert
                             Task { await renderCard(showSpinner: false) }
                         } label: {
@@ -2702,11 +2681,6 @@ struct ShareCardScreen: View {
             exportedVideoFile = nil
             if template == .video { buildPreview() }
         }
-        .onChange(of: oneLinerVM.oneLinerShowDate) { _, _ in
-            guard isOneLiner, template == .video || template == .slide else { return }
-            exportedVideoFile = nil
-            if template == .video { buildPreview() }
-        }
         .onChange(of: oneLinerVM.oneLinerClipRecipes.count) { _, _ in
             guard isOneLiner else { return }
             previewPlayer.invalidate()
@@ -2814,7 +2788,6 @@ struct ShareCardScreen: View {
                         let recipes = makePlaceableSlideRecipes(for: photos)
                         await previewPlayer.buildForPhotoSlides(
                             photos: photos, recipes: recipes,
-                            activityDate: activity.date, showDate: false,
                             dataOverlayImage: overlay,
                             dataOverlayIsTop: overlayIsTop,
                             fastBase: true)
@@ -2836,7 +2809,6 @@ struct ShareCardScreen: View {
                     let recipes = makePlaceableSlideRecipes(for: photos)
                     await previewPlayer.buildForPhotoSlides(
                         photos: photos, recipes: recipes,
-                        activityDate: activity.date, showDate: false,
                         dataOverlayImage: overlay,
                         dataOverlayIsTop: overlayIsTop,
                         fastBase: true)
@@ -2912,7 +2884,6 @@ struct ShareCardScreen: View {
                     let recipes = makePlaceableSlideRecipes(for: photos)
                     await previewPlayer.buildForPhotoSlides(
                         photos: photos, recipes: recipes,
-                        activityDate: activity.date, showDate: false,
                         dataOverlayImage: overlay,
                         dataOverlayIsTop: overlayIsTop,
                         fastBase: true)
@@ -2931,7 +2902,6 @@ struct ShareCardScreen: View {
                     let recipes = makePlaceableSlideRecipes(for: photos)
                     await previewPlayer.buildForPhotoSlides(
                         photos: photos, recipes: recipes,
-                        activityDate: activity.date, showDate: false,
                         dataOverlayImage: overlay,
                         dataOverlayIsTop: overlayIsTop,
                         fastBase: true)
@@ -3813,7 +3783,6 @@ struct ShareCardScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(alignment: .topLeading) {
                     MIMOWordmark(size: 11)
-                        .cardTextShadow()
                         .padding(.top, 22)
                         .padding(.leading, 14)
                 }
@@ -4374,7 +4343,7 @@ struct ShareCardScreen: View {
                     let wuPhoto = storyPhotos.first ?? storyPhoto
                     _ = makeStampStoryImage(photo: wuPhoto, data: stampPreviewData, vm: stampVM,
                                             cropOffsetX: exportCropX,
-                                            configOverride: exportCfg, displayDate: activity.date)
+                                            configOverride: exportCfg)
                     try? await Task.sleep(nanoseconds: 50_000_000)
                     guard isStamp, template == .story else { return }
 
@@ -4388,8 +4357,7 @@ struct ShareCardScreen: View {
                             if let img = makeStampStoryImage(
                                 photo: photo, data: stampPreviewData, vm: stampVM,
                                 cropOffsetX: exportCropX,
-                                configOverride: cfg,
-                                displayDate: activity.date) {
+                                configOverride: cfg) {
                                 rendered.append(img)
                             }
                         }
@@ -4404,8 +4372,7 @@ struct ShareCardScreen: View {
                     } else if let img = makeStampStoryImage(
                         photo: storyPhoto, data: stampPreviewData, vm: stampVM,
                         cropOffsetX: exportCropX,
-                        configOverride: exportCfg,
-                        displayDate: activity.date) {
+                        configOverride: exportCfg) {
                         // previewImage 대신 storyShareImages 사용 — onChange의 previewImage=nil 무관하게 안전.
                         storyShareImages = [img]
                         await Task.yield()
@@ -4505,7 +4472,6 @@ struct ShareCardScreen: View {
                     : oneLinerVM.storyClipEditRecipes
                 await previewPlayer.buildForPhotoSlides(
                     photos: photos, recipes: slideRecipes,
-                    activityDate: activity.date, showDate: oneLinerVM.oneLinerShowDate,
                     metricLookup: oneLinerMetricLookup,
                     routeCoords: routeCoords,
                     hrSamples: shareHRSamples,
@@ -4523,7 +4489,6 @@ struct ShareCardScreen: View {
                 // showWordmark: false → CALayer 워드마크 끔. 재생 중 SwiftUI 오버레이가 표시.
                 await previewPlayer.buildForVideoClips(
                     recipes: oneLinerVM.oneLinerClipRecipes,
-                    activityDate: activity.date, showDate: oneLinerVM.oneLinerShowDate,
                     showWordmark: false,
                     muteAudio: oneLinerVM.oneLinerMuteAudio,
                     metricChips: oneLinerActiveMetricChips,
@@ -4583,7 +4548,6 @@ struct ShareCardScreen: View {
                     : oneLinerVM.storyClipEditRecipes
                 let out = try await PhotoSlideComposition.exportSlideWithText(
                     photos: photos, recipes: slideRecipes,
-                    activityDate: activity.date, showDate: oneLinerVM.oneLinerShowDate,
                     metricLookup: oneLinerMetricLookup,
                     routeCoords: routeCoords,
                     hrSamples: shareHRSamples,
@@ -4629,7 +4593,6 @@ struct ShareCardScreen: View {
                 let isMuted = oneLinerVM.oneLinerMuteAudio
                 let out = try await VideoExportService.exportOneLinerClipBoundVideo(
                     sourceURL: exportSrc, recipes: recipes,
-                    activityDate: activity.date, showDate: oneLinerVM.oneLinerShowDate,
                     muteAudio: isMuted, metricChips: chips,
                     metricLookup: oneLinerMetricLookup,
                     routeCoords: routeCoords,
@@ -4663,7 +4626,6 @@ struct ShareCardScreen: View {
                 let recipes = makePlaceableSlideRecipes(for: photos)
                 let out = try await PhotoSlideComposition.exportSlideWithText(
                     photos: photos, recipes: recipes,
-                    activityDate: activity.date, showDate: false,
                     metricLookup: [:], routeCoords: [],
                     hrSamples: [], splits: [], chartSeriesData: [:],
                     hrZones: [], intervalSegments: [],
@@ -4750,8 +4712,6 @@ struct ShareCardScreen: View {
                     recipes: [recipe],
                     renderSize: VideoExportService.targetSize,
                     totalDuration: clipDur,
-                    activityDate: activity.date,
-                    showDate: false,
                     safeTopOverride: safeTopPx,
                     safeBotOverride: safeBotPx,
                     wordmarkTopPad: VideoExportService.targetSize.height * 0.06)
@@ -5000,7 +4960,7 @@ struct ShareCardScreen: View {
                 textFlyDirs.append(cfg.textFlyDirection)
             }
             guard !photos.isEmpty else { isExportingVideo = false; return }
-            let logoOverlay = makeStampLogoDateOverlay(date: activity.date, renderSize: renderSz)
+            let logoOverlay = makeStampLogoDateOverlay(renderSize: renderSz)
             if let out = try? await exportStampSlide(
                 photos: photos,
                 cropOffsets: cropOffsets,
@@ -5042,7 +5002,7 @@ struct ShareCardScreen: View {
                 guard isStamp, template == .video else { isExportingVideo = false; return }
             }
 
-            let stampLogoImg = makeStampLogoOverlay(date: activity.date, renderSize: renderSz)
+            let stampLogoImg = makeStampLogoOverlay(renderSize: renderSz)
 
             var processedURLs: [URL] = []
             for (i, recipe) in stampVM.clipRecipes.enumerated() {
@@ -5080,8 +5040,6 @@ struct ShareCardScreen: View {
                     recipes: [],
                     renderSize: renderSz,
                     totalDuration: clipDur,
-                    activityDate: activity.date,
-                    showDate: false,
                     showWordmark: false)
                 let stampLayer = buildStampOverlayLayer(
                     from: stampImg, renderSize: renderSz,
@@ -5153,9 +5111,7 @@ struct ShareCardScreen: View {
                         pages: pages,
                         fontChoice: oneLinerVM.oneLinerFont,
                         textColor: oneLinerVM.oneLinerColor,
-                        position: oneLinerVM.oneLinerPosition,
-                        activityDate: activity.date,
-                        showDate: oneLinerVM.oneLinerShowDate) {
+                        position: oneLinerVM.oneLinerPosition) {
                         exportedVideoFile = SharableVideoFile(url: out)
                     }
                     isExportingVideo = false
@@ -5168,9 +5124,7 @@ struct ShareCardScreen: View {
                 text: oneLinerVM.oneLinerText,
                 fontChoice: oneLinerVM.oneLinerFont,
                 textColor: oneLinerVM.oneLinerColor,
-                position: oneLinerVM.oneLinerPosition,
-                activityDate: activity.date,
-                showDate: oneLinerVM.oneLinerShowDate) {
+                position: oneLinerVM.oneLinerPosition) {
                 exportedVideoFile = SharableVideoFile(url: out)
             }
             isExportingVideo = false
@@ -5326,7 +5280,6 @@ struct ShareCardScreen: View {
                                 appearanceMode: .typing,
                                 decorEffect: .none,
                                 hasBorder: stampVM.stampTextHasBorder,
-                                showDate: false,
                                 showBackground: false,
                                 showWordmark: false,
                                 cardHeightOverride: textH,
@@ -5387,7 +5340,7 @@ struct ShareCardScreen: View {
                         ))
                     }
                     // 로고 정적 레이어 — stamp 모드에서만 필요 (VideoOverlayCard 없이 합성 시)
-                    if let logoImg = makeStampLogoOverlay(date: activity.date, renderSize: VideoExportService.targetSize) {
+                    if let logoImg = makeStampLogoOverlay(renderSize: VideoExportService.targetSize) {
                         exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
                             image: logoImg,
                             entranceMode: .none,
@@ -5788,7 +5741,6 @@ struct ShareCardScreen: View {
                 appearanceMode: pr?.appearanceMode ?? .typing,
                 decorEffect: pr?.decorEffect ?? .none,
                 hasBorder: pr?.hasBorder ?? false,
-                showDate: oneLinerVM.oneLinerShowDate,
                 captionMode: true,
                 chartBottomReserved: storyChartBottomReserved(for: pr),
                 isStaticPreview: true,   // ImageRenderer는 onAppear/애니 없이 초기 상태만 캡처 → 즉시 표시 필요
@@ -5836,8 +5788,7 @@ struct ShareCardScreen: View {
                 let wuView = StampStoryRenderView(
                     photo: photo, data: stampPreviewData, vm: stampVM,
                     cropOffsetX: stampVM.storyCropOffsetX,
-                    configOverride: cfg,
-                    displayDate: activity.date).frame(width: 300, height: 375)
+                    configOverride: cfg).frame(width: 300, height: 375)
                 let wu = ImageRenderer(content: wuView)
                 wu.scale = 1
                 _ = wu.uiImage
@@ -5846,8 +5797,7 @@ struct ShareCardScreen: View {
                 previewImage = makeStampStoryImage(
                     photo: photo, data: stampPreviewData, vm: stampVM,
                     cropOffsetX: stampVM.storyCropOffsetX,
-                    configOverride: cfg,
-                    displayDate: activity.date)
+                    configOverride: cfg)
             }
             isRendering = false; return
         }

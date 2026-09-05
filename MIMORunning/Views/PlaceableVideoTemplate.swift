@@ -51,7 +51,6 @@ private struct PlaceableVideoTextOverlay: View {
             decorEffect:      isFade ? recipe.decorEffect : .none,
             hasBorder:        recipe.hasBorder,
             flyDirection:     recipe.flyDirection,
-            showDate: false,
             showBackground: false,
             showWordmark: false,
             chartBottomReserved: 15,
@@ -370,7 +369,6 @@ extension ShareCardScreen {
                         decorEffect:      vRecipe.decorEffect,
                         hasBorder:        vRecipe.hasBorder,
                         flyDirection:     vRecipe.flyDirection,
-                        showDate: false,
                         showBackground: false,
                         showWordmark: false,
                         chartBottomReserved: 15,
@@ -519,8 +517,6 @@ extension ShareCardScreen {
         }
         await previewPlayer.buildForVideoClips(
             recipes:          recipesForPreview,
-            activityDate:     activity.date,
-            showDate:         false,
             showWordmark:     false,
             muteAudio:        placeableVM.placeableMuteAudio,
             safeTopOverride:  CardVisual.videoSafeTop,
@@ -543,8 +539,7 @@ extension ShareCardScreen {
                 var emptyRecipe = placeableVM.placeableClipRecipes[idx]
                 emptyRecipe.lines = []
                 await previewPlayer.buildForVideoClips(
-                    recipes: [emptyRecipe], activityDate: activity.date, showDate: false,
-                    showWordmark: false,
+                    recipes: [emptyRecipe], showWordmark: false,
                     safeTopOverride: CardVisual.videoSafeTop,
                     safeBotOverride: CardVisual.videoSafeBottom)
             }

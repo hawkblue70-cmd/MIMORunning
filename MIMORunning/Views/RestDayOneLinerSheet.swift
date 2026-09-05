@@ -372,7 +372,6 @@ struct RestDayOneLinerSheet: View {
                 return max(0, t.size.width * s - CardPreviewFrame.width) * scale
             }()
             OneLinerCard(
-                displayDate: date,
                 backgroundPhoto: cardBackground,
                 cropOffsetX: clipCropX,
                 text: cardText,
@@ -383,7 +382,6 @@ struct RestDayOneLinerSheet: View {
                 appearanceMode: previewAppearanceMode,
                 decorEffect: previewDecorEffect,
                 hasBorder: previewHasBorder,
-                showDate: true,
                 captionMode: true,
                 chartBottomReserved: isClipChartBottomReserved,
                 videoTitle: selectedTemplate != .story ? videoTitle : "",
@@ -446,7 +444,6 @@ struct RestDayOneLinerSheet: View {
                 return max(0, t.size.width * s - OneLinerCard.cardWidth)
             }()
             OneLinerCard(
-                displayDate: date,
                 backgroundPhoto: cardBackground,
                 cropOffsetX: storyCropX,
                 text: cardText,
@@ -457,7 +454,6 @@ struct RestDayOneLinerSheet: View {
                 appearanceMode: previewAppearanceMode,
                 decorEffect: previewDecorEffect,
                 hasBorder: previewHasBorder,
-                showDate: true,
                 captionMode: true,
                 videoTitle: selectedTemplate != .story ? videoTitle : "",
                 titleStyle: titleStyle,

@@ -232,7 +232,6 @@ extension ShareCardScreen {
                 appearanceMode: pr.appearanceMode,
                 decorEffect: pr.decorEffect,
                 hasBorder: pr.hasBorder,
-                showDate: oneLinerVM.oneLinerShowDate,
                 captionMode: true,
                 chartBottomReserved: storyChartBottomReserved(for: pr),
                 isStaticPreview: true,   // ImageRenderer는 onAppear/애니 없이 초기 상태만 캡처 → 즉시 표시 필요

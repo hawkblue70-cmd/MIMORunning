@@ -59,7 +59,6 @@ extension ShareCardScreen {
             oneLinerVM.oneLinerColor    = entry.textColor
             oneLinerVM.oneLinerPosition = entry.position
         }
-        oneLinerVM.oneLinerShowDate  = entry.showDate
     }
 
     // MARK: - 설정 로드
@@ -122,7 +121,6 @@ extension ShareCardScreen {
     // ③ 폰트 칩 탭
     // ④ 색 칩 탭
     // ⑤ 썸네일 탭                    — cardPhotoIndex 커밋 전에 이전 사진 entry 저장
-    // ⑥ 날짜 토글                    — showDate 변경 시 (해당 버튼 액션에 포함)
     func saveOneLinerSettings() {
         let mediaRef = computeOneLinerMediaRef()
         let trimmed  = oneLinerVM.oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -138,13 +136,11 @@ extension ShareCardScreen {
             guard existing.text      != oneLinerVM.oneLinerText     ||
                   existing.font      != oneLinerVM.oneLinerFont     ||
                   existing.textColor != oneLinerVM.oneLinerColor    ||
-                  existing.position  != oneLinerVM.oneLinerPosition ||
-                  existing.showDate  != oneLinerVM.oneLinerShowDate else { return }
+                  existing.position  != oneLinerVM.oneLinerPosition else { return }
             existing.text      = oneLinerVM.oneLinerText
             existing.font      = oneLinerVM.oneLinerFont
             existing.textColor = oneLinerVM.oneLinerColor
             existing.position  = oneLinerVM.oneLinerPosition
-            existing.showDate  = oneLinerVM.oneLinerShowDate
             try? modelContext.save()
             return
         }
@@ -156,7 +152,6 @@ extension ShareCardScreen {
         entry.font      = oneLinerVM.oneLinerFont
         entry.textColor = oneLinerVM.oneLinerColor
         entry.position  = oneLinerVM.oneLinerPosition
-        entry.showDate  = oneLinerVM.oneLinerShowDate
         modelContext.insert(entry)
         try? modelContext.save()
     }

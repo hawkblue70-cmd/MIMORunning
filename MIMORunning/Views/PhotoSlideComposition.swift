@@ -37,8 +37,6 @@ enum PhotoSlideComposition {
     static func exportSlideWithText(
         photos: [UIImage],
         recipes: [ClipRecipe],
-        activityDate: Date,
-        showDate: Bool,
         metricChips: [VideoMetricChip] = [],
         metricLookup: [String: VideoMetricChip] = [:],
         routeCoords: [CLLocationCoordinate2D] = [],
@@ -77,7 +75,7 @@ enum PhotoSlideComposition {
         let contentLayer = buildContentLayer(
             scaledPhotos: imgs, useRecipes: useRecipes, totalDuration: D,
             photoOffsets: photoOffsets, renderSize: size,
-            activityDate: activityDate, showDate: showDate, metricChips: metricChips,
+            metricChips: metricChips,
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples, splits: splits,
             chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
             videoTitle: videoTitle, titleStyle: titleStyle,
@@ -156,8 +154,6 @@ enum PhotoSlideComposition {
     static func buildPreviewItem(
         photos: [UIImage],
         recipes: [ClipRecipe],
-        activityDate: Date,
-        showDate: Bool,
         metricChips: [VideoMetricChip] = [],
         metricLookup: [String: VideoMetricChip] = [:],
         routeCoords: [CLLocationCoordinate2D] = [],
@@ -191,7 +187,7 @@ enum PhotoSlideComposition {
         let contentLayer = buildContentLayer(
             scaledPhotos: imgs, useRecipes: useRecipes, totalDuration: D,
             photoOffsets: photoOffsets, renderSize: size,
-            activityDate: activityDate, showDate: showDate, metricChips: metricChips,
+            metricChips: metricChips,
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples, splits: splits,
             chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
             videoTitle: videoTitle, titleStyle: titleStyle,
@@ -257,8 +253,6 @@ enum PhotoSlideComposition {
         totalDuration D: Double,
         photoOffsets: [Double],
         renderSize: CGSize,
-        activityDate: Date,
-        showDate: Bool,
         metricChips: [VideoMetricChip] = [],
         metricLookup: [String: VideoMetricChip] = [:],
         routeCoords: [CLLocationCoordinate2D] = [],
@@ -1551,45 +1545,6 @@ enum PhotoSlideComposition {
                                       values:   [Float(0), Float(0), Float(1), Float(1)]),
                            forKey: "titleFade")
             contentLayer.addSublayer(titleLayer)
-        }
-
-        // ── Date stamp ─────────────────────────────────────────────────────────────────
-        if showDate {
-            let df = DateFormatter()
-            df.dateFormat = "yyyy. M. d."
-            let dateStr     = df.string(from: activityDate)
-            let dateFontPx: CGFloat = 16 * vScale  // 16×vScale×0.195 ≈ 11pt visual (OneLinerCard 기준 일치)
-            let dateAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
-                .foregroundColor: UIColor.white
-            ]
-            let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
-            let dateSz      = dateAttrStr.size()
-            let datePad: CGFloat = 14 * vScale
-            let dateImgW = ceil(dateSz.width) + 4; let dateImgH = ceil(dateSz.height) + 4
-            let dateRenderer = UIGraphicsImageRenderer(
-                size: CGSize(width: dateImgW, height: dateImgH), format: imgFormat)
-            let dateImg = dateRenderer.image { ctx in
-                ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
-                                        blur: 6 * vScale,
-                                        color: UIColor.black.withAlphaComponent(0.4).cgColor)
-                dateAttrStr.draw(in: CGRect(x: 0, y: 0, width: dateImgW, height: dateImgH))
-            }
-            let dateLayer = CALayer()
-            // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 끝에 정렬 → 하단 문구와 겹침 방지
-            dateLayer.frame           = CGRect(x: W - hPad - dateImgW,
-                                               y: wMTopPad + (wMLayerH - dateImgH) / 2,
-                                               width: dateImgW, height: dateImgH)
-            dateLayer.contents        = dateImg.cgImage
-            dateLayer.contentsGravity = .topLeft
-            dateLayer.masksToBounds   = false
-            dateLayer.opacity         = 0.0
-            let dateFadeEnd = NSNumber(value: min(0.3 / D, 0.99))
-            dateLayer.add(linearAnim("opacity",
-                keyTimes: [0.0, 0.0001, dateFadeEnd, 1.0],
-                values:   [Float(0), Float(0), Float(1), Float(1)]),
-                forKey: "dateFade")
-            contentLayer.addSublayer(dateLayer)
         }
 
         return contentLayer

@@ -863,8 +863,6 @@ struct VideoExportService {
         fontChoice: OneLinerFont,
         textColor: OneLinerTextColor,
         position: CardPosition,
-        activityDate: Date,
-        showDate: Bool,
         muteAudio: Bool = false,
         maxDuration: Double? = nil   // nil = trimDuration (30s); pass total seconds for multi-clip
     ) async throws -> URL {
@@ -1154,43 +1152,6 @@ struct VideoExportService {
         }
         parentLayer.addSublayer(wMarkLayer)
 
-        // ── Date stamp ────────────────────────────────────────────────────────
-        if showDate {
-            let df = DateFormatter()
-            df.dateFormat = "yyyy. M. d."
-            let dateStr = df.string(from: activityDate)
-
-            let dateFontPx: CGFloat = 16 * vScale  // 16×vScale×0.195 ≈ 11pt visual (OneLinerCard 기준 일치)
-            let dateAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
-                .foregroundColor: UIColor.white
-            ]
-            let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
-            let dateSize    = dateAttrStr.size()
-            let dateImgW = ceil(dateSize.width) + 4
-            let dateImgH = ceil(dateSize.height) + 4
-
-            let dateRenderer = UIGraphicsImageRenderer(
-                size: CGSize(width: dateImgW, height: dateImgH), format: imgFormat)
-            let dateImg = dateRenderer.image { ctx in
-                ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
-                                        blur: 6 * vScale,
-                                        color: UIColor.black.withAlphaComponent(0.4).cgColor)
-                dateAttrStr.draw(in: CGRect(x: 0, y: 0, width: dateImgW, height: dateImgH))
-            }
-
-            let dateLayer = CALayer()
-            // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 끝에 정렬 → 하단 문구와 겹침 방지
-            dateLayer.frame           = CGRect(x: W - hPad - dateImgW,
-                                               y: wMarkTopPad + (wMarkLayerH - dateImgH) / 2,
-                                               width: dateImgW,
-                                               height: dateImgH)
-            dateLayer.contents        = dateImg.cgImage
-            dateLayer.contentsGravity = .topLeft
-            dateLayer.masksToBounds   = false
-            parentLayer.addSublayer(dateLayer)
-        }
-
         // ── Attach animation tool ─────────────────────────────────────────────
         videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
             postProcessingAsVideoLayer: videoLayer, in: parentLayer)
@@ -1243,8 +1204,6 @@ struct VideoExportService {
         fontChoice: OneLinerFont,
         textColor: OneLinerTextColor,
         position: CardPosition,
-        activityDate: Date,
-        showDate: Bool,
         muteAudio: Bool = false,
         maxDuration: Double? = nil   // nil = trimDuration (30s); pass total seconds for multi-clip
     ) async throws -> URL {
@@ -1253,15 +1212,13 @@ struct VideoExportService {
         guard !nonEmpty.isEmpty else {
             return try await exportOneLinerTypingVideo(
                 sourceURL: sourceURL, text: "",
-                fontChoice: fontChoice, textColor: textColor, position: position,
-                activityDate: activityDate, showDate: showDate)
+                fontChoice: fontChoice, textColor: textColor, position: position)
         }
         if nonEmpty.count == 1 {
             let text = nonEmpty[0].joined(separator: "\n")
             return try await exportOneLinerTypingVideo(
                 sourceURL: sourceURL, text: text,
-                fontChoice: fontChoice, textColor: textColor, position: position,
-                activityDate: activityDate, showDate: showDate)
+                fontChoice: fontChoice, textColor: textColor, position: position)
         }
 
         let sourceURL   = try await preprocessHDRToSDR(url: sourceURL)
@@ -1564,40 +1521,6 @@ struct VideoExportService {
         }
         parentLayer.addSublayer(wMarkLayer)
 
-        // ── Date stamp (static) ───────────────────────────────────────────────
-        if showDate {
-            let df = DateFormatter()
-            df.dateFormat = "yyyy. M. d."
-            let dateStr = df.string(from: activityDate)
-            let dateFontPx: CGFloat = 16 * vScale  // 16×vScale×0.195 ≈ 11pt visual (OneLinerCard 기준 일치)
-            let dateAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
-                .foregroundColor: UIColor.white
-            ]
-            let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
-            let dateSize    = dateAttrStr.size()
-            let dateImgW = ceil(dateSize.width) + 4
-            let dateImgH = ceil(dateSize.height) + 4
-            let dateRenderer = UIGraphicsImageRenderer(
-                size: CGSize(width: dateImgW, height: dateImgH), format: imgFormat)
-            let dateImg = dateRenderer.image { ctx in
-                ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
-                                        blur: 6 * vScale,
-                                        color: UIColor.black.withAlphaComponent(0.4).cgColor)
-                dateAttrStr.draw(in: CGRect(x: 0, y: 0, width: dateImgW, height: dateImgH))
-            }
-            let dateLayer = CALayer()
-            // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 끝에 정렬 → 하단 문구와 겹침 방지
-            dateLayer.frame           = CGRect(x: W - hPad - dateImgW,
-                                               y: wMarkTopPad + (wMarkLayerH - dateImgH) / 2,
-                                               width: dateImgW,
-                                               height: dateImgH)
-            dateLayer.contents        = dateImg.cgImage
-            dateLayer.contentsGravity = .topLeft
-            dateLayer.masksToBounds   = false
-            parentLayer.addSublayer(dateLayer)
-        }
-
         // ── Assemble & export ─────────────────────────────────────────────────
         videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
             postProcessingAsVideoLayer: videoLayer, in: parentLayer)
@@ -1645,8 +1568,6 @@ struct VideoExportService {
     static func exportOneLinerClipBoundVideo(
         sourceURL: URL,
         recipes: [ClipRecipe],
-        activityDate: Date,
-        showDate: Bool,
         muteAudio: Bool = false,
         metricChips: [VideoMetricChip] = [],
         metricLookup: [String: VideoMetricChip] = [:],
@@ -1771,7 +1692,7 @@ struct VideoExportService {
         // ── 4. Content layer (shared with preview) ─────────────────────────
         let contentLayer = buildClipTextContentLayer(
             recipes: recipes, renderSize: oneLinerSize, totalDuration: D,
-            activityDate: activityDate, showDate: showDate, metricChips: metricChips,
+            metricChips: metricChips,
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples,
             splits: splits, hrZones: hrZones, intervalSegments: intervalSegments,
             chartSeriesData: chartSeriesData, videoTitle: videoTitle, titleStyle: titleStyle,
@@ -1833,8 +1754,6 @@ struct VideoExportService {
         recipes: [ClipRecipe],
         renderSize: CGSize,
         totalDuration D: Double,
-        activityDate: Date,
-        showDate: Bool,
         showWordmark: Bool = true,
         metricChips: [VideoMetricChip] = [],
         metricLookup: [String: VideoMetricChip] = [:],
@@ -2365,43 +2284,6 @@ struct VideoExportService {
                 contentLayer.addSublayer(chipLayer)
                 chipX += chipW + chipGap
             }
-        }
-
-        // ── Date stamp ─────────────────────────────────────────────────────────
-        if showDate {
-            let df = DateFormatter(); df.dateFormat = "yyyy. M. d."
-            let dateStr     = df.string(from: activityDate)
-            let dateFontPx: CGFloat = 16 * vScale  // 16×vScale×0.195 ≈ 11pt visual (OneLinerCard 기준 일치)
-            let dateAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: dateFontPx, weight: .semibold),
-                .foregroundColor: UIColor.white
-            ]
-            let dateAttrStr = NSAttributedString(string: dateStr, attributes: dateAttrs)
-            let dateSz      = dateAttrStr.size()
-            let dateImgW = ceil(dateSz.width) + 4; let dateImgH = ceil(dateSz.height) + 4
-            let dateRenderer = UIGraphicsImageRenderer(
-                size: CGSize(width: dateImgW, height: dateImgH), format: imgFormat)
-            let dateImg = dateRenderer.image { ctx in
-                ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1 * vScale),
-                                        blur: 6 * vScale,
-                                        color: UIColor.black.withAlphaComponent(0.4).cgColor)
-                dateAttrStr.draw(in: CGRect(x: 0, y: 0, width: dateImgW, height: dateImgH))
-            }
-            let dateLayer = CALayer()
-            // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 끝에 정렬 → 하단 문구와 겹침 방지
-            dateLayer.frame           = CGRect(x: W - hPad - dateImgW,
-                                               y: wMTopPad + (wMLayerH - dateImgH) / 2,
-                                               width: dateImgW, height: dateImgH)
-            dateLayer.contents        = dateImg.cgImage
-            dateLayer.contentsGravity = .topLeft
-            dateLayer.masksToBounds   = false
-            dateLayer.opacity         = 0.0
-            let dateFadeEnd = NSNumber(value: min(0.3 / D, 0.99))
-            dateLayer.add(linearAnim(keyPath: "opacity",
-                keyTimes: [0.0, 0.0001, dateFadeEnd, 1.0],
-                values:   [Float(0), Float(0), Float(1), Float(1)]),
-                forKey: "dateFade")
-            contentLayer.addSublayer(dateLayer)
         }
 
         // ── Full-video title overlay ───────────────────────────────────────────
@@ -3138,8 +3020,6 @@ struct VideoExportService {
 
     static func buildVideoPreviewItem(
         recipes: [ClipRecipe],
-        activityDate: Date,
-        showDate: Bool,
         showWordmark: Bool = true,
         muteAudio: Bool = false,
         metricChips: [VideoMetricChip] = [],
@@ -3277,7 +3157,7 @@ struct VideoExportService {
 
         let contentLayer = buildClipTextContentLayer(
             recipes: recipes, renderSize: oneLinerSize, totalDuration: D,
-            activityDate: activityDate, showDate: showDate, showWordmark: showWordmark,
+            showWordmark: showWordmark,
             metricChips: metricChips,
             metricLookup: metricLookup, routeCoords: routeCoords, hrSamples: hrSamples,
             splits: splits, hrZones: hrZones, intervalSegments: intervalSegments,

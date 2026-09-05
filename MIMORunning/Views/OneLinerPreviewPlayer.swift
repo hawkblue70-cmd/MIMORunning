@@ -44,8 +44,6 @@ final class OneLinerPreviewPlayer {
     func buildForPhotoSlides(
         photos:           [UIImage],
         recipes:          [ClipRecipe],
-        activityDate:     Date,
-        showDate:         Bool,
         metricChips:      [VideoMetricChip] = [],
         metricLookup:     [String: VideoMetricChip] = [:],
         routeCoords:      [CLLocationCoordinate2D] = [],
@@ -70,8 +68,6 @@ final class OneLinerPreviewPlayer {
             let result = try await PhotoSlideComposition.buildPreviewItem(
                 photos:           photos,
                 recipes:          recipes,
-                activityDate:     activityDate,
-                showDate:         showDate,
                 metricChips:      metricChips,
                 metricLookup:     metricLookup,
                 routeCoords:      routeCoords,
@@ -97,8 +93,6 @@ final class OneLinerPreviewPlayer {
 
     func buildForVideoClips(
         recipes:          [ClipRecipe],
-        activityDate:     Date,
-        showDate:         Bool,
         showWordmark:     Bool = true,
         muteAudio:        Bool = false,  // 빌드 시작 시 초기 상태; 빌드 중 setMuted 호출이 있으면 그 값이 우선
         metricChips:      [VideoMetricChip] = [],
@@ -127,8 +121,6 @@ final class OneLinerPreviewPlayer {
         do {
             let result = try await VideoExportService.buildVideoPreviewItem(
                 recipes:          recipes,
-                activityDate:     activityDate,
-                showDate:         showDate,
                 showWordmark:     showWordmark,
                 muteAudio:        false,   // 프리뷰는 항상 오디오 트랙 포함; 음소거는 player.isMuted로 제어
                 metricChips:      metricChips,

@@ -21,8 +21,7 @@ extension RestDayOneLinerSheet {
                     } catch { }
                 }
                 await previewPlayer.buildForVideoClips(
-                    recipes: resolved, activityDate: date, showDate: true,
-                    muteAudio: muteVideoAudio,
+                    recipes: resolved, muteAudio: muteVideoAudio,
                     routeCoords: routeCoords, hrSamples: hrSamples, splits: splits,
                     chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
                     videoTitle: videoTitle, titleStyle: titleStyle,
@@ -34,7 +33,6 @@ extension RestDayOneLinerSheet {
                 guard !photos.isEmpty else { return }
                 await previewPlayer.buildForPhotoSlides(
                     photos: photos, recipes: clipRecipes,
-                    activityDate: date, showDate: true,
                     hrSamples: hrSamples, splits: splits,
                     chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
                     videoTitle: videoTitle, titleStyle: titleStyle)
@@ -54,7 +52,6 @@ extension RestDayOneLinerSheet {
                     .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                     .joined(separator: "\n")
                 let card = OneLinerCard(
-                    displayDate: date,
                     backgroundPhoto: photo,
                     text: txt,
                     position: recipe.position,
@@ -64,7 +61,6 @@ extension RestDayOneLinerSheet {
                     appearanceMode: recipe.appearanceMode,
                     decorEffect: recipe.decorEffect,
                     hasBorder: recipe.hasBorder,
-                    showDate: true,
                     captionMode: true
                 )
                 .frame(width: OneLinerCard.cardWidth, height: OneLinerCard.cardHeight)
@@ -113,7 +109,6 @@ extension RestDayOneLinerSheet {
                         guard !photos.isEmpty else { return }
                         let outputURL = try await PhotoSlideComposition.exportSlideWithText(
                             photos: photos, recipes: recipes,
-                            activityDate: date, showDate: true,
                             metricLookup: metricLookup,
                             hrSamples: hrSamples, splits: splits,
                             chartSeriesData: chartSeriesData, hrZones: hrZones, intervalSegments: intervalSegments,
@@ -141,7 +136,7 @@ extension RestDayOneLinerSheet {
                         let outputURL = try await VideoExportService.exportOneLinerClipBoundVideo(
                             sourceURL: exportURL,
                             recipes: recipes,
-                            activityDate: date, showDate: true, muteAudio: isMuted,
+                            muteAudio: isMuted,
                             metricLookup: metricLookup,
                             routeCoords: routeCoords, hrSamples: hrSamples, splits: splits,
                             hrZones: hrZones, intervalSegments: intervalSegments, chartSeriesData: chartSeriesData,
@@ -174,14 +169,12 @@ extension RestDayOneLinerSheet {
         for (i, (photo, txt)) in pairs.enumerated() {
             let rp = i < clipRecipes.count ? clipRecipes[i] : nil
             let card = OneLinerCard(
-                displayDate: date,
                 backgroundPhoto: photo,
                 text: txt,
                 position: position,
                 textColor: textColor,
                 fontChoice: fontChoice,
                 hasBorder: rp?.hasBorder ?? previewHasBorder,
-                showDate: true,
                 captionMode: true
             )
             .frame(width: OneLinerCard.cardWidth, height: OneLinerCard.cardHeight)

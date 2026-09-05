@@ -12,12 +12,12 @@ struct MIMOWordmark: View {
         if strokeMIMO {
             MIMOWordmarkStrokeView(size: size)
         } else {
+            // 단일 PNG: 흰 MIMO + 1.8 테두리 → 어두운·밝은 배경 모두 대응 (그림자 없음)
             Image("MIMOWordmark")
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
                 .frame(height: size * 2.3)
-                .shadow(color: .black.opacity(0.14), radius: size * 0.045, x: 0, y: 0)
                 .accessibilityLabel("MIMO Running")
         }
     }

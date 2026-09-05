@@ -328,7 +328,6 @@ struct ClipTrimSheet: View {
             }()
             ZStack {
                 OneLinerCard(
-                    displayDate: Date(),
                     backgroundPhoto: recipe.thumbnail,
                     cropOffsetX: workingRecipes[i].cropOffsetX,
                     text: txt,
@@ -339,7 +338,6 @@ struct ClipTrimSheet: View {
                     appearanceMode: recipe.appearanceMode,
                     decorEffect: recipe.decorEffect,
                     hasBorder: recipe.hasBorder,
-                    showDate: true,
                     captionMode: true,
                     chartBottomReserved: storyChartReserved,
                     isStaticPreview: true,   // 편집 시트는 정적 표시 — 애니 없음

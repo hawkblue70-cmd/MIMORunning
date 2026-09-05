@@ -39,8 +39,6 @@ func uikitLineBreakText(_ text: String, uiFont: UIFont, maxWidth: CGFloat) -> St
 
 struct OneLinerCard: View {
     var activity: Activity? = nil
-    /// Date used for the date stamp and gradient when `activity` is nil (rest-day mode).
-    var displayDate: Date = Date()
     var backgroundPhoto: UIImage? = nil
     var cropOffsetX: CGFloat = 0.5
     var text: String = ""
@@ -52,10 +50,9 @@ struct OneLinerCard: View {
     var decorEffect:    DecorEffect    = .none
     var hasBorder:      Bool           = false
     var flyDirection:   FlyInDirection = .trailing
-    var showDate: Bool = true
     var showBackground: Bool = true
     var showWordmark: Bool = true
-    /// When true, text + date are pinned together at the bottom-left (caption layout).
+    /// When true, text is pinned at the bottom-left (caption layout).
     /// The `position` parameter is ignored in this mode.
     var captionMode: Bool = false
     /// 스토리 모드에서 차트 패널이 하단에 배치될 때 해당 영역 높이(pt). > 0이면 문구를 차트 위 공간에 배치.
@@ -104,7 +101,6 @@ struct OneLinerCard: View {
     var chartSplits:        [SplitData] = []
     var intervalSegments:   [IntervalSegment] = []
 
-    private var cardDate: Date { activity?.date ?? displayDate }
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
@@ -519,16 +515,6 @@ struct OneLinerCard: View {
                         ? ((chartBottomReserved > 0 ? chartBottomReserved + 8 : 0) -
                            (chartTopReserved    > 0 ? chartTopReserved    + 8 : 0)) / 2
                         : 0)
-                    if showDate {
-                        // 날짜: 워드마크(MIMO RUNNING) 줄 오른쪽 → 문구와 겹침 방지
-                        Text(cardDate.oneLinerDateString)
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                            .padding(.trailing, 14)
-                            .padding(.top, 32)
-                    }
                 }
             }
         }
@@ -1253,24 +1239,15 @@ struct OneLinerCard: View {
 
     private var wordmark: some View {
         MIMOWordmark(size: 11)
-            .cardTextShadow()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.leading, 24)   // CALayer hPad = 24 기준
             .padding(.top, 32)
     }
 
-    // captionMode 전용: 워드마크 + 날짜를 단일 HStack으로, 14pt 위 여백 (스탬프·플레이서블 스토리와 동일)
+    // captionMode 전용: 워드마크 행, 14pt 위 여백 (스탬프·플레이서블 스토리와 동일)
     private var captionWordmarkRow: some View {
         HStack {
             MIMOWordmark(size: 11)
-                .cardTextShadow()
-            if showDate {
-                Spacer()
-                Text(cardDate.oneLinerDateString)
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-            }
         }
         .padding(.horizontal, 14)
         .padding(.top, 14)
@@ -1317,16 +1294,6 @@ enum OneLinerSizeAudit {
     }
 }
 #endif
-
-// MARK: - Date helper
-
-extension Date {
-    var oneLinerDateString: String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy. M. d."
-        return f.string(from: self)
-    }
-}
 
 // MARK: - Previews
 

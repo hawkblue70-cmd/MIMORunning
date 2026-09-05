@@ -44,7 +44,6 @@ private struct SlideTextOverlay: View {
             decorEffect: isFade ? style.decorEffect : .none,
             hasBorder: style.hasBorder,
             flyDirection: style.flyDirection,
-            showDate: false,
             showBackground: false,
             showWordmark: false,
             chartBottomReserved: 15,
@@ -360,7 +359,6 @@ extension ShareCardScreen {
             let recipes = makePlaceableSlideRecipes(for: photos)
             await previewPlayer.buildForPhotoSlides(
                 photos: photos, recipes: recipes,
-                activityDate: activity.date, showDate: false,
                 dataOverlayImage: overlay,
                 dataOverlayIsTop: overlayIsTop,
                 forCardIndex: 1)
