@@ -6,7 +6,7 @@ import SwiftUI
 //    Athletic · OneLiner · Placeable · Sky · ECG · Ticket 카드 관련 코드 작성 금지.
 //
 // 파일별 담당:
-//   BigNumberViewModel.swift  — 상태 (bigNumberShowMood, bigNumberShowMemo, bigNumberAccent)
+//   BigNumberViewModel.swift  — 상태 (bigNumberShowMemo, bigNumberAccent)
 //   BigNumberControls.swift   — 악센트 칩 행 View struct (현재 파일)
 //   BigNumberCard.swift       — 실제 카드 렌더링
 //

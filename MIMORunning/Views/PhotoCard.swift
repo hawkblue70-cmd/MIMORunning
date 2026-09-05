@@ -10,14 +10,8 @@ import CoreLocation
 struct PhotoShareCardView: View {
     let activity: Activity
     let photo: UIImage
-    let insightTitle: String
     let metrics: [ShareMetricItem]
     var raceName: String? = nil
-    var story: WorkoutStory? = nil
-    var showMood: Bool = false
-    var showMemo: Bool = false
-    var miniMeVariant: MiniMeVariant? = nil
-    var customMiniMeImage: UIImage? = nil
     var routeCoordinates: [CLLocationCoordinate2D] = []
     var chartPanel: CardChartPanel = .map
     var chartSplits: [SplitData] = []
@@ -45,7 +39,6 @@ struct PhotoShareCardView: View {
         return km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
     }
     private var startDateTimeString: String { activity.date.cardDateTimeString }
-    private var hasMiniMe: Bool { customMiniMeImage != nil || miniMeVariant != nil }
 
     var body: some View {
         let max = maxOffset(for: CGSize(width: 300, height: 375))
@@ -67,58 +60,23 @@ struct PhotoShareCardView: View {
                             MIMOWordmark(size: 11)
                         }
 
-                        if !insightTitle.isEmpty {
-                            Text(insightTitle)
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.90))
-                                .lineLimit(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        let hasBadges = raceName != nil || (showMood && story != nil)
-                        if hasBadges {
-                            HStack(spacing: 6) {
-                                if let race = raceName {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "flag.checkered")
-                                            .font(.system(size: 8, weight: .semibold))
-                                        Text(race)
-                                            .font(.system(size: 9, weight: .semibold))
-                                            .lineLimit(1)
-                                    }
-                                    .foregroundStyle(Theme.violet)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(Theme.violet.opacity(0.18))
-                                    .clipShape(Capsule())
-                                }
-                                if showMood, let s = story {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: s.mood.sfSymbol)
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(moodCardColor(s.mood))
-                                        Text(s.mood.label)
-                                            .font(.system(size: 10, weight: .medium))
-                                            .foregroundStyle(moodCardColor(s.mood))
-                                    }
-                                }
+                        if let race = raceName {
+                            HStack(spacing: 4) {
+                                Image(systemName: "flag.checkered")
+                                    .font(.system(size: 8, weight: .semibold))
+                                Text(race)
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .lineLimit(1)
                             }
-                        }
-
-                        if showMemo, let s = story, !s.memo.isEmpty {
-                            Text(s.memo)
-                                .font(.system(size: 10, weight: .regular, design: .serif).italic())
-                                .foregroundStyle(.white.opacity(0.85))
-                                .fixedSize(horizontal: false, vertical: true)
+                            .foregroundStyle(Theme.violet)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Theme.violet.opacity(0.18))
+                            .clipShape(Capsule())
                         }
                     }
 
                     Spacer(minLength: 8)
-
-                    if hasMiniMe {
-                        MiniMeOrCustomImage(customImage: customMiniMeImage, variant: miniMeVariant, size: 54)
-                            .padding(.top, 2)
-                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)

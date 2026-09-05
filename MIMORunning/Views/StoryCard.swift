@@ -10,13 +10,8 @@ struct StoryShareCardView: View {
     let activity: Activity
     let routeCoordinates: [CLLocationCoordinate2D]
     let story: WorkoutStory
-    let insightTitle: String
     var metrics: [ShareMetricItem] = []
     var raceName: String? = nil
-    var miniMeVariant: MiniMeVariant? = nil
-    var customMiniMeImage: UIImage? = nil
-    var showMood: Bool = true
-    var showMemo: Bool = true
     var chartPanel: CardChartPanel = .map
     var chartSplits: [SplitData] = []
     var chartHRSamples: [(offset: TimeInterval, bpm: Int)] = []
@@ -30,8 +25,6 @@ struct StoryShareCardView: View {
         let km = activity.distance / 1000
         return km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
     }
-    private var moodColor: Color { moodCardColor(story.mood) }
-    private var hasMiniMe: Bool { customMiniMeImage != nil || miniMeVariant != nil }
     private var startDateTimeString: String { activity.date.cardDateTimeString }
 
     var body: some View {
@@ -49,59 +42,23 @@ struct StoryShareCardView: View {
                             MIMOWordmark(size: 11)
                         }
 
-                        if !insightTitle.isEmpty {
-                            Text(insightTitle)
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.90))
-                                .lineLimit(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        let hasBadges = raceName != nil || showMood
-                        if hasBadges {
-                            HStack(spacing: 6) {
-                                if let race = raceName {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "flag.checkered")
-                                            .font(.system(size: 8, weight: .semibold))
-                                        Text(race)
-                                            .font(.system(size: 9, weight: .semibold))
-                                            .lineLimit(1)
-                                    }
-                                    .foregroundStyle(Theme.violet)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(Theme.violet.opacity(0.18))
-                                    .clipShape(Capsule())
-                                }
-                                if showMood {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: story.mood.sfSymbol)
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(moodColor)
-                                        Text(story.mood.label)
-                                            .font(.system(size: 10, weight: .medium))
-                                            .foregroundStyle(moodColor)
-                                    }
-                                }
+                        if let race = raceName {
+                            HStack(spacing: 4) {
+                                Image(systemName: "flag.checkered")
+                                    .font(.system(size: 8, weight: .semibold))
+                                Text(race)
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .lineLimit(1)
                             }
-                        }
-
-                        if showMemo, !story.memo.isEmpty {
-                            Text("\u{201C}\(story.memo)\u{201D}")
-                                .font(.system(size: 10, weight: .regular, design: .serif).italic())
-                                .foregroundStyle(.white.opacity(0.88))
-                                .lineLimit(3)
-                                .fixedSize(horizontal: false, vertical: true)
+                            .foregroundStyle(Theme.violet)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Theme.violet.opacity(0.18))
+                            .clipShape(Capsule())
                         }
                     }
 
                     Spacer(minLength: 8)
-
-                    if hasMiniMe {
-                        MiniMeOrCustomImage(customImage: customMiniMeImage, variant: miniMeVariant, size: 54)
-                            .padding(.top, 2)
-                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 18)

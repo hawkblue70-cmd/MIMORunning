@@ -11,19 +11,14 @@ import SwiftUI
 //
 // scale 기준값 (scale=1.0)
 //   워드마크: 11pt × scale
-//   인사이트 제목: 13pt  차트: 160×100pt  MiniMe: 54pt
+//   차트: 160×100pt
 //   아이콘/레이블: 7pt/8pt  수평 패딩: 10pt
 
 struct VideoOverlayCard: View {
-    let insightTitle: String
     let distanceKm: String
     let date: Date
     let metrics: [ShareMetricItem]
     let raceName: String?
-    let miniMeVariant: MiniMeVariant?
-    let miniMeImage: UIImage?
-    var mood: Mood? = nil
-    var memoText: String? = nil
     let chartPanel: CardChartPanel
     let chartSplits: [SplitData]
     let chartHRSamples: [(offset: TimeInterval, bpm: Int)]
@@ -46,18 +41,11 @@ struct VideoOverlayCard: View {
 
             VStack(alignment: .leading, spacing: 0) {
 
-                // ── TOP: Wordmark + Insight + MiniMe ──
+                // ── TOP: Wordmark (+ 대회 뱃지) ──
                 HStack(alignment: .top, spacing: 4 * scale) {
                     VStack(alignment: .leading, spacing: 2 * scale) {
                         HStack(spacing: 0) {
                             MIMOWordmark(size: 11 * scale)
-                        }
-                        if !insightTitle.isEmpty {
-                            Text(insightTitle)
-                                .font(.system(size: 13 * scale, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.90))
-                                .lineLimit(2)
-                                .cardTextShadow()
                         }
                         if let race = raceName {
                             HStack(spacing: 2 * scale) {
@@ -72,26 +60,10 @@ struct VideoOverlayCard: View {
                             .padding(.vertical, 2 * scale)
                             .background(Theme.violet.opacity(0.20))
                             .clipShape(Capsule())
-                        }
-                        if let m = mood {
-                            HStack(spacing: 3 * scale) {
-                                Image(systemName: m.sfSymbol)
-                                    .font(.system(size: 10 * scale, weight: .medium))
-                                Text(m.label)
-                                    .font(.system(size: 10 * scale, weight: .medium))
-                            }
-                            .foregroundStyle(m.cardColor)
-                        }
-                        if let memo = memoText, !memo.isEmpty {
-                            Text(memo)
-                                .font(.system(size: 10 * scale, weight: .bold, design: .serif).italic())
-                                .foregroundStyle(.white)
+                            .cardTextShadow()
                         }
                     }
                     Spacer(minLength: 3 * scale)
-                    if miniMeVariant != nil || miniMeImage != nil {
-                        MiniMeOrCustomImage(customImage: miniMeImage, variant: miniMeVariant, size: 54 * scale)
-                    }
                 }
                 .padding(.top, topInset ?? (CardVisual.videoSafeTopRef * scale))
 
@@ -125,6 +97,7 @@ struct VideoOverlayCard: View {
                     }
                     .padding(.horizontal, 20 * scale)
                     .padding(.bottom, 8 * scale)
+                    .cardTextShadow()
                 }
 
                 // ── BOTTOM: date · divider · stats ──
@@ -156,6 +129,7 @@ struct VideoOverlayCard: View {
                     }
                 }
                 .padding(.bottom, 2 * scale)
+                .cardTextShadow()
 
                 Rectangle()
                     .fill(Theme.violet.opacity(0.30))
@@ -177,7 +151,7 @@ struct VideoOverlayCard: View {
                     }
                     .fixedSize(horizontal: true, vertical: true)
                     .frame(width: distW, alignment: .leading)
-                    .cardVideoLargeTextShadow()
+                    .cardLargeTextShadow()
 
                     if !metrics.isEmpty {
                         Rectangle()
@@ -209,13 +183,14 @@ struct VideoOverlayCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 6 * scale)
                         .frame(maxWidth: .infinity)
+                        .cardTextShadow()
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 2 * scale)
                 .padding(.bottom, bottomInset ?? (CardVisual.videoSafeBottomRef * scale))
             }
-            .cardTextShadow()
+            // 그림자는 텍스트 요소에만 개별 적용 — 로고에는 없음
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }

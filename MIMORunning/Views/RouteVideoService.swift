@@ -10,13 +10,8 @@ struct RouteVideoFrameView: View {
     /// Points pre-mapped via MKMapSnapshotter.Snapshot.point(for:) in renderSize space (540×960).
     let snapshotPoints: [CGPoint]
     let routeProgress: CGFloat        // 0 → 1
-    let insightTitle: String
     let metrics: [ShareMetricItem]
     var raceName: String? = nil
-    var miniMeVariant: MiniMeVariant? = nil
-    var customMiniMeImage: UIImage? = nil
-    var mood: Mood? = nil
-    var memoText: String? = nil
     let distanceKm: String
     let duration: String
     let date: Date
@@ -49,8 +44,8 @@ struct RouteVideoFrameView: View {
                     .scaledToFill()
                     .frame(width: w, height: h)
                     .clipped()
-                    .brightness(CardVisual.videoBrightnessBoost)
-                    .saturation(CardVisual.videoSaturationBoost)
+                    // 출력(writeBackgroundVideo)과 동일: 검정 8% 덮기. 밝기·채도 보정 없음
+                    .overlay(Color.black.opacity(RouteVideoExportService.mapDarkenAlpha))
 
                 RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress,
                                      hrSamples: hrSamplesForRoute,
@@ -61,15 +56,10 @@ struct RouteVideoFrameView: View {
 
                 if showStats {
                     VideoOverlayCard(
-                        insightTitle: insightTitle,
                         distanceKm: distanceKm,
                         date: date,
                         metrics: metrics,
                         raceName: raceName,
-                        miniMeVariant: miniMeVariant,
-                        miniMeImage: customMiniMeImage,
-                        mood: mood,
-                        memoText: memoText,
                         chartPanel: chartPanel,
                         chartSplits: chartSplits,
                         chartHRSamples: chartHRSamples,
@@ -240,9 +230,7 @@ struct BigNumberRouteVideoFrameView: View {
     let activity: Activity
     let detail: ActivityDetail?
     let heroMetric: HeroMetric
-    var mood: Mood? = nil
     var memoText: String? = nil
-    var insightTitle: String = ""
     var weatherText: String? = nil
     var weatherIcon: String? = nil
     let date: Date
@@ -267,8 +255,8 @@ struct BigNumberRouteVideoFrameView: View {
                     .scaledToFill()
                     .frame(width: w, height: h)
                     .clipped()
-                    .brightness(CardVisual.videoBrightnessBoost)
-                    .saturation(CardVisual.videoSaturationBoost)
+                    // 출력(writeBackgroundVideo)과 동일: 검정 8% 덮기. 밝기·채도 보정 없음
+                    .overlay(Color.black.opacity(RouteVideoExportService.mapDarkenAlpha))
 
                 RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress,
                                      hrSamples: hrSamplesForRoute,
@@ -279,8 +267,7 @@ struct BigNumberRouteVideoFrameView: View {
 
                 BigNumberVideoOverlayView(
                     activity: activity, detail: detail, heroMetric: heroMetric,
-                    mood: mood, memoText: memoText,
-                    insightTitle: insightTitle,
+                    memoText: memoText,
                     weatherText: weatherText, weatherIcon: weatherIcon,
                     date: date, shoeName: shoeName,
                     topInset: topInset,
@@ -312,6 +299,10 @@ struct RouteVideoExportService {
     // renderScale is derived — do NOT hardcode. Changing renderSize without updating renderScale
     // would silently produce a wrong output resolution.
     static let renderSize    = CGSize(width: 540, height: 960)
+    /// 지도 위 검정 덮기 알파 — 출력(writeBackgroundVideo)과 미리보기 프레임 뷰가 공유
+    static let mapDarkenAlpha: CGFloat = 0.08
+    /// 하단 여백: 미리보기(211pt 폭 기준 14pt)와 동일 비율 → 540pt 폭에서 ≈ 35.8pt
+    static var previewMatchedBottomInset: CGFloat { 14 * renderSize.width / (375.0 * 9.0 / 16.0) }
     static let renderScale: CGFloat = VideoExportService.targetSize.width / renderSize.width  // 1080/540 = 2.0
     static var pixelSize: CGSize { VideoExportService.targetSize }  // always 1080×1920
     static var videoDuration: Double { Double(frameCount) / Double(fps) }   // 15.0 s
@@ -391,16 +382,12 @@ struct RouteVideoExportService {
     static func exportFast(
         snapshot: UIImage,
         snapshotPoints: [CGPoint],
-        insightTitle: String,
         distanceKm: String,
         duration: String,
         date: Date,
         metrics: [ShareMetricItem],
         raceName: String?,
-        miniMeVariant: MiniMeVariant?,
-        customMiniMeImage: UIImage?,
-        mood: Mood?,
-        memoText: String?,
+        routeMarkerImage: UIImage?,     // 경로 끝점을 따라가는 마커(커스텀 미니미 이미지). nil이면 기본 마커
         weather: WeatherSnapshot?,
         shoeName: String?,
         chartPanel: CardChartPanel,
@@ -424,17 +411,15 @@ struct RouteVideoExportService {
         if stampLayers.isEmpty {
             let exportInset = renderSize.height * 0.05   // 5% = 48pt → 96px at renderScale 2 (preview 일치)
             let overlayView = VideoOverlayCard(
-                insightTitle: insightTitle, distanceKm: distanceKm, date: date,
+                distanceKm: distanceKm, date: date,
                 metrics: metrics, raceName: raceName,
-                miniMeVariant: miniMeVariant, miniMeImage: customMiniMeImage,
-                mood: mood, memoText: memoText,
                 chartPanel: chartPanel, chartSplits: chartSplits,
                 chartHRSamples: chartHRSamples, chartHRZones: chartHRZones,
                 chartWorkoutSeries: chartWorkoutSeries, chartIntervalSegments: chartIntervalSegments,
                 weather: weather, shoeName: shoeName,
                 scale: renderSize.width / 300,
                 topInset: exportInset,
-                bottomInset: exportInset
+                bottomInset: previewMatchedBottomInset
             )
             .frame(width: renderSize.width, height: renderSize.height)
             .preferredColorScheme(.dark)
@@ -472,7 +457,7 @@ struct RouteVideoExportService {
             hrSamples: hrSamplesForRoute,
             workoutDuration: routeWorkoutDuration,
             showHRGradient: showHRGradient,
-            miniMeImage: customMiniMeImage,
+            miniMeImage: routeMarkerImage,
             stampLayers: stampLayers,
             outputURL: outputURL,
             progressHandler: progressHandler
@@ -489,9 +474,7 @@ struct RouteVideoExportService {
         activity: Activity,
         detail: ActivityDetail?,
         heroMetric: HeroMetric,
-        mood: Mood?,
         memoText: String?,
-        insightTitle: String = "",
         weatherText: String?,
         weatherIcon: String?,
         date: Date,
@@ -500,7 +483,7 @@ struct RouteVideoExportService {
         hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = [],
         routeWorkoutDuration: TimeInterval = 0,
         showHRGradient: Bool = false,
-        miniMeImage: UIImage? = nil,
+        routeMarkerImage: UIImage? = nil,
         accent: CardAccent = .violet,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
@@ -509,12 +492,11 @@ struct RouteVideoExportService {
         let exportInset = renderSize.height * 0.05   // 5% = 48pt → 96px at renderScale 2 (preview 일치)
         let overlayView = BigNumberVideoOverlayView(
             activity: activity, detail: detail, heroMetric: heroMetric,
-            mood: mood, memoText: memoText,
-            insightTitle: insightTitle,
+            memoText: memoText,
             weatherText: weatherText, weatherIcon: weatherIcon,
             date: date, shoeName: shoeName,
             topInset: exportInset,
-            bottomInset: exportInset,
+            bottomInset: previewMatchedBottomInset,
             accent: accent
         )
         .frame(width: renderSize.width, height: renderSize.height)
@@ -547,7 +529,7 @@ struct RouteVideoExportService {
             hrSamples: hrSamplesForRoute,
             workoutDuration: routeWorkoutDuration,
             showHRGradient: showHRGradient,
-            miniMeImage: miniMeImage,
+            miniMeImage: routeMarkerImage,
             showKmMarkers: false,
             outputURL: outputURL,
             progressHandler: progressHandler
@@ -864,7 +846,7 @@ struct RouteVideoExportService {
             throw NSError(domain: "RouteVideoExport", code: -7)
         }
         ctx.draw(mapCGImage, in: CGRect(origin: .zero, size: px))
-        ctx.setFillColor(UIColor.black.withAlphaComponent(0.08).cgColor)
+        ctx.setFillColor(UIColor.black.withAlphaComponent(mapDarkenAlpha).cgColor)
         ctx.fill(CGRect(origin: .zero, size: px))
         CVPixelBufferUnlockBaseAddress(buf, [])
 

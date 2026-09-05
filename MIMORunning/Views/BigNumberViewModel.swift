@@ -14,7 +14,6 @@ import SwiftUI
 @MainActor
 final class BigNumberViewModel {
 
-    var bigNumberShowMood: Bool       = true
     var bigNumberShowMemo: Bool       = true
     var bigNumberAccent:   CardAccent = .violet
 }

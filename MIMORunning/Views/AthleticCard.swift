@@ -12,14 +12,8 @@ import CoreLocation
 struct AthleticCard: View {
     let activity: Activity
     let routeCoordinates: [CLLocationCoordinate2D]
-    let insightTitle: String
     let metrics: [ShareMetricItem]
     var raceName: String? = nil
-    var miniMeVariant: MiniMeVariant? = nil
-    var customMiniMeImage: UIImage? = nil
-    var story: WorkoutStory? = nil
-    var showMood: Bool = false
-    var showMemo: Bool = false
     var chartPanel: CardChartPanel = .map
     var chartSplits: [SplitData] = []
     var chartHRSamples: [(offset: TimeInterval, bpm: Int)] = []
@@ -30,8 +24,6 @@ struct AthleticCard: View {
     var shoeName: String? = nil
     var photo: UIImage? = nil
     var cropOffsetX: CGFloat = 0.5
-
-    private var hasMiniMe: Bool { customMiniMeImage != nil || miniMeVariant != nil }
 
     private var distanceValue: String {
         let km = activity.distance / 1000
@@ -96,17 +88,10 @@ struct AthleticCard: View {
 
             VStack(alignment: .leading, spacing: 0) {
 
-                // ── TOP: Wordmark + Insight + MiniMe ─────────────
+                // ── TOP: Wordmark (+ 대회 뱃지) ─────────────
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 6) {
                         MIMOWordmark(size: 11)
-                        if !insightTitle.isEmpty {
-                            Text(insightTitle)
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.90))
-                                .lineLimit(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
                         if let race = raceName {
                             HStack(spacing: 4) {
                                 Image(systemName: "flag.checkered")
@@ -121,27 +106,8 @@ struct AthleticCard: View {
                             .background(Theme.violet.opacity(0.18))
                             .clipShape(Capsule())
                         }
-                        if showMood, let s = story {
-                            HStack(spacing: 4) {
-                                Image(systemName: s.mood.sfSymbol)
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(moodCardColor(s.mood))
-                                Text(s.mood.label)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(moodCardColor(s.mood))
-                            }
-                        }
-                        if showMemo, let s = story, !s.memo.isEmpty {
-                            Text(s.memo)
-                                .font(.system(size: 10, weight: .regular, design: .serif).italic())
-                                .foregroundStyle(.white.opacity(0.78))
-                        }
                     }
                     Spacer(minLength: 8)
-                    if hasMiniMe {
-                        MiniMeOrCustomImage(customImage: customMiniMeImage, variant: miniMeVariant, size: 54)
-                            .padding(.top, 2)
-                    }
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 14)

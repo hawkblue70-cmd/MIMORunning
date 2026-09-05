@@ -117,13 +117,8 @@ struct ShareCardScreen: View {
     }
     private var activeRaceName: String? { showRaceOnCard ? confirmedRace?.raceName : nil }
 
-    // MiniMe — shown only in record-only (no photo) mode
-    private var computedMiniMeVariant: MiniMeVariant {
-        MiniMeVariant.from(theme: insight?.theme ?? .default, workoutType: insight?.workoutType ?? .general)
-    }
+    // 잠금 칩 행(placeholder·Sky)에서만 참조
     private var canShowMiniMe: Bool { true }
-    private var activeMiniMeVariant: MiniMeVariant? { (showMiniMe && canShowMiniMe) ? computedMiniMeVariant : nil }
-    private var activeMiniMeImage: UIImage? { (showMiniMe && canShowMiniMe) ? miniMeStore.image : nil }
 
     @State var storyShareImages: [UIImage] = []
     @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
@@ -141,12 +136,8 @@ struct ShareCardScreen: View {
     @State private var photoOffsets: [Int: CGSize] = [:]
     @State var template: ShareTemplate = .story
     @State private var enabledMetrics: Set<ShareMetric>
-    @State private var showInsightOnCard = true
     @State private var showRaceOnCard = true
-    @State private var showMiniMe = true
-    @State private var showMoodOnCard = true
-    @State private var showMemoOnCard = true
-    @State private var showShoeOnCard = true
+    @State private var showShoeOnCard = true   // Sky 카드 전용 토글
     @State private var carouselPage = 0
     // Stamp card ViewModel (cardIndex == 0)
     @State var stampVM = StampViewModel()
@@ -417,9 +408,9 @@ struct ShareCardScreen: View {
         return km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
     }
     private var insightTitle: String { insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run") }
-    private var displayInsightTitle: String { showInsightOnCard ? insightTitle : "" }
     private var storyHasContent: Bool { story?.hasContent == true }
-    var displayShoeName: String? { (showShoeOnCard && activeShoe != nil) ? activeShoe?.displayName : nil }
+    /// 신발이 등록돼 있으면 항상 표시 (토글 없음)
+    var displayShoeName: String? { activeShoe?.displayName }
 
     init(activity: Activity, detail: ActivityDetail?, insight: InsightResult?, manager: HealthKitManager? = nil, condition: ActivityCondition? = nil) {
         self.activity = activity
@@ -647,128 +638,10 @@ struct ShareCardScreen: View {
 
     private var chipRow: some View {
         VStack(alignment: .leading, spacing: 3) {
-            // ── Row 1: content chips ──────────────────────────────
+            // ── Row 1: 대회 칩 (대회 확정 시에만) ───────────────────
+            if confirmedRace != nil {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    // Insight chip (always shown)
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { showInsightOnCard.toggle() }
-                        Task { await renderCard(showSpinner: false) }
-                    } label: {
-                        HStack(spacing: 4) {
-                            if showInsightOnCard {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 9, weight: .bold))
-                            }
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 10))
-                            Text(AppLanguage.shared.s("인사이트", "Insight"))
-                                .font(.caption.weight(.semibold))
-                        }
-                        .foregroundStyle(showInsightOnCard ? Color.white : Color.white.opacity(0.4))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(showInsightOnCard ? Theme.violet : Color.white.opacity(0.08))
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    // Story mood + memo chips
-                    if let s = story {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) { showMoodOnCard.toggle() }
-                            Task { await renderCard(showSpinner: false) }
-                        } label: {
-                            HStack(spacing: 4) {
-                                if showMoodOnCard {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
-                                Image(systemName: s.mood.sfSymbol)
-                                    .font(.system(size: 10))
-                                Text(AppLanguage.shared.s("느낌", "Mood"))
-                                    .font(.caption.weight(.semibold))
-                            }
-                            .foregroundStyle(showMoodOnCard ? Color.white : Color.white.opacity(0.4))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(showMoodOnCard ? Theme.violet : Color.white.opacity(0.08))
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-
-                        if !s.memo.isEmpty {
-                            Button {
-                                showMemoOnCard.toggle()
-                                Task { await renderCard(showSpinner: false) }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    if showMemoOnCard {
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 9, weight: .bold))
-                                    }
-                                    Text(AppLanguage.shared.s("메모", "Memo"))
-                                        .font(.caption.weight(.semibold))
-                                }
-                                .foregroundStyle(showMemoOnCard ? Color.white : Color.white.opacity(0.4))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(showMemoOnCard ? Theme.violet : Color.white.opacity(0.08))
-                                .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    // MiniMe chip
-                    if canShowMiniMe {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) { showMiniMe.toggle() }
-                            Task { await renderCard(showSpinner: false) }
-                        } label: {
-                            HStack(spacing: 4) {
-                                if showMiniMe {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
-                                Text(AppLanguage.shared.s("미니미", "Mini-Me"))
-                                    .font(.caption.weight(.semibold))
-                            }
-                            .foregroundStyle(showMiniMe ? Color.white : Color.white.opacity(0.4))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(showMiniMe ? Theme.violet : Color.white.opacity(0.08))
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    // Shoe chip
-                    if let shoe = activeShoe {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) { showShoeOnCard.toggle() }
-                            Task { await renderCard(showSpinner: false) }
-                        } label: {
-                            HStack(spacing: 4) {
-                                if showShoeOnCard {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
-                                Image(systemName: "shoe.fill")
-                                    .font(.system(size: 10))
-                                Text(shoe.displayName)
-                                    .font(.caption.weight(.semibold))
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(showShoeOnCard ? Color.white : Color.white.opacity(0.4))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(showShoeOnCard ? Theme.violet : Color.white.opacity(0.08))
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-
                     // Race chip
                     if let race = confirmedRace {
                         Button {
@@ -797,6 +670,7 @@ struct ShareCardScreen: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 2)
+            }
             }
 
             // ── Row 2: metric chips ───────────────────────────────
@@ -888,9 +762,7 @@ struct ShareCardScreen: View {
                     snapshotPoints: routeSnapshotPoints,
                     routeProgress: routePreviewProgress,
                     activity: activity, detail: detail, heroMetric: heroMetric,
-                    mood: bigNumberVM.bigNumberShowMood ? story?.mood : nil,
                     memoText: bigNumberVM.bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
-                    insightTitle: displayInsightTitle,
                     weatherText: activity.temperatureC.map { String(format: "%.0f°C", $0) },
                     weatherIcon: condition?.weather?.systemIcon,
                     date: activity.date,
@@ -926,7 +798,6 @@ struct ShareCardScreen: View {
         } else {
             BigNumberCard(
                 activity: activity, detail: detail, heroMetric: heroMetric,
-                mood: bigNumberVM.bigNumberShowMood ? story?.mood : nil,
                 memoText: bigNumberVM.bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
                 weatherText: activity.temperatureC.map { String(format: "%.0f°C", $0) },
                 weatherIcon: condition?.weather?.systemIcon,
@@ -1051,7 +922,6 @@ struct ShareCardScreen: View {
                     snapshot: snap,
                     snapshotPoints: routeSnapshotPoints,
                     routeProgress: routePreviewProgress,
-                    insightTitle: "",
                     metrics: [],
                     distanceKm: distanceKmString,
                     duration: activity.formattedDuration,
@@ -1850,34 +1720,21 @@ struct ShareCardScreen: View {
 
     private var bigNumberChipRow: some View {
         VStack(alignment: .leading, spacing: 3) {
-            // Row 1: 느낌·메모 — story가 있을 때만 표시
-            if let s = story {
+            // Row 1: 메모 — story 메모가 있을 때만 표시
+            if let s = story, !s.memo.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         Button {
-                            bigNumberVM.bigNumberShowMood.toggle()
+                            bigNumberVM.bigNumberShowMemo.toggle()
                             Task { await renderCard(showSpinner: false) }
                         } label: {
-                            if bigNumberVM.bigNumberShowMood {
-                                activeChip(AppLanguage.shared.s("느낌", "Mood"), icon: s.mood.sfSymbol)
+                            if bigNumberVM.bigNumberShowMemo {
+                                activeChip(AppLanguage.shared.s("메모", "Memo"))
                             } else {
-                                availableChip(AppLanguage.shared.s("느낌", "Mood"), icon: s.mood.sfSymbol)
+                                availableChip(AppLanguage.shared.s("메모", "Memo"))
                             }
                         }
                         .buttonStyle(.plain)
-                        if !s.memo.isEmpty {
-                            Button {
-                                bigNumberVM.bigNumberShowMemo.toggle()
-                                Task { await renderCard(showSpinner: false) }
-                            } label: {
-                                if bigNumberVM.bigNumberShowMemo {
-                                    activeChip(AppLanguage.shared.s("메모", "Memo"))
-                                } else {
-                                    availableChip(AppLanguage.shared.s("메모", "Memo"))
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 2)
@@ -3052,10 +2909,6 @@ struct ShareCardScreen: View {
             guard isBigNumber else { return }
             Task { await renderCard(showSpinner: false) }
         }
-        .onChange(of: bigNumberVM.bigNumberShowMood) { _, _ in
-            guard isBigNumber else { return }
-            Task { await renderCard(showSpinner: false) }
-        }
         .onChange(of: bigNumberVM.bigNumberShowMemo) { _, _ in
             guard isBigNumber else { return }
             Task { await renderCard(showSpinner: false) }
@@ -3327,15 +3180,10 @@ struct ShareCardScreen: View {
             let km = activity.distance / 1000
             let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
             let overlayView = VideoOverlayCard(
-                insightTitle: displayInsightTitle,
                 distanceKm: distStr,
                 date: activity.date,
                 metrics: Array(enabledMetricItems.prefix(6)),
                 raceName: activeRaceName,
-                miniMeVariant: activeMiniMeVariant,
-                miniMeImage: activeMiniMeImage,
-                mood: showMoodOnCard ? story?.mood : nil,
-                memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                 chartPanel: cardPanel,
                 chartSplits: detail?.splits ?? [],
                 chartHRSamples: shareHRSamples,
@@ -3603,10 +3451,8 @@ struct ShareCardScreen: View {
         switch template {
         case .athletic:
             AthleticCard(activity: activity, routeCoordinates: routeCoords,
-                          insightTitle: displayInsightTitle, metrics: enabledMetricItems,
-                          raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
-                          customMiniMeImage: activeMiniMeImage,
-                          story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                          metrics: enabledMetricItems,
+                          raceName: activeRaceName,
                           chartPanel: cardPanel,
                           chartSplits: detail?.splits ?? [],
                           chartHRSamples: shareHRSamples,
@@ -3622,10 +3468,8 @@ struct ShareCardScreen: View {
                 let s      = max(300 / photo.size.width, 375 / photo.size.height)
                 let excess = max(0, photo.size.width * s - 300)
                 AthleticCard(activity: activity, routeCoordinates: routeCoords,
-                              insightTitle: displayInsightTitle, metrics: enabledMetricItems,
-                              raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
-                              customMiniMeImage: activeMiniMeImage,
-                              story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                              metrics: enabledMetricItems,
+                              raceName: activeRaceName,
                               chartPanel: cardPanel,
                               chartSplits: detail?.splits ?? [],
                               chartHRSamples: shareHRSamples,
@@ -3650,11 +3494,9 @@ struct ShareCardScreen: View {
                     : nil)
             } else if let s = story {
                 StoryShareCardView(activity: activity, routeCoordinates: routeCoords,
-                                   story: s, insightTitle: displayInsightTitle,
+                                   story: s,
                                    metrics: enabledMetricItems,
-                                   raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
-                                   customMiniMeImage: activeMiniMeImage,
-                                   showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                                   raceName: activeRaceName,
                                    chartPanel: cardPanel,
                                    chartSplits: detail?.splits ?? [],
                                    chartHRSamples: shareHRSamples,
@@ -3666,10 +3508,8 @@ struct ShareCardScreen: View {
 )
             } else {
                 AthleticCard(activity: activity, routeCoordinates: routeCoords,
-                              insightTitle: displayInsightTitle, metrics: enabledMetricItems,
-                              raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
-                              customMiniMeImage: activeMiniMeImage,
-                              story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                              metrics: enabledMetricItems,
+                              raceName: activeRaceName,
                               chartPanel: cardPanel,
                               chartSplits: detail?.splits ?? [],
                               chartHRSamples: shareHRSamples,
@@ -3712,13 +3552,8 @@ struct ShareCardScreen: View {
                     snapshot: snap,
                     snapshotPoints: routeSnapshotPoints,
                     routeProgress: routePreviewProgress,
-                    insightTitle: displayInsightTitle,
                     metrics: Array(enabledMetricItems.prefix(6)),
                     raceName: activeRaceName,
-                    miniMeVariant: activeMiniMeVariant,
-                    customMiniMeImage: activeMiniMeImage,
-                    mood: showMoodOnCard ? story?.mood : nil,
-                    memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                     distanceKm: distanceKmString,
                     duration: activity.formattedDuration,
                     date: activity.date,
@@ -3898,15 +3733,10 @@ struct ShareCardScreen: View {
                 let slideIsPlaying = template == .slide && athleticVM.athleticVideoState.isPlaying
                 let inset: CGFloat = 375 * 0.05   // 18.75pt
                 if !slideIsPlaying { VideoOverlayCard(
-                        insightTitle: displayInsightTitle,
                         distanceKm: distStr,
                         date: activity.date,
                         metrics: Array(enabledMetricItems.prefix(6)),
                         raceName: activeRaceName,
-                        miniMeVariant: activeMiniMeVariant,
-                        miniMeImage: activeMiniMeImage,
-                        mood: showMoodOnCard ? story?.mood : nil,
-                        memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                         chartPanel: cardPanel,
                         chartSplits: detail?.splits ?? [],
                         chartHRSamples: shareHRSamples,
@@ -4447,9 +4277,7 @@ struct ShareCardScreen: View {
     private func makeBigNumberOverlayView(topInset: CGFloat? = nil, bottomInset: CGFloat? = nil) -> BigNumberVideoOverlayView {
         BigNumberVideoOverlayView(
             activity: activity, detail: detail, heroMetric: heroMetric,
-            mood: bigNumberVM.bigNumberShowMood ? story?.mood : nil,
             memoText: bigNumberVM.bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
-            insightTitle: displayInsightTitle,
             weatherText: activity.temperatureC.map { String(format: "%.0f°C", $0) },
             weatherIcon: condition?.weather?.systemIcon,
             date: activity.date,
@@ -4751,15 +4579,10 @@ struct ShareCardScreen: View {
             let exportH: CGFloat = 384
             let exportInset: CGFloat = exportH * 0.05
             let overlayView = VideoOverlayCard(
-                insightTitle: displayInsightTitle,
                 distanceKm: distStr,
                 date: activity.date,
                 metrics: Array(enabledMetricItems.prefix(6)),
                 raceName: activeRaceName,
-                miniMeVariant: activeMiniMeVariant,
-                miniMeImage: activeMiniMeImage,
-                mood: showMoodOnCard ? story?.mood : nil,
-                memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                 chartPanel: cardPanel,
                 chartSplits: detail?.splits ?? [],
                 chartHRSamples: shareHRSamples,
@@ -4859,15 +4682,10 @@ struct ShareCardScreen: View {
             let exportH: CGFloat = 384
             let exportInset: CGFloat = exportH * 0.05
             let overlayView = VideoOverlayCard(
-                insightTitle: displayInsightTitle,
                 distanceKm: distStr,
                 date: activity.date,
                 metrics: Array(enabledMetricItems.prefix(6)),
                 raceName: activeRaceName,
-                miniMeVariant: activeMiniMeVariant,
-                miniMeImage: activeMiniMeImage,
-                mood: showMoodOnCard ? story?.mood : nil,
-                memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
                 chartPanel: cardPanel,
                 chartSplits: detail?.splits ?? [],
                 chartHRSamples: shareHRSamples,
@@ -5184,15 +5002,10 @@ struct ShareCardScreen: View {
         let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
 
         let overlayView = VideoOverlayCard(
-            insightTitle: displayInsightTitle,
             distanceKm: distStr,
             date: activity.date,
             metrics: Array(enabledMetricItems.prefix(6)),
             raceName: activeRaceName,
-            miniMeVariant: activeMiniMeVariant,
-            miniMeImage: activeMiniMeImage,
-            mood: showMoodOnCard ? story?.mood : nil,
-            memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
             chartPanel: cardPanel,
             chartSplits: detail?.splits ?? [],
             chartHRSamples: shareHRSamples,
@@ -5241,9 +5054,7 @@ struct ShareCardScreen: View {
                     activity: activity,
                     detail: detail,
                     heroMetric: heroMetric,
-                    mood: bigNumberVM.bigNumberShowMood ? story?.mood : nil,
                     memoText: bigNumberVM.bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
-                    insightTitle: displayInsightTitle,
                     weatherText: activity.temperatureC.map { String(format: "%.0f°C", $0) },
                     weatherIcon: condition?.weather?.systemIcon,
                     date: activity.date,
@@ -5252,7 +5063,7 @@ struct ShareCardScreen: View {
                     hrSamplesForRoute: shareHRSamples,
                     routeWorkoutDuration: activity.duration,
                     showHRGradient: showHRGradientForRoute,
-                    miniMeImage: activeMiniMeImage,
+                    routeMarkerImage: miniMeStore.image,
                     accent: bigNumberVM.bigNumberAccent,
                     progressHandler: { p in routeVideoProgress = p }
                 )
@@ -5351,22 +5162,15 @@ struct ShareCardScreen: View {
                     }
                 }
 
-                let routeTitle = isStamp && !stampVM.stampText.isEmpty
-                    ? stampVM.stampText
-                    : displayInsightTitle
                 url = try await RouteVideoExportService.exportFast(
                     snapshot: snap,
                     snapshotPoints: routeSnapshotPoints,
-                    insightTitle: routeTitle,
                     distanceKm: distanceKmString,
                     duration: activity.formattedDuration,
                     date: activity.date,
                     metrics: Array(enabledMetricItems.prefix(6)),
                     raceName: activeRaceName,
-                    miniMeVariant: activeMiniMeVariant,
-                    customMiniMeImage: activeMiniMeImage,
-                    mood: showMoodOnCard ? story?.mood : nil,
-                    memoText: showMemoOnCard && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
+                    routeMarkerImage: miniMeStore.image,
                     weather: condition?.weather,
                     shoeName: displayShoeName,
                     chartPanel: cardPanel,
@@ -5626,7 +5430,6 @@ struct ShareCardScreen: View {
                 : nil
             let bnCard = BigNumberCard(
                 activity: activity, detail: detail, heroMetric: heroMetric,
-                mood: bigNumberVM.bigNumberShowMood ? story?.mood : nil,
                 memoText: bigNumberVM.bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
                 weatherText: activity.temperatureC.map { String(format: "%.0f°C", $0) },
                 weatherIcon: condition?.weather?.systemIcon,
@@ -5656,7 +5459,7 @@ struct ShareCardScreen: View {
             let card = SkyCard(
                 activity: activity,
                 weather: condition?.weather,
-                shoeName: displayShoeName,
+                shoeName: showShoeOnCard ? displayShoeName : nil,
                 accent: skyVM.skyAccent
             )
             let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
@@ -5813,10 +5616,8 @@ struct ShareCardScreen: View {
         if template == .story, let selPhoto = photoFor(3) {
             let renderer = ImageRenderer(content:
                 AthleticCard(activity: activity, routeCoordinates: routeCoords,
-                              insightTitle: displayInsightTitle, metrics: enabledMetricItems,
-                              raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
-                              customMiniMeImage: activeMiniMeImage,
-                              story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                              metrics: enabledMetricItems,
+                              raceName: activeRaceName,
                               chartPanel: cardPanel,
                               chartSplits: detail?.splits ?? [],
                               chartHRSamples: shareHRSamples,
@@ -5853,10 +5654,8 @@ struct ShareCardScreen: View {
         switch template {
         case .athletic:
             AthleticCard(activity: activity, routeCoordinates: routeCoords,
-                          insightTitle: displayInsightTitle, metrics: enabledMetricItems,
-                          raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
-                          customMiniMeImage: activeMiniMeImage,
-                          story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                          metrics: enabledMetricItems,
+                          raceName: activeRaceName,
                           chartPanel: cardPanel,
                           chartSplits: detail?.splits ?? [],
                           chartHRSamples: shareHRSamples,
@@ -5871,11 +5670,7 @@ struct ShareCardScreen: View {
         case .story:
             if let photo = photoFor(2) {
                 PhotoShareCardView(activity: activity, photo: photo,
-                                   insightTitle: displayInsightTitle,
                                    metrics: enabledMetricItems, raceName: activeRaceName,
-                                   story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
-                                   miniMeVariant: activeMiniMeVariant,
-                                   customMiniMeImage: activeMiniMeImage,
                                    routeCoordinates: routeCoords,
                                    chartPanel: cardPanel,
                                    chartSplits: detail?.splits ?? [],
@@ -5889,11 +5684,9 @@ struct ShareCardScreen: View {
                     .frame(width: 300, height: 375)
             } else if let s = story {
                 StoryShareCardView(activity: activity, routeCoordinates: routeCoords,
-                                   story: s, insightTitle: displayInsightTitle,
+                                   story: s,
                                    metrics: enabledMetricItems,
-                                   raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
-                                   customMiniMeImage: activeMiniMeImage,
-                                   showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                                   raceName: activeRaceName,
                                    chartPanel: cardPanel,
                                    chartSplits: detail?.splits ?? [],
                                    chartHRSamples: shareHRSamples,
@@ -5906,10 +5699,8 @@ struct ShareCardScreen: View {
                     .frame(width: 300, height: 375)
             } else {
                 AthleticCard(activity: activity, routeCoordinates: routeCoords,
-                              insightTitle: displayInsightTitle, metrics: enabledMetricItems,
-                              raceName: activeRaceName, miniMeVariant: activeMiniMeVariant,
-                              customMiniMeImage: activeMiniMeImage,
-                              story: story, showMood: showMoodOnCard, showMemo: showMemoOnCard,
+                              metrics: enabledMetricItems,
+                              raceName: activeRaceName,
                               chartPanel: cardPanel,
                               chartSplits: detail?.splits ?? [],
                               chartHRSamples: shareHRSamples,

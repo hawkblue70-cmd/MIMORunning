@@ -5,7 +5,6 @@ struct BigNumberCard: View {
     let activity: Activity
     let detail: ActivityDetail?
     let heroMetric: HeroMetric
-    var mood: Mood? = nil
     var memoText: String? = nil
     var weatherText: String? = nil
     var weatherIcon: String? = nil
@@ -82,19 +81,12 @@ struct BigNumberCard: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 14)
 
-                // 2) Mood icon (gold) + Memo (white semibold)
-                if mood != nil || memoText != nil {
+                // 2) Memo (white semibold)
+                if let memo = memoText, !memo.isEmpty {
                     HStack(alignment: .top, spacing: 6) {
-                        if let mood = mood {
-                            Image(systemName: mood.sfSymbol)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(Color(hex: "FFC74D"))
-                        }
-                        if let memo = memoText, !memo.isEmpty {
-                            Text(memo)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
+                        Text(memo)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
                     }
                     .cardTextShadow()
                     .padding(.horizontal, 16)
@@ -239,9 +231,7 @@ struct BigNumberVideoOverlayView: View {
     let activity: Activity
     let detail: ActivityDetail?
     let heroMetric: HeroMetric
-    var mood: Mood? = nil
     var memoText: String? = nil
-    var insightTitle: String = ""
     var weatherText: String? = nil
     var weatherIcon: String? = nil
     let date: Date
@@ -279,24 +269,9 @@ struct BigNumberVideoOverlayView: View {
                 CardVisual.bottomScrim
 
                 VStack(alignment: .leading, spacing: 0) {
-                    // Logo + insight + mood + memo — unified left edge (matches VideoOverlayCard)
+                    // Logo + memo — unified left edge (matches VideoOverlayCard). 로고에는 그림자 없음
                     VStack(alignment: .leading, spacing: 2 * s) {
                         MIMOWordmark(size: 11 * s)
-                        if !insightTitle.isEmpty {
-                            Text(insightTitle)
-                                .font(.system(size: 13 * s, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.90))
-                                .lineLimit(2)
-                        }
-                        if let m = mood {
-                            HStack(spacing: 3 * s) {
-                                Image(systemName: m.sfSymbol)
-                                    .font(.system(size: 10 * s, weight: .medium))
-                                Text(m.label)
-                                    .font(.system(size: 10 * s, weight: .medium))
-                            }
-                            .foregroundStyle(m.cardColor)
-                        }
                         if let memo = memoText, !memo.isEmpty {
                             Text(memo)
                                 .font(.system(size: 10 * s, weight: .bold, design: .serif).italic())
@@ -420,7 +395,6 @@ struct BigNumberVideoOverlayView: View {
         activity: activity,
         detail: nil,
         heroMetric: .distance,
-        mood: .great,
         memoText: "오늘은 날씨도 좋고 페이스도 잘 나왔다",
         weatherText: "22°C",
         date: Date()
