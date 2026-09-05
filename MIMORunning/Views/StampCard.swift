@@ -109,8 +109,8 @@ func stampColors(_ mode: StampColorMode, isBrightBackground: Bool) -> (fill: Col
 
 // MARK: - Helpers
 
-// 명시된 pt 크기는 medium(sizeLevel.scale == 0.8) 기준; 헬퍼로 레벨별 스케일.
-private func sz(_ pt: CGFloat, _ scale: CGFloat) -> CGFloat { pt * scale / 0.8 }
+// 명시된 pt 크기는 medium(sizeLevel.scale == 0.8) 기준; 헬퍼로 레벨별 스케일. 결과는 정수 pt로 반올림.
+private func sz(_ pt: CGFloat, _ scale: CGFloat) -> CGFloat { (pt * scale / 0.8).rounded() }
 
 // MARK: - Shape helpers (Canvas 대체 — ImageRenderer 오프스크린에서 Canvas 첫 렌더 블랙 방지)
 
@@ -314,15 +314,8 @@ struct StampCard: View {
 
     var body: some View {
         let (fill, outline) = stampColors(colorMode, isBrightBackground: isBrightBackground)
-        // 스탬프 전용 scale: 공유 TextSizeLevel보다 한 단계 작게 (소→0.50, 중→0.65, 대→0.80, 특대→1.00)
-        let scale: CGFloat = {
-            switch sizeLevel {
-            case .small:  return 0.50
-            case .medium: return 0.65
-            case .large:  return 0.80
-            case .xlarge: return 1.00
-            }
-        }()
+        // 스탬프별 절대 배율표 (StampTemplate.sizeScales) — 폭 기준 소 40%·중 55%·대 72%·특대 90%
+        let scale = template.stampScale(for: sizeLevel)
 
         ZStack {
             if !renderOnlyText {
@@ -333,10 +326,17 @@ struct StampCard: View {
                     // ImageRenderer에서 .frame(alignment:)의 bottom 앵커가 무시되는 SwiftUI 버그를
                     // 회피하기 위해 VStack/HStack/Spacer로 9격 위치 결정.
                     // 상단: top Spacer 없음, 하단: bottom Spacer 없음 (Spacer가 공간을 채움).
+                    // 좌우 여백: 워드마크(패딩 14 + M 잉크 시작 ≈2.7)와 같은 선 → 로고 아래 스탬프가 왼쪽 정렬됨.
+                    // 기울어진 스탬프는 삐져나오는 양(leadingOverhang)만큼 더 들여 잉크 끝을 맞춘다.
+                    let sideInset = 14 + MIMOWordmark.inkLeadingInset(size: 11)
+                    // fixedSize: 배율표가 폭 안에 들어오도록 보장하므로 줄바꿈 대신 자연 크기 유지
                     let stampPadded = stampContent(fill: fill, outline: outline, scale: scale)
+                        .fixedSize()
                         .padding(EdgeInsets(
                             top: position.isTop ? wordmarkTopInset : 12,
-                            leading: 12, bottom: 12, trailing: 12))
+                            leading: sideInset + template.leadingOverhang * scale,
+                            bottom: 12,
+                            trailing: sideInset + template.leadingOverhang * scale))
                     VStack(spacing: 0) {
                         if !position.isTop    { Spacer(minLength: 0) }
                         HStack(spacing: 0) {
@@ -353,10 +353,12 @@ struct StampCard: View {
             }
 
             if !renderOnlyStamp, !stampText.isEmpty {
+                // 문구도 워드마크 M의 왼쪽 선에 맞춤 (스탬프와 동일 기준)
+                let textSideInset = 14 + MIMOWordmark.inkLeadingInset(size: 11)
                 let textPadded = textOverlay
                     .padding(EdgeInsets(
                         top: stampTextPosition.isTop ? wordmarkTopInset : 14,
-                        leading: 14, bottom: 14, trailing: 14))
+                        leading: textSideInset, bottom: 14, trailing: textSideInset))
                 VStack(spacing: 0) {
                     if !stampTextPosition.isTop    { Spacer(minLength: 0) }
                     textPadded
@@ -395,10 +397,7 @@ struct StampCard: View {
                               showTextOutline: showTextOutline)
         case .circleBadge:
             StampCircleBadgeView(data: data, fill: fill, outline: outline, scale: scale,
-                                 showTextOutline: showTextOutline)
-        case .receipt:
-            StampReceiptView(data: data, fill: fill, outline: outline, scale: scale,
-                             showCalories: showCalories, showTextOutline: showTextOutline)
+                                 showHeartRate: showHeartRate, showTextOutline: showTextOutline)
         case .scoreboard:
             StampScoreboardView(data: data, fill: fill, outline: outline, scale: scale,
                                 showTextOutline: showTextOutline)
@@ -406,18 +405,14 @@ struct StampCard: View {
             StampLabeledRowsView(data: data, fill: fill, outline: outline, scale: scale,
                                  showHeartRate: showHeartRate, showCalories: showCalories,
                                  showTextOutline: showTextOutline)
-        case .verticalLabel:
-            StampVerticalLabelView(data: data, fill: fill, outline: outline, scale: scale,
-                                   showHeartRate: showHeartRate, showCalories: showCalories,
-                                   showTextOutline: showTextOutline)
+        case .inlineTriple:
+            StampInlineTripleView(data: data, fill: fill, outline: outline, scale: scale,
+                                  showHeartRate: showHeartRate, showCalories: showCalories,
+                                  showTextOutline: showTextOutline)
         case .distanceHero:
             StampDistanceHeroView(data: data, fill: fill, outline: outline, scale: scale,
                                   showHeartRate: showHeartRate, showCalories: showCalories,
                                   showTextOutline: showTextOutline)
-        case .mixedAlign:
-            StampMixedAlignView(data: data, fill: fill, outline: outline, scale: scale,
-                                showHeartRate: showHeartRate, showCalories: showCalories,
-                                showTextOutline: showTextOutline)
         case .hud:
             StampHUDView(data: data, fill: fill, outline: outline, scale: scale,
                          showHeartRate: showHeartRate, showCalories: showCalories,
@@ -434,32 +429,12 @@ struct StampCard: View {
         case .cadenceEq:
             StampCadenceEqView(data: data, fill: fill, outline: outline, scale: scale,
                                showTextOutline: showTextOutline)
-        case .vitals:
-            StampVitalsView(data: data, fill: fill, outline: outline, scale: scale,
-                            showTextOutline: showTextOutline)
-        case .hrBadge:
-            StampHRBadgeView(data: data, fill: fill, outline: outline, scale: scale,
-                             showTextOutline: showTextOutline)
-        case .watchHud:
-            StampWatchHUDView(data: data, fill: fill, outline: outline, scale: scale,
-                              showTextOutline: showTextOutline)
         case .placeHeadline:
             StampPlaceHeadlineView(data: data, fill: fill, outline: outline, scale: scale,
                                    showTextOutline: showTextOutline)
-        case .pinInline:
-            StampPinInlineView(data: data, fill: fill, outline: outline, scale: scale,
-                               showTextOutline: showTextOutline)
         case .routeHero:
             StampRouteHeroView(data: data, fill: fill, outline: outline, scale: scale,
                                showTextOutline: showTextOutline)
-        case .routeRows:
-            StampRouteRowsView(data: data, fill: fill, outline: outline, scale: scale,
-                               showHeartRate: showHeartRate, showCalories: showCalories,
-                               showTextOutline: showTextOutline)
-        case .routeVertical:
-            StampRouteVerticalView(data: data, fill: fill, outline: outline, scale: scale,
-                                   showHeartRate: showHeartRate, showCalories: showCalories,
-                                   showTextOutline: showTextOutline)
         case .routeSide:
             StampRouteSideView(data: data, fill: fill, outline: outline, scale: scale,
                                showHeartRate: showHeartRate, showCalories: showCalories,
@@ -507,12 +482,16 @@ private struct StampPassportView: View {
 
 // MARK: - Circle Badge
 
+/// 서클 배지. 심박 토글이 켜져 있고 심박 데이터가 있으면 심박 중심 변형(구 "심박 서클")으로 전환.
 private struct StampCircleBadgeView: View {
     let data: StampData
     let fill: Color
     let outline: Color
     let scale: CGFloat
+    var showHeartRate: Bool = false
     var showTextOutline: Bool = true
+
+    private var heartRateMode: Bool { showHeartRate && data.heartRate != nil }
 
     var body: some View {
         let diameter: CGFloat = 104 * scale
@@ -521,88 +500,41 @@ private struct StampCircleBadgeView: View {
             Circle()
                 .stroke(outline, lineWidth: 2)
 
-            VStack(spacing: 3 * scale) {
-                HStack(alignment: .lastTextBaseline, spacing: 2 * scale) {
-                    Text(data.distance)
-                        .font(.system(size: 19 * scale, weight: .black))
-                        .tracking(-1.5)
-                    Text(data.distanceUnit)
-                        .font(.system(size: 8 * scale, weight: .bold, design: .monospaced))
+            if heartRateMode {
+                VStack(spacing: 2 * scale) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 14 * scale))
+                        .foregroundStyle(Color(hex: "FF2E2E"))
+
+                    Text(data.heartRate ?? "—")
+                        .font(.system(size: 22 * scale, weight: .black))
+                        .foregroundStyle(Color(hex: "FF2E2E"))
+
+                    Text("BPM · \(data.distance) \(data.distanceUnit)")
+                        .font(.system(size: 8 * scale, weight: .medium, design: .monospaced))
+                        .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
                 }
+            } else {
+                VStack(spacing: 3 * scale) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2 * scale) {
+                        Text(data.distance)
+                            .font(.system(size: 19 * scale, weight: .black))
+                            .tracking(-1.5)
+                        Text(data.distanceUnit)
+                            .font(.system(size: 8 * scale, weight: .bold, design: .monospaced))
+                    }
 
-                Text("KM · CERTIFIED")
-                    .font(.system(size: 8 * scale, weight: .semibold, design: .monospaced))
+                    Text("KM · CERTIFIED")
+                        .font(.system(size: 8 * scale, weight: .semibold, design: .monospaced))
 
-                Text("\(data.pace)  ·  \(data.time)")
-                    .font(.system(size: 8 * scale, weight: .medium, design: .monospaced))
+                    Text("\(data.pace)  ·  \(data.time)")
+                        .font(.system(size: 8 * scale, weight: .medium, design: .monospaced))
+                }
+                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
             }
-            .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
         }
         .frame(width: diameter, height: diameter)
         .rotationEffect(.degrees(-8))
-    }
-}
-
-// MARK: - Receipt
-
-private struct StampReceiptView: View {
-    let data: StampData
-    let fill: Color
-    let outline: Color
-    let scale: CGFloat
-    let showCalories: Bool
-    var showTextOutline: Bool = true
-
-    var body: some View {
-        VStack(spacing: 4 * scale) {
-            Text("RUN RECEIPT")
-                .font(.system(size: 11 * scale, weight: .bold, design: .monospaced))
-                .tracking(2)
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            dashedLine
-
-            receiptRow(label: "DISTANCE", value: "\(data.distance) \(data.distanceUnit)")
-            receiptRow(label: "PACE",     value: data.pace)
-            receiptRow(label: "TIME",     value: data.time)
-            if showCalories, let cal = data.calories {
-                receiptRow(label: "CALS", value: "\(cal) KCAL")
-            }
-
-            dashedLine
-
-            if showCalories, let cal = data.calories {
-                receiptRow(label: "TOTAL", value: "\(cal) KCAL", bold: true)
-            } else {
-                receiptRow(label: "TOTAL", value: data.time, bold: true)
-            }
-        }
-        .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
-        .padding(.horizontal, 10 * scale)
-        .padding(.vertical, 8 * scale)
-        .frame(maxWidth: .infinity)
-    }
-
-    private var dashedLine: some View {
-        GeometryReader { geo in
-            Path { path in
-                path.move(to: CGPoint(x: 0, y: 0.5))
-                path.addLine(to: CGPoint(x: geo.size.width, y: 0.5))
-            }
-            .stroke(fill, style: StrokeStyle(lineWidth: 1, dash: [4 * scale, 3 * scale]))
-        }
-        .frame(height: 1)
-    }
-
-    private func receiptRow(label: String, value: String, bold: Bool = false) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 11 * scale, weight: .regular, design: .monospaced))
-            Spacer()
-            Text(value)
-                .font(.system(size: 11 * scale, weight: bold ? .bold : .regular,
-                              design: .monospaced))
-        }
     }
 }
 
@@ -683,9 +615,9 @@ private struct StampLabeledRowsView: View {
     }
 }
 
-// MARK: - Vertical Label
+// MARK: - Inline Triple (라벨 없는 가로 3열: 거리 · 페이스 · 시간)
 
-private struct StampVerticalLabelView: View {
+private struct StampInlineTripleView: View {
     let data: StampData
     let fill: Color
     let outline: Color
@@ -695,38 +627,41 @@ private struct StampVerticalLabelView: View {
     var showTextOutline: Bool = true
 
     var body: some View {
-        HStack(alignment: .center, spacing: sz(9, scale)) {
-            // 세로 "RUNNING": fixedSize → rotationEffect → frame으로 레이아웃 프레임 교체
-            Text("RUNNING")
-                .font(.system(size: sz(10, scale), weight: .bold))
-                .tracking(3)
-                .fixedSize()
-                .rotationEffect(.degrees(-90))
-                .frame(width: sz(13, scale), height: sz(58, scale))
-
-            VStack(alignment: .leading, spacing: sz(2, scale)) {
+        VStack(alignment: .leading, spacing: sz(3, scale)) {
+            HStack(alignment: .lastTextBaseline, spacing: sz(8, scale)) {
                 HStack(alignment: .lastTextBaseline, spacing: sz(2, scale)) {
                     Text(data.distance)
-                        .font(.system(size: sz(23, scale), weight: .black))
+                        .font(.system(size: sz(22, scale), weight: .black))
                         .tracking(-1.5)
                     Text(data.distanceUnit)
-                        .font(.system(size: sz(11, scale), weight: .bold))
-                }
-                Text(data.pace)
-                    .font(.system(size: sz(23, scale), weight: .black))
-                    .tracking(-1.5)
-                Text(data.time)
-                    .font(.system(size: sz(23, scale), weight: .black))
-                    .tracking(-1.5)
-                if let footer = stampMetricFooter(data: data, hr: showHeartRate, cal: showCalories) {
-                    Text(footer)
                         .font(.system(size: sz(10, scale), weight: .bold))
-                        .tracking(1.2)
-                        .opacity(0.85)
+                        .baselineOffset(sz(3, scale))
                 }
+                divider
+                Text(data.pace)
+                    .font(.system(size: sz(22, scale), weight: .black))
+                    .tracking(-1.5)
+                divider
+                Text(data.time)
+                    .font(.system(size: sz(22, scale), weight: .black))
+                    .tracking(-1.5)
+            }
+            if let footer = stampMetricFooter(data: data, hr: showHeartRate, cal: showCalories) {
+                Text(footer)
+                    .font(.system(size: sz(10, scale), weight: .bold))
+                    .tracking(1.2)
+                    .opacity(0.85)
             }
         }
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+    }
+
+    /// 열 구분: 얇은 세로선 (텍스트 아웃라인과 같은 색)
+    private var divider: some View {
+        Rectangle()
+            .fill(outline.opacity(0.7))
+            .frame(width: max(1, sz(1, scale)), height: sz(16, scale))
+            .alignmentGuide(.lastTextBaseline) { d in d[.bottom] - sz(2, scale) }
     }
 }
 
@@ -765,53 +700,6 @@ private struct StampDistanceHeroView: View {
     }
 }
 
-// MARK: - Mixed Align
-
-private struct StampMixedAlignView: View {
-    let data: StampData
-    let fill: Color
-    let outline: Color
-    let scale: CGFloat
-    let showHeartRate: Bool
-    let showCalories: Bool
-    var showTextOutline: Bool = true
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: sz(4, scale)) {
-            Text("RUN")
-                .font(.system(size: sz(10, scale), weight: .bold))
-                .tracking(1.6)
-                .opacity(0.85)
-
-            HStack(alignment: .lastTextBaseline, spacing: sz(3, scale)) {
-                Text(data.distance)
-                    .font(.system(size: sz(26, scale), weight: .black))
-                    .tracking(-1.5)
-                Text(data.distanceUnit)
-                    .font(.system(size: sz(11, scale), weight: .bold))
-            }
-
-            VStack(alignment: .trailing, spacing: sz(1, scale)) {
-                Text(data.pace)
-                    .font(.system(size: sz(18, scale), weight: .black))
-                    .tracking(-1.5)
-                Text(data.time)
-                    .font(.system(size: sz(18, scale), weight: .black))
-                    .tracking(-1.5)
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-
-            if let footer = stampMetricFooter(data: data, hr: showHeartRate, cal: showCalories) {
-                Text(footer)
-                    .font(.system(size: sz(10, scale), weight: .bold))
-                    .tracking(1.2)
-                    .opacity(0.85)
-            }
-        }
-        .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
-    }
-}
-
 // MARK: - HUD
 
 private struct StampHUDView: View {
@@ -825,6 +713,9 @@ private struct StampHUDView: View {
     /// 9셀 그리드에서 데이터 블록 배치 위치 (Canvas 브래킷은 항상 전체 프레임)
     var position: CardPosition = .center
 
+    /// 심박 토글 + 심박 데이터 → 워치 스타일(LIVE 헤더, ♥심박·케이던스 줄). 구 "워치 HUD" 병합.
+    private var liveMode: Bool { showHeartRate && data.heartRate != nil }
+
     var body: some View {
         ZStack(alignment: position.alignment) {
             // 네 모서리 브래킷
@@ -834,10 +725,22 @@ private struct StampHUDView: View {
 
             // 데이터 블록 — position.alignment에 따라 배치됨
             VStack(spacing: sz(4, scale)) {
-                Text("● REC · TRACKING")
-                    .font(.system(size: sz(9, scale), weight: .semibold, design: .monospaced))
-                    .tracking(2)
+                if liveMode {
+                    HStack(spacing: sz(3, scale)) {
+                        Circle()
+                            .fill(Color(hex: "22E07A"))
+                            .frame(width: sz(5, scale), height: sz(5, scale))
+                        Text("LIVE · TRACKING")
+                            .font(.system(size: sz(9, scale), weight: .semibold, design: .monospaced))
+                            .tracking(2)
+                    }
                     .opacity(0.85)
+                } else {
+                    Text("● REC · TRACKING")
+                        .font(.system(size: sz(9, scale), weight: .semibold, design: .monospaced))
+                        .tracking(2)
+                        .opacity(0.85)
+                }
 
                 HStack(alignment: .lastTextBaseline, spacing: sz(2, scale)) {
                     Text(data.distance)
@@ -850,7 +753,18 @@ private struct StampHUDView: View {
                 Text("\(data.pace)   \(data.time)")
                     .font(.system(size: sz(11, scale), weight: .medium, design: .monospaced))
 
-                if let footer = stampMetricFooter(data: data, hr: showHeartRate, cal: showCalories) {
+                if liveMode {
+                    // 워치 스타일 한 줄: ♥심박  케이던스spm  (칼로리 토글 시 CAL 추가)
+                    let parts: [String] = [
+                        data.heartRate.map { "♥\($0)" },
+                        data.cadence.map   { "\($0)spm" },
+                        showCalories ? data.calories.map { "\($0)cal" } : nil
+                    ].compactMap { $0 }
+                    Text(parts.joined(separator: "  "))
+                        .font(.system(size: sz(10, scale), weight: .bold, design: .monospaced))
+                        .tracking(1)
+                        .opacity(0.85)
+                } else if let footer = stampMetricFooter(data: data, hr: false, cal: showCalories) {
                     Text(footer)
                         .font(.system(size: sz(10, scale), weight: .bold))
                         .tracking(1.2)
@@ -1046,151 +960,6 @@ private struct StampCadenceEqView: View {
     }
 }
 
-// MARK: - Vitals Panel
-
-private struct StampVitalsView: View {
-    let data: StampData
-    let fill: Color
-    let outline: Color
-    let scale: CGFloat
-    var showTextOutline: Bool = true
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: sz(3, scale)) {
-            Text("▓ VITALS ▓")
-                .font(.system(size: sz(9, scale), weight: .bold, design: .monospaced))
-                .tracking(2)
-                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
-
-            Rectangle()
-                .fill(outline.opacity(0.35))
-                .frame(height: 0.5)
-
-            if let hr = data.heartRate {
-                vitalsRow("HR", value: "\(hr) BPM")
-            }
-            if let cad = data.cadence {
-                vitalsRow("CAD", value: "\(cad) SPM")
-            }
-            if let elev = data.elevGain {
-                vitalsRow("ELEV", value: "↑\(elev) M")
-            }
-            vitalsRow("DIST", value: "\(data.distance) \(data.distanceUnit)")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func vitalsRow(_ label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: sz(9, scale), weight: .bold, design: .monospaced))
-                .tracking(1.5)
-                .opacity(0.7)
-                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
-            Spacer()
-            Text(value)
-                .font(.system(size: sz(9, scale), weight: .medium, design: .monospaced))
-                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
-        }
-    }
-}
-
-// MARK: - HR Badge (Circle)
-
-private struct StampHRBadgeView: View {
-    let data: StampData
-    let fill: Color
-    let outline: Color
-    let scale: CGFloat
-    var showTextOutline: Bool = true
-
-    var body: some View {
-        let diameter: CGFloat = sz(104, scale)
-        ZStack {
-            Circle()
-                .stroke(outline, lineWidth: 2)
-
-            VStack(spacing: sz(2, scale)) {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: sz(14, scale)))
-                    .foregroundStyle(Color(hex: "FF2E2E"))
-
-                Text(data.heartRate ?? "—")
-                    .font(.system(size: sz(22, scale), weight: .black))
-                    .foregroundStyle(Color(hex: "FF2E2E"))
-
-                Text("BPM · \(data.distance) \(data.distanceUnit)")
-                    .font(.system(size: sz(8, scale), weight: .medium, design: .monospaced))
-                    .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
-            }
-        }
-        .frame(width: diameter, height: diameter)
-        .rotationEffect(.degrees(-8))
-    }
-}
-
-// MARK: - Watch HUD (isVideoOnly, fixed)
-
-private struct StampWatchHUDView: View {
-    let data: StampData
-    let fill: Color
-    let outline: Color
-    let scale: CGFloat
-    var showTextOutline: Bool = true
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // 상단 바
-            HStack(spacing: sz(4, scale)) {
-                Text("MIMO WATCH")
-                    .font(.system(size: sz(8, scale), weight: .black, design: .monospaced))
-                    .tracking(1.5)
-                    .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
-                Spacer()
-                HStack(spacing: sz(3, scale)) {
-                    Circle()
-                        .fill(Color(hex: "22E07A"))
-                        .frame(width: sz(5, scale), height: sz(5, scale))
-                    Text("LIVE")
-                        .font(.system(size: sz(8, scale), weight: .bold, design: .monospaced))
-                        .foregroundStyle(Color(hex: "22E07A"))
-                }
-            }
-            .padding(.horizontal, sz(14, scale))
-            .padding(.top, sz(18, scale))
-
-            Spacer()
-
-            // 거리 메인
-            HStack(alignment: .lastTextBaseline, spacing: sz(2, scale)) {
-                Text(data.distance)
-                    .font(.system(size: sz(34, scale), weight: .black))
-                    .tracking(-1.5)
-                Text(data.distanceUnit)
-                    .font(.system(size: sz(12, scale), weight: .bold))
-            }
-            .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
-
-            Spacer()
-
-            // 하단 메트릭 한 줄
-            let parts: [String] = [
-                data.heartRate.map { "♥\($0)" },
-                data.cadence.map   { "\($0)spm" },
-                data.pace,
-                data.time
-            ].compactMap { $0 }
-
-            Text(parts.joined(separator: "  "))
-                .font(.system(size: sz(9, scale), weight: .medium, design: .monospaced))
-                .tracking(1)
-                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
-                .padding(.horizontal, sz(14, scale))
-                .padding(.bottom, sz(18, scale))
-        }
-    }
-}
-
 // MARK: - Place Headline
 
 private struct StampPlaceHeadlineView: View {
@@ -1226,33 +995,6 @@ private struct StampPlaceHeadlineView: View {
 
             Text("\(data.pace) · \(data.time)")
                 .font(.system(size: sz(9, scale), weight: .medium, design: .monospaced))
-                .tracking(1.2)
-                .opacity(0.8)
-        }
-        .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
-    }
-}
-
-// MARK: - Pin Inline
-
-private struct StampPinInlineView: View {
-    let data: StampData
-    let fill: Color
-    let outline: Color
-    let scale: CGFloat
-    var showTextOutline: Bool = true
-
-    var body: some View {
-        let name = (data.placeName ?? data.coordText ?? "UNKNOWN").uppercased()
-        VStack(alignment: .leading, spacing: sz(3, scale)) {
-            Text("📍 \(name)  \(data.distance)\(data.distanceUnit)")
-                .font(.system(size: sz(14, scale), weight: .black))
-                .tracking(-0.5)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-
-            Text("\(data.pace) · \(data.time)")
-                .font(.system(size: sz(10, scale), weight: .medium, design: .monospaced))
                 .tracking(1.2)
                 .opacity(0.8)
         }
@@ -1314,64 +1056,6 @@ private struct StampRouteHeroView: View {
             }
             .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
             .padding(.top, sz(8, scale))
-        }
-    }
-}
-
-// MARK: - Route Rows
-
-private struct StampRouteRowsView: View {
-    let data: StampData
-    let fill: Color
-    let outline: Color
-    let scale: CGFloat
-    let showHeartRate: Bool
-    let showCalories: Bool
-    var showTextOutline: Bool = true
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            StampRouteArt(
-                coords: data.routeCoordinates ?? [],
-                lineWidth: max(1, sz(2.4, scale)),
-                color: fill,
-                casingColor: outline
-            )
-            .frame(width: sz(34, scale), height: sz(44, scale))
-            .padding(.bottom, sz(7, scale))
-
-            StampLabeledRowsView(data: data, fill: fill, outline: outline, scale: scale,
-                                 showHeartRate: showHeartRate, showCalories: showCalories,
-                                 showTextOutline: showTextOutline)
-        }
-    }
-}
-
-// MARK: - Route Vertical
-
-private struct StampRouteVerticalView: View {
-    let data: StampData
-    let fill: Color
-    let outline: Color
-    let scale: CGFloat
-    let showHeartRate: Bool
-    let showCalories: Bool
-    var showTextOutline: Bool = true
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            StampRouteArt(
-                coords: data.routeCoordinates ?? [],
-                lineWidth: max(1, sz(2.4, scale)),
-                color: fill,
-                casingColor: outline
-            )
-            .frame(width: sz(34, scale), height: sz(42, scale))
-            .padding(.bottom, sz(7, scale))
-
-            StampVerticalLabelView(data: data, fill: fill, outline: outline, scale: scale,
-                                   showHeartRate: showHeartRate, showCalories: showCalories,
-                                   showTextOutline: showTextOutline)
         }
     }
 }
@@ -1453,3 +1137,20 @@ private struct StampRouteSideView: View {
     }
     .background(Color.black)
 }
+
+// MARK: - 자연 폭 측정 (DEBUG · 크기 규칙 상수표 작성용)
+#if DEBUG
+extension StampCard {
+    /// scale 1에서 스탬프 콘텐츠의 자연 크기. 결과는 StampTemplate.naturalWidth 상수표에 반영한다.
+    @MainActor
+    static func measureNaturalSize(template: StampTemplate, data: StampData) -> CGSize {
+        let card = StampCard(data: data, template: template, colorMode: .brand, position: .center,
+                             sizeLevel: .xlarge, isBrightBackground: false,
+                             showHeartRate: false, showCalories: false, showTextOutline: false)
+        let view = card.stampContent(fill: .white, outline: .black, scale: 1.0).fixedSize()
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 1
+        return renderer.uiImage?.size ?? .zero
+    }
+}
+#endif

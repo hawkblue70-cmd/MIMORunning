@@ -120,6 +120,7 @@ struct StampControlsView: View {
                 sizeChip(.large)
                 sizeChip(.xlarge)
                 textOutlineChip
+                if data.heartRate != nil { heartRateChip }
             }
             // 배속 — 영상, 클립이 있을 때
             if template == .video, !vm.clipRecipes.isEmpty {
@@ -368,6 +369,28 @@ struct StampControlsView: View {
                 .padding(.vertical, 5)
                 .background(isOn ? Theme.violet : Color.white.opacity(0.08))
                 .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isOn)
+    }
+
+    /// 심박 토글 — 서클 배지(심박 변형)·HUD(LIVE 줄)·행 라벨 등 심박 푸터를 켠다.
+    private var heartRateChip: some View {
+        let isOn = vm.showHeartRate
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { vm.showHeartRate.toggle() }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "heart.fill").font(.system(size: 9))
+                Text(AppLanguage.shared.s("심박", "HR"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isOn ? .white : .white.opacity(0.55))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(isOn ? Theme.violet : Color.white.opacity(0.08))
+            .clipShape(Capsule())
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.15), value: isOn)

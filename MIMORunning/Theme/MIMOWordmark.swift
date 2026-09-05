@@ -2,6 +2,13 @@ import SwiftUI
 
 struct MIMOWordmark: View {
     var size: CGFloat = 16
+
+    /// PNG 왼쪽 투명 여백 때문에 "MIMO"의 M은 프레임 왼쪽 끝보다 안쪽에서 시작한다.
+    /// 로고 아래 요소를 M의 왼쪽 선에 맞출 때 더해 주는 값 (size 11 → 약 2.7pt).
+    /// 근거: MIMOWordmark.png 2464×848, M 잉크 시작 x≈90px, 프레임 폭 = size×2.3×(2464/848).
+    static func inkLeadingInset(size: CGFloat) -> CGFloat {
+        size * 2.3 * (2464.0 / 848.0) * (90.0 / 2464.0)
+    }
     // 하위 호환용 파라미터 (PNG 방식에선 미사용)
     var mimoColor: Color = .white
     var runColor: Color  = Theme.violet

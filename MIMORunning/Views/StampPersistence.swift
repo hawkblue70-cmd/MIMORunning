@@ -54,11 +54,11 @@ private struct StampConfigDTO: Codable {
     func toConfig() -> StampPhotoConfig {
         let posAll = Array(CardPosition.allCases)
         return StampPhotoConfig(
-            template:        StampTemplate(rawValue: template) ?? .passportStamp,
+            template:        StampTemplate.resolvingLegacy(template) ?? .passportStamp,
             colorMode:       StampColorMode(rawValue: colorMode) ?? .auto,
             position:        posAll.indices.contains(positionIdx) ? posAll[positionIdx] : .bottom,
             sizeLevel:       TextSizeLevel(rawValue: sizeLevel) ?? .medium,
-            showHeartRate:   showHeartRate,
+            showHeartRate:   showHeartRate || StampTemplate.legacyImpliesHeartRate(template),
             showCalories:    showCalories,
             showTextOutline: showTextOutline,
             text:            text,

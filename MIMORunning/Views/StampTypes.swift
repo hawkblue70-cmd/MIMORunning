@@ -22,66 +22,70 @@ enum StampOccupancy {
 // MARK: - Template
 
 enum StampTemplate: String, CaseIterable, Identifiable {
-    // 경로 결합 4종
+    // 경로 결합 2종
     case routeHero
-    case routeRows
-    case routeVertical
     case routeSide
-    // 기본 9종
+    // 기본 6종
     case hud
-    case receipt
     case scoreboard
     case passportStamp
     case circleBadge
     case labeledRows
-    case verticalLabel
+    case inlineTriple
     case distanceHero
-    case mixedAlign
-    // 지표 특화 7종
+    // 지표 특화 4종
     case hrWave
     case hrZone
     case elevProfile
     case cadenceEq
-    case vitals
-    case hrBadge
-    case watchHud
-    // 지명 2종
+    // 지명 1종
     case placeHeadline
-    case pinInline
 
     var id: String { rawValue }
+
+    /// 삭제·병합된 템플릿의 저장값(rawValue)을 가장 가까운 현행 템플릿으로 매핑 (2026-09 정리).
+    /// 저장된 설정을 불러올 때만 사용. 병합된 심박 변형은 `legacyImpliesHeartRate`로 심박 토글을 켠다.
+    static func resolvingLegacy(_ raw: String) -> StampTemplate? {
+        if let t = StampTemplate(rawValue: raw) { return t }
+        switch raw {
+        case "verticalLabel", "mixedAlign": return .labeledRows
+        case "vitals":                      return .hrWave
+        case "pinInline":                   return .placeHeadline
+        case "routeRows", "routeVertical":  return .routeSide
+        case "receipt":                     return .scoreboard   // 영수증 → 전광판 (같은 행 점유 타입)
+        case "hrBadge":                     return .circleBadge   // 심박 서클 → 서클 배지 + 심박 토글
+        case "watchHud":                    return .hud           // 워치 HUD → HUD + 심박 토글
+        default:                            return nil
+        }
+    }
+    /// 병합 전 템플릿 값이 심박 표시를 전제로 했던 경우 true.
+    static func legacyImpliesHeartRate(_ raw: String) -> Bool {
+        raw == "hrBadge" || raw == "watchHud"
+    }
 
     var displayName: String {
         let L = AppLanguage.shared
         switch self {
         case .hud:           return L.s("HUD 계기판",      "HUD Gauge")
-        case .receipt:       return L.s("영수증",          "Receipt")
         case .scoreboard:    return L.s("전광판",          "Scoreboard")
         case .passportStamp: return L.s("여권 스탬프",     "Passport Stamp")
         case .circleBadge:   return L.s("서클 배지",       "Circle Badge")
         case .labeledRows:   return L.s("행마다 라벨",     "Row Labels")
-        case .verticalLabel: return L.s("세로 라벨",       "Vertical Label")
+        case .inlineTriple:  return L.s("가로 3열",        "Inline Triple")
         case .distanceHero:  return L.s("거리 몰아주기",   "Distance Hero")
-        case .mixedAlign:    return L.s("혼합 정렬",       "Mixed Align")
         case .hrWave:        return L.s("심박 파형",       "HR Wave")
         case .hrZone:        return L.s("심박 존",         "HR Zones")
         case .elevProfile:   return L.s("고도 프로파일",   "Elevation Profile")
         case .cadenceEq:     return L.s("케이던스",        "Cadence")
-        case .vitals:        return L.s("바이탈 패널",     "Vitals Panel")
-        case .hrBadge:       return L.s("심박 서클",       "HR Circle")
-        case .watchHud:      return L.s("워치 HUD",        "Watch HUD")
         case .placeHeadline: return L.s("지명 헤드라인",   "Place Headline")
-        case .pinInline:     return L.s("핀 인라인",       "Pin Inline")
         case .routeHero:     return L.s("루트 히어로",     "Route Hero")
-        case .routeRows:     return L.s("루트 + 행 라벨",  "Route + Row Labels")
-        case .routeVertical: return L.s("루트 + 세로 라벨","Route + Vertical")
         case .routeSide:     return L.s("루트 사이드",     "Route Side")
         }
     }
 
     var positionMode: StampPositionMode {
         switch self {
-        case .hud, .watchHud:
+        case .hud:
             return .fixed
         default:
             return .free9
@@ -90,32 +94,75 @@ enum StampTemplate: String, CaseIterable, Identifiable {
 
     var occupancy: StampOccupancy {
         switch self {
-        case .receipt, .scoreboard: return .row
+        case .scoreboard:           return .row
         default:                    return .single
         }
     }
 
     var isColorFixed: Bool {
         switch self {
-        case .scoreboard, .receipt, .passportStamp: return true
+        case .scoreboard, .passportStamp: return true
         default:                                    return false
         }
     }
 
     var isVideoOnly: Bool {
-        self == .hud || self == .watchHud
+        self == .hud
+    }
+
+    // MARK: 크기 규칙 (절대 배율표)
+    //
+    // 기준 폭 211pt(영상·슬라이드 논리 폭, 가장 좁음)에서 소 40% · 중 55% · 대 72% · 특대 90%를
+    // 차지하도록 스탬프별로 고정한 배율. 높이는 특대 기준 폭의 75%(158pt)를 넘지 않게 상한.
+    // 자연 폭·높이(scale 1)는 StampMeasureTests로 측정 → 아래 상수는 그 결과에서 산출한 값.
+    // 값을 손으로 조정해도 되며, 스탬프를 추가하면 측정 후 한 줄을 추가한다. HUD는 고정형이라 예외.
+    var sizeScales: (small: CGFloat, medium: CGFloat, large: CGFloat, xlarge: CGFloat) {
+        switch self {
+        case .passportStamp: return (small: 0.61, medium: 0.85, large: 1.11, xlarge: 1.39)
+        case .circleBadge:  return (small: 0.67, medium: 0.93, large: 1.22, xlarge: 1.52)
+        case .scoreboard:   return (small: 0.56, medium: 0.77, large: 1.01, xlarge: 1.27)
+        case .labeledRows:  return (small: 0.60, medium: 0.82, large: 1.08, xlarge: 1.35)
+        case .inlineTriple: return (small: 0.28, medium: 0.38, large: 0.50, xlarge: 0.62)
+        case .distanceHero: return (small: 0.56, medium: 0.78, large: 1.02, xlarge: 1.28)
+        case .hud:          return (small: 0.50, medium: 0.65, large: 0.80, xlarge: 1.00)
+        case .hrWave:       return (small: 0.56, medium: 0.77, large: 1.01, xlarge: 1.27)
+        case .hrZone:       return (small: 0.55, medium: 0.76, large: 1.00, xlarge: 1.25)
+        case .elevProfile:  return (small: 0.51, medium: 0.71, large: 0.93, xlarge: 1.16)
+        case .cadenceEq:    return (small: 0.64, medium: 0.88, large: 1.15, xlarge: 1.44)
+        case .placeHeadline: return (small: 0.64, medium: 0.88, large: 1.16, xlarge: 1.45)
+        case .routeHero:    return (small: 0.34, medium: 0.46, large: 0.61, xlarge: 0.76)
+        case .routeSide:    return (small: 0.38, medium: 0.53, large: 0.69, xlarge: 0.87)
+        }
+    }
+
+    func stampScale(for level: TextSizeLevel) -> CGFloat {
+        let t = sizeScales
+        switch level {
+        case .small:  return t.small
+        case .medium: return t.medium
+        case .large:  return t.large
+        case .xlarge: return t.xlarge
+        }
+    }
+
+    /// 기울어진 스탬프가 레이아웃 프레임보다 왼쪽으로 삐져나오는 양(scale 1 기준).
+    /// 왼쪽 정렬 시 이만큼 더 들여 실제 잉크의 왼쪽 끝을 로고에 맞춘다.
+    /// 여권 스탬프: 137×69 프레임을 -7° 회전 → 세로 반높이 × sin7° ≈ 4.2 + 가로 성분 0.5.
+    var leadingOverhang: CGFloat {
+        switch self {
+        case .passportStamp: return 4.7
+        default:             return 0
+        }
     }
 
     var requires: [StampRequirement] {
         switch self {
-        case .hrWave, .hrBadge:          return [.heartRate]
+        case .hrWave:                    return [.heartRate]
         case .hrZone:                    return [.hrZone]
         case .elevProfile:               return [.elevation]
         case .cadenceEq:                 return [.cadence]
-        case .vitals:                    return [.heartRate]
-        case .watchHud:                  return [.heartRate]
-        case .placeHeadline, .pinInline: return [.location]
-        case .routeHero, .routeRows, .routeVertical, .routeSide: return [.route]
+        case .placeHeadline:             return [.location]
+        case .routeHero, .routeSide:     return [.route]
         default:                         return [.none]
         }
     }
@@ -198,13 +245,13 @@ struct StampSet: Identifiable {
     static let classic = StampSet(
         id: "classic",
         name: "클래식",
-        templates: [.passportStamp, .receipt, .circleBadge, .distanceHero]
+        templates: [.passportStamp, .scoreboard, .circleBadge, .distanceHero]
     )
 
     static let sporty = StampSet(
         id: "sporty",
         name: "스포티",
-        templates: [.hud, .scoreboard, .labeledRows, .mixedAlign]
+        templates: [.hud, .scoreboard, .labeledRows, .routeSide]
     )
 
     static let all: [StampSet] = [.classic, .sporty]
