@@ -1,5 +1,7 @@
 # 내구성 훈련 반영 구현 계획
 
+> 실행 완료 2026-09-06 — 리뷰 반영으로 일부 세부(mrProjectedRefMin 헬퍼, start/date, 메모 무효화, onChange 기록)는 계획 원문과 다르다. 최종 형태는 코드와 스펙을 따른다.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 하프 계획에 "대회 페이스" 단계와 실행 문구를 추가하고, 롱런 후반 케이던스 붕괴(S1)를 감지해 근력·플라이오 운동을 시의적절하게 제안하는 규칙 엔진과 표시 카드를 만든다.
@@ -471,7 +473,7 @@ import Foundation
 /// 롱런 한 건의 피로 요약. HealthKit 상세 캐시의 km 스플릿에서 만든다.
 struct MRLongRunFatigue: Codable, Sendable, Identifiable {
     let id: UUID
-    let date: Date                 // startOfDay
+    let start: Date                // 원본 시작 시각; date는 startOfDay 계산 속성
     let distanceKm: Double
     let durationMin: Double
     let q1PaceSecPerKm: Double     // 첫 25% 구간 (km1 제외)
@@ -700,7 +702,7 @@ struct MRAdviceQueueDurabilityTests {
     }
 
     private func fatigue(drop: Double, daysAgo: Int) -> MRLongRunFatigue {
-        MRLongRunFatigue(id: UUID(), date: day(-daysAgo), distanceKm: 16, durationMin: 105,
+        MRLongRunFatigue(id: UUID(), start: day(-daysAgo), distanceKm: 16, durationMin: 105,
                          q1PaceSecPerKm: 400, q4PaceSecPerKm: 400,
                          q1Cadence: 170, q4Cadence: 170 * (1 - drop),
                          firstHalfAvgHR: nil, cadenceCoverage: 1.0)

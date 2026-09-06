@@ -85,7 +85,7 @@
 
 **파일**: `MIMORunning/Engine/MRAdviceQueue.swift` (key `"strength"`)
 
-- 문구: "무거운 무게를 드는 근력운동과 점프 운동을 주 2회 함께 하면 다리가 후반까지 버팁니다. 주 30분이면 충분해요." Blagrove 2018 메타분석 자체가 고중량·플라이오메트릭을 다루므로 등급 A 유지.
+- 문구: "무거운 무게를 드는 근력운동과 점프 운동을 주 2회 함께 하면 러닝 경제성과 기록이 좋아졌다는 연구가 많습니다. 주 30분이면 충분해요." Blagrove 2018 메타분석 자체가 고중량·플라이오메트릭을 다루므로 등급 A 유지.
 - **억제**: 하프 이상 대회가 D-14 이내면 내지 않는다(테이퍼 중 새 고중량 금지, Bosquet 2007 원칙과 일관).
 - **중복 제거**: §4의 `"durability"` 조언이 큐에 있으면 `"strength"`는 넣지 않는다. 같은 주제를 두 번 말하지 않는다.
 
@@ -112,7 +112,7 @@
 ```swift
 struct MRLongRunFatigue: Codable {
     let id: UUID
-    let date: Date
+    let start: Date                // 워크아웃 시작 시각 (원본) · date는 startOfDay 계산 속성
     let distanceKm: Double
     let durationMin: Double
     let q1PaceSecPerKm: Double     // 첫 25% 구간 (1km 제외)
@@ -127,7 +127,7 @@ struct MRLongRunFatigue: Codable {
 **롱런 자격**
 - 러닝, 야외, 인터벌·빌드업·템포 아님 (`WorkoutType` ∉ {interval, buildUp, tempo}).
 - 거리 ≥ max(10km, 최근 16주 최장 × 0.7), 시간 ≥ 60분.
-- 케이던스 있는 스플릿 ≥ 80%, 전체 스플릿 ≥ 8개.
+- 케이던스 있는 스플릿 ≥ 80% (km1·부분 스플릿 제거 후 기준), 전체 스플릿 ≥ 8개.
 
 **구간**: km 1 제외 후 첫 25%를 Q1, 마지막 부분 스플릿(<1000m) 제외 후 마지막 25%를 Q4. 각 구간 최소 2개 스플릿.
 
@@ -156,7 +156,7 @@ struct MRLongRunFatigue: Codable {
 **문구**
 
 `durability` (todayRun 당일):
-> 오늘 롱런 후반에 케이던스가 N% 떨어졌어요. 최근 롱런 3번 중 2번이 그랬습니다. 다리가 지치면 발걸음이 느려지는 패턴이에요. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦춥니다.
+> 오늘 롱런 후반에 케이던스가 N% 떨어졌어요. 최근 롱런 3번 중 2번이 그랬습니다. 다리가 지치면 발걸음이 느려지는 패턴이에요. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦추는 데 도움이 될 수 있어요.
 
 `durability` (weekly):
 > 최근 롱런 후반에 발걸음이 느려지는 패턴이 반복됐어요. 무거운 무게를 드는 근력운동과 점프 운동이 후반 페이스를 지키는 데 도움이 됩니다.
@@ -190,14 +190,15 @@ HealthKitManager
 GrowthView.onAppear
   └ engine.updateAdvice(strengthPerWeek:, fatigue:)        ← 기존 호출에 인자 추가
 MREngineStore
-  └ storedFatigue 보관 → mrBuildAdvice(..., fatigue:, formShiftCadence:)
+  └ storedFatigue 보관 → mrBuildAdvice(..., races:, fatigue:, cadenceShift:)
       · refreshCore / refreshDetail / recomputePlans의 mrBuildAdvice 호출 모두 같은 인자 전달
 MRAdviceQueue.mrBuildAdvice
-  └ MRDurabilityCheck.evaluate(fatigue:, runs:, maxHR:) → 집계 결과
+  └ MRDurabilityCheck.aggregate(fatigue:runs:maxHR:asOf:) → Verdict (evaluate는 롱런 1건 판정)
   └ 조언 생성 + 억제 + 중복 제거
 ```
 
-- `formShiftCadence: MRFormShift?`는 GrowthView가 이미 계산하는 값(`mrFormShift(cadence)`)을 같은 `updateAdvice` 호출로 넘긴다. 엔진이 폼 계산을 중복하지 않는다.
+- `cadenceShift: MRFormShift?`는 GrowthView의 폼 계산(`computeFormObservation`)이 끝난 뒤 별도의 `updateAdvice` 호출로 넘긴다. 두 입력은 각각 저장되어 서로를 덮어쓰지 않는다. 엔진이 폼 계산을 중복하지 않는다.
+- GrowthView는 `manager.workoutTypeRevision` 변경 시 피로 요약을 다시 넘긴다 (상세 캐시가 뒤늦게 채워지는 경우).
 - maxHR은 `MRPhysiology`의 기존 추정값을 쓴다.
 
 ### 4.5 표시 — 조언 카드 (신규)
@@ -211,6 +212,7 @@ MRAdviceQueue.mrBuildAdvice
 - 탭 → 펼침: `exercises` 불릿 + rationale(작은 글씨). 기존 "근거는 탭해서 보는" 패턴.
 - `.onAppear`에서 `MRAdviceLog.record(keys)` → 저장. 판정 시점에는 기록하지 않는다(기존 주석 원칙).
 - 조언 0건이면 카드 자체를 그리지 않는다. "제안 없음" 같은 문구 금지.
+- 표시 중 조언이 바뀌면(`.onChange`) 새 키도 기록한다.
 
 ---
 
