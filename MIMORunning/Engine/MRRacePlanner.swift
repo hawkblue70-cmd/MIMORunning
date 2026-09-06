@@ -147,14 +147,10 @@ func mrBuildPlan(raceDate: Date,
 
     // '지금 상태로 나가면' — 거리별로 다르게 계산한다.
     // 풀만 durability 지수를 쓰고, 하프 이하는 하프 등가에서 직접 환산한다.
-    if distanceM >= MRDistance.dF {
-        p.projectedNow = halfEquivMin * pow(2.0, bMarathonModel(
-            weeklyKm: profile.weeklyKm4w,
-            longestKm: profile.longestRun16wKm,
-            finishes: profile.marathonFinishes).b)
-    } else {
-        p.projectedNow = halfEquivMin * pow(distanceM / MRDistance.dH, 1.06)
-    }
+    p.projectedNow = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
+                                       weeklyKm: profile.weeklyKm4w,
+                                       longestKm: profile.longestRun16wKm,
+                                       finishes: profile.marathonFinishes)
     // ⚠ 화살표 양쪽은 반드시 같은 기온 조건이어야 한다.
     //   projectedNow만 15°C면 "훈련하면 느려진다"는 화면이 나온다.
     if heat.ok { p.projectedNow = heat.fromRef(timeRefMin: p.projectedNow, tempC: raceTempC) }
@@ -378,15 +374,10 @@ func mrBuildPlan(raceDate: Date,
         //   회복주는 후퇴가 아니다 — 몸이 좋아지는 것은 뛸 때가 아니라 쉴 때다.
         //   그날 몸에 남아 있는 것은 **축적된 상태**이지 그 주에 뛴 양이 아니다.
         let projVol = peakVol
-        var proj: Double
-        if distanceM >= MRDistance.dF {
-            proj = halfEquivMin * pow(2.0, bMarathonModel(
-                weeklyKm: projVol, longestKm: peakLong,
-                finishes: profile.marathonFinishes).b)
-        } else {
-            // 하프 이하는 durability 항이 지배하지 않는다 — 등가에서 직접
-            proj = halfEquivMin * pow(distanceM / MRDistance.dH, 1.06)
-        }
+        // 풀은 durability 지수, 하프 이하는 등가에서 직접 — mrProjectedRefMin 한 곳에서 계산
+        var proj = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
+                                     weeklyKm: projVol, longestKm: peakLong,
+                                     finishes: profile.marathonFinishes)
         if phase == "테이퍼" {
             let k = Double(i - buildWeeks)
             proj *= (1 - MR_TAPER_GAIN * (k / Double(max(p.taperWeeks, 1))))
@@ -421,7 +412,7 @@ func mrBuildPlan(raceDate: Date,
             let racePace = mrTrainingRacePaceSecPerKm(
                 halfEquivMin: halfEquivMin, distanceM: distanceM,
                 weeklyKm: projVol, longestKm: peakLong, finishes: profile.marathonFinishes)
-            let seg = mrRacePaceSegmentMinutes(longRunMin: mins)
+            let seg = mrRacePaceSegmentMinutes(longRunMin: mins.rounded())   // 저장값(longRunMin)과 동일 기준
             let paceStr = mrFormatPace(racePace) + "/km"
             breakdown = each >= 1.5
                 ? L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(eachStr) × \(others)회",
@@ -460,7 +451,9 @@ func mrBuildPlan(raceDate: Date,
     if distanceM >= MRDistance.dF {
         let bResult = bMarathonModel(weeklyKm: peakVol, longestKm: peakLong,
                                      finishes: profile.marathonFinishes)
-        var finalRef = halfEquivMin * pow(2.0, bResult.b) * (1 - MR_TAPER_GAIN)
+        var finalRef = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
+                                         weeklyKm: peakVol, longestKm: peakLong,
+                                         finishes: profile.marathonFinishes) * (1 - MR_TAPER_GAIN)
         if heat.ok { finalRef = heat.fromRef(timeRefMin: finalRef, tempC: raceTempC) }
         p.projectedFinal = finalRef
         // 불확실성 구간 — 데이터에서 잰 체력 변동성 + 모델 오차
@@ -497,7 +490,9 @@ func mrBuildPlan(raceDate: Date,
             print(String(format: "[예측] %d주 → σ8 계산 불가", totalWeeks))
         }
     } else {
-        var finalRef = halfEquivMin * pow(distanceM / MRDistance.dH, 1.06) * (1 - MR_TAPER_GAIN)
+        var finalRef = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
+                                         weeklyKm: peakVol, longestKm: peakLong,
+                                         finishes: profile.marathonFinishes) * (1 - MR_TAPER_GAIN)
         if heat.ok { finalRef = heat.fromRef(timeRefMin: finalRef, tempC: raceTempC) }
         p.projectedFinal = finalRef
     }
@@ -555,13 +550,25 @@ func mrRacePaceSegmentMinutes(longRunMin: Double) -> Int {
 /// ⚠ 기온 보정 전 · 테이퍼 이득 전 값이다. 훈련은 대회 기온에서 하지 않는다.
 func mrTrainingRacePaceSecPerKm(halfEquivMin: Double, distanceM: Double,
                                 weeklyKm: Double, longestKm: Double, finishes: Int) -> Double {
-    let minutes: Double
-    if distanceM >= MRDistance.dF {
-        minutes = halfEquivMin * pow(2.0, bMarathonModel(weeklyKm: weeklyKm,
-                                                          longestKm: longestKm,
-                                                          finishes: finishes).b)
-    } else {
-        minutes = halfEquivMin * pow(distanceM / MRDistance.dH, 1.06)
-    }
+    guard distanceM > 0 else { return 0 }
+    let minutes = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
+                                    weeklyKm: weeklyKm, longestKm: longestKm, finishes: finishes)
     return minutes * 60.0 / (distanceM / 1000.0)
+}
+
+// MARK: - 기준 예측 시간 (단일 공식)
+
+/// 기준 예측 시간(분) — 기온 보정 전 · 테이퍼 이득 전.
+/// 풀은 마라톤 지수(bMarathonModel), 하프 이하는 Riegel 지수 1.06.
+/// ⚠ 1.06 — Vickers & Vertosick 2016에서 10K·하프에 잘 교정된 값(MRFormulas.swift bMarathonModel 주석 참조).
+///   MRPredictor의 개인 지수 prior와 같다.
+/// projectedNow · 주차별 projectedMin · projectedFinal · 훈련용 대회 페이스가 모두 이 함수를 쓴다.
+func mrProjectedRefMin(halfEquivMin: Double, distanceM: Double,
+                       weeklyKm: Double, longestKm: Double, finishes: Int) -> Double {
+    if distanceM >= MRDistance.dF {
+        return halfEquivMin * pow(2.0, bMarathonModel(weeklyKm: weeklyKm,
+                                                       longestKm: longestKm,
+                                                       finishes: finishes).b)
+    }
+    return halfEquivMin * pow(distanceM / MRDistance.dH, 1.06)
 }

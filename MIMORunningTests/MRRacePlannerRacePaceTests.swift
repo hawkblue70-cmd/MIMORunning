@@ -47,10 +47,22 @@ struct MRRacePlannerRacePaceTests {
         let rp = plan.weeks.filter { $0.phase == "대회 페이스" }
         #expect(!rp.isEmpty)
         // 문구에 구간 길이(15)와 페이스(/km)가 들어간다. 언어 무관 토큰만 검사.
-        #expect(rp.allSatisfy { $0.breakdown.contains("15") && $0.breakdown.contains("/km") })
-        // 회복·테이퍼 주에는 구간 문구가 없다
-        let rest = plan.weeks.filter { $0.phase == "회복" || $0.phase == "테이퍼" }
+        #expect(rp.allSatisfy {
+            ($0.breakdown.contains("15분") || $0.breakdown.contains("15 min")) && $0.breakdown.contains("/km")
+        })
+        // 대회 페이스가 아닌 모든 주에는 구간 문구가 없다
+        let rest = plan.weeks.filter { $0.phase != "대회 페이스" }
         #expect(rest.allSatisfy { !$0.breakdown.contains("/km") })
+    }
+
+    @Test func projectedRefMinMatchesLoopProjection() throws {
+        // 기온 모델 꺼짐 → 보정 없음. 하프는 weeklyKm/longestKm를 쓰지 않으므로 아무 값이나 된다.
+        let plan = try #require(buildPlan(distanceM: MRDistance.dH))
+        let ref = mrProjectedRefMin(halfEquivMin: 110, distanceM: MRDistance.dH,
+                                    weeklyKm: 0, longestKm: 0, finishes: 0)
+        let nonTaper = plan.weeks.filter { $0.phase != "테이퍼" }
+        #expect(!nonTaper.isEmpty)
+        #expect(nonTaper.allSatisfy { abs($0.projectedMin - ref) < 0.01 })
     }
 
     @Test func tenKPlanHasNoRacePaceWeeks() throws {

@@ -344,9 +344,15 @@ struct MRWeekTable: View {
 
     /// 스냅샷 주의 실행 안내 — 구버전 스냅샷(breakdown=="")은 라이브 플랜 주에서 폴백.
     private func breakdownForSnap(_ snap: MRPlanWeekSummary) -> String {
-        let raw = snap.breakdown.isEmpty
-            ? (weeks.first { Calendar.current.startOfDay(for: $0.monday) == Calendar.current.startOfDay(for: snap.monday) }?.breakdown ?? "")
-            : snap.breakdown
+        // 옛 스냅샷(breakdown 없음)은 라이브 플랜 같은 주로 보완하되,
+        // 단계가 다르면 새 문구(대회 페이스 등)가 확정 계획에 새어 들지 않도록 비운다.
+        let raw: String
+        if snap.breakdown.isEmpty {
+            let live = weeks.first { Calendar.current.startOfDay(for: $0.monday) == Calendar.current.startOfDay(for: snap.monday) }
+            raw = (live?.phase == snap.phase) ? (live?.breakdown ?? "") : ""
+        } else {
+            raw = snap.breakdown
+        }
         return localizedBreakdown(raw)
     }
 
