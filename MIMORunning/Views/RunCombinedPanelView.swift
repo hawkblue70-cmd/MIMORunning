@@ -5,7 +5,8 @@ import SwiftUI
 @Observable @MainActor
 final class RunChartLayerStore {
     static let shared = RunChartLayerStore()
-    private static let defaultsKey = "mimo.runChart.enabledLayers"
+    // ⚠ v2 — 시인성 개편 시 키를 바꿔 저장된 "전부 켬" 상태를 기본(심박+페이스)으로 한 번 되돌린다.
+    private static let defaultsKey = "mimo.runChart.enabledLayers.v2"
 
     var enabled: Set<RunChartLayer> {
         didSet { persist() }
@@ -53,6 +54,13 @@ struct RunCombinedPanelView: View {
     @State private var isPlaying = false
     @State private var playTask: Task<Void, Never>? = nil
 
+    /// 차트의 심박 선이 존 색인가 — RunCombinedChartView.hrZoneColoring과 같은 규칙.
+    /// 타일 점 색이 선 색과 어긋나지 않게 여기서도 같은 조건으로 계산한다.
+    private var hrZoneColoringOn: Bool {
+        let otherLines: Set<RunChartLayer> = [.cadence, .power, .strideLength, .verticalOsc]
+        return !data.availableLayers.contains { store.enabled.contains($0) && otherLines.contains($0) }
+    }
+
     private let tileColumns = [
         GridItem(.flexible(), spacing: 6),
         GridItem(.flexible(), spacing: 6),
@@ -94,7 +102,9 @@ struct RunCombinedPanelView: View {
                                 RunStatTile(
                                     layer: layer,
                                     series: series,
-                                    isOn: store.enabled.contains(layer)
+                                    isOn: store.enabled.contains(layer),
+                                    dotColors: (layer == .heartRate && hrZoneColoringOn && !data.hrZoneBands.isEmpty)
+                                        ? ShareChartPalette.dark.hrZones : nil
                                 ) {
                                     stopPlay()
                                     store.toggle(layer)
@@ -251,6 +261,8 @@ private struct RunStatTile: View {
     let layer: RunChartLayer
     let series: RunChartSeries
     let isOn: Bool
+    /// 점을 그라데이션으로 칠할 색 목록 — 심박 선이 존 색일 때 타일 점도 존 색으로 (선 = 타일 일치)
+    var dotColors: [Color]? = nil
     let onTap: () -> Void
 
     var body: some View {
@@ -258,9 +270,17 @@ private struct RunStatTile: View {
             VStack(alignment: .leading, spacing: 3) {
                 // Row 1: dot + name + range
                 HStack(spacing: 4) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(layer.color.opacity(isOn ? 1.0 : 0.38))
-                        .frame(width: 7, height: 7)
+                    Group {
+                        if let dotColors, dotColors.count >= 2 {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(LinearGradient(colors: dotColors, startPoint: .leading, endPoint: .trailing))
+                        } else {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(layer.color)
+                        }
+                    }
+                    .opacity(isOn ? 1.0 : 0.38)
+                    .frame(width: 7, height: 7)
                     Text(layer.shortLabel)
                         .font(.system(size: 10))
                         .foregroundStyle(Color.white.opacity(isOn ? 0.72 : 0.32))
