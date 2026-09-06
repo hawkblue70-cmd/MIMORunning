@@ -5,7 +5,8 @@ import SwiftUI
 @Observable @MainActor
 final class RunChartLayerStore {
     static let shared = RunChartLayerStore()
-    private static let defaultsKey = "mimo.runChart.enabledLayers"
+    // ⚠ v2 — 시인성 개편 시 키를 바꿔 저장 상태를 기본(전부 켬)으로 한 번 되돌린다.
+    private static let defaultsKey = "mimo.runChart.enabledLayers.v2"
 
     var enabled: Set<RunChartLayer> {
         didSet { persist() }
@@ -14,9 +15,10 @@ final class RunChartLayerStore {
     private init() {
         if let raw = UserDefaults.standard.array(forKey: Self.defaultsKey) as? [String] {
             let restored = Set(raw.compactMap { RunChartLayer(rawValue: $0) })
-            enabled = restored.isEmpty ? [.heartRate, .pace] : restored
+            enabled = restored.isEmpty ? Set(RunChartLayer.allCases) : restored
         } else {
-            enabled = [.heartRate, .pace]
+            // 기본은 전부 켬 (사용자 확정) — 타일을 탭해 끌 수 있다
+            enabled = Set(RunChartLayer.allCases)
         }
     }
 
@@ -94,7 +96,9 @@ struct RunCombinedPanelView: View {
                                 RunStatTile(
                                     layer: layer,
                                     series: series,
-                                    isOn: store.enabled.contains(layer)
+                                    isOn: store.enabled.contains(layer),
+                                    dotColors: (layer == .heartRate && !data.hrZoneBands.isEmpty)
+                                        ? ShareChartPalette.dark.hrZones : nil
                                 ) {
                                     stopPlay()
                                     store.toggle(layer)
@@ -251,6 +255,8 @@ private struct RunStatTile: View {
     let layer: RunChartLayer
     let series: RunChartSeries
     let isOn: Bool
+    /// 점을 그라데이션으로 칠할 색 목록 — 심박 선이 존 색일 때 타일 점도 존 색으로 (선 = 타일 일치)
+    var dotColors: [Color]? = nil
     let onTap: () -> Void
 
     var body: some View {
@@ -258,9 +264,17 @@ private struct RunStatTile: View {
             VStack(alignment: .leading, spacing: 3) {
                 // Row 1: dot + name + range
                 HStack(spacing: 4) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(layer.color.opacity(isOn ? 1.0 : 0.38))
-                        .frame(width: 7, height: 7)
+                    Group {
+                        if let dotColors, dotColors.count >= 2 {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(LinearGradient(colors: dotColors, startPoint: .leading, endPoint: .trailing))
+                        } else {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(layer.color)
+                        }
+                    }
+                    .opacity(isOn ? 1.0 : 0.38)
+                    .frame(width: 7, height: 7)
                     Text(layer.shortLabel)
                         .font(.system(size: 10))
                         .foregroundStyle(Color.white.opacity(isOn ? 0.72 : 0.32))

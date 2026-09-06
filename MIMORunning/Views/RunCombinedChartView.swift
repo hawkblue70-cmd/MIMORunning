@@ -22,7 +22,7 @@ struct RunCombinedChartView: View {
     private let padL: CGFloat = 26   // Z1–Z5 labels at x=0–22; plot starts at 26
     private var padR: CGFloat { playProgress != nil ? 8 : 40 }  // collapse right pad during playback (no end labels)
     private let padT: CGFloat = 26   // increased from 16: room for scrubber label above chart rect
-    private let padB: CGFloat = 38
+    private let padB: CGFloat = 28   // 페이스 라벨 한 줄 + 시간·거리 한 줄 (예전 세 줄일 때 38)
 
     var body: some View {
         let activeLayers = data.availableLayers.filter { enabledLayers.contains($0) }
@@ -117,6 +117,7 @@ struct RunCombinedChartView: View {
     }
 
     /// Zone color for a BPM value; falls back to Theme.heartRate when zone data is absent.
+    /// ⚠ 심박은 항상 존 색이다 (사용자 확정). 다른 선과의 구분은 나머지 레이어 색으로 해결한다.
     private func zoneColor(for bpm: Double) -> Color {
         let idx = zoneIndex(for: bpm)
         return idx >= 0 ? p.hrZones[idx] : Theme.heartRate
@@ -445,7 +446,7 @@ struct RunCombinedChartView: View {
         }
         // Pass 2: all coloured lines on top
         for (path, zone) in zonePaths {
-            let c = zone >= 0 ? p.hrZones[zone] : Theme.heartRate
+            let c: Color = zone >= 0 ? p.hrZones[zone] : Theme.heartRate
             ctx.stroke(path, with: .color(c.opacity(opacity)),
                        style: StrokeStyle(lineWidth: p.hrLineWidth, lineCap: .round, lineJoin: .round))
         }
@@ -471,32 +472,9 @@ struct RunCombinedChartView: View {
             }
         }
 
-        // Data dots — zone-coloured with black outer circle (5 equidistant)
-        // During playback the endpoint is already shown by drawPlaybackDots, skip here.
-        guard playProgress == nil else { return }
-        guard cgPts.count >= 2 else { return }
-        let dotCount = min(5, cgPts.count)
-        let outerR: CGFloat = 3.0
-        let innerR: CGFloat = 2.4
-        let indices = dotCount <= 1 ? [0] : (0..<dotCount).map { j in
-            Int(Double(j) / Double(dotCount - 1) * Double(cgPts.count - 1))
-        }
-        for idx in indices {
-            let pt  = cgPts[idx]
-            let col = zoneColor(for: pts[idx].value)
-            // Casing backing
-            ctx.fill(
-                Path(ellipseIn: CGRect(x: pt.x - outerR, y: pt.y - outerR,
-                                       width: outerR * 2, height: outerR * 2)),
-                with: .color(p.chartCasing.opacity(opacity))
-            )
-            // Zone colour fill
-            ctx.fill(
-                Path(ellipseIn: CGRect(x: pt.x - innerR, y: pt.y - innerR,
-                                       width: innerR * 2, height: innerR * 2)),
-                with: .color(col.opacity(opacity))
-            )
-        }
+        // ⚠ 예전에는 심박 선 위에 등간격 점 5개를 찍었다. 데이터 의미가 없는 장식이라
+        //   "저 점이 뭐지?"라는 질문만 만들었다. 재생 중 끝점(drawPlaybackDots)과
+        //   십자선 점(drawCrosshair)만 남긴다.
     }
 
     // MARK: - Right-side end-point value labels (line layers + elevation)
@@ -586,22 +564,17 @@ struct RunCombinedChartView: View {
             (km / 2, .top),
             (km,     .topTrailing)
         ]
+        // ⚠ 예전에는 시간 줄·거리 줄이 따로여서 km별 페이스 라벨까지 세 줄이었다.
+        //   시간과 거리를 "34:33 · 5.0km" 한 줄로 합친다. 페이스 라벨(+3..+13)은 그대로.
         for tick in ticks {
             let x = xFor(km: tick.km, in: rect)
-            // Time row — pace labels occupy +3..+13, time starts at +16
+            let timeStr = formatElapsed(elapsedTime(atKm: tick.km))
+            let label = tick.km == 0 ? timeStr : "\(timeStr) · \(distLabel(tick.km))"
             ctx.draw(
-                Text(formatElapsed(elapsedTime(atKm: tick.km)))
-                    .font(.system(size: 8.5, weight: .semibold))
-                    .foregroundStyle(p.xAxisTimeColor),
-                at: CGPoint(x: x, y: rect.maxY + 16),
-                anchor: tick.anchor
-            )
-            // Distance row — below time row
-            ctx.draw(
-                Text(distLabel(tick.km))
+                Text(label)
                     .font(.system(size: 8.5, weight: .semibold))
                     .foregroundStyle(p.xAxisDistColor),
-                at: CGPoint(x: x, y: rect.maxY + 27),
+                at: CGPoint(x: x, y: rect.maxY + 16),
                 anchor: tick.anchor
             )
         }

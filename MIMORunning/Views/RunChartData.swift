@@ -25,8 +25,9 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         case .power:        return Theme.chartPower
         case .strideLength: return Theme.chartStride
         case .verticalOsc:  return Theme.chartVertOsc
-        case .aerobic:      return Theme.chartAerobic
-        case .calories:     return Theme.calories
+        // 값 전용(선 없음) 타일은 중립 회색 — 칼로리 핑크가 심박 빨강과 겹쳐 보이던 문제 제거
+        case .aerobic:      return Theme.chartValueOnly
+        case .calories:     return Theme.chartValueOnly
         }
     }
 
@@ -354,7 +355,8 @@ enum RunChartBuilder {
         // Elevation — already distance-keyed, light mean smoothing
         if let altProfile = detail?.altitudeProfile, altProfile.count >= 2 {
             let raw = altProfile.map { (km: $0.distanceKm, value: $0.altitude) }
-            if let s = makeSeries(layer: .elevation, rawPoints: raw, invertNorm: false, smoothWindow: 25, meanWindow: 25) {
+            if let s = makeSeries(layer: .elevation, rawPoints: raw, invertNorm: false, smoothWindow: 25, meanWindow: 25,
+                                  minDisplaySpan: elevationMinSpanM) {
                 allSeries[.elevation] = s
             }
         }
@@ -687,12 +689,25 @@ enum RunChartBuilder {
 
     // MARK: - Generic series builder (elevation)
 
+    /// 고도 표시 최소 스팬(m).
+    ///
+    /// ⚠ 자동 스케일이면 4~11m짜리 평지 코스가 산처럼 그려진다 — 정보량은 0인데
+    ///   화면에서 가장 큰 도형이 된다. 실제 고저차가 이 값보다 작으면 이 값을 분모로
+    ///   써서 평지가 평평하게 보이게 한다. 30m는 임의로 정함(도심 코스 한 블록 언덕 정도).
+    nonisolated static let elevationMinSpanM: Double = 30
+
+    /// 정규화 분모. 실제 범위가 최소 스팬보다 작으면 최소 스팬을 쓴다.
+    nonisolated static func displaySpan(range: Double, minSpan: Double) -> Double {
+        max(range, minSpan)
+    }
+
     private static func makeSeries(
         layer: RunChartLayer,
         rawPoints: [(km: Double, value: Double)],
         invertNorm: Bool,
         smoothWindow: Int = 0,
-        meanWindow: Int = 0
+        meanWindow: Int = 0,
+        minDisplaySpan: Double = 0
     ) -> RunChartSeries? {
         guard rawPoints.count >= 2 else { return nil }
         let values = rawPoints.map { $0.value }
@@ -705,7 +720,7 @@ enum RunChartBuilder {
         display     = meanWindow   > 1 ? movingMean(display, window: meanWindow)    : display
         let lastValue = display.last ?? avgVal
         let dispMin   = display.min()!
-        let dispRange = display.max()! - dispMin
+        let dispRange = displaySpan(range: display.max()! - dispMin, minSpan: minDisplaySpan)
         let points    = rawPoints.indices.map { i -> RunChartPoint in
             let sv = display[i]
             var t = dispRange > 0 ? (sv - dispMin) / dispRange : 0.5

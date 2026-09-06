@@ -70,8 +70,8 @@ struct ShareChartPalette {
             case .pace:         return pace                     // #00A8C8 cyan
             case .cadence:      return Color(hex: "B8860B")    // 딥 골드
             case .elevation:    return elevation                // #4FA82E green
-            case .power:        return Color(hex: "2E5FD4")    // blue
-            case .strideLength: return Color(hex: "C0392B")    // 딥 레드 (HR 주황과 구분)
+            case .power:        return Color(hex: "5B3FD9")    // 딥 바이올렛 (다크의 라벤더와 같은 계열)
+            case .strideLength: return Color(hex: "3A3A3C")    // 진회색 (다크의 화이트에 대응)
             case .verticalOsc:  return Color(hex: "8E24AA")    // 딥 퍼플
             default:            return layer.color
             }

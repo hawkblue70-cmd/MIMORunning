@@ -74,14 +74,18 @@ enum Theme {
 
 // MARK: - Chart-specific palette (RunCombinedChartView 전용)
 extension Theme {
-    static let chartPace     = Color(hex: "00D8FF")  // 전기 시안
+    // ⚠ 종합 차트 레이어 색 규칙 — 검은 배경에서 선끼리 색상환이 겹치지 않게.
+    //   심박은 존 색(파랑·청록·라임·주황·핑크)을 쓰므로 다른 선은 그 다섯과 멀어야 한다.
+    //   예전 값: 파워 하늘파랑(=페이스·Z1과 충돌) · 보폭 코랄(=심박과 충돌) · 고도 라임(=Z3·케이던스와 충돌).
+    static let chartPace     = Color(hex: "00D8FF")  // 전기 시안 (막대)
     static let chartCadence  = Color(hex: "FFE000")  // 순수 옐로
-    static let chartPower    = Color(hex: "4FC3F7")  // 하늘빛 전기파랑
-    static let chartElev     = Color(hex: "8FE04D")  // 라임 그린
-    static let chartElevFill = Color(hex: "8FE04D")  // 고도 fill
-    static let chartStride   = Color(hex: "FF6B6B")  // 코랄 레드 (HR 주황과 구분)
+    static let chartPower    = Color(hex: "A78BFA")  // 라벤더 바이올렛 (브랜드 계열)
+    static let chartElev     = Color(hex: "34C759")  // 초록 (라임 아님 — Z3·케이던스와 분리)
+    static let chartElevFill = Color(hex: "34C759")  // 고도 fill
+    static let chartStride   = Color(hex: "F2F2F7")  // 화이트 (검은 배경에서 가장 뚜렷)
     static let chartVertOsc  = Color(hex: "E040FB")  // 비비드 마젠타
-    static let chartAerobic  = Color(hex: "40C0FF")  // 하늘색 (유산소 효율)
+    static let chartAerobic  = Color(hex: "8E8E93")  // 값 전용 타일 — 선을 그리지 않으므로 중립 회색
+    static let chartValueOnly = Color(hex: "8E8E93") // 값 전용 타일 공통 (유산소·칼로리)
 
     static let chartHRZones: [Color] = [
         Color(hex: "3D9BFF"),  // Z1 블루
