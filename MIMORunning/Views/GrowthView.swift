@@ -259,7 +259,8 @@ struct GrowthView: View {
                             : manager.persistedConfirmedMatches()
                         engine.updateConfirmedMatches(matches, raceDetectorReady: raceDetector.isReady)
                         engine.computeBacktestIfNeeded()
-                        engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w)
+                        engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w,
+                                            fatigue: manager.longRunFatigueSummaries())
                         if !engine.runs.isEmpty {
                             let gaps = Self.computeDisplayGaps(runs: engine.runs)
                             displayGaps = gaps
@@ -438,6 +439,10 @@ struct GrowthView: View {
                 shifts.append(shift)
             }
         }
+
+        // 케이던스 이동을 조언 엔진에 넘긴다 — 엔진이 폼 계산을 중복하지 않는다.
+        engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w,
+                            cadenceShift: .some(shifts.first { $0.metric.key == "cadence" }))
 
         // 최근 3개월 안에 14일 이상 공백이 있으면 추세 판단 불가
         let hasGapInWindow: Bool = {

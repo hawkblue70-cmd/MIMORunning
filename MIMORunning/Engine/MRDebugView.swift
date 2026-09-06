@@ -277,6 +277,7 @@ struct MRDebugView: View {
                                 caller: "DebugView:루프2", raceName: $0.name)
                 }
                 let advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
+                                           races: input.races,
                                            gaps: [], strengthPerWeek: 0,
                                            log: MRAdviceLog(), asOf: Date())
 

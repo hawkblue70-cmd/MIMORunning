@@ -90,6 +90,8 @@ final class MREngineStore: ObservableObject {
     private var storedDob: Date? = nil
     private var storedSex: MRSex = .unknown
     private var storedStrengthPerWeek: Double = 0
+    private var storedFatigue: [MRLongRunFatigue] = []
+    private var storedCadenceShift: MRFormShift? = nil
     private var storedConfirmedMatches: [PersistedRaceMatch] = []
     private var storedSigmaObs: Double = 0
 
@@ -320,7 +322,9 @@ final class MREngineStore: ObservableObject {
         }
         planlessRaces = paired.filter { $0.plan == nil }.map(\.race)
         advice = mrBuildAdvice(runs: fetched, phys: phys, plans: plans,
+                               races: userInput.races,
                                gaps: [], strengthPerWeek: storedStrengthPerWeek,
+                               fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                log: adviceLog, asOf: now)
         // ⚠ record()는 여기서 호출하지 않는다.
         //   조언 카드가 화면에 실제로 그려지는 .onAppear에서 호출해야 한다.
@@ -380,7 +384,9 @@ final class MREngineStore: ObservableObject {
 
         // gaps가 채워졌으니 advice/todayCard 재계산
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
+                               races: userInput.races,
                                gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
+                               fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         let raceDayVisible2 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
@@ -670,14 +676,21 @@ final class MREngineStore: ObservableObject {
         Task { await self.refreshBacktest() }
     }
 
-    // MARK: - 근력 횟수 업데이트 (HealthKit 재읽기 없음)
+    // MARK: - 근력 횟수·롱런 피로·케이던스 이동 업데이트 (HealthKit 재읽기 없음)
 
-    func updateAdvice(strengthPerWeek: Double) {
+    /// - cadenceShift: 바깥 nil = 변경 없음, 안쪽 nil(.some(nil)) = "이동 없음"으로 설정
+    func updateAdvice(strengthPerWeek: Double,
+                      fatigue: [MRLongRunFatigue]? = nil,
+                      cadenceShift: MRFormShift?? = nil) {
         guard case .ready = state else { return }
         storedStrengthPerWeek = strengthPerWeek
+        if let f = fatigue { storedFatigue = f }
+        if let c = cadenceShift { storedCadenceShift = c }
         let now = Date()
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
+                               races: userInput.races,
                                gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
+                               fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         let raceDayVisible3 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
@@ -754,7 +767,9 @@ final class MREngineStore: ObservableObject {
         }
         planlessRaces = paired.filter { $0.plan == nil }.map(\.race)
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
+                               races: userInput.races,
                                gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
+                               fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         raceDayCard = computeRaceDayCard(plans: plans, asOf: now)
