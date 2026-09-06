@@ -514,3 +514,32 @@ func mrWeeksToReach(from start: Double, to target: Double,
     let n = ceil(log(target / start) / log(1 + step))
     return Int(ceil(n * Double(cycle) / Double(cycle - 1)))
 }
+
+// MARK: - 대회 페이스 구간 (롱런 후반)
+//
+// ⚠ "롱런 마지막 15분을 대회 페이스로"는 코칭 관행이다.
+//   Fokkema 2020·Van Hooren 2024 어디에도 없고 통제 연구를 찾지 못했다.
+//   근거가 나오면 바꿀 것.
+// ⚠ 15분은 자료의 예시값. 임의로 정함. 롱런이 60분 미만이면 10분.
+
+func mrRacePaceSegmentMinutes(longRunMin: Double) -> Int {
+    longRunMin < 60 ? 10 : 15
+}
+
+/// 훈련용 대회 페이스 (초/km).
+///
+/// ⚠ 예측 기록 기준이다. 목표 기록이 아니다 — 목표가 예측보다 빠르면
+///   D-day 카드가 경고하는 바로 그 과속 배분이 된다.
+/// ⚠ 기온 보정 전 · 테이퍼 이득 전 값이다. 훈련은 대회 기온에서 하지 않는다.
+func mrTrainingRacePaceSecPerKm(halfEquivMin: Double, distanceM: Double,
+                                weeklyKm: Double, longestKm: Double, finishes: Int) -> Double {
+    let minutes: Double
+    if distanceM >= MRDistance.dF {
+        minutes = halfEquivMin * pow(2.0, bMarathonModel(weeklyKm: weeklyKm,
+                                                          longestKm: longestKm,
+                                                          finishes: finishes).b)
+    } else {
+        minutes = halfEquivMin * pow(distanceM / MRDistance.dH, 1.06)
+    }
+    return minutes * 60.0 / (distanceM / 1000.0)
+}
