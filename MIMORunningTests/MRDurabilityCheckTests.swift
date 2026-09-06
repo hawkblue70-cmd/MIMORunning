@@ -28,7 +28,7 @@ struct MRDurabilityCheckTests {
                          q1Cad: Double = 170, q4Cad: Double = 170,
                          hr: Double? = nil, daysAgo: Int = 1) -> MRLongRunFatigue {
         let d = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date())!
-        return MRLongRunFatigue(id: UUID(), date: Calendar.current.startOfDay(for: d),
+        return MRLongRunFatigue(id: UUID(), start: d,
                                 distanceKm: 16, durationMin: 105,
                                 q1PaceSecPerKm: q1Pace, q4PaceSecPerKm: q4Pace,
                                 q1Cadence: q1Cad, q4Cadence: q4Cad,
@@ -56,7 +56,7 @@ struct MRDurabilityCheckTests {
         // Q1 = km2,3 · Q4 = km11,12
         let paces: [Double] = [500, 400, 400, 400, 400, 400, 400, 400, 400, 400, 420, 420]
         let cads: [Int?]    = [150, 170, 170, 170, 170, 170, 170, 170, 170, 170, 164, 164]
-        let s = try #require(MRDurabilityCheck.summarize(id: UUID(), date: Date(), distanceKm: 12.5,
+        let s = try #require(MRDurabilityCheck.summarize(id: UUID(), start: Date(), distanceKm: 12.5,
                                                           durationMin: 84, splits: splits(paces: paces, cadences: cads, lastPartialM: 500)))
         #expect(abs(s.q1PaceSecPerKm - 400) < 0.01)
         #expect(abs(s.q4PaceSecPerKm - 420) < 0.01)
@@ -67,12 +67,12 @@ struct MRDurabilityCheckTests {
 
     @Test func summaryReturnsNilWhenTooFewSplitsOrLowCoverage() {
         let seven = splits(paces: Array(repeating: 400, count: 7), cadences: Array(repeating: 170, count: 7))
-        #expect(MRDurabilityCheck.summarize(id: UUID(), date: Date(), distanceKm: 7, durationMin: 47, splits: seven) == nil)
-        // 10개 중 케이던스 7개(70%) → 커버리지 미달
+        #expect(MRDurabilityCheck.summarize(id: UUID(), start: Date(), distanceKm: 7, durationMin: 47, splits: seven) == nil)
+        // km1 제거 후 9개 중 케이던스 6개(66.7%) → 커버리지 미달
         var cads: [Int?] = Array(repeating: 170, count: 10)
         cads[2] = nil; cads[5] = nil; cads[8] = nil
         let low = splits(paces: Array(repeating: 400, count: 10), cadences: cads)
-        #expect(MRDurabilityCheck.summarize(id: UUID(), date: Date(), distanceKm: 10, durationMin: 67, splits: low) == nil)
+        #expect(MRDurabilityCheck.summarize(id: UUID(), start: Date(), distanceKm: 10, durationMin: 67, splits: low) == nil)
     }
 
     // MARK: 판정
@@ -138,5 +138,41 @@ struct MRDurabilityCheckTests {
         #expect(v.triggered)
         #expect(abs((v.latestDropPct ?? 0) - 5.0) < 0.1)
         #expect(v.latestPositiveIsToday)
+    }
+
+    @Test func aggregateExcludesEarlyOverpaceUsingRunHistory() {
+        // 최근 8주 이지런 중앙 페이스 420 → ×0.95 = 399. Q1 390이면 초반 과속 → 평가 불가.
+        let cal = Calendar.current
+        let runs = (1...6).map { i in
+            MRWorkout(start: cal.date(byAdding: .day, value: -(i * 7 + 3), to: Date())!,
+                      durationMin: 10 * 420 / 60, distanceKm: 10, hrAvg: nil, hrMax: nil,
+                      tempC: nil, humidity: nil, indoor: false, isInterval: false)
+        }
+        let fs = [fatigue(q1Pace: 390, q4Pace: 395, q1Cad: 170, q4Cad: 160, daysAgo: 2),   // 과속 → nil
+                  fatigue(q1Pace: 420, q4Pace: 420, q1Cad: 170, q4Cad: 163, daysAgo: 9),   // true
+                  fatigue(q1Pace: 420, q4Pace: 420, q1Cad: 170, q4Cad: 163, daysAgo: 16)]  // true
+        let v = MRDurabilityCheck.aggregate(fatigue: fs, runs: runs, maxHR: nil, asOf: Date())
+        #expect(v.evaluated == 2)
+        #expect(v.positive == 2)
+        #expect(v.triggered)
+        #expect(!v.latestPositiveIsToday)
+    }
+
+    @Test func aggregateSameDayTieBreaksByStartTime() {
+        // 같은 날 두 롱런: 늦게 시작한 쪽이 latest
+        let cal = Calendar.current
+        let morning = cal.date(bySettingHour: 7, minute: 0, second: 0, of: Date())!
+        let evening = cal.date(bySettingHour: 18, minute: 0, second: 0, of: Date())!
+        func f(_ s: Date, q4: Double) -> MRLongRunFatigue {
+            MRLongRunFatigue(id: UUID(), start: s, distanceKm: 16, durationMin: 105,
+                             q1PaceSecPerKm: 400, q4PaceSecPerKm: 400,
+                             q1Cadence: 170, q4Cadence: q4, firstHalfAvgHR: nil, cadenceCoverage: 1.0)
+        }
+        // 입력 순서와 무관하게 evening(−5%)이 latest
+        for fs in [[f(morning, q4: 170), f(evening, q4: 161.5)], [f(evening, q4: 161.5), f(morning, q4: 170)]] {
+            let v = MRDurabilityCheck.aggregate(fatigue: fs, runs: [], maxHR: nil, asOf: Date())
+            #expect(abs((v.latestDropPct ?? 0) - 5.0) < 0.1)
+            #expect(v.latestPositiveIsToday)
+        }
     }
 }

@@ -123,7 +123,7 @@ class HealthKitManager {
                                                       durationMin: a.duration / 60,
                                                       longest16wKm: longest16w,
                                                       workoutType: wt) else { return nil }
-            return MRDurabilityCheck.summarize(id: a.id, date: a.date,
+            return MRDurabilityCheck.summarize(id: a.id, start: a.date,
                                                distanceKm: a.distance / 1000,
                                                durationMin: a.duration / 60,
                                                splits: det.splits)
