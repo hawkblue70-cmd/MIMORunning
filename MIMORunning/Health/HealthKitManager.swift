@@ -106,6 +106,30 @@ class HealthKitManager {
         return Double(count) / 4.0
     }
 
+    /// 최근 8주 자격 롱런의 피로 요약. 상세 캐시(메모리 → 디스크)만 읽는다 — HealthKit 재조회 없음.
+    /// 상세 캐시가 없는 롱런은 건너뛴다(사용자가 상세를 연 적 없거나 백필 전).
+    func longRunFatigueSummaries(asOf: Date = Date()) -> [MRLongRunFatigue] {
+        let cal = Calendar.current
+        let cutoff8w  = cal.date(byAdding: .day, value: -56,  to: asOf) ?? asOf
+        let cutoff16w = cal.date(byAdding: .day, value: -112, to: asOf) ?? asOf
+        let runs16w = activities.filter { $0.type == .running && $0.date >= cutoff16w && $0.date <= asOf }
+        let longest16w = runs16w.map { $0.distance / 1000 }.max() ?? 0
+
+        return runs16w.filter { $0.date >= cutoff8w }.compactMap { a in
+            guard let det = detailFromCache(a.id) else { return nil }
+            guard !det.routeCoordinates.isEmpty else { return nil }          // 야외만
+            let wt = cachedWorkoutTypeForStats(for: a.id) ?? det.workoutType
+            guard MRDurabilityCheck.isEligibleLongRun(distanceKm: a.distance / 1000,
+                                                      durationMin: a.duration / 60,
+                                                      longest16wKm: longest16w,
+                                                      workoutType: wt) else { return nil }
+            return MRDurabilityCheck.summarize(id: a.id, date: a.date,
+                                               distanceKm: a.distance / 1000,
+                                               durationMin: a.duration / 60,
+                                               splits: det.splits)
+        }
+    }
+
     enum AuthStatus {
         case notDetermined, authorized, denied
     }
