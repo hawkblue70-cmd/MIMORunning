@@ -28,7 +28,7 @@ enum MRRecovery {
     static let endWindowSec: TimeInterval = 30       // 임의로 정함 — 종료 직전 평균 창
     static let sampleTolSec: TimeInterval = 15       // 임의로 정함 — t±15초 안 샘플의 중앙값
     static let postWindowSec: TimeInterval = 180     // Apple 피트니스와 같은 3분
-    static let minEndHRFracOfMax = 0.70              // 임의로 정함 — 걷기로 마친 러닝 제외
+    static let minEndHRFracOfMax = 0.80              // 임의로 정함 — 존 3 하한 근처. 70%는 194건 중 193건이 통과해 아무것도 거르지 못했다
     static let minEndHRWhenMaxUnknown = 130.0        // 임의로 정함
     static let minObs = 16                           // 임의로 정함 — 회귀 안정성
 
@@ -50,7 +50,7 @@ enum MRRecovery {
         return n % 2 == 0 ? (v[n / 2 - 1] + v[n / 2]) / 2 : v[n / 2]
     }
 
-    /// 표시·집계 자격. 최대심박을 알면 70%, 모르면 130bpm.
+    /// 표시·집계 자격. 최대심박을 알면 80%, 모르면 130bpm.
     static func isEligible(endHR: Double, maxHR: Double?) -> Bool {
         if let m = maxHR, m > 0 { return endHR >= m * minEndHRFracOfMax }
         return endHR >= minEndHRWhenMaxUnknown
@@ -68,26 +68,36 @@ enum MRRecovery {
         let date: Date
         let endHR: Double
         let hrr1: Double
+        /// 워크아웃 기온(°C). 더위에서는 심박이 천천히 내려온다 — 여름/봄 비교가 체력 변화로 읽히는 것을 막는다.
+        var tempC: Double? = nil
     }
 
     /// 폼 모듈과 같은 판정기(mrFormShift)를 쓰기 위한 지표 정의.
     static let metric = MRFormMetric(key: "hrr1", label: "1분 회복", unit: "bpm", higherMeansMoreBounce: false)
 
-    /// HRR1 ~ 1 + 종료심박 (개인별 선형 최소자승). 최근 365일, 16개 이상.
-    /// 종료 심박이 높을수록 HRR1이 커지는 효과를 빼서, 남는 것(잔차)만 시간에 따라 비교한다.
-    static func residuals(obs: [Obs], asOf: Date) -> [MRFormResidual] {
+    /// HRR1 ~ 1 + 종료심박 (+ 기온) — 개인별 선형 최소자승. 최근 365일, 16개 이상.
+    /// 종료 심박이 높을수록, 기온이 낮을수록 HRR1이 커지는 효과를 빼서 남는 것(잔차)만 시간에 따라 비교한다.
+    /// `useTemp`가 true면 기온 있는 관측만 쓴다(없는 러닝은 그 러닝만 제외). 기온 있는 관측이 16개 미만이면 종료심박만으로 돌아간다.
+    static func residuals(obs: [Obs], asOf: Date, useTemp: Bool = true) -> [MRFormResidual] {
         let cal = Calendar.current
         let cutoff = cal.startOfDay(for: asOf)
-        let valid = obs.filter {
+        let inWindow = obs.filter {
             let d = cal.dateComponents([.day], from: $0.date, to: cutoff).day ?? 999
             return d >= 0 && d <= 365
         }
+        let withTemp = inWindow.filter { $0.tempC != nil }
+        let tempModel = useTemp && withTemp.count >= minObs
+        let valid = tempModel ? withTemp : inWindow
         guard valid.count >= minObs else { return [] }
         var X: [[Double]] = [], y: [Double] = []
-        for o in valid { X.append([1.0, o.endHR]); y.append(o.hrr1) }
+        for o in valid {
+            X.append(tempModel ? [1.0, o.endHR, o.tempC ?? 0] : [1.0, o.endHR])
+            y.append(o.hrr1)
+        }
         guard let c = MRLinAlg.lstsq(X: X, y: y) else { return [] }
         return valid.map { o in
-            MRFormResidual(date: cal.startOfDay(for: o.date), value: o.hrr1 - (c[0] + c[1] * o.endHR))
+            let pred = tempModel ? c[0] + c[1] * o.endHR + c[2] * (o.tempC ?? 0) : c[0] + c[1] * o.endHR
+            return MRFormResidual(date: cal.startOfDay(for: o.date), value: o.hrr1 - pred)
         }
     }
 

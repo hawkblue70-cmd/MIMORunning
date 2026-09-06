@@ -1462,12 +1462,17 @@ struct GrowthView: View {
 
         // 운동 후 심박 회복 추세 — 종료 심박을 회귀로 통제한 잔차를 폼과 같은 판정기(MDC)로 본다
         let hist = await manager.fetchRecoveryHistory(from: oneYearAgo)
-        let obs = hist.map { MRRecovery.Obs(date: $0.date, endHR: $0.endHR, hrr1: $0.hrr1) }
+        let obs = hist.map { MRRecovery.Obs(date: $0.date, endHR: $0.endHR, hrr1: $0.hrr1, tempC: $0.tempC) }
         let residuals = MRRecovery.residuals(obs: obs, asOf: Date())
         if let shift = mrFormShift(residuals, metric: MRRecovery.metric, asOf: Date()) {
             #if DEBUG
-            print(String(format: "[회복] 관측 %d · 잔차 Δ%+.1f · MDC %.1f · 연속 %d주 · %@",
-                         obs.count, shift.delta, shift.mdc, shift.weeksConsistent,
+            // 기온 보정 전 Δ를 나란히 — "여름이라 나빠 보이는 것"인지 바로 구분하기 위해
+            let rawShift = mrFormShift(MRRecovery.residuals(obs: obs, asOf: Date(), useTemp: false),
+                                       metric: MRRecovery.metric, asOf: Date())
+            print(String(format: "[회복] 관측 %d(기온 있음 %d) · 잔차 Δ%+.1f (기온 보정 전 %@) · MDC %.1f · 연속 %d주 · %@",
+                         obs.count, obs.filter { $0.tempC != nil }.count, shift.delta,
+                         rawShift.map { String(format: "%+.1f", $0.delta) } ?? "—",
+                         shift.mdc, shift.weeksConsistent,
                          MRRecovery.observation(shift: shift) == nil ? "침묵" : "표시"))
             #endif
             if let o = MRRecovery.observation(shift: shift) { recoveryObservation = o }

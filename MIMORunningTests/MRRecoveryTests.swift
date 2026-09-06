@@ -24,9 +24,9 @@ struct MRRecoveryTests {
         #expect(MRRecovery.hr(at: 120, post: p) == nil)
     }
 
-    @Test func eligibilityUsesSeventyPercentOrFallback() {
-        #expect(MRRecovery.isEligible(endHR: 140, maxHR: 190))     // 133 이상
-        #expect(!MRRecovery.isEligible(endHR: 130, maxHR: 190))
+    @Test func eligibilityUsesEightyPercentOrFallback() {
+        #expect(MRRecovery.isEligible(endHR: 152, maxHR: 190))     // 152 이상
+        #expect(!MRRecovery.isEligible(endHR: 151, maxHR: 190))
         #expect(MRRecovery.isEligible(endHR: 130, maxHR: nil))
         #expect(!MRRecovery.isEligible(endHR: 129, maxHR: nil))
     }
@@ -52,6 +52,27 @@ struct MRRecoveryTests {
         #expect(r.allSatisfy { abs($0.value) < 1e-6 })
         // 16개 미만이면 빈 배열
         #expect(MRRecovery.residuals(obs: Array(obs.prefix(10)), asOf: Date()).isEmpty)
+    }
+
+    @Test func residualsUseTemperatureWhenAvailable() {
+        // hrr1 = 0.5×endHR − 0.4×temp − 20 정확히 → 기온 모델 잔차 0, 기온 무시 모델은 0이 아님
+        let cal = Calendar.current
+        let obs: [MRRecovery.Obs] = (0..<24).map { i in
+            let end = 140.0 + Double(i % 12)
+            let temp = Double((i * 7) % 30)
+            return MRRecovery.Obs(date: cal.date(byAdding: .day, value: -i * 4, to: Date())!,
+                                  endHR: end, hrr1: 0.5 * end - 0.4 * temp - 20, tempC: temp)
+        }
+        let withTemp = MRRecovery.residuals(obs: obs, asOf: Date())
+        #expect(withTemp.count == 24)
+        #expect(withTemp.allSatisfy { abs($0.value) < 1e-6 })
+        let noTemp = MRRecovery.residuals(obs: obs, asOf: Date(), useTemp: false)
+        #expect(noTemp.contains { abs($0.value) > 0.5 })
+        // 기온 있는 관측이 16개 미만이면 종료심박만으로 (기온 없는 러닝도 포함해 24개)
+        let sparse = obs.enumerated().map { i, o in
+            MRRecovery.Obs(date: o.date, endHR: o.endHR, hrr1: o.hrr1, tempC: i < 10 ? o.tempC : nil)
+        }
+        #expect(MRRecovery.residuals(obs: sparse, asOf: Date()).count == 24)
     }
 
     @Test func observationOnlyWhenImproved() {

@@ -2044,6 +2044,7 @@ class HealthKitManager {
         let date: Date
         let endHR: Double
         let hrr1: Double
+        var tempC: Double? = nil   // HKMetadataKeyWeatherTemperature — 회귀의 기온 항
     }
     private struct RecoveryHistoryFile: Codable {
         var points: [RecoveryHistoryPoint]
@@ -2052,7 +2053,7 @@ class HealthKitManager {
     }
     private var recoveryHistoryURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_hrr_history.json")
+            .appendingPathComponent("mimo_hrr_history_v2.json")   // v2: 자격 80% · 기온 필드
     }
 
     /// 최근 12개월 러닝의 (날짜, 종료심박, HRR1). 자격(종료심박 ≥ 최대심박 70%) 통과분만.
@@ -2082,7 +2083,8 @@ class HealthKitManager {
                           MRRecovery.isEligible(endHR: endHR, maxHR: maxHR) else { return nil }
                     let post = await self.fetchPostWorkoutHR(for: w.uuid)
                     guard let r = MRRecovery.compute(endHR: endHR, post: post) else { return nil }
-                    return RecoveryHistoryPoint(date: w.startDate, endHR: endHR, hrr1: r.hrr1)
+                    let temp = (w.metadata?[HKMetadataKeyWeatherTemperature] as? HKQuantity)?.doubleValue(for: .degreeCelsius())
+                    return RecoveryHistoryPoint(date: w.startDate, endHR: endHR, hrr1: r.hrr1, tempC: temp)
                 }
             }
             for await p in group { if let p { points.append(p) } }
