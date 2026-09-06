@@ -8,13 +8,17 @@ struct WorkoutTypeClassifier {
     /// Priority: race (existing confirmed) → plan (WorkoutKit) → easy (Zone2 HR / pace fallback)
     ///           → buildUp → distanceRun → LSD → longRun → tempo → general.
     /// All thresholds are personal-relative — no absolute cutoffs.
+    ///
+    /// 기준선(baseline)은 `baselinePace` / `baselineDistance` 참고 — 직전 4주 **중앙값**.
+    /// `typeOf`: 과거 러닝의 캐시된 유형. 인터벌·대회를 페이스 기준선에서 빼는 데 쓴다. nil이면 제외 없음.
     static func classify(
         activity: Activity,
         history: [Activity],
         splits: [SplitData],
         intervalSegments: [IntervalSegment] = [],
         hrZones: [HRZoneData]? = nil,
-        existingType: WorkoutType? = nil
+        existingType: WorkoutType? = nil,
+        typeOf: ((UUID) -> WorkoutType?)? = nil
     ) -> WorkoutType {
         guard activity.type == .running, activity.distance >= 1000 else { return .general }
         if existingType == .race { return .race }  // 대회 확정 — 재분류 없이 유지
@@ -24,15 +28,70 @@ struct WorkoutTypeClassifier {
                       && $0.id != activity.id
                       && $0.date < activity.date }   // 미래 데이터 오염 방지 — 분류 결과 시점 고정
             .sorted { $0.date > $1.date }
+        let base = Baseline(activity: activity, recentRuns: recentRuns, typeOf: typeOf)
 
-        if isPlanInterval(intervalSegments: intervalSegments)                   { return .interval    }
-        if isEasy(activity: activity, recentRuns: recentRuns, hrZones: hrZones) { return .easy        }
-        if isBuildUp(splits: splits)                                            { return .buildUp     }
-        if isDistanceRun(activity: activity, recentRuns: recentRuns)            { return .distanceRun }
-        if isLSD(activity: activity, recentRuns: recentRuns, splits: splits)    { return .lsd         }
-        if isLongRun(activity: activity, recentRuns: recentRuns)                { return .longRun     }
-        if isTempo(activity: activity, recentRuns: recentRuns, splits: splits)  { return .tempo       }
+        if isPlanInterval(intervalSegments: intervalSegments)              { return .interval    }
+        if isEasy(activity: activity, base: base, hrZones: hrZones)        { return .easy        }
+        if isBuildUp(splits: splits)                                       { return .buildUp     }
+        if isDistanceRun(activity: activity, base: base)                   { return .distanceRun }
+        if isLSD(activity: activity, base: base, splits: splits)           { return .lsd         }
+        if isLongRun(activity: activity, base: base)                       { return .longRun     }
+        if isTempo(activity: activity, base: base, splits: splits)         { return .tempo       }
         return .general
+    }
+
+    // MARK: - Baselines (본인 기준선)
+
+    /// 분류에 쓰는 본인 기준선. 회수 창이 아니라 기간 창, 평균이 아니라 중앙값.
+    struct Baseline {
+        /// 페이스 기준선 (sec/km). nil = 표본 부족.
+        let pace: Double?
+        /// 거리 기준선 (m). nil = 직전 4주 3회 미만 → 12km 절대 폴백.
+        let distance: Double?
+        /// 로그용 — 페이스 기준선 표본 수와 창
+        let paceSampleCount: Int
+        let paceWindowLabel: String
+
+        init(activity: Activity, recentRuns: [Activity], typeOf: ((UUID) -> WorkoutType?)?) {
+            let p = WorkoutTypeClassifier.baselinePace(activity: activity, recentRuns: recentRuns, typeOf: typeOf)
+            pace = p.value; paceSampleCount = p.count; paceWindowLabel = p.window
+            distance = WorkoutTypeClassifier.baselineDistance(activity: activity, recentRuns: recentRuns)
+        }
+    }
+
+    /// 페이스 기준선 — 직전 4주 중앙값(최소 5회). 부족하면 8주, 그래도 부족하면 최근 10회 중 3회 이상(콜드 스타트).
+    /// 인터벌·대회·3km 미만은 제외 — 목적이 다른 러닝이 기준선을 흔들지 않게.
+    static func baselinePace(activity: Activity, recentRuns: [Activity],
+                             typeOf: ((UUID) -> WorkoutType?)?) -> (value: Double?, count: Int, window: String) {
+        let eligible = recentRuns.filter { run in
+            guard run.distance >= 3000, run.paceSecPerKm != nil else { return false }
+            if let t = typeOf?(run.id), t == .interval || t == .race { return false }
+            return true
+        }
+        let cal = Calendar.current
+        for weeks in [4, 8] {
+            let cutoff = cal.date(byAdding: .weekOfYear, value: -weeks, to: activity.date) ?? .distantPast
+            let paces = eligible.filter { $0.date >= cutoff }.compactMap(\.paceSecPerKm)
+            if paces.count >= 5 { return (median(paces), paces.count, "\(weeks)주") }
+        }
+        let paces = eligible.prefix(10).compactMap(\.paceSecPerKm)
+        guard paces.count >= 3 else { return (nil, paces.count, "최근10회") }
+        return (median(paces), paces.count, "최근10회")
+    }
+
+    /// 거리 기준선 — 직전 4주 러닝 거리 중앙값 (3회 이상). 롱런 몇 번이 평균을 끌어올리는 문제를 피한다.
+    static func baselineDistance(activity: Activity, recentRuns: [Activity]) -> Double? {
+        let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
+        let recent = recentRuns.filter { $0.date >= cutoff && $0.date < activity.date }.map(\.distance)
+        guard recent.count >= 3 else { return nil }
+        return median(recent)
+    }
+
+    static func median(_ values: [Double]) -> Double {
+        let s = values.sorted()
+        let n = s.count
+        guard n > 0 else { return 0 }
+        return n % 2 == 0 ? (s[n / 2 - 1] + s[n / 2]) / 2 : s[n / 2]
     }
 
     // MARK: - Sub-checks
@@ -76,25 +135,19 @@ struct WorkoutTypeClassifier {
         return sxy / sxx < 0 && (sxy * sxy) / (sxx * syy) >= 0.40
     }
 
-    /// Long distance + pace near/faster than personal average (race-intent effort).
-    /// Pace must be < personal avg × 1.10 so it's distinctly faster than easy/LSD.
-    private static func isDistanceRun(activity: Activity, recentRuns: [Activity]) -> Bool {
-        guard isLongRun(activity: activity, recentRuns: recentRuns) else { return false }
-        guard let pace = activity.paceSecPerKm else { return false }
-        let recentPaces = recentRuns.prefix(10).compactMap(\.paceSecPerKm)
-        guard recentPaces.count >= 3 else { return false }
-        let avg = recentPaces.reduce(0, +) / Double(recentPaces.count)
-        return pace < avg * 1.10
+    /// Long distance + pace near/faster than personal baseline (race-intent effort).
+    /// Pace must be < baseline × 1.10 so it's distinctly faster than easy/LSD.
+    private static func isDistanceRun(activity: Activity, base: Baseline) -> Bool {
+        guard isLongRun(activity: activity, base: base) else { return false }
+        guard let pace = activity.paceSecPerKm, let med = base.pace else { return false }
+        return pace < med * 1.10
     }
 
-    /// Long distance + very slow pace (≥20% slower than avg) + very even effort (CV ≤ 8%).
-    private static func isLSD(activity: Activity, recentRuns: [Activity], splits: [SplitData]) -> Bool {
-        guard isLongRun(activity: activity, recentRuns: recentRuns) else { return false }
-        guard let pace = activity.paceSecPerKm else { return false }
-        let recentPaces = recentRuns.prefix(10).compactMap(\.paceSecPerKm)
-        guard recentPaces.count >= 3 else { return false }
-        let avg = recentPaces.reduce(0, +) / Double(recentPaces.count)
-        guard pace > avg * 1.20 else { return false }
+    /// Long distance + very slow pace (≥20% slower than baseline) + very even effort (CV ≤ 8%).
+    private static func isLSD(activity: Activity, base: Baseline, splits: [SplitData]) -> Bool {
+        guard isLongRun(activity: activity, base: base) else { return false }
+        guard let pace = activity.paceSecPerKm, let med = base.pace else { return false }
+        guard pace > med * 1.20 else { return false }
         let full = splits.filter { $0.distanceM >= 900 }
         guard full.count >= 3 else { return false }  // 스플릿 부족 → 일반 러닝으로 폴백
         let paces = full.map(\.paceSecPerKm)
@@ -104,44 +157,34 @@ struct WorkoutTypeClassifier {
         return sd / mean <= 0.08
     }
 
-    /// ≥ 8 km AND > 120% of 4-week average (or ≥ 12 km with no history)
-    private static func isLongRun(activity: Activity, recentRuns: [Activity]) -> Bool {
+    /// ≥ 8 km AND > 120% of 4-week median distance (or ≥ 12 km with no history)
+    private static func isLongRun(activity: Activity, base: Baseline) -> Bool {
         guard activity.distance >= 8000 else { return false }
-        let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
-        let recent = recentRuns.filter { $0.date >= cutoff && $0.date < activity.date }.map(\.distance)
-        guard recent.count >= 3 else { return activity.distance >= 12000 }
-        let avg = recent.reduce(0, +) / Double(recent.count)
-        return activity.distance > avg * 1.20
+        guard let med = base.distance else { return activity.distance >= 12000 }
+        return activity.distance > med * 1.20
     }
 
     /// Easy / recovery run.
-    /// Primary: Zone 1+2 time fraction ≥ 65% (from hrZones), guard: pace must not be faster than personal avg.
-    /// Fallback (no hrZones): pace ≥ 15% slower than 10-run average.
-    private static func isEasy(activity: Activity, recentRuns: [Activity], hrZones: [HRZoneData]?) -> Bool {
-        let recentPaces = recentRuns.prefix(10).compactMap(\.paceSecPerKm)
-        let avgPace: Double? = recentPaces.count >= 3
-            ? recentPaces.reduce(0, +) / Double(recentPaces.count) : nil
-
+    /// Primary: Zone 1+2 time fraction ≥ 65% (from hrZones), guard: pace must not be faster than baseline.
+    /// Fallback (no hrZones): pace ≥ 15% slower than baseline.
+    private static func isEasy(activity: Activity, base: Baseline, hrZones: [HRZoneData]?) -> Bool {
         if let zones = hrZones, !zones.isEmpty {
             let zone12 = zones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +)
             guard zone12 >= 0.65 else { return false }
-            // 평균보다 빠른 페이스는 이지런 아님 (보조 조건)
-            if let pace = activity.paceSecPerKm, let avg = avgPace, pace < avg { return false }
+            // 기준선보다 빠른 페이스는 이지런 아님 (보조 조건)
+            if let pace = activity.paceSecPerKm, let med = base.pace, pace < med { return false }
             return true
         }
 
         // hrZones 없을 때: 페이스 기반 폴백
-        guard let pace = activity.paceSecPerKm, let avg = avgPace else { return false }
-        return pace > avg * 1.15
+        guard let pace = activity.paceSecPerKm, let med = base.pace else { return false }
+        return pace > med * 1.15
     }
 
-    /// Faster than average + CV ≤ 7% across splits (uniform effort) + ≥ 4 km
-    private static func isTempo(activity: Activity, recentRuns: [Activity], splits: [SplitData]) -> Bool {
-        guard activity.distance >= 4000, let pace = activity.paceSecPerKm else { return false }
-        let recentPaces = recentRuns.prefix(10).compactMap(\.paceSecPerKm)
-        guard recentPaces.count >= 2 else { return false }
-        let avg = recentPaces.reduce(0, +) / Double(recentPaces.count)
-        guard pace < avg * 0.98 else { return false }
+    /// Faster than baseline + CV ≤ 7% across splits (uniform effort) + ≥ 4 km
+    private static func isTempo(activity: Activity, base: Baseline, splits: [SplitData]) -> Bool {
+        guard activity.distance >= 4000, let pace = activity.paceSecPerKm, let med = base.pace else { return false }
+        guard pace < med * 0.98 else { return false }
 
         let full = splits.filter { $0.distanceM >= 900 }
         guard full.count >= 3 else { return false }  // 스플릿 부족 → 일반 러닝으로 폴백
@@ -161,7 +204,8 @@ struct WorkoutTypeClassifier {
         splits: [SplitData],
         intervalSegments: [IntervalSegment] = [],
         hrZones: [HRZoneData]? = nil,
-        existingType: WorkoutType? = nil
+        existingType: WorkoutType? = nil,
+        typeOf: ((UUID) -> WorkoutType?)? = nil
     ) -> (type: WorkoutType, trace: String) {
         func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60) }
         func cv(_ arr: [Double]) -> Double {
@@ -180,14 +224,16 @@ struct WorkoutTypeClassifier {
         let recentRuns = history
             .filter { $0.type == .running && $0.id != activity.id && $0.date < activity.date }
             .sorted { $0.date > $1.date }
+        let base = Baseline(activity: activity, recentRuns: recentRuns, typeOf: typeOf)
 
         var notes: [String] = []
         let full = splits.filter { $0.distanceM >= 900 }
         let distKm = activity.distance / 1000
         let myPace = activity.paceSecPerKm
-        let recent10Paces = recentRuns.prefix(10).compactMap(\.paceSecPerKm)
-        let avg10: Double? = recent10Paces.count >= 2
-            ? recent10Paces.reduce(0, +) / Double(recent10Paces.count) : nil
+        let med = base.pace
+        let baseStr = med.map { "기준 \(pf($0))(\(base.paceWindowLabel) 중앙값·\(base.paceSampleCount)회)" }
+            ?? "기준없음(\(base.paceWindowLabel) \(base.paceSampleCount)회)"
+        notes.append(baseStr)
 
         // 1. 인터벌
         let workCount = intervalSegments.filter { $0.stepLabel == "운동" }.count
@@ -201,22 +247,22 @@ struct WorkoutTypeClassifier {
             let zone12 = zones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +)
             let pct = Int((zone12 * 100).rounded())
             if zone12 >= 0.65 {
-                if let pace = myPace, let avg = avg10, recent10Paces.count >= 3, pace < avg {
-                    notes.append("이지탈락: Zone2 \(pct)%≥65%지만 페이스 \(pf(pace)) < avg\(pf(avg))")
+                if let pace = myPace, let m = med, pace < m {
+                    notes.append("이지탈락: Zone2 \(pct)%≥65%지만 페이스 \(pf(pace)) < 기준\(pf(m))")
                 } else {
-                    return (.easy, "이지: Zone2 \(pct)% ≥ 65%")
+                    return (.easy, "이지: Zone2 \(pct)% ≥ 65% · \(baseStr)")
                 }
             } else {
                 notes.append("이지탈락: Zone2 \(pct)% < 65%")
             }
-        } else if let pace = myPace, recent10Paces.count >= 3, let avg = avg10 {
-            let thr = avg * 1.15
+        } else if let pace = myPace, let m = med {
+            let thr = m * 1.15
             if pace > thr {
-                return (.easy, "이지(페이스폴백): \(pf(pace)) > avg\(pf(avg))×1.15=\(pf(thr))")
+                return (.easy, "이지(페이스폴백): \(pf(pace)) > 기준\(pf(m))×1.15=\(pf(thr)) · \(baseStr)")
             }
-            notes.append("이지탈락: Zone2없음·페이스 \(pf(pace)) ≤ \(pf(thr))(avg\(pf(avg))×1.15)")
+            notes.append("이지탈락: Zone2없음·페이스 \(pf(pace)) ≤ \(pf(thr))(기준\(pf(m))×1.15)")
         } else {
-            notes.append("이지탈락: Zone2없음·최근 \(recent10Paces.count)건 < 3건")
+            notes.append("이지탈락: Zone2없음·기준선 없음")
         }
 
         // 3. 빌드업 — 3등분 단조 or 선형 회귀 R²≥0.40
@@ -252,81 +298,78 @@ struct WorkoutTypeClassifier {
             notes.append("빌드업탈락: splits \(full.count) < 4")
         }
 
-        // 롱런 여부 (4·5·6 공용)
-        let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
-        let recent4wDist = recentRuns.filter { $0.date >= cutoff }.map(\.distance)
-        let avg4wKm: Double? = recent4wDist.count >= 3
-            ? recent4wDist.reduce(0, +) / Double(recent4wDist.count) / 1000 : nil
+        // 롱런 여부 (4·5·6 공용) — 4주 거리 중앙값 × 1.20
+        let medKm = base.distance.map { $0 / 1000 }
         let isLong: Bool = {
             guard activity.distance >= 8000 else { return false }
-            if let avg = avg4wKm { return activity.distance > avg * 1000 * 1.20 }
+            if let m = base.distance { return activity.distance > m * 1.20 }
             return activity.distance >= 12000
         }()
         if !isLong {
             if activity.distance < 8000 {
                 notes.append("롱런탈락: \(String(format: "%.1f", distKm))km < 8km")
-            } else if let avg = avg4wKm {
-                notes.append("롱런탈락: \(String(format: "%.1f", distKm))km ≤ \(String(format: "%.1f", avg))km × 1.20 = \(String(format: "%.1f", avg * 1.20))km")
+            } else if let m = medKm {
+                notes.append("롱런탈락: \(String(format: "%.1f", distKm))km ≤ 4주중앙 \(String(format: "%.1f", m))km × 1.20 = \(String(format: "%.1f", m * 1.20))km")
             } else {
                 notes.append("롱런탈락: \(String(format: "%.1f", distKm))km < 12km(히스토리없음)")
             }
         }
 
         // 4. 거리주
-        if isLong, let pace = myPace, recent10Paces.count >= 3, let avg = avg10 {
-            let thr = avg * 1.10
+        if isLong, let pace = myPace, let m = med {
+            let thr = m * 1.10
             if pace < thr {
-                return (.distanceRun, "거리주: \(pf(pace)) < avg\(pf(avg))×1.10=\(pf(thr))")
+                return (.distanceRun, "거리주: \(pf(pace)) < 기준\(pf(m))×1.10=\(pf(thr)) · \(baseStr)")
             }
-            notes.append("거리주탈락: \(pf(pace)) ≥ \(pf(thr))(avg\(pf(avg))×1.10)")
+            notes.append("거리주탈락: \(pf(pace)) ≥ \(pf(thr))(기준\(pf(m))×1.10)")
         } else if isLong {
-            notes.append("거리주탈락: 최근 \(recent10Paces.count)건 < 3건")
+            notes.append("거리주탈락: 기준선 없음")
         }
 
         // 5. LSD
-        if isLong, let pace = myPace, recent10Paces.count >= 3, let avg = avg10 {
-            let thr = avg * 1.20
+        if isLong, let pace = myPace, let m = med {
+            let thr = m * 1.20
             if pace > thr {
                 if full.count >= 3 {
                     let c = cv(full.map(\.paceSecPerKm))
                     if c <= 8 {
-                        return (.lsd, "LSD: \(pf(pace)) > avg\(pf(avg))×1.20=\(pf(thr)), CV\(String(format: "%.1f", c))%")
+                        return (.lsd, "LSD: \(pf(pace)) > 기준\(pf(m))×1.20=\(pf(thr)), CV\(String(format: "%.1f", c))%")
                     }
                     notes.append("LSD탈락: pace✓ / CV \(String(format: "%.1f", c))% > 8%")
                 } else {
                     notes.append("LSD탈락: splits \(full.count) < 3(CV불가)")
                 }
             } else {
-                notes.append("LSD탈락: \(pf(pace)) ≤ \(pf(thr))(avg\(pf(avg))×1.20)")
+                notes.append("LSD탈락: \(pf(pace)) ≤ \(pf(thr))(기준\(pf(m))×1.20)")
             }
         }
 
         // 6. 롱런
         if isLong {
-            let pctStr = avg4wKm.map { String(format: "%.0f%%", distKm / $0 * 100) } ?? "히스토리없음"
-            return (.longRun, "롱런: \(String(format: "%.1f", distKm))km \(pctStr) vs 4주평균")
+            let pctStr = medKm.map { String(format: "%.0f%%", distKm / $0 * 100) } ?? "히스토리없음"
+            return (.longRun, "롱런: \(String(format: "%.1f", distKm))km \(pctStr) vs 4주중앙")
         }
 
         // 7. 템포런
-        if activity.distance >= 4000, let pace = myPace, recent10Paces.count >= 2, let avg = avg10 {
-            let thr = avg * 0.98
+        if activity.distance >= 4000, let pace = myPace, let m = med {
+            let thr = m * 0.98
             if pace < thr {
                 if full.count >= 3 {
                     let c = cv(full.map(\.paceSecPerKm))
                     if c <= 7 {
-                        return (.tempo, "템포: \(pf(pace)) < avg\(pf(avg))×0.98=\(pf(thr)), CV\(String(format: "%.1f", c))%")
+                        return (.tempo, "템포: \(pf(pace)) < 기준\(pf(m))×0.98=\(pf(thr)), CV\(String(format: "%.1f", c))% · \(baseStr)")
                     }
                     notes.append("템포탈락: pace✓\(pf(pace))<\(pf(thr)) / CV \(String(format: "%.1f", c))% > 7%")
                 } else {
                     notes.append("템포탈락: pace✓ / splits \(full.count) < 3(CV불가)")
                 }
             } else {
-                notes.append("템포탈락: \(pf(pace)) ≥ 임계\(pf(thr))(avg\(pf(avg))×0.98)")
+                notes.append("템포탈락: \(pf(pace)) ≥ 임계\(pf(thr))(기준\(pf(m))×0.98)")
             }
         } else if activity.distance < 4000 {
             notes.append("템포탈락: \(String(format: "%.1f", distKm))km < 4km")
         } else {
-            notes.append("템포탈락: 최근 \(recent10Paces.count)건 < 2건")
+            notes.append("템포탈락: 기준선 없음")
         }
 
         return (.general, notes.joined(separator: " | "))

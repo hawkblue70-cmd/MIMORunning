@@ -593,7 +593,7 @@ class HealthKitManager {
 
     // MARK: - Detail (on demand)
 
-    private static let workoutTypeCacheKey  = "mimo.workoutTypeCache.v8"  // v8: RHR min→중앙값 전환 → Zone 경계 변동에 따른 전량 재분류
+    private static let workoutTypeCacheKey  = "mimo.workoutTypeCache.v9"  // v9: 분류 기준선 평균→중앙값·기간 창·인터벌/대회/3km미만 제외 → 전량 재분류 (v8: RHR 중앙값 전환)
     private static let workoutTypeReadyKey  = workoutTypeCacheKey + ".ready"  // true = 8주 스플릿 포함 재분류 완료
     private static let formCacheKey         = "mimo.formCache.v1"
     /// 캐시 버전과 무관하게 영속 — 대회 확정 ID는 여기에도 함께 저장해 버전 교체 후에도 baseline에서 제외 보장
@@ -834,7 +834,8 @@ class HealthKitManager {
                 let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
                 let wt = WorkoutTypeClassifier.classify(
                     activity: act, history: hist,
-                    splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify
+                    splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
+                    typeOf: workoutTypeLookup()
                 )
                 persistWorkoutType(wt, hasSplits: !actSplits.isEmpty, for: act.id)
                 onDemandClassifiedCount += 1
@@ -924,6 +925,19 @@ class HealthKitManager {
         return nil
     }
 
+    /// 분류기용 유형 조회 클로저 — UserDefaults를 한 번만 읽어 캡처. 기준선 계산이 러닝 1건당 수십 번 호출하므로
+    /// `cachedWorkoutTypeForStats`를 그대로 넘기지 않는다. 우선순위는 그 함수와 동일.
+    private func workoutTypeLookup() -> (UUID) -> WorkoutType? {
+        let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
+        let details = detailCache
+        return { [self] id in
+            if let raw = dict[id.uuidString], let e = parseWorkoutTypeEntry(raw), e.hasSplits { return e.type }
+            if let d = details[id] { return d.workoutType }
+            if let raw = dict[id.uuidString], let e = parseWorkoutTypeEntry(raw) { return e.type }
+            return nil
+        }
+    }
+
     /// hasSplits=false 로 저장된 엔트리는 잠정 분류 — 배지를 흐리게 표시.
     /// 상세 진입 후 스플릿 포함 재분류 시 false 로 바뀌어 확정됨.
     func isProvisionalWorkoutType(for id: UUID) -> Bool {
@@ -954,11 +968,12 @@ class HealthKitManager {
         let allRuns = activities.filter { $0.type == .running && $0.date >= cutoff }
         let toProcess: [Activity]
         if forceReclassify {
-            // hasSplits=false(잠정) 및 nil 모두 대상
+            // hasSplits=false(잠정) 및 nil 모두 대상.
+            // 오래된 것부터 — 페이스 기준선이 과거 러닝의 유형(인터벌·대회 제외)을 참조하므로 먼저 확정돼 있어야 한다.
             toProcess = allRuns.filter { act in
                 guard let raw = dict[act.id.uuidString] else { return true }
                 return parseWorkoutTypeEntry(raw)?.hasSplits == false
-            }.sorted { $0.date > $1.date }
+            }.sorted { $0.date < $1.date }
         } else {
             // 미분류(nil)와 잠정(hasSplits=false) 모두 대상 — 8주 창은 항상 확정으로 수렴
             toProcess = allRuns.filter { act in
@@ -1058,17 +1073,18 @@ class HealthKitManager {
                 let zones4Classify: [HRZoneData]? = actHRZones.isEmpty ? nil : actHRZones
                 let cachedEntry = (UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey)
                     as? [String: String] ?? [:])[act.id.uuidString].flatMap { parseWorkoutTypeEntry($0) }
+                let typeOf = workoutTypeLookup()
                 #if DEBUG
                 let (type, trace) = WorkoutTypeClassifier.classifyWithTrace(
                     activity: act, history: allRunHistory,
                     splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
-                    existingType: cachedEntry?.type
+                    existingType: cachedEntry?.type, typeOf: typeOf
                 )
                 #else
                 let type = WorkoutTypeClassifier.classify(
                     activity: act, history: allRunHistory,
                     splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
-                    existingType: cachedEntry?.type
+                    existingType: cachedEntry?.type, typeOf: typeOf
                 )
                 #endif
                 persistWorkoutType(type, hasSplits: !actSplits.isEmpty, for: act.id)
@@ -1173,7 +1189,7 @@ class HealthKitManager {
                 activity: act,
                 history: historyBefore(date: act.date, in: allRunHistory),
                 splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
-                existingType: backfillCached?.type
+                existingType: backfillCached?.type, typeOf: workoutTypeLookup()
             )
             persistWorkoutType(type, hasSplits: !actSplits.isEmpty, for: act.id)
             await Task.yield()
@@ -1357,7 +1373,8 @@ class HealthKitManager {
                 let hist = historyBefore(date: act.date, in: sortedRunHistory)
                 let type = WorkoutTypeClassifier.classify(
                     activity: act, history: hist,
-                    splits: disk.splits, intervalSegments: disk.intervalSegments, hrZones: zones4Classify
+                    splits: disk.splits, intervalSegments: disk.intervalSegments, hrZones: zones4Classify,
+                    typeOf: workoutTypeLookup()
                 )
                 disk.workoutType = type
                 #if DEBUG
@@ -1544,7 +1561,7 @@ class HealthKitManager {
                 let (wt, trace) = WorkoutTypeClassifier.classifyWithTrace(
                     activity: activity, history: activities,
                     splits: splits, intervalSegments: intervals, hrZones: zones,
-                    existingType: hkCached?.type)
+                    existingType: hkCached?.type, typeOf: workoutTypeLookup())
                 let z2dbg = zones.isEmpty ? "hrZones없음"
                     : "Zone2 \(Int((zones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +) * 100).rounded()))%"
                 let dfdbg = DateFormatter(); dfdbg.dateFormat = "M/d"
@@ -1553,7 +1570,8 @@ class HealthKitManager {
                 #else
                 return WorkoutTypeClassifier.classify(activity: activity, history: activities,
                                                       splits: splits, intervalSegments: intervals,
-                                                      hrZones: zones, existingType: hkCached?.type)
+                                                      hrZones: zones, existingType: hkCached?.type,
+                                                      typeOf: workoutTypeLookup())
                 #endif
             }()
             return ActivityDetail(
