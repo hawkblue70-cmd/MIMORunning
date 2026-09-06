@@ -90,6 +90,14 @@ struct MRRacePlan {
 ///   왔고 22~28 전이는 절단점 불확실성 때문에 둔 것이다.
 ///   Doherty 2020은 32km 문턱을 쓰지만 코호트 평균 수준이라
 ///   개인 지수 조정에는 이식하지 않았다.
+///
+/// · 하프 목표 롱런 21km — Fokkema 2020 (Scand J Med Sci Sports 30(9):1692–1704,
+///   하프군 n=556): 최장 롱런 >21km β −3.87분 (95% CI −6.31~−1.44),
+///   주간 >32km β −4.19분 (−6.52~−1.85). 기준군 15–21km · 20–32km/wk.
+///   ⚠ 이전 기록 미보정 관찰연구 — 빠른 러너가 원래 더 뛴다는 교란이 남아 있다.
+///   ⚠ "21km 이상 = 12~15분"은 이 논문에 없다. 그건 풀의 <25km +13.4분이다.
+///
+/// · 롱런 후반 대회 페이스 구간 — 코칭 관행. 통제 연구 없음. mrRacePaceSegmentMinutes 참조.
 func mrBuildPlan(raceDate: Date,
                  distanceM: Double,
                  today: Date,
@@ -341,10 +349,11 @@ func mrBuildPlan(raceDate: Date,
                 peakLong = max(peakLong, lr)
                 newMax = lr > longNow + 0.5
                 let atLongRunCap = !newMax && lr >= p.targetLongKm - 0.1
-                // 풀마라톤 후반(75%~) → "대회 페이스" (상한 도달 여부와 무관)
+                // 하프 이상 후반(75%~) → "대회 페이스" (상한 도달 여부와 무관)
+                //   5K·10K 제외 — 근거(Fokkema 2020)가 하프·풀에 한정된다.
                 // 롱런이 상한에 닿아 더 이상 안 늘어난다 → "유지"
                 // 아직 증가 중 → "늘리기"
-                if distanceM >= MRDistance.dF && Double(i) > Double(buildWeeks) * 0.75 {
+                if distanceM >= MRDistance.dH && Double(i) > Double(buildWeeks) * 0.75 {
                     phase = "대회 페이스"
                 } else if atLongRunCap {
                     phase = "유지"
@@ -406,6 +415,19 @@ func mrBuildPlan(raceDate: Date,
         if phase == "테이퍼" {
             breakdown = String(format: L.s("롱런 %.0fkm + 짧게 %d회 · 강도는 그대로",
                                            "Long run %.0fkm + Short %dx · Keep the intensity"), lrDisplay, others)
+        }
+        if phase == "대회 페이스" {
+            // ⚠ 페이스는 기온·테이퍼 보정 전 예측값. 훈련은 대회 기온에서 하지 않는다.
+            let racePace = mrTrainingRacePaceSecPerKm(
+                halfEquivMin: halfEquivMin, distanceM: distanceM,
+                weeklyKm: projVol, longestKm: peakLong, finishes: profile.marathonFinishes)
+            let seg = mrRacePaceSegmentMinutes(longRunMin: mins)
+            let paceStr = mrFormatPace(racePace) + "/km"
+            breakdown = each >= 1.5
+                ? L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(eachStr) × \(others)회",
+                      "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(eachStr) × \(others)x")
+                : L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(others)회",
+                      "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(others)x")
         }
         // 12개월 최대 주간거리를 처음 초과하는 주를 표시 — 경고가 아니라 사실 전달
         var isVR = false

@@ -25,4 +25,49 @@ struct MRRacePlannerRacePaceTests {
                                            weeklyKm: 50, longestKm: 28, finishes: 1)
         #expect(abs(p - expected) < 0.01)
     }
+
+    private func makeProfile() -> MRProfile {
+        var p = MRProfile()
+        p.weeklyKm4w = 30; p.longestRun16wKm = 14
+        p.maxWeeklyKm52w = 45; p.runsPerWeek = 4; p.marathonFinishes = 0
+        return p
+    }
+
+    private func buildPlan(distanceM: Double, weeks: Int = 20) -> MRRacePlan? {
+        let today = Date()
+        let race = Calendar.current.date(byAdding: .day, value: 7 * weeks, to: today)!
+        return mrBuildPlan(raceDate: race, distanceM: distanceM, today: today,
+                           profile: makeProfile(), halfEquivMin: 110,
+                           easyPaceSecPerKm: 400, heat: MRHeatModel(), raceTempC: 15,
+                           runsPerWeek: 4)
+    }
+
+    @Test func halfPlanGetsRacePaceWeeksWithSegmentText() throws {
+        let plan = try #require(buildPlan(distanceM: MRDistance.dH))
+        let rp = plan.weeks.filter { $0.phase == "대회 페이스" }
+        #expect(!rp.isEmpty)
+        // 문구에 구간 길이(15)와 페이스(/km)가 들어간다. 언어 무관 토큰만 검사.
+        #expect(rp.allSatisfy { $0.breakdown.contains("15") && $0.breakdown.contains("/km") })
+        // 회복·테이퍼 주에는 구간 문구가 없다
+        let rest = plan.weeks.filter { $0.phase == "회복" || $0.phase == "테이퍼" }
+        #expect(rest.allSatisfy { !$0.breakdown.contains("/km") })
+    }
+
+    @Test func tenKPlanHasNoRacePaceWeeks() throws {
+        let plan = try #require(buildPlan(distanceM: MRDistance.d10))
+        #expect(plan.weeks.allSatisfy { $0.phase != "대회 페이스" })
+    }
+
+    @Test func fullPlanRacePaceWeeksAlsoGetSegmentText() throws {
+        var p = makeProfile()
+        p.weeklyKm4w = 45; p.longestRun16wKm = 22; p.maxWeeklyKm52w = 60
+        let today = Date()
+        let race = Calendar.current.date(byAdding: .day, value: 7 * 24, to: today)!
+        let plan = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.dF, today: today,
+                                            profile: p, halfEquivMin: 110, easyPaceSecPerKm: 400,
+                                            heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4))
+        let rp = plan.weeks.filter { $0.phase == "대회 페이스" }
+        #expect(!rp.isEmpty)
+        #expect(rp.allSatisfy { $0.breakdown.contains("/km") })
+    }
 }

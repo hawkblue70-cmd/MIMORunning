@@ -11,8 +11,9 @@ import Foundation
 ///       더위 모델 심박 공변량 제거, 마라톤 지수 v3(롱런 계단+Tanda),
 ///       드리프트 세션 중심화, 테이퍼 2주 지수,
 ///       인터벌 판정 앱 기존 로직 통일, 폼 문구 개편
+///   3 — 하프 대회 페이스 단계 + 롱런 후반 구간 문구
 enum MRModelVersion {
-    static let current = 2
+    static let current = 3
     static var prefix: String { "m\(current)_" }
 
     // ★ prefix 를 붙이면 안 되는 것 — 모델과 무관한 원본 또는 사용자 이력

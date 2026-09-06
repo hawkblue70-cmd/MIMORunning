@@ -21,6 +21,8 @@ private func localizedBreakdown(_ s: String) -> String {
         .replacingOccurrences(of: "이지", with: "Easy")
         .replacingOccurrences(of: "짧게", with: "Short")
         .replacingOccurrences(of: "강도는 그대로", with: "Keep the intensity")
+        .replacingOccurrences(of: "마지막 ", with: "last ")
+        .replacingOccurrences(of: "분은 ", with: " min at ")
         .replacingOccurrences(of: "회", with: "x")
         .replacingOccurrences(of: "× ", with: "× ")   // keep spacing
 }
