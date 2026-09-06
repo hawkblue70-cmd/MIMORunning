@@ -299,6 +299,7 @@ extension ActivityDetail: Codable {
 
 enum TrendMetric: String, CaseIterable, Identifiable {
     case cadence, power, groundContactTime, strideLength, verticalOscillation, vo2Max
+    case hrRecovery1   // 운동 후 1분 심박 회복 (bpm) — MRRecovery
     case bodyMass, bodyFatPercentage
 
     var id: String { rawValue }
@@ -312,6 +313,7 @@ enum TrendMetric: String, CaseIterable, Identifiable {
         case .strideLength:        L.s("보폭",         "Stride Length")
         case .verticalOscillation: L.s("수직 진폭",   "Vert. Osc.")
         case .vo2Max:              L.s("유산소 피트니스", "Cardio Fitness")
+        case .hrRecovery1:         L.s("1분 회복",     "HR Recovery")
         case .bodyMass:            L.s("체중",         "Body Weight")
         case .bodyFatPercentage:   L.s("체지방률",     "Body Fat")
         }
@@ -325,6 +327,7 @@ enum TrendMetric: String, CaseIterable, Identifiable {
         case .strideLength:        "m"
         case .verticalOscillation: "cm"
         case .vo2Max:              "mL/kg·min"
+        case .hrRecovery1:         "bpm"
         case .bodyMass:            "kg"
         case .bodyFatPercentage:   "%"
         }
@@ -342,6 +345,7 @@ enum TrendMetric: String, CaseIterable, Identifiable {
         case .strideLength:        Theme.strideLength
         case .verticalOscillation: Theme.verticalOsc
         case .vo2Max:              Theme.elevation
+        case .hrRecovery1:         Theme.heartRate
         case .bodyMass:            Color(hex: "8A8A92")
         case .bodyFatPercentage:   Color(hex: "8A8A92")
         }
@@ -349,7 +353,7 @@ enum TrendMetric: String, CaseIterable, Identifiable {
 
     func formattedValue(_ val: Double, usePounds: Bool = false) -> String {
         switch self {
-        case .cadence, .power, .groundContactTime:
+        case .cadence, .power, .groundContactTime, .hrRecovery1:
             return "\(Int(val.rounded())) \(unit)"
         case .strideLength:
             return String(format: "%.2f \(unit)", val)

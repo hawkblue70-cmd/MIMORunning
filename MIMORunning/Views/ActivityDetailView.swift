@@ -75,6 +75,9 @@ struct ActivityDetailView: View {
     @State private var activePanel: DetailPanel = .combined
     @State private var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var hrFetchDone = false
+    /// 운동 후 180초 심박 (종료 기준 오프셋) · 회복 결과. 자격 미달·샘플 없음이면 nil → 섹션 미표시.
+    @State private var postHR: [MRRecoveryPoint] = []
+    @State private var recoveryResult: MRRecoveryResult? = nil
     /// 비동기 computeHRZonesForDate 결과 전용 상태. detail?.hrZones보다 우선.
     @State private var displayZones: [HRZoneData] = []
     @State private var isComputingZones = false
@@ -103,6 +106,20 @@ struct ActivityDetailView: View {
     private var level: LevelBucket { manager.userLevel.bucket }
 
     /// displayZones(비동기 계산) 우선, 없으면 detail.hrZones, 최후 동기 폴백.
+    /// 운동 후 심박 회복 로드 — 종료 심박이 자격(최대심박 70%)을 넘고 60초 샘플이 있을 때만 결과가 생긴다.
+    private func loadRecovery() async {
+        guard recoveryResult == nil,
+              let endHR = MRRecovery.endHR(series: hrSamples, duration: activity.duration),
+              MRRecovery.isEligible(endHR: endHR, maxHR: manager.estimatedMaxHR.map(Double.init)) else { return }
+        let post = await manager.fetchPostWorkoutHR(for: activity.id)
+        postHR = post
+        recoveryResult = MRRecovery.compute(endHR: endHR, post: post)
+        #if DEBUG
+        print(String(format: "[회복] 종료심박 %.0f · 종료 후 샘플 %d개 · HRR1 %@",
+                     endHR, post.count, recoveryResult.map { String(format: "%.0f", $0.hrr1) } ?? "없음(60초 샘플 없음)"))
+        #endif
+    }
+
     private var effectiveHRZones: [HRZoneData] {
         if !displayZones.isEmpty { return displayZones }
         let zones = detail?.hrZones ?? []
@@ -383,6 +400,7 @@ struct ActivityDetailView: View {
                 Task {
                     hrSamples = await manager.fetchHRTimeSeries(for: activity.id)
                     hrFetchDone = true
+                    await loadRecovery()
                     // provisional 재조회로 hrSamples가 갱신됐을 수 있음 → displayZones 재계산
                     if displayZones.isEmpty || (detail?.hrZones ?? []).isEmpty {
                         let computed = await manager.computeHRZonesForDate(activity.date, samples: hrSamples)
@@ -696,6 +714,7 @@ struct ActivityDetailView: View {
         case .strideLength:        return det.avgStrideLength
         case .verticalOscillation: return det.avgVerticalOscillation
         case .vo2Max:              return det.vo2Max
+        case .hrRecovery1:         return recoveryResult?.hrr1
         case .bodyMass, .bodyFatPercentage: return nil
         }
     }
@@ -987,7 +1006,12 @@ struct ActivityDetailView: View {
             } else {
                 let minExpected = max(Int(activity.duration / 60), 1)
                 if hrSamples.count >= minExpected {
-                    HRSeriesPanelChart(samples: hrSamples, zones: effectiveHRZones, workoutDuration: activity.duration)
+                    VStack(spacing: 10) {
+                        HRSeriesPanelChart(samples: hrSamples, zones: effectiveHRZones, workoutDuration: activity.duration)
+                        if let r = recoveryResult {
+                            HRRecoveryPanelChart(points: postHR, result: r)
+                        }
+                    }
                 } else {
                     hrSeriesSparseView
                 }
@@ -3817,6 +3841,106 @@ struct SplitsPanelChart: View {
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(isFastest ? Self.panelGold : .white)
                 .frame(width: 40, alignment: .trailing)
+        }
+    }
+}
+
+// MARK: - 운동 후 심박수 (회복)
+
+/// 종료 후 3분 심박 — 10초 버킷 min–max 막대, 1분·2분 회복량 라벨. Apple 피트니스의 "운동 후 심박수"와 같은 구도.
+struct HRRecoveryPanelChart: View {
+    let points: [MRRecoveryPoint]
+    let result: MRRecoveryResult
+
+    private struct Bucket: Identifiable {
+        let id: Int
+        let midSec: Double
+        let min: Double
+        let max: Double
+    }
+
+    private var buckets: [Bucket] {
+        let size = 10.0
+        let n = Int(MRRecovery.postWindowSec / size)
+        return (0..<n).compactMap { i in
+            let lo = Double(i) * size, hi = lo + size
+            let v = points.filter { $0.offset >= lo && $0.offset < hi }.map { Double($0.bpm) }
+            guard !v.isEmpty else { return nil }
+            return Bucket(id: i, midSec: (lo + hi) / 2, min: v.min()!, max: v.max()!)
+        }
+    }
+
+    var body: some View {
+        let L = AppLanguage.shared
+        let lo = max((buckets.map(\.min).min() ?? 60) - 8, 40)
+        let hi = max(buckets.map(\.max).max() ?? 200, result.endHR) + 4
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(L.s("운동 후 심박수", "Post-Workout HR"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text(L.isEnglish
+                     ? String(format: "−%.0f bpm in 1 min", result.hrr1)
+                     : String(format: "1분 만에 −%.0f bpm", result.hrr1))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.heartRate)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            Chart {
+                ForEach(buckets) { b in
+                    BarMark(x: .value("초", b.midSec),
+                            yStart: .value("최저", b.min),
+                            yEnd: .value("최고", b.max),
+                            width: .fixed(3))
+                    .foregroundStyle(Theme.heartRate.opacity(0.85))
+                }
+                RuleMark(x: .value("1분", 60))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .foregroundStyle(Color.white.opacity(0.25))
+                    .annotation(position: .top, alignment: .leading) {
+                        Text(String(format: "1%@ −%.0f", L.isEnglish ? "m" : "분", result.hrr1))
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                if let h2 = result.hrr2 {
+                    RuleMark(x: .value("2분", 120))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .foregroundStyle(Color.white.opacity(0.25))
+                        .annotation(position: .top, alignment: .leading) {
+                            Text(String(format: "2%@ −%.0f", L.isEnglish ? "m" : "분", h2))
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                }
+            }
+            .chartYScale(domain: lo...hi)
+            .chartXScale(domain: 0...MRRecovery.postWindowSec)
+            .chartXAxis {
+                AxisMarks(values: [0, 60, 120, 180]) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
+                    AxisValueLabel {
+                        if let s = value.as(Double.self) {
+                            Text(s == 0 ? (L.isEnglish ? "end" : "종료")
+                                        : String(format: L.isEnglish ? "%.0fm" : "%.0f분", s / 60))
+                                .font(.caption2)
+                                .foregroundStyle(Color.white.opacity(0.6))
+                        }
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks(values: .automatic(desiredCount: 3)) { val in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
+                    AxisValueLabel {
+                        if let v = val.as(Double.self) {
+                            Text("\(Int(v))").font(.caption2).foregroundStyle(Color.white.opacity(0.6))
+                        }
+                    }
+                }
+            }
+            .frame(height: 110)
+            .padding(.horizontal, 12)
         }
     }
 }

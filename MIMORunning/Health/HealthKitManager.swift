@@ -44,6 +44,8 @@ class HealthKitManager {
     private let store = HKHealthStore()
     @ObservationIgnored private var workoutCache: [UUID: HKWorkout] = [:]
     @ObservationIgnored private var cachedMHR: Int? = nil
+    /// 추정 최대심박(208 − 0.7×나이) — 회복 표시 자격 판정용. 생년월일 없으면 nil.
+    var estimatedMaxHR: Int? { cachedMHR }
     @ObservationIgnored private var isFetchInProgress = false
     @ObservationIgnored private var pausedIntervalsCache: [UUID: [DateInterval]] = [:]
     @ObservationIgnored private var detailCache: [UUID: ActivityDetail] = [:] {
@@ -1962,6 +1964,138 @@ class HealthKitManager {
         }
     }
 
+    // MARK: - 운동 후 심박 (회복)
+
+    private func hrRecoveryCacheURL(_ id: UUID) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_hrr_\(id.uuidString).json")
+    }
+
+    /// 종료 후 180초 심박 샘플 (offset = 종료 기준 초). 디스크 캐시 → HealthKit.
+    /// ⚠ 종료 1시간 이내 워크아웃은 워치 동기화가 안 끝났을 수 있어 캐시하지 않는다.
+    func fetchPostWorkoutHR(for workoutID: UUID) async -> [MRRecoveryPoint] {
+        let url = hrRecoveryCacheURL(workoutID)
+        if let data = try? Data(contentsOf: url),
+           let pts = try? JSONDecoder().decode([MRRecoveryPoint].self, from: data) {
+            return pts
+        }
+        if workoutCache[workoutID] == nil { await fetchSingleWorkout(id: workoutID) }
+        guard let w = workoutCache[workoutID] else { return [] }
+        let pts = await queryPostWorkoutHR(workout: w)
+        if Date().timeIntervalSince(w.endDate) > 3600, let data = try? JSONEncoder().encode(pts) {
+            try? data.write(to: url, options: .atomic)
+        }
+        return pts
+    }
+
+    /// [종료, 종료+180초] 심박 — 개별 샘플과 시리즈 컨테이너 둘 다 읽고 시각으로 중복 제거 (queryHRSamples와 같은 이유).
+    private func queryPostWorkoutHR(workout w: HKWorkout) async -> [MRRecoveryPoint] {
+        let unit = Self.bpmUnit
+        let end = w.endDate
+        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.heartRate),
+            predicate: HKQuery.predicateForSamples(withStart: end, end: end.addingTimeInterval(MRRecovery.postWindowSec), options: [])
+        )
+        var seen = Set<Date>()
+        var out: [MRRecoveryPoint] = []
+        let sampleDesc = HKSampleQueryDescriptor(predicates: [pred],
+                                                 sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)])
+        for s in (try? await sampleDesc.result(for: store)) ?? [] where seen.insert(s.startDate).inserted {
+            out.append(MRRecoveryPoint(offset: s.startDate.timeIntervalSince(end),
+                                       bpm: Int(s.quantity.doubleValue(for: unit).rounded())))
+        }
+        let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: pred, options: [])
+        do {
+            for try await e in seriesDesc.results(for: store) {
+                let st = e.dateInterval.start
+                guard seen.insert(st).inserted else { continue }
+                out.append(MRRecoveryPoint(offset: st.timeIntervalSince(end),
+                                           bpm: Int(e.quantity.doubleValue(for: unit).rounded())))
+            }
+        } catch {}
+        return out.filter { $0.offset >= 0 }.sorted { $0.offset < $1.offset }
+    }
+
+    /// 워크아웃 마지막 30초 평균 심박 — 히스토리 빌드용 소형 쿼리 (전체 시계열을 읽지 않는다).
+    private func queryEndHR(workout w: HKWorkout) async -> Double? {
+        let unit = Self.bpmUnit
+        let end = w.endDate
+        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(.heartRate),
+            predicate: HKQuery.predicateForSamples(withStart: end.addingTimeInterval(-MRRecovery.endWindowSec), end: end, options: [])
+        )
+        var seen = Set<Date>()
+        var vals: [Double] = []
+        let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: pred, options: [])
+        do {
+            for try await e in seriesDesc.results(for: store) where seen.insert(e.dateInterval.start).inserted {
+                vals.append(e.quantity.doubleValue(for: unit))
+            }
+        } catch {}
+        if vals.isEmpty {
+            let sampleDesc = HKSampleQueryDescriptor(predicates: [pred], sortDescriptors: [])
+            vals = ((try? await sampleDesc.result(for: store)) ?? []).map { $0.quantity.doubleValue(for: unit) }
+        }
+        guard !vals.isEmpty else { return nil }
+        return vals.reduce(0, +) / Double(vals.count)
+    }
+
+    struct RecoveryHistoryPoint: Codable {
+        let date: Date
+        let endHR: Double
+        let hrr1: Double
+    }
+    private struct RecoveryHistoryFile: Codable {
+        var points: [RecoveryHistoryPoint]
+        var cachedAt: Date
+        var coveredFrom: Date
+    }
+    private var recoveryHistoryURL: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_hrr_history.json")
+    }
+
+    /// 최근 12개월 러닝의 (날짜, 종료심박, HRR1). 자격(종료심박 ≥ 최대심박 70%) 통과분만.
+    /// 캐시는 새 러닝(종료 1시간 경과)이 캐시 시각 이후에 있으면 다시 만든다.
+    func fetchRecoveryHistory(from start: Date) async -> [RecoveryHistoryPoint] {
+        let fullStart = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+        if let data = try? Data(contentsOf: recoveryHistoryURL),
+           let file = try? JSONDecoder().decode(RecoveryHistoryFile.self, from: data),
+           file.coveredFrom <= fullStart.addingTimeInterval(86_400 * 7) {
+            let newerRun = activities.contains {
+                $0.type == .running && $0.date > file.cachedAt && Date().timeIntervalSince($0.date) > 3600 + $0.duration
+            }
+            if !newerRun { return file.points.filter { $0.date >= start } }
+        }
+
+        let fetched = (try? await queryWorkouts(since: fullStart)) ?? []
+        let runs = fetched.filter { $0.workoutActivityType == .running && Date().timeIntervalSince($0.endDate) > 3600 }
+                          .sorted { $0.startDate < $1.startDate }
+        for w in runs { workoutCache[w.uuid] = w }
+        let maxHR = cachedMHR.map(Double.init)
+
+        var points: [RecoveryHistoryPoint] = []
+        await withTaskGroup(of: RecoveryHistoryPoint?.self) { group in
+            for w in runs {
+                group.addTask { [self] in
+                    guard let endHR = await self.queryEndHR(workout: w),
+                          MRRecovery.isEligible(endHR: endHR, maxHR: maxHR) else { return nil }
+                    let post = await self.fetchPostWorkoutHR(for: w.uuid)
+                    guard let r = MRRecovery.compute(endHR: endHR, post: post) else { return nil }
+                    return RecoveryHistoryPoint(date: w.startDate, endHR: endHR, hrr1: r.hrr1)
+                }
+            }
+            for await p in group { if let p { points.append(p) } }
+        }
+        points.sort { $0.date < $1.date }
+        #if DEBUG
+        print("[회복] 12개월 러닝 \(runs.count)건 → 자격·샘플 통과 \(points.count)건 (최대심박 \(cachedMHR.map(String.init) ?? "미상"))")
+        #endif
+        let file = RecoveryHistoryFile(points: points, cachedAt: Date(), coveredFrom: fullStart)
+        if let data = try? JSONEncoder().encode(file) { try? data.write(to: recoveryHistoryURL, options: .atomic) }
+        return points.filter { $0.date >= start }
+    }
+
     // 워크아웃 연결 시리즈 쿼리 추가 이전에 저장된 잘못된 HR 캐시(휴식 구간 HR만 포함) 삭제
     private func migrateHRSeriesCacheIfNeeded() {
         let key = "mimo.hrSeriesCacheVersion"
@@ -2948,6 +3082,8 @@ class HealthKitManager {
         switch metric {
         case .vo2Max:
             return await fetchVO2MaxHistory(from: startDate)
+        case .hrRecovery1:
+            return await fetchRecoveryHistory(from: startDate).map { ($0.date, $0.hrr1) }
         case .bodyMass:
             let unit: HKUnit = usePounds ? HKUnit(from: "lb") : .gramUnit(with: .kilo)
             return await fetchQuantitySampleHistory(.bodyMass, from: startDate, unit: unit)
@@ -3063,10 +3199,12 @@ class HealthKitManager {
 
     /// 새 런 추가 시 호출 — 런 기반 메트릭 캐시 삭제
     func invalidateRunningMetricHistoryCache() {
-        let runningMetrics: [TrendMetric] = [.cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max]
+        let runningMetrics: [TrendMetric] = [.cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max, .hrRecovery1]
         for metric in runningMetrics {
             try? FileManager.default.removeItem(at: metricHistoryCacheURL(metric, usePounds: false))
         }
+        // 회복 히스토리 원본 캐시도 함께 — 파생(메트릭) 캐시만 지우면 옛 원본에서 다시 만들어진다
+        try? FileManager.default.removeItem(at: recoveryHistoryURL)
     }
 
     /// 신체 측정(체중·체지방) 캐시 삭제 — 탭 진입 시마다 호출해 최신 HealthKit 데이터 반영

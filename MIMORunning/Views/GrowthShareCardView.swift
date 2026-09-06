@@ -315,7 +315,7 @@ struct GrowthShareCard: View {
         let arrow = positive ? "↑" : "↓"
         let absChange = abs(change)
         switch metric {
-        case .cadence, .power, .groundContactTime:
+        case .cadence, .power, .groundContactTime, .hrRecovery1:
             return "\(sign)\(Int(absChange.rounded())) \(arrow)"
         case .strideLength:
             return "\(sign)\(String(format: "%.2f", absChange)) \(arrow)"

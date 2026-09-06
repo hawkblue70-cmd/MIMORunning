@@ -433,6 +433,9 @@ struct MRFormObservationCard: View {
     let text: String
     let basis: String
     var isStable: Bool = false   // true → "달리는 방식", false → "달리기 스타일 변화"
+    /// 제목·아이콘 덮어쓰기 — 회복 관찰처럼 폼이 아닌 관찰이 같은 카드를 쓸 때
+    var title: String? = nil
+    var icon: String = "figure.run.circle"
 
     @State private var expanded = false
 
@@ -440,10 +443,10 @@ struct MRFormObservationCard: View {
         let L = AppLanguage.shared
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: "figure.run.circle")
+                Image(systemName: icon)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.mrInk3)
-                Text(isStable ? L.s("달리는 방식", "Running Style") : L.s("달리기 스타일 변화", "Running Style Shift"))
+                Text(title ?? (isStable ? L.s("달리는 방식", "Running Style") : L.s("달리기 스타일 변화", "Running Style Shift")))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()

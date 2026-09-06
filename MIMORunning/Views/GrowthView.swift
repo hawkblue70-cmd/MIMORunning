@@ -121,6 +121,8 @@ struct GrowthView: View {
     @State private var isRefreshingMetrics = false
     @State private var lastAnalyzedRunCount: Int = -1
     @State private var formObservation: (text: String, basis: String, isStable: Bool)? = nil
+    /// 운동 후 심박 회복 관찰 — 좋아진 쪽만 문구가 생긴다 (MRRecovery.observation)
+    @State private var recoveryObservation: (text: String, basis: String)? = nil
     @State private var formComputedForRunCount: Int? = nil  // ■2: 동일 run count 재계산 방지
     @State private var lastChartRefreshCount: Int = -1
     @State private var runsCache: [Activity] = []
@@ -851,12 +853,16 @@ struct GrowthView: View {
         let L = AppLanguage.shared
         let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
         let runningMetrics: [TrendMetric] = [
-            .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max
+            .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max, .hrRecovery1
         ]
         return VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: L.s("주간 지표 추세", "Weekly Metric Trends"), subtitle: L.s("최근 7일 대비 직전 7일", "Last 7 days vs prior 7 days"))
             if let obs = formObservation {
                 MRFormObservationCard(text: obs.text, basis: obs.basis, isStable: obs.isStable)
+            }
+            if let rec = recoveryObservation {
+                MRFormObservationCard(text: rec.text, basis: rec.basis, isStable: true,
+                                      title: L.s("회복", "Recovery"), icon: "heart.circle")
             }
             weeklyPatternCommentCard
             LazyVGrid(columns: cols, spacing: 12) {
@@ -1091,7 +1097,7 @@ struct GrowthView: View {
 
         let since = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
         let runningMetrics: [TrendMetric] = [
-            .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max
+            .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max, .hrRecovery1
         ]
         // 체성분 2개도 함께 — 이번주 공유 카드용 sparkData 사전 구성
         let allWeeklyMetrics: [TrendMetric] = runningMetrics + [.bodyMass, .bodyFatPercentage]
@@ -1452,6 +1458,23 @@ struct GrowthView: View {
         // nil(침묵)은 기존 결과를 유지 — 안정 분기 기록 직후 재호출로 덮어쓰이는 것을 방지
         if let result = computeFormObservation(cadData: cadData, gctData: gctData) {
             formObservation = result
+        }
+
+        // 운동 후 심박 회복 추세 — 종료 심박을 회귀로 통제한 잔차를 폼과 같은 판정기(MDC)로 본다
+        let hist = await manager.fetchRecoveryHistory(from: oneYearAgo)
+        let obs = hist.map { MRRecovery.Obs(date: $0.date, endHR: $0.endHR, hrr1: $0.hrr1) }
+        let residuals = MRRecovery.residuals(obs: obs, asOf: Date())
+        if let shift = mrFormShift(residuals, metric: MRRecovery.metric, asOf: Date()) {
+            #if DEBUG
+            print(String(format: "[회복] 관측 %d · 잔차 Δ%+.1f · MDC %.1f · 연속 %d주 · %@",
+                         obs.count, shift.delta, shift.mdc, shift.weeksConsistent,
+                         MRRecovery.observation(shift: shift) == nil ? "침묵" : "표시"))
+            #endif
+            if let o = MRRecovery.observation(shift: shift) { recoveryObservation = o }
+        } else {
+            #if DEBUG
+            print("[회복] 관측 \(obs.count) · 판정 불가 (잔차 \(residuals.count)개, 3개월씩 20개 필요)")
+            #endif
         }
     }
 
