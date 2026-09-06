@@ -125,22 +125,39 @@ class HealthKitManager {
         // 실내 러닝도 포함 — 본인이 실제로 해낸 거리 기준. 후보(8주)는 야외만.
         let longest16w = runs16w.map { $0.distance / 1000 }.max() ?? 0
 
-        let result: [MRLongRunFatigue] = runs16w.filter { $0.date >= cutoff8w }.compactMap { a in
+        let runs8w = runs16w.filter { $0.date >= cutoff8w }
+        // 단계별 탈락 집계 — 왜 후보가 0인지 로그로 보이게 한다
+        var nPrefilter = 0, nNoDetail = 0, nIndoor = 0, nType = 0, nNoSplits = 0
+        let minKm = max(10.0, longest16w * 0.7)
+        let result: [MRLongRunFatigue] = runs8w.compactMap { a in
             // 값싼 거리·시간 선별을 먼저 — 상세 디코드(경로 좌표 포함)는 후보에만
             let km = a.distance / 1000, mins = a.duration / 60
-            guard km >= max(10.0, longest16w * 0.7), mins >= 60 else { return nil }
-            guard let det = detailFromCache(a.id) else { return nil }
-            guard !det.routeCoordinates.isEmpty else { return nil }          // 야외만
+            guard km >= minKm, mins >= 60 else { return nil }
+            nPrefilter += 1
+            guard let det = detailFromCache(a.id) else { nNoDetail += 1; return nil }
+            guard !det.routeCoordinates.isEmpty else { nIndoor += 1; return nil }          // 야외만
             let wt = cachedWorkoutTypeForStats(for: a.id) ?? det.workoutType
-            guard MRDurabilityCheck.isEligibleLongRun(distanceKm: a.distance / 1000,
-                                                      durationMin: a.duration / 60,
+            guard MRDurabilityCheck.isEligibleLongRun(distanceKm: km, durationMin: mins,
                                                       longest16wKm: longest16w,
-                                                      workoutType: wt) else { return nil }
-            return MRDurabilityCheck.summarize(id: a.id, start: a.date,
-                                               distanceKm: a.distance / 1000,
-                                               durationMin: a.duration / 60,
-                                               splits: det.splits)
+                                                      workoutType: wt) else { nType += 1; return nil }
+            let s = MRDurabilityCheck.summarize(id: a.id, start: a.date,
+                                                distanceKm: km, durationMin: mins,
+                                                splits: det.splits)
+            if s == nil { nNoSplits += 1 }
+            return s
         }
+        #if DEBUG
+        let df = DateFormatter(); df.dateFormat = "M/d"
+        print(String(format: "[내구성:후보] 8주 러닝 %d건 · 하한 %.1fkm/60분 통과 %d · 상세없음 %d · 실내 %d · 유형제외 %d · 스플릿부족 %d → 요약 %d건 (16주 최장 %.1fkm)",
+                     runs8w.count, minKm, nPrefilter, nNoDetail, nIndoor, nType, nNoSplits, result.count, longest16w))
+        for f in result.sorted(by: { $0.start > $1.start }) {
+            print(String(format: "[내구성:후보]   %@ %.1fkm · Q1 %@ %.0fspm → Q4 %@ %.0fspm (%+.1f%%) · 전반HR %@",
+                         df.string(from: f.start), f.distanceKm,
+                         mrFormatPace(f.q1PaceSecPerKm), f.q1Cadence,
+                         mrFormatPace(f.q4PaceSecPerKm), f.q4Cadence, -f.cadenceDropPct,
+                         f.firstHalfAvgHR.map { String(format: "%.0f", $0) } ?? "—"))
+        }
+        #endif
         fatigueMemo = (key, result)
         return result
     }

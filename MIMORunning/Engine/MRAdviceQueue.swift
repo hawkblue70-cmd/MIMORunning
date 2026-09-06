@@ -232,6 +232,12 @@ func mrBuildAdvice(runs: [MRWorkout],
     // 워치의 근력 기록이 부정확해 근력을 하는 사람에게도 잔소리가 되기 때문.
     let verdict = MRDurabilityCheck.aggregate(fatigue: fatigue, runs: runs,
                                               maxHR: phys.hrMax?.value, asOf: asOf)
+    #if DEBUG
+    print(String(format: "[내구성:판정] 요약 %d건 → 평가 가능 %d건 · 양성 %d건 · %@%@",
+                 fatigue.count, verdict.evaluated, verdict.positive,
+                 verdict.triggered ? "발동" : (verdict.evaluated < 2 ? "판정 없음(평가 가능 2건 미만)" : "미발동"),
+                 verdict.latestDropPct.map { String(format: " · 최신 하락 %.1f%%", $0) } ?? ""))
+    #endif
     var durabilityShown = false
     if suppression == nil, verdict.triggered {
         durabilityShown = true
@@ -268,7 +274,10 @@ func mrBuildAdvice(runs: [MRWorkout],
     if suppression == nil, !durabilityShown, strengthPerWeek < 1.5 {
         out.append(MRAdvice(key: "strength",
             text: "무거운 무게를 드는 근력운동과 점프 운동을 주 2회 함께 하면 러닝 경제성과 기록이 좋아졌다는 연구가 많습니다. 주 30분이면 충분해요.",
-            rationale: String(format: "최근 4주 근력 세션 주 %.1f회 · Blagrove 2018 메타분석", strengthPerWeek),
+            // ⚠ "주 0.0회"를 그대로 보여주지 않는다 — 0은 사람을 찌른다 (앱 원칙).
+            rationale: strengthPerWeek < 0.25
+                ? "최근 4주 근력 세션 기록 없음 · Blagrove 2018 메타분석"
+                : String(format: "최근 4주 근력 세션 주 %.1f회 · Blagrove 2018 메타분석", strengthPerWeek),
             grade: "A", gainMin: 4, timeliness: 0.2, slot: "weekly"))
     }
 
