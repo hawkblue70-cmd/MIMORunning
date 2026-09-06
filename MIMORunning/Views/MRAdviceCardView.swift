@@ -10,7 +10,7 @@ struct MRAdviceCardView: View {
     @State private var expanded: Set<String> = []
 
     // 형제 카드(MRBacktestView 등)와 동일한 컨테이너 스타일
-    private let cardColor = Color(red: 0.11, green: 0.11, blue: 0.12)
+    private let cardColor = Theme.cardBackground
 
     private var items: [MRAdvice] { Array(engine.advice.prefix(2)) }
 
@@ -21,7 +21,7 @@ struct MRAdviceCardView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.6))
                     .textCase(.uppercase)
-                ForEach(items) { a in
+                ForEach(items, id: \.key) { a in
                     row(a)
                 }
             }
@@ -31,6 +31,10 @@ struct MRAdviceCardView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .onAppear {
                 engine.adviceLog.record(items.map(\.key), asOf: Date())
+                MRAdviceLogStore.save(engine.adviceLog)
+            }
+            .onChange(of: items.map(\.key)) { _, keys in
+                engine.adviceLog.record(keys, asOf: Date())
                 MRAdviceLogStore.save(engine.adviceLog)
             }
         }

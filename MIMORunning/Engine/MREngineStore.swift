@@ -682,10 +682,12 @@ final class MREngineStore: ObservableObject {
     func updateAdvice(strengthPerWeek: Double,
                       fatigue: [MRLongRunFatigue]? = nil,
                       cadenceShift: MRFormShift?? = nil) {
-        guard case .ready = state else { return }
+        // ⚠ 입력은 준비 여부와 무관하게 보관한다 — refreshCore/refreshDetail이 이 값을 그대로 쓴다.
+        //   준비 전에 guard로 빠지면 성장 탭 첫 진입의 롱런 피로가 영영 비어 있게 된다.
         storedStrengthPerWeek = strengthPerWeek
         if let f = fatigue { storedFatigue = f }
         if let c = cadenceShift { storedCadenceShift = c }
+        guard case .ready = state else { return }   // 재계산만 건너뛴다
         let now = Date()
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
                                races: userInput.races,
