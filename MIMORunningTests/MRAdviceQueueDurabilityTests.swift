@@ -108,6 +108,7 @@ struct MRAdviceQueueDurabilityTests {
         r.append(MRWorkout(start: day(-7), durationMin: 110, distanceKm: 21.1,
                            hrAvg: 165, hrMax: 185, tempC: 15, humidity: nil,
                            indoor: false, isInterval: false))
+        r.sort { $0.start < $1.start }   // runs.last가 최신 런이어야 스파이크 판정이 맞다
         let half = MRTargetRace(date: day(-7), distanceM: MRDistance.dH, name: "하프")
         let k = keys(build(fatigue: triggeredFatigue, races: [half], strength: 0.0, runs: r))
         #expect(!k.contains("durability"))
