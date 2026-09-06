@@ -235,6 +235,12 @@ struct GrowthView: View {
                             //   다만 대회 직후 2주는 "앱이 맞췄나"가 가장 궁금한 시점이므로 위로 올린다.
                             weekSummarySection
                             MRAdviceCardView()
+                                // 상세·유형 캐시가 갱신되면 롱런 피로 요약을 다시 넘긴다 (메모는 이미 무효화됨).
+                                // ⚠ 바깥 modifier 체인에 onChange를 하나 더 붙이면 타입체커가 시간 초과한다 — 여기에 둔다.
+                                .onChange(of: manager.workoutTypeRevision) { _, _ in
+                                    engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w,
+                                                        fatigue: manager.longRunFatigueSummaries())
+                                }
                             heatmapSection
                             weeklySection
                             paceSection

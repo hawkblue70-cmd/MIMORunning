@@ -241,7 +241,7 @@ func mrBuildAdvice(runs: [MRWorkout],
         var timeliness: Double
         if verdict.latestPositiveIsToday {
             slot = "todayRun"; timeliness = 0.8
-            text = "오늘 롱런 후반에 케이던스가 \(dropStr)% 떨어졌어요. 최근 롱런 \(verdict.evaluated)번 중 \(verdict.positive)번이 그랬습니다. 다리가 지치면 발걸음이 느려지는 패턴이에요. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦춥니다."
+            text = "오늘 롱런 후반에 케이던스가 \(dropStr)% 떨어졌어요. 최근 롱런 \(verdict.evaluated)번 중 \(verdict.positive)번이 그랬습니다. 다리가 지치면 발걸음이 느려지는 패턴이에요. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦추는 데 도움이 될 수 있어요."
         } else {
             slot = "weekly"; timeliness = 0.4
             text = "최근 롱런 후반에 발걸음이 느려지는 패턴이 반복됐어요. 무거운 무게를 드는 근력운동과 점프 운동이 후반 페이스를 지키는 데 도움이 됩니다."
@@ -267,7 +267,7 @@ func mrBuildAdvice(runs: [MRWorkout],
     // ⚠ durability가 이미 나왔으면 같은 주제를 두 번 말하지 않는다.
     if suppression == nil, !durabilityShown, strengthPerWeek < 1.5 {
         out.append(MRAdvice(key: "strength",
-            text: "무거운 무게를 드는 근력운동과 점프 운동을 주 2회 함께 하면 다리가 후반까지 버팁니다. 주 30분이면 충분해요.",
+            text: "무거운 무게를 드는 근력운동과 점프 운동을 주 2회 함께 하면 러닝 경제성과 기록이 좋아졌다는 연구가 많습니다. 주 30분이면 충분해요.",
             rationale: String(format: "최근 4주 근력 세션 주 %.1f회 · Blagrove 2018 메타분석", strengthPerWeek),
             grade: "A", gainMin: 4, timeliness: 0.2, slot: "weekly"))
     }

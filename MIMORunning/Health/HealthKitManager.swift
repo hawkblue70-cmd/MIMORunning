@@ -126,6 +126,9 @@ class HealthKitManager {
         let longest16w = runs16w.map { $0.distance / 1000 }.max() ?? 0
 
         let result: [MRLongRunFatigue] = runs16w.filter { $0.date >= cutoff8w }.compactMap { a in
+            // 값싼 거리·시간 선별을 먼저 — 상세 디코드(경로 좌표 포함)는 후보에만
+            let km = a.distance / 1000, mins = a.duration / 60
+            guard km >= max(10.0, longest16w * 0.7), mins >= 60 else { return nil }
             guard let det = detailFromCache(a.id) else { return nil }
             guard !det.routeCoordinates.isEmpty else { return nil }          // 야외만
             let wt = cachedWorkoutTypeForStats(for: a.id) ?? det.workoutType

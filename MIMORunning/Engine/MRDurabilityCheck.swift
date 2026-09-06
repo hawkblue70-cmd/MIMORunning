@@ -149,7 +149,7 @@ enum MRDurabilityCheck {
     static func medianPace(runs: [MRWorkout], before date: Date) -> Double? {
         let cal = Calendar.current
         let start = cal.date(byAdding: .day, value: -windowDays, to: date) ?? date
-        // 당일 러닝(본인 포함)은 제외 — analyzeFade의 id != activity.id 와 같은 효과
+        // 같은 창(8주)·같은 임계 — 당일 러닝은 본인 포함 전부 제외 (analyzeFade는 본인만 제외)
         let paces = runs.filter { $0.date >= start && $0.date < date }
                         .compactMap(\.paceSecPerKm).sorted()
         guard !paces.isEmpty else { return nil }
