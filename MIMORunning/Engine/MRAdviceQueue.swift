@@ -11,6 +11,8 @@ struct MRAdvice: Identifiable {
     let gainMin: Double         // 기대 이득(분)
     let timeliness: Double      // 0~1
     let slot: String            // todayRun / weekly / raceCountdown
+    /// 구체 운동 목록. 비어 있으면 UI에 목록을 그리지 않는다.
+    var exercises: [String] = []
 
     /// 우선순위 = 근거등급 × √기대이득 × 시의성
     var score: Double {
@@ -80,13 +82,41 @@ func mrHydrationAdvice(raceDate: Date, distanceM: Double,
         grade: "A", gainMin: 10, timeliness: 0.9, slot: "raceCountdown")
 }
 
+// MARK: - 근력·폼 조언 공통 억제
+//
+// ⚠ 이 시기에 새 고중량·새 큐를 넣으면 회복만 잡아먹는다.
+//   · 테이퍼: 하프 이상 대회 D-14 이내 (Bosquet 2007 — 볼륨만 줄이고 강도 유지, 새 자극 금지)
+//   · 회복: 완주 기록이 있는 하프 이상 대회 D+14 이내 (근손상·염증 정상화 기간)
+//   · 복귀: 공백 종료 21일 이내
+
+/// 억제 사유. nil이면 억제 없음.
+func mrStrengthAdviceSuppression(races: [MRTargetRace], runs: [MRWorkout],
+                                 gaps: [MRGap], asOf: Date) -> String? {
+    let cal = Calendar.current
+    let today = cal.startOfDay(for: asOf)
+    for r in races where r.distanceM >= MRDistance.dH {
+        let d = cal.dateComponents([.day], from: today, to: cal.startOfDay(for: r.date)).day ?? 999
+        if d >= 0 && d <= 14 { return "테이퍼 D-\(d)" }
+        if d < 0 && d >= -14, mrFinishedRun(for: r, runs: runs) != nil { return "대회 회복 D+\(-d)" }
+    }
+    if let g = gaps.last,
+       let since = cal.dateComponents([.day], from: cal.startOfDay(for: g.end), to: today).day,
+       since >= 0, since <= 21 {
+        return "공백 복귀 \(since)일"
+    }
+    return nil
+}
+
 // MARK: - 큐 조립
 
 func mrBuildAdvice(runs: [MRWorkout],
                    phys: MRPhysiology,
                    plans: [MRRacePlan],
+                   races: [MRTargetRace] = [],
                    gaps: [MRGap],
                    strengthPerWeek: Double,
+                   fatigue: [MRLongRunFatigue] = [],
+                   cadenceShift: MRFormShift? = nil,
                    log: MRAdviceLog,
                    asOf: Date) -> [MRAdvice] {
 
@@ -190,17 +220,73 @@ func mrBuildAdvice(runs: [MRWorkout],
         }
     }
 
-    // ── 근력운동
+    // ── 내구성 · 근력 · 케이던스 (공통 억제 적용)
+    let suppression = mrStrengthAdviceSuppression(races: races, runs: runs, gaps: gaps, asOf: asOf)
+    #if DEBUG
+    if let s = suppression { print("[조언] 근력·폼 조언 억제 — \(s)") }
+    #endif
+
+    // ── 내구성 (S1: 롱런 후반 케이던스 붕괴)
+    //
+    // 발동 조건은 S1 집계 하나다. 근력 세션 횟수는 발동 조건이 아니다 —
+    // 워치의 근력 기록이 부정확해 근력을 하는 사람에게도 잔소리가 되기 때문.
+    let verdict = MRDurabilityCheck.aggregate(fatigue: fatigue, runs: runs,
+                                              maxHR: phys.hrMax?.value, asOf: asOf)
+    var durabilityShown = false
+    if suppression == nil, verdict.triggered {
+        durabilityShown = true
+        let dropStr = String(format: "%.0f", max(verdict.latestDropPct ?? 0, 0))
+        let text: String
+        let slot: String
+        var timeliness: Double
+        if verdict.latestPositiveIsToday {
+            slot = "todayRun"; timeliness = 0.8
+            text = "오늘 롱런 후반에 케이던스가 \(dropStr)% 떨어졌어요. 최근 롱런 \(verdict.evaluated)번 중 \(verdict.positive)번이 그랬습니다. 다리가 지치면 발걸음이 느려지는 패턴이에요. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦춥니다."
+        } else {
+            slot = "weekly"; timeliness = 0.4
+            text = "최근 롱런 후반에 발걸음이 느려지는 패턴이 반복됐어요. 무거운 무게를 드는 근력운동과 점프 운동이 후반 페이스를 지키는 데 도움이 됩니다."
+        }
+        if strengthPerWeek < 1.0 { timeliness += 0.1 }
+        out.append(MRAdvice(key: "durability", text: text,
+            rationale: String(format: "최근 8주 롱런 %d회 중 %d회 후반 케이던스 ≥3%%↓ · Blagrove 2018 메타분석(근력·플라이오 → 경제성) · 3%% 임계는 임의",
+                              verdict.evaluated, verdict.positive),
+            grade: "B", gainMin: 6, timeliness: timeliness, slot: slot,
+            exercises: [
+                "근력 주 2회 20~30분 — 스쿼트·데드리프트·한발 운동·카프 레이즈 중 2~3개",
+                "무거운 무게 = 8회 이하로 힘든 무게, 세트당 3~5회",
+                "점프 — 제자리 홉·바운딩·언덕 스프린트 중 하나, 10분 이내",
+                "롱런 다음날은 피하고, 이지런 날에",
+            ]))
+    }
+
+    // ── 근력운동 (기본)
     //
     // 러닝에 근력을 더하면 러닝만 할 때보다 경제성과 기록이 좋아진다는
     // 메타분석이 여럿 있다(Blagrove 2018, Sports Med 48(5):1117–1149).
-    // 근거가 A급인 몇 안 되는 항목이다.
-    // ⚠ 다만 이득 추정치가 없어 gain을 크게 잡지 않는다.
-    if strengthPerWeek < 1.5 {
+    // 그 메타분석 자체가 고중량·플라이오메트릭을 다루므로 문구를 그렇게 쓴다.
+    // ⚠ durability가 이미 나왔으면 같은 주제를 두 번 말하지 않는다.
+    if suppression == nil, !durabilityShown, strengthPerWeek < 1.5 {
         out.append(MRAdvice(key: "strength",
-            text: "근력운동을 주 2회 함께 하면 러닝만 할 때보다 좋았다는 연구가 많습니다. 주 30분이면 충분해요.",
+            text: "무거운 무게를 드는 근력운동과 점프 운동을 주 2회 함께 하면 다리가 후반까지 버팁니다. 주 30분이면 충분해요.",
             rationale: String(format: "최근 4주 근력 세션 주 %.1f회 · Blagrove 2018 메타분석", strengthPerWeek),
             grade: "A", gainMin: 4, timeliness: 0.2, slot: "weekly"))
+    }
+
+    // ── 케이던스 큐 (유일한 폼 제안)
+    //
+    // Van Hooren 2024 (Sports Med 54(5):1269–1316): 케이던스 r=−0.20.
+    // 개입 근거는 Heiderscheit 2011 (MSSE 43(2):296–302): 케이던스 +5~10% → 관절 부하 감소.
+    // ⚠ 지친 뒤 하락(S1)이 하나라도 있으면 그건 내구성 문제다 — 큐를 주지 않는다.
+    if suppression == nil, verdict.positive == 0,
+       let s = cadenceShift, s.metric.key == "cadence", s.isReal, s.delta < 0 {
+        out.append(MRAdvice(key: "cadenceCue",
+            text: String(format: "같은 페이스에서 케이던스가 3개월 새 %.0f spm 내려갔어요. 이지런 한 번에 10분만 평소보다 5%% 빠른 발걸음으로 달려보세요.", abs(s.delta)),
+            rationale: String(format: "MRFormShift cadence Δ=%.1f spm (MDC %.1f) · Van Hooren 2024 r=−0.20 · Heiderscheit 2011 (+5~10%% 케이던스)", s.delta, s.mdc),
+            grade: "B", gainMin: 2, timeliness: 0.3, slot: "weekly",
+            exercises: [
+                "이지런 중 10분, 메트로놈 앱을 평소 케이던스 +5%로",
+                "보폭을 줄인다는 느낌으로. 속도는 올리지 않는다",
+            ]))
     }
 
     // ── 보급 3종
