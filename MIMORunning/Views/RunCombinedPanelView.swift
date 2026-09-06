@@ -5,7 +5,7 @@ import SwiftUI
 @Observable @MainActor
 final class RunChartLayerStore {
     static let shared = RunChartLayerStore()
-    // ⚠ v2 — 시인성 개편 시 키를 바꿔 저장된 "전부 켬" 상태를 기본(심박+페이스)으로 한 번 되돌린다.
+    // ⚠ v2 — 시인성 개편 시 키를 바꿔 저장 상태를 기본(전부 켬)으로 한 번 되돌린다.
     private static let defaultsKey = "mimo.runChart.enabledLayers.v2"
 
     var enabled: Set<RunChartLayer> {
@@ -15,9 +15,10 @@ final class RunChartLayerStore {
     private init() {
         if let raw = UserDefaults.standard.array(forKey: Self.defaultsKey) as? [String] {
             let restored = Set(raw.compactMap { RunChartLayer(rawValue: $0) })
-            enabled = restored.isEmpty ? [.heartRate, .pace] : restored
+            enabled = restored.isEmpty ? Set(RunChartLayer.allCases) : restored
         } else {
-            enabled = [.heartRate, .pace]
+            // 기본은 전부 켬 (사용자 확정) — 타일을 탭해 끌 수 있다
+            enabled = Set(RunChartLayer.allCases)
         }
     }
 
@@ -53,13 +54,6 @@ struct RunCombinedPanelView: View {
     @State private var playProgress: Double? = nil
     @State private var isPlaying = false
     @State private var playTask: Task<Void, Never>? = nil
-
-    /// 차트의 심박 선이 존 색인가 — RunCombinedChartView.hrZoneColoring과 같은 규칙.
-    /// 타일 점 색이 선 색과 어긋나지 않게 여기서도 같은 조건으로 계산한다.
-    private var hrZoneColoringOn: Bool {
-        let otherLines: Set<RunChartLayer> = [.cadence, .power, .strideLength, .verticalOsc]
-        return !data.availableLayers.contains { store.enabled.contains($0) && otherLines.contains($0) }
-    }
 
     private let tileColumns = [
         GridItem(.flexible(), spacing: 6),
@@ -103,7 +97,7 @@ struct RunCombinedPanelView: View {
                                     layer: layer,
                                     series: series,
                                     isOn: store.enabled.contains(layer),
-                                    dotColors: (layer == .heartRate && hrZoneColoringOn && !data.hrZoneBands.isEmpty)
+                                    dotColors: (layer == .heartRate && !data.hrZoneBands.isEmpty)
                                         ? ShareChartPalette.dark.hrZones : nil
                                 ) {
                                     stopPlay()

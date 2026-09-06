@@ -116,21 +116,9 @@ struct RunCombinedChartView: View {
         return max(0, min(4, (sorted.last?.zone ?? 1) - 1))
     }
 
-    /// 심박 선에 존 색(파랑→청록→라임→주황→핑크)을 칠할 것인가.
-    ///
-    /// ⚠ 존 색 5가지는 케이던스(노랑)·파워·보폭·진폭 선 색과 겹친다.
-    ///   다른 선 레이어가 하나라도 켜지면 심박은 단색 빨강으로 물러나
-    ///   "어느 선이 심박인가"를 색만으로 알 수 있게 한다.
-    ///   기본 화면(심박 + 페이스 막대)에서는 존 색을 그대로 쓴다.
-    private var hrZoneColoring: Bool {
-        let otherLines: Set<RunChartLayer> = [.cadence, .power, .strideLength, .verticalOsc]
-        return !data.availableLayers.contains { enabledLayers.contains($0) && otherLines.contains($0) }
-    }
-
     /// Zone color for a BPM value; falls back to Theme.heartRate when zone data is absent.
-    /// 다른 선 레이어가 켜져 있으면 존 색 대신 대표 빨강(hrRepColor)을 돌려준다.
+    /// ⚠ 심박은 항상 존 색이다 (사용자 확정). 다른 선과의 구분은 나머지 레이어 색으로 해결한다.
     private func zoneColor(for bpm: Double) -> Color {
-        guard hrZoneColoring else { return p.hrRepColor }
         let idx = zoneIndex(for: bpm)
         return idx >= 0 ? p.hrZones[idx] : Theme.heartRate
     }
@@ -458,14 +446,12 @@ struct RunCombinedChartView: View {
         }
         // Pass 2: all coloured lines on top
         for (path, zone) in zonePaths {
-            let c: Color = !hrZoneColoring ? p.hrRepColor
-                         : (zone >= 0 ? p.hrZones[zone] : Theme.heartRate)
+            let c: Color = zone >= 0 ? p.hrZones[zone] : Theme.heartRate
             ctx.stroke(path, with: .color(c.opacity(opacity)),
                        style: StrokeStyle(lineWidth: p.hrLineWidth, lineCap: .round, lineJoin: .round))
         }
 
-        // Zone transition tick marks — only when transitions are rare (≤ 3) and zone colouring is on
-        guard hrZoneColoring else { return }
+        // Zone transition tick marks — only when transitions are rare (≤ 3)
         var transitions: [(x: CGFloat, zone: Int)] = []
         for i in 0..<(pts.count - 2) {
             let z1 = zoneIndex(for: (pts[i].value + pts[i + 1].value) / 2)
