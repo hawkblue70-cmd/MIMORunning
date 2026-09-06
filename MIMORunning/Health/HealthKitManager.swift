@@ -57,6 +57,9 @@ class HealthKitManager {
     @ObservationIgnored private var metricFetchTasks: [String: Task<[(date: Date, value: Double)], Never>] = [:]
     // 백필 중복 실행 방지 — 화면 전환 시 이전 Task 취소 후 새 Task 시작
     @ObservationIgnored private var workoutTypeBackfillTask: Task<Void, Never>?
+    /// longRunFatigueSummaries 메모 — 같은 날·같은 활동 목록이면 재계산하지 않는다.
+    /// 디스크 상세 캐시 디코드(경로 좌표 포함)가 러닝당 한 번씩 들어가기 때문.
+    @ObservationIgnored private var fatigueMemo: (key: String, value: [MRLongRunFatigue])? = nil
 
     // Codable proxies for disk serialization of time-series tuples
     private struct HRPoint: Codable { var offset: Double; var bpm: Int }
@@ -110,12 +113,15 @@ class HealthKitManager {
     /// 상세 캐시가 없는 롱런은 건너뛴다(사용자가 상세를 연 적 없거나 백필 전).
     func longRunFatigueSummaries(asOf: Date = Date()) -> [MRLongRunFatigue] {
         let cal = Calendar.current
+        let key = "\(cal.startOfDay(for: asOf).timeIntervalSince1970)|\(activities.count)|\(activities.first?.id.uuidString ?? "")"
+        if let memo = fatigueMemo, memo.key == key { return memo.value }
+
         let cutoff8w  = cal.date(byAdding: .day, value: -56,  to: asOf) ?? asOf
         let cutoff16w = cal.date(byAdding: .day, value: -112, to: asOf) ?? asOf
         let runs16w = activities.filter { $0.type == .running && $0.date >= cutoff16w && $0.date <= asOf }
         let longest16w = runs16w.map { $0.distance / 1000 }.max() ?? 0
 
-        return runs16w.filter { $0.date >= cutoff8w }.compactMap { a in
+        let result: [MRLongRunFatigue] = runs16w.filter { $0.date >= cutoff8w }.compactMap { a in
             guard let det = detailFromCache(a.id) else { return nil }
             guard !det.routeCoordinates.isEmpty else { return nil }          // 야외만
             let wt = cachedWorkoutTypeForStats(for: a.id) ?? det.workoutType
@@ -128,6 +134,8 @@ class HealthKitManager {
                                                durationMin: a.duration / 60,
                                                splits: det.splits)
         }
+        fatigueMemo = (key, result)
+        return result
     }
 
     enum AuthStatus {
