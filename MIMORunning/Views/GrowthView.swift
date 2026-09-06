@@ -234,6 +234,7 @@ struct GrowthView: View {
                             // ⚠ 성장 탭의 주어는 **사용자**다. 맨 위가 앱의 성적표면 안 된다.
                             //   다만 대회 직후 2주는 "앱이 맞췄나"가 가장 궁금한 시점이므로 위로 올린다.
                             weekSummarySection
+                            MRAdviceCardView()
                             heatmapSection
                             weeklySection
                             paceSection
