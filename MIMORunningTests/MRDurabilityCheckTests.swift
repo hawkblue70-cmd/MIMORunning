@@ -161,8 +161,9 @@ struct MRDurabilityCheckTests {
     @Test func aggregateSameDayTieBreaksByStartTime() {
         // 같은 날 두 롱런: 늦게 시작한 쪽이 latest
         let cal = Calendar.current
-        let morning = cal.date(bySettingHour: 7, minute: 0, second: 0, of: Date())!
-        let evening = cal.date(bySettingHour: 18, minute: 0, second: 0, of: Date())!
+        let yesterday = cal.date(byAdding: .day, value: -1, to: Date())!
+        let morning = cal.date(bySettingHour: 7, minute: 0, second: 0, of: yesterday)!
+        let evening = cal.date(bySettingHour: 18, minute: 0, second: 0, of: yesterday)!
         func f(_ s: Date, q4: Double) -> MRLongRunFatigue {
             MRLongRunFatigue(id: UUID(), start: s, distanceKm: 16, durationMin: 105,
                              q1PaceSecPerKm: 400, q4PaceSecPerKm: 400,
@@ -172,7 +173,7 @@ struct MRDurabilityCheckTests {
         for fs in [[f(morning, q4: 170), f(evening, q4: 161.5)], [f(evening, q4: 161.5), f(morning, q4: 170)]] {
             let v = MRDurabilityCheck.aggregate(fatigue: fs, runs: [], maxHR: nil, asOf: Date())
             #expect(abs((v.latestDropPct ?? 0) - 5.0) < 0.1)
-            #expect(v.latestPositiveIsToday)
+            #expect(!v.latestPositiveIsToday)
         }
     }
 }

@@ -46,7 +46,9 @@ class HealthKitManager {
     @ObservationIgnored private var cachedMHR: Int? = nil
     @ObservationIgnored private var isFetchInProgress = false
     @ObservationIgnored private var pausedIntervalsCache: [UUID: [DateInterval]] = [:]
-    @ObservationIgnored private var detailCache: [UUID: ActivityDetail] = [:]
+    @ObservationIgnored private var detailCache: [UUID: ActivityDetail] = [:] {
+        didSet { fatigueMemo = nil }   // 상세가 채워지면 롱런 피로 요약을 다시 계산한다
+    }
     /// 존 체류 시간 전용 캐시 — 분류 경로에서 계산한 hrZones를 버리지 않고 강도 분포(4주 합산)에 재사용. 지연 로드.
     @ObservationIgnored private var hrZoneOnlyCache: [String: [HRZoneData]]? = nil
     @ObservationIgnored private var hrSeriesCache: [UUID: [(offset: TimeInterval, bpm: Int)]] = [:]
@@ -113,12 +115,14 @@ class HealthKitManager {
     /// 상세 캐시가 없는 롱런은 건너뛴다(사용자가 상세를 연 적 없거나 백필 전).
     func longRunFatigueSummaries(asOf: Date = Date()) -> [MRLongRunFatigue] {
         let cal = Calendar.current
-        let key = "\(cal.startOfDay(for: asOf).timeIntervalSince1970)|\(activities.count)|\(activities.first?.id.uuidString ?? "")"
+        let today = cal.startOfDay(for: asOf)
+        let key = "\(today.timeIntervalSince1970)|\(activities.count)|\(activities.first?.id.uuidString ?? "")|\(workoutTypeRevision)"
         if let memo = fatigueMemo, memo.key == key { return memo.value }
 
-        let cutoff8w  = cal.date(byAdding: .day, value: -56,  to: asOf) ?? asOf
-        let cutoff16w = cal.date(byAdding: .day, value: -112, to: asOf) ?? asOf
+        let cutoff8w  = cal.date(byAdding: .day, value: -MRDurabilityCheck.windowDays, to: today) ?? today
+        let cutoff16w = cal.date(byAdding: .day, value: -112, to: today) ?? today
         let runs16w = activities.filter { $0.type == .running && $0.date >= cutoff16w && $0.date <= asOf }
+        // 실내 러닝도 포함 — 본인이 실제로 해낸 거리 기준. 후보(8주)는 야외만.
         let longest16w = runs16w.map { $0.distance / 1000 }.max() ?? 0
 
         let result: [MRLongRunFatigue] = runs16w.filter { $0.date >= cutoff8w }.compactMap { a in
