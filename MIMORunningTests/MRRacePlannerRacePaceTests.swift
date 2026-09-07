@@ -112,7 +112,7 @@ struct MRRacePlannerPriorRaceTests {
     @Test func tenKSixWeeksBeforeHalfDoesNotBlockThePlan() throws {
         // 11/15 하프 사례: 10주 뒤 하프, 6주 전 10K → 회복 블록 없이 지금부터 계획
         let plan = try #require(build(distanceM: MRDistance.dH, weeks: 10, prior: (6, MRDistance.d10)))
-        #expect(plan.startDate == nil || plan.startNote.isEmpty)
+        // 시작이 뒤로 밀릴 수는 있다(필요 기간 < 남은 기간). 회복 블록만 없으면 된다.
         #expect(!plan.startNote.contains("회복"))
         #expect(plan.weeks.first?.phase != "회복")
     }
@@ -161,9 +161,13 @@ struct MRRacePlannerTuneUpTests {
         let idx = try #require(plan.weeks.firstIndex { $0.phase == "대회 주" })
         let w = plan.weeks[idx]
         #expect(w.breakdown.contains("10K") && w.breakdown.contains("롱런"))
-        // 롱런은 흡수 전과 같다(유지), 주간 거리는 줄어든다
+        // 롱런은 흡수 전과 같다(유지). 주간 거리는 빌드 주면 줄고, 사이클 회복 주와 겹치면 회복 볼륨 그대로.
         #expect(abs(w.longRunKm - base.weeks[idx].longRunKm) < 0.01)
-        #expect(w.weeklyKm < base.weeks[idx].weeklyKm)
+        if base.weeks[idx].phase == "회복" {
+            #expect(abs(w.weeklyKm - base.weeks[idx].weeklyKm) < 0.01)
+        } else {
+            #expect(w.weeklyKm < base.weeks[idx].weeklyKm)
+        }
         #expect(plan.absorbedTuneUpDates.count == 1)
         // 대회 주 이후 진행은 계속된다 — 다음 주 롱런이 대회 주보다 작지 않다 (회복 주가 아니면)
         if idx + 1 < plan.weeks.count, plan.weeks[idx + 1].phase != "회복" {
@@ -266,5 +270,52 @@ struct MRRacePlannerBridgeRowTests {
         #expect(plan.bridgeRows[1].text.hasPrefix("대회 주"))
         #expect(plan.bridgeRows[2].text.hasPrefix("이 계획 시작"))
         #expect(plan.weeks.first?.phase == "회복")
+    }
+}
+
+@Suite("MRRacePlanner 거리별 주간 거리 목표")
+struct MRRacePlannerVolumeTargetTests {
+    @Test func targetsByDistanceCappedByYearMax() {
+        // 현재 42 · 12개월 최대 60
+        #expect(mrWeeklyVolumeTarget(distanceM: MRDistance.d10, currentWeeklyKm: 42, maxWeekly52w: 60) == 42)
+        #expect(abs(mrWeeklyVolumeTarget(distanceM: MRDistance.dH, currentWeeklyKm: 42, maxWeekly52w: 60) - 50.4) < 0.01)
+        #expect(mrWeeklyVolumeTarget(distanceM: MRDistance.dF, currentWeeklyKm: 42, maxWeekly52w: 60) == 60)
+        #expect(mrWeeklyVolumeTarget(distanceM: MRDistance.d5, currentWeeklyKm: 20, maxWeekly52w: 60) == 25)
+        // 12개월 최대가 거리별 목표보다 작으면 거기서 멈춘다
+        #expect(mrWeeklyVolumeTarget(distanceM: MRDistance.d10, currentWeeklyKm: 20, maxWeekly52w: 25) == 25)
+        // 최대 미상 → 현재×1.5 상한
+        #expect(mrWeeklyVolumeTarget(distanceM: MRDistance.dH, currentWeeklyKm: 20, maxWeekly52w: 0) == 30)
+    }
+
+    @Test func tenKAlreadyAtTargetStillGetsThreeWeekPlan() throws {
+        // 롱런 16·주간 42 → 10K 목표(롱런 16·주간 42)에 이미 도달. 필요 기간 3주 하한이 적용되어 계획이 nil이 되지 않는다.
+        var p = MRProfile()
+        p.weeklyKm4w = 42; p.longestRun16wKm = 16; p.maxWeeklyKm52w = 60; p.runsPerWeek = 4
+        let today = Date()
+        let race = Calendar.current.date(byAdding: .day, value: 49, to: today)!
+        let plan = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.d10, today: today,
+                                            profile: p, halfEquivMin: 110, easyPaceSecPerKm: 400,
+                                            heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4))
+        #expect(plan.weeks.count >= 3)
+        #expect(plan.startDate != nil)                       // 시작을 뒤로 미룬다
+        #expect(plan.peakWeeklyKm <= 42.5)                   // 60까지 올리지 않는다
+        #expect(plan.notes.contains { $0.contains("까지만 올립니다") })
+    }
+
+    @Test func startedPlanWithAnchorDoesNotDefer() throws {
+        var p = MRProfile()
+        p.weeklyKm4w = 42; p.longestRun16wKm = 16; p.maxWeeklyKm52w = 60; p.runsPerWeek = 4
+        let cal = Calendar.current
+        let today = Date()
+        let race = cal.date(byAdding: .day, value: 49, to: today)!
+        let daysSinceMon = (cal.component(.weekday, from: today) + 5) % 7
+        let thisMonday = cal.date(byAdding: .day, value: -daysSinceMon, to: cal.startOfDay(for: today))!
+        let anchor = cal.date(byAdding: .day, value: -28, to: thisMonday)!
+        let plan = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.d10, today: today,
+                                            profile: p, halfEquivMin: 110, easyPaceSecPerKm: 400,
+                                            heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4,
+                                            forcedMonday: anchor))
+        #expect(plan.startDate == nil)
+        #expect(plan.weeks.first.map { cal.isDate($0.monday, inSameDayAs: anchor) } == true)
     }
 }

@@ -195,10 +195,11 @@ func mrBuildPlan(raceDate: Date,
     if heat.ok { p.projectedNow = heat.fromRef(timeRefMin: p.projectedNow, tempC: raceTempC) }
 
     let vol = max(profile.weeklyKm4w, 10.0)
-    // 주간 거리 상한 = 지난 12개월 최대. 본인이 실제로 해낸 값이므로 임의 숫자가 아니다.
-    // 더 많이 뛰면 상한이 저절로 올라간다.
-    // 과거 최대 0(신규 사용자)이면 현재 주간 × 1.5로 폴백 — 근거 없는 값.
-    let volCap = profile.maxWeeklyKm52w > 0 ? profile.maxWeeklyKm52w : vol * 1.5
+    // 주간 거리 목표 = 거리별 목표를 지난 12개월 최대로 캡. mrWeeklyVolumeTarget 참조.
+    // ⚠ 예전에는 거리와 무관하게 12개월 최대까지 올려서, 롱런 16km가 이미 있는 10K에도
+    //   "주 60km까지"가 필요 기간을 11주로 만들었다.
+    let volCap = mrWeeklyVolumeTarget(distanceM: distanceM, currentWeeklyKm: vol,
+                                      maxWeekly52w: profile.maxWeeklyKm52w)
 
     // ── 필요 기간 역산 (시뮬레이션) ──────────────────────────────
     // 공식 대신 빌드 루프와 동일 규칙으로 반복. 증가율·회복 주기가 바뀌면 자동으로 맞는다.
@@ -229,8 +230,9 @@ func mrBuildPlan(raceDate: Date,
         if let pr = priorRace { return t.date > pr.date }
         return true
     }.count
-    let neededTotal  = simulateNeeded(fromLong: simStartLong, fromVol: simStartVol) + p.taperWeeks
-                     + 2 * halfTuneUpCount + ownPlanShortCount
+    // ⚠ 3주 하한 — 이미 목표에 닿아 있어도 3주 미만 계획은 만들지 않는다 (아래 guard와 같은 기준).
+    let neededTotal  = max(3, simulateNeeded(fromLong: simStartLong, fromVol: simStartVol) + p.taperWeeks
+                     + 2 * halfTuneUpCount + ownPlanShortCount)
 
     // 날짜를 짧게 표시 — 올해(baseYear)는 "M-d", 다른 해는 "yyyy-M-d"
     let baseYear = cal.component(.year, from: today)
@@ -304,7 +306,8 @@ func mrBuildPlan(raceDate: Date,
         #if DEBUG
         dbgStartNote = "앞선 대회「\(prior.name)」 다음 주"
         #endif
-    } else if neededTotal < totalWeeks {
+    } else if forcedMonday == nil && neededTotal < totalWeeks {
+        // ⚠ 이미 시작한 계획(스냅샷 앵커 있음)은 시작을 뒤로 미루지 않는다 — 진행 중인 계획은 바꾸지 않는다.
         // 앞 대회 없음 — 대회일에서 필요 기간만큼 역산해 시작
         guard let deferredStart = cal.date(byAdding: .day, value: -(neededTotal * 7), to: raceDate) else { return nil }
         planToday   = deferredStart
@@ -597,7 +600,11 @@ func mrBuildPlan(raceDate: Date,
                            "\(maxRaceRun) consecutive race weeks — almost no training stimulus in that stretch."))
     }
     print(String(format: "[계획] 과거12개월 최대주간 = %.1fkm", profile.maxWeeklyKm52w))
-    if profile.maxWeeklyKm52w > 0 {
+    if profile.maxWeeklyKm52w > 0 && volCap < profile.maxWeeklyKm52w - 0.5 {
+        p.notes.append(String(format: L.s("주간 거리는 %.0fkm까지만 올립니다. 이 거리 대회에는 그 이상이 필요하지 않습니다 (지난 1년 최고 %.0fkm).",
+                                          "Weekly distance goes up to %.0f km only — this race distance doesn't need more (1-yr high %.0f km)."),
+                             volCap, profile.maxWeeklyKm52w))
+    } else if profile.maxWeeklyKm52w > 0 {
         p.notes.append(String(format: L.s("주간 거리는 지난 1년 최고치(%.0fkm)까지 올립니다. 그 이상은 아직 해보신 적이 없습니다.",
                                           "Weekly distance will reach your 1-yr high (%.0f km). You haven't gone beyond this before."),
                              profile.maxWeeklyKm52w))
@@ -684,6 +691,30 @@ func mrWeeksToReach(from start: Double, to target: Double,
     guard target > start else { return 0 }
     let n = ceil(log(target / start) / log(1 + step))
     return Int(ceil(n * Double(cycle) / Double(cycle - 1)))
+}
+
+// MARK: - 거리별 주간 거리 목표
+//
+// 상한은 항상 지난 12개월 최대 — 본인이 실제로 해낸 값을 넘기지 않는다 (없으면 현재×1.5, 근거 없음).
+// 그 안에서 거리별 목표:
+//   5K   max(현재, 25)      — 임의로 정함. 근거 없음.
+//   10K  max(현재, 32)      — Fokkema 2020 하프군 "주간 >32km" 절단점을 하한으로 빌림. 10K 자체 근거 없음.
+//   하프 max(현재×1.2, 40)  — Fokkema 2020 (n=556) 주간 >32km β −4.19분. 40은 그 위 여유, 임의.
+//   풀   12개월 최대 그대로 — Tanda 2011·Fokkema 2020 모두 볼륨↑=빠름. 상한만 본인 최대.
+// ⚠ 12개월 최대가 거리별 목표보다 작으면 12개월 최대에서 멈춘다. "해본 적 없는 거리"를 계획이 요구하지 않는다.
+func mrWeeklyVolumeTarget(distanceM: Double, currentWeeklyKm: Double, maxWeekly52w: Double) -> Double {
+    let ceiling = maxWeekly52w > 0 ? maxWeekly52w : currentWeeklyKm * 1.5
+    let byDistance: Double
+    if distanceM >= MRDistance.dF {
+        byDistance = ceiling
+    } else if distanceM >= MRDistance.dH {
+        byDistance = max(currentWeeklyKm * 1.2, 40)
+    } else if distanceM >= MRDistance.d10 {
+        byDistance = max(currentWeeklyKm, 32)
+    } else {
+        byDistance = max(currentWeeklyKm, 25)
+    }
+    return min(byDistance, ceiling)
 }
 
 // MARK: - 대회 페이스 구간 (롱런 후반)
