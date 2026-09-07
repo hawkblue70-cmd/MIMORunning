@@ -847,8 +847,8 @@ struct MRPlanlessRaceCard: View {
                     .font(.system(size: 13)).foregroundStyle(.white.opacity(0.78))
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                // 기간은 충분하지만 기록 또는 훈련량 부족으로 계획 생성 불가.
-                Text("아직 기록이 충분하지 않아 계획을 세우기 어렵습니다.\n몇 번 더 뛰고 나면 여기에 나타납니다.")
+                // 기간은 충분하지만 기록·훈련량 부족, 또는 앞선 대회 회복 기간과 겹쳐 계획 생성 불가.
+                Text("기록이 부족하거나 앞선 대회의 회복 기간과 겹쳐 계획을 만들지 못했습니다.\n러닝을 몇 번 더 하거나 대회 간격을 확인해 보세요.")
                     .font(.system(size: 13)).foregroundStyle(.white.opacity(0.78))
                     .fixedSize(horizontal: false, vertical: true)
             }

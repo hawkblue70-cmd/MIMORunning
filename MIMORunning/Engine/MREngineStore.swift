@@ -287,7 +287,7 @@ final class MREngineStore: ObservableObject {
         }
         #endif
         // 날짜 순으로 대회를 처리하며 앞 대회의 피크 상태를 다음 대회 플랜에 전달한다.
-        var prevPlanInfo: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil
+        var prevPlanInfo: (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? = nil
         let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in
             let rt = raceTempByID[r.id] ?? MR_REF_TEMP
             let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
@@ -304,7 +304,7 @@ final class MREngineStore: ObservableObject {
                                  priorRace: prior,
                                  forcedMonday: anchor,
                                  caller: "refreshCore", raceName: r.name)
-            if let pl { prevPlanInfo = (date: r.date, name: r.name,
+            if let pl { prevPlanInfo = (date: r.date, name: r.name, distanceM: r.distanceM,
                                         peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }
             return (r, pl)
         }
@@ -736,7 +736,7 @@ final class MREngineStore: ObservableObject {
             (r.id, mrSeasonalTemp(runs: runs, for: r.date) ?? MR_REF_TEMP)
         }, uniquingKeysWith: { old, _ in old })
         // 날짜 순으로 대회를 처리하며 앞 대회의 피크 상태를 다음 대회 플랜에 전달한다.
-        var prevPlanInfo2: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil
+        var prevPlanInfo2: (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? = nil
         let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in
             let rt = raceTempByID[r.id] ?? MR_REF_TEMP
             let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
@@ -751,7 +751,7 @@ final class MREngineStore: ObservableObject {
                                  priorRace: prior2,
                                  forcedMonday: anchor,
                                  caller: "recomputePlans", raceName: r.name)
-            if let pl { prevPlanInfo2 = (date: r.date, name: r.name,
+            if let pl { prevPlanInfo2 = (date: r.date, name: r.name, distanceM: r.distanceM,
                                          peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }
             return (r, pl)
         }

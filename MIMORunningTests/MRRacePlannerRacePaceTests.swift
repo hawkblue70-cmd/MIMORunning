@@ -83,3 +83,50 @@ struct MRRacePlannerRacePaceTests {
         #expect(rp.allSatisfy { $0.breakdown.contains("/km") })
     }
 }
+
+@Suite("MRRacePlanner 앞선 대회 회복 블록")
+struct MRRacePlannerPriorRaceTests {
+
+    private func profile() -> MRProfile {
+        var p = MRProfile()
+        p.weeklyKm4w = 35; p.longestRun16wKm = 16
+        p.maxWeeklyKm52w = 60; p.runsPerWeek = 4; p.marathonFinishes = 1
+        return p
+    }
+
+    private func build(distanceM: Double, weeks: Int,
+                       prior: (weeksBefore: Int, distanceM: Double)?) -> MRRacePlan? {
+        let cal = Calendar.current
+        let today = Date()
+        let race = cal.date(byAdding: .day, value: 7 * weeks, to: today)!
+        let priorTuple = prior.map { pr -> (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double) in
+            (date: cal.date(byAdding: .day, value: -7 * pr.weeksBefore, to: race)!,
+             name: "앞대회", distanceM: pr.distanceM, peakLong: 16, peakVol: 40)
+        }
+        return mrBuildPlan(raceDate: race, distanceM: distanceM, today: today,
+                           profile: profile(), halfEquivMin: 110, easyPaceSecPerKm: 400,
+                           heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4,
+                           priorRace: priorTuple)
+    }
+
+    @Test func tenKSixWeeksBeforeHalfDoesNotBlockThePlan() throws {
+        // 11/15 하프 사례: 10주 뒤 하프, 6주 전 10K → 회복 블록 없이 지금부터 계획
+        let plan = try #require(build(distanceM: MRDistance.dH, weeks: 10, prior: (6, MRDistance.d10)))
+        #expect(plan.startDate == nil || plan.startNote.isEmpty)
+        #expect(!plan.startNote.contains("회복"))
+        #expect(plan.weeks.first?.phase != "회복")
+    }
+
+    @Test func halfBeforeFullGetsOneRecoveryWeek() throws {
+        let plan = try #require(build(distanceM: MRDistance.dF, weeks: 20, prior: (12, MRDistance.dH)))
+        #expect(plan.startNote.contains("회복 1주"))
+        #expect(plan.weeks.first?.phase == "회복")
+        #expect(plan.weeks.dropFirst().first?.phase != "회복")
+    }
+
+    @Test func fullBeforeFullGetsThreeRecoveryWeeks() throws {
+        let plan = try #require(build(distanceM: MRDistance.dF, weeks: 24, prior: (14, MRDistance.dF)))
+        #expect(plan.startNote.contains("회복 3주"))
+        #expect(plan.weeks.prefix(3).allSatisfy { $0.phase == "회복" })
+    }
+}

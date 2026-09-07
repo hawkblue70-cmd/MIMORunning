@@ -107,7 +107,7 @@ func mrBuildPlan(raceDate: Date,
                  heat: MRHeatModel,
                  raceTempC: Double,
                  runsPerWeek: Double = 3.0,
-                 priorRace: (date: Date, name: String, peakLong: Double, peakVol: Double)? = nil,
+                 priorRace: (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? = nil,
                  forcedMonday: Date? = nil,
                  caller: String = "unknown",
                  raceName: String = "") -> MRRacePlan? {
@@ -203,7 +203,18 @@ func mrBuildPlan(raceDate: Date,
     var dbgStartNote = "앞선 대회 없음 · 즉시 시작"
     #endif
 
-    if let prior = priorRace, prior.date > today, prior.date < raceDate {
+    // 앞 대회 뒤 회복 블록 — 거리별로 다르다.
+    //   풀: 3주 (30/50/70%) — 마라톤 후 근손상·염증 정상화 관행. 통제 연구 못 찾음.
+    //   하프: 1주 (60/70%) — 임의로 정함.
+    //   10K 이하: 회복 블록 없음. 계획 안의 튠업 레이스로 두고 그냥 지나간다.
+    //   ⚠ 예전에는 거리와 무관하게 3주를 넣어, 10K 6주 뒤 하프 계획이
+    //     "회복 3주 + 최소 3주"를 못 채워 통째로 사라졌다(11/15 하프 사례).
+    let priorRecoveryWeeks: Int = {
+        guard let d = priorRace?.distanceM else { return 0 }
+        return d >= MRDistance.dF ? 3 : (d >= MRDistance.dH ? 1 : 0)
+    }()
+
+    if let prior = priorRace, priorRecoveryWeeks > 0, prior.date > today, prior.date < raceDate {
         // 앞 대회 당일이 속한 주를 건너뛰고 그 다음 주 월요일부터 시작
         // Gregorian .weekday: 일=1, 월=2 … 토=7
         let priorWD = cal.component(.weekday, from: prior.date)
@@ -215,14 +226,14 @@ func mrBuildPlan(raceDate: Date,
         let pVol      = max(prior.peakVol,  simStartVol)
 
         planToday     = priorNext
-        // 빌드 루프는 회복 3주 이후 상태(롱런 60%, 주간 70%)에서 시작
+        // 빌드 루프는 회복 블록 마지막 주 상태(롱런 60%, 주간 70%)에서 시작
         planStartLong = pLong * 0.60
         planStartVol  = pVol  * 0.70
         p.startDate   = planToday
 
         recoveryPriorLong = pLong
         recoveryPriorVol  = pVol
-        recoveryWeekCount = 3
+        recoveryWeekCount = priorRecoveryWeeks
         priorRaceName     = prior.name
         p.bridgeRows      = []   // 빈 기간이 없으므로 타임라인 불필요
         #if DEBUG
@@ -277,7 +288,12 @@ func mrBuildPlan(raceDate: Date,
                                        to: cal.startOfDay(for: raceDate)).day ?? 0
     let planTotalWeeks = planDays / 7
     // 회복 주가 있으면 그만큼 더 필요 (최소 build 1주 + taperWeeks + recoveryWeekCount)
-    guard planTotalWeeks >= 3 + recoveryWeekCount else { return nil }
+    guard planTotalWeeks >= 3 + recoveryWeekCount else {
+        #if DEBUG
+        print("[계획:\(caller)] \(raceName.isEmpty ? "대회" : raceName) — 계획 없음: 회복 \(recoveryWeekCount)주 포함 최소 \(3 + recoveryWeekCount)주 필요, 남은 \(planTotalWeeks)주")
+        #endif
+        return nil
+    }
     let buildWeeks = planTotalWeeks - p.taperWeeks
 
     #if DEBUG
@@ -304,10 +320,12 @@ func mrBuildPlan(raceDate: Date,
     var longNow = peakLong
     var seenVolRecord = false            // 12개월 최대 주간거리를 처음 넘는 주 — 한 번만 표시
 
-    // 마라톤 후 회복 3주와 30/50/70% 는 관행이다.
+    // 마라톤 후 회복 3주와 30/50/70% 는 관행이다. 하프 1주(60/70%)는 임의로 정함.
     // 통제된 연구를 찾지 못했다. 근거가 나오면 바꿀 것.
     if recoveryWeekCount > 0 {
-        let rPcts: [(l: Double, v: Double)] = [(0.25, 0.30), (0.40, 0.50), (0.60, 0.70)]
+        let rPcts: [(l: Double, v: Double)] = recoveryWeekCount >= 3
+            ? [(0.25, 0.30), (0.40, 0.50), (0.60, 0.70)]
+            : [(0.60, 0.70)]
         for r in 0..<recoveryWeekCount {
             let ri   = r + 1
             guard let mon = cal.date(byAdding: .weekOfYear, value: r, to: monday0) else { continue }
