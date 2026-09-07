@@ -145,6 +145,9 @@ struct ActivityDetail {
     let altitudeProfile: [(distanceKm: Double, altitude: Double)]  // elevation chart data
     let altitudeTimeProfile: [(offset: TimeInterval, altitude: Double)]  // time-based for share card
 
+    /// Apple 운동 강도 캐시 (iOS 18+, 워치 런). 상세 진입 시 재조회로 갱신.
+    var appleEffort: AppleEffort? = nil
+
     /// True when HealthKit returned at least one major data field.
     /// An incomplete cache (all empty) means HealthKit hadn't finished processing — re-fetch needed.
     var isComplete: Bool {
@@ -245,6 +248,7 @@ extension ActivityDetail: Codable {
         case vo2Max
         case altProfileDist, altProfileAlt
         case altTimeOffset, altTimeAlt
+        case appleEffort
     }
 
     nonisolated init(from decoder: any Decoder) throws {
@@ -270,6 +274,7 @@ extension ActivityDetail: Codable {
         let offsets = try c.decode([Double].self, forKey: .altTimeOffset)
         let tAlts   = try c.decode([Double].self, forKey: .altTimeAlt)
         altitudeTimeProfile = zip(offsets, tAlts).map { (offset: $0, altitude: $1) }
+        appleEffort = try c.decodeIfPresent(AppleEffort.self, forKey: .appleEffort)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -292,6 +297,7 @@ extension ActivityDetail: Codable {
         try c.encode(altitudeProfile.map(\.altitude),   forKey: .altProfileAlt)
         try c.encode(altitudeTimeProfile.map(\.offset),   forKey: .altTimeOffset)
         try c.encode(altitudeTimeProfile.map(\.altitude), forKey: .altTimeAlt)
+        try c.encodeIfPresent(appleEffort, forKey: .appleEffort)
     }
 }
 
