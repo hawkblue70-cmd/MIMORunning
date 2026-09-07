@@ -249,6 +249,14 @@ func mrBuildPlan(raceDate: Date,
     var planStartVol  = simStartVol
     var planToday     = today          // 루프 Monday0 계산 기준
 
+    // 스냅샷 앵커가 이번 주 월요일 이전이면 이미 시작한 계획이다.
+    let planAlreadyStarted: Bool = {
+        guard let f = forcedMonday else { return false }
+        let wd = cal.component(.weekday, from: today)
+        let thisMon = cal.date(byAdding: .day, value: -((wd + 5) % 7), to: cal.startOfDay(for: today)) ?? today
+        return cal.startOfDay(for: f) <= thisMon
+    }()
+
     // 앞 대회 회복 주 생성용 — 0이면 회복 주 없음
     var recoveryPriorLong = 0.0
     var recoveryPriorVol  = 0.0
@@ -306,8 +314,9 @@ func mrBuildPlan(raceDate: Date,
         #if DEBUG
         dbgStartNote = "앞선 대회「\(prior.name)」 다음 주"
         #endif
-    } else if forcedMonday == nil && neededTotal < totalWeeks {
-        // ⚠ 이미 시작한 계획(스냅샷 앵커 있음)은 시작을 뒤로 미루지 않는다 — 진행 중인 계획은 바꾸지 않는다.
+    } else if !planAlreadyStarted && neededTotal < totalWeeks {
+        // ⚠ 이미 시작한 계획(앵커가 이번 주 이전)은 시작을 뒤로 미루지 않는다 — 진행 중인 계획은 바꾸지 않는다.
+        //   아직 시작 전인 앵커(미래 월요일)는 구조가 바뀔 수 있으므로 다시 역산한다.
         // 앞 대회 없음 — 대회일에서 필요 기간만큼 역산해 시작
         guard let deferredStart = cal.date(byAdding: .day, value: -(neededTotal * 7), to: raceDate) else { return nil }
         planToday   = deferredStart

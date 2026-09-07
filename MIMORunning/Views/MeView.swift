@@ -483,6 +483,61 @@ struct MeView: View {
                 continue
             }
 
+            // ── Trigger 0: 아직 시작하지 않은 계획 → 스냅샷 전체를 실시간 계획으로 교체 ──
+            // "진행 중인 계획은 바꾸지 않는다"는 시작한 계획 얘기다. 시작 전 스냅샷은 앞선 대회 추가·삭제,
+            // 튠업, 회복 블록 규칙 변화로 구조(시작일·주 수)가 통째로 바뀔 수 있다.
+            // 예: 하프를 나중에 등록하면 풀 계획은 10K 다음 주가 아니라 하프 다음 주부터 시작해야 한다.
+            if let firstMon = existing.planWeeks.first?.monday,
+               cal.startOfDay(for: firstMon) > thisMonday {
+                let liveFirst = check.plan.weeks.first.map { cal.startOfDay(for: $0.monday) }
+                let liveStartMon = liveFirst ?? cal.startOfDay(for: firstMon)
+                if liveStartMon != cal.startOfDay(for: firstMon)
+                    || check.plan.weeks.count != existing.planWeeks.count {
+                    existing.weeksJSON         = data.weeksJSON
+                    existing.metaJSON          = data.metaJSON
+                    existing.projectedFinalMin = data.projectedFinalMin
+                    existing.projectedNowMin   = data.projectedNowMin
+                    existing.goalMin           = data.goalMin
+                    #if DEBUG
+                    print("[스냅샷] 시작 전 계획 구조 변경 → 전체 갱신: \(check.race.name) \(existing.planWeeks.count)주")
+                    #endif
+                    continue
+                }
+            }
+
+            // ── Trigger 3: 튠업 대회 추가·삭제 → 관련 미래 주만 실시간 계획으로 교체 ──
+            // 과거 주는 그대로. 미래 주 중 실시간과 스냅샷의 "대회 주" 여부가 다른 주만 바꾼다.
+            // (프로필 변화로 인한 미래 주 흔들림은 여전히 막는다 — 대회 주 관련만 손댄다.)
+            do {
+                let liveByMonday: [Date: MRPlanWeek] = Dictionary(
+                    check.plan.weeks.map { (cal.startOfDay(for: $0.monday), $0) },
+                    uniquingKeysWith: { a, _ in a }
+                )
+                var changed = 0
+                let merged: [MRPlanWeekSummary] = existing.planWeeks.map { snap in
+                    let snapMon = cal.startOfDay(for: snap.monday)
+                    guard snapMon > thisMonday, let live = liveByMonday[snapMon] else { return snap }
+                    let raceRelated = live.phase == "대회 주" || snap.phase == "대회 주"
+                        || live.breakdown.contains("대회") || snap.breakdown.contains("대회")
+                    guard raceRelated,
+                          live.phase != snap.phase || live.breakdown != snap.breakdown
+                          || abs(live.longRunKm - snap.longRunKm) > 0.05 else { return snap }
+                    changed += 1
+                    return MRPlanWeekSummary(idx: snap.idx, monday: snap.monday, phase: live.phase,
+                                             longRunKm: live.longRunKm, weeklyKm: live.weeklyKm,
+                                             breakdown: live.breakdown)
+                }
+                if changed > 0 {
+                    let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
+                    if let wd = try? enc.encode(merged), let wj = String(data: wd, encoding: .utf8) {
+                        existing.weeksJSON = wj
+                    }
+                    #if DEBUG
+                    print("[스냅샷] 튠업 변경 → 미래 \(changed)주 갱신: \(check.race.name)")
+                    #endif
+                }
+            }
+
             // ── Trigger 1: targetLongKm 규칙 변경 → 미래 주 조정 ──────────────
             // 프로필 변화(더 많이 달림)는 targetLongKm에 영향을 주지 않으므로 갱신 안 함.
             let liveTarget = check.plan.targetLongKm
