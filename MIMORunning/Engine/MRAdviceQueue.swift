@@ -49,13 +49,13 @@ func mrFuelingAdvice(raceDate: Date, distanceM: Double,
     if hours >= 2.5 {
         let lo = Int(60 * hours), hi = Int(90 * hours)
         return MRAdvice(key: "fueling",
-            text: "\(mrFormatDisplay(projectedMin)) 예상이면 2.5시간을 넘으니 권장 구간이 시간당 60g이 아니라 60~90g입니다(총 \(lo)~\(hi)g). 60g를 넘길 때는 포도당:과당 혼합 제품을 쓰세요 — 단일 포도당은 흡수 한계가 60g/h입니다. 젤만으로는(1개 22~25g) 못 채우니 음료를 함께 계산하고 15~20분 간격으로 나누세요. 상단은 훈련에서 연습해 본 만큼만.",
+            text: "\(mrFormatDisplay(projectedMin)) 예상이면 2.5시간을 넘으니 권장 탄수화물이 시간당 60g이 아니라 60~90g입니다(총 \(lo)~\(hi)g — 젤 무게가 아니라 탄수화물 양). 60g를 넘길 때는 포도당:과당 혼합 제품을 쓰세요 — 단일 포도당은 흡수 한계가 60g/h입니다. 젤만으로는(1개 22~25g) 못 채우니 음료를 함께 계산하고 15~20분 간격으로 나누세요. 상단은 훈련에서 연습해 본 만큼만.",
             rationale: "ACSM/AND/DC 2016 합동 성명 · Jeukendrup 2014(복합 수송 탄수화물) · D-\(d)",
             grade: "A", gainMin: 12, timeliness: 0.85, slot: "raceCountdown")
     }
     let lo = Int(30 * hours), hi = Int(60 * hours)
     return MRAdvice(key: "fueling",
-        text: "\(mrFormatDisplay(projectedMin)) 예상이면 시간당 30~60g이 권장 구간입니다(총 \(lo)~\(hi)g). 15~20분 간격으로 균등하게 나누세요.",
+        text: "\(mrFormatDisplay(projectedMin)) 예상이면 탄수화물 시간당 30~60g이 권장 구간입니다(총 \(lo)~\(hi)g). 젤 무게가 아니라 탄수화물 양이고, 젤 1개는 보통 22~25g입니다. 15~20분 간격으로 균등하게 나누세요.",
         rationale: "ACSM/AND/DC 2016 합동 성명 · D-\(d)",
         grade: "A", gainMin: 6, timeliness: 0.7, slot: "raceCountdown")
 }
