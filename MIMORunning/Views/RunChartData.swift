@@ -659,18 +659,22 @@ enum RunChartBuilder {
     private static func buildPaceSeries(splits: [SplitData]) -> RunChartSeries? {
         var rawPoints: [(km: Double, value: Double)] = []
         var cumulativeKm: Double = 0
+        var totalDuration: Double = 0
         for split in splits {
             let splitKm = split.distanceM / 1000.0
             guard splitKm > 0 else { continue }
             rawPoints.append((km: cumulativeKm + splitKm / 2.0, value: split.duration / splitKm))
-            cumulativeKm += splitKm
+            cumulativeKm  += splitKm
+            totalDuration += split.duration
         }
-        guard rawPoints.count >= 2 else { return nil }
+        guard rawPoints.count >= 2, cumulativeKm > 0 else { return nil }
 
         let values    = rawPoints.map { $0.value }
         let minVal    = values.min()!
         let maxVal    = values.max()!
-        let avgVal    = values.reduce(0, +) / Double(values.count)
+        // 평균은 거리 가중(총 시간 ÷ 총 거리) — 구간 페이스 단순 평균은 마지막 부분 구간(예: 0.56km 스퍼트)을
+        // 1km 구간과 같은 무게로 세어 실제 평균과 어긋난다 (5.56km 러닝에서 6'25" vs 실제 6'31")
+        let avgVal    = totalDuration / cumulativeKm
         let lastValue = rawPoints.last?.value ?? avgVal
         let range     = maxVal - minVal
 
