@@ -6,6 +6,7 @@ struct AppleEffort: Codable, Equatable {
     var estimated: Double?
     var fetchedAt: Date
 
+    /// 원시 HealthKit 값(반올림·클램프 전). 표시용 정수는 EffortResolver를 거친다.
     /// 피트니스 앱과 동일 규칙: 수동값이 있으면 수동, 없으면 추정.
     var effective: Double? { manual ?? estimated }
 
@@ -27,7 +28,10 @@ struct ResolvedEffort: Equatable {
 /// 우선순위: 내 입력 > Apple 수동 > Apple 추정 > nil. 심박 기반 추정은 하지 않는다.
 enum EffortResolver {
     static func clamp(_ v: Int) -> Int { min(10, max(1, v)) }
-    static func clamp(_ v: Double) -> Int { clamp(Int(v.rounded())) }
+    static func clamp(_ v: Double) -> Int {
+        guard v.isFinite else { return 1 }
+        return Int(min(10, max(1, v)).rounded())
+    }
 
     static func resolve(userValue: Int?, apple: AppleEffort?) -> ResolvedEffort? {
         if let u = userValue { return ResolvedEffort(value: clamp(u), source: .user) }
@@ -49,8 +53,10 @@ struct EffortIndex {
 
     /// WorkoutStory 목록에서 사용자 입력만 추린다.
     init(stories: [WorkoutStory], apple: [UUID: AppleEffort]) {
+        // 같은 workoutID가 둘 이상이면(CloudKit 병합) 가장 최근 입력이 이긴다.
+        let sorted = stories.sorted { ($0.effortUpdatedAt ?? $0.updatedAt) < ($1.effortUpdatedAt ?? $1.updatedAt) }
         var u: [String: Int] = [:]
-        for s in stories { if let r = s.effortRPE { u[s.workoutID] = r } }
+        for s in sorted { if let r = s.effortRPE { u[s.workoutID] = r } }
         self.init(user: u, apple: apple)
     }
 

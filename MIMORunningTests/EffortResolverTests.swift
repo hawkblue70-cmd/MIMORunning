@@ -39,4 +39,34 @@ struct EffortResolverTests {
         let other = UUID()
         #expect(idx.resolve(other) == nil)
     }
+
+    @Test func indexFromStoriesFiltersNilAndFallsBackToApple() {
+        let a = UUID(), b = UUID()
+        let s1 = WorkoutStory(workoutID: a.uuidString); s1.effortRPE = 5
+        let s2 = WorkoutStory(workoutID: b.uuidString)          // nil → 제외
+        let idx = EffortIndex(stories: [s1, s2],
+                              apple: [b: AppleEffort(manual: nil, estimated: 3, fetchedAt: Date())])
+        #expect(idx.resolve(a) == ResolvedEffort(value: 5, source: .user))
+        #expect(idx.resolve(b) == ResolvedEffort(value: 3, source: .appleEstimated))
+    }
+
+    @Test func indexFromStoriesNewestWinsOnDuplicateWorkoutID() {
+        let id = UUID()
+        let old = WorkoutStory(workoutID: id.uuidString); old.effortRPE = 3
+        old.effortUpdatedAt = Date(timeIntervalSince1970: 1_000)
+        let new = WorkoutStory(workoutID: id.uuidString); new.effortRPE = 7
+        new.effortUpdatedAt = Date(timeIntervalSince1970: 2_000)
+        #expect(EffortIndex(stories: [new, old], apple: [:]).resolve(id)?.value == 7)
+        #expect(EffortIndex(stories: [old, new], apple: [:]).resolve(id)?.value == 7)
+    }
+
+    @Test func clampDoubleHandlesNonFiniteAndHuge() {
+        #expect(EffortResolver.clamp(Double.nan) == 1)
+        #expect(EffortResolver.clamp(Double.infinity) == 1)
+        #expect(EffortResolver.clamp(1e300) == 10)
+        #expect(EffortResolver.clamp(-5.0) == 1)
+        #expect(EffortResolver.clamp(-3) == 1)
+        let a = AppleEffort(manual: nil, estimated: 5, fetchedAt: Date())
+        #expect(!a.hasSameValues(as: AppleEffort(manual: nil, estimated: 6, fetchedAt: Date())))
+    }
 }
