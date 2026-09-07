@@ -23,6 +23,13 @@ private func localizedBreakdown(_ s: String) -> String {
         .replacingOccurrences(of: "강도는 그대로", with: "Keep the intensity")
         .replacingOccurrences(of: "마지막 ", with: "last ")
         .replacingOccurrences(of: "분은 ", with: " min at ")
+        .replacingOccurrences(of: "(대회 이틀 뒤)", with: " (2 days after)")
+        .replacingOccurrences(of: "대회 전 2~3일은 가볍게", with: "easy 2–3 days before")
+        .replacingOccurrences(of: "(이번 주 롱런)", with: "(this week's long run)")
+        .replacingOccurrences(of: "앞 5~7일 볼륨 −30%", with: "volume −30% for 5–7 days before")
+        .replacingOccurrences(of: "대회는 가볍게", with: "race, take it easy")
+        .replacingOccurrences(of: "하프 대회", with: "Half race")
+        .replacingOccurrences(of: " 대회", with: " race")
         .replacingOccurrences(of: "회", with: "x")
         .replacingOccurrences(of: "× ", with: "× ")   // keep spacing
 }
@@ -35,6 +42,7 @@ private func localizedPhase(_ p: String) -> String {
     case "회복":         return L.s("회복", "Recovery")
     case "테이퍼":       return L.s("테이퍼", "Taper")
     case "대회 페이스":  return L.s("대회 페이스", "Race pace")
+    case "대회 주":      return L.s("대회 주", "Race week")
     default:             return p
     }
 }
@@ -423,6 +431,7 @@ struct MRWeekTable: View {
         case "테이퍼":      return mrAccent
         case "회복":        return Color(red: 0.35, green: 0.65, blue: 0.95)
         case "대회 페이스": return mrWarn
+        case "대회 주":     return Color(red: 0.98, green: 0.55, blue: 0.40)
         case "유지":        return Color(red: 0.45, green: 0.80, blue: 0.55)
         default:            return .white.opacity(0.82)
         }
@@ -437,6 +446,7 @@ struct MRWeekTable: View {
             (phase: "늘리기",       desc: L.s("롱런을 매주 조금씩 늘립니다",                              "Gradually increase long run each week")),
             (phase: "유지",         desc: L.s("롱런을 더 늘리지 않고 그 거리에 익숙해집니다",            "Get comfortable at the current long run distance")),
             (phase: "대회 페이스",   desc: L.s("롱런 안에 대회 페이스로 달리는 구간이 들어갑니다",        "Includes race-pace segments within the long run")),
+            (phase: "대회 주",       desc: L.s("계획 안의 튠업 대회. 단거리는 롱런 유지, 하프는 대회가 롱런", "Tune-up race inside the plan. Short races keep the long run; a half is the long run")),
             (phase: "회복",         desc: L.s("롱런과 주간 거리를 줄입니다. 몸은 쉴 때 좋아집니다",     "Reduce long run and weekly distance. Bodies improve with rest")),
             (phase: "테이퍼",       desc: L.s("대회 전 2주, 거리를 절반 이하로 줄입니다",               "2 weeks before race, cut volume below half")),
         ].filter { present.contains($0.phase) }
@@ -806,6 +816,8 @@ struct MRGoalLinksView: View {
 
 struct MRPlanlessRaceCard: View {
     let race: MRTargetRace
+    /// nil이 아니면 이 대회는 그 계획의 "대회 주"로 흡수된 튠업 — 계획 없음 문구 대신 안내
+    var enclosingPlanName: String? = nil
     @EnvironmentObject private var engine: MREngineStore
 
     // 플래너와 동일한 계산식 — 정수 나눗셈으로 주 수를 구한다.
@@ -841,7 +853,11 @@ struct MRPlanlessRaceCard: View {
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(mrAccent.opacity(0.15)).clipShape(Capsule())
             }
-            if weeksToRace < 3 {
+            if let name = enclosingPlanName {
+                Text("「\(name)」 계획 안의 '대회 주'로 들어 있습니다. 별도 계획은 만들지 않습니다. 그 주차의 실행 안내를 따르시면 됩니다.")
+                    .font(.system(size: 13)).foregroundStyle(.white.opacity(0.78))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if weeksToRace < 3 {
                 // ⚠ 3주 미만은 훈련으로 바꿀 수 있는 게 없다.
                 Text("대회가 가까워 훈련 계획을 세우지 않습니다. 지금부터는 쌓기보다 아끼는 편이 낫습니다.")
                     .font(.system(size: 13)).foregroundStyle(.white.opacity(0.78))
@@ -903,6 +919,16 @@ struct MRRacePlanSection: View {
                     case .planless(let r):
                         if isExpanded {
                             MRPlanlessRaceCard(race: r)
+                        } else {
+                            MRRaceCollapsedRow(name: r.name, date: r.date, weekCount: nil) {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    expandedId = item.id
+                                }
+                            }
+                        }
+                    case .tuneUp(let r, let planName):
+                        if isExpanded {
+                            MRPlanlessRaceCard(race: r, enclosingPlanName: planName)
                         } else {
                             MRRaceCollapsedRow(name: r.name, date: r.date, weekCount: nil) {
                                 withAnimation(.easeOut(duration: 0.2)) {

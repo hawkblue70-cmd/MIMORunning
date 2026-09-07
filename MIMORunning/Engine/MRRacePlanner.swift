@@ -59,6 +59,40 @@ struct MRRacePlan {
     var startingLongKm = 0.0
     /// 앞 대회 종료 후 계획 시작까지의 타임라인. [(날짜범위, 내용)] — 비어 있으면 표시 안 함.
     var bridgeRows: [(range: String, text: String)] = []
+    /// 이 계획의 주차 안에 "대회 주"로 흡수된 튠업 대회 날짜. 스토어가 독립 계획 생략 여부를 정한다.
+    var absorbedTuneUpDates: [Date] = []
+}
+
+// MARK: - 튠업 대회
+//
+// A 레이스(하프 이상) 하나에만 계획을 만들고, 그 기간 안의 5K·10K(풀 계획 안의 하프)는
+// 별도 계획 없이 해당 주를 "대회 주"로 바꾼다. 코칭 관행의 A/B/C 레이스 구분을
+// 사용자 입력 없이 거리로 추론한 것이다.
+
+/// A 계획 안에 들어오는 튠업 대회.
+struct MRTuneUpRace {
+    let date: Date
+    let name: String
+    let distanceM: Double
+}
+
+/// 튠업 대회 주 주간 거리 배율 — 임의로 정함 (Bosquet 2007 테이퍼 원칙을 거리에 맞춰 축소).
+let MR_TUNEUP_SHORT_VOL = 0.80   // 5K·10K 주: 대회 전 2~3일 가볍게, 롱런은 유지(대회 이틀 뒤)
+let MR_TUNEUP_HALF_VOL  = 0.70   // 하프 주: 대회가 그 주 롱런, 앞 5~7일 볼륨 −30%, 다음 주 회복
+
+/// A 레이스 하나에 대한 튠업 후보: 오늘 < 날짜 < A 날짜이고, 하프 미만이거나 (A가 풀일 때만) 하프.
+/// 실제 흡수 여부는 플래너가 계획 주차 안에 드는지로 정한다(`MRRacePlan.absorbedTuneUpDates`).
+func mrTuneUpCandidates(for race: MRTargetRace, among races: [MRTargetRace], today: Date) -> [MRTuneUpRace] {
+    let cal = Calendar.current
+    let t0 = cal.startOfDay(for: today), t1 = cal.startOfDay(for: race.date)
+    return races.filter { r in
+        guard r.id != race.id, r.distanceM < MRDistance.dF else { return false }
+        if r.distanceM >= MRDistance.dH && race.distanceM < MRDistance.dF { return false }
+        let d = cal.startOfDay(for: r.date)
+        return d > t0 && d < t1
+    }
+    .sorted { $0.date < $1.date }
+    .map { MRTuneUpRace(date: $0.date, name: $0.name, distanceM: $0.distanceM) }
 }
 
 /// 롱런을 진행시켜 대회일까지의 계획을 만든다.
@@ -109,6 +143,7 @@ func mrBuildPlan(raceDate: Date,
                  runsPerWeek: Double = 3.0,
                  priorRace: (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? = nil,
                  forcedMonday: Date? = nil,
+                 tuneUps: [MRTuneUpRace] = [],
                  caller: String = "unknown",
                  raceName: String = "") -> MRRacePlan? {
 
@@ -177,7 +212,15 @@ func mrBuildPlan(raceDate: Date,
 
     let simStartLong = max(profile.longestRun16wKm, 5.0)
     let simStartVol  = vol
+    // 하프 튠업 하나당 롱런 진행이 2주(대회 주 + 회복 주) 멈춘다 — 필요 기간에 더한다.
+    // 앞선 A 대회(priorRace) 이전의 후보는 그 계획이 맡으므로 세지 않는다.
+    let halfTuneUpCount = tuneUps.filter { t in
+        guard t.distanceM >= MRDistance.dH else { return false }
+        if let pr = priorRace { return t.date > pr.date }
+        return true
+    }.count
     let neededTotal  = simulateNeeded(fromLong: simStartLong, fromVol: simStartVol) + p.taperWeeks
+                     + 2 * halfTuneUpCount
 
     // 날짜를 짧게 표시 — 올해(baseYear)는 "M-d", 다른 해는 "yyyy-M-d"
     let baseYear = cal.component(.year, from: today)
@@ -319,6 +362,7 @@ func mrBuildPlan(raceDate: Date,
     var currentBuildVol = planStartVol   // 매 빌드주 +5%로 유기적 증가
     var longNow = peakLong
     var seenVolRecord = false            // 12개월 최대 주간거리를 처음 넘는 주 — 한 번만 표시
+    var forceRecovery = false            // 하프 튠업 다음 주는 회복 주
 
     // 마라톤 후 회복 3주와 30/50/70% 는 관행이다. 하프 1주(60/70%)는 임의로 정함.
     // 통제된 연구를 찾지 못했다. 근거가 나오면 바꿀 것.
@@ -351,12 +395,25 @@ func mrBuildPlan(raceDate: Date,
         guard let mon = cal.date(byAdding: .weekOfYear, value: i - 1, to: monday0) else { continue }
         var lr = 0.0, wkVol = 0.0, phase = "", newMax = false, recovery = false
 
+        // 이 주(월~일)에 들어오는 튠업 대회. 0 없음 · 1 단거리(5K·10K) · 2 하프
+        let weekEnd = cal.date(byAdding: .day, value: 7, to: mon) ?? mon
+        let tune = tuneUps.first { $0.date >= mon && $0.date < weekEnd }
+        let tuneKind = tune.map { $0.distanceM >= MRDistance.dH ? 2 : 1 } ?? 0
+        if let t = tune { p.absorbedTuneUpDates.append(t.date) }
+
         if i <= buildWeeks {
             // 빌드 사이클을 회복 주 수만큼 오프셋해야 첫 빌드 주가 다운 주가 되지 않는다
-            recovery = ((i - recoveryWeekCount) % cycleLen == 0)
-            if recovery {
+            recovery = ((i - recoveryWeekCount) % cycleLen == 0) || forceRecovery
+            forceRecovery = false
+            if tuneKind == 2 {
+                // 하프 튠업: 대회가 이번 주 롱런. 롱런 진행은 멈추고 다음 주는 회복.
+                lr = MRDistance.dH / 1000.0
+                phase = "대회 주"
+                wkVol = currentBuildVol * MR_TUNEUP_HALF_VOL
+                forceRecovery = true
+            } else if recovery {
                 lr = peakLong * 0.65
-                phase = "회복"
+                phase = tuneKind == 1 ? "대회 주" : "회복"
                 wkVol = currentBuildVol * 0.75
             } else {
                 lr = min(peakLong * (1 + stepPct), p.targetLongKm)
@@ -377,6 +434,11 @@ func mrBuildPlan(raceDate: Date,
                 currentBuildVol = min(currentBuildVol * 1.05, volCap)
                 wkVol = currentBuildVol
                 peakVol = max(peakVol, wkVol)    // 회복주는 최대치를 낮추지 않는다
+                if tuneKind == 1 {
+                    // 5K·10K 튠업: 롱런은 유지(대회 이틀 뒤), 주간 거리만 줄인다. 진행(currentBuildVol)은 계속.
+                    phase = "대회 주"
+                    wkVol = currentBuildVol * MR_TUNEUP_SHORT_VOL
+                }
             }
             longNow = max(longNow, lr)
         } else {
@@ -438,6 +500,24 @@ func mrBuildPlan(raceDate: Date,
                 : L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(others)회",
                       "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(others)x")
         }
+        if let t = tune {
+            let label = mrLabelFor(distanceM: t.distanceM)
+            if i > buildWeeks {
+                // 테이퍼 안의 튠업: 테이퍼는 그대로, 대회는 가볍게
+                breakdown += L.s(" · \(label) 대회는 가볍게", " · \(label) race, take it easy")
+            } else if tuneKind == 2 {
+                let m = max(n - 1, 1)
+                breakdown = L.s("하프 대회 (이번 주 롱런) + 이지 \(m)회 · 앞 5~7일 볼륨 −30%",
+                                "Half race (this week's long run) + Easy \(m)x · volume −30% for 5–7 days before")
+            } else {
+                let m = max(n - 2, 0)
+                breakdown = m > 0
+                    ? L.s("\(label) 대회 + 롱런 \(Int(lrDisplay))km(대회 이틀 뒤) + 이지 \(m)회 · 대회 전 2~3일은 가볍게",
+                          "\(label) race + Long run \(Int(lrDisplay))km (2 days after) + Easy \(m)x · easy 2–3 days before")
+                    : L.s("\(label) 대회 + 롱런 \(Int(lrDisplay))km(대회 이틀 뒤) · 대회 전 2~3일은 가볍게",
+                          "\(label) race + Long run \(Int(lrDisplay))km (2 days after) · easy 2–3 days before")
+            }
+        }
         // 12개월 최대 주간거리를 처음 초과하는 주를 표시 — 경고가 아니라 사실 전달
         var isVR = false
         // 상한에 처음 도달하는 주를 표시 — 넘어섰다는 게 아니라 닿았다는 사실 전달
@@ -460,6 +540,23 @@ func mrBuildPlan(raceDate: Date,
     p.reachableLongKm = peakLong
     p.peakWeeklyKm = peakVol
     p.histMaxWeeklyKm = profile.maxWeeklyKm52w
+
+    // 튠업 고지 — 판단이 아니라 결과 전달
+    let halfAbsorbed = tuneUps.filter { t in
+        t.distanceM >= MRDistance.dH && p.absorbedTuneUpDates.contains(t.date)
+    }.count
+    if halfAbsorbed > 0 {
+        p.notes.append(L.s("하프 대회 주와 그다음 회복 주에는 롱런이 늘지 않습니다. 목표 롱런 도달이 \(2 * halfAbsorbed)주 늦어집니다.",
+                           "The half-race week and the recovery week after it don't advance the long run. Reaching the target long run is delayed by \(2 * halfAbsorbed) weeks."))
+    }
+    var raceRun = 0, maxRaceRun = 0
+    for w in p.weeks {
+        if w.phase == "대회 주" { raceRun += 1; maxRaceRun = max(maxRaceRun, raceRun) } else { raceRun = 0 }
+    }
+    if maxRaceRun >= 3 {
+        p.notes.append(L.s("대회가 \(maxRaceRun)주 연속입니다. 그 구간은 훈련 자극이 거의 없습니다.",
+                           "\(maxRaceRun) consecutive race weeks — almost no training stimulus in that stretch."))
+    }
     print(String(format: "[계획] 과거12개월 최대주간 = %.1fkm", profile.maxWeeklyKm52w))
     if profile.maxWeeklyKm52w > 0 {
         p.notes.append(String(format: L.s("주간 거리는 지난 1년 최고치(%.0fkm)까지 올립니다. 그 이상은 아직 해보신 적이 없습니다.",

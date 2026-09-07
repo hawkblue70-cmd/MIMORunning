@@ -8,17 +8,21 @@ import HealthKit
 enum MRRaceItem: Identifiable {
     case planned(MRGoalCheck)
     case planless(MRTargetRace)
+    /// A 계획 안의 "대회 주"로 흡수된 튠업 — 독립 계획 없음
+    case tuneUp(MRTargetRace, planName: String)
 
     var id: String {
         switch self {
-        case .planned(let c):  return c.race.id.uuidString
-        case .planless(let r): return r.id.uuidString
+        case .planned(let c):     return c.race.id.uuidString
+        case .planless(let r):    return r.id.uuidString
+        case .tuneUp(let r, _):   return r.id.uuidString
         }
     }
     var date: Date {
         switch self {
-        case .planned(let c):  return c.race.date
-        case .planless(let r): return r.date
+        case .planned(let c):     return c.race.date
+        case .planless(let r):    return r.date
+        case .tuneUp(let r, _):   return r.date
         }
     }
 }
@@ -48,6 +52,8 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var plans: [MRRacePlan] = []
     @Published private(set) var checks: [MRGoalCheck] = []
     @Published private(set) var planlessRaces: [MRTargetRace] = []
+    /// A 계획의 "대회 주"로 흡수된 튠업 대회와 그 계획 이름
+    @Published private(set) var absorbedTuneUps: [(race: MRTargetRace, planName: String)] = []
     @Published private(set) var advice: [MRAdvice] = []
     @Published private(set) var streakWeeks: Int = 0
     @Published private(set) var todayCard: MRTodayCard?
@@ -113,8 +119,70 @@ final class MREngineStore: ObservableObject {
 
     var raceItems: [MRRaceItem] {
         (checks.map { MRRaceItem.planned($0) }
-         + planlessRaces.map { MRRaceItem.planless($0) })
+         + planlessRaces.map { MRRaceItem.planless($0) }
+         + absorbedTuneUps.map { MRRaceItem.tuneUp($0.race, planName: $0.planName) })
             .sorted { $0.date < $1.date }
+    }
+
+    // MARK: - 대회 ↔ 계획 짝짓기
+    //
+    // A 레이스(하프 이상)에만 계획을 만들고, 그 기간 안의 5K·10K(풀 계획 안의 하프)는
+    // "대회 주"로 흡수한다. 감싸는 계획이 없는 단거리만 독립 계획을 만든다.
+    // refreshCore와 recomputePlans가 같은 규칙을 써야 하므로 한 곳에 둔다.
+    private func buildRacePairs(upcoming: [MRTargetRace], profile planProfile: MRProfile,
+                                anchors: [String: Date], raceTempByID: [UUID: Double],
+                                now: Date, caller: String)
+        -> (paired: [(race: MRTargetRace, plan: MRRacePlan?)],
+            absorbed: [(race: MRTargetRace, planName: String)]) {
+        let cal = Calendar.current
+        let he = halfEquivMin
+        var prevPlanInfo: (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? = nil
+        var absorbed: [(race: MRTargetRace, planName: String)] = []
+        var aPairs: [(race: MRTargetRace, plan: MRRacePlan?)] = []
+
+        for r in upcoming where r.distanceM >= MRDistance.dH {
+            let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
+            // 앞선 대회는 반드시 대상 대회보다 하루 이상 앞선 날이어야 한다.
+            let prior = prevPlanInfo.flatMap { p in
+                cal.startOfDay(for: p.date) < cal.startOfDay(for: r.date) ? p : nil
+            }
+            let tune = mrTuneUpCandidates(for: r, among: upcoming, today: now)
+            let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
+                                 profile: planProfile, halfEquivMin: he,
+                                 easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
+                                 raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP,
+                                 runsPerWeek: planProfile.runsPerWeek,
+                                 priorRace: prior, forcedMonday: anchors[key],
+                                 tuneUps: tune, caller: caller, raceName: r.name)
+            if let pl {
+                prevPlanInfo = (date: r.date, name: r.name, distanceM: r.distanceM,
+                                peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm)
+                for t in upcoming where t.id != r.id
+                    && pl.absorbedTuneUpDates.contains(where: { cal.isDate($0, inSameDayAs: t.date) })
+                    && !absorbed.contains(where: { $0.race.id == t.id }) {
+                    absorbed.append((t, r.name))
+                }
+            }
+            aPairs.append((r, pl))
+        }
+
+        let absorbedIDs = Set(absorbed.map { $0.race.id })
+        var shortPairs: [(race: MRTargetRace, plan: MRRacePlan?)] = []
+        for r in upcoming where r.distanceM < MRDistance.dH && !absorbedIDs.contains(r.id) {
+            let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
+            let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
+                                 profile: planProfile, halfEquivMin: he,
+                                 easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
+                                 raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP,
+                                 runsPerWeek: planProfile.runsPerWeek,
+                                 priorRace: nil, forcedMonday: anchors[key],
+                                 caller: caller, raceName: r.name)
+            shortPairs.append((r, pl))
+        }
+        #if DEBUG
+        for a in absorbed { print("[계획:\(caller)] 튠업 흡수 — \(a.race.name) → 「\(a.planName)」 계획의 대회 주") }
+        #endif
+        return ((aPairs + shortPairs).sorted { $0.race.date < $1.race.date }, absorbed)
     }
 
     private let hk = MRHealthKit()
@@ -286,28 +354,10 @@ final class MREngineStore: ObservableObject {
             }
         }
         #endif
-        // 날짜 순으로 대회를 처리하며 앞 대회의 피크 상태를 다음 대회 플랜에 전달한다.
-        var prevPlanInfo: (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? = nil
-        let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in
-            let rt = raceTempByID[r.id] ?? MR_REF_TEMP
-            let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
-            let anchor = storedSnapshotAnchors[key]
-            // 앞선 대회는 반드시 대상 대회보다 하루 이상 앞선 날이어야 한다.
-            // 같은 날짜나 중복 등록된 경우 자기 자신을 prior로 잡는 것을 방지한다.
-            let prior = prevPlanInfo.flatMap { p in
-                Calendar.current.startOfDay(for: p.date) < Calendar.current.startOfDay(for: r.date) ? p : nil
-            }
-            let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
-                                 profile: planProfile, halfEquivMin: he,
-                                 easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
-                                 raceTempC: rt, runsPerWeek: planProfile.runsPerWeek,
-                                 priorRace: prior,
-                                 forcedMonday: anchor,
-                                 caller: "refreshCore", raceName: r.name)
-            if let pl { prevPlanInfo = (date: r.date, name: r.name, distanceM: r.distanceM,
-                                        peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }
-            return (r, pl)
-        }
+        let (paired, absorbed) = buildRacePairs(upcoming: upcoming, profile: planProfile,
+                                                anchors: storedSnapshotAnchors, raceTempByID: raceTempByID,
+                                                now: now, caller: "refreshCore")
+        absorbedTuneUps = absorbed
         let validPairs = paired.compactMap { p -> (MRTargetRace, MRRacePlan)? in
             guard let pl = p.plan else { return nil }
             return (p.race, pl)
@@ -320,7 +370,8 @@ final class MREngineStore: ObservableObject {
                                raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP,
                                otherPlans: others)
         }
-        planlessRaces = paired.filter { $0.plan == nil }.map(\.race)
+        let absorbedIDs = Set(absorbed.map { $0.race.id })
+        planlessRaces = paired.filter { $0.plan == nil && !absorbedIDs.contains($0.race.id) }.map(\.race)
         advice = mrBuildAdvice(runs: fetched, phys: phys, plans: plans,
                                races: userInput.races,
                                gaps: [], strengthPerWeek: storedStrengthPerWeek,
@@ -735,26 +786,10 @@ final class MREngineStore: ObservableObject {
         let raceTempByID = Dictionary(upcoming.map { r in
             (r.id, mrSeasonalTemp(runs: runs, for: r.date) ?? MR_REF_TEMP)
         }, uniquingKeysWith: { old, _ in old })
-        // 날짜 순으로 대회를 처리하며 앞 대회의 피크 상태를 다음 대회 플랜에 전달한다.
-        var prevPlanInfo2: (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? = nil
-        let paired = upcoming.map { r -> (race: MRTargetRace, plan: MRRacePlan?) in
-            let rt = raceTempByID[r.id] ?? MR_REF_TEMP
-            let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
-            let anchor = snapshotAnchors[key]
-            let prior2 = prevPlanInfo2.flatMap { p in
-                Calendar.current.startOfDay(for: p.date) < Calendar.current.startOfDay(for: r.date) ? p : nil
-            }
-            let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
-                                 profile: planProfile2, halfEquivMin: he,
-                                 easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
-                                 raceTempC: rt, runsPerWeek: planProfile2.runsPerWeek,
-                                 priorRace: prior2,
-                                 forcedMonday: anchor,
-                                 caller: "recomputePlans", raceName: r.name)
-            if let pl { prevPlanInfo2 = (date: r.date, name: r.name, distanceM: r.distanceM,
-                                         peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm) }
-            return (r, pl)
-        }
+        let (paired, absorbed) = buildRacePairs(upcoming: upcoming, profile: planProfile2,
+                                                anchors: snapshotAnchors, raceTempByID: raceTempByID,
+                                                now: now, caller: "recomputePlans")
+        absorbedTuneUps = absorbed
         let validPairs = paired.compactMap { p -> (MRTargetRace, MRRacePlan)? in
             guard let pl = p.plan else { return nil }
             return (p.race, pl)
@@ -767,7 +802,8 @@ final class MREngineStore: ObservableObject {
                                raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP,
                                otherPlans: others)
         }
-        planlessRaces = paired.filter { $0.plan == nil }.map(\.race)
+        let absorbedIDs = Set(absorbed.map { $0.race.id })
+        planlessRaces = paired.filter { $0.plan == nil && !absorbedIDs.contains($0.race.id) }.map(\.race)
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
                                races: userInput.races,
                                gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
