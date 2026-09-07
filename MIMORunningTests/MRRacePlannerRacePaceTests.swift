@@ -246,3 +246,25 @@ struct MRRacePlannerOwnPlanTuneUpTests {
         #expect(mrTuneUpCandidates(for: a, among: [a, t], today: today).first?.hasOwnPlan == false)
     }
 }
+
+@Suite("MRRacePlanner 앞선 대회 타임라인")
+struct MRRacePlannerBridgeRowTests {
+    @Test func fullAfterHalfShowsHalfInTimeline() throws {
+        let cal = Calendar.current
+        var p = MRProfile()
+        p.weeklyKm4w = 35; p.longestRun16wKm = 16; p.maxWeeklyKm52w = 60; p.runsPerWeek = 4; p.marathonFinishes = 1
+        let today = Date()
+        let race = cal.date(byAdding: .day, value: 7 * 28, to: today)!
+        let half = cal.date(byAdding: .day, value: 7 * 10, to: today)!
+        let plan = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.dF, today: today,
+                                            profile: p, halfEquivMin: 110, easyPaceSecPerKm: 400,
+                                            heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4,
+                                            priorRace: (date: half, name: "가을하프", distanceM: MRDistance.dH,
+                                                        peakLong: 21, peakVol: 56)))
+        #expect(plan.bridgeRows.count == 3)
+        #expect(plan.bridgeRows[0].text.contains("가을하프"))
+        #expect(plan.bridgeRows[1].text.hasPrefix("대회 주"))
+        #expect(plan.bridgeRows[2].text.hasPrefix("이 계획 시작"))
+        #expect(plan.weeks.first?.phase == "회복")
+    }
+}

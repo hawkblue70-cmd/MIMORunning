@@ -78,6 +78,7 @@ struct MRRacePlanCard: View {
 
     private func bridgeTextColor(_ text: String) -> Color {
         if text.hasPrefix("회복") { return Color(red: 0.35, green: 0.65, blue: 0.95) }
+        if text.hasPrefix("대회 주") { return Color(red: 0.98, green: 0.55, blue: 0.40) }
         if text.hasPrefix("유지") { return Color(red: 0.45, green: 0.80, blue: 0.55) }
         if text.hasPrefix("이 계획 시작") { return mrAccent }
         return .white.opacity(0.82)

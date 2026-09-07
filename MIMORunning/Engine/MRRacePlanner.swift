@@ -288,7 +288,19 @@ func mrBuildPlan(raceDate: Date,
         recoveryPriorVol  = pVol
         recoveryWeekCount = priorRecoveryWeeks
         priorRaceName     = prior.name
-        p.bridgeRows      = []   // 빈 기간이 없으므로 타임라인 불필요
+        // 타임라인: 오늘 ~ 앞 대회 전날은 그 대회 계획을 따르고, 대회 주, 그다음 이 계획.
+        // 주차 테이블에서 겹치지 않게 하되, 앞 대회가 이 계획 안에 "보이게" 한다.
+        let priorLabel = mrLabelFor(distanceM: prior.distanceM)
+        let priorWeekMon = cal.date(byAdding: .day, value: -7, to: priorNext) ?? priorNext
+        let dayBeforePriorWeek = cal.date(byAdding: .day, value: -1, to: priorWeekMon) ?? priorWeekMon
+        p.bridgeRows = [
+            ("\(sfmt(today)) ~ \(sfmt(dayBeforePriorWeek))",
+             L.s("「\(prior.name)」 계획을 따릅니다", "Follow the \(prior.name) plan")),
+            ("\(sfmt(priorWeekMon)) ~ \(sfmt(prior.date))",
+             L.s("대회 주 — \(priorLabel) 대회 \(prior.name)", "Race week — \(priorLabel) \(prior.name)")),
+            ("\(sfmt(planToday)) ~",
+             L.s("이 계획 시작 · 회복 \(priorRecoveryWeeks)주", "Plan starts · \(priorRecoveryWeeks)-wk recovery"))
+        ]
         #if DEBUG
         dbgStartNote = "앞선 대회「\(prior.name)」 다음 주"
         #endif
