@@ -1761,6 +1761,7 @@ class HealthKitManager {
     private(set) var userEffortByWorkout: [String: Int] = [:]
     @ObservationIgnored private var effortAnchor: HKQueryAnchor? = nil
     @ObservationIgnored private var effortMapLoaded = false
+    @ObservationIgnored private var effortMapRefreshInFlight = false
 
     private struct EffortMapFile: Codable { var entries: [String: AppleEffort] }
 
@@ -1783,8 +1784,8 @@ class HealthKitManager {
 
     /// 사용자 입력 동기화 — 바뀐 게 없으면 무시. 바뀌면 강도 기반 시계열 캐시를 지운다.
     func syncUserEfforts(from stories: [WorkoutStory]) {
-        var m: [String: Int] = [:]
-        for s in stories { if let r = s.effortRPE { m[s.workoutID] = r } }
+        // 중복 workoutID 처리(최신 입력 우선)는 EffortIndex와 한 곳에서만 정의한다.
+        let m = EffortIndex(stories: stories, apple: [:]).user
         guard m != userEffortByWorkout else { return }
         userEffortByWorkout = m
         // Task 12에서 활성화 (TrendMetric.easyEffortPace 추가 후):
@@ -1807,12 +1808,12 @@ class HealthKitManager {
 
     private func saveEffortMap() {
         let file = EffortMapFile(entries: Dictionary(uniqueKeysWithValues: effortMap.map { ($0.key.uuidString, $0.value) }))
-        if let data = try? JSONEncoder().encode(file) {
-            try? data.write(to: effortMapURL, options: .atomic)
-        }
+        guard let data = try? JSONEncoder().encode(file),
+              (try? data.write(to: effortMapURL, options: .atomic)) != nil else { return }
+        // 맵 저장이 성공했을 때만 앵커를 저장한다 — 앵커만 앞서가면 다음 실행에서 놓친 관계를 다시 못 본다.
         if let a = effortAnchor,
-           let data = try? NSKeyedArchiver.archivedData(withRootObject: a, requiringSecureCoding: true) {
-            try? data.write(to: effortAnchorURL, options: .atomic)
+           let anchorData = try? NSKeyedArchiver.archivedData(withRootObject: a, requiringSecureCoding: true) {
+            try? anchorData.write(to: effortAnchorURL, options: .atomic)
         }
     }
 
@@ -1873,6 +1874,9 @@ class HealthKitManager {
     /// 증분 갱신 — 앵커 이후 바뀐 관계만. 최근 12개월 러닝 대상. fetchActivities에서 호출.
     func refreshEffortMap() async {
         guard #available(iOS 18, *) else { return }
+        guard !effortMapRefreshInFlight else { return }
+        effortMapRefreshInFlight = true
+        defer { effortMapRefreshInFlight = false }
         loadEffortMapIfNeeded()
         let since = Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? .distantPast
         let pred = HKQuery.predicateForSamples(withStart: since, end: nil, options: [])
