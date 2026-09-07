@@ -31,7 +31,8 @@ struct EffortScaleView: View {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(resolved?.source == .user ? Theme.violet.opacity(0.35) : Color.white.opacity(0.07), lineWidth: 1)
         )
-        .onChange(of: resolved) { _, _ in editing = false }
+        .onChange(of: resolved) { _, _ in editing = false; dragValue = nil }
+        .onDisappear { dragValue = nil }
     }
 
     // MARK: header
@@ -40,16 +41,17 @@ struct EffortScaleView: View {
         HStack(spacing: 7) {
             Image(systemName: "gauge.with.dots.needle.33percent")
                 .font(.system(size: 11))
-                .foregroundStyle(resolved != nil ? Theme.violet : .secondary)
+                .foregroundStyle(shownValue != nil ? Theme.violet : .secondary)
             Text(L.s("운동 강도", "Effort"))
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(resolved != nil ? .white : .secondary)
+                .foregroundStyle(shownValue != nil ? .white : .secondary)
             Spacer()
             if let v = shownValue {
                 Text("\(v) · \(EffortBand(value: v).label)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(EffortPalette.color(for: v))
                     .contentTransition(.numericText())
+                    .animation(.snappy, value: shownValue)
                 sourceBadge
             } else {
                 Text(L.s("오늘 얼마나 힘들었나요?", "How hard was it?"))
@@ -100,10 +102,12 @@ struct EffortScaleView: View {
 
     // MARK: bars
 
+    private static let barSpacing: CGFloat = 3
+
     private var bars: some View {
         GeometryReader { geo in
-            let spacing: CGFloat = 3
-            let w = (geo.size.width - spacing * 9) / 10
+            let spacing = Self.barSpacing
+            let w = max(0, (geo.size.width - spacing * 9) / 10)
             HStack(spacing: spacing) {
                 ForEach(1...10, id: \.self) { i in
                     ZStack {
@@ -117,18 +121,18 @@ struct EffortScaleView: View {
                     .frame(width: w, height: 28)
                     .contentShape(Rectangle())
                     .onTapGesture { if isEditable { commit(i) } }
-                    .accessibilityLabel(L.s("강도 \(i)", "Effort \(i)"))
                 }
             }
+            .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 4)
                     .onChanged { g in
                         guard isEditable else { return }
-                        dragValue = value(atX: g.location.x, width: geo.size.width)
+                        dragValue = value(atX: g.location.x, barWidth: w)
                     }
                     .onEnded { g in
                         guard isEditable else { return }
-                        commit(value(atX: g.location.x, width: geo.size.width))
+                        commit(value(atX: g.location.x, barWidth: w))
                     }
             )
         }
@@ -146,9 +150,11 @@ struct EffortScaleView: View {
 
     private func filled(_ i: Int) -> Bool { (shownValue ?? 0) >= i }
 
-    private func value(atX x: CGFloat, width: CGFloat) -> Int {
-        let ratio = min(max(x / max(width, 1), 0), 0.999)
-        return Int(ratio * 10) + 1
+    /// x → 1...10. 막대 폭 + 간격(pitch) 단위로 나눠 탭과 드래그가 같은 막대를 가리키게 한다.
+    private func value(atX x: CGFloat, barWidth w: CGFloat) -> Int {
+        let pitch = w + Self.barSpacing
+        guard pitch > 0 else { return 1 }
+        return min(10, max(1, Int(x / pitch) + 1))
     }
 
     private func commit(_ v: Int) {

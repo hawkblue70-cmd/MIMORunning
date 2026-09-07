@@ -448,8 +448,9 @@ struct ActivityDetailView: View {
 
             // Fetch detail regardless (route map, splits, hill annotation)
             detail = await manager.fetchDetail(for: activity.id)
-            if let e = await manager.refreshEffort(for: activity.id) { detail?.appleEffort = e }
             isLoadingDetail = false
+            // Apple 강도 재조회 — 로딩 완료를 막지 않도록 분리 실행
+            Task { if let e = await manager.refreshEffort(for: activity.id) { detail?.appleEffort = e } }
             loadInsights()
             Task { await loadCombinedChart() }
             // @MainActor 컨텍스트에서 raceDetector 접근 — Task 진입 전에 미리 수집
