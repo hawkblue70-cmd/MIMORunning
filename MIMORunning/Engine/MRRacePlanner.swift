@@ -74,6 +74,8 @@ struct MRTuneUpRace {
     let date: Date
     let name: String
     let distanceM: Double
+    /// 이미 독립 계획(스냅샷)이 있는 대회 — "사용자가 신경 쓰는 대회"로 해석해 그 전 주를 테이퍼로 양보한다.
+    var hasOwnPlan: Bool = false
 }
 
 /// 튠업 대회 주 주간 거리 배율 — 임의로 정함 (Bosquet 2007 테이퍼 원칙을 거리에 맞춰 축소).
@@ -82,7 +84,8 @@ let MR_TUNEUP_HALF_VOL  = 0.70   // 하프 주: 대회가 그 주 롱런, 앞 5~
 
 /// A 레이스 하나에 대한 튠업 후보: 오늘 < 날짜 < A 날짜이고, 하프 미만이거나 (A가 풀일 때만) 하프.
 /// 실제 흡수 여부는 플래너가 계획 주차 안에 드는지로 정한다(`MRRacePlan.absorbedTuneUpDates`).
-func mrTuneUpCandidates(for race: MRTargetRace, among races: [MRTargetRace], today: Date) -> [MRTuneUpRace] {
+func mrTuneUpCandidates(for race: MRTargetRace, among races: [MRTargetRace], today: Date,
+                        plannedKeys: Set<String> = []) -> [MRTuneUpRace] {
     let cal = Calendar.current
     let t0 = cal.startOfDay(for: today), t1 = cal.startOfDay(for: race.date)
     return races.filter { r in
@@ -92,7 +95,8 @@ func mrTuneUpCandidates(for race: MRTargetRace, among races: [MRTargetRace], tod
         return d > t0 && d < t1
     }
     .sorted { $0.date < $1.date }
-    .map { MRTuneUpRace(date: $0.date, name: $0.name, distanceM: $0.distanceM) }
+    .map { MRTuneUpRace(date: $0.date, name: $0.name, distanceM: $0.distanceM,
+                        hasOwnPlan: plannedKeys.contains(mrArchiveKey(raceDate: $0.date, distanceM: $0.distanceM))) }
 }
 
 /// 롱런을 진행시켜 대회일까지의 계획을 만든다.
@@ -219,8 +223,14 @@ func mrBuildPlan(raceDate: Date,
         if let pr = priorRace { return t.date > pr.date }
         return true
     }.count
+    // 자기 계획이 있는 단거리 튠업은 그 전 주를 테이퍼로 양보하므로 1주씩 더 든다.
+    let ownPlanShortCount = tuneUps.filter { t in
+        guard t.hasOwnPlan, t.distanceM < MRDistance.dH else { return false }
+        if let pr = priorRace { return t.date > pr.date }
+        return true
+    }.count
     let neededTotal  = simulateNeeded(fromLong: simStartLong, fromVol: simStartVol) + p.taperWeeks
-                     + 2 * halfTuneUpCount
+                     + 2 * halfTuneUpCount + ownPlanShortCount
 
     // 날짜를 짧게 표시 — 올해(baseYear)는 "M-d", 다른 해는 "yyyy-M-d"
     let baseYear = cal.component(.year, from: today)
@@ -400,12 +410,23 @@ func mrBuildPlan(raceDate: Date,
         let tune = tuneUps.first { $0.date >= mon && $0.date < weekEnd }
         let tuneKind = tune.map { $0.distanceM >= MRDistance.dH ? 2 : 1 } ?? 0
         if let t = tune { p.absorbedTuneUpDates.append(t.date) }
+        // 다음 주에 자기 계획이 있는 단거리 대회가 있는가 → 이번 주는 그 대회의 테이퍼에 양보
+        // ("이미 계획을 세워 둔 대회 = 사용자가 신경 쓰는 대회"로 해석. 입력 없이 우선순위를 추론한다.)
+        let nextWeekEnd = cal.date(byAdding: .day, value: 14, to: mon) ?? weekEnd
+        let preTune = tune == nil ? tuneUps.first {
+            $0.hasOwnPlan && $0.distanceM < MRDistance.dH && $0.date >= weekEnd && $0.date < nextWeekEnd
+        } : nil
 
         if i <= buildWeeks {
             // 빌드 사이클을 회복 주 수만큼 오프셋해야 첫 빌드 주가 다운 주가 되지 않는다
             recovery = ((i - recoveryWeekCount) % cycleLen == 0) || forceRecovery
             forceRecovery = false
-            if tuneKind == 2 {
+            if preTune != nil {
+                // 단거리 대회 전 주 — 그 대회 독립 계획의 1주 테이퍼와 같은 값 (롱런 65% · 주간 50%). 진행 멈춤.
+                lr = peakLong * 0.65
+                phase = "대회 주"
+                wkVol = currentBuildVol * 0.50
+            } else if tuneKind == 2 {
                 // 하프 튠업: 대회가 이번 주 롱런. 롱런 진행은 멈추고 다음 주는 회복.
                 lr = MRDistance.dH / 1000.0
                 phase = "대회 주"
@@ -499,6 +520,12 @@ func mrBuildPlan(raceDate: Date,
                       "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(eachStr) × \(others)x")
                 : L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(others)회",
                       "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(others)x")
+        }
+        if let pt = preTune, i <= buildWeeks {
+            let label = mrLabelFor(distanceM: pt.distanceM)
+            breakdown = String(format: L.s("%@ 대회 전 주 — 롱런 %.0fkm + 짧게 %d회 · 강도는 그대로",
+                                           "Week before %@ race — Long run %.0fkm + Short %dx · Keep the intensity"),
+                               label, lrDisplay, others)
         }
         if let t = tune {
             let label = mrLabelFor(distanceM: t.distanceM)

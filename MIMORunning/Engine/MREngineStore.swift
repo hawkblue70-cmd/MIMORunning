@@ -146,7 +146,8 @@ final class MREngineStore: ObservableObject {
             let prior = prevPlanInfo.flatMap { p in
                 cal.startOfDay(for: p.date) < cal.startOfDay(for: r.date) ? p : nil
             }
-            let tune = mrTuneUpCandidates(for: r, among: upcoming, today: now)
+            let tune = mrTuneUpCandidates(for: r, among: upcoming, today: now,
+                                          plannedKeys: Set(anchors.keys))
             let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
                                  profile: planProfile, halfEquivMin: he,
                                  easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,

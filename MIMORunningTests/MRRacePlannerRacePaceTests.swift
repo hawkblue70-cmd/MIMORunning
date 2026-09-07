@@ -203,3 +203,46 @@ struct MRRacePlannerTuneUpTests {
         #expect(c2.map(\.name).contains("다른하프") && c2.map(\.name).contains("A하프"))
     }
 }
+
+@Suite("MRRacePlanner 자기 계획 있는 튠업의 전 주 테이퍼")
+struct MRRacePlannerOwnPlanTuneUpTests {
+    private let cal = Calendar.current
+
+    private func build(ownPlan: Bool) -> MRRacePlan? {
+        var p = MRProfile()
+        p.weeklyKm4w = 35; p.longestRun16wKm = 16; p.maxWeeklyKm52w = 60; p.runsPerWeek = 4
+        let today = Date()
+        let race = cal.date(byAdding: .day, value: 70, to: today)!
+        let tu = MRTuneUpRace(date: cal.date(byAdding: .day, value: -28, to: race)!,
+                              name: "10K", distanceM: MRDistance.d10, hasOwnPlan: ownPlan)
+        return mrBuildPlan(raceDate: race, distanceM: MRDistance.dH, today: today,
+                           profile: p, halfEquivMin: 110, easyPaceSecPerKm: 400,
+                           heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4, tuneUps: [tu])
+    }
+
+    @Test func weekBeforeOwnPlanRaceBecomesTaper() throws {
+        let plan = try #require(build(ownPlan: true))
+        let raceIdx = try #require(plan.weeks.firstIndex { $0.breakdown.contains("10K 대회 +") })
+        let pre = plan.weeks[raceIdx - 1]
+        #expect(pre.phase == "대회 주")
+        #expect(pre.breakdown.contains("대회 전 주"))
+        #expect(pre.weeklyKm < plan.weeks[raceIdx - 2].weeklyKm * 0.7)
+        #expect(pre.longRunKm < plan.weeks[raceIdx - 2].longRunKm)
+    }
+
+    @Test func weekBeforeAbsorbedRaceStaysNormal() throws {
+        let plan = try #require(build(ownPlan: false))
+        let raceIdx = try #require(plan.weeks.firstIndex { $0.breakdown.contains("10K 대회 +") })
+        #expect(plan.weeks[raceIdx - 1].phase != "대회 주")
+        #expect(!plan.weeks[raceIdx - 1].breakdown.contains("대회 전 주"))
+    }
+
+    @Test func candidatesMarkOwnPlanByArchiveKey() {
+        let today = Date()
+        let a = MRTargetRace(date: cal.date(byAdding: .day, value: 70, to: today)!, distanceM: MRDistance.dH, name: "하프")
+        let t = MRTargetRace(date: cal.date(byAdding: .day, value: 42, to: today)!, distanceM: MRDistance.d10, name: "10K")
+        let key = mrArchiveKey(raceDate: t.date, distanceM: t.distanceM)
+        #expect(mrTuneUpCandidates(for: a, among: [a, t], today: today, plannedKeys: [key]).first?.hasOwnPlan == true)
+        #expect(mrTuneUpCandidates(for: a, among: [a, t], today: today).first?.hasOwnPlan == false)
+    }
+}

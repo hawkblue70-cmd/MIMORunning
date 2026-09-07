@@ -28,6 +28,7 @@ private func localizedBreakdown(_ s: String) -> String {
         .replacingOccurrences(of: "(이번 주 롱런)", with: "(this week's long run)")
         .replacingOccurrences(of: "앞 5~7일 볼륨 −30%", with: "volume −30% for 5–7 days before")
         .replacingOccurrences(of: "대회는 가볍게", with: "race, take it easy")
+        .replacingOccurrences(of: "대회 전 주 — ", with: "week before race — ")
         .replacingOccurrences(of: "하프 대회", with: "Half race")
         .replacingOccurrences(of: " 대회", with: " race")
         .replacingOccurrences(of: "회", with: "x")
@@ -446,7 +447,7 @@ struct MRWeekTable: View {
             (phase: "늘리기",       desc: L.s("롱런을 매주 조금씩 늘립니다",                              "Gradually increase long run each week")),
             (phase: "유지",         desc: L.s("롱런을 더 늘리지 않고 그 거리에 익숙해집니다",            "Get comfortable at the current long run distance")),
             (phase: "대회 페이스",   desc: L.s("롱런 안에 대회 페이스로 달리는 구간이 들어갑니다",        "Includes race-pace segments within the long run")),
-            (phase: "대회 주",       desc: L.s("계획 안의 튠업 대회. 단거리는 롱런 유지, 하프는 대회가 롱런", "Tune-up race inside the plan. Short races keep the long run; a half is the long run")),
+            (phase: "대회 주",       desc: L.s("계획 안의 튠업 대회. 단거리는 롱런 유지, 하프는 대회가 롱런. 자기 계획이 있는 대회는 그 전 주도 테이퍼", "Tune-up race inside the plan. Short races keep the long run; a half is the long run. A race with its own plan also tapers the week before")),
             (phase: "회복",         desc: L.s("롱런과 주간 거리를 줄입니다. 몸은 쉴 때 좋아집니다",     "Reduce long run and weekly distance. Bodies improve with rest")),
             (phase: "테이퍼",       desc: L.s("대회 전 2주, 거리를 절반 이하로 줄입니다",               "2 weeks before race, cut volume below half")),
         ].filter { present.contains($0.phase) }
