@@ -157,7 +157,11 @@ final class MREngineStore: ObservableObject {
             if let pl {
                 prevPlanInfo = (date: r.date, name: r.name, distanceM: r.distanceM,
                                 peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm)
+                // ⚠ 이미 스냅샷(진행 중인 계획)이 있는 단거리 대회는 흡수하지 않는다.
+                //   "진행 중인 계획은 바꾸지 않는다" — 주차 테이블·이행 기호가 사라지면 안 된다.
+                //   A 계획 쪽 "대회 주" 표시는 그대로 두고, 독립 계획도 유지한다.
                 for t in upcoming where t.id != r.id
+                    && anchors[mrArchiveKey(raceDate: t.date, distanceM: t.distanceM)] == nil
                     && pl.absorbedTuneUpDates.contains(where: { cal.isDate($0, inSameDayAs: t.date) })
                     && !absorbed.contains(where: { $0.race.id == t.id }) {
                     absorbed.append((t, r.name))
