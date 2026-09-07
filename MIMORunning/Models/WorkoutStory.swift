@@ -105,6 +105,11 @@ final class WorkoutStory {
     var updatedAt: Date = Date()
     var shoeID: String?
 
+    /// 사용자가 앱에서 입력한 운동 강도 1...10. nil = 미입력(Apple 값 사용).
+    /// CloudKit: 옵셔널 + 기본값 nil.
+    var effortRPE: Int?
+    var effortUpdatedAt: Date?
+
     // CloudKit requires all relationships to be optional
     @Relationship(deleteRule: .cascade, inverse: \StoryPhoto.story)
     var photos: [StoryPhoto]?
