@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// Apple 피트니스 어휘의 4구간 (2차 소스 기준: Easy 1–3 · Moderate 4–6 · Hard 7–8 · All Out 9–10)
-enum EffortBand: CaseIterable, Equatable {
+enum EffortBand: CaseIterable, Equatable, Hashable {
     case easy, moderate, hard, allOut
 
     init(value: Int) {

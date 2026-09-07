@@ -213,7 +213,9 @@ struct ActivityDetailView: View {
                         InsightCard(activity: activity, insight: insight, condition: condition,
                                     confirmedRace: confirmedRaceMatch, hillMatch: hillMatch)
                     }
-                    StorySection(workoutID: activity.id.uuidString)
+                    StorySection(workoutID: activity.id.uuidString,
+                                 activityType: activity.type,
+                                 appleEffort: detail?.appleEffort ?? manager.appleEffort(for: activity.id))
                     panelShareHeader
                         .id("panelAnchor")
                     panelSection
@@ -446,6 +448,7 @@ struct ActivityDetailView: View {
 
             // Fetch detail regardless (route map, splits, hill annotation)
             detail = await manager.fetchDetail(for: activity.id)
+            if let e = await manager.refreshEffort(for: activity.id) { detail?.appleEffort = e }
             isLoadingDetail = false
             loadInsights()
             Task { await loadCombinedChart() }
@@ -2656,6 +2659,8 @@ private struct MetricCell: View {
 
 private struct StorySection: View {
     let workoutID: String
+    let activityType: ActivityType
+    let appleEffort: AppleEffort?
     @State private var showEditor = false
     @Query private var stories: [WorkoutStory]
     @Query private var shoes: [Shoe]
@@ -2680,8 +2685,10 @@ private struct StorySection: View {
         try? modelContext.save()
     }
 
-    init(workoutID: String) {
+    init(workoutID: String, activityType: ActivityType, appleEffort: AppleEffort?) {
         self.workoutID = workoutID
+        self.activityType = activityType
+        self.appleEffort = appleEffort
         let wid = workoutID
         _stories = Query(filter: #Predicate<WorkoutStory> { $0.workoutID == wid })
         _allOneLinerEntries = Query(filter: #Predicate<OneLinerEntry> { $0.workoutID == wid })
@@ -2691,6 +2698,9 @@ private struct StorySection: View {
         VStack(alignment: .leading, spacing: 10) {
             if !shoes.isEmpty {
                 shoePicker
+            }
+            if activityType == .running {
+                effortCard
             }
             HStack {
                 Label(AppLanguage.shared.s("오늘의 러닝 일기", "Running Journal"), systemImage: "quote.bubble")
@@ -2775,6 +2785,29 @@ private struct StorySection: View {
         } else if let newID {
             let s = WorkoutStory(workoutID: workoutID)
             s.shoeID = newID
+            modelContext.insert(s)
+        }
+        try? modelContext.save()
+    }
+
+    private var effortCard: some View {
+        EffortScaleView(
+            resolved: EffortResolver.resolve(userValue: story?.effortRPE, apple: appleEffort),
+            appleValue: appleEffort?.effective.map { EffortResolver.clamp($0) },
+            onSet: { setEffort($0) },
+            onResetToApple: { setEffort(nil) }
+        )
+    }
+
+    private func setEffort(_ value: Int?) {
+        if let s = story {
+            s.effortRPE = value
+            s.effortUpdatedAt = value == nil ? nil : Date()
+            s.updatedAt = Date()
+        } else if let value {
+            let s = WorkoutStory(workoutID: workoutID)
+            s.effortRPE = value
+            s.effortUpdatedAt = Date()
             modelContext.insert(s)
         }
         try? modelContext.save()
