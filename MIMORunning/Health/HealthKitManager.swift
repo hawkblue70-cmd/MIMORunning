@@ -169,7 +169,7 @@ class HealthKitManager {
     }
 
     private static let readTypes: Set<HKObjectType> = {
-        [
+        let base: Set<HKObjectType> = [
             HKObjectType.workoutType(),
             HKSeriesType.workoutRoute(),
             HKQuantityType(.distanceWalkingRunning),
@@ -190,7 +190,14 @@ class HealthKitManager {
             HKQuantityType(.bodyMass),
             HKQuantityType(.bodyFatPercentage),
         ]
+        return base.union(effortReadTypes)
     }()
+
+    /// iOS 18+ 운동 강도 타입. 그 이하에서는 빈 집합.
+    private static var effortReadTypes: Set<HKObjectType> {
+        guard #available(iOS 18, *) else { return [] }
+        return [HKQuantityType(.workoutEffortScore), HKQuantityType(.estimatedWorkoutEffortScore)]
+    }
 
     private static let bpmUnit = HKUnit.count().unitDivided(by: .minute())
 
@@ -246,6 +253,9 @@ class HealthKitManager {
         migrateWeatherBackfillIfNeeded()
         // 일회성 마이그레이션: 옛 JSON 형식 운동 유형 캐시 → 새 문자열 형식
         migrateWorkoutTypeCacheEntries()
+
+        // Apple 운동 강도 — 앵커 증분. 활동 조회와 독립적으로 백그라운드 실행.
+        Task { await self.refreshEffortMap() }
 
         // 메모리에 데이터 있고 완료 태그가 최근(5분 이내)이면 즉시 반환 — 디스크 I/O·락 없음
         // 5분 초과 시 웜캐시 갱신 허용 — 운동 완료 후 포그라운드 복귀 시 새 운동 감지
@@ -1741,6 +1751,145 @@ class HealthKitManager {
             temperatureC: tempC ?? activity.temperatureC,
             humidityPercent: humidity ?? activity.humidityPercent
         )
+    }
+
+    // MARK: - Workout Effort (iOS 18)
+
+    /// Apple 운동 강도 — 워크아웃 UUID 키. 관계 쿼리 앵커 증분 + 디스크 캐시.
+    private(set) var effortMap: [UUID: AppleEffort] = [:]
+    /// 앱에서 입력한 강도 — 뷰가 WorkoutStory @Query 결과로 동기화(`syncUserEfforts`).
+    private(set) var userEffortByWorkout: [String: Int] = [:]
+    @ObservationIgnored private var effortAnchor: HKQueryAnchor? = nil
+    @ObservationIgnored private var effortMapLoaded = false
+
+    private struct EffortMapFile: Codable { var entries: [String: AppleEffort] }
+
+    private var effortMapURL: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_effort_map_v1.json")
+    }
+    private var effortAnchorURL: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_effort_anchor_v1.dat")
+    }
+
+    /// 뷰·엔진 공용 조회 인덱스.
+    var effortIndex: EffortIndex { EffortIndex(user: userEffortByWorkout, apple: effortMap) }
+
+    func appleEffort(for id: UUID) -> AppleEffort? {
+        loadEffortMapIfNeeded()
+        return effortMap[id]
+    }
+
+    /// 사용자 입력 동기화 — 바뀐 게 없으면 무시. 바뀌면 강도 기반 시계열 캐시를 지운다.
+    func syncUserEfforts(from stories: [WorkoutStory]) {
+        var m: [String: Int] = [:]
+        for s in stories { if let r = s.effortRPE { m[s.workoutID] = r } }
+        guard m != userEffortByWorkout else { return }
+        userEffortByWorkout = m
+        // Task 12에서 활성화 (TrendMetric.easyEffortPace 추가 후):
+        // try? FileManager.default.removeItem(at: metricHistoryCacheURL(.easyEffortPace, usePounds: false))
+    }
+
+    private func loadEffortMapIfNeeded() {
+        guard !effortMapLoaded else { return }
+        effortMapLoaded = true
+        if let data = try? Data(contentsOf: effortMapURL),
+           let file = try? JSONDecoder().decode(EffortMapFile.self, from: data) {
+            effortMap = Dictionary(uniqueKeysWithValues: file.entries.compactMap { k, v in
+                UUID(uuidString: k).map { ($0, v) }
+            })
+        }
+        if let data = try? Data(contentsOf: effortAnchorURL) {
+            effortAnchor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: data)
+        }
+    }
+
+    private func saveEffortMap() {
+        let file = EffortMapFile(entries: Dictionary(uniqueKeysWithValues: effortMap.map { ($0.key.uuidString, $0.value) }))
+        if let data = try? JSONEncoder().encode(file) {
+            try? data.write(to: effortMapURL, options: .atomic)
+        }
+        if let a = effortAnchor,
+           let data = try? NSKeyedArchiver.archivedData(withRootObject: a, requiringSecureCoding: true) {
+            try? data.write(to: effortAnchorURL, options: .atomic)
+        }
+    }
+
+    /// 관계 쿼리 1회 — 첫 결과를 받으면 쿼리를 멈춘다(장기 실행 쿼리이므로 반드시 stop).
+    @available(iOS 18, *)
+    private func runEffortRelationshipQuery(predicate: NSPredicate?, anchor: HKQueryAnchor?)
+        async -> (relationships: [HKWorkoutEffortRelationship], anchor: HKQueryAnchor?) {
+        let gate = MRResumeOnce()
+        let store = self.store
+        return await withCheckedContinuation { cont in
+            let query = HKWorkoutEffortRelationshipQuery(predicate: predicate, anchor: anchor,
+                                                         options: .mostRelevant) { query, relationships, newAnchor, error in
+                guard gate.first() else { return }
+                store.stop(query)
+                if let error { print("[강도] 관계 쿼리 실패: \(error.localizedDescription)") }
+                cont.resume(returning: (relationships ?? [], newAnchor))
+            }
+            store.execute(query)
+        }
+    }
+
+    /// 관계 샘플 → AppleEffort. 두 타입 모두 없으면 nil.
+    private func appleEffort(from samples: [HKSample]?) -> AppleEffort? {
+        guard #available(iOS 18, *), let samples, !samples.isEmpty else { return nil }
+        let unit = HKUnit.appleEffortScore()
+        var out = AppleEffort(manual: nil, estimated: nil, fetchedAt: Date())
+        for case let q as HKQuantitySample in samples {
+            let v = q.quantity.doubleValue(for: unit)
+            switch q.quantityType.identifier {
+            case HKQuantityTypeIdentifier.workoutEffortScore.rawValue:          out.manual = v
+            case HKQuantityTypeIdentifier.estimatedWorkoutEffortScore.rawValue: out.estimated = v
+            default: break
+            }
+        }
+        return out.effective == nil ? nil : out
+    }
+
+    /// 상세 진입 시 — 한 워크아웃의 강도를 다시 읽어 캐시 갱신. 조회 실패·값 없음이면 기존 캐시 반환.
+    func refreshEffort(for activityID: UUID) async -> AppleEffort? {
+        guard #available(iOS 18, *) else { return nil }
+        loadEffortMapIfNeeded()
+        let pred = HKQuery.predicateForObject(with: activityID)
+        let (rels, _) = await runEffortRelationshipQuery(predicate: pred, anchor: nil)
+        guard let rel = rels.first(where: { $0.workout.uuid == activityID }),
+              let effort = appleEffort(from: rel.samples) else { return effortMap[activityID] }
+        if effortMap[activityID]?.hasSameValues(as: effort) != true {
+            effortMap[activityID] = effort
+            if var d = detailCache[activityID] {
+                d.appleEffort = effort
+                detailCache[activityID] = d
+                saveDetailToDisk(d, id: activityID)
+            }
+            saveEffortMap()
+        }
+        return effort
+    }
+
+    /// 증분 갱신 — 앵커 이후 바뀐 관계만. 최근 12개월 러닝 대상. fetchActivities에서 호출.
+    func refreshEffortMap() async {
+        guard #available(iOS 18, *) else { return }
+        loadEffortMapIfNeeded()
+        let since = Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? .distantPast
+        let pred = HKQuery.predicateForSamples(withStart: since, end: nil, options: [])
+        let (rels, newAnchor) = await runEffortRelationshipQuery(predicate: pred, anchor: effortAnchor)
+        var changed = false
+        for rel in rels {
+            guard let e = appleEffort(from: rel.samples) else { continue }
+            if effortMap[rel.workout.uuid]?.hasSameValues(as: e) != true {
+                effortMap[rel.workout.uuid] = e
+                changed = true
+            }
+        }
+        if let newAnchor { effortAnchor = newAnchor; changed = true }
+        if changed { saveEffortMap() }
+        #if DEBUG
+        print("[강도] Apple 강도 맵 \(effortMap.count)건 (이번 갱신 \(rels.count)관계)")
+        #endif
     }
 
     // MARK: - Pause Intervals
@@ -3678,5 +3827,17 @@ class HealthKitManager {
         default:     6    // 최저 6
         }
         return (score, deviation)
+    }
+}
+
+/// 콜백이 여러 번 와도 continuation은 한 번만 resume.
+private final class MRResumeOnce: @unchecked Sendable {
+    private var done = false
+    private let lock = NSLock()
+    func first() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if done { return false }
+        done = true
+        return true
     }
 }
