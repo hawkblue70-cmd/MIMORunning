@@ -487,15 +487,15 @@ struct RecordBarChart: View {
     // MARK: - 흐름 문장 (상태 한 줄 + 방향 한 줄)
 
     private func flowCommentView(_ flow: RecordFlowInsight.Result) -> some View {
-        // 공유 카드에서는 기간 라벨("최근 30일", 13pt bold)과 같은 크기. 색은 .primary로 두어 라이트 테마에서도 보인다.
-        let size: CGFloat = exportMode ? 13 : 11
+        // 공유 카드에서는 섹션 제목("연속 달리기" 13pt bold)보다 한 단계 작게(11.5pt). 색은 .primary로 두어 라이트 테마에서도 보인다.
+        let size: CGFloat = exportMode ? 11.5 : 11
         return VStack(alignment: .leading, spacing: 3) {
             Text("✦ " + flow.status)
-                .font(.system(size: size, weight: exportMode ? .semibold : .regular))
+                .font(.system(size: size, weight: .regular))
                 .foregroundStyle(Color.primary.opacity(0.85))
             if let direction = flow.direction {
                 Text(direction)
-                    .font(.system(size: exportMode ? 13 : 12, weight: exportMode ? .bold : .medium))
+                    .font(.system(size: exportMode ? 11.5 : 12, weight: .medium))
                     .foregroundStyle(Color.primary)
             }
         }
