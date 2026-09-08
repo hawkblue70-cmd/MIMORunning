@@ -82,6 +82,8 @@ struct GrowthView: View {
     @State private var showTimeMileage = false
     /// 기록 카드가 그리는 버킷(일/주/월).
     @State private var recordBarsCache: [RecordBar] = []
+    /// 선 정규화 기준 — 최근 12개월 개인 범위. 이동한 달과 무관하며 기간 단위가 바뀔 때 다시 계산한다.
+    @State private var recordRangesCache = RecordSeries.MetricRanges(pace: nil, au: nil, hr: nil)
     @State private var selectedTrend: TrendMetric? = nil
     @State private var showBodyMass = false
     @State private var showBodyFat = false
@@ -517,18 +519,22 @@ struct GrowthView: View {
         }
     }
 
-    /// 지표를 바꿔도 막대는 그대로다 — 기간·러닝·강도 입력이 바뀔 때만 다시 만든다.
+    /// 기간·러닝·강도 입력이 바뀔 때만 다시 만든다 (막대 + 선 정규화 범위).
     private func refreshRecordBars() {
         let period = recordPeriod
         let win = recordWindow(for: period)
+        let effortOf: (UUID) -> Int? = { [manager] id in manager.effortIndex.resolve(id)?.value }
         recordBarsCache = RecordSeries.bars(
             activities: runsCache,
-            effortOf: { [manager] id in manager.effortIndex.resolve(id)?.value },
+            effortOf: effortOf,
             start: win.start, end: win.end, period: period
         )
+        recordRangesCache = RecordSeries.ranges(
+            activities: runsCache,
+            effortOf: effortOf,
+            period: period, asOf: Date()
+        )
     }
-
-    private var recordPaceBaseline: Double? { RecordSeries.paceBaseline(recordBarsCache) }
 
     /// 유형별 평소 강도 표 갱신 — 러닝 캐시·강도 입력이 바뀔 때.
     private func refreshEffortTypeRows() {
@@ -610,8 +616,8 @@ struct GrowthView: View {
     }
 
     private var mileageSubtitle: String {
-        AppLanguage.shared.s("막대 색 = 강도 · 페이스는 평균 대비",
-                             "bar color = effort · pace vs average")
+        AppLanguage.shared.s("막대 = 거리(색은 강도) · 선 = 페이스·부하·심박 추세",
+                             "bars = distance (color = effort) · lines = pace, load, HR trends")
     }
 
     private var periodToggle: some View {
@@ -678,8 +684,8 @@ struct GrowthView: View {
         }
     }
 
-    /// 거리·강도 부하·페이스 세 줄을 하나의 x축 위에 올리는 통합 기록 차트
-    /// (막대 색 = 그 구간 평균 강도, 페이스는 기간 평균 0선 대비)
+    /// 거리 막대(색 = 그 구간 평균 강도) 위에 페이스·부하·심박 추세선을 겹치는 단일 기록 차트.
+    /// 선은 최근 12개월 개인 범위로 정규화되어 막대와 같은 좌표계에 들어간다.
     private var recordChartView: some View {
         let period = recordPeriod
         let win = recordWindow(for: period)
@@ -688,7 +694,7 @@ struct GrowthView: View {
             period: period,
             start: win.start,
             end: win.end,
-            paceBaseline: recordPaceBaseline,
+            ranges: recordRangesCache,
             emptyMessage: recordEmptyMessage
         )
     }

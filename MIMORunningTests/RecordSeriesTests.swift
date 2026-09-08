@@ -10,9 +10,9 @@ struct RecordSeriesTests {
     private func day(_ offset: Int, hour: Int = 7) -> Date { cal.date(byAdding: .hour, value: offset * 24 + hour, to: monday)! }
 
     /// km·분으로 러닝 하나 만들기 (페이스 = 분×60 ÷ km)
-    private func run(_ dayOffset: Int, km: Double, min: Double, id: UUID = UUID()) -> Activity {
+    private func run(_ dayOffset: Int, km: Double, min: Double, hr: Int? = nil, id: UUID = UUID()) -> Activity {
         Activity(id: id, type: .running, date: day(dayOffset), duration: min * 60,
-                 distance: km * 1000, calories: nil, avgHeartRate: nil)
+                 distance: km * 1000, calories: nil, avgHeartRate: hr)
     }
 
     private func none(_ id: UUID) -> Int? { nil }
@@ -84,19 +84,91 @@ struct RecordSeriesTests {
         #expect(abs(sameDay[0].paceSec! - 350) < 0.0001)
     }
 
-    @Test func paceDeltaSign() {
-        let runs = [run(0, km: 10, min: 60), run(1, km: 2, min: 10)]
+    // MARK: - 평균 심박
+
+    @Test func avgHRIsDurationWeighted() {
+        // 30분 @ 140 + 60분 @ 150 → (140×30 + 150×60) / 90 = 146.67
+        let runs = [run(0, km: 5, min: 30, hr: 140), run(0, km: 10, min: 60, hr: 150)]
         let bars = RecordSeries.bars(activities: runs, effortOf: none, start: monday,
-                                     end: cal.date(byAdding: .day, value: 3, to: monday)!,
+                                     end: cal.date(byAdding: .day, value: 1, to: monday)!,
                                      period: .day, calendar: cal)
-        let baseline = RecordSeries.paceBaseline(bars)!
-        // 360초/km = 평균보다 느림 → 음수
-        #expect(RecordSeries.paceDelta(bars[0], baseline: baseline)! < 0)
-        // 300초/km = 평균보다 빠름 → 양수
-        #expect(RecordSeries.paceDelta(bars[1], baseline: baseline)! > 0)
-        #expect(abs(RecordSeries.paceDelta(bars[1], baseline: baseline)! - 50) < 0.0001)
-        // 러닝 없는 날은 nil
-        #expect(RecordSeries.paceDelta(bars[2], baseline: baseline) == nil)
+        #expect(abs(bars[0].avgHR! - 146.6666) < 0.001)
+        // 심박 없는 러닝은 가중치에서 빠진다
+        let mixed = RecordSeries.bars(activities: [run(0, km: 5, min: 30, hr: 140), run(0, km: 10, min: 60)],
+                                      effortOf: none, start: monday,
+                                      end: cal.date(byAdding: .day, value: 1, to: monday)!,
+                                      period: .day, calendar: cal)
+        #expect(abs(mixed[0].avgHR! - 140) < 0.0001)
+        // 아무도 심박이 없으면 nil
+        let noHR = RecordSeries.bars(activities: [run(0, km: 5, min: 30)], effortOf: none, start: monday,
+                                     end: cal.date(byAdding: .day, value: 1, to: monday)!,
+                                     period: .day, calendar: cal)
+        #expect(noHR[0].avgHR == nil)
+    }
+
+    // MARK: - 정규화 범위
+
+    @Test func rangesUseTwelveMonthsAndSkipEmptyBuckets() {
+        // 창 안(최근 12개월)의 러닝 셋 — 페이스 300 / 360 / 400, 심박 140 / 150 / 160
+        let a = UUID(), b = UUID(), c = UUID()
+        let runs = [
+            run(0, km: 10, min: 50, hr: 140, id: a),    // 300초/km
+            run(-30, km: 10, min: 60, hr: 150, id: b),  // 360초/km
+            run(-200, km: 10, min: 66 + 2.0 / 3, hr: 160, id: c) // 400초/km
+        ]
+        let efforts: [UUID: Int] = [a: 4, b: 6, c: 8]
+        let r = RecordSeries.ranges(activities: runs, effortOf: { efforts[$0] },
+                                    period: .day, asOf: day(0), calendar: cal)
+        #expect(r.pace != nil)
+        #expect(abs(r.pace!.lowerBound - 300) < 0.001)
+        #expect(abs(r.pace!.upperBound - 400) < 0.001)
+        #expect(r.hr != nil)
+        #expect(abs(r.hr!.lowerBound - 140) < 0.0001)
+        #expect(abs(r.hr!.upperBound - 160) < 0.0001)
+        // AU: 4×50=200 / 6×60=360 / 8×66.67=533.3 — 러닝 없는 날(au 0)은 범위에 안 들어간다
+        #expect(r.au != nil)
+        #expect(abs(r.au!.lowerBound - 200) < 0.001)
+        #expect(abs(r.au!.upperBound - 533.333) < 0.01)
+
+        // 12개월 밖(400일 전) 러닝은 범위에 영향을 주지 않는다
+        let old = run(-400, km: 10, min: 100, hr: 190)   // 600초/km
+        let r2 = RecordSeries.ranges(activities: runs + [old], effortOf: { efforts[$0] },
+                                     period: .day, asOf: day(0), calendar: cal)
+        #expect(r2.pace == r.pace)
+        #expect(r2.hr == r.hr)
+    }
+
+    @Test func rangesNilWithFewerThanTwoBuckets() {
+        let only = UUID()
+        let r = RecordSeries.ranges(activities: [run(0, km: 10, min: 50, hr: 140, id: only)],
+                                    effortOf: { $0 == only ? 5 : nil },
+                                    period: .day, asOf: day(0), calendar: cal)
+        #expect(r.pace == nil)
+        #expect(r.au == nil)
+        #expect(r.hr == nil)
+        // 아무 기록도 없으면 전부 nil
+        let empty = RecordSeries.ranges(activities: [], effortOf: none, period: .week,
+                                        asOf: day(0), calendar: cal)
+        #expect(empty == RecordSeries.MetricRanges(pace: nil, au: nil, hr: nil))
+    }
+
+    @Test func normalizedClampsAndInverts() {
+        let pace = 300.0...420.0
+        // 페이스는 뒤집힘 — 빠를수록(작을수록) 위
+        #expect(abs(RecordSeries.normalized(300, in: pace, inverted: true) - 1) < 0.0001)
+        #expect(abs(RecordSeries.normalized(420, in: pace, inverted: true) - 0) < 0.0001)
+        #expect(abs(RecordSeries.normalized(360, in: pace, inverted: true) - 0.5) < 0.0001)
+        // 범위 밖은 클램프
+        #expect(RecordSeries.normalized(500, in: pace, inverted: true) == 0)
+        #expect(RecordSeries.normalized(200, in: pace, inverted: true) == 1)
+        // 정방향
+        let au = 100.0...500.0
+        #expect(abs(RecordSeries.normalized(200, in: au) - 0.25) < 0.0001)
+        #expect(RecordSeries.normalized(9_999, in: au) == 1)
+        #expect(RecordSeries.normalized(0, in: au) == 0)
+        // 폭 0이면 가운데
+        #expect(RecordSeries.normalized(140, in: 140.0...140.0) == 0.5)
+        #expect(RecordSeries.normalized(999, in: 140.0...140.0, inverted: true) == 0.5)
     }
 
     // MARK: - 강도·부하
@@ -129,7 +201,7 @@ struct RecordSeriesTests {
 
     @Test func summaryTotals() {
         let rated = UUID()
-        let runs = [run(0, km: 10, min: 60, id: rated), run(1, km: 2, min: 10)]
+        let runs = [run(0, km: 10, min: 60, hr: 150, id: rated), run(1, km: 2, min: 10, hr: 140)]
         let bars = RecordSeries.bars(activities: runs, effortOf: { $0 == rated ? 5 : nil },
                                      start: monday, end: cal.date(byAdding: .day, value: 3, to: monday)!,
                                      period: .day, calendar: cal)
@@ -141,6 +213,8 @@ struct RecordSeriesTests {
         #expect(s.ratedCount == 1)
         #expect(abs(s.meanPaceSec! - 350) < 0.0001)
         #expect(abs(s.bestPaceSec! - 300) < 0.0001)
+        // 심박도 시간 가중 — (150×60 + 140×10) / 70 = 148.571
+        #expect(abs(s.meanHR! - 148.5714) < 0.001)
     }
 
     // MARK: - 빈 창
@@ -151,10 +225,11 @@ struct RecordSeriesTests {
                                      period: .day, calendar: cal)
         #expect(bars.count == 7)
         #expect(bars.allSatisfy { $0.km == 0 && $0.minutes == 0 && $0.au == 0 && $0.runCount == 0 })
-        #expect(bars.allSatisfy { $0.paceSec == nil && $0.meanEffort == nil })
+        #expect(bars.allSatisfy { $0.paceSec == nil && $0.meanEffort == nil && $0.avgHR == nil })
         #expect(RecordSeries.paceBaseline(bars) == nil)
         let s = RecordSeries.summary(bars)
         #expect(s.totalKm == 0 && s.runCount == 0 && s.meanPaceSec == nil && s.bestPaceSec == nil)
+        #expect(s.meanHR == nil)
     }
 
     @Test func invertedWindowGivesNoBars() {
