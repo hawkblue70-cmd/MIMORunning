@@ -90,10 +90,10 @@ struct ActivityDetailView: View {
     @State private var chartData: RunChartData = .empty
     @State private var isLoadingChart = false
     @State private var runInsights: [RunInsight] = []
-    /// 이 런의 강도 — 내 입력(panelAllStories) > Apple(detail 캐시 > manager 맵)
+    /// 이 런의 강도 — 내 입력(panelAllStories) > Apple(manager 맵 > detail 캐시)
     private var resolvedEffort: ResolvedEffort? {
         let story = panelAllStories.first { $0.workoutID == activity.id.uuidString }
-        let apple = detail?.appleEffort ?? manager.appleEffort(for: activity.id)
+        let apple = manager.appleEffort(for: activity.id) ?? detail?.appleEffort
         return EffortResolver.resolve(userValue: story?.effortRPE, apple: apple)
     }
 
@@ -230,7 +230,7 @@ struct ActivityDetailView: View {
                     }
                     StorySection(workoutID: activity.id.uuidString,
                                  activityType: activity.type,
-                                 appleEffort: detail?.appleEffort ?? manager.appleEffort(for: activity.id))
+                                 appleEffort: manager.appleEffort(for: activity.id) ?? detail?.appleEffort)
                     panelShareHeader
                         .id("panelAnchor")
                     panelSection

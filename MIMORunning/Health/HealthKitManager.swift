@@ -214,6 +214,7 @@ class HealthKitManager {
             authorizationStatus = .denied
             return
         }
+        loadEffortMapIfNeeded()
         guard UserDefaults.standard.bool(forKey: "hkAuthorizationRequested") else { return }
         // Set authorized and load cached data immediately — don't wait for HK daemon roundtrip.
         authorizationStatus = .authorized
@@ -221,11 +222,13 @@ class HealthKitManager {
         // Re-request after data is shown to pick up any new types added since last install.
         // (e.g. dateOfBirth added after initial install — user sees dialog for new type only)
         try? await store.requestAuthorization(toShare: [], read: Self.readTypes)
+        Task { await self.refreshEffortMap() }
         // Re-read characteristics in case the user just granted dateOfBirth / biologicalSex
         readBiologicalCharacteristics()
     }
 
     func requestAuthorization() async {
+        loadEffortMapIfNeeded()
         guard HKHealthStore.isHealthDataAvailable() else {
             authorizationStatus = .denied
             return
@@ -234,6 +237,7 @@ class HealthKitManager {
             try await store.requestAuthorization(toShare: [], read: Self.readTypes)
             UserDefaults.standard.set(true, forKey: "hkAuthorizationRequested")
             authorizationStatus = .authorized
+            Task { await self.refreshEffortMap() }
             await fetchActivities()
         } catch {
             self.error = error
@@ -245,6 +249,7 @@ class HealthKitManager {
 
     // forced=true: 당기기 새로고침 등 명시적 요청. forced=false(기본): 완료 태그 있으면 캐시만 사용.
     func fetchActivities(forced: Bool = false) async {
+        loadEffortMapIfNeeded()
         // 일회성 마이그레이션: 시간 범위 폴백 추가 이전에 저장된 부분적 HR 시리즈 캐시 삭제
         migrateHRSeriesCacheIfNeeded()
         // 일회성 마이그레이션: 러닝 폼 쿼리 방식 변경(predicateForObjects→timeRange) 후 캐시 재빌드
@@ -254,8 +259,8 @@ class HealthKitManager {
         // 일회성 마이그레이션: 옛 JSON 형식 운동 유형 캐시 → 새 문자열 형식
         migrateWorkoutTypeCacheEntries()
 
-        // Apple 운동 강도 — 앵커 증분. 활동 조회와 독립적으로 백그라운드 실행.
-        Task { await self.refreshEffortMap() }
+        // Apple 운동 강도 — 이미 시드된 설치만 여기서 증분 갱신. 첫 동기화는 권한 요청 뒤(checkAuthorizationStatus/requestAuthorization)에서.
+        if effortMapSeeded { Task { await self.refreshEffortMap() } }
 
         // 메모리에 데이터 있고 완료 태그가 최근(5분 이내)이면 즉시 반환 — 디스크 I/O·락 없음
         // 5분 초과 시 웜캐시 갱신 허용 — 운동 완료 후 포그라운드 복귀 시 새 운동 감지
@@ -1763,6 +1768,12 @@ class HealthKitManager {
     @ObservationIgnored private var effortMapLoaded = false
     @ObservationIgnored private var effortMapRefreshInFlight = false
 
+    /// 첫 전체 동기화가 실제 데이터를 만든 뒤에만 앵커를 신뢰한다. 권한 전 빈 결과로 앵커가 앞서가는 사고 방지.
+    @ObservationIgnored private var effortMapSeeded: Bool {
+        get { UserDefaults.standard.bool(forKey: "mimo.effortMapSeeded.v1") }
+        set { UserDefaults.standard.set(newValue, forKey: "mimo.effortMapSeeded.v1") }
+    }
+
     private struct EffortMapFile: Codable { var entries: [String: AppleEffort] }
 
     private var effortMapURL: URL {
@@ -1777,10 +1788,7 @@ class HealthKitManager {
     /// 뷰·엔진 공용 조회 인덱스.
     var effortIndex: EffortIndex { EffortIndex(user: userEffortByWorkout, apple: effortMap) }
 
-    func appleEffort(for id: UUID) -> AppleEffort? {
-        loadEffortMapIfNeeded()
-        return effortMap[id]
-    }
+    func appleEffort(for id: UUID) -> AppleEffort? { effortMap[id] }
 
     /// 사용자 입력 동기화 — 바뀐 게 없으면 무시. 바뀌면 강도 기반 시계열 캐시를 지운다.
     func syncUserEfforts(from stories: [WorkoutStory]) {
@@ -1788,8 +1796,7 @@ class HealthKitManager {
         let m = EffortIndex(stories: stories, apple: [:]).user
         guard m != userEffortByWorkout else { return }
         userEffortByWorkout = m
-        // Task 12에서 활성화 (TrendMetric.easyEffortPace 추가 후):
-        // try? FileManager.default.removeItem(at: metricHistoryCacheURL(.easyEffortPace, usePounds: false))
+        // TODO(Task 12): metricHistoryCacheURL(.easyEffortPace, usePounds: false) 캐시 삭제
     }
 
     private func loadEffortMapIfNeeded() {
@@ -1797,9 +1804,8 @@ class HealthKitManager {
         effortMapLoaded = true
         if let data = try? Data(contentsOf: effortMapURL),
            let file = try? JSONDecoder().decode(EffortMapFile.self, from: data) {
-            effortMap = Dictionary(uniqueKeysWithValues: file.entries.compactMap { k, v in
-                UUID(uuidString: k).map { ($0, v) }
-            })
+            let pairs = file.entries.compactMap { k, v in UUID(uuidString: k).map { ($0, v) } }
+            effortMap = Dictionary(pairs, uniquingKeysWith: { $1 })
         }
         if let data = try? Data(contentsOf: effortAnchorURL) {
             effortAnchor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: data)
@@ -1811,6 +1817,8 @@ class HealthKitManager {
         guard let data = try? JSONEncoder().encode(file),
               (try? data.write(to: effortMapURL, options: .atomic)) != nil else { return }
         // 맵 저장이 성공했을 때만 앵커를 저장한다 — 앵커만 앞서가면 다음 실행에서 놓친 관계를 다시 못 본다.
+        // 맵이 비어 있으면(권한 전 빈 동기화 등) 앵커를 남기지 않는다.
+        guard !effortMap.isEmpty else { return }
         if let a = effortAnchor,
            let anchorData = try? NSKeyedArchiver.archivedData(withRootObject: a, requiringSecureCoding: true) {
             try? anchorData.write(to: effortAnchorURL, options: .atomic)
@@ -1828,10 +1836,24 @@ class HealthKitManager {
                                                          options: .mostRelevant) { query, relationships, newAnchor, error in
                 guard gate.first() else { return }
                 store.stop(query)
-                if let error { print("[강도] 관계 쿼리 실패: \(error.localizedDescription)") }
+                if let error {
+                    #if DEBUG
+                    print("[강도] 관계 쿼리 실패: \(error.localizedDescription)")
+                    #endif
+                }
                 cont.resume(returning: (relationships ?? [], newAnchor))
             }
             store.execute(query)
+            // 워치독 — 관계 쿼리가 응답하지 않아도 continuation이 영구히 매달리지 않게.
+            Task {
+                try? await Task.sleep(for: .seconds(20))
+                guard gate.first() else { return }
+                store.stop(query)
+                #if DEBUG
+                print("[강도] 관계 쿼리 시간 초과")
+                #endif
+                cont.resume(returning: ([], nil))
+            }
         }
     }
 
@@ -1857,39 +1879,68 @@ class HealthKitManager {
         loadEffortMapIfNeeded()
         let pred = HKQuery.predicateForObject(with: activityID)
         let (rels, _) = await runEffortRelationshipQuery(predicate: pred, anchor: nil)
-        guard let rel = rels.first(where: { $0.workout.uuid == activityID }),
-              let effort = appleEffort(from: rel.samples) else { return effortMap[activityID] }
+        guard let rel = rels.first(where: { $0.workout.uuid == activityID }) else { return effortMap[activityID] }
+        guard let effort = appleEffort(from: rel.samples) else {
+            // 관계는 있는데 샘플이 없다 = 사용자가 피트니스에서 강도를 지운 것
+            if effortMap.removeValue(forKey: activityID) != nil {
+                patchDetailCacheEffort(activityID, nil)
+                saveEffortMap()
+            }
+            return nil
+        }
         if effortMap[activityID]?.hasSameValues(as: effort) != true {
             effortMap[activityID] = effort
-            if var d = detailCache[activityID] {
-                d.appleEffort = effort
-                detailCache[activityID] = d
-                saveDetailToDisk(d, id: activityID)
-            }
+            patchDetailCacheEffort(activityID, effort)
             saveEffortMap()
         }
         return effort
     }
 
-    /// 증분 갱신 — 앵커 이후 바뀐 관계만. 최근 12개월 러닝 대상. fetchActivities에서 호출.
+    /// 상세 캐시의 강도 필드만 갱신(삭제 시 nil).
+    private func patchDetailCacheEffort(_ id: UUID, _ effort: AppleEffort?) {
+        guard var d = detailCache[id] else { return }
+        d.appleEffort = effort
+        detailCache[id] = d
+        saveDetailToDisk(d, id: id)
+    }
+
+    /// 증분 갱신 — 최근 12개월 러닝 대상. 맵이 시드된 뒤에만 앵커 증분을 쓰고,
+    /// 결과가 비어 있으면 앵커를 채택하지 않는다(권한 전 빈 동기화로 과거 강도가 영구히 사라지는 것 방지).
     func refreshEffortMap() async {
         guard #available(iOS 18, *) else { return }
+        guard HKHealthStore.isHealthDataAvailable() else { return }
         guard !effortMapRefreshInFlight else { return }
         effortMapRefreshInFlight = true
         defer { effortMapRefreshInFlight = false }
         loadEffortMapIfNeeded()
         let since = Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? .distantPast
-        let pred = HKQuery.predicateForSamples(withStart: since, end: nil, options: [])
-        let (rels, newAnchor) = await runEffortRelationshipQuery(predicate: pred, anchor: effortAnchor)
+        let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            HKQuery.predicateForSamples(withStart: since, end: nil, options: []),
+            HKQuery.predicateForWorkouts(with: .running)
+        ])
+        let useAnchor: HKQueryAnchor? = (effortMapSeeded && !effortMap.isEmpty) ? effortAnchor : nil
+        let (rels, newAnchor) = await runEffortRelationshipQuery(predicate: pred, anchor: useAnchor)
         var changed = false
         for rel in rels {
-            guard let e = appleEffort(from: rel.samples) else { continue }
-            if effortMap[rel.workout.uuid]?.hasSameValues(as: e) != true {
-                effortMap[rel.workout.uuid] = e
+            let id = rel.workout.uuid
+            guard let e = appleEffort(from: rel.samples) else {
+                // 관계는 있는데 샘플이 없다 = 사용자가 강도를 지운 것
+                if effortMap.removeValue(forKey: id) != nil {
+                    patchDetailCacheEffort(id, nil)
+                    changed = true
+                }
+                continue
+            }
+            if effortMap[id]?.hasSameValues(as: e) != true {
+                effortMap[id] = e
+                patchDetailCacheEffort(id, e)
                 changed = true
             }
         }
-        if let newAnchor { effortAnchor = newAnchor; changed = true }
+        if !effortMap.isEmpty {
+            effortMapSeeded = true
+            if let newAnchor { effortAnchor = newAnchor; changed = true }
+        }
         if changed { saveEffortMap() }
         #if DEBUG
         print("[강도] Apple 강도 맵 \(effortMap.count)건 (이번 갱신 \(rels.count)관계)")
