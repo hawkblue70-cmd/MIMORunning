@@ -13,6 +13,7 @@
 **스펙 대비 구현상 조정(작은 것 2개)**
 1. "이겨낸 러닝" detail에 "체감 강도 N" 덧붙이기는 `InsightEngine`이 아니라 표시 계층(`InsightCard`)에서 한다. `InsightResult`는 디스크 캐시되므로 엔진에 강도를 넣으면 캐시 무효화가 필요해진다. 조건 변경 없음.
 2. 매니저는 SwiftData 스토리를 직접 못 읽으므로 뷰가 `manager.syncUserEfforts(from:)`로 사용자 입력을 밀어 넣는다(GrowthView·ActivityDetailView·MeView).
+3. (리뷰 후 추가) 규칙 A′ 절대 임계(이지·LSD 8 이상)는 `effort > baseline`일 때만 발화한다. 기준선이 8인 사용자에게 매 이지런마다 경고가 뜨는 것을 막기 위함. 기준선이 없을 때의 7 이상 규칙은 Apple 추정값 단독이면 침묵한다.
 
 ---
 
