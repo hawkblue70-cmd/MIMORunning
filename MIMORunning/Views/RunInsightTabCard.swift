@@ -3056,7 +3056,11 @@ private struct PerformanceInsightCard: View {
     private var splitChartData: [SplitBarItem]? {
         if let wt = workoutTypeFn?(activity.id), wt == .interval { return nil }
         guard let splits = detail?.splits else { return nil }
-        let valid = splits.filter { $0.distanceM >= 900 }
+        // 900m 이상 정규 스플릿 + 마지막 부분 스플릿(300m 이상)은 포함 — 막판 스퍼트가 빠지지 않게
+        let sorted = splits.sorted { $0.id < $1.id }
+        let valid = sorted.enumerated().filter { i, s in
+            s.distanceM >= 900 || (i == sorted.count - 1 && s.distanceM >= 300)
+        }.map(\.element)
         guard valid.count >= 4 else { return nil }
         let maxBars = 16
         let total = valid.count
@@ -3332,7 +3336,9 @@ private struct PerformanceInsightCard: View {
                 Spacer()
                 Text(L.s("전반│후반", "1H│2H")).font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
                 Spacer()
-                Text(String(format: "%.0fkm", totalKm)).font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
+                Text(totalKm.truncatingRemainder(dividingBy: 1) < 0.05
+                     ? String(format: "%.0fkm", totalKm) : String(format: "%.1fkm", totalKm))
+                    .font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
             }
         }
     }
