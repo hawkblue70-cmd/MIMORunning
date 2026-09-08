@@ -47,10 +47,10 @@ struct RecordBarChart: View {
         static let compactPlotHeight: CGFloat = 120
         static let padding: CGFloat = 14
         static let exportPadding: CGFloat = 12
-        static let compactPadding: CGFloat = 8
+        static let compactPadding: CGFloat = 4
         /// y축 라벨 폭
         static let gutter: CGFloat = 40
-        static let compactGutter: CGFloat = 34
+        static let compactGutter: CGFloat = 30
         /// 강도 범례 색 조각
         static let legendSwatch: CGFloat = 7
         static let compactLegendSwatch: CGFloat = 6
@@ -128,7 +128,7 @@ struct RecordBarChart: View {
     /// 막대 폭(슬롯 대비). 구간이 적을수록(7일 창) 막대가 넓어지므로 좁혀서 범례·축 머리와 균형을 맞춘다.
     private var barWidthRatio: CGFloat {
         switch bars.count {
-        case ...8:   return 0.42
+        case ...8:   return compact ? 0.34 : 0.42   // 7일 창 · 압축 모드(반폭)에서는 더 가늘게
         case 9...16: return 0.6
         default:     return 0.78
         }

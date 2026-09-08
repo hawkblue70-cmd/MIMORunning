@@ -3794,7 +3794,7 @@ private struct PerformanceInsightCard: View {
     @ViewBuilder
     private func intensityDistSection(data: IntensityTimeData) -> some View {
         if let load = sevenDayLoad {
-            SplitRow(leftFraction: 0.35, spacing: 10, dividerWidth: 0.5) {
+            SplitRow(leftFraction: 0.5, spacing: 8, dividerWidth: 0.5) {
                 intensityColumnsView(data: data)
                 Rectangle().fill(.white.opacity(0.10))
                 sevenDayLoadView(load: load)
@@ -3809,7 +3809,7 @@ private struct PerformanceInsightCard: View {
     /// `GeometryReader`와 달리 높이를 콘텐츠에서 가져오므로 VStack 안에 그대로 놓을 수 있고,
     /// ImageRenderer의 단일 레이아웃 패스에서도 폭이 확정된다.
     private struct SplitRow: Layout {
-        var leftFraction: CGFloat = 0.35
+        var leftFraction: CGFloat = 0.5
         var spacing: CGFloat = 10
         var dividerWidth: CGFloat = 0.5
 
