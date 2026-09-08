@@ -42,7 +42,18 @@ struct RunFormCardView: View {
     // MARK: - Nested Types
 
     enum MetricDir { case cadence, stride, groundContact, verticalOsc }
-    enum MetricStatus { case inRange, above, below, unknown }
+    enum MetricStatus {
+        case inRange, above, below, unknown
+
+        var narrativeStatus: FormNarrative.Status {
+            switch self {
+            case .inRange: .inRange
+            case .above:   .above
+            case .below:   .below
+            case .unknown: .unknown
+            }
+        }
+    }
     enum RunningStyle { case quickStep, bigStride, normal, unknown }
 
     struct FormInsightItem: Identifiable {
@@ -1589,6 +1600,7 @@ struct RunFormCardView: View {
                      "Cadence \(cadStr) spm for the \(paceStr) pace.")
         }
 
+        // 유형별 프레임(이지·빠른·일반)에 따라 톤만 달라지는 마무리 문장 — 판정은 여기서, 문장은 FormNarrative
         let cadStatus = metricStatus(rawValue: cadD, stat: bb?.cadence, dir: .cadence)
         let gctStatus: MetricStatus = avgGroundContactTime.map {
             metricStatus(rawValue: $0, stat: adjustedGctStat, dir: .groundContact)
@@ -1596,58 +1608,10 @@ struct RunFormCardView: View {
         let slStatus: MetricStatus = avgStrideLength.map {
             metricStatus(rawValue: $0, stat: bb?.strideLength, dir: .stride)
         } ?? .unknown
-
-        // 보폭 이탈 구절 — 사실 서술(중립). 케이던스·GCT 둘 다 이탈이면 3개 → 보폭 생략
-        let cadDeviated = cadStatus != .inRange && cadStatus != .unknown
-        let gctDeviated = gctStatus != .inRange && gctStatus != .unknown
-        let slDeviated  = slStatus  != .inRange && slStatus  != .unknown
-        let strideClause: String?
-        if slDeviated, !(cadDeviated && gctDeviated), let sl = slStr {
-            strideClause = slStatus == .above
-                ? L.s("보폭이 \(sl)m로 평소보다 컸어요.", "Stride was \(sl) m — longer than usual.")
-                : L.s("보폭이 \(sl)m로 평소보다 작았어요.", "Stride was \(sl) m — shorter than usual.")
-        } else {
-            strideClause = nil
-        }
-
-        if let g = gctStr {
-            if gctStatus == .below {
-                if cadStatus == .inRange {
-                    let base = L.s("평소 리듬대로 \(cadStr)spm을 유지했고, 지면접촉이 \(g)ms로 짧았어요.",
-                                   "Cadence held at your usual \(cadStr) spm, with ground contact short at \(g) ms.")
-                    if let sc = strideClause { return base + " " + sc }
-                    return base
-                }
-                return L.s("발걸음이 평소보다 빠르게 돌았어요. 지면접촉이 \(g)ms로 짧았어요.",
-                            "Cadence was faster than usual. Ground contact was short at \(g) ms.")
-            }
-            if gctStatus == .above {
-                let base = L.s("지면접촉이 \(g)ms로 평소보다 길었어요.",
-                                "Ground contact was \(g) ms — longer than usual.")
-                if let sc = strideClause { return base + " " + sc }
-                return base
-            }
-        }
-        if cadStatus == .below {
-            let sfx = slStr.map { " \($0)m" } ?? ""
-            return L.s("발걸음이 평소보다 느렸어요. 보폭\(sfx)으로 페이스를 만들었어요.",
-                        "Cadence was below your usual. Stride\(sfx) carried the pace.")
-        }
-        if cadStatus == .above {
-            if slStatus == .inRange {
-                return L.s("발걸음이 평소보다 빨랐어요. 보폭은 평소 범위였고요.",
-                            "Cadence was above your usual. Stride length was within your typical range.")
-            }
-            if let sc = strideClause {
-                return L.s("발걸음이 평소보다 빨랐어요.", "Cadence was above your usual.") + " " + sc
-            }
-            return L.s("발걸음이 평소보다 빨랐어요.",
-                        "Cadence was above your usual.")
-        }
-        return slStr.map { L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 평소와 비슷한 \(paceStr) 페이스가 나왔어요.",
-                               "Cadence \(cadStr) spm and stride \($0) m produced the usual \(paceStr) pace.") }
-            ?? L.s("케이던스 \(cadStr)spm으로 평소와 비슷하게 \(paceStr) 페이스를 달렸어요.",
-                    "A cadence of \(cadStr) spm produced the usual \(paceStr) pace.")
+        let input = FormNarrative.Input(
+            cad: cadStatus.narrativeStatus, gct: gctStatus.narrativeStatus, sl: slStatus.narrativeStatus,
+            cadStr: cadStr, gctStr: gctStr, slStr: slStr, paceStr: paceStr)
+        return FormNarrative.sentence(input, frame: FormNarrative.frame(for: workoutType))
     }
 
     // MARK: - Log
