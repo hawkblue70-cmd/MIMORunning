@@ -3326,7 +3326,7 @@ private struct PerformanceInsightCard: View {
             Canvas { ctx, size in
                 let w = size.width
                 let chartH = size.height
-                let xPad: CGFloat = 2
+                let xPad: CGFloat = 26          // 왼쪽 페이스 눈금 라벨 자리
                 let slotTarget: CGFloat = 9
                 let barCount = max(4, min(data.count, Int((w - xPad) / slotTarget)))
 
@@ -3361,6 +3361,15 @@ private struct PerformanceInsightCard: View {
                     return 8 + CGFloat(norm) * (chartH - 12)
                 }
 
+                /// 막대 높이 → 페이스 (normBarH의 역함수) — 눈금 라벨용
+                func pace(atBarHeight bh: CGFloat) -> Double {
+                    let norm = Double((bh - 8) / max(1, chartH - 12))
+                    return dMax - norm * dRange
+                }
+                func fmtPace(_ p: Double) -> String {
+                    let v = Int(p.rounded()); return String(format: "%d'%02d\"", v / 60, v % 60)
+                }
+
                 let halfCount = displayBars.filter(\.isFirstHalf).count
                 let halfX = xPad + CGFloat(halfCount) * slotW
 
@@ -3368,6 +3377,20 @@ private struct PerformanceInsightCard: View {
                          with: .color(.white.opacity(0.03)))
                 ctx.fill(Path(CGRect(x: halfX, y: 0, width: w - halfX, height: chartH)),
                          with: .color(Color(hex: "5BB8FF").opacity(0.06)))
+
+                // 막대 높이를 3등분하는 가로 눈금 3개(위·2/3·1/3) + 그 높이의 페이스 라벨(왼쪽)
+                for k in 1...3 {
+                    let bh = (chartH - 4) * CGFloat(k) / 3      // 최고 막대 높이(chartH-4)의 1/3·2/3·3/3
+                    let y = chartH - bh
+                    var grid = Path()
+                    grid.move(to: CGPoint(x: xPad, y: y))
+                    grid.addLine(to: CGPoint(x: w, y: y))
+                    ctx.stroke(grid, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 0.5))
+                    ctx.draw(
+                        Text(fmtPace(pace(atBarHeight: bh))).font(.system(size: 6.5)).foregroundStyle(.white.opacity(0.5)),
+                        at: CGPoint(x: xPad - 3, y: max(4, y)), anchor: .trailing
+                    )
+                }
 
                 for (i, bar) in displayBars.enumerated() {
                     let bx = xPad + CGFloat(i) * slotW + barGap
@@ -3881,7 +3904,7 @@ private struct PerformanceInsightCard: View {
         let totalMin = Int((b.totalSec / 60).rounded())
         // 상단 여유 6% — 80% 눈금이 프레임 위로 잘리지 않게.
         let axisFrac = max(0.80, b.lowFrac, b.midFrac, b.highFrac) * 1.06
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 8) {   // 행 ↔ 점선 설명 간격 8 · 제목 ↔ 첫 행(저강도)은 아래 padding으로 10
             VStack(alignment: .leading, spacing: 1) {
                 Text(L.s("강도 분포 · \(data.weeks)주 · 심박 존 \(totalMin)분", "Intensity · \(data.weeks)w · \(totalMin) min in HR zones"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
@@ -3893,6 +3916,7 @@ private struct PerformanceInsightCard: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
+            .padding(.bottom, 2)
             // 가로 막대 3행 — [라벨][트랙(문헌값 밴드·점선)][값]. 트랙 폭은 GeometryReader 하나로 재고 세 행이 함께 쓴다.
             GeometryReader { geo in
                 let trackW = max(20, geo.size.width - Self.intensityLabelW - Self.intensityValueW - Self.intensityGap * 2)
