@@ -66,13 +66,19 @@ struct EffortScaleView: View {
         case .user:
             HStack(spacing: 6) {
                 badge(L.s("내 입력", "Mine"), tint: Theme.violet)
-                if appleValue != nil {
+                if let a = appleValue {
+                    // 내 입력과 Apple 값을 나란히 — 탭하면 Apple 값으로 되돌린다
                     Button(action: onResetToApple) {
-                        Text(L.s("Apple 값으로", "Use Apple"))
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 3) {
+                            Text("Apple \(a)")
+                                .font(.system(size: 9, weight: .semibold))
+                            Image(systemName: "arrow.uturn.backward")
+                                .font(.system(size: 7, weight: .medium))
+                        }
+                        .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(L.s("Apple 값 \(a)으로 되돌리기", "Reset to Apple value \(a)"))
                 }
             }
         case .appleManual, .appleEstimated:

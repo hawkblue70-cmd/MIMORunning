@@ -3825,7 +3825,6 @@ private struct PerformanceInsightCard: View {
         ]
         let excluded = data.result.runsNoHR.count + data.result.runsZonesMissing.count
         let totalMin = Int((b.totalSec / 60).rounded())
-        let lowPct = Int((b.lowFrac * 100).rounded())
         // 상단 여유 6% — 80% 눈금이 프레임 위로 잘리지 않게.
         let axisFrac = max(0.80, b.lowFrac, b.midFrac, b.highFrac) * 1.06
         let barH: CGFloat = 56
@@ -3840,47 +3839,61 @@ private struct PerformanceInsightCard: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                ForEach(rows, id: \.tier) { row in
-                    let pct = Int((row.frac * 100).rounded())
-                    let mins = Int((row.sec / 60).rounded())
-                    VStack(spacing: 3) {
-                        Text(L.s("\(mins)분 · \(pct)%", "\(mins)m · \(pct)%"))
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundStyle(intensityColor(row.tier))
-                            .lineLimit(1).minimumScaleFactor(0.7)
-                        ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
-                            // 참고 범위 밴드 — 옷은 흰색, 경고색 없음, 미달 강조 없음
-                            if row.refHi > row.refLo {
-                                Rectangle()
-                                    .fill(.white.opacity(0.10))
-                                    .frame(height: barH * CGFloat((row.refHi - row.refLo) / axisFrac))
-                                    .offset(y: -barH * CGFloat(row.refLo / axisFrac))
+            // 막대 폭은 오른쪽 7일 부하 막대와 동일(반폭 기준 7등분) — 남는 폭에 참고선 설명 2줄
+            GeometryReader { geo in
+                let gap: CGFloat = 3
+                let barW = max(8, (geo.size.width - gap * 6) / 7)
+                HStack(alignment: .bottom, spacing: gap) {
+                    ForEach(rows, id: \.tier) { row in
+                        let pct = Int((row.frac * 100).rounded())
+                        VStack(spacing: 3) {
+                            Text("\(pct)%")
+                                .font(.system(size: 8, weight: .medium))
+                                .foregroundStyle(intensityColor(row.tier))
+                                .lineLimit(1).minimumScaleFactor(0.6)
+                            ZStack(alignment: .bottom) {
+                                RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
+                                // 참고 범위 밴드 — 옅은 흰색, 경고색 없음, 미달 강조 없음
+                                if row.refHi > row.refLo {
+                                    Rectangle()
+                                        .fill(.white.opacity(0.10))
+                                        .frame(height: barH * CGFloat((row.refHi - row.refLo) / axisFrac))
+                                        .offset(y: -barH * CGFloat(row.refLo / axisFrac))
+                                }
+                                RoundedRectangle(cornerRadius: 2.5)
+                                    .fill(intensityColor(row.tier).opacity(0.85))
+                                    .frame(height: max(2, barH * CGFloat(row.frac / axisFrac)))
+                                // 가로 점선 — 0 지점은 막대 밑바닥이라 생략
+                                ForEach(Array(Set([row.refLo, row.refHi]).filter { $0 > 0 }.sorted()), id: \.self) { r in
+                                    IntensityTickLine()
+                                        .stroke(.white.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [1.5, 1.5]))
+                                        .frame(height: 1)
+                                        .offset(y: -barH * CGFloat(r / axisFrac))
+                                }
                             }
-                            RoundedRectangle(cornerRadius: 2.5)
-                                .fill(intensityColor(row.tier).opacity(0.85))
-                                .frame(height: max(2, barH * CGFloat(row.frac / axisFrac)))
-                            // 가로 점선 — 0 지점은 막대 밑바닥이라 생략
-                            ForEach(Array(Set([row.refLo, row.refHi]).filter { $0 > 0 }.sorted()), id: \.self) { r in
-                                IntensityTickLine()
-                                    .stroke(.white.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [1.5, 1.5]))
-                                    .frame(height: 1)
-                                    .offset(y: -barH * CGFloat(r / axisFrac))
-                            }
+                            .frame(height: barH)
+                            Text(row.tier.label)
+                                .font(.system(size: 8)).foregroundStyle(IC.label)
+                                .lineLimit(1).minimumScaleFactor(0.6)
                         }
-                        .frame(height: barH)
-                        Text(row.tier.label)
-                            .font(.system(size: 8)).foregroundStyle(IC.label)
-                            .lineLimit(1).minimumScaleFactor(0.8)
+                        .frame(width: barW)
                     }
-                    .frame(maxWidth: .infinity)
+                    // 남는 폭: 점선 설명 2줄 (막대 밑바닥에 맞춰 아래 정렬)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Spacer(minLength: 0)
+                        Text(rows.map { "\(Int(($0.sec / 60).rounded()))" }.joined(separator: " · ") + L.s("분", "m"))
+                            .foregroundStyle(.white.opacity(0.6))
+                        Text(L.s("점선 =", "Marks ="))
+                        Text(L.s("지구력 종목 문헌값", "endurance reference"))
+                        Spacer().frame(height: 14)   // 하단 유형 라벨 높이만큼 띄워 막대 밑바닥에 맞춘다
+                    }
+                    .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .padding(.leading, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            Text(L.s("저강도 \(lowPct)% · 점선 = 지구력 종목 문헌값",
-                     "Low \(lowPct)% · marks = endurance-athlete reference"))
-                .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
-                .fixedSize(horizontal: false, vertical: true)
+            .frame(height: barH + 3 + 11 + 3 + 11)
         }
     }
 
