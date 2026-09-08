@@ -90,19 +90,12 @@ struct ActivityDetailView: View {
     @State private var chartData: RunChartData = .empty
     @State private var isLoadingChart = false
     @State private var runInsights: [RunInsight] = []
-    /// 이 런의 강도 — 내 입력(panelAllStories) > Apple(manager 맵 > detail 캐시)
+    /// 사용자 입력(중복 workoutID는 최신 우선) + Apple(manager 맵 > detail 캐시)
+    private var effortIndex: EffortIndex { EffortIndex(stories: panelAllStories, apple: manager.effortMap) }
+    private var appleEffortForRun: AppleEffort? { manager.appleEffort(for: activity.id) ?? detail?.appleEffort }
+    /// 이 런의 강도 — 내 입력 > Apple
     private var resolvedEffort: ResolvedEffort? {
-        let story = panelAllStories.first { $0.workoutID == activity.id.uuidString }
-        let apple = manager.appleEffort(for: activity.id) ?? detail?.appleEffort
-        return EffortResolver.resolve(userValue: story?.effortRPE, apple: apple)
-    }
-
-    /// 최근 8주 같은 유형 기준선
-    private var effortBaseline: Int? {
-        let idx = EffortIndex(stories: panelAllStories, apple: manager.effortMap)
-        let samples = EffortBaseline.samples(current: activity, history: manager.activities, index: idx,
-                                             typeOf: { [m = manager] id in m.cachedWorkoutTypeForStats(for: id) })
-        return EffortBaseline.median(for: detail?.workoutType ?? .general, samples: samples)
+        EffortResolver.resolve(userValue: effortIndex.user[activity.id.uuidString], apple: appleEffortForRun)
     }
     @State private var runSegmentSource: RunSegmentSource = .none
     @State private var runFadeStartKm: Double? = nil
@@ -110,6 +103,7 @@ struct ActivityDetailView: View {
     @State private var formBaseline: RunningFormBaseline? = FormBaselineEngine.peekFromCache()
     @State private var formShifts: [MRFormShift] = []
     @State private var formBackfillTask: Task<Void, Never>?
+    @State private var effortRefreshTask: Task<Void, Never>?
     @Environment(RaceDetector.self) private var raceDetector
     @Environment(\.scenePhase) private var scenePhase
     @Query private var panelAllStories: [WorkoutStory]
@@ -206,7 +200,10 @@ struct ActivityDetailView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { formBackfillTask?.cancel() }
         }
-        .onDisappear { formBackfillTask?.cancel() }
+        .onDisappear {
+            formBackfillTask?.cancel()
+            effortRefreshTask?.cancel()
+        }
     }
 
     private var detailContent: some View {
@@ -230,7 +227,8 @@ struct ActivityDetailView: View {
                     }
                     StorySection(workoutID: activity.id.uuidString,
                                  activityType: activity.type,
-                                 appleEffort: manager.appleEffort(for: activity.id) ?? detail?.appleEffort)
+                                 effort: resolvedEffort,
+                                 appleValue: appleEffortForRun?.effective.map { EffortResolver.clamp($0) })
                     panelShareHeader
                         .id("panelAnchor")
                     panelSection
@@ -445,6 +443,9 @@ struct ActivityDetailView: View {
         }
         .onChange(of: panelAllStories.map(\.effortRPE)) { _, _ in
             manager.syncUserEfforts(from: panelAllStories)
+        }
+        .onChange(of: effortIndex.user[activity.id.uuidString]) { _, _ in
+            guard !isLoadingDetail else { return }
             runInsights = []
             loadInsights()
         }
@@ -471,8 +472,18 @@ struct ActivityDetailView: View {
             // Fetch detail regardless (route map, splits, hill annotation)
             detail = await manager.fetchDetail(for: activity.id)
             isLoadingDetail = false
-            // Apple 강도 재조회 — 로딩 완료를 막지 않도록 분리 실행
-            Task { if let e = await manager.refreshEffort(for: activity.id) { detail?.appleEffort = e } }
+            // Apple 강도 재조회 — 로딩 완료를 막지 않도록 분리 실행(뷰 이탈 시 취소)
+            effortRefreshTask?.cancel()
+            effortRefreshTask = Task {
+                let before = appleEffortForRun?.effective
+                let e = await manager.refreshEffort(for: activity.id)
+                guard !Task.isCancelled else { return }
+                if let e { detail?.appleEffort = e }
+                if e?.effective != before, !isLoadingDetail {
+                    runInsights = []
+                    loadInsights()
+                }
+            }
             loadInsights()
             Task { await loadCombinedChart() }
             // @MainActor 컨텍스트에서 raceDetector 접근 — Task 진입 전에 미리 수집
@@ -834,6 +845,14 @@ struct ActivityDetailView: View {
                 }
             }
             return nil
+        }()
+
+        // 최근 8주 같은 유형 기준선 — body 평가 대신 여기서 1회 계산
+        let effortBaseline: Int? = {
+            guard activity.type == .running else { return nil }
+            let samples = EffortBaseline.samples(current: activity, history: manager.activities,
+                                                 index: effortIndex, typeOf: manager.workoutTypeLookup())
+            return EffortBaseline.median(for: detail?.workoutType ?? .general, samples: samples)
         }()
 
         let result = RunInsightEngine.insights(
@@ -2694,20 +2713,30 @@ private struct MetricCell: View {
 private struct StorySection: View {
     let workoutID: String
     let activityType: ActivityType
-    let appleEffort: AppleEffort?
+    /// 상위(ActivityDetailView)에서 해석된 값 — 해석 경로를 한 곳으로 유지한다.
+    let effort: ResolvedEffort?
+    let appleValue: Int?
     @State private var showEditor = false
     @Query private var stories: [WorkoutStory]
     @Query private var shoes: [Shoe]
     @Query private var allOneLinerEntries: [OneLinerEntry]
     @Environment(\.modelContext) private var modelContext
     private var story: WorkoutStory? { stories.first }
+    /// 강도 탭만으로 생성된 스토리(메모·사진 없음 + 기본 기분)는 일기 없음으로 본다 — 기분 칩 오노출 방지.
+    private var hasJournal: Bool {
+        guard let s = story else { return false }
+        return s.hasContent || s.mood != .okay
+    }
     private var selectedShoe: Shoe? {
         guard let sid = story?.shoeID else { return nil }
         return shoes.first { $0.id.uuidString == sid }
     }
     /// 스토리에 존재하지 않는 photo UUID를 가진 OneLinerEntry를 DB에서 삭제.
     private func cleanupOrphanedEntries() {
-        let validPhotoUUIDs = Set(story?.sortedPhotoUUIDs ?? [])
+        // 스토리가 없거나 사진 관계가 아직 로드되지 않았으면(nil) 아무것도 지우지 않는다.
+        // nil을 "유효한 사진 없음"으로 취급하면 멀쩡한 엔트리가 삭제된다.
+        guard let s = story, let photos = s.photos else { return }
+        let validPhotoUUIDs = Set(photos.sorted { $0.index < $1.index }.map { $0.photoUUID })
         let orphaned = allOneLinerEntries.filter { entry in
             guard entry.workoutID == workoutID,
                   let ref = entry.mediaRef, ref.hasPrefix("photo:") else { return false }
@@ -2719,10 +2748,11 @@ private struct StorySection: View {
         try? modelContext.save()
     }
 
-    init(workoutID: String, activityType: ActivityType, appleEffort: AppleEffort?) {
+    init(workoutID: String, activityType: ActivityType, effort: ResolvedEffort?, appleValue: Int?) {
         self.workoutID = workoutID
         self.activityType = activityType
-        self.appleEffort = appleEffort
+        self.effort = effort
+        self.appleValue = appleValue
         let wid = workoutID
         _stories = Query(filter: #Predicate<WorkoutStory> { $0.workoutID == wid })
         _allOneLinerEntries = Query(filter: #Predicate<OneLinerEntry> { $0.workoutID == wid })
@@ -2744,13 +2774,13 @@ private struct StorySection: View {
                 Button {
                     showEditor = true
                 } label: {
-                    Label(story == nil ? AppLanguage.shared.s("추가", "Add") : AppLanguage.shared.s("편집", "Edit"),
-                          systemImage: story == nil ? "plus" : "pencil")
+                    Label(hasJournal ? AppLanguage.shared.s("편집", "Edit") : AppLanguage.shared.s("추가", "Add"),
+                          systemImage: hasJournal ? "pencil" : "plus")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Theme.violet)
                 }
             }
-            if let s = story {
+            if let s = story, hasJournal {
                 StoryDisplay(story: s)
             }
         }
@@ -2826,8 +2856,8 @@ private struct StorySection: View {
 
     private var effortCard: some View {
         EffortScaleView(
-            resolved: EffortResolver.resolve(userValue: story?.effortRPE, apple: appleEffort),
-            appleValue: appleEffort?.effective.map { EffortResolver.clamp($0) },
+            resolved: effort,
+            appleValue: appleValue,
             onSet: { setEffort($0) },
             onResetToApple: { setEffort(nil) }
         )
@@ -2835,9 +2865,10 @@ private struct StorySection: View {
 
     private func setEffort(_ value: Int?) {
         if let s = story {
+            // updatedAt은 갱신하지 않는다 — 강도 최신성은 effortUpdatedAt이 담고,
+            // updatedAt은 cleanupOrphanedEntries(삭제 경로) 트리거이기 때문.
             s.effortRPE = value
             s.effortUpdatedAt = value == nil ? nil : Date()
-            s.updatedAt = Date()
         } else if let value {
             let s = WorkoutStory(workoutID: workoutID)
             s.effortRPE = value

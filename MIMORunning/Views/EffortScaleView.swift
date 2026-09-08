@@ -10,7 +10,7 @@ struct EffortScaleView: View {
     let onResetToApple: () -> Void         // 내 입력 삭제(Apple 값으로 되돌리기)
 
     @State private var editing = false
-    @State private var dragValue: Int? = nil
+    @GestureState private var dragValue: Int? = nil
 
     private var L: AppLanguage { AppLanguage.shared }
     private var shownValue: Int? { dragValue ?? resolved?.value }
@@ -31,8 +31,7 @@ struct EffortScaleView: View {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(resolved?.source == .user ? Theme.violet.opacity(0.35) : Color.white.opacity(0.07), lineWidth: 1)
         )
-        .onChange(of: resolved) { _, _ in editing = false; dragValue = nil }
-        .onDisappear { dragValue = nil }
+        .onChange(of: resolved) { _, _ in editing = false }
     }
 
     // MARK: header
@@ -113,34 +112,37 @@ struct EffortScaleView: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 3)
                             .fill(EffortPalette.color(for: i).opacity(filled(i) ? 1 : 0.18))
-                        if editing, let a = appleValue, a == i {
+                        if (editing || resolved?.source == .user), let a = appleValue, a == i {
                             RoundedRectangle(cornerRadius: 3)
                                 .strokeBorder(Color.white.opacity(0.6), lineWidth: 1.5)
                         }
                     }
                     .frame(width: w, height: 28)
-                    .contentShape(Rectangle())
-                    .onTapGesture { if isEditable { commit(i) } }
                 }
             }
+            .animation(.snappy, value: shownValue)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 4)
-                    .onChanged { g in
-                        guard isEditable else { return }
-                        dragValue = value(atX: g.location.x, barWidth: w)
+                    .updating($dragValue) { g, state, _ in
+                        guard isEditable, abs(g.translation.width) > abs(g.translation.height) else { return }
+                        state = value(atX: g.location.x, barWidth: w)
                     }
                     .onEnded { g in
-                        guard isEditable else { return }
+                        guard isEditable, abs(g.translation.width) > abs(g.translation.height) else { return }
                         commit(value(atX: g.location.x, barWidth: w))
                     }
             )
+            .onTapGesture(coordinateSpace: .local) { pt in
+                if isEditable { commit(value(atX: pt.x, barWidth: w)) }
+            }
         }
         .frame(height: 28)
         .opacity(isEditable ? 1 : 0.85)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L.s("운동 강도", "Effort"))
-        .accessibilityValue(shownValue.map { "\($0)" } ?? "")
+        .accessibilityLabel(L.s("운동 강도 막대", "Effort scale"))
+        .accessibilityValue(shownValue.map { "\($0), \(EffortBand(value: $0).label)" } ?? L.s("미입력", "Not set"))
+        .accessibilityHint(isEditable ? "" : L.s("Apple 값입니다. 배지를 눌러 수정할 수 있어요.", "Apple value. Activate the badge to edit."))
         .accessibilityAdjustableAction { dir in
             guard isEditable else { return }
             let cur = shownValue ?? 5
@@ -158,7 +160,6 @@ struct EffortScaleView: View {
     }
 
     private func commit(_ v: Int) {
-        dragValue = nil
         editing = false
         onSet(v)
     }
@@ -167,15 +168,16 @@ struct EffortScaleView: View {
 
     private var bandLabels: some View {
         GeometryReader { geo in
-            let unit = geo.size.width / 10
+            let pitch = (geo.size.width + Self.barSpacing) / 10
             HStack(spacing: 0) {
                 ForEach(EffortBand.allCases, id: \.self) { band in
                     Text(band.label)
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: unit * CGFloat(band.range.count))
+                        .frame(width: pitch * CGFloat(band.range.count), alignment: .center)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(height: 12)
     }

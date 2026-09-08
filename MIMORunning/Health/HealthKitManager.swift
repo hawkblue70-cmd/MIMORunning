@@ -942,7 +942,7 @@ class HealthKitManager {
 
     /// 분류기용 유형 조회 클로저 — UserDefaults를 한 번만 읽어 캡처. 기준선 계산이 러닝 1건당 수십 번 호출하므로
     /// `cachedWorkoutTypeForStats`를 그대로 넘기지 않는다. 우선순위는 그 함수와 동일.
-    private func workoutTypeLookup() -> (UUID) -> WorkoutType? {
+    func workoutTypeLookup() -> (UUID) -> WorkoutType? {
         let dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
         let details = detailCache
         return { [self] id in
