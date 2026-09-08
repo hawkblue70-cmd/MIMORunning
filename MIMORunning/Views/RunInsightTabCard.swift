@@ -2408,6 +2408,8 @@ private struct PerformanceInsightCard: View {
         let window: EffortLoad.WindowLoad
         let thisRunAU: Double?
         let acuteChronic: EffortLoad.RatioLabel?
+        /// 성장 탭 상태 카드에서 옮겨온 한 줄: 단조도 → 4주 평균 대비(유지는 침묵)
+        let sentence: EffortLoad.SentenceKind?
         /// 그날 러닝 유형의 평소 강도 × 시간 = 기대 부하(점선 눈금). 유형 평소 강도가 없는 날은 nil.
         let expectedDaily: [Double?]
         /// 이 러닝을 평소 강도로 뛰었다면의 AU
@@ -2428,6 +2430,7 @@ private struct PerformanceInsightCard: View {
         guard w.coveredCount > 0 else { return nil }
         let thisAU = idx.resolve(activity.id).map { EffortLoad.sessionAU(effort: $0.value, durationMin: activity.duration / 60) }
         let ac = EffortLoad.rollingAcuteChronic(runs: runs, asOf: activity.date)?.label
+        let sentence = EffortLoad.rollingSentenceKind(runs: runs, asOf: activity.date)
 
         // 기대 부하 — 그날 러닝 유형의 평소 강도(8주 중앙값, 3건 미만이면 12주) × 시간. 유형별 중앙값은 한 번만 계산.
         let typeOf: (UUID) -> WorkoutType? = { [workoutTypeFn] id in workoutTypeFn?(id) }
@@ -2453,6 +2456,7 @@ private struct PerformanceInsightCard: View {
             EffortLoad.sessionAU(effort: $0, durationMin: activity.duration / 60)
         }
         return SevenDayLoad(window: w, thisRunAU: thisAU, acuteChronic: ac,
+                            sentence: sentence,
                             expectedDaily: expected, thisRunExpectedAU: thisExpected)
     }
 
@@ -3988,6 +3992,11 @@ private struct PerformanceInsightCard: View {
             Text(sevenDayLoadCaption(load))
                 .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                 .fixedSize(horizontal: false, vertical: true)
+            if let kind = load.sentence {
+                Text(sevenDayLoadSentence(kind))
+                    .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -4004,6 +4013,18 @@ private struct PerformanceInsightCard: View {
     }
 
     /// "이 러닝 109 AU · 7일 1,047 AU · 4주 평균 대비 낮음" — 없는 조각은 빠진다.
+    /// 단조도 / 4주 평균 대비 문장 — "부상·위험" 표현 없음(Impellizzeri 2020)
+    private func sevenDayLoadSentence(_ kind: EffortLoad.SentenceKind) -> String {
+        let L = AppLanguage.shared
+        switch kind {
+        case .monotony: return L.s("부하 편차가 거의 없었어요. 쉬운 날과 힘든 날을 나눠 보세요.",
+                                   "Very little variation in load. Try separating easy and hard days.")
+        case .veryHigh: return L.s("최근 4주 평균보다 부하가 많이 높은 주예요.", "A much heavier week than your 4-week average.")
+        case .high:     return L.s("평소보다 조금 높은 주예요.", "A slightly heavier week than usual.")
+        case .low:      return L.s("회복 쪽으로 기운 주예요.", "A lighter, recovery-leaning week.")
+        }
+    }
+
     private func sevenDayLoadCaption(_ load: SevenDayLoad) -> String {
         let L = AppLanguage.shared
         func au(_ v: Double) -> String { Int(v.rounded()).formatted(.number.grouping(.automatic)) }
