@@ -134,9 +134,9 @@ enum RecordSeries {
         }
     }
 
-    // MARK: - 페이스 0선
+    // MARK: - 평균선 (각 줄의 점선 기준)
 
-    /// 페이스 모드의 0선 — 창 안 거리 가중 평균 페이스(sec/km). 페이스 있는 러닝이 없으면 nil.
+    /// 페이스 줄의 평균선 — 창 안 거리 가중 평균 페이스(sec/km). 페이스 있는 러닝이 없으면 nil.
     static func paceBaseline(_ bars: [RecordBar]) -> Double? {
         var weighted = 0.0
         var km = 0.0
@@ -148,53 +148,16 @@ enum RecordSeries {
         return km > 0 ? weighted / km : nil
     }
 
-    // MARK: - 선 정규화 (최근 12개월 개인 범위)
-
-    /// 선 정규화 범위 — 최근 12개월 개인 범위(같은 period 단위 버킷의 min~max). 값이 2개 미만이면 nil.
-    struct MetricRanges: Equatable {
-        let pace: ClosedRange<Double>?   // sec/km
-        let au: ClosedRange<Double>?
-        let hr: ClosedRange<Double>?
-
-        static let empty = MetricRanges(pace: nil, au: nil, hr: nil)
-    }
-
-    /// asOf가 속한 버킷까지의 최근 12개월을 같은 period 단위로 나눠 각 지표의 개인 범위를 낸다.
-    /// (day → 365일 / week → 52주 / month → 12개월). 데이터가 있는 버킷이 2개 미만인 지표는 nil.
-    static func ranges(activities: [Activity],
-                       effortOf: (UUID) -> Int?,
-                       period: RecordPeriod,
-                       asOf: Date,
-                       calendar: Calendar = .current) -> MetricRanges {
-        let last = bucketStart(asOf, period: period, calendar: calendar)
-        let end = advance(last, period: period, calendar: calendar)
-        let start: Date
-        switch period {
-        case .day:   start = calendar.date(byAdding: .day, value: -365, to: end) ?? end
-        case .week:  start = calendar.date(byAdding: .day, value: -364, to: end) ?? end
-        case .month: start = calendar.date(byAdding: .month, value: -12, to: end) ?? end
+    /// 심박 줄의 평균선 — 심박 있는 버킷의 시간 가중 평균(가중치 = 그 버킷의 총 러닝 분).
+    static func hrBaseline(_ bars: [RecordBar]) -> Double? {
+        var weighted = 0.0
+        var minutes = 0.0
+        for b in bars {
+            guard let hr = b.avgHR, b.minutes > 0 else { continue }
+            weighted += hr * b.minutes
+            minutes += b.minutes
         }
-        let window = bars(activities: activities, effortOf: effortOf,
-                          start: start, end: end, period: period, calendar: calendar)
-        return MetricRanges(
-            pace: span(window.compactMap(\.paceSec)),
-            au: span(window.map(\.au).filter { $0 > 0 }),
-            hr: span(window.compactMap(\.avgHR))
-        )
-    }
-
-    /// 값이 2개 미만이면 nil (선을 정규화할 기준이 못 된다).
-    private static func span(_ values: [Double]) -> ClosedRange<Double>? {
-        guard values.count >= 2, let lo = values.min(), let hi = values.max() else { return nil }
-        return lo...hi
-    }
-
-    /// 0...1 정규화. 페이스는 뒤집어(작을수록 1). 범위 폭 0이면 0.5. 창 값이 범위를 벗어나면 0/1로 클램프.
-    static func normalized(_ value: Double, in range: ClosedRange<Double>, inverted: Bool = false) -> Double {
-        let width = range.upperBound - range.lowerBound
-        guard width > 0 else { return 0.5 }
-        let t = min(1, max(0, (value - range.lowerBound) / width))
-        return inverted ? 1 - t : t
+        return minutes > 0 ? weighted / minutes : nil
     }
 
     // MARK: - 요약
@@ -210,18 +173,6 @@ enum RecordSeries {
         let meanHR: Double?
     }
 
-    /// 심박 있는 버킷의 시간 가중 평균(가중치 = 그 버킷의 총 러닝 분).
-    private static func meanHR(_ bars: [RecordBar]) -> Double? {
-        var weighted = 0.0
-        var minutes = 0.0
-        for b in bars {
-            guard let hr = b.avgHR, b.minutes > 0 else { continue }
-            weighted += hr * b.minutes
-            minutes += b.minutes
-        }
-        return minutes > 0 ? weighted / minutes : nil
-    }
-
     static func summary(_ bars: [RecordBar]) -> Summary {
         Summary(
             totalKm: bars.reduce(0) { $0 + $1.km },
@@ -231,7 +182,7 @@ enum RecordSeries {
             ratedCount: bars.reduce(0) { $0 + $1.ratedCount },
             meanPaceSec: paceBaseline(bars),
             bestPaceSec: bars.compactMap(\.paceSec).min(),
-            meanHR: meanHR(bars)
+            meanHR: hrBaseline(bars)
         )
     }
 }

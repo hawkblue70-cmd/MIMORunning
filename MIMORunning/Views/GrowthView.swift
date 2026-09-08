@@ -78,12 +78,10 @@ struct GrowthView: View {
     @State private var showMonthly: Bool = false
     @State private var showDaily: Bool = true
     @State private var dailyMonth: Date = Date()
-    /// 거리 내보내기 카드에서만 쓰는 km/분 선택 (기록 카드는 항상 거리·부하·페이스 세 줄)
+    /// 거리 내보내기 카드에서만 쓰는 km/분 선택 (기록 카드는 항상 거리·페이스·심박 세 줄)
     @State private var showTimeMileage = false
     /// 기록 카드가 그리는 버킷(일/주/월).
     @State private var recordBarsCache: [RecordBar] = []
-    /// 선 정규화 기준 — 최근 12개월 개인 범위. 이동한 달과 무관하며 기간 단위가 바뀔 때 다시 계산한다.
-    @State private var recordRangesCache = RecordSeries.MetricRanges(pace: nil, au: nil, hr: nil)
     @State private var selectedTrend: TrendMetric? = nil
     @State private var showBodyMass = false
     @State private var showBodyFat = false
@@ -501,7 +499,7 @@ struct GrowthView: View {
         }
     }
 
-    /// 기간·러닝·강도 입력이 바뀔 때만 다시 만든다 (막대 + 선 정규화 범위).
+    /// 기간·러닝·강도 입력이 바뀔 때만 다시 만든다.
     private func refreshRecordBars() {
         let period = recordPeriod
         let win = recordWindow(for: period)
@@ -510,11 +508,6 @@ struct GrowthView: View {
             activities: runsCache,
             effortOf: effortOf,
             start: win.start, end: win.end, period: period
-        )
-        recordRangesCache = RecordSeries.ranges(
-            activities: runsCache,
-            effortOf: effortOf,
-            period: period, asOf: Date()
         )
     }
 
@@ -598,8 +591,8 @@ struct GrowthView: View {
     }
 
     private var mileageSubtitle: String {
-        AppLanguage.shared.s("막대 = 거리(색은 강도) · 선 = 페이스·부하·심박 추세",
-                             "bars = distance (color = effort) · lines = pace, load, HR trends")
+        AppLanguage.shared.s("막대 = 거리(색 = 강도) · 선 = 페이스·심박",
+                             "bars = distance (color = effort) · lines = pace, HR")
     }
 
     private var periodToggle: some View {
@@ -666,8 +659,7 @@ struct GrowthView: View {
         }
     }
 
-    /// 거리 막대(색 = 그 구간 평균 강도) 위에 페이스·부하·심박 추세선을 겹치는 단일 기록 차트.
-    /// 선은 최근 12개월 개인 범위로 정규화되어 막대와 같은 좌표계에 들어간다.
+    /// 거리 막대(색 = 그 구간 평균 강도) · 페이스 · 심박을 각자 실제 축으로 위아래로 쌓는 기록 차트.
     private var recordChartView: some View {
         let period = recordPeriod
         let win = recordWindow(for: period)
@@ -676,7 +668,6 @@ struct GrowthView: View {
             period: period,
             start: win.start,
             end: win.end,
-            ranges: recordRangesCache,
             emptyMessage: recordEmptyMessage
         )
     }

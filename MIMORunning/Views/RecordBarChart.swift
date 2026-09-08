@@ -1,42 +1,40 @@
 import SwiftUI
 import Charts
 
-/// 성장 탭 "기록 카드" — **하나의 차트**에 거리 막대(색 = 그 구간 평균 강도)와
-/// 페이스 ● · 강도 부하 ▲ · 평균 심박 ■ 세 선을 겹쳐 보여 준다.
+/// 성장 탭 "기록 카드" — **세 줄을 위아래로 쌓아** 각자 **실제 축**으로 보여 준다.
 ///
-/// 선은 각자 단위가 다르므로 **최근 12개월 개인 범위(`RecordSeries.MetricRanges`)로 0~1 정규화**한 뒤
-/// 막대와 같은 km 좌표계에 올린다 → 축이 하나뿐이라 화면이 조용하다.
-/// 페이스는 뒤집어(위 = 빠름) 그린다. 정확한 값은 헤더 칩(기간 요약)과 탭 말풍선(구간별)에 있다.
+/// 1. 거리 — 막대(색 = 그 구간 평균 강도), y축 km
+/// 2. 페이스 — 선 + 점(색 = 강도), y축 실제 페이스(**뒤집어서 위 = 빠름**), 평균 점선
+/// 3. 심박 — 선 + 점(색 = 강도), y축 실제 bpm, 평균 점선 (심박이 하나도 없으면 줄 자체를 안 그림)
+///
+/// 정규화·칩·부하 선은 없다. 부하는 막대 길이 × 색이 이미 말해 준다.
+/// 세 줄은 같은 x 스케일·같은 축 여백을 쓰고, **한 번의 탭이 세 줄을 동시에 강조**한다.
 struct RecordBarChart: View {
     let bars: [RecordBar]
     let period: RecordPeriod
     let start: Date
     let end: Date
-    /// 선 정규화 기준 — 최근 12개월 개인 범위
-    let ranges: RecordSeries.MetricRanges
     /// 표시할 기록이 없을 때 문구 (nil이면 기본 문구)
     var emptyMessage: String? = nil
 
-    /// 막대·세 선이 함께 보는 단 하나의 선택 상태
+    /// 세 줄이 함께 보는 단 하나의 선택 상태
     @State private var selected: Date? = nil
-
-    @AppStorage("growth.record.showPace") private var showPace = true
-    @AppStorage("growth.record.showLoad") private var showLoad = true
-    @AppStorage("growth.record.showHR")   private var showHR = true
 
     private var L: AppLanguage { AppLanguage.shared }
 
     // MARK: - 레이아웃 상수 (§5.8 — 값은 여기 한 곳에서만)
 
     private enum Metrics {
-        static let plotHeight: CGFloat = 180
-        /// 선이 차지하는 세로 띠 — 막대 꼭대기·바닥에 붙지 않게 여유를 둔다.
-        static let lineFloor: Double = 0.08
-        static let lineSpan: Double = 0.84
-        static let symbolSize: CGFloat = 28
+        static let distanceHeight: CGFloat = 110
+        static let trendHeight: CGFloat = 70
+        /// 세 줄의 y축 라벨 폭 — 같아야 줄이 세로로 정렬된다.
+        static let gutter: CGFloat = 40
+        static let symbolSize: CGFloat = 26
         static let lineWidth: CGFloat = 1.5
-        static let lineOpacity: Double = 0.85
+        static let lineOpacity: Double = 0.6
         static let dimmed: Double = 0.55
+        /// 페이스 축 위아래 여유 (초/km)
+        static let pacePad: Double = 10
     }
 
     // MARK: - 파생 값
@@ -58,79 +56,77 @@ struct RecordBarChart: View {
         return bars.first { s >= $0.id && s < $0.end }
     }
 
-    /// 막대 y축 꼭대기 — 선도 이 좌표계 안에 산다.
-    private var kmAxisTop: Double { max(1, bars.map(\.km).max() ?? 0) }
+    // MARK: - 줄 정의
 
-    private var yDomain: ClosedRange<Double> { 0...(kmAxisTop * 1.08) }
+    private enum Lane { case distance, pace, hr }
 
-    // MARK: - 선 정의
+    /// x 라벨은 **맨 아래 보이는 줄에만** 붙는다.
+    private var bottomLane: Lane {
+        if hrDomain != nil { return .hr }
+        if paceDomain != nil { return .pace }
+        return .distance
+    }
 
-    private struct LinePoint: Identifiable {
+    private struct TrendPoint: Identifiable {
         let id: Date
-        let y: Double        // 이미 km 좌표로 환산된 값
-    }
-
-    private struct LineSpec: Identifiable {
-        let id: String       // 계열 이름 (= 범례 라벨)
+        let y: Double
         let color: Color
-        let symbol: BasicChartSymbolShape
-        let points: [LinePoint]
     }
 
-    /// 0~1 정규화 값을 막대 좌표계(km)로 옮긴다.
-    private func toKmSpace(_ unit: Double) -> Double {
-        kmAxisTop * (Metrics.lineFloor + Metrics.lineSpan * unit)
+    /// 값이 이어지는 구간만 선으로 잇는다 (빈 버킷을 건너뛰며 잇지 않는다).
+    private struct TrendSegment: Identifiable {
+        let id: Int
+        let points: [TrendPoint]
     }
 
-    private func points(_ value: @escaping (RecordBar) -> Double?,
-                        range: ClosedRange<Double>?,
-                        inverted: Bool) -> [LinePoint] {
-        guard let range else { return [] }
-        return bars.compactMap { bar in
-            guard let v = value(bar) else { return nil }
-            return LinePoint(id: bar.id,
-                             y: toKmSpace(RecordSeries.normalized(v, in: range, inverted: inverted)))
+    private func segments(_ value: (RecordBar) -> Double?) -> [TrendSegment] {
+        var result: [TrendSegment] = []
+        var current: [TrendPoint] = []
+        for bar in bars {
+            if let v = value(bar) {
+                current.append(TrendPoint(id: bar.id, y: v, color: barColor(bar)))
+            } else if !current.isEmpty {
+                result.append(TrendSegment(id: result.count, points: current))
+                current = []
+            }
         }
+        if !current.isEmpty { result.append(TrendSegment(id: result.count, points: current)) }
+        return result
     }
 
-    private var paceName: String { L.s("페이스", "Pace") }
-    private var loadName: String { L.s("부하", "Load") }
-    private var hrName: String { L.s("심박", "HR") }
+    // MARK: - 축 범위
 
-    private var pacePoints: [LinePoint] {
-        points({ $0.paceSec }, range: ranges.pace, inverted: true)
+    private var kmDomain: ClosedRange<Double> {
+        0...(max(1, bars.map(\.km).max() ?? 0) * 1.08)
     }
 
-    private var loadPoints: [LinePoint] {
-        points({ $0.au > 0 ? $0.au : nil }, range: ranges.au, inverted: false)
+    private var paceValues: [Double] { bars.compactMap(\.paceSec) }
+
+    /// **페이스 축 뒤집기** — 값은 `-paceSec`로 그리고 라벨은 `abs`로 되돌린다.
+    /// 그래서 위로 갈수록 초/km가 작아진다 = 빠르다.
+    private var paceDomain: ClosedRange<Double>? {
+        guard let fastest = paceValues.min(), let slowest = paceValues.max() else { return nil }
+        return (-slowest - Metrics.pacePad)...(-fastest + Metrics.pacePad)
     }
 
-    private var hrPoints: [LinePoint] {
-        points({ $0.avgHR }, range: ranges.hr, inverted: false)
-    }
+    private var hrValues: [Double] { bars.compactMap(\.avgHR) }
 
-    private var lineSpecs: [LineSpec] {
-        var specs: [LineSpec] = []
-        if showPace, !pacePoints.isEmpty {
-            specs.append(LineSpec(id: paceName, color: Theme.pace, symbol: .circle, points: pacePoints))
-        }
-        if showLoad, !loadPoints.isEmpty {
-            specs.append(LineSpec(id: loadName, color: Theme.violet, symbol: .triangle, points: loadPoints))
-        }
-        if showHR, !hrPoints.isEmpty {
-            specs.append(LineSpec(id: hrName, color: Theme.heartRate, symbol: .square, points: hrPoints))
-        }
-        return specs
+    private var hrDomain: ClosedRange<Double>? {
+        guard let lo = hrValues.min(), let hi = hrValues.max() else { return nil }
+        let pad = max(3, (hi - lo) * 0.15)
+        return (lo - pad)...(hi + pad)
     }
 
     // MARK: - Body
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            calloutRow
-            chipRow
             if hasData {
-                chart
+                calloutRow
+                effortLegend
+                distanceLane
+                paceLane
+                hrLane
                 footnote
             } else {
                 Text(emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period"))
@@ -147,7 +143,7 @@ struct RecordBarChart: View {
         .accessibilityLabel(accessibilitySummary)
     }
 
-    // MARK: - 헤더 ① 선택 말풍선
+    // MARK: - 헤더 ① 선택 말풍선 (세 줄이 함께 쓰는 하나)
 
     private var calloutRow: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -168,54 +164,7 @@ struct RecordBarChart: View {
         }
     }
 
-    // MARK: - 헤더 ② 선 토글 칩 + 강도 색 범례
-
-    private var chipRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                chip(symbol: "●", name: paceName, value: paceChipValue,
-                     color: Theme.pace, isOn: showPace, enabled: !pacePoints.isEmpty) {
-                    showPace.toggle()
-                }
-                chip(symbol: "▲", name: loadName, value: loadChipValue,
-                     color: Theme.violet, isOn: showLoad, enabled: !loadPoints.isEmpty) {
-                    showLoad.toggle()
-                }
-                chip(symbol: "■", name: hrName, value: hrChipValue,
-                     color: Theme.heartRate, isOn: showHR, enabled: !hrPoints.isEmpty) {
-                    showHR.toggle()
-                }
-                Spacer(minLength: 0)
-            }
-            effortLegend
-        }
-    }
-
-    private func chip(symbol: String, name: String, value: String?,
-                      color: Color, isOn: Bool, enabled: Bool,
-                      action: @escaping () -> Void) -> some View {
-        let active = isOn && enabled
-        return Button(action: action) {
-            HStack(spacing: 3) {
-                Text(symbol).font(.system(size: 8))
-                Text(name).font(.system(size: 10, weight: .semibold))
-                Text(value ?? "—")
-                    .font(.system(size: 10))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .foregroundStyle(active ? color : Color.secondary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background((active ? color : Color.secondary).opacity(active ? 0.16 : 0.08))
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.45)
-        .accessibilityLabel("\(name) \(value ?? "")")
-        .accessibilityValue(active ? L.s("켬", "on") : L.s("끔", "off"))
-    }
+    // MARK: - 헤더 ② 강도 색 범례
 
     private var effortLegend: some View {
         HStack(spacing: 6) {
@@ -242,28 +191,91 @@ struct RecordBarChart: View {
         }
     }
 
-    private var paceChipValue: String? {
-        guard let mean = summary.meanPaceSec else { return nil }
-        return paceText(mean)
+    // MARK: - 줄 하나를 만드는 단 하나의 빌더 (§5.8 — 축·선택·강조 코드는 여기에만)
+
+    private func lane<C: ChartContent>(title: String,
+                                       trailing: String?,
+                                       height: CGFloat,
+                                       yDomain: ClosedRange<Double>,
+                                       yLabel: @escaping (Double) -> String,
+                                       showsXAxis: Bool,
+                                       @ChartContentBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if let trailing {
+                    Text(trailing)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            Chart {
+                content()
+                if let sel = selectedBar {
+                    RuleMark(x: .value(periodName, sel.id, unit: xUnit))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .foregroundStyle(Color.secondary.opacity(0.55))
+                }
+            }
+            .frame(height: height)
+            .chartXScale(domain: start...end)
+            .chartYScale(domain: yDomain)
+            .chartLegend(.hidden)
+            .chartXSelection(value: $selected)
+            .chartYAxis {
+                AxisMarks(values: .automatic(desiredCount: 3)) { value in
+                    AxisValueLabel {
+                        Text(yLabel(value.as(Double.self) ?? 0))
+                            .font(.system(size: 9))
+                            .frame(width: Metrics.gutter, alignment: .trailing)
+                    }
+                    AxisGridLine()
+                }
+            }
+            .modifier(LaneXAxis(shows: showsXAxis, values: xAxisValues, label: xLabel))
+        }
     }
 
-    private var loadChipValue: String? {
-        guard summary.totalAU > 0 else { return nil }
-        return "\(summary.totalAU.rounded().formatted(.number.grouping(.automatic))) AU"
+    /// x 라벨은 맨 아래 줄에만 — 위 줄은 축 자체를 숨긴다.
+    private struct LaneXAxis: ViewModifier {
+        let shows: Bool
+        let values: AxisMarkValues
+        let label: (Date) -> String
+
+        func body(content: Content) -> some View {
+            if shows {
+                content.chartXAxis {
+                    AxisMarks(values: values) { value in
+                        AxisValueLabel {
+                            if let d = value.as(Date.self) {
+                                Text(label(d)).font(.caption2)
+                            }
+                        }
+                    }
+                }
+            } else {
+                content.chartXAxis(.hidden)
+            }
+        }
     }
 
-    private var hrChipValue: String? {
-        guard let hr = summary.meanHR else { return nil }
-        return "\(Int(hr.rounded())) bpm"
-    }
+    // MARK: - 줄 ① 거리
 
-    // MARK: - 차트 (막대 + 세 선 = 하나)
-
-    private var chart: some View {
-        Chart {
+    private var distanceLane: some View {
+        lane(title: L.s("거리", "Distance"),
+             trailing: distanceTrailing,
+             height: Metrics.distanceHeight,
+             yDomain: kmDomain,
+             yLabel: kmAxisLabel,
+             showsXAxis: bottomLane == .distance) {
             ForEach(bars) { bar in
                 BarMark(
-                    x: .value(L.s("기간", "Period"), bar.id, unit: xUnit),
+                    x: .value(periodName, bar.id, unit: xUnit),
                     yStart: .value(L.s("기준", "Base"), 0),
                     yEnd: .value(L.s("거리(km)", "Distance (km)"), bar.km)
                 )
@@ -271,77 +283,139 @@ struct RecordBarChart: View {
                 .opacity(dim(bar.id))
                 .cornerRadius(2)
             }
+        }
+    }
 
-            if let sel = selectedBar {
-                RuleMark(x: .value(L.s("기간", "Period"), sel.id, unit: xUnit))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    .foregroundStyle(Color.secondary.opacity(0.6))
-            }
+    // MARK: - 줄 ② 페이스 (뒤집힌 실제 축)
 
-            ForEach(lineSpecs) { spec in
-                ForEach(spec.points) { p in
-                    LineMark(
-                        x: .value(L.s("기간", "Period"), p.id, unit: xUnit),
-                        y: .value(spec.id, p.y),
-                        series: .value(L.s("계열", "Series"), spec.id)
-                    )
-                    .foregroundStyle(spec.color.opacity(Metrics.lineOpacity))
-                    .lineStyle(StrokeStyle(lineWidth: Metrics.lineWidth, lineCap: .round, lineJoin: .round))
-                    .interpolationMethod(.monotone)
-                }
-                ForEach(spec.points) { p in
-                    PointMark(
-                        x: .value(L.s("기간", "Period"), p.id, unit: xUnit),
-                        y: .value(spec.id, p.y)
-                    )
-                    .symbol(spec.symbol)
-                    .symbolSize(Metrics.symbolSize)
-                    .foregroundStyle(spec.color)
-                    .opacity(dim(p.id))
-                }
+    @ViewBuilder
+    private var paceLane: some View {
+        if let domain = paceDomain {
+            lane(title: L.s("페이스", "Pace"),
+                 trailing: paceTrailing,
+                 height: Metrics.trendHeight,
+                 yDomain: domain,
+                 yLabel: { paceText(abs($0)) },
+                 showsXAxis: bottomLane == .pace) {
+                trendMarks(segments { $0.paceSec.map { -$0 } },
+                           seriesName: L.s("페이스", "Pace"),
+                           lineColor: Theme.pace.opacity(Metrics.lineOpacity),
+                           baseline: RecordSeries.paceBaseline(bars).map { -$0 },
+                           baselineLabel: paceBaselineLabel)
             }
         }
-        .frame(height: Metrics.plotHeight)
-        .chartXScale(domain: start...end)
-        .chartYScale(domain: yDomain)
-        .chartLegend(.hidden)
-        .chartXSelection(value: $selected)
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { value in
-                AxisValueLabel {
-                    Text(kmAxisLabel(value.as(Double.self) ?? 0))
-                        .font(.system(size: 9))
-                }
-                AxisGridLine()
+    }
+
+    // MARK: - 줄 ③ 심박 (없으면 줄 자체가 없다)
+
+    @ViewBuilder
+    private var hrLane: some View {
+        if let domain = hrDomain {
+            lane(title: L.s("심박", "Heart rate"),
+                 trailing: hrTrailing,
+                 height: Metrics.trendHeight,
+                 yDomain: domain,
+                 yLabel: { String(format: "%.0f", $0) },
+                 showsXAxis: bottomLane == .hr) {
+                trendMarks(segments { $0.avgHR },
+                           seriesName: L.s("심박", "Heart rate"),
+                           lineColor: Theme.heartRate.opacity(Metrics.lineOpacity),
+                           baseline: RecordSeries.hrBaseline(bars),
+                           baselineLabel: hrBaselineLabel)
             }
         }
-        .chartXAxis {
-            AxisMarks(values: xAxisValues) { value in
-                AxisValueLabel {
-                    if let d = value.as(Date.self) {
-                        Text(xLabel(d)).font(.caption2)
-                    }
+    }
+
+    /// 페이스·심박 줄이 공유하는 마크 묶음 — 평균 점선 + 이어진 구간 선 + 강도색 점.
+    @ChartContentBuilder
+    private func trendMarks(_ segs: [TrendSegment],
+                            seriesName: String,
+                            lineColor: Color,
+                            baseline: Double?,
+                            baselineLabel: String) -> some ChartContent {
+        if let baseline {
+            RuleMark(y: .value(seriesName, baseline))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .foregroundStyle(Color.secondary.opacity(0.45))
+                .annotation(position: .top, alignment: .trailing, spacing: 1) {
+                    Text(baselineLabel)
+                        .font(.system(size: 8.5))
+                        .foregroundStyle(.secondary)
                 }
+        }
+        ForEach(segs) { seg in
+            ForEach(seg.points) { p in
+                LineMark(
+                    x: .value(periodName, p.id, unit: xUnit),
+                    y: .value(seriesName, p.y),
+                    series: .value(L.s("구간", "Segment"), seg.id)
+                )
+                .foregroundStyle(lineColor)
+                .lineStyle(StrokeStyle(lineWidth: Metrics.lineWidth, lineCap: .round, lineJoin: .round))
+                .interpolationMethod(.monotone)
+            }
+        }
+        ForEach(segs) { seg in
+            ForEach(seg.points) { p in
+                PointMark(
+                    x: .value(periodName, p.id, unit: xUnit),
+                    y: .value(seriesName, p.y)
+                )
+                .symbolSize(Metrics.symbolSize)
+                .foregroundStyle(p.color)
+                .opacity(dim(p.id))
             }
         }
     }
 
     private var footnote: some View {
-        Text(L.s("선은 최근 12개월 개인 범위로 정규화한 추세예요 · 페이스는 위가 빠름",
-                 "Lines are trends normalized to your 12-month range · pace: higher = faster"))
+        Text(L.s("막대·점 색 = 강도 · 페이스는 위가 빠름",
+                 "Bar and dot color = effort · pace: higher = faster"))
             .font(.system(size: 8.5))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
 
+    // MARK: - 줄 오른쪽 요약
+
+    private var distanceTrailing: String {
+        "\(kmText(summary.totalKm)) · \(L.s("\(summary.runCount)회", "\(summary.runCount) runs"))"
+    }
+
+    private var paceTrailing: String? {
+        guard let mean = summary.meanPaceSec else { return nil }
+        var parts = [L.s("평균 \(paceText(mean))", "avg \(paceText(mean))")]
+        if let best = summary.bestPaceSec {
+            parts.append(L.s("가장 빠른 \(paceText(best))", "best \(paceText(best))"))
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var hrTrailing: String? {
+        guard let hr = summary.meanHR else { return nil }
+        return L.s("평균 \(Int(hr.rounded())) bpm", "avg \(Int(hr.rounded())) bpm")
+    }
+
+    private var paceBaselineLabel: String {
+        guard let mean = RecordSeries.paceBaseline(bars) else { return "" }
+        return L.s("평균 \(paceText(mean))", "avg \(paceText(mean))")
+    }
+
+    private var hrBaselineLabel: String {
+        guard let hr = RecordSeries.hrBaseline(bars) else { return "" }
+        return L.s("평균 \(Int(hr.rounded()))", "avg \(Int(hr.rounded()))")
+    }
+
     // MARK: - 색·강조
+
+    private var periodName: String { L.s("기간", "Period") }
 
     private func barColor(_ bar: RecordBar) -> Color {
         guard let mean = bar.meanEffort else { return Color.secondary.opacity(0.45) }
         return EffortPalette.color(for: EffortResolver.clamp(mean))
     }
 
-    /// 선택된 구간만 진하게 — 막대와 세 선이 함께 흐려진다.
+    /// 선택된 구간만 진하게 — 세 줄이 함께 흐려진다.
     private func dim(_ id: Date) -> Double {
         guard let sel = selectedBar else { return 1 }
         return sel.id == id ? 1 : Metrics.dimmed
@@ -426,14 +500,11 @@ struct RecordBarChart: View {
         guard hasData else {
             return emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period")
         }
-        let s = summary
-        var parts = [L.s("거리 막대와 페이스·부하·심박 추세선",
-                         "Distance bars with pace, load and heart-rate trend lines"),
-                     kmText(s.totalKm),
-                     L.s("\(s.runCount)회", "\(s.runCount) runs")]
-        if let p = paceChipValue { parts.append(L.s("평균 페이스 \(p)", "average pace \(p)")) }
-        if let l = loadChipValue { parts.append(l) }
-        if let h = hrChipValue { parts.append(L.s("평균 심박 \(h)", "average heart rate \(h)")) }
+        var parts = [L.s("거리 막대 · 페이스 · 심박 세 줄 차트",
+                         "Three stacked lanes: distance bars, pace and heart rate"),
+                     distanceTrailing]
+        if let p = paceTrailing { parts.append(L.s("페이스 \(p)", "pace \(p)")) }
+        if let h = hrTrailing { parts.append(L.s("심박 \(h)", "heart rate \(h)")) }
         return parts.joined(separator: ", ")
     }
 
