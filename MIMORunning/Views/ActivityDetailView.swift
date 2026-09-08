@@ -260,7 +260,8 @@ struct ActivityDetailView: View {
                             weatherSnapshot: condition?.weather,
                             confirmedRace: confirmedRaceMatch,
                             confirmedRaces: raceDetector.matches.values.filter(\.isConfirmed),
-                            raceDetailFn: { [manager] id in manager.detailFromCache(id) }
+                            raceDetailFn: { [manager] id in manager.detailFromCache(id) },
+                            effortIndex: effortIndex
                         )
                     }
                     panelChipRow

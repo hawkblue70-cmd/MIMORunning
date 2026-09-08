@@ -126,6 +126,8 @@ struct RunInsightSection: View {
     var confirmedRace: PersistedRaceMatch? = nil
     var confirmedRaces: [PersistedRaceMatch] = []
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
+    /// 강도(sRPE) 조회 인덱스 — 퍼포먼스 탭의 7일 강도 부하용. 없으면 해당 반쪽 생략.
+    var effortIndex: EffortIndex? = nil
 
     var body: some View {
         if !insights.isEmpty, let act = activity {
@@ -152,7 +154,8 @@ struct RunInsightSection: View {
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
                 raceDetailFn: raceDetailFn,
-                hrZonesFn: hrZonesFn
+                hrZonesFn: hrZonesFn,
+                effortIndex: effortIndex
             )
         }
     }

@@ -705,6 +705,8 @@ struct RunInsightTabCard: View {
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
     /// 과거 러닝의 존 체류 시간 (강도 분포 · 4주 합산용). 리듬 카드 도넛과 같은 캐시 데이터.
     var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
+    /// 강도(sRPE) 조회 인덱스 — 퍼포먼스 탭의 7일 강도 부하용. 없으면 해당 반쪽 생략.
+    var effortIndex: EffortIndex? = nil
 
     @State private var tab: InsightTabKind = .rhythm
     @State private var showExport = false
@@ -750,7 +752,8 @@ struct RunInsightTabCard: View {
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
                 raceDetailFn: raceDetailFn,
-                hrZonesFn: hrZonesFn
+                hrZonesFn: hrZonesFn,
+                effortIndex: effortIndex
             )
         }
         .onAppear {
@@ -903,7 +906,8 @@ struct RunInsightTabCard: View {
                 hrZones: hrZones,
                 hrZonesFn: hrZonesFn,
                 isBackfilling: isBackfilling,
-                isClassifying: isClassifying
+                isClassifying: isClassifying,
+                effortIndex: effortIndex
             )
         case .race:
             RaceInsightCard(
@@ -2366,6 +2370,16 @@ private struct RhythmInsightCard: View {
 
 // MARK: - Performance Card
 
+/// 강도 분포 세로 막대 위에 그리는 가로 문헌값 눈금 한 줄.
+private struct IntensityTickLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: rect.midY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return p
+    }
+}
+
 private struct PerformanceInsightCard: View {
     let activity: Activity
     var detail: ActivityDetail? = nil
@@ -2380,12 +2394,38 @@ private struct PerformanceInsightCard: View {
     var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
     var isBackfilling: Bool = false
     var isClassifying: Bool = false
+    /// 강도(sRPE) 조회 인덱스 — 7일 강도 부하용. 없으면 강도 분포만 전체 폭.
+    var effortIndex: EffortIndex? = nil
 
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
     @State private var _distResult: (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)? = nil
     @State private var _intensityResult: IntensityTimeData? = nil
     @State private var _distComputed = false
+
+    /// 7일 강도 부하 묶음 — 창 + 이 러닝의 AU + 4주 평균 대비 라벨.
+    private struct SevenDayLoad {
+        let window: EffortLoad.WindowLoad
+        let thisRunAU: Double?
+        let acuteChronic: EffortLoad.RatioLabel?
+    }
+
+    /// 이 러닝 날짜로 끝나는 7일 부하(오늘이 아니라 그 러닝 기준). 강도 기록이 없으면 nil → 오른쪽 반쪽 생략.
+    private var sevenDayLoad: SevenDayLoad? {
+        guard let idx = effortIndex else { return nil }
+        let cal = Calendar.current
+        let dayEnd = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: activity.date)) ?? activity.date
+        let since = cal.date(byAdding: .day, value: -36, to: activity.date) ?? .distantPast
+        var acts = history.filter { $0.date >= since && $0.date < dayEnd }
+        // history가 이 러닝을 포함하지 않는 호출부에서도 이 러닝이 창에 들어가야 한다.
+        if !acts.contains(where: { $0.id == activity.id }) { acts.append(activity) }
+        let runs = EffortLoad.runs(from: acts, index: idx)
+        let w = EffortLoad.window(runs: runs, endingBefore: dayEnd, days: 7)
+        guard w.coveredCount > 0 else { return nil }
+        let thisAU = idx.resolve(activity.id).map { EffortLoad.sessionAU(effort: $0.value, durationMin: activity.duration / 60) }
+        let ac = EffortLoad.rollingAcuteChronic(runs: runs, asOf: activity.date)?.label
+        return SevenDayLoad(window: w, thisRunAU: thisAU, acuteChronic: ac)
+    }
 
     private struct HRTrendPt: Identifiable {
         let id = UUID()
@@ -3727,73 +3767,23 @@ private struct PerformanceInsightCard: View {
         }
     }
 
+    /// 강도 분포(4주, 세로 막대 + 문헌값 눈금) · 이 러닝 날짜 기준 7일 강도 부하 반반 배치.
+    /// 강도 기록이 없으면 오른쪽 반쪽을 생략하고 왼쪽을 전체 폭으로 둔다.
     @ViewBuilder
     private func intensityDistSection(data: IntensityTimeData) -> some View {
         let L = AppLanguage.shared
         let b = data.result.buckets
-        // L-1 참고선 — 지구력 종목 문헌값. 목표·권장이 아니라 참고선. (lo == hi 면 점선 하나, 아니면 옅은 밴드 + 양끝 점선)
-        let rows: [(tier: IntensityTier, sec: Double, frac: Double, refLo: Double, refHi: Double)] = [
-            (.easy,   b.lowSec,  b.lowFrac,  0.80, 0.80),
-            (.medium, b.midSec,  b.midFrac,  0.00, 0.05),
-            (.hard,   b.highSec, b.highFrac, 0.15, 0.20),
-        ]
-        let excluded = data.result.runsNoHR.count + data.result.runsZonesMissing.count
-        let totalMin = Int((b.totalSec / 60).rounded())
+        let load = sevenDayLoad
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 4) {
-                Text(L.s("강도 분포 · \(data.weeks)주 · 심박 존 \(totalMin)분", "Intensity · \(data.weeks)w · \(totalMin) min in HR zones"))
-                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
-                if excluded > 0 {
-                    Text(L.s("심박 없음 \(excluded)건 제외", "\(excluded) w/o HR excluded"))
-                        .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
-            // 참고선 라벨 — 한 번만, 우측 상단. 「목표」「권장」 금지.
-            HStack {
-                Spacer(minLength: 0)
-                Text(L.s("점선 = 지구력 종목 문헌값", "dotted = endurance-sport literature"))
-                    .font(.system(size: 7)).foregroundStyle(.white.opacity(0.45))
-            }
-            ForEach(rows, id: \.tier) { row in
-                let pct = Int((row.frac * 100).rounded())
-                let mins = Int((row.sec / 60).rounded())
-                HStack(spacing: 6) {
-                    Text(row.tier.label)
-                        .font(.system(size: 8)).foregroundStyle(IC.label)
-                        .frame(width: 32, alignment: .leading)
-                    GeometryReader { geo in
-                        let w = geo.size.width
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
-                            // 막대: 전체 시간 대비 비율 (참고선과 같은 축)
-                            RoundedRectangle(cornerRadius: 2.5)
-                                .fill(intensityColor(row.tier).opacity(0.85))
-                                .frame(width: max(4, w * CGFloat(row.frac)))
-                            // 참고 범위 밴드 — 옅은 흰색, 경고색 없음, 미달 강조 없음
-                            if row.refHi > row.refLo {
-                                Rectangle()
-                                    .fill(.white.opacity(0.10))
-                                    .frame(width: w * CGFloat(row.refHi - row.refLo))
-                                    .offset(x: w * CGFloat(row.refLo))
-                            }
-                            // 세로 점선 — 0 지점은 막대 왼쪽 끝이라 생략
-                            ForEach(Array(Set([row.refLo, row.refHi]).filter { $0 > 0 }.sorted()), id: \.self) { r in
-                                Path { path in
-                                    path.move(to: CGPoint(x: 0, y: -1))
-                                    path.addLine(to: CGPoint(x: 0, y: 9))
-                                }
-                                .stroke(.white.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [1.5, 1.5]))
-                                .frame(width: 1)
-                                .offset(x: w * CGFloat(r))
-                            }
-                        }
-                    }
-                    .frame(height: 8)
-                    Text(L.s("\(mins)분 · \(pct)%", "\(mins)m · \(pct)%"))
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(intensityColor(row.tier))
-                        .frame(width: 56, alignment: .trailing)
+            HStack(alignment: .top, spacing: 10) {
+                intensityColumnsView(data: data)
+                    .frame(maxWidth: .infinity)
+                if let load {
+                    Rectangle().fill(.white.opacity(0.10))
+                        .frame(width: 0.5)
+                        .padding(.vertical, 2)
+                    sevenDayLoadView(load: load)
+                        .frame(maxWidth: .infinity)
                 }
             }
             // ① 시간 기준 (K-2) — 사실 한 줄. 평가어·참고선 없음. 연속 개념 없음.
@@ -3818,7 +3808,160 @@ private struct PerformanceInsightCard: View {
                 .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
             }
+
         }
+    }
+
+    /// 강도 분포 · 4주 — 저/중/고 세로 막대. 축은 0…max(관측 최대, 참고선 최대)로 잡아 눈금이 항상 보이게 한다.
+    @ViewBuilder
+    private func intensityColumnsView(data: IntensityTimeData) -> some View {
+        let L = AppLanguage.shared
+        let b = data.result.buckets
+        // L-1 참고선 — 지구력 종목 문헌값. 목표·권장이 아니라 참고선. (lo == hi 면 눈금 하나, 아니면 옷은 밴드 + 양끝 눈금)
+        let rows: [(tier: IntensityTier, sec: Double, frac: Double, refLo: Double, refHi: Double)] = [
+            (.easy,   b.lowSec,  b.lowFrac,  0.80, 0.80),
+            (.medium, b.midSec,  b.midFrac,  0.00, 0.05),
+            (.hard,   b.highSec, b.highFrac, 0.15, 0.20),
+        ]
+        let excluded = data.result.runsNoHR.count + data.result.runsZonesMissing.count
+        let totalMin = Int((b.totalSec / 60).rounded())
+        let lowPct = Int((b.lowFrac * 100).rounded())
+        // 상단 여유 6% — 80% 눈금이 프레임 위로 잘리지 않게.
+        let axisFrac = max(0.80, b.lowFrac, b.midFrac, b.highFrac) * 1.06
+        let barH: CGFloat = 56
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 4) {
+                Text(L.s("강도 분포 · \(data.weeks)주 · 심박 존 \(totalMin)분", "Intensity · \(data.weeks)w · \(totalMin) min in HR zones"))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                if excluded > 0 {
+                    Text(L.s("심박 없음 \(excluded)건 제외", "\(excluded) w/o HR excluded"))
+                        .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                }
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                ForEach(rows, id: \.tier) { row in
+                    let pct = Int((row.frac * 100).rounded())
+                    let mins = Int((row.sec / 60).rounded())
+                    VStack(spacing: 3) {
+                        Text(L.s("\(mins)분 · \(pct)%", "\(mins)m · \(pct)%"))
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundStyle(intensityColor(row.tier))
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
+                            // 참고 범위 밴드 — 옷은 흰색, 경고색 없음, 미달 강조 없음
+                            if row.refHi > row.refLo {
+                                Rectangle()
+                                    .fill(.white.opacity(0.10))
+                                    .frame(height: barH * CGFloat((row.refHi - row.refLo) / axisFrac))
+                                    .offset(y: -barH * CGFloat(row.refLo / axisFrac))
+                            }
+                            RoundedRectangle(cornerRadius: 2.5)
+                                .fill(intensityColor(row.tier).opacity(0.85))
+                                .frame(height: max(2, barH * CGFloat(row.frac / axisFrac)))
+                            // 가로 점선 — 0 지점은 막대 밑바닥이라 생략
+                            ForEach(Array(Set([row.refLo, row.refHi]).filter { $0 > 0 }.sorted()), id: \.self) { r in
+                                IntensityTickLine()
+                                    .stroke(.white.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [1.5, 1.5]))
+                                    .frame(height: 1)
+                                    .offset(y: -barH * CGFloat(r / axisFrac))
+                            }
+                        }
+                        .frame(height: barH)
+                        Text(row.tier.label)
+                            .font(.system(size: 8)).foregroundStyle(IC.label)
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            Text(L.s("저강도 \(lowPct)% · 점선 = 지구력 종목 문헌값",
+                     "Low \(lowPct)% · marks = endurance-athlete reference"))
+                .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// 이 러닝 날짜로 끝나는 7일 강도 부하 — 일별 막대, 이 러닝 날은 테두리 강조.
+    @ViewBuilder
+    private func sevenDayLoadView(load: SevenDayLoad) -> some View {
+        let L = AppLanguage.shared
+        let cal = Calendar.current
+        let w = load.window
+        let maxAU = max(w.daily.max() ?? 0, 1)
+        let barH: CGFloat = 56
+        let runDay = cal.startOfDay(for: activity.date)
+        VStack(alignment: .leading, spacing: 5) {
+            Text(L.s("강도 부하 · 7일", "Training load · 7d"))
+                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                .lineLimit(1).minimumScaleFactor(0.8)
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(Array(w.dayStarts.enumerated()), id: \.offset) { i, day in
+                    let au = w.daily.indices.contains(i) ? w.daily[i] : 0
+                    let isRunDay = cal.isDate(day, inSameDayAs: runDay)
+                    VStack(spacing: 3) {
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: 2).fill(.white.opacity(0.06))
+                            if au > 0 {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(dayLoadColor(w, i))
+                                    .frame(height: max(3, barH * CGFloat(au / maxAU)))
+                            }
+                        }
+                        .frame(height: barH)
+                        .overlay {
+                            if isRunDay {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .stroke(Color.white.opacity(0.7), lineWidth: 1.5)
+                            }
+                        }
+                        Text(weekdayInitial(day, calendar: cal))
+                            .font(.system(size: 8, weight: isRunDay ? .bold : .regular))
+                            .foregroundStyle(isRunDay ? Color.white.opacity(0.90) : IC.label)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            Text(sevenDayLoadCaption(load))
+                .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func dayLoadColor(_ w: EffortLoad.WindowLoad, _ i: Int) -> Color {
+        let mean = w.dailyMeanEffort.indices.contains(i) ? w.dailyMeanEffort[i] : nil
+        return EffortPalette.color(for: EffortResolver.clamp(mean ?? 5))
+    }
+
+    private func weekdayInitial(_ date: Date, calendar: Calendar) -> String {
+        let ko = ["일", "월", "화", "수", "목", "금", "토"]
+        let en = ["S", "M", "T", "W", "T", "F", "S"]
+        let i = max(0, min(6, calendar.component(.weekday, from: date) - 1))
+        return AppLanguage.shared.s(ko[i], en[i])
+    }
+
+    /// "이 러닝 109 AU · 7일 1,047 AU · 4주 평균 대비 낮음" — 없는 조각은 빠진다.
+    private func sevenDayLoadCaption(_ load: SevenDayLoad) -> String {
+        let L = AppLanguage.shared
+        func au(_ v: Double) -> String { Int(v.rounded()).formatted(.number.grouping(.automatic)) }
+        var parts: [String] = []
+        if let t = load.thisRunAU {
+            parts.append(L.s("이 러닝 \(au(t)) AU", "This run \(au(t)) AU"))
+        }
+        parts.append(L.s("7일 \(au(load.window.total)) AU", "7d \(au(load.window.total)) AU"))
+        if let ac = load.acuteChronic {
+            let t: String
+            switch ac {
+            case .low:      t = L.s("낮음", "lower")
+            case .steady:   t = L.s("유지", "steady")
+            case .high:     t = L.s("높음", "higher")
+            case .veryHigh: t = L.s("크게 높음", "much higher")
+            }
+            parts.append(L.s("4주 평균 대비 \(t)", "vs 4-wk avg \(t)"))
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func intensityColor(_ tier: IntensityTier) -> Color {
@@ -4687,6 +4830,8 @@ struct InsightExportSheet: View {
     var confirmedRaces: [PersistedRaceMatch] = []
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
     var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
+    /// 강도(sRPE) 조회 인덱스 — 퍼포먼스 탭의 7일 강도 부하용.
+    var effortIndex: EffortIndex? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -4918,7 +5063,8 @@ struct InsightExportSheet: View {
                 insights: insights,
                 workoutTypeFn: workoutTypeFn,
                 hrZones: hrZones,
-                hrZonesFn: hrZonesFn
+                hrZonesFn: hrZonesFn,
+                effortIndex: effortIndex
             )
         case .race:
             RaceInsightCard(
