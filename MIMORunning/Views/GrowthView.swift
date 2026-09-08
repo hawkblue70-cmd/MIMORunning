@@ -98,6 +98,10 @@ struct GrowthView: View {
     @State private var showDaily: Bool = true
     @State private var dailyMonth: Date = Date()
     @State private var dailyKmsCache: [DailyKm] = []
+    /// 일간 모드에서 선택한 달의 일별 강도 부하. 강도 있는 러닝이 없으면 nil(카드 숨김).
+    @State private var monthEffortLoadCache: EffortLoad.WindowLoad? = nil
+    /// 일간 모드에서 선택한 달의 페이스 추이(전량, 20회 상한 없음)
+    @State private var monthPacePointsCache: [PacePoint] = []
     @State private var selectedTrend: TrendMetric? = nil
     @State private var showBodyMass = false
     @State private var showBodyFat = false
@@ -197,6 +201,7 @@ struct GrowthView: View {
         monthlyKmsCache  = monthlyKms()
         monthlyMinsCache = monthlyMins()
         dailyKmsCache    = dailyKms(for: dailyMonth)
+        refreshMonthCaches()
         pacePointsCache  = pacePoints()
         let cols = heatmapColumns()
         heatmapColumnsCache = cols
@@ -317,7 +322,10 @@ struct GrowthView: View {
             lastAnalyzedRunCount = -1
             Task { refreshChartCache(); await refreshMetricAnalyses() }
         }
-        .onChange(of: dailyMonth) { _, _ in dailyKmsCache = dailyKms(for: dailyMonth) }
+        .onChange(of: dailyMonth) { _, _ in
+            dailyKmsCache = dailyKms(for: dailyMonth)
+            refreshMonthCaches()
+        }
         .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
             // 언어가 바뀌면 캐시된 현지화 문자열을 즉시 재계산한다.
             journeyMilestonesCache = journeyMilestones()
@@ -488,6 +496,24 @@ struct GrowthView: View {
         let runs = EffortLoad.runs(from: runsCache.filter { $0.date >= (Calendar.current.date(byAdding: .day, value: -36, to: Date()) ?? .distantPast) }, index: manager.effortIndex)
         let s = EffortLoad.rollingSummary(runs: runs, asOf: Date())
         return s.current.coveredCount > 0 ? s : nil
+    }
+
+    /// 선택한 달의 일별 강도 부하. 강도 있는 러닝이 없으면 nil(카드 숨김).
+    private func monthEffortLoad(for month: Date) -> EffortLoad.WindowLoad? {
+        let cal = Calendar.current
+        let start = cal.date(from: cal.dateComponents([.year, .month], from: month)) ?? month
+        guard let days = cal.range(of: .day, in: .month, for: start)?.count,
+              let end = cal.date(byAdding: .day, value: days, to: start) else { return nil }
+        let inMonth = runsCache.filter { $0.date >= start && $0.date < end }
+        let w = EffortLoad.window(runs: EffortLoad.runs(from: inMonth, index: manager.effortIndex),
+                                  endingBefore: end, days: days)
+        return w.coveredCount > 0 ? w : nil
+    }
+
+    /// 일간 모드에서 달을 따라가는 캐시(강도 부하 · 페이스 추이) 갱신
+    private func refreshMonthCaches() {
+        monthEffortLoadCache = monthEffortLoad(for: dailyMonth)
+        monthPacePointsCache = monthPacePoints(for: dailyMonth)
     }
 
     private var weeklySection: some View {
@@ -671,15 +697,27 @@ struct GrowthView: View {
         )
     }
 
+    /// 일간 모드: 일간 거리 + 같은 달의 일별 강도 부하
     @ViewBuilder
-    private var mileageChartView: some View {
+    private var dailyChartsView: some View {
         let L = AppLanguage.shared
-        if showDaily {
+        VStack(spacing: 10) {
             if dailyKmsCache.allSatisfy({ $0.km == 0 }) {
                 EmptyChartPlaceholder(message: L.s("이번 달 러닝 기록이 없어요", "No runs this month"))
             } else {
                 DailyDistanceChart(data: dailyKmsCache)
             }
+            if let w = monthEffortLoadCache {
+                MonthlyEffortLoadChart(window: w)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var mileageChartView: some View {
+        let L = AppLanguage.shared
+        if showDaily {
+            dailyChartsView
         } else if showMonthly {
             if showTimeMileage {
                 if monthlyMinsCache.allSatisfy({ $0.mins == 0 }) {
@@ -727,11 +765,18 @@ struct GrowthView: View {
 
     private var paceSection: some View {
         let L = AppLanguage.shared
-        let points = pacePointsCache
+        // 일간 모드에서는 선택한 달의 러닝만 (월 이동을 따라감)
+        let points = showDaily ? monthPacePointsCache : pacePointsCache
+        let subtitle = showDaily
+            ? L.s("\(dailyMonthLabel) · 위로 갈수록 빠름", "\(dailyMonthLabel) · Higher = faster")
+            : L.s("위로 갈수록 빠름", "Higher = faster")
+        let emptyMessage = showDaily
+            ? L.s("이 달에 비교할 러닝이 2회 미만이에요", "Fewer than 2 runs this month")
+            : L.s("비교하려면 러닝 2회 이상이 필요해요", "Need 2+ runs to compare")
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: L.s("페이스 추이", "Pace Trend"), subtitle: L.s("위로 갈수록 빠름", "Higher = faster"))
+            SectionLabel(title: L.s("페이스 추이", "Pace Trend"), subtitle: subtitle)
             if points.count < 2 {
-                EmptyChartPlaceholder(message: L.s("비교하려면 러닝 2회 이상이 필요해요", "Need 2+ runs to compare"))
+                EmptyChartPlaceholder(message: emptyMessage)
             } else {
                 PaceTrendChart(points: points)
             }
@@ -1098,6 +1143,7 @@ struct GrowthView: View {
     /// (두 곳에서 호출되지만 각 refresh 함수가 자체 가드로 중복 실행을 막는다.)
     private func effortInputsChanged() {
         manager.syncUserEfforts(from: allStories)
+        monthEffortLoadCache = monthEffortLoad(for: dailyMonth)
         lastAnalyzedRunCount = -1
         formComputedForRunCount = nil
         Task {
@@ -1729,6 +1775,26 @@ struct GrowthView: View {
         runs
             .prefix(maxCount)
             .reversed()
+            .compactMap { a -> PacePoint? in
+                guard let sec = a.paceSecPerKm, sec > 0 else { return nil }
+                return PacePoint(
+                    date: a.date,
+                    speedKmh: 3600.0 / sec,
+                    paceFormatted: a.formattedPace ?? ""
+                )
+            }
+    }
+
+    /// 선택한 달의 모든 러닝(오래된→최신). 20회 상한 없음.
+    private func monthPacePoints(for month: Date) -> [PacePoint] {
+        let cal = Calendar.current
+        let sc = cal.dateComponents([.year, .month], from: month)
+        return runs
+            .filter { a in
+                let dc = cal.dateComponents([.year, .month], from: a.date)
+                return dc.year == sc.year && dc.month == sc.month
+            }
+            .sorted { $0.date < $1.date }
             .compactMap { a -> PacePoint? in
                 guard let sec = a.paceSecPerKm, sec > 0 else { return nil }
                 return PacePoint(
