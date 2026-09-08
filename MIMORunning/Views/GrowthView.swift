@@ -133,6 +133,8 @@ struct GrowthView: View {
     @State private var formComputedForRunCount: Int? = nil  // ■2: 동일 run count 재계산 방지
     @State private var lastChartRefreshCount: Int = -1
     @State private var runsCache: [Activity] = []
+    /// 유형별 평소 강도 표 — 강도 입력이 바뀔 때만 다시 계산한다(body 평가 비용 회피).
+    @State private var effortTypeRowsCache: [EffortBaseline.TypeSummary] = []
     @State private var prEntriesCache: [PREntry] = []
     @State private var journeyMilestonesCache: [MilestoneEvent] = []
     @State private var thisWeekRunCountCache: Int = 0
@@ -226,6 +228,7 @@ struct GrowthView: View {
         thisWeekRunCountCache   = runsCache.filter { $0.date >= ws }.count
         prEntriesCache          = prEntries()
         journeyMilestonesCache  = journeyMilestones()
+        refreshEffortTypeRows()
         growthInsightBannerText = computeGrowthInsightText()
     }
 
@@ -262,6 +265,9 @@ struct GrowthView: View {
                                     .onChange(of: allStories.map(\.effortRPE)) { _, _ in
                                         effortInputsChanged()
                                     }
+                            }
+                            if !effortTypeRowsCache.isEmpty {
+                                EffortTypeBaselineCard(rows: effortTypeRowsCache)
                             }
                             paceSection
                             metricTrendsSection
@@ -524,6 +530,13 @@ struct GrowthView: View {
     private func refreshMonthCaches() {
         monthEffortLoadCache = monthEffortLoad(for: dailyMonth)
         monthPacePointsCache = monthPacePoints(for: dailyMonth)
+    }
+
+    /// 유형별 평소 강도 표 갱신 — 러닝 캐시·강도 입력이 바뀔 때.
+    private func refreshEffortTypeRows() {
+        effortTypeRowsCache = EffortBaseline.typeTable(asOf: Date(), history: runsCache,
+                                                       index: manager.effortIndex,
+                                                       typeOf: manager.workoutTypeLookup())
     }
 
     private var weeklySection: some View {
@@ -1178,6 +1191,7 @@ struct GrowthView: View {
     private func effortInputsChanged() {
         manager.syncUserEfforts(from: allStories)
         monthEffortLoadCache = monthEffortLoad(for: dailyMonth)
+        refreshEffortTypeRows()
         lastAnalyzedRunCount = -1
         formComputedForRunCount = nil
         Task {

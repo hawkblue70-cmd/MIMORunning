@@ -8,6 +8,8 @@ struct EffortScaleView: View {
     let appleValue: Int?                   // 편집 모드에서 표식으로 남기는 Apple 값
     let onSet: (Int) -> Void               // 사용자 값 저장
     let onResetToApple: () -> Void         // 내 입력 삭제(Apple 값으로 되돌리기)
+    /// "이지런 평소 3 · 8주 12회 · 내 입력 기준" — 같은 유형 기준선 한 줄. 없으면 생략.
+    var baselineNote: String? = nil
 
     @State private var editing = false
     @GestureState private var dragValue: Int? = nil
@@ -20,6 +22,11 @@ struct EffortScaleView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
+            if let note = baselineNote {
+                Text(note)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
             bars
             bandLabels
         }

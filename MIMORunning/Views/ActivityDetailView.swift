@@ -97,6 +97,18 @@ struct ActivityDetailView: View {
     private var resolvedEffort: ResolvedEffort? {
         EffortResolver.resolve(userValue: effortIndex.user[activity.id.uuidString], apple: appleEffortForRun)
     }
+    /// 강도 입력 카드 헤더 아래 한 줄 — 같은 유형 평소 강도(8주, 3건 미만이면 12주).
+    private var effortBaselineNote: String? {
+        guard activity.type == .running, let t = detail?.workoutType else { return nil }
+        let s = EffortBaseline.typeSummary(for: t, asOf: activity.date, history: manager.activities, index: effortIndex,
+                                           typeOf: manager.workoutTypeLookup(), excluding: activity.id)
+        let L = AppLanguage.shared
+        guard let m = s.median else {
+            return s.count > 0 ? L.s("\(t.koreanLabel) 평소 강도 — 아직 \(s.count)회(3회부터 계산)", "\(t.koreanLabel) usual effort — \(s.count) so far (needs 3)") : nil
+        }
+        let src = s.isUserBased ? L.s("내 입력 기준", "from my ratings") : L.s("Apple 값 포함", "incl. Apple")
+        return L.s("\(t.koreanLabel) 평소 \(m) · \(s.windowWeeks)주 \(s.count)회 · \(src)", "\(t.koreanLabel) usual \(m) · \(s.count) in \(s.windowWeeks)w · \(src)")
+    }
     @State private var runSegmentSource: RunSegmentSource = .none
     @State private var runFadeStartKm: Double? = nil
     @State private var isInsightBackfilling = false
@@ -228,7 +240,8 @@ struct ActivityDetailView: View {
                     StorySection(workoutID: activity.id.uuidString,
                                  activityType: activity.type,
                                  effort: resolvedEffort,
-                                 appleValue: appleEffortForRun?.effective.map { EffortResolver.clamp($0) })
+                                 appleValue: appleEffortForRun?.effective.map { EffortResolver.clamp($0) },
+                                 baselineNote: effortBaselineNote)
                     panelShareHeader
                         .id("panelAnchor")
                     panelSection
@@ -2718,6 +2731,8 @@ private struct StorySection: View {
     /// 상위(ActivityDetailView)에서 해석된 값 — 해석 경로를 한 곳으로 유지한다.
     let effort: ResolvedEffort?
     let appleValue: Int?
+    /// 같은 유형 평소 강도 한 줄(없으면 nil) — 상위에서 계산해 넘긴다.
+    let baselineNote: String?
     @State private var showEditor = false
     @Query private var stories: [WorkoutStory]
     @Query private var shoes: [Shoe]
@@ -2747,11 +2762,13 @@ private struct StorySection: View {
         try? modelContext.save()
     }
 
-    init(workoutID: String, activityType: ActivityType, effort: ResolvedEffort?, appleValue: Int?) {
+    init(workoutID: String, activityType: ActivityType, effort: ResolvedEffort?, appleValue: Int?,
+         baselineNote: String? = nil) {
         self.workoutID = workoutID
         self.activityType = activityType
         self.effort = effort
         self.appleValue = appleValue
+        self.baselineNote = baselineNote
         let wid = workoutID
         _stories = Query(filter: #Predicate<WorkoutStory> { $0.workoutID == wid })
         _allOneLinerEntries = Query(filter: #Predicate<OneLinerEntry> { $0.workoutID == wid })
@@ -2858,7 +2875,8 @@ private struct StorySection: View {
             resolved: effort,
             appleValue: appleValue,
             onSet: { setEffort($0) },
-            onResetToApple: { setEffort(nil) }
+            onResetToApple: { setEffort(nil) },
+            baselineNote: baselineNote
         )
     }
 

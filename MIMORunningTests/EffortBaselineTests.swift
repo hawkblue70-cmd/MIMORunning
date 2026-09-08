@@ -65,6 +65,73 @@ struct EffortBaselineTests {
         #expect(!EffortBaseline.isUserBased(for: .easy, samples: two))
     }
 
+    // MARK: - 유형별 평소 강도(TypeSummary)
+
+    private func run(_ daysAgo: Int, from now: Date = Date()) -> Activity {
+        let d = Calendar.current.date(byAdding: .day, value: -daysAgo, to: now)!
+        return Activity(id: UUID(), type: .running, date: d, duration: 3000, distance: 8000,
+                        calories: nil, avgHeartRate: nil)
+    }
+
+    private func apple(_ v: Double, at now: Date = Date()) -> AppleEffort {
+        AppleEffort(manual: nil, estimated: v, fetchedAt: now)
+    }
+
+    @Test func typeSummaryWidensToTwelveWeeksWhenUnderThree() {
+        let now = Date()
+        let recent = [run(5, from: now), run(20, from: now)]                 // 8주 안 2건
+        let older  = [run(60, from: now), run(75, from: now)]                // 8~12주 2건
+        let all = recent + older
+        let idx = EffortIndex(user: [:], apple: Dictionary(uniqueKeysWithValues: zip(all.map(\.id), [4, 6, 8, 6].map { apple(Double($0), at: now) })))
+        let s = EffortBaseline.typeSummary(for: .easy, asOf: now, history: all, index: idx, typeOf: { _ in .easy })
+        #expect(s.windowWeeks == 12)
+        #expect(s.count == 4)
+        #expect(s.median == 6)          // 4,6,6,8 → 6
+        #expect(!s.isUserBased)
+    }
+
+    @Test func typeSummaryPrefersUserRatingsOverApple() {
+        let now = Date()
+        let userRuns = [run(3, from: now), run(6, from: now), run(9, from: now)]
+        let appleRuns = [run(12, from: now), run(15, from: now), run(18, from: now)]
+        let all = userRuns + appleRuns
+        let idx = EffortIndex(user: Dictionary(uniqueKeysWithValues: zip(userRuns.map { $0.id.uuidString }, [2, 3, 3])),
+                              apple: Dictionary(uniqueKeysWithValues: zip(appleRuns.map(\.id), [6, 6, 7].map { apple(Double($0), at: now) })))
+        let s = EffortBaseline.typeSummary(for: .easy, asOf: now, history: all, index: idx, typeOf: { _ in .easy })
+        #expect(s.windowWeeks == 8)
+        #expect(s.count == 6)
+        #expect(s.isUserBased)
+        #expect(s.median == 3)          // Apple 값 무시 → 2,3,3
+    }
+
+    @Test func typeTableKeepsFixedOrderAndDropsEmptyTypes() {
+        let now = Date()
+        let tempoRuns = [run(2, from: now), run(4, from: now)]
+        let easyRuns  = [run(6, from: now), run(8, from: now), run(10, from: now)]
+        let all = tempoRuns + easyRuns
+        let idx = EffortIndex(user: Dictionary(uniqueKeysWithValues: all.map { ($0.id.uuidString, 5) }), apple: [:])
+        let tempoIDs = Set(tempoRuns.map(\.id))
+        let rows = EffortBaseline.typeTable(asOf: now, history: all, index: idx,
+                                            typeOf: { tempoIDs.contains($0) ? .tempo : .easy })
+        #expect(rows.map(\.type) == [.easy, .tempo])   // 고정 순서: easy 먼저
+        #expect(rows[0].count == 3)
+        #expect(rows[0].median == 5)
+        #expect(rows[1].count == 2)
+        #expect(rows[1].median == nil)                 // 3건 미만 → 전체 폴백 없이 nil
+    }
+
+    @Test func typeSummaryExcludesCurrentRun() {
+        let now = Date()
+        let all = [run(0, from: now), run(3, from: now), run(6, from: now)]
+        let idx = EffortIndex(user: Dictionary(uniqueKeysWithValues: all.map { ($0.id.uuidString, 5) }), apple: [:])
+        let full = EffortBaseline.typeSummary(for: .easy, asOf: now, history: all, index: idx, typeOf: { _ in .easy })
+        #expect(full.count == 3)
+        let excluded = EffortBaseline.typeSummary(for: .easy, asOf: now, history: all, index: idx,
+                                                  typeOf: { _ in .easy }, excluding: all[0].id)
+        #expect(excluded.count == 2)
+        #expect(excluded.median == nil)
+    }
+
     @Test func allRunsUserFallbackBeforeMixedFallback() {
         // 같은 유형 1건뿐 → 전체 러닝 폴백. 전체 중 수동 3건 이상이면 수동만.
         let samples = [s(.easy, 6),
