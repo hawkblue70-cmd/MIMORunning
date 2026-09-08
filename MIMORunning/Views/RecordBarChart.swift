@@ -115,6 +115,15 @@ struct RecordBarChart: View {
 
     // MARK: - 축 범위 · 페이스 ↔ km 매핑
 
+    /// 막대 폭(슬롯 대비). 구간이 적을수록(7일 창) 막대가 넓어지므로 좁혀서 범례·축 머리와 균형을 맞춘다.
+    private var barWidthRatio: CGFloat {
+        switch bars.count {
+        case ...8:   return 0.42
+        case 9...16: return 0.6
+        default:     return 0.78
+        }
+    }
+
     /// 하나뿐인 y 스케일. 막대(km)가 기준이고 페이스는 여기 위로 접힌다.
     private var kmTop: Double {
         max(1, bars.map(\.km).max() ?? 0) * 1.08
@@ -274,7 +283,8 @@ struct RecordBarChart: View {
                 BarMark(
                     x: .value(periodName, bar.id, unit: xUnit),
                     yStart: .value(L.s("기준", "Base"), 0),
-                    yEnd: .value(L.s("거리(km)", "Distance (km)"), bar.km)
+                    yEnd: .value(L.s("거리(km)", "Distance (km)"), bar.km),
+                    width: .ratio(barWidthRatio)
                 )
                 .foregroundStyle(barColor(bar).gradient)
                 .opacity(dim(bar.id))
