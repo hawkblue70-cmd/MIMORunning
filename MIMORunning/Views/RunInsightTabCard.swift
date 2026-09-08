@@ -2480,7 +2480,7 @@ private struct PerformanceInsightCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 8) {
             heroSection
             divider
             kpiRow
@@ -3979,14 +3979,9 @@ private struct PerformanceInsightCard: View {
     private func sevenDayLoadView(load: SevenDayLoad) -> some View {
         let L = AppLanguage.shared
         VStack(alignment: .leading, spacing: 5) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(L.s("강도 부하 · 14일", "Training load · 14d"))
-                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
-                    .lineLimit(1).minimumScaleFactor(0.8)
-                Text(sevenDayLoadPeriodText(load))
-                    .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
-                    .lineLimit(1).minimumScaleFactor(0.8)
-            }
+            Text(L.s("강도 부하 · 14일", "Training load · 14d"))
+                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                .lineLimit(1).minimumScaleFactor(0.8)
             RecordBarChart(
                 bars: load.bars,
                 period: .day,
@@ -4002,33 +3997,31 @@ private struct PerformanceInsightCard: View {
             Text(sevenDayLoadCaption(load))
                 .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                 .fixedSize(horizontal: false, vertical: true)
-            if let kind = load.sentence {
-                Text(sevenDayLoadSentence(kind))
+            // "4주 평균 대비 낮음 — 회복 쪽으로 기운 주예요." 라벨과 문장을 한 줄에
+            let ratioLabel = sevenDayLoadRatioLabel(load)
+            let sentence = load.sentence.map(sevenDayLoadSentence)
+            if ratioLabel != nil || sentence != nil {
+                Text([ratioLabel, sentence].compactMap { $0 }.joined(separator: " — "))
                     .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    /// "8/25–9/7 · 이 러닝 날 기준 · 최근 7일 진하게"
-    private func sevenDayLoadPeriodText(_ load: SevenDayLoad) -> String {
+    /// "4주 평균 대비 낮음" — 7일 부하 / 4주 평균 비율 라벨. 기준 없으면 nil.
+    private func sevenDayLoadRatioLabel(_ load: SevenDayLoad) -> String? {
+        guard let ac = load.acuteChronic else { return nil }
         let L = AppLanguage.shared
-        let cal = Calendar.current
-        let a = cal.dateComponents([.month, .day], from: load.chartStart)
-        let b = cal.dateComponents([.month, .day], from: load.runDay)
-        let range: String
-        if L.isEnglish {
-            let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMM"
-            let m1 = df.string(from: load.chartStart), m2 = df.string(from: load.runDay)
-            range = m1 == m2
-                ? "\(m1) \(a.day ?? 1)–\(b.day ?? 1)"
-                : "\(m1) \(a.day ?? 1)–\(m2) \(b.day ?? 1)"
-        } else {
-            range = "\(a.month ?? 1)/\(a.day ?? 1)–\(b.month ?? 1)/\(b.day ?? 1)"
+        let t: String
+        switch ac {
+        case .low:      t = L.s("낮음", "lower")
+        case .steady:   t = L.s("유지", "steady")
+        case .high:     t = L.s("높음", "higher")
+        case .veryHigh: t = L.s("크게 높음", "much higher")
         }
-        return L.s("\(range) · 이 러닝 날 기준 · 최근 7일 진하게",
-                   "\(range) · ending on this run · last 7 days emphasized")
+        return L.s("4주 평균 대비 \(t)", "vs 4-wk avg \(t)")
     }
+
 
     /// "이 러닝 109 AU · 7일 1,047 AU · 이전 7일 1,480 AU · 4주 평균 대비 낮음" — 없는 조각은 빠진다.
     /// 단조도 / 4주 평균 대비 문장 — "부상·위험" 표현 없음(Impellizzeri 2020)
@@ -4053,16 +4046,6 @@ private struct PerformanceInsightCard: View {
         parts.append(L.s("7일 \(au(load.window.total)) AU", "7d \(au(load.window.total)) AU"))
         if load.previousSevenAU > 0 {
             parts.append(L.s("이전 7일 \(au(load.previousSevenAU)) AU", "prev 7d \(au(load.previousSevenAU)) AU"))
-        }
-        if let ac = load.acuteChronic {
-            let t: String
-            switch ac {
-            case .low:      t = L.s("낮음", "lower")
-            case .steady:   t = L.s("유지", "steady")
-            case .high:     t = L.s("높음", "higher")
-            case .veryHigh: t = L.s("크게 높음", "much higher")
-            }
-            parts.append(L.s("4주 평균 대비 \(t)", "vs 4-wk avg \(t)"))
         }
         return parts.joined(separator: " · ")
     }
