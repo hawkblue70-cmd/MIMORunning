@@ -2723,11 +2723,8 @@ private struct StorySection: View {
     @Query private var allOneLinerEntries: [OneLinerEntry]
     @Environment(\.modelContext) private var modelContext
     private var story: WorkoutStory? { stories.first }
-    /// 강도 탭만으로 생성된 스토리(메모·사진 없음 + 기본 기분)는 일기 없음으로 본다 — 기분 칩 오노출 방지.
-    private var hasJournal: Bool {
-        guard let s = story else { return false }
-        return s.hasContent || s.mood != .okay
-    }
+    /// 강도 탭만으로 생성된 스토리(메모·사진 없음)는 일기 없음으로 본다.
+    private var hasJournal: Bool { story?.hasContent ?? false }
     private var selectedShoe: Shoe? {
         guard let sid = story?.shoeID else { return nil }
         return shoes.first { $0.id.uuidString == sid }
@@ -2884,32 +2881,18 @@ private struct StoryDisplay: View {
     let story: WorkoutStory
 
     private var photos: [UIImage] { story.allPhotoImages }
-    private var moodColor: Color {
-        switch story.mood {
-        case .fantastic: Theme.power
-        case .great:     Theme.violet
-        case .okay:      Theme.time
-        case .tough:     Color.orange
-        case .terrible:  Theme.heartRate
-        }
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: story.mood.sfSymbol)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(moodColor)
-                Text(story.mood.label)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(moodColor)
-                Spacer()
-                #if canImport(ImagePlayground)
-                if #available(iOS 18.2, *), let photo = photos.first {
+            // 기분 칩은 운동 강도 입력과 중복되어 제거. 미니미 갱신 버튼만 남긴다.
+            #if canImport(ImagePlayground)
+            if #available(iOS 18.2, *), let photo = photos.first {
+                HStack {
+                    Spacer()
                     MiniMeUpdateButton(storyPhoto: photo)
                 }
-                #endif
             }
+            #endif
             if !story.memo.isEmpty {
                 Text(story.memo)
                     .font(.subheadline)
@@ -3129,7 +3112,6 @@ private struct StoryEditorSheet: View {
     private var existingStory: WorkoutStory? { stories.first }
 
     @State private var memo = ""
-    @State private var mood: Mood = .okay
     @State private var photoImages: [UIImage] = []
     /// photoImages와 1:1 병렬 배열 — 기존 사진은 원본 UUID 보존, 신규 사진은 새 UUID 부여.
     @State private var photoUUIDs: [String] = []
@@ -3149,7 +3131,6 @@ private struct StoryEditorSheet: View {
                 Theme.background.ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: 20) {
-                        moodPicker
                         memoField
                         photoSection
                     }
@@ -3172,37 +3153,6 @@ private struct StoryEditorSheet: View {
         }
     }
 
-
-    private var moodPicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(AppLanguage.shared.s("느낌", "Mood"))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            HStack(spacing: 10) {
-                ForEach(Mood.allCases, id: \.self) { m in
-                    Button { mood = m } label: {
-                        VStack(spacing: 5) {
-                            Image(systemName: m.sfSymbol)
-                                .font(.system(size: 20))
-                                .foregroundStyle(mood == m ? moodColor(m) : Color.white.opacity(0.45))
-                            Text(m.label)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(mood == m ? moodColor(m) : Color.white.opacity(0.45))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(mood == m ? moodColor(m).opacity(0.15) : Theme.cardBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(mood == m ? moodColor(m).opacity(0.5) : Color.clear, lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
 
     private var memoField: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -3296,20 +3246,9 @@ private struct StoryEditorSheet: View {
         }
     }
 
-    private func moodColor(_ m: Mood) -> Color {
-        switch m {
-        case .fantastic: Theme.power
-        case .great:     Theme.violet
-        case .okay:      Theme.time
-        case .tough:     Color.orange
-        case .terrible:  Theme.heartRate
-        }
-    }
-
     private func loadExisting() {
         guard let s = existingStory else { return }
         memo = s.memo
-        mood = s.mood
         photoImages = s.allPhotoImages
         photoUUIDs = s.sortedPhotoUUIDs
     }
@@ -3339,10 +3278,10 @@ private struct StoryEditorSheet: View {
             newPhotos.forEach { modelContext.insert($0) }
             s.photos = newPhotos.isEmpty ? nil : newPhotos
             s.memo = memo
-            s.mood = mood
             s.updatedAt = Date()
         } else {
-            let story = WorkoutStory(workoutID: workoutID, memo: memo, mood: mood)
+            // 기분(mood)은 운동 강도 입력과 중복되어 UI에서 제거 — 모델 필드는 CloudKit 호환을 위해 유지(기본값 .okay)
+            let story = WorkoutStory(workoutID: workoutID, memo: memo)
             modelContext.insert(story)
             let newPhotos = photoImages.enumerated().compactMap { makePhoto($0.offset, $0.element) }
             newPhotos.forEach { modelContext.insert($0) }

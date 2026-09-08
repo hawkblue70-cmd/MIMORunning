@@ -152,4 +152,13 @@ struct EffortRulesTests {
         let s = [split(1, pace: 360), split(2, pace: 360), split(3, pace: 0), split(4, pace: 0)]
         #expect(EffortRules.secondHalfSlowdown(splits: s) == nil)
     }
+    @Test func easyRunWellBelowBaselineIsEasyDayNotMatched() {
+        let o = EffortRules.evaluate(input(effort: 3, type: .easy, baseline: 6))
+        #expect(o.insights.count == 1)
+        #expect(o.insights[0].tone == .good)
+        #expect(o.insights[0].badge == "편한 날")
+        #expect(o.insights[0].message.contains("편하게"))
+        // b−1은 여전히 "의도에 맞는 강도"
+        #expect(EffortRules.evaluate(input(effort: 5, type: .easy, baseline: 6)).insights[0].badge == "의도에 맞는 강도")
+    }
 }

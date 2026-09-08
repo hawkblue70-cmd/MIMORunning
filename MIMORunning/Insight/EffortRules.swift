@@ -63,6 +63,13 @@ enum EffortRules {
                     message: L.s("\(label)인데 체감 강도가 \(e)이었어요. 이름과 달리 몸이 힘들었다면 회복 목적은 이루지 못한 거예요.",
                                  "\(label), but effort was \(e)/10. If the body says hard, it wasn't a recovery run."),
                     highlights: ["\(e)"]))
+            } else if let b = i.baseline, e <= b - 2 {
+                // 이지 유형에서 평소보다 확실히 편했던 날 — "의도와 맞았어요"보다 정확한 표현
+                out.append(RunInsight(
+                    category: .intensity, tone: .good, badge: L.s("편한 날", "Easy Day"),
+                    message: L.s("체감 \(e) · 평소 \(b) — 평소보다 편하게 뛴 \(label)이에요.",
+                                 "Effort \(e) · usual \(b) — an easier-than-usual \(label.lowercased())."),
+                    highlights: ["\(e)"]))
             } else if let b = i.baseline, cInsight == nil {
                 out.append(matched(e, b))
             }
