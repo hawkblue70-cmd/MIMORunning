@@ -11,11 +11,14 @@ struct EffortPaceTrendTests {
                     mdc: real ? 1.0 : 999, weeksConsistent: real ? 4 : 0, r2: nil)
     }
 
-    @Test func easyRangeIsTwoToFour() {
-        #expect(EffortPaceTrend.easyRange.contains(2))
-        #expect(EffortPaceTrend.easyRange.contains(4))
-        #expect(!EffortPaceTrend.easyRange.contains(5))
-        #expect(!EffortPaceTrend.easyRange.contains(1))
+    @Test func cutoffAndFallback() {
+        #expect(EffortPaceTrend.easyCutoff(easyRunEfforts: [5, 6, 6]) == 6)
+        #expect(EffortPaceTrend.isEasy(effort: 6, cutoff: 6))
+        #expect(!EffortPaceTrend.isEasy(effort: 7, cutoff: 6))
+        // 3건 미만 → nil → 고정 4 폴백
+        #expect(EffortPaceTrend.easyCutoff(easyRunEfforts: [5, 6]) == nil)
+        #expect(EffortPaceTrend.isEasy(effort: 4, cutoff: nil))
+        #expect(!EffortPaceTrend.isEasy(effort: 5, cutoff: nil))
     }
 
     @Test func residualsPassThrough() {
@@ -28,13 +31,24 @@ struct EffortPaceTrendTests {
     @Test func observationOnlyWhenFaster() {
         let faster = shift(delta: -12, real: true)
         #expect(faster.isReal)
-        #expect(EffortPaceTrend.observation(shift: faster)?.text.contains("12") == true)
-        #expect(EffortPaceTrend.observation(shift: shift(delta: 12, real: true)) == nil)
-        #expect(EffortPaceTrend.observation(shift: shift(delta: -12, real: false)) == nil)
+        #expect(EffortPaceTrend.observation(shift: faster, cutoff: 4, isPersonal: false)?.text.contains("12") == true)
+        #expect(EffortPaceTrend.observation(shift: shift(delta: 12, real: true), cutoff: 4, isPersonal: false) == nil)
+        #expect(EffortPaceTrend.observation(shift: shift(delta: -12, real: false), cutoff: 4, isPersonal: false) == nil)
     }
 
     @Test func observationSkipsSubSecondDelta() {
-        #expect(EffortPaceTrend.observation(shift: shift(delta: -0.4, real: true)) == nil)
+        #expect(EffortPaceTrend.observation(shift: shift(delta: -0.4, real: true), cutoff: 4, isPersonal: false) == nil)
+    }
+
+    @Test func observationMentionsPersonalCutoff() {
+        let faster = shift(delta: -12, real: true)
+        let marker = AppLanguage.shared.s("본인 이지런 기준", "your easy-run level")
+        let personal = EffortPaceTrend.observation(shift: faster, cutoff: 6, isPersonal: true)!
+        #expect(personal.text.contains(marker))
+        #expect(personal.text.contains("6"))
+        // 폴백(고정 4)일 때는 괄호 설명을 붙이지 않는다
+        let fixed = EffortPaceTrend.observation(shift: faster, cutoff: 4, isPersonal: false)!
+        #expect(!fixed.text.contains(marker))
     }
 
     @Test func axisLabelFormatsPace() {

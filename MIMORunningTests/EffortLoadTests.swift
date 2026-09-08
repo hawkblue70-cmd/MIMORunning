@@ -141,6 +141,84 @@ struct EffortLoadTests {
         #expect(ws[2]?.total == 150)
     }
 
+    // MARK: 롤링 7일
+
+    @Test func lastSevenDaysCoversTodayAndSixPriorDays() {
+        let asOf = day(2, hour: 10)   // 수요일 10:00
+        let runs = [run(2, min: 30, effort: 5),      // 오늘 07:00 → 포함
+                    run(-4, min: 30, effort: 5),     // 오늘−6일 → 포함
+                    run(-5, min: 30, effort: 5),     // 오늘−7일 → 제외
+                    run(3, min: 30, effort: 5)]      // 내일 → 제외
+        let w = EffortLoad.lastSevenDays(runs: runs, asOf: asOf, calendar: cal)
+        #expect(w.runCount == 2)
+        #expect(w.total == 300)
+        #expect(w.dayStarts.count == 7)
+        #expect(w.dayStarts.first == cal.startOfDay(for: day(-4)))
+        #expect(w.dayStarts.last == cal.startOfDay(for: day(2)))
+        #expect(w.daily.first == 150)   // 오늘−6일
+        #expect(w.daily.last == 150)    // 오늘
+        // 러닝이 없어도 nil이 아니다
+        let empty = EffortLoad.lastSevenDays(runs: [], asOf: asOf, calendar: cal)
+        #expect(empty.total == 0)
+        #expect(empty.runCount == 0)
+        #expect(empty.coverage == 0)
+    }
+
+    @Test func rollingWeekOverWeekComparesAdjacentWindows() {
+        let asOf = day(2, hour: 10)
+        // 최근 7일 600 AU, 직전 7일 500 AU → +20%
+        let runs = [run(0, min: 100, effort: 6), run(-7, min: 100, effort: 5)]
+        #expect(abs(EffortLoad.rollingWeekOverWeek(runs: runs, asOf: asOf, calendar: cal)! - 0.2) < 0.0001)
+        // 직전 창에 러닝은 있는데 강도 커버리지 < 0.5 → nil
+        let lowCoverage = runs + [run(-8, min: 60, effort: nil), run(-9, min: 60, effort: nil)]
+        #expect(EffortLoad.rollingWeekOverWeek(runs: lowCoverage, asOf: asOf, calendar: cal) == nil)
+    }
+
+    @Test func rollingAcuteChronicTreatsEmptyWindowsAsZero() {
+        let asOf = day(2, hour: 10)
+        // 이번 창 1200 · 이전 4창 800, 없음, 800, 800 → chronic 600 → 2.0
+        let runs = [run(0, min: 240, effort: 5),
+                    run(-7, min: 160, effort: 5),     // 이전 1창
+                    run(-21, min: 160, effort: 5),    // 이전 3창
+                    run(-28, min: 160, effort: 5)]    // 이전 4창
+        let r = EffortLoad.rollingAcuteChronic(runs: runs, asOf: asOf, calendar: cal)!
+        #expect(abs(r.ratio - 2.0) < 0.0001)
+        #expect(r.label == .veryHigh)
+    }
+
+    @Test func rollingSentencePriority() {
+        let asOf = day(2, hour: 10)
+        // 7일 모두 비슷한 부하 + 커버리지 1 → 단조도
+        let flat = (-4...2).map { run($0, min: $0 == 2 ? 22 : 20, effort: 5) }
+        #expect(EffortLoad.rollingSentenceKind(runs: flat, asOf: asOf, calendar: cal) == .monotony)
+        // 급증 → veryHigh
+        let base = [run(-7, min: 120, effort: 5), run(-14, min: 120, effort: 5),
+                    run(-21, min: 120, effort: 5), run(-28, min: 120, effort: 5)]   // 이전 4창 각 600
+        let spike = [run(0, min: 240, effort: 5)] + base
+        #expect(EffortLoad.rollingSentenceKind(runs: spike, asOf: asOf, calendar: cal) == .veryHigh)
+        // 유지 → 침묵
+        let steady = [run(0, min: 120, effort: 5)] + base
+        #expect(EffortLoad.rollingSentenceKind(runs: steady, asOf: asOf, calendar: cal) == nil)
+    }
+
+    @Test func rollingSummaryPartialWeekIsNotPenalised() {
+        let asOf = day(0, hour: 10)   // 월요일 — 달력 주로는 오늘 1건뿐
+        let runs = [run(0, min: 21.8, effort: 5),                                  // 오늘 109 AU
+                    run(-1, min: 40, effort: 5), run(-3, min: 40, effort: 5),      // 최근 7일 안의 지난 주 러닝
+                    run(-5, min: 40, effort: 5), run(-6, min: 60, effort: 5),      // 합 900
+                    run(-8, min: 60, effort: 5), run(-10, min: 60, effort: 5),     // 직전 7일 창 1000
+                    run(-13, min: 80, effort: 5)]
+        let s = EffortLoad.rollingSummary(runs: runs, asOf: asOf, calendar: cal)
+        #expect(abs(s.current.total - 1009) < 0.0001)
+        #expect(abs(s.previous.total - 1000) < 0.0001)
+        // 롤링 창은 지난 주 러닝을 포함하므로 증감이 작다
+        #expect(abs(s.weekOverWeek!) < 0.2)
+        // 같은 데이터를 달력 주로 보면 -80% 이하로 왜곡된다 (이 변경의 이유)
+        let curWeek = EffortLoad.weekly(runs: runs, weekStart: monday, calendar: cal)!
+        let prevWeek = EffortLoad.weekly(runs: runs, weekStart: cal.date(byAdding: .day, value: -7, to: monday)!, calendar: cal)!
+        #expect(EffortLoad.weekOverWeek(current: curWeek, previous: prevWeek)! < -0.8)
+    }
+
     @Test func recoveryWeekJudgement() {
         #expect(EffortLoad.isRecoveryPhase("회복"))
         #expect(EffortLoad.isRecoveryPhase("테이퍼"))

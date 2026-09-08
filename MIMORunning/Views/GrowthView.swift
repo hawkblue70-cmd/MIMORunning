@@ -124,7 +124,7 @@ struct GrowthView: View {
     @State private var formObservation: (text: String, basis: String, isStable: Bool)? = nil
     /// 운동 후 심박 회복 관찰 — 좋아진 쪽만 문구가 생긴다 (MRRecovery.observation)
     @State private var recoveryObservation: (text: String, basis: String)? = nil
-    /// 같은 강도(2~4) 페이스 추이 관찰 — 빨라진 쪽만 (EffortPaceTrend.observation)
+    /// 같은 강도(본인 이지런 기준 이하) 페이스 추이 관찰 — 빨라진 쪽만 (EffortPaceTrend.observation)
     @State private var effortPaceObservation: (text: String, basis: String)? = nil
     @State private var formComputedForRunCount: Int? = nil  // ■2: 동일 run count 재계산 방지
     @State private var lastChartRefreshCount: Int = -1
@@ -248,12 +248,12 @@ struct GrowthView: View {
                                 }
                             heatmapSection
                             weeklySection
-                                // 이번 주 평점 러닝이 없으면 EffortLoadCard가 없다 — 항상 있는 뷰에도 같은 감지를 건다.
+                                // 최근 7일 평점 러닝이 없으면 EffortLoadCard가 없다 — 항상 있는 뷰에도 같은 감지를 건다.
                                 .onChange(of: allStories.map(\.effortRPE)) { _, _ in
                                     effortInputsChanged()
                                 }
-                            if let load = effortLoadWeeks {
-                                EffortLoadCard(current: load.current, previous: load.previous)
+                            if let load = effortLoadSummary {
+                                EffortLoadCard(summary: load)
                                     .onChange(of: allStories.map(\.effortRPE)) { _, _ in
                                         effortInputsChanged()
                                     }
@@ -483,15 +483,11 @@ struct GrowthView: View {
 
     // MARK: - Sections
 
-    /// 이번 주 + 직전 4주 sRPE 부하. 이번 주 러닝이 없거나 강도 평가가 하나도 없으면 nil.
-    private var effortLoadWeeks: (current: EffortLoad.WeekLoad, previous: [EffortLoad.WeekLoad?])? {
-        let monday = EffortLoad.mondayStart(of: Date())
-        // 5주 창만 훑으면 충분하다 — 그 이전 러닝은 어차피 어떤 주에도 들어가지 않는다.
-        let windowStart = Calendar.current.date(byAdding: .weekOfYear, value: -5, to: monday) ?? monday
-        let runs = EffortLoad.runs(from: runsCache.filter { $0.date >= windowStart }, index: manager.effortIndex)
-        let ws = EffortLoad.weeks(runs: runs, endingAt: monday, count: 5)
-        guard let cur = ws.last ?? nil, cur.coveredCount > 0 else { return nil }
-        return (cur, Array(ws.dropLast()))
+    /// 최근 7일(롤링) + 직전 4×7일 sRPE 부하. 최근 7일에 강도 평가가 하나도 없으면 nil.
+    private var effortLoadSummary: EffortLoad.RollingSummary? {
+        let runs = EffortLoad.runs(from: runsCache.filter { $0.date >= (Calendar.current.date(byAdding: .day, value: -36, to: Date()) ?? .distantPast) }, index: manager.effortIndex)
+        let s = EffortLoad.rollingSummary(runs: runs, asOf: Date())
+        return s.current.coveredCount > 0 ? s : nil
     }
 
     private var weeklySection: some View {
@@ -1505,10 +1501,13 @@ struct GrowthView: View {
             formObservation = result
         }
 
-        // 같은 강도 페이스 추이 — 강도 2~4 러닝의 페이스를 폼 판정기(3개월 vs 3개월, MDC)로 본다
+        // 같은 강도 페이스 추이 — 본인 이지런 강도 이하 러닝의 페이스를 폼 판정기(3개월 vs 3개월, MDC)로 본다
         let easyPts = await manager.fetchMetricHistory(.easyEffortPace, from: oneYearAgo)
+        let easyCutoff = manager.easyEffortCutoff()
         if let shift = mrFormShift(EffortPaceTrend.residuals(points: easyPts), metric: EffortPaceTrend.metric, asOf: Date()),
-           let o = EffortPaceTrend.observation(shift: shift) {
+           let o = EffortPaceTrend.observation(shift: shift,
+                                               cutoff: easyCutoff ?? EffortPaceTrend.fallbackCutoff,
+                                               isPersonal: easyCutoff != nil) {
             effortPaceObservation = o
         }
 

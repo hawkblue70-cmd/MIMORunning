@@ -133,6 +133,124 @@ enum EffortLoad {
         }
     }
 
+    // MARK: 롤링 창(최근 7일)
+
+    /// 롤링 창 부하 — `end`(exclusive, 보통 오늘 자정+1일)에서 `days`일 전까지. 러닝이 없어도 nil이 아니다(부하 0, runCount 0).
+    struct WindowLoad: Equatable {
+        let start: Date                 // 창 시작(자정)
+        let end: Date                   // 창 끝(exclusive)
+        let dayStarts: [Date]           // 각 일자의 자정, 오래된→최신
+        let daily: [Double]             // AU
+        let dailyMeanEffort: [Double?]
+        let runCount: Int
+        let coveredCount: Int
+        let total: Double
+        let meanEffort: Double?
+        var coverage: Double { runCount == 0 ? 0 : Double(coveredCount) / Double(runCount) }
+    }
+
+    static func window(runs: [Run], endingBefore end: Date, days: Int = 7, calendar: Calendar = .current) -> WindowLoad {
+        let endDay = calendar.startOfDay(for: end)
+        let start = calendar.date(byAdding: .day, value: -days, to: endDay) ?? endDay
+        let dayStarts: [Date] = (0..<days).map { calendar.date(byAdding: .day, value: $0, to: start) ?? start }
+        let inWindow = runs.filter { $0.date >= start && $0.date < endDay }
+        var daily = Array(repeating: 0.0, count: days)
+        var dailyEfforts = Array(repeating: [Int](), count: days)
+        var covered = 0
+        var effortSum = 0
+        for r in inWindow {
+            guard let e = r.effort else { continue }
+            let idx = min(days - 1, max(0, calendar.dateComponents([.day], from: start, to: r.date).day ?? 0))
+            daily[idx] += sessionAU(effort: e, durationMin: r.durationMin)
+            dailyEfforts[idx].append(e)
+            covered += 1
+            effortSum += e
+        }
+        let dailyMean: [Double?] = dailyEfforts.map { $0.isEmpty ? nil : Double($0.reduce(0, +)) / Double($0.count) }
+        return WindowLoad(start: start,
+                          end: endDay,
+                          dayStarts: dayStarts,
+                          daily: daily,
+                          dailyMeanEffort: dailyMean,
+                          runCount: inWindow.count,
+                          coveredCount: covered,
+                          total: daily.reduce(0, +),
+                          meanEffort: covered > 0 ? Double(effortSum) / Double(covered) : nil)
+    }
+
+    /// 오늘을 포함하는 최근 7일(자정 기준: [today−6d 00:00, tomorrow 00:00))
+    static func lastSevenDays(runs: [Run], asOf: Date, calendar: Calendar = .current) -> WindowLoad {
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: asOf)) ?? asOf
+        return window(runs: runs, endingBefore: tomorrow, days: 7, calendar: calendar)
+    }
+
+    /// 직전 7일(최근 7일 바로 앞)
+    static func previousSevenDays(runs: [Run], asOf: Date, calendar: Calendar = .current) -> WindowLoad {
+        let current = lastSevenDays(runs: runs, asOf: asOf, calendar: calendar)
+        return window(runs: runs, endingBefore: current.start, days: 7, calendar: calendar)
+    }
+
+    /// 롤링 7일 대 이전 4×7일. 이전 창 중 runCount == 0 → 부하 0으로 유효, 러닝은 있는데 coverage < 0.5 → 제외.
+    /// 유효 3개 이상, 이번 창 coverage ≥ 0.5.
+    static func rollingAcuteChronic(runs: [Run], asOf: Date, calendar: Calendar = .current) -> (ratio: Double, label: RatioLabel)? {
+        let current = lastSevenDays(runs: runs, asOf: asOf, calendar: calendar)
+        guard current.coverage >= minCoverage else { return nil }
+        var end = current.start
+        var valid: [Double] = []
+        for _ in 0..<4 {
+            let w = window(runs: runs, endingBefore: end, days: 7, calendar: calendar)
+            if w.runCount == 0 {
+                valid.append(0)                       // 러닝 없는 창 = 부하 0
+            } else if w.coverage >= minCoverage {
+                valid.append(w.total)
+            }
+            end = w.start
+        }
+        guard valid.count >= minChronicWeeks else { return nil }
+        let chronic = valid.reduce(0, +) / Double(valid.count)
+        guard chronic > 0 else { return nil }
+        let r = current.total / chronic
+        return (r, ratioLabel(r))
+    }
+
+    /// 최근 7일 vs 직전 7일 증감. 두 창 모두 coverage ≥ 0.5, 직전 총합 > 0.
+    static func rollingWeekOverWeek(runs: [Run], asOf: Date, calendar: Calendar = .current) -> Double? {
+        let current = lastSevenDays(runs: runs, asOf: asOf, calendar: calendar)
+        let previous = previousSevenDays(runs: runs, asOf: asOf, calendar: calendar)
+        guard current.coverage >= minCoverage, previous.coverage >= minCoverage, previous.total > 0 else { return nil }
+        return current.total / previous.total - 1
+    }
+
+    /// 우선순위: 단조도(최근 7일 daily, coverage == 1, ≥ 2.0) → 롤링 28일 비율(유지는 nil)
+    static func rollingSentenceKind(runs: [Run], asOf: Date, calendar: Calendar = .current) -> SentenceKind? {
+        let current = lastSevenDays(runs: runs, asOf: asOf, calendar: calendar)
+        if current.coverage >= 1.0, let m = monotony(daily: current.daily), m >= monotonyThreshold {
+            return .monotony
+        }
+        guard let ac = rollingAcuteChronic(runs: runs, asOf: asOf, calendar: calendar) else { return nil }
+        switch ac.label {
+        case .low:      return .low
+        case .steady:   return nil
+        case .high:     return .high
+        case .veryHigh: return .veryHigh
+        }
+    }
+
+    /// 카드용 묶음
+    struct RollingSummary: Equatable {
+        let current: WindowLoad
+        let previous: WindowLoad
+        let weekOverWeek: Double?
+        let sentence: SentenceKind?
+    }
+
+    static func rollingSummary(runs: [Run], asOf: Date, calendar: Calendar = .current) -> RollingSummary {
+        RollingSummary(current: lastSevenDays(runs: runs, asOf: asOf, calendar: calendar),
+                       previous: previousSevenDays(runs: runs, asOf: asOf, calendar: calendar),
+                       weekOverWeek: rollingWeekOverWeek(runs: runs, asOf: asOf, calendar: calendar),
+                       sentence: rollingSentenceKind(runs: runs, asOf: asOf, calendar: calendar))
+    }
+
     // MARK: 플래너 연동
 
     static func isRecoveryPhase(_ phase: String) -> Bool {

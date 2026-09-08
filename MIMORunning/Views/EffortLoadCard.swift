@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// 성장 탭 — 이번 주 sRPE 부하. 일별 막대(색 = 그날 평균 강도), 합계·커버리지, 지난주 대비, 하단 문장 1개.
+/// 성장 탭 — 최근 7일(롤링) sRPE 부하. 일별 막대(색 = 그날 평균 강도), 합계·커버리지, 이전 7일 대비, 하단 문장 1개.
+/// 달력 주가 아니라 롤링 창을 쓰는 이유: 월요일에 러닝 1건이면 "지난주 대비 -91%"처럼 부분 주와 완전한 주를 비교하게 된다.
 struct EffortLoadCard: View {
-    let current: EffortLoad.WeekLoad
-    let previous: [EffortLoad.WeekLoad?]    // 직전 4주, 오래된→최신. nil = 러닝 없는 주
+    let summary: EffortLoad.RollingSummary
 
     private var L: AppLanguage { AppLanguage.shared }
+    private var current: EffortLoad.WindowLoad { summary.current }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -14,15 +15,15 @@ struct EffortLoadCard: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
-                Text(L.s("강도 × 시간(분)", "effort × minutes"))
+                Text(L.s("강도 × 시간(분) · 최근 7일", "effort × minutes · last 7 days"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
             headline
-            if current.daily.count == 7, current.dailyMeanEffort.count == 7 {
+            if current.daily.count == 7, current.dailyMeanEffort.count == 7, current.dayStarts.count == 7 {
                 bars
             }
-            if let kind = EffortLoad.sentenceKind(current: current, previous: previous) {
+            if let kind = summary.sentence {
                 Text(sentence(kind))
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.8))
@@ -37,7 +38,7 @@ struct EffortLoadCard: View {
     private var headline: some View {
         let totalText = current.total.rounded().formatted(.number.grouping(.automatic))
         return HStack(spacing: 8) {
-            Text(L.s("이번 주 \(totalText) AU", "This week \(totalText) AU"))
+            Text(L.s("최근 7일 \(totalText) AU", "Last 7 days \(totalText) AU"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
             Text(L.s("러닝 \(current.runCount)회 중 \(current.coveredCount)회 강도 있음",
@@ -45,20 +46,34 @@ struct EffortLoadCard: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Spacer()
-            // 직전 주 = previous의 마지막 원소(러닝 없는 주면 nil)
-            if let delta = EffortLoad.weekOverWeek(current: current, previous: previous.last ?? nil) {
+            if let delta = summary.weekOverWeek {
                 let pct = Int((delta * 100).rounded())
                 let sign = pct > 0 ? "+" : ""
-                Text(L.s("지난주 대비 \(sign)\(pct)%", "vs last week \(sign)\(pct)%"))
+                Text(L.s("이전 7일 대비 \(sign)\(pct)%", "vs prior 7 days \(sign)\(pct)%"))
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.85))
             }
         }
     }
 
+    /// 요일 첫 글자 — 롤링 창이므로 매일 순서가 달라진다. 마지막(오늘)만 밝게.
+    private var dayLabels: [String] {
+        let cal = Calendar.current
+        let ko = Array("일월화수목금토")
+        return current.dayStarts.map { d in
+            let idx = cal.component(.weekday, from: d) - 1     // 1(일)~7(토) → 0~6
+            guard idx >= 0, idx < 7 else { return "" }
+            if L.isEnglish {
+                let sym = cal.shortWeekdaySymbols.indices.contains(idx) ? cal.shortWeekdaySymbols[idx] : ""
+                return String(sym.prefix(1))
+            }
+            return String(ko[idx])
+        }
+    }
+
     private var bars: some View {
         let maxAU = max(current.daily.max() ?? 0, 1)
-        let labels = L.isEnglish ? ["M", "T", "W", "T", "F", "S", "S"] : ["월", "화", "수", "목", "금", "토", "일"]
+        let labels = dayLabels
         return HStack(alignment: .bottom, spacing: 6) {
             ForEach(0..<7, id: \.self) { i in
                 VStack(spacing: 4) {
@@ -71,14 +86,14 @@ struct EffortLoadCard: View {
                         }
                     }
                     .frame(height: 56)
-                    Text(labels[i])
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    Text(labels.indices.contains(i) ? labels[i] : "")
+                        .font(.system(size: 9, weight: i == 6 ? .bold : .medium))
+                        .foregroundStyle(i == 6 ? Color.white.opacity(0.9) : Color.secondary)
                 }
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L.s("요일별 부하", "Daily load"))
+        .accessibilityLabel(L.s("최근 7일 일별 부하", "Daily load, last 7 days"))
         .accessibilityValue(barsAccessibilityValue(labels: labels))
     }
 
@@ -86,7 +101,8 @@ struct EffortLoadCard: View {
     private func barsAccessibilityValue(labels: [String]) -> String {
         let parts = (0..<7).compactMap { i -> String? in
             guard current.daily[i] > 0 else { return nil }
-            return "\(labels[i]) \(Int(current.daily[i].rounded()))"
+            let label = labels.indices.contains(i) ? labels[i] : ""
+            return "\(label) \(Int(current.daily[i].rounded()))"
         }
         return parts.isEmpty ? L.s("기록 없음", "No load") : parts.joined(separator: ", ")
     }

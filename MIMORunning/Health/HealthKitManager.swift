@@ -1804,15 +1804,32 @@ class HealthKitManager {
         try? FileManager.default.removeItem(at: metricHistoryCacheURL(.easyEffortPace, usePounds: false))
     }
 
-    /// 강도 2~4(내 입력 > Apple)로 뛴 러닝의 페이스(sec/km) 시계열 — HealthKit 조회 없음, activities 기반.
+    /// 최근 12개월 이지·LSD 러닝의 강도 중앙값(3건 이상) — 쉬운 날 페이스 대상 기준. nil이면 고정 4 폴백.
+    func easyEffortCutoff() -> Int? {
+        let idx = effortIndex
+        let typeOf = workoutTypeLookup()
+        let since = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+        let efforts = activities.filter { $0.type == .running && $0.date >= since }
+            .compactMap { a -> Int? in
+                guard let t = typeOf(a.id), t == .easy || t == .lsd, let e = idx.resolve(a.id) else { return nil }
+                return e.value
+            }
+        return EffortPaceTrend.easyCutoff(easyRunEfforts: efforts)
+    }
+
+    /// 본인 이지런 강도 중앙값 이하(내 입력 > Apple)로 뛴 러닝의 페이스(sec/km) 시계열 — HealthKit 조회 없음, activities 기반.
+    /// 템포·인터벌·대회는 강도가 낮게 매겨져도 제외한다(유형 미상은 허용).
     func easyEffortPaceHistory(from startDate: Date) -> [(date: Date, value: Double)] {
         loadEffortMapIfNeeded()
         let idx = effortIndex
+        let cutoff = easyEffortCutoff()          // 루프 밖에서 한 번만
+        let typeOf = workoutTypeLookup()
         return activities
             .filter { $0.type == .running && $0.date >= startDate && $0.distance >= 1000 && $0.duration > 0 }
             .compactMap { a -> (date: Date, value: Double)? in
-                guard let e = idx.resolve(a.id), EffortPaceTrend.easyRange.contains(e.value),
+                guard let e = idx.resolve(a.id), EffortPaceTrend.isEasy(effort: e.value, cutoff: cutoff),
                       let pace = a.paceSecPerKm else { return nil }
+                if let t = typeOf(a.id), t == .tempo || t == .interval || t == .race { return nil }
                 return (a.date, pace)
             }
             .sorted { $0.date < $1.date }
