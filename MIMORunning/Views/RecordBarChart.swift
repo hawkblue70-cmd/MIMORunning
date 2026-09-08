@@ -217,7 +217,6 @@ struct RecordBarChart: View {
                 if !isExport { calloutRow }
                 effortLegend
                 if !compact { axisHeader }
-                Rectangle().fill(.white.opacity(0.10)).frame(height: 0.5)   // 범례·축 머리 ↔ 차트 구분
                 chart
                 if !compact { footnote }
                 if !isExport, let flow = flowComment { flowCommentView(flow) }
@@ -346,11 +345,26 @@ struct RecordBarChart: View {
                             kmLabel: kmAxisLabel,
                             gutter: gutter,
                             font: axisFont))
+        .chartOverlay { proxy in
+            // 축선 3개 — 페이스 라벨 오른쪽(플롯 왼쪽 변) · km 라벨 왼쪽(플롯 오른쪽 변) · 날짜 위(플롯 아래 변)
+            GeometryReader { geo in
+                if let anchor = proxy.plotFrame {
+                    let plot = geo[anchor]
+                    Path { p in
+                        p.move(to: CGPoint(x: plot.minX, y: plot.minY)); p.addLine(to: CGPoint(x: plot.minX, y: plot.maxY))
+                        p.move(to: CGPoint(x: plot.maxX, y: plot.minY)); p.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
+                        p.move(to: CGPoint(x: plot.minX, y: plot.maxY)); p.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
+                    }
+                    .stroke(Color.white.opacity(0.22), lineWidth: 0.5)
+                    .allowsHitTesting(false)
+                }
+            }
+        }
         .chartXAxis {
             AxisMarks(values: xAxisValues) { value in
                 AxisValueLabel {
                     if let d = value.as(Date.self) {
-                        Text(xLabel(d)).font(xAxisFont)
+                        Text(xLabel(d)).font(xAxisFont).fixedSize()   // 마지막 라벨이 "…"로 잘리지 않게
                     }
                 }
             }
@@ -419,14 +433,10 @@ struct RecordBarChart: View {
     private var paceMarks: some ChartContent {
         let seriesName = L.s("페이스", "Pace")
         if let baseline = RecordSeries.paceBaseline(bars).flatMap({ yForPace($0) }) {
+            // 평균 점선 — 값 라벨은 축 머리("평균 6'18\"")에 있으므로 차트 안에는 두지 않는다(오른쪽 막대와 겹침)
             RuleMark(y: .value(seriesName, baseline))
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 .foregroundStyle(Color.secondary.opacity(0.45))
-                .annotation(position: .top, alignment: .trailing, spacing: 1) {
-                    Text(paceBaselineLabel)
-                        .font(.system(size: 8.5))
-                        .foregroundStyle(.secondary)
-                }
         }
         let segs = segments { $0.paceSec.flatMap { yForPace($0) } }
         ForEach(segs) { seg in
@@ -505,11 +515,6 @@ struct RecordBarChart: View {
             parts.append(L.s("가장 빠른 \(paceText(best))", "best \(paceText(best))"))
         }
         return parts.joined(separator: " · ")
-    }
-
-    private var paceBaselineLabel: String {
-        guard let mean = RecordSeries.paceBaseline(bars) else { return "" }
-        return L.s("평균 \(paceText(mean))", "avg \(paceText(mean))")
     }
 
     // MARK: - 색·강조

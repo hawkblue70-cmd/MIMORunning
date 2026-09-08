@@ -48,7 +48,15 @@ enum RecordFlowInsight {
         case recovering            // 거리 down & 강도 down
         case slowerHarder          // 페이스 down & 강도 up
         case steady                // 모두 flat
-        case none                  // 표본 부족 또는 그 외 조합
+        // ── 나머지 조합도 빈칸 없이 채운다(표본이 있으면 방향 문장은 항상 하나) ──
+        case easierSlower          // 페이스 down & 강도 down — 천천히·편하게
+        case pushingFaster         // 페이스 up & 강도 up — 밀어붙여 빨라짐
+        case lessButHarder         // 거리 down & 강도 up
+        case lowerEffort           // 강도 down(그 외)
+        case harder                // 강도 up(그 외)
+        case lessDistance          // 거리 down & 강도 flat
+        case slower                // 페이스 down & 강도 flat
+        case none                  // 표본 부족
     }
 
     struct Result: Equatable {
@@ -127,7 +135,15 @@ enum RecordFlowInsight {
         if trend.distance == .down, trend.effort == .down { return .recovering }
         if trend.pace == .down, trend.effort == .up { return .slowerHarder }
         if trend.distance == .flat, trend.pace == .flat, trend.effort == .flat { return .steady }
-        return .none
+        // 빈틈 채우기 — 강도 방향을 축으로 나머지 조합을 배정
+        switch trend.effort {
+        case .down: return trend.pace == .down ? .easierSlower : .lowerEffort
+        case .up:   return trend.pace == .up ? .pushingFaster : (trend.distance == .down ? .lessButHarder : .harder)
+        case .flat:
+            if trend.distance == .down { return .lessDistance }
+            if trend.pace == .down { return .slower }
+            return .steady
+        }
     }
 
     // MARK: - 상태 줄
@@ -180,6 +196,27 @@ enum RecordFlowInsight {
             let avg = String(format: "%.1f", perRun)
             return L.s("고른 흐름이에요. 주 \(n)회 · 평균 \(avg) km.",
                        "A steady rhythm — \(n)/week · \(avg) km avg.")
+        case .easierSlower:
+            return L.s("천천히, 편하게 뛴 구간이에요. 의도한 여유라면 그대로 좋아요.",
+                       "Slower and easier — fine if the easing was intended.")
+        case .pushingFaster:
+            return L.s("더 밀어붙여 빨라졌어요. 다음 쉬운 날을 꼭 챙기세요.",
+                       "Faster by pushing harder. Make sure the next easy day stays easy.")
+        case .lessButHarder:
+            return L.s("거리는 줄었지만 강도는 올랐어요. 양보다 질에 기울어진 구간.",
+                       "Less distance, more effort — a quality-over-volume stretch.")
+        case .lowerEffort:
+            return L.s("강도를 낮춘 구간이에요.",
+                       "Effort has come down.")
+        case .harder:
+            return L.s("강도가 올라가는 중이에요. 쉬운 날이 함께 있는지 봐 주세요.",
+                       "Effort is climbing. Check that easy days are still in the mix.")
+        case .lessDistance:
+            return L.s("거리를 줄인 구간이에요.",
+                       "Distance has come down.")
+        case .slower:
+            return L.s("같은 강도인데 페이스가 느려졌어요. 더위나 피로일 수 있어요.",
+                       "Same effort, slower pace — heat or fatigue may be at play.")
         case .none:
             return nil
         }

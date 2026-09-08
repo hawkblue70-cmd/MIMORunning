@@ -121,9 +121,15 @@ struct RecordFlowInsightTests {
         #expect(s(.down, .flat, .down) == .recovering)
         #expect(s(.flat, .down, .up) == .slowerHarder)
         #expect(s(.flat, .flat, .flat) == .steady)
-        // 그 외 조합
-        #expect(s(.down, .flat, .flat) == .none)
-        #expect(s(.flat, .down, .flat) == .none)
+        // 나머지 조합도 빈칸 없이
+        #expect(s(.down, .flat, .flat) == .lessDistance)
+        #expect(s(.flat, .down, .flat) == .slower)
+        #expect(s(.flat, .down, .down) == .easierSlower)
+        #expect(s(.flat, .up, .up) == .pushingFaster)
+        #expect(s(.down, .flat, .up) == .lessButHarder)
+        #expect(s(.flat, .flat, .down) == .lowerEffort)
+        #expect(s(.flat, .flat, .up) == .harder)
+        #expect(s(.flat, .up, .flat) == .fasterSameEffort)
     }
 
     // MARK: - 상태 줄
