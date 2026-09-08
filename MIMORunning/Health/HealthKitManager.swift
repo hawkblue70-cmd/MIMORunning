@@ -1796,6 +1796,11 @@ class HealthKitManager {
         let m = EffortIndex(stories: stories, apple: [:]).user
         guard m != userEffortByWorkout else { return }
         userEffortByWorkout = m
+        invalidateEffortDerivedCaches()
+    }
+
+    /// 강도(내 입력·Apple)가 바뀌면 강도로 걸러 만든 파생 시계열 캐시를 지운다.
+    private func invalidateEffortDerivedCaches() {
         try? FileManager.default.removeItem(at: metricHistoryCacheURL(.easyEffortPace, usePounds: false))
     }
 
@@ -1806,8 +1811,9 @@ class HealthKitManager {
         return activities
             .filter { $0.type == .running && $0.date >= startDate && $0.distance >= 1000 && $0.duration > 0 }
             .compactMap { a -> (date: Date, value: Double)? in
-                guard let e = idx.resolve(a.id), EffortPaceTrend.easyRange.contains(e.value) else { return nil }
-                return (a.date, a.duration / (a.distance / 1000))
+                guard let e = idx.resolve(a.id), EffortPaceTrend.easyRange.contains(e.value),
+                      let pace = a.paceSecPerKm else { return nil }
+                return (a.date, pace)
             }
             .sorted { $0.date < $1.date }
     }
@@ -1898,6 +1904,7 @@ class HealthKitManager {
             if effortMap.removeValue(forKey: activityID) != nil {
                 patchDetailCacheEffort(activityID, nil)
                 saveEffortMap()
+                invalidateEffortDerivedCaches()
             }
             return nil
         }
@@ -1905,6 +1912,7 @@ class HealthKitManager {
             effortMap[activityID] = effort
             patchDetailCacheEffort(activityID, effort)
             saveEffortMap()
+            invalidateEffortDerivedCaches()
         }
         return effort
     }
@@ -1934,6 +1942,8 @@ class HealthKitManager {
         let useAnchor: HKQueryAnchor? = (effortMapSeeded && !effortMap.isEmpty) ? effortAnchor : nil
         let (rels, newAnchor) = await runEffortRelationshipQuery(predicate: pred, anchor: useAnchor)
         var changed = false
+        // 앵커만 바뀐 경우와 구분 — 강도 값이 실제로 바뀐 때만 파생 캐시를 지운다
+        var valuesChanged = false
         for rel in rels {
             let id = rel.workout.uuid
             guard let e = appleEffort(from: rel.samples) else {
@@ -1941,6 +1951,7 @@ class HealthKitManager {
                 if effortMap.removeValue(forKey: id) != nil {
                     patchDetailCacheEffort(id, nil)
                     changed = true
+                    valuesChanged = true
                 }
                 continue
             }
@@ -1948,6 +1959,7 @@ class HealthKitManager {
                 effortMap[id] = e
                 patchDetailCacheEffort(id, e)
                 changed = true
+                valuesChanged = true
             }
         }
         if !effortMap.isEmpty {
@@ -1955,6 +1967,7 @@ class HealthKitManager {
             if let newAnchor { effortAnchor = newAnchor; changed = true }
         }
         if changed { saveEffortMap() }
+        if valuesChanged { invalidateEffortDerivedCaches() }
         #if DEBUG
         print("[강도] Apple 강도 맵 \(effortMap.count)건 (이번 갱신 \(rels.count)관계)")
         #endif
@@ -3307,7 +3320,11 @@ class HealthKitManager {
         let fullStart = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
         let fetchTask = Task<[(date: Date, value: Double)], Never> {
             let result = await fetchMetricHistoryFromHealthKit(metric, from: fullStart, usePounds: usePounds)
-            saveMetricHistoryToDisk(result, metric: metric, usePounds: usePounds, coveredFrom: fullStart)
+            // easyEffortPace는 HealthKit이 아니라 메모리의 activities에서 만든다.
+            // 활동 로드 전의 빈 결과가 1년짜리 캐시로 고정되는 것을 막는다.
+            if !(metric == .easyEffortPace && activities.isEmpty) {
+                saveMetricHistoryToDisk(result, metric: metric, usePounds: usePounds, coveredFrom: fullStart)
+            }
             metricFetchTasks.removeValue(forKey: taskKey)
             return result
         }

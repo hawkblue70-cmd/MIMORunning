@@ -248,10 +248,14 @@ struct GrowthView: View {
                                 }
                             heatmapSection
                             weeklySection
+                                // 이번 주 평점 러닝이 없으면 EffortLoadCard가 없다 — 항상 있는 뷰에도 같은 감지를 건다.
+                                .onChange(of: allStories.map(\.effortRPE)) { _, _ in
+                                    effortInputsChanged()
+                                }
                             if let load = effortLoadWeeks {
                                 EffortLoadCard(current: load.current, previous: load.previous)
                                     .onChange(of: allStories.map(\.effortRPE)) { _, _ in
-                                        manager.syncUserEfforts(from: allStories)
+                                        effortInputsChanged()
                                     }
                             }
                             paceSection
@@ -1092,6 +1096,19 @@ struct GrowthView: View {
     }
 
     // MARK: - Metric trend analyses
+
+    /// 강도 입력이 바뀌었을 때 — 매니저 동기화(강도 파생 캐시 무효화)에 더해
+    /// 두 재계산 가드를 풀어, 같은 세션 안에서 바로 다시 계산되게 한다.
+    /// (두 곳에서 호출되지만 각 refresh 함수가 자체 가드로 중복 실행을 막는다.)
+    private func effortInputsChanged() {
+        manager.syncUserEfforts(from: allStories)
+        lastAnalyzedRunCount = -1
+        formComputedForRunCount = nil
+        Task {
+            await refreshMetricAnalyses()
+            await refreshFormObservation()
+        }
+    }
 
     private func refreshMetricAnalyses() async {
         // engine 미준비 시 스킵 — lastAnalyzedRunCount를 업데이트하지 않아

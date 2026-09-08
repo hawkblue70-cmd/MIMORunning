@@ -47,12 +47,16 @@ struct GrowthTrendChart: View {
             }
         }
         .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { _ in
+            AxisMarks(values: .automatic(desiredCount: 3)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(gridColor)
-                AxisValueLabel()
-                    .font(.system(size: 8))
-                    .foregroundStyle(axisLabelColor)
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text(metric == .easyEffortPace ? EffortPaceTrend.axisLabel(v) : v.formatted(.number))
+                            .font(.system(size: 8))
+                            .foregroundStyle(axisLabelColor)
+                    }
+                }
             }
         }
     }
@@ -101,12 +105,16 @@ struct GrowthTrendChart: View {
             }
         }
         .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { _ in
+            AxisMarks(values: .automatic(desiredCount: 3)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(gridColor)
-                AxisValueLabel()
-                    .font(.system(size: 8))
-                    .foregroundStyle(axisLabelColor)
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text(metric == .easyEffortPace ? EffortPaceTrend.axisLabel(v) : v.formatted(.number))
+                            .font(.system(size: 8))
+                            .foregroundStyle(axisLabelColor)
+                    }
+                }
             }
         }
     }

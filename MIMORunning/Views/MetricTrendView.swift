@@ -314,12 +314,16 @@ struct MetricTrendView: View {
             }
         }
         .chartYAxis {
-            AxisMarks { _ in
+            AxisMarks { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(Color.white.opacity(0.1))
-                AxisValueLabel()
-                    .foregroundStyle(Color.secondary)
-                    .font(.caption2)
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text(metric == .easyEffortPace ? EffortPaceTrend.axisLabel(v) : v.formatted(.number))
+                            .font(.caption2)
+                            .foregroundStyle(Color.secondary)
+                    }
+                }
             }
         }
     }
@@ -370,12 +374,16 @@ struct MetricTrendView: View {
             }
         }
         .chartYAxis {
-            AxisMarks { _ in
+            AxisMarks { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(Color.white.opacity(0.1))
-                AxisValueLabel()
-                    .foregroundStyle(Color.secondary)
-                    .font(.caption2)
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text(metric == .easyEffortPace ? EffortPaceTrend.axisLabel(v) : v.formatted(.number))
+                            .font(.caption2)
+                            .foregroundStyle(Color.secondary)
+                    }
+                }
             }
         }
     }

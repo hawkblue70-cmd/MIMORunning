@@ -33,6 +33,15 @@ struct EffortPaceTrendTests {
         #expect(EffortPaceTrend.observation(shift: shift(delta: -12, real: false)) == nil)
     }
 
+    @Test func observationSkipsSubSecondDelta() {
+        #expect(EffortPaceTrend.observation(shift: shift(delta: -0.4, real: true)) == nil)
+    }
+
+    @Test func axisLabelFormatsPace() {
+        #expect(EffortPaceTrend.axisLabel(372) == "6'12\"")
+        #expect(EffortPaceTrend.axisLabel(600) == "10'00\"")
+    }
+
     @Test func formatsPace() {
         #expect(TrendMetric.easyEffortPace.formattedValue(372) == "6'12\" /km")
         #expect(TrendMetric.easyEffortPace.lowerIsBetter)
