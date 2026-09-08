@@ -19,6 +19,11 @@ struct RecordBarChart: View {
     let end: Date
     /// 표시할 기록이 없을 때 문구 (nil이면 기본 문구)
     var emptyMessage: String? = nil
+    /// 공유 카드 내보내기 모드 — 탭 안내·선택 상호작용을 빼고 더 작게 그린다.
+    /// (§5.8 — 카드용 레이아웃을 따로 만들지 않고 **이 컴포넌트 하나**를 그대로 재사용한다)
+    var exportMode: Bool = false
+    /// 카드 배경색 오버라이드 (공유 카드의 라이트/다크 테마 색을 그대로 쓰기 위해)
+    var cardBackground: Color? = nil
 
     /// 막대와 점이 함께 보는 단 하나의 선택 상태
     @State private var selected: Date? = nil
@@ -29,6 +34,10 @@ struct RecordBarChart: View {
 
     private enum Metrics {
         static let plotHeight: CGFloat = 180
+        /// 공유 카드용 축소 높이
+        static let exportPlotHeight: CGFloat = 130
+        static let padding: CGFloat = 14
+        static let exportPadding: CGFloat = 12
         /// y축 라벨 폭
         static let gutter: CGFloat = 40
         static let symbolSize: CGFloat = 26
@@ -143,10 +152,14 @@ struct RecordBarChart: View {
 
     // MARK: - Body
 
+    private var plotHeight: CGFloat {
+        exportMode ? Metrics.exportPlotHeight : Metrics.plotHeight
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if hasData {
-                calloutRow
+                if !exportMode { calloutRow }
                 effortLegend
                 axisHeader
                 chart
@@ -159,8 +172,8 @@ struct RecordBarChart: View {
                     .frame(maxWidth: .infinity, minHeight: 120)
             }
         }
-        .padding(14)
-        .background(Theme.cardBackground)
+        .padding(exportMode ? Metrics.exportPadding : Metrics.padding)
+        .background(cardBackground ?? Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
@@ -259,11 +272,11 @@ struct RecordBarChart: View {
                     .foregroundStyle(Color.secondary.opacity(0.55))
             }
         }
-        .frame(height: Metrics.plotHeight)
+        .frame(height: plotHeight)
         .chartXScale(domain: start...end)
         .chartYScale(domain: 0...kmTop)
         .chartLegend(.hidden)
-        .chartXSelection(value: $selected)
+        .modifier(TapSelection(enabled: !exportMode, selected: $selected))
         .modifier(DualYAxis(paceTickYs: paceTickYs,
                             paceLabel: { paceText(paceForY($0)) },
                             kmLabel: kmAxisLabel))
@@ -274,6 +287,20 @@ struct RecordBarChart: View {
                         Text(xLabel(d)).font(.caption2)
                     }
                 }
+            }
+        }
+    }
+
+    /// 탭 선택은 앱 화면에서만 — 내보내기 모드에서는 붙이지 않는다.
+    private struct TapSelection: ViewModifier {
+        let enabled: Bool
+        @Binding var selected: Date?
+
+        func body(content: Content) -> some View {
+            if enabled {
+                content.chartXSelection(value: $selected)
+            } else {
+                content
             }
         }
     }

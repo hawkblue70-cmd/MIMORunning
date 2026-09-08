@@ -75,12 +75,9 @@ struct GrowthView: View {
     @Query private var allArchives: [RaceArchive]
     @Query private var allStories: [WorkoutStory]
 
-    @State private var showMonthly: Bool = false
     @State private var showDaily: Bool = true
     @State private var dailyMonth: Date = Date()
-    /// 거리 내보내기 카드에서만 쓰는 km/분 선택 (기록 카드는 거리 막대 + 페이스 선 한 차트로 고정)
-    @State private var showTimeMileage = false
-    /// 기록 카드가 그리는 버킷(일/주/월).
+    /// 러닝 흐름 카드가 그리는 버킷(일/주).
     @State private var recordBarsCache: [RecordBar] = []
     @State private var selectedTrend: TrendMetric? = nil
     @State private var showBodyMass = false
@@ -346,11 +343,11 @@ struct GrowthView: View {
         }
         .sheet(isPresented: $showMileageStreakShareCard) {
             MileageStreakShareCardScreen(
-                showMonthly: showMonthly,
-                showDaily: showDaily,
-                showTimeMileage: showTimeMileage,
-                mileageSubtitle: mileageSubtitle,
-                barData: currentBarData,
+                bars: recordBarsCache,
+                period: recordPeriod,
+                windowStart: recordWindow(for: recordPeriod).start,
+                windowEnd: recordWindow(for: recordPeriod).end,
+                periodLabel: recordPeriodLabel,
                 heatmapColumns: shareHeatmapColumns,
                 streak: engine.streakWeeks,
                 activeDays: activeDaysInHeatmap(columns: heatmapColumnsCache),
@@ -383,20 +380,6 @@ struct GrowthView: View {
     }
 
     // MARK: - Share card data helpers
-
-    private var currentBarData: [(label: String, value: Double)] {
-        let useTime = showTimeMileage
-        let period = recordPeriod
-        return recordBarsCache.map { bar in
-            let label: String
-            switch period {
-            case .day:   label = "\(Calendar.current.component(.day, from: bar.id))"
-            case .week:  label = Self.weekLabelFormatter.string(from: bar.id)
-            case .month: label = Self.monthLabelFormatter.string(from: bar.id)
-            }
-            return (label: label, value: useTime ? bar.minutes : bar.km)
-        }
-    }
 
     private var shareHeatmapColumns: [ShareHeatmapColumn] {
         heatmapColumnsCache.map { col in
@@ -474,27 +457,20 @@ struct GrowthView: View {
     // MARK: - 기록 카드 (거리·시간·부하·페이스 통합)
 
     private var recordPeriod: RecordPeriod {
-        if showDaily { return .day }
-        return showMonthly ? .month : .week
+        showDaily ? .day : .week
     }
 
-    /// 기록 카드의 x축 창. 일간은 dailyWindow(월 이동), 주간 12주, 월간 12개월.
+    /// 기록 카드의 x축 창. 일간은 dailyWindow(월 이동), 주간 12주. (월간은 성장 탭에서 쓰지 않는다)
     private func recordWindow(for period: RecordPeriod) -> (start: Date, end: Date) {
         let now = Date()
         switch period {
         case .day:
             return dailyWindow(for: dailyMonth)
-        case .week:
+        default:
             let cal = mondayCal
             let thisWeek = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
             let start = cal.date(byAdding: .weekOfYear, value: -11, to: thisWeek) ?? thisWeek
             let end = cal.date(byAdding: .day, value: 7, to: thisWeek) ?? thisWeek
-            return (start, end)
-        case .month:
-            let cal = Calendar.current
-            let thisMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? now
-            let start = cal.date(byAdding: .month, value: -11, to: thisMonth) ?? thisMonth
-            let end = cal.date(byAdding: .month, value: 1, to: thisMonth) ?? thisMonth
             return (start, end)
         }
     }
@@ -541,17 +517,16 @@ struct GrowthView: View {
     }
 
     private var mileageTitle: String {
-        let L = AppLanguage.shared
-        if showDaily { return L.s("일간 기록", "Daily") }
-        return showMonthly ? L.s("월간 기록", "Monthly") : L.s("주간 기록", "Weekly")
+        AppLanguage.shared.s("러닝 흐름", "Running Flow")
     }
 
     private var mileageScreenTitle: String {
-        let L = AppLanguage.shared
-        let unit = showTimeMileage ? L.s("시간", "Time") : L.s("거리", "Distance")
-        if showDaily { return L.s("일간 \(unit) 정보", "Daily \(unit)") }
-        if showMonthly { return L.s("월간 \(unit) 정보", "Monthly \(unit)") }
-        return L.s("주간 \(unit) 정보", "Weekly \(unit)")
+        AppLanguage.shared.s("러닝 흐름", "Running Flow")
+    }
+
+    /// 공유 카드에 찍는 기간 라벨 — "최근 30일" / "8월" / "최근 12주"
+    private var recordPeriodLabel: String {
+        showDaily ? dailyMonthLabel : AppLanguage.shared.s("최근 12주", "Last 12 weeks")
     }
 
     private var dailyMonthLabel: String {
@@ -597,8 +572,7 @@ struct GrowthView: View {
 
     private var periodToggle: some View {
         let L = AppLanguage.shared
-        let isWeekly  = !showMonthly && !showDaily
-        let isMonthly = showMonthly && !showDaily
+        let isWeekly = !showDaily
         return HStack(spacing: 0) {
             Button { showDaily = true; refreshRecordBars() } label: {
                 Text(L.s("일", "D"))
@@ -609,22 +583,13 @@ struct GrowthView: View {
                     .background(showDaily ? Theme.time : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
-            Button { showDaily = false; showMonthly = false; refreshRecordBars() } label: {
+            Button { showDaily = false; refreshRecordBars() } label: {
                 Text(L.s("주", "W"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(isWeekly ? Color.white : Color.secondary)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
                     .background(isWeekly ? Theme.cadence : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            Button { showDaily = false; showMonthly = true; refreshRecordBars() } label: {
-                Text(L.s("월", "M"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isMonthly ? Color.white : Color.secondary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(isMonthly ? Color(hex: "30D158") : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
         }

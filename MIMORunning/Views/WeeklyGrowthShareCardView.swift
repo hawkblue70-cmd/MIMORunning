@@ -611,18 +611,15 @@ struct ShareHeatmapColumn: Identifiable {
 
 // MARK: - Mileage + Streak combined share card
 
-private struct MileageBarPoint: Identifiable {
-    let id = UUID()
-    let label: String
-    let value: Double
-}
-
+/// 성장 탭 "러닝 흐름" 카드를 그대로 내보내는 공유 카드.
+/// §5.8 — 차트는 `RecordBarChart`(exportMode) **하나**를 재사용한다. 별도 레이아웃 금지.
 struct MileageStreakShareCard: View {
-    let showMonthly: Bool
-    let showDaily: Bool
-    let showTimeMileage: Bool
-    let mileageSubtitle: String
-    let barData: [(label: String, value: Double)]
+    let bars: [RecordBar]
+    let period: RecordPeriod
+    let windowStart: Date
+    let windowEnd: Date
+    /// "최근 30일" / "8월" / "최근 12주"
+    let periodLabel: String
     let heatmapColumns: [ShareHeatmapColumn]
     let streak: Int
     let activeDays: Int
@@ -653,11 +650,11 @@ struct MileageStreakShareCard: View {
 
                 divider.padding(.top, 7)
 
-                mileageTitleRow
+                flowTitleRow
                     .padding(.horizontal, 20)
                     .padding(.top, 7)
 
-                barChart
+                recordChart
                     .padding(.horizontal, 14)
                     .padding(.top, 6)
 
@@ -692,83 +689,29 @@ struct MileageStreakShareCard: View {
             .padding(.horizontal, 20)
     }
 
-    // MARK: Mileage section
-    private var mileageTitleRow: some View {
-        let L = AppLanguage.shared
-        let period: String
-        if showDaily {
-            period = L.s("일간", "Daily")
-        } else {
-            period = showMonthly ? L.s("월간", "Monthly") : L.s("주간", "Weekly")
-        }
-        let mode = (showDaily || !showTimeMileage) ? L.s("거리", "Distance") : L.s("시간", "Time")
-        return HStack(alignment: .center) {
-            Text("\(period) \(mode)")
+    // MARK: 러닝 흐름 (성장 탭과 동일한 컴포넌트)
+    private var flowTitleRow: some View {
+        HStack(alignment: .center) {
+            Text(AppLanguage.shared.s("러닝 흐름", "Running Flow"))
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(p.textPrimary)
             Spacer()
-            Text(mileageSubtitle)
+            Text(periodLabel)
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(p.textPrimary)
         }
     }
 
-    private var barChart: some View {
-        let items = barData.map { MileageBarPoint(label: $0.label, value: $0.value) }
-        let color: Color
-        if showDaily || showTimeMileage {
-            color = p.barChart
-        } else if showMonthly {
-            color = p.monthlyBarColor
-        } else {
-            color = p.weeklyBarColor
-        }
-        let maxVal = barData.map(\.value).max() ?? 1
-        let yMax = maxVal > 0 ? maxVal / 0.9 : 1.0
-        return Chart(items) { item in
-            BarMark(
-                x: .value("x", item.label),
-                y: .value("y", item.value)
-            )
-            .foregroundStyle(item.value > 0 ? color.gradient : Color.secondary.opacity(0.25).gradient)
-            .cornerRadius(3)
-        }
-        .chartYScale(domain: 0...yMax)
-        .frame(height: 110)
-        .chartXAxis {
-            AxisMarks { value in
-                AxisValueLabel {
-                    Text(value.as(String.self) ?? "")
-                        .font(.system(size: 7))
-                        .foregroundStyle(p.axisLabel)
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { value in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(p.gridLine)
-                AxisValueLabel {
-                    if let v = value.as(Double.self) {
-                        Text(yLabel(v))
-                            .font(.system(size: 7))
-                            .foregroundStyle(p.axisLabel)
-                    }
-                }
-            }
-        }
-        .padding(7)
-        .background(p.boxFill)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private func yLabel(_ v: Double) -> String {
-        if !showDaily && showTimeMileage {
-            let h = Int(v) / 60; let m = Int(v) % 60
-            return h > 0 ? "\(h)h" : "\(m)m"
-        } else {
-            return String(format: "%.0f", v)
-        }
+    /// §5.8 — 성장 탭 카드와 **같은 컴포넌트**. 크기·상호작용만 내보내기 모드로.
+    private var recordChart: some View {
+        RecordBarChart(
+            bars: bars,
+            period: period,
+            start: windowStart,
+            end: windowEnd,
+            exportMode: true,
+            cardBackground: p.boxFill
+        )
     }
 
     // MARK: Streak section
@@ -899,16 +842,16 @@ struct MileageStreakShareCard: View {
 // MARK: - Mileage + Streak share screen
 
 struct MileageStreakShareCardScreen: View {
-    let showMonthly: Bool
-    let showDaily: Bool
-    let showTimeMileage: Bool
-    let mileageSubtitle: String
-    let barData: [(label: String, value: Double)]
+    let bars: [RecordBar]
+    let period: RecordPeriod
+    let windowStart: Date
+    let windowEnd: Date
+    let periodLabel: String
     let heatmapColumns: [ShareHeatmapColumn]
     let streak: Int
     let activeDays: Int
     let heatmapWeekCount: Int
-    var screenTitle: String = AppLanguage.shared.s("거리 정보", "Distance Info")
+    var screenTitle: String = AppLanguage.shared.s("러닝 흐름", "Running Flow")
 
     @State private var previewImage: UIImage?
     @State private var isRendering = true
@@ -917,7 +860,8 @@ struct MileageStreakShareCardScreen: View {
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
-    private let cardH: CGFloat = 375
+    /// 러닝 흐름 차트(내보내기 모드 ≈235) + 잔디(≈118) + 머리·구분선·푸터가 잘리지 않는 높이
+    private let cardH: CGFloat = 500
 
     var body: some View {
         NavigationStack {
@@ -926,11 +870,11 @@ struct MileageStreakShareCardScreen: View {
                 VStack(spacing: 0) {
                     Spacer()
                     MileageStreakShareCard(
-                        showMonthly: showMonthly,
-                        showDaily: showDaily,
-                        showTimeMileage: showTimeMileage,
-                        mileageSubtitle: mileageSubtitle,
-                        barData: barData,
+                        bars: bars,
+                        period: period,
+                        windowStart: windowStart,
+                        windowEnd: windowEnd,
+                        periodLabel: periodLabel,
                         heatmapColumns: heatmapColumns,
                         streak: streak,
                         activeDays: activeDays,
@@ -1030,11 +974,11 @@ struct MileageStreakShareCardScreen: View {
         isRendering = true
         let renderer = ImageRenderer(content:
             MileageStreakShareCard(
-                showMonthly: showMonthly,
-                showDaily: showDaily,
-                showTimeMileage: showTimeMileage,
-                mileageSubtitle: mileageSubtitle,
-                barData: barData,
+                bars: bars,
+                period: period,
+                windowStart: windowStart,
+                windowEnd: windowEnd,
+                periodLabel: periodLabel,
                 heatmapColumns: heatmapColumns,
                 streak: streak,
                 activeDays: activeDays,
