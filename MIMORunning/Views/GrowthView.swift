@@ -91,6 +91,7 @@ struct GrowthView: View {
     @EnvironmentObject private var engine: MREngineStore
     @Environment(RaceDetector.self) private var raceDetector
     @Query private var allArchives: [RaceArchive]
+    @Query private var allStories: [WorkoutStory]
 
     @State private var showTimeMileage: Bool = false
     @State private var showMonthly: Bool = false
@@ -245,6 +246,12 @@ struct GrowthView: View {
                                 }
                             heatmapSection
                             weeklySection
+                            if let load = effortLoadWeeks {
+                                EffortLoadCard(current: load.current, previous: load.previous)
+                                    .onChange(of: allStories.map(\.effortRPE)) { _, _ in
+                                        manager.syncUserEfforts(from: allStories)
+                                    }
+                            }
                             paceSection
                             metricTrendsSection
                             MRHealthMetricsView(m: engine.healthMetrics)
@@ -260,6 +267,7 @@ struct GrowthView: View {
                         .padding(.top, 8)
                     }
                     .onAppear {
+                        manager.syncUserEfforts(from: allStories)
                         // refreshBacktest 진입부 폴백용 — 모든 호출 경로에서 대회 목록 보장
                         engine.persistedMatchesProvider = { [manager] in manager.persistedConfirmedMatches() }
                         // raceDetector 미준비 → 영속 키 폴백. 준비 완료 → onChange가 정식 목록으로 재실행
@@ -468,6 +476,16 @@ struct GrowthView: View {
     }
 
     // MARK: - Sections
+
+    /// 이번 주 + 직전 4주 sRPE 부하. 이번 주 러닝이 없으면 nil.
+    private var effortLoadWeeks: (current: EffortLoad.WeekLoad, previous: [EffortLoad.WeekLoad])? {
+        let idx = manager.effortIndex
+        let runs = runsCache.map { EffortLoad.Run(date: $0.date, durationMin: $0.duration / 60, effort: idx.resolve($0.id)?.value) }
+        let monday = EffortLoad.mondayStart(of: Date())
+        let ws = EffortLoad.weeks(runs: runs, endingAt: monday, count: 5)
+        guard let cur = ws.last ?? nil else { return nil }
+        return (cur, ws.dropLast().compactMap { $0 })
+    }
 
     private var weeklySection: some View {
         VStack(alignment: .leading, spacing: 10) {
