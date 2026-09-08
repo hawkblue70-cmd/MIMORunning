@@ -3910,7 +3910,8 @@ private struct PerformanceInsightCard: View {
         let cal = Calendar.current
         let w = load.window
         let maxAU = max(w.daily.max() ?? 0, 1)
-        let barH: CGFloat = 56
+        // 왼쪽 강도 분포(막대 56 + 위 두 줄 텍스트 28)와 같은 높이 — 요일 라벨이 유형 라벨과 나란히 온다
+        let barH: CGFloat = 56 + 28
         let runDay = cal.startOfDay(for: activity.date)
         VStack(alignment: .leading, spacing: 5) {
             Text(L.s("강도 부하 · 7일", "Training load · 7d"))
