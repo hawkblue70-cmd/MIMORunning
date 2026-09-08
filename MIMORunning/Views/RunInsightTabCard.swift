@@ -3846,10 +3846,15 @@ private struct PerformanceInsightCard: View {
                 HStack(alignment: .bottom, spacing: gap) {
                     ForEach(rows, id: \.tier) { row in
                         let pct = Int((row.frac * 100).rounded())
+                        let mins = Int((row.sec / 60).rounded())
                         VStack(spacing: 3) {
                             Text("\(pct)%")
-                                .font(.system(size: 8, weight: .medium))
+                                .font(.system(size: 8, weight: .semibold))
                                 .foregroundStyle(intensityColor(row.tier))
+                                .lineLimit(1).minimumScaleFactor(0.6)
+                            Text(L.s("\(mins)분", "\(mins)m"))
+                                .font(.system(size: 8))
+                                .foregroundStyle(.white.opacity(0.75))
                                 .lineLimit(1).minimumScaleFactor(0.6)
                             ZStack(alignment: .bottom) {
                                 RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
@@ -3873,7 +3878,7 @@ private struct PerformanceInsightCard: View {
                             }
                             .frame(height: barH)
                             Text(row.tier.label)
-                                .font(.system(size: 8)).foregroundStyle(IC.label)
+                                .font(.system(size: 8)).foregroundStyle(.white.opacity(0.8))
                                 .lineLimit(1).minimumScaleFactor(0.6)
                         }
                         .frame(width: barW)
@@ -3881,19 +3886,17 @@ private struct PerformanceInsightCard: View {
                     // 남는 폭: 점선 설명 2줄 (막대 밑바닥에 맞춰 아래 정렬)
                     VStack(alignment: .leading, spacing: 2) {
                         Spacer(minLength: 0)
-                        Text(rows.map { "\(Int(($0.sec / 60).rounded()))" }.joined(separator: " · ") + L.s("분", "m"))
-                            .foregroundStyle(.white.opacity(0.6))
-                        Text(L.s("점선 =", "Marks ="))
-                        Text(L.s("지구력 종목 문헌값", "endurance reference"))
+                        Text(L.s("점선 - 문헌값", "dashed - reference"))
+                        Text(L.s("(지구력 종목)", "(endurance)"))
                         Spacer().frame(height: 14)   // 하단 유형 라벨 높이만큼 띄워 막대 밑바닥에 맞춘다
                     }
-                    .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                    .font(.system(size: 8)).foregroundStyle(.white.opacity(0.7))
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .padding(.leading, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(height: barH + 3 + 11 + 3 + 11)
+            .frame(height: barH + 3 + 11 + 3 + 11 + 3 + 11)
         }
     }
 
