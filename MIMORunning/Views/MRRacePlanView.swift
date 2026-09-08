@@ -57,6 +57,8 @@ struct MRRacePlanCard: View {
     var runs: [MRWorkout] = []
     /// 계획 시작 시점 스냅샷 — 이행 비교 기준
     var snapshot: RacePlanSnapshot? = nil
+    /// 회복·테이퍼 주 평균 강도 초과 문구 — 현재 주 행에만 표시
+    var recoveryEffortNote: String? = nil
     var onToggleCollapse: (() -> Void)? = nil   // trailing closure 를 위해 마지막에
     @State private var showWeeks = false
 
@@ -270,7 +272,8 @@ struct MRRacePlanCard: View {
 
             if showWeeks {
                 MRWeekTable(weeks: plan.weeks, histMaxWeeklyKm: plan.histMaxWeeklyKm,
-                            runs: runs, snapshotWeeks: snapshot?.planWeeks ?? [])
+                            runs: runs, snapshotWeeks: snapshot?.planWeeks ?? [],
+                            recoveryEffortNote: recoveryEffortNote)
                     .padding(.top, 12)
             }
 
@@ -299,6 +302,8 @@ struct MRWeekTable: View {
     var runs: [MRWorkout] = []
     /// 스냅샷 주차 — 있으면 이 값이 단일 소스. 재계산 플랜 값을 무시하고 최초 계획을 표시한다.
     var snapshotWeeks: [MRPlanWeekSummary] = []
+    /// 회복·테이퍼 주 평균 강도 초과 문구 — 현재 주 행에만 표시
+    var recoveryEffortNote: String? = nil
     @State private var expanded: Set<Int> = []
 
     private let dateFmt: DateFormatter = {
@@ -602,6 +607,11 @@ struct MRWeekTable: View {
                                         .font(.system(size: 11))
                                         .foregroundStyle(.white.opacity(0.60))
                                 }
+                                if isCurr, EffortLoad.isRecoveryPhase(snap.phase), let note = recoveryEffortNote {
+                                    Text(note)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color(hex: "FFD166"))
+                                }
                             }
                             .padding(.leading, 36).padding(.bottom, 4)
                             .transition(.opacity.combined(with: .move(edge: .top)))
@@ -704,6 +714,11 @@ struct MRWeekTable: View {
                                     Text(localizedBreakdown(w.breakdown))
                                         .font(.system(size: 11))
                                         .foregroundStyle(.white.opacity(0.60))
+                                }
+                                if isCurrent(w), EffortLoad.isRecoveryPhase(w.phase), let note = recoveryEffortNote {
+                                    Text(note)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color(hex: "FFD166"))
                                 }
                             }
                             .padding(.leading, 36).padding(.bottom, 4)
@@ -888,6 +903,8 @@ struct MRPlanlessRaceCard: View {
 
 struct MRRacePlanSection: View {
     @EnvironmentObject var engine: MREngineStore
+    /// 회복·테이퍼 주 평균 강도 초과 문구 — MeView가 계산해 내려준다
+    var recoveryEffortNote: String? = nil
     @Query private var snapshots: [RacePlanSnapshot]
     // 가장 가까운 대회 하나만 기본 펼침. nil이면 전체 접힘
     @State private var expandedId: String? = nil
@@ -913,7 +930,8 @@ struct MRRacePlanSection: View {
                     switch item {
                     case .planned(let c):
                         MRRacePlanCard(check: c, isExpanded: isExpanded,
-                                       runs: engine.runs, snapshot: snapshot(for: c)) {
+                                       runs: engine.runs, snapshot: snapshot(for: c),
+                                       recoveryEffortNote: recoveryEffortNote) {
                             withAnimation(.easeOut(duration: 0.2)) {
                                 expandedId = isExpanded ? nil : item.id
                             }

@@ -61,6 +61,19 @@ struct MeView: View {
     @State private var showDebug = false
     #endif
 
+    /// 회복·테이퍼 주에 평균 강도가 평소보다 높을 때 플래너에 보이는 한 줄. 단계 판정은 MRWeekTable이 한다.
+    private var recoveryEffortNote: String? {
+        let idx = manager.effortIndex
+        let runs = manager.activities.filter { $0.type == .running }
+        let monday = EffortLoad.mondayStart(of: Date())
+        let loadRuns = runs.map { EffortLoad.Run(date: $0.date, durationMin: $0.duration / 60, effort: idx.resolve($0.id)?.value) }
+        guard let cur = EffortLoad.weekly(runs: loadRuns, weekStart: monday) else { return nil }
+        let eightWeeksAgo = monday.addingTimeInterval(-56 * 86_400)
+        let past = runs.filter { $0.date >= eightWeeksAgo && $0.date < monday }.compactMap { idx.resolve($0.id)?.value }
+        guard EffortLoad.recoveryWeekExceeds(meanEffort: cur.meanEffort, coverage: cur.coverage, eightWeekEfforts: past) else { return nil }
+        return AppLanguage.shared.s("회복 주인데 평균 강도가 평소보다 높아요.", "Recovery week, but your average effort is above usual.")
+    }
+
     // MARK: - Period stats
 
     private var runWalkActivities: [Activity] {
@@ -212,7 +225,7 @@ struct MeView: View {
                         }
                         plannedRacesSection
                         raceGoalsSection
-                        MRRacePlanSection()
+                        MRRacePlanSection(recoveryEffortNote: recoveryEffortNote)
                             .padding(.horizontal, 16)
                         statsSection
                         shoesSection
@@ -226,6 +239,7 @@ struct MeView: View {
             }
             .navigationTitle(AppLanguage.shared.s("나", "Me"))
             .navigationBarTitleDisplayMode(.large)
+            .onAppear { manager.syncUserEfforts(from: allStories) }
         }
         .task {
             nicknameInput = crewNicknameManager.nickname ?? ""
