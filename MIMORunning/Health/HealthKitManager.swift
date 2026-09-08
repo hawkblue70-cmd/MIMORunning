@@ -1810,12 +1810,15 @@ class HealthKitManager {
         let idx = effortIndex
         let typeOf = workoutTypeLookup()
         let since = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
-        let efforts = activities.filter { $0.type == .running && $0.date >= since }
-            .compactMap { a -> Int? in
-                guard let t = typeOf(a.id), t == .easy || t == .lsd, let e = idx.resolve(a.id) else { return nil }
-                return e.value
+        let resolved = activities.filter { $0.type == .running && $0.date >= since }
+            .compactMap { a -> ResolvedEffort? in
+                guard let t = typeOf(a.id), t == .easy || t == .lsd else { return nil }
+                return idx.resolve(a.id)
             }
-        return EffortPaceTrend.easyCutoff(easyRunEfforts: efforts)
+        // 수동 입력 우선 — 3건 이상이면 수동 입력만으로, 아니면 Apple 값을 섞어 중앙값
+        let userOnly = resolved.filter { $0.source == .user }.map(\.value)
+        if let c = EffortPaceTrend.easyCutoff(easyRunEfforts: userOnly) { return c }
+        return EffortPaceTrend.easyCutoff(easyRunEfforts: resolved.map(\.value))
     }
 
     /// 본인 이지런 강도 중앙값 이하(내 입력 > Apple)로 뛴 러닝의 페이스(sec/km) 시계열 — HealthKit 조회 없음, activities 기반.
