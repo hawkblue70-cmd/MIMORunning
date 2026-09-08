@@ -950,7 +950,7 @@ struct MileageStreakShareCardScreen: View {
             .padding(.vertical, 18)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("거리 내보내기", "Export Distance"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("흐름 내보내기", "Export Flow"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)

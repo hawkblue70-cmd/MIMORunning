@@ -501,7 +501,7 @@ struct GrowthView: View {
                 Spacer()
                 HStack(spacing: 10) {
                     Button { showMileageStreakShareCard = true } label: {
-                        Label(AppLanguage.shared.s("거리 내보내기", "Export Distance"),
+                        Label(AppLanguage.shared.s("흐름 내보내기", "Export Flow"),
                               systemImage: "square.and.arrow.up")
                             .font(.system(size: 12, weight: .medium))
                     }
