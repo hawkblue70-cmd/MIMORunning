@@ -71,7 +71,7 @@ xcodebuild build -project MIMORunning.xcodeproj -scheme MIMORunning \
 - Create: `MIMORunning/Insight/EffortResolver.swift`
 - Test: `MIMORunningTests/EffortResolverTests.swift`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: 실패하는 테스트 작성**
 
 ```swift
 import Testing
@@ -118,12 +118,12 @@ struct EffortResolverTests {
 }
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: 위 테스트 명령, `EffortResolverTests`
 Expected: 컴파일 에러 `cannot find 'AppleEffort' in scope`
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 ```swift
 import Foundation
@@ -190,12 +190,12 @@ struct EffortIndex {
 
 주의: `init(stories:)`는 Task 2의 `effortRPE`가 있어야 컴파일된다. Task 2를 먼저 적용하거나 이 이니셜라이저를 Task 2 뒤에 추가한다. 여기서는 **Task 2를 바로 이어서 수행**하고 두 태스크를 함께 빌드한다.
 
-- [ ] **Step 4: Task 2 완료 후 테스트 통과 확인**
+- [x] **Step 4: Task 2 완료 후 테스트 통과 확인**
 
 Run: `EffortResolverTests`
 Expected: 4 tests passed
 
-- [ ] **Step 5: 커밋** (Task 2와 함께)
+- [x] **Step 5: 커밋** (Task 2와 함께)
 
 ---
 
@@ -204,7 +204,7 @@ Expected: 4 tests passed
 **Files:**
 - Modify: `MIMORunning/Models/WorkoutStory.swift:100-107`
 
-- [ ] **Step 1: 필드 추가**
+- [x] **Step 1: 필드 추가**
 
 `final class WorkoutStory` 안, `var shoeID: String?` 바로 아래에:
 
@@ -217,11 +217,11 @@ Expected: 4 tests passed
 
 `hasContent`는 바꾸지 않는다(강도만 있어도 "일기 있음"이 아님).
 
-- [ ] **Step 2: 빌드 + Task 1 테스트**
+- [x] **Step 2: 빌드 + Task 1 테스트**
 
 Run: 빌드 명령 → `BUILD SUCCEEDED`. 그 다음 `EffortResolverTests` → 4 passed.
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add MIMORunning/Insight/EffortResolver.swift MIMORunning/Models/WorkoutStory.swift MIMORunningTests/EffortResolverTests.swift
@@ -238,7 +238,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `MIMORunning/Theme/EffortPalette.swift`
 - Test: `MIMORunningTests/EffortPaletteTests.swift`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 ```swift
 import Testing
@@ -278,9 +278,9 @@ struct EffortPaletteTests {
 }
 ```
 
-- [ ] **Step 2: 실패 확인** — `cannot find 'EffortPalette' in scope`
+- [x] **Step 2: 실패 확인** — `cannot find 'EffortPalette' in scope`
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 ```swift
 import SwiftUI
@@ -352,9 +352,9 @@ enum EffortPalette {
 }
 ```
 
-- [ ] **Step 4: 테스트 통과 확인** — `EffortPaletteTests` 3 passed
+- [x] **Step 4: 테스트 통과 확인** — `EffortPaletteTests` 3 passed
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add MIMORunning/Theme/EffortPalette.swift MIMORunningTests/EffortPaletteTests.swift
@@ -370,7 +370,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Modify: `MIMORunning/Models/Activity.swift:130-147` (구조체), `:238-296` (Codable)
 
-- [ ] **Step 1: 프로퍼티 추가**
+- [x] **Step 1: 프로퍼티 추가**
 
 `struct ActivityDetail` 안, `let altitudeTimeProfile ...` 아래에:
 
@@ -381,7 +381,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 기본값이 있으므로 기존 memberwise 호출(`HealthKitManager.swift:1578`, `:1600`)은 그대로 컴파일된다.
 
-- [ ] **Step 2: CodingKeys·decode·encode**
+- [x] **Step 2: CodingKeys·decode·encode**
 
 `private enum CodingKeys` 마지막 줄 `case altTimeOffset, altTimeAlt` 아래에 `case appleEffort` 추가.
 
@@ -397,9 +397,9 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
         try c.encodeIfPresent(appleEffort, forKey: .appleEffort)
 ```
 
-- [ ] **Step 3: 빌드** → `BUILD SUCCEEDED`. 기존 디스크 캐시(v10)는 키가 없어 nil로 디코딩되므로 버전을 올리지 않는다.
+- [x] **Step 3: 빌드** → `BUILD SUCCEEDED`. 기존 디스크 캐시(v10)는 키가 없어 nil로 디코딩되므로 버전을 올리지 않는다.
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add MIMORunning/Models/Activity.swift
@@ -417,7 +417,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 HealthKit은 단위 테스트가 불가하다. 이 태스크는 빌드 + 시뮬레이터/실기기 로그로 검증한다.
 
-- [ ] **Step 1: 읽기 타입 추가**
+- [x] **Step 1: 읽기 타입 추가**
 
 `private static let readTypes: Set<HKObjectType> = { [ ... ] }()`를 다음으로 바꾼다(기존 배열 내용은 그대로 두고 `.union` 추가):
 
@@ -456,7 +456,7 @@ HealthKit은 단위 테스트가 불가하다. 이 태스크는 빌드 + 시뮬�
 
 기존 사용자는 `checkAuthorizationStatus()`의 재요청 경로(`:216`)에서 새 타입 권한 창을 한 번 보게 된다. 추가 코드 없음.
 
-- [ ] **Step 2: 강도 섹션 추가**
+- [x] **Step 2: 강도 섹션 추가**
 
 `// MARK: - Pause Intervals` 바로 위(`enrich` 함수 뒤)에 새 섹션을 넣는다:
 
@@ -618,7 +618,7 @@ private final class MRResumeOnce: @unchecked Sendable {
 
 `metricHistoryCacheURL(_:usePounds:)`는 파일에 이미 존재한다(`:3205` 부근에서 사용). `.easyEffortPace`는 Task 12에서 추가되므로 **Task 12 전까지는 `syncUserEfforts`의 마지막 줄을 주석 처리**하고, Task 12에서 주석을 푼다.
 
-- [ ] **Step 3: fetchActivities 훅**
+- [x] **Step 3: fetchActivities 훅**
 
 `fetchActivities(forced:)` 안, `migrateWorkoutTypeCacheEntries()` 호출 바로 아래에:
 
@@ -627,13 +627,13 @@ private final class MRResumeOnce: @unchecked Sendable {
         Task { await self.refreshEffortMap() }
 ```
 
-- [ ] **Step 4: 빌드** → `BUILD SUCCEEDED`. Swift 6 경고(`Sendable`)가 에러면 `runEffortRelationshipQuery` 클로저에서 `store`·`gate`만 캡처하는지 확인한다.
+- [x] **Step 4: 빌드** → `BUILD SUCCEEDED`. Swift 6 경고(`Sendable`)가 에러면 `runEffortRelationshipQuery` 클로저에서 `store`·`gate`만 캡처하는지 확인한다.
 
-- [ ] **Step 5: 시뮬레이터/실기기 확인**
+- [x] **Step 5: 시뮬레이터/실기기 확인**
 
 앱 실행 → 콘솔에 `[강도] Apple 강도 맵 N건` 로그. 워치 런이 없는 시뮬레이터는 0건이 정상.
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add MIMORunning/Health/HealthKitManager.swift
@@ -650,7 +650,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `MIMORunning/Views/EffortScaleView.swift`
 - Modify: `MIMORunning/Views/ActivityDetailView.swift:216` (호출), `:2657-2720` (StorySection)
 
-- [ ] **Step 1: EffortScaleView 작성**
+- [x] **Step 1: EffortScaleView 작성**
 
 ```swift
 import SwiftUI
@@ -831,7 +831,7 @@ struct EffortScaleView: View {
 }
 ```
 
-- [ ] **Step 2: StorySection에 배치**
+- [x] **Step 2: StorySection에 배치**
 
 `StorySection`에 활동 유형과 Apple 값을 넘긴다. 구조체 선언부(`:2657`) 수정:
 
@@ -894,7 +894,7 @@ private struct StorySection: View {
                                  appleEffort: detail?.appleEffort ?? manager.appleEffort(for: activity.id))
 ```
 
-- [ ] **Step 3: 상세 진입 시 Apple 값 재조회**
+- [x] **Step 3: 상세 진입 시 Apple 값 재조회**
 
 `ActivityDetailView`의 `.task` 블록(`:428`) 안, 러닝 경로의 `detail = await manager.fetchDetail(for: activity.id)` 바로 다음 줄에:
 
@@ -904,11 +904,11 @@ private struct StorySection: View {
 
 `detail`은 `@State private var detail: ActivityDetail?`이고 `appleEffort`는 `var`이므로 대입 가능.
 
-- [ ] **Step 4: 빌드 → 시뮬레이터 확인**
+- [x] **Step 4: 빌드 → 시뮬레이터 확인**
 
 러닝 상세 → 러닝화 피커 아래에 강도 카드. 막대 탭 → 값 저장 → 배지 "내 입력". 걷기 상세에는 카드가 없어야 한다. 값 없음 상태에서 헤더가 "오늘 얼마나 힘들었나요?"인지 확인.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add MIMORunning/Views/EffortScaleView.swift MIMORunning/Views/ActivityDetailView.swift
@@ -925,7 +925,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `MIMORunning/Insight/EffortBaseline.swift`
 - Test: `MIMORunningTests/EffortBaselineTests.swift`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 ```swift
 import Testing
@@ -972,9 +972,9 @@ struct EffortBaselineTests {
 }
 ```
 
-- [ ] **Step 2: 실패 확인** — `cannot find 'EffortBaseline'`
+- [x] **Step 2: 실패 확인** — `cannot find 'EffortBaseline'`
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 ```swift
 import Foundation
@@ -1017,9 +1017,9 @@ enum EffortBaseline {
 
 `WorkoutTypeClassifier.median(_ values: [Double]) -> Double`은 `Insight/WorkoutTypeClassifier.swift:90`에 이미 있다(빈 배열 → 0).
 
-- [ ] **Step 4: 통과 확인** — `EffortBaselineTests` 4 passed
+- [x] **Step 4: 통과 확인** — `EffortBaselineTests` 4 passed
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add MIMORunning/Insight/EffortBaseline.swift MIMORunningTests/EffortBaselineTests.swift
@@ -1036,7 +1036,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `MIMORunning/Insight/EffortRules.swift`
 - Test: `MIMORunningTests/EffortRulesTests.swift`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 ```swift
 import Testing
@@ -1144,9 +1144,9 @@ struct EffortRulesTests {
 }
 ```
 
-- [ ] **Step 2: 실패 확인** — `cannot find 'EffortRuleInput'`
+- [x] **Step 2: 실패 확인** — `cannot find 'EffortRuleInput'`
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 ```swift
 import Foundation
@@ -1289,9 +1289,9 @@ enum EffortRules {
 
 `SplitData`(`Models/Activity.swift:198`)는 memberwise init(9개 필드)이며 테스트 헬퍼 `split()`이 그 순서를 따른다.
 
-- [ ] **Step 4: 통과 확인** — `EffortRulesTests` 8 passed
+- [x] **Step 4: 통과 확인** — `EffortRulesTests` 8 passed
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add MIMORunning/Insight/EffortRules.swift MIMORunningTests/EffortRulesTests.swift
@@ -1308,7 +1308,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `MIMORunning/Insight/RunInsightEngine.swift:362-376` (시그니처), switch 종료 직후
 - Modify: `MIMORunning/Views/ActivityDetailView.swift:791-830` (loadInsights), `:1255-1340` (InsightCard)
 
-- [ ] **Step 1: 엔진 시그니처 확장**
+- [x] **Step 1: 엔진 시그니처 확장**
 
 `static func insights(` 매개변수 목록의 `planWeeklyTargetKm: Double? = nil` 뒤에 추가:
 
@@ -1318,7 +1318,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
         effortBaseline: Int? = nil
 ```
 
-- [ ] **Step 2: 규칙 결과 병합**
+- [x] **Step 2: 규칙 결과 병합**
 
 함수 끝 `return (Array(results.prefix(4)), segSource, fadeKm)`(`:480`) 바로 앞에 넣고, `return`의 상한을 강도 문장 수만큼 늘린다(강도 문장이 유형별 생성기 결과를 밀어내지 않도록):
 
@@ -1341,7 +1341,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 기존 `return (Array(results.prefix(4)), segSource, fadeKm)` 줄은 삭제한다.
 
-- [ ] **Step 3: ActivityDetailView — 강도·기준선 계산과 전달**
+- [x] **Step 3: ActivityDetailView — 강도·기준선 계산과 전달**
 
 `ActivityDetailView` 구조체 안(`@State private var runInsights` 근처)에 계산 프로퍼티 추가:
 
@@ -1380,7 +1380,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
         }
 ```
 
-- [ ] **Step 4: InsightCard — 악조건 극복 detail에 강도 덧붙임**
+- [x] **Step 4: InsightCard — 악조건 극복 detail에 강도 덧붙임**
 
 `private struct InsightCard: View`(`:1255`)에 프로퍼티 추가:
 
@@ -1414,11 +1414,11 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
                                     effortValue: resolvedEffort?.value)
 ```
 
-- [ ] **Step 5: 빌드 → 시뮬레이터 확인**
+- [x] **Step 5: 빌드 → 시뮬레이터 확인**
 
 러닝 상세에서 강도를 7로 바꾸면 종합 패널의 인사이트 카드 목록 맨 앞에 강도 문장이 나타나야 한다(기준선이 없으면 이지런 7 이상만). 강도 값을 지우면 문장이 사라진다.
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add MIMORunning/Insight/RunInsightEngine.swift MIMORunning/Views/ActivityDetailView.swift
@@ -1435,7 +1435,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `MIMORunning/Engine/EffortLoad.swift`
 - Test: `MIMORunningTests/EffortLoadTests.swift`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 ```swift
 import Testing
@@ -1555,9 +1555,9 @@ struct EffortLoadTests {
 }
 ```
 
-- [ ] **Step 2: 실패 확인** — `cannot find 'EffortLoad'`
+- [x] **Step 2: 실패 확인** — `cannot find 'EffortLoad'`
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 ```swift
 import Foundation
@@ -1699,9 +1699,9 @@ enum EffortLoad {
 }
 ```
 
-- [ ] **Step 4: 통과 확인** — `EffortLoadTests` 11 passed. `weeklyTotalsDailyCoverageMean`의 `dailyMeanEffort[0] == 5`는 `(4+6)/2`.
+- [x] **Step 4: 통과 확인** — `EffortLoadTests` 11 passed. `weeklyTotalsDailyCoverageMean`의 `dailyMeanEffort[0] == 5`는 `(4+6)/2`.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add MIMORunning/Engine/EffortLoad.swift MIMORunningTests/EffortLoadTests.swift
@@ -1718,7 +1718,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `MIMORunning/Views/EffortLoadCard.swift`
 - Modify: `MIMORunning/Views/GrowthView.swift` — `@Query` 추가(`:93` 근처), body `weeklySection` 아래(`:247`), `.onAppear`(`:262`)
 
-- [ ] **Step 1: 카드 뷰**
+- [x] **Step 1: 카드 뷰**
 
 ```swift
 import SwiftUI
@@ -1808,7 +1808,7 @@ struct EffortLoadCard: View {
 }
 ```
 
-- [ ] **Step 2: GrowthView 연결**
+- [x] **Step 2: GrowthView 연결**
 
 `@Query private var allArchives: [RaceArchive]`(`:93`) 아래에:
 
@@ -1852,11 +1852,11 @@ body의 `weeklySection` 바로 아래(`paceSection` 위)에:
 
 타입체커 시간 초과가 나면(`GrowthView.swift:242` 주석 참고) onChange를 `MRAdviceCardView()` 뒤가 아닌 `EffortLoadCard` 자체에 붙인다.
 
-- [ ] **Step 3: 빌드 → 시뮬레이터**
+- [x] **Step 3: 빌드 → 시뮬레이터**
 
 성장 탭에 주간 거리 아래 카드. 이번 주 러닝이 없으면 카드 없음. 상세에서 강도 입력 후 돌아오면 막대가 갱신되어야 한다.
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add MIMORunning/Views/EffortLoadCard.swift MIMORunning/Views/GrowthView.swift
@@ -1874,7 +1874,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `MIMORunningTests/EffortPaceTrendTests.swift`
 - Modify: `MIMORunning/Models/Activity.swift:300-370`, `MIMORunning/Health/HealthKitManager.swift` (`fetchMetricHistoryFromHealthKit`, `invalidateRunningMetricHistoryCache`, `syncUserEfforts` 주석 해제), `MIMORunning/Views/GrowthView.swift:856,1100,~1465,863`, `MIMORunning/Views/GrowthShareCardView.swift:318`, `MIMORunning/Views/ActivityDetailView.swift:708`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 ```swift
 import Testing
@@ -1919,9 +1919,9 @@ struct EffortPaceTrendTests {
 }
 ```
 
-- [ ] **Step 2: 실패 확인** — `cannot find 'EffortPaceTrend'`
+- [x] **Step 2: 실패 확인** — `cannot find 'EffortPaceTrend'`
 
-- [ ] **Step 3: EffortPaceTrend 구현**
+- [x] **Step 3: EffortPaceTrend 구현**
 
 ```swift
 import Foundation
@@ -1950,7 +1950,7 @@ enum EffortPaceTrend {
 }
 ```
 
-- [ ] **Step 4: TrendMetric 케이스**
+- [x] **Step 4: TrendMetric 케이스**
 
 `Models/Activity.swift` `enum TrendMetric`:
 
@@ -1971,13 +1971,13 @@ enum EffortPaceTrend {
             return "\(s / 60)'\(String(format: "%02d", s % 60))\" \(unit)"
 ```
 
-- [ ] **Step 5: 나머지 exhaustive switch**
+- [x] **Step 5: 나머지 exhaustive switch**
 
 - `Views/GrowthShareCardView.swift:318` switch에 `case .easyEffortPace: return "\(sign)\(Int(absChange.rounded()))s \(arrow)"`
 - `Views/ActivityDetailView.swift:708` `currentValue(for:)`에 `case .easyEffortPace: return nil`
 - 빌드 시 컴파일러가 알려주는 다른 `switch metric` 비완전 지점에도 같은 의미로 케이스를 추가한다(라벨은 `koreanLabel`, 값 포맷은 `formattedValue`를 그대로 쓰는 곳은 수정 불필요).
 
-- [ ] **Step 6: HealthKitManager 히스토리**
+- [x] **Step 6: HealthKitManager 히스토리**
 
 `fetchMetricHistoryFromHealthKit(_:from:usePounds:)`의 `case .hrRecovery1:` 아래에:
 
@@ -2005,7 +2005,7 @@ enum EffortPaceTrend {
 
 `invalidateRunningMetricHistoryCache()`의 `runningMetrics` 배열에 `.easyEffortPace` 추가. `syncUserEfforts`의 주석 처리한 마지막 줄(`metricHistoryCacheURL(.easyEffortPace ...)` 삭제)을 활성화한다.
 
-- [ ] **Step 7: GrowthView**
+- [x] **Step 7: GrowthView**
 
 `:856`과 `:1100`의 `runningMetrics` 배열 끝에 `.easyEffortPace` 추가.
 
@@ -2037,11 +2037,11 @@ enum EffortPaceTrend {
             }
 ```
 
-- [ ] **Step 8: 빌드 + 테스트**
+- [x] **Step 8: 빌드 + 테스트**
 
 빌드 → `BUILD SUCCEEDED`. `EffortPaceTrendTests` 4 passed. 성장 탭 "주간 지표 추세" 그리드에 "쉬운 날 페이스" 스파크 카드가 생긴다(데이터 없으면 기존 빈 상태 표시).
 
-- [ ] **Step 9: 커밋**
+- [x] **Step 9: 커밋**
 
 ```bash
 git add MIMORunning/Engine/EffortPaceTrend.swift MIMORunningTests/EffortPaceTrendTests.swift \
@@ -2060,7 +2060,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `MIMORunning/Views/MRRacePlanView.swift` — `MRRacePlanCard`(`:53-60`, `:272`), `MRWeekTable`(`:295-301`, `:599` 근처, `:704` 근처), `MRRacePlanSection`(`:889`, `:915`)
 - Modify: `MIMORunning/Views/MeView.swift:27`, `:215`
 
-- [ ] **Step 1: MeView에서 문장 계산·동기화**
+- [x] **Step 1: MeView에서 문장 계산·동기화**
 
 `MeView`에 `@Query private var allStories: [WorkoutStory]`가 없으면 추가(`SwiftData` import 있음). 계산 프로퍼티:
 
@@ -2091,7 +2091,7 @@ MeView 최상위 modifier 체인에 동기화 추가:
         .onAppear { manager.syncUserEfforts(from: allStories) }
 ```
 
-- [ ] **Step 2: MRRacePlanSection → MRRacePlanCard → MRWeekTable 전달**
+- [x] **Step 2: MRRacePlanSection → MRRacePlanCard → MRWeekTable 전달**
 
 `MRRacePlanSection`(`:889`)에 `var recoveryEffortNote: String? = nil` 추가. `:915`의 `MRRacePlanCard(check: c, isExpanded: isExpanded, runs: engine.runs, snapshot: snapshot(for: c))`에 `recoveryEffortNote: recoveryEffortNote` 인자 추가(trailing closure 앞).
 
@@ -2099,7 +2099,7 @@ MeView 최상위 modifier 체인에 동기화 추가:
 
 `MRWeekTable`(`:295`)에 `var recoveryEffortNote: String? = nil` 추가.
 
-- [ ] **Step 3: 주 행에 표시**
+- [x] **Step 3: 주 행에 표시**
 
 라이브 플랜 분기 — `if !w.breakdown.isEmpty { Text(localizedBreakdown(w.breakdown)) ... }`(`:704-708`) 바로 아래:
 
@@ -2123,11 +2123,11 @@ MeView 최상위 modifier 체인에 동기화 추가:
 
 `MRPlanWeekSummary`에 `phase`가 있는지 확인(`:445`에서 `snapshotWeeks.map(\.phase)`로 이미 사용 중이므로 존재).
 
-- [ ] **Step 4: 빌드 → 확인**
+- [x] **Step 4: 빌드 → 확인**
 
 나 탭 → 대회 계획 → 이번 주가 회복/테이퍼 단계이고 조건이 맞을 때만 노란 한 줄. 프리뷰(`:1048`, `:1055`)는 기본값 nil로 컴파일된다.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add MIMORunning/Views/MRRacePlanView.swift MIMORunning/Views/MeView.swift
@@ -2143,7 +2143,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Modify: `FEATURES.md`
 
-- [ ] **Step 1: 전체 테스트**
+- [x] **Step 1: 전체 테스트**
 
 ```bash
 xcodebuild test -project MIMORunning.xcodeproj -scheme MIMORunning \
@@ -2152,7 +2152,7 @@ xcodebuild test -project MIMORunning.xcodeproj -scheme MIMORunning \
 
 Expected: 새 스위트 6개 포함 전부 passed, 기존 스위트 회귀 없음.
 
-- [ ] **Step 2: 수동 시나리오 점검(시뮬레이터 또는 실기기)**
+- [x] **Step 2: 수동 시나리오 점검(시뮬레이터 또는 실기기)**
 
 1. 러닝 상세: 강도 카드 위치(러닝화 아래) · 탭/드래그 · 배지 전환 · "Apple 값으로" 되돌리기 · 걷기 상세에는 없음.
 2. 상세 인사이트: 강도 7 입력 후 강도 문장 등장, 삭제 후 사라짐.
@@ -2160,11 +2160,11 @@ Expected: 새 스위트 6개 포함 전부 passed, 기존 스위트 회귀 없�
 4. 나 탭 플래너: 회복 주 문장(조건 맞을 때).
 5. iOS 17 시뮬레이터(있으면): Apple 값 없이 입력만 동작, 크래시 없음.
 
-- [ ] **Step 3: FEATURES.md 갱신**
+- [x] **Step 3: FEATURES.md 갱신**
 
 기존 항목 형식을 따라 "운동 강도(RPE)" 절을 추가한다: Apple 값 읽기(iOS 18) · 앱 내 입력(러닝만, 10막대) · 우선순위(내 입력 > Apple 수동 > Apple 추정) · 상세 인사이트 3종(개인 8주 기준선) · 성장 탭 sRPE 부하 카드(커버리지 50%·유효 3주 규칙) · 쉬운 날 페이스 추이 · 플래너 회복 주 문장 · 하지 않는 것(HealthKit 쓰기·심박 추정·공유 카드).
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add FEATURES.md
