@@ -76,6 +76,44 @@ struct EffortLoadTests {
         #expect(EffortLoad.acuteChronic(current: week(1200, coverage: 0.25), previous: [week(800, coverage: 1), week(800, coverage: 1), week(800, coverage: 1)]) == nil)
     }
 
+    @Test func restWeeksCountAsZeroInChronic() {
+        let cur = week(1200, coverage: 1)
+        // 800, 휴식, 800, 800 → chronic 600 → ratio 2.0 veryHigh
+        let r = EffortLoad.acuteChronic(current: cur, previous: [week(800, coverage: 1), nil, week(800, coverage: 1), week(800, coverage: 1)])!
+        #expect(abs(r.ratio - 2.0) < 0.0001)
+        #expect(r.label == .veryHigh)
+        // 휴식 주도 유효 주로 센다: 800, nil, nil → 3주 유효, chronic 266.7
+        #expect(EffortLoad.acuteChronic(current: cur, previous: [week(800, coverage: 1), nil, nil]) != nil)
+        // 러닝은 있는데 커버리지 미달인 주는 제외
+        #expect(EffortLoad.acuteChronic(current: cur, previous: [week(800, coverage: 0.25), nil, nil]) == nil)
+    }
+
+    @Test func weeksCountZeroIsEmpty() {
+        #expect(EffortLoad.weeks(runs: [], endingAt: monday, count: 0, calendar: cal).isEmpty)
+    }
+
+    @Test func monotonySingleActiveDayIsLow() {
+        let m = EffortLoad.monotony(daily: [700, 0, 0, 0, 0, 0, 0])!
+        #expect(m < 1.0)
+    }
+
+    @Test func recoveryWeekExceedsAtExactBoundary() {
+        // median 5 → 임계 6.0
+        #expect(EffortLoad.recoveryWeekExceeds(meanEffort: 6.0, coverage: 1, eightWeekEfforts: [4, 5, 6]))
+        #expect(!EffortLoad.recoveryWeekExceeds(meanEffort: 5.99, coverage: 1, eightWeekEfforts: [4, 5, 6]))
+    }
+
+    @Test func runsMapperKeepsRunningOnly() {
+        let id = UUID()
+        let acts = [Activity(id: id, type: .running, date: monday, duration: 1800, distance: 5000, calories: nil, avgHeartRate: nil),
+                    Activity(id: UUID(), type: .walking, date: monday, duration: 1800, distance: 2000, calories: nil, avgHeartRate: nil)]
+        let idx = EffortIndex(user: [id.uuidString: 4], apple: [:])
+        let runs = EffortLoad.runs(from: acts, index: idx)
+        #expect(runs.count == 1)
+        #expect(runs[0].durationMin == 30)
+        #expect(runs[0].effort == 4)
+    }
+
     @Test func weekOverWeek() {
         #expect(abs(EffortLoad.weekOverWeek(current: week(1180, coverage: 1), previous: week(1000, coverage: 0.5))! - 0.18) < 0.0001)
         #expect(EffortLoad.weekOverWeek(current: week(1180, coverage: 1), previous: week(1000, coverage: 0.25)) == nil)

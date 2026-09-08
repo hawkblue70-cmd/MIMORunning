@@ -565,6 +565,14 @@ struct MRWeekTable: View {
                             }
                         }
 
+                        // 접힌 상태에서도 보여야 하는 한 줄 — 회복·테이퍼 주 경고
+                        if isCurr, EffortLoad.isRecoveryPhase(snap.phase), let note = recoveryEffortNote {
+                            Text(note)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color(hex: "FFD166"))
+                                .padding(.leading, 36).padding(.top, 2)
+                        }
+
                         if expanded.contains(snap.idx) {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 12) {
@@ -606,11 +614,6 @@ struct MRWeekTable: View {
                                     Text(bd)
                                         .font(.system(size: 11))
                                         .foregroundStyle(.white.opacity(0.60))
-                                }
-                                if isCurr, EffortLoad.isRecoveryPhase(snap.phase), let note = recoveryEffortNote {
-                                    Text(note)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Color(hex: "FFD166"))
                                 }
                             }
                             .padding(.leading, 36).padding(.bottom, 4)
@@ -664,6 +667,14 @@ struct MRWeekTable: View {
                             }
                         }
 
+                        // 접힌 상태에서도 보여야 하는 한 줄 — 회복·테이퍼 주 경고
+                        if isCurrent(w), EffortLoad.isRecoveryPhase(w.phase), let note = recoveryEffortNote {
+                            Text(note)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color(hex: "FFD166"))
+                                .padding(.leading, 36).padding(.top, 2)
+                        }
+
                         if w.isVolRecord && histMaxWeeklyKm > 0 {
                             Text(L.s("└ 지난 1년 최고치(\(Int(histMaxWeeklyKm.rounded()))km)에 도달", "└ Reached 1-yr high (\(Int(histMaxWeeklyKm.rounded())) km)"))
                                 .font(.system(size: 10))
@@ -714,11 +725,6 @@ struct MRWeekTable: View {
                                     Text(localizedBreakdown(w.breakdown))
                                         .font(.system(size: 11))
                                         .foregroundStyle(.white.opacity(0.60))
-                                }
-                                if isCurrent(w), EffortLoad.isRecoveryPhase(w.phase), let note = recoveryEffortNote {
-                                    Text(note)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Color(hex: "FFD166"))
                                 }
                             }
                             .padding(.leading, 36).padding(.bottom, 4)

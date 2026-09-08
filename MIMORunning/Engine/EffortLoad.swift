@@ -68,13 +68,20 @@ enum EffortLoad {
 
     /// count주, 오래된→최신. 마지막 원소가 `endingAt` 주. 러닝 없는 주는 nil.
     static func weeks(runs: [Run], endingAt lastWeekStart: Date, count: Int, calendar: Calendar = .current) -> [WeekLoad?] {
-        (0..<count).reversed().map { back in
+        guard count > 0 else { return [] }
+        return (0..<count).reversed().map { back in
             guard let ws = calendar.date(byAdding: .day, value: -7 * back, to: lastWeekStart) else { return nil }
             return weekly(runs: runs, weekStart: ws, calendar: calendar)
         }
     }
 
-    /// 평균 ÷ 모표준편차. sd 0이면 nil.
+    /// 러닝 활동 → Run. 걷기·하이킹은 제외.
+    static func runs(from activities: [Activity], index: EffortIndex) -> [Run] {
+        activities.filter { $0.type == .running }
+            .map { Run(date: $0.date, durationMin: $0.duration / 60, effort: index.resolve($0.id)?.value) }
+    }
+
+    /// 평균 ÷ 모표준편차(모집단 기준). 임계값 2.0은 이 정의(모표준편차)에 맞춰 고른 값이다. sd 0이면 nil.
     static func monotony(daily: [Double]) -> Double? {
         guard !daily.isEmpty else { return nil }
         let mean = daily.reduce(0, +) / Double(daily.count)
@@ -91,25 +98,29 @@ enum EffortLoad {
         return .veryHigh
     }
 
-    /// 이번 주 ÷ 직전 4주 평균. 커버리지 ≥ 0.5인 이전 주가 3개 이상이어야 한다.
-    static func acuteChronic(current: WeekLoad, previous: [WeekLoad]) -> (ratio: Double, label: RatioLabel)? {
+    /// 이번 주 ÷ 직전 4주 평균. nil 주(러닝 없음)는 부하 0으로 세고, 러닝은 있는데 강도 커버리지 < 0.5인 주만 제외한다.
+    /// 유효 주가 3개 이상이어야 한다.
+    static func acuteChronic(current: WeekLoad, previous: [WeekLoad?]) -> (ratio: Double, label: RatioLabel)? {
         guard current.coverage >= minCoverage else { return nil }
-        let valid = previous.filter { $0.coverage >= minCoverage }
+        let valid: [Double] = previous.compactMap { w in
+            guard let w else { return 0 }            // 러닝 없는 주 = 부하 0
+            return w.coverage >= minCoverage ? w.total : nil
+        }
         guard valid.count >= minChronicWeeks else { return nil }
-        let chronic = valid.map(\.total).reduce(0, +) / Double(valid.count)
+        let chronic = valid.reduce(0, +) / Double(valid.count)
         guard chronic > 0 else { return nil }
         let r = current.total / chronic
         return (r, ratioLabel(r))
     }
 
-    /// 지난주 대비 증감률. 두 주 모두 커버리지 ≥ 0.5.
+    /// 지난주(바로 직전 주) 대비 증감률. 지난주에 러닝이 없거나 커버리지 미달이면 nil.
     static func weekOverWeek(current: WeekLoad, previous: WeekLoad?) -> Double? {
         guard let p = previous, p.coverage >= minCoverage, current.coverage >= minCoverage, p.total > 0 else { return nil }
         return current.total / p.total - 1
     }
 
     /// 카드 하단 문장 우선순위: 단조도 → 28일 비교(유지는 침묵) → nil
-    static func sentenceKind(current: WeekLoad, previous: [WeekLoad]) -> SentenceKind? {
+    static func sentenceKind(current: WeekLoad, previous: [WeekLoad?]) -> SentenceKind? {
         if current.coverage >= 1.0, let m = monotony(daily: current.daily), m >= monotonyThreshold {
             return .monotony
         }

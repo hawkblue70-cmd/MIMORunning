@@ -479,14 +479,15 @@ struct GrowthView: View {
 
     // MARK: - Sections
 
-    /// 이번 주 + 직전 4주 sRPE 부하. 이번 주 러닝이 없으면 nil.
-    private var effortLoadWeeks: (current: EffortLoad.WeekLoad, previous: [EffortLoad.WeekLoad])? {
-        let idx = manager.effortIndex
-        let runs = runsCache.map { EffortLoad.Run(date: $0.date, durationMin: $0.duration / 60, effort: idx.resolve($0.id)?.value) }
+    /// 이번 주 + 직전 4주 sRPE 부하. 이번 주 러닝이 없거나 강도 평가가 하나도 없으면 nil.
+    private var effortLoadWeeks: (current: EffortLoad.WeekLoad, previous: [EffortLoad.WeekLoad?])? {
         let monday = EffortLoad.mondayStart(of: Date())
+        // 5주 창만 훑으면 충분하다 — 그 이전 러닝은 어차피 어떤 주에도 들어가지 않는다.
+        let windowStart = Calendar.current.date(byAdding: .weekOfYear, value: -5, to: monday) ?? monday
+        let runs = EffortLoad.runs(from: runsCache.filter { $0.date >= windowStart }, index: manager.effortIndex)
         let ws = EffortLoad.weeks(runs: runs, endingAt: monday, count: 5)
-        guard let cur = ws.last ?? nil else { return nil }
-        return (cur, ws.dropLast().compactMap { $0 })
+        guard let cur = ws.last ?? nil, cur.coveredCount > 0 else { return nil }
+        return (cur, Array(ws.dropLast()))
     }
 
     private var weeklySection: some View {

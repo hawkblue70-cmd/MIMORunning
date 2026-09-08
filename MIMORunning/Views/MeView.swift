@@ -66,9 +66,10 @@ struct MeView: View {
         let idx = manager.effortIndex
         let runs = manager.activities.filter { $0.type == .running }
         let monday = EffortLoad.mondayStart(of: Date())
-        let loadRuns = runs.map { EffortLoad.Run(date: $0.date, durationMin: $0.duration / 60, effort: idx.resolve($0.id)?.value) }
+        let loadRuns = EffortLoad.runs(from: manager.activities, index: idx)
         guard let cur = EffortLoad.weekly(runs: loadRuns, weekStart: monday) else { return nil }
-        let eightWeeksAgo = monday.addingTimeInterval(-56 * 86_400)
+        // 서머타임 경계에서도 정확히 8주 전이 되도록 캘린더로 계산한다.
+        let eightWeeksAgo = Calendar.current.date(byAdding: .day, value: -56, to: monday) ?? monday
         let past = runs.filter { $0.date >= eightWeeksAgo && $0.date < monday }.compactMap { idx.resolve($0.id)?.value }
         guard EffortLoad.recoveryWeekExceeds(meanEffort: cur.meanEffort, coverage: cur.coverage, eightWeekEfforts: past) else { return nil }
         return AppLanguage.shared.s("회복 주인데 평균 강도가 평소보다 높아요.", "Recovery week, but your average effort is above usual.")

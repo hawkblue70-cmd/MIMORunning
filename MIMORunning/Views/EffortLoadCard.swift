@@ -3,7 +3,7 @@ import SwiftUI
 /// 성장 탭 — 이번 주 sRPE 부하. 일별 막대(색 = 그날 평균 강도), 합계·커버리지, 지난주 대비, 하단 문장 1개.
 struct EffortLoadCard: View {
     let current: EffortLoad.WeekLoad
-    let previous: [EffortLoad.WeekLoad]     // 직전 4주 중 존재하는 주(오래된→최신)
+    let previous: [EffortLoad.WeekLoad?]    // 직전 4주, 오래된→최신. nil = 러닝 없는 주
 
     private var L: AppLanguage { AppLanguage.shared }
 
@@ -35,8 +35,9 @@ struct EffortLoadCard: View {
     }
 
     private var headline: some View {
-        HStack(spacing: 8) {
-            Text(L.s("이번 주 \(Int(current.total.rounded())) AU", "This week \(Int(current.total.rounded())) AU"))
+        let totalText = current.total.rounded().formatted(.number.grouping(.automatic))
+        return HStack(spacing: 8) {
+            Text(L.s("이번 주 \(totalText) AU", "This week \(totalText) AU"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
             Text(L.s("러닝 \(current.runCount)회 중 \(current.coveredCount)회 강도 있음",
@@ -44,10 +45,13 @@ struct EffortLoadCard: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Spacer()
-            if let delta = EffortLoad.weekOverWeek(current: current, previous: previous.last) {
-                Text(String(format: "%@%.0f%%", delta >= 0 ? "+" : "", delta * 100))
+            // 직전 주 = previous의 마지막 원소(러닝 없는 주면 nil)
+            if let delta = EffortLoad.weekOverWeek(current: current, previous: previous.last ?? nil) {
+                let pct = Int((delta * 100).rounded())
+                let sign = pct > 0 ? "+" : ""
+                Text(L.s("지난주 대비 \(sign)\(pct)%", "vs last week \(sign)\(pct)%"))
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(delta >= 0 ? Theme.violet : .secondary)
+                    .foregroundStyle(.white.opacity(0.85))
             }
         }
     }
@@ -62,7 +66,7 @@ struct EffortLoadCard: View {
                         RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.05))
                         if current.daily[i] > 0 {
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(EffortPalette.color(for: Int((current.dailyMeanEffort[i] ?? 5).rounded())))
+                                .fill(EffortPalette.color(for: EffortResolver.clamp(current.dailyMeanEffort[i] ?? 5)))
                                 .frame(height: max(4, 56 * current.daily[i] / maxAU))
                         }
                     }
@@ -73,12 +77,24 @@ struct EffortLoadCard: View {
                 }
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L.s("요일별 부하", "Daily load"))
+        .accessibilityValue(barsAccessibilityValue(labels: labels))
+    }
+
+    /// 부하가 있는 날만 "월 280, 토 270" 형태로 읽어 준다.
+    private func barsAccessibilityValue(labels: [String]) -> String {
+        let parts = (0..<7).compactMap { i -> String? in
+            guard current.daily[i] > 0 else { return nil }
+            return "\(labels[i]) \(Int(current.daily[i].rounded()))"
+        }
+        return parts.isEmpty ? L.s("기록 없음", "No load") : parts.joined(separator: ", ")
     }
 
     private func sentence(_ kind: EffortLoad.SentenceKind) -> String {
         switch kind {
-        case .monotony: return L.s("휴식일 없이 비슷한 부하가 이어졌어요. 쉬운 날과 힘든 날을 나눠 보세요.",
-                                   "Similar load every day with no rest. Try separating easy and hard days.")
+        case .monotony: return L.s("부하 편차가 거의 없었어요. 쉬운 날과 힘든 날을 나눠 보세요.",
+                                   "Very little variation in load. Try separating easy and hard days.")
         case .veryHigh: return L.s("최근 4주 평균보다 부하가 많이 높은 주예요.", "A much heavier week than your 4-week average.")
         case .high:     return L.s("평소보다 조금 높은 주예요.", "A slightly heavier week than usual.")
         case .low:      return L.s("회복 쪽으로 기운 주예요.", "A lighter, recovery-leaning week.")
