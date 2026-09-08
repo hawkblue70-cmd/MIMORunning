@@ -83,16 +83,24 @@ struct RecordBarChart: View {
         let points: [TrendPoint]
     }
 
+    /// 이 간격(일) 이상 비면 선을 끊는다 — 부상·여행 같은 긴 공백은 이어 그리지 않는다. 그보다 짧은 쉬는 날은 잇는다.
+    private static let lineBreakGapDays = 14
+
     private func segments(_ value: (RecordBar) -> Double?) -> [TrendSegment] {
         var result: [TrendSegment] = []
         var current: [TrendPoint] = []
+        var lastDate: Date? = nil
+        let cal = Calendar.current
         for bar in bars {
-            if let v = value(bar) {
-                current.append(TrendPoint(id: bar.id, y: v, color: barColor(bar)))
-            } else if !current.isEmpty {
+            guard let v = value(bar) else { continue }   // 기록 없는 구간은 건너뛰고 잇는다
+            if let last = lastDate,
+               let gap = cal.dateComponents([.day], from: last, to: bar.id).day,
+               gap >= Self.lineBreakGapDays, !current.isEmpty {
                 result.append(TrendSegment(id: result.count, points: current))
                 current = []
             }
+            current.append(TrendPoint(id: bar.id, y: v, color: barColor(bar)))
+            lastDate = bar.id
         }
         if !current.isEmpty { result.append(TrendSegment(id: result.count, points: current)) }
         return result
