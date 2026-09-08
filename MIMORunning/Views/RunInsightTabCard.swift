@@ -3859,8 +3859,8 @@ private struct PerformanceInsightCard: View {
     }
 
     // 강도 분포 가로 막대 3행의 치수 — 한 곳에서만 정한다.
-    private static let intensityLabelW: CGFloat = 40
-    private static let intensityValueW: CGFloat = 52
+    private static let intensityLabelW: CGFloat = 30   // "저강도" 8.5pt 폭 — 라벨과 막대 사이 빈칸 최소화
+    private static let intensityValueW: CGFloat = 26   // "25%" — 분은 제목의 총 분으로 충분해 비율만
     private static let intensityGap: CGFloat = 6
     private static let intensityTrackH: CGFloat = 10
     private static let intensityRowH: CGFloat = 12
@@ -3899,7 +3899,6 @@ private struct PerformanceInsightCard: View {
                 VStack(alignment: .leading, spacing: Self.intensityRowGap) {
                     ForEach(rows, id: \.tier) { row in
                         let pct = Int((row.frac * 100).rounded())
-                        let mins = Int((row.sec / 60).rounded())
                         HStack(spacing: Self.intensityGap) {
                             Text(row.tier.label)
                                 .font(.system(size: 8.5)).foregroundStyle(.white.opacity(0.8))
@@ -3926,7 +3925,7 @@ private struct PerformanceInsightCard: View {
                                 }
                             }
                             .frame(width: trackW, height: Self.intensityTrackH)
-                            Text(L.s("\(pct)% · \(mins)분", "\(pct)% · \(mins)m"))
+                            Text("\(pct)%")
                                 .font(.system(size: 8.5))
                                 .foregroundStyle(.white.opacity(0.75))
                                 .lineLimit(1).minimumScaleFactor(0.6)

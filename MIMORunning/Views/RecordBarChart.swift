@@ -56,7 +56,7 @@ struct RecordBarChart: View {
         static let compactPadding: CGFloat = 4
         /// y축 라벨 폭
         static let gutter: CGFloat = 40
-        static let compactGutter: CGFloat = 30
+        static let compactGutter: CGFloat = 24   // "6'00\"" 8pt 폭에 맞춤 — 압축 모드에서 플롯을 최대한 넓게
         /// 강도 범례 색 조각
         static let legendSwatch: CGFloat = 7
         static let compactLegendSwatch: CGFloat = 6
