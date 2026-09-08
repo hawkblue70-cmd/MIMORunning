@@ -1,14 +1,13 @@
 import SwiftUI
 import Charts
 
-/// 성장 탭 "기록 카드" — **세 줄을 위아래로 쌓아** 각자 **실제 축**으로 보여 준다.
+/// 성장 탭 "기록 카드" — **두 줄을 위아래로 쌓아** 각자 **실제 축**으로 보여 준다.
 ///
 /// 1. 거리 — 막대(색 = 그 구간 평균 강도), y축 km
 /// 2. 페이스 — 선 + 점(색 = 강도), y축 실제 페이스(**뒤집어서 위 = 빠름**), 평균 점선
-/// 3. 심박 — 선 + 점(색 = 강도), y축 실제 bpm, 평균 점선 (심박이 하나도 없으면 줄 자체를 안 그림)
 ///
-/// 정규화·칩·부하 선은 없다. 부하는 막대 길이 × 색이 이미 말해 준다.
-/// 세 줄은 같은 x 스케일·같은 축 여백을 쓰고, **한 번의 탭이 세 줄을 동시에 강조**한다.
+/// 정규화·칩·부하 선·심박 줄은 없다. 부하는 막대 길이 × 색이, 심박은 페이스가 대체로 말해 준다(정확한 bpm은 말풍선).
+/// 두 줄은 같은 x 스케일·같은 축 여백을 쓰고, **한 번의 탭이 두 줄을 동시에 강조**한다.
 struct RecordBarChart: View {
     let bars: [RecordBar]
     let period: RecordPeriod
@@ -58,11 +57,10 @@ struct RecordBarChart: View {
 
     // MARK: - 줄 정의
 
-    private enum Lane { case distance, pace, hr }
+    private enum Lane { case distance, pace }
 
     /// x 라벨은 **맨 아래 보이는 줄에만** 붙는다.
     private var bottomLane: Lane {
-        if hrDomain != nil { return .hr }
         if paceDomain != nil { return .pace }
         return .distance
     }
@@ -109,13 +107,6 @@ struct RecordBarChart: View {
         return (-slowest - Metrics.pacePad)...(-fastest + Metrics.pacePad)
     }
 
-    private var hrValues: [Double] { bars.compactMap(\.avgHR) }
-
-    private var hrDomain: ClosedRange<Double>? {
-        guard let lo = hrValues.min(), let hi = hrValues.max() else { return nil }
-        let pad = max(3, (hi - lo) * 0.15)
-        return (lo - pad)...(hi + pad)
-    }
 
     // MARK: - Body
 
@@ -126,7 +117,6 @@ struct RecordBarChart: View {
                 effortLegend
                 distanceLane
                 paceLane
-                hrLane
                 footnote
             } else {
                 Text(emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period"))
@@ -306,27 +296,7 @@ struct RecordBarChart: View {
         }
     }
 
-    // MARK: - 줄 ③ 심박 (없으면 줄 자체가 없다)
-
-    @ViewBuilder
-    private var hrLane: some View {
-        if let domain = hrDomain {
-            lane(title: L.s("심박", "Heart rate"),
-                 trailing: hrTrailing,
-                 height: Metrics.trendHeight,
-                 yDomain: domain,
-                 yLabel: { String(format: "%.0f", $0) },
-                 showsXAxis: bottomLane == .hr) {
-                trendMarks(segments { $0.avgHR },
-                           seriesName: L.s("심박", "Heart rate"),
-                           lineColor: Theme.heartRate.opacity(Metrics.lineOpacity),
-                           baseline: RecordSeries.hrBaseline(bars),
-                           baselineLabel: hrBaselineLabel)
-            }
-        }
-    }
-
-    /// 페이스·심박 줄이 공유하는 마크 묶음 — 평균 점선 + 이어진 구간 선 + 강도색 점.
+    /// 페이스 줄의 마크 묶음 — 평균 점선 + 이어진 구간 선 + 강도색 점.
     @ChartContentBuilder
     private func trendMarks(_ segs: [TrendSegment],
                             seriesName: String,
@@ -391,19 +361,9 @@ struct RecordBarChart: View {
         return parts.joined(separator: " · ")
     }
 
-    private var hrTrailing: String? {
-        guard let hr = summary.meanHR else { return nil }
-        return L.s("평균 \(Int(hr.rounded())) bpm", "avg \(Int(hr.rounded())) bpm")
-    }
-
     private var paceBaselineLabel: String {
         guard let mean = RecordSeries.paceBaseline(bars) else { return "" }
         return L.s("평균 \(paceText(mean))", "avg \(paceText(mean))")
-    }
-
-    private var hrBaselineLabel: String {
-        guard let hr = RecordSeries.hrBaseline(bars) else { return "" }
-        return L.s("평균 \(Int(hr.rounded()))", "avg \(Int(hr.rounded()))")
     }
 
     // MARK: - 색·강조
@@ -500,11 +460,10 @@ struct RecordBarChart: View {
         guard hasData else {
             return emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period")
         }
-        var parts = [L.s("거리 막대 · 페이스 · 심박 세 줄 차트",
-                         "Three stacked lanes: distance bars, pace and heart rate"),
+        var parts = [L.s("거리 막대 · 페이스 두 줄 차트",
+                         "Two stacked lanes: distance bars and pace"),
                      distanceTrailing]
         if let p = paceTrailing { parts.append(L.s("페이스 \(p)", "pace \(p)")) }
-        if let h = hrTrailing { parts.append(L.s("심박 \(h)", "heart rate \(h)")) }
         return parts.joined(separator: ", ")
     }
 

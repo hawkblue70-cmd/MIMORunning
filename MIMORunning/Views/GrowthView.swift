@@ -591,8 +591,8 @@ struct GrowthView: View {
     }
 
     private var mileageSubtitle: String {
-        AppLanguage.shared.s("막대 = 거리(색 = 강도) · 선 = 페이스·심박",
-                             "bars = distance (color = effort) · lines = pace, HR")
+        AppLanguage.shared.s("막대 = 거리(색 = 강도) · 선 = 페이스",
+                             "bars = distance (color = effort) · line = pace")
     }
 
     private var periodToggle: some View {
