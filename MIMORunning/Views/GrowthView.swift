@@ -258,7 +258,11 @@ struct GrowthView: View {
                         .padding(.top, 8)
                     }
                     .onAppear {
+                        // 상세에서 강도를 고치고 돌아오거나(활동 수 불변) 앱을 새로 켠 직후(.task가 동기화보다 먼저 돈 경우)에도
+                        // 강도 의존 캐시(유형별 평소 강도·기록 막대)가 최신 입력을 반영하도록 동기화 뒤 재계산
                         manager.syncUserEfforts(from: allStories)
+                        refreshRecordBars()
+                        refreshEffortTypeRows()
                         // refreshBacktest 진입부 폴백용 — 모든 호출 경로에서 대회 목록 보장
                         engine.persistedMatchesProvider = { [manager] in manager.persistedConfirmedMatches() }
                         // raceDetector 미준비 → 영속 키 폴백. 준비 완료 → onChange가 정식 목록으로 재실행
@@ -318,6 +322,7 @@ struct GrowthView: View {
             Task { await refreshFormObservation() }
         }
         .task {
+            manager.syncUserEfforts(from: allStories)   // 강도 의존 캐시 계산 전에 사용자 입력부터
             refreshChartCache()
             let bucket = manager.userLevel.bucket
             recordMetric = (bucket == .beginner || bucket == .novice) ? .time : .distance
