@@ -50,7 +50,7 @@ struct RecordBarChart: View {
         /// 공유 카드용 축소 높이
         static let exportPlotHeight: CGFloat = 130
         /// 좁은 열(compact)용 축소 높이
-        static let compactPlotHeight: CGFloat = 120
+        static let compactPlotHeight: CGFloat = 104
         static let padding: CGFloat = 14
         static let exportPadding: CGFloat = 12
         static let compactPadding: CGFloat = 4
@@ -220,9 +220,10 @@ struct RecordBarChart: View {
         VStack(alignment: .leading, spacing: compact ? 6 : 8) {
             if hasData {
                 if !isExport { calloutRow }
-                effortLegend
+                if !compact { effortLegend }
                 if !compact { axisHeader }
                 chart
+                if compact { effortLegend }          // 압축 모드: 범례를 날짜 축 아래로 — 위쪽 공간 절약
                 if !compact { footnote }
                 if !compact, let flow = flowComment { flowCommentView(flow) }   // 공유 카드(export)에도 붙인다
             } else {

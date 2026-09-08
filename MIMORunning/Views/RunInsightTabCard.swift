@@ -3937,11 +3937,8 @@ private struct PerformanceInsightCard: View {
                 .frame(width: geo.size.width, alignment: .leading)
             }
             .frame(height: Self.intensityRowH * 3 + Self.intensityRowGap * 2)
-            // 참고선 설명 2줄 — 막대 아래
-            VStack(alignment: .leading, spacing: 1) {
-                Text(L.s("점선 - 문헌값", "dashed - reference"))
-                Text(L.s("(지구력 종목)", "(endurance)"))
-            }
+            // 참고선 설명 한 줄 — 막대 아래
+            Text(L.s("점선 - 문헌값 (지구력 종목)", "dashed - reference (endurance)"))
             .font(.system(size: 8)).foregroundStyle(.white.opacity(0.7))
             .lineLimit(1).minimumScaleFactor(0.7)
             // 차트 바로 아래 문장 두 줄
@@ -3978,7 +3975,8 @@ private struct PerformanceInsightCard: View {
     private func sevenDayLoadView(load: SevenDayLoad) -> some View {
         let L = AppLanguage.shared
         VStack(alignment: .leading, spacing: 5) {
-            Text(L.s("강도 부하 · 14일", "Training load · 14d"))
+            // 제목에 이 러닝의 부하를 붙인다 — "강도 부하 · 14일 (이 러닝 73 AU)"
+            Text(sevenDayLoadTitle(load))
                 .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 .lineLimit(1).minimumScaleFactor(0.8)
             RecordBarChart(
@@ -3989,22 +3987,31 @@ private struct PerformanceInsightCard: View {
                 exportMode: true,
                 compact: true,
                 cardBackground: .clear,
-                highlightDate: load.runDay,
-                emphasisFrom: load.emphasisFrom
+                highlightDate: load.runDay      // 앞 7일도 같은 진하기 — 이전 7일 비교가 캡션에 있어 흐리게 할 이유가 없다
             )
             .environment(\.colorScheme, .dark)   // 카드가 어두운 배경 전용이라 차트의 secondary 색도 다크로
+            // 한 줄: "7일 1,276 AU · 이전 7일 1,832 AU"
             Text(sevenDayLoadCaption(load))
                 .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
-                .fixedSize(horizontal: false, vertical: true)
-            // "4주 평균 대비 낮음 — 회복 쪽으로 기운 주예요." 라벨과 문장을 한 줄에
+                .lineLimit(1).minimumScaleFactor(0.8)
+            // 한 줄: "4주 평균 대비 낮음, 회복 방향으로 진행 중" — 라벨 + 짧은 방향 문구
             let ratioLabel = sevenDayLoadRatioLabel(load)
             let sentence = load.sentence.map(sevenDayLoadSentence)
             if ratioLabel != nil || sentence != nil {
-                Text([ratioLabel, sentence].compactMap { $0 }.joined(separator: " — "))
+                Text([ratioLabel, sentence].compactMap { $0 }.joined(separator: L.s(", ", ", ")))
                     .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1).minimumScaleFactor(0.8)
             }
         }
+    }
+
+    /// "강도 부하 · 14일 (이 러닝 73 AU)" — 이 러닝 부하가 없으면 제목만.
+    private func sevenDayLoadTitle(_ load: SevenDayLoad) -> String {
+        let L = AppLanguage.shared
+        let base = L.s("강도 부하 · 14일", "Training load · 14d")
+        guard let t = load.thisRunAU else { return base }
+        let au = Int(t.rounded()).formatted(.number.grouping(.automatic))
+        return L.s("\(base) (이 러닝 \(au) AU)", "\(base) (this run \(au) AU)")
     }
 
     /// "4주 평균 대비 낮음" — 7일 부하 / 4주 평균 비율 라벨. 기준 없으면 nil.
@@ -4027,11 +4034,11 @@ private struct PerformanceInsightCard: View {
     private func sevenDayLoadSentence(_ kind: EffortLoad.SentenceKind) -> String {
         let L = AppLanguage.shared
         switch kind {
-        case .monotony: return L.s("부하 편차가 거의 없었어요. 쉬운 날과 힘든 날을 나눠 보세요.",
-                                   "Very little variation in load. Try separating easy and hard days.")
-        case .veryHigh: return L.s("최근 4주 평균보다 부하가 많이 높은 주예요.", "A much heavier week than your 4-week average.")
-        case .high:     return L.s("평소보다 조금 높은 주예요.", "A slightly heavier week than usual.")
-        case .low:      return L.s("회복 쪽으로 기운 주예요.", "A lighter, recovery-leaning week.")
+        // 라벨 뒤에 붙는 짧은 방향 문구 — 반폭 열에서 한 줄에 들어가야 한다
+        case .monotony: return L.s("부하 편차 적음 — 강약 나누기", "little variation — split easy/hard")
+        case .veryHigh: return L.s("부하 크게 증가 중 — 회복 챙기기", "rising sharply — protect recovery")
+        case .high:     return L.s("부하 조금 높은 편", "slightly heavier than usual")
+        case .low:      return L.s("회복 방향으로 진행 중", "trending toward recovery")
         }
     }
 
@@ -4039,9 +4046,6 @@ private struct PerformanceInsightCard: View {
         let L = AppLanguage.shared
         func au(_ v: Double) -> String { Int(v.rounded()).formatted(.number.grouping(.automatic)) }
         var parts: [String] = []
-        if let t = load.thisRunAU {
-            parts.append(L.s("이 러닝 \(au(t)) AU", "This run \(au(t)) AU"))
-        }
         parts.append(L.s("7일 \(au(load.window.total)) AU", "7d \(au(load.window.total)) AU"))
         if load.previousSevenAU > 0 {
             parts.append(L.s("이전 7일 \(au(load.previousSevenAU)) AU", "prev 7d \(au(load.previousSevenAU)) AU"))
