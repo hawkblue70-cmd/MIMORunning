@@ -90,6 +90,20 @@ struct ActivityDetailView: View {
     @State private var chartData: RunChartData = .empty
     @State private var isLoadingChart = false
     @State private var runInsights: [RunInsight] = []
+    /// 이 런의 강도 — 내 입력(panelAllStories) > Apple(detail 캐시 > manager 맵)
+    private var resolvedEffort: ResolvedEffort? {
+        let story = panelAllStories.first { $0.workoutID == activity.id.uuidString }
+        let apple = detail?.appleEffort ?? manager.appleEffort(for: activity.id)
+        return EffortResolver.resolve(userValue: story?.effortRPE, apple: apple)
+    }
+
+    /// 최근 8주 같은 유형 기준선
+    private var effortBaseline: Int? {
+        let idx = EffortIndex(stories: panelAllStories, apple: manager.effortMap)
+        let samples = EffortBaseline.samples(current: activity, history: manager.activities, index: idx,
+                                             typeOf: { [m = manager] id in m.cachedWorkoutTypeForStats(for: id) })
+        return EffortBaseline.median(for: detail?.workoutType ?? .general, samples: samples)
+    }
     @State private var runSegmentSource: RunSegmentSource = .none
     @State private var runFadeStartKm: Double? = nil
     @State private var isInsightBackfilling = false
@@ -211,7 +225,8 @@ struct ActivityDetailView: View {
                     )
                     if activity.type == .running {
                         InsightCard(activity: activity, insight: insight, condition: condition,
-                                    confirmedRace: confirmedRaceMatch, hillMatch: hillMatch)
+                                    confirmedRace: confirmedRaceMatch, hillMatch: hillMatch,
+                                    effortValue: resolvedEffort?.value)
                     }
                     StorySection(workoutID: activity.id.uuidString,
                                  activityType: activity.type,
@@ -428,6 +443,11 @@ struct ActivityDetailView: View {
                 break
             }
         }
+        .onChange(of: panelAllStories.map(\.effortRPE)) { _, _ in
+            manager.syncUserEfforts(from: panelAllStories)
+            runInsights = []
+            loadInsights()
+        }
         .task {
             // Release any stale in-flight claim left by a prior cancelled task for this activity
             await InsightCache.shared.releaseRefinedCompute(activity.id)
@@ -439,6 +459,8 @@ struct ActivityDetailView: View {
                 Task { await loadCombinedChart() }
                 return
             }
+
+            manager.syncUserEfforts(from: panelAllStories)
 
             let lang = AppLanguage.shared.isEnglish ? "en" : "ko"
 
@@ -827,7 +849,9 @@ struct ActivityDetailView: View {
             lt1SD: engine.phys.lt1SD,
             easyCeilingHR: engine.phys.easyCeilingHR,
             heat: engine.heat,
-            planWeeklyTargetKm: planWeeklyTargetKm
+            planWeeklyTargetKm: planWeeklyTargetKm,
+            effort: activity.type == .running ? resolvedEffort : nil,
+            effortBaseline: effortBaseline
         )
         runInsights = result.insights
         runSegmentSource = result.segmentSource
@@ -1262,6 +1286,15 @@ private struct InsightCard: View {
     var condition: ActivityCondition? = nil
     var confirmedRace: PersistedRaceMatch? = nil
     var hillMatch: HillMatch? = nil
+    var effortValue: Int? = nil
+
+    private var displayDetail: String {
+        guard let ins = insight else { return AppLanguage.shared.s("인사이트 분석 준비 중", "Analyzing…") }
+        if ins.theme == .adverseCondition, let e = effortValue {
+            return ins.detail + AppLanguage.shared.s(" · 체감 강도 \(e)", " · effort \(e)/10")
+        }
+        return ins.detail
+    }
 
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @Query private var allStories: [WorkoutStory]
@@ -1336,7 +1369,7 @@ private struct InsightCard: View {
                         .font(.headline.bold())
                         .foregroundStyle(.white)
                         .contentTransition(.opacity)
-                    Text(insight?.detail ?? AppLanguage.shared.s("인사이트 분석 준비 중", "Analyzing…"))
+                    Text(displayDetail)
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.72))
                         .contentTransition(.opacity)

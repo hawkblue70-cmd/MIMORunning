@@ -372,7 +372,9 @@ enum RunInsightEngine {
         lt1SD: Double = 0,
         easyCeilingHR: Double? = nil,
         heat: MRHeatModel,
-        planWeeklyTargetKm: Double? = nil
+        planWeeklyTargetKm: Double? = nil,
+        effort: ResolvedEffort? = nil,
+        effortBaseline: Int? = nil
     ) -> (insights: [RunInsight], segmentSource: RunSegmentSource, fadeStartKm: Double?) {
         let base        = Self.baseline(for: activity, history: history,
                                         planWeeklyTargetKm: planWeeklyTargetKm)
@@ -477,7 +479,20 @@ enum RunInsightEngine {
         let maxHRForFade = estimatedHRMax(hrMax: hrMax, age: age)
         let fadeKm = analyzeFade(activity: activity, detail: detail, history: history,
                                  hrSamples: hrSamples, maxHR: maxHRForFade)?.fadeStartKm
-        return (Array(results.prefix(4)), segSource, fadeKm)
+        // 운동 강도(RPE) 규칙 — 유형별 생성기와 독립. 앞에 끼워 강도 섹션에서 먼저 보이게 한다.
+        var effortCount = 0
+        if let effort {
+            let ruleOut = EffortRules.evaluate(EffortRuleInput(
+                effort: effort, type: workoutType, baseline: effortBaseline,
+                splits: detail?.splits ?? [],
+                temperatureC: activity.temperatureC, humidityPercent: activity.humidityPercent))
+            if ruleOut.replacesEnvironment {
+                results.removeAll { $0.category == .environment }
+            }
+            results.insert(contentsOf: ruleOut.insights, at: 0)
+            effortCount = ruleOut.insights.count
+        }
+        return (Array(results.prefix(4 + effortCount)), segSource, fadeKm)
     }
 
     private static func appendGeneralInsights(
