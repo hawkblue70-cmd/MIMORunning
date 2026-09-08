@@ -348,6 +348,7 @@ struct GrowthView: View {
                 windowStart: recordWindow(for: recordPeriod).start,
                 windowEnd: recordWindow(for: recordPeriod).end,
                 periodLabel: recordPeriodLabel,
+                flowComment: recordFlowComment,
                 heatmapColumns: shareHeatmapColumns,
                 streak: engine.streakWeeks,
                 activeDays: activeDaysInHeatmap(columns: heatmapColumnsCache),

@@ -620,6 +620,8 @@ struct MileageStreakShareCard: View {
     let windowEnd: Date
     /// "최근 30일" / "8월" / "최근 12주"
     let periodLabel: String
+    /// 차트 아래 ✦ 상태·방향 두 줄 — 성장 탭과 같은 문장을 공유 카드에도 싣는다
+    var flowComment: RecordFlowInsight.Result? = nil
     let heatmapColumns: [ShareHeatmapColumn]
     let streak: Int
     let activeDays: Int
@@ -710,7 +712,8 @@ struct MileageStreakShareCard: View {
             start: windowStart,
             end: windowEnd,
             exportMode: true,
-            cardBackground: p.boxFill
+            cardBackground: p.boxFill,
+            flowComment: flowComment
         )
     }
 
@@ -847,6 +850,8 @@ struct MileageStreakShareCardScreen: View {
     let windowStart: Date
     let windowEnd: Date
     let periodLabel: String
+    /// 차트 아래 ✦ 상태·방향 두 줄 — 성장 탭과 같은 문장을 공유 카드에도 싣는다
+    var flowComment: RecordFlowInsight.Result? = nil
     let heatmapColumns: [ShareHeatmapColumn]
     let streak: Int
     let activeDays: Int
@@ -861,7 +866,7 @@ struct MileageStreakShareCardScreen: View {
 
     private let cardW: CGFloat = 300
     /// 러닝 흐름 차트(내보내기 모드 ≈235) + 잔디(≈118) + 머리·구분선·푸터가 잘리지 않는 높이
-    private let cardH: CGFloat = 500
+    private let cardH: CGFloat = 530
 
     var body: some View {
         NavigationStack {
@@ -875,6 +880,7 @@ struct MileageStreakShareCardScreen: View {
                         windowStart: windowStart,
                         windowEnd: windowEnd,
                         periodLabel: periodLabel,
+                        flowComment: flowComment,
                         heatmapColumns: heatmapColumns,
                         streak: streak,
                         activeDays: activeDays,

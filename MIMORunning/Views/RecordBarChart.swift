@@ -219,7 +219,7 @@ struct RecordBarChart: View {
                 if !compact { axisHeader }
                 chart
                 if !compact { footnote }
-                if !isExport, let flow = flowComment { flowCommentView(flow) }
+                if !compact, let flow = flowComment { flowCommentView(flow) }   // 공유 카드(export)에도 붙인다
             } else {
                 Text(emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period"))
                     .font(.subheadline)
@@ -641,7 +641,7 @@ struct RecordBarChart: View {
                          "One chart: distance bars (right axis, km) and pace line (left axis)"),
                      distanceTrailing]
         if let p = paceTrailing { parts.append(L.s("페이스 \(p)", "pace \(p)")) }
-        if !isExport, let flow = flowComment {
+        if !compact, let flow = flowComment {
             parts.append(flow.status)
             if let direction = flow.direction { parts.append(direction) }
         }
