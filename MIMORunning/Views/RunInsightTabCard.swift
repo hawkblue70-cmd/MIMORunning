@@ -3965,6 +3965,7 @@ private struct PerformanceInsightCard: View {
             Text(L.s("점선 - 문헌값 (지구력 종목)", "dashed - reference (endurance)"))
             .font(.system(size: 8)).foregroundStyle(.white.opacity(0.7))
             .lineLimit(1).minimumScaleFactor(0.7)
+            .frame(maxWidth: .infinity, alignment: .trailing)   // 오른쪽 정렬 — 값 열(%)과 같은 끝선
             // 차트 바로 아래 문장 두 줄
             // ① 시간 기준 (K-2) — 사실 한 줄. 평가어·참고선 없음. 연속 개념 없음.
             let lowPct = Int((b.lowFrac * 100).rounded())

@@ -277,6 +277,7 @@ struct RecordBarChart: View {
     private var effortLegend: some View {
         let swatch: CGFloat = compact ? Metrics.compactLegendSwatch : Metrics.legendSwatch
         return HStack(spacing: 6) {
+            if compact { Spacer(minLength: 0) }   // 압축 모드(날짜 축 아래)는 오른쪽 정렬
             HStack(spacing: compact ? 1.5 : 2) {
                 Text(L.s("강도", "Effort"))
                     .font(axisFont)
@@ -288,7 +289,7 @@ struct RecordBarChart: View {
                         .frame(width: swatch, height: swatch)
                 }
             }
-            Spacer(minLength: 0)
+            if !compact { Spacer(minLength: 0) }
         }
     }
 
