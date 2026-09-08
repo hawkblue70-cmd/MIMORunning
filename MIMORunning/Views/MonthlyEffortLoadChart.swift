@@ -1,11 +1,14 @@
 import SwiftUI
 import Charts
 
-/// 성장 탭 — 선택한 달의 일별 sRPE 부하(AU). 막대 색 = 그날 평균 강도.
-/// 일간 거리 차트 바로 아래에 붙어 같은 달을 따라간다. 레이아웃(높이·패딩·축)은 DailyDistanceChart와 동일.
+/// 성장 탭 — 선택한 기간의 일별 sRPE 부하(AU). 막대 색 = 그날 평균 강도.
+/// 기간은 기본이 "오늘까지 최근 30일", "<"로 이동하면 전월 달력 단위 — 일간 거리 차트와 같은 창을 따라간다.
+/// 레이아웃(높이·패딩·축)은 DailyDistanceChart와 동일.
 struct MonthlyEffortLoadChart: View {
-    /// 해당 월 1일 00:00 ~ 다음 달 1일 00:00
+    /// 롤링 최근 30일 또는 달력 한 달
     let window: EffortLoad.WindowLoad
+    /// true = 오늘까지 최근 30일(헤더 문구만 달라진다)
+    let isRolling: Bool
 
     private var L: AppLanguage { AppLanguage.shared }
 
@@ -21,8 +24,11 @@ struct MonthlyEffortLoadChart: View {
 
     private var header: some View {
         let totalText = window.total.rounded().formatted(.number.grouping(.automatic))
+        let title = isRolling
+            ? L.s("최근 30일 부하 \(totalText) AU", "Last 30 days \(totalText) AU")
+            : L.s("이달 부하 \(totalText) AU", "This month \(totalText) AU")
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(L.s("이달 부하 \(totalText) AU", "This month \(totalText) AU"))
+            Text(title)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
             Spacer()
@@ -34,21 +40,23 @@ struct MonthlyEffortLoadChart: View {
     }
 
     private var chart: some View {
-        Chart(Array(window.daily.indices), id: \.self) { i in
+        Chart(Array(window.dayStarts.indices), id: \.self) { i in
             BarMark(
-                x: .value("일", i + 1),
-                y: .value("부하(AU)", window.daily[i])
+                x: .value("날짜", window.dayStarts[i], unit: .day),
+                y: .value("부하(AU)", value(i))
             )
             .foregroundStyle(barColor(i).gradient)
             .cornerRadius(2)
         }
         .frame(height: 180)
-        .chartXScale(domain: 1...31)
+        .chartXScale(domain: window.start...window.end)
         .chartXAxis {
-            AxisMarks(values: [1, 7, 14, 21, 28]) { value in
+            AxisMarks(values: .stride(by: .day, count: 7)) { value in
                 AxisValueLabel {
-                    Text("\(value.as(Int.self) ?? 0)")
-                        .font(.caption2)
+                    if let d = value.as(Date.self) {
+                        Text(d, format: .dateTime.month(.defaultDigits).day())
+                            .font(.caption2)
+                    }
                 }
             }
         }
@@ -62,24 +70,28 @@ struct MonthlyEffortLoadChart: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L.s("월간 강도 부하", "Monthly training load"))
+        .accessibilityLabel(L.s("일별 강도 부하", "Daily training load"))
         .accessibilityValue(accessibilityValue)
     }
 
+    private func value(_ i: Int) -> Double {
+        window.daily.indices.contains(i) ? window.daily[i] : 0
+    }
+
     private func barColor(_ i: Int) -> Color {
-        guard window.daily.indices.contains(i), window.daily[i] > 0 else {
-            return Color.secondary.opacity(0.45)
-        }
+        guard value(i) > 0 else { return Color.secondary.opacity(0.45) }
         let mean = window.dailyMeanEffort.indices.contains(i) ? window.dailyMeanEffort[i] : nil
         return EffortPalette.color(for: EffortResolver.clamp(mean ?? 5))
     }
 
     /// 부하가 있는 날만 "3일 280, 5일 270" 형태로 읽어 준다.
     private var accessibilityValue: String {
-        let parts = window.daily.indices.compactMap { i -> String? in
-            guard window.daily[i] > 0 else { return nil }
-            let au = Int(window.daily[i].rounded())
-            return L.s("\(i + 1)일 \(au)", "day \(i + 1) \(au)")
+        let cal = Calendar.current
+        let parts = window.dayStarts.indices.compactMap { i -> String? in
+            guard value(i) > 0 else { return nil }
+            let au = Int(value(i).rounded())
+            let day = cal.component(.day, from: window.dayStarts[i])
+            return L.s("\(day)일 \(au)", "day \(day) \(au)")
         }
         return parts.isEmpty ? L.s("기록 없음", "No load") : parts.joined(separator: ", ")
     }

@@ -258,7 +258,7 @@ struct GrowthView: View {
                                     effortInputsChanged()
                                 }
                             if let load = effortLoadSummary {
-                                EffortLoadCard(summary: load)
+                                EffortLoadCard(summary: load, acuteChronic: effortAcuteChronic)
                                     .onChange(of: allStories.map(\.effortRPE)) { _, _ in
                                         effortInputsChanged()
                                     }
@@ -351,6 +351,11 @@ struct GrowthView: View {
             //   .task에서도 호출하면 두 Task가 경쟁하여 healthStory를 기록한 직후
             //   두 번째 완료 Task가 canShow=false를 덮어쓸 수 있다.
             MRAdviceLogStore.runMigrationIfNeeded()
+            // 일간 모드 기본 창은 "오늘까지 최근 30일" — 자정을 넘겨 탭에 다시 들어오면 창을 다시 잡는다.
+            if dailyKmsCache.first?.id != dailyWindow(for: dailyMonth).start {
+                dailyKmsCache = dailyKms(for: dailyMonth)
+                refreshMonthCaches()
+            }
             Task { await checkBodyDataAvailability() }
             Task { await loadBodyChangeSectionData() }
         }
@@ -498,14 +503,19 @@ struct GrowthView: View {
         return s.current.coveredCount > 0 ? s : nil
     }
 
-    /// 선택한 달의 일별 강도 부하. 강도 있는 러닝이 없으면 nil(카드 숨김).
+    /// 최근 7일 ÷ 직전 4×7일 평균 — 부하 카드의 주 비교 문구. 유효 창이 모자라면 nil.
+    private var effortAcuteChronic: (ratio: Double, label: EffortLoad.RatioLabel)? {
+        let runs = EffortLoad.runs(from: runsCache.filter { $0.date >= (Calendar.current.date(byAdding: .day, value: -36, to: Date()) ?? .distantPast) }, index: manager.effortIndex)
+        return EffortLoad.rollingAcuteChronic(runs: runs, asOf: Date())
+    }
+
+    /// 선택한 기간의 일별 강도 부하. 강도 있는 러닝이 없으면 nil(카드 숨김).
     private func monthEffortLoad(for month: Date) -> EffortLoad.WindowLoad? {
         let cal = Calendar.current
-        let start = cal.date(from: cal.dateComponents([.year, .month], from: month)) ?? month
-        guard let days = cal.range(of: .day, in: .month, for: start)?.count,
-              let end = cal.date(byAdding: .day, value: days, to: start) else { return nil }
-        let inMonth = runsCache.filter { $0.date >= start && $0.date < end }
-        let w = EffortLoad.window(runs: EffortLoad.runs(from: inMonth, index: manager.effortIndex),
+        let (start, end) = dailyWindow(for: month)
+        guard let days = cal.dateComponents([.day], from: start, to: end).day, days > 0 else { return nil }
+        let inWindow = runsCache.filter { $0.date >= start && $0.date < end }
+        let w = EffortLoad.window(runs: EffortLoad.runs(from: inWindow, index: manager.effortIndex),
                                   endingBefore: end, days: days)
         return w.coveredCount > 0 ? w : nil
     }
@@ -562,6 +572,7 @@ struct GrowthView: View {
 
     private var dailyMonthLabel: String {
         let cal = Calendar.current
+        if isAtCurrentMonth { return AppLanguage.shared.s("최근 30일", "Last 30 days") }
         let comps = cal.dateComponents([.year, .month], from: dailyMonth)
         if AppLanguage.shared.isEnglish {
             let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMMM yyyy"
@@ -570,11 +581,29 @@ struct GrowthView: View {
         return "\(comps.year ?? 2025)년 \(comps.month ?? 1)월"
     }
 
-    private var isAtCurrentMonth: Bool {
+    private func isCurrentMonth(_ date: Date) -> Bool {
         let cal = Calendar.current
-        let dc = cal.dateComponents([.year, .month], from: dailyMonth)
+        let dc = cal.dateComponents([.year, .month], from: date)
         let nc = cal.dateComponents([.year, .month], from: Date())
         return dc.year == nc.year && dc.month == nc.month
+    }
+
+    private var isAtCurrentMonth: Bool { isCurrentMonth(dailyMonth) }
+
+    /// 일간 모드 표시 창 — 기본(현재 달)은 **오늘까지 최근 30일** 롤링,
+    /// "<"로 뒤로 가면 그 달의 달력 단위. 거리·부하·페이스 세 차트가 같은 창을 쓴다.
+    private func dailyWindow(for month: Date) -> (start: Date, end: Date) {
+        let cal = Calendar.current
+        if isCurrentMonth(month) {
+            let today = cal.startOfDay(for: Date())
+            let end = cal.date(byAdding: .day, value: 1, to: today) ?? today
+            let start = cal.date(byAdding: .day, value: -30, to: end) ?? end
+            return (start, end)
+        }
+        let start = cal.date(from: cal.dateComponents([.year, .month], from: month)) ?? month
+        let days = cal.range(of: .day, in: .month, for: start)?.count ?? 30
+        let end = cal.date(byAdding: .day, value: days, to: start) ?? start
+        return (start, end)
     }
 
     private var mileageSubtitle: String {
@@ -697,18 +726,23 @@ struct GrowthView: View {
         )
     }
 
-    /// 일간 모드: 일간 거리 + 같은 달의 일별 강도 부하
+    /// 일간 모드: 일간 거리 + 같은 창의 일별 강도 부하 (기본 = 오늘까지 최근 30일, "<"로 전월 달력 단위)
     @ViewBuilder
     private var dailyChartsView: some View {
         let L = AppLanguage.shared
+        let rolling = isAtCurrentMonth
+        let win = dailyWindow(for: dailyMonth)
+        let emptyText = rolling
+            ? L.s("최근 30일 러닝 기록이 없어요", "No runs in the last 30 days")
+            : L.s("이 달에 러닝 기록이 없어요", "No runs this month")
         VStack(spacing: 10) {
             if dailyKmsCache.allSatisfy({ $0.km == 0 }) {
-                EmptyChartPlaceholder(message: L.s("이번 달 러닝 기록이 없어요", "No runs this month"))
+                EmptyChartPlaceholder(message: emptyText)
             } else {
-                DailyDistanceChart(data: dailyKmsCache)
+                DailyDistanceChart(data: dailyKmsCache, start: win.start, end: win.end)
             }
             if let w = monthEffortLoadCache {
-                MonthlyEffortLoadChart(window: w)
+                MonthlyEffortLoadChart(window: w, isRolling: rolling)
             }
         }
     }
@@ -771,7 +805,7 @@ struct GrowthView: View {
             ? L.s("\(dailyMonthLabel) · 위로 갈수록 빠름", "\(dailyMonthLabel) · Higher = faster")
             : L.s("위로 갈수록 빠름", "Higher = faster")
         let emptyMessage = showDaily
-            ? L.s("이 달에 비교할 러닝이 2회 미만이에요", "Fewer than 2 runs this month")
+            ? L.s("이 기간에 비교할 러닝이 2회 미만이에요", "Fewer than 2 runs in this period")
             : L.s("비교하려면 러닝 2회 이상이 필요해요", "Need 2+ runs to compare")
         return VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: L.s("페이스 추이", "Pace Trend"), subtitle: subtitle)
@@ -1752,20 +1786,15 @@ struct GrowthView: View {
 
     private func dailyKms(for month: Date) -> [DailyKm] {
         let cal = Calendar.current
-        let start = cal.date(from: cal.dateComponents([.year, .month], from: month)) ?? month
-        guard let range = cal.range(of: .day, in: .month, for: start) else { return [] }
+        let (start, end) = dailyWindow(for: month)
+        guard let dayCount = cal.dateComponents([.day], from: start, to: end).day, dayCount > 0 else { return [] }
         var kmByDay: [Date: Double] = [:]
-        for a in runs {
-            let day = cal.startOfDay(for: a.date)
-            let dc = cal.dateComponents([.year, .month], from: day)
-            let sc = cal.dateComponents([.year, .month], from: start)
-            if dc.year == sc.year && dc.month == sc.month {
-                kmByDay[day, default: 0] += a.distance / 1000
-            }
+        for a in runs where a.date >= start && a.date < end {
+            kmByDay[cal.startOfDay(for: a.date), default: 0] += a.distance / 1000
         }
-        return range.compactMap { d -> DailyKm? in
-            guard let date = cal.date(byAdding: .day, value: d - 1, to: start) else { return nil }
-            return DailyKm(id: date, day: d, km: kmByDay[date] ?? 0)
+        return (0..<dayCount).compactMap { i -> DailyKm? in
+            guard let date = cal.date(byAdding: .day, value: i, to: start) else { return nil }
+            return DailyKm(id: date, day: cal.component(.day, from: date), km: kmByDay[date] ?? 0)
         }
     }
 
@@ -1785,15 +1814,11 @@ struct GrowthView: View {
             }
     }
 
-    /// 선택한 달의 모든 러닝(오래된→최신). 20회 상한 없음.
+    /// 선택한 기간(기본 = 오늘까지 최근 30일)의 모든 러닝(오래된→최신). 20회 상한 없음.
     private func monthPacePoints(for month: Date) -> [PacePoint] {
-        let cal = Calendar.current
-        let sc = cal.dateComponents([.year, .month], from: month)
+        let (start, end) = dailyWindow(for: month)
         return runs
-            .filter { a in
-                let dc = cal.dateComponents([.year, .month], from: a.date)
-                return dc.year == sc.year && dc.month == sc.month
-            }
+            .filter { $0.date >= start && $0.date < end }
             .sorted { $0.date < $1.date }
             .compactMap { a -> PacePoint? in
                 guard let sec = a.paceSecPerKm, sec > 0 else { return nil }
@@ -2733,23 +2758,28 @@ private struct MonthlyTimeChart: View {
 
 private struct DailyDistanceChart: View {
     let data: [DailyKm]
+    /// 표시 창 — 롤링 최근 30일 또는 달력 한 달 (x축 도메인)
+    let start: Date
+    let end: Date
 
     var body: some View {
         Chart(data) { item in
             BarMark(
-                x: .value("일", item.day),
+                x: .value("날짜", item.id, unit: .day),
                 y: .value("거리(km)", item.km)
             )
             .foregroundStyle(item.km > 0 ? Theme.time.gradient : Color.secondary.opacity(0.45).gradient)
             .cornerRadius(2)
         }
         .frame(height: 180)
-        .chartXScale(domain: 1...31)
+        .chartXScale(domain: start...end)
         .chartXAxis {
-            AxisMarks(values: [1, 7, 14, 21, 28]) { value in
+            AxisMarks(values: .stride(by: .day, count: 7)) { value in
                 AxisValueLabel {
-                    Text("\(value.as(Int.self) ?? 0)")
-                        .font(.caption2)
+                    if let d = value.as(Date.self) {
+                        Text(d, format: .dateTime.month(.defaultDigits).day())
+                            .font(.caption2)
+                    }
                 }
             }
         }
