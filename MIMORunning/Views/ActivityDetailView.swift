@@ -752,6 +752,7 @@ struct ActivityDetailView: View {
         case .verticalOscillation: return det.avgVerticalOscillation
         case .vo2Max:              return det.vo2Max
         case .hrRecovery1:         return recoveryResult?.hrr1
+        case .easyEffortPace:      return nil
         case .bodyMass, .bodyFatPercentage: return nil
         }
     }

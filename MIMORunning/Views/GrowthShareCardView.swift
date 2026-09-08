@@ -317,6 +317,8 @@ struct GrowthShareCard: View {
         switch metric {
         case .cadence, .power, .groundContactTime, .hrRecovery1:
             return "\(sign)\(Int(absChange.rounded())) \(arrow)"
+        case .easyEffortPace:
+            return "\(sign)\(Int(absChange.rounded()))s \(arrow)"
         case .strideLength:
             return "\(sign)\(String(format: "%.2f", absChange)) \(arrow)"
         case .verticalOscillation, .vo2Max:

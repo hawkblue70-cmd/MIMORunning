@@ -124,6 +124,8 @@ struct GrowthView: View {
     @State private var formObservation: (text: String, basis: String, isStable: Bool)? = nil
     /// 운동 후 심박 회복 관찰 — 좋아진 쪽만 문구가 생긴다 (MRRecovery.observation)
     @State private var recoveryObservation: (text: String, basis: String)? = nil
+    /// 같은 강도(2~4) 페이스 추이 관찰 — 빨라진 쪽만 (EffortPaceTrend.observation)
+    @State private var effortPaceObservation: (text: String, basis: String)? = nil
     @State private var formComputedForRunCount: Int? = nil  // ■2: 동일 run count 재계산 방지
     @State private var lastChartRefreshCount: Int = -1
     @State private var runsCache: [Activity] = []
@@ -871,7 +873,8 @@ struct GrowthView: View {
         let L = AppLanguage.shared
         let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
         let runningMetrics: [TrendMetric] = [
-            .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max, .hrRecovery1
+            .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max, .hrRecovery1,
+            .easyEffortPace
         ]
         return VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: L.s("주간 지표 추세", "Weekly Metric Trends"), subtitle: L.s("최근 7일 대비 직전 7일", "Last 7 days vs prior 7 days"))
@@ -881,6 +884,11 @@ struct GrowthView: View {
             if let rec = recoveryObservation {
                 MRFormObservationCard(text: rec.text, basis: rec.basis, isStable: true,
                                       title: L.s("회복", "Recovery"), icon: "heart.circle")
+            }
+            if let ep = effortPaceObservation {
+                MRFormObservationCard(text: ep.text, basis: ep.basis, isStable: true,
+                                      title: L.s("쉬운 날 페이스", "Easy-Effort Pace"),
+                                      icon: "gauge.with.dots.needle.33percent")
             }
             weeklyPatternCommentCard
             LazyVGrid(columns: cols, spacing: 12) {
@@ -1115,7 +1123,8 @@ struct GrowthView: View {
 
         let since = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? .distantPast
         let runningMetrics: [TrendMetric] = [
-            .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max, .hrRecovery1
+            .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max, .hrRecovery1,
+            .easyEffortPace
         ]
         // 체성분 2개도 함께 — 이번주 공유 카드용 sparkData 사전 구성
         let allWeeklyMetrics: [TrendMetric] = runningMetrics + [.bodyMass, .bodyFatPercentage]
@@ -1476,6 +1485,13 @@ struct GrowthView: View {
         // nil(침묵)은 기존 결과를 유지 — 안정 분기 기록 직후 재호출로 덮어쓰이는 것을 방지
         if let result = computeFormObservation(cadData: cadData, gctData: gctData) {
             formObservation = result
+        }
+
+        // 같은 강도 페이스 추이 — 강도 2~4 러닝의 페이스를 폼 판정기(3개월 vs 3개월, MDC)로 본다
+        let easyPts = await manager.fetchMetricHistory(.easyEffortPace, from: oneYearAgo)
+        if let shift = mrFormShift(EffortPaceTrend.residuals(points: easyPts), metric: EffortPaceTrend.metric, asOf: Date()),
+           let o = EffortPaceTrend.observation(shift: shift) {
+            effortPaceObservation = o
         }
 
         // 운동 후 심박 회복 추세 — 종료 심박을 회귀로 통제한 잔차를 폼과 같은 판정기(MDC)로 본다

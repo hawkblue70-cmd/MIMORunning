@@ -1796,7 +1796,20 @@ class HealthKitManager {
         let m = EffortIndex(stories: stories, apple: [:]).user
         guard m != userEffortByWorkout else { return }
         userEffortByWorkout = m
-        // TODO(Task 12): metricHistoryCacheURL(.easyEffortPace, usePounds: false) 캐시 삭제
+        try? FileManager.default.removeItem(at: metricHistoryCacheURL(.easyEffortPace, usePounds: false))
+    }
+
+    /// 강도 2~4(내 입력 > Apple)로 뛴 러닝의 페이스(sec/km) 시계열 — HealthKit 조회 없음, activities 기반.
+    func easyEffortPaceHistory(from startDate: Date) -> [(date: Date, value: Double)] {
+        loadEffortMapIfNeeded()
+        let idx = effortIndex
+        return activities
+            .filter { $0.type == .running && $0.date >= startDate && $0.distance >= 1000 && $0.duration > 0 }
+            .compactMap { a -> (date: Date, value: Double)? in
+                guard let e = idx.resolve(a.id), EffortPaceTrend.easyRange.contains(e.value) else { return nil }
+                return (a.date, a.duration / (a.distance / 1000))
+            }
+            .sorted { $0.date < $1.date }
     }
 
     private func loadEffortMapIfNeeded() {
@@ -3308,6 +3321,8 @@ class HealthKitManager {
             return await fetchVO2MaxHistory(from: startDate)
         case .hrRecovery1:
             return await fetchRecoveryHistory(from: startDate).map { ($0.date, $0.hrr1) }
+        case .easyEffortPace:
+            return easyEffortPaceHistory(from: startDate)
         case .bodyMass:
             let unit: HKUnit = usePounds ? HKUnit(from: "lb") : .gramUnit(with: .kilo)
             return await fetchQuantitySampleHistory(.bodyMass, from: startDate, unit: unit)
@@ -3423,7 +3438,7 @@ class HealthKitManager {
 
     /// 새 런 추가 시 호출 — 런 기반 메트릭 캐시 삭제
     func invalidateRunningMetricHistoryCache() {
-        let runningMetrics: [TrendMetric] = [.cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max, .hrRecovery1]
+        let runningMetrics: [TrendMetric] = [.cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max, .hrRecovery1, .easyEffortPace]
         for metric in runningMetrics {
             try? FileManager.default.removeItem(at: metricHistoryCacheURL(metric, usePounds: false))
         }
