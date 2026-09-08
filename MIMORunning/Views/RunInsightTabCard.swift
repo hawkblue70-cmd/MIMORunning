@@ -2403,13 +2403,19 @@ private struct PerformanceInsightCard: View {
     @State private var _intensityResult: IntensityTimeData? = nil
     @State private var _distComputed = false
 
-    /// 7일 강도 부하 묶음 — 창 + 이 러닝의 AU + 4주 평균 대비 라벨.
+    /// 7일 강도 부하 묶음 — 창 + 이 러닝의 AU + 4주 평균 대비 라벨 + 성장 탭과 같은 차트용 버킷.
     private struct SevenDayLoad {
         let window: EffortLoad.WindowLoad
         let thisRunAU: Double?
         let acuteChronic: EffortLoad.RatioLabel?
         /// 성장 탭 상태 카드에서 옮겨온 한 줄: 단조도 → 4주 평균 대비(유지는 침묵)
         let sentence: EffortLoad.SentenceKind?
+        /// §5.8 — 성장 탭 "러닝 흐름"과 **같은 `RecordBarChart`**에 그대로 넘기는 일별 버킷
+        let bars: [RecordBar]
+        let chartStart: Date
+        let chartEnd: Date
+        /// 강조할 이 러닝의 날 (00:00)
+        let runDay: Date
     }
 
     /// 이 러닝 날짜로 끝나는 7일 부하(오늘이 아니라 그 러닝 기준). 강도 기록이 없으면 nil → 오른쪽 반쪽 생략.
@@ -2428,8 +2434,18 @@ private struct PerformanceInsightCard: View {
         let ac = EffortLoad.rollingAcuteChronic(runs: runs, asOf: activity.date)?.label
         let sentence = EffortLoad.rollingSentenceKind(runs: runs, asOf: activity.date)
 
+        // 성장 탭 "러닝 흐름"과 같은 컴포넌트에 넘길 일별 버킷 — 이 러닝 날짜로 끝나는 7일
+        let runDay = cal.startOfDay(for: activity.date)
+        let chartStart = cal.date(byAdding: .day, value: -6, to: runDay) ?? runDay
+        let bars = RecordSeries.bars(activities: acts,
+                                     effortOf: { idx.resolve($0)?.value },
+                                     start: chartStart,
+                                     end: dayEnd,
+                                     period: .day)
+
         // 유형별 평소 강도 눈금은 그리지 않는다 — 이 카드는 러닝 유형을 표시하지 않아 눈금의 뜻을 알 수 없다(성장 탭과 같은 표시 방식).
-        return SevenDayLoad(window: w, thisRunAU: thisAU, acuteChronic: ac, sentence: sentence)
+        return SevenDayLoad(window: w, thisRunAU: thisAU, acuteChronic: ac, sentence: sentence,
+                            bars: bars, chartStart: chartStart, chartEnd: dayEnd, runDay: runDay)
     }
 
     private struct HRTrendPt: Identifiable {
@@ -3772,22 +3788,20 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    /// 강도 분포(4주, 세로 막대 + 문헌값 눈금) · 이 러닝 날짜 기준 7일 강도 부하 반반 배치.
-    /// 강도 기록이 없으면 오른쪽 반쪽을 생략하고 왼쪽을 전체 폭으로 둔다.
+    /// 강도 분포(4주, 세로 막대 + 문헌값 눈금)와 이 러닝 날짜 기준 7일 강도 부하를 **위아래 두 행**으로.
+    /// 7일 부하는 성장 탭과 같은 차트라 폭이 필요해 반반이 아니라 각각 전체 폭을 쓴다.
+    /// 강도 기록이 없으면 아래 행을 통째로 생략한다.
     @ViewBuilder
     private func intensityDistSection(data: IntensityTimeData) -> some View {
         let load = sevenDayLoad
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .top, spacing: 10) {
-                intensityColumnsView(data: data)
-                    .frame(maxWidth: .infinity)
-                if let load {
-                    Rectangle().fill(.white.opacity(0.10))
-                        .frame(width: 0.5)
-                        .padding(.vertical, 2)
-                    sevenDayLoadView(load: load)
-                        .frame(maxWidth: .infinity)
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            intensityColumnsView(data: data)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let load {
+                Rectangle().fill(.white.opacity(0.10))
+                    .frame(height: 0.5)
+                sevenDayLoadView(load: load)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -3819,10 +3833,10 @@ private struct PerformanceInsightCard: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
-            // 막대 폭은 오른쪽 7일 부하 막대와 동일(반폭 기준 7등분) — 남는 폭에 참고선 설명 2줄
+            // 막대 폭은 7슬롯 피치 기준(전체 폭 7등분) — 남는 폭에 참고선 설명 2줄
             GeometryReader { geo in
                 let gap: CGFloat = 3
-                // 오른쪽 7일 부하와 같은 슬롯 폭(반폭 7등분)의 85% — 두 차트 막대를 조금 가늘게
+                // 7등분 슬롯 폭의 85% — 막대를 조금 가늘게
                 let barW = max(8, (geo.size.width - gap * 6) / 7 * 0.85)
                 HStack(alignment: .bottom, spacing: gap) {
                     Spacer(minLength: 0)   // 왼쪽 여백은 유동, 오른쪽 여백은 최대 16 → 묶음이 오른쪽으로 치우친다
@@ -3881,7 +3895,7 @@ private struct PerformanceInsightCard: View {
                 .frame(width: geo.size.width)
             }
             .frame(height: barH + 3 + 11 + 3 + 11 + 3 + 11)
-            // 오른쪽 "이 러닝 N AU …" 캡션과 같은 위치(차트 바로 아래)
+            // 차트 바로 아래 문장 두 줄
             // ① 시간 기준 (K-2) — 사실 한 줄. 평가어·참고선 없음. 연속 개념 없음.
             let lowPct = Int((b.lowFrac * 100).rounded())
             Text(L.s(
@@ -3908,52 +3922,30 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    /// 이 러닝 날짜로 끝나는 7일 강도 부하 — 일별 막대, 이 러닝 날은 테두리 강조.
+    /// 이 러닝 날짜로 끝나는 7일 강도 부하 — §5.8에 따라 성장 탭 "러닝 흐름"과 **같은 `RecordBarChart`**를
+    /// 내보내기 모드로 그대로 재사용한다(이 러닝 날 강조, 말풍선·탭 선택 없음). 별도 레이아웃 없음.
     @ViewBuilder
     private func sevenDayLoadView(load: SevenDayLoad) -> some View {
         let L = AppLanguage.shared
-        let cal = Calendar.current
-        let w = load.window
-        let maxAU = max(w.daily.max() ?? 0, 1)
-        // 왼쪽 강도 분포(막대 56 + 위 두 줄 텍스트 28)와 같은 높이 — 요일 라벨이 유형 라벨과 나란히 온다
-        let barH: CGFloat = 56 + 28
-        let runDay = cal.startOfDay(for: activity.date)
         VStack(alignment: .leading, spacing: 5) {
-            Text(L.s("강도 부하 · 7일", "Training load · 7d"))
-                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
-                .lineLimit(1).minimumScaleFactor(0.8)
-            GeometryReader { geo in
-            let slotW = (geo.size.width - 3 * 6) / 7
-            let barW = max(8, slotW * 0.85)   // 왼쪽 강도 분포 막대와 같은 폭
-            HStack(alignment: .bottom, spacing: 3) {
-                ForEach(Array(w.dayStarts.enumerated()), id: \.offset) { i, day in
-                    let au = w.daily.indices.contains(i) ? w.daily[i] : 0
-                    let isRunDay = cal.isDate(day, inSameDayAs: runDay)
-                    VStack(spacing: 3) {
-                        ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: 2).fill(.white.opacity(0.06))
-                            if au > 0 {
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(dayLoadColor(w, i))
-                                    .frame(height: max(3, barH * CGFloat(au / maxAU)))
-                            }
-                        }
-                        .frame(width: barW, height: barH)
-                        .overlay {
-                            if isRunDay {
-                                RoundedRectangle(cornerRadius: 2)
-                                    .stroke(Color.white.opacity(0.7), lineWidth: 1.5)
-                            }
-                        }
-                        Text(weekdayInitial(day, calendar: cal))
-                            .font(.system(size: 8, weight: isRunDay ? .bold : .regular))
-                            .foregroundStyle(isRunDay ? Color.white.opacity(0.90) : IC.label)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(L.s("강도 부하 · 7일", "Training load · 7d"))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Text(sevenDayLoadPeriodText(load))
+                    .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                    .lineLimit(1).minimumScaleFactor(0.8)
             }
-            }
-            .frame(height: barH + 3 + 11)
+            RecordBarChart(
+                bars: load.bars,
+                period: .day,
+                start: load.chartStart,
+                end: load.chartEnd,
+                exportMode: true,
+                cardBackground: .clear,
+                highlightDate: load.runDay
+            )
+            .environment(\.colorScheme, .dark)   // 카드가 어두운 배경 전용이라 차트의 secondary 색도 다크로
             Text(sevenDayLoadCaption(load))
                 .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                 .fixedSize(horizontal: false, vertical: true)
@@ -3965,16 +3957,23 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    private func dayLoadColor(_ w: EffortLoad.WindowLoad, _ i: Int) -> Color {
-        let mean = w.dailyMeanEffort.indices.contains(i) ? w.dailyMeanEffort[i] : nil
-        return EffortPalette.color(for: EffortResolver.clamp(mean ?? 5))
-    }
-
-    private func weekdayInitial(_ date: Date, calendar: Calendar) -> String {
-        let ko = ["일", "월", "화", "수", "목", "금", "토"]
-        let en = ["S", "M", "T", "W", "T", "F", "S"]
-        let i = max(0, min(6, calendar.component(.weekday, from: date) - 1))
-        return AppLanguage.shared.s(ko[i], en[i])
+    /// "8/2–8/8 · 이 러닝 날 기준"
+    private func sevenDayLoadPeriodText(_ load: SevenDayLoad) -> String {
+        let L = AppLanguage.shared
+        let cal = Calendar.current
+        let a = cal.dateComponents([.month, .day], from: load.chartStart)
+        let b = cal.dateComponents([.month, .day], from: load.runDay)
+        let range: String
+        if L.isEnglish {
+            let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMM"
+            let m1 = df.string(from: load.chartStart), m2 = df.string(from: load.runDay)
+            range = m1 == m2
+                ? "\(m1) \(a.day ?? 1)–\(b.day ?? 1)"
+                : "\(m1) \(a.day ?? 1)–\(m2) \(b.day ?? 1)"
+        } else {
+            range = "\(a.month ?? 1)/\(a.day ?? 1)–\(b.month ?? 1)/\(b.day ?? 1)"
+        }
+        return L.s("\(range) · 이 러닝 날 기준", "\(range) · ending on this run")
     }
 
     /// "이 러닝 109 AU · 7일 1,047 AU · 4주 평균 대비 낮음" — 없는 조각은 빠진다.

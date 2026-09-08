@@ -22,8 +22,12 @@ struct RecordBarChart: View {
     /// 공유 카드 내보내기 모드 — 탭 안내·선택 상호작용을 빼고 더 작게 그린다.
     /// (§5.8 — 카드용 레이아웃을 따로 만들지 않고 **이 컴포넌트 하나**를 그대로 재사용한다)
     var exportMode: Bool = false
-    /// 카드 배경색 오버라이드 (공유 카드의 라이트/다크 테마 색을 그대로 쓰기 위해)
+    /// 카드 배경색 오버라이드 (공유 카드의 라이트/다크 테마 색을 그대로 쓰기 위해).
+    /// `.clear`를 주면 배경 없이 상위 카드에 녹아든다 (패딩은 유지).
     var cardBackground: Color? = nil
+    /// 미리 강조할 날짜 — 이 날짜가 든 버킷을 **선택된 것처럼** 그린다(나머지 흐리게 + 세로 점선).
+    /// 내보내기 모드와 함께 쓰며 말풍선은 나오지 않는다. (퍼포먼스 카드의 "이 러닝 날")
+    var highlightDate: Date? = nil
 
     /// 막대와 점이 함께 보는 단 하나의 선택 상태
     @State private var selected: Date? = nil
@@ -66,8 +70,11 @@ struct RecordBarChart: View {
         }
     }
 
+    /// 탭 선택보다 `highlightDate`가 우선 — 강조 코드는 이 하나만 본다(§5.8, 경로 분기 없음).
+    private var effectiveSelection: Date? { highlightDate ?? selected }
+
     private var selectedBar: RecordBar? {
-        guard let s = selected else { return nil }
+        guard let s = effectiveSelection else { return nil }
         return bars.first { s >= $0.id && s < $0.end }
     }
 
