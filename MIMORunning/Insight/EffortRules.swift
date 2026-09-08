@@ -26,34 +26,58 @@ enum EffortRules {
     static func evaluate(_ i: EffortRuleInput) -> EffortRuleOutput {
         let L = AppLanguage.shared
         let e = i.effort.value
+        let label = i.type.koreanLabel
         var out: [RunInsight] = []
         var replacesEnv = false
-        let hl = ["\(e)"]
+
+        // ── C: 스플릿 형태 (이지 유형 + 기준선+1 이상) ── A보다 먼저 계산: 모순 쌍 방지
+        let cInsight: RunInsight? = { () -> RunInsight? in
+            guard easyTypes.contains(i.type), let b = i.baseline, e >= b + 1,
+                  let slow = secondHalfSlowdown(splits: i.splits) else { return nil }
+            if slow >= splitThreshold {
+                return RunInsight(
+                    category: .intensity, tone: .caution, badge: L.s("페이스 배분", "Pacing"),
+                    message: L.s("후반이 처지고 체감도 높았어요. 초반 페이스가 목적보다 빨랐을 수 있어요.",
+                                 "You faded late and effort ran high — the early pace may have been too quick for the goal."),
+                    highlights: [])
+            } else if slow <= -splitThreshold {
+                return RunInsight(
+                    category: .intensity, tone: .caution, badge: L.s("페이스 배분", "Pacing"),
+                    message: L.s("\(label) 후반에 속도를 올리면 회복이라는 목적이 흐려져요.",
+                                 "Speeding up late in a \(label.lowercased()) blurs its purpose: recovery."),
+                    highlights: [])
+            }
+            return nil
+        }()
 
         // ── A 계열: 하나만 ──
         if easyTypes.contains(i.type) {
-            let overBaseline = i.baseline.map { e >= $0 + 2 } ?? (e >= 7)
-            if e >= 8 || overBaseline {
+            let tooHard: Bool = { () -> Bool in
+                if let b = i.baseline { return e >= b + 2 || (e >= 8 && e > b) }
+                // 기준선 없음: 절대 7 이상 — 단, Apple 추정값만 있을 때는 침묵(추정치가 이지런을 부풀리는 경향)
+                return e >= 7 && i.effort.source != .appleEstimated
+            }()
+            if tooHard {
                 out.append(RunInsight(
-                    category: .intensity, tone: .caution, badge: L.s("강도 참고", "Effort Note"),
-                    message: L.s("이지런인데 체감 강도가 \(e)이었어요. 이름은 이지여도 몸이 힘들었다면 그날은 이지런이 아니에요.",
-                                 "Labeled easy, but effort was \(e)/10. If the body says hard, it wasn't an easy run."),
-                    highlights: hl))
-            } else if i.baseline != nil {
-                out.append(matched(e))
+                    category: .intensity, tone: .caution, badge: L.s("체감 강도", "Perceived Effort"),
+                    message: L.s("\(label)인데 체감 강도가 \(e)이었어요. 이름과 달리 몸이 힘들었다면 회복 목적은 이루지 못한 거예요.",
+                                 "\(label), but effort was \(e)/10. If the body says hard, it wasn't a recovery run."),
+                    highlights: ["\(e)"]))
+            } else if let b = i.baseline, cInsight == nil {
+                out.append(matched(e, b))
             }
         } else if hardTypes.contains(i.type), let b = i.baseline {
             if e <= b - 2 {
                 out.append(RunInsight(
                     category: .intensity, tone: .neutral, badge: L.s("강도 메모", "Effort"),
-                    message: L.s("평소 같은 훈련보다 체감이 낮았어요. 여유 있게 소화한 날.",
-                                 "Felt easier than your usual for this workout — a comfortable day."),
-                    highlights: hl))
+                    message: L.s("체감 \(e), 평소 같은 훈련(\(b))보다 낮았어요. 여유 있게 소화한 날.",
+                                 "Effort \(e), below your usual \(b) for this workout — a comfortable day."),
+                    highlights: ["\(e)"]))
             } else {
-                out.append(matched(e))
+                out.append(matched(e, b))
             }
-        } else if i.baseline != nil {
-            out.append(matched(e))
+        } else if let b = i.baseline {
+            out.append(matched(e, b))
         }
 
         // ── B: 더위·습도 (기준선 필요) ──
@@ -62,49 +86,37 @@ enum EffortRules {
             let humid = (i.humidityPercent ?? -1) >= humidPct
             if hot || humid {
                 let header = envHeader(temp: i.temperatureC, hum: i.humidityPercent)
+                let noun = hot && humid ? L.s("덥고 습한 날", "a hot, humid day")
+                         : hot ? L.s("더운 날", "a hot day")
+                         : L.s("습한 날", "a humid day")
                 if e >= b + 1 {
                     out.append(RunInsight(
                         category: .environment, tone: .neutral, badge: L.s("환경", "Conditions"),
-                        message: L.s("\(header). 같은 페이스라도 더운 날은 체감이 1~2 높아지는 게 자연스러워요. 페이스보다 강도에 맞춰 뛰는 날.",
-                                     "\(header). Same pace feels 1–2 points harder in heat — run to effort, not pace."),
+                        message: L.s("\(header). 같은 페이스라도 \(noun)은 체감이 1~2 높아지는 게 자연스러워요. 페이스보다 강도에 맞춰 뛰는 날.",
+                                     "\(header). On \(noun) the same pace feels 1–2 points harder — run to effort, not pace."),
                         highlights: [header]))
                     replacesEnv = true
                 } else if e <= b {
                     out.append(RunInsight(
                         category: .environment, tone: .good, badge: L.s("환경", "Conditions"),
-                        message: L.s("더운 날인데 체감이 평소 수준이었어요.",
-                                     "Hot day, yet effort stayed at your usual level."),
+                        message: L.s("\(header). \(noun)인데 체감이 평소 수준이었어요.",
+                                     "\(header). \(noun.prefix(1).uppercased() + noun.dropFirst()), yet effort stayed at your usual level."),
                         highlights: [header]))
                     replacesEnv = true
                 }
             }
         }
 
-        // ── C: 스플릿 형태 (이지 유형 + 기준선+1 이상) ──
-        if easyTypes.contains(i.type), let b = i.baseline, e >= b + 1,
-           let slow = secondHalfSlowdown(splits: i.splits) {
-            if slow >= splitThreshold {
-                out.append(RunInsight(
-                    category: .intensity, tone: .caution, badge: L.s("페이스 배분", "Pacing"),
-                    message: L.s("후반이 처지고 체감도 높았어요. 초반 페이스가 목적보다 빨랐을 수 있어요.",
-                                 "You faded late and effort ran high — the early pace may have been too quick for the goal."),
-                    highlights: [String(format: "%+.0f%%", slow * 100)]))
-            } else if slow <= -splitThreshold {
-                out.append(RunInsight(
-                    category: .intensity, tone: .caution, badge: L.s("페이스 배분", "Pacing"),
-                    message: L.s("이지런 후반에 속도를 올리면 회복이라는 목적이 흐려져요.",
-                                 "Speeding up late in an easy run blurs its purpose: recovery."),
-                    highlights: [String(format: "%+.0f%%", slow * 100)]))
-            }
-        }
+        if let c = cInsight { out.append(c) }
 
         return EffortRuleOutput(insights: out, replacesEnvironment: replacesEnv)
     }
 
-    private static func matched(_ e: Int) -> RunInsight {
+    private static func matched(_ e: Int, _ b: Int) -> RunInsight {
         let L = AppLanguage.shared
         return RunInsight(category: .intensity, tone: .good, badge: L.s("의도에 맞는 강도", "On-Target Effort"),
-                          message: L.s("훈련 의도와 체감 강도가 맞았어요.", "Effort matched the intent of the session."),
+                          message: L.s("체감 \(e) · 평소 \(b) — 훈련 의도와 맞았어요.",
+                                       "Effort \(e) · usual \(b) — matched the session's intent."),
                           highlights: ["\(e)"])
     }
 
@@ -130,7 +142,8 @@ enum EffortRules {
             return dKm > 0 ? t / dKm : 0
         }
         let p1 = pace(first), p2 = pace(second)
-        guard p1 > 0 else { return nil }
-        return p2 / p1 - 1
+        guard p1 > 0, p2 > 0 else { return nil }
+        let r = p2 / p1 - 1
+        return r.isFinite ? r : nil
     }
 }

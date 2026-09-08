@@ -35,8 +35,20 @@ struct EffortBaselineTests {
                               apple: [a.id: apple(4), old.id: apple(8), walk.id: apple(2)])
         let out = EffortBaseline.samples(current: cur, history: [cur, a, old, walk, noEffort], index: idx,
                                          typeOf: { $0 == a.id ? .easy : nil })
-        #expect(out.count == 1)
-        #expect(out.first?.type == .easy)
-        #expect(out.first?.effort == 4)
+        #expect(out == [EffortBaseline.Sample(type: .easy, effort: 4)])
+    }
+
+    @Test func unknownTypeCountsOnlyInFallback() {
+        let samples = [EffortBaseline.Sample(type: nil, effort: 4), EffortBaseline.Sample(type: nil, effort: 6),
+                       EffortBaseline.Sample(type: .easy, effort: 5)]
+        // easy 1건 → 같은 유형 미달 → 전체 3건 중앙값 5
+        #expect(EffortBaseline.median(for: .easy, samples: samples) == 5)
+        #expect(EffortBaseline.median(for: .general, samples: samples) == 5)   // nil은 general이 아니다
+    }
+
+    @Test func evenCountMedianRoundsHalfAwayFromZero() {
+        let samples = [EffortBaseline.Sample(type: .easy, effort: 4), .init(type: .easy, effort: 5),
+                       .init(type: .easy, effort: 6), .init(type: .easy, effort: 7)]
+        #expect(EffortBaseline.median(for: .easy, samples: samples) == 6)   // 5.5 → 6
     }
 }

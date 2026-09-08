@@ -67,23 +67,25 @@ struct EffortRulesTests {
         #expect(!mild.insights.contains { $0.category == .environment })
     }
 
-    @Test func secondHalfSlowdownMath() {
+    @Test func secondHalfSlowdownMath() throws {
         // 전반 360·360, 후반 380·380 → 380/360 − 1 = +5.6%
         let s = [split(1, pace: 360), split(2, pace: 360), split(3, pace: 380), split(4, pace: 380)]
-        let v = EffortRules.secondHalfSlowdown(splits: s)!
+        let v = try #require(EffortRules.secondHalfSlowdown(splits: s))
         #expect(abs(v - 0.0556) < 0.001)
         // 부분 스플릿(1km 미만) 제외 → 3개 남아 nil
         let partial = [split(1, pace: 360), split(2, pace: 360), split(3, pace: 380), split(4, km: 0.4, pace: 380)]
         #expect(EffortRules.secondHalfSlowdown(splits: partial) == nil)
         // 5개(홀수) → 가운데 제외: 전반 1·2, 후반 4·5
         let five = [split(1, pace: 360), split(2, pace: 360), split(3, pace: 900), split(4, pace: 360), split(5, pace: 360)]
-        #expect(abs(EffortRules.secondHalfSlowdown(splits: five)!) < 0.0001)
+        let odd = try #require(EffortRules.secondHalfSlowdown(splits: five))
+        #expect(abs(odd) < 0.0001)
     }
 
     @Test func splitRulesOnlyForEasyTypesAboveBaseline() {
         let fade = [split(1, pace: 360), split(2, pace: 360), split(3, pace: 380), split(4, pace: 380)]
         let surge = [split(1, pace: 380), split(2, pace: 380), split(3, pace: 360), split(4, pace: 360)]
         let fadeOut = EffortRules.evaluate(input(effort: 6, type: .easy, baseline: 5, splits: fade))
+        #expect(fadeOut.insights.count == 1)   // C가 있으면 matched는 억제 (모순 방지)
         #expect(fadeOut.insights.contains { $0.category == .intensity && $0.message.contains("초반") })
         let surgeOut = EffortRules.evaluate(input(effort: 6, type: .easy, baseline: 5, splits: surge))
         #expect(surgeOut.insights.contains { $0.message.contains("후반") })
@@ -99,5 +101,55 @@ struct EffortRulesTests {
         let fade = [split(1, pace: 360), split(2, pace: 360), split(3, pace: 380), split(4, pace: 380)]
         let o = EffortRules.evaluate(input(effort: 8, type: .easy, baseline: 5, splits: fade, temp: 30, hum: 80))
         #expect(o.insights.count == 3)
+    }
+
+    @Test func baselineEightEasyRunIsMatchedNotWarned() {
+        let o = EffortRules.evaluate(input(effort: 8, type: .easy, baseline: 8))
+        #expect(o.insights.count == 1)
+        #expect(o.insights[0].tone == .good)
+        #expect(EffortRules.evaluate(input(effort: 9, type: .easy, baseline: 8)).insights[0].tone == .caution)  // e > b && e ≥ 8
+    }
+
+    @Test func appleEstimateWithoutBaselineStaysSilent() {
+        #expect(EffortRules.evaluate(input(effort: 7, source: .appleEstimated, type: .easy, baseline: nil)).insights.isEmpty)
+        #expect(EffortRules.evaluate(input(effort: 7, source: .appleManual, type: .easy, baseline: nil)).insights.count == 1)
+    }
+
+    @Test func hardTypeWithoutBaselineIsSilent() {
+        #expect(EffortRules.evaluate(input(effort: 9, type: .interval, baseline: nil)).insights.isEmpty)
+        #expect(EffortRules.evaluate(input(effort: 3, type: .race, baseline: nil)).insights.isEmpty)
+    }
+
+    @Test func lsdCopyUsesTypeLabel_andHumidOnlyCopySaysHumid() {
+        let lsd = EffortRules.evaluate(input(effort: 8, type: .lsd, baseline: 5))
+        #expect(lsd.insights[0].message.contains("LSD"))
+        #expect(!lsd.insights[0].message.contains("이지런"))
+        let humid = EffortRules.evaluate(input(effort: 6, type: .general, baseline: 5, hum: 80))
+        let env = humid.insights.first { $0.category == .environment }!
+        #expect(env.message.contains("습한 날"))
+        #expect(!env.message.contains("더운"))
+    }
+
+    @Test func noContradictionAtBaselinePlusOne() {
+        let fade = [split(1, pace: 360), split(2, pace: 360), split(3, pace: 380), split(4, pace: 380)]
+        let o = EffortRules.evaluate(input(effort: 6, type: .easy, baseline: 5, splits: fade))
+        #expect(o.insights.count == 1)
+        #expect(o.insights[0].tone == .caution)
+    }
+
+    @Test func badgeTable() {
+        let cases: [(WorkoutType, Int, Int?, String?)] = [
+            (.easy, 7, 5, "체감 강도"), (.easy, 5, 5, "의도에 맞는 강도"), (.tempo, 5, 7, "강도 메모"),
+            (.tempo, 7, 7, "의도에 맞는 강도"), (.general, 6, 6, "의도에 맞는 강도"), (.easy, 6, nil, nil),
+        ]
+        for (t, e, b, badge) in cases {
+            let o = EffortRules.evaluate(input(effort: e, type: t, baseline: b))
+            #expect(o.insights.first?.badge == badge, "\(t) e=\(e) b=\(b.map(String.init) ?? "nil")")
+        }
+    }
+
+    @Test func secondHalfSlowdownRejectsZeroSecondHalf() {
+        let s = [split(1, pace: 360), split(2, pace: 360), split(3, pace: 0), split(4, pace: 0)]
+        #expect(EffortRules.secondHalfSlowdown(splits: s) == nil)
     }
 }

@@ -4,14 +4,15 @@ import Foundation
 /// Apple 추정이 이지런에도 5~6을 주는 경향이 있기 때문(스펙 "결정" 참조).
 enum EffortBaseline {
     struct Sample: Equatable {
-        let type: WorkoutType
+        /// nil = 유형 미분류. 같은 유형 집계에는 절대 포함되지 않고 전체 폴백에만 쓰인다.
+        let type: WorkoutType?
         let effort: Int
     }
 
     static let minSamples = 3
     static let windowDays = 56
 
-    /// 같은 유형 3건 이상 → 그 중앙값. 미달 → 전체 러닝 3건 이상이면 전체 중앙값. 그것도 미달 → nil.
+    /// 같은 유형 3건 이상 → 그 중앙값. 미달 → 전체 러닝 3건 이상이면 전체 중앙값(미분류 포함). 그것도 미달 → nil.
     static func median(for type: WorkoutType, samples: [Sample]) -> Int? {
         let same = samples.filter { $0.type == type }.map { Double($0.effort) }
         if same.count >= minSamples { return Int(WorkoutTypeClassifier.median(same).rounded()) }
@@ -30,7 +31,7 @@ enum EffortBaseline {
             guard a.id != current.id, a.type == .running,
                   a.date >= cutoff, a.date <= current.date,
                   let e = index.resolve(a.id) else { return nil }
-            return Sample(type: typeOf(a.id) ?? .general, effort: e.value)
+            return Sample(type: typeOf(a.id), effort: e.value)
         }
     }
 }
