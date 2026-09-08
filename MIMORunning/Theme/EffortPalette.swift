@@ -2,11 +2,12 @@ import SwiftUI
 import UIKit
 
 /// Apple 피트니스 어휘의 4구간 (2차 소스 기준: Easy 1–3 · Moderate 4–6 · Hard 7–8 · All Out 9–10)
-enum EffortBand: CaseIterable, Equatable, Hashable {
+enum EffortBand: CaseIterable {
     case easy, moderate, hard, allOut
 
     init(value: Int) {
-        switch value {
+        let v = EffortResolver.clamp(value)
+        switch v {
         case ...3:   self = .easy
         case 4...6:  self = .moderate
         case 7...8:  self = .hard
@@ -38,11 +39,17 @@ enum EffortBand: CaseIterable, Equatable, Hashable {
 enum EffortPalette {
     struct RGBA { let r: CGFloat; let g: CGFloat; let b: CGFloat; let a: CGFloat }
 
-    static let colors: [Color] = (1...10).map { color(for: $0) }
+    private static let stops: [UIColor] = Theme.hrZoneColors.map { UIColor($0) }
+
+    /// 1...10 → 보간 색. 테이블은 한 번만 만든다.
+    static let colors: [Color] = (1...10).map(interpolated)
 
     static func color(for value: Int) -> Color {
-        let stops = Theme.hrZoneColors.map { UIColor($0) }
-        let v = min(10, max(1, value))
+        colors[EffortResolver.clamp(value) - 1]
+    }
+
+    private static func interpolated(_ value: Int) -> Color {
+        let v = EffortResolver.clamp(value)
         let t = Double(v - 1) / 9.0 * Double(stops.count - 1)     // 0...4
         let i = min(stops.count - 2, Int(t))
         let f = t - Double(i)
@@ -62,6 +69,6 @@ enum EffortPalette {
         b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
         let t = CGFloat(f)
         return UIColor(red: r1 + (r2 - r1) * t, green: g1 + (g2 - g1) * t,
-                       blue: b1 + (b2 - b1) * t, alpha: 1)
+                       blue: b1 + (b2 - b1) * t, alpha: a1 + (a2 - a1) * t)
     }
 }

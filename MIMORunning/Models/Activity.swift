@@ -274,7 +274,7 @@ extension ActivityDetail: Codable {
         let offsets = try c.decode([Double].self, forKey: .altTimeOffset)
         let tAlts   = try c.decode([Double].self, forKey: .altTimeAlt)
         altitudeTimeProfile = zip(offsets, tAlts).map { (offset: $0, altitude: $1) }
-        appleEffort = try c.decodeIfPresent(AppleEffort.self, forKey: .appleEffort)
+        appleEffort = (try? c.decodeIfPresent(AppleEffort.self, forKey: .appleEffort)) ?? nil   // 손상된 강도 블롭 하나가 상세 캐시 전체를 버리지 않게
     }
 
     func encode(to encoder: any Encoder) throws {
