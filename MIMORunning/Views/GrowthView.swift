@@ -16,24 +16,6 @@ private struct WeeklyMins: Identifiable {
     let mins: Double
 }
 
-private struct MonthlyKm: Identifiable {
-    let id: Date
-    let label: String
-    let km: Double
-}
-
-private struct MonthlyMins: Identifiable {
-    let id: Date
-    let label: String
-    let mins: Double
-}
-
-private struct DailyKm: Identifiable {
-    let id: Date
-    let day: Int    // 1–31
-    let km: Double
-}
-
 private struct PacePoint: Identifiable {
     let id = UUID()
     let date: Date
@@ -93,15 +75,13 @@ struct GrowthView: View {
     @Query private var allArchives: [RaceArchive]
     @Query private var allStories: [WorkoutStory]
 
-    @State private var showTimeMileage: Bool = false
     @State private var showMonthly: Bool = false
     @State private var showDaily: Bool = true
     @State private var dailyMonth: Date = Date()
-    @State private var dailyKmsCache: [DailyKm] = []
-    /// 일간 모드에서 선택한 달의 일별 강도 부하. 강도 있는 러닝이 없으면 nil(카드 숨김).
-    @State private var monthEffortLoadCache: EffortLoad.WindowLoad? = nil
-    /// 일간 모드에서 선택한 달의 페이스 추이(전량, 20회 상한 없음)
-    @State private var monthPacePointsCache: [PacePoint] = []
+    /// 기록 카드 지표 토글 — 거리·시간·부하·페이스 (모든 기간에서 사용)
+    @State private var recordMetric: RecordMetric = .distance
+    /// 기록 카드가 그리는 버킷(일/주/월). 지표를 바꿔도 재계산할 필요 없다.
+    @State private var recordBarsCache: [RecordBar] = []
     @State private var selectedTrend: TrendMetric? = nil
     @State private var showBodyMass = false
     @State private var showBodyFat = false
@@ -110,8 +90,6 @@ struct GrowthView: View {
     // Cached chart data — refreshed only when activities change
     @State private var weeklyKmsCache: [WeeklyKm] = []
     @State private var weeklyMinsCache: [WeeklyMins] = []
-    @State private var monthlyKmsCache: [MonthlyKm] = []
-    @State private var monthlyMinsCache: [MonthlyMins] = []
     @State private var pacePointsCache: [PacePoint] = []
     @State private var heatmapColumnsCache: [WeekColumn] = []
     @State private var metricAnalyses: [TrendMetric: (direction: TrendDirection, changeRatio: Double)] = [:]
@@ -200,10 +178,7 @@ struct GrowthView: View {
         runsCache        = manager.activities.filter { $0.type == .running }
         weeklyKmsCache   = weeklyKms()
         weeklyMinsCache  = weeklyMins()
-        monthlyKmsCache  = monthlyKms()
-        monthlyMinsCache = monthlyMins()
-        dailyKmsCache    = dailyKms(for: dailyMonth)
-        refreshMonthCaches()
+        refreshRecordBars()
         pacePointsCache  = pacePoints()
         let cols = heatmapColumns()
         heatmapColumnsCache = cols
@@ -269,7 +244,6 @@ struct GrowthView: View {
                             if !effortTypeRowsCache.isEmpty {
                                 EffortTypeBaselineCard(rows: effortTypeRowsCache)
                             }
-                            paceSection
                             metricTrendsSection
                             MRHealthMetricsView(m: engine.healthMetrics)
                             bodyChangeSectionView
@@ -329,8 +303,7 @@ struct GrowthView: View {
             Task { refreshChartCache(); await refreshMetricAnalyses() }
         }
         .onChange(of: dailyMonth) { _, _ in
-            dailyKmsCache = dailyKms(for: dailyMonth)
-            refreshMonthCaches()
+            refreshRecordBars()
         }
         .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
             // 언어가 바뀌면 캐시된 현지화 문자열을 즉시 재계산한다.
@@ -347,7 +320,7 @@ struct GrowthView: View {
         .task {
             refreshChartCache()
             let bucket = manager.userLevel.bucket
-            showTimeMileage = (bucket == .beginner || bucket == .novice)
+            recordMetric = (bucket == .beginner || bucket == .novice) ? .time : .distance
             await checkBodyDataAvailability()
             await refreshMetricAnalyses()
         }
@@ -358,9 +331,8 @@ struct GrowthView: View {
             //   두 번째 완료 Task가 canShow=false를 덮어쓸 수 있다.
             MRAdviceLogStore.runMigrationIfNeeded()
             // 일간 모드 기본 창은 "오늘까지 최근 30일" — 자정을 넘겨 탭에 다시 들어오면 창을 다시 잡는다.
-            if dailyKmsCache.first?.id != dailyWindow(for: dailyMonth).start {
-                dailyKmsCache = dailyKms(for: dailyMonth)
-                refreshMonthCaches()
+            if showDaily, recordBarsCache.first?.id != dailyWindow(for: dailyMonth).start {
+                refreshRecordBars()
             }
             Task { await checkBodyDataAvailability() }
             Task { await loadBodyChangeSectionData() }
@@ -414,18 +386,20 @@ struct GrowthView: View {
 
     // MARK: - Share card data helpers
 
+    /// 거리 내보내기 카드는 거리/시간 막대만 다룬다 — 부하·페이스 모드에서는 거리로 되돌린다.
+    private var showTimeMileage: Bool { recordMetric == .time }
+
     private var currentBarData: [(label: String, value: Double)] {
-        if showDaily {
-            return dailyKmsCache.map { (label: "\($0.day)", value: $0.km) }
-        }
-        if showMonthly {
-            return showTimeMileage
-                ? monthlyMinsCache.map { (label: $0.label, value: $0.mins) }
-                : monthlyKmsCache.map  { (label: $0.label, value: $0.km)   }
-        } else {
-            return showTimeMileage
-                ? weeklyMinsCache.map  { (label: $0.label, value: $0.mins) }
-                : weeklyKmsCache.map   { (label: $0.label, value: $0.km)   }
+        let useTime = showTimeMileage
+        let period = recordPeriod
+        return recordBarsCache.map { bar in
+            let label: String
+            switch period {
+            case .day:   label = "\(Calendar.current.component(.day, from: bar.id))"
+            case .week:  label = Self.weekLabelFormatter.string(from: bar.id)
+            case .month: label = Self.monthLabelFormatter.string(from: bar.id)
+            }
+            return (label: label, value: useTime ? bar.minutes : bar.km)
         }
     }
 
@@ -515,22 +489,46 @@ struct GrowthView: View {
         return EffortLoad.rollingAcuteChronic(runs: runs, asOf: Date())
     }
 
-    /// 선택한 기간의 일별 강도 부하. 강도 있는 러닝이 없으면 nil(카드 숨김).
-    private func monthEffortLoad(for month: Date) -> EffortLoad.WindowLoad? {
-        let cal = Calendar.current
-        let (start, end) = dailyWindow(for: month)
-        guard let days = cal.dateComponents([.day], from: start, to: end).day, days > 0 else { return nil }
-        let inWindow = runsCache.filter { $0.date >= start && $0.date < end }
-        let w = EffortLoad.window(runs: EffortLoad.runs(from: inWindow, index: manager.effortIndex),
-                                  endingBefore: end, days: days)
-        return w.coveredCount > 0 ? w : nil
+    // MARK: - 기록 카드 (거리·시간·부하·페이스 통합)
+
+    private var recordPeriod: RecordPeriod {
+        if showDaily { return .day }
+        return showMonthly ? .month : .week
     }
 
-    /// 일간 모드에서 달을 따라가는 캐시(강도 부하 · 페이스 추이) 갱신
-    private func refreshMonthCaches() {
-        monthEffortLoadCache = monthEffortLoad(for: dailyMonth)
-        monthPacePointsCache = monthPacePoints(for: dailyMonth)
+    /// 기록 카드의 x축 창. 일간은 dailyWindow(월 이동), 주간 12주, 월간 12개월.
+    private func recordWindow(for period: RecordPeriod) -> (start: Date, end: Date) {
+        let now = Date()
+        switch period {
+        case .day:
+            return dailyWindow(for: dailyMonth)
+        case .week:
+            let cal = mondayCal
+            let thisWeek = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
+            let start = cal.date(byAdding: .weekOfYear, value: -11, to: thisWeek) ?? thisWeek
+            let end = cal.date(byAdding: .day, value: 7, to: thisWeek) ?? thisWeek
+            return (start, end)
+        case .month:
+            let cal = Calendar.current
+            let thisMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? now
+            let start = cal.date(byAdding: .month, value: -11, to: thisMonth) ?? thisMonth
+            let end = cal.date(byAdding: .month, value: 1, to: thisMonth) ?? thisMonth
+            return (start, end)
+        }
     }
+
+    /// 지표를 바꿔도 막대는 그대로다 — 기간·러닝·강도 입력이 바뀔 때만 다시 만든다.
+    private func refreshRecordBars() {
+        let period = recordPeriod
+        let win = recordWindow(for: period)
+        recordBarsCache = RecordSeries.bars(
+            activities: runsCache,
+            effortOf: { [manager] id in manager.effortIndex.resolve(id)?.value },
+            start: win.start, end: win.end, period: period
+        )
+    }
+
+    private var recordPaceBaseline: Double? { RecordSeries.paceBaseline(recordBarsCache) }
 
     /// 유형별 평소 강도 표 갱신 — 러닝 캐시·강도 입력이 바뀔 때.
     private func refreshEffortTypeRows() {
@@ -554,33 +552,31 @@ struct GrowthView: View {
                         .foregroundStyle(Theme.violet)
                         periodToggle
                     }
-                    if !showDaily {
-                        modeToggle
-                    }
+                    metricToggle
                 }
             }
             if showDaily {
                 dailyMonthNavRow
             }
-            mileageChartView
+            recordChartView
+            Text(recordSummaryText)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
         }
     }
 
     private var mileageTitle: String {
         let L = AppLanguage.shared
-        if showDaily { return L.s("일간 거리", "Daily Distance") }
-        let period = showMonthly ? L.s("월간", "Monthly") : L.s("주간", "Weekly")
-        let mode   = showTimeMileage ? L.s("시간", "Time") : L.s("거리", "Distance")
-        return "\(period) \(mode)"
+        if showDaily { return L.s("일간 기록", "Daily") }
+        return showMonthly ? L.s("월간 기록", "Monthly") : L.s("주간 기록", "Weekly")
     }
 
     private var mileageScreenTitle: String {
         let L = AppLanguage.shared
-        if showDaily { return L.s("일간 거리 정보", "Daily Distance") }
-        if showMonthly {
-            return showTimeMileage ? L.s("월간 시간 정보", "Monthly Time") : L.s("월간 거리 정보", "Monthly Distance")
-        }
-        return showTimeMileage ? L.s("주간 시간 정보", "Weekly Time") : L.s("주간 거리 정보", "Weekly Distance")
+        let unit = showTimeMileage ? L.s("시간", "Time") : L.s("거리", "Distance")
+        if showDaily { return L.s("일간 \(unit) 정보", "Daily \(unit)") }
+        if showMonthly { return L.s("월간 \(unit) 정보", "Monthly \(unit)") }
+        return L.s("주간 \(unit) 정보", "Weekly \(unit)")
     }
 
     private var dailyMonthLabel: String {
@@ -621,27 +617,11 @@ struct GrowthView: View {
 
     private var mileageSubtitle: String {
         let L = AppLanguage.shared
-        if showDaily {
-            let total = dailyKmsCache.reduce(0.0) { $0 + $1.km }
-            return total > 0
-                ? String(format: L.s("총 %.1fkm", "Total %.1fkm"), total)
-                : L.s("러닝 기록 없음", "No runs")
-        }
-        if showMonthly {
-            if showTimeMileage {
-                return timeSummary(mins: monthlyMinsCache.last?.mins ?? 0, isMonth: true)
-            } else {
-                let km = monthlyKmsCache.last?.km ?? 0
-                return km > 0
-                    ? String(format: L.s("이번 달 %.1fkm", "This month %.1fkm"), km)
-                    : L.s("이번 달 아직 없어요", "Nothing this month")
-            }
-        } else {
-            if showTimeMileage {
-                return timeSummary(mins: weeklyMinsCache.last?.mins ?? 0, isMonth: false)
-            } else {
-                return L.s("최근 12주 러닝 km", "Last 12 weeks (km)")
-            }
+        switch recordMetric {
+        case .distance: return "km"
+        case .time:     return L.s("분", "min")
+        case .load:     return L.s("강도 × 시간(분)", "Effort × minutes")
+        case .pace:     return L.s("평균 대비 · 위로 갈수록 빠름", "vs average · higher = faster")
         }
     }
 
@@ -650,7 +630,7 @@ struct GrowthView: View {
         let isWeekly  = !showMonthly && !showDaily
         let isMonthly = showMonthly && !showDaily
         return HStack(spacing: 0) {
-            Button { showDaily = true } label: {
+            Button { showDaily = true; refreshRecordBars() } label: {
                 Text(L.s("일", "D"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(showDaily ? Color.white : Color.secondary)
@@ -659,7 +639,7 @@ struct GrowthView: View {
                     .background(showDaily ? Theme.time : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
-            Button { showDaily = false; showMonthly = false } label: {
+            Button { showDaily = false; showMonthly = false; refreshRecordBars() } label: {
                 Text(L.s("주", "W"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(isWeekly ? Color.white : Color.secondary)
@@ -668,7 +648,7 @@ struct GrowthView: View {
                     .background(isWeekly ? Theme.cadence : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
-            Button { showDaily = false; showMonthly = true } label: {
+            Button { showDaily = false; showMonthly = true; refreshRecordBars() } label: {
                 Text(L.s("월", "M"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(isMonthly ? Color.white : Color.secondary)
@@ -709,26 +689,19 @@ struct GrowthView: View {
         }
     }
 
-    private var modeToggle: some View {
-        let L = AppLanguage.shared
-        return HStack(spacing: 0) {
-            Button { showTimeMileage = false } label: {
-                Text("km")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(showTimeMileage ? Color.secondary : Color.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(showTimeMileage ? Color.clear : Theme.violet)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            Button { showTimeMileage = true } label: {
-                Text(L.s("분", "min"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(showTimeMileage ? Color.white : Color.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(showTimeMileage ? Theme.violet : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+    /// 지표 토글 — 거리·시간·부하·페이스. 일간·주간·월간 모든 기간에서 보인다.
+    private var metricToggle: some View {
+        HStack(spacing: 0) {
+            ForEach(RecordMetric.allCases, id: \.self) { m in
+                Button { recordMetric = m } label: {
+                    Text(metricLabel(m))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(recordMetric == m ? Color.white : Color.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(recordMetric == m ? Theme.violet : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
             }
         }
         .background(Theme.cardBackground)
@@ -739,95 +712,91 @@ struct GrowthView: View {
         )
     }
 
-    /// 일간 모드: 일간 거리 + 같은 창의 일별 강도 부하 (기본 = 오늘까지 최근 30일, "<"로 전월 달력 단위)
-    @ViewBuilder
-    private var dailyChartsView: some View {
+    private func metricLabel(_ m: RecordMetric) -> String {
         let L = AppLanguage.shared
-        let rolling = isAtCurrentMonth
-        let win = dailyWindow(for: dailyMonth)
-        let emptyText = rolling
-            ? L.s("최근 30일 러닝 기록이 없어요", "No runs in the last 30 days")
-            : L.s("이 달에 러닝 기록이 없어요", "No runs this month")
-        VStack(spacing: 10) {
-            if dailyKmsCache.allSatisfy({ $0.km == 0 }) {
-                EmptyChartPlaceholder(message: emptyText)
-            } else {
-                DailyDistanceChart(data: dailyKmsCache, start: win.start, end: win.end)
-            }
-            if let w = monthEffortLoadCache {
-                MonthlyEffortLoadChart(window: w, isRolling: rolling)
-            }
+        switch m {
+        case .distance: return L.s("거리", "Dist")
+        case .time:     return L.s("시간", "Time")
+        case .load:     return L.s("부하", "Load")
+        case .pace:     return L.s("페이스", "Pace")
         }
     }
 
-    @ViewBuilder
-    private var mileageChartView: some View {
+    /// 거리·시간·부하·페이스를 한 축 위에 올리는 통합 기록 차트 (막대 색 = 그 구간 평균 강도)
+    private var recordChartView: some View {
+        let period = recordPeriod
+        let win = recordWindow(for: period)
+        return RecordBarChart(
+            bars: recordBarsCache,
+            metric: recordMetric,
+            period: period,
+            start: win.start,
+            end: win.end,
+            paceBaseline: recordPaceBaseline,
+            emptyMessage: recordEmptyMessage
+        )
+    }
+
+    private var recordEmptyMessage: String {
         let L = AppLanguage.shared
-        if showDaily {
-            dailyChartsView
-        } else if showMonthly {
-            if showTimeMileage {
-                if monthlyMinsCache.allSatisfy({ $0.mins == 0 }) {
-                    EmptyChartPlaceholder(message: L.s("최근 12개월간 러닝 기록이 없어요", "No runs in the last 12 months"))
-                } else {
-                    MonthlyTimeChart(data: monthlyMinsCache)
-                }
-            } else {
-                if monthlyKmsCache.allSatisfy({ $0.km == 0 }) {
-                    EmptyChartPlaceholder(message: L.s("최근 12개월간 러닝 기록이 없어요", "No runs in the last 12 months"))
-                } else {
-                    MonthlyDistanceChart(data: monthlyKmsCache)
-                }
-            }
-        } else {
-            if showTimeMileage {
-                if weeklyMinsCache.allSatisfy({ $0.mins == 0 }) {
-                    EmptyChartPlaceholder(message: L.s("이번 12주간 러닝 기록이 없어요", "No runs in the last 12 weeks"))
-                } else {
-                    WeeklyTimeChart(data: weeklyMinsCache)
-                }
-            } else {
-                if weeklyKmsCache.allSatisfy({ $0.km == 0 }) {
-                    EmptyChartPlaceholder(message: L.s("이번 12주간 러닝 기록이 없어요", "No runs in the last 12 weeks"))
-                } else {
-                    WeeklyDistanceChart(data: weeklyKmsCache)
-                }
-            }
+        switch recordPeriod {
+        case .day:
+            return isAtCurrentMonth
+                ? L.s("최근 30일 러닝 기록이 없어요", "No runs in the last 30 days")
+                : L.s("이 달에 러닝 기록이 없어요", "No runs this month")
+        case .week:
+            return L.s("이번 12주간 러닝 기록이 없어요", "No runs in the last 12 weeks")
+        case .month:
+            return L.s("최근 12개월간 러닝 기록이 없어요", "No runs in the last 12 months")
         }
     }
 
-    private func timeSummary(mins: Double, isMonth: Bool = false) -> String {
+    /// 기간 라벨 — "30일" / "2026년 8월" / "12주" / "12개월"
+    private var recordPeriodWord: String {
         let L = AppLanguage.shared
-        let total = Int(mins)
-        let prefix = isMonth ? L.s("이번 달 ", "This month: ") : L.s("이번 주 ", "This week: ")
-        guard total > 0 else { return "\(prefix)\(L.s("아직 없어요", "Nothing yet"))" }
-        let h = total / 60
-        let m = total % 60
-        if L.isEnglish {
-            return h > 0 ? "\(prefix)\(h)h \(m)m" : "\(prefix)\(m)m"
-        } else {
-            return h > 0 ? "\(prefix)\(h)시간 \(m)분" : "\(prefix)\(m)분"
+        switch recordPeriod {
+        case .day:   return isAtCurrentMonth ? L.s("30일", "30 days") : dailyMonthLabel
+        case .week:  return L.s("12주", "12 weeks")
+        case .month: return L.s("12개월", "12 months")
         }
     }
 
-    private var paceSection: some View {
+    /// 차트 아래 한 줄 요약 — 지표별로 합계·회수·평균을 읽어 준다.
+    private var recordSummaryText: String {
         let L = AppLanguage.shared
-        // 일간 모드에서는 선택한 달의 러닝만 (월 이동을 따라감)
-        let points = showDaily ? monthPacePointsCache : pacePointsCache
-        let subtitle = showDaily
-            ? L.s("\(dailyMonthLabel) · 위로 갈수록 빠름", "\(dailyMonthLabel) · Higher = faster")
-            : L.s("위로 갈수록 빠름", "Higher = faster")
-        let emptyMessage = showDaily
-            ? L.s("이 기간에 비교할 러닝이 2회 미만이에요", "Fewer than 2 runs in this period")
-            : L.s("비교하려면 러닝 2회 이상이 필요해요", "Need 2+ runs to compare")
-        return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: L.s("페이스 추이", "Pace Trend"), subtitle: subtitle)
-            if points.count < 2 {
-                EmptyChartPlaceholder(message: emptyMessage)
-            } else {
-                PaceTrendChart(points: points)
+        let s = RecordSeries.summary(recordBarsCache)
+        let word = recordPeriodWord
+        guard s.runCount > 0 else { return L.s("\(word) 러닝 기록 없음", "\(word): no runs") }
+        switch recordMetric {
+        case .distance:
+            return String(format: L.s("%@ %.1f km · %d회", "%@ %.1f km · %d runs"),
+                          word, s.totalKm, s.runCount)
+        case .time:
+            return "\(word) \(recordMinutesText(s.totalMinutes))"
+        case .load:
+            let au = s.totalAU.rounded().formatted(.number.grouping(.automatic))
+            return L.s("\(word) \(au) AU · \(s.runCount)회 중 \(s.ratedCount)회 강도 있음",
+                       "\(word) \(au) AU · \(s.ratedCount) of \(s.runCount) runs rated")
+        case .pace:
+            guard let mean = s.meanPaceSec, let best = s.bestPaceSec else {
+                return L.s("\(word) 페이스 기록 없음", "\(word): no pace data")
             }
+            return L.s("평균 \(recordPaceText(mean)) · 가장 빠른 \(recordPaceText(best))",
+                       "Average \(recordPaceText(mean)) · Best \(recordPaceText(best))")
         }
+    }
+
+    private func recordMinutesText(_ mins: Double) -> String {
+        let L = AppLanguage.shared
+        let total = Int(mins.rounded())
+        let h = total / 60, m = total % 60
+        if L.isEnglish { return h > 0 ? "\(h)h \(m)m" : "\(m)m" }
+        return h > 0 ? "\(h)시간 \(m)분" : "\(m)분"
+    }
+
+    private func recordPaceText(_ sec: Double) -> String {
+        let t = Int(sec.rounded())
+        return String(format: "%d'%02d\"", t / 60, t % 60)
     }
 
     private var heatmapSection: some View {
@@ -1190,7 +1159,7 @@ struct GrowthView: View {
     /// (두 곳에서 호출되지만 각 refresh 함수가 자체 가드로 중복 실행을 막는다.)
     private func effortInputsChanged() {
         manager.syncUserEfforts(from: allStories)
-        monthEffortLoadCache = monthEffortLoad(for: dailyMonth)
+        refreshRecordBars()
         refreshEffortTypeRows()
         lastAnalyzedRunCount = -1
         formComputedForRunCount = nil
@@ -1764,76 +1733,12 @@ struct GrowthView: View {
         return starts.map { s in WeeklyMins(id: s, label: Self.weekLabelFormatter.string(from: s), mins: totals[s] ?? 0) }
     }
 
-    // MARK: - Monthly distance data
-
-    private func monthlyKms(count: Int = 12) -> [MonthlyKm] {
-        let cal = Calendar.current
-        let now = Date()
-        let starts: [Date] = (0..<count).reversed().compactMap { ago -> Date? in
-            guard let ref = cal.date(byAdding: .month, value: -ago, to: now) else { return nil }
-            return cal.date(from: cal.dateComponents([.year, .month], from: ref))
-        }
-        var totals: [Date: Double] = Dictionary(starts.map { ($0, 0.0) }, uniquingKeysWith: { old, _ in old })
-        for a in runs {
-            guard let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date)) else { continue }
-            totals[ms] = totals[ms].map { $0 + a.distance / 1000 }
-        }
-        return starts.map { s in MonthlyKm(id: s, label: Self.monthLabelFormatter.string(from: s), km: totals[s] ?? 0) }
-    }
-
-    private func monthlyMins(count: Int = 12) -> [MonthlyMins] {
-        let cal = Calendar.current
-        let now = Date()
-        let starts: [Date] = (0..<count).reversed().compactMap { ago -> Date? in
-            guard let ref = cal.date(byAdding: .month, value: -ago, to: now) else { return nil }
-            return cal.date(from: cal.dateComponents([.year, .month], from: ref))
-        }
-        var totals: [Date: Double] = Dictionary(starts.map { ($0, 0.0) }, uniquingKeysWith: { old, _ in old })
-        for a in runs {
-            guard let ms = cal.date(from: cal.dateComponents([.year, .month], from: a.date)) else { continue }
-            totals[ms] = totals[ms].map { $0 + a.duration / 60 }
-        }
-        return starts.map { s in MonthlyMins(id: s, label: Self.monthLabelFormatter.string(from: s), mins: totals[s] ?? 0) }
-    }
-
-    // MARK: - Daily distance data
-
-    private func dailyKms(for month: Date) -> [DailyKm] {
-        let cal = Calendar.current
-        let (start, end) = dailyWindow(for: month)
-        guard let dayCount = cal.dateComponents([.day], from: start, to: end).day, dayCount > 0 else { return [] }
-        var kmByDay: [Date: Double] = [:]
-        for a in runs where a.date >= start && a.date < end {
-            kmByDay[cal.startOfDay(for: a.date), default: 0] += a.distance / 1000
-        }
-        return (0..<dayCount).compactMap { i -> DailyKm? in
-            guard let date = cal.date(byAdding: .day, value: i, to: start) else { return nil }
-            return DailyKm(id: date, day: cal.component(.day, from: date), km: kmByDay[date] ?? 0)
-        }
-    }
-
     // MARK: - Pace data
 
     private func pacePoints(maxCount: Int = 20) -> [PacePoint] {
         runs
             .prefix(maxCount)
             .reversed()
-            .compactMap { a -> PacePoint? in
-                guard let sec = a.paceSecPerKm, sec > 0 else { return nil }
-                return PacePoint(
-                    date: a.date,
-                    speedKmh: 3600.0 / sec,
-                    paceFormatted: a.formattedPace ?? ""
-                )
-            }
-    }
-
-    /// 선택한 기간(기본 = 오늘까지 최근 30일)의 모든 러닝(오래된→최신). 20회 상한 없음.
-    private func monthPacePoints(for month: Date) -> [PacePoint] {
-        let (start, end) = dailyWindow(for: month)
-        return runs
-            .filter { $0.date >= start && $0.date < end }
-            .sorted { $0.date < $1.date }
             .compactMap { a -> PacePoint? in
                 guard let sec = a.paceSecPerKm, sec > 0 else { return nil }
                 return PacePoint(
@@ -2595,286 +2500,6 @@ private struct JourneyTimeline: View {
 }
 
 // MARK: - Weekly Distance Chart
-
-private struct WeeklyDistanceChart: View {
-    let data: [WeeklyKm]
-
-    var body: some View {
-        Chart(data) { item in
-            BarMark(
-                x: .value("주", item.label),
-                y: .value("거리(km)", item.km)
-            )
-            .foregroundStyle(item.km > 0 ? Theme.cadence.gradient : Color.secondary.opacity(0.45).gradient)
-            .cornerRadius(4)
-        }
-        .frame(height: 180)
-        .chartXAxis {
-            AxisMarks { value in
-                AxisValueLabel {
-                    Text(value.as(String.self) ?? "")
-                        .font(.caption2)
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks { value in
-                AxisValueLabel {
-                    Text(String(format: "%.0f", value.as(Double.self) ?? 0))
-                        .font(.caption2)
-                }
-                AxisGridLine()
-            }
-        }
-        .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-}
-
-// MARK: - Weekly Time Chart
-
-private struct WeeklyTimeChart: View {
-    let data: [WeeklyMins]
-
-    var body: some View {
-        Chart(data) { item in
-            BarMark(
-                x: .value("주", item.label),
-                y: .value("시간(분)", item.mins)
-            )
-            .foregroundStyle(item.mins > 0 ? Theme.time.gradient : Color.secondary.opacity(0.45).gradient)
-            .cornerRadius(4)
-        }
-        .frame(height: 180)
-        .chartXAxis {
-            AxisMarks { value in
-                AxisValueLabel {
-                    Text(value.as(String.self) ?? "")
-                        .font(.caption2)
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks { value in
-                if let mins = value.as(Double.self) {
-                    AxisValueLabel {
-                        Text(minsLabel(mins))
-                            .font(.caption2)
-                    }
-                    AxisGridLine()
-                }
-            }
-        }
-        .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    private func minsLabel(_ mins: Double) -> String {
-        let total = Int(mins)
-        guard total > 0 else { return "0" }
-        let h = total / 60
-        let m = total % 60
-        if h > 0 { return m > 0 ? "\(h)h\(m)m" : "\(h)h" }
-        return "\(m)m"
-    }
-}
-
-// MARK: - Monthly Distance Chart
-
-private struct MonthlyDistanceChart: View {
-    let data: [MonthlyKm]
-
-    var body: some View {
-        Chart(data) { item in
-            BarMark(
-                x: .value("월", item.label),
-                y: .value("거리(km)", item.km)
-            )
-            .foregroundStyle(item.km > 0 ? Color(hex: "30D158").gradient : Color.secondary.opacity(0.45).gradient)
-            .cornerRadius(4)
-        }
-        .frame(height: 180)
-        .chartXAxis {
-            AxisMarks { value in
-                AxisValueLabel {
-                    Text(value.as(String.self) ?? "")
-                        .font(.system(size: 9))
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks { value in
-                AxisValueLabel {
-                    Text(String(format: "%.0f", value.as(Double.self) ?? 0))
-                        .font(.caption2)
-                }
-                AxisGridLine()
-            }
-        }
-        .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-}
-
-// MARK: - Monthly Time Chart
-
-private struct MonthlyTimeChart: View {
-    let data: [MonthlyMins]
-
-    var body: some View {
-        Chart(data) { item in
-            BarMark(
-                x: .value("월", item.label),
-                y: .value("시간(분)", item.mins)
-            )
-            .foregroundStyle(item.mins > 0 ? Theme.time.gradient : Color.secondary.opacity(0.45).gradient)
-            .cornerRadius(4)
-        }
-        .frame(height: 180)
-        .chartXAxis {
-            AxisMarks { value in
-                AxisValueLabel {
-                    Text(value.as(String.self) ?? "")
-                        .font(.system(size: 9))
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks { value in
-                if let mins = value.as(Double.self) {
-                    AxisValueLabel {
-                        Text(minsLabel(mins))
-                            .font(.caption2)
-                    }
-                    AxisGridLine()
-                }
-            }
-        }
-        .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    private func minsLabel(_ mins: Double) -> String {
-        let total = Int(mins)
-        guard total > 0 else { return "0" }
-        let h = total / 60
-        let m = total % 60
-        if h > 0 { return m > 0 ? "\(h)h\(m)m" : "\(h)h" }
-        return "\(m)m"
-    }
-}
-
-// MARK: - Daily Distance Chart
-
-private struct DailyDistanceChart: View {
-    let data: [DailyKm]
-    /// 표시 창 — 롤링 최근 30일 또는 달력 한 달 (x축 도메인)
-    let start: Date
-    let end: Date
-
-    var body: some View {
-        Chart(data) { item in
-            BarMark(
-                x: .value("날짜", item.id, unit: .day),
-                y: .value("거리(km)", item.km)
-            )
-            .foregroundStyle(item.km > 0 ? Theme.time.gradient : Color.secondary.opacity(0.45).gradient)
-            .cornerRadius(2)
-        }
-        .frame(height: 180)
-        .chartXScale(domain: start...end)
-        .chartXAxis {
-            AxisMarks(values: .stride(by: .day, count: 7)) { value in
-                AxisValueLabel {
-                    if let d = value.as(Date.self) {
-                        Text(d, format: .dateTime.month(.defaultDigits).day())
-                            .font(.caption2)
-                    }
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { value in
-                AxisValueLabel {
-                    Text(String(format: "%.0f", value.as(Double.self) ?? 0))
-                        .font(.caption2)
-                }
-                AxisGridLine()
-            }
-        }
-        .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-}
-
-// MARK: - Pace Trend Chart
-
-private struct PaceTrendChart: View {
-    let points: [PacePoint]
-
-    private var yDomain: ClosedRange<Double> {
-        guard points.count >= 2 else { return 5...15 }
-        let speeds = points.map(\.speedKmh)
-        let minSpeed = speeds.min() ?? 5
-        let maxSpeed = speeds.max() ?? 15
-        let spread = max(maxSpeed - minSpeed, 1.0)
-        let padding = spread * 0.3
-        return (minSpeed - padding)...(maxSpeed + padding)
-    }
-
-    var body: some View {
-        Chart(points) { pt in
-            BarMark(
-                x: .value("날짜", pt.date, unit: .day),
-                yStart: .value("기준", yDomain.lowerBound),
-                yEnd: .value("스피드", pt.speedKmh)
-            )
-            .foregroundStyle(Theme.pace.opacity(0.9).gradient)
-            .cornerRadius(3)
-        }
-        .chartYScale(domain: yDomain)
-        .frame(height: 180)
-        .chartXAxis {
-            AxisMarks(values: .stride(by: .day, count: strideCount)) { value in
-                if let date = value.as(Date.self) {
-                    AxisValueLabel {
-                        Text(date, format: .dateTime.month(.abbreviated).day())
-                            .font(.caption2)
-                    }
-                }
-                AxisGridLine()
-            }
-        }
-        .chartYAxis {
-            AxisMarks { value in
-                if let speed = value.as(Double.self), speed > 0 {
-                    let sec = 3600.0 / speed
-                    let m = Int(sec) / 60
-                    let s = Int(sec) % 60
-                    AxisValueLabel {
-                        Text(String(format: "%d'%02d\"", m, s))
-                            .font(.caption2)
-                    }
-                    AxisGridLine()
-                }
-            }
-        }
-        .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    private var strideCount: Int {
-        let span: TimeInterval = (points.count >= 2) ? points[points.count - 1].date.timeIntervalSince(points[0].date) : 0
-        let days = Int(span / 86400)
-        return max(1, days / 4)
-    }
-}
 
 // MARK: - Metric Spark Card
 
