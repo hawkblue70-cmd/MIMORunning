@@ -3771,8 +3771,6 @@ private struct PerformanceInsightCard: View {
     /// 강도 기록이 없으면 오른쪽 반쪽을 생략하고 왼쪽을 전체 폭으로 둔다.
     @ViewBuilder
     private func intensityDistSection(data: IntensityTimeData) -> some View {
-        let L = AppLanguage.shared
-        let b = data.result.buckets
         let load = sevenDayLoad
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .top, spacing: 10) {
@@ -3786,29 +3784,6 @@ private struct PerformanceInsightCard: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            // ① 시간 기준 (K-2) — 사실 한 줄. 평가어·참고선 없음. 연속 개념 없음.
-            let lowPct = Int((b.lowFrac * 100).rounded())
-            Text(L.s(
-                "최근 \(data.weeks)주 훈련 시간의 \(lowPct)%가 저강도예요.",
-                "\(lowPct)% of your training time in the last \(data.weeks) weeks was low intensity."
-            ))
-            .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
-            .fixedSize(horizontal: false, vertical: true)
-            // ② 회차 기준 (K-7) — 유형이 이지런인 러닝의 회차. «19%인데 왜 0회?»로 읽히지 않게 라벨로 구분.
-            if data.easyAlert {
-                let w = data.easyStreak, atLeast = data.easyStreakAtLeast
-                let streakSuffix: String = {
-                    guard w > 1 || (w == 1 && atLeast) else { return "" }
-                    return L.s(" · \(w)주\(atLeast ? " 이상" : "")째", " · \(w)\(atLeast ? "+" : "") wk in a row")
-                }()
-                Text(L.s(
-                    "이지런으로 계획한 러닝 \(data.easyCount)회\(streakSuffix)",
-                    "Runs planned as easy: \(data.easyCount)\(streakSuffix)"
-                ))
-                .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
-                .fixedSize(horizontal: false, vertical: true)
-            }
-
         }
     }
 
@@ -3842,9 +3817,10 @@ private struct PerformanceInsightCard: View {
             // 막대 폭은 오른쪽 7일 부하 막대와 동일(반폭 기준 7등분) — 남는 폭에 참고선 설명 2줄
             GeometryReader { geo in
                 let gap: CGFloat = 3
-                let barW = max(8, (geo.size.width - gap * 6) / 7)
+                // 오른쪽 7일 부하와 같은 슬롯 폭(반폭 7등분)의 85% — 두 차트 막대를 조금 가늘게
+                let barW = max(8, (geo.size.width - gap * 6) / 7 * 0.85)
                 HStack(alignment: .bottom, spacing: gap) {
-                    Spacer(minLength: 0)   // 막대 묶음 + 설명을 반폭 중앙에
+                    Spacer(minLength: 0)   // 왼쪽 여백은 유동, 오른쪽 여백은 최대 16 → 묶음이 오른쪽으로 치우친다
                     ForEach(rows, id: \.tier) { row in
                         let pct = Int((row.frac * 100).rounded())
                         let mins = Int((row.sec / 60).rounded())
@@ -3895,11 +3871,35 @@ private struct PerformanceInsightCard: View {
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .padding(.leading, 4)
                     .fixedSize()
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 0).frame(maxWidth: 16)
                 }
                 .frame(width: geo.size.width)
             }
             .frame(height: barH + 3 + 11 + 3 + 11 + 3 + 11)
+            // 오른쪽 "이 러닝 N AU …" 캡션과 같은 위치(차트 바로 아래)
+            // ① 시간 기준 (K-2) — 사실 한 줄. 평가어·참고선 없음. 연속 개념 없음.
+            let lowPct = Int((b.lowFrac * 100).rounded())
+            Text(L.s(
+                "최근 \(data.weeks)주 훈련 시간의 \(lowPct)%가 저강도예요.",
+                "\(lowPct)% of your training time in the last \(data.weeks) weeks was low intensity."
+            ))
+            .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+            .fixedSize(horizontal: false, vertical: true)
+            // ② 회차 기준 (K-7) — 유형이 이지런인 러닝의 회차. «19%인데 왜 0회?»로 읽히지 않게 라벨로 구분.
+            if data.easyAlert {
+                let w = data.easyStreak, atLeast = data.easyStreakAtLeast
+                let streakSuffix: String = {
+                    guard w > 1 || (w == 1 && atLeast) else { return "" }
+                    return L.s(" · \(w)주\(atLeast ? " 이상" : "")째", " · \(w)\(atLeast ? "+" : "") wk in a row")
+                }()
+                Text(L.s(
+                    "이지런으로 계획한 러닝 \(data.easyCount)회\(streakSuffix)",
+                    "Runs planned as easy: \(data.easyCount)\(streakSuffix)"
+                ))
+                .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
         }
     }
 
@@ -3917,6 +3917,9 @@ private struct PerformanceInsightCard: View {
             Text(L.s("강도 부하 · 7일", "Training load · 7d"))
                 .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 .lineLimit(1).minimumScaleFactor(0.8)
+            GeometryReader { geo in
+            let slotW = (geo.size.width - 3 * 6) / 7
+            let barW = max(8, slotW * 0.85)   // 왼쪽 강도 분포 막대와 같은 폭
             HStack(alignment: .bottom, spacing: 3) {
                 ForEach(Array(w.dayStarts.enumerated()), id: \.offset) { i, day in
                     let au = w.daily.indices.contains(i) ? w.daily[i] : 0
@@ -3930,7 +3933,7 @@ private struct PerformanceInsightCard: View {
                                     .frame(height: max(3, barH * CGFloat(au / maxAU)))
                             }
                         }
-                        .frame(height: barH)
+                        .frame(width: barW, height: barH)
                         .overlay {
                             if isRunDay {
                                 RoundedRectangle(cornerRadius: 2)
@@ -3944,6 +3947,8 @@ private struct PerformanceInsightCard: View {
                     .frame(maxWidth: .infinity)
                 }
             }
+            }
+            .frame(height: barH + 3 + 11)
             Text(sevenDayLoadCaption(load))
                 .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                 .fixedSize(horizontal: false, vertical: true)
