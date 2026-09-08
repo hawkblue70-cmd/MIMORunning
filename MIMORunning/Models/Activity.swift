@@ -306,7 +306,7 @@ extension ActivityDetail: Codable {
 enum TrendMetric: String, CaseIterable, Identifiable {
     case cadence, power, groundContactTime, strideLength, verticalOscillation, vo2Max
     case hrRecovery1   // 운동 후 1분 심박 회복 (bpm) — MRRecovery
-    case easyEffortPace   // 강도 2~4 러닝의 페이스 (sec/km) — EffortPaceTrend
+    case easyEffortPace   // 본인 이지런 강도 중앙값 이하 러닝의 페이스 (sec/km) — EffortPaceTrend
     case bodyMass, bodyFatPercentage
 
     var id: String { rawValue }
