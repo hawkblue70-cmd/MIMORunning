@@ -1806,6 +1806,7 @@ class HealthKitManager {
 
     /// 최근 12개월 이지·LSD 러닝의 강도 중앙값(3건 이상) — 쉬운 날 페이스 대상 기준. nil이면 고정 4 폴백.
     func easyEffortCutoff() -> Int? {
+        loadEffortMapIfNeeded()   // 호출 순서에 관계없이 Apple 값을 포함해 계산
         let idx = effortIndex
         let typeOf = workoutTypeLookup()
         let since = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
