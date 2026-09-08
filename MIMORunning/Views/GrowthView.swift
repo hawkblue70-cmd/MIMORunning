@@ -633,7 +633,19 @@ struct GrowthView: View {
             period: period,
             start: win.start,
             end: win.end,
-            emptyMessage: recordEmptyMessage
+            emptyMessage: recordEmptyMessage,
+            flowComment: recordFlowComment
+        )
+    }
+
+    /// 차트 아래 흐름 문장 — 앞뒤 절반 비교 규칙 엔진(`RecordFlowInsight`). 캐시된 버킷만 훑어 가볍다.
+    /// 앱 화면 전용이며 공유 카드에는 넣지 않는다.
+    private var recordFlowComment: RecordFlowInsight.Result {
+        RecordFlowInsight.evaluate(
+            .init(bars: recordBarsCache,
+                  period: recordPeriod,
+                  easyCutoff: manager.easyEffortCutoff() ?? EffortPaceTrend.fallbackCutoff),
+            periodLabel: recordPeriodLabel
         )
     }
 

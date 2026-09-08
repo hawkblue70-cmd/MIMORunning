@@ -31,6 +31,9 @@ struct RecordBarChart: View {
     /// 미리 강조할 날짜 — 이 날짜가 든 버킷을 **선택된 것처럼** 그린다(나머지 흐리게 + 세로 점선).
     /// 내보내기 모드와 함께 쓰며 말풍선은 나오지 않는다. (퍼포먼스 카드의 "이 러닝 날")
     var highlightDate: Date? = nil
+    /// 차트 아래 흐름 문장 — 상태 한 줄 + 방향 한 줄(`RecordFlowInsight`).
+    /// 앱 화면 전용: compact·내보내기 모드에서는 그리지 않는다.
+    var flowComment: RecordFlowInsight.Result? = nil
 
     /// 막대와 점이 함께 보는 단 하나의 선택 상태
     @State private var selected: Date? = nil
@@ -216,6 +219,7 @@ struct RecordBarChart: View {
                 if !compact { axisHeader }
                 chart
                 if !compact { footnote }
+                if !isExport, let flow = flowComment { flowCommentView(flow) }
             } else {
                 Text(emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period"))
                     .font(.subheadline)
@@ -464,6 +468,24 @@ struct RecordBarChart: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
+    // MARK: - 흐름 문장 (상태 한 줄 + 방향 한 줄)
+
+    private func flowCommentView(_ flow: RecordFlowInsight.Result) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("✦ " + flow.status)
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.85))
+            if let direction = flow.direction {
+                Text(direction)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 2)
+    }
+
     // MARK: - 축 머리 요약
 
     private var distanceTrailing: String {
@@ -583,6 +605,10 @@ struct RecordBarChart: View {
                          "One chart: distance bars (right axis, km) and pace line (left axis)"),
                      distanceTrailing]
         if let p = paceTrailing { parts.append(L.s("페이스 \(p)", "pace \(p)")) }
+        if !isExport, let flow = flowComment {
+            parts.append(flow.status)
+            if let direction = flow.direction { parts.append(direction) }
+        }
         return parts.joined(separator: ", ")
     }
 
