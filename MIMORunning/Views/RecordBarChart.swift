@@ -217,6 +217,7 @@ struct RecordBarChart: View {
                 if !isExport { calloutRow }
                 effortLegend
                 if !compact { axisHeader }
+                Rectangle().fill(.white.opacity(0.10)).frame(height: 0.5)   // 범례·축 머리 ↔ 차트 구분
                 chart
                 if !compact { footnote }
                 if !isExport, let flow = flowComment { flowCommentView(flow) }
@@ -240,9 +241,19 @@ struct RecordBarChart: View {
     private var calloutRow: some View {
         HStack(alignment: .top, spacing: 8) {
             if let bar = selectedBar, bar.runCount > 0 {
-                Text(calloutText(bar))
+                // 값마다 지표 색 — 흰색 한 덩어리면 구분이 안 된다
+                let segs = calloutSegments(bar)
+                HStack(spacing: 0) {
+                    ForEach(Array(segs.enumerated()), id: \.offset) { i, seg in
+                        if i > 0 {
+                            Text(" · ").foregroundStyle(.secondary)
+                        }
+                        Text(seg.text).foregroundStyle(seg.color)
+                    }
+                }
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                    .accessibilityLabel(calloutText(bar))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .background(Color.white.opacity(0.10))
@@ -281,11 +292,6 @@ struct RecordBarChart: View {
     private var axisHeader: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
-                if paceRange != nil {
-                    Text(L.s("페이스 분'초", "Pace m'ss\""))
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
                 if let p = paceTrailing {
                     Text(p)
                         .font(.system(size: 10))
@@ -553,6 +559,31 @@ struct RecordBarChart: View {
     }
 
     // MARK: - 말풍선
+
+    /// 말풍선 조각 + 지표 색: 날짜 흰색 · 거리 흰색 · 시간 노랑 · 강도 강도색 · 부하 바이올렛 · 페이스 청록 · 심박 빨강
+    private func calloutSegments(_ bar: RecordBar) -> [(text: String, color: Color)] {
+        var segs: [(text: String, color: Color)] = [(dateLabel(bar), .white)]
+        if period == .day {
+            if bar.km > 0 { segs.append((String(format: "%.2fkm", bar.km), .white.opacity(0.9))) }
+            if bar.minutes > 0 { segs.append((clockText(bar.minutes), Theme.time)) }
+            if let e = bar.meanEffort {
+                segs.append((L.s("강도 \(effortText(e))", "effort \(effortText(e))"),
+                             EffortPalette.color(for: EffortResolver.clamp(e))))
+            }
+            if bar.au > 0 { segs.append(("\(Int(bar.au.rounded())) AU", Theme.violet)) }
+            if let p = bar.paceSec { segs.append((paceText(p), Theme.pace)) }
+        } else {
+            if bar.km > 0 { segs.append((kmText(bar.km), .white.opacity(0.9))) }
+            if bar.runCount > 0 { segs.append((L.s("\(bar.runCount)회", "\(bar.runCount) runs"), .white.opacity(0.9))) }
+            if bar.au > 0 {
+                let au = bar.au.rounded().formatted(.number.grouping(.automatic))
+                segs.append(("\(au) AU", Theme.violet))
+            }
+            if let p = bar.paceSec { segs.append((L.s("평균 \(paceText(p))", "avg \(paceText(p))"), Theme.pace)) }
+        }
+        if let hr = bar.avgHR { segs.append(("\(Int(hr.rounded())) bpm", Theme.heartRate)) }
+        return segs
+    }
 
     private func calloutText(_ bar: RecordBar) -> String {
         var parts: [String] = [dateLabel(bar)]

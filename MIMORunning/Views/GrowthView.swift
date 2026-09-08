@@ -565,10 +565,8 @@ struct GrowthView: View {
         return (start, end)
     }
 
-    private var mileageSubtitle: String {
-        AppLanguage.shared.s("막대 = 거리(색 = 강도) · 선 = 페이스",
-                             "bars = distance (color = effort) · line = pace")
-    }
+    /// 제목 아래 안내 문구는 차트 각주와 중복이라 비운다.
+    private var mileageSubtitle: String { "" }
 
     private var periodToggle: some View {
         let L = AppLanguage.shared
@@ -2527,9 +2525,11 @@ private struct SectionLabel: View {
             Text(title)
                 .font(.headline)
                 .foregroundStyle(.white)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
