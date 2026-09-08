@@ -78,9 +78,9 @@ struct GrowthView: View {
     @State private var showMonthly: Bool = false
     @State private var showDaily: Bool = true
     @State private var dailyMonth: Date = Date()
-    /// 기록 카드 지표 토글 — 거리·시간·부하·페이스 (모든 기간에서 사용)
-    @State private var recordMetric: RecordMetric = .distance
-    /// 기록 카드가 그리는 버킷(일/주/월). 지표를 바꿔도 재계산할 필요 없다.
+    /// 거리 내보내기 카드에서만 쓰는 km/분 선택 (기록 카드는 항상 거리·부하·페이스 세 줄)
+    @State private var showTimeMileage = false
+    /// 기록 카드가 그리는 버킷(일/주/월).
     @State private var recordBarsCache: [RecordBar] = []
     @State private var selectedTrend: TrendMetric? = nil
     @State private var showBodyMass = false
@@ -324,8 +324,6 @@ struct GrowthView: View {
         .task {
             manager.syncUserEfforts(from: allStories)   // 강도 의존 캐시 계산 전에 사용자 입력부터
             refreshChartCache()
-            let bucket = manager.userLevel.bucket
-            recordMetric = (bucket == .beginner || bucket == .novice) ? .time : .distance
             await checkBodyDataAvailability()
             await refreshMetricAnalyses()
         }
@@ -390,9 +388,6 @@ struct GrowthView: View {
     }
 
     // MARK: - Share card data helpers
-
-    /// 거리 내보내기 카드는 거리/시간 막대만 다룬다 — 부하·페이스 모드에서는 거리로 되돌린다.
-    private var showTimeMileage: Bool { recordMetric == .time }
 
     private var currentBarData: [(label: String, value: Double)] {
         let useTime = showTimeMileage
@@ -547,26 +542,20 @@ struct GrowthView: View {
             HStack(alignment: .top) {
                 SectionLabel(title: mileageTitle, subtitle: mileageSubtitle)
                 Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
-                    HStack(spacing: 10) {
-                        Button { showMileageStreakShareCard = true } label: {
-                            Label(AppLanguage.shared.s("거리 내보내기", "Export Distance"),
-                                  systemImage: "square.and.arrow.up")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .foregroundStyle(Theme.violet)
-                        periodToggle
+                HStack(spacing: 10) {
+                    Button { showMileageStreakShareCard = true } label: {
+                        Label(AppLanguage.shared.s("거리 내보내기", "Export Distance"),
+                              systemImage: "square.and.arrow.up")
+                            .font(.system(size: 12, weight: .medium))
                     }
-                    metricToggle
+                    .foregroundStyle(Theme.violet)
+                    periodToggle
                 }
             }
             if showDaily {
                 dailyMonthNavRow
             }
             recordChartView
-            Text(recordSummaryText)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -621,13 +610,8 @@ struct GrowthView: View {
     }
 
     private var mileageSubtitle: String {
-        let L = AppLanguage.shared
-        switch recordMetric {
-        case .distance: return "km"
-        case .time:     return L.s("분", "min")
-        case .load:     return L.s("강도 × 시간(분)", "Effort × minutes")
-        case .pace:     return L.s("평균 대비 · 위로 갈수록 빠름", "vs average · higher = faster")
-        }
+        AppLanguage.shared.s("막대 색 = 강도 · 페이스는 평균 대비",
+                             "bar color = effort · pace vs average")
     }
 
     private var periodToggle: some View {
@@ -694,46 +678,13 @@ struct GrowthView: View {
         }
     }
 
-    /// 지표 토글 — 거리·시간·부하·페이스. 일간·주간·월간 모든 기간에서 보인다.
-    private var metricToggle: some View {
-        HStack(spacing: 0) {
-            ForEach(RecordMetric.allCases, id: \.self) { m in
-                Button { recordMetric = m } label: {
-                    Text(metricLabel(m))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(recordMetric == m ? Color.white : Color.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(recordMetric == m ? Theme.violet : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-            }
-        }
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
-        )
-    }
-
-    private func metricLabel(_ m: RecordMetric) -> String {
-        let L = AppLanguage.shared
-        switch m {
-        case .distance: return L.s("거리", "Dist")
-        case .time:     return L.s("시간", "Time")
-        case .load:     return L.s("부하", "Load")
-        case .pace:     return L.s("페이스", "Pace")
-        }
-    }
-
-    /// 거리·시간·부하·페이스를 한 축 위에 올리는 통합 기록 차트 (막대 색 = 그 구간 평균 강도)
+    /// 거리·강도 부하·페이스 세 줄을 하나의 x축 위에 올리는 통합 기록 차트
+    /// (막대 색 = 그 구간 평균 강도, 페이스는 기간 평균 0선 대비)
     private var recordChartView: some View {
         let period = recordPeriod
         let win = recordWindow(for: period)
         return RecordBarChart(
             bars: recordBarsCache,
-            metric: recordMetric,
             period: period,
             start: win.start,
             end: win.end,
@@ -754,54 +705,6 @@ struct GrowthView: View {
         case .month:
             return L.s("최근 12개월간 러닝 기록이 없어요", "No runs in the last 12 months")
         }
-    }
-
-    /// 기간 라벨 — "30일" / "2026년 8월" / "12주" / "12개월"
-    private var recordPeriodWord: String {
-        let L = AppLanguage.shared
-        switch recordPeriod {
-        case .day:   return isAtCurrentMonth ? L.s("30일", "30 days") : dailyMonthLabel
-        case .week:  return L.s("12주", "12 weeks")
-        case .month: return L.s("12개월", "12 months")
-        }
-    }
-
-    /// 차트 아래 한 줄 요약 — 지표별로 합계·회수·평균을 읽어 준다.
-    private var recordSummaryText: String {
-        let L = AppLanguage.shared
-        let s = RecordSeries.summary(recordBarsCache)
-        let word = recordPeriodWord
-        guard s.runCount > 0 else { return L.s("\(word) 러닝 기록 없음", "\(word): no runs") }
-        switch recordMetric {
-        case .distance:
-            return String(format: L.s("%@ %.1f km · %d회", "%@ %.1f km · %d runs"),
-                          word, s.totalKm, s.runCount)
-        case .time:
-            return "\(word) \(recordMinutesText(s.totalMinutes))"
-        case .load:
-            let au = s.totalAU.rounded().formatted(.number.grouping(.automatic))
-            return L.s("\(word) \(au) AU · \(s.runCount)회 중 \(s.ratedCount)회 강도 있음",
-                       "\(word) \(au) AU · \(s.ratedCount) of \(s.runCount) runs rated")
-        case .pace:
-            guard let mean = s.meanPaceSec, let best = s.bestPaceSec else {
-                return L.s("\(word) 페이스 기록 없음", "\(word): no pace data")
-            }
-            return L.s("평균 \(recordPaceText(mean)) · 가장 빠른 \(recordPaceText(best))",
-                       "Average \(recordPaceText(mean)) · Best \(recordPaceText(best))")
-        }
-    }
-
-    private func recordMinutesText(_ mins: Double) -> String {
-        let L = AppLanguage.shared
-        let total = Int(mins.rounded())
-        let h = total / 60, m = total % 60
-        if L.isEnglish { return h > 0 ? "\(h)h \(m)m" : "\(m)m" }
-        return h > 0 ? "\(h)시간 \(m)분" : "\(m)분"
-    }
-
-    private func recordPaceText(_ sec: Double) -> String {
-        let t = Int(sec.rounded())
-        return String(format: "%d'%02d\"", t / 60, t % 60)
     }
 
     private var heatmapSection: some View {
