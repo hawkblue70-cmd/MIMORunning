@@ -137,7 +137,7 @@ struct RecordBarChart: View {
     private var barWidthRatio: CGFloat {
         switch bars.count {
         case ...8:   return compact ? 0.34 : 0.42   // 7일 창 · 압축 모드(반폭)에서는 더 가늘게
-        case 9...16: return compact ? 0.5 : 0.6     // 14일 창(압축) · 12주(성장 탭)
+        case 9...16: return compact ? 0.56 : 0.6    // 14일 창(압축) · 12주(성장 탭)
         default:     return 0.78
         }
     }
