@@ -22,6 +22,9 @@ struct RecordBarChart: View {
     /// 공유 카드 내보내기 모드 — 탭 안내·선택 상호작용을 빼고 더 작게 그린다.
     /// (§5.8 — 카드용 레이아웃을 따로 만들지 않고 **이 컴포넌트 하나**를 그대로 재사용한다)
     var exportMode: Bool = false
+    /// 좁은 열(퍼포먼스 카드 35:65 행의 오른쪽)용 축소 모드 — 축 머리·각주를 빼고 범례·축 글자를 줄인다.
+    /// 상호작용은 `exportMode`와 같이 꺼진다. (§5.8 — 별도 레이아웃을 만들지 않고 **파라미터로만** 줄인다)
+    var compact: Bool = false
     /// 카드 배경색 오버라이드 (공유 카드의 라이트/다크 테마 색을 그대로 쓰기 위해).
     /// `.clear`를 주면 배경 없이 상위 카드에 녹아든다 (패딩은 유지).
     var cardBackground: Color? = nil
@@ -40,10 +43,17 @@ struct RecordBarChart: View {
         static let plotHeight: CGFloat = 180
         /// 공유 카드용 축소 높이
         static let exportPlotHeight: CGFloat = 130
+        /// 좁은 열(compact)용 축소 높이
+        static let compactPlotHeight: CGFloat = 120
         static let padding: CGFloat = 14
         static let exportPadding: CGFloat = 12
+        static let compactPadding: CGFloat = 8
         /// y축 라벨 폭
         static let gutter: CGFloat = 40
+        static let compactGutter: CGFloat = 34
+        /// 강도 범례 색 조각
+        static let legendSwatch: CGFloat = 7
+        static let compactLegendSwatch: CGFloat = 6
         static let symbolSize: CGFloat = 26
         /// 색 점 아래 깔리는 어두운 테두리 점 (막대 위에서도 점이 보이게)
         static let symbolStrokeSize: CGFloat = 46
@@ -176,18 +186,36 @@ struct RecordBarChart: View {
 
     // MARK: - Body
 
+    /// 상호작용(말풍선·탭 선택)을 끄는 조건 — compact는 export를 함의한다.
+    private var isExport: Bool { exportMode || compact }
+
     private var plotHeight: CGFloat {
-        exportMode ? Metrics.exportPlotHeight : Metrics.plotHeight
+        compact ? Metrics.compactPlotHeight
+                : (exportMode ? Metrics.exportPlotHeight : Metrics.plotHeight)
     }
 
+    private var cardPadding: CGFloat {
+        compact ? Metrics.compactPadding
+                : (exportMode ? Metrics.exportPadding : Metrics.padding)
+    }
+
+    /// y축 라벨 폭 (왼쪽 페이스 축)
+    private var gutter: CGFloat { compact ? Metrics.compactGutter : Metrics.gutter }
+
+    /// 축 라벨 글꼴 — 양쪽 축이 같은 값을 쓴다.
+    private var axisFont: Font { .system(size: compact ? 8 : 9) }
+
+    /// x축 라벨 글꼴 — compact에서만 축 글꼴에 맞춰 줄인다.
+    private var xAxisFont: Font { compact ? axisFont : .caption2 }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: compact ? 6 : 8) {
             if hasData {
-                if !exportMode { calloutRow }
+                if !isExport { calloutRow }
                 effortLegend
-                axisHeader
+                if !compact { axisHeader }
                 chart
-                footnote
+                if !compact { footnote }
             } else {
                 Text(emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period"))
                     .font(.subheadline)
@@ -196,7 +224,7 @@ struct RecordBarChart: View {
                     .frame(maxWidth: .infinity, minHeight: 120)
             }
         }
-        .padding(exportMode ? Metrics.exportPadding : Metrics.padding)
+        .padding(cardPadding)
         .background(cardBackground ?? Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .accessibilityElement(children: .combine)
@@ -227,16 +255,17 @@ struct RecordBarChart: View {
     // MARK: - 헤더 ② 강도 색 범례
 
     private var effortLegend: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 2) {
+        let swatch: CGFloat = compact ? Metrics.compactLegendSwatch : Metrics.legendSwatch
+        return HStack(spacing: 6) {
+            HStack(spacing: compact ? 1.5 : 2) {
                 Text(L.s("강도", "Effort"))
-                    .font(.system(size: 9))
+                    .font(axisFont)
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 2)
                 ForEach(Array(EffortPalette.colors.enumerated()), id: \.offset) { _, c in
                     RoundedRectangle(cornerRadius: 1.5)
                         .fill(c)
-                        .frame(width: 7, height: 7)
+                        .frame(width: swatch, height: swatch)
                 }
             }
             Spacer(minLength: 0)
@@ -301,15 +330,17 @@ struct RecordBarChart: View {
         .chartXScale(domain: start...end)
         .chartYScale(domain: 0...kmTop)
         .chartLegend(.hidden)
-        .modifier(TapSelection(enabled: !exportMode, selected: $selected))
+        .modifier(TapSelection(enabled: !isExport, selected: $selected))
         .modifier(DualYAxis(paceTickYs: paceTickYs,
                             paceLabel: { paceText(paceForY($0)) },
-                            kmLabel: kmAxisLabel))
+                            kmLabel: kmAxisLabel,
+                            gutter: gutter,
+                            font: axisFont))
         .chartXAxis {
             AxisMarks(values: xAxisValues) { value in
                 AxisValueLabel {
                     if let d = value.as(Date.self) {
-                        Text(xLabel(d)).font(.caption2)
+                        Text(xLabel(d)).font(xAxisFont)
                     }
                 }
             }
@@ -336,6 +367,8 @@ struct RecordBarChart: View {
         let paceTickYs: [Double]
         let paceLabel: (Double) -> String
         let kmLabel: (Double) -> String
+        let gutter: CGFloat
+        let font: Font
 
         func body(content: Content) -> some View {
             if paceTickYs.isEmpty {
@@ -343,8 +376,8 @@ struct RecordBarChart: View {
                     AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
                         AxisValueLabel {
                             Text(kmLabel(value.as(Double.self) ?? 0))
-                                .font(.system(size: 9))
-                                .frame(width: Metrics.gutter, alignment: .trailing)
+                                .font(font)
+                                .frame(width: gutter, alignment: .trailing)
                         }
                         AxisGridLine()
                     }
@@ -354,8 +387,8 @@ struct RecordBarChart: View {
                     AxisMarks(position: .leading, values: paceTickYs) { value in
                         AxisValueLabel {
                             Text(paceLabel(value.as(Double.self) ?? 0))
-                                .font(.system(size: 9))
-                                .frame(width: Metrics.gutter, alignment: .trailing)
+                                .font(font)
+                                .frame(width: gutter, alignment: .trailing)
                         }
                         AxisGridLine()
                             .foregroundStyle(Color.secondary.opacity(0.20))
@@ -363,7 +396,7 @@ struct RecordBarChart: View {
                     AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
                         AxisValueLabel {
                             Text(kmLabel(value.as(Double.self) ?? 0))
-                                .font(.system(size: 9))
+                                .font(font)
                         }
                     }
                 }
@@ -470,7 +503,8 @@ struct RecordBarChart: View {
 
     private var xAxisValues: AxisMarkValues {
         switch period {
-        case .day:   return .stride(by: .day, count: 7)
+        // 좁은 열의 7일 창(≤8 버킷)은 7일 간격이면 라벨이 한두 개뿐 → 이틀 간격으로
+        case .day:   return .stride(by: .day, count: (compact && bars.count <= 8) ? 2 : 7)
         case .week:  return .stride(by: .weekOfYear, count: 1)
         case .month: return .stride(by: .month, count: 1)
         }

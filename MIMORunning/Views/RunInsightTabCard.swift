@@ -3788,21 +3788,64 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    /// 강도 분포(4주, 세로 막대 + 문헌값 눈금)와 이 러닝 날짜 기준 7일 강도 부하를 **위아래 두 행**으로.
-    /// 7일 부하는 성장 탭과 같은 차트라 폭이 필요해 반반이 아니라 각각 전체 폭을 쓴다.
-    /// 강도 기록이 없으면 아래 행을 통째로 생략한다.
+    /// 강도 분포(4주, 세로 막대 + 문헌값 눈금)와 이 러닝 날짜 기준 7일 강도 부하를 **한 행 35 : 65**로.
+    /// 왼쪽은 막대 3개라 좁아도 되고, 오른쪽 7일 차트는 폭을 더 쓴다.
+    /// 7일 부하가 없으면 왼쪽만 전체 폭으로 (구분선·오른쪽 열 없음).
     @ViewBuilder
     private func intensityDistSection(data: IntensityTimeData) -> some View {
-        let load = sevenDayLoad
-        VStack(alignment: .leading, spacing: 10) {
+        if let load = sevenDayLoad {
+            SplitRow(leftFraction: 0.35, spacing: 10, dividerWidth: 0.5) {
+                intensityColumnsView(data: data)
+                Rectangle().fill(.white.opacity(0.10))
+                sevenDayLoadView(load: load)
+            }
+        } else {
             intensityColumnsView(data: data)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if let load {
-                Rectangle().fill(.white.opacity(0.10))
-                    .frame(height: 0.5)
-                sevenDayLoadView(load: load)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// 좌우 두 열을 **고정 비율**로 나누는 레이아웃 (자식: 왼쪽 · 구분선 · 오른쪽).
+    /// `GeometryReader`와 달리 높이를 콘텐츠에서 가져오므로 VStack 안에 그대로 놓을 수 있고,
+    /// ImageRenderer의 단일 레이아웃 패스에서도 폭이 확정된다.
+    private struct SplitRow: Layout {
+        var leftFraction: CGFloat = 0.35
+        var spacing: CGFloat = 10
+        var dividerWidth: CGFloat = 0.5
+
+        private func widths(_ total: CGFloat) -> (left: CGFloat, right: CGFloat) {
+            let avail = max(0, total - spacing * 2 - dividerWidth)
+            let l = (avail * leftFraction).rounded()
+            return (l, max(0, avail - l))
+        }
+
+        func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+            let total = proposal.width ?? 320
+            guard subviews.count == 3 else {
+                let h = subviews.map { $0.sizeThatFits(.init(width: total, height: nil)).height }.max() ?? 0
+                return CGSize(width: total, height: h)
             }
+            let w = widths(total)
+            let lh = subviews[0].sizeThatFits(.init(width: w.left, height: nil)).height
+            let rh = subviews[2].sizeThatFits(.init(width: w.right, height: nil)).height
+            return CGSize(width: total, height: max(lh, rh))
+        }
+
+        func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+            guard subviews.count == 3 else {
+                for s in subviews {
+                    s.place(at: CGPoint(x: bounds.minX, y: bounds.minY),
+                            proposal: .init(width: bounds.width, height: nil))
+                }
+                return
+            }
+            let w = widths(bounds.width)
+            subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.minY),
+                              proposal: .init(width: w.left, height: nil))
+            subviews[1].place(at: CGPoint(x: bounds.minX + w.left + spacing, y: bounds.minY),
+                              proposal: .init(width: dividerWidth, height: bounds.height))
+            subviews[2].place(at: CGPoint(x: bounds.minX + w.left + spacing + dividerWidth + spacing, y: bounds.minY),
+                              proposal: .init(width: w.right, height: nil))
         }
     }
 
@@ -3823,23 +3866,23 @@ private struct PerformanceInsightCard: View {
         let axisFrac = max(0.80, b.lowFrac, b.midFrac, b.highFrac) * 1.06
         let barH: CGFloat = 56
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(L.s("강도 분포 · \(data.weeks)주 · 심박 존 \(totalMin)분", "Intensity · \(data.weeks)w · \(totalMin) min in HR zones"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
-                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .lineLimit(2).minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
                 if excluded > 0 {
                     Text(L.s("심박 없음 \(excluded)건 제외", "\(excluded) w/o HR excluded"))
                         .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
-            // 막대 폭은 7슬롯 피치 기준(전체 폭 7등분) — 남는 폭에 참고선 설명 2줄
+            // 막대 3개는 **왼쪽 정렬**, 폭은 열 폭에 맞춰 — 참고선 설명은 막대 아래로 내렸다.
             GeometryReader { geo in
-                let gap: CGFloat = 3
-                // 7등분 슬롯 폭의 85% — 막대를 조금 가늘게
-                let barW = max(8, (geo.size.width - gap * 6) / 7 * 0.85)
+                let gap: CGFloat = 6
+                // 열 폭을 3등분한 것의 60% (전체 폭 폴백일 때 너무 굵어지지 않게 상한)
+                let barW = min(34, max(8, (geo.size.width - gap * 2) / 3 * 0.6))
                 HStack(alignment: .bottom, spacing: gap) {
-                    Spacer(minLength: 0)   // 왼쪽 여백은 유동, 오른쪽 여백은 최대 16 → 묶음이 오른쪽으로 치우친다
                     ForEach(rows, id: \.tier) { row in
                         let pct = Int((row.frac * 100).rounded())
                         let mins = Int((row.sec / 60).rounded())
@@ -3879,22 +3922,18 @@ private struct PerformanceInsightCard: View {
                         }
                         .frame(width: barW)
                     }
-                    // 남는 폭: 점선 설명 2줄 (막대 밑바닥에 맞춰 아래 정렬)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Spacer(minLength: 0)
-                        Text(L.s("점선 - 문헌값", "dashed - reference"))
-                        Text(L.s("(지구력 종목)", "(endurance)"))
-                        Spacer().frame(height: 14)   // 하단 유형 라벨 높이만큼 띄워 막대 밑바닥에 맞춘다
-                    }
-                    .font(.system(size: 8)).foregroundStyle(.white.opacity(0.7))
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                    .padding(.leading, 4)
-                    .fixedSize()
-                    Spacer(minLength: 0).frame(maxWidth: 16)
+                    Spacer(minLength: 0)
                 }
-                .frame(width: geo.size.width)
+                .frame(width: geo.size.width, alignment: .leading)
             }
             .frame(height: barH + 3 + 11 + 3 + 11 + 3 + 11)
+            // 참고선 설명 2줄 — 막대 아래
+            VStack(alignment: .leading, spacing: 1) {
+                Text(L.s("점선 - 문헌값", "dashed - reference"))
+                Text(L.s("(지구력 종목)", "(endurance)"))
+            }
+            .font(.system(size: 8)).foregroundStyle(.white.opacity(0.7))
+            .lineLimit(1).minimumScaleFactor(0.7)
             // 차트 바로 아래 문장 두 줄
             // ① 시간 기준 (K-2) — 사실 한 줄. 평가어·참고선 없음. 연속 개념 없음.
             let lowPct = Int((b.lowFrac * 100).rounded())
@@ -3923,7 +3962,8 @@ private struct PerformanceInsightCard: View {
     }
 
     /// 이 러닝 날짜로 끝나는 7일 강도 부하 — §5.8에 따라 성장 탭 "러닝 흐름"과 **같은 `RecordBarChart`**를
-    /// 내보내기 모드로 그대로 재사용한다(이 러닝 날 강조, 말풍선·탭 선택 없음). 별도 레이아웃 없음.
+    /// 내보내기 + compact 모드로 그대로 재사용한다(이 러닝 날 강조, 말풍선·탭 선택 없음,
+    /// 좁은 오른쪽 열에 맞춰 축 머리·각주 생략). 별도 레이아웃 없음 — 파라미터만.
     @ViewBuilder
     private func sevenDayLoadView(load: SevenDayLoad) -> some View {
         let L = AppLanguage.shared
@@ -3942,6 +3982,7 @@ private struct PerformanceInsightCard: View {
                 start: load.chartStart,
                 end: load.chartEnd,
                 exportMode: true,
+                compact: true,
                 cardBackground: .clear,
                 highlightDate: load.runDay
             )
