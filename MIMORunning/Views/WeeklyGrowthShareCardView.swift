@@ -670,12 +670,9 @@ struct MileageStreakShareCard: View {
                     .padding(.horizontal, 14)
                     .padding(.top, 6)
 
-                Spacer(minLength: 6)
-
-                footerRow
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 10)
+                Spacer(minLength: 10)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)   // 넘치더라도 로고(위)가 아니라 아래가 잘리게
         }
     }
 
@@ -827,19 +824,6 @@ struct MileageStreakShareCard: View {
         return p.heatFull
     }
 
-    // MARK: Footer
-    private var footerRow: some View {
-        HStack {
-            ZStack {
-                Circle()
-                    .fill(p.positive.opacity(0.15))
-                    .frame(width: 20, height: 20)
-                Image(systemName: "figure.run")
-                    .font(.system(size: 8, weight: .light))
-                    .foregroundStyle(p.positive)
-            }
-        }
-    }
 }
 
 // MARK: - Mileage + Streak share screen
@@ -866,7 +850,7 @@ struct MileageStreakShareCardScreen: View {
 
     private let cardW: CGFloat = 300
     /// 러닝 흐름 차트(내보내기 모드 ≈235) + 잔디(≈118) + 머리·구분선·푸터가 잘리지 않는 높이
-    private let cardH: CGFloat = 530
+    private let cardH: CGFloat = 560
 
     var body: some View {
         NavigationStack {
@@ -985,6 +969,7 @@ struct MileageStreakShareCardScreen: View {
                 windowStart: windowStart,
                 windowEnd: windowEnd,
                 periodLabel: periodLabel,
+                flowComment: flowComment,
                 heatmapColumns: heatmapColumns,
                 streak: streak,
                 activeDays: activeDays,
