@@ -2408,6 +2408,10 @@ private struct PerformanceInsightCard: View {
         let window: EffortLoad.WindowLoad
         let thisRunAU: Double?
         let acuteChronic: EffortLoad.RatioLabel?
+        /// 그날 러닝 유형의 평소 강도 × 시간 = 기대 부하(점선 눈금). 유형 평소 강도가 없는 날은 nil.
+        let expectedDaily: [Double?]
+        /// 이 러닝을 평소 강도로 뛰었다면의 AU
+        let thisRunExpectedAU: Double?
     }
 
     /// 이 러닝 날짜로 끝나는 7일 부하(오늘이 아니라 그 러닝 기준). 강도 기록이 없으면 nil → 오른쪽 반쪽 생략.
@@ -2424,7 +2428,32 @@ private struct PerformanceInsightCard: View {
         guard w.coveredCount > 0 else { return nil }
         let thisAU = idx.resolve(activity.id).map { EffortLoad.sessionAU(effort: $0.value, durationMin: activity.duration / 60) }
         let ac = EffortLoad.rollingAcuteChronic(runs: runs, asOf: activity.date)?.label
-        return SevenDayLoad(window: w, thisRunAU: thisAU, acuteChronic: ac)
+
+        // 기대 부하 — 그날 러닝 유형의 평소 강도(8주 중앙값, 3건 미만이면 12주) × 시간. 유형별 중앙값은 한 번만 계산.
+        let typeOf: (UUID) -> WorkoutType? = { [workoutTypeFn] id in workoutTypeFn?(id) }
+        var usualByType: [WorkoutType: Int?] = [:]
+        func usual(_ t: WorkoutType) -> Int? {
+            if let cached = usualByType[t] { return cached }
+            let m = EffortBaseline.typeSummary(for: t, asOf: activity.date, history: history, index: idx, typeOf: typeOf).median
+            usualByType[t] = m
+            return m
+        }
+        var expected: [Double?] = Array(repeating: nil, count: w.dayStarts.count)
+        var dayHasGap = Array(repeating: false, count: w.dayStarts.count)
+        for a in acts where a.type == .running && a.date >= w.start && a.date < w.end {
+            let i = max(0, min(w.dayStarts.count - 1, cal.dateComponents([.day], from: w.start, to: a.date).day ?? 0))
+            if let t = typeOf(a.id), let m = usual(t) {
+                expected[i] = (expected[i] ?? 0) + EffortLoad.sessionAU(effort: m, durationMin: a.duration / 60)
+            } else {
+                dayHasGap[i] = true   // 유형 미상이거나 평소 강도 없음 → 그날 눈금 생략
+            }
+        }
+        for i in expected.indices where dayHasGap[i] { expected[i] = nil }
+        let thisExpected: Double? = typeOf(activity.id).flatMap(usual).map {
+            EffortLoad.sessionAU(effort: $0, durationMin: activity.duration / 60)
+        }
+        return SevenDayLoad(window: w, thisRunAU: thisAU, acuteChronic: ac,
+                            expectedDaily: expected, thisRunExpectedAU: thisExpected)
     }
 
     private struct HRTrendPt: Identifiable {
@@ -3909,7 +3938,7 @@ private struct PerformanceInsightCard: View {
         let L = AppLanguage.shared
         let cal = Calendar.current
         let w = load.window
-        let maxAU = max(w.daily.max() ?? 0, 1)
+        let maxAU = max(w.daily.max() ?? 0, load.expectedDaily.compactMap { $0 }.max() ?? 0, 1)
         // 왼쪽 강도 분포(막대 56 + 위 두 줄 텍스트 28)와 같은 높이 — 요일 라벨이 유형 라벨과 나란히 온다
         let barH: CGFloat = 56 + 28
         let runDay = cal.startOfDay(for: activity.date)
@@ -3931,6 +3960,13 @@ private struct PerformanceInsightCard: View {
                                 RoundedRectangle(cornerRadius: 2)
                                     .fill(dayLoadColor(w, i))
                                     .frame(height: max(3, barH * CGFloat(au / maxAU)))
+                            }
+                            // 점선 = 그날 러닝 유형의 평소 강도로 뛰었을 때의 부하 (강도 분포의 문헌값 눈금과 같은 문법)
+                            if let exp = load.expectedDaily.indices.contains(i) ? load.expectedDaily[i] : nil, exp > 0 {
+                                IntensityTickLine()
+                                    .stroke(.white.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [1.5, 1.5]))
+                                    .frame(height: 1)
+                                    .offset(y: -barH * CGFloat(min(1, exp / maxAU)))
                             }
                         }
                         .frame(width: barW, height: barH)
@@ -3973,7 +4009,11 @@ private struct PerformanceInsightCard: View {
         func au(_ v: Double) -> String { Int(v.rounded()).formatted(.number.grouping(.automatic)) }
         var parts: [String] = []
         if let t = load.thisRunAU {
-            parts.append(L.s("이 러닝 \(au(t)) AU", "This run \(au(t)) AU"))
+            if let e = load.thisRunExpectedAU {
+                parts.append(L.s("이 러닝 \(au(t)) AU (평소 강도면 \(au(e)))", "This run \(au(t)) AU (usual \(au(e)))"))
+            } else {
+                parts.append(L.s("이 러닝 \(au(t)) AU", "This run \(au(t)) AU"))
+            }
         }
         parts.append(L.s("7일 \(au(load.window.total)) AU", "7d \(au(load.window.total)) AU"))
         if let ac = load.acuteChronic {
