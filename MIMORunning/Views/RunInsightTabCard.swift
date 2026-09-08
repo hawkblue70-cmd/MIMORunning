@@ -2370,12 +2370,12 @@ private struct RhythmInsightCard: View {
 
 // MARK: - Performance Card
 
-/// 강도 분포 세로 막대 위에 그리는 가로 문헌값 눈금 한 줄.
+/// 강도 분포 가로 막대 위에 그리는 세로 문헌값 눈금 한 줄.
 private struct IntensityTickLine: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
-        p.move(to: CGPoint(x: 0, y: rect.midY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
         return p
     }
 }
@@ -2403,19 +2403,24 @@ private struct PerformanceInsightCard: View {
     @State private var _intensityResult: IntensityTimeData? = nil
     @State private var _distComputed = false
 
-    /// 7일 강도 부하 묶음 — 창 + 이 러닝의 AU + 4주 평균 대비 라벨 + 성장 탭과 같은 차트용 버킷.
+    /// 강도 부하 묶음 — 최근 7일 창 + 이 러닝의 AU + 4주 평균 대비 라벨 + 성장 탭과 같은 차트용 버킷.
+    /// 숫자·문장은 모두 **7일** 기준이고, 차트만 그 앞 7일을 맥락으로 더 보여 준다(14일).
     private struct SevenDayLoad {
         let window: EffortLoad.WindowLoad
         let thisRunAU: Double?
         let acuteChronic: EffortLoad.RatioLabel?
         /// 성장 탭 상태 카드에서 옮겨온 한 줄: 단조도 → 4주 평균 대비(유지는 침묵)
         let sentence: EffortLoad.SentenceKind?
-        /// §5.8 — 성장 탭 "러닝 흐름"과 **같은 `RecordBarChart`**에 그대로 넘기는 일별 버킷
+        /// §5.8 — 성장 탭 "러닝 흐름"과 **같은 `RecordBarChart`**에 그대로 넘기는 일별 버킷 (14일)
         let bars: [RecordBar]
         let chartStart: Date
         let chartEnd: Date
         /// 강조할 이 러닝의 날 (00:00)
         let runDay: Date
+        /// 진하게 그릴 최근 7일의 시작 (= `runDay − 6일`, 00:00). 그 앞은 흐리게.
+        let emphasisFrom: Date
+        /// 최근 7일 **바로 앞** 7일의 총 AU — 캡션 비교용. 기록이 없으면 0.
+        let previousSevenAU: Double
     }
 
     /// 이 러닝 날짜로 끝나는 7일 부하(오늘이 아니라 그 러닝 기준). 강도 기록이 없으면 nil → 오른쪽 반쪽 생략.
@@ -2434,18 +2439,23 @@ private struct PerformanceInsightCard: View {
         let ac = EffortLoad.rollingAcuteChronic(runs: runs, asOf: activity.date)?.label
         let sentence = EffortLoad.rollingSentenceKind(runs: runs, asOf: activity.date)
 
-        // 성장 탭 "러닝 흐름"과 같은 컴포넌트에 넘길 일별 버킷 — 이 러닝 날짜로 끝나는 7일
+        // 성장 탭 "러닝 흐름"과 같은 컴포넌트에 넘길 일별 버킷 — 이 러닝 날짜로 끝나는 **14일**.
+        // 앞 7일은 흐리게 깔아 "이번 주가 지난주보다 어떤가"가 한눈에 보이게 하고, 숫자·문장은 그대로 7일 기준이다.
         let runDay = cal.startOfDay(for: activity.date)
-        let chartStart = cal.date(byAdding: .day, value: -6, to: runDay) ?? runDay
+        let emphasisFrom = cal.date(byAdding: .day, value: -6, to: runDay) ?? runDay
+        let chartStart = cal.date(byAdding: .day, value: -13, to: runDay) ?? runDay
         let bars = RecordSeries.bars(activities: acts,
                                      effortOf: { idx.resolve($0)?.value },
                                      start: chartStart,
                                      end: dayEnd,
                                      period: .day)
+        // 캡션 비교용 — 최근 7일 바로 앞 7일 (end는 exclusive)
+        let prevSeven = EffortLoad.window(runs: runs, endingBefore: emphasisFrom, days: 7).total
 
         // 유형별 평소 강도 눈금은 그리지 않는다 — 이 카드는 러닝 유형을 표시하지 않아 눈금의 뜻을 알 수 없다(성장 탭과 같은 표시 방식).
         return SevenDayLoad(window: w, thisRunAU: thisAU, acuteChronic: ac, sentence: sentence,
-                            bars: bars, chartStart: chartStart, chartEnd: dayEnd, runDay: runDay)
+                            bars: bars, chartStart: chartStart, chartEnd: dayEnd, runDay: runDay,
+                            emphasisFrom: emphasisFrom, previousSevenAU: prevSeven)
     }
 
     private struct HRTrendPt: Identifiable {
@@ -3788,9 +3798,8 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    /// 강도 분포(4주, 세로 막대 + 문헌값 눈금)와 이 러닝 날짜 기준 7일 강도 부하를 **한 행 35 : 65**로.
-    /// 왼쪽은 막대 3개라 좁아도 되고, 오른쪽 7일 차트는 폭을 더 쓴다.
-    /// 7일 부하가 없으면 왼쪽만 전체 폭으로 (구분선·오른쪽 열 없음).
+    /// 강도 분포(4주, 가로 막대 3행 + 문헌값 눈금)와 이 러닝 날짜 기준 강도 부하(14일 창)를 **한 행 50 : 50**으로.
+    /// 부하가 없으면 왼쪽만 전체 폭으로 (구분선·오른쪽 열 없음) — 트랙이 그만큼 길어진다.
     @ViewBuilder
     private func intensityDistSection(data: IntensityTimeData) -> some View {
         if let load = sevenDayLoad {
@@ -3849,7 +3858,15 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    /// 강도 분포 · 4주 — 저/중/고 세로 막대. 축은 0…max(관측 최대, 참고선 최대)로 잡아 눈금이 항상 보이게 한다.
+    // 강도 분포 가로 막대 3행의 치수 — 한 곳에서만 정한다.
+    private static let intensityLabelW: CGFloat = 40
+    private static let intensityValueW: CGFloat = 52
+    private static let intensityGap: CGFloat = 6
+    private static let intensityTrackH: CGFloat = 10
+    private static let intensityRowH: CGFloat = 12
+    private static let intensityRowGap: CGFloat = 6
+
+    /// 강도 분포 · 4주 — 저/중/고 **가로 막대 3행**. 축은 0…max(관측 최대, 참고선 최대)로 잡아 눈금이 항상 보이게 한다.
     @ViewBuilder
     private func intensityColumnsView(data: IntensityTimeData) -> some View {
         let L = AppLanguage.shared
@@ -3864,7 +3881,6 @@ private struct PerformanceInsightCard: View {
         let totalMin = Int((b.totalSec / 60).rounded())
         // 상단 여유 6% — 80% 눈금이 프레임 위로 잘리지 않게.
         let axisFrac = max(0.80, b.lowFrac, b.midFrac, b.highFrac) * 1.06
-        let barH: CGFloat = 56
         VStack(alignment: .leading, spacing: 5) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(L.s("강도 분포 · \(data.weeks)주 · 심박 존 \(totalMin)분", "Intensity · \(data.weeks)w · \(totalMin) min in HR zones"))
@@ -3877,56 +3893,51 @@ private struct PerformanceInsightCard: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
-            // 막대 3개는 **왼쪽 정렬**, 폭은 열 폭에 맞춰 — 참고선 설명은 막대 아래로 내렸다.
+            // 가로 막대 3행 — [라벨][트랙(문헌값 밴드·점선)][값]. 트랙 폭은 GeometryReader 하나로 재고 세 행이 함께 쓴다.
             GeometryReader { geo in
-                let gap: CGFloat = 6
-                // 열 폭을 3등분한 것의 60% (전체 폭 폴백일 때 너무 굵어지지 않게 상한)
-                let barW = min(34, max(8, (geo.size.width - gap * 2) / 3 * 0.6))
-                HStack(alignment: .bottom, spacing: gap) {
+                let trackW = max(20, geo.size.width - Self.intensityLabelW - Self.intensityValueW - Self.intensityGap * 2)
+                VStack(alignment: .leading, spacing: Self.intensityRowGap) {
                     ForEach(rows, id: \.tier) { row in
                         let pct = Int((row.frac * 100).rounded())
                         let mins = Int((row.sec / 60).rounded())
-                        VStack(spacing: 3) {
-                            Text("\(pct)%")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundStyle(intensityColor(row.tier))
+                        HStack(spacing: Self.intensityGap) {
+                            Text(row.tier.label)
+                                .font(.system(size: 8.5)).foregroundStyle(.white.opacity(0.8))
                                 .lineLimit(1).minimumScaleFactor(0.6)
-                            Text(L.s("\(mins)분", "\(mins)m"))
-                                .font(.system(size: 8))
-                                .foregroundStyle(.white.opacity(0.75))
-                                .lineLimit(1).minimumScaleFactor(0.6)
-                            ZStack(alignment: .bottom) {
+                                .frame(width: Self.intensityLabelW, alignment: .leading)
+                            ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
                                 // 참고 범위 밴드 — 옅은 흰색, 경고색 없음, 미달 강조 없음
                                 if row.refHi > row.refLo {
                                     Rectangle()
                                         .fill(.white.opacity(0.10))
-                                        .frame(height: barH * CGFloat((row.refHi - row.refLo) / axisFrac))
-                                        .offset(y: -barH * CGFloat(row.refLo / axisFrac))
+                                        .frame(width: trackW * CGFloat((row.refHi - row.refLo) / axisFrac))
+                                        .offset(x: trackW * CGFloat(row.refLo / axisFrac))
                                 }
                                 RoundedRectangle(cornerRadius: 2.5)
                                     .fill(intensityColor(row.tier).opacity(0.85))
-                                    .frame(height: max(2, barH * CGFloat(row.frac / axisFrac)))
-                                // 가로 점선 — 0 지점은 막대 밑바닥이라 생략
+                                    .frame(width: max(2, trackW * CGFloat(row.frac / axisFrac)))
+                                // 세로 점선 — 0 지점은 막대 시작점이라 생략
                                 ForEach(Array(Set([row.refLo, row.refHi]).filter { $0 > 0 }.sorted()), id: \.self) { r in
                                     IntensityTickLine()
                                         .stroke(.white.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [1.5, 1.5]))
-                                        .frame(height: 1)
-                                        .offset(y: -barH * CGFloat(r / axisFrac))
+                                        .frame(width: 1)
+                                        .offset(x: trackW * CGFloat(r / axisFrac))
                                 }
                             }
-                            .frame(height: barH)
-                            Text(row.tier.label)
-                                .font(.system(size: 8)).foregroundStyle(.white.opacity(0.8))
+                            .frame(width: trackW, height: Self.intensityTrackH)
+                            Text(L.s("\(pct)% · \(mins)분", "\(pct)% · \(mins)m"))
+                                .font(.system(size: 8.5))
+                                .foregroundStyle(.white.opacity(0.75))
                                 .lineLimit(1).minimumScaleFactor(0.6)
+                                .frame(width: Self.intensityValueW, alignment: .trailing)
                         }
-                        .frame(width: barW)
+                        .frame(height: Self.intensityRowH)
                     }
-                    Spacer(minLength: 0)
                 }
                 .frame(width: geo.size.width, alignment: .leading)
             }
-            .frame(height: barH + 3 + 11 + 3 + 11 + 3 + 11)
+            .frame(height: Self.intensityRowH * 3 + Self.intensityRowGap * 2)
             // 참고선 설명 2줄 — 막대 아래
             VStack(alignment: .leading, spacing: 1) {
                 Text(L.s("점선 - 문헌값", "dashed - reference"))
@@ -3961,15 +3972,15 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    /// 이 러닝 날짜로 끝나는 7일 강도 부하 — §5.8에 따라 성장 탭 "러닝 흐름"과 **같은 `RecordBarChart`**를
-    /// 내보내기 + compact 모드로 그대로 재사용한다(이 러닝 날 강조, 말풍선·탭 선택 없음,
+    /// 이 러닝 날짜로 끝나는 강도 부하 — §5.8에 따라 성장 탭 "러닝 흐름"과 **같은 `RecordBarChart`**를
+    /// 내보내기 + compact 모드로 그대로 재사용한다(14일 창 · 최근 7일 강조 · 이 러닝 날 강조, 말풍선·탭 선택 없음,
     /// 좁은 오른쪽 열에 맞춰 축 머리·각주 생략). 별도 레이아웃 없음 — 파라미터만.
     @ViewBuilder
     private func sevenDayLoadView(load: SevenDayLoad) -> some View {
         let L = AppLanguage.shared
         VStack(alignment: .leading, spacing: 5) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(L.s("강도 부하 · 7일", "Training load · 7d"))
+                Text(L.s("강도 부하 · 14일", "Training load · 14d"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                     .lineLimit(1).minimumScaleFactor(0.8)
                 Text(sevenDayLoadPeriodText(load))
@@ -3984,7 +3995,8 @@ private struct PerformanceInsightCard: View {
                 exportMode: true,
                 compact: true,
                 cardBackground: .clear,
-                highlightDate: load.runDay
+                highlightDate: load.runDay,
+                emphasisFrom: load.emphasisFrom
             )
             .environment(\.colorScheme, .dark)   // 카드가 어두운 배경 전용이라 차트의 secondary 색도 다크로
             Text(sevenDayLoadCaption(load))
@@ -3998,7 +4010,7 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    /// "8/2–8/8 · 이 러닝 날 기준"
+    /// "8/25–9/7 · 이 러닝 날 기준 · 최근 7일 진하게"
     private func sevenDayLoadPeriodText(_ load: SevenDayLoad) -> String {
         let L = AppLanguage.shared
         let cal = Calendar.current
@@ -4014,10 +4026,11 @@ private struct PerformanceInsightCard: View {
         } else {
             range = "\(a.month ?? 1)/\(a.day ?? 1)–\(b.month ?? 1)/\(b.day ?? 1)"
         }
-        return L.s("\(range) · 이 러닝 날 기준", "\(range) · ending on this run")
+        return L.s("\(range) · 이 러닝 날 기준 · 최근 7일 진하게",
+                   "\(range) · ending on this run · last 7 days emphasized")
     }
 
-    /// "이 러닝 109 AU · 7일 1,047 AU · 4주 평균 대비 낮음" — 없는 조각은 빠진다.
+    /// "이 러닝 109 AU · 7일 1,047 AU · 이전 7일 1,480 AU · 4주 평균 대비 낮음" — 없는 조각은 빠진다.
     /// 단조도 / 4주 평균 대비 문장 — "부상·위험" 표현 없음(Impellizzeri 2020)
     private func sevenDayLoadSentence(_ kind: EffortLoad.SentenceKind) -> String {
         let L = AppLanguage.shared
@@ -4038,6 +4051,9 @@ private struct PerformanceInsightCard: View {
             parts.append(L.s("이 러닝 \(au(t)) AU", "This run \(au(t)) AU"))
         }
         parts.append(L.s("7일 \(au(load.window.total)) AU", "7d \(au(load.window.total)) AU"))
+        if load.previousSevenAU > 0 {
+            parts.append(L.s("이전 7일 \(au(load.previousSevenAU)) AU", "prev 7d \(au(load.previousSevenAU)) AU"))
+        }
         if let ac = load.acuteChronic {
             let t: String
             switch ac {

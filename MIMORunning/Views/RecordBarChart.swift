@@ -31,6 +31,9 @@ struct RecordBarChart: View {
     /// 미리 강조할 날짜 — 이 날짜가 든 버킷을 **선택된 것처럼** 그린다(나머지 흐리게 + 세로 점선).
     /// 내보내기 모드와 함께 쓰며 말풍선은 나오지 않는다. (퍼포먼스 카드의 "이 러닝 날")
     var highlightDate: Date? = nil
+    /// 이 날짜부터의 구간만 진하게 — 그 앞 구간은 흐리게 깔린다(맥락). 예: 14일 창에서 최근 7일만 강조.
+    /// 앱 화면의 탭 선택 흐림과는 별개 축이라 `nil`이면 기존 동작 그대로다. (§5.8 — 파라미터로만)
+    var emphasisFrom: Date? = nil
     /// 차트 아래 흐름 문장 — 상태 한 줄 + 방향 한 줄(`RecordFlowInsight`).
     /// 앱 화면 전용: compact·내보내기 모드에서는 그리지 않는다.
     var flowComment: RecordFlowInsight.Result? = nil
@@ -63,6 +66,8 @@ struct RecordBarChart: View {
         static let lineWidth: CGFloat = 1.5
         static let lineOpacity: Double = 0.9
         static let dimmed: Double = 0.55
+        /// `emphasisFrom` 앞 구간(맥락으로만 깔리는 부분)
+        static let deemphasized: Double = 0.45
         /// 페이스 축 위아래 여유 (초/km)
         static let pacePad: Double = 10
         /// 극단값이 나머지를 눌러 앉히지 않도록 백분위로 자르기 시작하는 표본 수
@@ -132,7 +137,7 @@ struct RecordBarChart: View {
     private var barWidthRatio: CGFloat {
         switch bars.count {
         case ...8:   return compact ? 0.34 : 0.42   // 7일 창 · 압축 모드(반폭)에서는 더 가늘게
-        case 9...16: return 0.6
+        case 9...16: return compact ? 0.5 : 0.6     // 14일 창(압축) · 12주(성장 탭)
         default:     return 0.78
         }
     }
@@ -325,7 +330,7 @@ struct RecordBarChart: View {
                     width: .ratio(barWidthRatio)
                 )
                 .foregroundStyle(barColor(bar).gradient)
-                .opacity(dim(bar.id))
+                .opacity(bucketOpacity(bar.id))
                 .cornerRadius(2)
             }
             paceMarks
@@ -446,7 +451,7 @@ struct RecordBarChart: View {
                     y: .value(seriesName, p.y),
                     series: .value(L.s("구간", "Segment"), seg.id)
                 )
-                .foregroundStyle(Theme.pace.opacity(Metrics.lineOpacity))
+                .foregroundStyle(Theme.pace.opacity(Metrics.lineOpacity * bucketOpacity(p.id)))
                 .lineStyle(StrokeStyle(lineWidth: Metrics.lineWidth, lineCap: .round, lineJoin: .round))
                 .interpolationMethod(.monotone)
             }
@@ -460,7 +465,7 @@ struct RecordBarChart: View {
                 )
                 .symbolSize(Metrics.symbolStrokeSize)
                 .foregroundStyle(Color.black.opacity(0.5))
-                .opacity(dim(p.id))
+                .opacity(bucketOpacity(p.id))
             }
         }
         ForEach(segs) { seg in
@@ -471,7 +476,7 @@ struct RecordBarChart: View {
                 )
                 .symbolSize(Metrics.symbolSize)
                 .foregroundStyle(p.color)
-                .opacity(dim(p.id))
+                .opacity(bucketOpacity(p.id))
             }
         }
     }
@@ -528,8 +533,14 @@ struct RecordBarChart: View {
         return EffortPalette.color(for: EffortResolver.clamp(mean))
     }
 
-    /// 선택된 구간만 진하게 — 막대와 점이 함께 흐려진다.
-    private func dim(_ id: Date) -> Double {
+    /// 구간 하나의 불투명도 — 막대·점·선이 **모두 이 하나**를 본다(§5.8, 분기 없음).
+    /// `emphasisFrom`이 있으면 그 앞 구간만 흐리게(강조 구간과 강조 날짜는 진하게),
+    /// 없으면 기존 규칙 그대로 — 선택된 구간만 진하게.
+    private func bucketOpacity(_ id: Date) -> Double {
+        if let from = emphasisFrom {
+            if let sel = selectedBar, sel.id == id { return 1 }
+            return id < from ? Metrics.deemphasized : 1
+        }
         guard let sel = selectedBar else { return 1 }
         return sel.id == id ? 1 : Metrics.dimmed
     }
@@ -538,8 +549,14 @@ struct RecordBarChart: View {
 
     private var xAxisValues: AxisMarkValues {
         switch period {
-        // 좁은 열의 7일 창(≤8 버킷)은 7일 간격이면 라벨이 한두 개뿐 → 이틀 간격으로
-        case .day:   return .stride(by: .day, count: (compact && bars.count <= 8) ? 2 : 7)
+        // 좁은 열의 짧은 창은 7일 간격이면 라벨이 한두 개뿐 → 이틀(≤8 버킷)·사흘(9…16 버킷) 간격으로
+        case .day:
+            guard compact else { return .stride(by: .day, count: 7) }
+            switch bars.count {
+            case ...8:   return .stride(by: .day, count: 2)
+            case 9...16: return .stride(by: .day, count: 3)
+            default:     return .stride(by: .day, count: 7)
+            }
         case .week:  return .stride(by: .weekOfYear, count: 1)
         case .month: return .stride(by: .month, count: 1)
         }
