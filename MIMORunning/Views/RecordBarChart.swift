@@ -169,14 +169,6 @@ struct RecordBarChart: View {
                         .frame(width: 7, height: 7)
                 }
             }
-            HStack(spacing: 3) {
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Color.secondary.opacity(0.45))
-                    .frame(width: 7, height: 7)
-                Text(L.s("기록 없음", "Not rated"))
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-            }
             Spacer(minLength: 0)
         }
     }
