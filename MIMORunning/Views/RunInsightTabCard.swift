@@ -3844,6 +3844,7 @@ private struct PerformanceInsightCard: View {
                 let gap: CGFloat = 3
                 let barW = max(8, (geo.size.width - gap * 6) / 7)
                 HStack(alignment: .bottom, spacing: gap) {
+                    Spacer(minLength: 0)   // 막대 묶음 + 설명을 반폭 중앙에
                     ForEach(rows, id: \.tier) { row in
                         let pct = Int((row.frac * 100).rounded())
                         let mins = Int((row.sec / 60).rounded())
@@ -3893,8 +3894,10 @@ private struct PerformanceInsightCard: View {
                     .font(.system(size: 8)).foregroundStyle(.white.opacity(0.7))
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .padding(.leading, 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize()
+                    Spacer(minLength: 0)
                 }
+                .frame(width: geo.size.width)
             }
             .frame(height: barH + 3 + 11 + 3 + 11 + 3 + 11)
         }
