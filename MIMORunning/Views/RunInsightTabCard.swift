@@ -3904,7 +3904,7 @@ private struct PerformanceInsightCard: View {
         let totalMin = Int((b.totalSec / 60).rounded())
         // 상단 여유 6% — 80% 눈금이 프레임 위로 잘리지 않게.
         let axisFrac = max(0.80, b.lowFrac, b.midFrac, b.highFrac) * 1.06
-        VStack(alignment: .leading, spacing: 8) {   // 행 ↔ 점선 설명 간격 8 · 제목 ↔ 첫 행(저강도)은 아래 padding으로 10
+        VStack(alignment: .leading, spacing: 8) {   // 행 ↔ 점선 설명 간격 8 · 제목 ↔ 첫 행(저강도)은 아래 padding으로 14 — 제목 블록과 막대가 확실히 나뉘게
             VStack(alignment: .leading, spacing: 1) {
                 Text(L.s("강도 분포 · \(data.weeks)주 · 심박 존 \(totalMin)분", "Intensity · \(data.weeks)w · \(totalMin) min in HR zones"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
@@ -3916,7 +3916,7 @@ private struct PerformanceInsightCard: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
-            .padding(.bottom, 2)
+            .padding(.bottom, 6)
             // 가로 막대 3행 — [라벨][트랙(문헌값 밴드·점선)][값]. 트랙 폭은 GeometryReader 하나로 재고 세 행이 함께 쓴다.
             GeometryReader { geo in
                 let trackW = max(20, geo.size.width - Self.intensityLabelW - Self.intensityValueW - Self.intensityGap * 2)
