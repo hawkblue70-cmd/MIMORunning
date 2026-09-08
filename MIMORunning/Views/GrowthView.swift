@@ -233,16 +233,11 @@ struct GrowthView: View {
                                 }
                             heatmapSection
                             weeklySection
-                                // 최근 7일 평점 러닝이 없으면 EffortLoadCard가 없다 — 항상 있는 뷰에도 같은 감지를 건다.
+                                // 강도 입력이 바뀌면 강도 의존 캐시(기록 막대·유형별 평소 강도·추세)를 다시 계산
                                 .onChange(of: allStories.map(\.effortRPE)) { _, _ in
                                     effortInputsChanged()
                                 }
-                            if let load = effortLoadSummary {
-                                EffortLoadCard(summary: load, acuteChronic: effortAcuteChronic)
-                                    .onChange(of: allStories.map(\.effortRPE)) { _, _ in
-                                        effortInputsChanged()
-                                    }
-                            }
+                            // 훈련 강도 부하 상태 카드는 제거 — 같은 7일 부하는 활동 상세 퍼포먼스 카드가 보여준다.
                             if !effortTypeRowsCache.isEmpty {
                                 EffortTypeBaselineCard(rows: effortTypeRowsCache)
                             }
@@ -477,19 +472,6 @@ struct GrowthView: View {
     }
 
     // MARK: - Sections
-
-    /// 최근 7일(롤링) + 직전 4×7일 sRPE 부하. 최근 7일에 강도 평가가 하나도 없으면 nil.
-    private var effortLoadSummary: EffortLoad.RollingSummary? {
-        let runs = EffortLoad.runs(from: runsCache.filter { $0.date >= (Calendar.current.date(byAdding: .day, value: -36, to: Date()) ?? .distantPast) }, index: manager.effortIndex)
-        let s = EffortLoad.rollingSummary(runs: runs, asOf: Date())
-        return s.current.coveredCount > 0 ? s : nil
-    }
-
-    /// 최근 7일 ÷ 직전 4×7일 평균 — 부하 카드의 주 비교 문구. 유효 창이 모자라면 nil.
-    private var effortAcuteChronic: (ratio: Double, label: EffortLoad.RatioLabel)? {
-        let runs = EffortLoad.runs(from: runsCache.filter { $0.date >= (Calendar.current.date(byAdding: .day, value: -36, to: Date()) ?? .distantPast) }, index: manager.effortIndex)
-        return EffortLoad.rollingAcuteChronic(runs: runs, asOf: Date())
-    }
 
     // MARK: - 기록 카드 (거리·시간·부하·페이스 통합)
 
