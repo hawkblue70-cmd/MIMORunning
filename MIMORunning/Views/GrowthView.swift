@@ -78,7 +78,7 @@ struct GrowthView: View {
     @State private var showMonthly: Bool = false
     @State private var showDaily: Bool = true
     @State private var dailyMonth: Date = Date()
-    /// 거리 내보내기 카드에서만 쓰는 km/분 선택 (기록 카드는 항상 거리·페이스·심박 세 줄)
+    /// 거리 내보내기 카드에서만 쓰는 km/분 선택 (기록 카드는 거리 막대 + 페이스 선 한 차트로 고정)
     @State private var showTimeMileage = false
     /// 기록 카드가 그리는 버킷(일/주/월).
     @State private var recordBarsCache: [RecordBar] = []

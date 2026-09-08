@@ -1,13 +1,17 @@
 import SwiftUI
 import Charts
 
-/// 성장 탭 "기록 카드" — **두 줄을 위아래로 쌓아** 각자 **실제 축**으로 보여 준다.
+/// 성장 탭 "기록 카드" — **거리와 페이스를 한 차트에**, 각자 **실제 축**으로 보여 준다.
 ///
-/// 1. 거리 — 막대(색 = 그 구간 평균 강도), y축 km
-/// 2. 페이스 — 선 + 점(색 = 강도), y축 실제 페이스(**뒤집어서 위 = 빠름**), 평균 점선
+/// - 막대 = 거리, **오른쪽(trailing) 축 = km** (막대 색 = 그 구간 평균 강도)
+/// - 선 + 점 = 페이스, **왼쪽(leading) 축 = 실제 페이스**(`m'ss"`, **위 = 빠름**), 평균 점선
+///
+/// Swift Charts는 차트당 y 스케일이 하나뿐이라 **페이스를 km 도메인 위로 매핑**한다.
+/// `kmTop = max(1, 최대 km) × 1.08`, 페이스 범위 `[fast, slow]`에 대해
+/// `y(pace) = kmTop × (slow − pace) / (slow − fast)` — 빠를수록 위.
+/// 왼쪽 축 눈금은 이 매핑의 **역함수**로 다시 페이스 글자로 되돌려 찍는다.
 ///
 /// 정규화·칩·부하 선·심박 줄은 없다. 부하는 막대 길이 × 색이, 심박은 페이스가 대체로 말해 준다(정확한 bpm은 말풍선).
-/// 두 줄은 같은 x 스케일·같은 축 여백을 쓰고, **한 번의 탭이 두 줄을 동시에 강조**한다.
 struct RecordBarChart: View {
     let bars: [RecordBar]
     let period: RecordPeriod
@@ -16,7 +20,7 @@ struct RecordBarChart: View {
     /// 표시할 기록이 없을 때 문구 (nil이면 기본 문구)
     var emptyMessage: String? = nil
 
-    /// 세 줄이 함께 보는 단 하나의 선택 상태
+    /// 막대와 점이 함께 보는 단 하나의 선택 상태
     @State private var selected: Date? = nil
 
     private var L: AppLanguage { AppLanguage.shared }
@@ -24,16 +28,19 @@ struct RecordBarChart: View {
     // MARK: - 레이아웃 상수 (§5.8 — 값은 여기 한 곳에서만)
 
     private enum Metrics {
-        static let distanceHeight: CGFloat = 110
-        static let trendHeight: CGFloat = 70
-        /// 세 줄의 y축 라벨 폭 — 같아야 줄이 세로로 정렬된다.
+        static let plotHeight: CGFloat = 180
+        /// y축 라벨 폭
         static let gutter: CGFloat = 40
         static let symbolSize: CGFloat = 26
+        /// 색 점 아래 깔리는 어두운 테두리 점 (막대 위에서도 점이 보이게)
+        static let symbolStrokeSize: CGFloat = 46
         static let lineWidth: CGFloat = 1.5
-        static let lineOpacity: Double = 0.6
+        static let lineOpacity: Double = 0.9
         static let dimmed: Double = 0.55
         /// 페이스 축 위아래 여유 (초/km)
         static let pacePad: Double = 10
+        /// 극단값이 나머지를 눌러 앉히지 않도록 백분위로 자르기 시작하는 표본 수
+        static let paceClipMinCount: Int = 8
     }
 
     // MARK: - 파생 값
@@ -53,16 +60,6 @@ struct RecordBarChart: View {
     private var selectedBar: RecordBar? {
         guard let s = selected else { return nil }
         return bars.first { s >= $0.id && s < $0.end }
-    }
-
-    // MARK: - 줄 정의
-
-    private enum Lane { case distance, pace }
-
-    /// x 라벨은 **맨 아래 보이는 줄에만** 붙는다.
-    private var bottomLane: Lane {
-        if paceDomain != nil { return .pace }
-        return .distance
     }
 
     private struct TrendPoint: Identifiable {
@@ -92,21 +89,57 @@ struct RecordBarChart: View {
         return result
     }
 
-    // MARK: - 축 범위
+    // MARK: - 축 범위 · 페이스 ↔ km 매핑
 
-    private var kmDomain: ClosedRange<Double> {
-        0...(max(1, bars.map(\.km).max() ?? 0) * 1.08)
+    /// 하나뿐인 y 스케일. 막대(km)가 기준이고 페이스는 여기 위로 접힌다.
+    private var kmTop: Double {
+        max(1, bars.map(\.km).max() ?? 0) * 1.08
     }
 
     private var paceValues: [Double] { bars.compactMap(\.paceSec) }
 
-    /// **페이스 축 뒤집기** — 값은 `-paceSec`로 그리고 라벨은 `abs`로 되돌린다.
-    /// 그래서 위로 갈수록 초/km가 작아진다 = 빠르다.
-    private var paceDomain: ClosedRange<Double>? {
-        guard let fastest = paceValues.min(), let slowest = paceValues.max() else { return nil }
-        return (-slowest - Metrics.pacePad)...(-fastest + Metrics.pacePad)
+    /// 페이스 축 범위(초/km). 표본이 충분하면 5~95 백분위로 잘라 극단값이 나머지를 눌러 앉히지 않게 한다.
+    private var paceRange: (fast: Double, slow: Double)? {
+        let vals = paceValues.sorted()
+        guard let lo = vals.first, let hi = vals.last else { return nil }
+        var fast = lo, slow = hi
+        if vals.count >= Metrics.paceClipMinCount {
+            let last = Double(vals.count - 1)
+            fast = vals[Int((last * 0.05).rounded())]
+            slow = vals[Int((last * 0.95).rounded())]
+        }
+        fast -= Metrics.pacePad
+        slow += Metrics.pacePad
+        if slow - fast < 1 { slow = fast + 1 }   // 0 나눗셈 방지
+        return (fast, slow)
     }
 
+    /// 페이스(초/km) → y (빠를수록 위). 범위를 벗어난 값은 축 끝에 붙인다.
+    private func yForPace(_ pace: Double) -> Double? {
+        guard let r = paceRange else { return nil }
+        let t = (r.slow - pace) / (r.slow - r.fast)
+        return min(max(t, 0), 1) * kmTop
+    }
+
+    /// y → 페이스(초/km). 왼쪽 축 라벨은 이 역함수로 만든다.
+    private func paceForY(_ y: Double) -> Double {
+        guard let r = paceRange else { return 0 }
+        return r.slow - (y / kmTop) * (r.slow - r.fast)
+    }
+
+    /// 왼쪽 축 눈금 3개 — 10초 단위로 반올림한 "보기 좋은" 페이스를 y로 옮긴 값.
+    private var paceTickYs: [Double] {
+        guard let r = paceRange else { return [] }
+        let fastTick = (r.fast / 10).rounded(.up) * 10
+        let slowTick = (r.slow / 10).rounded(.down) * 10
+        guard slowTick > fastTick else { return [] }
+        let midTick = ((fastTick + slowTick) / 20).rounded() * 10
+        var seen = Set<Int>()
+        return [slowTick, midTick, fastTick].compactMap { pace in
+            guard seen.insert(Int(pace)).inserted else { return nil }
+            return yForPace(pace)
+        }
+    }
 
     // MARK: - Body
 
@@ -115,8 +148,8 @@ struct RecordBarChart: View {
             if hasData {
                 calloutRow
                 effortLegend
-                distanceLane
-                paceLane
+                axisHeader
+                chart
                 footnote
             } else {
                 Text(emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period"))
@@ -133,7 +166,7 @@ struct RecordBarChart: View {
         .accessibilityLabel(accessibilitySummary)
     }
 
-    // MARK: - 헤더 ① 선택 말풍선 (세 줄이 함께 쓰는 하나)
+    // MARK: - 헤더 ① 선택 말풍선
 
     private var calloutRow: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -173,88 +206,42 @@ struct RecordBarChart: View {
         }
     }
 
-    // MARK: - 줄 하나를 만드는 단 하나의 빌더 (§5.8 — 축·선택·강조 코드는 여기에만)
+    // MARK: - 헤더 ③ 양쪽 축이 무엇인지 (왼쪽 페이스 · 오른쪽 km)
 
-    private func lane<C: ChartContent>(title: String,
-                                       trailing: String?,
-                                       height: CGFloat,
-                                       yDomain: ClosedRange<Double>,
-                                       yLabel: @escaping (Double) -> String,
-                                       showsXAxis: Bool,
-                                       @ChartContentBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                if let trailing {
-                    Text(trailing)
+    private var axisHeader: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                if paceRange != nil {
+                    Text(L.s("페이스 분'초", "Pace m'ss\""))
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                if let p = paceTrailing {
+                    Text(p)
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
             }
-            Chart {
-                content()
-                if let sel = selectedBar {
-                    RuleMark(x: .value(periodName, sel.id, unit: xUnit))
-                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                        .foregroundStyle(Color.secondary.opacity(0.55))
-                }
-            }
-            .frame(height: height)
-            .chartXScale(domain: start...end)
-            .chartYScale(domain: yDomain)
-            .chartLegend(.hidden)
-            .chartXSelection(value: $selected)
-            .chartYAxis {
-                AxisMarks(values: .automatic(desiredCount: 3)) { value in
-                    AxisValueLabel {
-                        Text(yLabel(value.as(Double.self) ?? 0))
-                            .font(.system(size: 9))
-                            .frame(width: Metrics.gutter, alignment: .trailing)
-                    }
-                    AxisGridLine()
-                }
-            }
-            .modifier(LaneXAxis(shows: showsXAxis, values: xAxisValues, label: xLabel))
-        }
-    }
-
-    /// x 라벨은 맨 아래 줄에만 — 위 줄은 축 자체를 숨긴다.
-    private struct LaneXAxis: ViewModifier {
-        let shows: Bool
-        let values: AxisMarkValues
-        let label: (Date) -> String
-
-        func body(content: Content) -> some View {
-            if shows {
-                content.chartXAxis {
-                    AxisMarks(values: values) { value in
-                        AxisValueLabel {
-                            if let d = value.as(Date.self) {
-                                Text(label(d)).font(.caption2)
-                            }
-                        }
-                    }
-                }
-            } else {
-                content.chartXAxis(.hidden)
+            Spacer(minLength: 4)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(L.s("거리 km", "Distance km"))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(distanceTrailing)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
     }
 
-    // MARK: - 줄 ① 거리
+    // MARK: - 차트 하나 (§5.8 — 축·선택·강조 코드는 여기에만)
 
-    private var distanceLane: some View {
-        lane(title: L.s("거리", "Distance"),
-             trailing: distanceTrailing,
-             height: Metrics.distanceHeight,
-             yDomain: kmDomain,
-             yLabel: kmAxisLabel,
-             showsXAxis: bottomLane == .distance) {
+    private var chart: some View {
+        Chart {
             ForEach(bars) { bar in
                 BarMark(
                     x: .value(periodName, bar.id, unit: xUnit),
@@ -265,46 +252,88 @@ struct RecordBarChart: View {
                 .opacity(dim(bar.id))
                 .cornerRadius(2)
             }
+            paceMarks
+            if let sel = selectedBar {
+                RuleMark(x: .value(periodName, sel.id, unit: xUnit))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .foregroundStyle(Color.secondary.opacity(0.55))
+            }
         }
-    }
-
-    // MARK: - 줄 ② 페이스 (뒤집힌 실제 축)
-
-    @ViewBuilder
-    private var paceLane: some View {
-        if let domain = paceDomain {
-            lane(title: L.s("페이스", "Pace"),
-                 trailing: paceTrailing,
-                 height: Metrics.trendHeight,
-                 yDomain: domain,
-                 yLabel: { paceText(abs($0)) },
-                 showsXAxis: bottomLane == .pace) {
-                trendMarks(segments { $0.paceSec.map { -$0 } },
-                           seriesName: L.s("페이스", "Pace"),
-                           lineColor: Theme.pace.opacity(Metrics.lineOpacity),
-                           baseline: RecordSeries.paceBaseline(bars).map { -$0 },
-                           baselineLabel: paceBaselineLabel)
+        .frame(height: Metrics.plotHeight)
+        .chartXScale(domain: start...end)
+        .chartYScale(domain: 0...kmTop)
+        .chartLegend(.hidden)
+        .chartXSelection(value: $selected)
+        .modifier(DualYAxis(paceTickYs: paceTickYs,
+                            paceLabel: { paceText(paceForY($0)) },
+                            kmLabel: kmAxisLabel))
+        .chartXAxis {
+            AxisMarks(values: xAxisValues) { value in
+                AxisValueLabel {
+                    if let d = value.as(Date.self) {
+                        Text(xLabel(d)).font(.caption2)
+                    }
+                }
             }
         }
     }
 
-    /// 페이스 줄의 마크 묶음 — 평균 점선 + 이어진 구간 선 + 강도색 점.
+    /// 왼쪽 = 실제 페이스(매핑의 역함수), 오른쪽 = km.
+    /// 페이스가 하나도 없으면 평범한 단일 축 차트로 — km이 왼쪽으로 간다.
+    private struct DualYAxis: ViewModifier {
+        let paceTickYs: [Double]
+        let paceLabel: (Double) -> String
+        let kmLabel: (Double) -> String
+
+        func body(content: Content) -> some View {
+            if paceTickYs.isEmpty {
+                content.chartYAxis {
+                    AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
+                        AxisValueLabel {
+                            Text(kmLabel(value.as(Double.self) ?? 0))
+                                .font(.system(size: 9))
+                                .frame(width: Metrics.gutter, alignment: .trailing)
+                        }
+                        AxisGridLine()
+                    }
+                }
+            } else {
+                content.chartYAxis {
+                    AxisMarks(position: .leading, values: paceTickYs) { value in
+                        AxisValueLabel {
+                            Text(paceLabel(value.as(Double.self) ?? 0))
+                                .font(.system(size: 9))
+                                .frame(width: Metrics.gutter, alignment: .trailing)
+                        }
+                        AxisGridLine()
+                            .foregroundStyle(Color.secondary.opacity(0.20))
+                    }
+                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
+                        AxisValueLabel {
+                            Text(kmLabel(value.as(Double.self) ?? 0))
+                                .font(.system(size: 9))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// 페이스 마크 묶음 — 평균 점선 + 이어진 구간 선 + 강도색 점(어두운 테두리).
     @ChartContentBuilder
-    private func trendMarks(_ segs: [TrendSegment],
-                            seriesName: String,
-                            lineColor: Color,
-                            baseline: Double?,
-                            baselineLabel: String) -> some ChartContent {
-        if let baseline {
+    private var paceMarks: some ChartContent {
+        let seriesName = L.s("페이스", "Pace")
+        if let baseline = RecordSeries.paceBaseline(bars).flatMap({ yForPace($0) }) {
             RuleMark(y: .value(seriesName, baseline))
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 .foregroundStyle(Color.secondary.opacity(0.45))
                 .annotation(position: .top, alignment: .trailing, spacing: 1) {
-                    Text(baselineLabel)
+                    Text(paceBaselineLabel)
                         .font(.system(size: 8.5))
                         .foregroundStyle(.secondary)
                 }
         }
+        let segs = segments { $0.paceSec.flatMap { yForPace($0) } }
         ForEach(segs) { seg in
             ForEach(seg.points) { p in
                 LineMark(
@@ -312,9 +341,21 @@ struct RecordBarChart: View {
                     y: .value(seriesName, p.y),
                     series: .value(L.s("구간", "Segment"), seg.id)
                 )
-                .foregroundStyle(lineColor)
+                .foregroundStyle(Theme.pace.opacity(Metrics.lineOpacity))
                 .lineStyle(StrokeStyle(lineWidth: Metrics.lineWidth, lineCap: .round, lineJoin: .round))
                 .interpolationMethod(.monotone)
+            }
+        }
+        // 어두운 테두리를 먼저 깔고 그 위에 색 점 — 막대 위에서도 점이 묻히지 않는다.
+        ForEach(segs) { seg in
+            ForEach(seg.points) { p in
+                PointMark(
+                    x: .value(periodName, p.id, unit: xUnit),
+                    y: .value(seriesName, p.y)
+                )
+                .symbolSize(Metrics.symbolStrokeSize)
+                .foregroundStyle(Color.black.opacity(0.5))
+                .opacity(dim(p.id))
             }
         }
         ForEach(segs) { seg in
@@ -331,14 +372,14 @@ struct RecordBarChart: View {
     }
 
     private var footnote: some View {
-        Text(L.s("막대·점 색 = 강도 · 페이스는 위가 빠름",
-                 "Bar and dot color = effort · pace: higher = faster"))
+        Text(L.s("막대 = 거리(색 = 강도) · 선 = 페이스, 위가 빠름 · 왼쪽 축 페이스 · 오른쪽 축 km",
+                 "Bars = distance (color = effort) · line = pace, higher = faster · left axis pace · right axis km"))
             .font(.system(size: 8.5))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    // MARK: - 줄 오른쪽 요약
+    // MARK: - 축 머리 요약
 
     private var distanceTrailing: String {
         "\(kmText(summary.totalKm)) · \(L.s("\(summary.runCount)회", "\(summary.runCount) runs"))"
@@ -367,7 +408,7 @@ struct RecordBarChart: View {
         return EffortPalette.color(for: EffortResolver.clamp(mean))
     }
 
-    /// 선택된 구간만 진하게 — 세 줄이 함께 흐려진다.
+    /// 선택된 구간만 진하게 — 막대와 점이 함께 흐려진다.
     private func dim(_ id: Date) -> Double {
         guard let sel = selectedBar else { return 1 }
         return sel.id == id ? 1 : Metrics.dimmed
@@ -452,8 +493,8 @@ struct RecordBarChart: View {
         guard hasData else {
             return emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period")
         }
-        var parts = [L.s("거리 막대 · 페이스 두 줄 차트",
-                         "Two stacked lanes: distance bars and pace"),
+        var parts = [L.s("거리 막대와 페이스 선을 한 차트에 — 오른쪽 축 km, 왼쪽 축 페이스",
+                         "One chart: distance bars (right axis, km) and pace line (left axis)"),
                      distanceTrailing]
         if let p = paceTrailing { parts.append(L.s("페이스 \(p)", "pace \(p)")) }
         return parts.joined(separator: ", ")
