@@ -542,7 +542,9 @@ struct RecordBarChart: View {
             if let sel = selectedBar, sel.id == id { return 1 }
             return id < from ? Metrics.deemphasized : 1
         }
-        guard let sel = selectedBar else { return 1 }
+        // 내보내기·압축 모드의 선택은 `highlightDate`(세로 점선) — 나머지 구간을 흐리게 하지 않는다.
+        // 탭 선택(앱 화면)일 때만 선택 구간 외를 dimmed.
+        guard !isExport, let sel = selectedBar else { return 1 }
         return sel.id == id ? 1 : Metrics.dimmed
     }
 
