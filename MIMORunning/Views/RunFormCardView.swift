@@ -32,6 +32,8 @@ struct RunFormCardView: View {
     var typicalDistanceKm: Double? = nil  // 4주 평균 1회 러닝 거리(km). 장거리 문맥 판단에 사용.
     var heatModel: MRHeatModel? = nil
     var formShifts: [MRFormShift] = []
+    /// 이 러닝의 케이던스 잔차(실제 − 페이스 예상값). 추세 문단 마무리("이 러닝도 그 흐름 위에 있어요")에 쓴다.
+    var runCadenceResidual: Double? = nil
     var hasRecentGap: Bool = false
     var weatherSnapshot: WeatherSnapshot? = nil
     var historicalTemperatures: [Double] = []   // 야외 런 기온 이력 — 추위 슬롯 문맥 및 tempExtreme 중복 체크용
@@ -41,19 +43,9 @@ struct RunFormCardView: View {
 
     // MARK: - Nested Types
 
-    enum MetricDir { case cadence, stride, groundContact, verticalOsc }
-    enum MetricStatus {
-        case inRange, above, below, unknown
-
-        var narrativeStatus: FormNarrative.Status {
-            switch self {
-            case .inRange: .inRange
-            case .above:   .above
-            case .below:   .below
-            case .unknown: .unknown
-            }
-        }
-    }
+    /// 지표 종류·상태는 인사이트 탭 리듬 카드와 공유 (`FormNarrative`) — 두 카드의 판정이 같은 함수를 거친다.
+    typealias MetricDir = FormNarrative.Metric
+    typealias MetricStatus = FormNarrative.Status
     enum RunningStyle { case quickStep, bigStride, normal, unknown }
 
     struct FormInsightItem: Identifiable {
@@ -81,6 +73,9 @@ struct RunFormCardView: View {
             let kmEnd: Double   // [65] 버킷 끝 누적 km
             let value: Double
             let outOfRange: Bool
+            /// 이 버킷 **자기 페이스** 대역의 평소 범위 (후반 가속 유형만). nil이면 시리즈 띠(평균 페이스) 사용.
+            var bandLo: Double? = nil
+            var bandHi: Double? = nil
         }
         let label: String
         let unit: String
@@ -96,12 +91,18 @@ struct RunFormCardView: View {
         let bandPaceMin: Double?    // 띠 기준 페이스 하한 (sec/km) — 라벨용
         let bandPaceMax: Double?    // 띠 기준 페이스 상한 (sec/km) — 라벨용
         let totalSplitCount: Int    // 버킷 전체 수 (결측 표기용)
+        /// true → 띠를 버킷별 페이스 대역으로 계단형으로 그린다 (빌드업·템포·대회). OOB 판정도 버킷별 띠 기준.
+        var bandIsPerSplit: Bool = false
 
         var yDomain: ClosedRange<Double> {
             var lo = points.map(\.value).min() ?? 0
             var hi = points.map(\.value).max() ?? 1
             if let b = bandLo { lo = min(lo, b) }
             if let b = bandHi { hi = max(hi, b) }
+            for p in points {
+                if let b = p.bandLo { lo = min(lo, b) }
+                if let b = p.bandHi { hi = max(hi, b) }
+            }
             // 띠 폭의 25%를 위아래 여백으로 — 띠가 배경이 아닌 "범위"로 읽히도록
             let pad: Double
             if let bLo = bandLo, let bHi = bandHi, bHi > bLo {
@@ -133,16 +134,27 @@ struct RunFormCardView: View {
     /// GCT는 지난 1년간 9ms 이상 짧아지는 경우가 있어 현재 밴드로 과거 러닝을 판정하면 오류 발생.
     /// drift = (열람 시점 잔차 3개월 평균) − (baseline 계산 시점 잔차 3개월 평균)
     /// 안전장치: recent 표본 20개 미만(gctShift nil) · R²<0.2 · |drift|<2ms → 보정 없음
-    private var adjustedGctStat: FormStat? {
-        guard let stat = bb?.groundContact,
-              let baselineMean = baseline?.gctBaselineResidualMean else { return bb?.groundContact }
-        guard let gctShift = formShifts.first(where: { $0.metric.key == "gct" }) else { return bb?.groundContact }
-        if let r2 = gctShift.r2, r2 < 0.2 { return bb?.groundContact }
-        let rawDrift = gctShift.recentMean - baselineMean
-        guard abs(rawDrift) >= 2 else { return bb?.groundContact }
-        let drift = max(-15, min(15, rawDrift))
-        return FormStat(median: stat.median + drift, sd: stat.sd, count: stat.count,
-                        p10: stat.p10.map { $0 + drift }, p90: stat.p90.map { $0 + drift })
+    private var adjustedGctStat: FormStat? { driftAdjusted(gct: bb?.groundContact) }
+
+    /// 임의 대역의 GCT `FormStat`에 같은 시점 보정을 적용 (버킷별 페이스 대역 띠에도 사용).
+    private func driftAdjusted(gct stat: FormStat?) -> FormStat? {
+        FormNarrative.driftAdjustedGCT(stat,
+                                       baselineResidualMean: baseline?.gctBaselineResidualMean,
+                                       gctShift: formShifts.first(where: { $0.metric.key == "gct" }))
+    }
+
+    /// 후반 가속 유형(빌드업·템포·대회)은 km별 페이스가 평균과 크게 달라 평균 페이스 띠로 판정하면
+    /// 빠른 km가 모두 "범위 위"로 찍힌다 → 버킷별 **자기 페이스** 대역의 띠로 판정한다.
+    private var usesPerSplitBand: Bool {
+        FormNarrative.isPlannedFastFinish(workoutType) && baseline != nil
+    }
+
+    /// 버킷 자기 페이스 대역의 기준선. 페이스가 컷오프 밖(비교 대상 없음)이면 nil.
+    private func splitBand(for split: SplitData) -> BandBaseline? {
+        guard usesPerSplitBand, let bl = baseline,
+              split.distanceM > 0, split.duration > 0,
+              let band = bl.cutoffs.band(of: split.paceSecPerKm) else { return nil }
+        return bl.bands[band]
     }
 
     private var isInterval: Bool { workoutType == .interval }
@@ -228,10 +240,10 @@ struct RunFormCardView: View {
         // 판정가능 → ±1.2SD×factor / 판정불가(표본<minSamples) → P10-P90 관측 범위
         let bbJudgeable   = bb?.isJudgeable ?? true
         let bbSampleCount = bb?.sampleCount ?? 0
-        func splitBounds(_ formStat: FormStat?, dir: MetricDir)
+        func splitBounds(_ formStat: FormStat?, dir: MetricDir, judgeable: Bool)
             -> (lo: Double, hi: Double)? {
             guard let stat = formStat else { return nil }
-            if !bbJudgeable, let p10 = stat.p10, let p90 = stat.p90 {
+            if !judgeable, let p10 = stat.p10, let p90 = stat.p90 {
                 return (lo: roundedDisplay(p10, dir: dir),
                         hi: roundedDisplay(p90, dir: dir))
             }
@@ -242,10 +254,34 @@ struct RunFormCardView: View {
         }
         let isOOB: (Double, FormStat?, MetricDir) -> Bool = { v, stat, dir in
             guard bbJudgeable else { return false }
-            guard let b = splitBounds(stat, dir: dir) else { return false }
+            guard let b = splitBounds(stat, dir: dir, judgeable: bbJudgeable) else { return false }
             let rv = self.roundedDisplay(v, dir: dir)
             return rv < b.lo || rv > b.hi
         }
+        // 후반 가속 유형: 버킷 자기 페이스 대역의 띠. (lo, hi, 판정 가능 여부) — 대역 없으면 nil.
+        let perSplit = usesPerSplitBand
+        func pointBand(_ s: SplitData, dir: MetricDir, pick: (BandBaseline) -> FormStat?)
+            -> (lo: Double, hi: Double, judgeable: Bool)? {
+            guard perSplit, let pb = splitBand(for: s) else { return nil }
+            let stat = dir == .groundContact ? driftAdjusted(gct: pick(pb)) : pick(pb)
+            guard let b = splitBounds(stat, dir: dir, judgeable: pb.isJudgeable) else { return nil }
+            return (b.lo, b.hi, pb.isJudgeable)
+        }
+        /// 포인트 생성 — 후반 가속 유형은 버킷별 띠로 OOB 판정(대역 없으면 판정 안 함), 그 외는 평균 페이스 띠.
+        func makePoint(_ s: SplitData, _ v: Double, dir: MetricDir, stat: FormStat?,
+                       pick: (BandBaseline) -> FormStat?) -> FormSeries.Point {
+            let kmEnd = bucketKm[s.id] ?? Double(s.id)
+            guard perSplit else {
+                return .init(id: s.id, kmEnd: kmEnd, value: v, outOfRange: isOOB(v, stat, dir))
+            }
+            guard let pb = pointBand(s, dir: dir, pick: pick) else {
+                return .init(id: s.id, kmEnd: kmEnd, value: v, outOfRange: false)
+            }
+            let rv = roundedDisplay(v, dir: dir)
+            let oob = pb.judgeable && (rv < pb.lo || rv > pb.hi)
+            return .init(id: s.id, kmEnd: kmEnd, value: v, outOfRange: oob, bandLo: pb.lo, bandHi: pb.hi)
+        }
+        func isPerSplit(_ pts: [FormSeries.Point]) -> Bool { perSplit && pts.contains { $0.bandLo != nil } }
 
         var result: [FormSeries] = []
 
@@ -253,16 +289,18 @@ struct RunFormCardView: View {
         let cadPairs: [(Int, Double)] = bs.compactMap { s in s.avgCadence.map { (s.id, Double($0)) } }
         if !cadPairs.isEmpty {
             let stat = bb?.cadence
-            let cb = splitBounds(stat, dir: .cadence)
+            let cb = splitBounds(stat, dir: .cadence, judgeable: bbJudgeable)
+            let pts = bs.compactMap { s in s.avgCadence.map { makePoint(s, Double($0), dir: .cadence, stat: stat, pick: \.cadence) } }
             result.append(FormSeries(
                 label: L.s("케이던스", "Cadence"), unit: "spm",
-                points: cadPairs.map { km, v in .init(id: km, kmEnd: bucketKm[km] ?? Double(km), value: v, outOfRange: isOOB(v, stat, .cadence)) },
+                points: pts,
                 bandLo: cb?.lo, bandHi: cb?.hi,
                 firstAvg:  avg(firstHalf.map  { $0.avgCadence.map(Double.init) }),
                 secondAvg: avg(secondHalf.map { $0.avgCadence.map(Double.init) }),
                 dir: .cadence, lineColor: Color(hex: "5CE5D5"),
                 bandIsJudgeable: bbJudgeable, bandSampleCount: bbSampleCount,
-                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count
+                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count,
+                bandIsPerSplit: isPerSplit(pts)
             ))
         }
 
@@ -270,16 +308,18 @@ struct RunFormCardView: View {
         let slPairs: [(Int, Double)] = bs.compactMap { s in s.avgStrideLength.map { (s.id, $0) } }
         if !slPairs.isEmpty {
             let stat = bb?.strideLength
-            let sb = splitBounds(stat, dir: .stride)
+            let sb = splitBounds(stat, dir: .stride, judgeable: bbJudgeable)
+            let pts = bs.compactMap { s in s.avgStrideLength.map { makePoint(s, $0, dir: .stride, stat: stat, pick: \.strideLength) } }
             result.append(FormSeries(
                 label: L.s("보폭", "Stride"), unit: "m",
-                points: slPairs.map { km, v in .init(id: km, kmEnd: bucketKm[km] ?? Double(km), value: v, outOfRange: isOOB(v, stat, .stride)) },
+                points: pts,
                 bandLo: sb?.lo, bandHi: sb?.hi,
                 firstAvg:  avg(firstHalf.map(\.avgStrideLength)),
                 secondAvg: avg(secondHalf.map(\.avgStrideLength)),
                 dir: .stride, lineColor: Color(hex: "FFA94D"),
                 bandIsJudgeable: bbJudgeable, bandSampleCount: bbSampleCount,
-                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count
+                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count,
+                bandIsPerSplit: isPerSplit(pts)
             ))
         }
 
@@ -287,23 +327,25 @@ struct RunFormCardView: View {
         let gctPairs: [(Int, Double)] = bs.compactMap { s in s.avgGroundContactTime.map { (s.id, $0) } }
         if !gctPairs.isEmpty {
             let stat = adjustedGctStat
-            let gb = splitBounds(stat, dir: .groundContact)
+            let gb = splitBounds(stat, dir: .groundContact, judgeable: bbJudgeable)
+            let pts = bs.compactMap { s in s.avgGroundContactTime.map { makePoint(s, $0, dir: .groundContact, stat: stat, pick: \.groundContact) } }
             result.append(FormSeries(
                 label: L.s("지면접촉", "GCT"), unit: "ms",
-                points: gctPairs.map { km, v in .init(id: km, kmEnd: bucketKm[km] ?? Double(km), value: v, outOfRange: isOOB(v, stat, .groundContact)) },
+                points: pts,
                 bandLo: gb?.lo, bandHi: gb?.hi,
                 firstAvg:  avg(firstHalf.map(\.avgGroundContactTime)),
                 secondAvg: avg(secondHalf.map(\.avgGroundContactTime)),
                 dir: .groundContact, lineColor: Color(hex: "A78BFA"),
                 bandIsJudgeable: bbJudgeable, bandSampleCount: bbSampleCount,
-                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count
+                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count,
+                bandIsPerSplit: isPerSplit(pts)
             ))
         }
 
         // Vertical Oscillation (참고 전용 — 추세 표시, 판정·OOB 강조 없음)
         let voPairs: [(Int, Double)] = bs.compactMap { s in s.avgVerticalOscillation.map { (s.id, $0) } }
         if !voPairs.isEmpty {
-            let voBounds = splitBounds(bb?.verticalOsc, dir: .verticalOsc)
+            let voBounds = splitBounds(bb?.verticalOsc, dir: .verticalOsc, judgeable: bbJudgeable)
             result.append(FormSeries(
                 label: L.s("수직진폭", "Vert Osc"), unit: "cm",
                 points: voPairs.map { km, v in .init(id: km, kmEnd: bucketKm[km] ?? Double(km), value: v, outOfRange: false) },
@@ -491,7 +533,8 @@ struct RunFormCardView: View {
         }
 
         // [추세] 공백이 있으면 hasRecentGap=true → mrFormObservation 내에서 nil 반환
-        if let obs = mrFormObservation(formShifts, hasRecentGap: hasRecentGap, refCadence: avgCadence), items.count < 3 {
+        if let obs = mrFormObservation(formShifts, hasRecentGap: hasRecentGap, refCadence: avgCadence,
+                                       runCadenceResidual: runCadenceResidual), items.count < 3 {
             items.append(FormInsightItem(id: .trend,
                                          badgeText: L.s("추세", "Trend"),
                                          bodyText: obs.text,
@@ -626,8 +669,8 @@ struct RunFormCardView: View {
             for (i, pt) in s.points.enumerated() {
                 let exited: Bool
                 switch s.dir {
-                case .cadence, .stride:   exited = pt.value < bandLo
-                case .groundContact:       exited = pt.value > bandHi
+                case .cadence, .stride:   exited = pt.value < (pt.bandLo ?? bandLo)
+                case .groundContact:       exited = pt.value > (pt.bandHi ?? bandHi)
                 case .verticalOsc:         exited = false
                 }
                 if exited {
@@ -732,11 +775,7 @@ struct RunFormCardView: View {
     // MARK: - Display Rounding Helpers
 
     private func roundedDisplay(_ v: Double, dir: MetricDir) -> Double {
-        switch dir {
-        case .cadence, .groundContact: return v.rounded()
-        case .stride:                  return (v * 100).rounded() / 100
-        case .verticalOsc:             return (v * 10).rounded() / 10
-        }
+        FormNarrative.roundedDisplay(v, metric: dir)
     }
 
     private func metricFmt(_ v: Double, dir: MetricDir) -> String {
@@ -749,12 +788,7 @@ struct RunFormCardView: View {
     }
 
     private func metricStatus(rawValue: Double, stat: FormStat?, dir: MetricDir) -> MetricStatus {
-        guard let stat else { return .unknown }
-        let rv = roundedDisplay(rawValue, dir: dir)
-        let lo = roundedDisplay(stat.lower, dir: dir)
-        let hi = roundedDisplay(stat.upper, dir: dir)
-        if rv >= lo && rv <= hi { return .inRange }
-        return rv > hi ? .above : .below
+        FormNarrative.status(rawValue: rawValue, stat: stat, metric: dir)
     }
 
     // MARK: - Body
@@ -1301,6 +1335,9 @@ struct RunFormCardView: View {
                         if s.dir == .verticalOsc || isLongDistanceContext {
                             return L.s("평소 범위 (참고)", "Typical (ref)")
                         }
+                        if s.bandIsPerSplit {
+                            return L.s("평소 범위 (km별 페이스 기준)", "Typical (per-km pace)")
+                        }
                         if s.bandIsJudgeable, let pLo = s.bandPaceMin, let pHi = s.bandPaceMax {
                             func pf(_ sec: Double) -> String {
                                 let i = Int(sec.rounded())
@@ -1328,8 +1365,23 @@ struct RunFormCardView: View {
 
             // Sparkline chart
             Chart {
-                // Normal-range band
-                if let lo = s.bandLo, let hi = s.bandHi {
+                // Normal-range band — 후반 가속 유형은 버킷별 페이스 대역의 계단형 띠, 그 외는 평균 페이스 띠 하나
+                if s.bandIsPerSplit {
+                    ForEach(s.points.indices, id: \.self) { i in
+                        let pt = s.points[i]
+                        if let lo = pt.bandLo, let hi = pt.bandHi {
+                            let xStart = i > 0 ? s.points[i - 1].kmEnd : 0.0
+                            let xEnd = i == s.points.count - 1 ? max(lastKm + kmStep * 0.5, totalKm) : pt.kmEnd
+                            RectangleMark(
+                                xStart: .value("", xStart),
+                                xEnd: .value("", xEnd),
+                                yStart: .value("", lo),
+                                yEnd: .value("", hi)
+                            )
+                            .foregroundStyle(Color.white.opacity(0.08))
+                        }
+                    }
+                } else if let lo = s.bandLo, let hi = s.bandHi {
                     RectangleMark(
                         xStart: .value("", 0.0),
                         xEnd: .value("", max(lastKm + kmStep * 0.5, totalKm)),
@@ -1414,11 +1466,11 @@ struct RunFormCardView: View {
             .chartYAxis(.hidden)
             .frame(height: 52)
 
-            if isLongDistanceContext, let bandLo = s.bandLo {
+            // 버킷별 페이스 띠(bandIsPerSplit)는 이미 페이스를 반영하므로 "페이스 때문에 아래" 주석을 달지 않는다
+            if isLongDistanceContext, !s.bandIsPerSplit, let bandLo = s.bandLo {
                 let belowCount = s.points.filter { $0.value < bandLo }.count
                 if s.points.count > 0, Double(belowCount) / Double(s.points.count) >= 0.30 {
-                    Text(AppLanguage.shared.s("장거리라 평소 범위 아래에 머물러요",
-                                              "Long run — staying below normal range is natural"))
+                    Text(FormNarrative.belowRangeNote(type: workoutType, metric: s.dir))
                         .font(.system(size: 8.5))
                         .foregroundStyle(Color.white.opacity(0.45))
                 }
@@ -1556,7 +1608,7 @@ struct RunFormCardView: View {
                 typeName: workoutType.koreanLabel,
                 typicalDistanceKm: typicalDistanceKm,
                 hasDistanceInsight: formInsights.contains(where: { $0.id == .distance }),
-                cad: cadSt.narrativeStatus, gct: gctSt.narrativeStatus, sl: slSt.narrativeStatus,
+                cad: cadSt, gct: gctSt, sl: slSt,
                 firstHalfCadence: cadAvg(fHalf), secondHalfCadence: cadAvg(sHalf),
                 firstHalfStride: slAvg(fHalf), secondHalfStride: slAvg(sHalf),
                 cadStr: cadStr, slStr: slStr, paceStr: paceStr)
@@ -1572,7 +1624,7 @@ struct RunFormCardView: View {
             metricStatus(rawValue: $0, stat: bb?.strideLength, dir: .stride)
         } ?? .unknown
         let input = FormNarrative.Input(
-            cad: cadStatus.narrativeStatus, gct: gctStatus.narrativeStatus, sl: slStatus.narrativeStatus,
+            cad: cadStatus, gct: gctStatus, sl: slStatus,
             cadStr: cadStr, gctStr: gctStr, slStr: slStr, paceStr: paceStr)
         return FormNarrative.sentence(input, frame: FormNarrative.frame(for: workoutType))
     }
@@ -1667,7 +1719,8 @@ struct RunFormCardView: View {
             print(String(format: "[폼:GCT보정] 기준일 %@ · drift %+.1fms (<2ms) → 보정 없음", dateStr, rawDrift))
             return
         }
-        let drift = max(-15, min(15, rawDrift))
+        // 실제 보정량은 공유 함수와 동일 (±15ms 제한)
+        let drift = FormNarrative.gctDrift(baselineResidualMean: baselineMean, gctShift: gctShift) ?? max(-15, min(15, rawDrift))
         let lo  = roundedDisplay(stat.lower, dir: .groundContact)
         let hi  = roundedDisplay(stat.upper, dir: .groundContact)
         let aLo = roundedDisplay(stat.lower + drift, dir: .groundContact)
@@ -1807,7 +1860,8 @@ struct RunFormCardView: View {
                     label = weatherSnapshot?.isRainy == true ? "비 있음" : "비 없음"
                 case .trend:
                     let n = formShifts.filter(\.isReal).count
-                    if let obs = mrFormObservation(formShifts, hasRecentGap: hasRecentGap, refCadence: avgCadence) {
+                    if let obs = mrFormObservation(formShifts, hasRecentGap: hasRecentGap, refCadence: avgCadence,
+                                                   runCadenceResidual: runCadenceResidual) {
                         label = obs.isStable ? "안정(\(formShifts.count)개)" : "실증 \(n)/\(formShifts.count)"
                     } else {
                         label = hasRecentGap ? "공백→침묵" : "실증 \(n)/\(formShifts.count)"

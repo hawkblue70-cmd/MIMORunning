@@ -708,6 +708,8 @@ struct RunInsightTabCard: View {
     var formBackfillProgress: (done: Int, total: Int)? = nil
     var heatModel: MRHeatModel? = nil
     var formShifts: [MRFormShift] = []
+    /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용 (`mrFormRunResidual`)
+    var formRunCadenceResidual: Double? = nil
     var weatherSnapshot: WeatherSnapshot? = nil
     var confirmedRace: PersistedRaceMatch? = nil
     var confirmedRaces: [PersistedRaceMatch] = []
@@ -757,6 +759,7 @@ struct RunInsightTabCard: View {
                 hrSamples: hrSamples,
                 heatModel: heatModel,
                 formShifts: formShifts,
+                formRunCadenceResidual: formRunCadenceResidual,
                 weatherSnapshot: weatherSnapshot,
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
@@ -866,7 +869,8 @@ struct RunInsightTabCard: View {
                 hrSamples: hrSamples,
                 formBaseline: formBaseline,
                 formBackfillProgress: formBackfillProgress,
-                workoutTypeFn: workoutTypeFn
+                workoutTypeFn: workoutTypeFn,
+                formShifts: formShifts
             )
         case .form:
             let formCadence: Int? = {
@@ -902,6 +906,7 @@ struct RunInsightTabCard: View {
                 typicalDistanceKm: typicalRunDistanceKm,
                 heatModel: heatModel,
                 formShifts: formShifts,
+                runCadenceResidual: formRunCadenceResidual,
                 hasRecentGap: hasFormGap,
                 weatherSnapshot: weatherSnapshot,
                 historicalTemperatures: history.compactMap { $0.temperatureC }
@@ -1183,6 +1188,8 @@ private struct RhythmInsightCard: View {
     var formBaseline: RunningFormBaseline? = nil
     var formBackfillProgress: (done: Int, total: Int)? = nil
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
+    /// GCT 밴드 시점 보정용 — 폼 카드와 같은 보정을 적용해 두 카드의 판정을 맞춘다
+    var formShifts: [MRFormShift] = []
 
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
@@ -1201,6 +1208,15 @@ private struct RhythmInsightCard: View {
         }
         guard !recent.isEmpty else { return nil }
         return recent.reduce(0.0) { $0 + $1.distance } / Double(recent.count) / 1000.0
+    }
+
+    private var rhythmWorkoutType: WorkoutType { workoutTypeFn?(activity.id) ?? .general }
+
+    /// 폼 카드(`RunFormCardView.adjustedGctStat`)와 동일한 시점 보정 GCT 밴드
+    private func adjustedGct(_ bb: BandBaseline) -> FormStat? {
+        FormNarrative.driftAdjustedGCT(bb.groundContact,
+                                       baselineResidualMean: formBaseline?.gctBaselineResidualMean,
+                                       gctShift: formShifts.first(where: { $0.metric.key == "gct" }))
     }
 
     private var rhythmIsLongDistanceContext: Bool {
@@ -1495,13 +1511,7 @@ private struct RhythmInsightCard: View {
         if rhythmIsLongDistanceContext {
             let hasAbsViolation = det.avgCadence.map { $0 < 160 } ?? false
             if !hasAbsViolation {
-                // 문장은 폼 카드와 공유 (FormNarrative.longDistanceSentence)
-                func status(_ value: Double?, _ stat: FormStat?) -> FormNarrative.Status {
-                    guard let v = value, let st = stat else { return .unknown }
-                    if v < st.lower { return .below }
-                    if v > st.upper { return .above }
-                    return .inRange
-                }
+                // 문장·판정 모두 폼 카드와 공유 (FormNarrative.longDistanceSentence / FormNarrative.status)
                 let fullSplits = det.splits.filter { $0.distanceM >= 900 }
                 let splitMid = fullSplits.count / 2
                 let fHalf = Array(fullSplits.prefix(splitMid))
@@ -1520,9 +1530,9 @@ private struct RhythmInsightCard: View {
                     typeName: wt.koreanLabel,
                     typicalDistanceKm: typicalRunDistanceKm,
                     hasDistanceInsight: false,
-                    cad: status(det.avgCadence.map(Double.init), bb.cadence),
-                    gct: status(det.avgGroundContactTime, bb.groundContact),
-                    sl: status(det.avgStrideLength, bb.strideLength),
+                    cad: FormNarrative.status(rawValue: det.avgCadence.map(Double.init), stat: bb.cadence, metric: .cadence),
+                    gct: FormNarrative.status(rawValue: det.avgGroundContactTime, stat: adjustedGct(bb), metric: .groundContact),
+                    sl: FormNarrative.status(rawValue: det.avgStrideLength, stat: bb.strideLength, metric: .stride),
                     firstHalfCadence: cadAvg(fHalf), secondHalfCadence: cadAvg(sHalf),
                     firstHalfStride: slAvg(fHalf), secondHalfStride: slAvg(sHalf),
                     cadStr: det.avgCadence.map { "\($0)" } ?? "--",
@@ -1539,7 +1549,7 @@ private struct RhythmInsightCard: View {
         // 케이던스
         if let stat = bb.cadence, let cad = det.avgCadence {
             let c = Double(cad)
-            if c < stat.lower || c > stat.upper {
+            if FormNarrative.status(rawValue: c, stat: stat, metric: .cadence) != .inRange {
                 let delta = Int((c - stat.median).rounded())
                 let sign = delta >= 0 ? "+" : ""
                 let mag = abs(c - stat.median) / max(stat.sd, 1)
@@ -1552,7 +1562,7 @@ private struct RhythmInsightCard: View {
 
         // 보폭
         if let stat = bb.strideLength, let sl = det.avgStrideLength {
-            if sl < stat.lower || sl > stat.upper {
+            if FormNarrative.status(rawValue: sl, stat: stat, metric: .stride) != .inRange {
                 let delta = sl - stat.median
                 let sign = delta >= 0 ? "+" : ""
                 let mag = abs(delta) / max(stat.sd, 0.001)
@@ -1565,8 +1575,8 @@ private struct RhythmInsightCard: View {
         }
 
         // 지면접촉 (수직진폭 제외)
-        if let stat = bb.groundContact, let gc = det.avgGroundContactTime {
-            if gc < stat.lower || gc > stat.upper {
+        if let stat = adjustedGct(bb), let gc = det.avgGroundContactTime {
+            if FormNarrative.status(rawValue: gc, stat: stat, metric: .groundContact) != .inRange {
                 let delta = Int((gc - stat.median).rounded())
                 let sign = delta >= 0 ? "+" : ""
                 let mag = abs(gc - stat.median) / max(stat.sd, 1)
@@ -1799,7 +1809,7 @@ private struct RhythmInsightCard: View {
                 if gctRise <= -7 {
                     result = (L.s("장거리인데 후반으로 갈수록 지면접촉이 짧아졌어요", "Ground contact shortened through the long run"), Color(hex: "7FD98A"))
                 } else if gctRise < 10 {
-                    result = (L.s("장거리인데 후반까지 폼이 버텼어요", "Form held through the long run"), Color(hex: "7FD98A"))
+                    result = (FormNarrative.formHeldCaption(type: wt), Color(hex: "7FD98A"))
                 } else {
                     result = (L.s("후반에 폼이 조금 무거워졌어요", "Form got a bit heavier in the second half"), Color.white.opacity(0.75))
                 }
@@ -1812,7 +1822,7 @@ private struct RhythmInsightCard: View {
             } else if let fc = halfAvgCadence(first), let sc = halfAvgCadence(second) {
                 let cadDrop = fc - sc
                 if cadDrop < 2 {
-                    result = (L.s("장거리인데 후반까지 폼이 버텼어요", "Form held through the long run"), Color(hex: "7FD98A"))
+                    result = (FormNarrative.formHeldCaption(type: wt), Color(hex: "7FD98A"))
                 } else {
                     result = (L.s("후반에 폼이 조금 무거워졌어요", "Form got a bit heavier in the second half"), Color.white.opacity(0.75))
                 }
@@ -2144,13 +2154,17 @@ private struct RhythmInsightCard: View {
         if warning != nil && c < 160 {
             return (L.s("보폭이 큰 편이에요", "Wide stride"), IC.hrRed)
         }
-        if c >= lower && c <= upper {
+        // 판정은 폼 카드와 같은 반올림 규칙 (FormNarrative.status) — 하단 라벨 "lo–hi"와 경계가 일치
+        let cadStat = bl.baseline(for: activity)?.cadence
+            ?? FormStat(median: (lower + upper) / 2, sd: (upper - lower) / 2.4, count: 0, p10: nil, p90: nil)
+        switch FormNarrative.status(rawValue: c, stat: cadStat, metric: .cadence) {
+        case .inRange, .unknown:
             return (L.s("평소 범위예요", "Typical range"), IC.green)
-        }
-        if c > upper {
+        case .above:
             return (L.s("평소보다 빨랐어요", "Higher than usual"), Color(hex: "3A7BD5"))
+        case .below:
+            return (L.s("평소보다 낮았어요", "Lower than usual"), Color(hex: "5AC8FA"))
         }
-        return (L.s("평소보다 낮았어요", "Lower than usual"), Color(hex: "5AC8FA"))
     }
 
     private var zoneVerdictLabel: String {
@@ -2164,7 +2178,7 @@ private struct RhythmInsightCard: View {
         case 1: return L.s("가벼운 회복 강도였어요", "Light recovery run")
         case 2: return L.s("딱 좋은 강도였어요", "Just the right intensity")
         case 3: return L.s("심박은 템포 구간에 머물렀어요", "Heart rate stayed in tempo zone")
-        default: return L.s("고강도 구간이 많았어요", "High-intensity effort")
+        default: return FormNarrative.highIntensityZoneCaption(type: rhythmWorkoutType)
         }
     }
 
@@ -2297,7 +2311,12 @@ private struct RhythmInsightCard: View {
                 return (L.s("최고 강도까지 올렸어요", "Pushed to max intensity"), Color(hex: "FF9A3C"))
             }
         }
-        if diff >= 8  { return (L.s("후반에 심박이 올랐어요", "HR climbed in the 2nd half"), Color(hex: "FF9A3C")) }
+        if diff >= 8 {
+            // 빌드업은 후반 상승이 계획 — 문구·색 모두 경고로 읽히지 않게
+            let wt = rhythmWorkoutType
+            return (FormNarrative.hrSecondHalfRiseCaption(type: wt),
+                    wt == .buildUp ? Color(hex: "5CE08A") : Color(hex: "FF9A3C"))
+        }
         if diff <= -5 { return (L.s("후반에 여유가 있었어요", "Plenty left in the 2nd half"), Color(hex: "4C8DFF")) }
         return (L.s("끝까지 안정적이었어요", "Steady throughout"), Color(hex: "5CE08A"))
     }
@@ -2343,7 +2362,7 @@ private struct RhythmInsightCard: View {
                 else if let c1 = avgCad(s1), let c2 = avgCad(s2) { formHeld = c1 - c2 < 2 }
                 else { formHeld = false }
                 if formHeld {
-                    return L.s("장거리인데 후반까지 폼이 버텼어요", "Form held through the long run")
+                    return FormNarrative.formHeldCaption(type: _curWT)
                 }
             }
         }
@@ -2355,8 +2374,7 @@ private struct RhythmInsightCard: View {
             let tot = visible.map(\.fraction).reduce(0, +)
             let highFrac = visible.filter { $0.id >= 4 }.map(\.fraction).reduce(0, +) / max(1e-9, tot)
             if highFrac >= 0.40 {
-                return L.s("고강도 구간이 많았어요. 다음엔 여유롭게 가도 좋아요",
-                           "High-intensity run. An easy run next time is great.")
+                return FormNarrative.highIntensityOneLiner(type: _curWT)
             }
         }
         // 4) 그 외 — efficiency/intensity/endurance 인사이트
@@ -4938,6 +4956,8 @@ struct InsightExportSheet: View {
     var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     var heatModel: MRHeatModel? = nil
     var formShifts: [MRFormShift] = []
+    /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용 (`mrFormRunResidual`)
+    var formRunCadenceResidual: Double? = nil
     var weatherSnapshot: WeatherSnapshot? = nil
     var confirmedRace: PersistedRaceMatch? = nil
     var confirmedRaces: [PersistedRaceMatch] = []
@@ -5129,7 +5149,8 @@ struct InsightExportSheet: View {
                 cadenceSeries: cadenceSeries,
                 hrSamples: hrSamples,
                 formBaseline: formBaseline,
-                workoutTypeFn: workoutTypeFn
+                workoutTypeFn: workoutTypeFn,
+                formShifts: formShifts
             )
         case .form:
             let exportFormCadence: Int? = {
@@ -5165,6 +5186,7 @@ struct InsightExportSheet: View {
                 typicalDistanceKm: typicalRunDistanceKm,
                 heatModel: heatModel,
                 formShifts: formShifts,
+                runCadenceResidual: formRunCadenceResidual,
                 hasRecentGap: exportFormHasGap,
                 weatherSnapshot: weatherSnapshot,
                 historicalTemperatures: history.compactMap { $0.temperatureC }

@@ -331,3 +331,118 @@ extension FormNarrative {
                    "Over \(distKmStr) km, \(en)")
     }
 }
+
+// MARK: - 지표 상태 판정 (폼 카드·인사이트 탭 리듬 카드 공용)
+
+extension FormNarrative {
+
+    /// 폼 지표 종류. 폼 카드의 `MetricDir`·상태 판정·반올림이 모두 이 타입을 쓴다.
+    enum Metric { case cadence, stride, groundContact, verticalOsc }
+
+    /// 표시 정밀도로 반올림 — 판정도 표시값 기준으로 해야 두 카드의 경계값이 일치한다
+    /// (예: 케이던스 170 vs 하한 170.4 → 표시상 170–… 이므로 범위 안).
+    static func roundedDisplay(_ v: Double, metric: Metric) -> Double {
+        switch metric {
+        case .cadence, .groundContact: return v.rounded()
+        case .stride:                  return (v * 100).rounded() / 100
+        case .verticalOsc:             return (v * 10).rounded() / 10
+        }
+    }
+
+    /// 평소 범위(`FormStat.lower…upper`) 대비 상태. 값·경계 모두 표시 정밀도로 반올림해 비교한다.
+    static func status(rawValue: Double?, stat: FormStat?, metric: Metric) -> Status {
+        guard let rawValue, let stat else { return .unknown }
+        let rv = roundedDisplay(rawValue, metric: metric)
+        let lo = roundedDisplay(stat.lower, metric: metric)
+        let hi = roundedDisplay(stat.upper, metric: metric)
+        if rv >= lo && rv <= hi { return .inRange }
+        return rv > hi ? .above : .below
+    }
+
+    /// GCT 밴드 시점 보정량(ms). GCT는 1년 새 9ms 이상 짧아지기도 해 현재 밴드로 과거 러닝을 판정하면 틀린다.
+    /// drift = (열람 시점 잔차 3개월 평균) − (baseline 계산 시점 잔차 3개월 평균), ±15ms로 제한.
+    /// 안전장치: shift 없음(표본 부족) · R² < 0.2 · |drift| < 2ms → nil(보정 없음).
+    static func gctDrift(baselineResidualMean: Double?, gctShift: MRFormShift?) -> Double? {
+        guard let baselineResidualMean, let gctShift else { return nil }
+        if let r2 = gctShift.r2, r2 < 0.2 { return nil }
+        let raw = gctShift.recentMean - baselineResidualMean
+        guard abs(raw) >= 2 else { return nil }
+        return max(-15, min(15, raw))
+    }
+
+    /// `gctDrift`를 적용한 GCT `FormStat`. 보정 조건 미충족이면 원본 그대로.
+    static func driftAdjustedGCT(_ stat: FormStat?, baselineResidualMean: Double?, gctShift: MRFormShift?) -> FormStat? {
+        guard let stat, let drift = gctDrift(baselineResidualMean: baselineResidualMean, gctShift: gctShift) else { return stat }
+        return FormStat(median: stat.median + drift, sd: stat.sd, count: stat.count,
+                        p10: stat.p10.map { $0 + drift }, p90: stat.p90.map { $0 + drift })
+    }
+}
+
+// MARK: - 러닝 유형별 캡션 (인사이트 탭 리듬 카드 · 폼 카드 공용)
+
+/// 빌드업·템포·대회는 후반 가속과 고강도가 **계획**이다. 같은 관측을 경고나 변명처럼 읽히지 않게
+/// 유형만 반영한 사실 문장으로 바꾼다. 이지·일반·장거리 유형의 문장은 그대로 둔다.
+extension FormNarrative {
+
+    /// 후반 가속이 계획인 유형 — 빌드업·템포·대회.
+    static func isPlannedFastFinish(_ type: WorkoutType) -> Bool {
+        type == .buildUp || type == .tempo || type == .race
+    }
+
+    /// 고강도 구간이 계획인 유형 — 후반 가속 유형 + 인터벌.
+    static func isPlannedHighIntensity(_ type: WorkoutType) -> Bool {
+        isPlannedFastFinish(type) || type == .interval
+    }
+
+    /// 심박 차트 캡션 — 전반 대비 후반 평균 심박 +8bpm 이상일 때.
+    /// 빌드업만 "빌드업답게"를 붙이고, 템포·대회·인터벌은 사실 그대로, 이지·일반은 변경 없음.
+    static func hrSecondHalfRiseCaption(type: WorkoutType) -> String {
+        let L = AppLanguage.shared
+        if type == .buildUp {
+            return L.s("빌드업답게 후반에 심박이 올라갔어요", "HR climbed in the 2nd half — as a build-up should")
+        }
+        return L.s("후반에 심박이 올랐어요", "HR climbed in the 2nd half")
+    }
+
+    /// 심박존 도넛 캡션 — 4존 이상이 최다 구간일 때.
+    static func highIntensityZoneCaption(type: WorkoutType) -> String {
+        let L = AppLanguage.shared
+        if isPlannedHighIntensity(type) {
+            return L.s("계획대로 고강도 구간이 많았어요", "High-intensity effort, as planned")
+        }
+        return L.s("고강도 구간이 많았어요", "High-intensity effort")
+    }
+
+    /// 한 줄 요약 — 고강도 비율 40% 이상일 때.
+    static func highIntensityOneLiner(type: WorkoutType) -> String {
+        let L = AppLanguage.shared
+        if isPlannedHighIntensity(type) {
+            return L.s("계획대로 고강도 구간이 많았어요. 다음엔 여유롭게 가도 좋아요",
+                       "High-intensity run, as planned. An easy run next time is great.")
+        }
+        return L.s("고강도 구간이 많았어요. 다음엔 여유롭게 가도 좋아요",
+                   "High-intensity run. An easy run next time is great.")
+    }
+
+    /// 후반까지 폼이 버텼을 때의 알약 문구(전·후반 GCT +10ms 미만 또는 케이던스 −2spm 미만).
+    static func formHeldCaption(type: WorkoutType) -> String {
+        let L = AppLanguage.shared
+        if isPlannedFastFinish(type) {
+            return L.s("후반 가속에도 폼이 버텼어요", "Form held through the fast finish")
+        }
+        return L.s("장거리인데 후반까지 폼이 버텼어요", "Form held through the long run")
+    }
+
+    /// 폼 추이 차트(km별) 하단 주석 — 포인트의 30% 이상이 평소 범위 아래일 때.
+    /// 후반 가속 유형은 페이스가 원인임을 말하고(GCT는 "아래에 머물러요" = 짧아짐), 그 외는 장거리 문맥 그대로.
+    static func belowRangeNote(type: WorkoutType, metric: Metric) -> String {
+        let L = AppLanguage.shared
+        if isPlannedFastFinish(type) {
+            if metric == .groundContact {
+                return L.s("후반 페이스가 빨라 범위 아래에 머물러요", "Faster late pace — contact stays below the range")
+            }
+            return L.s("후반 페이스가 빨라 범위를 벗어났어요", "Faster late pace — outside the range")
+        }
+        return L.s("장거리라 평소 범위 아래에 머물러요", "Long run — staying below normal range is natural")
+    }
+}

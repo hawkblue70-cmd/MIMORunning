@@ -404,7 +404,7 @@ enum RunInsightEngine {
             } else {
                 appendGeneralInsights(into: &results, activity: activity, detail: detail,
                                       history: history, base: base, age: age, isMale: isMale,
-                                      hrSamples: hrSamples)
+                                      hrSamples: hrSamples, type: workoutType)
             }
 
         case .tempo:
@@ -445,10 +445,10 @@ enum RunInsightEngine {
             }
 
         case .buildUp:
+            // efficiencyInsight 제외 — 빌드업 평균 페이스는 느린 전반에 가려져 비슷한 페이스 심박 비교가 편향된다
             let generators: [() -> RunInsight?] = [
                 { buildUpInsight(activity: activity, detail: detail) },
                 { cardioInsight(detail: detail, age: age, isMale: isMale) },
-                { efficiencyInsight(activity: activity, history: history) },
                 { loadInsight(baseline: base) },
             ]
             for gen in generators where results.count < 4 {
@@ -507,7 +507,8 @@ enum RunInsightEngine {
         hrMax: Double? = nil,
         lt1HR: Double? = nil,
         lt1SD: Double = 0,
-        easyCeilingHR: Double? = nil
+        easyCeilingHR: Double? = nil,
+        type: WorkoutType = .general
     ) {
         let maxHR = estimatedHRMax(hrMax: hrMax, age: age)
         let generators: [() -> RunInsight?] = [
@@ -516,7 +517,7 @@ enum RunInsightEngine {
                                hrMax: hrMax, lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR) },
             { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: maxHR)
               ?? enduranceInsight(detail: detail) },
-            { efficiencyInsight(activity: activity, history: history) },
+            { efficiencyComparisonApplies(to: type) ? efficiencyInsight(activity: activity, history: history) : nil },
             { formInsight(detail: detail) },
             { environmentInsight(activity: activity) },
             { loadInsight(baseline: base) },
@@ -1283,6 +1284,13 @@ enum RunInsightEngine {
         }
         return RunInsight(category: .endurance, tone: tone, badge: badge,
                           message: msg, highlights: [driftStr])
+    }
+
+    /// "비슷한 페이스 최근 N회 대비 심박" 비교가 성립하는 유형인지.
+    /// 빌드업·인터벌은 러닝 평균 페이스가 느린 구간(전반·회복)에 가려져 같은 평균 페이스의 러닝과
+    /// 심박을 비교하면 편향된다 → 인사이트 자체를 내지 않는다(참고 문구를 붙여도 숫자가 틀린 채 남으므로).
+    nonisolated static func efficiencyComparisonApplies(to type: WorkoutType) -> Bool {
+        type != .buildUp && type != .interval
     }
 
     private static func efficiencyInsight(activity: Activity, history: [Activity]) -> RunInsight? {

@@ -114,6 +114,8 @@ struct ActivityDetailView: View {
     @State private var isInsightBackfilling = false
     @State private var formBaseline: RunningFormBaseline? = FormBaselineEngine.peekFromCache()
     @State private var formShifts: [MRFormShift] = []
+    /// 열람 중인 러닝의 케이던스 잔차(실제 − 페이스 예상값) — 폼 카드 추세 문단 마무리용
+    @State private var formRunCadenceResidual: Double? = nil
     @State private var formBackfillTask: Task<Void, Never>?
     @State private var effortRefreshTask: Task<Void, Never>?
     @Environment(RaceDetector.self) private var raceDetector
@@ -270,6 +272,7 @@ struct ActivityDetailView: View {
                             formBackfillProgress: manager.formBackfillProgress,
                             heatModel: engine.heat,
                             formShifts: formShifts,
+                            formRunCadenceResidual: formRunCadenceResidual,
                             weatherSnapshot: condition?.weather,
                             confirmedRace: confirmedRaceMatch,
                             confirmedRaces: raceDetector.matches.values.filter(\.isConfirmed),
@@ -551,7 +554,9 @@ struct ActivityDetailView: View {
                 print("[Baseline:뷰] 결과 bands=\(baseline.bands.count)")
                 #endif
                 formBaseline = baseline
-                formShifts = await computeFormShifts()
+                let formResult = await computeFormShifts()
+                formShifts = formResult.shifts
+                formRunCadenceResidual = formResult.runCadenceResidual
             }
             Task {
                 isInsightBackfilling = true
@@ -892,8 +897,9 @@ struct ActivityDetailView: View {
         runFadeStartKm = result.fadeStartKm
     }
 
-    private func computeFormShifts() async -> [MRFormShift] {
-        guard !engine.runs.isEmpty else { return [] }
+    /// 폼 추세(케이던스·GCT)와 함께 **이 러닝**의 케이던스 잔차를 돌려준다 — 추세 문단 마무리 문장용.
+    private func computeFormShifts() async -> (shifts: [MRFormShift], runCadenceResidual: Double?) {
+        guard !engine.runs.isEmpty else { return ([], nil) }
         // 열람 중인 러닝 기준 직전 1년 데이터만 가져온다 — 4년 전 러닝도 그 시점 폼을 본다
         let asOf = activity.date
         let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: asOf) ?? .distantPast
@@ -915,14 +921,25 @@ struct ActivityDetailView: View {
         }
 
         var shifts: [MRFormShift] = []
+        var runCadenceResidual: Double? = nil
         for (metric, obs) in [(mrFormMetrics[1], buildObs(cadData)),
                                (mrFormMetrics[2], buildObs(gctData))] {
             let residuals = mrFormResiduals(obs: obs, asOf: now)
+            if metric.key == "cadence" {
+                runCadenceResidual = mrFormRunResidual(residuals, on: activity.date)
+                #if DEBUG
+                if let r = runCadenceResidual {
+                    print(String(format: "[폼:잔차] 이 러닝 케이던스 잔차 %+.1fspm (관측 %d개)", r, residuals.count))
+                } else {
+                    print("[폼:잔차] 이 러닝 케이던스 잔차 없음 (당일 관측 없음 또는 잔차 미계산, 관측 \(residuals.count)개)")
+                }
+                #endif
+            }
             if let shift = mrFormShift(residuals, metric: metric, asOf: now, obs: obs) {
                 shifts.append(shift)
             }
         }
-        return shifts
+        return (shifts, runCadenceResidual)
     }
 
     private func loadCombinedChart() async {
