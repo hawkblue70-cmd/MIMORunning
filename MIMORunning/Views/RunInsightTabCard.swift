@@ -188,20 +188,11 @@ private struct CadenceRPMGaugeView: View {
     }
 
     /// 개인 분포 ±4σ 기반 동적 축. 최대 폭 70, 5 단위 반올림.
-    /// 바늘(현재값)과 개인 밴드는 항상 축 안에 들어오도록 확장 — 값 194·밴드 188–194가 140–190 축 끝에 붙는 일 방지.
     private var axisRange: (min: Double, max: Double) {
-        var rawMax = 190.0
-        var rawMin = 140.0
-        if let s = cadenceStat {
-            rawMax = max(rawMax, ceil((s.median + 4 * s.sd) / 5) * 5)
-            rawMin = min(rawMin, floor((s.median - 4 * s.sd) / 5) * 5)
-            if rawMax - rawMin > 70 { rawMin = rawMax - 70 }
-        }
-        let band = personalBand
-        let needHi = max(Double(cadence), band.upper) + 4
-        let needLo = min(Double(cadence), band.lower) - 4
-        rawMax = max(rawMax, ceil(needHi / 5) * 5)
-        rawMin = min(rawMin, floor(needLo / 5) * 5)
+        guard let s = cadenceStat else { return (140, 190) }
+        let rawMax = max(190, ceil((s.median + 4 * s.sd) / 5) * 5)
+        var rawMin = min(140, floor((s.median - 4 * s.sd) / 5) * 5)
+        if rawMax - rawMin > 70 { rawMin = rawMax - 70 }
         return (rawMin, rawMax)
     }
 
@@ -540,9 +531,9 @@ private struct VO2RPMGaugeView: View {
                     with: .color(.white)
                 )
 
-                // 값 텍스트 — 현재값 구간 색. 아래 등급 문구(48.5)와 같은 소수 1자리로 통일
+                // 값 텍스트 — 현재값 구간 색
                 ctx.draw(
-                    Text(String(format: "%.1f", vo2))
+                    Text(String(format: "%.0f", vo2))
                         .font(cardNumFont(17))
                         .foregroundStyle(vc),
                     at: CGPoint(x: cx, y: cy - 34),
@@ -2311,12 +2302,8 @@ private struct RhythmInsightCard: View {
                 return (L.s("최고 강도까지 올렸어요", "Pushed to max intensity"), Color(hex: "FF9A3C"))
             }
         }
-        if diff >= 8 {
-            // 빌드업은 후반 상승이 계획 — 문구·색 모두 경고로 읽히지 않게
-            let wt = rhythmWorkoutType
-            return (FormNarrative.hrSecondHalfRiseCaption(type: wt),
-                    wt == .buildUp ? Color(hex: "5CE08A") : Color(hex: "FF9A3C"))
-        }
+        // 빌드업은 후반 상승이 계획 — 문구만 유형별 (색은 동일)
+        if diff >= 8  { return (FormNarrative.hrSecondHalfRiseCaption(type: rhythmWorkoutType), Color(hex: "FF9A3C")) }
         if diff <= -5 { return (L.s("후반에 여유가 있었어요", "Plenty left in the 2nd half"), Color(hex: "4C8DFF")) }
         return (L.s("끝까지 안정적이었어요", "Steady throughout"), Color(hex: "5CE08A"))
     }
