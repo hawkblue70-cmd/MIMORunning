@@ -132,6 +132,12 @@ func mrFormResiduals(obs: [MRFormObs], asOf: Date) -> [MRFormResidual] {
     }
 }
 
+/// 특정 날짜(러닝)의 잔차 — 폼 카드에서 "이 러닝"이 추세 대비 어디에 있는지 말할 때 쓴다.
+func mrFormRunResidual(_ residuals: [MRFormResidual], on date: Date) -> Double? {
+    let cal = Calendar.current
+    return residuals.first { cal.isDate($0.date, inSameDayAs: date) }?.value
+}
+
 // MARK: - 2. 변화 판정
 
 /// MDC₉₅ = 1.96 × SD_resid × √(1/n_recent + 1/n_base)
@@ -248,7 +254,13 @@ func mrFormShift(_ residuals: [MRFormResidual],
 /// ⚠ "깡총 뛴다", "비효율적이다", "폼이 나쁘다"는 쓰지 않는다.
 ///   현상을 그대로 묘사하고, 원인은 후보만 제시하며 단정하지 않는다.
 ///   그리고 **두 지표가 서로 맞을 때만** 말한다 — 하나만으로는 우연이다.
-func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refCadence: Int? = nil) -> (text: String, basis: String, isStable: Bool)? {
+/// - Parameters:
+///   - refCadence: 공중 시간 환산에 쓰는 기준 케이던스(spm). 없으면 170.
+///   - runCadenceResidual: **이 러닝**의 케이던스 잔차(실제 − 페이스 예상값, spm).
+///     추세 끝점(`recentMean`)과 비교해 마무리 문장을 러닝마다 다르게 만든다(같은 문단 반복 방지).
+///     `mrFormRunResidual(_:on:)`로 구한다. nil이면 8주 이상 지속 추세일 때 가운데 줄을 생략해 짧게 말한다.
+func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refCadence: Int? = nil,
+                       runCadenceResidual: Double? = nil) -> (text: String, basis: String, isStable: Bool)? {
     let L = AppLanguage.shared
     let real = shifts.filter(\.isReal)
     #if DEBUG
@@ -265,8 +277,11 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
     // 최대 2줄까지 표시 — 방향이 반대인 지표가 한 줄에 붙지 않도록 줄바꿈
     let capped = Array(real.prefix(2))
 
-    // 케이던스 + 지면접촉이 함께 뜨면 공중 시간으로 연결한 단일 문장
+    // 케이던스 + 지면접촉이 함께 뜨면 공중 시간으로 연결한 단일 문단 (최대 3줄)
     // 공중 시간 = (60000 / 케이던스) − 지면접촉 (ms per step)
+    // ⚠ 보폭 방향은 **케이던스**에서만 읽는다 — 같은 페이스에서 보폭 = 속도 ÷ 케이던스이므로
+    //   케이던스↑ = 보폭↓. 공중 시간이 늘어도 지면접촉이 걸음 주기보다 더 줄어든 결과일 뿐,
+    //   "더 큰 한 걸음"의 근거가 아니다.
     if let cs = capped.first(where: { $0.metric.key == "cadence" }),
        let gs = capped.first(where: { $0.metric.key == "gct" }) {
         let cadSpm = Double(refCadence ?? 170)
@@ -283,14 +298,64 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
         let timeEng   = isStrong ? " over 3 months" : " \(durEng)"
         let cadDirKor = cs.delta < 0 ? "내려가고" : "올라가고"
         let gctDirKor = gs.delta < 0 ? "짧아졌어요." : "길어졌어요."
-        let airDirKor   = airtimeDeltaMs > 0 ? "길어졌어요." : "짧아졌어요."
-        let strideKor   = airtimeDeltaMs > 0 ? "더 큰 한 걸음으로" : "더 잦은 걸음으로"
-        let cadDirEng   = cs.delta < 0 ? "dropped" : "rose"
-        let gctDirEng   = gs.delta < 0 ? "shortened" : "lengthened"
-        let airDirEng   = airtimeDeltaMs > 0 ? "increased" : "decreased"
-        let strideEng   = airtimeDeltaMs > 0 ? "taking longer, bigger strides" : "stepping more frequently with shorter strides"
-        let korText = "같은 페이스에서 케이던스가\(timeKor) \(cadAbs)spm \(cadDirKor), 지면접촉이 \(gctAbs)ms \(gctDirKor)\n공중에 머무는 시간이 \(airtimeMs)ms \(airDirKor)\n같은 페이스를 \(strideKor) 만들고 있다는 뜻이에요."
-        let engText = "At similar pace, cadence\(timeEng) \(cadDirEng) \(cadAbs) spm, contact \(gctDirEng) \(gctAbs) ms.\nAirtime per step \(airDirEng) ~\(airtimeMs) ms.\nAt the same pace, you're \(strideEng)."
+        let cadDirEng = cs.delta < 0 ? "dropped" : "rose"
+        let gctDirEng = gs.delta < 0 ? "shortened" : "lengthened"
+
+        // 1줄 — 사실
+        let factKor = "같은 페이스에서 케이던스가\(timeKor) \(cadAbs)spm \(cadDirKor), 지면접촉이 \(gctAbs)ms \(gctDirKor)"
+        let factEng = "At similar pace, cadence\(timeEng) \(cadDirEng) \(cadAbs) spm, contact \(gctDirEng) \(gctAbs) ms."
+
+        // 2줄 — 역학: 걸음 빈도(케이던스 방향) + 지면/공중 시간
+        let strideKor: String? = abs(cs.delta) >= 1.0 ? (cs.delta > 0 ? "조금 더 잦은 걸음이 되고" : "조금 더 큰 걸음이 되고") : nil
+        let strideEng: String? = abs(cs.delta) >= 1.0 ? (cs.delta > 0 ? "Steps got a little quicker" : "Steps got a little longer") : nil
+        let gctDown = gs.delta < 0, airUp = airtimeDeltaMs > 0
+        let elasticKor: String
+        let elasticEng: String
+        if !gctDown && !airUp {
+            elasticKor = "지면에 머무는 시간이 늘었어요."
+            elasticEng = "time on the ground went up."
+        } else {
+            elasticKor = airUp ? "공중 시간은 \(airtimeMs)ms 늘었어요." : "공중 시간은 \(airtimeMs)ms 줄었어요."
+            elasticEng = airUp ? "airtime rose ~\(airtimeMs) ms." : "airtime dropped ~\(airtimeMs) ms."
+        }
+        let mechKor = strideKor.map { "\($0) \(elasticKor)" } ?? elasticKor
+        let mechEng = strideEng.map { "\($0), and \(elasticEng)" } ?? (elasticEng.prefix(1).uppercased() + elasticEng.dropFirst())
+
+        // 3줄 — 결론: 탄력(지면↓·공중↑) / 오래 딛기(지면↑·공중↓) / 그 외는 케이던스 방향
+        let concKor: String
+        let concEng: String
+        if gctDown && airUp {
+            concKor = "같은 페이스를 더 가볍고 탄력 있게 만들고 있다는 뜻이에요."
+            concEng = "At the same pace, you're getting lighter and springier."
+        } else if !gctDown && !airUp {
+            concKor = "같은 페이스를 조금 더 오래 딛고 만들고 있어요."
+            concEng = "At the same pace, you're spending a little longer on each footstrike."
+        } else if cs.delta > 0 {
+            concKor = "같은 페이스를 더 잦은 걸음으로 만들고 있다는 뜻이에요."
+            concEng = "At the same pace, you're taking quicker steps."
+        } else {
+            concKor = "같은 페이스를 더 큰 걸음으로 만들고 있다는 뜻이에요."
+            concEng = "At the same pace, you're taking longer steps."
+        }
+
+        // 이 러닝의 위치 — 추세 끝점(최근 3개월 잔차 평균) 대비. 러닝마다 마무리가 달라져 반복감을 줄인다.
+        var tailKor = "", tailEng = ""
+        var dropMech = false
+        if let r = runCadenceResidual {
+            let endpoint = cs.recentMean
+            if r >= endpoint - 1 {
+                tailKor = " 이 러닝도 그 흐름 위에 있어요."
+                tailEng = " This run sits right on that trend."
+            } else if r < endpoint - 2 {
+                tailKor = " 이 러닝은 그 흐름보다 조금 느긋했어요."
+                tailEng = " This run was a little more relaxed than that trend."
+            }
+        } else if wks >= 8 {
+            // 러닝별 값이 없고 추세가 오래 이어지면 — 이미 여러 번 본 문단이므로 사실 + 결론만
+            dropMech = true
+        }
+        let korText = dropMech ? "\(factKor)\n\(concKor)\(tailKor)" : "\(factKor)\n\(mechKor)\n\(concKor)\(tailKor)"
+        let engText = dropMech ? "\(factEng)\n\(concEng)\(tailEng)" : "\(factEng)\n\(mechEng)\n\(concEng)\(tailEng)"
         let text  = L.s(korText, engText)
         let basis = [cs, gs].map { s in
             let strength = s.isMDCStrong ? "강" : "약"
