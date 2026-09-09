@@ -188,11 +188,20 @@ private struct CadenceRPMGaugeView: View {
     }
 
     /// 개인 분포 ±4σ 기반 동적 축. 최대 폭 70, 5 단위 반올림.
+    /// 바늘(현재값)과 개인 밴드는 항상 축 안에 들어오도록 확장 — 값 194·밴드 188–194가 140–190 축 끝에 붙는 일 방지.
     private var axisRange: (min: Double, max: Double) {
-        guard let s = cadenceStat else { return (140, 190) }
-        let rawMax = max(190, ceil((s.median + 4 * s.sd) / 5) * 5)
-        var rawMin = min(140, floor((s.median - 4 * s.sd) / 5) * 5)
-        if rawMax - rawMin > 70 { rawMin = rawMax - 70 }
+        var rawMax = 190.0
+        var rawMin = 140.0
+        if let s = cadenceStat {
+            rawMax = max(rawMax, ceil((s.median + 4 * s.sd) / 5) * 5)
+            rawMin = min(rawMin, floor((s.median - 4 * s.sd) / 5) * 5)
+            if rawMax - rawMin > 70 { rawMin = rawMax - 70 }
+        }
+        let band = personalBand
+        let needHi = max(Double(cadence), band.upper) + 4
+        let needLo = min(Double(cadence), band.lower) - 4
+        rawMax = max(rawMax, ceil(needHi / 5) * 5)
+        rawMin = min(rawMin, floor(needLo / 5) * 5)
         return (rawMin, rawMax)
     }
 
@@ -531,9 +540,9 @@ private struct VO2RPMGaugeView: View {
                     with: .color(.white)
                 )
 
-                // 값 텍스트 — 현재값 구간 색
+                // 값 텍스트 — 현재값 구간 색. 아래 등급 문구(48.5)와 같은 소수 1자리로 통일
                 ctx.draw(
-                    Text(String(format: "%.0f", vo2))
+                    Text(String(format: "%.1f", vo2))
                         .font(cardNumFont(17))
                         .foregroundStyle(vc),
                     at: CGPoint(x: cx, y: cy - 34),
@@ -1486,50 +1495,40 @@ private struct RhythmInsightCard: View {
         if rhythmIsLongDistanceContext {
             let hasAbsViolation = det.avgCadence.map { $0 < 160 } ?? false
             if !hasAbsViolation {
-                let distKm = activity.distance / 1000
-                let distKmStr = String(format: "%.0f", distKm)
-                // 전반/후반 평균 계산 — 실제 변화를 사실 서술
+                // 문장은 폼 카드와 공유 (FormNarrative.longDistanceSentence)
+                func status(_ value: Double?, _ stat: FormStat?) -> FormNarrative.Status {
+                    guard let v = value, let st = stat else { return .unknown }
+                    if v < st.lower { return .below }
+                    if v > st.upper { return .above }
+                    return .inRange
+                }
                 let fullSplits = det.splits.filter { $0.distanceM >= 900 }
                 let splitMid = fullSplits.count / 2
                 let fHalf = Array(fullSplits.prefix(splitMid))
                 let sHalf = Array(fullSplits.suffix(fullSplits.count - splitMid))
-                var korParts: [String] = []
-                var engParts: [String] = []
-                let fCads = fHalf.compactMap { $0.avgCadence }
-                let sCads = sHalf.compactMap { $0.avgCadence }
-                if !fCads.isEmpty, !sCads.isEmpty {
-                    let fc = Int((Double(fCads.reduce(0, +)) / Double(fCads.count)).rounded())
-                    let sc = Int((Double(sCads.reduce(0, +)) / Double(sCads.count)).rounded())
-                    korParts.append("케이던스 \(fc)→\(sc)spm")
-                    engParts.append("cadence \(fc)→\(sc) spm")
+                func cadAvg(_ arr: [SplitData]) -> Int? {
+                    let v = arr.compactMap { $0.avgCadence }
+                    return v.isEmpty ? nil : Int((Double(v.reduce(0, +)) / Double(v.count)).rounded())
                 }
-                let fSLs = fHalf.compactMap { $0.avgStrideLength }
-                let sSLs = sHalf.compactMap { $0.avgStrideLength }
-                if !fSLs.isEmpty, !sSLs.isEmpty {
-                    let fs2 = fSLs.reduce(0, +) / Double(fSLs.count)
-                    let ss2 = sSLs.reduce(0, +) / Double(sSLs.count)
-                    korParts.append("보폭 \(String(format: "%.2f", fs2))→\(String(format: "%.2f", ss2))m")
-                    engParts.append("stride \(String(format: "%.2f", fs2))→\(String(format: "%.2f", ss2)) m")
+                func slAvg(_ arr: [SplitData]) -> Double? {
+                    let v = arr.compactMap { $0.avgStrideLength }
+                    return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
                 }
-                let text: String
-                if !korParts.isEmpty {
-                    if let typical = typicalRunDistanceKm, distKm > typical * 1.30 {
-                        let delta = distKm - typical
-                        text = L.s(
-                            "평소보다 \(String(format: "%.1f", delta))km 긴 러닝이에요. \(korParts.joined(separator: ", "))로 줄었어요.",
-                            "This run is \(String(format: "%.1f", delta)) km longer than usual — \(engParts.joined(separator: ", ")).")
-                    } else {
-                        text = L.s(
-                            "\(distKmStr)km를 뛰면서 \(korParts.joined(separator: ", "))로 줄었어요.",
-                            "\(distKmStr) km run — \(engParts.joined(separator: ", ")).")
-                    }
-                } else {
-                    let cadStr = det.avgCadence.map { "\($0)" } ?? "--"
-                    text = det.avgStrideLength.map {
-                        L.s("케이던스 \(cadStr)spm, 보폭 \(String(format: "%.2f", $0))m로 달렸어요.",
-                            "Ran with cadence \(cadStr) spm and stride \(String(format: "%.2f", $0)) m.")
-                    } ?? L.s("케이던스 \(cadStr)spm으로 달렸어요.", "Ran with cadence \(cadStr) spm.")
-                }
+                let wt = workoutTypeFn?(activity.id) ?? .general
+                let input = FormNarrative.LongDistanceInput(
+                    distKm: activity.distance / 1000,
+                    typeName: wt.koreanLabel,
+                    typicalDistanceKm: typicalRunDistanceKm,
+                    hasDistanceInsight: false,
+                    cad: status(det.avgCadence.map(Double.init), bb.cadence),
+                    gct: status(det.avgGroundContactTime, bb.groundContact),
+                    sl: status(det.avgStrideLength, bb.strideLength),
+                    firstHalfCadence: cadAvg(fHalf), secondHalfCadence: cadAvg(sHalf),
+                    firstHalfStride: slAvg(fHalf), secondHalfStride: slAvg(sHalf),
+                    cadStr: det.avgCadence.map { "\($0)" } ?? "--",
+                    slStr: det.avgStrideLength.map { String(format: "%.2f", $0) },
+                    paceStr: activity.formattedPace ?? "--")
+                let text = FormNarrative.longDistanceSentence(input)
                 return [(text: text, color: Color.white.opacity(0.75))]
             }
         }
@@ -2312,7 +2311,7 @@ private struct RhythmInsightCard: View {
         for i in 0..<(bounds.count - 1) { if vo2 < bounds[i + 1] { idx = i; break } }
         let g = fi.genderLabel.isEmpty ? "" : " \(fi.genderLabel)"
         let valStr = String(format: "%.1f", vo2)
-        return (L.s("\(valStr)은 \(fi.ageDecade)\(g) 기준 \(levelNames[idx])",
+        return (L.s("\(valStr)\(KoreanParticle.topic(after: valStr)) \(fi.ageDecade)\(g) 기준 \(levelNames[idx])",
                     "\(valStr) is \(levelNames[idx]) for \(fi.ageDecade)\(g)"), levelColors[idx])
     }
 
@@ -2878,7 +2877,7 @@ private struct PerformanceInsightCard: View {
         var gradeIdx = bounds.count - 2
         for i in 0..<(bounds.count - 1) { if vo2 < bounds[i + 1] { gradeIdx = i; break } }
         let valStr = String(format: "%.1f", vo2)
-        let gradeText = L.s("\(valStr)은 \(info.ageDecade)\(g) 기준 \(levelNames[gradeIdx])",
+        let gradeText = L.s("\(valStr)\(KoreanParticle.topic(after: valStr)) \(info.ageDecade)\(g) 기준 \(levelNames[gradeIdx])",
                             "\(valStr) is \(levelNames[gradeIdx]) for \(info.ageDecade)\(g)")
         let gradeColor = levelColors[gradeIdx]
         let splitData = splitChartData

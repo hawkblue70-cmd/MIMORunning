@@ -1262,9 +1262,14 @@ struct RunFormCardView: View {
         if !displayKms.isEmpty {
             displayKms[displayKms.count - 1] = totalKm
             // 직전 라벨이 총 거리와 너무 가까우면 제거 (겹침 방지)
+            // 마지막 라벨은 눈금 왼쪽(topTrailing)에 그려져 직전 라벨 쪽 공간을 차지한다.
+            // 한 칸 건너 표시(라벨 간격 2km, 두 자리 숫자)일 때는 직전 라벨이 라벨 간격 1칸 안에 있으면
+            // "10"·"12"가 "1012"로 붙어 보이므로 1.25칸 미만이면 제거 → 12km: 2 4 6 8 12 / 10km: 1 3 5 7 10 유지
             if displayKms.count >= 2 {
                 let gap = totalKm - displayKms[displayKms.count - 2]
-                if gap < kmStep * 0.7 {
+                let labelStep = displayKms.count >= 3 ? (displayKms[1] - displayKms[0]) : kmStep
+                let minGap = showEveryOther ? labelStep * 1.25 : kmStep * 0.7
+                if gap < minGap {
                     displayKms.remove(at: displayKms.count - 2)
                 }
             }
@@ -1525,12 +1530,8 @@ struct RunFormCardView: View {
                         "A cadence of \(cadStr) spm produced a \(paceStr) pace.")
         }
 
-        // 장거리 문맥: 장거리에서는 지표 하락이 자주 나타남 — 판단 유보, 사실 서술만 표시
+        // 장거리 문맥: 장거리에서는 지표 하락이 자주 나타남 — 판단 유보, 사실 서술만 (문장은 FormNarrative 공유)
         if isLongDistanceContext {
-            let distKm = activity.distance / 1000
-            let typeName = workoutType.koreanLabel  // localized: "거리주" KO / "Distance Run" EN
-            let distKmStr = String(format: "%.0f", distKm)
-            // 실제로 범위 아래인 지표가 있는지 확인 — 없으면 "평소 범위 그대로" 문구 사용
             let cadSt = metricStatus(rawValue: cadD, stat: bb?.cadence, dir: .cadence)
             let gctSt: MetricStatus = avgGroundContactTime.map {
                 metricStatus(rawValue: $0, stat: adjustedGctStat, dir: .groundContact)
@@ -1538,25 +1539,7 @@ struct RunFormCardView: View {
             let slSt: MetricStatus = avgStrideLength.map {
                 metricStatus(rawValue: $0, stat: bb?.strideLength, dir: .stride)
             } ?? .unknown
-            let anyBelow = [cadSt, gctSt, slSt].contains(.below)
-            let allInRange = [cadSt, gctSt, slSt].allSatisfy { $0 == .inRange || $0 == .unknown }
-            if allInRange {
-                return L.s(
-                    "\(distKmStr)km를 뛰면서 폼이 평소 범위 그대로였어요.",
-                    "Your form stayed within the usual range throughout \(distKmStr) km.")
-            }
-            if !anyBelow {
-                // .above만 있고 .below 없음 — 사실 서술 (배지 생략)
-                if gctSt == .above {
-                    return L.s(
-                        "\(distKmStr)km를 뛰면서 지면접촉이 평소보다 조금 길었어요.",
-                        "Ground contact ran a bit longer than usual in this \(distKmStr) km run.")
-                }
-                return L.s(
-                    "\(distKmStr)km를 뛰면서 폼이 평소 범위 그대로였어요.",
-                    "Your form stayed within the usual range throughout \(distKmStr) km.")
-            }
-            // 사실 서술: 전반/후반 평균으로 실제 변화 표기
+            // 전반/후반 평균 — 실제 변화 서술용
             let splitMid = fullSplits.count / 2
             let fHalf = Array(fullSplits.prefix(splitMid))
             let sHalf = Array(fullSplits.suffix(fullSplits.count - splitMid))
@@ -1568,36 +1551,16 @@ struct RunFormCardView: View {
                 let v = arr.compactMap { $0.avgStrideLength }
                 return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
             }
-            let fstCad = cadAvg(fHalf); let sndCad = cadAvg(sHalf)
-            let fstSL  = slAvg(fHalf);  let sndSL  = slAvg(sHalf)
-            var korParts: [String] = []
-            var engParts: [String] = []
-            if let fc = fstCad, let sc = sndCad {
-                korParts.append("케이던스 \(fc)→\(sc)spm")
-                engParts.append("cadence \(fc)→\(sc) spm")
-            }
-            if let fs2 = fstSL, let ss2 = sndSL {
-                korParts.append("보폭 \(String(format: "%.2f", fs2))→\(String(format: "%.2f", ss2))m")
-                engParts.append("stride \(String(format: "%.2f", fs2))→\(String(format: "%.2f", ss2)) m")
-            }
-            if !korParts.isEmpty {
-                if let typical = typicalDistanceKm, (distKm > typical * 1.50 || distKm >= 12.0),
-                   !formInsights.contains(where: { $0.id == .distance }) {
-                    let delta = distKm - typical
-                    return L.s(
-                        "평소보다 \(String(format: "%.1f", delta))km 긴 \(typeName)이에요. \(korParts.joined(separator: ", "))로 줄었어요.",
-                        "This \(typeName) is \(String(format: "%.1f", delta)) km longer than usual — \(engParts.joined(separator: ", ")).")
-                }
-                return L.s(
-                    "\(distKmStr)km를 뛰면서 \(korParts.joined(separator: ", "))로 줄었어요.",
-                    "\(distKmStr) km run — \(engParts.joined(separator: ", ")).")
-            }
-            // 스플릿 데이터 없음 — 전체 평균으로 서술
-            return slStr.map {
-                L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 \(paceStr) 페이스를 달렸어요.",
-                    "Cadence \(cadStr) spm and stride \($0) m for the \(paceStr) pace.")
-            } ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스를 달렸어요.",
-                     "Cadence \(cadStr) spm for the \(paceStr) pace.")
+            let input = FormNarrative.LongDistanceInput(
+                distKm: activity.distance / 1000,
+                typeName: workoutType.koreanLabel,
+                typicalDistanceKm: typicalDistanceKm,
+                hasDistanceInsight: formInsights.contains(where: { $0.id == .distance }),
+                cad: cadSt.narrativeStatus, gct: gctSt.narrativeStatus, sl: slSt.narrativeStatus,
+                firstHalfCadence: cadAvg(fHalf), secondHalfCadence: cadAvg(sHalf),
+                firstHalfStride: slAvg(fHalf), secondHalfStride: slAvg(sHalf),
+                cadStr: cadStr, slStr: slStr, paceStr: paceStr)
+            return FormNarrative.longDistanceSentence(input)
         }
 
         // 유형별 프레임(이지·빠른·일반)에 따라 톤만 달라지는 마무리 문장 — 판정은 여기서, 문장은 FormNarrative

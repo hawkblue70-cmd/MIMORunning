@@ -154,4 +154,89 @@ struct FormNarrativeTests {
         // 보폭 status가 이탈이라도 문자열이 없으면 구절 없음
         #expect(ko(input(gct: .above, sl: .above, slStr: nil), .general) == "지면접촉이 240ms로 평소보다 길었어요.")
     }
+
+    // MARK: - 장거리 문맥 문장
+
+    private func longInput(distKm: Double = 12.0, typeName: String = "빌드업", typical: Double? = nil,
+                           hasDistanceInsight: Bool = false,
+                           cad: S = .inRange, gct: S = .inRange, sl: S = .inRange,
+                           fc: Int? = nil, sc: Int? = nil, fs: Double? = nil, ss: Double? = nil,
+                           cadStr: String = "195", slStr: String? = "0.91",
+                           paceStr: String = "5'40") -> FormNarrative.LongDistanceInput {
+        FormNarrative.LongDistanceInput(
+            distKm: distKm, typeName: typeName, typicalDistanceKm: typical,
+            hasDistanceInsight: hasDistanceInsight, cad: cad, gct: gct, sl: sl,
+            firstHalfCadence: fc, secondHalfCadence: sc, firstHalfStride: fs, secondHalfStride: ss,
+            cadStr: cadStr, slStr: slStr, paceStr: paceStr)
+    }
+
+    private func koLong(_ i: FormNarrative.LongDistanceInput) -> String {
+        AppLanguage.shared.isEnglish = false
+        return FormNarrative.longDistanceSentence(i)
+    }
+
+    private func enLong(_ i: FormNarrative.LongDistanceInput) -> String {
+        AppLanguage.shared.isEnglish = true
+        defer { AppLanguage.shared.isEnglish = false }
+        return FormNarrative.longDistanceSentence(i)
+    }
+
+    /// 스크린샷 버그: 케이던스 195→195, 보폭 0.88→0.95인데 "줄었어요"라고 하던 것
+    @Test func longDistanceStrideUpCadenceFlatSaysLengthened() {
+        let i = longInput(sl: .below, fc: 195, sc: 195, fs: 0.88, ss: 0.95)
+        let s = koLong(i)
+        #expect(s == "12km를 뛰면서 케이던스는 195spm으로 유지했고, 보폭은 0.88→0.95m로 늘었어요.")
+        #expect(!s.contains("줄었어요"))
+        #expect(enLong(i) == "Over 12 km, cadence held at 195 spm and stride lengthened from 0.88 to 0.95 m.")
+    }
+
+    @Test func longDistanceBothDown() {
+        let i = longInput(cad: .below, sl: .below, fc: 190, sc: 186, fs: 0.95, ss: 0.90)
+        #expect(koLong(i) == "12km를 뛰면서 케이던스는 190→186spm으로 내려갔고, 보폭은 0.95→0.90m로 줄었어요.")
+        #expect(enLong(i) == "Over 12 km, cadence dropped from 190 to 186 spm and stride shortened from 0.95 to 0.90 m.")
+    }
+
+    @Test func longDistanceBothFlatHeldToTheEnd() {
+        // Δ 1spm · Δ 0.01m → 유지 (임계 미만)
+        let i = longInput(cad: .below, fc: 195, sc: 196, fs: 0.90, ss: 0.91)
+        #expect(koLong(i) == "12km를 뛰면서 케이던스 196spm, 보폭 0.91m를 끝까지 유지했어요.")
+        #expect(enLong(i) == "Over 12 km, cadence held at 196 spm and stride held at 0.91 m to the end.")
+    }
+
+    @Test func longDistanceCadenceUpStrideDown() {
+        let i = longInput(distKm: 15, cad: .below, fc: 180, sc: 184, fs: 1.10, ss: 1.05)
+        #expect(koLong(i) == "15km를 뛰면서 케이던스는 180→184spm으로 올라갔고, 보폭은 1.10→1.05m로 줄었어요.")
+    }
+
+    @Test func longDistanceGctBelowOnlyIsNotADecline() {
+        // 지면접촉 짧아짐(.below)은 하락이 아님 → 전반/후반 문장 대신 "그대로"
+        let i = longInput(gct: .below, fc: 190, sc: 180, fs: 1.0, ss: 0.9)
+        #expect(koLong(i) == "12km를 뛰면서 폼이 평소 범위 그대로였어요.")
+        // 모두 범위 안도 동일
+        #expect(koLong(longInput(fc: 190, sc: 180)) == "12km를 뛰면서 폼이 평소 범위 그대로였어요.")
+        // 범위 아래 없이 지면접촉만 위
+        #expect(koLong(longInput(gct: .above)) == "12km를 뛰면서 지면접촉이 평소보다 조금 길었어요.")
+    }
+
+    @Test func longDistanceLongerThanUsualPrefix() {
+        // 평소 8.8km, 12km → 1.5배 초과 → 접두 문장 (거리 인사이트 없음)
+        let i = longInput(typical: 8.8, cad: .below, fc: 190, sc: 186, fs: 0.95, ss: 0.90)
+        #expect(koLong(i) == "평소보다 3.2km 긴 빌드업이에요. 케이던스는 190→186spm으로 내려갔고, 보폭은 0.95→0.90m로 줄었어요.")
+        #expect(enLong(i) == "This 빌드업 is 3.2 km longer than usual — cadence dropped from 190 to 186 spm and stride shortened from 0.95 to 0.90 m.")
+        // 거리 인사이트가 이미 있으면 접두 생략
+        let j = longInput(typical: 8.8, hasDistanceInsight: true, cad: .below, fc: 190, sc: 186, fs: 0.95, ss: 0.90)
+        #expect(koLong(j).hasPrefix("12km를 뛰면서"))
+        // 평소 10km · 11km → 1.5배 미만이고 12km 미만 → 접두 없음
+        let k = longInput(distKm: 11, typical: 10, cad: .below, fc: 190, sc: 186)
+        #expect(koLong(k) == "11km를 뛰면서 케이던스는 190→186spm으로 내려갔어요.")
+    }
+
+    @Test func longDistanceOnlyOneMetricAndNoSplitsFallback() {
+        // 보폭 절반값만 있고 케이던스 절반값 없음
+        #expect(koLong(longInput(sl: .below, fs: 0.88, ss: 0.95)) == "12km를 뛰면서 보폭은 0.88→0.95m로 늘었어요.")
+        #expect(koLong(longInput(cad: .below, fc: 194, sc: 195)) == "12km를 뛰면서 케이던스 195spm을 끝까지 유지했어요.")
+        // 스플릿 없음 → 전체 평균 폴백
+        #expect(koLong(longInput(cad: .below)) == "케이던스 195spm, 보폭 0.91m로 5'40 페이스를 달렸어요.")
+        #expect(koLong(longInput(cad: .below, slStr: nil)) == "케이던스 195spm으로 5'40 페이스를 달렸어요.")
+    }
 }

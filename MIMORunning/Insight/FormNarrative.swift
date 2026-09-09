@@ -200,3 +200,134 @@ enum FormNarrative {
         }
     }
 }
+
+// MARK: - 장거리 문맥 문장
+
+extension FormNarrative {
+
+    /// 장거리 문맥(롱런·LSD·평소보다 훨씬 긴 러닝)의 마무리 문장 입력.
+    /// 판정(`cad`/`gct`/`sl`)은 러닝 전체 평균의 평소 범위 대비 상태, 전반/후반 평균은 실제 변화 서술용.
+    struct LongDistanceInput {
+        let distKm: Double
+        let typeName: String
+        let typicalDistanceKm: Double?
+        /// 카드가 "평소보다 긴 거리" 인사이트를 이미 보여주고 있으면 접두 문장을 생략
+        let hasDistanceInsight: Bool
+        let cad: Status
+        let gct: Status
+        let sl: Status
+        let firstHalfCadence: Int?
+        let secondHalfCadence: Int?
+        let firstHalfStride: Double?
+        let secondHalfStride: Double?
+        /// 스플릿이 없을 때의 전체 평균 폴백
+        let cadStr: String
+        let slStr: String?
+        let paceStr: String
+    }
+
+    /// 전반→후반 변화 방향 임계값. 이 미만은 "유지"로 본다.
+    static let longDistanceCadenceDeltaSPM = 2
+    static let longDistanceStrideDeltaM = 0.02
+
+    /// 장거리 문맥 문장 — 판단 유보, 사실 서술만.
+    ///
+    /// - 모두 평소 범위(또는 미상) → "폼이 평소 범위 그대로였어요."
+    /// - 범위 아래가 없고 지면접촉만 위 → "지면접촉이 평소보다 조금 길었어요."
+    /// - 케이던스·보폭 중 하나라도 범위 아래 → 전반/후반 평균으로 방향을 서술
+    ///   (케이던스 Δ≥2spm 올라감/내려감, 보폭 Δ≥0.02m 늘어남/줄어듦, 그 외 유지).
+    ///   지면접촉의 `.below`(짧아짐)는 하락이 아니므로 이 분기를 열지 않는다.
+    static func longDistanceSentence(_ i: LongDistanceInput) -> String {
+        let L = AppLanguage.shared
+        let distKmStr = String(format: "%.0f", i.distKm)
+
+        let allInRange = [i.cad, i.gct, i.sl].allSatisfy { $0 == .inRange || $0 == .unknown }
+        let anyBelow = i.cad == .below || i.sl == .below
+        if allInRange || !anyBelow {
+            if !allInRange, i.gct == .above {
+                return L.s("\(distKmStr)km를 뛰면서 지면접촉이 평소보다 조금 길었어요.",
+                           "Ground contact ran a bit longer than usual in this \(distKmStr) km run.")
+            }
+            return L.s("\(distKmStr)km를 뛰면서 폼이 평소 범위 그대로였어요.",
+                       "Your form stayed within the usual range throughout \(distKmStr) km.")
+        }
+
+        // 전반/후반 변화 구절 — (한국어 본문+어간, 영어 구절)
+        struct Clause { let koBody: String; let koStem: String; let en: String; let held: Bool }
+        var clauses: [Clause] = []
+        if let fc = i.firstHalfCadence, let sc = i.secondHalfCadence {
+            let d = sc - fc
+            if d >= longDistanceCadenceDeltaSPM {
+                clauses.append(Clause(koBody: "케이던스는 \(fc)→\(sc)spm으로", koStem: "올라갔",
+                                      en: "cadence rose from \(fc) to \(sc) spm", held: false))
+            } else if d <= -longDistanceCadenceDeltaSPM {
+                clauses.append(Clause(koBody: "케이던스는 \(fc)→\(sc)spm으로", koStem: "내려갔",
+                                      en: "cadence dropped from \(fc) to \(sc) spm", held: false))
+            } else {
+                let v = Int((Double(fc + sc) / 2).rounded())
+                clauses.append(Clause(koBody: "케이던스 \(v)spm", koStem: "유지했",
+                                      en: "cadence held at \(v) spm", held: true))
+            }
+        }
+        if let fs = i.firstHalfStride, let ss = i.secondHalfStride {
+            let d = ss - fs
+            let fsS = String(format: "%.2f", fs), ssS = String(format: "%.2f", ss)
+            if d >= longDistanceStrideDeltaM {
+                clauses.append(Clause(koBody: "보폭은 \(fsS)→\(ssS)m로", koStem: "늘었",
+                                      en: "stride lengthened from \(fsS) to \(ssS) m", held: false))
+            } else if d <= -longDistanceStrideDeltaM {
+                clauses.append(Clause(koBody: "보폭은 \(fsS)→\(ssS)m로", koStem: "줄었",
+                                      en: "stride shortened from \(fsS) to \(ssS) m", held: false))
+            } else {
+                let v = String(format: "%.2f", (fs + ss) / 2)
+                clauses.append(Clause(koBody: "보폭 \(v)m", koStem: "유지했",
+                                      en: "stride held at \(v) m", held: true))
+            }
+        }
+
+        guard !clauses.isEmpty else {
+            // 스플릿 데이터 없음 — 전체 평균으로 서술
+            return i.slStr.map {
+                L.s("케이던스 \(i.cadStr)spm, 보폭 \($0)m로 \(i.paceStr) 페이스를 달렸어요.",
+                    "Cadence \(i.cadStr) spm and stride \($0) m for the \(i.paceStr) pace.")
+            } ?? L.s("케이던스 \(i.cadStr)spm으로 \(i.paceStr) 페이스를 달렸어요.",
+                     "Cadence \(i.cadStr) spm for the \(i.paceStr) pace.")
+        }
+
+        // 한국어 본문 조립
+        let ko: String
+        let allHeld = clauses.allSatisfy(\.held)
+        if allHeld {
+            // "케이던스 195spm, 보폭 0.91m를 끝까지 유지했어요." / "케이던스 195spm을 끝까지 유지했어요."
+            let bodies = clauses.map(\.koBody).joined(separator: ", ")
+            let particle = clauses.last?.koBody.hasSuffix("spm") == true ? "을" : "를"
+            ko = "\(bodies)\(particle) 끝까지 유지했어요."
+        } else {
+            var parts: [String] = []
+            for (idx, c) in clauses.enumerated() {
+                let isLast = idx == clauses.count - 1
+                // 유지 구절이 다른 구절과 함께 오면 "케이던스는 195spm으로 유지했고" 형태
+                let body = c.held ? c.koBody.replacingOccurrences(of: "케이던스 ", with: "케이던스는 ")
+                                            .replacingOccurrences(of: "보폭 ", with: "보폭은 ")
+                                   + (c.koBody.hasSuffix("spm") ? "으로" : "로")
+                                 : c.koBody
+                parts.append("\(body) \(c.koStem)\(isLast ? "어요." : "고,")")
+            }
+            ko = parts.joined(separator: " ")
+        }
+        let en: String = {
+            let joined = clauses.map(\.en).joined(separator: " and ")
+            return allHeld ? "\(joined) to the end." : "\(joined)."
+        }()
+
+        if let typical = i.typicalDistanceKm,
+           (i.distKm > typical * 1.50 || i.distKm >= 12.0),
+           !i.hasDistanceInsight {
+            let delta = String(format: "%.1f", i.distKm - typical)
+            return L.s("평소보다 \(delta)km 긴 \(i.typeName)이에요. \(ko)",
+                       "This \(i.typeName) is \(delta) km longer than usual — \(en)")
+        }
+        return L.s("\(distKmStr)km를 뛰면서 \(ko)",
+                   "Over \(distKmStr) km, \(en)")
+    }
+}
