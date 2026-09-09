@@ -189,8 +189,12 @@ private struct CadenceRPMGaugeView: View {
 
     /// 개인 분포 ±4σ 기반 동적 축. 최대 폭 70, 5 단위 반올림.
     private var axisRange: (min: Double, max: Double) {
-        guard let s = cadenceStat else { return (140, 190) }
-        let rawMax = max(190, ceil((s.median + 4 * s.sd) / 5) * 5)
+        // 이 러닝 값과 기준 범위 상단이 항상 축 안에 들어오게 — 값보다 약간 큰 값(+4 → 5 단위 올림)까지.
+        // 케이던스가 높은 러너(190 초과)에서 바늘이 끝에 붙던 문제.
+        let band = personalBand
+        let needMax = ceil((max(Double(cadence), band.upper) + 4) / 5) * 5
+        guard let s = cadenceStat else { return (140, max(190, needMax)) }
+        let rawMax = max(190, ceil((s.median + 4 * s.sd) / 5) * 5, needMax)
         var rawMin = min(140, floor((s.median - 4 * s.sd) / 5) * 5)
         if rawMax - rawMin > 70 { rawMin = rawMax - 70 }
         return (rawMin, rawMax)
