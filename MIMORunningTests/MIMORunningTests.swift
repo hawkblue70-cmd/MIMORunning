@@ -21,21 +21,36 @@ struct MRFormTests {
         #expect(result.isEmpty)
     }
 
-    @Test func testFormObservationNeedsTwoAgreeingMetrics() {
+    /// 문장 게이트는 두 단계다 — 관측 지표 2개 이상 + 그중 실증 변화 1개 이상.
+    /// 두 지표가 서로 같은 이야기를 할 필요는 없다.
+    @Test func testFormObservationNeedsTwoObservedAndOneRealMetric() {
         let voMetric  = mrFormMetrics.first { $0.key == "vo" }!
         let cadMetric = mrFormMetrics.first { $0.key == "cadence" }!
 
-        // isReal = abs(delta) > mdc && weeksConsistent >= 4
+        // isReal = (MDC 초과 || 4주 이상 일관) && 실질 크기 충족
         let realVo  = MRFormShift(metric: voMetric,  recentMean: 0, baseMean: 0,
-                                   delta: 2.0, mdc: 1.0, weeksConsistent: 4, r2: nil)
+                                  delta: 2.0, mdc: 1.0, weeksConsistent: 4, r2: nil)
         let realCad = MRFormShift(metric: cadMetric, recentMean: 0, baseMean: 0,
-                                   delta: 2.0, mdc: 1.0, weeksConsistent: 4, r2: nil)
+                                  delta: 2.0, mdc: 1.0, weeksConsistent: 4, r2: nil)
+        // MDC 미달 + 4주 미만 → 근거 없음
         let weakVo  = MRFormShift(metric: voMetric,  recentMean: 0, baseMean: 0,
-                                   delta: 0.5, mdc: 1.0, weeksConsistent: 4, r2: nil)  // delta < mdc → not real
+                                  delta: 0.5, mdc: 1.0, weeksConsistent: 3, r2: nil)
+        // 케이던스는 1.0spm 미만이면 실질 크기 미달 → MDC를 넘어도 실증 아님
+        let weakCad = MRFormShift(metric: cadMetric, recentMean: 0, baseMean: 0,
+                                  delta: 0.5, mdc: 0.1, weeksConsistent: 8, r2: nil)
 
-        // 실증 지표 1개뿐 → 문장 없음
-        #expect(mrFormObservation([realVo, weakVo]) == nil)
-        // 실증 지표 2개 (vo↑ & cadence↑) → 문장 있음
+        #expect(realVo.isReal)
+        #expect(realCad.isReal)
+        #expect(!weakVo.isReal)
+        #expect(!weakCad.isReal)
+
+        // 관측 지표가 1개뿐이면 "달리는 방식" 논거가 없다 → 침묵
+        #expect(mrFormObservation([realVo]) == nil)
+        // 관측 2개여도 실증 변화가 0개면 침묵 — 안정은 기본 상태
+        #expect(mrFormObservation([weakVo, weakCad]) == nil)
+        // 관측 2개 + 실증 1개 → 그 지표만 놓고 말한다
+        #expect(mrFormObservation([realVo, weakCad]) != nil)
+        // 실증 2개 (vo↑ & cadence↑) → 물론 말한다
         #expect(mrFormObservation([realVo, realCad]) != nil)
     }
 }
