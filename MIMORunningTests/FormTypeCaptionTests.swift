@@ -3,13 +3,12 @@ import Foundation
 @testable import MIMORunning
 
 /// 러닝 유형별 캡션(인사이트 탭·폼 카드 공용) + 두 카드가 공유하는 지표 상태 판정.
-/// 문자열 검사는 `AppLanguage.shared`를 건드리므로 직렬 실행.
-@Suite("FormNarrative 유형별 캡션·상태 판정", .serialized)
+/// 언어는 `.korean` 트레이트(태스크 로컬)로 주입해 전역 설정을 건드리지 않는다.
+@Suite("FormNarrative 유형별 캡션·상태 판정", .korean)
 struct FormTypeCaptionTests {
 
     private func ko<T>(_ body: () -> T) -> T {
-        AppLanguage.shared.isEnglish = false
-        return body()
+        AppLanguage.$override.withValue(false) { body() }
     }
 
     // MARK: - 유형 그룹
@@ -93,12 +92,12 @@ struct FormTypeCaptionTests {
     }
 
     @Test func captionsHaveEnglish() {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
-        #expect(FormNarrative.hrSecondHalfRiseCaption(type: .buildUp).contains("build-up"))
-        #expect(FormNarrative.highIntensityZoneCaption(type: .tempo).contains("as planned"))
-        #expect(FormNarrative.formHeldCaption(type: .race).contains("fast finish"))
-        #expect(FormNarrative.belowRangeNote(type: .buildUp, metric: .groundContact).contains("Faster late pace"))
+        AppLanguage.$override.withValue(true) {
+            #expect(FormNarrative.hrSecondHalfRiseCaption(type: .buildUp).contains("build-up"))
+            #expect(FormNarrative.highIntensityZoneCaption(type: .tempo).contains("as planned"))
+            #expect(FormNarrative.formHeldCaption(type: .race).contains("fast finish"))
+            #expect(FormNarrative.belowRangeNote(type: .buildUp, metric: .groundContact).contains("Faster late pace"))
+        }
     }
 
     // MARK: - 상태 판정 (표시 정밀도 반올림)

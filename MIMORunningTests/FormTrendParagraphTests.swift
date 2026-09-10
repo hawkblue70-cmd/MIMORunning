@@ -3,8 +3,8 @@ import Foundation
 @testable import MIMORunning
 
 /// 폼 카드 추세 문단(케이던스+지면접촉 결합) — 보폭 방향은 케이던스에서, 탄력은 지면·공중 시간에서 읽는다.
-/// 문자열 검사는 `AppLanguage.shared`를 건드리므로 직렬 실행.
-@Suite("MRFormStyle 추세 문단", .serialized)
+/// 언어는 `AppLanguage.$override`(태스크 로컬)로 주입해 전역 설정을 건드리지 않는다.
+@Suite("MRFormStyle 추세 문단", .korean)
 struct FormTrendParagraphTests {
 
     private let cadMetric = mrFormMetrics.first { $0.key == "cadence" }!
@@ -20,13 +20,14 @@ struct FormTrendParagraphTests {
     }
 
     private func ko(_ shifts: [MRFormShift], refCadence: Int? = 170, run: Double? = nil) -> String {
-        AppLanguage.shared.isEnglish = false
-        return mrFormObservation(shifts, refCadence: refCadence, runCadenceResidual: run)?.text ?? ""
+        AppLanguage.$override.withValue(false) {
+            mrFormObservation(shifts, refCadence: refCadence, runCadenceResidual: run)?.text ?? ""
+        }
     }
     private func en(_ shifts: [MRFormShift], refCadence: Int? = 170, run: Double? = nil) -> String {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
-        return mrFormObservation(shifts, refCadence: refCadence, runCadenceResidual: run)?.text ?? ""
+        AppLanguage.$override.withValue(true) {
+            mrFormObservation(shifts, refCadence: refCadence, runCadenceResidual: run)?.text ?? ""
+        }
     }
 
     // MARK: - 버그 2: 보폭은 케이던스 방향, 탄력은 지면·공중 시간

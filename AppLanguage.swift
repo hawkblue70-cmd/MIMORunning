@@ -5,12 +5,21 @@ import Foundation
 @Observable final class AppLanguage {
     static let shared = AppLanguage()
 
+    /// 테스트 전용 언어 주입. 태스크 로컬이라 병렬로 도는 테스트끼리 서로의 언어를 덮어쓰지 않는다.
+    /// 프로덕션에서는 항상 nil이라 저장된 설정이 그대로 쓰인다.
+    @TaskLocal static var override: Bool?
+
+    private var storedIsEnglish: Bool {
+        didSet { UserDefaults.standard.set(storedIsEnglish, forKey: "appLanguageIsEnglish") }
+    }
+
     var isEnglish: Bool {
-        didSet { UserDefaults.standard.set(isEnglish, forKey: "appLanguageIsEnglish") }
+        get { Self.override ?? storedIsEnglish }
+        set { storedIsEnglish = newValue }
     }
 
     private init() {
-        isEnglish = UserDefaults.standard.bool(forKey: "appLanguageIsEnglish")
+        storedIsEnglish = UserDefaults.standard.bool(forKey: "appLanguageIsEnglish")
     }
 
     /// Returns `ko` when Korean is active, `en` when English is active.

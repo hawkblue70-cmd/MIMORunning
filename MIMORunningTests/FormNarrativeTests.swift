@@ -2,8 +2,9 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-/// 폼 카드 마무리 문장 — 유형 프레임(이지·빠른·일반)별 톤. 문자열 검사는 `AppLanguage.shared`를 건드리므로 직렬 실행.
-@Suite("FormNarrative 폼 마무리 문장", .serialized)
+/// 폼 카드 마무리 문장 — 유형 프레임(이지·빠른·일반)별 톤.
+/// 언어는 `AppLanguage.$override`(태스크 로컬)로 주입해 전역 설정을 건드리지 않는다.
+@Suite("FormNarrative 폼 마무리 문장", .korean)
 struct FormNarrativeTests {
 
     private typealias S = FormNarrative.Status
@@ -15,14 +16,11 @@ struct FormNarrativeTests {
     }
 
     private func ko(_ i: FormNarrative.Input, _ f: FormNarrative.Frame) -> String {
-        AppLanguage.shared.isEnglish = false
-        return FormNarrative.sentence(i, frame: f)
+        AppLanguage.$override.withValue(false) { FormNarrative.sentence(i, frame: f) }
     }
 
     private func en(_ i: FormNarrative.Input, _ f: FormNarrative.Frame) -> String {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
-        return FormNarrative.sentence(i, frame: f)
+        AppLanguage.$override.withValue(true) { FormNarrative.sentence(i, frame: f) }
     }
 
     // MARK: - 프레임 매핑 (9 유형 전부)
@@ -171,14 +169,11 @@ struct FormNarrativeTests {
     }
 
     private func koLong(_ i: FormNarrative.LongDistanceInput) -> String {
-        AppLanguage.shared.isEnglish = false
-        return FormNarrative.longDistanceSentence(i)
+        AppLanguage.$override.withValue(false) { FormNarrative.longDistanceSentence(i) }
     }
 
     private func enLong(_ i: FormNarrative.LongDistanceInput) -> String {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
-        return FormNarrative.longDistanceSentence(i)
+        AppLanguage.$override.withValue(true) { FormNarrative.longDistanceSentence(i) }
     }
 
     /// 스크린샷 버그: 케이던스 195→195, 보폭 0.88→0.95인데 "줄었어요"라고 하던 것
