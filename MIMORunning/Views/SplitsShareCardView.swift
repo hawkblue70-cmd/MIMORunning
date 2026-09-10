@@ -110,6 +110,44 @@ private struct SplitsPalette {
         kmLabel:         Color(hex: "999999"),
         rowAlt:          Color(hex: "FAFAF8")
     )
+
+    /// 지표 의미색 — 라이트 배경에서도 읽히는 값으로 매핑한다.
+    func metricColor(_ kind: RunMetricKind) -> Color {
+        if isLight {
+            switch kind {
+            case .distance:  return textPrimary
+            case .time:      return Color(hex: "C77A00")
+            case .pace:      return Color(hex: "0E7C8A")
+            case .heartRate: return heartRate
+            case .cadence:   return textPrimary
+            case .power:     return power
+            case .form:      return Color(hex: "5B3FD9")
+            case .cardio:    return Color(hex: "1B7F3B")
+            case .calories:  return Color(hex: "C2185B")
+            case .elevation: return Color(hex: "1B7F3B")
+            }
+        }
+        switch kind {
+        case .distance:  return .white
+        case .time:      return Theme.time
+        case .pace:      return Theme.pace
+        case .heartRate: return Theme.heartRate
+        case .cadence:   return .white
+        case .power:     return Theme.power
+        case .form:      return Theme.runningForm
+        case .cardio:    return Theme.elevation
+        case .calories:  return Theme.calories
+        case .elevation: return Theme.elevation
+        }
+    }
+}
+
+/// 구간 카드 하단에 무엇을 붙일지 — 카드 본문(구간 막대차트)은 두 종류가 그대로 공유한다.
+enum SplitsCardVariant: Identifiable {
+    case hrZones   // 구간 기록 + 심박 영역
+    case runData   // 구간 기록 + 이 러닝의 지표
+
+    var id: Self { self }
 }
 
 // MARK: - Splits share card (300 × dynamic height, rendered via ImageRenderer)
@@ -123,14 +161,19 @@ struct SplitsShareCardView: View {
     var weatherText: String? = nil
     var weatherIcon: String? = nil
     var theme: ShareTheme = .dark
+    var variant: SplitsCardVariant = .hrZones
+    var runMetrics: [RunMetricItem] = []
 
     private var pal: SplitsPalette { theme == .light ? .light : .dark }
 
     // Scale factor 300/360 = 5/6 applied throughout
     // Base 4:5 (300×375), grows dynamically for more splits
-    static func cardHeight(splitCount: Int, hasZones: Bool = false) -> CGFloat {
+    static func cardHeight(splitCount: Int, hasZones: Bool = false, runMetricCount: Int = 0) -> CGFloat {
         let zonesH: CGFloat = hasZones ? 130 : 0
-        return max(375, 198 + CGFloat(splitCount) * 16 + zonesH)
+        let metricsH: CGFloat = runMetricCount > 0
+            ? 34 + CGFloat((runMetricCount + 2) / 3) * 30
+            : 0
+        return max(375, 198 + CGFloat(splitCount) * 16 + zonesH + metricsH)
     }
 
     private var groupSize: Int {
@@ -258,7 +301,9 @@ struct SplitsShareCardView: View {
                     .padding(.top, 13)
                     .padding(.bottom, 8)
 
-                    Text(AppLanguage.shared.s("구간 기록", "Splits"))
+                    Text(variant == .runData
+                         ? AppLanguage.shared.s("구간 기록 · 러닝 데이터", "Splits · Run Data")
+                         : AppLanguage.shared.s("구간 기록", "Splits"))
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.5)
                         .foregroundStyle(pal.accentLabel)
@@ -292,9 +337,12 @@ struct SplitsShareCardView: View {
                         footerStat(value: String(format: "%.1fkm", totalDistanceKm), label: AppLanguage.shared.s("총 거리", "TOTAL"), color: pal.footerTotal)
                     }
 
-                    // HR zones (if available)
-                    if !zones.isEmpty {
-                        hrZonesSectionView
+                    // 하단 섹션 — 막대차트 아래에 심박 영역 또는 러닝 데이터
+                    switch variant {
+                    case .hrZones:
+                        if !zones.isEmpty { hrZonesSectionView }
+                    case .runData:
+                        if !runMetrics.isEmpty { runMetricsSectionView }
                     }
 
                     // Branding
@@ -490,6 +538,48 @@ struct SplitsShareCardView: View {
         }
     }
 
+    /// 앱 화면 상단 지표 그리드와 같은 항목(RunMetricItem.list)을 카드 크기로 표시.
+    @ViewBuilder
+    private var runMetricsSectionView: some View {
+        Rectangle()
+            .fill(pal.dividerFooter)
+            .frame(height: 0.5)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+        HStack(spacing: 0) {
+            Text(AppLanguage.shared.s("러닝 데이터", "Run Data"))
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(pal.textPrimary)
+            Spacer()
+            Text(AppLanguage.shared.s("이 러닝 평균", "This run"))
+                .font(.system(size: 8))
+                .foregroundStyle(pal.kmLabel)
+        }
+        .padding(.bottom, 5)
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3),
+                  alignment: .leading, spacing: 7) {
+            ForEach(runMetrics) { item in
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 3) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 6.5))
+                        Text(item.label)
+                            .font(.system(size: 7, weight: .medium))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                    .foregroundStyle(pal.metricColor(item.kind).opacity(pal.isLight ? 0.95 : 0.85))
+                    Text(item.value)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(pal.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
     private func zoneBpmText(_ zone: HRZoneData) -> String {
         if zone.id == 1 { return "<\(zone.maxBPM)BPM" }
         if zone.id == zones.last?.id { return "\(zone.minBPM)+BPM" }
@@ -508,6 +598,8 @@ struct SplitsShareCardScreen: View {
     var weatherText: String? = nil
     var weatherIcon: String? = nil
     var firstCoordinate: CLLocationCoordinate2D? = nil
+    var variant: SplitsCardVariant = .hrZones
+    var runMetrics: [RunMetricItem] = []
 
     @Environment(\.dismiss) private var dismiss
     @State private var previewImage: UIImage?
@@ -547,7 +639,9 @@ struct SplitsShareCardScreen: View {
                 .font(.body)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text(AppLanguage.shared.s("구간 기록 카드", "Splits Card"))
+            Text(variant == .runData
+                 ? AppLanguage.shared.s("구간 · 러닝 데이터 카드", "Splits · Run Data Card")
+                 : AppLanguage.shared.s("구간 · 심박 영역 카드", "Splits · HR Zones Card"))
                 .font(.headline)
                 .foregroundStyle(.white)
             Spacer()
@@ -594,7 +688,7 @@ struct SplitsShareCardScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         } else {
-            SplitsShareCardView(activity: activity, splits: splits, zones: zones, miniMeImage: miniMeImage, shoeName: shoeName, weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon, theme: splitsTheme)
+            SplitsShareCardView(activity: activity, splits: splits, zones: zones, miniMeImage: miniMeImage, shoeName: shoeName, weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon, theme: splitsTheme, variant: variant, runMetrics: runMetrics)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         }
@@ -649,7 +743,7 @@ struct SplitsShareCardScreen: View {
     @MainActor
     private func renderCard() async {
         isRendering = true
-        let card = SplitsShareCardView(activity: activity, splits: splits, zones: zones, miniMeImage: miniMeImage, shoeName: shoeName, weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon, theme: splitsTheme)
+        let card = SplitsShareCardView(activity: activity, splits: splits, zones: zones, miniMeImage: miniMeImage, shoeName: shoeName, weatherText: resolvedWeatherText, weatherIcon: resolvedWeatherIcon, theme: splitsTheme, variant: variant, runMetrics: runMetrics)
         let renderer = ImageRenderer(content: card)
         renderer.scale = 3
         previewImage = renderer.uiImage

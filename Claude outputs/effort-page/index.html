@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>운동 강도 — 미모러닝</title>
+<style>
+  :root { --violet: #7C5CFC; --bg: #111114; --card: #1A1A1F; --text: #F2F2F5; --muted: #A2A2AD; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: -apple-system, "Apple SD Gothic Neo", "Pretendard", system-ui, sans-serif; line-height: 1.6; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 56px 20px 72px; }
+  .eyebrow { color: var(--violet); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+  h1 { font-size: clamp(28px, 4.5vw, 40px); margin: 8px 0 12px; line-height: 1.2; }
+  .lead { font-size: 18px; color: var(--muted); margin: 0 0 40px; }
+  .scale { display: flex; gap: 4px; margin: 0 0 40px; }
+  .scale span { flex: 1; height: 22px; border-radius: 4px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: center; margin: 0 0 56px; }
+  .row.flip figure { order: 2; }
+  figure { margin: 0; background: var(--card); border-radius: 18px; padding: 12px; }
+  figure img { display: block; width: 100%; height: auto; border-radius: 12px; }
+  figcaption { color: var(--muted); font-size: 13px; padding: 10px 4px 2px; }
+  h2 { font-size: 22px; margin: 0 0 10px; }
+  p { margin: 0 0 12px; }
+  .points { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .points li { background: var(--card); border-radius: 14px; padding: 18px; }
+  .points b { display: block; color: var(--violet); margin-bottom: 6px; }
+  .foot { color: var(--muted); font-size: 12px; margin-top: 40px; }
+  @media (max-width: 720px) {
+    .row, .points { grid-template-columns: 1fr; }
+    .row.flip figure { order: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">MIMO Running · 운동 강도</div>
+  <h1>오늘 얼마나 힘들었나요?</h1>
+  <p class="lead">러닝을 마치면 1부터 10까지 한 번만 탭하세요. Apple Watch가 기록한 강도가 먼저 채워져 있고, 몸의 느낌과 다르면 바로 고칠 수 있습니다.</p>
+
+  <div class="scale" aria-label="운동 강도 1~10 막대">
+    <span style="background:#3B82F6"></span><span style="background:#38A8E8"></span><span style="background:#2ECDC1"></span>
+    <span style="background:#5FD37A"></span><span style="background:#A5DE3C"></span><span style="background:#E5D62A"></span>
+    <span style="background:#F5B72B"></span><span style="background:#F58A2B"></span><span style="background:#F0512F"></span>
+    <span style="background:#E81E63"></span>
+  </div>
+
+  <div class="row">
+    <figure>
+      <img src="images/effort-performance.png" alt="퍼포먼스 카드 — 강도 분포와 14일 강도 부하">
+      <figcaption>퍼포먼스 카드 · 강도 분포(4주)와 강도 부하(14일)</figcaption>
+    </figure>
+    <div>
+      <h2>얼마나 쌓였는지, 한눈에</h2>
+      <p>강도에 시간을 곱한 값이 그날의 부하입니다. 최근 7일 부하를 4주 평균과 비교해 "회복 쪽으로 기운 주" 같은 한 줄로 말해 줍니다.</p>
+      <p>왼쪽의 강도 분포는 심박 존 기준 저강도·중간·고강도 비율입니다. 점선은 지구력 종목 문헌값으로, 쉬운 날이 충분한지 참고할 수 있습니다.</p>
+    </div>
+  </div>
+
+  <div class="row flip">
+    <figure>
+      <img src="images/effort-flow.png" alt="성장 탭 러닝 흐름 — 막대 색이 강도, 선이 페이스">
+      <figcaption>성장 탭 · 러닝 흐름과 유형별 평소 강도</figcaption>
+    </figure>
+    <div>
+      <h2>거리·강도·페이스를 한 차트에</h2>
+      <p>막대는 거리, 막대의 색은 그날의 강도, 선은 페이스입니다. 힘든 날과 편한 날이 어떻게 섞여 있는지 30일 단위로 흐름이 보입니다.</p>
+      <p>아래의 유형별 평소 강도는 템포런·빌드업·이지런마다 내가 보통 느끼는 강도의 중앙값입니다. 이지런인데 평소보다 훨씬 힘들었다면 카드가 먼저 알려 줍니다.</p>
+    </div>
+  </div>
+
+  <ul class="points">
+    <li><b>몸의 느낌이 우선</b>같은 페이스라도 더운 날, 잠이 부족한 날은 다르게 느껴집니다. 내가 입력한 값이 Apple 추정값보다 우선합니다.</li>
+    <li><b>입력은 선택</b>입력하지 않아도 Apple Watch 값으로 모든 차트가 채워집니다. 과거 러닝도 그대로 반영됩니다.</li>
+    <li><b>경고가 아니라 방향</b>"위험"이라 말하지 않습니다. 부하가 높으면 회복을, 쉬운 날이 적으면 편한 러닝을 한 문장으로 제안합니다.</li>
+  </ul>
+
+  <p class="foot">근거: Foster(2001) 세션 RPE, Seiler(2006) 훈련 강도 분포, Apple Workout Effort Score. 미모러닝은 데이터를 읽기만 하며 건강 앱에 쓰지 않습니다.</p>
+
+</div>
+</body>
+</html>

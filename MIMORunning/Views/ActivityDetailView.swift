@@ -316,7 +316,9 @@ struct ActivityDetailView: View {
                         SplitsSection(splits: splits, zones: detail?.hrZones ?? [],
                                   activity: activity, allActivities: manager.activities,
                                   condition: condition,
-                                  firstCoordinate: detail?.routeCoordinates.first)
+                                  firstCoordinate: detail?.routeCoordinates.first,
+                                  runMetrics: RunMetricItem.list(activity: activity, detail: detail,
+                                                                 age: userAge, isMale: manager.userIsMale))
                     }
                     let zones = effectiveHRZones
                     if !zones.isEmpty {
@@ -1923,74 +1925,10 @@ private struct MetricGrid: View {
     let age: Int?
     let isMale: Bool?
 
-    private struct Item: Identifiable {
-        let id = UUID()
-        let icon: String
-        let label: String
-        let value: String
-        let color: Color
-        var note: String? = nil
-        var trendMetric: TrendMetric? = nil
-        var compactValue: Bool = false  // true → title3, false → title2
+    // 항목 목록은 RunMetricItem.list 한 곳에서만 만든다 — 공유 카드와 같은 목록을 쓴다.
+    private var items: [RunMetricItem] {
+        RunMetricItem.list(activity: activity, detail: detail, age: age, isMale: isMale)
     }
-
-    private var items: [Item] { generalItems }
-
-    private var generalItems: [Item] {
-        let L = AppLanguage.shared
-        var list: [Item] = [
-            Item(icon: "ruler", label: L.s("거리", "Dist."), value: activity.formattedDistance, color: .white),
-            Item(icon: "clock", label: L.s("시간", "Time"), value: activity.formattedDuration, color: Theme.time),
-        ]
-        if let pace = activity.formattedPace {
-            list.append(Item(icon: "timer", label: L.s("페이스", "Pace"), value: pace, color: Theme.pace))
-        }
-        if let hr = activity.avgHeartRate {
-            list.append(Item(icon: "heart.fill", label: L.s("평균 심박", "Avg HR"), value: "\(hr) bpm", color: Theme.heartRate))
-        }
-        if activity.type == .running {
-            if let cadence = detail?.avgCadence {
-                list.append(Item(icon: "figure.run", label: L.s("케이던스", "Cadence"), value: "\(cadence) spm",
-                                 color: .white, trendMetric: .cadence))
-            }
-            if let power = detail?.avgPower {
-                list.append(Item(icon: "bolt.fill", label: L.s("파워", "Power"), value: "\(power) W",
-                                 color: Theme.power, trendMetric: .power))
-            }
-            if let gct = detail?.avgGroundContactTime {
-                list.append(Item(icon: "stopwatch", label: L.s("지면 접촉", "Gnd Contact"),
-                                 value: "\(Int(gct.rounded())) ms", color: Theme.runningForm,
-                                 trendMetric: .groundContactTime))
-            }
-            if let stride = detail?.avgStrideLength {
-                list.append(Item(icon: "arrow.left.and.right", label: L.s("보폭", "Stride"),
-                                 value: String(format: "%.2f m", stride), color: Theme.runningForm,
-                                 trendMetric: .strideLength))
-            }
-            if let vo = detail?.avgVerticalOscillation {
-                list.append(Item(icon: "arrow.up.and.down", label: L.s("수직 진폭", "Vert. Osc."),
-                                 value: String(format: "%.1f cm", vo), color: Theme.runningForm,
-                                 trendMetric: .verticalOscillation))
-            }
-            if let vo2 = detail?.vo2Max {
-                let rating = CardioFitnessClassifier.rating(vo2: vo2, age: age, isMale: isMale)
-                let note = rating.map { L.s("현재 추정 · \($0)", "Curr. Est. · \($0)") } ?? L.s("현재 추정", "Curr. Est.")
-                list.append(Item(icon: "lungs.fill", label: L.s("유산소 피트니스", "Cardio Fitness"),
-                                 value: String(format: "%.1f mL/kg·min", vo2),
-                                 color: Theme.elevation, note: note, trendMetric: .vo2Max, compactValue: true))
-            }
-        }
-        if let cal = activity.calories {
-            list.append(Item(icon: "flame.fill", label: L.s("칼로리", "Cals"),
-                             value: String(format: "%.0f kcal", cal), color: Theme.calories))
-        }
-        if let elev = detail?.elevationGain {
-            list.append(Item(icon: "arrow.up.right", label: L.s("고도 획득", "Elev. Gain"),
-                             value: String(format: "%.0f m", elev), color: Theme.elevation))
-        }
-        return list
-    }
-
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -2236,9 +2174,11 @@ private struct SplitsSection: View {
     var allActivities: [Activity] = []
     var condition: ActivityCondition? = nil
     var firstCoordinate: CLLocationCoordinate2D? = nil
+    /// 상단 지표 그리드와 같은 목록 — "구간 러닝 데이터" 카드에 그대로 실린다
+    var runMetrics: [RunMetricItem] = []
 
     @Environment(CustomMiniMeStore.self) private var miniMeStore
-    @State private var showSplitsShare = false
+    @State private var shareVariant: SplitsCardVariant? = nil
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
 
@@ -2267,27 +2207,14 @@ private struct SplitsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                DetailSectionHeader(title: AppLanguage.shared.s("구간 기록", "Splits"),
-                                   subtitle: AppLanguage.shared.s("\(splits.count)개 구간", "\(splits.count) splits"))
-                Spacer()
-                if activity != nil {
-                    Button { showSplitsShare = true } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "square.and.arrow.up.on.square")
-                                .font(.caption.weight(.semibold))
-                            Text(AppLanguage.shared.s("구간 내보내기", "Export Splits"))
-                                .font(.caption.weight(.semibold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.9)
-                        }
-                        .foregroundStyle(Theme.violet)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Theme.violet.opacity(0.12))
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
+            DetailSectionHeader(title: AppLanguage.shared.s("구간 기록", "Splits"),
+                               subtitle: AppLanguage.shared.s("\(splits.count)개 구간", "\(splits.count) splits"))
+            if activity != nil {
+                HStack(spacing: 8) {
+                    exportButton(title: AppLanguage.shared.s("구간 러닝 데이터 내보내기", "Export Splits + Run Data"),
+                                 variant: .runData)
+                    exportButton(title: AppLanguage.shared.s("구간 심박영역 내보내기", "Export Splits + HR Zones"),
+                                 variant: .hrZones)
                 }
             }
             SplitsHighlightCard(splits: splits, activity: activity, allActivities: allActivities)
@@ -2308,14 +2235,38 @@ private struct SplitsSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .padding(.horizontal, 16)
-        .sheet(isPresented: $showSplitsShare) {
+        .sheet(item: $shareVariant) { variant in
             if let act = activity {
                 SplitsShareCardScreen(activity: act, splits: splits, zones: zones, miniMeImage: miniMeStore.image, shoeName: shoeName,
                                       weatherText: act.temperatureC.map { String(format: "%.0f°C", $0) },
                                       weatherIcon: condition?.weather?.systemIcon,
-                                      firstCoordinate: firstCoordinate)
+                                      firstCoordinate: firstCoordinate,
+                                      variant: variant,
+                                      runMetrics: runMetrics)
             }
         }
+    }
+
+    private func exportButton(title: String, variant: SplitsCardVariant) -> some View {
+        Button {
+            shareVariant = variant
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "square.and.arrow.up.on.square")
+                    .font(.caption.weight(.semibold))
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundStyle(Theme.violet)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(Theme.violet.opacity(0.12))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 
