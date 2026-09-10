@@ -864,8 +864,10 @@ struct RunInsightTabCard: View {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up.on.square")
                             .font(.system(size: 11, weight: .semibold))
-                        Text(L.s("내보내기", "Export"))
+                        Text(L.s("오늘의 인사이트 내보내기", "Export Insights"))
                             .font(.system(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
                     .foregroundStyle(Theme.violet)
                     .padding(.horizontal, 10).padding(.vertical, 5)
