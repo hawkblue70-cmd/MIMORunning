@@ -2190,11 +2190,13 @@ private struct RhythmInsightCard: View {
         let L = AppLanguage.shared
         // 인터벌은 band 기반 범위를 표시하지 않음
         if workoutTypeFn?(activity.id) == .interval {
-            return L.s("전력 구간 권장 170–190", "Work cadence rec. 170–190")
+            return L.s("전력 구간 참고 170–190", "Work cadence ref. 170–190")
         }
         guard let bb = formBaseline?.baseline(for: activity),
               let stat = bb.cadence else {
-            return L.s("권장 케이던스 160–180", "Rec. Cadence 160–180")
+            // 기록이 쌓이기 전 임시 폴백 — 절대 기준을 "권장"으로 단정하지 않는다.
+            // 케이던스는 페이스·체형에 따라 크게 달라지고, 기록이 모이면 개인 기준으로 바뀐다.
+            return L.s("일반 참고 범위 160–180", "General range 160–180")
         }
         let lo = Int(stat.lower.rounded())
         let hi = Int(stat.upper.rounded())
@@ -2206,10 +2208,10 @@ private struct RhythmInsightCard: View {
         guard let bl = formBaseline else {
             let inRange = (160...175).contains(cad)
             let text = inRange
-                ? L.s("권장 범위 안이에요", "In recommended range")
+                ? L.s("일반적인 범위예요", "Typical range")
                 : cad < 160
-                    ? L.s("권장 범위보다 낮아요", "Below recommended range")
-                    : L.s("권장 범위보다 높아요", "Above recommended range")
+                    ? L.s("일반 범위보다 낮아요", "Below typical")
+                    : L.s("일반 범위보다 높아요", "Above typical")
             return (text, inRange ? IC.green : IC.label)
         }
         let (lower, upper, warning) = bl.cadenceBand(for: activity)
@@ -2258,10 +2260,10 @@ private struct RhythmInsightCard: View {
         let L = AppLanguage.shared
         let inRange = (160...175).contains(cadence)
         let statusText = inRange
-            ? L.s("권장 범위 안이에요", "In recommended range")
+            ? L.s("일반적인 범위예요", "Typical range")
             : cadence < 160
-                ? L.s("권장 범위보다 낮아요", "Below recommended range")
-                : L.s("권장 범위보다 높아요", "Above recommended range")
+                ? L.s("일반 범위보다 낮아요", "Below typical")
+                : L.s("일반 범위보다 높아요", "Above typical")
         let statusColor: Color = inRange ? IC.green : IC.label
 
         return VStack(alignment: .leading, spacing: 6) {
