@@ -1731,12 +1731,12 @@ private struct RouteMapView: View {
 
     private var cacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_v10_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_v11_\(activityID.uuidString).jpg")
     }
 
     private var hrZoneCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_hrzone_v5_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_hrzone_v6_\(activityID.uuidString).jpg")
     }
 
     private func loadFromDisk() -> UIImage? {
@@ -1803,6 +1803,19 @@ private struct RouteMapView: View {
         return result
     }
 
+    /// 시작점 마커 — 경로 영상과 같은 형식(속 빈 흰 링).
+    /// 영상은 CALayer 테두리(안쪽으로 그려짐)라 바깥 지름이 10 — 여기선 stroke가 경로 중심
+    /// 기준이므로 반지름을 lineWidth 절반만큼 줄여 바깥 지름을 맞춘다.
+    private func drawStartMarker(at point: CGPoint) {
+        let lineWidth: CGFloat = 1.5
+        let ringR: CGFloat = 5 - lineWidth / 2
+        let ring = UIBezierPath(ovalIn: CGRect(x: point.x - ringR, y: point.y - ringR,
+                                               width: ringR * 2, height: ringR * 2))
+        ring.lineWidth = lineWidth
+        UIColor.white.setStroke()
+        ring.stroke()
+    }
+
     /// 도착점 마커 — 경로 영상과 같은 형식(골드 글로우 + 골드 점).
     /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
     private func drawFinishMarker(at point: CGPoint) {
@@ -1833,8 +1846,10 @@ private struct RouteMapView: View {
         let gap: CGFloat = 5
         let minGap: CGFloat = 26          // 이보다 가까우면 겹쳐 읽히지 않는다
         let bounds = CGRect(origin: .zero, size: snap.image.size)
-        // 도착점(골드 마커)을 미리 놓아 그 위에 km 마커가 겹치지 않게 한다
-        var placed: [CGPoint] = coords.last.map { [snap.point(for: $0)] } ?? []
+        // 시작·도착 마커를 미리 놓아 그 위에 km 마커가 겹치지 않게 한다
+        var placed: [CGPoint] = [coords.first, coords.last]
+            .compactMap { $0 }
+            .map { snap.point(for: $0) }
 
         for mark in marks {
             let pt = snap.point(for: mark.coord)
@@ -1918,7 +1933,8 @@ private struct RouteMapView: View {
 
             drawKilometerMarkers(on: snap, coords: valid)
 
-            // 도착점 — 경로 영상과 같은 골드 마커
+            // 시작·도착점 — 경로 영상과 같은 마커
+            if let first = pts.first { drawStartMarker(at: first) }
             if let last = pts.last { drawFinishMarker(at: last) }
         }
     }
@@ -2022,7 +2038,8 @@ private struct RouteMapView: View {
             }
             drawKilometerMarkers(on: snap, coords: indexed.map(\.element))
 
-            // 도착점 — 경로 영상과 같은 골드 마커
+            // 시작·도착점 — 경로 영상과 같은 마커
+            if let first = points.first { drawStartMarker(at: first.pt) }
             if let last = points.last { drawFinishMarker(at: last.pt) }
         }
     }

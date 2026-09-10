@@ -31,11 +31,19 @@ final class KmMarkerLabelTests: XCTestCase {
     /// 지도에 그릴 때 쓰는 크기로 실제 렌더해 눈으로 확인할 수 있게 저장
     @MainActor
     func testExportSampleStrip() throws {
-        let size = CGSize(width: 300, height: 40)
+        let size = CGSize(width: 330, height: 40)
         let img = UIGraphicsImageRenderer(size: size).image { _ in
             UIColor(red: 0.14, green: 0.15, blue: 0.16, alpha: 1).setFill()
             UIBezierPath(rect: CGRect(origin: .zero, size: size)).fill()
-            var x: CGFloat = 12
+            // 시작점 흰 링 (경로 영상과 같은 치수)
+            UIColor.white.setStroke()
+            let ringR: CGFloat = 5 - 0.75
+            let start = UIBezierPath(ovalIn: CGRect(x: 14 - ringR, y: 20 - ringR,
+                                                    width: ringR * 2, height: ringR * 2))
+            start.lineWidth = 1.5
+            start.stroke()
+
+            var x: CGFloat = 40
             for km in [1, 2, 10, 40] {
                 let dotR: CGFloat = 3.5
                 let y: CGFloat = 20
