@@ -106,7 +106,7 @@ struct CadenceHRCurveDiag: Codable {
 }
 
 struct RunningFormBaseline: Codable {
-    static let currentVersion = 15  // allFormSamples: 전체 폼 히스토리 풀 추가
+    static let currentVersion = 16  // 페이스 컷오프: 밖으로 밀려나는 러닝 5건 이상이면 컷오프 해제
     let version: Int
     let computedAt: Date
     let cutoffs: PaceBandCutoffs
@@ -671,7 +671,8 @@ enum FormBaselineEngine {
         func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s)/60, Int(s)%60) }
         print("[Baseline] 아주 느림 상한 = \(pf(result)) (중앙 \(pf(med)) + 1.5SD \(String(format: "%.0f", sd))초)")
         #endif
-        return result
+        return releasedIfPattern(result, excludedCount: sortedAll.filter { $0 > result }.count,
+                                 release: .greatestFiniteMagnitude, side: "느린")
     }
 
     /// fast 구간(＜tempoMin)의 중앙값-1.5SD → fastMin.
@@ -689,7 +690,21 @@ enum FormBaselineEngine {
             print("[Baseline] 가장 빠른 하한 = \(pf(result)) (중앙 \(pf(med)) - 1.5SD \(String(format: "%.0f", sd))초)")
         }
         #endif
-        return result
+        return releasedIfPattern(result, excludedCount: sortedAll.filter { $0 < result }.count,
+                                 release: 0, side: "빠른")
+    }
+
+    /// 컷오프 밖으로 밀려나는 러닝이 `minSamples` 이상이면 이상치가 아니라 **훈련 패턴**이다.
+    /// 계속 버리면 그 러닝들은 어느 밴드에도 못 들어가고, 밴드가 없으니 다음에도 또 버려진다
+    /// (빠르게 달릴수록 자기 기준이 안 생기는 악순환). 이럴 땐 컷오프를 풀어 밴드에 합류시킨다.
+    /// 1~2건만 벗어나면 원래 목적대로 이상치·오측정으로 보고 그대로 잘라낸다.
+    private static func releasedIfPattern(_ cutoff: Double, excludedCount: Int,
+                                          release: Double, side: String) -> Double {
+        guard excludedCount >= minSamples else { return cutoff }
+        #if DEBUG
+        print("[Baseline] \(side) 쪽 컷오프 해제 — 밖으로 밀려나는 러닝 \(excludedCount)건(최소 \(minSamples)건) = 이상치가 아니라 훈련 패턴")
+        #endif
+        return release
     }
 
     /// jog 구간 페이스(≥jogMin)의 중앙값+1.2SD → jogMax.

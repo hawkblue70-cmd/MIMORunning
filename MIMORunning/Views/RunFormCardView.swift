@@ -1015,6 +1015,9 @@ struct RunFormCardView: View {
 
     /// 범위 바 히스토리 점: baseline.allFormSamples에서 열람 러닝 이전 12개월 · 같은 페이스 구간 · 거리 0.5~2배 필터 후 최신 5개.
     private func recentDotsForBand(dir: MetricDir) -> [Double] {
+        // 참고 밴드일 땐 점을 찍지 않는다 — 구간 밖 러닝들은 페이스가 제각각이라
+        // 산포만 커져 축이 늘어나고(띠가 눌린다) 오늘 점이 과거 점에 묻힌다.
+        guard !isReferenceBand else { return [] }
         guard let baseline = baseline, !baseline.allFormSamples.isEmpty else { return [] }
         guard let actPace = activity.paceSecPerKm else { return [] }
         let actBand = baseline.cutoffs.band(of: actPace)
@@ -1030,15 +1033,7 @@ struct RunFormCardView: View {
             if s.date >= viewDate { return false }
             if s.date < oneYearAgo { return false }
             // 같은 페이스 구간
-            let sBand = baseline.cutoffs.band(of: s.paceSecPerKm)
-            if actBand == nil {
-                // 오늘이 구간 밖 — 같은 쪽으로 벗어난 러닝만 (빠른 쪽 ↔ 느린 쪽 섞이면 안 됨)
-                guard sBand == nil else { return false }
-                guard Self.isFaster(than: baseline, pace: s.paceSecPerKm) == self.isFasterThanBands
-                else { return false }
-            } else {
-                guard sBand == actBand else { return false }
-            }
+            guard baseline.cutoffs.band(of: s.paceSecPerKm) == actBand else { return false }
             // 거리 0.5~2배
             let ratio = todayDist / s.distanceM
             return ratio >= 0.5 && ratio <= 2.0
@@ -1522,13 +1517,7 @@ struct RunFormCardView: View {
         let line2 = L.s(
             "\n오늘 페이스(\(todayPace))는 평소 구간보다 \(dirWord) 판정 대신 참고로만 보여드려요",
             "\nToday's pace (\(todayPace)) is \(dirWord) your usual bands — shown for reference, not judged")
-        // 흰 점 = 오늘처럼 구간 밖이면서 거리가 비슷한 최근 러닝
-        let dotCount = recentDotsForBand(dir: .cadence).count
-        let dotLine = dotCount >= 2
-            ? L.s("\n흰 점 = 오늘처럼 구간 밖인 최근 \(dotCount)회",
-                  "\nWhite dots = \(dotCount) recent runs also outside the bands")
-            : ""
-        return line1 + line2 + dotLine
+        return line1 + line2
     }
 
     private func barSummaryText() -> String? {
