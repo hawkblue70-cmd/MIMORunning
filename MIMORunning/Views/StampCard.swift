@@ -646,29 +646,38 @@ private struct StampInlineTripleView: View {
     var showTextOutline: Bool = true
 
     var body: some View {
+        // ⚠ lineLimit(1) 필수 — 이 뷰는 StampCard에서 .fixedSize()로 감싸지는데,
+        //   베이스라인 정렬 HStack + 중첩 HStack 조합에서 SwiftUI가 이상적 폭을 실제보다
+        //   좁게 잡아 "10.0"이 "10." / "0"으로 줄바꿈되고 푸터(심박·칼로리)가 카드 밖으로
+        //   밀려나갔다. 한 줄 고정으로 자연 폭을 유지한다.
         VStack(alignment: .leading, spacing: sz(3, scale)) {
             HStack(alignment: .lastTextBaseline, spacing: sz(8, scale)) {
                 HStack(alignment: .lastTextBaseline, spacing: sz(2, scale)) {
                     Text(data.distance)
                         .font(.system(size: sz(22, scale), weight: .black))
                         .tracking(-1.5)
+                        .lineLimit(1).fixedSize()
                     Text(data.distanceUnit)
                         .font(.system(size: sz(10, scale), weight: .bold))
                         .baselineOffset(sz(3, scale))
+                        .lineLimit(1).fixedSize()
                 }
                 divider
                 Text(data.pace)
                     .font(.system(size: sz(22, scale), weight: .black))
                     .tracking(-1.5)
+                    .lineLimit(1).fixedSize()
                 divider
                 Text(data.time)
                     .font(.system(size: sz(22, scale), weight: .black))
                     .tracking(-1.5)
+                    .lineLimit(1).fixedSize()
             }
             if let footer = stampMetricFooter(data: data, hr: showHeartRate, cal: showCalories) {
                 Text(footer)
                     .font(.system(size: sz(10, scale), weight: .bold))
                     .tracking(1.2)
+                    .lineLimit(1).fixedSize()
                     .opacity(0.85)
             }
         }
