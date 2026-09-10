@@ -120,11 +120,15 @@ struct StampControlsView: View {
                 sizeChip(.large)
                 sizeChip(.xlarge)
                 textOutlineChip
-                if data.heartRate != nil { heartRateChip }
             }
-            // 스토리: 크기 행 아래 날짜 칩
-            if template == .story {
-                HStack(spacing: 6) { dateChip }
+            // 토글 행: 심박 · 날짜(스토리)
+            // ⚠ 심박 칩을 위 크기 행에 붙이면 오른쪽 컬럼 폭(≈230pt)을 넘겨
+            //   라벨이 "…"로 잘린다. 토글끼리 아랫줄로 분리한다.
+            if data.heartRate != nil || template == .story {
+                HStack(spacing: 6) {
+                    if data.heartRate != nil { heartRateChip }
+                    if template == .story    { dateChip }
+                }
             }
             // 배속 — 영상, 클립이 있을 때
             if template == .video, !vm.clipRecipes.isEmpty {
