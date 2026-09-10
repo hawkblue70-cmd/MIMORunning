@@ -280,6 +280,31 @@ struct BigNumberRouteVideoFrameView: View {
     }
 }
 
+// MARK: - KM marker label (경로 영상 · 지도 스냅샷 공용)
+
+/// km 마커 라벨 — 검정 반투명 알약 위 흰 볼드 "Nkm".
+/// ⚠ 경로 영상과 활동 상세 지도가 **이 함수 하나만** 쓴다. 복사해서 따로 그리지 말 것.
+func makeKmMarkerLabelImage(km: Int, renderScale: CGFloat) -> CGImage? {
+    let text     = "\(km)km"
+    let fontSize = 12 * renderScale
+    let font     = UIFont.systemFont(ofSize: fontSize, weight: .bold)
+    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.white]
+    let textSize = (text as NSString).size(withAttributes: attrs)
+    let hPad: CGFloat = 5 * renderScale
+    let vPad: CGFloat = 2.5 * renderScale
+    let imgSize = CGSize(width: ceil(textSize.width + hPad * 2),
+                         height: ceil(textSize.height + vPad * 2))
+    // scale=1.0 → CGImage pixels == imgSize pixels (avoids 2x/3x screen-scale inflation)
+    let fmt = UIGraphicsImageRendererFormat()
+    fmt.scale = 1.0
+    return UIGraphicsImageRenderer(size: imgSize, format: fmt).image { _ in
+        UIColor.black.withAlphaComponent(0.65).setFill()
+        UIBezierPath(roundedRect: CGRect(origin: .zero, size: imgSize),
+                     cornerRadius: imgSize.height / 2).fill()
+        (text as NSString).draw(at: CGPoint(x: hPad, y: vPad), withAttributes: attrs)
+    }.cgImage
+}
+
 // MARK: - KM Marker data
 
 private struct KmMarkerInfo {
@@ -1317,24 +1342,7 @@ struct RouteVideoExportService {
     // MARK: - KM label image (pre-rendered CGImage, avoids CATextLayer rendering quirks)
 
     private static func makeKmLabelImage(km: Int, renderScale: CGFloat) -> CGImage? {
-        let text     = "\(km)km"
-        let fontSize = 12 * renderScale
-        let font     = UIFont.systemFont(ofSize: fontSize, weight: .bold)
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.white]
-        let textSize = (text as NSString).size(withAttributes: attrs)
-        let hPad: CGFloat = 5 * renderScale
-        let vPad: CGFloat = 2.5 * renderScale
-        let imgSize = CGSize(width: ceil(textSize.width + hPad * 2),
-                             height: ceil(textSize.height + vPad * 2))
-        // scale=1.0 → CGImage pixels == imgSize pixels (avoids 2x/3x screen-scale inflation)
-        let fmt = UIGraphicsImageRendererFormat()
-        fmt.scale = 1.0
-        return UIGraphicsImageRenderer(size: imgSize, format: fmt).image { _ in
-            UIColor.black.withAlphaComponent(0.65).setFill()
-            UIBezierPath(roundedRect: CGRect(origin: .zero, size: imgSize),
-                         cornerRadius: imgSize.height / 2).fill()
-            (text as NSString).draw(at: CGPoint(x: hPad, y: vPad), withAttributes: attrs)
-        }.cgImage
+        makeKmMarkerLabelImage(km: km, renderScale: renderScale)
     }
 
     // MARK: - Gradient helpers (CAShapeLayer path)

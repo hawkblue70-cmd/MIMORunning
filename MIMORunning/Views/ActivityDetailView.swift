@@ -1731,12 +1731,12 @@ private struct RouteMapView: View {
 
     private var cacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_v8_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_v9_\(activityID.uuidString).jpg")
     }
 
     private var hrZoneCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_hrzone_v3_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_hrzone_v4_\(activityID.uuidString).jpg")
     }
 
     private func loadFromDisk() -> UIImage? {
@@ -1799,7 +1799,9 @@ private struct RouteMapView: View {
         return result
     }
 
-    /// 경로 위에 km 지점을 원+숫자로 그린다. 왕복 코스처럼 화면에서 겹치는 마커는 건너뛴다.
+    /// 경로 위 km 지점 마커. **경로 영상과 같은 형식** — 흰 점 + 검정 알약 "Nkm" 라벨.
+    /// 라벨 이미지는 `makeKmMarkerLabelImage`(영상과 공용)로 만든다.
+    /// 왕복 코스처럼 화면에서 겹치는 마커는 건너뛴다.
     /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
     private func drawKilometerMarkers(on snap: MKMapSnapshotter.Snapshot,
                                       coords: [CLLocationCoordinate2D]) {
@@ -1809,33 +1811,30 @@ private struct RouteMapView: View {
         let marks = kilometerMarks(coords, stepKm: step)
         guard !marks.isEmpty else { return }
 
-        let radius: CGFloat = 8
+        let dotR: CGFloat = 3.5           // 경로 영상 마커와 같은 크기
+        let gap: CGFloat = 5
         let minGap: CGFloat = 26          // 이보다 가까우면 겹쳐 읽히지 않는다
-        let violet = UIColor(red: 0x7C / 255.0, green: 0x5C / 255.0, blue: 0xFC / 255.0, alpha: 1.0)
         let bounds = CGRect(origin: .zero, size: snap.image.size)
         var placed: [CGPoint] = []
 
         for mark in marks {
             let pt = snap.point(for: mark.coord)
-            guard bounds.insetBy(dx: radius, dy: radius).contains(pt) else { continue }
+            guard bounds.insetBy(dx: dotR, dy: dotR).contains(pt) else { continue }
             guard placed.allSatisfy({ hypot($0.x - pt.x, $0.y - pt.y) >= minGap }) else { continue }
             placed.append(pt)
 
-            let circle = UIBezierPath(ovalIn: CGRect(x: pt.x - radius, y: pt.y - radius,
-                                                     width: radius * 2, height: radius * 2))
-            UIColor.white.setFill()
-            circle.fill()
-            violet.setStroke()
-            circle.lineWidth = 1.5
-            circle.stroke()
+            UIColor.white.withAlphaComponent(0.85).setFill()
+            UIBezierPath(ovalIn: CGRect(x: pt.x - dotR, y: pt.y - dotR,
+                                        width: dotR * 2, height: dotR * 2)).fill()
 
-            let text = "\(mark.km)" as NSString
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 9, weight: .bold),
-                .foregroundColor: UIColor(red: 0x14 / 255.0, green: 0x12 / 255.0, blue: 0x2B / 255.0, alpha: 1.0)
-            ]
-            let size = text.size(withAttributes: attrs)
-            text.draw(at: CGPoint(x: pt.x - size.width / 2, y: pt.y - size.height / 2), withAttributes: attrs)
+            guard let labelImg = makeKmMarkerLabelImage(km: mark.km, renderScale: 1) else { continue }
+            let lw = CGFloat(labelImg.width)
+            let lh = CGFloat(labelImg.height)
+            // 오른쪽 가장자리에 가까우면 라벨을 점 왼쪽으로 뒤집는다 (영상과 동일 규칙)
+            let nearRight = pt.x + dotR + gap + lw > bounds.maxX - 6
+            let labelX = nearRight ? pt.x - dotR - gap - lw : pt.x + dotR + gap
+            UIImage(cgImage: labelImg, scale: 1, orientation: .up)
+                .draw(in: CGRect(x: labelX, y: pt.y - lh / 2, width: lw, height: lh))
         }
     }
 
