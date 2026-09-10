@@ -1563,10 +1563,16 @@ struct RunFormCardView: View {
         } else {
             dotLine = ""
         }
+        // 색 범례 — 초록은 "범위 안"이 아니라 "좋은 쪽"이다. 케이던스는 범위 위로,
+        // 지면접촉은 범위 아래로 벗어나도 초록이라, 설명이 없으면 보폭(범위 밖=회색)과
+        // 색이 갈리는 이유를 알 수 없다.
+        let colorLine = L.s(
+            "\n초록 = 범위 안이거나 더 좋은 쪽 (케이던스는 높게 · 지면접촉은 짧게)",
+            "\nGreen = in range, or the better side (higher cadence · shorter contact)")
         let caveat: String = n < 3
             ? L.s("\n비교 대상이 적어 참고용이에요.", "\nLimited samples — treat as reference only.")
             : ""
-        return line1 + dotLine + caveat
+        return line1 + dotLine + colorLine + caveat
     }
 
     // MARK: - Narrative
