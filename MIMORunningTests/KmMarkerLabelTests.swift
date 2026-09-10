@@ -31,7 +31,7 @@ final class KmMarkerLabelTests: XCTestCase {
     /// 지도에 그릴 때 쓰는 크기로 실제 렌더해 눈으로 확인할 수 있게 저장
     @MainActor
     func testExportSampleStrip() throws {
-        let size = CGSize(width: 220, height: 40)
+        let size = CGSize(width: 300, height: 40)
         let img = UIGraphicsImageRenderer(size: size).image { _ in
             UIColor(red: 0.14, green: 0.15, blue: 0.16, alpha: 1).setFill()
             UIBezierPath(rect: CGRect(origin: .zero, size: size)).fill()
@@ -49,6 +49,13 @@ final class KmMarkerLabelTests: XCTestCase {
                     x += dotR + 5 + lw + 14
                 }
             }
+            // 도착점 골드 마커 (경로 영상과 같은 치수)
+            let gold = UIColor(red: 1.0, green: 0xC7 / 255.0, blue: 0x4D / 255.0, alpha: 1)
+            let fx = x + 6, fy: CGFloat = 20
+            gold.withAlphaComponent(0.40).setFill()
+            UIBezierPath(ovalIn: CGRect(x: fx - 9, y: fy - 9, width: 18, height: 18)).fill()
+            gold.setFill()
+            UIBezierPath(ovalIn: CGRect(x: fx - 5, y: fy - 5, width: 10, height: 10)).fill()
         }
         try XCTUnwrap(img.pngData()).write(to: URL(fileURLWithPath: "/tmp/km_marker_sample.png"))
     }

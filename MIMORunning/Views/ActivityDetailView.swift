@@ -1731,12 +1731,12 @@ private struct RouteMapView: View {
 
     private var cacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_v9_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_v10_\(activityID.uuidString).jpg")
     }
 
     private var hrZoneCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_hrzone_v4_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_hrzone_v5_\(activityID.uuidString).jpg")
     }
 
     private func loadFromDisk() -> UIImage? {
@@ -1778,12 +1778,14 @@ private struct RouteMapView: View {
     }
 
     /// 누적 거리가 간격의 배수를 넘는 지점의 좌표 = 그 km 지점.
-    private func kilometerMarks(_ coords: [CLLocationCoordinate2D], stepKm: Double)
+    /// 도착점과 겹치는 마지막 마커는 뺀다(경로 영상 computeKmMarkers와 같은 규칙).
+    private func kilometerMarks(_ coords: [CLLocationCoordinate2D], stepKm: Double, totalMeters: Double)
         -> [(km: Int, coord: CLLocationCoordinate2D)] {
         guard coords.count > 1, stepKm > 0 else { return [] }
+        let stepM = stepKm * 1000
         var result: [(km: Int, coord: CLLocationCoordinate2D)] = []
         var accum = 0.0
-        var next = stepKm * 1000
+        var next = stepM
         var prev = CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude)
         for c in coords.dropFirst() {
             let cur = CLLocation(latitude: c.latitude, longitude: c.longitude)
@@ -1792,11 +1794,27 @@ private struct RouteMapView: View {
             guard d.isFinite else { continue }
             accum += d
             while accum >= next {
-                result.append((km: Int((next / 1000).rounded()), coord: c))
-                next += stepKm * 1000
+                if next < totalMeters - stepM * 0.5 {
+                    result.append((km: Int((next / 1000).rounded()), coord: c))
+                }
+                next += stepM
             }
         }
         return result
+    }
+
+    /// 도착점 마커 — 경로 영상과 같은 형식(골드 글로우 + 골드 점).
+    /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
+    private func drawFinishMarker(at point: CGPoint) {
+        let gold = UIColor(Color(hex: "FFC74D"))
+        let glowR: CGFloat = 9
+        gold.withAlphaComponent(0.40).setFill()
+        UIBezierPath(ovalIn: CGRect(x: point.x - glowR, y: point.y - glowR,
+                                    width: glowR * 2, height: glowR * 2)).fill()
+        let dotR: CGFloat = 5
+        gold.setFill()
+        UIBezierPath(ovalIn: CGRect(x: point.x - dotR, y: point.y - dotR,
+                                    width: dotR * 2, height: dotR * 2)).fill()
     }
 
     /// 경로 위 km 지점 마커. **경로 영상과 같은 형식** — 흰 점 + 검정 알약 "Nkm" 라벨.
@@ -1808,14 +1826,15 @@ private struct RouteMapView: View {
         let total = totalRouteMeters(coords)
         guard total >= 1000 else { return }
         let step = mapMarkerStepKm(totalMeters: total)
-        let marks = kilometerMarks(coords, stepKm: step)
+        let marks = kilometerMarks(coords, stepKm: step, totalMeters: total)
         guard !marks.isEmpty else { return }
 
         let dotR: CGFloat = 3.5           // 경로 영상 마커와 같은 크기
         let gap: CGFloat = 5
         let minGap: CGFloat = 26          // 이보다 가까우면 겹쳐 읽히지 않는다
         let bounds = CGRect(origin: .zero, size: snap.image.size)
-        var placed: [CGPoint] = []
+        // 도착점(골드 마커)을 미리 놓아 그 위에 km 마커가 겹치지 않게 한다
+        var placed: [CGPoint] = coords.last.map { [snap.point(for: $0)] } ?? []
 
         for mark in marks {
             let pt = snap.point(for: mark.coord)
@@ -1897,14 +1916,10 @@ private struct RouteMapView: View {
             violetColor.setStroke()
             path.stroke()
 
-            // End dot
-            if let last = pts.last {
-                let dot = UIBezierPath(ovalIn: CGRect(x: last.x - 3, y: last.y - 3, width: 6, height: 6))
-                UIColor.white.setFill()
-                dot.fill()
-            }
-
             drawKilometerMarkers(on: snap, coords: valid)
+
+            // 도착점 — 경로 영상과 같은 골드 마커
+            if let last = pts.last { drawFinishMarker(at: last) }
         }
     }
 
@@ -2005,12 +2020,10 @@ private struct RouteMapView: View {
                 seg.lineCapStyle = .round; seg.lineWidth = 1.5
                 color.setStroke(); seg.stroke()
             }
-            if let last = points.last {
-                let dot = UIBezierPath(ovalIn: CGRect(x: last.pt.x - 3, y: last.pt.y - 3, width: 6, height: 6))
-                UIColor.white.setFill(); dot.fill()
-            }
-
             drawKilometerMarkers(on: snap, coords: indexed.map(\.element))
+
+            // 도착점 — 경로 영상과 같은 골드 마커
+            if let last = points.last { drawFinishMarker(at: last.pt) }
         }
     }
 
