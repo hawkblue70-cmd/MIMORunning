@@ -84,6 +84,7 @@ struct RunFormCardView: View {
         let dir: MetricDir
         let lineColor: Color
         let bandIsJudgeable: Bool   // 띠 판정 가능 여부
+        var bandIsReference: Bool = false  // true = 다른 페이스 구간에서 빌려온 참고 띠
         let bandSampleCount: Int    // 띠 표본 수 (라벨·로그용)
         let bandPaceMin: Double?    // 띠 기준 페이스 하한 (sec/km) — 라벨용
         let bandPaceMax: Double?    // 띠 기준 페이스 상한 (sec/km) — 라벨용
@@ -110,15 +111,67 @@ struct RunFormCardView: View {
 
     private var bb: BandBaseline? { baseline?.baseline(for: activity) }
 
-    /// 스플릿 차트용 참조 밴드. 페이스가 범위 밖이어도 장거리 문맥에선 가장 느린
-    /// 유효 밴드를 참고로 사용 — 띠 배경은 유지하고 OOB 강조만 끈다.
-    private var effectiveBb: BandBaseline? {
-        if let b = bb { return b }
-        guard isLongDistanceContext, let bl = baseline else { return nil }
-        for fallback in [PaceBand.verySlow, .jog, .daily, .tempo, .fast] {
-            if let found = bl.bands[fallback] { return found }
+    /// 오늘 페이스가 개인 페이스 구간 밖(`cutoffs.band(of:) == nil`)일 때 **표시용**으로 쓸
+    /// 가장 가까운 유효 밴드. 평소보다 빠르면 가장 빠른 구간부터, 느리면 가장 느린 구간부터 찾는다.
+    /// ⚠ 판정(문장·상태 배지·OOB 강조)에는 절대 쓰지 않는다 — 다른 페이스대 기준이라 오독이 된다.
+    ///   판정은 계속 `bb`(nil이면 생략)를 쓰고, 여기서는 "참고 띠"만 그린다.
+    private var referenceBb: BandBaseline? {
+        guard let bl = baseline else { return nil }
+        return Self.referenceBand(in: bl, paceSecPerKm: activity.paceSecPerKm)
+    }
+
+    /// 참고 밴드 선택 — 순수 함수(테스트 대상).
+    /// 페이스가 어느 구간에도 속하지 않을 때만 값을 돌려준다. 벗어난 쪽에서 가장 가까운 밴드부터 찾는다.
+    static func referenceBand(in baseline: RunningFormBaseline,
+                              paceSecPerKm: Double?) -> BandBaseline? {
+        guard let pace = paceSecPerKm,
+              baseline.cutoffs.band(of: pace) == nil else { return nil }
+        let order: [PaceBand] = isFaster(than: baseline, pace: pace)
+            ? [.fast, .tempo, .daily, .jog, .verySlow]     // 평소보다 빠름 → 가장 빠른 구간부터
+            : [.verySlow, .jog, .daily, .tempo, .fast]     // 평소보다 느림 → 가장 느린 구간부터
+        for band in order {
+            if let found = baseline.bands[band] { return found }
         }
         return nil
+    }
+
+    /// true = 구간보다 **빠른** 쪽으로 벗어남 (false = 느린 쪽)
+    static func isFaster(than baseline: RunningFormBaseline, pace: Double) -> Bool {
+        baseline.cutoffs.fastMin > 0 && pace < baseline.cutoffs.fastMin
+    }
+
+    private var isFasterThanBands: Bool {
+        guard let bl = baseline, let pace = activity.paceSecPerKm else { return false }
+        return Self.isFaster(than: bl, pace: pace)
+    }
+
+    /// 범위 바·km 차트 띠에 실제로 그릴 밴드 (판정용 `bb`와 구분).
+    private var displayBb: BandBaseline? { bb ?? referenceBb }
+
+    /// true = 오늘 페이스가 구간 밖이라 다른 구간을 "참고"로 빌려 그리는 중.
+    private var isReferenceBand: Bool { bb == nil && referenceBb != nil }
+
+    /// 표시용 GCT 밴드 (참고 모드 포함). 판정용은 `adjustedGctStat`.
+    private var displayGctStat: FormStat? {
+        FormNarrative.driftAdjustedGCT(displayBb?.groundContact,
+                                       baselineResidualMean: baseline?.gctBaselineResidualMean,
+                                       gctShift: formShifts.first(where: { $0.metric.key == "gct" }))
+    }
+
+    private func bandDisplayName(_ b: PaceBand) -> String {
+        let L = AppLanguage.shared
+        switch b {
+        case .verySlow: return L.s("아주 느림", "Very slow")
+        case .jog:      return L.s("느린 편", "Easy")
+        case .daily:    return L.s("보통", "Daily")
+        case .tempo:    return L.s("빠른 편", "Tempo")
+        case .fast:     return L.s("가장 빠른", "Fastest")
+        }
+    }
+
+    private func paceStr(_ sec: Double) -> String {
+        let i = Int(sec.rounded())
+        return "\(i / 60)'\(String(format: "%02d", i % 60))\""
     }
 
     /// GCT 밴드를 열람 시점 기준으로 보정한 FormStat.
@@ -212,8 +265,11 @@ struct RunFormCardView: View {
             return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
         }
         // 판정가능 → ±1.2SD×factor / 판정불가(표본<minSamples) → P10-P90 관측 범위
-        let bbJudgeable   = bb?.isJudgeable ?? true
-        let bbSampleCount = bb?.sampleCount ?? 0
+        // 참고 밴드(오늘 페이스가 구간 밖)는 판정불가로 취급 — 띠는 그리되 OOB 강조는 끈다
+        let isRefBand     = isReferenceBand
+        let dispBb        = displayBb
+        let bbJudgeable   = isRefBand ? false : (bb?.isJudgeable ?? true)
+        let bbSampleCount = dispBb?.sampleCount ?? 0
         func splitBounds(_ formStat: FormStat?, dir: MetricDir)
             -> (lo: Double, hi: Double)? {
             guard let stat = formStat else { return nil }
@@ -238,7 +294,7 @@ struct RunFormCardView: View {
         // Cadence
         let cadPairs: [(Int, Double)] = bs.compactMap { s in s.avgCadence.map { (s.id, Double($0)) } }
         if !cadPairs.isEmpty {
-            let stat = bb?.cadence
+            let stat = dispBb?.cadence
             let cb = splitBounds(stat, dir: .cadence)
             result.append(FormSeries(
                 label: L.s("케이던스", "Cadence"), unit: "spm",
@@ -247,15 +303,15 @@ struct RunFormCardView: View {
                 firstAvg:  avg(firstHalf.map  { $0.avgCadence.map(Double.init) }),
                 secondAvg: avg(secondHalf.map { $0.avgCadence.map(Double.init) }),
                 dir: .cadence, lineColor: Color(hex: "5CE5D5"),
-                bandIsJudgeable: bbJudgeable, bandSampleCount: bbSampleCount,
-                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count
+                bandIsJudgeable: bbJudgeable, bandIsReference: isRefBand, bandSampleCount: bbSampleCount,
+                bandPaceMin: dispBb?.paceMin, bandPaceMax: dispBb?.paceMax, totalSplitCount: bs.count
             ))
         }
 
         // Stride
         let slPairs: [(Int, Double)] = bs.compactMap { s in s.avgStrideLength.map { (s.id, $0) } }
         if !slPairs.isEmpty {
-            let stat = bb?.strideLength
+            let stat = dispBb?.strideLength
             let sb = splitBounds(stat, dir: .stride)
             result.append(FormSeries(
                 label: L.s("보폭", "Stride"), unit: "m",
@@ -264,15 +320,15 @@ struct RunFormCardView: View {
                 firstAvg:  avg(firstHalf.map(\.avgStrideLength)),
                 secondAvg: avg(secondHalf.map(\.avgStrideLength)),
                 dir: .stride, lineColor: Color(hex: "FFA94D"),
-                bandIsJudgeable: bbJudgeable, bandSampleCount: bbSampleCount,
-                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count
+                bandIsJudgeable: bbJudgeable, bandIsReference: isRefBand, bandSampleCount: bbSampleCount,
+                bandPaceMin: dispBb?.paceMin, bandPaceMax: dispBb?.paceMax, totalSplitCount: bs.count
             ))
         }
 
         // GCT — [109] adjustedGctStat로 시점 보정 밴드 적용
         let gctPairs: [(Int, Double)] = bs.compactMap { s in s.avgGroundContactTime.map { (s.id, $0) } }
         if !gctPairs.isEmpty {
-            let stat = adjustedGctStat
+            let stat = displayGctStat
             let gb = splitBounds(stat, dir: .groundContact)
             result.append(FormSeries(
                 label: L.s("지면접촉", "GCT"), unit: "ms",
@@ -281,15 +337,15 @@ struct RunFormCardView: View {
                 firstAvg:  avg(firstHalf.map(\.avgGroundContactTime)),
                 secondAvg: avg(secondHalf.map(\.avgGroundContactTime)),
                 dir: .groundContact, lineColor: Color(hex: "A78BFA"),
-                bandIsJudgeable: bbJudgeable, bandSampleCount: bbSampleCount,
-                bandPaceMin: bb?.paceMin, bandPaceMax: bb?.paceMax, totalSplitCount: bs.count
+                bandIsJudgeable: bbJudgeable, bandIsReference: isRefBand, bandSampleCount: bbSampleCount,
+                bandPaceMin: dispBb?.paceMin, bandPaceMax: dispBb?.paceMax, totalSplitCount: bs.count
             ))
         }
 
         // Vertical Oscillation (참고 전용 — 추세 표시, 판정·OOB 강조 없음)
         let voPairs: [(Int, Double)] = bs.compactMap { s in s.avgVerticalOscillation.map { (s.id, $0) } }
         if !voPairs.isEmpty {
-            let voBounds = splitBounds(bb?.verticalOsc, dir: .verticalOsc)
+            let voBounds = splitBounds(dispBb?.verticalOsc, dir: .verticalOsc)
             result.append(FormSeries(
                 label: L.s("수직진폭", "Vert Osc"), unit: "cm",
                 points: voPairs.map { km, v in .init(id: km, kmEnd: bucketKm[km] ?? Double(km), value: v, outOfRange: false) },
@@ -297,7 +353,7 @@ struct RunFormCardView: View {
                 firstAvg: avg(firstHalf.map(\.avgVerticalOscillation)),
                 secondAvg: avg(secondHalf.map(\.avgVerticalOscillation)),
                 dir: .verticalOsc, lineColor: Color.white.opacity(0.45),
-                bandIsJudgeable: false, bandSampleCount: bbSampleCount,
+                bandIsJudgeable: false, bandIsReference: isRefBand, bandSampleCount: bbSampleCount,
                 bandPaceMin: nil, bandPaceMax: nil, totalSplitCount: bs.count
             ))
         }
@@ -698,20 +754,21 @@ struct RunFormCardView: View {
         let L = AppLanguage.shared
         var items: [ChainChild] = []
         var n = 0
+        // 바에 그릴 밴드는 표시용(displayBb) — 구간 밖이면 가장 가까운 구간을 참고로 빌린다
         if let sl = avgStrideLength {
             items.append(ChainChild(id: n, label: L.s("보폭", "Stride"),
                 rawValue: sl, formatted: String(format: "%.2f", sl), unit: "m",
-                stat: bb?.strideLength, dir: .stride, isRef: false)); n += 1
+                stat: displayBb?.strideLength, dir: .stride, isRef: false)); n += 1
         }
         if let gct = avgGroundContactTime {
             items.append(ChainChild(id: n, label: L.s("지면접촉", "GCT"),
                 rawValue: gct, formatted: String(format: "%.0f", gct), unit: "ms",
-                stat: adjustedGctStat, dir: .groundContact, isRef: false)); n += 1
+                stat: displayGctStat, dir: .groundContact, isRef: false)); n += 1
         }
         if let vo = avgVerticalOscillation {
             items.append(ChainChild(id: n, label: L.s("수직진폭", "Vert Osc"),
                 rawValue: vo, formatted: String(format: "%.1f", vo), unit: "cm",
-                stat: bb?.verticalOsc, dir: .verticalOsc, isRef: true))
+                stat: displayBb?.verticalOsc, dir: .verticalOsc, isRef: true))
         }
         return items
     }
@@ -828,7 +885,8 @@ struct RunFormCardView: View {
             if let cad = avgCadence {
                 rootNodeView(label: isInterval ? L.s("케이던스 (전력)", "Cadence (work)") : L.s("케이던스", "Cadence"),
                              rawValue: Double(cad), formatted: "\(cad)", unit: "spm",
-                             stat: bb?.isJudgeable == true ? bb?.cadence : nil, dir: .cadence)
+                             stat: (isReferenceBand || bb?.isJudgeable == true) ? displayBb?.cadence : nil,
+                             dir: .cadence)
             }
             ForEach(children) { child in
                 connectorView
@@ -879,8 +937,9 @@ struct RunFormCardView: View {
             if !isInterval, let stat {
                 rangeBarView(rawValue: rawValue, stat: stat, dir: dir,
                              dotValues: recentDotsForBand(dir: dir),
-                             totalSamples: bb?.sampleCount ?? 0,
-                             bandName: bb?.band.rawValue ?? "")
+                             totalSamples: displayBb?.sampleCount ?? 0,
+                             bandName: displayBb?.band.rawValue ?? "",
+                             isReference: isReferenceBand)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -912,8 +971,9 @@ struct RunFormCardView: View {
             if !isInterval, let stat = child.stat {
                 rangeBarView(rawValue: child.rawValue, stat: stat, dir: child.dir,
                              dotValues: recentDotsForBand(dir: child.dir),
-                             totalSamples: bb?.sampleCount ?? 0,
-                             bandName: bb?.band.rawValue ?? "")
+                             totalSamples: displayBb?.sampleCount ?? 0,
+                             bandName: displayBb?.band.rawValue ?? "",
+                             isReference: isReferenceBand)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -970,7 +1030,15 @@ struct RunFormCardView: View {
             if s.date >= viewDate { return false }
             if s.date < oneYearAgo { return false }
             // 같은 페이스 구간
-            guard baseline.cutoffs.band(of: s.paceSecPerKm) == actBand else { return false }
+            let sBand = baseline.cutoffs.band(of: s.paceSecPerKm)
+            if actBand == nil {
+                // 오늘이 구간 밖 — 같은 쪽으로 벗어난 러닝만 (빠른 쪽 ↔ 느린 쪽 섞이면 안 됨)
+                guard sBand == nil else { return false }
+                guard Self.isFaster(than: baseline, pace: s.paceSecPerKm) == self.isFasterThanBands
+                else { return false }
+            } else {
+                guard sBand == actBand else { return false }
+            }
             // 거리 0.5~2배
             let ratio = todayDist / s.distanceM
             return ratio >= 0.5 && ratio <= 2.0
@@ -986,7 +1054,8 @@ struct RunFormCardView: View {
     }
 
     private func rangeBarView(rawValue: Double, stat: FormStat, dir: MetricDir,
-                              dotValues: [Double], totalSamples: Int, bandName: String) -> some View {
+                              dotValues: [Double], totalSamples: Int, bandName: String,
+                              isReference: Bool = false) -> some View {
         let bandLo = roundedDisplay(stat.lower, dir: dir)
         let bandHi = roundedDisplay(stat.upper, dir: dir)
         let rv     = roundedDisplay(rawValue, dir: dir)
@@ -1019,6 +1088,8 @@ struct RunFormCardView: View {
         let dotColor: Color = {
             // [76] 범위 안 + 개선 방향 벗어남 = 녹색. 반대 방향만 회색.
             // [79] 거리 문맥은 색에 영향 없음 — 색은 판정이 아니라 "범위 안" 사실 표시
+            // 참고 밴드(다른 페이스대)일 땐 색으로 판정하지 않는다 — 항상 중립
+            if isReference { return neutral }
             switch dir {
             case .cadence:
                 return rv >= bandLo ? green : neutral
@@ -1063,15 +1134,22 @@ struct RunFormCardView: View {
                 }
 
                 // [63] 평소 범위: 훨씬 밝고 굵게 — 축과 두 단계 이상 대비
+                // 참고 밴드는 점선 + 낮은 명도 — "내 페이스대 기준"과 시각적으로 구분
                 var bandLine = Path()
                 bandLine.move(to: CGPoint(x: bandLoX, y: barY))
                 bandLine.addLine(to: CGPoint(x: bandHiX, y: barY))
-                ctx.stroke(bandLine, with: .color(.white.opacity(0.55)), lineWidth: 2.5)
+                ctx.stroke(bandLine,
+                           with: .color(.white.opacity(isReference ? 0.32 : 0.55)),
+                           style: isReference
+                               ? StrokeStyle(lineWidth: 2, dash: [2.5, 2.5])
+                               : StrokeStyle(lineWidth: 2.5))
                 for x in [bandLoX, bandHiX] {
                     var tick = Path()
                     tick.move(to: CGPoint(x: x, y: barY - 4))
                     tick.addLine(to: CGPoint(x: x, y: barY + 4))
-                    ctx.stroke(tick, with: .color(.white.opacity(0.72)), lineWidth: 2.5)
+                    ctx.stroke(tick,
+                               with: .color(.white.opacity(isReference ? 0.45 : 0.72)),
+                               lineWidth: isReference ? 2 : 2.5)
                 }
 
                 // [52] 히스토리 점: 같은 y, 가까운 점끼리 가로 흩뿌림
@@ -1271,6 +1349,11 @@ struct RunFormCardView: View {
                     }
                 } else if s.bandLo != nil {
                     let bandLabel: String = {
+                        // 오늘 페이스가 구간 밖 → 어느 구간을 빌려왔는지 명시
+                        if s.bandIsReference, let b = displayBb?.band {
+                            return L.s("\(bandDisplayName(b)) 구간 기준 (참고)",
+                                       "\(bandDisplayName(b)) band (ref)")
+                        }
                         if s.dir == .verticalOsc || isLongDistanceContext {
                             return L.s("평소 범위 (참고)", "Typical (ref)")
                         }
@@ -1309,7 +1392,7 @@ struct RunFormCardView: View {
                         yStart: .value("", lo),
                         yEnd: .value("", hi)
                     )
-                    .foregroundStyle(Color.white.opacity(0.08))
+                    .foregroundStyle(Color.white.opacity(s.bandIsReference ? 0.05 : 0.08))
                 }
 
                 // Midpoint divider
@@ -1420,8 +1503,37 @@ struct RunFormCardView: View {
     // MARK: - Bar Summary
 
     /// [61] 범위 바 설명 — 카드 하단에 한 줄. 밴드 이름 대신 페이스 범위 사용.
+    /// 오늘 페이스가 개인 페이스 구간 밖일 때의 범위 바 설명.
+    /// "왜 판정이 없는지 + 지금 보이는 띠가 무엇인지"를 한 번에 알려준다.
+    private func referenceBarSummaryText() -> String? {
+        let L = AppLanguage.shared
+        guard !isInterval, let ref = referenceBb, ref.sampleCount > 0,
+              ref.paceMin > 0, ref.paceMax > 0 else { return nil }
+        let name = bandDisplayName(ref.band)
+        let pr   = abs(ref.paceMax - ref.paceMin) < 1
+            ? paceStr(ref.paceMin)
+            : "\(paceStr(ref.paceMin))~\(paceStr(ref.paceMax))"
+        let line1 = L.s("점선 = \(name) 구간(\(pr)) 러닝 \(ref.sampleCount)회 · 참고",
+                        "Dashed = \(name) band (\(pr)) · \(ref.sampleCount) runs · reference")
+        let todayPace = activity.formattedPace ?? "--'--\""
+        let dirWord = isFasterThanBands
+            ? L.s("빨라", "faster than")
+            : L.s("느려", "slower than")
+        let line2 = L.s(
+            "\n오늘 페이스(\(todayPace))는 평소 구간보다 \(dirWord) 판정 대신 참고로만 보여드려요",
+            "\nToday's pace (\(todayPace)) is \(dirWord) your usual bands — shown for reference, not judged")
+        // 흰 점 = 오늘처럼 구간 밖이면서 거리가 비슷한 최근 러닝
+        let dotCount = recentDotsForBand(dir: .cadence).count
+        let dotLine = dotCount >= 2
+            ? L.s("\n흰 점 = 오늘처럼 구간 밖인 최근 \(dotCount)회",
+                  "\nWhite dots = \(dotCount) recent runs also outside the bands")
+            : ""
+        return line1 + line2 + dotLine
+    }
+
     private func barSummaryText() -> String? {
         let L = AppLanguage.shared
+        if isReferenceBand { return referenceBarSummaryText() }
         guard !isInterval, let bb = bb, bb.sampleCount > 0 else { return nil }
         let paceMin = bb.paceMin
         let paceMax = bb.paceMax
