@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import SwiftData
+import CoreLocation
 
 // MARK: - Tab Enum
 
@@ -682,6 +683,78 @@ private struct AchievementBadgeView: View {
     }
 }
 
+/// 히어로 우측 블록(이번 주·이번 달 누적 + 배지 + 경로 아트).
+/// 리듬·퍼포먼스 카드가 **이 컴포넌트 하나만** 쓴다 — 카드별 별도 레이아웃 작성 금지.
+private struct HeroSideBlockView: View {
+    let activity: Activity
+    let history: [Activity]
+    let coords: [CLLocationCoordinate2D]
+    let badge: AchievementBadgeKind?
+    let routeColor: Color
+    var routeSize: CGSize = CGSize(width: 44, height: 46)
+
+    var body: some View {
+        let L = AppLanguage.shared
+        let wkKm = RunInsightEngine.baseline(for: activity, history: history).weeklyLoadKm
+        let moKm = heroMonthlyLoadKm(activity: activity, history: history)
+
+        return HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .trailing, spacing: 5) {
+                // 1줄: 이번 주
+                loadLine(L.s("이번 주", "This wk"), km: wkKm)
+                // 2줄: 이번 달
+                loadLine(L.s("이번 달", "This mo"), km: moKm)
+                // 3줄: 배지 — 없으면 자리만 유지해 높이가 흔들리지 않게
+                if let badge {
+                    AchievementBadgeView(badge: badge)
+                } else {
+                    Color.clear.frame(height: 22)
+                }
+            }
+            // 경로 아트 (최우측)
+            if coords.count >= 2 {
+                StampRouteArt(
+                    coords: coords,
+                    lineWidth: 2.2,
+                    color: routeColor,
+                    casingColor: Theme.cardBackground
+                )
+                .frame(width: routeSize.width, height: routeSize.height)
+            }
+        }
+    }
+
+    private func loadLine(_ label: String, km: Double) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 9.5))
+                .foregroundStyle(.white.opacity(0.70))
+            Text(String(format: "%.1f", km))
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+            Text("km")
+                .font(.system(size: 8.5))
+                .foregroundStyle(.white.opacity(0.70))
+        }
+    }
+}
+
+/// 이 러닝이 속한 달의 1일 ~ 이 러닝까지 누적 러닝 거리(km).
+private func heroMonthlyLoadKm(activity: Activity, history: [Activity]) -> Double {
+    let cal = Calendar.current
+    guard let startOfMonth = cal.date(
+        from: cal.dateComponents([.year, .month], from: activity.date)
+    ) else { return 0 }
+    var seen = Set<UUID>()
+    var total = 0.0
+    for act in (history + [activity]) where act.type == .running {
+        guard act.date >= startOfMonth, act.date <= activity.date else { continue }
+        if seen.insert(act.id).inserted { total += act.distance / 1000 }
+    }
+    return total
+}
+
 // MARK: - RunInsightTabCard (entry point)
 
 struct RunInsightTabCard: View {
@@ -1305,21 +1378,16 @@ private struct RhythmInsightCard: View {
                 }
             }
             Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 8) {
-                // @State 미설정(ImageRenderer) 시 인라인 계산으로 폴백
-                if let badge = heroBadge ?? computeAchievementBadge(activity: activity, history: history) {
-                    AchievementBadgeView(badge: badge)
-                }
-                if hasRoute {
-                    StampRouteArt(
-                        coords: coords,
-                        lineWidth: 2.2,
-                        color: Color(hex: "5CE08A"),
-                        casingColor: Theme.cardBackground
-                    )
-                    .frame(width: 52, height: 62)
-                }
-            }
+            // 우측 블록: 퍼포먼스 카드와 동일 컴포넌트 (이번 주·이번 달 + 배지 + 경로)
+            // @State 미설정(ImageRenderer) 시 인라인 계산으로 폴백
+            HeroSideBlockView(
+                activity: activity,
+                history: history,
+                coords: hasRoute ? coords : [],
+                badge: heroBadge ?? computeAchievementBadge(activity: activity, history: history),
+                routeColor: Color(hex: "5CE08A"),
+                routeSize: CGSize(width: 52, height: 62)
+            )
         }
     }
 
@@ -2585,10 +2653,6 @@ private struct PerformanceInsightCard: View {
         let kmStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
         let coords = detail?.routeCoordinates ?? []
         let hasRoute = coords.count >= 2
-        let base = weeklyBase
-        let wkKm = String(format: "%.1f", base.weeklyLoadKm)
-        let moKm = String(format: "%.1f", monthlyLoadKm)
-        let L = AppLanguage.shared
 
         return HStack(alignment: .top, spacing: 12) {
             // 히어로 거리 블록 (왼쪽)
@@ -2606,69 +2670,16 @@ private struct PerformanceInsightCard: View {
                 }
             }
             Spacer(minLength: 8)
-            // 우측: 3줄 블록 + 경로 아트 (세로 중앙 정렬)
-            HStack(alignment: .center, spacing: 8) {
-                // 3줄 블록
-                VStack(alignment: .trailing, spacing: 5) {
-                    // 1줄: 이번 주
-                    HStack(spacing: 4) {
-                        Text(L.s("이번 주", "This wk"))
-                            .font(.system(size: 9.5))
-                            .foregroundStyle(.white.opacity(0.70))
-                        Text(wkKm)
-                            .font(.system(size: 10.5, weight: .medium))
-                            .foregroundStyle(.white)
-                            .monospacedDigit()
-                        Text("km")
-                            .font(.system(size: 8.5))
-                            .foregroundStyle(.white.opacity(0.70))
-                    }
-                    // 2줄: 이번 달
-                    HStack(spacing: 4) {
-                        Text(L.s("이번 달", "This mo"))
-                            .font(.system(size: 9.5))
-                            .foregroundStyle(.white.opacity(0.70))
-                        Text(moKm)
-                            .font(.system(size: 10.5, weight: .medium))
-                            .foregroundStyle(.white)
-                            .monospacedDigit()
-                        Text("km")
-                            .font(.system(size: 8.5))
-                            .foregroundStyle(.white.opacity(0.70))
-                    }
-                    // 3줄: 배지 — @State 미설정(ImageRenderer) 시 인라인 계산으로 폴백
-                    if let badge = heroBadge ?? computeAchievementBadge(activity: activity, history: history) {
-                        AchievementBadgeView(badge: badge)
-                    } else {
-                        Color.clear.frame(height: 22)
-                    }
-                }
-                // 경로 아트 (최우측)
-                if hasRoute {
-                    StampRouteArt(
-                        coords: coords,
-                        lineWidth: 2.2,
-                        color: Color(hex: "8B7FF0"),
-                        casingColor: Theme.cardBackground
-                    )
-                    .frame(width: 44, height: 46)
-                }
-            }
+            // 우측 블록: 리듬 카드와 동일 컴포넌트 (이번 주·이번 달 + 배지 + 경로)
+            // @State 미설정(ImageRenderer) 시 인라인 계산으로 폴백
+            HeroSideBlockView(
+                activity: activity,
+                history: history,
+                coords: hasRoute ? coords : [],
+                badge: heroBadge ?? computeAchievementBadge(activity: activity, history: history),
+                routeColor: Color(hex: "8B7FF0")
+            )
         }
-    }
-
-    private var monthlyLoadKm: Double {
-        let cal = Calendar.current
-        guard let startOfMonth = cal.date(
-            from: cal.dateComponents([.year, .month], from: activity.date)
-        ) else { return 0 }
-        var seen = Set<UUID>()
-        var total = 0.0
-        for act in (history + [activity]) where act.type == .running {
-            guard act.date >= startOfMonth, act.date <= activity.date else { continue }
-            if seen.insert(act.id).inserted { total += act.distance / 1000 }
-        }
-        return total
     }
 
     private var kpiRow: some View {
