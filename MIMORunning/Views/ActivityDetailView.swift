@@ -13,7 +13,6 @@ import ImagePlayground
 enum DetailPanel: String, CaseIterable {
     case combined            = "종합"
     case map                 = "경로"
-    case splits              = "스플릿"
     case heartRate           = "심박수"
     case cadence             = "케이던스"
     case groundContact       = "지면 접촉"
@@ -28,7 +27,6 @@ enum DetailPanel: String, CaseIterable {
         return switch self {
         case .map:                  L.s("경로",     "Route")
         case .combined:             L.s("종합",     "Combined")
-        case .splits:               L.s("스플릿",   "Splits")
         case .heartRate:            L.s("심박수",   "HR")
         case .cadence:              L.s("케이던스", "Cadence")
         case .groundContact:        L.s("지면 접촉","Gnd Contact")
@@ -44,7 +42,6 @@ enum DetailPanel: String, CaseIterable {
         switch self {
         case .map:                  return "map.fill"
         case .combined:             return "chart.xyaxis.line"
-        case .splits:               return "chart.bar.fill"
         case .heartRate:            return "heart.fill"
         case .cadence:              return "figure.run"
         case .groundContact:        return "stopwatch"
@@ -72,6 +69,7 @@ struct ActivityDetailView: View {
     @State private var showManualRaceEntry = false
     @State private var showPanelShareCard = false
     @State private var showChartShare = false
+    /// 칩으로 고른 상세 패널. `.combined` = 선택 없음(종합은 상단에 고정 표시).
     @State private var activePanel: DetailPanel = .combined
     @State private var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var hrFetchDone = false
@@ -244,10 +242,9 @@ struct ActivityDetailView: View {
                                  effort: resolvedEffort,
                                  appleValue: appleEffortForRun?.effective.map { EffortResolver.clamp($0) },
                                  baselineNote: effortBaselineNote)
-                    panelShareHeader
-                        .id("panelAnchor")
-                    panelSection
-                    if activePanel == .combined {
+                    combinedShareHeader
+                    combinedPanelSection
+                    Group {
                         RunInsightSection(
                             insights: runInsights,
                             workoutTypeLabel: detail?.workoutType.koreanLabel,
@@ -280,7 +277,14 @@ struct ActivityDetailView: View {
                             effortIndex: effortIndex
                         )
                     }
-                    panelChipRow
+                    // 표시할 상세 지표가 하나도 없으면(걷기 등) 섹션째 숨긴다.
+                    // 로딩 중에는 유지 — 칩이 사라졌다 나타나는 깜빡임 방지.
+                    if isLoadingDetail || !availablePanelsForGrid.isEmpty {
+                        detailPanelsHeader
+                            .id("panelAnchor")
+                        panelChipRow
+                        selectedPanelSection
+                    }
                     if showRaceBanner {
                         RaceDetectionBanner(
                             suggestion: raceSuggestion,
@@ -986,7 +990,6 @@ struct ActivityDetailView: View {
         switch panel {
         case .combined:             return true
         case .map:                  return !(detail?.routeCoordinates ?? []).isEmpty
-        case .splits:               return !(detail?.splits ?? []).isEmpty
         case .heartRate:            return activity.avgHeartRate != nil
         case .cadence:              return detail?.avgCadence != nil
         case .groundContact:        return detail?.avgGroundContactTime != nil
@@ -1004,17 +1007,32 @@ struct ActivityDetailView: View {
 
     // MARK: - Panel section (replaces mapSection)
 
+    private var loadingPanelPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 16)
+            .fill(Theme.cardBackground)
+            .frame(height: 220)
+            .overlay { ProgressView().tint(Theme.violet) }
+            .padding(.horizontal, 16)
+    }
+
+    /// 종합 차트 — 칩 선택과 무관하게 **항상** 표시한다.
     @ViewBuilder
-    private var panelSection: some View {
+    private var combinedPanelSection: some View {
         if isLoadingDetail {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Theme.cardBackground)
-                .frame(height: 220)
-                .overlay { ProgressView().tint(Theme.violet) }
-                .padding(.horizontal, 16)
+            loadingPanelPlaceholder
         } else {
+            combinedPanelContent
+        }
+    }
+
+    /// 칩으로 고른 상세 패널. `activePanel == .combined` 은 "선택 없음"을 뜻하며 아무것도 그리지 않는다.
+    @ViewBuilder
+    private var selectedPanelSection: some View {
+        if activePanel != .combined {
             Group {
-                if activePanel == .map {
+                if isLoadingDetail {
+                    loadingPanelPlaceholder
+                } else if activePanel == .map {
                     if let coords = detail?.routeCoordinates, !coords.isEmpty {
                         RouteMapView(
                             coordinates: coords,
@@ -1029,8 +1047,6 @@ struct ActivityDetailView: View {
                     } else {
                         panelPlaceholder(icon: "map.fill", message: AppLanguage.shared.s("경로 없음", "No Route"))
                     }
-                } else if activePanel == .combined {
-                    panelInnerContent
                 } else {
                     ZStack {
                         Theme.cardBackground
@@ -1058,29 +1074,7 @@ struct ActivityDetailView: View {
         case .map:
             EmptyView()
         case .combined:
-            if isLoadingChart && chartData.availableLayers.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity, minHeight: 190)
-            } else {
-                RunCombinedPanelView(
-                    data: chartData,
-                    distanceText: activity.formattedDistance,
-                    durationText: activity.formattedDuration,
-                    weatherText: activity.weatherBadgeText,
-                    weatherIcon: condition?.weather?.systemIcon,
-                    dateText: panelDateText,
-                    weekdayText: panelWeekdayText,
-                    startTimeText: panelTimeText,
-                    shoeText: panelShoeText,
-                    paceText: activity.formattedPace
-                )
-            }
-        case .splits:
-            if let splits = detail?.splits, !splits.isEmpty {
-                SplitsPanelChart(splits: splits, compact: true, isLargeDisplay: true)
-            } else {
-                panelPlaceholder(icon: "chart.bar.fill", message: AppLanguage.shared.s("스플릿 없음", "No Splits"))
-            }
+            EmptyView()   // 종합은 combinedPanelContent로 상단에 고정 표시
         case .heartRate:
             if !hrFetchDone {
                 ProgressView().tint(Theme.violet)
@@ -1131,6 +1125,27 @@ struct ActivityDetailView: View {
             seriesPanel(icon: "arrow.up.and.down", label: AppLanguage.shared.s("수직 진폭", "Vert. Osc."), unit: "cm",
                         color: Theme.runningForm, format: "%.1f", useRangeBar: true,
                         available: detail?.avgVerticalOscillation != nil)
+        }
+    }
+
+    @ViewBuilder
+    private var combinedPanelContent: some View {
+        if isLoadingChart && chartData.availableLayers.isEmpty {
+            ProgressView()
+                .frame(maxWidth: .infinity, minHeight: 190)
+        } else {
+            RunCombinedPanelView(
+                data: chartData,
+                distanceText: activity.formattedDistance,
+                durationText: activity.formattedDuration,
+                weatherText: activity.weatherBadgeText,
+                weatherIcon: condition?.weather?.systemIcon,
+                dateText: panelDateText,
+                weekdayText: panelWeekdayText,
+                startTimeText: panelTimeText,
+                shoeText: panelShoeText,
+                paceText: activity.formattedPace
+            )
         }
     }
 
@@ -1185,12 +1200,16 @@ struct ActivityDetailView: View {
     private var panelChipRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(DetailPanel.allCases, id: \.self) { panel in
+                // 종합은 상단에 고정 표시하므로 칩에서 제외한다
+                ForEach(DetailPanel.allCases.filter { $0 != .combined }, id: \.self) { panel in
                     let available = isAvailable(panel)
                     let selected  = activePanel == panel
                     Button {
                         guard available else { return }
-                        withAnimation(.easeInOut(duration: 0.2)) { activePanel = panel }
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            // 같은 칩을 다시 누르면 닫는다 (.combined = 선택 없음)
+                            activePanel = selected ? .combined : panel
+                        }
                         panelScrollTrigger += 1
                     } label: {
                         HStack(spacing: 4) {
@@ -1221,45 +1240,57 @@ struct ActivityDetailView: View {
         }
     }
 
-    private var panelShareHeader: some View {
+    /// 종합 차트 헤더 — 종합은 고정 표시라 칩과 무관하게 항상 이 이름·버튼이다.
+    private var combinedShareHeader: some View {
         HStack {
             HStack(spacing: 5) {
-                Image(systemName: activePanel.icon)
+                Image(systemName: DetailPanel.combined.icon)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.violet)
-                Text(activePanel.label)
+                Text(DetailPanel.combined.label)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
             }
             Spacer()
-            Button {
-                if activePanel == .combined {
-                    showChartShare = true
-                } else {
-                    // 공유 카드용 시리즈 전체 사전 로드
-                    prefetchAllSeriesForShareCard()
-                    showPanelGrid4Card = true
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "square.and.arrow.up.on.square")
-                        .font(.caption.weight(.semibold))
-                    Text(activePanel == .combined
-                         ? AppLanguage.shared.s("차트 내보내기", "Export Chart")
-                         : AppLanguage.shared.s("러닝 데이터 내보내기", "Export Data"))
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.9)
-                }
-                .foregroundStyle(Theme.violet)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Theme.violet.opacity(0.12))
-                .clipShape(Capsule())
+            exportChip(title: AppLanguage.shared.s("차트 내보내기", "Export Chart")) {
+                showChartShare = true
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
+    }
+
+    /// 상세 지표 섹션 헤더 — 칩 줄 위 제목 + 4분할 카드 내보내기
+    private var detailPanelsHeader: some View {
+        HStack {
+            Text(AppLanguage.shared.s("오늘의 러닝 상세 데이터", "Today's Run Details"))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+            Spacer()
+            exportChip(title: AppLanguage.shared.s("러닝 데이터 내보내기", "Export Data")) {
+                prefetchAllSeriesForShareCard()   // 공유 카드용 시리즈 전체 사전 로드
+                showPanelGrid4Card = true
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func exportChip(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "square.and.arrow.up.on.square")
+                    .font(.caption.weight(.semibold))
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
+            }
+            .foregroundStyle(Theme.violet)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Theme.violet.opacity(0.12))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 

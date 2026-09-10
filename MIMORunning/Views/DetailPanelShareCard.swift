@@ -134,11 +134,6 @@ struct DetailPanelShareCard: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else { placeholder("map.fill") }
 
-            case .splits:
-                if let splits = detail?.splits, !splits.isEmpty {
-                    SplitsPanelChart(splits: splits, compact: true, isLargeDisplay: false)
-                } else { placeholder("chart.bar.fill") }
-
             case .heartRate:
                 if !hrSamples.isEmpty {
                     HRSeriesPanelChart(samples: hrSamples, zones: detail?.hrZones ?? [], compact: true)
@@ -816,11 +811,6 @@ struct DetailPanelGrid4ShareCard: View {
             } else if let coords = detail?.routeCoordinates, !coords.isEmpty {
                 RouteLineArt(coordinates: coords, lineColor: Theme.violet, lineWidth: 1.2)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else { chartPlaceholder(panel.icon) }
-
-        case .splits:
-            if let splits = detail?.splits, !splits.isEmpty {
-                SplitsPanelChart(splits: splits, compact: true, isLargeDisplay: false)
             } else { chartPlaceholder(panel.icon) }
 
         case .heartRate:
