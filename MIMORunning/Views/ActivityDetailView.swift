@@ -71,6 +71,9 @@ struct ActivityDetailView: View {
     @State private var showChartShare = false
     /// 칩으로 고른 상세 패널. `.combined` = 선택 없음(종합은 상단에 고정 표시).
     @State private var activePanel: DetailPanel = .combined
+    /// 진입 시 기본 패널(경로)을 한 번만 적용하기 위한 플래그.
+    /// 사용자가 칩을 닫아 선택 없음으로 돌린 뒤 다시 자동 선택되면 안 된다.
+    @State private var didApplyDefaultPanel = false
     @State private var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var hrFetchDone = false
     /// 운동 후 180초 심박 (종료 기준 오프셋) · 회복 결과. 자격 미달·샘플 없음이면 nil → 섹션 미표시.
@@ -495,6 +498,7 @@ struct ActivityDetailView: View {
             // Fetch detail regardless (route map, splits, hill annotation)
             detail = await manager.fetchDetail(for: activity.id)
             isLoadingDetail = false
+            applyDefaultPanelIfNeeded()
             // Apple 강도 재조회 — 로딩 완료를 막지 않도록 분리 실행(뷰 이탈 시 취소)
             effortRefreshTask?.cancel()
             effortRefreshTask = Task {
@@ -999,6 +1003,14 @@ struct ActivityDetailView: View {
         case .elevation:            return !(detail?.altitudeProfile ?? []).isEmpty
         case .intervals:            return !(detail?.intervalSegments ?? []).isEmpty
         }
+    }
+
+    /// 상세 데이터 기본 표시는 경로. 야외 경로가 없는 기록(실내런 등)은 선택 없음으로 둔다.
+    private func applyDefaultPanelIfNeeded() {
+        guard !didApplyDefaultPanel else { return }
+        didApplyDefaultPanel = true
+        guard isAvailable(.map) else { return }
+        activePanel = .map
     }
 
     private var availablePanelsForGrid: [DetailPanel] {
@@ -1591,6 +1603,14 @@ private struct ConditionChip: View {
 
 // MARK: - Route map
 
+/// 지도 km 마커 간격. 1km마다 찍으면 촘촘해지는 거리에서는 2km·3km(그 이상은 5·10km)로 넓힌다.
+/// 기준: 지도에 마커가 10개를 넘지 않게.
+func mapMarkerStepKm(totalMeters: Double) -> Double {
+    let totalKm = totalMeters / 1000
+    for step in [1.0, 2.0, 3.0, 5.0, 10.0] where totalKm / step <= 10 { return step }
+    return 10
+}
+
 private struct RouteMapView: View {
     let coordinates: [CLLocationCoordinate2D]
     let activityID: UUID
@@ -1711,12 +1731,12 @@ private struct RouteMapView: View {
 
     private var cacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_v7_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_v8_\(activityID.uuidString).jpg")
     }
 
     private var hrZoneCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_hrzone_v2_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_hrzone_v3_\(activityID.uuidString).jpg")
     }
 
     private func loadFromDisk() -> UIImage? {
@@ -1738,6 +1758,84 @@ private struct RouteMapView: View {
     private func saveHRZoneToDisk(_ image: UIImage) {
         if let data = image.jpegData(compressionQuality: 0.85) {
             try? data.write(to: hrZoneCacheURL)
+        }
+    }
+
+    // MARK: - Kilometer markers
+
+    /// 경로 누적 거리(m).
+    private func totalRouteMeters(_ coords: [CLLocationCoordinate2D]) -> Double {
+        guard coords.count > 1 else { return 0 }
+        var total = 0.0
+        var prev = CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude)
+        for c in coords.dropFirst() {
+            let cur = CLLocation(latitude: c.latitude, longitude: c.longitude)
+            let d = cur.distance(from: prev)
+            if d.isFinite { total += d }
+            prev = cur
+        }
+        return total
+    }
+
+    /// 누적 거리가 간격의 배수를 넘는 지점의 좌표 = 그 km 지점.
+    private func kilometerMarks(_ coords: [CLLocationCoordinate2D], stepKm: Double)
+        -> [(km: Int, coord: CLLocationCoordinate2D)] {
+        guard coords.count > 1, stepKm > 0 else { return [] }
+        var result: [(km: Int, coord: CLLocationCoordinate2D)] = []
+        var accum = 0.0
+        var next = stepKm * 1000
+        var prev = CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude)
+        for c in coords.dropFirst() {
+            let cur = CLLocation(latitude: c.latitude, longitude: c.longitude)
+            let d = cur.distance(from: prev)
+            prev = cur
+            guard d.isFinite else { continue }
+            accum += d
+            while accum >= next {
+                result.append((km: Int((next / 1000).rounded()), coord: c))
+                next += stepKm * 1000
+            }
+        }
+        return result
+    }
+
+    /// 경로 위에 km 지점을 원+숫자로 그린다. 왕복 코스처럼 화면에서 겹치는 마커는 건너뛴다.
+    /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
+    private func drawKilometerMarkers(on snap: MKMapSnapshotter.Snapshot,
+                                      coords: [CLLocationCoordinate2D]) {
+        let total = totalRouteMeters(coords)
+        guard total >= 1000 else { return }
+        let step = mapMarkerStepKm(totalMeters: total)
+        let marks = kilometerMarks(coords, stepKm: step)
+        guard !marks.isEmpty else { return }
+
+        let radius: CGFloat = 8
+        let minGap: CGFloat = 26          // 이보다 가까우면 겹쳐 읽히지 않는다
+        let violet = UIColor(red: 0x7C / 255.0, green: 0x5C / 255.0, blue: 0xFC / 255.0, alpha: 1.0)
+        let bounds = CGRect(origin: .zero, size: snap.image.size)
+        var placed: [CGPoint] = []
+
+        for mark in marks {
+            let pt = snap.point(for: mark.coord)
+            guard bounds.insetBy(dx: radius, dy: radius).contains(pt) else { continue }
+            guard placed.allSatisfy({ hypot($0.x - pt.x, $0.y - pt.y) >= minGap }) else { continue }
+            placed.append(pt)
+
+            let circle = UIBezierPath(ovalIn: CGRect(x: pt.x - radius, y: pt.y - radius,
+                                                     width: radius * 2, height: radius * 2))
+            UIColor.white.setFill()
+            circle.fill()
+            violet.setStroke()
+            circle.lineWidth = 1.5
+            circle.stroke()
+
+            let text = "\(mark.km)" as NSString
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 9, weight: .bold),
+                .foregroundColor: UIColor(red: 0x14 / 255.0, green: 0x12 / 255.0, blue: 0x2B / 255.0, alpha: 1.0)
+            ]
+            let size = text.size(withAttributes: attrs)
+            text.draw(at: CGPoint(x: pt.x - size.width / 2, y: pt.y - size.height / 2), withAttributes: attrs)
         }
     }
 
@@ -1806,6 +1904,8 @@ private struct RouteMapView: View {
                 UIColor.white.setFill()
                 dot.fill()
             }
+
+            drawKilometerMarkers(on: snap, coords: valid)
         }
     }
 
@@ -1910,6 +2010,8 @@ private struct RouteMapView: View {
                 let dot = UIBezierPath(ovalIn: CGRect(x: last.pt.x - 3, y: last.pt.y - 3, width: 6, height: 6))
                 UIColor.white.setFill(); dot.fill()
             }
+
+            drawKilometerMarkers(on: snap, coords: indexed.map(\.element))
         }
     }
 
