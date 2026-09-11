@@ -14,6 +14,10 @@ struct MRTodayCard {
     let cumulativeLine: String       // ①
     let sessionLine: String?         // ② 오늘 뛰었으면 기록 한 줄, 아니면 이번 주 요약
     let linkLine: String?            // ②
+
+    /// 러닝 기록 줄을 "오늘"로 치는 시간 — 러닝 **종료** 후 이만큼. 달력상 자정이 아니다.
+    /// 이 안에 다시 뛰면 가장 최근 러닝으로 교체된다(`runs.last`).
+    static let sessionLineWindow: TimeInterval = 12 * 3600
 }
 
 /// 연속으로 한 번 이상 달린 주의 수. ISO 주(월요일 시작) 기준.
@@ -74,7 +78,15 @@ func mrTodayCard(runs: [MRWorkout],
     //   홈의 큰 글씨는 하나여야 한다:
     //     오늘 뛴 날 → 오늘 러닝이 주인공 (sessionLine)
     //     안 뛴 날   → streakLine(21주 연속)이 주인공
-    let ranToday = cal.isDate(last.date, inSameDayAs: asOf)
+    //
+    // "오늘"의 기준은 달력이 아니라 **러닝이 끝난 뒤 12시간**이다.
+    //   달력 기준(자정)이면 밤 11시에 뛰고 자정 넘어 열었을 때 방금 뛴 게 벌써 없다.
+    //   반대로 다음 러닝까지 계속 두면 사흘 쉰 날에도 사흘 전 기록이 큰 글씨로 남아
+    //   아래 목록과 중복되고, 쉬는 날의 주인공이어야 할 streakLine을 밀어낸다.
+    //   12시간: 오후 5시 러닝은 다음 날 새벽 5시까지, 밤 11시 러닝은 다음 날 11시까지.
+    let sessionEnd = last.start.addingTimeInterval(last.durationMin * 60)
+    let sinceEnd = asOf.timeIntervalSince(sessionEnd)
+    let ranToday = sinceEnd >= 0 && sinceEnd < MRTodayCard.sessionLineWindow
     var sessionLine: String? = nil
     let cumulativeLine: String
     if ranToday {
