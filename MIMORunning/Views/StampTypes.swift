@@ -115,12 +115,12 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     /// 심박 토글이 그림을 바꾸는 스탬프인가.
     ///
     /// 여기 없는 스탬프는 `showHeartRate`를 아예 받지 않아 토글을 눌러도 아무 일이 없다.
-    /// 심박 파형·심박 존은 심박이 본체라 켜고 끌 것이 없고, 여권 스탬프·전광판·고도·케이던스·
-    /// 지명·루트 히어로는 심박을 그리지 않는다. 요약 그리드는 있는 지표를 전부 넣는다.
+    /// 심박 파형·심박 존은 심박이 본체이고, 전광판·서클 배지·루트 히어로·요약 그리드는
+    /// 심박을 토글 없이 항상 그린다. 여권 스탬프·고도·케이던스·지명은 심박을 그리지 않는다.
     /// `StampHeartRateToggleTests`가 실제 렌더로 이 목록과 코드가 맞는지 검사한다.
     var supportsHeartRateToggle: Bool {
         switch self {
-        case .circleBadge, .labeledRows, .inlineTriple, .distanceHero, .hud, .routeSide:
+        case .labeledRows, .inlineTriple, .distanceHero, .hud, .routeSide:
             return true
         default:
             return false
@@ -137,7 +137,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         switch self {
         case .passportStamp: return (small: 0.61, medium: 0.85, large: 1.11, xlarge: 1.39)
         case .circleBadge:  return (small: 0.67, medium: 0.93, large: 1.22, xlarge: 1.52)
-        case .scoreboard:   return (small: 0.56, medium: 0.77, large: 1.01, xlarge: 1.27)
+        case .scoreboard:   return (small: 0.33, medium: 0.45, large: 0.59, xlarge: 0.74)   // 심박이 붙어 폭 150 → 256
         case .labeledRows:  return (small: 0.60, medium: 0.82, large: 1.08, xlarge: 1.35)
         case .inlineTriple: return (small: 0.28, medium: 0.38, large: 0.50, xlarge: 0.62)
         case .distanceHero: return (small: 0.56, medium: 0.78, large: 1.02, xlarge: 1.28)
@@ -148,7 +148,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .elevProfile:  return (small: 0.51, medium: 0.71, large: 0.93, xlarge: 1.16)
         case .cadenceEq:    return (small: 0.64, medium: 0.88, large: 1.15, xlarge: 1.44)
         case .placeHeadline: return (small: 0.64, medium: 0.88, large: 1.16, xlarge: 1.45)
-        case .routeHero:    return (small: 0.34, medium: 0.46, large: 0.61, xlarge: 0.76)
+        case .routeHero:    return (small: 0.34, medium: 0.46, large: 0.60, xlarge: 0.76)   // 심박 열이 붙어 폭 164 → 238
         case .routeSide:    return (small: 0.38, medium: 0.53, large: 0.69, xlarge: 0.87)
         }
     }

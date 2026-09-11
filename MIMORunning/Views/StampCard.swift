@@ -416,7 +416,7 @@ struct StampCard: View {
                               showTextOutline: showTextOutline)
         case .circleBadge:
             StampCircleBadgeView(data: data, fill: fill, outline: outline, scale: scale,
-                                 showHeartRate: showHeartRate, showTextOutline: showTextOutline)
+                                 showTextOutline: showTextOutline)
         case .scoreboard:
             StampScoreboardView(data: data, fill: fill, outline: outline, scale: scale,
                                 showTextOutline: showTextOutline)
@@ -506,16 +506,14 @@ private struct StampPassportView: View {
 
 // MARK: - Circle Badge
 
-/// 서클 배지. 심박 토글이 켜져 있고 심박 데이터가 있으면 심박 중심 변형(구 "심박 서클")으로 전환.
+/// 서클 배지. 심박은 토글 없이 페이스 줄 다음에 항상 표시한다
+/// (예전에는 토글을 켜면 원 전체가 심박 표시로 바뀌어 거리가 사라졌다).
 private struct StampCircleBadgeView: View {
     let data: StampData
     let fill: Color
     let outline: Color
     let scale: CGFloat
-    var showHeartRate: Bool = false
     var showTextOutline: Bool = true
-
-    private var heartRateMode: Bool { showHeartRate && data.heartRate != nil }
 
     var body: some View {
         let diameter: CGFloat = 104 * scale
@@ -524,38 +522,29 @@ private struct StampCircleBadgeView: View {
             Circle()
                 .stroke(outline, lineWidth: 2)
 
-            if heartRateMode {
-                VStack(spacing: 2 * scale) {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 14 * scale))
-                        .foregroundStyle(Color(hex: "FF2E2E"))
-
-                    Text(data.heartRate ?? "—")
-                        .font(.system(size: 22 * scale, weight: .black))
-                        .foregroundStyle(Color(hex: "FF2E2E"))
-
-                    Text("BPM · \(data.distance) \(data.distanceUnit)")
-                        .font(.system(size: 8 * scale, weight: .medium, design: .monospaced))
-                        .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+            VStack(spacing: 3 * scale) {
+                HStack(alignment: .lastTextBaseline, spacing: 2 * scale) {
+                    Text(data.distance)
+                        .font(.system(size: 19 * scale, weight: .black))
+                        .tracking(-1.5)
+                    Text(data.distanceUnit)
+                        .font(.system(size: 8 * scale, weight: .bold, design: .monospaced))
                 }
-            } else {
-                VStack(spacing: 3 * scale) {
-                    HStack(alignment: .lastTextBaseline, spacing: 2 * scale) {
-                        Text(data.distance)
-                            .font(.system(size: 19 * scale, weight: .black))
-                            .tracking(-1.5)
-                        Text(data.distanceUnit)
-                            .font(.system(size: 8 * scale, weight: .bold, design: .monospaced))
-                    }
 
-                    Text("KM · CERTIFIED")
+                Text("KM · CERTIFIED")
+                    .font(.system(size: 8 * scale, weight: .semibold, design: .monospaced))
+
+                Text("\(data.pace)  ·  \(data.time)")
+                    .font(.system(size: 8 * scale, weight: .medium, design: .monospaced))
+
+                if let hr = data.heartRate {
+                    Text("\(hr) BPM")
                         .font(.system(size: 8 * scale, weight: .semibold, design: .monospaced))
-
-                    Text("\(data.pace)  ·  \(data.time)")
-                        .font(.system(size: 8 * scale, weight: .medium, design: .monospaced))
                 }
-                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
             }
+            .lineLimit(1)
+            .fixedSize()
+            .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
         }
         .frame(width: diameter, height: diameter)
         .rotationEffect(.degrees(-8))
@@ -586,9 +575,12 @@ private struct StampScoreboardView: View {
                     .tracking(4)
             }
 
-            Text("\(data.time)  ·  \(data.pace)")
+            // 심박은 토글 없이 항상 — 있으면 페이스 옆에 붙인다.
+            Text(data.heartRate.map { "\(data.time)  ·  \(data.pace)  ·  \($0) BPM" }
+                 ?? "\(data.time)  ·  \(data.pace)")
                 .font(.system(size: 11 * scale, weight: .semibold, design: .monospaced))
                 .tracking(2)
+                .lineLimit(1).fixedSize()
         }
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
         .frame(maxWidth: .infinity, alignment: .center)
@@ -1182,7 +1174,20 @@ private struct StampRouteHeroView: View {
                         .tracking(1.6)
                         .opacity(0.85)
                 }
+                // 심박은 토글 없이 항상 — 있으면 페이스 옆 열로 붙는다.
+                if let hr = data.heartRate {
+                    VStack(alignment: .leading, spacing: sz(1, scale)) {
+                        Text(hr)
+                            .font(.system(size: sz(17, scale), weight: .heavy))
+                            .tracking(-0.5)
+                        Text("AVG HR")
+                            .font(.system(size: sz(8, scale), weight: .bold))
+                            .tracking(1.6)
+                            .opacity(0.85)
+                    }
+                }
             }
+            .lineLimit(1)
             .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
             .padding(.top, sz(8, scale))
         }
