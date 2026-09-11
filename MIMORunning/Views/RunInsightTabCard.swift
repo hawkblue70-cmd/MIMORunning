@@ -29,7 +29,9 @@ private enum IC {
     static let violetText = Color(hex: "D5CEFF")
     static let label      = Color(hex: "8A8F99")
     static let hrRed      = Color(hex: "FF6B6B")
-    static let cadCyan    = Color(hex: "5CE5D5")
+    /// 케이던스 — 종합 차트의 케이던스 선과 같은 노랑. 심박 존 색 다섯과 겹치지 않아야 한다
+    /// (예전 값 5CE5D5는 Zone 2와 같은 색이었다).
+    static let cadCyan    = Theme.chartCadence
     /// 심박 효율 산점도의 "오늘" 점. 강도 부하·경로 카드가 쓰는 형광 팔레트의 라임과 같은 값이지만
     /// 여기서는 존(강도)이 아니라 "가장 최근"을 뜻한다 — 산점도의 세 색은 시간 축이다.
     static let todayDot   = Color(hex: "C6FF00")
@@ -41,11 +43,10 @@ private enum IC {
         Color(hex: "5CE08A"),   // 높음: 녹색
     ]
 
-    static let zoneColors: [Color] = [
-        Color(hex: "4C8DFF"), Color(hex: "5CE08A"),
-        Color(hex: "F5C542"), Color(hex: "FF9A3C"), Color(hex: "FF5247"),
-    ]
-    static func zone(_ id: Int) -> Color { zoneColors[min(max(id - 1, 0), 4)] }
+    /// 심박 존 색은 앱에 하나만 둔다 — 러닝 상세·공유 카드·경로 영상·강도 부하가 모두 `Theme.hrZoneColors`를
+    /// 쓰는데 인사이트 카드만 자기 색을 갖고 있어, 같은 러닝의 Zone 2가 화면 위아래에서 달라 보였다.
+    static let zoneColors: [Color] = Theme.hrZoneColors
+    static func zone(_ id: Int) -> Color { Theme.hrZoneColor(id) }
 }
 
 // MARK: - Card Number Font
