@@ -364,7 +364,7 @@ struct DetailPanelShareCardScreen: View {
                         .padding(.bottom, 36)
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("공유 카드", "Share Card"))
+            .navigationTitle(AppLanguage.shared.s("경로 내보내기 카드", "Route Card"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -387,7 +387,7 @@ struct DetailPanelShareCardScreen: View {
             .frame(maxWidth: .infinity).padding(.vertical, 18)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("공유하기", "Share"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
                     .font(.headline).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 16)
                     .background(Theme.violet)

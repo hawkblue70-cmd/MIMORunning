@@ -245,9 +245,21 @@ struct SplitsShareCardView: View {
         return split.id == 1 ? "\(km)km" : "\(km)"
     }
 
+    // 날짜·시간 포맷은 경로 내보내기 카드(DetailPanelShareCard)와 동일하게 맞춘다
     private var dateStr: String {
+        let isEn = AppLanguage.shared.isEnglish
         let df = DateFormatter()
-        df.dateFormat = "yyyy. M. d"
+        df.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        df.dateFormat = isEn ? "MMM d, yyyy" : "yyyy. M.d"
+        return df.string(from: activity.date)
+    }
+
+    private var timeStr: String {
+        let isEn = AppLanguage.shared.isEnglish
+        let df = DateFormatter()
+        df.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        df.dateStyle = .none
+        df.timeStyle = .short
         return df.string(from: activity.date)
     }
 
@@ -278,23 +290,27 @@ struct SplitsShareCardView: View {
                     HStack(alignment: .top) {
                         MIMOWordmark(size: 8, strokeMIMO: pal.isLight)
                         Spacer()
+                        // 날짜 줄 — 경로 내보내기 카드와 같은 구성·크기(날짜·요일·시간 / 날씨)
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text(dateStr)
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(pal.textPrimary)
-                            HStack(spacing: 4) {
+                            HStack(spacing: 3) {
+                                Text(dateStr)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(pal.textPrimary)
                                 Text(activity.date.weekdayString)
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.system(size: 9, weight: .semibold))
                                     .foregroundStyle(pal.dateWeekday)
-                                if let w = weatherText {
-                                    HStack(spacing: 2) {
-                                        Image(systemName: weatherIcon ?? "thermometer.medium")
-                                            .font(.system(size: 8))
-                                        Text(w)
-                                            .font(.system(size: 9, weight: .medium))
-                                    }
-                                    .foregroundStyle(pal.weather)
+                                Text(timeStr)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(pal.textPrimary)
+                            }
+                            if let w = weatherText {
+                                HStack(spacing: 3) {
+                                    Image(systemName: weatherIcon ?? "thermometer.medium")
+                                        .font(.system(size: 9, weight: .medium))
+                                    Text(w)
+                                        .font(.system(size: 9, weight: .medium))
                                 }
+                                .foregroundStyle(pal.weather)
                             }
                         }
                     }
