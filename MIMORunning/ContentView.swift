@@ -4,6 +4,7 @@ import UIKit
 
 struct ContentView: View {
     @State private var manager = HealthKitManager()
+    @EnvironmentObject private var engine: MREngineStore
     @Environment(RaceDetector.self) private var raceDetector
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
@@ -42,7 +43,12 @@ struct ContentView: View {
             await migrateStoryPhotoThumbnails()
         }
         .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active, manager.authorizationStatus == .authorized else { return }
+            guard newPhase == .active else { return }
+            // 홈 오늘 카드는 시간에 따라 바뀐다(러닝 종료 후 12시간까지만 기록 줄 표시).
+            // 엔진 전체 refresh는 앱 시작 때만 돌므로, 백그라운드에서 돌아올 때 캐시된 러닝으로
+            // 카드만 다시 계산한다 — HealthKit 재읽기 없음, 순수 계산.
+            engine.recomputeTodayCard()
+            guard manager.authorizationStatus == .authorized else { return }
             Task { await manager.fetchActivities() }
         }
         .background(KeyboardDismissInstaller())
