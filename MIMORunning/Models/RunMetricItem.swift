@@ -11,7 +11,12 @@ enum RunMetricKind {
 /// 활동 상세 상단 지표 그리드와 "구간 러닝 데이터" 공유 카드가 **함께 쓰는** 지표 목록.
 /// 두 곳이 같은 항목·같은 표기를 쓰도록 목록은 여기서만 만든다 — 별도 목록 작성 금지.
 struct RunMetricItem: Identifiable {
-    let id = UUID()
+    /// ForEach 식별자 — 라벨은 목록 안에서 유일하다.
+    ///
+    /// ⚠ UUID를 쓰면 안 된다. `list(...)`는 computed property에서 호출돼 body가 평가될 때마다
+    /// 항목을 새로 만드는데, UUID면 그때마다 식별자가 전부 바뀐다. LazyVGrid는 식별자가 바뀐
+    /// 셀을 버리고 다시 만들기 때문에 셀이 비거나 사라져 보인다.
+    var id: String { label }
     let kind: RunMetricKind
     let icon: String
     let label: String
