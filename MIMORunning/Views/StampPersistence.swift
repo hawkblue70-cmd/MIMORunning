@@ -38,7 +38,7 @@ private struct StampConfigDTO: Codable {
         positionIdx      = posAll.firstIndex(of: cfg.position) ?? 0
         sizeLevel        = cfg.sizeLevel.rawValue
         showHeartRate    = cfg.showHeartRate
-        showCalories     = cfg.showCalories
+        showCalories     = false   // 더 이상 쓰지 않음. 필드는 구버전 저장값 디코딩을 위해 남긴다
         showTextOutline  = cfg.showTextOutline
         showDate         = cfg.showDate
         text             = cfg.text
@@ -61,7 +61,6 @@ private struct StampConfigDTO: Codable {
             position:        posAll.indices.contains(positionIdx) ? posAll[positionIdx] : .bottom,
             sizeLevel:       TextSizeLevel(rawValue: sizeLevel) ?? .medium,
             showHeartRate:   showHeartRate || StampTemplate.legacyImpliesHeartRate(template),
-            showCalories:    showCalories,
             showTextOutline: showTextOutline,
             showDate:        showDate ?? false,
             text:            text,

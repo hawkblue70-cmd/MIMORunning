@@ -124,8 +124,8 @@ struct StampControlsView: View {
             // 토글 행: 심박 · 칼로리 · 날짜(스토리)
             // ⚠ 칩을 위 크기 행에 붙이면 오른쪽 컬럼 폭(≈230pt)을 넘겨
             //   라벨이 "…"로 잘린다. 토글끼리 아랫줄로 분리한다.
-            // 요약 그리드는 있는 지표를 전부 보여주므로 심박 토글이 없다.
-            let showHRChip = vm.storyTemplate != .summaryGrid && data.heartRate != nil
+            // 토글이 그림을 바꾸지 않는 스탬프에서는 칩을 감춘다 — 눌러도 아무 일이 없으면 고장으로 보인다.
+            let showHRChip = vm.storyTemplate.supportsHeartRateToggle && data.heartRate != nil
             if showHRChip || template == .story {
                 HStack(spacing: 6) {
                     if showHRChip         { heartRateChip }

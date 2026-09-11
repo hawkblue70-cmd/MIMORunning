@@ -112,6 +112,21 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         self == .hud
     }
 
+    /// 심박 토글이 그림을 바꾸는 스탬프인가.
+    ///
+    /// 여기 없는 스탬프는 `showHeartRate`를 아예 받지 않아 토글을 눌러도 아무 일이 없다.
+    /// 심박 파형·심박 존은 심박이 본체라 켜고 끌 것이 없고, 여권 스탬프·전광판·고도·케이던스·
+    /// 지명·루트 히어로는 심박을 그리지 않는다. 요약 그리드는 있는 지표를 전부 넣는다.
+    /// `StampHeartRateToggleTests`가 실제 렌더로 이 목록과 코드가 맞는지 검사한다.
+    var supportsHeartRateToggle: Bool {
+        switch self {
+        case .circleBadge, .labeledRows, .inlineTriple, .distanceHero, .hud, .routeSide:
+            return true
+        default:
+            return false
+        }
+    }
+
     // MARK: 크기 규칙 (절대 배율표)
     //
     // 기준 폭 211pt(영상·슬라이드 논리 폭, 가장 좁음)에서 소 40% · 중 55% · 대 72% · 특대 90%를
@@ -223,7 +238,6 @@ struct StampPhotoConfig: Equatable {
     var position:       CardPosition      = .bottom
     var sizeLevel:      TextSizeLevel     = .medium
     var showHeartRate:  Bool              = false
-    var showCalories:   Bool              = false
     var showTextOutline: Bool             = true
     /// 워드마크 줄 오른쪽에 날짜·시간 표시 (스토리·영상·슬라이드·경로 영상 공통)
     var showDate:       Bool              = false

@@ -73,10 +73,10 @@ final class StampViewModel {
         set { var c = currentConfig; c.showHeartRate = newValue; currentConfig = c; baseConfig.showHeartRate = newValue }
     }
 
-    var showCalories: Bool {
-        get { currentConfig.showCalories }
-        set { var c = currentConfig; c.showCalories = newValue; currentConfig = c; baseConfig.showCalories = newValue }
-    }
+    /// 칼로리 표시는 켜는 UI가 없다 — 토글은 심박 하나뿐이다.
+    /// 예전에 잠깐 있던 칩으로 true가 저장된 설정이 남아 있어도 꺼진 것으로 본다.
+    /// (요약 그리드는 이 값을 보지 않고 있는 지표를 전부 넣는다.)
+    var showCalories: Bool { false }
 
     var showTextOutline: Bool {
         get { currentConfig.showTextOutline }
