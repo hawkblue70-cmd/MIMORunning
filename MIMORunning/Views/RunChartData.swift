@@ -81,13 +81,23 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         }
     }
 
+    /// 타일에 min–max 범위를 함께 보일지.
+    /// 고도는 타일 숫자가 **누적 상승**인데 범위는 **해발**이라 한 줄에 두면 서로 다른 것을 가리킨다.
+    /// 해발 범위는 차트 y축에 이미 있으므로 타일에서는 뺀다.
+    var showsRange: Bool {
+        switch self {
+        case .elevation: return false
+        default:         return !isValueOnly
+        }
+    }
+
     var shortLabel: String {
         let L = AppLanguage.shared
         switch self {
         case .heartRate:    return L.s("심박",    "HR")
         case .pace:         return L.s("페이스",  "Pace")
         case .cadence:      return L.s("케이던스","Cadence")
-        case .elevation:    return L.s("고도",    "Elev.")
+        case .elevation:    return L.s("고도 획득", "Elev. Gain")
         case .power:        return L.s("파워",    "Power")
         case .strideLength: return L.s("보폭",    "Stride")
         case .verticalOsc:  return L.s("진폭",    "Vert.Osc")
@@ -154,6 +164,9 @@ struct RunChartSeries {
     let maxIndex: Int?
     /// Last smoothed value — used for right-side end-point label.
     let lastValue: Double
+    /// 타일에 보일 대표 숫자. nil이면 avgValue를 쓴다.
+    /// 고도는 평균 해발이 아니라 **누적 상승**(지표 그리드의 "고도 획득"과 같은 값)을 보인다.
+    var tileValue: Double? = nil
 
     init(
         layer: RunChartLayer,
@@ -163,7 +176,8 @@ struct RunChartSeries {
         avgValue: Double,
         minIndex: Int? = nil,
         maxIndex: Int? = nil,
-        lastValue: Double = 0
+        lastValue: Double = 0,
+        tileValue: Double? = nil
     ) {
         self.layer     = layer
         self.points    = points
@@ -173,7 +187,11 @@ struct RunChartSeries {
         self.minIndex  = minIndex
         self.maxIndex  = maxIndex
         self.lastValue = lastValue
+        self.tileValue = tileValue
     }
+
+    /// 타일에 보일 숫자 — 지정이 없으면 평균값
+    var displayValue: Double { tileValue ?? avgValue }
 
     var isEmpty: Bool { points.count < 2 }
 
@@ -181,7 +199,8 @@ struct RunChartSeries {
     func withAvg(_ avg: Double) -> RunChartSeries {
         RunChartSeries(layer: layer, points: points,
                        minValue: minValue, maxValue: maxValue,
-                       avgValue: avg, minIndex: minIndex, maxIndex: maxIndex, lastValue: lastValue)
+                       avgValue: avg, minIndex: minIndex, maxIndex: maxIndex,
+                       lastValue: lastValue, tileValue: tileValue)
     }
 }
 
@@ -355,8 +374,11 @@ enum RunChartBuilder {
         // Elevation — already distance-keyed, light mean smoothing
         if let altProfile = detail?.altitudeProfile, altProfile.count >= 2 {
             let raw = altProfile.map { (km: $0.distanceKm, value: $0.altitude) }
-            if let s = makeSeries(layer: .elevation, rawPoints: raw, invertNorm: false, smoothWindow: 25, meanWindow: 25,
+            if var s = makeSeries(layer: .elevation, rawPoints: raw, invertNorm: false, smoothWindow: 25, meanWindow: 25,
                                   minDisplaySpan: elevationMinSpanM) {
+                // 선은 해발(코스 모양), 타일 숫자는 누적 상승.
+                // detail.elevationGain을 그대로 써서 지표 그리드의 "고도 획득"과 같은 값을 보장한다.
+                s.tileValue = detail?.elevationGain
                 allSeries[.elevation] = s
             }
         }

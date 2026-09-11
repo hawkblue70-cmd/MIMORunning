@@ -280,7 +280,7 @@ private struct RunStatTile: View {
                         .foregroundStyle(Color.white.opacity(isOn ? 0.72 : 0.32))
                         .lineLimit(1)
                     Spacer(minLength: 2)
-                    if !layer.isValueOnly {
+                    if layer.showsRange {
                         Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
                             .font(.system(size: 9.5))
                             .foregroundStyle(Color.white.opacity(isOn ? 0.55 : 0.24))
@@ -290,7 +290,7 @@ private struct RunStatTile: View {
                 }
                 // Row 2: avg value + unit
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text(layer.formatted(series.avgValue))
+                    Text(layer.formatted(series.displayValue))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Color.white.opacity(isOn ? 1.0 : 0.28))
                     Text(layer.unit)

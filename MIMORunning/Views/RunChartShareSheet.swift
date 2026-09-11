@@ -744,7 +744,7 @@ private struct ShareStatTile: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Spacer(minLength: 2)
-                if !layer.isValueOnly {
+                if layer.showsRange {
                     Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
                         .font(.system(size: 8.5))
                         .foregroundStyle(palette.textPrimary.opacity(0.55))
@@ -753,7 +753,7 @@ private struct ShareStatTile: View {
                 }
             }
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(layer.formatted(series.avgValue))
+                Text(layer.formatted(series.displayValue))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(palette.textPrimary)
                     .minimumScaleFactor(0.80)
