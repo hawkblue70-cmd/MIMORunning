@@ -1113,13 +1113,17 @@ private struct HRTimeSeriesView: View {
                 let w = size.width
                 let h = size.height
                 let xPad: CGFloat = 22
-                let chartW = w - xPad
+                // 고도를 그릴 때만 오른쪽에 최고 높이 라벨 자리를 낸다
+                let hasElevation = elevPts.count >= 2 && elevSpan >= Self.minElevationSpan
+                let rightPad: CGFloat = hasElevation ? 26 : 0
+                let chartW = w - xPad - rightPad
+                let chartRight = xPad + chartW
                 let chartH = h - 14
 
                 // 축선
                 var xAxisPath = Path()
                 xAxisPath.move(to: CGPoint(x: xPad, y: chartH))
-                xAxisPath.addLine(to: CGPoint(x: w, y: chartH))
+                xAxisPath.addLine(to: CGPoint(x: chartRight, y: chartH))
                 ctx.stroke(xAxisPath, with: .color(.white.opacity(0.35)),
                            style: StrokeStyle(lineWidth: 0.8))
                 var yAxisPath = Path()
@@ -1130,18 +1134,27 @@ private struct HRTimeSeriesView: View {
 
                 // 고도 면적 (심박선 뒤 배경) — 자체 y축을 쓰되 눈금은 그리지 않는다.
                 // 숫자는 심박만 읽고, 고도는 "모양"만 전달하면 충분하다.
-                if elevPts.count >= 2, elevSpan >= Self.minElevationSpan {
+                let elevTopRatio: CGFloat = 0.45   // 차트 높이 중 고도 면적이 차지하는 비율
+                if hasElevation {
                     var area = Path()
                     area.move(to: CGPoint(x: xPad, y: chartH))
                     for e in elevPts {
                         let x = xPad + CGFloat(e.offset / totalDur) * chartW
                         // 차트 아래 45%만 차지 — 심박선을 가리지 않는 높이
-                        let y = chartH - CGFloat((e.altitude - elevMin) / elevSpan) * chartH * 0.45
+                        let y = chartH - CGFloat((e.altitude - elevMin) / elevSpan) * chartH * elevTopRatio
                         area.addLine(to: CGPoint(x: x, y: y))
                     }
-                    area.addLine(to: CGPoint(x: w, y: chartH))
+                    area.addLine(to: CGPoint(x: chartRight, y: chartH))
                     area.closeSubpath()
                     ctx.fill(area, with: .color(.white.opacity(0.10)))
+
+                    // 최고 높이 라벨 — 면적 꼭대기 높이에 맞춰 오른쪽 바깥에.
+                    // 심박 라벨(0.70)보다 흐리게 두어 "주인공은 심박"이라는 위계를 지킨다.
+                    let peakY = chartH - chartH * elevTopRatio
+                    let peak = Int((elevMin + elevSpan).rounded())
+                    ctx.draw(Text("\(peak)m").font(.system(size: 8))
+                        .foregroundStyle(.white.opacity(0.45)),
+                        at: CGPoint(x: chartRight + 3, y: peakY), anchor: .leading)
                 }
 
                 // 화면 좌표 계산
@@ -1199,7 +1212,7 @@ private struct HRTimeSeriesView: View {
                     at: CGPoint(x: xPad + chartW / 2, y: h), anchor: .bottom)
                 ctx.draw(Text(fmt(totalDur)).font(.system(size: 8))
                     .foregroundStyle(.white.opacity(0.70)),
-                    at: CGPoint(x: w, y: h), anchor: .bottomTrailing)
+                    at: CGPoint(x: chartRight, y: h), anchor: .bottomTrailing)
             }
         )
     }
