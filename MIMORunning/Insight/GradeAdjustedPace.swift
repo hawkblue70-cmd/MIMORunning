@@ -67,6 +67,60 @@ enum GradeAdjustedPace {
         return equivalentTime / (totalDistance / 1000)
     }
 
+    /// 경로 표본(누적 거리·고도·경과 시간)에서 **전체 보정 계수**를 구한다.
+    /// 스플릿이 없는 과거 러닝(백필)용 — 반환값을 실제 평균 페이스에 곱하면 GAP이 된다.
+    ///
+    /// 페이스를 GPS 거리로 다시 계산하지 않고 계수만 뽑는 이유: GPS 누적 거리는 HealthKit이
+    /// 기록한 거리와 조금씩 다르다. 계수만 쓰면 실제 페이스와 같은 기준을 유지할 수 있다.
+    static func overallFactor(
+        routeSamples: [(distanceM: Double, altitude: Double, time: TimeInterval)]
+    ) -> Double? {
+        guard routeSamples.count >= 3 else { return nil }
+        let profile = routeSamples.map { (distanceKm: $0.distanceM / 1000, altitude: $0.altitude) }
+        let smoothed = smoothAltitudes(profile)
+        let stepM = 100.0
+        let totalM = routeSamples.last?.distanceM ?? 0
+        guard totalM >= stepM else { return nil }
+
+        var weighted = 0.0      // Σ(소요시간 × 계수)
+        var totalTime = 0.0
+        var d = 0.0
+        while d < totalM {
+            let end = min(d + stepM, totalM)
+            guard end - d > 1 else { break }
+            let t0 = time(at: d, in: routeSamples)
+            let t1 = time(at: end, in: routeSamples)
+            let dt = t1 - t0
+            defer { d = end }
+            guard dt > 0, dt.isFinite else { continue }
+            let a0 = altitude(at: d, in: smoothed)
+            let a1 = altitude(at: end, in: smoothed)
+            let f = factor(grade: (a1 - a0) / (end - d))
+            weighted += dt * f
+            totalTime += dt
+        }
+        guard totalTime > 0 else { return nil }
+        return weighted / totalTime
+    }
+
+    /// 누적 거리(m) 지점의 경과 시간 — 표본 사이는 선형 보간
+    private static func time(at meters: Double,
+                             in samples: [(distanceM: Double, altitude: Double, time: TimeInterval)])
+        -> TimeInterval {
+        guard let first = samples.first, let last = samples.last else { return 0 }
+        if meters <= first.distanceM { return first.time }
+        if meters >= last.distanceM { return last.time }
+        for i in 1..<samples.count {
+            let s0 = samples[i - 1], s1 = samples[i]
+            guard meters <= s1.distanceM else { continue }
+            let span = s1.distanceM - s0.distanceM
+            guard span > 0 else { return s1.time }
+            let t = (meters - s0.distanceM) / span
+            return s0.time + (s1.time - s0.time) * t
+        }
+        return last.time
+    }
+
     // MARK: - Internals
 
     /// 100m 구간별 (시작거리m, 끝거리m, 보정계수)

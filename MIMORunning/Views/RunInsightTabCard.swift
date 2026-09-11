@@ -183,10 +183,12 @@ private struct CadenceRPMGaugeView: View {
     var formBaseline: RunningFormBaseline? = nil
     var activity: Activity? = nil
     var isInterval: Bool = false
+    /// 이 러닝의 경사 조정 페이스 — 기준선이 GAP으로 계산되므로 구간 조회도 같은 기준이어야 한다
+    var gradeAdjustedPace: Double? = nil
 
     private var cadenceStat: FormStat? {
         guard let act = activity, let bl = formBaseline else { return nil }
-        return bl.baseline(for: act)?.cadence
+        return bl.baseline(for: act, gradeAdjustedPace: gradeAdjustedPace)?.cadence
     }
 
     /// 개인 분포 ±4σ 기반 동적 축. 최대 폭 70, 5 단위 반올림.
@@ -205,7 +207,7 @@ private struct CadenceRPMGaugeView: View {
     private var personalBand: (lower: Double, upper: Double, absoluteWarning: Double?) {
         if isInterval { return (170, 190, nil) }
         guard let act = activity, let bl = formBaseline else { return (160, 180, nil) }
-        return bl.cadenceBand(for: act)
+        return bl.cadenceBand(for: act, gradeAdjustedPace: gradeAdjustedPace)
     }
 
     // 180°(9시) → 360°(3시), clockwise:false = 상단 반원
@@ -970,6 +972,7 @@ struct RunInsightTabCard: View {
                 avgStrideLength: detail?.avgStrideLength,
                 avgGroundContactTime: detail?.avgGroundContactTime,
                 avgVerticalOscillation: detail?.avgVerticalOscillation,
+                altitudeProfile: detail?.altitudeProfile ?? [],
                 baseline: formBaseline,
                 workoutType: workoutTypeFn?(activity.id) ?? .general,
                 intervalSegments: detail?.intervalSegments ?? [],
@@ -1283,6 +1286,12 @@ private struct RhythmInsightCard: View {
 
     private var rhythmWorkoutType: WorkoutType { workoutTypeFn?(activity.id) ?? .general }
 
+    /// 이 러닝의 경사 조정 페이스 — 페이스 구간 조회를 기준선과 같은 잣대로 맞춘다
+    private var runGAP: Double? {
+        GradeAdjustedPace.compute(splits: detail?.splits ?? [],
+                                  altitudeProfile: detail?.altitudeProfile ?? [])
+    }
+
     /// 폼 카드(`RunFormCardView.adjustedGctStat`)와 동일한 시점 보정 GCT 밴드
     private func adjustedGct(_ bb: BandBaseline) -> FormStat? {
         FormNarrative.driftAdjustedGCT(bb.groundContact,
@@ -1504,7 +1513,8 @@ private struct RhythmInsightCard: View {
                     if let cad = displayCad {
                         let gaugeBaseline: RunningFormBaseline? = rhythmIsLongDistanceContext ? nil : formBaseline
                         CadenceRPMGaugeView(cadence: cad, formBaseline: gaugeBaseline, activity: activity,
-                                            isInterval: workoutTypeFn?(activity.id) == .interval)
+                                            isInterval: workoutTypeFn?(activity.id) == .interval,
+                                            gradeAdjustedPace: runGAP)
                         Color.clear.frame(height: 8)
                         Text(cadenceBottomLabel)
                             .font(.system(size: 8.5))
@@ -1568,7 +1578,7 @@ private struct RhythmInsightCard: View {
         guard workoutTypeFn?(activity.id) != .interval,
               workoutTypeFn?(activity.id) != .race else { return nil }
         guard let bl = formBaseline,
-              let bb = bl.baseline(for: activity),
+              let bb = bl.baseline(for: activity, gradeAdjustedPace: runGAP),
               let det = detail else { return nil }
 
         let L = AppLanguage.shared
@@ -2195,7 +2205,7 @@ private struct RhythmInsightCard: View {
         if workoutTypeFn?(activity.id) == .interval {
             return L.s("전력 구간 참고 170–190", "Work cadence ref. 170–190")
         }
-        guard let bb = formBaseline?.baseline(for: activity),
+        guard let bb = formBaseline?.baseline(for: activity, gradeAdjustedPace: runGAP),
               let stat = bb.cadence else {
             // 기록이 쌓이기 전 임시 폴백 — 절대 기준을 "권장"으로 단정하지 않는다.
             // 케이던스는 페이스·체형에 따라 크게 달라지고, 기록이 모이면 개인 기준으로 바뀐다.
@@ -2217,13 +2227,13 @@ private struct RhythmInsightCard: View {
                     : L.s("일반 범위보다 높아요", "Above typical")
             return (text, inRange ? IC.green : IC.label)
         }
-        let (lower, upper, warning) = bl.cadenceBand(for: activity)
+        let (lower, upper, warning) = bl.cadenceBand(for: activity, gradeAdjustedPace: runGAP)
         let c = Double(cad)
         if warning != nil && c < 160 {
             return (L.s("보폭이 큰 편이에요", "Wide stride"), IC.hrRed)
         }
         // 판정은 폼 카드와 같은 반올림 규칙 (FormNarrative.status) — 하단 라벨 "lo–hi"와 경계가 일치
-        let cadStat = bl.baseline(for: activity)?.cadence
+        let cadStat = bl.baseline(for: activity, gradeAdjustedPace: runGAP)?.cadence
             ?? FormStat(median: (lower + upper) / 2, sd: (upper - lower) / 2.4, count: 0, p10: nil, p90: nil)
         switch FormNarrative.status(rawValue: c, stat: cadStat, metric: .cadence) {
         case .inRange, .unknown:
@@ -5200,6 +5210,7 @@ struct InsightExportSheet: View {
                 avgStrideLength: detail?.avgStrideLength,
                 avgGroundContactTime: detail?.avgGroundContactTime,
                 avgVerticalOscillation: detail?.avgVerticalOscillation,
+                altitudeProfile: detail?.altitudeProfile ?? [],
                 baseline: formBaseline,
                 workoutType: workoutTypeFn?(activity.id) ?? .general,
                 intervalSegments: detail?.intervalSegments ?? [],

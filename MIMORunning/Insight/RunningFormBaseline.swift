@@ -106,7 +106,7 @@ struct CadenceHRCurveDiag: Codable {
 }
 
 struct RunningFormBaseline: Codable {
-    static let currentVersion = 16  // 페이스 컷오프: 밖으로 밀려나는 러닝 5건 이상이면 컷오프 해제
+    static let currentVersion = 17  // 페이스 구간 분류를 GAP(경사 조정 페이스) 기준으로 전환
     let version: Int
     let computedAt: Date
     let cutoffs: PaceBandCutoffs
@@ -131,6 +131,10 @@ struct CachedFormMetrics: Codable {
     let heartRate: Int?
     let paceSecPerKm: Double?
     let date: Date
+    /// 경사 조정 페이스(초/km). 야외 경로가 있는 러닝만 채워진다.
+    /// 페이스 구간 분류는 이 값을 우선 쓴다 — 언덕 러닝이 느린 구간으로 잘못 들어가지 않게.
+    /// (옵셔널이라 이 필드가 없던 옛 캐시도 그대로 디코딩된다)
+    var gradeAdjustedPaceSecPerKm: Double? = nil
 }
 
 // MARK: - Input DTO
@@ -140,12 +144,17 @@ struct FormInput {
     let activityID: UUID
     let date: Date
     let paceSecPerKm: Double
+    /// 경사 조정 페이스. 있으면 구간 분류·기준선 계산이 이 값을 쓴다.
+    var gradeAdjustedPaceSecPerKm: Double? = nil
     let distanceM: Double
     let avgHeartRate: Int?
     let avgCadence: Int?
     let avgStrideLength: Double?
     let avgGroundContactTime: Double?
     let avgVerticalOscillation: Double?
+
+    /// 페이스 구간 분류·기준선 계산에 쓰는 페이스 — 경사 보정이 있으면 그쪽을 쓴다.
+    var effectivePaceSecPerKm: Double { gradeAdjustedPaceSecPerKm ?? paceSecPerKm }
 
     init?(activity: Activity, detail: ActivityDetail) {
         guard activity.type == .running,
@@ -162,6 +171,8 @@ struct FormInput {
         self.avgStrideLength        = detail.avgStrideLength
         self.avgGroundContactTime   = detail.avgGroundContactTime
         self.avgVerticalOscillation = detail.avgVerticalOscillation
+        self.gradeAdjustedPaceSecPerKm = GradeAdjustedPace.compute(
+            splits: detail.splits, altitudeProfile: detail.altitudeProfile)
     }
 }
 
@@ -181,6 +192,7 @@ extension FormInput {
         self.avgStrideLength        = cached.strideLength
         self.avgGroundContactTime   = cached.groundContact
         self.avgVerticalOscillation = cached.verticalOsc
+        self.gradeAdjustedPaceSecPerKm = cached.gradeAdjustedPaceSecPerKm
     }
 }
 
@@ -246,15 +258,15 @@ enum FormBaselineEngine {
         #endif
 
         // 경계 산출: 반드시 12개월 전체 사용 — 6개월 부분 집합은 페이스 폭이 좁아 구간 병합 오류 발생
-        let cutoffs = computeCutoffs(from: all12.map(\.paceSecPerKm))
+        let cutoffs = computeCutoffs(from: all12.map(\.effectivePaceSecPerKm))
         #if DEBUG
         if !all12.isEmpty {
             let _n = Double(all12.count)
-            let _vPct = Int(Double(all12.filter { cutoffs.band(of: $0.paceSecPerKm) == .verySlow }.count) / _n * 100 + 0.5)
-            let _jPct = Int(Double(all12.filter { cutoffs.band(of: $0.paceSecPerKm) == .jog     }.count) / _n * 100 + 0.5)
-            let _dPct = Int(Double(all12.filter { cutoffs.band(of: $0.paceSecPerKm) == .daily   }.count) / _n * 100 + 0.5)
-            let _tPct = Int(Double(all12.filter { cutoffs.band(of: $0.paceSecPerKm) == .tempo   }.count) / _n * 100 + 0.5)
-            let _fPct = Int(Double(all12.filter { cutoffs.band(of: $0.paceSecPerKm) == .fast    }.count) / _n * 100 + 0.5)
+            let _vPct = Int(Double(all12.filter { cutoffs.band(of: $0.effectivePaceSecPerKm) == .verySlow }.count) / _n * 100 + 0.5)
+            let _jPct = Int(Double(all12.filter { cutoffs.band(of: $0.effectivePaceSecPerKm) == .jog     }.count) / _n * 100 + 0.5)
+            let _dPct = Int(Double(all12.filter { cutoffs.band(of: $0.effectivePaceSecPerKm) == .daily   }.count) / _n * 100 + 0.5)
+            let _tPct = Int(Double(all12.filter { cutoffs.band(of: $0.effectivePaceSecPerKm) == .tempo   }.count) / _n * 100 + 0.5)
+            let _fPct = Int(Double(all12.filter { cutoffs.band(of: $0.effectivePaceSecPerKm) == .fast    }.count) / _n * 100 + 0.5)
             print("  구간 비율: \(PaceBand.verySlow.rawValue) \(_vPct)% \(PaceBand.jog.rawValue) \(_jPct)% \(PaceBand.daily.rawValue) \(_dPct)% \(PaceBand.tempo.rawValue) \(_tPct)% \(PaceBand.fast.rawValue) \(_fPct)%")
         }
         // 아주 느림 행방 추적 — jogMax-verySlowMax 범위 내 표본 수와 상한 초과 제외 건수를 기록
@@ -265,8 +277,8 @@ enum FormBaselineEngine {
         if cutoffs.mergedBands.contains(.verySlow) {
             print("[Baseline] 아주 느림 — 병합됨 (느린 편과 경계 차이 <30초)")
         } else if cutoffs.activeBands.contains(.verySlow) {
-            let _vsInRange = all12.filter { $0.paceSecPerKm >= cutoffs.jogMax && $0.paceSecPerKm <= cutoffs.verySlowMax }
-            let _vsAbove   = all12.filter { $0.paceSecPerKm > cutoffs.verySlowMax }
+            let _vsInRange = all12.filter { $0.effectivePaceSecPerKm >= cutoffs.jogMax && $0.effectivePaceSecPerKm <= cutoffs.verySlowMax }
+            let _vsAbove   = all12.filter { $0.effectivePaceSecPerKm > cutoffs.verySlowMax }
             if _vsInRange.count < minSamples {
                 print("[Baseline] 아주 느림 — 범위(\(_pfPace(cutoffs.jogMax))–\(_pfPace(cutoffs.verySlowMax))) 내 \(_vsInRange.count)건 (최소 \(minSamples)건 미달) · 상한 초과 \(_vsAbove.count)건 제외")
             } else {
@@ -279,8 +291,8 @@ enum FormBaselineEngine {
 
         for band in cutoffs.activeBands {
             // 적응형 기간
-            let samples6  = all12.filter { $0.date >= window6  && cutoffs.band(of: $0.paceSecPerKm) == band }
-            let samples12 = all12.filter {                         cutoffs.band(of: $0.paceSecPerKm) == band }
+            let samples6  = all12.filter { $0.date >= window6  && cutoffs.band(of: $0.effectivePaceSecPerKm) == band }
+            let samples12 = all12.filter {                         cutoffs.band(of: $0.effectivePaceSecPerKm) == band }
 
             let (samples, windowMonths, isJudgeable): ([FormInput], Int, Bool)
             if samples6.count >= minSamples {
@@ -295,12 +307,12 @@ enum FormBaselineEngine {
             }
 
             #if DEBUG
-            let excludedInBand = excludedRaceInputs.filter { cutoffs.band(of: $0.paceSecPerKm) == band }.count
+            let excludedInBand = excludedRaceInputs.filter { cutoffs.band(of: $0.effectivePaceSecPerKm) == band }.count
             let excStr = excludedInBand > 0 ? ", 대회 \(excludedInBand)건 제외" : ""
             let judgeStr = isJudgeable ? "" : " · 판정불가"
             print("── \(band.rawValue) (\(samples.count)회 / \(windowMonths)개월\(excStr)\(judgeStr)) ──")
             #endif
-            let paces   = samples.map(\.paceSecPerKm)
+            let paces   = samples.map(\.effectivePaceSecPerKm)
             let cadStat = formStat(samples.compactMap { $0.avgCadence.map(Double.init) })
             let strStat = formStat(samples.compactMap { $0.avgStrideLength })
 
@@ -343,7 +355,7 @@ enum FormBaselineEngine {
                 .sorted { $0.date > $1.date }
                 .prefix(20)
                 .map { inp in BandDotSample(date: inp.date, distanceM: inp.distanceM,
-                                            paceSecPerKm: inp.paceSecPerKm,
+                                            paceSecPerKm: inp.effectivePaceSecPerKm,
                                             cadence: inp.avgCadence, strideLength: inp.avgStrideLength,
                                             groundContactTime: inp.avgGroundContactTime,
                                             verticalOscillation: inp.avgVerticalOscillation) }
@@ -403,7 +415,7 @@ enum FormBaselineEngine {
             .sorted { $0.date > $1.date }
             .prefix(500)
             .map { inp in BandDotSample(date: inp.date, distanceM: inp.distanceM,
-                                        paceSecPerKm: inp.paceSecPerKm,
+                                        paceSecPerKm: inp.effectivePaceSecPerKm,
                                         cadence: inp.avgCadence, strideLength: inp.avgStrideLength,
                                         groundContactTime: inp.avgGroundContactTime,
                                         verticalOscillation: inp.avgVerticalOscillation) }
@@ -812,21 +824,24 @@ enum FormBaselineEngine {
 // MARK: - Query API
 
 extension RunningFormBaseline {
-    func band(for activity: Activity) -> PaceBand? {
-        guard let pace = activity.paceSecPerKm else { return .jog }
+    /// 이 러닝이 속한 페이스 구간. 기준선이 GAP으로 계산됐으므로 조회도 GAP으로 해야 한다 —
+    /// `gradeAdjustedPace`를 넘기지 않으면 언덕 러닝이 느린 구간으로 잘못 조회된다.
+    func band(for activity: Activity, gradeAdjustedPace: Double? = nil) -> PaceBand? {
+        guard let pace = gradeAdjustedPace ?? activity.paceSecPerKm else { return .jog }
         return cutoffs.band(of: pace)
     }
 
-    func baseline(for activity: Activity) -> BandBaseline? {
-        guard let b = band(for: activity) else { return nil }
+    func baseline(for activity: Activity, gradeAdjustedPace: Double? = nil) -> BandBaseline? {
+        guard let b = band(for: activity, gradeAdjustedPace: gradeAdjustedPace) else { return nil }
         return bands[b]
     }
 
     /// 케이던스 권장 밴드.
     /// 개인 lower < 160 이면 160을 absoluteWarning으로 추가 반환.
-    func cadenceBand(for activity: Activity)
+    func cadenceBand(for activity: Activity, gradeAdjustedPace: Double? = nil)
         -> (lower: Double, upper: Double, absoluteWarning: Double?) {
-        guard let bb = baseline(for: activity), let cad = bb.cadence else {
+        guard let bb = baseline(for: activity, gradeAdjustedPace: gradeAdjustedPace),
+              let cad = bb.cadence else {
             return (160, 180, nil)  // 기준선 없으면 연구 기본값
         }
         let warning: Double? = cad.lower < 160 ? 160 : nil

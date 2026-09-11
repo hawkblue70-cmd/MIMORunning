@@ -25,6 +25,8 @@ struct RunFormCardView: View {
     var avgStrideLength: Double? = nil
     var avgGroundContactTime: Double? = nil
     var avgVerticalOscillation: Double? = nil
+    /// 고도 프로파일 — 경사 조정 페이스(GAP) 계산용. 없으면 실제 페이스로 구간을 찾는다.
+    var altitudeProfile: [(distanceKm: Double, altitude: Double)] = []
     var baseline: RunningFormBaseline? = nil
     var workoutType: WorkoutType = .general
     var intervalSegments: [IntervalSegment] = []
@@ -109,7 +111,14 @@ struct RunFormCardView: View {
 
     // MARK: - Computed
 
-    private var bb: BandBaseline? { baseline?.baseline(for: activity) }
+    /// 이 러닝의 경사 조정 페이스. 기준선이 GAP으로 계산되므로 구간 조회도 GAP으로 한다.
+    private var runGAP: Double? {
+        GradeAdjustedPace.compute(splits: splits, altitudeProfile: altitudeProfile)
+    }
+
+    private var bb: BandBaseline? {
+        baseline?.baseline(for: activity, gradeAdjustedPace: runGAP)
+    }
 
     /// 오늘 페이스가 개인 페이스 구간 밖(`cutoffs.band(of:) == nil`)일 때 **표시용**으로 쓸
     /// 가장 가까운 유효 밴드. 평소보다 빠르면 가장 빠른 구간부터, 느리면 가장 느린 구간부터 찾는다.

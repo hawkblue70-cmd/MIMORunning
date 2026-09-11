@@ -622,6 +622,30 @@ class HealthKitManager {
         loadFormCacheDict()[id.uuidString]
     }
 
+    /// 워크아웃 경로(고도·시각)에서 경사 조정 페이스를 구한다.
+    /// 경로 표본에서 **보정 계수만** 뽑아 실제 평균 페이스에 곱한다 — GPS 누적 거리는
+    /// HealthKit 기록 거리와 조금씩 달라서, 계수만 쓰면 실제 페이스와 기준이 어긋나지 않는다.
+    private func gradeAdjustedPace(for workout: HKWorkout, activity: Activity) async -> Double? {
+        guard let pace = activity.paceSecPerKm else { return nil }
+        let locations = await fetchRouteLocations(for: workout)
+        guard locations.count >= 3 else { return nil }
+        let valid = locations.filter { $0.verticalAccuracy >= 0 }
+        guard valid.count >= 3, let start = valid.first?.timestamp else { return nil }
+
+        var samples: [(distanceM: Double, altitude: Double, time: TimeInterval)] = []
+        var cumulative = 0.0
+        var previous: CLLocation? = nil
+        for loc in valid {
+            if let previous { cumulative += loc.distance(from: previous) }
+            previous = loc
+            samples.append((distanceM: cumulative,
+                            altitude: loc.altitude,
+                            time: loc.timestamp.timeIntervalSince(start)))
+        }
+        guard let factor = GradeAdjustedPace.overallFactor(routeSamples: samples) else { return nil }
+        return pace * factor
+    }
+
     private func persistForm(_ m: CachedFormMetrics, for id: UUID) {
         var dict = loadFormCacheDict()
         dict[id.uuidString] = m
@@ -639,7 +663,9 @@ class HealthKitManager {
             verticalOsc:   detail.avgVerticalOscillation,
             heartRate:     act?.avgHeartRate,
             paceSecPerKm:  act?.paceSecPerKm,
-            date:          act?.date ?? Date()
+            date:          act?.date ?? Date(),
+            gradeAdjustedPaceSecPerKm: GradeAdjustedPace.compute(
+                splits: detail.splits, altitudeProfile: detail.altitudeProfile)
         ), for: id)
     }
 
@@ -1221,8 +1247,8 @@ class HealthKitManager {
     /// - Returns: 이번 호출에서 새로 처리한 항목 수 (기준선 재계산 여부 판단에 사용)
     @discardableResult
     func backfillFormMetrics(months: Int = 12) async -> Int {
-        // v2: processed 키 변경 → 과거 편중 세트 리셋, 균등 샘플링으로 재시도
-        let processedKey = "mimo.formBackfill.processed.v2"
+        // v3: 경사 조정 페이스(GAP) 추가 — 옛 캐시에는 없어 전체 재처리가 필요하다
+        let processedKey = "mimo.formBackfill.processed.v3"
         var processed = Set(UserDefaults.standard.stringArray(forKey: processedKey) ?? [])
         let cutoff = Calendar.current.date(byAdding: .month, value: -months, to: Date()) ?? .distantPast
 
@@ -1236,10 +1262,17 @@ class HealthKitManager {
         let total12m3k = activities.filter { $0.type == .running && $0.date >= cutoff && $0.distance >= 3000 }.count
         print("[FormBackfill] 12개월 러닝 \(total12m)건 / 3km이상 \(total12m3k)건 / 캐시 \(initialDict.count)건")
 
+        // 캐시가 없거나 GAP이 비어 있으면 대상 — GAP은 뒤늦게 추가된 필드라 옛 캐시에 없다.
+        // (실내런은 경로가 없어 계속 nil이지만 processed 세트가 재시도를 막는다)
+        func needsBackfill(_ cached: CachedFormMetrics?) -> Bool {
+            guard let cached else { return true }
+            return cached.gradeAdjustedPaceSecPerKm == nil
+        }
+
         let sessionTotal = min(
             activities
                 .filter { $0.type == .running && $0.date >= cutoff }
-                .filter { initialDict[$0.id.uuidString] == nil && !processed.contains($0.id.uuidString) }
+                .filter { needsBackfill(initialDict[$0.id.uuidString]) && !processed.contains($0.id.uuidString) }
                 .count,
             batchSize * maxBatches
         )
@@ -1257,7 +1290,7 @@ class HealthKitManager {
             // 대상: 러닝 + 기간 내 + 폼 캐시 없음 + 미처리 — 오름차순 후 균등 stride 샘플링
             let available = activities
                 .filter { $0.type == .running && $0.date >= cutoff }
-                .filter { formDict[$0.id.uuidString] == nil && !processed.contains($0.id.uuidString) }
+                .filter { needsBackfill(formDict[$0.id.uuidString]) && !processed.contains($0.id.uuidString) }
                 .sorted { $0.date < $1.date }  // 오래된 것부터 → 12개월 전체 고르게 커버
 
             guard !available.isEmpty else { break }
@@ -1304,7 +1337,13 @@ class HealthKitManager {
                 async let vOsc = queryAvgQuantity(.runningVerticalOscillation,
                                                    unit: .meterUnit(with: .centi), workout: workout)
 
+                // 경사 조정 페이스 — 페이스 구간 분류가 GAP 기준이라 과거 표본에도 채워야 한다.
+                // 경로가 없는 실내런은 nil(보정할 경사가 없으니 실제 페이스로 분류된다).
+                // 4지표와 **병렬** 실행 — 경로 조회가 무거워 순차로 하면 백필이 몇 배 느려진다.
+                async let gapTask = gradeAdjustedPace(for: workout, activity: act)
+
                 let (cadence, groundContact, strideLen, vertOsc) = await (cad, gct, str, vOsc)
+                let gap = await gapTask
                 formDict[act.id.uuidString] = CachedFormMetrics(
                     cadence:       cadence,
                     strideLength:  strideLen,
@@ -1312,7 +1351,8 @@ class HealthKitManager {
                     verticalOsc:   vertOsc,
                     heartRate:     act.avgHeartRate,
                     paceSecPerKm:  act.paceSecPerKm,
-                    date:          act.date
+                    date:          act.date,
+                    gradeAdjustedPaceSecPerKm: gap
                 )
                 batchDone += 1
                 totalDone += 1
