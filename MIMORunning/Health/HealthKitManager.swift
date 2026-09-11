@@ -1331,12 +1331,12 @@ class HealthKitManager {
 
                 // 4지표 동시 조회 (같은 workout → 단일 기간)
                 async let cad  = queryCadence(workout: workout)
-                async let gct  = queryAvgQuantity(.runningGroundContactTime,
-                                                   unit: .secondUnit(with: .milli), workout: workout)
-                async let str  = queryAvgQuantity(.runningStrideLength,
-                                                   unit: .meter(), workout: workout)
-                async let vOsc = queryAvgQuantity(.runningVerticalOscillation,
-                                                   unit: .meterUnit(with: .centi), workout: workout)
+                async let gct  = queryRunMetric(.runningGroundContactTime,
+                                                 unit: .secondUnit(with: .milli), workout: workout)
+                async let str  = queryRunMetric(.runningStrideLength,
+                                                 unit: .meter(), workout: workout)
+                async let vOsc = queryRunMetric(.runningVerticalOscillation,
+                                                 unit: .meterUnit(with: .centi), workout: workout)
 
                 // 경사 조정 페이스 — 페이스 구간 분류가 GAP 기준이라 과거 표본에도 채워야 한다.
                 // 경로가 없는 실내런은 nil(보정할 경사가 없으니 실제 페이스로 분류된다).
@@ -1600,14 +1600,14 @@ class HealthKitManager {
         case .running:
             async let locTask      = fetchRouteLocations(for: workout)
             async let splitsTask   = querySplits(workout: workout)
-            async let powerTask    = queryAvgQuantity(.runningPower, unit: .watt(), workout: workout)
+            async let powerTask    = queryRunMetric(.runningPower, unit: .watt(), workout: workout)
             async let cadTask      = queryCadence(workout: workout)
             async let intervalTask = queryIntervalSegments(workout: workout)
-            async let gctTask      = queryAvgQuantity(.runningGroundContactTime,
-                                                       unit: .secondUnit(with: .milli), workout: workout)
-            async let strTask      = queryAvgQuantity(.runningStrideLength, unit: .meter(), workout: workout)
-            async let voTask       = queryAvgQuantity(.runningVerticalOscillation,
-                                                       unit: .meterUnit(with: .centi), workout: workout)
+            async let gctTask      = queryRunMetric(.runningGroundContactTime,
+                                                     unit: .secondUnit(with: .milli), workout: workout)
+            async let strTask      = queryRunMetric(.runningStrideLength, unit: .meter(), workout: workout)
+            async let voTask       = queryRunMetric(.runningVerticalOscillation,
+                                                     unit: .meterUnit(with: .centi), workout: workout)
             // +24h: Apple Watch가 워크아웃 종료 후 수 분~수십 분 뒤 VO2Max를 계산해 HealthKit에 기록하므로
             // workout.endDate 이후에 생성된 샘플도 포함시켜 가장 최신값을 가져옴
             async let vo2Task      = queryLatestVO2Max(before: workout.endDate.addingTimeInterval(24 * 3600))
@@ -1779,7 +1779,16 @@ class HealthKitManager {
     private func enrich(_ activity: Activity, workout: HKWorkout) async -> Activity {
         async let calTask = querySum(.activeEnergyBurned, unit: .kilocalorie(), workout: workout)
         async let hrTask  = queryAvgHeartRate(workout: workout)
-        let (cal, hr) = await (calTask, hrTask)
+        var (cal, hr) = await (calTask, hrTask)
+
+        // 칼로리도 심박과 같은 폴백 — 연결된 에너지 샘플이 없으면 시간 범위로.
+        // 아이폰·워치가 같은 시간대를 각각 기록하므로 소스 하나만 취한다.
+        if cal == 0,
+           case .value(let ranged) = await querySumProbeInRangeSingleSource(
+               .activeEnergyBurned, unit: .kilocalorie(),
+               from: workout.startDate, to: workout.endDate) {
+            cal = ranged
+        }
 
         // 시간 범위 폴백 — 워크아웃 링크 실패 시 시간대 기반 재시도
         var finalHR = hr
@@ -2732,6 +2741,86 @@ class HealthKitManager {
         }
     }
 
+    /// 러닝 지표 조회 — 워크아웃에 연결된 샘플 우선, 없으면 **워크아웃 시간 범위**로 다시 읽는다.
+    ///
+    /// `predicateForObjects(from:)`는 워크아웃에 명시적으로 연결된 샘플만 돌려준다. 서드파티 앱이나
+    /// 기기 조합에 따라 건강 앱에는 값이 멀쩡히 있는데 연결이 없어 이 쿼리만 빈 결과가 나온다.
+    /// 심박(`queryAvgHeartRateByTimeRange`)과 거리(`workout.totalDistance`)는 이미 같은 폴백을 쓰고
+    /// 있었지만 파워·지면접촉·보폭·수직진폭에는 없어서, 데이터가 있어도 지표가 비어 보였다.
+    ///
+    /// 평균이라 여러 소스가 겹쳐도 값이 부풀지 않는다(합계인 걸음 수는 `queryCadence` 쪽에서 따로 처리).
+    private func queryRunMetric(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        workout: HKWorkout
+    ) async -> MetricProbe {
+        let linked = await queryAvgQuantity(identifier, unit: unit, workout: workout)
+        guard case .absent = linked else { return linked }
+        let ranged = await queryAvgQuantityProbeInRange(identifier, unit: unit,
+                                                        from: workout.startDate, to: workout.endDate)
+        #if DEBUG
+        if case .value(let v) = ranged {
+            let df = DateFormatter(); df.dateFormat = "M/d HH:mm"
+            print("[상세조회] 시간범위 폴백으로 회수 \(identifier.rawValue) = \(String(format: "%.1f", v)) — \(df.string(from: workout.startDate)) 러닝")
+        }
+        #endif
+        return ranged
+    }
+
+    private func queryAvgQuantityProbeInRange(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        from startDate: Date,
+        to endDate: Date
+    ) async -> MetricProbe {
+        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(identifier),
+            predicate: HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+        )
+        let descriptor = HKStatisticsQueryDescriptor(predicate: pred, options: .discreteAverage)
+        do {
+            let stats = try await descriptor.result(for: store)
+            guard let avg = stats?.averageQuantity() else { return .absent }
+            return .value(avg.doubleValue(for: unit))
+        } catch {
+            #if DEBUG
+            print("[상세조회] 시간범위 실패 \(identifier.rawValue): \(error.localizedDescription)")
+            #endif
+            return .failed
+        }
+    }
+
+    /// 시간 범위 합계 — **소스별로 합산한 뒤 가장 큰 한 소스만** 취한다.
+    /// 범위로 그냥 합치면 아이폰과 워치가 같은 걸음을 각각 기록해 실제의 2~3배가 된다.
+    private func querySumProbeInRangeSingleSource(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        from startDate: Date,
+        to endDate: Date
+    ) async -> MetricProbe {
+        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(identifier),
+            predicate: HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+        )
+        let descriptor = HKSampleQueryDescriptor(predicates: [pred], sortDescriptors: [])
+        do {
+            let samples = try await descriptor.result(for: store)
+            guard !samples.isEmpty else { return .absent }
+            var perSource: [String: Double] = [:]
+            for smp in samples {
+                let key = smp.sourceRevision.source.bundleIdentifier
+                perSource[key, default: 0] += smp.quantity.doubleValue(for: unit)
+            }
+            guard let best = perSource.values.max() else { return .absent }
+            return .value(best)
+        } catch {
+            #if DEBUG
+            print("[상세조회] 시간범위 합계 실패 \(identifier.rawValue): \(error.localizedDescription)")
+            #endif
+            return .failed
+        }
+    }
+
     private func logProbeFailure(_ identifier: HKQuantityTypeIdentifier,
                                  workout: HKWorkout, error: any Error) {
         #if DEBUG
@@ -2791,11 +2880,23 @@ class HealthKitManager {
     }
 
     private func queryCadence(workout: HKWorkout) async -> MetricProbe {
-        switch await querySumProbe(.stepCount, unit: .count(), workout: workout) {
+        guard workout.duration > 60 else { return .absent }
+        var probe = await querySumProbe(.stepCount, unit: .count(), workout: workout)
+        // 연결된 걸음 샘플이 없으면 시간 범위로 — 단, 소스 중복을 걸러야 케이던스가 2배로 튀지 않는다
+        if case .absent = probe {
+            probe = await querySumProbeInRangeSingleSource(.stepCount, unit: .count(),
+                                                            from: workout.startDate, to: workout.endDate)
+            #if DEBUG
+            if case .value(let v) = probe {
+                print("[상세조회] 시간범위 폴백으로 회수 stepCount = \(Int(v)) — 케이던스 \(Int((v / (workout.duration / 60)).rounded()))spm")
+            }
+            #endif
+        }
+        switch probe {
         case .failed:  return .failed
         case .absent:  return .absent
         case .value(let steps):
-            guard steps > 0, workout.duration > 60 else { return .absent }
+            guard steps > 0 else { return .absent }
             return .value((steps / (workout.duration / 60)).rounded())
         }
     }
