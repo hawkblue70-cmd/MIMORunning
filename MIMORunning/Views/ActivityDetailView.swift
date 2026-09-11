@@ -20,7 +20,6 @@ enum DetailPanel: String, CaseIterable {
     case power               = "파워"
     case verticalOscillation = "수직진폭"
     case elevation           = "고도"
-    case intervals           = "인터벌"
 
     var label: String {
         let L = AppLanguage.shared
@@ -34,7 +33,6 @@ enum DetailPanel: String, CaseIterable {
         case .power:                L.s("파워",     "Power")
         case .verticalOscillation:  L.s("수직진폭", "Vert. Osc.")
         case .elevation:            L.s("고도",     "Elevation")
-        case .intervals:            L.s("인터벌",   "Intervals")
         }
     }
 
@@ -49,7 +47,6 @@ enum DetailPanel: String, CaseIterable {
         case .power:                return "bolt.fill"
         case .verticalOscillation:  return "arrow.up.and.down"
         case .elevation:            return "mountain.2.fill"
-        case .intervals:            return "repeat"
         }
     }
 }
@@ -67,7 +64,7 @@ struct ActivityDetailView: View {
     @State private var condition: ActivityCondition?
     @State private var raceSuggestion: RaceSuggestion?
     @State private var showManualRaceEntry = false
-    @State private var showPanelShareCard = false
+    @State private var showRouteShareCard = false
     @State private var showChartShare = false
     /// 칩으로 고른 상세 패널. `.combined` = 선택 없음(종합은 상단에 고정 표시).
     @State private var activePanel: DetailPanel = .combined
@@ -85,7 +82,6 @@ struct ActivityDetailView: View {
     @State private var panelSeriesData: [(offset: TimeInterval, value: Double)] = []
     @State private var panelSeriesCache: [DetailPanel: [(offset: TimeInterval, value: Double)]] = [:]
     @State private var isLoadingPanelSeries = false
-    @State private var showPanelGrid4Card = false
     @State private var panelScrollTrigger: Int = 0
     @State private var hillMatch: HillMatch?
     @State private var chartData: RunChartData = .empty
@@ -282,7 +278,7 @@ struct ActivityDetailView: View {
                     }
                     // 표시할 상세 지표가 하나도 없으면(걷기 등) 섹션째 숨긴다.
                     // 로딩 중에는 유지 — 칩이 사라졌다 나타나는 깜빡임 방지.
-                    if isLoadingDetail || !availablePanelsForGrid.isEmpty {
+                    if isLoadingDetail || !selectablePanels.isEmpty {
                         detailPanelsHeader
                             .id("panelAnchor")
                         panelChipRow
@@ -403,20 +399,11 @@ struct ActivityDetailView: View {
                 }
             )
         }
-        .sheet(isPresented: $showPanelShareCard) {
+        .sheet(isPresented: $showRouteShareCard) {
             DetailPanelShareCardScreen(
                 activity: activity, detail: detail,
-                activePanel: activePanel,
-                hrSamples: hrSamples, panelSeriesData: panelSeriesData,
-                condition: condition
-            )
-        }
-        .sheet(isPresented: $showPanelGrid4Card) {
-            DetailPanelGrid4ShareCardScreen(
-                activity: activity, detail: detail,
-                availablePanels: availablePanelsForGrid,
-                hrSamples: hrSamples,
-                panelSeriesCache: panelSeriesCache,
+                activePanel: .map,
+                hrSamples: hrSamples, panelSeriesData: [],
                 condition: condition
             )
         }
@@ -817,20 +804,6 @@ struct ActivityDetailView: View {
         isLoadingPanelSeries = false
     }
 
-    // 공유 카드 열 때 모든 시리즈 패널을 캐시에 미리 올림 (display 상태 건드리지 않음)
-    private func prefetchAllSeriesForShareCard() {
-        if !hrFetchDone {
-            Task {
-                hrSamples = await manager.fetchHRTimeSeries(for: activity.id)
-                hrFetchDone = true
-            }
-        }
-        let seriesPanels: [DetailPanel] = [.cadence, .power, .groundContact, .strideLength, .verticalOscillation]
-        for panel in seriesPanels where isAvailable(panel) && (panelSeriesCache[panel]?.isEmpty != false) {
-            Task { await loadSeriesIntoCache(panel) }
-        }
-    }
-
     private func loadSeriesIntoCache(_ panel: DetailPanel) async {
         let fetched: [(offset: TimeInterval, value: Double)]
         switch panel {
@@ -1001,7 +974,6 @@ struct ActivityDetailView: View {
         case .power:                return detail?.avgPower != nil
         case .verticalOscillation:  return detail?.avgVerticalOscillation != nil
         case .elevation:            return !(detail?.altitudeProfile ?? []).isEmpty
-        case .intervals:            return !(detail?.intervalSegments ?? []).isEmpty
         }
     }
 
@@ -1013,7 +985,8 @@ struct ActivityDetailView: View {
         activePanel = .map
     }
 
-    private var availablePanelsForGrid: [DetailPanel] {
+    /// 칩으로 고를 수 있는 패널 — 종합(고정 표시) 제외, 데이터 있는 것만
+    private var selectablePanels: [DetailPanel] {
         DetailPanel.allCases.filter { $0 != .combined && isAvailable($0) }
     }
 
@@ -1073,12 +1046,7 @@ struct ActivityDetailView: View {
         }
     }
 
-    private var panelContentHeight: CGFloat {
-        if activePanel == .intervals, let segs = detail?.intervalSegments, !segs.isEmpty {
-            return IntervalPanelChart.requiredHeight(segmentCount: segs.count, hasSummary: true)
-        }
-        return 220
-    }
+    private var panelContentHeight: CGFloat { 220 }
 
     @ViewBuilder
     private var panelInnerContent: some View {
@@ -1108,12 +1076,6 @@ struct ActivityDetailView: View {
                 ElevationPanelChart(profile: profile)
             } else {
                 panelPlaceholder(icon: "mountain.2.fill", message: AppLanguage.shared.s("고도 데이터 없음", "No Elevation Data"))
-            }
-        case .intervals:
-            if let segs = detail?.intervalSegments, !segs.isEmpty {
-                IntervalPanelChart(segments: segs)
-            } else {
-                panelPlaceholder(icon: "repeat", message: AppLanguage.shared.s("인터벌 없음", "No Intervals"))
             }
         case .cadence:
             seriesPanel(icon: "figure.run", label: AppLanguage.shared.s("케이던스", "Cadence"), unit: "spm",
@@ -1271,16 +1233,19 @@ struct ActivityDetailView: View {
         .padding(.horizontal, 16)
     }
 
-    /// 상세 지표 섹션 헤더 — 칩 줄 위 제목 + 4분할 카드 내보내기
+    /// 상세 지표 섹션 헤더 — 칩 줄 위 제목 + 경로 내보내기.
+    /// 경로 외 지표는 여기서 내보내지 않는다 — 심박·케이던스·폼은 인사이트 카드에,
+    /// 구간은 구간 기록에, 인터벌은 인터벌 섹션에 각자 내보내기가 있다.
     private var detailPanelsHeader: some View {
         HStack {
             Text(AppLanguage.shared.s("오늘의 러닝 상세 데이터", "Today's Run Details"))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
             Spacer()
-            exportChip(title: AppLanguage.shared.s("러닝 데이터 내보내기", "Export Data")) {
-                prefetchAllSeriesForShareCard()   // 공유 카드용 시리즈 전체 사전 로드
-                showPanelGrid4Card = true
+            if isAvailable(.map) {
+                exportChip(title: AppLanguage.shared.s("경로 내보내기", "Export Route")) {
+                    showRouteShareCard = true
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -1603,6 +1568,183 @@ private struct ConditionChip: View {
 
 // MARK: - Route map
 
+// MARK: - Route markers (지도 스냅샷 공용)
+
+/// 경로 지도 위 마커 — 시작(흰 링) · km(흰 알약 라벨) · 도착(골드).
+/// ⚠ 활동 상세 지도(기본·심박존)와 경로 공유 카드가 **이 타입 하나만** 쓴다.
+/// 마커를 새로 그리는 코드를 따로 만들면 화면과 공유 결과가 갈라진다.
+enum RouteMarkers {
+    // MARK: - Kilometer markers
+
+    /// 경로 누적 거리(m).
+    static func totalRouteMeters(_ coords: [CLLocationCoordinate2D]) -> Double {
+        guard coords.count > 1 else { return 0 }
+        var total = 0.0
+        var prev = CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude)
+        for c in coords.dropFirst() {
+            let cur = CLLocation(latitude: c.latitude, longitude: c.longitude)
+            let d = cur.distance(from: prev)
+            if d.isFinite { total += d }
+            prev = cur
+        }
+        return total
+    }
+
+    /// 누적 거리가 간격의 배수를 넘는 지점의 좌표 = 그 km 지점.
+    /// 도착점과 겹치는 마지막 마커는 뺀다(경로 영상 computeKmMarkers와 같은 규칙).
+    static func kilometerMarks(_ coords: [CLLocationCoordinate2D], stepKm: Double, totalMeters: Double)
+        -> [(km: Int, coord: CLLocationCoordinate2D, index: Int)] {
+        guard coords.count > 1, stepKm > 0 else { return [] }
+        let stepM = stepKm * 1000
+        var result: [(km: Int, coord: CLLocationCoordinate2D, index: Int)] = []
+        var accum = 0.0
+        var next = stepM
+        var prev = CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude)
+        for (i, c) in coords.enumerated().dropFirst() {
+            let cur = CLLocation(latitude: c.latitude, longitude: c.longitude)
+            let d = cur.distance(from: prev)
+            prev = cur
+            guard d.isFinite else { continue }
+            accum += d
+            while accum >= next {
+                if next < totalMeters - stepM * 0.5 {
+                    result.append((km: Int((next / 1000).rounded()), coord: c, index: i))
+                }
+                next += stepM
+            }
+        }
+        return result
+    }
+
+    /// 시작점 마커 — 경로 영상과 같은 형식(속 빈 흰 링).
+    /// 영상은 CALayer 테두리(안쪽으로 그려짐)라 바깥 지름이 10 — 여기선 stroke가 경로 중심
+    /// 기준이므로 반지름을 lineWidth 절반만큼 줄여 바깥 지름을 맞춘다.
+    static func drawStartMarker(at point: CGPoint) {
+        let lineWidth: CGFloat = 1.5
+        let ringR: CGFloat = 5 - lineWidth / 2
+        let ring = UIBezierPath(ovalIn: CGRect(x: point.x - ringR, y: point.y - ringR,
+                                               width: ringR * 2, height: ringR * 2))
+        ring.lineWidth = lineWidth
+        UIColor.white.setStroke()
+        ring.stroke()
+    }
+
+    /// 도착점 마커 — 경로 영상과 같은 형식(골드 글로우 + 골드 점).
+    /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
+    static func drawFinishMarker(at point: CGPoint) {
+        let gold = UIColor(Color(hex: "FFC74D"))
+        let glowR: CGFloat = 9
+        gold.withAlphaComponent(0.40).setFill()
+        UIBezierPath(ovalIn: CGRect(x: point.x - glowR, y: point.y - glowR,
+                                    width: glowR * 2, height: glowR * 2)).fill()
+        let dotR: CGFloat = 5
+        gold.setFill()
+        UIBezierPath(ovalIn: CGRect(x: point.x - dotR, y: point.y - dotR,
+                                    width: dotR * 2, height: dotR * 2)).fill()
+    }
+
+    /// 경로 위 km 지점 라벨. 애플 피트니스처럼 **점 없이 라벨만** 경로 위에 얹는다.
+    /// 라벨 이미지는 `makeKmMarkerLabelImage`(경로 영상과 공용) — 지도는 흰 알약·검정 글씨에
+    /// 기준 크기의 0.65배. 220pt 지도에서는 영상 크기 그대로면 너무 크다.
+    /// 서로 겹치거나 시작·도착 마커를 가리는 라벨은 건너뛴다.
+    /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
+    static func drawKilometerMarkers(on snap: MKMapSnapshotter.Snapshot,
+                                      coords: [CLLocationCoordinate2D]) {
+        let total = totalRouteMeters(coords)
+        guard total >= 1000 else { return }
+        let step = mapMarkerStepKm(totalMeters: total)
+        let marks = kilometerMarks(coords, stepKm: step, totalMeters: total)
+        guard !marks.isEmpty else { return }
+
+        let bounds = CGRect(origin: .zero, size: snap.image.size)
+        let inset: CGFloat = 4
+        // 시작(링 r5)·도착(글로우 r9) 마커 자리를 미리 잡아 라벨이 그 위를 덮지 않게 한다
+        var placed: [CGRect] = []
+        if let first = coords.first {
+            let p = snap.point(for: first)
+            placed.append(CGRect(x: p.x - 6, y: p.y - 6, width: 12, height: 12))
+        }
+        if let last = coords.last {
+            let p = snap.point(for: last)
+            placed.append(CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20))
+        }
+
+        // 화면 배율만큼 크게 만들고 그릴 때 되돌린다 — 1x 이미지를 3x 컨텍스트에 늘리면 글자가 뭉갠다
+        let screenScale = max(1, UIScreen.main.scale)
+        let gap: CGFloat = 3
+
+        for mark in marks {
+            let pt = snap.point(for: mark.coord)
+            guard bounds.contains(pt) else { continue }
+            guard let labelImg = makeKmMarkerLabelImage(km: mark.km,
+                                                        renderScale: 0.65 * screenScale,
+                                                        style: .light) else { continue }
+            let label = UIImage(cgImage: labelImg, scale: screenScale, orientation: .up)
+            let lw = label.size.width
+            let lh = label.size.height
+
+            // 진행 방향 기준 **오른쪽**에 붙인다. 왕복 코스는 갈 때와 올 때 방향이 반대라
+            // 라벨이 경로 양쪽으로 갈라져 서로 겹치지 않는다.
+            let dir = routeDirection(on: snap, coords: coords, at: mark.index)
+            let center = kmLabelCenter(at: pt, direction: dir,
+                                       labelSize: CGSize(width: lw, height: lh), gap: gap)
+
+            // 지도 밖으로 나가지 않게 가장자리에서 밀어 넣는다
+            var rect = CGRect(x: center.x - lw / 2, y: center.y - lh / 2, width: lw, height: lh)
+            rect.origin.x = min(max(rect.minX, inset), bounds.maxX - lw - inset)
+            rect.origin.y = min(max(rect.minY, inset), bounds.maxY - lh - inset)
+
+            // 그래도 겹치면 건너뛴다
+            guard !placed.contains(where: { $0.insetBy(dx: -2, dy: -2).intersects(rect) }) else { continue }
+            placed.append(rect)
+
+            label.draw(in: rect)
+        }
+    }
+
+    /// 화면 좌표 기준 진행 방향(정규화). 좌표가 조밀해 앞뒤 점이 거의 같은 자리면
+    /// 6pt 이상 떨어진 점을 찾을 때까지 넓혀 노이즈에 휘둘리지 않게 한다.
+    /// 경로선을 그린 뒤 호출 — km 라벨 → 시작 링 → 도착 골드 순으로 얹는다.
+    /// `startPoint`/`endPoint`는 이미 화면 좌표로 변환된 경로의 첫/끝 점.
+    static func drawAll(on snap: MKMapSnapshotter.Snapshot,
+                        coords: [CLLocationCoordinate2D],
+                        endPoint: CGPoint?, startPoint: CGPoint?) {
+        drawKilometerMarkers(on: snap, coords: coords)
+        if let startPoint { drawStartMarker(at: startPoint) }
+        if let endPoint { drawFinishMarker(at: endPoint) }
+    }
+
+    static func routeDirection(on snap: MKMapSnapshotter.Snapshot,
+                                coords: [CLLocationCoordinate2D], at index: Int) -> CGVector {
+        let fallback = CGVector(dx: 1, dy: 0)
+        guard coords.indices.contains(index) else { return fallback }
+        let p0 = snap.point(for: coords[index])
+        let minSpan: CGFloat = 6
+
+        func normalized(_ dx: CGFloat, _ dy: CGFloat) -> CGVector? {
+            let len = hypot(dx, dy)
+            guard len >= minSpan else { return nil }
+            return CGVector(dx: dx / len, dy: dy / len)
+        }
+        // 앞쪽 우선 — 진행 방향
+        var j = index + 1
+        while j < coords.count {
+            let p = snap.point(for: coords[j])
+            if let v = normalized(p.x - p0.x, p.y - p0.y) { return v }
+            j += 1
+        }
+        // 끝에 가까우면 뒤쪽으로 (들어온 방향 = 진행 방향)
+        var i = index - 1
+        while i >= 0 {
+            let p = snap.point(for: coords[i])
+            if let v = normalized(p0.x - p.x, p0.y - p.y) { return v }
+            i -= 1
+        }
+        return fallback
+    }
+
+}
+
 /// 진행 방향 기준 **오른쪽**에 라벨을 놓을 때의 라벨 중심점.
 /// 왕복 코스는 갈 때와 올 때 진행 방향이 반대라 라벨이 경로 양쪽으로 갈라져 겹치지 않는다.
 /// UIKit 좌표(y가 아래로 증가) 기준 — 방향 (dx,dy)의 오른쪽 법선은 (-dy,dx).
@@ -1780,165 +1922,6 @@ private struct RouteMapView: View {
         }
     }
 
-    // MARK: - Kilometer markers
-
-    /// 경로 누적 거리(m).
-    private func totalRouteMeters(_ coords: [CLLocationCoordinate2D]) -> Double {
-        guard coords.count > 1 else { return 0 }
-        var total = 0.0
-        var prev = CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude)
-        for c in coords.dropFirst() {
-            let cur = CLLocation(latitude: c.latitude, longitude: c.longitude)
-            let d = cur.distance(from: prev)
-            if d.isFinite { total += d }
-            prev = cur
-        }
-        return total
-    }
-
-    /// 누적 거리가 간격의 배수를 넘는 지점의 좌표 = 그 km 지점.
-    /// 도착점과 겹치는 마지막 마커는 뺀다(경로 영상 computeKmMarkers와 같은 규칙).
-    private func kilometerMarks(_ coords: [CLLocationCoordinate2D], stepKm: Double, totalMeters: Double)
-        -> [(km: Int, coord: CLLocationCoordinate2D, index: Int)] {
-        guard coords.count > 1, stepKm > 0 else { return [] }
-        let stepM = stepKm * 1000
-        var result: [(km: Int, coord: CLLocationCoordinate2D, index: Int)] = []
-        var accum = 0.0
-        var next = stepM
-        var prev = CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude)
-        for (i, c) in coords.enumerated().dropFirst() {
-            let cur = CLLocation(latitude: c.latitude, longitude: c.longitude)
-            let d = cur.distance(from: prev)
-            prev = cur
-            guard d.isFinite else { continue }
-            accum += d
-            while accum >= next {
-                if next < totalMeters - stepM * 0.5 {
-                    result.append((km: Int((next / 1000).rounded()), coord: c, index: i))
-                }
-                next += stepM
-            }
-        }
-        return result
-    }
-
-    /// 시작점 마커 — 경로 영상과 같은 형식(속 빈 흰 링).
-    /// 영상은 CALayer 테두리(안쪽으로 그려짐)라 바깥 지름이 10 — 여기선 stroke가 경로 중심
-    /// 기준이므로 반지름을 lineWidth 절반만큼 줄여 바깥 지름을 맞춘다.
-    private func drawStartMarker(at point: CGPoint) {
-        let lineWidth: CGFloat = 1.5
-        let ringR: CGFloat = 5 - lineWidth / 2
-        let ring = UIBezierPath(ovalIn: CGRect(x: point.x - ringR, y: point.y - ringR,
-                                               width: ringR * 2, height: ringR * 2))
-        ring.lineWidth = lineWidth
-        UIColor.white.setStroke()
-        ring.stroke()
-    }
-
-    /// 도착점 마커 — 경로 영상과 같은 형식(골드 글로우 + 골드 점).
-    /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
-    private func drawFinishMarker(at point: CGPoint) {
-        let gold = UIColor(Color(hex: "FFC74D"))
-        let glowR: CGFloat = 9
-        gold.withAlphaComponent(0.40).setFill()
-        UIBezierPath(ovalIn: CGRect(x: point.x - glowR, y: point.y - glowR,
-                                    width: glowR * 2, height: glowR * 2)).fill()
-        let dotR: CGFloat = 5
-        gold.setFill()
-        UIBezierPath(ovalIn: CGRect(x: point.x - dotR, y: point.y - dotR,
-                                    width: dotR * 2, height: dotR * 2)).fill()
-    }
-
-    /// 경로 위 km 지점 라벨. 애플 피트니스처럼 **점 없이 라벨만** 경로 위에 얹는다.
-    /// 라벨 이미지는 `makeKmMarkerLabelImage`(경로 영상과 공용) — 지도는 흰 알약·검정 글씨에
-    /// 기준 크기의 0.65배. 220pt 지도에서는 영상 크기 그대로면 너무 크다.
-    /// 서로 겹치거나 시작·도착 마커를 가리는 라벨은 건너뛴다.
-    /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
-    private func drawKilometerMarkers(on snap: MKMapSnapshotter.Snapshot,
-                                      coords: [CLLocationCoordinate2D]) {
-        let total = totalRouteMeters(coords)
-        guard total >= 1000 else { return }
-        let step = mapMarkerStepKm(totalMeters: total)
-        let marks = kilometerMarks(coords, stepKm: step, totalMeters: total)
-        guard !marks.isEmpty else { return }
-
-        let bounds = CGRect(origin: .zero, size: snap.image.size)
-        let inset: CGFloat = 4
-        // 시작(링 r5)·도착(글로우 r9) 마커 자리를 미리 잡아 라벨이 그 위를 덮지 않게 한다
-        var placed: [CGRect] = []
-        if let first = coords.first {
-            let p = snap.point(for: first)
-            placed.append(CGRect(x: p.x - 6, y: p.y - 6, width: 12, height: 12))
-        }
-        if let last = coords.last {
-            let p = snap.point(for: last)
-            placed.append(CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20))
-        }
-
-        // 화면 배율만큼 크게 만들고 그릴 때 되돌린다 — 1x 이미지를 3x 컨텍스트에 늘리면 글자가 뭉갠다
-        let screenScale = max(1, UIScreen.main.scale)
-        let gap: CGFloat = 3
-
-        for mark in marks {
-            let pt = snap.point(for: mark.coord)
-            guard bounds.contains(pt) else { continue }
-            guard let labelImg = makeKmMarkerLabelImage(km: mark.km,
-                                                        renderScale: 0.65 * screenScale,
-                                                        style: .light) else { continue }
-            let label = UIImage(cgImage: labelImg, scale: screenScale, orientation: .up)
-            let lw = label.size.width
-            let lh = label.size.height
-
-            // 진행 방향 기준 **오른쪽**에 붙인다. 왕복 코스는 갈 때와 올 때 방향이 반대라
-            // 라벨이 경로 양쪽으로 갈라져 서로 겹치지 않는다.
-            let dir = routeDirection(on: snap, coords: coords, at: mark.index)
-            let center = kmLabelCenter(at: pt, direction: dir,
-                                       labelSize: CGSize(width: lw, height: lh), gap: gap)
-
-            // 지도 밖으로 나가지 않게 가장자리에서 밀어 넣는다
-            var rect = CGRect(x: center.x - lw / 2, y: center.y - lh / 2, width: lw, height: lh)
-            rect.origin.x = min(max(rect.minX, inset), bounds.maxX - lw - inset)
-            rect.origin.y = min(max(rect.minY, inset), bounds.maxY - lh - inset)
-
-            // 그래도 겹치면 건너뛴다
-            guard !placed.contains(where: { $0.insetBy(dx: -2, dy: -2).intersects(rect) }) else { continue }
-            placed.append(rect)
-
-            label.draw(in: rect)
-        }
-    }
-
-    /// 화면 좌표 기준 진행 방향(정규화). 좌표가 조밀해 앞뒤 점이 거의 같은 자리면
-    /// 6pt 이상 떨어진 점을 찾을 때까지 넓혀 노이즈에 휘둘리지 않게 한다.
-    private func routeDirection(on snap: MKMapSnapshotter.Snapshot,
-                                coords: [CLLocationCoordinate2D], at index: Int) -> CGVector {
-        let fallback = CGVector(dx: 1, dy: 0)
-        guard coords.indices.contains(index) else { return fallback }
-        let p0 = snap.point(for: coords[index])
-        let minSpan: CGFloat = 6
-
-        func normalized(_ dx: CGFloat, _ dy: CGFloat) -> CGVector? {
-            let len = hypot(dx, dy)
-            guard len >= minSpan else { return nil }
-            return CGVector(dx: dx / len, dy: dy / len)
-        }
-        // 앞쪽 우선 — 진행 방향
-        var j = index + 1
-        while j < coords.count {
-            let p = snap.point(for: coords[j])
-            if let v = normalized(p.x - p0.x, p.y - p0.y) { return v }
-            j += 1
-        }
-        // 끝에 가까우면 뒤쪽으로 (들어온 방향 = 진행 방향)
-        var i = index - 1
-        while i >= 0 {
-            let p = snap.point(for: coords[i])
-            if let v = normalized(p0.x - p.x, p0.y - p.y) { return v }
-            i -= 1
-        }
-        return fallback
-    }
-
     // MARK: - Snapshot generation (default — violet single line)
 
     private func makeSnapshot() async -> UIImage? {
@@ -1998,11 +1981,8 @@ private struct RouteMapView: View {
             violetColor.setStroke()
             path.stroke()
 
-            drawKilometerMarkers(on: snap, coords: valid)
+            RouteMarkers.drawAll(on: snap, coords: valid, endPoint: pts.last, startPoint: pts.first)
 
-            // 시작·도착점 — 경로 영상과 같은 마커
-            if let first = pts.first { drawStartMarker(at: first) }
-            if let last = pts.last { drawFinishMarker(at: last) }
         }
     }
 
@@ -2103,11 +2083,9 @@ private struct RouteMapView: View {
                 seg.lineCapStyle = .round; seg.lineWidth = 1.5
                 color.setStroke(); seg.stroke()
             }
-            drawKilometerMarkers(on: snap, coords: indexed.map(\.element))
+            RouteMarkers.drawAll(on: snap, coords: indexed.map(\.element),
+                                 endPoint: points.last?.pt, startPoint: points.first?.pt)
 
-            // 시작·도착점 — 경로 영상과 같은 마커
-            if let first = points.first { drawStartMarker(at: first.pt) }
-            if let last = points.last { drawFinishMarker(at: last.pt) }
         }
     }
 
