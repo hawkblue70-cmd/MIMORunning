@@ -2709,6 +2709,17 @@ private struct PerformanceInsightCard: View {
     }
 
     private enum ScatterGroup { case past, recent, today }
+
+    /// 산점도 점 색·크기. 22회가 좁은 영역에 모이면 점이 겹쳐 덩어리가 되므로
+    /// 카드 배경색 테두리를 둘러 경계를 만든다 — 색보다 이게 개수 읽기에 크게 작용한다.
+    private enum ScatterStyle {
+        static let past   = Color(hex: "A9B6C4")   // 밝은 한색 회색 — 흰색 반투명은 검은 배경에서 묻혔다
+        static let recent = Color(hex: "C77DFF")   // 형광 보라 — 브랜드 보라는 검은 배경에서 가장 어두웠다
+        static let today  = IC.todayDot            // 형광 라임
+        static let casing: CGFloat = 0.9           // 배경색 테두리 두께
+        static let rPast:   CGFloat = 3.8
+        static let rRecent: CGFloat = 4.4
+    }
     private struct ScatterPt {
         let pace: Double
         let hr: Double
@@ -2978,34 +2989,39 @@ private struct PerformanceInsightCard: View {
                     }
                 }
 
-                // Past dots (white) — 오늘 점과 대비를 벌리려고 한 단계 뒤로 물린다
+                // 점 하나 — 배경색 테두리를 먼저 깔고 그 위에 색을 채운다(겹쳐도 경계가 남는다)
+                func scatterDot(_ center: CGPoint, radius r: CGFloat, color: Color) {
+                    let c = ScatterStyle.casing
+                    ctx.fill(
+                        Path(ellipseIn: CGRect(x: center.x-r-c, y: center.y-r-c,
+                                               width: (r+c)*2, height: (r+c)*2)),
+                        with: .color(Theme.cardBackground)
+                    )
+                    ctx.fill(
+                        Path(ellipseIn: CGRect(x: center.x-r, y: center.y-r, width: r*2, height: r*2)),
+                        with: .color(color)
+                    )
+                }
+
+                // Past dots — 오늘 점과 대비를 벌리려고 한 단계 뒤로 물린다
                 for pt in pastPts {
-                    let r: CGFloat = 3.4
-                    ctx.fill(
-                        Path(ellipseIn: CGRect(x: cx(pt.pace)-r, y: cy(pt.hr)-r, width: r*2, height: r*2)),
-                        with: .color(.white.opacity(0.40))
-                    )
+                    scatterDot(CGPoint(x: cx(pt.pace), y: cy(pt.hr)),
+                               radius: ScatterStyle.rPast, color: ScatterStyle.past)
                 }
-                // Recent dots (violet)
+                // Recent dots
                 for pt in recentPts {
-                    let r: CGFloat = 3.8
-                    ctx.fill(
-                        Path(ellipseIn: CGRect(x: cx(pt.pace)-r, y: cy(pt.hr)-r, width: r*2, height: r*2)),
-                        with: .color(IC.violet)
-                    )
+                    scatterDot(CGPoint(x: cx(pt.pace), y: cy(pt.hr)),
+                               radius: ScatterStyle.rRecent, color: ScatterStyle.recent)
                 }
-                // Today dot (lime + ring) — drawn last. 오늘이 주인공이라 가장 밝은 색.
+                // Today dot (ring + fill) — drawn last. 오늘이 주인공이라 가장 밝은 색.
                 for pt in todayPts {
+                    let center = CGPoint(x: cx(pt.pace), y: cy(pt.hr))
                     let rO: CGFloat = 8.6
-                    let rI: CGFloat = 5.4
                     ctx.stroke(
-                        Path(ellipseIn: CGRect(x: cx(pt.pace)-rO, y: cy(pt.hr)-rO, width: rO*2, height: rO*2)),
-                        with: .color(IC.todayDot.opacity(0.35)), style: StrokeStyle(lineWidth: 1)
+                        Path(ellipseIn: CGRect(x: center.x-rO, y: center.y-rO, width: rO*2, height: rO*2)),
+                        with: .color(ScatterStyle.today.opacity(0.35)), style: StrokeStyle(lineWidth: 1)
                     )
-                    ctx.fill(
-                        Path(ellipseIn: CGRect(x: cx(pt.pace)-rI, y: cy(pt.hr)-rI, width: rI*2, height: rI*2)),
-                        with: .color(IC.todayDot)
-                    )
+                    scatterDot(center, radius: 5.4, color: ScatterStyle.today)
                 }
 
                 // Y-axis labels — inside chart, top-left / bottom-left
@@ -3039,15 +3055,15 @@ private struct PerformanceInsightCard: View {
                 Spacer()
                 HStack(spacing: 12) {
                     HStack(spacing: 4) {
-                        Circle().fill(Color.white.opacity(0.40)).frame(width: 6, height: 6)
+                        Circle().fill(ScatterStyle.past).frame(width: 6, height: 6)
                         Text(L.s("8주 전", "8w ago")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
                     }
                     HStack(spacing: 4) {
-                        Circle().fill(IC.violet).frame(width: 6, height: 6)
+                        Circle().fill(ScatterStyle.recent).frame(width: 6, height: 6)
                         Text(L.s("최근", "Recent")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
                     }
                     HStack(spacing: 4) {
-                        Circle().fill(IC.todayDot).frame(width: 6, height: 6)
+                        Circle().fill(ScatterStyle.today).frame(width: 6, height: 6)
                         Text(L.s("오늘", "Today")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
                     }
                 }
@@ -3938,19 +3954,21 @@ private struct PerformanceInsightCard: View {
     }
     #endif
 
+    /// 막대 라벨 — 색은 `WorkoutTypeColor` 한 곳에서 가져온다.
     private func displayBucket(for type: WorkoutType) -> (label: String, color: Color) {
         let L = AppLanguage.shared
-        switch type {
-        case .interval:    return (L.s("인터벌",   "Interval"),  Color(hex: "FF9A3C"))
-        case .tempo:       return (L.s("템포런",   "Tempo"),     Color(hex: "F5C542"))
-        case .buildUp:     return (L.s("빌드업",   "Build-Up"),  Color(hex: "FFD166"))
-        case .distanceRun: return (L.s("거리주",   "Dist.Run"),  Color(hex: "5BB8FF"))
-        case .lsd:         return (L.s("LSD",      "LSD"),       Color(hex: "8B7FF0"))
-        case .longRun:     return (L.s("롱런",     "Long Run"),  Color(hex: "7C5CFC"))
-        case .easy:        return (L.s("이지런",   "Easy"),      Color(hex: "6B7280"))
-        case .race:        return (L.s("대회",     "Race"),      Theme.violet)
-        case .general:     return (L.s("일반 러닝","General"),   Color(hex: "8A8A92"))
+        let label: String = switch type {
+        case .interval:    L.s("인터벌",    "Interval")
+        case .tempo:       L.s("템포런",    "Tempo")
+        case .buildUp:     L.s("빌드업",    "Build-Up")
+        case .distanceRun: L.s("거리주",    "Dist.Run")
+        case .lsd:         L.s("LSD",       "LSD")
+        case .longRun:     L.s("롱런",      "Long Run")
+        case .easy:        L.s("이지런",    "Easy")
+        case .race:        L.s("대회",      "Race")
+        case .general:     L.s("일반 러닝", "General")
         }
+        return (label, WorkoutTypeColor.color(for: type))
     }
 
     @ViewBuilder

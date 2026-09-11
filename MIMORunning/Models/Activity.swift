@@ -98,7 +98,7 @@ struct Activity: Identifiable, Hashable {
 
 // MARK: - Workout Type
 
-enum WorkoutType: String, Codable {
+enum WorkoutType: String, Codable, CaseIterable {
     case interval    // 인터벌/스피드
     case longRun     // 롱런
     case easy        // 이지/회복런
