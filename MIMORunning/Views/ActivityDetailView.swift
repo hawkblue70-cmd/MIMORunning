@@ -1603,6 +1603,25 @@ private struct ConditionChip: View {
 
 // MARK: - Route map
 
+/// 진행 방향 기준 **오른쪽**에 라벨을 놓을 때의 라벨 중심점.
+/// 왕복 코스는 갈 때와 올 때 진행 방향이 반대라 라벨이 경로 양쪽으로 갈라져 겹치지 않는다.
+/// UIKit 좌표(y가 아래로 증가) 기준 — 방향 (dx,dy)의 오른쪽 법선은 (-dy,dx).
+func kmLabelCenter(at point: CGPoint, direction: CGVector,
+                   labelSize: CGSize, gap: CGFloat) -> CGPoint {
+    let len = hypot(direction.dx, direction.dy)
+    guard len > 0.0001 else {
+        return CGPoint(x: point.x, y: point.y + labelSize.height / 2 + gap)
+    }
+    let nx = -direction.dy / len
+    let ny =  direction.dx / len
+    // 라벨 중심에서 경계까지 거리 — 법선 방향에 따라 가로/세로 중 먼저 닿는 쪽
+    var t = CGFloat.greatestFiniteMagnitude
+    if abs(nx) > 0.0001 { t = min(t, (labelSize.width  / 2) / abs(nx)) }
+    if abs(ny) > 0.0001 { t = min(t, (labelSize.height / 2) / abs(ny)) }
+    if !t.isFinite { t = labelSize.height / 2 }
+    return CGPoint(x: point.x + nx * (t + gap), y: point.y + ny * (t + gap))
+}
+
 /// 지도 km 마커 간격. 1km마다 찍으면 촘촘해지는 거리에서는 2km·3km(그 이상은 5·10km)로 넓힌다.
 /// 기준: 지도에 마커가 10개를 넘지 않게.
 func mapMarkerStepKm(totalMeters: Double) -> Double {
@@ -1731,12 +1750,12 @@ private struct RouteMapView: View {
 
     private var cacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_v13_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_v14_\(activityID.uuidString).jpg")
     }
 
     private var hrZoneCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_hrzone_v8_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_hrzone_v9_\(activityID.uuidString).jpg")
     }
 
     private func loadFromDisk() -> UIImage? {
@@ -1780,14 +1799,14 @@ private struct RouteMapView: View {
     /// 누적 거리가 간격의 배수를 넘는 지점의 좌표 = 그 km 지점.
     /// 도착점과 겹치는 마지막 마커는 뺀다(경로 영상 computeKmMarkers와 같은 규칙).
     private func kilometerMarks(_ coords: [CLLocationCoordinate2D], stepKm: Double, totalMeters: Double)
-        -> [(km: Int, coord: CLLocationCoordinate2D)] {
+        -> [(km: Int, coord: CLLocationCoordinate2D, index: Int)] {
         guard coords.count > 1, stepKm > 0 else { return [] }
         let stepM = stepKm * 1000
-        var result: [(km: Int, coord: CLLocationCoordinate2D)] = []
+        var result: [(km: Int, coord: CLLocationCoordinate2D, index: Int)] = []
         var accum = 0.0
         var next = stepM
         var prev = CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude)
-        for c in coords.dropFirst() {
+        for (i, c) in coords.enumerated().dropFirst() {
             let cur = CLLocation(latitude: c.latitude, longitude: c.longitude)
             let d = cur.distance(from: prev)
             prev = cur
@@ -1795,7 +1814,7 @@ private struct RouteMapView: View {
             accum += d
             while accum >= next {
                 if next < totalMeters - stepM * 0.5 {
-                    result.append((km: Int((next / 1000).rounded()), coord: c))
+                    result.append((km: Int((next / 1000).rounded()), coord: c, index: i))
                 }
                 next += stepM
             }
@@ -1832,7 +1851,7 @@ private struct RouteMapView: View {
 
     /// 경로 위 km 지점 라벨. 애플 피트니스처럼 **점 없이 라벨만** 경로 위에 얹는다.
     /// 라벨 이미지는 `makeKmMarkerLabelImage`(경로 영상과 공용) — 지도는 흰 알약·검정 글씨에
-    /// 기준 크기의 절반(renderScale 0.5). 220pt 지도에서는 영상 크기 그대로면 너무 크다.
+    /// 기준 크기의 0.65배. 220pt 지도에서는 영상 크기 그대로면 너무 크다.
     /// 서로 겹치거나 시작·도착 마커를 가리는 라벨은 건너뛴다.
     /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
     private func drawKilometerMarkers(on snap: MKMapSnapshotter.Snapshot,
@@ -1858,28 +1877,66 @@ private struct RouteMapView: View {
 
         // 화면 배율만큼 크게 만들고 그릴 때 되돌린다 — 1x 이미지를 3x 컨텍스트에 늘리면 글자가 뭉갠다
         let screenScale = max(1, UIScreen.main.scale)
+        let gap: CGFloat = 3
 
         for mark in marks {
             let pt = snap.point(for: mark.coord)
             guard bounds.contains(pt) else { continue }
             guard let labelImg = makeKmMarkerLabelImage(km: mark.km,
-                                                        renderScale: 0.5 * screenScale,
+                                                        renderScale: 0.65 * screenScale,
                                                         style: .light) else { continue }
             let label = UIImage(cgImage: labelImg, scale: screenScale, orientation: .up)
             let lw = label.size.width
             let lh = label.size.height
 
-            // km 지점 중앙에 얹되, 지도 밖으로 나가지 않게 가장자리에서 밀어 넣는다
-            var rect = CGRect(x: pt.x - lw / 2, y: pt.y - lh / 2, width: lw, height: lh)
+            // 진행 방향 기준 **오른쪽**에 붙인다. 왕복 코스는 갈 때와 올 때 방향이 반대라
+            // 라벨이 경로 양쪽으로 갈라져 서로 겹치지 않는다.
+            let dir = routeDirection(on: snap, coords: coords, at: mark.index)
+            let center = kmLabelCenter(at: pt, direction: dir,
+                                       labelSize: CGSize(width: lw, height: lh), gap: gap)
+
+            // 지도 밖으로 나가지 않게 가장자리에서 밀어 넣는다
+            var rect = CGRect(x: center.x - lw / 2, y: center.y - lh / 2, width: lw, height: lh)
             rect.origin.x = min(max(rect.minX, inset), bounds.maxX - lw - inset)
             rect.origin.y = min(max(rect.minY, inset), bounds.maxY - lh - inset)
 
-            // 이미 놓인 라벨·마커와 겹치면 건너뛴다 (왕복 코스에서 흔하다)
+            // 그래도 겹치면 건너뛴다
             guard !placed.contains(where: { $0.insetBy(dx: -2, dy: -2).intersects(rect) }) else { continue }
             placed.append(rect)
 
             label.draw(in: rect)
         }
+    }
+
+    /// 화면 좌표 기준 진행 방향(정규화). 좌표가 조밀해 앞뒤 점이 거의 같은 자리면
+    /// 6pt 이상 떨어진 점을 찾을 때까지 넓혀 노이즈에 휘둘리지 않게 한다.
+    private func routeDirection(on snap: MKMapSnapshotter.Snapshot,
+                                coords: [CLLocationCoordinate2D], at index: Int) -> CGVector {
+        let fallback = CGVector(dx: 1, dy: 0)
+        guard coords.indices.contains(index) else { return fallback }
+        let p0 = snap.point(for: coords[index])
+        let minSpan: CGFloat = 6
+
+        func normalized(_ dx: CGFloat, _ dy: CGFloat) -> CGVector? {
+            let len = hypot(dx, dy)
+            guard len >= minSpan else { return nil }
+            return CGVector(dx: dx / len, dy: dy / len)
+        }
+        // 앞쪽 우선 — 진행 방향
+        var j = index + 1
+        while j < coords.count {
+            let p = snap.point(for: coords[j])
+            if let v = normalized(p.x - p0.x, p.y - p0.y) { return v }
+            j += 1
+        }
+        // 끝에 가까우면 뒤쪽으로 (들어온 방향 = 진행 방향)
+        var i = index - 1
+        while i >= 0 {
+            let p = snap.point(for: coords[i])
+            if let v = normalized(p0.x - p.x, p0.y - p.y) { return v }
+            i -= 1
+        }
+        return fallback
     }
 
     // MARK: - Snapshot generation (default — violet single line)
