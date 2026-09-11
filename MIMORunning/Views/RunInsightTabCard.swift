@@ -1499,6 +1499,32 @@ private struct RhythmInsightCard: View {
         }
     }
 
+    // 2×2 칸 정렬 상수 — 행 안에서 차트 높이와 캡션 시작 줄을 맞춘다.
+    // 칸마다 콘텐츠 높이가 다르면 캡션이 들쭉날쭉해진다.
+    private static let topChartH: CGFloat = 114      // 도넛(114) 기준
+    private static let topCaptionH: CGFloat = 28
+    private static let bottomChartH: CGFloat = 110   // 게이지(87) + 축 라벨이 아래로 삐져나오는 23
+    private static let bottomCaptionH: CGFloat = 38
+
+    /// 2×2 한 칸 — 차트 영역과 캡션 영역을 고정 높이로 잡아 네 칸의 줄을 맞춘다.
+    private func rhythmCell<Chart: View, Caption: View>(
+        chartH: CGFloat, captionH: CGFloat, chartAlignment: Alignment = .center,
+        @ViewBuilder chart: () -> Chart,
+        @ViewBuilder caption: () -> Caption
+    ) -> some View {
+        VStack(spacing: 0) {
+            chart()
+                .frame(maxWidth: .infinity, minHeight: chartH, maxHeight: chartH,
+                       alignment: chartAlignment)
+            caption()
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: captionH, maxHeight: captionH, alignment: .top)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)   // 게이지 축 라벨이 칸 경계(구분선)에 붙지 않게
+    }
+
     @ViewBuilder
     private var rhythmRow: some View {
         let visibleZones = hrZones.filter { $0.fraction > 0.01 }
@@ -1528,25 +1554,24 @@ private struct RhythmInsightCard: View {
             // 상단 행: 심박존(좌) + 심박수 HR 시계열(우)
             HStack(alignment: .center, spacing: 0) {
                 // 심박존 도넛
-                VStack(alignment: .center, spacing: 4) {
+                rhythmCell(chartH: Self.topChartH, captionH: Self.topCaptionH) {
                     if hasZones {
                         ZoneDonutView(zones: hrZones)
                             .frame(width: 114, height: 114)
-                        Color.clear.frame(height: 8)
+                    }
+                } caption: {
+                    if hasZones {
                         Text(zoneVerdictLabel)
                             .font(.system(size: 8, weight: .medium))
                             .foregroundStyle(zoneVerdictColor)
-                            .multilineTextAlignment(.center)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
 
                 // 세로 구분선
                 Rectangle().fill(sep).frame(width: 0.5)
 
                 // 심박수 HR 시계열 + 판정 문구
-                VStack(alignment: .center, spacing: 3) {
+                rhythmCell(chartH: Self.topChartH, captionH: Self.topCaptionH) {
                     if hasHR {
                         HRTimeSeriesView(
                             samples: hrSamples,
@@ -1555,17 +1580,14 @@ private struct RhythmInsightCard: View {
                         )
                         .padding(.horizontal, 2)
                         .frame(height: 104)
-                        if let v = hrVerdictText {
-                            Text(v.text)
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(v.color)
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                        }
+                    }
+                } caption: {
+                    if hasHR, let v = hrVerdictText {
+                        Text(v.text)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(v.color)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
             }
 
             // 가로 구분선
@@ -1576,48 +1598,52 @@ private struct RhythmInsightCard: View {
                 // 케이던스 게이지 + 기준 문구
                 // 인터벌은 고강도 구간 평균을 바늘에 반영, 개인 비교 문구 숨김
                 // 장거리 문맥이면 formBaseline을 nil로 전달 → 바늘이 절대 기준(160–180)으로만 판단 (흰색)
-                VStack(alignment: .center, spacing: 4) {
+                rhythmCell(chartH: Self.bottomChartH, captionH: Self.bottomCaptionH,
+                           chartAlignment: .top) {
                     let displayCad = intervalWorkCadence.map { Int($0.rounded()) } ?? detail?.avgCadence
                     if let cad = displayCad {
                         let gaugeBaseline: RunningFormBaseline? = rhythmIsLongDistanceContext ? nil : formBaseline
                         CadenceRPMGaugeView(cadence: cad, formBaseline: gaugeBaseline, activity: activity,
                                             isInterval: workoutTypeFn?(activity.id) == .interval,
                                             gradeAdjustedPace: runGAP)
-                        Color.clear.frame(height: 8)
-                        Text(cadenceBottomLabel)
-                            .font(.system(size: 8.5))
-                            .foregroundStyle(Color.white.opacity(0.6))
-                            .multilineTextAlignment(.center)
-                        // 장거리 문맥이면 상대 평가 문구 생략 (절대 기준 위반 시 cadenceVerdictInfo가 처리)
-                        if workoutTypeFn?(activity.id) != .interval && !rhythmIsLongDistanceContext {
-                            let v = cadenceVerdictInfo(cad: cad)
-                            Text(v.text)
-                                .font(.system(size: 8.5, weight: .medium))
-                                .foregroundStyle(v.color)
-                                .multilineTextAlignment(.center)
+                            .frame(height: 87)          // 축 라벨은 아래로 삐져나온다 — 칸 높이가 흡수
+                    }
+                } caption: {
+                    let displayCad = intervalWorkCadence.map { Int($0.rounded()) } ?? detail?.avgCadence
+                    if let cad = displayCad {
+                        VStack(spacing: 2) {
+                            Text(cadenceBottomLabel)
+                                .font(.system(size: 8.5))
+                                .foregroundStyle(Color.white.opacity(0.6))
+                            // 장거리 문맥이면 상대 평가 문구 생략 (절대 기준 위반 시 cadenceVerdictInfo가 처리)
+                            if workoutTypeFn?(activity.id) != .interval && !rhythmIsLongDistanceContext {
+                                let v = cadenceVerdictInfo(cad: cad)
+                                Text(v.text)
+                                    .font(.system(size: 8.5, weight: .medium))
+                                    .foregroundStyle(v.color)
+                            }
                         }
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
 
                 // 세로 구분선
                 Rectangle().fill(sep).frame(width: 0.5)
 
                 // 유산소 VO2 게이지 + FRIEND DB + 등급 문구
-                VStack(alignment: .center, spacing: 4) {
+                rhythmCell(chartH: Self.bottomChartH, captionH: Self.bottomCaptionH,
+                           chartAlignment: .top) {
                     if let info = vo2Info, let vo2 = detail?.vo2Max {
                         VO2RPMGaugeView(fi: info, vo2: vo2)
-                        Color.clear.frame(height: 8)
+                            .frame(height: 87)
+                    }
+                } caption: {
+                    if let info = vo2Info, let vo2 = detail?.vo2Max {
                         let sub = vo2SubLabel(fi: info, vo2: vo2)
                         Text(sub.text)
                             .font(.system(size: 8.5))
                             .foregroundStyle(sub.color)
-                            .multilineTextAlignment(.center)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
             }
 
             // 폼 종합 요약 — 백필 중이면 진행 표시, 아니면 기준선 기반 요약 + 종류별 판정
