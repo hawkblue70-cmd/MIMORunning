@@ -277,13 +277,13 @@ private struct RunStatTile: View {
                     .frame(width: 7, height: 7)
                     Text(layer.shortLabel)
                         .font(.system(size: 10))
-                        .foregroundStyle(Color.white.opacity(isOn ? 0.72 : 0.32))
+                        .foregroundStyle(Color.white.opacity(isOn ? 0.85 : 0.32))
                         .lineLimit(1)
                     Spacer(minLength: 2)
                     if layer.showsRange {
                         Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
                             .font(.system(size: 9.5))
-                            .foregroundStyle(Color.white.opacity(isOn ? 0.55 : 0.24))
+                            .foregroundStyle(Color.white.opacity(isOn ? 0.68 : 0.24))
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                     }
@@ -295,14 +295,14 @@ private struct RunStatTile: View {
                         .foregroundStyle(Color.white.opacity(isOn ? 1.0 : 0.28))
                     Text(layer.unit)
                         .font(.system(size: 9))
-                        .foregroundStyle(Color.white.opacity(isOn ? 0.68 : 0.26))
+                        .foregroundStyle(Color.white.opacity(isOn ? 0.80 : 0.26))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .background(
-                Color.white.opacity(isOn ? 0.08 : 0.04),
+                Color.white.opacity(isOn ? 0.10 : 0.04),
                 in: RoundedRectangle(cornerRadius: 9)
             )
         }

@@ -70,9 +70,9 @@ struct ShareChartPalette {
             case .pace:         return pace                     // #00A8C8 cyan
             case .cadence:      return Color(hex: "B8860B")    // 딥 골드
             case .elevation:    return elevation                // #4FA82E green
-            case .power:        return Color(hex: "5B3FD9")    // 딥 바이올렛 (다크의 라벤더와 같은 계열)
+            case .power:        return Color(hex: "7C3AED")    // 딥 바이올렛 (다크 C77DFF의 어두운 짝)
             case .strideLength: return Color(hex: "3A3A3C")    // 진회색 (다크의 화이트에 대응)
-            case .verticalOsc:  return Color(hex: "8E24AA")    // 딥 퍼플
+            case .verticalOsc:  return Color(hex: "C2185B")    // 딥 마젠타 (다크 F050FF의 어두운 짝)
             default:            return layer.color
             }
         }
@@ -157,8 +157,8 @@ struct ShareChartPalette {
         ],
         hrRepColor:      Color(hex: "E0242B"),    // HR chip/tile representative red
         pace:            Color(hex: "00A8C8"),    // cyan (same hue as dark, darkened)
-        elevation:       Color(hex: "4FA82E"),    // green
-        elevFill:        Color(hex: "4FA82E"),
+        elevation:       Color(hex: "00915A"),    // 스프링 그린의 어두운 짝 (다크 00E676)
+        elevFill:        Color(hex: "00915A"),
         elevFillMaxOp:   0.13,
         timeLabel:       Color(hex: "555555"),
         textSecondary:   Color(hex: "757575"),
@@ -1403,14 +1403,14 @@ private struct ReplayTileCell: View {
                     .frame(width: 6 * s, height: 6 * s)
                 Text(layer.shortLabel)
                     .font(.system(size: 9.5 * s))
-                    .foregroundStyle(palette.textPrimary.opacity(0.70))
+                    .foregroundStyle(palette.textPrimary.opacity(0.85))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Spacer(minLength: 2)
                 if !layer.isValueOnly {
                     Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
                         .font(.system(size: 8.5 * s))
-                        .foregroundStyle(palette.textPrimary.opacity(0.55))
+                        .foregroundStyle(palette.textPrimary.opacity(0.68))
                         .lineLimit(1)
                         .minimumScaleFactor(0.70)
                 }
@@ -1423,7 +1423,7 @@ private struct ReplayTileCell: View {
                     .lineLimit(1)
                 Text(layer.unit)
                     .font(.system(size: 8.5 * s))
-                    .foregroundStyle(palette.textPrimary.opacity(0.65))
+                    .foregroundStyle(palette.textPrimary.opacity(0.80))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

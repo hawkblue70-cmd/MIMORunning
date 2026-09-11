@@ -89,13 +89,15 @@ extension Theme {
     //   예전 값: 파워 하늘파랑(=페이스·Z1과 충돌) · 보폭 코랄(=심박과 충돌) · 고도 라임(=Z3·케이던스와 충돌).
     static let chartPace     = Color(hex: "00D8FF")  // 전기 시안 (막대)
     static let chartCadence  = Theme.cadence         // 순수 옐로 — 지표 의미색과 같은 값
-    static let chartPower    = Color(hex: "A78BFA")  // 라벤더 바이올렛 (브랜드 계열)
-    static let chartElev     = Color(hex: "34C759")  // 초록 (라임 아님 — Z3·케이던스와 분리)
-    static let chartElevFill = Color(hex: "34C759")  // 고도 fill
+    // 선은 전부 형광 톤 — 검은 배경에서 라벤더(A78BFA)·시스템 초록(34C759)만 한 단계 어두워
+    //   심박(존 색)·케이던스(순노랑)·진폭(마젠타) 옆에서 가라앉아 보였다.
+    static let chartPower    = Color(hex: "C77DFF")  // 형광 바이올렛 (브랜드 계열)
+    static let chartElev     = Color(hex: "00E676")  // 형광 스프링 그린 (라임 아님 — Z3·케이던스와 분리)
+    static let chartElevFill = Color(hex: "00E676")  // 고도 fill
     static let chartStride   = Color(hex: "F2F2F7")  // 화이트 (검은 배경에서 가장 뚜렷)
-    static let chartVertOsc  = Color(hex: "E040FB")  // 비비드 마젠타
-    static let chartAerobic  = Color(hex: "8E8E93")  // 값 전용 타일 — 선을 그리지 않으므로 중립 회색
-    static let chartValueOnly = Color(hex: "8E8E93") // 값 전용 타일 공통 (유산소·칼로리)
+    static let chartVertOsc  = Color(hex: "F050FF")  // 형광 마젠타
+    static let chartAerobic  = Color(hex: "AEB2BC")  // 값 전용 타일 — 선을 그리지 않으므로 중립 회색(밝게)
+    static let chartValueOnly = Color(hex: "AEB2BC") // 값 전용 타일 공통 (유산소·칼로리)
 
     static let chartHRZones: [Color] = [
         Color(hex: "3D9BFF"),  // Z1 블루

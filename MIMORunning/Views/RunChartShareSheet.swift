@@ -674,14 +674,14 @@ private struct ShareStatTile: View {
                     .frame(width: 6, height: 6)
                 Text(layer.shortLabel)
                     .font(.system(size: 9.5))
-                    .foregroundStyle(palette.textPrimary.opacity(0.70))
+                    .foregroundStyle(palette.textPrimary.opacity(0.85))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Spacer(minLength: 2)
                 if layer.showsRange {
                     Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
                         .font(.system(size: 8.5))
-                        .foregroundStyle(palette.textPrimary.opacity(0.55))
+                        .foregroundStyle(palette.textPrimary.opacity(0.68))
                         .lineLimit(1)
                         .minimumScaleFactor(0.70)
                 }
@@ -695,7 +695,7 @@ private struct ShareStatTile: View {
                     .lineLimit(1)
                 Text(layer.unit)
                     .font(.system(size: 8.5))
-                    .foregroundStyle(palette.textPrimary.opacity(0.65))
+                    .foregroundStyle(palette.textPrimary.opacity(0.80))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
