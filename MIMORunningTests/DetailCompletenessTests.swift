@@ -9,7 +9,7 @@ import CoreLocation
 final class DetailCompletenessTests: XCTestCase {
 
     private func detail(route: [CLLocationCoordinate2D], splits: Int, indoor: Bool,
-                        hasMetrics: Bool = true) -> ActivityDetail {
+                        hasMetrics: Bool = true, fetchFailed: Bool = false) -> ActivityDetail {
         ActivityDetail(
             routeCoordinates: route, routeTimeOffsets: [], elevationGain: nil,
             avgPower: hasMetrics ? 227 : nil, avgCadence: hasMetrics ? 178 : nil,
@@ -21,7 +21,7 @@ final class DetailCompletenessTests: XCTestCase {
             hrZones: [], intervalSegments: [], workoutType: .general,
             avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil,
             vo2Max: nil, altitudeProfile: [], altitudeTimeProfile: [],
-            isIndoorWorkout: indoor)
+            isIndoorWorkout: indoor, fetchIncomplete: fetchFailed)
     }
 
     private let coords = [CLLocationCoordinate2D(latitude: 37.3, longitude: 126.8),
@@ -44,5 +44,19 @@ final class DetailCompletenessTests: XCTestCase {
     func testIndoorRunWithNothingIsIncomplete() {
         XCTAssertFalse(detail(route: [], splits: 0, indoor: true, hasMetrics: false).isComplete,
                        "실내라도 아무 데이터가 없으면 완성이 아니다")
+    }
+
+    /// 케이던스·파워·러닝폼·VO2max 조회가 실패하면 값이 nil로 들어온다. 그대로 저장하면
+    /// "이 러닝엔 원래 없는 지표"로 굳어 상세 지표가 한두 개씩 영구히 비게 된다.
+    func testFetchFailureIsNotComplete() {
+        XCTAssertFalse(detail(route: coords, splits: 10, indoor: false, fetchFailed: true).isComplete,
+                       "조회가 실패한 상세는 저장하지 않고 다음에 다시 읽어야 한다")
+    }
+
+    func testFetchFailureFlagIsNotPersisted() throws {
+        let failed = detail(route: coords, splits: 10, indoor: false, fetchFailed: true)
+        let restored = try JSONDecoder().decode(ActivityDetail.self, from: JSONEncoder().encode(failed))
+        XCTAssertFalse(restored.fetchIncomplete,
+                       "실패 표시는 저장되지 않는다 — 저장된 상세는 실패 없이 만들어진 것")
     }
 }

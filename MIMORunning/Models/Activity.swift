@@ -152,6 +152,11 @@ struct ActivityDetail {
     /// 야외인데 경로가 비어 있으면 "아직 못 받아온 것"으로 판단하는 데 쓴다.
     var isIndoorWorkout: Bool = false
 
+    /// HealthKit 조회 중 **실패한 항목이 있었나**. 값이 없는 것과 못 읽은 것은 다르다.
+    /// 둘을 nil 하나로 뭉치면 일시적 실패가 "이 러닝엔 원래 없는 지표"로 캐시에 굳는다
+    /// (디스크 캐시가 완성으로 읽히면 다시 조회하지 않는다). 저장하지 않는 값 — 항상 false로 디코딩된다.
+    var fetchIncomplete: Bool = false
+
     /// True when HealthKit returned at least one major data field.
     /// An incomplete cache (all empty) means HealthKit hadn't finished processing — re-fetch needed.
     ///
@@ -159,6 +164,7 @@ struct ActivityDetail {
     /// 디스크에 저장해 버려서, 경로 조회가 한 번 실패하면 지도·고도가 **영구히** 사라졌다
     /// (다음 진입에서도 캐시가 완성으로 읽혀 재조회하지 않았다).
     var isComplete: Bool {
+        if fetchIncomplete { return false }
         if !isIndoorWorkout && routeCoordinates.isEmpty { return false }
         return !routeCoordinates.isEmpty || !splits.isEmpty || !hrZones.isEmpty ||
             avgPower != nil || avgCadence != nil
@@ -286,6 +292,7 @@ extension ActivityDetail: Codable {
         let tAlts   = try c.decode([Double].self, forKey: .altTimeAlt)
         altitudeTimeProfile = zip(offsets, tAlts).map { (offset: $0, altitude: $1) }
         appleEffort = (try? c.decodeIfPresent(AppleEffort.self, forKey: .appleEffort)) ?? nil   // 손상된 강도 블롭 하나가 상세 캐시 전체를 버리지 않게
+        fetchIncomplete = false   // 저장된 상세는 실패 없이 만들어진 것 — 저장 자체를 막는다
     }
 
     func encode(to encoder: any Encoder) throws {

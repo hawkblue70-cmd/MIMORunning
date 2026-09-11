@@ -1324,7 +1324,8 @@ class HealthKitManager {
             var batchDone = 0
             for act in targets {
                 guard !Task.isCancelled else { break }
-                defer { processed.insert(act.id.uuidString) }
+                var markProcessed = true
+                defer { if markProcessed { processed.insert(act.id.uuidString) } }
 
                 guard let workout = workoutMap[act.id] else { continue }
 
@@ -1342,13 +1343,20 @@ class HealthKitManager {
                 // 4지표와 **병렬** 실행 — 경로 조회가 무거워 순차로 하면 백필이 몇 배 느려진다.
                 async let gapTask = gradeAdjustedPace(for: workout, activity: act)
 
-                let (cadence, groundContact, strideLen, vertOsc) = await (cad, gct, str, vOsc)
+                let (cadP, gctP, strP, voP) = await (cad, gct, str, vOsc)
                 let gap = await gapTask
+                // 조회가 실패한 항목이 있으면 이 러닝은 처리 완료로 표시하지 않는다 —
+                // 실패값이 폼 기준선에 "없는 지표"로 굳으면 페이스 구간 판정까지 어긋난다.
+                if [cadP, gctP, strP, voP].contains(where: \.failed) {
+                    markProcessed = false
+                    continue
+                }
+                let cadence = cadP.value.map { Int($0.rounded()) }
                 formDict[act.id.uuidString] = CachedFormMetrics(
                     cadence:       cadence,
-                    strideLength:  strideLen,
-                    groundContact: groundContact,
-                    verticalOsc:   vertOsc,
+                    strideLength:  strP.value,
+                    groundContact: gctP.value,
+                    verticalOsc:   voP.value,
                     heartRate:     act.avgHeartRate,
                     paceSecPerKm:  act.paceSecPerKm,
                     date:          act.date,
@@ -1493,7 +1501,7 @@ class HealthKitManager {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         // v13: 경로 없는 야외 러닝을 완성으로 저장하던 버그 수정(isIndoorWorkout 추가).
         //      경로·고도가 비어 굳어버린 기존 캐시를 버리고 다시 받는다.
-        return dir.appendingPathComponent("v13_\(id.uuidString).json")
+        return dir.appendingPathComponent("v14_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
@@ -1607,7 +1615,11 @@ class HealthKitManager {
             let (locations, splits, zones, powerVal, cadence) =
                 await (locTask, splitsTask, zonesTask, powerTask, cadTask)
             let intervals = await intervalTask
-            let (gct, strideLen, vertOsc, vo2) = await (gctTask, strTask, voTask, vo2Task)
+            let (gctP, strideP, vertP, vo2P) = await (gctTask, strTask, voTask, vo2Task)
+            // 조회가 실패한 항목이 하나라도 있으면 이 상세는 디스크에 굳히지 않는다 —
+            // "값 없음"으로 저장되면 다음 진입에서 캐시가 완성으로 읽혀 영영 다시 읽지 않는다.
+            let probes: [MetricProbe] = [powerVal, cadence, gctP, strideP, vertP, vo2P]
+            let anyFailed = probes.contains(where: \.failed)
 
             let workoutType: WorkoutType = {
                 guard let activity = activities.first(where: { $0.id == activityID }) else { return .general }
@@ -1634,19 +1646,20 @@ class HealthKitManager {
                 routeCoordinates: locations.map(\.coordinate),
                 routeTimeOffsets: computeRouteTimeOffsets(from: locations, workoutStart: workout.startDate),
                 elevationGain: computeElevationGain(from: locations),
-                avgPower: powerVal.map { Int($0.rounded()) },
-                avgCadence: cadence,
+                avgPower: powerVal.value.map { Int($0.rounded()) },
+                avgCadence: cadence.value.map { Int($0.rounded()) },
                 splits: splits,
                 hrZones: zones,
                 intervalSegments: intervals,
                 workoutType: workoutType,
-                avgGroundContactTime: gct,
-                avgStrideLength: strideLen,
-                avgVerticalOscillation: vertOsc,
-                vo2Max: vo2,
+                avgGroundContactTime: gctP.value,
+                avgStrideLength: strideP.value,
+                avgVerticalOscillation: vertP.value,
+                vo2Max: vo2P.value,
                 altitudeProfile: computeAltitudeProfile(from: locations),
                 altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate),
-                isIndoorWorkout: isIndoor(workout)
+                isIndoorWorkout: isIndoor(workout),
+                fetchIncomplete: anyFailed
             )
 
         default: // walking, hiking
@@ -2666,19 +2679,65 @@ class HealthKitManager {
         return stats.sumQuantity()?.doubleValue(for: unit) ?? 0
     }
 
+    /// HealthKit 지표 조회 결과 — "이 러닝엔 값이 없다"와 "조회가 실패했다"를 구분한다.
+    /// 둘 다 nil로 뭉치면 일시적 실패(동시 쿼리 폭주·권한 변경 등)가 "원래 없는 지표"로
+    /// 상세 캐시에 굳어 다시는 조회되지 않는다.
+    enum MetricProbe {
+        case value(Double)
+        case absent
+        case failed
+
+        var value: Double? { if case .value(let v) = self { return v } else { return nil } }
+        var failed: Bool   { if case .failed = self { return true } else { return false } }
+    }
+
     private func queryAvgQuantity(
         _ identifier: HKQuantityTypeIdentifier,
         unit: HKUnit,
         workout: HKWorkout
-    ) async -> Double? {
+    ) async -> MetricProbe {
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(identifier),
             predicate: HKQuery.predicateForObjects(from: workout)
         )
         let descriptor = HKStatisticsQueryDescriptor(predicate: pred, options: .discreteAverage)
-        guard let stats = try? await descriptor.result(for: store),
-              let avg = stats.averageQuantity() else { return nil }
-        return avg.doubleValue(for: unit)
+        do {
+            let stats = try await descriptor.result(for: store)
+            guard let avg = stats?.averageQuantity() else { return .absent }
+            return .value(avg.doubleValue(for: unit))
+        } catch {
+            logProbeFailure(identifier, workout: workout, error: error)
+            return .failed
+        }
+    }
+
+    /// 합계 조회의 probe 판. `querySum`은 실패를 0으로 돌려주므로 캐시에 남길 값에는 이쪽을 쓴다.
+    private func querySumProbe(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        workout: HKWorkout
+    ) async -> MetricProbe {
+        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
+            type: HKQuantityType(identifier),
+            predicate: HKQuery.predicateForObjects(from: workout)
+        )
+        let descriptor = HKStatisticsQueryDescriptor(predicate: pred, options: .cumulativeSum)
+        do {
+            let stats = try await descriptor.result(for: store)
+            guard let sum = stats?.sumQuantity() else { return .absent }
+            return .value(sum.doubleValue(for: unit))
+        } catch {
+            logProbeFailure(identifier, workout: workout, error: error)
+            return .failed
+        }
+    }
+
+    private func logProbeFailure(_ identifier: HKQuantityTypeIdentifier,
+                                 workout: HKWorkout, error: any Error) {
+        #if DEBUG
+        let df = DateFormatter(); df.dateFormat = "M/d HH:mm"
+        print("[상세조회] 실패 \(identifier.rawValue) — \(df.string(from: workout.startDate)) 러닝: \(error.localizedDescription)")
+        #endif
     }
 
     // workout-linked 쿼리 대신 시간 범위로 조회 — Garmin 등 서드파티 standalone 샘플 포함
@@ -2731,10 +2790,14 @@ class HealthKitManager {
         return Int((sum / Double(active.count)).rounded())
     }
 
-    private func queryCadence(workout: HKWorkout) async -> Int? {
-        let steps = await querySum(.stepCount, unit: .count(), workout: workout)
-        guard steps > 0, workout.duration > 60 else { return nil }
-        return Int((steps / (workout.duration / 60)).rounded())
+    private func queryCadence(workout: HKWorkout) async -> MetricProbe {
+        switch await querySumProbe(.stepCount, unit: .count(), workout: workout) {
+        case .failed:  return .failed
+        case .absent:  return .absent
+        case .value(let steps):
+            guard steps > 0, workout.duration > 60 else { return .absent }
+            return .value((steps / (workout.duration / 60)).rounded())
+        }
     }
 
     // MARK: - Splits
@@ -2959,7 +3022,7 @@ class HealthKitManager {
 
     // MARK: - VO2max (most recent estimate at/before a given date)
 
-    private func queryLatestVO2Max(before date: Date) async -> Double? {
+    private func queryLatestVO2Max(before date: Date) async -> MetricProbe {
         let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
             type: HKQuantityType(.vo2Max),
             predicate: HKQuery.predicateForSamples(withStart: nil, end: date, options: [])
@@ -2969,10 +3032,16 @@ class HealthKitManager {
             sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .reverse)],
             limit: 1
         )
-        guard let sample = try? await descriptor.result(for: store).first else { return nil }
-        // mL/(kg·min) — compose unit to avoid locale-sensitive string parsing
-        let unit = Self.vo2MaxUnit
-        return sample.quantity.doubleValue(for: unit)
+        do {
+            guard let sample = try await descriptor.result(for: store).first else { return .absent }
+            // mL/(kg·min) — compose unit to avoid locale-sensitive string parsing
+            return .value(sample.quantity.doubleValue(for: Self.vo2MaxUnit))
+        } catch {
+            #if DEBUG
+            print("[상세조회] 실패 vo2Max: \(error.localizedDescription)")
+            #endif
+            return .failed
+        }
     }
 
     // MARK: - HR Zone Parameters (Karvonen / HRR)
@@ -3449,7 +3518,7 @@ class HealthKitManager {
                             //   워크아웃에 연결된 샘플만 읽어 중복이 없다.
                             //   Garmin 등 비연결 워크아웃은 nil → 그 운동만 트렌드에서 빠진다.
                             //   2배 오류로 틀린 값을 표시하는 것보다 낫다.
-                            val = await self.queryCadence(workout: workout).map { Double($0) }
+                            val = await self.queryCadence(workout: workout).value
                         case .power:
                             val = await self.queryAvgQuantityInRange(.runningPower, unit: .watt(), from: wStart, to: wEnd)
                         case .groundContactTime:
