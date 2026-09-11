@@ -101,146 +101,76 @@ struct RunChartShareCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
-    private var distanceNumStr: String {
-        distanceText.components(separatedBy: " ").first ?? distanceText
-    }
-    private var distanceUnitStr: String {
-        let parts = distanceText.components(separatedBy: " ")
-        return parts.count > 1 ? parts[1...].joined(separator: " ") : ""
-    }
-
+    /// 헤더 — 다크·라이트가 **같은 레이아웃**을 쓰고 색만 팔레트에서 가져온다.
+    ///
+    /// ⚠ 예전에는 라이트만 3행(워드마크+날씨/신발 세로, 거리 히어로 23pt, 날짜 줄)이라
+    ///   내보낸 이미지가 다크보다 43pt 길었다(369 vs 326). 같은 카드가 테마마다 크기가
+    ///   달라지면 안 된다 — §5.8.
     @ViewBuilder
     private var contextRow: some View {
-        if palette.isLight {
-            VStack(alignment: .leading, spacing: 4) {
-                // Row 1: 워드마크 ← → 날씨 배지 + 신발 (우측 상단 세로)
-                HStack(alignment: .top, spacing: 0) {
-                    MIMOWordmark(size: 9, strokeMIMO: true)
-                    Spacer(minLength: 8)
-                    VStack(alignment: .trailing, spacing: 4) {
-                        if let weather = weatherText {
-                            let celsius = parseCelsius(from: weather)
-                            let iColor = weatherIconColor(systemName: weatherIcon, celsius: celsius, isLight: true)
-                            let tColor: Color = celsius.map { temperatureColor($0, isLight: true) } ?? iColor
-                            HStack(spacing: 3) {
-                                Image(systemName: weatherIcon ?? "thermometer.medium")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(iColor)
-                                Text(weather)
-                                    .font(.system(size: 10.5))
-                                    .foregroundStyle(tColor)
-                                    .fixedSize()
-                            }
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color(hex: "F2F1ED"), in: RoundedRectangle(cornerRadius: 11))
-                        }
-                        if let shoe = shoeText {
-                            Label(shoe, systemImage: "shoe.fill")
-                                .font(.system(size: 10.5))
-                                .foregroundStyle(Color(hex: "9A9A9A"))
-                                .lineLimit(1)
-                        }
-                    }
-                }
-                // Row 2: 거리(히어로) · 시간 · 페이스 — no metric colors
-                HStack(alignment: .firstTextBaseline, spacing: 0) {
-                    Text(distanceNumStr)
-                        .font(.system(size: 23, weight: .heavy))
-                        .foregroundStyle(Color(hex: "111111"))
-                    if !distanceUnitStr.isEmpty {
-                        Text(distanceUnitStr)
-                            .font(.system(size: 13, weight: .heavy))
-                            .foregroundStyle(Color(hex: "9A9A9A"))
-                            .padding(.leading, 2)
-                    }
-                    Text(" · ")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color(hex: "D5D3CD"))
-                    Text(durationText)
-                        .font(.system(size: 16, weight: .heavy))
-                        .foregroundStyle(Color(hex: "555555"))
-                    if let pace = paceText {
-                        Text(" · ")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color(hex: "D5D3CD"))
-                        Text(pace)
-                            .font(.system(size: 16, weight: .heavy))
-                            .foregroundStyle(Color(hex: "555555"))
-                    }
-                    Spacer(minLength: 0)
-                }
-                // Row 3: 날짜 전체 그레이 — uniform, no weekday emphasis
+        let chipBg: Color = palette.isLight ? Color(hex: "F2F1ED") : .white.opacity(0.10)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .center, spacing: 0) {
+                MIMOWordmark(size: 9, strokeMIMO: palette.isLight)
+                Spacer(minLength: 8)
                 HStack(spacing: 4) {
-                    if let d = dateText    { Text(d) }
-                    if let w = weekdayText { Text(w) }
-                    if let t = startTimeText { Text(t) }
-                }
-                .font(.system(size: 11))
-                .foregroundStyle(Color(hex: "9A9A9A"))
-            }
-        } else {
-            // 다크: neutral hierarchy — no metric-color tinting
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .center, spacing: 0) {
-                    MIMOWordmark(size: 9)
-                    Spacer(minLength: 8)
-                    HStack(spacing: 4) {
-                        // Date row — all uniform gray
-                        if let d = dateText {
-                            Text(d).font(.system(size: 9)).foregroundStyle(.white.opacity(0.5))
-                        }
-                        if let w = weekdayText {
-                            Text(w).font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.5))
-                        }
-                        if let t = startTimeText {
-                            Text(t).font(.system(size: 9)).foregroundStyle(.white.opacity(0.5))
-                        }
-                        if let weather = weatherText {
-                            let celsius = parseCelsius(from: weather)
-                            let iColor = weatherIconColor(systemName: weatherIcon, celsius: celsius, isLight: false)
-                            HStack(spacing: 3) {
-                                Image(systemName: weatherIcon ?? "thermometer.medium")
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundStyle(iColor)
-                                Text(weather)
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.8))
-                                    .fixedSize()
-                            }
-                            .padding(.horizontal, 7).padding(.vertical, 3)
-                            .background(.white.opacity(0.10), in: Capsule())
-                            .fixedSize()
-                        }
+                    if let d = dateText {
+                        Text(d).font(.system(size: 9)).foregroundStyle(palette.textSecondary)
                     }
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    if let w = weekdayText {
+                        Text(w).font(.system(size: 9, weight: .medium)).foregroundStyle(palette.textSecondary)
+                    }
+                    if let t = startTimeText {
+                        Text(t).font(.system(size: 9)).foregroundStyle(palette.textSecondary)
+                    }
+                    if let weather = weatherText {
+                        let celsius = parseCelsius(from: weather)
+                        let iColor = weatherIconColor(systemName: weatherIcon, celsius: celsius, isLight: palette.isLight)
+                        let tColor: Color = palette.isLight
+                            ? (celsius.map { temperatureColor($0, isLight: true) } ?? iColor)
+                            : palette.textPrimary.opacity(0.8)
+                        HStack(spacing: 3) {
+                            Image(systemName: weatherIcon ?? "thermometer.medium")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(iColor)
+                            Text(weather)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(tColor)
+                                .fixedSize()
+                        }
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(chipBg, in: Capsule())
+                        .fixedSize()
+                    }
                 }
-                HStack(alignment: .center, spacing: 0) {
-                    // Neutral hierarchy — no metric colors
-                    Text(distanceText)
-                        .font(.system(size: 14, weight: .heavy))
-                        .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            }
+            HStack(alignment: .center, spacing: 0) {
+                // 중립 위계 — 지표 색을 쓰지 않는다
+                Text(distanceText)
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(palette.textPrimary)
+                Text(" · ")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(palette.textPrimary.opacity(0.25))
+                Text(durationText)
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(palette.textPrimary.opacity(0.75))
+                if let pace = paceText {
                     Text(" · ")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.25))
-                    Text(durationText)
+                        .foregroundStyle(palette.textPrimary.opacity(0.25))
+                    Text(pace)
                         .font(.system(size: 14, weight: .heavy))
-                        .foregroundStyle(.white.opacity(0.75))
-                    if let pace = paceText {
-                        Text(" · ")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.25))
-                        Text(pace)
-                            .font(.system(size: 14, weight: .heavy))
-                            .foregroundStyle(.white.opacity(0.75))
-                    }
-                    Spacer(minLength: 6)
-                    if let shoe = shoeText {
-                        Label(shoe, systemImage: "shoe.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.white.opacity(0.5))
-                            .lineLimit(1)
-                    }
+                        .foregroundStyle(palette.textPrimary.opacity(0.75))
+                }
+                Spacer(minLength: 6)
+                if let shoe = shoeText {
+                    Label(shoe, systemImage: "shoe.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(palette.textSecondary)
+                        .lineLimit(1)
                 }
             }
         }
