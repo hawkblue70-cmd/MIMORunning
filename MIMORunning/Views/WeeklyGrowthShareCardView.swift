@@ -88,11 +88,11 @@ private struct WeeklyPalette {
         insightBg:        Theme.violet.opacity(0.16),
         insightText:      Color(hex: "D5CEFF"),
         insightIcon:      Color(hex: "8B7FF0"),
-        trendGood:        Color(hex: "5CE08A"),
+        trendGood:        Theme.positive,
         trendBad:         Color(hex: "FF9A3C"),
         trendNeutral:     Color(hex: "8B7FF0"),
-        runnerIcon:       Color(hex: "5CE08A"),
-        runnerIconBg:     Color(hex: "5CE08A").opacity(0.12),
+        runnerIcon:       Theme.positive,
+        runnerIconBg:     Theme.positive.opacity(0.12),
         watermark:        Color(hex: "5A5F6B")
     )
 

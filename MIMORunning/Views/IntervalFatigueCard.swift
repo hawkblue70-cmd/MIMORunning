@@ -268,7 +268,7 @@ struct IntervalFatigueCard: View {
         switch normBadgeKind {
         case .muscFatigue:    return Color(hex: "FFA94D")  // stride line color
         case .rhythmCollapse: return Theme.cadence  // 케이던스 선과 같은 색
-        case .stable:         return Color(hex: "7FD98A")  // green
+        case .stable:         return Theme.positive  // green
         case .bothDecline, .styleChange: return .white
         }
     }
@@ -834,7 +834,7 @@ struct IntervalFatigueCard: View {
                     let badge = "\(fmtPace(ep)) → \(fmtPace(lp)) (\(sign)\(abs(delta))초)"
                     Text(badge)
                         .font(.system(size: 9.5, weight: .medium))
-                        .foregroundStyle(delta < 0 ? Color(hex: "7FD98A") : Color.white.opacity(0.70))
+                        .foregroundStyle(delta < 0 ? Theme.positive : Color.white.opacity(0.70))
                 }
             }
             Chart {
@@ -1046,7 +1046,7 @@ struct IntervalFatigueCard: View {
                 let label = "\(fr) → \(lr) (\(sign)\(abs(dr)))"
                 Text(label)
                     .font(.system(size: 9.5, weight: .medium))
-                    .foregroundStyle((isGoodUp ? dr >= 0 : dr <= 0) ? Color(hex: "7FD98A") : Color.white.opacity(0.70))
+                    .foregroundStyle((isGoodUp ? dr >= 0 : dr <= 0) ? Theme.positive : Color.white.opacity(0.70))
             }
         }
     }

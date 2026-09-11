@@ -554,7 +554,7 @@ struct RunFormCardView: View {
             items.append(FormInsightItem(id: .trend,
                                          badgeText: L.s("추세", "Trend"),
                                          bodyText: obs.text,
-                                         badgeColor: Color(hex: "7FD98A")))
+                                         badgeColor: Theme.positive))
         }
 
         // [거리] distance ≥ 4주 평균 × 130%
@@ -650,7 +650,7 @@ struct RunFormCardView: View {
             items.append(FormInsightItem(id: .trend,
                                          badgeText: L.s("기록", "Stats"),
                                          bodyText: text,
-                                         badgeColor: Color.white.opacity(0.45)))
+                                         badgeColor: Color.white.opacity(0.58)))
             #if DEBUG
             print("[인사이트] 표시 0개 → 폴백: \(text)")
             #endif
@@ -874,7 +874,7 @@ struct RunFormCardView: View {
                 kpiSep
                 KPICell(label: AppLanguage.shared.s("페이스", "Pace"),
                         value: activity.formattedPace ?? "--'--\"",
-                        context: flatEquivalentText, contextColor: Color.white.opacity(0.45))
+                        context: flatEquivalentText, contextColor: Color.white.opacity(0.58))
                 if let cad = avgCadence {
                     kpiSep
                     KPICell(label: AppLanguage.shared.s("케이던스", "Cadence"),
@@ -916,7 +916,7 @@ struct RunFormCardView: View {
                     Color.clear.frame(width: barTextColumnWidth + 8)
                     Text(summary)
                         .font(.system(size: 8))
-                        .foregroundStyle(Color.white.opacity(0.60))
+                        .foregroundStyle(Color.white.opacity(0.72))
                         .lineSpacing(2.5)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
@@ -930,7 +930,7 @@ struct RunFormCardView: View {
                 Color.clear.frame(height: 10)
                 Text(sentence)
                     .font(.system(size: 11.5))
-                    .foregroundStyle(Color.white.opacity(0.68))
+                    .foregroundStyle(Color.white.opacity(0.80))
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -945,9 +945,9 @@ struct RunFormCardView: View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.50)).lineLimit(1)
+                    Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.62)).lineLimit(1)
                     Text(formatted).font(cardNumFont(22)).foregroundStyle(Color.white).lineLimit(1)
-                    Text(unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.45)).lineLimit(1)
+                    Text(unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.58)).lineLimit(1)
                 }
             }
             .frame(width: barTextColumnWidth, alignment: .leading)
@@ -975,12 +975,12 @@ struct RunFormCardView: View {
                 Color.clear.frame(width: 6)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(child.label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.50)).lineLimit(1)
+                        Text(child.label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.62)).lineLimit(1)
                         Text(child.formatted)
                             .font(cardNumFont(20))
                             .foregroundStyle(Color.white)
                             .lineLimit(1)
-                        Text(child.unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.45)).lineLimit(1)
+                        Text(child.unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.58)).lineLimit(1)
                     }
                 }
             }
@@ -1023,7 +1023,7 @@ struct RunFormCardView: View {
 
     private func resultNodeView(label: String, value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.50))
+            Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.62))
             Text(value).font(cardNumFont(26)).foregroundStyle(Theme.violet)
         }
     }
@@ -1095,7 +1095,7 @@ struct RunFormCardView: View {
         axisLo -= axisSpan * 0.08
         axisHi += axisSpan * 0.08
 
-        let green: Color = Color(hex: "7FD98A")
+        let green: Color = Theme.positive
         let neutral: Color = Color.white.opacity(0.70)
         let dotColor: Color = {
             // [76] 범위 안 + 개선 방향 벗어남 = 녹색. 반대 방향만 회색.
@@ -1198,8 +1198,8 @@ struct RunFormCardView: View {
                 }
             } symbols: {
                 // [74] 축 숫자: 설명 문구와 동일 크기/밝기
-                Text(loStr).font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.60)).tag(0)
-                Text(hiStr).font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.60)).tag(1)
+                Text(loStr).font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.72)).tag(0)
+                Text(hiStr).font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.72)).tag(1)
             }
             .frame(height: 26)
 
@@ -1224,7 +1224,7 @@ struct RunFormCardView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 3))
                         Text(item.bodyText)
                             .font(.system(size: 11))
-                            .foregroundStyle(Color.white.opacity(0.68))
+                            .foregroundStyle(Color.white.opacity(0.80))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -1288,10 +1288,10 @@ struct RunFormCardView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(AppLanguage.shared.s("수직진폭", "Vert Osc"))
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.30))
+                .foregroundStyle(Color.white.opacity(0.42))
             Text(AppLanguage.shared.s("데이터 없음", "No data"))
                 .font(.system(size: 9))
-                .foregroundStyle(Color.white.opacity(0.20))
+                .foregroundStyle(Color.white.opacity(0.34))
                 .frame(height: 52, alignment: .center)
         }
     }
@@ -1348,14 +1348,14 @@ struct RunFormCardView: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(s.label)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.65))
+                    .foregroundStyle(Color.white.opacity(0.78))
                     .lineLimit(1)
                 if let f = s.firstAvg, let sec = s.secondAvg {
                     let missingRate = Double(totalBuckets - dataCount) / Double(max(1, totalBuckets))
                     if missingRate > 0.50 {
                         Text(L.s("데이터 부족", "Low data"))
                             .font(.system(size: 8))
-                            .foregroundStyle(Color.white.opacity(0.28))
+                            .foregroundStyle(Color.white.opacity(0.42))
                     } else {
                         trendChangeBadge(dir: s.dir, unit: s.unit, firstAvg: f, secondAvg: sec)
                     }
@@ -1384,13 +1384,13 @@ struct RunFormCardView: View {
                     }()
                     Text(bandLabel)
                         .font(.system(size: 8))
-                        .foregroundStyle(Color.white.opacity(0.28))
+                        .foregroundStyle(Color.white.opacity(0.42))
                 }
                 Spacer(minLength: 0)
                 if dataCount < totalBuckets && totalBuckets > 0 {
                     Text("(\(dataCount)/\(totalBuckets))")
                         .font(.system(size: 8))
-                        .foregroundStyle(Color.white.opacity(0.22))
+                        .foregroundStyle(Color.white.opacity(0.36))
                 }
             }
 
@@ -1420,7 +1420,7 @@ struct RunFormCardView: View {
                     )
                     .foregroundStyle(s.lineColor)
                     .interpolationMethod(.monotone)
-                    .lineStyle(StrokeStyle(lineWidth: 1.2))
+                    .lineStyle(StrokeStyle(lineWidth: 1.8))
                 }
 
                 // In-range small dots
@@ -1456,7 +1456,7 @@ struct RunFormCardView: View {
                             AxisValueLabel(anchor: .topLeading) {
                                 Text("km")
                                     .font(.system(size: 7))
-                                    .foregroundStyle(Color.white.opacity(0.30))
+                                    .foregroundStyle(Color.white.opacity(0.42))
                             }
                         } else {
                             let fmtKm = v.truncatingRemainder(dividingBy: 1) < 0.05
@@ -1466,13 +1466,13 @@ struct RunFormCardView: View {
                                 AxisValueLabel(anchor: .topTrailing) {
                                     Text(fmtKm)
                                         .font(.system(size: 8))
-                                        .foregroundStyle(Color.white.opacity(0.55))
+                                        .foregroundStyle(Color.white.opacity(0.68))
                                 }
                             } else {
                                 AxisValueLabel(centered: false) {
                                     Text(fmtKm)
                                         .font(.system(size: 8))
-                                        .foregroundStyle(Color.white.opacity(0.55))
+                                        .foregroundStyle(Color.white.opacity(0.68))
                                 }
                             }
                         }
@@ -1487,7 +1487,7 @@ struct RunFormCardView: View {
                 if s.points.count > 0, Double(belowCount) / Double(s.points.count) >= 0.30 {
                     Text(FormNarrative.belowRangeNote(type: workoutType, metric: s.dir))
                         .font(.system(size: 8.5))
-                        .foregroundStyle(Color.white.opacity(0.45))
+                        .foregroundStyle(Color.white.opacity(0.58))
                 }
             }
         }
@@ -1499,7 +1499,7 @@ struct RunFormCardView: View {
         let diffUnit = dir == .groundContact ? "ms" : ""
         let sign: String = diff > 0.0005 ? "+" : diff < -0.0005 ? "−" : "±"
         let label = "\(fmtNum(firstAvg)) → \(fmtNum(secondAvg)) (\(sign)\(fmtNum(abs(diff)))\(diffUnit))"
-        let green = Color(hex: "7FD98A")
+        let green = Theme.positive
         let muted = Color.white.opacity(0.70)
         let color: Color
         switch dir {
@@ -2047,8 +2047,8 @@ struct RunFormCardView: View {
     @ViewBuilder
     private func placeholderSection(title: String, icon: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: icon).font(.system(size: 12)).foregroundStyle(Color.white.opacity(0.25))
-            Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.white.opacity(0.25))
+            Image(systemName: icon).font(.system(size: 12)).foregroundStyle(Color.white.opacity(0.38))
+            Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.white.opacity(0.38))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 24)

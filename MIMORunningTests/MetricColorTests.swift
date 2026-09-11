@@ -41,6 +41,38 @@ final class MetricColorTests: XCTestCase {
         }
     }
 
+    /// "좋음" 초록은 하나만 쓴다 — 예전에는 7FD98A와 5CE08A가 같은 뜻으로 43곳에 섞여 있었다.
+    func testPositiveGreenIsNotHardcodedAnywhere() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("MIMORunning")
+        let fm = FileManager.default
+        guard let walker = fm.enumerator(at: root, includingPropertiesForKeys: nil) else {
+            return XCTFail("소스 폴더를 찾지 못했다")
+        }
+        var offenders: [String] = []
+        var scanned = 0
+        for case let url as URL in walker where url.pathExtension == "swift" {
+            // Theme.swift가 유일한 정의처
+            if url.lastPathComponent == "Theme.swift" { continue }
+            let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            scanned += 1
+            if text.contains("7FD98A") || text.contains("5CE08A") {
+                offenders.append(url.lastPathComponent)
+            }
+        }
+        // 경로가 틀려 아무것도 안 읽고 통과하는 일이 없게
+        XCTAssertGreaterThan(scanned, 50, "소스를 제대로 훑지 못했다 — 경로 확인 필요")
+        XCTAssertTrue(offenders.isEmpty,
+            "좋음 초록을 직접 박아 쓴 파일: \(offenders.joined(separator: ", ")) — Theme.positive를 쓸 것")
+    }
+
+    /// 판정 초록(좋음)과 지표 초록(고도)은 뜻이 달라 값도 달라야 한다.
+    func testPositiveGreenDiffersFromElevationGreen() {
+        XCTAssertNotEqual(rgb(Theme.positive), rgb(Theme.chartElev),
+                          "좋음 초록과 고도 초록이 같은 값이면 뜻이 섞인다")
+    }
+
     /// 케이던스는 앱 어디서나 한 색이어야 한다.
     func testCadenceHasOneColor() {
         XCTAssertEqual(rgb(Theme.cadence), rgb(Theme.chartCadence),

@@ -21,8 +21,8 @@ enum InsightTabKind: CaseIterable, Hashable {
 // MARK: - Insight Colors
 
 private enum IC {
-    static let green      = Color(hex: "5CE08A")
-    static let greenBg    = Color(hex: "5CE08A").opacity(0.13)
+    static let green      = Theme.positive
+    static let greenBg    = Theme.positive.opacity(0.13)
     static let greenText  = Color(hex: "BFEFD0")
     static let violet     = Color(hex: "8B7FF0")
     static let violetBg   = Color(hex: "7C5CFC").opacity(0.15)
@@ -39,7 +39,7 @@ private enum IC {
         Color(hex: "FF5247"),   // 낮음: 빨강
         Color(hex: "FF9A3C"),   // 평균이하: 주황
         Color(hex: "F5C542"),   // 평균이상: 노랑
-        Color(hex: "5CE08A"),   // 높음: 녹색
+        Theme.positive,   // 높음: 녹색
     ]
 
     /// 심박 존 색은 앱에 하나만 둔다 — 러닝 상세·공유 카드·경로 영상·강도 부하가 모두 `Theme.hrZoneColors`를
@@ -238,7 +238,7 @@ private struct CadenceRPMGaugeView: View {
                 // 3구간 아크 — 개인 밴드 기반, clockwise:false = 상단 반원
                 let segs: [(Double, Double, Color)] = [
                     (axMin,  pLower, Color(hex: "5AC8FA")),
-                    (pLower, pUpper, Color(hex: "7FD98A")),
+                    (pLower, pUpper, Theme.positive),
                     (pUpper, axMax,  Color(hex: "3A7BD5")),
                 ]
                 for s in segs where s.0 < s.1 {
@@ -375,7 +375,7 @@ private struct CadenceEqualizerView: View {
                     ctx.fill(
                         Path(CGRect(x: 0, y: bandTopY,
                                    width: size.width, height: bandBotY - bandTopY)),
-                        with: .color(Color(hex: "5CE08A").opacity(0.07))
+                        with: .color(Theme.positive.opacity(0.07))
                     )
                 }
                 // bars
@@ -480,7 +480,7 @@ private struct VO2RPMGaugeView: View {
         Color(hex: "E8564A"),  // 낮음
         Color(hex: "F0913C"),  // 평균이하
         Color(hex: "EDC84B"),  // 평균이상
-        Color(hex: "7FD98A"),  // 높음
+        Theme.positive,  // 높음
     ]
     private let segLabels   = ["낮음", "평균이하", "평균이상", "높음"]
     private let segLabelsEn = ["Low", "Below avg", "Above avg", "High"]
@@ -1510,7 +1510,7 @@ private struct RhythmInsightCard: View {
                 history: history,
                 coords: hasRoute ? coords : [],
                 badge: heroBadge ?? computeAchievementBadge(activity: activity, history: history),
-                routeColor: Color(hex: "5CE08A"),
+                routeColor: Theme.positive,
                 routeSize: CGSize(width: 52, height: 62)
             )
         }
@@ -1840,32 +1840,32 @@ private struct RhythmInsightCard: View {
         // 2. 지면접촉 (가장 민감한 상대 신호)
         if let stat = bb.groundContact, let gc = det.avgGroundContactTime {
             let delta = gc - stat.median
-            if delta <= -10 { return (L.s("탄력 있게 뛰었어요", "Springy stride today"), Color(hex: "7FD98A")) }
+            if delta <= -10 { return (L.s("탄력 있게 뛰었어요", "Springy stride today"), Theme.positive) }
             if delta >= 10  { return (L.s("다소 무거운 날이었어요", "Heavier than usual"), Color.white.opacity(0.75)) }
         }
 
         // 3. 케이던스 상대 신호
         if let stat = bb.cadence, let cad = det.avgCadence {
             let delta = Double(cad) - stat.median
-            if delta >= 3  { return (L.s("발걸음이 경쾌했어요", "Lively footstrike"), Color(hex: "7FD98A")) }
+            if delta >= 3  { return (L.s("발걸음이 경쾌했어요", "Lively footstrike"), Theme.positive) }
             if delta <= -3 { return (L.s("발걸음이 평소보다 느렸어요", "Slower turnover"), Color.white.opacity(0.75)) }
         }
 
         // 4. 보폭
         if let stat = bb.strideLength, let sl = det.avgStrideLength {
             let delta = sl - stat.median
-            if delta >= 0.03  { return (L.s("보폭이 시원하게 나왔어요", "Great stride length"), Color(hex: "7FD98A")) }
+            if delta >= 0.03  { return (L.s("보폭이 시원하게 나왔어요", "Great stride length"), Theme.positive) }
             if delta <= -0.03 { return (L.s("보폭이 짧았어요", "Shorter stride"), Color.white.opacity(0.75)) }
         }
 
         // 5. 심박
         if let stat = bb.heartRate, let hr = activity.avgHeartRate {
             let delta = Double(hr) - stat.median
-            if delta <= -4 { return (L.s("같은 페이스인데 심박이 낮았어요", "Lower HR for this pace"), Color(hex: "7FD98A")) }
+            if delta <= -4 { return (L.s("같은 페이스인데 심박이 낮았어요", "Lower HR for this pace"), Theme.positive) }
             if delta >= 5  { return (L.s("평소보다 심박이 높았어요", "Higher HR than usual"), Color.white.opacity(0.75)) }
         }
 
-        return (L.s("폼이 평소대로 안정적이었어요", "Form right on baseline"), Color(hex: "7FD98A"))
+        return (L.s("폼이 평소대로 안정적이었어요", "Form right on baseline"), Theme.positive)
     }
 
     /// 러닝 종류별 전·후반 폼 판정. splits 4개 미만이거나 판정 불필요 종류면 nil.
@@ -1951,7 +1951,7 @@ private struct RhythmInsightCard: View {
             let expectedCad = cadStat.median
             let result: (text: String, color: Color)
             if sc >= expectedCad {
-                result = (L.s("후반에 발걸음까지 끌어올렸어요", "Cadence lifted in the second half — great buildup"), Color(hex: "7FD98A"))
+                result = (L.s("후반에 발걸음까지 끌어올렸어요", "Cadence lifted in the second half — great buildup"), Theme.positive)
             } else if sc <= expectedCad - 2 {
                 result = (L.s("페이스를 주로 보폭으로 올렸어요. 발걸음을 함께 올리면 무릎 부담이 줄어요", "Stride-led buildup — adding cadence reduces knee load"), Color(hex: "FFD166"))
             } else {
@@ -1977,9 +1977,9 @@ private struct RhythmInsightCard: View {
                 let gctRise = sg - fg
                 if gctRise <= -7 {
                     result = (L.s("후반으로 갈수록 지면접촉이 짧아졌어요. 템포 페이스가 잘 맞았어요",
-                                  "Ground contact shortened — tempo pace was well-matched"), Color(hex: "7FD98A"))
+                                  "Ground contact shortened — tempo pace was well-matched"), Theme.positive)
                 } else if gctRise < 8 {
-                    result = (L.s("후반까지 폼이 흔들리지 않았어요. 역치 페이스가 몸에 익었어요", "Form held — tempo pace feels natural"), Color(hex: "7FD98A"))
+                    result = (L.s("후반까지 폼이 흔들리지 않았어요. 역치 페이스가 몸에 익었어요", "Form held — tempo pace feels natural"), Theme.positive)
                 } else {
                     let rise = Int(gctRise.rounded())
                     result = (L.s("후반에 지면접촉이 +\(rise)ms 늘었어요. 템포 페이스가 살짝 빠를 수 있어요",
@@ -1994,7 +1994,7 @@ private struct RhythmInsightCard: View {
             } else if let fc = halfAvgCadence(first), let sc = halfAvgCadence(second) {
                 let cadDrop = fc - sc
                 if cadDrop < 2 {
-                    result = (L.s("후반까지 폼이 흔들리지 않았어요. 역치 페이스가 몸에 익었어요", "Form held — tempo pace feels natural"), Color(hex: "7FD98A"))
+                    result = (L.s("후반까지 폼이 흔들리지 않았어요. 역치 페이스가 몸에 익었어요", "Form held — tempo pace feels natural"), Theme.positive)
                 } else {
                     let drop = Int(cadDrop.rounded())
                     result = (L.s("후반에 발걸음이 \(drop)spm 줄었어요. 템포 페이스가 살짝 빠를 수 있어요",
@@ -2027,9 +2027,9 @@ private struct RhythmInsightCard: View {
             if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second) {
                 let gctRise = sg - fg
                 if gctRise <= -7 {
-                    result = (L.s("장거리인데 후반으로 갈수록 지면접촉이 짧아졌어요", "Ground contact shortened through the long run"), Color(hex: "7FD98A"))
+                    result = (L.s("장거리인데 후반으로 갈수록 지면접촉이 짧아졌어요", "Ground contact shortened through the long run"), Theme.positive)
                 } else if gctRise < 10 {
-                    result = (FormNarrative.formHeldCaption(type: wt), Color(hex: "7FD98A"))
+                    result = (FormNarrative.formHeldCaption(type: wt), Theme.positive)
                 } else {
                     result = (L.s("후반에 폼이 조금 무거워졌어요", "Form got a bit heavier in the second half"), Color.white.opacity(0.75))
                 }
@@ -2042,7 +2042,7 @@ private struct RhythmInsightCard: View {
             } else if let fc = halfAvgCadence(first), let sc = halfAvgCadence(second) {
                 let cadDrop = fc - sc
                 if cadDrop < 2 {
-                    result = (FormNarrative.formHeldCaption(type: wt), Color(hex: "7FD98A"))
+                    result = (FormNarrative.formHeldCaption(type: wt), Theme.positive)
                 } else {
                     result = (L.s("후반에 폼이 조금 무거워졌어요", "Form got a bit heavier in the second half"), Color.white.opacity(0.75))
                 }
@@ -2095,7 +2095,7 @@ private struct RhythmInsightCard: View {
                 result = (L.s("반복이 진행될수록 발걸음이 느려졌어요", "Cadence faded as reps progressed"), Color.white.opacity(0.75))
                 branch = "(A) 기울기 하락"
             } else if slope >= 1.0 {
-                result = (L.s("뒤로 갈수록 발걸음이 더 살아났어요", "Cadence grew stronger through the reps"), Color(hex: "7FD98A"))
+                result = (L.s("뒤로 갈수록 발걸음이 더 살아났어요", "Cadence grew stronger through the reps"), Theme.positive)
                 branch = "(A) 기울기 상승"
             } else if sd > 2.0 {
                 // (B) 산포 — 추세 평탄할 때만
@@ -2113,22 +2113,22 @@ private struct RhythmInsightCard: View {
                     let diff = Int((mean - ref).rounded())
                     if mean >= ref + 3 {
                         result = (L.s("\(n)회 내내 균일했고, 발걸음이 평소 최고보다 \(diff) spm 높았어요",
-                                      "\(n) reps consistent — cadence \(diff) spm above personal best band"), Color(hex: "7FD98A"))
+                                      "\(n) reps consistent — cadence \(diff) spm above personal best band"), Theme.positive)
                         branch = "(C) 수준↑↑"
                     } else if mean >= ref {
                         result = (L.s("\(n)회 내내 균일했고, 평소 최고 수준까지 올렸어요",
-                                      "\(n) reps consistent — matched personal best cadence band"), Color(hex: "7FD98A"))
+                                      "\(n) reps consistent — matched personal best cadence band"), Theme.positive)
                         branch = "(C) 수준↑"
                     } else if mean < ref - 2 {
                         result = (L.s("전력 구간인데 발걸음이 평소만큼 올라오지 않았어요",
                                       "Hard effort, but cadence didn't reach usual high"), Color.white.opacity(0.75))
                         branch = "(C) 수준↓"
                     } else {
-                        result = (L.s("\(n)회 반복 내내 발걸음이 균일했어요", "Cadence consistent across \(n) reps"), Color(hex: "7FD98A"))
+                        result = (L.s("\(n)회 반복 내내 발걸음이 균일했어요", "Cadence consistent across \(n) reps"), Theme.positive)
                         branch = "(C) 기준 내"
                     }
                 } else {
-                    result = (L.s("\(n)회 반복 내내 발걸음이 균일했어요", "Cadence consistent across \(n) reps"), Color(hex: "7FD98A"))
+                    result = (L.s("\(n)회 반복 내내 발걸음이 균일했어요", "Cadence consistent across \(n) reps"), Theme.positive)
                     branch = "(C) baseline없음→폴백"
                 }
             }
@@ -2157,7 +2157,7 @@ private struct RhythmInsightCard: View {
             let paceDelta = sp - fp
             var result: (text: String, color: Color)
             if paceDelta <= 0 {
-                result = (L.s("후반에도 페이스가 떨어지지 않았어요", "Pace held through the finish"), Color(hex: "7FD98A"))
+                result = (L.s("후반에도 페이스가 떨어지지 않았어요", "Pace held through the finish"), Theme.positive)
             } else if paceDelta <= 25 {
                 result = (L.s("후반에 페이스가 \(Int(paceDelta.rounded()))초 떨어졌어요", "Pace slipped \(Int(paceDelta.rounded()))s in second half"), Color.white.opacity(0.75))
             } else {
@@ -2215,7 +2215,7 @@ private struct RhythmInsightCard: View {
             let result: (text: String, color: Color)?
             let branch: Int
             if formImproved {
-                result = (L.s("후반으로 갈수록 지면접촉이 짧아졌어요", "Ground contact shortened as the run progressed"), Color(hex: "7FD98A"))
+                result = (L.s("후반으로 갈수록 지면접촉이 짧아졌어요", "Ground contact shortened as the run progressed"), Theme.positive)
                 branch = 0
             } else if formHeavy {
                 result = (L.s("후반에 폼이 조금 무거워졌어요", "Form got a bit heavier in the second half"), Color.white.opacity(0.75))
@@ -2224,7 +2224,7 @@ private struct RhythmInsightCard: View {
                 result = (L.s("페이스 기복이 있었어요", "Pace varied through the run"), Color.white.opacity(0.75))
                 branch = 2
             } else if cv <= 3 {
-                result = (L.s("처음부터 끝까지 고르게 달렸어요", "Even effort from start to finish"), Color(hex: "7FD98A"))
+                result = (L.s("처음부터 끝까지 고르게 달렸어요", "Even effort from start to finish"), Theme.positive)
                 branch = 3
             } else {
                 result = nil
@@ -2253,7 +2253,7 @@ private struct RhythmInsightCard: View {
             let pct = Int((ratio * 100).rounded())
             let result: (text: String, color: Color)
             if ratio >= 0.80 {
-                result = (L.s("제대로 이지 페이스를 지켰어요", "Great easy pacing — Z1–Z2 \(pct)%"), Color(hex: "7FD98A"))
+                result = (L.s("제대로 이지 페이스를 지켰어요", "Great easy pacing — Z1–Z2 \(pct)%"), Theme.positive)
             } else if ratio >= 0.50 {
                 result = (L.s("중간중간 심박이 올라갔어요", "Heart rate drifted up at times"), Color.white.opacity(0.75))
             } else {
@@ -2536,13 +2536,13 @@ private struct RhythmInsightCard: View {
         // 빌드업은 후반 상승이 계획 — 문구만 유형별 (색은 동일)
         if diff >= 8  { return (FormNarrative.hrSecondHalfRiseCaption(type: rhythmWorkoutType), Color(hex: "FF9A3C")) }
         if diff <= -5 { return (L.s("후반에 여유가 있었어요", "Plenty left in the 2nd half"), Color(hex: "4C8DFF")) }
-        return (L.s("끝까지 안정적이었어요", "Steady throughout"), Color(hex: "5CE08A"))
+        return (L.s("끝까지 안정적이었어요", "Steady throughout"), Theme.positive)
     }
 
     private func vo2SubLabel(fi: RunInsightEngine.VO2FitnessInfo, vo2: Double) -> (text: String, color: Color) {
         let L = AppLanguage.shared
         let bounds: [Double]   = [15, 26, 33, 41, 57]
-        let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Color(hex: "7FD98A")]
+        let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Theme.positive]
         let levelNames = [L.s("낮음","Low"), L.s("평균이하","Below avg"), L.s("평균이상","Above avg"), L.s("높음","High")]
         var idx = bounds.count - 2
         for i in 0..<(bounds.count - 1) { if vo2 < bounds[i + 1] { idx = i; break } }
@@ -3075,7 +3075,7 @@ private struct PerformanceInsightCard: View {
         let L = AppLanguage.shared
         let g = info.genderLabel.isEmpty ? "" : " \(info.genderLabel)"
         let bounds: [Double] = [15, 26, 33, 41, 57]
-        let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Color(hex: "7FD98A")]
+        let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Theme.positive]
         let levelNames = [L.s("낮음","Low"), L.s("평균이하","Below avg"), L.s("평균이상","Above avg"), L.s("높음","High")]
         var gradeIdx = bounds.count - 2
         for i in 0..<(bounds.count - 1) { if vo2 < bounds[i + 1] { gradeIdx = i; break } }
@@ -3282,14 +3282,14 @@ private struct PerformanceInsightCard: View {
                         HStack(spacing: 6) {
                             Text("운동")
                                 .font(.system(size: 8, weight: .medium))
-                                .foregroundStyle(Color(hex: "5CE08A"))
+                                .foregroundStyle(Theme.positive)
                                 .frame(width: 24, alignment: .leading)
                             GeometryReader { geo in
                                 ZStack(alignment: .leading) {
                                     RoundedRectangle(cornerRadius: 2)
                                         .fill(.white.opacity(0.06))
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color(hex: "5CE08A"))
+                                        .fill(Theme.positive)
                                         .frame(width: max(4, geo.size.width * CGFloat(norm)))
                                 }
                             }

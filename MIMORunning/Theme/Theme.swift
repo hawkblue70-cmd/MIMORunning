@@ -61,6 +61,11 @@ enum Theme {
     static let verticalOsc   = Color(hex: "A9B6C4") // 수직진폭 — 밝은 한색 회색
     static let elevationFill = Color(hex: "B98A3A") // 고도 채움 — 갈색
 
+    /// "좋음 · 개선" 초록. 지표가 아니라 **판정**을 뜻한다 — 범위 안에 들었다, 나아졌다, 높다.
+    /// ⚠ 예전에는 7FD98A와 5CE08A 두 값이 같은 뜻으로 43곳에 섞여 있었다.
+    ///   고도·이지런의 초록(`elevation`, 34C759)과는 뜻이 달라 따로 둔다.
+    static let positive = Color(hex: "5CE08A")
+
     /// HR 존 색상 (Z1..Z5) — 지도 경로, HR 차트, 카드 렌더러가 공유하는 팔레트.
     static let hrZoneColors: [Color] = [
         Color(hex: "3B82F6"),  // Z1 Blue

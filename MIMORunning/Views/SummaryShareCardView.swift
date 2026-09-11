@@ -222,7 +222,7 @@ struct SummaryCardPalette {
         divider:        Color.white.opacity(0.14),
         brand:          Color(hex: "8B7FF0"),
         boxFill:        Color.white.opacity(0.06),
-        positive:       Color(hex: "5CE08A"),
+        positive:       Theme.positive,
         negative:       Color(hex: "FF9A3C"),
         neutral:        Color(hex: "8A8F99"),
         accentGold:     Color(hex: "F5C542"),
