@@ -2145,6 +2145,16 @@ private struct MetricGrid: View {
             }
         }
         .padding(.horizontal, 16)
+        #if DEBUG
+        // 화면이 실제로 그리는 항목 — 매니저의 activities가 아니라 이 뷰가 받은 activity 기준.
+        // 둘이 다를 수 있어서(값 복사) 캐시 로그만으로는 빈칸의 이유를 못 가린다.
+        .onAppear {
+            let hr  = activity.avgHeartRate.map(String.init) ?? "없음"
+            let cal = activity.calories.map { String(Int($0)) } ?? "없음"
+            print("[격자] \(items.count)개 그림 — \(items.map(\.label).joined(separator: " "))")
+            print("[격자] 이 뷰가 받은 activity: 심박 \(hr) · 칼로리 \(cal) · 유형 \(activity.type)")
+        }
+        #endif
     }
 }
 

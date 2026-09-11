@@ -405,14 +405,15 @@ class HealthKitManager {
     /// failed → 추가 안 함 → 다음 실행 재시도.
     private func repairMissingMetrics() async {
         let repaired = repairedWorkoutIDs
-        let candidates = activities.filter {
-            ($0.avgHeartRate == nil || $0.calories == nil) && !repaired.contains($0.id.uuidString)
-        }
+        let missing = activities.filter { $0.avgHeartRate == nil || $0.calories == nil }
+        let candidates = missing.filter { !repaired.contains($0.id.uuidString) }
+        // 대상이 없을 때도 남긴다 — "로그가 안 보인다"가 안 돌았다는 뜻인지
+        // 대상이 없다는 뜻인지 구분돼야 한다.
+        #if DEBUG
+        print("[복구] 활동 \(activities.count)건 · 심박/칼로리 빈 활동 \(missing.count)건 · 이번에 볼 대상 \(candidates.count)건")
+        #endif
         guard !candidates.isEmpty else { return }
         let batch = candidates.prefix(20)
-        #if DEBUG
-        print("[복구] 심박·칼로리 빠진 활동 \(candidates.count)건 중 \(batch.count)건 재조회")
-        #endif
 
         for activity in batch {
             if workoutCache[activity.id] == nil {
