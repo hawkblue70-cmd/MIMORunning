@@ -1032,6 +1032,22 @@ struct RunInsightTabCard: View {
 
 // MARK: - HR Time Series View
 
+/// 오르막 코스로 볼 최소 기준. GPS 고도는 평활화 후에도 평지에서 km당 5~10m가 누적되므로
+/// 그보다 높아야 실제 오르내림과 구분된다. 비율만 보면 짧은 러닝이 쉽게 통과해 절대값도 건다.
+let elevationMinGainPerKm: Double = 10
+let elevationMinTotalGain: Double = 20
+
+/// 심박 차트 뒤에 고도를 깔지 판단한다.
+/// 코스에 오르내림이 충분하거나, **평지 환산이 표시 중이면** 그린다 —
+/// "평지였다면 6'11""이라고 말해놓고 그 근거를 볼 수 없으면 안 되기 때문이다.
+func shouldDrawElevationBackdrop(cumulativeGainM: Double,
+                                 distanceKm: Double,
+                                 showsFlatEquivalent: Bool) -> Bool {
+    if showsFlatEquivalent { return true }
+    guard cumulativeGainM >= elevationMinTotalGain, distanceKm > 0 else { return false }
+    return cumulativeGainM / distanceKm >= elevationMinGainPerKm
+}
+
 private struct HRTimeSeriesView: View {
     let samples: [(offset: TimeInterval, bpm: Int)]
     var zones: [HRZoneData] = []
@@ -1039,8 +1055,13 @@ private struct HRTimeSeriesView: View {
     /// 선이 아니라 면적인 이유: 작은 차트에 색 있는 선이 둘이면 어느 쪽을 볼지 흐려진다.
     var altitudeProfile: [(offset: TimeInterval, altitude: Double)] = []
 
-    /// 고저차가 이만큼 안 되면 그리지 않는다 — 평지에 평평한 띠가 깔리면 노이즈일 뿐이다
-    private static let minElevationSpan: Double = 20
+    /// 이 러닝의 거리(km) — 누적 상승을 거리로 나눠 "오르막 코스인지" 판단한다
+    var distanceKm: Double = 0
+    /// 평지 환산이 표시 중인가. 표시 중이면 고도를 반드시 그린다 —
+    /// "평지였다면 6'11""이라고 말해놓고 그 근거를 볼 수 없으면 안 된다.
+    var showsFlatEquivalent: Bool = false
+
+
 
     /// 고도 배경 — 회색 계열로 둔다. 초록(고도 지표색)을 쓰면 심박선의 Zone 2 초록과
     /// 섞여 어느 쪽이 고도인지 구분이 안 된다. 시인성은 채도가 아니라 윤곽선으로 올린다.
@@ -1068,6 +1089,31 @@ private struct HRTimeSeriesView: View {
             let slice = data[lo...hi]
             return slice.reduce(0, +) / Double(slice.count)
         }
+    }
+
+    /// GPS 고도 노이즈 제거 — 5점 이동 평균. 누적 상승을 이 값으로 재야 노이즈가 쌓이지 않는다.
+    private func smoothAltitude(_ pts: [(offset: TimeInterval, altitude: Double)])
+        -> [(offset: TimeInterval, altitude: Double)] {
+        let window = 5
+        guard pts.count > window else { return pts }
+        let half = window / 2
+        return pts.enumerated().map { i, p in
+            let lo = max(0, i - half), hi = min(pts.count - 1, i + half)
+            let slice = pts[lo...hi]
+            return (offset: p.offset,
+                    altitude: slice.reduce(0.0) { $0 + $1.altitude } / Double(slice.count))
+        }
+    }
+
+    /// 평활화된 고도에서 누적 상승(m). 평활화 전 값으로 재면 GPS 노이즈가 그대로 쌓인다.
+    private func cumulativeGain(_ pts: [(offset: TimeInterval, altitude: Double)]) -> Double {
+        guard pts.count > 1 else { return 0 }
+        var gain = 0.0
+        for i in 1..<pts.count {
+            let d = pts[i].altitude - pts[i - 1].altitude
+            if d > 0 { gain += d }
+        }
+        return gain
     }
 
     private func zoneColor(for bpm: Double) -> Color {
@@ -1105,21 +1151,27 @@ private struct HRTimeSeriesView: View {
         let valRange = max(1.0, maxBPM - minBPM)
         let totalDur = max(1.0, pts.last?.offset ?? 1)
 
-        // 고도 — 심박과 같은 시간축. 200개로 맞춰 다운샘플
-        var elevPts = altitudeProfile.filter { $0.offset <= totalDur * 1.05 }
+        // 고도 — 심박과 같은 시간축. 노이즈 제거 후 200개로 다운샘플
+        var elevPts = smoothAltitude(altitudeProfile.filter { $0.offset <= totalDur * 1.05 })
         if elevPts.count > 200 {
             let step = Double(elevPts.count - 1) / 199.0
             elevPts = (0..<200).map { elevPts[Int((Double($0) * step).rounded())] }
         }
         let elevMin = elevPts.map(\.altitude).min() ?? 0
         let elevSpan = max(0.001, (elevPts.map(\.altitude).max() ?? 0) - elevMin)
+
+        // 오르막 코스인가 — 누적 상승을 거리로 나눠 판단.
+        // 평지 환산이 떴다면 기준 미달이어도 그린다(보정의 근거를 보여야 한다).
+        let gain = cumulativeGain(elevPts)
+        let shouldDrawElevation = elevPts.count >= 2 && shouldDrawElevationBackdrop(
+            cumulativeGainM: gain, distanceKm: distanceKm, showsFlatEquivalent: showsFlatEquivalent)
         return AnyView(
             Canvas { ctx, size in
                 let w = size.width
                 let h = size.height
                 let xPad: CGFloat = 22
                 // 고도를 그릴 때만 오른쪽에 최고 높이 라벨 자리를 낸다
-                let hasElevation = elevPts.count >= 2 && elevSpan >= Self.minElevationSpan
+                let hasElevation = shouldDrawElevation
                 let rightPad: CGFloat = hasElevation ? 26 : 0
                 let chartW = w - xPad - rightPad
                 let chartRight = xPad + chartW
@@ -1576,7 +1628,9 @@ private struct RhythmInsightCard: View {
                         HRTimeSeriesView(
                             samples: hrSamples,
                             zones: hasZones ? hrZones : [],
-                            altitudeProfile: detail?.altitudeTimeProfile ?? []
+                            altitudeProfile: detail?.altitudeTimeProfile ?? [],
+                            distanceKm: activity.distance / 1000,
+                            showsFlatEquivalent: flatEquivalentText != nil
                         )
                         .padding(.horizontal, 2)
                         .frame(height: 104)
