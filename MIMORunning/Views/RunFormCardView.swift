@@ -939,13 +939,25 @@ struct RunFormCardView: View {
 
     // MARK: Chain Node Views
 
+    /// 행 라벨의 지표 색 — 지표 격자와 같은 규칙(라벨에 색, 값은 흰색).
+    /// 같은 색을 쓰는 아래 미니 차트와 "이 행 ↔ 이 차트"로 묶인다. 상단 KPI 행은 값에 색을 주는
+    /// 기존 규칙을 그대로 둔다(숫자가 주인공인 행).
+    private func metricLabelColor(_ dir: MetricDir) -> Color {
+        switch dir {
+        case .cadence:       return Theme.cadence
+        case .stride:        return Theme.strideLength
+        case .groundContact: return Theme.groundContact
+        case .verticalOsc:   return Theme.verticalOsc
+        }
+    }
+
     private func rootNodeView(label: String, rawValue: Double, formatted: String,
                               unit: String, stat: FormStat?, dir: MetricDir) -> some View {
         // [57] 텍스트 열을 barTextColumnWidth로 고정 → 네 줄 바가 같은 x에서 시작
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.62)).lineLimit(1)
+                    Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(metricLabelColor(dir)).lineLimit(1)
                     Text(formatted).font(cardNumFont(22)).foregroundStyle(Color.white).lineLimit(1)
                     Text(unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.58)).lineLimit(1)
                 }
@@ -975,7 +987,7 @@ struct RunFormCardView: View {
                 Color.clear.frame(width: 6)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(child.label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.62)).lineLimit(1)
+                        Text(child.label).font(.system(size: 10, weight: .medium)).foregroundStyle(metricLabelColor(child.dir)).lineLimit(1)
                         Text(child.formatted)
                             .font(cardNumFont(20))
                             .foregroundStyle(Color.white)
