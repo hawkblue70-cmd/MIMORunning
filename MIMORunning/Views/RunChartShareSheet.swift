@@ -279,7 +279,9 @@ struct RunChartShareSheet: View {
     @State private var previewImage: UIImage? = nil
     @State private var isLoadingPreview = false
     @State private var previewTask: Task<Void, Never>? = nil
-    @State private var shareTheme: ShareTheme = .light
+    // 다른 공유 카드(구간·경로·성장·주간·요약)가 모두 다크로 시작한다 — 여기만 라이트라
+    // 앱에서 넘어오면 카드와 그 안의 지도가 갑자기 밝아졌다.
+    @State private var shareTheme: ShareTheme = .dark
 
     private let cardW: CGFloat = 300
     private let L = AppLanguage.shared
