@@ -51,6 +51,34 @@ final class StampSummaryGridLayoutTests: XCTestCase {
         }
     }
 
+    /// 심박이 붙으면서 폭이 늘어난 스탬프들 — 배율표를 다시 재지 않으면 조용히 카드 밖으로 나간다.
+    @MainActor
+    func testHeartRateStampsFitInsideCard() throws {
+        for tpl in [StampTemplate.scoreboard, .circleBadge, .routeHero] {
+            for level in [TextSizeLevel.small, .medium, .large, .xlarge] {
+                let view = ZStack(alignment: .top) {
+                    Color(hex: "3A4038")
+                    StampCard(data: StampData.sample, template: tpl, colorMode: .auto,
+                              position: .topLeading, sizeLevel: level, isBrightBackground: false,
+                              showHeartRate: true, showCalories: false, showTextOutline: true,
+                              renderOnlyStamp: true)
+                }
+                .frame(width: Self.cardW, height: Self.cardH)
+
+                let r = ImageRenderer(content: view)
+                r.proposedSize = .init(width: Self.cardW, height: Self.cardH)
+                r.scale = Self.renderScale
+                _ = r.uiImage
+                _ = r.uiImage
+                let img = try XCTUnwrap(r.uiImage)
+                let box = try XCTUnwrap(inkBounds(in: img), "\(tpl.rawValue) \(level) — 렌더되지 않았다")
+                let rightLimit = (Self.cardW - Self.sideInset + 1) * Self.renderScale
+                XCTAssertLessThanOrEqual(box.maxX, rightLimit,
+                    "\(tpl.rawValue) \(level): 오른쪽 여백 밖으로 나갔다 — 배율표를 다시 재야 한다")
+            }
+        }
+    }
+
     /// 이 스탬프는 다른 스탬프와 달리 심박·칼로리 토글을 따르지 않는다 —
     /// 격자를 채우는 게 목적이라 있는 지표를 전부(최대 6칸) 보여주는 것이 기본값이다.
     @MainActor

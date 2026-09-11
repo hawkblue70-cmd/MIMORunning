@@ -563,8 +563,9 @@ private struct StampScoreboardView: View {
     var body: some View {
         VStack(spacing: 3 * scale) {
             Text("SCOREBOARD")
-                .font(.system(size: 9 * scale, weight: .semibold, design: .monospaced))
-                .tracking(3)
+                .font(.system(size: 18 * scale, weight: .semibold, design: .monospaced))
+                .tracking(2)
+                .lineLimit(1).fixedSize()
 
             HStack(alignment: .lastTextBaseline, spacing: 2 * scale) {
                 Text(data.distance)
@@ -575,12 +576,21 @@ private struct StampScoreboardView: View {
                     .tracking(4)
             }
 
-            // 심박은 토글 없이 항상 — 있으면 페이스 옆에 붙인다.
-            Text(data.heartRate.map { "\(data.time)  ·  \(data.pace)  ·  \($0) BPM" }
-                 ?? "\(data.time)  ·  \(data.pace)")
-                .font(.system(size: 11 * scale, weight: .semibold, design: .monospaced))
-                .tracking(2)
+            // 데이터 줄은 두 줄로 나눈다. 크기 배율표가 스탬프를 목표 폭에 맞추기 때문에
+            // 한 줄에 다 넣고 폰트만 키우면 배율이 그만큼 내려가 화면에서는 똑같아 보인다.
+            // 줄을 나눠 폭을 줄여야 같은 목표 폭 안에서 글자가 실제로 커진다.
+            // 심박은 토글 없이 항상 — 있으면 아랫줄에 붙는다.
+            Text("\(data.time)  ·  \(data.pace)")
+                .font(.system(size: 22 * scale, weight: .semibold, design: .monospaced))
+                .tracking(1)
                 .lineLimit(1).fixedSize()
+
+            if let hr = data.heartRate {
+                Text("\(hr) BPM")
+                    .font(.system(size: 22 * scale, weight: .semibold, design: .monospaced))
+                    .tracking(1)
+                    .lineLimit(1).fixedSize()
+            }
         }
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
         .frame(maxWidth: .infinity, alignment: .center)
