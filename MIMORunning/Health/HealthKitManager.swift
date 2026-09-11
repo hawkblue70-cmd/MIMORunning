@@ -1491,8 +1491,8 @@ class HealthKitManager {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_detail", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // v10: SplitData에 avgVerticalOscillation 추가. 기존 v9 캐시 자동 무효화.
-        return dir.appendingPathComponent("v10_\(id.uuidString).json")
+        // v11: 고도 획득 계산에 3m 임계값 적용(ElevationGain). 기존 v10 캐시 자동 무효화.
+        return dir.appendingPathComponent("v11_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
@@ -2104,11 +2104,9 @@ class HealthKitManager {
     private func computeElevationGain(from locations: [CLLocation]) -> Double? {
         let valid = locations.filter { $0.verticalAccuracy >= 0 }
         guard valid.count > 1 else { return nil }
-        var gain = 0.0
-        for i in 1..<valid.count {
-            let delta = valid[i].altitude - valid[i - 1].altitude
-            if delta > 0 { gain += delta }
-        }
+        // 표시값과 고도 배경 판정이 같은 계산을 쓰도록 ElevationGain 한 곳으로 모았다.
+        // 예전에는 GPS 떨림까지 전부 더해 값이 부풀었다.
+        let gain = ElevationGain.cumulative(valid.map(\.altitude))
         return gain > 1 ? gain : nil
     }
 

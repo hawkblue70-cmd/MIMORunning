@@ -1057,6 +1057,9 @@ private struct HRTimeSeriesView: View {
 
     /// 이 러닝의 거리(km) — 누적 상승을 거리로 나눠 "오르막 코스인지" 판단한다
     var distanceKm: Double = 0
+    /// 누적 상승(m) — 화면 지표의 "고도 획득"과 **같은 값**을 받는다.
+    /// 여기서 따로 계산하면 표시값과 판정 기준이 갈라진다.
+    var elevationGainM: Double = 0
     /// 평지 환산이 표시 중인가. 표시 중이면 고도를 반드시 그린다 —
     /// "평지였다면 6'11""이라고 말해놓고 그 근거를 볼 수 없으면 안 된다.
     var showsFlatEquivalent: Bool = false
@@ -1105,17 +1108,6 @@ private struct HRTimeSeriesView: View {
         }
     }
 
-    /// 평활화된 고도에서 누적 상승(m). 평활화 전 값으로 재면 GPS 노이즈가 그대로 쌓인다.
-    private func cumulativeGain(_ pts: [(offset: TimeInterval, altitude: Double)]) -> Double {
-        guard pts.count > 1 else { return 0 }
-        var gain = 0.0
-        for i in 1..<pts.count {
-            let d = pts[i].altitude - pts[i - 1].altitude
-            if d > 0 { gain += d }
-        }
-        return gain
-    }
-
     private func zoneColor(for bpm: Double) -> Color {
         guard !zones.isEmpty else { return Color(hex: "FF6B6B") }
         for z in zones.sorted(by: { $0.id < $1.id }) {
@@ -1162,9 +1154,9 @@ private struct HRTimeSeriesView: View {
 
         // 오르막 코스인가 — 누적 상승을 거리로 나눠 판단.
         // 평지 환산이 떴다면 기준 미달이어도 그린다(보정의 근거를 보여야 한다).
-        let gain = cumulativeGain(elevPts)
         let shouldDrawElevation = elevPts.count >= 2 && shouldDrawElevationBackdrop(
-            cumulativeGainM: gain, distanceKm: distanceKm, showsFlatEquivalent: showsFlatEquivalent)
+            cumulativeGainM: elevationGainM, distanceKm: distanceKm,
+            showsFlatEquivalent: showsFlatEquivalent)
         return AnyView(
             Canvas { ctx, size in
                 let w = size.width
@@ -1630,6 +1622,7 @@ private struct RhythmInsightCard: View {
                             zones: hasZones ? hrZones : [],
                             altitudeProfile: detail?.altitudeTimeProfile ?? [],
                             distanceKm: activity.distance / 1000,
+                            elevationGainM: detail?.elevationGain ?? 0,
                             showsFlatEquivalent: flatEquivalentText != nil
                         )
                         .padding(.horizontal, 2)

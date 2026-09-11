@@ -1,0 +1,50 @@
+import XCTest
+@testable import MIMORunning
+
+/// 누적 상승 계산 — 화면의 "고도 획득"과 고도 배경 판정이 같이 쓰는 값.
+final class ElevationGainTests: XCTestCase {
+
+    func testCountsOnlyAscent() {
+        // 0 → 10 → 0 → 10 : 오른 건 20m
+        XCTAssertEqual(ElevationGain.cumulative([0, 10, 0, 10]), 20, accuracy: 0.01)
+    }
+
+    func testFlatIsZero() {
+        XCTAssertEqual(ElevationGain.cumulative([30, 30, 30, 30]), 0, accuracy: 0.01)
+        XCTAssertEqual(ElevationGain.cumulative([]), 0, accuracy: 0.01)
+        XCTAssertEqual(ElevationGain.cumulative([30]), 0, accuracy: 0.01)
+    }
+
+    /// GPS 떨림은 세지 않는다 — 이게 없으면 평지에서도 큰 값이 쌓인다
+    func testIgnoresGpsJitter() {
+        var noisy: [Double] = []
+        for i in 0..<2000 { noisy.append(30 + (i % 2 == 0 ? 1.2 : -1.2)) }
+        XCTAssertEqual(ElevationGain.cumulative(noisy), 0, accuracy: 0.01,
+                       "±1.2m 떨림이 상승으로 쌓이면 안 된다")
+    }
+
+    /// 떨림 속에 묻힌 실제 오르막은 잡아낸다
+    func testFindsRealClimbUnderJitter() {
+        var alt: [Double] = []
+        for i in 0..<600 {
+            let real = 30 + Double(i) * 0.05            // 600 샘플 동안 30m 상승
+            alt.append(real + (i % 2 == 0 ? 1.2 : -1.2))
+        }
+        let gain = ElevationGain.cumulative(alt)
+        XCTAssertGreaterThan(gain, 24, "실제 30m 상승을 놓치면 안 된다")
+        XCTAssertLessThan(gain, 36, "떨림까지 더해 부풀면 안 된다")
+    }
+
+    /// 임계값 미만의 완만한 변화가 쌓여 실제로 올라간 경우도 반영된다
+    func testSlowClimbBelowStepStillCounts() {
+        // 1m씩 30번 = 30m 상승 (각 단계는 임계값 3m 미만)
+        let alt = (0...30).map { 100 + Double($0) }
+        XCTAssertEqual(ElevationGain.cumulative(alt), 30, accuracy: 3)
+    }
+
+    func testCustomStep() {
+        let alt: [Double] = [0, 2, 4, 6]
+        XCTAssertEqual(ElevationGain.cumulative(alt, minStep: 1), 6, accuracy: 0.01)
+        XCTAssertEqual(ElevationGain.cumulative(alt, minStep: 10), 0, accuracy: 0.01)
+    }
+}
