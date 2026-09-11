@@ -1035,6 +1035,12 @@ struct RunInsightTabCard: View {
 private struct HRTimeSeriesView: View {
     let samples: [(offset: TimeInterval, bpm: Int)]
     var zones: [HRZoneData] = []
+    /// 시간축 고도 — 심박 뒤에 옅은 면적으로 깔아 "언덕 때문에 오른 심박"이 보이게 한다.
+    /// 선이 아니라 면적인 이유: 작은 차트에 색 있는 선이 둘이면 어느 쪽을 볼지 흐려진다.
+    var altitudeProfile: [(offset: TimeInterval, altitude: Double)] = []
+
+    /// 고저차가 이만큼 안 되면 그리지 않는다 — 평지에 평평한 띠가 깔리면 노이즈일 뿐이다
+    private static let minElevationSpan: Double = 20
 
     private func movingMedian(_ data: [Int], window: Int) -> [Double] {
         guard !data.isEmpty else { return [] }
@@ -1093,6 +1099,15 @@ private struct HRTimeSeriesView: View {
         let maxBPM = smoothed.max() ?? 1
         let valRange = max(1.0, maxBPM - minBPM)
         let totalDur = max(1.0, pts.last?.offset ?? 1)
+
+        // 고도 — 심박과 같은 시간축. 200개로 맞춰 다운샘플
+        var elevPts = altitudeProfile.filter { $0.offset <= totalDur * 1.05 }
+        if elevPts.count > 200 {
+            let step = Double(elevPts.count - 1) / 199.0
+            elevPts = (0..<200).map { elevPts[Int((Double($0) * step).rounded())] }
+        }
+        let elevMin = elevPts.map(\.altitude).min() ?? 0
+        let elevSpan = max(0.001, (elevPts.map(\.altitude).max() ?? 0) - elevMin)
         return AnyView(
             Canvas { ctx, size in
                 let w = size.width
@@ -1112,6 +1127,22 @@ private struct HRTimeSeriesView: View {
                 yAxisPath.addLine(to: CGPoint(x: xPad, y: chartH))
                 ctx.stroke(yAxisPath, with: .color(.white.opacity(0.35)),
                            style: StrokeStyle(lineWidth: 0.8))
+
+                // 고도 면적 (심박선 뒤 배경) — 자체 y축을 쓰되 눈금은 그리지 않는다.
+                // 숫자는 심박만 읽고, 고도는 "모양"만 전달하면 충분하다.
+                if elevPts.count >= 2, elevSpan >= Self.minElevationSpan {
+                    var area = Path()
+                    area.move(to: CGPoint(x: xPad, y: chartH))
+                    for e in elevPts {
+                        let x = xPad + CGFloat(e.offset / totalDur) * chartW
+                        // 차트 아래 45%만 차지 — 심박선을 가리지 않는 높이
+                        let y = chartH - CGFloat((e.altitude - elevMin) / elevSpan) * chartH * 0.45
+                        area.addLine(to: CGPoint(x: x, y: y))
+                    }
+                    area.addLine(to: CGPoint(x: w, y: chartH))
+                    area.closeSubpath()
+                    ctx.fill(area, with: .color(.white.opacity(0.10)))
+                }
 
                 // 화면 좌표 계산
                 let cpts: [(x: CGFloat, y: CGFloat, bpm: Double)] = pts.map { s in
@@ -1292,6 +1323,13 @@ private struct RhythmInsightCard: View {
                                   altitudeProfile: detail?.altitudeProfile ?? [])
     }
 
+    /// 평지 환산 표기 — 세 카드 공용 함수(GradeAdjustedPace.kpiText) 사용
+    private var flatEquivalentText: String? {
+        GradeAdjustedPace.kpiText(splits: detail?.splits ?? [],
+                                  altitudeProfile: detail?.altitudeProfile ?? [],
+                                  actualPaceSecPerKm: activity.paceSecPerKm)
+    }
+
     /// 폼 카드(`RunFormCardView.adjustedGctStat`)와 동일한 시점 보정 GCT 밴드
     private func adjustedGct(_ bb: BandBaseline) -> FormStat? {
         FormNarrative.driftAdjustedGCT(bb.groundContact,
@@ -1409,7 +1447,8 @@ private struct RhythmInsightCard: View {
                     value: activity.formattedDuration)
             kpiSep
             KPICell(label: AppLanguage.shared.s("페이스", "Pace"),
-                    value: activity.formattedPace ?? "--'--\"")
+                    value: activity.formattedPace ?? "--'--\"",
+                    context: flatEquivalentText, contextColor: IC.label)
             kpiSep
             if let hr = activity.avgHeartRate {
                 KPICell(label: AppLanguage.shared.s("심박", "HR"),
@@ -1483,7 +1522,8 @@ private struct RhythmInsightCard: View {
                     if hasHR {
                         HRTimeSeriesView(
                             samples: hrSamples,
-                            zones: hasZones ? hrZones : []
+                            zones: hasZones ? hrZones : [],
+                            altitudeProfile: detail?.altitudeTimeProfile ?? []
                         )
                         .padding(.horizontal, 6)
                         .frame(height: 86)
@@ -2697,19 +2737,11 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    /// 평지 환산 페이스(GAP) — 언덕이 있을 때만 페이스 아래 한 줄.
-    /// 평지에서는 실제 페이스와 같아 표시할 게 없다(5초 미만 차이는 숨김).
-    private var gapContext: String? {
-        guard let splits = detail?.splits, !splits.isEmpty,
-              let profile = detail?.altitudeProfile, !profile.isEmpty,
-              let actual = activity.paceSecPerKm,
-              let gap = GradeAdjustedPace.compute(splits: splits, altitudeProfile: profile),
-              abs(gap - actual) >= 5
-        else { return nil }
-        let secs = Int(gap.rounded())
-        let paceText = "\(secs / 60)'\(String(format: "%02d", secs % 60))\""
-        // 영문은 러너에게 통용되는 GAP 그대로, 한국어는 뜻이 바로 읽히는 "평지 환산"
-        return AppLanguage.shared.s("평지 환산 \(paceText)", "GAP \(paceText)")
+    /// 평지 환산 표기 — 세 카드 공용 함수(GradeAdjustedPace.kpiText) 사용
+    private var flatEquivalentText: String? {
+        GradeAdjustedPace.kpiText(splits: detail?.splits ?? [],
+                                  altitudeProfile: detail?.altitudeProfile ?? [],
+                                  actualPaceSecPerKm: activity.paceSecPerKm)
     }
 
     private var kpiRow: some View {
@@ -2719,7 +2751,7 @@ private struct PerformanceInsightCard: View {
             kpiSep
             KPICell(label: AppLanguage.shared.s("페이스", "Pace"),
                     value: activity.formattedPace ?? "--'--\"",
-                    context: gapContext, contextColor: IC.label)
+                    context: flatEquivalentText, contextColor: IC.label)
             kpiSep
             if let hr = activity.avgHeartRate {
                 KPICell(label: AppLanguage.shared.s("심박", "HR"),

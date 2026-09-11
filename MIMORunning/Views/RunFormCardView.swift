@@ -120,6 +120,12 @@ struct RunFormCardView: View {
         baseline?.baseline(for: activity, gradeAdjustedPace: runGAP)
     }
 
+    /// 평지 환산 표기 — 세 카드 공용 함수(GradeAdjustedPace.kpiText) 사용
+    private var flatEquivalentText: String? {
+        GradeAdjustedPace.kpiText(splits: splits, altitudeProfile: altitudeProfile,
+                                  actualPaceSecPerKm: activity.paceSecPerKm)
+    }
+
     /// 오늘 페이스가 개인 페이스 구간 밖(`cutoffs.band(of:) == nil`)일 때 **표시용**으로 쓸
     /// 가장 가까운 유효 밴드. 평소보다 빠르면 가장 빠른 구간부터, 느리면 가장 느린 구간부터 찾는다.
     /// ⚠ 판정(문장·상태 배지·OOB 강조)에는 절대 쓰지 않는다 — 다른 페이스대 기준이라 오독이 된다.
@@ -866,7 +872,8 @@ struct RunFormCardView: View {
                         value: activity.formattedDuration)
                 kpiSep
                 KPICell(label: AppLanguage.shared.s("페이스", "Pace"),
-                        value: activity.formattedPace ?? "--'--\"")
+                        value: activity.formattedPace ?? "--'--\"",
+                        context: flatEquivalentText, contextColor: Color.white.opacity(0.45))
                 if let cad = avgCadence {
                     kpiSep
                     KPICell(label: AppLanguage.shared.s("케이던스", "Cadence"),

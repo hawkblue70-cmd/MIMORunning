@@ -121,6 +121,23 @@ enum GradeAdjustedPace {
         return last.time
     }
 
+    /// KPI 페이스 셀 아래 보조 표기 — "평지 환산 6'11"".
+    /// ⚠ 리듬·폼·퍼포먼스 카드가 **이 함수 하나만** 쓴다. 카드마다 따로 만들면 기준이 갈라진다.
+    /// 실제 페이스와 5초 미만 차이면 nil — 평지에서 띄우면 노이즈일 뿐이다.
+    static func kpiText(splits: [SplitData],
+                        altitudeProfile: [(distanceKm: Double, altitude: Double)],
+                        actualPaceSecPerKm: Double?) -> String? {
+        guard !splits.isEmpty, !altitudeProfile.isEmpty,
+              let actual = actualPaceSecPerKm,
+              let gap = compute(splits: splits, altitudeProfile: altitudeProfile),
+              abs(gap - actual) >= 5
+        else { return nil }
+        let secs = Int(gap.rounded())
+        let paceText = "\(secs / 60)'\(String(format: "%02d", secs % 60))\""
+        // 영문은 러너에게 통용되는 GAP 그대로, 한국어는 뜻이 바로 읽히는 "평지 환산"
+        return AppLanguage.shared.s("평지 환산 \(paceText)", "GAP \(paceText)")
+    }
+
     // MARK: - Internals
 
     /// 100m 구간별 (시작거리m, 끝거리m, 보정계수)
