@@ -9,21 +9,40 @@ import Foundation
 enum ElevationGain {
 
     /// GPS 떨림으로 볼 최대 변화(m).
-    /// 실제 러닝과 비슷한 고도열로 맞춰본 값 — 1m는 노이즈에 무너지고(실제 32m가 486m),
-    /// 3m는 완만한 기복을 20%씩 깎는다(32m → 25m). 2m가 네 유형 모두에서 실제값에 가장 가깝다.
     static let minStep: Double = 2
 
+    /// 임계값 앞에 거는 이동 평균 창(점). 고주파 떨림을 먼저 눌러야 임계값을 낮게 쓸 수 있다.
+    static let smoothingWindow = 5
+
     /// 누적 상승(m). 내려간 구간은 세지 않는다.
+    ///
+    /// **평활화 → 임계값** 두 단계를 거친다. 실제 러닝과 비슷한 고도열로 맞춰본 결과다.
+    /// (실제 0m 떨림 / 실제 30m 상승 / 실제 32m 완만한 기복 세 경우)
+    ///   · 평활화 없이 2m  → 2398 / 733 / 34   — 떨림에 완전히 무너진다
+    ///   · 평활화 없이 3m  →    0 /  27 / 25   — 완만한 기복을 20% 깎는다
+    ///   · 평활화 5점 + 3m →    0 /  27 /  0   — 기복이 통째로 사라진다
+    ///   · **평활화 5점 + 2m →  0 /  28 / 34** — 세 경우 모두 실제값에 가깝다
     static func cumulative(_ altitudes: [Double], minStep: Double = minStep) -> Double {
         guard let first = altitudes.first, altitudes.count > 1 else { return 0 }
+        let values = smoothed(altitudes)
         var gain = 0.0
-        var anchor = first          // 마지막으로 "진짜 움직였다"고 인정한 고도
-        for altitude in altitudes.dropFirst() {
+        var anchor = values.first ?? first   // 마지막으로 "진짜 움직였다"고 인정한 고도
+        for altitude in values.dropFirst() {
             let delta = altitude - anchor
             guard abs(delta) >= minStep else { continue }
             if delta > 0 { gain += delta }
             anchor = altitude
         }
         return gain
+    }
+
+    /// 이동 평균 — 창보다 짧은 고도열은 그대로 둔다
+    private static func smoothed(_ altitudes: [Double]) -> [Double] {
+        guard altitudes.count > smoothingWindow else { return altitudes }
+        let half = smoothingWindow / 2
+        return altitudes.indices.map { i in
+            let lo = max(0, i - half), hi = min(altitudes.count - 1, i + half)
+            return altitudes[lo...hi].reduce(0, +) / Double(hi - lo + 1)
+        }
     }
 }

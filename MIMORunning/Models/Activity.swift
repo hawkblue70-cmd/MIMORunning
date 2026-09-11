@@ -148,11 +148,20 @@ struct ActivityDetail {
     /// Apple 운동 강도 캐시 (iOS 18+, 워치 런). 상세 진입 시 재조회로 갱신.
     var appleEffort: AppleEffort? = nil
 
+    /// 실내 운동(트레드밀 등) 여부 — HKMetadataKeyIndoorWorkout.
+    /// 야외인데 경로가 비어 있으면 "아직 못 받아온 것"으로 판단하는 데 쓴다.
+    var isIndoorWorkout: Bool = false
+
     /// True when HealthKit returned at least one major data field.
     /// An incomplete cache (all empty) means HealthKit hadn't finished processing — re-fetch needed.
+    ///
+    /// ⚠ 야외 운동인데 경로가 비어 있으면 완성으로 보지 않는다. 예전에는 splits만 있어도 완성으로 보고
+    /// 디스크에 저장해 버려서, 경로 조회가 한 번 실패하면 지도·고도가 **영구히** 사라졌다
+    /// (다음 진입에서도 캐시가 완성으로 읽혀 재조회하지 않았다).
     var isComplete: Bool {
-        !routeCoordinates.isEmpty || !splits.isEmpty || !hrZones.isEmpty ||
-        avgPower != nil || avgCadence != nil
+        if !isIndoorWorkout && routeCoordinates.isEmpty { return false }
+        return !routeCoordinates.isEmpty || !splits.isEmpty || !hrZones.isEmpty ||
+            avgPower != nil || avgCadence != nil
     }
 }
 
@@ -249,6 +258,7 @@ extension ActivityDetail: Codable {
         case altProfileDist, altProfileAlt
         case altTimeOffset, altTimeAlt
         case appleEffort
+        case isIndoorWorkout
     }
 
     nonisolated init(from decoder: any Decoder) throws {
@@ -257,6 +267,7 @@ extension ActivityDetail: Codable {
         let lons = try c.decode([Double].self, forKey: .routeLon)
         routeCoordinates = zip(lats, lons).map { CLLocationCoordinate2D(latitude: $0, longitude: $1) }
         routeTimeOffsets = (try? c.decode([TimeInterval].self, forKey: .routeTimeOffsets)) ?? []
+        isIndoorWorkout         = (try? c.decodeIfPresent(Bool.self, forKey: .isIndoorWorkout)) as? Bool ?? false
         elevationGain           = try c.decodeIfPresent(Double.self, forKey: .elevationGain)
         avgPower                = try c.decodeIfPresent(Int.self,    forKey: .avgPower)
         avgCadence              = try c.decodeIfPresent(Int.self,    forKey: .avgCadence)
@@ -282,6 +293,7 @@ extension ActivityDetail: Codable {
         try c.encode(routeCoordinates.map(\.latitude),  forKey: .routeLat)
         try c.encode(routeCoordinates.map(\.longitude), forKey: .routeLon)
         try c.encode(routeTimeOffsets,                  forKey: .routeTimeOffsets)
+        try c.encode(isIndoorWorkout,                 forKey: .isIndoorWorkout)
         try c.encodeIfPresent(elevationGain,          forKey: .elevationGain)
         try c.encodeIfPresent(avgPower,               forKey: .avgPower)
         try c.encodeIfPresent(avgCadence,             forKey: .avgCadence)

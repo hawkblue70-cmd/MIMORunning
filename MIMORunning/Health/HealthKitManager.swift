@@ -1491,8 +1491,9 @@ class HealthKitManager {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_detail", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // v12: 고도 획득 임계값 3m → 2m. 기존 캐시 자동 무효화.
-        return dir.appendingPathComponent("v12_\(id.uuidString).json")
+        // v13: 경로 없는 야외 러닝을 완성으로 저장하던 버그 수정(isIndoorWorkout 추가).
+        //      경로·고도가 비어 굳어버린 기존 캐시를 버리고 다시 받는다.
+        return dir.appendingPathComponent("v13_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
@@ -1644,7 +1645,8 @@ class HealthKitManager {
                 avgVerticalOscillation: vertOsc,
                 vo2Max: vo2,
                 altitudeProfile: computeAltitudeProfile(from: locations),
-                altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate)
+                altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate),
+                isIndoorWorkout: isIndoor(workout)
             )
 
         default: // walking, hiking
@@ -1664,7 +1666,8 @@ class HealthKitManager {
                 avgVerticalOscillation: nil,
                 vo2Max: nil,
                 altitudeProfile: computeAltitudeProfile(from: locations),
-                altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate)
+                altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate),
+                isIndoorWorkout: isIndoor(workout)
             )
         }
     }
@@ -2099,6 +2102,12 @@ class HealthKitManager {
             }
             self.store.execute(query)
         }
+    }
+
+    /// 실내 운동인가 — 트레드밀 러닝은 경로가 없는 게 정상이다.
+    /// 이 구분이 없으면 "경로 조회 실패"와 "원래 경로 없음"을 가릴 수 없다.
+    private func isIndoor(_ workout: HKWorkout) -> Bool {
+        (workout.metadata?[HKMetadataKeyIndoorWorkout] as? Bool) ?? false
     }
 
     private func computeElevationGain(from locations: [CLLocation]) -> Double? {

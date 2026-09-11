@@ -47,6 +47,18 @@ final class ElevationGainTests: XCTestCase {
         XCTAssertEqual(ElevationGain.cumulative(alt, minStep: 1), 6, accuracy: 0.01)
         XCTAssertEqual(ElevationGain.cumulative(alt, minStep: 10), 0, accuracy: 0.01)
     }
+
+    /// 완만한 기복(진폭 2m)이 통째로 사라지면 안 된다 — 3m 임계값만 쓰던 때의 문제
+    func testGentleRollingCourseIsNotFlattened() {
+        var alt: [Double] = []
+        for i in 0..<3000 {
+            let t = Double(i) / 3000
+            alt.append(30 + 2 * sin(t * 2 * .pi * 8))   // 8회 오르내림, 실제 상승 32m
+        }
+        let gain = ElevationGain.cumulative(alt)
+        XCTAssertGreaterThan(gain, 24, "완만한 기복을 놓치면 도심 러닝이 전부 평지가 된다")
+        XCTAssertLessThan(gain, 40)
+    }
 }
 
 /// 트랙·평지에서 고도 항목이 사라지지 않고 0으로 남는지.
