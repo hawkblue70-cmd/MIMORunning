@@ -261,7 +261,7 @@ struct DetailPanelShareCard: View {
         if let cal = activity.calories {
             items.append(.init(icon: "flame.fill",      label: L.s("칼로리", "Cals"),          value: String(format: "%.0f kcal", cal),                color: Theme.calories))
         }
-        if let elev = detail?.elevationGain, elev > 0 {
+        if let elev = detail?.elevationGain {
             items.append(.init(icon: "arrow.up.right",  label: L.s("고도 획득", "Elev. Gain"), value: String(format: "%.0f m", elev),                  color: Theme.elevation))
         }
         return Array(items.prefix(12))

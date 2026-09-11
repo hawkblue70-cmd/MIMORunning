@@ -2106,8 +2106,9 @@ class HealthKitManager {
         guard valid.count > 1 else { return nil }
         // 표시값과 고도 배경 판정이 같은 계산을 쓰도록 ElevationGain 한 곳으로 모았다.
         // 예전에는 GPS 떨림까지 전부 더해 값이 부풀었다.
-        let gain = ElevationGain.cumulative(valid.map(\.altitude))
-        return gain > 1 ? gain : nil
+        // 트랙·평지처럼 오르내림이 없으면 0을 돌려준다. 값이 없는 것(실내런 = 경로 자체가 없음)과
+        // 값이 0인 것은 다르다 — 0은 "평지를 달렸다"는 정보이고, 지표 칸이 사라지면 그걸 알 수 없다.
+        return ElevationGain.cumulative(valid.map(\.altitude))
     }
 
     private func computeRouteTimeOffsets(from locations: [CLLocation], workoutStart: Date) -> [TimeInterval] {

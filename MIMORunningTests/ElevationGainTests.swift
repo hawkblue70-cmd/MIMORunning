@@ -48,3 +48,44 @@ final class ElevationGainTests: XCTestCase {
         XCTAssertEqual(ElevationGain.cumulative(alt, minStep: 10), 0, accuracy: 0.01)
     }
 }
+
+/// 트랙·평지에서 고도 항목이 사라지지 않고 0으로 남는지.
+/// "값이 없다(실내런)"와 "값이 0이다(평지)"는 다른 정보다.
+final class FlatCourseElevationTests: XCTestCase {
+
+    private func detail(elevationGain: Double?) -> ActivityDetail {
+        ActivityDetail(routeCoordinates: [], routeTimeOffsets: [], elevationGain: elevationGain,
+                       avgPower: nil, avgCadence: 175, splits: [], hrZones: [],
+                       intervalSegments: [], workoutType: .general,
+                       avgGroundContactTime: nil, avgStrideLength: nil,
+                       avgVerticalOscillation: nil, vo2Max: nil,
+                       altitudeProfile: [], altitudeTimeProfile: [])
+    }
+
+    private var activity: Activity {
+        Activity(id: UUID(), type: .running, date: Date(), duration: 3000,
+                 distance: 10_000, calories: 500, avgHeartRate: 150)
+    }
+
+    func testFlatCourseKeepsElevationRowAsZero() {
+        let items = RunMetricItem.list(activity: activity, detail: detail(elevationGain: 0),
+                                       age: 50, isMale: true)
+        let elev = items.first { $0.kind == .elevation }
+        XCTAssertNotNil(elev, "평지라고 고도 칸이 사라지면 평지였다는 사실을 알 수 없다")
+        XCTAssertEqual(elev?.value, "0 m")
+    }
+
+    func testIndoorRunHasNoElevationRow() {
+        let items = RunMetricItem.list(activity: activity, detail: detail(elevationGain: nil),
+                                       age: 50, isMale: true)
+        XCTAssertNil(items.first { $0.kind == .elevation },
+                     "경로가 없으면 고도 데이터 자체가 없다 — 0으로 꾸며내면 안 된다")
+    }
+
+    /// 트랙 한 바퀴처럼 오르내림이 없는 고도열은 0이 나온다
+    func testTrackAltitudesGiveZeroGain() {
+        var track: [Double] = []
+        for i in 0..<1200 { track.append(12 + (i % 3 == 0 ? 0.8 : -0.4)) }
+        XCTAssertEqual(ElevationGain.cumulative(track), 0, accuracy: 0.01)
+    }
+}

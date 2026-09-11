@@ -538,7 +538,8 @@ struct StampVisualPickerSheet: View {
                     case .heartRate: if data.heartRate  == nil { return false }
                     case .hrZone:    if data.hrZoneIndex == nil { return false }
                     case .cadence:   if data.cadence    == nil { return false }
-                    case .elevation: if data.elevGain   == nil { return false }
+                    // 고도 0(트랙·평지)이면 프로파일이 평평해 그릴 그림이 없다
+                    case .elevation: if (data.elevGain.flatMap(Double.init) ?? 0) <= 0 { return false }
                     case .location:
                         if data.placeName == nil && data.coordText == nil { return false }
                     case .route:
