@@ -92,6 +92,10 @@ extension Theme {
     /// 성장 탭 스파크라인은 모든 점을 이 모양으로 그린다.
     static let sparkHaloSize: CGFloat = 64
     static let sparkHaloCoreSize: CGFloat = 32
+    /// 성장 탭 스파크라인용 — 같은 모양이되 지름 2/3. 높이 36pt에 점이 최대 14개라 64는 붙어 보였다.
+    /// symbolSize는 넓이(pt²)라 지름 2/3 = 넓이 4/9: 64 → 28, 32 → 14.
+    static let sparkHaloSizeCompact: CGFloat = 28
+    static let sparkHaloCoreSizeCompact: CGFloat = 14
 }
 
 // MARK: - Chart-specific palette (RunCombinedChartView 전용)

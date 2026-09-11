@@ -2507,13 +2507,13 @@ private struct MetricSparkCard: View {
                     y: .value(metric.unit, pt.value)
                 )
                 .foregroundStyle(Color.white)
-                .symbolSize(Theme.sparkHaloSize)
+                .symbolSize(Theme.sparkHaloSizeCompact)
                 PointMark(
                     x: .value("날짜", pt.date),
                     y: .value(metric.unit, pt.value)
                 )
                 .foregroundStyle(sparklineColor)
-                .symbolSize(Theme.sparkHaloCoreSize)
+                .symbolSize(Theme.sparkHaloCoreSizeCompact)
             }
             .chartYScale(domain: (minVal - padding)...(maxVal + padding))
             .chartXAxis(.hidden)
