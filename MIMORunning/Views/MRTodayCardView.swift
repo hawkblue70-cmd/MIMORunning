@@ -30,9 +30,13 @@ struct MRTodayCardView: View {
                     // ② 오늘 기록 — 오늘 뛴 날에만.
                     //   어제 러닝을 매일 보는 건 아래 목록과 중복이다.
                     if let session = c.sessionLine {
+                        // 한 줄 고정 — "6.07km · 39:41 · 6'32"/km"이 26pt로는 카드 폭을 넘어
+                        // 페이스만 둘째 줄로 떨어졌다. 줄을 바꾸는 대신 줄여서 맞춘다(최소 70%).
                         Text(session)
                             .font(.system(size: 26, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
                     if let link = c.linkLine {
                         Text(link)
