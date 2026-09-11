@@ -73,6 +73,7 @@ struct KPICell: View {
     var unit: String? = nil
     var color: Color = .white
     var context: String? = nil
+    var contextColor: Color = IC.green
 
     var body: some View {
         VStack(spacing: 2) {
@@ -84,7 +85,7 @@ struct KPICell: View {
             }
             Text(label).font(.system(size: 8.5)).foregroundStyle(.white.opacity(0.70))
             if let ctx = context {
-                Text(ctx).font(.system(size: 8)).foregroundStyle(IC.green)
+                Text(ctx).font(.system(size: 8)).foregroundStyle(contextColor)
             }
         }
         .frame(maxWidth: .infinity)
@@ -2686,13 +2687,27 @@ private struct PerformanceInsightCard: View {
         }
     }
 
+    /// 경사 조정 페이스 — 언덕이 있을 때만 페이스 아래 한 줄.
+    /// 평지에서는 실제 페이스와 같아 표시할 게 없다(5초 미만 차이는 숨김).
+    private var gapContext: String? {
+        guard let splits = detail?.splits, !splits.isEmpty,
+              let profile = detail?.altitudeProfile, !profile.isEmpty,
+              let actual = activity.paceSecPerKm,
+              let gap = GradeAdjustedPace.compute(splits: splits, altitudeProfile: profile),
+              abs(gap - actual) >= 5
+        else { return nil }
+        let secs = Int(gap.rounded())
+        return "GAP \(secs / 60)'\(String(format: "%02d", secs % 60))\""
+    }
+
     private var kpiRow: some View {
         HStack(spacing: 0) {
             KPICell(label: AppLanguage.shared.s("시간", "Time"),
                     value: activity.formattedDuration)
             kpiSep
             KPICell(label: AppLanguage.shared.s("페이스", "Pace"),
-                    value: activity.formattedPace ?? "--'--\"")
+                    value: activity.formattedPace ?? "--'--\"",
+                    context: gapContext, contextColor: IC.label)
             kpiSep
             if let hr = activity.avgHeartRate {
                 KPICell(label: AppLanguage.shared.s("심박", "HR"),
