@@ -48,16 +48,54 @@ final class ElevationGainTests: XCTestCase {
         XCTAssertEqual(ElevationGain.cumulative(alt, minStep: 10), 0, accuracy: 0.01)
     }
 
-    /// 완만한 기복(진폭 2m)이 통째로 사라지면 안 된다 — 3m 임계값만 쓰던 때의 문제
+    /// 도심 코스의 완만한 기복(진폭 3m = 고저 6m)이 통째로 사라지면 안 된다.
+    /// 3m 임계값만 쓰던 때는 이런 기복이 20%씩 깎였다.
     func testGentleRollingCourseIsNotFlattened() {
         var alt: [Double] = []
         for i in 0..<3000 {
             let t = Double(i) / 3000
-            alt.append(30 + 2 * sin(t * 2 * .pi * 8))   // 8회 오르내림, 실제 상승 32m
+            alt.append(30 + 3 * sin(t * 2 * .pi * 8))   // 8회 오르내림, 실제 상승 48m
         }
         let gain = ElevationGain.cumulative(alt)
-        XCTAssertGreaterThan(gain, 24, "완만한 기복을 놓치면 도심 러닝이 전부 평지가 된다")
-        XCTAssertLessThan(gain, 40)
+        XCTAssertGreaterThan(gain, 36, "완만한 기복을 놓치면 도심 러닝이 전부 평지가 된다")
+        XCTAssertLessThan(gain, 56)
+    }
+
+    /// 진폭에 비례해 값이 커져야 한다 — 정점 직전 잔여분을 버리던 옛 방식은
+    /// 진폭 3m와 4m가 같은 값(30.4m)을 냈다.
+    func testGainScalesWithAmplitude() {
+        func rolling(amplitude: Double) -> Double {
+            var alt: [Double] = []
+            for i in 0..<3000 {
+                alt.append(30 + amplitude * sin(Double(i) / 3000 * 2 * .pi * 8))
+            }
+            return ElevationGain.cumulative(alt)
+        }
+        let a3 = rolling(amplitude: 3)      // 이론 48m
+        let a4 = rolling(amplitude: 4)      // 이론 64m
+        let a5 = rolling(amplitude: 5)      // 이론 80m
+        XCTAssertEqual(a3, 48, accuracy: 4)
+        XCTAssertEqual(a4, 64, accuracy: 4)
+        XCTAssertEqual(a5, 80, accuracy: 4)
+        XCTAssertGreaterThan(a4, a3 + 8, "진폭이 커지면 값도 비례해 커져야 한다")
+        XCTAssertGreaterThan(a5, a4 + 8)
+    }
+
+    /// 큰 언덕도 비례해서 정확해야 한다
+    func testLargeHillsAreAccurate() {
+        var alt: [Double] = []
+        for i in 0..<3000 { alt.append(30 + 25 * sin(Double(i) / 3000 * 2 * .pi * 8)) }
+        XCTAssertEqual(ElevationGain.cumulative(alt), 400, accuracy: 8)
+    }
+
+    /// 잔물결은 세지 않는다 — 임계값의 존재 이유
+    func testTinyRipplesAreNotCounted() {
+        var alt: [Double] = []
+        for i in 0..<3000 {
+            let t = Double(i) / 3000
+            alt.append(30 + 0.8 * sin(t * 2 * .pi * 20))   // 진폭 0.8m 잔물결
+        }
+        XCTAssertEqual(ElevationGain.cumulative(alt), 0, accuracy: 0.01)
     }
 }
 
