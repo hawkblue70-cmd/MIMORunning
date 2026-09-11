@@ -111,6 +111,12 @@ private struct SplitsPalette {
         rowAlt:          Color(hex: "FAFAF8")
     )
 
+    /// 지표 셀 스타일 — 앱 상세·경로 카드와 같은 셀 컴포넌트에 넘긴다.
+    var metricCellStyle: RunMetricCellStyle {
+        isLight ? .light(textPrimary: textPrimary, surface: rowAlt ?? .white)
+                : .dark(textPrimary: textPrimary, surface: Theme.cardBackground)
+    }
+
     /// 지표 의미색 — 경로 카드와 **같은 팔레트**를 쓴다(`RunMetricKind.shareColor`).
     func metricColor(_ kind: RunMetricKind) -> Color {
         kind.shareColor(isLight: isLight, textPrimary: textPrimary)
@@ -145,8 +151,9 @@ struct SplitsShareCardView: View {
     // Base 4:5 (300×375), grows dynamically for more splits
     static func cardHeight(splitCount: Int, hasZones: Bool = false, runMetricCount: Int = 0) -> CGFloat {
         let zonesH: CGFloat = hasZones ? 130 : 0
+        // 지표 셀이 박스를 갖게 되면서 한 행이 30 → 33으로 커졌다(공용 RunMetricCell, scale 0.55).
         let metricsH: CGFloat = runMetricCount > 0
-            ? 34 + CGFloat((runMetricCount + 2) / 3) * 30
+            ? 34 + CGFloat((runMetricCount + 2) / 3) * 33
             : 0
         return max(375, 198 + CGFloat(splitCount) * 16 + zonesH + metricsH)
     }
@@ -547,28 +554,8 @@ struct SplitsShareCardView: View {
                 .foregroundStyle(pal.kmLabel)
         }
         .padding(.bottom, 5)
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3),
-                  alignment: .leading, spacing: 7) {
-            ForEach(runMetrics) { item in
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 3) {
-                        Image(systemName: item.icon)
-                            .font(.system(size: 6.5))
-                        Text(item.label)
-                            .font(.system(size: 7, weight: .medium))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                    }
-                    .foregroundStyle(pal.metricColor(item.kind).opacity(pal.isLight ? 0.95 : 0.85))
-                    Text(item.value)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(pal.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
+        RunMetricGrid(items: runMetrics.map { $0.recolored(pal.metricColor($0.kind)) },
+                      style: pal.metricCellStyle, scale: 0.55, showsNote: false)
     }
 
     private func zoneBpmText(_ zone: HRZoneData) -> String {

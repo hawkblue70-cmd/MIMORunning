@@ -20,6 +20,12 @@ struct RouteCardPalette {
     /// 밝은 배경인가 — 지표 색을 라이트용으로 고를 때 쓴다(구간 카드와 같은 팔레트).
     let isLight: Bool
 
+    /// 지표 셀 스타일 — 앱 상세·구간 카드와 같은 셀 컴포넌트에 넘긴다.
+    var metricCellStyle: RunMetricCellStyle {
+        isLight ? .light(textPrimary: textPrimary, surface: cellBackground)
+                : .dark(textPrimary: textPrimary, surface: cellBackground)
+    }
+
     static let dark = RouteCardPalette(
         background: LinearGradient(colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
                                    startPoint: .topLeading, endPoint: .bottomTrailing),
@@ -54,6 +60,8 @@ struct DetailPanelShareCard: View {
     var mapSnapshot: UIImage? = nil
     var dateText: String = ""
     var condition: ActivityCondition? = nil
+    var age: Int? = nil
+    var isMale: Bool? = nil
     var theme: ShareTheme = .dark
 
     private var pal: RouteCardPalette { theme == .light ? .light : .dark }
@@ -259,98 +267,17 @@ struct DetailPanelShareCard: View {
 
     // MARK: Metrics grid
 
-    private struct MetricItem {
-        let icon: String
-        let label: String
-        let value: String
-        let kind: RunMetricKind
-        var valueFontSize: CGFloat = 8.5  // 지도를 키우려고 지표를 30% 줄였다
-
-        /// 색은 구간 카드와 **같은 팔레트**에서 가져온다 — 카드마다 따로 정하지 않는다.
-        func color(_ pal: RouteCardPalette) -> Color {
-            kind.shareColor(isLight: pal.isLight, textPrimary: pal.textPrimary)
-        }
-    }
-
-    private var availableMetrics: [MetricItem] {
-        let L = AppLanguage.shared
-        var items: [MetricItem] = []
-
-        // 거리는 지표 의미색이 없다 — 배경에 따라 읽히는 색으로 (라이트에서 흰색은 안 보인다)
-        items.append(.init(icon: "ruler",               label: L.s("거리", "Dist."),           value: activity.formattedDistance,                      kind: .distance))
-        items.append(.init(icon: "clock",               label: L.s("시간", "Time"),            value: activity.formattedDuration,                      kind: .time))
-        if let pace = activity.formattedPace {
-            items.append(.init(icon: "timer",           label: L.s("페이스", "Pace"),          value: pace,                                            kind: .pace))
-        }
-        if let hr = activity.avgHeartRate {
-            items.append(.init(icon: "heart.fill",      label: L.s("평균 심박", "Avg HR"),     value: "\(hr) bpm",                                     kind: .heartRate))
-        }
-        if let cad = detail?.avgCadence {
-            items.append(.init(icon: "figure.run",      label: L.s("케이던스", "Cadence"),     value: "\(cad) spm",                                    kind: .cadence))
-        }
-        if let pwr = detail?.avgPower {
-            items.append(.init(icon: "bolt.fill",       label: L.s("파워", "Power"),           value: "\(pwr) W",                                      kind: .power))
-        }
-        if let gct = detail?.avgGroundContactTime {
-            items.append(.init(icon: "stopwatch",       label: L.s("지면 접촉", "Gnd Contact"),value: "\(Int(gct.rounded())) ms",                      kind: .form))
-        }
-        if let sl = detail?.avgStrideLength {
-            items.append(.init(icon: "arrow.left.and.right", label: L.s("보폭", "Stride"),    value: String(format: "%.2f m", sl),                    kind: .form))
-        }
-        if let vo = detail?.avgVerticalOscillation {
-            items.append(.init(icon: "arrow.up.and.down", label: L.s("수직 진폭", "Vert. Osc."), value: String(format: "%.1f cm", vo),                kind: .form))
-        }
-        if let vo2 = detail?.vo2Max {
-            items.append(.init(icon: "lungs.fill",      label: L.s("유산소", "Cardio"),               value: String(format: "%.1f mL/kg·m", vo2),   kind: .cardio, valueFontSize: 10.5))
-        }
-        if let cal = activity.calories {
-            items.append(.init(icon: "flame.fill",      label: L.s("칼로리", "Cals"),          value: String(format: "%.0f kcal", cal),                kind: .calories))
-        }
-        if let elev = detail?.elevationGain {
-            items.append(.init(icon: "arrow.up.right",  label: L.s("고도 획득", "Elev. Gain"), value: String(format: "%.0f m", elev),                  kind: .elevation))
-        }
-        return Array(items.prefix(12))
+    /// 항목 목록도 색도 앱 상세·구간 카드와 같은 출처를 쓴다 — 카드마다 따로 만들지 않는다.
+    private var metricItems: [RunMetricItem] {
+        RunMetricItem.list(activity: activity, detail: detail, age: age, isMale: isMale)
+            .prefix(12)
+            .map { $0.recolored($0.kind.shareColor(isLight: pal.isLight, textPrimary: pal.textPrimary)) }
     }
 
     private var metricsGrid: some View {
-        let items = availableMetrics
-        return LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: 3), GridItem(.flexible(), spacing: 3),
-                      GridItem(.flexible())],
-            spacing: 3
-        ) {
-            ForEach(0..<items.count, id: \.self) { i in
-                metricCell(items[i])
-            }
-        }
+        RunMetricGrid(items: metricItems, style: pal.metricCellStyle, scale: 0.46, showsNote: false)
     }
 
-    private func metricCell(_ item: MetricItem) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 2) {
-                Image(systemName: item.icon)
-                    .font(.system(size: 6, weight: .semibold))
-                    .foregroundStyle(item.color(pal))
-                Text(item.label)
-                    .font(.system(size: 6, weight: .medium))
-                    .foregroundStyle(item.color(pal))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-            Text(item.value)
-                .font(.system(size: item.valueFontSize, weight: .black))
-                .fontWidth(.condensed)
-                .foregroundStyle(pal.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 2)
-        .background(pal.cellBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(pal.cellBorder, lineWidth: 0.8))
-    }
 
 }
 
@@ -363,6 +290,9 @@ struct DetailPanelShareCardScreen: View {
     let hrSamples: [(offset: TimeInterval, bpm: Int)]
     let panelSeriesData: [(offset: TimeInterval, value: Double)]
     var condition: ActivityCondition? = nil
+    /// 유산소 피트니스 등급 문구에 쓰인다 — 앱 상세 격자와 같은 목록을 쓰므로 같이 넘긴다.
+    var age: Int? = nil
+    var isMale: Bool? = nil
 
     @State private var previewImage: UIImage?
     @State private var isRendering = true
@@ -399,6 +329,7 @@ struct DetailPanelShareCardScreen: View {
                         mapSnapshot: mapSnapshot,
                         dateText: formattedDateText,
                         condition: condition,
+                        age: age, isMale: isMale,
                         theme: cardTheme
                     )
                     .frame(width: cardW, height: cardH)
@@ -508,6 +439,7 @@ struct DetailPanelShareCardScreen: View {
                 mapSnapshot: mapSnapshot,
                 dateText: formattedDateText,
                 condition: condition,
+                age: age, isMale: isMale,
                 theme: cardTheme
             )
             .frame(width: cardW, height: cardH)

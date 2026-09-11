@@ -65,6 +65,12 @@ struct RunMetricItem: Identifiable {
     var trendMetric: TrendMetric? = nil
     var compactValue: Bool = false   // true → title3, false → title2 (앱 화면 전용)
 
+    /// 색만 바꾼 복제 — 카드마다 배경이 달라 같은 항목에 다른 색을 입혀야 한다.
+    func recolored(_ newColor: Color) -> RunMetricItem {
+        RunMetricItem(kind: kind, icon: icon, label: label, value: value, color: newColor,
+                      note: note, trendMetric: trendMetric, compactValue: compactValue)
+    }
+
     static func list(activity: Activity,
                      detail: ActivityDetail?,
                      age: Int?,

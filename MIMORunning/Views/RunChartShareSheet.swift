@@ -75,7 +75,9 @@ struct RunChartShareCard: View {
                     .padding(.top, 2)
                     .padding(.bottom, 4)
             }
-            .background(palette.background)
+            // 차트 구역도 카드와 같은 표면(sectionBackground). `background`는 영상 프레임 채움용이라
+            // 다크에서 순검정이어서, 여기 쓰면 타일 패널(15151A)과 이음새가 생겼다.
+            .background(palette.sectionBackground)
 
             // 지표 타일 — 값 전용(유산소·칼로리) 항상 표시, 나머지는 켜진 레이어만
             let activeTiles = data.availableLayers.filter {
@@ -756,7 +758,8 @@ private struct ShareStatTile: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(layer.formatted(series.displayValue))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12, weight: .black))
+                    .fontWidth(.condensed)
                     .foregroundStyle(palette.textPrimary)
                     .minimumScaleFactor(0.80)
                     .lineLimit(1)
@@ -768,7 +771,14 @@ private struct ShareStatTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(palette.textPrimary.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
+        // 지표 셀과 같은 박스 규칙 — 표면색 채움 + 라이트에서만 옅은 테두리.
+        // 카드 표면이 흰 한 장이라 채움만으로는 셀 경계가 안 보인다.
+        .background {
+            let r = RoundedRectangle(cornerRadius: 9)
+            r.fill(palette.isLight ? Color.white : palette.textPrimary.opacity(0.08))
+                .overlay(r.stroke(palette.isLight ? Color.black.opacity(0.10) : .clear,
+                                  lineWidth: palette.isLight ? 0.5 : 0))
+        }
     }
 }
 

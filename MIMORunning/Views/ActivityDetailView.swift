@@ -404,7 +404,8 @@ struct ActivityDetailView: View {
                 activity: activity, detail: detail,
                 activePanel: .map,
                 hrSamples: hrSamples, panelSeriesData: [],
-                condition: condition
+                condition: condition,
+                age: userAge, isMale: manager.userIsMale
             )
         }
         .sheet(isPresented: $showChartShare) {
@@ -2138,12 +2139,8 @@ private struct MetricGrid: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-            ForEach(items) { item in
-                MetricCell(icon: item.icon, label: item.label, value: item.value,
-                           color: item.color, note: item.note, compactValue: item.compactValue)
-            }
-        }
+        // 셀은 공유 카드들과 같은 컴포넌트를 쓴다 — 크기만 scale로 조정(§5.8).
+        RunMetricGrid(items: items, style: .appDark, scale: 1.0)
         .padding(.horizontal, 16)
         #if DEBUG
         // 화면이 실제로 그리는 항목 — 매니저의 activities가 아니라 이 뷰가 받은 activity 기준.

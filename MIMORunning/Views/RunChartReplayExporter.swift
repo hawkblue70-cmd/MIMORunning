@@ -138,7 +138,9 @@ struct ShareChartPalette {
     static let light = ShareChartPalette(
         isLight:           true,
         background:        .white,
-        cardBackground:    Color(hex: "F4F3EF"),  // tiles panel
+        // ⚠ 카드 표면은 한 장이어야 한다. 예전에는 타일 패널만 베이지(F4F3EF)라
+        //   라이트에서 흰 차트 패널과 베이지 타일 패널이 박스 두 개로 보였다(다크는 두 값이 같아 안 보였다).
+        cardBackground:    .white,                // tiles panel — 차트 영역과 같은 흰색
         sectionBackground: .white,                // header + chart sections (unified surface)
         cardCornerRadius:  9,
         textPrimary:     Color(hex: "1A1A1A"),
