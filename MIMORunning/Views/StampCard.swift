@@ -432,6 +432,10 @@ struct StampCard: View {
             StampDistanceHeroView(data: data, fill: fill, outline: outline, scale: scale,
                                   showHeartRate: showHeartRate, showCalories: showCalories,
                                   showTextOutline: showTextOutline)
+        case .summaryGrid:
+            StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
+                                 showHeartRate: showHeartRate, showCalories: showCalories,
+                                 showTextOutline: showTextOutline)
         case .hud:
             StampHUDView(data: data, fill: fill, outline: outline, scale: scale,
                          showHeartRate: showHeartRate, showCalories: showCalories,
@@ -725,6 +729,101 @@ private struct StampDistanceHeroView: View {
             }
         }
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+    }
+}
+
+// MARK: - Summary Grid (큰 기울임 거리 + 라벨 붙은 3열 지표 격자)
+
+private struct StampSummaryGridView: View {
+    let data: StampData
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    let showHeartRate: Bool
+    let showCalories: Bool
+    var showTextOutline: Bool = true
+
+    private struct Metric: Identifiable {
+        let id = UUID()
+        let value: String
+        let unit: String?
+        let label: String
+    }
+
+    /// 있는 데이터만 — 없는 지표는 칸을 만들지 않는다. 심박·칼로리는 카드 토글을 따른다.
+    private var metrics: [Metric] {
+        var m: [Metric] = [
+            Metric(value: data.pace, unit: nil, label: "AVG PACE"),
+            Metric(value: data.time, unit: nil, label: "TIME"),
+        ]
+        if showCalories, let v = data.calories { m.append(Metric(value: v, unit: "CAL", label: "CALORIES")) }
+        if let v = data.elevGain             { m.append(Metric(value: v, unit: "M",   label: "ELEV GAIN")) }
+        if showHeartRate, let v = data.heartRate { m.append(Metric(value: v, unit: "BPM", label: "AVG HR")) }
+        if let v = data.cadence              { m.append(Metric(value: v, unit: "SPM", label: "CADENCE")) }
+        return Array(m.prefix(6))
+    }
+
+    /// 열 폭은 고정 — 칸 수가 달라져도 위아래 행의 왼쪽 선이 맞는다.
+    private var columnWidth: CGFloat { sz(54, scale) }
+    private var columnGap: CGFloat { sz(8, scale) }
+
+    var body: some View {
+        let items = metrics
+        let cols = min(3, max(1, items.count))
+        let rows: [[Metric]] = stride(from: 0, to: items.count, by: 3).map {
+            Array(items[$0 ..< min($0 + 3, items.count)])
+        }
+        VStack(alignment: .leading, spacing: sz(12, scale)) {
+            VStack(alignment: .leading, spacing: sz(1, scale)) {
+                Text(data.distance)
+                    .font(.system(size: sz(52, scale), weight: .black).width(.compressed))
+                    .italic()
+                    .tracking(sz(-1, scale))
+                    .lineLimit(1).fixedSize()
+                Text(data.distanceUnit)
+                    .font(.system(size: sz(8, scale), weight: .semibold))
+                    .tracking(1.4)
+                    .opacity(0.62)
+                    .lineLimit(1).fixedSize()
+            }
+            VStack(alignment: .leading, spacing: sz(7, scale)) {
+                ForEach(rows.indices, id: \.self) { r in
+                    HStack(alignment: .top, spacing: columnGap) {
+                        ForEach(rows[r]) { cell($0) }
+                        // 마지막 행이 3칸을 못 채워도 폭이 줄지 않게 빈 칸을 채운다
+                        if rows[r].count < cols {
+                            ForEach(0 ..< (cols - rows[r].count), id: \.self) { _ in
+                                Color.clear.frame(width: columnWidth, height: 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+    }
+
+    @ViewBuilder
+    private func cell(_ m: Metric) -> some View {
+        VStack(alignment: .leading, spacing: sz(1, scale)) {
+            HStack(alignment: .lastTextBaseline, spacing: sz(2, scale)) {
+                Text(m.value)
+                    .font(.system(size: sz(16, scale), weight: .black).width(.compressed))
+                    .italic()
+                    .lineLimit(1).fixedSize()
+                if let u = m.unit {
+                    Text(u)
+                        .font(.system(size: sz(8, scale), weight: .bold))
+                        .lineLimit(1).fixedSize()
+                }
+            }
+            Text(m.label)
+                .font(.system(size: sz(7, scale), weight: .semibold))
+                .tracking(0.9)
+                .opacity(0.62)
+                .lineLimit(1).fixedSize()
+        }
+        .frame(width: columnWidth, alignment: .leading)
     }
 }
 

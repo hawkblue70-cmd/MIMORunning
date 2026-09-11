@@ -25,7 +25,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     // 경로 결합 2종
     case routeHero
     case routeSide
-    // 기본 6종
+    // 기본 8종
     case hud
     case scoreboard
     case passportStamp
@@ -33,6 +33,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     case labeledRows
     case inlineTriple
     case distanceHero
+    case summaryGrid
     // 지표 특화 4종
     case hrWave
     case hrZone
@@ -73,6 +74,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .labeledRows:   return L.s("행마다 라벨",     "Row Labels")
         case .inlineTriple:  return L.s("가로 3열",        "Inline Triple")
         case .distanceHero:  return L.s("거리 몰아주기",   "Distance Hero")
+        case .summaryGrid:   return L.s("요약 그리드",     "Summary Grid")
         case .hrWave:        return L.s("심박 파형",       "HR Wave")
         case .hrZone:        return L.s("심박 존",         "HR Zones")
         case .elevProfile:   return L.s("고도 프로파일",   "Elevation Profile")
@@ -124,6 +126,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .labeledRows:  return (small: 0.60, medium: 0.82, large: 1.08, xlarge: 1.35)
         case .inlineTriple: return (small: 0.28, medium: 0.38, large: 0.50, xlarge: 0.62)
         case .distanceHero: return (small: 0.56, medium: 0.78, large: 1.02, xlarge: 1.28)
+        case .summaryGrid:  return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.84)   // 특대는 높이 상한(158pt)에 걸려 0.85 → 0.84
         case .hud:          return (small: 0.50, medium: 0.65, large: 0.80, xlarge: 1.00)
         case .hrWave:       return (small: 0.56, medium: 0.77, large: 1.01, xlarge: 1.27)
         case .hrZone:       return (small: 0.55, medium: 0.76, large: 1.00, xlarge: 1.25)
