@@ -293,14 +293,14 @@ private struct CadenceRPMGaugeView: View {
                     anchor: .center
                 )
             }
-            .frame(width: 128, height: 76)
+            .frame(width: 146, height: 87)
             .overlay(alignment: .bottom) {
                 HStack {
                     Text("\(Int(axMin))").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
                     Spacer()
                     Text("\(Int(axMax))").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
                 }
-                .frame(width: 128)
+                .frame(width: 146)
                 .offset(y: 10)
             }
         }
@@ -548,14 +548,14 @@ private struct VO2RPMGaugeView: View {
                     anchor: .center
                 )
             }
-            .frame(width: 128, height: 76)
+            .frame(width: 146, height: 87)
             .overlay(alignment: .bottom) {
                 HStack {
                     Text("15").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
                     Spacer()
                     Text("57").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
                 }
-                .frame(width: 128).offset(y: 10)
+                .frame(width: 146).offset(y: 10)
             }
 
         }
@@ -1161,7 +1161,7 @@ private struct HRTimeSeriesView: View {
                         if started { ridge.addLine(to: CGPoint(x: x, y: y)) }
                         else { ridge.move(to: CGPoint(x: x, y: y)); started = true }
                     }
-                    ctx.stroke(ridge, with: .color(Self.elevStroke), style: StrokeStyle(lineWidth: 0.8))
+                    ctx.stroke(ridge, with: .color(Self.elevStroke), style: StrokeStyle(lineWidth: 1.0))
 
                     // 최고 높이 라벨 — 면적 꼭대기 높이에 맞춰 오른쪽 바깥에.
                     // 심박 라벨(0.70)보다 흐리게 두어 "주인공은 심박"이라는 위계를 지킨다.
@@ -1531,7 +1531,7 @@ private struct RhythmInsightCard: View {
                 VStack(alignment: .center, spacing: 4) {
                     if hasZones {
                         ZoneDonutView(zones: hrZones)
-                            .frame(width: 100, height: 100)
+                            .frame(width: 114, height: 114)
                         Color.clear.frame(height: 8)
                         Text(zoneVerdictLabel)
                             .font(.system(size: 8, weight: .medium))
@@ -1553,8 +1553,8 @@ private struct RhythmInsightCard: View {
                             zones: hasZones ? hrZones : [],
                             altitudeProfile: detail?.altitudeTimeProfile ?? []
                         )
-                        .padding(.horizontal, 6)
-                        .frame(height: 86)
+                        .padding(.horizontal, 2)
+                        .frame(height: 104)
                         if let v = hrVerdictText {
                             Text(v.text)
                                 .font(.system(size: 9, weight: .medium))
