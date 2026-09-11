@@ -512,6 +512,18 @@ struct RunCombinedChartView: View {
         }
 
         let labelX = rect.maxX + 4
+
+        // 이 열은 평균이 아니라 **러닝이 끝난 시점의 값**이다. 아래 타일은 평균이라 숫자가 달라
+        // "둘이 안 맞는다"로 읽혔다. 열 머리에 작게 표시해 둔다.
+        // (차트를 끌면 십자선이 그 지점 값을 따로 보여 준다 — 그쪽은 단위까지 붙는다.)
+        ctx.draw(
+            Text(AppLanguage.shared.s("끝값", "end"))
+                .font(.system(size: 7, weight: .medium))
+                .foregroundStyle(p.textPrimary.opacity(0.45)),
+            at: CGPoint(x: labelX, y: rect.minY - 2),
+            anchor: .bottomLeading
+        )
+
         for slot in slots {
             let resolved = ctx.resolve(Text(slot.text)
                 .font(.system(size: 8, weight: .medium))
