@@ -13,6 +13,8 @@ struct RouteCardPalette {
     let textPrimary: Color
     let textSecondary: Color
     let cellBackground: Color
+    /// 셀 테두리 — 라이트는 흰 셀이 밝은 배경에 묻혀 경계가 필요하다
+    let cellBorder: Color
     let divider: Color
     let wordmarkStroke: Bool
 
@@ -22,6 +24,7 @@ struct RouteCardPalette {
         textPrimary: .white,
         textSecondary: .white.opacity(0.60),
         cellBackground: Theme.cardBackground,
+        cellBorder: .clear,
         divider: Theme.violet.opacity(0.30),
         wordmarkStroke: false
     )
@@ -32,6 +35,7 @@ struct RouteCardPalette {
         textPrimary: Color(hex: "111111"),
         textSecondary: Color(hex: "5A5A66"),
         cellBackground: Color(hex: "FFFFFF"),
+        cellBorder: .black.opacity(0.10),
         divider: Color(hex: "5B3FD9").opacity(0.30),
         wordmarkStroke: true
     )
@@ -336,6 +340,7 @@ struct DetailPanelShareCard: View {
         .padding(.vertical, 2)
         .background(pal.cellBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(pal.cellBorder, lineWidth: 0.8))
     }
 
 }
@@ -354,8 +359,6 @@ struct DetailPanelShareCardScreen: View {
     @State private var isRendering = true
     @State private var showShareSheet = false
     @State private var mapSnapshot: UIImage?
-    /// 경로선을 심박 존 색으로 — 심박 기록이 있을 때만 의미가 있다
-    @State private var useHRZoneColors = true
     @State private var cardTheme: ShareTheme = .dark
     @Environment(\.dismiss) private var dismiss
 
@@ -416,26 +419,14 @@ struct DetailPanelShareCardScreen: View {
         .task { await renderCard() }
     }
 
-    /// 카드 옵션 — 경로 색(심박 존/단색)과 카드 테마(다크/라이트)
-    @ViewBuilder
+    /// 카드 테마 — 경로선은 늘 심박 존 색(심박이 없으면 자동으로 단색)이라 선택지가 없다
     private var optionRow: some View {
-        VStack(spacing: 8) {
-            if hrSamples.count >= 10 {
-                segmented(left: AppLanguage.shared.s("심박 존 색", "HR Zones"), leftOn: useHRZoneColors,
-                          right: AppLanguage.shared.s("단색", "Solid"), rightOn: !useHRZoneColors) { wantsHR in
-                    guard useHRZoneColors != wantsHR else { return }
-                    useHRZoneColors = wantsHR
-                    mapSnapshot = nil            // 색이 바뀌면 지도를 다시 그린다
-                    Task { await renderCard() }
-                }
-            }
-            segmented(left: AppLanguage.shared.s("다크", "Dark"), leftOn: cardTheme == .dark,
-                      right: AppLanguage.shared.s("라이트", "Light"), rightOn: cardTheme == .light) { wantsDark in
-                let next: ShareTheme = wantsDark ? .dark : .light
-                guard cardTheme != next else { return }
-                cardTheme = next
-                Task { await renderCard() }
-            }
+        segmented(left: AppLanguage.shared.s("다크", "Dark"), leftOn: cardTheme == .dark,
+                  right: AppLanguage.shared.s("라이트", "Light"), rightOn: cardTheme == .light) { wantsDark in
+            let next: ShareTheme = wantsDark ? .dark : .light
+            guard cardTheme != next else { return }
+            cardTheme = next
+            Task { await renderCard() }
         }
     }
 
@@ -522,10 +513,8 @@ struct DetailPanelShareCardScreen: View {
     /// 카드 전용 지도 캐시 — 화면 지도(398×220)와 크기가 달라 따로 둔다.
     /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다.
     private var cardMapCacheURL: URL {
-        // 단색/심박존은 다른 그림이라 따로 캐시한다
-        let variant = useHRZoneColors ? "hr" : "plain"
-        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_card_v3_\(variant)_\(activity.id.uuidString).jpg")
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_map_card_v4_\(activity.id.uuidString).jpg")
     }
 
     private func loadCachedMapSnapshot() -> UIImage? {
@@ -549,7 +538,8 @@ struct DetailPanelShareCardScreen: View {
                                                        scale: 3),
               let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
 
-        let colors = useHRZoneColors ? await zoneColors(for: valid) : nil
+        // 심박 존 색이 기본. 심박이 없거나 시간대가 어긋나면 zoneColors가 nil을 돌려주고 단색이 된다.
+        let colors = await zoneColors(for: valid)
         return RouteSnapshotRenderer.draw(on: snap, coordinates: valid, segmentColors: colors)
     }
 
