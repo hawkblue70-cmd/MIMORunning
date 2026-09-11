@@ -2697,7 +2697,7 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    /// 경사 조정 페이스 — 언덕이 있을 때만 페이스 아래 한 줄.
+    /// 평지 환산 페이스(GAP) — 언덕이 있을 때만 페이스 아래 한 줄.
     /// 평지에서는 실제 페이스와 같아 표시할 게 없다(5초 미만 차이는 숨김).
     private var gapContext: String? {
         guard let splits = detail?.splits, !splits.isEmpty,
@@ -2707,7 +2707,9 @@ private struct PerformanceInsightCard: View {
               abs(gap - actual) >= 5
         else { return nil }
         let secs = Int(gap.rounded())
-        return "GAP \(secs / 60)'\(String(format: "%02d", secs % 60))\""
+        let paceText = "\(secs / 60)'\(String(format: "%02d", secs % 60))\""
+        // 영문은 러너에게 통용되는 GAP 그대로, 한국어는 뜻이 바로 읽히는 "평지 환산"
+        return AppLanguage.shared.s("평지 환산 \(paceText)", "GAP \(paceText)")
     }
 
     private var kpiRow: some View {
