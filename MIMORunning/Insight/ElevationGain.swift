@@ -8,8 +8,10 @@ import Foundation
 /// 그보다 작은 흔들림은 같은 고도로 본다. 평활화보다 실제값에 가깝다(같은 시뮬레이션에서 41m).
 enum ElevationGain {
 
-    /// GPS 떨림으로 볼 최대 변화(m). 업계에서 쓰는 3m를 따른다.
-    static let minStep: Double = 3
+    /// GPS 떨림으로 볼 최대 변화(m).
+    /// 실제 러닝과 비슷한 고도열로 맞춰본 값 — 1m는 노이즈에 무너지고(실제 32m가 486m),
+    /// 3m는 완만한 기복을 20%씩 깎는다(32m → 25m). 2m가 네 유형 모두에서 실제값에 가장 가깝다.
+    static let minStep: Double = 2
 
     /// 누적 상승(m). 내려간 구간은 세지 않는다.
     static func cumulative(_ altitudes: [Double], minStep: Double = minStep) -> Double {

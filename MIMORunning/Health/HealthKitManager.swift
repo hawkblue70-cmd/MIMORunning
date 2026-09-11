@@ -1491,8 +1491,8 @@ class HealthKitManager {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_detail", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // v11: 고도 획득 계산에 3m 임계값 적용(ElevationGain). 기존 v10 캐시 자동 무효화.
-        return dir.appendingPathComponent("v11_\(id.uuidString).json")
+        // v12: 고도 획득 임계값 3m → 2m. 기존 캐시 자동 무효화.
+        return dir.appendingPathComponent("v12_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
