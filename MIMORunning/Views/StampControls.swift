@@ -124,11 +124,13 @@ struct StampControlsView: View {
             // 토글 행: 심박 · 칼로리 · 날짜(스토리)
             // ⚠ 칩을 위 크기 행에 붙이면 오른쪽 컬럼 폭(≈230pt)을 넘겨
             //   라벨이 "…"로 잘린다. 토글끼리 아랫줄로 분리한다.
-            if data.heartRate != nil || data.calories != nil || template == .story {
+            // 요약 그리드는 있는 지표를 전부 보여주므로 심박·칼로리 토글이 없다.
+            let metricToggles = vm.storyTemplate != .summaryGrid
+            if (metricToggles && (data.heartRate != nil || data.calories != nil)) || template == .story {
                 HStack(spacing: 6) {
-                    if data.heartRate != nil { heartRateChip }
-                    if data.calories  != nil { caloriesChip }
-                    if template == .story    { dateChip }
+                    if metricToggles, data.heartRate != nil { heartRateChip }
+                    if metricToggles, data.calories  != nil { caloriesChip }
+                    if template == .story                   { dateChip }
                 }
             }
             // 배속 — 영상, 클립이 있을 때

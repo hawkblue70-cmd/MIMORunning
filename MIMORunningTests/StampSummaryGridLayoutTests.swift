@@ -51,6 +51,37 @@ final class StampSummaryGridLayoutTests: XCTestCase {
         }
     }
 
+    /// 이 스탬프는 다른 스탬프와 달리 심박·칼로리 토글을 따르지 않는다 —
+    /// 격자를 채우는 게 목적이라 있는 지표를 전부(최대 6칸) 보여주는 것이 기본값이다.
+    @MainActor
+    func testTogglesDoNotChangeSummaryGrid() throws {
+        var data = StampData(distance: "10.06", distanceUnit: "KM", pace: "6'43\"", time: "1:07:35",
+                             heartRate: "148", calories: "451",
+                             dateText: "2026. 9. 11", locationText: "KR", weekday: "FRI",
+                             cadence: "182", elevGain: "142")
+        data.date = Date()
+
+        func render(hr: Bool, cal: Bool) throws -> Data {
+            let view = ZStack(alignment: .top) {
+                Color(hex: "3A4038")
+                StampCard(data: data, template: .summaryGrid, colorMode: .auto,
+                          position: .topLeading, sizeLevel: .large, isBrightBackground: false,
+                          showHeartRate: hr, showCalories: cal, showTextOutline: true,
+                          renderOnlyStamp: true)
+            }
+            .frame(width: Self.cardW, height: Self.cardH)
+            let r = ImageRenderer(content: view)
+            r.proposedSize = .init(width: Self.cardW, height: Self.cardH)
+            r.scale = Self.renderScale
+            _ = r.uiImage
+            _ = r.uiImage
+            return try XCTUnwrap(XCTUnwrap(r.uiImage).pngData())
+        }
+
+        XCTAssertEqual(try render(hr: false, cal: false), try render(hr: true, cal: true),
+                       "요약 그리드는 심박·칼로리 토글과 무관하게 같은 그림이어야 한다")
+    }
+
     /// 배경보다 밝은 픽셀들의 경계 상자(픽셀 좌표).
     @MainActor
     private func inkBounds(in image: UIImage) -> CGRect? {

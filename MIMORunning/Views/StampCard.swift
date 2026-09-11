@@ -433,8 +433,9 @@ struct StampCard: View {
                                   showHeartRate: showHeartRate, showCalories: showCalories,
                                   showTextOutline: showTextOutline)
         case .summaryGrid:
+            // 심박·칼로리 토글을 받지 않는다 — 이 스탬프는 격자를 채우는 게 목적이라
+            // 있는 지표를 모두(최대 6칸) 보여준다.
             StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
-                                 showHeartRate: showHeartRate, showCalories: showCalories,
                                  showTextOutline: showTextOutline)
         case .hud:
             StampHUDView(data: data, fill: fill, outline: outline, scale: scale,
@@ -739,8 +740,6 @@ private struct StampSummaryGridView: View {
     let fill: Color
     let outline: Color
     let scale: CGFloat
-    let showHeartRate: Bool
-    let showCalories: Bool
     var showTextOutline: Bool = true
 
     private struct Metric: Identifiable {
@@ -750,16 +749,19 @@ private struct StampSummaryGridView: View {
         let label: String
     }
 
-    /// 있는 데이터만 — 없는 지표는 칸을 만들지 않는다. 심박·칼로리는 카드 토글을 따른다.
+    /// 있는 데이터만 — 없는 지표는 칸을 만들지 않는다.
+    ///
+    /// 다른 스탬프와 달리 심박·칼로리 토글을 보지 않는다. 이 스탬프는 격자를 채우는 게 목적이라
+    /// 기본값이 "있는 것 전부"(최대 6칸)다. 심박을 넣을지 말지는 나머지 스탬프에서 고른다.
     private var metrics: [Metric] {
         var m: [Metric] = [
             Metric(value: data.pace, unit: nil, label: "AVG PACE"),
             Metric(value: data.time, unit: nil, label: "TIME"),
         ]
-        if showCalories, let v = data.calories { m.append(Metric(value: v, unit: "CAL", label: "CALORIES")) }
-        if let v = data.elevGain             { m.append(Metric(value: v, unit: "M",   label: "ELEV GAIN")) }
-        if showHeartRate, let v = data.heartRate { m.append(Metric(value: v, unit: "BPM", label: "AVG HR")) }
-        if let v = data.cadence              { m.append(Metric(value: v, unit: "SPM", label: "CADENCE")) }
+        if let v = data.calories  { m.append(Metric(value: v, unit: "CAL", label: "CALORIES")) }
+        if let v = data.elevGain  { m.append(Metric(value: v, unit: "M",   label: "ELEV GAIN")) }
+        if let v = data.heartRate { m.append(Metric(value: v, unit: "BPM", label: "AVG HR")) }
+        if let v = data.cadence   { m.append(Metric(value: v, unit: "SPM", label: "CADENCE")) }
         return Array(m.prefix(6))
     }
 
