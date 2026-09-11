@@ -328,11 +328,15 @@ enum RunChartBuilder {
         }
 
         // Cadence — hard clamp 140–220, 상하 3% percentile 제거 → median 25 → mean 25
+        //
+        // ⚠ 위아래를 같은 비율로 자른다. 예전에는 위만 8%(hi: 0.92)를 잘라, 타일에 뜨는
+        //   최대 케이던스가 실제보다 낮게 나오고 선의 봉우리도 눌렸다. 주석은 3%라고 적혀
+        //   있었지만 코드는 1%/8%였다.
         let cadRaw = rawPoints(cadenceSamples)
         if let s = makeSmoothedSeries(layer: .cadence, rawPoints: cadRaw,
                                       smoothWindow: 25,
                                       clamp: .hard(min: 140, max: 220),
-                                      secondaryClamp: .percentile(lo: 0.01, hi: 0.92),
+                                      secondaryClamp: .percentile(lo: 0.03, hi: 0.97),
                                       meanWindow: 25) {
             allSeries[.cadence] = storedCadAvg.map { s.withAvg($0) } ?? s
         }

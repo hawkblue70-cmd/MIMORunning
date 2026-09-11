@@ -137,7 +137,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         switch self {
         case .passportStamp: return (small: 0.61, medium: 0.85, large: 1.11, xlarge: 1.39)
         case .circleBadge:  return (small: 0.67, medium: 0.93, large: 1.22, xlarge: 1.52)
-        case .scoreboard:   return (small: 0.34, medium: 0.47, large: 0.61, xlarge: 0.73)   // 심박 + 데이터 2줄, 폭 249. 특대는 좌우 여백에 걸려 0.76 → 0.73
+        case .scoreboard:   return (small: 0.27, medium: 0.37, large: 0.49, xlarge: 0.58)   // 심박까지 한 줄, 폭 311. 특대는 좌우 여백에 걸려 0.61 → 0.58
         case .labeledRows:  return (small: 0.60, medium: 0.82, large: 1.08, xlarge: 1.35)
         case .inlineTriple: return (small: 0.28, medium: 0.38, large: 0.50, xlarge: 0.62)
         case .distanceHero: return (small: 0.56, medium: 0.78, large: 1.02, xlarge: 1.28)

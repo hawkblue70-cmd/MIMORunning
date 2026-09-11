@@ -576,21 +576,20 @@ private struct StampScoreboardView: View {
                     .tracking(4)
             }
 
-            // 데이터 줄은 두 줄로 나눈다. 크기 배율표가 스탬프를 목표 폭에 맞추기 때문에
-            // 한 줄에 다 넣고 폰트만 키우면 배율이 그만큼 내려가 화면에서는 똑같아 보인다.
-            // 줄을 나눠 폭을 줄여야 같은 목표 폭 안에서 글자가 실제로 커진다.
-            // 심박은 토글 없이 항상 — 있으면 아랫줄에 붙는다.
-            Text("\(data.time)  ·  \(data.pace)")
-                .font(.system(size: 22 * scale, weight: .semibold, design: .monospaced))
-                .tracking(1)
-                .lineLimit(1).fixedSize()
-
-            if let hr = data.heartRate {
-                Text("\(hr) BPM")
+            // 세 지표는 한 줄. 크기 배율표가 스탬프를 목표 폭에 맞추므로 줄이 길수록 글자가 작아진다
+            // — 자간을 0으로 두고 구분자도 한 칸씩만 써서 폭을 아낀다.
+            // 심박은 토글 없이 항상 — 있으면 뒤에 붙는다.
+            HStack(alignment: .lastTextBaseline, spacing: 2 * scale) {
+                Text(data.heartRate.map { "\(data.time) · \(data.pace) · \($0)" }
+                     ?? "\(data.time) · \(data.pace)")
                     .font(.system(size: 22 * scale, weight: .semibold, design: .monospaced))
-                    .tracking(1)
-                    .lineLimit(1).fixedSize()
+                if data.heartRate != nil {
+                    // 단위는 작게 — 한 줄 폭이 곧 글자 크기라 세 글자도 아깝다
+                    Text("BPM")
+                        .font(.system(size: 12 * scale, weight: .semibold, design: .monospaced))
+                }
             }
+            .lineLimit(1).fixedSize()
         }
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
         .frame(maxWidth: .infinity, alignment: .center)
