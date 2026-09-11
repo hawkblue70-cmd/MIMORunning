@@ -45,7 +45,9 @@ enum Theme {
     static let cardBackground = Color(hex: "1C1C1E")
 
     // Metric meaning colors (Apple convention)
-    static let time = Color.yellow
+    // 시간은 노랑 계열이되 케이던스 노랑(FFE000)과 벌려 둔다 — 시스템 옐로는 색상환에서 5° 차이라
+    // 지표 격자에서 두 라벨이 같은 색으로 보였다. 앰버 쪽으로 한 칸 내린다.
+    static let time = Color(hex: "FFB020")
     static let pace = Color.cyan
     static let heartRate = Color.red
     static let elevation = Color.green

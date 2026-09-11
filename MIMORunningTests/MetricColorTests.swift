@@ -73,6 +73,20 @@ final class MetricColorTests: XCTestCase {
                           "좋음 초록과 고도 초록이 같은 값이면 뜻이 섞인다")
     }
 
+    /// 시간과 케이던스는 둘 다 노랑 계열이라 색상이 붙기 쉽다 — 지표 격자에 나란히 뜬다.
+    /// 예전에는 시스템 옐로(48°)와 FFE000(53°)로 5° 차이였다.
+    func testTimeAndCadenceHuesAreApart() {
+        func hue(_ c: Color) -> CGFloat {
+            var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            UIColor(c).getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+            return h * 360
+        }
+        var d = abs(hue(Theme.time) - hue(Theme.cadence))
+        if d > 180 { d = 360 - d }
+        XCTAssertGreaterThanOrEqual(d, 12,
+            "시간과 케이던스 색상이 \(String(format: "%.1f", d))° 차이 — 격자에서 같은 노랑으로 보인다")
+    }
+
     /// 케이던스는 앱 어디서나 한 색이어야 한다.
     func testCadenceHasOneColor() {
         XCTAssertEqual(rgb(Theme.cadence), rgb(Theme.chartCadence),
