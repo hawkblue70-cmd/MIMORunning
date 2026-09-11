@@ -1042,6 +1042,11 @@ private struct HRTimeSeriesView: View {
     /// 고저차가 이만큼 안 되면 그리지 않는다 — 평지에 평평한 띠가 깔리면 노이즈일 뿐이다
     private static let minElevationSpan: Double = 20
 
+    /// 고도 배경 — 회색 계열로 둔다. 초록(고도 지표색)을 쓰면 심박선의 Zone 2 초록과
+    /// 섞여 어느 쪽이 고도인지 구분이 안 된다. 시인성은 채도가 아니라 윤곽선으로 올린다.
+    private static let elevFill = Color.white.opacity(0.17)
+    private static let elevStroke = Color.white.opacity(0.32)
+
     private func movingMedian(_ data: [Int], window: Int) -> [Double] {
         guard !data.isEmpty else { return [] }
         return data.indices.map { i in
@@ -1146,14 +1151,24 @@ private struct HRTimeSeriesView: View {
                     }
                     area.addLine(to: CGPoint(x: chartRight, y: chartH))
                     area.closeSubpath()
-                    ctx.fill(area, with: .color(.white.opacity(0.10)))
+                    ctx.fill(area, with: .color(Self.elevFill))
+                    // 윤곽선 — 면적만으로는 어두운 배경에서 형태가 뭉개진다
+                    var ridge = Path()
+                    var started = false
+                    for e in elevPts {
+                        let x = xPad + CGFloat(e.offset / totalDur) * chartW
+                        let y = chartH - CGFloat((e.altitude - elevMin) / elevSpan) * chartH * elevTopRatio
+                        if started { ridge.addLine(to: CGPoint(x: x, y: y)) }
+                        else { ridge.move(to: CGPoint(x: x, y: y)); started = true }
+                    }
+                    ctx.stroke(ridge, with: .color(Self.elevStroke), style: StrokeStyle(lineWidth: 0.8))
 
                     // 최고 높이 라벨 — 면적 꼭대기 높이에 맞춰 오른쪽 바깥에.
                     // 심박 라벨(0.70)보다 흐리게 두어 "주인공은 심박"이라는 위계를 지킨다.
                     let peakY = chartH - chartH * elevTopRatio
                     let peak = Int((elevMin + elevSpan).rounded())
                     ctx.draw(Text("\(peak)m").font(.system(size: 8))
-                        .foregroundStyle(.white.opacity(0.45)),
+                        .foregroundStyle(.white.opacity(0.58)),
                         at: CGPoint(x: chartRight + 3, y: peakY), anchor: .leading)
                 }
 
