@@ -27,10 +27,13 @@ struct GrowthTrendChart: View {
                 LineMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
                     .foregroundStyle(lineColor)
                     .interpolationMethod(.catmullRom)
-                // 점은 화면(성장 탭 스파크라인)과 같은 스타일 — 프리뷰 = 출력
+                // 점은 화면(성장 탭 스파크라인)과 같은 모양 — 흰 테두리 + 선 색 속. 프리뷰 = 출력
                 PointMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
-                    .foregroundStyle(lineColor.opacity(Theme.sparkDotOpacity))
-                    .symbolSize(Theme.sparkDotSize)
+                    .foregroundStyle(Color.white)
+                    .symbolSize(Theme.sparkHaloSize)
+                PointMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
+                    .foregroundStyle(lineColor)
+                    .symbolSize(Theme.sparkHaloCoreSize)
             }
         }
         .chartXAxis {
@@ -84,10 +87,13 @@ struct GrowthTrendChart: View {
                 LineMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
                     .foregroundStyle(lineColor)
                     .interpolationMethod(.catmullRom)
-                // 점은 화면(성장 탭 스파크라인)과 같은 스타일 — 프리뷰 = 출력
+                // 점은 화면(성장 탭 스파크라인)과 같은 모양 — 흰 테두리 + 선 색 속. 프리뷰 = 출력
                 PointMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
-                    .foregroundStyle(lineColor.opacity(Theme.sparkDotOpacity))
-                    .symbolSize(Theme.sparkDotSize)
+                    .foregroundStyle(Color.white)
+                    .symbolSize(Theme.sparkHaloSize)
+                PointMark(x: .value("날짜", pt.date), y: .value(metric.unit, pt.value))
+                    .foregroundStyle(lineColor)
+                    .symbolSize(Theme.sparkHaloCoreSize)
             }
         }
         .chartYScale(domain: yMin...yMax)

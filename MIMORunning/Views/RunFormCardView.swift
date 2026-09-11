@@ -1447,12 +1447,12 @@ struct RunFormCardView: View {
                     ForEach(s.points.filter(\.outOfRange)) { pt in
                         PointMark(x: .value("km", pt.kmEnd), y: .value("val", pt.value))
                             .foregroundStyle(Color.white)
-                            .symbolSize(64)
+                            .symbolSize(Theme.sparkHaloSize)
                     }
                     ForEach(s.points.filter(\.outOfRange)) { pt in
                         PointMark(x: .value("km", pt.kmEnd), y: .value("val", pt.value))
                             .foregroundStyle(s.lineColor)
-                            .symbolSize(32)
+                            .symbolSize(Theme.sparkHaloCoreSize)
                     }
                 }
             }

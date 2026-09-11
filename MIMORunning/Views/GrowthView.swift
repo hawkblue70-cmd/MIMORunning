@@ -2500,13 +2500,20 @@ private struct MetricSparkCard: View {
                 .lineStyle(StrokeStyle(lineWidth: 2.0))
                 .interpolationMethod(.catmullRom)
 
-                // 점은 폼 카드 미니 차트와 같은 스타일 — 채운 점, 선 색 45%, 크기 12
+                // 점은 폼 카드 미니 차트의 강조 점과 같은 모양 — 흰 테두리 위에 선 색 속.
+                // (폼 카드에서 평소 범위를 벗어난 구간에 찍는 그 점)
                 PointMark(
                     x: .value("날짜", pt.date),
                     y: .value(metric.unit, pt.value)
                 )
-                .foregroundStyle(sparklineColor.opacity(Theme.sparkDotOpacity))
-                .symbolSize(Theme.sparkDotSize)
+                .foregroundStyle(Color.white)
+                .symbolSize(Theme.sparkHaloSize)
+                PointMark(
+                    x: .value("날짜", pt.date),
+                    y: .value(metric.unit, pt.value)
+                )
+                .foregroundStyle(sparklineColor)
+                .symbolSize(Theme.sparkHaloCoreSize)
             }
             .chartYScale(domain: (minVal - padding)...(maxVal + padding))
             .chartXAxis(.hidden)

@@ -88,6 +88,10 @@ extension Theme {
     /// 폼 카드가 채운 점 12(45%)로 달라 같은 지표가 화면마다 다르게 보였다.
     static let sparkDotSize: CGFloat = 12
     static let sparkDotOpacity: Double = 0.45
+    /// 강조 점 — 흰 테두리(halo) 위에 선 색 속. 폼 카드는 평소 범위를 벗어난 구간에 쓰고,
+    /// 성장 탭 스파크라인은 모든 점을 이 모양으로 그린다.
+    static let sparkHaloSize: CGFloat = 64
+    static let sparkHaloCoreSize: CGFloat = 32
 }
 
 // MARK: - Chart-specific palette (RunCombinedChartView 전용)
