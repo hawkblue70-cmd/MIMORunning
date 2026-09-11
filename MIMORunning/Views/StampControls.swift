@@ -124,13 +124,12 @@ struct StampControlsView: View {
             // 토글 행: 심박 · 칼로리 · 날짜(스토리)
             // ⚠ 칩을 위 크기 행에 붙이면 오른쪽 컬럼 폭(≈230pt)을 넘겨
             //   라벨이 "…"로 잘린다. 토글끼리 아랫줄로 분리한다.
-            // 요약 그리드는 있는 지표를 전부 보여주므로 심박·칼로리 토글이 없다.
-            let metricToggles = vm.storyTemplate != .summaryGrid
-            if (metricToggles && (data.heartRate != nil || data.calories != nil)) || template == .story {
+            // 요약 그리드는 있는 지표를 전부 보여주므로 심박 토글이 없다.
+            let showHRChip = vm.storyTemplate != .summaryGrid && data.heartRate != nil
+            if showHRChip || template == .story {
                 HStack(spacing: 6) {
-                    if metricToggles, data.heartRate != nil { heartRateChip }
-                    if metricToggles, data.calories  != nil { caloriesChip }
-                    if template == .story                   { dateChip }
+                    if showHRChip         { heartRateChip }
+                    if template == .story { dateChip }
                 }
             }
             // 배속 — 영상, 클립이 있을 때
@@ -400,29 +399,6 @@ struct StampControlsView: View {
             HStack(spacing: 3) {
                 Image(systemName: "heart.fill").font(.system(size: 9))
                 Text(AppLanguage.shared.s("심박", "HR"))
-                    .font(.system(size: 11, weight: .semibold))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(isOn ? .white : .white.opacity(0.55))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(isOn ? Theme.violet : Color.white.opacity(0.08))
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.15), value: isOn)
-    }
-
-    /// 칼로리 토글 — 심박과 같은 자리의 푸터·격자 칸을 켠다.
-    /// `showCalories`는 뷰모델과 스탬프 뷰에 원래 있었는데 켜는 UI가 없어 항상 꺼진 상태였다.
-    private var caloriesChip: some View {
-        let isOn = vm.showCalories
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { vm.showCalories.toggle() }
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "flame.fill").font(.system(size: 9))
-                Text(AppLanguage.shared.s("칼로리", "Cals"))
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
             }
