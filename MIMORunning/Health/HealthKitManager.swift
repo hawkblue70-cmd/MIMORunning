@@ -1419,8 +1419,13 @@ class HealthKitManager {
         }
         if var disk = loadDetailFromDisk(activityID), disk.isComplete {
             #if DEBUG
-            print("[상세] 디스크 캐시 사용 — HealthKit 조회 안 함 (\(activityID.uuidString.prefix(8)))")
+            let _miss = Self.emptyWatchMetrics(in: disk)
+            print("[상세] 디스크 캐시 사용 (\(activityID.uuidString.prefix(8)))" +
+                  (_miss.isEmpty ? " — 지표 전부 있음" : " — 빈 지표: \(_miss.joined(separator: ", "))"))
             #endif
+            if let refreshed = await refetchIfWatchMetricsMissing(disk, activityID: activityID) {
+                disk = refreshed
+            }
             // [29] 이미 확정(hasSplits=true)된 분류가 있으면 재판정 건너뜀 — 매 실행 반복 방지
             let wtDict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
             if let raw = wtDict[activityID.uuidString], let entry = parseWorkoutTypeEntry(raw), entry.hasSplits {
@@ -1587,6 +1592,53 @@ class HealthKitManager {
         #if DEBUG
         print("[강도분포] 존 캐시 보충 — 창 \(windowRuns.count)건 중 존 없음 \(missing.count)건 → 채움 \(filled)건")
         #endif
+    }
+
+    /// 워치가 기록했어야 할 지표 중 캐시에서 비어 있는 것들.
+    static func emptyWatchMetrics(in detail: ActivityDetail) -> [String] {
+        var out: [String] = []
+        if detail.avgCadence == nil             { out.append("케이던스") }
+        if detail.avgPower == nil               { out.append("파워") }
+        if detail.avgGroundContactTime == nil   { out.append("지면접촉") }
+        if detail.avgStrideLength == nil        { out.append("보폭") }
+        if detail.avgVerticalOscillation == nil { out.append("수직진폭") }
+        if detail.vo2Max == nil                 { out.append("VO2max") }
+        return out
+    }
+
+    /// 이번 실행에서 이미 재조회해 본 활동 — 워치 없는 러닝에서 매번 다시 읽지 않게.
+    @ObservationIgnored private var watchMetricRetried: Set<UUID> = []
+
+    /// 캐시된 상세에 워치 지표가 비어 있으면 **한 번** 다시 읽는다.
+    ///
+    /// 한 번 비어서 저장되면 다음부터는 캐시가 완성으로 읽혀 영영 다시 조회하지 않았다.
+    /// 워치가 늦게 동기화되거나 서드파티 앱이 나중에 써넣는 경우가 있어, 그때 들어온 값을
+    /// 영원히 놓치게 된다. 심박이 있는 러닝(= 워치가 붙어 있던 러닝)만, 실행당 한 번만 시도한다.
+    /// 새로 읽은 쪽이 더 많이 채워졌을 때만 교체한다 — 일시적 실패로 있던 값을 잃지 않게.
+    private func refetchIfWatchMetricsMissing(_ cached: ActivityDetail,
+                                             activityID: UUID) async -> ActivityDetail? {
+        let missing = Self.emptyWatchMetrics(in: cached)
+        guard !missing.isEmpty, !watchMetricRetried.contains(activityID) else { return nil }
+        // 심박이 없으면 워치 없이 뛴 러닝 — 워치 지표가 비는 게 정상이라 재조회하지 않는다.
+        guard activities.first(where: { $0.id == activityID })?.avgHeartRate != nil else { return nil }
+        watchMetricRetried.insert(activityID)
+
+        #if DEBUG
+        print("[상세] 빈 지표 재조회 시도 (\(activityID.uuidString.prefix(8))) — \(missing.joined(separator: ", "))")
+        #endif
+        guard let fresh = await fetchDetailFromHealthKit(for: activityID) else { return nil }
+        let freshMissing = Self.emptyWatchMetrics(in: fresh)
+        guard freshMissing.count < missing.count, fresh.isComplete else {
+            #if DEBUG
+            print("[상세] 재조회 결과 변화 없음 — 캐시 유지 (빈 지표 \(freshMissing.count)개)")
+            #endif
+            return nil
+        }
+        #if DEBUG
+        print("[상세] 재조회로 회수 — 빈 지표 \(missing.count)개 → \(freshMissing.count)개")
+        #endif
+        saveDetailToDisk(fresh, id: activityID)
+        return fresh
     }
 
     private func saveDetailToDisk(_ detail: ActivityDetail, id: UUID) {
