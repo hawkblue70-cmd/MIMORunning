@@ -1412,17 +1412,11 @@ class HealthKitManager {
         }
         #endif
         if let cached = detailCache[activityID], cached.isComplete {
-            #if DEBUG
-            print("[상세] 메모리 캐시 사용 — HealthKit 조회 안 함 (\(activityID.uuidString.prefix(8)))")
-            #endif
+            logGridState(cached, activityID: activityID, tag: "메모리 캐시")
             return cached
         }
         if var disk = loadDetailFromDisk(activityID), disk.isComplete {
-            #if DEBUG
-            let _miss = Self.emptyWatchMetrics(in: disk)
-            print("[상세] 디스크 캐시 사용 (\(activityID.uuidString.prefix(8)))" +
-                  (_miss.isEmpty ? " — 지표 전부 있음" : " — 빈 지표: \(_miss.joined(separator: ", "))"))
-            #endif
+            logGridState(disk, activityID: activityID, tag: "디스크 캐시")
             if let refreshed = await refetchIfWatchMetricsMissing(disk, activityID: activityID) {
                 disk = refreshed
             }
@@ -1472,6 +1466,7 @@ class HealthKitManager {
         }
         let result = await fetchDetailFromHealthKit(for: activityID)
         if let result {
+            logGridState(result, activityID: activityID, tag: "HealthKit 조회")
             detailCache[activityID] = result
             persistHRZones(result.hrZones, for: activityID)
             // Only persist when data is complete so the next visit retries HealthKit
@@ -1594,7 +1589,8 @@ class HealthKitManager {
         #endif
     }
 
-    /// 워치가 기록했어야 할 지표 중 캐시에서 비어 있는 것들.
+    /// 상세에서 오는 지표 중 캐시에서 비어 있는 것들 — 재조회로 회수할 수 있는 항목만.
+    /// (거리·시간·페이스·심박·칼로리는 활동 자체에서 오므로 여기 없다.)
     static func emptyWatchMetrics(in detail: ActivityDetail) -> [String] {
         var out: [String] = []
         if detail.avgCadence == nil             { out.append("케이던스") }
@@ -1603,7 +1599,32 @@ class HealthKitManager {
         if detail.avgStrideLength == nil        { out.append("보폭") }
         if detail.avgVerticalOscillation == nil { out.append("수직진폭") }
         if detail.vo2Max == nil                 { out.append("VO2max") }
+        if detail.elevationGain == nil          { out.append("고도획득") }
         return out
+    }
+
+    /// 화면의 "러닝 상세 데이터" 격자에 실제로 뜨는 항목 전체를 있음/없음으로 남긴다.
+    /// 상세에서 오는 지표와 활동에서 오는 지표(칼로리·심박)가 섞여 있어, 어느 쪽이 비는지
+    /// 로그만 보고 바로 갈라낼 수 있어야 한다.
+    private func logGridState(_ detail: ActivityDetail, activityID: UUID, tag: String) {
+        #if DEBUG
+        let act = activities.first(where: { $0.id == activityID })
+        var parts: [String] = []
+        func mark(_ name: String, _ has: Bool) { parts.append("\(name)\(has ? "O" : "X")") }
+        mark("거리", (act?.distance ?? 0) > 0)
+        mark("시간", (act?.duration ?? 0) > 0)
+        mark("페이스", act?.formattedPace != nil)
+        mark("심박", act?.avgHeartRate != nil)
+        mark("칼로리", act?.calories != nil)
+        mark("케이던스", detail.avgCadence != nil)
+        mark("파워", detail.avgPower != nil)
+        mark("지면접촉", detail.avgGroundContactTime != nil)
+        mark("보폭", detail.avgStrideLength != nil)
+        mark("수직진폭", detail.avgVerticalOscillation != nil)
+        mark("VO2max", detail.vo2Max != nil)
+        mark("고도획득", detail.elevationGain != nil)
+        print("[상세] \(tag) (\(activityID.uuidString.prefix(8))) \(parts.joined(separator: " "))")
+        #endif
     }
 
     /// 이번 실행에서 이미 재조회해 본 활동 — 워치 없는 러닝에서 매번 다시 읽지 않게.
