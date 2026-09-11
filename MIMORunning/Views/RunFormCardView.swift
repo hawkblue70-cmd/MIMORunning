@@ -1438,8 +1438,8 @@ struct RunFormCardView: View {
                 // In-range small dots
                 ForEach(s.points.filter { !$0.outOfRange }) { pt in
                     PointMark(x: .value("km", pt.kmEnd), y: .value("val", pt.value))
-                        .foregroundStyle(s.lineColor.opacity(0.45))
-                        .symbolSize(12)
+                        .foregroundStyle(s.lineColor.opacity(Theme.sparkDotOpacity))
+                        .symbolSize(Theme.sparkDotSize)
                 }
 
                 // Out-of-range: white halo then colored inner (장거리 문맥이면 OOB 강조 생략)

@@ -82,6 +82,14 @@ enum Theme {
     }
 }
 
+// MARK: - 작은 선차트의 점 (폼 카드 미니 차트 · 성장 탭 스파크라인 공용)
+extension Theme {
+    /// 선 위의 데이터 점. 두 차트가 같은 값을 써야 한다 — 예전에는 성장 탭이 속 빈 원 28,
+    /// 폼 카드가 채운 점 12(45%)로 달라 같은 지표가 화면마다 다르게 보였다.
+    static let sparkDotSize: CGFloat = 12
+    static let sparkDotOpacity: Double = 0.45
+}
+
 // MARK: - Chart-specific palette (RunCombinedChartView 전용)
 extension Theme {
     // ⚠ 종합 차트 레이어 색 규칙 — 검은 배경에서 선끼리 색상환이 겹치지 않게.
