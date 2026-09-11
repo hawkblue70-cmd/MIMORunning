@@ -6,6 +6,37 @@ import SwiftData
 
 // MARK: - Detail Panel Share Card
 
+/// 경로 카드 팔레트 — 다크/라이트 두 벌.
+/// 색은 여기서만 고르고, 레이아웃 코드는 하나를 공유한다.
+struct RouteCardPalette {
+    let background: LinearGradient
+    let textPrimary: Color
+    let textSecondary: Color
+    let cellBackground: Color
+    let divider: Color
+    let wordmarkStroke: Bool
+
+    static let dark = RouteCardPalette(
+        background: LinearGradient(colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+        textPrimary: .white,
+        textSecondary: .white.opacity(0.60),
+        cellBackground: Theme.cardBackground,
+        divider: Theme.violet.opacity(0.30),
+        wordmarkStroke: false
+    )
+
+    static let light = RouteCardPalette(
+        background: LinearGradient(colors: [Color(hex: "FFFFFF"), Color(hex: "F2F0F7")],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+        textPrimary: Color(hex: "111111"),
+        textSecondary: Color(hex: "5A5A66"),
+        cellBackground: Color(hex: "FFFFFF"),
+        divider: Color(hex: "5B3FD9").opacity(0.30),
+        wordmarkStroke: true
+    )
+}
+
 struct DetailPanelShareCard: View {
     let activity: Activity
     let detail: ActivityDetail?
@@ -15,16 +46,16 @@ struct DetailPanelShareCard: View {
     var mapSnapshot: UIImage? = nil
     var dateText: String = ""
     var condition: ActivityCondition? = nil
+    var theme: ShareTheme = .dark
+
+    private var pal: RouteCardPalette { theme == .light ? .light : .dark }
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
+            pal.background
             VStack(alignment: .leading, spacing: 0) {
                 headerRow
                     .padding(.horizontal, 41).padding(.top, 20)
@@ -35,7 +66,7 @@ struct DetailPanelShareCard: View {
                     .frame(maxWidth: .infinity, minHeight: chartAreaHeight, maxHeight: chartAreaHeight, alignment: .center)
                     .padding(.horizontal, 41).padding(.top, 4)
                 Rectangle()
-                    .fill(Theme.violet.opacity(0.30))
+                    .fill(pal.divider)
                     .frame(height: 0.5)
                     .padding(.horizontal, 41).padding(.top, 4)
                 metricsGrid
@@ -74,19 +105,19 @@ struct DetailPanelShareCard: View {
 
     private var headerRow: some View {
         HStack(alignment: .top) {
-            MIMOWordmark(size: 9)
+            MIMOWordmark(size: 9, strokeMIMO: pal.wordmarkStroke)
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 HStack(spacing: 3) {
                     Text(headerDateStr)
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(pal.textPrimary)
                     Text(weekdayChar)
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(Theme.time)
                     Text(headerTimeStr)
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(pal.textPrimary)
                 }
                 // 날씨는 날짜 아래 같은 크기로 — 제목 줄에 섞이면 패널 이름과 경쟁한다
                 if let weather = condition?.weather {
@@ -96,7 +127,7 @@ struct DetailPanelShareCard: View {
                         Text(activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? weather.formattedTemp)
                             .font(.system(size: 9, weight: .medium))
                     }
-                    .foregroundStyle(.white.opacity(0.60))
+                    .foregroundStyle(pal.textSecondary)
                 }
             }
         }
@@ -109,7 +140,7 @@ struct DetailPanelShareCard: View {
                 .foregroundStyle(accentColor)
             Text(activePanel.label)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.80))
+                .foregroundStyle(pal.textPrimary.opacity(0.80))
             Spacer()
         }
     }
@@ -232,7 +263,8 @@ struct DetailPanelShareCard: View {
         let L = AppLanguage.shared
         var items: [MetricItem] = []
 
-        items.append(.init(icon: "ruler",               label: L.s("거리", "Dist."),           value: activity.formattedDistance,                      color: .white))
+        // 거리는 지표 의미색이 없다 — 배경에 따라 읽히는 색으로 (라이트에서 흰색은 안 보인다)
+        items.append(.init(icon: "ruler",               label: L.s("거리", "Dist."),           value: activity.formattedDistance,                      color: pal.textPrimary))
         items.append(.init(icon: "clock",               label: L.s("시간", "Time"),            value: activity.formattedDuration,                      color: Theme.time))
         if let pace = activity.formattedPace {
             items.append(.init(icon: "timer",           label: L.s("페이스", "Pace"),          value: pace,                                            color: Theme.pace))
@@ -295,14 +327,14 @@ struct DetailPanelShareCard: View {
             Text(item.value)
                 .font(.system(size: item.valueFontSize, weight: .black))
                 .fontWidth(.condensed)
-                .foregroundStyle(.white)
+                .foregroundStyle(pal.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 7)
         .padding(.vertical, 2)
-        .background(Theme.cardBackground)
+        .background(pal.cellBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -322,6 +354,9 @@ struct DetailPanelShareCardScreen: View {
     @State private var isRendering = true
     @State private var showShareSheet = false
     @State private var mapSnapshot: UIImage?
+    /// 경로선을 심박 존 색으로 — 심박 기록이 있을 때만 의미가 있다
+    @State private var useHRZoneColors = true
+    @State private var cardTheme: ShareTheme = .dark
     @Environment(\.dismiss) private var dismiss
 
     private let cardW = DetailPanelShareCard.cardWidth
@@ -351,13 +386,18 @@ struct DetailPanelShareCardScreen: View {
                         hrSamples: hrSamples, panelSeriesData: panelSeriesData,
                         mapSnapshot: mapSnapshot,
                         dateText: formattedDateText,
-                        condition: condition
+                        condition: condition,
+                        theme: cardTheme
                     )
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
 
-                    Spacer(minLength: 24)
+                    Spacer(minLength: 16)
+
+                    optionRow
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 14)
 
                     shareCTA
                         .padding(.horizontal, 24)
@@ -374,6 +414,52 @@ struct DetailPanelShareCardScreen: View {
             }
         }
         .task { await renderCard() }
+    }
+
+    /// 카드 옵션 — 경로 색(심박 존/단색)과 카드 테마(다크/라이트)
+    @ViewBuilder
+    private var optionRow: some View {
+        VStack(spacing: 8) {
+            if hrSamples.count >= 10 {
+                segmented(left: AppLanguage.shared.s("심박 존 색", "HR Zones"), leftOn: useHRZoneColors,
+                          right: AppLanguage.shared.s("단색", "Solid"), rightOn: !useHRZoneColors) { wantsHR in
+                    guard useHRZoneColors != wantsHR else { return }
+                    useHRZoneColors = wantsHR
+                    mapSnapshot = nil            // 색이 바뀌면 지도를 다시 그린다
+                    Task { await renderCard() }
+                }
+            }
+            segmented(left: AppLanguage.shared.s("다크", "Dark"), leftOn: cardTheme == .dark,
+                      right: AppLanguage.shared.s("라이트", "Light"), rightOn: cardTheme == .light) { wantsDark in
+                let next: ShareTheme = wantsDark ? .dark : .light
+                guard cardTheme != next else { return }
+                cardTheme = next
+                Task { await renderCard() }
+            }
+        }
+    }
+
+    private func segmented(left: String, leftOn: Bool, right: String, rightOn: Bool,
+                           onSelect: @escaping (Bool) -> Void) -> some View {
+        HStack(spacing: 0) {
+            segment(left, selected: leftOn) { onSelect(true) }
+            segment(right, selected: rightOn) { onSelect(false) }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func segment(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(selected ? Theme.violet : Color.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(selected ? Theme.violet.opacity(0.22) : Color.white.opacity(0.08))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: selected)
     }
 
     @ViewBuilder
@@ -421,7 +507,8 @@ struct DetailPanelShareCardScreen: View {
                 hrSamples: hrSamples, panelSeriesData: panelSeriesData,
                 mapSnapshot: mapSnapshot,
                 dateText: formattedDateText,
-                condition: condition
+                condition: condition,
+                theme: cardTheme
             )
             .frame(width: cardW, height: cardH)
         )
@@ -435,8 +522,10 @@ struct DetailPanelShareCardScreen: View {
     /// 카드 전용 지도 캐시 — 화면 지도(398×220)와 크기가 달라 따로 둔다.
     /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다.
     private var cardMapCacheURL: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_card_v2_\(activity.id.uuidString).jpg")
+        // 단색/심박존은 다른 그림이라 따로 캐시한다
+        let variant = useHRZoneColors ? "hr" : "plain"
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_map_card_v3_\(variant)_\(activity.id.uuidString).jpg")
     }
 
     private func loadCachedMapSnapshot() -> UIImage? {
@@ -449,51 +538,38 @@ struct DetailPanelShareCardScreen: View {
         try? data.write(to: cardMapCacheURL)
     }
 
+    /// 경로 지도 — 심박이 있으면 존 색 그라데이션, 없으면 단색.
+    /// 그리기는 활동 상세 지도와 같은 구현(RouteSnapshotRenderer)을 쓴다.
     private func makeMapSnapshot() async -> UIImage? {
         guard let coords = detail?.routeCoordinates, !coords.isEmpty else { return nil }
-        let valid = coords.filter { CLLocationCoordinate2DIsValid($0) && abs($0.latitude) > 1 && abs($0.longitude) > 1 }
-        guard valid.count > 1 else { return nil }
+        let valid = RouteSnapshotRenderer.validCoordinates(coords)
+        guard valid.count > 1,
+              let opts = RouteSnapshotRenderer.options(coordinates: valid,
+                                                       size: CGSize(width: 218, height: 168),
+                                                       scale: 3),
+              let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
 
-        let lats = valid.map(\.latitude)
-        let lons = valid.map(\.longitude)
-        guard let minLat = lats.min(), let maxLat = lats.max(),
-              let minLon = lons.min(), let maxLon = lons.max() else { return nil }
+        let colors = useHRZoneColors ? await zoneColors(for: valid) : nil
+        return RouteSnapshotRenderer.draw(on: snap, coordinates: valid, segmentColors: colors)
+    }
 
-        let opts = MKMapSnapshotter.Options()
-        opts.region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
-            span: MKCoordinateSpan(latitudeDelta: max(0.004, (maxLat - minLat) * 1.4),
-                                   longitudeDelta: max(0.004, (maxLon - minLon) * 1.4))
-        )
-        opts.size = CGSize(width: 218, height: 168)
-        opts.scale = 3
-        opts.mapType = .mutedStandard
-        opts.showsBuildings = false
-
-        guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
-
-        let step = max(1, valid.count / 300)
-        let pts = stride(from: 0, to: valid.count, by: step).map { snap.point(for: valid[$0]) }
-        let violetColor = UIColor(red: 0x7C / 255.0, green: 0x5C / 255.0, blue: 0xFC / 255.0, alpha: 1.0)
-
-        return UIGraphicsImageRenderer(size: snap.image.size).image { _ in
-            snap.image.draw(at: .zero)
-            guard pts.count > 1 else { return }
-            let path = UIBezierPath()
-            path.move(to: pts[0])
-            for pt in pts.dropFirst() { path.addLine(to: pt) }
-            path.lineCapStyle = .round
-            path.lineJoinStyle = .round
-            path.lineWidth = 3
-            violetColor.withAlphaComponent(0.4).setStroke()
-            path.stroke()
-            path.lineWidth = 1.5
-            violetColor.setStroke()
-            path.stroke()
-            // 마커는 활동 상세 지도와 같은 구현을 쓴다 — 화면과 공유 결과가 갈라지지 않게
-            RouteMarkers.drawAll(on: snap, coords: valid,
-                                 endPoint: pts.last, startPoint: pts.first)
-        }
+    /// 좌표별 심박 존 색. 존 경계가 없으면 최고 심박에서 추정한다(상세 지도와 같은 폴백).
+    private func zoneColors(for coords: [CLLocationCoordinate2D]) async -> [UIColor]? {
+        guard hrSamples.count >= 10 else { return nil }
+        let zones = detail?.hrZones ?? []
+        let bounds: [(id: Int, minBPM: Int)] = zones.isEmpty
+            ? {
+                let peak = min(220, Int(Double(hrSamples.map(\.bpm).max() ?? 180) / 0.90))
+                return [(1, 0), (2, Int(Double(peak) * 0.60)), (3, Int(Double(peak) * 0.70)),
+                        (4, Int(Double(peak) * 0.80)), (5, Int(Double(peak) * 0.90))]
+              }()
+            : zones.sorted { $0.minBPM < $1.minBPM }.map { (id: $0.id, minBPM: $0.minBPM) }
+        return RouteSnapshotRenderer.zoneColors(
+            coordinates: coords,
+            routeTimeOffsets: detail?.routeTimeOffsets ?? [],
+            workoutDuration: activity.duration,
+            hrSamples: hrSamples,
+            zoneBounds: bounds)
     }
 }
 
