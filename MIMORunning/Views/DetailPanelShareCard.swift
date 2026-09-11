@@ -12,7 +12,6 @@ struct DetailPanelShareCard: View {
     let activePanel: DetailPanel
     let hrSamples: [(offset: TimeInterval, bpm: Int)]
     let panelSeriesData: [(offset: TimeInterval, value: Double)]
-    var shoeName: String? = nil
     var mapSnapshot: UIImage? = nil
     var dateText: String = ""
     var condition: ActivityCondition? = nil
@@ -42,8 +41,6 @@ struct DetailPanelShareCard: View {
                 metricsGrid
                     .padding(.horizontal, 41).padding(.top, 4)
                 Spacer(minLength: 0)
-                footerRow
-                    .padding(.horizontal, 41).padding(.bottom, 18)
             }
         }
     }
@@ -76,19 +73,31 @@ struct DetailPanelShareCard: View {
     }
 
     private var headerRow: some View {
-        HStack {
+        HStack(alignment: .top) {
             MIMOWordmark(size: 9)
             Spacer()
-            HStack(spacing: 3) {
-                Text(headerDateStr)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.white)
-                Text(weekdayChar)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Theme.time)
-                Text(headerTimeStr)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.white)
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack(spacing: 3) {
+                    Text(headerDateStr)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.white)
+                    Text(weekdayChar)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.time)
+                    Text(headerTimeStr)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.white)
+                }
+                // 날씨는 날짜 아래 같은 크기로 — 제목 줄에 섞이면 패널 이름과 경쟁한다
+                if let weather = condition?.weather {
+                    HStack(spacing: 3) {
+                        Image(systemName: weather.systemIcon)
+                            .font(.system(size: 9, weight: .medium))
+                        Text(activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? weather.formattedTemp)
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.60))
+                }
             }
         }
     }
@@ -101,17 +110,6 @@ struct DetailPanelShareCard: View {
             Text(activePanel.label)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.80))
-            if let weather = condition?.weather {
-                Text("·")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.45))
-                Image(systemName: weather.systemIcon)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
-                Text(activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? weather.formattedTemp)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
-            }
             Spacer()
         }
     }
@@ -173,14 +171,14 @@ struct DetailPanelShareCard: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    var chartAreaHeight: CGFloat { 140 }
+    var chartAreaHeight: CGFloat { 176 }
 
     var effectiveCardHeight: CGFloat { Self.cardHeight }
 
     // 비율 유지: 가로 272×0.8=218, 세로 150×0.8=120 → 주변 여백 가로 27pt씩, 세로 15pt씩
     private var chartInnerWidth: CGFloat { 218 }
 
-    private var chartInnerHeight: CGFloat { 132 }
+    private var chartInnerHeight: CGFloat { 168 }
 
     private var accentColor: Color {
         switch activePanel {
@@ -227,7 +225,7 @@ struct DetailPanelShareCard: View {
         let label: String
         let value: String
         let color: Color
-        var valueFontSize: CGFloat = 12  // 15pt × 0.8 (지도 축소 비율)
+        var valueFontSize: CGFloat = 8.5  // 지도를 키우려고 지표를 30% 줄였다
     }
 
     private var availableMetrics: [MetricItem] {
@@ -258,7 +256,7 @@ struct DetailPanelShareCard: View {
             items.append(.init(icon: "arrow.up.and.down", label: L.s("수직 진폭", "Vert. Osc."), value: String(format: "%.1f cm", vo),                color: Theme.runningForm))
         }
         if let vo2 = detail?.vo2Max {
-            items.append(.init(icon: "lungs.fill",      label: L.s("유산소", "Cardio"),               value: String(format: "%.1f mL/kg·m", vo2),   color: Theme.elevation, valueFontSize: 15))
+            items.append(.init(icon: "lungs.fill",      label: L.s("유산소", "Cardio"),               value: String(format: "%.1f mL/kg·m", vo2),   color: Theme.elevation, valueFontSize: 10.5))
         }
         if let cal = activity.calories {
             items.append(.init(icon: "flame.fill",      label: L.s("칼로리", "Cals"),          value: String(format: "%.0f kcal", cal),                color: Theme.calories))
@@ -272,8 +270,9 @@ struct DetailPanelShareCard: View {
     private var metricsGrid: some View {
         let items = availableMetrics
         return LazyVGrid(
-            columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
-            spacing: 4
+            columns: [GridItem(.flexible(), spacing: 3), GridItem(.flexible(), spacing: 3),
+                      GridItem(.flexible())],
+            spacing: 3
         ) {
             ForEach(0..<items.count, id: \.self) { i in
                 metricCell(items[i])
@@ -283,12 +282,12 @@ struct DetailPanelShareCard: View {
 
     private func metricCell(_ item: MetricItem) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 3) {
+            HStack(spacing: 2) {
                 Image(systemName: item.icon)
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 6, weight: .semibold))
                     .foregroundStyle(item.color)
                 Text(item.label)
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: 6, weight: .medium))
                     .foregroundStyle(item.color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -301,38 +300,12 @@ struct DetailPanelShareCard: View {
                 .minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
         .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    // MARK: Footer
-
-    private var footerRow: some View {
-        HStack {
-            ZStack {
-                Circle()
-                    .fill(Color(hex: "3DFF7A").opacity(0.12))
-                    .frame(width: 24, height: 24)
-                Image(systemName: "figure.run")
-                    .font(.system(size: 10, weight: .light))
-                    .foregroundStyle(Color(hex: "3DFF7A"))
-            }
-            Spacer()
-            if let shoe = shoeName, !shoe.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "shoe.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(.white.opacity(0.60))
-                    Text(shoe)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Detail Panel Share Card Screen
@@ -350,15 +323,6 @@ struct DetailPanelShareCardScreen: View {
     @State private var showShareSheet = false
     @State private var mapSnapshot: UIImage?
     @Environment(\.dismiss) private var dismiss
-
-    @Query private var allStories: [WorkoutStory]
-    @Query private var allShoes: [Shoe]
-
-    private var story: WorkoutStory? { allStories.first { $0.workoutID == activity.id.uuidString } }
-    private var shoeName: String? {
-        guard let sid = story?.shoeID else { return nil }
-        return allShoes.first { $0.id.uuidString == sid }?.displayName
-    }
 
     private let cardW = DetailPanelShareCard.cardWidth
     private var cardH: CGFloat { DetailPanelShareCard.cardHeight }
@@ -385,7 +349,6 @@ struct DetailPanelShareCardScreen: View {
                         activity: activity, detail: detail,
                         activePanel: activePanel,
                         hrSamples: hrSamples, panelSeriesData: panelSeriesData,
-                        shoeName: shoeName,
                         mapSnapshot: mapSnapshot,
                         dateText: formattedDateText,
                         condition: condition
@@ -456,7 +419,6 @@ struct DetailPanelShareCardScreen: View {
                 activity: activity, detail: detail,
                 activePanel: activePanel,
                 hrSamples: hrSamples, panelSeriesData: panelSeriesData,
-                shoeName: shoeName,
                 mapSnapshot: mapSnapshot,
                 dateText: formattedDateText,
                 condition: condition
@@ -474,7 +436,7 @@ struct DetailPanelShareCardScreen: View {
     /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다.
     private var cardMapCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_card_v1_\(activity.id.uuidString).jpg")
+            .appendingPathComponent("mimo_map_card_v2_\(activity.id.uuidString).jpg")
     }
 
     private func loadCachedMapSnapshot() -> UIImage? {
@@ -503,7 +465,7 @@ struct DetailPanelShareCardScreen: View {
             span: MKCoordinateSpan(latitudeDelta: max(0.004, (maxLat - minLat) * 1.4),
                                    longitudeDelta: max(0.004, (maxLon - minLon) * 1.4))
         )
-        opts.size = CGSize(width: 218, height: 132)
+        opts.size = CGSize(width: 218, height: 168)
         opts.scale = 3
         opts.mapType = .mutedStandard
         opts.showsBuildings = false
