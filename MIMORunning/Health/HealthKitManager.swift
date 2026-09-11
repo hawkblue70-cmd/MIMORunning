@@ -1411,8 +1411,16 @@ class HealthKitManager {
             print("[유형] 인터벌 \(_ic)/\(_d.count)건")
         }
         #endif
-        if let cached = detailCache[activityID], cached.isComplete { return cached }
+        if let cached = detailCache[activityID], cached.isComplete {
+            #if DEBUG
+            print("[상세] 메모리 캐시 사용 — HealthKit 조회 안 함 (\(activityID.uuidString.prefix(8)))")
+            #endif
+            return cached
+        }
         if var disk = loadDetailFromDisk(activityID), disk.isComplete {
+            #if DEBUG
+            print("[상세] 디스크 캐시 사용 — HealthKit 조회 안 함 (\(activityID.uuidString.prefix(8)))")
+            #endif
             // [29] 이미 확정(hasSplits=true)된 분류가 있으면 재판정 건너뜀 — 매 실행 반복 방지
             let wtDict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
             if let raw = wtDict[activityID.uuidString], let entry = parseWorkoutTypeEntry(raw), entry.hasSplits {
@@ -1620,6 +1628,14 @@ class HealthKitManager {
             // "값 없음"으로 저장되면 다음 진입에서 캐시가 완성으로 읽혀 영영 다시 읽지 않는다.
             let probes: [MetricProbe] = [powerVal, cadence, gctP, strideP, vertP, vo2P]
             let anyFailed = probes.contains(where: \.failed)
+            #if DEBUG
+            let _sdf = DateFormatter(); _sdf.dateFormat = "M/d HH:mm"
+            let _names = ["파워", "케이던스", "지면접촉", "보폭", "수직진폭", "VO2max"]
+            let _empty = zip(_names, probes).filter { $0.1.value == nil }.map(\.0)
+            print("[상세] \(_sdf.string(from: workout.startDate)) HealthKit 조회 완료 — 경로 \(locations.count)점 · 스플릿 \(splits.count) · 존 \(zones.count)" +
+                  (_empty.isEmpty ? " · 지표 전부 있음" : " · 빈 지표: \(_empty.joined(separator: ", "))") +
+                  (anyFailed ? " · 조회실패 있음 → 저장 안 함" : ""))
+            #endif
 
             let workoutType: WorkoutType = {
                 guard let activity = activities.first(where: { $0.id == activityID }) else { return .general }
@@ -2755,16 +2771,32 @@ class HealthKitManager {
         workout: HKWorkout
     ) async -> MetricProbe {
         let linked = await queryAvgQuantity(identifier, unit: unit, workout: workout)
-        guard case .absent = linked else { return linked }
+        guard case .absent = linked else {
+            logMetricOutcome(identifier, workout: workout, probe: linked, via: "연결")
+            return linked
+        }
         let ranged = await queryAvgQuantityProbeInRange(identifier, unit: unit,
                                                         from: workout.startDate, to: workout.endDate)
-        #if DEBUG
-        if case .value(let v) = ranged {
-            let df = DateFormatter(); df.dateFormat = "M/d HH:mm"
-            print("[상세조회] 시간범위 폴백으로 회수 \(identifier.rawValue) = \(String(format: "%.1f", v)) — \(df.string(from: workout.startDate)) 러닝")
-        }
-        #endif
+        logMetricOutcome(identifier, workout: workout, probe: ranged,
+                         via: ranged.value != nil ? "범위폴백" : "양쪽 다 없음")
         return ranged
+    }
+
+    /// 지표 하나가 어떤 경로로 어떤 값이 됐는지 남긴다. "값이 없다"와 "못 읽었다"와
+    /// "연결은 없는데 시간 범위엔 있다"가 화면에서는 똑같이 빈칸이라 로그로만 구분된다.
+    private func logMetricOutcome(_ identifier: HKQuantityTypeIdentifier,
+                                  workout: HKWorkout, probe: MetricProbe, via: String) {
+        #if DEBUG
+        let df = DateFormatter(); df.dateFormat = "M/d HH:mm"
+        let name = identifier.rawValue.replacingOccurrences(of: "HKQuantityTypeIdentifier", with: "")
+        let valueText: String
+        switch probe {
+        case .value(let v): valueText = String(format: "%.2f", v)
+        case .absent:       valueText = "없음"
+        case .failed:       valueText = "조회실패"
+        }
+        print("[상세] \(df.string(from: workout.startDate)) \(name) = \(valueText) (\(via))")
+        #endif
     }
 
     private func queryAvgQuantityProbeInRange(
