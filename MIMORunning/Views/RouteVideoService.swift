@@ -282,13 +282,25 @@ struct BigNumberRouteVideoFrameView: View {
 
 // MARK: - KM marker label (경로 영상 · 지도 스냅샷 공용)
 
-/// km 마커 라벨 — 검정 반투명 알약 위 흰 볼드 "N km".
+/// km 마커 라벨의 색 — 배경 매체에 따라 고른다.
+enum KmMarkerLabelStyle {
+    case dark    // 검정 반투명 알약 + 흰 글씨 — 경로 영상(사진·영상 위)
+    case light   // 흰 알약 + 검정 글씨 — 활동 상세 지도
+}
+
+/// km 마커 라벨 — 알약 위 볼드 "N km".
 /// ⚠ 경로 영상과 활동 상세 지도가 **이 함수 하나만** 쓴다. 복사해서 따로 그리지 말 것.
-func makeKmMarkerLabelImage(km: Int, renderScale: CGFloat) -> CGImage? {
+/// 크기는 `renderScale`, 색은 `style`로만 조절한다 (기준값 12pt / 좌우 5 / 상하 2.5).
+func makeKmMarkerLabelImage(km: Int, renderScale: CGFloat,
+                            style: KmMarkerLabelStyle = .dark) -> CGImage? {
     let text     = "\(km) km"
     let fontSize = 12 * renderScale
     let font     = UIFont.systemFont(ofSize: fontSize, weight: .bold)
-    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.white]
+    let textColor: UIColor = style == .dark ? .white : .black
+    let pillColor: UIColor = style == .dark
+        ? UIColor.black.withAlphaComponent(0.65)
+        : UIColor.white.withAlphaComponent(0.92)
+    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor]
     let textSize = (text as NSString).size(withAttributes: attrs)
     let hPad: CGFloat = 5 * renderScale
     let vPad: CGFloat = 2.5 * renderScale
@@ -298,7 +310,7 @@ func makeKmMarkerLabelImage(km: Int, renderScale: CGFloat) -> CGImage? {
     let fmt = UIGraphicsImageRendererFormat()
     fmt.scale = 1.0
     return UIGraphicsImageRenderer(size: imgSize, format: fmt).image { _ in
-        UIColor.black.withAlphaComponent(0.65).setFill()
+        pillColor.setFill()
         UIBezierPath(roundedRect: CGRect(origin: .zero, size: imgSize),
                      cornerRadius: imgSize.height / 2).fill()
         (text as NSString).draw(at: CGPoint(x: hPad, y: vPad), withAttributes: attrs)

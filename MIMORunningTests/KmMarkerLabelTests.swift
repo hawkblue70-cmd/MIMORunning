@@ -21,6 +21,23 @@ final class KmMarkerLabelTests: XCTestCase {
     }
 
     @MainActor
+    func testHalfScaleIsHalfSize() throws {
+        let full = try XCTUnwrap(makeKmMarkerLabelImage(km: 3, renderScale: 1))
+        let half = try XCTUnwrap(makeKmMarkerLabelImage(km: 3, renderScale: 0.5))
+        XCTAssertEqual(Double(half.width) / Double(full.width), 0.5, accuracy: 0.12,
+                       "지도 라벨은 기준 크기의 절반")
+        XCTAssertEqual(Double(half.height) / Double(full.height), 0.5, accuracy: 0.12)
+    }
+
+    @MainActor
+    func testLightStyleMatchesDarkGeometry() throws {
+        let dark  = try XCTUnwrap(makeKmMarkerLabelImage(km: 7, renderScale: 1, style: .dark))
+        let light = try XCTUnwrap(makeKmMarkerLabelImage(km: 7, renderScale: 1, style: .light))
+        XCTAssertEqual(light.width, dark.width, "색만 다르고 크기는 같아야 한다")
+        XCTAssertEqual(light.height, dark.height)
+    }
+
+    @MainActor
     func testTwoDigitLabelIsWider() throws {
         let one  = try XCTUnwrap(makeKmMarkerLabelImage(km: 5, renderScale: 1))
         let two  = try XCTUnwrap(makeKmMarkerLabelImage(km: 40, renderScale: 1))
@@ -47,7 +64,8 @@ final class KmMarkerLabelTests: XCTestCase {
             // km 라벨 — 지도에서는 점 없이 라벨만 (애플 피트니스와 같은 배치)
             var x: CGFloat = 34
             for km in [1, 2, 10, 40] {
-                guard let label = makeKmMarkerLabelImage(km: km, renderScale: 1) else { continue }
+                guard let label = makeKmMarkerLabelImage(km: km, renderScale: 0.5,
+                                                         style: .light) else { continue }
                 let lw = CGFloat(label.width), lh = CGFloat(label.height)
                 UIImage(cgImage: label, scale: 1, orientation: .up)
                     .draw(in: CGRect(x: x, y: 20 - lh / 2, width: lw, height: lh))

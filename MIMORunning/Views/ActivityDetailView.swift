@@ -1731,12 +1731,12 @@ private struct RouteMapView: View {
 
     private var cacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_v12_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_v13_\(activityID.uuidString).jpg")
     }
 
     private var hrZoneCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_hrzone_v7_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_hrzone_v8_\(activityID.uuidString).jpg")
     }
 
     private func loadFromDisk() -> UIImage? {
@@ -1831,7 +1831,8 @@ private struct RouteMapView: View {
     }
 
     /// 경로 위 km 지점 라벨. 애플 피트니스처럼 **점 없이 라벨만** 경로 위에 얹는다.
-    /// 라벨 이미지는 `makeKmMarkerLabelImage`(경로 영상과 공용)로 만든다.
+    /// 라벨 이미지는 `makeKmMarkerLabelImage`(경로 영상과 공용) — 지도는 흰 알약·검정 글씨에
+    /// 기준 크기의 절반(renderScale 0.5). 220pt 지도에서는 영상 크기 그대로면 너무 크다.
     /// 서로 겹치거나 시작·도착 마커를 가리는 라벨은 건너뛴다.
     /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
     private func drawKilometerMarkers(on snap: MKMapSnapshotter.Snapshot,
@@ -1855,12 +1856,18 @@ private struct RouteMapView: View {
             placed.append(CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20))
         }
 
+        // 화면 배율만큼 크게 만들고 그릴 때 되돌린다 — 1x 이미지를 3x 컨텍스트에 늘리면 글자가 뭉갠다
+        let screenScale = max(1, UIScreen.main.scale)
+
         for mark in marks {
             let pt = snap.point(for: mark.coord)
             guard bounds.contains(pt) else { continue }
-            guard let labelImg = makeKmMarkerLabelImage(km: mark.km, renderScale: 1) else { continue }
-            let lw = CGFloat(labelImg.width)
-            let lh = CGFloat(labelImg.height)
+            guard let labelImg = makeKmMarkerLabelImage(km: mark.km,
+                                                        renderScale: 0.5 * screenScale,
+                                                        style: .light) else { continue }
+            let label = UIImage(cgImage: labelImg, scale: screenScale, orientation: .up)
+            let lw = label.size.width
+            let lh = label.size.height
 
             // km 지점 중앙에 얹되, 지도 밖으로 나가지 않게 가장자리에서 밀어 넣는다
             var rect = CGRect(x: pt.x - lw / 2, y: pt.y - lh / 2, width: lw, height: lh)
@@ -1871,7 +1878,7 @@ private struct RouteMapView: View {
             guard !placed.contains(where: { $0.insetBy(dx: -2, dy: -2).intersects(rect) }) else { continue }
             placed.append(rect)
 
-            UIImage(cgImage: labelImg, scale: 1, orientation: .up).draw(in: rect)
+            label.draw(in: rect)
         }
     }
 
