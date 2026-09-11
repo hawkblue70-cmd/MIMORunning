@@ -388,19 +388,31 @@ class HealthKitManager {
     }
 
     /// SwiftData 마이그레이션 이슈 없는 UserDefaults 기반 체크 집합
+    /// v2 — 예전에는 심박만 복구했다. 칼로리까지 보게 바뀌었으므로 키를 올려
+    /// 이미 "확정"으로 표시된 활동도 한 번 더 지나가게 한다.
     private var repairedWorkoutIDs: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: "mimo.repairedIDs") ?? []) }
-        set { UserDefaults.standard.set(Array(newValue), forKey: "mimo.repairedIDs") }
+        get { Set(UserDefaults.standard.stringArray(forKey: "mimo.repairedIDs.v2") ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: "mimo.repairedIDs.v2") }
     }
 
-    /// avgHeartRate == nil이고 아직 repair 시도 안 한 활동을 최대 20개씩 재조회.
+    /// 심박 또는 칼로리가 비어 있고 아직 repair 시도 안 한 활동을 최대 20개씩 재조회.
+    ///
+    /// ⚠ 이 복구가 필요한 이유: `enrich`는 **캐시에 없는 워크아웃만** 처리한다
+    /// (`enrichAndCache`의 `cacheDict[...] == nil` 필터). 한 번 비어서 캐시에 저장된 활동은
+    /// 아무리 다시 켜도 enrich를 거치지 않으므로, 조회 방식을 개선해도 옛 기록에는 적용되지 않는다.
+    ///
     /// found / notFound → repairedWorkoutIDs에 추가 → 이후 건너뜀.
     /// failed → 추가 안 함 → 다음 실행 재시도.
     private func repairMissingMetrics() async {
         let repaired = repairedWorkoutIDs
-        let candidates = activities.filter { $0.avgHeartRate == nil && !repaired.contains($0.id.uuidString) }
+        let candidates = activities.filter {
+            ($0.avgHeartRate == nil || $0.calories == nil) && !repaired.contains($0.id.uuidString)
+        }
         guard !candidates.isEmpty else { return }
         let batch = candidates.prefix(20)
+        #if DEBUG
+        print("[복구] 심박·칼로리 빠진 활동 \(candidates.count)건 중 \(batch.count)건 재조회")
+        #endif
 
         for activity in batch {
             if workoutCache[activity.id] == nil {
@@ -408,33 +420,48 @@ class HealthKitManager {
             }
             guard let workout = workoutCache[activity.id] else {
                 // HKWorkout 자체 없음 — 영구 확정
-                finalizeRepair(for: activity.id, hr: nil)
+                finalizeRepair(for: activity.id, hr: nil, calories: nil)
+                continue
+            }
+            var calories = activity.calories
+            if calories == nil { calories = await resolveCalories(for: workout) }
+
+            guard activity.avgHeartRate == nil else {
+                finalizeRepair(for: activity.id, hr: nil, calories: calories)
                 continue
             }
             // 1차: 워크아웃 연결 샘플 (Apple Watch 정상 기록)
             if let hr = await queryAvgHeartRate(workout: workout) {
-                finalizeRepair(for: activity.id, hr: hr)
+                finalizeRepair(for: activity.id, hr: hr, calories: calories)
                 continue
             }
             // 2차: 시간 범위 기반 — 서드파티 앱 독립 기록 커버
             switch await queryAvgHeartRateByTimeRange(start: workout.startDate, end: workout.endDate) {
-            case .found(let hr): finalizeRepair(for: activity.id, hr: hr)
-            case .notFound:      finalizeRepair(for: activity.id, hr: nil)  // 진짜 없음 → 영구 확정
+            case .found(let hr): finalizeRepair(for: activity.id, hr: hr, calories: calories)
+            case .notFound:      finalizeRepair(for: activity.id, hr: nil, calories: calories)  // 진짜 없음 → 영구 확정
             case .failed:        break                                        // 일시적 실패 → 다음 실행 재시도
             }
         }
     }
 
-    /// HR 업데이트(있으면) + repairedWorkoutIDs 마킹
-    private func finalizeRepair(for activityID: UUID, hr: Int?) {
-        if let hr, let idx = activities.firstIndex(where: { $0.id == activityID }) {
+    /// 심박·칼로리 업데이트(있으면) + repairedWorkoutIDs 마킹
+    private func finalizeRepair(for activityID: UUID, hr: Int?, calories: Double?) {
+        if let idx = activities.firstIndex(where: { $0.id == activityID }) {
             let a = activities[idx]
-            let updated = Activity(id: a.id, type: a.type, date: a.date,
-                                   duration: a.duration, distance: a.distance,
-                                   calories: a.calories, avgHeartRate: hr,
-                                   temperatureC: a.temperatureC, humidityPercent: a.humidityPercent)
-            activities[idx] = updated
-            saveToCache([CachedActivity(from: updated)])  // upsert via @Attribute(.unique)
+            let newHR  = hr ?? a.avgHeartRate
+            let newCal = calories ?? a.calories
+            if newHR != a.avgHeartRate || newCal != a.calories {
+                let updated = Activity(id: a.id, type: a.type, date: a.date,
+                                       duration: a.duration, distance: a.distance,
+                                       calories: newCal, avgHeartRate: newHR,
+                                       temperatureC: a.temperatureC, humidityPercent: a.humidityPercent)
+                activities[idx] = updated
+                saveToCache([CachedActivity(from: updated)])  // upsert via @Attribute(.unique)
+                #if DEBUG
+                let df = DateFormatter(); df.dateFormat = "M/d"
+                print("[복구] \(df.string(from: a.date)) — 심박 \(a.avgHeartRate.map(String.init) ?? "없음")→\(newHR.map(String.init) ?? "없음") · 칼로리 \(a.calories.map { String(Int($0)) } ?? "없음")→\(newCal.map { String(Int($0)) } ?? "없음")")
+                #endif
+            }
         }
         var repaired = repairedWorkoutIDs
         repaired.insert(activityID.uuidString)
@@ -1859,6 +1886,26 @@ class HealthKitManager {
         )
     }
 
+    /// 워크아웃 객체에 박혀 있는 활동 에너지 합계. 샘플이 워크아웃에 연결돼 있지 않아도
+    /// 이 값은 있는 경우가 많다 — 거리에서 `workout.totalDistance`를 마지막 폴백으로 쓰는 것과 같다.
+    private func embeddedCalories(_ workout: HKWorkout) -> Double? {
+        workout.statistics(for: HKQuantityType(.activeEnergyBurned))?
+            .sumQuantity()?.doubleValue(for: .kilocalorie())
+    }
+
+    /// 칼로리 조회 — 연결 샘플 → 워크아웃 내장 합계 → 시간 범위(소스 하나). 없으면 nil.
+    private func resolveCalories(for workout: HKWorkout) async -> Double? {
+        let linked = await querySum(.activeEnergyBurned, unit: .kilocalorie(), workout: workout)
+        if linked > 0 { return linked }
+        if let embedded = embeddedCalories(workout), embedded > 0 { return embedded }
+        if case .value(let ranged) = await querySumProbeInRangeSingleSource(
+            .activeEnergyBurned, unit: .kilocalorie(),
+            from: workout.startDate, to: workout.endDate), ranged > 0 {
+            return ranged
+        }
+        return nil
+    }
+
     private func distanceTypeID(for type: HKWorkoutActivityType) -> HKQuantityTypeIdentifier {
         return .distanceWalkingRunning
     }
@@ -1866,18 +1913,9 @@ class HealthKitManager {
     /// Add calories + heart rate. Runs two stat queries concurrently.
     /// Also retries distance via sample query if embedded stats returned 0.
     private func enrich(_ activity: Activity, workout: HKWorkout) async -> Activity {
-        async let calTask = querySum(.activeEnergyBurned, unit: .kilocalorie(), workout: workout)
+        async let calTask = resolveCalories(for: workout)
         async let hrTask  = queryAvgHeartRate(workout: workout)
-        var (cal, hr) = await (calTask, hrTask)
-
-        // 칼로리도 심박과 같은 폴백 — 연결된 에너지 샘플이 없으면 시간 범위로.
-        // 아이폰·워치가 같은 시간대를 각각 기록하므로 소스 하나만 취한다.
-        if cal == 0,
-           case .value(let ranged) = await querySumProbeInRangeSingleSource(
-               .activeEnergyBurned, unit: .kilocalorie(),
-               from: workout.startDate, to: workout.endDate) {
-            cal = ranged
-        }
+        let (cal, hr) = await (calTask, hrTask)
 
         // 시간 범위 폴백 — 워크아웃 링크 실패 시 시간대 기반 재시도
         var finalHR = hr
@@ -1905,7 +1943,7 @@ class HealthKitManager {
             date: activity.date,
             duration: activity.duration,
             distance: distance,
-            calories: cal > 0 ? cal : nil,
+            calories: cal,
             avgHeartRate: finalHR ?? activity.avgHeartRate,
             temperatureC: tempC ?? activity.temperatureC,
             humidityPercent: humidity ?? activity.humidityPercent
