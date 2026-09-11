@@ -267,7 +267,7 @@ struct IntervalFatigueCard: View {
     private var normBadgeBaseColor: Color {
         switch normBadgeKind {
         case .muscFatigue:    return Color(hex: "FFA94D")  // stride line color
-        case .rhythmCollapse: return Color(hex: "5CE5D5")  // cadence line color
+        case .rhythmCollapse: return Theme.cadence  // 케이던스 선과 같은 색
         case .stable:         return Color(hex: "7FD98A")  // green
         case .bothDecline, .styleChange: return .white
         }
@@ -898,7 +898,7 @@ struct IntervalFatigueCard: View {
         let yLo = (allVals.min() ?? 99) - max(span * 0.25, 1.0)
         let yHi = (allVals.max() ?? 101) + max(span * 0.25, 1.0)
 
-        let cadColor = Color(hex: "5CE5D5")
+        let cadColor = Theme.cadence
         let strColor = Color(hex: "FFA94D")
         // Dominant metric emphasized; other dimmed — mirrors interpretationType
         let cadOpacity: Double = interpretationType == .rhythmCollapse ? 1.0

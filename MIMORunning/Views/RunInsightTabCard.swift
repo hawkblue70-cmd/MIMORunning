@@ -29,9 +29,8 @@ private enum IC {
     static let violetText = Color(hex: "D5CEFF")
     static let label      = Color(hex: "8A8F99")
     static let hrRed      = Color(hex: "FF6B6B")
-    /// 케이던스 — 종합 차트의 케이던스 선과 같은 노랑. 심박 존 색 다섯과 겹치지 않아야 한다
-    /// (예전 값 5CE5D5는 Zone 2와 같은 색이었다).
-    static let cadCyan    = Theme.chartCadence
+    /// 케이던스 — 지표 의미색 하나만 쓴다(`Theme.cadence`). 예전 값 5CE5D5는 Zone 2와 같은 색이었다.
+    static let cadCyan    = Theme.cadence
     /// 심박 효율 산점도의 "오늘" 점. 강도 부하·경로 카드가 쓰는 형광 팔레트의 라임과 같은 값이지만
     /// 여기서는 존(강도)이 아니라 "가장 최근"을 뜻한다 — 산점도의 세 색은 시간 축이다.
     static let todayDot   = Color(hex: "C6FF00")
@@ -292,7 +291,7 @@ private struct CadenceRPMGaugeView: View {
                 ctx.draw(
                     Text("\(cadence)")
                         .font(cardNumFont(17))
-                        .foregroundStyle(Color(hex: "5CE5D5")),
+                        .foregroundStyle(Theme.cadence),
                     at: CGPoint(x: cx, y: cy - 34),
                     anchor: .center
                 )
@@ -388,7 +387,7 @@ private struct CadenceEqualizerView: View {
                         abs(bar.value - avgCadence) / max(1, avgCadence) <= 0.05
                     let col: Color = bar.isOutlier
                         ? Color(hex: "4A5560")
-                        : inBand ? Color(hex: "5CE5D5") : Color(hex: "5CE5D5").opacity(0.45)
+                        : inBand ? Theme.cadence : Theme.cadence.opacity(0.45)
                     ctx.fill(
                         Path(roundedRect: CGRect(x: x, y: size.height - h, width: barW, height: h),
                              cornerRadius: 2.5),

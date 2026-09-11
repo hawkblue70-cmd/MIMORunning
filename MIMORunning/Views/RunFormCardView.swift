@@ -1,4 +1,5 @@
 import SwiftUI
+
 import Charts
 
 // MARK: - Shared: Long-Distance Context
@@ -317,7 +318,7 @@ struct RunFormCardView: View {
                 bandLo: cb?.lo, bandHi: cb?.hi,
                 firstAvg:  avg(firstHalf.map  { $0.avgCadence.map(Double.init) }),
                 secondAvg: avg(secondHalf.map { $0.avgCadence.map(Double.init) }),
-                dir: .cadence, lineColor: Color(hex: "5CE5D5"),
+                dir: .cadence, lineColor: Theme.cadence,
                 bandIsJudgeable: bbJudgeable, bandIsReference: isRefBand, bandSampleCount: bbSampleCount,
                 bandPaceMin: dispBb?.paceMin, bandPaceMax: dispBb?.paceMax, totalSplitCount: bs.count
             ))
@@ -334,7 +335,7 @@ struct RunFormCardView: View {
                 bandLo: sb?.lo, bandHi: sb?.hi,
                 firstAvg:  avg(firstHalf.map(\.avgStrideLength)),
                 secondAvg: avg(secondHalf.map(\.avgStrideLength)),
-                dir: .stride, lineColor: Color(hex: "FFA94D"),
+                dir: .stride, lineColor: Theme.strideLength,
                 bandIsJudgeable: bbJudgeable, bandIsReference: isRefBand, bandSampleCount: bbSampleCount,
                 bandPaceMin: dispBb?.paceMin, bandPaceMax: dispBb?.paceMax, totalSplitCount: bs.count
             ))
@@ -351,7 +352,7 @@ struct RunFormCardView: View {
                 bandLo: gb?.lo, bandHi: gb?.hi,
                 firstAvg:  avg(firstHalf.map(\.avgGroundContactTime)),
                 secondAvg: avg(secondHalf.map(\.avgGroundContactTime)),
-                dir: .groundContact, lineColor: Color(hex: "A78BFA"),
+                dir: .groundContact, lineColor: Theme.groundContact,
                 bandIsJudgeable: bbJudgeable, bandIsReference: isRefBand, bandSampleCount: bbSampleCount,
                 bandPaceMin: dispBb?.paceMin, bandPaceMax: dispBb?.paceMax, totalSplitCount: bs.count
             ))
@@ -367,7 +368,7 @@ struct RunFormCardView: View {
                 bandLo: voBounds?.lo, bandHi: voBounds?.hi,
                 firstAvg: avg(firstHalf.map(\.avgVerticalOscillation)),
                 secondAvg: avg(secondHalf.map(\.avgVerticalOscillation)),
-                dir: .verticalOsc, lineColor: Color.white.opacity(0.45),
+                dir: .verticalOsc, lineColor: Theme.verticalOsc,
                 bandIsJudgeable: false, bandIsReference: isRefBand, bandSampleCount: bbSampleCount,
                 bandPaceMin: nil, bandPaceMax: nil, totalSplitCount: bs.count
             ))
@@ -591,7 +592,7 @@ struct RunFormCardView: View {
             items.append(FormInsightItem(id: .style,
                                          badgeText: L.s("걸음수/보폭", "Stride"),
                                          bodyText: text,
-                                         badgeColor: Color(hex: "A78BFA")))
+                                         badgeColor: Theme.groundContact))
         }
 
         // 총 4줄 상한: 논리적 줄 수 합산 후 초과하면 낮은 우선순위부터 제거
@@ -729,7 +730,7 @@ struct RunFormCardView: View {
             id: .formChange,
             badgeText: L.s("폼 변화", "Form Shift"),
             bodyText: lines.joined(separator: "\n"),
-            badgeColor: Color(hex: "A78BFA"))
+            badgeColor: Theme.groundContact)
     }
 
     // MARK: - Cadence-HR U-Curve Insight
@@ -878,7 +879,7 @@ struct RunFormCardView: View {
                     kpiSep
                     KPICell(label: AppLanguage.shared.s("케이던스", "Cadence"),
                             value: "\(cad)", unit: "spm",
-                            color: Color(hex: "5CE5D5"),
+                            color: Theme.cadence,
                             context: isInterval ? AppLanguage.shared.s("전력 구간", "work segs") : nil)
                 }
                 if let sl = avgStrideLength {

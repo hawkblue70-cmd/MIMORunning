@@ -569,6 +569,9 @@ struct GrowthView: View {
     /// 제목 아래 안내 문구는 차트 각주와 중복이라 비운다.
     private var mileageSubtitle: String { "" }
 
+    /// 일/주 전환 — 선택 강조는 브랜드색을 쓴다.
+    /// 예전에는 일=Theme.time(노랑), 주=Theme.cadence(청록)로 **지표 의미색**을 끌어다 썼다.
+    /// 케이던스를 노랑으로 옮기자 두 칩이 같은 노랑이 돼 버려서 드러난 문제다.
     private var periodToggle: some View {
         let L = AppLanguage.shared
         let isWeekly = !showDaily
@@ -579,7 +582,7 @@ struct GrowthView: View {
                     .foregroundStyle(showDaily ? Color.white : Color.secondary)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(showDaily ? Theme.time : Color.clear)
+                    .background(showDaily ? Theme.violet : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             Button { showDaily = false; refreshRecordBars() } label: {
@@ -588,7 +591,7 @@ struct GrowthView: View {
                     .foregroundStyle(isWeekly ? Color.white : Color.secondary)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(isWeekly ? Theme.cadence : Color.clear)
+                    .background(isWeekly ? Theme.violet : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
         }

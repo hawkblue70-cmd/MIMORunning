@@ -52,10 +52,13 @@ enum Theme {
     static let power = Color(hex: "A3E635")   // lime
     static let calories = Color.pink
     static let runningForm = Color.teal      // 러닝 다이내믹스 3종 (민트/청록 계열)
-    static let cadence       = Color(hex: "5CE5D5") // 케이던스
+    // ⚠ 케이던스는 예전에 5CE5D5(청록)였는데 그 값이 심박 존 2 색이기도 해서 뜻이 겹쳤다.
+    //   종합 차트의 케이던스 선과 같은 노랑으로 통일한다. 비워진 청록은 지면접촉이 받는다.
+    //   지면접촉의 보라(A78BFA)는 종합 차트의 파워선과 같은 값이라 한 화면에서 충돌했다.
+    static let cadence       = Color(hex: "FFE000") // 케이던스 — 노랑
     static let strideLength  = Color(hex: "FFA94D") // 보폭 — 주황
-    static let groundContact = Color(hex: "A78BFA") // 지면접촉 — 보라
-    static let verticalOsc   = Color(hex: "C084FC") // 수직진폭 — 라벤더
+    static let groundContact = Color(hex: "5CE5D5") // 지면접촉 — 청록
+    static let verticalOsc   = Color(hex: "A9B6C4") // 수직진폭 — 밝은 한색 회색
     static let elevationFill = Color(hex: "B98A3A") // 고도 채움 — 갈색
 
     /// HR 존 색상 (Z1..Z5) — 지도 경로, HR 차트, 카드 렌더러가 공유하는 팔레트.
@@ -78,7 +81,7 @@ extension Theme {
     //   심박은 존 색(파랑·청록·라임·주황·핑크)을 쓰므로 다른 선은 그 다섯과 멀어야 한다.
     //   예전 값: 파워 하늘파랑(=페이스·Z1과 충돌) · 보폭 코랄(=심박과 충돌) · 고도 라임(=Z3·케이던스와 충돌).
     static let chartPace     = Color(hex: "00D8FF")  // 전기 시안 (막대)
-    static let chartCadence  = Color(hex: "FFE000")  // 순수 옐로
+    static let chartCadence  = Theme.cadence         // 순수 옐로 — 지표 의미색과 같은 값
     static let chartPower    = Color(hex: "A78BFA")  // 라벤더 바이올렛 (브랜드 계열)
     static let chartElev     = Color(hex: "34C759")  // 초록 (라임 아님 — Z3·케이던스와 분리)
     static let chartElevFill = Color(hex: "34C759")  // 고도 fill
