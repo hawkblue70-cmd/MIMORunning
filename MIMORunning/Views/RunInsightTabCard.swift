@@ -30,6 +30,9 @@ private enum IC {
     static let label      = Color(hex: "8A8F99")
     static let hrRed      = Color(hex: "FF6B6B")
     static let cadCyan    = Color(hex: "5CE5D5")
+    /// 심박 효율 산점도의 "오늘" 점. 강도 부하·경로 카드가 쓰는 형광 팔레트의 라임과 같은 값이지만
+    /// 여기서는 존(강도)이 아니라 "가장 최근"을 뜻한다 — 산점도의 세 색은 시간 축이다.
+    static let todayDot   = Color(hex: "C6FF00")
 
     static let vo2Colors: [Color] = [
         Color(hex: "FF5247"),   // 낮음: 빨강
@@ -2949,7 +2952,7 @@ private struct PerformanceInsightCard: View {
                     var arrowLine = Path()
                     arrowLine.move(to: CGPoint(x: pCX, y: pCY))
                     arrowLine.addLine(to: CGPoint(x: rCX, y: rCY))
-                    ctx.stroke(arrowLine, with: .color(IC.green.opacity(0.5)),
+                    ctx.stroke(arrowLine, with: .color(.white.opacity(0.35)),
                                style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
 
                     let dxF = rCX - pCX
@@ -2969,17 +2972,17 @@ private struct PerformanceInsightCard: View {
                         head.move(to: CGPoint(x: rCX, y: rCY))
                         head.addLine(to: CGPoint(x: rCX - al * (nx * cosA - ny * sinA),
                                                   y: rCY - al * (ny * cosA + nx * sinA)))
-                        ctx.stroke(head, with: .color(IC.green.opacity(0.5)),
+                        ctx.stroke(head, with: .color(.white.opacity(0.35)),
                                    style: StrokeStyle(lineWidth: 1))
                     }
                 }
 
-                // Past dots (white)
+                // Past dots (white) — 오늘 점과 대비를 벌리려고 한 단계 뒤로 물린다
                 for pt in pastPts {
                     let r: CGFloat = 3.4
                     ctx.fill(
                         Path(ellipseIn: CGRect(x: cx(pt.pace)-r, y: cy(pt.hr)-r, width: r*2, height: r*2)),
-                        with: .color(.white.opacity(0.55))
+                        with: .color(.white.opacity(0.40))
                     )
                 }
                 // Recent dots (violet)
@@ -2990,17 +2993,17 @@ private struct PerformanceInsightCard: View {
                         with: .color(IC.violet)
                     )
                 }
-                // Today dot (green + ring) — drawn last
+                // Today dot (lime + ring) — drawn last. 오늘이 주인공이라 가장 밝은 색.
                 for pt in todayPts {
                     let rO: CGFloat = 8.6
                     let rI: CGFloat = 5.4
                     ctx.stroke(
                         Path(ellipseIn: CGRect(x: cx(pt.pace)-rO, y: cy(pt.hr)-rO, width: rO*2, height: rO*2)),
-                        with: .color(IC.green.opacity(0.35)), style: StrokeStyle(lineWidth: 1)
+                        with: .color(IC.todayDot.opacity(0.35)), style: StrokeStyle(lineWidth: 1)
                     )
                     ctx.fill(
                         Path(ellipseIn: CGRect(x: cx(pt.pace)-rI, y: cy(pt.hr)-rI, width: rI*2, height: rI*2)),
-                        with: .color(IC.green)
+                        with: .color(IC.todayDot)
                     )
                 }
 
@@ -3035,7 +3038,7 @@ private struct PerformanceInsightCard: View {
                 Spacer()
                 HStack(spacing: 12) {
                     HStack(spacing: 4) {
-                        Circle().fill(Color.white.opacity(0.55)).frame(width: 6, height: 6)
+                        Circle().fill(Color.white.opacity(0.40)).frame(width: 6, height: 6)
                         Text(L.s("8주 전", "8w ago")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
                     }
                     HStack(spacing: 4) {
@@ -3043,7 +3046,7 @@ private struct PerformanceInsightCard: View {
                         Text(L.s("최근", "Recent")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
                     }
                     HStack(spacing: 4) {
-                        Circle().fill(IC.green).frame(width: 6, height: 6)
+                        Circle().fill(IC.todayDot).frame(width: 6, height: 6)
                         Text(L.s("오늘", "Today")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
                     }
                 }
@@ -4123,10 +4126,13 @@ private struct PerformanceInsightCard: View {
                                 RoundedRectangle(cornerRadius: 2.5)
                                     .fill(intensityColor(row.tier).opacity(0.85))
                                     .frame(width: max(2, trackW * CGFloat(row.frac / axisFrac)))
-                                // 세로 점선 — 0 지점은 막대 시작점이라 생략
+                                // 세로 점선 — 0 지점은 막대 시작점이라 생략.
+                                // 막대가 밝은 존 색이라 그 위에 얹히는 눈금은 흰색으로는 안 보인다 → 안/밖을 나눠 칠한다.
                                 ForEach(Array(Set([row.refLo, row.refHi]).filter { $0 > 0 }.sorted()), id: \.self) { r in
+                                    let onBar = r <= row.frac
                                     IntensityTickLine()
-                                        .stroke(.white.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [1.5, 1.5]))
+                                        .stroke(onBar ? Color.black.opacity(0.55) : Color.white.opacity(0.55),
+                                                style: StrokeStyle(lineWidth: 1, dash: [1.5, 1.5]))
                                         .frame(width: 1)
                                         .offset(x: trackW * CGFloat(r / axisFrac))
                                 }
@@ -4261,11 +4267,14 @@ private struct PerformanceInsightCard: View {
         return parts.joined(separator: " · ")
     }
 
+    /// 이 막대는 심박 존 체류 시간을 AT1·AT2로 자른 3구간이므로 존 색이 곧 데이터의 색이다.
+    /// 바로 옆 강도 부하 차트와 같은 팔레트(`Theme.hrZoneColors`)를 써서 한 행 안에서 같은 색이
+    /// 같은 강도를 뜻하게 한다. 예전 파랑 3단계는 고강도가 가장 어두워 검은 배경에서 제일 안 보였다.
     private func intensityColor(_ tier: IntensityTier) -> Color {
         switch tier {
-        case .easy:   return Color(hex: "#6BAED6")   // 연한 파랑 — 쉬움
-        case .medium: return Color(hex: "#4A7FC1")   // 중간 파랑
-        case .hard:   return Color(hex: "#2C4E8A")   // 진한 파랑 — 강함
+        case .easy:   return Theme.hrZoneColor(2)   // 시안 — AT1 아래
+        case .medium: return Theme.hrZoneColor(3)   // 라임 — AT1~AT2
+        case .hard:   return Theme.hrZoneColor(5)   // 핑크 — AT2 위
         }
     }
 
