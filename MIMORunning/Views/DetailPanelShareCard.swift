@@ -17,6 +17,8 @@ struct RouteCardPalette {
     let cellBorder: Color
     let divider: Color
     let wordmarkStroke: Bool
+    /// 밝은 배경인가 — 지표 색을 라이트용으로 고를 때 쓴다(구간 카드와 같은 팔레트).
+    let isLight: Bool
 
     static let dark = RouteCardPalette(
         background: LinearGradient(colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
@@ -26,7 +28,8 @@ struct RouteCardPalette {
         cellBackground: Theme.cardBackground,
         cellBorder: .clear,
         divider: Theme.violet.opacity(0.30),
-        wordmarkStroke: false
+        wordmarkStroke: false,
+        isLight: false
     )
 
     static let light = RouteCardPalette(
@@ -37,7 +40,8 @@ struct RouteCardPalette {
         cellBackground: Color(hex: "FFFFFF"),
         cellBorder: .black.opacity(0.10),
         divider: Color(hex: "5B3FD9").opacity(0.30),
-        wordmarkStroke: true
+        wordmarkStroke: true,
+        isLight: true
     )
 }
 
@@ -259,8 +263,13 @@ struct DetailPanelShareCard: View {
         let icon: String
         let label: String
         let value: String
-        let color: Color
+        let kind: RunMetricKind
         var valueFontSize: CGFloat = 8.5  // 지도를 키우려고 지표를 30% 줄였다
+
+        /// 색은 구간 카드와 **같은 팔레트**에서 가져온다 — 카드마다 따로 정하지 않는다.
+        func color(_ pal: RouteCardPalette) -> Color {
+            kind.shareColor(isLight: pal.isLight, textPrimary: pal.textPrimary)
+        }
     }
 
     private var availableMetrics: [MetricItem] {
@@ -268,37 +277,37 @@ struct DetailPanelShareCard: View {
         var items: [MetricItem] = []
 
         // 거리는 지표 의미색이 없다 — 배경에 따라 읽히는 색으로 (라이트에서 흰색은 안 보인다)
-        items.append(.init(icon: "ruler",               label: L.s("거리", "Dist."),           value: activity.formattedDistance,                      color: pal.textPrimary))
-        items.append(.init(icon: "clock",               label: L.s("시간", "Time"),            value: activity.formattedDuration,                      color: Theme.time))
+        items.append(.init(icon: "ruler",               label: L.s("거리", "Dist."),           value: activity.formattedDistance,                      kind: .distance))
+        items.append(.init(icon: "clock",               label: L.s("시간", "Time"),            value: activity.formattedDuration,                      kind: .time))
         if let pace = activity.formattedPace {
-            items.append(.init(icon: "timer",           label: L.s("페이스", "Pace"),          value: pace,                                            color: Theme.pace))
+            items.append(.init(icon: "timer",           label: L.s("페이스", "Pace"),          value: pace,                                            kind: .pace))
         }
         if let hr = activity.avgHeartRate {
-            items.append(.init(icon: "heart.fill",      label: L.s("평균 심박", "Avg HR"),     value: "\(hr) bpm",                                     color: Theme.heartRate))
+            items.append(.init(icon: "heart.fill",      label: L.s("평균 심박", "Avg HR"),     value: "\(hr) bpm",                                     kind: .heartRate))
         }
         if let cad = detail?.avgCadence {
-            items.append(.init(icon: "figure.run",      label: L.s("케이던스", "Cadence"),     value: "\(cad) spm",                                    color: Theme.cadence))
+            items.append(.init(icon: "figure.run",      label: L.s("케이던스", "Cadence"),     value: "\(cad) spm",                                    kind: .cadence))
         }
         if let pwr = detail?.avgPower {
-            items.append(.init(icon: "bolt.fill",       label: L.s("파워", "Power"),           value: "\(pwr) W",                                      color: Theme.power))
+            items.append(.init(icon: "bolt.fill",       label: L.s("파워", "Power"),           value: "\(pwr) W",                                      kind: .power))
         }
         if let gct = detail?.avgGroundContactTime {
-            items.append(.init(icon: "stopwatch",       label: L.s("지면 접촉", "Gnd Contact"),value: "\(Int(gct.rounded())) ms",                      color: Theme.runningForm))
+            items.append(.init(icon: "stopwatch",       label: L.s("지면 접촉", "Gnd Contact"),value: "\(Int(gct.rounded())) ms",                      kind: .form))
         }
         if let sl = detail?.avgStrideLength {
-            items.append(.init(icon: "arrow.left.and.right", label: L.s("보폭", "Stride"),    value: String(format: "%.2f m", sl),                    color: Theme.runningForm))
+            items.append(.init(icon: "arrow.left.and.right", label: L.s("보폭", "Stride"),    value: String(format: "%.2f m", sl),                    kind: .form))
         }
         if let vo = detail?.avgVerticalOscillation {
-            items.append(.init(icon: "arrow.up.and.down", label: L.s("수직 진폭", "Vert. Osc."), value: String(format: "%.1f cm", vo),                color: Theme.runningForm))
+            items.append(.init(icon: "arrow.up.and.down", label: L.s("수직 진폭", "Vert. Osc."), value: String(format: "%.1f cm", vo),                kind: .form))
         }
         if let vo2 = detail?.vo2Max {
-            items.append(.init(icon: "lungs.fill",      label: L.s("유산소", "Cardio"),               value: String(format: "%.1f mL/kg·m", vo2),   color: Theme.elevation, valueFontSize: 10.5))
+            items.append(.init(icon: "lungs.fill",      label: L.s("유산소", "Cardio"),               value: String(format: "%.1f mL/kg·m", vo2),   kind: .cardio, valueFontSize: 10.5))
         }
         if let cal = activity.calories {
-            items.append(.init(icon: "flame.fill",      label: L.s("칼로리", "Cals"),          value: String(format: "%.0f kcal", cal),                color: Theme.calories))
+            items.append(.init(icon: "flame.fill",      label: L.s("칼로리", "Cals"),          value: String(format: "%.0f kcal", cal),                kind: .calories))
         }
         if let elev = detail?.elevationGain {
-            items.append(.init(icon: "arrow.up.right",  label: L.s("고도 획득", "Elev. Gain"), value: String(format: "%.0f m", elev),                  color: Theme.elevation))
+            items.append(.init(icon: "arrow.up.right",  label: L.s("고도 획득", "Elev. Gain"), value: String(format: "%.0f m", elev),                  kind: .elevation))
         }
         return Array(items.prefix(12))
     }
@@ -321,10 +330,10 @@ struct DetailPanelShareCard: View {
             HStack(spacing: 2) {
                 Image(systemName: item.icon)
                     .font(.system(size: 6, weight: .semibold))
-                    .foregroundStyle(item.color)
+                    .foregroundStyle(item.color(pal))
                 Text(item.label)
                     .font(.system(size: 6, weight: .medium))
-                    .foregroundStyle(item.color)
+                    .foregroundStyle(item.color(pal))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
             }

@@ -8,6 +8,45 @@ enum RunMetricKind {
     case calories, elevation
 }
 
+extension RunMetricKind {
+    /// 공유 카드의 지표 색 — 라이트·다크 두 벌을 **여기 한 곳**에서만 정한다.
+    ///
+    /// ⚠ 예전에는 구간 카드와 경로 카드가 각자 색을 정해, 같은 러닝의 케이던스가 한쪽은 검정
+    ///   한쪽은 노랑이고 보폭이 한쪽은 보라 한쪽은 청록이었다. 경로 카드는 라이트 배경인데
+    ///   다크용 색(노랑·라임)을 그대로 써서 흰 바탕에 거의 안 보였다.
+    ///
+    /// 라이트 값은 흰 배경에서 읽히도록 어둡게 잡은 짝이다. 밝은 노랑·라임·청록을 그대로
+    /// 쓰면 안 된다.
+    func shareColor(isLight: Bool, textPrimary: Color) -> Color {
+        guard isLight else {
+            switch self {
+            case .distance:  return textPrimary
+            case .time:      return Theme.time
+            case .pace:      return Theme.pace
+            case .heartRate: return Theme.heartRate
+            case .cadence:   return Theme.cadence
+            case .power:     return Theme.power
+            case .form:      return Theme.runningForm
+            case .cardio:    return Color(hex: "4FC3F7")   // 파랑 — 고도 초록과 분리
+            case .calories:  return Theme.calories
+            case .elevation: return Theme.elevation
+            }
+        }
+        switch self {
+        case .distance:  return textPrimary
+        case .time:      return Color(hex: "C25E00")   // 번트 오렌지 — 케이던스 금색과 벌린다
+        case .pace:      return Color(hex: "0E7C8A")
+        case .heartRate: return Color(hex: "C62828")
+        case .cadence:   return Color(hex: "A07400")   // 짙은 금색 — 예전에는 색 없이 검정이었다
+        case .power:     return Color(hex: "4F7A00")   // 라임 → 짙은 올리브
+        case .form:      return Color(hex: "5B3FD9")
+        case .cardio:    return Color(hex: "1565C0")   // 파랑 — 고도 초록과 같은 색이었다
+        case .calories:  return Color(hex: "C2185B")
+        case .elevation: return Color(hex: "1B7F3B")
+        }
+    }
+}
+
 /// 활동 상세 상단 지표 그리드와 "구간 러닝 데이터" 공유 카드가 **함께 쓰는** 지표 목록.
 /// 두 곳이 같은 항목·같은 표기를 쓰도록 목록은 여기서만 만든다 — 별도 목록 작성 금지.
 struct RunMetricItem: Identifiable {

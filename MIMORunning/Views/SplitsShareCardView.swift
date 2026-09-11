@@ -111,34 +111,9 @@ private struct SplitsPalette {
         rowAlt:          Color(hex: "FAFAF8")
     )
 
-    /// 지표 의미색 — 라이트 배경에서도 읽히는 값으로 매핑한다.
+    /// 지표 의미색 — 경로 카드와 **같은 팔레트**를 쓴다(`RunMetricKind.shareColor`).
     func metricColor(_ kind: RunMetricKind) -> Color {
-        if isLight {
-            switch kind {
-            case .distance:  return textPrimary
-            case .time:      return Color(hex: "C77A00")
-            case .pace:      return Color(hex: "0E7C8A")
-            case .heartRate: return heartRate
-            case .cadence:   return textPrimary
-            case .power:     return power
-            case .form:      return Color(hex: "5B3FD9")
-            case .cardio:    return Color(hex: "1B7F3B")
-            case .calories:  return Color(hex: "C2185B")
-            case .elevation: return Color(hex: "1B7F3B")
-            }
-        }
-        switch kind {
-        case .distance:  return .white
-        case .time:      return Theme.time
-        case .pace:      return Theme.pace
-        case .heartRate: return Theme.heartRate
-        case .cadence:   return .white
-        case .power:     return Theme.power
-        case .form:      return Theme.runningForm
-        case .cardio:    return Theme.elevation
-        case .calories:  return Theme.calories
-        case .elevation: return Theme.elevation
-        }
+        kind.shareColor(isLight: isLight, textPrimary: textPrimary)
     }
 }
 
