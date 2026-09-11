@@ -282,10 +282,10 @@ struct BigNumberRouteVideoFrameView: View {
 
 // MARK: - KM marker label (경로 영상 · 지도 스냅샷 공용)
 
-/// km 마커 라벨 — 검정 반투명 알약 위 흰 볼드 "Nkm".
+/// km 마커 라벨 — 검정 반투명 알약 위 흰 볼드 "N km".
 /// ⚠ 경로 영상과 활동 상세 지도가 **이 함수 하나만** 쓴다. 복사해서 따로 그리지 말 것.
 func makeKmMarkerLabelImage(km: Int, renderScale: CGFloat) -> CGImage? {
-    let text     = "\(km)km"
+    let text     = "\(km) km"
     let fontSize = 12 * renderScale
     let font     = UIFont.systemFont(ofSize: fontSize, weight: .bold)
     let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.white]

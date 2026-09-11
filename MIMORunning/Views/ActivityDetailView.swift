@@ -1731,12 +1731,12 @@ private struct RouteMapView: View {
 
     private var cacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_v11_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_v12_\(activityID.uuidString).jpg")
     }
 
     private var hrZoneCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_hrzone_v6_\(activityID.uuidString).jpg")
+            .appendingPathComponent("mimo_map_hrzone_v7_\(activityID.uuidString).jpg")
     }
 
     private func loadFromDisk() -> UIImage? {
@@ -1830,9 +1830,9 @@ private struct RouteMapView: View {
                                     width: dotR * 2, height: dotR * 2)).fill()
     }
 
-    /// 경로 위 km 지점 마커. **경로 영상과 같은 형식** — 흰 점 + 검정 알약 "Nkm" 라벨.
-    /// 라벨 이미지는 `makeKmMarkerLabelImage`(영상과 공용)로 만든다.
-    /// 왕복 코스처럼 화면에서 겹치는 마커는 건너뛴다.
+    /// 경로 위 km 지점 라벨. 애플 피트니스처럼 **점 없이 라벨만** 경로 위에 얹는다.
+    /// 라벨 이미지는 `makeKmMarkerLabelImage`(경로 영상과 공용)로 만든다.
+    /// 서로 겹치거나 시작·도착 마커를 가리는 라벨은 건너뛴다.
     /// 지도 스냅샷 두 종류(기본·심박존)가 이 함수 하나만 쓴다.
     private func drawKilometerMarkers(on snap: MKMapSnapshotter.Snapshot,
                                       coords: [CLLocationCoordinate2D]) {
@@ -1842,33 +1842,36 @@ private struct RouteMapView: View {
         let marks = kilometerMarks(coords, stepKm: step, totalMeters: total)
         guard !marks.isEmpty else { return }
 
-        let dotR: CGFloat = 3.5           // 경로 영상 마커와 같은 크기
-        let gap: CGFloat = 5
-        let minGap: CGFloat = 26          // 이보다 가까우면 겹쳐 읽히지 않는다
         let bounds = CGRect(origin: .zero, size: snap.image.size)
-        // 시작·도착 마커를 미리 놓아 그 위에 km 마커가 겹치지 않게 한다
-        var placed: [CGPoint] = [coords.first, coords.last]
-            .compactMap { $0 }
-            .map { snap.point(for: $0) }
+        let inset: CGFloat = 4
+        // 시작(링 r5)·도착(글로우 r9) 마커 자리를 미리 잡아 라벨이 그 위를 덮지 않게 한다
+        var placed: [CGRect] = []
+        if let first = coords.first {
+            let p = snap.point(for: first)
+            placed.append(CGRect(x: p.x - 6, y: p.y - 6, width: 12, height: 12))
+        }
+        if let last = coords.last {
+            let p = snap.point(for: last)
+            placed.append(CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20))
+        }
 
         for mark in marks {
             let pt = snap.point(for: mark.coord)
-            guard bounds.insetBy(dx: dotR, dy: dotR).contains(pt) else { continue }
-            guard placed.allSatisfy({ hypot($0.x - pt.x, $0.y - pt.y) >= minGap }) else { continue }
-            placed.append(pt)
-
-            UIColor.white.withAlphaComponent(0.85).setFill()
-            UIBezierPath(ovalIn: CGRect(x: pt.x - dotR, y: pt.y - dotR,
-                                        width: dotR * 2, height: dotR * 2)).fill()
-
+            guard bounds.contains(pt) else { continue }
             guard let labelImg = makeKmMarkerLabelImage(km: mark.km, renderScale: 1) else { continue }
             let lw = CGFloat(labelImg.width)
             let lh = CGFloat(labelImg.height)
-            // 오른쪽 가장자리에 가까우면 라벨을 점 왼쪽으로 뒤집는다 (영상과 동일 규칙)
-            let nearRight = pt.x + dotR + gap + lw > bounds.maxX - 6
-            let labelX = nearRight ? pt.x - dotR - gap - lw : pt.x + dotR + gap
-            UIImage(cgImage: labelImg, scale: 1, orientation: .up)
-                .draw(in: CGRect(x: labelX, y: pt.y - lh / 2, width: lw, height: lh))
+
+            // km 지점 중앙에 얹되, 지도 밖으로 나가지 않게 가장자리에서 밀어 넣는다
+            var rect = CGRect(x: pt.x - lw / 2, y: pt.y - lh / 2, width: lw, height: lh)
+            rect.origin.x = min(max(rect.minX, inset), bounds.maxX - lw - inset)
+            rect.origin.y = min(max(rect.minY, inset), bounds.maxY - lh - inset)
+
+            // 이미 놓인 라벨·마커와 겹치면 건너뛴다 (왕복 코스에서 흔하다)
+            guard !placed.contains(where: { $0.insetBy(dx: -2, dy: -2).intersects(rect) }) else { continue }
+            placed.append(rect)
+
+            UIImage(cgImage: labelImg, scale: 1, orientation: .up).draw(in: rect)
         }
     }
 

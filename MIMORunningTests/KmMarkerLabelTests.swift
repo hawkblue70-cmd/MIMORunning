@@ -35,6 +35,7 @@ final class KmMarkerLabelTests: XCTestCase {
         let img = UIGraphicsImageRenderer(size: size).image { _ in
             UIColor(red: 0.14, green: 0.15, blue: 0.16, alpha: 1).setFill()
             UIBezierPath(rect: CGRect(origin: .zero, size: size)).fill()
+
             // 시작점 흰 링 (경로 영상과 같은 치수)
             UIColor.white.setStroke()
             let ringR: CGFloat = 5 - 0.75
@@ -43,23 +44,19 @@ final class KmMarkerLabelTests: XCTestCase {
             start.lineWidth = 1.5
             start.stroke()
 
-            var x: CGFloat = 40
+            // km 라벨 — 지도에서는 점 없이 라벨만 (애플 피트니스와 같은 배치)
+            var x: CGFloat = 34
             for km in [1, 2, 10, 40] {
-                let dotR: CGFloat = 3.5
-                let y: CGFloat = 20
-                UIColor.white.withAlphaComponent(0.85).setFill()
-                UIBezierPath(ovalIn: CGRect(x: x - dotR, y: y - dotR,
-                                            width: dotR * 2, height: dotR * 2)).fill()
-                if let label = makeKmMarkerLabelImage(km: km, renderScale: 1) {
-                    let lw = CGFloat(label.width), lh = CGFloat(label.height)
-                    UIImage(cgImage: label, scale: 1, orientation: .up)
-                        .draw(in: CGRect(x: x + dotR + 5, y: y - lh / 2, width: lw, height: lh))
-                    x += dotR + 5 + lw + 14
-                }
+                guard let label = makeKmMarkerLabelImage(km: km, renderScale: 1) else { continue }
+                let lw = CGFloat(label.width), lh = CGFloat(label.height)
+                UIImage(cgImage: label, scale: 1, orientation: .up)
+                    .draw(in: CGRect(x: x, y: 20 - lh / 2, width: lw, height: lh))
+                x += lw + 10
             }
+
             // 도착점 골드 마커 (경로 영상과 같은 치수)
             let gold = UIColor(red: 1.0, green: 0xC7 / 255.0, blue: 0x4D / 255.0, alpha: 1)
-            let fx = x + 6, fy: CGFloat = 20
+            let fx = x + 10, fy: CGFloat = 20
             gold.withAlphaComponent(0.40).setFill()
             UIBezierPath(ovalIn: CGRect(x: fx - 9, y: fy - 9, width: 18, height: 18)).fill()
             gold.setFill()
