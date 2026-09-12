@@ -1078,15 +1078,31 @@ struct InsightEngine {
         guard priorPaces.count >= 10 else { return nil }
 
         let cal = Calendar.current
+        let medianPace = priorPaces[priorPaces.count / 2]
+        let easyThreshold = medianPace * 1.10
+        let isEasyByPace: (Activity) -> Bool = { ($0.paceSecPerKm ?? 0) > easyThreshold }
+
+        // 유형을 아는 러닝은 유형으로, 모르는 러닝은 페이스로 — 섞어서 센다.
+        // ⚠ 유형 캐시는 상세를 열었거나 백필이 지나간 러닝에만 있다. 모르는 러닝을 "이지런 아님"으로
+        //   치면 횟수가 실제보다 작아져, 이지런을 자주 하는 사람에게도 "올해 2번째"가 뜬다.
         let priorEasy: [Activity]
         if let typeOf {
-            priorEasy = before.filter { typeOf($0.id) == .easy }.sorted { $0.date < $1.date }
+            priorEasy = before.filter { run in
+                if let t = typeOf(run.id) { return t == .easy }
+                return isEasyByPace(run)
+            }.sorted { $0.date < $1.date }
         } else {
-            let medianPace = priorPaces[priorPaces.count / 2]
             guard let currentPace = a.paceSecPerKm, currentPace > medianPace else { return nil }
-            let easyThreshold = medianPace * 1.10
-            priorEasy = before.filter { ($0.paceSecPerKm ?? 0) > easyThreshold }.sorted { $0.date < $1.date }
+            priorEasy = before.filter(isEasyByPace).sorted { $0.date < $1.date }
         }
+        #if DEBUG
+        let _year = cal.component(.year, from: a.date)
+        let _thisYear = before.filter { cal.component(.year, from: $0.date) == _year }
+        let _known = typeOf.map { f in _thisYear.filter { f($0.id) != nil }.count } ?? 0
+        let _df = DateFormatter(); _df.dateFormat = "M/d"
+        let _easyDates = priorEasy.filter { cal.component(.year, from: $0.date) == _year }.map { _df.string(from: $0.date) }
+        print("[DetailInsight:이지런] \(_df.string(from: a.date)) 기준 — 올해 이전 러닝 \(_thisYear.count)건 중 유형 앎 \(_known)건 · 페이스 문턱 \(Int(easyThreshold))s/km · 올해 이전 이지런 \(_easyDates.count)건: \(_easyDates.joined(separator: ","))")
+        #endif
         let L = AppLanguage.shared
 
         if priorEasy.isEmpty {

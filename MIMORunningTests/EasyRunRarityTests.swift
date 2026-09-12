@@ -49,6 +49,15 @@ final class EasyRunRarityTests: XCTestCase {
                        "이 러닝 이후의 이지런이 추가돼도 횟수가 변하면 안 된다")
     }
 
+    // 유형을 모르는 러닝(캐시 없음)은 페이스로 판단해 센다 — "모름 = 이지런 아님"으로 치면 횟수가 줄어든다
+    func testUnknownTypeRunsFallBackToPacePerRun() throws {
+        let f = fixture()
+        // e1(6'40")·e2(6'12")는 유형 조회가 nil을 돌려준다. e1은 페이스 문턱(6'36")보다 느려 이지런으로 세고,
+        // e2는 빨라서 안 센다 → 이전 이지런 1개 + 이번 = 2번째
+        let r = try XCTUnwrap(InsightEngine.easyRunRarity(f.current, f.prior, typeOf: { _ in nil }))
+        XCTAssertTrue(r.title.contains("2") || r.detail.contains("2"), "\(r.title) / \(r.detail)")
+    }
+
     func testFallsBackToPaceWhenNoTypeLookup() throws {
         let f = fixture()
         // 페이스 근사: 중앙값 6'00" × 1.1 = 6'36" 보다 느린 이전 러닝은 e1(6'40") 하나 → 이번이 2번째
