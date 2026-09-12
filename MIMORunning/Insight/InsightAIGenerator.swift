@@ -39,12 +39,13 @@ enum InsightAIGenerator {
             규칙 엔진이 계산한 테마와 사실을 받아 부연 문구를 자연스럽게 재표현합니다.
             규칙:
             · 부연: 제공된 수치·사실만 사용, 절대 없는 수치를 만들어내지 말 것, 30자 이내
-            스타일 예시(부연):
-            최근 5km 중 가장 빠른 페이스
-            4주 연속 달리기 중
-            이번 달 최장 거리 12.3km
-            400m×6, 최고 1'42"
-            심박 최고 178bpm
+            · 아래 예시의 표현 방식만 참고할 것. 예시 속 거리·횟수·기록은 이번 러닝과 무관하니 절대 옮겨 적지 말 것
+            스타일 예시(부연 — 숫자 자리는 ○로 표시):
+            최근 같은 거리 중 가장 빠른 페이스
+            ○주 연속 달리기 중
+            이번 달 최장 거리 ○km
+            ○m×○, 최고 ○'○○"
+            심박 최고 ○bpm
             """
 
         let prompt = """
@@ -60,6 +61,13 @@ enum InsightAIGenerator {
             guard !output.detail.isEmpty else {
                 #if DEBUG
                 print("[LLM] DetailInsight 프롬프트 길이 \(promptLen)자 · 결과 (빈 문자열 → 폴백)")
+                #endif
+                return nil
+            }
+            // 원문에 없는 숫자가 섞이면 버린다 — 예시의 "5km"를 베껴 16km 러닝을 5km로 적은 적이 있다
+            guard InsightFactGuard.numbersAreGrounded(output: output.detail, source: base.detail) else {
+                #if DEBUG
+                print("[LLM] DetailInsight 결과에 원문에 없는 숫자 → 폴백: \"\(output.detail)\" / 원문 \"\(base.detail)\"")
                 #endif
                 return nil
             }

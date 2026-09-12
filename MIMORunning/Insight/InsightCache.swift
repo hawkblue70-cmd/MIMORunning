@@ -62,7 +62,7 @@ actor InsightCache {
     // MARK: - Disk persistence
 
     // Bump this when insight generation logic changes to invalidate stale cache files.
-    private static let cacheVersion = 15
+    private static let cacheVersion = 16   // AI 부연에 원문에 없는 숫자("5km")가 들어간 캐시 무효화
 
     /// 테스트에서 파일명 패턴을 검증하기 위해 internal 로 노출.
     static func cacheFileName(activityID: UUID, isRefined: Bool, language: String) -> String {
