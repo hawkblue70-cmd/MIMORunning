@@ -91,8 +91,12 @@ func mrTodayCard(runs: [MRWorkout],
     let cumulativeLine: String
     if ranToday {
         let dist = last.distanceKm.map { String(format: "%.2fkm", $0) } ?? "—"
+        // 한 시간을 넘으면 시:분:초 — "100:41"처럼 분이 세 자리로 늘면 아래 목록의 "1:40:41"과 어긋난다.
+        // (Activity.formattedDuration과 같은 규칙. mrFormatDisplay는 "분 초" 표기라 이 줄에 안 맞는다)
         let durSec = Int((last.durationMin * 60).rounded())
-        let dur = String(format: "%d:%02d", durSec / 60, durSec % 60)
+        let dur = durSec >= 3600
+            ? String(format: "%d:%02d:%02d", durSec / 3600, (durSec % 3600) / 60, durSec % 60)
+            : String(format: "%d:%02d", durSec / 60, durSec % 60)
         let pace = last.paceSecPerKm.map { mrFormatPace($0) + "/km" } ?? "—"
         sessionLine = "\(dist) · \(dur) · \(pace)"
         let monthIdx = runs.filter {

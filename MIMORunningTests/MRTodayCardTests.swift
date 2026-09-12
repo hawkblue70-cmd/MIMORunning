@@ -57,6 +57,21 @@ final class MRTodayCardTests: XCTestCase {
         XCTAssertFalse(line.contains("5.00km"))
     }
 
+    // 한 시간 넘는 러닝은 시:분:초 — 100분을 "100:41"로 적지 않는다 (아래 목록은 "1:40:41")
+    func testDurationOverAnHourUsesHoursField() throws {
+        let r = run(start: date("2026-09-12 13:00"), minutes: 100 + 41.0 / 60, km: 16.03)
+        let line = try XCTUnwrap(card(runs: [r], asOf: date("2026-09-12 15:00"))?.sessionLine)
+        XCTAssertTrue(line.contains("1:40:41"), line)
+        XCTAssertFalse(line.contains("100:41"), line)
+    }
+
+    // 한 시간 미만은 분:초 그대로
+    func testDurationUnderAnHourStaysMinutesSeconds() throws {
+        let r = run(start: date("2026-09-12 13:00"), minutes: 39 + 41.0 / 60)
+        let line = try XCTUnwrap(card(runs: [r], asOf: date("2026-09-12 14:00"))?.sessionLine)
+        XCTAssertTrue(line.contains("39:41"), line)
+    }
+
     // 미래 시각의 러닝(시계 오류 등)은 "오늘"로 치지 않는다
     func testFutureRunIsNotShown() {
         let r = run(start: date("2026-09-12 09:00"))
