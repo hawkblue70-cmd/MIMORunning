@@ -17,7 +17,7 @@ struct RunChartDataTests {
     @Test func tileOrderFollowsMetricGrid() {
         // 타일 순서 = 러닝 상세 데이터 격자 순서. 페이스는 타일이 없다.
         let tiles = RunChartLayer.allCases.filter(\.hasTile)
-        #expect(tiles == [.heartRate, .cadence, .power, .groundContact, .strideLength,
+        #expect(tiles == [.heartRate, .cadence, .groundContact, .power, .strideLength,
                           .verticalOsc, .aerobic, .calories, .elevation])
         #expect(!RunChartLayer.pace.hasTile)
     }

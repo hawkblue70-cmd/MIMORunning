@@ -2,15 +2,16 @@ import SwiftUI
 
 // MARK: - RunChartLayer
 
-/// 케이스 순서 = 타일·칩 순서. 러닝 상세 데이터 격자와 같은 차례로 둔다
-/// (심박 · 케이던스 · 파워 · 지면접촉 · 보폭 · 수직진폭 · 유산소 · 칼로리 · 고도).
+/// 케이스 순서 = 타일·칩 순서. 차트 밴드 순서(심박 아래 지면접촉 · 파워 · …)와 맞춘다 —
+/// 타일에서 눈에 들어오는 차례와 차트에서 위에서 아래로 읽는 차례가 같아야 한다.
+/// (심박 · 케이던스 · 지면접촉 · 파워 · 보폭 · 수직진폭 · 유산소 · 칼로리 · 고도)
 /// rawValue로 저장되므로 순서를 바꿔도 저장된 설정은 깨지지 않는다.
 enum RunChartLayer: String, CaseIterable, Identifiable {
     case heartRate     = "심박"
     case pace          = "페이스"
     case cadence       = "케이던스"
-    case power         = "파워"
     case groundContact = "지면접촉"
+    case power         = "파워"
     case strideLength  = "보폭"
     case verticalOsc   = "진폭"
     case aerobic       = "유산소"
