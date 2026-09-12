@@ -542,7 +542,7 @@ struct InsightEngine {
                               L.s("거리의 문을 연 러닝", "Opening New Distance")]
         if !priorThisWeek.isEmpty, let maxWeek = priorThisWeek.map(\.distance).max(),
            a.distance > maxWeek {
-            let idx = nextTitleIdx(for: "distanceExpanded", poolSize: 3)
+            let idx = titleIdx(for: "distanceExpanded", poolSize: 3, activity: a)
             return InsightResult(theme: .distanceExpanded,
                                  title: distanceTitles[idx],
                                  detail: L.s("이번 주 최장 거리 \(a.formattedDistance)", "Longest run this week: \(a.formattedDistance)"))
@@ -552,7 +552,7 @@ struct InsightEngine {
         let priorThisMonth = prior.filter { $0.date >= monthStart }
         guard !priorThisMonth.isEmpty, let maxMonth = priorThisMonth.map(\.distance).max(),
               a.distance > maxMonth else { return nil }
-        let idx = nextTitleIdx(for: "distanceExpanded", poolSize: 3)
+        let idx = titleIdx(for: "distanceExpanded", poolSize: 3, activity: a)
         return InsightResult(theme: .distanceExpanded,
                              title: distanceTitles[idx],
                              detail: L.s("이번 달 최장 거리 \(a.formattedDistance)", "Longest run this month: \(a.formattedDistance)"))
@@ -586,7 +586,7 @@ struct InsightEngine {
                                 L.s("쌓이는 러닝", "Stacking Up"),
                                 L.s("이어지는 러닝", "Keeping It Going")]
         if streak >= streakThreshold {
-            let idx = nextTitleIdx(for: "consistent", poolSize: 3)
+            let idx = titleIdx(for: "consistent", poolSize: 3, activity: a)
             return InsightResult(theme: .consistent,
                                  title: consistentTitles[idx],
                                  detail: L.s("\(streak)주 연속 러닝", "\(streak) weeks in a row"))
@@ -598,7 +598,7 @@ struct InsightEngine {
         let thisWeekCount = prior.filter { $0.date >= thisWeekStart && $0.date < a.date }.count + 1
         let weekCountThreshold = level == .beginner ? 2 : 3
         if thisWeekCount >= weekCountThreshold {
-            let idx = nextTitleIdx(for: "consistent", poolSize: 3)
+            let idx = titleIdx(for: "consistent", poolSize: 3, activity: a)
             return InsightResult(theme: .consistent,
                                  title: consistentTitles[idx],
                                  detail: L.s("이번 주 \(thisWeekCount)번째 러닝", "Run #\(thisWeekCount) this week"))
@@ -1091,7 +1091,7 @@ struct InsightEngine {
 
         if priorEasy.isEmpty {
             guard priorPaces.count >= 15 else { return nil }
-            let idx = nextTitleIdx(for: "easyRarity", poolSize: 3)
+            let idx = titleIdx(for: "easyRarity", poolSize: 3, activity: a)
             let titles = [L.s("기록 중 첫 이지런", "First Easy Run on Record"),
                           L.s("처음 가져본 이지 페이스", "First Easy Pace"),
                           L.s("첫 여유 페이스 러닝", "First Easy-Pace Run")]
@@ -1106,7 +1106,7 @@ struct InsightEngine {
         let weeks = max(1, days / 7)
 
         if weeks >= 4 {
-            let idx = nextTitleIdx(for: "easyRarity", poolSize: 3)
+            let idx = titleIdx(for: "easyRarity", poolSize: 3, activity: a)
             let titles: [String]
             let details: [String]
             if weeks >= 26 {
@@ -1131,7 +1131,7 @@ struct InsightEngine {
         let currentYear = cal.component(.year, from: a.date)
         let countThisYear = priorEasy.filter { cal.component(.year, from: $0.date) == currentYear }.count + 1
         guard countThisYear <= 3 else { return nil }
-        let idx = nextTitleIdx(for: "easyRarity", poolSize: 3)
+        let idx = titleIdx(for: "easyRarity", poolSize: 3, activity: a)
         let titles = [L.s("올해 \(countThisYear)번째 이지런", "\(ordinalEn(countThisYear)) Easy Run This Year"),
                       L.s("올해 \(countThisYear)회의 이지런", "\(countThisYear) Easy Run(s) This Year"),
                       L.s("이지런 — 올해 \(countThisYear)번", "Easy Run \(countThisYear) This Year")]
@@ -1166,7 +1166,7 @@ struct InsightEngine {
         let percentile = Double(rank) / Double(n)
         let L = AppLanguage.shared
         if percentile >= 0.95 {
-            let idx = nextTitleIdx(for: "tempHot", poolSize: 3)
+            let idx = titleIdx(for: "tempHot", poolSize: 3, activity: a)
             let titles = [L.s("가장 더운 축의 러닝", "One of Your Hottest Runs"),
                           L.s("기온 상위 5%의 러닝", "Top 5% Heat Run"),
                           L.s("뜨거운 날의 러닝", "Peak Heat Run")]
@@ -1176,7 +1176,7 @@ struct InsightEngine {
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
         if percentile <= 0.05 {
-            let idx = nextTitleIdx(for: "tempCold", poolSize: 3)
+            let idx = titleIdx(for: "tempCold", poolSize: 3, activity: a)
             let titles = [L.s("가장 추운 축의 러닝", "One of Your Coldest Runs"),
                           L.s("기온 하위 5%의 러닝", "Bottom 5% Cold Run"),
                           L.s("혹한 속 러닝", "Into the Cold")]
@@ -1204,7 +1204,7 @@ struct InsightEngine {
         let L = AppLanguage.shared
 
         if sameSlot.isEmpty {
-            let idx = nextTitleIdx(for: "timeFirst", poolSize: 3)
+            let idx = titleIdx(for: "timeFirst", poolSize: 3, activity: a)
             let titles = [L.s("첫 \(koName) 러닝", "First \(enName.capitalized) Run"),
                           L.s("\(koName)에 처음 달린 러닝", "Running at \(enName.capitalized) for the First Time"),
                           L.s("\(koName) 러닝 첫 경험", "\(enName.capitalized) Run Debut")]
@@ -1218,7 +1218,7 @@ struct InsightEngine {
         guard days >= 60 else { return nil }
         let months = max(1, (days + 14) / 30)
 
-        let idx = nextTitleIdx(for: "timeReunion", poolSize: 3)
+        let idx = titleIdx(for: "timeReunion", poolSize: 3, activity: a)
         let titles = [L.s("\(months)개월 만의 \(koName) 러닝", "\(enName.capitalized) Run After \(months) Months"),
                       L.s("오랜만의 \(koName) 러닝", "Back to \(enName.capitalized) Running"),
                       L.s("\(months)개월 만에 다시 \(koName)에", "Back at \(enName.capitalized) After \(months) Months")]
@@ -1243,7 +1243,7 @@ struct InsightEngine {
         guard curKm >= Double(nextMark) else { return nil }
         let km = nextMark
         let L = AppLanguage.shared
-        let idx = nextTitleIdx(for: "milestone", poolSize: 3)
+        let idx = titleIdx(for: "milestone", poolSize: 3, activity: a)
         let titles = [L.s("누적 \(km)km의 발자국", "\(km) km of Footprints"),
                       L.s("\(km)km 이정표를 넘은 러닝", "Crossing \(km) km Total"),
                       L.s("\(km)km이 쌓인 날", "\(km) km — Day It Stacked Up")]
@@ -1281,7 +1281,7 @@ struct InsightEngine {
         guard cv < 0.08 else { return nil }
 
         let L = AppLanguage.shared
-        let idx = nextTitleIdx(for: "subThreshold", poolSize: 3)
+        let idx = titleIdx(for: "subThreshold", poolSize: 3, activity: a)
         let titles = [L.s("절제가 빛난 인터벌", "Discipline in Every Rep"),
                       L.s("흔들리지 않은 인터벌", "Steady Through the Sets"),
                       L.s("페이스를 지켜낸 인터벌", "Pace Held Throughout")]
@@ -1333,16 +1333,20 @@ struct InsightEngine {
     private static let tempHistoryIDsKey = "mimo_run_temp_ids_v1"
     private static let fatigueSignKey    = "mimo_weekly_p5_fatigue_active"
     private static let themeHistoryKey   = "mimo_insight_theme_history_v1"
-    private static let titleIdxBaseKey   = "mimo_insight_title_idx_v1"
-
-    /// Returns the current index for the given key's title pool (size `poolSize`) and advances it for
-    /// the next call. Ensures sequential rotation through the pool without date-based repetition.
-    private static func nextTitleIdx(for key: String, poolSize: Int) -> Int {
-        let fullKey = "\(titleIdxBaseKey)_\(key)"
-        let ud = UserDefaults.standard
-        let current = ud.integer(forKey: fullKey) % poolSize
-        ud.set((current + 1) % poolSize, forKey: fullKey)
-        return current
+    /// 제목·부연 풀에서 고를 인덱스 — **러닝 ID로 정한다.** 같은 러닝은 언제 다시 계산해도 같은 문장이다.
+    ///
+    /// ⚠ 예전에는 UserDefaults 카운터를 한 칸씩 돌렸다(호출마다 +1). 여러 러닝에 같은 문장이 반복되지
+    ///   않게 하려는 의도였지만, 캐시가 재계산될 때(버전 올림·언어 변경·대회 확정) 과거 러닝의 제목이
+    ///   바뀌었다. ID 해시로 뽑으면 러닝마다 다르게 퍼지면서도 한 러닝 안에서는 고정된다.
+    /// ⚠ Swift `hashValue`는 실행마다 시드가 달라 못 쓴다 — UUID 바이트로 직접 접는다(FNV-1a).
+    static func titleIdx(for key: String, poolSize: Int, activity a: Activity) -> Int {
+        precondition(poolSize > 0)
+        var h: UInt64 = 0xcbf29ce484222325
+        func fold(_ b: UInt8) { h ^= UInt64(b); h = h &* 0x100000001b3 }
+        let u = a.id.uuid
+        for b in [u.0, u.1, u.2, u.3, u.4, u.5, u.6, u.7, u.8, u.9, u.10, u.11, u.12, u.13, u.14, u.15] { fold(b) }
+        for b in key.utf8 { fold(b) }
+        return Int(h % UInt64(poolSize))
     }
 
     /// Records temp for an activity once (deduped by UUID). Caps history at 200 (oldest dropped).
