@@ -6,7 +6,8 @@ import SwiftUI
 final class RunChartLayerStore {
     static let shared = RunChartLayerStore()
     // ⚠ v2 — 시인성 개편 시 키를 바꿔 저장 상태를 기본(전부 켬)으로 한 번 되돌린다.
-    private static let defaultsKey = "mimo.runChart.enabledLayers.v2"
+    // v3: 지면접촉 레이어 추가 — 저장된 v2 집합에는 없어서 그대로 두면 새 레이어가 꺼진 채 시작한다
+    private static let defaultsKey = "mimo.runChart.enabledLayers.v3"
 
     var enabled: Set<RunChartLayer> {
         didSet { persist() }
@@ -84,9 +85,9 @@ struct RunCombinedPanelView: View {
                 }
                 .background(Color.black)
 
-                // Stat tiles — all layers always shown, tap to toggle
+                // Stat tiles — 순서는 RunChartLayer 케이스 순서(= 러닝 상세 데이터 격자). 페이스는 타일 없음.
                 LazyVGrid(columns: tileColumns, spacing: 3) {
-                    ForEach(data.availableLayers) { layer in
+                    ForEach(data.availableLayers.filter(\.hasTile)) { layer in
                         if let series = data.series[layer] {
                             if layer.isValueOnly {
                                 // 값 전용 타일: 항상 밝게, 차트 토글 없음

@@ -20,6 +20,7 @@ final class MetricColorTests: XCTestCase {
             ("케이던스", Theme.cadence), ("보폭", Theme.strideLength),
             ("지면접촉", Theme.groundContact), ("수직진폭", Theme.verticalOsc),
             ("파워", Theme.chartPower), ("페이스", Theme.chartPace), ("고도", Theme.chartElev),
+            ("지면접촉(차트)", Theme.chartGroundContact), ("진폭(차트)", Theme.chartVertOsc),
         ]
         var seen: [String: String] = [:]
         for (name, color) in named {

@@ -2,18 +2,26 @@ import SwiftUI
 
 // MARK: - RunChartLayer
 
+/// 케이스 순서 = 타일·칩 순서. 러닝 상세 데이터 격자와 같은 차례로 둔다
+/// (심박 · 케이던스 · 파워 · 지면접촉 · 보폭 · 수직진폭 · 유산소 · 칼로리 · 고도).
+/// rawValue로 저장되므로 순서를 바꿔도 저장된 설정은 깨지지 않는다.
 enum RunChartLayer: String, CaseIterable, Identifiable {
-    case heartRate    = "심박"
-    case pace         = "페이스"
-    case cadence      = "케이던스"
-    case elevation    = "고도"
-    case power        = "파워"
-    case strideLength = "보폭"
-    case verticalOsc  = "진폭"
-    case aerobic      = "유산소"
-    case calories     = "칼로리"
+    case heartRate     = "심박"
+    case pace          = "페이스"
+    case cadence       = "케이던스"
+    case power         = "파워"
+    case groundContact = "지면접촉"
+    case strideLength  = "보폭"
+    case verticalOsc   = "진폭"
+    case aerobic       = "유산소"
+    case calories      = "칼로리"
+    case elevation     = "고도"
 
     var id: String { rawValue }
+
+    /// 타일·칩으로 켜고 끌 수 있는 레이어인가.
+    /// 페이스는 아니다 — 구간 막대는 차트의 바닥이자 x축 라벨이라 항상 그리고, 값은 헤더에 이미 있다.
+    var hasTile: Bool { self != .pace }
 
     /// Color used for toggle chips, stat tiles, and chart lines (zone gradient for HR).
     var color: Color {
@@ -23,6 +31,7 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         case .cadence:      return Theme.chartCadence
         case .elevation:    return Theme.chartElev
         case .power:        return Theme.chartPower
+        case .groundContact: return Theme.chartGroundContact
         case .strideLength: return Theme.chartStride
         case .verticalOsc:  return Theme.chartVertOsc
         // 값 전용(선 없음) 타일은 중립 회색 — 칼로리 핑크가 심박 빨강과 겹쳐 보이던 문제 제거
@@ -43,6 +52,7 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         case .heartRate:    return .line(width: 2.2)
         case .cadence:      return .line(width: 2.1)
         case .power:        return .line(width: 2.1)
+        case .groundContact: return .line(width: 1.8)
         case .strideLength: return .line(width: 1.8)
         case .verticalOsc:  return .line(width: 1.8)
         case .aerobic:      return .line(width: 1.5)
@@ -58,6 +68,7 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         case .heartRate:    return 1.00
         case .cadence:      return 1.00
         case .power:        return 1.00
+        case .groundContact: return 0.92
         case .strideLength: return 0.92
         case .verticalOsc:  return 0.92
         case .aerobic:      return 0.92
@@ -74,6 +85,7 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         case .cadence:      return "spm"
         case .elevation:    return "m"
         case .power:        return "W"
+        case .groundContact: return "ms"
         case .strideLength: return "m"
         case .verticalOsc:  return "cm"
         case .aerobic:      return "mL/kg·min"
@@ -99,6 +111,7 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         case .cadence:      return L.s("케이던스","Cadence")
         case .elevation:    return L.s("고도 획득", "Elev. Gain")
         case .power:        return L.s("파워",    "Power")
+        case .groundContact: return L.s("지면접촉", "Contact")
         case .strideLength: return L.s("보폭",    "Stride")
         case .verticalOsc:  return L.s("진폭",    "Vert.Osc")
         case .aerobic:      return L.s("유산소",  "Aerobic")
@@ -121,7 +134,7 @@ extension RunChartLayer {
         case .pace:
             let total = Int(value.rounded())
             return "\(total / 60)'\(String(format: "%02d", total % 60))\""
-        case .heartRate, .cadence, .power, .elevation, .calories:
+        case .heartRate, .cadence, .power, .groundContact, .elevation, .calories:
             return "\(Int(value.rounded()))"
         case .strideLength:
             return String(format: "%.2f", value)
@@ -293,6 +306,7 @@ enum RunChartBuilder {
         powerSamples: [(offset: TimeInterval, value: Double)],
         strideSamples: [(offset: TimeInterval, value: Double)] = [],
         vertOscSamples: [(offset: TimeInterval, value: Double)] = [],
+        gctSamples: [(offset: TimeInterval, value: Double)] = [],
         fadeStartKm: Double? = nil
     ) -> RunChartData {
 
@@ -317,6 +331,7 @@ enum RunChartBuilder {
         let storedPowAvg   = detail?.avgPower.map { Double($0) }
         let storedStrAvg   = detail?.avgStrideLength
         let storedVocAvg   = detail?.avgVerticalOscillation
+        let storedGctAvg   = detail?.avgGroundContactTime
 
         // Heart rate — 2–98 percentile clamp, median 15 → mean 13
         let hrRaw = rawPoints(hrSamples.map { (offset: $0.offset, value: Double($0.bpm)) })
@@ -348,6 +363,17 @@ enum RunChartBuilder {
                                       clamp: .percentile(lo: 0.05, hi: 0.95),
                                       meanWindow: 25) {
             allSeries[.power] = storedPowAvg.map { s.withAvg($0) } ?? s
+        }
+
+        // Ground contact — hard clamp 150–400 ms → 5–95 percentile → median 25 → mean 25
+        //   (러닝 지면접촉은 대개 200~300ms. 150 미만·400 초과는 걷기·정지·센서 튐)
+        let gctRaw = rawPoints(gctSamples)
+        if let s = makeSmoothedSeries(layer: .groundContact, rawPoints: gctRaw,
+                                      smoothWindow: 25,
+                                      clamp: .hard(min: 150, max: 400),
+                                      secondaryClamp: .percentile(lo: 0.05, hi: 0.95),
+                                      meanWindow: 25) {
+            allSeries[.groundContact] = storedGctAvg.map { s.withAvg($0) } ?? s
         }
 
         // Stride — hard clamp 0.4–1.6 m → 5–95 percentile → median 25 → mean 25

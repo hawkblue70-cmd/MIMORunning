@@ -942,13 +942,17 @@ struct ActivityDetailView: View {
         async let vosc   = manager.fetchWorkoutTimeSeries(for: activity.id,
                                                           identifier: .runningVerticalOscillation,
                                                           unit: HKUnit.meterUnit(with: .centi))
-        let (h, c, p, s, v) = await (hr, cad, pow, stride, vosc)
+        async let gct    = manager.fetchWorkoutTimeSeries(for: activity.id,
+                                                          identifier: .runningGroundContactTime,
+                                                          unit: HKUnit.secondUnit(with: .milli))
+        let (h, c, p, s, v, g) = await (hr, cad, pow, stride, vosc, gct)
         // 패널 탭 전환 시 재조회 방지 — 이미 가져온 시리즈를 패널 캐시에 등록
         if !h.isEmpty { hrSamples = h; hrFetchDone = true }
         if !c.isEmpty { panelSeriesCache[.cadence] = c }
         if !p.isEmpty { panelSeriesCache[.power] = p }
         if !s.isEmpty { panelSeriesCache[.strideLength] = s }
         if !v.isEmpty { panelSeriesCache[.verticalOscillation] = v }
+        if !g.isEmpty { panelSeriesCache[.groundContact] = g }
         chartData = RunChartBuilder.build(
             activity: activity,
             detail: detail,
@@ -957,6 +961,7 @@ struct ActivityDetailView: View {
             powerSamples: p,
             strideSamples: s,
             vertOscSamples: v,
+            gctSamples: g,
             fadeStartKm: runFadeStartKm
         )
     }

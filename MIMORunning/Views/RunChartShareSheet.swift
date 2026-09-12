@@ -81,7 +81,7 @@ struct RunChartShareCard: View {
 
             // 지표 타일 — 값 전용(유산소·칼로리) 항상 표시, 나머지는 켜진 레이어만
             let activeTiles = data.availableLayers.filter {
-                $0.isValueOnly || enabledLayers.contains($0)
+                $0.hasTile && ($0.isValueOnly || enabledLayers.contains($0))
             }
             if !activeTiles.isEmpty {
                 LazyVGrid(columns: tileColumns, spacing: 3) {
@@ -280,7 +280,7 @@ struct RunChartShareSheet: View {
                     // (c) 레이어 칩 — 값 전용 제외, 한 줄 가로 스크롤
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(data.availableLayers.filter { !$0.isValueOnly }) { layer in
+                            ForEach(data.availableLayers.filter { !$0.isValueOnly && $0.hasTile }) { layer in
                                 ShareLayerChip(
                                     layer: layer,
                                     isOn: store.enabled.contains(layer)

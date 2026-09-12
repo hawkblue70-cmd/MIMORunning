@@ -25,7 +25,8 @@ struct RunCombinedChartView: View {
     private let padB: CGFloat = 28   // 페이스 라벨 한 줄 + 시간·거리 한 줄 (예전 세 줄일 때 38)
 
     var body: some View {
-        let activeLayers = data.availableLayers.filter { enabledLayers.contains($0) }
+        // 페이스 막대는 토글 대상이 아니다(타일 없음) — 데이터가 있으면 항상 그린다
+        let activeLayers = data.availableLayers.filter { !$0.hasTile || enabledLayers.contains($0) }
         if activeLayers.isEmpty {
             emptyPlaceholder
         } else {
@@ -132,8 +133,9 @@ struct RunCombinedChartView: View {
     private func bands(for activeLayers: [RunChartLayer]) -> [RunChartLayer: (top: Double, bottom: Double)] {
         var result: [RunChartLayer: (top: Double, bottom: Double)] = [:]
 
-        let lineOrder: [RunChartLayer] = [.power, .cadence, .verticalOsc, .strideLength]
-        let n   = lineOrder.count   // always 4 — fixed layout
+        // 위→아래. 지면접촉은 케이던스 바로 아래 — 둘은 한 쌍이다(케이던스↑ ↔ 접촉↓).
+        let lineOrder: [RunChartLayer] = [.power, .cadence, .groundContact, .verticalOsc, .strideLength]
+        let n   = lineOrder.count   // always 5 — fixed layout
         let gap = 0.03
 
         if activeLayers.contains(.heartRate) {
@@ -303,7 +305,9 @@ struct RunCombinedChartView: View {
     // MARK: - Pace columns (time-proportional background)
 
     private func drawPaceColumns(ctx: GraphicsContext, rect: CGRect, playProgress: Double? = nil) {
-        guard enabledLayers.contains(.pace), !data.paceColumns.isEmpty else { return }
+        // 페이스 막대는 토글 대상이 아니다(타일 없음) — 저장된 enabledLayers에 페이스가 빠져 있어도 그린다.
+        // 예전에 칩을 꺼둔 채 저장한 사용자는 칩이 사라진 뒤 되돌릴 방법이 없었다.
+        guard !data.paceColumns.isEmpty else { return }
 
         let baseOp: Double = soloLayer == nil ? p.paceColFillOp : (soloLayer == .pace ? p.paceColFillOp * 1.7 : p.paceColFillOp * 0.36)
         let inset: CGFloat = 0.40   // 40% margin on each side → 60% fill
@@ -345,7 +349,7 @@ struct RunCombinedChartView: View {
         let bandMap = bands(for: activeLayers)
 
         // Non-HR layers: bottom→top order, each with black casing then colour line
-        for layer in [RunChartLayer.strideLength, .verticalOsc, .cadence, .power] {
+        for layer in [RunChartLayer.strideLength, .verticalOsc, .groundContact, .cadence, .power] {
             guard activeLayers.contains(layer),
                   let series = data.series[layer], !series.isEmpty,
                   let band   = bandMap[layer] else { continue }
@@ -480,7 +484,7 @@ struct RunCombinedChartView: View {
     // MARK: - Right-side end-point value labels (line layers + elevation)
 
     private func drawEndLabels(ctx: GraphicsContext, rect: CGRect, activeLayers: [RunChartLayer]) {
-        var labelLayers = [RunChartLayer.heartRate, .cadence, .power, .strideLength, .verticalOsc]
+        var labelLayers = [RunChartLayer.heartRate, .cadence, .power, .groundContact, .strideLength, .verticalOsc]
             .filter { activeLayers.contains($0) }
         if activeLayers.contains(.elevation) { labelLayers.append(.elevation) }
         guard !labelLayers.isEmpty else { return }
@@ -800,7 +804,7 @@ struct RunCombinedChartView: View {
         }
 
         // Line layers: dot only for HR (radius 3.2); others get label only
-        let lineOrder: [RunChartLayer] = [.heartRate, .power, .cadence, .verticalOsc, .strideLength]
+        let lineOrder: [RunChartLayer] = [.heartRate, .power, .cadence, .groundContact, .verticalOsc, .strideLength]
         for layer in lineOrder {
             guard activeLayers.contains(layer),
                   let series = data.series[layer], !series.isEmpty,

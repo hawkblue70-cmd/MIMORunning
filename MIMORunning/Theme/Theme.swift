@@ -111,6 +111,10 @@ extension Theme {
     static let chartElev     = Color(hex: "00E676")  // 형광 스프링 그린 (라임 아님 — Z3·케이던스와 분리)
     static let chartElevFill = Color(hex: "00E676")  // 고도 fill
     static let chartStride   = Color(hex: "F2F2F7")  // 화이트 (검은 배경에서 가장 뚜렷)
+    // 지면접촉은 지표 의미색이 청록(5CE5D5)이지만 차트에서는 못 쓴다 — 심박 선이 Z2에서 아쿠아(4DFFF0)라
+    //   이지런 대부분 구간에서 두 선이 같은 색이 된다. 존 다섯·노랑·바이올렛·마젠타·초록 사이 빈 자리인
+    //   페리윙클(파랑 211°와 바이올렛 285° 사이)을 쓴다.
+    static let chartGroundContact = Color(hex: "7B87FF")
     static let chartVertOsc  = Color(hex: "F050FF")  // 형광 마젠타
     static let chartAerobic  = Color(hex: "AEB2BC")  // 값 전용 타일 — 선을 그리지 않으므로 중립 회색(밝게)
     static let chartValueOnly = Color(hex: "AEB2BC") // 값 전용 타일 공통 (유산소·칼로리)
