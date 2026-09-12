@@ -20,8 +20,18 @@ enum InsightFactGuard {
         return runs
     }
 
-    /// `output`의 모든 숫자가 `source`에도 있으면 true. 하나라도 새 숫자가 있으면 false.
+    /// 원문의 숫자가 빠지지도, 원문에 없는 숫자가 들어오지도 않았으면 true.
+    ///
+    /// 두 방향 다 본다. 처음엔 "새 숫자만 없으면 통과"였는데, 그러자 모델이 예시의 자리표시 "○'○○""을
+    /// 베껴 "가장 빠른 페이스 ○'○"라고 썼다 — 숫자가 아니라서 걸리지 않았고, 정작 사실인 6'16"은 사라졌다.
+    /// 부연의 존재 이유가 그 숫자이므로 원문 숫자는 반드시 남아 있어야 한다.
     static func numbersAreGrounded(output: String, source: String) -> Bool {
-        digitRuns(in: output).isSubset(of: digitRuns(in: source))
+        guard !containsPlaceholderGlyph(output) else { return false }
+        return digitRuns(in: output) == digitRuns(in: source)
+    }
+
+    /// 프롬프트 예시에서 베껴 올 수 있는 자리표시 문자(○ ◯ ○ □ X 등)가 들어 있는가.
+    static func containsPlaceholderGlyph(_ text: String) -> Bool {
+        text.contains { "○◯〇□■△▲◇◆※".contains($0) }
     }
 }

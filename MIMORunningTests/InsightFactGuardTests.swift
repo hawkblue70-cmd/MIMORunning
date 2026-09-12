@@ -17,10 +17,25 @@ final class InsightFactGuardTests: XCTestCase {
             source: "최근 동일 거리 중 가장 빠른 페이스 6'16\""))
     }
 
-    func testNoNumbersAtAllPasses() {
-        XCTAssertTrue(InsightFactGuard.numbersAreGrounded(
+    // 실제로 났던 일 2 — 예시의 자리표시 ○를 베끼고 진짜 숫자 6'16"을 떨어뜨림
+    func testPlaceholderGlyphIsRejected() {
+        XCTAssertFalse(InsightFactGuard.numbersAreGrounded(
+            output: "최근 같은 거리 중 가장 빠른 페이스 ○'○",
+            source: "최근 동일 거리 중 가장 빠른 페이스 6'16\""))
+    }
+
+    // 원문의 숫자를 빼먹어도 안 된다 — 부연의 존재 이유가 그 숫자다
+    func testDroppingSourceNumberIsRejected() {
+        XCTAssertFalse(InsightFactGuard.numbersAreGrounded(
             output: "이 거리에서 가장 빨랐어요",
             source: "최근 동일 거리 중 가장 빠른 페이스 6'16\""))
+    }
+
+    // 원문에 숫자가 없으면 결과에도 없어야 통과
+    func testNoNumbersOnBothSidesPasses() {
+        XCTAssertTrue(InsightFactGuard.numbersAreGrounded(
+            output: "꾸준히 이어지는 달리기예요",
+            source: "연속 달리기 중"))
     }
 
     func testDigitRunsSplitOnSeparators() {
