@@ -117,7 +117,11 @@ struct InsightEngine {
         historyComplete: Bool = true,
         typeOf: ((UUID) -> WorkoutType?)? = nil
     ) -> InsightResult {
-        let prior = history.filter { $0.id != activity.id && $0.type == activity.type }
+        // 이 러닝 **이전** 기록만 본다. 캐시가 다시 계산될 때(버전 올림·언어 변경·대회 확정) 그 사이
+        // 쌓인 러닝이 섞이면 과거 러닝의 인사이트가 바뀐다 — "이번 주 최장"이었던 러닝이 나중에 더 긴
+        // 러닝이 추가되면 아니게 되고, 동일 거리 PR이 나중 러닝 때문에 사라진다. 여기서 한 번에 걸러
+        // 모든 사실이 그 시점에 고정된다(개별 사실이 따로 거를 필요 없음).
+        let prior = history.filter { $0.id != activity.id && $0.type == activity.type && $0.date < activity.date }
 
         var base: InsightResult
         #if DEBUG
