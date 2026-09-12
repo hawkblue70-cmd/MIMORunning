@@ -165,7 +165,7 @@ struct InsightEngine {
 
             #if DEBUG
             _dbgFacts = buildBandFactLog(activity, prior, workoutType: workoutType, condition: condition,
-                                         intervalSegments: intervalSegments, detail: detail, splits: splits)
+                                         intervalSegments: intervalSegments, detail: detail, splits: splits, typeOf: typeOf)
             let _histBefore = loadThemeHistory()
             #endif
 
@@ -1434,7 +1434,8 @@ struct InsightEngine {
         condition: ActivityCondition?,
         intervalSegments: [IntervalSegment],
         detail: ActivityDetail?,
-        splits: [SplitData]
+        splits: [SplitData],
+        typeOf: ((UUID) -> WorkoutType?)? = nil
     ) -> String {
         var parts: [String] = []
 
@@ -1525,7 +1526,7 @@ struct InsightEngine {
 
         // easyRarity (easy 워크아웃 타입일 때만)
         if workoutType == .easy {
-            if let r = easyRunRarity(a, prior) {
+            if let r = easyRunRarity(a, prior, typeOf: typeOf) {
                 parts.append("easyRarity(발화:\(r.title))")
             } else {
                 let priorPaces = prior.compactMap { $0.paceSecPerKm }.sorted()
