@@ -133,8 +133,8 @@ struct RunCombinedChartView: View {
     private func bands(for activeLayers: [RunChartLayer]) -> [RunChartLayer: (top: Double, bottom: Double)] {
         var result: [RunChartLayer: (top: Double, bottom: Double)] = [:]
 
-        // 위→아래. 지면접촉은 케이던스 바로 아래 — 둘은 한 쌍이다(케이던스↑ ↔ 접촉↓).
-        let lineOrder: [RunChartLayer] = [.power, .cadence, .groundContact, .verticalOsc, .strideLength]
+        // 위→아래. 지면접촉이 맨 위(파워 위) — 심박 아래 첫 선.
+        let lineOrder: [RunChartLayer] = [.groundContact, .power, .cadence, .verticalOsc, .strideLength]
         let n   = lineOrder.count   // always 5 — fixed layout
         let gap = 0.03
 
@@ -349,7 +349,7 @@ struct RunCombinedChartView: View {
         let bandMap = bands(for: activeLayers)
 
         // Non-HR layers: bottom→top order, each with black casing then colour line
-        for layer in [RunChartLayer.strideLength, .verticalOsc, .groundContact, .cadence, .power] {
+        for layer in [RunChartLayer.strideLength, .verticalOsc, .cadence, .power, .groundContact] {
             guard activeLayers.contains(layer),
                   let series = data.series[layer], !series.isEmpty,
                   let band   = bandMap[layer] else { continue }
@@ -687,7 +687,8 @@ struct RunCombinedChartView: View {
         struct DotInfo { var labelY: CGFloat; let text: String; let color: Color }
         var dotInfos: [DotInfo] = []
 
-        let lineOrder: [RunChartLayer] = [.heartRate, .power, .cadence, .verticalOsc, .strideLength, .elevation]
+        // ⚠ 레이어 목록을 여기 또 적는다 — 새 레이어를 넣을 때 빠뜨리면 재생 중에만 값이 안 뜬다(지면접촉이 그랬다).
+        let lineOrder: [RunChartLayer] = [.heartRate, .groundContact, .power, .cadence, .verticalOsc, .strideLength, .elevation]
         for layer in lineOrder {
             guard activeLayers.contains(layer),
                   let series = data.series[layer], !series.isEmpty,
@@ -804,7 +805,7 @@ struct RunCombinedChartView: View {
         }
 
         // Line layers: dot only for HR (radius 3.2); others get label only
-        let lineOrder: [RunChartLayer] = [.heartRate, .power, .cadence, .groundContact, .verticalOsc, .strideLength]
+        let lineOrder: [RunChartLayer] = [.heartRate, .groundContact, .power, .cadence, .verticalOsc, .strideLength]
         for layer in lineOrder {
             guard activeLayers.contains(layer),
                   let series = data.series[layer], !series.isEmpty,
