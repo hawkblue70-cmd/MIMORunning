@@ -62,7 +62,7 @@ actor InsightCache {
     // MARK: - Disk persistence
 
     // Bump this when insight generation logic changes to invalidate stale cache files.
-    private static let cacheVersion = 17   // AI 부연이 자리표시 "○'○"를 베낀 캐시 무효화 (v16: "5km")
+    private static let cacheVersion = 18   // 이지런 횟수를 유형 기준·시점 고정으로 (v17: 자리표시 ○ · v16: "5km")
 
     /// 테스트에서 파일명 패턴을 검증하기 위해 internal 로 노출.
     static func cacheFileName(activityID: UUID, isRefined: Bool, language: String) -> String {

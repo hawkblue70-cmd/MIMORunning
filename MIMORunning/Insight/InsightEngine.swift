@@ -114,7 +114,8 @@ struct InsightEngine {
         condition: ActivityCondition? = nil,
         raceMatch: PersistedRaceMatch? = nil,
         detail: ActivityDetail? = nil,
-        historyComplete: Bool = true
+        historyComplete: Bool = true,
+        typeOf: ((UUID) -> WorkoutType?)? = nil
     ) -> InsightResult {
         let prior = history.filter { $0.id != activity.id && $0.type == activity.type }
 
@@ -159,7 +160,7 @@ struct InsightEngine {
             var band: [InsightResult] = []
             if let r = adverseCondition(activity, condition) { band.append(r) }
             if let r = tradeoffInsight(activity, prior, detail: detail, splits: splits) { band.append(r) }
-            if let r = rarityFact(activity, prior, workoutType: workoutType, condition: condition, historyComplete: historyComplete) { band.append(r) }
+            if let r = rarityFact(activity, prior, workoutType: workoutType, condition: condition, historyComplete: historyComplete, typeOf: typeOf) { band.append(r) }
             if let r = subThresholdRecognition(activity, intervalSegments, detail) { band.append(r) }
 
             #if DEBUG
@@ -669,13 +670,14 @@ struct InsightEngine {
         condition: ActivityCondition? = nil,
         raceMatch: PersistedRaceMatch? = nil,
         detail: ActivityDetail? = nil,
-        historyComplete: Bool = true
+        historyComplete: Bool = true,
+        typeOf: ((UUID) -> WorkoutType?)? = nil
     ) async -> InsightResult {
         compute(activity: activity, history: history, level: level,
                 workoutType: workoutType, splits: splits,
                 intervalSegments: intervalSegments, condition: condition,
                 raceMatch: raceMatch, detail: detail,
-                historyComplete: historyComplete)
+                historyComplete: historyComplete, typeOf: typeOf)
     }
 
     // MARK: - AI enhancement bridge
@@ -1040,7 +1042,8 @@ struct InsightEngine {
         _ prior: [Activity],
         workoutType: WorkoutType = .general,
         condition: ActivityCondition?,
-        historyComplete: Bool = true
+        historyComplete: Bool = true,
+        typeOf: ((UUID) -> WorkoutType?)? = nil
     ) -> InsightResult? {
         if let tempC = a.temperatureC ?? condition?.weather?.tempC { recordTemperature(tempC, for: a.id) }
         let historicalTemps = loadTemperatureHistory()
@@ -1052,27 +1055,38 @@ struct InsightEngine {
         if historyComplete {
             if let r = cumulativeMilestone(a, prior) { return r }
         }
-        if workoutType == .easy, let r = easyRunRarity(a, prior) { return r }
+        if workoutType == .easy, let r = easyRunRarity(a, prior, typeOf: typeOf) { return r }
         return nil
     }
 
     /// 이지런 희소성 — 마지막 이지런 이후 경과 주수 또는 연간 횟수를 사실로 전달.
     ///
-    /// 이지 근사: 이전 런 페이스 중앙값보다 10% 이상 느린 런.
-    /// (WorkoutTypeClassifier 15% 폴백보다 보수적 — 중앙값이 기준이므로 여유를 준다.)
+    /// "이지런"은 화면에 붙는 **유형 라벨과 같은 기준**이어야 한다. 유형 조회(`typeOf`)가 있으면
+    /// 유형이 이지런인 러닝만 센다. 없을 때만 페이스 근사(이전 런 중앙값보다 10% 이상 느림)로 떨어진다.
+    ///
+    /// ⚠ 실제로 났던 일: 유형상 두 번째 이지런에 "올해 3번째 이지런"이 떴다. 페이스 근사가 유형과
+    ///   다른 러닝을 세었고, 중앙값 기준에 **이 러닝 이후의 기록까지** 섞여 캐시가 재계산될 때마다
+    ///   문턱이 흔들렸다. 이제 이 러닝 이전 기록만 본다 — 언제 다시 계산해도 같은 답이 나온다.
     /// ⚠ 기록이 10개 미만이면 기준선 부족으로 침묵.
     /// ⚠ "잘하셨어요" 같은 칭찬 없음. 사실만.
-    private static func easyRunRarity(_ a: Activity, _ prior: [Activity]) -> InsightResult? {
-        let priorPaces = prior.compactMap { $0.paceSecPerKm }.sorted()
+    /// internal — 유형 기준 집계와 시점 고정을 테스트에서 직접 확인한다.
+    static func easyRunRarity(_ a: Activity, _ prior: [Activity],
+                              typeOf: ((UUID) -> WorkoutType?)? = nil) -> InsightResult? {
+        // 이 러닝 시점에 존재했던 기록만 — 나중 러닝이 과거 인사이트를 바꾸면 안 된다
+        let before = prior.filter { $0.date < a.date }
+        let priorPaces = before.compactMap { $0.paceSecPerKm }.sorted()
         guard priorPaces.count >= 10 else { return nil }
-        let medianPace = priorPaces[priorPaces.count / 2]
-        guard let currentPace = a.paceSecPerKm, currentPace > medianPace else { return nil }
-        let easyThreshold = medianPace * 1.10
 
         let cal = Calendar.current
-        let priorEasy = prior
-            .filter { ($0.paceSecPerKm ?? 0) > easyThreshold && $0.date < a.date }
-            .sorted { $0.date < $1.date }
+        let priorEasy: [Activity]
+        if let typeOf {
+            priorEasy = before.filter { typeOf($0.id) == .easy }.sorted { $0.date < $1.date }
+        } else {
+            let medianPace = priorPaces[priorPaces.count / 2]
+            guard let currentPace = a.paceSecPerKm, currentPace > medianPace else { return nil }
+            let easyThreshold = medianPace * 1.10
+            priorEasy = before.filter { ($0.paceSecPerKm ?? 0) > easyThreshold }.sorted { $0.date < $1.date }
+        }
         let L = AppLanguage.shared
 
         if priorEasy.isEmpty {
