@@ -1147,16 +1147,22 @@ struct InsightEngine {
         let currentYear = cal.component(.year, from: a.date)
         let countThisYear = priorEasy.filter { cal.component(.year, from: $0.date) == currentYear }.count + 1
         guard countThisYear <= 3 else { return nil }
+        // 직전 이지런 날짜를 같이 적는다 — 퍼포먼스 카드의 "4주 · 이지런 N회"와 기간이 달라
+        // 같은 숫자가 다른 뜻으로 읽혔다("올해"라고 써도 눈에 안 들어온다). 날짜가 있으면 갈린다.
+        let df = DateFormatter()
+        df.locale = Locale(identifier: L.isEnglish ? "en_US" : "ko_KR")
+        df.dateFormat = L.isEnglish ? "MMM d" : "M/d"
+        let lastEasyStr = df.string(from: lastEasy.date)
         let idx = titleIdx(for: "easyRarity", poolSize: 3, activity: a)
         let titles = [L.s("올해 \(countThisYear)번째 이지런", "\(ordinalEn(countThisYear)) Easy Run This Year"),
                       L.s("올해 \(countThisYear)회의 이지런", "\(countThisYear) Easy Run(s) This Year"),
                       L.s("이지런 — 올해 \(countThisYear)번", "Easy Run \(countThisYear) This Year")]
-        let details = [L.s("올해 들어 여유 페이스를 유지한 게 \(countThisYear)번이에요",
-                           "\(countThisYear) easy-pace run(s) this year"),
-                       L.s("올해 이지런은 드물게 — 이번이 \(countThisYear)번째예요",
-                           "Easy runs are rare this year — this is number \(countThisYear)"),
-                       L.s("올해 \(countThisYear)번째 이지런이에요",
-                           "\(countThisYear)\(ordinalSuffix(countThisYear)) easy run of the year")]
+        let details = [L.s("올해 들어 여유 페이스를 유지한 게 \(countThisYear)번이에요 · 직전 \(lastEasyStr)",
+                           "\(countThisYear) easy-pace run(s) this year · last on \(lastEasyStr)"),
+                       L.s("올해 이지런은 드물게 — 이번이 \(countThisYear)번째, 직전은 \(lastEasyStr)",
+                           "Easy runs are rare this year — number \(countThisYear), last on \(lastEasyStr)"),
+                       L.s("올해 \(countThisYear)번째 이지런이에요 · 직전 \(lastEasyStr)",
+                           "\(countThisYear)\(ordinalSuffix(countThisYear)) easy run of the year · last on \(lastEasyStr)")]
         return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
     }
 

@@ -58,6 +58,14 @@ final class EasyRunRarityTests: XCTestCase {
         XCTAssertTrue(r.title.contains("2") || r.detail.contains("2"), "\(r.title) / \(r.detail)")
     }
 
+    // "올해 N번째" 옆에 직전 이지런 날짜 — 퍼포먼스 카드의 4주 집계와 헷갈리지 않게
+    func testDetailNamesPreviousEasyRunDate() throws {
+        let f = fixture()
+        let r = try XCTUnwrap(InsightEngine.easyRunRarity(f.current, f.prior, typeOf: { f.easyIDs.contains($0) ? .easy : .general }))
+        // 직전 이지런은 9/7 (e2)
+        XCTAssertTrue(r.detail.contains("9/7") || r.detail.contains("Sep 7"), r.detail)
+    }
+
     func testFallsBackToPaceWhenNoTypeLookup() throws {
         let f = fixture()
         // 페이스 근사: 중앙값 6'00" × 1.1 = 6'36" 보다 느린 이전 러닝은 e1(6'40") 하나 → 이번이 2번째
