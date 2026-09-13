@@ -294,14 +294,15 @@ enum FormPhase {
     }
 
     /// 구간별 관계 문장 — "무엇이 언제 어떻게" 를 한 줄씩. 아무 변화도 없으면 빈 배열.
-    /// 문턱: 페이스 ≥ accelDeltaSec(20초, 중기) / paceDeltaSec(10초, 말기) · 보폭 ≥ 0.02 · 접지 ≥ 8ms · 심박 ≥ 5 · 케이던스 "그대로" = |Δ| < 2
+    /// 문턱: 페이스 ≥ accelDeltaSec(20초, 중반) / paceDeltaSec(10초, 후반) · 보폭 ≥ 0.02 · 접지 ≥ 8ms · 심박 ≥ 5 · 케이던스 "그대로" = |Δ| < 2
     static func relationSentences(_ r: Result, heatDeltaBpm: Double?) -> [String] {
         let L = AppLanguage.shared
         let e = r.phases.early, m = r.phases.mid, l = r.phases.late
-        func km(_ p: PhaseStats) -> String { "\(Int(p.startKm.rounded()))~\(Int(p.endKm.rounded()))km" }
+        func kmKo(_ p: PhaseStats) -> String { "\(Int(p.startKm.rounded()))~\(Int(p.endKm.rounded()))km" }
+        func kmEn(_ p: PhaseStats) -> String { "\(Int(p.startKm.rounded()))–\(Int(p.endKm.rounded())) km" }
         var out: [String] = []
 
-        // 중기: 페이스 ↔ 보폭·접지·케이던스
+        // 중반: 페이스 ↔ 보폭·접지·케이던스
         let accel = e.paceSecPerKm - m.paceSecPerKm
         if accel >= accelDeltaSec {
             var koPairs: [(conj: String, final: String)] = []
@@ -317,34 +318,70 @@ enum FormPhase {
             }
             if !koPairs.isEmpty {
                 let ko = joinKoClauses(koPairs)
-                let en = enPhrases.joined(separator: " and ")
-                out.append(L.s("중기 \(km(m)): 페이스가 \(Int(accel.rounded()))초 빨라지며 \(ko).",
-                               "Mid \(km(m)): pace picked up \(Int(accel.rounded())) s/km with \(en)."))
+                let en = joinEnPhrases(enPhrases)
+                out.append(L.s("중반 \(kmKo(m)): 페이스가 \(Int(accel.rounded()))초/km 빨라지며 \(ko).",
+                               "Mid \(kmEn(m)): pace picked up by \(Int(accel.rounded())) s/km with \(en)."))
             }
         }
 
-        // 말기: 심박 드리프트 ↔ 케이던스
+        // 후반: 심박 드리프트 ↔ 케이던스 (부호 있는 페이스·케이던스 변화, 더위 위안은 드리프트가 작을 때만)
         if let h1 = m.avgHR, let h2 = l.avgHR, h2 - h1 >= 5 {
-            let paceSame = abs(l.paceSecPerKm - m.paceSecPerKm) < paceDeltaSec
-            let cadHeld: Bool = {
-                guard let a = m.cadence, let b = l.cadence else { return false }
-                return abs(b - a) < cadenceSameSPM
-            }()
-            let hrDelta = Int((h2 - h1).rounded())
-            var ko = paceSame
-                ? "페이스는 같은데 심박이 \(hrDelta) 올랐고"
-                : "페이스가 \(Int((l.paceSecPerKm - m.paceSecPerKm).rounded()))초 느려지며 심박이 \(hrDelta) 올랐고"
-            ko += cadHeld ? ", 케이던스는 그대로예요." : ", 케이던스도 내려갔어요."
-            var en = paceSame
-                ? "pace held but heart rate rose \(hrDelta)"
-                : "pace slowed \(Int((l.paceSecPerKm - m.paceSecPerKm).rounded()))s/km as heart rate rose \(hrDelta)"
-            en += cadHeld ? ", cadence held." : ", cadence dropped too."
-            if let d = heatDeltaBpm, d >= 5 {
-                let dRounded = Int(d.rounded())
-                ko += " 더위 +\(dRounded)bpm을 감안하면 흔한 폭이에요."
-                en += " With the heat adding +\(dRounded)bpm, that's a common swing."
+            let hrRise = h2 - h1
+            let hrDelta = Int(hrRise.rounded())
+            let paceDelta = l.paceSecPerKm - m.paceSecPerKm
+
+            let paceKo: String
+            let paceEn: String
+            if abs(paceDelta) < paceDeltaSec {
+                paceKo = "페이스는 같은데"
+                paceEn = "pace held but"
+            } else if paceDelta > 0 {
+                let n = Int(paceDelta.rounded())
+                paceKo = "페이스가 \(n)초/km 느려지며"
+                paceEn = "pace slowed by \(n) s/km as"
+            } else {
+                let n = Int((-paceDelta).rounded())
+                paceKo = "페이스가 \(n)초/km 빨라지며"
+                paceEn = "pace picked up by \(n) s/km as"
             }
-            out.append(L.s("말기 \(km(l)): " + ko, "Late \(km(l)): " + en))
+
+            // late phase already reads out cadence drop when it drove the .heavier verdict — don't repeat it here
+            let cadenceAlreadyNamed: Bool = {
+                if case .heavier(let signals) = r.late { return signals.contains(.cadence) }
+                return false
+            }()
+            enum CadenceDir { case same, dropped, rose }
+            var cadenceDir: CadenceDir? = nil
+            if !cadenceAlreadyNamed, let a = m.cadence, let b = l.cadence {
+                let d = b - a
+                if abs(d) < cadenceSameSPM { cadenceDir = .same }
+                else if d <= -cadenceSameSPM { cadenceDir = .dropped }
+                else { cadenceDir = .rose }
+            }
+
+            var heatKo = "", heatEn = ""
+            if let heat = heatDeltaBpm, hrRise <= max(10.0, heat * 2) {
+                let h = Int(heat.rounded())
+                heatKo = "(더위 +\(h)bpm을 감안하면 흔한 폭)"
+                heatEn = " (common with +\(h) bpm from heat)"
+            }
+
+            let ko: String
+            let en: String
+            if let dir = cadenceDir {
+                let cadKo: String, cadEn: String
+                switch dir {
+                case .same:    cadKo = "케이던스는 그대로예요.";  cadEn = "while cadence stayed the same."
+                case .dropped: cadKo = "케이던스는 내려갔어요."; cadEn = "and cadence dropped."
+                case .rose:    cadKo = "케이던스는 올라갔어요."; cadEn = "and cadence rose."
+                }
+                ko = "\(paceKo) 심박이 \(hrDelta)bpm 올랐고\(heatKo), \(cadKo)"
+                en = "\(paceEn) heart rate rose \(hrDelta) bpm\(heatEn), \(cadEn)"
+            } else {
+                ko = "\(paceKo) 심박이 \(hrDelta)bpm 올랐어요\(heatKo)."
+                en = "\(paceEn) heart rate rose \(hrDelta) bpm\(heatEn)."
+            }
+            out.append(L.s("후반 \(kmKo(l)): " + ko, "Late \(kmEn(l)): " + en))
         }
         return out
     }
@@ -353,6 +390,12 @@ enum FormPhase {
     private static func joinKoClauses(_ pairs: [(conj: String, final: String)]) -> String {
         guard let last = pairs.last else { return "" }
         return (pairs.dropLast().map(\.conj) + [last.final]).joined(separator: " ")
+    }
+
+    /// 영어 나열: 2개 이상이면 쉼표로 잇고 마지막만 "and" — `joinEn(_:[Metric])`과 공유하는 나열 규칙.
+    private static func joinEnPhrases(_ phrases: [String]) -> String {
+        guard phrases.count > 1 else { return phrases.first ?? "" }
+        return phrases.dropLast().joined(separator: ", ") + " and " + phrases[phrases.count - 1]
     }
 
     /// 총평 줄용 짧은 상태어
@@ -398,8 +441,6 @@ enum FormPhase {
             case .verticalOsc:   return "vertical motion increased"
             }
         }
-        let p = signals.map(phrase)
-        guard p.count > 1 else { return p.first ?? "" }
-        return p.dropLast().joined(separator: ", ") + " and " + p[p.count - 1]
+        return joinEnPhrases(signals.map(phrase))
     }
 }

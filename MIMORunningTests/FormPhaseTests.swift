@@ -403,25 +403,61 @@ struct FormPhaseTests {
         AppLanguage.shared.isEnglish = false
         let s = (1...3).map { split($0, pace: 400, sl: 0.88, gct: 262) } + (4...10).map { split($0, pace: 375, sl: 0.94, gct: 250) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains("중기 3~7km: 페이스가 25초 빨라지며 보폭이 늘고 접지가 짧아졌어요."))
+        #expect(lines.contains("중반 3~7km: 페이스가 25초/km 빨라지며 보폭이 늘고 접지가 짧아졌어요."))
     }
 
     @Test func lateDriftSentenceWithCadenceHeld() {
         AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains("말기 7~10km: 페이스는 같은데 심박이 8 올랐고, 케이던스는 그대로예요."))
+        #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고, 케이던스는 그대로예요."))
     }
 
     @Test func lateDriftSentenceMentionsHeat() {
         AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 8)
-        #expect(lines.contains("말기 7~10km: 페이스는 같은데 심박이 8 올랐고, 케이던스는 그대로예요. 더위 +8bpm을 감안하면 흔한 폭이에요."))
+        #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고(더위 +8bpm을 감안하면 흔한 폭), 케이던스는 그대로예요."))
     }
 
     @Test func noRelationWhenNothingChanged() {
         let s = (1...10).map { split($0) }
         #expect(FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil).isEmpty)
+    }
+
+    @Test func negativeSplitSaysFaster() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, pace: 360, hr: 158) }
+        let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
+        #expect(lines.contains("후반 7~10km: 페이스가 15초/km 빨라지며 심박이 8bpm 올랐고, 케이던스는 그대로예요."))
+    }
+
+    @Test func risingCadenceIsNotReportedAsDrop() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, cad: 178, hr: 158) }
+        let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
+        #expect(lines.contains { $0.contains("케이던스는 올라갔어요.") })
+    }
+
+    @Test func unknownCadenceOmitsClause() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, cad: nil, hr: 158) }
+        let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
+        #expect(lines.contains { $0.hasSuffix("올랐어요.") && !$0.contains("케이던스") })
+    }
+
+    @Test func largeDriftGetsNoHeatReassurance() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 175) }
+        let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 8)
+        #expect(lines.allSatisfy { !$0.contains("흔한 폭") })
+    }
+
+    @Test func englishRelationSentences() {
+        AppLanguage.shared.isEnglish = true
+        defer { AppLanguage.shared.isEnglish = false }
+        let s = (1...3).map { split($0, pace: 400, sl: 0.88, gct: 262) } + (4...10).map { split($0, pace: 375, sl: 0.94, gct: 250) }
+        let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
+        #expect(lines.first == "Mid 3–7 km: pace picked up by 25 s/km with a longer stride and shorter ground contact.")
     }
 }
