@@ -115,6 +115,17 @@ struct RunSummaryTests {
         #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "가벼운 회복 강도", tone: .good)])
     }
 
+    @Test func heartRateLineAppendsHeatNoteOnNeutralTone() {
+        var i = RunSummaryInput(); i.workoutType = .general; i.zoneFractions = [3: 0.3, 4: 0.6, 5: 0.1]; i.heatDeltaBpm = 8
+        #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 100% · 더위 +8bpm 감안", tone: .neutral)])
+    }
+    @Test func heartRateLineNoHeatNoteWhenSmallOrGood() {
+        var i = RunSummaryInput(); i.workoutType = .general; i.zoneFractions = [3: 0.3, 4: 0.6, 5: 0.1]; i.heatDeltaBpm = 3
+        #expect(lines(i).first?.state == "고강도 구간이 많음 · Zone 3 이상 100%")
+        var g = RunSummaryInput(); g.zoneFractions = [2: 0.7, 3: 0.3]; g.heatDeltaBpm = 8
+        #expect(lines(g).first?.state == "딱 좋은 강도")
+    }
+
     // MARK: 훈련부하
 
     @Test func streakAloneShowsWithoutLoadData() {
