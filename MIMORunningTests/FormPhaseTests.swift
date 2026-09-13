@@ -140,7 +140,8 @@ struct FormPhaseTests {
     }
 
     @Test func slowedLateWithStrideDownButCadenceHeldIsCadenceDefended() {
-        let s = (1...7).map { split($0, pace: 375) } + (8...10).map { split($0, pace: 395, cad: 175, sl: 0.85) }
+        // 페이스 드랍은 10초(paceDeltaSec) 이상이되 20초(fadePaceDropSec) 밑으로 — 페이스 무너짐과 겹치지 않게
+        let s = (1...7).map { split($0, pace: 375) } + (8...10).map { split($0, pace: 389, cad: 175, sl: 0.85) }
         #expect(classify(s)?.late == .cadenceDefended)
     }
 
@@ -171,6 +172,45 @@ struct FormPhaseTests {
     @Test func lateBelowBandAndWorseVsMidIsHeavier() {
         let s = (1...7).map { split($0) } + (8...10).map { split($0, sl: 0.85) }
         #expect(classify(s)?.late == .heavier([.stride]))
+    }
+
+    // MARK: 페이스 무너짐 — 중반보다 20초/km 이상 느려졌는데 심박은 안 내려간 후반
+
+    /// 실측 10km 거리주: mid 5'55"(hr161·stride0.97·cad175·gct242) → late 6'30"(hr163·stride0.91·cad171·gct266).
+    private func fadeFixture(lateHR: Int?) -> [SplitData] {
+        (1...3).map { self.split($0, pace: 370, hr: 144) }
+            + (4...7).map { self.split($0, pace: 355, cad: 175, sl: 0.97, gct: 242, hr: 161) }
+            + (8...10).map { self.split($0, pace: 390, cad: 171, sl: 0.91, gct: 266, hr: lateHR) }
+    }
+
+    @Test func lateSlowdownWithHRHeldIsFaded() {
+        AppLanguage.shared.isEnglish = false
+        let r = classify(fadeFixture(lateHR: 163))
+        #expect(r?.late == .faded(paceDropSec: 35))
+        #expect(r?.isFaded == true)
+        #expect(r?.lateWorsened(.stride) == true)
+        #expect(r?.lateWorsened(.cadence) == true)
+        #expect(r?.lateWorsened(.groundContact) == true)
+        #expect(FormPhase.sentence(r!, isLongDistance: false) ==
+                "마지막 3km엔 페이스가 35초/km 떨어졌는데 심박은 그대로였어요. 보폭 0.97→0.91 · 케이던스 175→171 · 접지 +24ms.")
+        #expect(FormPhase.shortState(r!) == "마지막 3km 페이스 떨어짐")
+    }
+
+    @Test func lateSlowdownWithHRDropIsNotFaded() {
+        let r = classify(fadeFixture(lateHR: 150))
+        #expect(r?.isFaded == false)
+    }
+
+    @Test func lateSlowdownWithoutHRIsNotFaded() {
+        let r = classify(fadeFixture(lateHR: nil))
+        #expect(r?.isFaded == false)
+    }
+
+    @Test func fadeSentenceHasNoCommonTail() {
+        AppLanguage.shared.isEnglish = false
+        let r = classify(fadeFixture(lateHR: 163))!
+        let sentence = FormPhase.sentence(r, isLongDistance: true)
+        #expect(!sentence.contains("흔한 변화"))
     }
 
     // MARK: 초기·중기 패턴
@@ -370,7 +410,8 @@ struct FormPhaseTests {
 
     @Test func cadenceDefendedRequiresGCTNotAbove() {
         // slowedLateWithStrideDownButCadenceHeldIsCadenceDefended와 동일하나 접지도 이탈 → 피로로 재분류
-        let s = (1...7).map { split($0, pace: 375) } + (8...10).map { split($0, pace: 395, cad: 175, sl: 0.85, gct: 272) }
+        // (페이스 드랍은 10초 이상 20초 밑으로 — 페이스 무너짐과 겹치지 않게)
+        let s = (1...7).map { split($0, pace: 375) } + (8...10).map { split($0, pace: 389, cad: 175, sl: 0.85, gct: 272) }
         #expect(classify(s)?.late == .heavier([.stride, .groundContact]))
     }
 

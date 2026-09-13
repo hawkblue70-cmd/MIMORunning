@@ -353,4 +353,25 @@ struct RunSummaryTests {
         var i = RunSummaryInput(); i.form = heldFormUnknownCadence16km()
         #expect(lines(i).first?.evidence == "마지막 5km 보폭 0.92 범위 안 · 접지 255 범위 안")
     }
+
+    // MARK: 페이스 무너짐
+
+    /// 10km 러닝: mid 5'55"(hr161·stride0.97·cad175·gct242) → late 6'30"(hr163·stride0.91·cad171·gct266) — `FormPhaseTests`의 픽스처와 같은 값.
+    private func fadedForm10km() -> FormPhase.Result {
+        let s = (1...3).map { SplitData(id: $0, distanceM: 1000, duration: 370, avgHeartRate: 144, avgCadence: 175, avgPower: nil, avgGroundContactTime: 255, avgStrideLength: 0.92, avgVerticalOscillation: 8.4) }
+            + (4...7).map { SplitData(id: $0, distanceM: 1000, duration: 355, avgHeartRate: 161, avgCadence: 175, avgPower: nil, avgGroundContactTime: 242, avgStrideLength: 0.97, avgVerticalOscillation: 8.4) }
+            + (8...10).map { SplitData(id: $0, distanceM: 1000, duration: 390, avgHeartRate: 163, avgCadence: 171, avgPower: nil, avgGroundContactTime: 266, avgStrideLength: 0.91, avgVerticalOscillation: 8.4) }
+        return classify(s)!
+    }
+
+    @Test func fadedFormLineHasPacingNext() {
+        var i = RunSummaryInput()
+        i.form = fadedForm10km()
+        i.isLongDistanceContext = true
+        let line = lines(i)[0]
+        #expect(line.state == "마지막 3km 페이스 떨어짐")
+        #expect(line.tone == .neutral)
+        #expect(line.evidence == "페이스 5'55\"→6'30\" · 보폭 0.97→0.91 · 케이던스 175→171 · 접지 +24ms")
+        #expect(line.next == "다음엔 중반을 10초/km 늦게 시작해 보세요.")
+    }
 }

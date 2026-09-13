@@ -20,7 +20,7 @@ struct FormPhaseTableView: View {
             }
             row(ko: "초반", en: "Early", stats: result.phases.early, signals: result.signals.early)
             row(ko: "중반", en: "Mid", stats: result.phases.mid, signals: result.signals.mid)
-            row(ko: "후반", en: "Late", stats: result.phases.late, signals: result.signals.late)
+            row(ko: "후반", en: "Late", stats: result.phases.late, signals: result.signals.late, isLate: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -28,7 +28,9 @@ struct FormPhaseTableView: View {
     // MARK: - Rows
 
     @ViewBuilder
-    private func row(ko: String, en: String, stats: FormPhase.PhaseStats, signals: FormPhase.Signals) -> some View {
+    private func row(ko: String, en: String, stats: FormPhase.PhaseStats, signals: FormPhase.Signals, isLate: Bool = false) -> some View {
+        // 페이스 무너짐(§Insight/FormPhase.faded)도 후반 케이던스·보폭·접지 셀에 캐셔닝 — 기존 평소범위 이탈 신호와 OR.
+        let fadedWorse: (FormPhase.Metric) -> Bool = { isLate && result.isFaded && result.lateWorsened($0) }
         GridRow {
             Text(phaseLabel(stats, ko: ko, en: en))
                 .font(.system(size: 9 * scale, weight: .medium))
@@ -37,9 +39,9 @@ struct FormPhaseTableView: View {
                 .padding(.vertical, 1 * scale)
             valueCell(paceText(stats.paceSecPerKm), color: Color.white.opacity(0.9), caution: false)
             valueCell(stats.avgHR.map { String(Int($0.rounded())) }, color: Theme.heartRate, caution: false)
-            valueCell(stats.cadence.map { String(Int($0.rounded())) }, color: Theme.cadence, caution: signals.cadence == .below)
-            valueCell(stats.stride.map { String(format: "%.2f", $0) }, color: Theme.strideLength, caution: signals.stride == .below)
-            valueCell(stats.groundContact.map { String(Int($0.rounded())) }, color: Theme.groundContact, caution: signals.groundContact == .above)
+            valueCell(stats.cadence.map { String(Int($0.rounded())) }, color: Theme.cadence, caution: signals.cadence == .below || fadedWorse(.cadence))
+            valueCell(stats.stride.map { String(format: "%.2f", $0) }, color: Theme.strideLength, caution: signals.stride == .below || fadedWorse(.stride))
+            valueCell(stats.groundContact.map { String(Int($0.rounded())) }, color: Theme.groundContact, caution: signals.groundContact == .above || fadedWorse(.groundContact))
         }
     }
 

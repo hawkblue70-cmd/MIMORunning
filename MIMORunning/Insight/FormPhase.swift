@@ -42,6 +42,9 @@ enum FormPhase {
         case heavier([Metric])
         case cadenceDefended
         case bouncier
+        /// 페이스 무너짐 = 중반보다 20초/km 이상 느려졌는데 심박이 내려가지 않음(−2bpm 이내).
+        /// 심박이 내려갔으면 의도한 마무리로 본다. 페이스 정규화가 페이스 붕괴 자체를 가리는 구멍을 막는다.
+        case faded(paceDropSec: Int)
     }
 
     /// 세 단계의 원시 통계 — 관계 문장·표가 함께 쓴다.
@@ -64,6 +67,28 @@ enum FormPhase {
         /// 이지 프레임에서 케이던스만 내려간 말기는 "무거워짐"이 아니라 편한 날의 자연스러운 변화.
         /// (`.heavier([.cadence, .verticalOsc])`처럼 다른 신호가 섞이면 소프트가 아니다.)
         var isSoftCadenceOnly: Bool { isEasyFrame && late == .heavier([.cadence]) }
+        var isFaded: Bool { if case .faded = late { return true }; return false }
+
+        /// 말기 지표가 중기보다 피로 방향으로 나빠졌는가 — `lateFatigue`와 같은 문턱(케이던스 ≤중기−1 ·
+        /// 보폭 ≤중기−0.005 · 접지 ≥중기+2 · 수직진폭 ≥중기+0.2). 둘 중 하나라도 결측이면 false.
+        /// "페이스 무너짐" 문장·근거·표에서 중기 대비 뭐가 나빠졌는지 짚을 때 쓴다.
+        func lateWorsened(_ m: Metric) -> Bool {
+            let mid = phases.mid, late = phases.late
+            switch m {
+            case .cadence:
+                guard let mc = mid.cadence, let lc = late.cadence else { return false }
+                return lc <= mc - 1
+            case .stride:
+                guard let ms = mid.stride, let ls = late.stride else { return false }
+                return ls <= ms - 0.005
+            case .groundContact:
+                guard let mg = mid.groundContact, let lg = late.groundContact else { return false }
+                return lg >= mg + 2
+            case .verticalOsc:
+                guard let mv = mid.verticalOsc, let lv = late.verticalOsc else { return false }
+                return lv >= mv + FormPhase.verticalOscDeltaCm
+            }
+        }
     }
 
     static let minSplits = 5
@@ -79,6 +104,12 @@ enum FormPhase {
     static let verticalRatioDeltaPct = 0.5
     /// 비율은 보폭만 줄어도 오르므로 수직진폭 자체도 이만큼 늘어야 "위로 튐"으로 본다
     static let verticalOscDeltaCm = 0.2
+    /// 페이스 무너짐 판정 문턱 — 중반보다 이만큼(초/km) 느려지면 "붕괴" 후보
+    static let fadePaceDropSec = 20.0
+    /// 페이스가 무너졌는데도 심박이 이 폭(bpm) 안으로만 내려가면 "그대로"로 본다(내려간 게 아니라 유지)
+    static let fadeHRToleranceBpm = 2.0
+    /// 다음 행동 제안 — 중반을 이만큼(초/km) 늦게 시작해 보라는 페이싱 조언
+    static let fadeMidStartEaseSec = 10
 
     // MARK: - 분할
 
@@ -203,8 +234,19 @@ enum FormPhase {
         let lateFatigueSet = lateFatigue(late: lS, latePhase: l, midPhase: m)
         let strideWorse = lateFatigueSet.contains(.stride)
         let groundContactWorse = lateFatigueSet.contains(.groundContact)
+
+        // 페이스 무너짐 — 중반보다 20초/km 이상 느려졌는데 심박이 내려가지 않음(±2bpm 이내는 "그대로").
+        // 어느 한쪽 심박이라도 없으면(쿨다운인지 붕괴인지 구분 불가) 판정하지 않고 아래 기존 판정으로 넘어간다.
+        let paceDrop = l.paceSecPerKm - m.paceSecPerKm
+        let hrHeld: Bool = {
+            guard let a = m.avgHR, let b = l.avgHR else { return false }
+            return b >= a - fadeHRToleranceBpm
+        }()
+
         let late: Late
-        if slowedLate, strideWorse, !groundContactWorse, lS.cadence == .inRange || lS.cadence == .above {
+        if paceDrop >= fadePaceDropSec, hrHeld {
+            late = .faded(paceDropSec: Int(paceDrop.rounded()))
+        } else if slowedLate, strideWorse, !groundContactWorse, lS.cadence == .inRange || lS.cadence == .above {
             late = .cadenceDefended
         } else if strideWorse, ratioUp, !groundContactWorse {
             late = .bouncier
@@ -325,6 +367,20 @@ enum FormPhase {
                 ko.append("마지막 \(lateKm)km엔 " + joinKo(signals))
                 en.append("over the last \(lateKm) km " + joinEn(signals))
             }
+        case .faded(let d):
+            // 붕괴 사실 절 뒤에 무엇이 나빠졌는지(있으면) 이어 붙인다 — 소프트 케이던스 절과 같은 방식으로
+            // 안쪽 마침표만 직접 넣고 바깥 wrap의 마침표 하나로 마무리한다(이중 마침표 방지).
+            var koClause = "마지막 \(lateKm)km엔 페이스가 \(d)초/km 떨어졌는데 심박은 그대로였어요"
+            var enClause = "Pace dropped \(d) s/km over the last \(lateKm) km while heart rate stayed up"
+            let pieces = fadedWorsenedPieces(r)
+            if !pieces.isEmpty {
+                koClause += ". " + pieces.map(\.ko).joined(separator: " · ")
+                let enJoinedPieces = pieces.map(\.en).joined(separator: " · ")
+                let enCapped = String(enJoinedPieces.prefix(1)).uppercased() + enJoinedPieces.dropFirst()
+                enClause += ". " + enCapped
+            }
+            ko.append(koClause)
+            en.append(enClause)
         }
 
         var koS = ko.joined(separator: ", ") + "."
@@ -333,7 +389,7 @@ enum FormPhase {
             : (en.first ?? "")
         var enS = enJoined + "."
         enS = String(enS.prefix(1)).uppercased() + enS.dropFirst()
-        if isLongDistance, r.late != .held, !suppressCommonTail, !r.isSoftCadenceOnly {
+        if isLongDistance, r.late != .held, !suppressCommonTail, !r.isSoftCadenceOnly, !r.isFaded {
             let d = String(format: "%.0f", r.totalKm)
             koS += " \(d)km 후반엔 흔한 변화예요."
             enS += " Common late in a \(d) km run."
@@ -473,7 +529,28 @@ enum FormPhase {
             return L.s("마지막 \(lateKm)km 살짝 무거워짐", "A bit heavier in the last \(lateKm) km")
         case .cadenceDefended: return L.s("후반 회전은 유지", "Cadence held late")
         case .bouncier:        return L.s("후반 위로 튐", "Bouncier late")
+        case .faded:           return L.s("마지막 \(lateKm)km 페이스 떨어짐", "Pace faded in the last \(lateKm) km")
         }
+    }
+
+    /// 페이스 무너짐 문장·근거가 함께 쓰는 "중반→후반에 뭐가 나빠졌나" 절 — 보폭 → 케이던스 → 접지 순.
+    /// `Result.lateWorsened(_:)`로 걸러진 지표만, 둘 다 있는 값으로만 만든다.
+    static func fadedWorsenedPieces(_ r: Result) -> [(ko: String, en: String)] {
+        let m = r.phases.mid, l = r.phases.late
+        var out: [(ko: String, en: String)] = []
+        if r.lateWorsened(.stride), let ms = m.stride, let ls = l.stride {
+            let a = String(format: "%.2f", ms), b = String(format: "%.2f", ls)
+            out.append((ko: "보폭 \(a)→\(b)", en: "stride \(a)→\(b)"))
+        }
+        if r.lateWorsened(.cadence), let mc = m.cadence, let lc = l.cadence {
+            let a = Int(mc.rounded()), b = Int(lc.rounded())
+            out.append((ko: "케이던스 \(a)→\(b)", en: "cadence \(a)→\(b)"))
+        }
+        if r.lateWorsened(.groundContact), let mg = m.groundContact, let lg = l.groundContact {
+            let d = Int((lg - mg).rounded())
+            out.append((ko: "접지 +\(d)ms", en: "GCT +\(d) ms"))
+        }
+        return out
     }
 
     /// 한국어 연결: 마지막 신호만 종결형 — "보폭이 줄고 접지가 길어졌어요"

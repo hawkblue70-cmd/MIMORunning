@@ -105,6 +105,14 @@ enum RunSummary {
         let lateKm = Int((f.totalKm - f.lateStartKm).rounded())
         var pieces: [String] = []
 
+        if f.isFaded {
+            let mid = f.phases.mid
+            pieces.append(L.s("페이스 \(mrFormatPace(mid.paceSecPerKm))→\(mrFormatPace(late.paceSecPerKm))",
+                              "pace \(mrFormatPace(mid.paceSecPerKm))→\(mrFormatPace(late.paceSecPerKm))"))
+            pieces += FormPhase.fadedWorsenedPieces(f).map { L.s($0.ko, $0.en) }
+            return pieces.joined(separator: " · ")
+        }
+
         if let cad = late.cadence, sig.cadence != .unknown {
             let held: Bool
             switch sig.cadence {
@@ -162,6 +170,10 @@ enum RunSummary {
             return L.s(prefixKo + "후반 보폭만 지켜보세요.", prefixEn + "watch your late-run stride.")
         case .bouncier:
             return L.s(prefixKo + "후반 위아래 움직임만 지켜보세요.", prefixEn + "watch your late-run vertical motion.")
+        case .faded:
+            // 붕괴는 후반이 아니라 중반 페이싱이 원인 — 거리·유형과 무관하게 같은 조언
+            return L.s("다음엔 중반을 \(FormPhase.fadeMidStartEaseSec)초/km 늦게 시작해 보세요.",
+                      "Next time, start the middle stretch about \(FormPhase.fadeMidStartEaseSec) s/km slower.")
         }
     }
 
