@@ -58,6 +58,8 @@ enum FormPhase {
     static let lateFraction = 0.70
     /// 단계 간 페이스 차이가 이 이상이어야 "빨라졌다/느려졌다"
     static let paceDeltaSec = 10.0
+    /// 초기→중기 "빨라졌다"는 워밍업이 끼므로 후반 둔화(10초)보다 큰 문턱
+    static let accelDeltaSec = 20.0
     static let strideDeltaM = 0.02
     static let cadenceSameSPM = 2.0
     static let cadenceGainSPM = 3.0
@@ -67,7 +69,9 @@ enum FormPhase {
 
     // MARK: - 분할
 
-    static func phases(_ splits: [SplitData]) -> (early: PhaseStats, mid: PhaseStats, late: PhaseStats)? {
+    static func phases(_ rawSplits: [SplitData]) -> (early: PhaseStats, mid: PhaseStats, late: PhaseStats)? {
+        // 부분(마지막) 스플릿 제외 + id 순으로 정렬 — 풀 스플릿만 거리 비율 분할에 쓴다
+        let splits = rawSplits.filter { $0.distanceM >= 900 }.sorted { $0.id < $1.id }
         guard splits.count >= minSplits else { return nil }
         let totalM = splits.map(\.distanceM).reduce(0, +)
         guard totalM > 0 else { return nil }
@@ -90,21 +94,23 @@ enum FormPhase {
             let v = vals.compactMap { $0 }
             return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
         }
-        func stats(_ i: Int) -> PhaseStats {
+        func stats(_ i: Int) -> PhaseStats? {
             let g = groups[i]
             let distKm = g.map(\.distanceM).reduce(0, +) / 1000
+            guard distKm > 0 else { return nil }
             let dur = g.map(\.duration).reduce(0, +)
             return PhaseStats(
                 splitCount: g.count,
                 startKm: (startM[i] ?? 0) / 1000,
                 endKm: endM[i] / 1000,
-                paceSecPerKm: distKm > 0 ? dur / distKm : 0,
+                paceSecPerKm: dur / distKm,
                 cadence: avg(g.map { $0.avgCadence.map(Double.init) }),
                 stride: avg(g.map(\.avgStrideLength)),
                 groundContact: avg(g.map(\.avgGroundContactTime)),
                 verticalOsc: avg(g.map(\.avgVerticalOscillation)))
         }
-        return (stats(0), stats(1), stats(2))
+        guard let early = stats(0), let mid = stats(1), let late = stats(2) else { return nil }
+        return (early, mid, late)
     }
 
     // MARK: - 판정
@@ -130,25 +136,28 @@ enum FormPhase {
                 groundContact: FormNarrative.status(rawValue: p.groundContact, stat: band?.groundContact, metric: .groundContact))
     }
 
-    /// - Parameter bandFor: 단계 페이스(sec/km) → 그 구간의 평소 범위. 구간 밖·판정불가면 nil.
-    static func classify(splits: [SplitData], bandFor: (Double) -> BandStats?) -> Result? {
+    /// - Parameters:
+    ///   - paceScale: GAP ÷ 실측 평균 페이스 (전체 러닝 기준). 밴드 조회에만 곱한다 — 단계 간 페이스 차이 판정은 실측 그대로.
+    ///   - bandFor: 단계 페이스(sec/km, GAP 보정됨) → 그 구간의 평소 범위. 구간 밖·판정불가면 nil.
+    static func classify(splits: [SplitData], paceScale: Double = 1.0, bandFor: (Double) -> BandStats?) -> Result? {
         guard let p = phases(splits) else { return nil }
+        let scale = paceScale > 0 ? paceScale : 1.0
         let e = p.early, m = p.mid, l = p.late
-        let eS = signals(e, bandFor(e.paceSecPerKm))
-        let mS = signals(m, bandFor(m.paceSecPerKm))
-        let lS = signals(l, bandFor(l.paceSecPerKm))
+        let eS = signals(e, bandFor(e.paceSecPerKm * scale))
+        let mS = signals(m, bandFor(m.paceSecPerKm * scale))
+        let lS = signals(l, bandFor(l.paceSecPerKm * scale))
         guard lS.knownCount >= 2 else { return nil }
 
         // 말기
         let slowedLate = l.paceSecPerKm - m.paceSecPerKm >= paceDeltaSec
         // 위로 튐 = 수직진폭↑(≥0.2cm) 그리고 수직진폭÷보폭 비율↑(≥0.5%p). 보폭만 줄어 비율이 오른 경우는 제외.
         let ratioUp: Bool = {
-            guard let a = m.verticalRatio, let b = l.verticalRatio,
-                  let va = m.verticalOsc, let vb = l.verticalOsc else { return false }
+            guard let va = m.verticalOsc, let vb = l.verticalOsc,
+                  let a = m.verticalRatio, let b = l.verticalRatio else { return false }
             return vb - va >= verticalOscDeltaCm && b - a >= verticalRatioDeltaPct
         }()
         let late: Late
-        if slowedLate, lS.stride == .below, lS.cadence == .inRange || lS.cadence == .above {
+        if slowedLate, lS.stride == .below, lS.groundContact != .above, lS.cadence == .inRange || lS.cadence == .above {
             late = .cadenceDefended
         } else if lS.stride == .below, ratioUp, lS.groundContact != .above {
             late = .bouncier
@@ -158,12 +167,12 @@ enum FormPhase {
             late = .held
         }
 
-        // 초기 — 초기만 벗어나고 중기는 범위 안이면 몸 풀기
-        let early: Early? = (!eS.fatigue.isEmpty && mS.fatigue.isEmpty) ? .warmup : nil
+        // 초기 — 초기만 벗어나고 중기는 (판정 가능한 상태로) 범위 안이면 몸 풀기
+        let early: Early? = (!eS.fatigue.isEmpty && mS.knownCount >= 2 && mS.fatigue.isEmpty) ? .warmup : nil
 
         // 중기 — 초기보다 빨라졌을 때 어느 레버로 속도를 냈는지
         var mid: Mid? = nil
-        if e.paceSecPerKm - m.paceSecPerKm >= paceDeltaSec,
+        if e.paceSecPerKm - m.paceSecPerKm >= accelDeltaSec,
            let es = e.stride, let ms = m.stride, let ec = e.cadence, let mc = m.cadence {
             let strideUp = ms - es >= strideDeltaM
             let cadUp = mc - ec >= cadenceGainSPM

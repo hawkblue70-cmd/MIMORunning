@@ -29,6 +29,49 @@ struct FormPhaseTests {
         FormPhase.classify(splits: splits, bandFor: { _ in band })
     }
 
+    /// 거리·시간을 직접 지정하는 스플릿 — 혼합 거리·부분 스플릿 테스트용.
+    private func rawSplit(_ id: Int, distanceM: Double, duration: Double,
+                          cad: Int? = 175, sl: Double? = 0.92, gct: Double? = 255, vo: Double? = 8.4) -> SplitData {
+        SplitData(id: id, distanceM: distanceM, duration: duration,
+                  avgHeartRate: 150, avgCadence: cad, avgPower: nil,
+                  avgGroundContactTime: gct, avgStrideLength: sl, avgVerticalOscillation: vo)
+    }
+
+    // MARK: 기준선 픽스처 (FormReferenceBandTests와 동일 패턴)
+
+    private func makeActivity(date: Date, distanceM: Double, paceSecPerKm: Double) -> Activity {
+        Activity(id: UUID(), type: .running, date: date,
+                 duration: paceSecPerKm * distanceM / 1000,
+                 distance: distanceM, calories: 600, avgHeartRate: 150)
+    }
+
+    private func makeDetail(cadence: Int, stride: Double, gct: Double, vo: Double) -> ActivityDetail {
+        ActivityDetail(routeCoordinates: [], routeTimeOffsets: [], elevationGain: 40,
+                       avgPower: 227, avgCadence: cadence, splits: [], hrZones: [],
+                       intervalSegments: [], workoutType: .general,
+                       avgGroundContactTime: gct, avgStrideLength: stride,
+                       avgVerticalOscillation: vo, vo2Max: 45.3,
+                       altitudeProfile: [], altitudeTimeProfile: [])
+    }
+
+    /// 이지런(6'40~7'20)만 30회 쌓인 기준선
+    @MainActor
+    private func easyOnlyBaseline() -> RunningFormBaseline {
+        let cal = Calendar.current
+        let today = Date()
+        var inputs: [FormInput] = []
+        for i in 1...30 {
+            let d = cal.date(byAdding: .day, value: -i * 5, to: today)!
+            let act = makeActivity(date: d, distanceM: 7500, paceSecPerKm: 400.0 + Double((i * 7) % 41))
+            let det = makeDetail(cadence: 166 + ((i * 3) % 7),
+                                 stride: 0.87 + Double((i * 5) % 9) * 0.01,
+                                 gct: 240.0 + Double((i * 11) % 13),
+                                 vo: 8.1 + Double((i * 4) % 7) * 0.06)
+            if let fi = FormInput(activity: act, detail: det) { inputs.append(fi) }
+        }
+        return FormBaselineEngine.compute(from: inputs)
+    }
+
     // MARK: 분할
 
     @Test func sixSplitsSplitTwoTwoTwo() {
@@ -149,5 +192,99 @@ struct FormPhaseTests {
         // 말기 보폭·접지 결측 → 케이던스 하나만 알면 침묵
         let s = (1...7).map { split($0) } + (8...10).map { split($0, sl: nil, gct: nil) }
         #expect(classify(s) == nil)
+    }
+
+    // MARK: 리뷰 반영 — 분할 방어
+
+    @Test func mixedDistancesGroupByDistanceFraction() {
+        // 9×1000m + 1×950m(총 9950m). 30%=2985m·70%=6965m 경계로 3/4/3 분할
+        let s = (1...9).map { split($0) } + [rawSplit(10, distanceM: 950, duration: 356)]
+        let p = FormPhase.phases(s)
+        #expect(p?.early.splitCount == 3)
+        #expect(p?.late.startKm == 7)
+        guard let endKm = p?.late.endKm else {
+            Issue.record("late phase missing")
+            return
+        }
+        #expect(abs(endKm - 9.95) < 0.001)
+    }
+
+    @Test func partialTailSplitIsIgnored() {
+        let ten = (1...10).map { split($0) }
+        let eleven = ten + [rawSplit(11, distanceM: 300, duration: 113)]
+        let p10 = FormPhase.phases(ten)
+        let p11 = FormPhase.phases(eleven)
+        #expect(p11?.late.endKm == 10)
+        #expect(p11?.late.splitCount == 3)
+        #expect(p11?.early == p10?.early)
+        #expect(p11?.mid == p10?.mid)
+        #expect(p11?.late == p10?.late)
+    }
+
+    @Test func unsortedInputIsSortedById() {
+        let sorted = (1...10).map { split($0) }
+        let reversed = Array(sorted.reversed())
+        let sortedResult = classify(sorted)
+        let reversedResult = classify(reversed)
+        #expect(reversedResult == sortedResult)
+        #expect(reversedResult?.late == .held)
+        #expect(reversedResult?.earlyEndKm == 3)
+    }
+
+    @Test func boundaryTiesAtFifteenSplits() {
+        // 15km: 30% 지점(4.5km)의 중간값은 mid로, 70% 지점(10.5km)의 중간값은 late로 붙는다
+        let p = FormPhase.phases((1...15).map { split($0) })
+        #expect(p?.early.splitCount == 4)
+        #expect(p?.mid.splitCount == 6)
+        #expect(p?.late.splitCount == 5)
+    }
+
+    @Test func cadenceDeadZoneGivesNoMidPattern() {
+        // 케이던스 +2.5spm — "고정"(<2.0)도 "상승"(≥3.0)도 아닌 사각지대 → 패턴 없음
+        let early = (1...2).map { split($0, pace: 400, cad: 172, sl: 0.90) }
+        let mid = [split(3, pace: 375, cad: 174, sl: 0.90), split(4, pace: 375, cad: 175, sl: 0.90)]
+        let late = (5...6).map { split($0) }
+        #expect(classify(early + mid + late)?.mid == nil)
+    }
+
+    @Test func cadenceDefendedRequiresGCTNotAbove() {
+        // slowedLateWithStrideDownButCadenceHeldIsCadenceDefended와 동일하나 접지도 이탈 → 피로로 재분류
+        let s = (1...7).map { split($0, pace: 375) } + (8...10).map { split($0, pace: 395, cad: 175, sl: 0.85, gct: 272) }
+        #expect(classify(s)?.late == .heavier([.stride, .groundContact]))
+    }
+
+    @Test func warmupNeedsKnownMid() {
+        // 중기 밴드를 조회할 수 없으면(판정불가) 초기 이탈이 있어도 몸풀기로 단정하지 않는다
+        let s = (1...3).map { split($0, pace: 375, sl: 0.85) }
+              + (4...7).map { split($0, pace: 380) }
+              + (8...10).map { split($0, pace: 375) }
+        let r = FormPhase.classify(splits: s, bandFor: { pace in pace == 380 ? nil : band })
+        #expect(r?.early == nil)
+    }
+
+    @Test func paceScaleIsAppliedToBandLookup() {
+        var received: [Double] = []
+        let s = (1...10).map { split($0, pace: 375) }
+        _ = FormPhase.classify(splits: s, paceScale: 0.8, bandFor: { pace in
+            received.append(pace)
+            return band
+        })
+        #expect(!received.isEmpty)
+        #expect(received.allSatisfy { abs($0 - 300) < 0.001 })
+    }
+
+    @Test func accelerationBelowTwentySecondsHasNoMidPattern() {
+        // 15초 차이 — 후반 둔화 문턱(10초)은 넘지만 가속 문턱(20초)엔 못 미친다
+        let s = (1...3).map { split($0, pace: 390, sl: 0.88) } + (4...10).map { split($0, pace: 375, sl: 0.94) }
+        #expect(classify(s)?.mid == nil)
+    }
+
+    @Test @MainActor func bandStatsLooksUpJudgeableBandAndAdjustsGCT() {
+        let baseline = easyOnlyBaseline()
+        let inBand = FormPhase.bandStats(in: baseline, paceSecPerKm: 420, gctShift: nil)
+        #expect(inBand != nil)
+        #expect(inBand?.cadence != nil)
+        let outOfBand = FormPhase.bandStats(in: baseline, paceSecPerKm: 200, gctShift: nil)
+        #expect(outOfBand == nil)
     }
 }
