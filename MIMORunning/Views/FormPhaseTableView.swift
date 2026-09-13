@@ -5,11 +5,13 @@ import SwiftUI
 struct FormPhaseTableView: View {
     let result: FormPhase.Result
     var scale: CGFloat = 1.0
+    /// 내보내기(촘촘 모드)면 행 간격 5→3
+    @Environment(\.insightCompact) private var compact
 
     private var L: AppLanguage { AppLanguage.shared }
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 5 * scale, verticalSpacing: 5 * scale) {
+        Grid(alignment: .leading, horizontalSpacing: 5 * scale, verticalSpacing: (compact ? 3 : 5) * scale) {
             GridRow {
                 headerCell(L.s("구간", "Phase"))
                 headerCell(L.s("페이스", "Pace")).gridColumnAlignment(.trailing)

@@ -1382,6 +1382,7 @@ private struct RhythmInsightCard: View {
     var planPhase: String? = nil
     /// 내보내기 카드는 총평 5줄만 그린다(펼침 없음) — 앱 화면은 기본값(true)으로 탭하면 펼쳐진다.
     var summaryAllowsExpansion: Bool = true
+    @Environment(\.insightCompact) private var compact
 
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
@@ -1432,7 +1433,7 @@ private struct RhythmInsightCard: View {
             || detail?.avgCadence != nil
             || (vo2Info != nil && detail?.vo2Max != nil)
             || hrSamples.count >= 5
-        return VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: compact ? 9 : 14) {
             heroSection
             divider
             kpiRow
@@ -1449,7 +1450,7 @@ private struct RhythmInsightCard: View {
                 oneLiner(text: line, bg: IC.greenBg, fg: IC.greenText, accent: IC.green)
             }
         }
-        .padding(16)
+        .padding(.horizontal, 16).padding(.vertical, compact ? 12 : 16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear {
@@ -1582,9 +1583,10 @@ private struct RhythmInsightCard: View {
     // 2×2 칸 정렬 상수 — 행 안에서 차트 높이와 캡션 시작 줄을 맞춘다.
     // 칸마다 콘텐츠 높이가 다르면 캡션이 들쭉날쭉해진다.
     private static let topChartH: CGFloat = 114      // 도넛(114) 기준
-    private static let topCaptionH: CGFloat = 28
     private static let bottomChartH: CGFloat = 110   // 게이지(87) + 축 라벨이 아래로 삐져나오는 23
-    private static let bottomCaptionH: CGFloat = 38
+    // 캡션 칸 — 촘촘 모드는 두 줄(8~9pt)이 딱 들어가는 높이까지만 줄인다
+    private var topCaptionH: CGFloat { compact ? 24 : 28 }
+    private var bottomCaptionH: CGFloat { compact ? 30 : 38 }
 
     /// 2×2 한 칸 — 차트 영역과 캡션 영역을 고정 높이로 잡아 네 칸의 줄을 맞춘다.
     private func rhythmCell<Chart: View, Caption: View>(
@@ -1601,7 +1603,7 @@ private struct RhythmInsightCard: View {
                 .frame(maxWidth: .infinity, minHeight: captionH, maxHeight: captionH, alignment: .top)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .padding(.vertical, compact ? 3 : 6)
         .padding(.horizontal, 4)   // 게이지 축 라벨이 칸 경계(구분선)에 붙지 않게
     }
 
@@ -1634,7 +1636,7 @@ private struct RhythmInsightCard: View {
             // 상단 행: 심박존(좌) + 심박수 HR 시계열(우)
             HStack(alignment: .center, spacing: 0) {
                 // 심박존 도넛
-                rhythmCell(chartH: Self.topChartH, captionH: Self.topCaptionH) {
+                rhythmCell(chartH: Self.topChartH, captionH: topCaptionH) {
                     if hasZones {
                         ZoneDonutView(zones: hrZones)
                             .frame(width: 114, height: 114)
@@ -1653,7 +1655,7 @@ private struct RhythmInsightCard: View {
                 Rectangle().fill(sep).frame(width: 0.5)
 
                 // 심박수 HR 시계열 + 판정 문구
-                rhythmCell(chartH: Self.topChartH, captionH: Self.topCaptionH) {
+                rhythmCell(chartH: Self.topChartH, captionH: topCaptionH) {
                     if hasHR {
                         HRTimeSeriesView(
                             samples: hrSamples,
@@ -1683,7 +1685,7 @@ private struct RhythmInsightCard: View {
                 // 케이던스 게이지 + 기준 문구
                 // 인터벌은 고강도 구간 평균을 바늘에 반영, 개인 비교 문구 숨김
                 // 장거리 문맥이면 formBaseline을 nil로 전달 → 바늘이 절대 기준(160–180)으로만 판단 (흰색)
-                rhythmCell(chartH: Self.bottomChartH, captionH: Self.bottomCaptionH,
+                rhythmCell(chartH: Self.bottomChartH, captionH: bottomCaptionH,
                            chartAlignment: .top) {
                     let displayCad = intervalWorkCadence.map { Int($0.rounded()) } ?? detail?.avgCadence
                     if let cad = displayCad {
@@ -1715,7 +1717,7 @@ private struct RhythmInsightCard: View {
                 Rectangle().fill(sep).frame(width: 0.5)
 
                 // 유산소 VO2 게이지 + FRIEND DB + 등급 문구
-                rhythmCell(chartH: Self.bottomChartH, captionH: Self.bottomCaptionH,
+                rhythmCell(chartH: Self.bottomChartH, captionH: bottomCaptionH,
                            chartAlignment: .top) {
                     if let info = vo2Info, let vo2 = detail?.vo2Max {
                         VO2RPMGaugeView(fi: info, vo2: vo2)
@@ -2365,7 +2367,7 @@ private struct RhythmInsightCard: View {
         .lineLimit(2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, compact ? 4 : 6)
     }
 
     private func formBackfillProgressLine(_ progress: (done: Int, total: Int)) -> some View {
@@ -2689,6 +2691,7 @@ private struct PerformanceInsightCard: View {
     var effortIndex: EffortIndex? = nil
     var heatHRModel: MRHeatHRModel? = nil
 
+    @Environment(\.insightCompact) private var compact
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
     @State private var _distResult: (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)? = nil
@@ -2778,7 +2781,7 @@ private struct PerformanceInsightCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: compact ? 6 : 8) {
             heroSection
             divider
             kpiRow
@@ -2844,7 +2847,7 @@ private struct PerformanceInsightCard: View {
                 }
             }
         }
-        .padding(16)
+        .padding(.horizontal, 16).padding(.vertical, compact ? 12 : 16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear {
@@ -3148,7 +3151,7 @@ private struct PerformanceInsightCard: View {
                 Text(L.s("유산소 피트니스", "Aerobic Fitness"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 VO2RPMGaugeView(fi: info, vo2: vo2)
-                Color.clear.frame(height: 12)
+                Color.clear.frame(height: compact ? 8 : 12)
                 Text(gradeText)
                     .font(.system(size: 8.5)).foregroundStyle(gradeColor)
                     .multilineTextAlignment(.center)
@@ -3182,7 +3185,7 @@ private struct PerformanceInsightCard: View {
             Text("✦").font(.system(size: 10)).foregroundStyle(accent)
             Text(text).font(.system(size: 10.5)).foregroundStyle(fg).lineSpacing(2)
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
+        .padding(.horizontal, 12).padding(.vertical, compact ? 7 : 10)
         .background(bg)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
@@ -4198,7 +4201,7 @@ private struct PerformanceInsightCard: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
-            .padding(.bottom, 6)
+            .padding(.bottom, compact ? 4 : 6)
             // 가로 막대 3행 — [라벨][트랙(문헌값 밴드·점선)][값]. 트랙 폭은 GeometryReader 하나로 재고 세 행이 함께 쓴다.
             GeometryReader { geo in
                 let trackW = max(20, geo.size.width - Self.intensityLabelW - Self.intensityValueW - Self.intensityGap * 2)
@@ -4284,7 +4287,7 @@ private struct PerformanceInsightCard: View {
     @ViewBuilder
     private func sevenDayLoadView(load: SevenDayLoad) -> some View {
         let L = AppLanguage.shared
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: compact ? 4 : 5) {
             // 제목에 이 러닝의 부하를 붙인다 — "강도 부하 · 14일 (이 러닝 73 AU)"
             Text(sevenDayLoadTitle(load))
                 .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
@@ -4542,7 +4545,7 @@ private struct PerformanceInsightCard: View {
             Spacer()
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, compact ? 6 : 8)
         .background(Color(hex: "1A3020"))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -4584,7 +4587,7 @@ private struct PerformanceInsightCard: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, compact ? 7 : 10)
         .background(blue.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
@@ -5360,6 +5363,7 @@ struct InsightExportSheet: View {
             cardBody
         }
         .background(Theme.cardBackground)
+        .environment(\.insightCompact, true)   // 내보내기는 촘촘한 세로 간격 — 미리보기 = 출력
     }
 
     private var exportWorkoutTypeLabel: String? {
@@ -5413,7 +5417,7 @@ struct InsightExportSheet: View {
                 }
             }
         }
-        .padding(.horizontal, 14).padding(.vertical, 12)
+        .padding(.horizontal, 14).padding(.vertical, 9)
     }
 
     private var dateTimeText: Text {

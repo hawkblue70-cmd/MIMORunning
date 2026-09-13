@@ -42,6 +42,9 @@ struct RunFormCardView: View {
     var weatherSnapshot: WeatherSnapshot? = nil
     var historicalTemperatures: [Double] = []   // 야외 런 기온 이력 — 추위 슬롯 문맥 및 tempExtreme 중복 체크용
 
+    /// 내보내기(촘촘 모드)면 섹션 간격 14→9 · 상하 여백 16→12 · 문장 줄 간격 −1
+    @Environment(\.insightCompact) private var compact
+
     // 버킷 계산은 러닝당 1회만 — onAppear 시 저장, splitFormTrendSection·logTrend에서 재사용
     @State private var formSeriesCache: [FormSeries] = []
 
@@ -820,7 +823,7 @@ struct RunFormCardView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: compact ? 9 : 14) {
             topSummary
             divider
             if isInterval {
@@ -841,20 +844,20 @@ struct RunFormCardView: View {
                                                 suppressCommonTail: FormPhase.hasHeatReassurance(phase, heatDeltaBpm: heatHRModel?.delta(activity.temperatureC))))
                             .font(.system(size: 11.5))
                             .foregroundStyle(Color.white.opacity(0.80))
-                            .lineSpacing(3)
+                            .lineSpacing(compact ? 2 : 3)
                             .fixedSize(horizontal: false, vertical: true)
                         ForEach(FormPhase.relationSentences(phase, heatDeltaBpm: heatHRModel?.delta(activity.temperatureC)), id: \.self) { line in
                             Text(line)
                                 .font(.system(size: 10.5))
                                 .foregroundStyle(Color.white.opacity(0.66))
-                                .lineSpacing(2)
+                                .lineSpacing(compact ? 1 : 2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
             }
         }
-        .padding(16)
+        .padding(.horizontal, 16).padding(.vertical, compact ? 12 : 16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear {
@@ -883,7 +886,7 @@ struct RunFormCardView: View {
     private var topSummary: some View {
         let km = activity.distance / 1000
         let kmStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: compact ? 7 : 10) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(kmStr)
                     .font(cardNumFont(40))
@@ -936,7 +939,7 @@ struct RunFormCardView: View {
             }
             // [70] 범위 바 설명: 바 아래, 축 시작 x에 맞춰 들여씀
             if let summary = barSummaryText() {
-                Color.clear.frame(height: 5)
+                Color.clear.frame(height: compact ? 4 : 5)
                 HStack(spacing: 0) {
                     Color.clear.frame(width: barTextColumnWidth + 8)
                     Text(summary)
@@ -952,11 +955,11 @@ struct RunFormCardView: View {
                 resultNodeView(label: L.s("페이스", "Pace"), value: paceStr)
             }
             if let sentence = narrative {
-                Color.clear.frame(height: 10)
+                Color.clear.frame(height: compact ? 7 : 10)
                 Text(sentence)
                     .font(.system(size: 11.5))
                     .foregroundStyle(Color.white.opacity(0.80))
-                    .lineSpacing(3)
+                    .lineSpacing(compact ? 2 : 3)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -1249,7 +1252,7 @@ struct RunFormCardView: View {
     private var formInsightSection: some View {
         let items = formInsights
         if !items.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: compact ? 7 : 10) {
                 ForEach(items) { item in
                     HStack(alignment: .top, spacing: 8) {
                         Text(item.badgeText)
@@ -1285,7 +1288,7 @@ struct RunFormCardView: View {
         let hasBottomRow = slS  != nil || voS  != nil
 
         if hasTopRow || hasBottomRow {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: compact ? 7 : 10) {
                 // Row 1: 판정 지표
                 if hasTopRow {
                     HStack(alignment: .top, spacing: 10) {

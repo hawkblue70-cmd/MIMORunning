@@ -11,6 +11,8 @@ struct RunSummaryLinesView: View {
     var allowsExpansion: Bool = true
     /// true면 근거·다음이 있는 모든 줄을 항상 펼쳐 그린다. 화살표·탭 제스처 없음 — `allowsExpansion`은 무시된다.
     var expandAll: Bool = false
+    /// 내보내기(촘촘 모드)면 줄 간격 7→5 · 상하 여백 10→7 (scale 배율은 그대로)
+    @Environment(\.insightCompact) private var compact
 
     @State private var expanded: Set<String>
 
@@ -31,12 +33,12 @@ struct RunSummaryLinesView: View {
     private var detailIndent: CGFloat { 7 * scale + 7 * scale + axisWidth + 7 * scale }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7 * scale) {
+        VStack(alignment: .leading, spacing: (compact ? 5 : 7) * scale) {
             ForEach(lines, id: \.axis) { line in
                 row(line)
             }
         }
-        .padding(.horizontal, 12 * scale).padding(.vertical, 10 * scale)
+        .padding(.horizontal, 12 * scale).padding(.vertical, (compact ? 7 : 10) * scale)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10 * scale))
