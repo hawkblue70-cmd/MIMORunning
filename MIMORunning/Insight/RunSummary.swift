@@ -93,7 +93,8 @@ enum RunSummary {
         var line = RunSummaryLine(axis: L.s("러닝폼", "Form"), state: FormPhase.shortState(f),
                                   tone: (f.isHeld || f.isSoftCadenceOnly) ? .good : .neutral)
         line.evidence = formEvidence(f)
-        line.next = formNext(f, isLongDistanceContext: i.isLongDistanceContext)
+        // 거리 적응 줄이 뜨는 러닝(평소 1.3배↑)도 롱런으로 부른다 — 두 줄의 호칭이 어긋나지 않게
+        line.next = formNext(f, isLongDistanceContext: i.isLongDistanceContext || distanceLineApplies(i))
         return line
     }
 

@@ -135,6 +135,15 @@ struct RunSummaryTests {
         #expect(lines(i)[0].next == "다음 러닝은 같은 거리에서 후반 보폭만 지켜보세요.")
     }
 
+    @Test func distanceLineRunIsCalledLongRun() {
+        // 장거리 문맥은 아니지만 거리 적응 줄이 뜨는 러닝(1.4배) → 호칭은 롱런
+        var i = RunSummaryInput()
+        i.form = heavierForm10km()
+        i.isLongDistanceContext = false
+        i.distKm = 10; i.typicalKm = 6.9
+        #expect(lines(i)[0].next == "다음 롱런은 같은 거리에서 후반 보폭만 지켜보세요.")
+    }
+
     // MARK: 거리 적응
 
     @Test func distanceBelow130PercentIsOmitted() {
