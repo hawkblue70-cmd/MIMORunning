@@ -34,6 +34,7 @@ struct RunFormCardView: View {
     var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     var typicalDistanceKm: Double? = nil  // 4주 평균 1회 러닝 거리(km). 장거리 문맥 판단에 사용.
     var heatModel: MRHeatModel? = nil
+    var heatHRModel: MRHeatHRModel? = nil
     var formShifts: [MRFormShift] = []
     /// 이 러닝의 케이던스 잔차(실제 − 페이스 예상값). 추세 문단 마무리("이 러닝도 그 흐름 위에 있어요")에 쓴다.
     var runCadenceResidual: Double? = nil
@@ -835,11 +836,19 @@ struct RunFormCardView: View {
                 if showTrendSection {
                     splitFormTrendSection
                     if let phase = formPhaseResult {
+                        FormPhaseTableView(result: phase)
                         Text(FormPhase.sentence(phase, isLongDistance: isLongDistanceContext))
                             .font(.system(size: 11.5))
                             .foregroundStyle(Color.white.opacity(0.80))
                             .lineSpacing(3)
                             .fixedSize(horizontal: false, vertical: true)
+                        ForEach(FormPhase.relationSentences(phase, heatDeltaBpm: heatHRModel?.delta(activity.temperatureC)), id: \.self) { line in
+                            Text(line)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(Color.white.opacity(0.66))
+                                .lineSpacing(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             }
