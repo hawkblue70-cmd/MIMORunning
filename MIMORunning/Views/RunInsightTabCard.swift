@@ -2696,6 +2696,11 @@ private struct RhythmInsightCard: View {
         input.workoutType = rhythmWorkoutType
         input.isLongDistanceContext = rhythmIsLongDistanceContext
         input.zoneFractions = Dictionary(hrZones.map { ($0.id, $0.fraction) }, uniquingKeysWith: { a, _ in a })
+        let hrTotalFrac = hrZones.map(\.fraction).reduce(0, +)
+        let highZoneFrac = hrTotalFrac > 0 ? hrZones.filter { $0.id >= 4 }.map(\.fraction).reduce(0, +) / hrTotalFrac : 0
+        input.todayIsHard = FormNarrative.isPlannedHighIntensity(rhythmWorkoutType)
+            || highZoneFrac >= 0.5
+            || (effortIndex?.resolve(activity.id)?.value ?? 0) >= 7
         if let idx = effortIndex {
             let runs = effortLoadRuns(activity: activity, history: history, index: idx).runs
             input.weekOverWeek = EffortLoad.rollingWeekOverWeek(runs: runs, asOf: activity.date)

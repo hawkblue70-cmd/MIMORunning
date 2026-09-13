@@ -180,6 +180,18 @@ struct RunSummaryTests {
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good)])
     }
 
+    @Test func distanceRunInZoneThreeIsPlanned() {
+        // Zone 3 우세여도 거리주는 계획된 고강도 유형 — "계획대로 템포 구간"
+        var i = RunSummaryInput(); i.workoutType = .distanceRun; i.zoneFractions = [2: 0.2, 3: 0.66, 4: 0.14]
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "계획대로 템포 구간", tone: .good)])
+    }
+
+    @Test func intervalInZoneThreeIsPlannedHighIntensity() {
+        // 인터벌은 평균 존이 회복 구간에 깎여 Zone 3 우세만으로도 고강도로 본다
+        var i = RunSummaryInput(); i.workoutType = .interval; i.zoneFractions = [2: 0.2, 3: 0.41, 4: 0.3, 5: 0.09]
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good)])
+    }
+
     @Test func zoneTieBreaksToHigherZone() {
         var i = RunSummaryInput(); i.workoutType = .general; i.zoneFractions = [3: 0.45, 4: 0.45, 2: 0.10]
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 90%", tone: .neutral)])
@@ -283,15 +295,6 @@ struct RunSummaryTests {
         #expect(out[4].next == nil)
     }
 
-    @Test func heartRateLongRunCautionWhenDistanceLineAbsent() {
-        // 거리 적응 줄이 안 뜰 때(10km < 평소 9km × 1.3)는 심박 줄이 "장거리라 그렇다"를 직접 말한다
-        var i = RunSummaryInput()
-        i.workoutType = .distanceRun; i.distKm = 10; i.typicalKm = 9
-        i.zoneFractions = [3: 0.3, 4: 0.7]
-        let hr = lines(i).first { $0.axis == "심박" }
-        #expect(hr?.next == "장거리는 후반 심박이 자연히 올라요. 거리를 한 번에 크게 늘리지 마세요.")
-    }
-
     @Test func easyIntentHighHRSuggestsEasyPace() {
         var i = todayInput(); i.workoutType = .easy; i.easyPace = MRHRPaceLookup(paceSec: 400, n: 12, hrLo: 125, hrHi: 135)
         #expect(lines(i)[2].next == "다음 이지런은 Zone 2 상단, 6'40\" 정도로 가 보세요.")
@@ -299,7 +302,22 @@ struct RunSummaryTests {
 
     @Test func restedSuggestsQualitySession() {
         var i = todayInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady; i.loadSentence = nil; i.daysSinceHardRun = 3; i.streakDays = 0
+        i.todayIsHard = false
         #expect(lines(i)[3].next == "충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.")
+    }
+
+    @Test func hardDayNextIsEasyTomorrow() {
+        // 급증/단조/4일+연속이 아닌 날 — 오늘 강도를 냈으면 내일은 이지런이나 휴식
+        var i = todayInput()
+        i.weekOverWeek = 0.05; i.acuteChronic = .steady; i.loadSentence = nil; i.streakDays = 2
+        i.todayIsHard = true
+        #expect(lines(i)[3].next == "오늘 강도를 냈으니 내일은 이지런이나 휴식이 좋아요.")
+    }
+
+    @Test func loadSpikeBeatsHardDay() {
+        // 이번 주 급증(todayInput 기본값)이면 오늘 강도를 냈어도 급증 경고가 우선한다
+        var i = todayInput(); i.todayIsHard = true
+        #expect(lines(i)[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.")
     }
 
     @Test func planRecoveryPhaseOverrides() {

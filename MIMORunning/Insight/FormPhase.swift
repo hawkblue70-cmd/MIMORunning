@@ -144,6 +144,34 @@ enum FormPhase {
         }
     }
 
+    /// 후반 피로 = 평소 범위 밖 + 중반보다 나빠짐. 빨라지면서 범위 아래인 보폭은 피로가 아니다.
+    /// 중반 값이 없으면(판정불가) 밴드 판정만으로(band-only) 그 지표를 피로로 본다.
+    static func lateFatigue(late: Signals, latePhase: PhaseStats, midPhase: PhaseStats) -> [Metric] {
+        var out: [Metric] = []
+        if late.cadence == .below {
+            if let lc = latePhase.cadence, let mc = midPhase.cadence {
+                if lc <= mc - 1 { out.append(.cadence) }
+            } else {
+                out.append(.cadence)
+            }
+        }
+        if late.stride == .below {
+            if let ls = latePhase.stride, let ms = midPhase.stride {
+                if ls <= ms - 0.005 { out.append(.stride) }
+            } else {
+                out.append(.stride)
+            }
+        }
+        if late.groundContact == .above {
+            if let lg = latePhase.groundContact, let mg = midPhase.groundContact {
+                if lg >= mg + 2 { out.append(.groundContact) }
+            } else {
+                out.append(.groundContact)
+            }
+        }
+        return out
+    }
+
     static func signals(_ p: PhaseStats, _ band: BandStats?) -> Signals {
         Signals(cadence: FormNarrative.status(rawValue: p.cadence, stat: band?.cadence, metric: .cadence),
                 stride: FormNarrative.status(rawValue: p.stride, stat: band?.stride, metric: .stride),
@@ -172,13 +200,16 @@ enum FormPhase {
                   let a = m.verticalRatio, let b = l.verticalRatio else { return false }
             return vb - va >= verticalOscDeltaCm && b - a >= verticalRatioDeltaPct
         }()
+        let lateFatigueSet = lateFatigue(late: lS, latePhase: l, midPhase: m)
+        let strideWorse = lateFatigueSet.contains(.stride)
+        let groundContactWorse = lateFatigueSet.contains(.groundContact)
         let late: Late
-        if slowedLate, lS.stride == .below, lS.groundContact != .above, lS.cadence == .inRange || lS.cadence == .above {
+        if slowedLate, strideWorse, !groundContactWorse, lS.cadence == .inRange || lS.cadence == .above {
             late = .cadenceDefended
-        } else if lS.stride == .below, ratioUp, lS.groundContact != .above {
+        } else if strideWorse, ratioUp, !groundContactWorse {
             late = .bouncier
-        } else if !lS.fatigue.isEmpty {
-            late = .heavier(lS.fatigue + (ratioUp ? [.verticalOsc] : []))
+        } else if !lateFatigueSet.isEmpty {
+            late = .heavier(lateFatigueSet + (ratioUp ? [.verticalOsc] : []))
         } else {
             late = .held
         }

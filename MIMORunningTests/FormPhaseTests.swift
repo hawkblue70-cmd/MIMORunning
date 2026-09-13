@@ -156,6 +156,23 @@ struct FormPhaseTests {
         #expect(classify(s)?.late == .heavier([.stride, .groundContact, .verticalOsc]))
     }
 
+    @Test func lateBelowBandButImprovedVsMidIsHeld() {
+        // 중반(4~7) 385초/km·보폭0.90, 후반(8~10) 372초/km·보폭0.91 — 빨라지면서 보폭도 오름.
+        // 후반 페이스(<380)만 좁은 보폭 밴드(0.95±0.012)를 쓰게 해 밴드상 "아래"로 잡히게 하되,
+        // 중반보다는 보폭이 늘었으므로 피로가 아니다 → held
+        let tightStrideBand = FormPhase.BandStats(cadence: stat(175, sd: 3), stride: stat(0.95, sd: 0.01), groundContact: stat(255, sd: 8))
+        let s = (1...3).map { split($0) }
+            + (4...7).map { split($0, pace: 385, sl: 0.90) }
+            + (8...10).map { split($0, pace: 372, sl: 0.91) }
+        let r = FormPhase.classify(splits: s, bandFor: { pace in pace < 380 ? tightStrideBand : band })
+        #expect(r?.late == .held)
+    }
+
+    @Test func lateBelowBandAndWorseVsMidIsHeavier() {
+        let s = (1...7).map { split($0) } + (8...10).map { split($0, sl: 0.85) }
+        #expect(classify(s)?.late == .heavier([.stride]))
+    }
+
     // MARK: 초기·중기 패턴
 
     @Test func earlyOffRangeThenInRangeIsWarmup() {

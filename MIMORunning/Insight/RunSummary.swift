@@ -30,6 +30,9 @@ struct RunSummaryInput {
     var heatDeltaBpm: Double? = nil
     /// 롱런/LSD 같은 장거리 문맥인가 — 폼 다음 행동 문구가 "다음 롱런은"/"다음 러닝은"을 고를 때 쓴다.
     var isLongDistanceContext: Bool = false
+    /// 오늘 강도를 냈는가(계획된 고강도 유형 · Zone 4+ 절반 이상 · 체감강도 7+) — 훈련부하 다음 행동에서
+    /// "내일은 이지런이나 휴식" 제안에 쓴다. 급증/단조/4일+연속 경고가 있으면 그쪽이 우선.
+    var todayIsHard: Bool = false
 
     // MARK: 근거·다음용 — 모두 옵셔널, 없으면 해당 근거·다음 절만 생략
 
@@ -68,9 +71,6 @@ enum RunSummary {
     static let vo2DeltaEvidenceMin = 0.05
     // 거리주(레이스페이스 장거리)는 빠른 게 정의라 이지 의도로 판정하지 않는다
     static let easyIntentTypes: Set<WorkoutType> = [.easy, .longRun, .lsd]
-    /// 후반 심박 상승이 "장거리라 그렇다"로 설명되는 유형 — `isPlannedHighIntensity`와 겹치는 것만 의미가 있다.
-    /// 롱런·LSD는 애초에 `isPlannedHighIntensity`가 아니라 이 분기에 도달하지 않으므로 거리주만 남긴다.
-    static let longDistanceTypes: Set<WorkoutType> = [.distanceRun]
 
     /// VO2max 등급 — 리듬 카드 게이지 캡션과 같은 경계.
     static func vo2Level(_ vo2: Double) -> (index: Int, name: String) {
@@ -252,7 +252,15 @@ enum RunSummary {
                 switch dom {
                 case 1: line = RunSummaryLine(axis: axis, state: L.s("가벼운 회복 강도", "Light recovery"), tone: .good)
                 case 2: line = RunSummaryLine(axis: axis, state: L.s("딱 좋은 강도", "Just right"), tone: .good)
-                case 3: line = RunSummaryLine(axis: axis, state: L.s("템포 구간에 머묾", "Stayed in tempo zone"), tone: .neutral)
+                case 3:
+                    if i.workoutType == .interval {
+                        // 인터벌은 평균 존이 회복 구간에 깎여 나가므로 Zone 3 우세만으로도 계획대로 고강도로 본다
+                        line = RunSummaryLine(axis: axis, state: L.s("계획대로 고강도", "High intensity, as planned"), tone: .good)
+                    } else if FormNarrative.isPlannedHighIntensity(i.workoutType) {
+                        line = RunSummaryLine(axis: axis, state: L.s("계획대로 템포 구간", "Tempo zone, as planned"), tone: .good)
+                    } else {
+                        line = RunSummaryLine(axis: axis, state: L.s("템포 구간에 머묾", "Stayed in tempo zone"), tone: .neutral)
+                    }
                 default:
                     line = FormNarrative.isPlannedHighIntensity(i.workoutType)
                         ? RunSummaryLine(axis: axis, state: L.s("계획대로 고강도", "High intensity, as planned"), tone: .good)
@@ -264,13 +272,7 @@ enum RunSummary {
         }
 
         var next: String? = nil
-        if FormNarrative.isPlannedHighIntensity(i.workoutType) {
-            // 거리 적응 줄이 이미 "장거리라 그렇다"를 말했으면 심박 줄이 중복해서 말하지 않는다
-            if longDistanceTypes.contains(i.workoutType), !distanceLineApplies(i) {
-                next = L.s("장거리는 후반 심박이 자연히 올라요. 거리를 한 번에 크게 늘리지 마세요.",
-                          "Heart rate naturally climbs late in a long run — don't jump the distance all at once.")
-            }
-        } else if isEasyHighBranch {
+        if isEasyHighBranch {
             if let pace = i.easyPace {
                 next = L.s("다음 이지런은 Zone 2 상단, \(mrFormatPace(pace.paceSec)) 정도로 가 보세요.",
                           "On your next easy run, aim for the top of Zone 2 — around \(mrFormatPace(pace.paceSec)).")
@@ -358,6 +360,10 @@ enum RunSummary {
         if jumped || i.loadSentence == .monotony || i.streakDays >= 4 {
             return L.s("다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.",
                       "Take a 30–40 min recovery run or rest for the next day or two.")
+        }
+        if i.todayIsHard {
+            return L.s("오늘 강도를 냈으니 내일은 이지런이나 휴식이 좋아요.",
+                      "You went hard today — make tomorrow an easy run or a rest day.")
         }
         // 결정 2: 부하 자료(4주 평균 대비 or 7일 AU) 없이는 "충분히 회복됐다"고 말하지 않는다 — 마지막 고강도 이후
         // 며칠 지났는지만으로는 근거가 얕다.
