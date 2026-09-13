@@ -435,6 +435,51 @@ struct FormPhaseTests {
         #expect(received.allSatisfy { abs($0 - 300) < 0.001 })
     }
 
+    @Test func perPhaseScaleAffectsBandLookup() {
+        // paceScales(early: 0.9, mid: 1.0, late: 1.0) — 초기만 배율이 걸려야 한다
+        var received: [Double] = []
+        let s = (1...10).map { split($0, pace: 375) }
+        _ = FormPhase.classify(splits: s, paceScales: (early: 0.9, mid: 1.0, late: 1.0), bandFor: { pace in
+            received.append(pace)
+            return band
+        })
+        #expect(received.count == 3)
+        #expect(abs(received[0] - 337.5) < 0.001, "초기 페이스에만 0.9가 곱해져야 한다")
+        #expect(abs(received[1] - 375) < 0.001, "중기는 배율 1.0 그대로")
+        #expect(abs(received[2] - 375) < 0.001, "말기는 배율 1.0 그대로")
+    }
+
+    // MARK: 단계별 GAP 배율 (phasePaceScales)
+
+    /// 총 거리 km, 고도가 climbEndKm까지 0→climbM으로 오른 뒤 평지로 이어지는 프로파일
+    /// (GradeAdjustedPaceTests의 `profile(km:from:to:)`와 같은 방식의 픽스처, 여기선 절반만 오르막).
+    private func climbThenFlatProfile(totalKm: Double = 10, climbEndKm: Double = 5, climbM: Double = 100)
+        -> [(distanceKm: Double, altitude: Double)] {
+        let points = 120
+        return (0...points).map { i in
+            let km = totalKm * Double(i) / Double(points)
+            let alt = km <= climbEndKm ? climbM * (km / climbEndKm) : climbM
+            return (distanceKm: km, altitude: alt)
+        }
+    }
+
+    @Test func phaseScalesAreOneWithoutProfile() {
+        let s = (1...10).map { split($0, pace: 375) }
+        let scales = FormPhase.phasePaceScales(splits: s, altitudeProfile: [])
+        #expect(scales.early == 1.0)
+        #expect(scales.mid == 1.0)
+        #expect(scales.late == 1.0)
+    }
+
+    @Test func uphillFirstHalfGetsSmallerEarlyScale() {
+        // 10km, 처음 5km 100m 상승 후 평지 — 초기(0~3km)는 오르막 안, 말기(7~10km)는 평지
+        let s = (1...10).map { split($0, pace: 375) }
+        let scales = FormPhase.phasePaceScales(splits: s, altitudeProfile: climbThenFlatProfile())
+        #expect(scales.early < 1.0, "오르막 구간의 배율은 1보다 작아야(GAP이 더 빠름) 한다")
+        #expect(abs(scales.late - 1.0) < 0.02, "말기는 평지이니 배율이 거의 1")
+        #expect(scales.early < scales.late)
+    }
+
     @Test func accelerationBelowTwentySecondsHasNoMidPattern() {
         // 15초 차이 — 후반 둔화 문턱(10초)은 넘지만 가속 문턱(20초)엔 못 미친다
         let s = (1...3).map { split($0, pace: 390, sl: 0.88) } + (4...10).map { split($0, pace: 375, sl: 0.94) }

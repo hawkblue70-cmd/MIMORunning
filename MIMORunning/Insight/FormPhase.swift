@@ -158,6 +158,39 @@ enum FormPhase {
         return (early, mid, late)
     }
 
+    /// 단계별 GAP 보정 계수 — `phases(splits)`로 각 단계의 startKm..endKm을 구하고, 그 구간에 걸친
+    /// `GradeAdjustedPace.gradeSegments`의 계수를 거리로 가중 평균한다(겹치는 길이만큼, `compute`와 같은 방식).
+    /// 오르막 구간일수록 계수 < 1(GAP이 더 빠름) — `GradeAdjustedPace.factor(grade:)`와 같은 부호.
+    /// 오르막이 한쪽 절반에 몰린 코스에서 전체 평균(≈1)으로 그 구간의 밴드를 잘못 조회하는 걸 막는다.
+    /// 세그먼트가 2개 미만이거나 고도 프로파일이 없으면(판정불가) 그 단계는 1.0. 결과는 [0.7, 1.3]으로 clamp.
+    static func phasePaceScales(splits: [SplitData], altitudeProfile: [(distanceKm: Double, altitude: Double)])
+        -> (early: Double, mid: Double, late: Double) {
+        guard let p = phases(splits) else { return (1, 1, 1) }
+        let segments = GradeAdjustedPace.gradeSegments(from: altitudeProfile)
+        guard !segments.isEmpty else { return (1, 1, 1) }
+
+        func scale(startKm: Double, endKm: Double) -> Double {
+            let startM = startKm * 1000, endM = endKm * 1000
+            var weighted = 0.0
+            var covered = 0.0
+            var segCount = 0
+            for seg in segments {
+                let lo = max(seg.start, startM)
+                let hi = min(seg.end, endM)
+                guard hi > lo else { continue }
+                weighted += seg.factor * (hi - lo)
+                covered += hi - lo
+                segCount += 1
+            }
+            guard segCount >= 2, covered > 0 else { return 1.0 }
+            return min(max(weighted / covered, 0.7), 1.3)
+        }
+
+        return (scale(startKm: p.early.startKm, endKm: p.early.endKm),
+                scale(startKm: p.mid.startKm, endKm: p.mid.endKm),
+                scale(startKm: p.late.startKm, endKm: p.late.endKm))
+    }
+
     // MARK: - 판정
 
     struct Signals: Equatable {
@@ -210,17 +243,21 @@ enum FormPhase {
     }
 
     /// - Parameters:
-    ///   - paceScale: GAP ÷ 실측 평균 페이스 (전체 러닝 기준). 밴드 조회에만 곱한다 — 단계 간 페이스 차이 판정은 실측 그대로.
+    ///   - paceScales: 단계별 GAP ÷ 실측 페이스 (`phasePaceScales`). 밴드 조회에만 곱한다 — 단계 간 페이스 차이 판정은 실측 그대로.
     ///   - bandFor: 단계 페이스(sec/km, GAP 보정됨) → 그 구간의 평소 범위. 구간 밖·판정불가면 nil.
     ///   - easyFrame: 이지 프레임(`FormNarrative.frame(for:) == .easy`)에서 판정 중인가 — `Result.isEasyFrame`으로 그대로 전달.
-    static func classify(splits: [SplitData], paceScale: Double = 1.0, easyFrame: Bool = false,
-                         bandFor: (Double) -> BandStats?) -> Result? {
+    /// `paceScales`엔 기본값을 두지 않는다 — 두면 아래 편의 오버로드(`paceScale:`)와 동시에 기본값으로
+    /// 매칭돼 둘 다 생략한 호출("classify(splits:bandFor:)")이 모호(ambiguous)해진다.
+    static func classify(splits: [SplitData], paceScales: (early: Double, mid: Double, late: Double),
+                        easyFrame: Bool = false, bandFor: (Double) -> BandStats?) -> Result? {
         guard let p = phases(splits) else { return nil }
-        let scale = paceScale > 0 ? paceScale : 1.0
+        let eScale = paceScales.early > 0 ? paceScales.early : 1.0
+        let mScale = paceScales.mid > 0 ? paceScales.mid : 1.0
+        let lScale = paceScales.late > 0 ? paceScales.late : 1.0
         let e = p.early, m = p.mid, l = p.late
-        let eS = signals(e, bandFor(e.paceSecPerKm * scale))
-        let mS = signals(m, bandFor(m.paceSecPerKm * scale))
-        let lS = signals(l, bandFor(l.paceSecPerKm * scale))
+        let eS = signals(e, bandFor(e.paceSecPerKm * eScale))
+        let mS = signals(m, bandFor(m.paceSecPerKm * mScale))
+        let lS = signals(l, bandFor(l.paceSecPerKm * lScale))
         guard lS.knownCount >= 2 else { return nil }
 
         // 말기
@@ -277,6 +314,12 @@ enum FormPhase {
                       isEasyFrame: easyFrame)
     }
 
+    /// 세 단계에 같은 배율을 쓰는 편의 오버로드 — 기존 단일 스케일 호출부·테스트가 그대로 동작한다.
+    static func classify(splits: [SplitData], paceScale: Double = 1.0, easyFrame: Bool = false,
+                        bandFor: (Double) -> BandStats?) -> Result? {
+        classify(splits: splits, paceScales: (paceScale, paceScale, paceScale), easyFrame: easyFrame, bandFor: bandFor)
+    }
+
     // MARK: - 기준선 → 단계 범위
 
     /// 단계 페이스가 속한 구간의 평소 범위. 구간 밖이거나 표본 부족(판정불가)이면 nil.
@@ -294,8 +337,10 @@ enum FormPhase {
 
     /// 폼 카드·리듬 카드가 **이 함수 하나만** 쓴다 — 같은 러닝은 두 카드에서 같은 판정이어야 한다.
     /// - 인터벌 제외 · 기준선 없으면 nil
-    /// - 밴드 조회 페이스 = 실측 × (GAP ÷ 실측): 기준선 밴드가 GAP 기준이라서
-    /// - GAP 페이스가 어느 구간에도 없으면(참고 밴드) 판정하지 않는다
+    /// - 밴드 조회 페이스 = 실측 × 단계별 GAP 배율(`phasePaceScales`): 기준선 밴드가 GAP 기준이라서.
+    ///   오르막이 코스 한쪽 절반에 몰리면 전체 평균 배율(≈1)로는 그 구간을 잘못된 밴드에서 조회하게 되므로
+    ///   단계마다 그 구간의 배율을 따로 낸다.
+    /// - 전체 GAP 페이스가 어느 구간에도 없으면(참고 밴드) 판정하지 않는다 — 이 사전 판정은 러닝 전체 기준.
     static func result(splits: [SplitData],
                        altitudeProfile: [(distanceKm: Double, altitude: Double)],
                        baseline: RunningFormBaseline?,
@@ -307,13 +352,11 @@ enum FormPhase {
         let dur = full.map(\.duration).reduce(0, +)
         guard distKm > 0, dur > 0 else { return nil }
         let raw = dur / distKm
-        let scale: Double = {
-            guard let gap = GradeAdjustedPace.compute(splits: splits, altitudeProfile: altitudeProfile) else { return 1.0 }
-            return gap / raw
-        }()
-        guard bl.cutoffs.band(of: raw * scale) != nil else { return nil }
+        let gapPace = GradeAdjustedPace.compute(splits: splits, altitudeProfile: altitudeProfile) ?? raw
+        guard bl.cutoffs.band(of: gapPace) != nil else { return nil }
         let gctShift = formShifts.first(where: { $0.metric.key == "gct" })
-        return classify(splits: full, paceScale: scale, easyFrame: FormNarrative.frame(for: workoutType) == .easy,
+        let scales = phasePaceScales(splits: full, altitudeProfile: altitudeProfile)
+        return classify(splits: full, paceScales: scales, easyFrame: FormNarrative.frame(for: workoutType) == .easy,
                         bandFor: { pace in
             bandStats(in: bl, paceSecPerKm: pace, gctShift: gctShift)
         })
