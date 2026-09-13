@@ -241,7 +241,10 @@ enum FormPhase {
         }
 
         var koS = ko.joined(separator: ", ") + "."
-        var enS = en.joined(separator: ", ") + "."
+        let enJoined = en.count > 1
+            ? en.dropLast().joined(separator: ", ") + ", and " + en[en.count - 1]
+            : (en.first ?? "")
+        var enS = enJoined + "."
         enS = String(enS.prefix(1)).uppercased() + enS.dropFirst()
         if isLongDistance, r.late != .held {
             let d = String(format: "%.0f", r.totalKm)

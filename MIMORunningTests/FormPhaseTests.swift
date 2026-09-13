@@ -208,6 +208,11 @@ struct FormPhaseTests {
         #expect(ko(r) == "처음 4km는 몸을 풀고, 중반엔 보폭으로 속도를 냈고, 끝까지 폼을 유지했어요.")
     }
 
+    @Test func englishThreeClausesUseAnd() {
+        let r = result(early: .warmup, mid: .strideDriven, late: .held)
+        #expect(en(r) == "The first 4 km were a warm-up, you sped up mid-run with a longer stride, and your form held to the finish.")
+    }
+
     @Test func heavierListsSignalsWithLastKm() {
         let r = result(late: .heavier([.stride, .groundContact]))
         #expect(ko(r) == "마지막 4km엔 보폭이 줄고 접지가 길어졌어요.")
