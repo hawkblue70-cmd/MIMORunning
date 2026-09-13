@@ -30,14 +30,14 @@ struct RunSummaryTests {
         FormPhase.BandStats(cadence: stat(175, sd: 3), stride: stat(0.92, sd: 0.03), groundContact: stat(255, sd: 8))
     }
 
-    private func split(_ id: Int, sl: Double? = 0.92, gct: Double? = 255) -> SplitData {
+    private func split(_ id: Int, cad: Int? = 175, sl: Double? = 0.92, gct: Double? = 255) -> SplitData {
         SplitData(id: id, distanceM: 1000, duration: 375,
-                  avgHeartRate: 150, avgCadence: 175, avgPower: nil,
+                  avgHeartRate: 150, avgCadence: cad, avgPower: nil,
                   avgGroundContactTime: gct, avgStrideLength: sl, avgVerticalOscillation: 8.4)
     }
 
-    private func classify(_ splits: [SplitData]) -> FormPhase.Result? {
-        FormPhase.classify(splits: splits, bandFor: { _ in band })
+    private func classify(_ splits: [SplitData], bandFor: @escaping (Double) -> FormPhase.BandStats? = { _ in nil }) -> FormPhase.Result? {
+        FormPhase.classify(splits: splits, bandFor: { pace in bandFor(pace) ?? self.band })
     }
 
     /// 16km 러닝, 폼 전 구간 평소 범위(.held) — 후반은 splits 12~16(마지막 5km).
@@ -51,7 +51,20 @@ struct RunSummaryTests {
         return classify(splits)!
     }
 
+    /// 10km 러닝, 후반(splits 8~10) 케이던스만 평소 범위 아래 → .heavier([.cadence]) — 첫 지표가 케이던스.
+    private func heavierFormCadence10km() -> FormPhase.Result {
+        let splits = (1...7).map { split($0) } + (8...10).map { split($0, cad: 166) }
+        return classify(splits)!
+    }
+
+    /// 16km 러닝, 기준선에 케이던스 기준이 없어(.unknown) 케이던스만 판정 불가 — 나머지는 평소 범위 안(.held).
+    private func heldFormUnknownCadence16km() -> FormPhase.Result {
+        let bandNoCadence = FormPhase.BandStats(cadence: nil, stride: stat(0.92, sd: 0.03), groundContact: stat(255, sd: 8))
+        return classify((1...16).map { split($0) }, bandFor: { _ in bandNoCadence })!
+    }
+
     private func todayInput() -> RunSummaryInput {
+        AppLanguage.shared.isEnglish = false
         var i = RunSummaryInput()
         i.form = heldForm16km()
         i.distKm = 16; i.typicalKm = 7.6
@@ -235,12 +248,22 @@ struct RunSummaryTests {
         #expect(out[0].next == nil)
         #expect(out[1].evidence == "평소 7.6km · 최근 10회 중 가장 긴 거리")
         #expect(out[1].next == "이 거리는 2~3주 유지한 뒤 늘리세요. 롱런은 한 번에 평소의 1.3배 안에서.")
-        #expect(out[2].evidence == "Zone 4 62% · 평균 149 · 후반 157까지 · 25°C(더위 +8)")
-        #expect(out[2].next == "장거리는 후반 심박이 자연히 올라요. 거리를 한 번에 크게 늘리지 마세요.")
+        #expect(out[2].evidence == "Zone 4 62% · 평균 149 · 최고 157 · 25°C(더위 +8)")
+        // 거리 적응 줄이 이미 "장거리라 그렇다"를 말했으므로(거리 16km ≥ 평소 7.6km × 1.3) 심박 줄은 중복해서 말하지 않는다
+        #expect(out[2].next == nil)
         #expect(out[3].evidence == "7일 1,783 AU · 이전 7일 1,149 · 4일 연속")
         #expect(out[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.")
         #expect(out[4].evidence == "VO2max 45.4 · 8주 전 대비 +0.8")
         #expect(out[4].next == nil)
+    }
+
+    @Test func heartRateLongRunCautionWhenDistanceLineAbsent() {
+        // 거리 적응 줄이 안 뜰 때(10km < 평소 9km × 1.3)는 심박 줄이 "장거리라 그렇다"를 직접 말한다
+        var i = RunSummaryInput()
+        i.workoutType = .distanceRun; i.distKm = 10; i.typicalKm = 9
+        i.zoneFractions = [3: 0.3, 4: 0.7]
+        let hr = lines(i).first { $0.axis == "심박" }
+        #expect(hr?.next == "장거리는 후반 심박이 자연히 올라요. 거리를 한 번에 크게 늘리지 마세요.")
     }
 
     @Test func easyIntentHighHRSuggestsEasyPace() {
@@ -258,9 +281,32 @@ struct RunSummaryTests {
         #expect(lines(i)[3].next == "플랜상 회복 주예요. 이지런 위주로 가세요.")
     }
 
+    @Test func planTaperPhaseOverrides() {
+        var i = todayInput(); i.planPhase = "테이퍼"
+        #expect(lines(i)[3].next == "플랜상 테이퍼 주예요. 이지런 위주로 가세요.")
+    }
+
+    @Test func restedNeedsLoadData() {
+        // 결정 2: 4주 평균 대비(acuteChronic)도 7일 AU도 없으면 "충분히 회복됐다"고 말하지 않는다
+        var i = todayInput()
+        i.weekOverWeek = nil; i.acuteChronic = nil; i.sevenDayAU = nil; i.previousSevenAU = nil
+        i.loadSentence = nil; i.daysSinceHardRun = 3; i.streakDays = 3
+        #expect(lines(i)[3].next != "충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.")
+    }
+
     @Test func heavierFormSuggestsWatchingLateStride() {
         var i = todayInput(); i.form = heavierForm10km()
         #expect(lines(i)[0].next == "다음 롱런은 같은 거리에서 후반 보폭만 지켜보세요.")
         #expect(lines(i)[0].evidence == "케이던스 175 유지 · 마지막 3km 보폭 0.85 범위 아래 · 접지 272 범위 위")
+    }
+
+    @Test func heavierCadenceSuggestsWatchingCadence() {
+        var i = todayInput(); i.form = heavierFormCadence10km()
+        #expect(lines(i)[0].next == "다음 롱런은 같은 거리에서 후반 케이던스만 지켜보세요.")
+    }
+
+    @Test func unknownCadenceIsNotReported() {
+        var i = RunSummaryInput(); i.form = heldFormUnknownCadence16km()
+        #expect(lines(i).first?.evidence == "마지막 5km 보폭 0.92 범위 안 · 접지 255 범위 안")
     }
 }

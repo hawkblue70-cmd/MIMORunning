@@ -58,15 +58,17 @@ enum RunSummary {
     static let easyHighZoneFrac = 0.50
     static let loadJumpMin = 0.30
     /// 존 캡션 더위 보정 표기 임계값(bpm) — 존 캡션·근거 줄이 공유해서 쓴다. 총평 상태어에는 붙이지 않는다.
-    /// 문장 단위 "기온 감안" 임계값(3bpm)은 별개 — `MRHeatHRModel.explainThresholdBpm` 참고.
     static let heatNoteMinBpm = 5.0
-    /// 심박 근거 줄에서 "(더위 +N)"을 붙이는 문턱(bpm)
-    static let heatEvidenceMinBpm = 3.0
+    /// 심박 근거 줄에서 "(더위 +N)"을 붙이는 문턱(bpm) — 문장 단위 "기온 감안" 임계값과 같다.
+    static let heatEvidenceMinBpm = MRHeatHRModel.explainThresholdBpm
     static let vo2Bounds: [Double] = [15, 26, 33, 41, 57]
+    /// VO2max 8주 전 대비 근거 절을 붙이는 최소 변화폭 — 이보다 작으면 잡음으로 보고 생략
+    static let vo2DeltaEvidenceMin = 0.05
     // 거리주(레이스페이스 장거리)는 빠른 게 정의라 이지 의도로 판정하지 않는다
     static let easyIntentTypes: Set<WorkoutType> = [.easy, .longRun, .lsd]
-    /// 장거리류 — 후반 심박 상승이 자연스러운 유형(다음 행동 문구가 다르다)
-    static let longDistanceTypes: Set<WorkoutType> = [.distanceRun, .longRun, .lsd]
+    /// 후반 심박 상승이 "장거리라 그렇다"로 설명되는 유형 — `isPlannedHighIntensity`와 겹치는 것만 의미가 있다.
+    /// 롱런·LSD는 애초에 `isPlannedHighIntensity`가 아니라 이 분기에 도달하지 않으므로 거리주만 남긴다.
+    static let longDistanceTypes: Set<WorkoutType> = [.distanceRun]
 
     /// VO2max 등급 — 리듬 카드 게이지 캡션과 같은 경계.
     static func vo2Level(_ vo2: Double) -> (index: Int, name: String) {
@@ -92,6 +94,7 @@ enum RunSummary {
         return line
     }
 
+    /// 모르는 지표는 말하지 않는다 — 값이 있어도 판정 신호가 `.unknown`(기준선 없음)이면 그 절은 생략.
     private static func formEvidence(_ f: FormPhase.Result) -> String? {
         let L = AppLanguage.shared
         let late = f.phases.late
@@ -99,23 +102,30 @@ enum RunSummary {
         let lateKm = Int((f.totalKm - f.lateStartKm).rounded())
         var pieces: [String] = []
 
-        if let cad = late.cadence {
+        if let cad = late.cadence, sig.cadence != .unknown {
             let held: Bool
             switch sig.cadence {
             case .inRange, .above: held = true
-            default: held = false
+            default: held = false   // .below
             }
             let n = Int(cad.rounded())
             pieces.append(L.s(held ? "케이던스 \(n) 유지" : "케이던스 \(n) 내려감",
                               held ? "cadence held at \(n)" : "cadence dropped to \(n)"))
         }
-        if let sl = late.stride {
-            let inRange = sig.stride != .below
+        if let sl = late.stride, sig.stride != .unknown {
             let s = String(format: "%.2f", sl)
-            pieces.append(L.s(inRange ? "마지막 \(lateKm)km 보폭 \(s) 범위 안" : "마지막 \(lateKm)km 보폭 \(s) 범위 아래",
-                              inRange ? "stride \(s) in range over the last \(lateKm) km" : "stride \(s) below range over the last \(lateKm) km"))
+            switch sig.stride {
+            case .inRange:
+                pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위 안", "stride \(s) in range over the last \(lateKm) km"))
+            case .above:
+                pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위 위", "stride \(s) above range over the last \(lateKm) km"))
+            case .below:
+                pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위 아래", "stride \(s) below range over the last \(lateKm) km"))
+            case .unknown:
+                break
+            }
         }
-        if let gct = late.groundContact {
+        if let gct = late.groundContact, sig.groundContact != .unknown {
             let inRange = sig.groundContact != .above
             let n = Int(gct.rounded())
             pieces.append(L.s(inRange ? "접지 \(n) 범위 안" : "접지 \(n) 범위 위",
@@ -124,28 +134,49 @@ enum RunSummary {
         return pieces.isEmpty ? nil : pieces.joined(separator: " · ")
     }
 
+    /// `.heavier`는 피로 방향으로 처음 벗어난 지표(순서 고정: 케이던스 → 보폭 → 접지)만 짚어 다음 행동을 준다 —
+    /// 안 무너진 지표까지 지켜보라고 하면 산만해진다.
     private static func formNext(_ f: FormPhase.Result) -> String? {
         let L = AppLanguage.shared
         switch f.late {
         case .held:
             return nil
-        case .heavier, .cadenceDefended:
+        case .heavier(let metrics):
+            switch metrics.first {
+            case .cadence:
+                return L.s("다음 롱런은 같은 거리에서 후반 케이던스만 지켜보세요.",
+                          "Keep the distance the same on your next long run and watch your late-run cadence.")
+            case .groundContact:
+                return L.s("다음 롱런은 같은 거리에서 후반 접지만 지켜보세요.",
+                          "Keep the distance the same on your next long run and watch your late-run ground contact.")
+            default: // .stride, .verticalOsc, 또는 비어 있을 때(이론상 없음)의 안전한 기본값
+                return L.s("다음 롱런은 같은 거리에서 후반 보폭만 지켜보세요.",
+                          "Keep the distance the same on your next long run and watch your late-run stride.")
+            }
+        case .cadenceDefended:
             return L.s("다음 롱런은 같은 거리에서 후반 보폭만 지켜보세요.",
-                      "On your next long run, watch your late-run stride at the same distance.")
+                      "Keep the distance the same on your next long run and watch your late-run stride.")
         case .bouncier:
             return L.s("다음 롱런은 같은 거리에서 후반 위아래 움직임만 지켜보세요.",
-                      "On your next long run, watch your late-run vertical motion at the same distance.")
+                      "Keep the distance the same on your next long run and watch your late-run vertical motion.")
         }
     }
 
+    /// 거리 적응 줄이 뜨는 조건 — 심박 줄의 "장거리라 그렇다" 다음 문구를 생략할지 판단할 때도 같이 쓴다
+    /// (거리 줄이 이미 그 말을 했으면 심박 줄이 중복해서 말하지 않는다).
+    private static func distanceLineApplies(_ i: RunSummaryInput) -> Bool {
+        guard let t = i.typicalKm, t > 0 else { return false }
+        return i.distKm >= t * distanceRatioMin
+    }
+
     private static func distanceLine(_ i: RunSummaryInput) -> RunSummaryLine? {
-        guard let t = i.typicalKm, t > 0, i.distKm >= t * distanceRatioMin else { return nil }
+        guard distanceLineApplies(i), let t = i.typicalKm, t > 0 else { return nil }
         let L = AppLanguage.shared
         let ratio = String(format: "%.1f", i.distKm / t)
         let axis = L.s("거리 적응", "Distance")
 
         let typicalStr = String(format: "%.1f", t)
-        var evidence = L.s("평소 \(typicalStr)km", "usually \(typicalStr) km")
+        var evidence = L.s("평소 \(typicalStr)km", "usual \(typicalStr) km")
         if let rank = i.distanceRank, let n = i.distanceSampleCount {
             if rank == 1 {
                 evidence += L.s(" · 최근 \(n)회 중 가장 긴 거리", " · longest of the last \(n)")
@@ -181,16 +212,18 @@ enum RunSummary {
         guard let dom = visible.max(by: { ($0.value, $0.key) < ($1.value, $1.key) })?.key else { return nil }
         let domPct = Int((frac(dom) * 100).rounded())
 
-        var evidence = L.s("Zone \(dom) \(domPct)%", "Zone \(dom) \(domPct)%")
+        // "Zone N X%"·"· T°C"는 로케일과 무관 — L.s 없이 그대로 쓴다(no-op 래핑 금지)
+        var evidence = "Zone \(dom) \(domPct)%"
         if let avg = i.avgHeartRate {
             evidence += L.s(" · 평균 \(avg)", " · avg \(avg)")
+            // 러닝 전체 최고 심박 — "후반"이 아니라 실측 최고치 그 자체를 말한다
             if let peak = i.peakHeartRate, peak > avg {
-                evidence += L.s(" · 후반 \(peak)까지", " · up to \(peak) late")
+                evidence += L.s(" · 최고 \(peak)", " · peak \(peak)")
             }
         }
         if let t = i.temperatureC {
             let tInt = Int(t.rounded())
-            var piece = L.s(" · \(tInt)°C", " · \(tInt)°C")
+            var piece = " · \(tInt)°C"
             if let heat = i.heatDeltaBpm, heat >= heatEvidenceMinBpm {
                 let n = Int(heat.rounded())
                 piece += L.s("(더위 +\(n))", " (heat +\(n))")
@@ -229,16 +262,17 @@ enum RunSummary {
 
         var next: String? = nil
         if FormNarrative.isPlannedHighIntensity(i.workoutType) {
-            if longDistanceTypes.contains(i.workoutType) {
+            // 거리 적응 줄이 이미 "장거리라 그렇다"를 말했으면 심박 줄이 중복해서 말하지 않는다
+            if longDistanceTypes.contains(i.workoutType), !distanceLineApplies(i) {
                 next = L.s("장거리는 후반 심박이 자연히 올라요. 거리를 한 번에 크게 늘리지 마세요.",
                           "Heart rate naturally climbs late in a long run — don't jump the distance all at once.")
             }
         } else if isEasyHighBranch {
             if let pace = i.easyPace {
                 next = L.s("다음 이지런은 Zone 2 상단, \(mrFormatPace(pace.paceSec)) 정도로 가 보세요.",
-                          "Try the top of Zone 2 next easy run, around \(mrFormatPace(pace.paceSec)).")
+                          "On your next easy run, aim for the top of Zone 2 — around \(mrFormatPace(pace.paceSec)).")
             } else {
-                next = L.s("다음 이지런은 Zone 2 상단으로 가 보세요.", "Try the top of Zone 2 next easy run.")
+                next = L.s("다음 이지런은 Zone 2 상단으로 가 보세요.", "On your next easy run, aim for the top of Zone 2.")
             }
         }
 
@@ -299,7 +333,7 @@ enum RunSummary {
         }
         var e = L.s("7일 \(groupedInt(au)) AU", "7-day \(groupedInt(au)) AU")
         if let prev = i.previousSevenAU {
-            e += L.s(" · 이전 7일 \(groupedInt(prev))", " · prior 7-day \(groupedInt(prev))")
+            e += L.s(" · 이전 7일 \(groupedInt(prev))", " · previous 7 days \(groupedInt(prev)) AU")
         }
         if i.streakDays >= 3 {
             e += L.s(" · \(i.streakDays)일 연속", " · \(i.streakDays) days in a row")
@@ -307,18 +341,26 @@ enum RunSummary {
         return e
     }
 
-    /// 계획상 회복 주 > 급증/단조/장기 연속 > 충분한 회복 순으로 다음 행동을 고른다.
+    /// 계획상 회복/테이퍼 주 > 급증/단조/장기 연속 > 충분한 회복 순으로 다음 행동을 고른다.
     private static func loadNext(_ i: RunSummaryInput, jumped: Bool) -> String? {
         let L = AppLanguage.shared
-        if let phase = i.planPhase, phase == "회복" || phase == "테이퍼" {
-            return L.s("플랜상 회복 주예요. 이지런 위주로 가세요.", "Your plan has this as a recovery week — stick to easy runs.")
+        if let phase = i.planPhase {
+            if phase == "회복" {
+                return L.s("플랜상 회복 주예요. 이지런 위주로 가세요.", "Your plan has this as a recovery week — stick to easy runs.")
+            }
+            if phase == "테이퍼" {
+                return L.s("플랜상 테이퍼 주예요. 이지런 위주로 가세요.", "Your plan has this as a taper week — keep it easy.")
+            }
         }
         if jumped || i.loadSentence == .monotony || i.streakDays >= 4 {
             return L.s("다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.",
                       "Take a 30–40 min recovery run or rest for the next day or two.")
         }
+        // 결정 2: 부하 자료(4주 평균 대비 or 7일 AU) 없이는 "충분히 회복됐다"고 말하지 않는다 — 마지막 고강도 이후
+        // 며칠 지났는지만으로는 근거가 얕다.
         let rested: Bool = {
             guard let days = i.daysSinceHardRun, days >= 2 else { return false }
+            guard i.acuteChronic != nil || i.sevenDayAU != nil else { return false }
             let acOk: Bool
             switch i.acuteChronic {
             case nil, .low, .steady: acOk = true
@@ -341,22 +383,34 @@ enum RunSummary {
         var line = RunSummaryLine(axis: L.s("유산소", "Aerobic"),
                               state: L.s("\(i.vo2AgeDecade)\(g) 기준 \(level.name)", "\(level.name) for \(i.vo2AgeDecade)\(g)"),
                               tone: level.index >= 2 ? .good : .neutral)
-        var evidence = L.s("VO2max \(String(format: "%.1f", v))", "VO2max \(String(format: "%.1f", v))")
+        // "VO2max N.N"은 로케일과 무관 — L.s 없이 그대로 쓴다(no-op 래핑 금지)
+        var evidence = "VO2max \(String(format: "%.1f", v))"
         if let prev = i.vo2EightWeeksAgo {
             let diff = v - prev
-            let sign = diff >= 0 ? "+" : "-"
-            let diffStr = String(format: "%.1f", abs(diff))
-            evidence += L.s(" · 8주 전 대비 \(sign)\(diffStr)", " · vs. 8 weeks ago \(sign)\(diffStr)")
+            if abs(diff) >= vo2DeltaEvidenceMin {
+                let sign = diff >= 0 ? "+" : "-"
+                let diffStr = String(format: "%.1f", abs(diff))
+                evidence += L.s(" · 8주 전 대비 \(sign)\(diffStr)", " · vs. 8 weeks ago \(sign)\(diffStr)")
+            }
         }
         line.evidence = evidence
         return line
     }
 
-    /// 천단위 콤마 정수 문자열("1,783")
-    private static func groupedInt(_ v: Double) -> String {
+    /// 천단위 콤마 정수 문자열("1,783") — 로케일 고정(en_US_POSIX): 기기 로케일이 바뀌어도 구분자가 안 흔들린다.
+    /// ⚠ en_US_POSIX는 그룹 구분자를 스스로 정의하지 않는다(POSIX/C 로케일 특성) — 명시적으로 켜 줘야 "1,783"이 된다.
+    private static let groupedIntFormatter: NumberFormatter = {
         let nf = NumberFormatter()
         nf.numberStyle = .decimal
         nf.maximumFractionDigits = 0
-        return nf.string(from: NSNumber(value: v.rounded())) ?? "\(Int(v.rounded()))"
+        nf.locale = Locale(identifier: "en_US_POSIX")
+        nf.usesGroupingSeparator = true
+        nf.groupingSeparator = ","
+        nf.groupingSize = 3
+        return nf
+    }()
+
+    private static func groupedInt(_ v: Double) -> String {
+        groupedIntFormatter.string(from: NSNumber(value: v.rounded())) ?? "\(Int(v.rounded()))"
     }
 }
