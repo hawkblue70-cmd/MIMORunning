@@ -28,6 +28,8 @@ struct RunSummaryInput {
     var vo2GenderLabel: String = ""
     /// 이 러닝의 기온 보정량(bpm). 총평 줄 상태어에는 붙이지 않는다 — 더위는 존 캡션과 근거 줄이 말한다.
     var heatDeltaBpm: Double? = nil
+    /// 롱런/LSD 같은 장거리 문맥인가 — 폼 다음 행동 문구가 "다음 롱런은"/"다음 러닝은"을 고를 때 쓴다.
+    var isLongDistanceContext: Bool = false
 
     // MARK: 근거·다음용 — 모두 옵셔널, 없으면 해당 근거·다음 절만 생략
 
@@ -88,9 +90,10 @@ enum RunSummary {
     private static func formLine(_ i: RunSummaryInput) -> RunSummaryLine? {
         guard let f = i.form else { return nil }
         let L = AppLanguage.shared
-        var line = RunSummaryLine(axis: L.s("러닝폼", "Form"), state: FormPhase.shortState(f), tone: f.isHeld ? .good : .neutral)
+        var line = RunSummaryLine(axis: L.s("러닝폼", "Form"), state: FormPhase.shortState(f),
+                                  tone: (f.isHeld || f.isSoftCadenceOnly) ? .good : .neutral)
         line.evidence = formEvidence(f)
-        line.next = formNext(f)
+        line.next = formNext(f, isLongDistanceContext: i.isLongDistanceContext)
         return line
     }
 
@@ -136,29 +139,29 @@ enum RunSummary {
 
     /// `.heavier`는 피로 방향으로 처음 벗어난 지표(순서 고정: 케이던스 → 보폭 → 접지)만 짚어 다음 행동을 준다 —
     /// 안 무너진 지표까지 지켜보라고 하면 산만해진다.
-    private static func formNext(_ f: FormPhase.Result) -> String? {
+    private static func formNext(_ f: FormPhase.Result, isLongDistanceContext: Bool) -> String? {
         let L = AppLanguage.shared
+        let prefixKo = isLongDistanceContext ? "다음 롱런은 같은 거리에서 " : "다음 러닝은 같은 거리에서 "
+        let prefixEn = isLongDistanceContext
+            ? "Keep the distance the same on your next long run and "
+            : "Keep the distance the same on your next run and "
         switch f.late {
         case .held:
             return nil
         case .heavier(let metrics):
+            if f.isSoftCadenceOnly { return nil }
             switch metrics.first {
             case .cadence:
-                return L.s("다음 롱런은 같은 거리에서 후반 케이던스만 지켜보세요.",
-                          "Keep the distance the same on your next long run and watch your late-run cadence.")
+                return L.s(prefixKo + "후반 케이던스만 지켜보세요.", prefixEn + "watch your late-run cadence.")
             case .groundContact:
-                return L.s("다음 롱런은 같은 거리에서 후반 접지만 지켜보세요.",
-                          "Keep the distance the same on your next long run and watch your late-run ground contact.")
+                return L.s(prefixKo + "후반 접지만 지켜보세요.", prefixEn + "watch your late-run ground contact.")
             default: // .stride, .verticalOsc, 또는 비어 있을 때(이론상 없음)의 안전한 기본값
-                return L.s("다음 롱런은 같은 거리에서 후반 보폭만 지켜보세요.",
-                          "Keep the distance the same on your next long run and watch your late-run stride.")
+                return L.s(prefixKo + "후반 보폭만 지켜보세요.", prefixEn + "watch your late-run stride.")
             }
         case .cadenceDefended:
-            return L.s("다음 롱런은 같은 거리에서 후반 보폭만 지켜보세요.",
-                      "Keep the distance the same on your next long run and watch your late-run stride.")
+            return L.s(prefixKo + "후반 보폭만 지켜보세요.", prefixEn + "watch your late-run stride.")
         case .bouncier:
-            return L.s("다음 롱런은 같은 거리에서 후반 위아래 움직임만 지켜보세요.",
-                      "Keep the distance the same on your next long run and watch your late-run vertical motion.")
+            return L.s(prefixKo + "후반 위아래 움직임만 지켜보세요.", prefixEn + "watch your late-run vertical motion.")
         }
     }
 

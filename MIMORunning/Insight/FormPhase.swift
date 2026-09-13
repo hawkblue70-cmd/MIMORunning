@@ -4,7 +4,7 @@ import Foundation
 ///
 /// - 기준은 폼 카드 눈금과 같다: 그 단계 **페이스 구간**의 평소 범위(±1.2SD, `FormNarrative.status`).
 ///   기온과 무관하고 페이스로 정규화되므로 그날 데이터만으로 말할 수 있다.
-/// - 러닝 길이와 무관: km가 아니라 거리 비율로 나눈다. 풀 스플릿 6개 미만이면 nil.
+/// - 러닝 길이와 무관: km가 아니라 거리 비율로 나눈다. 풀 스플릿 5개 미만이면 nil — 5km 러닝까지는 판정.
 /// - 기준선이 없어 어느 단계도 판정할 수 없으면 nil(침묵). 말기는 케이던스·보폭·접지 중 2개 이상 알아야 한다.
 enum FormPhase {
     typealias Metric = FormNarrative.Metric
@@ -58,10 +58,15 @@ enum FormPhase {
         let totalKm: Double
         let phases: Phases
         let signals: PhaseSignals
+        /// 이지 프레임(`FormNarrative.frame(for:) == .easy`)에서 만들어진 결과인가 — 말기 판정의 톤을 바꾼다.
+        var isEasyFrame: Bool = false
         var isHeld: Bool { late == .held }
+        /// 이지 프레임에서 케이던스만 내려간 말기는 "무거워짐"이 아니라 편한 날의 자연스러운 변화.
+        /// (`.heavier([.cadence, .verticalOsc])`처럼 다른 신호가 섞이면 소프트가 아니다.)
+        var isSoftCadenceOnly: Bool { isEasyFrame && late == .heavier([.cadence]) }
     }
 
-    static let minSplits = 6
+    static let minSplits = 5
     static let earlyFraction = 0.30
     static let lateFraction = 0.70
     /// 단계 간 페이스 차이가 이 이상이어야 "빨라졌다/느려졌다"
@@ -148,7 +153,9 @@ enum FormPhase {
     /// - Parameters:
     ///   - paceScale: GAP ÷ 실측 평균 페이스 (전체 러닝 기준). 밴드 조회에만 곱한다 — 단계 간 페이스 차이 판정은 실측 그대로.
     ///   - bandFor: 단계 페이스(sec/km, GAP 보정됨) → 그 구간의 평소 범위. 구간 밖·판정불가면 nil.
-    static func classify(splits: [SplitData], paceScale: Double = 1.0, bandFor: (Double) -> BandStats?) -> Result? {
+    ///   - easyFrame: 이지 프레임(`FormNarrative.frame(for:) == .easy`)에서 판정 중인가 — `Result.isEasyFrame`으로 그대로 전달.
+    static func classify(splits: [SplitData], paceScale: Double = 1.0, easyFrame: Bool = false,
+                         bandFor: (Double) -> BandStats?) -> Result? {
         guard let p = phases(splits) else { return nil }
         let scale = paceScale > 0 ? paceScale : 1.0
         let e = p.early, m = p.mid, l = p.late
@@ -193,7 +200,8 @@ enum FormPhase {
         return Result(early: early, mid: mid, late: late,
                       earlyEndKm: e.endKm, lateStartKm: l.startKm, totalKm: l.endKm,
                       phases: Phases(early: e, mid: m, late: l),
-                      signals: PhaseSignals(early: eS, mid: mS, late: lS))
+                      signals: PhaseSignals(early: eS, mid: mS, late: lS),
+                      isEasyFrame: easyFrame)
     }
 
     // MARK: - 기준선 → 단계 범위
@@ -232,7 +240,8 @@ enum FormPhase {
         }()
         guard bl.cutoffs.band(of: raw * scale) != nil else { return nil }
         let gctShift = formShifts.first(where: { $0.metric.key == "gct" })
-        return classify(splits: full, paceScale: scale, bandFor: { pace in
+        return classify(splits: full, paceScale: scale, easyFrame: FormNarrative.frame(for: workoutType) == .easy,
+                        bandFor: { pace in
             bandStats(in: bl, paceSecPerKm: pace, gctShift: gctShift)
         })
     }
@@ -276,8 +285,15 @@ enum FormPhase {
             ko.append("마지막 \(lateKm)km엔 앞보다 위로 가는 움직임이 늘었어요")
             en.append("over the last \(lateKm) km more motion went up than forward")
         case .heavier(let signals):
-            ko.append("마지막 \(lateKm)km엔 " + joinKo(signals))
-            en.append("over the last \(lateKm) km " + joinEn(signals))
+            if r.isSoftCadenceOnly {
+                // 이지 프레임의 케이던스 단독 하강은 무거워짐이 아니라 편한 날의 변화 — 위안 문장을 절 안에 그대로 담는다
+                // (마지막 요소일 때 뒤에 붙는 마침표 하나로 두 문장이 자연스럽게 끝난다).
+                ko.append("마지막 \(lateKm)km엔 케이던스가 조금 내려갔어요. 편한 날엔 자연스러운 변화예요")
+                en.append("Cadence eased a little over the last \(lateKm) km — natural on an easy day")
+            } else {
+                ko.append("마지막 \(lateKm)km엔 " + joinKo(signals))
+                en.append("over the last \(lateKm) km " + joinEn(signals))
+            }
         }
 
         var koS = ko.joined(separator: ", ") + "."
@@ -286,7 +302,7 @@ enum FormPhase {
             : (en.first ?? "")
         var enS = enJoined + "."
         enS = String(enS.prefix(1)).uppercased() + enS.dropFirst()
-        if isLongDistance, r.late != .held, !suppressCommonTail {
+        if isLongDistance, r.late != .held, !suppressCommonTail, !r.isSoftCadenceOnly {
             let d = String(format: "%.0f", r.totalKm)
             koS += " \(d)km 후반엔 흔한 변화예요."
             enS += " Common late in a \(d) km run."
@@ -419,7 +435,11 @@ enum FormPhase {
         let lateKm = String(format: "%.0f", r.totalKm - r.lateStartKm)
         switch r.late {
         case .held:            return L.s("끝까지 유지", "Held to the finish")
-        case .heavier:         return L.s("마지막 \(lateKm)km 살짝 무거워짐", "A bit heavier in the last \(lateKm) km")
+        case .heavier:
+            if r.isSoftCadenceOnly {
+                return L.s("편한 페이스 · 케이던스만 살짝 내려감", "Easy pace · cadence eased slightly")
+            }
+            return L.s("마지막 \(lateKm)km 살짝 무거워짐", "A bit heavier in the last \(lateKm) km")
         case .cadenceDefended: return L.s("후반 회전은 유지", "Cadence held late")
         case .bouncier:        return L.s("후반 위로 튐", "Bouncier late")
         }

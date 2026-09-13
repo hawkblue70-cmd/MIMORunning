@@ -26,8 +26,8 @@ struct FormPhaseTests {
         FormPhase.BandStats(cadence: stat(175, sd: 3), stride: stat(0.92, sd: 0.03), groundContact: stat(255, sd: 8))
     }
 
-    private func classify(_ splits: [SplitData]) -> FormPhase.Result? {
-        FormPhase.classify(splits: splits, bandFor: { _ in band })
+    private func classify(_ splits: [SplitData], easyFrame: Bool = false) -> FormPhase.Result? {
+        FormPhase.classify(splits: splits, easyFrame: easyFrame, bandFor: { _ in band })
     }
 
     /// 거리·시간을 직접 지정하는 스플릿 — 혼합 거리·부분 스플릿 테스트용.
@@ -94,9 +94,18 @@ struct FormPhaseTests {
         #expect(p?.late.endKm == 16)
     }
 
-    @Test func fewerThanSixSplitsIsSilent() {
-        #expect(FormPhase.phases((1...5).map { split($0) }) == nil)
-        #expect(classify((1...5).map { split($0) }) == nil)
+    @Test func fiveSplitsSplitOneTwoTwo() {
+        let p = FormPhase.phases((1...5).map { split($0) })
+        #expect(p?.early.splitCount == 1)
+        #expect(p?.mid.splitCount == 2)
+        #expect(p?.late.splitCount == 2)
+        #expect(p?.early.endKm == 1)
+        #expect(p?.late.startKm == 3)
+    }
+
+    @Test func fewerThanFiveSplitsIsSilent() {
+        #expect(FormPhase.phases((1...4).map { split($0) }) == nil)
+        #expect(classify((1...4).map { split($0) }) == nil)
     }
 
     @Test func phaseStatsAveragePaceAndMetrics() {
@@ -246,6 +255,35 @@ struct FormPhaseTests {
         #expect(FormPhase.shortState(result(late: .heavier([.stride]))) == "마지막 4km 살짝 무거워짐")
         #expect(FormPhase.shortState(result(late: .cadenceDefended)) == "후반 회전은 유지")
         #expect(FormPhase.shortState(result(late: .bouncier)) == "후반 위로 튐")
+    }
+
+    // MARK: 이지 프레임 — 케이던스만 살짝 내려간 말기는 무거워짐이 아니라 편한 날의 변화
+
+    @Test func easyFrameCadenceOnlyDropIsSoft() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...7).map { split($0) } + (8...10).map { split($0, cad: 166) }
+        let r = classify(s, easyFrame: true)
+        #expect(r?.late == .heavier([.cadence]))
+        #expect(r?.isSoftCadenceOnly == true)
+        #expect(FormPhase.sentence(r!, isLongDistance: false) == "마지막 3km엔 케이던스가 조금 내려갔어요. 편한 날엔 자연스러운 변화예요.")
+        #expect(FormPhase.shortState(r!) == "편한 페이스 · 케이던스만 살짝 내려감")
+    }
+
+    @Test func easyFrameStrideDropIsNotSoft() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...7).map { split($0) } + (8...10).map { split($0, sl: 0.85) }
+        let r = classify(s, easyFrame: true)
+        #expect(r?.late == .heavier([.stride]))
+        #expect(r?.isSoftCadenceOnly == false)
+        #expect(FormPhase.shortState(r!).hasPrefix("마지막"))
+    }
+
+    @Test func generalFrameCadenceDropStaysHeavier() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...7).map { split($0) } + (8...10).map { split($0, cad: 166) }
+        let r = classify(s)
+        #expect(r?.isSoftCadenceOnly == false)
+        #expect(FormPhase.shortState(r!) == "마지막 3km 살짝 무거워짐")
     }
 
     // MARK: 침묵 조건

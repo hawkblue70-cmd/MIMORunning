@@ -2694,6 +2694,7 @@ private struct RhythmInsightCard: View {
         input.distKm = activity.distance / 1000
         input.typicalKm = typicalRunDistanceKm
         input.workoutType = rhythmWorkoutType
+        input.isLongDistanceContext = rhythmIsLongDistanceContext
         input.zoneFractions = Dictionary(hrZones.map { ($0.id, $0.fraction) }, uniquingKeysWith: { a, _ in a })
         if let idx = effortIndex {
             let runs = effortLoadRuns(activity: activity, history: history, index: idx).runs

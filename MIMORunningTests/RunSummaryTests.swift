@@ -36,8 +36,15 @@ struct RunSummaryTests {
                   avgGroundContactTime: gct, avgStrideLength: sl, avgVerticalOscillation: 8.4)
     }
 
-    private func classify(_ splits: [SplitData], bandFor: @escaping (Double) -> FormPhase.BandStats? = { _ in nil }) -> FormPhase.Result? {
-        FormPhase.classify(splits: splits, bandFor: { pace in bandFor(pace) ?? self.band })
+    private func classify(_ splits: [SplitData], easyFrame: Bool = false,
+                          bandFor: @escaping (Double) -> FormPhase.BandStats? = { _ in nil }) -> FormPhase.Result? {
+        FormPhase.classify(splits: splits, easyFrame: easyFrame, bandFor: { pace in bandFor(pace) ?? self.band })
+    }
+
+    /// 10km 러닝, 후반(splits 8~10) 케이던스만 평소 범위 아래 + 이지 프레임 → 무거워짐이 아니라 편한 날의 변화.
+    private func easyFormCadenceOnly10km() -> FormPhase.Result {
+        let splits = (1...7).map { split($0) } + (8...10).map { split($0, cad: 166) }
+        return classify(splits, easyFrame: true)!
     }
 
     /// 16km 러닝, 폼 전 구간 평소 범위(.held) — 후반은 splits 12~16(마지막 5km).
@@ -70,6 +77,7 @@ struct RunSummaryTests {
         i.distKm = 16; i.typicalKm = 7.6
         i.distanceRank = 1; i.distanceSampleCount = 10
         i.workoutType = .distanceRun
+        i.isLongDistanceContext = true
         i.zoneFractions = [2: 0.10, 3: 0.20, 4: 0.62, 5: 0.08]
         i.avgHeartRate = 149; i.peakHeartRate = 157
         i.temperatureC = 25; i.heatDeltaBpm = 8
@@ -107,6 +115,24 @@ struct RunSummaryTests {
     @Test func heavierFormIsNeutralWithShortState() {
         var i = RunSummaryInput(); i.form = phase(.heavier([.stride]))
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "러닝폼", state: "마지막 4km 살짝 무거워짐", tone: .neutral)])
+    }
+
+    @Test func easySoftCadenceFormLineIsGoodWithoutNext() {
+        var i = RunSummaryInput()
+        i.form = easyFormCadenceOnly10km()
+        i.workoutType = .easy
+        let line = lines(i)[0]
+        #expect(line.tone == .good)
+        #expect(line.state == "편한 페이스 · 케이던스만 살짝 내려감")
+        #expect(line.next == nil)
+        #expect(line.evidence != nil)
+    }
+
+    @Test func shortRunNextSaysNextRun() {
+        var i = RunSummaryInput()
+        i.form = heavierForm10km()
+        i.isLongDistanceContext = false
+        #expect(lines(i)[0].next == "다음 러닝은 같은 거리에서 후반 보폭만 지켜보세요.")
     }
 
     // MARK: 거리 적응
