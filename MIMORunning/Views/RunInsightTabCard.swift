@@ -676,6 +676,18 @@ private func computeRunningStreak(activity: Activity, history: [Activity]) -> In
     return count
 }
 
+/// 부하 계산용 러닝 목록 — 이 러닝 날짜로 끝나는 36일 창(이 러닝 포함). 리듬·퍼포먼스 카드가 **이 함수 하나만** 쓴다.
+private func effortLoadRuns(activity: Activity, history: [Activity], index: EffortIndex)
+    -> (runs: [EffortLoad.Run], acts: [Activity], dayEnd: Date) {
+    let cal = Calendar.current
+    let dayEnd = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: activity.date)) ?? activity.date
+    let since = cal.date(byAdding: .day, value: -36, to: activity.date) ?? .distantPast
+    var acts = history.filter { $0.date >= since && $0.date < dayEnd }
+    // history가 이 러닝을 포함하지 않는 호출부에서도 이 러닝이 창에 들어가야 한다.
+    if !acts.contains(where: { $0.id == activity.id }) { acts.append(activity) }
+    return (EffortLoad.runs(from: acts, index: index), acts, dayEnd)
+}
+
 private struct AchievementBadgeView: View {
     let badge: AchievementBadgeKind
 
@@ -946,7 +958,8 @@ struct RunInsightTabCard: View {
                 formBaseline: formBaseline,
                 formBackfillProgress: formBackfillProgress,
                 workoutTypeFn: workoutTypeFn,
-                formShifts: formShifts
+                formShifts: formShifts,
+                effortIndex: effortIndex
             )
         case .form:
             let formCadence: Int? = {
@@ -1371,6 +1384,8 @@ private struct RhythmInsightCard: View {
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     /// GCT 밴드 시점 보정용 — 폼 카드와 같은 보정을 적용해 두 카드의 판정을 맞춘다
     var formShifts: [MRFormShift] = []
+    /// 강도(sRPE) 조회 인덱스 — 총평 훈련부하 줄용. 없으면 그 줄은 연속일만.
+    var effortIndex: EffortIndex? = nil
 
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
@@ -1432,7 +1447,11 @@ private struct RhythmInsightCard: View {
                 divider
                 rhythmRow
             }
-            if let line = oneLiner {
+            let summary = summaryLines
+            if summary.count >= 2 {
+                divider
+                RunSummaryLinesView(lines: summary)
+            } else if let line = oneLiner {
                 divider
                 oneLiner(text: line, bg: IC.greenBg, fg: IC.greenText, accent: IC.green)
             }
@@ -2542,15 +2561,57 @@ private struct RhythmInsightCard: View {
 
     private func vo2SubLabel(fi: RunInsightEngine.VO2FitnessInfo, vo2: Double) -> (text: String, color: Color) {
         let L = AppLanguage.shared
-        let bounds: [Double]   = [15, 26, 33, 41, 57]
+        // 등급 경계·이름은 RunSummary.vo2Level 하나 — 총평 유산소 줄과 같은 값. 색 배열은 그 index 순서와 같다.
         let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Theme.positive]
-        let levelNames = [L.s("낮음","Low"), L.s("평균이하","Below avg"), L.s("평균이상","Above avg"), L.s("높음","High")]
-        var idx = bounds.count - 2
-        for i in 0..<(bounds.count - 1) { if vo2 < bounds[i + 1] { idx = i; break } }
+        let level = RunSummary.vo2Level(vo2)
+        let idx = level.index
         let g = fi.genderLabel.isEmpty ? "" : " \(fi.genderLabel)"
         let valStr = String(format: "%.1f", vo2)
-        return (L.s("\(valStr)\(KoreanParticle.topic(after: valStr)) \(fi.ageDecade)\(g) 기준 \(levelNames[idx])",
-                    "\(valStr) is \(levelNames[idx]) for \(fi.ageDecade)\(g)"), levelColors[idx])
+        return (L.s("\(valStr)\(KoreanParticle.topic(after: valStr)) \(fi.ageDecade)\(g) 기준 \(level.name)",
+                    "\(valStr) is \(level.name) for \(fi.ageDecade)\(g)"), levelColors[idx])
+    }
+
+    /// 초·중·말 폼 형태 — 폼 카드 `formPhaseResult`와 같은 엔진·같은 입력(풀 스플릿 + 기준선 + GCT 시점 보정 + GAP 배율).
+    private var formPhaseResult: FormPhase.Result? {
+        guard rhythmWorkoutType != .interval, let det = detail, let bl = formBaseline else { return nil }
+        let gctShift = formShifts.first(where: { $0.metric.key == "gct" })
+        let full = det.splits.filter { $0.distanceM >= 900 }
+        let distKm = full.map(\.distanceM).reduce(0, +) / 1000
+        let dur = full.map(\.duration).reduce(0, +)
+        let raw = distKm > 0 ? dur / distKm : 0
+        // 기준선 밴드는 GAP 기준 — 밴드 조회 페이스도 GAP 배율(GAP ÷ 실측)로 맞춘다
+        let scale: Double = {
+            guard let gap = GradeAdjustedPace.compute(splits: det.splits, altitudeProfile: det.altitudeProfile),
+                  distKm > 0, dur > 0 else { return 1.0 }
+            return gap / raw   // 분모도 스플릿 기준 — 폼 카드와 같은 규칙
+        }()
+        // 참고 밴드 러닝(GAP 페이스가 구간 밖)은 판정하지 않는다 — 폼 카드와 같은 규칙
+        guard bl.cutoffs.band(of: raw * scale) != nil else { return nil }
+        return FormPhase.classify(splits: full, paceScale: scale, bandFor: { pace in
+            FormPhase.bandStats(in: bl, paceSecPerKm: pace, gctShift: gctShift)
+        })
+    }
+
+    /// 총평 줄 — 각 축의 결론은 해당 엔진에서 그대로 받는다. 2줄 미만이면 기존 한 줄 칩으로 폴백.
+    private var summaryLines: [RunSummaryLine] {
+        var input = RunSummaryInput()
+        input.form = formPhaseResult
+        input.distKm = activity.distance / 1000
+        input.typicalKm = typicalRunDistanceKm
+        input.workoutType = rhythmWorkoutType
+        input.zoneFractions = Dictionary(hrZones.map { ($0.id, $0.fraction) }, uniquingKeysWith: { a, _ in a })
+        if let idx = effortIndex {
+            let runs = effortLoadRuns(activity: activity, history: history, index: idx).runs
+            input.weekOverWeek = EffortLoad.rollingWeekOverWeek(runs: runs, asOf: activity.date)
+            input.acuteChronic = EffortLoad.rollingAcuteChronic(runs: runs, asOf: activity.date)?.label
+        }
+        input.streakDays = computeRunningStreak(activity: activity, history: history)
+        if let fi = vo2Info, let v = detail?.vo2Max {
+            input.vo2 = v
+            input.vo2AgeDecade = fi.ageDecade
+            input.vo2GenderLabel = fi.genderLabel
+        }
+        return RunSummary.lines(input)
     }
 
     private var oneLiner: String? {
@@ -2663,12 +2724,7 @@ private struct PerformanceInsightCard: View {
     private var sevenDayLoad: SevenDayLoad? {
         guard let idx = effortIndex else { return nil }
         let cal = Calendar.current
-        let dayEnd = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: activity.date)) ?? activity.date
-        let since = cal.date(byAdding: .day, value: -36, to: activity.date) ?? .distantPast
-        var acts = history.filter { $0.date >= since && $0.date < dayEnd }
-        // history가 이 러닝을 포함하지 않는 호출부에서도 이 러닝이 창에 들어가야 한다.
-        if !acts.contains(where: { $0.id == activity.id }) { acts.append(activity) }
-        let runs = EffortLoad.runs(from: acts, index: idx)
+        let (runs, acts, dayEnd) = effortLoadRuns(activity: activity, history: history, index: idx)
         let w = EffortLoad.window(runs: runs, endingBefore: dayEnd, days: 7)
         guard w.coveredCount > 0 else { return nil }
         let thisAU = idx.resolve(activity.id).map { EffortLoad.sessionAU(effort: $0.value, durationMin: activity.duration / 60) }
@@ -5344,7 +5400,8 @@ struct InsightExportSheet: View {
                 hrSamples: hrSamples,
                 formBaseline: formBaseline,
                 workoutTypeFn: workoutTypeFn,
-                formShifts: formShifts
+                formShifts: formShifts,
+                effortIndex: effortIndex
             )
         case .form:
             let exportFormCadence: Int? = {
