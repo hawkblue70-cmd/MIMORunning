@@ -1885,7 +1885,8 @@ private struct RhythmInsightCard: View {
 
         // 5. 심박
         if let stat = bb.heartRate, let hr = activity.avgHeartRate {
-            let delta = Double(hr) - stat.median
+            let todayHR = heatHRModel?.refHR(of: activity) ?? Double(hr)
+            let delta = todayHR - stat.median
             if delta <= -4 { return (L.s("같은 페이스인데 심박이 낮았어요", "Lower HR for this pace"), Theme.positive) }
             if delta >= 5  { return (L.s("평소보다 심박이 높았어요", "Higher HR than usual"), Color.white.opacity(0.75)) }
         }
@@ -2421,11 +2422,15 @@ private struct RhythmInsightCard: View {
         let z2frac = (hrZones.first(where: { $0.id == 2 })?.fraction ?? 0) / total
         if z2frac >= 0.60 { return L.s("딱 좋은 강도였어요", "Just the right intensity") }
         guard let dom = visible.max(by: { $0.fraction < $1.fraction }) else { return "" }
+        let heatDelta = heatHRModel?.delta(activity.temperatureC) ?? 0
+        let heatSuffix = heatDelta >= 5
+            ? L.s(" · 더위 +\(Int(heatDelta.rounded()))bpm", " · heat +\(Int(heatDelta.rounded())) bpm")
+            : ""
         switch dom.id {
         case 1: return L.s("가벼운 회복 강도였어요", "Light recovery run")
         case 2: return L.s("딱 좋은 강도였어요", "Just the right intensity")
-        case 3: return L.s("심박은 템포 구간에 머물렀어요", "Heart rate stayed in tempo zone")
-        default: return FormNarrative.highIntensityZoneCaption(type: rhythmWorkoutType)
+        case 3: return L.s("심박은 템포 구간에 머물렀어요", "Heart rate stayed in tempo zone") + heatSuffix
+        default: return FormNarrative.highIntensityZoneCaption(type: rhythmWorkoutType) + heatSuffix
         }
     }
 
@@ -2602,6 +2607,7 @@ private struct RhythmInsightCard: View {
             input.vo2AgeDecade = fi.ageDecade
             input.vo2GenderLabel = fi.genderLabel
         }
+        input.heatDeltaBpm = heatHRModel?.delta(activity.temperatureC)
         return RunSummary.lines(input)
     }
 
@@ -2964,7 +2970,7 @@ private struct PerformanceInsightCard: View {
                     + Text("↓\(d) bpm")
                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(IC.green)
                     + Text(scatterIsHeatAdjusted
-                           ? L.s(" (동일 페이스 · 15°C 기준)", " (same pace · at 15°C)")
+                           ? L.s(" (동일 페이스 · 15°C 기준)", " (vs. similar pace · at 15°C)")
                            : L.s(" (동일 페이스 기준)", " (vs. similar pace)"))
                         .font(.system(size: 8)).foregroundStyle(.white.opacity(0.55)))
                     .lineLimit(1)
@@ -3220,14 +3226,15 @@ private struct PerformanceInsightCard: View {
         if let m = heatHRModel { return m.refHR(of: a) }
         return a.avgHeartRate.map(Double.init)
     }
-    /// "15°C 기준" 표기 여부 — 실제로 보정된 점이 하나라도 있을 때만
+    /// "15°C 기준" 표기 여부 — 실제로 그려지는 점(오늘 또는 산점도 후보) 중 보정된 게 하나라도 있을 때만
     private var scatterIsHeatAdjusted: Bool {
         guard let m = heatHRModel, m.ok else { return false }
-        return ([activity] + history).contains { m.delta($0.temperatureC) >= 1 }
+        if m.delta(activity.temperatureC) >= 1 { return true }
+        return scatterEligible.contains { m.delta($0.temperatureC) >= 1 }
     }
 
     private var hrTrendPts: [HRTrendPt] {
-        guard let curHR = activity.avgHeartRate,
+        guard let curHR = refHR(activity),
               let curPace = activity.paceSecPerKm, curPace > 0 else { return [] }
         let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -8, to: activity.date) ?? .distantPast
         let similar = history.filter {
@@ -3240,34 +3247,41 @@ private struct PerformanceInsightCard: View {
         var pts = similar.prefix(7).enumerated().map { i, r in
             HRTrendPt(index: i, hr: refHR(r)!, isToday: false)
         }
-        pts.append(HRTrendPt(index: pts.count, hr: refHR(activity)!, isToday: true))
+        pts.append(HRTrendPt(index: pts.count, hr: curHR, isToday: true))
         return pts
+    }
+
+    /// 산점도에 실제로 그려지는 후보 — running · 오늘 제외 · 8주 창 · ≥3km · 심박+페이스 있음 · interval/buildUp 제외 · 최근순 최대 39개.
+    private var scatterEligible: [Activity] {
+        let cal = Calendar.current
+        let cutoff8w = cal.date(byAdding: .weekOfYear, value: -8, to: activity.date) ?? .distantPast
+        return Array(
+            history
+                .filter {
+                    $0.type == .running &&
+                    $0.id != activity.id &&
+                    $0.date >= cutoff8w && $0.date < activity.date &&
+                    $0.distance / 1000 >= 3 &&
+                    $0.avgHeartRate != nil &&
+                    $0.paceSecPerKm != nil
+                }
+                .filter {
+                    guard let wt = workoutTypeFn?($0.id) else { return true }
+                    return wt != .interval && wt != .buildUp
+                }
+                .sorted { $0.date > $1.date }
+                .prefix(39)
+        )
     }
 
     private var scatterData: [ScatterPt] {
         let cal = Calendar.current
-        let cutoff8w = cal.date(byAdding: .weekOfYear, value: -8, to: activity.date) ?? .distantPast
         let cutoff4w = cal.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
         var result: [ScatterPt] = []
-        if let tp = activity.paceSecPerKm, tp > 0, let th = activity.avgHeartRate {
-            result.append(ScatterPt(pace: tp, hr: refHR(activity)!, group: .today))
+        if let tp = activity.paceSecPerKm, tp > 0, let th = refHR(activity) {
+            result.append(ScatterPt(pace: tp, hr: th, group: .today))
         }
-        let eligible = history
-            .filter {
-                $0.type == .running &&
-                $0.id != activity.id &&
-                $0.date >= cutoff8w && $0.date < activity.date &&
-                $0.distance / 1000 >= 3 &&
-                $0.avgHeartRate != nil &&
-                $0.paceSecPerKm != nil
-            }
-            .filter {
-                guard let wt = workoutTypeFn?($0.id) else { return true }
-                return wt != .interval && wt != .buildUp
-            }
-            .sorted { $0.date > $1.date }
-            .prefix(39)
-        for act in eligible {
+        for act in scatterEligible {
             let grp: ScatterGroup = act.date >= cutoff4w ? .recent : .past
             result.append(ScatterPt(pace: act.paceSecPerKm!, hr: refHR(act)!, group: grp))
         }
@@ -3275,11 +3289,11 @@ private struct PerformanceInsightCard: View {
     }
 
     private var hrDelta: Int? {
-        guard let curHR = activity.avgHeartRate else { return nil }
+        guard let curHR = refHR(activity) else { return nil }
         let pts = hrTrendPts.filter { !$0.isToday }
         guard !pts.isEmpty else { return nil }
         let avg = pts.map(\.hr).reduce(0, +) / Double(pts.count)
-        let d = Int((avg - refHR(activity)!).rounded())
+        let d = Int((avg - curHR).rounded())
         return d >= 3 ? d : nil
     }
 
@@ -4412,6 +4426,7 @@ private struct PerformanceInsightCard: View {
             let preGapRuns = sorted.filter {
                 $0.date < prev.date && $0.date >= prev.date.addingTimeInterval(-28 * 86_400)
             }
+            // 15°C 기준 — 공백 전후가 계절을 넘는 경우가 많다
             let preGapHR: Double? = preGapRuns.count >= 3 ? {
                 if let todayPace = activity.paceSecPerKm {
                     let matched = preGapRuns.filter {
@@ -4419,12 +4434,12 @@ private struct PerformanceInsightCard: View {
                         return abs(p - todayPace) / todayPace <= 0.20
                     }
                     if matched.count >= 2 {
-                        let hrs = matched.compactMap { $0.avgHeartRate }
-                        if !hrs.isEmpty { return Double(hrs.reduce(0, +)) / Double(hrs.count) }
+                        let hrs = matched.compactMap { refHR($0) }
+                        if !hrs.isEmpty { return hrs.reduce(0, +) / Double(hrs.count) }
                     }
                 }
-                let hrs = preGapRuns.compactMap { $0.avgHeartRate }
-                return hrs.isEmpty ? nil : Double(hrs.reduce(0, +)) / Double(hrs.count)
+                let hrs = preGapRuns.compactMap { refHR($0) }
+                return hrs.isEmpty ? nil : hrs.reduce(0, +) / Double(hrs.count)
             }() : nil
             let daysSince = cal.dateComponents([.day], from: activity.date, to: Date()).day ?? 0
             #if DEBUG
@@ -4452,7 +4467,7 @@ private struct PerformanceInsightCard: View {
             return ReturnInsightInfo(
                 gapDays: gapFromPrev,
                 preGapHR: preGapHR,
-                todayHR: activity.avgHeartRate.map(Double.init),
+                todayHR: refHR(activity),
                 isExpiredByTime: daysSince >= 28,
                 hrRecovered: false  // 첫 복귀 런에서는 심박 회복 메시지 절대 표시 안 함
             )
@@ -4471,6 +4486,7 @@ private struct PerformanceInsightCard: View {
                 $0.date < preGapEnd.date && $0.date >= preGapEnd.date.addingTimeInterval(-28 * 86_400)
             }
             guard preGapRuns.count >= 3 else { return nil }
+            // 15°C 기준 — 공백 전후가 계절을 넘는 경우가 많다
             let preGapHR: Double? = {
                 if let todayPace = activity.paceSecPerKm {
                     let matched = preGapRuns.filter {
@@ -4478,12 +4494,12 @@ private struct PerformanceInsightCard: View {
                         return abs(p - todayPace) / todayPace <= 0.20
                     }
                     if matched.count >= 2 {
-                        let hrs = matched.compactMap { $0.avgHeartRate }
-                        if !hrs.isEmpty { return Double(hrs.reduce(0, +)) / Double(hrs.count) }
+                        let hrs = matched.compactMap { refHR($0) }
+                        if !hrs.isEmpty { return hrs.reduce(0, +) / Double(hrs.count) }
                     }
                 }
-                let hrs = preGapRuns.compactMap { $0.avgHeartRate }
-                return hrs.isEmpty ? nil : Double(hrs.reduce(0, +)) / Double(hrs.count)
+                let hrs = preGapRuns.compactMap { refHR($0) }
+                return hrs.isEmpty ? nil : hrs.reduce(0, +) / Double(hrs.count)
             }()
             guard let pre = preGapHR else { return nil }
             // 첫 복귀 런부터 현재까지 (2회 이상) — 심박 평균이 공백 전 대비 ≤+3bpm이면 회복
@@ -4497,7 +4513,7 @@ private struct PerformanceInsightCard: View {
             return ReturnInsightInfo(
                 gapDays: prevToI,
                 preGapHR: preGapHR,
-                todayHR: activity.avgHeartRate.map(Double.init),
+                todayHR: refHR(activity),
                 isExpiredByTime: daysSince >= 28,
                 hrRecovered: true
             )
