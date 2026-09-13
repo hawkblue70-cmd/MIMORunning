@@ -3,6 +3,7 @@ import SwiftUI
 /// 총평 줄 묶음 — 색점 + 축 + 상태어. 리듬 카드 하단과 공유 카드가 **이 컴포넌트 하나만** 쓴다(§5.8).
 /// 크기는 `scale`로만 조절한다. scale=1 기준: 글자 10pt · 점 7pt · 좌우 여백 12pt · 상하 10pt · 축 열 52pt(영어 70pt).
 /// 탭하면 근거·다음이 펼쳐진다(9.5pt · 라벨 8.5pt). 노란(neutral) 줄은 기본 펼침, 초록 줄은 접힘.
+/// 글자는 사진 배경 위에서도 읽히게 밝은 흰색(축 0.92 · 상태어 1.0 · 근거 0.80 · 다음 0.96 · 라벨 0.62).
 /// 공유 카드는 `expandAll: true`로 근거·다음까지 모두 펼쳐 그린다 — 이때는 화살표도 탭도 없다.
 /// 내보내기는 `allowsExpansion: false`로 5줄만 그린다.
 struct RunSummaryLinesView: View {
@@ -57,23 +58,23 @@ struct RunSummaryLinesView: View {
                     .padding(.top, 3.5 * scale)
                 Text(line.axis)
                     .font(.system(size: 10 * scale, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.78))
+                    .foregroundStyle(Color.white.opacity(0.92))
                     .lineLimit(1)
                     .frame(width: axisWidth, alignment: .leading)
                     .layoutPriority(1)
                 Text("·")
                     .font(.system(size: 10 * scale))
-                    .foregroundStyle(Color.white.opacity(0.35))
+                    .foregroundStyle(Color.white.opacity(0.50))
                 Text(line.state)
                     .font(.system(size: 10 * scale))
-                    .foregroundStyle(Color.white.opacity(0.92))
+                    .foregroundStyle(Color.white)
                     .lineSpacing(2 * scale)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 if showChevron {
                     Image(systemName: open ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9 * scale, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.45))
+                        .foregroundStyle(Color.white.opacity(0.55))
                 }
             }
             if open {
@@ -82,11 +83,11 @@ struct RunSummaryLinesView: View {
                         HStack(alignment: .top, spacing: 5 * scale) {
                             Text(AppLanguage.shared.s("근거", "Why"))
                                 .font(.system(size: 8.5 * scale, weight: .semibold))
-                                .foregroundStyle(Color.white.opacity(0.45))
+                                .foregroundStyle(Color.white.opacity(0.62))
                                 .frame(width: 26 * scale, alignment: .leading)
                             Text(evidence)
                                 .font(.system(size: 9.5 * scale))
-                                .foregroundStyle(Color.white.opacity(0.62))
+                                .foregroundStyle(Color.white.opacity(0.80))
                                 .lineSpacing(2 * scale)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -99,7 +100,7 @@ struct RunSummaryLinesView: View {
                                 .frame(width: 26 * scale, alignment: .leading)
                             Text(next)
                                 .font(.system(size: 9.5 * scale))
-                                .foregroundStyle(Color.white.opacity(0.85))
+                                .foregroundStyle(Color.white.opacity(0.96))
                                 .lineSpacing(2 * scale)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
