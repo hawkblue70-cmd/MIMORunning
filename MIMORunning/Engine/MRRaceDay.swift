@@ -124,6 +124,11 @@ func mrRaceDayCard(race: MRTargetRace,
         lines.append(vol4w >= 5
             ? "테이퍼 2주차 — 이번 주는 \(Int((vol4w * 0.84).rounded()))km 정도로."
             : "테이퍼 2주차 — 이번 주는 평소의 80% 정도로.")
+        // 페이스는 2주 전부터 — "페이스는 그대로"의 그 페이스가 몇인지. 스플릿 표는 D-7부터(뷰).
+        if let t = base {
+            let pace = t * 60 / (race.distanceM / 1000)
+            lines.append("대회 예상 평균 \(mrFormatPace(pace))/km — 테이퍼 러닝의 짧은 구간은 이 페이스로.")
+        }
 
     case .finalWeek:
         headline = "D-\(d) · 마지막 한 주"
@@ -136,6 +141,11 @@ func mrRaceDayCard(race: MRTargetRace,
         lines.append(vol4w >= 5
             ? "테이퍼 1주차 — 이번 주는 \(Int((vol4w * 0.51).rounded()))km 정도로."
             : "테이퍼 1주차 — 이번 주는 평소의 50% 정도로.")
+        // 마지막 한 주는 배분을 정하는 시기 — 전날에야 숫자를 주면 늦다. 첫 5km 상한은 당일과 같은 2%.
+        if let t = base {
+            let pace = t * 60 / (race.distanceM / 1000)
+            lines.append("예상 평균 \(mrFormatPace(pace))/km · 첫 5km는 \(mrFormatPace(pace * 0.98))/km보다 빠르지 않게. 아래 배분은 처음부터 끝까지 같은 페이스입니다.")
+        }
 
     case .eve:
         headline = "내일입니다"

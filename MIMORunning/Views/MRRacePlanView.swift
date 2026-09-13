@@ -164,9 +164,15 @@ struct MRRacePlanCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L.s("계획대로 쌓으면", "On plan")).font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.60))
-                    Text(mrFormatDisplay(plan.projectedFinal))
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(mrFormatDisplay(plan.projectedFinal))
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                        // 목표 페이스 감각을 계획 기간 내내 — 주차 테이블 "대회 페이스" 문구와 같은 기준(예상 기록)
+                        Text(mrFormatPace(plan.projectedFinal * 60 / (plan.distanceM / 1000)) + "/km")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.72))
+                    }
                     if plan.projectedFinalLo > 0 {
                         Text("(\(mrFormatHM(plan.projectedFinalLo)) ~ \(mrFormatHM(plan.projectedFinalHi)))")
                             .font(.system(size: 11, design: .rounded))

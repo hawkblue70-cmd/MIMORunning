@@ -65,8 +65,8 @@ struct MRRaceDayView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            // 스플릿은 D-1 이후에만
-            if !card.splits.isEmpty, card.daysLeft <= 1 {
+            // 스플릿 표는 D-7부터 — 마지막 한 주에 배분을 정한다. D-14~D-8은 페이스 한 줄만(2주 전 표는 압박).
+            if !card.splits.isEmpty, card.daysLeft <= 7 {
                 VStack(spacing: 0) {
                     ForEach(Array(card.splits.enumerated()), id: \.offset) { _, s in
                         HStack {
