@@ -115,13 +115,16 @@ struct InsightEngine {
         raceMatch: PersistedRaceMatch? = nil,
         detail: ActivityDetail? = nil,
         historyComplete: Bool = true,
-        typeOf: ((UUID) -> WorkoutType?)? = nil
+        typeOf: ((UUID) -> WorkoutType?)? = nil,
+        heatHR: MRHeatHRModel = MRHeatHRModel()
     ) -> InsightResult {
         // 이 러닝 **이전** 기록만 본다. 캐시가 다시 계산될 때(버전 올림·언어 변경·대회 확정) 그 사이
         // 쌓인 러닝이 섞이면 과거 러닝의 인사이트가 바뀐다 — "이번 주 최장"이었던 러닝이 나중에 더 긴
         // 러닝이 추가되면 아니게 되고, 동일 거리 PR이 나중 러닝 때문에 사라진다. 여기서 한 번에 걸러
         // 모든 사실이 그 시점에 고정된다(개별 사실이 따로 거를 필요 없음).
         let prior = history.filter { $0.id != activity.id && $0.type == activity.type && $0.date < activity.date }
+        // 심박을 과거와 비교·판정하는 모든 자리(안전 메모·트레이드오프·회복)에 heatHR을 그대로 넘긴다 —
+        // 각 함수가 heatHR.refHR(of:)로 15°C 기준 심박을 꺼내 쓴다.
 
         var base: InsightResult
         #if DEBUG
@@ -130,7 +133,7 @@ struct InsightEngine {
         #endif
         // Safety is the highest priority. For once-in-a-lifetime achievements (firstAchievement,
         // raceDay), safety becomes the title and the achievement is embedded in the detail line.
-        let safetyCandidate = safetyNote(activity, prior, condition: condition)
+        let safetyCandidate = safetyNote(activity, prior, condition: condition, heatHR: heatHR)
         if let safety = safetyCandidate {
             #if DEBUG
             _dbgFacts = "safety:\(safety.theme.rawValue)"
@@ -163,13 +166,14 @@ struct InsightEngine {
             // Collect all candidates then pick by recency (oldest-shown theme wins).
             var band: [InsightResult] = []
             if let r = adverseCondition(activity, condition) { band.append(r) }
-            if let r = tradeoffInsight(activity, prior, detail: detail, splits: splits) { band.append(r) }
+            if let r = tradeoffInsight(activity, prior, detail: detail, splits: splits, heatHR: heatHR) { band.append(r) }
             if let r = rarityFact(activity, prior, workoutType: workoutType, condition: condition, historyComplete: historyComplete, typeOf: typeOf) { band.append(r) }
             if let r = subThresholdRecognition(activity, intervalSegments, detail) { band.append(r) }
 
             #if DEBUG
             _dbgFacts = buildBandFactLog(activity, prior, workoutType: workoutType, condition: condition,
-                                         intervalSegments: intervalSegments, detail: detail, splits: splits, typeOf: typeOf)
+                                         intervalSegments: intervalSegments, detail: detail, splits: splits, typeOf: typeOf,
+                                         heatHR: heatHR)
             let _histBefore = loadThemeHistory()
             #endif
 
@@ -194,7 +198,7 @@ struct InsightEngine {
                 #if DEBUG
                 _dbgReason = "band없음→periodPositive"
                 #endif
-            } else if level >= .novice, let r = recovery(activity, prior, level: level) {
+            } else if level >= .novice, let r = recovery(activity, prior, level: level, heatHR: heatHR) {
                 base = r
                 #if DEBUG
                 _dbgReason = "band없음→recovery"
@@ -610,19 +614,20 @@ struct InsightEngine {
         return nil
     }
 
-    /// Pace ≥ 15% slower than recent average; HR below average when available
-    private static func recovery(_ a: Activity, _ prior: [Activity], level: LevelBucket = .beginner) -> InsightResult? {
+    /// Pace ≥ 15% slower than recent average; HR(15°C 기준) below average when available
+    private static func recovery(_ a: Activity, _ prior: [Activity], level: LevelBucket = .beginner,
+                                 heatHR: MRHeatHRModel = MRHeatHRModel()) -> InsightResult? {
         guard let pace = a.paceSecPerKm else { return nil }
         let recentPaces = prior.prefix(10).compactMap(\.paceSecPerKm)
         guard !recentPaces.isEmpty else { return nil }
         let avgPace = recentPaces.reduce(0, +) / Double(recentPaces.count)
         guard pace > avgPace * 1.15 else { return nil }
 
-        if let hr = a.avgHeartRate {
-            let recentHRs = prior.prefix(10).compactMap(\.avgHeartRate)
+        if let hr = heatHR.refHR(of: a) {
+            let recentHRs = prior.prefix(10).compactMap { heatHR.refHR(of: $0) }
             if !recentHRs.isEmpty {
-                let avgHR = Double(recentHRs.reduce(0, +)) / Double(recentHRs.count)
-                guard Double(hr) < avgHR else { return nil }
+                let avgHR = recentHRs.reduce(0, +) / Double(recentHRs.count)
+                guard hr < avgHR else { return nil }
             }
         }
         let L = AppLanguage.shared
@@ -675,13 +680,15 @@ struct InsightEngine {
         raceMatch: PersistedRaceMatch? = nil,
         detail: ActivityDetail? = nil,
         historyComplete: Bool = true,
-        typeOf: ((UUID) -> WorkoutType?)? = nil
+        typeOf: ((UUID) -> WorkoutType?)? = nil,
+        heatHR: MRHeatHRModel = MRHeatHRModel()
     ) async -> InsightResult {
         compute(activity: activity, history: history, level: level,
                 workoutType: workoutType, splits: splits,
                 intervalSegments: intervalSegments, condition: condition,
                 raceMatch: raceMatch, detail: detail,
-                historyComplete: historyComplete, typeOf: typeOf)
+                historyComplete: historyComplete, typeOf: typeOf,
+                heatHR: heatHR)
     }
 
     // MARK: - AI enhancement bridge
@@ -704,42 +711,47 @@ struct InsightEngine {
     // MARK: - Safety / environment notes
 
     /// Personal-safety check.
-    /// Order: HR elevation vs own pace-band (C-1, non-hot only) → heat care (C-2).
+    /// Order: HR elevation vs own pace-band (C-1, 15°C 기준 심박 — 더위로 다 설명되면 침묵) → heat care (C-2).
     /// All comparisons are personal-relative. Silence when sample count is insufficient.
     private static func safetyNote(
         _ a: Activity,
         _ prior: [Activity],
-        condition: ActivityCondition?
+        condition: ActivityCondition?,
+        heatHR: MRHeatHRModel = MRHeatHRModel()
     ) -> InsightResult? {
         let isHot = condition?.weather?.isHot ?? false
-        if !isHot, let r = hrElevatedNote(a, prior) { return r }
-        if isHot,  let r = heatCareNote(a, prior)   { return r }
+        if let r = hrElevatedNote(a, prior, heatHR: heatHR) { return r }
+        if isHot, let r = heatCareNote(a, prior) { return r }
         return nil
     }
 
-    /// C-1: Current avg HR ≥8% above the user's own baseline at the same pace band (±5 s/km).
-    /// Requires ≥5 prior samples in that band. Not called when conditions are hot — caller gates this.
+    /// C-1: Current avg HR(15°C 기준) ≥8% above the user's own baseline(같은 기준) at the same pace
+    /// band (±5 s/km). Requires ≥5 prior samples in that band. 더운 날에도 보정 후 남는 초과분은
+    /// 그대로 발화한다(과거엔 더운 날 전체를 침묵시켰다 — heatHR이 그 자리를 대신한다).
     /// Scanned against most-recent 60 runs to bound cost (pace-band match is O(n)).
-    private static func hrElevatedNote(_ a: Activity, _ prior: [Activity]) -> InsightResult? {
-        guard let currentPace = a.paceSecPerKm, let currentHR = a.avgHeartRate else { return nil }
+    static func hrElevatedNote(_ a: Activity, _ prior: [Activity], heatHR: MRHeatHRModel = MRHeatHRModel()) -> InsightResult? {
+        guard let currentPace = a.paceSecPerKm, let currentHR = heatHR.refHR(of: a) else { return nil }
         let bandHRs = prior.prefix(60)
             .filter { guard let p = $0.paceSecPerKm else { return false }; return abs(p - currentPace) <= 5.0 }
-            .compactMap(\.avgHeartRate)
+            .compactMap { heatHR.refHR(of: $0) }
         guard bandHRs.count >= 5 else { return nil }
-        let avgBandHR = Double(bandHRs.reduce(0, +)) / Double(bandHRs.count)
-        guard Double(currentHR) >= avgBandHR * 1.08 else { return nil }
+        let avgBandHR = bandHRs.reduce(0, +) / Double(bandHRs.count)
+        guard currentHR >= avgBandHR * 1.08 else { return nil }
         let L = AppLanguage.shared
-        let excess = Int((Double(currentHR) - avgBandHR).rounded())
+        let excess = Int((currentHR - avgBandHR).rounded())
         #if DEBUG
         let distStr = String(format: "%.1fkm", a.distance / 1000)
-        print("[DetailInsight] hrElevated 발화: bandN=\(bandHRs.count) avgBand=\(Int(avgBandHR))bpm cur=\(currentHR)bpm excess=\(excess)bpm dist=\(distStr)")
+        print("[DetailInsight] hrElevated 발화: bandN=\(bandHRs.count) avgBand=\(Int(avgBandHR))bpm cur=\(Int(currentHR))bpm excess=\(excess)bpm dist=\(distStr)")
         #endif
         let distLabel = String(format: "%.1fkm", a.distance / 1000)
+        let heatSuffix = heatHR.explains(tempC: a.temperatureC)
+            ? L.s(" (기온 감안)", " (heat-adjusted)")
+            : ""
         return InsightResult(
             theme: .safety,
             title: L.s("\(distLabel) 러닝", "\(distLabel) Run"),
-            detail: L.s("같은 페이스대에서 평소보다 약 \(excess)bpm 높았어요. 충분한 회복을 챙기세요",
-                        "Avg ~\(excess) bpm above your baseline at this pace. Prioritize recovery today")
+            detail: L.s("같은 페이스대에서 평소보다 약 \(excess)bpm 높았어요. 충분한 회복을 챙기세요\(heatSuffix)",
+                        "Avg ~\(excess) bpm above your baseline at this pace. Prioritize recovery today\(heatSuffix)")
         )
     }
 
@@ -816,7 +828,8 @@ struct InsightEngine {
         _ a: Activity,
         _ prior: [Activity],
         detail: ActivityDetail?,
-        splits: [SplitData]
+        splits: [SplitData],
+        heatHR: MRHeatHRModel = MRHeatHRModel()
     ) -> InsightResult? {
         let recentPrior = Array(prior.prefix(10))
         guard !recentPrior.isEmpty, let currentPace = a.paceSecPerKm else { return nil }
@@ -826,16 +839,17 @@ struct InsightEngine {
         guard !priorPaces.isEmpty else { return nil }
         let avgPriorPace = priorPaces.reduce(0, +) / Double(priorPaces.count)
 
-        let priorHRs     = recentPrior.compactMap(\.avgHeartRate)
-        let avgPriorHR   = priorHRs.isEmpty ? nil : Double(priorHRs.reduce(0, +)) / Double(priorHRs.count)
+        // 심박(15°C 기준)만 heatHR을 거친다 — 거리·페이스는 기온과 무관하다.
+        let priorHRs     = recentPrior.compactMap { heatHR.refHR(of: $0) }
+        let avgPriorHR   = priorHRs.isEmpty ? nil : priorHRs.reduce(0, +) / Double(priorHRs.count)
         let avgPriorDist = recentPrior.map(\.distance).reduce(0, +) / Double(recentPrior.count)
 
-        // 1. Pace maintained (±4%) + HR down ≥5% → efficiency gain
-        if let hr = a.avgHeartRate, let avgHR = avgPriorHR {
+        // 1. Pace maintained (±4%) + HR(15°C 기준) down ≥5% → efficiency gain
+        if let hr = heatHR.refHR(of: a), let avgHR = avgPriorHR {
             let paceVar = abs(currentPace - avgPriorPace) / avgPriorPace
-            let hrDrop  = (avgHR - Double(hr)) / avgHR
+            let hrDrop  = (avgHR - hr) / avgHR
             if paceVar <= 0.04 && hrDrop >= 0.05 {
-                let bpm = Int((avgHR - Double(hr)).rounded())
+                let bpm = Int((avgHR - hr).rounded())
                 return InsightResult(
                     theme: .tradeoff,
                     title: L.s("심폐가 단단해지는 러닝", "Efficiency Rising"),
@@ -884,9 +898,9 @@ struct InsightEngine {
             }
         }
 
-        // 5. Pace ≥5% faster + HR ≥5% higher → speed at justified cost
-        if let hr = a.avgHeartRate, let avgHR = avgPriorHR,
-           currentPace < avgPriorPace * 0.95, Double(hr) > avgHR * 1.05 {
+        // 5. Pace ≥5% faster + HR(15°C 기준) ≥5% higher → speed at justified cost
+        if let hr = heatHR.refHR(of: a), let avgHR = avgPriorHR,
+           currentPace < avgPriorPace * 0.95, hr > avgHR * 1.05 {
             return InsightResult(
                 theme: .tradeoff,
                 title: L.s("스피드의 정당한 대가", "Speed Worth Paying For"),
@@ -1445,7 +1459,8 @@ struct InsightEngine {
         intervalSegments: [IntervalSegment],
         detail: ActivityDetail?,
         splits: [SplitData],
-        typeOf: ((UUID) -> WorkoutType?)? = nil
+        typeOf: ((UUID) -> WorkoutType?)? = nil,
+        heatHR: MRHeatHRModel = MRHeatHRModel()
     ) -> String {
         var parts: [String] = []
 
@@ -1464,7 +1479,7 @@ struct InsightEngine {
         }
 
         // tradeoff
-        let tradeoffFired = tradeoffInsight(a, prior, detail: detail, splits: splits) != nil
+        let tradeoffFired = tradeoffInsight(a, prior, detail: detail, splits: splits, heatHR: heatHR) != nil
         parts.append("tradeoff(\(tradeoffFired ? "발화" : "침묵"))")
 
         // temperature extreme

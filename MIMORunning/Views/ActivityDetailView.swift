@@ -674,7 +674,8 @@ struct ActivityDetailView: View {
                 raceMatch: raceDetector.matchFor(activityID: activity.id),
                 detail: detail,
                 historyComplete: manager.isHistoryLoadComplete,
-                typeOf: manager.workoutTypeLookup()
+                typeOf: manager.workoutTypeLookup(),
+                heatHR: engine.heatHR
             )
             await InsightCache.shared.cache(result, for: activity.id, isRefined: true, language: lang)
             await InsightCache.shared.releaseRefinedCompute(activity.id)
@@ -701,7 +702,8 @@ struct ActivityDetailView: View {
                         raceMatch: raceDetector.matchFor(activityID: activity.id),
                         detail: detail,
                         historyComplete: manager.isHistoryLoadComplete,
-                        typeOf: manager.workoutTypeLookup()
+                        typeOf: manager.workoutTypeLookup(),
+                        heatHR: engine.heatHR
                     )
                     await InsightCache.shared.cache(result, for: activity.id, isRefined: true, language: lang)
                     withAnimation { insight = result }
@@ -738,7 +740,8 @@ struct ActivityDetailView: View {
             raceMatch: match,
             detail: detail,
             historyComplete: manager.isHistoryLoadComplete,
-            typeOf: manager.workoutTypeLookup()
+            typeOf: manager.workoutTypeLookup(),
+            heatHR: engine.heatHR
         )
         let isRefined = detail != nil
         await InsightCache.shared.cache(recomputed, for: activity.id, isRefined: isRefined, language: lang)
