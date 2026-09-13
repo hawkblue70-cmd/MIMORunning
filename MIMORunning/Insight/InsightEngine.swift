@@ -623,8 +623,11 @@ struct InsightEngine {
         let avgPace = recentPaces.reduce(0, +) / Double(recentPaces.count)
         guard pace > avgPace * 1.15 else { return nil }
 
-        if let hr = heatHR.refHR(of: a) {
-            let recentHRs = prior.prefix(10).compactMap { heatHR.refHR(of: $0) }
+        let recent10 = Array(prior.prefix(10))
+        let comparable = heatComparable(a, recent10, heatHR: heatHR)
+        let hrOf: (Activity) -> Double? = comparable ? { heatHR.refHR(of: $0) } : { $0.avgHeartRate.map(Double.init) }
+        if let hr = hrOf(a) {
+            let recentHRs = recent10.compactMap(hrOf)
             if !recentHRs.isEmpty {
                 let avgHR = recentHRs.reduce(0, +) / Double(recentHRs.count)
                 guard hr < avgHR else { return nil }
@@ -725,15 +728,28 @@ struct InsightEngine {
         return nil
     }
 
+    /// 심박 비교의 두 편이 같은 기준(15°C)으로 맞춰질 만큼 기온 데이터가 있는지.
+    /// 오늘 기온이 없거나(보정 자체가 불가능) 비교 대상 절반 미만에 기온이 있으면(한쪽만 보정하는 셈)
+    /// 양쪽 다 원본으로 비교한다 — RunInsightEngine.efficiencyInsight와 같은 규칙.
+    private static func heatComparable(_ a: Activity, _ prior: [Activity], heatHR: MRHeatHRModel) -> Bool {
+        guard heatHR.ok, a.temperatureC != nil, !prior.isEmpty else { return false }
+        let withTemp = prior.filter { $0.temperatureC != nil }.count
+        return withTemp * 2 >= prior.count
+    }
+
     /// C-1: Current avg HR(15°C 기준) ≥8% above the user's own baseline(같은 기준) at the same pace
     /// band (±5 s/km). Requires ≥5 prior samples in that band. 더운 날에도 보정 후 남는 초과분은
     /// 그대로 발화한다(과거엔 더운 날 전체를 침묵시켰다 — heatHR이 그 자리를 대신한다).
+    /// 기온 커버리지가 낮으면(`heatComparable`) 양쪽 다 원본 심박으로 비교한다.
     /// Scanned against most-recent 60 runs to bound cost (pace-band match is O(n)).
     static func hrElevatedNote(_ a: Activity, _ prior: [Activity], heatHR: MRHeatHRModel = MRHeatHRModel()) -> InsightResult? {
-        guard let currentPace = a.paceSecPerKm, let currentHR = heatHR.refHR(of: a) else { return nil }
-        let bandHRs = prior.prefix(60)
-            .filter { guard let p = $0.paceSecPerKm else { return false }; return abs(p - currentPace) <= 5.0 }
-            .compactMap { heatHR.refHR(of: $0) }
+        guard let currentPace = a.paceSecPerKm else { return nil }
+        let band = Array(prior.prefix(60)
+            .filter { guard let p = $0.paceSecPerKm else { return false }; return abs(p - currentPace) <= 5.0 })
+        let comparable = heatComparable(a, band, heatHR: heatHR)
+        let hrOf: (Activity) -> Double? = comparable ? { heatHR.refHR(of: $0) } : { $0.avgHeartRate.map(Double.init) }
+        guard let currentHR = hrOf(a) else { return nil }
+        let bandHRs = band.compactMap(hrOf)
         guard bandHRs.count >= 5 else { return nil }
         let avgBandHR = bandHRs.reduce(0, +) / Double(bandHRs.count)
         guard currentHR >= avgBandHR * 1.08 else { return nil }
@@ -744,7 +760,7 @@ struct InsightEngine {
         print("[DetailInsight] hrElevated 발화: bandN=\(bandHRs.count) avgBand=\(Int(avgBandHR))bpm cur=\(Int(currentHR))bpm excess=\(excess)bpm dist=\(distStr)")
         #endif
         let distLabel = String(format: "%.1fkm", a.distance / 1000)
-        let heatSuffix = heatHR.explains(tempC: a.temperatureC)
+        let heatSuffix = (comparable && heatHR.explains(tempC: a.temperatureC))
             ? L.s(" (기온 감안)", " (heat-adjusted)")
             : ""
         return InsightResult(
@@ -840,21 +856,34 @@ struct InsightEngine {
         let avgPriorPace = priorPaces.reduce(0, +) / Double(priorPaces.count)
 
         // 심박(15°C 기준)만 heatHR을 거친다 — 거리·페이스는 기온과 무관하다.
-        let priorHRs     = recentPrior.compactMap { heatHR.refHR(of: $0) }
+        // 기온 커버리지가 낮으면(`heatComparable`) 양쪽 다 원본 심박으로 비교한다.
+        let comparable = heatComparable(a, recentPrior, heatHR: heatHR)
+        let hrOf: (Activity) -> Double? = comparable ? { heatHR.refHR(of: $0) } : { $0.avgHeartRate.map(Double.init) }
+        let priorHRs     = recentPrior.compactMap(hrOf)
         let avgPriorHR   = priorHRs.isEmpty ? nil : priorHRs.reduce(0, +) / Double(priorHRs.count)
         let avgPriorDist = recentPrior.map(\.distance).reduce(0, +) / Double(recentPrior.count)
 
-        // 1. Pace maintained (±4%) + HR(15°C 기준) down ≥5% → efficiency gain
-        if let hr = heatHR.refHR(of: a), let avgHR = avgPriorHR {
-            let paceVar = abs(currentPace - avgPriorPace) / avgPriorPace
-            let hrDrop  = (avgHR - hr) / avgHR
-            if paceVar <= 0.04 && hrDrop >= 0.05 {
-                let bpm = Int((avgHR - hr).rounded())
-                return InsightResult(
-                    theme: .tradeoff,
-                    title: L.s("심폐가 단단해지는 러닝", "Efficiency Rising"),
-                    detail: L.s("같은 페이스, 평균 심박 \(bpm)bpm 감소", "Same pace, avg HR down \(bpm) bpm")
-                )
+        // 1. Pace maintained (±4%) + HR down ≥5% → efficiency gain.
+        // 개선 주장은 원본과 보정 둘 다 5% 이상 낮을 때만 — RunInsightEngine.efficiencyInsight와 같은 규칙.
+        if let hr = hrOf(a), let avgHR = avgPriorHR, let rawHR = a.avgHeartRate.map(Double.init) {
+            let priorRawHRs = recentPrior.compactMap { $0.avgHeartRate.map(Double.init) }
+            if !priorRawHRs.isEmpty {
+                let avgPriorRawHR = priorRawHRs.reduce(0, +) / Double(priorRawHRs.count)
+                let paceVar = abs(currentPace - avgPriorPace) / avgPriorPace
+                let hrDrop  = (avgHR - hr) / avgHR
+                let rawDrop = (avgPriorRawHR - rawHR) / avgPriorRawHR
+                if paceVar <= 0.04 && hrDrop >= 0.05 && rawDrop >= 0.05 {
+                    let bpm = Int((avgHR - hr).rounded())
+                    let heatSuffix = (comparable && heatHR.explains(tempC: a.temperatureC))
+                        ? L.s(" (기온 감안)", " (heat-adjusted)")
+                        : ""
+                    return InsightResult(
+                        theme: .tradeoff,
+                        title: L.s("심폐가 단단해지는 러닝", "Efficiency Rising"),
+                        detail: L.s("같은 페이스, 평균 심박 \(bpm)bpm 감소\(heatSuffix)",
+                                    "Same pace, avg HR down \(bpm) bpm\(heatSuffix)")
+                    )
+                }
             }
         }
 
@@ -898,8 +927,8 @@ struct InsightEngine {
             }
         }
 
-        // 5. Pace ≥5% faster + HR(15°C 기준) ≥5% higher → speed at justified cost
-        if let hr = heatHR.refHR(of: a), let avgHR = avgPriorHR,
+        // 5. Pace ≥5% faster + HR ≥5% higher → speed at justified cost
+        if let hr = hrOf(a), let avgHR = avgPriorHR,
            currentPace < avgPriorPace * 0.95, hr > avgHR * 1.05 {
             return InsightResult(
                 theme: .tradeoff,

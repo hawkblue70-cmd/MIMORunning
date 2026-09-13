@@ -41,4 +41,34 @@ struct InsightEngineHeatTests {
         #expect(r.theme == .safety, "보정 후에도 8% 이상이면 안전 메모가 떠야 한다: \(r.title) / \(r.detail)")
         #expect(r.detail.contains("(기온 감안)"), "보정이 적용됐음을 알려야 한다: \(r.detail)")
     }
+
+    @Test func hrElevatedNoteDirectNilWhenHeatExplains() {
+        AppLanguage.shared.isEnglish = false
+        // hrElevatedNote를 직접 호출 — compute()의 우선순위 체계를 거치지 않고 함수 단독으로 확인.
+        let today = run(0, pace: 360, hr: 160, temp: 25)
+        let hist = (1...8).map { run($0 * 3, pace: 360, hr: 148, temp: 15) }
+        let r = InsightEngine.hrElevatedNote(today, hist, heatHR: learned)
+        #expect(r == nil, "보정 후 8% 미만이면 hrElevatedNote 자체가 nil이어야 한다: \(String(describing: r))")
+    }
+
+    @Test func tradeoffEfficiencyNeedsRawDrop() {
+        AppLanguage.shared.isEnglish = false
+        // 오늘 150bpm @28°C(보정 139.6, 과거 대비 −6.9% ≥5%)이지만 원본은 과거와 동일(150) — 원본 드롭이
+        // 없으므로 "심폐가 단단해지는 러닝"(효율 향상 트레이드오프)이 뜨면 안 된다.
+        let today = run(0, pace: 360, hr: 150, temp: 28)
+        let hist = (1...10).map { run($0 * 3, pace: 360, hr: 150, temp: 15) }
+        let r = InsightEngine.compute(activity: today, history: hist, heatHR: learned)
+        #expect(r.title != "심폐가 단단해지는 러닝", "원본 드롭이 없으면 효율 향상 트레이드오프가 뜨면 안 된다: \(r.theme) / \(r.title)")
+    }
+
+    @Test func hrElevatedNoteUsesRawWhenPriorLacksTemps() {
+        AppLanguage.shared.isEnglish = false
+        // 과거 기록에 기온이 전혀 없음 → 기온 커버리지 미달 → 양쪽 다 원본 심박으로 비교한다.
+        // 오늘 170bpm vs 과거 148bpm 원본 비교 = +14.9%(≥8%) → 발화하되 "(기온 감안)"은 붙지 않는다.
+        let today = run(0, pace: 360, hr: 170, temp: 25)
+        let hist = (1...8).map { run($0 * 3, pace: 360, hr: 148, temp: nil) }
+        let r = InsightEngine.compute(activity: today, history: hist, heatHR: learned)
+        #expect(r.theme == .safety, "기온 커버리지가 없어도 원본 비교로 발화해야 한다: \(r.title) / \(r.detail)")
+        #expect(!r.detail.contains("(기온 감안)"), "원본 비교일 땐 기온 감안 표기를 붙이면 안 된다: \(r.detail)")
+    }
 }
