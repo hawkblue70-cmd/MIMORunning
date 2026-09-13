@@ -685,32 +685,7 @@ struct ShareCardScreen: View {
             // ── Row 2: metric chips ───────────────────────────────
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(allMetricItems) { item in
-                        let isOn = enabledMetrics.contains(item.id)
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                if isOn { enabledMetrics.remove(item.id) }
-                                else    { enabledMetrics.insert(item.id) }
-                            }
-                            Task { await renderCard(showSpinner: false) }
-                        } label: {
-                            HStack(spacing: 4) {
-                                if isOn {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
-                                Text(item.id.chipLabel)
-                                    .font(.caption.weight(.semibold))
-                            }
-                            .foregroundStyle(Color.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(isOn ? Theme.violet : Color.white.opacity(0.15))
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    // 총평 칩 — 요약 줄이 2줄 미만이면 차트 칩의 available 스타일처럼 비활성.
+                    // 총평 칩 — 페이스 칩 맨 앞. 요약 줄이 2줄 미만이면 차트 칩의 available 스타일처럼 비활성.
                     let summaryAvailable = summaryLines.count >= 2
                     Button {
                         guard summaryAvailable else { return }
@@ -736,6 +711,31 @@ struct ShareCardScreen: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!summaryAvailable)
+                    ForEach(allMetricItems) { item in
+                        let isOn = enabledMetrics.contains(item.id)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                if isOn { enabledMetrics.remove(item.id) }
+                                else    { enabledMetrics.insert(item.id) }
+                            }
+                            Task { await renderCard(showSpinner: false) }
+                        } label: {
+                            HStack(spacing: 4) {
+                                if isOn {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                                Text(item.id.chipLabel)
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(isOn ? Theme.violet : Color.white.opacity(0.15))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 2)

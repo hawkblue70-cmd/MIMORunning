@@ -65,13 +65,16 @@ struct StoryShareCardView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
 
+                // ── 총평(로고 아래) — §5.8: scale만 다르고 컴포넌트는 하나 ──
+                if !summaryLines.isEmpty {
+                    RunSummaryLinesView(lines: summaryLines, scale: 0.7, expandAll: true)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                }
+
                 Spacer()
 
-                if !summaryLines.isEmpty {
-                    RunSummaryLinesView(lines: summaryLines, scale: 0.75, allowsExpansion: false)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 8)
-                } else if chartPanel == .map, !routeCoordinates.isEmpty {
+                if summaryLines.isEmpty, chartPanel == .map, !routeCoordinates.isEmpty {
                     HStack {
                         Spacer()
                         RouteLineArt(coordinates: routeCoordinates)
@@ -79,7 +82,7 @@ struct StoryShareCardView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 8)
-                } else if chartPanel != .map {
+                } else if summaryLines.isEmpty, chartPanel != .map {
                     HStack {
                         Spacer()
                         CardChartLabeledPanel(

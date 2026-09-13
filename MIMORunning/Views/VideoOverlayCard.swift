@@ -69,14 +69,16 @@ struct VideoOverlayCard: View {
                 }
                 .padding(.top, topInset ?? (CardVisual.videoSafeTopRef * scale))
 
+                // ── 총평(로고 아래, 비디오 세이프존 안) — §5.8: scale만 다르고 컴포넌트는 하나 ──
+                if !summaryLines.isEmpty {
+                    RunSummaryLinesView(lines: summaryLines, scale: scale * 0.7, expandAll: true)
+                        .padding(.top, 8 * scale)
+                }
+
                 Spacer()
 
-                // ── MIDDLE: chart (right-aligned) — 총평이 켜지면 이 자리를 대신 차지한다(§5.8) ──
-                if !summaryLines.isEmpty {
-                    RunSummaryLinesView(lines: summaryLines, scale: scale * 0.75, allowsExpansion: false)
-                        .padding(.horizontal, 20 * scale)
-                        .padding(.bottom, 8 * scale)
-                } else if chartPanel != .map {
+                // ── MIDDLE: chart (right-aligned) — 총평이 켜지면 숨김(§5.8) ──
+                if summaryLines.isEmpty, chartPanel != .map {
                     HStack {
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2 * scale) {

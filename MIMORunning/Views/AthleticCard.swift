@@ -49,14 +49,10 @@ struct AthleticCard: View {
     }
 
     // non-map chart — anchored inside the bottom VStack, above the divider
-    // 총평이 켜지면(summaryLines 비어있지 않음) 이 자리를 대신 차지한다 — 지도/차트는 숨김(§5.8).
+    // 총평이 켜지면(summaryLines 비어있지 않음) 로고 아래로 옮겨가고 이 자리의 지도/차트는 숨김(§5.8).
     @ViewBuilder
     private var chartAboveDivider: some View {
-        if !summaryLines.isEmpty {
-            RunSummaryLinesView(lines: summaryLines, scale: 0.75, allowsExpansion: false)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-        } else if chartPanel != .map {
+        if summaryLines.isEmpty, chartPanel != .map {
             HStack {
                 Spacer()
                 CardChartLabeledPanel(
@@ -118,6 +114,13 @@ struct AthleticCard: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 14)
+
+                // ── 총평(로고 아래) — §5.8: scale만 다르고 컴포넌트는 하나 ──
+                if !summaryLines.isEmpty {
+                    RunSummaryLinesView(lines: summaryLines, scale: 0.7, expandAll: true)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 8)
+                }
 
                 Spacer()
 

@@ -1,20 +1,24 @@
 import SwiftUI
 
-/// 총평 줄 묶음 — 색점 + 축 + 상태어. 리듬 카드 하단과 (추후) 공유 카드가 **이 컴포넌트 하나만** 쓴다(§5.8).
+/// 총평 줄 묶음 — 색점 + 축 + 상태어. 리듬 카드 하단과 공유 카드가 **이 컴포넌트 하나만** 쓴다(§5.8).
 /// 크기는 `scale`로만 조절한다. scale=1 기준: 글자 10pt · 점 7pt · 좌우 여백 12pt · 상하 10pt · 축 열 52pt(영어 70pt).
 /// 탭하면 근거·다음이 펼쳐진다(9.5pt · 라벨 8.5pt). 노란(neutral) 줄은 기본 펼침, 초록 줄은 접힘.
+/// 공유 카드는 `expandAll: true`로 근거·다음까지 모두 펼쳐 그린다 — 이때는 화살표도 탭도 없다.
 /// 내보내기는 `allowsExpansion: false`로 5줄만 그린다.
 struct RunSummaryLinesView: View {
     let lines: [RunSummaryLine]
     var scale: CGFloat = 1.0
     var allowsExpansion: Bool = true
+    /// true면 근거·다음이 있는 모든 줄을 항상 펼쳐 그린다. 화살표·탭 제스처 없음 — `allowsExpansion`은 무시된다.
+    var expandAll: Bool = false
 
     @State private var expanded: Set<String>
 
-    init(lines: [RunSummaryLine], scale: CGFloat = 1.0, allowsExpansion: Bool = true) {
+    init(lines: [RunSummaryLine], scale: CGFloat = 1.0, allowsExpansion: Bool = true, expandAll: Bool = false) {
         self.lines = lines
         self.scale = scale
         self.allowsExpansion = allowsExpansion
+        self.expandAll = expandAll
         _expanded = State(initialValue: allowsExpansion
             ? Set(lines.filter { $0.tone == .neutral && ($0.evidence != nil || $0.next != nil) }.map(\.axis))
             : [])
@@ -41,7 +45,8 @@ struct RunSummaryLinesView: View {
     @ViewBuilder
     private func row(_ line: RunSummaryLine) -> some View {
         let hasDetail = line.evidence != nil || line.next != nil
-        let open = allowsExpansion && hasDetail && expanded.contains(line.axis)
+        let open = expandAll ? hasDetail : (allowsExpansion && hasDetail && expanded.contains(line.axis))
+        let showChevron = !expandAll && allowsExpansion && hasDetail
         VStack(alignment: .leading, spacing: 3 * scale) {
             HStack(alignment: .top, spacing: 7 * scale) {
                 Circle()
@@ -63,7 +68,7 @@ struct RunSummaryLinesView: View {
                     .lineSpacing(2 * scale)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-                if allowsExpansion && hasDetail {
+                if showChevron {
                     Image(systemName: open ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9 * scale, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.45))
@@ -103,7 +108,7 @@ struct RunSummaryLinesView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            guard allowsExpansion && hasDetail else { return }
+            guard !expandAll && allowsExpansion && hasDetail else { return }
             withAnimation(.snappy) {
                 if expanded.contains(line.axis) { expanded.remove(line.axis) } else { expanded.insert(line.axis) }
             }
