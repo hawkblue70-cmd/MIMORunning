@@ -531,8 +531,13 @@ struct MeView: View {
                 var changed = 0
                 let merged: [MRPlanWeekSummary] = existing.planWeeks.map { snap in
                     let snapMon = cal.startOfDay(for: snap.monday)
-                    guard snapMon > thisMonday, let live = liveByMonday[snapMon] else { return snap }
-                    let raceRelated = live.phase == "대회 주" || snap.phase == "대회 주"
+                    guard let live = liveByMonday[snapMon] else { return snap }
+                    let follows = live.breakdown.contains("계획을 따릅니다")
+                    // 지난 주는 원칙적으로 고정. 예외: 다른 대회(10K) 계획을 "따르는" 주는 그 계획의 고정된
+                    // 과거 값을 그대로 가져오는 것이라 역사를 새로 쓰는 게 아니다 — 이행 기호가 실제 따른 계획 기준이 된다.
+                    // 이번 주(진행 중)는 튠업 관련이면 갱신한다.
+                    if snapMon < thisMonday && !follows { return snap }
+                    let raceRelated = follows || live.phase == "대회 주" || snap.phase == "대회 주"
                         || live.breakdown.contains("대회") || snap.breakdown.contains("대회")
                     guard raceRelated,
                           live.phase != snap.phase || live.breakdown != snap.breakdown

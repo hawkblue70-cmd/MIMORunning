@@ -485,7 +485,8 @@ func mrBuildPlan(raceDate: Date,
                 phase = tuneKind == 1 ? "대회 주" : "회복"
                 wkVol = currentBuildVol * 0.75
             } else {
-                lr = min(peakLong * (1 + stepPct), p.targetLongKm)
+                // 5K·10K 튠업 주는 롱런 "유지" — 진행(+10%) 없이 직전 정점 그대로. 10K 대회 주에 +10% 롱런은 부담이 크다.
+                lr = tuneKind == 1 ? min(peakLong, p.targetLongKm) : min(peakLong * (1 + stepPct), p.targetLongKm)
                 peakLong = max(peakLong, lr)
                 newMax = lr > longNow + 0.5
                 let atLongRunCap = !newMax && lr >= p.targetLongKm - 0.1
@@ -707,7 +708,9 @@ func mrBuildPlan(raceDate: Date,
         }
     } else {
         let need = distanceM / 1000.0
-        if peakLong >= p.targetLongKm * 0.95 {
+        // 하프는 0.90(19km) — Fokkema 2020 절단점(>21km vs 15–21km, −4분)의 폭에 맞춘 문턱. 10K 이하는 0.95.
+        let okRatio = distanceM >= MRDistance.dH ? 0.90 : 0.95
+        if peakLong >= p.targetLongKm * okRatio {
             p.verdict = "가능"
         } else if peakLong >= need * 0.6 {
             p.verdict = "완주 중심 권장"

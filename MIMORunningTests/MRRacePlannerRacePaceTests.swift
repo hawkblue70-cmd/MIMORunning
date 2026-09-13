@@ -161,8 +161,12 @@ struct MRRacePlannerTuneUpTests {
         let idx = try #require(plan.weeks.firstIndex { $0.phase == "대회 주" })
         let w = plan.weeks[idx]
         #expect(w.breakdown.contains("10K") && w.breakdown.contains("롱런"))
-        // 롱런은 흡수 전과 같다(유지). 주간 거리는 빌드 주면 줄고, 사이클 회복 주와 겹치면 회복 볼륨 그대로.
-        #expect(abs(w.longRunKm - base.weeks[idx].longRunKm) < 0.01)
+        // 롱런은 "유지" — 직전까지의 정점 그대로(진행 없음). 사이클 회복 주와 겹치면 65%.
+        let prevPeak = plan.weeks[..<idx].map(\.longRunKm).max() ?? 0
+        if base.weeks[idx].phase != "회복" {
+            #expect(abs(w.longRunKm - prevPeak) < 0.01)
+            #expect(w.longRunKm <= base.weeks[idx].longRunKm + 0.01)
+        }
         if base.weeks[idx].phase == "회복" {
             #expect(abs(w.weeklyKm - base.weeks[idx].weeklyKm) < 0.01)
         } else {
@@ -380,7 +384,8 @@ struct MRRacePlannerFollowOwnPlanTests {
             }
         }
         #expect(matched >= 2)
-        // 대회 주 이후에는 다시 진행해 21km에 닿는다
-        #expect(half.reachableLongKm >= 20.9)
+        // 대회 주 이후 다시 진행 — 8주·회복 주기 겹침이라 정점은 19.4km. 하프 문턱 0.90(19km)으로 "가능".
+        #expect(half.reachableLongKm >= 19.0)
+        #expect(half.verdict == "가능")
     }
 }
