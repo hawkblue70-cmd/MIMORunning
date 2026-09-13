@@ -147,6 +147,30 @@ struct ActivityDetailView: View {
         return manager.computeHRZonesFromSamples(hrSamples)
     }
 
+    // 확정된 대회 기록은 .race로 고정 — RunInsightSection의 workoutTypeFn과 같은 규칙.
+    private func summaryWorkoutType(for id: UUID) -> WorkoutType? {
+        if let match = raceDetector.matchFor(activityID: id), match.isConfirmed { return .race }
+        return manager.cachedWorkoutTypeForStats(for: id)
+    }
+
+    /// 총평 5줄 입력 조립 — RunInsightSection과 같은 값들로, 공유 카드 "총평" 칩 전용.
+    private var summaryContext: RunSummaryBuilder.Context {
+        RunSummaryBuilder.Context(
+            activity: activity, detail: detail, history: manager.activities,
+            hrZones: effectiveHRZones, hrSamples: hrSamples,
+            formBaseline: formBaseline, formShifts: formShifts,
+            workoutType: summaryWorkoutType(for: activity.id) ?? .general,
+            workoutTypeFn: summaryWorkoutType,
+            effortIndex: effortIndex, heatHRModel: engine.heatHR,
+            age: userAge, isMale: manager.userIsMale, easyPaceLookup: engine.easyPaceLookup,
+            planPhase: matchedPlanWeek()?.phase,
+            raceDetailFn: manager.detailFromCache,
+            hrZonesFn: manager.hrZonesFromCache
+        )
+    }
+
+    private var shareSummaryLines: [RunSummaryLine] { RunSummaryBuilder.lines(summaryContext) }
+
     private var confirmedRaceMatch: PersistedRaceMatch? {
         guard let m = raceDetector.matchFor(activityID: activity.id), m.isConfirmed else { return nil }
         return m
@@ -388,7 +412,8 @@ struct ActivityDetailView: View {
             }
         }
         .navigationDestination(isPresented: $showShareCard) {
-            ShareCardScreen(activity: activity, detail: detail, insight: insight, manager: manager, condition: condition)
+            ShareCardScreen(activity: activity, detail: detail, insight: insight, manager: manager, condition: condition,
+                             summaryLines: shareSummaryLines)
         }
         .sheet(isPresented: $showManualRaceEntry) {
             ManualRaceSheet(

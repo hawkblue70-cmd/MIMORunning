@@ -85,6 +85,8 @@ struct ShareCardScreen: View {
     let insight: InsightResult?
     var manager: HealthKitManager? = nil
     var condition: ActivityCondition? = nil
+    /// 총평 5줄 — RunSummaryBuilder로 조립돼 들어온다. "총평" 칩이 켜졌을 때만 카드에 표시.
+    var summaryLines: [RunSummaryLine] = []
 
     @Environment(\.modelContext) var modelContext
     @Environment(RaceDetector.self) private var raceDetector
@@ -138,6 +140,8 @@ struct ShareCardScreen: View {
     @State private var enabledMetrics: Set<ShareMetric>
     @State private var showRaceOnCard = true
     @State private var showShoeOnCard = true   // Sky 카드 전용 토글
+    /// "총평" 칩 — 기본 꺼짐. 켜지면 지도/차트 자리에 총평 5줄이 대신 들어간다(§5.8: 카드 4종·영상 오버레이 공용).
+    @State private var showSummaryOnCard = false
     @State private var carouselPage = 0
     // Stamp card ViewModel (cardIndex == 0)
     @State var stampVM = StampViewModel()
@@ -412,12 +416,14 @@ struct ShareCardScreen: View {
     /// 신발이 등록돼 있으면 항상 표시 (토글 없음)
     var displayShoeName: String? { activeShoe?.displayName }
 
-    init(activity: Activity, detail: ActivityDetail?, insight: InsightResult?, manager: HealthKitManager? = nil, condition: ActivityCondition? = nil) {
+    init(activity: Activity, detail: ActivityDetail?, insight: InsightResult?, manager: HealthKitManager? = nil,
+         condition: ActivityCondition? = nil, summaryLines: [RunSummaryLine] = []) {
         self.activity = activity
         self.detail = detail
         self.insight = insight
         self.manager = manager
         self.condition = condition
+        self.summaryLines = summaryLines
         _enabledMetrics = State(initialValue: Self.computeDefaultMetrics(activity: activity, detail: detail))
     }
 
@@ -447,6 +453,9 @@ struct ShareCardScreen: View {
     private var enabledMetricItems: [ShareMetricItem] {
         allMetricItems.filter { enabledMetrics.contains($0.id) }
     }
+
+    /// 카드에 실제로 넘길 총평 줄 — 칩이 꺼져 있으면 항상 빈 배열(기존 렌더와 바이트 동일).
+    private var cardSummaryLines: [RunSummaryLine] { showSummaryOnCard ? summaryLines : [] }
 
     private func workIntervals(from segs: [IntervalSegment]) -> [IntervalSegment] {
         let labeled = segs.filter { $0.stepLabel == "운동" }
@@ -701,6 +710,32 @@ struct ShareCardScreen: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    // 총평 칩 — 요약 줄이 2줄 미만이면 차트 칩의 available 스타일처럼 비활성.
+                    let summaryAvailable = summaryLines.count >= 2
+                    Button {
+                        guard summaryAvailable else { return }
+                        withAnimation(.easeInOut(duration: 0.15)) { showSummaryOnCard.toggle() }
+                        Task { await renderCard(showSpinner: false) }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if showSummaryOnCard {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            Text(AppLanguage.shared.s("총평", "Summary"))
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(summaryAvailable ? Color.white : Color.white.opacity(0.18))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            showSummaryOnCard ? Theme.violet
+                            : Color.white.opacity(summaryAvailable ? 0.15 : 0.04)
+                        )
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!summaryAvailable)
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 2)
@@ -3199,6 +3234,7 @@ struct ShareCardScreen: View {
                 chartIntervalSegments: detail?.intervalSegments ?? [],
                 weather: condition?.weather,
                 shoeName: displayShoeName,
+                summaryLines: cardSummaryLines,
                 scale: 216.0 / 300.0,
                 topInset: exportInset,
                 bottomInset: 14
@@ -3469,6 +3505,7 @@ struct ShareCardScreen: View {
                           weather: condition?.weather,
                           shoeName: displayShoeName,
                           photo: nil,
+                          summaryLines: cardSummaryLines,
 )
         case .story:
             if let photo = photoFor(3) {
@@ -3486,7 +3523,8 @@ struct ShareCardScreen: View {
                               weather: condition?.weather,
                               shoeName: displayShoeName,
                               photo: photo,
-                              cropOffsetX: athleticCropOffsetX)
+                              cropOffsetX: athleticCropOffsetX,
+                              summaryLines: cardSummaryLines)
                     .gesture(excess > 0 ? DragGesture(minimumDistance: 1)
                         .onChanged { drag in
                             if athleticCropDragBase == nil { athleticCropDragBase = athleticCropOffsetX }
@@ -3512,6 +3550,7 @@ struct ShareCardScreen: View {
                                    chartIntervalSegments: detail?.intervalSegments ?? [],
                                    weather: condition?.weather,
                                    shoeName: displayShoeName,
+                                   summaryLines: cardSummaryLines,
 )
             } else {
                 AthleticCard(activity: activity, routeCoordinates: routeCoords,
@@ -3524,7 +3563,8 @@ struct ShareCardScreen: View {
                               chartWorkoutSeries: shareWorkoutSeries,
                               chartIntervalSegments: detail?.intervalSegments ?? [],
                               weather: condition?.weather,
-                              shoeName: displayShoeName)
+                              shoeName: displayShoeName,
+                              summaryLines: cardSummaryLines)
             }
         case .video, .slide:
             videoPreviewCard
@@ -3572,6 +3612,7 @@ struct ShareCardScreen: View {
                     chartHRZones: detail?.hrZones ?? [],
                     chartWorkoutSeries: shareWorkoutSeries,
                     chartIntervalSegments: detail?.intervalSegments ?? [],
+                    summaryLines: cardSummaryLines,
                     hrSamplesForRoute: shareHRSamples,
                     routeWorkoutDuration: activity.duration,
                     routeZoneBounds: shareZoneBounds,
@@ -3752,6 +3793,7 @@ struct ShareCardScreen: View {
                         chartIntervalSegments: detail?.intervalSegments ?? [],
                         weather: condition?.weather,
                         shoeName: displayShoeName,
+                        summaryLines: cardSummaryLines,
                         scale: vidW / 300.0,
                         topInset: inset,
                         bottomInset: 14
@@ -4598,6 +4640,7 @@ struct ShareCardScreen: View {
                 chartIntervalSegments: detail?.intervalSegments ?? [],
                 weather: condition?.weather,
                 shoeName: displayShoeName,
+                summaryLines: cardSummaryLines,
                 scale: 216.0 / 300.0,
                 topInset: exportInset,
                 bottomInset: 14
@@ -4701,6 +4744,7 @@ struct ShareCardScreen: View {
                 chartIntervalSegments: detail?.intervalSegments ?? [],
                 weather: condition?.weather,
                 shoeName: displayShoeName,
+                summaryLines: cardSummaryLines,
                 scale: 216.0 / 300.0,
                 topInset: exportInset,
                 bottomInset: 14
@@ -5021,6 +5065,7 @@ struct ShareCardScreen: View {
             chartIntervalSegments: detail?.intervalSegments ?? [],
             weather: condition?.weather,
             shoeName: displayShoeName,
+            summaryLines: cardSummaryLines,
             scale: 216.0 / 300.0,    // proportional to 300pt preview (= 0.72)
             topInset: 384.0 * 0.05,  // 5% = 19.2pt → 96px at scale 5 (preview 일치)
             bottomInset: 14
@@ -5186,6 +5231,7 @@ struct ShareCardScreen: View {
                     chartHRZones: detail?.hrZones ?? [],
                     chartWorkoutSeries: shareWorkoutSeries,
                     chartIntervalSegments: detail?.intervalSegments ?? [],
+                    summaryLines: cardSummaryLines,
                     totalDistanceM: activity.distance,
                     hrSamplesForRoute: shareHRSamples,
                     routeWorkoutDuration: activity.duration,
@@ -5634,7 +5680,8 @@ struct ShareCardScreen: View {
                               weather: condition?.weather,
                               shoeName: displayShoeName,
                               photo: selPhoto,
-                              cropOffsetX: athleticCropOffsetX)
+                              cropOffsetX: athleticCropOffsetX,
+                              summaryLines: cardSummaryLines)
                     .frame(width: 300, height: 375)
             )
             renderer.scale = 3
@@ -5672,6 +5719,7 @@ struct ShareCardScreen: View {
                           weather: condition?.weather,
                           shoeName: displayShoeName,
                           photo: nil,
+                          summaryLines: cardSummaryLines,
 )
                 .frame(width: 300, height: 375)
         case .story:
@@ -5687,6 +5735,7 @@ struct ShareCardScreen: View {
                                    chartIntervalSegments: detail?.intervalSegments ?? [],
                                    weather: condition?.weather,
                                    shoeName: displayShoeName,
+                                   summaryLines: cardSummaryLines,
                                    photoOffset: .constant(photoOffset))
                     .frame(width: 300, height: 375)
             } else if let s = story {
@@ -5702,6 +5751,7 @@ struct ShareCardScreen: View {
                                    chartIntervalSegments: detail?.intervalSegments ?? [],
                                    weather: condition?.weather,
                                    shoeName: displayShoeName,
+                                   summaryLines: cardSummaryLines,
 )
                     .frame(width: 300, height: 375)
             } else {
@@ -5715,7 +5765,8 @@ struct ShareCardScreen: View {
                               chartWorkoutSeries: shareWorkoutSeries,
                               chartIntervalSegments: detail?.intervalSegments ?? [],
                               weather: condition?.weather,
-                              shoeName: displayShoeName)
+                              shoeName: displayShoeName,
+                              summaryLines: cardSummaryLines)
                     .frame(width: 300, height: 375)
             }
         case .video, .slide, .routeVideo:

@@ -23,6 +23,8 @@ struct RouteVideoFrameView: View {
     var chartHRZones: [HRZoneData] = []
     var chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     var chartIntervalSegments: [IntervalSegment] = []
+    /// 총평 5줄 — 비어 있으면(기본) 기존 지도/차트 자리 그대로. §5.8: scale만 다르고 컴포넌트는 하나.
+    var summaryLines: [RunSummaryLine] = []
     var showStats: Bool = true
     // HR gradient for route polyline
     var hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = []
@@ -68,6 +70,7 @@ struct RouteVideoFrameView: View {
                         chartIntervalSegments: chartIntervalSegments,
                         weather: weather,
                         shoeName: shoeName,
+                        summaryLines: summaryLines,
                         scale: scale,
                         topInset: topInset,
                         bottomInset: bottomInset
@@ -433,6 +436,7 @@ struct RouteVideoExportService {
         chartHRZones: [HRZoneData],
         chartWorkoutSeries: [(offset: TimeInterval, value: Double)],
         chartIntervalSegments: [IntervalSegment],
+        summaryLines: [RunSummaryLine] = [],
         totalDistanceM: Double,
         hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = [],
         routeWorkoutDuration: TimeInterval = 0,
@@ -454,6 +458,7 @@ struct RouteVideoExportService {
                 chartHRSamples: chartHRSamples, chartHRZones: chartHRZones,
                 chartWorkoutSeries: chartWorkoutSeries, chartIntervalSegments: chartIntervalSegments,
                 weather: weather, shoeName: shoeName,
+                summaryLines: summaryLines,
                 scale: renderSize.width / 300,
                 topInset: exportInset,
                 bottomInset: previewMatchedBottomInset

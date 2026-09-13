@@ -21,6 +21,8 @@ struct PhotoShareCardView: View {
     var chartIntervalSegments: [IntervalSegment] = []
     var weather: WeatherSnapshot? = nil
     var shoeName: String? = nil
+    /// 총평 5줄 — 비어 있으면(기본) 기존 지도/차트 자리 그대로. §5.8: scale만 다르고 컴포넌트는 하나.
+    var summaryLines: [RunSummaryLine] = []
     @Binding var photoOffset: CGSize
     @State private var gestureStart: CGSize = .zero
 
@@ -83,7 +85,11 @@ struct PhotoShareCardView: View {
 
                 Spacer()
 
-                if chartPanel == .map, !routeCoordinates.isEmpty {
+                if !summaryLines.isEmpty {
+                    RunSummaryLinesView(lines: summaryLines, scale: 0.75, allowsExpansion: false)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
+                } else if chartPanel == .map, !routeCoordinates.isEmpty {
                     HStack {
                         Spacer()
                         RouteLineArt(coordinates: routeCoordinates)

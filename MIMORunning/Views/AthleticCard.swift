@@ -24,6 +24,8 @@ struct AthleticCard: View {
     var shoeName: String? = nil
     var photo: UIImage? = nil
     var cropOffsetX: CGFloat = 0.5
+    /// 총평 5줄 — 비어 있으면(기본) 기존 지도/차트 자리 그대로. §5.8: scale만 다르고 컴포넌트는 하나.
+    var summaryLines: [RunSummaryLine] = []
 
     private var distanceValue: String {
         let km = activity.distance / 1000
@@ -35,7 +37,7 @@ struct AthleticCard: View {
     // map only — floats in Spacer area
     @ViewBuilder
     private var chartMiddleSection: some View {
-        if chartPanel == .map, !routeCoordinates.isEmpty {
+        if summaryLines.isEmpty, chartPanel == .map, !routeCoordinates.isEmpty {
             HStack {
                 Spacer()
                 RouteLineArt(coordinates: routeCoordinates)
@@ -47,9 +49,14 @@ struct AthleticCard: View {
     }
 
     // non-map chart — anchored inside the bottom VStack, above the divider
+    // 총평이 켜지면(summaryLines 비어있지 않음) 이 자리를 대신 차지한다 — 지도/차트는 숨김(§5.8).
     @ViewBuilder
     private var chartAboveDivider: some View {
-        if chartPanel != .map {
+        if !summaryLines.isEmpty {
+            RunSummaryLinesView(lines: summaryLines, scale: 0.75, allowsExpansion: false)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+        } else if chartPanel != .map {
             HStack {
                 Spacer()
                 CardChartLabeledPanel(

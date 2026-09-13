@@ -27,6 +27,8 @@ struct VideoOverlayCard: View {
     let chartIntervalSegments: [IntervalSegment]
     let weather: WeatherSnapshot?
     var shoeName: String? = nil
+    /// 총평 5줄 — 비어 있으면(기본) 기존 지도/차트 자리 그대로. §5.8: scale만 다르고 컴포넌트는 하나.
+    var summaryLines: [RunSummaryLine] = []
     var scale: CGFloat = 1.0
     // nil = videoSafeTopRef/BottomRef * scale (Instagram safe zone 기본값)
     // 값 지정 시 해당 pt를 그대로 사용 (scale 미적용)
@@ -69,8 +71,12 @@ struct VideoOverlayCard: View {
 
                 Spacer()
 
-                // ── MIDDLE: chart (right-aligned) ──
-                if chartPanel != .map {
+                // ── MIDDLE: chart (right-aligned) — 총평이 켜지면 이 자리를 대신 차지한다(§5.8) ──
+                if !summaryLines.isEmpty {
+                    RunSummaryLinesView(lines: summaryLines, scale: scale * 0.75, allowsExpansion: false)
+                        .padding(.horizontal, 20 * scale)
+                        .padding(.bottom, 8 * scale)
+                } else if chartPanel != .map {
                     HStack {
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2 * scale) {
