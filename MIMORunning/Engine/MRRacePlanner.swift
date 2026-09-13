@@ -156,7 +156,10 @@ func mrBuildPlan(raceDate: Date,
     let totalDays = cal.dateComponents([.day], from: cal.startOfDay(for: today),
                                        to: cal.startOfDay(for: raceDate)).day ?? 0
     let totalWeeks = totalDays / 7
-    guard totalWeeks >= 3 else { return nil }
+    // ⚠ 3주 미만이면 새 계획은 만들지 않는다 — 훈련으로 바꿀 수 있는 게 없다.
+    //   단, 이미 시작한 계획(스냅샷 앵커 있음)은 대회 당일까지 그대로 보인다.
+    //   진행 중인 계획이 D-20에 사라지면 "처음 세운 계획을 끝까지 본다"가 깨진다 (10/4 10K 사례).
+    guard totalWeeks >= 3 || (forcedMonday != nil && totalDays >= 0) else { return nil }
     // ⚠ 하프 등가가 없으면 예측이 성립하지 않는다.
     //   0을 그리면 "0분 00초에 완주"라는 말이 되어 신뢰가 통째로 무너진다.
     //   계획을 아예 만들지 않고, 화면은 그 대회를 조용히 건너뛴다.

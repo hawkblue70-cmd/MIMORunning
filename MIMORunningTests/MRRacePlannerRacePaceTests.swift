@@ -319,3 +319,29 @@ struct MRRacePlannerVolumeTargetTests {
         #expect(plan.weeks.first.map { cal.isDate($0.monday, inSameDayAs: anchor) } == true)
     }
 }
+
+@Suite("MRRacePlanner 시작한 계획은 대회까지 유지")
+struct MRRacePlannerStartedPlanPersistsTests {
+    @Test func anchoredPlanSurvivesInsideThreeWeeks() throws {
+        var p = MRProfile()
+        p.weeklyKm4w = 42; p.longestRun16wKm = 16; p.maxWeeklyKm52w = 60; p.runsPerWeek = 4
+        let cal = Calendar.current
+        let today = Date()
+        let race = cal.date(byAdding: .day, value: 20, to: today)!          // D-20 → 2주
+        // 앵커 없음 → 3주 미만이라 계획 없음
+        #expect(mrBuildPlan(raceDate: race, distanceM: MRDistance.d10, today: today,
+                            profile: p, halfEquivMin: 110, easyPaceSecPerKm: 400,
+                            heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4) == nil)
+        // 5주 전 시작한 앵커 → 계획 유지, 주차 수는 앵커 기준
+        let daysSinceMon = (cal.component(.weekday, from: today) + 5) % 7
+        let thisMonday = cal.date(byAdding: .day, value: -daysSinceMon, to: cal.startOfDay(for: today))!
+        let anchor = cal.date(byAdding: .day, value: -35, to: thisMonday)!
+        let plan = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.d10, today: today,
+                                            profile: p, halfEquivMin: 110, easyPaceSecPerKm: 400,
+                                            heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4,
+                                            forcedMonday: anchor))
+        #expect(plan.weeks.count >= 7)
+        #expect(cal.isDate(plan.weeks[0].monday, inSameDayAs: anchor))
+        #expect(plan.weeks.last?.phase == "테이퍼")
+    }
+}
