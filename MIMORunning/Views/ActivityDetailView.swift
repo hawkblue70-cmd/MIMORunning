@@ -253,6 +253,7 @@ struct ActivityDetailView: View {
                             history: manager.activities,
                             age: userAge,
                             isMale: manager.userIsMale,
+                            hrMax: engine.phys.hrMax?.value,
                             hrZones: effectiveHRZones,
                             workoutTypeFn: { [rd = raceDetector, m = manager] id in
                                 // 확정된 대회 기록은 .race로 고정 — 거리주 등 훈련 분류 덮어씀
@@ -679,14 +680,43 @@ struct ActivityDetailView: View {
                 typeOf: manager.workoutTypeLookup(),
                 heatHR: engine.heatHR
             )
-            await InsightCache.shared.cache(result, for: activity.id, isRefined: true, language: lang)
+            // 엔진이 아직 준비 전이면(engine.isReady == false) heatHR이 항등 모델일 수 있다 —
+            // 화면엔 보여주되 디스크 캐시에는 굳히지 않는다. 준비되면 아래 onChange(of: engine.isReady)가 다시 계산한다.
+            await InsightCache.shared.cache(result, for: activity.id, isRefined: true, language: lang, persist: engine.isReady)
             await InsightCache.shared.releaseRefinedCompute(activity.id)
             withAnimation(.easeInOut(duration: 0.3)) { insight = result }
 
             // AI rewrite (idempotent — skips if aiEnhanced == true)
             if let aiResult = await InsightEngine.tryAIEnhance(result) {
-                await InsightCache.shared.cache(aiResult, for: activity.id, isRefined: true, language: lang)
+                await InsightCache.shared.cache(aiResult, for: activity.id, isRefined: true, language: lang, persist: engine.isReady)
                 withAnimation(.easeInOut(duration: 0.4)) { insight = aiResult }
+            }
+        }
+        .onChange(of: engine.isReady) { wasReady, nowReady in
+            // 엔진이 방금 준비됐다면(false→true) 그 전에 계산해 화면에 걸어둔 인사이트는
+            // 항등 열지수 모델로 계산됐을 수 있다 — 실제 heatHR로 다시 계산해 교체한다.
+            guard !wasReady, nowReady, activity.type == .running, insight != nil else { return }
+            Task {
+                let lang = AppLanguage.shared.isEnglish ? "en" : "ko"
+                await InsightCache.shared.invalidate(activity.id)
+                let result = await InsightEngine.computeBackground(
+                    activity: activity, history: manager.activities, level: level,
+                    workoutType: detail?.workoutType ?? .general,
+                    splits: detail?.splits ?? [],
+                    intervalSegments: detail?.intervalSegments ?? [],
+                    condition: condition,
+                    raceMatch: raceDetector.matchFor(activityID: activity.id),
+                    detail: detail,
+                    historyComplete: manager.isHistoryLoadComplete,
+                    typeOf: manager.workoutTypeLookup(),
+                    heatHR: engine.heatHR
+                )
+                await InsightCache.shared.cache(result, for: activity.id, isRefined: true, language: lang, persist: engine.isReady)
+                withAnimation(.easeInOut(duration: 0.3)) { insight = result }
+                if let aiResult = await InsightEngine.tryAIEnhance(result) {
+                    await InsightCache.shared.cache(aiResult, for: activity.id, isRefined: true, language: lang, persist: engine.isReady)
+                    withAnimation(.easeInOut(duration: 0.4)) { insight = aiResult }
+                }
             }
         }
         .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
@@ -707,7 +737,7 @@ struct ActivityDetailView: View {
                         typeOf: manager.workoutTypeLookup(),
                         heatHR: engine.heatHR
                     )
-                    await InsightCache.shared.cache(result, for: activity.id, isRefined: true, language: lang)
+                    await InsightCache.shared.cache(result, for: activity.id, isRefined: true, language: lang, persist: engine.isReady)
                     withAnimation { insight = result }
                 }
                 runInsights = []
@@ -746,7 +776,7 @@ struct ActivityDetailView: View {
             heatHR: engine.heatHR
         )
         let isRefined = detail != nil
-        await InsightCache.shared.cache(recomputed, for: activity.id, isRefined: isRefined, language: lang)
+        await InsightCache.shared.cache(recomputed, for: activity.id, isRefined: isRefined, language: lang, persist: engine.isReady)
         withAnimation(.easeInOut(duration: 0.3)) { insight = recomputed }
     }
 

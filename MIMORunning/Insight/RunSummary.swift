@@ -307,7 +307,9 @@ enum RunSummary {
         guard i.weekOverWeek != nil || i.acuteChronic != nil else {
             // 부하 데이터가 없어도 연속일 자체는 보여준다
             guard i.streakDays >= 3 else { return nil }
-            var line = RunSummaryLine(axis: axis, state: L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row"), tone: .good)
+            // 연속 4일 이상이면 회복을 권하는 next와 어긋나지 않도록 tone을 중립으로 낮춘다
+            let tone: RunSummaryLine.Tone = i.streakDays >= 4 ? .neutral : .good
+            var line = RunSummaryLine(axis: axis, state: L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row"), tone: tone)
             line.evidence = evidence
             line.next = loadNext(i, jumped: false)
             return line
@@ -318,7 +320,7 @@ enum RunSummary {
         let lighter = i.acuteChronic == .low || (i.acuteChronic == nil && wow <= -loadJumpMin)
 
         var state: String
-        let tone: RunSummaryLine.Tone
+        var tone: RunSummaryLine.Tone
         if jumped {
             // 경고 점이 음수 %와 나란히 찍히면 안 된다 — 급증 판정은 acuteChronic에서 왔을 수도 있으니 wow가 실제로 상승일 때만 %를 찍는다
             if let w = i.weekOverWeek, w >= loadJumpMin {
@@ -334,6 +336,10 @@ enum RunSummary {
         } else {
             state = L.s("4주 평균 수준", "Around 4-wk avg")
             tone = .good
+        }
+        if i.streakDays >= 4 {
+            // next가 회복/휴식을 권할 만큼 연속이 길어지면(loadNext ≥4일 규칙) state의 초록 tone과 어긋난다 — 중립으로 맞춘다
+            tone = .neutral
         }
         if i.streakDays >= 3 {
             state += L.s(" · \(i.streakDays)일 연속", " · \(i.streakDays) days in a row")

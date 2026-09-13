@@ -111,6 +111,8 @@ struct RunInsightSection: View {
     var history: [Activity] = []
     var age: Int? = nil
     var isMale: Bool? = nil
+    /// 관측 최대심박(엔진 산출) — 리듬 카드가 220−나이 대신 이 값(없으면 Tanaka)을 쓴다
+    var hrMax: Double? = nil
     var hrZones: [HRZoneData] = []
     var workoutTypeFn: ((UUID) -> WorkoutType?)? = nil
     var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
@@ -144,6 +146,7 @@ struct RunInsightSection: View {
                 history: history,
                 age: age,
                 isMale: isMale,
+                hrMax: hrMax,
                 hrZones: hrZones,
                 insights: insights,
                 workoutTypeLabel: workoutTypeLabel,

@@ -351,7 +351,7 @@ enum RunInsightEngine {
     //   Tanaka 2001 (JACC 37(1):153–156, 351편 메타 / 18,712명):
     //   220−나이는 50대 이상에서 체계적으로 과소추정한다.
     //   우선순위: (1) 엔진이 관측한 값, (2) 208−0.7×나이(Tanaka), (3) nil.
-    private static func estimatedHRMax(hrMax: Double?, age: Int?) -> Int? {
+    static nonisolated func estimatedHRMax(hrMax: Double?, age: Int?) -> Int? {
         if let h = hrMax { return Int(h.rounded()) }
         guard let a = age else { return nil }
         return Int((208.0 - 0.7 * Double(a)).rounded())

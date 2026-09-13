@@ -825,6 +825,8 @@ struct RunInsightTabCard: View {
     var history: [Activity] = []
     var age: Int? = nil
     var isMale: Bool? = nil
+    /// 관측 최대심박(엔진 산출) — 리듬 카드가 220−나이 대신 이 값(없으면 Tanaka)을 쓴다
+    var hrMax: Double? = nil
     var hrZones: [HRZoneData] = []
     let insights: [RunInsight]
     var workoutTypeLabel: String? = nil
@@ -886,7 +888,7 @@ struct RunInsightTabCard: View {
         .sheet(isPresented: $showExport) {
             InsightExportSheet(
                 activity: activity, detail: detail, history: history,
-                age: age, isMale: isMale, hrZones: hrZones,
+                age: age, isMale: isMale, hrMax: hrMax, hrZones: hrZones,
                 insights: insights, startTab: tab,
                 workoutTypeFn: workoutTypeFn,
                 formBaseline: formBaseline,
@@ -1004,6 +1006,7 @@ struct RunInsightTabCard: View {
             RhythmInsightCard(
                 activity: activity, detail: detail,
                 history: history, age: age, isMale: isMale,
+                hrMax: hrMax,
                 hrZones: hrZones, insights: insights,
                 cadenceSeries: cadenceSeries,
                 hrSamples: hrSamples,
@@ -1411,6 +1414,8 @@ private struct RhythmInsightCard: View {
     var history: [Activity] = []
     var age: Int? = nil
     var isMale: Bool? = nil
+    /// 관측 최대심박(엔진 산출) — hrVerdictText가 220−나이 대신 이 값(없으면 Tanaka)을 쓴다
+    var hrMax: Double? = nil
     var hrZones: [HRZoneData] = []
     let insights: [RunInsight]
     var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
@@ -2612,9 +2617,10 @@ private struct RhythmInsightCard: View {
         let avgFirst  = hrSamples.prefix(half).map { Double($0.bpm) }.reduce(0, +) / Double(half)
         let avgSecond = hrSamples.suffix(n - half).map { Double($0.bpm) }.reduce(0, +) / Double(n - half)
         let diff = avgSecond - avgFirst
-        if let a = age {
+        // 220−나이는 쓰지 않는다 — 엔진과 같은 규칙(관측 최대 → Tanaka)
+        if let mhr = RunInsightEngine.estimatedHRMax(hrMax: hrMax, age: age), mhr > 0 {
             let peakBPM = Double(hrSamples.map(\.bpm).max() ?? 0)
-            if peakBPM / Double(220 - a) >= 0.90 {
+            if peakBPM / Double(mhr) >= 0.90 {
                 return (L.s("최고 강도까지 올렸어요", "Pushed to max intensity"), Color(hex: "FF9A3C"))
             }
         }
@@ -5373,6 +5379,8 @@ struct InsightExportSheet: View {
     var history: [Activity] = []
     var age: Int? = nil
     var isMale: Bool? = nil
+    /// 관측 최대심박(엔진 산출) — 리듬 카드가 220−나이 대신 이 값(없으면 Tanaka)을 쓴다
+    var hrMax: Double? = nil
     var hrZones: [HRZoneData] = []
     let insights: [RunInsight]
     var startTab: InsightTabKind = .rhythm
@@ -5576,6 +5584,7 @@ struct InsightExportSheet: View {
             RhythmInsightCard(
                 activity: activity, detail: detail,
                 history: history, age: age, isMale: isMale,
+                hrMax: hrMax,
                 hrZones: hrZones, insights: insights,
                 cadenceSeries: cadenceSeries,
                 hrSamples: hrSamples,

@@ -33,9 +33,13 @@ actor InsightCache {
         return nil
     }
 
-    func cache(_ result: InsightResult, for activityID: UUID, isRefined: Bool, language: String) {
+    /// `persist`가 false면 메모리에만 반영하고 디스크에는 쓰지 않는다 — 엔진(MREngineStore)이
+    /// 아직 준비되기 전(`isReady == false`)에 계산된 결과는 항등 열지수 모델을 썼을 수 있어,
+    /// 디스크에 굳히면 다음 cacheVersion 인상 전까지 잘못된 값이 남는다.
+    func cache(_ result: InsightResult, for activityID: UUID, isRefined: Bool, language: String, persist: Bool = true) {
         let key = Key(activityID: activityID, isRefined: isRefined, language: language)
         store[key] = result
+        guard persist else { return }
         saveToDisk(result, activityID: activityID, isRefined: isRefined, language: language)
     }
 

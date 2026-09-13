@@ -233,7 +233,7 @@ struct RunSummaryTests {
 
     @Test func streakAloneShowsWithoutLoadData() {
         var i = RunSummaryInput(); i.streakDays = 5
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "5일 연속", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "5일 연속", tone: .neutral)])
     }
 
     @Test func loadOmittedWithoutDataOrStreak() {
@@ -269,6 +269,11 @@ struct RunSummaryTests {
     @Test func streakBelowThreeNotAppended() {
         var i = RunSummaryInput(); i.weekOverWeek = 0.0; i.streakDays = 2
         #expect(lines(i).first?.state == "4주 평균 수준")
+    }
+
+    @Test func steadyLoadWithLongStreakIsNeutral() {
+        var i = RunSummaryInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady; i.streakDays = 4
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준 · 4일 연속", tone: .neutral)])
     }
 
     // MARK: 유산소
