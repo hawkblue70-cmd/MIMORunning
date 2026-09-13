@@ -68,6 +68,9 @@ enum Theme {
     ///   고도·이지런의 초록(`elevation`, 34C759)과는 뜻이 달라 따로 둔다.
     static let positive = Color(hex: "5CE08A")
 
+    /// "참고 · 방향 제시" 노랑. 총평 줄의 중립 톤. 빨강은 쓰지 않는다(좌절 방지).
+    static let caution = Color(hex: "FF9F0A")
+
     /// HR 존 색상 (Z1..Z5) — 지도 경로, HR 차트, 카드 렌더러가 공유하는 팔레트.
     static let hrZoneColors: [Color] = [
         Color(hex: "3B82F6"),  // Z1 Blue
