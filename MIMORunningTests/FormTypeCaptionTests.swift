@@ -26,6 +26,7 @@ struct FormTypeCaptionTests {
     @Test func plannedHighIntensityAddsInterval() {
         #expect(FormNarrative.isPlannedHighIntensity(.interval))
         #expect(FormNarrative.isPlannedHighIntensity(.buildUp))
+        #expect(FormNarrative.isPlannedHighIntensity(.distanceRun))   // 레이스페이스 장거리 — 고강도가 계획
         #expect(!FormNarrative.isPlannedHighIntensity(.easy))
         #expect(!FormNarrative.isPlannedHighIntensity(.longRun))
     }

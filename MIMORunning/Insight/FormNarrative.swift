@@ -395,9 +395,11 @@ extension FormNarrative {
         type == .buildUp || type == .tempo || type == .race
     }
 
-    /// 고강도 구간이 계획인 유형 — 후반 가속 유형 + 인터벌.
+    /// 고강도 구간이 계획인 유형 — 후반 가속 유형 + 인터벌 + 거리주.
+    /// 거리주는 레이스페이스 장거리(분류기가 "빠른 롱런"으로 정의)라 Zone 3~4가 계획이다.
+    /// 후반 가속(`isPlannedFastFinish`)에는 넣지 않는다 — 거리주는 균등 페이스가 목표.
     static func isPlannedHighIntensity(_ type: WorkoutType) -> Bool {
-        isPlannedFastFinish(type) || type == .interval
+        isPlannedFastFinish(type) || type == .interval || type == .distanceRun
     }
 
     /// 심박 차트 캡션 — 전반 대비 후반 평균 심박 +8bpm 이상일 때.

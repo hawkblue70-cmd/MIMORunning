@@ -30,7 +30,7 @@ struct RunSummaryTests {
         #expect(out.map(\.axis) == ["러닝폼", "거리 적응", "심박", "훈련부하", "유산소"])
         #expect(out[0] == RunSummaryLine(axis: "러닝폼", state: "끝까지 유지", tone: .good))
         #expect(out[1] == RunSummaryLine(axis: "거리 적응", state: "평소 2.1배, 범위 안", tone: .good))
-        #expect(out[2] == RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 90%", tone: .neutral))
+        #expect(out[2] == RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good))
         #expect(out[3] == RunSummaryLine(axis: "훈련부하", state: "이번 주 +55% · 4일 연속", tone: .neutral))
         #expect(out[4] == RunSummaryLine(axis: "유산소", state: "50대 남성 기준 높음", tone: .good))
     }
@@ -81,9 +81,10 @@ struct RunSummaryTests {
         #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 100%", tone: .neutral)])
     }
 
-    @Test func distanceRunIsNotEasyIntent() {
+    @Test func distanceRunInHighZonesIsPlanned() {
+        // 거리주는 레이스페이스 장거리 — 이지 의도도 아니고, Zone 4 우세면 계획대로
         var i = RunSummaryInput(); i.workoutType = .distanceRun; i.zoneFractions = [3: 0.2, 4: 0.7, 5: 0.1]
-        #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 100%", tone: .neutral)])
+        #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good)])
     }
 
     @Test func zoneTieBreaksToHigherZone() {
