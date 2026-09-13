@@ -10,9 +10,10 @@ struct FormPhaseTests {
 
     /// 1km 스플릿. 기본값은 평소 범위 한가운데.
     private func split(_ id: Int, pace: Double = 375,
-                       cad: Int? = 175, sl: Double? = 0.92, gct: Double? = 255, vo: Double? = 8.4) -> SplitData {
+                       cad: Int? = 175, sl: Double? = 0.92, gct: Double? = 255, vo: Double? = 8.4,
+                       hr: Int? = 150) -> SplitData {
         SplitData(id: id, distanceM: 1000, duration: pace,
-                  avgHeartRate: 150, avgCadence: cad, avgPower: nil,
+                  avgHeartRate: hr, avgCadence: cad, avgPower: nil,
                   avgGroundContactTime: gct, avgStrideLength: sl, avgVerticalOscillation: vo)
     }
 
@@ -195,7 +196,7 @@ struct FormPhaseTests {
     }
     private func result(early: FormPhase.Early? = nil, mid: FormPhase.Mid? = nil, late: FormPhase.Late,
                         earlyEnd: Double = 4, lateStart: Double = 12, total: Double = 16) -> FormPhase.Result {
-        FormPhase.Result(early: early, mid: mid, late: late, earlyEndKm: earlyEnd, lateStartKm: lateStart, totalKm: total)
+        .stub(early: early, mid: mid, late: late, earlyEnd: earlyEnd, lateStart: lateStart, total: total)
     }
 
     @Test func heldAloneIsOneClause() {
@@ -387,5 +388,40 @@ struct FormPhaseTests {
         let rOut = FormPhase.result(splits: outOfBandSplits, altitudeProfile: [], baseline: bl,
                                     formShifts: [], workoutType: .general)
         #expect(rOut == nil)
+    }
+
+    // MARK: 단계 데이터·관계 문장
+
+    @Test func resultCarriesPhasesWithHeartRate() {
+        let r = classify((1...10).map { split($0) })
+        #expect(r?.phases.early.avgHR == 150)
+        #expect(r?.phases.late.splitCount == 3)
+        #expect(r?.signals.late.stride == .inRange)
+    }
+
+    @Test func midAccelerationSentenceNamesLevers() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...3).map { split($0, pace: 400, sl: 0.88, gct: 262) } + (4...10).map { split($0, pace: 375, sl: 0.94, gct: 250) }
+        let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
+        #expect(lines.contains("중기 3~7km: 페이스가 25초 빨라지며 보폭이 늘고 접지가 짧아졌어요."))
+    }
+
+    @Test func lateDriftSentenceWithCadenceHeld() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
+        let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
+        #expect(lines.contains("말기 7~10km: 페이스는 같은데 심박이 8 올랐고, 케이던스는 그대로예요."))
+    }
+
+    @Test func lateDriftSentenceMentionsHeat() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
+        let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 8)
+        #expect(lines.contains("말기 7~10km: 페이스는 같은데 심박이 8 올랐고, 케이던스는 그대로예요. 더위 +8bpm을 감안하면 흔한 폭이에요."))
+    }
+
+    @Test func noRelationWhenNothingChanged() {
+        let s = (1...10).map { split($0) }
+        #expect(FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil).isEmpty)
     }
 }

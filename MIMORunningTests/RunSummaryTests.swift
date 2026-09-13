@@ -11,7 +11,7 @@ struct RunSummaryTests {
         return RunSummary.lines(i)
     }
     private func phase(_ late: FormPhase.Late) -> FormPhase.Result {
-        FormPhase.Result(early: nil, mid: nil, late: late, earlyEndKm: 4, lateStartKm: 12, totalKm: 16)
+        .stub(late: late, earlyEnd: 4, lateStart: 12, total: 16)
     }
 
     @Test func emptyInputHasNoLines() {

@@ -26,6 +26,7 @@ enum FormPhase {
         let stride: Double?
         let groundContact: Double?
         let verticalOsc: Double?
+        let avgHR: Double?
         /// 수직진폭 ÷ 보폭 (%) — 앞이 아니라 위로 가는 움직임의 비율
         var verticalRatio: Double? {
             guard let vo = verticalOsc, let sl = stride, sl > 0 else { return nil }
@@ -43,6 +44,11 @@ enum FormPhase {
         case bouncier
     }
 
+    /// 세 단계의 원시 통계 — 관계 문장·표가 함께 쓴다.
+    struct Phases: Equatable { let early, mid, late: PhaseStats }
+    /// 세 단계의 평소 범위 판정 — 관계 문장·표가 함께 쓴다.
+    struct PhaseSignals: Equatable { let early, mid, late: Signals }
+
     struct Result: Equatable {
         let early: Early?
         let mid: Mid?
@@ -50,6 +56,8 @@ enum FormPhase {
         let earlyEndKm: Double
         let lateStartKm: Double
         let totalKm: Double
+        let phases: Phases
+        let signals: PhaseSignals
         var isHeld: Bool { late == .held }
     }
 
@@ -107,7 +115,8 @@ enum FormPhase {
                 cadence: avg(g.map { $0.avgCadence.map(Double.init) }),
                 stride: avg(g.map(\.avgStrideLength)),
                 groundContact: avg(g.map(\.avgGroundContactTime)),
-                verticalOsc: avg(g.map(\.avgVerticalOscillation)))
+                verticalOsc: avg(g.map(\.avgVerticalOscillation)),
+                avgHR: avg(g.map { $0.avgHeartRate.map(Double.init) }))
         }
         guard let early = stats(0), let mid = stats(1), let late = stats(2) else { return nil }
         return (early, mid, late)
@@ -115,7 +124,7 @@ enum FormPhase {
 
     // MARK: - 판정
 
-    struct Signals {
+    struct Signals: Equatable {
         let cadence: Status
         let stride: Status
         let groundContact: Status
@@ -182,7 +191,9 @@ enum FormPhase {
         }
 
         return Result(early: early, mid: mid, late: late,
-                      earlyEndKm: e.endKm, lateStartKm: l.startKm, totalKm: l.endKm)
+                      earlyEndKm: e.endKm, lateStartKm: l.startKm, totalKm: l.endKm,
+                      phases: Phases(early: e, mid: m, late: l),
+                      signals: PhaseSignals(early: eS, mid: mS, late: lS))
     }
 
     // MARK: - 기준선 → 단계 범위
@@ -280,6 +291,68 @@ enum FormPhase {
             enS += " Common late in a \(d) km run."
         }
         return L.s(koS, enS)
+    }
+
+    /// 구간별 관계 문장 — "무엇이 언제 어떻게" 를 한 줄씩. 아무 변화도 없으면 빈 배열.
+    /// 문턱: 페이스 ≥ accelDeltaSec(20초, 중기) / paceDeltaSec(10초, 말기) · 보폭 ≥ 0.02 · 접지 ≥ 8ms · 심박 ≥ 5 · 케이던스 "그대로" = |Δ| < 2
+    static func relationSentences(_ r: Result, heatDeltaBpm: Double?) -> [String] {
+        let L = AppLanguage.shared
+        let e = r.phases.early, m = r.phases.mid, l = r.phases.late
+        func km(_ p: PhaseStats) -> String { "\(Int(p.startKm.rounded()))~\(Int(p.endKm.rounded()))km" }
+        var out: [String] = []
+
+        // 중기: 페이스 ↔ 보폭·접지·케이던스
+        let accel = e.paceSecPerKm - m.paceSecPerKm
+        if accel >= accelDeltaSec {
+            var koPairs: [(conj: String, final: String)] = []
+            var enPhrases: [String] = []
+            if let a = e.stride, let b = m.stride, b - a >= strideDeltaM {
+                koPairs.append(("보폭이 늘고", "보폭이 늘었어요")); enPhrases.append("a longer stride")
+            }
+            if let a = e.groundContact, let b = m.groundContact, a - b >= 8 {
+                koPairs.append(("접지가 짧아지고", "접지가 짧아졌어요")); enPhrases.append("shorter ground contact")
+            }
+            if let a = e.cadence, let b = m.cadence, b - a >= cadenceGainSPM {
+                koPairs.append(("발 회전이 빨라지고", "발 회전이 빨라졌어요")); enPhrases.append("quicker steps")
+            }
+            if !koPairs.isEmpty {
+                let ko = joinKoClauses(koPairs)
+                let en = enPhrases.joined(separator: " and ")
+                out.append(L.s("중기 \(km(m)): 페이스가 \(Int(accel.rounded()))초 빨라지며 \(ko).",
+                               "Mid \(km(m)): pace picked up \(Int(accel.rounded())) s/km with \(en)."))
+            }
+        }
+
+        // 말기: 심박 드리프트 ↔ 케이던스
+        if let h1 = m.avgHR, let h2 = l.avgHR, h2 - h1 >= 5 {
+            let paceSame = abs(l.paceSecPerKm - m.paceSecPerKm) < paceDeltaSec
+            let cadHeld: Bool = {
+                guard let a = m.cadence, let b = l.cadence else { return false }
+                return abs(b - a) < cadenceSameSPM
+            }()
+            let hrDelta = Int((h2 - h1).rounded())
+            var ko = paceSame
+                ? "페이스는 같은데 심박이 \(hrDelta) 올랐고"
+                : "페이스가 \(Int((l.paceSecPerKm - m.paceSecPerKm).rounded()))초 느려지며 심박이 \(hrDelta) 올랐고"
+            ko += cadHeld ? ", 케이던스는 그대로예요." : ", 케이던스도 내려갔어요."
+            var en = paceSame
+                ? "pace held but heart rate rose \(hrDelta)"
+                : "pace slowed \(Int((l.paceSecPerKm - m.paceSecPerKm).rounded()))s/km as heart rate rose \(hrDelta)"
+            en += cadHeld ? ", cadence held." : ", cadence dropped too."
+            if let d = heatDeltaBpm, d >= 5 {
+                let dRounded = Int(d.rounded())
+                ko += " 더위 +\(dRounded)bpm을 감안하면 흔한 폭이에요."
+                en += " With the heat adding +\(dRounded)bpm, that's a common swing."
+            }
+            out.append(L.s("말기 \(km(l)): " + ko, "Late \(km(l)): " + en))
+        }
+        return out
+    }
+
+    /// 한국어 연결: 마지막 절만 종결형("보폭이 늘고 접지가 짧아졌어요")
+    private static func joinKoClauses(_ pairs: [(conj: String, final: String)]) -> String {
+        guard let last = pairs.last else { return "" }
+        return (pairs.dropLast().map(\.conj) + [last.final]).joined(separator: " ")
     }
 
     /// 총평 줄용 짧은 상태어
