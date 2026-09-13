@@ -2571,25 +2571,11 @@ private struct RhythmInsightCard: View {
                     "\(valStr) is \(level.name) for \(fi.ageDecade)\(g)"), levelColors[idx])
     }
 
-    /// 초·중·말 폼 형태 — 폼 카드 `formPhaseResult`와 같은 엔진·같은 입력(풀 스플릿 + 기준선 + GCT 시점 보정 + GAP 배율).
+    /// 초·중·말 폼 형태 — 폼 카드·리듬 카드가 이 진입점 하나만 쓴다(`FormPhase.result`).
     private var formPhaseResult: FormPhase.Result? {
-        guard rhythmWorkoutType != .interval, let det = detail, let bl = formBaseline else { return nil }
-        let gctShift = formShifts.first(where: { $0.metric.key == "gct" })
-        let full = det.splits.filter { $0.distanceM >= 900 }
-        let distKm = full.map(\.distanceM).reduce(0, +) / 1000
-        let dur = full.map(\.duration).reduce(0, +)
-        let raw = distKm > 0 ? dur / distKm : 0
-        // 기준선 밴드는 GAP 기준 — 밴드 조회 페이스도 GAP 배율(GAP ÷ 실측)로 맞춘다
-        let scale: Double = {
-            guard let gap = GradeAdjustedPace.compute(splits: det.splits, altitudeProfile: det.altitudeProfile),
-                  distKm > 0, dur > 0 else { return 1.0 }
-            return gap / raw   // 분모도 스플릿 기준 — 폼 카드와 같은 규칙
-        }()
-        // 참고 밴드 러닝(GAP 페이스가 구간 밖)은 판정하지 않는다 — 폼 카드와 같은 규칙
-        guard bl.cutoffs.band(of: raw * scale) != nil else { return nil }
-        return FormPhase.classify(splits: full, paceScale: scale, bandFor: { pace in
-            FormPhase.bandStats(in: bl, paceSecPerKm: pace, gctShift: gctShift)
-        })
+        guard let det = detail else { return nil }
+        return FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
+                                baseline: formBaseline, formShifts: formShifts, workoutType: rhythmWorkoutType)
     }
 
     /// 총평 줄 — 각 축의 결론은 해당 엔진에서 그대로 받는다. 2줄 미만이면 기존 한 줄 칩으로 폴백.

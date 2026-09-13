@@ -211,22 +211,10 @@ struct RunFormCardView: View {
         )
     }
 
-    /// 초·중·말 폼 형태 — 풀 스플릿 6개 이상 + 기준선 있을 때만. 인터벌은 제외.
-    /// 판정(fullSplits)과 표시(버킷)를 섞지 않는다 — 문장은 판정, 30/70 점선 위치만 차트에 표시.
-    /// 참고 밴드(오늘 페이스가 구간 밖)면 판정하지 않는다 — 카드의 "판정 대신 참고" 규칙과 같다.
+    /// 초·중·말 폼 형태 — 폼 카드·리듬 카드가 이 진입점 하나만 쓴다(`FormPhase.result`).
     private var formPhaseResult: FormPhase.Result? {
-        guard !isInterval, !isReferenceBand, let bl = baseline else { return nil }
-        let gctShift = formShifts.first(where: { $0.metric.key == "gct" })
-        // 기준선 밴드는 GAP 기준 — 밴드 조회 페이스도 GAP 배율(GAP ÷ 실측)로 맞춘다 (bb와 같은 규칙)
-        let scale: Double = {
-            let distKm = fullSplits.map(\.distanceM).reduce(0, +) / 1000
-            let dur = fullSplits.map(\.duration).reduce(0, +)
-            guard let gap = runGAP, distKm > 0, dur > 0 else { return 1.0 }
-            return gap / (dur / distKm)   // 분모도 스플릿 기준 — 같은 총량에서 나온 비율
-        }()
-        return FormPhase.classify(splits: fullSplits, paceScale: scale, bandFor: { pace in
-            FormPhase.bandStats(in: bl, paceSecPerKm: pace, gctShift: gctShift)
-        })
+        FormPhase.result(splits: splits, altitudeProfile: altitudeProfile,
+                         baseline: baseline, formShifts: formShifts, workoutType: workoutType)
     }
 
     private let lineColor = Color.white.opacity(0.20)

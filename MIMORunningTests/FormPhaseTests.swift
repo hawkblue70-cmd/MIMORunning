@@ -352,4 +352,40 @@ struct FormPhaseTests {
         let outOfBand = FormPhase.bandStats(in: baseline, paceSecPerKm: 200, gctShift: nil)
         #expect(outOfBand == nil)
     }
+
+    // MARK: - result(splits:altitudeProfile:baseline:formShifts:workoutType:) — 폼 카드·리듬 카드 공용 진입점
+
+    @Test @MainActor func resultIsNilForIntervalOrMissingBaseline() {
+        let tenInRange = (1...10).map { split($0) }
+        #expect(FormPhase.result(splits: tenInRange, altitudeProfile: [], baseline: nil,
+                                 formShifts: [], workoutType: .general) == nil)
+
+        let bl = easyOnlyBaseline()
+        #expect(FormPhase.result(splits: tenInRange, altitudeProfile: [], baseline: bl,
+                                 formShifts: [], workoutType: .interval) == nil)
+    }
+
+    @Test @MainActor func resultUsesBaselineBandForRunPace() {
+        let bl = easyOnlyBaseline()
+        // 420초/km 구간의 평소 범위 한가운데 값으로 스플릿을 만들면 끝까지 유지로 판정돼야 한다
+        guard let bandForPace = FormPhase.bandStats(in: bl, paceSecPerKm: 420, gctShift: nil) else {
+            Issue.record("pace 420 should fall inside the easy-only baseline's band")
+            return
+        }
+        let cad = Int((bandForPace.cadence?.median ?? 170).rounded())
+        let sl = bandForPace.stride?.median ?? 0.90
+        let gct = bandForPace.groundContact?.median ?? 250
+
+        let inBandSplits = (1...10).map { split($0, pace: 420, cad: cad, sl: sl, gct: gct) }
+        let r = FormPhase.result(splits: inBandSplits, altitudeProfile: [], baseline: bl,
+                                 formShifts: [], workoutType: .general)
+        #expect(r != nil)
+        #expect(r?.late == .held)
+
+        // 420초/km 밴드의 지표를 200초/km(구간 밖)에 그대로 붙여도 GAP 페이스가 밴드 밖이면 침묵
+        let outOfBandSplits = (1...10).map { split($0, pace: 200, cad: cad, sl: sl, gct: gct) }
+        let rOut = FormPhase.result(splits: outOfBandSplits, altitudeProfile: [], baseline: bl,
+                                    formShifts: [], workoutType: .general)
+        #expect(rOut == nil)
+    }
 }

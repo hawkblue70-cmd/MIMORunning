@@ -198,6 +198,34 @@ enum FormPhase {
         return BandStats(cadence: b.cadence, stride: b.strideLength, groundContact: gct)
     }
 
+    // MARK: - 뷰 진입점
+
+    /// 폼 카드·리듬 카드가 **이 함수 하나만** 쓴다 — 같은 러닝은 두 카드에서 같은 판정이어야 한다.
+    /// - 인터벌 제외 · 기준선 없으면 nil
+    /// - 밴드 조회 페이스 = 실측 × (GAP ÷ 실측): 기준선 밴드가 GAP 기준이라서
+    /// - GAP 페이스가 어느 구간에도 없으면(참고 밴드) 판정하지 않는다
+    static func result(splits: [SplitData],
+                       altitudeProfile: [(distanceKm: Double, altitude: Double)],
+                       baseline: RunningFormBaseline?,
+                       formShifts: [MRFormShift],
+                       workoutType: WorkoutType) -> Result? {
+        guard workoutType != .interval, let bl = baseline else { return nil }
+        let full = splits.filter { $0.distanceM >= 900 }
+        let distKm = full.map(\.distanceM).reduce(0, +) / 1000
+        let dur = full.map(\.duration).reduce(0, +)
+        guard distKm > 0, dur > 0 else { return nil }
+        let raw = dur / distKm
+        let scale: Double = {
+            guard let gap = GradeAdjustedPace.compute(splits: splits, altitudeProfile: altitudeProfile) else { return 1.0 }
+            return gap / raw
+        }()
+        guard bl.cutoffs.band(of: raw * scale) != nil else { return nil }
+        let gctShift = formShifts.first(where: { $0.metric.key == "gct" })
+        return classify(splits: full, paceScale: scale, bandFor: { pace in
+            bandStats(in: bl, paceSecPerKm: pace, gctShift: gctShift)
+        })
+    }
+
     // MARK: - 문장
 
     /// 초·중·말 절을 쉼표로 이어 한 문장으로. 거리 문맥이고 말기가 유지가 아니면 "N km 후반엔 흔한 변화예요." 덧붙임.
