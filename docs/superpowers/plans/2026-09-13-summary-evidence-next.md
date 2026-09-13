@@ -48,6 +48,8 @@
 
 ### Task 1: FormPhase — 단계별 심박·신호 노출 + 구간 관계 문장
 
+> **리뷰 반영(구현 완료 후 확정)**: 구간 어휘는 앱 목소리대로 **초반/중반/후반**(중기·말기 아님) — 표 행 라벨도 같게. 후반 문장의 페이스·케이던스 변화는 부호를 본다(빨라지며/느려지며/같은데, 올라갔어요/내려갔어요/그대로예요), 케이던스를 모르면 절 생략, 폼 문장이 이미 케이던스 하락을 말하면 중복 생략. 단위 "N초/km"·"Nbpm". 더위 위안("흔한 폭")은 드리프트가 `max(10, 더위×2)` 이하일 때만, 심박 절 뒤 괄호로(보정 5bpm 이상일 때만). 커밋 65e9bac + 리뷰 반영 커밋이 기준.
+
 **Files:** `MIMORunning/Insight/FormPhase.swift`, `MIMORunningTests/FormPhaseTests.swift`
 
 - [ ] **Step 1: 테스트 추가**
@@ -67,7 +69,7 @@
         // 초기 400 → 중기 375, 보폭 0.88→0.94, 접지 262→250
         let s = (1...3).map { split($0, pace: 400, sl: 0.88, gct: 262) } + (4...10).map { split($0, pace: 375, sl: 0.94, gct: 250) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains("중기 3~7km: 페이스가 25초 빨라지며 보폭이 늘고 접지가 짧아졌어요."))
+        #expect(lines.contains("중반 3~7km: 페이스가 25초/km 빨라지며 보폭이 늘고 접지가 짧아졌어요."))
     }
 
     @Test func lateDriftSentenceWithCadenceHeld() {
@@ -75,14 +77,14 @@
         // 중기 심박 150 → 말기 158, 페이스 같음, 케이던스 유지
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains("말기 7~10km: 페이스는 같은데 심박이 8 올랐고, 케이던스는 그대로예요."))
+        #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고, 케이던스는 그대로예요."))
     }
 
     @Test func lateDriftSentenceMentionsHeat() {
         AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 8)
-        #expect(lines.contains("말기 7~10km: 페이스는 같은데 심박이 8 올랐고, 케이던스는 그대로예요. 더위 +8bpm을 감안하면 흔한 폭이에요."))
+        #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고 (더위 +8bpm을 감안하면 흔한 폭), 케이던스는 그대로예요."))
     }
 
     @Test func noRelationWhenNothingChanged() {
@@ -140,6 +142,8 @@
 
 ### Task 2: 폼 카드 3단계 표 + 관계 문장
 
+> **리뷰 반영(구현 완료 후 확정)**: 표는 왼쪽 정렬(`.frame(maxWidth:.infinity, alignment:.leading)`), 주의 셀은 앰버 텍스트 + 앰버 0.18 알약 배경(보폭 주황과 구분), 헤더 8pt·'지면접촉', 더위 설명이 관계 문장에 있으면 폼 문장의 '흔한 변화예요' 꼬리 생략(`sentence(_:isLongDistance:suppressCommonTail:)`, `hasHeatReassurance`). 커밋 914e112 + 리뷰 반영 커밋.
+
 **Files:** `MIMORunning/Views/FormPhaseTableView.swift`(생성), `MIMORunning/Views/RunFormCardView.swift`
 
 - [ ] **Step 1: 컴포넌트**
@@ -173,6 +177,8 @@ struct FormPhaseTableView: View {
 ---
 
 ### Task 3: RunSummary — 근거·다음 규칙
+
+> **리뷰 반영(구현 완료 후 확정)**: 모르는(.unknown) 지표는 근거에서 생략. 심박 근거는 '최고 N'(전체 최고). 거리 적응 줄이 뜨면 심박의 '거리 늘리지 마세요' 생략(중복). 폼 다음 문구는 이탈 지표별(케이던스/접지/보폭/위아래). 숫자 포맷 로케일 고정(en_US_POSIX). 테이퍼는 '테이퍼 주'. '충분히 회복'은 부하 자료(ACWR 또는 AU)가 있을 때만. VO2 차이는 0.05 이상일 때만. 커밋 73ec894 + 리뷰 반영 커밋.
 
 **Files:** `MIMORunning/Insight/RunSummary.swift`, `MIMORunningTests/RunSummaryTests.swift`
 
@@ -225,6 +231,8 @@ struct FormPhaseTableView: View {
 
 ### Task 4: 리듬 카드 입력 조립·플럼빙
 
+> **리뷰 반영(구현 완료 후 확정)**: `matchedPlanWeek()`를 `ActivityDetailView`에서 추출해 이 러닝이 속한 주의 `phase`를 넘긴다. `sevenDayAU(runs:asOf:)` 헬퍼를 두 카드가 공유. 마지막 고강도 탐색은 28일 이내·싼 검사(강도 → 유형 → 존)부터, 회복 판정에 쓰일 때만 계산. 8주 전 VO2는 VO2가 있을 때만 조회. 커밋 23ec64e + 성능 정리 커밋.
+
 **Files:** `RunInsightTabCard.swift`, `RunInsightCardView.swift`, `ActivityDetailView.swift`
 
 - [ ] `RunInsightTabCard`·`InsightExportSheet`·`RhythmInsightCard`에 `hrZonesFn`, `raceDetailFn`(둘 다 이미 상위에 있음 → 전달만), `easyPaceLookup: MRHRPaceLookup?`, `planPhase: String?` 추가·전달. `ActivityDetailView`: `easyPaceLookup: engine.easyPaceLookup`, `planPhase`는 `planWeeklyTargetKm` 계산 루프(840-856)에서 같은 `MRPlanWeek`의 `phase`를 꺼내 넘긴다. `RunInsightSection`도 전달.
@@ -234,6 +242,8 @@ struct FormPhaseTableView: View {
 ---
 
 ### Task 5: RunSummaryLinesView 탭 펼침
+
+> **리뷰 반영(구현 완료 후 확정)**: 컴포넌트는 ba424aa(chevron 9pt). `summaryAllowsExpansion` 플래그는 Task 4에서 리듬 카드·내보내기 호출부에 배선.
 
 **Files:** `MIMORunning/Views/RunSummaryLinesView.swift`, `RunInsightTabCard.swift`(내보내기 호출부)
 
