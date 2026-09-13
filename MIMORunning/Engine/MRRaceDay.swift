@@ -36,6 +36,10 @@ struct MRRaceDayCard {
     let headline: String
     let lines: [String]
     let splits: [(km: Double, time: Double)]     // 대회 임박 시에만
+    /// 접힌 상태에서 헤드라인 아래 한 줄 — 페이스처럼 매일 봐야 하는 숫자만. 빈 문자열이면 헤드라인만.
+    var compactLine: String = ""
+    /// 전날·당일·회복은 항상 펼친다 — 그날 카드가 화면의 주인공이어야 한다.
+    var alwaysExpanded: Bool { daysLeft <= 1 }
 }
 
 /// 대회 날짜에 실제로 뛴 기록이 있는가.
@@ -108,6 +112,7 @@ func mrRaceDayCard(race: MRTargetRace,
 
     var lines: [String] = []
     var headline = ""
+    var compactLine = ""
 
     switch phase {
     case .building:
@@ -128,6 +133,7 @@ func mrRaceDayCard(race: MRTargetRace,
         if let t = base {
             let pace = t * 60 / (race.distanceM / 1000)
             lines.append("대회 예상 평균 \(mrFormatPace(pace))/km — 테이퍼 러닝의 짧은 구간은 이 페이스로.")
+            compactLine = "예상 \(mrFormatPace(pace))/km · 거리는 줄이고 페이스는 그대로"
         }
 
     case .finalWeek:
@@ -145,6 +151,7 @@ func mrRaceDayCard(race: MRTargetRace,
         if let t = base {
             let pace = t * 60 / (race.distanceM / 1000)
             lines.append("예상 평균 \(mrFormatPace(pace))/km · 첫 5km는 \(mrFormatPace(pace * 0.98))/km보다 빠르지 않게. 아래 배분은 처음부터 끝까지 같은 페이스입니다.")
+            compactLine = "예상 \(mrFormatPace(pace))/km · 첫 5km는 \(mrFormatPace(pace * 0.98)) 이내 · 젤은 미리 연습"
         }
 
     case .eve:
@@ -235,5 +242,6 @@ func mrRaceDayCard(race: MRTargetRace,
     }
 
     return MRRaceDayCard(race: race, phase: phase, daysLeft: d,
-                         headline: headline, lines: lines, splits: splits)
+                         headline: headline, lines: lines, splits: splits,
+                         compactLine: compactLine)
 }

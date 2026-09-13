@@ -41,6 +41,14 @@ struct MRRaceDayView: View {
     let card: MRRaceDayCard
     private let acc = Color(red: 0.48, green: 0.36, blue: 0.98)
 
+    /// 펼침 상태는 하루 단위로 기억 — 한 번 읽었으면 그날은 펼친 채, 다음 날 다시 접힘.
+    /// ⚠ 대회 주간에 카드가 기록 탭 첫 화면을 다 차지하지 않게. 전날·당일은 항상 펼침.
+    @AppStorage("mimo.raceDay.expandedOn") private var expandedOn: String = ""
+    private var todayKey: String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date())
+    }
+    private var isExpanded: Bool { card.alwaysExpanded || expandedOn == todayKey }
+
     // ⚠ D-14 이내에만 오늘 화면에 올린다.
     //   D-90짜리 대회를 매일 카운트다운하면 압박이 된다.
     static func shouldShow(_ c: MRRaceDayCard) -> Bool {
@@ -50,13 +58,36 @@ struct MRRaceDayView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(card.race.name)
-                .font(.system(size: 12)).foregroundStyle(.white.opacity(0.4))
-            Text(card.headline)
-                .font(.system(size: 19, weight: .bold))
-                .foregroundStyle(.white)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(card.race.name)
+                        .font(.system(size: 12)).foregroundStyle(.white.opacity(0.4))
+                    Text(card.headline)
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !isExpanded, !card.compactLine.isEmpty {
+                        Text(card.compactLine)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 8)
+                if !card.alwaysExpanded {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .padding(.top, 4)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !card.alwaysExpanded else { return }
+                withAnimation(.snappy) { expandedOn = isExpanded ? "" : todayKey }
+            }
 
+            if isExpanded {
             ForEach(card.lines, id: \.self) { l in
                 Text(.init(l))
                     .font(.system(size: 14))
@@ -64,9 +95,10 @@ struct MRRaceDayView: View {
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            }
 
             // 스플릿 표는 D-7부터 — 마지막 한 주에 배분을 정한다. D-14~D-8은 페이스 한 줄만(2주 전 표는 압박).
-            if !card.splits.isEmpty, card.daysLeft <= 7 {
+            if isExpanded, !card.splits.isEmpty, card.daysLeft <= 7 {
                 VStack(spacing: 0) {
                     ForEach(Array(card.splits.enumerated()), id: \.offset) { _, s in
                         HStack {
