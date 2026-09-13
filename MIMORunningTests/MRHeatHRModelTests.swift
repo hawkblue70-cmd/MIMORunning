@@ -96,21 +96,21 @@ final class MRHeatHRModelTests: XCTestCase {
 
         // 실내 20건 — 제외돼야 한다
         for i in 0..<20 {
-            let d = cal.date(byAdding: .day, value: -(1000 + i), to: Date())!
+            let d = cal.date(byAdding: .day, value: -(200 + i), to: Date())!
             runs.append(MRWorkout(start: d, durationMin: 40, distanceKm: 8,
                                   hrAvg: 150, hrMax: 175, tempC: 25, humidity: nil,
                                   indoor: true, isInterval: false))
         }
         // 기온 없음 20건 — 제외돼야 한다
         for i in 0..<20 {
-            let d = cal.date(byAdding: .day, value: -(2000 + i), to: Date())!
+            let d = cal.date(byAdding: .day, value: -(200 + i), to: Date())!
             runs.append(MRWorkout(start: d, durationMin: 40, distanceKm: 8,
                                   hrAvg: 150, hrMax: 175, tempC: nil, humidity: nil,
                                   indoor: false, isInterval: false))
         }
         // 20분 미만 20건 — 제외돼야 한다
         for i in 0..<20 {
-            let d = cal.date(byAdding: .day, value: -(3000 + i), to: Date())!
+            let d = cal.date(byAdding: .day, value: -(200 + i), to: Date())!
             runs.append(MRWorkout(start: d, durationMin: 10, distanceKm: 8,
                                   hrAvg: 150, hrMax: 175, tempC: 25, humidity: nil,
                                   indoor: false, isInterval: false))
