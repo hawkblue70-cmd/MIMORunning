@@ -690,12 +690,17 @@ private func effortLoadRuns(activity: Activity, history: [Activity], index: Effo
 
 /// 최근 7일 AU 합계와 그 직전 7일 합계 — 리듬 카드 총평·퍼포먼스 카드 강도 부하가 공유.
 /// 강도 기록이 없으면(이 창에 커버된 러닝이 하나도 없으면) nil.
+/// `runs`를 이미 만든 호출부는 이 오버로드로 재계산을 피한다.
+private func sevenDayAU(runs: [EffortLoad.Run], asOf: Date) -> (current: Double, previous: Double)? {
+    let w = EffortLoad.lastSevenDays(runs: runs, asOf: asOf)
+    guard w.coveredCount > 0 else { return nil }
+    let previous = EffortLoad.previousSevenDays(runs: runs, asOf: asOf).total
+    return (w.total, previous)
+}
+
 private func sevenDayAU(activity: Activity, history: [Activity], index: EffortIndex) -> (current: Double, previous: Double)? {
     let runs = effortLoadRuns(activity: activity, history: history, index: index).runs
-    let w = EffortLoad.lastSevenDays(runs: runs, asOf: activity.date)
-    guard w.coveredCount > 0 else { return nil }
-    let previous = EffortLoad.previousSevenDays(runs: runs, asOf: activity.date).total
-    return (w.total, previous)
+    return sevenDayAU(runs: runs, asOf: activity.date)
 }
 
 private struct AchievementBadgeView: View {
@@ -817,7 +822,7 @@ struct RunInsightTabCard: View {
     var effortIndex: EffortIndex? = nil
     /// 이지 페이스 조회값 — 총평 심박 줄이 다음 이지런 페이스를 숫자로 제안할 때 쓴다.
     var easyPaceLookup: MRHRPaceLookup? = nil
-    /// 이번 주 대회 플랜 단계("회복"/"테이퍼"/…) — 총평 훈련부하 줄의 다음 행동을 우선한다.
+    /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
 
     @State private var tab: InsightTabKind = .rhythm
@@ -1418,7 +1423,7 @@ private struct RhythmInsightCard: View {
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
     /// 이지 페이스 조회값 — 총평 심박 줄이 다음 이지런 페이스를 숫자로 제안할 때 쓴다.
     var easyPaceLookup: MRHRPaceLookup? = nil
-    /// 이번 주 대회 플랜 단계("회복"/"테이퍼"/…) — 총평 훈련부하 줄의 다음 행동을 우선한다.
+    /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
     /// 내보내기 카드는 총평 5줄만 그린다(펼침 없음) — 앱 화면은 기본값(true)으로 탭하면 펼쳐진다.
     var summaryAllowsExpansion: Bool = true
@@ -2634,26 +2639,25 @@ private struct RhythmInsightCard: View {
 
     /// 마지막 고강도(계획된 고강도 유형, 또는 체감 강도 7 이상, 또는 존 4+5 비율 50% 이상) 러닝까지의 일수.
     /// 세 판정 신호가 모두 없거나 해당하는 러닝을 못 찾으면 nil — 총평 훈련부하 줄이 그 근거를 생략한다.
+    /// 28일이면 충분 — 소비자(loadNext)는 2일 이상만 묻는다; 그 이상은 같은 답.
     private func daysSinceHardRun() -> Int? {
         let cal = Calendar.current
+        let since = cal.date(byAdding: .day, value: -28, to: activity.date) ?? .distantPast
         let priorRuns = history
-            .filter { $0.type == .running && $0.date < activity.date }
+            .filter { $0.type == .running && $0.date < activity.date && $0.date >= since }
             .sorted { $0.date > $1.date }
+        // 싼 검사부터: 체감 강도(딕셔너리) → 계획 유형(UserDefaults) → 존 분포(디스크 조회 가능) 순으로 단락평가.
+        func isHighZoneFraction(_ run: Activity) -> Bool {
+            guard let zones = hrZonesFn?(run.id) else { return false }
+            let total = zones.map(\.fraction).reduce(0, +)
+            guard total > 0 else { return false }
+            let highFrac = zones.filter { $0.id >= 4 }.map(\.fraction).reduce(0, +) / total
+            return highFrac >= 0.5
+        }
         for run in priorRuns {
-            var isHard = false
-            if let wt = workoutTypeFn?(run.id), FormNarrative.isPlannedHighIntensity(wt) {
-                isHard = true
-            }
-            if !isHard, let val = effortIndex?.resolve(run.id)?.value, val >= 7 {
-                isHard = true
-            }
-            if !isHard, let zones = hrZonesFn?(run.id) {
-                let total = zones.map(\.fraction).reduce(0, +)
-                if total > 0 {
-                    let highFrac = zones.filter { $0.id >= 4 }.map(\.fraction).reduce(0, +) / total
-                    if highFrac >= 0.5 { isHard = true }
-                }
-            }
+            let isHard = (effortIndex?.resolve(run.id)?.value ?? 0) >= 7
+                || workoutTypeFn?(run.id).map(FormNarrative.isPlannedHighIntensity) == true
+                || isHighZoneFraction(run)
             if isHard {
                 return cal.dateComponents([.day], from: cal.startOfDay(for: run.date), to: cal.startOfDay(for: activity.date)).day
             }
@@ -2690,7 +2694,7 @@ private struct RhythmInsightCard: View {
             input.weekOverWeek = EffortLoad.rollingWeekOverWeek(runs: runs, asOf: activity.date)
             input.acuteChronic = EffortLoad.rollingAcuteChronic(runs: runs, asOf: activity.date)?.label
             input.loadSentence = EffortLoad.rollingSentenceKind(runs: runs, asOf: activity.date)
-            if let au = sevenDayAU(activity: activity, history: history, index: idx) {
+            if let au = sevenDayAU(runs: runs, asOf: activity.date) {
                 input.sevenDayAU = au.current
                 input.previousSevenAU = au.previous
             }
@@ -2700,6 +2704,7 @@ private struct RhythmInsightCard: View {
             input.vo2 = v
             input.vo2AgeDecade = fi.ageDecade
             input.vo2GenderLabel = fi.genderLabel
+            input.vo2EightWeeksAgo = vo2EightWeeksAgoValue
         }
         input.heatDeltaBpm = heatHRModel?.delta(activity.temperatureC)
 
@@ -2710,10 +2715,17 @@ private struct RhythmInsightCard: View {
         input.avgHeartRate = activity.avgHeartRate
         input.peakHeartRate = hrSamples.map(\.bpm).max()
         input.temperatureC = activity.temperatureC
-        input.daysSinceHardRun = daysSinceHardRun()
         input.planPhase = planPhase
         input.easyPace = easyPaceLookup
-        input.vo2EightWeeksAgo = vo2EightWeeksAgoValue
+        // daysSinceHardRun 계산(과거 최대 28일 스캔)은 loadNext가 실제로 쓸 수 있을 때만 —
+        // 회복/테이퍼 주거나 이미 급증·단조·4일+ 연속으로 다음 행동이 정해지면 "충분히 회복" 분기에 도달하지 않는다.
+        let jumped = (input.weekOverWeek ?? 0) >= RunSummary.loadJumpMin
+            || input.acuteChronic == .high || input.acuteChronic == .veryHigh
+        if (input.acuteChronic != nil || input.sevenDayAU != nil),
+           input.planPhase != "회복", input.planPhase != "테이퍼",
+           !jumped, input.loadSentence != .monotony, input.streakDays < 4 {
+            input.daysSinceHardRun = daysSinceHardRun()
+        }
         return RunSummary.lines(input)
     }
 
@@ -2845,8 +2857,8 @@ private struct PerformanceInsightCard: View {
                                      start: chartStart,
                                      end: dayEnd,
                                      period: .day)
-        // 캡션 비교용 — 최근 7일 바로 앞 7일. 리듬 카드 총평과 같은 헬퍼(`sevenDayAU`)를 쓴다.
-        let prevSeven = sevenDayAU(activity: activity, history: history, index: idx)?.previous ?? 0
+        // 캡션 비교용 — 최근 7일 바로 앞 7일. 리듬 카드 총평과 같은 헬퍼(`sevenDayAU`)를 쓴다. 이미 만든 runs를 재사용.
+        let prevSeven = sevenDayAU(runs: runs, asOf: activity.date)?.previous ?? 0
 
         // 유형별 평소 강도 눈금은 그리지 않는다 — 이 카드는 러닝 유형을 표시하지 않아 눈금의 뜻을 알 수 없다(성장 탭과 같은 표시 방식).
         return SevenDayLoad(window: w, thisRunAU: thisAU, acuteChronic: ac, sentence: sentence,
@@ -5369,7 +5381,7 @@ struct InsightExportSheet: View {
     var effortIndex: EffortIndex? = nil
     /// 이지 페이스 조회값 — 총평 심박 줄이 다음 이지런 페이스를 숫자로 제안할 때 쓴다.
     var easyPaceLookup: MRHRPaceLookup? = nil
-    /// 이번 주 대회 플랜 단계("회복"/"테이퍼"/…) — 총평 훈련부하 줄의 다음 행동을 우선한다.
+    /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
 
     @Query private var allStories: [WorkoutStory]

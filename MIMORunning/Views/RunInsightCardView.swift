@@ -133,7 +133,7 @@ struct RunInsightSection: View {
     var effortIndex: EffortIndex? = nil
     /// 이지 페이스 조회값 — 총평 심박 줄이 다음 이지런 페이스를 숫자로 제안할 때 쓴다.
     var easyPaceLookup: MRHRPaceLookup? = nil
-    /// 이번 주 대회 플랜 단계("회복"/"테이퍼"/…) — 총평 훈련부하 줄의 다음 행동을 우선한다.
+    /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
 
     var body: some View {
