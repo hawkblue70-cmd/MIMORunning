@@ -727,7 +727,7 @@ enum RunInsightEngine {
             guard heatHR.explains(tempC: activity.temperatureC), let t = activity.temperatureC else { return "" }
             let tempStr = "\(Int(t.rounded()))°C"
             return heatHR.isFallback
-                ? L.s(" (일반 더위 기준 \(tempStr) 감안)", " (typical heat at \(tempStr) allowed)")
+                ? L.s(" (일반적인 더위 영향 감안 · \(tempStr))", " (allowing for typical heat at \(tempStr))")
                 : L.s(" (\(tempStr) 감안)", " (adjusted for \(tempStr))")
         }()
 
@@ -1411,8 +1411,8 @@ enum RunInsightEngine {
             prefix = heatHR.isFallback
                 ? L.s("일반적인 더위 영향(\(tempStr))을 감안해도 ", "Even allowing for typical heat effects (\(tempStr)), ")
                 : L.s("\(tempStr) 기온을 감안해도 ", "Even allowing for \(tempStr), ")
-        } else if histHeatDelta >= 3 {
-            prefix = L.s("더운 날이 많았던 최근 기록을 15°C 기준으로 맞추면 ", "Adjusting the recent, hotter runs to 15°C, ")
+        } else if histHeatDelta >= MRHeatHRModel.explainThresholdBpm {
+            prefix = L.s("더운 날이 많았던 최근 기록을 15°C 기준으로 맞추면 ", "With the recent, hotter runs adjusted to 15°C, ")
         } else {
             prefix = ""
         }

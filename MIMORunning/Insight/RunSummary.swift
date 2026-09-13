@@ -34,7 +34,8 @@ enum RunSummary {
     /// 이지 의도 유형에서 Zone 3 이상 비율이 이 이상이면 "기준 높음"
     static let easyHighZoneFrac = 0.50
     static let loadJumpMin = 0.30
-    /// 더위 보정 표기 임계값(bpm) — 존 캡션·근거 줄이 공유해서 쓴다. 총평 상태어에는 붙이지 않는다.
+    /// 존 캡션 더위 보정 표기 임계값(bpm) — 존 캡션·근거 줄이 공유해서 쓴다. 총평 상태어에는 붙이지 않는다.
+    /// 문장 단위 "기온 감안" 임계값(3bpm)은 별개 — `MRHeatHRModel.explainThresholdBpm` 참고.
     static let heatNoteMinBpm = 5.0
     static let vo2Bounds: [Double] = [15, 26, 33, 41, 57]
     // 거리주(레이스페이스 장거리)는 빠른 게 정의라 이지 의도로 판정하지 않는다

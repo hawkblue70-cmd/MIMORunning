@@ -4452,12 +4452,12 @@ private struct PerformanceInsightCard: View {
                 let hrs = runs.compactMap { $0.avgHeartRate }
                 return hrs.isEmpty ? nil : Double(hrs.reduce(0, +)) / Double(hrs.count)
             }
+            let daysSince = cal.dateComponents([.day], from: activity.date, to: Date()).day ?? 0
+            #if DEBUG
             let preGapHRRef: Double? = preGapSelected.flatMap { runs -> Double? in
                 let hrs = runs.compactMap { refHR($0) }
                 return hrs.isEmpty ? nil : hrs.reduce(0, +) / Double(hrs.count)
             }
-            let daysSince = cal.dateComponents([.day], from: activity.date, to: Date()).day ?? 0
-            #if DEBUG
             let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
             let matchedCount: Int = {
                 guard let todayPace = activity.paceSecPerKm else { return 0 }
@@ -4577,7 +4577,9 @@ private struct PerformanceInsightCard: View {
                     let heatSuffix: String = {
                         guard let m = heatHRModel, m.explains(tempC: activity.temperatureC) else { return "" }
                         let n = Int(m.delta(activity.temperatureC).rounded())
-                        return L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat")
+                        return m.isFallback
+                            ? L.s(" · 더위로 +\(n)bpm 정도", " · about +\(n) bpm from heat")
+                            : L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat")
                     }()
                     Text(base + heatSuffix)
                         .font(.system(size: 12))

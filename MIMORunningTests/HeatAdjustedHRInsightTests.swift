@@ -124,6 +124,17 @@ struct HeatAdjustedHRInsightTests {
         #expect(r?.message == "더운 날이 많았던 최근 기록을 15°C 기준으로 맞추면 비슷한 페이스 최근 5회 대비 심박이 8 bpm 높아요. 오늘 컨디션을 반영한 것일 수 있어요.")
     }
 
+    @Test func englishMirrorPrefixReadsCleanly() {
+        AppLanguage.shared.isEnglish = true
+        defer { AppLanguage.shared.isEnglish = false }
+        // 영어판 — "더운 날이 많았던 최근 기록을 15°C 기준으로 맞추면" 문구의 영어 버전이
+        // 자연스럽게 읽히는지 확인 (한국어 쪽 테스트는 coolTodayVersusHotHistoryExplainsTheAdjustment)
+        let today = run(0, pace: 376, hr: 148, temp: 15)
+        let hist = (1...5).map { run($0 * 3, pace: 376, hr: 150, temp: 28) }
+        let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned)
+        #expect(r?.message.hasPrefix("With the recent, hotter runs adjusted to 15°C, ") == true)
+    }
+
     @Test func historyIsPointInTime() {
         AppLanguage.shared.isEnglish = false
         let today = run(10, pace: 376, hr: 149, temp: 15)
