@@ -13,10 +13,11 @@ final class MRHeatHRModelTests: XCTestCase {
             let noise = Double((i * 7) % 5) - 2.0          // −2…+2, 결정적
             let hr = baseHR + slope * max(0, t - MR_REF_TEMP) + noise
             let d = cal.date(byAdding: .day, value: -(i * 3 + 1), to: Date())!
-            // 페이스를 살짝 흔든다 — 고정 페이스면 speed/durationMin 열이 절편과
+            // 페이스·거리를 살짝 흔든다 — 둘 다 고정이면 speed/durationMin 열이 절편과
             // 완전히 비례해 설계행렬이 특이(singular)해지고 lstsq가 nil을 반환한다.
+            let km = 8.0 + Double(i % 3)
             let pace = paceSecPerKm + Double(i % 4) * 5
-            return MRWorkout(start: d, durationMin: 8 * pace / 60, distanceKm: 8,
+            return MRWorkout(start: d, durationMin: km * pace / 60, distanceKm: km,
                              hrAvg: hr, hrMax: hr + 25, tempC: t, humidity: nil,
                              indoor: false, isInterval: false)
         }
@@ -32,12 +33,22 @@ final class MRHeatHRModelTests: XCTestCase {
         XCTAssertEqual(m.toRef(150, tempC: 10), 150, accuracy: 0.001, "15°C 아래는 보정하지 않는다")
     }
 
-    func testNarrowTemperatureSpanFallsBackToLiterature() {
-        let runs = makeRuns(count: 60, temps: [14, 15, 16, 17], slope: 0.9)
+    func testNoHotDaysFallsBackToLiterature() {
+        let runs = makeRuns(count: 60, temps: [4, 8, 12, 17], slope: 0.9)
         let m = mrFitHeatHRModel(runs: runs, asOf: Date())
         XCTAssertTrue(m.ok)
         XCTAssertTrue(m.isFallback)
         XCTAssertEqual(m.bpmPerC, MRHeatHRModel.fallbackBpmPerC, accuracy: 0.001)
+        XCTAssertFalse(m.rejectReason.isEmpty)
+    }
+
+    func testFewHotRowsFallsBack() {
+        // 60개 중 20°C 이상(더운 날)은 딱 4개 — 최고 기온은 25°C를 넘지만 더운 쪽 표본이 부족하다.
+        var temps = (0..<56).map { [5.0, 10.0, 15.0][$0 % 3] }
+        temps.append(contentsOf: [28, 28, 28, 28])
+        let runs = makeRuns(count: 60, temps: temps, slope: 0.9)
+        let m = mrFitHeatHRModel(runs: runs, asOf: Date())
+        XCTAssertTrue(m.isFallback)
         XCTAssertFalse(m.rejectReason.isEmpty)
     }
 
@@ -47,10 +58,67 @@ final class MRHeatHRModelTests: XCTestCase {
     }
 
     func testImplausibleSlopeFallsBack() {
-        // 기온이 올라갈수록 심박이 내려가는(음수 기울기) 데이터 → 문헌 범위 밖 → 폴백
+        // 기온이 올라갈수록 심박이 내려가는(음수 기울기) 데이터 → 회귀가 더위를 못 잡음 → 폴백
         let runs = makeRuns(count: 60, temps: [5, 10, 15, 20, 25, 30], slope: -1.0)
         let m = mrFitHeatHRModel(runs: runs, asOf: Date())
         XCTAssertTrue(m.isFallback)
+    }
+
+    func testSmallPositiveSlopeIsAcceptedAsLearned() {
+        let runs = makeRuns(count: 60, temps: [5, 10, 15, 20, 25, 30], slope: 0.1)
+        let m = mrFitHeatHRModel(runs: runs, asOf: Date())
+        XCTAssertTrue(m.ok)
+        XCTAssertFalse(m.isFallback)
+        XCTAssertEqual(m.bpmPerC, 0.1, accuracy: 0.1)
+    }
+
+    func testLearnedModelClampsAboveMaxTemp() {
+        let runs = makeRuns(count: 60, temps: [5, 10, 15, 20, 25, 30], slope: 0.9)
+        let m = mrFitHeatHRModel(runs: runs, asOf: Date())
+        XCTAssertTrue(m.ok)
+        XCTAssertFalse(m.isFallback)
+        XCTAssertEqual(m.rawDelta(35), m.rawDelta(30), accuracy: 0.001, "학습 최고 기온 밖은 외삽하지 않는다")
+        XCTAssertGreaterThan(MRHeatHRModel.fallback().rawDelta(35), MRHeatHRModel.fallback().rawDelta(30),
+                             "폴백은 문헌 곡선이라 40°C까지는 외삽을 허용한다")
+    }
+
+    func testRawDeltaIgnoresOk() {
+        var m = MRHeatHRModel()
+        m.bpmPerC = 1.0
+        m.tempMaxC = 30
+        XCTAssertEqual(m.rawDelta(25), 10, accuracy: 0.001)
+        XCTAssertEqual(m.delta(25), 0, accuracy: 0.001, "ok=false면 delta는 0이어야 한다")
+    }
+
+    func testRowFilterExcludesIndoorShortAndNoTemp() {
+        let cal = Calendar.current
+        var runs = makeRuns(count: 60, temps: [5, 10, 15, 20, 25, 30], slope: 0.9)
+
+        // 실내 20건 — 제외돼야 한다
+        for i in 0..<20 {
+            let d = cal.date(byAdding: .day, value: -(1000 + i), to: Date())!
+            runs.append(MRWorkout(start: d, durationMin: 40, distanceKm: 8,
+                                  hrAvg: 150, hrMax: 175, tempC: 25, humidity: nil,
+                                  indoor: true, isInterval: false))
+        }
+        // 기온 없음 20건 — 제외돼야 한다
+        for i in 0..<20 {
+            let d = cal.date(byAdding: .day, value: -(2000 + i), to: Date())!
+            runs.append(MRWorkout(start: d, durationMin: 40, distanceKm: 8,
+                                  hrAvg: 150, hrMax: 175, tempC: nil, humidity: nil,
+                                  indoor: false, isInterval: false))
+        }
+        // 20분 미만 20건 — 제외돼야 한다
+        for i in 0..<20 {
+            let d = cal.date(byAdding: .day, value: -(3000 + i), to: Date())!
+            runs.append(MRWorkout(start: d, durationMin: 10, distanceKm: 8,
+                                  hrAvg: 150, hrMax: 175, tempC: 25, humidity: nil,
+                                  indoor: false, isInterval: false))
+        }
+
+        let m = mrFitHeatHRModel(runs: runs, asOf: Date())
+        XCTAssertFalse(m.isFallback)
+        XCTAssertEqual(m.n, 60)
     }
 
     func testNilTemperatureIsIdentity() {
