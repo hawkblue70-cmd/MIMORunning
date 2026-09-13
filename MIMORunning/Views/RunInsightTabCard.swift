@@ -1442,6 +1442,8 @@ private struct RhythmInsightCard: View {
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
     @State private var _wtfParts: [(text: String, color: Color)]? = nil
+    // 총평은 GAP·부하 창·디스크 조회를 하므로 렌더마다 다시 계산하지 않는다 — formSeriesCache와 같은 패턴. 캐시가 비면(내보내기) 직접 계산.
+    @State private var _summaryCache: [RunSummaryLine]? = nil
     #if DEBUG
     nonisolated(unsafe) private static var _formKindLogLastId: UUID? = nil
     nonisolated(unsafe) private static var _distCtxLogLastId: UUID? = nil
@@ -1499,7 +1501,7 @@ private struct RhythmInsightCard: View {
                 divider
                 rhythmRow
             }
-            let summary = summaryLines
+            let summary = _summaryCache ?? summaryLines
             if summary.count >= 2 {
                 divider
                 RunSummaryLinesView(lines: summary, allowsExpansion: summaryAllowsExpansion)
@@ -1529,10 +1531,30 @@ private struct RhythmInsightCard: View {
             heroBadge = computeAchievementBadge(activity: activity, history: history)
             heroBadgeLoaded = true
             _wtfParts = buildWorkoutTypeFormParts()
+            _summaryCache = summaryLines
         }
         .onChange(of: formBaseline?.computedAt) { _, _ in
             _wtfParts = buildWorkoutTypeFormParts()
+            _summaryCache = summaryLines
         }
+        .onChange(of: hrSamples.count) { _, _ in
+            _summaryCache = summaryLines
+        }
+        .onChange(of: hrZones.count) { _, _ in
+            _summaryCache = summaryLines
+        }
+        .onChange(of: heatHRModelKey) { _, _ in
+            _summaryCache = summaryLines
+        }
+        .onChange(of: effortIndex?.user.count) { _, _ in
+            _summaryCache = summaryLines
+        }
+    }
+
+    /// `heatHRModel`은 Equatable이 아니라서 onChange 비교에 못 쓴다 — 판정에 쓰는 두 필드(ok·bpmPerC)만 뽑아 문자열로 비교.
+    private var heatHRModelKey: String {
+        guard let m = heatHRModel else { return "nil" }
+        return "\(m.ok)-\(m.bpmPerC)"
     }
 
     // buildCadenceBars — 퍼포먼스 카드에서 CadenceEqualizerView 재사용 예정
