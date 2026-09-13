@@ -505,7 +505,7 @@ enum RunInsightEngine {
         age: Int?,
         isMale: Bool?,
         hrSamples: [(offset: TimeInterval, bpm: Int)],
-        heatHR: MRHeatHRModel = MRHeatHRModel(),
+        heatHR: MRHeatHRModel,
         hrMax: Double? = nil,
         lt1HR: Double? = nil,
         lt1SD: Double = 0,
@@ -693,20 +693,21 @@ enum RunInsightEngine {
         let driftPct = (backAvg - frontAvg) / frontAvg * 100
         let driftStr = "\(abs(driftBpm))bpm"
 
-        let tone: InsightTone = abs(driftPct) <= 6 ? .good : .neutral
+        // "올랐어요"는 후반이 실제로 오른(양수) 경우에만 — 큰 하락까지 상승으로 잘못 읽히면 안 된다.
+        let tone: InsightTone = driftPct > 6 ? .neutral : .good
         let badge = tone == .good ? L.s("드리프트 낮음", "Low Drift") : L.s("심박 드리프트", "Cardiac Drift")
         var msg: String
-        if abs(driftPct) <= 6 {
-            msg = L.s("전반/후반 심박 차이 \(driftStr) — 카디악 드리프트 적어요.",
-                      "Front/back HR drift \(driftStr) — minimal cardiac drift.")
-        } else {
+        if driftPct > 6 {
             msg = L.s("후반 심박이 전반보다 \(driftStr) 올랐어요.",
                       "HR rose \(driftStr) in the second half.")
             // 더운 날엔 드리프트 자체가 정상 범위 — 과장된 경고로 읽히지 않게 한마디 붙인다
-            if heatHR.delta(activity.temperatureC) >= 5, abs(driftPct) <= 10, let t = activity.temperatureC {
+            if heatHR.delta(activity.temperatureC) >= 5, driftPct <= 10, let t = activity.temperatureC {
                 let tempStr = "\(Int(t.rounded()))°C"
                 msg += L.s(" \(tempStr)에서는 흔한 폭이에요.", " Common at \(tempStr).")
             }
+        } else {
+            msg = L.s("전반/후반 심박 차이 \(driftStr) — 카디악 드리프트 적어요.",
+                      "Front/back HR drift \(driftStr) — minimal cardiac drift.")
         }
         return RunInsight(category: category, tone: tone, badge: badge,
                           message: msg, highlights: [driftStr])
@@ -725,7 +726,9 @@ enum RunInsightEngine {
         let heatSuffix: String = {
             guard heatHR.explains(tempC: activity.temperatureC), let t = activity.temperatureC else { return "" }
             let tempStr = "\(Int(t.rounded()))°C"
-            return L.s(" (\(tempStr) 감안)", " (adjusted for \(tempStr))")
+            return heatHR.isFallback
+                ? L.s(" (일반 더위 기준 \(tempStr) 감안)", " (typical heat at \(tempStr) allowed)")
+                : L.s(" (\(tempStr) 감안)", " (adjusted for \(tempStr))")
         }()
 
         if pct > 75 {
@@ -1338,9 +1341,10 @@ enum RunInsightEngine {
         let tempStr = activity.temperatureC.map { "\(Int($0.rounded()))°C" } ?? ""
         let heatExplains = heatHR.explains(tempC: activity.temperatureC)
 
-        // 과거 기록의 기온 커버리지 — 절반 미만이면 한쪽만 보정하는 셈이라 양쪽 다 원본으로 비교
+        // 과거 기록의 기온 커버리지 — 오늘 기온이 없거나(보정 자체가 불가능) 과거 절반 미만에
+        // 기온이 있으면(한쪽만 보정하는 셈) 양쪽 다 원본으로 비교한다.
         let withTemp = comparable.filter { $0.temperatureC != nil }.count
-        let coverageOK = Double(withTemp) / Double(comparable.count) >= 0.5
+        let coverageOK = activity.temperatureC != nil && Double(withTemp) / Double(comparable.count) >= 0.5
 
         let histRaw = comparable.compactMap { $0.avgHeartRate.map(Double.init) }
         let avgHistRaw = histRaw.reduce(0, +) / Double(histRaw.count)
@@ -1356,7 +1360,7 @@ enum RunInsightEngine {
                     highlights: [diffStr + "bpm", sampleStr + "회"])
             }
             let cause = heatExplains
-                ? L.s("\(tempStr) 더위 영향일 수 있어요.", "The \(tempStr) heat may be a factor.")
+                ? L.s("\(tempStr) 더위 영향일 수 있어요.", "the \(tempStr) heat may be a factor.")
                 : Self.efficiencyCause(activity: activity, history: history)
             return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note"),
                 message: L.s("비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높아요. \(cause)",
@@ -1370,10 +1374,11 @@ enum RunInsightEngine {
         let avgHistRef = histRefs.reduce(0, +) / Double(histRefs.count)
         let diff = avgHistRef - currentRef
 
-        // ① 더위가 차이를 통째로 설명 — 원본 상승분(≥3)을 더위 예상 상승분이 덮을 만큼 크다.
-        //   (전체를 15°C로 환산한 diff로 판정하면 더위가 과거 예상보다 더 크게 나올 때 부호가
-        //    뒤집혀 "훨씬 좋아짐"으로 잘못 읽힌다 — 원본 상승분 대비 더위 예상치로 직접 비교한다.)
-        if rawDiff <= -3, heatHR.delta(activity.temperatureC) >= abs(rawDiff), heatExplains {
+        // ① 더위가 차이를 통째로 설명 — 원본으론 3bpm 이상 높았지만(rawDiff<=-3), 양쪽을 15°C로
+        //   맞추면 그 차이가 사라진다(diff > -3, 즉 보정 후엔 오늘이 3bpm 넘게 낮지 않다).
+        //   원본 상승분과 더위 예상치를 직접 비교하면 과거도 더웠던 경우 더위 보정이 두 번
+        //   상쇄돼 "훨씬 좋아짐"으로 잘못 읽히므로, 반드시 양쪽 다 보정한 diff로 판정한다.
+        if rawDiff <= -3, diff > -3, heatExplains {
             let rawStr = "\(Int(abs(rawDiff).rounded()))"
             if heatHR.isFallback {
                 return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note"),
@@ -1398,7 +1403,19 @@ enum RunInsightEngine {
                 highlights: [diffStr + "bpm", sampleStr + "회"])
         }
         let cause = Self.efficiencyCause(activity: activity, history: history)
-        let prefix = heatExplains ? L.s("\(tempStr) 기온을 감안해도 ", "Even allowing for \(tempStr), ") : ""
+        // 오늘 기온이 설명할 만큼 덥지 않아도, 과거 기록 쪽이 평균적으로 더 더웠다면
+        // 그걸 15°C로 맞췄다는 걸 밝혀야 "왜 과거 심박이 낮아 보이는지"가 왜곡 없이 읽힌다.
+        let histHeatDelta = avgHistRaw - avgHistRef
+        let prefix: String
+        if heatExplains {
+            prefix = heatHR.isFallback
+                ? L.s("일반적인 더위 영향(\(tempStr))을 감안해도 ", "Even allowing for typical heat effects (\(tempStr)), ")
+                : L.s("\(tempStr) 기온을 감안해도 ", "Even allowing for \(tempStr), ")
+        } else if histHeatDelta >= 3 {
+            prefix = L.s("더운 날이 많았던 최근 기록을 15°C 기준으로 맞추면 ", "Adjusting the recent, hotter runs to 15°C, ")
+        } else {
+            prefix = ""
+        }
         return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note"),
             message: L.s("\(prefix)비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높아요. \(cause)",
                          "\(prefix)HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)"),
