@@ -1304,7 +1304,8 @@ private struct WeekStripView: View {
         let daysFromMonday = (weekday + 5) % 7             // 0=Mon...6=Sun
         guard let monday = cal.date(byAdding: .day, value: -daysFromMonday, to: today) else { return [] }
         var kmByDay: [Date: Double] = [:]
-        for act in history {
+        // 연속일 칩(computeRunningStreak)과 같은 기준 — 러닝만 센다. 걷기가 섞이면 칩과 칸 수가 어긋난다.
+        for act in history where act.type == .running {
             let day = cal.startOfDay(for: act.date)
             kmByDay[day, default: 0] += act.distance / 1000
         }

@@ -1117,10 +1117,10 @@ struct RunFormCardView: View {
             switch dir {
             case .cadence:
                 return rv >= bandLo ? green : neutral
-            case .groundContact:
+            case .groundContact, .verticalOsc:
+                // 지면접촉·수직진폭은 낮을수록 좋은 쪽 — 범위 아래로 벗어나도 녹색 (범례와 일치)
                 return rv <= bandHi ? green : neutral
-            case .stride, .verticalOsc:
-                // .verticalOsc: 중립 = 방향을 따지지 않음. 범위 안이면 녹색, 벗어나면 회색.
+            case .stride:
                 return rv >= bandLo && rv <= bandHi ? green : neutral
             }
         }()
@@ -1506,18 +1506,21 @@ struct RunFormCardView: View {
     }
 
     private func trendChangeBadge(dir: MetricDir, unit: String, firstAvg: Double, secondAvg: Double) -> some View {
-        let diff = secondAvg - firstAvg
+        // 차이는 표시 정밀도로 반올림한 양끝의 차로 — 원값 차를 쓰면 0.91 → 0.92 (+0.02)처럼 어긋난다.
         let fmtNum: (Double) -> String = { v in metricFmt(v, dir: dir) }
+        let first  = Double(fmtNum(firstAvg))  ?? firstAvg
+        let second = Double(fmtNum(secondAvg)) ?? secondAvg
+        let diff = second - first
         let diffUnit = dir == .groundContact ? "ms" : ""
         let sign: String = diff > 0.0005 ? "+" : diff < -0.0005 ? "−" : "±"
-        let label = "\(fmtNum(firstAvg)) → \(fmtNum(secondAvg)) (\(sign)\(fmtNum(abs(diff)))\(diffUnit))"
+        let label = "\(fmtNum(first)) → \(fmtNum(second)) (\(sign)\(fmtNum(abs(diff)))\(diffUnit))"
         let green = Theme.positive
         let muted = Color.white.opacity(0.70)
         let color: Color
         switch dir {
-        case .cadence:       color = diff > 0.0005 ? green : muted
-        case .groundContact: color = diff < -0.0005 ? green : muted
-        default:             color = muted
+        case .cadence:                     color = diff > 0.0005 ? green : muted
+        case .groundContact, .verticalOsc: color = diff < -0.0005 ? green : muted
+        default:                           color = muted
         }
         return Text(label)
             .font(.system(size: 9.5, weight: .medium))
@@ -1596,8 +1599,8 @@ struct RunFormCardView: View {
         // 지면접촉은 범위 아래로 벗어나도 초록이라, 설명이 없으면 보폭(범위 밖=회색)과
         // 색이 갈리는 이유를 알 수 없다.
         let colorLine = L.s(
-            "\n초록 = 범위 안이거나 더 좋은 쪽 (케이던스는 높게 · 지면접촉은 짧게)",
-            "\nGreen = in range, or the better side (higher cadence · shorter contact)")
+            "\n초록 = 범위 안이거나 더 좋은 쪽 (케이던스는 높게 · 지면접촉·수직진폭은 낮게)",
+            "\nGreen = in range, or the better side (higher cadence · lower contact & oscillation)")
         let caveat: String = n < 3
             ? L.s("\n비교 대상이 적어 참고용이에요.", "\nLimited samples — treat as reference only.")
             : ""
