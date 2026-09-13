@@ -660,6 +660,35 @@ private func computeAchievementBadge(activity: Activity, history: [Activity]) ->
     return nil
 }
 
+fileprivate func hrMovingMedian(_ data: [Int], window: Int) -> [Double] {
+    guard !data.isEmpty else { return [] }
+    return data.indices.map { i in
+        let lo = max(0, i - window / 2)
+        let hi = min(data.count - 1, i + window / 2)
+        let slice = data[lo...hi].sorted()
+        let m = slice.count / 2
+        return slice.count % 2 == 0 && slice.count > 1
+            ? Double(slice[m - 1] + slice[m]) / 2
+            : Double(slice[m])
+    }
+}
+
+fileprivate func hrMovingAverage(_ data: [Double], window: Int) -> [Double] {
+    guard !data.isEmpty else { return [] }
+    return data.indices.map { i in
+        let lo = max(0, i - window / 2)
+        let hi = min(data.count - 1, i + window / 2)
+        let slice = data[lo...hi]
+        return slice.reduce(0, +) / Double(slice.count)
+    }
+}
+
+/// 심박 타임라인 차트와 같은 2단 평활화(이동 중앙값 9 → 이동 평균 25).
+/// 차트 축 라벨과 총평 근거의 "최고 N"이 **같은 값**을 보게 이 함수 하나만 쓴다.
+fileprivate func hrChartSmoothed(_ bpm: [Int]) -> [Double] {
+    hrMovingAverage(hrMovingMedian(bpm, window: 9), window: 25)
+}
+
 private func computeRunningStreak(activity: Activity, history: [Activity]) -> Int {
     let cal = Calendar.current
     let runDays = Set(
@@ -1117,29 +1146,6 @@ private struct HRTimeSeriesView: View {
     private static let elevFill = Color.white.opacity(0.17)
     private static let elevStroke = Color.white.opacity(0.32)
 
-    private func movingMedian(_ data: [Int], window: Int) -> [Double] {
-        guard !data.isEmpty else { return [] }
-        return data.indices.map { i in
-            let lo = max(0, i - window / 2)
-            let hi = min(data.count - 1, i + window / 2)
-            let slice = data[lo...hi].sorted()
-            let m = slice.count / 2
-            return slice.count % 2 == 0 && slice.count > 1
-                ? Double(slice[m - 1] + slice[m]) / 2
-                : Double(slice[m])
-        }
-    }
-
-    private func movingAverage(_ data: [Double], window: Int) -> [Double] {
-        guard !data.isEmpty else { return [] }
-        return data.indices.map { i in
-            let lo = max(0, i - window / 2)
-            let hi = min(data.count - 1, i + window / 2)
-            let slice = data[lo...hi]
-            return slice.reduce(0, +) / Double(slice.count)
-        }
-    }
-
     /// GPS 고도 노이즈 제거 — 5점 이동 평균. 누적 상승을 이 값으로 재야 노이즈가 쌓이지 않는다.
     private func smoothAltitude(_ pts: [(offset: TimeInterval, altitude: Double)])
         -> [(offset: TimeInterval, altitude: Double)] {
@@ -1174,7 +1180,7 @@ private struct HRTimeSeriesView: View {
 
         // 2단 평활화: 이동 중앙값(9) → 이동 평균(25)
         let rawBPM = samples.map(\.bpm)
-        let smoothed = movingAverage(movingMedian(rawBPM, window: 9), window: 25)
+        let smoothed = hrChartSmoothed(rawBPM)
 
         // 오프셋과 결합 후 최대 200개로 다운샘플 (평활화 후 축소)
         var pts: [(offset: TimeInterval, bpm: Double)] = zip(samples.map(\.offset), smoothed)
@@ -2713,7 +2719,8 @@ private struct RhythmInsightCard: View {
             input.distanceSampleCount = info.sampleCount
         }
         input.avgHeartRate = activity.avgHeartRate
-        input.peakHeartRate = hrSamples.map(\.bpm).max()
+        // 차트 축 라벨(평활화 최고)과 같은 값 — 원본 최고를 쓰면 카드 안에서 157 vs 159처럼 어긋난다
+        input.peakHeartRate = hrSamples.count >= 5 ? hrChartSmoothed(hrSamples.map(\.bpm)).max().map { Int($0.rounded()) } : nil
         input.temperatureC = activity.temperatureC
         input.planPhase = planPhase
         input.easyPace = easyPaceLookup
