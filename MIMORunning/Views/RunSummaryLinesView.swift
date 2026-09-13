@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// 총평 줄 묶음 — 색점 + 축 + 상태어. 리듬 카드 하단과 (추후) 공유 카드가 **이 컴포넌트 하나만** 쓴다(§5.8).
-/// 크기는 `scale`로만 조절한다. scale=1 기준: 글자 10pt · 점 7pt · 좌우 여백 12pt · 상하 10pt.
+/// 크기는 `scale`로만 조절한다. scale=1 기준: 글자 10pt · 점 7pt · 좌우 여백 12pt · 상하 10pt · 축 열 52pt.
 struct RunSummaryLinesView: View {
     let lines: [RunSummaryLine]
     var scale: CGFloat = 1.0
@@ -18,6 +18,8 @@ struct RunSummaryLinesView: View {
                         .font(.system(size: 10 * scale, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.78))
                         .lineLimit(1)
+                        .frame(width: 52 * scale, alignment: .leading)
+                        .layoutPriority(1)
                     Text("·")
                         .font(.system(size: 10 * scale))
                         .foregroundStyle(Color.white.opacity(0.35))
