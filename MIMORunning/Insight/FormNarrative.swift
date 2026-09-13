@@ -224,6 +224,8 @@ extension FormNarrative {
         let cadStr: String
         let slStr: String?
         let paceStr: String
+        /// 카드가 전반/후반 3단계 문장(FormPhase.sentence)을 함께 보여주면, 전체 평균 문장을 "평균으로는" 범위로 좁힌다.
+        var hasPhaseSentence: Bool = false
     }
 
     /// 전반→후반 변화 방향 임계값. 이 미만은 "유지"로 본다.
@@ -247,6 +249,10 @@ extension FormNarrative {
             if !allInRange, i.gct == .above {
                 return L.s("\(distKmStr)km를 뛰면서 지면접촉이 평소보다 조금 길었어요.",
                            "Ground contact ran a bit longer than usual in this \(distKmStr) km run.")
+            }
+            if i.hasPhaseSentence {
+                return L.s("\(distKmStr)km를 뛰면서 평균으로는 폼이 평소 범위 안이었어요.",
+                           "On average your form stayed within the usual range across \(distKmStr) km.")
             }
             return L.s("\(distKmStr)km를 뛰면서 폼이 평소 범위 그대로였어요.",
                        "Your form stayed within the usual range throughout \(distKmStr) km.")

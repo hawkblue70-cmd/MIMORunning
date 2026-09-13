@@ -1689,7 +1689,8 @@ struct RunFormCardView: View {
                 cad: cadSt, gct: gctSt, sl: slSt,
                 firstHalfCadence: cadAvg(fHalf), secondHalfCadence: cadAvg(sHalf),
                 firstHalfStride: slAvg(fHalf), secondHalfStride: slAvg(sHalf),
-                cadStr: cadStr, slStr: slStr, paceStr: paceStr)
+                cadStr: cadStr, slStr: slStr, paceStr: paceStr,
+                hasPhaseSentence: formPhaseResult != nil)
             return FormNarrative.longDistanceSentence(input)
         }
 

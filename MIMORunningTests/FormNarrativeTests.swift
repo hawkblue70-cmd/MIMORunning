@@ -162,12 +162,14 @@ struct FormNarrativeTests {
                            cad: S = .inRange, gct: S = .inRange, sl: S = .inRange,
                            fc: Int? = nil, sc: Int? = nil, fs: Double? = nil, ss: Double? = nil,
                            cadStr: String = "195", slStr: String? = "0.91",
-                           paceStr: String = "5'40") -> FormNarrative.LongDistanceInput {
+                           paceStr: String = "5'40",
+                           hasPhaseSentence: Bool = false) -> FormNarrative.LongDistanceInput {
         FormNarrative.LongDistanceInput(
             distKm: distKm, typeName: typeName, typicalDistanceKm: typical,
             hasDistanceInsight: hasDistanceInsight, cad: cad, gct: gct, sl: sl,
             firstHalfCadence: fc, secondHalfCadence: sc, firstHalfStride: fs, secondHalfStride: ss,
-            cadStr: cadStr, slStr: slStr, paceStr: paceStr)
+            cadStr: cadStr, slStr: slStr, paceStr: paceStr,
+            hasPhaseSentence: hasPhaseSentence)
     }
 
     private func koLong(_ i: FormNarrative.LongDistanceInput) -> String {
@@ -229,6 +231,16 @@ struct FormNarrativeTests {
         // 평소 10km · 11km → 1.5배 미만이고 12km 미만 → 접두 없음
         let k = longInput(distKm: 11, typical: 10, cad: .below, fc: 190, sc: 186)
         #expect(koLong(k) == "11km를 뛰면서 케이던스는 190→186spm으로 내려갔어요.")
+    }
+
+    @Test func longDistanceAllInRangeScopesToAverageWhenPhaseSentenceExists() {
+        let i = longInput(distKm: 16, fc: 190, sc: 180, hasPhaseSentence: true)
+        #expect(koLong(i) == "16km를 뛰면서 평균으로는 폼이 평소 범위 안이었어요.")
+    }
+
+    @Test func longDistanceAllInRangeUnchangedWithoutPhaseSentence() {
+        let i = longInput(distKm: 16, fc: 190, sc: 180, hasPhaseSentence: false)
+        #expect(koLong(i) == "16km를 뛰면서 폼이 평소 범위 그대로였어요.")
     }
 
     @Test func longDistanceOnlyOneMetricAndNoSplitsFallback() {
