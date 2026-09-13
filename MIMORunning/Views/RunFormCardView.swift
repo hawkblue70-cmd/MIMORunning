@@ -210,6 +210,23 @@ struct RunFormCardView: View {
             recentAvgDistanceKm: typicalDistanceKm
         )
     }
+
+    /// 초·중·말 폼 형태 — 풀 스플릿 6개 이상 + 기준선 있을 때만. 인터벌은 제외.
+    /// 판정(fullSplits)과 표시(버킷)를 섞지 않는다 — 문장은 판정, 30/70 점선 위치만 차트에 표시.
+    private var formPhaseResult: FormPhase.Result? {
+        guard !isInterval, let bl = baseline else { return nil }
+        let gctShift = formShifts.first(where: { $0.metric.key == "gct" })
+        // 기준선 밴드는 GAP 기준 — 밴드 조회 페이스도 GAP 배율(GAP ÷ 실측)로 맞춘다 (bb와 같은 규칙)
+        let scale: Double = {
+            let distKm = fullSplits.map(\.distanceM).reduce(0, +) / 1000
+            let dur = fullSplits.map(\.duration).reduce(0, +)
+            guard let gap = runGAP, distKm > 0, dur > 0 else { return 1.0 }
+            return gap / (dur / distKm)   // 분모도 스플릿 기준 — 같은 총량에서 나온 비율
+        }()
+        return FormPhase.classify(splits: fullSplits, paceScale: scale, bandFor: { pace in
+            FormPhase.bandStats(in: bl, paceSecPerKm: pace, gctShift: gctShift)
+        })
+    }
     private let lineColor = Color.white.opacity(0.20)
     // [57] 텍스트 열 고정 너비 — 가장 긴 「수직진폭 (참고) N.N cm」+ 들여쓰기를 수용
     //      네 줄 모두 이 값에서 바가 시작 → 축 좌우 끝 픽셀 정렬
@@ -664,7 +681,8 @@ struct RunFormCardView: View {
     /// 거리문맥 러닝에서 케이던스·보폭·지면접촉이 평소 범위를 벗어난 첫 버킷을 찾아
     /// 관찰 문구를 생성한다. 세 지표 모두 범위 안이면 nil.
     private var longDistanceFormChangeInsight: FormInsightItem? {
-        guard isLongDistanceContext else { return nil }
+        // 3단계 폼 문장이 나오면 이탈 위치까지 그 문장이 말한다 — 같은 사실을 두 번 적지 않는다.
+        guard isLongDistanceContext, formPhaseResult == nil else { return nil }
         let L = AppLanguage.shared
         let all = formSeriesCache.isEmpty ? formSeries : formSeriesCache
 
@@ -826,6 +844,13 @@ struct RunFormCardView: View {
                 formInsightSection
                 if showTrendSection {
                     splitFormTrendSection
+                    if let phase = formPhaseResult {
+                        Text(FormPhase.sentence(phase, isLongDistance: isLongDistanceContext))
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Color.white.opacity(0.80))
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
@@ -1320,6 +1345,8 @@ struct RunFormCardView: View {
             }
             return lastKm / 2.0
         }()
+        // 3단계 문장이 있으면 50% 중앙선 대신 30%·70% 경계 2개
+        let phaseMarkKms: [Double] = formPhaseResult.map { [$0.earlyEndKm, $0.lateStartKm] } ?? [midKm]
         let showEveryOther = kmEnds.count > 6
         var displayKms: [Double] = showEveryOther
             ? kmEnds.enumerated().compactMap { i, km in i % 2 == 0 ? km : nil }
@@ -1419,10 +1446,12 @@ struct RunFormCardView: View {
                     .foregroundStyle(Color.white.opacity(s.bandIsReference ? 0.05 : 0.08))
                 }
 
-                // Midpoint divider
-                RuleMark(x: .value("", midKm))
-                    .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
-                    .foregroundStyle(Color.white.opacity(0.15))
+                // 구간 경계 — 기본은 50% 중앙선, 3단계 문장이 있으면 30%·70%
+                ForEach(phaseMarkKms, id: \.self) { km in
+                    RuleMark(x: .value("", km))
+                        .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
+                        .foregroundStyle(Color.white.opacity(0.15))
+                }
 
                 // Line
                 ForEach(s.points) { pt in
