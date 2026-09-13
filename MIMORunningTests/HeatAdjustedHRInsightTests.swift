@@ -48,6 +48,25 @@ struct HeatAdjustedHRInsightTests {
         #expect(RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned) == nil)
     }
 
+    @Test func hotTodayWithEqualRawHRMakesNoImprovementClaim() {
+        AppLanguage.shared.isEnglish = false
+        // 원본 심박은 과거와 완전히 같음(0) — 보정만으로는 +8(10.4bpm) "개선"처럼 보이지만
+        // 원본 비교가 뒷받침하지 않으므로 개선을 말하지 않는다.
+        let today = run(0, pace: 376, hr: 146, temp: 28)
+        let hist = (1...5).map { run($0 * 3, pace: 376, hr: 146, temp: 15) }
+        #expect(RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned) == nil)
+    }
+
+    @Test func improvementReportsAdjustedDifference() {
+        AppLanguage.shared.isEnglish = false
+        // 원본 11bpm 낮음(148→138) + 보정 149−8=141 → 3bpm 낮음 — 둘 다 개선을 뒷받침
+        let today = run(0, pace: 376, hr: 138, temp: 15)
+        let hist = (1...5).map { run($0 * 3, pace: 376, hr: 149, temp: 25) }
+        let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned)
+        #expect(r?.message == "비슷한 페이스 최근 5회 대비 심박이 3 bpm 낮아요 — 심폐 효율이 개선되고 있어요.")
+        #expect(r?.tone == .good)
+    }
+
     @Test func lowTemperatureCoverageComparesRawAndOnlyHints() {
         AppLanguage.shared.isEnglish = false
         let today = run(0, pace: 376, hr: 149, temp: 25)

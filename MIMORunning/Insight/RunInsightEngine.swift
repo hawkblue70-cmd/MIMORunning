@@ -1319,6 +1319,7 @@ enum RunInsightEngine {
         return L.s("오늘 컨디션을 반영한 것일 수 있어요.", "may reflect today's condition.")
     }
 
+    /// 개선 주장은 원본과 보정 둘 다 3 bpm 이상 낮을 때만; 보정만으로 개선을 말하지 않는다.
     static func efficiencyInsight(activity: Activity, history: [Activity],
                                   heatHR: MRHeatHRModel = MRHeatHRModel()) -> RunInsight? {
         guard let currentHR   = activity.avgHeartRate,
@@ -1388,7 +1389,9 @@ enum RunInsightEngine {
         guard abs(diff) >= 3 else { return nil }
         let diffStr = "\(Int(abs(diff).rounded()))"
 
-        if diff > 0 {
+        // 개선("낮아요") 주장은 원본 비교도 3bpm 이상 낮을 때만 — 보정만으로 만들어진 개선은 말하지 않는다.
+        if diff >= 3 {
+            guard rawDiff >= 3 else { return nil }
             return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient"),
                 message: L.s("비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(diffStr) bpm 낮아요 — 심폐 효율이 개선되고 있어요.",
                              "HR is \(diffStr) bpm lower vs \(sampleStr) similar-pace runs — efficiency improving."),
