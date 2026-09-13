@@ -875,6 +875,7 @@ struct ActivityDetailView: View {
             lt1SD: engine.phys.lt1SD,
             easyCeilingHR: engine.phys.easyCeilingHR,
             heat: engine.heat,
+            heatHR: engine.heatHR,
             planWeeklyTargetKm: planWeeklyTargetKm,
             effort: activity.type == .running ? resolvedEffort : nil,
             effortBaseline: effortBaseline
