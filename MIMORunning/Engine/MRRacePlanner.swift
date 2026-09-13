@@ -76,6 +76,9 @@ struct MRTuneUpRace {
     let distanceM: Double
     /// 이미 독립 계획(스냅샷)이 있는 대회 — "사용자가 신경 쓰는 대회"로 해석해 그 전 주를 테이퍼로 양보한다.
     var hasOwnPlan: Bool = false
+    /// 자기 계획의 주차(월요일 → 그 주 값). A 계획은 이 대회까지의 겹치는 주에 이 숫자를 그대로 따른다 —
+    /// 같은 주에 두 계획이 다른 롱런을 요구하지 않게.
+    var ownPlanWeeks: [MRPlanWeek] = []
 }
 
 /// 튠업 대회 주 주간 거리 배율 — 임의로 정함 (Bosquet 2007 테이퍼 원칙을 거리에 맞춰 축소).
@@ -227,15 +230,19 @@ func mrBuildPlan(raceDate: Date,
         if let pr = priorRace { return t.date > pr.date }
         return true
     }.count
-    // 자기 계획이 있는 단거리 튠업은 그 전 주를 테이퍼로 양보하므로 1주씩 더 든다.
-    let ownPlanShortCount = tuneUps.filter { t in
+    // 자기 계획이 있는 단거리 튠업: 그 계획이 살아 있는 동안 A 계획의 롱런 진행이 멈춘다
+    // (겹치는 주는 그 계획의 숫자를 따른다). 오늘부터 그 대회까지의 주 수만큼 더 든다.
+    let ownPlanStallWeeks = tuneUps.filter { t in
         guard t.hasOwnPlan, t.distanceM < MRDistance.dH else { return false }
         if let pr = priorRace { return t.date > pr.date }
         return true
-    }.count
+    }.map { t -> Int in
+        let d = cal.dateComponents([.day], from: cal.startOfDay(for: today), to: cal.startOfDay(for: t.date)).day ?? 0
+        return max(1, d / 7)
+    }.max() ?? 0
     // ⚠ 3주 하한 — 이미 목표에 닿아 있어도 3주 미만 계획은 만들지 않는다 (아래 guard와 같은 기준).
     let neededTotal  = max(3, simulateNeeded(fromLong: simStartLong, fromVol: simStartVol) + p.taperWeeks
-                     + 2 * halfTuneUpCount + ownPlanShortCount)
+                     + 2 * halfTuneUpCount + ownPlanStallWeeks)
 
     // 날짜를 짧게 표시 — 올해(baseYear)는 "M-d", 다른 해는 "yyyy-M-d"
     let baseYear = cal.component(.year, from: today)
@@ -444,11 +451,25 @@ func mrBuildPlan(raceDate: Date,
             $0.hasOwnPlan && $0.distanceM < MRDistance.dH && $0.date >= weekEnd && $0.date < nextWeekEnd
         } : nil
 
+        // 자기 계획이 있는 단거리 대회가 아직 앞에 있고, 그 계획에 이번 주가 있으면 → 그 숫자를 그대로 따른다.
+        // 10K 계획이 "롱런 16"이라 하는 주에 하프 계획이 "18.8"이라 하면 러너는 하나만 할 수 있다.
+        let followed: (race: MRTuneUpRace, week: MRPlanWeek)? = tune == nil ? tuneUps
+            .filter { $0.hasOwnPlan && $0.distanceM < MRDistance.dH && $0.date >= weekEnd }
+            .sorted { $0.date < $1.date }
+            .lazy.compactMap { t in t.ownPlanWeeks.first { cal.isDate($0.monday, inSameDayAs: mon) }.map { (t, $0) } }
+            .first : nil
+
         if i <= buildWeeks {
             // 빌드 사이클을 회복 주 수만큼 오프셋해야 첫 빌드 주가 다운 주가 되지 않는다
             recovery = ((i - recoveryWeekCount) % cycleLen == 0) || forceRecovery
             forceRecovery = false
-            if preTune != nil {
+            if let f = followed {
+                lr = f.week.longRunKm
+                wkVol = f.week.weeklyKm
+                phase = preTune != nil ? "대회 주" : f.week.phase
+                peakLong = max(peakLong, lr)
+                currentBuildVol = max(currentBuildVol, wkVol)
+            } else if preTune != nil {
                 // 단거리 대회 전 주 — 그 대회 독립 계획의 1주 테이퍼와 같은 값 (롱런 65% · 주간 50%). 진행 멈춤.
                 lr = peakLong * 0.65
                 phase = "대회 주"
@@ -548,7 +569,10 @@ func mrBuildPlan(raceDate: Date,
                 : L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(others)회",
                       "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(others)x")
         }
-        if let pt = preTune, i <= buildWeeks {
+        if let f = followed, i <= buildWeeks {
+            let label = mrLabelFor(distanceM: f.race.distanceM)
+            breakdown = L.s("\(label) 계획을 따릅니다 · ", "Follows the \(label) plan · ") + f.week.breakdown
+        } else if let pt = preTune, i <= buildWeeks {
             let label = mrLabelFor(distanceM: pt.distanceM)
             breakdown = String(format: L.s("%@ 대회 전 주 — 롱런 %.0fkm + 짧게 %d회 · 강도는 그대로",
                                            "Week before %@ race — Long run %.0fkm + Short %dx · Keep the intensity"),

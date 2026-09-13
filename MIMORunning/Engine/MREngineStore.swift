@@ -142,6 +142,24 @@ final class MREngineStore: ObservableObject {
         var absorbed: [(race: MRTargetRace, planName: String)] = []
         var aPairs: [(race: MRTargetRace, plan: MRRacePlan?)] = []
 
+        // ① 자기 계획(앵커)이 있는 단거리 먼저 — A 계획이 겹치는 주에 이 숫자를 따라야 하므로.
+        var ownPlanWeeksByKey: [String: [MRPlanWeek]] = [:]
+        var shortPairs: [(race: MRTargetRace, plan: MRRacePlan?)] = []
+        for r in upcoming where r.distanceM < MRDistance.dH {
+            let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
+            guard let anchor = anchors[key] else { continue }
+            let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
+                                 profile: planProfile, halfEquivMin: he,
+                                 easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
+                                 raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP,
+                                 runsPerWeek: planProfile.runsPerWeek,
+                                 priorRace: nil, forcedMonday: anchor,
+                                 caller: caller, raceName: r.name)
+            if let pl { ownPlanWeeksByKey[key] = pl.weeks }
+            shortPairs.append((r, pl))
+        }
+
+        // ② A 레이스(하프 이상)
         for r in upcoming where r.distanceM >= MRDistance.dH {
             let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
             // 앞선 대회는 반드시 대상 대회보다 하루 이상 앞선 날이어야 한다.
@@ -149,7 +167,11 @@ final class MREngineStore: ObservableObject {
                 cal.startOfDay(for: p.date) < cal.startOfDay(for: r.date) ? p : nil
             }
             let tune = mrTuneUpCandidates(for: r, among: upcoming, today: now,
-                                          plannedKeys: Set(anchors.keys))
+                                          plannedKeys: Set(anchors.keys)).map { t -> MRTuneUpRace in
+                var t = t
+                t.ownPlanWeeks = ownPlanWeeksByKey[mrArchiveKey(raceDate: t.date, distanceM: t.distanceM)] ?? []
+                return t
+            }
             let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
                                  profile: planProfile, halfEquivMin: he,
                                  easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
@@ -173,10 +195,11 @@ final class MREngineStore: ObservableObject {
             aPairs.append((r, pl))
         }
 
+        // ③ 앵커 없고 흡수도 안 된 단거리 — 독립 계획
         let absorbedIDs = Set(absorbed.map { $0.race.id })
-        var shortPairs: [(race: MRTargetRace, plan: MRRacePlan?)] = []
         for r in upcoming where r.distanceM < MRDistance.dH && !absorbedIDs.contains(r.id) {
             let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
+            guard anchors[key] == nil else { continue }   // ①에서 처리됨
             let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
                                  profile: planProfile, halfEquivMin: he,
                                  easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,

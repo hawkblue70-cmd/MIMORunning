@@ -29,6 +29,7 @@ private func localizedBreakdown(_ s: String) -> String {
         .replacingOccurrences(of: "앞 5~7일 볼륨 −30%", with: "volume −30% for 5–7 days before")
         .replacingOccurrences(of: "대회는 가볍게", with: "race, take it easy")
         .replacingOccurrences(of: "대회 전 주 — ", with: "week before race — ")
+        .replacingOccurrences(of: " 계획을 따릅니다 · ", with: " plan · ")
         .replacingOccurrences(of: "하프 대회", with: "Half race")
         .replacingOccurrences(of: " 대회", with: " race")
         .replacingOccurrences(of: "회", with: "x")

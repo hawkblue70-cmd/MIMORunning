@@ -345,3 +345,42 @@ struct MRRacePlannerStartedPlanPersistsTests {
         #expect(plan.weeks.last?.phase == "테이퍼")
     }
 }
+
+@Suite("MRRacePlanner 겹치는 주는 자기 계획 있는 단거리 숫자를 따른다")
+struct MRRacePlannerFollowOwnPlanTests {
+    @Test func overlappingWeeksUseTenKPlanNumbers() throws {
+        var prof = MRProfile()
+        prof.weeklyKm4w = 42; prof.longestRun16wKm = 16; prof.maxWeeklyKm52w = 60; prof.runsPerWeek = 4
+        let cal = Calendar.current
+        let today = Date()
+        let daysSinceMon = (cal.component(.weekday, from: today) + 5) % 7
+        let thisMonday = cal.date(byAdding: .day, value: -daysSinceMon, to: cal.startOfDay(for: today))!
+        let tenKDate = cal.date(byAdding: .day, value: 20, to: today)!
+        let halfDate = cal.date(byAdding: .day, value: 62, to: today)!
+        // 10K 계획: 5주 전 시작
+        let tenK = try #require(mrBuildPlan(raceDate: tenKDate, distanceM: MRDistance.d10, today: today,
+                                            profile: prof, halfEquivMin: 110, easyPaceSecPerKm: 400,
+                                            heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4,
+                                            forcedMonday: cal.date(byAdding: .day, value: -35, to: thisMonday)!))
+        var tu = MRTuneUpRace(date: tenKDate, name: "10K", distanceM: MRDistance.d10, hasOwnPlan: true)
+        tu.ownPlanWeeks = tenK.weeks
+        let half = try #require(mrBuildPlan(raceDate: halfDate, distanceM: MRDistance.dH, today: today,
+                                            profile: prof, halfEquivMin: 110, easyPaceSecPerKm: 400,
+                                            heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4,
+                                            forcedMonday: thisMonday, tuneUps: [tu]))
+        // 10K 대회 전까지 겹치는 모든 주: 롱런·주간이 10K 계획과 같다
+        let tenKByMon = Dictionary(tenK.weeks.map { (cal.startOfDay(for: $0.monday), $0) }, uniquingKeysWith: { a, _ in a })
+        var matched = 0
+        for w in half.weeks where w.monday < tenKDate {
+            if let t = tenKByMon[cal.startOfDay(for: w.monday)] {
+                #expect(abs(w.longRunKm - t.longRunKm) < 0.01)
+                #expect(abs(w.weeklyKm - t.weeklyKm) < 0.01)
+                #expect(w.breakdown.contains("10K 계획을 따릅니다") || w.phase == "대회 주")
+                matched += 1
+            }
+        }
+        #expect(matched >= 2)
+        // 대회 주 이후에는 다시 진행해 21km에 닿는다
+        #expect(half.reachableLongKm >= 20.9)
+    }
+}
