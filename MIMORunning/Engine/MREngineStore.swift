@@ -43,6 +43,8 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var runs: [MRWorkout] = []
     @Published private(set) var phys = MRPhysiology()
     @Published private(set) var heat = MRHeatModel()
+    /// 기온 보정 심박 — 심박을 과거와 비교·판정하는 모든 자리가 이 모델 하나를 쓴다.
+    @Published private(set) var heatHR = MRHeatHRModel()
     @Published private(set) var hrPace = MRHRPaceModel()
     @Published private(set) var easyPaceLookup: MRHRPaceLookup?
     @Published private(set) var efforts: [MRRaceEffort] = []
@@ -269,6 +271,7 @@ final class MREngineStore: ObservableObject {
         phys = mrPhysiology(runs: fetched, restingHRSamples: rhr,
                             dateOfBirth: dob, sex: sex, asOf: now)
         heat = mrFitHeatModel(runs: fetched)
+        heatHR = mrFitHeatHRModel(runs: fetched, asOf: now)
         // mrFitHRPaceModel 내부 #if DEBUG 에서 회귀 통계(n·구간별 실측·R²)가 출력된다.
         hrPace = mrFitHRPaceModel(runs: fetched, asOf: now)
 
