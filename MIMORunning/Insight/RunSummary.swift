@@ -33,7 +33,8 @@ enum RunSummary {
     static let easyHighZoneFrac = 0.50
     static let loadJumpMin = 0.30
     static let vo2Bounds: [Double] = [15, 26, 33, 41, 57]
-    static let easyIntentTypes: Set<WorkoutType> = [.easy, .longRun, .lsd, .distanceRun]
+    // 거리주(레이스페이스 장거리)는 빠른 게 정의라 이지 의도로 판정하지 않는다
+    static let easyIntentTypes: Set<WorkoutType> = [.easy, .longRun, .lsd]
 
     /// VO2max 등급 — 리듬 카드 게이지 캡션과 같은 경계.
     static func vo2Level(_ vo2: Double) -> (index: Int, name: String) {
@@ -81,14 +82,15 @@ enum RunSummary {
             return RunSummaryLine(axis: axis, state: L.s("딱 좋은 강도", "Just right"), tone: .good)
         }
         let high3 = frac(3) + frac(4) + frac(5)
+        let pct = Int((high3 * 100).rounded())
         if easyIntentTypes.contains(i.workoutType), high3 >= easyHighZoneFrac {
-            let pct = Int((high3 * 100).rounded())
             let label = i.workoutType.koreanLabel
             return RunSummaryLine(axis: axis,
-                                  state: L.s("\(label) 기준 높음 · Zone 3 이상 \(pct)%", "High for a \(label.lowercased()) · \(pct)% in Zone 3+"),
+                                  state: L.s("\(label) 기준 높음 · Zone 3 이상 \(pct)%", "High for \(label) · \(pct)% in Zone 3+"),
                                   tone: .neutral)
         }
-        guard let dom = visible.max(by: { $0.value < $1.value })?.key else { return nil }
+        // 동률이면 높은 존이 이긴다(결정적 타이브레이크)
+        guard let dom = visible.max(by: { ($0.value, $0.key) < ($1.value, $1.key) })?.key else { return nil }
         switch dom {
         case 1:  return RunSummaryLine(axis: axis, state: L.s("가벼운 회복 강도", "Light recovery"), tone: .good)
         case 2:  return RunSummaryLine(axis: axis, state: L.s("딱 좋은 강도", "Just right"), tone: .good)
@@ -96,25 +98,32 @@ enum RunSummary {
         default:
             return FormNarrative.isPlannedHighIntensity(i.workoutType)
                 ? RunSummaryLine(axis: axis, state: L.s("계획대로 고강도", "High intensity, as planned"), tone: .good)
-                : RunSummaryLine(axis: axis, state: L.s("고강도 구간이 많음", "Mostly high intensity"), tone: .neutral)
+                : RunSummaryLine(axis: axis,
+                                 state: L.s("고강도 구간이 많음 · Zone 3 이상 \(pct)%", "Mostly high intensity · \(pct)% in Zone 3+"),
+                                 tone: .neutral)
         }
     }
 
     private static func loadLine(_ i: RunSummaryInput) -> RunSummaryLine? {
-        guard i.weekOverWeek != nil || i.acuteChronic != nil else { return nil }
         let L = AppLanguage.shared
         let axis = L.s("훈련부하", "Training load")
+        guard i.weekOverWeek != nil || i.acuteChronic != nil else {
+            // 부하 데이터가 없어도 연속일 자체는 보여준다
+            guard i.streakDays >= 3 else { return nil }
+            return RunSummaryLine(axis: axis, state: L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row"), tone: .good)
+        }
         let wow = i.weekOverWeek ?? 0
+        // jumped가 lighter보다 우선한다 — 이번 주 급증은 4주 평균이 낮아도(acuteChronic .low) 조용히 넘기지 않는다(과훈련 신호 존중)
         let jumped = wow >= loadJumpMin || i.acuteChronic == .high || i.acuteChronic == .veryHigh
         let lighter = i.acuteChronic == .low || (i.acuteChronic == nil && wow <= -loadJumpMin)
 
         var state: String
         let tone: RunSummaryLine.Tone
         if jumped {
-            if let w = i.weekOverWeek {
+            // 경고 점이 음수 %와 나란히 찍히면 안 된다 — 급증 판정은 acuteChronic에서 왔을 수도 있으니 wow가 실제로 상승일 때만 %를 찍는다
+            if let w = i.weekOverWeek, w >= loadJumpMin {
                 let pct = Int((w * 100).rounded())
-                let sign = pct >= 0 ? "+" : ""
-                state = L.s("이번 주 \(sign)\(pct)%", "This week \(sign)\(pct)%")
+                state = L.s("이번 주 +\(pct)%", "This week +\(pct)%")
             } else {
                 state = L.s("4주 평균 대비 높음", "Above 4-wk avg")
             }

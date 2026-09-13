@@ -30,7 +30,7 @@ struct RunSummaryTests {
         #expect(out.map(\.axis) == ["러닝폼", "거리 적응", "심박", "훈련부하", "유산소"])
         #expect(out[0] == RunSummaryLine(axis: "러닝폼", state: "끝까지 유지", tone: .good))
         #expect(out[1] == RunSummaryLine(axis: "거리 적응", state: "평소 2.1배, 범위 안", tone: .good))
-        #expect(out[2] == RunSummaryLine(axis: "심박", state: "거리주 기준 높음 · Zone 3 이상 90%", tone: .neutral))
+        #expect(out[2] == RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 90%", tone: .neutral))
         #expect(out[3] == RunSummaryLine(axis: "훈련부하", state: "이번 주 +55% · 4일 연속", tone: .neutral))
         #expect(out[4] == RunSummaryLine(axis: "유산소", state: "50대 남성 기준 높음", tone: .good))
     }
@@ -78,7 +78,35 @@ struct RunSummaryTests {
 
     @Test func generalRunInZoneFourIsNeutral() {
         var i = RunSummaryInput(); i.workoutType = .general; i.zoneFractions = [3: 0.3, 4: 0.6, 5: 0.1]
-        #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음", tone: .neutral)])
+        #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 100%", tone: .neutral)])
+    }
+
+    @Test func distanceRunIsNotEasyIntent() {
+        var i = RunSummaryInput(); i.workoutType = .distanceRun; i.zoneFractions = [3: 0.2, 4: 0.7, 5: 0.1]
+        #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 100%", tone: .neutral)])
+    }
+
+    @Test func zoneTieBreaksToHigherZone() {
+        var i = RunSummaryInput(); i.workoutType = .general; i.zoneFractions = [3: 0.45, 4: 0.45, 2: 0.10]
+        #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 90%", tone: .neutral)])
+    }
+
+    @Test func zoneThreeDominantOnGeneralIsTempo() {
+        var i = RunSummaryInput(); i.workoutType = .general; i.zoneFractions = [2: 0.3, 3: 0.5, 4: 0.2]
+        #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "템포 구간에 머묾", tone: .neutral)])
+    }
+
+    @Test func raceInHighZonesIsPlanned() {
+        var i = RunSummaryInput(); i.workoutType = .race; i.zoneFractions = [4: 0.5, 5: 0.5]
+        #expect(lines(i) == [RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good)])
+    }
+
+    @Test func englishEasyIntentLine() {
+        AppLanguage.shared.isEnglish = true
+        defer { AppLanguage.shared.isEnglish = false }
+        var i = RunSummaryInput(); i.workoutType = .lsd; i.zoneFractions = [3: 0.6, 4: 0.4]
+        let out = RunSummary.lines(i)
+        #expect(out == [RunSummaryLine(axis: "Heart rate", state: "High for LSD · 100% in Zone 3+", tone: .neutral)])
     }
 
     @Test func zoneOneDominantIsRecovery() {
@@ -88,8 +116,13 @@ struct RunSummaryTests {
 
     // MARK: 훈련부하
 
-    @Test func loadOmittedWithoutData() {
+    @Test func streakAloneShowsWithoutLoadData() {
         var i = RunSummaryInput(); i.streakDays = 5
+        #expect(lines(i) == [RunSummaryLine(axis: "훈련부하", state: "5일 연속", tone: .good)])
+    }
+
+    @Test func loadOmittedWithoutDataOrStreak() {
+        var i = RunSummaryInput(); i.streakDays = 2
         #expect(lines(i).isEmpty)
     }
 
@@ -100,6 +133,11 @@ struct RunSummaryTests {
 
     @Test func highRatioWithoutWeekOverWeekUsesFourWeekWording() {
         var i = RunSummaryInput(); i.acuteChronic = .high
+        #expect(lines(i) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 대비 높음", tone: .neutral)])
+    }
+
+    @Test func highRatioWithNegativeWeekOverWeekUsesFourWeekWording() {
+        var i = RunSummaryInput(); i.acuteChronic = .veryHigh; i.weekOverWeek = -0.17
         #expect(lines(i) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 대비 높음", tone: .neutral)])
     }
 
