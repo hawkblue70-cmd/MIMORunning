@@ -688,6 +688,16 @@ private func effortLoadRuns(activity: Activity, history: [Activity], index: Effo
     return (EffortLoad.runs(from: acts, index: index), acts, dayEnd)
 }
 
+/// 최근 7일 AU 합계와 그 직전 7일 합계 — 리듬 카드 총평·퍼포먼스 카드 강도 부하가 공유.
+/// 강도 기록이 없으면(이 창에 커버된 러닝이 하나도 없으면) nil.
+private func sevenDayAU(activity: Activity, history: [Activity], index: EffortIndex) -> (current: Double, previous: Double)? {
+    let runs = effortLoadRuns(activity: activity, history: history, index: index).runs
+    let w = EffortLoad.lastSevenDays(runs: runs, asOf: activity.date)
+    guard w.coveredCount > 0 else { return nil }
+    let previous = EffortLoad.previousSevenDays(runs: runs, asOf: activity.date).total
+    return (w.total, previous)
+}
+
 private struct AchievementBadgeView: View {
     let badge: AchievementBadgeKind
 
@@ -805,6 +815,10 @@ struct RunInsightTabCard: View {
     var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
     /// 강도(sRPE) 조회 인덱스 — 퍼포먼스 탭의 7일 강도 부하용. 없으면 해당 반쪽 생략.
     var effortIndex: EffortIndex? = nil
+    /// 이지 페이스 조회값 — 총평 심박 줄이 다음 이지런 페이스를 숫자로 제안할 때 쓴다.
+    var easyPaceLookup: MRHRPaceLookup? = nil
+    /// 이번 주 대회 플랜 단계("회복"/"테이퍼"/…) — 총평 훈련부하 줄의 다음 행동을 우선한다.
+    var planPhase: String? = nil
 
     @State private var tab: InsightTabKind = .rhythm
     @State private var showExport = false
@@ -853,7 +867,9 @@ struct RunInsightTabCard: View {
                 confirmedRaces: confirmedRaces,
                 raceDetailFn: raceDetailFn,
                 hrZonesFn: hrZonesFn,
-                effortIndex: effortIndex
+                effortIndex: effortIndex,
+                easyPaceLookup: easyPaceLookup,
+                planPhase: planPhase
             )
         }
         .onAppear {
@@ -962,7 +978,11 @@ struct RunInsightTabCard: View {
                 workoutTypeFn: workoutTypeFn,
                 formShifts: formShifts,
                 effortIndex: effortIndex,
-                heatHRModel: heatHRModel
+                heatHRModel: heatHRModel,
+                hrZonesFn: hrZonesFn,
+                raceDetailFn: raceDetailFn,
+                easyPaceLookup: easyPaceLookup,
+                planPhase: planPhase
             )
         case .form:
             let formCadence: Int? = {
@@ -1392,6 +1412,16 @@ private struct RhythmInsightCard: View {
     /// 강도(sRPE) 조회 인덱스 — 총평 훈련부하 줄용. 없으면 그 줄은 연속일만.
     var effortIndex: EffortIndex? = nil
     var heatHRModel: MRHeatHRModel? = nil
+    /// 과거 러닝의 존 체류 시간 조회 — 총평 "마지막 고강도" 판정에 쓴다(계획된 유형·체감 강도로 못 가릴 때 보조).
+    var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
+    /// 과거 러닝 상세 조회 — 총평 "8주 전 VO2max" 산출에 쓴다.
+    var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
+    /// 이지 페이스 조회값 — 총평 심박 줄이 다음 이지런 페이스를 숫자로 제안할 때 쓴다.
+    var easyPaceLookup: MRHRPaceLookup? = nil
+    /// 이번 주 대회 플랜 단계("회복"/"테이퍼"/…) — 총평 훈련부하 줄의 다음 행동을 우선한다.
+    var planPhase: String? = nil
+    /// 내보내기 카드는 총평 5줄만 그린다(펼침 없음) — 앱 화면은 기본값(true)으로 탭하면 펼쳐진다.
+    var summaryAllowsExpansion: Bool = true
 
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
@@ -1456,7 +1486,7 @@ private struct RhythmInsightCard: View {
             let summary = summaryLines
             if summary.count >= 2 {
                 divider
-                RunSummaryLinesView(lines: summary)
+                RunSummaryLinesView(lines: summary, allowsExpansion: summaryAllowsExpansion)
             } else if let line = oneLiner {
                 divider
                 oneLiner(text: line, bg: IC.greenBg, fg: IC.greenText, accent: IC.green)
@@ -2538,19 +2568,24 @@ private struct RhythmInsightCard: View {
 
     // MARK: Computed
 
-    private var distanceContext: String? {
+    /// 최근 N회 중 이 거리의 순위 — 거리 문맥 원라이너·총평 거리 적응 근거가 공유.
+    private func distanceRankInfo() -> (rank: Int, sampleCount: Int)? {
         let recent = history
             .filter { $0.type == .running && $0.id != activity.id && $0.date < activity.date }
             .sorted { $0.date > $1.date }
         let sample = (Array(recent.prefix(9)) + [activity]).sorted { $0.distance > $1.distance }
         guard sample.count >= 5 else { return nil }
-        guard let rank = sample.firstIndex(where: { $0.id == activity.id }).map({ $0 + 1 }),
-              rank <= 3 else { return nil }
+        guard let rank = sample.firstIndex(where: { $0.id == activity.id }).map({ $0 + 1 }) else { return nil }
+        return (rank, sample.count)
+    }
+
+    private var distanceContext: String? {
+        guard let info = distanceRankInfo(), info.rank <= 3 else { return nil }
         let L = AppLanguage.shared
-        if rank == 1 {
-            return L.s("↑ 최근 \(sample.count)회 중 가장 긴 거리", "↑ Longest of last \(sample.count) runs")
+        if info.rank == 1 {
+            return L.s("↑ 최근 \(info.sampleCount)회 중 가장 긴 거리", "↑ Longest of last \(info.sampleCount) runs")
         }
-        return L.s("↑ 최근 \(sample.count)회 중 \(rank)번째로 긴 거리", "↑ #\(rank) of last \(sample.count) by distance")
+        return L.s("↑ 최근 \(info.sampleCount)회 중 \(info.rank)번째로 긴 거리", "↑ #\(info.rank) of last \(info.sampleCount) by distance")
     }
 
     private var vo2Info: RunInsightEngine.VO2FitnessInfo? {
@@ -2597,6 +2632,51 @@ private struct RhythmInsightCard: View {
                                 baseline: formBaseline, formShifts: formShifts, workoutType: rhythmWorkoutType)
     }
 
+    /// 마지막 고강도(계획된 고강도 유형, 또는 체감 강도 7 이상, 또는 존 4+5 비율 50% 이상) 러닝까지의 일수.
+    /// 세 판정 신호가 모두 없거나 해당하는 러닝을 못 찾으면 nil — 총평 훈련부하 줄이 그 근거를 생략한다.
+    private func daysSinceHardRun() -> Int? {
+        let cal = Calendar.current
+        let priorRuns = history
+            .filter { $0.type == .running && $0.date < activity.date }
+            .sorted { $0.date > $1.date }
+        for run in priorRuns {
+            var isHard = false
+            if let wt = workoutTypeFn?(run.id), FormNarrative.isPlannedHighIntensity(wt) {
+                isHard = true
+            }
+            if !isHard, let val = effortIndex?.resolve(run.id)?.value, val >= 7 {
+                isHard = true
+            }
+            if !isHard, let zones = hrZonesFn?(run.id) {
+                let total = zones.map(\.fraction).reduce(0, +)
+                if total > 0 {
+                    let highFrac = zones.filter { $0.id >= 4 }.map(\.fraction).reduce(0, +) / total
+                    if highFrac >= 0.5 { isHard = true }
+                }
+            }
+            if isHard {
+                return cal.dateComponents([.day], from: cal.startOfDay(for: run.date), to: cal.startOfDay(for: activity.date)).day
+            }
+        }
+        return nil
+    }
+
+    /// 8주 전(±1주) 러닝들의 VO2max 중앙값 — 총평 유산소 줄의 "8주 전 대비" 근거.
+    private var vo2EightWeeksAgoValue: Double? {
+        guard let raceDetailFn else { return nil }
+        let cal = Calendar.current
+        guard let lower = cal.date(byAdding: .day, value: -63, to: activity.date),
+              let upper = cal.date(byAdding: .day, value: -49, to: activity.date) else { return nil }
+        let values = history
+            .filter { $0.type == .running && $0.date >= lower && $0.date <= upper }
+            .compactMap { raceDetailFn($0.id)?.vo2Max }
+            .sorted()
+        guard !values.isEmpty else { return nil }
+        let mid = values.count / 2
+        if values.count % 2 == 0 { return (values[mid - 1] + values[mid]) / 2 }
+        return values[mid]
+    }
+
     /// 총평 줄 — 각 축의 결론은 해당 엔진에서 그대로 받는다. 2줄 미만이면 기존 한 줄 칩으로 폴백.
     private var summaryLines: [RunSummaryLine] {
         var input = RunSummaryInput()
@@ -2609,6 +2689,11 @@ private struct RhythmInsightCard: View {
             let runs = effortLoadRuns(activity: activity, history: history, index: idx).runs
             input.weekOverWeek = EffortLoad.rollingWeekOverWeek(runs: runs, asOf: activity.date)
             input.acuteChronic = EffortLoad.rollingAcuteChronic(runs: runs, asOf: activity.date)?.label
+            input.loadSentence = EffortLoad.rollingSentenceKind(runs: runs, asOf: activity.date)
+            if let au = sevenDayAU(activity: activity, history: history, index: idx) {
+                input.sevenDayAU = au.current
+                input.previousSevenAU = au.previous
+            }
         }
         input.streakDays = computeRunningStreak(activity: activity, history: history)
         if let fi = vo2Info, let v = detail?.vo2Max {
@@ -2617,6 +2702,18 @@ private struct RhythmInsightCard: View {
             input.vo2GenderLabel = fi.genderLabel
         }
         input.heatDeltaBpm = heatHRModel?.delta(activity.temperatureC)
+
+        if let info = distanceRankInfo() {
+            input.distanceRank = info.rank
+            input.distanceSampleCount = info.sampleCount
+        }
+        input.avgHeartRate = activity.avgHeartRate
+        input.peakHeartRate = hrSamples.map(\.bpm).max()
+        input.temperatureC = activity.temperatureC
+        input.daysSinceHardRun = daysSinceHardRun()
+        input.planPhase = planPhase
+        input.easyPace = easyPaceLookup
+        input.vo2EightWeeksAgo = vo2EightWeeksAgoValue
         return RunSummary.lines(input)
     }
 
@@ -2748,8 +2845,8 @@ private struct PerformanceInsightCard: View {
                                      start: chartStart,
                                      end: dayEnd,
                                      period: .day)
-        // 캡션 비교용 — 최근 7일 바로 앞 7일 (end는 exclusive)
-        let prevSeven = EffortLoad.window(runs: runs, endingBefore: emphasisFrom, days: 7).total
+        // 캡션 비교용 — 최근 7일 바로 앞 7일. 리듬 카드 총평과 같은 헬퍼(`sevenDayAU`)를 쓴다.
+        let prevSeven = sevenDayAU(activity: activity, history: history, index: idx)?.previous ?? 0
 
         // 유형별 평소 강도 눈금은 그리지 않는다 — 이 카드는 러닝 유형을 표시하지 않아 눈금의 뜻을 알 수 없다(성장 탭과 같은 표시 방식).
         return SevenDayLoad(window: w, thisRunAU: thisAU, acuteChronic: ac, sentence: sentence,
@@ -5270,6 +5367,10 @@ struct InsightExportSheet: View {
     var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
     /// 강도(sRPE) 조회 인덱스 — 퍼포먼스 탭의 7일 강도 부하용.
     var effortIndex: EffortIndex? = nil
+    /// 이지 페이스 조회값 — 총평 심박 줄이 다음 이지런 페이스를 숫자로 제안할 때 쓴다.
+    var easyPaceLookup: MRHRPaceLookup? = nil
+    /// 이번 주 대회 플랜 단계("회복"/"테이퍼"/…) — 총평 훈련부하 줄의 다음 행동을 우선한다.
+    var planPhase: String? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -5457,7 +5558,12 @@ struct InsightExportSheet: View {
                 workoutTypeFn: workoutTypeFn,
                 formShifts: formShifts,
                 effortIndex: effortIndex,
-                heatHRModel: heatHRModel
+                heatHRModel: heatHRModel,
+                hrZonesFn: hrZonesFn,
+                raceDetailFn: raceDetailFn,
+                easyPaceLookup: easyPaceLookup,
+                planPhase: planPhase,
+                summaryAllowsExpansion: false
             )
         case .form:
             let exportFormCadence: Int? = {

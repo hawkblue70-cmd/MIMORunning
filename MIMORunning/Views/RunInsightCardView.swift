@@ -131,6 +131,10 @@ struct RunInsightSection: View {
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
     /// 강도(sRPE) 조회 인덱스 — 퍼포먼스 탭의 7일 강도 부하용. 없으면 해당 반쪽 생략.
     var effortIndex: EffortIndex? = nil
+    /// 이지 페이스 조회값 — 총평 심박 줄이 다음 이지런 페이스를 숫자로 제안할 때 쓴다.
+    var easyPaceLookup: MRHRPaceLookup? = nil
+    /// 이번 주 대회 플랜 단계("회복"/"테이퍼"/…) — 총평 훈련부하 줄의 다음 행동을 우선한다.
+    var planPhase: String? = nil
 
     var body: some View {
         if !insights.isEmpty, let act = activity {
@@ -160,7 +164,9 @@ struct RunInsightSection: View {
                 confirmedRaces: confirmedRaces,
                 raceDetailFn: raceDetailFn,
                 hrZonesFn: hrZonesFn,
-                effortIndex: effortIndex
+                effortIndex: effortIndex,
+                easyPaceLookup: easyPaceLookup,
+                planPhase: planPhase
             )
         }
     }

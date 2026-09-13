@@ -274,7 +274,9 @@ struct ActivityDetailView: View {
                             confirmedRace: confirmedRaceMatch,
                             confirmedRaces: raceDetector.matches.values.filter(\.isConfirmed),
                             raceDetailFn: { [manager] id in manager.detailFromCache(id) },
-                            effortIndex: effortIndex
+                            effortIndex: effortIndex,
+                            easyPaceLookup: engine.easyPaceLookup,
+                            planPhase: matchedPlanWeek()?.phase
                         )
                     }
                     // 표시할 상세 지표가 하나도 없으면(걷기 등) 섹션째 숨긴다.
@@ -836,27 +838,30 @@ struct ActivityDetailView: View {
         if !fetched.isEmpty { panelSeriesCache[panel] = fetched }
     }
 
+    /// 이 러닝이 속한 주의 대회 플랜 주차 — 주간 목표 km(기존)과 플랜 단계(총평 훈련부하 줄)가 함께 쓴다.
+    private func matchedPlanWeek() -> MRPlanWeek? {
+        var mondayCal = Calendar.current
+        mondayCal.firstWeekday = 2
+        guard let activityMonday = mondayCal.date(
+            from: mondayCal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: activity.date)
+        ) else { return nil }
+        let activityMondayDay = Calendar.current.startOfDay(for: activityMonday)
+        for plan in engine.plans {
+            for week in plan.weeks {
+                let weekMondayDay = Calendar.current.startOfDay(for: week.monday)
+                if weekMondayDay == activityMondayDay {
+                    return week
+                }
+            }
+        }
+        return nil
+    }
+
     private func loadInsights() {
         guard runInsights.isEmpty else { return }
 
         // 이 러닝이 속한 주의 계획 목표 km 검색
-        let planWeeklyTargetKm: Double? = {
-            var mondayCal = Calendar.current
-            mondayCal.firstWeekday = 2
-            guard let activityMonday = mondayCal.date(
-                from: mondayCal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: activity.date)
-            ) else { return nil }
-            let activityMondayDay = Calendar.current.startOfDay(for: activityMonday)
-            for plan in engine.plans {
-                for week in plan.weeks {
-                    let weekMondayDay = Calendar.current.startOfDay(for: week.monday)
-                    if weekMondayDay == activityMondayDay {
-                        return week.weeklyKm
-                    }
-                }
-            }
-            return nil
-        }()
+        let planWeeklyTargetKm: Double? = matchedPlanWeek()?.weeklyKm
 
         // 최근 8주 같은 유형 기준선 — body 평가 대신 여기서 1회 계산
         let effortBaseline: Int? = {
