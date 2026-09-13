@@ -117,6 +117,7 @@ func mrBuildAdvice(runs: [MRWorkout],
                    strengthPerWeek: Double,
                    fatigue: [MRLongRunFatigue] = [],
                    cadenceShift: MRFormShift? = nil,
+                   heatHR: MRHeatHRModel = MRHeatHRModel(),
                    log: MRAdviceLog,
                    asOf: Date) -> [MRAdvice] {
 
@@ -197,7 +198,8 @@ func mrBuildAdvice(runs: [MRWorkout],
         //   "이지를 너무 빠르게 뛴 것"으로 세면 조언이 통째로 틀린다.
         let hrRuns = all.filter { !$0.isInterval }
         if hrRuns.count >= 4 {
-            let easy = hrRuns.filter { $0.hrAvg! < lt1.value }.count
+            // 15°C 기준으로 보정한 심박으로 판정 — 더운 날 심박 상승분을 빼고 본다
+            let easy = hrRuns.filter { (heatHR.refHR(of: $0) ?? $0.hrAvg!) < lt1.value }.count
             if Double(easy) / Double(hrRuns.count) < 0.6 {
                 // ⚠ "17회 중 0회"처럼 0을 그대로 노출하지 않는다.
                 //   사실이지만 0은 사람을 찌르고, 이 조언은 애초에
@@ -213,7 +215,7 @@ func mrBuildAdvice(runs: [MRWorkout],
                     text: "\(phrase). \(intervalNote)주에 한 번만 더 느리게 잡아두면 다리가 오래 갑니다. "
                         + "강도 분포를 바꾸면 기록이 좋아진다는 직접 근거는 아직 없지만, "
                         + "낮은 강도가 몸에 부담을 덜 주는 것은 분명합니다.",
-                    rationale: String(format: "LT1 추정 %.0f±%.0fbpm 기준 · 인터벌 %d회 제외 · 인과관계 미확인(Rosenblat 2025)",
+                    rationale: String(format: "LT1 추정 %.0f±%.0fbpm 기준(15°C 기준 심박으로 비교) · 인터벌 %d회 제외 · 인과관계 미확인(Rosenblat 2025)",
                                       lt1.value, phys.lt1SD, intervals),
                     grade: "B", gainMin: 3, timeliness: 0.15, slot: "weekly"))
             }

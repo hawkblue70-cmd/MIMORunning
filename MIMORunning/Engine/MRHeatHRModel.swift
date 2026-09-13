@@ -73,6 +73,12 @@ struct MRHeatHRModel: Sendable {
         guard let hr = a.avgHeartRate else { return nil }
         return toRef(Double(hr), tempC: a.temperatureC)
     }
+
+    /// 러닝 한 건의 15°C 기준 평균 심박. 심박이 없으면 nil. 기온이 없으면 항등.
+    func refHR(of w: MRWorkout) -> Double? {
+        guard let hr = w.hrAvg else { return nil }
+        return toRef(hr, tempC: w.tempC)
+    }
 }
 
 /// HR ~ 1 + speed + durationMin + max(0, temp−15) + years 에서 기온 계수만 꺼낸다.

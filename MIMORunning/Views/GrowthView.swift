@@ -185,7 +185,8 @@ struct GrowthView: View {
         let paceHrWindow = runs.filter { $0.date >= trendWindow14 }
         let paceSamples = paceHrWindow.compactMap { $0.paceSecPerKm }.map { Double($0) }
         paceAnalysisCache = trendDirection(values: Array(paceSamples.reversed()))
-        let hrSamples = paceHrWindow.compactMap { $0.avgHeartRate }.map { Double($0) }
+        // 15°C 기준 심박 — 더운 날 심박 상승분을 빼고 추세를 본다 (engine.heatHR 하나로 통일)
+        let hrSamples = paceHrWindow.compactMap { engine.heatHR.refHR(of: $0) }
         hrAnalysisCache = trendDirection(values: Array(hrSamples.reversed()))
 
         // Longest run this week
@@ -1185,6 +1186,9 @@ struct GrowthView: View {
         }()
 
         // p23: 최근 4주 vs 직전 4주 정규화 페이스(150bpm 기준) 차 ≥5초
+        // ⚠ heatHR을 지역 상수로 미리 꺼낸다 — nested closure(compactMap) 안에서
+        //   engine(@MainActor 프로퍼티)을 직접 참조하면 격리 컨텍스트를 못 이어받는다.
+        let heatHR = engine.heatHR
         let hrPaceDeltaSec: Double? = {
             guard engine.hrPace.ok, recent7dRuns.count >= 3 else { return nil }
             func normPace(_ rs: [MRWorkout]) -> Double? {
@@ -1194,7 +1198,8 @@ struct GrowthView: View {
                 guard valid.count >= 3 else { return nil }
                 let refHR = 150.0
                 let scaled = valid.compactMap { r -> Double? in
-                    guard let hr = r.hrAvg, let d = r.distanceKm, d > 0, hr > 0 else { return nil }
+                    // 15°C 기준으로 보정한 심박으로 정규화 — 기온 없으면 항등
+                    guard let hr = heatHR.refHR(of: r), let d = r.distanceKm, d > 0, hr > 0 else { return nil }
                     let pace = r.durationMin * 60.0 / d
                     return pace * (hr / refHR)   // 150bpm 기준으로 정규화
                 }

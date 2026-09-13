@@ -149,4 +149,36 @@ struct MRAdviceQueueDurabilityTests {
                                mdc: 1.0, weeksConsistent: 5, r2: nil)   // isPractical 실패
         #expect(!keys(build(cadenceShift: weak)).contains("cadenceCue"))
     }
+
+    // MARK: easyRatio — 15°C 기준 심박 적용
+
+    @Test func easyRatioUsesHeatAdjustedHR() {
+        let lt1 = 150.0
+        var phys = MRPhysiology()
+        phys.lt1HR = MRInference(value: lt1, confidence: .high, basis: [])
+        phys.lt1SD = 5
+
+        // 더운 날(28°C) + hrAvg = LT1+4 — 원본 심박 기준으로는 LT1을 넘어 "이지"가 아니다.
+        let hotRuns: [MRWorkout] = (0..<6).map { i in
+            MRWorkout(start: day(-i * 3), durationMin: 60, distanceKm: 10,
+                      hrAvg: lt1 + 4, hrMax: 170, tempC: 28, humidity: nil,
+                      indoor: false, isInterval: false)
+        }
+
+        var learned = MRHeatHRModel.fallback()
+        learned.isFallback = false
+        learned.tempMaxC = 35   // 0.8 bpm/°C × (28−15) = 10.4bpm 보정 → 143.6bpm < LT1
+
+        let withHeatModel = mrBuildAdvice(runs: hotRuns, phys: phys, plans: [], races: [],
+                                          gaps: [], strengthPerWeek: 2.0, fatigue: [],
+                                          cadenceShift: nil, heatHR: learned,
+                                          log: MRAdviceLog(), asOf: Date())
+        #expect(!keys(withHeatModel).contains("easyRatio"))
+
+        let withoutHeatModel = mrBuildAdvice(runs: hotRuns, phys: phys, plans: [], races: [],
+                                             gaps: [], strengthPerWeek: 2.0, fatigue: [],
+                                             cadenceShift: nil, heatHR: MRHeatHRModel(),
+                                             log: MRAdviceLog(), asOf: Date())
+        #expect(keys(withoutHeatModel).contains("easyRatio"))
+    }
 }
