@@ -459,7 +459,7 @@ enum RunInsightEngine {
         case .distanceRun:
             let mhrDR = estimatedHRMax(hrMax: hrMax, age: age)
             let generators: [() -> RunInsight?] = [
-                { distanceRunInsight(activity: activity, baseline: base, heat: heat,
+                { distanceRunInsight(activity: activity, baseline: base, heat: heat, heatHR: heatHR,
                                      lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR) },
                 { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrDR)
                   ?? enduranceInsight(detail: detail) },
@@ -516,7 +516,8 @@ enum RunInsightEngine {
         let generators: [() -> RunInsight?] = [
             { cardioInsight(detail: detail, age: age, isMale: isMale) },
             { intensityInsight(activity: activity, detail: detail, age: age,
-                               hrMax: hrMax, lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR) },
+                               hrMax: hrMax, lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR,
+                               heatHR: heatHR) },
             { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: maxHR)
               ?? enduranceInsight(detail: detail) },
             { efficiencyComparisonApplies(to: type) ? efficiencyInsight(activity: activity, history: history, heatHR: heatHR) : nil },
@@ -784,6 +785,7 @@ enum RunInsightEngine {
         activity: Activity,
         baseline: RunBaseline,
         heat: MRHeatModel,
+        heatHR: MRHeatHRModel = MRHeatHRModel(),
         lt1HR: Double? = nil,
         lt1SD: Double = 0,
         easyCeilingHR: Double? = nil
@@ -841,22 +843,12 @@ enum RunInsightEngine {
         }
 
         // ② 심박 / LT1 해석 문장
+        // ⚠ 임계 비교는 15°C 기준 심박 — 더운 날 이지런이 "세게 밀어붙였다"로 읽히지 않게.
         if let ceil = easyCeilingHR, let lt1 = lt1HR, let avgHR = activity.avgHeartRate {
-            let hrText: String
-            if Double(avgHR) < ceil {
-                hrText = L.s(
-                    "유산소 구간 안에서 달리셨어요.",
-                    "You stayed in the aerobic zone.")
-                tone = .good
-            } else if Double(avgHR) < lt1 + lt1SD {
-                hrText = L.s(
-                    "이지보다 템포에 가까운 날이었습니다.",
-                    "Closer to tempo than easy today.")
-            } else {
-                hrText = L.s(
-                    "꽤 강하게 밀어붙이셨네요.",
-                    "You pushed pretty hard today.")
-            }
+            let refHR = heatHR.refHR(of: activity) ?? Double(avgHR)
+            let bucket = hrEffortBucket(refHR: refHR, easyCeilingHR: ceil, lt1HR: lt1, lt1SD: lt1SD)
+            if bucket == .aerobic { tone = .good }
+            let hrText = hrEffortSentence(bucket) + heatHRSuffix(heatHR: heatHR, tempC: tempC)
             parts.append(hrText)
             highlights.append("\(avgHR)bpm")
         }
@@ -1184,14 +1176,47 @@ enum RunInsightEngine {
         )
     }
 
-    private static func intensityInsight(
+    /// LT1·이지 상한 대비 심박 판정 — `intensityInsight`·`distanceRunInsight`가 같은 문턱값을 쓴다.
+    private enum HREffortBucket { case aerobic, tempo, hard }
+
+    private static func hrEffortBucket(refHR: Double, easyCeilingHR: Double, lt1HR: Double, lt1SD: Double) -> HREffortBucket {
+        if refHR < easyCeilingHR { return .aerobic }
+        if refHR < lt1HR + lt1SD { return .tempo }
+        return .hard
+    }
+
+    /// 버킷별 짧은 판정 문장 — `distanceRunInsight`는 그대로 쓰고, `intensityInsight`는 뒤에 한 문장을 더 붙인다.
+    private static func hrEffortSentence(_ bucket: HREffortBucket) -> String {
+        let L = AppLanguage.shared
+        switch bucket {
+        case .aerobic:
+            return L.s("유산소 구간 안에서 달리셨어요.", "You stayed in the aerobic zone.")
+        case .tempo:
+            return L.s("이지보다 템포에 가까운 날이었습니다.", "Closer to tempo than easy today.")
+        case .hard:
+            return L.s("꽤 강하게 밀어붙이셨네요.", "You pushed pretty hard today.")
+        }
+    }
+
+    /// "기온 감안" 접미사 — `easyOverpaceInsight`와 같은 규칙(보정이 표시할 만큼 클 때만).
+    private static func heatHRSuffix(heatHR: MRHeatHRModel, tempC: Double?) -> String {
+        guard heatHR.explains(tempC: tempC), let t = tempC else { return "" }
+        let L = AppLanguage.shared
+        let tempStr = "\(Int(t.rounded()))°C"
+        return heatHR.isFallback
+            ? L.s(" (일반적인 더위 영향 감안 · \(tempStr))", " (allowing for typical heat at \(tempStr))")
+            : L.s(" (\(tempStr) 감안)", " (adjusted for \(tempStr))")
+    }
+
+    static func intensityInsight(
         activity: Activity,
         detail: ActivityDetail?,
         age: Int?,
         hrMax: Double? = nil,
         lt1HR: Double? = nil,
         lt1SD: Double = 0,
-        easyCeilingHR: Double? = nil
+        easyCeilingHR: Double? = nil,
+        heatHR: MRHeatHRModel = MRHeatHRModel()
     ) -> RunInsight? {
         guard let avgHR = activity.avgHeartRate else { return nil }
         let L = AppLanguage.shared
@@ -1202,24 +1227,24 @@ enum RunInsightEngine {
         // ⚠ LT1이 있으면 인구 평균(%HRmax)이 아니라 **본인 역치**로 말한다.
         //   Nuuttila 2025 (n=165): LT1은 남 78.5% · 여 80.0% HRmax.
         //   같은 82%라도 LT1이 80%면 임계 위, 84%면 임계 아래다. %HRmax는 구분 못 한다.
+        // ⚠ 임계 비교는 15°C 기준 심박 — 더운 날 이지런이 "세게 밀어붙였다"로 읽히지 않게.
         if let ceil = easyCeilingHR, let lt1 = lt1HR {
-            let text: String
-            if Double(avgHR) < ceil {
-                text = L.s(
-                    "유산소 구간 안에서 달리셨어요. 이런 날이 오래 가는 다리를 만듭니다.",
-                    "You stayed in the aerobic zone. Runs like this build lasting endurance.")
+            let refHR = heatHR.refHR(of: activity) ?? Double(avgHR)
+            let bucket = hrEffortBucket(refHR: refHR, easyCeilingHR: ceil, lt1HR: lt1, lt1SD: lt1SD)
+            let extra: String
+            switch bucket {
+            case .aerobic:
+                extra = L.s(" 이런 날이 오래 가는 다리를 만듭니다.", " Runs like this build lasting endurance.")
                 tone = .good
-            } else if Double(avgHR) < lt1 + lt1SD {
-                text = L.s(
-                    "이지보다 템포에 가까운 날이었습니다. 나쁜 건 아니고, 다음 한 번을 조금 느리게 잡아두면 균형이 맞아요.",
-                    "Closer to tempo than easy today. Nothing wrong with that — one easy session next time keeps the balance.")
+            case .tempo:
+                extra = L.s(" 나쁜 건 아니고, 다음 한 번을 조금 느리게 잡아두면 균형이 맞아요.",
+                            " Nothing wrong with that — one easy session next time keeps the balance.")
                 tone = .neutral
-            } else {
-                text = L.s(
-                    "꽤 강하게 밀어붙이셨네요. 내일은 가볍게 가셔도 좋습니다.",
-                    "You pushed pretty hard today. Tomorrow can be an easy one.")
+            case .hard:
+                extra = L.s(" 내일은 가볍게 가셔도 좋습니다.", " Tomorrow can be an easy one.")
                 tone = .good
             }
+            let text = hrEffortSentence(bucket) + extra + heatHRSuffix(heatHR: heatHR, tempC: activity.temperatureC)
             parts.append(text)
             highlights.append("\(avgHR)bpm")
         } else if let mhr = estimatedHRMax(hrMax: hrMax, age: age), mhr > 0 {

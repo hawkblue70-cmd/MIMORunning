@@ -174,4 +174,25 @@ struct HeatAdjustedHRInsightTests {
         #expect(r?.tone == .good)
         #expect(r?.message == "심박 72%로 여유 있는 강도의 이지런이었어요. (25°C 감안)")
     }
+
+    @Test func intensityInsightUsesAdjustedHR() {
+        AppLanguage.shared.isEnglish = false
+        // 관측 150 · 25°C → 보정 142 — 이지 상한(145) 아래라 유산소 구간으로 읽힌다.
+        // 원본(150)으로 판정했다면 임계(152)에 못 미쳐도 템포에 가까운 날로 읽혔을 것.
+        let today = run(0, pace: 376, hr: 150, temp: 25)
+        let r = RunInsightEngine.intensityInsight(activity: today, detail: nil, age: nil,
+                                                  lt1HR: 152, lt1SD: 0, easyCeilingHR: 145, heatHR: learned)
+        #expect(r?.tone == .good)
+        #expect(r?.message == "유산소 구간 안에서 달리셨어요. 이런 날이 오래 가는 다리를 만듭니다. (25°C 감안)")
+    }
+
+    @Test func intensityInsightRawWhenNoTemperature() {
+        AppLanguage.shared.isEnglish = false
+        // 기온 없음 → 보정 불가, 원본 150으로 판정 — 145 이상·152 미만이라 템포에 가까운 날.
+        let today = run(0, pace: 376, hr: 150, temp: nil)
+        let r = RunInsightEngine.intensityInsight(activity: today, detail: nil, age: nil,
+                                                  lt1HR: 152, lt1SD: 0, easyCeilingHR: 145, heatHR: learned)
+        #expect(r?.tone == .neutral)
+        #expect(r?.message == "이지보다 템포에 가까운 날이었습니다. 나쁜 건 아니고, 다음 한 번을 조금 느리게 잡아두면 균형이 맞아요.")
+    }
 }
