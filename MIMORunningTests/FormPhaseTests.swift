@@ -417,7 +417,7 @@ struct FormPhaseTests {
         AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 8)
-        #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고(더위 +8bpm을 감안하면 흔한 폭), 케이던스는 그대로예요."))
+        #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고 (더위 +8bpm을 감안하면 흔한 폭), 케이던스는 그대로예요."))
     }
 
     @Test func noRelationWhenNothingChanged() {
@@ -451,6 +451,15 @@ struct FormPhaseTests {
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 175) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 8)
         #expect(lines.allSatisfy { !$0.contains("흔한 폭") })
+    }
+
+    @Test func smallHeatDeltaGetsNoReassurance() {
+        AppLanguage.shared.isEnglish = false
+        let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
+        let linesZero = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 0)
+        let linesTwo = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 2)
+        #expect(linesZero.allSatisfy { !$0.contains("흔한 폭") })
+        #expect(linesTwo.allSatisfy { !$0.contains("흔한 폭") })
     }
 
     @Test func englishRelationSentences() {

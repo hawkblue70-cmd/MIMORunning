@@ -360,9 +360,9 @@ enum FormPhase {
             }
 
             var heatKo = "", heatEn = ""
-            if let heat = heatDeltaBpm, hrRise <= max(10.0, heat * 2) {
+            if let heat = heatDeltaBpm, heat >= 5, hrRise <= max(10.0, heat * 2) {
                 let h = Int(heat.rounded())
-                heatKo = "(더위 +\(h)bpm을 감안하면 흔한 폭)"
+                heatKo = " (더위 +\(h)bpm을 감안하면 흔한 폭)"
                 heatEn = " (common with +\(h) bpm from heat)"
             }
 
@@ -373,7 +373,7 @@ enum FormPhase {
                 switch dir {
                 case .same:    cadKo = "케이던스는 그대로예요.";  cadEn = "while cadence stayed the same."
                 case .dropped: cadKo = "케이던스는 내려갔어요."; cadEn = "and cadence dropped."
-                case .rose:    cadKo = "케이던스는 올라갔어요."; cadEn = "and cadence rose."
+                case .rose:    cadKo = "케이던스는 올라갔어요."; cadEn = "and cadence went up."
                 }
                 ko = "\(paceKo) 심박이 \(hrDelta)bpm 올랐고\(heatKo), \(cadKo)"
                 en = "\(paceEn) heart rate rose \(hrDelta) bpm\(heatEn), \(cadEn)"
