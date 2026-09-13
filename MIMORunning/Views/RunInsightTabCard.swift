@@ -1636,6 +1636,8 @@ private struct RhythmInsightCard: View {
                         Text(zoneVerdictLabel)
                             .font(.system(size: 8, weight: .medium))
                             .foregroundStyle(zoneVerdictColor)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.9)
                     }
                 }
 
@@ -1887,7 +1889,9 @@ private struct RhythmInsightCard: View {
         if let stat = bb.heartRate, let hr = activity.avgHeartRate {
             let todayHR = heatHRModel?.refHR(of: activity) ?? Double(hr)
             let delta = todayHR - stat.median
-            if delta <= -4 { return (L.s("같은 페이스인데 심박이 낮았어요", "Lower HR for this pace"), Theme.positive) }
+            let rawDelta = Double(hr) - stat.median
+            // 개선 주장은 원본도 낮을 때만 — 9a64c3b와 같은 규칙
+            if delta <= -4, rawDelta <= 0 { return (L.s("같은 페이스인데 심박이 낮았어요", "Lower HR for this pace"), Theme.positive) }
             if delta >= 5  { return (L.s("평소보다 심박이 높았어요", "Higher HR than usual"), Color.white.opacity(0.75)) }
         }
 
@@ -2423,9 +2427,13 @@ private struct RhythmInsightCard: View {
         if z2frac >= 0.60 { return L.s("딱 좋은 강도였어요", "Just the right intensity") }
         guard let dom = visible.max(by: { $0.fraction < $1.fraction }) else { return "" }
         let heatDelta = heatHRModel?.delta(activity.temperatureC) ?? 0
-        let heatSuffix = heatDelta >= 5
-            ? L.s(" · 더위 +\(Int(heatDelta.rounded()))bpm", " · heat +\(Int(heatDelta.rounded())) bpm")
-            : ""
+        let heatSuffix: String = {
+            guard heatDelta >= RunSummary.heatNoteMinBpm else { return "" }
+            let n = Int(heatDelta.rounded())
+            return (heatHRModel?.isFallback == true)
+                ? L.s(" · 더위로 +\(n)bpm 정도", " · about +\(n) bpm from heat")
+                : L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat")
+        }()
         switch dom.id {
         case 1: return L.s("가벼운 회복 강도였어요", "Light recovery run")
         case 2: return L.s("딱 좋은 강도였어요", "Just the right intensity")
@@ -3226,7 +3234,8 @@ private struct PerformanceInsightCard: View {
         if let m = heatHRModel { return m.refHR(of: a) }
         return a.avgHeartRate.map(Double.init)
     }
-    /// "15°C 기준" 표기 여부 — 실제로 그려지는 점(오늘 또는 산점도 후보) 중 보정된 게 하나라도 있을 때만
+    /// "15°C 기준" 표기 여부 — 실제로 그려지는 산점도 점(오늘 + scatterEligible) 중 보정된 게 하나라도 있을 때만.
+    /// hrTrendPts는 표본 조건(페이스 ±15초 이내, 최대 7개)이 산점도와 달라 여기 포함하지 않는다 — 라벨은 산점도에만 대응한다.
     private var scatterIsHeatAdjusted: Bool {
         guard let m = heatHRModel, m.ok else { return false }
         if m.delta(activity.temperatureC) >= 1 { return true }
@@ -4400,6 +4409,7 @@ private struct PerformanceInsightCard: View {
 
     private struct ReturnInsightInfo {
         let gapDays: Int
+        /// 화면 표시용 원본 bpm — 판정/비교는 `returnInsight` 내부에서 보정값으로 이미 끝났다.
         let preGapHR: Double?
         let todayHR: Double?
         let isExpiredByTime: Bool
@@ -4426,21 +4436,26 @@ private struct PerformanceInsightCard: View {
             let preGapRuns = sorted.filter {
                 $0.date < prev.date && $0.date >= prev.date.addingTimeInterval(-28 * 86_400)
             }
-            // 15°C 기준 — 공백 전후가 계절을 넘는 경우가 많다
-            let preGapHR: Double? = preGapRuns.count >= 3 ? {
+            // 15°C 기준 — 공백 전후가 계절을 넘는 경우가 많다. 화면 표시는 원본 bpm(preGapHRRaw),
+            // 판정/비교는 보정값(preGapHRRef)을 쓴다 — 둘의 러닝 선택 기준(같은 페이스 우선)은 같다.
+            let preGapSelected: [Activity]? = preGapRuns.count >= 3 ? {
                 if let todayPace = activity.paceSecPerKm {
                     let matched = preGapRuns.filter {
                         guard let p = $0.paceSecPerKm else { return false }
                         return abs(p - todayPace) / todayPace <= 0.20
                     }
-                    if matched.count >= 2 {
-                        let hrs = matched.compactMap { refHR($0) }
-                        if !hrs.isEmpty { return hrs.reduce(0, +) / Double(hrs.count) }
-                    }
+                    if matched.count >= 2, matched.contains(where: { $0.avgHeartRate != nil }) { return matched }
                 }
-                let hrs = preGapRuns.compactMap { refHR($0) }
-                return hrs.isEmpty ? nil : hrs.reduce(0, +) / Double(hrs.count)
+                return preGapRuns
             }() : nil
+            let preGapHRRaw: Double? = preGapSelected.flatMap { runs -> Double? in
+                let hrs = runs.compactMap { $0.avgHeartRate }
+                return hrs.isEmpty ? nil : Double(hrs.reduce(0, +)) / Double(hrs.count)
+            }
+            let preGapHRRef: Double? = preGapSelected.flatMap { runs -> Double? in
+                let hrs = runs.compactMap { refHR($0) }
+                return hrs.isEmpty ? nil : hrs.reduce(0, +) / Double(hrs.count)
+            }
             let daysSince = cal.dateComponents([.day], from: activity.date, to: Date()).day ?? 0
             #if DEBUG
             let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
@@ -4452,13 +4467,13 @@ private struct PerformanceInsightCard: View {
                 }.count
             }()
             print("[복귀] 직전 러닝 \(df.string(from: prev.date)) · 간격 \(gapFromPrev)일 (기준 14일) → 발동")
-            print("[복귀] 공백 전 4주: 러닝 \(preGapRuns.count)회 · 같은 페이스 심박 \(matchedCount)회 · 공백 전 심박 \(preGapHR.map { String(Int($0)) } ?? "없음")")
-            if let today = activity.avgHeartRate {
-                if let pre = preGapHR {
-                    let diff = today - Int(pre)
-                    print("[복귀] 오늘 심박 \(today) vs 공백 전 \(Int(pre)) → \(diff >= 0 ? "+" : "")\(diff)bpm")
+            print("[복귀] 공백 전 4주: 러닝 \(preGapRuns.count)회 · 같은 페이스 심박 \(matchedCount)회 · 공백 전 심박(보정) \(preGapHRRef.map { String(Int($0)) } ?? "없음")")
+            if let today = refHR(activity) {
+                if let pre = preGapHRRef {
+                    let diff = Int(today.rounded()) - Int(pre.rounded())
+                    print("[복귀] 오늘 심박(보정) \(Int(today.rounded())) vs 공백 전 \(Int(pre.rounded())) → \(diff >= 0 ? "+" : "")\(diff)bpm")
                 } else {
-                    print("[복귀] 오늘 심박 \(today) · 공백 전 심박 없음 (공백 전 런 \(preGapRuns.count)회 < 3 or HR data 없음)")
+                    print("[복귀] 오늘 심박(보정) \(Int(today.rounded())) · 공백 전 심박 없음 (공백 전 런 \(preGapRuns.count)회 < 3 or HR data 없음)")
                 }
             } else {
                 print("[복귀] 오늘 심박 없음")
@@ -4466,8 +4481,8 @@ private struct PerformanceInsightCard: View {
             #endif
             return ReturnInsightInfo(
                 gapDays: gapFromPrev,
-                preGapHR: preGapHR,
-                todayHR: refHR(activity),
+                preGapHR: preGapHRRaw,
+                todayHR: activity.avgHeartRate.map(Double.init),
                 isExpiredByTime: daysSince >= 28,
                 hrRecovered: false  // 첫 복귀 런에서는 심박 회복 메시지 절대 표시 안 함
             )
@@ -4486,34 +4501,39 @@ private struct PerformanceInsightCard: View {
                 $0.date < preGapEnd.date && $0.date >= preGapEnd.date.addingTimeInterval(-28 * 86_400)
             }
             guard preGapRuns.count >= 3 else { return nil }
-            // 15°C 기준 — 공백 전후가 계절을 넘는 경우가 많다
-            let preGapHR: Double? = {
+            // 15°C 기준 — 공백 전후가 계절을 넘는 경우가 많다. 화면 표시는 원본 bpm(preGapHRRaw),
+            // 판정/비교는 보정값(preGapHRRef)을 쓴다 — 둘의 러닝 선택 기준(같은 페이스 우선)은 같다.
+            let preGapSelected: [Activity] = {
                 if let todayPace = activity.paceSecPerKm {
                     let matched = preGapRuns.filter {
                         guard let p = $0.paceSecPerKm else { return false }
                         return abs(p - todayPace) / todayPace <= 0.20
                     }
-                    if matched.count >= 2 {
-                        let hrs = matched.compactMap { refHR($0) }
-                        if !hrs.isEmpty { return hrs.reduce(0, +) / Double(hrs.count) }
-                    }
+                    if matched.count >= 2, matched.contains(where: { $0.avgHeartRate != nil }) { return matched }
                 }
-                let hrs = preGapRuns.compactMap { refHR($0) }
+                return preGapRuns
+            }()
+            let preGapHRRaw: Double? = {
+                let hrs = preGapSelected.compactMap { $0.avgHeartRate }
+                return hrs.isEmpty ? nil : Double(hrs.reduce(0, +)) / Double(hrs.count)
+            }()
+            let preGapHRRef: Double? = {
+                let hrs = preGapSelected.compactMap { refHR($0) }
                 return hrs.isEmpty ? nil : hrs.reduce(0, +) / Double(hrs.count)
             }()
-            guard let pre = preGapHR else { return nil }
-            // 첫 복귀 런부터 현재까지 (2회 이상) — 심박 평균이 공백 전 대비 ≤+3bpm이면 회복
+            guard let pre = preGapHRRef else { return nil }
+            // 첫 복귀 런부터 현재까지 (2회 이상) — 심박 평균이 공백 전 대비 ≤+3bpm이면 회복 (보정값끼리 비교)
             let postRuns = sorted.filter { $0.date >= sorted[i].date && $0.date <= activity.date }
             guard postRuns.count >= 2 else { return nil }
-            let postHRs = postRuns.compactMap { $0.avgHeartRate }
+            let postHRs = postRuns.compactMap { refHR($0) }
             guard !postHRs.isEmpty else { return nil }
-            let postAvgHR = Double(postHRs.reduce(0, +)) / Double(postHRs.count)
+            let postAvgHR = postHRs.reduce(0, +) / Double(postHRs.count)
             guard (postAvgHR - pre) <= 3 else { return nil }
             let daysSince = cal.dateComponents([.day], from: sorted[i].date, to: Date()).day ?? 0
             return ReturnInsightInfo(
                 gapDays: prevToI,
-                preGapHR: preGapHR,
-                todayHR: refHR(activity),
+                preGapHR: preGapHRRaw,
+                todayHR: activity.avgHeartRate.map(Double.init),
                 isExpiredByTime: daysSince >= 28,
                 hrRecovered: true
             )
@@ -4552,8 +4572,14 @@ private struct PerformanceInsightCard: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 if let pre = ri.preGapHR, let today = ri.todayHR {
-                    Text(L.s("공백 전 같은 페이스에서 심박 \(Int(pre.rounded()))이었는데 오늘은 \(Int(today.rounded()))이에요",
-                             "Pre-gap HR was \(Int(pre.rounded())) at this pace — today \(Int(today.rounded()))"))
+                    let base = L.s("공백 전 같은 페이스에서 심박 \(Int(pre.rounded()))이었는데 오늘은 \(Int(today.rounded()))이에요",
+                                   "Pre-gap HR was \(Int(pre.rounded())) at this pace — today \(Int(today.rounded()))")
+                    let heatSuffix: String = {
+                        guard let m = heatHRModel, m.explains(tempC: activity.temperatureC) else { return "" }
+                        let n = Int(m.delta(activity.temperatureC).rounded())
+                        return L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat")
+                    }()
+                    Text(base + heatSuffix)
                         .font(.system(size: 12))
                         .foregroundStyle(Color.white.opacity(0.65))
                 }

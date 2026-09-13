@@ -23,7 +23,7 @@ struct RunSummaryInput {
     var vo2: Double? = nil
     var vo2AgeDecade: String = ""
     var vo2GenderLabel: String = ""
-    /// 이 러닝의 기온 보정량(bpm). 5 이상이고 톤이 neutral일 때만 접미로 붙는다.
+    /// 이 러닝의 기온 보정량(bpm). 총평 줄 상태어에는 붙이지 않는다 — 더위는 존 캡션과 근거 줄이 말한다.
     var heatDeltaBpm: Double? = nil
 }
 
@@ -34,7 +34,7 @@ enum RunSummary {
     /// 이지 의도 유형에서 Zone 3 이상 비율이 이 이상이면 "기준 높음"
     static let easyHighZoneFrac = 0.50
     static let loadJumpMin = 0.30
-    /// 이 이상이고 심박 줄 톤이 neutral일 때만 "더위 +N bpm 감안"을 접미로 붙인다.
+    /// 더위 보정 표기 임계값(bpm) — 존 캡션·근거 줄이 공유해서 쓴다. 총평 상태어에는 붙이지 않는다.
     static let heatNoteMinBpm = 5.0
     static let vo2Bounds: [Double] = [15, 26, 33, 41, 57]
     // 거리주(레이스페이스 장거리)는 빠른 게 정의라 이지 의도로 판정하지 않는다
@@ -74,18 +74,7 @@ enum RunSummary {
             : RunSummaryLine(axis: axis, state: L.s("평소 \(ratio)배", "\(ratio)× usual"), tone: .neutral)
     }
 
-    /// 존 판정 결과에 더위 보정 메모를 접미하는 얇은 래퍼. 사실 판정은 `baseHeartRateLine`이 전담.
     private static func heartRateLine(_ i: RunSummaryInput) -> RunSummaryLine? {
-        guard let base = baseHeartRateLine(i) else { return nil }
-        guard base.tone == .neutral, let d = i.heatDeltaBpm, d >= heatNoteMinBpm else { return base }
-        let L = AppLanguage.shared
-        let n = Int(d.rounded())
-        return RunSummaryLine(axis: base.axis,
-                              state: base.state + L.s(" · 더위 +\(n)bpm 감안", " · heat +\(n) bpm allowed for"),
-                              tone: base.tone)
-    }
-
-    private static func baseHeartRateLine(_ i: RunSummaryInput) -> RunSummaryLine? {
         let visible = i.zoneFractions.filter { $0.value > 0.01 }
         let total = visible.values.reduce(0, +)
         guard total > 0 else { return nil }
