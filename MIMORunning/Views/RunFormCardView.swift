@@ -213,8 +213,9 @@ struct RunFormCardView: View {
 
     /// 초·중·말 폼 형태 — 풀 스플릿 6개 이상 + 기준선 있을 때만. 인터벌은 제외.
     /// 판정(fullSplits)과 표시(버킷)를 섞지 않는다 — 문장은 판정, 30/70 점선 위치만 차트에 표시.
+    /// 참고 밴드(오늘 페이스가 구간 밖)면 판정하지 않는다 — 카드의 "판정 대신 참고" 규칙과 같다.
     private var formPhaseResult: FormPhase.Result? {
-        guard !isInterval, let bl = baseline else { return nil }
+        guard !isInterval, !isReferenceBand, let bl = baseline else { return nil }
         let gctShift = formShifts.first(where: { $0.metric.key == "gct" })
         // 기준선 밴드는 GAP 기준 — 밴드 조회 페이스도 GAP 배율(GAP ÷ 실측)로 맞춘다 (bb와 같은 규칙)
         let scale: Double = {
@@ -227,6 +228,7 @@ struct RunFormCardView: View {
             FormPhase.bandStats(in: bl, paceSecPerKm: pace, gctShift: gctShift)
         })
     }
+
     private let lineColor = Color.white.opacity(0.20)
     // [57] 텍스트 열 고정 너비 — 가장 긴 「수직진폭 (참고) N.N cm」+ 들여쓰기를 수용
     //      네 줄 모두 이 값에서 바가 시작 → 축 좌우 끝 픽셀 정렬
