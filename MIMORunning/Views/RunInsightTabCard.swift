@@ -793,6 +793,7 @@ struct RunInsightTabCard: View {
     var formBaseline: RunningFormBaseline? = nil
     var formBackfillProgress: (done: Int, total: Int)? = nil
     var heatModel: MRHeatModel? = nil
+    var heatHRModel: MRHeatHRModel? = nil
     var formShifts: [MRFormShift] = []
     /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용 (`mrFormRunResidual`)
     var formRunCadenceResidual: Double? = nil
@@ -844,6 +845,7 @@ struct RunInsightTabCard: View {
                 cadenceSeries: cadenceSeries,
                 hrSamples: hrSamples,
                 heatModel: heatModel,
+                heatHRModel: heatHRModel,
                 formShifts: formShifts,
                 formRunCadenceResidual: formRunCadenceResidual,
                 weatherSnapshot: weatherSnapshot,
@@ -959,7 +961,8 @@ struct RunInsightTabCard: View {
                 formBackfillProgress: formBackfillProgress,
                 workoutTypeFn: workoutTypeFn,
                 formShifts: formShifts,
-                effortIndex: effortIndex
+                effortIndex: effortIndex,
+                heatHRModel: heatHRModel
             )
         case .form:
             let formCadence: Int? = {
@@ -1011,7 +1014,8 @@ struct RunInsightTabCard: View {
                 hrZonesFn: hrZonesFn,
                 isBackfilling: isBackfilling,
                 isClassifying: isClassifying,
-                effortIndex: effortIndex
+                effortIndex: effortIndex,
+                heatHRModel: heatHRModel
             )
         case .race:
             RaceInsightCard(
@@ -1386,6 +1390,7 @@ private struct RhythmInsightCard: View {
     var formShifts: [MRFormShift] = []
     /// 강도(sRPE) 조회 인덱스 — 총평 훈련부하 줄용. 없으면 그 줄은 연속일만.
     var effortIndex: EffortIndex? = nil
+    var heatHRModel: MRHeatHRModel? = nil
 
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
@@ -2679,6 +2684,7 @@ private struct PerformanceInsightCard: View {
     var isClassifying: Bool = false
     /// 강도(sRPE) 조회 인덱스 — 7일 강도 부하용. 없으면 강도 분포만 전체 폭.
     var effortIndex: EffortIndex? = nil
+    var heatHRModel: MRHeatHRModel? = nil
 
     @State private var heroBadge: AchievementBadgeKind? = nil
     @State private var heroBadgeLoaded = false
@@ -2957,7 +2963,9 @@ private struct PerformanceInsightCard: View {
                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.90))
                     + Text("↓\(d) bpm")
                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(IC.green)
-                    + Text(L.s(" (동일 페이스 기준)", " (vs. similar pace)"))
+                    + Text(scatterIsHeatAdjusted
+                           ? L.s(" (동일 페이스 · 15°C 기준)", " (same pace · at 15°C)")
+                           : L.s(" (동일 페이스 기준)", " (vs. similar pace)"))
                         .font(.system(size: 8)).foregroundStyle(.white.opacity(0.55)))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -3108,6 +3116,10 @@ private struct PerformanceInsightCard: View {
                         Circle().fill(ScatterStyle.today).frame(width: 6, height: 6)
                         Text(L.s("오늘", "Today")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
                     }
+                    if scatterIsHeatAdjusted {
+                        Text(L.s("15°C 기준", "at 15°C"))
+                            .font(.system(size: 8)).foregroundStyle(.white.opacity(0.50))
+                    }
                 }
                 Spacer()
             }
@@ -3203,6 +3215,17 @@ private struct PerformanceInsightCard: View {
             : L.s("↑ 최근 \(sample.count)회 중 \(rank)번째로 긴 거리", "↑ #\(rank) of last \(sample.count)")
     }
 
+    /// 비교·판정용 심박 — 모델이 있으면 15°C 환산, 없으면 원본. 산점도·심박 효율 캡션이 **이 함수 하나만** 쓴다.
+    private func refHR(_ a: Activity) -> Double? {
+        if let m = heatHRModel { return m.refHR(of: a) }
+        return a.avgHeartRate.map(Double.init)
+    }
+    /// "15°C 기준" 표기 여부 — 실제로 보정된 점이 하나라도 있을 때만
+    private var scatterIsHeatAdjusted: Bool {
+        guard let m = heatHRModel, m.ok else { return false }
+        return ([activity] + history).contains { m.delta($0.temperatureC) >= 1 }
+    }
+
     private var hrTrendPts: [HRTrendPt] {
         guard let curHR = activity.avgHeartRate,
               let curPace = activity.paceSecPerKm, curPace > 0 else { return [] }
@@ -3215,9 +3238,9 @@ private struct PerformanceInsightCard: View {
         }.sorted { $0.date < $1.date }
         guard similar.count >= 2 else { return [] }
         var pts = similar.prefix(7).enumerated().map { i, r in
-            HRTrendPt(index: i, hr: Double(r.avgHeartRate!), isToday: false)
+            HRTrendPt(index: i, hr: refHR(r)!, isToday: false)
         }
-        pts.append(HRTrendPt(index: pts.count, hr: Double(curHR), isToday: true))
+        pts.append(HRTrendPt(index: pts.count, hr: refHR(activity)!, isToday: true))
         return pts
     }
 
@@ -3227,7 +3250,7 @@ private struct PerformanceInsightCard: View {
         let cutoff4w = cal.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
         var result: [ScatterPt] = []
         if let tp = activity.paceSecPerKm, tp > 0, let th = activity.avgHeartRate {
-            result.append(ScatterPt(pace: tp, hr: Double(th), group: .today))
+            result.append(ScatterPt(pace: tp, hr: refHR(activity)!, group: .today))
         }
         let eligible = history
             .filter {
@@ -3246,7 +3269,7 @@ private struct PerformanceInsightCard: View {
             .prefix(39)
         for act in eligible {
             let grp: ScatterGroup = act.date >= cutoff4w ? .recent : .past
-            result.append(ScatterPt(pace: act.paceSecPerKm!, hr: Double(act.avgHeartRate!), group: grp))
+            result.append(ScatterPt(pace: act.paceSecPerKm!, hr: refHR(act)!, group: grp))
         }
         return result
     }
@@ -3256,7 +3279,7 @@ private struct PerformanceInsightCard: View {
         let pts = hrTrendPts.filter { !$0.isToday }
         guard !pts.isEmpty else { return nil }
         let avg = pts.map(\.hr).reduce(0, +) / Double(pts.count)
-        let d = Int((avg - Double(curHR)).rounded())
+        let d = Int((avg - refHR(activity)!).rounded())
         return d >= 3 ? d : nil
     }
 
@@ -5191,6 +5214,7 @@ struct InsightExportSheet: View {
     var cadenceSeries: [(offset: TimeInterval, value: Double)] = []
     var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     var heatModel: MRHeatModel? = nil
+    var heatHRModel: MRHeatHRModel? = nil
     var formShifts: [MRFormShift] = []
     /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용 (`mrFormRunResidual`)
     var formRunCadenceResidual: Double? = nil
@@ -5387,7 +5411,8 @@ struct InsightExportSheet: View {
                 formBaseline: formBaseline,
                 workoutTypeFn: workoutTypeFn,
                 formShifts: formShifts,
-                effortIndex: effortIndex
+                effortIndex: effortIndex,
+                heatHRModel: heatHRModel
             )
         case .form:
             let exportFormCadence: Int? = {
@@ -5437,7 +5462,8 @@ struct InsightExportSheet: View {
                 workoutTypeFn: workoutTypeFn,
                 hrZones: hrZones,
                 hrZonesFn: hrZonesFn,
-                effortIndex: effortIndex
+                effortIndex: effortIndex,
+                heatHRModel: heatHRModel
             )
         case .race:
             RaceInsightCard(

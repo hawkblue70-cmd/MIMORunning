@@ -121,6 +121,7 @@ struct RunInsightSection: View {
     var formBaseline: RunningFormBaseline? = nil
     var formBackfillProgress: (done: Int, total: Int)? = nil
     var heatModel: MRHeatModel? = nil
+    var heatHRModel: MRHeatHRModel? = nil
     var formShifts: [MRFormShift] = []
     /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용
     var formRunCadenceResidual: Double? = nil
@@ -151,6 +152,7 @@ struct RunInsightSection: View {
                 formBaseline: formBaseline,
                 formBackfillProgress: formBackfillProgress,
                 heatModel: heatModel,
+                heatHRModel: heatHRModel,
                 formShifts: formShifts,
                 formRunCadenceResidual: formRunCadenceResidual,
                 weatherSnapshot: weatherSnapshot,

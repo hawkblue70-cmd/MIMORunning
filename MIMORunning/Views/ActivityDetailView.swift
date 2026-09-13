@@ -267,6 +267,7 @@ struct ActivityDetailView: View {
                             formBaseline: formBaseline,
                             formBackfillProgress: manager.formBackfillProgress,
                             heatModel: engine.heat,
+                            heatHRModel: engine.heatHR,
                             formShifts: formShifts,
                             formRunCadenceResidual: formRunCadenceResidual,
                             weatherSnapshot: condition?.weather,
