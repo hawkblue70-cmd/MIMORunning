@@ -197,4 +197,105 @@ enum FormPhase {
                                                  gctShift: gctShift)
         return BandStats(cadence: b.cadence, stride: b.strideLength, groundContact: gct)
     }
+
+    // MARK: - 문장
+
+    /// 초·중·말 절을 쉼표로 이어 한 문장으로. 거리 문맥이고 말기가 유지가 아니면 "N km 후반엔 흔한 변화예요." 덧붙임.
+    static func sentence(_ r: Result, isLongDistance: Bool) -> String {
+        let L = AppLanguage.shared
+        let earlyKm = String(format: "%.0f", r.earlyEndKm)
+        let lateKm  = String(format: "%.0f", r.totalKm - r.lateStartKm)
+        var ko: [String] = []
+        var en: [String] = []
+
+        if r.early == .warmup {
+            ko.append("처음 \(earlyKm)km는 몸을 풀고")
+            en.append("the first \(earlyKm) km were a warm-up")
+        }
+        switch r.mid {
+        case .strideDriven?:
+            ko.append("중반엔 보폭으로 속도를 냈고")
+            en.append("you sped up mid-run with a longer stride")
+        case .cadenceDriven?:
+            ko.append("중반엔 발 회전으로 속도를 냈고")
+            en.append("you sped up mid-run with quicker steps")
+        case .both?:
+            ko.append("중반엔 보폭과 회전을 함께 올려 속도를 냈고")
+            en.append("you sped up mid-run with a longer stride and quicker steps")
+        case nil:
+            break
+        }
+        switch r.late {
+        case .held:
+            ko.append("끝까지 폼을 유지했어요")
+            en.append("your form held to the finish")
+        case .cadenceDefended:
+            ko.append("마지막 \(lateKm)km엔 속도가 떨어졌지만 발 회전은 지켰어요")
+            en.append("pace faded over the last \(lateKm) km but your cadence held")
+        case .bouncier:
+            ko.append("마지막 \(lateKm)km엔 앞보다 위로 가는 움직임이 늘었어요")
+            en.append("over the last \(lateKm) km more motion went up than forward")
+        case .heavier(let signals):
+            ko.append("마지막 \(lateKm)km엔 " + joinKo(signals))
+            en.append("over the last \(lateKm) km " + joinEn(signals))
+        }
+
+        var koS = ko.joined(separator: ", ") + "."
+        var enS = en.joined(separator: ", ") + "."
+        enS = String(enS.prefix(1)).uppercased() + enS.dropFirst()
+        if isLongDistance, r.late != .held {
+            let d = String(format: "%.0f", r.totalKm)
+            koS += " \(d)km 후반엔 흔한 변화예요."
+            enS += " Common late in a \(d) km run."
+        }
+        return L.s(koS, enS)
+    }
+
+    /// 총평 줄용 짧은 상태어
+    static func shortState(_ r: Result) -> String {
+        let L = AppLanguage.shared
+        let lateKm = String(format: "%.0f", r.totalKm - r.lateStartKm)
+        switch r.late {
+        case .held:            return L.s("끝까지 유지", "Held to the finish")
+        case .heavier:         return L.s("마지막 \(lateKm)km 살짝 무거워짐", "A bit heavier in the last \(lateKm) km")
+        case .cadenceDefended: return L.s("후반 회전은 유지", "Cadence held late")
+        case .bouncier:        return L.s("후반 위로 튐", "Bouncier late")
+        }
+    }
+
+    /// 한국어 연결: 마지막 신호만 종결형 — "보폭이 줄고 접지가 길어졌어요"
+    private static func joinKo(_ signals: [Metric]) -> String {
+        func conj(_ m: Metric) -> String {
+            switch m {
+            case .cadence:       return "케이던스가 내려가고"
+            case .stride:        return "보폭이 줄고"
+            case .groundContact: return "접지가 길어지고"
+            case .verticalOsc:   return "위아래 움직임이 늘고"
+            }
+        }
+        func final_(_ m: Metric) -> String {
+            switch m {
+            case .cadence:       return "케이던스가 내려갔어요"
+            case .stride:        return "보폭이 줄었어요"
+            case .groundContact: return "접지가 길어졌어요"
+            case .verticalOsc:   return "위아래 움직임이 늘었어요"
+            }
+        }
+        guard let last = signals.last else { return "" }
+        return (signals.dropLast().map(conj) + [final_(last)]).joined(separator: " ")
+    }
+
+    private static func joinEn(_ signals: [Metric]) -> String {
+        func phrase(_ m: Metric) -> String {
+            switch m {
+            case .cadence:       return "cadence dropped"
+            case .stride:        return "stride shortened"
+            case .groundContact: return "ground contact lengthened"
+            case .verticalOsc:   return "vertical motion increased"
+            }
+        }
+        let p = signals.map(phrase)
+        guard p.count > 1 else { return p.first ?? "" }
+        return p.dropLast().joined(separator: ", ") + " and " + p[p.count - 1]
+    }
 }

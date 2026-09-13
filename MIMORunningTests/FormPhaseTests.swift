@@ -182,6 +182,66 @@ struct FormPhaseTests {
         #expect(classify(s)?.mid == nil)
     }
 
+    // MARK: 문장
+
+    private func ko(_ r: FormPhase.Result, long: Bool = false) -> String {
+        AppLanguage.shared.isEnglish = false
+        return FormPhase.sentence(r, isLongDistance: long)
+    }
+    private func en(_ r: FormPhase.Result, long: Bool = false) -> String {
+        AppLanguage.shared.isEnglish = true
+        defer { AppLanguage.shared.isEnglish = false }
+        return FormPhase.sentence(r, isLongDistance: long)
+    }
+    private func result(early: FormPhase.Early? = nil, mid: FormPhase.Mid? = nil, late: FormPhase.Late,
+                        earlyEnd: Double = 4, lateStart: Double = 12, total: Double = 16) -> FormPhase.Result {
+        FormPhase.Result(early: early, mid: mid, late: late, earlyEndKm: earlyEnd, lateStartKm: lateStart, totalKm: total)
+    }
+
+    @Test func heldAloneIsOneClause() {
+        #expect(ko(result(late: .held)) == "끝까지 폼을 유지했어요.")
+        #expect(en(result(late: .held)) == "Your form held to the finish.")
+    }
+
+    @Test func warmupAccelerationHeldJoinsThreeClauses() {
+        let r = result(early: .warmup, mid: .strideDriven, late: .held)
+        #expect(ko(r) == "처음 4km는 몸을 풀고, 중반엔 보폭으로 속도를 냈고, 끝까지 폼을 유지했어요.")
+    }
+
+    @Test func heavierListsSignalsWithLastKm() {
+        let r = result(late: .heavier([.stride, .groundContact]))
+        #expect(ko(r) == "마지막 4km엔 보폭이 줄고 접지가 길어졌어요.")
+        #expect(en(r) == "Over the last 4 km stride shortened and ground contact lengthened.")
+    }
+
+    @Test func heavierThreeSignals() {
+        let r = result(late: .heavier([.cadence, .stride, .verticalOsc]))
+        #expect(ko(r) == "마지막 4km엔 케이던스가 내려가고 보폭이 줄고 위아래 움직임이 늘었어요.")
+    }
+
+    @Test func cadenceDefendedAndBouncier() {
+        #expect(ko(result(late: .cadenceDefended)) == "마지막 4km엔 속도가 떨어졌지만 발 회전은 지켰어요.")
+        #expect(ko(result(late: .bouncier)) == "마지막 4km엔 앞보다 위로 가는 움직임이 늘었어요.")
+    }
+
+    @Test func longDistanceAppendsCommonNoteOnlyWhenNotHeld() {
+        #expect(ko(result(late: .heavier([.stride])), long: true) == "마지막 4km엔 보폭이 줄었어요. 16km 후반엔 흔한 변화예요.")
+        #expect(ko(result(late: .held), long: true) == "끝까지 폼을 유지했어요.")
+    }
+
+    @Test func midVariants() {
+        #expect(ko(result(mid: .cadenceDriven, late: .held)) == "중반엔 발 회전으로 속도를 냈고, 끝까지 폼을 유지했어요.")
+        #expect(ko(result(mid: .both, late: .held)) == "중반엔 보폭과 회전을 함께 올려 속도를 냈고, 끝까지 폼을 유지했어요.")
+    }
+
+    @Test func shortStates() {
+        AppLanguage.shared.isEnglish = false
+        #expect(FormPhase.shortState(result(late: .held)) == "끝까지 유지")
+        #expect(FormPhase.shortState(result(late: .heavier([.stride]))) == "마지막 4km 살짝 무거워짐")
+        #expect(FormPhase.shortState(result(late: .cadenceDefended)) == "후반 회전은 유지")
+        #expect(FormPhase.shortState(result(late: .bouncier)) == "후반 위로 튐")
+    }
+
     // MARK: 침묵 조건
 
     @Test func noBandForAnyPhaseIsSilent() {
