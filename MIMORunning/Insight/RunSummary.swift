@@ -1,11 +1,14 @@
 import Foundation
 
 /// 총평 한 줄 — 색점(톤) + 축 이름 + 짧은 상태어(관찰 사실, 등급어 아님).
+/// `evidence`/`next`는 탭하면 펼쳐지는 근거·다음 행동 — 없으면 nil(펼칠 것 없음).
 struct RunSummaryLine: Equatable {
     enum Tone: Equatable { case good, neutral }
     let axis: String
     let state: String
     let tone: Tone
+    var evidence: String? = nil
+    var next: String? = nil
 }
 
 /// 총평 입력 — 각 카드가 이미 계산한 결론만 받는다. 없는 축은 nil/빈값 → 줄 생략.
@@ -25,10 +28,30 @@ struct RunSummaryInput {
     var vo2GenderLabel: String = ""
     /// 이 러닝의 기온 보정량(bpm). 총평 줄 상태어에는 붙이지 않는다 — 더위는 존 캡션과 근거 줄이 말한다.
     var heatDeltaBpm: Double? = nil
+
+    // MARK: 근거·다음용 — 모두 옵셔널, 없으면 해당 근거·다음 절만 생략
+
+    /// 최근 N회 중 이 거리의 순위(1 = 가장 김)
+    var distanceRank: Int? = nil
+    var distanceSampleCount: Int? = nil
+    var avgHeartRate: Int? = nil
+    var peakHeartRate: Int? = nil
+    var temperatureC: Double? = nil
+    var sevenDayAU: Double? = nil
+    var previousSevenAU: Double? = nil
+    var loadSentence: EffortLoad.SentenceKind? = nil
+    /// 마지막 고강도(계획된 고강도 유형 또는 체감 강도 7 이상) 러닝으로부터 지난 일수
+    var daysSinceHardRun: Int? = nil
+    /// 이번 주 플랜 단계 원문("회복"/"테이퍼"/…) — 대회 플랜이 있을 때만
+    var planPhase: String? = nil
+    /// 이지 페이스 조회값 — 있을 때만 다음 이지런 페이스를 숫자로 제안
+    var easyPace: MRHRPaceLookup? = nil
+    var vo2EightWeeksAgo: Double? = nil
 }
 
 /// 총평 규칙. 축 순서 고정: 러닝폼 → 거리 적응 → 심박 → 훈련부하 → 유산소.
 /// 상태어는 관찰 사실만. 톤은 초록(good)·노랑(neutral) 둘.
+/// 각 줄의 `evidence`(왜 이 말이 나왔나)·`next`(그래서 뭘 하나)도 여기서 함께 채운다.
 enum RunSummary {
     static let distanceRatioMin = 1.30
     /// 이지 의도 유형에서 Zone 3 이상 비율이 이 이상이면 "기준 높음"
@@ -37,9 +60,13 @@ enum RunSummary {
     /// 존 캡션 더위 보정 표기 임계값(bpm) — 존 캡션·근거 줄이 공유해서 쓴다. 총평 상태어에는 붙이지 않는다.
     /// 문장 단위 "기온 감안" 임계값(3bpm)은 별개 — `MRHeatHRModel.explainThresholdBpm` 참고.
     static let heatNoteMinBpm = 5.0
+    /// 심박 근거 줄에서 "(더위 +N)"을 붙이는 문턱(bpm)
+    static let heatEvidenceMinBpm = 3.0
     static let vo2Bounds: [Double] = [15, 26, 33, 41, 57]
     // 거리주(레이스페이스 장거리)는 빠른 게 정의라 이지 의도로 판정하지 않는다
     static let easyIntentTypes: Set<WorkoutType> = [.easy, .longRun, .lsd]
+    /// 장거리류 — 후반 심박 상승이 자연스러운 유형(다음 행동 문구가 다르다)
+    static let longDistanceTypes: Set<WorkoutType> = [.distanceRun, .longRun, .lsd]
 
     /// VO2max 등급 — 리듬 카드 게이지 캡션과 같은 경계.
     static func vo2Level(_ vo2: Double) -> (index: Int, name: String) {
@@ -59,7 +86,56 @@ enum RunSummary {
     private static func formLine(_ i: RunSummaryInput) -> RunSummaryLine? {
         guard let f = i.form else { return nil }
         let L = AppLanguage.shared
-        return RunSummaryLine(axis: L.s("러닝폼", "Form"), state: FormPhase.shortState(f), tone: f.isHeld ? .good : .neutral)
+        var line = RunSummaryLine(axis: L.s("러닝폼", "Form"), state: FormPhase.shortState(f), tone: f.isHeld ? .good : .neutral)
+        line.evidence = formEvidence(f)
+        line.next = formNext(f)
+        return line
+    }
+
+    private static func formEvidence(_ f: FormPhase.Result) -> String? {
+        let L = AppLanguage.shared
+        let late = f.phases.late
+        let sig = f.signals.late
+        let lateKm = Int((f.totalKm - f.lateStartKm).rounded())
+        var pieces: [String] = []
+
+        if let cad = late.cadence {
+            let held: Bool
+            switch sig.cadence {
+            case .inRange, .above: held = true
+            default: held = false
+            }
+            let n = Int(cad.rounded())
+            pieces.append(L.s(held ? "케이던스 \(n) 유지" : "케이던스 \(n) 내려감",
+                              held ? "cadence held at \(n)" : "cadence dropped to \(n)"))
+        }
+        if let sl = late.stride {
+            let inRange = sig.stride != .below
+            let s = String(format: "%.2f", sl)
+            pieces.append(L.s(inRange ? "마지막 \(lateKm)km 보폭 \(s) 범위 안" : "마지막 \(lateKm)km 보폭 \(s) 범위 아래",
+                              inRange ? "stride \(s) in range over the last \(lateKm) km" : "stride \(s) below range over the last \(lateKm) km"))
+        }
+        if let gct = late.groundContact {
+            let inRange = sig.groundContact != .above
+            let n = Int(gct.rounded())
+            pieces.append(L.s(inRange ? "접지 \(n) 범위 안" : "접지 \(n) 범위 위",
+                              inRange ? "ground contact \(n) in range" : "ground contact \(n) above range"))
+        }
+        return pieces.isEmpty ? nil : pieces.joined(separator: " · ")
+    }
+
+    private static func formNext(_ f: FormPhase.Result) -> String? {
+        let L = AppLanguage.shared
+        switch f.late {
+        case .held:
+            return nil
+        case .heavier, .cadenceDefended:
+            return L.s("다음 롱런은 같은 거리에서 후반 보폭만 지켜보세요.",
+                      "On your next long run, watch your late-run stride at the same distance.")
+        case .bouncier:
+            return L.s("다음 롱런은 같은 거리에서 후반 위아래 움직임만 지켜보세요.",
+                      "On your next long run, watch your late-run vertical motion at the same distance.")
+        }
     }
 
     private static func distanceLine(_ i: RunSummaryInput) -> RunSummaryLine? {
@@ -67,12 +143,30 @@ enum RunSummary {
         let L = AppLanguage.shared
         let ratio = String(format: "%.1f", i.distKm / t)
         let axis = L.s("거리 적응", "Distance")
-        guard let f = i.form else {
-            return RunSummaryLine(axis: axis, state: L.s("평소 \(ratio)배", "\(ratio)× usual"), tone: .good)
+
+        let typicalStr = String(format: "%.1f", t)
+        var evidence = L.s("평소 \(typicalStr)km", "usually \(typicalStr) km")
+        if let rank = i.distanceRank, let n = i.distanceSampleCount {
+            if rank == 1 {
+                evidence += L.s(" · 최근 \(n)회 중 가장 긴 거리", " · longest of the last \(n)")
+            } else if rank <= 3 {
+                evidence += L.s(" · 최근 \(n)회 중 \(rank)번째로 긴 거리", " · #\(rank) longest of the last \(n)")
+            }
         }
-        return f.isHeld
-            ? RunSummaryLine(axis: axis, state: L.s("평소 \(ratio)배, 범위 안", "\(ratio)× usual, form in range"), tone: .good)
-            : RunSummaryLine(axis: axis, state: L.s("평소 \(ratio)배", "\(ratio)× usual"), tone: .neutral)
+        let next = L.s("이 거리는 2~3주 유지한 뒤 늘리세요. 롱런은 한 번에 평소의 1.3배 안에서.",
+                      "Hold this distance for 2–3 weeks before increasing. Keep long runs within 1.3× your usual, one step at a time.")
+
+        var line: RunSummaryLine
+        if let f = i.form {
+            line = f.isHeld
+                ? RunSummaryLine(axis: axis, state: L.s("평소 \(ratio)배, 범위 안", "\(ratio)× usual, form in range"), tone: .good)
+                : RunSummaryLine(axis: axis, state: L.s("평소 \(ratio)배", "\(ratio)× usual"), tone: .neutral)
+        } else {
+            line = RunSummaryLine(axis: axis, state: L.s("평소 \(ratio)배", "\(ratio)× usual"), tone: .good)
+        }
+        line.evidence = evidence
+        line.next = next
+        return line
     }
 
     private static func heartRateLine(_ i: RunSummaryInput) -> RunSummaryLine? {
@@ -83,39 +177,88 @@ enum RunSummary {
         func frac(_ z: Int) -> Double { (visible[z] ?? 0) / total }
         let axis = L.s("심박", "Heart rate")
 
-        if frac(2) >= 0.60 {
-            return RunSummaryLine(axis: axis, state: L.s("딱 좋은 강도", "Just right"), tone: .good)
-        }
-        let high3 = frac(3) + frac(4) + frac(5)
-        let pct = Int((high3 * 100).rounded())
-        if easyIntentTypes.contains(i.workoutType), high3 >= easyHighZoneFrac {
-            let label = i.workoutType.koreanLabel
-            return RunSummaryLine(axis: axis,
-                                  state: L.s("\(label) 기준 높음 · Zone 3 이상 \(pct)%", "High for \(label) · \(pct)% in Zone 3+"),
-                                  tone: .neutral)
-        }
-        // 동률이면 높은 존이 이긴다(결정적 타이브레이크)
+        // 동률이면 높은 존이 이긴다(결정적 타이브레이크) — 근거 줄의 "Zone N"과 상태어 판정이 같은 규칙을 쓴다
         guard let dom = visible.max(by: { ($0.value, $0.key) < ($1.value, $1.key) })?.key else { return nil }
-        switch dom {
-        case 1:  return RunSummaryLine(axis: axis, state: L.s("가벼운 회복 강도", "Light recovery"), tone: .good)
-        case 2:  return RunSummaryLine(axis: axis, state: L.s("딱 좋은 강도", "Just right"), tone: .good)
-        case 3:  return RunSummaryLine(axis: axis, state: L.s("템포 구간에 머묾", "Stayed in tempo zone"), tone: .neutral)
-        default:
-            return FormNarrative.isPlannedHighIntensity(i.workoutType)
-                ? RunSummaryLine(axis: axis, state: L.s("계획대로 고강도", "High intensity, as planned"), tone: .good)
-                : RunSummaryLine(axis: axis,
-                                 state: L.s("고강도 구간이 많음 · Zone 3 이상 \(pct)%", "Mostly high intensity · \(pct)% in Zone 3+"),
-                                 tone: .neutral)
+        let domPct = Int((frac(dom) * 100).rounded())
+
+        var evidence = L.s("Zone \(dom) \(domPct)%", "Zone \(dom) \(domPct)%")
+        if let avg = i.avgHeartRate {
+            evidence += L.s(" · 평균 \(avg)", " · avg \(avg)")
+            if let peak = i.peakHeartRate, peak > avg {
+                evidence += L.s(" · 후반 \(peak)까지", " · up to \(peak) late")
+            }
         }
+        if let t = i.temperatureC {
+            let tInt = Int(t.rounded())
+            var piece = L.s(" · \(tInt)°C", " · \(tInt)°C")
+            if let heat = i.heatDeltaBpm, heat >= heatEvidenceMinBpm {
+                let n = Int(heat.rounded())
+                piece += L.s("(더위 +\(n))", " (heat +\(n))")
+            }
+            evidence += piece
+        }
+
+        var isEasyHighBranch = false
+        var line: RunSummaryLine
+
+        if frac(2) >= 0.60 {
+            line = RunSummaryLine(axis: axis, state: L.s("딱 좋은 강도", "Just right"), tone: .good)
+        } else {
+            let high3 = frac(3) + frac(4) + frac(5)
+            let pct = Int((high3 * 100).rounded())
+            if easyIntentTypes.contains(i.workoutType), high3 >= easyHighZoneFrac {
+                isEasyHighBranch = true
+                let label = i.workoutType.koreanLabel
+                line = RunSummaryLine(axis: axis,
+                                      state: L.s("\(label) 기준 높음 · Zone 3 이상 \(pct)%", "High for \(label) · \(pct)% in Zone 3+"),
+                                      tone: .neutral)
+            } else {
+                switch dom {
+                case 1: line = RunSummaryLine(axis: axis, state: L.s("가벼운 회복 강도", "Light recovery"), tone: .good)
+                case 2: line = RunSummaryLine(axis: axis, state: L.s("딱 좋은 강도", "Just right"), tone: .good)
+                case 3: line = RunSummaryLine(axis: axis, state: L.s("템포 구간에 머묾", "Stayed in tempo zone"), tone: .neutral)
+                default:
+                    line = FormNarrative.isPlannedHighIntensity(i.workoutType)
+                        ? RunSummaryLine(axis: axis, state: L.s("계획대로 고강도", "High intensity, as planned"), tone: .good)
+                        : RunSummaryLine(axis: axis,
+                                         state: L.s("고강도 구간이 많음 · Zone 3 이상 \(pct)%", "Mostly high intensity · \(pct)% in Zone 3+"),
+                                         tone: .neutral)
+                }
+            }
+        }
+
+        var next: String? = nil
+        if FormNarrative.isPlannedHighIntensity(i.workoutType) {
+            if longDistanceTypes.contains(i.workoutType) {
+                next = L.s("장거리는 후반 심박이 자연히 올라요. 거리를 한 번에 크게 늘리지 마세요.",
+                          "Heart rate naturally climbs late in a long run — don't jump the distance all at once.")
+            }
+        } else if isEasyHighBranch {
+            if let pace = i.easyPace {
+                next = L.s("다음 이지런은 Zone 2 상단, \(mrFormatPace(pace.paceSec)) 정도로 가 보세요.",
+                          "Try the top of Zone 2 next easy run, around \(mrFormatPace(pace.paceSec)).")
+            } else {
+                next = L.s("다음 이지런은 Zone 2 상단으로 가 보세요.", "Try the top of Zone 2 next easy run.")
+            }
+        }
+
+        line.evidence = evidence
+        line.next = next
+        return line
     }
 
     private static func loadLine(_ i: RunSummaryInput) -> RunSummaryLine? {
         let L = AppLanguage.shared
         let axis = L.s("훈련부하", "Training load")
+        let evidence = loadEvidence(i)
+
         guard i.weekOverWeek != nil || i.acuteChronic != nil else {
             // 부하 데이터가 없어도 연속일 자체는 보여준다
             guard i.streakDays >= 3 else { return nil }
-            return RunSummaryLine(axis: axis, state: L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row"), tone: .good)
+            var line = RunSummaryLine(axis: axis, state: L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row"), tone: .good)
+            line.evidence = evidence
+            line.next = loadNext(i, jumped: false)
+            return line
         }
         let wow = i.weekOverWeek ?? 0
         // jumped가 lighter보다 우선한다 — 이번 주 급증은 4주 평균이 낮아도(acuteChronic .low) 조용히 넘기지 않는다(과훈련 신호 존중)
@@ -143,7 +286,51 @@ enum RunSummary {
         if i.streakDays >= 3 {
             state += L.s(" · \(i.streakDays)일 연속", " · \(i.streakDays) days in a row")
         }
-        return RunSummaryLine(axis: axis, state: state, tone: tone)
+        var line = RunSummaryLine(axis: axis, state: state, tone: tone)
+        line.evidence = evidence
+        line.next = loadNext(i, jumped: jumped)
+        return line
+    }
+
+    private static func loadEvidence(_ i: RunSummaryInput) -> String? {
+        let L = AppLanguage.shared
+        guard let au = i.sevenDayAU else {
+            return i.streakDays >= 3 ? L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row") : nil
+        }
+        var e = L.s("7일 \(groupedInt(au)) AU", "7-day \(groupedInt(au)) AU")
+        if let prev = i.previousSevenAU {
+            e += L.s(" · 이전 7일 \(groupedInt(prev))", " · prior 7-day \(groupedInt(prev))")
+        }
+        if i.streakDays >= 3 {
+            e += L.s(" · \(i.streakDays)일 연속", " · \(i.streakDays) days in a row")
+        }
+        return e
+    }
+
+    /// 계획상 회복 주 > 급증/단조/장기 연속 > 충분한 회복 순으로 다음 행동을 고른다.
+    private static func loadNext(_ i: RunSummaryInput, jumped: Bool) -> String? {
+        let L = AppLanguage.shared
+        if let phase = i.planPhase, phase == "회복" || phase == "테이퍼" {
+            return L.s("플랜상 회복 주예요. 이지런 위주로 가세요.", "Your plan has this as a recovery week — stick to easy runs.")
+        }
+        if jumped || i.loadSentence == .monotony || i.streakDays >= 4 {
+            return L.s("다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.",
+                      "Take a 30–40 min recovery run or rest for the next day or two.")
+        }
+        let rested: Bool = {
+            guard let days = i.daysSinceHardRun, days >= 2 else { return false }
+            let acOk: Bool
+            switch i.acuteChronic {
+            case nil, .low, .steady: acOk = true
+            default: acOk = false
+            }
+            return acOk && i.loadSentence != .monotony
+        }()
+        if rested {
+            return L.s("충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.",
+                      "You're well recovered — a good time for a build-up or tempo run.")
+        }
+        return nil
     }
 
     private static func aerobicLine(_ i: RunSummaryInput) -> RunSummaryLine? {
@@ -151,8 +338,25 @@ enum RunSummary {
         let L = AppLanguage.shared
         let level = vo2Level(v)
         let g = i.vo2GenderLabel.isEmpty ? "" : " \(i.vo2GenderLabel)"
-        return RunSummaryLine(axis: L.s("유산소", "Aerobic"),
+        var line = RunSummaryLine(axis: L.s("유산소", "Aerobic"),
                               state: L.s("\(i.vo2AgeDecade)\(g) 기준 \(level.name)", "\(level.name) for \(i.vo2AgeDecade)\(g)"),
                               tone: level.index >= 2 ? .good : .neutral)
+        var evidence = L.s("VO2max \(String(format: "%.1f", v))", "VO2max \(String(format: "%.1f", v))")
+        if let prev = i.vo2EightWeeksAgo {
+            let diff = v - prev
+            let sign = diff >= 0 ? "+" : "-"
+            let diffStr = String(format: "%.1f", abs(diff))
+            evidence += L.s(" · 8주 전 대비 \(sign)\(diffStr)", " · vs. 8 weeks ago \(sign)\(diffStr)")
+        }
+        line.evidence = evidence
+        return line
+    }
+
+    /// 천단위 콤마 정수 문자열("1,783")
+    private static func groupedInt(_ v: Double) -> String {
+        let nf = NumberFormatter()
+        nf.numberStyle = .decimal
+        nf.maximumFractionDigits = 0
+        return nf.string(from: NSNumber(value: v.rounded())) ?? "\(Int(v.rounded()))"
     }
 }
