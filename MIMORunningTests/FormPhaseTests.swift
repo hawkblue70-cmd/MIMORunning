@@ -469,4 +469,18 @@ struct FormPhaseTests {
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
         #expect(lines.first == "Mid 3–7 km: pace picked up by 25 s/km with a longer stride and shorter ground contact.")
     }
+
+    @Test func commonTailSuppressedWhenHeatReassuranceExists() {
+        AppLanguage.shared.isEnglish = false
+        // 16km 픽스처: 초반(1~5) 384/366 섞임 · 중반(6~11) 366 · 후반(12~16) 380 — 후반 접지·수직진폭이 범위 밖이라 late != .held
+        let s = (1...4).map { split($0, pace: 384, sl: 0.90, gct: 262, vo: 8.4, hr: 143) }
+            + (5...11).map { split($0, pace: 366, sl: 0.93, gct: 253, vo: 8.4, hr: 150) }
+            + (12...16).map { split($0, pace: 380, sl: 0.90, gct: 266, vo: 8.7, hr: 155) }
+        let r = classify(s)!
+        #expect(r.late != .held)
+        #expect(FormPhase.hasHeatReassurance(r, heatDeltaBpm: 8))
+        #expect(!FormPhase.hasHeatReassurance(r, heatDeltaBpm: 0))
+        let sentence = FormPhase.sentence(r, isLongDistance: true, suppressCommonTail: true)
+        #expect(!sentence.contains("흔한 변화"))
+    }
 }

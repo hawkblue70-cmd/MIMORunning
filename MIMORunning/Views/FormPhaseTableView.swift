@@ -9,20 +9,20 @@ struct FormPhaseTableView: View {
     private var L: AppLanguage { AppLanguage.shared }
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 8 * scale, verticalSpacing: 5 * scale) {
+        Grid(alignment: .leading, horizontalSpacing: 5 * scale, verticalSpacing: 5 * scale) {
             GridRow {
                 headerCell(L.s("구간", "Phase"))
                 headerCell(L.s("페이스", "Pace")).gridColumnAlignment(.trailing)
                 headerCell(L.s("심박", "HR")).gridColumnAlignment(.trailing)
                 headerCell(L.s("케이던스", "Cadence")).gridColumnAlignment(.trailing)
                 headerCell(L.s("보폭", "Stride")).gridColumnAlignment(.trailing)
-                headerCell(L.s("접지", "GCT")).gridColumnAlignment(.trailing)
+                headerCell(L.s("지면접촉", "GCT")).gridColumnAlignment(.trailing)
             }
             row(ko: "초반", en: "Early", stats: result.phases.early, signals: result.signals.early)
             row(ko: "중반", en: "Mid", stats: result.phases.mid, signals: result.signals.mid)
             row(ko: "후반", en: "Late", stats: result.phases.late, signals: result.signals.late)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Rows
@@ -33,6 +33,8 @@ struct FormPhaseTableView: View {
             Text(phaseLabel(stats, ko: ko, en: en))
                 .font(.system(size: 9 * scale, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.78))
+                .padding(.horizontal, 3 * scale)
+                .padding(.vertical, 1 * scale)
             valueCell(paceText(stats.paceSecPerKm), color: Color.white.opacity(0.9), caution: false)
             valueCell(stats.avgHR.map { String(Int($0.rounded())) }, color: Theme.heartRate, caution: false)
             valueCell(stats.cadence.map { String(Int($0.rounded())) }, color: Theme.cadence, caution: signals.cadence == .below)
@@ -48,6 +50,7 @@ struct FormPhaseTableView: View {
         Text(text)
             .font(.system(size: 8 * scale))
             .foregroundStyle(Color.white.opacity(0.5))
+            .padding(.horizontal, 3 * scale)
     }
 
     @ViewBuilder
@@ -55,7 +58,14 @@ struct FormPhaseTableView: View {
         Text(text ?? "–")
             .font(.system(size: 9 * scale))
             .foregroundStyle(text == nil ? Color.white.opacity(0.35) : (caution ? Theme.caution : color))
-            .gridColumnAlignment(.trailing)
+            .padding(.horizontal, 3 * scale)
+            .padding(.vertical, 1 * scale)
+            .background {
+                if caution {
+                    RoundedRectangle(cornerRadius: 3 * scale, style: .continuous)
+                        .fill(Theme.caution.opacity(0.18))
+                }
+            }
     }
 
     // MARK: - Formatting

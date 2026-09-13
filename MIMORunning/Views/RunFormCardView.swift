@@ -837,7 +837,8 @@ struct RunFormCardView: View {
                     splitFormTrendSection
                     if let phase = formPhaseResult {
                         FormPhaseTableView(result: phase)
-                        Text(FormPhase.sentence(phase, isLongDistance: isLongDistanceContext))
+                        Text(FormPhase.sentence(phase, isLongDistance: isLongDistanceContext,
+                                                suppressCommonTail: FormPhase.hasHeatReassurance(phase, heatDeltaBpm: heatHRModel?.delta(activity.temperatureC))))
                             .font(.system(size: 11.5))
                             .foregroundStyle(Color.white.opacity(0.80))
                             .lineSpacing(3)

@@ -240,7 +240,8 @@ enum FormPhase {
     // MARK: - 문장
 
     /// 초·중·말 절을 쉼표로 이어 한 문장으로. 거리 문맥이고 말기가 유지가 아니면 "N km 후반엔 흔한 변화예요." 덧붙임.
-    static func sentence(_ r: Result, isLongDistance: Bool) -> String {
+    /// - Parameter suppressCommonTail: 관계 문장에 이미 더위 위안이 붙었으면(`hasHeatReassurance`) 이 꼬리를 생략 — 같은 말 반복 방지.
+    static func sentence(_ r: Result, isLongDistance: Bool, suppressCommonTail: Bool = false) -> String {
         let L = AppLanguage.shared
         let earlyKm = String(format: "%.0f", r.earlyEndKm)
         let lateKm  = String(format: "%.0f", r.totalKm - r.lateStartKm)
@@ -285,12 +286,26 @@ enum FormPhase {
             : (en.first ?? "")
         var enS = enJoined + "."
         enS = String(enS.prefix(1)).uppercased() + enS.dropFirst()
-        if isLongDistance, r.late != .held {
+        if isLongDistance, r.late != .held, !suppressCommonTail {
             let d = String(format: "%.0f", r.totalKm)
             koS += " \(d)km 후반엔 흔한 변화예요."
             enS += " Common late in a \(d) km run."
         }
         return L.s(koS, enS)
+    }
+
+    /// 후반 심박 드리프트에 더위 위안이 붙는 조건 — `relationSentences`·`hasHeatReassurance`가 공유.
+    /// 중반→후반 심박 ≥5 오르고, 더위 보정 ≥5bpm이고, 그 오름이 더위로 흔한 폭(≤ max(10, 더위×2)) 안일 때.
+    private static func heatReassuranceApplies(_ r: Result, heatDeltaBpm: Double?) -> Bool {
+        guard let h1 = r.phases.mid.avgHR, let h2 = r.phases.late.avgHR, h2 - h1 >= 5 else { return false }
+        guard let heat = heatDeltaBpm, heat >= 5 else { return false }
+        return h2 - h1 <= max(10.0, heat * 2)
+    }
+
+    /// `relationSentences`가 후반 문장에 "더위를 감안하면 흔한 폭" 괄호를 붙일지 — 밖에서 미리 알아야 `sentence`의
+    /// "흔한 변화예요" 꼬리와 중복되지 않게 생략할 수 있다.
+    static func hasHeatReassurance(_ r: Result, heatDeltaBpm: Double?) -> Bool {
+        heatReassuranceApplies(r, heatDeltaBpm: heatDeltaBpm)
     }
 
     /// 구간별 관계 문장 — "무엇이 언제 어떻게" 를 한 줄씩. 아무 변화도 없으면 빈 배열.
@@ -360,7 +375,7 @@ enum FormPhase {
             }
 
             var heatKo = "", heatEn = ""
-            if let heat = heatDeltaBpm, heat >= 5, hrRise <= max(10.0, heat * 2) {
+            if heatReassuranceApplies(r, heatDeltaBpm: heatDeltaBpm), let heat = heatDeltaBpm {
                 let h = Int(heat.rounded())
                 heatKo = " (더위 +\(h)bpm을 감안하면 흔한 폭)"
                 heatEn = " (common with +\(h) bpm from heat)"
