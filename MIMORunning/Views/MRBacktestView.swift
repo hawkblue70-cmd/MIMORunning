@@ -358,7 +358,7 @@ struct MRArchiveDetailView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                Text(archive.markdown)
+                Text(mrArchiveDisplayText(archive.markdown))
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.85))
                     .frame(maxWidth: .infinity, alignment: .leading)

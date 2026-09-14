@@ -149,6 +149,18 @@ func mrBuildArchiveMarkdown(
     return md
 }
 
+/// 화면에 보여줄 본문 — 끝에 붙은 MIMO-META 주석 블록을 떼어낸다.
+/// 저장된 마크다운은 그대로 두고 표시만 자른다(모델 버전·원본 수치는 보존).
+func mrArchiveDisplayText(_ markdown: String) -> String {
+    var text = markdown
+    while let open = text.range(of: "<!-- MIMO-META") {
+        let close = text.range(of: "-->", range: open.upperBound..<text.endIndex)
+        let end = close?.upperBound ?? text.endIndex
+        text.removeSubrange(open.lowerBound..<end)
+    }
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 private func appendMeta(snapshot: RacePlanSnapshot, actualMin: Double?) -> String {
     var s = "\n<!-- MIMO-META\n"
     s += "modelVersion: m\(MRModelVersion.current)\n"
