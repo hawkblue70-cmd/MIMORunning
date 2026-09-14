@@ -253,6 +253,12 @@ struct MRBacktestRowView: View {
     var archive: RaceArchive? = nil
     var onTapArchive: (() -> Void)? = nil
 
+    /// 상세를 열 수 있는가 — 주차별 이행표가 있는 아카이브만. 꺾쇠와 행 탭이 같은 기준을 쓴다.
+    private var canOpenArchive: Bool {
+        guard let arch = archive else { return false }
+        return mrArchiveHasDetail(arch.markdown)
+    }
+
     private var errColor: Color {
         guard let e = row.errorPct else { return .white }
         return abs(e) <= 3 ? mrBtGood : (abs(e) <= 8 ? mrBtAccent : mrBtWarn)
@@ -277,7 +283,7 @@ struct MRBacktestRowView: View {
                         .foregroundStyle(errColor)
                 }
                 // 상세에 보여줄 내용(주차별 이행표)이 있을 때만 꺾쇠
-                if let arch = archive, mrArchiveHasDetail(arch.markdown) {
+                if canOpenArchive {
                     Button(action: onTapArchive ?? {}) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12, weight: .semibold))
@@ -348,7 +354,7 @@ struct MRBacktestRowView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { if archive != nil { onTapArchive?() } }
+        .onTapGesture { if canOpenArchive { onTapArchive?() } }
     }
 }
 
