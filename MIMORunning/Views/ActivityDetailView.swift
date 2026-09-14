@@ -15,7 +15,7 @@ enum DetailPanel: String, CaseIterable {
     case map                 = "경로"
     case heartRate           = "심박수"
     case cadence             = "케이던스"
-    case groundContact       = "지면 접촉"
+    case groundContact       = "지면접촉"
     case strideLength        = "보폭"
     case power               = "파워"
     case verticalOscillation = "수직진폭"
@@ -28,7 +28,7 @@ enum DetailPanel: String, CaseIterable {
         case .combined:             L.s("종합",     "Combined")
         case .heartRate:            L.s("심박수",   "HR")
         case .cadence:              L.s("케이던스", "Cadence")
-        case .groundContact:        L.s("지면 접촉","Gnd Contact")
+        case .groundContact:        L.s("지면접촉","Gnd Contact")
         case .strideLength:         L.s("보폭",     "Stride")
         case .power:                L.s("파워",     "Power")
         case .verticalOscillation:  L.s("수직진폭", "Vert. Osc.")
@@ -1162,7 +1162,7 @@ struct ActivityDetailView: View {
                         color: Theme.power, format: "%.0f", useRangeBar: true,
                         available: detail?.avgPower != nil)
         case .groundContact:
-            seriesPanel(icon: "stopwatch", label: AppLanguage.shared.s("지면 접촉", "Gnd Contact"), unit: "ms",
+            seriesPanel(icon: "stopwatch", label: AppLanguage.shared.s("지면접촉", "Gnd Contact"), unit: "ms",
                         color: Theme.runningForm, format: "%.0f", useRangeBar: true,
                         available: detail?.avgGroundContactTime != nil)
         case .strideLength:

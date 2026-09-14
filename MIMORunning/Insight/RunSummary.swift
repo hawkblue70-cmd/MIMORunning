@@ -144,7 +144,7 @@ enum RunSummary {
         if let gct = late.groundContact, sig.groundContact != .unknown {
             let inRange = sig.groundContact != .above
             let n = Int(gct.rounded())
-            pieces.append(L.s(inRange ? "접지 \(n) 범위 안" : "접지 \(n) 범위 위",
+            pieces.append(L.s(inRange ? "지면접촉 \(n) 범위 안" : "지면접촉 \(n) 범위 위",
                               inRange ? "ground contact \(n) in range" : "ground contact \(n) above range"))
         }
         return pieces.isEmpty ? nil : pieces.joined(separator: " · ")
@@ -167,7 +167,7 @@ enum RunSummary {
             case .cadence:
                 return L.s(prefixKo + "후반 케이던스만 지켜보세요.", prefixEn + "watch your late-run cadence.")
             case .groundContact:
-                return L.s(prefixKo + "후반 접지만 지켜보세요.", prefixEn + "watch your late-run ground contact.")
+                return L.s(prefixKo + "후반 지면접촉만 지켜보세요.", prefixEn + "watch your late-run ground contact.")
             default: // .stride, .verticalOsc, 또는 비어 있을 때(이론상 없음)의 안전한 기본값
                 return L.s(prefixKo + "후반 보폭만 지켜보세요.", prefixEn + "watch your late-run stride.")
             }

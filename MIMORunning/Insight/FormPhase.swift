@@ -472,7 +472,7 @@ enum FormPhase {
                 koPairs.append(("보폭이 늘고", "보폭이 늘었어요")); enPhrases.append("a longer stride")
             }
             if let a = e.groundContact, let b = m.groundContact, a - b >= 8 {
-                koPairs.append(("접지가 짧아지고", "접지가 짧아졌어요")); enPhrases.append("shorter ground contact")
+                koPairs.append(("지면접촉이 짧아지고", "지면접촉이 짧아졌어요")); enPhrases.append("shorter ground contact")
             }
             if let a = e.cadence, let b = m.cadence, b - a >= cadenceGainSPM {
                 koPairs.append(("발 회전이 빨라지고", "발 회전이 빨라졌어요")); enPhrases.append("quicker steps")
@@ -591,7 +591,7 @@ enum FormPhase {
         }
         if r.lateWorsened(.groundContact), let mg = m.groundContact, let lg = l.groundContact {
             let d = Int((lg - mg).rounded())
-            out.append((ko: "접지 +\(d)ms", en: "GCT +\(d) ms"))
+            out.append((ko: "지면접촉 +\(d)ms", en: "GCT +\(d) ms"))
         }
         return out
     }
@@ -602,7 +602,7 @@ enum FormPhase {
             switch m {
             case .cadence:       return "케이던스가 내려가고"
             case .stride:        return "보폭이 줄고"
-            case .groundContact: return "접지가 길어지고"
+            case .groundContact: return "지면접촉이 길어지고"
             case .verticalOsc:   return "위아래 움직임이 늘고"
             }
         }
@@ -610,7 +610,7 @@ enum FormPhase {
             switch m {
             case .cadence:       return "케이던스가 내려갔어요"
             case .stride:        return "보폭이 줄었어요"
-            case .groundContact: return "접지가 길어졌어요"
+            case .groundContact: return "지면접촉이 길어졌어요"
             case .verticalOsc:   return "위아래 움직임이 늘었어요"
             }
         }

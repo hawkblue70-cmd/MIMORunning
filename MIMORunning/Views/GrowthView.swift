@@ -2657,7 +2657,7 @@ private struct WeekStatTile: View {
     let cases: [(label: String, value: String, arrow: String?, arrowColor: Color, ratio: String?, lineColor: Color)] = [
         ("케이던스",      "178 spm",      "↑", .green,              "+6.2%",  .green),
         ("파워",         "245 W",        "↓", Color(hex:"8A8A92"), "−3.1%",  Theme.violet),
-        ("지면 접촉 시간","248 ms",       "↓", .green,              "−4.8%",  .green),
+        ("지면접촉 시간","248 ms",       "↓", .green,              "−4.8%",  .green),
         ("보폭",         "1.28 m",       nil, Color(hex:"6E6E78"), "+0.8%",  Theme.violet),
         ("수직 진폭",    "8.4 cm",       "↑", Color(hex:"8A8A92"), "+5.5%",  Theme.violet),
         ("유산소 피트니스","42.3 mL/kg·min","↑",.green,             "+7.1%",  .green),

@@ -27,7 +27,7 @@ struct MRFormMetric {
 let mrFormMetrics: [MRFormMetric] = [
     MRFormMetric(key: "vo",      label: "위아래 움직임", unit: "cm",  higherMeansMoreBounce: true),
     MRFormMetric(key: "cadence", label: "케이던스",      unit: "spm", higherMeansMoreBounce: false),
-    MRFormMetric(key: "gct",     label: "지면 접촉",     unit: "ms",  higherMeansMoreBounce: false),
+    MRFormMetric(key: "gct",     label: "지면접촉",     unit: "ms",  higherMeansMoreBounce: false),
 ]
 // ⚠ 보폭은 넣지 않는다. 같은 페이스에서 보폭 = 속도 ÷ 케이던스이므로
 //   케이던스 잔차의 정확한 역수다. 같은 정보를 두 번 세는 셈이 된다.

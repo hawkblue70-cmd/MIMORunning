@@ -296,10 +296,10 @@ struct RunSummaryTests {
 
     @Test func evidenceAndNextForTodayRun() {
         let out = lines(todayInput())
-        #expect(out[0].evidence == "케이던스 175 유지 · 마지막 5km 보폭 0.92 범위 안 · 접지 255 범위 안")
+        #expect(out[0].evidence == "케이던스 175 유지 · 마지막 5km 보폭 0.92 범위 안 · 지면접촉 255 범위 안")
         #expect(out[0].next == nil)
         #expect(out[1].evidence == "평소 7.6km · 최근 10회 중 가장 긴 거리")
-        #expect(out[1].next == "이 거리는 2~3주 유지한 뒤 늘리세요. 롱런은 한 번에 평소의 1.3배 안에서.")
+        #expect(out[1].next == "계획한 거리를 채운 러닝이에요. 다음 1~2일은 이지런이나 휴식으로 회복하세요.")
         #expect(out[2].evidence == "Zone 4 62% · 평균 149 · 최고 157 · 25°C(더위 +8)")
         // 거리 적응 줄이 이미 "장거리라 그렇다"를 말했으므로(거리 16km ≥ 평소 7.6km × 1.3) 심박 줄은 중복해서 말하지 않는다
         #expect(out[2].next == nil)
@@ -402,7 +402,7 @@ struct RunSummaryTests {
     @Test func heavierFormSuggestsWatchingLateStride() {
         var i = todayInput(); i.form = heavierForm10km()
         #expect(lines(i)[0].next == "다음 롱런은 같은 거리에서 후반 보폭만 지켜보세요.")
-        #expect(lines(i)[0].evidence == "케이던스 175 유지 · 마지막 3km 보폭 0.85 범위 아래 · 접지 272 범위 위")
+        #expect(lines(i)[0].evidence == "케이던스 175 유지 · 마지막 3km 보폭 0.85 범위 아래 · 지면접촉 272 범위 위")
     }
 
     @Test func heavierCadenceSuggestsWatchingCadence() {
@@ -412,7 +412,7 @@ struct RunSummaryTests {
 
     @Test func unknownCadenceIsNotReported() {
         var i = RunSummaryInput(); i.form = heldFormUnknownCadence16km()
-        #expect(lines(i).first?.evidence == "마지막 5km 보폭 0.92 범위 안 · 접지 255 범위 안")
+        #expect(lines(i).first?.evidence == "마지막 5km 보폭 0.92 범위 안 · 지면접촉 255 범위 안")
     }
 
     // MARK: 페이스 무너짐
@@ -432,7 +432,7 @@ struct RunSummaryTests {
         let line = lines(i)[0]
         #expect(line.state == "마지막 3km 페이스 떨어짐")
         #expect(line.tone == .neutral)
-        #expect(line.evidence == "페이스 5'55\"→6'30\" · 보폭 0.97→0.91 · 케이던스 175→171 · 접지 +24ms")
+        #expect(line.evidence == "페이스 5'55\"→6'30\" · 보폭 0.97→0.91 · 케이던스 175→171 · 지면접촉 +24ms")
         #expect(line.next == "다음엔 중반을 10초/km 늦게 시작해 보세요.")
     }
 }

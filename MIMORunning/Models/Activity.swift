@@ -335,7 +335,7 @@ enum TrendMetric: String, CaseIterable, Identifiable {
         return switch self {
         case .cadence:             L.s("케이던스",     "Cadence")
         case .power:               L.s("파워",         "Power")
-        case .groundContactTime:   L.s("지면 접촉 시간", "Gnd Contact")
+        case .groundContactTime:   L.s("지면접촉 시간", "Gnd Contact")
         case .strideLength:        L.s("보폭",         "Stride Length")
         case .verticalOscillation: L.s("수직 진폭",   "Vert. Osc.")
         case .vo2Max:              L.s("유산소 피트니스", "Cardio Fitness")

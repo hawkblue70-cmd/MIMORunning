@@ -192,7 +192,7 @@ struct FormPhaseTests {
         #expect(r?.lateWorsened(.cadence) == true)
         #expect(r?.lateWorsened(.groundContact) == true)
         #expect(FormPhase.sentence(r!, isLongDistance: false) ==
-                "마지막 3km엔 페이스가 35초/km 떨어졌는데 심박은 그대로였어요. 보폭 0.97→0.91 · 케이던스 175→171 · 접지 +24ms.")
+                "마지막 3km엔 페이스가 35초/km 떨어졌는데 심박은 그대로였어요. 보폭 0.97→0.91 · 케이던스 175→171 · 지면접촉 +24ms.")
         #expect(FormPhase.shortState(r!) == "마지막 3km 페이스 떨어짐")
     }
 
@@ -282,7 +282,7 @@ struct FormPhaseTests {
 
     @Test func heavierListsSignalsWithLastKm() {
         let r = result(late: .heavier([.stride, .groundContact]))
-        #expect(ko(r) == "마지막 4km엔 보폭이 줄고 접지가 길어졌어요.")
+        #expect(ko(r) == "마지막 4km엔 보폭이 줄고 지면접촉이 길어졌어요.")
         #expect(en(r) == "Over the last 4 km stride shortened and ground contact lengthened.")
     }
 
@@ -544,7 +544,7 @@ struct FormPhaseTests {
         AppLanguage.shared.isEnglish = false
         let s = (1...3).map { split($0, pace: 400, sl: 0.88, gct: 262) } + (4...10).map { split($0, pace: 375, sl: 0.94, gct: 250) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains("중반 3~7km: 페이스가 25초/km 빨라지며 보폭이 늘고 접지가 짧아졌어요."))
+        #expect(lines.contains("중반 3~7km: 페이스가 25초/km 빨라지며 보폭이 늘고 지면접촉이 짧아졌어요."))
     }
 
     @Test func lateDriftSentenceWithCadenceHeld() {

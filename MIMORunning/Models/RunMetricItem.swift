@@ -3,7 +3,7 @@ import SwiftUI
 /// 지표 종류 — 표시 색을 매체(앱 화면 / 공유 카드 라이트·다크)별로 고르는 데 쓴다.
 enum RunMetricKind {
     case distance, time, pace, heartRate, cadence, power
-    case form          // 지면 접촉 · 보폭 · 수직 진폭
+    case form          // 지면접촉 · 보폭 · 수직 진폭
     case cardio        // 유산소 피트니스(VO2max)
     case calories, elevation
 }
@@ -100,7 +100,7 @@ struct RunMetricItem: Identifiable {
                                           value: "\(power) W", color: Theme.power, trendMetric: .power))
             }
             if let gct = detail?.avgGroundContactTime {
-                list.append(RunMetricItem(kind: .form, icon: "stopwatch", label: L.s("지면 접촉", "Gnd Contact"),
+                list.append(RunMetricItem(kind: .form, icon: "stopwatch", label: L.s("지면접촉", "Gnd Contact"),
                                           value: "\(Int(gct.rounded())) ms", color: Theme.runningForm,
                                           trendMetric: .groundContactTime))
             }
