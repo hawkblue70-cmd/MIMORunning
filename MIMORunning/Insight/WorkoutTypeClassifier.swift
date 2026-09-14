@@ -7,10 +7,13 @@ struct WorkoutTypeClassifier {
     /// Classifies a running workout into one of eight types.
     /// Priority: race (existing confirmed) → plan (WorkoutKit) → easy (Zone2 HR / pace fallback)
     ///           → buildUp → distanceRun → LSD → longRun → tempo → general.
-    /// All thresholds are personal-relative — no absolute cutoffs.
+    /// 페이스·거리 기준은 개인 상대값이다. 절대 기준은 장거리 8km·템포 4km 하한뿐.
     ///
     /// 기준선(baseline)은 `baselinePace` / `baselineDistance` 참고 — 직전 4주 **중앙값**.
     /// `typeOf`: 과거 러닝의 캐시된 유형. 인터벌·대회를 페이스 기준선에서 빼는 데 쓴다. nil이면 제외 없음.
+    /// `heat`: 페이스 더위 모델. 있으면 기준선의 과거 페이스와 오늘 페이스를 모두 15°C로 환산해 비교한다 —
+    ///   폭염 첫 주에 평소 강도 러닝이 "기준보다 느림"에 걸려 LSD로, 가을 첫 선선한 날이 거리주로 잘못 잡히는 것을 막는다.
+    ///   모델이 없거나 학습이 안 됐으면(ok=false) 원본 페이스 그대로.
     static func classify(
         activity: Activity,
         history: [Activity],
@@ -18,7 +21,8 @@ struct WorkoutTypeClassifier {
         intervalSegments: [IntervalSegment] = [],
         hrZones: [HRZoneData]? = nil,
         existingType: WorkoutType? = nil,
-        typeOf: ((UUID) -> WorkoutType?)? = nil
+        typeOf: ((UUID) -> WorkoutType?)? = nil,
+        heat: MRHeatModel? = nil
     ) -> WorkoutType {
         guard activity.type == .running, activity.distance >= 1000 else { return .general }
         if existingType == .race { return .race }  // 대회 확정 — 재분류 없이 유지
@@ -28,7 +32,7 @@ struct WorkoutTypeClassifier {
                       && $0.id != activity.id
                       && $0.date < activity.date }   // 미래 데이터 오염 방지 — 분류 결과 시점 고정
             .sorted { $0.date > $1.date }
-        let base = Baseline(activity: activity, recentRuns: recentRuns, typeOf: typeOf)
+        let base = Baseline(activity: activity, recentRuns: recentRuns, typeOf: typeOf, heat: heat)
 
         if isPlanInterval(intervalSegments: intervalSegments)              { return .interval    }
         if isEasy(activity: activity, base: base, hrZones: hrZones)        { return .easy        }
@@ -44,25 +48,41 @@ struct WorkoutTypeClassifier {
 
     /// 분류에 쓰는 본인 기준선. 회수 창이 아니라 기간 창, 평균이 아니라 중앙값.
     struct Baseline {
-        /// 페이스 기준선 (sec/km). nil = 표본 부족.
+        /// 페이스 기준선 (sec/km, 15°C 환산). nil = 표본 부족.
         let pace: Double?
+        /// 오늘 페이스 (sec/km, 기준선과 같은 15°C 환산). 모든 페이스 비교는 원본 대신 이 값을 쓴다.
+        let todayPace: Double?
         /// 거리 기준선 (m). nil = 직전 4주 3회 미만 → 12km 절대 폴백.
         let distance: Double?
         /// 로그용 — 페이스 기준선 표본 수와 창
         let paceSampleCount: Int
         let paceWindowLabel: String
+        /// 더위 환산이 실제로 적용됐는가(모델 ok + 오늘 기온 있음) — 트레이스용
+        let heatApplied: Bool
 
-        init(activity: Activity, recentRuns: [Activity], typeOf: ((UUID) -> WorkoutType?)?) {
-            let p = WorkoutTypeClassifier.baselinePace(activity: activity, recentRuns: recentRuns, typeOf: typeOf)
+        init(activity: Activity, recentRuns: [Activity], typeOf: ((UUID) -> WorkoutType?)?, heat: MRHeatModel? = nil) {
+            let p = WorkoutTypeClassifier.baselinePace(activity: activity, recentRuns: recentRuns, typeOf: typeOf, heat: heat)
             pace = p.value; paceSampleCount = p.count; paceWindowLabel = p.window
+            todayPace = WorkoutTypeClassifier.refPace(activity, heat: heat)
             distance = WorkoutTypeClassifier.baselineDistance(activity: activity, recentRuns: recentRuns)
+            heatApplied = (heat?.ok ?? false) && activity.temperatureC != nil
         }
+    }
+
+    /// 러닝의 페이스를 15°C 기준으로 환산(sec/km). 더위 모델이 없거나 학습이 안 됐거나 기온이 없으면 원본 그대로.
+    /// `MRHeatModel.toRef`와 같은 계수 — 페이스는 시간에 비례하므로 같은 배율이 붙는다.
+    static func refPace(_ run: Activity, heat: MRHeatModel?) -> Double? {
+        guard let p = run.paceSecPerKm else { return nil }
+        guard let h = heat, h.ok, let t = run.temperatureC else { return p }
+        return p * exp(h.logDelta(t))
     }
 
     /// 페이스 기준선 — 직전 4주 중앙값(최소 5회). 부족하면 8주, 그래도 부족하면 최근 10회 중 3회 이상(콜드 스타트).
     /// 인터벌·대회·3km 미만은 제외 — 목적이 다른 러닝이 기준선을 흔들지 않게.
+    /// `heat`가 있으면 각 러닝의 페이스를 15°C로 환산한 뒤 중앙값을 낸다(`refPace`).
     static func baselinePace(activity: Activity, recentRuns: [Activity],
-                             typeOf: ((UUID) -> WorkoutType?)?) -> (value: Double?, count: Int, window: String) {
+                             typeOf: ((UUID) -> WorkoutType?)?,
+                             heat: MRHeatModel? = nil) -> (value: Double?, count: Int, window: String) {
         let eligible = recentRuns.filter { run in
             guard run.distance >= 3000, run.paceSecPerKm != nil else { return false }
             if let t = typeOf?(run.id), t == .interval || t == .race { return false }
@@ -71,10 +91,10 @@ struct WorkoutTypeClassifier {
         let cal = Calendar.current
         for weeks in [4, 8] {
             let cutoff = cal.date(byAdding: .weekOfYear, value: -weeks, to: activity.date) ?? .distantPast
-            let paces = eligible.filter { $0.date >= cutoff }.compactMap(\.paceSecPerKm)
+            let paces = eligible.filter { $0.date >= cutoff }.compactMap { refPace($0, heat: heat) }
             if paces.count >= 5 { return (median(paces), paces.count, "\(weeks)주") }
         }
-        let paces = eligible.prefix(10).compactMap(\.paceSecPerKm)
+        let paces = eligible.prefix(10).compactMap { refPace($0, heat: heat) }
         guard paces.count >= 3 else { return (nil, paces.count, "최근10회") }
         return (median(paces), paces.count, "최근10회")
     }
@@ -139,14 +159,14 @@ struct WorkoutTypeClassifier {
     /// Pace must be < baseline × 1.10 so it's distinctly faster than easy/LSD.
     private static func isDistanceRun(activity: Activity, base: Baseline) -> Bool {
         guard isLongRun(activity: activity, base: base) else { return false }
-        guard let pace = activity.paceSecPerKm, let med = base.pace else { return false }
+        guard let pace = base.todayPace, let med = base.pace else { return false }
         return pace < med * 1.10
     }
 
     /// Long distance + very slow pace (≥20% slower than baseline) + very even effort (CV ≤ 8%).
     private static func isLSD(activity: Activity, base: Baseline, splits: [SplitData]) -> Bool {
         guard isLongRun(activity: activity, base: base) else { return false }
-        guard let pace = activity.paceSecPerKm, let med = base.pace else { return false }
+        guard let pace = base.todayPace, let med = base.pace else { return false }
         guard pace > med * 1.20 else { return false }
         let full = splits.filter { $0.distanceM >= 900 }
         guard full.count >= 3 else { return false }  // 스플릿 부족 → 일반 러닝으로 폴백
@@ -172,18 +192,18 @@ struct WorkoutTypeClassifier {
             let zone12 = zones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +)
             guard zone12 >= 0.65 else { return false }
             // 기준선보다 빠른 페이스는 이지런 아님 (보조 조건)
-            if let pace = activity.paceSecPerKm, let med = base.pace, pace < med { return false }
+            if let pace = base.todayPace, let med = base.pace, pace < med { return false }
             return true
         }
 
         // hrZones 없을 때: 페이스 기반 폴백
-        guard let pace = activity.paceSecPerKm, let med = base.pace else { return false }
+        guard let pace = base.todayPace, let med = base.pace else { return false }
         return pace > med * 1.15
     }
 
     /// Faster than baseline + CV ≤ 7% across splits (uniform effort) + ≥ 4 km
     private static func isTempo(activity: Activity, base: Baseline, splits: [SplitData]) -> Bool {
-        guard activity.distance >= 4000, let pace = activity.paceSecPerKm, let med = base.pace else { return false }
+        guard activity.distance >= 4000, let pace = base.todayPace, let med = base.pace else { return false }
         guard pace < med * 0.98 else { return false }
 
         let full = splits.filter { $0.distanceM >= 900 }
@@ -205,7 +225,8 @@ struct WorkoutTypeClassifier {
         intervalSegments: [IntervalSegment] = [],
         hrZones: [HRZoneData]? = nil,
         existingType: WorkoutType? = nil,
-        typeOf: ((UUID) -> WorkoutType?)? = nil
+        typeOf: ((UUID) -> WorkoutType?)? = nil,
+        heat: MRHeatModel? = nil
     ) -> (type: WorkoutType, trace: String) {
         func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60) }
         func cv(_ arr: [Double]) -> Double {
@@ -224,16 +245,19 @@ struct WorkoutTypeClassifier {
         let recentRuns = history
             .filter { $0.type == .running && $0.id != activity.id && $0.date < activity.date }
             .sorted { $0.date > $1.date }
-        let base = Baseline(activity: activity, recentRuns: recentRuns, typeOf: typeOf)
+        let base = Baseline(activity: activity, recentRuns: recentRuns, typeOf: typeOf, heat: heat)
 
         var notes: [String] = []
         let full = splits.filter { $0.distanceM >= 900 }
         let distKm = activity.distance / 1000
-        let myPace = activity.paceSecPerKm
+        let myPace = base.todayPace          // 15°C 환산 — 기준선과 같은 잣대
         let med = base.pace
         let baseStr = med.map { "기준 \(pf($0))(\(base.paceWindowLabel) 중앙값·\(base.paceSampleCount)회)" }
             ?? "기준없음(\(base.paceWindowLabel) \(base.paceSampleCount)회)"
         notes.append(baseStr)
+        if base.heatApplied, let raw = activity.paceSecPerKm, let ref = myPace, let t = activity.temperatureC {
+            notes.append("더위환산: \(Int(t.rounded()))°C \(pf(raw)) → 15°C \(pf(ref))")
+        }
 
         // 1. 인터벌
         let workCount = intervalSegments.filter { $0.stepLabel == "운동" }.count

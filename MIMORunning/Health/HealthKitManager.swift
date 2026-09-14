@@ -40,6 +40,9 @@ class HealthKitManager {
     var restingHeartRate: Int? = nil
     /// 폼 백필 진행 상황. nil = 백필 안 하는 중.
     var formBackfillProgress: (done: Int, total: Int)? = nil
+    /// 유형 분류에 쓰는 페이스 더위 모델 — 엔진(MREngineStore)이 학습한 것을 `applyHeatModel`로 넘겨받는다.
+    /// nil 또는 학습 안 됨이면 분류기는 원본 페이스로 비교한다.
+    @ObservationIgnored private(set) var heatModelForClassification: MRHeatModel? = nil
 
     private let store = HKHealthStore()
     @ObservationIgnored private var workoutCache: [UUID: HKWorkout] = [:]
@@ -803,6 +806,29 @@ class HealthKitManager {
         UserDefaults.standard.set(dict, forKey: Self.workoutTypeCacheKey)
     }
 
+    /// 엔진이 학습한 페이스 더위 모델을 분류기에 연결한다.
+    /// 모델이 처음 준비되거나 계수가 실질적으로 바뀌면 8주를 재분류한다 — 그전에 분류된 러닝은 원본 페이스 기준이라
+    /// 더운 날 러닝이 이지런·LSD로, 선선한 날 러닝이 거리주로 잘못 잡혀 있을 수 있다.
+    /// 계수가 그대로면(같은 데이터로 재학습) 아무 일도 하지 않는다. 학습이 안 된 모델은 연결하지 않는다(항등이라 재분류 무의미).
+    func applyHeatModel(_ model: MRHeatModel) {
+        let fingerprint = model.ok
+            ? String(format: "%.3f|%.4f|%.3f", model.bHot1, model.bHot2, model.bCold)
+            : "off"
+        let key = Self.workoutTypeCacheKey + ".heatFingerprint"
+        let previous = UserDefaults.standard.string(forKey: key)
+        heatModelForClassification = model.ok ? model : nil
+        guard previous != fingerprint else { return }
+        UserDefaults.standard.set(fingerprint, forKey: key)
+        // 처음부터 학습 안 됨(nil → off)은 재분류할 이유가 없다
+        guard model.ok || previous != nil else { return }
+        #if DEBUG
+        print("[분류:더위] 모델 \(model.ok ? "적용" : "해제") (\(fingerprint)) → 8주 재분류")
+        #endif
+        isWorkoutTypeReclassifying = true
+        workoutTypeBackfillTask?.cancel()
+        workoutTypeBackfillTask = Task { await self.backfillWorkoutTypes(weeks: 8, forceReclassify: true) }
+    }
+
     /// engine.runs(WorkoutKit 플랜 기반)에서 인터벌 여부를 읽어 캐시에 없는 항목을 1회 보완한다.
     /// cachedWorkoutType은 .interval만 표시하므로 인터벌 판정만 복원하면 충분하다.
     // TODO: remove after v1.x ships (migration no longer needed)
@@ -904,7 +930,7 @@ class HealthKitManager {
                 let wt = WorkoutTypeClassifier.classify(
                     activity: act, history: hist,
                     splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
-                    typeOf: workoutTypeLookup()
+                    typeOf: workoutTypeLookup(), heat: heatModelForClassification
                 )
                 persistWorkoutType(wt, hasSplits: !actSplits.isEmpty, for: act.id)
                 onDemandClassifiedCount += 1
@@ -1147,13 +1173,13 @@ class HealthKitManager {
                 let (type, trace) = WorkoutTypeClassifier.classifyWithTrace(
                     activity: act, history: allRunHistory,
                     splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
-                    existingType: cachedEntry?.type, typeOf: typeOf
+                    existingType: cachedEntry?.type, typeOf: typeOf, heat: heatModelForClassification
                 )
                 #else
                 let type = WorkoutTypeClassifier.classify(
                     activity: act, history: allRunHistory,
                     splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
-                    existingType: cachedEntry?.type, typeOf: typeOf
+                    existingType: cachedEntry?.type, typeOf: typeOf, heat: heatModelForClassification
                 )
                 #endif
                 persistWorkoutType(type, hasSplits: !actSplits.isEmpty, for: act.id)
@@ -1258,7 +1284,8 @@ class HealthKitManager {
                 activity: act,
                 history: historyBefore(date: act.date, in: allRunHistory),
                 splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
-                existingType: backfillCached?.type, typeOf: workoutTypeLookup()
+                existingType: backfillCached?.type, typeOf: workoutTypeLookup(),
+                heat: heatModelForClassification
             )
             persistWorkoutType(type, hasSplits: !actSplits.isEmpty, for: act.id)
             await Task.yield()

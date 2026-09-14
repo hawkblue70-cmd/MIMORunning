@@ -305,6 +305,8 @@ private struct ActivityListContent: View {
         .onChange(of: engine.isReady) { _, isReady in
             guard isReady else { return }
             manager.backfillIntervalTypes(from: engine.runs)
+            // 페이스 더위 모델 → 유형 분류기. 모델이 바뀌면 매니저가 8주를 재분류한다.
+            manager.applyHeatModel(engine.heat)
         }
         .task {
             if let all = try? modelContext.fetch(FetchDescriptor<OneLinerEntry>()) {
