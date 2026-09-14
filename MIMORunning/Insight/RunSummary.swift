@@ -71,6 +71,10 @@ enum RunSummary {
     static let vo2DeltaEvidenceMin = 0.05
     // 거리주(레이스페이스 장거리)는 빠른 게 정의라 이지 의도로 판정하지 않는다
     static let easyIntentTypes: Set<WorkoutType> = [.easy, .longRun, .lsd]
+    /// 오늘 거리가 계획의 일부인 유형 — 거리 적응 줄이 증량 규칙을 말하지 않는다.
+    static let plannedLongRunTypes: Set<WorkoutType> = [.longRun, .lsd, .distanceRun, .race]
+    /// 대회 훈련 계획상 강도를 낮추는 주 — 이 주에는 계획된 고강도 유형이라도 고강도가 계획 이탈이다.
+    static let planEasyPhases: Set<String> = ["회복", "테이퍼"]
 
     /// VO2max 등급 — 리듬 카드 게이지 캡션과 같은 경계.
     static func vo2Level(_ vo2: Double) -> (index: Int, name: String) {
@@ -200,8 +204,23 @@ enum RunSummary {
                 evidence += L.s(" · 최근 \(n)회 중 \(rank)번째로 긴 거리", " · #\(rank) longest of the last \(n)")
             }
         }
-        let next = L.s("이 거리는 2~3주 유지한 뒤 늘리세요. 롱런은 한 번에 평소의 1.3배 안에서.",
+        // 다음 롱런 거리를 정하는 주체가 둘이면 지시가 충돌한다.
+        // 대회 플랜 > 계획된 롱런 유형 > (둘 다 없을 때만) 일반 증량 규칙 순으로 고른다.
+        let next: String
+        if let phase = i.planPhase {
+            next = planEasyPhases.contains(phase)
+                ? L.s("대회 훈련 계획상 \(phase) 주예요. 거리를 더 늘리지 말고 계획대로 가세요.",
+                      "Your race plan has this as an easy week — hold the distance and stick to the plan.")
+                : L.s("대회 훈련 계획상 \(phase) 주의 러닝이에요. 다음 롱런 거리는 계획을 따르세요.",
+                      "This run is part of your race plan — follow the plan for your next long run.")
+        } else if plannedLongRunTypes.contains(i.workoutType) {
+            // 오늘 거리는 의도한 것이라 증량 경고가 아니라 회복이 다음 행동이다
+            next = L.s("계획한 거리를 채운 러닝이에요. 다음 1~2일은 이지런이나 휴식으로 회복하세요.",
+                      "You covered the distance you set out to — take the next day or two easy, or rest.")
+        } else {
+            next = L.s("이 거리는 2~3주 유지한 뒤 늘리세요. 롱런은 한 번에 평소의 1.3배 안에서.",
                       "Hold this distance for 2–3 weeks before increasing. Keep long runs within 1.3× your usual, one step at a time.")
+        }
 
         var line: RunSummaryLine
         if let f = i.form {
@@ -248,6 +267,8 @@ enum RunSummary {
         }
 
         var isEasyHighBranch = false
+        /// 대회 훈련 계획상 강도를 낮추는 주인데 고강도로 뛴 경우 — 그 단계 이름
+        var planDeviationPhase: String? = nil
         var line: RunSummaryLine
 
         if frac(2) >= 0.60 {
@@ -255,7 +276,14 @@ enum RunSummary {
         } else {
             let high3 = frac(3) + frac(4) + frac(5)
             let pct = Int((high3 * 100).rounded())
-            if easyIntentTypes.contains(i.workoutType), high3 >= easyHighZoneFrac {
+            if let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac {
+                // 유형이 '계획된 고강도'여도 플랜이 우선한다 — 회복·테이퍼 주의 고강도는 계획대로가 아니다
+                planDeviationPhase = phase
+                line = RunSummaryLine(axis: axis,
+                                      state: L.s("\(phase) 주인데 고강도 · Zone 3 이상 \(pct)%",
+                                                 "High intensity in an easy week · \(pct)% in Zone 3+"),
+                                      tone: .neutral)
+            } else if easyIntentTypes.contains(i.workoutType), high3 >= easyHighZoneFrac {
                 isEasyHighBranch = true
                 let label = i.workoutType.koreanLabel
                 line = RunSummaryLine(axis: axis,
@@ -285,7 +313,10 @@ enum RunSummary {
         }
 
         var next: String? = nil
-        if isEasyHighBranch {
+        if let phase = planDeviationPhase {
+            next = L.s("\(phase) 주는 다음 고강도를 받아낼 몸을 만드는 기간이에요. 다음 러닝은 이지런으로 돌아가세요.",
+                      "An easy week is what makes the next hard block land — make your next run an easy one.")
+        } else if isEasyHighBranch {
             if let pace = i.easyPace {
                 next = L.s("다음 이지런은 Zone 2 상단, \(mrFormatPace(pace.paceSec)) 정도로 가 보세요.",
                           "On your next easy run, aim for the top of Zone 2 — around \(mrFormatPace(pace.paceSec)).")
@@ -294,6 +325,11 @@ enum RunSummary {
             }
         }
 
+        // 이 줄이 뜬 까닭(대회 훈련 계획 단계)은 상태어가 아니라 근거 맨 앞에서 말한다 — 상태어는 짧게 유지
+        if let phase = planDeviationPhase {
+            evidence = L.s("대회 훈련 계획상 \(phase) 주 · \(evidence)",
+                          "Race-plan easy week · \(evidence)")
+        }
         line.evidence = evidence
         line.next = next
         return line
@@ -370,10 +406,10 @@ enum RunSummary {
         let L = AppLanguage.shared
         if let phase = i.planPhase {
             if phase == "회복" {
-                return L.s("플랜상 회복 주예요. 이지런 위주로 가세요.", "Your plan has this as a recovery week — stick to easy runs.")
+                return L.s("대회 훈련 계획상 회복 주예요. 이지런 위주로 가세요.", "Your race plan has this as a recovery week — stick to easy runs.")
             }
             if phase == "테이퍼" {
-                return L.s("플랜상 테이퍼 주예요. 이지런 위주로 가세요.", "Your plan has this as a taper week — keep it easy.")
+                return L.s("대회 훈련 계획상 테이퍼 주예요. 이지런 위주로 가세요.", "Your race plan has this as a taper week — keep it easy.")
             }
         }
         if jumped || i.loadSentence == .monotony || i.streakDays >= 4 {

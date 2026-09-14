@@ -334,14 +334,61 @@ struct RunSummaryTests {
         #expect(lines(i)[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.")
     }
 
+    // MARK: 거리 적응 — 다음 롱런 거리를 정하는 주체
+
+    @Test func distanceNextForPlannedLongRunIsRecovery() {
+        // 거리주·롱런처럼 오늘 거리가 계획의 일부면 증량 규칙 대신 회복을 말한다
+        #expect(lines(todayInput())[1].next == "계획한 거리를 채운 러닝이에요. 다음 1~2일은 이지런이나 휴식으로 회복하세요.")
+    }
+
+    @Test func distanceNextDefersToRacePlan() {
+        var i = todayInput(); i.planPhase = "늘리기"
+        #expect(lines(i)[1].next == "대회 훈련 계획상 늘리기 주의 러닝이에요. 다음 롱런 거리는 계획을 따르세요.")
+    }
+
+    @Test func distanceNextHoldsInPlanEasyWeek() {
+        var i = todayInput(); i.planPhase = "회복"
+        #expect(lines(i)[1].next == "대회 훈련 계획상 회복 주예요. 거리를 더 늘리지 말고 계획대로 가세요.")
+    }
+
+    @Test func distanceNextKeepsBuildRuleForUnplannedJump() {
+        // 플랜도 없고 계획된 롱런 유형도 아닌데 평소의 두 배 — 이 줄이 원래 잡으려던 상황
+        var i = todayInput(); i.workoutType = .general
+        #expect(lines(i)[1].next == "이 거리는 2~3주 유지한 뒤 늘리세요. 롱런은 한 번에 평소의 1.3배 안에서.")
+    }
+
+    // MARK: 심박 — 플랜 이탈
+
+    @Test func planEasyWeekHighIntensityIsFlagged() {
+        // 회복 주에 Zone 3 이상 90% — 유형이 거리주(계획된 고강도)여도 플랜이 우선한다
+        var i = todayInput(); i.planPhase = "회복"
+        #expect(lines(i)[2].state == "회복 주인데 고강도 · Zone 3 이상 90%")
+        #expect(lines(i)[2].evidence == "대회 훈련 계획상 회복 주 · Zone 4 62% · 평균 149 · 최고 157 · 25°C(더위 +8)")
+        #expect(lines(i)[2].next == "회복 주는 다음 고강도를 받아낼 몸을 만드는 기간이에요. 다음 러닝은 이지런으로 돌아가세요.")
+    }
+
+    @Test func planEasyWeekEasyRunIsNotFlagged() {
+        // 회복 주에 Zone 2 위주면 이탈이 아니다
+        var i = todayInput(); i.planPhase = "회복"
+        i.zoneFractions = [1: 0.15, 2: 0.70, 3: 0.15]
+        #expect(lines(i)[2].state == "딱 좋은 강도")
+        #expect(lines(i)[2].next == nil)
+    }
+
+    @Test func buildPhaseHighIntensityIsNotFlagged() {
+        // 늘리기 주의 고강도는 계획대로다
+        var i = todayInput(); i.planPhase = "늘리기"
+        #expect(lines(i)[2].state == "계획대로 고강도")
+    }
+
     @Test func planRecoveryPhaseOverrides() {
         var i = todayInput(); i.planPhase = "회복"
-        #expect(lines(i)[3].next == "플랜상 회복 주예요. 이지런 위주로 가세요.")
+        #expect(lines(i)[3].next == "대회 훈련 계획상 회복 주예요. 이지런 위주로 가세요.")
     }
 
     @Test func planTaperPhaseOverrides() {
         var i = todayInput(); i.planPhase = "테이퍼"
-        #expect(lines(i)[3].next == "플랜상 테이퍼 주예요. 이지런 위주로 가세요.")
+        #expect(lines(i)[3].next == "대회 훈련 계획상 테이퍼 주예요. 이지런 위주로 가세요.")
     }
 
     @Test func restedNeedsLoadData() {
