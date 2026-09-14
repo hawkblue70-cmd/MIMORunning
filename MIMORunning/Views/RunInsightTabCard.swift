@@ -2826,22 +2826,24 @@ private struct PerformanceInsightCard: View {
             kpiRow
             let scatter = scatterData
             let dist = trainingDistData
-            if scatter.count >= 6 {
+            let intensDist = intensityDistData
+            let showScatter = scatter.count >= 6
+            // 행 1 — 심박으로 묶는다: 심박 효율(페이스 대비) | 강도 분포(존 체류 시간). 한쪽만 있으면 그쪽을 전체 폭으로.
+            if showScatter || intensDist != nil {
                 divider
                 HStack(alignment: .top, spacing: 10) {
-                    hrScatterSection(data: scatter)
-                        .frame(maxWidth: .infinity)
-                    if dist != nil || isBackfilling || isClassifying {
+                    if showScatter {
+                        hrScatterSection(data: scatter)
+                            .frame(maxWidth: .infinity)
+                    }
+                    if showScatter, intensDist != nil {
                         Rectangle().fill(.white.opacity(0.08))
                             .frame(width: 0.5)
                             .padding(.vertical, 2)
-                        if let d = dist {
-                            distribHorizontalSection(items: d.items, weeks: d.weeks, totalRuns: d.totalRuns, todayBucket: d.todayBucket)
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            backfillingPlaceholder
-                                .frame(maxWidth: .infinity)
-                        }
+                    }
+                    if let d = intensDist {
+                        intensityColumnsView(data: d)
+                            .frame(maxWidth: .infinity)
                     }
                 }
             }
@@ -2850,9 +2852,11 @@ private struct PerformanceInsightCard: View {
                 divider
                 decouplingRow(dc)
             }
-            if let intensDist = intensityDistData {
+            // 행 2 — 훈련 구조로 묶는다: 러닝 유형 배분(4주) | 강도 부하(14일)
+            let showDist = dist != nil || isBackfilling || isClassifying
+            if showDist || sevenDayLoad != nil {
                 divider
-                intensityDistSection(data: intensDist)
+                trainingStructureSection(dist: dist, showDist: showDist)
             }
             let iSegs  = intervalChartData
             let voInf  = vo2Info
@@ -4292,19 +4296,37 @@ private struct PerformanceInsightCard: View {
         }
     }
 
-    /// 강도 분포(4주, 가로 막대 3행 + 문헌값 눈금)와 이 러닝 날짜 기준 강도 부하(14일 창)를 **한 행 50 : 50**으로.
-    /// 부하가 없으면 왼쪽만 전체 폭으로 (구분선·오른쪽 열 없음) — 트랙이 그만큼 길어진다.
+    /// 러닝 유형 배분(4주, 아홉 유형 막대 — 분류 중이면 자리표시)과 이 러닝 날짜 기준 강도 부하(14일 창)를
+    /// **한 행 50 : 50**으로. 한쪽만 있으면 그쪽을 전체 폭으로 (구분선 없음).
+    /// SplitRow는 자식이 정확히 3개(왼쪽·구분선·오른쪽)일 때만 나눈다 — 한쪽만일 땐 쓰지 않는다.
     @ViewBuilder
-    private func intensityDistSection(data: IntensityTimeData) -> some View {
-        if let load = sevenDayLoad {
+    private func trainingStructureSection(
+        dist: (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)?,
+        showDist: Bool
+    ) -> some View {
+        if showDist, let load = sevenDayLoad {
             SplitRow(leftFraction: 0.5, spacing: 8, dividerWidth: 0.5) {
-                intensityColumnsView(data: data)
+                distributionOrPlaceholder(dist)
                 Rectangle().fill(.white.opacity(0.10))
                 sevenDayLoadView(load: load)
             }
-        } else {
-            intensityColumnsView(data: data)
+        } else if showDist {
+            distributionOrPlaceholder(dist)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let load = sevenDayLoad {
+            sevenDayLoadView(load: load)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func distributionOrPlaceholder(
+        _ dist: (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)?
+    ) -> some View {
+        if let d = dist {
+            distribHorizontalSection(items: d.items, weeks: d.weeks, totalRuns: d.totalRuns, todayBucket: d.todayBucket)
+        } else {
+            backfillingPlaceholder
         }
     }
 
