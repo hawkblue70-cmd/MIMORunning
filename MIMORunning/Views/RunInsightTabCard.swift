@@ -181,8 +181,13 @@ private struct CadenceTrackView: View {
     }
 }
 
+/// 반원 게이지(케이던스·유산소) 공통 배율 — 리듬·퍼포먼스 카드가 같은 크기를 쓰도록 한 곳에서만 정한다(§5.8).
+private let insightGaugeScale: CGFloat = 0.9
+
 private struct CadenceRPMGaugeView: View {
     let cadence: Int
+    /// 반원 전체 배율 — 리듬 카드는 0.9로 10% 축소해 쓴다. 1 = 원래 크기.
+    var scale: CGFloat = 1
     var formBaseline: RunningFormBaseline? = nil
     var activity: Activity? = nil
     var isInterval: Bool = false
@@ -227,10 +232,10 @@ private struct CadenceRPMGaugeView: View {
             : (c >= pLower && c <= pUpper) ? .white
             : Color(hex: "F0913C")
 
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6 * scale) {
             Canvas { ctx, size in
                 let cx    = size.width / 2
-                let thick: CGFloat = 10
+                let thick: CGFloat = 10 * scale
                 let r     = cx - thick / 2 - 1
                 let cy    = size.height - thick / 2 - 1
                 let center = CGPoint(x: cx, y: cy)
@@ -255,16 +260,16 @@ private struct CadenceRPMGaugeView: View {
                 if absoluteWarning != nil {
                     let wRad = ang(160, axMin: axMin, axMax: axMax) * .pi / 180
                     var mp = Path()
-                    mp.move(to: CGPoint(x: center.x + (r - 7) * CGFloat(cos(wRad)),
-                                        y: center.y + (r - 7) * CGFloat(sin(wRad))))
-                    mp.addLine(to: CGPoint(x: center.x + (r + 7) * CGFloat(cos(wRad)),
-                                           y: center.y + (r + 7) * CGFloat(sin(wRad))))
+                    mp.move(to: CGPoint(x: center.x + (r - 7 * scale) * CGFloat(cos(wRad)),
+                                        y: center.y + (r - 7 * scale) * CGFloat(sin(wRad))))
+                    mp.addLine(to: CGPoint(x: center.x + (r + 7 * scale) * CGFloat(cos(wRad)),
+                                           y: center.y + (r + 7 * scale) * CGFloat(sin(wRad))))
                     ctx.stroke(mp, with: .color(Color(hex: "FF6B6B")),
-                               style: StrokeStyle(lineWidth: 2))
+                               style: StrokeStyle(lineWidth: 2 * scale))
                     ctx.draw(
-                        Text("160").font(.system(size: 8)).foregroundStyle(Color(hex: "FF6B6B")),
-                        at: CGPoint(x: center.x + (r - 14) * CGFloat(cos(wRad)),
-                                    y: center.y + (r - 14) * CGFloat(sin(wRad))),
+                        Text("160").font(.system(size: 8 * scale)).foregroundStyle(Color(hex: "FF6B6B")),
+                        at: CGPoint(x: center.x + (r - 14 * scale) * CGFloat(cos(wRad)),
+                                    y: center.y + (r - 14 * scale) * CGFloat(sin(wRad))),
                         anchor: .center
                     )
                 }
@@ -277,10 +282,10 @@ private struct CadenceRPMGaugeView: View {
                 needle.move(to: center)
                 needle.addLine(to: tip)
                 ctx.stroke(needle, with: .color(nc.opacity(0.9)),
-                           style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                           style: StrokeStyle(lineWidth: 2.4 * scale, lineCap: .round))
 
                 // 중심 원
-                let dotR: CGFloat = 4
+                let dotR: CGFloat = 4 * scale
                 ctx.fill(
                     Path(ellipseIn: CGRect(x: cx - dotR, y: cy - dotR,
                                           width: dotR * 2, height: dotR * 2)),
@@ -290,21 +295,21 @@ private struct CadenceRPMGaugeView: View {
                 // 값 텍스트
                 ctx.draw(
                     Text("\(cadence)")
-                        .font(cardNumFont(17))
+                        .font(cardNumFont(17 * scale))
                         .foregroundStyle(Theme.cadence),
-                    at: CGPoint(x: cx, y: cy - 34),
+                    at: CGPoint(x: cx, y: cy - 34 * scale),
                     anchor: .center
                 )
             }
-            .frame(width: 146, height: 87)
+            .frame(width: 146 * scale, height: 87 * scale)
             .overlay(alignment: .bottom) {
                 HStack {
-                    Text("\(Int(axMin))").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
+                    Text("\(Int(axMin))").font(.system(size: 8 * scale)).foregroundStyle(.white.opacity(0.65))
                     Spacer()
-                    Text("\(Int(axMax))").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
+                    Text("\(Int(axMax))").font(.system(size: 8 * scale)).foregroundStyle(.white.opacity(0.65))
                 }
-                .frame(width: 146)
-                .offset(y: 10)
+                .frame(width: 146 * scale)
+                .offset(y: 10 * scale)
             }
         }
     }
@@ -473,6 +478,8 @@ private struct VO2GaugeView: View {
 private struct VO2RPMGaugeView: View {
     let fi: RunInsightEngine.VO2FitnessInfo
     let vo2: Double
+    /// 반원 전체 배율 — 리듬 카드는 0.9로 10% 축소해 쓴다. 1 = 원래 크기(퍼포먼스 카드).
+    var scale: CGFloat = 1
 
     // 하드코딩 경계값으로 4구간 렌더 검증 (이후 fi 규준값으로 교체)
     private let bounds: [Double]   = [15, 26, 33, 41, 57]
@@ -504,10 +511,10 @@ private struct VO2RPMGaugeView: View {
             (bounds[$0], bounds[$0 + 1], segColors[$0])
         }
 
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6 * scale) {
             Canvas { ctx, size in
                 let cx    = size.width / 2
-                let thick: CGFloat = 10
+                let thick: CGFloat = 10 * scale
                 let r     = cx - thick / 2 - 1
                 let cy    = size.height - thick / 2 - 1
                 let center = CGPoint(x: cx, y: cy)
@@ -532,10 +539,10 @@ private struct VO2RPMGaugeView: View {
                 needle.move(to: center)
                 needle.addLine(to: tip)
                 ctx.stroke(needle, with: .color(.white.opacity(0.9)),
-                           style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                           style: StrokeStyle(lineWidth: 2.4 * scale, lineCap: .round))
 
                 // 중심 원
-                let dotR: CGFloat = 4
+                let dotR: CGFloat = 4 * scale
                 ctx.fill(
                     Path(ellipseIn: CGRect(x: cx - dotR, y: cy - dotR,
                                           width: dotR*2, height: dotR*2)),
@@ -545,20 +552,20 @@ private struct VO2RPMGaugeView: View {
                 // 값 텍스트 — 현재값 구간 색
                 ctx.draw(
                     Text(String(format: "%.0f", vo2))
-                        .font(cardNumFont(17))
+                        .font(cardNumFont(17 * scale))
                         .foregroundStyle(vc),
-                    at: CGPoint(x: cx, y: cy - 34),
+                    at: CGPoint(x: cx, y: cy - 34 * scale),
                     anchor: .center
                 )
             }
-            .frame(width: 146, height: 87)
+            .frame(width: 146 * scale, height: 87 * scale)
             .overlay(alignment: .bottom) {
                 HStack {
-                    Text("15").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
+                    Text("15").font(.system(size: 8 * scale)).foregroundStyle(.white.opacity(0.65))
                     Spacer()
-                    Text("57").font(.system(size: 8)).foregroundStyle(.white.opacity(0.65))
+                    Text("57").font(.system(size: 8 * scale)).foregroundStyle(.white.opacity(0.65))
                 }
-                .frame(width: 146).offset(y: 10)
+                .frame(width: 146 * scale).offset(y: 10 * scale)
             }
 
         }
@@ -1433,7 +1440,7 @@ private struct RhythmInsightCard: View {
             || detail?.avgCadence != nil
             || (vo2Info != nil && detail?.vo2Max != nil)
             || hrSamples.count >= 5
-        return VStack(alignment: .leading, spacing: compact ? 9 : 14) {
+        return VStack(alignment: .leading, spacing: compact ? 5 : 14) {
             heroSection
             divider
             kpiRow
@@ -1450,7 +1457,9 @@ private struct RhythmInsightCard: View {
                 oneLiner(text: line, bg: IC.greenBg, fg: IC.greenText, accent: IC.green)
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, compact ? 12 : 16)
+        .padding(.horizontal, 16)
+        // 내보내기: 주간 스트립이 헤더에 붙도록 위 여백만 줄인다(아래는 총평 박스 여백 유지)
+        .padding(.top, compact ? 4 : 16).padding(.bottom, compact ? 12 : 16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear {
@@ -1583,10 +1592,11 @@ private struct RhythmInsightCard: View {
     // 2×2 칸 정렬 상수 — 행 안에서 차트 높이와 캡션 시작 줄을 맞춘다.
     // 칸마다 콘텐츠 높이가 다르면 캡션이 들쭉날쭉해진다.
     private static let topChartH: CGFloat = 114      // 도넛(114) 기준
-    private static let bottomChartH: CGFloat = 110   // 게이지(87) + 축 라벨이 아래로 삐져나오는 23
+    private static let gaugeScale: CGFloat = insightGaugeScale
+    private static let bottomChartH: CGFloat = 110 * gaugeScale   // 게이지(87) + 축 라벨이 아래로 삐져나오는 23
     // 캡션 칸 — 촘촘 모드는 두 줄(8~9pt)이 딱 들어가는 높이까지만 줄인다
     private var topCaptionH: CGFloat { compact ? 24 : 28 }
-    private var bottomCaptionH: CGFloat { compact ? 30 : 38 }
+    private var bottomCaptionH: CGFloat { compact ? 24 : 38 }
 
     /// 2×2 한 칸 — 차트 영역과 캡션 영역을 고정 높이로 잡아 네 칸의 줄을 맞춘다.
     private func rhythmCell<Chart: View, Caption: View>(
@@ -1603,7 +1613,7 @@ private struct RhythmInsightCard: View {
                 .frame(maxWidth: .infinity, minHeight: captionH, maxHeight: captionH, alignment: .top)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, compact ? 3 : 6)
+        .padding(.vertical, compact ? 2 : 6)
         .padding(.horizontal, 4)   // 게이지 축 라벨이 칸 경계(구분선)에 붙지 않게
     }
 
@@ -1690,10 +1700,11 @@ private struct RhythmInsightCard: View {
                     let displayCad = intervalWorkCadence.map { Int($0.rounded()) } ?? detail?.avgCadence
                     if let cad = displayCad {
                         let gaugeBaseline: RunningFormBaseline? = rhythmIsLongDistanceContext ? nil : formBaseline
-                        CadenceRPMGaugeView(cadence: cad, formBaseline: gaugeBaseline, activity: activity,
+                        CadenceRPMGaugeView(cadence: cad, scale: Self.gaugeScale,
+                                            formBaseline: gaugeBaseline, activity: activity,
                                             isInterval: workoutTypeFn?(activity.id) == .interval,
                                             gradeAdjustedPace: runGAP)
-                            .frame(height: 87)          // 축 라벨은 아래로 삐져나온다 — 칸 높이가 흡수
+                            .frame(height: 87 * Self.gaugeScale)   // 축 라벨은 아래로 삐져나온다 — 칸 높이가 흡수
                     }
                 } caption: {
                     let displayCad = intervalWorkCadence.map { Int($0.rounded()) } ?? detail?.avgCadence
@@ -1720,8 +1731,8 @@ private struct RhythmInsightCard: View {
                 rhythmCell(chartH: Self.bottomChartH, captionH: bottomCaptionH,
                            chartAlignment: .top) {
                     if let info = vo2Info, let vo2 = detail?.vo2Max {
-                        VO2RPMGaugeView(fi: info, vo2: vo2)
-                            .frame(height: 87)
+                        VO2RPMGaugeView(fi: info, vo2: vo2, scale: Self.gaugeScale)
+                            .frame(height: 87 * Self.gaugeScale)
                     }
                 } caption: {
                     if let info = vo2Info, let vo2 = detail?.vo2Max {
@@ -2781,7 +2792,7 @@ private struct PerformanceInsightCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? 6 : 8) {
+        VStack(alignment: .leading, spacing: compact ? 5 : 8) {
             heroSection
             divider
             kpiRow
@@ -2847,7 +2858,9 @@ private struct PerformanceInsightCard: View {
                 }
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, compact ? 12 : 16)
+        .padding(.horizontal, 16)
+        // 내보내기: 위 여백만 줄여 헤더에 붙인다 (리듬·폼 카드와 동일 값)
+        .padding(.top, compact ? 4 : 16).padding(.bottom, compact ? 12 : 16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear {
@@ -3150,8 +3163,8 @@ private struct PerformanceInsightCard: View {
             VStack(alignment: .center, spacing: 3) {
                 Text(L.s("유산소 피트니스", "Aerobic Fitness"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
-                VO2RPMGaugeView(fi: info, vo2: vo2)
-                Color.clear.frame(height: compact ? 8 : 12)
+                VO2RPMGaugeView(fi: info, vo2: vo2, scale: insightGaugeScale)
+                Color.clear.frame(height: compact ? 5 : 12)
                 Text(gradeText)
                     .font(.system(size: 8.5)).foregroundStyle(gradeColor)
                     .multilineTextAlignment(.center)
@@ -3185,7 +3198,7 @@ private struct PerformanceInsightCard: View {
             Text("✦").font(.system(size: 10)).foregroundStyle(accent)
             Text(text).font(.system(size: 10.5)).foregroundStyle(fg).lineSpacing(2)
         }
-        .padding(.horizontal, 12).padding(.vertical, compact ? 7 : 10)
+        .padding(.horizontal, 12).padding(.vertical, compact ? 5 : 10)
         .background(bg)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
@@ -4201,7 +4214,7 @@ private struct PerformanceInsightCard: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
-            .padding(.bottom, compact ? 4 : 6)
+            .padding(.bottom, compact ? 3 : 6)
             // 가로 막대 3행 — [라벨][트랙(문헌값 밴드·점선)][값]. 트랙 폭은 GeometryReader 하나로 재고 세 행이 함께 쓴다.
             GeometryReader { geo in
                 let trackW = max(20, geo.size.width - Self.intensityLabelW - Self.intensityValueW - Self.intensityGap * 2)
@@ -4287,7 +4300,7 @@ private struct PerformanceInsightCard: View {
     @ViewBuilder
     private func sevenDayLoadView(load: SevenDayLoad) -> some View {
         let L = AppLanguage.shared
-        VStack(alignment: .leading, spacing: compact ? 4 : 5) {
+        VStack(alignment: .leading, spacing: compact ? 3 : 5) {
             // 제목에 이 러닝의 부하를 붙인다 — "강도 부하 · 14일 (이 러닝 73 AU)"
             Text(sevenDayLoadTitle(load))
                 .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
@@ -4545,7 +4558,7 @@ private struct PerformanceInsightCard: View {
             Spacer()
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, compact ? 6 : 8)
+        .padding(.vertical, compact ? 5 : 8)
         .background(Color(hex: "1A3020"))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -4587,7 +4600,7 @@ private struct PerformanceInsightCard: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, compact ? 7 : 10)
+        .padding(.vertical, compact ? 5 : 10)
         .background(blue.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }

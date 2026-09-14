@@ -823,7 +823,7 @@ struct RunFormCardView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? 9 : 14) {
+        VStack(alignment: .leading, spacing: compact ? 5 : 10) {
             topSummary
             divider
             if isInterval {
@@ -857,7 +857,9 @@ struct RunFormCardView: View {
                 }
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, compact ? 12 : 16)
+        .padding(.horizontal, 16)
+        // 내보내기: 위 여백만 줄여 헤더에 붙인다 (리듬·퍼포먼스 카드와 동일 값)
+        .padding(.top, compact ? 4 : 16).padding(.bottom, compact ? 12 : 16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear {
@@ -886,7 +888,7 @@ struct RunFormCardView: View {
     private var topSummary: some View {
         let km = activity.distance / 1000
         let kmStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
-        return VStack(alignment: .leading, spacing: compact ? 7 : 10) {
+        return VStack(alignment: .leading, spacing: compact ? 5 : 10) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(kmStr)
                     .font(cardNumFont(40))
@@ -937,25 +939,31 @@ struct RunFormCardView: View {
                 connectorView
                 childNodeView(child: child)
             }
-            // [70] 범위 바 설명: 바 아래, 축 시작 x에 맞춰 들여씀
+            // [70] 범위 바 설명 — 세로선 오른쪽, 지표 라벨과 같은 x에서 시작.
+            // 세로선이 이 줄을 지나 결과 화살표까지 이어진다.
             if let summary = barSummaryText() {
-                Color.clear.frame(height: compact ? 4 : 5)
-                HStack(spacing: 0) {
-                    Color.clear.frame(width: barTextColumnWidth + 8)
+                HStack(alignment: .top, spacing: 0) {
+                    Color.clear.frame(width: 14)
+                        .overlay {
+                            Rectangle().fill(lineColor).frame(width: 0.5).frame(width: 14, alignment: .center)
+                        }
+                    Color.clear.frame(width: 6)
                     Text(summary)
                         .font(.system(size: 8))
                         .foregroundStyle(Color.white.opacity(0.72))
                         .lineSpacing(2.5)
                         .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, compact ? 3 : 5)
                     Spacer(minLength: 0)
                 }
             }
-            if let paceStr = activity.formattedPace {
+            // 인터벌은 전력·회복이 섞여 전체 평균 페이스가 구간을 대표하지 못한다 — 폼 요약과 같은 이유로 생략
+            if !isInterval, let paceStr = activity.formattedPace {
                 resultArrowView
                 resultNodeView(label: L.s("페이스", "Pace"), value: paceStr)
             }
             if let sentence = narrative {
-                Color.clear.frame(height: compact ? 7 : 10)
+                Color.clear.frame(height: compact ? 5 : 10)
                 Text(sentence)
                     .font(.system(size: 11.5))
                     .foregroundStyle(Color.white.opacity(0.80))
@@ -1012,6 +1020,11 @@ struct RunFormCardView: View {
                     .overlay {
                         Rectangle().fill(lineColor).frame(width: 0.5).frame(width: 14, alignment: .center)
                     }
+                    .overlay(alignment: .topTrailing) {
+                        // 지표로 나가는 가로 가지 — 값 글자 높이에 맞춤
+                        Rectangle().fill(lineColor).frame(width: 8, height: 0.5)
+                            .padding(.top, childBranchTopInset)
+                    }
                 Color.clear.frame(width: 6)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -1037,30 +1050,37 @@ struct RunFormCardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    /// 지표 줄 사이를 잇는 세로선만 그린다.
+    /// 지표로 나가는 가로 가지는 `childNodeView`가 값 글자 높이에 맞춰 그린다(줄 사이에 뜨지 않게).
     private var connectorView: some View {
         HStack(spacing: 0) {
-            ZStack {
-                Rectangle().fill(lineColor).frame(width: 0.5, height: 14).frame(width: 14, alignment: .center)
-                Rectangle().fill(lineColor).frame(width: 8, height: 0.5).frame(width: 14, alignment: .trailing)
-            }
-            .frame(width: 14, height: 14)
+            Rectangle().fill(lineColor).frame(width: 0.5, height: 14)
+                .frame(width: 14, height: 14, alignment: .center)
             Spacer()
         }
     }
 
+    /// 가로 가지선이 붙는 높이 — 자식 줄 값 글자(20pt)의 광학 중심.
+    private let childBranchTopInset: CGFloat = 12
+
+    /// 사슬의 마지막 — 페이스로 내려가는 화살표.
+    /// 얇은 꺾쇠(chevron)는 화살표로 읽히지 않아 채운 삼각 화살촉을 쓴다.
     private var resultArrowView: some View {
         HStack(spacing: 0) {
-            ZStack(alignment: .top) {
-                Rectangle().fill(lineColor).frame(width: 0.5, height: 12).frame(width: 14, alignment: .center)
-                Image(systemName: "chevron.compact.down")
-                    .font(.system(size: 8, weight: .thin)).foregroundStyle(lineColor)
-                    .frame(width: 14, alignment: .center).padding(.top, 10)
+            VStack(spacing: 0) {
+                Rectangle().fill(lineColor).frame(width: 0.5, height: 11)
+                Image(systemName: "arrowtriangle.down.fill")
+                    .font(.system(size: 6))
+                    .foregroundStyle(lineColor)
             }
-            .frame(width: 14, height: 18)
+            .frame(width: 14, height: 18, alignment: .top)
             Spacer()
         }
     }
 
+    /// 사슬의 결과 — 페이스. 비교 막대를 두지 않는다:
+    /// 속도는 케이던스 × 보폭이라 위 두 막대가 범위 안이면 페이스도 자동으로 범위 안이다(중복).
+    /// 경사·기온은 상단 평지 환산과 기온 배지가 따로 담당한다.
     private func resultNodeView(label: String, value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.62))
@@ -1252,7 +1272,7 @@ struct RunFormCardView: View {
     private var formInsightSection: some View {
         let items = formInsights
         if !items.isEmpty {
-            VStack(alignment: .leading, spacing: compact ? 7 : 10) {
+            VStack(alignment: .leading, spacing: compact ? 5 : 10) {
                 ForEach(items) { item in
                     HStack(alignment: .top, spacing: 8) {
                         Text(item.badgeText)
@@ -1288,7 +1308,7 @@ struct RunFormCardView: View {
         let hasBottomRow = slS  != nil || voS  != nil
 
         if hasTopRow || hasBottomRow {
-            VStack(alignment: .leading, spacing: compact ? 7 : 10) {
+            VStack(alignment: .leading, spacing: compact ? 5 : 10) {
                 // Row 1: 판정 지표
                 if hasTopRow {
                     HStack(alignment: .top, spacing: 10) {
