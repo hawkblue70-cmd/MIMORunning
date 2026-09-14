@@ -4217,9 +4217,10 @@ private struct PerformanceInsightCard: View {
     #endif
 
     /// 막대 라벨 — 색은 `WorkoutTypeColor` 한 곳에서 가져온다.
-    /// 훈련 배분 표시 순서 — 고정. 0회인 유형도 이 자리에 그대로 둔다("인터벌 0회"도 배분 정보다).
+    /// 훈련 배분 표시 순서 — 고정(사용자 지정). 0회인 유형도 이 자리에 그대로 둔다("인터벌 0회"도 배분 정보다).
+    /// 템포 → 빌드업 → 거리주 → 이지 → 일반 → 롱런 → LSD → 인터벌 → 대회.
     private static let distributionOrder: [WorkoutType] =
-        [.interval, .tempo, .buildUp, .distanceRun, .lsd, .longRun, .easy, .race, .general]
+        [.tempo, .buildUp, .distanceRun, .easy, .general, .longRun, .lsd, .interval, .race]
 
     private func displayBucket(for type: WorkoutType) -> (label: String, color: Color) {
         let L = AppLanguage.shared
