@@ -2791,6 +2791,34 @@ private struct PerformanceInsightCard: View {
         let group: ScatterGroup
     }
 
+    /// "평소 범위" 띠 — 디자인 스페이스(페이스 × 거리 → 심박 곡면)를 오늘 거리에서 자른 단면.
+    /// 거리 매칭된 과거·최근 점으로 페이스 → 심박 직선을 맞추고, 잔차 표준편차 한 배를 위아래 띠로 둔다.
+    private struct HRBand {
+        let intercept: Double
+        let slope: Double
+        let sd: Double
+        func expected(_ pace: Double) -> Double { intercept + slope * pace }
+    }
+
+    /// 점이 6개 미만이면 nil. 페이스 폭이 20초 미만이면 기울기를 믿을 수 없어 평균 ± SD의 수평 띠로 물러난다.
+    private func expectedHRBand(from pts: [ScatterPt]) -> HRBand? {
+        guard pts.count >= 6 else { return nil }
+        let n  = Double(pts.count)
+        let xs = pts.map(\.pace), ys = pts.map(\.hr)
+        let xm = xs.reduce(0, +) / n, ym = ys.reduce(0, +) / n
+        let sxx = xs.reduce(0) { $0 + ($1 - xm) * ($1 - xm) }
+        let paceSpan = (xs.max() ?? 0) - (xs.min() ?? 0)
+        if paceSpan < 20 || sxx < 1 {
+            let sd = (ys.reduce(0) { $0 + ($1 - ym) * ($1 - ym) } / max(1, n - 1)).squareRoot()
+            return HRBand(intercept: ym, slope: 0, sd: max(1, sd))
+        }
+        let sxy = zip(xs, ys).reduce(0) { $0 + ($1.0 - xm) * ($1.1 - ym) }
+        let b = sxy / sxx
+        let a = ym - b * xm
+        let rss = zip(xs, ys).reduce(0) { $0 + pow($1.1 - (a + b * $1.0), 2) }
+        return HRBand(intercept: a, slope: b, sd: max(1, (rss / max(1, n - 2)).squareRoot()))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 5 : 8) {
             heroSection
@@ -2978,6 +3006,8 @@ private struct PerformanceInsightCard: View {
         let pastPts   = data.filter { $0.group == .past }
         let recentPts = data.filter { $0.group == .recent }
         let todayPts  = data.filter { $0.group == .today }
+        // 오늘을 뺀 점으로 띠를 만든다 — 오늘이 자기 기준에 섞이면 판정이 무뎌진다
+        let band = expectedHRBand(from: pastPts + recentPts)
 
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 0) {
@@ -3027,6 +3057,27 @@ private struct PerformanceInsightCard: View {
                 yAxis.move(to: CGPoint(x: 0, y: topPad))
                 yAxis.addLine(to: CGPoint(x: 0, y: topPad + chartH))
                 ctx.stroke(yAxis, with: .color(.white.opacity(0.35)), style: StrokeStyle(lineWidth: 0.8))
+
+                // 평소 범위 띠 — 점·화살표보다 뒤에, 축 안쪽으로만 (SD가 크면 축 밖으로 나가므로 클립)
+                if let band {
+                    ctx.drawLayer { layer in
+                        layer.clip(to: Path(CGRect(x: 0, y: topPad, width: chartW, height: chartH)))
+                        let xL = cx(rawPMax), xR = cx(rawPMin)          // x축이 뒤집혀 있다: 느림 왼쪽 · 빠름 오른쪽
+                        let eL = band.expected(rawPMax), eR = band.expected(rawPMin)
+                        var fill = Path()
+                        fill.move(to:    CGPoint(x: xL, y: cy(eL + band.sd)))
+                        fill.addLine(to: CGPoint(x: xR, y: cy(eR + band.sd)))
+                        fill.addLine(to: CGPoint(x: xR, y: cy(eR - band.sd)))
+                        fill.addLine(to: CGPoint(x: xL, y: cy(eL - band.sd)))
+                        fill.closeSubpath()
+                        layer.fill(fill, with: .color(.white.opacity(0.07)))
+                        var mid = Path()
+                        mid.move(to:    CGPoint(x: xL, y: cy(eL)))
+                        mid.addLine(to: CGPoint(x: xR, y: cy(eR)))
+                        layer.stroke(mid, with: .color(.white.opacity(0.28)),
+                                     style: StrokeStyle(lineWidth: 0.8, dash: [2, 2]))
+                    }
+                }
 
                 // Arrow: past centroid → recent centroid
                 if pastPts.count >= 3 && recentPts.count >= 3 {
@@ -3134,6 +3185,10 @@ private struct PerformanceInsightCard: View {
                     + Text(" \(L.s("최근", "Recent"))   ").foregroundStyle(legendLabel)
                     + Text("●").foregroundStyle(ScatterStyle.today)
                     + Text(" \(L.s("오늘", "Today"))").foregroundStyle(legendLabel)
+                if band != nil {
+                    t = t + Text("   ▬").foregroundStyle(Color.white.opacity(0.30))
+                        + Text(" \(L.s("평소 범위", "Typical"))").foregroundStyle(legendLabel)
+                }
                 if scatterIsHeatAdjusted {
                     t = t + Text("   \(L.s("15°C 기준", "at 15°C"))").foregroundStyle(Color.white.opacity(0.50))
                 }
