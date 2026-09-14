@@ -149,8 +149,9 @@ struct MRBacktestView: View {
                         .padding(.top, 2)
 
                     ForEach(unmatchedArchives, id: \.raceDate) { arch in
+                        let hasDetail = mrArchiveHasDetail(arch.markdown)
                         Button {
-                            selectedArchive = arch
+                            if hasDetail { selectedArchive = arch }
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
@@ -178,10 +179,12 @@ struct MRBacktestView: View {
                                         .font(.system(size: 12))
                                         .foregroundStyle(Color.mrInk3)
                                 }
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(Color.mrInk3)
-                                    .padding(.leading, 4)
+                                if hasDetail {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color.mrInk3)
+                                        .padding(.leading, 4)
+                                }
                             }
                         }
                         .buttonStyle(.plain)
@@ -273,8 +276,8 @@ struct MRBacktestRowView: View {
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(errColor)
                 }
-                // 아카이브 있으면 꺾쇠
-                if archive != nil {
+                // 상세에 보여줄 내용(주차별 이행표)이 있을 때만 꺾쇠
+                if let arch = archive, mrArchiveHasDetail(arch.markdown) {
                     Button(action: onTapArchive ?? {}) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12, weight: .semibold))

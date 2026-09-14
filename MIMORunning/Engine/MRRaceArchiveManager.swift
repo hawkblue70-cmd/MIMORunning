@@ -109,7 +109,7 @@ func mrBuildArchiveMarkdown(
     }
 
     if !pastWeeks.isEmpty {
-        md += "## 주차별 계획과 이행\n\n"
+        md += mrArchiveWeeklySectionHeader + "\n\n"
         md += "  주   날짜    단계          롱런(계획/실제)   주간(계획/실제)\n"
 
         var hitBoth = 0, hitOne = 0, hitNone = 0, over = 0
@@ -147,6 +147,16 @@ func mrBuildArchiveMarkdown(
 
     md += appendMeta(snapshot: snapshot, actualMin: actualMin)
     return md
+}
+
+/// 주차별 이행표 섹션 머리말. 상세를 열어 볼 가치가 있는지 판정할 때도 이 값을 쓴다.
+let mrArchiveWeeklySectionHeader = "## 주차별 계획과 이행"
+
+/// 상세 화면을 열 만한 내용이 있는가.
+/// 주차별 이행표가 없으면 상세에는 실제·예측만 남는데, 그 둘은 목록 행에 이미 있다.
+/// (소급 재구성 시 계획 주차를 만들지 못한 아카이브가 여기 해당)
+func mrArchiveHasDetail(_ markdown: String) -> Bool {
+    markdown.contains(mrArchiveWeeklySectionHeader)
 }
 
 /// 화면에 보여줄 본문 — 끝에 붙은 MIMO-META 주석 블록을 떼어낸다.

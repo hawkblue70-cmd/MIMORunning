@@ -61,3 +61,67 @@ struct ArchiveDisplayTextTests {
         #expect(!mrArchiveDisplayText(md).contains("MIMO-META"))
     }
 }
+
+/// 상세 화면을 열 가치가 있는지 — 주차별 이행표 유무로 판정.
+@Suite("아카이브 상세 진입 가능 여부")
+struct ArchiveHasDetailTests {
+
+    @Test func noWeeklyTableMeansNothingToShow() {
+        // 소급 재구성에서 계획 주차를 못 만든 경우 — 실제·예측은 목록 행에 이미 있다
+        let md = """
+        > 이 계획은 나중에 소급 재구성한 것입니다.
+
+        # 2025 서울하프마라톤 · 2025-04-27
+
+        실제  53:46
+        계획 시작 시점 예측  1:02:47 (2026-08-06)
+
+        <!-- MIMO-META
+        actualMin: 53.77
+        -->
+        """
+        #expect(!mrArchiveHasDetail(md))
+    }
+
+    @Test func weeklyTablePresentMeansOpenable() {
+        let md = """
+        # 대회 · 2025-04-27
+
+        실제  53:46
+
+        \(mrArchiveWeeklySectionHeader)
+
+          주   날짜    단계          롱런(계획/실제)   주간(계획/실제)
+        ●  1  01/06  늘리기      12.0 / 13.2       45 / 48
+        """
+        #expect(mrArchiveHasDetail(md))
+    }
+
+    @Test func builderOutputWithWeeksIsOpenable() {
+        let cal = Calendar.current
+        let raceDate = cal.date(from: DateComponents(year: 2025, month: 4, day: 27))!
+        let weeks = (0..<4).map { i in
+            MRPlanWeekSummary(idx: i + 1,
+                              monday: cal.date(byAdding: .weekOfYear, value: -(5 - i), to: raceDate)!,
+                              phase: "늘리기", longRunKm: 12 + Double(i), weeklyKm: 40)
+        }
+        let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
+        let weeksJSON = String(data: try! enc.encode(weeks), encoding: .utf8)!
+
+        let snap = RacePlanSnapshot(raceDate: raceDate, raceName: "대회", distanceM: 21097.5,
+                                    projectedFinalMin: 118, projectedNowMin: 120, goalMin: 0,
+                                    weeksJSON: weeksJSON, metaJSON: "")
+        let md = mrBuildArchiveMarkdown(snapshot: snap, actualMin: 117.88,
+                                        preRaceProjectedMin: nil, runs: [])
+        #expect(mrArchiveHasDetail(md))
+    }
+
+    @Test func builderOutputWithoutWeeksIsNotOpenable() {
+        let snap = RacePlanSnapshot(raceDate: Date(), raceName: "대회", distanceM: 21097.5,
+                                    projectedFinalMin: 118, projectedNowMin: 120, goalMin: 0,
+                                    weeksJSON: "", metaJSON: "")
+        let md = mrBuildArchiveMarkdown(snapshot: snap, actualMin: 117.88,
+                                        preRaceProjectedMin: nil, runs: [])
+        #expect(!mrArchiveHasDetail(md))
+    }
+}
