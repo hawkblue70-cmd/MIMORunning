@@ -3184,7 +3184,7 @@ private struct PerformanceInsightCard: View {
             let legendLabel = Color.white.opacity(0.70)
             let legend: Text = {
                 var t = Text("●").foregroundStyle(ScatterStyle.past)
-                    + Text(" \(L.s("8주 전", "8w ago"))   ").foregroundStyle(legendLabel)
+                    + Text(" \(L.s("4~8주 전", "4–8w ago"))   ").foregroundStyle(legendLabel)   // 과거 무리 = 4~8주 전 · 최근 = 4주
                     + Text("●").foregroundStyle(ScatterStyle.recent)
                     + Text(" \(L.s("최근", "Recent"))   ").foregroundStyle(legendLabel)
                     + Text("●").foregroundStyle(ScatterStyle.today)
