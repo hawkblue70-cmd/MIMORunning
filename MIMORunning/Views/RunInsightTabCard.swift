@@ -3119,29 +3119,26 @@ private struct PerformanceInsightCard: View {
             }
             .frame(height: 110)
 
-            // 범례
-            HStack(spacing: 0) {
-                Spacer()
-                HStack(spacing: 12) {
-                    HStack(spacing: 4) {
-                        Circle().fill(ScatterStyle.past).frame(width: 6, height: 6)
-                        Text(L.s("8주 전", "8w ago")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
-                    }
-                    HStack(spacing: 4) {
-                        Circle().fill(ScatterStyle.recent).frame(width: 6, height: 6)
-                        Text(L.s("최근", "Recent")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
-                    }
-                    HStack(spacing: 4) {
-                        Circle().fill(ScatterStyle.today).frame(width: 6, height: 6)
-                        Text(L.s("오늘", "Today")).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70))
-                    }
-                    if scatterIsHeatAdjusted {
-                        Text(L.s("15°C 기준", "at 15°C"))
-                            .font(.system(size: 8)).foregroundStyle(.white.opacity(0.50))
-                    }
+            // 범례 — 한 줄 고정. 반폭 열에서 15°C 표기까지 붙으면 폭이 빠듯해
+            // 항목별 뷰 대신 Text 하나로 합쳐, 모자라면 글자를 줄이고(≥0.75) 절대 자르지 않는다.
+            let legendLabel = Color.white.opacity(0.70)
+            let legend: Text = {
+                var t = Text("●").foregroundStyle(ScatterStyle.past)
+                    + Text(" \(L.s("8주 전", "8w ago"))   ").foregroundStyle(legendLabel)
+                    + Text("●").foregroundStyle(ScatterStyle.recent)
+                    + Text(" \(L.s("최근", "Recent"))   ").foregroundStyle(legendLabel)
+                    + Text("●").foregroundStyle(ScatterStyle.today)
+                    + Text(" \(L.s("오늘", "Today"))").foregroundStyle(legendLabel)
+                if scatterIsHeatAdjusted {
+                    t = t + Text("   \(L.s("15°C 기준", "at 15°C"))").foregroundStyle(Color.white.opacity(0.50))
                 }
-                Spacer()
-            }
+                return t
+            }()
+            legend
+                .font(.system(size: 8))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -3822,14 +3819,12 @@ private struct PerformanceInsightCard: View {
             let known = runs.filter { typeFor($0) != nil }
             guard known.count >= 8 else { return nil }
 
-            var groups: [String: (count: Int, color: Color)] = [:]
+            var counts: [WorkoutType: Int] = [:]
             var todayBucket: String? = nil
             for run in known {
                 guard let type = typeFor(run) else { continue }
-                let b = displayBucket(for: type)
-                if run.id == activity.id { todayBucket = b.label }
-                if let ex = groups[b.label] { groups[b.label] = (ex.count + 1, ex.color) }
-                else { groups[b.label] = (1, b.color) }
+                counts[type, default: 0] += 1
+                if run.id == activity.id { todayBucket = displayBucket(for: type).label }
             }
 
             #if DEBUG
@@ -3845,9 +3840,11 @@ private struct PerformanceInsightCard: View {
             }
             #endif
 
-            guard !groups.isEmpty else { return nil }
-            let items = groups.map { TrainingDistItem(label: $0.key, count: $0.value.count, color: $0.value.color) }
-                .sorted { $0.count > $1.count }
+            // 모든 유형을 고정 순서로 — 빠진 유형이 없어야 "이 유형은 안 했다"가 읽힌다
+            let items = Self.distributionOrder.map { t -> TrainingDistItem in
+                let b = displayBucket(for: t)
+                return TrainingDistItem(label: b.label, count: counts[t] ?? 0, color: b.color)
+            }
             return (items, runs.count, todayBucket)
         }
 
@@ -4048,6 +4045,10 @@ private struct PerformanceInsightCard: View {
     #endif
 
     /// 막대 라벨 — 색은 `WorkoutTypeColor` 한 곳에서 가져온다.
+    /// 훈련 배분 표시 순서 — 고정. 0회인 유형도 이 자리에 그대로 둔다("인터벌 0회"도 배분 정보다).
+    private static let distributionOrder: [WorkoutType] =
+        [.interval, .tempo, .buildUp, .distanceRun, .lsd, .longRun, .easy, .race, .general]
+
     private func displayBucket(for type: WorkoutType) -> (label: String, color: Color) {
         let L = AppLanguage.shared
         let label: String = switch type {
@@ -4082,10 +4083,12 @@ private struct PerformanceInsightCard: View {
             .frame(maxWidth: .infinity, alignment: .center)
             ForEach(items, id: \.label) { item in
                 let isToday = item.label == todayBucket
+                let isEmpty = item.count == 0
                 HStack(spacing: 6) {
                     HStack(spacing: 2) {
                         Text(item.label)
-                            .font(.system(size: 8)).foregroundStyle(isToday ? .white : IC.label)
+                            .font(.system(size: 8))
+                            .foregroundStyle(isToday ? .white : IC.label.opacity(isEmpty ? 0.55 : 1))
                             .lineLimit(1).minimumScaleFactor(0.8)
                         if isToday {
                             Text(L.s("(오늘)", "(today)"))
@@ -4097,15 +4100,17 @@ private struct PerformanceInsightCard: View {
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: 2.5)
                                 .fill(.white.opacity(0.06))
-                            RoundedRectangle(cornerRadius: 2.5)
-                                .fill(item.color.opacity(isToday ? 1.0 : 0.85))
-                                .frame(width: max(4, geo.size.width * CGFloat(item.count) / CGFloat(maxCount)))
+                            if !isEmpty {
+                                RoundedRectangle(cornerRadius: 2.5)
+                                    .fill(item.color.opacity(isToday ? 1.0 : 0.85))
+                                    .frame(width: max(4, geo.size.width * CGFloat(item.count) / CGFloat(maxCount)))
+                            }
                         }
                     }
                     .frame(height: 8)
                     Text("\(item.count)")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(item.color)
+                        .foregroundStyle(isEmpty ? IC.label.opacity(0.55) : item.color)
                         .frame(width: 14, alignment: .trailing)
                 }
             }
