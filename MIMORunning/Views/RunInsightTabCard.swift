@@ -2817,6 +2817,11 @@ private struct PerformanceInsightCard: View {
                     }
                 }
             }
+            // 거리주 심박 효율 — 러닝 안의 전·후반 비교라 비교 이력이 없어도(산점도 없어도) 그린다
+            if let dc = aerobicDecouplingPct {
+                divider
+                decouplingRow(dc)
+            }
             if let intensDist = intensityDistData {
                 divider
                 intensityDistSection(data: intensDist)
@@ -3322,6 +3327,59 @@ private struct PerformanceInsightCard: View {
     private var vo2Info: RunInsightEngine.VO2FitnessInfo? {
         guard let vo2 = detail?.vo2Max, let a = age else { return nil }
         return RunInsightEngine.vo2FitnessInfo(vo2: vo2, age: a, isMale: isMale)
+    }
+
+    // MARK: - 유산소 디커플링 (Pa:HR)
+
+    /// 디커플링을 재는 러닝 — 10km 이상 또는 계획된 롱런 유형. 페이스가 설계상 바뀌는 인터벌·빌드업은 제외.
+    private var isDecouplingApplicable: Bool {
+        let wt = workoutTypeFn?(activity.id) ?? detail?.workoutType ?? .general
+        if wt == .interval || wt == .buildUp { return false }
+        return activity.distance >= 10_000 || RunSummary.plannedLongRunTypes.contains(wt)
+    }
+
+    /// 전반·후반의 효율(속도 ÷ 심박) 차이(%). 양수 = 후반에 페이스 대비 심박이 올랐다(드리프트).
+    /// 1km 스플릿 기준, 심박 있는 온전한 스플릿이 6개 이상(반쪽 3km)일 때만. 5% 안이면 유산소 기반이 잘 잡힌 것으로 본다.
+    private var aerobicDecouplingPct: Double? {
+        guard isDecouplingApplicable, let splits = detail?.splits else { return nil }
+        let full = splits.filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
+        guard full.count >= 6 else { return nil }
+        let half = full.count / 2
+        func efficiency(_ part: ArraySlice<SplitData>) -> Double? {
+            let dist  = part.reduce(0.0) { $0 + $1.distanceM }
+            let dur   = part.reduce(0.0) { $0 + $1.duration }
+            let hrSum = part.reduce(0.0) { $0 + Double($1.avgHeartRate ?? 0) * $1.duration }   // 시간 가중
+            guard dur > 0, hrSum > 0 else { return nil }
+            return (dist / dur) / (hrSum / dur)
+        }
+        guard let e1 = efficiency(full[..<half]), let e2 = efficiency(full[half...]), e1 > 0 else { return nil }
+        return (e1 - e2) / e1 * 100
+    }
+
+    @ViewBuilder
+    private func decouplingRow(_ pct: Double) -> some View {
+        let L = AppLanguage.shared
+        let n = Int(pct.rounded())
+        let valueText = (n >= 0 ? "+" : "−") + "\(abs(n))%"
+        let (caption, color): (String, Color) = {
+            if pct <= 5 {
+                return (L.s("후반까지 페이스 대비 심박을 지켰어요", "HR held steady against pace through the second half"), IC.green)
+            } else if pct <= 10 {
+                return (L.s("후반에 페이스 대비 심박이 조금 올랐어요", "HR drifted up a little in the second half"), Color.white.opacity(0.85))
+            } else {
+                return (L.s("후반에 페이스 대비 심박이 크게 올랐어요 · 이 거리는 아직 부담", "HR drifted a lot in the second half — this distance is still a stretch"), Theme.caution)
+            }
+        }()
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(L.s("디커플링", "Decoupling"))
+                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+            Text(valueText)
+                .font(.system(size: 10, weight: .semibold)).foregroundStyle(color)
+            Text(caption)
+                .font(.system(size: 8.5)).foregroundStyle(color.opacity(0.9))
+                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
     }
 
     private var paceConsistencySec: Int? {
