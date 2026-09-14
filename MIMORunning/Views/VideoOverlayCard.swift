@@ -71,7 +71,7 @@ struct VideoOverlayCard: View {
 
                 // ── 총평(로고 아래, 비디오 세이프존 안) — §5.8: scale만 다르고 컴포넌트는 하나 ──
                 if !summaryLines.isEmpty {
-                    RunSummaryLinesView(lines: summaryLines, scale: scale * 0.7, expandAll: true)
+                    RunSummaryLinesView(lines: summaryLines, scale: scale * 0.7, expandAll: true, fontBoost: scale)
                         .padding(.top, 8 * scale)
                 }
 

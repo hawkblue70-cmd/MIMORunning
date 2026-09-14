@@ -117,7 +117,7 @@ struct AthleticCard: View {
 
                 // ── 총평(로고 아래) — §5.8: scale만 다르고 컴포넌트는 하나 ──
                 if !summaryLines.isEmpty {
-                    RunSummaryLinesView(lines: summaryLines, scale: 0.7, expandAll: true)
+                    RunSummaryLinesView(lines: summaryLines, scale: 0.7, expandAll: true, fontBoost: 1)
                         .padding(.horizontal, 14)
                         .padding(.top, 8)
                 }
