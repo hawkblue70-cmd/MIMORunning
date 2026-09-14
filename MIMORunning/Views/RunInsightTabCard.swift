@@ -3252,6 +3252,7 @@ private struct PerformanceInsightCard: View {
             $0.type == .running && $0.id != activity.id &&
             $0.date >= cutoff && $0.date < activity.date &&
             $0.avgHeartRate != nil &&
+            isDistanceComparable($0) &&
             abs(($0.paceSecPerKm ?? .infinity) - curPace) <= 15.0
         }.sorted { $0.date < $1.date }
         guard similar.count >= 2 else { return [] }
@@ -3262,7 +3263,16 @@ private struct PerformanceInsightCard: View {
         return pts
     }
 
-    /// 산점도에 실제로 그려지는 후보 — running · 오늘 제외 · 8주 창 · ≥3km · 심박+페이스 있음 · interval/buildUp 제외 · 최근순 최대 39개.
+    /// 오늘 거리와 비교 가능한 범위 — 0.5~2배. 폼 카드 기준선과 같은 조건.
+    /// 같은 페이스라도 오래 뛰면 심박이 서서히 오르므로(드리프트) 거리를 맞추지 않으면
+    /// 장거리 러닝이 짧은 러닝보다 늘 위에 찍혀 효율이 나빠 보인다.
+    private func isDistanceComparable(_ other: Activity) -> Bool {
+        guard other.distance > 0, activity.distance > 0 else { return false }
+        let ratio = activity.distance / other.distance
+        return ratio >= 0.5 && ratio <= 2.0
+    }
+
+    /// 산점도에 실제로 그려지는 후보 — running · 오늘 제외 · 8주 창 · ≥3km · 거리 0.5~2배 · 심박+페이스 있음 · interval/buildUp 제외 · 최근순 최대 39개.
     private var scatterEligible: [Activity] {
         let cal = Calendar.current
         let cutoff8w = cal.date(byAdding: .weekOfYear, value: -8, to: activity.date) ?? .distantPast
@@ -3273,6 +3283,7 @@ private struct PerformanceInsightCard: View {
                     $0.id != activity.id &&
                     $0.date >= cutoff8w && $0.date < activity.date &&
                     $0.distance / 1000 >= 3 &&
+                    isDistanceComparable($0) &&
                     $0.avgHeartRate != nil &&
                     $0.paceSecPerKm != nil
                 }
