@@ -3432,6 +3432,8 @@ private struct PerformanceInsightCard: View {
 
     /// 구간별 뜻과 근거 — 숫자는 모두 보여주고, 문장만 유형·기온으로 갈라 읽는다.
     /// - ≤5%(음수 포함): 한 시간 안팎의 정상 드리프트 — 프릴(Friel) 코칭 경험칙. 검증된 진단 경계는 아니다.
+    ///   출처: Friel, J. "Aerobic Endurance and Decoupling", TrainingPeaks Coach Blog, 2009.
+    ///   https://www.trainingpeaks.com/coach-blog/aerobic-endurance-and-decoupling/
     ///   유산소 강도 러닝(롱런·LSD·이지·일반)에서만 "이 거리를 유산소로 감당" 판정을 붙인다.
     /// - 5~10%: 기반 부족과 더위·수분·초반 과속이 겹치는 모호 구간 — 기온(≥25°C)으로 기울여 읽는다.
     /// - >10%: 더위·탈수 조건에서 문헌이 보고하는 한 시간 드리프트 크기 안팎(Coyle & González-Alonso 2001,
@@ -3506,6 +3508,9 @@ private struct PerformanceInsightCard: View {
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 Text(valueText)
                     .font(.system(size: 10, weight: .semibold)).foregroundStyle(reading.color)
+                // 출처 — 5% 경험칙은 Friel, J. "Aerobic Endurance and Decoupling" (TrainingPeaks, 2009)
+                Text("(Friel, J. 2009)")
+                    .font(.system(size: 8, weight: .regular)).foregroundStyle(.white.opacity(0.45))
                 Spacer(minLength: 0)
             }
             GeometryReader { geo in
