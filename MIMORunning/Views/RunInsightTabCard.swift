@@ -2827,16 +2827,22 @@ private struct PerformanceInsightCard: View {
             let scatter = scatterData
             let dist = trainingDistData
             let intensDist = intensityDistData
+            let decoupling = aerobicDecouplingPct
             let showScatter = scatter.count >= 6
-            // 행 1 — 심박으로 묶는다: 심박 효율(페이스 대비) | 강도 분포(존 체류 시간). 한쪽만 있으면 그쪽을 전체 폭으로.
-            if showScatter || intensDist != nil {
+            // 왼쪽 열 = 심박 효율: 과거 대비(산점도) + 러닝 안(디커플링). 산점도가 없어도 디커플링은 그린다.
+            let showEfficiency = showScatter || decoupling != nil
+            // 행 1 — 심박으로 묶는다: 심박 효율 | 강도 분포(존 체류 시간). 한쪽만 있으면 그쪽을 전체 폭으로.
+            if showEfficiency || intensDist != nil {
                 divider
                 HStack(alignment: .top, spacing: 10) {
                     if showScatter {
                         hrScatterSection(data: scatter)
                             .frame(maxWidth: .infinity)
+                    } else if let dc = decoupling {
+                        decouplingBlock(dc)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if showScatter, intensDist != nil {
+                    if showEfficiency, intensDist != nil {
                         Rectangle().fill(.white.opacity(0.08))
                             .frame(width: 0.5)
                             .padding(.vertical, 2)
@@ -2846,11 +2852,6 @@ private struct PerformanceInsightCard: View {
                             .frame(maxWidth: .infinity)
                     }
                 }
-            }
-            // 거리주 심박 효율 — 러닝 안의 전·후반 비교라 비교 이력이 없어도(산점도 없어도) 그린다
-            if let dc = aerobicDecouplingPct {
-                divider
-                decouplingRow(dc)
             }
             // 행 2 — 훈련 구조로 묶는다: 러닝 유형 배분(4주) | 강도 부하(14일)
             let showDist = dist != nil || isBackfilling || isClassifying
@@ -3203,6 +3204,11 @@ private struct PerformanceInsightCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, alignment: .center)
+            // 러닝 안의 심박 효율 — 같은 열에 둔다(과거 대비와 오늘 안의 비교가 한 자리에)
+            if let dc = aerobicDecouplingPct {
+                decouplingBlock(dc)
+                    .padding(.top, 3)
+            }
         }
     }
 
@@ -3435,7 +3441,8 @@ private struct PerformanceInsightCard: View {
     /// - >10%: 더위·탈수 조건에서 문헌이 보고하는 한 시간 드리프트 크기 안팎(Coyle & González-Alonso 2001,
     ///   Wingo 2005, Lafrenz 2008). 거친 기준점이지 검증된 경계는 아니다.
     /// - 빌드업: 후반 페이스를 올리는 훈련이라 심박이 따라 오르는 게 계획 — 판정 없이 그 사실만, 색도 중립.
-    /// - 거리주·템포·대회: 강도가 높아 5% 규칙의 전제(유산소 강도)가 안 맞는다 — "유산소 기반" 문구 없이 사실만.
+    /// - 거리주·템포·대회: 강도가 높아 5% 규칙의 전제(유산소 강도)가 안 맞는다 — "유산소 기반" 대신
+    ///   "이 페이스로 이 거리를 버틸 힘"으로 읽는다(드리프트 없이 그 강도를 끝까지 유지했다는 뜻).
     private func decouplingReading(_ pct: Double) -> (text: String, color: Color) {
         let L = AppLanguage.shared
         let wt = decouplingWorkoutType
@@ -3450,8 +3457,8 @@ private struct PerformanceInsightCard: View {
             return aerobic
                 ? (L.s("후반까지 페이스 대비 심박을 지켰어요. 이 거리를 유산소로 감당했어요.",
                        "HR held against pace to the end — you covered this distance aerobically."), IC.green)
-                : (L.s("후반까지 페이스 대비 심박을 지켰어요.",
-                       "HR held against pace through the second half."), IC.green)
+                : (L.s("후반까지 페이스 대비 심박을 지켰어요. 이 페이스로 이 거리를 버틸 힘이 있어요.",
+                       "HR held against pace to the end — you can sustain this pace for this distance."), IC.green)
         }
         if pct <= 10 {
             return hot
@@ -3467,21 +3474,23 @@ private struct PerformanceInsightCard: View {
                    "HR drifted a lot — this may still be a stretch, or the start was too fast."), Theme.caution)
     }
 
+    /// 심박 효율 열(반폭) 안에 들어가는 블록 — 라벨·값 한 줄, 문장은 그 아래 열 폭으로(최대 3줄).
     @ViewBuilder
-    private func decouplingRow(_ pct: Double) -> some View {
+    private func decouplingBlock(_ pct: Double) -> some View {
         let L = AppLanguage.shared
         let n = Int(pct.rounded())
         let valueText = (n >= 0 ? "+" : "−") + "\(abs(n))%"
         let reading = decouplingReading(pct)
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(L.s("디커플링", "Decoupling"))
-                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
-            Text(valueText)
-                .font(.system(size: 10, weight: .semibold)).foregroundStyle(reading.color)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(L.s("디커플링", "Decoupling"))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                Text(valueText)
+                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(reading.color)
+            }
             Text(reading.text)
                 .font(.system(size: 8.5)).foregroundStyle(reading.color.opacity(0.9))
-                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
         }
     }
 
