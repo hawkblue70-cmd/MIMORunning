@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 private let mrBtAccent = Color(red: 0.48, green: 0.36, blue: 0.98)
 private let mrBtCard   = Color(red: 0.11, green: 0.11, blue: 0.12)
@@ -29,6 +30,9 @@ struct MRBacktestView: View {
     var archives: [RaceArchive] = []
     @State private var showAll = false
     @State private var selectedArchive: RaceArchive? = nil
+    @State private var archiveToDelete: RaceArchive? = nil
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allSnapshots: [RacePlanSnapshot]
 
     private var scored: [MRBacktestRow] { rows.filter { $0.predictedMin != nil } }
     private var hit: Int { scored.filter(\.inBand).count }
@@ -139,6 +143,11 @@ struct MRBacktestView: View {
                         .foregroundStyle(.white.opacity(0.6))
                         .padding(.top, 20)
 
+                    Text(L.s("길게 눌러 삭제할 수 있습니다", "Long-press to delete"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.mrInk3)
+                        .padding(.top, 2)
+
                     ForEach(unmatchedArchives, id: \.raceDate) { arch in
                         Button {
                             selectedArchive = arch
@@ -177,6 +186,10 @@ struct MRBacktestView: View {
                         }
                         .buttonStyle(.plain)
                         .padding(.top, 10)
+                        .contextMenu {
+                            Button(L.s("이 대회 삭제", "Delete this race"), systemImage: "trash",
+                                   role: .destructive) { archiveToDelete = arch }
+                        }
                     }
                 }
             }
@@ -187,7 +200,36 @@ struct MRBacktestView: View {
             .sheet(item: $selectedArchive) { arch in
                 MRArchiveDetailView(archive: arch)
             }
+            .confirmationDialog(
+                archiveToDelete.map(\.raceName) ?? "",
+                isPresented: Binding(get: { archiveToDelete != nil },
+                                     set: { if !$0 { archiveToDelete = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button(L.s("삭제", "Delete"), role: .destructive) {
+                    if let arch = archiveToDelete { deleteArchive(arch) }
+                    archiveToDelete = nil
+                }
+                Button(L.s("취소", "Cancel"), role: .cancel) { archiveToDelete = nil }
+            } message: {
+                Text(L.s("이 대회 기록을 목록에서 지웁니다. 러닝 기록 자체는 지워지지 않습니다.",
+                         "Removes this race from the list. Your run itself is not deleted."))
+            }
         }
+    }
+
+    /// 아카이브와 그것을 만들어낸 계획 스냅샷을 함께 지운다.
+    /// 스냅샷을 남기면 `createArchivesIfNeeded`가 다음에 같은 아카이브를 다시 만든다.
+    private func deleteArchive(_ arch: RaceArchive) {
+        let cal = Calendar.current
+        allSnapshots
+            .filter { snap in
+                cal.isDate(snap.raceDate, inSameDayAs: arch.raceDate)
+                && abs(snap.distanceM - arch.distanceM) / max(arch.distanceM, 1) <= 0.02
+            }
+            .forEach { modelContext.delete($0) }
+        modelContext.delete(arch)
+        try? modelContext.save()
     }
 }
 

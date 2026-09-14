@@ -8,6 +8,7 @@ struct ContentView: View {
     @Environment(RaceDetector.self) private var raceDetector
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
+    @Query private var allArchives: [RaceArchive]
 
     var body: some View {
         TabView {
@@ -42,8 +43,10 @@ struct ContentView: View {
             await raceDetector.setup(context: modelContext)
             await migrateStoryPhotoThumbnails()
         }
-        .task(id: manager.activities.count) {
-            await revalidateRaceMatchesIfNeeded()
+        // 탭과 무관하게 앱 수준에서 한 번 돈다. 준비 상태가 늦게 바뀌어도
+        // id가 달라지면서 다시 시도한다 (한 탭 안에 두면 그 탭을 안 열면 영영 안 돈다).
+        .task(id: "\(manager.activities.count)-\(raceDetector.isReady)-\(engine.runs.count)") {
+            await runRaceDataMaintenance()
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
@@ -59,13 +62,29 @@ struct ContentView: View {
 
     // MARK: Private helpers
 
+    /// 대회 데이터 정리 — ① 예전 기준으로 자동 확정된 매칭 재검증
+    /// ② 실제 기록을 뒷받침할 러닝이 없는 아카이브 삭제.
+    private func runRaceDataMaintenance() async {
+        await revalidateRaceMatchesIfNeeded()
+
+        guard !engine.runs.isEmpty else { return }
+        let pruned = mrPruneUnsupportedArchives(allArchives, runs: engine.runs, context: modelContext)
+        #if DEBUG
+        print("[아카이브] 검사 \(allArchives.count)건 — 근거 없어 삭제 \(pruned.count)건" +
+              (pruned.isEmpty ? "" : ": \(pruned.map(\.name).joined(separator: ", "))"))
+        #endif
+    }
+
     /// 예전 느슨한 기준으로 자동 확정된 대회 매칭을 현재 게이트로 다시 검사한다.
     /// 대상은 보통 한 자릿수이고 detail은 디스크 캐시를 타므로 HealthKit 재읽기는 사실상 없다.
     /// 아직 활동 목록에 없는 건은 건너뛰고 다음 기회에 다시 시도한다.
     private func revalidateRaceMatchesIfNeeded() async {
-        guard raceDetector.isReady else { return }
+        guard raceDetector.isReady, !manager.activities.isEmpty else { return }
         let pending = raceDetector.idsNeedingRevalidation
-        guard !pending.isEmpty, !manager.activities.isEmpty else { return }
+        #if DEBUG
+        print("[대회매칭] 확정 \(raceDetector.matches.values.filter(\.isConfirmed).count)건 · 재검증 대상 \(pending.count)건")
+        #endif
+        guard !pending.isEmpty else { return }
 
         let byID = Dictionary(manager.activities.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var inputs: [RaceRevalidationInput] = []
