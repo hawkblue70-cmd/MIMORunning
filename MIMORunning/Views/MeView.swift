@@ -322,7 +322,7 @@ struct MeView: View {
             } else {
                 ForEach(plannedRaces) { race in
                     PlannedRaceRow(race: race, locked: isRaceLocked(race)) {
-                        modelContext.delete(race)
+                        deletePlannedRace(race)
                     }
                     .padding(.horizontal, 16)
                 }
@@ -374,6 +374,28 @@ struct MeView: View {
 
     private var racePlanKey: String {
         plannedRaces.map { "\($0.dateString)-\(Int($0.selectedDistanceKm * 1000))" }.joined(separator: "|")
+    }
+
+    /// 사용자가 직접 지운 예정 대회 — 계획 스냅샷도 함께 지운다.
+    /// 스냅샷만 남으면 대회일이 지난 뒤 `createArchivesIfNeeded`가 유령 아카이브를 만든다
+    /// (등록만 해보고 지운 대회가 "기록 없음"으로 성장 탭에 계속 남는 문제).
+    /// 대회일이 지나 `deletePastRaces()`가 자동 정리하는 경우는 이 경로를 타지 않으므로
+    /// 실제로 뛴 대회의 스냅샷은 그대로 보존된다.
+    private func deletePlannedRace(_ race: MyPlannedRace) {
+        if let d = race.raceDate, d >= Calendar.current.startOfDay(for: Date()) {
+            // 키(초 단위 epoch) 대신 같은 날 + 거리 2% 이내로 비교 — 두 날짜의
+            // 시각 성분이 달라도 안전하게 짝지어진다.
+            let cal = Calendar.current
+            let targetKm = race.selectedDistanceKm > 0 ? race.selectedDistanceKm : race.distancesKm.first
+            allSnapshots
+                .filter { snap in
+                    guard cal.isDate(snap.raceDate, inSameDayAs: d) else { return false }
+                    guard let km = targetKm, km > 0 else { return true }
+                    return abs(snap.distanceM - km * 1000) / (km * 1000) <= 0.02
+                }
+                .forEach { modelContext.delete($0) }
+        }
+        modelContext.delete(race)
     }
 
     private func isRaceLocked(_ race: MyPlannedRace) -> Bool {
@@ -648,9 +670,18 @@ struct MeView: View {
     private func createArchivesIfNeeded() async {
         guard case .ready = engine.state else { return }
         let today = Calendar.current.startOfDay(for: Date())
-        let existingArchiveKeys = Set(allArchives.map {
-            mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM)
-        })
+
+        // 예전엔 거리 오차 없이 "그날 가장 가까운 기록"을 대회 결과로 저장했다.
+        // 뒷받침할 러닝이 없는 아카이브를 먼저 지운다 — 아래 루프가 올바르게 다시 만든다.
+        let pruned = mrPruneUnsupportedArchives(allArchives, runs: engine.runs, context: modelContext)
+        #if DEBUG
+        if !pruned.isEmpty { print("[아카이브] 근거 없는 기록 삭제: \(pruned.map(\.name).joined(separator: ", "))") }
+        #endif
+
+        let prunedKeys = Set(pruned.map(\.key))
+        let existingArchiveKeys = Set(allArchives
+            .map { mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM) })
+            .subtracting(prunedKeys)
 
         // 지난 대회가 있는 스냅샷만 대상
         let pastSnapshots = allSnapshots.filter {

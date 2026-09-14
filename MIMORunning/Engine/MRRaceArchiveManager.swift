@@ -161,18 +161,55 @@ private func appendMeta(snapshot: RacePlanSnapshot, actualMin: Double?) -> Strin
 
 // MARK: - 대회일 실제 기록 찾기
 
-/// engine.runs에서 대회일 당일 기록 중 거리가 가장 가까운 워크아웃을 찾는다.
+/// 대회 기록으로 인정할 거리 허용 오차.
+/// GPS 오차·시작선까지의 여유·중간에 끊긴 기록을 감안해 ±10%.
+/// (10K 9.0~11.0 / 하프 19.0~23.2 / 풀 38.0~46.4 km)
+let mrRaceDayDistanceTolerance = 0.10
+
+/// engine.runs에서 대회일 당일 기록 중 목표 거리에 가장 가까운 워크아웃을 찾는다.
+/// 허용 오차 밖이면 nil — 대회에 안 나갔는데 그날 뛴 다른 러닝이 대회 기록으로
+/// 둔갑하는 것을 막는다(예전에는 오차 없이 "가장 가까운 것"을 무조건 골랐다).
 func mrFindRaceDayRun(runs: [MRWorkout], raceDate: Date, distanceM: Double) -> MRWorkout? {
+    let targetKm = distanceM / 1000
+    guard targetKm > 0 else { return nil }
     let cal = Calendar.current
     let candidates = runs.filter {
-        !$0.isInterval &&
-        cal.isDate($0.start, inSameDayAs: raceDate) &&
-        ($0.distanceKm ?? 0) > 0
+        guard !$0.isInterval, cal.isDate($0.start, inSameDayAs: raceDate) else { return false }
+        let km = $0.distanceKm ?? 0
+        guard km > 0 else { return false }
+        return abs(km - targetKm) / targetKm <= mrRaceDayDistanceTolerance
     }
     return candidates.min {
-        abs(($0.distanceKm ?? 0) - distanceM / 1000) <
-        abs(($1.distanceKm ?? 0) - distanceM / 1000)
+        abs(($0.distanceKm ?? 0) - targetKm) < abs(($1.distanceKm ?? 0) - targetKm)
     }
+}
+
+// MARK: - 저장된 아카이브 재검증
+
+/// 이미 저장된 아카이브 중 "실제 기록"을 뒷받침할 러닝이 없는 것을 지운다.
+///
+/// 거리 허용 오차가 없던 시절에는 대회일에 뛴 아무 기록이나 대회 결과로 저장됐다
+/// (대회에 안 나갔는데 그날 조깅만 한 경우, 테스트로 등록했다 지운 대회 등).
+/// 아카이브는 스냅샷에서 다시 만들어지는 파생 데이터이므로, 지우면
+/// `createArchivesIfNeeded`가 올바른 상태(기록 있으면 기록, 없으면 "기록 없음")로
+/// 다시 만든다. 스냅샷까지 사라진 유령 아카이브는 그대로 없어진다.
+///
+/// 소급 재구성(`reconstructed`) 아카이브는 다시 만들어질 경로가 없으므로 건드리지 않는다.
+/// - Returns: 삭제된 아카이브의 (키, 이름)
+@discardableResult
+func mrPruneUnsupportedArchives(_ archives: [RaceArchive],
+                                 runs: [MRWorkout],
+                                 context: ModelContext) -> [(key: String, name: String)] {
+    var removed: [(key: String, name: String)] = []
+    for arch in archives where arch.hasResult && !arch.reconstructed {
+        guard mrFindRaceDayRun(runs: runs,
+                               raceDate: arch.raceDate,
+                               distanceM: arch.distanceM) == nil else { continue }
+        removed.append((mrArchiveKey(raceDate: arch.raceDate, distanceM: arch.distanceM),
+                        arch.raceName))
+        context.delete(arch)
+    }
+    return removed
 }
 
 // MARK: - 스냅샷·아카이브 키
