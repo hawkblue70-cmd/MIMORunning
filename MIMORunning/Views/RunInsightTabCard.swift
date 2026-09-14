@@ -3386,15 +3386,28 @@ private struct PerformanceInsightCard: View {
 
     // MARK: - 유산소 디커플링 (Pa:HR)
 
-    /// 디커플링을 재는 러닝 — 10km 이상 또는 계획된 롱런 유형. 페이스가 설계상 바뀌는 인터벌·빌드업은 제외.
+    /// 거리로 거르는 유형의 하한. GPS가 10km 코스를 9.8~9.9km로 재는 일이 흔해 10km를 고집하면
+    /// 10km 대회 대부분이 빠진다. 사용자 경험값 — 출처 없음.
+    private static let decouplingMinDistanceM: Double = 9_500
+    /// 이 기온 이상이면 후반 심박 상승을 더위 쪽으로 기울여 읽는다. 사용자 경험값 — 출처 없음.
+    private static let decouplingHotTempC: Double = 25
+
+    private var decouplingWorkoutType: WorkoutType {
+        workoutTypeFn?(activity.id) ?? detail?.workoutType ?? .general
+    }
+
+    /// 디커플링을 재는 러닝. 인터벌만 제외 — 회복 구간이 섞여 전·후반 비교가 성립하지 않는다.
+    /// 롱런·LSD·거리주는 항상(분류기가 8km 이상을 보장), 그 외(대회·빌드업·템포·이지·일반)는 9.5km 이상.
     private var isDecouplingApplicable: Bool {
-        let wt = workoutTypeFn?(activity.id) ?? detail?.workoutType ?? .general
-        if wt == .interval || wt == .buildUp { return false }
-        return activity.distance >= 10_000 || RunSummary.plannedLongRunTypes.contains(wt)
+        let wt = decouplingWorkoutType
+        if wt == .interval { return false }
+        if wt == .longRun || wt == .lsd || wt == .distanceRun { return true }
+        return activity.distance >= Self.decouplingMinDistanceM
     }
 
     /// 전반·후반의 효율(속도 ÷ 심박) 차이(%). 양수 = 후반에 페이스 대비 심박이 올랐다(드리프트).
-    /// 1km 스플릿 기준, 심박 있는 온전한 스플릿이 6개 이상(반쪽 3km)일 때만. 5% 안이면 유산소 기반이 잘 잡힌 것으로 본다.
+    /// 비율이라 후반에 페이스를 올리고 심박도 그만큼 오르면 상쇄된다 — 페이스 전략은 1차로 걸러진다.
+    /// 1km 스플릿 기준, 심박 있는 온전한 스플릿이 6개 이상(반쪽 3km)일 때만.
     private var aerobicDecouplingPct: Double? {
         guard isDecouplingApplicable, let splits = detail?.splits else { return nil }
         let full = splits.filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
@@ -3411,27 +3424,58 @@ private struct PerformanceInsightCard: View {
         return (e1 - e2) / e1 * 100
     }
 
+    /// 구간별 뜻과 근거 — 숫자는 모두 보여주고, 문장만 유형·기온으로 갈라 읽는다.
+    /// - ≤5%(음수 포함): 한 시간 안팎의 정상 드리프트 — 프릴(Friel) 코칭 경험칙. 검증된 진단 경계는 아니다.
+    ///   유산소 강도 러닝(롱런·LSD·이지·일반)에서만 "이 거리를 유산소로 감당" 판정을 붙인다.
+    /// - 5~10%: 기반 부족과 더위·수분·초반 과속이 겹치는 모호 구간 — 기온(≥25°C)으로 기울여 읽는다.
+    /// - >10%: 더위·탈수 조건에서 문헌이 보고하는 한 시간 드리프트 크기 안팎(Coyle & González-Alonso 2001,
+    ///   Wingo 2005, Lafrenz 2008). 거친 기준점이지 검증된 경계는 아니다.
+    /// - 빌드업: 후반 페이스를 올리는 훈련이라 심박이 따라 오르는 게 계획 — 판정 없이 그 사실만, 색도 중립.
+    /// - 거리주·템포·대회: 강도가 높아 5% 규칙의 전제(유산소 강도)가 안 맞는다 — "유산소 기반" 문구 없이 사실만.
+    private func decouplingReading(_ pct: Double) -> (text: String, color: Color) {
+        let L = AppLanguage.shared
+        let wt = decouplingWorkoutType
+        let hot = (activity.temperatureC ?? -.infinity) >= Self.decouplingHotTempC
+        let neutral = Color.white.opacity(0.85)
+        if wt == .buildUp {
+            return (L.s("후반 페이스를 올린 만큼 심박이 따라 올랐어요. 빌드업이라 계획대로예요.",
+                        "HR rose with the faster second half — that's the build-up working as planned."), neutral)
+        }
+        let aerobic = wt == .longRun || wt == .lsd || wt == .easy || wt == .general
+        if pct <= 5 {
+            return aerobic
+                ? (L.s("후반까지 페이스 대비 심박을 지켰어요. 이 거리를 유산소로 감당했어요.",
+                       "HR held against pace to the end — you covered this distance aerobically."), IC.green)
+                : (L.s("후반까지 페이스 대비 심박을 지켰어요.",
+                       "HR held against pace through the second half."), IC.green)
+        }
+        if pct <= 10 {
+            return hot
+                ? (L.s("후반에 심박이 올랐지만 더운 날이라 자연스러운 범위예요.",
+                       "HR drifted up, but on a hot day that's within the normal range."), neutral)
+                : (L.s("조건은 좋았는데 후반에 심박이 올랐어요. 이 거리와 강도가 아직 조금 부담일 수 있어요.",
+                       "Conditions were fine but HR drifted up — this distance and effort may still be a bit much."), neutral)
+        }
+        return hot
+            ? (L.s("후반에 심박이 많이 올랐어요. 더위와 수분 부족이 컸을 거예요.",
+                   "HR drifted a lot — heat and fluid loss likely played a big part."), Theme.caution)
+            : (L.s("후반에 심박이 많이 올랐어요. 이 거리와 강도가 아직 버겁거나 초반이 빨랐을 수 있어요.",
+                   "HR drifted a lot — this may still be a stretch, or the start was too fast."), Theme.caution)
+    }
+
     @ViewBuilder
     private func decouplingRow(_ pct: Double) -> some View {
         let L = AppLanguage.shared
         let n = Int(pct.rounded())
         let valueText = (n >= 0 ? "+" : "−") + "\(abs(n))%"
-        let (caption, color): (String, Color) = {
-            if pct <= 5 {
-                return (L.s("후반까지 페이스 대비 심박을 지켰어요", "HR held steady against pace through the second half"), IC.green)
-            } else if pct <= 10 {
-                return (L.s("후반에 페이스 대비 심박이 조금 올랐어요", "HR drifted up a little in the second half"), Color.white.opacity(0.85))
-            } else {
-                return (L.s("후반에 페이스 대비 심박이 크게 올랐어요 · 이 거리는 아직 부담", "HR drifted a lot in the second half — this distance is still a stretch"), Theme.caution)
-            }
-        }()
+        let reading = decouplingReading(pct)
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(L.s("디커플링", "Decoupling"))
                 .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
             Text(valueText)
-                .font(.system(size: 10, weight: .semibold)).foregroundStyle(color)
-            Text(caption)
-                .font(.system(size: 8.5)).foregroundStyle(color.opacity(0.9))
+                .font(.system(size: 10, weight: .semibold)).foregroundStyle(reading.color)
+            Text(reading.text)
+                .font(.system(size: 8.5)).foregroundStyle(reading.color.opacity(0.9))
                 .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
