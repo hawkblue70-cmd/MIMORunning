@@ -21,22 +21,33 @@ struct MRFormTests {
         #expect(result.isEmpty)
     }
 
-    @Test func testFormObservationNeedsTwoAgreeingMetrics() {
+    /// 규칙(fa60426 이후): 관측 지표 2개 이상 · 그중 실증 변화 1개 이상이면 말한다. 실증 0개면 침묵.
+    /// 실증 = (MDC 초과 ‖ 4주+ 연속) ∧ 실질 크기(케이던스 ≥1spm · 지면접촉 ≥3ms · 그 외 항상).
+    @Test func testFormObservationSpeaksWithOneRealMetricAndStaysSilentWithNone() {
         let voMetric  = mrFormMetrics.first { $0.key == "vo" }!
         let cadMetric = mrFormMetrics.first { $0.key == "cadence" }!
+        func shift(_ m: MRFormMetric, delta: Double, weeks: Int) -> MRFormShift {
+            MRFormShift(metric: m, recentMean: 0, baseMean: 0, delta: delta, mdc: 1.0, weeksConsistent: weeks, r2: nil)
+        }
+        let realVo  = shift(voMetric,  delta: 2.0, weeks: 4)   // MDC 초과 + 연속 → 강한 실증
+        let realCad = shift(cadMetric, delta: 2.0, weeks: 4)
+        let weakVo  = shift(voMetric,  delta: 0.5, weeks: 4)   // MDC 미달이지만 4주 연속 → 약한 실증
+        let noneVo  = shift(voMetric,  delta: 0.5, weeks: 2)   // 둘 다 미달 → 실증 아님
+        let noneCad = shift(cadMetric, delta: 0.5, weeks: 2)   // + 실질 크기(1spm)도 미달
 
-        // isReal = abs(delta) > mdc && weeksConsistent >= 4
-        let realVo  = MRFormShift(metric: voMetric,  recentMean: 0, baseMean: 0,
-                                   delta: 2.0, mdc: 1.0, weeksConsistent: 4, r2: nil)
-        let realCad = MRFormShift(metric: cadMetric, recentMean: 0, baseMean: 0,
-                                   delta: 2.0, mdc: 1.0, weeksConsistent: 4, r2: nil)
-        let weakVo  = MRFormShift(metric: voMetric,  recentMean: 0, baseMean: 0,
-                                   delta: 0.5, mdc: 1.0, weeksConsistent: 4, r2: nil)  // delta < mdc → not real
-
-        // 실증 지표 1개뿐 → 문장 없음
-        #expect(mrFormObservation([realVo, weakVo]) == nil)
-        // 실증 지표 2개 (vo↑ & cadence↑) → 문장 있음
+        // 관측 지표 1개뿐 → "달리는 방식" 논거 없음 → 침묵
+        #expect(mrFormObservation([realVo]) == nil)
+        // 관측 2개 · 실증 0개 → 안정 → 침묵
+        #expect(mrFormObservation([noneVo, noneCad]) == nil)
+        // 약한 실증 1개로도 말한다(근거에 [약] 표기)
+        let weak = mrFormObservation([weakVo, noneCad])
+        #expect(weak != nil)
+        #expect(weak?.basis.contains("[약]") == true)
+        // 강한 실증 1개 · 2개
+        #expect(mrFormObservation([realVo, noneVo]) != nil)
         #expect(mrFormObservation([realVo, realCad]) != nil)
+        // 14일 이상 공백이 있으면 추세 판단 불가 → 침묵
+        #expect(mrFormObservation([realVo, realCad], hasRecentGap: true) == nil)
     }
 }
 
