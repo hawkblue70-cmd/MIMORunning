@@ -2829,28 +2829,29 @@ private struct PerformanceInsightCard: View {
             let intensDist = intensityDistData
             let decoupling = aerobicDecouplingPct
             let showScatter = scatter.count >= 6
-            // 왼쪽 열 = 심박 효율: 과거 대비(산점도) + 러닝 안(디커플링). 산점도가 없어도 디커플링은 그린다.
-            let showEfficiency = showScatter || decoupling != nil
-            // 행 1 — 심박으로 묶는다: 심박 효율 | 강도 분포(존 체류 시간). 한쪽만 있으면 그쪽을 전체 폭으로.
-            if showEfficiency || intensDist != nil {
+            // 행 1 — 심박으로 묶는다: [심박 효율(과거 대비) | 강도 분포] 두 열 + 그 아래 디커플링(러닝 안) 띠를 행 전체 폭으로.
+            // 디커플링을 열 안에 두면 왼쪽만 길어져 강도 분포 아래가 빈다. 산점도가 없어도 디커플링은 그린다.
+            if showScatter || intensDist != nil || decoupling != nil {
                 divider
-                HStack(alignment: .top, spacing: 10) {
-                    if showScatter {
-                        hrScatterSection(data: scatter)
-                            .frame(maxWidth: .infinity)
-                    } else if let dc = decoupling {
-                        decouplingBlock(dc)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                if showScatter || intensDist != nil {
+                    HStack(alignment: .top, spacing: 10) {
+                        if showScatter {
+                            hrScatterSection(data: scatter)
+                                .frame(maxWidth: .infinity)
+                        }
+                        if showScatter, intensDist != nil {
+                            Rectangle().fill(.white.opacity(0.08))
+                                .frame(width: 0.5)
+                                .padding(.vertical, 2)
+                        }
+                        if let d = intensDist {
+                            intensityColumnsView(data: d)
+                                .frame(maxWidth: .infinity)
+                        }
                     }
-                    if showEfficiency, intensDist != nil {
-                        Rectangle().fill(.white.opacity(0.08))
-                            .frame(width: 0.5)
-                            .padding(.vertical, 2)
-                    }
-                    if let d = intensDist {
-                        intensityColumnsView(data: d)
-                            .frame(maxWidth: .infinity)
-                    }
+                }
+                if let dc = decoupling {
+                    decouplingBar(dc)
                 }
             }
             // 행 2 — 훈련 구조로 묶는다: 러닝 유형 배분(4주) | 강도 부하(14일)
@@ -3204,11 +3205,6 @@ private struct PerformanceInsightCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, alignment: .center)
-            // 러닝 안의 심박 효율 — 같은 열에 둔다(과거 대비와 오늘 안의 비교가 한 자리에)
-            if let dc = aerobicDecouplingPct {
-                decouplingBlock(dc)
-                    .padding(.top, 3)
-            }
         }
     }
 
@@ -3474,24 +3470,77 @@ private struct PerformanceInsightCard: View {
                    "HR drifted a lot — this may still be a stretch, or the start was too fast."), Theme.caution)
     }
 
-    /// 심박 효율 열(반폭) 안에 들어가는 블록 — 라벨·값 한 줄, 문장은 그 아래 열 폭으로(최대 3줄).
+    /// 디커플링 띠 차트의 네 구간 색 — 모두 이 카드에 이미 있는 색.
+    /// 음수 = 케이던스 게이지의 "범위 아래" 하늘색(좋지도 나쁘지도 않은 '아래로 벗어남'),
+    /// 0~5 = 초록(유지), 5~10 = 유산소 게이지의 노랑(조건 따라 다름), 10 이상 = 유산소 게이지의 빨강(부담).
+    private static let decouplingBandColors: [Color] =
+        [Color(hex: "5AC8FA"), Theme.positive, Color(hex: "EDC84B"), Color(hex: "E8564A")]
+
+    private static func decouplingBandIndex(_ pct: Double) -> Int {
+        pct < 0 ? 0 : pct <= 5 ? 1 : pct <= 10 ? 2 : 3
+    }
+
+    /// 오늘 점의 x(0~1). 네 구간을 같은 폭으로 두고 구간 안에서만 선형 —
+    /// 음수는 −5까지, 10 이상은 20까지만 펼치고 그 밖은 끝에 붙인다(양끝이 열린 구간이라 축을 무한히 늘릴 수 없다).
+    private static func decouplingBarFraction(_ pct: Double) -> CGFloat {
+        let v = min(max(pct, -5), 20)
+        if v < 0  { return CGFloat((v + 5) / 5) * 0.25 }
+        if v < 5  { return 0.25 + CGFloat(v / 5) * 0.25 }
+        if v < 10 { return 0.50 + CGFloat((v - 5) / 5) * 0.25 }
+        return 0.75 + CGFloat((v - 10) / 10) * 0.25
+    }
+
+    /// 행 전체 폭의 띠 차트 — 네 구간(음수 · 0~5 · 5~10 · 10 이상) 중 오늘 구간만 진하게, 오늘 값은 점으로.
+    /// 아래에 구간 라벨과 유형·기온별 읽기 문장.
     @ViewBuilder
-    private func decouplingBlock(_ pct: Double) -> some View {
+    private func decouplingBar(_ pct: Double) -> some View {
         let L = AppLanguage.shared
         let n = Int(pct.rounded())
         let valueText = (n >= 0 ? "+" : "−") + "\(abs(n))%"
         let reading = decouplingReading(pct)
-        VStack(alignment: .leading, spacing: 2) {
+        let band = Self.decouplingBandIndex(pct)
+        let labels = [L.s("음수", "<0"), "0~5", "5~10", L.s("10 이상", "10+")]
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(L.s("디커플링", "Decoupling"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 Text(valueText)
                     .font(.system(size: 10, weight: .semibold)).foregroundStyle(reading.color)
+                Spacer(minLength: 0)
+            }
+            GeometryReader { geo in
+                let w = geo.size.width
+                let dot: CGFloat = 12
+                let x = dot / 2 + Self.decouplingBarFraction(pct) * (w - dot)
+                ZStack(alignment: .leading) {
+                    HStack(spacing: 2) {
+                        ForEach(0..<4, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Self.decouplingBandColors[i].opacity(i == band ? 0.9 : 0.22))
+                                .frame(height: 8)
+                        }
+                    }
+                    // 오늘 점 — 배경색 테두리를 깔아 띠 위에서도 경계가 남는다(산점도 점과 같은 방식)
+                    Circle().fill(Theme.cardBackground)
+                        .frame(width: dot, height: dot)
+                        .overlay(Circle().fill(reading.color).frame(width: dot - 4, height: dot - 4))
+                        .position(x: x, y: 4)
+                }
+            }
+            .frame(height: 8)
+            HStack(spacing: 2) {
+                ForEach(0..<4, id: \.self) { i in
+                    Text(labels[i])
+                        .font(.system(size: 8))
+                        .foregroundStyle(.white.opacity(i == band ? 0.90 : 0.45))
+                        .frame(maxWidth: .infinity)
+                }
             }
             Text(reading.text)
                 .font(.system(size: 8.5)).foregroundStyle(reading.color.opacity(0.9))
-                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
         }
+        .padding(.top, 2)
     }
 
     private var paceConsistencySec: Int? {
