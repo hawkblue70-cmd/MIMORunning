@@ -40,13 +40,33 @@ struct BundledRace: Identifiable {
         guard let closest = distancesKm.min(by: { abs($0 - km) < abs($1 - km) }) else { return nil }
         return (abs(closest - km) / max(closest, 0.001)) <= 0.05 ? closest : nil
     }
+
+    /// 출발점 매칭 반경 — 좌표 정밀도에 따라 차등.
+    /// `city`는 시(市) 중심점이라 넓게 잡을 수밖에 없고, 그만큼 자동 확정도 허용하지 않는다.
+    var matchRadiusKm: Double {
+        switch geoPrecision {
+        case "venue":    1.5    // 특정 장소(운동장·광장) — 출발선이 실제로 여기
+        case "district": 3.0    // 구/군 단위
+        default:         5.0    // city 등 시 중심점
+        }
+    }
+
+    /// "HH:MM" → 자정 기준 분. 값이 없거나 형식이 어긋나면 nil.
+    var startMinutesOfDay: Int? {
+        guard let s = startTimeString?.trimmingCharacters(in: .whitespaces), !s.isEmpty else { return nil }
+        let parts = s.split(separator: ":")
+        guard parts.count == 2,
+              let h = Int(parts[0]), let m = Int(parts[1]),
+              (0...23).contains(h), (0...59).contains(m) else { return nil }
+        return h * 60 + m
+    }
 }
 
 // MARK: - Match result
 
 enum MatchStrength {
-    case strong   // single candidate ≤ 5 km → caller may auto-confirm
-    case weak     // multiple candidates → show suggestion banner
+    case strong   // venue 정밀도 + 거리·시각·종료점 전부 일치, 후보 1개 → 자동 확정 가능
+    case weak     // 게이트는 통과했지만 확신 부족 → 제안 배너로 사용자 확인
 }
 
 struct RaceSuggestion {
@@ -65,6 +85,16 @@ struct PersistedRaceMatch: Codable, Equatable, Sendable {
     var isConfirmed: Bool
     var isDismissed: Bool
     var isManual: Bool
+    /// 이 매칭이 어느 게이트 기준으로 확정됐는지. nil/낮은 값이면 재검증 대상.
+    var gateVersion: Int?
+}
+
+/// 기존 확정 매칭을 새 게이트로 다시 검사할 때 필요한 활동 정보.
+struct RaceRevalidationInput {
+    let activityID: UUID
+    let date: Date
+    let distanceKm: Double
+    let startCoord: CLLocationCoordinate2D?
 }
 
 // MARK: - RaceDetector
@@ -76,6 +106,10 @@ final class RaceDetector {
     private(set) var isReady: Bool = false
 
     private static let matchesKey = "raceDetector.matches.v1"
+    /// 매칭 게이트 기준 버전. 기준이 바뀌면 올린다 →
+    /// 이보다 낮은 버전으로 자동 확정된 기록은 `revalidateAutoMatches`에서 다시 검사한다.
+    /// v2: 거리 ±5% · 출발 시각 ±90분 · 정밀도별 반경(1.5/3/5km) 게이트 도입.
+    static let gateVersion = 2
     private var modelContext: ModelContext?
 
     // MARK: - Setup
@@ -91,7 +125,11 @@ final class RaceDetector {
 
     /// Returns a race suggestion for the activity, or nil.
     /// GPS required — treadmill runs never match.
-    /// 1차: 날짜 정확 매칭. 2차: 하버사인 ≤ 5km (geoPrecision=none 제외).
+    ///
+    /// 하드 게이트(전부 통과해야 후보): 같은 날짜 · 공식 종목 거리 ±5% ·
+    /// 출발 시각 ±90분 · 출발점이 대회 좌표 반경 안(정밀도별 1.5/3/5km).
+    /// 자동 확정(.strong)은 후보가 1개이고 venue 정밀도 + 시각 ±45분 +
+    /// 종료점까지 대회장 근처일 때만. 나머지는 .weak → 사용자 확인.
     func assess(
         activityID: UUID,
         date: Date,
@@ -105,32 +143,132 @@ final class RaceDetector {
 
         guard let sc = startCoord else { return nil }
 
-        let cal = Calendar.current
-        let sameDayRaces = races.filter { race in
-            guard let rd = race.date else { return false }
-            return cal.isDate(date, inSameDayAs: rd)
+        let gated: [(race: BundledRace, distKm: Double)] = races.compactMap { race in
+            guard passesHardGate(race: race, date: date,
+                                 distanceKm: distanceKm, startCoord: sc),
+                  let lat = race.startLatitude, let lng = race.startLongitude
+            else { return nil }
+            return (race, Self.haversineKm(sc.latitude, sc.longitude, lat, lng))
         }
-        guard !sameDayRaces.isEmpty else { return nil }
-
-        let nearby: [(race: BundledRace, distKm: Double)] = sameDayRaces.compactMap { race in
-            guard race.geoPrecision != "none",
-                  let lat = race.startLatitude,
-                  let lng = race.startLongitude else { return nil }
-            let d = Self.haversineKm(sc.latitude, sc.longitude, lat, lng)
-            guard d <= 5.0 else { return nil }
-            return (race, d)
-        }
-        guard !nearby.isEmpty else { return nil }
+        guard !gated.isEmpty else { return nil }
         if wasDismissed { return nil }
 
-        let sorted = nearby.sorted { $0.distKm < $1.distKm }
-        let strength: MatchStrength = sorted.count == 1 ? .strong : .weak
-        return RaceSuggestion(primary: sorted[0].race, strength: strength,
+        let sorted = gated.sorted { $0.distKm < $1.distKm }
+        let primary = sorted[0].race
+        let strength: MatchStrength =
+            (sorted.count == 1 && qualifiesForAutoConfirm(race: primary, date: date,
+                                                          distanceKm: distanceKm,
+                                                          endCoord: routeCoords.last))
+            ? .strong : .weak
+        return RaceSuggestion(primary: primary, strength: strength,
                               alternatives: sorted.dropFirst().map(\.race))
+    }
+
+    // MARK: - Gates
+
+    /// 후보가 되기 위한 최소 조건. 하나라도 어긋나면 대회로 보지 않는다.
+    /// `startCoord`가 nil이면 위치 검증만 생략한다(경로 없는 기존 기록 재검증용).
+    func passesHardGate(
+        race: BundledRace,
+        date: Date,
+        distanceKm: Double,
+        startCoord: CLLocationCoordinate2D?
+    ) -> Bool {
+        // ① 같은 날짜
+        guard let rd = race.date, Calendar.current.isDate(date, inSameDayAs: rd) else { return false }
+        // ② 좌표 없는 대회는 매칭 불가
+        guard race.geoPrecision != "none",
+              let lat = race.startLatitude, let lng = race.startLongitude else { return false }
+        // ③ 공식 종목 거리 ±5%
+        guard race.matchesDistance(distanceKm) else { return false }
+        // ④ 출발 시각 ±90분 (대회 시각이 CSV에 있을 때만)
+        if let raceMin = race.startMinutesOfDay,
+           Self.minuteGap(from: date, toMinutesOfDay: raceMin) > 90 { return false }
+        // ⑤ 출발점 반경 — 정밀도별
+        if let sc = startCoord {
+            guard Self.haversineKm(sc.latitude, sc.longitude, lat, lng) <= race.matchRadiusKm else { return false }
+        }
+        return true
+    }
+
+    /// 사용자 확인 없이 확정해도 되는 수준인지.
+    private func qualifiesForAutoConfirm(
+        race: BundledRace,
+        date: Date,
+        distanceKm: Double,
+        endCoord: CLLocationCoordinate2D?
+    ) -> Bool {
+        // 출발선이 특정된 대회만 — city/district 중심 좌표는 확신할 수 없다
+        guard race.geoPrecision == "venue" else { return false }
+        // 출발 시각을 아는 대회만, 그것도 ±45분 안
+        guard let raceMin = race.startMinutesOfDay,
+              Self.minuteGap(from: date, toMinutesOfDay: raceMin) <= 45 else { return false }
+        // 종료점도 대회장 권역 안 — 지점간(point-to-point) 코스를 감안해 거리 비례로 넉넉히
+        guard let ec = endCoord,
+              let lat = race.startLatitude, let lng = race.startLongitude else { return false }
+        let endGap = Self.haversineKm(ec.latitude, ec.longitude, lat, lng)
+        return endGap <= max(race.matchRadiusKm, distanceKm * 0.35)
+    }
+
+    /// 활동 시작 시각(로컬)과 대회 출발 시각(분) 사이의 간격. 자정을 넘겨도 최단 거리로.
+    private static func minuteGap(from date: Date, toMinutesOfDay raceMin: Int) -> Int {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+        let actMin = (c.hour ?? 0) * 60 + (c.minute ?? 0)
+        let diff = abs(actMin - raceMin)
+        return min(diff, 1440 - diff)
     }
 
     func matchFor(activityID: UUID) -> PersistedRaceMatch? {
         matches[activityID.uuidString]
+    }
+
+    // MARK: - Revalidation
+
+    /// 예전(느슨한) 기준으로 자동 확정된 매칭들. 직접 등록한 대회는 건드리지 않는다.
+    var idsNeedingRevalidation: [UUID] {
+        guard isReady else { return [] }
+        return matches.values
+            .filter { $0.isConfirmed && !$0.isManual && ($0.gateVersion ?? 0) < Self.gateVersion }
+            .map(\.activityID)
+    }
+
+    /// 기존 자동 확정 매칭을 현재 게이트로 다시 검사한다.
+    /// 하드 게이트를 통과하면 버전만 올려 그대로 두고, 통과 못 하면 확정을 해제한다
+    /// (삭제 → 다음에 활동을 열 때 새 기준으로 다시 판정되고, 애매하면 제안 배너가 뜬다).
+    /// - Returns: 확정 해제된 활동 ID
+    @discardableResult
+    func revalidateAutoMatches(_ inputs: [RaceRevalidationInput]) -> [UUID] {
+        guard isReady, !inputs.isEmpty else { return [] }
+        var dropped: [UUID] = []
+        var changed = false
+
+        for input in inputs {
+            let key = input.activityID.uuidString
+            guard var match = matches[key],
+                  match.isConfirmed, !match.isManual,
+                  (match.gateVersion ?? 0) < Self.gateVersion else { continue }
+
+            let survives = races.contains { race in
+                race.name == match.raceName
+                && passesHardGate(race: race, date: input.date,
+                                  distanceKm: input.distanceKm, startCoord: input.startCoord)
+            }
+
+            if survives {
+                match.gateVersion = Self.gateVersion
+                matches[key] = match
+            } else {
+                matches.removeValue(forKey: key)
+                dropped.append(input.activityID)
+                #if DEBUG
+                print("[대회매칭] 확정 해제 — \(match.raceName) (\(String(format: "%.2f", input.distanceKm))km, \(input.date))")
+                #endif
+            }
+            changed = true
+        }
+
+        if changed { saveMatches() }
+        return dropped
     }
 
     // MARK: - Mutations
@@ -140,21 +278,24 @@ final class RaceDetector {
         matches[activityID.uuidString] = PersistedRaceMatch(
             activityID: activityID, raceName: race.name, distanceKm: km,
             raceDate: race.date ?? Date(),
-            isConfirmed: true, isDismissed: false, isManual: false)
+            isConfirmed: true, isDismissed: false, isManual: false,
+            gateVersion: Self.gateVersion)
         saveMatches()
     }
 
     func addManual(activityID: UUID, name: String, distanceKm: Double, date: Date) {
         matches[activityID.uuidString] = PersistedRaceMatch(
             activityID: activityID, raceName: name, distanceKm: distanceKm,
-            raceDate: date, isConfirmed: true, isDismissed: false, isManual: true)
+            raceDate: date, isConfirmed: true, isDismissed: false, isManual: true,
+            gateVersion: Self.gateVersion)
         saveMatches()
     }
 
     func markAsNotRace(activityID: UUID) {
         matches[activityID.uuidString] = PersistedRaceMatch(
             activityID: activityID, raceName: "", distanceKm: 0,
-            raceDate: Date(), isConfirmed: false, isDismissed: true, isManual: false)
+            raceDate: Date(), isConfirmed: false, isDismissed: true, isManual: false,
+            gateVersion: Self.gateVersion)
         saveMatches()
     }
 
