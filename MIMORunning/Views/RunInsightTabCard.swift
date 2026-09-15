@@ -4596,6 +4596,11 @@ private struct PerformanceInsightCard: View {
                     .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
+            // 한 줄: AU가 무엇인지 — 캡션과 같은 크기·색, 강조 없음
+            Text(L.s("AU = 체감 강도 × 분 · 7일 합을 4주 평균과 비교해요",
+                     "AU = perceived effort × minutes · 7-day sum vs 4-week average"))
+                .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                .lineLimit(1).minimumScaleFactor(0.8)
         }
     }
 
