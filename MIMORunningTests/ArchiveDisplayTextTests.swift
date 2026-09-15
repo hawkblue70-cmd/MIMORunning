@@ -3,7 +3,7 @@ import Foundation
 @testable import MIMORunning
 
 /// 아카이브 상세 표시 — MIMO-META 주석은 저장만 하고 화면에는 안 보인다.
-@Suite("아카이브 표시 텍스트")
+@Suite("아카이브 표시 텍스트", .korean)
 struct ArchiveDisplayTextTests {
 
     @Test func stripsTrailingMetaBlock() {
@@ -63,7 +63,7 @@ struct ArchiveDisplayTextTests {
 }
 
 /// 상세 화면을 열 가치가 있는지 — 주차별 이행표 유무로 판정.
-@Suite("아카이브 상세 진입 가능 여부")
+@Suite("아카이브 상세 진입 가능 여부", .korean)
 struct ArchiveHasDetailTests {
 
     @Test func noWeeklyTableMeansNothingToShow() {

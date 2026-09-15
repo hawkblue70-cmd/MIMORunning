@@ -2,8 +2,8 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-/// 폼 카드 마무리 문장 — 유형 프레임(이지·빠른·일반)별 톤. 문자열 검사는 `AppLanguage.shared`를 건드리므로 직렬 실행.
-@Suite("FormNarrative 폼 마무리 문장", .serialized)
+/// 폼 카드 마무리 문장 — 유형 프레임(이지·빠른·일반)별 톤. 문자열 검사는 `.korean` 트레이트로 언어를 태스크 로컬에 고정.
+@Suite("FormNarrative 폼 마무리 문장", .korean)
 struct FormNarrativeTests {
 
     private typealias S = FormNarrative.Status
@@ -15,14 +15,11 @@ struct FormNarrativeTests {
     }
 
     private func ko(_ i: FormNarrative.Input, _ f: FormNarrative.Frame) -> String {
-        AppLanguage.shared.isEnglish = false
         return FormNarrative.sentence(i, frame: f)
     }
 
     private func en(_ i: FormNarrative.Input, _ f: FormNarrative.Frame) -> String {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
-        return FormNarrative.sentence(i, frame: f)
+        inEnglish { FormNarrative.sentence(i, frame: f) }
     }
 
     // MARK: - 프레임 매핑 (9 유형 전부)
@@ -173,14 +170,11 @@ struct FormNarrativeTests {
     }
 
     private func koLong(_ i: FormNarrative.LongDistanceInput) -> String {
-        AppLanguage.shared.isEnglish = false
         return FormNarrative.longDistanceSentence(i)
     }
 
     private func enLong(_ i: FormNarrative.LongDistanceInput) -> String {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
-        return FormNarrative.longDistanceSentence(i)
+        inEnglish { FormNarrative.longDistanceSentence(i) }
     }
 
     /// 스크린샷 버그: 케이던스 195→195, 보폭 0.88→0.95인데 "줄었어요"라고 하던 것

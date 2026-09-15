@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-@Suite("RecordSeries 기록 카드 집계")
+@Suite("RecordSeries 기록 카드 집계", .korean)
 struct RecordSeriesTests {
     private var cal: Calendar { var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(identifier: "Asia/Seoul")!; return c }
     /// 2026-09-07 (월) 00:00 KST

@@ -2,8 +2,8 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-/// 초·중·말 3단계 폼 형태 판정. 문장 검사는 `AppLanguage.shared`를 건드리므로 직렬 실행.
-@Suite("FormPhase 3단계 폼 형태", .serialized)
+/// 초·중·말 3단계 폼 형태 판정. 문장 검사는 `.korean` 트레이트로 언어를 태스크 로컬에 고정(영어는 `.english`/`inEnglish`).
+@Suite("FormPhase 3단계 폼 형태", .korean)
 struct FormPhaseTests {
 
     // MARK: 픽스처
@@ -184,7 +184,6 @@ struct FormPhaseTests {
     }
 
     @Test func lateSlowdownWithHRHeldIsFaded() {
-        AppLanguage.shared.isEnglish = false
         let r = classify(fadeFixture(lateHR: 163))
         #expect(r?.late == .faded(paceDropSec: 35))
         #expect(r?.isFaded == true)
@@ -207,7 +206,6 @@ struct FormPhaseTests {
     }
 
     @Test func fadeSentenceHasNoCommonTail() {
-        AppLanguage.shared.isEnglish = false
         let r = classify(fadeFixture(lateHR: 163))!
         let sentence = FormPhase.sentence(r, isLongDistance: true)
         #expect(!sentence.contains("흔한 변화"))
@@ -252,13 +250,10 @@ struct FormPhaseTests {
     // MARK: 문장
 
     private func ko(_ r: FormPhase.Result, long: Bool = false) -> String {
-        AppLanguage.shared.isEnglish = false
         return FormPhase.sentence(r, isLongDistance: long)
     }
     private func en(_ r: FormPhase.Result, long: Bool = false) -> String {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
-        return FormPhase.sentence(r, isLongDistance: long)
+        inEnglish { FormPhase.sentence(r, isLongDistance: long) }
     }
     private func result(early: FormPhase.Early? = nil, mid: FormPhase.Mid? = nil, late: FormPhase.Late,
                         earlyEnd: Double = 4, lateStart: Double = 12, total: Double = 16) -> FormPhase.Result {
@@ -307,7 +302,6 @@ struct FormPhaseTests {
     }
 
     @Test func shortStates() {
-        AppLanguage.shared.isEnglish = false
         #expect(FormPhase.shortState(result(late: .held)) == "끝까지 유지")
         #expect(FormPhase.shortState(result(late: .heavier([.stride]))) == "마지막 4km 살짝 무거워짐")
         #expect(FormPhase.shortState(result(late: .cadenceDefended)) == "후반 회전은 유지")
@@ -317,7 +311,6 @@ struct FormPhaseTests {
     // MARK: 이지 프레임 — 케이던스만 살짝 내려간 말기는 무거워짐이 아니라 편한 날의 변화
 
     @Test func easyFrameCadenceOnlyDropIsSoft() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0) } + (8...10).map { split($0, cad: 166) }
         let r = classify(s, easyFrame: true)
         #expect(r?.late == .heavier([.cadence]))
@@ -327,7 +320,6 @@ struct FormPhaseTests {
     }
 
     @Test func easyFrameStrideDropIsNotSoft() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0) } + (8...10).map { split($0, sl: 0.85) }
         let r = classify(s, easyFrame: true)
         #expect(r?.late == .heavier([.stride]))
@@ -336,7 +328,6 @@ struct FormPhaseTests {
     }
 
     @Test func generalFrameCadenceDropStaysHeavier() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0) } + (8...10).map { split($0, cad: 166) }
         let r = classify(s)
         #expect(r?.isSoftCadenceOnly == false)
@@ -541,21 +532,18 @@ struct FormPhaseTests {
     }
 
     @Test func midAccelerationSentenceNamesLevers() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...3).map { split($0, pace: 400, sl: 0.88, gct: 262) } + (4...10).map { split($0, pace: 375, sl: 0.94, gct: 250) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
         #expect(lines.contains("중반 3~7km: 페이스가 25초/km 빨라지며 보폭이 늘고 지면접촉이 짧아졌어요."))
     }
 
     @Test func lateDriftSentenceWithCadenceHeld() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
         #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고, 케이던스는 그대로예요."))
     }
 
     @Test func lateDriftSentenceMentionsHeat() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 8)
         #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고 (더위 +8bpm을 감안하면 흔한 폭), 케이던스는 그대로예요."))
@@ -567,35 +555,30 @@ struct FormPhaseTests {
     }
 
     @Test func negativeSplitSaysFaster() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, pace: 360, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
         #expect(lines.contains("후반 7~10km: 페이스가 15초/km 빨라지며 심박이 8bpm 올랐고, 케이던스는 그대로예요."))
     }
 
     @Test func risingCadenceIsNotReportedAsDrop() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, cad: 178, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
         #expect(lines.contains { $0.contains("케이던스는 올라갔어요.") })
     }
 
     @Test func unknownCadenceOmitsClause() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, cad: nil, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
         #expect(lines.contains { $0.hasSuffix("올랐어요.") && !$0.contains("케이던스") })
     }
 
     @Test func largeDriftGetsNoHeatReassurance() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 175) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 8)
         #expect(lines.allSatisfy { !$0.contains("흔한 폭") })
     }
 
     @Test func smallHeatDeltaGetsNoReassurance() {
-        AppLanguage.shared.isEnglish = false
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
         let linesZero = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 0)
         let linesTwo = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 2)
@@ -603,16 +586,13 @@ struct FormPhaseTests {
         #expect(linesTwo.allSatisfy { !$0.contains("흔한 폭") })
     }
 
-    @Test func englishRelationSentences() {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
+    @Test(.english) func englishRelationSentences() {
         let s = (1...3).map { split($0, pace: 400, sl: 0.88, gct: 262) } + (4...10).map { split($0, pace: 375, sl: 0.94, gct: 250) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
         #expect(lines.first == "Mid 3–7 km: pace picked up by 25 s/km with a longer stride and shorter ground contact.")
     }
 
     @Test func commonTailSuppressedWhenHeatReassuranceExists() {
-        AppLanguage.shared.isEnglish = false
         // 16km 픽스처: 초반(1~5) 384/366 섞임 · 중반(6~11) 366 · 후반(12~16) 380 — 후반 접지·수직진폭이 범위 밖이라 late != .held
         let s = (1...4).map { split($0, pace: 384, sl: 0.90, gct: 262, vo: 8.4, hr: 143) }
             + (5...11).map { split($0, pace: 366, sl: 0.93, gct: 253, vo: 8.4, hr: 150) }

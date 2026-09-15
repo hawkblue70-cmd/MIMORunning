@@ -2,7 +2,7 @@ import Testing
 @testable import MIMORunning
 
 /// 숫자 뒤 "은/는" 조사 — 마지막 자릿수의 읽는 소리(받침) 기준.
-@Suite("KoreanParticle 숫자 뒤 조사")
+@Suite("KoreanParticle 숫자 뒤 조사", .korean)
 struct KoreanParticleTests {
 
     @Test func vowelEndingDigitsTakeNeun() {

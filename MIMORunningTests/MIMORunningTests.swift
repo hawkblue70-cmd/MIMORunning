@@ -4,7 +4,7 @@ import Foundation
 
 // MARK: - 폼 지표 테스트
 
-@Suite("MRFormStyle 핵심 로직")
+@Suite("MRFormStyle 핵심 로직", .korean)
 struct MRFormTests {
 
     // MDC₉₅ = 1.96 × SD × √(1/n_recent + 1/n_base)
@@ -56,7 +56,7 @@ struct MRFormTests {
 // m3_ 로 올릴 때 이 파일만 뒤처지는 것을 막는다.
 // ⌘U 에서 실패하면 해당 캐시 파일도 함께 업데이트해야 한다.
 
-@Suite("캐시 파일명이 MRModelVersion.prefix 로 시작하는지 확인")
+@Suite("캐시 파일명이 MRModelVersion.prefix 로 시작하는지 확인", .korean)
 struct CacheVersionPrefixTests {
 
     let expectedPrefix = MRModelVersion.prefix   // "m{N}_"

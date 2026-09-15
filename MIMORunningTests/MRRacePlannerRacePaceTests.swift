@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-@Suite("MRRacePlanner 대회 페이스 단계")
+@Suite("MRRacePlanner 대회 페이스 단계", .korean)
 struct MRRacePlannerRacePaceTests {
 
     @Test func segmentMinutesIs15ForLongRunsAnd10ForShort() {
@@ -84,7 +84,7 @@ struct MRRacePlannerRacePaceTests {
     }
 }
 
-@Suite("MRRacePlanner 앞선 대회 회복 블록")
+@Suite("MRRacePlanner 앞선 대회 회복 블록", .korean)
 struct MRRacePlannerPriorRaceTests {
 
     private func profile() -> MRProfile {
@@ -131,7 +131,7 @@ struct MRRacePlannerPriorRaceTests {
     }
 }
 
-@Suite("MRRacePlanner 튠업 대회 주")
+@Suite("MRRacePlanner 튠업 대회 주", .korean)
 struct MRRacePlannerTuneUpTests {
 
     private let cal = Calendar.current
@@ -212,7 +212,7 @@ struct MRRacePlannerTuneUpTests {
     }
 }
 
-@Suite("MRRacePlanner 자기 계획 있는 튠업의 전 주 테이퍼")
+@Suite("MRRacePlanner 자기 계획 있는 튠업의 전 주 테이퍼", .korean)
 struct MRRacePlannerOwnPlanTuneUpTests {
     private let cal = Calendar.current
 
@@ -255,7 +255,7 @@ struct MRRacePlannerOwnPlanTuneUpTests {
     }
 }
 
-@Suite("MRRacePlanner 앞선 대회 타임라인")
+@Suite("MRRacePlanner 앞선 대회 타임라인", .korean)
 struct MRRacePlannerBridgeRowTests {
     @Test func fullAfterHalfShowsHalfInTimeline() throws {
         let cal = Calendar.current
@@ -277,7 +277,7 @@ struct MRRacePlannerBridgeRowTests {
     }
 }
 
-@Suite("MRRacePlanner 거리별 주간 거리 목표")
+@Suite("MRRacePlanner 거리별 주간 거리 목표", .korean)
 struct MRRacePlannerVolumeTargetTests {
     @Test func targetsByDistanceCappedByYearMax() {
         // 현재 42 · 12개월 최대 60
@@ -324,7 +324,7 @@ struct MRRacePlannerVolumeTargetTests {
     }
 }
 
-@Suite("MRRacePlanner 시작한 계획은 대회까지 유지")
+@Suite("MRRacePlanner 시작한 계획은 대회까지 유지", .korean)
 struct MRRacePlannerStartedPlanPersistsTests {
     @Test func anchoredPlanSurvivesInsideThreeWeeks() throws {
         var p = MRProfile()
@@ -350,7 +350,7 @@ struct MRRacePlannerStartedPlanPersistsTests {
     }
 }
 
-@Suite("MRRacePlanner 겹치는 주는 자기 계획 있는 단거리 숫자를 따른다")
+@Suite("MRRacePlanner 겹치는 주는 자기 계획 있는 단거리 숫자를 따른다", .korean)
 struct MRRacePlannerFollowOwnPlanTests {
     @Test func overlappingWeeksUseTenKPlanNumbers() throws {
         var prof = MRProfile()

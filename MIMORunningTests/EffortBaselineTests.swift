@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-@Suite("EffortBaseline 개인 기준선")
+@Suite("EffortBaseline 개인 기준선", .korean)
 struct EffortBaselineTests {
     private func s(_ t: WorkoutType, _ e: Int) -> EffortBaseline.Sample { .init(type: t, effort: e) }
 

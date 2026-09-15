@@ -3,12 +3,11 @@ import Foundation
 @testable import MIMORunning
 
 /// 러닝 유형별 캡션(인사이트 탭·폼 카드 공용) + 두 카드가 공유하는 지표 상태 판정.
-/// 문자열 검사는 `AppLanguage.shared`를 건드리므로 직렬 실행.
-@Suite("FormNarrative 유형별 캡션·상태 판정", .serialized)
+/// 문자열 검사는 `.korean` 트레이트로 언어를 태스크 로컬에 고정.
+@Suite("FormNarrative 유형별 캡션·상태 판정", .korean)
 struct FormTypeCaptionTests {
 
     private func ko<T>(_ body: () -> T) -> T {
-        AppLanguage.shared.isEnglish = false
         return body()
     }
 
@@ -93,9 +92,7 @@ struct FormTypeCaptionTests {
         }
     }
 
-    @Test func captionsHaveEnglish() {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
+    @Test(.english) func captionsHaveEnglish() {
         #expect(FormNarrative.hrSecondHalfRiseCaption(type: .buildUp).contains("build-up"))
         #expect(FormNarrative.highIntensityZoneCaption(type: .tempo).contains("as planned"))
         #expect(FormNarrative.formHeldCaption(type: .race).contains("fast finish"))

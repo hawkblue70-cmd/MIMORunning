@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-@Suite("EffortRules 라벨 vs 몸 · 더위 · 스플릿")
+@Suite("EffortRules 라벨 vs 몸 · 더위 · 스플릿", .korean)
 struct EffortRulesTests {
 
     private func split(_ id: Int, km: Double = 1.0, pace: Double) -> SplitData {

@@ -2,8 +2,8 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-/// 문자열 검사는 언어 전역 상태(`AppLanguage.shared`)를 건드리므로 직렬 실행.
-@Suite("RecordFlowInsight 러닝 흐름 문장", .serialized)
+/// 문자열 검사는 `.korean` 트레이트로 언어를 태스크 로컬에 고정(전역 `AppLanguage.shared`는 건드리지 않음).
+@Suite("RecordFlowInsight 러닝 흐름 문장", .korean)
 struct RecordFlowInsightTests {
 
     // MARK: - 헬퍼
@@ -135,7 +135,6 @@ struct RecordFlowInsightTests {
     // MARK: - 상태 줄
 
     @Test func statusWithAndWithoutRatedBuckets() {
-        AppLanguage.shared.isEnglish = false
         // 강도 있는 버킷 6개 중 3개가 쉬운 날(≤4) → 50%
         var bars: [RecordBar] = []
         for i in 0..<3 { bars.append(bar(i, km: 10, pace: 360, effort: 3)) }
@@ -156,7 +155,6 @@ struct RecordFlowInsightTests {
     // MARK: - 조립 · steady 숫자
 
     @Test func steadyNumbers() {
-        AppLanguage.shared.isEnglish = false
         // 12주 · 주 1회 · 매회 10km → "주 1.0회 · 평균 10.0 km"
         let bars = (0..<12).map { weekBar($0, km: 10, runs: 1, pace: 360, effort: 4) }
         let result = RecordFlowInsight.evaluate(.init(bars: bars, period: .week, easyCutoff: 4),
@@ -168,7 +166,6 @@ struct RecordFlowInsightTests {
     }
 
     @Test func evaluateWithoutEnoughRunsHasNoDirection() {
-        AppLanguage.shared.isEnglish = false
         let bars = [bar(0, km: 10), bar(1, km: 0, runs: 0), bar(2, km: 0, runs: 0),
                     bar(3, km: 10), bar(4, km: 10), bar(5, km: 10)]
         let result = RecordFlowInsight.evaluate(.init(bars: bars, period: .day, easyCutoff: 4),
@@ -180,7 +177,6 @@ struct RecordFlowInsightTests {
     }
 
     @Test func fasterSameEffortEndToEnd() {
-        AppLanguage.shared.isEnglish = false
         let input = halves(firstKm: 10, secondKm: 10,
                            firstPace: 370, secondPace: 350,
                            firstEffort: 4, secondEffort: 4)
@@ -189,9 +185,7 @@ struct RecordFlowInsightTests {
         #expect(result.direction == "같은 노력으로 더 빨라지고 있어요.")
     }
 
-    @Test func englishStrings() {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
+    @Test(.english) func englishStrings() {
         let input = halves(firstKm: 10, secondKm: 14, firstEffort: 3, secondEffort: 3)
         let result = RecordFlowInsight.evaluate(input, periodLabel: "Last 30 days")
         #expect(result.sentence == .moreSteadyEffort)

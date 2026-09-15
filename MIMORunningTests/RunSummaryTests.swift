@@ -2,12 +2,11 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-/// 총평 5줄 규칙 — 축 순서·생략·톤·상태어·근거·다음. 문자열 검사라 직렬 실행.
-@Suite("RunSummary 총평 줄", .serialized)
+/// 총평 5줄 규칙 — 축 순서·생략·톤·상태어·근거·다음. 문자열 검사는 `.korean` 트레이트로 언어를 태스크 로컬에 고정.
+@Suite("RunSummary 총평 줄", .korean)
 struct RunSummaryTests {
 
     private func lines(_ i: RunSummaryInput) -> [RunSummaryLine] {
-        AppLanguage.shared.isEnglish = false
         return RunSummary.lines(i)
     }
     private func phase(_ late: FormPhase.Late) -> FormPhase.Result {
@@ -71,7 +70,6 @@ struct RunSummaryTests {
     }
 
     private func todayInput() -> RunSummaryInput {
-        AppLanguage.shared.isEnglish = false
         var i = RunSummaryInput()
         i.form = heldForm16km()
         i.distKm = 16; i.typicalKm = 7.6
@@ -217,9 +215,7 @@ struct RunSummaryTests {
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good)])
     }
 
-    @Test func englishEasyIntentLine() {
-        AppLanguage.shared.isEnglish = true
-        defer { AppLanguage.shared.isEnglish = false }
+    @Test(.english) func englishEasyIntentLine() {
         var i = RunSummaryInput(); i.workoutType = .lsd; i.zoneFractions = [3: 0.6, 4: 0.4]
         let out = bare(RunSummary.lines(i))
         #expect(out == [RunSummaryLine(axis: "Heart rate", state: "High for LSD · 100% in Zone 3+", tone: .neutral)])
@@ -299,9 +295,7 @@ struct RunSummaryTests {
         var i = RunSummaryInput(); i.weekOverWeek = 0.234; i.acuteChronic = .steady
         i.sevenDayAU = 1573; i.previousSevenAU = 1274
         #expect(lines(i)[0].evidence == "7일 1,573 AU · 이전 7일 1,274 · 최근 7일 +23%")
-        AppLanguage.shared.isEnglish = true
-        #expect(RunSummary.lines(i)[0].evidence == "7-day 1,573 AU · previous 7 days 1,274 AU · Last 7 days +23%")
-        AppLanguage.shared.isEnglish = false
+        inEnglish { #expect(RunSummary.lines(i)[0].evidence == "7-day 1,573 AU · previous 7 days 1,274 AU · Last 7 days +23%") }
     }
 
     @Test func steadyLoadWithLongStreakIsNeutral() {
@@ -312,7 +306,6 @@ struct RunSummaryTests {
     // MARK: 유산소
 
     @Test func vo2Levels() {
-        AppLanguage.shared.isEnglish = false
         #expect(RunSummary.vo2Level(20).name == "낮음")
         #expect(RunSummary.vo2Level(30).name == "평균이하")
         #expect(RunSummary.vo2Level(35).name == "평균이상")

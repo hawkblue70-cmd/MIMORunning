@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-@Suite("EffortLoad sRPE 주간 부하")
+@Suite("EffortLoad sRPE 주간 부하", .korean)
 struct EffortLoadTests {
     private var cal: Calendar { var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(identifier: "Asia/Seoul")!; return c }
     // 2026-09-07 (월) 00:00 KST

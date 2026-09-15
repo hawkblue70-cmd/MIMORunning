@@ -5,7 +5,7 @@ import Foundation
 /// `RunSummaryBuilder` 배선 검증 — 리듬 카드가 하던 ~15개 입력 조립을 이 빌더 하나로 옮긴 뒤에도
 /// 같은 러닝이 같은 총평 5줄을 내는지 확인한다. 세부 문구는 `RunSummaryTests`가 이미 촘촘히 검사하므로
 /// 여기서는 축 순서·핵심 근거 한둘만 재확인한다.
-@Suite("RunSummaryBuilder 조립", .serialized)
+@Suite("RunSummaryBuilder 조립", .korean)
 @MainActor
 struct RunSummaryBuilderTests {
 
@@ -62,7 +62,6 @@ struct RunSummaryBuilderTests {
     }
 
     private func makeContext() -> RunSummaryBuilder.Context {
-        AppLanguage.shared.isEnglish = false
         let today = Date()
         let activity = Activity(id: UUID(), type: .running, date: today,
                                  duration: 6041, distance: 16_000, calories: 900,

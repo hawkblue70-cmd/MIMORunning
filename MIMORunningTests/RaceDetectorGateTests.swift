@@ -4,7 +4,7 @@ import CoreLocation
 @testable import MIMORunning
 
 /// 대회 매칭 하드 게이트 — 날짜 · 거리 ±5% · 출발 시각 ±90분 · 정밀도별 반경.
-@Suite("RaceDetector 매칭 게이트")
+@Suite("RaceDetector 매칭 게이트", .korean)
 struct RaceDetectorGateTests {
 
     // 뚝섬 한강공원 수변무대 — 김대중 평화 마라톤 출발지

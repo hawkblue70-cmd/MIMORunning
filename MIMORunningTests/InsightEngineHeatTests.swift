@@ -4,8 +4,9 @@ import Foundation
 
 /// 안전 메모(같은 페이스대 심박 상승)를 15°C 기준 심박으로 판정한다.
 /// 더위로 다 설명되면 침묵, 보정 후에도 남는 초과분은 "(기온 감안)" 표기와 함께 발화한다.
+/// `.serialized`: `InsightEngine.compute`가 UserDefaults(테마 이력·기온 이력)를 읽고 쓰므로 언어와 별개로 공유 상태가 있다.
 @MainActor
-@Suite("기온 보정 심박 — 안전 메모", .serialized)
+@Suite("기온 보정 심박 — 안전 메모", .korean, .serialized)
 struct InsightEngineHeatTests {
     private func run(_ daysAgo: Int, pace: Double, hr: Int, temp: Double?, id: UUID = UUID()) -> Activity {
         let d = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date())!
@@ -22,7 +23,6 @@ struct InsightEngineHeatTests {
     }
 
     @Test func hrElevatedNoteIsSuppressedWhenHeatExplains() {
-        AppLanguage.shared.isEnglish = false
         // 오늘 160bpm @25°C → 보정 152bpm. 과거 8회 148bpm @15°C(보정 없음, 평균 148).
         // 152 / 148 ≈ +2.7% (<8%) → 안전 메모가 뜨면 안 된다.
         let today = run(0, pace: 360, hr: 160, temp: 25)
@@ -32,7 +32,6 @@ struct InsightEngineHeatTests {
     }
 
     @Test func hrElevatedNoteStillFiresWhenAboveAdjusted() {
-        AppLanguage.shared.isEnglish = false
         // 오늘 170bpm @25°C → 보정 162bpm. 과거 8회 148bpm @15°C(평균 148).
         // 162 / 148 ≈ +9.5% (≥8%) → 보정 후에도 남는 초과분은 발화하고, "(기온 감안)"을 덧붙인다.
         let today = run(0, pace: 360, hr: 170, temp: 25)
@@ -43,7 +42,6 @@ struct InsightEngineHeatTests {
     }
 
     @Test func hrElevatedNoteDirectNilWhenHeatExplains() {
-        AppLanguage.shared.isEnglish = false
         // hrElevatedNote를 직접 호출 — compute()의 우선순위 체계를 거치지 않고 함수 단독으로 확인.
         let today = run(0, pace: 360, hr: 160, temp: 25)
         let hist = (1...8).map { run($0 * 3, pace: 360, hr: 148, temp: 15) }
@@ -52,7 +50,6 @@ struct InsightEngineHeatTests {
     }
 
     @Test func tradeoffEfficiencyNeedsRawDrop() {
-        AppLanguage.shared.isEnglish = false
         // 오늘 150bpm @28°C(보정 139.6, 과거 대비 −6.9% ≥5%)이지만 원본은 과거와 동일(150) — 원본 드롭이
         // 없으므로 "심폐가 단단해지는 러닝"(효율 향상 트레이드오프)이 뜨면 안 된다.
         let today = run(0, pace: 360, hr: 150, temp: 28)
@@ -62,7 +59,6 @@ struct InsightEngineHeatTests {
     }
 
     @Test func hrElevatedNoteUsesRawWhenPriorLacksTemps() {
-        AppLanguage.shared.isEnglish = false
         // 과거 기록에 기온이 전혀 없음 → 기온 커버리지 미달 → 양쪽 다 원본 심박으로 비교한다.
         // 오늘 170bpm vs 과거 148bpm 원본 비교 = +14.9%(≥8%) → 발화하되 "(기온 감안)"은 붙지 않는다.
         let today = run(0, pace: 360, hr: 170, temp: 25)

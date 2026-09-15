@@ -5,12 +5,25 @@ import Foundation
 @Observable final class AppLanguage {
     static let shared = AppLanguage()
 
+    /// 테스트 전용 태스크 로컬 오버라이드 — `true`=영어, `false`=한국어, `nil`=앱 설정(`storedIsEnglish`).
+    /// 스위프트 테스팅 스위트가 병렬로 돌 때 한 스위트의 언어 전환이 다른 스위트로 새지 않도록,
+    /// 전역 값을 쓰지 않고 현재 태스크 트리에만 언어를 묶는다. 앱 코드에서는 항상 `nil`.
+    @TaskLocal static var override: Bool? = nil
+
+    /// 사용자가 고른 언어(앱 설정). UserDefaults `appLanguageIsEnglish`와 동기화.
+    private var storedIsEnglish: Bool {
+        didSet { UserDefaults.standard.set(storedIsEnglish, forKey: "appLanguageIsEnglish") }
+    }
+
+    /// 지금 이 문맥에서 유효한 언어 — 모든 읽기는 여기를 거친다(`s(_:_:)`, 날짜 포맷, 엔진·뷰 전부).
+    /// 읽기: 태스크 로컬 오버라이드가 있으면 그것, 없으면 저장된 설정. 쓰기: 저장된 설정(UserDefaults)만 바꾼다.
     var isEnglish: Bool {
-        didSet { UserDefaults.standard.set(isEnglish, forKey: "appLanguageIsEnglish") }
+        get { Self.override ?? storedIsEnglish }
+        set { storedIsEnglish = newValue }
     }
 
     private init() {
-        isEnglish = UserDefaults.standard.bool(forKey: "appLanguageIsEnglish")
+        storedIsEnglish = UserDefaults.standard.bool(forKey: "appLanguageIsEnglish")
     }
 
     /// Returns `ko` when Korean is active, `en` when English is active.

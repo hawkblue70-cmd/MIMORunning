@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-@Suite("MRAdviceQueue 내구성·근력·케이던스 조언")
+@Suite("MRAdviceQueue 내구성·근력·케이던스 조언", .korean)
 struct MRAdviceQueueDurabilityTests {
 
     private let cal = Calendar.current

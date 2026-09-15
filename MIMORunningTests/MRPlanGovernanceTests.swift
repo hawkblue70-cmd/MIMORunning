@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-@Suite("MRPlanGovernance 이번 주를 다스리는 계획")
+@Suite("MRPlanGovernance 이번 주를 다스리는 계획", .korean)
 struct MRPlanGovernanceTests {
 
     private let cal = Calendar.current

@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-@Suite("MRRecovery 운동 후 심박 회복")
+@Suite("MRRecovery 운동 후 심박 회복", .korean)
 struct MRRecoveryTests {
 
     private func post(_ pairs: [(Double, Int)]) -> [MRRecoveryPoint] {

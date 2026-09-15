@@ -583,6 +583,12 @@ OneLinerViewModel // 텍스트·영상 클립 레시피·폰트·색상·위치�
 | **WeatherKit** | 날씨 보완 | 예정 |
 | **ImagePlayground** | 미니미 AI 생성 | 예정(폴백=마스코트) |
 
+### 테스트에서 언어 고정 (`MIMORunningTests/Support/LanguageTrait.swift`)
+- `AppLanguage.shared.isEnglish`는 프로세스 전역(UserDefaults 동기화)이라, Swift Testing 스위트가 병렬로 돌 때 한 스위트의 영어 전환이 다른 스위트의 한국어 검사로 새어 들어가 간헐 실패를 냈다.
+- 해결: `AppLanguage.override`(`@TaskLocal`, 앱에서는 항상 `nil`)를 두고 `isEnglish` 읽기가 `override ?? 저장값`을 거치게 했다. 쓰기(설정 토글)는 그대로 저장값·UserDefaults만 바꾼다.
+- 테스트는 전역을 직접 쓰지 않는다 — 한국어 문자열을 검사하는 스위트는 `@Suite("…", .korean)`, 영어 전용 테스트는 `@Test(.english)`, 한 테스트 안에서 일부만 영어로 볼 때는 `inEnglish { … }`(`inKorean`도 있음). 트레이트는 `TestScoping`으로 본문을 `AppLanguage.$override.withValue(_:)` 안에서 실행한다.
+- `.serialized`는 언어 때문에만 붙어 있던 스위트에서 제거했다. `InsightEngineHeatTests`만 `InsightEngine.compute`가 UserDefaults(테마·기온 이력)를 쓰므로 유지.
+
 ---
 
 ## 구현 완료 기능 체크리스트
