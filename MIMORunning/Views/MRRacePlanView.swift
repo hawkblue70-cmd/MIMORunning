@@ -45,7 +45,13 @@ private func localizedPhase(_ p: String) -> String {
     case "테이퍼":       return L.s("테이퍼", "Taper")
     case "대회 페이스":  return L.s("대회 페이스", "Race pace")
     case "대회 주":      return L.s("대회 주", "Race week")
-    default:             return p
+    default:
+        // "10K 계획" — 다른 계획을 따르는 주
+        if MRPlanGovernance.isFollowingPhase(p) {
+            let label = String(p.dropLast(" 계획".count))
+            return L.s("\(label) 계획", "\(label) plan")
+        }
+        return p
     }
 }
 
@@ -447,7 +453,10 @@ struct MRWeekTable: View {
         case "대회 페이스": return mrWarn
         case "대회 주":     return Color(red: 0.98, green: 0.55, blue: 0.40)
         case "유지":        return Color(red: 0.45, green: 0.80, blue: 0.55)
-        default:            return .white.opacity(0.82)
+        default:
+            // "10K 계획" — 다른 계획을 따르는 주는 대회 주와 같은 계열로
+            if MRPlanGovernance.isFollowingPhase(p) { return Color(red: 0.98, green: 0.72, blue: 0.50) }
+            return .white.opacity(0.82)
         }
     }
 
@@ -456,7 +465,13 @@ struct MRWeekTable: View {
         let present = snapshotWeeks.isEmpty
             ? Set(weeks.map(\.phase))
             : Set(snapshotWeeks.map(\.phase))
-        return [
+        // 다른 계획을 따르는 주("10K 계획")는 실제로 나타난 라벨마다 한 줄
+        let following: [(phase: String, desc: String)] = present
+            .filter { MRPlanGovernance.isFollowingPhase($0) }
+            .sorted()
+            .map { (phase: $0, desc: L.s("겹치는 주는 그 계획의 롱런·주간을 그대로 따릅니다. 대회가 지나면 이 계획이 이어받습니다",
+                                         "Overlapping weeks follow that plan's long run and volume. This plan resumes after that race")) }
+        return following + [
             (phase: "늘리기",       desc: L.s("롱런을 매주 조금씩 늘립니다",                              "Gradually increase long run each week")),
             (phase: "유지",         desc: L.s("롱런을 더 늘리지 않고 그 거리에 익숙해집니다",            "Get comfortable at the current long run distance")),
             (phase: "대회 페이스",   desc: L.s("롱런 안에 대회 페이스로 달리는 구간이 들어갑니다",        "Includes race-pace segments within the long run")),

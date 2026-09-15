@@ -894,29 +894,40 @@ struct ActivityDetailView: View {
     }
 
     /// 이 러닝이 속한 주의 대회 플랜 주차 — 주간 목표 km(기존)과 플랜 단계(총평 훈련부하 줄)가 함께 쓴다.
-    private func matchedPlanWeek() -> MRPlanWeek? {
-        var mondayCal = Calendar.current
-        mondayCal.firstWeekday = 2
-        guard let activityMonday = mondayCal.date(
-            from: mondayCal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: activity.date)
-        ) else { return nil }
-        let activityMondayDay = Calendar.current.startOfDay(for: activityMonday)
-        for plan in engine.plans {
-            for week in plan.weeks {
-                let weekMondayDay = Calendar.current.startOfDay(for: week.monday)
-                if weekMondayDay == activityMondayDay {
-                    return week
-                }
-            }
-        }
-        return nil
+    /// 계획이 둘 이상 겹치는 주는 MRPlanGovernance 규칙(대회일이 가장 이른 계획, 그 대회 주까지)으로 하나만 고른다.
+    private func matchedPlanWeek() -> MRPlanWeek? { governingPlan()?.week }
+
+    /// 이 러닝이 속한 주를 다스리는 (계획, 주차). 스냅샷이 있으면 주차표와 같은 숫자.
+    private func governingPlan() -> (plan: MRRacePlan, week: MRPlanWeek)? {
+        engine.governingPlanWeek(for: activity.date)
+    }
+
+    /// 계획이 둘 이상일 때만 필(pill)에 붙는 라벨("10K 계획") — 한 계획뿐이면 nil (문구 변화 없음).
+    private func governingPlanLabel() -> String? {
+        guard engine.plans.count > 1, let g = governingPlan() else { return nil }
+        return mrLabelFor(distanceM: g.plan.distanceM)
     }
 
     private func loadInsights() {
         guard runInsights.isEmpty else { return }
 
         // 이 러닝이 속한 주의 계획 목표 km 검색
-        let planWeeklyTargetKm: Double? = matchedPlanWeek()?.weeklyKm
+        let governing = governingPlan()
+        let planWeeklyTargetKm: Double? = governing?.week.weeklyKm
+        let planLabel: String? = governingPlanLabel()
+        #if DEBUG
+        do {
+            let mon = MRPlanGovernance.weekMonday(of: activity.date)
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+            let rows = engine.plans.map { pl -> String in
+                let wk = pl.weeks.first { Calendar.current.startOfDay(for: $0.monday) == mon }
+                let km = wk.map { String(format: "%.1f", $0.weeklyKm) } ?? "nil"
+                return "\(mrLabelFor(distanceM: pl.distanceM)) \(f.string(from: pl.raceDate)) → \(km)"
+            }
+            let chosen = governing.map { "\(mrLabelFor(distanceM: $0.plan.distanceM)) \(String(format: "%.1f", $0.week.weeklyKm))km" } ?? "없음"
+            print("[주간목표] \(f.string(from: mon)) 주 · 계획별 주간km: [\(rows.joined(separator: " · "))] → 다스리는 계획: \(chosen)")
+        }
+        #endif
 
         // 최근 8주 같은 유형 기준선 — body 평가 대신 여기서 1회 계산
         let effortBaseline: Int? = {
@@ -941,6 +952,7 @@ struct ActivityDetailView: View {
             heat: engine.heat,
             heatHR: engine.heatHR,
             planWeeklyTargetKm: planWeeklyTargetKm,
+            planLabel: planLabel,
             effort: activity.type == .running ? resolvedEffort : nil,
             effortBaseline: effortBaseline
         )

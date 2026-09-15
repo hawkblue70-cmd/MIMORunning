@@ -451,10 +451,12 @@ func mrBuildPlan(raceDate: Date,
             $0.hasOwnPlan && $0.distanceM < MRDistance.dH && $0.date >= weekEnd && $0.date < nextWeekEnd
         } : nil
 
-        // 자기 계획이 있는 단거리 대회가 아직 앞에 있고, 그 계획에 이번 주가 있으면 → 그 숫자를 그대로 따른다.
+        // 자기 계획이 있는 단거리 대회가 아직 앞에 있고(대회 주 포함), 그 계획에 이번 주가 있으면 → 그 숫자를 그대로 따른다.
         // 10K 계획이 "롱런 16"이라 하는 주에 하프 계획이 "18.8"이라 하면 러너는 하나만 할 수 있다.
-        let followed: (race: MRTuneUpRace, week: MRPlanWeek)? = tune == nil ? tuneUps
-            .filter { $0.hasOwnPlan && $0.distanceM < MRDistance.dH && $0.date >= weekEnd }
+        // 대회 주도 예외가 아니다 — 10K 계획의 테이퍼 주에 하프 계획이 "대회 주 −20%"를 따로 말하면 또 둘이 된다.
+        // (MRPlanGovernance: 대회일이 가장 이른 계획이 그 대회 주까지 다스린다)
+        let followed: (race: MRTuneUpRace, week: MRPlanWeek)? = i <= buildWeeks ? tuneUps
+            .filter { $0.hasOwnPlan && $0.distanceM < MRDistance.dH && $0.date >= mon }
             .sorted { $0.date < $1.date }
             .lazy.compactMap { t in t.ownPlanWeeks.first { cal.isDate($0.monday, inSameDayAs: mon) }.map { (t, $0) } }
             .first : nil
@@ -464,9 +466,10 @@ func mrBuildPlan(raceDate: Date,
             recovery = ((i - recoveryWeekCount) % cycleLen == 0) || forceRecovery
             forceRecovery = false
             if let f = followed {
+                // 따르는 주의 단계는 "10K 계획" — 어느 계획의 숫자인지가 이 주의 정체성이다.
                 lr = f.week.longRunKm
                 wkVol = f.week.weeklyKm
-                phase = preTune != nil ? "대회 주" : f.week.phase
+                phase = MRPlanGovernance.followingPhase(distanceM: f.race.distanceM)
                 peakLong = max(peakLong, lr)
                 currentBuildVol = max(currentBuildVol, wkVol)
             } else if preTune != nil {
@@ -536,7 +539,8 @@ func mrBuildPlan(raceDate: Date,
         //   최종 예상(projectedFinal)과 같은 기준이어야 마지막 주와 일치한다.
         if heat.ok { proj = heat.fromRef(timeRefMin: proj, tempC: raceTempC) }
 
-        let mins = lr * (easyPaceSecPerKm ?? 420) / 60.0
+        // 따르는 주는 롱런 시간도 그 계획 값 그대로 (두 카드가 같은 분을 보여야 한다)
+        let mins = followed?.week.longRunMin ?? (lr * (easyPaceSecPerKm ?? 420) / 60.0)
         let n = max(Int(runsPerWeek.rounded()), 2)
         let others = max(n - 1, 1)
         // 표시값 기준으로 역산 — "롱런 A + 이지 B × N = 주간" 합산이 일치하도록
@@ -579,7 +583,8 @@ func mrBuildPlan(raceDate: Date,
                                            "Week before %@ race — Long run %.0fkm + Short %dx · Keep the intensity"),
                                label, lrDisplay, others)
         }
-        if let t = tune {
+        // 따르는 주(자기 계획 있는 10K의 대회 주 포함)는 그 계획의 문구가 전부다 — 튠업 문구를 덧붙이지 않는다.
+        if let t = tune, followed == nil {
             let label = mrLabelFor(distanceM: t.distanceM)
             if i > buildWeeks {
                 // 테이퍼 안의 튠업: 테이퍼는 그대로, 대회는 가볍게

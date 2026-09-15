@@ -74,6 +74,9 @@ final class MREngineStore: ObservableObject {
     // 대회별 계획 시작 월요일 고정값 (MeView에서 스냅샷 앵커로 업데이트).
     // refreshCore와 recomputePlans가 동일한 앵커를 참조해 계획 길이를 일치시킨다.
     private var storedSnapshotAnchors: [String: Date] = [:]
+    /// 스냅샷 주차(mrArchiveKey → 확정 주차). 자기 계획 있는 단거리의 "따르는 주"와 이번 주 목표는 이 값을 쓴다 —
+    /// 라이브 재계산 값은 오늘 프로필로 다시 만들어져 주차표(스냅샷)와 어긋날 수 있다.
+    private var storedSnapshotWeeks: [String: [MRPlanWeekSummary]] = [:]
 
     private static let rhrCacheDateKey    = "mimo.rhrCache.fetchedAt"
     private static let rhrCacheSamplesKey = "mimo.rhrCache.samples"
@@ -155,7 +158,13 @@ final class MREngineStore: ObservableObject {
                                  runsPerWeek: planProfile.runsPerWeek,
                                  priorRace: nil, forcedMonday: anchor,
                                  caller: caller, raceName: r.name)
-            if let pl { ownPlanWeeksByKey[key] = pl.weeks }
+            // ⚠ A 계획이 따를 숫자는 사용자가 주차표에서 보는 스냅샷 값이어야 한다.
+            //   라이브 주차는 오늘 프로필로 다시 만들어져 스냅샷(48)과 다른 숫자(41)가 나올 수 있고,
+            //   그러면 두 카드가 같은 주에 다른 주간 거리를 보여 준다.
+            if let pl {
+                ownPlanWeeksByKey[key] = MRPlanGovernance.applyingSnapshot(
+                    pl.weeks, snapshot: storedSnapshotWeeks[key] ?? [], easyPaceSecPerKm: easyPaceSecPerKm)
+            }
             shortPairs.append((r, pl))
         }
 
@@ -801,9 +810,14 @@ final class MREngineStore: ObservableObject {
     /// 대회·목표가 바뀌거나 앱 재기동 직후 플랜만 다시 계산한다.
     /// snapshotAnchors: 대회별 고정 시작 월요일 (mrArchiveKey → monday).
     /// 키가 있으면 계획이 재시작되지 않는다 — 스냅샷 저장 이후 주차 구조가 동결된다.
-    func recomputePlans(snapshotAnchors: [String: Date] = [:]) {
+    /// snapshotWeeks: 대회별 확정 주차 — 따르는 주·이번 주 목표의 단일 소스.
+    /// 둘 다 nil이면 마지막에 받은 값을 그대로 쓴다 (언어 전환 재계산이 앵커를 지우지 않게).
+    func recomputePlans(snapshotAnchors: [String: Date]? = nil,
+                        snapshotWeeks: [String: [MRPlanWeekSummary]]? = nil) {
         guard case .ready = state else { return }
-        storedSnapshotAnchors = snapshotAnchors   // refreshCore가 같은 앵커를 쓸 수 있도록 저장
+        if let snapshotAnchors { storedSnapshotAnchors = snapshotAnchors }   // refreshCore가 같은 앵커를 쓸 수 있도록 저장
+        if let snapshotWeeks { storedSnapshotWeeks = snapshotWeeks }
+        let snapshotAnchors = storedSnapshotAnchors
         MRUserInputStore.save(userInput)
         let now = Date()
         let planCutoff2: Date = {
@@ -853,6 +867,18 @@ final class MREngineStore: ObservableObject {
     }
 
     // MARK: - 내부 헬퍼
+
+    // MARK: - 이번 주를 다스리는 계획
+
+    /// `date`가 속한 주의 (계획, 주차) — 계획이 둘 이상 겹치면 대회일이 가장 이른 계획(그 대회 주까지).
+    /// 스냅샷이 있는 계획은 주차표와 같은 숫자를 돌려준다. MRPlanGovernance 참조.
+    func governingPlanWeek(for date: Date) -> (plan: MRRacePlan, week: MRPlanWeek)? {
+        guard let g = MRPlanGovernance.governingWeek(plans: plans, monday: date) else { return nil }
+        let key = mrArchiveKey(raceDate: g.plan.raceDate, distanceM: g.plan.distanceM)
+        guard let snap = storedSnapshotWeeks[key], !snap.isEmpty else { return g }
+        let fixed = MRPlanGovernance.applyingSnapshot([g.week], snapshot: snap, easyPaceSecPerKm: easyPaceSecPerKm)
+        return (g.plan, fixed.first ?? g.week)
+    }
 
     private func computeRaceDayCard(plans: [MRRacePlan], asOf: Date) -> MRRaceDayCard? {
         let cal = Calendar.current

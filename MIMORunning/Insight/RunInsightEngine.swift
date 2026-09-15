@@ -62,6 +62,7 @@ struct RunBaseline {
     let weekDayIndex: Int            // 1=월, 7=일
     let prevSameDayKm: Double        // 지난주 같은 요일까지 누적 km
     let planWeeklyTargetKm: Double?  // 이번 주 계획 목표 km (nil = 계획 없음)
+    let planLabel: String?           // 목표를 준 계획의 라벨("10K") — 계획이 둘 이상일 때만, 한 계획이면 nil
     let thisWeekRunCount: Int        // 이번 주 러닝 횟수 (현재 활동 포함)
     let thisWeekFastestPaceSec: Double?  // 이번 주 최고(빠른) 페이스 sec/km
     let thisWeekSlowestPaceSec: Double?  // 이번 주 최저(느린) 페이스 sec/km
@@ -96,7 +97,8 @@ enum RunInsightEngine {
 
     static func baseline(for activity: Activity,
                          history: [Activity],
-                         planWeeklyTargetKm: Double? = nil) -> RunBaseline {
+                         planWeeklyTargetKm: Double? = nil,
+                         planLabel: String? = nil) -> RunBaseline {
         let calendar = Calendar.current
         let now = activity.date
 
@@ -182,6 +184,7 @@ enum RunInsightEngine {
             weekDayIndex: weekDayIndex,
             prevSameDayKm: prevSameDayKm,
             planWeeklyTargetKm: planWeeklyTargetKm,
+            planLabel: planLabel,
             thisWeekRunCount: thisWeekRunCount,
             thisWeekFastestPaceSec: thisWeekFastestPaceSec,
             thisWeekSlowestPaceSec: thisWeekSlowestPaceSec
@@ -374,11 +377,12 @@ enum RunInsightEngine {
         heat: MRHeatModel,
         heatHR: MRHeatHRModel = MRHeatHRModel(),
         planWeeklyTargetKm: Double? = nil,
+        planLabel: String? = nil,
         effort: ResolvedEffort? = nil,
         effortBaseline: Int? = nil
     ) -> (insights: [RunInsight], segmentSource: RunSegmentSource, fadeStartKm: Double?) {
         let base        = Self.baseline(for: activity, history: history,
-                                        planWeeklyTargetKm: planWeeklyTargetKm)
+                                        planWeeklyTargetKm: planWeeklyTargetKm, planLabel: planLabel)
         let workoutType = detail?.workoutType ?? .general
         var results:   [RunInsight]       = []
         var segSource: RunSegmentSource   = .none
@@ -1567,8 +1571,10 @@ enum RunInsightEngine {
             var hi = [thisStr + "km"]
             if let target = baseline.planWeeklyTargetKm, target > 0 {
                 let targetStr = String(format: "%.0f", target)
-                msg = L.s("내일이 이번 주 마지막 날이에요 · \(thisStr) / \(targetStr)km.",
-                           "Tomorrow is the last day this week · \(thisStr) / \(targetStr) km.")
+                // 계획이 둘 이상 겹치면 어느 계획의 목표인지 — "… / 48km · 10K 계획."
+                let tag = baseline.planLabel.map { L.s(" · \($0) 계획", " · \($0) plan") } ?? ""
+                msg = L.s("내일이 이번 주 마지막 날이에요 · \(thisStr) / \(targetStr)km\(tag).",
+                           "Tomorrow is the last day this week · \(thisStr) / \(targetStr) km\(tag).")
                 hi.append(targetStr + "km")
                 #if DEBUG
                 print("[주간] 6일차(토) · \(thisStr)/\(targetStr)km → 마지막 안내")
@@ -1606,8 +1612,10 @@ enum RunInsightEngine {
         let daysLeft = 7 - wd
         if let target = baseline.planWeeklyTargetKm, target > 0 {
             let targetStr = String(format: "%.0f", target)
-            let msg = L.s("이번 주 \(thisStr) / \(targetStr)km · \(daysLeft)일 남았어요.",
-                           "This week \(thisStr) / \(targetStr) km · \(daysLeft) days left.")
+            // 계획이 둘 이상 겹치면 어느 계획의 목표인지 — "이번 주 12.6 / 48km · 10K 계획 · 5일 남았어요."
+            let tag = baseline.planLabel.map { L.s(" · \($0) 계획", " · \($0) plan") } ?? ""
+            let msg = L.s("이번 주 \(thisStr) / \(targetStr)km\(tag) · \(daysLeft)일 남았어요.",
+                           "This week \(thisStr) / \(targetStr) km\(tag) · \(daysLeft) days left.")
             #if DEBUG
             print("[주간] \(wd)일차(\(dayNames[wd])) · \(thisStr)/\(targetStr)km · \(daysLeft)일 남음 → 진행률 문구")
             #endif

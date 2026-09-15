@@ -416,7 +416,14 @@ struct MeView: View {
             },
             uniquingKeysWith: { a, _ in a }
         )
-        engine.recomputePlans(snapshotAnchors: anchors)
+        // 확정 주차도 함께 — A 계획이 "따르는" 주와 기록 상세의 이번 주 목표가 주차표와 같은 숫자를 쓰도록.
+        let snapshotWeeks = Dictionary(
+            allSnapshots.map { snap in
+                (mrArchiveKey(raceDate: snap.raceDate, distanceM: snap.distanceM), snap.planWeeks)
+            },
+            uniquingKeysWith: { a, _ in a }
+        )
+        engine.recomputePlans(snapshotAnchors: anchors, snapshotWeeks: snapshotWeeks)
         saveSnapshotsIfNeeded()
     }
 
@@ -554,7 +561,7 @@ struct MeView: View {
                 let merged: [MRPlanWeekSummary] = existing.planWeeks.map { snap in
                     let snapMon = cal.startOfDay(for: snap.monday)
                     guard let live = liveByMonday[snapMon] else { return snap }
-                    let follows = live.breakdown.contains("계획을 따릅니다")
+                    let follows = MRPlanGovernance.isFollowingPhase(live.phase) || live.breakdown.contains("계획을 따릅니다")
                     // 지난 주는 원칙적으로 고정. 예외: 다른 대회(10K) 계획을 "따르는" 주는 그 계획의 고정된
                     // 과거 값을 그대로 가져오는 것이라 역사를 새로 쓰는 게 아니다 — 이행 기호가 실제 따른 계획 기준이 된다.
                     // 이번 주(진행 중)는 튠업 관련이면 갱신한다.
