@@ -370,10 +370,24 @@ struct RunSummaryTests {
     }
 
     @Test func steadyWithRisingWeekIsNotRested() {
-        // 유지라도 최근 7일이 +23%면(15% 이상) 아직 회복 국면이 아니다 — 다음 행동 없음
+        // 유지라도 최근 7일이 +23%면(15% 이상) 아직 회복 국면이 아니다 — "충분히 회복" 대신 리듬 유지 + 고강도 간격
         var i = todayInput(); i.weekOverWeek = 0.23; i.acuteChronic = .steady; i.acuteChronicYesterday = .steady
         i.loadSentence = nil; i.daysSinceHardRun = 3; i.streakDays = 0; i.todayIsHard = false
-        #expect(lines(i)[3].next == nil)
+        #expect(lines(i)[3].next == "지금 리듬을 유지하면 좋아요. 부하가 조금 오르는 중이라 고강도는 하루 간격을 두세요.")
+    }
+
+    @Test func steadyRecentHardRunKeepsRhythm() {
+        // 유지 · 최근 7일 +5% · 마지막 고강도 1일 전 → 회복 판정은 아니지만 다음 줄은 비우지 않는다
+        var i = todayInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady; i.acuteChronicYesterday = .steady
+        i.loadSentence = nil; i.daysSinceHardRun = 1; i.streakDays = 0; i.todayIsHard = false
+        #expect(lines(i)[3].next == "지금 리듬을 유지하면 좋아요.")
+    }
+
+    @Test func steadyFallbackDoesNotOverrideComingDown() {
+        // 어제 높음 → 오늘 유지: "내려오는 중"이 유지 폴백보다 우선
+        var i = todayInput(); i.weekOverWeek = 0.23; i.acuteChronic = .steady; i.acuteChronicYesterday = .high
+        i.loadSentence = nil; i.daysSinceHardRun = 3; i.streakDays = 0; i.todayIsHard = false
+        #expect(lines(i)[3].next == "부하가 내려오는 중이에요. 하루 더 편하게 가면 좋아요.")
     }
 
     @Test func steadyCalmWeekAfterSteadyYesterdayIsRested() {

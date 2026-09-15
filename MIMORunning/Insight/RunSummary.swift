@@ -459,6 +459,15 @@ enum RunSummary {
             return L.s("충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.",
                       "You're well recovered — a good time for a build-up or tempo run.")
         }
+        // 유지(.steady)인데 회복 판정에는 못 미치는 날(최근 7일이 직전보다 15% 이상 늘었거나 고강도가 최근) —
+        // 다음 줄이 비어 보이지 않게 중립 한 줄. 부하가 오르는 중이면 고강도 간격을 두라는 말만 붙인다.
+        if i.acuteChronic == .steady {
+            let rising = (i.weekOverWeek ?? 0) >= restedWeekOverWeekMax
+            return rising
+                ? L.s("지금 리듬을 유지하면 좋아요. 부하가 조금 오르는 중이라 고강도는 하루 간격을 두세요.",
+                      "Keep this rhythm. Load is creeping up, so leave a day between hard sessions.")
+                : L.s("지금 리듬을 유지하면 좋아요.", "Keep this rhythm.")
+        }
         return nil
     }
 
