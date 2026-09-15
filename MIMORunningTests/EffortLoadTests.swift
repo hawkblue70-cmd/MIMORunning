@@ -186,6 +186,19 @@ struct EffortLoadTests {
         #expect(r.label == .veryHigh)
     }
 
+    @Test func rollingAcuteChronicYesterdayShiftsWindowOneDay() {
+        let asOf = day(2, hour: 10)   // 수요일
+        // 이전 4창 각 600 AU. 7일 전(−5) 고강도 1,200 AU는 오늘 7일 창(−4…2)에서 빠졌지만 어제 창(−5…1)에는 들어 있다.
+        let base = [run(-9, min: 120, effort: 5), run(-16, min: 120, effort: 5),
+                    run(-23, min: 120, effort: 5), run(-30, min: 120, effort: 5)]
+        let runs = [run(2, min: 40, effort: 4), run(-5, min: 240, effort: 5)] + base
+        let today = EffortLoad.rollingAcuteChronic(runs: runs, asOf: asOf, calendar: cal)!
+        let yesterday = EffortLoad.rollingAcuteChronicYesterday(runs: runs, asOf: asOf, calendar: cal)!
+        #expect(today.label == .low)
+        #expect(yesterday.label == .veryHigh)
+        #expect(yesterday == EffortLoad.rollingAcuteChronic(runs: runs, asOf: day(1, hour: 10), calendar: cal)!)
+    }
+
     @Test func rollingSentencePriority() {
         let asOf = day(2, hour: 10)
         // 7일 모두 비슷한 부하 + 커버리지 1 → 단조도

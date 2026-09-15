@@ -22,6 +22,9 @@ struct RunSummaryInput {
     /// 지난주 대비 증감률 (0.55 = +55%)
     var weekOverWeek: Double? = nil
     var acuteChronic: EffortLoad.RatioLabel? = nil
+    /// 어제 기준(asOf −1일) 4주 평균 대비 라벨 — 저장 없는 히스테리시스. 어제 높음이었으면 오늘 유지로 내려와도
+    /// "충분히 회복" 대신 "부하가 내려오는 중"을 말한다(창 경계 하루 차이로 결론이 뒤집히는 것 방지).
+    var acuteChronicYesterday: EffortLoad.RatioLabel? = nil
     var streakDays: Int = 0
     var vo2: Double? = nil
     var vo2AgeDecade: String = ""
@@ -61,7 +64,8 @@ enum RunSummary {
     static let distanceRatioMin = 1.30
     /// 이지 의도 유형에서 Zone 3 이상 비율이 이 이상이면 "기준 높음"
     static let easyHighZoneFrac = 0.50
-    static let loadJumpMin = 0.30
+    /// 유지(.steady)일 때 "충분히 회복" 문장을 허용하는 최근 7일 증감 상한 — 이 이상 늘었으면 아직 회복 국면이 아니다.
+    static let restedWeekOverWeekMax = 0.15
     /// 존 캡션 더위 보정 표기 임계값(bpm) — 존 캡션·근거 줄이 공유해서 쓴다. 총평 상태어에는 붙이지 않는다.
     static let heatNoteMinBpm = 5.0
     /// 심박 근거 줄에서 "(더위 +N)"을 붙이는 문턱(bpm) — 문장 단위 "기온 감안" 임계값과 같다.
@@ -350,27 +354,32 @@ enum RunSummary {
             line.next = loadNext(i, jumped: false)
             return line
         }
-        let wow = i.weekOverWeek ?? 0
-        // jumped가 lighter보다 우선한다 — 이번 주 급증은 4주 평균이 낮아도(acuteChronic .low) 조용히 넘기지 않는다(과훈련 신호 존중)
-        let jumped = wow >= loadJumpMin || i.acuteChronic == .high || i.acuteChronic == .veryHigh
-        let lighter = i.acuteChronic == .low || (i.acuteChronic == nil && wow <= -loadJumpMin)
+        // 상태어는 4주 평균 대비(acuteChronic)로만 정한다. 최근 7일 대 직전 7일 증감(weekOverWeek)은 창 경계에 걸린
+        // 고강도 하루가 빠지는 것만으로 하루 사이 +62% → +23%로 뒤집히므로 결론에 쓰지 않고 근거 줄에 숫자로만 적는다.
+        let jumped = i.acuteChronic == .high || i.acuteChronic == .veryHigh
 
         var state: String
         var tone: RunSummaryLine.Tone
-        if jumped {
-            // 경고 점이 음수 %와 나란히 찍히면 안 된다 — 급증 판정은 acuteChronic에서 왔을 수도 있으니 wow가 실제로 상승일 때만 %를 찍는다
-            if let w = i.weekOverWeek, w >= loadJumpMin {
-                let pct = Int((w * 100).rounded())
-                state = L.s("이번 주 +\(pct)%", "This week +\(pct)%")
-            } else {
-                state = L.s("4주 평균 대비 높음", "Above 4-wk avg")
-            }
+        switch i.acuteChronic {
+        case .veryHigh:
+            state = L.s("4주 평균 대비 크게 높음", "Well above 4-wk avg")
             tone = .neutral
-        } else if lighter {
+        case .high:
+            state = L.s("4주 평균 대비 높음", "Above 4-wk avg")
+            tone = .neutral
+        case .low:
             state = L.s("평소보다 가볍게", "Lighter than usual")
             tone = .good
-        } else {
+        case .steady:
             state = L.s("4주 평균 수준", "Around 4-wk avg")
+            tone = .good
+        case nil:
+            // 4주 비교가 아직 안 되는 기간(유효 창 3개 미만) — 증감 %만으로 높다/가볍다를 말하지 않고 7일 합만 적는다
+            if let au = i.sevenDayAU {
+                state = L.s("7일 \(groupedInt(au)) AU 기준", "7-day \(groupedInt(au)) AU")
+            } else {
+                state = L.s("4주 비교 전", "No 4-wk baseline yet")
+            }
             tone = .good
         }
         if i.streakDays >= 4 {
@@ -386,19 +395,26 @@ enum RunSummary {
         return line
     }
 
+    /// 근거: "7일 N AU · 이전 7일 N · 최근 7일 +N% · N일 연속" — 있는 것만, 이 순서로.
     private static func loadEvidence(_ i: RunSummaryInput) -> String? {
         let L = AppLanguage.shared
-        guard let au = i.sevenDayAU else {
-            return i.streakDays >= 3 ? L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row") : nil
+        var parts: [String] = []
+        if let au = i.sevenDayAU {
+            parts.append(L.s("7일 \(groupedInt(au)) AU", "7-day \(groupedInt(au)) AU"))
+            if let prev = i.previousSevenAU {
+                parts.append(L.s("이전 7일 \(groupedInt(prev))", "previous 7 days \(groupedInt(prev)) AU"))
+            }
         }
-        var e = L.s("7일 \(groupedInt(au)) AU", "7-day \(groupedInt(au)) AU")
-        if let prev = i.previousSevenAU {
-            e += L.s(" · 이전 7일 \(groupedInt(prev))", " · previous 7 days \(groupedInt(prev)) AU")
+        if let w = i.weekOverWeek {
+            // 증감은 상태어가 아니라 근거의 숫자 — 부호를 붙여 그대로 적는다
+            let pct = Int((abs(w) * 100).rounded())
+            let signed = (w < 0 ? "-" : "+") + "\(pct)%"
+            parts.append(L.s("최근 7일 \(signed)", "Last 7 days \(signed)"))
         }
         if i.streakDays >= 3 {
-            e += L.s(" · \(i.streakDays)일 연속", " · \(i.streakDays) days in a row")
+            parts.append(L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row"))
         }
-        return e
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// 계획상 회복/테이퍼 주 > 급증/단조/장기 연속 > 충분한 회복 순으로 다음 행동을 고른다.
@@ -420,17 +436,24 @@ enum RunSummary {
             return L.s("오늘 강도를 냈으니 내일은 이지런이나 휴식이 좋아요.",
                       "You went hard today — make tomorrow an easy run or a rest day.")
         }
-        // 결정 2: 부하 자료(4주 평균 대비 or 7일 AU) 없이는 "충분히 회복됐다"고 말하지 않는다 — 마지막 고강도 이후
-        // 며칠 지났는지만으로는 근거가 얕다.
+        // 히스테리시스: 어제(창 하루 전)까지 4주 평균 대비 높음이었다가 오늘 유지/가볍게로 내려온 날은
+        // "충분히 회복"이 아니라 "내려오는 중" — 창 경계로 고강도 하루가 빠진 것뿐일 수 있다.
+        let yesterdayHigh = i.acuteChronicYesterday == .high || i.acuteChronicYesterday == .veryHigh
+        let todayCalm = i.acuteChronic == .steady || i.acuteChronic == .low
+        if yesterdayHigh && todayCalm {
+            return L.s("부하가 내려오는 중이에요. 하루 더 편하게 가면 좋아요.",
+                      "Load is coming down — one more easy day is a good idea.")
+        }
+        // 결정 2: 4주 평균 대비 자료 없이는 "충분히 회복됐다"고 말하지 않는다 — 마지막 고강도 이후 며칠 지났는지만으로는
+        // 근거가 얕다. 유지(.steady)라도 최근 7일이 직전 7일보다 15% 이상 늘었으면 아직 회복 국면이 아니다.
         let rested: Bool = {
             guard let days = i.daysSinceHardRun, days >= 2 else { return false }
-            guard i.acuteChronic != nil || i.sevenDayAU != nil else { return false }
-            let acOk: Bool
+            guard i.loadSentence != .monotony, !yesterdayHigh else { return false }
             switch i.acuteChronic {
-            case nil, .low, .steady: acOk = true
-            default: acOk = false
+            case .low: return true
+            case .steady: return (i.weekOverWeek ?? 0) < restedWeekOverWeekMax
+            default: return false
             }
-            return acOk && i.loadSentence != .monotony
         }()
         if rested {
             return L.s("충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.",

@@ -106,7 +106,8 @@ struct RunSummaryTests {
         #expect(out[0] == RunSummaryLine(axis: "러닝폼", state: "끝까지 유지", tone: .good))
         #expect(out[1] == RunSummaryLine(axis: "거리 적응", state: "평소 2.1배, 범위 안", tone: .good))
         #expect(out[2] == RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good))
-        #expect(out[3] == RunSummaryLine(axis: "훈련부하", state: "이번 주 +55% · 4일 연속", tone: .neutral))
+        // 최근 7일 +55%라도 상태어는 4주 평균 대비로만 — 증감은 근거 줄의 숫자. 4일 연속이라 톤은 중립.
+        #expect(out[3] == RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준 · 4일 연속", tone: .neutral))
         #expect(out[4] == RunSummaryLine(axis: "유산소", state: "50대 남성 기준 높음", tone: .good))
     }
 
@@ -251,9 +252,10 @@ struct RunSummaryTests {
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 대비 높음", tone: .neutral)])
     }
 
-    @Test func highRatioWithNegativeWeekOverWeekUsesFourWeekWording() {
+    @Test func veryHighRatioWithNegativeWeekOverWeekUsesFourWeekWording() {
         var i = RunSummaryInput(); i.acuteChronic = .veryHigh; i.weekOverWeek = -0.17
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 대비 높음", tone: .neutral)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 대비 크게 높음", tone: .neutral)])
+        #expect(lines(i)[0].evidence == "최근 7일 -17%")
     }
 
     @Test func lowLoadIsLighter() {
@@ -261,14 +263,45 @@ struct RunSummaryTests {
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "평소보다 가볍게", tone: .good)])
     }
 
-    @Test func bigDropWithoutRatioIsLighter() {
+    @Test func bigDropWithoutRatioIsNotJudged() {
+        // 4주 비교가 없으면 증감 %만으로 가볍다/높다를 말하지 않는다 — 7일 합만, 그것도 없으면 "4주 비교 전"
         var i = RunSummaryInput(); i.weekOverWeek = -0.4
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "평소보다 가볍게", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 비교 전", tone: .good)])
+        i.sevenDayAU = 1573
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "7일 1,573 AU 기준", tone: .good)])
     }
 
     @Test func streakBelowThreeNotAppended() {
-        var i = RunSummaryInput(); i.weekOverWeek = 0.0; i.streakDays = 2
+        var i = RunSummaryInput(); i.weekOverWeek = 0.0; i.acuteChronic = .steady; i.streakDays = 2
         #expect(lines(i).first?.state == "4주 평균 수준")
+    }
+
+    // MARK: 훈련부하 — 상태어는 4주 평균 대비로만, 증감은 근거 숫자 (창 경계 하루 차이로 결론이 뒤집히지 않게)
+
+    @Test func bigWeekOverWeekWithSteadyRatioIsNotJumped() {
+        // 실제 사례: 7일 1,691 · 이전 7일 1,046(+62%)이어도 4주 평균 대비 유지면 "이번 주 +62%"가 아니라 "4주 평균 수준"
+        var i = RunSummaryInput(); i.weekOverWeek = 0.62; i.acuteChronic = .steady
+        i.sevenDayAU = 1691; i.previousSevenAU = 1046
+        let out = lines(i)
+        #expect(bare(out) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준", tone: .good)])
+        #expect(out[0].next != "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.")
+        #expect(out[0].state.contains("이번 주") == false)
+    }
+
+    @Test func highRatioIsAboveFourWeekAvgWithRestAdvice() {
+        var i = RunSummaryInput(); i.weekOverWeek = 0.10; i.acuteChronic = .high; i.sevenDayAU = 1691
+        let out = lines(i)
+        #expect(bare(out) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 대비 높음", tone: .neutral)])
+        #expect(out[0].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.")
+    }
+
+    @Test func evidenceAppendsSignedWeekOverWeek() {
+        var i = RunSummaryInput(); i.weekOverWeek = 0.234; i.acuteChronic = .steady
+        i.sevenDayAU = 1573; i.previousSevenAU = 1274
+        #expect(lines(i)[0].evidence == "7일 1,573 AU · 이전 7일 1,274 · 최근 7일 +23%")
+        AppLanguage.shared.isEnglish = true
+        #expect(RunSummary.lines(i)[0].evidence == "7-day 1,573 AU · previous 7 days 1,274 AU · Last 7 days +23%")
+        AppLanguage.shared.isEnglish = false
     }
 
     @Test func steadyLoadWithLongStreakIsNeutral() {
@@ -303,7 +336,7 @@ struct RunSummaryTests {
         #expect(out[2].evidence == "Zone 4 62% · 평균 149 · 최고 157 · 25°C(더위 +8)")
         // 거리 적응 줄이 이미 "장거리라 그렇다"를 말했으므로(거리 16km ≥ 평소 7.6km × 1.3) 심박 줄은 중복해서 말하지 않는다
         #expect(out[2].next == nil)
-        #expect(out[3].evidence == "7일 1,783 AU · 이전 7일 1,149 · 4일 연속")
+        #expect(out[3].evidence == "7일 1,783 AU · 이전 7일 1,149 · 최근 7일 +55% · 4일 연속")
         #expect(out[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.")
         #expect(out[4].evidence == "VO2max 45.4 · 8주 전 대비 +0.8")
         #expect(out[4].next == nil)
@@ -329,9 +362,38 @@ struct RunSummaryTests {
     }
 
     @Test func loadSpikeBeatsHardDay() {
-        // 이번 주 급증(todayInput 기본값)이면 오늘 강도를 냈어도 급증 경고가 우선한다
-        var i = todayInput(); i.todayIsHard = true
+        // 4주 평균 대비 높음이면 오늘 강도를 냈어도 급증 경고가 우선한다 (연속일 규칙과 겹치지 않게 streak 2)
+        var i = todayInput(); i.todayIsHard = true; i.acuteChronic = .high; i.streakDays = 2
         #expect(lines(i)[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.")
+    }
+
+    @Test func steadyAfterHighYesterdaySaysComingDown() {
+        // 어제 4주 평균 대비 높음 → 오늘 유지(8일 전 고강도가 창에서 빠진 것뿐)면 "충분히 회복"이 아니라 "내려오는 중"
+        var i = todayInput(); i.weekOverWeek = 0.23; i.acuteChronic = .steady; i.acuteChronicYesterday = .high
+        i.loadSentence = nil; i.daysSinceHardRun = 2; i.streakDays = 0; i.todayIsHard = false
+        #expect(lines(i)[3].next == "부하가 내려오는 중이에요. 하루 더 편하게 가면 좋아요.")
+        i.acuteChronicYesterday = .veryHigh; i.weekOverWeek = 0.05; i.daysSinceHardRun = 3
+        #expect(lines(i)[3].next == "부하가 내려오는 중이에요. 하루 더 편하게 가면 좋아요.")
+    }
+
+    @Test func steadyWithRisingWeekIsNotRested() {
+        // 유지라도 최근 7일이 +23%면(15% 이상) 아직 회복 국면이 아니다 — 다음 행동 없음
+        var i = todayInput(); i.weekOverWeek = 0.23; i.acuteChronic = .steady; i.acuteChronicYesterday = .steady
+        i.loadSentence = nil; i.daysSinceHardRun = 3; i.streakDays = 0; i.todayIsHard = false
+        #expect(lines(i)[3].next == nil)
+    }
+
+    @Test func steadyCalmWeekAfterSteadyYesterdayIsRested() {
+        var i = todayInput(); i.weekOverWeek = 0.10; i.acuteChronic = .steady; i.acuteChronicYesterday = .steady
+        i.loadSentence = nil; i.daysSinceHardRun = 3; i.streakDays = 0; i.todayIsHard = false
+        #expect(lines(i)[3].next == "충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.")
+    }
+
+    @Test func lowRatioIsRestedRegardlessOfWeekOverWeek() {
+        // 4주 평균 대비 낮음이면 최근 7일 증감이 커도 회복 국면
+        var i = todayInput(); i.weekOverWeek = 0.40; i.acuteChronic = .low; i.acuteChronicYesterday = .low
+        i.loadSentence = nil; i.daysSinceHardRun = 2; i.streakDays = 0; i.todayIsHard = false
+        #expect(lines(i)[3].next == "충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.")
     }
 
     // MARK: 거리 적응 — 다음 롱런 거리를 정하는 주체

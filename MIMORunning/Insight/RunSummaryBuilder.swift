@@ -127,6 +127,8 @@ enum RunSummaryBuilder {
             let runs = effortLoadRuns(activity: c.activity, history: c.history, index: idx).runs
             input.weekOverWeek = EffortLoad.rollingWeekOverWeek(runs: runs, asOf: c.activity.date)
             input.acuteChronic = EffortLoad.rollingAcuteChronic(runs: runs, asOf: c.activity.date)?.label
+            // 같은 러닝 목록으로 하루 전 창의 라벨 — 36일 창이 어제 기준 7+28일을 덮는다
+            input.acuteChronicYesterday = EffortLoad.rollingAcuteChronicYesterday(runs: runs, asOf: c.activity.date)?.label
             input.loadSentence = EffortLoad.rollingSentenceKind(runs: runs, asOf: c.activity.date)
             if let au = sevenDayAU(runs: runs, asOf: c.activity.date) {
                 input.sevenDayAU = au.current
@@ -153,9 +155,9 @@ enum RunSummaryBuilder {
         input.planPhase = c.planPhase
         input.easyPace = c.easyPaceLookup
         // daysSinceHardRun 계산(과거 최대 28일 스캔)은 loadNext가 실제로 쓸 수 있을 때만 —
-        // 회복/테이퍼 주거나 이미 급증·단조·4일+ 연속으로 다음 행동이 정해지면 "충분히 회복" 분기에 도달하지 않는다.
-        let jumped = (input.weekOverWeek ?? 0) >= RunSummary.loadJumpMin
-            || input.acuteChronic == .high || input.acuteChronic == .veryHigh
+        // 회복/테이퍼 주거나 이미 4주 평균 대비 높음·단조·4일+ 연속으로 다음 행동이 정해지면 "충분히 회복" 분기에 도달하지 않는다.
+        // (급증 판정은 RunSummary.loadLine과 같이 acuteChronic만 본다 — 최근 7일 증감은 근거 숫자일 뿐)
+        let jumped = input.acuteChronic == .high || input.acuteChronic == .veryHigh
         if (input.acuteChronic != nil || input.sevenDayAU != nil),
            input.planPhase != "회복", input.planPhase != "테이퍼",
            !jumped, input.loadSentence != .monotony, input.streakDays < 4 {

@@ -213,6 +213,13 @@ enum EffortLoad {
         return (r, ratioLabel(r))
     }
 
+    /// 하루 전 기준(asOf −1일)의 롤링 4주 평균 대비 — 총평 훈련부하 줄의 저장 없는 히스테리시스용.
+    /// 오늘 창에서 8일 전 고강도 하루가 빠져 라벨이 내려온 날을 "회복 완료"로 오판하지 않게 어제 라벨을 함께 본다.
+    static func rollingAcuteChronicYesterday(runs: [Run], asOf: Date, calendar: Calendar = .current) -> (ratio: Double, label: RatioLabel)? {
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: asOf) else { return nil }
+        return rollingAcuteChronic(runs: runs, asOf: yesterday, calendar: calendar)
+    }
+
     /// 최근 7일 vs 직전 7일 증감. 두 창 모두 coverage ≥ 0.5, 직전 총합 > 0.
     static func rollingWeekOverWeek(runs: [Run], asOf: Date, calendar: Calendar = .current) -> Double? {
         let current = lastSevenDays(runs: runs, asOf: asOf, calendar: calendar)
