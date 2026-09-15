@@ -808,6 +808,8 @@ struct RunInsightTabCard: View {
     var planPhase: String? = nil
 
     @State private var tab: InsightTabKind = .rhythm
+    /// 퍼포먼스 카드가 강도 분포를 실제로 그렸는지 — 각주(문헌값 설명)를 차트가 있을 때만 붙이기 위해 자식이 알려준다.
+    @State private var performanceHasIntensity = false
     @State private var showExport = false
 
     /// 이 활동 기준으로 직전 4주간 러닝의 1회 평균 거리(km).
@@ -1024,7 +1026,8 @@ struct RunInsightTabCard: View {
                 isBackfilling: isBackfilling,
                 isClassifying: isClassifying,
                 effortIndex: effortIndex,
-                heatHRModel: heatHRModel
+                heatHRModel: heatHRModel,
+                hasIntensityDist: $performanceHasIntensity
             )
         case .race:
             RaceInsightCard(
@@ -1046,7 +1049,7 @@ struct RunInsightTabCard: View {
                 "Reference-only fitness insights. Age-group norms and estimated max HR are rough estimates with high individual variation and are not medical advice. Cardio fitness norms follow FRIEND (Fitness Registry and Importance of Exercise National Database)."
             ))
             // L-2: 강도 분포 참고선의 근거와 한계 — 퍼포먼스 탭에서만. 기존 각주와 같은 크기·색, 강조 없음.
-            if tab == .performance {
+            if tab == .performance, performanceHasIntensity {
                 Text(L.s(
                     "강도 분포의 점선은 지구력 종목 선수들에게서 반복 관찰된 분포입니다(저강도 80% · 중간 0~5% · 고강도 15~20%). 낮은 강도는 부담이 적어 오래 쌓을 수 있고, 높은 강도는 최대 능력을 올립니다. 가운데는 회복 부담에 비해 얻는 것이 적다고 알려져 있어요.\n\n주간 훈련량이 많은 선수를 관찰한 값이라 목표가 아니라 참고선입니다. 구간은 첫 젖산 역치(AT1)와 두 번째 역치(AT2)로 나눴고, 두 값은 안정시 심박과 추정 최대심박으로 계산한 추정치입니다.",
                     "The dotted lines in the intensity distribution show a pattern repeatedly observed in endurance athletes (low 80% · mid 0–5% · high 15–20%). Low intensity is easy to accumulate with little strain; high intensity raises maximal capacity. The middle is known to return less for its recovery cost.\n\nThese values come from athletes with high weekly volume, so they are a reference, not a target. The bands are split at the first lactate threshold (AT1) and the second (AT2), both estimated from resting HR and an age-estimated max HR."
@@ -2701,6 +2704,8 @@ private struct PerformanceInsightCard: View {
     /// 강도(sRPE) 조회 인덱스 — 7일 강도 부하용. 없으면 강도 분포만 전체 폭.
     var effortIndex: EffortIndex? = nil
     var heatHRModel: MRHeatHRModel? = nil
+    /// 강도 분포 표시 여부를 부모에 알린다(각주 조건). 없으면 무시.
+    var hasIntensityDist: Binding<Bool>? = nil
 
     @Environment(\.insightCompact) private var compact
     @State private var heroBadge: AchievementBadgeKind? = nil
@@ -2902,6 +2907,9 @@ private struct PerformanceInsightCard: View {
         .padding(.top, compact ? 4 : 16).padding(.bottom, compact ? 12 : 16)
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .onChange(of: intensityDistData != nil, initial: true) { _, shown in
+            hasIntensityDist?.wrappedValue = shown
+        }
         .onAppear {
             guard !heroBadgeLoaded else { return }
             heroBadge = computeAchievementBadge(activity: activity, history: history)
