@@ -4495,16 +4495,17 @@ private struct PerformanceInsightCard: View {
                                 .frame(width: Self.intensityLabelW, alignment: .leading)
                             ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
-                                // 참고 범위 밴드 — 옅은 흰색, 경고색 없음, 미달 강조 없음
-                                if row.refHi > row.refLo {
-                                    Rectangle()
-                                        .fill(.white.opacity(0.10))
-                                        .frame(width: trackW * CGFloat((row.refHi - row.refLo) / axisFrac))
-                                        .offset(x: trackW * CGFloat(row.refLo / axisFrac))
-                                }
                                 RoundedRectangle(cornerRadius: 2.5)
                                     .fill(intensityColor(row.tier).opacity(0.85))
                                     .frame(width: max(2, trackW * CGFloat(row.frac / axisFrac)))
+                                // 참고 범위 밴드 — 막대 **위에** 얹어 막대에 가려지지 않게(중간 0~5%는 늘 막대 안에 있다).
+                                // 흰색 반투명이라 어두운 트랙에선 옅은 띠, 밝은 막대 위에선 한 톤 밝은 띠로 보인다. 경고색 없음.
+                                if row.refHi > row.refLo {
+                                    Rectangle()
+                                        .fill(.white.opacity(0.28))
+                                        .frame(width: trackW * CGFloat((row.refHi - row.refLo) / axisFrac))
+                                        .offset(x: trackW * CGFloat(row.refLo / axisFrac))
+                                }
                                 // 세로 점선 — 0 지점은 막대 시작점이라 생략.
                                 // 막대가 밝은 존 색이라 그 위에 얹히는 눈금은 흰색으로는 안 보인다 → 안/밖을 나눠 칠한다.
                                 ForEach(Array(Set([row.refLo, row.refHi]).filter { $0 > 0 }.sorted()), id: \.self) { r in
