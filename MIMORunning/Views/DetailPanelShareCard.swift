@@ -51,6 +51,15 @@ struct RouteCardPalette {
     )
 }
 
+/// 경로 카드 모양 — 경로 1: 지도 풀블리드 + 글자 오버레이(2026-09-16). 경로 2: 둥근 패널 안 지도 + 상단 헤더(그 전 카드).
+/// 경로 3·4는 아직 정하지 않았다.
+enum RouteCardStyle: Int, CaseIterable, Identifiable {
+    case hero = 1
+    case classic = 2
+    var id: Int { rawValue }
+    var label: String { AppLanguage.shared.s("경로 \(rawValue)", "Route \(rawValue)") }
+}
+
 struct DetailPanelShareCard: View {
     let activity: Activity
     let detail: ActivityDetail?
@@ -65,6 +74,8 @@ struct DetailPanelShareCard: View {
     var theme: ShareTheme = .dark
     /// 출발 지점의 지역명("경기도 안산시") — 역지오코딩 결과. 없으면 줄을 생략한다.
     var placeName: String? = nil
+    /// 지도 패널일 때의 카드 모양. 차트 패널에는 영향 없다.
+    var routeStyle: RouteCardStyle = .hero
 
     private var pal: RouteCardPalette { theme == .light ? .light : .dark }
 
@@ -79,7 +90,7 @@ struct DetailPanelShareCard: View {
     var body: some View {
         ZStack {
             pal.background
-            if activePanel == .map {
+            if activePanel == .map && routeStyle == .hero {
                 mapHeroLayout
             } else {
                 panelLayout
@@ -470,15 +481,18 @@ struct DetailPanelShareCardScreen: View {
     @State private var previewImage: UIImage?
     @State private var isRendering = true
     @State private var showShareSheet = false
-    @State private var mapSnapshot: UIImage?
+    /// 카드 모양별 지도 스냅샷 — 크기·지도 스타일이 달라 따로 만든다.
+    @State private var mapSnapshots: [RouteCardStyle: UIImage] = [:]
     @State private var placeName: String?
     @State private var cardTheme: ShareTheme = .dark
+    @State private var routeStyle: RouteCardStyle = .hero
     @Environment(\.dismiss) private var dismiss
 
     private let cardW = DetailPanelShareCard.cardWidth
     private var cardH: CGFloat { DetailPanelShareCard.cardHeight }
-    /// 지도 카드는 다크 고정 — 토글도 숨긴다. 차트 카드만 다크/라이트를 고른다.
-    private var isDarkOnly: Bool { activePanel == .map }
+    /// 경로 1(풀블리드)은 다크 고정 — 토글도 숨긴다. 경로 2와 차트 카드는 다크/라이트를 고른다.
+    private var isDarkOnly: Bool { activePanel == .map && routeStyle == .hero }
+    private var mapSnapshot: UIImage? { mapSnapshots[routeStyle] }
     private var effectiveTheme: ShareTheme { isDarkOnly ? .dark : cardTheme }
 
     private var formattedDateText: String {
@@ -508,7 +522,8 @@ struct DetailPanelShareCardScreen: View {
                         condition: condition,
                         age: age, isMale: isMale,
                         theme: effectiveTheme,
-                        placeName: placeName
+                        placeName: placeName,
+                        routeStyle: routeStyle
                     )
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -524,7 +539,14 @@ struct DetailPanelShareCardScreen: View {
 
                     shareCTA
                         .padding(.horizontal, 24)
-                        .padding(.bottom, 36)
+                        .padding(.bottom, activePanel == .map ? 12 : 36)
+
+                    // 카드 모양 선택은 화면 맨 아래 — 내보내기 버튼 밑
+                    if activePanel == .map {
+                        styleRow
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 36)
+                    }
                 }
             }
             .navigationTitle(AppLanguage.shared.s("경로 내보내기 카드", "Route Card"))
@@ -537,6 +559,17 @@ struct DetailPanelShareCardScreen: View {
             }
         }
         .task { await renderCard() }
+    }
+
+    /// 카드 모양 — 경로 1 / 경로 2. 바꾸면 그 모양의 스냅샷(없으면 새로 찍음)으로 다시 그린다.
+    private var styleRow: some View {
+        segmented(left: RouteCardStyle.hero.label, leftOn: routeStyle == .hero,
+                  right: RouteCardStyle.classic.label, rightOn: routeStyle == .classic) { wantsHero in
+            let next: RouteCardStyle = wantsHero ? .hero : .classic
+            guard routeStyle != next else { return }
+            routeStyle = next
+            Task { await renderCard() }
+        }
     }
 
     /// 카드 테마 — 경로선은 늘 심박 존 색(심박이 없으면 자동으로 단색)이라 선택지가 없다
@@ -603,12 +636,14 @@ struct DetailPanelShareCardScreen: View {
     private func renderCard() async {
         isRendering = true
         if activePanel == .map {
-            // 카드용 지도는 화면(398×220)과 크기가 달라 캐시를 공유하지 않는다 — 카드 전용 캐시.
-            if let cached = loadCachedMapSnapshot() {
-                mapSnapshot = cached
-            } else {
-                mapSnapshot = await makeMapSnapshot()
-                if let img = mapSnapshot { saveMapSnapshotToCache(img) }
+            // 카드용 지도는 화면(398×220)과 크기가 달라 캐시를 공유하지 않는다 — 카드 모양별 전용 캐시.
+            if mapSnapshots[routeStyle] == nil {
+                if let cached = loadCachedMapSnapshot(style: routeStyle) {
+                    mapSnapshots[routeStyle] = cached
+                } else if let img = await makeMapSnapshot(style: routeStyle) {
+                    mapSnapshots[routeStyle] = img
+                    saveMapSnapshotToCache(img, style: routeStyle)
+                }
             }
             if placeName == nil { placeName = await reverseGeocodedPlaceName() }
         }
@@ -622,7 +657,8 @@ struct DetailPanelShareCardScreen: View {
                 condition: condition,
                 age: age, isMale: isMale,
                 theme: effectiveTheme,
-                placeName: placeName
+                placeName: placeName,
+                routeStyle: routeStyle
             )
             .frame(width: cardW, height: cardH)
         )
@@ -633,46 +669,58 @@ struct DetailPanelShareCardScreen: View {
 
     // MARK: Map snapshot helpers
 
-    /// 카드 전용 지도 캐시 — 화면 지도(398×220)와 크기가 달라 따로 둔다.
-    /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다.
-    private var cardMapCacheURL: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_card_v8_\(activity.id.uuidString).jpg")
+    /// 카드 전용 지도 캐시 — 화면 지도(398×220)와 크기가 달라 따로 둔다. 카드 모양별로 파일이 다르다.
+    /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다. 경로 2는 예전 키(v4)를 그대로 써 이미 찍어 둔 스냅샷을 재사용한다.
+    private func cardMapCacheURL(style: RouteCardStyle) -> URL {
+        let v = style == .hero ? "v9" : "v4"
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mimo_map_card_\(v)_\(activity.id.uuidString).jpg")
     }
 
-    private func loadCachedMapSnapshot() -> UIImage? {
-        guard let data = try? Data(contentsOf: cardMapCacheURL) else { return nil }
+    private func loadCachedMapSnapshot(style: RouteCardStyle) -> UIImage? {
+        guard let data = try? Data(contentsOf: cardMapCacheURL(style: style)) else { return nil }
         return UIImage(data: data)
     }
 
-    private func saveMapSnapshotToCache(_ image: UIImage) {
+    private func saveMapSnapshotToCache(_ image: UIImage, style: RouteCardStyle) {
         guard let data = image.jpegData(compressionQuality: 0.9) else { return }
-        try? data.write(to: cardMapCacheURL)
+        try? data.write(to: cardMapCacheURL(style: style))
     }
 
     /// 경로 지도 — 심박이 있으면 존 색 그라데이션, 없으면 단색.
     /// 그리기는 활동 상세 지도와 같은 구현(RouteSnapshotRenderer)을 쓴다.
-    private func makeMapSnapshot() async -> UIImage? {
+    /// - 경로 1: 300×262 · 다크 standard · POI 제외 · 경로는 위 60% · 기본 선 굵기 · km 알약 없음
+    /// - 경로 2: 218×168 · muted 기본 · 경로 가운데 · 상세 화면과 같은 선·km 마커
+    private func makeMapSnapshot(style: RouteCardStyle) async -> UIImage? {
         guard let coords = detail?.routeCoordinates, !coords.isEmpty else { return nil }
         let valid = RouteSnapshotRenderer.validCoordinates(coords)
-        guard valid.count > 1,
-              let opts = RouteSnapshotRenderer.options(coordinates: valid,
-                                                       size: DetailPanelShareCard.mapHeroSize,
-                                                       scale: 3,
-                                                       routeBottomLimit: DetailPanelShareCard.mapRouteBottomLimit)
-        else { return nil }
-        // 지도는 늘 다크 — 흰 글자를 위에 얹는다. muted가 아닌 standard: 도로·물이 살아 있어야 애플 요약처럼 보인다
-        opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
-        opts.mapType = .standard
-        // 관심 지점(학교·상점·공원 이름)은 뺀다 — 도로명·행정구역명은 MapKit에 끄는 옵션이 없어 남는다
-        opts.pointOfInterestFilter = .excludingAll
-        guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
-
-        // 심박 존 색이 기본. 심박이 없거나 시간대가 어긋나면 zoneColors가 nil을 돌려주고 단색이 된다.
-        // 선은 1.67배 굵게(1.5→2.5pt 코어), km 알약은 끈다 — 이 폭에서는 경로보다 마커가 커 보인다.
+        guard valid.count > 1 else { return nil }
         let colors = await zoneColors(for: valid)
-        return RouteSnapshotRenderer.draw(on: snap, coordinates: valid, segmentColors: colors,
-                                          lineScale: 1.67, showKmMarkers: false)
+
+        switch style {
+        case .hero:
+            guard let opts = RouteSnapshotRenderer.options(coordinates: valid,
+                                                           size: DetailPanelShareCard.mapHeroSize,
+                                                           scale: 3,
+                                                           routeBottomLimit: DetailPanelShareCard.mapRouteBottomLimit)
+            else { return nil }
+            // 지도는 늘 다크 — 흰 글자를 위에 얹는다. muted가 아닌 standard: 도로·물이 살아 있어야 애플 요약처럼 보인다
+            opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
+            opts.mapType = .standard
+            // 관심 지점(학교·상점·공원 이름)은 뺀다 — 도로명·행정구역명은 MapKit에 끄는 옵션이 없어 남는다
+            opts.pointOfInterestFilter = .excludingAll
+            guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
+            // 선은 상세 화면과 같은 굵기(애플 요약처럼 얇게), km 알약은 끈다 — 이 폭에서는 경로보다 마커가 커 보인다.
+            return RouteSnapshotRenderer.draw(on: snap, coordinates: valid, segmentColors: colors,
+                                              lineScale: 1, showKmMarkers: false)
+
+        case .classic:
+            guard let opts = RouteSnapshotRenderer.options(coordinates: valid,
+                                                           size: CGSize(width: 218, height: 168),
+                                                           scale: 3),
+                  let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
+            return RouteSnapshotRenderer.draw(on: snap, coordinates: valid, segmentColors: colors)
+        }
     }
 
     /// 출발 지점의 "시/도 + 시/군/구" — 스탬프 카드와 같은 역지오코딩. 실패하면 nil(줄 생략).
