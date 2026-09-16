@@ -71,8 +71,10 @@ struct DetailPanelShareCard: View {
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
     /// 지도 패널의 지도 높이 — 카드 위 55%를 지도가 꽉 채운다(애플 피트니스 요약과 같은 구조).
-    static let mapHeroHeight: CGFloat = 206
+    static let mapHeroHeight: CGFloat = 228
     static let mapHeroSize = CGSize(width: cardWidth, height: mapHeroHeight)
+    /// 경로는 지도 높이의 이 비율 위쪽에만 — 그 아래는 글자 자리(애플 피트니스 요약과 같은 배치).
+    static let mapRouteBottomLimit: Double = 0.5
 
     var body: some View {
         ZStack {
@@ -86,7 +88,7 @@ struct DetailPanelShareCard: View {
     }
 
     /// 지도 패널 — 테두리 없이 지도를 카드 폭으로 펼치고, 그 위에 지역·러닝 종류·거리·시간·날씨를 얹는다.
-    /// 지도는 테마와 무관하게 늘 다크(흰 글자가 읽히도록). 라이트·다크는 아래 지표 영역에만 적용한다.
+    /// 이 카드는 다크만 — 지도가 늘 어둡고 흰 글자가 얹히므로 화면에서 라이트 선택지를 주지 않는다.
     private var mapHeroLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
@@ -123,9 +125,16 @@ struct DetailPanelShareCard: View {
             }
             .frame(width: Self.cardWidth, height: Self.mapHeroHeight)
 
-            RunMetricGrid(items: mapHeroMetricItems, style: pal.metricCellStyle,
-                          scale: 0.5, showsNote: false, columns: 2)
-                .padding(.horizontal, 16).padding(.top, 12)
+            // 지표는 상자 하나 안에 — 칸마다 상자를 두지 않고(셀 배경 투명) 격자를 통째로 감싼다
+            RunMetricGrid(items: mapHeroMetricItems, style: mapHeroCellStyle,
+                          scale: 0.47, showsNote: false, columns: 2)
+                .padding(.horizontal, 6).padding(.vertical, 4)
+                .background {
+                    let r = RoundedRectangle(cornerRadius: 14)
+                    r.fill(pal.cellBackground)
+                        .overlay(r.stroke(pal.cellBorder, lineWidth: pal.isLight ? 0.5 : 0))
+                }
+                .padding(.horizontal, 14).padding(.top, 10)
             Spacer(minLength: 0)
         }
     }
@@ -142,12 +151,12 @@ struct DetailPanelShareCard: View {
                 .foregroundStyle(.white.opacity(0.85))
             }
             Text(detail?.workoutType.koreanLabel ?? activity.type.label)
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(distanceValue)
-                    .font(.system(size: 30, weight: .heavy)).fontWidth(.condensed).tracking(-0.5)
+                    .font(.system(size: 26, weight: .heavy)).fontWidth(.condensed).tracking(-0.5)
                 Text("KM")
                     .font(.system(size: 12, weight: .bold)).tracking(1)
             }
@@ -181,6 +190,12 @@ struct DetailPanelShareCard: View {
             .foregroundStyle(.white)
             Text(label).font(.system(size: 8)).foregroundStyle(.white.opacity(0.55))
         }
+    }
+
+    /// 지도형 격자 셀 — 같은 셀 컴포넌트, 배경·테두리만 없앤다(상자는 격자 바깥에 하나).
+    private var mapHeroCellStyle: RunMetricCellStyle {
+        RunMetricCellStyle(isLight: pal.isLight, textPrimary: pal.textPrimary,
+                           cellBackground: .clear, cellBorder: .clear)
     }
 
     private var distanceValue: String {
@@ -458,6 +473,9 @@ struct DetailPanelShareCardScreen: View {
 
     private let cardW = DetailPanelShareCard.cardWidth
     private var cardH: CGFloat { DetailPanelShareCard.cardHeight }
+    /// 지도 카드는 다크 고정 — 토글도 숨긴다. 차트 카드만 다크/라이트를 고른다.
+    private var isDarkOnly: Bool { activePanel == .map }
+    private var effectiveTheme: ShareTheme { isDarkOnly ? .dark : cardTheme }
 
     private var formattedDateText: String {
         let isEn = AppLanguage.shared.isEnglish
@@ -485,7 +503,7 @@ struct DetailPanelShareCardScreen: View {
                         dateText: formattedDateText,
                         condition: condition,
                         age: age, isMale: isMale,
-                        theme: cardTheme,
+                        theme: effectiveTheme,
                         placeName: placeName
                     )
                     .frame(width: cardW, height: cardH)
@@ -494,9 +512,11 @@ struct DetailPanelShareCardScreen: View {
 
                     Spacer(minLength: 16)
 
-                    optionRow
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 14)
+                    if !isDarkOnly {
+                        optionRow
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 14)
+                    }
 
                     shareCTA
                         .padding(.horizontal, 24)
@@ -597,7 +617,7 @@ struct DetailPanelShareCardScreen: View {
                 dateText: formattedDateText,
                 condition: condition,
                 age: age, isMale: isMale,
-                theme: cardTheme,
+                theme: effectiveTheme,
                 placeName: placeName
             )
             .frame(width: cardW, height: cardH)
@@ -613,7 +633,7 @@ struct DetailPanelShareCardScreen: View {
     /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다.
     private var cardMapCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_card_v5_\(activity.id.uuidString).jpg")
+            .appendingPathComponent("mimo_map_card_v6_\(activity.id.uuidString).jpg")
     }
 
     private func loadCachedMapSnapshot() -> UIImage? {
@@ -634,7 +654,9 @@ struct DetailPanelShareCardScreen: View {
         guard valid.count > 1,
               let opts = RouteSnapshotRenderer.options(coordinates: valid,
                                                        size: DetailPanelShareCard.mapHeroSize,
-                                                       scale: 3) else { return nil }
+                                                       scale: 3,
+                                                       routeBottomLimit: DetailPanelShareCard.mapRouteBottomLimit)
+        else { return nil }
         // 지도는 늘 다크 — 흰 글자를 위에 얹는다(라이트 테마도 지표 영역만 밝다)
         opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
         guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }

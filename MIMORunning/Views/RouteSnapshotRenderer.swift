@@ -11,7 +11,10 @@ enum RouteSnapshotRenderer {
     static let violet = UIColor(red: 0x7C / 255.0, green: 0x5C / 255.0, blue: 0xFC / 255.0, alpha: 1.0)
 
     /// 스냅샷 옵션 — 경로 전체가 들어오도록 영역을 잡는다.
-    static func options(coordinates: [CLLocationCoordinate2D], size: CGSize, scale: CGFloat)
+    /// `routeBottomLimit`(0~1)을 주면 경로가 지도 높이의 그 비율 **위쪽**에만 놓이도록 영역을 아래로
+    /// 늘린다 — 경로 카드처럼 지도 아래쪽에 글자를 얹을 때 경로와 글자가 겹치지 않게. nil이면 가운데.
+    static func options(coordinates: [CLLocationCoordinate2D], size: CGSize, scale: CGFloat,
+                        routeBottomLimit: Double? = nil)
         -> MKMapSnapshotter.Options? {
         let lats = coordinates.map(\.latitude)
         let lons = coordinates.map(\.longitude)
@@ -19,17 +22,42 @@ enum RouteSnapshotRenderer {
               let minLon = lons.min(), let maxLon = lons.max() else { return nil }
 
         let opts = MKMapSnapshotter.Options()
-        opts.region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2,
-                                           longitude: (minLon + maxLon) / 2),
-            span: MKCoordinateSpan(latitudeDelta: max(0.004, (maxLat - minLat) * 1.4),
-                                   longitudeDelta: max(0.004, (maxLon - minLon) * 1.4))
-        )
+        if let limit = routeBottomLimit {
+            opts.region = topAnchoredRegion(minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon,
+                                            size: size, bottomLimit: limit)
+        } else {
+            opts.region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2,
+                                               longitude: (minLon + maxLon) / 2),
+                span: MKCoordinateSpan(latitudeDelta: max(0.004, (maxLat - minLat) * 1.4),
+                                       longitudeDelta: max(0.004, (maxLon - minLon) * 1.4))
+            )
+        }
         opts.size = size
         opts.scale = scale
         opts.mapType = .mutedStandard
         opts.showsBuildings = false
         return opts
+    }
+
+    /// 경로를 위쪽에 앉히는 영역 — 위 여백 12%, 경로는 `bottomLimit`까지, 그 아래는 빈 지도.
+    /// 영역의 가로세로 비를 스냅샷 크기와 맞춰 두어야 스냅샷터가 영역을 다시 잡으며 경로를 가운데로 되돌리지 않는다.
+    static func topAnchoredRegion(minLat: Double, maxLat: Double, minLon: Double, maxLon: Double,
+                                  size: CGSize, bottomLimit: Double) -> MKCoordinateRegion {
+        let topMargin = 0.12
+        let usable = max(0.2, min(bottomLimit, 0.95) - topMargin)
+        let routeLat = max(maxLat - minLat, 0.002)
+        let routeLon = max(maxLon - minLon, 0.002)
+        let cosLat = max(0.2, cos((minLat + maxLat) / 2 * .pi / 180))
+        let aspect = size.width / max(size.height, 1)
+        var latSpan = max(0.004, routeLat / usable)
+        var lonSpan = max(0.004, routeLon * 1.3)
+        let lonForLat = latSpan * aspect / cosLat
+        if lonSpan < lonForLat { lonSpan = lonForLat } else { latSpan = lonSpan * cosLat / aspect }
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: maxLat + latSpan * topMargin - latSpan / 2,
+                                           longitude: (minLon + maxLon) / 2),
+            span: MKCoordinateSpan(latitudeDelta: latSpan, longitudeDelta: lonSpan))
     }
 
     /// GPS 오류 좌표 제거 — (0,0) 근처 콜드스타트 튐이 영역을 통째로 늘린다.
