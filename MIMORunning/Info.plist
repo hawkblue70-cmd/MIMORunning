@@ -2,18 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.healthcare-fitness</string>
-	<key>NSHealthShareUsageDescription</key>
-	<string>러닝, 걷기, 하이킹 운동 기록과 심박수, 페이스 등 건강 데이터를 읽어 활동을 분석합니다.</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>미모러닝은 건강 데이터를 직접 기록하지 않습니다. 모든 운동 기록은 기존 건강 앱의 데이터를 읽어 분석합니다.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>러닝 공유 카드를 사진첩에 저장합니다.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>러닝 공유 카드 및 영상을 사진첩에 저장하거나 사진을 불러옵니다.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>NanumPenScript-Regular.ttf</string>
