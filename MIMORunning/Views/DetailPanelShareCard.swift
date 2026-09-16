@@ -70,8 +70,8 @@ struct DetailPanelShareCard: View {
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
-    /// 지도 패널의 지도 높이 — 카드 위 55%를 지도가 꽉 채운다(애플 피트니스 요약과 같은 구조).
-    static let mapHeroHeight: CGFloat = 240
+    /// 지도 패널의 지도 높이 — 카드 위 3/4을 지도가 꽉 채운다(애플 피트니스 요약과 같은 구조). 아래는 지표 3열 2행.
+    static let mapHeroHeight: CGFloat = 282
     static let mapHeroSize = CGSize(width: cardWidth, height: mapHeroHeight)
     /// 경로는 지도 높이의 이 비율 위쪽에만 — 그 아래는 글자 자리(애플 피트니스 요약과 같은 배치).
     static let mapRouteBottomLimit: Double = 0.6
@@ -126,9 +126,9 @@ struct DetailPanelShareCard: View {
             }
             .frame(width: Self.cardWidth, height: Self.mapHeroHeight)
 
-            // 지표는 상자 하나 안에 — 칸마다 상자를 두지 않고(셀 배경 투명) 격자를 통째로 감싼다
+            // 지표는 상자 하나 안에 — 칸마다 상자를 두지 않고(셀 배경 투명) 격자를 통째로 감싼다. 3열 2행
             RunMetricGrid(items: mapHeroMetricItems, style: mapHeroCellStyle,
-                          scale: 0.55, showsNote: false, columns: 2)
+                          scale: 0.55, showsNote: false, columns: 3)
                 .padding(.horizontal, 6).padding(.vertical, 4)
                 .background {
                     let r = RoundedRectangle(cornerRadius: 14)
@@ -233,7 +233,7 @@ struct DetailPanelShareCard: View {
         return "\(dateFmt.string(from: start)) \(timeFmt.string(from: start))~\(endText)"
     }
 
-    /// 지도 패널 아래 격자 — 거리는 위 히어로에 있으니 빼고, 2열 3행 여섯 칸.
+    /// 지도 패널 아래 격자 — 거리는 위 히어로에 있으니 빼고, 3열 2행 여섯 칸.
     /// 순서는 누구나 읽는 것부터: 시간·페이스·심박·케이던스·칼로리·고도, 그 뒤 파워·폼(있으면 밀려 들어온다).
     private var mapHeroMetricItems: [RunMetricItem] {
         let priority: [RunMetricKind] = [.time, .pace, .heartRate, .cadence, .calories, .elevation,
