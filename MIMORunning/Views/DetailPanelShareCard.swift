@@ -141,10 +141,9 @@ struct DetailPanelShareCard: View {
         }
     }
 
-    /// 지도 위 글자 묶음 — 지역 · 러닝 종류 · 거리 · 시작~종료 · 날씨/습도.
+    /// 지도 위 글자 묶음 — 지역 · 러닝 종류 · 거리 · (시작~종료 · 날씨 · 습도 한 줄).
     private var mapHeroText: some View {
-        let L = AppLanguage.shared
-        return VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             if let placeName, !placeName.isEmpty {
                 HStack(spacing: 3) {
                     Image(systemName: "location.circle").font(.system(size: 9, weight: .semibold))
@@ -164,33 +163,29 @@ struct DetailPanelShareCard: View {
             }
             .foregroundStyle(BigNumberStyle.heroGradient(.violet))
             .padding(.top, -2)
-            Text(heroTimeRangeText)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.white.opacity(0.70))
-                .padding(.top, 2)
-            if heroTempText != nil || heroHumidityText != nil {
-                HStack(spacing: 14) {
-                    if let t = heroTempText {
-                        heroConditionItem(icon: condition?.weather?.systemIcon ?? "thermometer.medium",
-                                          value: t, label: L.s("날씨", "Weather"))
-                    }
-                    if let h = heroHumidityText {
-                        heroConditionItem(icon: "humidity", value: h, label: L.s("습도", "Humidity"))
+            // 날짜 · 날씨 · 습도를 한 줄에 — "날씨"·"습도" 제목 없이 아이콘과 값만. 줄이 하나 줄어 묶음이 아래로 내려간다
+            HStack(spacing: 5) {
+                Text(heroTimeRangeText)
+                if let t = heroTempText {
+                    Text("·")
+                    HStack(spacing: 2) {
+                        Image(systemName: condition?.weather?.systemIcon ?? "thermometer.medium")
+                            .font(.system(size: 8, weight: .semibold))
+                        Text(t)
                     }
                 }
-                .padding(.top, 6)
+                if let h = heroHumidityText {
+                    Text("·")
+                    HStack(spacing: 2) {
+                        Image(systemName: "humidity").font(.system(size: 8, weight: .semibold))
+                        Text(h)
+                    }
+                }
             }
-        }
-    }
-
-    private func heroConditionItem(icon: String, value: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 3) {
-                Image(systemName: icon).font(.system(size: 9, weight: .semibold))
-                Text(value).font(.system(size: 11, weight: .semibold))
-            }
-            .foregroundStyle(.white)
-            Text(label).font(.system(size: 8)).foregroundStyle(.white.opacity(0.55))
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(.white.opacity(0.75))
+            .lineLimit(1).minimumScaleFactor(0.85)
+            .padding(.top, 2)
         }
     }
 
