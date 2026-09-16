@@ -181,23 +181,20 @@ struct DetailPanelShareCard: View {
                 .padding(.leading, 16).padding(.bottom, 26)
                 .frame(width: Self.cardWidth, height: Self.cardHeight, alignment: .bottomLeading)
 
+            // 외곽선 없음 — 지도 위에서는 보라 테두리가 번져 보인다. 흰 글자만.
+            // 프레임을 14pt 줄여 위에 붙이면 스탬프 바닥이 카드 아래 26pt — 왼쪽 열과 같은 선이고 Apple Maps 표기도 피한다.
             StampCard(data: stampData, template: .summaryGrid, colorMode: .auto,
-                      position: .bottomTrailing, sizeLevel: .large, isBrightBackground: false)
-                .frame(width: Self.cardWidth, height: Self.cardHeight)
+                      position: .bottomTrailing, sizeLevel: .large, isBrightBackground: false,
+                      showTextOutline: false)
+                .frame(width: Self.cardWidth, height: Self.cardHeight - 14, alignment: .top)
         }
         .frame(width: Self.cardWidth, height: Self.cardHeight)
     }
 
-    /// 경로 3의 왼쪽 아래 열 — 스탬프(약 152pt) 옆 남는 폭(약 118pt)에 맞춰 한 줄에 하나씩.
+    /// 경로 3의 왼쪽 아래 열 — 스탬프 옆 남는 폭에 맞춰 한 줄에 하나씩.
+    /// 지역명은 넣지 않는다(지도가 이미 어디인지 보여준다). 바닥을 스탬프와 맞춰 요약 그리드 아래줄과 같은 선에 놓인다.
     private var mapStampSideText: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let placeName, !placeName.isEmpty {
-                HStack(spacing: 3) {
-                    Image(systemName: "location.circle").font(.system(size: 9, weight: .semibold))
-                    Text(placeName).font(.system(size: 9, weight: .medium))
-                }
-                .foregroundStyle(.white.opacity(0.85))
-            }
             Text(detail?.workoutType.koreanLabel ?? activity.type.label)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(.white)
