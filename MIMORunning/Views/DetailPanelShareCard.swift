@@ -51,11 +51,22 @@ struct RouteCardPalette {
     )
 }
 
-/// 경로 카드 모양 — 경로 1: 지도 풀블리드 + 글자 오버레이(2026-09-16). 경로 2: 둥근 패널 안 지도 + 상단 헤더(그 전 카드).
-/// 경로 3·4는 아직 정하지 않았다.
+/// 경로 카드 모양 — 경로 1: 지도 풀블리드 + 글자 오버레이 + 지표 상자(2026-09-16). 경로 2: 둥근 패널 안 지도 + 상단 헤더(그 전 카드).
+/// 경로 3: 카드 전체가 지도, 오른쪽 아래에 스탬프 "요약 그리드"(대), 왼쪽 아래에 지역·종류·날짜. 경로 4는 아직.
 enum RouteCardStyle: Int, CaseIterable, Identifiable {
     case hero = 1
     case classic = 2
+    case stamp = 3
+    /// 지도가 카드 폭을 채우는 모양인가(경로 2만 둥근 패널)
+    var isFullBleed: Bool { self != .classic }
+    /// 스냅샷 크기 — 경로 1은 위 262pt, 경로 3은 카드 전체
+    var mapSize: CGSize {
+        switch self {
+        case .hero:    return DetailPanelShareCard.mapHeroSize
+        case .classic: return CGSize(width: 218, height: 168)
+        case .stamp:   return CGSize(width: DetailPanelShareCard.cardWidth, height: DetailPanelShareCard.cardHeight)
+        }
+    }
     var id: Int { rawValue }
     var label: String { AppLanguage.shared.s("경로 \(rawValue)", "Route \(rawValue)") }
 }
@@ -90,42 +101,47 @@ struct DetailPanelShareCard: View {
     var body: some View {
         ZStack {
             pal.background
-            if activePanel == .map && routeStyle == .hero {
-                mapHeroLayout
-            } else {
-                panelLayout
+            switch (activePanel, routeStyle) {
+            case (.map, .hero):  mapHeroLayout
+            case (.map, .stamp): mapStampLayout
+            default:             panelLayout
             }
         }
     }
 
-    /// 지도 패널 — 테두리 없이 지도를 카드 폭으로 펼치고, 그 위에 지역·러닝 종류·거리·시간·날씨를 얹는다.
+    /// 지도 층 — 스냅샷(없으면 라인아트) + 가운데부터 아래로 스크림. 경로 1·3이 같이 쓴다.
+    /// 위쪽은 지도 원색 그대로(경로가 밝게), 아래쪽만 어두워져 흰 글자가 읽힌다 — 애플 피트니스 요약과 같은 밝기 곡선.
+    private func mapLayer(height: CGFloat) -> some View {
+        Group {
+            if let snapshot = mapSnapshot {
+                Image(uiImage: snapshot).resizable().scaledToFill()
+            } else if let coords = detail?.routeCoordinates, !coords.isEmpty {
+                ZStack {
+                    Color(hex: "14121C")
+                    RouteLineArt(coordinates: coords, lineColor: Theme.violet, lineWidth: 1.5)
+                        .padding(30)
+                }
+            } else {
+                Color(hex: "14121C")
+            }
+        }
+        .frame(width: Self.cardWidth, height: height)
+        .clipped()
+        .overlay(alignment: .bottom) {
+            LinearGradient(stops: [.init(color: .black.opacity(0), location: 0),
+                                   .init(color: .black.opacity(0.45), location: 0.45),
+                                   .init(color: .black.opacity(0.86), location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+                .frame(height: height * 0.63)
+        }
+    }
+
+    /// 경로 1 — 테두리 없이 지도를 카드 폭으로 펼치고, 그 위에 지역·러닝 종류·거리·시간·날씨를 얹는다. 아래는 지표 상자.
     /// 이 카드는 다크만 — 지도가 늘 어둡고 흰 글자가 얹히므로 화면에서 라이트 선택지를 주지 않는다.
     private var mapHeroLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
-                Group {
-                    if let snapshot = mapSnapshot {
-                        Image(uiImage: snapshot).resizable().scaledToFill()
-                    } else if let coords = detail?.routeCoordinates, !coords.isEmpty {
-                        ZStack {
-                            Color(hex: "14121C")
-                            RouteLineArt(coordinates: coords, lineColor: Theme.violet, lineWidth: 1.5)
-                                .padding(30)
-                        }
-                    } else {
-                        Color(hex: "14121C")
-                    }
-                }
-                .frame(width: Self.cardWidth, height: Self.mapHeroHeight)
-                .clipped()
-                // 위쪽은 지도 원색 그대로(경로가 밝게), 가운데부터 아래로 스크림 — 애플 피트니스 요약과 같은 밝기 곡선
-                .overlay(alignment: .bottom) {
-                    LinearGradient(stops: [.init(color: .black.opacity(0), location: 0),
-                                           .init(color: .black.opacity(0.45), location: 0.45),
-                                           .init(color: .black.opacity(0.86), location: 1)],
-                                   startPoint: .top, endPoint: .bottom)
-                        .frame(height: 165)
-                }
+                mapLayer(height: Self.mapHeroHeight)
 
                 MIMOWordmark(size: 9, strokeMIMO: false)
                     .padding(.leading, 16).padding(.top, 16)
@@ -150,6 +166,83 @@ struct DetailPanelShareCard: View {
                 .padding(.horizontal, 14).padding(.top, 10)
             Spacer(minLength: 0)
         }
+    }
+
+    /// 경로 3 — 카드 전체가 지도. 오른쪽 아래 스탬프 "요약 그리드"(대), 왼쪽 아래 지역·종류·날짜·시각·날씨 좁은 열.
+    /// 거리는 스탬프가 크게 보여주므로 왼쪽 열에는 없다. 스탬프는 스탬프 카드와 같은 컴포넌트·같은 배율표(§5.8).
+    private var mapStampLayout: some View {
+        ZStack(alignment: .topLeading) {
+            mapLayer(height: Self.cardHeight)
+
+            MIMOWordmark(size: 9, strokeMIMO: false)
+                .padding(.leading, 16).padding(.top, 16)
+
+            mapStampSideText
+                .padding(.leading, 16).padding(.bottom, 26)
+                .frame(width: Self.cardWidth, height: Self.cardHeight, alignment: .bottomLeading)
+
+            StampCard(data: stampData, template: .summaryGrid, colorMode: .auto,
+                      position: .bottomTrailing, sizeLevel: .large, isBrightBackground: false)
+                .frame(width: Self.cardWidth, height: Self.cardHeight)
+        }
+        .frame(width: Self.cardWidth, height: Self.cardHeight)
+    }
+
+    /// 경로 3의 왼쪽 아래 열 — 스탬프(약 152pt) 옆 남는 폭(약 118pt)에 맞춰 한 줄에 하나씩.
+    private var mapStampSideText: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let placeName, !placeName.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "location.circle").font(.system(size: 9, weight: .semibold))
+                    Text(placeName).font(.system(size: 9, weight: .medium))
+                }
+                .foregroundStyle(.white.opacity(0.85))
+            }
+            Text(detail?.workoutType.koreanLabel ?? activity.type.label)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.white)
+            Text(heroDateOnlyText)
+            Text(heroTimeOnlyText)
+            if heroTempText != nil || heroHumidityText != nil {
+                HStack(spacing: 5) {
+                    if let t = heroTempText {
+                        HStack(spacing: 2) {
+                            Image(systemName: condition?.weather?.systemIcon ?? "thermometer.medium")
+                                .font(.system(size: 8, weight: .semibold))
+                            Text(t)
+                        }
+                    }
+                    if let h = heroHumidityText {
+                        if heroTempText != nil { Text("·") }
+                        HStack(spacing: 2) {
+                            Image(systemName: "humidity").font(.system(size: 8, weight: .semibold))
+                            Text(h)
+                        }
+                    }
+                }
+            }
+        }
+        .font(.system(size: 9, weight: .medium))
+        .foregroundStyle(.white.opacity(0.75))
+        .lineLimit(1)
+        .frame(maxWidth: 112, alignment: .leading)
+    }
+
+    /// 스탬프 "요약 그리드"에 넘길 데이터 — 스탬프 카드가 만드는 것과 같은 표기(거리·페이스·시간·심박·칼로리·케이던스·고도).
+    private var stampData: StampData {
+        var d = StampData(
+            distance: distanceValue,
+            distanceUnit: "KM",
+            pace: activity.formattedPace ?? "--'--\"",
+            time: activity.formattedDuration,
+            heartRate: activity.avgHeartRate.map { "\($0)" },
+            calories: activity.calories.map { String(format: "%.0f", $0) },
+            dateText: "", locationText: "", weekday: ""
+        )
+        d.cadence  = detail?.avgCadence.map { "\($0)" }
+        d.elevGain = detail?.elevationGain.map { String(format: "%.0f", $0) }
+        d.date     = activity.date
+        return d
     }
 
     /// 지도 위 글자 묶음 — 지역 · 러닝 종류 · 거리 · (시작~종료 · 날씨 · 습도 한 줄).
@@ -219,6 +312,21 @@ struct DetailPanelShareCard: View {
 
     private var heroHumidityText: String? {
         activity.humidityPercent.map { String(format: "%.0f%%", $0) }
+    }
+
+    /// "2026년 9월 16일" — 경로 3 왼쪽 열용(한 줄에 하나)
+    private var heroDateOnlyText: String {
+        let isEn = AppLanguage.shared.isEnglish
+        let f = DateFormatter(); f.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        f.dateFormat = isEn ? "MMM d, yyyy" : "yyyy년 M월 d일"
+        return f.string(from: activity.date)
+    }
+
+    /// "오후 6:48~7:39" — 경로 3 왼쪽 열용
+    private var heroTimeOnlyText: String {
+        let full = heroTimeRangeText
+        let datePart = heroDateOnlyText
+        return full.hasPrefix(datePart) ? String(full.dropFirst(datePart.count)).trimmingCharacters(in: .whitespaces) : full
     }
 
     /// "2026년 9월 16일 오후 6:48~7:39" — 종료가 같은 오전/오후면 시:분만 붙인다.
@@ -490,8 +598,8 @@ struct DetailPanelShareCardScreen: View {
 
     private let cardW = DetailPanelShareCard.cardWidth
     private var cardH: CGFloat { DetailPanelShareCard.cardHeight }
-    /// 경로 1(풀블리드)은 다크 고정 — 토글도 숨긴다. 경로 2와 차트 카드는 다크/라이트를 고른다.
-    private var isDarkOnly: Bool { activePanel == .map && routeStyle == .hero }
+    /// 풀블리드 경로 카드(경로 1·3)는 다크 고정 — 토글도 숨긴다. 경로 2와 차트 카드는 다크/라이트를 고른다.
+    private var isDarkOnly: Bool { activePanel == .map && routeStyle.isFullBleed }
     private var mapSnapshot: UIImage? { mapSnapshots[routeStyle] }
     private var effectiveTheme: ShareTheme { isDarkOnly ? .dark : cardTheme }
 
@@ -561,15 +669,19 @@ struct DetailPanelShareCardScreen: View {
         .task { await renderCard() }
     }
 
-    /// 카드 모양 — 경로 1 / 경로 2. 바꾸면 그 모양의 스냅샷(없으면 새로 찍음)으로 다시 그린다.
+    /// 카드 모양 — 경로 1 / 2 / 3. 바꾸면 그 모양의 스냅샷(없으면 새로 찍음)으로 다시 그린다.
     private var styleRow: some View {
-        segmented(left: RouteCardStyle.hero.label, leftOn: routeStyle == .hero,
-                  right: RouteCardStyle.classic.label, rightOn: routeStyle == .classic) { wantsHero in
-            let next: RouteCardStyle = wantsHero ? .hero : .classic
-            guard routeStyle != next else { return }
-            routeStyle = next
-            Task { await renderCard() }
+        HStack(spacing: 0) {
+            ForEach(RouteCardStyle.allCases) { style in
+                segment(style.label, selected: routeStyle == style) {
+                    guard routeStyle != style else { return }
+                    routeStyle = style
+                    Task { await renderCard() }
+                }
+            }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
     }
 
     /// 카드 테마 — 경로선은 늘 심박 존 색(심박이 없으면 자동으로 단색)이라 선택지가 없다
@@ -672,7 +784,12 @@ struct DetailPanelShareCardScreen: View {
     /// 카드 전용 지도 캐시 — 화면 지도(398×220)와 크기가 달라 따로 둔다. 카드 모양별로 파일이 다르다.
     /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다. 경로 2는 예전 키(v4)를 그대로 써 이미 찍어 둔 스냅샷을 재사용한다.
     private func cardMapCacheURL(style: RouteCardStyle) -> URL {
-        let v = style == .hero ? "v9" : "v4"
+        let v: String
+        switch style {
+        case .hero:    v = "v9"
+        case .classic: v = "v4"
+        case .stamp:   v = "v9s"
+        }
         return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_map_card_\(v)_\(activity.id.uuidString).jpg")
     }
@@ -689,7 +806,7 @@ struct DetailPanelShareCardScreen: View {
 
     /// 경로 지도 — 심박이 있으면 존 색 그라데이션, 없으면 단색.
     /// 그리기는 활동 상세 지도와 같은 구현(RouteSnapshotRenderer)을 쓴다.
-    /// - 경로 1: 300×262 · 다크 standard · POI 제외 · 경로는 위 60% · 기본 선 굵기 · km 알약 없음
+    /// - 경로 1·3: 300×262 / 300×375 · 다크 standard · POI 제외 · 경로는 위 60% · 기본 선 굵기 · km 알약 없음
     /// - 경로 2: 218×168 · muted 기본 · 경로 가운데 · 상세 화면과 같은 선·km 마커
     private func makeMapSnapshot(style: RouteCardStyle) async -> UIImage? {
         guard let coords = detail?.routeCoordinates, !coords.isEmpty else { return nil }
@@ -698,9 +815,9 @@ struct DetailPanelShareCardScreen: View {
         let colors = await zoneColors(for: valid)
 
         switch style {
-        case .hero:
+        case .hero, .stamp:
             guard let opts = RouteSnapshotRenderer.options(coordinates: valid,
-                                                           size: DetailPanelShareCard.mapHeroSize,
+                                                           size: style.mapSize,
                                                            scale: 3,
                                                            routeBottomLimit: DetailPanelShareCard.mapRouteBottomLimit)
             else { return nil }
@@ -716,7 +833,7 @@ struct DetailPanelShareCardScreen: View {
 
         case .classic:
             guard let opts = RouteSnapshotRenderer.options(coordinates: valid,
-                                                           size: CGSize(width: 218, height: 168),
+                                                           size: style.mapSize,
                                                            scale: 3),
                   let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
             return RouteSnapshotRenderer.draw(on: snap, coordinates: valid, segmentColors: colors)
