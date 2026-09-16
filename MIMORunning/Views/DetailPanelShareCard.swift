@@ -70,8 +70,8 @@ struct DetailPanelShareCard: View {
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
-    /// 지도 패널의 지도 높이 — 카드 위 3/4을 지도가 꽉 채운다(애플 피트니스 요약과 같은 구조). 아래는 지표 3열 2행.
-    static let mapHeroHeight: CGFloat = 282
+    /// 지도 패널의 지도 높이 — 카드 위 70%를 지도가 꽉 채운다(애플 피트니스 요약과 같은 구조). 아래는 지표 3열 2행.
+    static let mapHeroHeight: CGFloat = 262
     static let mapHeroSize = CGSize(width: cardWidth, height: mapHeroHeight)
     /// 경로는 지도 높이의 이 비율 위쪽에만 — 그 아래는 글자 자리(애플 피트니스 요약과 같은 배치).
     static let mapRouteBottomLimit: Double = 0.6
@@ -127,8 +127,9 @@ struct DetailPanelShareCard: View {
             .frame(width: Self.cardWidth, height: Self.mapHeroHeight)
 
             // 지표는 상자 하나 안에 — 칸마다 상자를 두지 않고(셀 배경 투명) 격자를 통째로 감싼다. 3열 2행
+            // 배율 0.78: 값 15.6pt · 라벨 9.4pt — 애플 요약처럼 값이 라벨의 두 배 가까이 크다
             RunMetricGrid(items: mapHeroMetricItems, style: mapHeroCellStyle,
-                          scale: 0.55, showsNote: false, columns: 3)
+                          scale: 0.78, showsNote: false, columns: 3)
                 .padding(.horizontal, 6).padding(.vertical, 4)
                 .background {
                     let r = RoundedRectangle(cornerRadius: 14)
