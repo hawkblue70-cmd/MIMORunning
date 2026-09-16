@@ -69,9 +69,13 @@ enum RouteSnapshotRenderer {
 
     /// 경로선 + 시작·km·도착 마커를 스냅샷 위에 그린다.
     /// `segmentColors`가 있으면 구간별 색(심박 존 그라데이션), 없으면 단색 바이올렛.
+    /// `lineScale`은 선 굵기 배율(작은 카드는 굵게), `showKmMarkers`가 false면 시작·도착 점만 남긴다 —
+    /// 300pt 폭 카드에서 km 알약이 경로보다 커 보여서.
     static func draw(on snap: MKMapSnapshotter.Snapshot,
                      coordinates: [CLLocationCoordinate2D],
-                     segmentColors: [UIColor]? = nil) -> UIImage {
+                     segmentColors: [UIColor]? = nil,
+                     lineScale: CGFloat = 1,
+                     showKmMarkers: Bool = true) -> UIImage {
         let step = max(1, coordinates.count / 300)
         let indices = Array(stride(from: 0, to: coordinates.count, by: step))
         let pts = indices.map { snap.point(for: coordinates[$0]) }
@@ -89,7 +93,7 @@ enum RouteSnapshotRenderer {
                         seg.move(to: pts[i])
                         seg.addLine(to: pts[i + 1])
                         seg.lineCapStyle = .round
-                        seg.lineWidth = pass == 0 ? 3.5 : 1.5
+                        seg.lineWidth = (pass == 0 ? 3.5 : 1.5) * lineScale
                         let c = colors[i]
                         (pass == 0 ? c.withAlphaComponent(0.35) : c).setStroke()
                         seg.stroke()
@@ -101,16 +105,21 @@ enum RouteSnapshotRenderer {
                 for pt in pts.dropFirst() { path.addLine(to: pt) }
                 path.lineCapStyle = .round
                 path.lineJoinStyle = .round
-                path.lineWidth = 3
+                path.lineWidth = 3 * lineScale
                 violet.withAlphaComponent(0.4).setStroke()
                 path.stroke()
-                path.lineWidth = 1.5
+                path.lineWidth = 1.5 * lineScale
                 violet.setStroke()
                 path.stroke()
             }
 
-            RouteMarkers.drawAll(on: snap, coords: coordinates,
-                                 endPoint: pts.last, startPoint: pts.first)
+            if showKmMarkers {
+                RouteMarkers.drawAll(on: snap, coords: coordinates,
+                                     endPoint: pts.last, startPoint: pts.first)
+            } else {
+                if let p = pts.first { RouteMarkers.drawStartMarker(at: p) }
+                if let p = pts.last { RouteMarkers.drawFinishMarker(at: p) }
+            }
         }
     }
 

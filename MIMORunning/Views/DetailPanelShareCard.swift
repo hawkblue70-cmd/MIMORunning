@@ -71,10 +71,10 @@ struct DetailPanelShareCard: View {
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
     /// 지도 패널의 지도 높이 — 카드 위 55%를 지도가 꽉 채운다(애플 피트니스 요약과 같은 구조).
-    static let mapHeroHeight: CGFloat = 228
+    static let mapHeroHeight: CGFloat = 240
     static let mapHeroSize = CGSize(width: cardWidth, height: mapHeroHeight)
     /// 경로는 지도 높이의 이 비율 위쪽에만 — 그 아래는 글자 자리(애플 피트니스 요약과 같은 배치).
-    static let mapRouteBottomLimit: Double = 0.5
+    static let mapRouteBottomLimit: Double = 0.6
 
     var body: some View {
         ZStack {
@@ -107,12 +107,13 @@ struct DetailPanelShareCard: View {
                 }
                 .frame(width: Self.cardWidth, height: Self.mapHeroHeight)
                 .clipped()
-                // 경로 영상과 같은 8% 어둡히기 + 아래쪽 스크림 — 글자가 지도 위에서 읽힌다
-                .overlay(Color.black.opacity(RouteVideoExportService.mapDarkenAlpha))
+                // 위쪽은 지도 원색 그대로(경로가 밝게), 가운데부터 아래로 스크림 — 애플 피트니스 요약과 같은 밝기 곡선
                 .overlay(alignment: .bottom) {
-                    LinearGradient(colors: [.black.opacity(0), .black.opacity(0.62), .black.opacity(0.88)],
+                    LinearGradient(stops: [.init(color: .black.opacity(0), location: 0),
+                                           .init(color: .black.opacity(0.45), location: 0.45),
+                                           .init(color: .black.opacity(0.86), location: 1)],
                                    startPoint: .top, endPoint: .bottom)
-                        .frame(height: 150)
+                        .frame(height: 165)
                 }
 
                 MIMOWordmark(size: 9, strokeMIMO: false)
@@ -127,7 +128,7 @@ struct DetailPanelShareCard: View {
 
             // 지표는 상자 하나 안에 — 칸마다 상자를 두지 않고(셀 배경 투명) 격자를 통째로 감싼다
             RunMetricGrid(items: mapHeroMetricItems, style: mapHeroCellStyle,
-                          scale: 0.47, showsNote: false, columns: 2)
+                          scale: 0.55, showsNote: false, columns: 2)
                 .padding(.horizontal, 6).padding(.vertical, 4)
                 .background {
                     let r = RoundedRectangle(cornerRadius: 14)
@@ -232,11 +233,18 @@ struct DetailPanelShareCard: View {
         return "\(dateFmt.string(from: start)) \(timeFmt.string(from: start))~\(endText)"
     }
 
-    /// 지도 패널 아래 격자 — 거리는 위 히어로에 있으니 빼고, 2열 4행까지.
+    /// 지도 패널 아래 격자 — 거리는 위 히어로에 있으니 빼고, 2열 3행 여섯 칸.
+    /// 순서는 누구나 읽는 것부터: 시간·페이스·심박·케이던스·칼로리·고도, 그 뒤 파워·폼(있으면 밀려 들어온다).
     private var mapHeroMetricItems: [RunMetricItem] {
-        Array(RunMetricItem.list(activity: activity, detail: detail, age: age, isMale: isMale)
+        let priority: [RunMetricKind] = [.time, .pace, .heartRate, .cadence, .calories, .elevation,
+                                         .power, .form, .cardio]
+        func rank(_ k: RunMetricKind) -> Int { priority.firstIndex(of: k) ?? priority.count }
+        let all = RunMetricItem.list(activity: activity, detail: detail, age: age, isMale: isMale)
             .filter { $0.kind != .distance }
-            .prefix(8)
+        return Array(all.enumerated()
+            .sorted { (rank($0.element.kind), $0.offset) < (rank($1.element.kind), $1.offset) }
+            .map(\.element)
+            .prefix(6)
             .map { $0.recolored($0.kind.shareColor(isLight: pal.isLight, textPrimary: pal.textPrimary)) })
     }
 
@@ -633,7 +641,7 @@ struct DetailPanelShareCardScreen: View {
     /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다.
     private var cardMapCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_card_v6_\(activity.id.uuidString).jpg")
+            .appendingPathComponent("mimo_map_card_v7_\(activity.id.uuidString).jpg")
     }
 
     private func loadCachedMapSnapshot() -> UIImage? {
@@ -657,13 +665,16 @@ struct DetailPanelShareCardScreen: View {
                                                        scale: 3,
                                                        routeBottomLimit: DetailPanelShareCard.mapRouteBottomLimit)
         else { return nil }
-        // 지도는 늘 다크 — 흰 글자를 위에 얹는다(라이트 테마도 지표 영역만 밝다)
+        // 지도는 늘 다크 — 흰 글자를 위에 얹는다. muted가 아닌 standard: 도로·물이 살아 있어야 애플 요약처럼 보인다
         opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
+        opts.mapType = .standard
         guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
 
         // 심박 존 색이 기본. 심박이 없거나 시간대가 어긋나면 zoneColors가 nil을 돌려주고 단색이 된다.
+        // 선은 1.67배 굵게(1.5→2.5pt 코어), km 알약은 끈다 — 이 폭에서는 경로보다 마커가 커 보인다.
         let colors = await zoneColors(for: valid)
-        return RouteSnapshotRenderer.draw(on: snap, coordinates: valid, segmentColors: colors)
+        return RouteSnapshotRenderer.draw(on: snap, coordinates: valid, segmentColors: colors,
+                                          lineScale: 1.67, showKmMarkers: false)
     }
 
     /// 출발 지점의 "시/도 + 시/군/구" — 스탬프 카드와 같은 역지오코딩. 실패하면 nil(줄 생략).
