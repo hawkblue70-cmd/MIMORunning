@@ -96,10 +96,12 @@ struct RunMetricGrid: View {
     let style: RunMetricCellStyle
     var scale: CGFloat = 1.0
     var showsNote: Bool = true
+    /// 열 수 — 기본 3. 경로 카드 지도형은 2열(칸이 커져 지도 아래에서 읽힌다).
+    var columns: Int = 3
 
     var body: some View {
         let gap = RunMetricCellMetrics.spacing * scale
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: gap), count: 3),
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: gap), count: columns),
                   alignment: .leading, spacing: gap) {
             ForEach(items) { item in
                 RunMetricCell(item: item, style: style, scale: scale, showsNote: showsNote)

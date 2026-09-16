@@ -63,16 +63,171 @@ struct DetailPanelShareCard: View {
     var age: Int? = nil
     var isMale: Bool? = nil
     var theme: ShareTheme = .dark
+    /// 출발 지점의 지역명("경기도 안산시") — 역지오코딩 결과. 없으면 줄을 생략한다.
+    var placeName: String? = nil
 
     private var pal: RouteCardPalette { theme == .light ? .light : .dark }
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
+    /// 지도 패널의 지도 높이 — 카드 위 55%를 지도가 꽉 채운다(애플 피트니스 요약과 같은 구조).
+    static let mapHeroHeight: CGFloat = 206
+    static let mapHeroSize = CGSize(width: cardWidth, height: mapHeroHeight)
 
     var body: some View {
         ZStack {
             pal.background
-            VStack(alignment: .leading, spacing: 0) {
+            if activePanel == .map {
+                mapHeroLayout
+            } else {
+                panelLayout
+            }
+        }
+    }
+
+    /// 지도 패널 — 테두리 없이 지도를 카드 폭으로 펼치고, 그 위에 지역·러닝 종류·거리·시간·날씨를 얹는다.
+    /// 지도는 테마와 무관하게 늘 다크(흰 글자가 읽히도록). 라이트·다크는 아래 지표 영역에만 적용한다.
+    private var mapHeroLayout: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                Group {
+                    if let snapshot = mapSnapshot {
+                        Image(uiImage: snapshot).resizable().scaledToFill()
+                    } else if let coords = detail?.routeCoordinates, !coords.isEmpty {
+                        ZStack {
+                            Color(hex: "14121C")
+                            RouteLineArt(coordinates: coords, lineColor: Theme.violet, lineWidth: 1.5)
+                                .padding(30)
+                        }
+                    } else {
+                        Color(hex: "14121C")
+                    }
+                }
+                .frame(width: Self.cardWidth, height: Self.mapHeroHeight)
+                .clipped()
+                // 경로 영상과 같은 8% 어둡히기 + 아래쪽 스크림 — 글자가 지도 위에서 읽힌다
+                .overlay(Color.black.opacity(RouteVideoExportService.mapDarkenAlpha))
+                .overlay(alignment: .bottom) {
+                    LinearGradient(colors: [.black.opacity(0), .black.opacity(0.62), .black.opacity(0.88)],
+                                   startPoint: .top, endPoint: .bottom)
+                        .frame(height: 150)
+                }
+
+                MIMOWordmark(size: 9, strokeMIMO: false)
+                    .padding(.leading, 16).padding(.top, 16)
+
+                // 아래 24pt는 스냅샷의 Apple Maps 표기 자리 — 글자가 그 위에 얹히지 않게 비운다
+                mapHeroText
+                    .padding(.leading, 16).padding(.bottom, 26)
+                    .frame(width: Self.cardWidth, height: Self.mapHeroHeight, alignment: .bottomLeading)
+            }
+            .frame(width: Self.cardWidth, height: Self.mapHeroHeight)
+
+            RunMetricGrid(items: mapHeroMetricItems, style: pal.metricCellStyle,
+                          scale: 0.5, showsNote: false, columns: 2)
+                .padding(.horizontal, 16).padding(.top, 12)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// 지도 위 글자 묶음 — 지역 · 러닝 종류 · 거리 · 시작~종료 · 날씨/습도.
+    private var mapHeroText: some View {
+        let L = AppLanguage.shared
+        return VStack(alignment: .leading, spacing: 3) {
+            if let placeName, !placeName.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "location.circle").font(.system(size: 9, weight: .semibold))
+                    Text(placeName).font(.system(size: 9, weight: .medium))
+                }
+                .foregroundStyle(.white.opacity(0.85))
+            }
+            Text(detail?.workoutType.koreanLabel ?? activity.type.label)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(distanceValue)
+                    .font(.system(size: 30, weight: .heavy)).fontWidth(.condensed).tracking(-0.5)
+                Text("KM")
+                    .font(.system(size: 12, weight: .bold)).tracking(1)
+            }
+            .foregroundStyle(BigNumberStyle.heroGradient(.violet))
+            .padding(.top, -2)
+            Text(heroTimeRangeText)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.white.opacity(0.70))
+                .padding(.top, 2)
+            if heroTempText != nil || heroHumidityText != nil {
+                HStack(spacing: 14) {
+                    if let t = heroTempText {
+                        heroConditionItem(icon: condition?.weather?.systemIcon ?? "thermometer.medium",
+                                          value: t, label: L.s("날씨", "Weather"))
+                    }
+                    if let h = heroHumidityText {
+                        heroConditionItem(icon: "humidity", value: h, label: L.s("습도", "Humidity"))
+                    }
+                }
+                .padding(.top, 6)
+            }
+        }
+    }
+
+    private func heroConditionItem(icon: String, value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 3) {
+                Image(systemName: icon).font(.system(size: 9, weight: .semibold))
+                Text(value).font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            Text(label).font(.system(size: 8)).foregroundStyle(.white.opacity(0.55))
+        }
+    }
+
+    private var distanceValue: String {
+        let km = activity.distance / 1000
+        return km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+    }
+
+    private var heroTempText: String? {
+        if let t = activity.temperatureC { return String(format: "%.0f°", t) }
+        if let w = condition?.weather { return String(format: "%.0f°", w.tempC) }
+        return nil
+    }
+
+    private var heroHumidityText: String? {
+        activity.humidityPercent.map { String(format: "%.0f%%", $0) }
+    }
+
+    /// "2026년 9월 16일 오후 6:48~7:39" — 종료가 같은 오전/오후면 시:분만 붙인다.
+    private var heroTimeRangeText: String {
+        let isEn = AppLanguage.shared.isEnglish
+        let locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        let start = activity.date
+        let end = start.addingTimeInterval(activity.duration)
+        let dateFmt = DateFormatter(); dateFmt.locale = locale
+        dateFmt.dateFormat = isEn ? "MMM d, yyyy" : "yyyy년 M월 d일"
+        let timeFmt = DateFormatter(); timeFmt.locale = locale
+        timeFmt.dateStyle = .none; timeFmt.timeStyle = .short
+        let hourFmt = DateFormatter(); hourFmt.locale = locale
+        hourFmt.dateFormat = "h:mm"
+        let cal = Calendar.current
+        let samePeriod = (cal.component(.hour, from: start) < 12) == (cal.component(.hour, from: end) < 12)
+            && cal.isDate(start, inSameDayAs: end)
+        let endText = samePeriod ? hourFmt.string(from: end) : timeFmt.string(from: end)
+        return "\(dateFmt.string(from: start)) \(timeFmt.string(from: start))~\(endText)"
+    }
+
+    /// 지도 패널 아래 격자 — 거리는 위 히어로에 있으니 빼고, 2열 4행까지.
+    private var mapHeroMetricItems: [RunMetricItem] {
+        Array(RunMetricItem.list(activity: activity, detail: detail, age: age, isMale: isMale)
+            .filter { $0.kind != .distance }
+            .prefix(8)
+            .map { $0.recolored($0.kind.shareColor(isLight: pal.isLight, textPrimary: pal.textPrimary)) })
+    }
+
+    /// 차트 패널(심박·고도·케이던스 …) — 축과 라벨이 있어 둥근 패널 안에 그린다.
+    private var panelLayout: some View {
+        VStack(alignment: .leading, spacing: 0) {
                 headerRow
                     .padding(.horizontal, 41).padding(.top, 20)
                 panelTitleRow
@@ -88,7 +243,6 @@ struct DetailPanelShareCard: View {
                 metricsGrid
                     .padding(.horizontal, 41).padding(.top, 4)
                 Spacer(minLength: 0)
-            }
         }
     }
 
@@ -298,6 +452,7 @@ struct DetailPanelShareCardScreen: View {
     @State private var isRendering = true
     @State private var showShareSheet = false
     @State private var mapSnapshot: UIImage?
+    @State private var placeName: String?
     @State private var cardTheme: ShareTheme = .dark
     @Environment(\.dismiss) private var dismiss
 
@@ -330,7 +485,8 @@ struct DetailPanelShareCardScreen: View {
                         dateText: formattedDateText,
                         condition: condition,
                         age: age, isMale: isMale,
-                        theme: cardTheme
+                        theme: cardTheme,
+                        placeName: placeName
                     )
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -430,6 +586,7 @@ struct DetailPanelShareCardScreen: View {
                 mapSnapshot = await makeMapSnapshot()
                 if let img = mapSnapshot { saveMapSnapshotToCache(img) }
             }
+            if placeName == nil { placeName = await reverseGeocodedPlaceName() }
         }
         let renderer = ImageRenderer(content:
             DetailPanelShareCard(
@@ -440,7 +597,8 @@ struct DetailPanelShareCardScreen: View {
                 dateText: formattedDateText,
                 condition: condition,
                 age: age, isMale: isMale,
-                theme: cardTheme
+                theme: cardTheme,
+                placeName: placeName
             )
             .frame(width: cardW, height: cardH)
         )
@@ -455,7 +613,7 @@ struct DetailPanelShareCardScreen: View {
     /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다.
     private var cardMapCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_card_v4_\(activity.id.uuidString).jpg")
+            .appendingPathComponent("mimo_map_card_v5_\(activity.id.uuidString).jpg")
     }
 
     private func loadCachedMapSnapshot() -> UIImage? {
@@ -475,13 +633,27 @@ struct DetailPanelShareCardScreen: View {
         let valid = RouteSnapshotRenderer.validCoordinates(coords)
         guard valid.count > 1,
               let opts = RouteSnapshotRenderer.options(coordinates: valid,
-                                                       size: CGSize(width: 218, height: 168),
-                                                       scale: 3),
-              let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
+                                                       size: DetailPanelShareCard.mapHeroSize,
+                                                       scale: 3) else { return nil }
+        // 지도는 늘 다크 — 흰 글자를 위에 얹는다(라이트 테마도 지표 영역만 밝다)
+        opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
+        guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
 
         // 심박 존 색이 기본. 심박이 없거나 시간대가 어긋나면 zoneColors가 nil을 돌려주고 단색이 된다.
         let colors = await zoneColors(for: valid)
         return RouteSnapshotRenderer.draw(on: snap, coordinates: valid, segmentColors: colors)
+    }
+
+    /// 출발 지점의 "시/도 + 시/군/구" — 스탬프 카드와 같은 역지오코딩. 실패하면 nil(줄 생략).
+    private func reverseGeocodedPlaceName() async -> String? {
+        guard let first = detail?.routeCoordinates.first(where: { CLLocationCoordinate2DIsValid($0) && abs($0.latitude) > 1 })
+        else { return nil }
+        let location = CLLocation(latitude: first.latitude, longitude: first.longitude)
+        guard let pm = try? await CLGeocoder().reverseGeocodeLocation(location).first else { return nil }
+        let parts = [pm.administrativeArea, pm.locality].compactMap { $0 }
+        var seen = Set<String>()
+        let unique = parts.filter { seen.insert($0).inserted }
+        return unique.isEmpty ? nil : unique.joined(separator: " ")
     }
 
     /// 좌표별 심박 존 색. 존 경계가 없으면 최고 심박에서 추정한다(상세 지도와 같은 폴백).
