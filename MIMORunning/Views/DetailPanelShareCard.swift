@@ -642,7 +642,7 @@ struct DetailPanelShareCardScreen: View {
     /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다.
     private var cardMapCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_card_v7_\(activity.id.uuidString).jpg")
+            .appendingPathComponent("mimo_map_card_v8_\(activity.id.uuidString).jpg")
     }
 
     private func loadCachedMapSnapshot() -> UIImage? {
@@ -669,6 +669,8 @@ struct DetailPanelShareCardScreen: View {
         // 지도는 늘 다크 — 흰 글자를 위에 얹는다. muted가 아닌 standard: 도로·물이 살아 있어야 애플 요약처럼 보인다
         opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
         opts.mapType = .standard
+        // 관심 지점(학교·상점·공원 이름)은 뺀다 — 도로명·행정구역명은 MapKit에 끄는 옵션이 없어 남는다
+        opts.pointOfInterestFilter = .excludingAll
         guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
 
         // 심박 존 색이 기본. 심박이 없거나 시간대가 어긋나면 zoneColors가 nil을 돌려주고 단색이 된다.
