@@ -59,6 +59,19 @@ enum RouteCardStyle: Int, CaseIterable, Identifiable {
     case stamp = 3
     /// 지도가 카드 폭을 채우는 모양인가(경로 2만 둥근 패널)
     var isFullBleed: Bool { self != .classic }
+    /// 지도 스냅샷 캐시 파일 이름의 버전. 지도 설정·선 굵기가 바뀌면 올려 옛 스냅샷을 버린다.
+    /// 경로 2는 예전 키를 그대로 써 이미 찍어 둔 스냅샷을 재사용한다.
+    /// 앱 시작 때 옛 버전 파일을 지우는 정리(MRCacheMaintenance)가 이 값들만 남긴다.
+    var mapCacheVersion: String {
+        switch self {
+        case .hero:    return "v9"
+        case .classic: return "v4"
+        case .stamp:   return "v9s"
+        }
+    }
+    /// 지도 스냅샷 캐시 파일 이름 앞부분 — 정리 쪽에서도 같은 규칙을 봐야 해서 한 곳에 둔다.
+    static let mapCachePrefix = "mimo_map_card_"
+
     /// 스냅샷 크기 — 경로 1은 위 262pt, 경로 3은 카드 전체
     var mapSize: CGSize {
         switch self {
@@ -887,14 +900,8 @@ struct DetailPanelShareCardScreen: View {
     /// 카드 전용 지도 캐시 — 화면 지도(398×220)와 크기가 달라 따로 둔다. 카드 모양별로 파일이 다르다.
     /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다. 경로 2는 예전 키(v4)를 그대로 써 이미 찍어 둔 스냅샷을 재사용한다.
     private func cardMapCacheURL(style: RouteCardStyle) -> URL {
-        let v: String
-        switch style {
-        case .hero:    v = "v9"
-        case .classic: v = "v4"
-        case .stamp:   v = "v9s"
-        }
-        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_card_\(v)_\(activity.id.uuidString).jpg")
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("\(RouteCardStyle.mapCachePrefix)\(style.mapCacheVersion)_\(activity.id.uuidString).jpg")
     }
 
     private func loadCachedMapSnapshot(style: RouteCardStyle) -> UIImage? {

@@ -57,6 +57,50 @@ enum MRCacheMaintenance {
                 }
             }
         }
+
+        purgeStaleDetailCaches(fm)
+        purgeStaleRouteCardMaps(fm, caches: caches)
+    }
+
+    /// ③ 옛 버전 상세 캐시 — 버전을 올릴 때마다 러닝 한 건당 한 벌씩 쌓인다.
+    /// Application Support에 있어 iOS가 알아서 비우지 않고 백업에도 들어간다.
+    /// 지워도 HealthKit에서 다시 만든다.
+    private static func purgeStaleDetailCaches(_ fm: FileManager) {
+        let dir = HealthKitManager.detailCacheDirectory
+        guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+        for url in files {
+            let name = url.lastPathComponent
+            guard name.hasSuffix(".json"),
+                  let version = versionPrefix(of: name),
+                  version != HealthKitManager.detailCacheVersion else { continue }
+            try? fm.removeItem(at: url)
+        }
+    }
+
+    /// ④ 옛 버전 경로 카드 지도 스냅샷 — 카드 모양마다 쓰는 버전만 남긴다.
+    /// 지워도 다음에 카드를 열 때 다시 찍는다.
+    private static func purgeStaleRouteCardMaps(_ fm: FileManager, caches: URL) {
+        let keep = Set(RouteCardStyle.allCases.map(\.mapCacheVersion))
+        let prefix = RouteCardStyle.mapCachePrefix
+        guard let files = try? fm.contentsOfDirectory(at: caches, includingPropertiesForKeys: nil) else { return }
+        for url in files {
+            let name = url.lastPathComponent
+            guard name.hasPrefix(prefix), name.hasSuffix(".jpg"),
+                  let version = versionPrefix(of: String(name.dropFirst(prefix.count))),
+                  !keep.contains(version) else { continue }
+            try? fm.removeItem(at: url)
+        }
+    }
+
+    /// "v15_ABC.json" → "v15". 첫 밑줄 앞이 "v"로 시작하고 숫자를 포함할 때만 — 못 읽으면 nil(건드리지 않음).
+    /// 파일 이름을 잘못 읽어 현재 캐시를 지우는 일이 없도록 판정을 좁게 잡는다.
+    private static func versionPrefix(of name: String) -> String? {
+        guard let underscore = name.firstIndex(of: "_") else { return nil }
+        let version = String(name[name.startIndex..<underscore])
+        guard version.count >= 2, version.hasPrefix("v"),
+              version.dropFirst().contains(where: \.isNumber),
+              version.dropFirst().allSatisfy({ $0.isNumber || $0.isLetter }) else { return nil }
+        return version
     }
 }
 

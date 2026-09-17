@@ -1558,14 +1558,22 @@ class HealthKitManager {
         return result
     }
 
-    private func detailCacheURL(_ id: UUID) -> URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    /// 상세 캐시 파일 이름 버전. 올리면 기존 캐시를 버리고 다시 받는다.
+    /// 앱 시작 때 옛 버전 파일을 지우는 정리(MRCacheMaintenance)가 이 값을 기준으로 남길 것을 고른다.
+    nonisolated static let detailCacheVersion = "v15"
+    /// 상세 캐시 폴더 — 정리 쪽에서도 같은 경로를 봐야 해서 한 곳에서 만든다.
+    nonisolated static var detailCacheDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("mimo_detail", isDirectory: true)
+    }
+
+    private func detailCacheURL(_ id: UUID) -> URL {
+        let dir = Self.detailCacheDirectory
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         // v13: 경로 없는 야외 러닝을 완성으로 저장하던 버그 수정(isIndoorWorkout 추가).
         //      경로·고도가 비어 굳어버린 기존 캐시를 버리고 다시 받는다.
         // v15: 일시정지 구간(pausedSpans) 추가 — 기존 캐시에는 없어 경로 영상의 시간이 멈춘 만큼 어긋난다.
-        return dir.appendingPathComponent("v15_\(id.uuidString).json")
+        return dir.appendingPathComponent("\(Self.detailCacheVersion)_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
