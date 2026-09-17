@@ -980,7 +980,19 @@ struct MileageStreakShareCardScreen: View {
             .frame(width: cardW, height: cardH)
         )
         renderer.scale = 3
-        previewImage = renderer.uiImage
+        guard let raw = renderer.uiImage else { isRendering = false; return }
+        // 카드가 300×560(1:1.87)이라 그대로 올리면 인스타그램 피드에서 아래가 잘린다.
+        // 인사이트 카드와 같은 4:5 캔버스에 맞춰 얹는다 — 높이를 채우고 좌우에 여백이 생긴다.
+        // 카드 배경이 그라디언트라 여백을 평평한 색으로 채우면 이음매가 보인다. 모서리를 둥글려
+        // 여백이 이음매가 아니라 카드 테두리로 읽히게 한다.
+        previewImage = ShareCanvas.fit(raw,
+                                       background: UIColor(canvasBackdrop),
+                                       cornerRadius: 36)
         isRendering = false
+    }
+
+    /// 4:5 캔버스의 바탕 — 카드 그라디언트의 어두운 끝(라이트는 카드 배경).
+    private var canvasBackdrop: Color {
+        cardTheme == .light ? SummaryCardPalette.light.background : Color(hex: "0D0D12")
     }
 }

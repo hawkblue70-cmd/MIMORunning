@@ -5853,27 +5853,8 @@ struct InsightExportSheet: View {
         renderer.scale = 3
         guard let raw = renderer.uiImage else { isRendering = false; return }
 
-        // 2) 인스타그램 4:5 캔버스 (1080×1350px) 에 맞춤 합성
-        //    - 카드가 짧으면 하단을 배경색으로 채움
-        //    - 카드가 길면 비율 유지 축소 후 가운데 배치
-        let canvas = CGSize(width: 1080, height: 1350)
-        let bgColor = UIColor(Theme.cardBackground)
-
-        let scale = min(canvas.width / raw.size.width, canvas.height / raw.size.height)
-        let drawW = raw.size.width * scale
-        let drawH = raw.size.height * scale
-        let drawX = (canvas.width - drawW) / 2
-        let drawY: CGFloat = 0  // 상단 정렬
-
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-
-        exportImage = UIGraphicsImageRenderer(size: canvas, format: format).image { ctx in
-            bgColor.setFill()
-            ctx.fill(CGRect(origin: .zero, size: canvas))
-            raw.draw(in: CGRect(x: drawX, y: drawY, width: drawW, height: drawH))
-        }
+        // 2) 인스타그램 4:5 캔버스에 맞춤 합성 — 러닝 흐름 카드와 같은 합성기를 쓴다(§5.8)
+        exportImage = ShareCanvas.fit(raw, background: UIColor(Theme.cardBackground))
         isRendering = false
     }
 }
