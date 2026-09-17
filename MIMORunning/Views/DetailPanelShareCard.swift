@@ -292,7 +292,19 @@ struct DetailPanelShareCard: View {
         d.cadence  = detail?.avgCadence.map { "\($0)" }
         d.elevGain = detail?.elevationGain.map { String(format: "%.0f", $0) }
         d.date     = activity.date
+        d.heartRateColor = avgHeartRateZoneColor
         return d
+    }
+
+    /// 평균 심박의 존 색 — 영상의 순간 심박과 같은 색 규칙(지도 경로선과도 같다).
+    /// 존 정보도 표본도 없으면 색을 주지 않는다 — 최고 심박을 추측해 칠하면 없는 사실을 말하게 된다.
+    private var avgHeartRateZoneColor: Color? {
+        guard let bpm = activity.avgHeartRate else { return nil }
+        let zones = detail?.hrZones ?? []
+        guard !zones.isEmpty || hrSamples.count >= 10 else { return nil }
+        let bounds = RouteSnapshotRenderer.zoneBounds(zones: zones, hrSamples: hrSamples)
+        guard bounds.count >= 2 else { return nil }
+        return Color(RouteSnapshotRenderer.color(bpm: bpm, bounds: bounds))
     }
 
     /// 지도 위 글자 묶음 — 지역 · 러닝 종류 · 거리 · (시작~종료 · 날씨 · 습도 한 줄).
