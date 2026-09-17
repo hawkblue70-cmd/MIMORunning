@@ -157,6 +157,20 @@ struct ActivityDetail {
     /// (디스크 캐시가 완성으로 읽히면 다시 조회하지 않는다). 저장하지 않는 값 — 항상 false로 디코딩된다.
     var fetchIncomplete: Bool = false
 
+    /// 워치에서 일시정지한 구간 — 워크아웃 시작 기준 초.
+    ///
+    /// `routeTimeOffsets`와 심박 표본의 오프셋은 **시계 시간**이라 화장실에 들른 5분이 그대로 들어 있다.
+    /// 반면 `Activity.duration`은 HealthKit이 이미 뺀 **실제 달린 시간**이다. 둘을 그냥 섞으면
+    /// 중간에는 멈춘 시간까지 흐르다가 끝에서만 값이 맞는다.
+    /// 시계 시간을 달린 시간으로 바꿔야 하는 쪽(경로 영상)이 이 구간을 빼고 쓴다.
+    /// 오프셋 자체를 고쳐 놓지 않는 이유는 심박 표본도 같은 시계 시간이라 짝이 어긋나기 때문이다.
+    var pausedSpans: [PausedSpan] = []
+
+    /// 시계 시간 오프셋을 실제 달린 시간으로 바꾼다. 멈춘 동안은 값이 그대로 멈춘다.
+    func activeElapsed(atWallOffset wall: TimeInterval) -> TimeInterval {
+        pausedSpans.activeElapsed(atWallOffset: wall)
+    }
+
     /// True when HealthKit returned at least one major data field.
     /// An incomplete cache (all empty) means HealthKit hadn't finished processing — re-fetch needed.
     ///
@@ -168,6 +182,25 @@ struct ActivityDetail {
         if !isIndoorWorkout && routeCoordinates.isEmpty { return false }
         return !routeCoordinates.isEmpty || !splits.isEmpty || !hrZones.isEmpty ||
             avgPower != nil || avgCadence != nil
+    }
+}
+
+/// 워치 일시정지 한 구간 — 워크아웃 시작 기준 초.
+struct PausedSpan: Codable, Hashable {
+    let start: TimeInterval
+    let end: TimeInterval
+}
+
+extension Array where Element == PausedSpan {
+    /// 시계 시간 오프셋 → 실제 달린 시간. 멈춘 동안은 값이 그대로 멈추고, 그 뒤로는 멈춘 만큼 당겨진다.
+    func activeElapsed(atWallOffset wall: TimeInterval) -> TimeInterval {
+        guard !isEmpty else { return Swift.max(0, wall) }
+        var paused: TimeInterval = 0
+        for span in sorted(by: { $0.start < $1.start }) {
+            if wall <= span.start { break }
+            paused += Swift.min(wall, span.end) - span.start
+        }
+        return Swift.max(0, wall - paused)
     }
 }
 
@@ -265,6 +298,7 @@ extension ActivityDetail: Codable {
         case altTimeOffset, altTimeAlt
         case appleEffort
         case isIndoorWorkout
+        case pausedSpans
     }
 
     nonisolated init(from decoder: any Decoder) throws {
@@ -292,6 +326,7 @@ extension ActivityDetail: Codable {
         let tAlts   = try c.decode([Double].self, forKey: .altTimeAlt)
         altitudeTimeProfile = zip(offsets, tAlts).map { (offset: $0, altitude: $1) }
         appleEffort = (try? c.decodeIfPresent(AppleEffort.self, forKey: .appleEffort)) ?? nil   // 손상된 강도 블롭 하나가 상세 캐시 전체를 버리지 않게
+        pausedSpans = (try? c.decode([PausedSpan].self, forKey: .pausedSpans)) ?? []
         fetchIncomplete = false   // 저장된 상세는 실패 없이 만들어진 것 — 저장 자체를 막는다
     }
 
@@ -317,6 +352,7 @@ extension ActivityDetail: Codable {
         try c.encode(altitudeTimeProfile.map(\.offset),   forKey: .altTimeOffset)
         try c.encode(altitudeTimeProfile.map(\.altitude), forKey: .altTimeAlt)
         try c.encodeIfPresent(appleEffort, forKey: .appleEffort)
+        try c.encode(pausedSpans, forKey: .pausedSpans)
     }
 }
 

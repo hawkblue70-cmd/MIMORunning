@@ -1564,7 +1564,8 @@ class HealthKitManager {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         // v13: 경로 없는 야외 러닝을 완성으로 저장하던 버그 수정(isIndoorWorkout 추가).
         //      경로·고도가 비어 굳어버린 기존 캐시를 버리고 다시 받는다.
-        return dir.appendingPathComponent("v14_\(id.uuidString).json")
+        // v15: 일시정지 구간(pausedSpans) 추가 — 기존 캐시에는 없어 경로 영상의 시간이 멈춘 만큼 어긋난다.
+        return dir.appendingPathComponent("v15_\(id.uuidString).json")
     }
 
     private func loadDetailFromDisk(_ id: UUID) -> ActivityDetail? {
@@ -1803,7 +1804,8 @@ class HealthKitManager {
                 altitudeProfile: computeAltitudeProfile(from: locations),
                 altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate),
                 isIndoorWorkout: isIndoor(workout),
-                fetchIncomplete: anyFailed
+                fetchIncomplete: anyFailed,
+                pausedSpans: pausedSpans(for: workout)
             )
 
         default: // walking, hiking
@@ -1824,7 +1826,8 @@ class HealthKitManager {
                 vo2Max: nil,
                 altitudeProfile: computeAltitudeProfile(from: locations),
                 altitudeTimeProfile: computeAltitudeTimeProfile(from: locations, workoutStart: workout.startDate),
-                isIndoorWorkout: isIndoor(workout)
+                isIndoorWorkout: isIndoor(workout),
+                pausedSpans: pausedSpans(for: workout)
             )
         }
     }
@@ -2243,6 +2246,15 @@ class HealthKitManager {
         }
         pausedIntervalsCache[workout.uuid] = intervals
         return intervals
+    }
+
+    /// 일시정지 구간을 워크아웃 시작 기준 초로 — 상세 데이터에 실어 보낸다.
+    /// 좌표·심박 오프셋이 시계 시간이라, 실제 달린 시간으로 바꿔야 하는 쪽이 이걸 쓴다.
+    private func pausedSpans(for workout: HKWorkout) -> [PausedSpan] {
+        pausedIntervals(for: workout).map {
+            PausedSpan(start: $0.start.timeIntervalSince(workout.startDate),
+                       end:   $0.end.timeIntervalSince(workout.startDate))
+        }
     }
 
     private func isPaused(_ date: Date, in intervals: [DateInterval]) -> Bool {

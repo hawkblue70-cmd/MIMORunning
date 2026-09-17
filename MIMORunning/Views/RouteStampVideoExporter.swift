@@ -40,14 +40,21 @@ enum RouteStampVideoExporter {
         let totalDuration: TimeInterval
         /// 좌표별 누적 거리 비율(0~1)
         private let cumFraction: [Double]
-        /// 좌표별 경과 초. 비어 있으면 일정 페이스로 가정한다.
+        /// 좌표별 **실제 달린** 경과 초(일시정지 구간을 뺀 값). 비어 있으면 일정 페이스로 가정한다.
         private let offsets: [TimeInterval]
 
+        /// `timeOffsets`는 시계 시간이라 워치에서 멈춘 동안도 흐른다. 여기서 실제 달린 시간으로 바꿔 둔다.
+        /// 그래야 멈춰 있던 구간에서 시간과 페이스가 같이 멈추고, 끝 값도 총 시간과 맞는다.
         init(coordinates: [CLLocationCoordinate2D], timeOffsets: [TimeInterval],
+             pausedSpans: [PausedSpan],
              totalDistanceM: Double, totalDuration: TimeInterval) {
             self.totalDistanceM = totalDistanceM
             self.totalDuration  = totalDuration
-            self.offsets        = timeOffsets.count == coordinates.count ? timeOffsets : []
+            if timeOffsets.count == coordinates.count {
+                self.offsets = timeOffsets.map { pausedSpans.activeElapsed(atWallOffset: $0) }
+            } else {
+                self.offsets = []
+            }
             guard coordinates.count > 1 else { self.cumFraction = [0]; return }
             var cum: [Double] = [0]
             cum.reserveCapacity(coordinates.count)
@@ -120,6 +127,7 @@ enum RouteStampVideoExporter {
         }
 
         let table = ProgressTable(coordinates: coords, timeOffsets: offsets,
+                                  pausedSpans: detail?.pausedSpans ?? [],
                                   totalDistanceM: activity.distance,
                                   totalDuration: activity.duration)
 
