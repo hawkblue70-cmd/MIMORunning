@@ -24,6 +24,8 @@ struct StampData {
     var cadence: String?         = nil   // "182"
     /// 심박 칸의 라벨을 바꾼다. 기본은 평균("AVG HR") — 경로 영상은 그 시점의 값이라 "HR"로 쓴다.
     var heartRateLabel: String?  = nil
+    /// 심박 숫자만 다른 색으로. 경로 영상이 그 시점 심박의 **존 색**을 넣는다(지도 경로선과 같은 색).
+    var heartRateColor: Color?   = nil
     var elevGain: String?        = nil   // "142"
     var elevSeries: [Double]?    = nil   // 고도 곡선 (0~1 정규화)
     var hrSeries: [Double]?      = nil   // 심박 파형 (0~1 정규화)
@@ -750,6 +752,8 @@ private struct StampSummaryGridView: View {
         let value: String
         let unit: String?
         let label: String
+        /// 숫자만 다른 색으로 — nil이면 스탬프 색 그대로
+        var color: Color? = nil
     }
 
     /// 있는 데이터만 — 없는 지표는 칸을 만들지 않는다.
@@ -764,7 +768,8 @@ private struct StampSummaryGridView: View {
         if let v = data.calories  { m.append(Metric(value: v, unit: "CAL", label: "CALORIES")) }
         if let v = data.elevGain  { m.append(Metric(value: v, unit: "M",   label: "ELEV GAIN")) }
         if let v = data.heartRate {
-            m.append(Metric(value: v, unit: "BPM", label: data.heartRateLabel ?? "AVG HR"))
+            m.append(Metric(value: v, unit: "BPM", label: data.heartRateLabel ?? "AVG HR",
+                            color: data.heartRateColor))
         }
         if let v = data.cadence   { m.append(Metric(value: v, unit: "SPM", label: "CADENCE")) }
         return Array(m.prefix(6))
@@ -817,6 +822,7 @@ private struct StampSummaryGridView: View {
                 Text(m.value)
                     .font(.system(size: sz(16, scale), weight: .black).width(.compressed))
                     .italic()
+                    .foregroundStyle(m.color ?? fill)
                     .lineLimit(1).fixedSize()
                 if let u = m.unit {
                     Text(u)

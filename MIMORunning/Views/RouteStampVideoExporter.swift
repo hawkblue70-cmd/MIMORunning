@@ -6,7 +6,8 @@ import CoreLocation
 /// 경로 2(카드 전체 지도 + 요약 그리드 스탬프)의 영상 내보내기.
 ///
 /// 경로가 그려지는 동안 스탬프의 **거리·평균 페이스·시간·심박** 네 숫자가 같이 움직인다.
-/// 심박만 그 시점의 값(순간)이고 나머지는 누적이다.
+/// 심박만 그 시점의 값(순간)이고 나머지는 누적이다. 심박 숫자는 그 시점 존 색으로 칠해져
+/// 경로선의 그 지점 색과 같아진다.
 /// 칼로리·케이던스는 시점별 값이 없거나 근사라서 넣지 않는다 — 영상에서는 격자가 페이스·시간·심박 한 줄이다.
 ///
 /// 프레임마다 `DetailPanelShareCard`를 그대로 렌더한다(§5.8). 정지 카드와 영상이 같은 뷰라
@@ -47,6 +48,8 @@ enum RouteStampVideoExporter {
         private let offsets: [TimeInterval]
         /// 멈춘 동안의 표본을 뺀 심박 — 시계 시간 오프셋 오름차순.
         private let hrSamples: [(offset: TimeInterval, bpm: Int)]
+        /// 심박 존 경계 — 숫자 색을 고르는 데 쓴다. 비어 있으면 색을 주지 않는다.
+        private let zoneBounds: [(id: Int, minBPM: Int)]
         /// 심박을 평균낼 앞뒤 초 — 러닝을 전체의 1%쯤으로 나눈 폭.
         /// 언덕에서 오르고 내리막에서 내려가는 모양은 남기면서 프레임 사이 잡음만 지운다.
         private let hrHalfWindow: TimeInterval
@@ -56,7 +59,9 @@ enum RouteStampVideoExporter {
         init(coordinates: [CLLocationCoordinate2D], timeOffsets: [TimeInterval],
              pausedSpans: [PausedSpan],
              hrSamples: [(offset: TimeInterval, bpm: Int)],
+             zoneBounds: [(id: Int, minBPM: Int)],
              totalDistanceM: Double, totalDuration: TimeInterval) {
+            self.zoneBounds     = zoneBounds
             self.totalDistanceM = totalDistanceM
             self.totalDuration  = totalDuration
             self.hrHalfWindow   = max(2.5, totalDuration / 120)
@@ -85,9 +90,18 @@ enum RouteStampVideoExporter {
 
         func snapshot(at progress: Double) -> RouteProgressSnapshot {
             let p = max(0, min(1, progress))
+            let bpm = heartRate(at: p)
             return RouteProgressSnapshot(distanceM: totalDistanceM * p,
                                          elapsed: elapsed(at: p),
-                                         heartRate: heartRate(at: p))
+                                         heartRate: bpm,
+                                         heartRateColor: bpm.flatMap(zoneColor))
+        }
+
+        /// 심박 숫자의 색 — 지도 경로선을 칠하는 **같은 함수**를 쓴다(§5.8).
+        /// 그래서 그 시점 경로선의 색과 숫자 색이 정확히 같다.
+        private func zoneColor(_ bpm: Int) -> Color? {
+            guard zoneBounds.count >= 2 else { return nil }
+            return Color(RouteSnapshotRenderer.color(bpm: bpm, bounds: zoneBounds))
         }
 
         /// 그 시점의 심박. 상세 지도의 심박 존 색과 **같은 함수**를 쓰고 창 폭만 넓힌다(§5.8).
@@ -144,6 +158,8 @@ enum RouteStampVideoExporter {
         let table = ProgressTable(coordinates: coords, timeOffsets: offsets,
                                   pausedSpans: detail?.pausedSpans ?? [],
                                   hrSamples: hrSamples,
+                                  zoneBounds: RouteSnapshotRenderer.zoneBounds(
+                                      zones: detail?.hrZones ?? [], hrSamples: hrSamples),
                                   totalDistanceM: activity.distance,
                                   totalDuration: activity.duration)
         return (coords, table)

@@ -89,6 +89,8 @@ struct RouteProgressSnapshot {
     let elapsed: TimeInterval
     /// 그 시점의 심박(순간값). 정지 카드의 평균 심박과는 다른 값이라 라벨도 "HR"로 쓴다.
     let heartRate: Int?
+    /// 그 심박의 존 색 — 경로선의 그 지점 색과 같다.
+    let heartRateColor: Color?
 }
 
 struct DetailPanelShareCard: View {
@@ -274,7 +276,8 @@ struct DetailPanelShareCard: View {
                 heartRate: p.heartRate.map { "\($0)" },
                 calories: nil,
                 dateText: "", locationText: "", weekday: "",
-                heartRateLabel: "HR"          // 순간값 — 정지 카드의 "AVG HR"과 구분한다
+                heartRateLabel: "HR",          // 순간값 — 정지 카드의 "AVG HR"과 구분한다
+                heartRateColor: p.heartRateColor
             )
         }
         var d = StampData(
@@ -961,14 +964,7 @@ struct DetailPanelShareCardScreen: View {
     /// 좌표별 심박 존 색. 존 경계가 없으면 최고 심박에서 추정한다(상세 지도와 같은 폴백).
     private func zoneColors(for coords: [CLLocationCoordinate2D]) async -> [UIColor]? {
         guard hrSamples.count >= 10 else { return nil }
-        let zones = detail?.hrZones ?? []
-        let bounds: [(id: Int, minBPM: Int)] = zones.isEmpty
-            ? {
-                let peak = min(220, Int(Double(hrSamples.map(\.bpm).max() ?? 180) / 0.90))
-                return [(1, 0), (2, Int(Double(peak) * 0.60)), (3, Int(Double(peak) * 0.70)),
-                        (4, Int(Double(peak) * 0.80)), (5, Int(Double(peak) * 0.90))]
-              }()
-            : zones.sorted { $0.minBPM < $1.minBPM }.map { (id: $0.id, minBPM: $0.minBPM) }
+        let bounds = RouteSnapshotRenderer.zoneBounds(zones: detail?.hrZones ?? [], hrSamples: hrSamples)
         return RouteSnapshotRenderer.zoneColors(
             coordinates: coords,
             routeTimeOffsets: detail?.routeTimeOffsets ?? [],

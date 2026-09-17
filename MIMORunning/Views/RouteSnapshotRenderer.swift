@@ -188,6 +188,21 @@ enum RouteSnapshotRenderer {
         return colors
     }
 
+    /// 심박 존 경계 — 존 정보가 있으면 그대로, 없으면 최고 심박에서 추정한다.
+    /// 지도 색과 경로 영상의 심박 숫자가 **같은 경계**를 써야 색이 어긋나지 않는다.
+    static func zoneBounds(zones: [HRZoneData],
+                           hrSamples: [(offset: TimeInterval, bpm: Int)]) -> [(id: Int, minBPM: Int)] {
+        guard zones.isEmpty else {
+            return zones.sorted { $0.minBPM < $1.minBPM }.map { (id: $0.id, minBPM: $0.minBPM) }
+        }
+        let peak = min(220, Int(Double(hrSamples.map(\.bpm).max() ?? 180) / 0.90))
+        return [(1, 0),
+                (2, Int(Double(peak) * 0.60)),
+                (3, Int(Double(peak) * 0.70)),
+                (4, Int(Double(peak) * 0.80)),
+                (5, Int(Double(peak) * 0.90))]
+    }
+
     /// 5초 이동평균 심박. matched=false면 윈도우에 표본이 없어 최근접값을 쓴 것.
     /// `halfWindow`는 평균낼 앞뒤 초. 기본 2.5초는 지도 색용이고, 경로 영상은 러닝 전체를
     /// 몇 초로 압축해 한 프레임이 실제 10초 남짓을 건너뛰므로 더 넓게 준다(숫자가 프레임마다 튄다).
