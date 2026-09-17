@@ -5,7 +5,8 @@ import CoreLocation
 
 /// 경로 2(카드 전체 지도 + 요약 그리드 스탬프)의 영상 내보내기.
 ///
-/// 경로가 그려지는 동안 스탬프의 **거리·평균 페이스·시간·평균 심박** 네 숫자가 같이 올라간다.
+/// 경로가 그려지는 동안 스탬프의 **거리·평균 페이스·시간·심박** 네 숫자가 같이 움직인다.
+/// 심박만 그 시점의 값(순간)이고 나머지는 누적이다.
 /// 칼로리·케이던스는 시점별 값이 없거나 근사라서 넣지 않는다 — 영상에서는 격자가 페이스·시간·심박 한 줄이다.
 ///
 /// 프레임마다 `DetailPanelShareCard`를 그대로 렌더한다(§5.8). 정지 카드와 영상이 같은 뷰라
@@ -44,22 +45,21 @@ enum RouteStampVideoExporter {
         private let wallOffsets: [TimeInterval]
         /// 좌표별 **실제 달린** 경과 초(일시정지 구간을 뺀 값). 비어 있으면 일정 페이스로 가정한다.
         private let offsets: [TimeInterval]
-        /// 멈춘 동안의 표본을 뺀 심박 — 시계 시간 오프셋(오름차순)과 그 앞까지의 합.
-        private let hrOffsets: [TimeInterval]
-        private let hrPrefixSum: [Int]
-        /// 마지막 프레임에 쓸 평균 심박 — 정지 카드와 같은 값이 되도록 HealthKit 값을 그대로 쓴다.
-        private let finalAvgHeartRate: Int?
+        /// 멈춘 동안의 표본을 뺀 심박 — 시계 시간 오프셋 오름차순.
+        private let hrSamples: [(offset: TimeInterval, bpm: Int)]
+        /// 심박을 평균낼 앞뒤 초 — 러닝을 전체의 1%쯤으로 나눈 폭.
+        /// 언덕에서 오르고 내리막에서 내려가는 모양은 남기면서 프레임 사이 잡음만 지운다.
+        private let hrHalfWindow: TimeInterval
 
         /// `timeOffsets`는 시계 시간이라 워치에서 멈춘 동안도 흐른다. 실제 달린 시간으로 바꿔 함께 들고 있는다.
         /// 그래야 멈춰 있던 구간에서 시간과 페이스가 같이 멈추고, 끝 값도 총 시간과 맞는다.
         init(coordinates: [CLLocationCoordinate2D], timeOffsets: [TimeInterval],
              pausedSpans: [PausedSpan],
              hrSamples: [(offset: TimeInterval, bpm: Int)],
-             finalAvgHeartRate: Int?,
              totalDistanceM: Double, totalDuration: TimeInterval) {
             self.totalDistanceM = totalDistanceM
             self.totalDuration  = totalDuration
-            self.finalAvgHeartRate = finalAvgHeartRate
+            self.hrHalfWindow   = max(2.5, totalDuration / 120)
             if timeOffsets.count == coordinates.count {
                 self.wallOffsets = timeOffsets
                 self.offsets = timeOffsets.map { pausedSpans.activeElapsed(atWallOffset: $0) }
@@ -67,15 +67,10 @@ enum RouteStampVideoExporter {
                 self.wallOffsets = []
                 self.offsets = []
             }
-            // 멈춘 동안의 심박은 쉬는 심박이라 평균을 끌어내린다 — 빼고 센다
-            let usable = hrSamples
+            // 멈춘 동안의 심박은 쉬는 심박이라 달리는 중 값으로 보여주면 안 된다 — 빼고 쓴다
+            self.hrSamples = hrSamples
                 .filter { sample in !pausedSpans.contains { sample.offset >= $0.start && sample.offset < $0.end } }
                 .sorted { $0.offset < $1.offset }
-            self.hrOffsets = usable.map(\.offset)
-            var sums: [Int] = [0]
-            sums.reserveCapacity(usable.count + 1)
-            for sample in usable { sums.append(sums[sums.count - 1] + sample.bpm) }
-            self.hrPrefixSum = sums
             guard coordinates.count > 1 else { self.cumFraction = [0]; return }
             var cum: [Double] = [0]
             cum.reserveCapacity(coordinates.count)
@@ -92,28 +87,22 @@ enum RouteStampVideoExporter {
             let p = max(0, min(1, progress))
             return RouteProgressSnapshot(distanceM: totalDistanceM * p,
                                          elapsed: elapsed(at: p),
-                                         avgHeartRate: averageHeartRate(at: p))
+                                         heartRate: heartRate(at: p))
         }
 
-        /// 진행률 시점까지의 평균 심박 — 페이스와 같은 누적 평균이라 끝에서 러닝 전체의 평균이 된다.
-        /// 마지막 프레임은 HealthKit이 준 평균을 그대로 써 정지 카드와 값이 어긋나지 않는다.
-        private func averageHeartRate(at p: Double) -> Int? {
-            if p >= 1, let final = finalAvgHeartRate { return final }
-            guard !hrOffsets.isEmpty else { return finalAvgHeartRate }
-            let wall = wallOffset(at: p)
-            var lo = 0, hi = hrOffsets.count            // hrOffsets[lo..<hi] 중 wall 이하인 개수를 찾는다
-            while lo < hi {
-                let mid = (lo + hi) / 2
-                if hrOffsets[mid] <= wall { lo = mid + 1 } else { hi = mid }
-            }
-            // 첫 표본 전이면 첫 값으로 — 칸이 생겼다 없어졌다 하면 스탬프 너비가 흔들린다
-            guard lo > 0 else { return hrPrefixSum.count > 1 ? hrPrefixSum[1] : finalAvgHeartRate }
-            return Int((Double(hrPrefixSum[lo]) / Double(lo)).rounded())
+        /// 그 시점의 심박. 상세 지도의 심박 존 색과 **같은 함수**를 쓰고 창 폭만 넓힌다(§5.8).
+        /// 누적 평균이 아니라 순간값이라 오르막에서 오르고 내리막에서 내려간다.
+        /// 표본이 없으면 칸을 만들지 않는다 — 순간값 자리에 러닝 전체 평균을 넣으면 뜻이 달라진다.
+        private func heartRate(at p: Double) -> Int? {
+            guard !hrSamples.isEmpty else { return nil }
+            return RouteSnapshotRenderer.smoothedBPM(at: wallOffset(at: p),
+                                                     samples: hrSamples,
+                                                     halfWindow: hrHalfWindow).bpm
         }
 
         /// 진행률(거리)에 해당하는 좌표의 시계 시간. 심박 표본이 시계 시간이라 짝을 맞출 때 쓴다.
         private func wallOffset(at p: Double) -> TimeInterval {
-            interpolate(wallOffsets, at: p) ?? (hrOffsets.last ?? 0) * p
+            interpolate(wallOffsets, at: p) ?? (hrSamples.last?.offset ?? 0) * p
         }
 
         /// 진행률(거리)에 해당하는 좌표를 찾아 그 좌표의 달린 시간을 읽는다.
@@ -149,7 +138,7 @@ enum RouteStampVideoExporter {
         isMale: Bool?,
         placeName: String?,
         segmentColors: [UIColor]?,
-        /// 시점별 심박 — 시계 시간 오프셋. 진행에 따라 올라가는 평균 심박에 쓴다.
+        /// 시점별 심박 — 시계 시간 오프셋. 그 시점의 심박을 읽는 데 쓴다.
         hrSamples: [(offset: TimeInterval, bpm: Int)],
         onProgress: @escaping (Double) -> Void
     ) async throws -> URL {
@@ -179,7 +168,6 @@ enum RouteStampVideoExporter {
         let table = ProgressTable(coordinates: coords, timeOffsets: offsets,
                                   pausedSpans: detail?.pausedSpans ?? [],
                                   hrSamples: hrSamples,
-                                  finalAvgHeartRate: activity.avgHeartRate,
                                   totalDistanceM: activity.distance,
                                   totalDuration: activity.duration)
 

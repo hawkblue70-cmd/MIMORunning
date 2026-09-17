@@ -82,12 +82,13 @@ enum RouteCardStyle: Int, CaseIterable, Identifiable {
     var label: String { AppLanguage.shared.s("경로 \(rawValue)", "Route \(rawValue)") }
 }
 
-/// 경로 2 영상의 한 프레임에서 "지금까지" 값 — 거리·경과 시간·평균 심박. 평균 페이스는 거리와 시간에서 나온다.
-/// nil이면 정지 카드(최종 수치).
+/// 경로 2 영상의 한 프레임 값 — 거리·경과 시간은 "지금까지", 심박은 "지금".
+/// 평균 페이스는 거리와 시간에서 나온다. nil이면 정지 카드(최종 수치).
 struct RouteProgressSnapshot {
     let distanceM: Double
     let elapsed: TimeInterval
-    let avgHeartRate: Int?
+    /// 그 시점의 심박(순간값). 정지 카드의 평균 심박과는 다른 값이라 라벨도 "HR"로 쓴다.
+    let heartRate: Int?
 }
 
 struct DetailPanelShareCard: View {
@@ -260,8 +261,8 @@ struct DetailPanelShareCard: View {
     }
 
     /// 스탬프 "요약 그리드"에 넘길 데이터 — 스탬프 카드가 만드는 것과 같은 표기(거리·페이스·시간·심박·칼로리·케이던스·고도).
-    /// 영상 프레임이면 거리·평균 페이스·시간·평균 심박 넷만 채운다. 나머지는 nil이라 격자가
-    /// 페이스·시간·심박 한 줄만 그린다 — 칼로리·케이던스는 시점별 값이 없거나 근사라서 올릴 수 없다.
+    /// 영상 프레임이면 거리·평균 페이스·시간·심박 넷만 채운다. 나머지는 nil이라 격자가
+    /// 페이스·시간·심박 한 줄만 그린다 — 칼로리·케이던스는 시점별 값이 없거나 근사라서 움직일 수 없다.
     private var stampData: StampData {
         if let p = routeProgress {
             let km = p.distanceM / 1000
@@ -270,9 +271,10 @@ struct DetailPanelShareCard: View {
                 distanceUnit: "KM",
                 pace: km > 0.02 ? paceText(p.elapsed / km) : "--'--\"",
                 time: durationText(p.elapsed),
-                heartRate: p.avgHeartRate.map { "\($0)" },
+                heartRate: p.heartRate.map { "\($0)" },
                 calories: nil,
-                dateText: "", locationText: "", weekday: ""
+                dateText: "", locationText: "", weekday: "",
+                heartRateLabel: "HR"          // 순간값 — 정지 카드의 "AVG HR"과 구분한다
             )
         }
         var d = StampData(

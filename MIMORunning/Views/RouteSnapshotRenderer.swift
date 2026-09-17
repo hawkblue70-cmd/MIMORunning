@@ -189,9 +189,12 @@ enum RouteSnapshotRenderer {
     }
 
     /// 5초 이동평균 심박. matched=false면 윈도우에 표본이 없어 최근접값을 쓴 것.
+    /// `halfWindow`는 평균낼 앞뒤 초. 기본 2.5초는 지도 색용이고, 경로 영상은 러닝 전체를
+    /// 몇 초로 압축해 한 프레임이 실제 10초 남짓을 건너뛰므로 더 넓게 준다(숫자가 프레임마다 튄다).
     static func smoothedBPM(at offset: TimeInterval,
-                            samples: [(offset: TimeInterval, bpm: Int)]) -> (bpm: Int, matched: Bool) {
-        let window = samples.filter { abs($0.offset - offset) <= 2.5 }
+                            samples: [(offset: TimeInterval, bpm: Int)],
+                            halfWindow: TimeInterval = 2.5) -> (bpm: Int, matched: Bool) {
+        let window = samples.filter { abs($0.offset - offset) <= halfWindow }
         if window.isEmpty {
             guard let nearest = samples.min(by: { abs($0.offset - offset) < abs($1.offset - offset) })
             else { return (60, false) }

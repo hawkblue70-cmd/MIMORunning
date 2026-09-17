@@ -22,6 +22,8 @@ struct StampData {
     var hrZoneIndex: Int?        = nil   // 0~4 (0-based)
     var hrZoneName: String?      = nil   // "THRESHOLD"
     var cadence: String?         = nil   // "182"
+    /// 심박 칸의 라벨을 바꾼다. 기본은 평균("AVG HR") — 경로 영상은 그 시점의 값이라 "HR"로 쓴다.
+    var heartRateLabel: String?  = nil
     var elevGain: String?        = nil   // "142"
     var elevSeries: [Double]?    = nil   // 고도 곡선 (0~1 정규화)
     var hrSeries: [Double]?      = nil   // 심박 파형 (0~1 정규화)
@@ -761,7 +763,9 @@ private struct StampSummaryGridView: View {
         ]
         if let v = data.calories  { m.append(Metric(value: v, unit: "CAL", label: "CALORIES")) }
         if let v = data.elevGain  { m.append(Metric(value: v, unit: "M",   label: "ELEV GAIN")) }
-        if let v = data.heartRate { m.append(Metric(value: v, unit: "BPM", label: "AVG HR")) }
+        if let v = data.heartRate {
+            m.append(Metric(value: v, unit: "BPM", label: data.heartRateLabel ?? "AVG HR"))
+        }
         if let v = data.cadence   { m.append(Metric(value: v, unit: "SPM", label: "CADENCE")) }
         return Array(m.prefix(6))
     }
