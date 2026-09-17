@@ -2309,7 +2309,10 @@ private struct RhythmInsightCard: View {
             if ratio >= 0.80 {
                 result = (L.s("제대로 이지 페이스를 지켰어요", "Great easy pacing — Z1–Z2 \(pct)%"), Theme.positive)
             } else if ratio >= 0.50 {
-                result = (L.s("중간중간 심박이 올라갔어요", "Heart rate drifted up at times"), Color.white.opacity(0.75))
+                // 존 **비율**만 보는 규칙이라 "중간중간 올라갔다"처럼 시간 변화를 말하면 안 된다 —
+                // 심박 곡선이 평평해도(차트 캡션 "끝까지 안정적") 이 문장이 떠서 서로 부딪쳤다.
+                result = (L.s("이지 구간이 \(pct)%였어요. 조금 더 천천히 가도 좋아요",
+                              "Easy zones \(pct)% — a little slower would help"), Color.white.opacity(0.75))
             } else {
                 result = (L.s("이지런인데 심박이 꽤 높았어요. 더 천천히 뛰어도 좋아요", "HR ran high — try slower for true easy effort"), Color(hex: "FFD166"))
             }

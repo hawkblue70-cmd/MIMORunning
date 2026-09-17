@@ -395,7 +395,8 @@ enum RunSummary {
         return line
     }
 
-    /// 근거: "7일 N AU · 이전 7일 N · 최근 7일 +N% · N일 연속" — 있는 것만, 이 순서로.
+    /// 근거: "7일 N AU · 이전 7일 N · 최근 7일 +N%" — 있는 것만, 이 순서로.
+    /// 연속일은 **상태어에만** 쓴다(loadLine) — 두 줄에 같은 "N일 연속"이 겹쳐 보이지 않게.
     private static func loadEvidence(_ i: RunSummaryInput) -> String? {
         let L = AppLanguage.shared
         var parts: [String] = []
@@ -410,9 +411,6 @@ enum RunSummary {
             let pct = Int((abs(w) * 100).rounded())
             let signed = (w < 0 ? "-" : "+") + "\(pct)%"
             parts.append(L.s("최근 7일 \(signed)", "Last 7 days \(signed)"))
-        }
-        if i.streakDays >= 3 {
-            parts.append(L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row"))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }

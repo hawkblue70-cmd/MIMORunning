@@ -329,7 +329,9 @@ struct RunSummaryTests {
         #expect(out[2].evidence == "Zone 4 62% · 평균 149 · 최고 157 · 25°C(더위 +8)")
         // 거리 적응 줄이 이미 "장거리라 그렇다"를 말했으므로(거리 16km ≥ 평소 7.6km × 1.3) 심박 줄은 중복해서 말하지 않는다
         #expect(out[2].next == nil)
-        #expect(out[3].evidence == "7일 1,783 AU · 이전 7일 1,149 · 최근 7일 +55% · 4일 연속")
+        // 연속일은 상태어에만 — 근거 줄에서는 빼서 같은 말이 두 번 보이지 않게 한다
+        #expect(out[3].evidence == "7일 1,783 AU · 이전 7일 1,149 · 최근 7일 +55%")
+        #expect(out[3].state == "4주 평균 수준 · 4일 연속")
         #expect(out[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.")
         #expect(out[4].evidence == "VO2max 45.4 · 8주 전 대비 +0.8")
         #expect(out[4].next == nil)
