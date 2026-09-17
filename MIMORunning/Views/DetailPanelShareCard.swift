@@ -640,6 +640,8 @@ struct DetailPanelShareCardScreen: View {
     @State private var isExportingVideo = false
     @State private var videoProgress: Double = 0
     @State private var showVideoShare = false
+    /// 영상 모드 미리보기 — 영상의 마지막 프레임 값. 한 번만 계산해 둔다.
+    @State private var videoPreviewSnapshot: RouteProgressSnapshot?
     @Environment(\.dismiss) private var dismiss
 
     private let cardW = DetailPanelShareCard.cardWidth
@@ -679,7 +681,10 @@ struct DetailPanelShareCardScreen: View {
                         age: age, isMale: isMale,
                         theme: effectiveTheme,
                         placeName: placeName,
-                        routeStyle: routeStyle
+                        routeStyle: routeStyle,
+                        // 영상 모드에서는 영상의 마지막 프레임을 그대로 — 러닝 데이터 여섯 칸이 아니라
+                        // 영상에 실제로 나오는 거리·페이스·시간·심박 네 칸만 보여준다
+                        routeProgress: isVideoMode ? videoPreviewSnapshot : nil
                     )
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -744,7 +749,13 @@ struct DetailPanelShareCardScreen: View {
         let L = AppLanguage.shared
         return HStack(spacing: 0) {
             segment(L.s("이미지", "Image"), selected: stampOutput == .image) { stampOutput = .image }
-            segment(L.s("영상", "Video"),   selected: stampOutput == .video) { stampOutput = .video }
+            segment(L.s("영상", "Video"), selected: stampOutput == .video) {
+                stampOutput = .video
+                if videoPreviewSnapshot == nil {
+                    videoPreviewSnapshot = RouteStampVideoExporter.finalSnapshot(
+                        activity: activity, detail: detail, hrSamples: hrSamples)
+                }
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))

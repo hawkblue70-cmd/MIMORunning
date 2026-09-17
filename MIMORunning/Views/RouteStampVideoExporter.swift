@@ -128,6 +128,37 @@ enum RouteStampVideoExporter {
         }
     }
 
+    /// 좌표를 거르고 진행표를 만든다 — 내보내기와 미리보기가 **같은 값**을 쓰도록 여기 한 곳에서만 만든다.
+    /// 좌표와 시간 오프셋을 같은 판정으로 함께 걸러야 인덱스가 어긋나지 않는다.
+    private static func prepare(
+        activity: Activity,
+        detail: ActivityDetail?,
+        hrSamples: [(offset: TimeInterval, bpm: Int)]
+    ) -> (coords: [CLLocationCoordinate2D], table: ProgressTable)? {
+        let rawCoords  = detail?.routeCoordinates ?? []
+        let rawOffsets = detail?.routeTimeOffsets ?? []
+        let keep = rawCoords.indices.filter { RouteSnapshotRenderer.isValid(rawCoords[$0]) }
+        let coords  = keep.map { rawCoords[$0] }
+        let offsets = rawOffsets.count == rawCoords.count ? keep.map { rawOffsets[$0] } : []
+        guard coords.count > 1 else { return nil }
+        let table = ProgressTable(coordinates: coords, timeOffsets: offsets,
+                                  pausedSpans: detail?.pausedSpans ?? [],
+                                  hrSamples: hrSamples,
+                                  totalDistanceM: activity.distance,
+                                  totalDuration: activity.duration)
+        return (coords, table)
+    }
+
+    /// 영상의 **마지막 프레임 값**. 영상 모드 미리보기가 이 값으로 정지 화면을 그려
+    /// 화면에서 보는 것과 내보낸 영상의 끝이 같아진다(거리·페이스·시간·심박 네 칸).
+    static func finalSnapshot(
+        activity: Activity,
+        detail: ActivityDetail?,
+        hrSamples: [(offset: TimeInterval, bpm: Int)]
+    ) -> RouteProgressSnapshot? {
+        prepare(activity: activity, detail: detail, hrSamples: hrSamples)?.table.snapshot(at: 1)
+    }
+
     // MARK: - 내보내기
 
     static func export(
@@ -143,13 +174,9 @@ enum RouteStampVideoExporter {
         onProgress: @escaping (Double) -> Void
     ) async throws -> URL {
 
-        // 좌표와 시간 오프셋을 같은 판정으로 함께 걸러야 인덱스가 어긋나지 않는다
-        let rawCoords  = detail?.routeCoordinates ?? []
-        let rawOffsets = detail?.routeTimeOffsets ?? []
-        let keep = rawCoords.indices.filter { RouteSnapshotRenderer.isValid(rawCoords[$0]) }
-        let coords  = keep.map { rawCoords[$0] }
-        let offsets = rawOffsets.count == rawCoords.count ? keep.map { rawOffsets[$0] } : []
-        guard coords.count > 1 else { throw ExportError.noRoute }
+        guard let (coords, table) = prepare(activity: activity, detail: detail, hrSamples: hrSamples) else {
+            throw ExportError.noRoute
+        }
 
         // 지도 스냅샷은 정지 카드와 같은 설정 — 다크 standard · POI 제외 · 경로는 위 60%
         guard let opts = RouteSnapshotRenderer.options(
@@ -164,12 +191,6 @@ enum RouteStampVideoExporter {
         guard let snap = try? await MKMapSnapshotter(options: opts).start() else {
             throw ExportError.snapshotFailed
         }
-
-        let table = ProgressTable(coordinates: coords, timeOffsets: offsets,
-                                  pausedSpans: detail?.pausedSpans ?? [],
-                                  hrSamples: hrSamples,
-                                  totalDistanceM: activity.distance,
-                                  totalDuration: activity.duration)
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("mimo_route3_\(UUID().uuidString).mp4")
