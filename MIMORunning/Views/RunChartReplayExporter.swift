@@ -794,7 +794,8 @@ enum RunChartReplayExporter {
 
     // MARK: - UIImage → CVPixelBuffer (flip applied only here)
 
-    private static func pixelBuffer(from image: UIImage, size: CGSize) -> CVPixelBuffer? {
+    /// 경로 3 영상 내보내기도 같은 변환을 쓴다 — 픽셀 포맷·상하 뒤집기를 두 벌로 두지 않는다.
+    static func pixelBuffer(from image: UIImage, size: CGSize) -> CVPixelBuffer? {
         var pb: CVPixelBuffer?
         let status = CVPixelBufferCreate(
             nil, Int(size.width), Int(size.height),

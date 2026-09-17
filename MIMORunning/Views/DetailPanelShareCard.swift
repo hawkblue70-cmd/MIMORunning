@@ -71,6 +71,13 @@ enum RouteCardStyle: Int, CaseIterable, Identifiable {
     var label: String { AppLanguage.shared.s("경로 \(rawValue)", "Route \(rawValue)") }
 }
 
+/// 경로 3 영상의 한 프레임에서 "지금까지" 값 — 거리와 경과 시간. 평균 페이스는 둘에서 나온다.
+/// nil이면 정지 카드(최종 수치).
+struct RouteProgressSnapshot {
+    let distanceM: Double
+    let elapsed: TimeInterval
+}
+
 struct DetailPanelShareCard: View {
     let activity: Activity
     let detail: ActivityDetail?
@@ -87,6 +94,8 @@ struct DetailPanelShareCard: View {
     var placeName: String? = nil
     /// 지도 패널일 때의 카드 모양. 차트 패널에는 영향 없다.
     var routeStyle: RouteCardStyle = .hero
+    /// 경로 3 영상의 한 프레임이면 그 시점 값. nil이면 정지 카드.
+    var routeProgress: RouteProgressSnapshot? = nil
 
     private var pal: RouteCardPalette { theme == .light ? .light : .dark }
 
@@ -191,6 +200,19 @@ struct DetailPanelShareCard: View {
         .frame(width: Self.cardWidth, height: Self.cardHeight)
     }
 
+    /// "6'21\"" — 초/km를 스탬프와 같은 표기로. 마지막 프레임이 정지 카드와 한 자리도 어긋나지 않게 같은 반올림을 쓴다.
+    private func paceText(_ secPerKm: Double) -> String {
+        guard secPerKm.isFinite, secPerKm > 0 else { return "--'--\"" }
+        let s = Int(secPerKm)
+        return String(format: "%d'%02d\"", s / 60, s % 60)
+    }
+
+    /// "44:47" / "1:04:30" — Activity.formattedDuration과 같은 규칙.
+    private func durationText(_ t: TimeInterval) -> String {
+        let h = Int(t) / 3600, m = (Int(t) % 3600) / 60, s = Int(t) % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+
     /// 경로 3의 왼쪽 아래 열 — 스탬프 옆 남는 폭에 맞춰 한 줄에 하나씩.
     /// 지역명은 넣지 않는다(지도가 이미 어디인지 보여준다). 바닥을 스탬프와 맞춰 요약 그리드 아래줄과 같은 선에 놓인다.
     private var mapStampSideText: some View {
@@ -226,7 +248,20 @@ struct DetailPanelShareCard: View {
     }
 
     /// 스탬프 "요약 그리드"에 넘길 데이터 — 스탬프 카드가 만드는 것과 같은 표기(거리·페이스·시간·심박·칼로리·케이던스·고도).
+    /// 영상 프레임이면 거리·평균 페이스·시간 셋만 채운다. 나머지는 nil이라 격자가 그 세 칸만 그린다 —
+    /// 심박·칼로리는 시점별 값이 없거나 근사라서 올라가는 숫자로 보여줄 수 없다.
     private var stampData: StampData {
+        if let p = routeProgress {
+            let km = p.distanceM / 1000
+            return StampData(
+                distance: km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km),
+                distanceUnit: "KM",
+                pace: km > 0.02 ? paceText(p.elapsed / km) : "--'--\"",
+                time: durationText(p.elapsed),
+                heartRate: nil, calories: nil,
+                dateText: "", locationText: "", weekday: ""
+            )
+        }
         var d = StampData(
             distance: distanceValue,
             distanceUnit: "KM",
@@ -591,6 +626,12 @@ struct DetailPanelShareCardScreen: View {
     @State private var placeName: String?
     @State private var cardTheme: ShareTheme = .dark
     @State private var routeStyle: RouteCardStyle = .hero
+    /// 경로 3의 결과물 — 정지 이미지냐 영상이냐. 영상은 경로 3만 된다.
+    @State private var stampOutput: StampOutputMode = .image
+    @State private var videoURL: URL?
+    @State private var isExportingVideo = false
+    @State private var videoProgress: Double = 0
+    @State private var showVideoShare = false
     @Environment(\.dismiss) private var dismiss
 
     private let cardW = DetailPanelShareCard.cardWidth
@@ -598,6 +639,8 @@ struct DetailPanelShareCardScreen: View {
     /// 풀블리드 경로 카드(경로 1·3)는 다크 고정 — 토글도 숨긴다. 경로 2와 차트 카드는 다크/라이트를 고른다.
     private var isDarkOnly: Bool { activePanel == .map && routeStyle.isFullBleed }
     private var mapSnapshot: UIImage? { mapSnapshots[routeStyle] }
+    /// 영상 내보내기 화면인가 — 경로 3에서 "영상"을 고른 경우.
+    private var isVideoMode: Bool { activePanel == .map && routeStyle == .stamp && stampOutput == .video }
     private var effectiveTheme: ShareTheme { isDarkOnly ? .dark : cardTheme }
 
     private var formattedDateText: String {
@@ -642,15 +685,22 @@ struct DetailPanelShareCardScreen: View {
                             .padding(.bottom, 14)
                     }
 
-                    shareCTA
+                    Group { if isVideoMode { videoCTA } else { shareCTA } }
+                        // 시트는 버튼이 아니라 여기에 — 만드는 중 화면에서는 버튼이 없어 버튼에 달면 안 뜬다
+                        .sheet(isPresented: $showVideoShare) {
+                            if let url = videoURL { VideoShareSheet(url: url) }
+                        }
                         .padding(.horizontal, 24)
                         .padding(.bottom, activePanel == .map ? 12 : 36)
 
-                    // 카드 모양 선택은 화면 맨 아래 — 내보내기 버튼 밑
+                    // 카드 모양 선택은 화면 맨 아래 — 내보내기 버튼 밑. 경로 3만 이미지·영상으로 갈린다.
                     if activePanel == .map {
-                        styleRow
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 36)
+                        VStack(spacing: 8) {
+                            styleRow
+                            if routeStyle == .stamp { outputRow }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 36)
                     }
                 }
             }
@@ -679,6 +729,62 @@ struct DetailPanelShareCardScreen: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    /// 경로 3의 결과물 — 이미지 / 영상. 영상은 경로가 그려지며 거리·평균 페이스·시간이 올라간다.
+    private var outputRow: some View {
+        let L = AppLanguage.shared
+        return HStack(spacing: 0) {
+            segment(L.s("이미지", "Image"), selected: stampOutput == .image) { stampOutput = .image }
+            segment(L.s("영상", "Video"),   selected: stampOutput == .video) { stampOutput = .video }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    /// 영상 내보내기 — 285프레임을 한 장씩 그리므로 정지 카드보다 오래 걸린다. 진행률을 보여 준다.
+    @ViewBuilder
+    private var videoCTA: some View {
+        let L = AppLanguage.shared
+        if isExportingVideo {
+            VStack(spacing: 8) {
+                ProgressView(value: videoProgress).tint(Theme.violet)
+                Text(L.s("영상 만드는 중 \(Int(videoProgress * 100))%",
+                         "Creating video \(Int(videoProgress * 100))%"))
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 12)
+        } else {
+            Button { Task { await exportVideo() } } label: {
+                Label(L.s("영상 내보내기", "Export Video"), systemImage: "film")
+                    .font(.headline).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .background(Theme.violet)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+    }
+
+    private func exportVideo() async {
+        guard let detail else { return }
+        let coords = RouteSnapshotRenderer.validCoordinates(detail.routeCoordinates)
+        guard coords.count > 1 else { return }
+        isExportingVideo = true
+        videoProgress = 0
+        let colors = await zoneColors(for: coords)
+        do {
+            videoURL = try await RouteStampVideoExporter.export(
+                activity: activity, detail: detail, condition: condition,
+                age: age, isMale: isMale, placeName: placeName,
+                segmentColors: colors,
+                onProgress: { p in
+                    if Int(p * 100) != Int(videoProgress * 100) { videoProgress = p }
+                })
+            showVideoShare = true
+        } catch {
+            videoURL = nil
+        }
+        isExportingVideo = false
     }
 
     /// 카드 테마 — 경로선은 늘 심박 존 색(심박이 없으면 자동으로 단색)이라 선택지가 없다

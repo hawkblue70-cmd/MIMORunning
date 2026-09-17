@@ -60,29 +60,43 @@ enum RouteSnapshotRenderer {
             span: MKCoordinateSpan(latitudeDelta: latSpan, longitudeDelta: lonSpan))
     }
 
+    /// 쓸 수 있는 좌표인가 — (0,0) 근처 콜드스타트 튐은 영역을 통째로 늘린다.
+    /// 시간 오프셋 같은 평행 배열을 같이 걸러야 할 때 이 판정을 직접 쓴다(판정이 갈라지면 인덱스가 어긋난다).
+    static func isValid(_ c: CLLocationCoordinate2D) -> Bool {
+        CLLocationCoordinate2DIsValid(c) && abs(c.latitude) > 1 && abs(c.longitude) > 1
+    }
+
     /// GPS 오류 좌표 제거 — (0,0) 근처 콜드스타트 튐이 영역을 통째로 늘린다.
     static func validCoordinates(_ coordinates: [CLLocationCoordinate2D]) -> [CLLocationCoordinate2D] {
-        coordinates.filter {
-            CLLocationCoordinate2DIsValid($0) && abs($0.latitude) > 1 && abs($0.longitude) > 1
-        }
+        coordinates.filter(isValid)
     }
 
     /// 경로선 + 시작·km·도착 마커를 스냅샷 위에 그린다.
     /// `segmentColors`가 있으면 구간별 색(심박 존 그라데이션), 없으면 단색 바이올렛.
     /// `lineScale`은 선 굵기 배율(작은 카드는 굵게), `showKmMarkers`가 false면 시작·도착 점만 남긴다 —
     /// 300pt 폭 카드에서 km 알약이 경로보다 커 보여서.
+    /// `progress`(0~1)를 1보다 작게 주면 그 지점까지만 그리고 끝에 현재 위치 점을 찍는다 — 경로 영상의 한 프레임.
+    /// 정지 카드와 영상이 **같은 선 그리기**를 쓰도록 여기 한 곳에만 둔다.
     static func draw(on snap: MKMapSnapshotter.Snapshot,
                      coordinates: [CLLocationCoordinate2D],
                      segmentColors: [UIColor]? = nil,
                      lineScale: CGFloat = 1,
-                     showKmMarkers: Bool = true) -> UIImage {
+                     showKmMarkers: Bool = true,
+                     progress: Double = 1) -> UIImage {
         let step = max(1, coordinates.count / 300)
         let indices = Array(stride(from: 0, to: coordinates.count, by: step))
-        let pts = indices.map { snap.point(for: coordinates[$0]) }
+        let allPts = indices.map { snap.point(for: coordinates[$0]) }
+        let pts = trimmed(allPts, to: progress)
 
-        return UIGraphicsImageRenderer(size: snap.image.size).image { _ in
+        // 스냅샷이 가진 배율 그대로 다시 그린다 — 기본값(화면 배율)을 쓰면 3.6배로 찍은 영상용 지도가 3배로 줄어 흐려진다
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = snap.image.scale
+        return UIGraphicsImageRenderer(size: snap.image.size, format: format).image { _ in
             snap.image.draw(at: .zero)
-            guard pts.count > 1 else { return }
+            guard pts.count > 1 else {
+                if let p = pts.first { RouteMarkers.drawStartMarker(at: p) }
+                return
+            }
 
             if let segmentColors, segmentColors.count >= coordinates.count {
                 // 구간마다 색이 다르다 — 글로우를 전부 깐 뒤 코어를 올려야 이음매가 깔끔하다
@@ -113,7 +127,7 @@ enum RouteSnapshotRenderer {
                 path.stroke()
             }
 
-            if showKmMarkers {
+            if showKmMarkers, progress >= 1 {
                 RouteMarkers.drawAll(on: snap, coords: coordinates,
                                      endPoint: pts.last, startPoint: pts.first)
             } else {
@@ -121,6 +135,29 @@ enum RouteSnapshotRenderer {
                 if let p = pts.last { RouteMarkers.drawFinishMarker(at: p) }
             }
         }
+    }
+
+    /// 꺾은선을 전체 길이의 `progress` 지점에서 자른다 — 마지막 구간은 그 안에서 비례해 끊어 선이 매끄럽게 자란다.
+    private static func trimmed(_ pts: [CGPoint], to progress: Double) -> [CGPoint] {
+        guard progress < 1 else { return pts }
+        guard pts.count > 1, progress > 0 else { return Array(pts.prefix(1)) }
+        let lengths = (0..<(pts.count - 1)).map { hypot(pts[$0 + 1].x - pts[$0].x, pts[$0 + 1].y - pts[$0].y) }
+        let total = lengths.reduce(0, +)
+        guard total > 0 else { return Array(pts.prefix(1)) }
+        let target = total * CGFloat(progress)
+        var acc: CGFloat = 0
+        var out: [CGPoint] = [pts[0]]
+        for i in lengths.indices {
+            if acc + lengths[i] >= target {
+                let t = lengths[i] > 0 ? (target - acc) / lengths[i] : 0
+                out.append(CGPoint(x: pts[i].x + (pts[i + 1].x - pts[i].x) * t,
+                                   y: pts[i].y + (pts[i + 1].y - pts[i].y) * t))
+                return out
+            }
+            acc += lengths[i]
+            out.append(pts[i + 1])
+        }
+        return out
     }
 
     // MARK: - 심박 존 색
