@@ -5,7 +5,7 @@ import CoreLocation
 
 /// 경로 2(카드 전체 지도 + 요약 그리드 스탬프)의 영상 내보내기.
 ///
-/// 경로가 그려지는 동안 스탬프의 **거리·평균 페이스·시간·심박** 네 숫자가 같이 움직인다.
+/// 경로가 8~12초(거리에 따라) 동안 그려지고, 스탬프의 **거리·평균 페이스·시간·심박** 네 숫자가 같이 움직인다.
 /// 심박만 그 시점의 값(순간)이고 나머지는 누적이다. 심박 숫자는 그 시점 존 색으로 칠해져
 /// 경로선의 그 지점 색과 같아진다.
 /// 칼로리·케이던스는 시점별 값이 없거나 근사라서 넣지 않는다 — 영상에서는 격자가 페이스·시간·심박 한 줄이다.
@@ -17,8 +17,20 @@ import CoreLocation
 enum RouteStampVideoExporter {
 
     static let fps            = 30
-    static let drawSeconds    = 8.0     // 경로가 그려지는 시간
+    static let minDrawSeconds = 8.0     // 짧은 러닝이 그려지는 시간
+    static let maxDrawSeconds = 12.0    // 긴 러닝이 그려지는 시간
     static let holdSeconds    = 1.5     // 다 그린 뒤 머무는 시간
+
+    /// 경로가 그려지는 시간 — 거리에 따라 8~12초.
+    ///
+    /// 길이를 고정하면 러닝이 길수록 화면이 빨리 흘러간다. 8초 고정이면 마라톤은 1초에 15분씩
+    /// 지나가 숫자가 스쳐 간다. 5km까지는 8초, 30km에서 12초, 그 사이는 비례. 그 위는 12초에서 멈춘다.
+    /// 상한을 12초로 둔 이유는 피드에서 더 길면 끝까지 보지 않기 때문이다.
+    static func drawSeconds(distanceM: Double) -> Double {
+        let km = distanceM / 1000
+        let t = (km - 5) / 25
+        return min(maxDrawSeconds, max(minDrawSeconds, minDrawSeconds + t * (maxDrawSeconds - minDrawSeconds)))
+    }
     static let bitrate        = 8_000_000
     /// 카드 300×375pt를 3.6배로 — 1080×1350(4:5). 인코더가 요구하는 짝수 픽셀.
     static let renderScale: CGFloat = 3.6
@@ -236,7 +248,7 @@ enum RouteStampVideoExporter {
         guard writer.startWriting() else { throw ExportError.writerFailed }
         writer.startSession(atSourceTime: .zero)
 
-        let animFrames  = Int(drawSeconds * Double(fps))
+        let animFrames  = Int(drawSeconds(distanceM: activity.distance) * Double(fps))
         let holdFrames  = Int(holdSeconds * Double(fps))
         let totalFrames = animFrames + holdFrames
 
