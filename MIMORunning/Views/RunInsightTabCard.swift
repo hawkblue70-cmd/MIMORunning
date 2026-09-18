@@ -806,6 +806,8 @@ struct RunInsightTabCard: View {
     var easyPaceLookup: MRHRPaceLookup? = nil
     /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
+    /// 회복 곡선 한 줄 입력 — 리듬 카드와 내보내기 시트가 같은 값을 본다(§5.8).
+    var recoveryShape: MRRecoveryShape? = nil
 
     @State private var tab: InsightTabKind = .rhythm
     /// 퍼포먼스 카드가 강도 분포를 실제로 그렸는지 — 각주(문헌값 설명)를 차트가 있을 때만 붙이기 위해 자식이 알려준다.
@@ -858,7 +860,8 @@ struct RunInsightTabCard: View {
                 hrZonesFn: hrZonesFn,
                 effortIndex: effortIndex,
                 easyPaceLookup: easyPaceLookup,
-                planPhase: planPhase
+                planPhase: planPhase,
+                recoveryShape: recoveryShape
             )
         }
         .onAppear {
@@ -972,7 +975,8 @@ struct RunInsightTabCard: View {
                 hrZonesFn: hrZonesFn,
                 raceDetailFn: raceDetailFn,
                 easyPaceLookup: easyPaceLookup,
-                planPhase: planPhase
+                planPhase: planPhase,
+                recoveryShape: recoveryShape
             )
         case .form:
             let formCadence: Int? = {
@@ -1390,6 +1394,8 @@ private struct RhythmInsightCard: View {
     var easyPaceLookup: MRHRPaceLookup? = nil
     /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
+    /// 회복 곡선 한 줄. nil이면 캡션 둘째 줄을 그리지 않는다 — "회복 데이터 없음" 문구는 쓰지 않는다.
+    var recoveryShape: MRRecoveryShape? = nil
     /// 내보내기 카드는 총평 5줄만 그린다(펼침 없음) — 앱 화면은 기본값(true)으로 탭하면 펼쳐진다.
     var summaryAllowsExpansion: Bool = true
     @Environment(\.insightCompact) private var compact
@@ -1598,7 +1604,7 @@ private struct RhythmInsightCard: View {
     private static let gaugeScale: CGFloat = insightGaugeScale
     private static let bottomChartH: CGFloat = 110 * gaugeScale   // 게이지(87) + 축 라벨이 아래로 삐져나오는 23
     // 캡션 칸 — 촘촘 모드는 두 줄(8~9pt)이 딱 들어가는 높이까지만 줄인다
-    private var topCaptionH: CGFloat { compact ? 24 : 28 }
+    private var topCaptionH: CGFloat { compact ? 36 : 42 }   // 2줄(판정 + 회복 곡선)
     private var bottomCaptionH: CGFloat { compact ? 24 : 38 }
 
     /// 2×2 한 칸 — 차트 영역과 캡션 영역을 고정 높이로 잡아 네 칸의 줄을 맞춘다.
@@ -1682,10 +1688,20 @@ private struct RhythmInsightCard: View {
                         .frame(height: 104)
                     }
                 } caption: {
-                    if hasHR, let v = hrVerdictText {
-                        Text(v.text)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(v.color)
+                    VStack(spacing: 1) {
+                        if hasHR, let v = hrVerdictText {
+                            Text(v.text)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(v.color)
+                        }
+                        // 회복 곡선 한 줄 — 중립 관찰이라 판정색을 쓰지 않는다(케이던스 보조 라벨과 같은 색).
+                        if let s = recoveryShape {
+                            Text(MRRecovery.shapeCaption(s))
+                                .font(.system(size: 8.5))
+                                .foregroundStyle(Color.white.opacity(0.6))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                        }
                     }
                 }
             }
@@ -5556,6 +5572,8 @@ struct InsightExportSheet: View {
     var easyPaceLookup: MRHRPaceLookup? = nil
     /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
+    /// 회복 곡선 한 줄 입력 — 미리보기 = 출력이므로 리듬 카드와 같은 값을 본다(§5.8).
+    var recoveryShape: MRRecoveryShape? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -5750,6 +5768,7 @@ struct InsightExportSheet: View {
                 raceDetailFn: raceDetailFn,
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
+                recoveryShape: recoveryShape,
                 summaryAllowsExpansion: false
             )
         case .form:

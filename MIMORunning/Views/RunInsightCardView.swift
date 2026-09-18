@@ -137,6 +137,8 @@ struct RunInsightSection: View {
     var easyPaceLookup: MRHRPaceLookup? = nil
     /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
+    /// 회복 곡선 한 줄 입력 — 리듬 카드로 그대로 흘려보낸다.
+    var recoveryShape: MRRecoveryShape? = nil
 
     var body: some View {
         if !insights.isEmpty, let act = activity {
@@ -169,7 +171,8 @@ struct RunInsightSection: View {
                 hrZonesFn: hrZonesFn,
                 effortIndex: effortIndex,
                 easyPaceLookup: easyPaceLookup,
-                planPhase: planPhase
+                planPhase: planPhase,
+                recoveryShape: recoveryShape
             )
         }
     }

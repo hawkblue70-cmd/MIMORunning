@@ -76,6 +76,8 @@ struct ActivityDetailView: View {
     /// 운동 후 180초 심박 (종료 기준 오프셋) · 회복 결과. 자격 미달·샘플 없음이면 nil → 섹션 미표시.
     @State private var postHR: [MRRecoveryPoint] = []
     @State private var recoveryResult: MRRecoveryResult? = nil
+    /// 리듬 카드 회복 한 줄 입력 — τ와 과거 분포 내 위치. 자격 미달·샘플 부족이면 nil로 남아 카드가 침묵한다.
+    @State private var recoveryShape: MRRecoveryShape? = nil
     /// 비동기 computeHRZonesForDate 결과 전용 상태. detail?.hrZones보다 우선.
     @State private var displayZones: [HRZoneData] = []
     @State private var isComputingZones = false
@@ -133,9 +135,19 @@ struct ActivityDetailView: View {
         let post = await manager.fetchPostWorkoutHR(for: activity.id)
         postHR = post
         recoveryResult = MRRecovery.compute(endHR: endHR, post: post)
+        if let r = recoveryResult, let d = r.decay {
+            let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+            let taus = await manager.recoveryTauHistory(from: start, excluding: activity.id)
+            recoveryShape = MRRecoveryShape(r, percentile: MRRecovery.tauPercentile(d.tau, history: taus))
+        }
         #if DEBUG
         print(String(format: "[회복] 종료심박 %.0f · 종료 후 샘플 %d개 · HRR1 %@",
                      endHR, post.count, recoveryResult.map { String(format: "%.0f", $0.hrr1) } ?? "없음(60초 샘플 없음)"))
+        if let d = recoveryShape?.decay {
+            print(String(format: "[회복:모양] τ %.0f초 · x %.2f · HR∞ %.0f · 분위 %@",
+                         d.tau, d.ratio, d.asymptote,
+                         recoveryShape?.percentile.map { String(format: "%.2f", $0) } ?? "표본부족"))
+        }
         #endif
     }
 
@@ -301,7 +313,8 @@ struct ActivityDetailView: View {
                             raceDetailFn: { [manager] id in manager.detailFromCache(id) },
                             effortIndex: effortIndex,
                             easyPaceLookup: engine.easyPaceLookup,
-                            planPhase: matchedPlanWeek()?.phase
+                            planPhase: matchedPlanWeek()?.phase,
+                            recoveryShape: recoveryShape
                         )
                     }
                     // 표시할 상세 지표가 하나도 없으면(걷기 등) 섹션째 숨긴다.
