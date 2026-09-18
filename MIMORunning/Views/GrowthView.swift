@@ -502,12 +502,16 @@ struct GrowthView: View {
                 SectionLabel(title: mileageTitle, subtitle: mileageSubtitle)
                 Spacer()
                 HStack(spacing: 10) {
-                    Button { showMileageStreakShareCard = true } label: {
-                        Label(AppLanguage.shared.s("흐름 내보내기", "Export Flow"),
-                              systemImage: "square.and.arrow.up")
-                            .font(.system(size: 12, weight: .medium))
+                    // 내보내기는 일 단위에서만 — 주 단위로 카드를 만들면 막대 12주와 잔디 18주가
+                    // 같은 기간을 두 번 그린다. 일 단위는 막대 30일 + 잔디 18주로 서로를 보완한다.
+                    if showDaily {
+                        Button { showMileageStreakShareCard = true } label: {
+                            Label(AppLanguage.shared.s("흐름 내보내기", "Export Flow"),
+                                  systemImage: "square.and.arrow.up")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundStyle(Theme.violet)
                     }
-                    .foregroundStyle(Theme.violet)
                     periodToggle
                 }
             }
