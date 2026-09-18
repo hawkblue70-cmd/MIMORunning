@@ -1693,7 +1693,9 @@ private struct RhythmInsightCard: View {
     // 칸마다 콘텐츠 높이가 다르면 캡션이 들쭉날쭉해진다.
     private static let topChartH: CGFloat = 114      // 도넛(114) 기준
     private static let gaugeScale: CGFloat = insightGaugeScale
-    private static let bottomChartH: CGFloat = 110 * gaugeScale   // 게이지(87) + 축 라벨이 아래로 삐져나오는 23
+    /// 게이지(87) + 축 라벨이 아래로 삐져나오는 23 + 제목 줄 10.
+    /// 제목을 넣느라 축 라벨 자리를 뺏으면 라벨이 잘린다.
+    private static let bottomChartH: CGFloat = 110 * gaugeScale + 10
     // 캡션 칸 — 촘촘 모드는 두 줄(8~9pt)이 딱 들어가는 높이까지만 줄인다
     /// 회복 곡선 한 줄. 과거 τ 표본이 8개 미만이면 nil — 캡션도 높이도 이 하나만 본다.
     private var recoveryCaption: String? { recoveryShape.flatMap { MRRecovery.shapeCaption($0) } }
@@ -1727,14 +1729,32 @@ private struct RhythmInsightCard: View {
     }
 
     @ViewBuilder
+    /// 2×2 각 칸의 제목. 네 칸이 같은 크기·색을 공유한다(§5.8) — 칸마다 따로 쓰지 않는다.
+    private func cellTitle(_ text: String, trailing: String? = nil) -> some View {
+        HStack(spacing: 4) {
+            Text(text)
+            if let trailing {
+                Spacer(minLength: 0)
+                Text(trailing)
+            }
+        }
+        .font(.system(size: 7.5))
+        .foregroundStyle(Color.white.opacity(0.5))
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 10)
+    }
+
     private var rhythmRow: some View {
+        let L = AppLanguage.shared
         let visibleZones = hrZones.filter { $0.fraction > 0.01 }
         let hasZones = !visibleZones.isEmpty
         let hasHR = hrSamples.count >= 5
         let sep = Color.white.opacity(0.1)
 
         // 2×2 그리드: [심박존 | 심박수] / [케이던스 | 유산소]
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             Color.clear.frame(height: 0).onAppear {
                 #if DEBUG
                 if let bl = formBaseline {
@@ -1757,8 +1777,11 @@ private struct RhythmInsightCard: View {
                 // 심박존 도넛
                 rhythmCell(chartH: Self.topChartH, captionH: topCaptionH) {
                     if hasZones {
-                        ZoneDonutView(zones: hrZones)
-                            .frame(width: 114, height: 114)
+                        VStack(spacing: 1.5) {
+                            cellTitle(L.s("심박 존", "HR Zones"))
+                            ZoneDonutView(zones: hrZones)
+                                .frame(width: 102, height: 102)
+                        }
                     }
                 } caption: {
                     if hasZones {
@@ -1776,7 +1799,11 @@ private struct RhythmInsightCard: View {
                 // 심박수 HR 시계열 + 판정 문구
                 rhythmCell(chartH: Self.topChartH, captionH: topCaptionH) {
                     if hasHR {
-                        HRTimeSeriesView(
+                        VStack(spacing: 1.5) {
+                            // 오른쪽 점들이 "운동 후"라는 걸 x축 라벨(1·2분)만으로는 알 수 없다.
+                            cellTitle(L.s("러닝 심박수", "Run HR"),
+                                      trailing: recoveryResult == nil ? nil : L.s("러닝후 심박수", "After Run"))
+                            HRTimeSeriesView(
                             samples: hrSamples,
                             zones: hasZones ? hrZones : [],
                             altitudeProfile: detail?.altitudeTimeProfile ?? [],
@@ -1787,7 +1814,8 @@ private struct RhythmInsightCard: View {
                             recoveryBands: recoveryBands
                         )
                         .padding(.horizontal, 2)
-                        .frame(height: 104)
+                        .frame(height: 101)
+                        }
                     }
                 } caption: {
                     VStack(spacing: 1) {
@@ -1821,11 +1849,14 @@ private struct RhythmInsightCard: View {
                     let displayCad = intervalWorkCadence.map { Int($0.rounded()) } ?? detail?.avgCadence
                     if let cad = displayCad {
                         let gaugeBaseline: RunningFormBaseline? = rhythmIsLongDistanceContext ? nil : formBaseline
-                        CadenceRPMGaugeView(cadence: cad, scale: Self.gaugeScale,
-                                            formBaseline: gaugeBaseline, activity: activity,
-                                            isInterval: workoutTypeFn?(activity.id) == .interval,
-                                            gradeAdjustedPace: runGAP)
-                            .frame(height: 87 * Self.gaugeScale)   // 축 라벨은 아래로 삐져나온다 — 칸 높이가 흡수
+                        VStack(spacing: 1.5) {
+                            cellTitle(L.s("케이던스", "Cadence"))
+                            CadenceRPMGaugeView(cadence: cad, scale: Self.gaugeScale,
+                                                formBaseline: gaugeBaseline, activity: activity,
+                                                isInterval: workoutTypeFn?(activity.id) == .interval,
+                                                gradeAdjustedPace: runGAP)
+                                .frame(height: 87 * Self.gaugeScale)   // 축 라벨은 아래로 삐져나온다 — 칸 높이가 흡수
+                        }
                     }
                 } caption: {
                     let displayCad = intervalWorkCadence.map { Int($0.rounded()) } ?? detail?.avgCadence
@@ -1852,8 +1883,11 @@ private struct RhythmInsightCard: View {
                 rhythmCell(chartH: Self.bottomChartH, captionH: bottomCaptionH,
                            chartAlignment: .top) {
                     if let info = vo2Info, let vo2 = detail?.vo2Max {
-                        VO2RPMGaugeView(fi: info, vo2: vo2, scale: Self.gaugeScale)
-                            .frame(height: 87 * Self.gaugeScale)
+                        VStack(spacing: 1.5) {
+                            cellTitle(L.s("유산소", "Cardio"))
+                            VO2RPMGaugeView(fi: info, vo2: vo2, scale: Self.gaugeScale)
+                                .frame(height: 87 * Self.gaugeScale)
+                        }
                     }
                 } caption: {
                     if let info = vo2Info, let vo2 = detail?.vo2Max {
