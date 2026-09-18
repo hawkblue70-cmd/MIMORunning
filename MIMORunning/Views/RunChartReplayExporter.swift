@@ -259,11 +259,11 @@ enum RunChartReplayExporter {
     static let holdSecs = 1.2
     static let scale: CGFloat = 3.6   // 1080 / 300pt
 
-    /// 헤더·지도·차트가 **같은 세로선**에 서도록 옆 여백을 한 곳에서만 정한다.
-    /// 예전에는 헤더 0% · 차트 3% · 지도 5%로 제각각이라 세 구역의 왼쪽 끝이 다 어긋났다.
-    /// 값은 카드 기준 pt — 헤더는 뷰 안에서, 지도·차트는 합성할 때 쓴다.
-    static let sideInsetPt: CGFloat = 9
-    static var sideInsetPx: CGFloat { sideInsetPt * scale }   // 32.4
+    /// 합성할 때 각 구역을 가장자리까지 채운다 — 이미지 카드(RunChartShareCard)가
+    /// 헤더와 차트를 **하나의 연속된 패널**로 그리는 것과 같은 규칙이다.
+    /// 예전에는 헤더 0% · 차트 3% · 지도 5%로 제각각이라 블록들의 왼쪽 끝이 다 어긋났고,
+    /// 여백을 주면 헤더 띠만 가장자리까지 가 다시 어긋난다. 들여쓰기는 **각 뷰 안에서** 한다.
+    static let sideInsetPx: CGFloat = 0
     static let cardW: CGFloat = 300   // pt reference width
 
     // MARK: - Layout
@@ -1351,9 +1351,8 @@ private struct ReplayHeaderView: View {
                 }
             }
         }
-        // 지도·차트와 같은 세로선에 글자가 서도록 공용 상수를 쓴다. 배경 띠는 가장자리까지
-        // 채우고 글자만 들여쓴다 — 이미지 카드의 헤더와 같은 규칙이다.
-        .padding(.horizontal, RunChartReplayExporter.sideInsetPt)
+        // 이미지 카드의 contextRow와 같은 12pt — 배경 띠는 가장자리까지 채우고 글자만 들여쓴다.
+        .padding(.horizontal, 12)
         .frame(width: RunChartReplayExporter.cardW, height: height, alignment: .center)
         .background(palette.sectionBackground)
     }
@@ -1392,7 +1391,8 @@ private struct ReplayTilesView: View {
                 }
             }
         }
-        .padding(.horizontal, 8)
+        // 이미지 카드의 타일 격자와 같은 10pt.
+        .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(width: RunChartReplayExporter.cardW, height: height, alignment: .top)
         .background(palette.cardBackground,
