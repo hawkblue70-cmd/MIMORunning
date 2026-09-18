@@ -84,8 +84,8 @@ enum MRRecovery {
         let d1 = endHR - hr60      // 1분째 낙폭
         let d2 = hr60 - hr120      // 2분째 낙폭
         guard d1 >= minFirstMinuteDrop, d2 > 0 else { return nil }
-        let x = d2 / d1
-        guard x > 0, x < 1 else { return nil }   // x ≥ 1은 감쇠가 아니다 (로그 정의역 보호)
+        let x = d2 / d1        // d1 ≥ 8, d2 > 0 이므로 x > 0은 보장된다
+        guard x < 1 else { return nil }   // x ≥ 1은 감쇠가 아니다 — τ가 음수(x>1)이거나 ±∞(x=1)
         let tau = -60.0 / log(x)
         guard tauRange.contains(tau) else { return nil }
         return MRRecoveryDecay(ratio: x, tau: tau, asymptote: endHR - d1 / (1 - x))
