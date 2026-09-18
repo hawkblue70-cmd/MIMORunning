@@ -372,26 +372,21 @@ enum RunChartReplayExporter {
         let totalFrames = animFrames + holdFrames
 
         // ── Static sections (rendered once) ─────────────────────────────────
-        // 경로 모드만. `chartData`는 프레임마다 이미지 카드를 통째로 그린다(아래 루프).
-        let headerImg: CGImage? = actual == .chartData ? nil : renderCGImage(
-            RunChartShareHeader(
-                distanceText: distanceText, durationText: durationText,
-                weatherText: weatherText,   weatherIcon: weatherIcon,
-                dateText: dateText,         weekdayText: weekdayText,
-                startTimeText: startTimeText, shoeText: shoeText,
-                paceText: paceText, palette: palette)
-                .frame(width: cardW)
-                .background(palette.sectionBackground),
-            width: cardW, height: nil, palette: palette)
-        let tilesImg: CGImage? = actual == .routeData ? renderCGImage(
-            RunChartShareTiles(data: data, enabledLayers: enabledLayers, palette: palette)
-                .frame(width: cardW)
-                .background(palette.cardBackground),
-            width: cardW, height: nil, palette: palette) : nil
+        // 헤더·타일은 프레임마다 바뀌지 않는다 — 한 번만 그린다. 이미지 카드와 **같은 뷰**를
+        // 자연 높이로 그리므로 배치는 카드와 같다(§5.8). 프레임마다 카드를 통째로 그리면
+        // 헤더·타일 레이아웃이 450번 반복돼 내보내기가 몇 배 느려졌다.
+        let strips = renderCardStrips(
+            data: data, enabledLayers: enabledLayers, withTiles: actual != .routeChart,
+            distanceText: distanceText, durationText: durationText,
+            weatherText: weatherText, weatherIcon: weatherIcon,
+            dateText: dateText, weekdayText: weekdayText,
+            startTimeText: startTimeText, shoeText: shoeText, paceText: paceText,
+            palette: palette)
+        let headerImg = strips.header
+        let tilesImg  = strips.tiles
         let layout = SectionLayout.make(actual, headerPx: headerImg?.height ?? 0,
                                         tilesPx: tilesImg?.height ?? 0)
         let chartPtH = CGFloat(layout.chartH) / scale
-        let cardPtH  = CGFloat(videoH) / scale   // 375 — 이미지 카드와 같은 4:5
 
         // ── Map snapshot (once, if needed) ───────────────────────────────────
         var mapUIImage: UIImage? = nil
@@ -451,19 +446,14 @@ enum RunChartReplayExporter {
                 let appended: Bool = autoreleasepool {
                     let frame: UIImage
                     if actual == .chartData {
-                        // 이미지 카드를 통째로 — 같은 컴포넌트·같은 배율(3.6)이라 이미지 출력과
-                        // 픽셀 단위로 같은 배치가 나온다. 재생 위치만 다르다.
-                        guard let img = renderCGImage(
-                            shareCard(data: data, enabledLayers: enabledLayers,
-                                      distanceText: distanceText, durationText: durationText,
-                                      weatherText: weatherText, weatherIcon: weatherIcon,
-                                      dateText: dateText, weekdayText: weekdayText,
-                                      startTimeText: startTimeText, shoeText: shoeText,
-                                      paceText: paceText, playProgress: distRatio,
-                                      chartHeight: chartHeight, cardPtH: cardPtH, palette: palette),
-                            width: cardW, height: cardPtH, palette: palette)
-                        else { return false }
-                        frame = UIImage(cgImage: img)
+                        // 차트 조각만 프레임마다 — 이미지 카드 안의 차트와 같은 패딩·배경.
+                        let chartImg = renderCGImage(
+                            chartStrip(data: data, enabledLayers: enabledLayers,
+                                       chartHeight: chartHeight, playProgress: distRatio,
+                                       palette: palette),
+                            width: cardW, height: nil, palette: palette)
+                        frame = composeCardFrame(header: headerImg, chart: chartImg,
+                                                 tiles: tilesImg, palette: palette)
                     } else {
                         let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
                             RunCombinedChartView(
@@ -542,39 +532,28 @@ enum RunChartReplayExporter {
         let hasRoute = routeCoordinates.count >= 2
         let needsRoute = content == .routeChart || content == .routeData
         let actual = (needsRoute && !hasRoute) ? ReplayContent.chartData : content
-        let cardPtH = CGFloat(videoH) / scale
 
-        // 차트+데이터: 이미지 카드 그대로 — 미리보기·내보내기·이미지 출력이 한 컴포넌트.
+        // 내보내기와 **같은 조각·같은 합성** — 미리보기가 곧 출력이다.
+        let strips = renderCardStrips(
+            data: data, enabledLayers: enabledLayers, withTiles: actual != .routeChart,
+            distanceText: distanceText, durationText: durationText,
+            weatherText: weatherText, weatherIcon: weatherIcon,
+            dateText: dateText, weekdayText: weekdayText,
+            startTimeText: startTimeText, shoeText: shoeText, paceText: paceText,
+            palette: palette)
+        let headerImg = strips.header
+        let tilesImg  = strips.tiles
+
         if actual == .chartData {
             let timeDistTable = buildTimeDistanceTable(data: data, totalDuration: totalDuration)
             let distRatio = timeToDistanceRatio(timeRatio: progress, table: timeDistTable)
-            return renderCGImage(
-                shareCard(data: data, enabledLayers: enabledLayers,
-                          distanceText: distanceText, durationText: durationText,
-                          weatherText: weatherText, weatherIcon: weatherIcon,
-                          dateText: dateText, weekdayText: weekdayText,
-                          startTimeText: startTimeText, shoeText: shoeText,
-                          paceText: paceText, playProgress: distRatio,
-                          chartHeight: chartHeight, cardPtH: cardPtH, palette: palette),
-                width: cardW, height: cardPtH, palette: palette
-            ).map { UIImage(cgImage: $0) }
+            let chartImg = renderCGImage(
+                chartStrip(data: data, enabledLayers: enabledLayers,
+                           chartHeight: chartHeight, playProgress: distRatio, palette: palette),
+                width: cardW, height: nil, palette: palette)
+            return composeCardFrame(header: headerImg, chart: chartImg, tiles: tilesImg, palette: palette)
         }
 
-        let headerImg = renderCGImage(
-            RunChartShareHeader(
-                distanceText: distanceText, durationText: durationText,
-                weatherText: weatherText,   weatherIcon: weatherIcon,
-                dateText: dateText,         weekdayText: weekdayText,
-                startTimeText: startTimeText, shoeText: shoeText,
-                paceText: paceText, palette: palette)
-                .frame(width: cardW)
-                .background(palette.sectionBackground),
-            width: cardW, height: nil, palette: palette)
-        let tilesImg: CGImage? = actual == .routeData ? renderCGImage(
-            RunChartShareTiles(data: data, enabledLayers: enabledLayers, palette: palette)
-                .frame(width: cardW)
-                .background(palette.cardBackground),
-            width: cardW, height: nil, palette: palette) : nil
         let layout = SectionLayout.make(actual, headerPx: headerImg?.height ?? 0,
                                         tilesPx: tilesImg?.height ?? 0)
         let chartPtH = CGFloat(layout.chartH) / scale
@@ -1202,24 +1181,67 @@ enum RunChartReplayExporter {
         return renderer.cgImage
     }
 
-    /// 영상용 이미지 카드 — 이미지 출력과 **같은 뷰**, 모서리만 직각·높이만 4:5 고정.
-    private static func shareCard(
-        data: RunChartData, enabledLayers: Set<RunChartLayer>,
+    // MARK: - 이미지 카드의 세 조각 (§5.8 — 영상은 카드와 같은 뷰를 같은 폭·같은 패딩으로 그린다)
+
+    /// 헤더·타일 조각. 자연 높이로 그려 반환 이미지의 `height`가 곧 배치 px가 된다.
+    /// 카드 안에서 헤더는 sectionBackground 위에, 타일은 cardBackground 위에 놓인다 — 같게 깐다.
+    private static func renderCardStrips(
+        data: RunChartData, enabledLayers: Set<RunChartLayer>, withTiles: Bool,
         distanceText: String, durationText: String,
         weatherText: String?, weatherIcon: String?,
         dateText: String?, weekdayText: String?,
         startTimeText: String?, shoeText: String?, paceText: String?,
-        playProgress: Double, chartHeight: CGFloat, cardPtH: CGFloat,
         palette: ShareChartPalette
+    ) -> (header: CGImage?, tiles: CGImage?) {
+        let header = renderCGImage(
+            RunChartShareHeader(
+                distanceText: distanceText, durationText: durationText,
+                weatherText: weatherText, weatherIcon: weatherIcon,
+                dateText: dateText, weekdayText: weekdayText,
+                startTimeText: startTimeText, shoeText: shoeText,
+                paceText: paceText, palette: palette)
+                .frame(width: cardW)
+                .background(palette.sectionBackground),
+            width: cardW, height: nil, palette: palette)
+        let tiles: CGImage? = withTiles ? renderCGImage(
+            RunChartShareTiles(data: data, enabledLayers: enabledLayers, palette: palette)
+                .frame(width: cardW)
+                .background(palette.cardBackground),
+            width: cardW, height: nil, palette: palette) : nil
+        return (header, tiles)
+    }
+
+    /// 차트 조각 — `RunChartShareCard` 안의 차트와 **같은 패딩(위 2·아래 4)·같은 배경**.
+    /// 여기가 카드와 달라지면 프레임마다 그리는 부분만 어긋난다.
+    private static func chartStrip(
+        data: RunChartData, enabledLayers: Set<RunChartLayer>,
+        chartHeight: CGFloat, playProgress: Double, palette: ShareChartPalette
     ) -> some View {
-        RunChartShareCard(
-            data: data, enabledLayers: enabledLayers,
-            distanceText: distanceText, durationText: durationText,
-            weatherText: weatherText, weatherIcon: weatherIcon,
-            dateText: dateText, weekdayText: weekdayText,
-            startTimeText: startTimeText, shoeText: shoeText,
-            paceText: paceText, playProgress: playProgress,
-            chartHeight: chartHeight, palette: palette,
-            cornerRadius: 0, fixedHeight: cardPtH)
+        RunCombinedChartView(data: data, enabledLayers: enabledLayers,
+                             chartHeight: chartHeight, playProgress: playProgress)
+            .environment(\.shareChartPalette, palette)
+            .padding(.top, 2)
+            .padding(.bottom, 4)
+            .frame(width: cardW)
+            .background(palette.sectionBackground)
+    }
+
+    /// 세 조각을 위에서부터 빈틈없이 쌓는다 — 카드의 VStack(spacing: 0)과 같다.
+    /// 합이 1350에 1~2px 못 미치면 남는 줄은 cardBackground(카드와 같은 색)로 남는다.
+    private static func composeCardFrame(header: CGImage?, chart: CGImage?, tiles: CGImage?,
+                                         palette: ShareChartPalette) -> UIImage {
+        let size = CGSize(width: videoW, height: videoH)
+        let fmt  = UIGraphicsImageRendererFormat()
+        fmt.scale = 1; fmt.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: fmt).image { _ in
+            UIColor(palette.cardBackground).setFill()
+            UIRectFill(CGRect(origin: .zero, size: size))
+            var y: CGFloat = 0
+            for img in [header, chart, tiles].compactMap({ $0 }) {
+                let h = CGFloat(img.height)
+                UIImage(cgImage: img).draw(in: CGRect(x: 0, y: y, width: CGFloat(videoW), height: h))
+                y += h
+            }
+        }
     }
 }

@@ -21,15 +21,13 @@ struct RunChartShareCard: View {
     /// 기본값은 실측 전 첫 프레임용.
     var chartHeight: CGFloat = 226
     var palette: ShareChartPalette = .dark
-    /// 영상 프레임은 0 — 직사각형 프레임 안에서 모서리가 배경색으로 남는다.
-    var cornerRadius: CGFloat = 20
-    /// 영상 프레임은 4:5 높이(375pt)로 고정한다. nil이면 내용 높이.
-    var fixedHeight: CGFloat? = nil
 
     private let cardW: CGFloat = 300
 
-    /// ⚠ §5.8 — 이미지 카드와 영상 프레임이 **이 뷰 하나**를 그린다. 헤더·타일을 영상 쪽에서
-    ///   따로 그리던 시절엔 글꼴·여백·세로 위치가 하나씩 어긋나 여덟 번을 따로 맞췄다.
+    /// ⚠ §5.8 — 영상 프레임은 이 카드의 세 조각(RunChartShareHeader · 차트 · RunChartShareTiles)을
+    ///   같은 폭·같은 패딩으로 그려 쌓는다(RunChartReplayExporter.chartStrip/composeCardFrame).
+    ///   여기 구조(VStack spacing 0 · 차트 패딩 위 2/아래 4 · 배경색)를 바꾸면 그쪽도 같이 바꿔야 한다.
+    ///   헤더·타일을 영상 쪽에서 따로 그리던 시절엔 글꼴·여백·세로 위치가 하나씩 어긋나 여덟 번을 따로 맞췄다.
     var body: some View {
         VStack(spacing: 0) {
             // 차트 영역
@@ -53,9 +51,9 @@ struct RunChartShareCard: View {
 
             RunChartShareTiles(data: data, enabledLayers: enabledLayers, palette: palette)
         }
-        .frame(width: cardW, height: fixedHeight, alignment: .top)
+        .frame(width: cardW)
         .background(palette.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 }
 
