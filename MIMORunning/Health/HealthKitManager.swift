@@ -64,6 +64,8 @@ class HealthKitManager {
     @ObservationIgnored private var metricFetchTasks: [String: Task<[(date: Date, value: Double)], Never>] = [:]
     // 백필 중복 실행 방지 — 화면 전환 시 이전 Task 취소 후 새 Task 시작
     @ObservationIgnored private var workoutTypeBackfillTask: Task<Void, Never>?
+    // 회복 히스토리 재구축 동시 요청 시 하나의 Task만 실행 — metricFetchTasks와 동일 패턴 (cold 캐시에서 성장 탭·상세 화면이 동시에 부르는 경우 대비)
+    @ObservationIgnored private var recoveryHistoryTask: Task<[RecoveryHistoryPoint], Never>?
     /// longRunFatigueSummaries 메모 — 같은 날·같은 활동 목록이면 재계산하지 않는다.
     /// 디스크 상세 캐시 디코드(경로 좌표 포함)가 러닝당 한 번씩 들어가기 때문.
     @ObservationIgnored private var fatigueMemo: (key: String, value: [MRLongRunFatigue])? = nil
@@ -2560,6 +2562,7 @@ class HealthKitManager {
         let hrr1: Double
         var tempC: Double? = nil   // HKMetadataKeyWeatherTemperature — 회귀의 기온 항
         var hr120: Double? = nil   // 종료 120초 후 심박 — τ 분포용. hr60 = endHR − hrr1 로 나온다.
+        var id: UUID? = nil        // 워크아웃 uuid — 판정 대상 런을 시각 근접이 아니라 신원으로 빼기 위함. 구버전 캐시 디코드는 nil.
     }
     private struct RecoveryHistoryFile: Codable {
         var points: [RecoveryHistoryPoint]
@@ -2584,45 +2587,57 @@ class HealthKitManager {
             if !newerRun { return file.points.filter { $0.date >= start } }
         }
 
-        let fetched = (try? await queryWorkouts(since: fullStart)) ?? []
-        let runs = fetched.filter { $0.workoutActivityType == .running && Date().timeIntervalSince($0.endDate) > 3600 }
-                          .sorted { $0.startDate < $1.startDate }
-        for w in runs { workoutCache[w.uuid] = w }
-        let maxHR = cachedMHR.map(Double.init)
-
-        var points: [RecoveryHistoryPoint] = []
-        await withTaskGroup(of: RecoveryHistoryPoint?.self) { group in
-            for w in runs {
-                group.addTask { [self] in
-                    guard let endHR = await self.queryEndHR(workout: w),
-                          MRRecovery.isEligible(endHR: endHR, maxHR: maxHR) else { return nil }
-                    let post = await self.fetchPostWorkoutHR(for: w.uuid)
-                    guard let r = MRRecovery.compute(endHR: endHR, post: post) else { return nil }
-                    let temp = (w.metadata?[HKMetadataKeyWeatherTemperature] as? HKQuantity)?.doubleValue(for: .degreeCelsius())
-                    return RecoveryHistoryPoint(date: w.startDate, endHR: endHR, hrr1: r.hrr1,
-                                                tempC: temp, hr120: r.hr120)
-                }
-            }
-            for await p in group { if let p { points.append(p) } }
+        // 동시 요청 시 이미 실행 중인 재구축 Task를 공유 — HealthKit 중복 조회 방지 (metricFetchTasks와 동일 패턴)
+        if let existing = recoveryHistoryTask {
+            return await existing.value.filter { $0.date >= start }
         }
-        points.sort { $0.date < $1.date }
-        #if DEBUG
-        print("[회복] 12개월 러닝 \(runs.count)건 → 자격·샘플 통과 \(points.count)건 (최대심박 \(cachedMHR.map(String.init) ?? "미상"))")
-        let with2min = points.filter { $0.hr120 != nil }.count
-        let withTau = points.compactMap { p in p.hr120.flatMap { MRRecovery.decay(endHR: p.endHR, hr60: p.endHR - p.hrr1, hr120: $0) } }.count
-        print("[회복] 그중 2분 샘플 \(with2min)건 · τ 성립 \(withTau)건")
-        #endif
-        let file = RecoveryHistoryFile(points: points, cachedAt: Date(), coveredFrom: fullStart)
-        if let data = try? JSONEncoder().encode(file) { try? data.write(to: recoveryHistoryURL, options: .atomic) }
-        return points.filter { $0.date >= start }
+
+        let task = Task<[RecoveryHistoryPoint], Never> { [self] in
+            let fetched = (try? await queryWorkouts(since: fullStart)) ?? []
+            let runs = fetched.filter { $0.workoutActivityType == .running && Date().timeIntervalSince($0.endDate) > 3600 }
+                              .sorted { $0.startDate < $1.startDate }
+            for w in runs { workoutCache[w.uuid] = w }
+            let maxHR = cachedMHR.map(Double.init)
+
+            var points: [RecoveryHistoryPoint] = []
+            await withTaskGroup(of: RecoveryHistoryPoint?.self) { group in
+                for w in runs {
+                    group.addTask { [self] in
+                        guard let endHR = await self.queryEndHR(workout: w),
+                              MRRecovery.isEligible(endHR: endHR, maxHR: maxHR) else { return nil }
+                        let post = await self.fetchPostWorkoutHR(for: w.uuid)
+                        guard let r = MRRecovery.compute(endHR: endHR, post: post) else { return nil }
+                        let temp = (w.metadata?[HKMetadataKeyWeatherTemperature] as? HKQuantity)?.doubleValue(for: .degreeCelsius())
+                        return RecoveryHistoryPoint(date: w.startDate, endHR: endHR, hrr1: r.hrr1,
+                                                    tempC: temp, hr120: r.hr120, id: w.uuid)
+                    }
+                }
+                for await p in group { if let p { points.append(p) } }
+            }
+            points.sort { $0.date < $1.date }
+            #if DEBUG
+            print("[회복] 12개월 러닝 \(runs.count)건 → 자격·샘플 통과 \(points.count)건 (최대심박 \(cachedMHR.map(String.init) ?? "미상"))")
+            let with2min = points.filter { $0.hr120 != nil }.count
+            let withTau = points.compactMap { p in p.hr120.flatMap { MRRecovery.decay(endHR: p.endHR, hr60: p.endHR - p.hrr1, hr120: $0) } }.count
+            print("[회복] 그중 2분 샘플 \(with2min)건 · τ 성립 \(withTau)건")
+            #endif
+            let file = RecoveryHistoryFile(points: points, cachedAt: Date(), coveredFrom: fullStart)
+            if let data = try? JSONEncoder().encode(file) { try? data.write(to: recoveryHistoryURL, options: .atomic) }
+            recoveryHistoryTask = nil
+            return points
+        }
+        recoveryHistoryTask = task
+        return await task.value.filter { $0.date >= start }
     }
 
     /// 과거 러닝의 회복 곡선 시정수 τ 목록. `excluding` 러닝은 뺀다 — 자기를 포함한 분포와
-    /// 비교하면 표본이 작을수록 가운데로 끌린다.
-    func recoveryTauHistory(from start: Date, excluding activityDate: Date?) async -> [Double] {
+    /// 비교하면 표본이 작을수록 가운데로 끌린다. id로 뺀다(시각 근접 아님) — 연속 런을 오배제하지
+    /// 않고, 시각이 살짝 어긋나 자기가 자기 분포에 남는 일도 없다. 구버전 캐시 포인트는 id가 nil이라
+    /// 못 빼지만, v3 캐시 전환으로 모든 포인트가 다시 쓰이므로 실질적으로 문제되지 않는다.
+    func recoveryTauHistory(from start: Date, excluding activityID: UUID?) async -> [Double] {
         let pts = await fetchRecoveryHistory(from: start)
         return pts.compactMap { p -> Double? in
-            if let d = activityDate, abs(p.date.timeIntervalSince(d)) < 60 { return nil }
+            if let id = activityID, p.id == id { return nil }
             guard let h120 = p.hr120 else { return nil }
             return MRRecovery.decay(endHR: p.endHR, hr60: p.endHR - p.hrr1, hr120: h120)?.tau
         }
