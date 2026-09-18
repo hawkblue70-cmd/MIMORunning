@@ -130,7 +130,7 @@ struct ActivityDetailView: View {
     private var level: LevelBucket { manager.userLevel.bucket }
 
     /// displayZones(비동기 계산) 우선, 없으면 detail.hrZones, 최후 동기 폴백.
-    /// 운동 후 심박 회복 로드 — 종료 심박이 자격(최대심박 70%)을 넘고 60초 샘플이 있을 때만 결과가 생긴다.
+    /// 운동 후 심박 회복 로드 — 종료 심박이 자격(최대심박 80%)을 넘고 60초 샘플이 있을 때만 결과가 생긴다.
     private func loadRecovery() async {
         guard recoveryResult == nil, !isLoadingRecovery,
               let endHR = MRRecovery.endHR(series: hrSamples, duration: activity.duration),
