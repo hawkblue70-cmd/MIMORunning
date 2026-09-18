@@ -2559,6 +2559,7 @@ class HealthKitManager {
         let endHR: Double
         let hrr1: Double
         var tempC: Double? = nil   // HKMetadataKeyWeatherTemperature — 회귀의 기온 항
+        var hr120: Double? = nil   // 종료 120초 후 심박 — τ 분포용. hr60 = endHR − hrr1 로 나온다.
     }
     private struct RecoveryHistoryFile: Codable {
         var points: [RecoveryHistoryPoint]
@@ -2567,10 +2568,10 @@ class HealthKitManager {
     }
     private var recoveryHistoryURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_hrr_history_v2.json")   // v2: 자격 80% · 기온 필드
+            .appendingPathComponent("mimo_hrr_history_v3.json")   // v3: hr120(τ) 필드
     }
 
-    /// 최근 12개월 러닝의 (날짜, 종료심박, HRR1). 자격(종료심박 ≥ 최대심박 70%) 통과분만.
+    /// 최근 12개월 러닝의 (날짜, 종료심박, HRR1). 자격(종료심박 ≥ 최대심박 80%) 통과분만.
     /// 캐시는 새 러닝(종료 1시간 경과)이 캐시 시각 이후에 있으면 다시 만든다.
     func fetchRecoveryHistory(from start: Date) async -> [RecoveryHistoryPoint] {
         let fullStart = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
@@ -2598,7 +2599,8 @@ class HealthKitManager {
                     let post = await self.fetchPostWorkoutHR(for: w.uuid)
                     guard let r = MRRecovery.compute(endHR: endHR, post: post) else { return nil }
                     let temp = (w.metadata?[HKMetadataKeyWeatherTemperature] as? HKQuantity)?.doubleValue(for: .degreeCelsius())
-                    return RecoveryHistoryPoint(date: w.startDate, endHR: endHR, hrr1: r.hrr1, tempC: temp)
+                    return RecoveryHistoryPoint(date: w.startDate, endHR: endHR, hrr1: r.hrr1,
+                                                tempC: temp, hr120: r.hr120)
                 }
             }
             for await p in group { if let p { points.append(p) } }
@@ -2606,10 +2608,24 @@ class HealthKitManager {
         points.sort { $0.date < $1.date }
         #if DEBUG
         print("[회복] 12개월 러닝 \(runs.count)건 → 자격·샘플 통과 \(points.count)건 (최대심박 \(cachedMHR.map(String.init) ?? "미상"))")
+        let with2min = points.filter { $0.hr120 != nil }.count
+        let withTau = points.compactMap { p in p.hr120.flatMap { MRRecovery.decay(endHR: p.endHR, hr60: p.endHR - p.hrr1, hr120: $0) } }.count
+        print("[회복] 그중 2분 샘플 \(with2min)건 · τ 성립 \(withTau)건")
         #endif
         let file = RecoveryHistoryFile(points: points, cachedAt: Date(), coveredFrom: fullStart)
         if let data = try? JSONEncoder().encode(file) { try? data.write(to: recoveryHistoryURL, options: .atomic) }
         return points.filter { $0.date >= start }
+    }
+
+    /// 과거 러닝의 회복 곡선 시정수 τ 목록. `excluding` 러닝은 뺀다 — 자기를 포함한 분포와
+    /// 비교하면 표본이 작을수록 가운데로 끌린다.
+    func recoveryTauHistory(from start: Date, excluding activityDate: Date?) async -> [Double] {
+        let pts = await fetchRecoveryHistory(from: start)
+        return pts.compactMap { p -> Double? in
+            if let d = activityDate, abs(p.date.timeIntervalSince(d)) < 60 { return nil }
+            guard let h120 = p.hr120 else { return nil }
+            return MRRecovery.decay(endHR: p.endHR, hr60: p.endHR - p.hrr1, hr120: h120)?.tau
+        }
     }
 
     // 워크아웃 연결 시리즈 쿼리 추가 이전에 저장된 잘못된 HR 캐시(휴식 구간 HR만 포함) 삭제
