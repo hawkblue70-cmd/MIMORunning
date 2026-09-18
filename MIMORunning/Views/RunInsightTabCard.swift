@@ -1695,7 +1695,7 @@ private struct RhythmInsightCard: View {
     private static let gaugeScale: CGFloat = insightGaugeScale
     /// 게이지(87) + 축 라벨이 아래로 삐져나오는 23 + 제목 줄 10.
     /// 제목을 넣느라 축 라벨 자리를 뺏으면 라벨이 잘린다.
-    private static let bottomChartH: CGFloat = 110 * gaugeScale + 10
+    private static let bottomChartH: CGFloat = 110 * gaugeScale + 14
     // 캡션 칸 — 촘촘 모드는 두 줄(8~9pt)이 딱 들어가는 높이까지만 줄인다
     /// 회복 곡선 한 줄. 과거 τ 표본이 8개 미만이면 nil — 캡션도 높이도 이 하나만 본다.
     private var recoveryCaption: String? { recoveryShape.flatMap { MRRecovery.shapeCaption($0) } }
@@ -1730,6 +1730,7 @@ private struct RhythmInsightCard: View {
 
     @ViewBuilder
     /// 2×2 각 칸의 제목. 네 칸이 같은 크기·색을 공유한다(§5.8) — 칸마다 따로 쓰지 않는다.
+    /// 서체는 퍼포먼스 카드의 차트 제목("심박 효율"·"유산소 피트니스"·"디커플링")과 같은 값이다.
     private func cellTitle(_ text: String, trailing: String? = nil) -> some View {
         HStack(spacing: 4) {
             Text(text)
@@ -1738,12 +1739,13 @@ private struct RhythmInsightCard: View {
                 Text(trailing)
             }
         }
-        .font(.system(size: 7.5))
-        .foregroundStyle(Color.white.opacity(0.5))
+        .font(.system(size: 10, weight: .semibold))
+        .tracking(0.5)
+        .foregroundStyle(.white.opacity(0.90))
         .lineLimit(1)
-        .minimumScaleFactor(0.8)
+        .minimumScaleFactor(0.75)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 10)
+        .frame(height: 12)
     }
 
     private var rhythmRow: some View {
@@ -1780,7 +1782,7 @@ private struct RhythmInsightCard: View {
                         VStack(spacing: 1.5) {
                             cellTitle(L.s("심박 존", "HR Zones"))
                             ZoneDonutView(zones: hrZones)
-                                .frame(width: 102, height: 102)
+                                .frame(width: 100, height: 100)
                         }
                     }
                 } caption: {
