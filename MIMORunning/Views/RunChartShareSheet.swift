@@ -4,6 +4,14 @@ import SwiftUI
 // MARK: - RunChartShareCard
 // RunCombinedPanelView 와 동일한 레이아웃 — 미리보기·ImageRenderer 출력 공용
 
+/// 미리보기 카드의 실제 높이를 위로 올린다 — 아래 컨트롤이 카드에 바로 붙도록.
+private struct ShareCardHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct RunChartShareCard: View {
     let data: RunChartData
     let enabledLayers: Set<RunChartLayer>
@@ -161,6 +169,9 @@ struct RunChartShareSheet: View {
     // 앱 종합 패널과 **같은 저장소**를 본다 — 레이어는 거기서 타일을 눌러 고르고,
     // 내보내기는 화면에서 본 그대로를 낸다. 시트에 선택 UI를 또 두면 같은 결정을 두 곳에서 하게 된다.
     @State private var store = RunChartLayerStore.shared
+    /// 미리보기 카드의 실제 높이(카드 좌표계). 예전에는 52+228+타일수×44 같은 상수로
+    /// 어림했는데, 타일 글꼴이나 레이어 수가 바뀔 때마다 실제 카드와 어긋나 아래가 비었다.
+    @State private var cardNaturalH: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
     @State private var isRendering = false
     @State private var renderedImage: UIImage? = nil
@@ -267,10 +278,17 @@ struct RunChartShareSheet: View {
                                 palette: shareTheme.palette
                             )
                             .environment(\.colorScheme, shareTheme == .dark ? .dark : .light)
+                            .background(GeometryReader { g in
+                                Color.clear.preference(key: ShareCardHeightKey.self, value: g.size.height)
+                            })
                             .scaleEffect(scale, anchor: .top)
                             .frame(width: geo.size.width, alignment: .center)
                         }
-                        .frame(height: previewHeight)
+                        // 실측 전 첫 프레임만 어림값을 쓴다.
+                        .frame(height: cardNaturalH > 0 ? cardNaturalH * previewScale : previewHeight)
+                        .onPreferenceChange(ShareCardHeightKey.self) { h in
+                            if h > 0, abs(h - cardNaturalH) > 0.5 { cardNaturalH = h }
+                        }
                         .padding(.top, 20)
                     } else {
                         // 영상 모드: 실제 프레임(비동기 로딩)
@@ -534,10 +552,12 @@ struct RunChartShareSheet: View {
         }
     }
 
-    // 미리보기 높이 추정 (타일 수에 따라 가변)
+    /// 카드 좌표계 → 화면 폭 배율. 미리보기 프레임과 카드 렌더가 같은 값을 써야 한다.
+    private var previewScale: CGFloat { (UIScreen.main.bounds.width - 48) / cardW }
+
+    // 실측 전 첫 프레임용 어림값 (타일 수에 따라 가변)
     private var previewHeight: CGFloat {
-        let screenW = UIScreen.main.bounds.width
-        let scale = (screenW - 48) / cardW
+        let scale = previewScale
         let tileRows = (data.availableLayers.count + 2) / 3
         let tilesH = CGFloat(tileRows) * 44 + CGFloat(max(0, tileRows - 1)) * 3 + 8
         return (52 + 228 + tilesH) * scale
