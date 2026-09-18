@@ -1813,7 +1813,7 @@ private struct RhythmInsightCard: View {
                         VStack(spacing: 8) {
                             // 오른쪽 점들이 "운동 후"라는 걸 x축 라벨(1·2분)만으로는 알 수 없다.
                             cellTitle(L.s("러닝 심박수", "Run HR"),
-                                      trailing: recoveryResult == nil ? nil : L.s("러닝후 심박수", "After Run"))
+                                      trailing: recoveryResult == nil ? nil : L.s("심박수 회복", "HR Recovery"))
                             HRTimeSeriesView(
                             samples: hrSamples,
                             zones: hasZones ? hrZones : [],
