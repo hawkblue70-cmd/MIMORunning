@@ -1185,7 +1185,8 @@ private struct HRTimeSeriesView: View {
             return v
         } ?? []
         let minBPM = min(smoothed.min() ?? 0, recoveryBPM.min() ?? .infinity)
-        let maxBPM = max(smoothed.max() ?? 1, recoveryBPM.max() ?? -.infinity)
+        // 위쪽 20bpm 여유 — 선과 제목·끝점 마커가 천장에 붙지 않게. 축 라벨은 이 값(차트 최대)을 쓴다.
+        let maxBPM = max(smoothed.max() ?? 1, recoveryBPM.max() ?? -.infinity) + 20
         let valRange = max(1.0, maxBPM - minBPM)
         let totalDur = max(1.0, pts.last?.offset ?? 1)
 
@@ -1734,7 +1735,9 @@ private struct RhythmInsightCard: View {
     /// 서체는 퍼포먼스 카드의 차트 제목("심박 효율"·"유산소 피트니스"·"디커플링")과 같은 값이다.
     private func cellTitle(_ text: String, trailing: String? = nil) -> some View {
         HStack(spacing: 4) {
+            // 제목이 둘이면 왼쪽 것을 y축 라벨 폭(22)만큼 밀어 차트 위에 오게 한다.
             Text(text)
+                .padding(.leading, trailing == nil ? 0 : 20)
             if let trailing {
                 Spacer(minLength: 0)
                 Text(trailing)
