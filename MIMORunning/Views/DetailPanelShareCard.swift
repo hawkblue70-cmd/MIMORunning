@@ -52,37 +52,37 @@ struct RouteCardPalette {
 }
 
 /// 경로 카드 모양 — 둘 다 지도가 카드를 꽉 채우고 글자를 그 위에 얹는다. 늘 다크.
-/// 경로 1: 위 262pt 지도 + 글자 오버레이, 아래 지표 상자.
-/// 경로 2: 카드 전체가 지도, 오른쪽 아래에 스탬프 "요약 그리드"(대), 왼쪽 아래에 종류·날짜.
+/// 경로 1: 카드 전체가 지도, 오른쪽 아래에 스탬프 "요약 그리드"(대), 왼쪽 아래에 종류·날짜.
+/// 경로 2: 위 262pt 지도 + 글자 오버레이, 아래 지표 상자(러닝 데이터).
 ///
 /// 둥근 패널 안에 지도를 넣던 옛 카드는 삭제했다(2026-09-17). 그 레이아웃(`panelLayout`)은
 /// 심박·고도 같은 **차트 패널** 카드가 계속 쓴다 — 축과 라벨이 있어 풀블리드로는 잘린다.
 enum RouteCardStyle: Int, CaseIterable, Identifiable {
-    case hero = 1
-    case stamp = 2
+    case stamp = 1
+    case hero = 2
     /// 지도 스냅샷 캐시 파일 이름의 버전. 지도 설정·선 굵기가 바뀌면 올려 옛 스냅샷을 버린다.
     /// 앱 시작 때 옛 버전 파일을 지우는 정리(MRCacheMaintenance)가 이 값들만 남긴다.
     var mapCacheVersion: String {
         switch self {
-        case .hero:  return "v9"
         case .stamp: return "v9s"
+        case .hero:  return "v9"
         }
     }
     /// 지도 스냅샷 캐시 파일 이름 앞부분 — 정리 쪽에서도 같은 규칙을 봐야 해서 한 곳에 둔다.
     static let mapCachePrefix = "mimo_map_card_"
 
-    /// 스냅샷 크기 — 경로 1은 위 262pt, 경로 2는 카드 전체
+    /// 스냅샷 크기 — 경로 1은 카드 전체, 경로 2는 위 262pt
     var mapSize: CGSize {
         switch self {
-        case .hero:  return DetailPanelShareCard.mapHeroSize
         case .stamp: return CGSize(width: DetailPanelShareCard.cardWidth, height: DetailPanelShareCard.cardHeight)
+        case .hero:  return DetailPanelShareCard.mapHeroSize
         }
     }
     var id: Int { rawValue }
     var label: String { AppLanguage.shared.s("경로 \(rawValue)", "Route \(rawValue)") }
 }
 
-/// 경로 2 영상의 한 프레임 값 — 거리·경과 시간은 "지금까지", 심박은 "지금".
+/// 경로 1 영상의 한 프레임 값 — 거리·경과 시간은 "지금까지", 심박은 "지금".
 /// 평균 페이스는 거리와 시간에서 나온다. nil이면 정지 카드(최종 수치).
 struct RouteProgressSnapshot {
     let distanceM: Double
@@ -108,8 +108,8 @@ struct DetailPanelShareCard: View {
     /// 출발 지점의 지역명("경기도 안산시") — 역지오코딩 결과. 없으면 줄을 생략한다.
     var placeName: String? = nil
     /// 지도 패널일 때의 카드 모양. 차트 패널에는 영향 없다.
-    var routeStyle: RouteCardStyle = .hero
-    /// 경로 2 영상의 한 프레임이면 그 시점 값. nil이면 정지 카드.
+    var routeStyle: RouteCardStyle = .stamp
+    /// 경로 1 영상의 한 프레임이면 그 시점 값. nil이면 정지 카드.
     var routeProgress: RouteProgressSnapshot? = nil
 
     private var pal: RouteCardPalette { theme == .light ? .light : .dark }
@@ -126,8 +126,8 @@ struct DetailPanelShareCard: View {
         ZStack {
             pal.background
             switch (activePanel, routeStyle) {
-            case (.map, .hero):  mapHeroLayout
             case (.map, .stamp): mapStampLayout
+            case (.map, .hero):  mapHeroLayout
             default:             panelLayout
             }
         }
@@ -160,7 +160,7 @@ struct DetailPanelShareCard: View {
         }
     }
 
-    /// 경로 1 — 테두리 없이 지도를 카드 폭으로 펼치고, 그 위에 지역·러닝 종류·거리·시간·날씨를 얹는다. 아래는 지표 상자.
+    /// 경로 2 — 테두리 없이 지도를 카드 폭으로 펼치고, 그 위에 지역·러닝 종류·거리·시간·날씨를 얹는다. 아래는 지표 상자.
     /// 이 카드는 다크만 — 지도가 늘 어둡고 흰 글자가 얹히므로 화면에서 라이트 선택지를 주지 않는다.
     private var mapHeroLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -192,7 +192,7 @@ struct DetailPanelShareCard: View {
         }
     }
 
-    /// 경로 2 — 카드 전체가 지도. 오른쪽 아래 스탬프 "요약 그리드"(대), 왼쪽 아래 지역·종류·날짜·시각·날씨 좁은 열.
+    /// 경로 1 — 카드 전체가 지도. 오른쪽 아래 스탬프 "요약 그리드"(대), 왼쪽 아래 지역·종류·날짜·시각·날씨 좁은 열.
     /// 거리는 스탬프가 크게 보여주므로 왼쪽 열에는 없다. 스탬프는 스탬프 카드와 같은 컴포넌트·같은 배율표(§5.8).
     private var mapStampLayout: some View {
         ZStack(alignment: .topLeading) {
@@ -228,7 +228,7 @@ struct DetailPanelShareCard: View {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
-    /// 경로 2의 왼쪽 아래 열 — 스탬프 옆 남는 폭에 맞춰 한 줄에 하나씩.
+    /// 경로 1의 왼쪽 아래 열 — 스탬프 옆 남는 폭에 맞춰 한 줄에 하나씩.
     /// 지역명은 넣지 않는다(지도가 이미 어디인지 보여준다). 바닥을 스탬프와 맞춰 요약 그리드 아래줄과 같은 선에 놓인다.
     private var mapStampSideText: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -376,7 +376,7 @@ struct DetailPanelShareCard: View {
         activity.humidityPercent.map { String(format: "%.0f%%", $0) }
     }
 
-    /// "2026년 9월 16일" — 경로 2 왼쪽 열용(한 줄에 하나)
+    /// "2026년 9월 16일" — 경로 1 왼쪽 열용(한 줄에 하나)
     private var heroDateOnlyText: String {
         let isEn = AppLanguage.shared.isEnglish
         let f = DateFormatter(); f.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
@@ -384,7 +384,7 @@ struct DetailPanelShareCard: View {
         return f.string(from: activity.date)
     }
 
-    /// "오후 6:48~7:39" — 경로 2 왼쪽 열용
+    /// "오후 6:48~7:39" — 경로 1 왼쪽 열용
     private var heroTimeOnlyText: String {
         let full = heroTimeRangeText
         let datePart = heroDateOnlyText
@@ -648,8 +648,8 @@ struct DetailPanelShareCardScreen: View {
     @State private var mapSnapshots: [RouteCardStyle: UIImage] = [:]
     @State private var placeName: String?
     @State private var cardTheme: ShareTheme = .dark
-    @State private var routeStyle: RouteCardStyle = .hero
-    /// 경로 2의 결과물 — 정지 이미지냐 영상이냐. 영상은 경로 2만 된다.
+    @State private var routeStyle: RouteCardStyle = .stamp
+    /// 경로 1의 결과물 — 정지 이미지냐 영상이냐. 영상은 경로 1만 된다.
     @State private var stampOutput: StampOutputMode = .image
     @State private var videoURL: URL?
     @State private var isExportingVideo = false
@@ -664,7 +664,7 @@ struct DetailPanelShareCardScreen: View {
     /// 경로 카드는 둘 다 지도 위에 흰 글자를 얹어 다크 고정 — 테마 토글을 숨긴다. 차트 카드만 고른다.
     private var isDarkOnly: Bool { activePanel == .map }
     private var mapSnapshot: UIImage? { mapSnapshots[routeStyle] }
-    /// 영상 내보내기 화면인가 — 경로 2에서 "영상"을 고른 경우.
+    /// 영상 내보내기 화면인가 — 경로 1에서 "영상"을 고른 경우.
     private var isVideoMode: Bool { activePanel == .map && routeStyle == .stamp && stampOutput == .video }
     private var effectiveTheme: ShareTheme { isDarkOnly ? .dark : cardTheme }
 
@@ -721,7 +721,7 @@ struct DetailPanelShareCardScreen: View {
                         .padding(.horizontal, 24)
                         .padding(.bottom, activePanel == .map ? 12 : 36)
 
-                    // 카드 모양 선택은 화면 맨 아래 — 내보내기 버튼 밑. 경로 2만 이미지·영상으로 갈린다.
+                    // 카드 모양 선택은 화면 맨 아래 — 내보내기 버튼 밑. 경로 1만 이미지·영상으로 갈린다.
                     if activePanel == .map {
                         VStack(spacing: 8) {
                             styleRow
@@ -744,7 +744,7 @@ struct DetailPanelShareCardScreen: View {
         .task { await renderCard() }
     }
 
-    /// 카드 모양 — 경로 1 / 2 / 3. 바꾸면 그 모양의 스냅샷(없으면 새로 찍음)으로 다시 그린다.
+    /// 카드 모양 — 경로 1 / 2. 바꾸면 그 모양의 스냅샷(없으면 새로 찍음)으로 다시 그린다.
     private var styleRow: some View {
         HStack(spacing: 0) {
             ForEach(RouteCardStyle.allCases) { style in
@@ -759,7 +759,7 @@ struct DetailPanelShareCardScreen: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
     }
 
-    /// 경로 2의 결과물 — 이미지 / 영상. 영상은 경로가 그려지며 거리·평균 페이스·시간이 올라간다.
+    /// 경로 1의 결과물 — 이미지 / 영상. 영상은 경로가 그려지며 거리·평균 페이스·시간이 올라간다.
     private var outputRow: some View {
         let L = AppLanguage.shared
         return HStack(spacing: 0) {
@@ -938,7 +938,7 @@ struct DetailPanelShareCardScreen: View {
 
     /// 경로 지도 — 심박이 있으면 존 색 그라데이션, 없으면 단색.
     /// 그리기는 활동 상세 지도와 같은 구현(RouteSnapshotRenderer)을 쓴다.
-    /// 크기만 모양마다 다르고(경로 1은 300×262, 경로 2는 300×375) 나머지 설정은 같다 —
+    /// 크기만 모양마다 다르고(경로 2은 300×262, 경로 1는 300×375) 나머지 설정은 같다 —
     /// 다크 standard · POI 제외 · 경로는 위 60% · 기본 선 굵기 · km 알약 없음.
     private func makeMapSnapshot(style: RouteCardStyle) async -> UIImage? {
         guard let coords = detail?.routeCoordinates, !coords.isEmpty else { return nil }

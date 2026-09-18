@@ -3,7 +3,7 @@ import AVFoundation
 import MapKit
 import CoreLocation
 
-/// 경로 2(카드 전체 지도 + 요약 그리드 스탬프)의 영상 내보내기.
+/// 경로 1(카드 전체 지도 + 요약 그리드 스탬프)의 영상 내보내기.
 ///
 /// 경로가 8~12초(거리에 따라) 동안 그려지고, 스탬프의 **거리·평균 페이스·시간·심박** 네 숫자가 같이 움직인다.
 /// 심박만 그 시점의 값(순간)이고 나머지는 누적이다. 심박 숫자는 그 시점 존 색으로 칠해져
@@ -303,5 +303,5 @@ enum RouteStampVideoExporter {
     }
 }
 
-/// 경로 2의 결과물 — 정지 이미지 / 영상.
+/// 경로 1의 결과물 — 정지 이미지 / 영상.
 enum StampOutputMode { case image, video }
