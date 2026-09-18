@@ -23,22 +23,20 @@
 | `MIMORunning/Views/RunInsightTabCard.swift` | `RunInsightTabCard`·`RhythmInsightCard`·`InsightExportSheet`에 `recoveryShape` · 캡션 둘째 줄 · `topCaptionH` | 수정 |
 | `MIMORunningTests/MRRecoveryTests.swift` | τ·가드·백분위·문구 테스트 | 수정 |
 
-**테스트 실행 명령** (스위트 이름만 바꾼다):
+**검증 명령 — 에이전트는 이것만 쓴다.** 시뮬레이터를 부팅하지 않고 앱 타깃과 테스트 타깃을 모두 컴파일한다(약 70초):
 
 ```bash
-xcodebuild test -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -only-testing:MIMORunningTests/MRRecoveryTests 2>&1 | grep -E 'Test (Suite|Case)|passed|failed|error:' | tail -30
+xcodebuild build-for-testing -project MIMORunning.xcodeproj -scheme MIMORunning \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD' | tail -10
 ```
 
-빌드만 확인:
+기대 출력: `** TEST BUILD SUCCEEDED **`
 
-```bash
-xcodebuild build -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&1 | grep -E 'error:|BUILD' | tail -10
-```
+> **`xcodebuild test`를 돌리지 않는다.** 사용자 지시다 — Xcode 환경에서 시뮬레이터가 "Busy" 거부·서명 불일치로 옛 코드를 실행하는 문제가 반복됐다. 테스트는 계획대로 **작성**하되 **실행은 사용자가 실기기·Xcode에서** 한다. 화면 확인도 마찬가지다. 에이전트는 `** TEST BUILD SUCCEEDED **`까지만 책임진다.
+>
+> 그래서 이 계획의 TDD 단계는 "테스트를 돌려 실패를 본다"가 아니라 **"테스트를 먼저 쓰고, 컴파일이 기대한 대로 깨지는 것을 본다"**로 읽는다. 단언(assertion) 자체의 참/거짓은 사용자가 나중에 확인한다.
 
-화면 확인은 시뮬레이터가 아니라 **실기기**에서 사용자가 한다. 에이전트는 빌드·테스트 통과까지만 책임진다. `.claude/worktrees/` 아래는 건드리지 않는다.
+`.claude/worktrees/` 아래는 건드리지 않는다.
 
 **참고 타입(기존)**
 - `MRRecoveryPoint(offset:bpm:)` · `MRRecoveryResult(endHR:hr60:hr120:)` · `.hrr1` · `.hrr2` — `Engine/MRRecovery.swift`
@@ -110,9 +108,8 @@ xcodebuild build -project MIMORunning.xcodeproj -scheme MIMORunning \
 - [ ] **Step 2: 실패를 확인한다**
 
 ```bash
-xcodebuild test -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -only-testing:MIMORunningTests/MRRecoveryTests 2>&1 | grep -E 'error:|failed' | tail -10
+xcodebuild build-for-testing -project MIMORunning.xcodeproj -scheme MIMORunning \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD' | tail -10
 ```
 
 Expected: 컴파일 에러 `type 'MRRecovery' has no member 'decay'`
@@ -163,9 +160,8 @@ struct MRRecoveryDecay: Sendable {
 - [ ] **Step 4: 통과를 확인한다**
 
 ```bash
-xcodebuild test -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -only-testing:MIMORunningTests/MRRecoveryTests 2>&1 | grep -E 'Test (Suite|Case)|passed|failed|error:' | tail -20
+xcodebuild build-for-testing -project MIMORunning.xcodeproj -scheme MIMORunning \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD' | tail -10
 ```
 
 Expected: `MRRecoveryTests` 전체 PASS (기존 테스트 포함)
@@ -213,9 +209,8 @@ Task 1에서 추가한 블록 끝에 이어 붙인다:
 - [ ] **Step 2: 실패를 확인한다**
 
 ```bash
-xcodebuild test -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -only-testing:MIMORunningTests/MRRecoveryTests 2>&1 | grep -E 'error:|failed' | tail -10
+xcodebuild build-for-testing -project MIMORunning.xcodeproj -scheme MIMORunning \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD' | tail -10
 ```
 
 Expected: 컴파일 에러 `value of type 'MRRecoveryResult' has no member 'decay'`
@@ -243,9 +238,8 @@ struct MRRecoveryResult: Sendable {
 - [ ] **Step 4: 통과를 확인한다**
 
 ```bash
-xcodebuild test -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -only-testing:MIMORunningTests/MRRecoveryTests 2>&1 | grep -E 'Test (Suite|Case)|passed|failed|error:' | tail -20
+xcodebuild build-for-testing -project MIMORunning.xcodeproj -scheme MIMORunning \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD' | tail -10
 ```
 
 Expected: 전체 PASS
@@ -311,9 +305,8 @@ Task 2 블록 끝에 이어 붙인다:
 - [ ] **Step 2: 실패를 확인한다**
 
 ```bash
-xcodebuild test -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -only-testing:MIMORunningTests/MRRecoveryTests 2>&1 | grep -E 'error:|failed' | tail -10
+xcodebuild build-for-testing -project MIMORunning.xcodeproj -scheme MIMORunning \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD' | tail -10
 ```
 
 Expected: 컴파일 에러 `cannot find 'MRRecoveryShape' in scope`
@@ -364,9 +357,8 @@ struct MRRecoveryShape: Sendable {
 - [ ] **Step 4: 통과를 확인한다**
 
 ```bash
-xcodebuild test -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -only-testing:MIMORunningTests/MRRecoveryTests 2>&1 | grep -E 'Test (Suite|Case)|passed|failed|error:' | tail -20
+xcodebuild build-for-testing -project MIMORunning.xcodeproj -scheme MIMORunning \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD' | tail -10
 ```
 
 Expected: 전체 PASS
@@ -444,11 +436,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - [ ] **Step 4: 빌드를 확인한다**
 
 ```bash
-xcodebuild build -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&1 | grep -E 'error:|BUILD' | tail -10
+xcodebuild build-for-testing -project MIMORunning.xcodeproj -scheme MIMORunning \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD' | tail -10
 ```
 
-Expected: `** BUILD SUCCEEDED **`
+Expected: `** TEST BUILD SUCCEEDED **`
 
 - [ ] **Step 5: 커밋**
 
@@ -518,8 +510,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - [ ] **Step 5: 빌드 실패를 확인한다**
 
 ```bash
-xcodebuild build -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&1 | grep -E 'error:|BUILD' | tail -10
+xcodebuild build-for-testing -project MIMORunning.xcodeproj -scheme MIMORunning \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD' | tail -10
 ```
 
 Expected: `error: extra argument 'recoveryShape' in call` — Task 6에서 받는 쪽을 만든다.
@@ -626,20 +618,15 @@ Expected: `error: extra argument 'recoveryShape' in call` — Task 6에서 받�
 - [ ] **Step 6: 빌드를 확인한다**
 
 ```bash
-xcodebuild build -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&1 | grep -E 'error:|BUILD' | tail -10
+xcodebuild build-for-testing -project MIMORunning.xcodeproj -scheme MIMORunning \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD' | tail -10
 ```
 
-Expected: `** BUILD SUCCEEDED **`
+Expected: `** TEST BUILD SUCCEEDED **`
 
-- [ ] **Step 7: 전체 테스트를 돌린다**
+- [ ] **Step 7: 사용자 확인 항목으로 남긴다**
 
-```bash
-xcodebuild test -project MIMORunning.xcodeproj -scheme MIMORunning \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&1 | grep -E 'Test Suite|failed|error:' | tail -20
-```
-
-Expected: 실패 0건. 특히 `topCaptionH` 변경이 다른 스냅샷·레이아웃 테스트를 깨지 않는지 본다.
+`topCaptionH` 변경이 다른 레이아웃을 깨지 않는지는 컴파일로 알 수 없다. Task 7의 실기기 확인 목록에 넣는다.
 
 - [ ] **Step 8: 커밋**
 
@@ -660,6 +647,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 에이전트는 시뮬레이터로 화면을 보지 않는다. 다음을 사용자에게 확인 요청한다:
 
+0. Xcode에서 `MRRecoveryTests` 스위트 실행 — 이 계획이 작성한 단위 테스트는 에이전트가 돌리지 않았다
 1. 워치로 기록한 고강도 러닝 상세 → 리듬 카드 우상단 심박 칸에 둘째 줄이 뜨는지
 2. 2×2 그리드 네 칸의 세로 정렬이 유지되는지(캡션 높이 변경 영향)
 3. "오늘의 인사이트 내보내기"에서 같은 줄이 같은 크기로 나오는지 (§5.8)
