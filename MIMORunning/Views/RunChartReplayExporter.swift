@@ -1418,8 +1418,11 @@ private struct ReplayTileCell: View {
                 }
             }
             HStack(alignment: .firstTextBaseline, spacing: 2 * s) {
+                // 값 글꼴은 이미지 카드 타일(ShareStatTile)과 **같은 값**을 쓴다 —
+                // 여기만 semibold·일반 폭이라 같은 러닝이 이미지와 영상에서 다르게 보였다(§5.8).
                 Text(layer.formatted(series.avgValue))
-                    .font(.system(size: 12 * s, weight: .semibold))
+                    .font(.system(size: RunMetricCellMetrics.value * 0.7 * s, weight: .black))
+                    .fontWidth(.condensed)
                     .foregroundStyle(palette.textPrimary)
                     .minimumScaleFactor(0.80)
                     .lineLimit(1)
