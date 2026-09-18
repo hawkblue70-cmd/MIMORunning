@@ -113,6 +113,16 @@ struct MRRecoveryTests {
         #expect(abs((a ?? 0) - (b ?? 1)) < 1)
     }
 
+    @Test func decayFromStoredHRR1MatchesDirectForm() {
+        // 캐시는 hr60을 저장하지 않는다 — endHR·hrr1로 되돌린 값이 같아야 한다.
+        let endHR = 170.0, hr60 = 132.0, hr120 = 118.0
+        let direct = MRRecovery.decay(endHR: endHR, hr60: hr60, hr120: hr120)
+        let restored = MRRecovery.decay(endHR: endHR, hrr1: endHR - hr60, hr120: hr120)
+        #expect(direct?.tau == restored?.tau)
+        #expect(direct?.ratio == restored?.ratio)
+        #expect(restored != nil)
+    }
+
     @Test func decayGuardsRejectBadShapes() {
         // 1분 낙폭 7bpm → 거부, 8bpm → 통과
         #expect(MRRecovery.decay(endHR: 150, hr60: 143, hr120: 140) == nil)

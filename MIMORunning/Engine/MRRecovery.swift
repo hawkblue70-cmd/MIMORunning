@@ -113,6 +113,12 @@ enum MRRecovery {
         return MRRecoveryDecay(ratio: x, tau: tau, asymptote: endHR - d1 / (1 - x))
     }
 
+    /// 저장된 히스토리 한 점에서 τ. `hrr1 = endHR − hr60` 이므로 hr60을 되돌려 쓴다 —
+    /// 캐시가 hr60을 따로 들지 않아도 되는 이유다.
+    static func decay(endHR: Double, hrr1: Double, hr120: Double) -> MRRecoveryDecay? {
+        decay(endHR: endHR, hr60: endHR - hrr1, hr120: hr120)
+    }
+
     static let minTauSamples = 8   // 임의로 정함 — 사분위가 의미를 갖는 최소선
 
     /// 과거 τ 중 오늘보다 작은(= 더 빨랐던) 것의 비율. 표본이 모자라면 nil.

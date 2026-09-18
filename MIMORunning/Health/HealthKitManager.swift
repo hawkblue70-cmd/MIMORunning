@@ -2562,7 +2562,7 @@ class HealthKitManager {
         let hrr1: Double
         var tempC: Double? = nil   // HKMetadataKeyWeatherTemperature — 회귀의 기온 항
         var hr120: Double? = nil   // 종료 120초 후 심박 — τ 분포용. hr60 = endHR − hrr1 로 나온다.
-        var id: UUID? = nil        // 워크아웃 uuid — 판정 대상 런을 시각 근접이 아니라 신원으로 빼기 위함. 구버전 캐시 디코드는 nil.
+        var id: UUID? = nil        // 워크아웃 uuid — 판정 대상 런을 시각 근접이 아니라 신원으로 빼기 위함.
     }
     private struct RecoveryHistoryFile: Codable {
         var points: [RecoveryHistoryPoint]
@@ -2618,7 +2618,7 @@ class HealthKitManager {
             #if DEBUG
             print("[회복] 12개월 러닝 \(runs.count)건 → 자격·샘플 통과 \(points.count)건 (최대심박 \(cachedMHR.map(String.init) ?? "미상"))")
             let with2min = points.filter { $0.hr120 != nil }.count
-            let withTau = points.compactMap { p in p.hr120.flatMap { MRRecovery.decay(endHR: p.endHR, hr60: p.endHR - p.hrr1, hr120: $0) } }.count
+            let withTau = points.compactMap { p in p.hr120.flatMap { MRRecovery.decay(endHR: p.endHR, hrr1: p.hrr1, hr120: $0) } }.count
             print("[회복] 그중 2분 샘플 \(with2min)건 · τ 성립 \(withTau)건")
             #endif
             let file = RecoveryHistoryFile(points: points, cachedAt: Date(), coveredFrom: fullStart)
@@ -2639,7 +2639,7 @@ class HealthKitManager {
         return pts.compactMap { p -> Double? in
             if let id = activityID, p.id == id { return nil }
             guard let h120 = p.hr120 else { return nil }
-            return MRRecovery.decay(endHR: p.endHR, hr60: p.endHR - p.hrr1, hr120: h120)?.tau
+            return MRRecovery.decay(endHR: p.endHR, hrr1: p.hrr1, hr120: h120)?.tau
         }
     }
 
@@ -3922,6 +3922,9 @@ class HealthKitManager {
         }
         // 회복 히스토리 원본 캐시도 함께 — 파생(메트릭) 캐시만 지우면 옛 원본에서 다시 만들어진다
         try? FileManager.default.removeItem(at: recoveryHistoryURL)
+        // 진행 중이던 재구축이 무효화 직전 스냅샷을 디스크에 다시 쓰는 것을 막는다
+        recoveryHistoryTask?.cancel()
+        recoveryHistoryTask = nil
     }
 
     /// 신체 측정(체중·체지방) 캐시 삭제 — 탭 진입 시마다 호출해 최신 HealthKit 데이터 반영

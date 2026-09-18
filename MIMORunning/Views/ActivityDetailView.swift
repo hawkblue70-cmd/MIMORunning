@@ -483,7 +483,6 @@ struct ActivityDetailView: View {
                 Task {
                     hrSamples = await manager.fetchHRTimeSeries(for: activity.id)
                     hrFetchDone = true
-                    await loadRecovery()
                     // provisional 재조회로 hrSamples가 갱신됐을 수 있음 → displayZones 재계산
                     if displayZones.isEmpty || (detail?.hrZones ?? []).isEmpty {
                         let computed = await manager.computeHRZonesForDate(activity.date, samples: hrSamples)
@@ -508,6 +507,12 @@ struct ActivityDetailView: View {
             default:
                 break
             }
+        }
+        .onChange(of: hrSamples.count) { _, newCount in
+            // 회복 로드는 HR 시리즈에만 의존한다 — 어느 경로로 채워지든 여기서 한 번 걸린다.
+            // 예전엔 심박 패널 탭에 매달려 있었는데, 무관한 플래그(hrFetchDone)가 먼저 켜지면서
+            // 조용히 안 불리게 된 적이 있다. 트리거를 데이터에 붙여 그 부류의 회귀를 막는다.
+            if newCount > 0 { Task { await loadRecovery() } }
         }
         .onChange(of: panelAllStories.map(\.effortRPE)) { _, _ in
             manager.syncUserEfforts(from: panelAllStories)
@@ -651,7 +656,6 @@ struct ActivityDetailView: View {
                     let earlyHR = await manager.fetchHRTimeSeries(for: activity.id)
                     if !earlyHR.isEmpty {
                         hrSamples = earlyHR; hrFetchDone = true
-                        Task { await loadRecovery() }   // hrSamples가 생기는 두 자리 중 하나. 중복은 isLoadingRecovery가 막는다.
                     }
                 }
                 let computed = await manager.computeHRZonesForDate(activity.date, samples: hrSamples)
@@ -1057,9 +1061,6 @@ struct ActivityDetailView: View {
         // 패널 탭 전환 시 재조회 방지 — 이미 가져온 시리즈를 패널 캐시에 등록
         if !h.isEmpty {
             hrSamples = h; hrFetchDone = true
-            // HR 시리즈가 실제로 들어온 자리에서 회복을 부른다. 심박 패널 탭의 호출은
-            // 여기서 hrFetchDone이 먼저 켜져 영영 닿지 않았다 — 회복 한 줄도 HRRecoveryPanelChart도 죽어 있었다.
-            Task { await loadRecovery() }
         }
         if !c.isEmpty { panelSeriesCache[.cadence] = c }
         if !p.isEmpty { panelSeriesCache[.power] = p }
