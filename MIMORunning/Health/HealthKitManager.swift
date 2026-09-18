@@ -2621,8 +2621,12 @@ class HealthKitManager {
             let withTau = points.compactMap { p in p.hr120.flatMap { MRRecovery.decay(endHR: p.endHR, hrr1: p.hrr1, hr120: $0) } }.count
             print("[회복] 그중 2분 샘플 \(with2min)건 · τ 성립 \(withTau)건")
             #endif
-            let file = RecoveryHistoryFile(points: points, cachedAt: Date(), coveredFrom: fullStart)
-            if let data = try? JSONEncoder().encode(file) { try? data.write(to: recoveryHistoryURL, options: .atomic) }
+            // 재구축 도중 캐시가 무효화됐으면(새 러닝 동기화 등) 이 스냅샷은 이미 낡았다 — 쓰지 않는다.
+            // cancel()만으로는 본문이 멈추지 않으므로 쓰기 직전에 직접 확인한다.
+            if !Task.isCancelled {
+                let file = RecoveryHistoryFile(points: points, cachedAt: Date(), coveredFrom: fullStart)
+                if let data = try? JSONEncoder().encode(file) { try? data.write(to: recoveryHistoryURL, options: .atomic) }
+            }
             recoveryHistoryTask = nil
             return points
         }
