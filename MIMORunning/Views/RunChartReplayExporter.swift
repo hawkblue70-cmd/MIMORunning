@@ -790,10 +790,10 @@ enum RunChartReplayExporter {
             }
 
             if let img = tilesImage, layout.tilesH > 0 {
-                let tMargin = CGFloat(videoW) * 0.03
+                let m = sideInsetPx
                 UIImage(cgImage: img).draw(in:
-                    CGRect(x: tMargin, y: CGFloat(layout.tilesTop),
-                           width: CGFloat(videoW) - tMargin * 2, height: CGFloat(layout.tilesH)))
+                    CGRect(x: m, y: CGFloat(layout.tilesTop),
+                           width: CGFloat(videoW) - m * 2, height: CGFloat(layout.tilesH)))
             }
         }
     }
@@ -1178,8 +1178,9 @@ enum RunChartReplayExporter {
               let minLon = lons.min(), let maxLon = lons.max()
         else { return (placeholderMapImage(size: pixelSize), []) }
 
-        // Request 10% narrower snapshot (5% each side) — drawn centered with black margins.
-        let hMargin: CGFloat = 0.05
+        // 스냅샷 폭은 **실제로 그릴 폭과 같아야 한다** — 여백보다 좁게 요청하면 그릴 때
+        // 가로로 늘어난다. 합성의 sideInsetPx와 같은 비율을 쓴다.
+        let hMargin = RunChartReplayExporter.sideInsetPx / CGFloat(RunChartReplayExporter.videoW)
         let requestSize = CGSize(width: pixelSize.width * (1 - 2 * hMargin), height: pixelSize.height)
 
         let opts = MKMapSnapshotter.Options()
