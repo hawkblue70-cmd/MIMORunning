@@ -4,14 +4,6 @@ import SwiftUI
 // MARK: - RunChartShareCard
 // RunCombinedPanelView 와 동일한 레이아웃 — 미리보기·ImageRenderer 출력 공용
 
-/// 미리보기 카드의 실제 높이를 위로 올린다 — 아래 컨트롤이 카드에 바로 붙도록.
-private struct ShareCardHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
 struct RunChartShareCard: View {
     let data: RunChartData
     let enabledLayers: Set<RunChartLayer>
@@ -29,21 +21,25 @@ struct RunChartShareCard: View {
     /// 기본값은 실측 전 첫 프레임용.
     var chartHeight: CGFloat = 226
     var palette: ShareChartPalette = .dark
+    /// 영상 프레임은 0 — 직사각형 프레임 안에서 모서리가 배경색으로 남는다.
+    var cornerRadius: CGFloat = 20
+    /// 영상 프레임은 4:5 높이(375pt)로 고정한다. nil이면 내용 높이.
+    var fixedHeight: CGFloat? = nil
 
     private let cardW: CGFloat = 300
-    private let tileColumns = [
-        GridItem(.flexible(), spacing: 3),
-        GridItem(.flexible(), spacing: 3),
-        GridItem(.flexible(), spacing: 3)
-    ]
 
+    /// ⚠ §5.8 — 이미지 카드와 영상 프레임이 **이 뷰 하나**를 그린다. 헤더·타일을 영상 쪽에서
+    ///   따로 그리던 시절엔 글꼴·여백·세로 위치가 하나씩 어긋나 여덟 번을 따로 맞췄다.
     var body: some View {
         VStack(spacing: 0) {
             // 차트 영역
             VStack(spacing: 0) {
-                contextRow
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
+                RunChartShareHeader(
+                    distanceText: distanceText, durationText: durationText,
+                    weatherText: weatherText, weatherIcon: weatherIcon,
+                    dateText: dateText, weekdayText: weekdayText,
+                    startTimeText: startTimeText, shoeText: shoeText,
+                    paceText: paceText, palette: palette)
 
                 RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: chartHeight,
                                     playProgress: playProgress)
@@ -55,26 +51,31 @@ struct RunChartShareCard: View {
             // 다크에서 순검정이어서, 여기 쓰면 타일 패널(15151A)과 이음새가 생겼다.
             .background(palette.sectionBackground)
 
-            // 지표 타일 — 값 전용(유산소·칼로리) 항상 표시, 나머지는 켜진 레이어만
-            let activeTiles = data.availableLayers.filter {
-                $0.hasTile && ($0.isValueOnly || enabledLayers.contains($0))
-            }
-            if !activeTiles.isEmpty {
-                LazyVGrid(columns: tileColumns, spacing: 3) {
-                    ForEach(activeTiles) { layer in
-                        if let series = data.series[layer] {
-                            ShareStatTile(layer: layer, series: series, palette: palette)
-                        }
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, 4)
-                .padding(.bottom, 4)
-            }
+            RunChartShareTiles(data: data, enabledLayers: enabledLayers, palette: palette)
         }
-        .frame(width: cardW)
+        .frame(width: cardW, height: fixedHeight, alignment: .top)
         .background(palette.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+    }
+}
+
+/// 카드 헤더 — 이미지 카드와 영상 프레임(경로 모드 포함)이 **같은 뷰**를 그린다(§5.8).
+struct RunChartShareHeader: View {
+    let distanceText: String
+    let durationText: String
+    let weatherText: String?
+    let weatherIcon: String?
+    let dateText: String?
+    let weekdayText: String?
+    let startTimeText: String?
+    let shoeText: String?
+    let paceText: String?
+    var palette: ShareChartPalette = .dark
+
+    var body: some View {
+        contextRow
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
     }
 
     /// 헤더 — 다크·라이트가 **같은 레이아웃**을 쓰고 색만 팔레트에서 가져온다.
@@ -153,6 +154,40 @@ struct RunChartShareCard: View {
     }
 }
 
+/// 지표 타일 격자 — 이미지 카드와 영상 프레임이 **같은 뷰**를 그린다(§5.8).
+/// 값 전용(유산소·칼로리)은 항상, 나머지는 켜진 레이어만. 비어 있으면 아무것도 그리지 않는다.
+struct RunChartShareTiles: View {
+    let data: RunChartData
+    let enabledLayers: Set<RunChartLayer>
+    var palette: ShareChartPalette = .dark
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 3),
+        GridItem(.flexible(), spacing: 3),
+        GridItem(.flexible(), spacing: 3)
+    ]
+
+    static func activeTiles(data: RunChartData, enabledLayers: Set<RunChartLayer>) -> [RunChartLayer] {
+        data.availableLayers.filter { $0.hasTile && ($0.isValueOnly || enabledLayers.contains($0)) }
+    }
+
+    var body: some View {
+        let tiles = Self.activeTiles(data: data, enabledLayers: enabledLayers)
+        if !tiles.isEmpty {
+            LazyVGrid(columns: columns, spacing: 3) {
+                ForEach(tiles) { layer in
+                    if let series = data.series[layer] {
+                        ShareStatTile(layer: layer, series: series, palette: palette)
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 4)
+        }
+    }
+}
+
 // MARK: - RunChartShareSheet
 
 struct RunChartShareSheet: View {
@@ -172,11 +207,9 @@ struct RunChartShareSheet: View {
     // 앱 종합 패널과 **같은 저장소**를 본다 — 레이어는 거기서 타일을 눌러 고르고,
     // 내보내기는 화면에서 본 그대로를 낸다. 시트에 선택 UI를 또 두면 같은 결정을 두 곳에서 하게 된다.
     @State private var store = RunChartLayerStore.shared
-    /// 미리보기 카드의 실제 높이(카드 좌표계). 예전에는 52+228+타일수×44 같은 상수로
-    /// 어림했는데, 타일 글꼴이나 레이어 수가 바뀔 때마다 실제 카드와 어긋나 아래가 비었다.
-    @State private var cardNaturalH: CGFloat = 0
-    /// 카드를 4:5로 떨어뜨리는 차트 높이. 실측한 카드 높이에서 차트 몫을 빼 나머지를 알아낸 뒤
-    /// 남는 자리를 차트에 준다 — 타일 수나 글꼴이 바뀌어도 따라간다.
+    /// 카드를 4:5로 떨어뜨리는 차트 높이. ImageRenderer로 잰 카드 높이에서 차트 몫을 빼
+    /// 나머지(헤더·타일)를 알아낸 뒤 남는 자리를 차트에 준다 — 타일 수나 글꼴이 바뀌어도 따라간다.
+    /// 예전에는 52+228+타일수×44 같은 상수로 어림해, 글꼴을 키울 때마다 어긋났다.
     @State private var fittedChartH: CGFloat = 226
 
     /// 미리보기 좌우 여백 — 이미지·영상이 **같은 폭**으로 보이도록 한 곳에서만 정한다.
@@ -294,31 +327,13 @@ struct RunChartShareSheet: View {
                                 palette: shareTheme.palette
                             )
                             .environment(\.colorScheme, shareTheme == .dark ? .dark : .light)
-                            .background(GeometryReader { g in
-                                Color.clear.preference(key: ShareCardHeightKey.self, value: g.size.height)
-                            })
                             .scaleEffect(scale, anchor: .top)
                             .frame(width: geo.size.width, alignment: .center)
                         }
                         // 영상 미리보기와 **같은 식**으로 높이를 잡는다 — 4:5 고정.
-                        // 실측값(cardNaturalH)을 높이에 쓰면 수렴 전 한 프레임이나 0.5pt 오차가
-                        // 그대로 영상과의 차이로 보인다. 실측값은 차트 높이를 맞추는 데만 쓴다.
+                        // 카드 자체는 refitChartHeight()가 375pt에 맞춰 둔다.
                         .frame(height: targetCardH * previewScale)
                         .clipped()
-                        .onPreferenceChange(ShareCardHeightKey.self) { h in
-                            guard h > 0 else { return }
-                            if abs(h - cardNaturalH) > 0.5 { cardNaturalH = h }
-                            // 차트를 뺀 나머지(헤더·타일)는 차트 높이와 무관하다 → 한 번에 수렴한다.
-                            let rest = h - fittedChartH
-                            let want = min(max(targetCardH - rest, 120), 300)
-                            if abs(want - fittedChartH) > 0.5 {
-                                fittedChartH = want
-                                #if DEBUG
-                                print(String(format: "[차트공유] 카드 4:5 맞춤 — 차트 외 %.0fpt · 차트 %.0fpt · 총 %.0fpt (목표 %.0f)",
-                                             rest, want, rest + want, targetCardH))
-                                #endif
-                            }
-                        }
                         .padding(.top, 20)
                     } else {
                         // 영상 모드: 실제 프레임(비동기 로딩)
@@ -366,6 +381,7 @@ struct RunChartShareSheet: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
                     .onAppear {
+                        refitChartHeight()   // 미리보기·내보내기보다 먼저 — 둘 다 이 값을 쓴다
                         if exportMode == .video { refreshPreview() }
                     }
                     .onChange(of: exportMode) { _, newMode in
@@ -376,6 +392,7 @@ struct RunChartShareSheet: View {
                         if newMode == .video { refreshPreview() }
                     }
                     .onChange(of: store.enabled) { _, _ in
+                        refitChartHeight()   // 타일 수가 바뀌면 차트 몫도 바뀐다
                         if exportMode == .video { refreshPreview() }
                     }
                     .onChange(of: videoDuration) { _, _ in
@@ -531,6 +548,7 @@ struct RunChartShareSheet: View {
                     routeCoordinates: routeCoordinates,
                     content: videoContent,
                     duration: videoDuration,
+                    chartHeight: fittedChartH,
                     palette: shareTheme.palette,
                     onProgress: { p in videoProgress = p }
                 )
@@ -576,12 +594,42 @@ struct RunChartShareSheet: View {
                 routeCoordinates: routeCoordinates,
                 content: videoContent,
                 progress: 0.45,
+                chartHeight: fittedChartH,
                 palette: shareTheme.palette
             )
             guard !Task.isCancelled else { return }
             previewImage = img
             isLoadingPreview = false
         }
+    }
+
+    /// 카드를 4:5(375pt)에 맞추는 차트 높이를 **ImageRenderer로** 잰다.
+    /// 화면 실측(PreferenceKey)에 기대면 시트가 영상 모드로 열릴 때 이미지 미리보기가 그려지지 않아
+    /// 영상이 기본값(226)으로 375를 넘겨 타일 아래가 잘렸다. 출력도 ImageRenderer라 이쪽이 더 정확하다.
+    /// 차트 외 높이(헤더·타일)는 차트 높이와 무관하므로 한 번에 나온다.
+    private func refitChartHeight() {
+        let probeChartH: CGFloat = 226
+        let probe = RunChartShareCard(
+            data: data, enabledLayers: store.enabled,
+            distanceText: distanceText, durationText: durationText,
+            weatherText: weatherText, weatherIcon: weatherIcon,
+            dateText: dateText, weekdayText: weekdayText,
+            startTimeText: startTimeText, shoeText: shoeText,
+            paceText: paceText, chartHeight: probeChartH, palette: shareTheme.palette
+        )
+        .environment(\.colorScheme, shareTheme == .dark ? .dark : .light)
+        let r = ImageRenderer(content: probe)
+        r.scale = RunChartReplayExporter.scale
+        r.proposedSize = ProposedViewSize(width: cardW, height: nil)
+        guard let img = r.cgImage else { return }
+        let rest = CGFloat(img.height) / RunChartReplayExporter.scale - probeChartH
+        let want = min(max(targetCardH - rest, 120), 300)
+        guard abs(want - fittedChartH) > 0.5 else { return }
+        fittedChartH = want
+        #if DEBUG
+        print(String(format: "[차트공유] 카드 4:5 맞춤 — 차트 외 %.0fpt · 차트 %.0fpt · 총 %.0fpt (목표 %.0f)",
+                     rest, want, rest + want, targetCardH))
+        #endif
     }
 
     /// 카드 좌표계 → 화면 폭 배율. 미리보기 프레임과 카드 렌더가 같은 값을 써야 한다.

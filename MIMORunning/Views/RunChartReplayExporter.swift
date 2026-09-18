@@ -277,35 +277,31 @@ enum RunChartReplayExporter {
         let chartTilesGap: Int
         let tilesH:        Int   // 0 if no tiles
         let botPad:        Int
-        let maxTiles:      Int
-        let compact:       Bool
 
         var headerTop: Int { topPad }
         var routeTop:  Int { headerTop + headerH }
         var chartTop:  Int { routeTop  + routeH  + mapChartGap   }
         var tilesTop:  Int { chartTop  + chartH  + chartTilesGap }
 
-        static func make(_ content: ReplayContent) -> SectionLayout {
+        /// 경로 모드 배치. 헤더·타일은 **실측한 자연 높이**를 받는다 — 고정 슬롯(190·530px)에
+        /// 끼우면 이미지 카드와 세로 위치가 어긋났다. 남는 자리를 지도(·차트)가 채운다.
+        /// 위아래 여백은 0 — 이미지 카드는 헤더가 맨 위, 타일이 맨 아래에 붙는다.
+        /// `chartData`는 여기 오지 않는다(이미지 카드를 통째로 그린다).
+        static func make(_ content: ReplayContent, headerPx: Int, tilesPx: Int) -> SectionLayout {
             switch content {
-            // ⚠ topPad·botPad는 0이다. 위아래에 배경색 띠를 두면 이미지 카드와 달라 보인다 —
-            //   이미지는 헤더가 카드 맨 위에, 타일이 맨 아래에 붙는다. 그 자리를 구역에 돌려준다.
             case .chartData:
-                // 0+190 | 0+0 | 630 | 0 | 530 | 0 = 1350
-                // 타일 3행 = 약 135pt(486px). 값 글꼴을 이미지와 맞춰 14pt로 키운 뒤 460px로는
-                // 마지막 행이 잘렸다.
-                return SectionLayout(topPad:0, headerH:190, routeH:0,   mapChartGap:0,
-                                     chartH:630, chartTilesGap:0, tilesH:530, botPad:0,
-                                     maxTiles:12, compact:false)
+                // 도달하지 않는다. 형식상 헤더+차트+타일로 채운다.
+                return SectionLayout(topPad:0, headerH:headerPx, routeH:0, mapChartGap:0,
+                                     chartH:videoH - headerPx - tilesPx, chartTilesGap:0,
+                                     tilesH:tilesPx, botPad:0)
             case .routeData:
-                // 0+190 | 700+0 | 0 | 0 | 460 | 0 = 1350
-                return SectionLayout(topPad:0, headerH:190, routeH:700, mapChartGap:0,
-                                     chartH:0,   chartTilesGap:0, tilesH:460, botPad:0,
-                                     maxTiles:9,  compact:true)
+                return SectionLayout(topPad:0, headerH:headerPx, routeH:videoH - headerPx - tilesPx,
+                                     mapChartGap:0, chartH:0, chartTilesGap:0, tilesH:tilesPx, botPad:0)
             case .routeChart:
-                // 0+190 | 520+12 | 628 | 0 | 0 | 0 = 1350
-                return SectionLayout(topPad:0, headerH:190, routeH:520, mapChartGap:12,
-                                     chartH:628, chartTilesGap:0, tilesH:0,   botPad:0,
-                                     maxTiles:0,  compact:false)
+                // 타일이 없어 자리가 넉넉하다. 628px(174pt)은 지도와의 균형으로 정한 값.
+                let chart = 628, gap = 12
+                return SectionLayout(topPad:0, headerH:headerPx, routeH:videoH - headerPx - gap - chart,
+                                     mapChartGap:gap, chartH:chart, chartTilesGap:0, tilesH:0, botPad:0)
             }
         }
     }
@@ -328,6 +324,8 @@ enum RunChartReplayExporter {
         routeCoordinates: [CLLocationCoordinate2D] = [],
         content: ReplayContent = .chartData,
         duration: TimeInterval = 10,
+        /// 이미지 카드가 4:5에 맞춰 둔 차트 높이 — 영상도 같은 카드를 그리므로 같은 값을 받는다.
+        chartHeight: CGFloat = 226,
         palette: ShareChartPalette = .dark,
         onProgress: @escaping (Double) -> Void
     ) async throws -> URL {
@@ -335,9 +333,8 @@ enum RunChartReplayExporter {
         let hasRoute = routeCoordinates.count >= 2
         let needsRoute = content == .routeChart || content == .routeData
         let actual   = (needsRoute && !hasRoute) ? ReplayContent.chartData : content
-        let layout   = SectionLayout.make(actual)
         #if DEBUG
-        print("[Replay] content:\(actual) coords:\(routeCoordinates.count) routeH:\(layout.routeH)")
+        print("[Replay] content:\(actual) coords:\(routeCoordinates.count)")
         #endif
 
         let tempURL = FileManager.default.temporaryDirectory
@@ -375,31 +372,26 @@ enum RunChartReplayExporter {
         let totalFrames = animFrames + holdFrames
 
         // ── Static sections (rendered once) ─────────────────────────────────
-        let headerPtH = CGFloat(layout.headerH) / scale
-        let tilesPtH  = CGFloat(layout.tilesH)  / scale
-        let chartPtH  = CGFloat(layout.chartH)  / scale
-
-        let headerImg = renderCGImage(
-            ReplayHeaderView(
+        // 경로 모드만. `chartData`는 프레임마다 이미지 카드를 통째로 그린다(아래 루프).
+        let headerImg: CGImage? = actual == .chartData ? nil : renderCGImage(
+            RunChartShareHeader(
                 distanceText: distanceText, durationText: durationText,
                 weatherText: weatherText,   weatherIcon: weatherIcon,
                 dateText: dateText,         weekdayText: weekdayText,
                 startTimeText: startTimeText, shoeText: shoeText,
-                paceText: paceText,
-                height: headerPtH,
-                palette: palette
-            ),
-            width: cardW, height: headerPtH, palette: palette
-        )
-
-        let tilesImg: CGImage? = layout.tilesH > 0 ? renderCGImage(
-            ReplayTilesView(
-                data: data, enabledLayers: enabledLayers,
-                height: tilesPtH, maxTiles: layout.maxTiles, compact: layout.compact,
-                palette: palette
-            ),
-            width: cardW, height: tilesPtH, palette: palette
-        ) : nil
+                paceText: paceText, palette: palette)
+                .frame(width: cardW)
+                .background(palette.sectionBackground),
+            width: cardW, height: nil, palette: palette)
+        let tilesImg: CGImage? = actual == .routeData ? renderCGImage(
+            RunChartShareTiles(data: data, enabledLayers: enabledLayers, palette: palette)
+                .frame(width: cardW)
+                .background(palette.cardBackground),
+            width: cardW, height: nil, palette: palette) : nil
+        let layout = SectionLayout.make(actual, headerPx: headerImg?.height ?? 0,
+                                        tilesPx: tilesImg?.height ?? 0)
+        let chartPtH = CGFloat(layout.chartH) / scale
+        let cardPtH  = CGFloat(videoH) / scale   // 375 — 이미지 카드와 같은 4:5
 
         // ── Map snapshot (once, if needed) ───────────────────────────────────
         var mapUIImage: UIImage? = nil
@@ -457,28 +449,44 @@ enum RunChartReplayExporter {
                 // 렌더링·합성·append를 한 pool로 묶어 즉시 해제
                 // (UIImage/CGImage/CVPixelBuffer가 쌓이면 300+프레임에서 OOM kill 발생)
                 let appended: Bool = autoreleasepool {
-                    let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
-                        RunCombinedChartView(
-                            data: data,
-                            enabledLayers: enabledLayers,
-                            chartHeight: chartPtH,
-                            playProgress: distRatio,
-                            endLabelMinGap: 11
-                        )
-                        .frame(width: cardW, height: chartPtH)
-                        .background(palette.sectionBackground),
-                        width: cardW, height: chartPtH, palette: palette
-                    ) : nil
+                    let frame: UIImage
+                    if actual == .chartData {
+                        // 이미지 카드를 통째로 — 같은 컴포넌트·같은 배율(3.6)이라 이미지 출력과
+                        // 픽셀 단위로 같은 배치가 나온다. 재생 위치만 다르다.
+                        guard let img = renderCGImage(
+                            shareCard(data: data, enabledLayers: enabledLayers,
+                                      distanceText: distanceText, durationText: durationText,
+                                      weatherText: weatherText, weatherIcon: weatherIcon,
+                                      dateText: dateText, weekdayText: weekdayText,
+                                      startTimeText: startTimeText, shoeText: shoeText,
+                                      paceText: paceText, playProgress: distRatio,
+                                      chartHeight: chartHeight, cardPtH: cardPtH, palette: palette),
+                            width: cardW, height: cardPtH, palette: palette)
+                        else { return false }
+                        frame = UIImage(cgImage: img)
+                    } else {
+                        let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
+                            RunCombinedChartView(
+                                data: data,
+                                enabledLayers: enabledLayers,
+                                chartHeight: chartPtH,
+                                playProgress: distRatio
+                            )
+                            .frame(width: cardW, height: chartPtH)
+                            .background(palette.sectionBackground),
+                            width: cardW, height: chartPtH, palette: palette
+                        ) : nil
 
-                    let frame = composeFrame(
-                        layout: layout, data: data, totalDuration: totalDuration,
-                        headerImage: headerImg, chartImage: chartImg,
-                        mapUIImage: mapUIImage, mapPoints: mapPoints,
-                        cumDist: cumDist, distanceProgress: distRatio,
-                        routeCoordinates: routeCoordinates,
-                        timeProgress: t, tilesImage: tilesImg,
-                        palette: palette
-                    )
+                        frame = composeFrame(
+                            layout: layout, data: data, totalDuration: totalDuration,
+                            headerImage: headerImg, chartImage: chartImg,
+                            mapUIImage: mapUIImage, mapPoints: mapPoints,
+                            cumDist: cumDist, distanceProgress: distRatio,
+                            routeCoordinates: routeCoordinates,
+                            timeProgress: t, tilesImage: tilesImg,
+                            palette: palette
+                        )
+                    }
 
                     guard let pb = pixelBuffer(from: frame, size: videoSize) else { return false }
                     let pts = CMTime(value: CMTimeValue(frameIdx), timescale: CMTimeScale(videoFPS))
@@ -508,70 +516,6 @@ enum RunChartReplayExporter {
         return tempURL
     }
 
-    // MARK: - Preview frame
-
-    static func previewCGImage(
-        data: RunChartData,
-        enabledLayers: Set<RunChartLayer>,
-        distanceText: String,
-        durationText: String,
-        weatherText: String?,
-        weatherIcon: String?,
-        dateText: String?,
-        weekdayText: String?,
-        startTimeText: String?,
-        shoeText: String?,
-        paceText: String? = nil,
-        totalDuration: TimeInterval = 0,
-        content: ReplayContent,
-        routeCoordinates: [CLLocationCoordinate2D],
-        palette: ShareChartPalette = .dark
-    ) -> CGImage? {
-        let needsRoute = content == .routeChart || content == .routeData
-        let actual = (needsRoute && routeCoordinates.count < 2) ? ReplayContent.chartData : content
-        let layout = SectionLayout.make(actual)
-        let headerPtH = CGFloat(layout.headerH) / scale
-        let chartPtH  = CGFloat(layout.chartH)  / scale
-        let tilesPtH  = CGFloat(layout.tilesH)  / scale
-
-        let headerImg = renderCGImage(
-            ReplayHeaderView(
-                distanceText: distanceText, durationText: durationText,
-                weatherText: weatherText,   weatherIcon: weatherIcon,
-                dateText: dateText,         weekdayText: weekdayText,
-                startTimeText: startTimeText, shoeText: shoeText,
-                paceText: paceText,
-                height: headerPtH,
-                palette: palette
-            ),
-            width: cardW, height: headerPtH, palette: palette
-        )
-        let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
-            RunCombinedChartView(
-                data: data, enabledLayers: enabledLayers,
-                chartHeight: chartPtH, playProgress: 0, endLabelMinGap: 11
-            )
-            .frame(width: cardW, height: chartPtH)
-            .background(palette.sectionBackground),
-            width: cardW, height: chartPtH, palette: palette
-        ) : nil
-        let tilesImg: CGImage? = layout.tilesH > 0 ? renderCGImage(
-            ReplayTilesView(data: data, enabledLayers: enabledLayers,
-                            height: tilesPtH, maxTiles: layout.maxTiles, compact: layout.compact,
-                            palette: palette),
-            width: cardW, height: tilesPtH, palette: palette
-        ) : nil
-
-        return composeFrame(
-            layout: layout, data: data, totalDuration: totalDuration,
-            headerImage: headerImg, chartImage: chartImg,
-            mapUIImage: nil, mapPoints: [], cumDist: [],
-            distanceProgress: 0, routeCoordinates: [],
-            timeProgress: 0, tilesImage: tilesImg,
-            palette: palette
-        ).cgImage
-    }
-
     // MARK: - Preview frame with real map (async — used for sheet preview)
 
     /// Renders a single frame at `progress` (0–1) including the actual map snapshot.
@@ -592,43 +536,56 @@ enum RunChartReplayExporter {
         routeCoordinates: [CLLocationCoordinate2D] = [],
         content: ReplayContent,
         progress: Double = 0.45,
+        chartHeight: CGFloat = 226,
         palette: ShareChartPalette = .dark
     ) async -> UIImage? {
         let hasRoute = routeCoordinates.count >= 2
         let needsRoute = content == .routeChart || content == .routeData
         let actual = (needsRoute && !hasRoute) ? ReplayContent.chartData : content
-        let layout = SectionLayout.make(actual)
+        let cardPtH = CGFloat(videoH) / scale
 
-        let headerPtH = CGFloat(layout.headerH) / scale
-        let chartPtH  = CGFloat(layout.chartH)  / scale
-        let tilesPtH  = CGFloat(layout.tilesH)  / scale
+        // 차트+데이터: 이미지 카드 그대로 — 미리보기·내보내기·이미지 출력이 한 컴포넌트.
+        if actual == .chartData {
+            let timeDistTable = buildTimeDistanceTable(data: data, totalDuration: totalDuration)
+            let distRatio = timeToDistanceRatio(timeRatio: progress, table: timeDistTable)
+            return renderCGImage(
+                shareCard(data: data, enabledLayers: enabledLayers,
+                          distanceText: distanceText, durationText: durationText,
+                          weatherText: weatherText, weatherIcon: weatherIcon,
+                          dateText: dateText, weekdayText: weekdayText,
+                          startTimeText: startTimeText, shoeText: shoeText,
+                          paceText: paceText, playProgress: distRatio,
+                          chartHeight: chartHeight, cardPtH: cardPtH, palette: palette),
+                width: cardW, height: cardPtH, palette: palette
+            ).map { UIImage(cgImage: $0) }
+        }
 
         let headerImg = renderCGImage(
-            ReplayHeaderView(
+            RunChartShareHeader(
                 distanceText: distanceText, durationText: durationText,
                 weatherText: weatherText,   weatherIcon: weatherIcon,
                 dateText: dateText,         weekdayText: weekdayText,
                 startTimeText: startTimeText, shoeText: shoeText,
-                paceText: paceText,
-                height: headerPtH,
-                palette: palette
-            ),
-            width: cardW, height: headerPtH, palette: palette
-        )
+                paceText: paceText, palette: palette)
+                .frame(width: cardW)
+                .background(palette.sectionBackground),
+            width: cardW, height: nil, palette: palette)
+        let tilesImg: CGImage? = actual == .routeData ? renderCGImage(
+            RunChartShareTiles(data: data, enabledLayers: enabledLayers, palette: palette)
+                .frame(width: cardW)
+                .background(palette.cardBackground),
+            width: cardW, height: nil, palette: palette) : nil
+        let layout = SectionLayout.make(actual, headerPx: headerImg?.height ?? 0,
+                                        tilesPx: tilesImg?.height ?? 0)
+        let chartPtH = CGFloat(layout.chartH) / scale
         let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
             RunCombinedChartView(
                 data: data, enabledLayers: enabledLayers,
-                chartHeight: chartPtH, playProgress: progress, endLabelMinGap: 11
+                chartHeight: chartPtH, playProgress: progress
             )
             .frame(width: cardW, height: chartPtH)
             .background(palette.sectionBackground),
             width: cardW, height: chartPtH, palette: palette
-        ) : nil
-        let tilesImg: CGImage? = layout.tilesH > 0 ? renderCGImage(
-            ReplayTilesView(data: data, enabledLayers: enabledLayers,
-                            height: tilesPtH, maxTiles: layout.maxTiles, compact: layout.compact,
-                            palette: palette),
-            width: cardW, height: tilesPtH, palette: palette
         ) : nil
 
         var mapUIImage: UIImage? = nil
@@ -1232,223 +1189,37 @@ enum RunChartReplayExporter {
 
     // MARK: - SwiftUI → CGImage
 
-    private static func renderCGImage<V: View>(_ view: V, width: CGFloat, height: CGFloat,
+    /// `height: nil`이면 자연 높이로 그린다 — 반환 이미지의 `height`가 곧 실측 px.
+    /// colorScheme은 이미지 출력(ImageRenderer + environment)과 같은 방식으로 넣는다 —
+    /// preferredColorScheme은 ImageRenderer 안에서 안 먹어 `.secondary` 같은 시스템 색이 달라졌다.
+    private static func renderCGImage<V: View>(_ view: V, width: CGFloat, height: CGFloat?,
                                                palette: ShareChartPalette = .dark) -> CGImage? {
         let renderer = ImageRenderer(content: view
-            .preferredColorScheme(palette.isLight ? .light : .dark)
+            .environment(\.colorScheme, palette.isLight ? .light : .dark)
             .environment(\.shareChartPalette, palette))
         renderer.scale = scale
         renderer.proposedSize = ProposedViewSize(width: width, height: height)
         return renderer.cgImage
     }
-}
 
-// MARK: - ReplayHeaderView  (1행=워드마크·날짜·배지 / 2행=지표·신발)
-
-private struct ReplayHeaderView: View {
-    let distanceText:  String
-    let durationText:  String
-    let weatherText:   String?
-    let weatherIcon:   String?
-    let dateText:      String?
-    let weekdayText:   String?
-    let startTimeText: String?
-    let shoeText:      String?
-    let paceText:      String?
-    let height:        CGFloat
-    let palette:       ShareChartPalette
-
-    private var distanceNumStr: String {
-        distanceText.components(separatedBy: " ").first ?? distanceText
-    }
-    private var distanceUnitStr: String {
-        let parts = distanceText.components(separatedBy: " ")
-        return parts.count > 1 ? parts[1...].joined(separator: " ") : ""
-    }
-
-    var body: some View {
-        let isLight    = palette.isLight
-        let metaGray: Color  = isLight ? Color(hex: "9A9A9A") : .white.opacity(0.5)
-        let distColor: Color = isLight ? Color(hex: "111111") : .white
-        let kmColor: Color   = isLight ? Color(hex: "9A9A9A") : .white.opacity(0.55)
-        let sepColor: Color  = isLight ? Color(hex: "D5D3CD") : .white.opacity(0.25)
-        let timeColor: Color = isLight ? Color(hex: "555555") : .white.opacity(0.75)
-
-        VStack(alignment: .leading, spacing: 4) {
-
-            // ── Row 1: MIMO RUNNING (좌) | 날짜 (중앙) | 기온 배지 (우) ──
-            HStack(spacing: 0) {
-                MIMOWordmark(size: 9, strokeMIMO: isLight)
-
-                Spacer(minLength: 4)
-
-                let dateStr = [dateText, weekdayText, startTimeText]
-                    .compactMap { $0 }.joined(separator: " ")
-                if !dateStr.isEmpty {
-                    Text(dateStr)
-                        .font(.system(size: 9))
-                        .foregroundStyle(metaGray)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-
-                Spacer(minLength: 4)
-
-                if let weather = weatherText {
-                    let celsius = parseCelsius(from: weather)
-                    let iColor  = weatherIconColor(systemName: weatherIcon, celsius: celsius, isLight: isLight)
-                    let tColor: Color = celsius.map { temperatureColor($0, isLight: isLight) } ?? iColor
-                    HStack(spacing: 3) {
-                        Image(systemName: weatherIcon ?? "thermometer.medium")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(tColor)
-                        Text(weather)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(tColor)
-                            .fixedSize()
-                    }
-                    .padding(.horizontal, 9).padding(.vertical, 3)
-                    .background(tColor.opacity(isLight ? 0.14 : 0.20), in: Capsule())
-                    .fixedSize()
-                }
-            }
-
-            // ── Row 2: 지표 (좌) | 신발 (우) ──
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                // 좌: 거리 km · 시간 · 페이스
-                HStack(alignment: .firstTextBaseline, spacing: 0) {
-                    Text(distanceNumStr)
-                        .font(.system(size: 15, weight: .heavy))
-                        .tracking(-0.4)
-                        .foregroundStyle(distColor)
-                    if !distanceUnitStr.isEmpty {
-                        Text(distanceUnitStr)
-                            .font(.system(size: 11, weight: .heavy))
-                            .foregroundStyle(kmColor)
-                            .padding(.leading, 2)
-                    }
-                    Text(" · ")
-                        .font(.system(size: 11))
-                        .foregroundStyle(sepColor)
-                    Text(durationText)
-                        .font(.system(size: 11, weight: .heavy))
-                        .foregroundStyle(timeColor)
-                    if let pace = paceText {
-                        Text(" · ")
-                            .font(.system(size: 11))
-                            .foregroundStyle(sepColor)
-                        Text(pace)
-                            .font(.system(size: 11, weight: .heavy))
-                            .foregroundStyle(timeColor)
-                    }
-                }
-
-                Spacer(minLength: 6)
-
-                // 우: 신발
-                if let shoe = shoeText {
-                    Label(shoe, systemImage: "shoe.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(metaGray)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                }
-            }
-        }
-        // 이미지 카드의 contextRow와 같은 12pt — 배경 띠는 가장자리까지 채우고 글자만 들여쓴다.
-        .padding(.horizontal, 12)
-        .frame(width: RunChartReplayExporter.cardW, height: height, alignment: .center)
-        .background(palette.sectionBackground)
-    }
-}
-
-// MARK: - ReplayTilesView
-
-private struct ReplayTilesView: View {
-    let data:         RunChartData
-    let enabledLayers: Set<RunChartLayer>
-    let height:       CGFloat
-    let maxTiles:     Int
-    let compact:      Bool
-    let palette:      ShareChartPalette
-
-    private let spacing: CGFloat = 3
-    private var tileScale: CGFloat { compact ? 0.85 : 1.0 }
-
-    /// 이미지 카드(RunChartShareCard)와 **같은 필터**를 쓴다 — `hasTile`이 빠져 있어
-    /// 페이스 타일이 영상에만 나왔다. 같은 러닝인데 두 출력물의 지표 목록이 달랐다(§5.8).
-    private var activeTiles: [RunChartLayer] {
-        Array(data.availableLayers
-            .filter { $0.hasTile && ($0.isValueOnly || enabledLayers.contains($0)) }
-            .prefix(maxTiles))
-    }
-
-    private var columns: [GridItem] {
-        [GridItem(.flexible(), spacing: spacing),
-         GridItem(.flexible(), spacing: spacing),
-         GridItem(.flexible(), spacing: spacing)]
-    }
-
-    var body: some View {
-        LazyVGrid(columns: columns, spacing: spacing) {
-            ForEach(activeTiles) { layer in
-                if let series = data.series[layer] {
-                    ReplayTileCell(layer: layer, series: series, s: tileScale, palette: palette)
-                }
-            }
-        }
-        // 이미지 카드의 타일 격자와 같은 10pt.
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(width: RunChartReplayExporter.cardW, height: height, alignment: .top)
-        .background(palette.cardBackground,
-                    in: RoundedRectangle(cornerRadius: palette.cardCornerRadius))
-    }
-}
-
-private struct ReplayTileCell: View {
-    let layer:   RunChartLayer
-    let series:  RunChartSeries
-    let s:       CGFloat
-    let palette: ShareChartPalette
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3 * s) {
-            HStack(spacing: 4 * s) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(palette.layerColor(layer))
-                    .frame(width: 6 * s, height: 6 * s)
-                Text(layer.shortLabel)
-                    .font(.system(size: 9.5 * s))
-                    .foregroundStyle(palette.textPrimary.opacity(0.85))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                Spacer(minLength: 2)
-                if !layer.isValueOnly {
-                    Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
-                        .font(.system(size: 8.5 * s))
-                        .foregroundStyle(palette.textPrimary.opacity(0.68))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.70)
-                }
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 2 * s) {
-                // 값 글꼴은 이미지 카드 타일(ShareStatTile)과 **같은 값**을 쓴다 —
-                // 여기만 semibold·일반 폭이라 같은 러닝이 이미지와 영상에서 다르게 보였다(§5.8).
-                Text(layer.formatted(series.avgValue))
-                    .font(.system(size: RunMetricCellMetrics.value * 0.7 * s, weight: .black))
-                    .fontWidth(.condensed)
-                    .foregroundStyle(palette.textPrimary)
-                    .minimumScaleFactor(0.80)
-                    .lineLimit(1)
-                Text(layer.unit)
-                    .font(.system(size: 8.5 * s))
-                    .foregroundStyle(palette.textPrimary.opacity(0.80))
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8 * s)
-        .padding(.vertical, 4 * s)
-        .background(palette.textPrimary.opacity(0.08), in: RoundedRectangle(cornerRadius: 9 * s))
+    /// 영상용 이미지 카드 — 이미지 출력과 **같은 뷰**, 모서리만 직각·높이만 4:5 고정.
+    private static func shareCard(
+        data: RunChartData, enabledLayers: Set<RunChartLayer>,
+        distanceText: String, durationText: String,
+        weatherText: String?, weatherIcon: String?,
+        dateText: String?, weekdayText: String?,
+        startTimeText: String?, shoeText: String?, paceText: String?,
+        playProgress: Double, chartHeight: CGFloat, cardPtH: CGFloat,
+        palette: ShareChartPalette
+    ) -> some View {
+        RunChartShareCard(
+            data: data, enabledLayers: enabledLayers,
+            distanceText: distanceText, durationText: durationText,
+            weatherText: weatherText, weatherIcon: weatherIcon,
+            dateText: dateText, weekdayText: weekdayText,
+            startTimeText: startTimeText, shoeText: shoeText,
+            paceText: paceText, playProgress: playProgress,
+            chartHeight: chartHeight, palette: palette,
+            cornerRadius: 0, fixedHeight: cardPtH)
     }
 }
