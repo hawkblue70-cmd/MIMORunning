@@ -1167,8 +1167,15 @@ private struct HRTimeSeriesView: View {
 
         // 회복 점은 러닝 심박과 **같은 y축**을 쓴다 — 축이 갈리면 "155에서 118까지"라는 낙차가 눈으로 안 읽힌다.
         // 회복이 러닝 최저보다 낮으면 범위를 넓힌다(그만큼 러닝 선은 세로로 눌린다).
-        let recoveryBPM: [Double] = recovery.map { r in
-            [r.endHR, r.hr60] + (r.hr120.map { [$0] } ?? [])
+        // 점뿐 아니라 **띠 범위까지** 넣어야 한다 — 띠만 도메인 밖으로 나가면 아래가 잘린다.
+        let recoveryBPM: [Double] = recovery.map { r -> [Double] in
+            var v: [Double] = [r.endHR, r.hr60]
+            if let h2 = r.hr120 { v.append(h2) }
+            var bs: [MRRecoveryBand] = []
+            if let b = recoveryBands?.minute1 { bs.append(b) }
+            if r.hr120 != nil, let b = recoveryBands?.minute2 { bs.append(b) }
+            for b in bs { v.append(r.endHR - b.hi); v.append(r.endHR - b.lo) }
+            return v
         } ?? []
         let minBPM = min(smoothed.min() ?? 0, recoveryBPM.min() ?? .infinity)
         let maxBPM = max(smoothed.max() ?? 1, recoveryBPM.max() ?? -.infinity)
