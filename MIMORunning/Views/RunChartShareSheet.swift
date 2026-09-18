@@ -294,7 +294,10 @@ struct RunChartShareSheet: View {
                     }
                     .padding(.top, 8)
 
-                    // (d) 통합 컨트롤 바 — 이미지/영상/내용/테마 한 줄 동일 크기
+                    // (d) 컨트롤 바 — 모드(이미지/영상) + 테마는 항상, 영상 내용은 **영상 모드에서만**.
+                    // 예전에는 다섯을 한 줄에 균등 분할하고 이미지 모드에서 두 칸을 비활성으로 남겼다.
+                    // 한 칸이 66pt뿐이라 "차트+데이터"가 꽉 차고, 죽은 칸 둘이 UI가 망가진 것처럼 보였다.
+                    // 영상의 하위 옵션을 모드와 같은 높이로 늘어놓은 것 자체가 위계를 감춘다.
                     let hasRoute = routeCoordinates.count >= 2
                     HStack(spacing: 5) {
                         controlChip(L.s("이미지", "Image"),
@@ -304,22 +307,6 @@ struct RunChartShareSheet: View {
                         controlChip(L.s("영상", "Video"),
                                     isOn: exportMode == .video) {
                             exportMode = .video
-                        }
-                        controlChip(L.s("차트+데이터", "Chart+Data"),
-                                    isOn: exportMode == .video && videoContent == .chartData,
-                                    isDisabled: exportMode == .image) {
-                            videoContent = .chartData
-                            videoExportTask?.cancel()
-                            exportedVideo = nil; isExportingVideo = false; videoProgress = 0
-                            refreshPreview()
-                        }
-                        controlChip(L.s("경로+차트", "Route+Chart"),
-                                    isOn: exportMode == .video && videoContent == .routeChart,
-                                    isDisabled: exportMode == .image || !hasRoute) {
-                            videoContent = .routeChart
-                            videoExportTask?.cancel()
-                            exportedVideo = nil; isExportingVideo = false; videoProgress = 0
-                            refreshPreview()
                         }
                         controlChip(shareTheme == .light ? L.s("라이트", "Light") : L.s("다크", "Dark"),
                                     isOn: shareTheme == .light) {
@@ -356,6 +343,29 @@ struct RunChartShareSheet: View {
                         isExportingVideo = false
                         videoProgress = 0
                         if exportMode == .video { refreshPreview() }
+                    }
+
+                    // (d-2) 영상 내용 — 영상 모드의 하위 옵션이라 모드 줄 아래에 따로 둔다.
+                    if exportMode == .video {
+                        HStack(spacing: 5) {
+                            controlChip(L.s("차트+데이터", "Chart+Data"),
+                                        isOn: videoContent == .chartData) {
+                                videoContent = .chartData
+                                videoExportTask?.cancel()
+                                exportedVideo = nil; isExportingVideo = false; videoProgress = 0
+                                refreshPreview()
+                            }
+                            controlChip(L.s("경로+차트", "Route+Chart"),
+                                        isOn: videoContent == .routeChart,
+                                        isDisabled: !hasRoute) {
+                                videoContent = .routeChart
+                                videoExportTask?.cancel()
+                                exportedVideo = nil; isExportingVideo = false; videoProgress = 0
+                                refreshPreview()
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 6)
                     }
 
                     // (e) 영상 옵션 (영상 모드만)
