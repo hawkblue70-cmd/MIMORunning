@@ -1604,7 +1604,12 @@ private struct RhythmInsightCard: View {
     private static let gaugeScale: CGFloat = insightGaugeScale
     private static let bottomChartH: CGFloat = 110 * gaugeScale   // 게이지(87) + 축 라벨이 아래로 삐져나오는 23
     // 캡션 칸 — 촘촘 모드는 두 줄(8~9pt)이 딱 들어가는 높이까지만 줄인다
-    private var topCaptionH: CGFloat { compact ? 36 : 42 }   // 2줄(판정 + 회복 곡선)
+    /// 회복 곡선 한 줄이 있을 때만 2줄 높이를 잡는다 — 없는 러닝(대부분)까지 여백을 떠안지 않도록.
+    /// 네 칸이 한 렌더에서 같은 값을 보므로 정렬은 그대로다.
+    private var topCaptionH: CGFloat {
+        guard recoveryShape != nil else { return compact ? 24 : 28 }
+        return compact ? 36 : 38
+    }
     private var bottomCaptionH: CGFloat { compact ? 24 : 38 }
 
     /// 2×2 한 칸 — 차트 영역과 캡션 영역을 고정 높이로 잡아 네 칸의 줄을 맞춘다.
