@@ -179,6 +179,10 @@ struct RunChartShareSheet: View {
     /// 남는 자리를 차트에 준다 — 타일 수나 글꼴이 바뀌어도 따라간다.
     @State private var fittedChartH: CGFloat = 226
 
+    /// 미리보기 좌우 여백 — 이미지·영상이 **같은 폭**으로 보이도록 한 곳에서만 정한다.
+    /// 예전에는 이미지 24pt(−48), 영상 20pt라 8pt 차이로 미묘하게 달라 보였다.
+    private static let previewSideInset: CGFloat = 20
+
     /// 영상과 같은 4:5. 1350px ÷ 3.6 = 375pt.
     private var targetCardH: CGFloat {
         CGFloat(RunChartReplayExporter.videoH) / RunChartReplayExporter.scale
@@ -273,7 +277,7 @@ struct RunChartShareSheet: View {
                     // (a) 미리보기 — 이미지 모드: 정적 카드 / 영상 모드: 실제 렌더 프레임
                     if exportMode == .image {
                         GeometryReader { geo in
-                            let scale = (geo.size.width - 48) / cardW
+                            let scale = (geo.size.width - Self.previewSideInset * 2) / cardW
                             RunChartShareCard(
                                 data: data,
                                 enabledLayers: store.enabled,
@@ -329,7 +333,7 @@ struct RunChartShareSheet: View {
                         // 내보내는 영상과 같은 비율 — 숫자를 따로 적으면 한쪽만 바뀐다.
                         .aspectRatio(CGFloat(RunChartReplayExporter.videoW)
                                      / CGFloat(RunChartReplayExporter.videoH), contentMode: .fit)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, Self.previewSideInset)
                         .padding(.top, 20)
                     }
 
@@ -577,7 +581,7 @@ struct RunChartShareSheet: View {
     }
 
     /// 카드 좌표계 → 화면 폭 배율. 미리보기 프레임과 카드 렌더가 같은 값을 써야 한다.
-    private var previewScale: CGFloat { (UIScreen.main.bounds.width - 48) / cardW }
+    private var previewScale: CGFloat { (UIScreen.main.bounds.width - Self.previewSideInset * 2) / cardW }
 
 
     private func controlChip(_ label: String, isOn: Bool, isDisabled: Bool = false,
@@ -626,6 +630,13 @@ struct RunChartShareSheet: View {
         renderer.scale = 1080.0 / cardW   // 정확히 1080px 폭
         renderer.proposedSize = ProposedViewSize(width: cardW, height: nil)
         renderedImage = renderer.uiImage
+        #if DEBUG
+        if let img = renderedImage {
+            print(String(format: "[차트공유] 이미지 출력 %.0f×%.0fpx · 영상 %d×%dpx",
+                         img.size.width * img.scale, img.size.height * img.scale,
+                         RunChartReplayExporter.videoW, RunChartReplayExporter.videoH))
+        }
+        #endif
         isRendering = false
         if renderedImage != nil { showActivitySheet = true }
     }
