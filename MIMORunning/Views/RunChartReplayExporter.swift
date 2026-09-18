@@ -258,6 +258,12 @@ enum RunChartReplayExporter {
     static let bitrate  = 8_000_000
     static let holdSecs = 1.2
     static let scale: CGFloat = 3.6   // 1080 / 300pt
+
+    /// 헤더·지도·차트가 **같은 세로선**에 서도록 옆 여백을 한 곳에서만 정한다.
+    /// 예전에는 헤더 0% · 차트 3% · 지도 5%로 제각각이라 세 구역의 왼쪽 끝이 다 어긋났다.
+    /// 값은 카드 기준 pt — 헤더는 뷰 안에서, 지도·차트는 합성할 때 쓴다.
+    static let sideInsetPt: CGFloat = 9
+    static var sideInsetPx: CGFloat { sideInsetPt * scale }   // 32.4
     static let cardW: CGFloat = 300   // pt reference width
 
     // MARK: - Layout
@@ -724,10 +730,10 @@ enum RunChartReplayExporter {
 
             if let img = headerImage { stamp(img, yTop: layout.headerTop, h: layout.headerH) }
             if let img = chartImage, layout.chartH > 0 {
-                let cMargin = CGFloat(videoW) * 0.03
+                let m = sideInsetPx
                 UIImage(cgImage: img).draw(in:
-                    CGRect(x: cMargin, y: CGFloat(layout.chartTop),
-                           width: CGFloat(videoW) - cMargin * 2, height: CGFloat(layout.chartH)))
+                    CGRect(x: m, y: CGFloat(layout.chartTop),
+                           width: CGFloat(videoW) - m * 2, height: CGFloat(layout.chartH)))
             }
 
             if layout.routeH > 0 {
@@ -738,7 +744,7 @@ enum RunChartReplayExporter {
                 ctx.saveGState()
                 UIBezierPath(rect: routeRect).addClip()
 
-                let hMargin = routeRect.width * 0.05
+                let hMargin = sideInsetPx
                 let mapCornerRadius: CGFloat = 20
                 let mapDrawRect = CGRect(
                     x: routeRect.minX + hMargin,
@@ -1344,7 +1350,9 @@ private struct ReplayHeaderView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
+        // 지도·차트와 같은 세로선에 글자가 서도록 공용 상수를 쓴다. 배경 띠는 가장자리까지
+        // 채우고 글자만 들여쓴다 — 이미지 카드의 헤더와 같은 규칙이다.
+        .padding(.horizontal, RunChartReplayExporter.sideInsetPt)
         .frame(width: RunChartReplayExporter.cardW, height: height, alignment: .center)
         .background(palette.sectionBackground)
     }
