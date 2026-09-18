@@ -1192,7 +1192,7 @@ private struct HRTimeSeriesView: View {
                 let hasElevation = shouldDrawElevation
                 // 회복 점 자리. 고도 최고높이 숫자와 자리를 다투므로, 회복이 있으면 그 숫자는 접는다 —
                 // 이 차트의 위계는 "숫자는 심박만, 고도는 모양만"이라 잃는 게 적다.
-                let recoveryW: CGFloat = recovery == nil ? 0 : 22
+                let recoveryW: CGFloat = recovery == nil ? 0 : 34   // 점 + 낙폭 숫자
                 let rightPad: CGFloat = (hasElevation && recovery == nil) ? 26 : 0
                 let chartW = w - xPad - rightPad - recoveryW
                 let chartRight = xPad + chartW
@@ -1288,7 +1288,7 @@ private struct HRTimeSeriesView: View {
                     func ry(_ bpm: Double) -> CGFloat {
                         chartH - CGFloat((bpm - minBPM) / valRange) * chartH
                     }
-                    let x1 = chartRight + 8, x2 = chartRight + 16
+                    let x1 = chartRight + 5, x2 = chartRight + 11
                     var dots: [(x: CGFloat, bpm: Double)] = [(x1, r.hr60)]
                     if let h2 = r.hr120 { dots.append((x2, h2)) }
                     var link = Path()
@@ -1302,9 +1302,19 @@ private struct HRTimeSeriesView: View {
                                                         width: rDot * 2, height: rDot * 2)),
                                  with: .color(zoneColor(for: d.bpm)))
                     }
-                    ctx.draw(Text(AppLanguage.shared.s("회복", "Rec")).font(.system(size: 7))
+                    // 낙폭 숫자 — 종료 심박 대비. 두 값이 가까우면 라벨이 겹치므로 아래쪽을 밀어낸다.
+                    var labelY: CGFloat = -.infinity
+                    for d in dots {
+                        var y = ry(d.bpm)
+                        if y - labelY < 8 { y = labelY + 8 }
+                        labelY = y
+                        ctx.draw(Text("−\(Int((r.endHR - d.bpm).rounded()))").font(.system(size: 7))
+                            .foregroundStyle(.white.opacity(0.72)),
+                            at: CGPoint(x: x2 + 5, y: y), anchor: .leading)
+                    }
+                    ctx.draw(Text(AppLanguage.shared.s("1·2분", "1·2m")).font(.system(size: 7))
                         .foregroundStyle(.white.opacity(0.55)),
-                        at: CGPoint(x: (x1 + x2) / 2, y: h), anchor: .bottom)
+                        at: CGPoint(x: x1, y: h), anchor: .bottomLeading)
                 }
 
                 // Y축 라벨
