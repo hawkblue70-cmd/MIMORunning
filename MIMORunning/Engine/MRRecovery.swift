@@ -15,6 +15,16 @@ struct MRRecoveryPoint: Codable, Sendable {
     let bpm: Int
 }
 
+/// 회복 곡선의 모양. HR(t) = HR∞ + (HRend − HR∞)·e^(−t/τ) 의 1차 지수감쇠 파라미터.
+///   Pierpont & Voth 2004 (Am J Cardiol 94(1):64–68).
+/// ⚠ `ratio`는 두 낙폭의 비라 종료심박이 소거된다 — HRR1과 달리 강도 보정 회귀가 필요 없다.
+/// ⚠ `asymptote`는 2분 외삽이라 불안정하다. 표시하지 않고 디버그로만 쓴다.
+struct MRRecoveryDecay: Sendable {
+    let ratio: Double      // x = (hr60 − hr120) / (endHR − hr60)
+    let tau: Double        // 초
+    let asymptote: Double  // HR∞ (bpm)
+}
+
 struct MRRecoveryResult: Sendable {
     let endHR: Double          // 종료 직전 30초 평균
     let hr60: Double
@@ -31,6 +41,13 @@ enum MRRecovery {
     static let minEndHRFracOfMax = 0.80              // 임의로 정함 — 존 3 하한 근처. 70%는 194건 중 193건이 통과해 아무것도 거르지 못했다
     static let minEndHRWhenMaxUnknown = 130.0        // 임의로 정함
     static let minObs = 16                           // 임의로 정함 — 회귀 안정성
+
+    // MARK: 회복 곡선 모양 (τ) — 전부 임의값. 수식이 발산하거나 감쇠가 아닌 경우를 거른다.
+
+    static let minFirstMinuteDrop = 8.0       // 분모가 작으면 x가 발산한다
+    static let tauRange: ClosedRange<Double> = 20...300
+    // τ 상한 300초 = x ≤ 0.819. 200초(x ≤ 0.741)로 잡으면 "2분 뒤에도 계속 내려오는 중"인
+    // 러닝을 판정 전에 가드가 먼저 버린다. 문헌상 최대운동 후 τ는 대체로 30–120초.
 
     // MARK: 종료 심박
 
@@ -60,6 +77,18 @@ enum MRRecovery {
     static func compute(endHR: Double, post: [MRRecoveryPoint]) -> MRRecoveryResult? {
         guard let h60 = hr(at: 60, post: post) else { return nil }
         return MRRecoveryResult(endHR: endHR, hr60: h60, hr120: hr(at: 120, post: post))
+    }
+
+    /// 세 값으로 τ를 닫힌 해로 구한다. 가드에 걸리면 nil — 카드는 침묵한다.
+    static func decay(endHR: Double, hr60: Double, hr120: Double) -> MRRecoveryDecay? {
+        let d1 = endHR - hr60      // 1분째 낙폭
+        let d2 = hr60 - hr120      // 2분째 낙폭
+        guard d1 >= minFirstMinuteDrop, d2 > 0 else { return nil }
+        let x = d2 / d1
+        guard x > 0, x < 1 else { return nil }   // x ≥ 1은 감쇠가 아니다 (로그 정의역 보호)
+        let tau = -60.0 / log(x)
+        guard tauRange.contains(tau) else { return nil }
+        return MRRecoveryDecay(ratio: x, tau: tau, asymptote: endHR - d1 / (1 - x))
     }
 
     // MARK: 추세

@@ -84,4 +84,48 @@ struct MRRecoveryTests {
         #expect(MRRecovery.observation(shift: down) == nil)
         #expect(MRRecovery.observation(shift: weak) == nil)
     }
+
+    // MARK: 회복 곡선 모양 (τ)
+
+    /// HR(t) = HR∞ + (endHR − HR∞)·e^(−t/τ) 로 만든 값에서 τ와 HR∞가 되돌아오는지
+    @Test func decayRecoversTauAndAsymptote() {
+        let endHR = 170.0, asym = 110.0, tau = 60.0
+        let hr60  = asym + (endHR - asym) * exp(-60 / tau)
+        let hr120 = asym + (endHR - asym) * exp(-120 / tau)
+        let d = MRRecovery.decay(endHR: endHR, hr60: hr60, hr120: hr120)
+        #expect(d != nil)
+        #expect(abs((d?.tau ?? 0) - tau) < 2)
+        #expect(abs((d?.asymptote ?? 0) - asym) < 3)
+        // x = 2분째 낙폭 / 1분째 낙폭 = e^(−60/τ)
+        #expect(abs((d?.ratio ?? 0) - exp(-1)) < 0.02)
+    }
+
+    /// 종료심박이 달라도 같은 곡선 모양이면 τ가 같다 — 강도 교란이 x에서 소거되는지
+    @Test func decayIsIndependentOfEndHR() {
+        let tau = 70.0
+        func make(_ endHR: Double, _ asym: Double) -> Double? {
+            let hr60  = asym + (endHR - asym) * exp(-60 / tau)
+            let hr120 = asym + (endHR - asym) * exp(-120 / tau)
+            return MRRecovery.decay(endHR: endHR, hr60: hr60, hr120: hr120)?.tau
+        }
+        let a = make(185, 115), b = make(150, 100)
+        #expect(a != nil && b != nil)
+        #expect(abs((a ?? 0) - (b ?? 1)) < 1)
+    }
+
+    @Test func decayGuardsRejectBadShapes() {
+        // 1분 낙폭 7bpm → 거부, 8bpm → 통과
+        #expect(MRRecovery.decay(endHR: 150, hr60: 143, hr120: 140) == nil)
+        #expect(MRRecovery.decay(endHR: 150, hr60: 142, hr120: 139) != nil)
+        // 2분째에 심박이 되오름 → 거부
+        #expect(MRRecovery.decay(endHR: 170, hr60: 130, hr120: 134) == nil)
+        // 2분 낙폭 0 → 거부
+        #expect(MRRecovery.decay(endHR: 170, hr60: 130, hr120: 130) == nil)
+        // x ≥ 1 (2분째가 더 크게 떨어짐) → 거부
+        #expect(MRRecovery.decay(endHR: 170, hr60: 150, hr120: 125) == nil)
+        // τ < 20초 (거의 즉시 바닥) → 거부. x = e^(−60/20) = 0.0498 보다 작은 x
+        #expect(MRRecovery.decay(endHR: 190, hr60: 120, hr120: 117) == nil)
+        // τ > 300초 → 거부. x = e^(−60/300) = 0.8187 보다 큰 x
+        #expect(MRRecovery.decay(endHR: 170, hr60: 140, hr120: 114) == nil)
+    }
 }
