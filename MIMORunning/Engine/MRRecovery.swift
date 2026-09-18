@@ -119,6 +119,24 @@ enum MRRecovery {
         decay(endHR: endHR, hr60: endHR - hrr1, hr120: hr120)
     }
 
+#if DEBUG
+    /// 캡션이 안 뜰 때 왜인지 — 실기기 로그 진단 전용.
+    /// 판정은 `decay`가 하고 여기선 설명만 붙인다. 가드가 바뀌어 설명이 어긋나면
+    /// 틀린 이유 대신 "이유 불명"이 나오게 해, 로그가 조용히 거짓말하지 않도록 했다.
+    static func decayRejectionReason(endHR: Double, hr60: Double, hr120: Double?) -> String? {
+        guard let hr120 else { return "120초 샘플 없음" }
+        guard decay(endHR: endHR, hr60: hr60, hr120: hr120) == nil else { return nil }
+        let d1 = endHR - hr60, d2 = hr60 - hr120
+        if d1 < minFirstMinuteDrop { return String(format: "1분 낙폭 %.0f < %.0f", d1, minFirstMinuteDrop) }
+        if d2 <= 0 { return String(format: "2분째 낙폭 %.0f — 더 내려가지 않음", d2) }
+        let x = d2 / d1
+        if x >= 1 { return String(format: "x %.2f ≥ 1 — 감쇠가 아님", x) }
+        let tau = -60.0 / log(x)
+        if !tauRange.contains(tau) { return String(format: "τ %.0f초 — %.0f~%.0f 밖", tau, tauRange.lowerBound, tauRange.upperBound) }
+        return "이유 불명 — 가드가 바뀌었나"
+    }
+#endif
+
     static let minTauSamples = 8   // 임의로 정함 — 사분위가 의미를 갖는 최소선
 
     /// 과거 τ 중 오늘보다 작은(= 더 빨랐던) 것의 비율. 표본이 모자라면 nil.

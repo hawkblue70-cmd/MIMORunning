@@ -146,6 +146,12 @@ struct ActivityDetailView: View {
         #endif
         // 회복 한 줄(τ·분위)은 급하지 않다. recoveryTauHistory는 캐시가 비면 12개월 재구축이라,
         // 호출자가 기다리는 일(심박존 재계산 등)을 막지 않게 떼어낸다.
+        #if DEBUG
+        if let r = recoveryResult, r.decay == nil,
+           let why = MRRecovery.decayRejectionReason(endHR: r.endHR, hr60: r.hr60, hr120: r.hr120) {
+            print("[회복:모양] 없음 — \(why)")
+        }
+        #endif
         guard let r = recoveryResult, let d = r.decay else { return }
         Task {
             let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
