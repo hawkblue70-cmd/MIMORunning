@@ -1978,12 +1978,12 @@ private struct RouteMapView: View {
 
     private var cacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_v14_\(activityID.uuidString).jpg")
+            .appendingPathComponent("\(RouteMapCache.plainPrefix)\(RouteMapCache.plainVersion)_\(activityID.uuidString).jpg")
     }
 
     private var hrZoneCacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("mimo_map_hrzone_v9_\(activityID.uuidString).jpg")
+            .appendingPathComponent("\(RouteMapCache.zonePrefix)\(RouteMapCache.zoneVersion)_\(activityID.uuidString).jpg")
     }
 
     private func loadFromDisk() -> UIImage? {
@@ -2035,8 +2035,8 @@ private struct RouteMapView: View {
         let snapWidth = min(398, max(300, UIScreen.main.bounds.width - 32))
         opts.size = CGSize(width: snapWidth, height: 220)
         opts.scale = UIScreen.main.scale
-        opts.mapType = .mutedStandard
-        opts.showsBuildings = false
+        // 내보내는 경로 카드와 같은 지도로 보이게 — 스타일은 RouteSnapshotRenderer 한 곳에서 정한다
+        RouteSnapshotRenderer.applyRouteMapStyle(opts)
 
         guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
 
@@ -2128,8 +2128,8 @@ private struct RouteMapView: View {
         let snapWidth = min(398, max(300, UIScreen.main.bounds.width - 32))
         opts.size = CGSize(width: snapWidth, height: 220)
         opts.scale = UIScreen.main.scale
-        opts.mapType = .mutedStandard
-        opts.showsBuildings = false
+        // 내보내는 경로 카드와 같은 지도로 보이게 — 스타일은 RouteSnapshotRenderer 한 곳에서 정한다
+        RouteSnapshotRenderer.applyRouteMapStyle(opts)
 
         guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
 

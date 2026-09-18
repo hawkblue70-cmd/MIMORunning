@@ -35,8 +35,7 @@ enum RouteSnapshotRenderer {
         }
         opts.size = size
         opts.scale = scale
-        opts.mapType = .mutedStandard
-        opts.showsBuildings = false
+        applyRouteMapStyle(opts)
         return opts
     }
 
@@ -58,6 +57,19 @@ enum RouteSnapshotRenderer {
             center: CLLocationCoordinate2D(latitude: maxLat + latSpan * topMargin - latSpan / 2,
                                            longitude: (minLon + maxLon) / 2),
             span: MKCoordinateSpan(latitudeDelta: latSpan, longitudeDelta: lonSpan))
+    }
+
+    /// 경로를 보여주는 지도의 공통 스타일 — 다크 · standard · 관심 지점 없음 · 건물 없음.
+    ///
+    /// 상세 화면의 경로와 내보내는 경로 카드가 **같은 지도**로 보이도록 한 곳에서 정한다.
+    /// muted가 아닌 standard를 쓰는 이유는 도로와 물이 살아 있어야 경로가 어디를 지났는지 읽히기 때문이고,
+    /// 관심 지점(상점·학교 이름)을 빼는 이유는 경로 위가 조용해야 하기 때문이다.
+    /// 도로명·행정구역명은 MapKit에 끄는 옵션이 없어 남는다.
+    static func applyRouteMapStyle(_ opts: MKMapSnapshotter.Options) {
+        opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
+        opts.mapType = .standard
+        opts.pointOfInterestFilter = .excludingAll
+        opts.showsBuildings = false
     }
 
     /// 쓸 수 있는 좌표인가 — (0,0) 근처 콜드스타트 튐은 영역을 통째로 늘린다.
@@ -243,4 +255,16 @@ enum RouteSnapshotRenderer {
         return UIColor(red: r1 + (r2 - r1) * tc, green: g1 + (g2 - g1) * tc,
                        blue: b1 + (b2 - b1) * tc, alpha: 1)
     }
+}
+
+// MARK: - 상세 화면 경로 지도 캐시 이름
+
+/// 상세 화면 경로 지도 스냅샷의 캐시 파일 이름 규칙.
+/// 지도 스타일이나 선 그리기가 바뀌면 버전을 올려 옛 그림이 남지 않게 한다.
+/// 앱 시작 때 옛 버전 파일을 지우는 정리(MRCacheMaintenance)가 이 값만 남긴다.
+enum RouteMapCache {
+    static let plainPrefix  = "mimo_map_"
+    static let zonePrefix   = "mimo_map_hrzone_"
+    static let plainVersion = "v15"   // v15: 다크 standard · 관심 지점 제거(경로 카드와 같은 지도)
+    static let zoneVersion  = "v10"   // v10: 같은 이유
 }

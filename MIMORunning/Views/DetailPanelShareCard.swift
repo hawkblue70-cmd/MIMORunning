@@ -949,11 +949,6 @@ struct DetailPanelShareCardScreen: View {
                                                        scale: 3,
                                                        routeBottomLimit: DetailPanelShareCard.mapRouteBottomLimit)
         else { return nil }
-        // 지도는 늘 다크 — 흰 글자를 위에 얹는다. muted가 아닌 standard: 도로·물이 살아 있어야 애플 요약처럼 보인다
-        opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
-        opts.mapType = .standard
-        // 관심 지점(학교·상점·공원 이름)은 뺀다 — 도로명·행정구역명은 MapKit에 끄는 옵션이 없어 남는다
-        opts.pointOfInterestFilter = .excludingAll
         guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
         let colors = await zoneColors(for: valid)
         // 선은 상세 화면과 같은 굵기(애플 요약처럼 얇게), km 알약은 끈다 — 이 폭에서는 경로보다 마커가 커 보인다.
