@@ -1816,7 +1816,7 @@ private struct RhythmInsightCard: View {
                             recoveryBands: recoveryBands
                         )
                         .padding(.horizontal, 2)
-                        .frame(height: 101)
+                        .frame(height: 100)   // 제목 12 + 간격 1.5 + 100 ≈ 칸 높이 114
                         }
                     }
                 } caption: {
