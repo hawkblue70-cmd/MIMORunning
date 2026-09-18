@@ -1691,7 +1691,8 @@ private struct RhythmInsightCard: View {
 
     // 2×2 칸 정렬 상수 — 행 안에서 차트 높이와 캡션 시작 줄을 맞춘다.
     // 칸마다 콘텐츠 높이가 다르면 캡션이 들쭉날쭉해진다.
-    private static let topChartH: CGFloat = 114      // 도넛(114) 기준
+    /// 제목(12) + 제목·그림 사이 여백(8) + 그림(100). 여백을 그림에서 빼면 도넛이 더 작아진다.
+    private static let topChartH: CGFloat = 120
     private static let gaugeScale: CGFloat = insightGaugeScale
     /// 게이지(87) + 축 라벨이 아래로 삐져나오는 23 + 제목 줄 10.
     /// 제목을 넣느라 축 라벨 자리를 뺏으면 라벨이 잘린다.
@@ -1780,8 +1781,8 @@ private struct RhythmInsightCard: View {
                 // 심박존 도넛
                 rhythmCell(chartH: Self.topChartH, captionH: topCaptionH) {
                     if hasZones {
-                        VStack(spacing: 1.5) {
-                            cellTitle(L.s("심박 존", "HR Zones"))
+                        VStack(spacing: 8) {
+                            cellTitle(L.s("심박수 영역", "HR Zones"))
                             ZoneDonutView(zones: hrZones)
                                 .frame(width: 100, height: 100)
                         }
@@ -1802,7 +1803,7 @@ private struct RhythmInsightCard: View {
                 // 심박수 HR 시계열 + 판정 문구
                 rhythmCell(chartH: Self.topChartH, captionH: topCaptionH) {
                     if hasHR {
-                        VStack(spacing: 1.5) {
+                        VStack(spacing: 8) {
                             // 오른쪽 점들이 "운동 후"라는 걸 x축 라벨(1·2분)만으로는 알 수 없다.
                             cellTitle(L.s("러닝 심박수", "Run HR"),
                                       trailing: recoveryResult == nil ? nil : L.s("러닝후 심박수", "After Run"))
