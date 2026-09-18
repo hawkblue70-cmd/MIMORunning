@@ -1356,6 +1356,18 @@ struct RunFormCardView: View {
         }
     }
 
+    /// 차트 제목 옆 "앞 → 뒤" 값 — 3단계 표가 있으면 초반·후반 구간 평균(표와 같은 숫자), 없으면 전반·후반 평균.
+    /// 표(구간 평균)와 차트(전후반 평균)가 나란히 다른 숫자를 보이던 것을 한 기준으로 맞춘다.
+    private func trendEndpoints(_ s: FormSeries) -> (first: Double?, second: Double?) {
+        guard let p = formPhaseResult?.phases else { return (s.firstAvg, s.secondAvg) }
+        switch s.dir {
+        case .cadence:       return (p.early.cadence, p.late.cadence)
+        case .stride:        return (p.early.stride, p.late.stride)
+        case .groundContact: return (p.early.groundContact, p.late.groundContact)
+        case .verticalOsc:   return (p.early.verticalOsc, p.late.verticalOsc)
+        }
+    }
+
     private func formSeriesCell(_ s: FormSeries) -> some View {
         let L = AppLanguage.shared
         // [65] km x축 계산
@@ -1412,7 +1424,8 @@ struct RunFormCardView: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.78))
                     .lineLimit(1)
-                if let f = s.firstAvg, let sec = s.secondAvg {
+                let ends = trendEndpoints(s)
+                if let f = ends.first, let sec = ends.second {
                     let missingRate = Double(totalBuckets - dataCount) / Double(max(1, totalBuckets))
                     if missingRate > 0.50 {
                         Text(L.s("데이터 부족", "Low data"))
