@@ -363,6 +363,9 @@ struct RunChartShareSheet: View {
                                 exportedVideo = nil; isExportingVideo = false; videoProgress = 0
                                 refreshPreview()
                             }
+                            // 빈 칸 — 위 줄(3칸)과 같은 폭이 되게 한다. 두 칸만 두면 칩이 110→174pt로
+                            // 늘어나 같은 글자가 위아래 줄에서 다르게 보인다.
+                            Color.clear.frame(maxWidth: .infinity)
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 6)
