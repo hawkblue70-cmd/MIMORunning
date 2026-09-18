@@ -288,9 +288,11 @@ enum RunChartReplayExporter {
         static func make(_ content: ReplayContent) -> SectionLayout {
             switch content {
             case .chartData:
-                // 24+190 | 0+0 | 620 | 0 | 460 | 56 = 1350
+                // 24+190 | 0+0 | 590 | 0 | 490 | 56 = 1350
+                // 타일 3행 = 약 135pt(486px). 460px일 때는 값 글꼴이 12pt라 겨우 맞았는데,
+                // 이미지 카드와 맞춰 14pt로 키우면서 마지막 행이 잘렸다. 차트에서 30px를 옮긴다.
                 return SectionLayout(topPad:24, headerH:190, routeH:0,   mapChartGap:0,
-                                     chartH:620, chartTilesGap:0, tilesH:460, botPad:56,
+                                     chartH:590, chartTilesGap:0, tilesH:490, botPad:56,
                                      maxTiles:12, compact:false)
             case .routeData:
                 // 24+190 | 700+0 | 0 | 0 | 380 | 56 = 1350
@@ -1371,9 +1373,11 @@ private struct ReplayTilesView: View {
     private let spacing: CGFloat = 3
     private var tileScale: CGFloat { compact ? 0.85 : 1.0 }
 
+    /// 이미지 카드(RunChartShareCard)와 **같은 필터**를 쓴다 — `hasTile`이 빠져 있어
+    /// 페이스 타일이 영상에만 나왔다. 같은 러닝인데 두 출력물의 지표 목록이 달랐다(§5.8).
     private var activeTiles: [RunChartLayer] {
         Array(data.availableLayers
-            .filter { $0.isValueOnly || enabledLayers.contains($0) }
+            .filter { $0.hasTile && ($0.isValueOnly || enabledLayers.contains($0)) }
             .prefix(maxTiles))
     }
 
