@@ -1,41 +1,6 @@
 import CoreLocation
 import SwiftUI
 
-// MARK: - RunChartShareStore
-// 공유 전용 레이어 선택 상태 — 상세 화면의 RunChartLayerStore 와 완전히 분리
-
-@Observable @MainActor
-final class RunChartShareStore {
-    static let shared = RunChartShareStore()
-    private static let key = "mimo.runChart.shareLayers"
-
-    var enabled: Set<RunChartLayer> {
-        didSet { persist() }
-    }
-
-    private init() {
-        if let raw = UserDefaults.standard.array(forKey: Self.key) as? [String] {
-            let restored = Set(raw.compactMap { RunChartLayer(rawValue: $0) })
-            enabled = restored.isEmpty ? [.heartRate, .pace] : restored
-        } else {
-            enabled = [.heartRate, .pace]
-        }
-    }
-
-    private func persist() {
-        UserDefaults.standard.set(enabled.map(\.rawValue), forKey: Self.key)
-    }
-
-    func toggle(_ layer: RunChartLayer) {
-        if enabled.contains(layer) {
-            guard enabled.count > 1 else { return }
-            enabled.remove(layer)
-        } else {
-            enabled.insert(layer)
-        }
-    }
-}
-
 // MARK: - RunChartShareCard
 // RunCombinedPanelView 와 동일한 레이아웃 — 미리보기·ImageRenderer 출력 공용
 
@@ -193,7 +158,9 @@ struct RunChartShareSheet: View {
     var totalDuration: TimeInterval = 0
     var routeCoordinates: [CLLocationCoordinate2D] = []
 
-    @State private var store = RunChartShareStore.shared
+    // 앱 종합 패널과 **같은 저장소**를 본다 — 레이어는 거기서 타일을 눌러 고르고,
+    // 내보내기는 화면에서 본 그대로를 낸다. 시트에 선택 UI를 또 두면 같은 결정을 두 곳에서 하게 된다.
+    @State private var store = RunChartLayerStore.shared
     @Environment(\.dismiss) private var dismiss
     @State private var isRendering = false
     @State private var renderedImage: UIImage? = nil
@@ -323,33 +290,6 @@ struct RunChartShareSheet: View {
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
                     }
-
-                    // (b) 지표 선택 레이블
-                    HStack {
-                        Text(L.s("차트에 넣을 지표", "Chart layers"))
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 4)
-
-                    // (c) 레이어 칩 — 값 전용 제외, 한 줄 가로 스크롤
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(data.availableLayers.filter { !$0.isValueOnly && $0.hasTile }) { layer in
-                                ShareLayerChip(
-                                    layer: layer,
-                                    isOn: store.enabled.contains(layer)
-                                ) {
-                                    store.toggle(layer)
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                    }
-                    .padding(.top, 8)
 
                     // (d) 컨트롤 바 — 모드(이미지/영상) + 테마는 항상, 영상 내용은 **영상 모드에서만**.
                     // 예전에는 다섯을 한 줄에 균등 분할하고 이미지 모드에서 두 칸을 비활성으로 남겼다.
@@ -650,36 +590,6 @@ struct RunChartShareSheet: View {
         renderedImage = renderer.uiImage
         isRendering = false
         if renderedImage != nil { showActivitySheet = true }
-    }
-}
-
-// MARK: - ShareLayerChip
-
-private struct ShareLayerChip: View {
-    let layer: RunChartLayer
-    let isOn: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(layer.color.opacity(isOn ? 1.0 : 0.35))
-                    .frame(width: 8, height: 8)
-                Text(layer.shortLabel)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(isOn ? Color.primary : Color.secondary)
-                    .lineLimit(1)
-                    .fixedSize()
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(
-                Color.white.opacity(isOn ? 0.08 : 0.04),
-                in: RoundedRectangle(cornerRadius: 7)
-            )
-        }
-        .buttonStyle(.plain)
     }
 }
 
