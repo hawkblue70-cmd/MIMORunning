@@ -78,6 +78,9 @@ struct ActivityDetailView: View {
     @State private var recoveryResult: MRRecoveryResult? = nil
     /// 리듬 카드 회복 한 줄 입력 — τ와 과거 분포 내 위치. 자격 미달·샘플 부족이면 nil로 남아 카드가 침묵한다.
     @State private var recoveryShape: MRRecoveryShape? = nil
+    /// loadRecovery 진행 중 — HR 시리즈가 오는 자리마다 불러도 중복 조회가 되지 않게 한다.
+    /// `recoveryResult == nil`만으로는 부족하다: 첫 await 전에 두 번째 진입이 그 가드를 통과한다.
+    @State private var isLoadingRecovery = false
     /// 비동기 computeHRZonesForDate 결과 전용 상태. detail?.hrZones보다 우선.
     @State private var displayZones: [HRZoneData] = []
     @State private var isComputingZones = false
@@ -129,26 +132,35 @@ struct ActivityDetailView: View {
     /// displayZones(비동기 계산) 우선, 없으면 detail.hrZones, 최후 동기 폴백.
     /// 운동 후 심박 회복 로드 — 종료 심박이 자격(최대심박 70%)을 넘고 60초 샘플이 있을 때만 결과가 생긴다.
     private func loadRecovery() async {
-        guard recoveryResult == nil,
+        guard recoveryResult == nil, !isLoadingRecovery,
               let endHR = MRRecovery.endHR(series: hrSamples, duration: activity.duration),
               MRRecovery.isEligible(endHR: endHR, maxHR: manager.estimatedMaxHR.map(Double.init)) else { return }
+        isLoadingRecovery = true
+        defer { isLoadingRecovery = false }
         let post = await manager.fetchPostWorkoutHR(for: activity.id)
         postHR = post
         recoveryResult = MRRecovery.compute(endHR: endHR, post: post)
-        if let r = recoveryResult, let d = r.decay {
-            let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
-            let taus = await manager.recoveryTauHistory(from: start, excluding: activity.id)
-            recoveryShape = MRRecoveryShape(r, percentile: MRRecovery.tauPercentile(d.tau, history: taus))
-        }
         #if DEBUG
         print(String(format: "[회복] 종료심박 %.0f · 종료 후 샘플 %d개 · HRR1 %@",
                      endHR, post.count, recoveryResult.map { String(format: "%.0f", $0.hrr1) } ?? "없음(60초 샘플 없음)"))
-        if let d = recoveryShape?.decay {
-            print(String(format: "[회복:모양] τ %.0f초 · x %.2f · HR∞ %.0f · 분위 %@",
-                         d.tau, d.ratio, d.asymptote,
-                         recoveryShape?.percentile.map { String(format: "%.2f", $0) } ?? "표본부족"))
-        }
         #endif
+        // 회복 한 줄(τ·분위)은 급하지 않다. recoveryTauHistory는 캐시가 비면 12개월 재구축이라,
+        // 호출자가 기다리는 일(심박존 재계산 등)을 막지 않게 떼어낸다.
+        guard let r = recoveryResult, let d = r.decay else { return }
+        Task {
+            let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+            let taus = await manager.recoveryTauHistory(from: start, excluding: activity.id)
+            let shape = MRRecoveryShape(r, percentile: MRRecovery.tauPercentile(d.tau, history: taus))
+            // 늦게 도착하므로 topCaptionH가 28→38로 한 프레임에 튄다 — 구분선·아래 요소가 끊겨 내려가지 않게 잇는다.
+            withAnimation(.snappy) { recoveryShape = shape }
+            #if DEBUG
+            if let s = shape {
+                print(String(format: "[회복:모양] τ %.0f초 · x %.2f · HR∞ %.0f · 분위 %@",
+                             s.decay.tau, s.decay.ratio, s.decay.asymptote,
+                             s.percentile.map { String(format: "%.2f", $0) } ?? "표본부족"))
+            }
+            #endif
+        }
     }
 
     private var effectiveHRZones: [HRZoneData] {
@@ -637,7 +649,10 @@ struct ActivityDetailView: View {
                 // queryHRZones가 실패했거나 v3 캐시 미생성 → HR 시리즈로 직접 계산
                 if hrSamples.isEmpty {
                     let earlyHR = await manager.fetchHRTimeSeries(for: activity.id)
-                    if !earlyHR.isEmpty { hrSamples = earlyHR; hrFetchDone = true }
+                    if !earlyHR.isEmpty {
+                        hrSamples = earlyHR; hrFetchDone = true
+                        Task { await loadRecovery() }   // hrSamples가 생기는 두 자리 중 하나. 중복은 isLoadingRecovery가 막는다.
+                    }
                 }
                 let computed = await manager.computeHRZonesForDate(activity.date, samples: hrSamples)
                 displayZones = computed
@@ -1040,7 +1055,12 @@ struct ActivityDetailView: View {
                                                           unit: HKUnit.secondUnit(with: .milli))
         let (h, c, p, s, v, g) = await (hr, cad, pow, stride, vosc, gct)
         // 패널 탭 전환 시 재조회 방지 — 이미 가져온 시리즈를 패널 캐시에 등록
-        if !h.isEmpty { hrSamples = h; hrFetchDone = true }
+        if !h.isEmpty {
+            hrSamples = h; hrFetchDone = true
+            // HR 시리즈가 실제로 들어온 자리에서 회복을 부른다. 심박 패널 탭의 호출은
+            // 여기서 hrFetchDone이 먼저 켜져 영영 닿지 않았다 — 회복 한 줄도 HRRecoveryPanelChart도 죽어 있었다.
+            Task { await loadRecovery() }
+        }
         if !c.isEmpty { panelSeriesCache[.cadence] = c }
         if !p.isEmpty { panelSeriesCache[.power] = p }
         if !s.isEmpty { panelSeriesCache[.strideLength] = s }
