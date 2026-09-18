@@ -1744,7 +1744,8 @@ private struct RhythmInsightCard: View {
         .foregroundStyle(.white.opacity(0.90))
         .lineLimit(1)
         .minimumScaleFactor(0.75)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // 제목 하나면 가운데. 둘이면 각자 자기 영역(러닝 / 러닝후) 위에 놓여야 해서 양끝으로 민다.
+        .frame(maxWidth: .infinity, alignment: trailing == nil ? .center : .leading)
         .frame(height: 12)
     }
 
@@ -1886,7 +1887,7 @@ private struct RhythmInsightCard: View {
                            chartAlignment: .top) {
                     if let info = vo2Info, let vo2 = detail?.vo2Max {
                         VStack(spacing: 1.5) {
-                            cellTitle(L.s("유산소", "Cardio"))
+                            cellTitle(L.s("유산소 피트니스", "Aerobic Fitness"))
                             VO2RPMGaugeView(fi: info, vo2: vo2, scale: Self.gaugeScale)
                                 .frame(height: 87 * Self.gaugeScale)
                         }
