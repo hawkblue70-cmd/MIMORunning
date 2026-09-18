@@ -177,5 +177,36 @@ struct MRRecoveryTests {
                                 decay: MRRecoveryDecay(ratio: 0.37, tau: 60, asymptote: 110),
                                 percentile: nil)
         #expect(MRRecovery.shapeCaption(s) == "1분 −38 · 2분 −52bpm")
+        inEnglish {
+            #expect(MRRecovery.shapeCaption(s) == "−38 bpm at 1 min · −52 at 2 min")
+        }
+    }
+
+    @Test func shapeCaptionBucketsAreSymmetricAtQuartiles() {
+        let h = [40.0, 45, 50, 55, 60, 65, 70, 75]
+        func caption(_ tau: Double) -> String {
+            MRRecovery.shapeCaption(MRRecoveryShape(
+                hrr1: 38, hrr2: 52,
+                decay: MRRecoveryDecay(ratio: exp(-60 / tau), tau: tau, asymptote: 110),
+                percentile: MRRecovery.tauPercentile(tau, history: h)))
+        }
+        // 47 → 40·45 두 개가 아래 → p = 0.25 (하위 사분위에 포함)
+        #expect(MRRecovery.tauPercentile(47, history: h) == 0.25)
+        #expect(caption(47) == "평소보다 빠르게 안정됐어요")
+        // 67 → 40~65 여섯 개가 아래 → p = 0.75
+        #expect(MRRecovery.tauPercentile(67, history: h) == 0.75)
+        #expect(caption(67) == "2분 뒤에도 계속 내려오는 중이었어요")
+    }
+
+    @Test func shapeInitRequiresDecayAndHRR2() {
+        let noTwoMinute = MRRecovery.compute(endHR: 170, post: post([(58, 132), (62, 132)]))
+        #expect(noTwoMinute != nil)
+        #expect(MRRecoveryShape(noTwoMinute!, percentile: nil) == nil)
+
+        let withTwoMinute = MRRecovery.compute(endHR: 170, post: post([(58, 132), (62, 132), (118, 118), (122, 118)]))
+        #expect(withTwoMinute != nil)
+        let shape = MRRecoveryShape(withTwoMinute!, percentile: nil)
+        #expect(shape != nil)
+        #expect(shape?.hrr2 == 52)
     }
 }

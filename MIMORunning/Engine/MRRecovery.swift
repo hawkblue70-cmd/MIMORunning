@@ -46,6 +46,15 @@ struct MRRecoveryResult: Sendable {
     }
 }
 
+extension MRRecoveryShape {
+    /// `decay`가 성립할 때만 만들어진다 — hrr2와 decay가 서로 어긋난 상태를 타입이 막는다.
+    /// (`decay`는 hr120이 있어야 생기므로 hrr2도 반드시 있다.)
+    init?(_ r: MRRecoveryResult, percentile: Double?) {
+        guard let d = r.decay, let h2 = r.hrr2 else { return nil }
+        self.init(hrr1: r.hrr1, hrr2: h2, decay: d, percentile: percentile)
+    }
+}
+
 enum MRRecovery {
 
     static let endWindowSec: TimeInterval = 30       // 임의로 정함 — 종료 직전 평균 창
@@ -121,9 +130,13 @@ enum MRRecovery {
         let L = AppLanguage.shared
         guard let p = shape.percentile else {
             let d1 = Int(shape.hrr1.rounded()), d2 = Int(shape.hrr2.rounded())
-            return L.isEnglish ? "−\(d1) at 1 min · −\(d2) at 2 min" : "1분 −\(d1) · 2분 −\(d2)bpm"
+            return L.isEnglish ? "−\(d1) bpm at 1 min · −\(d2) at 2 min" : "1분 −\(d1) · 2분 −\(d2)bpm"
         }
-        if p < 0.25 { return L.s("평소보다 빠르게 안정됐어요", "Settled faster than usual") }
+        // 양끝 다 사분위 포함(<=, >=)으로 대칭을 맞춘다. n=8이면 tauPercentile은 {0, .125, ..., 1.0}
+        // 9개 값만 낼 수 있어, 한쪽만 "포함"이면(예: p < 0.25) 그 버킷이 다른 쪽보다 좁아진다
+        // (< 0.25 → 2/9, >= 0.75 → 3/9). p == 0.25는 "과거 넷 중 하나가 더 빨랐다"는 하위
+        // 사분위의 자연스러운 경계값이라 포함한다. p == 0.75도 대칭으로 포함.
+        if p <= 0.25 { return L.s("평소보다 빠르게 안정됐어요", "Settled faster than usual") }
         if p >= 0.75 { return L.s("2분 뒤에도 계속 내려오는 중이었어요", "Still coming down after 2 min") }
         return L.s("평소대로 내려왔어요", "Came down as usual")
     }
