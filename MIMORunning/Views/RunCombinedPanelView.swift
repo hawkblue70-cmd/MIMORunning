@@ -291,9 +291,14 @@ private struct RunStatTile: View {
                 }
                 // Row 2: avg value + unit
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    // 값 글꼴은 상세 격자 셀과 **같은 값**을 쓰고 크기만 줄인다(§5.8) —
+                    // 굵기·폭을 따로 정하면 같은 숫자가 화면마다 달라 보인다. 0.8은 타일이 더 촘촘해서.
                     Text(layer.formatted(series.displayValue))
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: RunMetricCellMetrics.value * 0.8, weight: .black))
+                        .fontWidth(.condensed)
                         .foregroundStyle(Color.white.opacity(isOn ? 1.0 : 0.28))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                     Text(layer.unit)
                         .font(.system(size: 9))
                         .foregroundStyle(Color.white.opacity(isOn ? 0.80 : 0.26))
