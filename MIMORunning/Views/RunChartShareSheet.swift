@@ -224,6 +224,63 @@ struct RunChartShareSheet: View {
                 Theme.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
+                    // 스크롤로 감싼다 — 예전에는 그냥 VStack이라 내용이 화면을 넘으면 SwiftUI가
+                    // 가장 잘 줄어드는 것을 눌렀다. 이미지 모드 미리보기(약 490pt)가 영상(441pt)보다
+                    // 커서, 이미지에서만 모드 칩 글자가 minimumScaleFactor까지 쪼그라들었다.
+                    ScrollView { shareOptions }
+
+                    // (f) 공유 버튼 (이미지) / 내보내기+공유 버튼 (영상)
+                    if exportMode == .image {
+                        Button(action: renderAndShare) {
+                            HStack(spacing: 8) {
+                                if isRendering {
+                                    ProgressView().tint(.white).scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 15, weight: .semibold))
+                                }
+                                Text(L.s("공유하기", "Share"))
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                            .foregroundStyle(.white)
+                            .background(Theme.violet)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isRendering)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                    } else {
+                        videoExportArea
+                    }
+                }
+            }
+            .navigationTitle(L.s("차트 내보내기", "Export Chart"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(L.s("닫기", "Close")) { dismiss() }
+                        .foregroundStyle(Theme.violet)
+                }
+            }
+        }
+        .sheet(isPresented: $showActivitySheet) {
+            if let img = renderedImage {
+                ShareSheet(images: [img])
+            }
+        }
+        .onDisappear {
+            videoExportTask?.cancel()
+            previewTask?.cancel()
+        }
+    }
+
+    // MARK: - Video export
+
+    @ViewBuilder
+    private var shareOptions: some View {
+        VStack(spacing: 0) {
                     // (a) 미리보기 — 이미지 모드: 정적 카드 / 영상 모드: 실제 렌더 프레임
                     if exportMode == .image {
                         GeometryReader { geo in
@@ -408,56 +465,8 @@ struct RunChartShareSheet: View {
 
                     }
 
-                    Spacer()
-
-                    // (f) 공유 버튼 (이미지) / 내보내기+공유 버튼 (영상)
-                    if exportMode == .image {
-                        Button(action: renderAndShare) {
-                            HStack(spacing: 8) {
-                                if isRendering {
-                                    ProgressView().tint(.white).scaleEffect(0.8)
-                                } else {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: 15, weight: .semibold))
-                                }
-                                Text(L.s("공유하기", "Share"))
-                                    .font(.system(size: 16, weight: .semibold))
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 46)
-                            .foregroundStyle(.white)
-                            .background(Theme.violet)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isRendering)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
-                    } else {
-                        videoExportArea
-                    }
-                }
-            }
-            .navigationTitle(L.s("차트 내보내기", "Export Chart"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(L.s("닫기", "Close")) { dismiss() }
-                        .foregroundStyle(Theme.violet)
-                }
-            }
-        }
-        .sheet(isPresented: $showActivitySheet) {
-            if let img = renderedImage {
-                ShareSheet(images: [img])
-            }
-        }
-        .onDisappear {
-            videoExportTask?.cancel()
-            previewTask?.cancel()
         }
     }
-
-    // MARK: - Video export
 
     private var videoExportArea: some View {
         Group {
