@@ -145,4 +145,37 @@ struct MRRecoveryTests {
         #expect(r?.hrr2 == nil)
         #expect(r?.decay == nil)
     }
+
+    @Test func tauPercentileNeedsEightSamples() {
+        let seven = [40.0, 45, 50, 55, 60, 65, 70]
+        #expect(MRRecovery.tauPercentile(52, history: seven) == nil)
+        #expect(MRRecovery.tauPercentile(52, history: seven + [75]) != nil)
+    }
+
+    @Test func tauPercentileCountsSamplesBelow() {
+        let h = [40.0, 45, 50, 55, 60, 65, 70, 75]   // 8개
+        #expect(MRRecovery.tauPercentile(39, history: h) == 0.0)     // 전부 위
+        #expect(MRRecovery.tauPercentile(76, history: h) == 1.0)     // 전부 아래
+        #expect(MRRecovery.tauPercentile(57, history: h) == 0.5)     // 4/8
+    }
+
+    @Test func shapeCaptionSaysFasterSameSlower() {
+        func shape(_ tau: Double, _ history: [Double]) -> MRRecoveryShape {
+            MRRecoveryShape(hrr1: 38, hrr2: 52,
+                            decay: MRRecoveryDecay(ratio: exp(-60 / tau), tau: tau, asymptote: 110),
+                            percentile: MRRecovery.tauPercentile(tau, history: history))
+        }
+        let h = [40.0, 45, 50, 55, 60, 65, 70, 75]
+        #expect(MRRecovery.shapeCaption(shape(39, h)) == "평소보다 빠르게 안정됐어요")
+        #expect(MRRecovery.shapeCaption(shape(57, h)) == "평소대로 내려왔어요")
+        #expect(MRRecovery.shapeCaption(shape(76, h)) == "2분 뒤에도 계속 내려오는 중이었어요")
+    }
+
+    @Test func shapeCaptionFallsBackToRawNumbers() {
+        // 과거 표본 7개 → 비교하지 않고 사실만
+        let s = MRRecoveryShape(hrr1: 38, hrr2: 52,
+                                decay: MRRecoveryDecay(ratio: 0.37, tau: 60, asymptote: 110),
+                                percentile: nil)
+        #expect(MRRecovery.shapeCaption(s) == "1분 −38 · 2분 −52bpm")
+    }
 }

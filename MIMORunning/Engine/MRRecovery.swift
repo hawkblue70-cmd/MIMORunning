@@ -25,6 +25,15 @@ struct MRRecoveryDecay: Sendable {
     let asymptote: Double  // HR∞ (bpm)
 }
 
+/// 리듬 카드 한 줄에 필요한 값 묶음. 뷰는 이걸 받아 `MRRecovery.shapeCaption`이 만든 문자열만 그린다.
+struct MRRecoveryShape: Sendable {
+    let hrr1: Double
+    let hrr2: Double
+    let decay: MRRecoveryDecay
+    /// 과거 τ 분포 안에서 이 러닝의 위치(0...1). 표본 8개 미만이면 nil → 비교하지 않는다.
+    let percentile: Double?
+}
+
 struct MRRecoveryResult: Sendable {
     let endHR: Double          // 종료 직전 30초 평균
     let hr60: Double
@@ -93,6 +102,30 @@ enum MRRecovery {
         let tau = -60.0 / log(x)
         guard tauRange.contains(tau) else { return nil }
         return MRRecoveryDecay(ratio: x, tau: tau, asymptote: endHR - d1 / (1 - x))
+    }
+
+    static let minTauSamples = 8   // 임의로 정함 — 사분위가 의미를 갖는 최소선
+
+    /// 과거 τ 중 오늘보다 작은(= 더 빨랐던) 것의 비율. 표본이 모자라면 nil.
+    /// ⚠ `history`에 오늘 러닝을 넣지 않는다 — 자기를 포함하면 표본이 작을수록 가운데로 끌린다.
+    static func tauPercentile(_ tau: Double, history: [Double]) -> Double? {
+        guard history.count >= minTauSamples else { return nil }
+        return Double(history.filter { $0 < tau }.count) / Double(history.count)
+    }
+
+    /// 리듬 카드 캡션 둘째 줄.
+    /// ⚠ 좋다/나쁘다를 말하지 않는다 — Le Meur 2015(PLOS One 10:e0139754)에서 기능적 과부하 시
+    ///   HRR이 오히려 빨라졌다. 빠름 = 좋음으로 읽히면 안 된다.
+    /// ⚠ τ의 공인 절단점은 없다. 개인 분포 사분위로만 말한다(§2-3: 기준은 외부 공인 표준).
+    static func shapeCaption(_ shape: MRRecoveryShape) -> String {
+        let L = AppLanguage.shared
+        guard let p = shape.percentile else {
+            let d1 = Int(shape.hrr1.rounded()), d2 = Int(shape.hrr2.rounded())
+            return L.isEnglish ? "−\(d1) at 1 min · −\(d2) at 2 min" : "1분 −\(d1) · 2분 −\(d2)bpm"
+        }
+        if p < 0.25 { return L.s("평소보다 빠르게 안정됐어요", "Settled faster than usual") }
+        if p >= 0.75 { return L.s("2분 뒤에도 계속 내려오는 중이었어요", "Still coming down after 2 min") }
+        return L.s("평소대로 내려왔어요", "Came down as usual")
     }
 
     // MARK: 추세
