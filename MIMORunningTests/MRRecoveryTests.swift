@@ -179,22 +179,25 @@ struct MRRecoveryTests {
         #expect(MRRecovery.shapeCaption(shape(39, h)) == "평소보다 빠르게 안정됐어요")
         #expect(MRRecovery.shapeCaption(shape(57, h)) == "평소대로 내려왔어요")
         #expect(MRRecovery.shapeCaption(shape(76, h)) == "2분 뒤에도 계속 내려오는 중이었어요")
+        // 사분위 문구의 영문판도 한 건은 덮는다 — 폴백 제거로 없어진 영문 커버리지를 여기로 옮김
+        inEnglish {
+            #expect(MRRecovery.shapeCaption(shape(39, h)) == "Settled faster than usual")
+        }
     }
 
-    @Test func shapeCaptionFallsBackToRawNumbers() {
-        // 과거 표본 7개 → 비교하지 않고 사실만
+    @Test func shapeCaptionIsSilentWithoutEnoughHistory() {
+        // 과거 표본이 8개 미만이면 percentile이 nil → 카드는 그 줄을 아예 그리지 않는다.
+        // 원시 숫자 폴백은 없앤다: 같은 숫자를 상세 화면 심박 패널이 이미 보여주고, 표시 여부가
+        // 120초 샘플과 무관한 τ 성립 조건에 갈리는 줄은 이유를 말하지 않는 한 없느니만 못하다.
         let s = MRRecoveryShape(hrr1: 38, hrr2: 52,
                                 decay: MRRecoveryDecay(ratio: 0.37, tau: 60, asymptote: 110),
                                 percentile: nil)
-        #expect(MRRecovery.shapeCaption(s) == "1분 −38 · 2분 −52bpm")
-        inEnglish {
-            #expect(MRRecovery.shapeCaption(s) == "−38 bpm at 1 min · −52 at 2 min")
-        }
+        #expect(MRRecovery.shapeCaption(s) == nil)
     }
 
     @Test func shapeCaptionBucketsAreSymmetricAtQuartiles() {
         let h = [40.0, 45, 50, 55, 60, 65, 70, 75]
-        func caption(_ tau: Double) -> String {
+        func caption(_ tau: Double) -> String? {
             MRRecovery.shapeCaption(MRRecoveryShape(
                 hrr1: 38, hrr2: 52,
                 decay: MRRecoveryDecay(ratio: exp(-60 / tau), tau: tau, asymptote: 110),

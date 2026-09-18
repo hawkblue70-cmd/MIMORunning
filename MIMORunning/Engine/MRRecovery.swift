@@ -132,12 +132,13 @@ enum MRRecovery {
     /// ⚠ 좋다/나쁘다를 말하지 않는다 — Le Meur 2015(PLOS One 10:e0139754)에서 기능적 과부하 시
     ///   HRR이 오히려 빨라졌다. 빠름 = 좋음으로 읽히면 안 된다.
     /// ⚠ τ의 공인 절단점은 없다. 개인 분포 사분위로만 말한다(§2-3: 기준은 외부 공인 표준).
-    static func shapeCaption(_ shape: MRRecoveryShape) -> String {
+    /// 과거 τ 표본이 `minTauSamples` 미만이면 nil을 돌려주고 카드는 그 줄을 아예 그리지 않는다 —
+    /// 원시 숫자("1분 −38 · 2분 −52bpm") 폴백은 없앴다. 같은 숫자는 상세 화면 심박 패널의
+    /// 회복 차트가 이미 보여주고, 있다 없다가 τ 성립 여부(120초 샘플과 무관한 조건)에 갈리는
+    /// 줄은 그 이유를 화면이 말해주지 않는 한 아무것도 없는 것보다 못하다(§2-4).
+    static func shapeCaption(_ shape: MRRecoveryShape) -> String? {
         let L = AppLanguage.shared
-        guard let p = shape.percentile else {
-            let d1 = Int(shape.hrr1.rounded()), d2 = Int(shape.hrr2.rounded())
-            return L.isEnglish ? "−\(d1) bpm at 1 min · −\(d2) at 2 min" : "1분 −\(d1) · 2분 −\(d2)bpm"
-        }
+        guard let p = shape.percentile else { return nil }
         // 양끝 다 사분위 포함(<=, >=)으로 대칭을 맞춘다. n=8이면 tauPercentile은 {0, .125, ..., 1.0}
         // 9개 값만 낼 수 있어, 한쪽만 "포함"이면(예: p < 0.25) 그 버킷이 다른 쪽보다 좁아진다
         // (< 0.25 → 2/9, >= 0.75 → 3/9). p == 0.25는 "과거 넷 중 하나가 더 빨랐다"는 하위

@@ -1604,11 +1604,14 @@ private struct RhythmInsightCard: View {
     private static let gaugeScale: CGFloat = insightGaugeScale
     private static let bottomChartH: CGFloat = 110 * gaugeScale   // 게이지(87) + 축 라벨이 아래로 삐져나오는 23
     // 캡션 칸 — 촘촘 모드는 두 줄(8~9pt)이 딱 들어가는 높이까지만 줄인다
+    /// 회복 곡선 한 줄. 과거 τ 표본이 8개 미만이면 nil — 캡션도 높이도 이 하나만 본다.
+    private var recoveryCaption: String? { recoveryShape.flatMap { MRRecovery.shapeCaption($0) } }
+
     /// 회복 곡선 한 줄이 있을 때만 2줄 높이를 잡는다 — 없는 러닝(대부분)까지 여백을 떠안지 않도록.
     /// 상단 두 칸이 한 렌더에서 같은 값을 보므로 행 안의 정렬은 그대로다(하단 두 칸은 bottomCaptionH).
     /// 38은 캡션 띠를 하단 행과 맞춘 값일 뿐, 행 높이가 같아지는 건 아니다 — 차트가 114 vs 99로 다르다.
     private var topCaptionH: CGFloat {
-        guard recoveryShape != nil else { return compact ? 24 : 28 }
+        guard recoveryCaption != nil else { return compact ? 24 : 28 }
         return compact ? 36 : 38
     }
     private var bottomCaptionH: CGFloat { compact ? 24 : 38 }
@@ -1701,8 +1704,8 @@ private struct RhythmInsightCard: View {
                                 .foregroundStyle(v.color)
                         }
                         // 회복 곡선 한 줄 — 중립 관찰이라 판정색을 쓰지 않는다(케이던스 보조 라벨과 같은 색).
-                        if let s = recoveryShape {
-                            Text(MRRecovery.shapeCaption(s))
+                        if let caption = recoveryCaption {
+                            Text(caption)
                                 .font(.system(size: 8.5))
                                 .foregroundStyle(Color.white.opacity(0.6))
                                 .lineLimit(1)
