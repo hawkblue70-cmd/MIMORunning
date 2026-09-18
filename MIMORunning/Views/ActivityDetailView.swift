@@ -163,6 +163,31 @@ struct ActivityDetailView: View {
         }
     }
 
+    /// detail.hrZones가 비어 나온 기록의 복구 경로 — HR 시리즈로 존을 직접 계산한다.
+    /// queryHRZones 실패·v3 캐시 미생성이 그런 기록을 만든다.
+    /// hrSamples가 실제로 도착하는 자리마다 부른다(메인 .task · loadCombinedChart · 심박 패널 탭):
+    /// 탭 한 곳에만 두면 앞선 경로가 hrFetchDone을 먼저 켜 영영 닿지 않는다 — 회복 한 줄이 그랬다.
+    /// 중복 진입은 isComputingZones가 막는다. 첫 await 전에 동기로 켜지므로 두 번째 진입은 가드에서 끊긴다.
+    private func recomputeZonesIfNeeded() async {
+        guard !isComputingZones,
+              displayZones.isEmpty || (detail?.hrZones ?? []).isEmpty else { return }
+        isComputingZones = true
+        defer { isComputingZones = false }
+        if hrSamples.isEmpty {
+            let fetched = await manager.fetchHRTimeSeries(for: activity.id)
+            if !fetched.isEmpty {
+                hrSamples = fetched; hrFetchDone = true
+                Task { await loadRecovery() }   // 중복은 isLoadingRecovery가 막는다.
+            }
+        }
+        // 기다리는 동안 loadCombinedChart가 시리즈를 채웠을 수 있다 — 빈 조회 결과로 그걸 덮지 않는다.
+        guard !hrSamples.isEmpty else { return }
+        let computed = await manager.computeHRZonesForDate(activity.date, samples: hrSamples)
+        guard !computed.isEmpty else { return }
+        displayZones = computed
+        detail?.hrZones = computed
+    }
+
     private var effectiveHRZones: [HRZoneData] {
         if !displayZones.isEmpty { return displayZones }
         let zones = detail?.hrZones ?? []
@@ -479,19 +504,16 @@ struct ActivityDetailView: View {
             )
         }
         .onChange(of: activePanel) { _, newPanel in
-            if newPanel == .heartRate, !hrFetchDone {
+            if newPanel == .heartRate {
                 Task {
-                    hrSamples = await manager.fetchHRTimeSeries(for: activity.id)
-                    hrFetchDone = true
-                    await loadRecovery()
-                    // provisional 재조회로 hrSamples가 갱신됐을 수 있음 → displayZones 재계산
-                    if displayZones.isEmpty || (detail?.hrZones ?? []).isEmpty {
-                        let computed = await manager.computeHRZonesForDate(activity.date, samples: hrSamples)
-                        if !computed.isEmpty {
-                            displayZones = computed
-                            detail?.hrZones = computed
-                        }
+                    if !hrFetchDone {
+                        hrSamples = await manager.fetchHRTimeSeries(for: activity.id)
+                        hrFetchDone = true
+                        await loadRecovery()
                     }
+                    // 존 재계산은 hrFetchDone 밖에 둔다 — 앞선 경로가 켜 두면 탭이 영영 닿지 않았다.
+                    // 존이 이미 있으면 가드에서 바로 돌아오므로 매 탭이 싸다.
+                    await recomputeZonesIfNeeded()
                 }
             }
             switch newPanel {
@@ -640,24 +662,11 @@ struct ActivityDetailView: View {
             }
 
             // 존 분포: detail?.hrZones 우선, 없으면 HR 시리즈로 비동기 재계산 → displayZones
-            isComputingZones = true
             let detailZones = detail?.hrZones ?? []
             if !detailZones.isEmpty {
                 displayZones = detailZones
-                isComputingZones = false
             } else {
-                // queryHRZones가 실패했거나 v3 캐시 미생성 → HR 시리즈로 직접 계산
-                if hrSamples.isEmpty {
-                    let earlyHR = await manager.fetchHRTimeSeries(for: activity.id)
-                    if !earlyHR.isEmpty {
-                        hrSamples = earlyHR; hrFetchDone = true
-                        Task { await loadRecovery() }   // hrSamples가 생기는 두 자리 중 하나. 중복은 isLoadingRecovery가 막는다.
-                    }
-                }
-                let computed = await manager.computeHRZonesForDate(activity.date, samples: hrSamples)
-                displayZones = computed
-                if !computed.isEmpty { detail?.hrZones = computed }
-                isComputingZones = false
+                await recomputeZonesIfNeeded()
             }
 
             hillMatch = HillSpotDetector.shared.assess(
@@ -1057,9 +1066,11 @@ struct ActivityDetailView: View {
         // 패널 탭 전환 시 재조회 방지 — 이미 가져온 시리즈를 패널 캐시에 등록
         if !h.isEmpty {
             hrSamples = h; hrFetchDone = true
-            // HR 시리즈가 실제로 들어온 자리에서 회복을 부른다. 심박 패널 탭의 호출은
-            // 여기서 hrFetchDone이 먼저 켜져 영영 닿지 않았다 — 회복 한 줄도 HRRecoveryPanelChart도 죽어 있었다.
+            // HR 시리즈가 실제로 들어온 자리에서 회복과 존을 부른다. 심박 패널 탭의 호출은
+            // 여기서 hrFetchDone이 먼저 켜져 영영 닿지 않았다 — 회복 한 줄도 존 재계산도 죽어 있었다.
+            // 걷기·하이킹은 메인 .task가 존 블록 앞에서 빠져나가므로 여기가 유일한 복구 지점이다.
             Task { await loadRecovery() }
+            Task { await recomputeZonesIfNeeded() }
         }
         if !c.isEmpty { panelSeriesCache[.cadence] = c }
         if !p.isEmpty { panelSeriesCache[.power] = p }
