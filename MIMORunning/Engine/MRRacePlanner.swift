@@ -373,7 +373,15 @@ func mrBuildPlan(raceDate: Date,
     let planRef = (planToday == today && recoveryWeekCount == 0) ? monday0 : planToday
     let planDays = cal.dateComponents([.day], from: cal.startOfDay(for: planRef),
                                        to: cal.startOfDay(for: raceDate)).day ?? 0
-    let planTotalWeeks = planDays / 7
+    // ⚠ 대회일이 속한 주까지 포함한다. planDays / 7 만 쓰면 일요일 대회의 마지막 주가 잘린다
+    //   (8/10 월 시작 · 10/4 일 대회 = 55일 → 7주로 계산돼 9/28 주가 표에서 사라졌다).
+    //   planRef가 월요일이 아닌 경우(앞선 대회 다음 주 시작)에도 raceMonday 기준으로 세면 같은 결과다.
+    let raceWD = cal.component(.weekday, from: raceDate)
+    let raceMonday = cal.date(byAdding: .day, value: -((raceWD + 5) % 7), to: cal.startOfDay(for: raceDate)) ?? raceDate
+    let refWD = cal.component(.weekday, from: planRef)
+    let refMonday = cal.date(byAdding: .day, value: -((refWD + 5) % 7), to: cal.startOfDay(for: planRef)) ?? planRef
+    let mondaySpan = cal.dateComponents([.day], from: refMonday, to: raceMonday).day ?? 0
+    let planTotalWeeks = max(planDays / 7, mondaySpan / 7 + 1)
     // 회복 주가 있으면 그만큼 더 필요 (최소 build 1주 + taperWeeks + recoveryWeekCount)
     guard planTotalWeeks >= 3 + recoveryWeekCount else {
         #if DEBUG

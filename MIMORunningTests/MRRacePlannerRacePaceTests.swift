@@ -389,3 +389,26 @@ struct MRRacePlannerFollowOwnPlanTests {
         #expect(half.verdict == "가능")
     }
 }
+
+@Suite("MRRacePlanner 대회 주 포함")
+struct MRRacePlannerRaceWeekIncludedTests {
+    @Test func sundayRaceKeepsItsOwnWeekInTheTable() throws {
+        var p = MRProfile()
+        p.weeklyKm4w = 42; p.longestRun16wKm = 16; p.maxWeeklyKm52w = 60; p.runsPerWeek = 4
+        let cal = Calendar.current
+        let today = Date()
+        let daysSinceMon = (cal.component(.weekday, from: today) + 5) % 7
+        let thisMonday = cal.date(byAdding: .day, value: -daysSinceMon, to: cal.startOfDay(for: today))!
+        // 7주 뒤 일요일 대회 (월요일 시작 + 48일 = 일요일)
+        let race = cal.date(byAdding: .day, value: 48, to: thisMonday)!
+        #expect(cal.component(.weekday, from: race) == 1)
+        let plan = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.d10, today: today,
+                                            profile: p, halfEquivMin: 110, easyPaceSecPerKm: 400,
+                                            heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4,
+                                            forcedMonday: thisMonday))
+        // 마지막 주의 월요일이 대회일과 같은 주여야 한다
+        let last = try #require(plan.weeks.last)
+        #expect(cal.dateComponents([.day], from: cal.startOfDay(for: last.monday), to: cal.startOfDay(for: race)).day == 6)
+        #expect(last.phase == "테이퍼")
+    }
+}
