@@ -31,6 +31,10 @@ struct MRRecoveryResult: Sendable {
     let hr120: Double?
     var hrr1: Double { endHR - hr60 }
     var hrr2: Double? { hr120.map { endHR - $0 } }
+    /// 회복 곡선 모양. 120초 샘플이 있고 가드를 통과할 때만 생긴다.
+    var decay: MRRecoveryDecay? {
+        hr120.flatMap { MRRecovery.decay(endHR: endHR, hr60: hr60, hr120: $0) }
+    }
 }
 
 enum MRRecovery {

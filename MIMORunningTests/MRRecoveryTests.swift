@@ -128,4 +128,21 @@ struct MRRecoveryTests {
         // τ > 300초 → 거부. x = e^(−60/300) = 0.8187 보다 큰 x
         #expect(MRRecovery.decay(endHR: 170, hr60: 140, hr120: 114) == nil)
     }
+
+    @Test func computeAttachesDecayWhenTwoMinuteSampleExists() {
+        // τ=60, HR∞=110, endHR=170 → hr60 132, hr120 118
+        let p = post([(58, 132), (62, 132), (118, 118), (122, 118)])
+        let r = MRRecovery.compute(endHR: 170, post: p)
+        #expect(r?.hrr1 == 38)
+        #expect(r?.hrr2 == 52)
+        #expect(r?.decay != nil)
+        #expect(abs((r?.decay?.tau ?? 0) - 60) < 3)
+    }
+
+    @Test func computeHasNoDecayWithoutTwoMinuteSample() {
+        let r = MRRecovery.compute(endHR: 170, post: post([(58, 132), (62, 132)]))
+        #expect(r?.hrr1 == 38)      // 기존 동작 불변
+        #expect(r?.hrr2 == nil)
+        #expect(r?.decay == nil)
+    }
 }
