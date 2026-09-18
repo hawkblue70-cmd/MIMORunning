@@ -687,8 +687,10 @@ private struct ShareStatTile: View {
                 }
             }
             HStack(alignment: .firstTextBaseline, spacing: 2) {
+                // 앱 타일과 같은 상수에 묶는다 — 카드 폭(300)이 앱 패널(약 358)의 0.84라
+                // 앱의 0.8보다 한 단계 작은 0.7을 쓴다. 숫자를 따로 적으면 한쪽만 바뀐다(§5.8).
                 Text(layer.formatted(series.displayValue))
-                    .font(.system(size: 12, weight: .black))
+                    .font(.system(size: RunMetricCellMetrics.value * 0.7, weight: .black))
                     .fontWidth(.condensed)
                     .foregroundStyle(palette.textPrimary)
                     .minimumScaleFactor(0.80)
