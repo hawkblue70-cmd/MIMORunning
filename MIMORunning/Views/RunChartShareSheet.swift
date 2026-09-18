@@ -300,7 +300,11 @@ struct RunChartShareSheet: View {
                             .scaleEffect(scale, anchor: .top)
                             .frame(width: geo.size.width, alignment: .center)
                         }
-                        .frame(height: (cardNaturalH > 0 ? cardNaturalH : targetCardH) * previewScale)
+                        // 영상 미리보기와 **같은 식**으로 높이를 잡는다 — 4:5 고정.
+                        // 실측값(cardNaturalH)을 높이에 쓰면 수렴 전 한 프레임이나 0.5pt 오차가
+                        // 그대로 영상과의 차이로 보인다. 실측값은 차트 높이를 맞추는 데만 쓴다.
+                        .frame(height: targetCardH * previewScale)
+                        .clipped()
                         .onPreferenceChange(ShareCardHeightKey.self) { h in
                             guard h > 0 else { return }
                             if abs(h - cardNaturalH) > 0.5 { cardNaturalH = h }
