@@ -808,6 +808,8 @@ struct RunInsightTabCard: View {
     var planPhase: String? = nil
     /// 회복 곡선 한 줄 입력 — 리듬 카드와 내보내기 시트가 같은 값을 본다(§5.8).
     var recoveryShape: MRRecoveryShape? = nil
+    /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
+    var recoveryResult: MRRecoveryResult? = nil
 
     @State private var tab: InsightTabKind = .rhythm
     /// 퍼포먼스 카드가 강도 분포를 실제로 그렸는지 — 각주(문헌값 설명)를 차트가 있을 때만 붙이기 위해 자식이 알려준다.
@@ -861,7 +863,8 @@ struct RunInsightTabCard: View {
                 effortIndex: effortIndex,
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
-                recoveryShape: recoveryShape
+                recoveryShape: recoveryShape,
+                recoveryResult: recoveryResult
             )
         }
         .onAppear {
@@ -976,7 +979,8 @@ struct RunInsightTabCard: View {
                 raceDetailFn: raceDetailFn,
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
-                recoveryShape: recoveryShape
+                recoveryShape: recoveryShape,
+                recoveryResult: recoveryResult
             )
         case .form:
             let formCadence: Int? = {
@@ -1100,6 +1104,10 @@ private struct HRTimeSeriesView: View {
     /// "평지였다면 6'11""이라고 말해놓고 그 근거를 볼 수 없으면 안 된다.
     var showsFlatEquivalent: Bool = false
 
+    /// 종료 후 회복 심박. 시간축이 아니라 **낙차**로 그린다 — 3분은 100분 러닝의 3%라
+    /// 시계열로 늘리면 보이지 않는다. 캡션 가드와 무관하게 그린다(원자료라서).
+    var recovery: MRRecoveryResult? = nil
+
 
 
     /// 고도 배경 — 회색 계열로 둔다. 초록(고도 지표색)을 쓰면 심박선의 Zone 2 초록과
@@ -1151,8 +1159,13 @@ private struct HRTimeSeriesView: View {
             pts = (0..<200).map { pts[Int((Double($0) * step).rounded())] }
         }
 
-        let minBPM = smoothed.min() ?? 0
-        let maxBPM = smoothed.max() ?? 1
+        // 회복 점은 러닝 심박과 **같은 y축**을 쓴다 — 축이 갈리면 "155에서 118까지"라는 낙차가 눈으로 안 읽힌다.
+        // 회복이 러닝 최저보다 낮으면 범위를 넓힌다(그만큼 러닝 선은 세로로 눌린다).
+        let recoveryBPM: [Double] = recovery.map { r in
+            [r.endHR, r.hr60] + (r.hr120.map { [$0] } ?? [])
+        } ?? []
+        let minBPM = min(smoothed.min() ?? 0, recoveryBPM.min() ?? .infinity)
+        let maxBPM = max(smoothed.max() ?? 1, recoveryBPM.max() ?? -.infinity)
         let valRange = max(1.0, maxBPM - minBPM)
         let totalDur = max(1.0, pts.last?.offset ?? 1)
 
@@ -1177,8 +1190,11 @@ private struct HRTimeSeriesView: View {
                 let xPad: CGFloat = 22
                 // 고도를 그릴 때만 오른쪽에 최고 높이 라벨 자리를 낸다
                 let hasElevation = shouldDrawElevation
-                let rightPad: CGFloat = hasElevation ? 26 : 0
-                let chartW = w - xPad - rightPad
+                // 회복 점 자리. 고도 최고높이 숫자와 자리를 다투므로, 회복이 있으면 그 숫자는 접는다 —
+                // 이 차트의 위계는 "숫자는 심박만, 고도는 모양만"이라 잃는 게 적다.
+                let recoveryW: CGFloat = recovery == nil ? 0 : 22
+                let rightPad: CGFloat = (hasElevation && recovery == nil) ? 26 : 0
+                let chartW = w - xPad - rightPad - recoveryW
                 let chartRight = xPad + chartW
                 let chartH = h - 14
 
@@ -1222,11 +1238,13 @@ private struct HRTimeSeriesView: View {
 
                     // 최고 높이 라벨 — 면적 꼭대기 높이에 맞춰 오른쪽 바깥에.
                     // 심박 라벨(0.70)보다 흐리게 두어 "주인공은 심박"이라는 위계를 지킨다.
-                    let peakY = chartH - chartH * elevTopRatio
-                    let peak = Int((elevMin + elevSpan).rounded())
-                    ctx.draw(Text("\(peak)m").font(.system(size: 8))
-                        .foregroundStyle(.white.opacity(0.58)),
-                        at: CGPoint(x: chartRight + 3, y: peakY), anchor: .leading)
+                    if recovery == nil {
+                        let peakY = chartH - chartH * elevTopRatio
+                        let peak = Int((elevMin + elevSpan).rounded())
+                        ctx.draw(Text("\(peak)m").font(.system(size: 8))
+                            .foregroundStyle(.white.opacity(0.58)),
+                            at: CGPoint(x: chartRight + 3, y: peakY), anchor: .leading)
+                    }
                 }
 
                 // 화면 좌표 계산
@@ -1262,6 +1280,31 @@ private struct HRTimeSeriesView: View {
                     ctx.fill(Path(ellipseIn: CGRect(x: last.x - dotR, y: last.y - dotR,
                                                      width: dotR * 2, height: dotR * 2)),
                              with: .color(zoneColor(for: last.bpm)))
+                }
+
+                // 회복 — 종료 후 1·2분 심박. 되올라간 러닝(쿨다운 중 재가속)은
+                // 2분 점이 1분 점보다 위에 찍혀 "왜 문구가 없는지"가 그대로 보인다.
+                if let r = recovery, let last = cpts.last {
+                    func ry(_ bpm: Double) -> CGFloat {
+                        chartH - CGFloat((bpm - minBPM) / valRange) * chartH
+                    }
+                    let x1 = chartRight + 8, x2 = chartRight + 16
+                    var dots: [(x: CGFloat, bpm: Double)] = [(x1, r.hr60)]
+                    if let h2 = r.hr120 { dots.append((x2, h2)) }
+                    var link = Path()
+                    link.move(to: CGPoint(x: last.x, y: last.y))
+                    for d in dots { link.addLine(to: CGPoint(x: d.x, y: ry(d.bpm))) }
+                    ctx.stroke(link, with: .color(.white.opacity(0.45)),
+                               style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                    let rDot: CGFloat = 2.5
+                    for d in dots {
+                        ctx.fill(Path(ellipseIn: CGRect(x: d.x - rDot, y: ry(d.bpm) - rDot,
+                                                        width: rDot * 2, height: rDot * 2)),
+                                 with: .color(zoneColor(for: d.bpm)))
+                    }
+                    ctx.draw(Text(AppLanguage.shared.s("회복", "Rec")).font(.system(size: 7))
+                        .foregroundStyle(.white.opacity(0.55)),
+                        at: CGPoint(x: (x1 + x2) / 2, y: h), anchor: .bottom)
                 }
 
                 // Y축 라벨
@@ -1396,6 +1439,8 @@ private struct RhythmInsightCard: View {
     var planPhase: String? = nil
     /// 회복 곡선 한 줄. nil이면 캡션 둘째 줄을 그리지 않는다 — "회복 데이터 없음" 문구는 쓰지 않는다.
     var recoveryShape: MRRecoveryShape? = nil
+    /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
+    var recoveryResult: MRRecoveryResult? = nil
     /// 내보내기 카드는 총평 5줄만 그린다(펼침 없음) — 앱 화면은 기본값(true)으로 탭하면 펼쳐진다.
     var summaryAllowsExpansion: Bool = true
     @Environment(\.insightCompact) private var compact
@@ -1691,7 +1736,8 @@ private struct RhythmInsightCard: View {
                             altitudeProfile: detail?.altitudeTimeProfile ?? [],
                             distanceKm: activity.distance / 1000,
                             elevationGainM: detail?.elevationGain ?? 0,
-                            showsFlatEquivalent: flatEquivalentText != nil
+                            showsFlatEquivalent: flatEquivalentText != nil,
+                            recovery: recoveryResult
                         )
                         .padding(.horizontal, 2)
                         .frame(height: 104)
@@ -5583,6 +5629,8 @@ struct InsightExportSheet: View {
     var planPhase: String? = nil
     /// 회복 곡선 한 줄 입력 — 미리보기 = 출력이므로 리듬 카드와 같은 값을 본다(§5.8).
     var recoveryShape: MRRecoveryShape? = nil
+    /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
+    var recoveryResult: MRRecoveryResult? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -5778,6 +5826,7 @@ struct InsightExportSheet: View {
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
                 recoveryShape: recoveryShape,
+                recoveryResult: recoveryResult,
                 summaryAllowsExpansion: false
             )
         case .form:

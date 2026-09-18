@@ -139,6 +139,8 @@ struct RunInsightSection: View {
     var planPhase: String? = nil
     /// 회복 곡선 한 줄 입력 — 리듬 카드로 그대로 흘려보낸다.
     var recoveryShape: MRRecoveryShape? = nil
+    /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
+    var recoveryResult: MRRecoveryResult? = nil
 
     var body: some View {
         if !insights.isEmpty, let act = activity {
@@ -172,7 +174,8 @@ struct RunInsightSection: View {
                 effortIndex: effortIndex,
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
-                recoveryShape: recoveryShape
+                recoveryShape: recoveryShape,
+                recoveryResult: recoveryResult
             )
         }
     }

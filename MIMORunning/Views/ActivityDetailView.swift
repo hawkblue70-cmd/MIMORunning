@@ -330,7 +330,8 @@ struct ActivityDetailView: View {
                             effortIndex: effortIndex,
                             easyPaceLookup: engine.easyPaceLookup,
                             planPhase: matchedPlanWeek()?.phase,
-                            recoveryShape: recoveryShape
+                            recoveryShape: recoveryShape,
+                            recoveryResult: recoveryResult
                         )
                     }
                     // 표시할 상세 지표가 하나도 없으면(걷기 등) 섹션째 숨긴다.
