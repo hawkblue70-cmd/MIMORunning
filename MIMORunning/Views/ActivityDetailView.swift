@@ -162,7 +162,16 @@ struct ActivityDetailView: View {
             func desc(_ b: MRRecoveryBand?) -> String {
                 b.map { String(format: "%d건 −%.0f~−%.0f", $0.n, $0.lo, $0.hi) } ?? "표본부족"
             }
-            print("[회복:밴드] 같은 심박(±5) · 1분 \(desc(bands.minute1)) · 2분 \(desc(bands.minute2))")
+            print(String(format: "[회복:밴드] 종료심박 %.0f · 1분 %@ · 2분 %@",
+                         r.endHR, desc(bands.minute1), desc(bands.minute2)))
+            // 창 폭을 넓힐지 판단할 근거 — ±5가 몇 건이고 넓히면 몇 건이 되는지.
+            let counts = [5.0, 8, 10, 15, 20].map { w -> String in
+                let n1 = drops.filter { abs($0.endHR - r.endHR) <= w }.count
+                let n2 = drops.filter { abs($0.endHR - r.endHR) <= w && $0.hrr2 != nil }.count
+                return String(format: "±%.0f %d/%d", w, n1, n2)
+            }
+            print("[회복:밴드] 전체 \(drops.count)건 · 창별 1분/2분 " + counts.joined(separator: " · ")
+                  + " (필요 \(MRRecovery.minBandSamples))")
             #endif
             guard let d = r.decay else { return }
             let taus = await manager.recoveryTauHistory(from: start, excluding: activity.id)
