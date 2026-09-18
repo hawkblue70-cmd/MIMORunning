@@ -1060,6 +1060,13 @@ struct RunInsightTabCard: View {
                 "참고용 피트니스 인사이트입니다. 연령대 평균과 추정 최대심박은 개인차가 큰 추정치이며 의학적 판단이 아니에요. 유산소 피트니스 기준은 FRIEND(Fitness Registry and Importance of Exercise National Database)를 따릅니다.",
                 "Reference-only fitness insights. Age-group norms and estimated max HR are rough estimates with high individual variation and are not medical advice. Cardio fitness norms follow FRIEND (Fitness Registry and Importance of Exercise National Database)."
             ))
+            // 회복 점·띠 범례 — 리듬 탭에서 실제로 그려졌을 때만. 강도 분포 각주와 같은 자리·같은 크기.
+            if tab == .rhythm, recoveryResult != nil, hrSamples.count >= 5 {
+                Text(L.s(
+                    "심박 차트 오른쪽 두 점은 운동을 마친 뒤 1분·2분 심박이에요. 숫자는 끝났을 때보다 얼마나 떨어졌는지입니다.\n\n회색 띠는 비슷한 심박으로 끝낸 최근 러닝에서 평소 떨어지던 폭(가운데 50%)이에요. 점이 띠보다 위면 평소보다 덜, 아래면 더 떨어진 거예요. 쿨다운을 걷는지 서 있는지에 따라 크게 달라지는 값이라 다른 사람과 비교하는 기준은 아닙니다.",
+                    "The two dots at the right of the HR chart are your heart rate 1 and 2 minutes after finishing. The numbers show how far it fell from where you stopped.\n\nThe grey band is how far it usually fell in recent runs that ended at a similar heart rate (middle 50%). A dot above the band means it fell less than usual, below means more. This value depends heavily on whether you walk or stand during cool-down, so it is not a basis for comparing with other people."
+                ))
+            }
             // L-2: 강도 분포 참고선의 근거와 한계 — 퍼포먼스 탭에서만. 기존 각주와 같은 크기·색, 강조 없음.
             if tab == .performance, performanceHasIntensity {
                 Text(L.s(
