@@ -566,7 +566,9 @@ struct MeView: View {
                     // 과거 값을 그대로 가져오는 것이라 역사를 새로 쓰는 게 아니다 — 이행 기호가 실제 따른 계획 기준이 된다.
                     // 이번 주(진행 중)는 튠업 관련이면 갱신한다.
                     if snapMon < thisMonday && !follows { return snap }
-                    let raceRelated = follows || live.phase == "대회 주" || snap.phase == "대회 주"
+                    // 테이퍼 길이 변경(주 수가 늘어 마지막 주가 새로 붙은 경우)도 갱신 — 10K 1주 테이퍼가 2주로 남지 않게
+                    let taperChanged = snap.phase == "테이퍼" && live.phase != "테이퍼"
+                    let raceRelated = follows || taperChanged || live.phase == "대회 주" || snap.phase == "대회 주"
                         || live.breakdown.contains("대회") || snap.breakdown.contains("대회")
                     guard raceRelated,
                           live.phase != snap.phase || live.breakdown != snap.breakdown

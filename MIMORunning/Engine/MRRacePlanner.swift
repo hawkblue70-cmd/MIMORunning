@@ -566,8 +566,9 @@ func mrBuildPlan(raceDate: Date,
                   "Long run \(Int(lrDisplay))km + Easy \(eachStr) × \(others)x")
             : String(format: L.s("롱런 %.0fkm + 이지 %d회", "Long run %.0fkm + Easy %dx"), lrDisplay, others)
         if phase == "테이퍼" {
-            breakdown = String(format: L.s("롱런 %.0fkm + 짧게 %d회 · 강도는 그대로",
-                                           "Long run %.0fkm + Short %dx · Keep the intensity"), lrDisplay, others)
+            // "짧게"가 얼마인지 묻는 사람이 있었다 — 대략 거리를 붙인다. 강도·빈도 유지가 핵심인 건 그대로.
+            breakdown = String(format: L.s("롱런 %.0fkm + 짧게 %@ × %d회 · 강도는 그대로",
+                                           "Long run %.0fkm + Short %@ × %dx · Keep the intensity"), lrDisplay, eachStr, others)
         }
         if phase == "대회 페이스" {
             // ⚠ 페이스는 기온·테이퍼 보정 전 예측값. 훈련은 대회 기온에서 하지 않는다.
@@ -587,9 +588,9 @@ func mrBuildPlan(raceDate: Date,
             breakdown = L.s("\(label) 계획을 따릅니다 · ", "Follows the \(label) plan · ") + f.week.breakdown
         } else if let pt = preTune, i <= buildWeeks {
             let label = mrLabelFor(distanceM: pt.distanceM)
-            breakdown = String(format: L.s("%@ 대회 전 주 — 롱런 %.0fkm + 짧게 %d회 · 강도는 그대로",
-                                           "Week before %@ race — Long run %.0fkm + Short %dx · Keep the intensity"),
-                               label, lrDisplay, others)
+            breakdown = String(format: L.s("%@ 대회 전 주 — 롱런 %.0fkm + 짧게 %@ × %d회 · 강도는 그대로",
+                                           "Week before %@ race — Long run %.0fkm + Short %@ × %dx · Keep the intensity"),
+                               label, lrDisplay, eachStr, others)
         }
         // 따르는 주(자기 계획 있는 10K의 대회 주 포함)는 그 계획의 문구가 전부다 — 튠업 문구를 덧붙이지 않는다.
         if let t = tune, followed == nil {
