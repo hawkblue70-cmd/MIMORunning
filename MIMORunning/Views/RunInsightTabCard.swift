@@ -1063,7 +1063,7 @@ struct RunInsightTabCard: View {
             // 회복 점·띠 범례 — 리듬 탭에서 실제로 그려졌을 때만. 강도 분포 각주와 같은 자리·같은 크기.
             if tab == .rhythm, recoveryResult != nil, hrSamples.count >= 5 {
                 Text(L.s(
-                    "심박 차트 오른쪽 두 점은 운동을 마친 뒤 1분·2분 심박이에요. 숫자는 끝났을 때보다 얼마나 떨어졌는지입니다.\n\n회색 띠는 비슷한 심박으로 끝낸 최근 러닝에서 평소 떨어지던 폭(가운데 50%)이에요. 점이 띠보다 위면 평소보다 덜, 아래면 더 떨어진 거예요. 쿨다운을 걷는지 서 있는지에 따라 크게 달라지는 값이라 다른 사람과 비교하는 기준은 아닙니다.",
+                    "심박 차트 오른쪽 두 점은 운동을 마친 뒤 1분·2분 심박이에요. 숫자는 끝났을 때보다 얼마나 떨어졌는지입니다.\n\n빨간 띠는 비슷한 심박으로 끝낸 최근 러닝에서 평소 떨어지던 폭(가운데 50%)이에요. 점이 띠보다 위면 평소보다 덜, 아래면 더 떨어진 거예요. 쿨다운을 걷는지 서 있는지에 따라 크게 달라지는 값이라 다른 사람과 비교하는 기준은 아닙니다.",
                     "The two dots at the right of the HR chart are your heart rate 1 and 2 minutes after finishing. The numbers show how far it fell from where you stopped.\n\nThe grey band is how far it usually fell in recent runs that ended at a similar heart rate (middle 50%). A dot above the band means it fell less than usual, below means more. This value depends heavily on whether you walk or stand during cool-down, so it is not a basis for comparing with other people."
                 ))
             }
@@ -1185,8 +1185,8 @@ private struct HRTimeSeriesView: View {
             return v
         } ?? []
         let minBPM = min(smoothed.min() ?? 0, recoveryBPM.min() ?? .infinity)
-        // 위쪽 20bpm 여유 — 선과 제목·끝점 마커가 천장에 붙지 않게. 축 라벨은 이 값(차트 최대)을 쓴다.
-        let maxBPM = max(smoothed.max() ?? 1, recoveryBPM.max() ?? -.infinity) + 20
+        // 위쪽 10bpm 여유 — 선과 끝점 마커가 천장에 붙지 않게. 축 라벨은 이 값(차트 최대)을 쓴다.
+        let maxBPM = max(smoothed.max() ?? 1, recoveryBPM.max() ?? -.infinity) + 10
         let valRange = max(1.0, maxBPM - minBPM)
         let totalDur = max(1.0, pts.last?.offset ?? 1)
 
@@ -1321,13 +1321,17 @@ private struct HRTimeSeriesView: View {
                     // 오늘 점이 띠 위(덜 떨어짐)/안(평소대로)/아래(더 떨어짐) 어디인지가 판단 근거다.
                     // ⚠ 1분 띠와 2분 띠는 **각자 자기 점 뒤에만** 깔린다. 1분 띠를 2분 점까지
                     //   늘리면 그 점이 띠 밖이라는 게 의미 있어 보이지만 아무 의미가 없다.
+                    // 색은 심박 의미색(빨강)을 쓴다 — 이 띠가 심박 범위라는 걸 색으로 말한다(§11).
+                    // 고도 면적과 같은 방식으로, 시인성은 채도가 아니라 윤곽선으로 올린다.
                     func drawBand(_ b: MRRecoveryBand?, at x: CGFloat) {
                         guard let b else { return }
                         let yTop = ry(r.endHR - b.lo), yBot = ry(r.endHR - b.hi)
-                        let rect = CGRect(x: x - 3.5, y: min(yTop, yBot),
-                                          width: 7, height: max(1.5, abs(yBot - yTop)))
-                        ctx.fill(Path(roundedRect: rect, cornerRadius: 1.5),
-                                 with: .color(.white.opacity(0.14)))
+                        let rect = CGRect(x: x - 4, y: min(yTop, yBot),
+                                          width: 8, height: max(2, abs(yBot - yTop)))
+                        let shape = Path(roundedRect: rect, cornerRadius: 2)
+                        ctx.fill(shape, with: .color(Theme.heartRate.opacity(0.22)))
+                        ctx.stroke(shape, with: .color(Theme.heartRate.opacity(0.55)),
+                                   style: StrokeStyle(lineWidth: 0.8))
                     }
                     drawBand(recoveryBands?.minute1, at: x1)
                     if r.hr120 != nil { drawBand(recoveryBands?.minute2, at: x2) }
