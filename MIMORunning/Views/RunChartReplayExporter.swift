@@ -287,22 +287,24 @@ enum RunChartReplayExporter {
 
         static func make(_ content: ReplayContent) -> SectionLayout {
             switch content {
+            // ⚠ topPad·botPad는 0이다. 위아래에 배경색 띠를 두면 이미지 카드와 달라 보인다 —
+            //   이미지는 헤더가 카드 맨 위에, 타일이 맨 아래에 붙는다. 그 자리를 구역에 돌려준다.
             case .chartData:
-                // 24+190 | 0+0 | 590 | 0 | 490 | 56 = 1350
-                // 타일 3행 = 약 135pt(486px). 460px일 때는 값 글꼴이 12pt라 겨우 맞았는데,
-                // 이미지 카드와 맞춰 14pt로 키우면서 마지막 행이 잘렸다. 차트에서 30px를 옮긴다.
-                return SectionLayout(topPad:24, headerH:190, routeH:0,   mapChartGap:0,
-                                     chartH:590, chartTilesGap:0, tilesH:490, botPad:56,
+                // 0+190 | 0+0 | 630 | 0 | 530 | 0 = 1350
+                // 타일 3행 = 약 135pt(486px). 값 글꼴을 이미지와 맞춰 14pt로 키운 뒤 460px로는
+                // 마지막 행이 잘렸다.
+                return SectionLayout(topPad:0, headerH:190, routeH:0,   mapChartGap:0,
+                                     chartH:630, chartTilesGap:0, tilesH:530, botPad:0,
                                      maxTiles:12, compact:false)
             case .routeData:
-                // 24+190 | 700+0 | 0 | 0 | 380 | 56 = 1350
-                return SectionLayout(topPad:24, headerH:190, routeH:700, mapChartGap:0,
-                                     chartH:0,   chartTilesGap:0, tilesH:380, botPad:56,
+                // 0+190 | 700+0 | 0 | 0 | 460 | 0 = 1350
+                return SectionLayout(topPad:0, headerH:190, routeH:700, mapChartGap:0,
+                                     chartH:0,   chartTilesGap:0, tilesH:460, botPad:0,
                                      maxTiles:9,  compact:true)
             case .routeChart:
-                // 24+190 | 494+12 | 598 | 0 | 0 | 32 = 1350
-                return SectionLayout(topPad:24, headerH:190, routeH:494, mapChartGap:12,
-                                     chartH:598, chartTilesGap:0, tilesH:0,   botPad:32,
+                // 0+190 | 520+12 | 628 | 0 | 0 | 0 = 1350
+                return SectionLayout(topPad:0, headerH:190, routeH:520, mapChartGap:12,
+                                     chartH:628, chartTilesGap:0, tilesH:0,   botPad:0,
                                      maxTiles:0,  compact:false)
             }
         }
