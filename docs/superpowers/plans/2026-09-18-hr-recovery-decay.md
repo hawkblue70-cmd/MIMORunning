@@ -604,15 +604,22 @@ Expected: `error: extra argument 'recoveryShape' in call` — Task 6에서 받�
                 }
 ```
 
-- [ ] **Step 5: 캡션 높이를 2줄로 올린다**
+- [ ] **Step 5: 캡션 높이를 회복 줄이 있을 때만 2줄로**
 
 `RunInsightTabCard.swift:1601`:
 
 ```swift
-    private var topCaptionH: CGFloat { compact ? 36 : 42 }   // 2줄(판정 + 회복 곡선)
+    /// 회복 곡선 한 줄이 있을 때만 2줄 높이를 잡는다 — 없는 러닝(대부분)까지 여백을 떠안지 않도록.
+    /// 네 칸이 한 렌더에서 같은 값을 보므로 정렬은 그대로다.
+    private var topCaptionH: CGFloat {
+        guard recoveryShape != nil else { return compact ? 24 : 28 }
+        return compact ? 36 : 38
+    }
 ```
 
-2×2 네 칸이 같은 상수를 보므로 정렬은 유지된다.
+높이를 무조건 올리면 안 된다 — `recoveryShape`는 대부분의 러닝에서 nil이라(80% 게이트·120초 샘플 없음·감쇠 가드), 얻은 것 없는 칸까지 여백을 떠안고 구분선이 내려간다.
+
+일반 모드 값이 42가 아니라 **38**인 이유: 줄바꿈된 2줄짜리 `hrVerdictText`(`lineLimit` 없음) + 회복 줄이 약 32.8pt라 38에 여유 있게 들어가고, 38은 `bottomCaptionH`의 일반 모드 값과 같아 2×2의 위아래 행 높이가 맞는다. 3줄 판정은 38에서 잘리지만 기존 28에서도 잘렸으므로 후퇴가 아니다.
 
 - [ ] **Step 6: 빌드를 확인한다**
 
