@@ -162,28 +162,37 @@ enum MRRecovery {
 
     static let minTauSamples = 8   // 임의로 정함 — 사분위가 의미를 갖는 최소선
 
-    static let endHRMatchWindow = 5.0   // 임의로 정함 — "같은 심박으로 끝냈다"로 볼 폭(bpm)
-    static let minBandSamples = 8       // 임의로 정함 — minTauSamples와 같은 최소선
-
-    /// 종료심박이 비슷한(±5bpm) 과거 러닝들의 1분 낙폭 25~75 백분위.
-    /// ⚠ 종료심박을 맞춰 뽑는 것이 핵심이다 — HRR1은 끝낸 강도에 크게 좌우되므로(Daanen 2012)
-    ///   전체 분포와 비교하면 "오늘 세게 뛰었다"가 "회복이 좋다"로 읽힌다.
+    /// 종료심박을 회귀로 통제한 낙폭의 평소 범위(잔차 25~75 백분위).
+    ///
+    /// ⚠ 창(±5bpm)으로 비슷한 러닝만 골라 뽑던 방식을 버렸다 — 실측에서 ±5는 7건뿐이라
+    ///   최소선(16)에 못 미쳤고, 창을 넓히면 "같은 강도로 끝냈다"는 전제가 흐려진다.
+    ///   회귀는 전체 관측을 쓰면서 종료심박 효과만 빼므로 둘 다 피한다.
+    /// ⚠ 종료심박 통제가 핵심이다 — HRR1은 끝낸 강도에 크게 좌우되므로(Daanen 2012)
+    ///   보정 없이 비교하면 "오늘 세게 뛰었다"가 "회복이 좋다"로 읽힌다.
     /// ⚠ 좋다/나쁘다를 말하지 않는다. 띠는 범위일 뿐이고 판단은 러너가 한다.
     static func bands(endHR: Double, history: [MRRecoveryDropPoint]) -> MRRecoveryBands {
-        let near = history.filter { abs($0.endHR - endHR) <= endHRMatchWindow }
-        return MRRecoveryBands(minute1: band(near.map(\.hrr1)),
-                               minute2: band(near.compactMap(\.hrr2)))
+        MRRecoveryBands(minute1: regressedBand(endHR: endHR, history: history, useSecond: false),
+                        minute2: regressedBand(endHR: endHR, history: history, useSecond: true))
     }
 
-    private static func band(_ drops: [Double]) -> MRRecoveryBand? {
-        let near = drops.sorted()
-        guard near.count >= minBandSamples else { return nil }
-        func pct(_ q: Double) -> Double {
-            let i = q * Double(near.count - 1)
-            let lo = Int(i.rounded(.down)), hi = Int(i.rounded(.up))
-            return lo == hi ? near[lo] : near[lo] + (near[hi] - near[lo]) * (i - Double(lo))
+    private static func regressedBand(endHR: Double, history: [MRRecoveryDropPoint],
+                                      useSecond: Bool) -> MRRecoveryBand? {
+        var xs: [Double] = [], ys: [Double] = []
+        for p in history {
+            let drop: Double? = useSecond ? p.hrr2 : p.hrr1
+            guard let drop else { continue }
+            xs.append(p.endHR); ys.append(drop)
         }
-        return MRRecoveryBand(lo: pct(0.25), hi: pct(0.75), n: near.count)
+        guard xs.count >= minObs else { return nil }
+        guard let c = MRLinAlg.lstsq(X: xs.map { [1.0, $0] }, y: ys) else { return nil }
+        let pred = c[0] + c[1] * endHR
+        let res = zip(xs, ys).map { $1 - (c[0] + c[1] * $0) }.sorted()
+        func pct(_ q: Double) -> Double {
+            let i = q * Double(res.count - 1)
+            let lo = Int(i.rounded(.down)), hi = Int(i.rounded(.up))
+            return lo == hi ? res[lo] : res[lo] + (res[hi] - res[lo]) * (i - Double(lo))
+        }
+        return MRRecoveryBand(lo: pred + pct(0.25), hi: pred + pct(0.75), n: res.count)
     }
 
     /// 과거 τ 중 오늘보다 작은(= 더 빨랐던) 것의 비율. 표본이 모자라면 nil.

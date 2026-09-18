@@ -156,30 +156,38 @@ struct MRRecoveryTests {
         #expect(r?.decay == nil)
     }
 
-    /// 같은 심박으로 끝낸 러닝만 써야 한다 — 170에서 끝낸 러닝은 낙폭이 커서 섞이면 띠가 위로 끌린다.
-    @Test func bandsMatchOnEndHR() {
+    /// 회귀가 종료심박 효과를 빼는지 — 낙폭이 종료심박의 정확한 1차식이면 잔차가 0이라
+    /// 띠가 한 점으로 모이고, 그 값은 오늘 종료심박의 예측값이어야 한다.
+    @Test func bandRemovesEndHREffect() {
         var h: [MRRecoveryDropPoint] = []
-        for i in 0..<10 { h.append(MRRecoveryDropPoint(endHR: 148.0 + Double(i % 5), hrr1: 20.0 + Double(i % 5), hrr2: 30.0)) }
-        for _ in 0..<10 { h.append(MRRecoveryDropPoint(endHR: 175.0, hrr1: 45.0, hrr2: 60.0)) }
+        for i in 0..<20 {
+            let end = 140.0 + Double(i)
+            h.append(MRRecoveryDropPoint(endHR: end, hrr1: 0.5 * end - 40, hrr2: 0.6 * end - 45))
+        }
         let b = MRRecovery.bands(endHR: 150, history: h)
-        #expect(b.minute1?.n == 10)            // 175로 끝낸 10건은 제외된다
-        #expect((b.minute1?.hi ?? 99) < 30)    // 45가 섞였다면 상한이 훨씬 높아진다
-        #expect(b.minute2?.lo == 30)
+        #expect(b.minute1?.n == 20)
+        #expect(abs((b.minute1?.lo ?? 0) - 35) < 0.01)   // 0.5×150 − 40
+        #expect(abs((b.minute1?.hi ?? 0) - 35) < 0.01)
+        #expect(abs((b.minute2?.lo ?? 0) - 45) < 0.01)   // 0.6×150 − 45
     }
 
-    @Test func bandsNeedEightMatchingRuns() {
-        var seven: [MRRecoveryDropPoint] = []
-        for _ in 0..<7 { seven.append(MRRecoveryDropPoint(endHR: 150.0, hrr1: 22.0)) }
-        #expect(MRRecovery.bands(endHR: 150, history: seven).isEmpty)
-        var eight = seven
-        eight.append(MRRecoveryDropPoint(endHR: 150.0, hrr1: 22.0))
-        #expect(MRRecovery.bands(endHR: 150, history: eight).minute1 != nil)
-        // hrr2가 없는 점만 8개면 1분 띠만 생긴다
-        #expect(MRRecovery.bands(endHR: 150, history: eight).minute2 == nil)
-        // 표본이 많아도 종료심박이 다 멀면 nil
-        var far: [MRRecoveryDropPoint] = []
-        for _ in 0..<20 { far.append(MRRecoveryDropPoint(endHR: 170.0, hrr1: 40.0)) }
-        #expect(MRRecovery.bands(endHR: 150, history: far).isEmpty)
+    /// 창(±5bpm)으로 고르던 방식과 달리, 종료심박이 멀어도 관측으로 쓴다 —
+    /// 실측에서 ±5는 7건뿐이라 최소선을 못 넘겼다.
+    @Test func bandUsesFarEndHRRunsToo() {
+        var h: [MRRecoveryDropPoint] = []
+        for i in 0..<20 { h.append(MRRecoveryDropPoint(endHR: 170.0 + Double(i % 3), hrr1: 40.0)) }
+        let b = MRRecovery.bands(endHR: 150, history: h)
+        #expect(b.minute1?.n == 20)   // 150과 20bpm 떨어져 있어도 전부 쓴다
+    }
+
+    @Test func bandNeedsMinimumObservations() {
+        var few: [MRRecoveryDropPoint] = []
+        for i in 0..<15 { few.append(MRRecoveryDropPoint(endHR: 150.0 + Double(i), hrr1: 22.0)) }
+        #expect(MRRecovery.bands(endHR: 150, history: few).isEmpty)
+        few.append(MRRecoveryDropPoint(endHR: 150.0, hrr1: 22.0))
+        #expect(MRRecovery.bands(endHR: 150, history: few).minute1 != nil)
+        // hrr2가 없으면 2분 띠만 nil
+        #expect(MRRecovery.bands(endHR: 150, history: few).minute2 == nil)
     }
 
     @Test func tauPercentileNeedsEightSamples() {
