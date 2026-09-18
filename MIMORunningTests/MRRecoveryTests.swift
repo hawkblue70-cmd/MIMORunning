@@ -157,27 +157,29 @@ struct MRRecoveryTests {
     }
 
     /// 같은 심박으로 끝낸 러닝만 써야 한다 — 170에서 끝낸 러닝은 낙폭이 커서 섞이면 띠가 위로 끌린다.
-    @Test func hrr1BandMatchesOnEndHR() {
-        var h: [MRRecoveryHRR1Point] = []
-        for i in 0..<10 { h.append(MRRecoveryHRR1Point(endHR: 148.0 + Double(i % 5), hrr1: 20.0 + Double(i % 5))) }
-        for _ in 0..<10 { h.append(MRRecoveryHRR1Point(endHR: 175.0, hrr1: 45.0)) }
-        let b = MRRecovery.hrr1Band(endHR: 150, history: h)
-        #expect(b != nil)
-        #expect(b?.n == 10)            // 175로 끝낸 10건은 제외된다
-        #expect((b?.hi ?? 99) < 30)    // 45가 섞였다면 상한이 훨씬 높아진다
+    @Test func bandsMatchOnEndHR() {
+        var h: [MRRecoveryDropPoint] = []
+        for i in 0..<10 { h.append(MRRecoveryDropPoint(endHR: 148.0 + Double(i % 5), hrr1: 20.0 + Double(i % 5), hrr2: 30.0)) }
+        for _ in 0..<10 { h.append(MRRecoveryDropPoint(endHR: 175.0, hrr1: 45.0, hrr2: 60.0)) }
+        let b = MRRecovery.bands(endHR: 150, history: h)
+        #expect(b.minute1?.n == 10)            // 175로 끝낸 10건은 제외된다
+        #expect((b.minute1?.hi ?? 99) < 30)    // 45가 섞였다면 상한이 훨씬 높아진다
+        #expect(b.minute2?.lo == 30)
     }
 
-    @Test func hrr1BandNeedsEightMatchingRuns() {
-        var seven: [MRRecoveryHRR1Point] = []
-        for _ in 0..<7 { seven.append(MRRecoveryHRR1Point(endHR: 150.0, hrr1: 22.0)) }
-        #expect(MRRecovery.hrr1Band(endHR: 150, history: seven) == nil)
+    @Test func bandsNeedEightMatchingRuns() {
+        var seven: [MRRecoveryDropPoint] = []
+        for _ in 0..<7 { seven.append(MRRecoveryDropPoint(endHR: 150.0, hrr1: 22.0)) }
+        #expect(MRRecovery.bands(endHR: 150, history: seven).isEmpty)
         var eight = seven
-        eight.append(MRRecoveryHRR1Point(endHR: 150.0, hrr1: 22.0))
-        #expect(MRRecovery.hrr1Band(endHR: 150, history: eight) != nil)
+        eight.append(MRRecoveryDropPoint(endHR: 150.0, hrr1: 22.0))
+        #expect(MRRecovery.bands(endHR: 150, history: eight).minute1 != nil)
+        // hrr2가 없는 점만 8개면 1분 띠만 생긴다
+        #expect(MRRecovery.bands(endHR: 150, history: eight).minute2 == nil)
         // 표본이 많아도 종료심박이 다 멀면 nil
-        var far: [MRRecoveryHRR1Point] = []
-        for _ in 0..<20 { far.append(MRRecoveryHRR1Point(endHR: 170.0, hrr1: 40.0)) }
-        #expect(MRRecovery.hrr1Band(endHR: 150, history: far) == nil)
+        var far: [MRRecoveryDropPoint] = []
+        for _ in 0..<20 { far.append(MRRecoveryDropPoint(endHR: 170.0, hrr1: 40.0)) }
+        #expect(MRRecovery.bands(endHR: 150, history: far).isEmpty)
     }
 
     @Test func tauPercentileNeedsEightSamples() {

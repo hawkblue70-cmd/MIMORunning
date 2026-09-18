@@ -2634,12 +2634,13 @@ class HealthKitManager {
         return await task.value.filter { $0.date >= start }
     }
 
-    /// 과거 러닝의 (종료심박, 1분 낙폭) 목록 — 밴드용. `excluding` 러닝은 뺀다.
-    func recoveryHRR1History(from start: Date, excluding activityID: UUID?) async -> [MRRecoveryHRR1Point] {
+    /// 과거 러닝의 (종료심박, 1·2분 낙폭) 목록 — 밴드용. `excluding` 러닝은 뺀다.
+    func recoveryDropHistory(from start: Date, excluding activityID: UUID?) async -> [MRRecoveryDropPoint] {
         let pts = await fetchRecoveryHistory(from: start)
         return pts.compactMap { p in
             if let id = activityID, p.id == id { return nil }
-            return MRRecoveryHRR1Point(endHR: p.endHR, hrr1: p.hrr1)
+            return MRRecoveryDropPoint(endHR: p.endHR, hrr1: p.hrr1,
+                                       hrr2: p.hr120.map { p.endHR - $0 })
         }
     }
 

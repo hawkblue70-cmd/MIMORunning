@@ -141,8 +141,8 @@ struct RunInsightSection: View {
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
     var recoveryResult: MRRecoveryResult? = nil
-    /// 심박 차트 회복 띠 — 같은 심박으로 끝낸 러닝의 평소 낙폭 범위.
-    var recoveryBand: MRRecoveryBand? = nil
+    /// 심박 차트 회복 띠 — 같은 심박으로 끝낸 러닝의 1·2분 평소 낙폭 범위.
+    var recoveryBands: MRRecoveryBands? = nil
 
     var body: some View {
         if !insights.isEmpty, let act = activity {
@@ -178,7 +178,7 @@ struct RunInsightSection: View {
                 planPhase: planPhase,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
-                recoveryBand: recoveryBand
+                recoveryBands: recoveryBands
             )
         }
     }
