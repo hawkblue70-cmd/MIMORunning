@@ -17,7 +17,7 @@
 | 파일 | 책임 | 작업 |
 |---|---|---|
 | `MIMORunning/Engine/MRRecovery.swift` | `MRRecoveryDecay` · `decay(endHR:hr60:hr120:)` · `tauPercentile` · `shapeCaption` · `MRRecoveryShape` | 수정 |
-| `MIMORunning/Health/HealthKitManager.swift` | `RecoveryHistoryPoint.hr120` · 캐시 v3 · 가용률 로그 | 수정 |
+| `MIMORunning/Health/HealthKitManager.swift` | `RecoveryHistoryPoint.hr120`·`.id` · 캐시 v3 · 진행 중 재구축 공유 · 가용률 로그 | 수정 |
 | `MIMORunning/Views/ActivityDetailView.swift` | `recoveryShape` 상태 조립 · `RunInsightSection`에 전달 | 수정 |
 | `MIMORunning/Views/RunInsightCardView.swift` | `RunInsightSection`에 `recoveryShape` 통과 | 수정 |
 | `MIMORunning/Views/RunInsightTabCard.swift` | `RunInsightTabCard`·`RhythmInsightCard`·`InsightExportSheet`에 `recoveryShape` · 캡션 둘째 줄 · `topCaptionH` | 수정 |
@@ -476,7 +476,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```swift
         if let r = recoveryResult, let d = r.decay {
             let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
-            let taus = await manager.recoveryTauHistory(from: start, excluding: activity.date)
+            let taus = await manager.recoveryTauHistory(from: start, excluding: activity.id)
             recoveryShape = MRRecoveryShape(r, percentile: MRRecovery.tauPercentile(d.tau, history: taus))
         }
 ```

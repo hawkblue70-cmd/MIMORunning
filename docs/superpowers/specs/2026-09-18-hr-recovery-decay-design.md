@@ -90,7 +90,8 @@ struct MRRecoveryDecay: Sendable {
 
 ## 4. 데이터
 
-- `RecoveryHistoryPoint`에 **`hr120: Double?` 하나만** 추가한다. `endHR`과 `hrr1`이 이미 있으므로 `hr60 = endHR − hrr1`, 여기에 `hr120`이면 τ가 나온다 — 필드를 더 늘리지 않는다. `MRRecovery.compute` 결과에 이미 들어 있어 HealthKit 조회도 늘지 않는다.
+- `RecoveryHistoryPoint`에 **`hr120: Double?`과 `id: UUID?`** 를 추가한다. `endHR`과 `hrr1`이 이미 있으므로 `hr60 = endHR − hrr1`, 여기에 `hr120`이면 τ가 나온다 — 지표 필드는 더 늘리지 않는다. `MRRecovery.compute` 결과에 이미 들어 있어 HealthKit 조회도 늘지 않는다.
+- `id`는 **판정 대상 러닝을 자기 분포에서 뺄 때 동일성 판정용**이다. 시각 근접(±60초)으로 빼면 연속 러닝·재시작이 잘못 빠지고, caller가 넘긴 날짜가 저장된 `startDate`와 어긋나면 자기가 자기 분포에 들어간다 — §2가 막으려던 바로 그 편향이다. 캐시 버전을 어차피 올리므로 필드 추가 비용이 없다.
 - 캐시 스키마가 바뀌므로 `mimo_hrr_history_v2.json` → `_v3.json`. 메트릭 히스토리 캐시 무효화 목록도 같이 갱신.
 - 개별 워크아웃 캐시(`mimo_hrr_{id}.json`)는 원 샘플이라 그대로 둔다.
 
