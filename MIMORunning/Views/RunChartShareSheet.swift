@@ -304,7 +304,9 @@ struct RunChartShareSheet: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                         }
-                        .aspectRatio(1080.0 / 1350.0, contentMode: .fit)
+                        // 내보내는 영상과 같은 비율 — 숫자를 따로 적으면 한쪽만 바뀐다.
+                        .aspectRatio(CGFloat(RunChartReplayExporter.videoW)
+                                     / CGFloat(RunChartReplayExporter.videoH), contentMode: .fit)
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
                     }
