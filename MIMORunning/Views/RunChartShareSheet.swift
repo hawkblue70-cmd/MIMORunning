@@ -365,7 +365,9 @@ struct RunChartShareSheet: View {
                             }
                             // 빈 칸 — 위 줄(3칸)과 같은 폭이 되게 한다. 두 칸만 두면 칩이 110→174pt로
                             // 늘어나 같은 글자가 위아래 줄에서 다르게 보인다.
-                            Color.clear.frame(maxWidth: .infinity)
+                            // ⚠ maxHeight를 0으로 묶어야 한다. Color는 양방향으로 공간을 다 차지하는
+                            //   뷰라, 세로 ScrollView 안에서는 HStack 높이를 통째로 늘려버린다.
+                            Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 6)
