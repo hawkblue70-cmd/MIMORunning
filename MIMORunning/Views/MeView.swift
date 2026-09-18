@@ -576,13 +576,25 @@ struct MeView: View {
                                              longRunKm: live.longRunKm, weeklyKm: live.weeklyKm,
                                              breakdown: live.breakdown)
                 }
-                if changed > 0 {
+                // ── Trigger 4: 실시간 계획에만 있는 미래 주(대회 주 포함 규칙 등으로 늘어난 주) 덧붙이기 ──
+                // 스냅샷은 시작 시점의 주 수를 그대로 든다. 주 수 계산 규칙이 바뀌어 대회일이 속한 주가
+                // 새로 생기면 그 주만 뒤에 붙인다. 지난 주·기존 주는 건드리지 않는다.
+                var appended: [MRPlanWeekSummary] = []
+                let snapMondays = Set(merged.map { cal.startOfDay(for: $0.monday) })
+                for w in check.plan.weeks where cal.startOfDay(for: w.monday) >= thisMonday
+                    && !snapMondays.contains(cal.startOfDay(for: w.monday)) {
+                    appended.append(MRPlanWeekSummary(idx: w.idx, monday: w.monday, phase: w.phase,
+                                                      longRunKm: w.longRunKm, weeklyKm: w.weeklyKm,
+                                                      breakdown: w.breakdown))
+                }
+                let finalWeeks = (merged + appended).sorted { $0.monday < $1.monday }
+                if changed > 0 || !appended.isEmpty {
                     let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
-                    if let wd = try? enc.encode(merged), let wj = String(data: wd, encoding: .utf8) {
+                    if let wd = try? enc.encode(finalWeeks), let wj = String(data: wd, encoding: .utf8) {
                         existing.weeksJSON = wj
                     }
                     #if DEBUG
-                    print("[스냅샷] 튠업 변경 → 미래 \(changed)주 갱신: \(check.race.name)")
+                    print("[스냅샷] 튠업 변경 → 미래 \(changed)주 갱신 · 새 주 \(appended.count)개 추가: \(check.race.name)")
                     #endif
                 }
             }
