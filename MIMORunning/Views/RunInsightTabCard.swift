@@ -1341,15 +1341,19 @@ private struct HRTimeSeriesView: View {
                                                         width: rDot * 2, height: rDot * 2)),
                                  with: .color(zoneColor(for: d.bpm)))
                     }
-                    // 낙폭 숫자 — 종료 심박 대비. 두 값이 가까우면 라벨이 겹치므로 아래쪽을 밀어낸다.
-                    var labelY: CGFloat = -.infinity
-                    for d in dots {
-                        var y = ry(d.bpm)
-                        if y - labelY < 8 { y = labelY + 8 }
-                        labelY = y
-                        ctx.draw(Text("−\(Int((r.endHR - d.bpm).rounded()))").font(.system(size: 7))
+                    // 낙폭 숫자 — 종료 심박 대비.
+                    // ⚠ 2분 점이 1분 점보다 **위**일 수 있다(쿨다운 중 다시 뛴 러닝). 그래서 그리는
+                    //   순서가 아니라 y 순으로 정렬한 뒤 겹칠 때만 밀어낸다. 순서를 가정하면
+                    //   되올라간 러닝에서 라벨이 자기 점에서 멀리 떨어진다.
+                    var labels = dots.map { (y: ry($0.bpm), drop: Int((r.endHR - $0.bpm).rounded())) }
+                    labels.sort { $0.y < $1.y }
+                    for i in labels.indices.dropFirst() where labels[i].y - labels[i - 1].y < 8 {
+                        labels[i].y = labels[i - 1].y + 8
+                    }
+                    for l in labels {
+                        ctx.draw(Text("−\(l.drop)").font(.system(size: 7))
                             .foregroundStyle(.white.opacity(0.72)),
-                            at: CGPoint(x: x2 + 5, y: y), anchor: .leading)
+                            at: CGPoint(x: x2 + 5, y: l.y), anchor: .leading)
                     }
                     ctx.draw(Text(AppLanguage.shared.s("1·2분", "1·2m")).font(.system(size: 7))
                         .foregroundStyle(.white.opacity(0.55)),
