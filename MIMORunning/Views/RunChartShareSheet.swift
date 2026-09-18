@@ -287,7 +287,16 @@ struct RunChartShareSheet: View {
                         // 실측 전 첫 프레임만 어림값을 쓴다.
                         .frame(height: cardNaturalH > 0 ? cardNaturalH * previewScale : previewHeight)
                         .onPreferenceChange(ShareCardHeightKey.self) { h in
-                            if h > 0, abs(h - cardNaturalH) > 0.5 { cardNaturalH = h }
+                            if h > 0, abs(h - cardNaturalH) > 0.5 {
+                                cardNaturalH = h
+                                #if DEBUG
+                                let px = h * (1080.0 / cardW)
+                                print(String(format: "[차트공유] 이미지 출력 1080×%.0f (비율 %.3f) · 영상 %d×%d (비율 %.3f) · 4:5 = 0.800",
+                                             px, 1080.0 / px,
+                                             RunChartReplayExporter.videoW, RunChartReplayExporter.videoH,
+                                             Double(RunChartReplayExporter.videoW) / Double(RunChartReplayExporter.videoH)))
+                                #endif
+                            }
                         }
                         .padding(.top, 20)
                     } else {
