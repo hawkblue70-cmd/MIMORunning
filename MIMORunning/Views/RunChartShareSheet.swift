@@ -25,6 +25,9 @@ struct RunChartShareCard: View {
     let shoeText: String?
     let paceText: String?
     var playProgress: Double? = nil
+    /// 차트 높이 — 카드 전체가 영상과 같은 4:5(375pt)에 떨어지도록 시트가 계산해 넣는다.
+    /// 기본값은 실측 전 첫 프레임용.
+    var chartHeight: CGFloat = 226
     var palette: ShareChartPalette = .dark
 
     private let cardW: CGFloat = 300
@@ -42,7 +45,7 @@ struct RunChartShareCard: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
 
-                RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: 226,
+                RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: chartHeight,
                                     playProgress: playProgress)
                     .environment(\.shareChartPalette, palette)
                     .padding(.top, 2)
@@ -172,6 +175,14 @@ struct RunChartShareSheet: View {
     /// 미리보기 카드의 실제 높이(카드 좌표계). 예전에는 52+228+타일수×44 같은 상수로
     /// 어림했는데, 타일 글꼴이나 레이어 수가 바뀔 때마다 실제 카드와 어긋나 아래가 비었다.
     @State private var cardNaturalH: CGFloat = 0
+    /// 카드를 4:5로 떨어뜨리는 차트 높이. 실측한 카드 높이에서 차트 몫을 빼 나머지를 알아낸 뒤
+    /// 남는 자리를 차트에 준다 — 타일 수나 글꼴이 바뀌어도 따라간다.
+    @State private var fittedChartH: CGFloat = 226
+
+    /// 영상과 같은 4:5. 1350px ÷ 3.6 = 375pt.
+    private var targetCardH: CGFloat {
+        CGFloat(RunChartReplayExporter.videoH) / RunChartReplayExporter.scale
+    }
     @Environment(\.dismiss) private var dismiss
     @State private var isRendering = false
     @State private var renderedImage: UIImage? = nil
@@ -275,6 +286,7 @@ struct RunChartShareSheet: View {
                                 startTimeText: startTimeText,
                                 shoeText: shoeText,
                                 paceText: paceText,
+                                chartHeight: fittedChartH,
                                 palette: shareTheme.palette
                             )
                             .environment(\.colorScheme, shareTheme == .dark ? .dark : .light)
@@ -284,17 +296,18 @@ struct RunChartShareSheet: View {
                             .scaleEffect(scale, anchor: .top)
                             .frame(width: geo.size.width, alignment: .center)
                         }
-                        // 실측 전 첫 프레임만 어림값을 쓴다.
-                        .frame(height: cardNaturalH > 0 ? cardNaturalH * previewScale : previewHeight)
+                        .frame(height: (cardNaturalH > 0 ? cardNaturalH : targetCardH) * previewScale)
                         .onPreferenceChange(ShareCardHeightKey.self) { h in
-                            if h > 0, abs(h - cardNaturalH) > 0.5 {
-                                cardNaturalH = h
+                            guard h > 0 else { return }
+                            if abs(h - cardNaturalH) > 0.5 { cardNaturalH = h }
+                            // 차트를 뺀 나머지(헤더·타일)는 차트 높이와 무관하다 → 한 번에 수렴한다.
+                            let rest = h - fittedChartH
+                            let want = min(max(targetCardH - rest, 120), 300)
+                            if abs(want - fittedChartH) > 0.5 {
+                                fittedChartH = want
                                 #if DEBUG
-                                let px = h * (1080.0 / cardW)
-                                print(String(format: "[차트공유] 이미지 출력 1080×%.0f (비율 %.3f) · 영상 %d×%d (비율 %.3f) · 4:5 = 0.800",
-                                             px, 1080.0 / px,
-                                             RunChartReplayExporter.videoW, RunChartReplayExporter.videoH,
-                                             Double(RunChartReplayExporter.videoW) / Double(RunChartReplayExporter.videoH)))
+                                print(String(format: "[차트공유] 카드 4:5 맞춤 — 차트 외 %.0fpt · 차트 %.0fpt · 총 %.0fpt (목표 %.0f)",
+                                             rest, want, rest + want, targetCardH))
                                 #endif
                             }
                         }
@@ -566,13 +579,6 @@ struct RunChartShareSheet: View {
     /// 카드 좌표계 → 화면 폭 배율. 미리보기 프레임과 카드 렌더가 같은 값을 써야 한다.
     private var previewScale: CGFloat { (UIScreen.main.bounds.width - 48) / cardW }
 
-    // 실측 전 첫 프레임용 어림값 (타일 수에 따라 가변)
-    private var previewHeight: CGFloat {
-        let scale = previewScale
-        let tileRows = (data.availableLayers.count + 2) / 3
-        let tilesH = CGFloat(tileRows) * 44 + CGFloat(max(0, tileRows - 1)) * 3 + 8
-        return (52 + 228 + tilesH) * scale
-    }
 
     private func controlChip(_ label: String, isOn: Bool, isDisabled: Bool = false,
                              action: @escaping () -> Void) -> some View {
@@ -611,10 +617,11 @@ struct RunChartShareSheet: View {
             startTimeText: startTimeText,
             shoeText: shoeText,
             paceText: paceText,
+            chartHeight: fittedChartH,
             palette: palette
         )
-        // 폭 1080px 고정 (scale 3.6), 높이는 콘텐츠에 맞게 자연 결정
-        // Instagram 업로드 시 자체 크롭 UI로 4:5 조정 가능
+        // 폭 1080px 고정 (scale 3.6). 높이는 미리보기가 맞춰 둔 4:5 — 영상과 같은 비율이라
+        // 인스타그램이 잘라내지 않고, 같은 러닝의 이미지와 영상이 같아 보인다(§5.8).
         let renderer = ImageRenderer(content: card.environment(\.colorScheme, shareTheme == .dark ? .dark : .light))
         renderer.scale = 1080.0 / cardW   // 정확히 1080px 폭
         renderer.proposedSize = ProposedViewSize(width: cardW, height: nil)
