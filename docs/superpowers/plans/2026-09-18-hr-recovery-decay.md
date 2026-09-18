@@ -477,12 +477,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
         if let r = recoveryResult, let d = r.decay {
             let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
             let taus = await manager.recoveryTauHistory(from: start, excluding: activity.date)
-            recoveryShape = MRRecoveryShape(hrr1: r.hrr1, hrr2: r.hrr2 ?? 0, decay: d,
-                                            percentile: MRRecovery.tauPercentile(d.tau, history: taus))
+            recoveryShape = MRRecoveryShape(r, percentile: MRRecovery.tauPercentile(d.tau, history: taus))
         }
 ```
 
-`hrr2`는 `decay`가 존재하면 반드시 있다(`decay`는 `hr120`이 있어야 생긴다). 그래서 `?? 0`은 도달하지 않는 폴백이다.
+`MRRecoveryShape(_:percentile:)`는 `MRRecoveryResult`에서만 만드는 실패가능 init이다 — `decay`와 `hrr2`가 서로 어긋난 상태를 타입이 막는다. 여기서는 `r.decay`가 이미 있으므로 nil이 돌아오지 않는다.
 
 - [ ] **Step 3: 로그를 늘린다**
 
