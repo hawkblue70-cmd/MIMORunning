@@ -124,6 +124,10 @@ struct FormNarrativeTests {
 
     @Test func fastCadenceAbove() {
         #expect(ko(input(cad: .above), .fast) == "발걸음이 평소보다 빨랐어요. 보폭은 평소 범위였고요.")
+        var lowVO = input(cad: .above); lowVO.vo = .below
+        #expect(ko(lowVO, .fast) == "발걸음이 평소보다 빨랐어요. 보폭은 평소 범위였고, 위아래 움직임은 평소보다 작았어요.")
+        var highVO = input(cad: .above); highVO.vo = .above
+        #expect(ko(highVO, .fast) == "발걸음이 평소보다 빨랐어요. 보폭은 평소 범위였고요.")
         #expect(ko(input(cad: .above, sl: .above, slStr: "1.30"), .fast) == "발걸음이 평소보다 빨랐어요. 보폭이 1.30m로 평소보다 컸어요.")
     }
 

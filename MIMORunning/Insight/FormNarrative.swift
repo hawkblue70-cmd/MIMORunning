@@ -25,6 +25,8 @@ enum FormNarrative {
         let gctStr: String?
         let slStr: String?
         let paceStr: String
+        /// 수직진폭 판정 — 케이던스↑·보폭 범위 안 문장에서 "위아래 움직임도 작았어요"를 붙일 때만 본다
+        var vo: Status = .unknown
     }
 
     static func frame(for type: WorkoutType) -> Frame {
@@ -55,6 +57,12 @@ enum FormNarrative {
         func withStride(_ base: String) -> String {
             strideClause.map { base + " " + $0 } ?? base
         }
+        // 케이던스↑ + 보폭 범위 안 — 수직진폭까지 작았으면 같은 문장 안에서 함께 말한다(가벼운 쪽으로 같은 방향)
+        let cadUpStrideInRange = i.vo == .below
+            ? L.s("발걸음이 평소보다 빨랐어요. 보폭은 평소 범위였고, 위아래 움직임은 평소보다 작았어요.",
+                  "Cadence was above your usual. Stride length was within your typical range, and vertical oscillation was lower than usual.")
+            : L.s("발걸음이 평소보다 빨랐어요. 보폭은 평소 범위였고요.",
+                  "Cadence was above your usual. Stride length was within your typical range.")
 
         // MARK: 1. 지면접촉
         if let g = i.gctStr {
@@ -152,10 +160,7 @@ enum FormNarrative {
         if i.cad == .above {
             switch frame {
             case .general:
-                if i.sl == .inRange {
-                    return L.s("발걸음이 평소보다 빨랐어요. 보폭은 평소 범위였고요.",
-                               "Cadence was above your usual. Stride length was within your typical range.")
-                }
+                if i.sl == .inRange { return cadUpStrideInRange }
                 return withStride(L.s("발걸음이 평소보다 빨랐어요.", "Cadence was above your usual."))
             case .easy:
                 if i.sl == .below {
@@ -164,10 +169,7 @@ enum FormNarrative {
                 }
                 return withStride(L.s("발걸음이 평소보다 빨랐어요.", "Cadence was above your usual."))
             case .fast:
-                if i.sl == .inRange {
-                    return L.s("발걸음이 평소보다 빨랐어요. 보폭은 평소 범위였고요.",
-                               "Cadence was above your usual. Stride length was within your typical range.")
-                }
+                if i.sl == .inRange { return cadUpStrideInRange }
                 return withStride(L.s("발걸음이 평소보다 빨랐어요.", "Cadence was above your usual."))
             }
         }
@@ -410,6 +412,16 @@ extension FormNarrative {
             return L.s("빌드업답게 후반에 심박이 올라갔어요", "HR climbed in the 2nd half — as a build-up should")
         }
         return L.s("후반에 심박이 올랐어요", "HR climbed in the 2nd half")
+    }
+
+    /// 심박 차트 캡션 — 전반 대비 후반 평균 심박 변화가 작을 때(−5 < Δ < 8).
+    /// 빌드업은 페이스를 올린 만큼 심박이 따라온 것이라 "안정"보다 그 사실을 말한다. 나머지 유형은 변경 없음.
+    static func hrSteadyCaption(type: WorkoutType) -> String {
+        let L = AppLanguage.shared
+        if type == .buildUp {
+            return L.s("페이스를 올린 만큼만 올랐어요", "HR rose only as much as the pace")
+        }
+        return L.s("끝까지 안정적이었어요", "Steady throughout")
     }
 
     /// 심박존 도넛 캡션 — 4존 이상이 최다 구간일 때.

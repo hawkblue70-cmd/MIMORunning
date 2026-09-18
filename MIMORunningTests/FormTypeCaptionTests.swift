@@ -35,6 +35,8 @@ struct FormTypeCaptionTests {
     @Test func hrRiseCaptionOnlyBuildUpGetsPrefix() {
         ko {
             #expect(FormNarrative.hrSecondHalfRiseCaption(type: .buildUp) == "빌드업답게 후반에 심박이 올라갔어요")
+            #expect(FormNarrative.hrSteadyCaption(type: .buildUp) == "페이스를 올린 만큼만 올랐어요")
+            #expect(FormNarrative.hrSteadyCaption(type: .tempo) == "끝까지 안정적이었어요")
             for t: WorkoutType in [.tempo, .race, .interval, .easy, .general, .longRun] {
                 #expect(FormNarrative.hrSecondHalfRiseCaption(type: t) == "후반에 심박이 올랐어요", "\(t)")
             }

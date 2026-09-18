@@ -563,7 +563,7 @@ struct FormPhaseTests {
     @Test func risingCadenceIsNotReportedAsDrop() {
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, cad: 178, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains { $0.contains("케이던스는 올라갔어요.") })
+        #expect(lines.contains { $0.contains("케이던스는 3spm 올라갔어요.") })
     }
 
     @Test func unknownCadenceOmitsClause() {

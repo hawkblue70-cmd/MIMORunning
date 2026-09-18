@@ -513,8 +513,10 @@ enum FormPhase {
             }()
             enum CadenceDir { case same, dropped, rose }
             var cadenceDir: CadenceDir? = nil
+            var cadenceDeltaSPM = 0
             if !cadenceAlreadyNamed, let a = m.cadence, let b = l.cadence {
                 let d = b - a
+                cadenceDeltaSPM = Int(abs(d).rounded())
                 if abs(d) < cadenceSameSPM { cadenceDir = .same }
                 else if d <= -cadenceSameSPM { cadenceDir = .dropped }
                 else { cadenceDir = .rose }
@@ -533,8 +535,8 @@ enum FormPhase {
                 let cadKo: String, cadEn: String
                 switch dir {
                 case .same:    cadKo = "케이던스는 그대로예요.";  cadEn = "while cadence stayed the same."
-                case .dropped: cadKo = "케이던스는 내려갔어요."; cadEn = "and cadence dropped."
-                case .rose:    cadKo = "케이던스는 올라갔어요."; cadEn = "and cadence went up."
+                case .dropped: cadKo = "케이던스는 \(cadenceDeltaSPM)spm 내려갔어요."; cadEn = "and cadence dropped \(cadenceDeltaSPM) spm."
+                case .rose:    cadKo = "케이던스는 \(cadenceDeltaSPM)spm 올라갔어요."; cadEn = "and cadence went up \(cadenceDeltaSPM) spm."
                 }
                 ko = "\(paceKo) 심박이 \(hrDelta)bpm 올랐고\(heatKo), \(cadKo)"
                 en = "\(paceEn) heart rate rose \(hrDelta) bpm\(heatEn), \(cadEn)"

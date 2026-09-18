@@ -1736,9 +1736,13 @@ struct RunFormCardView: View {
         let slStatus: MetricStatus = avgStrideLength.map {
             metricStatus(rawValue: $0, stat: bb?.strideLength, dir: .stride)
         } ?? .unknown
+        let voStatus: MetricStatus = avgVerticalOscillation.map {
+            metricStatus(rawValue: $0, stat: bb?.verticalOsc, dir: .verticalOsc)
+        } ?? .unknown
         let input = FormNarrative.Input(
             cad: cadStatus, gct: gctStatus, sl: slStatus,
-            cadStr: cadStr, gctStr: gctStr, slStr: slStr, paceStr: paceStr)
+            cadStr: cadStr, gctStr: gctStr, slStr: slStr, paceStr: paceStr,
+            vo: voStatus)
         return FormNarrative.sentence(input, frame: FormNarrative.frame(for: workoutType))
     }
 

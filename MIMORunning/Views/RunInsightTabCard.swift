@@ -2765,7 +2765,7 @@ private struct RhythmInsightCard: View {
         // 빌드업은 후반 상승이 계획 — 문구만 유형별 (색은 동일)
         if diff >= 8  { return (FormNarrative.hrSecondHalfRiseCaption(type: rhythmWorkoutType), Color(hex: "FF9A3C")) }
         if diff <= -5 { return (L.s("후반에 여유가 있었어요", "Plenty left in the 2nd half"), Color(hex: "4C8DFF")) }
-        return (L.s("끝까지 안정적이었어요", "Steady throughout"), Theme.positive)
+        return (FormNarrative.hrSteadyCaption(type: rhythmWorkoutType), Theme.positive)
     }
 
     private func vo2SubLabel(fi: RunInsightEngine.VO2FitnessInfo, vo2: Double) -> (text: String, color: Color) {
