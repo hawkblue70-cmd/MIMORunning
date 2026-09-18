@@ -810,6 +810,8 @@ struct RunInsightTabCard: View {
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
     var recoveryResult: MRRecoveryResult? = nil
+    /// 심박 차트 회복 띠 — 같은 심박으로 끝낸 러닝의 평소 낙폭 범위.
+    var recoveryBand: MRRecoveryBand? = nil
 
     @State private var tab: InsightTabKind = .rhythm
     /// 퍼포먼스 카드가 강도 분포를 실제로 그렸는지 — 각주(문헌값 설명)를 차트가 있을 때만 붙이기 위해 자식이 알려준다.
@@ -864,7 +866,8 @@ struct RunInsightTabCard: View {
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
                 recoveryShape: recoveryShape,
-                recoveryResult: recoveryResult
+                recoveryResult: recoveryResult,
+                recoveryBand: recoveryBand
             )
         }
         .onAppear {
@@ -980,7 +983,8 @@ struct RunInsightTabCard: View {
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
                 recoveryShape: recoveryShape,
-                recoveryResult: recoveryResult
+                recoveryResult: recoveryResult,
+                recoveryBand: recoveryBand
             )
         case .form:
             let formCadence: Int? = {
@@ -1107,6 +1111,8 @@ private struct HRTimeSeriesView: View {
     /// 종료 후 회복 심박. 시간축이 아니라 **낙차**로 그린다 — 3분은 100분 러닝의 3%라
     /// 시계열로 늘리면 보이지 않는다. 캡션 가드와 무관하게 그린다(원자료라서).
     var recovery: MRRecoveryResult? = nil
+    /// 같은 심박으로 끝낸 과거 러닝의 평소 낙폭 범위. 띠로 깔아 오늘 점과 비교하게 한다.
+    var recoveryBand: MRRecoveryBand? = nil
 
 
 
@@ -1296,6 +1302,15 @@ private struct HRTimeSeriesView: View {
                     for d in dots { link.addLine(to: CGPoint(x: d.x, y: ry(d.bpm))) }
                     ctx.stroke(link, with: .color(.white.opacity(0.45)),
                                style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                    // 평소 범위 띠 — 같은 심박으로 끝낸 러닝들의 1분 낙폭 25~75 백분위.
+                    // 오늘 점이 띠 위/안/아래 어디인지가 판단 근거다. 좋다/나쁘다는 말하지 않는다.
+                    if let b = recoveryBand {
+                        let yTop = ry(r.endHR - b.lo), yBot = ry(r.endHR - b.hi)
+                        let rect = CGRect(x: x1 - 4, y: min(yTop, yBot),
+                                          width: (x2 + 4) - (x1 - 4), height: abs(yBot - yTop))
+                        ctx.fill(Path(roundedRect: rect, cornerRadius: 1.5),
+                                 with: .color(.white.opacity(0.14)))
+                    }
                     let rDot: CGFloat = 2.5
                     for d in dots {
                         ctx.fill(Path(ellipseIn: CGRect(x: d.x - rDot, y: ry(d.bpm) - rDot,
@@ -1451,6 +1466,8 @@ private struct RhythmInsightCard: View {
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
     var recoveryResult: MRRecoveryResult? = nil
+    /// 심박 차트 회복 띠 — 같은 심박으로 끝낸 러닝의 평소 낙폭 범위.
+    var recoveryBand: MRRecoveryBand? = nil
     /// 내보내기 카드는 총평 5줄만 그린다(펼침 없음) — 앱 화면은 기본값(true)으로 탭하면 펼쳐진다.
     var summaryAllowsExpansion: Bool = true
     @Environment(\.insightCompact) private var compact
@@ -1747,7 +1764,8 @@ private struct RhythmInsightCard: View {
                             distanceKm: activity.distance / 1000,
                             elevationGainM: detail?.elevationGain ?? 0,
                             showsFlatEquivalent: flatEquivalentText != nil,
-                            recovery: recoveryResult
+                            recovery: recoveryResult,
+                            recoveryBand: recoveryBand
                         )
                         .padding(.horizontal, 2)
                         .frame(height: 104)
@@ -5641,6 +5659,8 @@ struct InsightExportSheet: View {
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
     var recoveryResult: MRRecoveryResult? = nil
+    /// 심박 차트 회복 띠 — 같은 심박으로 끝낸 러닝의 평소 낙폭 범위.
+    var recoveryBand: MRRecoveryBand? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -5837,6 +5857,7 @@ struct InsightExportSheet: View {
                 planPhase: planPhase,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
+                recoveryBand: recoveryBand,
                 summaryAllowsExpansion: false
             )
         case .form:

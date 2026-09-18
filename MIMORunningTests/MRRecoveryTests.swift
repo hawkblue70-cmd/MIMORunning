@@ -156,6 +156,30 @@ struct MRRecoveryTests {
         #expect(r?.decay == nil)
     }
 
+    /// 같은 심박으로 끝낸 러닝만 써야 한다 — 170에서 끝낸 러닝은 낙폭이 커서 섞이면 띠가 위로 끌린다.
+    @Test func hrr1BandMatchesOnEndHR() {
+        var h: [MRRecoveryHRR1Point] = []
+        for i in 0..<10 { h.append(MRRecoveryHRR1Point(endHR: 148.0 + Double(i % 5), hrr1: 20.0 + Double(i % 5))) }
+        for _ in 0..<10 { h.append(MRRecoveryHRR1Point(endHR: 175.0, hrr1: 45.0)) }
+        let b = MRRecovery.hrr1Band(endHR: 150, history: h)
+        #expect(b != nil)
+        #expect(b?.n == 10)            // 175로 끝낸 10건은 제외된다
+        #expect((b?.hi ?? 99) < 30)    // 45가 섞였다면 상한이 훨씬 높아진다
+    }
+
+    @Test func hrr1BandNeedsEightMatchingRuns() {
+        var seven: [MRRecoveryHRR1Point] = []
+        for _ in 0..<7 { seven.append(MRRecoveryHRR1Point(endHR: 150.0, hrr1: 22.0)) }
+        #expect(MRRecovery.hrr1Band(endHR: 150, history: seven) == nil)
+        var eight = seven
+        eight.append(MRRecoveryHRR1Point(endHR: 150.0, hrr1: 22.0))
+        #expect(MRRecovery.hrr1Band(endHR: 150, history: eight) != nil)
+        // 표본이 많아도 종료심박이 다 멀면 nil
+        var far: [MRRecoveryHRR1Point] = []
+        for _ in 0..<20 { far.append(MRRecoveryHRR1Point(endHR: 170.0, hrr1: 40.0)) }
+        #expect(MRRecovery.hrr1Band(endHR: 150, history: far) == nil)
+    }
+
     @Test func tauPercentileNeedsEightSamples() {
         let seven = [40.0, 45, 50, 55, 60, 65, 70]
         #expect(MRRecovery.tauPercentile(52, history: seven) == nil)

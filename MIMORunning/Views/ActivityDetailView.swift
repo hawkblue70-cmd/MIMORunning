@@ -77,6 +77,8 @@ struct ActivityDetailView: View {
     @State private var recoveryResult: MRRecoveryResult? = nil
     /// 리듬 카드 회복 한 줄 입력 — τ와 과거 분포 내 위치. 자격 미달·샘플 부족이면 nil로 남아 카드가 침묵한다.
     @State private var recoveryShape: MRRecoveryShape? = nil
+    /// 같은 심박으로 끝낸 과거 러닝의 1분 낙폭 범위 — 심박 차트에 띠로 깔린다.
+    @State private var recoveryBand: MRRecoveryBand? = nil
     /// loadRecovery 진행 중 — HR 시리즈가 오는 자리마다 불러도 중복 조회가 되지 않게 한다.
     /// `recoveryResult == nil`만으로는 부족하다: 첫 await 전에 두 번째 진입이 그 가드를 통과한다.
     @State private var isLoadingRecovery = false
@@ -150,9 +152,16 @@ struct ActivityDetailView: View {
             print("[회복:모양] 없음 — \(why)")
         }
         #endif
-        guard let r = recoveryResult, let d = r.decay else { return }
+        guard let r = recoveryResult else { return }
         Task {
             let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+            let hrr1s = await manager.recoveryHRR1History(from: start, excluding: activity.id)
+            let band = MRRecovery.hrr1Band(endHR: r.endHR, history: hrr1s)
+            withAnimation(.snappy) { recoveryBand = band }
+            #if DEBUG
+            print("[회복:밴드] " + (band.map { String(format: "같은 심박(±5) %d건 · 평소 −%.0f~−%.0f", $0.n, $0.lo, $0.hi) } ?? "표본부족"))
+            #endif
+            guard let d = r.decay else { return }
             let taus = await manager.recoveryTauHistory(from: start, excluding: activity.id)
             let shape = MRRecoveryShape(r, percentile: MRRecovery.tauPercentile(d.tau, history: taus))
             // 늦게 도착하므로 topCaptionH가 28→38로 한 프레임에 튄다 — 구분선·아래 요소가 끊겨 내려가지 않게 잇는다.
@@ -331,7 +340,8 @@ struct ActivityDetailView: View {
                             easyPaceLookup: engine.easyPaceLookup,
                             planPhase: matchedPlanWeek()?.phase,
                             recoveryShape: recoveryShape,
-                            recoveryResult: recoveryResult
+                            recoveryResult: recoveryResult,
+                            recoveryBand: recoveryBand
                         )
                     }
                     // 표시할 상세 지표가 하나도 없으면(걷기 등) 섹션째 숨긴다.

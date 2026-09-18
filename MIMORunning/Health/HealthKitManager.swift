@@ -2634,6 +2634,15 @@ class HealthKitManager {
         return await task.value.filter { $0.date >= start }
     }
 
+    /// 과거 러닝의 (종료심박, 1분 낙폭) 목록 — 밴드용. `excluding` 러닝은 뺀다.
+    func recoveryHRR1History(from start: Date, excluding activityID: UUID?) async -> [MRRecoveryHRR1Point] {
+        let pts = await fetchRecoveryHistory(from: start)
+        return pts.compactMap { p in
+            if let id = activityID, p.id == id { return nil }
+            return MRRecoveryHRR1Point(endHR: p.endHR, hrr1: p.hrr1)
+        }
+    }
+
     /// 과거 러닝의 회복 곡선 시정수 τ 목록. `excluding` 러닝은 뺀다 — 자기를 포함한 분포와
     /// 비교하면 표본이 작을수록 가운데로 끌린다. id로 뺀다(시각 근접 아님) — 연속 런을 오배제하지
     /// 않고, 시각이 살짝 어긋나 자기가 자기 분포에 남는 일도 없다. 구버전 캐시 포인트는 id가 nil이라

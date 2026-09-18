@@ -25,6 +25,20 @@ struct MRRecoveryDecay: Sendable {
     let asymptote: Double  // HR∞ (bpm)
 }
 
+/// 같은 심박으로 끝낸 과거 러닝들의 1분 낙폭 범위(25~75 백분위).
+/// 차트에 띠로 깔아 "평소 이만큼 내려왔다"를 보여준다 — 판정 대신 근거를 준다.
+/// 밴드 입력 한 점 — 라벨 튜플 대신 이름 있는 타입을 쓴다.
+struct MRRecoveryHRR1Point: Sendable {
+    let endHR: Double
+    let hrr1: Double
+}
+
+struct MRRecoveryBand: Sendable {
+    let lo: Double   // 낙폭 하한(bpm)
+    let hi: Double   // 낙폭 상한(bpm)
+    let n: Int
+}
+
 /// 리듬 카드 한 줄에 필요한 값 묶음. 뷰는 이걸 받아 `MRRecovery.shapeCaption`이 만든 문자열만 그린다.
 struct MRRecoveryShape: Sendable {
     let hrr1: Double
@@ -138,6 +152,24 @@ enum MRRecovery {
 #endif
 
     static let minTauSamples = 8   // 임의로 정함 — 사분위가 의미를 갖는 최소선
+
+    static let endHRMatchWindow = 5.0   // 임의로 정함 — "같은 심박으로 끝냈다"로 볼 폭(bpm)
+    static let minBandSamples = 8       // 임의로 정함 — minTauSamples와 같은 최소선
+
+    /// 종료심박이 비슷한(±5bpm) 과거 러닝들의 1분 낙폭 25~75 백분위.
+    /// ⚠ 종료심박을 맞춰 뽑는 것이 핵심이다 — HRR1은 끝낸 강도에 크게 좌우되므로(Daanen 2012)
+    ///   전체 분포와 비교하면 "오늘 세게 뛰었다"가 "회복이 좋다"로 읽힌다.
+    /// ⚠ 좋다/나쁘다를 말하지 않는다. 띠는 범위일 뿐이고 판단은 러너가 한다.
+    static func hrr1Band(endHR: Double, history: [MRRecoveryHRR1Point]) -> MRRecoveryBand? {
+        let near = history.filter { abs($0.endHR - endHR) <= endHRMatchWindow }.map(\.hrr1).sorted()
+        guard near.count >= minBandSamples else { return nil }
+        func pct(_ q: Double) -> Double {
+            let i = q * Double(near.count - 1)
+            let lo = Int(i.rounded(.down)), hi = Int(i.rounded(.up))
+            return lo == hi ? near[lo] : near[lo] + (near[hi] - near[lo]) * (i - Double(lo))
+        }
+        return MRRecoveryBand(lo: pct(0.25), hi: pct(0.75), n: near.count)
+    }
 
     /// 과거 τ 중 오늘보다 작은(= 더 빨랐던) 것의 비율. 표본이 모자라면 nil.
     /// ⚠ `history`에 오늘 러닝을 넣지 않는다 — 자기를 포함하면 표본이 작을수록 가운데로 끌린다.
