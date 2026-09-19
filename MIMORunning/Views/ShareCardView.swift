@@ -1895,32 +1895,27 @@ struct ShareCardScreen: View {
         SkyAccentRowView(vm: skyVM, onRender: { await renderCard(showSpinner: false) })
     }
 
-    // 로고 칩 — 템플릿별 칩 행과 별개로 항상 같은 자리에 하나. 대회 칩과 같은 스타일.
-    private var logoChipRow: some View {
-        HStack(spacing: 8) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { showLogoOnCard.toggle() }
-                Task { await renderCard(showSpinner: false) }
-            } label: {
-                HStack(spacing: 4) {
-                    if showLogoOnCard {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 9, weight: .bold))
-                    }
-                    Text(AppLanguage.shared.s("로고", "Logo"))
-                        .font(.caption.weight(.semibold))
+    // 로고 칩 — 템플릿 피커 행 오른쪽 끝, 8개 카드 공통 한 자리(전역 설정). 대회 칩과 같은 스타일.
+    private var logoChip: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) { showLogoOnCard.toggle() }
+            Task { await renderCard(showSpinner: false) }
+        } label: {
+            HStack(spacing: 4) {
+                if showLogoOnCard {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .bold))
                 }
-                .foregroundStyle(showLogoOnCard ? Color.white : Color.white.opacity(0.4))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(showLogoOnCard ? Theme.violet : Color.white.opacity(0.08))
-                .clipShape(Capsule())
+                Text(AppLanguage.shared.s("로고", "Logo"))
+                    .font(.caption.weight(.semibold))
             }
-            .buttonStyle(.plain)
-            Spacer(minLength: 0)
+            .foregroundStyle(showLogoOnCard ? Color.white : Color.white.opacity(0.4))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(showLogoOnCard ? Theme.violet : Color.white.opacity(0.08))
+            .clipShape(Capsule())
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 2)
+        .buttonStyle(.plain)
     }
 
     // Chip row selector — extracted from body to keep the body's type-check surface small.
@@ -2204,6 +2199,10 @@ struct ShareCardScreen: View {
                 }
                 .disabled(!available)
             }
+            // 로고 on/off — 피커 버튼들이 maxWidth: .infinity라 칩 폭만큼만 양보하고 한 줄 유지
+            logoChip
+                .fixedSize()
+                .padding(.leading, 8)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 6)
@@ -2230,7 +2229,6 @@ struct ShareCardScreen: View {
         AnyView(templatePicker)
         Color.clear.frame(height: 8)
         AnyView(activeChipRow)
-        AnyView(logoChipRow)
         if template == .story || template == .slide {
             AnyView(photoStrip.padding(.bottom, 4))
             if template == .slide, !storyPhotos.isEmpty {
@@ -2256,7 +2254,6 @@ struct ShareCardScreen: View {
     private var placeableControlPanel: some View {
         AnyView(templatePicker)
         AnyView(activeChipRow.padding(.bottom, 3))
-        AnyView(logoChipRow.padding(.bottom, 3))
         if isPlaceable, template == .story || template == .slide {
             AnyView(placeableStoryTextField)
         }
