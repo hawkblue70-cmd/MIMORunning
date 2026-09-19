@@ -134,3 +134,71 @@ struct RaceDetectorGateTests {
         #expect(race(startTime: nil).startMinutesOfDay == nil)
     }
 }
+
+/// 번들 대회 CSV 자체의 무결성 — 잘못된 행이 조용히 섞이는 것을 막는다.
+@Suite("번들 대회 CSV 무결성")
+struct BundledRaceCSVTests {
+
+    private var races: [BundledRace] {
+        let d = RaceDetector()
+        d.loadRacesForTesting()
+        return d.races
+    }
+
+    @Test func csvParsesIntoManyRaces() {
+        #expect(races.count > 400)
+    }
+
+    @Test func everyRaceHasAParsableDate() {
+        #expect(races.allSatisfy { $0.date != nil })
+    }
+
+    @Test func coordinatesAreInsideKorea() {
+        // 좌표 오타(경위도 뒤바뀜 등)를 잡는다. geoPrecision=none인 행만 좌표가 없다.
+        for r in races where r.geoPrecision != "none" {
+            #expect(r.startLatitude != nil && r.startLongitude != nil, "\(r.name) 좌표 없음")
+            if let la = r.startLatitude, let ln = r.startLongitude {
+                #expect((33.0...39.0).contains(la), "\(r.name) 위도 이상: \(la)")
+                #expect((124.0...132.0).contains(ln), "\(r.name) 경도 이상: \(ln)")
+            }
+        }
+    }
+
+    @Test func matchableRacesDeclareDistances() {
+        // 표준 대회(nonStandard=false)는 거리가 있어야 매칭 게이트를 통과할 수 있다
+        for r in races where !r.nonStandard {
+            #expect(!r.distancesKm.isEmpty, "\(r.name) 거리 없음 — 영영 매칭 안 됨")
+        }
+    }
+
+    @Test func distancesArePlausible() {
+        for r in races {
+            for km in r.distancesKm {
+                #expect(km >= 1.0 && km <= 250.0, "\(r.name) 거리 이상: \(km)")
+            }
+        }
+    }
+
+    @Test func geoPrecisionUsesKnownValues() {
+        let known: Set<String> = ["venue", "district", "city", "none"]
+        for r in races {
+            #expect(known.contains(r.geoPrecision), "\(r.name) 알 수 없는 정밀도: \(r.geoPrecision)")
+        }
+    }
+
+    @Test func startTimesAreWellFormedWhenPresent() {
+        for r in races {
+            guard let s = r.startTimeString, !s.isEmpty else { continue }
+            #expect(r.startMinutesOfDay != nil, "\(r.name) 출발 시각 형식 오류: \(s)")
+        }
+    }
+
+    @Test func noDuplicateNameAndDate() {
+        var seen = Set<String>()
+        for r in races {
+            let key = r.name + "|" + r.dateString
+            #expect(!seen.contains(key), "중복 행: \(key)")
+            seen.insert(key)
+        }
+    }
+}
