@@ -124,6 +124,8 @@ struct ShareCardScreen: View {
 
     @State var storyShareImages: [UIImage] = []
     @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
+    /// 사진·영상 카드 로고 칩 — 모든 카드 템플릿 공통, 기본 OFF. 켜도 로고 자리는 항상 잡혀 있어 다른 요소는 안 움직인다.
+    @AppStorage(MIMOWordmark.mediaLogoKey) private var showLogoOnCard = false
 
     @State private var previewImage: UIImage?
     @State private var isRendering = true
@@ -1893,6 +1895,34 @@ struct ShareCardScreen: View {
         SkyAccentRowView(vm: skyVM, onRender: { await renderCard(showSpinner: false) })
     }
 
+    // 로고 칩 — 템플릿별 칩 행과 별개로 항상 같은 자리에 하나. 대회 칩과 같은 스타일.
+    private var logoChipRow: some View {
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { showLogoOnCard.toggle() }
+                Task { await renderCard(showSpinner: false) }
+            } label: {
+                HStack(spacing: 4) {
+                    if showLogoOnCard {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    Text(AppLanguage.shared.s("로고", "Logo"))
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(showLogoOnCard ? Color.white : Color.white.opacity(0.4))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(showLogoOnCard ? Theme.violet : Color.white.opacity(0.08))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 2)
+    }
+
     // Chip row selector — extracted from body to keep the body's type-check surface small.
     @ViewBuilder private var activeChipRow: some View {
         if isStamp                              { StampControlsView(vm: stampVM, template: template, data: stampPreviewData,
@@ -2200,6 +2230,7 @@ struct ShareCardScreen: View {
         AnyView(templatePicker)
         Color.clear.frame(height: 8)
         AnyView(activeChipRow)
+        AnyView(logoChipRow)
         if template == .story || template == .slide {
             AnyView(photoStrip.padding(.bottom, 4))
             if template == .slide, !storyPhotos.isEmpty {
@@ -2225,6 +2256,7 @@ struct ShareCardScreen: View {
     private var placeableControlPanel: some View {
         AnyView(templatePicker)
         AnyView(activeChipRow.padding(.bottom, 3))
+        AnyView(logoChipRow.padding(.bottom, 3))
         if isPlaceable, template == .story || template == .slide {
             AnyView(placeableStoryTextField)
         }
