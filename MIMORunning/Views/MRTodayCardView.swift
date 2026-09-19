@@ -2,6 +2,18 @@ import SwiftUI
 
 struct MRTodayCardView: View {
     @EnvironmentObject var engine: MREngineStore
+    @AppStorage("distanceUnitMiles") private var useMiles = false
+
+    /// 100 미만은 소수 1자리(주간에서 의미 있음), 그 이상은 정수 + 천 단위 콤마.
+    private func distanceText(km: Double) -> String {
+        let v = useMiles ? km * 0.621371 : km
+        let unit = useMiles ? "mi" : "km"
+        if v < 100 { return String(format: "%.1f", v) + unit }
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        return (f.string(from: NSNumber(value: v)) ?? String(Int(v))) + unit
+    }
 
     var body: some View {
         if let c = engine.todayCard {
@@ -14,10 +26,25 @@ struct MRTodayCardView: View {
                 Text(c.streakLine)
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
-                Text(c.cumulativeLine)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.45))
-                    .padding(.top, 4)
+                // 거리 행 — 이번 주 · 이번 달 · 올해 · 누적. 0km 칸은 엔진에서 이미 빠져 있고
+                // 남은 칸이 폭을 나눠 갖는다. 누적만 흰색 — 레벨의 숫자다.
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(Array(c.distanceCells.enumerated()), id: \.offset) { idx, cell in
+                        let isTotal = idx == c.distanceCells.count - 1
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(cell.label)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.45))
+                            Text(distanceText(km: cell.km))
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .foregroundStyle(isTotal ? Color.white : Color.white.opacity(0.6))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.top, 10)
 
                 // ⚠ 구분선은 아래에 내용이 있을 때만 그린다.
                 //   sessionLine과 linkLine이 둘 다 nil이면(안 뛴 날 + 등록 대회 없음)

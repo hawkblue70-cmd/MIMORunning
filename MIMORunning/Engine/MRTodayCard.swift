@@ -10,8 +10,14 @@ import Foundation
 ///  · 세션 해석(LT1 기반 강도 판정)은 러닝 상세의 강도·페이스 카드에 있다.
 ///    홈에 두면 아래 목록과 같은 이야기를 두 번 하는 중복이 된다.
 struct MRTodayCard {
+    /// 거리 칸 하나 — 이번 주 / 이번 달 / 올해 / 누적. 값은 km, 표시 단위(km·mi)는 뷰가 정한다.
+    struct DistanceCell: Equatable {
+        let label: String
+        let km: Double
+    }
+
     let streakLine: String           // ①
-    let cumulativeLine: String       // ①
+    let distanceCells: [DistanceCell] // ① 0km인 칸은 빠져 있다. 누적은 항상 있다.
     let sessionLine: String?         // ② 오늘 뛰었으면 기록 한 줄, 아니면 이번 주 요약
     let linkLine: String?            // ②
 
@@ -51,6 +57,33 @@ func mrActiveWeekStreak(runs: [MRWorkout], asOf: Date) -> Int {
     return streak
 }
 
+/// 홈 거리 행 — 이번 주(ISO 주, 월요일 시작) · 이번 달 · 올해 · 누적.
+///
+/// 회수가 아니라 거리다: 러너가 관리하는 단위는 주간 마일리지고, 누적 km는 레벨의 숫자다(NRC 블랙 = 5,000km).
+/// 0km인 칸은 넣지 않는다 — 월요일 아침 "이번 주 0km", 1일 아침 "이번 달 0km"는 사람을 찌른다.
+/// 누적은 러닝이 하나라도 있으면 항상 있다.
+func mrDistanceCells(runs: [MRWorkout], asOf: Date) -> [MRTodayCard.DistanceCell] {
+    let L = AppLanguage.shared
+    var iso = Calendar(identifier: .iso8601)
+    iso.timeZone = .current
+    let cal = Calendar.current
+
+    func sum(_ f: (MRWorkout) -> Bool) -> Double {
+        runs.filter(f).compactMap(\.distanceKm).reduce(0, +)
+    }
+    let week  = sum { iso.isDate($0.start, equalTo: asOf, toGranularity: .weekOfYear) }
+    let month = sum { cal.isDate($0.start, equalTo: asOf, toGranularity: .month) }
+    let year  = sum { cal.isDate($0.start, equalTo: asOf, toGranularity: .year) }
+    let total = sum { _ in true }
+
+    var cells: [MRTodayCard.DistanceCell] = []
+    if week  > 0 { cells.append(.init(label: L.s("이번 주", "This week"),  km: week)) }
+    if month > 0 { cells.append(.init(label: L.s("이번 달", "This month"), km: month)) }
+    if year  > 0 { cells.append(.init(label: L.s("올해",   "This year"),  km: year)) }
+    cells.append(.init(label: L.s("누적", "Total"), km: total))
+    return cells
+}
+
 func mrTodayCard(runs: [MRWorkout],
                  phys: MRPhysiology,
                  plans: [MRRacePlan],
@@ -68,7 +101,7 @@ func mrTodayCard(runs: [MRWorkout],
         ? L.s("\(streak)주 연속으로 달리고 있어요", "\(streak)-week streak")
         : L.s("오늘도 나오셨네요", "Great to see you today")
 
-    let totalKm = runs.compactMap(\.distanceKm).reduce(0, +)
+    let distanceCells = mrDistanceCells(runs: runs, asOf: asOf)
 
     // ── ② 오늘 뛰었는가
     // ⚠ 주간 요약은 성장 탭이 담당한다. 홈에 두면 중복이다.
@@ -88,7 +121,6 @@ func mrTodayCard(runs: [MRWorkout],
     let sinceEnd = asOf.timeIntervalSince(sessionEnd)
     let ranToday = sinceEnd >= 0 && sinceEnd < MRTodayCard.sessionLineWindow
     var sessionLine: String? = nil
-    let cumulativeLine: String
     if ranToday {
         let dist = last.distanceKm.map { String(format: "%.2fkm", $0) } ?? "—"
         // 한 시간을 넘으면 시:분:초 — "100:41"처럼 분이 세 자리로 늘면 아래 목록의 "1:40:41"과 어긋난다.
@@ -99,19 +131,6 @@ func mrTodayCard(runs: [MRWorkout],
             : String(format: "%d:%02d", durSec / 60, durSec % 60)
         let pace = last.paceSecPerKm.map { mrFormatPace($0) + "/km" } ?? "—"
         sessionLine = "\(dist) · \(dur) · \(pace)"
-        let monthIdx = runs.filter {
-            cal.isDate($0.start, equalTo: last.start, toGranularity: .month)
-            && $0.start <= last.start
-        }.count
-        cumulativeLine = L.s(
-            "이번 달 \(monthIdx)번째 · 누적 \(runs.count)회 \(Int(totalKm))km",
-            "Run \(monthIdx) this month · \(runs.count) total · \(Int(totalKm))km"
-        )
-    } else {
-        cumulativeLine = L.s(
-            "누적 \(runs.count)회 \(Int(totalKm))km",
-            "\(runs.count) runs · \(Int(totalKm))km"
-        )
     }
 
     // ⚠ "지금 상태"가 아니라 "계획대로 쌓았을 때"를 보여준다.
@@ -136,6 +155,6 @@ func mrTodayCard(runs: [MRWorkout],
               )
     }
 
-    return MRTodayCard(streakLine: streakLine, cumulativeLine: cumulativeLine,
+    return MRTodayCard(streakLine: streakLine, distanceCells: distanceCells,
                        sessionLine: sessionLine, linkLine: linkLine)
 }

@@ -25,6 +25,46 @@ final class MRTodayCardTests: XCTestCase {
         return f.date(from: s)!
     }
 
+    // MARK: - 거리 행 (이번 주 · 이번 달 · 올해 · 누적)
+
+    private func L(_ ko: String, _ en: String) -> String { AppLanguage.shared.s(ko, en) }
+
+    // 2026-09-15(화) 기준: 이번 주 = 9/14(월)~, 이번 달 = 9월, 올해 = 2026
+    func testDistanceCellsSumEachPeriod() throws {
+        let runs = [
+            run(start: date("2025-12-30 07:00"), km: 10),   // 작년 → 누적만
+            run(start: date("2026-08-20 07:00"), km: 8),    // 올해, 지난달
+            run(start: date("2026-09-10 07:00"), km: 6),    // 이번 달, 지난주
+            run(start: date("2026-09-14 07:00"), km: 5),    // 이번 주(월)
+        ]
+        let c = try XCTUnwrap(card(runs: runs, asOf: date("2026-09-15 09:00")))
+        XCTAssertEqual(c.distanceCells.map(\.km), [5, 11, 19, 29])
+        XCTAssertEqual(c.distanceCells.map(\.label), [L("이번 주", "This week"), L("이번 달", "This month"), L("올해", "This year"), L("누적", "Total")])
+    }
+
+    // 월요일 아침, 이번 주 러닝 전 → "이번 주" 칸이 없다 (0km는 찌른다). 누적은 항상 있다.
+    func testZeroWeekCellIsOmitted() throws {
+        let runs = [run(start: date("2026-09-10 07:00"), km: 6)]
+        let c = try XCTUnwrap(card(runs: runs, asOf: date("2026-09-14 08:00")))
+        XCTAssertEqual(c.distanceCells.map(\.label), [L("이번 달", "This month"), L("올해", "This year"), L("누적", "Total")])
+        XCTAssertEqual(c.distanceCells.last?.km, 6)
+    }
+
+    // 1월 1일 아침, 작년 기록만 → 누적 하나만
+    func testNewYearMorningShowsOnlyTotal() throws {
+        let runs = [run(start: date("2025-12-28 07:00"), km: 12)]
+        let c = try XCTUnwrap(card(runs: runs, asOf: date("2026-01-01 08:00")))
+        XCTAssertEqual(c.distanceCells.map(\.label), [L("누적", "Total")])
+        XCTAssertEqual(c.distanceCells.first?.km, 12)
+    }
+
+    // 주 경계는 ISO(월요일 시작) — 일요일 러닝은 다음 주(월)에는 "이번 주"가 아니다
+    func testWeekStartsOnMonday() throws {
+        let runs = [run(start: date("2026-09-13 07:00"), km: 7)]   // 일요일
+        let c = try XCTUnwrap(card(runs: runs, asOf: date("2026-09-14 20:00")))   // 월요일 저녁
+        XCTAssertFalse(c.distanceCells.contains { $0.label == L("이번 주", "This week") })
+    }
+
     // 오후 5시 러닝(40분, 5:40 종료) → 다음 날 새벽 5시 전까지는 보인다
     func testEveningRunStillShownEarlyNextMorning() {
         let r = run(start: date("2026-09-11 17:00"))

@@ -312,7 +312,7 @@ struct MRDebugView: View {
 
                     ── 오늘의 러닝 카드
                     \(c.streakLine)
-                    \(c.cumulativeLine)
+                    \(c.distanceCells.map { "\($0.label) \(String(format: "%.1f", $0.km))km" }.joined(separator: " · "))
 
                     \(c.sessionLine ?? "(쉬는 날 — 이번 주 러닝 없음)")
                     \(c.linkLine ?? "")
