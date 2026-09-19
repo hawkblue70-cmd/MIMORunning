@@ -239,8 +239,8 @@ struct StampPhotoConfig: Equatable {
     var sizeLevel:      TextSizeLevel     = .medium
     var showHeartRate:  Bool              = false
     var showTextOutline: Bool             = true
-    /// 워드마크 줄 오른쪽에 날짜·시간 표시 (스토리·영상·슬라이드·경로 영상 공통)
-    var showDate:       Bool              = false
+    /// 워드마크 줄 오른쪽에 날짜·시간 표시 (스토리·영상·슬라이드·경로 영상 공통). 기본 ON — 로고 칩과 같은 원칙
+    var showDate:       Bool              = true
     var text:           String            = ""
     var textPosition:   CardPosition      = .top
     var textFont:       OneLinerFont      = .gothic

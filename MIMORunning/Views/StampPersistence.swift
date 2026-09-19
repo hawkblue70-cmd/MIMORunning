@@ -62,7 +62,7 @@ private struct StampConfigDTO: Codable {
             sizeLevel:       TextSizeLevel(rawValue: sizeLevel) ?? .medium,
             showHeartRate:   showHeartRate || StampTemplate.legacyImpliesHeartRate(template),
             showTextOutline: showTextOutline,
-            showDate:        showDate ?? false,
+            showDate:        showDate ?? true,    // 토글 생기기 전 저장값 = 선택한 적 없음 → 기본 ON
             text:            text,
             textPosition:    posAll.indices.contains(textPositionIdx) ? posAll[textPositionIdx] : .top,
             textFont:        OneLinerFont(rawValue: textFont) ?? .gothic,
