@@ -602,25 +602,25 @@ struct MRWeekTable: View {
                                         Text(L.s("롱런", "Long")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.long))
-                                                .fontWeight(.semibold).foregroundStyle(.white)
+                                                .fontWeight(.bold).foregroundStyle(Color.yellow)   // 노랑 = 실제로 한 것
                                             if longOver { Text(symbolOver).foregroundStyle(.white.opacity(0.85)) }
                                         } else {
                                             Text("—").foregroundStyle(.white.opacity(0.65))
                                         }
                                         Text(String(format: "/%.1fkm", snap.longRunKm))
-                                            .foregroundStyle(mrAccent.opacity(0.75))
+                                            .foregroundStyle(mrAccent.opacity(0.70))
                                     }
                                     HStack(spacing: 3) {
                                         Text(L.s("주간", "Weekly")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.weekly))
-                                                .fontWeight(.semibold).foregroundStyle(.white)
+                                                .fontWeight(.bold).foregroundStyle(Color.yellow)
                                             if weeklyOver { Text(symbolOver).foregroundStyle(.white.opacity(0.85)) }
                                         } else {
                                             Text("—").foregroundStyle(.white.opacity(0.65))
                                         }
                                         Text(String(format: "/%.0fkm", snap.weeklyKm))
-                                            .foregroundStyle(mrAccent.opacity(0.75))
+                                            .foregroundStyle(mrAccent.opacity(0.70))
                                     }
                                     if isCurr {
                                         Text(L.s("진행 중", "In progress"))
@@ -635,7 +635,7 @@ struct MRWeekTable: View {
                                 if !bd.isEmpty {
                                     Text(bd)
                                         .font(.system(size: 11))
-                                        .foregroundStyle(.white.opacity(0.60))
+                                        .foregroundStyle(.white.opacity(0.72))
                                 }
                             }
                             .padding(.leading, 36).padding(.bottom, 4)
@@ -714,25 +714,25 @@ struct MRWeekTable: View {
                                         Text(L.s("롱런", "Long")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.long))
-                                                .fontWeight(.semibold).foregroundStyle(.white)
+                                                .fontWeight(.bold).foregroundStyle(Color.yellow)   // 노랑 = 실제로 한 것
                                             if longOver { Text(symbolOver).foregroundStyle(.white.opacity(0.85)) }
                                         } else {
                                             Text("—").foregroundStyle(.white.opacity(0.65))
                                         }
                                         Text(String(format: "/%.1fkm", w.longRunKm))
-                                            .foregroundStyle(mrAccent.opacity(0.75))
+                                            .foregroundStyle(mrAccent.opacity(0.70))
                                     }
                                     HStack(spacing: 3) {
                                         Text(L.s("주간", "Weekly")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.weekly))
-                                                .fontWeight(.semibold).foregroundStyle(.white)
+                                                .fontWeight(.bold).foregroundStyle(Color.yellow)
                                             if weeklyOver { Text(symbolOver).foregroundStyle(.white.opacity(0.85)) }
                                         } else {
                                             Text("—").foregroundStyle(.white.opacity(0.65))
                                         }
                                         Text(String(format: "/%.0fkm", w.weeklyKm))
-                                            .foregroundStyle(mrAccent.opacity(0.75))
+                                            .foregroundStyle(mrAccent.opacity(0.70))
                                     }
                                     if isCurrent(w) {
                                         Text(L.s("진행 중", "In progress"))
@@ -746,7 +746,7 @@ struct MRWeekTable: View {
                                 if !w.breakdown.isEmpty {
                                     Text(localizedBreakdown(w.breakdown))
                                         .font(.system(size: 11))
-                                        .foregroundStyle(.white.opacity(0.60))
+                                        .foregroundStyle(.white.opacity(0.72))
                                 }
                             }
                             .padding(.leading, 36).padding(.bottom, 4)

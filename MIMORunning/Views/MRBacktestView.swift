@@ -294,45 +294,46 @@ struct MRBacktestRowView: View {
                 }
             }
             if let name = raceName ?? archive?.raceName {
+                // 노랑 = "내가 실제로 한 것" — 대회명은 세미볼드·작게, 실제 기록이 더 굵게 (위계 분리)
                 Text(name)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.yellow)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.yellow.opacity(0.85))
                     .lineLimit(1)
             }
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(L.s("실제", "Actual")).font(.system(size: 10)).foregroundStyle(Color.mrInk3)
+                    Text(L.s("실제", "Actual")).font(.system(size: 10)).foregroundStyle(.white.opacity(0.40))
                     Text(mrFormatDisplay(row.actualMin))
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.yellow)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     if let arch = archive {
                         if arch.reconstructed {
                             // 소급 재구성: 당시 앱 예측이 아님
-                            Text(L.s("소급 계획 예측", "Projected (retroactive)")).font(.system(size: 10)).foregroundStyle(Color.mrInk3)
+                            Text(L.s("소급 계획 예측", "Projected (retroactive)")).font(.system(size: 10)).foregroundStyle(.white.opacity(0.40))
                             Text(mrFormatDisplay(arch.snapshotProjectedFinalMin))
                                 .font(.system(size: 15, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.6))
+                                .foregroundStyle(.white.opacity(0.55))
                             Text(L.s("지금 모델로 소급 계산", "Recalculated with current model"))
                                 .font(.system(size: 9))
-                                .foregroundStyle(Color.mrInk3.opacity(0.7))
+                                .foregroundStyle(.white.opacity(0.35))
                         } else {
                             // 실제 아카이브: 당시 앱이 예측한 값
-                            Text(L.s("그때 앱 예측", "App's prediction at the time")).font(.system(size: 10)).foregroundStyle(Color.mrInk3)
+                            Text(L.s("그때 앱 예측", "App's prediction at the time")).font(.system(size: 10)).foregroundStyle(.white.opacity(0.40))
                             Text(mrFormatDisplay(arch.snapshotProjectedFinalMin))
                                 .font(.system(size: 15, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.6))
+                                .foregroundStyle(.white.opacity(0.55))
                         }
                     } else {
                         // 아카이브 없음: 현재 모델 역산
-                        Text(L.s("예측", "Predicted")).font(.system(size: 10)).foregroundStyle(Color.mrInk3)
+                        Text(L.s("예측", "Predicted")).font(.system(size: 10)).foregroundStyle(.white.opacity(0.40))
                         Text(mrFormatDisplay(row.predictedMin ?? 0))
                             .font(.system(size: 15, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.6))
+                            .foregroundStyle(.white.opacity(0.55))
                         Text(L.s("지금 모델로 역산", "Back-calculated with current model"))
                             .font(.system(size: 9))
-                            .foregroundStyle(Color.mrInk3.opacity(0.7))
+                            .foregroundStyle(.white.opacity(0.35))
                     }
                 }
                 Spacer()
