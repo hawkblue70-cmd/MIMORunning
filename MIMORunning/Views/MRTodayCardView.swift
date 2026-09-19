@@ -4,15 +4,16 @@ struct MRTodayCardView: View {
     @EnvironmentObject var engine: MREngineStore
     @AppStorage("distanceUnitMiles") private var useMiles = false
 
+    /// 숫자와 단위를 따로 — 단위는 작고 흐리게 붙여 숫자가 또렷하게.
     /// 100 미만은 소수 1자리(주간에서 의미 있음), 그 이상은 정수 + 천 단위 콤마.
-    private func distanceText(km: Double) -> String {
+    private func distanceParts(km: Double) -> (number: String, unit: String) {
         let v = useMiles ? km * 0.621371 : km
         let unit = useMiles ? "mi" : "km"
-        if v < 100 { return String(format: "%.1f", v) + unit }
+        if v < 100 { return (String(format: "%.1f", v), unit) }
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.maximumFractionDigits = 0
-        return (f.string(from: NSNumber(value: v)) ?? String(Int(v))) + unit
+        return (f.string(from: NSNumber(value: v)) ?? String(Int(v)), unit)
     }
 
     var body: some View {
@@ -27,21 +28,15 @@ struct MRTodayCardView: View {
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
                 // 거리 행 — 이번 주 · 이번 달 · 올해 · 누적. 0km 칸은 엔진에서 이미 빠져 있고
-                // 남은 칸이 폭을 나눠 갖는다. 누적만 흰색 — 레벨의 숫자다.
+                // 남은 칸이 폭을 나눠 갖는다.
+                //   라벨 mrInk3(0.45) / 값 mrInk2(0.72) / 누적 값만 노랑 — 색 규칙 "노랑 = 실제로 한 것",
+                //   한 자리에만. 누적은 레벨의 숫자다(NRC 블랙 = 5,000km).
+                //   단위(km·mi)는 11pt·0.45로 낮춰 숫자가 또렷하게.
                 HStack(alignment: .top, spacing: 8) {
                     ForEach(Array(c.distanceCells.enumerated()), id: \.offset) { idx, cell in
-                        let isTotal = idx == c.distanceCells.count - 1
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(cell.label)
-                                .font(.system(size: 10))
-                                .foregroundStyle(.white.opacity(0.45))
-                            Text(distanceText(km: cell.km))
-                                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                .foregroundStyle(isTotal ? Color.white : Color.white.opacity(0.6))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        let parts = distanceParts(km: cell.km)
+                        DistanceCellView(label: cell.label, number: parts.number, unit: parts.unit,
+                                         isTotal: idx == c.distanceCells.count - 1)
                     }
                 }
                 .padding(.top, 10)
@@ -81,5 +76,32 @@ struct MRTodayCardView: View {
                 engine.recomputeTodayCard()
             }
         }
+    }
+}
+
+/// 거리 행의 칸 하나 — 라벨 / 숫자 + 작은 단위. 본문에서 빼낸 이유는 타입체크 시간(한 식에 넣으면 컴파일 실패).
+private struct DistanceCellView: View {
+    let label: String
+    let number: String
+    let unit: String
+    let isTotal: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(Color.mrInk3)
+            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                Text(number)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(isTotal ? Theme.time : Color.mrInk2)
+                Text(unit)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.mrInk3)
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
