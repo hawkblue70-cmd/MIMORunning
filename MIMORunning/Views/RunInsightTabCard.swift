@@ -5644,49 +5644,67 @@ private struct RaceInsightCard: View {
             .clipShape(Capsule())
     }
 
+    /// 표 아래 마무리 문장 — 관찰 사실만. 부문 뒤에 대회 연·월을 붙이고, 이 대회 뒤의 기록이면 "이 대회 뒤"를 밝힌다.
+    /// 열람 중 대회가 유지 쪽이고 심박 여유(최대 90% 미만, `limitingFactor`와 같은 기준)면 "여유 있는 강도에서"를 앞에 둔다.
+    /// 폼 데이터가 없는 부문은 추정("그 사이") 대신 확인할 수 없다고 말한다.
     private func collapseNarrative(_ rows: [DCRow]) -> String? {
         let L = AppLanguage.shared
-        let held = rows.filter { $0.form == .held || $0.form == .mid }
-        let coll = rows.filter { $0.form == .collapsed }
+        let cal = Calendar.current
+        func ym(_ d: Date) -> String {
+            let c = cal.dateComponents([.year, .month], from: d)
+            return "\(c.year ?? 0).\(c.month ?? 0)"
+        }
+        func names(_ rs: [DCRow]) -> String { rs.map { "\($0.division)(\(ym($0.raceDate)))" }.joined(separator: "·") }
+
+        let held   = rows.filter { $0.form == .held || $0.form == .mid }
+        let coll   = rows.filter { $0.form == .collapsed }
+        let noData = rows.filter { $0.form == .noData }
         guard !held.isEmpty || !coll.isEmpty else { return nil }
+
+        let noDataTail: String = noData.isEmpty ? "" : " " + L.s(
+            "\(names(noData))는 폼 데이터가 없어 확인할 수 없어요.",
+            "No form data for \(names(noData)), so it can't be judged.")
+
+        // 열람 중 대회가 유지 쪽 + 심박 여유 → 유지가 쉬운 조건이었다는 사실을 함께 말한다
+        let currentEasyHeld: Bool = {
+            guard held.contains(where: \.isCurrent), let hr = activity.avgHeartRate, estimatedMaxHR > 0 else { return false }
+            return Double(hr) / Double(estimatedMaxHR) < 0.90
+        }()
+        let easyKo = currentEasyHeld ? "여유 있는 강도에서 " : ""
+        let easyEn = currentEasyHeld ? " at a comfortable effort" : ""
+        // 중간 판정이 섞였으면 "끝까지"라고 하지 않는다
+        let heldVerbKo = held.allSatisfy { $0.form == .held } ? "폼이 끝까지 유지됐" : "폼이 대체로 유지됐"
+        let heldVerbEn = held.allSatisfy { $0.form == .held } ? "held to the finish" : "mostly held"
+        // 무너진 대회가 모두 이 대회 뒤면 시점을 밝힌다
+        let collAfter = !coll.isEmpty && coll.allSatisfy { $0.raceDate > activity.date }
+        let afterKo = collAfter ? "이 대회 뒤 " : ""
+        let afterEn = collAfter ? " after this race" : ""
+
         if !held.isEmpty && !coll.isEmpty {
-            let hStr = held.map(\.division).joined(separator: "·")
-            let cStr = coll.map(\.division).joined(separator: "·")
-            let maxHeldKm  = held.map(\.km).max() ?? 0
-            let minCollKm  = coll.map(\.km).min() ?? Double.infinity
-            if maxHeldKm < minCollKm {
-                // 유지 거리가 모두 붕괴 거리보다 짧음 → 명확한 한계선 존재
-                return L.s(
-                    "\(hStr)에서는 폼이 끝까지 유지됐는데 \(cStr)에서는 무너졌어요. 지금 버틸 수 있는 거리는 그 사이에 있어요.",
-                    "Form held in \(hStr) but broke in \(cStr). Your current sustainable distance is somewhere between them."
-                )
-            } else {
-                return L.s(
-                    "\(hStr)에서는 폼을 유지했고 \(cStr)에서는 무너졌어요.",
-                    "Form held in \(hStr) but broke in \(cStr)."
-                )
-            }
+            return L.s(
+                "\(names(held))는 \(easyKo)\(heldVerbKo)고, \(afterKo)\(names(coll))에서는 무너졌어요.",
+                "Form \(heldVerbEn) in \(names(held))\(easyEn), but broke in \(names(coll))\(afterEn)."
+            ) + noDataTail
         }
         if !coll.isEmpty {
-            let cStr = coll.map(\.division).joined(separator: "·")
             return L.s(
-                "\(cStr)에서 폼이 무너졌어요. 근육 지구력이 이 거리의 한계에 왔어요.",
-                "Form broke in \(cStr). Muscular endurance reached its limit at this distance."
-            )
+                "\(afterKo)\(names(coll))에서 폼이 무너졌어요.",
+                "Form broke in \(names(coll))\(afterEn)."
+            ) + noDataTail
         }
         // 전부 유지 — 데이터 미완성 행이 없을 때만 "더 긴 거리" 제안
-        let hStr = held.map(\.division).joined(separator: "·")
-        let allHaveData = rows.allSatisfy { $0.form != .noData }
         if held.count == 1 {
-            return L.s("\(hStr)에서 폼을 유지했어요.", "Form held in \(hStr).")
-        } else if allHaveData {
-            return L.s(
-                "\(hStr) 모두 폼을 유지했어요. 더 긴 거리에도 도전할 준비가 됐어요.",
-                "Form held in all of \(hStr). You may be ready to push to a longer distance."
-            )
-        } else {
-            return L.s("\(hStr) 모두 폼을 유지했어요.", "Form held in all of \(hStr).")
+            return L.s("\(names(held))는 \(easyKo)\(heldVerbKo)어요.",
+                       "Form \(heldVerbEn) in \(names(held))\(easyEn).") + noDataTail
         }
+        if noData.isEmpty {
+            return L.s(
+                "\(names(held)) 모두 \(heldVerbKo)어요. 더 긴 거리에도 도전할 준비가 됐어요.",
+                "Form \(heldVerbEn) in all of \(names(held)). You may be ready to push to a longer distance."
+            )
+        }
+        return L.s("\(names(held)) 모두 \(heldVerbKo)어요.",
+                   "Form \(heldVerbEn) in all of \(names(held)).") + noDataTail
     }
 }
 
