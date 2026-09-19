@@ -95,20 +95,7 @@ struct AthleticCard: View {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 6) {
                         MIMOWordmark(size: 11, onMediaCard: true)
-                        if let race = raceName {
-                            HStack(spacing: 4) {
-                                Image(systemName: "flag.checkered")
-                                    .font(.system(size: 8, weight: .semibold))
-                                Text(race)
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(Theme.violet)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Theme.violet.opacity(0.18))
-                            .clipShape(Capsule())
-                        }
+                        if let race = raceName { RaceBadge(name: race) }
                     }
                     Spacer(minLength: 8)
                 }

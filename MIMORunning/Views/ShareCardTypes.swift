@@ -424,3 +424,29 @@ struct MiniMeOrCustomImage: View {
         }
     }
 }
+
+
+// MARK: - 대회 뱃지 (공유 카드·상세 지도 공용)
+//
+// ⚠ §5.8 데이터 표시 통일성 — 카드마다 복사하던 캡슐 뱃지를 이 하나로 모았다.
+//   박스 없이 밝은 노랑 굵은 글씨 + 텍스트 그림자. 이 카드들의 다른 요소(거리·지표)와 같은 문법이고,
+//   "노랑 = 실제로 한 것" 색 규칙에도 맞는다 (이미 뛴 대회).
+//   scale=1 기준: 아이콘 8pt · 글자 9pt bold.
+struct RaceBadge: View {
+    let name: String
+    var scale: CGFloat = 1.0
+    /// 밝은 노랑 — 심박 라임(#C6FF00)과 구분되게 주황기 없는 순노랑.
+    static let color = Color(hex: "FFD60A")
+
+    var body: some View {
+        HStack(spacing: 3 * scale) {
+            Image(systemName: "flag.checkered")
+                .font(.system(size: 8 * scale, weight: .bold))
+            Text(name)
+                .font(.system(size: 9 * scale, weight: .bold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(Self.color)
+        .cardTextShadow()
+    }
+}

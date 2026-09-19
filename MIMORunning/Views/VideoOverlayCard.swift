@@ -49,21 +49,7 @@ struct VideoOverlayCard: View {
                         HStack(spacing: 0) {
                             MIMOWordmark(size: 11 * scale, onMediaCard: true)
                         }
-                        if let race = raceName {
-                            HStack(spacing: 2 * scale) {
-                                Image(systemName: "flag.checkered")
-                                    .font(.system(size: 8 * scale, weight: .semibold))
-                                Text(race)
-                                    .font(.system(size: 9 * scale, weight: .semibold))
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(Theme.violet)
-                            .padding(.horizontal, 4 * scale)
-                            .padding(.vertical, 2 * scale)
-                            .background(Theme.violet.opacity(0.20))
-                            .clipShape(Capsule())
-                            .cardTextShadow()
-                        }
+                        if let race = raceName { RaceBadge(name: race, scale: scale) }
                     }
                     Spacer(minLength: 3 * scale)
                 }

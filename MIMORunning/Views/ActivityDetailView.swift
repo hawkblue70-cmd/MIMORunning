@@ -1170,7 +1170,9 @@ struct ActivityDetailView: View {
                             routeTimeOffsets: detail?.routeTimeOffsets ?? [],
                             workoutDuration: activity.duration,
                             hasHRData: activity.avgHeartRate != nil,
-                            showHRZones: $mapHRZoneMode
+                            showHRZones: $mapHRZoneMode,
+                            // 확정된 대회만 — 공유 카드에 실리는 것과 같은 조건. 미리보기에서 "대회가 붙는다"를 보여준다.
+                            raceName: confirmedRaceMatch?.raceName
                         )
                     } else {
                         panelPlaceholder(icon: "map.fill", message: AppLanguage.shared.s("경로 없음", "No Route"))
@@ -1919,6 +1921,8 @@ private struct RouteMapView: View {
     var workoutDuration: TimeInterval = 0
     var hasHRData: Bool = false
     @Binding var showHRZones: Bool
+    /// 확정 대회명 — 공유 카드와 같은 RaceBadge를 지도 우상단에 (크기는 카드보다 크게, 스타일은 동일).
+    var raceName: String? = nil
 
     @State private var snapshot: UIImage?
     @State private var hrZoneSnapshot: UIImage?
@@ -1948,6 +1952,12 @@ private struct RouteMapView: View {
                         .frame(height: 220)
                         .overlay { ProgressView().tint(Theme.violet) }
                 }
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if let race = raceName {
+                RaceBadge(name: race, scale: 1.4)
+                    .padding(12)
             }
         }
         .overlay(alignment: .bottomTrailing) {

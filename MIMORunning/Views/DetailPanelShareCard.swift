@@ -125,18 +125,7 @@ struct DetailPanelShareCard: View {
             MIMOWordmark(size: 9, strokeMIMO: false)
             Spacer(minLength: 8)
             if let race = raceName, !race.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "flag.checkered")
-                        .font(.system(size: 8, weight: .semibold))
-                    Text(race)
-                        .font(.system(size: 9, weight: .semibold))
-                        .lineLimit(1)
-                }
-                .foregroundStyle(Theme.time)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Color.black.opacity(0.45))
-                .clipShape(Capsule())
+                RaceBadge(name: race)
             }
         }
         .padding(.horizontal, 16).padding(.top, 16)
