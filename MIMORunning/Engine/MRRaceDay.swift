@@ -114,6 +114,13 @@ func mrRaceDayCard(race: MRTargetRace,
     var headline = ""
     var compactLine = ""
 
+    // 계획이 있으면 이번 주의 계획 값을 그대로 말한다 — D-day 카드와 주차 표가 다른 숫자를 내면 안 된다.
+    // (10K는 1주 테이퍼라 D-14 주는 "유지"인데, 예전엔 거리와 무관하게 "테이퍼 2주차"라고 했다.)
+    let todayWD = cal.component(.weekday, from: asOf)
+    let thisMonday = cal.date(byAdding: .day, value: -((todayWD + 5) % 7), to: cal.startOfDay(for: asOf)) ?? asOf
+    let planWeek = plan?.weeks.first { cal.isDate($0.monday, inSameDayAs: thisMonday) }
+    let inPlanTaper = planWeek?.phase == "테이퍼"
+
     switch phase {
     case .building:
         headline = "D-\(d)"
@@ -122,18 +129,34 @@ func mrRaceDayCard(race: MRTargetRace,
         }
 
     case .tapering:
-        headline = "D-\(d) · 이제 쌓는 게 아니라 아끼는 시기입니다"
-        lines.append("거리는 절반 가까이 줄이시되 **페이스는 그대로** 두세요. 완전히 쉬면 오히려 둔해집니다.")
-        lines.append("여기서 늘려도 대회 날 몸에 남지 않습니다. 지금까지 쌓은 것이 다입니다.")
-        // ■4 테이퍼 안내 — 2주 테이퍼 기준 첫 번째 주(2주 남음), 볼륨 ~84% of 4w avg
-        lines.append(vol4w >= 5
-            ? "테이퍼 2주차 — 이번 주는 \(Int((vol4w * 0.84).rounded()))km 정도로."
-            : "테이퍼 2주차 — 이번 주는 평소의 80% 정도로.")
-        // 페이스는 2주 전부터 — "페이스는 그대로"의 그 페이스가 몇인지. 스플릿 표는 D-7부터(뷰).
-        if let t = base {
-            let pace = t * 60 / (race.distanceM / 1000)
-            lines.append("대회 예상 평균 \(mrFormatPace(pace))/km — 테이퍼 러닝의 짧은 구간은 이 페이스로.")
-            compactLine = "예상 \(mrFormatPace(pace))/km · 거리는 줄이고 페이스는 그대로"
+        if let w = planWeek, !inPlanTaper {
+            // 계획상 아직 테이퍼가 아닌 주(10K 1주 테이퍼의 D-14 주 등) — 계획 값을 그대로 말한다
+            headline = "D-\(d) · 마지막 정상 주"
+            lines.append("이번 주는 계획대로 — \(w.breakdown). 테이퍼는 다음 주부터입니다.")
+            lines.append("여기서 늘려도 대회 날 몸에 남지 않습니다. 지금까지 쌓은 것이 다입니다.")
+            if let t = base {
+                let pace = t * 60 / (race.distanceM / 1000)
+                lines.append("대회 예상 평균 \(mrFormatPace(pace))/km — 짧은 구간은 이 페이스로 감각을 유지하세요.")
+                compactLine = "예상 \(mrFormatPace(pace))/km · 계획대로 \(Int(w.weeklyKm))km, 테이퍼는 다음 주"
+            }
+        } else {
+            headline = "D-\(d) · 이제 쌓는 게 아니라 아끼는 시기입니다"
+            lines.append("거리는 절반 가까이 줄이시되 **페이스는 그대로** 두세요. 완전히 쉬면 오히려 둔해집니다.")
+            lines.append("여기서 늘려도 대회 날 몸에 남지 않습니다. 지금까지 쌓은 것이 다입니다.")
+            if let w = planWeek {
+                lines.append("이번 주는 계획대로 \(Int(w.weeklyKm))km — \(w.breakdown).")
+            } else {
+                // 계획 없음 — 4주 평균 기준 폴백 (2주 테이퍼 첫 주 ~84%)
+                lines.append(vol4w >= 5
+                    ? "테이퍼 2주차 — 이번 주는 \(Int((vol4w * 0.84).rounded()))km 정도로."
+                    : "테이퍼 2주차 — 이번 주는 평소의 80% 정도로.")
+            }
+            // 페이스는 2주 전부터 — "페이스는 그대로"의 그 페이스가 몇인지. 스플릿 표는 D-7부터(뷰).
+            if let t = base {
+                let pace = t * 60 / (race.distanceM / 1000)
+                lines.append("대회 예상 평균 \(mrFormatPace(pace))/km — 테이퍼 러닝의 짧은 구간은 이 페이스로.")
+                compactLine = "예상 \(mrFormatPace(pace))/km · 거리는 줄이고 페이스는 그대로"
+            }
         }
 
     case .finalWeek:
@@ -143,10 +166,14 @@ func mrRaceDayCard(race: MRTargetRace,
         if let t = base, t >= 150 {
             lines.append("보급은 탄수화물 시간당 \(t >= 150 ? "60~90g" : "30~60g")(젤 1개 ≈ 22~25g) — 15~20분 간격으로 나누시고요.")
         }
-        // ■4 테이퍼 안내 — 2주 테이퍼 기준 두 번째 주(1주 남음), 볼륨 ~51% of 4w avg
-        lines.append(vol4w >= 5
-            ? "테이퍼 1주차 — 이번 주는 \(Int((vol4w * 0.51).rounded()))km 정도로."
-            : "테이퍼 1주차 — 이번 주는 평소의 50% 정도로.")
+        if let w = planWeek {
+            lines.append("이번 주는 계획대로 \(Int(w.weeklyKm))km — \(w.breakdown).")
+        } else {
+            // 계획 없음 — 4주 평균 기준 폴백 (마지막 주 ~51%)
+            lines.append(vol4w >= 5
+                ? "테이퍼 1주차 — 이번 주는 \(Int((vol4w * 0.51).rounded()))km 정도로."
+                : "테이퍼 1주차 — 이번 주는 평소의 50% 정도로.")
+        }
         // 마지막 한 주는 배분을 정하는 시기 — 전날에야 숫자를 주면 늦다. 첫 5km 상한은 당일과 같은 2%.
         if let t = base {
             let pace = t * 60 / (race.distanceM / 1000)
