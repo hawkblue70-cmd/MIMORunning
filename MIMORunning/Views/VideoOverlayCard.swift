@@ -47,7 +47,7 @@ struct VideoOverlayCard: View {
                 HStack(alignment: .top, spacing: 4 * scale) {
                     VStack(alignment: .leading, spacing: 2 * scale) {
                         HStack(spacing: 0) {
-                            MIMOWordmark(size: 11 * scale)
+                            MIMOWordmark(size: 11 * scale, onMediaCard: true)
                         }
                         if let race = raceName {
                             HStack(spacing: 2 * scale) {

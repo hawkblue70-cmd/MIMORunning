@@ -1027,7 +1027,7 @@ struct ShareCardScreen: View {
                         ? stampPreviewFlyOffset(for: stampVM.stampTextFlyDirection, w: vidW, h: 375) : .zero)
                 }
                 // 로고(좌측 상단) — 영상·슬라이드 미리보기와 동일 size: 11
-                MIMOWordmark(size: 11)
+                MIMOWordmark(size: 11, onMediaCard: true)
                     .padding(.leading, vidW * 0.047)
                     .padding(.top, 375.0 * 0.06)
                     .frame(width: vidW, height: 375, alignment: .topLeading)
@@ -1193,7 +1193,7 @@ struct ShareCardScreen: View {
                         .buttonStyle(.plain)
                     }
                     .overlay(alignment: .topLeading) {
-                        MIMOWordmark(size: 11)
+                        MIMOWordmark(size: 11, onMediaCard: true)
                             .padding(.top, 22)
                             .padding(.leading, 14)
                     }
@@ -1243,7 +1243,7 @@ struct ShareCardScreen: View {
                         }
                     }
                     .overlay(alignment: .topLeading) {
-                        MIMOWordmark(size: 11)
+                        MIMOWordmark(size: 11, onMediaCard: true)
                             .padding(.top, 22)
                             .padding(.leading, 14)
                     }
@@ -1384,7 +1384,7 @@ struct ShareCardScreen: View {
                     }
                 }
                 .overlay(alignment: .topLeading) {
-                    MIMOWordmark(size: 11)
+                    MIMOWordmark(size: 11, onMediaCard: true)
                         .padding(.top, 22)
                         .padding(.leading, 14)
                 }
@@ -3665,7 +3665,7 @@ struct ShareCardScreen: View {
             oneLinerVideoPreviewCard
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(alignment: .topLeading) {
-                    MIMOWordmark(size: 11)
+                    MIMOWordmark(size: 11, onMediaCard: true)
                         .padding(.top, 22)
                         .padding(.leading, 14)
                 }

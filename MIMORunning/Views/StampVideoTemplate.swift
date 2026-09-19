@@ -111,7 +111,7 @@ func makeStampLogoDateOverlay(renderSize: CGSize, date: Date? = nil) -> UIImage?
 
     // date != nil → 워드마크 줄 오른쪽에 날짜·시간 (미리보기 StampDateLabel과 동일)
     let overlay = ZStack(alignment: .topLeading) {
-        MIMOWordmark(size: 11)
+        MIMOWordmark(size: 11, onMediaCard: true)
             .padding(.leading, 14)
             .padding(.top, vPad)
         if let d = date {
@@ -139,7 +139,7 @@ func makeStampLogoOverlay(renderSize: CGSize, date: Date? = nil) -> UIImage? {
     let ptH  = renderSize.height / renderSize.width * baseW  // ≈ 375pt for 1080×1920
     let vPad = ptH * 0.06  // ≈ 22.5pt (미리보기: cardSectionH * 0.06)
     let overlay = ZStack(alignment: .topLeading) {
-        MIMOWordmark(size: 11)
+        MIMOWordmark(size: 11, onMediaCard: true)
             .padding(.leading, 14)
             .padding(.top, vPad)
         if let d = date {
@@ -609,7 +609,7 @@ extension ShareCardScreen {
                 .frame(width: kClipW, height: cardSectionH)
                 .clipped()
                 .overlay(alignment: .topLeading) {
-                    MIMOWordmark(size: 11)
+                    MIMOWordmark(size: 11, onMediaCard: true)
                         .padding(.leading, 14)
                         .padding(.top, cardSectionH * 0.06)
                 }
@@ -878,7 +878,7 @@ extension ShareCardScreen {
         }
         // 워드마크(좌측 상단) — 8% 여백 바로 아래에 배치
         .overlay(alignment: .topLeading) {
-            MIMOWordmark(size: 11)
+            MIMOWordmark(size: 11, onMediaCard: true)
                 .padding(.leading, 10)
                 .padding(.top, cardSectionH * 0.06)
         }

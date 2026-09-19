@@ -1143,7 +1143,8 @@ struct VideoExportService {
         // ── Wordmark ──────────────────────────────────────────────────────────
         let wMarkLayerH = ceil(wMarkFontPx * 2.3)
         let wMarkLayer = CALayer()
-        if let wmImg = UIImage(named: "MIMOWordmark") {
+        // 사진·영상 공유물 로고 정책(MIMOWordmark.showsOnMediaCards) — 빈 레이어는 그대로 붙여 다른 레이어 좌표 불변
+        if MIMOWordmark.showsOnMediaCards, let wmImg = UIImage(named: "MIMOWordmark") {
             let imgW = wMarkLayerH * wmImg.size.width / max(wmImg.size.height, 1)
             wMarkLayer.frame           = CGRect(x: hPad, y: wMarkTopPad, width: imgW, height: wMarkLayerH)
             wMarkLayer.contents        = wmImg.cgImage
@@ -1512,7 +1513,8 @@ struct VideoExportService {
         // ── Wordmark (static, same as single-page) ────────────────────────────
         let wMarkLayerH = ceil(wMarkFontPx * 2.3)
         let wMarkLayer = CALayer()
-        if let wmImg = UIImage(named: "MIMOWordmark") {
+        // 사진·영상 공유물 로고 정책(MIMOWordmark.showsOnMediaCards) — 빈 레이어는 그대로 붙여 다른 레이어 좌표 불변
+        if MIMOWordmark.showsOnMediaCards, let wmImg = UIImage(named: "MIMOWordmark") {
             let imgW = wMarkLayerH * wmImg.size.width / max(wmImg.size.height, 1)
             wMarkLayer.frame           = CGRect(x: hPad, y: wMarkTopPad, width: imgW, height: wMarkLayerH)
             wMarkLayer.contents        = wmImg.cgImage
@@ -2222,7 +2224,8 @@ struct VideoExportService {
 
         // ── Wordmark ───────────────────────────────────────────────────────────
         let wMLayerH = ceil(wMFontPx * 2.3)
-        if showWordmark, let wmImg = UIImage(named: "MIMOWordmark") {
+        // 사진·영상 공유물 로고 정책(MIMOWordmark.showsOnMediaCards) — 나머지 레이어는 wMZoneH 상수 기준이라 위치 불변
+        if showWordmark, MIMOWordmark.showsOnMediaCards, let wmImg = UIImage(named: "MIMOWordmark") {
             let imgW = wMLayerH * wmImg.size.width / max(wmImg.size.height, 1)
             let wMLayer = CALayer()
             wMLayer.frame           = CGRect(x: hPad, y: wMTopPad, width: imgW, height: wMLayerH)

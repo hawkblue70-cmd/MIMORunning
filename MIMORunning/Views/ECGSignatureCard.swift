@@ -216,7 +216,7 @@ struct ECGSignatureCard: View {
     // MARK: - Subviews
 
     private var wordmarkRow: some View {
-        MIMOWordmark(size: 11)
+        MIMOWordmark(size: 11, onMediaCard: true)
     }
 
     @ViewBuilder

@@ -143,7 +143,7 @@ struct TicketCard: View {
         VStack(alignment: .leading, spacing: 12) {
             // Wordmark
             HStack(spacing: 6) {
-                MIMOWordmark(size: 11)
+                MIMOWordmark(size: 11, onMediaCard: true)
                 if isRace {
                     Text("· RACE")
                         .font(.system(size: 9, weight: .bold))

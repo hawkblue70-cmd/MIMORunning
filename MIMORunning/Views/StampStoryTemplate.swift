@@ -128,7 +128,7 @@ struct StampStoryRenderView: View {
             }
 
             // 워드마크: 좌측 상단 (+ 날짜 토글 시 같은 줄 오른쪽에 날짜·시간)
-            MIMOWordmark(size: 11)
+            MIMOWordmark(size: 11, onMediaCard: true)
                 .padding(.horizontal, 14)
                 .padding(.top, 14)
                 .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
@@ -232,7 +232,7 @@ struct StampAnimPreviewCard: View {
             }
 
             // 워드마크 (+ 날짜 토글 시 같은 줄 오른쪽에 날짜·시간)
-            MIMOWordmark(size: 11)
+            MIMOWordmark(size: 11, onMediaCard: true)
                 .padding(.horizontal, 14)
                 .padding(.top, 14)
                 .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)

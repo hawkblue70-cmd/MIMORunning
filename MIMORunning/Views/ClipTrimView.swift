@@ -451,7 +451,7 @@ struct ClipTrimSheet: View {
                         .overlay(ProgressView().tint(.white).scaleEffect(1.4))
                 }
                 // ── 워드마크 — size는 scale 보정, top/leading은 CALayer·정적 대기화면과 동일 값 ─
-                MIMOWordmark(size: 11 * maxH / CardPreviewFrame.height)
+                MIMOWordmark(size: 11 * maxH / CardPreviewFrame.height, onMediaCard: true)
                 .padding(.top, 32)    // visual = 32 × scale ≈ 22.5pt (= CALayer wMTopPad 기준)
                 .padding(.leading, 20) // visual = 20 × scale ≈ 14.1pt (= CALayer hPad 기준)
                 .frame(width: w, height: maxH, alignment: .topLeading)

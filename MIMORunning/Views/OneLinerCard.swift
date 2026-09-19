@@ -1238,7 +1238,7 @@ struct OneLinerCard: View {
     }
 
     private var wordmark: some View {
-        MIMOWordmark(size: 11)
+        MIMOWordmark(size: 11, onMediaCard: true)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.leading, 24)   // CALayer hPad = 24 기준
             .padding(.top, 32)
@@ -1247,7 +1247,7 @@ struct OneLinerCard: View {
     // captionMode 전용: 워드마크 행, 14pt 위 여백 (스탬프·플레이서블 스토리와 동일)
     private var captionWordmarkRow: some View {
         HStack {
-            MIMOWordmark(size: 11)
+            MIMOWordmark(size: 11, onMediaCard: true)
         }
         .padding(.horizontal, 14)
         .padding(.top, 14)

@@ -209,7 +209,7 @@ struct PlaceableCard: View {
 
     // MARK: - Wordmark
     private var wordmarkView: some View {
-        MIMOWordmark(size: 11)
+        MIMOWordmark(size: 11, onMediaCard: true)
     }
 
     // MARK: - Metrics

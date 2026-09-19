@@ -104,7 +104,7 @@ struct BigNumberCard: View {
             VStack(alignment: .leading, spacing: 0) {
 
                 // 1) Wordmark
-                MIMOWordmark(size: 11)
+                MIMOWordmark(size: 11, onMediaCard: true)
                 .padding(.horizontal, 20)
                 .padding(.top, 14)
 
@@ -292,7 +292,7 @@ struct BigNumberVideoOverlayView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     // Logo + memo — unified left edge (matches VideoOverlayCard). 로고에는 그림자 없음
                     VStack(alignment: .leading, spacing: 2 * s) {
-                        MIMOWordmark(size: 11 * s)
+                        MIMOWordmark(size: 11 * s, onMediaCard: true)
                         if let memo = memoText, !memo.isEmpty {
                             Text(memo)
                                 .font(.system(size: 10 * s, weight: .bold, design: .serif).italic())

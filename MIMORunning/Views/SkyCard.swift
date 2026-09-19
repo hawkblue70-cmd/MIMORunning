@@ -122,7 +122,7 @@ struct SkyCard: View {
     // MARK: Subviews
 
     private var wordmark: some View {
-        MIMOWordmark(size: 11)
+        MIMOWordmark(size: 11, onMediaCard: true)
     }
 
     private var bottomRow: some View {

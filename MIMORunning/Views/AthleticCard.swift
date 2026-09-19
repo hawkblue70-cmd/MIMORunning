@@ -94,7 +94,7 @@ struct AthleticCard: View {
                 // ── TOP: Wordmark (+ 대회 뱃지) ─────────────
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 6) {
-                        MIMOWordmark(size: 11)
+                        MIMOWordmark(size: 11, onMediaCard: true)
                         if let race = raceName {
                             HStack(spacing: 4) {
                                 Image(systemName: "flag.checkered")

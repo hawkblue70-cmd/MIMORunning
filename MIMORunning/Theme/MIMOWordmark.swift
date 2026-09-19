@@ -14,8 +14,27 @@ struct MIMOWordmark: View {
     var runColor: Color  = Theme.violet
     // true 시 MIMO 글자에만 검은 테두리 (라이트 배경 대응)
     var strokeMIMO: Bool = false
+    /// true = 사진·영상 공유 카드(애슬레틱·포토·스토리·스탬프·플레이서블·원라이너·영상 오버레이 등)의 로고.
+    /// `showsOnMediaCards`가 false면 로고를 그리지 않되 같은 크기의 빈 자리는 남긴다(hidden)
+    /// → 총평·대회 뱃지·문구·날짜 등 다른 요소의 위치는 한 점도 움직이지 않는다.
+    var onMediaCard: Bool = false
+
+    /// 사진·영상 공유 카드에 로고를 표시할지 (2026-09 결정: 표시 안 함).
+    /// 데이터 전용 카드(성장·주간·스플릿·경로·차트·인사이트 내보내기)와 앱 화면은 이 값과 무관하게 항상 표시.
+    /// 영상 CALayer 경로(VideoExportService·PhotoSlideComposition)도 이 값을 본다 — 거기서는 다른 레이어 위치가
+    /// wMZoneH 상수로 이미 독립돼 있어 로고 레이어만 빠진다.
+    static let showsOnMediaCards = false
 
     var body: some View {
+        if onMediaCard && !Self.showsOnMediaCards {
+            mark.hidden()
+        } else {
+            mark
+        }
+    }
+
+    @ViewBuilder
+    private var mark: some View {
         if strokeMIMO {
             MIMOWordmarkStrokeView(size: size)
         } else {

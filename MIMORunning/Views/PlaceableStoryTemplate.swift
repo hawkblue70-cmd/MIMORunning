@@ -94,7 +94,7 @@ extension ShareCardScreen {
         }
         // 워드마크: 상단 좌측 (날짜는 하단과 중복되므로 제거)
         HStack(spacing: 0) {
-            MIMOWordmark(size: 11)
+            MIMOWordmark(size: 11, onMediaCard: true)
         }
         .cardTextShadow()
         .padding(.horizontal, 14)
@@ -147,7 +147,7 @@ extension ShareCardScreen {
             }
             // 워드마크: 상단 좌측 (날짜는 하단과 중복되므로 제거)
             HStack(spacing: 0) {
-                MIMOWordmark(size: 11)
+                MIMOWordmark(size: 11, onMediaCard: true)
             }
             .cardTextShadow()
             .padding(.horizontal, 14)

@@ -59,7 +59,7 @@ struct PhotoShareCardView: View {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 0) {
-                            MIMOWordmark(size: 11)
+                            MIMOWordmark(size: 11, onMediaCard: true)
                         }
 
                         if let race = raceName {
