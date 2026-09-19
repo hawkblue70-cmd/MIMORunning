@@ -479,7 +479,10 @@ struct ActivityDetailView: View {
                 activePanel: .map,
                 hrSamples: hrSamples, panelSeriesData: [],
                 condition: condition,
-                age: userAge, isMale: manager.userIsMale
+                age: userAge, isMale: manager.userIsMale,
+                // 확정된 대회만 — 제안 배너 단계(미확정)는 카드에 싣지 않는다
+                raceName: raceDetector.matchFor(activityID: activity.id)
+                    .flatMap { $0.isConfirmed ? $0.raceName : nil }
             )
         }
         .sheet(isPresented: $showChartShare) {

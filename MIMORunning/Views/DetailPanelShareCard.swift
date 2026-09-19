@@ -111,8 +111,35 @@ struct DetailPanelShareCard: View {
     var routeStyle: RouteCardStyle = .stamp
     /// 경로 1 영상의 한 프레임이면 그 시점 값. nil이면 정지 카드.
     var routeProgress: RouteProgressSnapshot? = nil
+    /// 확정된 대회 이름. 있으면 맨 윗줄 오른쪽(워드마크와 같은 줄)에 뱃지로 얹는다.
+    var raceName: String? = nil
 
     private var pal: RouteCardPalette { theme == .light ? .light : .dark }
+
+    /// 맨 윗줄 — 왼쪽 워드마크, 오른쪽 대회 뱃지. 경로 1·2가 같이 쓴다.
+    /// 뱃지 치수(아이콘 8pt·글자 9pt·캡슐 8/3pt)는 애슬레틱 카드의 대회 뱃지와 같다(§5.8).
+    private var topRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            MIMOWordmark(size: 9, strokeMIMO: false)
+            Spacer(minLength: 8)
+            if let race = raceName, !race.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "flag.checkered")
+                        .font(.system(size: 8, weight: .semibold))
+                    Text(race)
+                        .font(.system(size: 9, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(Theme.violet)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Theme.violet.opacity(0.18))
+                .clipShape(Capsule())
+            }
+        }
+        .padding(.horizontal, 16).padding(.top, 16)
+        .frame(width: Self.cardWidth, alignment: .top)
+    }
 
     static let cardWidth:  CGFloat = 300
     static let cardHeight: CGFloat = 375
@@ -167,8 +194,7 @@ struct DetailPanelShareCard: View {
             ZStack(alignment: .topLeading) {
                 mapLayer(height: Self.mapHeroHeight)
 
-                MIMOWordmark(size: 9, strokeMIMO: false)
-                    .padding(.leading, 16).padding(.top, 16)
+                topRow
 
                 // 아래 24pt는 스냅샷의 Apple Maps 표기 자리 — 글자가 그 위에 얹히지 않게 비운다
                 mapHeroText
@@ -198,8 +224,7 @@ struct DetailPanelShareCard: View {
         ZStack(alignment: .topLeading) {
             mapLayer(height: Self.cardHeight)
 
-            MIMOWordmark(size: 9, strokeMIMO: false)
-                .padding(.leading, 16).padding(.top, 16)
+            topRow
 
             mapStampSideText
                 .padding(.leading, 16).padding(.bottom, 26)
@@ -640,6 +665,8 @@ struct DetailPanelShareCardScreen: View {
     /// 유산소 피트니스 등급 문구에 쓰인다 — 앱 상세 격자와 같은 목록을 쓰므로 같이 넘긴다.
     var age: Int? = nil
     var isMale: Bool? = nil
+    /// 확정된 대회 이름 — 카드 맨 윗줄 오른쪽 뱃지. 정지 이미지·영상 모두에 같이 들어간다.
+    var raceName: String? = nil
 
     @State private var previewImage: UIImage?
     @State private var isRendering = true
@@ -699,7 +726,8 @@ struct DetailPanelShareCardScreen: View {
                         routeStyle: routeStyle,
                         // 영상 모드에서는 영상의 마지막 프레임을 그대로 — 러닝 데이터 여섯 칸이 아니라
                         // 영상에 실제로 나오는 거리·페이스·시간·심박 네 칸만 보여준다
-                        routeProgress: isVideoMode ? videoPreviewSnapshot : nil
+                        routeProgress: isVideoMode ? videoPreviewSnapshot : nil,
+                        raceName: raceName
                     )
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -810,6 +838,7 @@ struct DetailPanelShareCardScreen: View {
             videoURL = try await RouteStampVideoExporter.export(
                 activity: activity, detail: detail, condition: condition,
                 age: age, isMale: isMale, placeName: placeName,
+                raceName: raceName,
                 segmentColors: colors,
                 hrSamples: hrSamples,
                 onProgress: { p in
@@ -908,7 +937,8 @@ struct DetailPanelShareCardScreen: View {
                 age: age, isMale: isMale,
                 theme: effectiveTheme,
                 placeName: placeName,
-                routeStyle: routeStyle
+                routeStyle: routeStyle,
+                raceName: raceName
             )
             .frame(width: cardW, height: cardH)
         )
