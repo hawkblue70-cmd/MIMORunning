@@ -118,6 +118,8 @@ struct DetailPanelShareCard: View {
 
     /// 맨 윗줄 — 왼쪽 워드마크, 오른쪽 대회 뱃지. 경로 1·2가 같이 쓴다.
     /// 뱃지 치수(아이콘 8pt·글자 9pt·캡슐 8/3pt)는 애슬레틱 카드의 대회 뱃지와 같다(§5.8).
+    /// 색만 다르다 — 지도 오른쪽 위는 스크림이 닿지 않는 자리라 보라 0.18 배경은 지도에 묻힌다.
+    /// 글자는 노랑(Theme.time = "실제로 한 것" 색), 배경은 어두운 캡슐로 지도와 떼어 놓는다.
     private var topRow: some View {
         HStack(alignment: .top, spacing: 8) {
             MIMOWordmark(size: 9, strokeMIMO: false)
@@ -130,10 +132,10 @@ struct DetailPanelShareCard: View {
                         .font(.system(size: 9, weight: .semibold))
                         .lineLimit(1)
                 }
-                .foregroundStyle(Theme.violet)
+                .foregroundStyle(Theme.time)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Theme.violet.opacity(0.18))
+                .background(Color.black.opacity(0.45))
                 .clipShape(Capsule())
             }
         }
