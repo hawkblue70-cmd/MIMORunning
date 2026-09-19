@@ -124,8 +124,8 @@ struct ShareCardScreen: View {
 
     @State var storyShareImages: [UIImage] = []
     @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
-    /// 사진·영상 카드 로고 칩 — 모든 카드 템플릿 공통, 기본 OFF. 켜도 로고 자리는 항상 잡혀 있어 다른 요소는 안 움직인다.
-    @AppStorage(MIMOWordmark.mediaLogoKey) private var showLogoOnCard = false
+    /// 사진·영상 카드 로고 칩 — 모든 카드 템플릿 공통, 기본 ON(MIMOWordmark.showsOnMediaCards와 동일). 꺼도 로고 자리는 항상 잡혀 있어 다른 요소는 안 움직인다.
+    @AppStorage(MIMOWordmark.mediaLogoKey) private var showLogoOnCard = true
 
     @State private var previewImage: UIImage?
     @State private var isRendering = true

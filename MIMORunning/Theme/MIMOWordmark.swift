@@ -19,16 +19,20 @@ struct MIMOWordmark: View {
     /// → 총평·대회 뱃지·문구·날짜 등 다른 요소의 위치는 한 점도 움직이지 않는다.
     var onMediaCard: Bool = false
 
-    /// 사진·영상 공유 카드 로고 on/off — 공유 시트의 "로고" 칩이 바꾸는 값. 기본 OFF(2026-09 결정).
+    /// 사진·영상 공유 카드 로고 on/off — 공유 시트의 "로고" 칩이 바꾸는 값. 기본 ON(2026-09 결정: 설정이
+    /// 저장되므로 끄는 건 평생 한 번, 켜 두면 유일한 무료 획득 채널이 작동).
     /// 데이터 전용 카드(성장·주간·스플릿·경로·차트·인사이트 내보내기)와 앱 화면은 이 값과 무관하게 항상 표시.
     static let mediaLogoKey = "share_showLogoOnMediaCards"
 
     /// 영상 CALayer 경로(VideoExportService·PhotoSlideComposition)용 — 거기서는 다른 레이어 위치가
     /// wMZoneH 상수로 이미 독립돼 있어 로고 레이어만 빠진다. SwiftUI 쪽은 아래 @AppStorage가 같은 키를 본다.
-    static var showsOnMediaCards: Bool { UserDefaults.standard.bool(forKey: mediaLogoKey) }
+    static var showsOnMediaCards: Bool {
+        // 키가 없으면(한 번도 안 건드림) 기본 ON — 아래 @AppStorage 기본값과 반드시 같아야 미리보기 = 출력
+        (UserDefaults.standard.object(forKey: mediaLogoKey) as? Bool) ?? true
+    }
 
     // 칩을 켜고 끄면 미리보기 카드가 바로 다시 그려지도록 뷰 안에서 직접 구독. ImageRenderer 트리에서도 같은 값을 읽는다.
-    @AppStorage(MIMOWordmark.mediaLogoKey) private var logoOnMediaCards = false
+    @AppStorage(MIMOWordmark.mediaLogoKey) private var logoOnMediaCards = true
 
     init(size: CGFloat = 16, mimoColor: Color = .white, runColor: Color = Theme.violet,
          strokeMIMO: Bool = false, onMediaCard: Bool = false) {
