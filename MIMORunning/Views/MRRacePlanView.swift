@@ -59,6 +59,8 @@ private func localizedPhase(_ p: String) -> String {
 
 struct MRRacePlanCard: View {
     let check: MRGoalCheck
+    /// 현재 등록된 대회 목록 — 주차 표가 삭제된 튠업 대회 언급을 표시 시점에 걸러내는 데 쓴다.
+    @EnvironmentObject private var engine: MREngineStore
     var isExpanded: Bool = true
     /// 실제 러닝 기록 — 이행 기호 계산용
     var runs: [MRWorkout] = []
@@ -286,6 +288,7 @@ struct MRRacePlanCard: View {
             if showWeeks {
                 MRWeekTable(weeks: plan.weeks, histMaxWeeklyKm: plan.histMaxWeeklyKm,
                             runs: runs, snapshotWeeks: snapshot?.planWeeks ?? [],
+                            currentRaceLabels: Set(engine.userInput.races.map { mrLabelFor(distanceM: $0.distanceM) }),
                             recoveryEffortNote: recoveryEffortNote)
                     .padding(.top, 12)
             }
@@ -315,6 +318,9 @@ struct MRWeekTable: View {
     var runs: [MRWorkout] = []
     /// 스냅샷 주차 — 있으면 이 값이 단일 소스. 재계산 플랜 값을 무시하고 최초 계획을 표시한다.
     var snapshotWeeks: [MRPlanWeekSummary] = []
+    /// 현재 등록된 대회 거리 라벨(5K·10K·하프·풀). 스냅샷 주가 이 목록에 없는 대회를 언급하면
+    /// **표시할 때만** 라이브 값으로 바꿔 보여준다 — 스냅샷은 손대지 않으므로 대회를 복원하면 원문이 그대로 돌아온다.
+    var currentRaceLabels: Set<String> = []
     /// 회복·테이퍼 주 평균 강도 초과 문구 — 현재 주 행에만 표시
     var recoveryEffortNote: String? = nil
     @State private var expanded: Set<Int> = []
@@ -371,6 +377,25 @@ struct MRWeekTable: View {
     }
 
     /// 스냅샷 주의 실행 안내 — 구버전 스냅샷(breakdown=="")은 라이브 플랜 주에서 폴백.
+    /// 스냅샷 주가 언급하는 튠업 대회가 삭제됐는가 (단계명 "10K 계획" 또는 문구 안의 거리 라벨).
+    private func mentionsMissingRace(_ snap: MRPlanWeekSummary) -> Bool {
+        let text = snap.phase + " " + snap.breakdown
+        guard text.contains("대회") || text.contains("계획") else { return false }
+        for label in ["5K", "10K", "하프", "풀"] where text.contains(label) {
+            if !currentRaceLabels.contains(label) { return true }
+        }
+        return false
+    }
+
+    /// 표시용 스냅샷 주 — 삭제된 대회를 언급하면 라이브 같은 주의 단계·문구로. 데이터는 그대로.
+    private func displaySnap(_ snap: MRPlanWeekSummary) -> MRPlanWeekSummary {
+        guard mentionsMissingRace(snap),
+              let live = weeks.first(where: { Calendar.current.isDate($0.monday, inSameDayAs: snap.monday) })
+        else { return snap }
+        return MRPlanWeekSummary(idx: snap.idx, monday: snap.monday, phase: live.phase,
+                                 longRunKm: live.longRunKm, weeklyKm: live.weeklyKm, breakdown: live.breakdown)
+    }
+
     private func breakdownForSnap(_ snap: MRPlanWeekSummary) -> String {
         // 옛 스냅샷(breakdown 없음)은 라이브 플랜 같은 주로 보완하되,
         // 단계가 다르면 새 문구(대회 페이스 등)가 확정 계획에 새어 들지 않도록 비운다.
@@ -535,7 +560,8 @@ struct MRWeekTable: View {
                 // ── 스냅샷 기반 표시 ───────────────────────────────────────
                 // 최초 계획 등록 시점의 주차 데이터를 단일 소스로 사용.
                 // 이후 플랜 재계산으로 수치가 바뀌어도 이 값은 변하지 않는다.
-                ForEach(snapshotWeeks, id: \.idx) { snap in
+                ForEach(snapshotWeeks, id: \.idx) { rawSnap in
+                    let snap = displaySnap(rawSnap)
                     let isCurr     = isCurrentSnap(snap)
                     let sym        = complianceSymbolForSnap(snap)
                     let actual     = actualDataForSnap(snap)
