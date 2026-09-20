@@ -107,7 +107,7 @@ struct MRRacePlanCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(race.name)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(RaceBadge.color)   // 대회명 = 대회 뱃지와 같은 노랑
                 Spacer(minLength: 8)
                 Text(race.label)
                     .font(.system(size: 12, weight: .semibold))
@@ -917,7 +917,7 @@ struct MRPlanlessRaceCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(race.name).font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(RaceBadge.color)   // 대회명 = 대회 뱃지와 같은 노랑
                 Spacer()
                 Text(race.label).font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(mrAccent)
@@ -1047,7 +1047,7 @@ private struct MRRaceCollapsedRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(RaceBadge.color)   // 대회명 = 대회 뱃지와 같은 노랑
                         .lineLimit(1)
                     HStack(spacing: 6) {
                         Text("D-\(daysLeft)")
