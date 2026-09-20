@@ -18,13 +18,21 @@ enum BigNumberStyle {
     static let metaOpacity: Double      = 0.85
     static let dividerOpacity: Double   = 0.30
 
+    /// 지도(경로 영상) 위 글자 그림자 — 거의 흰 배경에선 검정 70%·반경 6이 회색 얼룩으로 남아, 얇고 옅게.
+    static let mapTextShadowColor: Color   = .black.opacity(0.30)
+    static let mapTextShadowRadius: CGFloat = 2
+
     /// 히어로 숫자: 밝은 톤끼리의 얕은 그라디언트 (어두운 배경에서 하단이 묻히지 않도록)
-    static func heroGradient(_ accent: CardAccent) -> LinearGradient {
+    /// onMap: 밝은 지도 위에서는 보라를 한 단계 진하게 — 연보라는 흰 배경 대비가 약하다.
+    static func heroGradient(_ accent: CardAccent, onMap: Bool = false) -> LinearGradient {
         switch accent {
         case .none:   return LinearGradient(colors: [.white, .white],
                                             startPoint: .top, endPoint: .bottom)
-        case .violet: return LinearGradient(colors: [Color(hex: "A98BFF"), Color(hex: "8C6BFF")],
-                                            startPoint: .top, endPoint: .bottom)
+        case .violet: return onMap
+            ? LinearGradient(colors: [Color(hex: "8C6BFF"), Color(hex: "7C5CFC")],
+                             startPoint: .top, endPoint: .bottom)
+            : LinearGradient(colors: [Color(hex: "A98BFF"), Color(hex: "8C6BFF")],
+                             startPoint: .top, endPoint: .bottom)
         case .gold:   return LinearGradient(colors: [Color(hex: "FFD166"), Color(hex: "FFC74D")],
                                             startPoint: .top, endPoint: .bottom)
         }
@@ -273,8 +281,10 @@ struct BigNumberVideoOverlayView: View {
     var bottomInset: CGFloat? = nil
 
     var accent: CardAccent = .violet
+    /// true = 경로 영상(밝은 지도 배경). 히어로 보라 진하게 + 그림자 얇고 옅게. 미리보기·내보내기 둘 다 같은 값을 넘긴다.
+    var onMap: Bool = false
 
-    private var heroGradient: LinearGradient { BigNumberStyle.heroGradient(accent) }
+    private var heroGradient: LinearGradient { BigNumberStyle.heroGradient(accent, onMap: onMap) }
 
     private var secondaryMetrics: [HeroMetric] {
         let order: [HeroMetric] = [.distance, .duration, .pace, .heartRate]
@@ -316,7 +326,10 @@ struct BigNumberVideoOverlayView: View {
                             .foregroundStyle(heroGradient)
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
-                            .cardLargeTextShadow()   // 영상·사진 배경 → 그림자 유지
+                            // 영상·사진 배경 → 큰 그림자 유지 / 지도 → 얇고 옅게(얼룩 방지)
+                            .shadow(color: onMap ? BigNumberStyle.mapTextShadowColor : CardVisual.textShadowColor,
+                                    radius: onMap ? BigNumberStyle.mapTextShadowRadius : CardVisual.largeTextShadowRadius,
+                                    x: 0, y: CardVisual.textShadowY)
 
                         if !heroMetric.unit.isEmpty {
                             Text(heroMetric.unit)
@@ -324,7 +337,9 @@ struct BigNumberVideoOverlayView: View {
                                 .fontWidth(.condensed)
                                 .foregroundStyle(BigNumberStyle.unitColor(accent))
                                 .tracking(BigNumberStyle.unitTracking * s)
-                                .cardTextShadow()
+                                .shadow(color: onMap ? BigNumberStyle.mapTextShadowColor : CardVisual.textShadowColor,
+                                        radius: onMap ? BigNumberStyle.mapTextShadowRadius : CardVisual.textShadowRadius,
+                                        x: 0, y: CardVisual.textShadowY)
                         }
                     }
                     .frame(maxWidth: .infinity)

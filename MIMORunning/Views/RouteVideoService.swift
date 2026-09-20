@@ -327,7 +327,8 @@ struct BigNumberRouteVideoFrameView: View {
                     date: date, shoeName: shoeName,
                     topInset: topInset,
                     bottomInset: bottomInset,
-                    accent: accent
+                    accent: accent,
+                    onMap: true
                 )
                 .frame(width: w, height: h)
             }
@@ -591,7 +592,8 @@ struct RouteVideoExportService {
             date: date, shoeName: shoeName,
             topInset: exportInset,
             bottomInset: previewMatchedBottomInset,
-            accent: accent
+            accent: accent,
+            onMap: true   // 미리보기(BigNumberRouteVideoFrameView)와 동일
         )
         .frame(width: renderSize.width, height: renderSize.height)
         .preferredColorScheme(.dark)
