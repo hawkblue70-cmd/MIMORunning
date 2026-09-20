@@ -242,7 +242,6 @@ struct OneLinerGridAndChipsView: View {
             Task { await onRender() }
         } label: {
             HStack(spacing: 4) {
-                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
                 Text(font.chipLabel).font(.custom(font.fontName, size: 13))
             }
             .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
@@ -270,7 +269,6 @@ struct OneLinerGridAndChipsView: View {
             Task { await onRender() }
         } label: {
             HStack(spacing: 6) {
-                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
                 if textColor != .white { Circle().fill(textColor.color).frame(width: 8, height: 8) }
                 Text(textColor.chipLabel).font(.caption.weight(.semibold))
             }

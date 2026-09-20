@@ -37,7 +37,6 @@ struct TicketAccentRowView: View {
             Task { await onRender() }
         } label: {
             HStack(spacing: 6) {
-                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
                 if accent != .none { Circle().fill(color).frame(width: 8, height: 8) }
                 Text(label).font(.caption.weight(.semibold))
             }

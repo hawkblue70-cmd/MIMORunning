@@ -302,7 +302,6 @@ struct PlaceableChipRowView: View {
                         Task { await onRender() }
                     } label: {
                         HStack(spacing: 6) {
-                            if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
                             Text(label).font(.caption.weight(.semibold))
                         }
                         .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
@@ -322,7 +321,6 @@ struct PlaceableChipRowView: View {
                         Task { await onRender() }
                     } label: {
                         HStack(spacing: 6) {
-                            if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
                             Text(label).font(.caption.weight(.semibold))
                         }
                         .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))
@@ -342,7 +340,6 @@ struct PlaceableChipRowView: View {
                         Task { await onRender() }
                     } label: {
                         HStack(spacing: 6) {
-                            if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
                             Circle().fill(color).frame(width: 8, height: 8)
                             Text(label).font(.caption.weight(.semibold))
                         }
@@ -766,7 +763,6 @@ struct PlaceableStoryModeChipRowView: View {
                         Task { await onRender() }
                     } label: {
                         HStack(spacing: 4) {
-                            if isSel { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
                             Circle().fill(color).frame(width: 8, height: 8)
                             Text(label).font(.caption.weight(.semibold))
                         }

@@ -660,10 +660,6 @@ struct ShareCardScreen: View {
                             Task { await renderCard(showSpinner: false) }
                         } label: {
                             HStack(spacing: 4) {
-                                if showRaceOnCard {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
                                 Image(systemName: "flag.checkered")
                                     .font(.system(size: 10))
                                 Text(race.raceName)
@@ -695,10 +691,6 @@ struct ShareCardScreen: View {
                         Task { await renderCard(showSpinner: false) }
                     } label: {
                         HStack(spacing: 4) {
-                            if showSummaryOnCard {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 9, weight: .bold))
-                            }
                             Text(AppLanguage.shared.s("총평", "Summary"))
                                 .font(.caption.weight(.semibold))
                         }
@@ -723,10 +715,6 @@ struct ShareCardScreen: View {
                             Task { await renderCard(showSpinner: false) }
                         } label: {
                             HStack(spacing: 4) {
-                                if isOn {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
                                 Text(item.id.chipLabel)
                                     .font(.caption.weight(.semibold))
                             }
@@ -754,10 +742,6 @@ struct ShareCardScreen: View {
                             cardPanel = panel
                         } label: {
                             HStack(spacing: 4) {
-                                if isSelected {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
                                 Image(systemName: panel.icon)
                                     .font(.system(size: 10))
                                 Text(panel.label)
@@ -1734,8 +1718,6 @@ struct ShareCardScreen: View {
     @ViewBuilder
     private func activeChip(_ label: String, icon: String? = nil) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 9, weight: .bold))
             if let icon = icon {
                 Image(systemName: icon).font(.system(size: 10))
             }
@@ -1796,10 +1778,6 @@ struct ShareCardScreen: View {
                             heroMetric = m
                         } label: {
                             HStack(spacing: 4) {
-                                if isSelected {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
                                 Text(m.shortName).font(.caption.weight(.semibold))
                             }
                             .foregroundStyle(
@@ -1862,10 +1840,6 @@ struct ShareCardScreen: View {
                             Task { await renderCard(showSpinner: false) }
                         } label: {
                             HStack(spacing: 4) {
-                                if showShoeOnCard {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
                                 Image(systemName: "shoe.fill")
                                     .font(.system(size: 10))
                                 Text(shoe.displayName)
@@ -1903,10 +1877,6 @@ struct ShareCardScreen: View {
             Task { await renderCard(showSpinner: false) }
         } label: {
             HStack(spacing: 4) {
-                if showLogoOnCard {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
-                }
                 Text(AppLanguage.shared.s("로고", "Logo"))
                     .font(.caption.weight(.semibold))
             }
@@ -2096,10 +2066,6 @@ struct ShareCardScreen: View {
                             Task { await renderCard(showSpinner: false) }
                         } label: {
                             HStack(spacing: 5) {
-                                if isCurrent {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
                                 Text(entry.text.count > 10
                                      ? String(entry.text.prefix(10)) + "…"
                                      : entry.text)

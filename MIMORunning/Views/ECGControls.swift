@@ -56,7 +56,6 @@ struct ECGChipRowView: View {
             Task { await onRender() }
         } label: {
             HStack(spacing: 6) {
-                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
                 Circle().fill(color).frame(width: 8, height: 8)
                 Text(label).font(.caption.weight(.semibold))
             }
@@ -82,7 +81,6 @@ struct ECGChipRowView: View {
             Task { await onRender() }
         } label: {
             HStack(spacing: 4) {
-                if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
                 Image(systemName: icon).font(.system(size: 10))
                 Text(label).font(.caption.weight(.semibold)).lineLimit(1)
             }
