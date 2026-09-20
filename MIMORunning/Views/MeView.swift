@@ -578,6 +578,13 @@ struct MeView: View {
                     uniquingKeysWith: { a, _ in a }
                 )
                 var changed = 0
+                // 이 계획에 튠업(따르는 주·대회 주)이 있는가 — 있으면 그 뒤 미래 주의 롱런 진행도 튠업에 종속된다.
+                // (10K 삭제·복원으로 따르는 주가 생기고 없어질 때, 재개 주(17.6→19.4→21)까지 함께 바뀌어야 한다.)
+                let planHasTuneUp = check.plan.weeks.contains {
+                    MRPlanGovernance.isFollowingPhase($0.phase) || $0.phase == "대회 주"
+                } || existing.planWeeks.contains {
+                    MRPlanGovernance.isFollowingPhase($0.phase) || $0.phase == "대회 주"
+                }
                 let merged: [MRPlanWeekSummary] = existing.planWeeks.map { snap in
                     let snapMon = cal.startOfDay(for: snap.monday)
                     guard let live = liveByMonday[snapMon] else { return snap }
@@ -588,7 +595,10 @@ struct MeView: View {
                     if snapMon < thisMonday && !follows { return snap }
                     // 테이퍼 길이 변경(주 수가 늘어 마지막 주가 새로 붙은 경우)도 갱신 — 10K 1주 테이퍼가 2주로 남지 않게
                     let taperChanged = snap.phase == "테이퍼" && live.phase != "테이퍼"
-                    let raceRelated = follows || taperChanged || live.phase == "대회 주" || snap.phase == "대회 주"
+                    // 튠업 뒤 재개 주: 미래 주이고 이 계획에 튠업이 있으면 롱런·단계 변화를 따라간다
+                    let postTuneUpProgress = planHasTuneUp && snapMon > thisMonday
+                    let raceRelated = follows || taperChanged || postTuneUpProgress
+                        || live.phase == "대회 주" || snap.phase == "대회 주"
                         || live.breakdown.contains("대회") || snap.breakdown.contains("대회")
                     guard raceRelated,
                           live.phase != snap.phase || live.breakdown != snap.breakdown
