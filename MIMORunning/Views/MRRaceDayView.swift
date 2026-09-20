@@ -61,7 +61,8 @@ struct MRRaceDayView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(card.race.name)
-                        .font(.system(size: 12)).foregroundStyle(.white.opacity(0.4))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(RaceBadge.color)   // 대회명 = 대회 뱃지와 같은 노랑
                     Text(card.headline)
                         .font(.system(size: 19, weight: .bold))
                         .foregroundStyle(.white)

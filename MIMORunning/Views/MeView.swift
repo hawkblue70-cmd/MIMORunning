@@ -2110,7 +2110,7 @@ private struct PlannedRaceRow: View {
                     HStack(spacing: 6) {
                         Text(race.raceName)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(race.isPast ? Color.secondary : Color.white)
+                            .foregroundStyle(race.isPast ? Color.secondary : RaceBadge.color)   // 대회명 = 대회 뱃지와 같은 노랑
                             .lineLimit(2)
                         if race.isPast {
                             Text(AppLanguage.shared.s("완료", "Done"))
