@@ -399,21 +399,19 @@ struct SplitsShareCardView: View {
                     .frame(width: 23, alignment: .leading)
 
                 // ② bar + avg dotted marker
+                // 막대 7pt · 반경 2.5(높이의 1/3 — 각지면 표처럼 딱딱, 캡슐이면 짧은 막대가 점처럼 보임).
+                // 평균은 점 3개 대신 1.5×9pt 세로선 — 막대 위아래로 1pt씩 나와 "평균선"으로 읽힌다.
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: 2.5)
                         .fill(pal.barTrack)
-                        .frame(width: Self.barW, height: 5)
-                    RoundedRectangle(cornerRadius: 2)
+                        .frame(width: Self.barW, height: 7)
+                    RoundedRectangle(cornerRadius: 2.5)
                         .fill(barGradient)
-                        .frame(width: max(8, Self.barW * barFraction(for: split.paceSecPerKm)), height: 5)
-                    VStack(spacing: 2) {
-                        ForEach(0..<3, id: \.self) { _ in
-                            Rectangle()
-                                .fill(pal.avgDot.opacity(0.45))
-                                .frame(width: 1.5, height: 2)
-                        }
-                    }
-                    .offset(x: max(0, Self.barW * avgFrac - 0.75))
+                        .frame(width: max(8, Self.barW * barFraction(for: split.paceSecPerKm)), height: 7)
+                    Rectangle()
+                        .fill(pal.avgDot.opacity(0.55))
+                        .frame(width: 1.5, height: 9)
+                        .offset(x: max(0, Self.barW * avgFrac - 0.75))
                 }
                 .frame(width: Self.barW, height: 13)
                 .padding(.horizontal, 4)
