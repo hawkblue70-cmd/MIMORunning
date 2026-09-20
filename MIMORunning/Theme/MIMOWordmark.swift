@@ -25,14 +25,18 @@ struct MIMOWordmark: View {
     static let mediaLogoKey = "share_showLogoOnMediaCards"
 
     /// 영상 CALayer 경로(VideoExportService·PhotoSlideComposition)용 — 거기서는 다른 레이어 위치가
-    /// wMZoneH 상수로 이미 독립돼 있어 로고 레이어만 빠진다. SwiftUI 쪽은 아래 @AppStorage가 같은 키를 본다.
+    /// wMZoneH 상수로 이미 독립돼 있어 로고 레이어만 빠진다. SwiftUI 쪽도 init에서 같은 값을 읽는다.
     static var showsOnMediaCards: Bool {
-        // 키가 없으면(한 번도 안 건드림) 기본 ON — 아래 @AppStorage 기본값과 반드시 같아야 미리보기 = 출력
+        // 키가 없으면(한 번도 안 건드림) 기본 ON — ShareCardView 로고 칩의 @AppStorage 기본값과 반드시 같아야 미리보기 = 출력
         (UserDefaults.standard.object(forKey: mediaLogoKey) as? Bool) ?? true
     }
 
-    // 칩을 켜고 끄면 미리보기 카드가 바로 다시 그려지도록 뷰 안에서 직접 구독. ImageRenderer 트리에서도 같은 값을 읽는다.
-    @AppStorage(MIMOWordmark.mediaLogoKey) private var logoOnMediaCards = true
+    // 값은 init에서 한 번 읽어 plain 프로퍼티로 든다(@AppStorage 아님).
+    //   워드마크는 카드마다 여러 개고 카드 본문은 미리보기 애니메이션·칩 탭마다 재평가되므로,
+    //   인스턴스마다 UserDefaults KVO를 거는 @AppStorage는 비용만 든다.
+    //   칩(ShareCardView의 @AppStorage)이 바뀌면 ShareCardView 본문이 재평가되어 카드가 다시 만들어지고
+    //   그때 init이 새 값을 읽는다 — 미리보기 즉시 갱신. ImageRenderer·영상 CALayer 경로도 렌더 시점에 같은 키를 읽는다.
+    private let logoOnMediaCards: Bool
 
     init(size: CGFloat = 16, mimoColor: Color = .white, runColor: Color = Theme.violet,
          strokeMIMO: Bool = false, onMediaCard: Bool = false) {
@@ -41,6 +45,7 @@ struct MIMOWordmark: View {
         self.runColor = runColor
         self.strokeMIMO = strokeMIMO
         self.onMediaCard = onMediaCard
+        self.logoOnMediaCards = onMediaCard ? Self.showsOnMediaCards : true
     }
 
     var body: some View {
