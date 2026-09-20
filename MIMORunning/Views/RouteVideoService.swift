@@ -54,6 +54,7 @@ struct RouteVideoFrameView: View {
                                      workoutDuration: routeWorkoutDuration,
                                      zoneBounds: routeZoneBounds,
                                      showHRGradient: showHRGradient)
+                    .equatable()   // 칩 탭 등 입력이 같은 재평가에서는 Canvas를 다시 그리지 않는다
                     .frame(width: w, height: h)
 
                 if showStats {
@@ -85,8 +86,63 @@ struct RouteVideoFrameView: View {
 
 // MARK: - Route polyline canvas overlay
 
+/// 심박 샘플 조회 — 오프셋 정렬 + 이분 탐색.
+/// 결과는 예전 canvasBPM(전체 filter)과 같다: ±2.5초 창의 정수 평균, 창이 비면 가장 가까운 샘플, 샘플이 없으면 120.
+private struct HRLookup {
+    private let offsets: [Double]
+    private let bpms: [Int]
+
+    init(samples: [(offset: TimeInterval, bpm: Int)]) {
+        let sorted = samples.sorted { $0.offset < $1.offset }
+        offsets = sorted.map(\.offset)
+        bpms    = sorted.map(\.bpm)
+    }
+
+    /// offsets[i] >= x 인 첫 인덱스
+    private func lowerBound(_ x: Double) -> Int {
+        var lo = 0, hi = offsets.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if offsets[mid] < x { lo = mid + 1 } else { hi = mid }
+        }
+        return lo
+    }
+
+    func bpm(at t: TimeInterval) -> Int {
+        guard !offsets.isEmpty else { return 120 }
+        let lo = lowerBound(t - 2.5)
+        let hi = lowerBound((t + 2.5).nextUp)   // t+2.5 까지 포함(abs <= 2.5)
+        if hi > lo {
+            var sum = 0
+            for i in lo..<hi { sum += bpms[i] }
+            return sum / (hi - lo)
+        }
+        let j = lowerBound(t)
+        let candidates = [j - 1, j].filter { $0 >= 0 && $0 < offsets.count }
+        let nearest = candidates.min { abs(offsets[$0] - t) < abs(offsets[$1] - t) }
+        return nearest.map { bpms[$0] } ?? 120
+    }
+}
+
 /// Draws the route using pre-mapped snapshot-space points, scaled to the actual canvas size.
-private struct RoutePolylineOverlay: View {
+///
+/// ⚠ Equatable: 화면 본문이 재평가될 때마다(칩 탭·토글) Canvas가 통째로 다시 그려지면, 심박 그라데이션 경로는
+///   구간 수천 개를 두 번 stroke 하느라 탭 반응이 눈에 띄게 늦었다. 입력이 같으면 건너뛴다.
+///   튜플 배열(hrSamples·zoneBounds)은 자동 합성이 안 되어 직접 비교한다.
+private struct RoutePolylineOverlay: View, Equatable {
+    static func == (a: RoutePolylineOverlay, b: RoutePolylineOverlay) -> Bool {
+        a.progress == b.progress
+        && a.showHRGradient == b.showHRGradient
+        && a.totalDistanceM == b.totalDistanceM
+        && a.workoutDuration == b.workoutDuration
+        && a.snapshotPoints == b.snapshotPoints
+        && a.hrSamples.count == b.hrSamples.count
+        && a.hrSamples.first?.offset == b.hrSamples.first?.offset
+        && a.hrSamples.last?.offset == b.hrSamples.last?.offset
+        && a.zoneBounds.count == b.zoneBounds.count
+        && zip(a.zoneBounds, b.zoneBounds).allSatisfy { $0.id == $1.id && $0.minBPM == $1.minBPM }
+    }
+
     /// Points in renderSize (540×960) coordinate space, from MKMapSnapshotter.Snapshot.point(for:).
     let snapshotPoints: [CGPoint]
     let progress: CGFloat
@@ -114,18 +170,21 @@ private struct RoutePolylineOverlay: View {
 
             if showHRGradient && slice.count > 1 && !hrSamples.isEmpty && !zoneBounds.isEmpty {
                 let sortedBounds = zoneBounds.sorted { $0.minBPM < $1.minBPM }
-                for i in 0..<(slice.count - 1) {
+                // 구간 색을 한 번만 계산해 글로우·본선 두 패스가 공유. 심박 조회는 이분 탐색(HRLookup) —
+                // 예전엔 구간마다 샘플 전체를 filter 해서 구간×샘플(수천×수천)만큼 걸렸다.
+                let lookup = HRLookup(samples: hrSamples)
+                let segColors: [Color] = (0..<(slice.count - 1)).map { i in
                     let offset = Double(i) / Double(max(pts.count - 1, 1)) * workoutDuration
-                    let color = canvasGradientColor(bpm: canvasBPM(at: offset), sorted: sortedBounds)
+                    return canvasGradientColor(bpm: lookup.bpm(at: offset), sorted: sortedBounds)
+                }
+                for i in 0..<(slice.count - 1) {
                     var seg = Path(); seg.move(to: slice[i]); seg.addLine(to: slice[i+1])
-                    ctx.stroke(seg, with: .color(color.opacity(0.35)),
+                    ctx.stroke(seg, with: .color(segColors[i].opacity(0.35)),
                                style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 }
                 for i in 0..<(slice.count - 1) {
-                    let offset = Double(i) / Double(max(pts.count - 1, 1)) * workoutDuration
-                    let color = canvasGradientColor(bpm: canvasBPM(at: offset), sorted: sortedBounds)
                     var seg = Path(); seg.move(to: slice[i]); seg.addLine(to: slice[i+1])
-                    ctx.stroke(seg, with: .color(color),
+                    ctx.stroke(seg, with: .color(segColors[i]),
                                style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 }
             } else {
@@ -193,14 +252,6 @@ private struct RoutePolylineOverlay: View {
         }
     }
 
-    private func canvasBPM(at offset: TimeInterval) -> Int {
-        let window = hrSamples.filter { abs($0.offset - offset) <= 2.5 }
-        if window.isEmpty {
-            return hrSamples.min(by: { abs($0.offset - offset) < abs($1.offset - offset) })?.bpm ?? 120
-        }
-        return window.reduce(0) { $0 + $1.bpm } / window.count
-    }
-
     private func canvasGradientColor(bpm: Int, sorted: [(id: Int, minBPM: Int)]) -> Color {
         let colors = Theme.hrZoneColors
         guard sorted.count >= 2, !colors.isEmpty else { return Theme.violet }
@@ -266,6 +317,7 @@ struct BigNumberRouteVideoFrameView: View {
                                      workoutDuration: routeWorkoutDuration,
                                      zoneBounds: routeZoneBounds,
                                      showHRGradient: showHRGradient)
+                    .equatable()   // 칩 탭 등 입력이 같은 재평가에서는 Canvas를 다시 그리지 않는다
                     .frame(width: w, height: h)
 
                 BigNumberVideoOverlayView(
