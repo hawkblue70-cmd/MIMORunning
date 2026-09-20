@@ -124,8 +124,9 @@ struct ShareCardScreen: View {
 
     @State var storyShareImages: [UIImage] = []
     @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
-    /// 사진·영상 카드 로고 칩 — 모든 카드 템플릿 공통, 기본 ON(MIMOWordmark.showsOnMediaCards와 동일). 꺼도 로고 자리는 항상 잡혀 있어 다른 요소는 안 움직인다.
-    @AppStorage(MIMOWordmark.mediaLogoKey) private var showLogoOnCard = true
+    /// 사진·영상 카드 로고 칩 — 모든 카드 템플릿 공통, 기본 ON. 상태는 MediaLogoSetting.shared 하나(워드마크가 직접 관찰).
+    /// 꺼도 로고 자리는 항상 잡혀 있어 다른 요소는 안 움직인다.
+    private var showLogoOnCard: Bool { MediaLogoSetting.shared.isOn }
 
     @State private var previewImage: UIImage?
     @State private var isRendering = true
@@ -1873,7 +1874,7 @@ struct ShareCardScreen: View {
     // 로고 칩 — 템플릿 피커 행 오른쪽 끝, 8개 카드 공통 한 자리(전역 설정). 대회 칩과 같은 스타일.
     private var logoChip: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.15)) { showLogoOnCard.toggle() }
+            withAnimation(.easeInOut(duration: 0.15)) { MediaLogoSetting.shared.isOn.toggle() }
             Task { await renderCard(showSpinner: false) }
         } label: {
             HStack(spacing: 4) {

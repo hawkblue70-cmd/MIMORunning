@@ -1,5 +1,25 @@
 import SwiftUI
 
+/// 사진·영상 공유 카드 로고 on/off — 앱 전체에 하나. UserDefaults(`MIMOWordmark.mediaLogoKey`)와 동기화.
+///
+/// @Observable 싱글턴인 이유: 워드마크는 카드마다 여러 개고 카드 본문은 자주 재평가된다.
+///   · 인스턴스마다 @AppStorage(UserDefaults KVO)를 걸면 비용만 든다.
+///   · init에서 한 번 읽으면 라이브 미리보기(빅넘버처럼 렌더 이미지가 아닌 SwiftUI 뷰)가 부모 재평가에만
+///     의존해 칩을 눌러도 안 바뀌는 경우가 생겼다(실기기 확인).
+///   → 값을 읽은 뷰만 변경 시 자동 갱신되고, 추적 비용은 무시할 수준. AppLanguage와 같은 패턴.
+@Observable final class MediaLogoSetting {
+    static let shared = MediaLogoSetting()
+
+    var isOn: Bool {
+        didSet { UserDefaults.standard.set(isOn, forKey: MIMOWordmark.mediaLogoKey) }
+    }
+
+    private init() {
+        // 키가 없으면(한 번도 안 건드림) 기본 ON — 설정이 저장되므로 끄는 건 한 번, 켜 두면 획득 채널 유지
+        isOn = (UserDefaults.standard.object(forKey: MIMOWordmark.mediaLogoKey) as? Bool) ?? true
+    }
+}
+
 struct MIMOWordmark: View {
     var size: CGFloat = 16
 
@@ -25,31 +45,12 @@ struct MIMOWordmark: View {
     static let mediaLogoKey = "share_showLogoOnMediaCards"
 
     /// 영상 CALayer 경로(VideoExportService·PhotoSlideComposition)용 — 거기서는 다른 레이어 위치가
-    /// wMZoneH 상수로 이미 독립돼 있어 로고 레이어만 빠진다. SwiftUI 쪽도 init에서 같은 값을 읽는다.
-    static var showsOnMediaCards: Bool {
-        // 키가 없으면(한 번도 안 건드림) 기본 ON — ShareCardView 로고 칩의 @AppStorage 기본값과 반드시 같아야 미리보기 = 출력
-        (UserDefaults.standard.object(forKey: mediaLogoKey) as? Bool) ?? true
-    }
-
-    // 값은 init에서 한 번 읽어 plain 프로퍼티로 든다(@AppStorage 아님).
-    //   워드마크는 카드마다 여러 개고 카드 본문은 미리보기 애니메이션·칩 탭마다 재평가되므로,
-    //   인스턴스마다 UserDefaults KVO를 거는 @AppStorage는 비용만 든다.
-    //   칩(ShareCardView의 @AppStorage)이 바뀌면 ShareCardView 본문이 재평가되어 카드가 다시 만들어지고
-    //   그때 init이 새 값을 읽는다 — 미리보기 즉시 갱신. ImageRenderer·영상 CALayer 경로도 렌더 시점에 같은 키를 읽는다.
-    private let logoOnMediaCards: Bool
-
-    init(size: CGFloat = 16, mimoColor: Color = .white, runColor: Color = Theme.violet,
-         strokeMIMO: Bool = false, onMediaCard: Bool = false) {
-        self.size = size
-        self.mimoColor = mimoColor
-        self.runColor = runColor
-        self.strokeMIMO = strokeMIMO
-        self.onMediaCard = onMediaCard
-        self.logoOnMediaCards = onMediaCard ? Self.showsOnMediaCards : true
-    }
+    /// wMZoneH 상수로 이미 독립돼 있어 로고 레이어만 빠진다. SwiftUI 쪽(body)도 같은 값을 읽는다 → 미리보기 = 출력.
+    static var showsOnMediaCards: Bool { MediaLogoSetting.shared.isOn }
 
     var body: some View {
-        if onMediaCard && !logoOnMediaCards {
+        // body에서 읽으므로 이 뷰가 MediaLogoSetting을 관찰 — 칩을 누르면 라이브 미리보기·ImageRenderer 모두 즉시 반영
+        if onMediaCard && !MediaLogoSetting.shared.isOn {
             mark.hidden()
         } else {
             mark
