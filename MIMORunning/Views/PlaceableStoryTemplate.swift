@@ -96,7 +96,7 @@ extension ShareCardScreen {
         HStack(spacing: 0) {
             MIMOWordmark(size: 11, onMediaCard: true)
         }
-        .cardTextShadow()
+        // 로고에는 그림자 없음 — 다른 카드와 동일(02b52a8)
         .padding(.horizontal, 14)
         .padding(.top, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -149,7 +149,7 @@ extension ShareCardScreen {
             HStack(spacing: 0) {
                 MIMOWordmark(size: 11, onMediaCard: true)
             }
-            .cardTextShadow()
+            // 로고에는 그림자 없음 — 다른 카드와 동일(02b52a8)
             .padding(.horizontal, 14)
             .padding(.top, 14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

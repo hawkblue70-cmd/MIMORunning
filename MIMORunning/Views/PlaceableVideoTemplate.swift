@@ -241,9 +241,7 @@ extension ShareCardScreen {
                     .frame(width: kClipW, height: 24)
                     .frame(width: kClipW, height: kClipH, alignment: .bottom)
 
-                MIMOWordmark(size: 11, onMediaCard: true)
-                .shadow(color: .black.opacity(0.50), radius: 4, x: 0, y: 2)
-                .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 1)
+                MIMOWordmark(size: 11, onMediaCard: true)   // 로고에는 그림자 없음 — 다른 카드와 동일
                 .padding(.top, kClipTopM)
                 .padding(.leading, 14)
                 .frame(width: kClipW, height: kClipH, alignment: .topLeading)
@@ -324,9 +322,7 @@ extension ShareCardScreen {
                     .frame(width: kClipW, height: 24)
                     .frame(width: kClipW, height: kClipH, alignment: .bottom)
 
-                MIMOWordmark(size: 11, onMediaCard: true)
-                .shadow(color: .black.opacity(0.50), radius: 4, x: 0, y: 2)
-                .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 1)
+                MIMOWordmark(size: 11, onMediaCard: true)   // 로고에는 그림자 없음 — 다른 카드와 동일
                 .padding(.top, kClipTopM)
                 .padding(.leading, 14)
                 .frame(width: kClipW, height: kClipH, alignment: .topLeading)
