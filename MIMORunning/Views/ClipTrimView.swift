@@ -843,11 +843,9 @@ struct ClipTrimSheet: View {
                     Text(speedLabel(sp))
                         .font(.system(size: 12, weight: isSel ? .semibold : .regular))
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                        .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.55))
+                        .background(isSel ? Theme.violet : Color.white.opacity(0.08))
+                        .foregroundStyle(isSel ? Color.white : Color.white.opacity(0.55))
                         .clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(
-                            isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -915,10 +913,9 @@ struct ClipTrimSheet: View {
             Text(label)
                 .font(.system(size: 11, weight: on ? .semibold : .regular))
                 .padding(.horizontal, 9).padding(.vertical, 4)
-                .background(on ? Theme.violet.opacity(0.22) : Color.white.opacity(0.08))
-                .foregroundStyle(on ? Theme.violet : Color.white.opacity(0.55))
+                .background(on ? Theme.violet : Color.white.opacity(0.08))
+                .foregroundStyle(on ? Color.white : Color.white.opacity(0.55))
                 .clipShape(Capsule())
-                .overlay(Capsule().strokeBorder(on ? Theme.violet.opacity(0.55) : .clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -959,10 +956,9 @@ struct ClipTrimSheet: View {
                     Text(s.chipLabel)
                         .font(.system(size: 12, weight: isSel ? .semibold : .regular))
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                        .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.55))
+                        .background(isSel ? Theme.violet : Color.white.opacity(0.08))
+                        .foregroundStyle(isSel ? Color.white : Color.white.opacity(0.55))
                         .clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -975,10 +971,9 @@ struct ClipTrimSheet: View {
             Text(label)
                 .font(.system(size: 12, weight: selected ? .semibold : .regular))
                 .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(selected ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                .foregroundStyle(selected ? Theme.violet : Color.white.opacity(0.55))
+                .background(selected ? Theme.violet : Color.white.opacity(0.08))
+                .foregroundStyle(selected ? Color.white : Color.white.opacity(0.55))
                 .clipShape(Capsule())
-                .overlay(Capsule().strokeBorder(selected ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -1093,9 +1088,8 @@ struct ClipTrimSheet: View {
 
     private func chartChip(type: ChartOverlayType, label: String, available: Bool) -> some View {
         let isSel = currentRecipeValid && workingRecipes[currentPage].chartOverlayType == type
-        let fg: Color = available ? (isSel ? Theme.violet : Color.white.opacity(0.60)) : Color.white.opacity(0.22)
-        let bg: Color = isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08)
-        let border: Color = isSel ? Theme.violet.opacity(0.55) : Color.clear
+        let fg: Color = available ? (isSel ? Color.white : Color.white.opacity(0.60)) : Color.white.opacity(0.22)
+        let bg: Color = isSel ? Theme.violet : Color.white.opacity(0.08)
         let weight: Font.Weight = isSel ? .semibold : .regular
         return Button {
             guard available, currentRecipeValid else { return }
@@ -1109,7 +1103,6 @@ struct ClipTrimSheet: View {
                 .background(bg)
                 .foregroundStyle(fg)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(border, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .disabled(!available)
@@ -1771,11 +1764,9 @@ struct ClipTrimSheet: View {
                     Text(s.chipLabel)
                         .font(.system(size: 12, weight: isSel ? .semibold : .regular))
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                        .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.55))
+                        .background(isSel ? Theme.violet : Color.white.opacity(0.08))
+                        .foregroundStyle(isSel ? Color.white : Color.white.opacity(0.55))
                         .clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(
-                            isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -1790,11 +1781,9 @@ struct ClipTrimSheet: View {
                 Text(AppLanguage.shared.s("테두리", "Border"))
                     .font(.system(size: 12, weight: borderOn ? .semibold : .regular))
                     .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(borderOn ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                    .foregroundStyle(borderOn ? Theme.violet : Color.white.opacity(0.55))
+                    .background(borderOn ? Theme.violet : Color.white.opacity(0.08))
+                    .foregroundStyle(borderOn ? Color.white : Color.white.opacity(0.55))
                     .clipShape(Capsule())
-                    .overlay(Capsule().strokeBorder(
-                        borderOn ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
@@ -1815,11 +1804,9 @@ struct ClipTrimSheet: View {
                     Text(f.chipLabel)
                         .font(f.swiftUIFont(size: 13))
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                        .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.70))
+                        .background(isSel ? Theme.violet : Color.white.opacity(0.08))
+                        .foregroundStyle(isSel ? Color.white : Color.white.opacity(0.70))
                         .clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(
-                            isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -1840,11 +1827,9 @@ struct ClipTrimSheet: View {
                     Text(mode.chipLabel)
                         .font(.system(size: 12, weight: isSel ? .semibold : .regular))
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                        .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.55))
+                        .background(isSel ? Theme.violet : Color.white.opacity(0.08))
+                        .foregroundStyle(isSel ? Color.white : Color.white.opacity(0.55))
                         .clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(
-                            isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -1863,11 +1848,9 @@ struct ClipTrimSheet: View {
                     Text(dir.chipLabel)
                         .font(.system(size: 12, weight: isSel ? .semibold : .regular))
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                        .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.55))
+                        .background(isSel ? Theme.violet : Color.white.opacity(0.08))
+                        .foregroundStyle(isSel ? Color.white : Color.white.opacity(0.55))
                         .clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(
-                            isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -1886,11 +1869,9 @@ struct ClipTrimSheet: View {
                     Text(fx.chipLabel)
                         .font(.system(size: 12, weight: isSel ? .semibold : .regular))
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                        .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.55))
+                        .background(isSel ? Theme.violet : Color.white.opacity(0.08))
+                        .foregroundStyle(isSel ? Color.white : Color.white.opacity(0.55))
                         .clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(
-                            isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -1912,11 +1893,9 @@ struct ClipTrimSheet: View {
                 Text(AppLanguage.shared.s("테두리", "Border"))
                     .font(.system(size: 12, weight: borderOn ? .semibold : .regular))
                     .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(borderOn ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                    .foregroundStyle(borderOn ? Theme.violet : Color.white.opacity(0.55))
+                    .background(borderOn ? Theme.violet : Color.white.opacity(0.08))
+                    .foregroundStyle(borderOn ? Color.white : Color.white.opacity(0.55))
                     .clipShape(Capsule())
-                    .overlay(Capsule().strokeBorder(
-                        borderOn ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
