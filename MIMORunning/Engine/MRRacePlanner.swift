@@ -478,7 +478,13 @@ func mrBuildPlan(raceDate: Date,
                 lr = f.week.longRunKm
                 wkVol = f.week.weeklyKm
                 phase = MRPlanGovernance.followingPhase(distanceM: f.race.distanceM)
-                peakLong = max(peakLong, lr)
+                // ⚠ 정점을 "따르는 주의 실제 롱런"으로 맞춘다 — 그래야 대회 뒤 재개가 그 값 +10%에서 시작한다.
+                //   예전엔 max()로 삭제 전 시뮬레이션 정점을 들고 있어, 10K 테이퍼 10.4km 다음 주에 21km가 나왔다.
+                //   단, 앞 대회의 단거리 테이퍼 주(65%)는 정점을 끌어내리지 않는다 — 그 전 주 정점을 유지.
+                if !MRPlanGovernance.isTaperLike(f.week.phase) {
+                    peakLong = lr
+                }
+                longNow = max(longNow, lr)
                 currentBuildVol = max(currentBuildVol, wkVol)
             } else if preTune != nil {
                 // 단거리 대회 전 주 — 그 대회 독립 계획의 1주 테이퍼와 같은 값 (롱런 65% · 주간 50%). 진행 멈춤.

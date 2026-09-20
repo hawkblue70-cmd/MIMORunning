@@ -63,4 +63,9 @@ enum MRPlanGovernance {
     static func isFollowingPhase(_ phase: String) -> Bool {
         phase.hasSuffix(" 계획")
     }
+
+    /// 따르는 계획의 그 주가 테이퍼·회복(의도적 저하)인가 — 정점 계산에서 제외할 주.
+    static func isTaperLike(_ phase: String) -> Bool {
+        phase == "테이퍼" || phase == "회복"
+    }
 }
