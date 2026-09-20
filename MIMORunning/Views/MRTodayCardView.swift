@@ -29,8 +29,9 @@ struct MRTodayCardView: View {
                     .foregroundStyle(.white)
                 // 거리 행 — 이번 주 · 이번 달 · 올해 · 누적. 0km 칸은 엔진에서 이미 빠져 있고
                 // 남은 칸이 폭을 나눠 갖는다.
-                //   라벨 mrInk3(0.45) / 값 mrInk2(0.72) / 누적 값만 노랑 — 색 규칙 "노랑 = 실제로 한 것",
+                //   라벨 mrInk2(0.72) / 값 mrInk1(흰) / 누적 값만 노랑 — 색 규칙 "노랑 = 실제로 한 것",
                 //   한 자리에만. 누적은 레벨의 숫자다(NRC 블랙 = 5,000km).
+                //   라벨·값을 한 단계 밝힘(0.45→0.72, 0.72→흰) — 연속 줄(흰 22pt) 바로 아래라 묻혔다.
                 //   단위(km·mi)는 11pt·0.45로 낮춰 숫자가 또렷하게.
                 HStack(alignment: .top, spacing: 8) {
                     ForEach(Array(c.distanceCells.enumerated()), id: \.offset) { idx, cell in
@@ -90,11 +91,11 @@ private struct DistanceCellView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.system(size: 10))
-                .foregroundStyle(Color.mrInk3)
+                .foregroundStyle(Color.mrInk2)
             HStack(alignment: .firstTextBaseline, spacing: 1) {
                 Text(number)
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(isTotal ? Theme.time : Color.mrInk2)
+                    .foregroundStyle(isTotal ? Theme.time : Color.mrInk1)
                 Text(unit)
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.mrInk3)
