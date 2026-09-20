@@ -62,7 +62,7 @@ private struct StampConfigDTO: Codable {
             sizeLevel:       TextSizeLevel(rawValue: sizeLevel) ?? .medium,
             showHeartRate:   showHeartRate || StampTemplate.legacyImpliesHeartRate(template),
             showTextOutline: showTextOutline,
-            showDate:        showDate ?? true,    // 토글 생기기 전 저장값 = 선택한 적 없음 → 기본 ON
+            showDate:        true,    // 열 때마다 ON(B안, 2026-09) — 저장값은 복원하지 않는다. 끄는 건 그 카드 동안만.
             text:            text,
             textPosition:    posAll.indices.contains(textPositionIdx) ? posAll[textPositionIdx] : .top,
             textFont:        OneLinerFont(rawValue: textFont) ?? .gothic,

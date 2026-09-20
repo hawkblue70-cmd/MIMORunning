@@ -124,8 +124,8 @@ struct ShareCardScreen: View {
 
     @State var storyShareImages: [UIImage] = []
     @AppStorage("mapHRZoneMode") private var mapHRZoneMode: Bool = true
-    /// 사진·영상 카드 로고 칩 — 모든 카드 템플릿 공통, 기본 ON. 상태는 MediaLogoSetting.shared 하나(워드마크가 직접 관찰).
-    /// 꺼도 로고 자리는 항상 잡혀 있어 다른 요소는 안 움직인다.
+    /// 사진·영상 카드 로고 칩 — 모든 카드 템플릿 공통. 시트를 열 때마다 ON(저장 안 함), 끄는 건 이 카드 동안만.
+    /// 상태는 MediaLogoSetting.shared 하나(워드마크가 직접 관찰). 꺼도 로고 자리는 항상 잡혀 있어 다른 요소는 안 움직인다.
     private var showLogoOnCard: Bool { MediaLogoSetting.shared.isOn }
 
     @State private var previewImage: UIImage?
@@ -147,6 +147,8 @@ struct ShareCardScreen: View {
     @State private var carouselPage = 0
     // Stamp card ViewModel (cardIndex == 0)
     @State var stampVM = StampViewModel()
+    /// 로고 칩 "열 때마다 ON" — 이 시트 인스턴스에서 한 번만 리셋(사진 선택 등 되돌아올 때 재리셋 방지)
+    @State private var didResetMediaLogo = false
     // Placeable card ViewModel (cardIndex == 1 전용)
     @State var placeableVM = PlaceableViewModel()
     // OneLiner card ViewModel (cardIndex == 2 전용)
@@ -2911,6 +2913,11 @@ struct ShareCardScreen: View {
 
     var body: some View {
         bodyWithTextPropHandlers
+        .onAppear {
+            guard !didResetMediaLogo else { return }
+            didResetMediaLogo = true
+            MediaLogoSetting.shared.resetForNewSheet()
+        }
         .onChange(of: heroMetric) { _, _ in
             guard isBigNumber else { return }
             Task { await renderCard(showSpinner: false) }

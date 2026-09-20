@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// 사진·영상 공유 카드 로고 on/off — 앱 전체에 하나. UserDefaults(`MIMOWordmark.mediaLogoKey`)와 동기화.
+/// 사진·영상 공유 카드 로고 on/off — 앱 전체에 하나. **저장하지 않는다**: 공유 시트를 열 때마다 ON으로
+/// 리셋(ShareCardView.onAppear)되고, 끄는 건 그 카드를 만드는 동안만 유효(2026-09 결정, B안).
 ///
 /// @Observable 싱글턴인 이유: 워드마크는 카드마다 여러 개고 카드 본문은 자주 재평가된다.
 ///   · 인스턴스마다 @AppStorage(UserDefaults KVO)를 걸면 비용만 든다.
@@ -10,14 +11,12 @@ import SwiftUI
 @Observable final class MediaLogoSetting {
     static let shared = MediaLogoSetting()
 
-    var isOn: Bool {
-        didSet { UserDefaults.standard.set(isOn, forKey: MIMOWordmark.mediaLogoKey) }
-    }
+    var isOn: Bool = true
 
-    private init() {
-        // 키가 없으면(한 번도 안 건드림) 기본 ON — 설정이 저장되므로 끄는 건 한 번, 켜 두면 획득 채널 유지
-        isOn = (UserDefaults.standard.object(forKey: MIMOWordmark.mediaLogoKey) as? Bool) ?? true
-    }
+    private init() {}
+
+    /// 공유 시트 진입 시 호출 — 항상 ON에서 시작
+    func resetForNewSheet() { isOn = true }
 }
 
 struct MIMOWordmark: View {
@@ -39,10 +38,6 @@ struct MIMOWordmark: View {
     /// → 총평·대회 뱃지·문구·날짜 등 다른 요소의 위치는 한 점도 움직이지 않는다.
     var onMediaCard: Bool = false
 
-    /// 사진·영상 공유 카드 로고 on/off — 공유 시트의 "로고" 칩이 바꾸는 값. 기본 ON(2026-09 결정: 설정이
-    /// 저장되므로 끄는 건 평생 한 번, 켜 두면 유일한 무료 획득 채널이 작동).
-    /// 데이터 전용 카드(성장·주간·스플릿·경로·차트·인사이트 내보내기)와 앱 화면은 이 값과 무관하게 항상 표시.
-    static let mediaLogoKey = "share_showLogoOnMediaCards"
 
     /// 영상 CALayer 경로(VideoExportService·PhotoSlideComposition)용 — 거기서는 다른 레이어 위치가
     /// wMZoneH 상수로 이미 독립돼 있어 로고 레이어만 빠진다. SwiftUI 쪽(body)도 같은 값을 읽는다 → 미리보기 = 출력.
