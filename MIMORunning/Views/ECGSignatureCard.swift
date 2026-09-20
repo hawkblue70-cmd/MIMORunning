@@ -165,16 +165,20 @@ struct ECGSignatureCard: View {
             // Text content laid out in three vertical sections
             VStack(spacing: 0) {
                 // ── Top section: wordmark + distance ───────────────────────
+                // ⚠ frame(maxWidth:)에 alignment가 없으면 이 VStack이 가장 넓은 자식(거리) 폭으로 줄어든 채
+                //   카드 가운데에 놓여 로고가 왼쪽 여백(20pt)이 아니라 카드 중앙 근처로 밀려났다(실기기).
+                //   로고는 다른 카드와 같이 좌상단 20pt, 거리는 지금처럼 가운데.
                 VStack(alignment: .leading, spacing: 0) {
                     wordmarkRow
                         .padding(.horizontal, 20)
                         .padding(.top, 18)
                     Spacer()
                     distanceView
+                        .frame(maxWidth: .infinity)
                         .padding(.horizontal, 20)
                         .padding(.bottom, 4)
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: bandTop)
 
                 // ── Middle: waveform band (Canvas draws here) ───────────────
