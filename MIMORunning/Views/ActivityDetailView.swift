@@ -2700,22 +2700,18 @@ private struct SplitBarRow: View {
                     .foregroundStyle(isFastest ? Self.gold : Self.kmColor)
                     .frame(width: 28, alignment: .leading)
 
-                // ② 고정 너비 바 + 평균 점선
+                // ② 고정 너비 바 + 평균선 — 구간 데이터 카드(SplitsShareCardView)와 같은 규격: 7pt·반경 2.5·1.5×9 세로선
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
+                    RoundedRectangle(cornerRadius: 2.5)
                         .fill(Self.track)
-                        .frame(width: Self.barWidth, height: 6)
-                    RoundedRectangle(cornerRadius: 3)
+                        .frame(width: Self.barWidth, height: 7)
+                    RoundedRectangle(cornerRadius: 2.5)
                         .fill(barGradient)
-                        .frame(width: max(10, Self.barWidth * barFraction), height: 6)
-                    VStack(spacing: 2) {
-                        ForEach(0..<3, id: \.self) { _ in
-                            Rectangle()
-                                .fill(Self.avgDotColor.opacity(0.45))
-                                .frame(width: 1.5, height: 2.5)
-                        }
-                    }
-                    .offset(x: max(0, Self.barWidth * avgFraction - 0.75))
+                        .frame(width: max(10, Self.barWidth * barFraction), height: 7)
+                    Rectangle()
+                        .fill(Self.avgDotColor.opacity(0.55))
+                        .frame(width: 1.5, height: 9)
+                        .offset(x: max(0, Self.barWidth * avgFraction - 0.75))
                 }
                 .frame(width: Self.barWidth, height: 16)
                 .padding(.horizontal, 5)

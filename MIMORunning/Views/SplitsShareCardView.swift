@@ -417,13 +417,15 @@ struct SplitsShareCardView: View {
                 .padding(.horizontal, 4)
 
                 // ③ 페이스 · 심박 · 존 · 케이던스 · 파워
-                //   각 칸을 고정 폭 열로 — 오른쪽 정렬 HStack에 그냥 늘어놓으면 뒤 칸의 글자 폭("1"이 좁음 등)에
+                //   각 칸을 최소 폭 열로 — 오른쪽 정렬 HStack에 그냥 늘어놓으면 뒤 칸의 글자 폭("1"이 좁음 등)에
                 //   따라 앞 칸(페이스)이 행마다 좌우로 흔들려 세로줄이 안 맞았다. 숫자는 monospacedDigit.
+                //   고정 폭(width:)은 폭이 1pt만 모자라도 "13/2"처럼 줄바꿈됐다(실기기) → fixedSize + minWidth.
                 HStack(spacing: 3) {
                     Text(split.formattedPace)
                         .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(isFastest ? pal.bestText : pal.textPrimary)
-                        .frame(width: 30, alignment: .trailing)
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: 28, alignment: .trailing)
                     if let hr = split.avgHeartRate {
                         HStack(spacing: 2) {
                             Image(systemName: "heart.fill")
@@ -433,21 +435,25 @@ struct SplitsShareCardView: View {
                                 .font(.system(size: 8, design: .rounded).monospacedDigit())
                                 .foregroundStyle(pal.heartRate)
                         }
-                        .frame(width: 24, alignment: .trailing)
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: 26, alignment: .trailing)
                         Text(hrZoneNumber(for: hr).map { "Z\($0)" } ?? "")
                             .font(.system(size: 8, weight: .semibold, design: .rounded))
                             .foregroundStyle(hrZoneNumber(for: hr).map(hrZoneColor) ?? .clear)
-                            .frame(width: 12, alignment: .leading)
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                            .frame(minWidth: 12, alignment: .leading)
                     }
                     if let cad = split.avgCadence {
                         (Text("\(cad)").font(.system(size: 8, design: .rounded).monospacedDigit()).foregroundStyle(pal.cadence)
                          + Text("spm").font(.system(size: 7)).foregroundStyle(pal.cadence.opacity(0.85)))
-                            .frame(width: 30, alignment: .trailing)
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                            .frame(minWidth: 31, alignment: .trailing)
                     }
                     if let pwr = split.avgPower {
                         (Text("\(pwr)").font(.system(size: 8, design: .rounded).monospacedDigit()).foregroundStyle(pal.power)
                          + Text("W").font(.system(size: 7)).foregroundStyle(pal.power.opacity(0.85)))
-                            .frame(width: 24, alignment: .trailing)
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                            .frame(minWidth: 23, alignment: .trailing)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
