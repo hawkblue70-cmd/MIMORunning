@@ -142,7 +142,6 @@ struct ShareCardScreen: View {
     @State var template: ShareTemplate = .story
     @State private var enabledMetrics: Set<ShareMetric>
     @State private var showRaceOnCard = true
-    @State private var showShoeOnCard = true   // Sky 카드 전용 토글
     /// "총평" 칩 — 기본 꺼짐. 켜지면 지도/차트 자리에 총평 5줄이 대신 들어간다(§5.8: 카드 4종·영상 오버레이 공용).
     @State private var showSummaryOnCard = false
     @State private var carouselPage = 0
@@ -1827,43 +1826,9 @@ struct ShareCardScreen: View {
     }
 
     // Chip row for sky card: locked content chips + time-range accent selector
+    // 스카이: 고를 수 있는 건 액센트뿐 — 잠긴 칩(인사이트·미니미·지표)과 러닝화 토글은 뺐다. 러닝화는 항상 표시.
     private var skyChipRow: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    lockedChip(AppLanguage.shared.s("인사이트", "Insight"), icon: "sparkles")
-                    if canShowMiniMe {
-                        lockedChip(AppLanguage.shared.s("미니미", "Mini-Me"))
-                    }
-                    if let shoe = activeShoe {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) { showShoeOnCard.toggle() }
-                            Task { await renderCard(showSpinner: false) }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "shoe.fill")
-                                    .font(.system(size: 10))
-                                Text(shoe.displayName)
-                                    .font(.caption.weight(.semibold))
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(showShoeOnCard ? Color.white : Color.white.opacity(0.4))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(showShoeOnCard ? Theme.violet : Color.white.opacity(0.08))
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    ForEach(allMetricItems) { item in
-                        lockedChip(item.id.chipLabel)
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 2)
-            }
-            skyAccentRow
-        }
+        skyAccentRow
     }
 
     // → SkyControls.swift: SkyAccentRowView
@@ -2131,8 +2096,16 @@ struct ShareCardScreen: View {
         return ShareTemplate.allCases
     }
 
+    /// 템플릿이 하나뿐인 카드(스카이·ECG·티켓) — 고를 게 없으니 탭 대신 로고 칩만 보인다
+    private var isSingleTemplateCard: Bool {
+        (ShareCard(rawValue: cardIndex)?.supportedTemplates.count ?? 2) <= 1
+    }
+
     private var templatePicker: some View {
         HStack(spacing: 0) {
+            if isSingleTemplateCard {
+                Spacer(minLength: 0)
+            } else {
             ForEach(templateTabs, id: \.self) { t in
                 let available = ShareCard(rawValue: cardIndex)?.supportedTemplates.contains(t) ?? true
                 let selected  = template == t
@@ -2159,6 +2132,7 @@ struct ShareCardScreen: View {
                         )
                 }
                 .disabled(!available)
+            }
             }
             // 로고 on/off — 피커 버튼들이 maxWidth: .infinity라 칩 폭만큼만 양보하고 한 줄 유지
             logoChip
@@ -5502,7 +5476,7 @@ struct ShareCardScreen: View {
             let card = SkyCard(
                 activity: activity,
                 weather: condition?.weather,
-                shoeName: showShoeOnCard ? displayShoeName : nil,
+                shoeName: displayShoeName,
                 accent: skyVM.skyAccent
             )
             let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
