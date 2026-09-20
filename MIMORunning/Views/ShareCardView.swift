@@ -2073,12 +2073,12 @@ struct ShareCardScreen: View {
                                     .font(.custom(entry.font.fontName, size: 13))
                                     .lineLimit(1)
                             }
-                            .foregroundStyle(isCurrent ? Theme.violet : entry.textColor.color.opacity(0.85))
+                            .foregroundStyle(isCurrent ? Color.white : entry.textColor.color.opacity(0.85))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
-                            .background(isCurrent ? Theme.violet.opacity(0.12) : Color(hex: "1E1E28"))
+                            .background(isCurrent ? Theme.violet : Color(hex: "1E1E28"))
                             .overlay(Capsule().strokeBorder(
-                                isCurrent ? Theme.violet.opacity(0.55) : Color.white.opacity(0.15),
+                                isCurrent ? Color.clear : Color.white.opacity(0.15),
                                 lineWidth: 1
                             ))
                             .clipShape(Capsule())

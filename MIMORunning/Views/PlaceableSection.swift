@@ -18,13 +18,13 @@ import SwiftUI
 // [문구 | 데이터] 탭 칩 — Placeable 스토리 템플릿 상단 탭 전용.
 func placeableStoryTabChip(_ label: String, on: Bool, _ action: @escaping () -> Void) -> some View {
     Button(action: action) {
+        // 선택 = 보라 채움 + 흰 글자 — 공유 시트의 카드·템플릿 피커, 토글 칩과 같은 표시
         Text(label)
             .font(.system(size: 11, weight: on ? .semibold : .regular))
             .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(on ? Theme.violet.opacity(0.22) : Color.white.opacity(0.08))
-            .foregroundStyle(on ? Theme.violet : Color.white.opacity(0.55))
+            .background(on ? Theme.violet : Color.white.opacity(0.08))
+            .foregroundStyle(on ? Color.white : Color.white.opacity(0.55))
             .clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(on ? Theme.violet.opacity(0.55) : .clear, lineWidth: 1))
     }
     .buttonStyle(.plain)
 }
@@ -32,7 +32,6 @@ func placeableStoryTabChip(_ label: String, on: Bool, _ action: @escaping () -> 
 // 소형 선택 칩 — Placeable 스토리 설정 옵션용 (폰트·색상·크기 등).
 func placeableStorySmallChip(_ label: String, isSelected: Bool) -> some View {
     HStack(spacing: 4) {
-        if isSelected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
         Text(label).font(.caption.weight(.semibold))
     }
     .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.5))

@@ -522,10 +522,9 @@ struct MultiClipEditorView: View {
                     Text(s.chipLabel)
                         .font(.system(size: 12, weight: isSel ? .semibold : .regular))
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                        .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.55))
+                        .background(isSel ? Theme.violet : Color.white.opacity(0.08))
+                        .foregroundStyle(isSel ? Color.white : Color.white.opacity(0.55))
                         .clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -540,10 +539,9 @@ struct MultiClipEditorView: View {
                     Text(f.chipLabel)
                         .font(f.swiftUIFont(size: 13))
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                        .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.70))
+                        .background(isSel ? Theme.violet : Color.white.opacity(0.08))
+                        .foregroundStyle(isSel ? Color.white : Color.white.opacity(0.70))
                         .clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -576,10 +574,9 @@ struct MultiClipEditorView: View {
             Text(AppLanguage.shared.s("테두리", "Border"))
                 .font(.system(size: 12, weight: isSel ? .semibold : .regular))
                 .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(isSel ? Theme.violet.opacity(0.20) : Color.white.opacity(0.08))
-                .foregroundStyle(isSel ? Theme.violet : Color.white.opacity(0.55))
+                .background(isSel ? Theme.violet : Color.white.opacity(0.08))
+                .foregroundStyle(isSel ? Color.white : Color.white.opacity(0.55))
                 .clipShape(Capsule())
-                .overlay(Capsule().strokeBorder(isSel ? Theme.violet.opacity(0.55) : Color.clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
