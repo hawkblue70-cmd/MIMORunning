@@ -1689,12 +1689,13 @@ struct ShareCardScreen: View {
             withAnimation(.easeInOut(duration: 0.2)) { cardIndex = i }
         } label: {
             if isActive {
+                // 선택 = 보라 채움 + 흰 글자 — 템플릿 피커·토글 칩과 같은 표시
                 Text(i < names.count ? names[i] : "")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(Color.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .background(Capsule().fill(Theme.violet.opacity(0.15)))
+                    .background(Capsule().fill(Theme.violet))
             } else if inWindow {
                 Text(i < names.count ? names[i] : "")
                     .font(.system(size: 10, weight: .medium))
