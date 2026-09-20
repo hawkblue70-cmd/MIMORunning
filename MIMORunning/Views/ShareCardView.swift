@@ -2175,27 +2175,25 @@ struct ShareCardScreen: View {
                     }
                     withAnimation(.easeInOut(duration: 0.15)) { template = t }
                 } label: {
-                    HStack(spacing: 4) {
-                        if selected {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        Text(t.label)
-                            .font(.system(size: 13, weight: selected ? .semibold : (available ? .semibold : .regular)))
-                    }
-                    .foregroundStyle(
-                        selected  ? Color.white       :
-                        available ? Color.white       :
-                                    Color(hex: "6E6E78")
-                    )
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
-                    .background(
-                        selected
-                            ? RoundedRectangle(cornerRadius: 8)
-                                .fill(Theme.violet.opacity(0.18))
-                            : nil
-                    )
+                    // 세그먼트(항상 하나 선택)라 체크 없음 — 체크는 토글 칩의 기호. 선택은 카드 피커와 같은
+                    // 보라 글자 + 연보라 박스. 5칸 + 로고 칩이면 칸 폭 ≈57pt라 한 줄 고정(최소 85%).
+                    Text(t.label)
+                        .font(.system(size: 13, weight: selected ? .semibold : (available ? .semibold : .regular)))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .foregroundStyle(
+                            selected  ? Theme.violet      :
+                            available ? Color.white       :
+                                        Color(hex: "6E6E78")
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(
+                            selected
+                                ? RoundedRectangle(cornerRadius: 8)
+                                    .fill(Theme.violet.opacity(0.15))
+                                : nil
+                        )
                 }
                 .disabled(!available)
             }
