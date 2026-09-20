@@ -346,8 +346,8 @@ struct MeView: View {
                     Button { editingGoal = kind } label: {
                         VStack(spacing: 6) {
                             Text(kind.label)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
                             Text(goalStr.isEmpty ? L.s("미설정", "Set goal") : goalStr)
                                 .font(.system(size: goalStr.isEmpty ? 12 : 15, weight: .bold, design: .monospaced))
                                 .foregroundStyle(goalStr.isEmpty ? Color.secondary.opacity(0.5) : Color.white)
