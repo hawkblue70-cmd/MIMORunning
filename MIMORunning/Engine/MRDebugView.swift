@@ -8,6 +8,8 @@ struct MRDebugView: View {
     @Environment(RaceDetector.self) private var raceDetector
     @Environment(\.modelContext) private var modelContext
     @Query private var allArchives: [RaceArchive]
+    @Query private var allSnapshots: [RacePlanSnapshot]
+    @Query private var plannedRaces: [MyPlannedRace]
 
     @State private var log = "권한 요청 대기 중"
     @State private var archiveLog = ""
@@ -24,9 +26,58 @@ struct MRDebugView: View {
 
     private let hk = MRHealthKit()
 
+    private func _dbgDate(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d)
+    }
+
+    /// 분리된 스냅샷으로 대회를 다시 만들어 목록에 넣는다. 이미 같은 대회가 있으면 플래그만 푼다.
+    /// 다음 나 탭 진입에서 saveSnapshotsIfNeeded가 매치해 이력이 카드에 돌아온다.
+    private func restoreDetached(_ snap: RacePlanSnapshot) {
+        let already = plannedRaces.contains { r in
+            guard let d = r.raceDate else { return false }
+            let km = r.selectedDistanceKm > 0 ? r.selectedDistanceKm : (r.distancesKm.first ?? 0)
+            return snap.matches(date: d, distanceM: km * 1000)
+        }
+        if !already {
+            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; df.timeZone = TimeZone(identifier: "UTC")
+            let km = snap.distanceM / 1000
+            let bundled = BundledRace(name: snap.raceName, dateString: df.string(from: snap.raceDate),
+                                      region: "", start: "", startLatitude: nil, startLongitude: nil,
+                                      geoPrecision: "", distancesKm: [km], nonStandard: false,
+                                      startTimeString: nil)
+            let race = MyPlannedRace(from: bundled)
+            race.selectedDistanceKm = km
+            modelContext.insert(race)
+        }
+        snap.isDetached = false
+        print("[스냅샷] 디버그 복원: \(snap.raceName) · 대회 \(already ? "이미 있음" : "새로 생성")")
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+
+                // 분리된 스냅샷 (사용자가 목록에서 지운 대회의 진행 이력) — 안전망: 여기서 대회를 다시 만들어 붙인다
+                let detached = allSnapshots.filter(\.isDetached).sorted { $0.raceDate < $1.raceDate }
+                if !detached.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("분리된 계획 스냅샷 \(detached.count)건 — 대회가 목록에 없음").font(.system(size: 13, weight: .semibold))
+                        ForEach(detached, id: \.persistentModelID) { snap in
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(snap.raceName).font(.system(size: 12, weight: .medium))
+                                    Text("\(_dbgDate(snap.raceDate)) · \(mrLabelFor(distanceM: snap.distanceM)) · \(snap.planWeeks.count)주 · 시작 \(snap.planWeeks.first.map { _dbgDate($0.monday) } ?? "—")")
+                                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button("복원") { restoreDetached(snap) }
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .buttonStyle(.borderedProminent).tint(Color(red: 0.48, green: 0.36, blue: 0.98))
+                            }
+                        }
+                    }
+                    .padding(10).background(Color.white.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 10))
+                }
 
                 // 소급 아카이브 생성 / 삭제 버튼
                 VStack(alignment: .leading, spacing: 8) {

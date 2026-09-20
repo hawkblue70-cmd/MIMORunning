@@ -68,6 +68,16 @@ struct MRPlanWeekSummary: Codable {
     /// 구버전 스냅샷(키 없음)은 nil → 과거 주 보정 migration 트리거.
     var storedStartingLongKm: Double? { metaDouble("startingLongKm") }
 
+    /// 같은 대회인가 — 날짜 ±1일 · 거리 2% 이내.
+    /// ⚠ 정확한 키(초 단위 epoch) 비교는 재등록 때 실패한다: `MyPlannedRace.raceDate`는 UTC 자정이고
+    ///   시간대 경계에서 하루 어긋날 수 있다. 이름은 비교하지 않는다(줄여 쓴 이름도 같은 대회).
+    func matches(date: Date, distanceM d: Double) -> Bool {
+        guard d > 0, distanceM > 0 else { return false }
+        let days = abs(Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: raceDate),
+                                                       to: Calendar.current.startOfDay(for: date)).day ?? 99)
+        return days <= 1 && abs(distanceM - d) / d <= 0.02
+    }
+
     /// 사용자가 대회를 목록에서 지운 뒤에도 스냅샷은 남긴다 — 다시 등록하면 진행 이력이 그대로 돌아오게.
     /// true인 동안은 아카이브(유령 "기록 없음")를 만들지 않는다. 같은 날짜·거리로 다시 추가되면 false로 돌아온다.
     var isDetached: Bool {

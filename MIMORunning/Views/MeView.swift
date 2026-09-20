@@ -410,10 +410,15 @@ struct MeView: View {
         engine.userInput.goals = parseGoals()
         // 스냅샷이 있는 대회는 최초 저장 시점의 월요일을 고정 앵커로 사용.
         // 이로써 매 월요일마다 주차 구조가 재시작되는 문제를 방지한다.
+        // 앵커 키는 **현재 등록된 대회의 날짜**로 만든다 — 스냅샷 날짜가 하루 어긋나 있어도(재등록 직후) 앵커가 붙게.
+        let currentRaces = engine.userInput.races
         let anchors = Dictionary(
             allSnapshots.compactMap { snap -> (String, Date)? in
                 guard let firstMonday = snap.planWeeks.first?.monday else { return nil }
-                return (mrArchiveKey(raceDate: snap.raceDate, distanceM: snap.distanceM), firstMonday)
+                let race = currentRaces.first { snap.matches(date: $0.date, distanceM: $0.distanceM) }
+                let keyDate = race?.date ?? snap.raceDate
+                let keyDist = race?.distanceM ?? snap.distanceM
+                return (mrArchiveKey(raceDate: keyDate, distanceM: keyDist), firstMonday)
             },
             uniquingKeysWith: { a, _ in a }
         )
@@ -509,7 +514,10 @@ struct MeView: View {
             let key  = mrArchiveKey(raceDate: check.race.date, distanceM: check.race.distanceM)
             let data = mrBuildSnapshotData(check: check)
 
-            guard let existing = existingByKey[key] else {
+            // 정확한 키 → 없으면 ±1일·거리 2% 퍼지 매치 (재등록 시 UTC 자정 날짜가 하루 어긋나는 경우 흡수)
+            let matched = existingByKey[key]
+                ?? allSnapshots.first { $0.matches(date: check.race.date, distanceM: check.race.distanceM) }
+            guard let existing = matched else {
                 // 신규 스냅샷 저장
                 let snap = RacePlanSnapshot(
                     raceDate: check.race.date,
@@ -528,9 +536,12 @@ struct MeView: View {
                 continue
             }
 
-            // 다시 등록된 대회 — 분리 플래그를 풀어 이력을 되살린다 (앵커·주차 표·이행 기호 그대로)
+            // 다시 등록된 대회 — 분리 플래그를 풀어 이력을 되살린다 (앵커·주차 표·이행 기호 그대로).
+            // 이름·날짜는 새 입력으로 맞춘다(줄여 쓴 이름, 하루 어긋난 날짜). 이력은 그대로.
             if existing.isDetached {
                 existing.isDetached = false
+                existing.raceName   = check.race.name
+                existing.raceDate   = check.race.date
                 #if DEBUG
                 print("[스냅샷] 대회 재등록 → 진행 이력 복원: \(check.race.name)")
                 #endif
