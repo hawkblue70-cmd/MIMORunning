@@ -11,10 +11,12 @@ enum BigNumberStyle {
     static let secondaryValueSize: CGFloat = 18
     static let secondaryLabelSize: CGFloat = 9
     static let metaSize: CGFloat        = 9
-    static let secondaryValueOpacity: Double = 0.80
-    static let secondaryLabelOpacity: Double = 0.50
-    static let metaOpacity: Double      = 0.60
-    static let dividerOpacity: Double   = 0.12
+    // 시인성: 반투명 흰색은 밝은 하늘·구름 사진 위에서 씻겨 나간다(실기기 확인). 그림자(검정 70%·반경 5)는
+    // 이미 있으므로 불투명도를 올리는 게 답. 정지 카드·영상 오버레이가 이 값을 같이 쓴다(§5.8).
+    static let secondaryValueOpacity: Double = 1.00
+    static let secondaryLabelOpacity: Double = 0.85
+    static let metaOpacity: Double      = 0.85
+    static let dividerOpacity: Double   = 0.30
 
     /// 히어로 숫자: 밝은 톤끼리의 얕은 그라디언트 (어두운 배경에서 하단이 묻히지 않도록)
     static func heroGradient(_ accent: CardAccent) -> LinearGradient {
@@ -27,12 +29,12 @@ enum BigNumberStyle {
                                             startPoint: .top, endPoint: .bottom)
         }
     }
-    /// 단위: 액센트 색 90% (액센트 없음 → 흰색 70%)
+    /// 단위: 액센트 색 100% (액센트 없음 → 흰색 90%) — 사진 위 시인성
     static func unitColor(_ accent: CardAccent) -> Color {
         switch accent {
-        case .none:   return .white.opacity(0.70)
-        case .violet: return Color(hex: "9B7DFF").opacity(0.90)
-        case .gold:   return Color(hex: "FFC74D").opacity(0.90)
+        case .none:   return .white.opacity(0.90)
+        case .violet: return Color(hex: "9B7DFF")
+        case .gold:   return Color(hex: "FFC74D")
         }
     }
 }
