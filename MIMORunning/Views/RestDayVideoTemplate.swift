@@ -61,7 +61,8 @@ extension RestDayOneLinerSheet {
                     appearanceMode: recipe.appearanceMode,
                     decorEffect: recipe.decorEffect,
                     hasBorder: recipe.hasBorder,
-                    captionMode: true
+                    captionMode: true,
+                    isStaticPreview: true   // ImageRenderer는 onAppear를 돌리지 않는다 — 없으면 타이핑 0글자가 찍혀 문구가 사라진다
                 )
                 .frame(width: OneLinerCard.cardWidth, height: OneLinerCard.cardHeight)
                 let renderer = ImageRenderer(content: card)
@@ -175,7 +176,8 @@ extension RestDayOneLinerSheet {
                 textColor: textColor,
                 fontChoice: fontChoice,
                 hasBorder: rp?.hasBorder ?? previewHasBorder,
-                captionMode: true
+                captionMode: true,
+                isStaticPreview: true   // 위와 같은 이유 — 정지 이미지는 글자가 즉시 다 보여야 한다
             )
             .frame(width: OneLinerCard.cardWidth, height: OneLinerCard.cardHeight)
             let renderer = ImageRenderer(content: card)
