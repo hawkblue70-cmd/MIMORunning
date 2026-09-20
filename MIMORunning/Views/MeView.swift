@@ -2039,12 +2039,18 @@ private struct PlannedRaceRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 14) {
-                // 날짜 배지
-                VStack(spacing: 2) {
+                // 날짜 배지 — 월은 아래 종목 칩과 같은 문법의 보라 캡슐(흰 글자). 지난 대회는 회색 캡슐.
+                VStack(spacing: 4) {
                     if let d = race.raceDate {
                         Text(d, format: .dateTime.month(.abbreviated))
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(race.isPast ? .secondary : Theme.violet)
+                            .font(.system(size: 13, weight: .heavy))
+                            .textCase(.uppercase)
+                            .kerning(0.5)
+                            .foregroundStyle(race.isPast ? Color.white.opacity(0.5) : Color.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(race.isPast ? Color.white.opacity(0.08) : Theme.violet)
+                            .clipShape(Capsule())
                         Text(d, format: .dateTime.day())
                             .font(.system(size: 22, weight: .bold, design: .rounded))
                             .foregroundStyle(race.isPast ? Color.secondary : Color.white)
@@ -2054,7 +2060,7 @@ private struct PlannedRaceRow: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .frame(width: 40)
+                .frame(width: 46)
 
                 Rectangle()
                     .fill(race.isPast ? Color.white.opacity(0.12) : Theme.violet.opacity(0.40))
@@ -2121,7 +2127,7 @@ private struct PlannedRaceRow: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.leading, 54)
+                .padding(.leading, 60)
             }
         }
         .padding(.horizontal, 14)
