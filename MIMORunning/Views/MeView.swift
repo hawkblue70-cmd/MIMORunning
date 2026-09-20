@@ -578,29 +578,17 @@ struct MeView: View {
                     uniquingKeysWith: { a, _ in a }
                 )
                 var changed = 0
-                // 스냅샷 문구가 언급하는 튠업 대회가 아직 등록돼 있는가. 앞 대회를 지우면 "10K 계획을 따릅니다"·
-                // "10K 대회 + 롱런…" 같은 문구가 굳어 남는다 — 그 대회가 없어졌으면 지난 주라도 라이브 값으로 바꾼다.
-                let liveRaceLabels = Set(engine.userInput.races.map { mrLabelFor(distanceM: $0.distanceM) })
-                func mentionsMissingRace(_ text: String) -> Bool {
-                    guard text.contains("대회") || text.contains("계획을 따릅니다") else { return false }
-                    for label in ["5K", "10K", "하프", "풀"] where text.contains(label) {
-                        if !liveRaceLabels.contains(label) { return true }
-                    }
-                    return false
-                }
                 let merged: [MRPlanWeekSummary] = existing.planWeeks.map { snap in
                     let snapMon = cal.startOfDay(for: snap.monday)
                     guard let live = liveByMonday[snapMon] else { return snap }
                     let follows = MRPlanGovernance.isFollowingPhase(live.phase) || live.breakdown.contains("계획을 따릅니다")
-                    let staleMention = mentionsMissingRace(snap.breakdown) || (snap.phase == "대회 주" && live.phase != "대회 주")
-                    // 지난 주는 원칙적으로 고정. 예외 둘:
-                    //  · 다른 대회(10K) 계획을 "따르는" 주 — 그 계획의 고정된 과거 값을 가져오는 것이라 역사를 새로 쓰는 게 아니다.
-                    //  · 언급하던 대회가 삭제된 주 — 없는 대회를 계속 말하면 안 된다.
+                    // 지난 주는 원칙적으로 고정. 예외: 다른 대회(10K) 계획을 "따르는" 주는 그 계획의 고정된
+                    // 과거 값을 그대로 가져오는 것이라 역사를 새로 쓰는 게 아니다 — 이행 기호가 실제 따른 계획 기준이 된다.
                     // 이번 주(진행 중)는 튠업 관련이면 갱신한다.
-                    if snapMon < thisMonday && !follows && !staleMention { return snap }
+                    if snapMon < thisMonday && !follows { return snap }
                     // 테이퍼 길이 변경(주 수가 늘어 마지막 주가 새로 붙은 경우)도 갱신 — 10K 1주 테이퍼가 2주로 남지 않게
                     let taperChanged = snap.phase == "테이퍼" && live.phase != "테이퍼"
-                    let raceRelated = follows || staleMention || taperChanged || live.phase == "대회 주" || snap.phase == "대회 주"
+                    let raceRelated = follows || taperChanged || live.phase == "대회 주" || snap.phase == "대회 주"
                         || live.breakdown.contains("대회") || snap.breakdown.contains("대회")
                     guard raceRelated,
                           live.phase != snap.phase || live.breakdown != snap.breakdown
