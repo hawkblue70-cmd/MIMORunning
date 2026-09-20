@@ -40,6 +40,7 @@ struct MeView: View {
     @State private var showRaceSearch = false
     @State private var showAddShoe = false
     @State private var shoeToDelete: Shoe?
+    @State private var raceToDelete: MyPlannedRace?
     @State private var shoeKmCache: [UUID: Double] = [:]
     @State private var cachedMonthStats: [SummaryPeriodStats] = []
     @State private var cachedYearStats: [SummaryPeriodStats] = []
@@ -322,7 +323,7 @@ struct MeView: View {
             } else {
                 ForEach(plannedRaces) { race in
                     PlannedRaceRow(race: race, locked: isRaceLocked(race)) {
-                        deletePlannedRace(race)
+                        raceToDelete = race
                     }
                     .padding(.horizontal, 16)
                 }
@@ -376,11 +377,11 @@ struct MeView: View {
         plannedRaces.map { "\($0.dateString)-\(Int($0.selectedDistanceKm * 1000))" }.joined(separator: "|")
     }
 
-    /// 사용자가 직접 지운 예정 대회 — 계획 스냅샷도 함께 지운다.
-    /// 스냅샷만 남으면 대회일이 지난 뒤 `createArchivesIfNeeded`가 유령 아카이브를 만든다
-    /// (등록만 해보고 지운 대회가 "기록 없음"으로 성장 탭에 계속 남는 문제).
-    /// 대회일이 지나 `deletePastRaces()`가 자동 정리하는 경우는 이 경로를 타지 않으므로
-    /// 실제로 뛴 대회의 스냅샷은 그대로 보존된다.
+    /// 사용자가 직접 지운 예정 대회 — 계획 스냅샷은 **지우지 않고 분리(detached)만** 한다.
+    /// 일정 변경으로 뺐다 다시 넣는 일이 흔한데, 그때마다 몇 주치 진행(주차 표·이행 기호 기준)이 날아가면
+    /// 앱을 못 믿게 된다. 같은 날짜·거리로 다시 등록하면 `saveSnapshotsIfNeeded`가 플래그를 풀어 이력이 돌아온다.
+    /// 분리된 스냅샷은 `createArchivesIfNeeded`가 건너뛰므로 유령 "기록 없음" 아카이브는 생기지 않는다.
+    /// (예전엔 스냅샷을 지웠다 — 유령 아카이브를 막으려던 것인데 이력까지 같이 잃었다.)
     private func deletePlannedRace(_ race: MyPlannedRace) {
         if let d = race.raceDate, d >= Calendar.current.startOfDay(for: Date()) {
             // 키(초 단위 epoch) 대신 같은 날 + 거리 2% 이내로 비교 — 두 날짜의
@@ -393,7 +394,7 @@ struct MeView: View {
                     guard let km = targetKm, km > 0 else { return true }
                     return abs(snap.distanceM - km * 1000) / (km * 1000) <= 0.02
                 }
-                .forEach { modelContext.delete($0) }
+                .forEach { $0.isDetached = true }
         }
         modelContext.delete(race)
     }
@@ -525,6 +526,14 @@ struct MeView: View {
                 print("[스냅샷] 저장: \(check.race.name) \(check.race.distanceM / 1000)km → \(mrFormatDisplay(data.projectedFinalMin))")
                 #endif
                 continue
+            }
+
+            // 다시 등록된 대회 — 분리 플래그를 풀어 이력을 되살린다 (앵커·주차 표·이행 기호 그대로)
+            if existing.isDetached {
+                existing.isDetached = false
+                #if DEBUG
+                print("[스냅샷] 대회 재등록 → 진행 이력 복원: \(check.race.name)")
+                #endif
             }
 
             // ── Trigger 0: 아직 시작하지 않은 계획 → 스냅샷 전체를 실시간 계획으로 교체 ──
@@ -704,9 +713,9 @@ struct MeView: View {
             .map { mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM) })
             .subtracting(prunedKeys)
 
-        // 지난 대회가 있는 스냅샷만 대상
+        // 지난 대회가 있는 스냅샷만 대상. 사용자가 목록에서 지운(분리된) 스냅샷은 제외 — 유령 "기록 없음" 방지.
         let pastSnapshots = allSnapshots.filter {
-            Calendar.current.startOfDay(for: $0.raceDate) < today
+            Calendar.current.startOfDay(for: $0.raceDate) < today && !$0.isDetached
         }
 
         for snap in pastSnapshots {
@@ -959,6 +968,21 @@ struct MeView: View {
         }
         .sheet(isPresented: $showAddShoe) {
             AddShoeSheet()
+        }
+        .alert(AppLanguage.shared.s("대회 삭제", "Remove Race"), isPresented: .init(
+            get: { raceToDelete != nil },
+            set: { if !$0 { raceToDelete = nil } }
+        )) {
+            Button(AppLanguage.shared.s("삭제", "Remove"), role: .destructive) {
+                if let r = raceToDelete { deletePlannedRace(r) }
+                raceToDelete = nil
+            }
+            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) { raceToDelete = nil }
+        } message: {
+            if let r = raceToDelete {
+                Text(AppLanguage.shared.s("'\(r.raceName)'을(를) 목록에서 지웁니다. 훈련 계획 카드는 사라지지만, 같은 대회를 다시 추가하면 지금까지의 진행 기록은 그대로 돌아옵니다.",
+                                          "'\(r.raceName)' will be removed from the list. Its plan card disappears, but re-adding the same race restores your progress so far."))
+            }
         }
         .alert(AppLanguage.shared.s("신발 삭제", "Delete Shoe"), isPresented: .init(
             get: { shoeToDelete != nil },

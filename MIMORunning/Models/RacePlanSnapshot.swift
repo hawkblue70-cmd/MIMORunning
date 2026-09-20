@@ -68,6 +68,29 @@ struct MRPlanWeekSummary: Codable {
     /// 구버전 스냅샷(키 없음)은 nil → 과거 주 보정 migration 트리거.
     var storedStartingLongKm: Double? { metaDouble("startingLongKm") }
 
+    /// 사용자가 대회를 목록에서 지운 뒤에도 스냅샷은 남긴다 — 다시 등록하면 진행 이력이 그대로 돌아오게.
+    /// true인 동안은 아카이브(유령 "기록 없음")를 만들지 않는다. 같은 날짜·거리로 다시 추가되면 false로 돌아온다.
+    var isDetached: Bool {
+        get { metaString("detached") == "1" }
+        set { setMeta("detached", newValue ? "1" : nil) }
+    }
+
+    private func metaString(_ key: String) -> String? {
+        guard !metaJSON.isEmpty, let data = metaJSON.data(using: .utf8),
+              let dict = try? JSONDecoder().decode([String: String].self, from: data) else { return nil }
+        return dict[key]
+    }
+
+    private func setMeta(_ key: String, _ value: String?) {
+        var dict: [String: String] = [:]
+        if !metaJSON.isEmpty, let data = metaJSON.data(using: .utf8),
+           let d = try? JSONDecoder().decode([String: String].self, from: data) { dict = d }
+        dict[key] = value
+        if let out = try? JSONEncoder().encode(dict), let str = String(data: out, encoding: .utf8) {
+            metaJSON = str
+        }
+    }
+
     private func metaDouble(_ key: String) -> Double? {
         guard !metaJSON.isEmpty,
               let data = metaJSON.data(using: .utf8),
