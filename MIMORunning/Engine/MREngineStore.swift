@@ -323,7 +323,8 @@ final class MREngineStore: ObservableObject {
             let t0 = CFAbsoluteTimeGetCurrent()
             let raw = (try? await hk.fetchSleepHRV()) ?? []
             let nights = mrHRVNightMedians(samples: raw)
-            hrvNights = nights
+            // 일시적 조회 실패(빈 결과)가 복원된 캐시를 메모리에서 지우지 않게 — 결과가 있을 때만 교체
+            if !nights.isEmpty || hrvNights.isEmpty { hrvNights = nights }
             let fetchedAt = Date()
             hrvLastFetchedAt = fetchedAt
             if !nights.isEmpty { persistHRV(fetchedAt: fetchedAt, nights: nights) }

@@ -18,7 +18,7 @@ struct MRAdviceQueueHRVTests {
 
     /// 14일 동안 이지런 6회(2~3일 간격), 마지막은 어제.
     private func easyBlock() -> [MRWorkout] {
-        [13, 11, 8, 6, 3, 1].map { run(daysAgo: $0) }.reversed()
+        [13, 11, 8, 6, 3, 1].map { run(daysAgo: $0) }   // 이미 오래된 것 → 최신 순(runs.last = 어제)
     }
 
     private func trend(state: MRHRVTrend.State, volatile: Bool = false) -> MRHRVTrend {
@@ -82,7 +82,12 @@ struct MRAdviceQueueHRVTests {
     }
 
     @Test func noAdviceWhenLastRunOlderThanThreeDays() {
-        let runs = [13, 11, 9, 7, 5, 4].map { run(daysAgo: $0) }.reversed()
-        #expect(hrvAdvice(build(runs: Array(runs), trend: trend(state: .above))) == nil)
+        let runs = [13, 11, 9, 7, 5, 4].map { run(daysAgo: $0) }
+        #expect(hrvAdvice(build(runs: runs, trend: trend(state: .above))) == nil)
+    }
+
+    @Test func lastRunExactlyThreeDaysAgoStillGivesAdvice() {
+        let runs = [13, 11, 9, 7, 5, 3].map { run(daysAgo: $0) }
+        #expect(hrvAdvice(build(runs: runs, trend: trend(state: .above))) != nil)
     }
 }

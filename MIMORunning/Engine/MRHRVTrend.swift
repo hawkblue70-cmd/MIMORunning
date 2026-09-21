@@ -118,7 +118,8 @@ func mrRecentHardRunCount(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatH
         guard d >= 0 && d < days else { continue }
         total += 1
         if w.isInterval { hard += 1; continue }
-        if let lt1 = phys.lt1HR?.value, let hr = heatHR.refHR(of: w) ?? w.hrAvg, hr >= lt1 { hard += 1 }
+        // refHR는 hrAvg가 nil일 때만 nil — 심박 없는 러닝은 고강도로 세지 않는다
+        if let lt1 = phys.lt1HR?.value, let hr = heatHR.refHR(of: w), hr >= lt1 { hard += 1 }
     }
     return (hard, total)
 }

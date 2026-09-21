@@ -39,6 +39,8 @@ struct MRHRVTrendTests {
             (at(day: 0, hour: 3), 8),     // 10ms 미만: 노이즈
         ])
         #expect(nights.isEmpty)
+        // 경계: 정확히 10ms는 남긴다
+        #expect(mrHRVNightMedians(samples: [(at(day: 0, hour: 3), 10)]).count == 1)
     }
 
     @Test func nightValueIsMedianOfItsSamples() {
@@ -96,9 +98,12 @@ struct MRHRVTrendTests {
 
     @Test func nilWhenFewerThanFourRecentNights() {
         var s = series(base: 30, recent: 37)
-        s.removeAll { $0.date >= day(-3) }   // 최근 7일 중 4밤만 남기고 → 3밤
-        s.removeAll { $0.date == day(-4) }
+        s.removeAll { $0.date >= day(-3) }   // 최근 7일 중 −6…−4의 3밤만 남긴다
         #expect(mrHRVTrend(nights: s, asOf: Date()) == nil)
+        // 경계: 4밤(−6…−3)이면 성립
+        var s4 = series(base: 30, recent: 37)
+        s4.removeAll { $0.date >= day(-2) }
+        #expect(mrHRVTrend(nights: s4, asOf: Date()) != nil)
     }
 
     @Test func nilWhenFewerThanFourteenBaselineNights() {
@@ -107,8 +112,9 @@ struct MRHRVTrendTests {
     }
 
     @Test func volatileWhenRecentCVExceedsBaselineCVByHalf() {
-        // 4주 CV ≈ 0.034(±1), 7일 CV ≈ 0.19(±7) → 불안정. 평균은 같은 30 → within.
-        let t = mrHRVTrend(nights: series(base: 30, recent: 30, baseJitter: [1, -1], recentJitter: [7, -7]),
+        // 4주 CV ≈ 0.034(±1), 7일 CV ≈ 0.23(±7, 마지막 밤 0 → 평균 정확히 30) → 불안정. 평균은 기준선과 같아 within.
+        let t = mrHRVTrend(nights: series(base: 30, recent: 30, baseJitter: [1, -1],
+                                          recentJitter: [7, -7, 7, -7, 7, -7, 0]),
                            asOf: Date())
         #expect(t?.state == .within)
         #expect(t?.isVolatile == true)
