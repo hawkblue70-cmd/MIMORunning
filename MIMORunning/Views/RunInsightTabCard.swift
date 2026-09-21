@@ -791,6 +791,8 @@ struct RunInsightTabCard: View {
     var formBackfillProgress: (done: Int, total: Int)? = nil
     var heatModel: MRHeatModel? = nil
     var heatHRModel: MRHeatHRModel? = nil
+    /// 수면 HRV 밤별 중앙값(엔진 스토어). 총평 HRV 결합 문장용.
+    var hrvNights: [(date: Date, value: Double)] = []
     var formShifts: [MRFormShift] = []
     /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용 (`mrFormRunResidual`)
     var formRunCadenceResidual: Double? = nil
@@ -978,6 +980,7 @@ struct RunInsightTabCard: View {
                 formShifts: formShifts,
                 effortIndex: effortIndex,
                 heatHRModel: heatHRModel,
+                hrvNights: hrvNights,
                 hrZonesFn: hrZonesFn,
                 raceDetailFn: raceDetailFn,
                 easyPaceLookup: easyPaceLookup,
@@ -1482,6 +1485,8 @@ private struct RhythmInsightCard: View {
     /// 강도(sRPE) 조회 인덱스 — 총평 훈련부하 줄용. 없으면 그 줄은 연속일만.
     var effortIndex: EffortIndex? = nil
     var heatHRModel: MRHeatHRModel? = nil
+    /// 수면 HRV 밤별 중앙값(엔진 스토어). 총평 HRV 결합 문장용.
+    var hrvNights: [(date: Date, value: Double)] = []
     /// 과거 러닝의 존 체류 시간 조회 — 총평 "마지막 고강도" 판정에 쓴다(계획된 유형·체감 강도로 못 가릴 때 보조).
     var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
     /// 과거 러닝 상세 조회 — 총평 "8주 전 VO2max" 산출에 쓴다.
@@ -2794,7 +2799,8 @@ private struct RhythmInsightCard: View {
             workoutType: rhythmWorkoutType, workoutTypeFn: workoutTypeFn,
             effortIndex: effortIndex, heatHRModel: heatHRModel,
             age: age, isMale: isMale, easyPaceLookup: easyPaceLookup,
-            planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn
+            planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn,
+            hrvNights: hrvNights
         ))
     }
 

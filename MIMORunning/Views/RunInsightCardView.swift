@@ -124,6 +124,8 @@ struct RunInsightSection: View {
     var formBackfillProgress: (done: Int, total: Int)? = nil
     var heatModel: MRHeatModel? = nil
     var heatHRModel: MRHeatHRModel? = nil
+    /// 수면 HRV 밤별 중앙값(엔진 스토어). 총평 HRV 결합 문장용 — 그대로 `RunInsightTabCard`에 전달.
+    var hrvNights: [(date: Date, value: Double)] = []
     var formShifts: [MRFormShift] = []
     /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용
     var formRunCadenceResidual: Double? = nil
@@ -166,6 +168,7 @@ struct RunInsightSection: View {
                 formBackfillProgress: formBackfillProgress,
                 heatModel: heatModel,
                 heatHRModel: heatHRModel,
+                hrvNights: hrvNights,
                 formShifts: formShifts,
                 formRunCadenceResidual: formRunCadenceResidual,
                 weatherSnapshot: weatherSnapshot,

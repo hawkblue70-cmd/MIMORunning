@@ -20,6 +20,8 @@ enum RunSummaryBuilder {
         let planPhase: String?
         let raceDetailFn: ((UUID) -> ActivityDetail?)?
         let hrZonesFn: ((UUID) -> [HRZoneData]?)?
+        /// 수면 HRV 밤별 중앙값(엔진 스토어 `hrvNights`). 비어 있으면 HRV 문장·근거 모두 빠진다.
+        var hrvNights: [(date: Date, value: Double)] = []
     }
 
     /// 총평 줄 — 각 축의 결론은 해당 엔진에서 그대로 받는다. 2줄 미만일 때의 한 줄 칩 폴백은 호출부(카드) 몫.
@@ -55,9 +57,21 @@ enum RunSummaryBuilder {
         return RunInsightEngine.vo2FitnessInfo(vo2: vo2, age: a, isMale: isMale)
     }
 
-    /// 마지막 고강도(계획된 고강도 유형, 또는 체감 강도 7 이상, 또는 존 4+5 비율 50% 이상) 러닝까지의 일수.
-    /// 세 판정 신호가 모두 없거나 해당하는 러닝을 못 찾으면 nil — 총평 훈련부하 줄이 그 근거를 생략한다.
-    /// 28일이면 충분 — 소비자(loadNext)는 2일 이상만 묻는다; 그 이상은 같은 답.
+    /// 고강도 러닝인가 — 체감 강도 7 이상 · 계획된 고강도 유형 · 존 4+5 비율 50% 이상 중 하나.
+    /// 싼 검사부터: 체감 강도(딕셔너리) → 계획 유형(UserDefaults) → 존 분포(디스크 조회 가능) 순으로 단락평가.
+    static func isHardRun(_ run: Activity, effortIndex: EffortIndex?,
+                          workoutTypeFn: ((UUID) -> WorkoutType?)?,
+                          hrZonesFn: ((UUID) -> [HRZoneData]?)?) -> Bool {
+        if (effortIndex?.resolve(run.id)?.value ?? 0) >= 7 { return true }
+        if workoutTypeFn?(run.id).map(FormNarrative.isPlannedHighIntensity) == true { return true }
+        guard let zones = hrZonesFn?(run.id) else { return false }
+        let total = zones.map(\.fraction).reduce(0, +)
+        guard total > 0 else { return false }
+        let highFrac = zones.filter { $0.id >= 4 }.map(\.fraction).reduce(0, +) / total
+        return highFrac >= 0.5
+    }
+
+    /// 마지막 고강도 러닝까지의 일수. 28일 안에 없으면 nil — 총평 훈련부하 줄이 그 근거를 생략한다.
     private static func daysSinceHardRun(activity: Activity, history: [Activity],
                                         effortIndex: EffortIndex?,
                                         workoutTypeFn: ((UUID) -> WorkoutType?)?,
@@ -67,23 +81,22 @@ enum RunSummaryBuilder {
         let priorRuns = history
             .filter { $0.type == .running && $0.date < activity.date && $0.date >= since }
             .sorted { $0.date > $1.date }
-        // 싼 검사부터: 체감 강도(딕셔너리) → 계획 유형(UserDefaults) → 존 분포(디스크 조회 가능) 순으로 단락평가.
-        func isHighZoneFraction(_ run: Activity) -> Bool {
-            guard let zones = hrZonesFn?(run.id) else { return false }
-            let total = zones.map(\.fraction).reduce(0, +)
-            guard total > 0 else { return false }
-            let highFrac = zones.filter { $0.id >= 4 }.map(\.fraction).reduce(0, +) / total
-            return highFrac >= 0.5
-        }
-        for run in priorRuns {
-            let isHard = (effortIndex?.resolve(run.id)?.value ?? 0) >= 7
-                || workoutTypeFn?(run.id).map(FormNarrative.isPlannedHighIntensity) == true
-                || isHighZoneFraction(run)
-            if isHard {
-                return cal.dateComponents([.day], from: cal.startOfDay(for: run.date), to: cal.startOfDay(for: activity.date)).day
-            }
+        for run in priorRuns where isHardRun(run, effortIndex: effortIndex, workoutTypeFn: workoutTypeFn, hrZonesFn: hrZonesFn) {
+            return cal.dateComponents([.day], from: cal.startOfDay(for: run.date), to: cal.startOfDay(for: activity.date)).day
         }
         return nil
+    }
+
+    /// 이 러닝 직전 14일(이 러닝 제외) 고강도 러닝 수 / 러닝 수 — 총평 HRV 결합 문장의 이지 블록 판정.
+    static func hardRunsLast14(activity: Activity, history: [Activity],
+                               effortIndex: EffortIndex?,
+                               workoutTypeFn: ((UUID) -> WorkoutType?)?,
+                               hrZonesFn: ((UUID) -> [HRZoneData]?)?) -> (hard: Int, total: Int) {
+        let cal = Calendar.current
+        let since = cal.date(byAdding: .day, value: -14, to: cal.startOfDay(for: activity.date)) ?? .distantPast
+        let runs = history.filter { $0.type == .running && $0.id != activity.id && $0.date < activity.date && $0.date >= since }
+        let hard = runs.filter { isHardRun($0, effortIndex: effortIndex, workoutTypeFn: workoutTypeFn, hrZonesFn: hrZonesFn) }.count
+        return (hard, runs.count)
     }
 
     /// 8주 전(±1주) 러닝들의 VO2max 중앙값 — 총평 유산소 줄의 "8주 전 대비" 근거.
@@ -167,6 +180,14 @@ enum RunSummaryBuilder {
                                                        effortIndex: c.effortIndex,
                                                        workoutTypeFn: c.workoutTypeFn,
                                                        hrZonesFn: c.hrZonesFn)
+        }
+        // 수면 HRV 추세는 러닝 날짜 기준(오래된 러닝을 열어도 당시 상태). 추세가 있을 때만 14일 고강도를 센다(존 분포 조회 비용).
+        if !c.hrvNights.isEmpty, let t = mrHRVTrend(nights: c.hrvNights, asOf: c.activity.date) {
+            input.hrvTrend = t
+            let h = hardRunsLast14(activity: c.activity, history: c.history,
+                                   effortIndex: c.effortIndex, workoutTypeFn: c.workoutTypeFn, hrZonesFn: c.hrZonesFn)
+            input.hardRunsLast14 = h.hard
+            input.runsLast14 = h.total
         }
         return input
     }

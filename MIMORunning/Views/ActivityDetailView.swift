@@ -231,7 +231,8 @@ struct ActivityDetailView: View {
             age: userAge, isMale: manager.userIsMale, easyPaceLookup: engine.easyPaceLookup,
             planPhase: matchedPlanWeek()?.phase,
             raceDetailFn: manager.detailFromCache,
-            hrZonesFn: manager.hrZonesFromCache
+            hrZonesFn: manager.hrZonesFromCache,
+            hrvNights: engine.hrvNights
         )
     }
 
@@ -359,6 +360,7 @@ struct ActivityDetailView: View {
                             formBackfillProgress: manager.formBackfillProgress,
                             heatModel: engine.heat,
                             heatHRModel: engine.heatHR,
+                            hrvNights: engine.hrvNights,
                             formShifts: formShifts,
                             formRunCadenceResidual: formRunCadenceResidual,
                             weatherSnapshot: condition?.weather,
