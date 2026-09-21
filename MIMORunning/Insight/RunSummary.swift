@@ -432,16 +432,19 @@ enum RunSummary {
             let signed = (w < 0 ? "-" : "+") + "\(pct)%"
             parts.append(L.s("최근 7일 \(signed)", "Last 7 days \(signed)"))
         }
+        if i.todayEffortMissing, !parts.isEmpty {
+            parts.append(L.s("오늘 러닝 미포함", "today's run not included"))
+        }
+        // HRV는 부하(AU) 줄과 다른 자료라 다음 줄 첫 칸에서 시작한다 — 한 줄에 이어 붙이면 "HRV" 뒤에서 접혀 읽기 어렵다.
+        var lines: [String] = []
+        if !parts.isEmpty { lines.append(parts.joined(separator: " · ")) }
         if let t = i.hrvTrend {
             let seven = Int(t.sevenDayMean.rounded()), base = Int(t.baseline.rounded())
             // 상태어는 본인 4주 기준선 대비다 — 절대 등급이 아니다. 좋음(위·안정) / 불안정 / 낮음(아래) / 보통(범위 안)
             let grade = hrvGradeLabel(t)
-            parts.append(L.s("HRV 7일 \(seven)ms · 4주 \(base)ms · \(grade)", "HRV 7-day \(seven)ms · 4-wk \(base)ms · \(grade)"))
+            lines.append(L.s("HRV 7일 \(seven)ms · 4주 \(base)ms · \(grade)", "HRV 7-day \(seven)ms · 4-wk \(base)ms · \(grade)"))
         }
-        if i.todayEffortMissing, !parts.isEmpty {
-            parts.append(L.s("오늘 러닝 미포함", "today's run not included"))
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
     /// HRV 근거 상태어 — 본인 4주 기준선 대비 관찰어. 억제(아래·불안정)가 좋음보다 먼저다.

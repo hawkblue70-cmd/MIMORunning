@@ -373,8 +373,8 @@ struct RunSummaryTests {
 
     @Test func hrvEvidenceAppendsSevenDayAndBaseline() {
         var i = restedInput(); i.hrvTrend = hrv(.within)
-        #expect(lines(i)[3].evidence?.hasSuffix(" · HRV 7일 37ms · 4주 30ms · 보통") == true)
-        inEnglish { #expect(lines(i)[3].evidence?.hasSuffix(" · HRV 7-day 37ms · 4-wk 30ms · normal") == true) }
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 7일 37ms · 4주 30ms · 보통") == true)
+        inEnglish { #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 7-day 37ms · 4-wk 30ms · normal") == true) }
     }
 
     @Test func hrvEvidenceGradeFollowsTrend() {
@@ -389,7 +389,7 @@ struct RunSummaryTests {
         // 안정 상승(밴드 안이지만 기준선 위 + 7일 CV가 4주의 절반 미만)도 좋음
         i.hrvTrend = MRHRVTrend(state: .within, isVolatile: false, sevenDayMean: 27, baseline: 25, baselineSD: 5,
                                 sevenDayCV: 0.07, baselineCV: 0.18, sevenDayNights: 7, baselineNights: 28)
-        #expect(lines(i)[3].evidence?.hasSuffix(" · HRV 7일 27ms · 4주 25ms · 좋음") == true)
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 7일 27ms · 4주 25ms · 좋음") == true)
     }
 
     @Test func hrvStableRiseCountsAsReady() {
