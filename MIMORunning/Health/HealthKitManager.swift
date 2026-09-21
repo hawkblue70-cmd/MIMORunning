@@ -4046,84 +4046,21 @@ class HealthKitManager {
                 updated.weather = w
             }
             if needsSleep {
-                async let sleepFetch = querySleepScore(nightBefore: activity.date)
-                async let hrvFetch   = queryHRVRecovery(nightBefore: activity.date)
-                updated.sleepScore   = await sleepFetch
-                updated.hrvRecovery  = await hrvFetch
+                updated.sleepScore   = await querySleepScore(nightBefore: activity.date)
                 updated.sleepChecked = true
                 updated.sleepVersion = ActivityCondition.currentSleepVersion
             }
             await ConditionCache.shared.cache(updated, for: activity.id)
             return updated
         }
-        // Never fetched → weather + sleep + HRV in parallel
+        // Never fetched → weather + sleep in parallel. (HRV는 엔진 스토어가 60일을 한 번에 가져온다 — MRHRVTrend)
         async let weather = ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate)
         async let sleep   = querySleepScore(nightBefore: activity.date)
-        async let hrv     = queryHRVRecovery(nightBefore: activity.date)
         let result = ActivityCondition(weather: await weather, sleepScore: await sleep,
-                                       hrvRecovery: await hrv, sleepChecked: true,
+                                       hrvRecovery: nil, sleepChecked: true,
                                        sleepVersion: ActivityCondition.currentSleepVersion)
         await ConditionCache.shared.cache(result, for: activity.id)
         return result
-    }
-
-    // MARK: - HRV Recovery
-
-    /// 단일 night window(nightStart~nightEnd)의 HRV 중앙값.
-    /// noiseFloor 미만 샘플은 측정 노이즈로 제외.
-    private func queryNightHRVMedian(for date: Date, noiseFloor: Double = 10.0) async -> Double? {
-        let cal = Calendar.current
-        guard let dayStart   = cal.date(bySettingHour: 0, minute: 0, second: 0, of: date),
-              let nightStart = cal.date(byAdding: .hour, value: -9,  to: dayStart),
-              let nightEnd   = cal.date(byAdding: .hour, value: 12, to: dayStart) else { return nil }
-
-        let hrvType = HKQuantityType(.heartRateVariabilitySDNN)
-        let msUnit  = HKUnit.secondUnit(with: .milli)
-
-        let samples: [HKQuantitySample] = await withCheckedContinuation { cont in
-            let pred = HKQuery.predicateForSamples(withStart: nightStart, end: nightEnd,
-                                                   options: .strictStartDate)
-            let q = HKSampleQuery(sampleType: hrvType, predicate: pred,
-                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, s, _ in
-                cont.resume(returning: (s as? [HKQuantitySample]) ?? [])
-            }
-            self.store.execute(q)
-        }
-
-        let values = samples
-            .map { $0.quantity.doubleValue(for: msUnit) }
-            .filter { $0 >= noiseFloor }
-        return values.isEmpty ? nil : hrvMedian(values)
-    }
-
-    /// 수면 HRV 기반 회복 등급 계산.
-    /// today: 해당 night window 중앙값.
-    /// baseline: 직전 7일(today 제외) 일별 중앙값의 중앙값. 유효일 4일 미만 → .insufficient.
-    private func queryHRVRecovery(nightBefore date: Date) async -> HRVRecovery? {
-        let cal = Calendar.current
-
-        guard let todayVal = await queryNightHRVMedian(for: date) else { return nil }
-
-        var dailyValues: [Double] = []
-        for offset in 1...7 {
-            guard let pastDay = cal.date(byAdding: .day, value: -offset, to: date) else { continue }
-            if let v = await queryNightHRVMedian(for: pastDay) { dailyValues.append(v) }
-        }
-
-        guard dailyValues.count >= 4 else {
-            return HRVRecovery(todayValue: todayVal, baseline: 0, sd: 0, level: .insufficient)
-        }
-
-        let baseline    = hrvMedian(dailyValues)
-        let sd          = hrvSD(dailyValues)
-        let effectiveSD = max(sd, baseline * 0.10)  // SD 하한: baseline의 10%
-        let level: RecoveryLevel = {
-            if todayVal < baseline - 1.5 * effectiveSD { return .low }
-            if todayVal > baseline + 1.5 * effectiveSD { return .high }
-            return .normal
-        }()
-
-        return HRVRecovery(todayValue: todayVal, baseline: baseline, sd: sd, level: level)
     }
 
     // MARK: - Sleep score (50/30/20 weighted composite)

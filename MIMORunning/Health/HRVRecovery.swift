@@ -25,28 +25,14 @@ enum RecoveryLevel: String, Codable {
     }
 }
 
-// MARK: - HRV Recovery
+// MARK: - HRV Recovery (deprecated)
+//
+// ⚠ 더 이상 계산하지 않는다. 조건 캐시(`ActivityCondition.hrvRecovery`) 디코딩 호환용으로만 남긴다.
+//   수면 HRV는 엔진 스토어가 60일을 한 번에 가져와 `mrHRVTrend`(7일 vs 4주 기준선)로 본다 — Engine/MRHRVTrend.swift.
 
-/// 수면 HRV(SDNN) 기반 회복 등급.
-/// 직전 7일 일별 중앙값을 baseline으로 삼아 오늘 밤 값과 ±1 SD로 비교.
 struct HRVRecovery: Codable {
     let todayValue: Double   // ms — 지난밤 수면 HRV 중앙값
     let baseline: Double     // ms — 직전 7일 일별 중앙값의 중앙값 (insufficient이면 0)
     let sd: Double           // ms — 직전 7일 일별 중앙값의 표준편차 (insufficient이면 0)
     let level: RecoveryLevel
-}
-
-// MARK: - Stat helpers (internal, used by HealthKitManager)
-
-func hrvMedian(_ values: [Double]) -> Double {
-    let s = values.sorted()
-    let n = s.count
-    return n % 2 == 0 ? (s[n/2 - 1] + s[n/2]) / 2.0 : s[n/2]
-}
-
-func hrvSD(_ values: [Double]) -> Double {
-    guard values.count >= 2 else { return 0 }
-    let mean = values.reduce(0, +) / Double(values.count)
-    let variance = values.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(values.count - 1)
-    return variance.squareRoot()
 }
