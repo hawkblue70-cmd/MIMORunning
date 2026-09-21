@@ -108,7 +108,8 @@ struct IntervalRepBoard: Equatable {
         let rowSlots = Int(ceil(Double(n) / Double(columns)))
         return n == reps.count ? rowSlots + 1 : rowSlots
     }
-    var showsDistanceColumn: Bool { uniformDistanceM == nil }
+    /// 거리 열은 항상 보인다 — "준비 1km 6'19" 130", "1 400m 1'32" 165"처럼 줄마다 거리를 읽게(사용자 결정 2026-09-21)
+    var showsDistanceColumn: Bool { true }
 
     /// 준비·정리 줄이 보이는가 — 그 구간이 끝나는 지점을 지도 머리가 지났을 때
     func isRevealed(_ edge: Edge?, progress: CGFloat) -> Bool {

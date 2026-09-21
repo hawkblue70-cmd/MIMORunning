@@ -69,7 +69,7 @@ struct IntervalRepBoardTests {
         let b = try #require(IntervalRepBoard.make(segments: segs, activityStart: segs[0].startDate, totalDistanceM: t.m, totalDuration: t.s))
         #expect(b.uniformDistanceM == 1000)
         #expect(b.headerText == "5 × 1km")
-        #expect(b.showsDistanceColumn == false)
+        #expect(b.showsDistanceColumn == true)   // 거리 열은 항상
         // 평균 (299+292+295+287+285)/5 = 291.6 → 292 → 4'52"
         #expect(b.footerText == "평균 4'52\"")
     }

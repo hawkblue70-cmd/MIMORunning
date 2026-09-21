@@ -14,6 +14,8 @@ struct IntervalRepBoardView: View {
     var progress: CGFloat
     var renderMode: RenderMode = .full
     var scale: CGFloat = 1.0
+    /// 심박 숫자 색 — 존 색(지도 경로선·스탬프 심박과 같은 함수). nil이면 흰색.
+    var hrColor: ((Int) -> Color?)? = nil
 
     private var revealed: Int { board.revealedCount(progress: progress) }
 
@@ -62,6 +64,8 @@ struct IntervalRepBoardView: View {
                 .foregroundStyle(Color.white.opacity(0.75))
                 .padding(.bottom, 2 * scale)
                 .opacity(chromeOpacity)
+            // 머리글 다음 빈 줄 — 준비 줄과 붙어 보이지 않게
+            Color.clear.frame(height: 12 * scale)
 
             // 준비운동 줄 — 회차 앞
             if let w = board.warmup {
@@ -115,11 +119,16 @@ struct IntervalRepBoardView: View {
                 .frame(width: paceW, alignment: .leading)
             if showsHR {
                 Text(e.avgHeartRate.map { "\($0)" } ?? "–")
-                    .foregroundStyle(Color.white.opacity(0.9))
+                    .foregroundStyle(hrTextColor(e.avgHeartRate))
                     .frame(width: hrW, alignment: .trailing)
             }
         }
         .font(rowFont)
+    }
+
+    private func hrTextColor(_ bpm: Int?) -> Color {
+        guard let bpm, let c = hrColor?(bpm) else { return Color.white.opacity(0.9) }
+        return c
     }
 
     @ViewBuilder
@@ -138,7 +147,7 @@ struct IntervalRepBoardView: View {
                 .frame(width: paceW, alignment: .leading)
             if showsHR {
                 Text(rep.avgHeartRate.map { "\($0)" } ?? "–")
-                    .foregroundStyle(Color.white.opacity(0.9))
+                    .foregroundStyle(hrTextColor(rep.avgHeartRate))
                     .frame(width: hrW, alignment: .trailing)
             }
         }

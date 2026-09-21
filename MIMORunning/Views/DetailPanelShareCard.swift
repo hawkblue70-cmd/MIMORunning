@@ -120,6 +120,15 @@ struct DetailPanelShareCard: View {
 
     /// 경로 1 영상의 인터벌 회차 보드 — 운동 구간 2개 이상일 때만(그 외 nil → 전과 같은 카드).
     /// 미리보기(마지막 프레임)와 내보내기(프레임마다)가 같은 뷰를 같은 자리에 그린다(§5.8).
+    /// 회차 보드 심박 숫자 색 — 지도 경로선·스탬프 심박과 **같은 함수**(§5.8). 존 정보가 없으면 nil(흰색).
+    private var boardHRColor: ((Int) -> Color?)? {
+        let zones = detail?.hrZones ?? []
+        guard !zones.isEmpty || hrSamples.count >= 10 else { return nil }
+        let bounds = RouteSnapshotRenderer.zoneBounds(zones: zones, hrSamples: hrSamples)
+        guard bounds.count >= 2 else { return nil }
+        return { bpm in Color(RouteSnapshotRenderer.color(bpm: bpm, bounds: bounds)) }
+    }
+
     private var intervalRepBoard: IntervalRepBoard? {
         IntervalRepBoard.make(segments: detail?.intervalSegments ?? [],
                               activityStart: activity.date,
@@ -262,7 +271,8 @@ struct DetailPanelShareCard: View {
             // 영상 프레임이면 종류 제목 위에 인터벌 회차 보드 — 지도 머리가 운동 구간 끝을 지날 때 한 줄씩 쌓인다.
             // 정지 이미지(routeProgress nil)에는 넣지 않는다.
             if let p = routeProgress, let board = intervalRepBoard {
-                IntervalRepBoardView(board: board, progress: CGFloat(p.progress), scale: 1)
+                IntervalRepBoardView(board: board, progress: CGFloat(p.progress), scale: 1,
+                                     hrColor: boardHRColor)
                     .padding(.bottom, 6)
             }
             Text(detail?.workoutType.koreanLabel ?? activity.type.label)
