@@ -353,8 +353,7 @@ struct RunSummaryTests {
     }
 
     @Test func restedSuggestsQualitySession() {
-        var i = todayInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady; i.loadSentence = nil; i.daysSinceHardRun = 3; i.streakDays = 0
-        i.todayIsHard = false
+        let i = restedInput()
         #expect(lines(i)[3].next == "충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.")
     }
 
@@ -365,7 +364,7 @@ struct RunSummaryTests {
                    sevenDayCV: 0.05, baselineCV: 0.06, sevenDayNights: 7, baselineNights: 28)
     }
 
-    /// `restedSuggestsQualitySession`과 같은 입력 — 부하만으로는 "충분히 회복".
+    /// 부하만으로는 "충분히 회복"인 입력 — `restedSuggestsQualitySession`과 HRV 결합 테스트가 공유.
     private func restedInput() -> RunSummaryInput {
         var i = todayInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady; i.loadSentence = nil
         i.daysSinceHardRun = 3; i.streakDays = 0; i.todayIsHard = false
@@ -391,6 +390,12 @@ struct RunSummaryTests {
     @Test func hrvReadyWithRecentHardRunsSaysAbsorbing() {
         var i = restedInput(); i.hrvTrend = hrv(.above); i.hardRunsLast14 = 2; i.runsLast14 = 6
         #expect(lines(i)[3].next == "충분히 회복됐어요. 고강도 뒤에도 HRV가 기준선 위라 부하를 잘 흡수하고 있어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.")
+    }
+
+    @Test func hrvReadyWithoutFourteenDayCountSaysAbsorbing() {
+        // 추세는 있는데 14일 집계가 안 채워진 경우 — 이지 블록으로 보지 않는다
+        var i = restedInput(); i.hrvTrend = hrv(.above); i.hardRunsLast14 = nil
+        #expect(lines(i)[3].next?.hasPrefix("충분히 회복됐어요. 고강도 뒤에도") == true)
     }
 
     @Test func hrvEasyBlockNeedsFourRuns() {
