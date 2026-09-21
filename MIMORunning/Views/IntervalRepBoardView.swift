@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// 경로 영상 인터벌 회차 보드 — 미리보기·출력이 **이 뷰 하나**를 쓴다(§5.8).
+/// 경로 1 영상 인터벌 회차 보드 — 미리보기·출력이 **이 뷰 하나**를 쓴다(§5.8).
+/// 글자는 왼쪽 열 러닝 데이터(9pt medium · 흰색 0.75)와 같은 크기에 한 단계 굵게(semibold), 음영·배경 없음.
 /// `revealed`: 보이는 회차 수(0…reps.count). 보이지 않는 줄은 투명(opacity 0)으로 자리를 지킨다 —
 /// 줄이 나타나도 레이아웃이 움직이지 않고, 출력에서 "뼈대만"과 "줄만" 두 렌더가 같은 위치를 갖는다.
 /// `renderMode`: `.full`(미리보기) / `.chromeOnly`(머리글·배경만, 줄은 투명) / `.rowsOnly`(줄만, 나머지 투명).
@@ -15,10 +16,11 @@ struct IntervalRepBoardView: View {
     private var L: AppLanguage { AppLanguage.shared }
 
     // 열 폭(scale=1): 회차 22 · 거리 40 · 페이스 44 · 심박 30
-    private var idxW: CGFloat { 22 * scale }
-    private var distW: CGFloat { 40 * scale }
-    private var paceW: CGFloat { 44 * scale }
-    private var hrW: CGFloat { 30 * scale }
+    // 열 폭(scale=1): 회차 16 · 거리 36 · 페이스 40 · 심박 26 — 경로 1 왼쪽 열(112pt) 안에 들어가는 값
+    private var idxW: CGFloat { 16 * scale }
+    private var distW: CGFloat { 36 * scale }
+    private var paceW: CGFloat { 40 * scale }
+    private var hrW: CGFloat { 26 * scale }
     private var colGap: CGFloat { 10 * scale }
 
     private var chromeOpacity: Double { renderMode == .rowsOnly ? 0 : 1 }
@@ -42,8 +44,8 @@ struct IntervalRepBoardView: View {
             // 머리글: "5 × 1km"
             Text(board.headerText)
                 .font(.system(size: 9 * scale, weight: .semibold).monospacedDigit())
-                .foregroundStyle(Color.white.opacity(0.55))
-                .padding(.bottom, 3 * scale)
+                .foregroundStyle(Color.white.opacity(0.75))
+                .padding(.bottom, 2 * scale)
                 .opacity(chromeOpacity)
 
             // 회차 줄 — 열 하나 또는 쌍
@@ -56,25 +58,18 @@ struct IntervalRepBoardView: View {
                         row(rep).opacity(rowOpacity(rep))
                     }
                 }
-                .padding(.vertical, 2 * scale)
+                .padding(.vertical, 1 * scale)
             }
 
             // 바닥글: "평균 4'52"" — 마지막 회차와 함께
             if let footer = board.footerText {
                 Text(footer)
-                    .font(.system(size: 10 * scale, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(Theme.positive)
-                    .padding(.vertical, 2 * scale)
+                    .font(.system(size: 9 * scale, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(Color.white.opacity(0.9))
+                    .padding(.vertical, 1 * scale)
                     .opacity(footerOpacity)
             }
         }
-        .padding(.horizontal, 8 * scale)
-        .padding(.vertical, 6 * scale)
-        .background(
-            RoundedRectangle(cornerRadius: 6 * scale, style: .continuous)
-                .fill(Color.black.opacity(0.28))
-                .opacity(chromeOpacity)
-        )
         .fixedSize()
     }
 
@@ -82,20 +77,20 @@ struct IntervalRepBoardView: View {
     private func row(_ rep: IntervalRepBoard.Rep) -> some View {
         HStack(spacing: 0) {
             Text("\(rep.index)")
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(Color.white.opacity(0.75))
                 .frame(width: idxW, alignment: .leading)
             if board.showsDistanceColumn {
                 Text(rep.distanceM.map { IntervalRepBoard.distanceLabel($0) } ?? "–")
-                    .foregroundStyle(Color.white.opacity(0.82))
+                    .foregroundStyle(Color.white.opacity(0.9))
                     .frame(width: distW, alignment: .leading)
             }
             Text(rep.paceSecPerKm.map { IntervalRepBoard.paceText($0) } ?? "–")
                 .foregroundStyle(Color.white)
                 .frame(width: paceW, alignment: .leading)
             Text(rep.avgHeartRate.map { "\($0)" } ?? "–")
-                .foregroundStyle(Theme.heartRate)
+                .foregroundStyle(Color.white.opacity(0.9))
                 .frame(width: hrW, alignment: .trailing)
         }
-        .font(.system(size: 10 * scale, weight: .medium).monospacedDigit())
+        .font(.system(size: 9 * scale, weight: .semibold).monospacedDigit())
     }
 }
