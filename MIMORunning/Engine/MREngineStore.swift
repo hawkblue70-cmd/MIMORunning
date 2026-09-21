@@ -474,6 +474,7 @@ final class MREngineStore: ObservableObject {
                                gaps: [], strengthPerWeek: storedStrengthPerWeek,
                                fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                heatHR: heatHR,
+                               hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
                                log: adviceLog, asOf: now)
         // ⚠ record()는 여기서 호출하지 않는다.
         //   조언 카드가 화면에 실제로 그려지는 .onAppear에서 호출해야 한다.
@@ -537,6 +538,7 @@ final class MREngineStore: ObservableObject {
                                gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
                                fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                heatHR: heatHR,
+                               hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         let raceDayVisible2 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
@@ -844,6 +846,7 @@ final class MREngineStore: ObservableObject {
                                gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
                                fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                heatHR: heatHR,
+                               hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         let raceDayVisible3 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
@@ -914,6 +917,7 @@ final class MREngineStore: ObservableObject {
                                gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
                                fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                heatHR: heatHR,
+                               hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         raceDayCard = computeRaceDayCard(plans: plans, asOf: now)

@@ -118,6 +118,7 @@ func mrBuildAdvice(runs: [MRWorkout],
                    fatigue: [MRLongRunFatigue] = [],
                    cadenceShift: MRFormShift? = nil,
                    heatHR: MRHeatHRModel = MRHeatHRModel(),
+                   hrvTrend: MRHRVTrend? = nil,
                    log: MRAdviceLog,
                    asOf: Date) -> [MRAdvice] {
 
@@ -179,6 +180,23 @@ func mrBuildAdvice(runs: [MRWorkout],
             out.append(MRAdvice(key: "return", text: text,
                 rationale: String(format: "공백 전 주 평균 %.0fkm × %.1f · 원인 추정: %@ (걸음 수 기준)", pre, decay, g.cause),
                 grade: "B", gainMin: 9, timeliness: 0.95, slot: "todayRun"))
+        }
+    }
+
+    // ── 수면 HRV 위·안정 + 2주 이지 블록 → 강도 세션 제안
+    //
+    // HRV 기반으로 강도를 조절한 러너는 고강도 시간을 덜 쓰고도 같거나 더 나은 향상을 얻었다
+    // (Vesterinen 2016, HRV-guided vs predefined). 저강도 기간에는 HRV가 오른다(Plews·Buchheit).
+    // ⚠ HRV는 회복 상태 지표이지 체력 지표가 아니다 — "체력이 늘었다"고 말하지 않는다. 등급 B.
+    // 아래/불안정 조언은 여기 없다 — 총평 훈련부하 줄이 담당.
+    if let t = hrvTrend, t.isReadyHigh, days(last.date) <= 3 {
+        let c = mrRecentHardRunCount(runs: runs, phys: phys, heatHR: heatHR, days: 14, asOf: asOf)
+        if c.hard <= 1 && c.total >= 4 {
+            out.append(MRAdvice(key: "hrvReady",
+                text: "지난 2주는 이지런 위주였고 수면 HRV 7일 평균이 4주 기준선 위로 안정적이에요. 이번 주 강도 세션 하나 넣기 좋은 때예요.",
+                rationale: String(format: "HRV 7일 %.0fms · 4주 기준선 %.0fms · 14일 고강도 %d회 · Vesterinen 2016(HRV 기반 강도 조절) · 회복 지표이지 체력 지표는 아님",
+                                  t.sevenDayMean, t.baseline, c.hard),
+                grade: "B", gainMin: 3, timeliness: 0.6, slot: "todayRun"))
         }
     }
 
