@@ -525,10 +525,9 @@ struct RouteVideoExportService {
 
         // 1. Pre-render overlay once (main thread, SwiftUI → CGImage)
         // stampLayers 있으면 VideoOverlayCard 생략 — 스탬프 레이어가 별도 CALayer로 합성됨
-        let overlayCGImage: CGImage?
-        if stampLayers.isEmpty {
+        func renderOverlay(boardMode: IntervalRepBoardView.RenderMode, chromeHidden: Bool) throws -> CGImage {
             let exportInset = renderSize.height * 0.05   // 5% = 48pt → 96px at renderScale 2 (preview 일치)
-            let overlayView = VideoOverlayCard(
+            let view = VideoOverlayCard(
                 distanceKm: distanceKm, date: date,
                 metrics: metrics, raceName: raceName,
                 chartPanel: chartPanel, chartSplits: chartSplits,
@@ -536,19 +535,30 @@ struct RouteVideoExportService {
                 chartWorkoutSeries: chartWorkoutSeries, chartIntervalSegments: chartIntervalSegments,
                 weather: weather, shoeName: shoeName,
                 summaryLines: summaryLines,
+                intervalBoard: intervalBoard,
+                intervalRevealed: 0,
+                intervalBoardRenderMode: boardMode,
+                chromeHidden: chromeHidden,
                 scale: renderSize.width / 300,
                 topInset: exportInset,
                 bottomInset: previewMatchedBottomInset
             )
             .frame(width: renderSize.width, height: renderSize.height)
             .preferredColorScheme(.dark)
-            let overlayRenderer = ImageRenderer(content: overlayView)
-            overlayRenderer.scale = renderScale
-            guard let overlayImage = overlayRenderer.uiImage,
-                  let cg = overlayImage.cgImage else {
-                throw NSError(domain: "RouteVideoExport", code: -2)
+            let r = ImageRenderer(content: view)
+            r.scale = renderScale
+            guard let img = r.uiImage?.cgImage else { throw NSError(domain: "RouteVideoExport", code: -2) }
+            return img
+        }
+
+        let overlayCGImage: CGImage?
+        var boardRowsCGImage: CGImage? = nil
+        if stampLayers.isEmpty {
+            // 보드가 있으면 뼈대(머리글·배경·나머지 카드)와 줄을 따로 그린다 — 줄은 마스크로 시간에 맞춰 드러낸다
+            overlayCGImage = try renderOverlay(boardMode: intervalBoard == nil ? .full : .chromeOnly, chromeHidden: false)
+            if intervalBoard != nil {
+                boardRowsCGImage = try renderOverlay(boardMode: .rowsOnly, chromeHidden: true)
             }
-            overlayCGImage = cg
         } else {
             overlayCGImage = nil
         }
@@ -579,6 +589,7 @@ struct RouteVideoExportService {
             miniMeImage: routeMarkerImage,
             showKmMarkers: intervalBoard == nil,
             dimTimeRanges: intervalBoard?.dimTimeRanges ?? [],
+            boardRows: boardRowsCGImage.map { (image: $0, board: intervalBoard!) },
             stampLayers: stampLayers,
             outputURL: outputURL,
             progressHandler: progressHandler
@@ -673,6 +684,7 @@ struct RouteVideoExportService {
         miniMeImage: UIImage? = nil,
         showKmMarkers: Bool = true,
         dimTimeRanges: [ClosedRange<TimeInterval>] = [],
+        boardRows: (image: CGImage, board: IntervalRepBoard)? = nil,
         stampLayers: [StampLayerConfig] = [],
         outputURL: URL,
         progressHandler: @escaping (Double) -> Void
@@ -877,6 +889,14 @@ struct RouteVideoExportService {
             overlayLayer.frame = parentLayer.frame
             overlayLayer.contents = cg
             parentLayer.addSublayer(overlayLayer)
+        }
+
+        // 인터벌 회차 보드 줄 — 줄만 그린 이미지를 위에서부터 마스크로 드러낸다.
+        // 줄 높이가 같으므로 마스크 높이 = 줄 영역 높이 × (열린 칸 수 / 전체 칸 수). 시간 키는 km 마커와 같은 방식.
+        if let rows = boardRows, let bbox = rows.image.alphaBoundingBox() {
+            parentLayer.addSublayer(makeIntervalBoardRowsLayer(
+                rowsImage: rows.image, board: rows.board, rowsBox: bbox,
+                pixelSize: px, routeDuration: routeDur, videoDuration: vidDur))
         }
 
         // Stamp animated layers: 스탬프·문구 각각 별도 CALayer로 애니메이션
@@ -1354,6 +1374,51 @@ struct RouteVideoExportService {
             }
         }
         return points.last!
+    }
+
+    // MARK: - Interval board rows layer
+
+    /// 줄만 그린 오버레이 이미지(전체 프레임 크기, 줄 밖은 투명)를 마스크로 위에서부터 드러낸다.
+    /// `rowsBox`는 줄 영역(UIKit 좌표, 픽셀). 마스크는 그 영역의 x·폭을 그대로 쓰고 높이만 칸 수에 비례해 키운다.
+    private static func makeIntervalBoardRowsLayer(
+        rowsImage: CGImage, board: IntervalRepBoard, rowsBox: CGRect,
+        pixelSize: CGSize, routeDuration: Double, videoDuration: Double
+    ) -> CALayer {
+        let rowsLayer = CALayer()
+        rowsLayer.frame = CGRect(origin: .zero, size: pixelSize)
+        rowsLayer.contents = rowsImage
+
+        // 마스크: 검정 사각형, 위쪽 모서리 고정(anchorPoint 0,0) — 높이만 자란다. 좌표는 km 마커와 같은 UIKit 규약.
+        // (실기기 출력에서 줄이 아래에서부터 뒤집혀 나타나면 다음 줄을
+        //  `mask.position = CGPoint(x: rowsBox.minX - pad, y: pixelSize.height - rowsBox.maxY - pad)`로 바꾸는 것이 유일한 수정 지점)
+        let mask = CALayer()
+        mask.backgroundColor = UIColor.black.cgColor
+        mask.anchorPoint = CGPoint(x: 0, y: 0)
+        let pad: CGFloat = 2   // 글리프 안티에일리어싱 여유
+        mask.position = CGPoint(x: rowsBox.minX - pad, y: rowsBox.minY - pad)
+        mask.bounds = CGRect(x: 0, y: 0, width: rowsBox.width + pad * 2, height: 0)
+        rowsLayer.mask = mask
+
+        // 키프레임: 각 회차가 끝나는 시점에 칸 수만큼 높이를 점프(discrete). 마지막 회차엔 바닥글 칸까지.
+        let slotH = (rowsBox.height + pad * 2) / CGFloat(board.slotCount)
+        var times: [NSNumber] = [0]
+        var values: [NSValue] = [NSValue(cgRect: CGRect(x: 0, y: 0, width: rowsBox.width + pad * 2, height: 0))]
+        for rep in board.reps {
+            let t = min(rep.revealFraction * routeDuration / videoDuration, 1.0)
+            let slots = board.revealedSlots(revealed: rep.index)
+            times.append(NSNumber(value: t))
+            values.append(NSValue(cgRect: CGRect(x: 0, y: 0, width: rowsBox.width + pad * 2, height: slotH * CGFloat(slots))))
+        }
+        let anim = CAKeyframeAnimation(keyPath: "bounds")
+        anim.values = values
+        anim.keyTimes = times
+        anim.calculationMode = .discrete
+        anim.duration = videoDuration
+        anim.beginTime = AVCoreAnimationBeginTimeAtZero
+        anim.fillMode = .forwards
+        anim.isRemovedOnCompletion = false
+        mask.add(anim, forKey: "bounds")
+        return rowsLayer
     }
 
     // MARK: - Marker layer factory
