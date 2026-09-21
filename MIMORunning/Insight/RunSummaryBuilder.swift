@@ -134,6 +134,8 @@ enum RunSummaryBuilder {
                 input.sevenDayAU = au.current
                 input.previousSevenAU = au.previous
             }
+            // 이 러닝의 강도가 아직 없으면 위 합계에 오늘이 0으로 들어가 있다 — 상태어가 그 사실을 말하게 한다
+            input.todayEffortMissing = idx.resolve(c.activity.id) == nil
         }
         input.streakDays = computeRunningStreak(activity: c.activity, history: c.history)
         if let fi = vo2Info(detail: c.detail, age: c.age, isMale: c.isMale), let v = c.detail?.vo2Max {

@@ -48,6 +48,8 @@ struct RunSummaryInput {
     var sevenDayAU: Double? = nil
     var previousSevenAU: Double? = nil
     var loadSentence: EffortLoad.SentenceKind? = nil
+    /// 이 러닝의 체감 강도가 아직 없음 — 7일 합에 오늘이 0으로 들어가 있으므로 높다/가볍다를 말하지 않는다
+    var todayEffortMissing: Bool = false
     /// 마지막 고강도(계획된 고강도 유형 또는 체감 강도 7 이상) 러닝으로부터 지난 일수
     var daysSinceHardRun: Int? = nil
     /// 이번 주 플랜 단계 원문("회복"/"테이퍼"/…) — 대회 플랜이 있을 때만
@@ -386,6 +388,11 @@ enum RunSummary {
             // next가 회복/휴식을 권할 만큼 연속이 길어지면(loadNext ≥4일 규칙) state의 초록 tone과 어긋난다 — 중립으로 맞춘다
             tone = .neutral
         }
+        if i.todayEffortMissing {
+            // 오늘 러닝이 0 AU로 들어간 합계로 "가볍게"라고 말하면 고강도 직후에 뒤집힌다 — 입력 전이라는 사실만 말한다
+            state = L.s("오늘 강도 입력 전", "Today's effort not rated yet")
+            tone = .neutral
+        }
         if i.streakDays >= 3 {
             state += L.s(" · \(i.streakDays)일 연속", " · \(i.streakDays) days in a row")
         }
@@ -412,12 +419,18 @@ enum RunSummary {
             let signed = (w < 0 ? "-" : "+") + "\(pct)%"
             parts.append(L.s("최근 7일 \(signed)", "Last 7 days \(signed)"))
         }
+        if i.todayEffortMissing, !parts.isEmpty {
+            parts.append(L.s("오늘 러닝 미포함", "today's run not included"))
+        }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// 계획상 회복/테이퍼 주 > 급증/단조/장기 연속 > 충분한 회복 순으로 다음 행동을 고른다.
     private static func loadNext(_ i: RunSummaryInput, jumped: Bool) -> String? {
         let L = AppLanguage.shared
+        if i.todayEffortMissing {
+            return L.s("강도를 입력하면 오늘 러닝이 부하에 반영돼요.", "Rate today's effort and it will count toward your load.")
+        }
         if let phase = i.planPhase {
             if phase == "회복" {
                 return L.s("대회 훈련 계획상 회복 주예요. 이지런 위주로 가세요.", "Your race plan has this as a recovery week — stick to easy runs.")

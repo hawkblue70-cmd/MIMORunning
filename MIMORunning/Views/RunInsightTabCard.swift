@@ -2497,12 +2497,7 @@ private struct RhythmInsightCard: View {
     // 인터벌에서 회복 구간을 제외한 고강도 구간만의 평균 케이던스
     private var intervalWorkCadence: Double? {
         guard workoutTypeFn?(activity.id) == .interval, let det = detail else { return nil }
-        let cadences = det.intervalSegments
-            .filter { $0.stepLabel == "운동" }
-            .compactMap(\.avgCadence)
-            .map(Double.init)
-        guard !cadences.isEmpty else { return nil }
-        return cadences.reduce(0, +) / Double(cadences.count)
+        return IntervalSegment.workAverage(det.intervalSegments) { $0.avgCadence.map(Double.init) }
     }
 
     #if DEBUG
@@ -2631,7 +2626,12 @@ private struct RhythmInsightCard: View {
         switch dom.id {
         case 1: return L.s("가벼운 회복 강도였어요", "Light recovery run")
         case 2: return L.s("딱 좋은 강도였어요", "Just the right intensity")
-        case 3: return L.s("심박은 템포 구간에 머물렀어요", "Heart rate stayed in tempo zone") + heatSuffix
+        case 3:
+            // 인터벌은 운동·회복이 섞인 평균이라 "템포 구간에 머물렀다"가 아니다 — 총평 "계획대로 고강도"와도 부딪혔다
+            if rhythmWorkoutType == .interval {
+                return L.s("운동·회복이 섞인 평균이 Zone 3이에요", "Zone 3 on average — work and recovery mixed") + heatSuffix
+            }
+            return L.s("심박은 템포 구간에 머물렀어요", "Heart rate stayed in tempo zone") + heatSuffix
         default: return FormNarrative.highIntensityZoneCaption(type: rhythmWorkoutType) + heatSuffix
         }
     }
@@ -3167,7 +3167,12 @@ private struct PerformanceInsightCard: View {
                         value: "--", color: .secondary)
             }
             kpiSep
-            if let cad = detail?.avgCadence {
+            // 인터벌은 리듬·폼 카드와 같은 전력 구간 평균 — 카드마다 175/184처럼 다른 숫자가 보이지 않게
+            if workoutTypeFn?(activity.id) == .interval,
+               let wc = IntervalSegment.workAverage(detail?.intervalSegments ?? [], { $0.avgCadence.map(Double.init) }) {
+                KPICell(label: AppLanguage.shared.s("케이던스 (전력 구간)", "Cadence (work)"),
+                        value: "\(Int(wc.rounded()))", unit: "spm", color: IC.cadCyan)
+            } else if let cad = detail?.avgCadence {
                 KPICell(label: AppLanguage.shared.s("케이던스", "Cadence"),
                         value: "\(cad)", unit: "spm", color: IC.cadCyan)
             } else {
@@ -3373,8 +3378,12 @@ private struct PerformanceInsightCard: View {
                     + Text(" \(L.s("4~8주 전", "4–8w ago"))   ").foregroundStyle(legendLabel)   // 과거 무리 = 4~8주 전 · 최근 = 4주
                     + Text("●").foregroundStyle(ScatterStyle.recent)
                     + Text(" \(L.s("최근", "Recent"))   ").foregroundStyle(legendLabel)
-                    + Text("●").foregroundStyle(ScatterStyle.today)
-                    + Text(" \(L.s("오늘", "Today"))").foregroundStyle(legendLabel)
+                if scatterTodayExcluded {
+                    t = t + Text(L.s("오늘은 인터벌·빌드업이라 제외", "Today excluded (interval/build-up)")).foregroundStyle(legendLabel)
+                } else {
+                    t = t + Text("●").foregroundStyle(ScatterStyle.today)
+                        + Text(" \(L.s("오늘", "Today"))").foregroundStyle(legendLabel)
+                }
                 if band != nil {
                     t = t + Text("   ▬").foregroundStyle(Color.white.opacity(0.30))
                         + Text(" \(L.s("평소 범위", "Typical"))").foregroundStyle(legendLabel)
@@ -3547,11 +3556,17 @@ private struct PerformanceInsightCard: View {
         )
     }
 
+    /// 인터벌·빌드업은 회복 구간이 섞인 평균이라 오늘 점을 그리지 않는다 — 과거 점을 같은 이유로 빼는 것과 같은 규칙
+    private var scatterTodayExcluded: Bool {
+        let wt = workoutTypeFn?(activity.id)
+        return wt == .interval || wt == .buildUp
+    }
+
     private var scatterData: [ScatterPt] {
         let cal = Calendar.current
         let cutoff4w = cal.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
         var result: [ScatterPt] = []
-        if let tp = activity.paceSecPerKm, tp > 0, let th = refHR(activity) {
+        if !scatterTodayExcluded, let tp = activity.paceSecPerKm, tp > 0, let th = refHR(activity) {
             result.append(ScatterPt(pace: tp, hr: th, group: .today))
         }
         for act in scatterEligible {
@@ -4768,7 +4783,12 @@ private struct PerformanceInsightCard: View {
             // 한 줄: "4주 평균 대비 낮음, 회복 방향으로 진행 중" — 라벨 + 짧은 방향 문구
             let ratioLabel = sevenDayLoadRatioLabel(load)
             let sentence = load.sentence.map(sevenDayLoadSentence)
-            if ratioLabel != nil || sentence != nil {
+            if load.thisRunAU == nil {
+                // 이 러닝의 강도가 없으면 7일 합에 오늘이 빠져 있다 — 그 합으로 낮다/회복 방향을 말하지 않는다
+                Text(L.s("오늘 강도 입력 전 — 입력하면 7일 부하에 반영돼요", "Today's effort not rated — rate it to count toward the 7-day load"))
+                    .font(.system(size: 9)).foregroundStyle(Theme.caution.opacity(0.9))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            } else if ratioLabel != nil || sentence != nil {
                 Text([ratioLabel, sentence].compactMap { $0 }.joined(separator: L.s(", ", ", ")))
                     .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1).minimumScaleFactor(0.8)
@@ -4850,6 +4870,16 @@ private struct PerformanceInsightCard: View {
 
     private var oneLiner: String? {
         let L = AppLanguage.shared
+        // 인터벌은 효율 인사이트가 없어 유산소 한 줄로 폴백되는데, 그 문장은 게이지 캡션·총평과 세 번 겹친다 — 운동 구간 요약으로
+        if let segs = intervalChartData {
+            let work = segs.filter { $0.stepLabel == "운동" }.compactMap(\.paceSecPerKm)
+            if !work.isEmpty, let overall = activity.formattedPace {
+                let avg = Int((work.reduce(0, +) / Double(work.count)).rounded())
+                let avgStr = String(format: "%d'%02d\"", avg / 60, avg % 60)
+                return L.s("운동 구간 \(work.count)회 평균 \(avgStr) · 회복 포함 전체 \(overall)",
+                           "\(work.count) work reps avg \(avgStr) · \(overall) overall incl. recovery")
+            }
+        }
         for cat: InsightCategory in [.efficiency, .endurance, .load, .cardio] {
             guard let m = insights.first(where: { $0.category == cat })?.message else { continue }
             if cat == .cardio && (age == nil || isMale == nil) {
@@ -5956,10 +5986,9 @@ struct InsightExportSheet: View {
         case .form:
             let exportFormCadence: Int? = {
                 guard workoutTypeFn?(activity.id) == .interval,
-                      let segs = detail?.intervalSegments else { return detail?.avgCadence }
-                let cads = segs.filter { $0.stepLabel == "운동" }.compactMap { $0.avgCadence }
-                guard !cads.isEmpty else { return detail?.avgCadence }
-                return Int((Double(cads.reduce(0, +)) / Double(cads.count)).rounded())
+                      let wc = IntervalSegment.workAverage(detail?.intervalSegments ?? [], { $0.avgCadence.map(Double.init) })
+                else { return detail?.avgCadence }
+                return Int(wc.rounded())
             }()
             let exportFormHasGap: Bool = {
                 let cal = Calendar.current

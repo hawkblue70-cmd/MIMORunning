@@ -912,11 +912,16 @@ struct RunFormCardView: View {
                             color: Theme.cadence,
                             context: isInterval ? AppLanguage.shared.s("전력 구간", "work segs") : nil)
                 }
-                if let sl = avgStrideLength {
+                // 인터벌은 케이던스와 같은 전력 구간 값 — 케이던스 184(전력)에 보폭 0.98(전체)처럼 짝이 어긋나지 않게
+                let displayStride: Double? = isInterval
+                    ? (IntervalSegment.workAverage(intervalSegments, \.computedStride) ?? avgStrideLength)
+                    : avgStrideLength
+                if let sl = displayStride {
                     kpiSep
                     KPICell(label: AppLanguage.shared.s("보폭", "Stride"),
                             value: String(format: "%.2f", sl), unit: "m",
-                            color: Color.white)
+                            color: Color.white,
+                            context: isInterval ? AppLanguage.shared.s("전력 구간", "work segs") : nil)
                 }
             }
         }

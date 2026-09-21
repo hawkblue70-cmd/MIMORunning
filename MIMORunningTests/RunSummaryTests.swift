@@ -238,6 +238,16 @@ struct RunSummaryTests {
         #expect(lines(i).isEmpty)
     }
 
+    @Test func unratedTodayDoesNotClaimLighterLoad() {
+        var i = RunSummaryInput(); i.weekOverWeek = -0.2; i.acuteChronic = .low; i.sevenDayAU = 1228; i.previousSevenAU = 1573
+        i.todayEffortMissing = true
+        let line = RunSummary.lines(i).first { $0.axis == "훈련부하" }
+        #expect(line?.state == "오늘 강도 입력 전")
+        #expect(line?.tone == .neutral)
+        #expect(line?.evidence?.hasSuffix("오늘 러닝 미포함") == true)
+        #expect(line?.next == "강도를 입력하면 오늘 러닝이 부하에 반영돼요.")
+    }
+
     @Test func steadyLoadIsGood() {
         var i = RunSummaryInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준", tone: .good)])

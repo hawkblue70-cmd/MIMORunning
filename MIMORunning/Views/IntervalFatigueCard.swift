@@ -1088,6 +1088,16 @@ struct IntervalFatigueCard: View {
                 .foregroundStyle(isOutlier ? Color.white.opacity(0.38) : Color.white.opacity(0.82))
                 .padding(.vertical, 3)
             }
+            // 색점 범례 — segEmoji와 같은 기준(1회차 대비). 페이스가 없으면 케이던스 기준.
+            Text(hasPace
+                 ? L.s("🟢 1회차 ±2%  🔵 2% 이상 빨라짐  🟡 2~5% 느려짐  🔴 5% 이상 느려짐",
+                       "🟢 within ±2% of rep 1  🔵 2%+ faster  🟡 2–5% slower  🔴 5%+ slower")
+                 : L.s("🟢 1회차 케이던스 ±1%  🔵 1% 이상 올라감  🟡 1~3% 내려감  🔴 3% 이상 내려감",
+                       "🟢 within ±1% of rep-1 cadence  🔵 1%+ up  🟡 1–3% down  🔴 3%+ down"))
+                .font(.system(size: 8.5))
+                .foregroundStyle(Color.white.opacity(0.45))
+                .lineLimit(1).minimumScaleFactor(0.75)
+                .padding(.top, 2)
         }
     }
 

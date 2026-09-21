@@ -227,6 +227,14 @@ struct IntervalSegment: Identifiable, Codable {
         return (1000.0 / pace) * 60.0 / Double(cad)
     }
 
+    /// 인터벌의 전력(운동) 구간 평균 — 회복·준비·정리 구간을 뺀 값. 리듬·폼·퍼포먼스 카드와 내보내기가
+    /// 케이던스·보폭 KPI에 **이 함수 하나**를 쓴다(§5.8 — 카드마다 다른 숫자가 보이지 않게).
+    static func workAverage(_ segments: [IntervalSegment], _ value: (IntervalSegment) -> Double?) -> Double? {
+        let v = segments.filter { $0.stepLabel == "운동" }.compactMap(value)
+        guard !v.isEmpty else { return nil }
+        return v.reduce(0, +) / Double(v.count)
+    }
+
     var formattedPace: String? {
         guard let sec = paceSecPerKm else { return nil }
         return String(format: "%d'%02d\"", Int(sec) / 60, Int(sec) % 60)
