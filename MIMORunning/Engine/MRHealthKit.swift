@@ -248,6 +248,30 @@ struct MRHealthKit {
         return samples.map { ($0.startDate, $0.quantity.doubleValue(for: unit)) }
     }
 
+    // MARK: 수면 HRV
+
+    /// 수면 HRV(SDNN) 원본 샘플. 밤 묶기는 `mrHRVNightMedians`가 한다.
+    /// 60일이면 7일 창 + 4주 기준선(34일)에 여유가 있다. 그 이상은 쓰지 않는다.
+    func fetchSleepHRV(days: Int = 60) async throws -> [(Date, Double)] {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN)
+        else { return [] }
+        let unit = HKUnit.secondUnit(with: .milli)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        let from = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
+        let pred = HKQuery.predicateForSamples(withStart: from, end: nil, options: .strictStartDate)
+
+        let samples: [HKQuantitySample] = try await withCheckedThrowingContinuation { cont in
+            let q = HKSampleQuery(sampleType: type, predicate: pred,
+                                  limit: HKObjectQueryNoLimit,
+                                  sortDescriptors: [sort]) { _, s, e in
+                if let e { cont.resume(throwing: e); return }
+                cont.resume(returning: (s as? [HKQuantitySample]) ?? [])
+            }
+            store.execute(q)
+        }
+        return samples.map { ($0.startDate, $0.quantity.doubleValue(for: unit)) }
+    }
+
     // MARK: 일별 걸음 수
 
     /// 일별 걸음 수. 공백 원인 분류(`mrDetectGaps`)와 firstDataDate 산출에 쓴다.

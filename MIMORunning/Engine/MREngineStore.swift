@@ -58,6 +58,8 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var absorbedTuneUps: [(race: MRTargetRace, planName: String)] = []
     @Published private(set) var advice: [MRAdvice] = []
     @Published private(set) var streakWeeks: Int = 0
+    /// 수면 HRV 밤별 중앙값(60일). 총평·조언이 `mrHRVTrend(nights:asOf:)`로 러닝 날짜 기준 추세를 만든다.
+    @Published private(set) var hrvNights: [(date: Date, value: Double)] = []
     @Published private(set) var todayCard: MRTodayCard?
     @Published private(set) var raceDayCard: MRRaceDayCard?
     @Published private(set) var backtest: [MRBacktestRow] = []
@@ -71,6 +73,7 @@ final class MREngineStore: ObservableObject {
     // 로컬 저장: backtest / advice 재계산용
     private var rhrSamples: [(date: Date, value: Double)] = []
     private var rhrLastFetchedAt: Date? = nil
+    private var hrvLastFetchedAt: Date? = nil
     // 대회별 계획 시작 월요일 고정값 (MeView에서 스냅샷 앵커로 업데이트).
     // refreshCore와 recomputePlans가 동일한 앵커를 참조해 계획 길이를 일치시킨다.
     private var storedSnapshotAnchors: [String: Date] = [:]
@@ -97,6 +100,27 @@ final class MREngineStore: ObservableObject {
         let ud = UserDefaults.standard
         ud.set(fetchedAt.timeIntervalSince1970, forKey: Self.rhrCacheDateKey)
         ud.set(samples.map { [$0.date.timeIntervalSince1970, $0.value] }, forKey: Self.rhrCacheSamplesKey)
+    }
+
+    private static let hrvCacheDateKey   = "mimo.hrvCache.fetchedAt"
+    private static let hrvCacheNightsKey = "mimo.hrvCache.nights"
+
+    private func loadPersistedHRV() -> (fetchedAt: Date, nights: [(date: Date, value: Double)])? {
+        let ud = UserDefaults.standard
+        guard let ts = ud.object(forKey: Self.hrvCacheDateKey) as? Double,
+              let rawArr = ud.array(forKey: Self.hrvCacheNightsKey) as? [[Double]] else { return nil }
+        let nights = rawArr.compactMap { arr -> (date: Date, value: Double)? in
+            guard arr.count == 2 else { return nil }
+            return (Date(timeIntervalSince1970: arr[0]), arr[1])
+        }
+        guard !nights.isEmpty else { return nil }
+        return (Date(timeIntervalSince1970: ts), nights)
+    }
+
+    private func persistHRV(fetchedAt: Date, nights: [(date: Date, value: Double)]) {
+        let ud = UserDefaults.standard
+        ud.set(fetchedAt.timeIntervalSince1970, forKey: Self.hrvCacheDateKey)
+        ud.set(nights.map { [$0.date.timeIntervalSince1970, $0.value] }, forKey: Self.hrvCacheNightsKey)
     }
     private var storedDob: Date? = nil
     private var storedSex: MRSex = .unknown
@@ -288,6 +312,39 @@ final class MREngineStore: ObservableObject {
                          CFAbsoluteTimeGetCurrent() - t0, rhr.count))
             #endif
         }
+
+        // ── 수면 HRV: 안정시심박과 같은 캐시 정책(24시간). 실패하면 빈 배열 — 기능 전체가 조용히 빠진다.
+        if hrvNights.isEmpty, let persisted = loadPersistedHRV() {
+            hrvNights = persisted.nights
+            hrvLastFetchedAt = persisted.fetchedAt
+        }
+        let hrvAge = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        if hrvNights.isEmpty || hrvAge >= 24 * 3600 {
+            let t0 = CFAbsoluteTimeGetCurrent()
+            let raw = (try? await hk.fetchSleepHRV()) ?? []
+            let nights = mrHRVNightMedians(samples: raw)
+            hrvNights = nights
+            let fetchedAt = Date()
+            hrvLastFetchedAt = fetchedAt
+            if !nights.isEmpty { persistHRV(fetchedAt: fetchedAt, nights: nights) }
+            #if DEBUG
+            print(String(format: "[⏱ fetchSleepHRV] %.2fs · 조회범위 60일 · 샘플 %d건 · %d밤 · 캐시 미스",
+                         CFAbsoluteTimeGetCurrent() - t0, raw.count, nights.count))
+            #endif
+        }
+        #if DEBUG
+        if let t = mrHRVTrend(nights: hrvNights, asOf: now) {
+            let stateStr: String = {
+                switch t.state { case .above: return "위"; case .within: return "범위 안"; case .below: return "아래" }
+            }()
+            print(String(format: "[HRV] 60일 %d밤 · 7일 평균 %.0fms(%d) · 4주 %.0f±%.0fms(%d) · CV 7일 %.0f%% / 4주 %.0f%% · %@%@",
+                         hrvNights.count, t.sevenDayMean, t.sevenDayNights, t.baseline, t.baselineSD, t.baselineNights,
+                         t.sevenDayCV * 100, t.baselineCV * 100, stateStr, t.isVolatile ? "·불안정" : ""))
+        } else {
+            print("[HRV] 60일 \(hrvNights.count)밤 · 추세 없음(7일 4밤·4주 14밤 미만)")
+        }
+        #endif
+
         let dob = hk.dateOfBirth()
         let sexRaw = hk.biologicalSex()
         let sex: MRSex = sexRaw == .female ? .female : (sexRaw == .male ? .male : .unknown)
