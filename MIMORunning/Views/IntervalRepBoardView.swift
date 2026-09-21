@@ -60,12 +60,11 @@ struct IntervalRepBoardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // 머리글: "5 × 1km"
             Text(board.headerText)
-                .font(.system(size: 10 * scale, weight: .semibold).monospacedDigit())
-                .foregroundStyle(Color.white.opacity(0.75))
-                .padding(.bottom, 2 * scale)
+                .font(.system(size: 13 * scale, weight: .bold).monospacedDigit())
+                .foregroundStyle(Color.white.opacity(0.9))
                 .opacity(chromeOpacity)
-            // 머리글 다음 빈 줄 — 준비 줄과 붙어 보이지 않게
-            Color.clear.frame(height: 12 * scale)
+            // 머리글 다음 짧은 빈 줄 — 준비 줄과 붙어 보이지 않을 만큼만
+            Color.clear.frame(height: 5 * scale)
 
             // 준비운동 줄 — 회차 앞
             if let w = board.warmup {
@@ -95,7 +94,8 @@ struct IntervalRepBoardView: View {
                 Text(footer)
                     .font(.system(size: 10 * scale, weight: .semibold).monospacedDigit())
                     .foregroundStyle(Color.white.opacity(0.9))
-                    .padding(.vertical, 1 * scale)
+                    .padding(.top, 5 * scale)      // 정리 줄과 평균 사이는 조금 넓게
+                    .padding(.bottom, 1 * scale)
                     .opacity(footerOpacity)
             }
         }

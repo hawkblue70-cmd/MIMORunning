@@ -273,7 +273,7 @@ struct DetailPanelShareCard: View {
             if let p = routeProgress, let board = intervalRepBoard {
                 IntervalRepBoardView(board: board, progress: CGFloat(p.progress), scale: 1,
                                      hrColor: boardHRColor)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 22)   // 종류·날짜 묶음과 떨어져 위로 — 경로선과 조금 겹쳐도 된다(사용자 결정)
             }
             Text(detail?.workoutType.koreanLabel ?? activity.type.label)
                 .font(.system(size: 18, weight: .bold))
