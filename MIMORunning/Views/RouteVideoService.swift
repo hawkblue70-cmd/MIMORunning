@@ -25,8 +25,6 @@ struct RouteVideoFrameView: View {
     var chartIntervalSegments: [IntervalSegment] = []
     /// 총평 5줄 — 비어 있으면(기본) 기존 지도/차트 자리 그대로. §5.8: scale만 다르고 컴포넌트는 하나.
     var summaryLines: [RunSummaryLine] = []
-    /// 인터벌 회차 보드 — 진행률에서 보인 회차 수를 계산해 VideoOverlayCard에 넘긴다
-    var intervalBoard: IntervalRepBoard? = nil
     var showStats: Bool = true
     // HR gradient for route polyline
     var hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = []
@@ -55,9 +53,7 @@ struct RouteVideoFrameView: View {
                                      hrSamples: hrSamplesForRoute,
                                      workoutDuration: routeWorkoutDuration,
                                      zoneBounds: routeZoneBounds,
-                                     showHRGradient: showHRGradient,
-                                     dimTimeRanges: intervalBoard?.dimTimeRanges ?? [],
-                                     showKmDots: intervalBoard == nil)
+                                     showHRGradient: showHRGradient)
                     .equatable()   // 칩 탭 등 입력이 같은 재평가에서는 Canvas를 다시 그리지 않는다
                     .frame(width: w, height: h)
 
@@ -76,8 +72,6 @@ struct RouteVideoFrameView: View {
                         weather: weather,
                         shoeName: shoeName,
                         summaryLines: summaryLines,
-                        intervalBoard: intervalBoard,
-                        intervalRevealed: intervalBoard?.revealedCount(progress: routeProgress) ?? 0,
                         scale: scale,
                         topInset: topInset,
                         bottomInset: bottomInset
@@ -147,8 +141,6 @@ private struct RoutePolylineOverlay: View, Equatable {
         && a.hrSamples.last?.offset == b.hrSamples.last?.offset
         && a.zoneBounds.count == b.zoneBounds.count
         && zip(a.zoneBounds, b.zoneBounds).allSatisfy { $0.id == $1.id && $0.minBPM == $1.minBPM }
-        && a.dimTimeRanges == b.dimTimeRanges
-        && a.showKmDots == b.showKmDots
     }
 
     /// Points in renderSize (540×960) coordinate space, from MKMapSnapshotter.Snapshot.point(for:).
@@ -160,10 +152,6 @@ private struct RoutePolylineOverlay: View, Equatable {
     var workoutDuration: TimeInterval = 0
     var zoneBounds: [(id: Int, minBPM: Int)] = []
     var showHRGradient: Bool = false
-    /// 운동이 아닌 구간(준비·회복·정리)의 시간 범위 — 인터벌 영상에서 그 구간을 흐리게 그린다. 비어 있으면 기존 그대로.
-    var dimTimeRanges: [ClosedRange<TimeInterval>] = []
-    /// 인터벌 영상은 km 점을 숨긴다 — 회차가 곧 구간이라 트랙 위에서 겹친다
-    var showKmDots: Bool = true
 
     var body: some View {
         Canvas { ctx, size in
@@ -180,37 +168,26 @@ private struct RoutePolylineOverlay: View, Equatable {
             let endIdx = max(1, Int(CGFloat(pts.count - 1) * min(progress, 1.0)))
             let slice = Array(pts[0...endIdx])
 
-            let dimAlpha: Double = 0.35
-            func dimFactor(_ i: Int) -> Double {
-                guard !dimTimeRanges.isEmpty else { return 1 }
-                let offset = Double(i) / Double(max(pts.count - 1, 1)) * workoutDuration
-                return dimTimeRanges.contains { $0.contains(offset) } ? dimAlpha : 1
-            }
-            let useMicroSegments = slice.count > 1 &&
-                ((showHRGradient && !hrSamples.isEmpty && !zoneBounds.isEmpty) || !dimTimeRanges.isEmpty)
-
-            if useMicroSegments {
-                let useGradient = showHRGradient && !hrSamples.isEmpty && !zoneBounds.isEmpty
+            if showHRGradient && slice.count > 1 && !hrSamples.isEmpty && !zoneBounds.isEmpty {
                 let sortedBounds = zoneBounds.sorted { $0.minBPM < $1.minBPM }
                 // 구간 색을 한 번만 계산해 글로우·본선 두 패스가 공유. 심박 조회는 이분 탐색(HRLookup) —
                 // 예전엔 구간마다 샘플 전체를 filter 해서 구간×샘플(수천×수천)만큼 걸렸다.
                 let lookup = HRLookup(samples: hrSamples)
                 let segColors: [Color] = (0..<(slice.count - 1)).map { i in
                     let offset = Double(i) / Double(max(pts.count - 1, 1)) * workoutDuration
-                    return useGradient ? canvasGradientColor(bpm: lookup.bpm(at: offset), sorted: sortedBounds) : Theme.violet
+                    return canvasGradientColor(bpm: lookup.bpm(at: offset), sorted: sortedBounds)
                 }
                 for i in 0..<(slice.count - 1) {
                     var seg = Path(); seg.move(to: slice[i]); seg.addLine(to: slice[i+1])
-                    ctx.stroke(seg, with: .color(segColors[i].opacity(0.35 * dimFactor(i))),
+                    ctx.stroke(seg, with: .color(segColors[i].opacity(0.35)),
                                style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 }
                 for i in 0..<(slice.count - 1) {
                     var seg = Path(); seg.move(to: slice[i]); seg.addLine(to: slice[i+1])
-                    ctx.stroke(seg, with: .color(segColors[i].opacity(dimFactor(i))),
+                    ctx.stroke(seg, with: .color(segColors[i]),
                                style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 }
             } else {
-                // 단색 모드(기존 그대로)
                 var path = Path()
                 path.move(to: slice[0])
                 for i in 1..<slice.count { path.addLine(to: slice[i]) }
@@ -229,7 +206,7 @@ private struct RoutePolylineOverlay: View, Equatable {
             ctx.fill(dot, with: .color(.white))
 
             // KM marker dots in preview (dots only, no text)
-            if showKmDots, totalDistanceM > 100, pts.count > 1 {
+            if totalDistanceM > 100, pts.count > 1 {
                 var cum: [Double] = [0]
                 for i in 1..<pts.count {
                     let dx = Double(pts[i].x - pts[i-1].x)
@@ -518,16 +495,16 @@ struct RouteVideoExportService {
         routeWorkoutDuration: TimeInterval = 0,
         showHRGradient: Bool = false,
         stampLayers: [StampLayerConfig] = [],
-        intervalBoard: IntervalRepBoard? = nil,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
         let t0 = CACurrentMediaTime()
 
         // 1. Pre-render overlay once (main thread, SwiftUI → CGImage)
         // stampLayers 있으면 VideoOverlayCard 생략 — 스탬프 레이어가 별도 CALayer로 합성됨
-        func renderOverlay(boardMode: IntervalRepBoardView.RenderMode, chromeHidden: Bool) throws -> CGImage {
+        let overlayCGImage: CGImage?
+        if stampLayers.isEmpty {
             let exportInset = renderSize.height * 0.05   // 5% = 48pt → 96px at renderScale 2 (preview 일치)
-            let view = VideoOverlayCard(
+            let overlayView = VideoOverlayCard(
                 distanceKm: distanceKm, date: date,
                 metrics: metrics, raceName: raceName,
                 chartPanel: chartPanel, chartSplits: chartSplits,
@@ -535,30 +512,19 @@ struct RouteVideoExportService {
                 chartWorkoutSeries: chartWorkoutSeries, chartIntervalSegments: chartIntervalSegments,
                 weather: weather, shoeName: shoeName,
                 summaryLines: summaryLines,
-                intervalBoard: intervalBoard,
-                intervalRevealed: 0,
-                intervalBoardRenderMode: boardMode,
-                chromeHidden: chromeHidden,
                 scale: renderSize.width / 300,
                 topInset: exportInset,
                 bottomInset: previewMatchedBottomInset
             )
             .frame(width: renderSize.width, height: renderSize.height)
             .preferredColorScheme(.dark)
-            let r = ImageRenderer(content: view)
-            r.scale = renderScale
-            guard let img = r.uiImage?.cgImage else { throw NSError(domain: "RouteVideoExport", code: -2) }
-            return img
-        }
-
-        let overlayCGImage: CGImage?
-        var boardRowsCGImage: CGImage? = nil
-        if stampLayers.isEmpty {
-            // 보드가 있으면 뼈대(머리글·배경·나머지 카드)와 줄을 따로 그린다 — 줄은 마스크로 시간에 맞춰 드러낸다
-            overlayCGImage = try renderOverlay(boardMode: intervalBoard == nil ? .full : .chromeOnly, chromeHidden: false)
-            if intervalBoard != nil {
-                boardRowsCGImage = try renderOverlay(boardMode: .rowsOnly, chromeHidden: true)
+            let overlayRenderer = ImageRenderer(content: overlayView)
+            overlayRenderer.scale = renderScale
+            guard let overlayImage = overlayRenderer.uiImage,
+                  let cg = overlayImage.cgImage else {
+                throw NSError(domain: "RouteVideoExport", code: -2)
             }
+            overlayCGImage = cg
         } else {
             overlayCGImage = nil
         }
@@ -587,9 +553,6 @@ struct RouteVideoExportService {
             workoutDuration: routeWorkoutDuration,
             showHRGradient: showHRGradient,
             miniMeImage: routeMarkerImage,
-            showKmMarkers: intervalBoard == nil,
-            dimTimeRanges: intervalBoard?.dimTimeRanges ?? [],
-            boardRows: boardRowsCGImage.map { (image: $0, board: intervalBoard!) },
             stampLayers: stampLayers,
             outputURL: outputURL,
             progressHandler: progressHandler
@@ -683,8 +646,6 @@ struct RouteVideoExportService {
         showHRGradient: Bool = false,
         miniMeImage: UIImage? = nil,
         showKmMarkers: Bool = true,
-        dimTimeRanges: [ClosedRange<TimeInterval>] = [],
-        boardRows: (image: CGImage, board: IntervalRepBoard)? = nil,
         stampLayers: [StampLayerConfig] = [],
         outputURL: URL,
         progressHandler: @escaping (Double) -> Void
@@ -724,18 +685,12 @@ struct RouteVideoExportService {
                 parentLayer.addSublayer(startLayer)
             }
 
-            let hasGradient = showHRGradient && hrSamples.count >= 10
-            // 흐림 구간이 있으면 단색이라도 미세 구간으로 그린다 — 구간마다 알파를 다르게 줄 수 있는 유일한 길
-            let useGradient = hasGradient || !dimTimeRanges.isEmpty
-            let dimAlpha: CGFloat = 0.35
-            func dimFactor(_ midOffset: Double) -> CGFloat {
-                dimTimeRanges.contains { $0.contains(midOffset) } ? dimAlpha : 1
-            }
+            let useGradient = showHRGradient && hrSamples.count >= 10
             if useGradient {
                 // Gradient mode: ~50 micro-segments, each with its own color and timed strokeEnd
                 let segCount = min(50, scaledPoints.count - 1)
                 let step = (scaledPoints.count - 1) / segCount
-                let sortedBounds = hasGradient ? computeZoneBoundsStatic(from: hrSamples) : []
+                let sortedBounds = computeZoneBoundsStatic(from: hrSamples)
 
                 // Glow pass — all micro-segments
                 for si in 0..<segCount {
@@ -745,7 +700,7 @@ struct RouteVideoExportService {
                     let tEnd   = routeDur * Double(si + 1) / Double(segCount)
                     let midOffset = workoutDuration * Double(i0 + i1) / 2.0 / Double(scaledPoints.count - 1)
                     let bpm = smoothedBPMForVideo(at: midOffset, samples: hrSamples)
-                    let color = hasGradient ? gradientUIColorForVideo(bpm: bpm, bounds: sortedBounds) : UIColor(Theme.violet)
+                    let color = gradientUIColorForVideo(bpm: bpm, bounds: sortedBounds)
 
                     let seg = UIBezierPath()
                     seg.move(to: scaledPoints[i0])
@@ -755,7 +710,7 @@ struct RouteVideoExportService {
                     let layer = CAShapeLayer()
                     layer.frame = parentLayer.frame
                     layer.path = seg.cgPath
-                    layer.strokeColor = color.withAlphaComponent(0.35 * dimFactor(midOffset)).cgColor
+                    layer.strokeColor = color.withAlphaComponent(0.35).cgColor
                     layer.lineWidth = 8 * renderScale
                     layer.fillColor = UIColor.clear.cgColor
                     layer.lineCap = .round; layer.lineJoin = .round
@@ -771,7 +726,7 @@ struct RouteVideoExportService {
                     let tEnd   = routeDur * Double(si + 1) / Double(segCount)
                     let midOffset = workoutDuration * Double(i0 + i1) / 2.0 / Double(scaledPoints.count - 1)
                     let bpm = smoothedBPMForVideo(at: midOffset, samples: hrSamples)
-                    let color = hasGradient ? gradientUIColorForVideo(bpm: bpm, bounds: sortedBounds) : UIColor(Theme.violet)
+                    let color = gradientUIColorForVideo(bpm: bpm, bounds: sortedBounds)
 
                     let seg = UIBezierPath()
                     seg.move(to: scaledPoints[i0])
@@ -781,7 +736,7 @@ struct RouteVideoExportService {
                     let layer = CAShapeLayer()
                     layer.frame = parentLayer.frame
                     layer.path = seg.cgPath
-                    layer.strokeColor = color.withAlphaComponent(dimFactor(midOffset)).cgColor
+                    layer.strokeColor = color.cgColor
                     layer.lineWidth = 3.5 * renderScale
                     layer.fillColor = UIColor.clear.cgColor
                     layer.lineCap = .round; layer.lineJoin = .round
@@ -889,14 +844,6 @@ struct RouteVideoExportService {
             overlayLayer.frame = parentLayer.frame
             overlayLayer.contents = cg
             parentLayer.addSublayer(overlayLayer)
-        }
-
-        // 인터벌 회차 보드 줄 — 줄만 그린 이미지를 위에서부터 마스크로 드러낸다.
-        // 줄 높이가 같으므로 마스크 높이 = 줄 영역 높이 × (열린 칸 수 / 전체 칸 수). 시간 키는 km 마커와 같은 방식.
-        if let rows = boardRows, let bbox = rows.image.alphaBoundingBox() {
-            parentLayer.addSublayer(makeIntervalBoardRowsLayer(
-                rowsImage: rows.image, board: rows.board, rowsBox: bbox,
-                pixelSize: px, routeDuration: routeDur, videoDuration: vidDur))
         }
 
         // Stamp animated layers: 스탬프·문구 각각 별도 CALayer로 애니메이션
@@ -1374,51 +1321,6 @@ struct RouteVideoExportService {
             }
         }
         return points.last!
-    }
-
-    // MARK: - Interval board rows layer
-
-    /// 줄만 그린 오버레이 이미지(전체 프레임 크기, 줄 밖은 투명)를 마스크로 위에서부터 드러낸다.
-    /// `rowsBox`는 줄 영역(UIKit 좌표, 픽셀). 마스크는 그 영역의 x·폭을 그대로 쓰고 높이만 칸 수에 비례해 키운다.
-    private static func makeIntervalBoardRowsLayer(
-        rowsImage: CGImage, board: IntervalRepBoard, rowsBox: CGRect,
-        pixelSize: CGSize, routeDuration: Double, videoDuration: Double
-    ) -> CALayer {
-        let rowsLayer = CALayer()
-        rowsLayer.frame = CGRect(origin: .zero, size: pixelSize)
-        rowsLayer.contents = rowsImage
-
-        // 마스크: 검정 사각형, 위쪽 모서리 고정(anchorPoint 0,0) — 높이만 자란다. 좌표는 km 마커와 같은 UIKit 규약.
-        // (실기기 출력에서 줄이 아래에서부터 뒤집혀 나타나면 다음 줄을
-        //  `mask.position = CGPoint(x: rowsBox.minX - pad, y: pixelSize.height - rowsBox.maxY - pad)`로 바꾸는 것이 유일한 수정 지점)
-        let mask = CALayer()
-        mask.backgroundColor = UIColor.black.cgColor
-        mask.anchorPoint = CGPoint(x: 0, y: 0)
-        let pad: CGFloat = 2   // 글리프 안티에일리어싱 여유
-        mask.position = CGPoint(x: rowsBox.minX - pad, y: rowsBox.minY - pad)
-        mask.bounds = CGRect(x: 0, y: 0, width: rowsBox.width + pad * 2, height: 0)
-        rowsLayer.mask = mask
-
-        // 키프레임: 각 회차가 끝나는 시점에 칸 수만큼 높이를 점프(discrete). 마지막 회차엔 바닥글 칸까지.
-        let slotH = (rowsBox.height + pad * 2) / CGFloat(board.slotCount)
-        var times: [NSNumber] = [0]
-        var values: [NSValue] = [NSValue(cgRect: CGRect(x: 0, y: 0, width: rowsBox.width + pad * 2, height: 0))]
-        for rep in board.reps {
-            let t = min(rep.revealFraction * routeDuration / videoDuration, 1.0)
-            let slots = board.revealedSlots(revealed: rep.index)
-            times.append(NSNumber(value: t))
-            values.append(NSValue(cgRect: CGRect(x: 0, y: 0, width: rowsBox.width + pad * 2, height: slotH * CGFloat(slots))))
-        }
-        let anim = CAKeyframeAnimation(keyPath: "bounds")
-        anim.values = values
-        anim.keyTimes = times
-        anim.calculationMode = .discrete
-        anim.duration = videoDuration
-        anim.beginTime = AVCoreAnimationBeginTimeAtZero
-        anim.fillMode = .forwards
-        anim.isRemovedOnCompletion = false
-        mask.add(anim, forKey: "bounds")
-        return rowsLayer
     }
 
     // MARK: - Marker layer factory

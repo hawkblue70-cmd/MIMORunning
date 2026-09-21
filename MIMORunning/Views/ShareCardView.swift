@@ -396,14 +396,6 @@ struct ShareCardScreen: View {
 
     var routeCoords: [CLLocationCoordinate2D] { detail?.routeCoordinates ?? [] }
 
-    /// 경로 영상 인터벌 회차 보드 — 운동 구간 2개 이상일 때만(그 외 nil → 기존 차트 패널·km 점·경로 색 그대로)
-    private var intervalRepBoard: IntervalRepBoard? {
-        IntervalRepBoard.make(segments: detail?.intervalSegments ?? [],
-                              activityStart: activity.date,
-                              totalDistanceM: activity.distance,
-                              totalDuration: activity.duration)
-    }
-
     private var showHRGradientForRoute: Bool {
         mapHRZoneMode && activity.avgHeartRate != nil && shareHRSamples.count >= 10
     }
@@ -957,7 +949,6 @@ struct ShareCardScreen: View {
                     distanceKm: distanceKmString,
                     duration: activity.formattedDuration,
                     date: activity.date,
-                    intervalBoard: intervalRepBoard,
                     showStats: false,
                     hrSamplesForRoute: shareHRSamples,
                     routeWorkoutDuration: activity.duration,
@@ -3593,7 +3584,6 @@ struct ShareCardScreen: View {
                     chartWorkoutSeries: shareWorkoutSeries,
                     chartIntervalSegments: detail?.intervalSegments ?? [],
                     summaryLines: cardSummaryLines,
-                    intervalBoard: intervalRepBoard,
                     hrSamplesForRoute: shareHRSamples,
                     routeWorkoutDuration: activity.duration,
                     routeZoneBounds: shareZoneBounds,
@@ -5218,7 +5208,6 @@ struct ShareCardScreen: View {
                     routeWorkoutDuration: activity.duration,
                     showHRGradient: showHRGradientForRoute,
                     stampLayers: exportStampLayers,
-                    intervalBoard: intervalRepBoard,
                     progressHandler: { p in routeVideoProgress = p }
                 )
             }
