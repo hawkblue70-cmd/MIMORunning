@@ -1989,10 +1989,10 @@ private struct RhythmInsightCard: View {
             let c = Double(cad)
             if FormNarrative.status(rawValue: c, stat: stat, metric: .cadence) != .inRange {
                 let delta = Int((c - stat.median).rounded())
-                let sign = delta >= 0 ? "+" : ""
+                let sign = delta >= 0 ? "+" : "−"
                 let mag = abs(c - stat.median) / max(stat.sd, 1)
                 devs.append(Dev(
-                    label: L.s("케이던스 \(sign)\(delta)spm", "Cadence \(sign)\(delta)spm"),
+                    label: L.s("케이던스 \(sign)\(abs(delta))spm", "Cadence \(sign)\(abs(delta))spm"),
                     magnitude: mag, isAbsWarn: c < 160
                 ))
             }
@@ -2002,11 +2002,11 @@ private struct RhythmInsightCard: View {
         if let stat = bb.strideLength, let sl = det.avgStrideLength {
             if FormNarrative.status(rawValue: sl, stat: stat, metric: .stride) != .inRange {
                 let delta = sl - stat.median
-                let sign = delta >= 0 ? "+" : ""
+                let sign = delta >= 0 ? "+" : "−"
                 let mag = abs(delta) / max(stat.sd, 0.001)
                 devs.append(Dev(
-                    label: L.s("보폭 \(sign)\(String(format: "%.2f", delta))m",
-                                "Stride \(sign)\(String(format: "%.2f", delta))m"),
+                    label: L.s("보폭 \(sign)\(String(format: "%.2f", abs(delta)))m",
+                                "Stride \(sign)\(String(format: "%.2f", abs(delta)))m"),
                     magnitude: mag, isAbsWarn: false
                 ))
             }
@@ -2016,10 +2016,10 @@ private struct RhythmInsightCard: View {
         if let stat = adjustedGct(bb), let gc = det.avgGroundContactTime {
             if FormNarrative.status(rawValue: gc, stat: stat, metric: .groundContact) != .inRange {
                 let delta = Int((gc - stat.median).rounded())
-                let sign = delta >= 0 ? "+" : ""
+                let sign = delta >= 0 ? "+" : "−"
                 let mag = abs(gc - stat.median) / max(stat.sd, 1)
                 devs.append(Dev(
-                    label: L.s("지면접촉 \(sign)\(delta)ms", "Contact \(sign)\(delta)ms"),
+                    label: L.s("지면접촉 \(sign)\(abs(delta))ms", "Contact \(sign)\(abs(delta))ms"),
                     magnitude: mag, isAbsWarn: gc > 300
                 ))
             }
@@ -2750,14 +2750,18 @@ private struct RhythmInsightCard: View {
     private var hrVerdictText: (text: String, color: Color)? {
         guard hrSamples.count >= 10 else { return nil }
         let L = AppLanguage.shared
-        let n = hrSamples.count
+        // 출발 직후 광학 심박이 튄 구간(HRSeriesSmoothing.hrEarlyArtifactCount)은 전후반 비교·최고치에서 뺀다.
+        // 차트는 그대로 그리고 판정만 뺀다 — 그 구간이 "후반에 여유"·"최고 강도"를 만들어내던 것.
+        let samples = hrEarlyArtifactCount(hrSamples).map { Array(hrSamples.dropFirst($0)) } ?? hrSamples
+        guard samples.count >= 10 else { return nil }
+        let n = samples.count
         let half = n / 2
-        let avgFirst  = hrSamples.prefix(half).map { Double($0.bpm) }.reduce(0, +) / Double(half)
-        let avgSecond = hrSamples.suffix(n - half).map { Double($0.bpm) }.reduce(0, +) / Double(n - half)
+        let avgFirst  = samples.prefix(half).map { Double($0.bpm) }.reduce(0, +) / Double(half)
+        let avgSecond = samples.suffix(n - half).map { Double($0.bpm) }.reduce(0, +) / Double(n - half)
         let diff = avgSecond - avgFirst
         // 220−나이는 쓰지 않는다 — 엔진과 같은 규칙(관측 최대 → Tanaka)
         if let mhr = RunInsightEngine.estimatedHRMax(hrMax: hrMax, age: age), mhr > 0 {
-            let peakBPM = Double(hrSamples.map(\.bpm).max() ?? 0)
+            let peakBPM = Double(samples.map(\.bpm).max() ?? 0)
             if peakBPM / Double(mhr) >= 0.90 {
                 return (L.s("최고 강도까지 올렸어요", "Pushed to max intensity"), Color(hex: "FF9A3C"))
             }
@@ -3122,6 +3126,8 @@ private struct PerformanceInsightCard: View {
                 .foregroundStyle(Color.white)
                 if let ctx = heroContext {
                     Text(ctx).font(.system(size: 10)).foregroundStyle(IC.green)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 8)
@@ -3457,8 +3463,9 @@ private struct PerformanceInsightCard: View {
     private var heroContext: String? {
         if let eff = insights.first(where: { $0.category == .efficiency && $0.tone == .good }),
            let h = eff.highlights.first {
+            // 한 줄에 들어가게 짧게 — 길면 "…"로 잘렸다
             return "↑ " + AppLanguage.shared.s(
-                "비슷한 페이스 대비 \(h) 낮은 심박",
+                "비슷한 페이스보다 심박 \(h) 낮음",
                 "HR \(h) lower at similar pace"
             )
         }

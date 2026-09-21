@@ -394,7 +394,8 @@ struct ActivityDetailView: View {
                                   condition: condition,
                                   firstCoordinate: detail?.routeCoordinates.first,
                                   runMetrics: RunMetricItem.list(activity: activity, detail: detail,
-                                                                 age: userAge, isMale: manager.userIsMale))
+                                                                 age: userAge, isMale: manager.userIsMale),
+                                  isEasyRun: summaryWorkoutType(for: activity.id) == .easy)
                     }
                     let zones = effectiveHRZones
                     if !zones.isEmpty {
@@ -2537,6 +2538,8 @@ private struct SplitsSection: View {
     var firstCoordinate: CLLocationCoordinate2D? = nil
     /// 상단 지표 그리드와 같은 목록 — "구간 러닝 데이터" 카드에 그대로 실린다
     var runMetrics: [RunMetricItem] = []
+    /// 이지런이면 구간 요약의 네거티브 스플릿 어투를 "밀어붙였다"가 아니라 편하게 풀린 쪽으로 쓴다
+    var isEasyRun: Bool = false
 
     @Environment(CustomMiniMeStore.self) private var miniMeStore
     @State private var shareVariant: SplitsCardVariant? = nil
@@ -2578,7 +2581,7 @@ private struct SplitsSection: View {
                                  variant: .hrZones)
                 }
             }
-            SplitsHighlightCard(splits: splits, activity: activity, allActivities: allActivities)
+            SplitsHighlightCard(splits: splits, activity: activity, allActivities: allActivities, isEasy: isEasyRun)
             VStack(spacing: 0) {
                 ForEach(Array(splits.enumerated()), id: \.element.id) { idx, split in
                     SplitBarRow(
@@ -2781,6 +2784,7 @@ private struct SplitsHighlightCard: View {
     let splits: [SplitData]
     var activity: Activity? = nil
     var allActivities: [Activity] = []
+    var isEasy: Bool = false
 
     private static let gold = Color(hex: "FFC74D")
 
@@ -2839,13 +2843,16 @@ private struct SplitsHighlightCard: View {
         let L = AppLanguage.shared
         switch highlightKind {
         case .negativeSplit(let diff):
+            // 이지런의 완만한 네거티브 스플릿은 "밀어붙임"이 아니라 몸이 풀린 흐름
+            let tailKo = isEasy ? " — 편하게 몸이 풀렸네요." : " — 끝까지 밀어붙였네요."
+            let tailEn = isEasy ? " — eased into it." : " — you pushed through."
             return L.isEnglish
                 ? Text("Second half ").foregroundStyle(Color.white)
                   + Text("\(diff)s faster").foregroundStyle(g)
-                  + Text(" — you pushed through.").foregroundStyle(Color.white)
+                  + Text(tailEn).foregroundStyle(Color.white)
                 : Text("후반이 전반보다 ").foregroundStyle(Color.white)
                   + Text("\(diff)초 더 빠르게").foregroundStyle(g)
-                  + Text(" — 끝까지 밀어붙였네요.").foregroundStyle(Color.white)
+                  + Text(tailKo).foregroundStyle(Color.white)
         case .consistency(let spread):
             return L.isEnglish
                 ? Text("Pace deviation only ").foregroundStyle(Color.white)

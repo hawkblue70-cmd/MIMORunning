@@ -174,8 +174,12 @@ enum FormNarrative {
             }
         }
 
-        // MARK: 3. 케이던스 평소 범위 — 보폭만 이탈했으면 사실만 (easy/fast)
-        if frame != .general, let sc = strideClause {
+        // MARK: 3. 케이던스 평소 범위 — 보폭만 이탈했으면 사실만. 일반 프레임은 케이던스가 범위 안이었다는 사실을 앞에 둔다
+        //         (예전엔 일반 프레임이 이 분기를 건너뛰어 보폭 이탈을 "평소와 비슷한" 문장으로 덮었다)
+        if let sc = strideClause {
+            if frame == .general {
+                return L.s("케이던스 \(cadStr)spm은 평소 범위였고, ", "Cadence \(cadStr) spm was within your usual range. ") + sc
+            }
             return sc
         }
 

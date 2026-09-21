@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// 초반·중반·후반 표 — 페이스·심박·케이던스·보폭·접지. 폼 카드가 **이 컴포넌트 하나만** 쓴다(§5.8). scale=1 기준: 글자 9pt · 행 간격 5pt.
-/// 판정: 케이던스·보폭·접지가 그 구간의 평소 범위에서 피로 방향(케이던스↓·보폭↓·접지↑)으로 벗어나면 `Theme.caution`, 아니면 지표 고유색. 페이스·심박은 판정 없음. 결측은 "–".
+/// 판정: **후반 행만**, 케이던스·보폭·접지가 그 구간의 평소 범위에서 피로 방향(케이던스↓·보폭↓·접지↑)으로 벗어났거나 페이스가 무너졌고
+/// **중반보다 실제로 나빠졌을 때** `Theme.caution`, 아니면 지표 고유색. 러닝 내내 범위 밖이어도 변화가 없으면 칠하지 않는다 — 문장("끝까지 유지")과 같은 규칙.
+/// 페이스·심박은 판정 없음. 결측은 "–".
 struct FormPhaseTableView: View {
     let result: FormPhase.Result
     var scale: CGFloat = 1.0
@@ -31,8 +33,10 @@ struct FormPhaseTableView: View {
 
     @ViewBuilder
     private func row(ko: String, en: String, stats: FormPhase.PhaseStats, signals: FormPhase.Signals, isLate: Bool = false) -> some View {
-        // 페이스 무너짐(§Insight/FormPhase.faded)도 후반 케이던스·보폭·접지 셀에 캐셔닝 — 기존 평소범위 이탈 신호와 OR.
-        let fadedWorse: (FormPhase.Metric) -> Bool = { isLate && result.isFaded && result.lateWorsened($0) }
+        // 노란 칠 = 후반 행에서 (평소 범위 이탈 신호 또는 페이스 무너짐) AND 중반보다 나빠짐 — 문장의 후반 피로 규칙과 동일
+        let worse: (FormPhase.Metric, Bool) -> Bool = { m, signal in
+            isLate && (signal || result.isFaded) && result.lateWorsened(m)
+        }
         GridRow {
             Text(phaseLabel(stats, ko: ko, en: en))
                 .font(.system(size: 9 * scale, weight: .medium))
@@ -41,9 +45,9 @@ struct FormPhaseTableView: View {
                 .padding(.vertical, 1 * scale)
             valueCell(paceText(stats.paceSecPerKm), color: Color.white.opacity(0.9), caution: false)
             valueCell(stats.avgHR.map { String(Int($0.rounded())) }, color: Theme.heartRate, caution: false)
-            valueCell(stats.cadence.map { String(Int($0.rounded())) }, color: Theme.cadence, caution: signals.cadence == .below || fadedWorse(.cadence))
-            valueCell(stats.stride.map { String(format: "%.2f", $0) }, color: Theme.strideLength, caution: signals.stride == .below || fadedWorse(.stride))
-            valueCell(stats.groundContact.map { String(Int($0.rounded())) }, color: Theme.groundContact, caution: signals.groundContact == .above || fadedWorse(.groundContact))
+            valueCell(stats.cadence.map { String(Int($0.rounded())) }, color: Theme.cadence, caution: worse(.cadence, signals.cadence == .below))
+            valueCell(stats.stride.map { String(format: "%.2f", $0) }, color: Theme.strideLength, caution: worse(.stride, signals.stride == .below))
+            valueCell(stats.groundContact.map { String(Int($0.rounded())) }, color: Theme.groundContact, caution: worse(.groundContact, signals.groundContact == .above))
         }
     }
 

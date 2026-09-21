@@ -53,6 +53,12 @@ struct FormNarrativeTests {
         #expect(ko(noSl, .general) == "발걸음이 평소보다 느렸어요. 보폭으로 페이스를 만들었어요.")
     }
 
+    @Test func generalStrideOnlyDeviationIsStated() {
+        let i = input(sl: .below, cadStr: "172", slStr: "0.88")
+        #expect(ko(i, .general) == "케이던스 172spm은 평소 범위였고, 보폭이 0.88m로 평소보다 작았어요.")
+        #expect(en(i, .general) == "Cadence 172 spm was within your usual range. Stride was 0.88 m — shorter than usual.")
+    }
+
     @Test func generalAllInRangeUnchanged() {
         #expect(ko(input(), .general) == "케이던스 176spm, 보폭 1.12m로 평소와 비슷한 5'30 페이스가 나왔어요.")
         #expect(ko(input(sl: .unknown, slStr: nil), .general) == "케이던스 176spm으로 평소와 비슷하게 5'30 페이스를 달렸어요.")
