@@ -482,7 +482,15 @@ struct RunSummaryTests {
         // 유지라도 최근 7일이 +23%면(15% 이상) 아직 회복 국면이 아니다 — "충분히 회복" 대신 리듬 유지 + 고강도 간격
         var i = todayInput(); i.weekOverWeek = 0.23; i.acuteChronic = .steady; i.acuteChronicYesterday = .steady
         i.loadSentence = nil; i.daysSinceHardRun = 3; i.streakDays = 0; i.todayIsHard = false
-        #expect(lines(i)[3].next == "지금 리듬을 유지하면 좋아요. 부하가 조금 오르는 중이라 고강도는 하루 간격을 두세요.")
+        #expect(lines(i)[3].next == "지금 리듬을 유지하면 좋아요. 직전 7일보다 부하가 늘었으니 고강도 사이에는 쉬운 날 하루를 두세요.")
+        // HRV가 위·안정이면 그 사실을 먼저 말하고 부하만 챙기라고 한다
+        i.hrvTrend = MRHRVTrend(state: .above, isVolatile: false, sevenDayMean: 37, baseline: 30, baselineSD: 3,
+                                sevenDayCV: 0.05, baselineCV: 0.06, sevenDayNights: 7, baselineNights: 28)
+        #expect(lines(i)[3].next == "지금 리듬을 유지하면 좋아요. HRV는 좋고 직전 7일보다 부하가 늘었으니, 고강도 사이에는 쉬운 날 하루를 두세요.")
+        // 범위 안이면 HRV를 말하지 않는다
+        i.hrvTrend = MRHRVTrend(state: .within, isVolatile: false, sevenDayMean: 31, baseline: 30, baselineSD: 3,
+                                sevenDayCV: 0.06, baselineCV: 0.06, sevenDayNights: 7, baselineNights: 28)
+        #expect(lines(i)[3].next == "지금 리듬을 유지하면 좋아요. 직전 7일보다 부하가 늘었으니 고강도 사이에는 쉬운 날 하루를 두세요.")
     }
 
     @Test func steadyRecentHardRunKeepsRhythm() {

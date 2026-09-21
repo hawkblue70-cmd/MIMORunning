@@ -521,13 +521,17 @@ enum RunSummary {
                       "You're well recovered — a good time for a build-up or tempo run.")
         }
         // 유지(.steady)인데 회복 판정에는 못 미치는 날(최근 7일이 직전보다 15% 이상 늘었거나 고강도가 최근) —
-        // 다음 줄이 비어 보이지 않게 중립 한 줄. 부하가 오르는 중이면 고강도 간격을 두라는 말만 붙인다.
+        // 다음 줄이 비어 보이지 않게 중립 한 줄. 부하가 오르는 중이면 고강도 사이에 쉬운 날을 두라는 말만 붙인다.
+        // 증감 폭은 말하지 않는다("조금/크게") — 근거 줄의 숫자(+81% 같은)와 싸운다. "하루 간격"은 이틀 연속 고강도를 피하라는 뜻.
         if i.acuteChronic == .steady {
             let rising = (i.weekOverWeek ?? 0) >= restedWeekOverWeekMax
-            return rising
-                ? L.s("지금 리듬을 유지하면 좋아요. 부하가 조금 오르는 중이라 고강도는 하루 간격을 두세요.",
-                      "Keep this rhythm. Load is creeping up, so leave a day between hard sessions.")
-                : L.s("지금 리듬을 유지하면 좋아요.", "Keep this rhythm.")
+            guard rising else { return L.s("지금 리듬을 유지하면 좋아요.", "Keep this rhythm.") }
+            if i.hrvTrend?.isReadyHigh == true {
+                return L.s("지금 리듬을 유지하면 좋아요. HRV는 좋고 직전 7일보다 부하가 늘었으니, 고강도 사이에는 쉬운 날 하루를 두세요.",
+                           "Keep this rhythm. HRV looks good and load is up on the previous 7 days, so leave an easy day between hard sessions.")
+            }
+            return L.s("지금 리듬을 유지하면 좋아요. 직전 7일보다 부하가 늘었으니 고강도 사이에는 쉬운 날 하루를 두세요.",
+                       "Keep this rhythm. Load is up on the previous 7 days, so leave an easy day between hard sessions.")
         }
         return nil
     }
