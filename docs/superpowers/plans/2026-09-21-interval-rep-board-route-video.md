@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **2026-09-21 변경(사용자 결정):** 보드는 **카드 만들기의 경로 영상이 아니라 상세 화면 "경로 내보내기 → 경로 1 → 영상"**에 들어간다. Task 3~6(VideoOverlayCard·RouteVideoService·ShareCardView·마스크 출력)은 커밋 `28b19d5`로 되돌렸고, Task 1·2(`IntervalRepBoard`·`IntervalRepBoardView`)만 남겨 `DetailPanelShareCard.mapStampSideText`(경로 1 왼콽 열, 종류 제목 위)에서 쓴다. 경로 1 영상은 프레임마다 SwiftUI를 다시 그리므로 `RouteProgressSnapshot.progress`로 보인 회차 수를 바로 계산한다 — 마스크·알파 경계 코드가 필요 없다. 정지 이미지(경로 1 이미지)에는 넣지 않는다. 경로 흐림·km 점 숨김은 이 경로에 적용하지 않았다(km 마커는 원래 없음).
+
 **Goal:** 경로 영상(9:16, `RouteVideoFrameView` + `RouteVideoExportService.exportFast`)에서 **인터벌 러닝일 때만**, 지도가 그려지는 동안 운동 구간(회차)이 끝나는 자리를 지날 때마다 "회차 · 페이스 · 심박" 한 줄이 쌓이는 보드를 보여준다. 회복·준비·정리 구간은 경로를 흐리게 그리고, km 점은 숨긴다. 미리보기와 출력이 같은 컴포넌트를 쓴다(§5.8).
 
 **Architecture:**

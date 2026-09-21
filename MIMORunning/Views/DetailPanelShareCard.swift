@@ -85,6 +85,8 @@ enum RouteCardStyle: Int, CaseIterable, Identifiable {
 /// 경로 1 영상의 한 프레임 값 — 거리·경과 시간은 "지금까지", 심박은 "지금".
 /// 평균 페이스는 거리와 시간에서 나온다. nil이면 정지 카드(최종 수치).
 struct RouteProgressSnapshot {
+    /// 경로가 그려진 비율(0~1, 거리 기준) — 인터벌 회차 보드가 몇 회차까지 보일지 이 값으로 정한다
+    let progress: Double
     let distanceM: Double
     let elapsed: TimeInterval
     /// 그 시점의 심박(순간값). 정지 카드의 평균 심박과는 다른 값이라 라벨도 "HR"로 쓴다.
@@ -115,6 +117,15 @@ struct DetailPanelShareCard: View {
     var raceName: String? = nil
 
     private var pal: RouteCardPalette { theme == .light ? .light : .dark }
+
+    /// 경로 1 영상의 인터벌 회차 보드 — 운동 구간 2개 이상일 때만(그 외 nil → 전과 같은 카드).
+    /// 미리보기(마지막 프레임)와 내보내기(프레임마다)가 같은 뷰를 같은 자리에 그린다(§5.8).
+    private var intervalRepBoard: IntervalRepBoard? {
+        IntervalRepBoard.make(segments: detail?.intervalSegments ?? [],
+                              activityStart: activity.date,
+                              totalDistanceM: activity.distance,
+                              totalDuration: activity.duration)
+    }
 
     /// 맨 윗줄 — 왼쪽 워드마크, 오른쪽 대회 뱃지. 경로 1·2가 같이 쓴다.
     /// 뱃지 치수(아이콘 8pt·글자 9pt·캡슐 8/3pt)는 애슬레틱 카드의 대회 뱃지와 같다(§5.8).
@@ -248,6 +259,14 @@ struct DetailPanelShareCard: View {
     /// 지역명은 넣지 않는다(지도가 이미 어디인지 보여준다). 바닥을 스탬프와 맞춰 요약 그리드 아래줄과 같은 선에 놓인다.
     private var mapStampSideText: some View {
         VStack(alignment: .leading, spacing: 2) {
+            // 영상 프레임이면 종류 제목 위에 인터벌 회차 보드 — 지도 머리가 운동 구간 끝을 지날 때 한 줄씩 쌓인다.
+            // 정지 이미지(routeProgress nil)에는 넣지 않는다.
+            if let p = routeProgress, let board = intervalRepBoard {
+                IntervalRepBoardView(board: board,
+                                     revealed: board.revealedCount(progress: CGFloat(p.progress)),
+                                     scale: 1)
+                    .padding(.bottom, 6)
+            }
             Text(detail?.workoutType.koreanLabel ?? activity.type.label)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(.white)

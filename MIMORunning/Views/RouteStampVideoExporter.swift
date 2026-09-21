@@ -103,7 +103,8 @@ enum RouteStampVideoExporter {
         func snapshot(at progress: Double) -> RouteProgressSnapshot {
             let p = max(0, min(1, progress))
             let bpm = heartRate(at: p)
-            return RouteProgressSnapshot(distanceM: totalDistanceM * p,
+            return RouteProgressSnapshot(progress: p,
+                                         distanceM: totalDistanceM * p,
                                          elapsed: elapsed(at: p),
                                          heartRate: bpm,
                                          heartRateColor: bpm.flatMap(zoneColor))
