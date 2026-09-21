@@ -29,6 +29,13 @@ struct VideoOverlayCard: View {
     var shoeName: String? = nil
     /// 총평 5줄 — 비어 있으면(기본) 기존 지도/차트 자리 그대로. §5.8: scale만 다르고 컴포넌트는 하나.
     var summaryLines: [RunSummaryLine] = []
+    /// 인터벌 회차 보드 — 있으면 차트 패널 자리에 대신 놓인다(총평이 켜지면 총평이 우선). §5.8: 미리보기·출력 같은 뷰.
+    var intervalBoard: IntervalRepBoard? = nil
+    var intervalRevealed: Int = 0
+    var intervalBoardRenderMode: IntervalRepBoardView.RenderMode = .full
+    /// true면 보드 줄 이외의 모든 요소(로고·총평·차트·날짜·구분선·지표·하단 스크림)를 투명하게 — 출력이 "줄만" 이미지를 얻을 때 쓴다.
+    /// 레이아웃은 그대로라(opacity만) 뼈대 렌더와 줄 렌더의 위치가 같다.
+    var chromeHidden: Bool = false
     var scale: CGFloat = 1.0
     // nil = videoSafeTopRef/BottomRef * scale (Instagram safe zone 기본값)
     // 값 지정 시 해당 pt를 그대로 사용 (scale 미적용)
@@ -40,6 +47,7 @@ struct VideoOverlayCard: View {
             Color.clear
 
             CardVisual.bottomScrim
+                .opacity(chromeHidden ? 0 : 1)
 
             VStack(alignment: .leading, spacing: 0) {
 
@@ -54,17 +62,31 @@ struct VideoOverlayCard: View {
                     Spacer(minLength: 3 * scale)
                 }
                 .padding(.top, topInset ?? (CardVisual.videoSafeTopRef * scale))
+                .opacity(chromeHidden ? 0 : 1)
 
                 // ── 총평(로고 아래, 비디오 세이프존 안) — §5.8: scale만 다르고 컴포넌트는 하나 ──
                 if !summaryLines.isEmpty {
                     RunSummaryLinesView(lines: summaryLines, scale: scale * 0.7, expandAll: true, fontBoost: scale)
                         .padding(.top, 8 * scale)
+                        .opacity(chromeHidden ? 0 : 1)
                 }
 
                 Spacer()
 
-                // ── MIDDLE: chart (right-aligned) — 총평이 켜지면 숨김(§5.8) ──
-                if summaryLines.isEmpty, chartPanel != .map {
+                // ── MIDDLE: 인터벌 회차 보드 (right-aligned) — 총평이 켜지면 숨김 ──
+                if summaryLines.isEmpty, let board = intervalBoard {
+                    HStack {
+                        Spacer()
+                        IntervalRepBoardView(board: board, revealed: intervalRevealed,
+                                             renderMode: intervalBoardRenderMode, scale: scale)
+                    }
+                    .padding(.horizontal, 20 * scale)
+                    .padding(.bottom, 8 * scale)
+                    .cardTextShadow()
+                }
+
+                // ── MIDDLE: chart (right-aligned) — 총평이 켜지거나 보드가 있으면 숨김(§5.8) ──
+                if summaryLines.isEmpty, intervalBoard == nil, chartPanel != .map {
                     HStack {
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2 * scale) {
@@ -92,6 +114,7 @@ struct VideoOverlayCard: View {
                     .padding(.horizontal, 20 * scale)
                     .padding(.bottom, 8 * scale)
                     .cardTextShadow()
+                    .opacity(chromeHidden ? 0 : 1)
                 }
 
                 // ── BOTTOM: date · divider · stats ──
@@ -124,10 +147,12 @@ struct VideoOverlayCard: View {
                 }
                 .padding(.bottom, 2 * scale)
                 .cardTextShadow()
+                .opacity(chromeHidden ? 0 : 1)
 
                 Rectangle()
                     .fill(Theme.violet.opacity(0.30))
                     .frame(height: 0.5)
+                    .opacity(chromeHidden ? 0 : 1)
 
                 HStack(alignment: .center, spacing: 0) {
                     let distW: CGFloat = (metrics.count >= 5 ? 70 : 96) * scale
@@ -183,6 +208,7 @@ struct VideoOverlayCard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 2 * scale)
                 .padding(.bottom, bottomInset ?? (CardVisual.videoSafeBottomRef * scale))
+                .opacity(chromeHidden ? 0 : 1)
             }
             // 그림자는 텍스트 요소에만 개별 적용 — 로고에는 없음
             .padding(.horizontal, 14)

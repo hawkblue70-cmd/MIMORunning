@@ -25,6 +25,8 @@ struct RouteVideoFrameView: View {
     var chartIntervalSegments: [IntervalSegment] = []
     /// 총평 5줄 — 비어 있으면(기본) 기존 지도/차트 자리 그대로. §5.8: scale만 다르고 컴포넌트는 하나.
     var summaryLines: [RunSummaryLine] = []
+    /// 인터벌 회차 보드 — 진행률에서 보인 회차 수를 계산해 VideoOverlayCard에 넘긴다
+    var intervalBoard: IntervalRepBoard? = nil
     var showStats: Bool = true
     // HR gradient for route polyline
     var hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = []
@@ -72,6 +74,8 @@ struct RouteVideoFrameView: View {
                         weather: weather,
                         shoeName: shoeName,
                         summaryLines: summaryLines,
+                        intervalBoard: intervalBoard,
+                        intervalRevealed: intervalBoard?.revealedCount(progress: routeProgress) ?? 0,
                         scale: scale,
                         topInset: topInset,
                         bottomInset: bottomInset
