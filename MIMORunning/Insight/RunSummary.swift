@@ -57,6 +57,16 @@ struct RunSummaryInput {
     /// 이지 페이스 조회값 — 있을 때만 다음 이지런 페이스를 숫자로 제안
     var easyPace: MRHRPaceLookup? = nil
     var vo2EightWeeksAgo: Double? = nil
+    /// 수면 HRV 7일 vs 4주 추세(러닝 날짜 기준). 없으면 HRV 문장·근거 모두 생략.
+    var hrvTrend: MRHRVTrend? = nil
+    /// 이 러닝 직전 14일(이 러닝 제외) 고강도 러닝 수 / 러닝 수 — `hrvTrend`가 있을 때만 채운다.
+    var hardRunsLast14: Int? = nil
+    var runsLast14: Int = 0
+    /// 2주 이지 블록 — 고강도 1회 이하이고 러닝 4회 이상
+    var isEasyBlock: Bool {
+        guard let hard = hardRunsLast14 else { return false }
+        return hard <= RunSummary.easyBlockMaxHard && runsLast14 >= RunSummary.easyBlockMinRuns
+    }
 }
 
 /// 총평 규칙. 축 순서 고정: 러닝폼 → 거리 적응 → 심박 → 훈련부하 → 유산소.
@@ -75,6 +85,9 @@ enum RunSummary {
     static let vo2Bounds: [Double] = [15, 26, 33, 41, 57]
     /// VO2max 8주 전 대비 근거 절을 붙이는 최소 변화폭 — 이보다 작으면 잡음으로 보고 생략
     static let vo2DeltaEvidenceMin = 0.05
+    /// 2주 이지 블록 판정 — 14일 고강도 최대 1회 · 러닝 최소 4회
+    static let easyBlockMaxHard = 1
+    static let easyBlockMinRuns = 4
     // 거리주(레이스페이스 장거리)는 빠른 게 정의라 이지 의도로 판정하지 않는다
     static let easyIntentTypes: Set<WorkoutType> = [.easy, .longRun, .lsd]
     /// 오늘 거리가 계획의 일부인 유형 — 거리 적응 줄이 증량 규칙을 말하지 않는다.
@@ -419,6 +432,10 @@ enum RunSummary {
             let signed = (w < 0 ? "-" : "+") + "\(pct)%"
             parts.append(L.s("최근 7일 \(signed)", "Last 7 days \(signed)"))
         }
+        if let t = i.hrvTrend {
+            let seven = Int(t.sevenDayMean.rounded()), base = Int(t.baseline.rounded())
+            parts.append(L.s("HRV 7일 \(seven)ms · 4주 \(base)ms", "HRV 7-day \(seven)ms · 4-wk \(base)ms"))
+        }
         if i.todayEffortMissing, !parts.isEmpty {
             parts.append(L.s("오늘 러닝 미포함", "today's run not included"))
         }
@@ -440,8 +457,12 @@ enum RunSummary {
             }
         }
         if jumped || i.loadSentence == .monotony || i.streakDays >= 4 {
-            return L.s("다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.",
-                      "Take a 30–40 min recovery run or rest for the next day or two.")
+            var s = L.s("다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.",
+                        "Take a 30–40 min recovery run or rest for the next day or two.")
+            if i.hrvTrend?.isSuppressed == true {
+                s += L.s(" HRV도 기준선 아래로 흔들리고 있어요.", " Your HRV is also wobbling below baseline.")
+            }
+            return s
         }
         if i.todayIsHard {
             return L.s("오늘 강도를 냈으니 내일은 이지런이나 휴식이 좋아요.",
@@ -467,6 +488,21 @@ enum RunSummary {
             }
         }()
         if rested {
+            // HRV가 있으면 회복 판정을 한 번 더 거른다 — 부하는 내려왔어도 HRV가 아래·불안정이면 "충분히"라고 하지 않는다.
+            // 위·안정이면 2주 이지 블록(회복이 쌓임)과 고강도 있음(잘 흡수함)을 나눠 말한다. 범위 안이면 기존 문장.
+            if let t = i.hrvTrend {
+                if t.isSuppressed {
+                    return L.s("부하는 내려왔지만 HRV가 기준선 아래예요. 수면이나 생활 피로 쪽일 수 있으니 하루 더 편하게 가세요.",
+                               "Load has come down, but your HRV is below baseline. It may be sleep or life stress — take one more easy day.")
+                }
+                if t.isReadyHigh {
+                    return i.isEasyBlock
+                        ? L.s("2주 이지런으로 회복이 쌓였어요. HRV가 4주 기준선 위로 안정적이라 이번 주 강도 세션 넣기 좋아요.",
+                              "Two weeks of easy running have built up recovery. Your HRV is steadily above its 4-week baseline — a good week for a quality session.")
+                        : L.s("충분히 회복됐어요. 고강도 뒤에도 HRV가 기준선 위라 부하를 잘 흡수하고 있어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.",
+                              "You're well recovered. Your HRV stayed above baseline even after hard runs, so you're absorbing the load — a good time for a build-up or tempo run.")
+                }
+            }
             return L.s("충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.",
                       "You're well recovered — a good time for a build-up or tempo run.")
         }

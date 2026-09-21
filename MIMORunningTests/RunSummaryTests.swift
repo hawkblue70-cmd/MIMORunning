@@ -358,6 +358,75 @@ struct RunSummaryTests {
         #expect(lines(i)[3].next == "충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.")
     }
 
+    // MARK: 수면 HRV 결합
+
+    private func hrv(_ state: MRHRVTrend.State, volatile: Bool = false) -> MRHRVTrend {
+        MRHRVTrend(state: state, isVolatile: volatile, sevenDayMean: 37.4, baseline: 29.6, baselineSD: 3,
+                   sevenDayCV: 0.05, baselineCV: 0.06, sevenDayNights: 7, baselineNights: 28)
+    }
+
+    /// `restedSuggestsQualitySession`과 같은 입력 — 부하만으로는 "충분히 회복".
+    private func restedInput() -> RunSummaryInput {
+        var i = todayInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady; i.loadSentence = nil
+        i.daysSinceHardRun = 3; i.streakDays = 0; i.todayIsHard = false
+        return i
+    }
+
+    @Test func hrvEvidenceAppendsSevenDayAndBaseline() {
+        var i = restedInput(); i.hrvTrend = hrv(.within)
+        #expect(lines(i)[3].evidence?.hasSuffix(" · HRV 7일 37ms · 4주 30ms") == true)
+        inEnglish { #expect(lines(i)[3].evidence?.hasSuffix(" · HRV 7-day 37ms · 4-wk 30ms") == true) }
+    }
+
+    @Test func hrvWithinKeepsRestedSentence() {
+        var i = restedInput(); i.hrvTrend = hrv(.within); i.hardRunsLast14 = 0; i.runsLast14 = 6
+        #expect(lines(i)[3].next == "충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.")
+    }
+
+    @Test func hrvReadyAfterEasyBlockSuggestsQualityWeek() {
+        var i = restedInput(); i.hrvTrend = hrv(.above); i.hardRunsLast14 = 1; i.runsLast14 = 6
+        #expect(lines(i)[3].next == "2주 이지런으로 회복이 쌓였어요. HRV가 4주 기준선 위로 안정적이라 이번 주 강도 세션 넣기 좋아요.")
+    }
+
+    @Test func hrvReadyWithRecentHardRunsSaysAbsorbing() {
+        var i = restedInput(); i.hrvTrend = hrv(.above); i.hardRunsLast14 = 2; i.runsLast14 = 6
+        #expect(lines(i)[3].next == "충분히 회복됐어요. 고강도 뒤에도 HRV가 기준선 위라 부하를 잘 흡수하고 있어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.")
+    }
+
+    @Test func hrvEasyBlockNeedsFourRuns() {
+        // 러닝 3회면 이지 블록이 아니다 → 흡수 문장
+        var i = restedInput(); i.hrvTrend = hrv(.above); i.hardRunsLast14 = 0; i.runsLast14 = 3
+        #expect(lines(i)[3].next?.hasPrefix("충분히 회복됐어요. 고강도 뒤에도") == true)
+    }
+
+    @Test func hrvBelowSuppressesRested() {
+        var i = restedInput(); i.hrvTrend = hrv(.below); i.hardRunsLast14 = 0; i.runsLast14 = 6
+        #expect(lines(i)[3].next == "부하는 내려왔지만 HRV가 기준선 아래예요. 수면이나 생활 피로 쪽일 수 있으니 하루 더 편하게 가세요.")
+    }
+
+    @Test func hrvVolatileSuppressesRestedEvenWhenAbove() {
+        var i = restedInput(); i.hrvTrend = hrv(.above, volatile: true); i.hardRunsLast14 = 0; i.runsLast14 = 6
+        #expect(lines(i)[3].next == "부하는 내려왔지만 HRV가 기준선 아래예요. 수면이나 생활 피로 쪽일 수 있으니 하루 더 편하게 가세요.")
+    }
+
+    @Test func hrvSuppressedAppendsToJumpSentence() {
+        var i = todayInput(); i.acuteChronic = .high; i.loadSentence = .high; i.streakDays = 0; i.todayIsHard = false
+        i.hrvTrend = hrv(.below)
+        #expect(lines(i)[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요. HRV도 기준선 아래로 흔들리고 있어요.")
+    }
+
+    @Test func hrvAboveDoesNotTouchJumpSentence() {
+        var i = todayInput(); i.acuteChronic = .high; i.loadSentence = .high; i.streakDays = 0; i.todayIsHard = false
+        i.hrvTrend = hrv(.above)
+        #expect(lines(i)[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.")
+    }
+
+    @Test func hrvNilChangesNothing() {
+        var i = restedInput(); i.hrvTrend = nil; i.hardRunsLast14 = 0; i.runsLast14 = 6
+        #expect(lines(i)[3].next == "충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.")
+        #expect(lines(i)[3].evidence?.contains("HRV") == false)
+    }
+
     @Test func hardDayNextIsEasyTomorrow() {
         // 급증/단조/4일+연속이 아닌 날 — 오늘 강도를 냈으면 내일은 이지런이나 휴식
         var i = todayInput()
