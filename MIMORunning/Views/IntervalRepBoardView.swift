@@ -9,15 +9,18 @@ struct IntervalRepBoardView: View {
     enum RenderMode { case full, chromeOnly, rowsOnly }
 
     let board: IntervalRepBoard
-    var revealed: Int
+    /// 경로 진행 비율(0…1) — 회차·준비·정리 줄이 보일지 이 값으로 정한다
+    var progress: CGFloat
     var renderMode: RenderMode = .full
     var scale: CGFloat = 1.0
+
+    private var revealed: Int { board.revealedCount(progress: progress) }
 
     private var L: AppLanguage { AppLanguage.shared }
 
     // 열 폭(scale=1): 회차 22 · 거리 40 · 페이스 44 · 심박 30
     // 열 폭(scale=1): 회차 16 · 거리 36 · 페이스 40 · 심박 26 — 경로 1 왼쪽 열(112pt) 안에 들어가는 값
-    private var idxW: CGFloat { 16 * scale }
+    private var idxW: CGFloat { 20 * scale }   // "준비"·"정리" 두 글자가 들어가는 폭
     private var distW: CGFloat { 36 * scale }
     private var paceW: CGFloat { 40 * scale }
     private var hrW: CGFloat { 26 * scale }
@@ -29,6 +32,13 @@ struct IntervalRepBoardView: View {
         case .chromeOnly: return 0
         case .rowsOnly:   return 1          // 출력은 마스크로 드러내므로 전부 그린다
         case .full:       return rep.index <= revealed ? 1 : 0
+        }
+    }
+    private func edgeOpacity(_ edge: IntervalRepBoard.Edge?) -> Double {
+        switch renderMode {
+        case .chromeOnly: return 0
+        case .rowsOnly:   return 1
+        case .full:       return board.isRevealed(edge, progress: progress) ? 1 : 0
         }
     }
     private var footerOpacity: Double {
@@ -48,6 +58,11 @@ struct IntervalRepBoardView: View {
                 .padding(.bottom, 2 * scale)
                 .opacity(chromeOpacity)
 
+            // 준비운동 줄 — 회차 앞
+            if let w = board.warmup {
+                edgeRow(L.s("준비", "WU"), w).opacity(edgeOpacity(w)).padding(.vertical, 1 * scale)
+            }
+
             // 회차 줄 — 열 하나 또는 쌍
             let pairs = stride(from: 0, to: board.reps.count, by: board.columns).map { i in
                 Array(board.reps[i..<min(i + board.columns, board.reps.count)])
@@ -61,6 +76,11 @@ struct IntervalRepBoardView: View {
                 .padding(.vertical, 1 * scale)
             }
 
+            // 정리운동 줄 — 회차 뒤, 그 구간 끝(대개 마지막 프레임)에
+            if let c = board.cooldown {
+                edgeRow(L.s("정리", "CD"), c).opacity(edgeOpacity(c)).padding(.vertical, 1 * scale)
+            }
+
             // 바닥글: "평균 4'52"" — 마지막 회차와 함께
             if let footer = board.footerText {
                 Text(footer)
@@ -71,6 +91,28 @@ struct IntervalRepBoardView: View {
             }
         }
         .fixedSize()
+    }
+
+    /// 준비·정리 줄 — 회차 줄과 같은 열 폭, 번호 자리에 "준비"/"정리"
+    @ViewBuilder
+    private func edgeRow(_ label: String, _ e: IntervalRepBoard.Edge) -> some View {
+        HStack(spacing: 0) {
+            Text(label)
+                .foregroundStyle(Color.white.opacity(0.75))
+                .frame(width: idxW, alignment: .leading)
+            if board.showsDistanceColumn {
+                Text(e.distanceM.map { IntervalRepBoard.distanceLabel($0) } ?? "–")
+                    .foregroundStyle(Color.white.opacity(0.9))
+                    .frame(width: distW, alignment: .leading)
+            }
+            Text(e.paceSecPerKm.map { IntervalRepBoard.paceText($0) } ?? "–")
+                .foregroundStyle(Color.white.opacity(0.9))
+                .frame(width: paceW, alignment: .leading)
+            Text(e.avgHeartRate.map { "\($0)" } ?? "–")
+                .foregroundStyle(Color.white.opacity(0.9))
+                .frame(width: hrW, alignment: .trailing)
+        }
+        .font(.system(size: 9 * scale, weight: .semibold).monospacedDigit())
     }
 
     @ViewBuilder

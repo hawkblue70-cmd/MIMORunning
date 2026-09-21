@@ -262,9 +262,7 @@ struct DetailPanelShareCard: View {
             // 영상 프레임이면 종류 제목 위에 인터벌 회차 보드 — 지도 머리가 운동 구간 끝을 지날 때 한 줄씩 쌓인다.
             // 정지 이미지(routeProgress nil)에는 넣지 않는다.
             if let p = routeProgress, let board = intervalRepBoard {
-                IntervalRepBoardView(board: board,
-                                     revealed: board.revealedCount(progress: CGFloat(p.progress)),
-                                     scale: 1)
+                IntervalRepBoardView(board: board, progress: CGFloat(p.progress), scale: 1)
                     .padding(.bottom, 6)
             }
             Text(detail?.workoutType.koreanLabel ?? activity.type.label)

@@ -119,6 +119,24 @@ struct IntervalRepBoardTests {
         #expect(b12.headerText == "12 × 400m")
     }
 
+    @Test func warmupAndCooldownRowsCarryPaceAndEndFraction() throws {
+        let segs = segments(reps: 2)
+        let t = total(segs)
+        let b = try #require(IntervalRepBoard.make(segments: segs, activityStart: segs[0].startDate, totalDistanceM: t.m, totalDuration: t.s))
+        let w = try #require(b.warmup)
+        #expect(w.paceSecPerKm == 380)
+        #expect(w.avgHeartRate == 130)
+        #expect(abs(w.revealFraction - 1000.0 / t.m) < 1e-9)      // 준비 1km가 끝나는 지점
+        let c = try #require(b.cooldown)
+        #expect(c.paceSecPerKm == 372)
+        #expect(abs(c.revealFraction - 1.0) < 1e-9)               // 마지막 구간 끝 = 경로 끝
+        #expect(!b.isRevealed(b.warmup, progress: 0))
+        #expect(b.isRevealed(b.warmup, progress: CGFloat(w.revealFraction)))
+        #expect(!b.isRevealed(b.cooldown, progress: 0.99))
+        #expect(b.isRevealed(b.cooldown, progress: 1))
+        #expect(b.isRevealed(nil, progress: 1) == false)
+    }
+
     @Test func dimRangesAreNonWorkSegments() throws {
         let segs = segments(reps: 2)
         let t = total(segs)

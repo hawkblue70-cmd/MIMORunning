@@ -14,6 +14,15 @@ struct IntervalRepBoard: Equatable {
     }
 
     let reps: [Rep]
+    /// 준비운동·정리운동 한 줄씩 — 페이스·심박·(거리)와 끝나는 지점. 없으면 nil.
+    struct Edge: Equatable {
+        let distanceM: Double?
+        let paceSecPerKm: Double?
+        let avgHeartRate: Int?
+        let revealFraction: Double
+    }
+    let warmup: Edge?
+    let cooldown: Edge?
     /// 모든 운동 구간 거리가 ±5% 안에서 같으면 대표 거리(표준 거리로 반올림), 아니면 nil.
     let uniformDistanceM: Double?
     let averagePaceSecPerKm: Double?
@@ -39,6 +48,8 @@ struct IntervalRepBoard: Equatable {
 
         var cumulative = 0.0
         var reps: [Rep] = []
+        var warmup: Edge? = nil
+        var cooldown: Edge? = nil
         var dims: [ClosedRange<TimeInterval>] = []
         for seg in ordered {
             let isWork = seg.stepLabel == "운동"
@@ -49,11 +60,17 @@ struct IntervalRepBoard: Equatable {
             } else {
                 endValue = seg.endDate.timeIntervalSince(activityStart)
             }
+            let fraction = min(max(endValue / denominator, 0), 1)
             if isWork {
                 reps.append(Rep(index: reps.count + 1, distanceM: seg.distanceM,
                                 paceSecPerKm: seg.paceSecPerKm, avgHeartRate: seg.avgHeartRate,
-                                revealFraction: min(max(endValue / denominator, 0), 1)))
+                                revealFraction: fraction))
             } else {
+                // 준비운동은 첫 것, 정리운동은 마지막 것 — 둘 이상이면 앞/뒤 하나씩만 줄로 쓴다
+                let edge = Edge(distanceM: seg.distanceM, paceSecPerKm: seg.paceSecPerKm,
+                                avgHeartRate: seg.avgHeartRate, revealFraction: fraction)
+                if seg.stepLabel == "준비운동", warmup == nil { warmup = edge }
+                if seg.stepLabel == "정리운동" { cooldown = edge }
                 let lo = max(0, seg.startDate.timeIntervalSince(activityStart))
                 let hi = max(lo, seg.endDate.timeIntervalSince(activityStart))
                 dims.append(lo...hi)
@@ -67,7 +84,8 @@ struct IntervalRepBoard: Equatable {
         }
         let paces = work.compactMap(\.paceSecPerKm)
         let avg = paces.isEmpty ? nil : paces.reduce(0, +) / Double(paces.count)
-        return IntervalRepBoard(reps: reps, uniformDistanceM: uniform, averagePaceSecPerKm: avg, dimTimeRanges: dims)
+        return IntervalRepBoard(reps: reps, warmup: warmup, cooldown: cooldown,
+                                uniformDistanceM: uniform, averagePaceSecPerKm: avg, dimTimeRanges: dims)
     }
 
     /// 표준 거리(200·400·600·800·1000·1200·1600·2000·3000·5000m)에 8% 안이면 그 값, 아니면 100m(200m 미만은 50m) 단위 반올림.
@@ -91,6 +109,12 @@ struct IntervalRepBoard: Equatable {
         return n == reps.count ? rowSlots + 1 : rowSlots
     }
     var showsDistanceColumn: Bool { uniformDistanceM == nil }
+
+    /// 준비·정리 줄이 보이는가 — 그 구간이 끝나는 지점을 지도 머리가 지났을 때
+    func isRevealed(_ edge: Edge?, progress: CGFloat) -> Bool {
+        guard let e = edge else { return false }
+        return e.revealFraction <= Double(progress) + 1e-9
+    }
 
     func revealedCount(progress: CGFloat) -> Int {
         let p = Double(progress)
