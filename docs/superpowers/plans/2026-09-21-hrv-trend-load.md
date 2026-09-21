@@ -23,7 +23,8 @@
 | `MIMORunning/Insight/RunSummary.swift` | `RunSummaryInput.hrvTrend/hardRunsLast14/runsLast14` · 근거·다음 행동 문장 | 수정 |
 | `MIMORunning/Insight/RunSummaryBuilder.swift` | `isHardRun` 헬퍼 · 14일 집계 · `Context.hrvNights` | 수정 |
 | `MIMORunning/Views/ActivityDetailView.swift` | `hrvNights: engine.hrvNights` 전달(총평 컨텍스트 · `RunInsightSection`) | 수정 |
-| `MIMORunning/Views/RunInsightTabCard.swift` | `RunInsightSection.hrvNights` · `summaryLines`에 전달 | 수정 |
+| `MIMORunning/Views/RunInsightCardView.swift` | `RunInsightSection.hrvNights`(래퍼) → `RunInsightTabCard` 전달 | 수정 |
+| `MIMORunning/Views/RunInsightTabCard.swift` | `RunInsightTabCard.hrvNights` → `RhythmInsightCard.hrvNights` → `summaryLines`에 전달 | 수정 |
 | `MIMORunning/Health/HealthKitManager.swift` | `queryNightHRVMedian`·`queryHRVRecovery` 삭제, `fetchCondition`에서 HRV 조회 제거 | 수정 |
 | `MIMORunning/Health/HRVRecovery.swift` | deprecated 주석 · 미사용 헬퍼 삭제 | 수정 |
 | `MIMORunningTests/MRHRVTrendTests.swift` | 밤 묶기·추세·고강도 집계 테스트 | 생성 |
@@ -356,7 +357,8 @@ func mrRecentHardRunCount(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatH
         guard d >= 0 && d < days else { continue }
         total += 1
         if w.isInterval { hard += 1; continue }
-        if let lt1 = phys.lt1HR?.value, let hr = heatHR.refHR(of: w) ?? w.hrAvg, hr >= lt1 { hard += 1 }
+        // refHR는 hrAvg가 nil일 때만 nil — 심박 없는 러닝은 고강도로 세지 않는다
+        if let lt1 = phys.lt1HR?.value, let hr = heatHR.refHR(of: w), hr >= lt1 { hard += 1 }
     }
     return (hard, total)
 }
@@ -471,7 +473,8 @@ git show --stat HEAD
             let t0 = CFAbsoluteTimeGetCurrent()
             let raw = (try? await hk.fetchSleepHRV()) ?? []
             let nights = mrHRVNightMedians(samples: raw)
-            hrvNights = nights
+            // 일시적 조회 실패(빈 결과)가 복원된 캐시를 메모리에서 지우지 않게 — 결과가 있을 때만 교체
+            if !nights.isEmpty || hrvNights.isEmpty { hrvNights = nights }
             let fetchedAt = Date()
             hrvLastFetchedAt = fetchedAt
             if !nights.isEmpty { persistHRV(fetchedAt: fetchedAt, nights: nights) }
@@ -542,7 +545,7 @@ struct MRAdviceQueueHRVTests {
 
     /// 14일 동안 이지런 6회(2~3일 간격), 마지막은 어제.
     private func easyBlock() -> [MRWorkout] {
-        [13, 11, 8, 6, 3, 1].map { run(daysAgo: $0) }.reversed()
+        [13, 11, 8, 6, 3, 1].map { run(daysAgo: $0) }   // 이미 오래된 것 → 최신 순(runs.last = 어제)
     }
 
     private func trend(state: MRHRVTrend.State, volatile: Bool = false) -> MRHRVTrend {
@@ -606,8 +609,8 @@ struct MRAdviceQueueHRVTests {
     }
 
     @Test func noAdviceWhenLastRunOlderThanThreeDays() {
-        let runs = [13, 11, 9, 7, 5, 4].map { run(daysAgo: $0) }.reversed()
-        #expect(hrvAdvice(build(runs: Array(runs), trend: trend(state: .above))) == nil)
+        let runs = [13, 11, 9, 7, 5, 4].map { run(daysAgo: $0) }
+        #expect(hrvAdvice(build(runs: runs, trend: trend(state: .above))) == nil)
     }
 }
 ```
@@ -858,7 +861,8 @@ git show --stat HEAD
 
 **Files:**
 - Modify: `MIMORunning/Insight/RunSummaryBuilder.swift` (`Context` · `daysSinceHardRun` · `input`)
-- Modify: `MIMORunning/Views/RunInsightTabCard.swift:785-800` (`RunInsightSection` 프로퍼티) · `summaryLines`(2790 근처)
+- Modify: `MIMORunning/Views/RunInsightCardView.swift` (`RunInsightSection` — 얇은 래퍼, 여기에 `hrvNights` 프로퍼티와 `RunInsightTabCard(...)` 전달)
+- Modify: `MIMORunning/Views/RunInsightTabCard.swift` (`RunInsightTabCard.hrvNights` → `RhythmInsightCard.hrvNights` → `summaryLines`의 `Context(`)
 - Modify: `MIMORunning/Views/ActivityDetailView.swift:224-236` (`summaryContext`) · `350-372` (`RunInsightSection(...)` 생성)
 
 - [ ] **Step 1: `Context`에 `hrvNights`**
