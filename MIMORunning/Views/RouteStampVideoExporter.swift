@@ -31,6 +31,17 @@ enum RouteStampVideoExporter {
         let t = (km - 5) / 25
         return min(maxDrawSeconds, max(minDrawSeconds, minDrawSeconds + t * (maxDrawSeconds - minDrawSeconds)))
     }
+
+    /// 인터벌은 회차 줄이 쌓이는 걸 읽어야 해서 더 천천히 — 기본 시간의 1.5배(최소 12초·최대 16초), 끝에 머무는 시간도 2.5초.
+    /// 인터벌 여부는 운동 구간 2개 이상(회차 보드가 생기는 조건과 같다).
+    static func isIntervalRun(_ detail: ActivityDetail?) -> Bool {
+        (detail?.intervalSegments ?? []).filter { $0.stepLabel == "운동" }.count >= 2
+    }
+    static func drawSeconds(distanceM: Double, isInterval: Bool) -> Double {
+        let base = drawSeconds(distanceM: distanceM)
+        return isInterval ? min(16.0, max(12.0, base * 1.5)) : base
+    }
+    static func holdSeconds(isInterval: Bool) -> Double { isInterval ? 2.5 : holdSeconds }
     static let bitrate        = 8_000_000
     /// 카드 300×375pt를 3.6배로 — 1080×1350(4:5). 인코더가 요구하는 짝수 픽셀.
     static let renderScale: CGFloat = 3.6
@@ -251,8 +262,9 @@ enum RouteStampVideoExporter {
         guard writer.startWriting() else { throw ExportError.writerFailed }
         writer.startSession(atSourceTime: .zero)
 
-        let animFrames  = Int(drawSeconds(distanceM: activity.distance) * Double(fps))
-        let holdFrames  = Int(holdSeconds * Double(fps))
+        let interval    = isIntervalRun(detail)
+        let animFrames  = Int(drawSeconds(distanceM: activity.distance, isInterval: interval) * Double(fps))
+        let holdFrames  = Int(holdSeconds(isInterval: interval) * Double(fps))
         let totalFrames = animFrames + holdFrames
 
         defer { onProgress(1) }
