@@ -857,6 +857,7 @@ struct RunInsightTabCard: View {
                 hrSamples: hrSamples,
                 heatModel: heatModel,
                 heatHRModel: heatHRModel,
+                hrvNights: hrvNights,
                 formShifts: formShifts,
                 formRunCadenceResidual: formRunCadenceResidual,
                 weatherSnapshot: weatherSnapshot,
@@ -5770,6 +5771,8 @@ struct InsightExportSheet: View {
     var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     var heatModel: MRHeatModel? = nil
     var heatHRModel: MRHeatHRModel? = nil
+    /// 수면 HRV 밤별 중앙값 — 내보낸 카드의 총평이 앱 화면과 같은 문장을 내게(§5.8)
+    var hrvNights: [(date: Date, value: Double)] = []
     var formShifts: [MRFormShift] = []
     /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용 (`mrFormRunResidual`)
     var formRunCadenceResidual: Double? = nil
@@ -5980,6 +5983,7 @@ struct InsightExportSheet: View {
                 formShifts: formShifts,
                 effortIndex: effortIndex,
                 heatHRModel: heatHRModel,
+                hrvNights: hrvNights,
                 hrZonesFn: hrZonesFn,
                 raceDetailFn: raceDetailFn,
                 easyPaceLookup: easyPaceLookup,

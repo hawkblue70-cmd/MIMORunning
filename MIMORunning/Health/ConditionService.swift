@@ -111,7 +111,7 @@ struct ActivityCondition: Codable {
     var weather: WeatherSnapshot?
     var sleepScore: SleepScore?
     var hrvRecovery: HRVRecovery?
-    /// 수면/HRV 조회를 완료했음을 표시. 이전 캐시는 false로 디코딩되어 1회 재조회 후 true로 갱신.
+    /// 수면 조회를 완료했음을 표시(HRV는 더 이상 여기서 보지 않는다 — MRHRVTrend). 이전 캐시는 false로 디코딩되어 1회 재조회 후 true로 갱신.
     var sleepChecked: Bool = false
     /// 수면 점수 계산 공식 버전. 공식 변경 시 올려서 기존 캐시를 자동 무효화.
     /// 이전 캐시는 필드 없으므로 0으로 디코딩 → 자동 재계산 트리거.
