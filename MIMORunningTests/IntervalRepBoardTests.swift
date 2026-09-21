@@ -99,6 +99,16 @@ struct IntervalRepBoardTests {
         #expect(b.revealedCount(progress: 1) == 5)
     }
 
+    @Test func nineRepsSwitchToTwoColumns() throws {
+        let eight = segments(reps: 8, workM: 400); let t8 = total(eight)
+        let b8 = try #require(IntervalRepBoard.make(segments: eight, activityStart: eight[0].startDate, totalDistanceM: t8.m, totalDuration: t8.s))
+        #expect(b8.columns == 1)
+        let nine = segments(reps: 9, workM: 400); let t9 = total(nine)
+        let b9 = try #require(IntervalRepBoard.make(segments: nine, activityStart: nine[0].startDate, totalDistanceM: t9.m, totalDuration: t9.s))
+        #expect(b9.columns == 2)
+        #expect(b9.slotCount == 6)   // 5쌍(9회 → 5줄) + 바닥글
+    }
+
     @Test func slotsSingleColumnUpToTenThenPairs() throws {
         let five = segments(reps: 5); let t5 = total(five)
         let b5 = try #require(IntervalRepBoard.make(segments: five, activityStart: five[0].startDate, totalDistanceM: t5.m, totalDuration: t5.s))

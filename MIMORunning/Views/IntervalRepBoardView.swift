@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// 경로 1 영상 인터벌 회차 보드 — 미리보기·출력이 **이 뷰 하나**를 쓴다(§5.8).
-/// 글자는 왼쪽 열 러닝 데이터(9pt medium · 흰색 0.75)와 같은 크기에 한 단계 굵게(semibold), 음영·배경 없음.
+/// 글자는 왼쪽 열 러닝 데이터(9pt medium)보다 한 단계 크고 굵게(줄 10pt bold · 머리글/바닥글 10pt semibold), 음영·배경 없음.
+/// 회차 9개부터 두 열(쌍)로 나누고 심박 칸을 뺀다 — 높이는 스크림 안에, 폭은 오른쪽 스탬프 앞에서 멈추게.
 /// `revealed`: 보이는 회차 수(0…reps.count). 보이지 않는 줄은 투명(opacity 0)으로 자리를 지킨다 —
 /// 줄이 나타나도 레이아웃이 움직이지 않고, 출력에서 "뼈대만"과 "줄만" 두 렌더가 같은 위치를 갖는다.
 /// `renderMode`: `.full`(미리보기) / `.chromeOnly`(머리글·배경만, 줄은 투명) / `.rowsOnly`(줄만, 나머지 투명).
@@ -19,12 +20,16 @@ struct IntervalRepBoardView: View {
     private var L: AppLanguage { AppLanguage.shared }
 
     // 열 폭(scale=1): 회차 22 · 거리 40 · 페이스 44 · 심박 30
-    // 열 폭(scale=1): 회차 16 · 거리 36 · 페이스 40 · 심박 26 — 경로 1 왼쪽 열(112pt) 안에 들어가는 값
-    private var idxW: CGFloat { 20 * scale }   // "준비"·"정리" 두 글자가 들어가는 폭
+    // 열 폭(scale=1): 회차 20("준비"·"정리" 두 글자) · 거리 36 · 페이스 38 · 심박 28.
+    // 한 열이면 20+38+28 = 86, 두 열(심박 없음)이면 (20+38)×2+6 = 122 — 경로 1 왼쪽 열 옆 스탬프에 닿지 않는 폭.
+    private var idxW: CGFloat { 20 * scale }
     private var distW: CGFloat { 36 * scale }
-    private var paceW: CGFloat { 40 * scale }
-    private var hrW: CGFloat { 26 * scale }
-    private var colGap: CGFloat { 10 * scale }
+    private var paceW: CGFloat { 38 * scale }
+    private var hrW: CGFloat { 28 * scale }
+    private var colGap: CGFloat { 6 * scale }
+    /// 두 열이면 심박 칸을 뺀다 — 폭이 왼쳌 열을 넘어 스탬프와 겹치기 때문
+    private var showsHR: Bool { board.columns == 1 }
+    private var rowFont: Font { .system(size: 10 * scale, weight: .bold).monospacedDigit() }
 
     private var chromeOpacity: Double { renderMode == .rowsOnly ? 0 : 1 }
     private func rowOpacity(_ rep: IntervalRepBoard.Rep) -> Double {
@@ -53,7 +58,7 @@ struct IntervalRepBoardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // 머리글: "5 × 1km"
             Text(board.headerText)
-                .font(.system(size: 9 * scale, weight: .semibold).monospacedDigit())
+                .font(.system(size: 10 * scale, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Color.white.opacity(0.75))
                 .padding(.bottom, 2 * scale)
                 .opacity(chromeOpacity)
@@ -84,7 +89,7 @@ struct IntervalRepBoardView: View {
             // 바닥글: "평균 4'52"" — 마지막 회차와 함께
             if let footer = board.footerText {
                 Text(footer)
-                    .font(.system(size: 9 * scale, weight: .semibold).monospacedDigit())
+                    .font(.system(size: 10 * scale, weight: .semibold).monospacedDigit())
                     .foregroundStyle(Color.white.opacity(0.9))
                     .padding(.vertical, 1 * scale)
                     .opacity(footerOpacity)
@@ -108,11 +113,13 @@ struct IntervalRepBoardView: View {
             Text(e.paceSecPerKm.map { IntervalRepBoard.paceText($0) } ?? "–")
                 .foregroundStyle(Color.white.opacity(0.9))
                 .frame(width: paceW, alignment: .leading)
-            Text(e.avgHeartRate.map { "\($0)" } ?? "–")
-                .foregroundStyle(Color.white.opacity(0.9))
-                .frame(width: hrW, alignment: .trailing)
+            if showsHR {
+                Text(e.avgHeartRate.map { "\($0)" } ?? "–")
+                    .foregroundStyle(Color.white.opacity(0.9))
+                    .frame(width: hrW, alignment: .trailing)
+            }
         }
-        .font(.system(size: 9 * scale, weight: .semibold).monospacedDigit())
+        .font(rowFont)
     }
 
     @ViewBuilder
@@ -129,10 +136,12 @@ struct IntervalRepBoardView: View {
             Text(rep.paceSecPerKm.map { IntervalRepBoard.paceText($0) } ?? "–")
                 .foregroundStyle(Color.white)
                 .frame(width: paceW, alignment: .leading)
-            Text(rep.avgHeartRate.map { "\($0)" } ?? "–")
-                .foregroundStyle(Color.white.opacity(0.9))
-                .frame(width: hrW, alignment: .trailing)
+            if showsHR {
+                Text(rep.avgHeartRate.map { "\($0)" } ?? "–")
+                    .foregroundStyle(Color.white.opacity(0.9))
+                    .frame(width: hrW, alignment: .trailing)
+            }
         }
-        .font(.system(size: 9 * scale, weight: .semibold).monospacedDigit())
+        .font(rowFont)
     }
 }

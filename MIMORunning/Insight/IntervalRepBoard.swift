@@ -29,8 +29,8 @@ struct IntervalRepBoard: Equatable {
     /// 운동이 아닌 구간(준비·회복·정리)의 시간 범위 — 경로를 흐리게 그리는 데 쓴다. 러닝 시작 기준 초.
     let dimTimeRanges: [ClosedRange<TimeInterval>]
 
-    /// 한 열에 넣는 최대 회차 수. 넘으면 두 열(쌍)로.
-    static let maxSingleColumnRows = 10
+    /// 한 열에 넣는 최대 회차 수. 9회부터 두 열(쌍)로 — 두 열에서는 심박 칸을 뺀다(폭).
+    static let maxSingleColumnRows = 8
 
     // MARK: - 생성
 
