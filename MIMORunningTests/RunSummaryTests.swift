@@ -373,8 +373,31 @@ struct RunSummaryTests {
 
     @Test func hrvEvidenceAppendsSevenDayAndBaseline() {
         var i = restedInput(); i.hrvTrend = hrv(.within)
-        #expect(lines(i)[3].evidence?.hasSuffix(" · HRV 7일 37ms · 4주 30ms") == true)
-        inEnglish { #expect(lines(i)[3].evidence?.hasSuffix(" · HRV 7-day 37ms · 4-wk 30ms") == true) }
+        #expect(lines(i)[3].evidence?.hasSuffix(" · HRV 7일 37ms · 4주 30ms · 보통") == true)
+        inEnglish { #expect(lines(i)[3].evidence?.hasSuffix(" · HRV 7-day 37ms · 4-wk 30ms · normal") == true) }
+    }
+
+    @Test func hrvEvidenceGradeFollowsTrend() {
+        // 상태어는 본인 기준선 대비 — 위·안정=좋음, 아래=낮음, 불안정=불안정(위여도 억제가 먼저)
+        var i = restedInput()
+        i.hrvTrend = hrv(.above)
+        #expect(lines(i)[3].evidence?.hasSuffix(" · 좋음") == true)
+        i.hrvTrend = hrv(.below)
+        #expect(lines(i)[3].evidence?.hasSuffix(" · 낮음") == true)
+        i.hrvTrend = hrv(.above, volatile: true)
+        #expect(lines(i)[3].evidence?.hasSuffix(" · 불안정") == true)
+        // 안정 상승(밴드 안이지만 기준선 위 + 7일 CV가 4주의 절반 미만)도 좋음
+        i.hrvTrend = MRHRVTrend(state: .within, isVolatile: false, sevenDayMean: 27, baseline: 25, baselineSD: 5,
+                                sevenDayCV: 0.07, baselineCV: 0.18, sevenDayNights: 7, baselineNights: 28)
+        #expect(lines(i)[3].evidence?.hasSuffix(" · HRV 7일 27ms · 4주 25ms · 좋음") == true)
+    }
+
+    @Test func hrvStableRiseCountsAsReady() {
+        // 실기기 로그 케이스: 7일 27ms(CV 7%) · 4주 25±5ms(CV 18%) → 밴드 안이지만 안정 상승 → 이지 블록 문장
+        var i = restedInput(); i.hardRunsLast14 = 0; i.runsLast14 = 6
+        i.hrvTrend = MRHRVTrend(state: .within, isVolatile: false, sevenDayMean: 27, baseline: 25, baselineSD: 5,
+                                sevenDayCV: 0.07, baselineCV: 0.18, sevenDayNights: 7, baselineNights: 28)
+        #expect(lines(i)[3].next == "2주 이지런으로 회복이 쌓였어요. HRV가 4주 기준선 위로 안정적이라 이번 주 강도 세션 넣기 좋아요.")
     }
 
     @Test func hrvWithinKeepsRestedSentence() {

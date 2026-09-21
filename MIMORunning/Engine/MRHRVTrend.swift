@@ -44,8 +44,13 @@ struct MRHRVTrend: Equatable {
     let sevenDayNights: Int
     let baselineNights: Int
 
-    /// 위·안정 — 강도 세션 제안 조건
-    var isReadyHigh: Bool { state == .above && !isVolatile }
+    /// 안정 상승 — 기준선 위이면서 7일 변동계수가 4주의 절반 미만. 평균이 유지·상승하며 변동이 줄면
+    /// 훈련을 잘 소화하는 상태(Plews·Buchheit, Flatt·Esco). 밴드(±0.5SD)에는 못 미쳐도 "위·안정"으로 인정한다.
+    var isStableRise: Bool {
+        sevenDayMean > baseline && baselineCV > 0 && sevenDayCV < MRHRVTrend.stableRiseCVRatio * baselineCV
+    }
+    /// 위·안정 — 강도 세션 제안 조건. 밴드 위이거나 안정 상승.
+    var isReadyHigh: Bool { (state == .above && !isVolatile) || isStableRise }
     /// 아래 또는 불안정 — "충분히 회복" 억제 조건
     var isSuppressed: Bool { state == .below || isVolatile }
 
@@ -53,6 +58,7 @@ struct MRHRVTrend: Equatable {
     static let minBaselineNights = 14
     static let bandSD = 0.5
     static let volatileRatio = 1.5
+    static let stableRiseCVRatio = 0.5
     /// SD 하한 = 기준선의 10% — 4주가 너무 고르면 밴드가 0에 가까워져 판정이 튄다
     static let sdFloorFraction = 0.10
 }
@@ -107,19 +113,26 @@ func mrHRVTrend(nights: [(date: Date, value: Double)], asOf: Date,
 // MARK: - 최근 N일 고강도 횟수 (조언 큐용, MRWorkout 세계)
 
 /// 인터벌이거나 15°C 보정 평균심박이 LT1 이상이면 고강도. LT1이 없으면 인터벌만 센다.
-/// 창은 `asOf` 자정 기준 직전 `days`일(오늘 포함).
+/// 창은 `asOf` 자정 기준 직전 `days`일(오늘 포함). `lastHardDaysAgo`는 창 안 가장 최근 고강도까지의 일수(없으면 nil).
 func mrRecentHardRunCount(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                           days: Int, asOf: Date,
-                          calendar: Calendar = .current) -> (hard: Int, total: Int) {
+                          calendar: Calendar = .current) -> (hard: Int, total: Int, lastHardDaysAgo: Int?) {
     let today = calendar.startOfDay(for: asOf)
     var hard = 0, total = 0
+    var lastHard: Int? = nil
     for w in runs {
         let d = calendar.dateComponents([.day], from: w.date, to: today).day ?? Int.min
         guard d >= 0 && d < days else { continue }
         total += 1
-        if w.isInterval { hard += 1; continue }
         // refHR는 hrAvg가 nil일 때만 nil — 심박 없는 러닝은 고강도로 세지 않는다
-        if let lt1 = phys.lt1HR?.value, let hr = heatHR.refHR(of: w), hr >= lt1 { hard += 1 }
+        let overLT1: Bool = {
+            guard let lt1 = phys.lt1HR?.value, let hr = heatHR.refHR(of: w) else { return false }
+            return hr >= lt1
+        }()
+        if w.isInterval || overLT1 {
+            hard += 1
+            lastHard = min(lastHard ?? d, d)
+        }
     }
-    return (hard, total)
+    return (hard, total, lastHard)
 }

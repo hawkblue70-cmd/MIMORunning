@@ -340,7 +340,8 @@ final class MREngineStore: ObservableObject {
             }()
             print(String(format: "[HRV] 60일 %d밤 · 7일 평균 %.0fms(%d) · 4주 %.0f±%.0fms(%d) · CV 7일 %.0f%% / 4주 %.0f%% · %@%@",
                          hrvNights.count, t.sevenDayMean, t.sevenDayNights, t.baseline, t.baselineSD, t.baselineNights,
-                         t.sevenDayCV * 100, t.baselineCV * 100, stateStr, t.isVolatile ? "·불안정" : ""))
+                         t.sevenDayCV * 100, t.baselineCV * 100, stateStr,
+                         t.isVolatile ? "·불안정" : (t.isStableRise ? "·안정 상승" : "")))
         } else {
             print("[HRV] 60일 \(hrvNights.count)밤 · 추세 없음(7일 4밤·4주 14밤 미만)")
         }

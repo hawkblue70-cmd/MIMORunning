@@ -121,6 +121,30 @@ struct MRHRVTrendTests {
         #expect(t?.isSuppressed == true)
     }
 
+    @Test func stableRiseWithinBandIsReadyHigh() {
+        // 4주 ±5 지터(CV ≈ 0.17), 7일은 31로 고름(CV 0) → 밴드 안(SD≈5.1 → 경계 32.5)이지만 기준선 위 + 변동 급감
+        let t = mrHRVTrend(nights: series(base: 30, recent: 31, baseJitter: [5, -5]), asOf: Date())
+        #expect(t?.state == .within)
+        #expect(t?.isStableRise == true)
+        #expect(t?.isReadyHigh == true)
+        #expect(t?.isSuppressed == false)
+    }
+
+    @Test func stableButNotAboveBaselineIsNotReady() {
+        // 고르긴 해도 기준선 아래(29 < 30)면 안정 상승이 아니다
+        let t = mrHRVTrend(nights: series(base: 30, recent: 29, baseJitter: [5, -5]), asOf: Date())
+        #expect(t?.state == .within)
+        #expect(t?.isStableRise == false)
+        #expect(t?.isReadyHigh == false)
+    }
+
+    @Test func aboveBaselineButNotCalmerIsNotStableRise() {
+        // 기준선 위(31)여도 7일 변동이 4주의 절반 이상이면 안정 상승이 아니다 — 밴드 안이니 보통
+        let t = mrHRVTrend(nights: series(base: 30, recent: 31, baseJitter: [5, -5], recentJitter: [3, -3]), asOf: Date())
+        #expect(t?.isStableRise == false)
+        #expect(t?.isReadyHigh == false)
+    }
+
     @Test func windowsFollowAsOfNotToday() {
         // asOf = 10일 전이면 그 시점의 7일 창(−16…−10)은 4주 구간 값(30)이고, 최근 7일(37)은 보지 않는다.
         // 4주 창(−44…−17)에는 −34…−17의 18밤이 들어간다.
@@ -153,6 +177,14 @@ struct MRHRVTrendTests {
         let c = mrRecentHardRunCount(runs: runs, phys: phys, heatHR: MRHeatHRModel(), days: 14, asOf: Date())
         #expect(c.hard == 2)
         #expect(c.total == 3)
+        #expect(c.lastHardDaysAgo == 3)
+    }
+
+    @Test func lastHardDaysAgoIsNilWithoutHardRuns() {
+        let runs = [run(daysAgo: 1, hr: 140), run(daysAgo: 4, hr: 140)]
+        let c = mrRecentHardRunCount(runs: runs, phys: MRPhysiology(), heatHR: MRHeatHRModel(), days: 14, asOf: Date())
+        #expect(c.hard == 0)
+        #expect(c.lastHardDaysAgo == nil)
     }
 
     @Test func hardCountWithoutLT1CountsIntervalsOnly() {

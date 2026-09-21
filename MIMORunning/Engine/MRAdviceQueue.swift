@@ -189,9 +189,10 @@ func mrBuildAdvice(runs: [MRWorkout],
     // (Vesterinen 2016, HRV-guided vs predefined). 저강도 기간에는 HRV가 오른다(Plews·Buchheit).
     // ⚠ HRV는 회복 상태 지표이지 체력 지표가 아니다 — "체력이 늘었다"고 말하지 않는다. 등급 B.
     // 아래/불안정 조언은 여기 없다 — 총평 훈련부하 줄이 담당.
+    // 14일 고강도가 1회뿐이어도 그게 어제·오늘 러닝이면 제안하지 않는다 — 총평의 "마지막 고강도 2일 이상 전"과 같은 규칙.
     if let t = hrvTrend, t.isReadyHigh, days(last.date) <= 3 {
         let c = mrRecentHardRunCount(runs: runs, phys: phys, heatHR: heatHR, days: 14, asOf: asOf)
-        if c.hard <= 1 && c.total >= 4 {
+        if c.hard <= 1 && c.total >= 4 && (c.lastHardDaysAgo ?? Int.max) >= 2 {
             out.append(MRAdvice(key: "hrvReady",
                 text: "지난 2주는 이지런 위주였고 수면 HRV 7일 평균이 4주 기준선 위로 안정적이에요. 이번 주 강도 세션 하나 넣기 좋은 때예요.",
                 rationale: String(format: "HRV 7일 %.0fms · 4주 기준선 %.0fms · 14일 고강도 %d회 · Vesterinen 2016(HRV 기반 강도 조절) · 회복 지표이지 체력 지표는 아님",

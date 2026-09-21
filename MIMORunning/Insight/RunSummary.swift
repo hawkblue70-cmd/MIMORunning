@@ -434,12 +434,23 @@ enum RunSummary {
         }
         if let t = i.hrvTrend {
             let seven = Int(t.sevenDayMean.rounded()), base = Int(t.baseline.rounded())
-            parts.append(L.s("HRV 7일 \(seven)ms · 4주 \(base)ms", "HRV 7-day \(seven)ms · 4-wk \(base)ms"))
+            // 상태어는 본인 4주 기준선 대비다 — 절대 등급이 아니다. 좋음(위·안정) / 불안정 / 낮음(아래) / 보통(범위 안)
+            let grade = hrvGradeLabel(t)
+            parts.append(L.s("HRV 7일 \(seven)ms · 4주 \(base)ms · \(grade)", "HRV 7-day \(seven)ms · 4-wk \(base)ms · \(grade)"))
         }
         if i.todayEffortMissing, !parts.isEmpty {
             parts.append(L.s("오늘 러닝 미포함", "today's run not included"))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// HRV 근거 상태어 — 본인 4주 기준선 대비 관찰어. 억제(아래·불안정)가 좋음보다 먼저다.
+    static func hrvGradeLabel(_ t: MRHRVTrend) -> String {
+        let L = AppLanguage.shared
+        if t.isVolatile { return L.s("불안정", "unstable") }
+        if t.state == .below { return L.s("낮음", "low") }
+        if t.isReadyHigh { return L.s("좋음", "good") }
+        return L.s("보통", "normal")
     }
 
     /// 계획상 회복/테이퍼 주 > 급증/단조/장기 연속 > 충분한 회복 순으로 다음 행동을 고른다.

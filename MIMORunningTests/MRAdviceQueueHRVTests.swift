@@ -76,6 +76,29 @@ struct MRAdviceQueueHRVTests {
         #expect(a?.rationale.contains("14일 고강도 1회") == true)
     }
 
+    @Test func noAdviceWhenTheOnlyHardRunWasYesterday() {
+        // 14일 고강도 1회라도 그게 어제면 "강도 넣기 좋은 때"가 아니다 — 총평의 마지막 고강도 2일 이상 전 규칙과 같다
+        var runs = easyBlock()
+        runs[5] = run(daysAgo: 1, interval: true)
+        #expect(hrvAdvice(build(runs: runs, trend: trend(state: .above))) == nil)
+    }
+
+    @Test func hardRunTwoDaysAgoStillAllowsAdvice() {
+        var runs = easyBlock()
+        runs[4] = run(daysAgo: 2, interval: true)   // 3일 전 자리를 2일 전 인터벌로
+        runs.sort { $0.start < $1.start }
+        #expect(hrvAdvice(build(runs: runs, trend: trend(state: .above))) != nil)
+    }
+
+    @Test func stableRiseTrendGivesAdvice() {
+        // 밴드 안이지만 기준선 위 + 7일 CV가 4주의 절반 미만(실기기 로그 케이스)
+        let t = MRHRVTrend(state: .within, isVolatile: false, sevenDayMean: 27, baseline: 25, baselineSD: 5,
+                           sevenDayCV: 0.07, baselineCV: 0.18, sevenDayNights: 7, baselineNights: 28)
+        let a = hrvAdvice(build(runs: easyBlock(), trend: t))
+        #expect(a != nil)
+        #expect(a?.rationale.hasPrefix("HRV 7일 27ms · 4주 기준선 25ms") == true)
+    }
+
     @Test func noAdviceWhenFewerThanFourRuns() {
         let runs = [run(daysAgo: 9), run(daysAgo: 5), run(daysAgo: 1)]
         #expect(hrvAdvice(build(runs: runs, trend: trend(state: .above))) == nil)
