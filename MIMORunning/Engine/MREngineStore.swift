@@ -885,7 +885,7 @@ final class MREngineStore: ObservableObject {
                                log: adviceLog, asOf: now)
         todayCard = buildTodayCard(runs: runs, now: now)
         #if DEBUG
-        print("[HRV] 앞으로 옴 → 재조회 \(nights.count)밤 · 오늘 밤 \(hrvNights.last.map { Calendar.current.isDateInToday($0.date) } ?? false ? "있음" : "없음")")
+        print("[HRV] 앞으로 옴 → 재조회 \(nights.count)밤 · 오늘 밤 \(hrvNights.contains { Calendar.current.isDateInToday($0.date) } ? "있음" : "없음")")
         #endif
     }
 
