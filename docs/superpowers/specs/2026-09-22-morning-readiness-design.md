@@ -32,11 +32,11 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
 | `ranToday` | 오늘 달력일에 러닝이 있음 | `runs` |
 | `lastHardDaysAgo` | 14일 창 마지막 고강도까지 일수 | `mrRecentHardRunCount` (기존) |
 | `consecutiveDays` | 오늘 또는 어제로 끝나는 연속 러닝 일수 | 새 `mrConsecutiveRunDays` |
-| `acwr` | 최근 7일 분 합 ÷ (직전 28일 분 합 ÷ 4). 28일에 러닝이 없으면 nil | 새 `mrDurationAcuteChronic` |
+| `acwr` | 최근 7일 분 합 ÷ (직전 28일 분 합 ÷ 4). 4주(7…13/14…20/21…27/28…34) 중 러닝 있는 주가 3 미만이면 nil — 빈 주로 평균이 깎여 평소 부하가 급증처럼 보이는 것 방지(`EffortLoad.minChronicWeeks`와 같은 규칙) | 새 `mrDurationAcuteChronic` |
 | `rising` | 최근 7일 분 합 ≥ 직전 7일 분 합 × 1.15 (직전 7일이 0이면 false) | 같은 함수 |
 | `trend` | `mrHRVTrend(nights:asOf:)` | 기존 |
 | `lastNightLow` | 오늘 키 밤 값 < 기준선 − 1.0 × max(SD, 10%·기준선). 추세 없거나 오늘 밤 없으면 false | `hrvNights` + `trend` (결정 3) |
-| `hrvPending` | `hrvNights`에 오늘 키가 없음 | `hrvNights` (결정 4) |
+| `hrvPending` | `hrvNights`가 비어 있지 않은데 오늘 키가 없음(자료 자체가 없는 사용자에겐 안 붙임). 오늘 키는 `last`가 아니라 검색으로 찾는다 — 15시 이후 샘플은 내일 키로 묶여 `last`가 내일일 수 있다 | `hrvNights` (결정 4) |
 
 ### 2.2 규칙 (위에서 첫 매치)
 | # | 조건 | 판정 | 근거 조각 |
@@ -57,7 +57,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
 
 ### 2.3 문장
 - go: `오늘은 강도 OK` / easy: `오늘은 이지런` / rest: `오늘은 휴식이나 짧은 이지`
-- `line` = 판정어 + " · " + reasons.joined(" · "). 영어: `Today: hard is OK` / `Today: easy run` / `Today: rest or a short easy run`, 근거는 `HRV good` / `HRV normal` / `HRV low` / `HRV unstable` / `last night's HRV unusually low` / `last hard run N days ago` / `hard run yesterday` / `load rising` / `load spike` / `N days in a row` / `race plan: recovery week` / `race plan: taper week` / `last night's HRV not synced yet`.
+- `line` = 판정어 + " · " + reasons.joined(" · "). 영어: `Today: hard is OK` / `Today: easy run` / `Today: rest or a short easy run`, 근거는 `HRV good` / `HRV normal` / `HRV low` / `HRV unstable` / `last night's HRV unusually low` / `last hard run N days ago` / `hard run yesterday` / `load rising` / `load spike` / `N days in a row` / `race plan: recovery week` / `race plan: taper week` / `last night's HRV not synced yet` / 규칙 7 easy: `hard run N days ago` · `one more easy day`.
 - 의료 표현 없음. "제안"이지 지시가 아니다 — 문장에 "해야"를 쓰지 않는다.
 
 ## 3. 데이터 신선도 (결정 4)
