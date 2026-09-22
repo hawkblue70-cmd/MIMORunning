@@ -132,7 +132,8 @@ struct ActivityDetailView: View {
 
     /// displayZones(비동기 계산) 우선, 없으면 detail.hrZones, 최후 동기 폴백.
     /// 운동 후 심박 회복 로드 — 종료 후 60초 샘플이 있으면 1·2분 낙폭 숫자는 **항상** 만든다(관찰 사실).
-    /// 해석(평소 범위 밴드·곡선 모양·"평소대로 내려왔어요")만 종료 심박이 최대심박 80% 이상일 때 한다 —
+    /// 평소 범위 띠(빨간 상자)도 항상 — 종료심박을 회귀로 통제한 범위라서. 곡선 모양·"평소대로 내려왔어요"·τ 분위만
+    /// 종료 심박이 최대심박 80% 이상일 때 한다 —
     /// 존 2에서 편하게 끝난 러닝의 작은 낙폭을 과거 고강도 회복 분포와 비교하면 뜻이 없다(사용자 결정 2026-09-22).
     /// 과거 분포(recoveryDropHistory·recoveryTauHistory)는 매니저 쪽에서 같은 80% 규칙으로 걸러져 있다.
     private func loadRecovery() async {
@@ -155,12 +156,7 @@ struct ActivityDetailView: View {
             print("[회복:모양] 없음 — \(why)")
         }
         #endif
-        guard let r = recoveryResult, interpretable else {
-            #if DEBUG
-            if recoveryResult != nil { print(String(format: "[회복] 종료심박 %.0f — 최대심박 80%% 미만이라 숫자만, 밴드·모양 해석 생략", endHR)) }
-            #endif
-            return
-        }
+        guard let r = recoveryResult else { return }
         Task {
             let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
             let drops = await manager.recoveryDropHistory(from: start, excluding: activity.id)
@@ -174,6 +170,14 @@ struct ActivityDetailView: View {
                          r.endHR, desc(bands.minute1), desc(bands.minute2)))
             print("[회복:밴드] 전체 \(drops.count)건 (2분 \(drops.filter { $0.hrr2 != nil }.count)건) · 필요 \(MRRecovery.minObs)")
             #endif
+            // 평소 범위 띠(빨간 상자)는 종료심박을 회귀로 통제한 범위라 종료 강도와 무관하게 그린다 — "띠는 범위일 뿐, 판단은 러너가".
+            // 곡선 모양·"평소대로 내려왔어요"·τ 분위(해석)만 종료 심박 80% 규칙 안에서.
+            guard interpretable else {
+                #if DEBUG
+                print(String(format: "[회복] 종료심박 %.0f — 최대심박 80%% 미만이라 숫자·띠만, 곡선 모양 해석 생략", r.endHR))
+                #endif
+                return
+            }
             guard let d = r.decay else { return }
             let taus = await manager.recoveryTauHistory(from: start, excluding: activity.id)
             let shape = MRRecoveryShape(r, percentile: MRRecovery.tauPercentile(d.tau, history: taus))
