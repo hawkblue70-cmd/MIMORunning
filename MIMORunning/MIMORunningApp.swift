@@ -179,7 +179,12 @@ struct MIMORunningApp: App {
                     .environment(crewNickname)
                     .task { await engine.refresh() }
                     .onChange(of: scenePhase) { _, phase in
-                        if phase == .active { Task { await engine.refreshHRVIfStale() } }
+                        if phase == .active {
+                            Task {
+                                await engine.refreshHRVIfStale()
+                                await engine.refreshRunsIfNeeded()   // 켜둔 채 러닝을 마치고 돌아온 경우 — 오늘 카드 거리 행 갱신
+                            }
+                        }
                     }
                     .preferredColorScheme(.dark)
             }

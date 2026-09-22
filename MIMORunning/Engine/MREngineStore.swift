@@ -914,6 +914,34 @@ final class MREngineStore: ObservableObject {
         #endif
     }
 
+    /// 앱을 켜둔 채 러닝을 마치고 돌아온 경우 — 기록 탭에 새 러닝이 들어오거나 앱이 앞으로 올 때 부른다.
+    /// 워크아웃을 증분으로 다시 읽어(캐시 히트면 오늘 것 하나만 HealthKit 조회) 목록이 달라졌을 때만
+    /// 조언·오늘 카드(이번 주·이번 달·올해·누적 거리 행)를 다시 만든다. 전체 refresh(state=.loading)는 하지 않는다 —
+    /// 화면이 깜빡이지 않고, 예측·레벨 같은 무거운 2단계는 그대로 둔다.
+    private var isRefreshingRuns = false
+    func refreshRunsIfNeeded() async {
+        guard case .ready = state, !isRefreshingRuns else { return }
+        isRefreshingRuns = true
+        defer { isRefreshingRuns = false }
+        guard let fetched = try? await hk.fetchRunsIncremental() else { return }
+        let changed = fetched.count != runs.count || fetched.last?.start != runs.last?.start
+        #if DEBUG
+        print("[오늘카드] 러닝 증분 재읽기 — \(runs.count)→\(fetched.count)건 · \(changed ? "갱신" : "변화 없음")")
+        #endif
+        guard changed else { return }
+        runs = fetched
+        let now = Date()
+        advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
+                               races: userInput.races,
+                               gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
+                               fatigue: storedFatigue, cadenceShift: storedCadenceShift,
+                               heatHR: heatHR,
+                               hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
+                               hardRunStarts: hardRunStarts,
+                               log: adviceLog, asOf: now)
+        todayCard = buildTodayCard(runs: runs, now: now)
+    }
+
     // 언어가 바뀌었을 때 HealthKit 재읽기 없이 todayCard 문자열만 재생성한다.
     func recomputeTodayCard() {
         guard case .ready = state else { return }

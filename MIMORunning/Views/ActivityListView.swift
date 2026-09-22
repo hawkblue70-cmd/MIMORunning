@@ -319,7 +319,11 @@ private struct ActivityListContent: View {
         .onChange(of: showHiking)   { _, _ in displayCount = 50 }
         .onAppear { pushHardRunStarts() }
         .onChange(of: stories.map(\.effortRPE)) { _, _ in pushHardRunStarts() }
-        .onChange(of: manager.activities.count) { _, _ in pushHardRunStarts() }
+        .onChange(of: manager.activities.count) { _, _ in
+            pushHardRunStarts()
+            // 새 러닝이 목록에 들어오면 오늘 카드의 거리 행(이번 주·이번 달·올해·누적)도 같은 러닝을 보게 — 앱 재시작 없이
+            Task { await engine.refreshRunsIfNeeded() }
+        }
         .onChange(of: engine.isReady) { _, isReady in
             guard isReady else { return }
             pushHardRunStarts()
