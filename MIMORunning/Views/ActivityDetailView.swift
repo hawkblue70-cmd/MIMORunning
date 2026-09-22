@@ -131,11 +131,14 @@ struct ActivityDetailView: View {
     private var level: LevelBucket { manager.userLevel.bucket }
 
     /// displayZones(비동기 계산) 우선, 없으면 detail.hrZones, 최후 동기 폴백.
-    /// 운동 후 심박 회복 로드 — 종료 심박이 자격(최대심박 80%)을 넘고 60초 샘플이 있을 때만 결과가 생긴다.
+    /// 운동 후 심박 회복 로드 — 종료 후 60초 샘플이 있으면 1·2분 낙폭 숫자는 **항상** 만든다(관찰 사실).
+    /// 해석(평소 범위 밴드·곡선 모양·"평소대로 내려왔어요")만 종료 심박이 최대심박 80% 이상일 때 한다 —
+    /// 존 2에서 편하게 끝난 러닝의 작은 낙폭을 과거 고강도 회복 분포와 비교하면 뜻이 없다(사용자 결정 2026-09-22).
+    /// 과거 분포(recoveryDropHistory·recoveryTauHistory)는 매니저 쪽에서 같은 80% 규칙으로 걸러져 있다.
     private func loadRecovery() async {
         guard recoveryResult == nil, !isLoadingRecovery,
-              let endHR = MRRecovery.endHR(series: hrSamples, duration: activity.duration),
-              MRRecovery.isEligible(endHR: endHR, maxHR: manager.estimatedMaxHR.map(Double.init)) else { return }
+              let endHR = MRRecovery.endHR(series: hrSamples, duration: activity.duration) else { return }
+        let interpretable = MRRecovery.isEligible(endHR: endHR, maxHR: manager.estimatedMaxHR.map(Double.init))
         isLoadingRecovery = true
         defer { isLoadingRecovery = false }
         let post = await manager.fetchPostWorkoutHR(for: activity.id)
@@ -152,7 +155,12 @@ struct ActivityDetailView: View {
             print("[회복:모양] 없음 — \(why)")
         }
         #endif
-        guard let r = recoveryResult else { return }
+        guard let r = recoveryResult, interpretable else {
+            #if DEBUG
+            if recoveryResult != nil { print(String(format: "[회복] 종료심박 %.0f — 최대심박 80%% 미만이라 숫자만, 밴드·모양 해석 생략", endHR)) }
+            #endif
+            return
+        }
         Task {
             let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
             let drops = await manager.recoveryDropHistory(from: start, excluding: activity.id)
