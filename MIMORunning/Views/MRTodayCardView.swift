@@ -16,6 +16,15 @@ struct MRTodayCardView: View {
         return (f.string(from: NSNumber(value: v)) ?? String(Int(v)), unit)
     }
 
+    /// 아침 제안 색 — 초록(강도 OK)·노랑(이지런)·주황(휴식).
+    private func readinessColor(_ level: MRReadiness.Level) -> Color {
+        switch level {
+        case .go:   return Theme.positive
+        case .easy: return Theme.time
+        case .rest: return Color(hex: "FF9A3C")
+        }
+    }
+
     var body: some View {
         if let c = engine.todayCard {
             VStack(alignment: .leading, spacing: 0) {
@@ -27,6 +36,14 @@ struct MRTodayCardView: View {
                 Text(c.streakLine)
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
+
+                // 아침 제안 — 연속 줄 바로 아래 한 줄. 색은 판정별(초록/노랑/주황). 오늘 뛴 날엔 없다.
+                if let line = c.readinessLine, let level = c.readinessLevel {
+                    Text(line)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(readinessColor(level))
+                        .padding(.top, 6)
+                }
                 // 거리 행 — 이번 주 · 이번 달 · 올해 · 누적. 0km 칸은 엔진에서 이미 빠져 있고
                 // 남은 칸이 폭을 나눠 갖는다.
                 //   라벨 mrInk2(0.72) / 값 mrInk1(흰) / 누적 값만 노랑 — 색 규칙 "노랑 = 실제로 한 것",

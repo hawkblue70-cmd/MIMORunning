@@ -9,6 +9,7 @@ struct MIMORunningApp: App {
     @State private var miniMeStore = CustomMiniMeStore()
     @State private var crewNickname = CrewNicknameManager()
     @StateObject private var engine = MREngineStore()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // 영상 미리보기 오디오: .ambient = 무음 스위치 자동 반영, 백그라운드 음악과 혼합.
@@ -177,6 +178,9 @@ struct MIMORunningApp: App {
                     .environment(miniMeStore)
                     .environment(crewNickname)
                     .task { await engine.refresh() }
+                    .onChange(of: scenePhase) { _, phase in
+                        if phase == .active { Task { await engine.refreshHRVIfStale() } }
+                    }
                     .preferredColorScheme(.dark)
             }
         }

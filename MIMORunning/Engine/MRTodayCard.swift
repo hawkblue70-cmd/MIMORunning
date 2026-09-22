@@ -20,6 +20,9 @@ struct MRTodayCard {
     let distanceCells: [DistanceCell] // ① 0km인 칸은 빠져 있다. 누적은 항상 있다.
     let sessionLine: String?         // ② 오늘 뛰었으면 기록 한 줄, 아니면 이번 주 요약
     let linkLine: String?            // ②
+    /// 아침 제안 — 연속 줄 바로 아래. 오늘 뛴 날·러닝 없음·판정 불가면 nil.
+    let readinessLine: String?
+    let readinessLevel: MRReadiness.Level?
 
     /// 러닝 기록 줄을 "오늘"로 치는 시간 — 러닝 **종료** 후 이만큼. 달력상 자정이 아니다.
     /// 이 안에 다시 뛰면 가장 최근 러닝으로 교체된다(`runs.last`).
@@ -89,7 +92,10 @@ func mrTodayCard(runs: [MRWorkout],
                  plans: [MRRacePlan],
                  raceDayCardVisible: Bool,
                  advice: [MRAdvice],
-                 asOf: Date) -> MRTodayCard? {
+                 asOf: Date,
+                 heatHR: MRHeatHRModel = MRHeatHRModel(),
+                 hrvNights: [(date: Date, value: Double)] = [],
+                 planPhase: String? = nil) -> MRTodayCard? {
 
     guard let last = runs.last else { return nil }
     let cal = Calendar.current
@@ -155,6 +161,11 @@ func mrTodayCard(runs: [MRWorkout],
               )
     }
 
+    // ── 아침 제안 — 오늘 아직 안 뛴 날에만. 종류는 고르지 않고 강도만 연다.
+    let readiness = mrReadiness(runs: runs, phys: phys, heatHR: heatHR, hrvNights: hrvNights,
+                                planPhase: planPhase, asOf: asOf)
+
     return MRTodayCard(streakLine: streakLine, distanceCells: distanceCells,
-                       sessionLine: sessionLine, linkLine: linkLine)
+                       sessionLine: sessionLine, linkLine: linkLine,
+                       readinessLine: readiness?.line, readinessLevel: readiness?.level)
 }

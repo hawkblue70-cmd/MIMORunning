@@ -319,7 +319,9 @@ final class MREngineStore: ObservableObject {
             hrvLastFetchedAt = persisted.fetchedAt
         }
         let hrvAge = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
-        if hrvNights.isEmpty || hrvAge >= 24 * 3600 {
+        // 오늘 키의 밤이 없으면(워치가 아침에 동기화) 24시간 안이어도 다시 읽는다 — 아침 제안이 어젯밤을 봐야 한다
+        let hasTonight = hrvNights.last.map { Calendar.current.isDateInToday($0.date) } ?? false
+        if hrvNights.isEmpty || hrvAge >= 24 * 3600 || !hasTonight {
             let t0 = CFAbsoluteTimeGetCurrent()
             let raw = (try? await hk.fetchSleepHRV()) ?? []
             let nights = mrHRVNightMedians(samples: raw)
@@ -483,10 +485,7 @@ final class MREngineStore: ObservableObject {
         //   판정 시점에 기록하면 화면에 뜬 적 없는 항목이 "보여줬다"로 기록돼
         //   신선도가 차감되어 영영 노출되지 않는다.
         raceDayCard = computeRaceDayCard(plans: plans, asOf: now)
-        let raceDayVisible = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
-        todayCard = mrTodayCard(runs: fetched, phys: phys, plans: plans,
-                                raceDayCardVisible: raceDayVisible,
-                                advice: advice, asOf: now)
+        todayCard = buildTodayCard(runs: fetched, now: now)
 
         #if DEBUG
         print("[추론] 레벨 \(profileFull.level) · 모드 \(profileFull.mode) · 노력 \(efforts.count)건 · 예측 \(predictions.count)건")
@@ -543,10 +542,7 @@ final class MREngineStore: ObservableObject {
                                hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
-        let raceDayVisible2 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
-        todayCard = mrTodayCard(runs: runs, phys: phys, plans: plans,
-                                raceDayCardVisible: raceDayVisible2,
-                                advice: advice, asOf: now)
+        todayCard = buildTodayCard(runs: runs, now: now)
 
         #if DEBUG
         let sorted14 = runs.sorted { $0.date < $1.date }
@@ -851,20 +847,53 @@ final class MREngineStore: ObservableObject {
                                hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
-        let raceDayVisible3 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
-        todayCard = mrTodayCard(runs: runs, phys: phys, plans: plans,
-                                raceDayCardVisible: raceDayVisible3,
-                                advice: advice, asOf: now)
+        todayCard = buildTodayCard(runs: runs, now: now)
+    }
+
+    /// 오늘 카드 생성 — 호출부 5곳이 이 하나만 쓴다(대회 D-day 가시성·아침 제안 입력을 한 곳에서).
+    private func buildTodayCard(runs: [MRWorkout], now: Date) -> MRTodayCard? {
+        let raceDayVisible = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
+        return mrTodayCard(runs: runs, phys: phys, plans: plans,
+                           raceDayCardVisible: raceDayVisible,
+                           advice: advice, asOf: now,
+                           heatHR: heatHR, hrvNights: hrvNights,
+                           planPhase: governingPlanWeek(for: now)?.week.phase)
+    }
+
+    /// 앱이 앞으로 올 때 — 오늘 키의 밤이 아직 없고 마지막 조회가 30분 이상 전이면 HRV만 다시 읽고 조언·오늘 카드를 다시 만든다.
+    /// HealthKit 전체 재읽기는 하지 않는다.
+    func refreshHRVIfStale() async {
+        guard case .ready = state else { return }
+        let hasTonight = hrvNights.last.map { Calendar.current.isDateInToday($0.date) } ?? false
+        let age = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        guard !hasTonight, age >= 30 * 60 else { return }
+        let raw = (try? await hk.fetchSleepHRV()) ?? []
+        let nights = mrHRVNightMedians(samples: raw)
+        let fetchedAt = Date()
+        hrvLastFetchedAt = fetchedAt
+        if !nights.isEmpty {
+            hrvNights = nights
+            persistHRV(fetchedAt: fetchedAt, nights: nights)
+        }
+        let now = Date()
+        advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
+                               races: userInput.races,
+                               gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
+                               fatigue: storedFatigue, cadenceShift: storedCadenceShift,
+                               heatHR: heatHR,
+                               hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
+                               log: adviceLog, asOf: now)
+        todayCard = buildTodayCard(runs: runs, now: now)
+        #if DEBUG
+        print("[HRV] 앞으로 옴 → 재조회 \(nights.count)밤 · 오늘 밤 \(hrvNights.last.map { Calendar.current.isDateInToday($0.date) } ?? false ? "있음" : "없음")")
+        #endif
     }
 
     // 언어가 바뀌었을 때 HealthKit 재읽기 없이 todayCard 문자열만 재생성한다.
     func recomputeTodayCard() {
         guard case .ready = state else { return }
         let now = Date()
-        let raceDayVisible = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
-        todayCard = mrTodayCard(runs: runs, phys: phys, plans: plans,
-                                raceDayCardVisible: raceDayVisible,
-                                advice: advice, asOf: now)
+        todayCard = buildTodayCard(runs: runs, now: now)
     }
 
     // MARK: - 대회·목표 변경 (HealthKit 재읽기 없음)
@@ -923,10 +952,7 @@ final class MREngineStore: ObservableObject {
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         raceDayCard = computeRaceDayCard(plans: plans, asOf: now)
-        let raceDayVisible4 = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
-        todayCard = mrTodayCard(runs: runs, phys: phys, plans: plans,
-                                raceDayCardVisible: raceDayVisible4,
-                                advice: advice, asOf: now)
+        todayCard = buildTodayCard(runs: runs, now: now)
     }
 
     // MARK: - 내부 헬퍼

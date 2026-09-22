@@ -117,4 +117,28 @@ final class MRTodayCardTests: XCTestCase {
         let r = run(start: date("2026-09-12 09:00"))
         XCTAssertNil(card(runs: [r], asOf: date("2026-09-11 20:00"))?.sessionLine)
     }
+
+    // MARK: - 아침 제안 줄
+
+    /// HRV 밤 시계열과 심박 모델을 넘기면 연속 줄 아래 제안 줄이 채워진다. 오늘 뛴 날엔 nil.
+    func testReadinessLineFilledInTheMorningAndNilAfterRunningToday() throws {
+        let cal = Calendar.current
+        let morning = date("2026-09-15 08:00")
+        func d(_ off: Int) -> Date { cal.startOfDay(for: cal.date(byAdding: .day, value: off, to: morning)!) }
+        // 만성 부하(−34…−7)가 4주 모두 자료가 있어야 급증으로 오판되지 않는다(9회만 있으면 acwr 1.33 > 1.3로 rest).
+        let runs = [34, 32, 29, 27, 25, 22, 20, 18, 15, 13, 11, 8, 6, 3, 1].map { run(start: d(-$0).addingTimeInterval(7 * 3600)) }
+        var nights: [(date: Date, value: Double)] = []
+        for i in 0..<28 { nights.append((d(-34 + i), 30 + (i % 2 == 0 ? 1 : -1))) }
+        for i in 0..<7 { nights.append((d(-6 + i), 37)) }
+
+        let c = try XCTUnwrap(mrTodayCard(runs: runs, phys: MRPhysiology(), plans: [], raceDayCardVisible: false,
+                                          advice: [], asOf: morning, heatHR: MRHeatHRModel(), hrvNights: nights, planPhase: nil))
+        XCTAssertEqual(c.readinessLevel, .go)
+        XCTAssertEqual(c.readinessLine, L("오늘은 강도 OK · HRV 좋음", "Today: hard is OK · HRV good"))
+
+        let ranToday = runs + [run(start: date("2026-09-15 07:00"))]
+        let c2 = try XCTUnwrap(mrTodayCard(runs: ranToday, phys: MRPhysiology(), plans: [], raceDayCardVisible: false,
+                                           advice: [], asOf: date("2026-09-15 09:00"), heatHR: MRHeatHRModel(), hrvNights: nights, planPhase: nil))
+        XCTAssertNil(c2.readinessLine)
+    }
 }
