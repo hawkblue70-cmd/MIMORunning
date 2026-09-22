@@ -21,9 +21,9 @@ struct MRReadinessTests {
                   hrAvg: hr, hrMax: 170, tempC: 15, humidity: nil, indoor: false, isInterval: interval)
     }
 
-    /// 4주간 2~3일 간격 이지런, 마지막은 어제. 분 합이 고르다(급증·상승 없음).
+    /// 5주간 주 3회 이지런(50분), 마지막은 어제. 만성 4주(7…34일)가 모두 채워져 분 비율이 1.0 — 급증·상승 없음.
     private func steadyRuns() -> [MRWorkout] {
-        [27, 25, 22, 20, 18, 15, 13, 11, 8, 6, 3, 1].map { run(daysAgo: $0) }
+        [34, 32, 29, 27, 25, 22, 20, 18, 15, 13, 11, 8, 6, 3, 1].map { run(daysAgo: $0) }
     }
 
     /// 4주(−34…−7) base, 7일(−6…0) recent. `todayNight: false`면 오늘 키 밤을 뺀다(동기화 전).
@@ -77,7 +77,8 @@ struct MRReadinessTests {
 
     @Test func fourConsecutiveDaysIsRestEvenWithGoodHRV() {
         var runs = steadyRuns()
-        runs.append(contentsOf: [run(daysAgo: 4), run(daysAgo: 2)])   // 1·2·3·4일 전 연속
+        // 1·2·3·4일 전 연속. 끼워 넣는 두 번은 20분 — 최근 7일 분 합이 급증(1.3배)에 걸리지 않게(190/150 = 1.27)
+        runs.append(contentsOf: [run(daysAgo: 4, minutes: 20), run(daysAgo: 2, minutes: 20)])
         runs.sort { $0.start < $1.start }
         let r = readiness(runs: runs, nights: nights(base: 30, recent: 37))
         #expect(r?.level == .rest)
@@ -127,17 +128,18 @@ struct MRReadinessTests {
     }
 
     @Test func risingLoadWithNormalHRVIsEasy() {
-        // 직전 7일 짧고 최근 7일 길지만 4주 대비 급증은 아님
-        var runs = [27, 25, 22, 20, 18, 15].map { run(daysAgo: $0, minutes: 60) }
+        // 직전 7일 짧고(90분) 최근 7일 길지만(180분) 4주 대비 급증은 아님(만성 630/4 = 157.5 → 1.14)
+        var runs = [34, 32, 29, 27, 25, 22, 20, 18, 15].map { run(daysAgo: $0, minutes: 60) }
         runs.append(contentsOf: [13, 11, 8].map { run(daysAgo: $0, minutes: 30) })
         runs.append(contentsOf: [6, 3, 1].map { run(daysAgo: $0, minutes: 60) })
-        let r = readiness(runs: runs, nights: nights(base: 30, recent: 31))
+        // HRV는 기준선과 같은 30 — 위도 안정 상승도 아님
+        let r = readiness(runs: runs, nights: nights(base: 30, recent: 30))
         #expect(r?.level == .easy)
         #expect(r?.reasons.first == "부하 오르는 중")
     }
 
     @Test func risingLoadWithGoodHRVIsGo() {
-        var runs = [27, 25, 22, 20, 18, 15].map { run(daysAgo: $0, minutes: 60) }
+        var runs = [34, 32, 29, 27, 25, 22, 20, 18, 15].map { run(daysAgo: $0, minutes: 60) }
         runs.append(contentsOf: [13, 11, 8].map { run(daysAgo: $0, minutes: 30) })
         runs.append(contentsOf: [6, 3, 1].map { run(daysAgo: $0, minutes: 60) })
         let r = readiness(runs: runs, nights: nights(base: 30, recent: 37))
@@ -159,16 +161,18 @@ struct MRReadinessTests {
     }
 
     @Test func normalHRVIsGoWhenLoadHasRoom() {
+        // HRV는 기준선과 같은 30(범위 안, 안정 상승 아님) · 마지막 고강도 6일 전 → 부하가 넉넉하니 강도 OK
         var runs = steadyRuns(); runs[runs.count - 3] = run(daysAgo: 6, interval: true)
-        let r = readiness(runs: runs, nights: nights(base: 30, recent: 31))
+        let r = readiness(runs: runs, nights: nights(base: 30, recent: 30))
         #expect(r?.level == .go)
         #expect(r?.line == "오늘은 강도 OK · HRV 보통 · 마지막 고강도 6일 전")
     }
 
     @Test func normalHRVIsEasyWhenHardWasTwoDaysAgo() {
-        var runs = steadyRuns(); runs[runs.count - 1] = run(daysAgo: 1); runs.append(run(daysAgo: 2, interval: true))
+        // 2일 전 인터벌 20분을 끼워 넣는다(급증 아님: 170/150) · HRV 범위 안(30)
+        var runs = steadyRuns(); runs.append(run(daysAgo: 2, minutes: 20, interval: true))
         runs.sort { $0.start < $1.start }
-        let r = readiness(runs: runs, nights: nights(base: 30, recent: 31))
+        let r = readiness(runs: runs, nights: nights(base: 30, recent: 30))
         #expect(r?.level == .easy)
         #expect(r?.line == "오늘은 이지런 · 고강도 2일 전 · 하루 더 여유")
     }
@@ -198,6 +202,12 @@ struct MRReadinessTests {
     @Test func consecutiveDaysIsZeroWhenLastRunTwoDaysAgo() {
         let runs = [4, 3, 2].map { run(daysAgo: $0) }
         #expect(mrConsecutiveRunDays(runs: runs, asOf: now) == 0)
+    }
+
+    @Test func durationAcuteChronicNeedsThreeWeeksOfData() {
+        // 만성 4주 중 2주만 러닝 → 비율 없음(급증으로 오판하지 않는다)
+        let runs = [12, 9, 2].map { run(daysAgo: $0, minutes: 60) }
+        #expect(mrDurationAcuteChronic(runs: runs, asOf: now).ratio == nil)
     }
 
     @Test func durationAcuteChronicRatio() {

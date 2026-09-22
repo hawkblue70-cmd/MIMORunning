@@ -52,16 +52,21 @@ func mrConsecutiveRunDays(runs: [MRWorkout], asOf: Date, calendar: Calendar = .c
 func mrDurationAcuteChronic(runs: [MRWorkout], asOf: Date,
                             calendar: Calendar = .current) -> (ratio: Double?, rising: Bool) {
     let today = calendar.startOfDay(for: asOf)
-    var acute = 0.0, chronic = 0.0, previous = 0.0
+    var acute = 0.0, previous = 0.0
+    var weekly = [0.0, 0.0, 0.0, 0.0]   // 7…13 / 14…20 / 21…27 / 28…34
     for w in runs {
         let d = calendar.dateComponents([.day], from: w.date, to: today).day ?? Int.min
         if d >= 0 && d <= 6 { acute += w.durationMin }
         else if d >= 7 && d <= 34 {
-            chronic += w.durationMin
+            weekly[(d - 7) / 7] += w.durationMin
             if d <= 13 { previous += w.durationMin }
         }
     }
-    let ratio: Double? = chronic > 0 ? acute / (chronic / 4) : nil
+    // 만성은 4주 중 3주 이상 러닝이 있어야 센다(EffortLoad.minChronicWeeks와 같은 규칙). 빈 주는 0으로 넣어 4로 나눈다 —
+    // 한 주가 비면 평균이 깎여 평소 부하도 급증처럼 보이므로, 자료가 모자라면 아예 판정하지 않는다.
+    let validWeeks = weekly.filter { $0 > 0 }.count
+    let chronic = weekly.reduce(0, +)
+    let ratio: Double? = (validWeeks >= 3 && chronic > 0) ? acute / (chronic / 4) : nil
     let rising = previous > 0 && acute >= previous * MRReadiness.risingRatio
     return (ratio, rising)
 }
@@ -80,7 +85,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     let load = mrDurationAcuteChronic(runs: runs, asOf: asOf, calendar: calendar)
     let trend = mrHRVTrend(nights: hrvNights, asOf: asOf, calendar: calendar)
     let todayNight = hrvNights.last.flatMap { calendar.isDate($0.date, inSameDayAs: today) ? $0.value : nil }
-    let pending = todayNight == nil
+    // "동기화 전"은 HRV 자료가 있는 사용자에게만 — 자료가 아예 없으면 HRV를 말하지 않는다
+    let pending = !hrvNights.isEmpty && todayNight == nil
     let lastNightLow: Bool = {
         guard let t = trend, let v = todayNight else { return false }
         let sdEff = max(t.baselineSD, t.baseline * MRHRVTrend.sdFloorFraction)
