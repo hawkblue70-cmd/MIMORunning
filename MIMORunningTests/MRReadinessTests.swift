@@ -119,6 +119,20 @@ struct MRReadinessTests {
         #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 어젯밤 HRV 유독 낮음")
     }
 
+    @Test func lowLastNightAfterHardRunNamesTheCause() {
+        // 어제 인터벌 + 어젯밤 HRV 급락 → 휴식 판정은 그대로, 원인(어제 고강도)을 앞에 붙인다
+        var runs = steadyRuns(); runs[runs.count - 1] = run(daysAgo: 1, interval: true)
+        let r = readiness(runs: runs, nights: nights(base: 30, recent: 31, baseJitter: [4, -4], todayValue: 22))
+        #expect(r?.level == .rest)
+        #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 어제 고강도 · 어젯밤 HRV 유독 낮음")
+    }
+
+    @Test func lowHRVAfterHardRunNamesTheCause() {
+        var runs = steadyRuns(); runs[runs.count - 1] = run(daysAgo: 1, interval: true)
+        let r = readiness(runs: runs, nights: nights(base: 30, recent: 25))
+        #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 어제 고강도 · HRV 낮음")
+    }
+
     // MARK: 규칙 4~5
 
     @Test func hardRunYesterdayIsEasy() {

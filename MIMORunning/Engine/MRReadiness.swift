@@ -110,12 +110,15 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     if consecutive >= MRReadiness.restConsecutiveDays {
         return make(.rest, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row")])
     }
-    // 규칙 3 — HRV 억제 · 어젯밤 유독 낮음
+    // 규칙 3 — HRV 억제 · 어젯밤 유독 낮음. 어제 고강도였으면 그 사실을 앞에 붙인다 — 고강도 다음 밤 HRV가 눌리는 건
+    // 정상 반응이라, 원인을 같이 말해야 "몸에 문제가 있나" 하고 놀라지 않는다. 판정(휴식)은 그대로.
+    let hardYesterday: [String] = (hard.lastHardDaysAgo.map { $0 <= 1 } ?? false)
+        ? [L.s("어제 고강도", "hard run yesterday")] : []
     if let t = trend, t.isSuppressed {
-        return make(.rest, [t.isVolatile ? L.s("HRV 불안정", "HRV unstable") : L.s("HRV 낮음", "HRV low")])
+        return make(.rest, hardYesterday + [t.isVolatile ? L.s("HRV 불안정", "HRV unstable") : L.s("HRV 낮음", "HRV low")])
     }
     // 7일이 고른데 어젯밤만 크게 떨어지면 변동계수도 같이 뛰어 위(불안정)에서 먼저 잡히는 일이 많다 — 여기는 4주가 원래 출렁이는 사람용
-    if lastNightLow { return make(.rest, [L.s("어젯밤 HRV 유독 낮음", "last night's HRV unusually low")]) }
+    if lastNightLow { return make(.rest, hardYesterday + [L.s("어젯밤 HRV 유독 낮음", "last night's HRV unusually low")]) }
     // 규칙 4 — 어제 고강도
     if let d = hard.lastHardDaysAgo, d <= 1 { return make(.easy, [L.s("어제 고강도", "hard run yesterday")]) }
     // 규칙 5 — 부하 오르는 중(HRV가 좋으면 통과)
