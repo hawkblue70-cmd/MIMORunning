@@ -77,7 +77,7 @@ struct MRReadinessTests {
 
     @Test func fourConsecutiveDaysIsRestEvenWithGoodHRV() {
         var runs = steadyRuns()
-        // 1·2·3·4일 전 연속. 끼워 넣는 두 번은 20분 — 최근 7일 분 합이 급증(1.3배)에 걸리지 않게(190/150 = 1.27)
+        // 1·2·3·4일 전 연속. 끼워 넣는 두 번은 20분 — 최근 7일 분 합이 급증(1.3배)에 걸리지 않게(190/150 = 1.27, 여유 5분)
         runs.append(contentsOf: [run(daysAgo: 4, minutes: 20), run(daysAgo: 2, minutes: 20)])
         runs.sort { $0.start < $1.start }
         let r = readiness(runs: runs, nights: nights(base: 30, recent: 37))
@@ -112,8 +112,9 @@ struct MRReadinessTests {
     }
 
     @Test func unusuallyLowLastNightIsRestEvenIfTrendNormal() {
-        // 추세는 보통(31)인데 어젯밤만 기준선 − 1SD(SD 하한 3) 아래(26)
-        let r = readiness(runs: steadyRuns(), nights: nights(base: 30, recent: 31, todayValue: 26))
+        // 4주가 원래 ±4로 출렁이는 사람(SD ≈ 4.1) · 7일은 31로 보통 · 어젯밤만 22(기준선 − 1SD = 25.9 아래).
+        // 4주가 고른(±1) 픽스처면 어젯밤 하나로 7일 CV가 1.5배를 넘어 '불안정'이 먼저 잡힌다 — 그건 의도된 우선순위.
+        let r = readiness(runs: steadyRuns(), nights: nights(base: 30, recent: 31, baseJitter: [4, -4], todayValue: 22))
         #expect(r?.level == .rest)
         #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 어젯밤 HRV 유독 낮음")
     }
@@ -169,7 +170,7 @@ struct MRReadinessTests {
     }
 
     @Test func normalHRVIsEasyWhenHardWasTwoDaysAgo() {
-        // 2일 전 인터벌 20분을 끼워 넣는다(급증 아님: 170/150) · HRV 범위 안(30)
+        // 2일 전 인터벌 20분을 끼워 넣는다(급증 아님: 170/150 · 상승 아님: 170 < 172.5, 여유 2.5분) · HRV 범위 안(30)
         var runs = steadyRuns(); runs.append(run(daysAgo: 2, minutes: 20, interval: true))
         runs.sort { $0.start < $1.start }
         let r = readiness(runs: runs, nights: nights(base: 30, recent: 30))
@@ -192,6 +193,15 @@ struct MRReadinessTests {
         #expect(r?.line == "오늘은 강도 OK · HRV 좋음 · 어젯밤 HRV 동기화 전")
     }
 
+    @Test func eveningSampleKeyedTomorrowDoesNotHidePending() {
+        // 낮 15시 이후 샘플이 내일 키로 붙어 last가 내일이어도 오늘 키가 있으면 동기화 전이 아니다
+        var n = nights(base: 30, recent: 37)
+        n.append((day(1), 20))
+        let r = readiness(runs: steadyRuns(), nights: n)
+        #expect(r?.hrvPending == false)
+        #expect(r?.line == "오늘은 강도 OK · HRV 좋음")
+    }
+
     // MARK: 헬퍼
 
     @Test func consecutiveDaysEndingYesterday() {
@@ -205,13 +215,13 @@ struct MRReadinessTests {
     }
 
     @Test func durationAcuteChronicNeedsThreeWeeksOfData() {
-        // 만성 4주 중 2주만 러닝 → 비율 없음(급증으로 오판하지 않는다)
+        // 만성 4주 중 1주(7…13일)만 러닝 → 비율 없음(급증으로 오판하지 않는다)
         let runs = [12, 9, 2].map { run(daysAgo: $0, minutes: 60) }
         #expect(mrDurationAcuteChronic(runs: runs, asOf: now).ratio == nil)
     }
 
     @Test func durationAcuteChronicRatio() {
-        // 직전 28일(−34…−7): 4주 × 60분 = 240분/주 → 만성 60. 최근 7일: 90분 → 1.5
+        // 직전 28일(−34…−7): 주 1회 60분 × 4주 = 240분 합 → 주 60분. 최근 7일: 90분 → 1.5
         var runs = [30, 23, 16, 9].map { run(daysAgo: $0, minutes: 60) }
         runs.append(run(daysAgo: 2, minutes: 90))
         let a = mrDurationAcuteChronic(runs: runs, asOf: now)

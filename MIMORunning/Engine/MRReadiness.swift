@@ -84,7 +84,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     let consecutive = mrConsecutiveRunDays(runs: runs, asOf: asOf, calendar: calendar)
     let load = mrDurationAcuteChronic(runs: runs, asOf: asOf, calendar: calendar)
     let trend = mrHRVTrend(nights: hrvNights, asOf: asOf, calendar: calendar)
-    let todayNight = hrvNights.last.flatMap { calendar.isDate($0.date, inSameDayAs: today) ? $0.value : nil }
+    // 마지막 원소가 아니라 '오늘 키'를 찾는다 — 낮 15시 이후 샘플은 내일 키로 묶이므로 last가 내일일 수 있다
+    let todayNight = hrvNights.last(where: { calendar.isDate($0.date, inSameDayAs: today) })?.value
     // "동기화 전"은 HRV 자료가 있는 사용자에게만 — 자료가 아예 없으면 HRV를 말하지 않는다
     let pending = !hrvNights.isEmpty && todayNight == nil
     let lastNightLow: Bool = {
@@ -113,6 +114,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     if let t = trend, t.isSuppressed {
         return make(.rest, [t.isVolatile ? L.s("HRV 불안정", "HRV unstable") : L.s("HRV 낮음", "HRV low")])
     }
+    // 7일이 고른데 어젯밤만 크게 떨어지면 변동계수도 같이 뛰어 위(불안정)에서 먼저 잡히는 일이 많다 — 여기는 4주가 원래 출렁이는 사람용
     if lastNightLow { return make(.rest, [L.s("어젯밤 HRV 유독 낮음", "last night's HRV unusually low")]) }
     // 규칙 4 — 어제 고강도
     if let d = hard.lastHardDaysAgo, d <= 1 { return make(.easy, [L.s("어제 고강도", "hard run yesterday")]) }
@@ -122,13 +124,11 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     // 규칙 6 — HRV 좋음
     if ready { return make(.go, [L.s("HRV 좋음", "HRV good")] + [lastHardPiece()].compactMap { $0 }) }
     // 규칙 7 — 범위 안 또는 자료 없음: 부하 쪽이 넉넉할 때만 강도 OK
-    let roomy = hard.lastHardDaysAgo.map { $0 >= MRReadiness.normalHRVGoMinDays } ?? true
-    if roomy {
-        var reasons: [String] = []
-        if trend != nil { reasons.append(L.s("HRV 보통", "HRV normal")) }
-        if let p = lastHardPiece() { reasons.append(p) }
-        return make(.go, reasons)
+    if let d = hard.lastHardDaysAgo, d < MRReadiness.normalHRVGoMinDays {
+        return make(.easy, [L.s("고강도 \(d)일 전", "hard run \(d) days ago"), L.s("하루 더 여유", "one more easy day")])
     }
-    let d = hard.lastHardDaysAgo ?? 0
-    return make(.easy, [L.s("고강도 \(d)일 전", "hard run \(d) days ago"), L.s("하루 더 여유", "one more easy day")])
+    var reasons: [String] = []
+    if trend != nil { reasons.append(L.s("HRV 보통", "HRV normal")) }
+    if let p = lastHardPiece() { reasons.append(p) }
+    return make(.go, reasons)
 }
