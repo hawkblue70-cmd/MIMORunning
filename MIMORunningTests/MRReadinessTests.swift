@@ -142,6 +142,15 @@ struct MRReadinessTests {
         #expect(r?.line == "오늘은 이지런 · 어제 고강도")
     }
 
+    @Test func appClassifiedHardRunYesterdayIsEasy() {
+        // 어제 러닝이 엔진 기준으론 이지(심박 140, 구조화 운동 아님)라도 앱이 인터벌로 분류했으면 "어제 고강도"
+        let runs = steadyRuns()
+        let r = mrReadiness(runs: runs, phys: phys, heatHR: MRHeatHRModel(), hrvNights: nights(base: 30, recent: 37),
+                            planPhase: nil, asOf: now, hardRunStarts: [runs.last!.start])
+        #expect(r?.level == .easy)
+        #expect(r?.line == "오늘은 이지런 · 어제 고강도")
+    }
+
     @Test func risingLoadWithNormalHRVIsEasy() {
         // 직전 7일 짧고(90분) 최근 7일 길지만(180분) 4주 대비 급증은 아님(만성 630/4 = 157.5 → 1.14)
         var runs = [34, 32, 29, 27, 25, 22, 20, 18, 15].map { run(daysAgo: $0, minutes: 60) }

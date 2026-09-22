@@ -60,6 +60,9 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var streakWeeks: Int = 0
     /// 수면 HRV 밤별 중앙값(60일). 총평·조언이 `mrHRVTrend(nights:asOf:)`로 러닝 날짜 기준 추세를 만든다.
     @Published private(set) var hrvNights: [(date: Date, value: Double)] = []
+    /// 앱 쪽 고강도 판정(분류 유형·체감 강도·존 분포)으로 고강도인 러닝의 시작 시각. 홈이 주입한다(`updateHardRunStarts`).
+    /// 엔진의 `isInterval`은 WorkoutKit 구조화 운동만 잡아 "인터벌"로 분류된 일반 러닝을 놓친다 — 아침 제안·hrvReady가 이걸 합쳐 본다.
+    @Published private(set) var hardRunStarts: Set<Date> = []
     @Published private(set) var todayCard: MRTodayCard?
     @Published private(set) var raceDayCard: MRRaceDayCard?
     @Published private(set) var backtest: [MRBacktestRow] = []
@@ -479,6 +482,7 @@ final class MREngineStore: ObservableObject {
                                fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                heatHR: heatHR,
                                hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
+                               hardRunStarts: hardRunStarts,
                                log: adviceLog, asOf: now)
         // ⚠ record()는 여기서 호출하지 않는다.
         //   조언 카드가 화면에 실제로 그려지는 .onAppear에서 호출해야 한다.
@@ -540,6 +544,7 @@ final class MREngineStore: ObservableObject {
                                fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                heatHR: heatHR,
                                hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
+                               hardRunStarts: hardRunStarts,
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         todayCard = buildTodayCard(runs: runs, now: now)
@@ -845,6 +850,7 @@ final class MREngineStore: ObservableObject {
                                fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                heatHR: heatHR,
                                hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
+                               hardRunStarts: hardRunStarts,
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         todayCard = buildTodayCard(runs: runs, now: now)
@@ -857,7 +863,25 @@ final class MREngineStore: ObservableObject {
                            raceDayCardVisible: raceDayVisible,
                            advice: advice, asOf: now,
                            heatHR: heatHR, hrvNights: hrvNights,
-                           planPhase: governingPlanWeek(for: now)?.week.phase)
+                           planPhase: governingPlanWeek(for: now)?.week.phase,
+                           hardRunStarts: hardRunStarts)
+    }
+
+    /// 홈이 앱 쪽 고강도 판정을 넣어 준다. 바뀌었을 때만 조언·오늘 카드를 다시 만든다(HealthKit 재읽기 없음).
+    func updateHardRunStarts(_ starts: Set<Date>) {
+        guard starts != hardRunStarts else { return }
+        hardRunStarts = starts
+        guard case .ready = state else { return }
+        let now = Date()
+        advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
+                               races: userInput.races,
+                               gaps: gaps, strengthPerWeek: storedStrengthPerWeek,
+                               fatigue: storedFatigue, cadenceShift: storedCadenceShift,
+                               heatHR: heatHR,
+                               hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
+                               hardRunStarts: hardRunStarts,
+                               log: adviceLog, asOf: now)
+        todayCard = buildTodayCard(runs: runs, now: now)
     }
 
     /// 앱이 앞으로 올 때 — 오늘 키의 밤이 아직 없고 마지막 조회가 30분 이상 전이면 HRV만 다시 읽고 조언·오늘 카드를 다시 만든다.
@@ -882,6 +906,7 @@ final class MREngineStore: ObservableObject {
                                fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                heatHR: heatHR,
                                hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
+                               hardRunStarts: hardRunStarts,
                                log: adviceLog, asOf: now)
         todayCard = buildTodayCard(runs: runs, now: now)
         #if DEBUG
@@ -949,6 +974,7 @@ final class MREngineStore: ObservableObject {
                                fatigue: storedFatigue, cadenceShift: storedCadenceShift,
                                heatHR: heatHR,
                                hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
+                               hardRunStarts: hardRunStarts,
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         raceDayCard = computeRaceDayCard(plans: plans, asOf: now)

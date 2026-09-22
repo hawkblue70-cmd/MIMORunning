@@ -207,6 +207,21 @@ private struct ActivityListContent: View {
         return items.sorted { $0.date > $1.date }
     }
 
+    /// 최근 14일 러닝 중 **앱 판정**(분류 유형·체감 강도·존 분포)으로 고강도인 것의 시작 시각을 엔진에 넣는다.
+    /// 엔진의 `MRWorkout.isInterval`은 WorkoutKit 구조화 운동만 잡아, 앱이 "인터벌"로 분류한 러닝을 놓친다 —
+    /// 아침 제안의 "어제 고강도"와 조언 `hrvReady`가 이 집합을 합쳐 본다. `Activity.date`와 `MRWorkout.start`는 같은 HKWorkout.startDate.
+    private func pushHardRunStarts() {
+        let idx = EffortIndex(stories: stories, apple: manager.effortMap)
+        let since = Calendar.current.date(byAdding: .day, value: -15, to: Date()) ?? .distantPast
+        let starts = manager.activities
+            .filter { $0.type == .running && $0.date >= since }
+            .filter { RunSummaryBuilder.isHardRun($0, effortIndex: idx,
+                                                   workoutTypeFn: { [manager] id in manager.cachedWorkoutTypeForStats(for: id) },
+                                                   hrZonesFn: { [manager] id in manager.hrZonesFromCache(id) }) }
+            .map(\.date)
+        engine.updateHardRunStarts(Set(starts))
+    }
+
     var body: some View {
         // workoutTypeRevision 접근 → 온디맨드 분류 완료 시 배지 자동 갱신
         let _ = manager.workoutTypeRevision
@@ -302,8 +317,12 @@ private struct ActivityListContent: View {
         .onChange(of: showRunning)  { _, _ in displayCount = 50 }
         .onChange(of: showWalking)  { _, _ in displayCount = 50 }
         .onChange(of: showHiking)   { _, _ in displayCount = 50 }
+        .onAppear { pushHardRunStarts() }
+        .onChange(of: stories.map(\.effortRPE)) { _, _ in pushHardRunStarts() }
+        .onChange(of: manager.activities.count) { _, _ in pushHardRunStarts() }
         .onChange(of: engine.isReady) { _, isReady in
             guard isReady else { return }
+            pushHardRunStarts()
             manager.backfillIntervalTypes(from: engine.runs)
             // 페이스 더위 모델 → 유형 분류기. 모델이 바뀌면 매니저가 8주를 재분류한다.
             manager.applyHeatModel(engine.heat)

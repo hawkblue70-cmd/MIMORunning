@@ -73,14 +73,16 @@ func mrDurationAcuteChronic(runs: [MRWorkout], asOf: Date,
 
 func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                  hrvNights: [(date: Date, value: Double)], planPhase: String?,
-                 asOf: Date, calendar: Calendar = .current) -> MRReadiness? {
+                 asOf: Date, hardRunStarts: Set<Date> = [],
+                 calendar: Calendar = .current) -> MRReadiness? {
     let L = AppLanguage.shared
     let today = calendar.startOfDay(for: asOf)
     guard !runs.isEmpty else { return nil }
     // 규칙 0 — 이미 뛴 날은 제안하지 않는다(오늘 기록 줄이 주인공)
     if runs.contains(where: { calendar.isDate($0.start, inSameDayAs: asOf) }) { return nil }
 
-    let hard = mrRecentHardRunCount(runs: runs, phys: phys, heatHR: heatHR, days: 14, asOf: asOf, calendar: calendar)
+    let hard = mrRecentHardRunCount(runs: runs, phys: phys, heatHR: heatHR, days: 14, asOf: asOf,
+                                    extraHardStarts: hardRunStarts, calendar: calendar)
     let consecutive = mrConsecutiveRunDays(runs: runs, asOf: asOf, calendar: calendar)
     let load = mrDurationAcuteChronic(runs: runs, asOf: asOf, calendar: calendar)
     let trend = mrHRVTrend(nights: hrvNights, asOf: asOf, calendar: calendar)

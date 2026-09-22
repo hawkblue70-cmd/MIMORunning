@@ -180,6 +180,15 @@ struct MRHRVTrendTests {
         #expect(c.lastHardDaysAgo == 3)
     }
 
+    @Test func hardCountIncludesAppSideStarts() {
+        // 엔진은 못 잡는(인터벌 아님·심박 낮음) 러닝이라도 앱이 고강도로 판정한 시작 시각이면 센다
+        let r1 = run(daysAgo: 1, hr: 140), r4 = run(daysAgo: 4, hr: 140)
+        let c = mrRecentHardRunCount(runs: [r1, r4], phys: MRPhysiology(), heatHR: MRHeatHRModel(), days: 14, asOf: Date(),
+                                     extraHardStarts: [r1.start])
+        #expect(c.hard == 1)
+        #expect(c.lastHardDaysAgo == 1)
+    }
+
     @Test func lastHardDaysAgoIsNilWithoutHardRuns() {
         let runs = [run(daysAgo: 1, hr: 140), run(daysAgo: 4, hr: 140)]
         let c = mrRecentHardRunCount(runs: runs, phys: MRPhysiology(), heatHR: MRHeatHRModel(), days: 14, asOf: Date())

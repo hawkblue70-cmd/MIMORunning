@@ -114,8 +114,11 @@ func mrHRVTrend(nights: [(date: Date, value: Double)], asOf: Date,
 
 /// 인터벌이거나 15°C 보정 평균심박이 LT1 이상이면 고강도. LT1이 없으면 인터벌만 센다.
 /// 창은 `asOf` 자정 기준 직전 `days`일(오늘 포함). `lastHardDaysAgo`는 창 안 가장 최근 고강도까지의 일수(없으면 nil).
+/// `extraHardStarts`: 앱 쪽 판정(분류된 유형·체감 강도·존 분포)으로 고강도인 러닝의 시작 시각 — 엔진의 `isInterval`은
+/// WorkoutKit 구조화 운동만 잡아서, 앱이 "인터벌"로 분류한 러닝을 놓친다.
 func mrRecentHardRunCount(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                           days: Int, asOf: Date,
+                          extraHardStarts: Set<Date> = [],
                           calendar: Calendar = .current) -> (hard: Int, total: Int, lastHardDaysAgo: Int?) {
     let today = calendar.startOfDay(for: asOf)
     var hard = 0, total = 0
@@ -129,7 +132,7 @@ func mrRecentHardRunCount(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatH
             guard let lt1 = phys.lt1HR?.value, let hr = heatHR.refHR(of: w) else { return false }
             return hr >= lt1
         }()
-        if w.isInterval || overLT1 {
+        if w.isInterval || overLT1 || extraHardStarts.contains(w.start) {
             hard += 1
             lastHard = min(lastHard ?? d, d)
         }

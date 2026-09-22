@@ -119,6 +119,7 @@ func mrBuildAdvice(runs: [MRWorkout],
                    cadenceShift: MRFormShift? = nil,
                    heatHR: MRHeatHRModel = MRHeatHRModel(),
                    hrvTrend: MRHRVTrend? = nil,
+                   hardRunStarts: Set<Date> = [],
                    log: MRAdviceLog,
                    asOf: Date) -> [MRAdvice] {
 
@@ -191,7 +192,8 @@ func mrBuildAdvice(runs: [MRWorkout],
     // 아래/불안정 조언은 여기 없다 — 총평 훈련부하 줄이 담당.
     // 14일 고강도가 1회뿐이어도 그게 어제·오늘 러닝이면 제안하지 않는다 — 총평의 "마지막 고강도 2일 이상 전"과 같은 규칙.
     if let t = hrvTrend, t.isReadyHigh, days(last.date) <= 3 {
-        let c = mrRecentHardRunCount(runs: runs, phys: phys, heatHR: heatHR, days: 14, asOf: asOf)
+        let c = mrRecentHardRunCount(runs: runs, phys: phys, heatHR: heatHR, days: 14, asOf: asOf,
+                                     extraHardStarts: hardRunStarts)
         if c.hard <= 1 && c.total >= 4 && (c.lastHardDaysAgo ?? Int.max) >= 2 {
             out.append(MRAdvice(key: "hrvReady",
                 text: "지난 2주는 이지런 위주였고 수면 HRV 7일 평균이 4주 기준선 위로 안정적이에요. 이번 주 강도 세션 하나 넣기 좋은 때예요.",
