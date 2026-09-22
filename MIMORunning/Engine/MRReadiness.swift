@@ -37,6 +37,15 @@ struct MRReadiness: Equatable {
     /// 1.0·SD(하한 10%)는 기준선 25ms에서 3~4ms 낮은 밤도 걸렸는데, 그 폭은 하룻밤 잡음 안이다(2026-09-22 사용자 결정).
     static let lastNightLowSD = 1.5
     static let lastNightLowMinFraction = 0.15
+
+    /// 어젯밤 한 밤이 4주 기준선에서 얼마나 벗어났나 — −1 낮음 · 0 평소 범위 · +1 높음. 아침 제안과 총평 근거가 같은 규칙을 쓴다.
+    static func lastNightDeviation(_ v: Double, trend t: MRHRVTrend) -> Int {
+        let sdEff = max(t.baselineSD, t.baseline * MRHRVTrend.sdFloorFraction)
+        let drop = max(lastNightLowSD * sdEff, t.baseline * lastNightLowMinFraction)
+        if v < t.baseline - drop { return -1 }
+        if v > t.baseline + drop { return 1 }
+        return 0
+    }
 }
 
 /// 오늘 또는 어제로 끝나는 연속 러닝 일수. 오늘·어제 모두 러닝이 없으면 0.
@@ -95,9 +104,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     let pending = !hrvNights.isEmpty && todayNight == nil
     let lastNightLow: Bool = {
         guard let t = trend, let v = todayNight else { return false }
-        let sdEff = max(t.baselineSD, t.baseline * MRHRVTrend.sdFloorFraction)
-        let drop = max(MRReadiness.lastNightLowSD * sdEff, t.baseline * MRReadiness.lastNightLowMinFraction)
-        return v < t.baseline - drop
+        return MRReadiness.lastNightDeviation(v, trend: t) < 0
     }()
 
     func lastHardPiece() -> String? {

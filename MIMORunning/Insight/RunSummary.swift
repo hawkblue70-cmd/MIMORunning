@@ -446,8 +446,13 @@ enum RunSummary {
             let grade = hrvGradeLabel(t)
             if let n = i.lastNightHRV {
                 let night = Int(n.rounded())
-                lines.append(L.s("HRV 어젯밤 \(night) · 7일 \(seven) · 4주 \(base)ms · \(grade)",
-                               "HRV last night \(night) · 7-day \(seven) · 4-wk \(base)ms · \(grade)"))
+                // 어젯밤이 기준선 범위를 벗어나면 그 자리에 표시 — 추세 상태어(보통)만 보면 어젯밤도 보통인 줄 안다.
+                // 아침 제안과 같은 문턱(MRReadiness.lastNightDeviation).
+                let dev = MRReadiness.lastNightDeviation(n, trend: t)
+                let nightNote = dev < 0 ? L.s("(평소보다 낮음)", " (below usual)")
+                              : dev > 0 ? L.s("(평소보다 높음)", " (above usual)") : ""
+                lines.append(L.s("HRV 어젯밤 \(night)\(nightNote) · 7일 \(seven) · 4주 \(base)ms · \(grade)",
+                               "HRV last night \(night)\(nightNote) · 7-day \(seven) · 4-wk \(base)ms · \(grade)"))
             } else {
                 lines.append(L.s("HRV 7일 \(seven)ms · 4주 \(base)ms · \(grade)", "HRV 7-day \(seven)ms · 4-wk \(base)ms · \(grade)"))
             }

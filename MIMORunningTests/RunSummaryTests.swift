@@ -371,6 +371,16 @@ struct RunSummaryTests {
         return i
     }
 
+    @Test func hrvEvidenceMarksLastNightOutsideUsualRange() {
+        // 기준선 29.6 · SD 3 → 문턱 max(4.5, 4.44) = 4.5: 19는 낮음, 28은 범위 안, 35는 높음
+        var i = restedInput(); i.hrvTrend = hrv(.within); i.lastNightHRV = 19
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 19(평소보다 낮음) · 7일 37 · 4주 30ms · 보통") == true)
+        i.lastNightHRV = 28
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 28 · 7일 37 · 4주 30ms · 보통") == true)
+        i.lastNightHRV = 35
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 35(평소보다 높음) · 7일 37 · 4주 30ms · 보통") == true)
+    }
+
     @Test func hrvEvidenceAppendsSevenDayAndBaseline() {
         var i = restedInput(); i.hrvTrend = hrv(.within)
         #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 7일 37ms · 4주 30ms · 보통") == true)
