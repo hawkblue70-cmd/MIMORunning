@@ -59,6 +59,8 @@ struct RunSummaryInput {
     var vo2EightWeeksAgo: Double? = nil
     /// 수면 HRV 7일 vs 4주 추세(러닝 날짜 기준). 없으면 HRV 문장·근거 모두 생략.
     var hrvTrend: MRHRVTrend? = nil
+    /// 이 러닝 날의 밤(전날 15시~당일 12시) HRV 중앙값 — 아침 제안이 본 "어젯밤" 값. 근거에 같이 적어 아침·저녁 숫자를 맞춘다.
+    var lastNightHRV: Double? = nil
     /// 이 러닝 직전 14일(이 러닝 제외) 고강도 러닝 수 / 러닝 수 — `hrvTrend`가 있을 때만 채운다.
     var hardRunsLast14: Int? = nil
     var runsLast14: Int = 0
@@ -442,7 +444,13 @@ enum RunSummary {
             let seven = Int(t.sevenDayMean.rounded()), base = Int(t.baseline.rounded())
             // 상태어는 본인 4주 기준선 대비다 — 절대 등급이 아니다. 좋음(위·안정) / 불안정 / 낮음(아래) / 보통(범위 안)
             let grade = hrvGradeLabel(t)
-            lines.append(L.s("HRV 7일 \(seven)ms · 4주 \(base)ms · \(grade)", "HRV 7-day \(seven)ms · 4-wk \(base)ms · \(grade)"))
+            if let n = i.lastNightHRV {
+                let night = Int(n.rounded())
+                lines.append(L.s("HRV 어젯밤 \(night) · 7일 \(seven) · 4주 \(base)ms · \(grade)",
+                               "HRV last night \(night) · 7-day \(seven) · 4-wk \(base)ms · \(grade)"))
+            } else {
+                lines.append(L.s("HRV 7일 \(seven)ms · 4주 \(base)ms · \(grade)", "HRV 7-day \(seven)ms · 4-wk \(base)ms · \(grade)"))
+            }
         }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }

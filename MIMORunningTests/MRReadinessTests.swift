@@ -116,7 +116,7 @@ struct MRReadinessTests {
         // 4주가 고른(±1) 픽스처면 어젯밤 하나로 7일 CV가 1.5배를 넘어 '불안정'이 먼저 잡힌다 — 그건 의도된 우선순위.
         let r = readiness(runs: steadyRuns(), nights: nights(base: 30, recent: 31, baseJitter: [4, -4], todayValue: 22))
         #expect(r?.level == .rest)
-        #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 어젯밤 HRV 유독 낮음")
+        #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 어젯밤 HRV 22ms, 4주 30ms보다 낮음")
     }
 
     @Test func lowLastNightAfterHardRunNamesTheCause() {
@@ -124,7 +124,7 @@ struct MRReadinessTests {
         var runs = steadyRuns(); runs[runs.count - 1] = run(daysAgo: 1, interval: true)
         let r = readiness(runs: runs, nights: nights(base: 30, recent: 31, baseJitter: [4, -4], todayValue: 22))
         #expect(r?.level == .rest)
-        #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 어제 고강도 · 어젯밤 HRV 유독 낮음")
+        #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 어제 고강도 · 어젯밤 HRV 22ms, 4주 30ms보다 낮음")
     }
 
     @Test func lowHRVAfterHardRunNamesTheCause() {

@@ -120,7 +120,13 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         return make(.rest, hardYesterday + [t.isVolatile ? L.s("HRV 불안정", "HRV unstable") : L.s("HRV 낮음", "HRV low")])
     }
     // 7일이 고른데 어젯밤만 크게 떨어지면 변동계수도 같이 뛰어 위(불안정)에서 먼저 잡히는 일이 많다 — 여기는 4주가 원래 출렁이는 사람용
-    if lastNightLow { return make(.rest, hardYesterday + [L.s("어젯밤 HRV 유독 낮음", "last night's HRV unusually low")]) }
+    if lastNightLow, let t = trend, let v = todayNight {
+        // 숫자를 같이 적는다 — 저녁 총평 근거(7일·4주 평균)만 보면 한 밤의 하락이 보이지 않아 "매우 낮다더니 숫자는 같다"가 된다.
+        // "유독"은 뺀다: 1표준편차(하한 기준선 10%)면 기준선 25ms에서 3~4ms 낮은 밤도 걸리는데, 그 폭은 하룻밤 잡음 안이다.
+        let vStr = Int(v.rounded()), bStr = Int(t.baseline.rounded())
+        return make(.rest, hardYesterday + [L.s("어젯밤 HRV \(vStr)ms, 4주 \(bStr)ms보다 낮음",
+                                                "last night's HRV \(vStr)ms, below 4-wk \(bStr)ms")])
+    }
     // 규칙 4 — 어제 고강도
     if let d = hard.lastHardDaysAgo, d <= 1 { return make(.easy, [L.s("어제 고강도", "hard run yesterday")]) }
     // 규칙 5 — 부하 오르는 중(HRV가 좋으면 통과)

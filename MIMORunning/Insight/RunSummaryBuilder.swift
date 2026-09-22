@@ -184,6 +184,8 @@ enum RunSummaryBuilder {
         // 수면 HRV 추세는 러닝 날짜 기준(오래된 러닝을 열어도 당시 상태). 추세가 있을 때만 14일 고강도를 센다(존 분포 조회 비용).
         if !c.hrvNights.isEmpty, let t = mrHRVTrend(nights: c.hrvNights, asOf: c.activity.date) {
             input.hrvTrend = t
+            // 아침 제안과 같은 밤 — 러닝 날짜 키(전날 15시~당일 12시 창)
+            input.lastNightHRV = c.hrvNights.last(where: { Calendar.current.isDate($0.date, inSameDayAs: c.activity.date) })?.value
             let h = hardRunsLast14(activity: c.activity, history: c.history,
                                    effortIndex: c.effortIndex, workoutTypeFn: c.workoutTypeFn, hrZonesFn: c.hrZonesFn)
             input.hardRunsLast14 = h.hard
