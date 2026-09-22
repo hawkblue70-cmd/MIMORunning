@@ -371,6 +371,17 @@ struct RunSummaryTests {
         return i
     }
 
+    @Test func lowLastNightHRVShowsInNextAction() {
+        // 추세 보통 + 어젯밤 낮음(19 / 평소 30) — 회복 판정 날엔 "충분히 회복" 대신 하루 미룸, 연속 4일 날엔 기본 문장 뒤에 한 문장
+        var rested = restedInput(); rested.hrvTrend = hrv(.within); rested.lastNightHRV = 19
+        #expect(lines(rested)[3].next == "부하는 내려왔지만 어젯밤 HRV가 평소보다 낮았어요. 하루 더 편하게 가세요.")
+        var streak = todayInput(); streak.weekOverWeek = 0.05; streak.acuteChronic = .steady; streak.streakDays = 4
+        streak.hrvTrend = hrv(.within); streak.lastNightHRV = 19
+        #expect(lines(streak)[3].next?.hasSuffix(" 어젯밤 HRV도 평소보다 낮았어요.") == true)
+        streak.lastNightHRV = 28
+        #expect(lines(streak)[3].next?.contains("HRV") == false)
+    }
+
     @Test func hrvEvidenceMarksLastNightOutsideUsualRange() {
         // 기준선 29.6 · 문턱 ±15%(±4.4): 19(−36%)는 낮음, 28(−5%)은 범위 안, 35(+18%)는 높음
         var i = restedInput(); i.hrvTrend = hrv(.within); i.lastNightHRV = 19

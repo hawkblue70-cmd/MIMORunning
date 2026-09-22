@@ -471,6 +471,12 @@ enum RunSummary {
     }
 
     /// 계획상 회복/테이퍼 주 > 급증/단조/장기 연속 > 충분한 회복 순으로 다음 행동을 고른다.
+    /// 어젯밤 한 밤이 평소(4주)보다 15% 넘게 낮았나 — 근거 줄의 "(평소보다 낮음)"과 같은 판정. 추세가 보통이어도 다음 행동에 반영한다.
+    private static func lastNightLow(_ i: RunSummaryInput) -> Bool {
+        guard let t = i.hrvTrend, let n = i.lastNightHRV else { return false }
+        return MRReadiness.lastNightDeviation(n, trend: t) < 0
+    }
+
     private static func loadNext(_ i: RunSummaryInput, jumped: Bool) -> String? {
         let L = AppLanguage.shared
         if i.todayEffortMissing {
@@ -489,6 +495,9 @@ enum RunSummary {
                         "Take a 30–40 min recovery run or rest for the next day or two.")
             if i.hrvTrend?.isSuppressed == true {
                 s += L.s(" HRV도 기준선 아래로 흔들리고 있어요.", " Your HRV is also wobbling below baseline.")
+            } else if lastNightLow(i) {
+                // 추세는 보통이어도 어젯밤이 낮았으면 그 사실을 다음 행동에 붙인다 — 근거 줄의 "(평소보다 낮음)"과 짝
+                s += L.s(" 어젯밤 HRV도 평소보다 낮았어요.", " Last night's HRV was also below usual.")
             }
             return s
         }
@@ -522,6 +531,11 @@ enum RunSummary {
                 if t.isSuppressed {
                     return L.s("부하는 내려왔지만 HRV가 기준선 아래예요. 수면이나 생활 피로 쪽일 수 있으니 하루 더 편하게 가세요.",
                                "Load has come down, but your HRV is below baseline. It may be sleep or life stress — take one more easy day.")
+                }
+                if lastNightLow(i) {
+                    // 추세는 보통인데 어젯밤만 낮음 — "충분히 회복"이라 하지 않고 하루만 미룬다
+                    return L.s("부하는 내려왔지만 어젯밤 HRV가 평소보다 낮았어요. 하루 더 편하게 가세요.",
+                               "Load has come down, but last night's HRV was below usual — take one more easy day.")
                 }
                 if t.isReadyHigh {
                     return i.isEasyBlock
