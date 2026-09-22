@@ -603,3 +603,4 @@ git show --stat HEAD
 - **`hrvPending`**: `hrvNights`가 비어 있으면 false(HRV 자료 없는 사용자에게 "동기화 전"을 안 붙임). 오늘 키 밤은 `last`가 아니라 검색 — 15시 이후 샘플이 내일 키로 묶인다. 스토어의 `hasTonight`도 `contains`.
 - **"어젯밤 유독 낮음" 테스트**: 4주가 고른(±1) 픽스처에서는 하룻밤 급락이 7일 CV를 1.5배 넘겨 '불안정'이 먼저 잡힌다(의도된 우선순위). 픽스처를 ±4 출렁이는 4주 + 어젯밤 22로 바꿨다.
 - **Task 2**: `RunSummary`류 뷰 빌더 안에서는 `switch` 식이 안 되어 색을 `readinessColor(_:)` 헬퍼로 뺐다. `MRTodayCardTests` 픽스처도 34…1일로 확장. `buildTodayCard(` 카운트는 7(정의 1 + 호출 6 — `refreshHRVIfStale` 포함).
+- **실기기 발견(어제 고강도 누락)**: 엔진 `isInterval`은 구조화 운동만, 앱 분류 "인터벌"은 못 봄. 홈이 `RunSummaryBuilder.isHardRun` 판정 시작 시각을 `engine.updateHardRunStarts`로 주입, `mrRecentHardRunCount(extraHardStarts:)`·`mrReadiness(hardRunStarts:)`·`mrTodayCard(hardRunStarts:)`·`mrBuildAdvice(hardRunStarts:)`로 전달. HRV 억제·급락 판정에는 "어제 고강도"를 앞에 붙인다.
