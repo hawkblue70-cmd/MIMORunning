@@ -33,17 +33,17 @@ struct MRReadiness: Equatable {
     /// 범위 안 HRV에서 강도 OK로 보는 마지막 고강도 최소 일수
     static let normalHRVGoMinDays = 3
     /// 어젯밤 단일 값이 "유독 낮음"인 기준 — 기준선 − 1.0 × SD_eff
-    /// 어젯밤 한 밤을 "낮음"으로 보는 문턱 — 기준선 − max(1.5·SD, 기준선의 15%).
-    /// 1.0·SD(하한 10%)는 기준선 25ms에서 3~4ms 낮은 밤도 걸렸는데, 그 폭은 하룻밤 잡음 안이다(2026-09-22 사용자 결정).
-    static let lastNightLowSD = 1.5
-    static let lastNightLowMinFraction = 0.15
+    /// 어젯밤 한 밤을 "낮음/높음"으로 보는 문턱 — 4주 기준선의 ±15%. 표준편차는 쓰지 않는다:
+    /// 4주가 원래 출렁이는 사람(SD 4.5 on 25ms)은 1.5·SD가 27%라 19ms(−24%)도 "보통"이 되고,
+    /// 아주 고른 사람은 1·SD가 2~3ms라 잡음도 걸렸다. 비율 하나가 두 경우 모두 설명이 된다(2026-09-22 사용자 결정).
+    static let lastNightDeviationFraction = 0.15
 
     /// 어젯밤 한 밤이 4주 기준선에서 얼마나 벗어났나 — −1 낮음 · 0 평소 범위 · +1 높음. 아침 제안과 총평 근거가 같은 규칙을 쓴다.
     static func lastNightDeviation(_ v: Double, trend t: MRHRVTrend) -> Int {
-        let sdEff = max(t.baselineSD, t.baseline * MRHRVTrend.sdFloorFraction)
-        let drop = max(lastNightLowSD * sdEff, t.baseline * lastNightLowMinFraction)
-        if v < t.baseline - drop { return -1 }
-        if v > t.baseline + drop { return 1 }
+        guard t.baseline > 0 else { return 0 }
+        let ratio = (v - t.baseline) / t.baseline
+        if ratio < -lastNightDeviationFraction { return -1 }
+        if ratio > lastNightDeviationFraction { return 1 }
         return 0
     }
 }
