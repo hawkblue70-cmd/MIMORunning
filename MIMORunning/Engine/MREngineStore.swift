@@ -320,7 +320,7 @@ final class MREngineStore: ObservableObject {
         }
         let hrvAge = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
         // 오늘 키의 밤이 없으면(워치가 아침에 동기화) 24시간 안이어도 다시 읽는다 — 아침 제안이 어젯밤을 봐야 한다
-        let hasTonight = hrvNights.last.map { Calendar.current.isDateInToday($0.date) } ?? false
+        let hasTonight = hrvNights.contains { Calendar.current.isDateInToday($0.date) }   // last가 아니라 검색 — 15시 이후 샘플은 내일 키로 묶인다
         if hrvNights.isEmpty || hrvAge >= 24 * 3600 || !hasTonight {
             let t0 = CFAbsoluteTimeGetCurrent()
             let raw = (try? await hk.fetchSleepHRV()) ?? []
@@ -864,7 +864,7 @@ final class MREngineStore: ObservableObject {
     /// HealthKit 전체 재읽기는 하지 않는다.
     func refreshHRVIfStale() async {
         guard case .ready = state else { return }
-        let hasTonight = hrvNights.last.map { Calendar.current.isDateInToday($0.date) } ?? false
+        let hasTonight = hrvNights.contains { Calendar.current.isDateInToday($0.date) }   // last가 아니라 검색 — 15시 이후 샘플은 내일 키로 묶인다
         let age = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
         guard !hasTonight, age >= 30 * 60 else { return }
         let raw = (try? await hk.fetchSleepHRV()) ?? []
