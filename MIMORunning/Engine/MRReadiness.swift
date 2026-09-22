@@ -33,7 +33,10 @@ struct MRReadiness: Equatable {
     /// 범위 안 HRV에서 강도 OK로 보는 마지막 고강도 최소 일수
     static let normalHRVGoMinDays = 3
     /// 어젯밤 단일 값이 "유독 낮음"인 기준 — 기준선 − 1.0 × SD_eff
-    static let lastNightLowSD = 1.0
+    /// 어젯밤 한 밤을 "낮음"으로 보는 문턱 — 기준선 − max(1.5·SD, 기준선의 15%).
+    /// 1.0·SD(하한 10%)는 기준선 25ms에서 3~4ms 낮은 밤도 걸렸는데, 그 폭은 하룻밤 잡음 안이다(2026-09-22 사용자 결정).
+    static let lastNightLowSD = 1.5
+    static let lastNightLowMinFraction = 0.15
 }
 
 /// 오늘 또는 어제로 끝나는 연속 러닝 일수. 오늘·어제 모두 러닝이 없으면 0.
@@ -93,7 +96,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     let lastNightLow: Bool = {
         guard let t = trend, let v = todayNight else { return false }
         let sdEff = max(t.baselineSD, t.baseline * MRHRVTrend.sdFloorFraction)
-        return v < t.baseline - MRReadiness.lastNightLowSD * sdEff
+        let drop = max(MRReadiness.lastNightLowSD * sdEff, t.baseline * MRReadiness.lastNightLowMinFraction)
+        return v < t.baseline - drop
     }()
 
     func lastHardPiece() -> String? {

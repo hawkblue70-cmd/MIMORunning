@@ -112,11 +112,17 @@ struct MRReadinessTests {
     }
 
     @Test func unusuallyLowLastNightIsRestEvenIfTrendNormal() {
-        // 4주가 원래 ±4로 출렁이는 사람(SD ≈ 4.1) · 7일은 31로 보통 · 어젯밤만 22(기준선 − 1SD = 25.9 아래).
+        // 4주가 원래 ±4로 출렁이는 사람(SD ≈ 4.1) · 7일은 31로 보통 · 어젯밤만 22(기준선 − max(1.5SD≈6.2, 15%=4.5) ≈ 23.8 아래).
         // 4주가 고른(±1) 픽스처면 어젯밤 하나로 7일 CV가 1.5배를 넘어 '불안정'이 먼저 잡힌다 — 그건 의도된 우선순위.
         let r = readiness(runs: steadyRuns(), nights: nights(base: 30, recent: 31, baseJitter: [4, -4], todayValue: 22))
         #expect(r?.level == .rest)
         #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 어젯밤 HRV 22ms, 4주 30ms보다 낮음")
+    }
+
+    @Test func mildlyLowLastNightIsNotFlagged() {
+        // 어젯밤 26 — 기준선 30보다 4 낮지만 문턱(≈23.8) 위 → 하룻밤 잡음으로 보고 HRV로 휴식을 권하지 않는다
+        let r = readiness(runs: steadyRuns(), nights: nights(base: 30, recent: 31, baseJitter: [4, -4], todayValue: 26))
+        #expect(r?.reasons.contains { $0.contains("어젯밤 HRV") } == false)
     }
 
     @Test func lowLastNightAfterHardRunNamesTheCause() {
