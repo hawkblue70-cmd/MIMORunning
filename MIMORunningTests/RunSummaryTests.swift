@@ -374,17 +374,17 @@ struct RunSummaryTests {
     @Test func hrvEvidenceMarksLastNightOutsideUsualRange() {
         // 기준선 29.6 · 문턱 ±15%(±4.4): 19(−36%)는 낮음, 28(−5%)은 범위 안, 35(+18%)는 높음
         var i = restedInput(); i.hrvTrend = hrv(.within); i.lastNightHRV = 19
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 19(평소보다 낮음) · 7일 37 · 4주 30ms · 보통") == true)
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 19(평소보다 낮음) · 이번 주 37 · 평소 30ms · 보통") == true)
         i.lastNightHRV = 28
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 28 · 7일 37 · 4주 30ms · 보통") == true)
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 28 · 이번 주 37 · 평소 30ms · 보통") == true)
         i.lastNightHRV = 35
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 35(평소보다 높음) · 7일 37 · 4주 30ms · 보통") == true)
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 35(평소보다 높음) · 이번 주 37 · 평소 30ms · 보통") == true)
     }
 
     @Test func hrvEvidenceAppendsSevenDayAndBaseline() {
         var i = restedInput(); i.hrvTrend = hrv(.within)
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 7일 37ms · 4주 30ms · 보통") == true)
-        inEnglish { #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 7-day 37ms · 4-wk 30ms · normal") == true) }
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 이번 주 37 · 평소 30ms · 보통") == true)
+        inEnglish { #expect(lines(i)[3].evidence?.hasSuffix("\nHRV this week 37 · usual 30ms · normal") == true) }
     }
 
     @Test func hrvEvidenceGradeFollowsTrend() {
@@ -399,7 +399,7 @@ struct RunSummaryTests {
         // 안정 상승(밴드 안이지만 기준선 위 + 7일 CV가 4주의 절반 미만)도 좋음
         i.hrvTrend = MRHRVTrend(state: .within, isVolatile: false, sevenDayMean: 27, baseline: 25, baselineSD: 5,
                                 sevenDayCV: 0.07, baselineCV: 0.18, sevenDayNights: 7, baselineNights: 28)
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 7일 27ms · 4주 25ms · 좋음") == true)
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 이번 주 27 · 평소 25ms · 좋음") == true)
     }
 
     @Test func hrvStableRiseCountsAsReady() {

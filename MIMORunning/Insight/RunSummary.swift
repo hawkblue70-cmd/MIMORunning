@@ -437,6 +437,7 @@ enum RunSummary {
         if i.todayEffortMissing, !parts.isEmpty {
             parts.append(L.s("오늘 러닝 미포함", "today's run not included"))
         }
+        // 라벨은 뜻이 바로 읽히게: 7일 평균 → "이번 주", 4주 중앙값 → "평소"(사용자 결정 2026-09-22)
         // HRV는 부하(AU) 줄과 다른 자료라 다음 줄 첫 칸에서 시작한다 — 한 줄에 이어 붙이면 "HRV" 뒤에서 접혀 읽기 어렵다.
         var lines: [String] = []
         if !parts.isEmpty { lines.append(parts.joined(separator: " · ")) }
@@ -451,10 +452,10 @@ enum RunSummary {
                 let dev = MRReadiness.lastNightDeviation(n, trend: t)
                 let nightNote = dev < 0 ? L.s("(평소보다 낮음)", " (below usual)")
                               : dev > 0 ? L.s("(평소보다 높음)", " (above usual)") : ""
-                lines.append(L.s("HRV 어젯밤 \(night)\(nightNote) · 7일 \(seven) · 4주 \(base)ms · \(grade)",
-                               "HRV last night \(night)\(nightNote) · 7-day \(seven) · 4-wk \(base)ms · \(grade)"))
+                lines.append(L.s("HRV 어젯밤 \(night)\(nightNote) · 이번 주 \(seven) · 평소 \(base)ms · \(grade)",
+                               "HRV last night \(night)\(nightNote) · this week \(seven) · usual \(base)ms · \(grade)"))
             } else {
-                lines.append(L.s("HRV 7일 \(seven)ms · 4주 \(base)ms · \(grade)", "HRV 7-day \(seven)ms · 4-wk \(base)ms · \(grade)"))
+                lines.append(L.s("HRV 이번 주 \(seven) · 평소 \(base)ms · \(grade)", "HRV this week \(seven) · usual \(base)ms · \(grade)"))
             }
         }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
