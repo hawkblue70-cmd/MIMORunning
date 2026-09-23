@@ -491,9 +491,24 @@ struct GrowthView: View {
 
     /// 유형별 평소 강도 표 갱신 — 러닝 캐시·강도 입력이 바뀔 때.
     private func refreshEffortTypeRows() {
+        let typeOf = manager.workoutTypeLookup()
         effortTypeRowsCache = EffortBaseline.typeTable(asOf: Date(), history: runsCache,
                                                        index: manager.effortIndex,
-                                                       typeOf: manager.workoutTypeLookup())
+                                                       typeOf: typeOf)
+        #if DEBUG
+        // 유형별 평소 강도 검증 — 12주 창의 러닝 전부를 유형·강도와 함께 찍는다.
+        // 표에서 빠지는 두 경우: 유형 미분류(nil, 8주 백필 밖 + 리스트에서 안 본 런) · 강도 없음.
+        let cutoff = Calendar.current.date(byAdding: .day, value: -EffortBaseline.widenedWindowDays, to: Date()) ?? Date()
+        let df = DateFormatter(); df.dateFormat = "MM/dd HH:mm"
+        let runs = runsCache.filter { $0.type == .running && $0.date >= cutoff }.sorted { $0.date < $1.date }
+        for a in runs {
+            let t = typeOf(a.id).map { $0.rawValue } ?? "미분류"
+            let e = manager.effortIndex.resolve(a.id).map { "\($0.value)(\($0.source))" } ?? "강도없음"
+            print("[유형강도] \(df.string(from: a.date)) \(String(format: "%.2f", a.distance / 1000))km · \(t) · \(e)")
+        }
+        let rows = effortTypeRowsCache.map { "\($0.type.rawValue) \($0.windowWeeks)주 \($0.count)회 중앙값 \($0.median.map(String.init) ?? "—")" }
+        print("[유형강도] 12주 러닝 \(runs.count)건 · 표: \(rows.joined(separator: " / "))")
+        #endif
     }
 
     private var weeklySection: some View {
