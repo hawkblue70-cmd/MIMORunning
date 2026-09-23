@@ -38,7 +38,9 @@ struct MRReadiness: Equatable {
 
     static let spikeRatio = 1.3
     static let risingRatio = 1.15
-    static let restConsecutiveDays = 4
+    /// 연속 러닝 일수 문턱의 하한·상한 — 실제 문턱은 본인 평소 연속일 + 1을 이 사이로 자른다(`mrConsecutiveThreshold`)
+    static let consecutiveThresholdMin = 4
+    static let consecutiveThresholdMax = 6
     /// 범위 안 HRV에서 강도 OK로 보는 마지막 고강도 최소 일수
     static let normalHRVGoMinDays = 3
     /// 어젯밤 단일 값이 "유독 낮음"인 기준 — 기준선 − 1.0 × SD_eff
@@ -66,6 +68,38 @@ func mrConsecutiveRunDays(runs: [MRWorkout], asOf: Date, calendar: Calendar = .c
     var n = 0
     while days.contains(cursor) { n += 1; cursor += 1 }
     return n
+}
+
+/// 최근 28일(오늘 제외)의 연속 러닝 구간 길이들의 중앙값 — 본인이 평소 며칠씩 이어 뛰는지. 구간이 2개 미만이면 nil.
+/// 오늘로 이어지는 현재 구간은 뺀다(자기 자신으로 문턱을 올리지 않게).
+func mrTypicalStreakDays(runs: [MRWorkout], asOf: Date, calendar: Calendar = .current) -> Int? {
+    let today = calendar.startOfDay(for: asOf)
+    let days = Set(runs.compactMap { w -> Int? in
+        let d = calendar.dateComponents([.day], from: w.date, to: today).day ?? Int.min
+        return (d >= 1 && d <= 28) ? d : nil
+    })
+    guard !days.isEmpty else { return nil }
+    // 현재 구간(어제부터 이어지는 연속)은 제외
+    var cursor = 1
+    var current = Set<Int>()
+    while days.contains(cursor) { current.insert(cursor); cursor += 1 }
+    let past = days.subtracting(current)
+    var lengths: [Int] = []
+    var d = 28
+    while d >= 1 {
+        guard past.contains(d) else { d -= 1; continue }
+        var n = 0
+        while d >= 1 && past.contains(d) { n += 1; d -= 1 }
+        lengths.append(n)
+    }
+    guard lengths.count >= 2 else { return nil }
+    return Int(mrMedian(lengths.map(Double.init)).rounded())
+}
+
+/// 연속일 판정 문턱 — 본인 평소 연속일 + 1, 4~6일로 자른다. 평소 자료가 없으면 4.
+func mrConsecutiveThreshold(typicalStreak: Int?) -> Int {
+    guard let t = typicalStreak else { return MRReadiness.consecutiveThresholdMin }
+    return min(MRReadiness.consecutiveThresholdMax, max(MRReadiness.consecutiveThresholdMin, t + 1))
 }
 
 /// 분 기준 급성:만성 — 최근 7일 분 합 ÷ (직전 28일(−34…−7) 분 합 ÷ 4). 28일에 러닝이 없으면 ratio nil.
@@ -105,6 +139,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     let hard = mrRecentHardRunCount(runs: runs, phys: phys, heatHR: heatHR, days: 14, asOf: asOf,
                                     extraHardStarts: hardRunStarts, calendar: calendar)
     let consecutive = mrConsecutiveRunDays(runs: runs, asOf: asOf, calendar: calendar)
+    let streakThreshold = mrConsecutiveThreshold(typicalStreak: mrTypicalStreakDays(runs: runs, asOf: asOf, calendar: calendar))
     let load = mrDurationAcuteChronic(runs: runs, asOf: asOf, calendar: calendar)
     let trend = mrHRVTrend(nights: hrvNights, asOf: asOf, calendar: calendar)
     // 마지막 원소가 아니라 '오늘 키'를 찾는다 — 낮 15시 이후 샘플은 내일 키로 묶이므로 last가 내일일 수 있다
@@ -166,10 +201,11 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                     why: L.s("최근 7일 부하가 평소의 \(ratioStr)배예요. 급히 늘린 부하는 쉬는 날에 흡수돼요.",
                              "Your last 7 days carry \(ratioStr)× your usual load. A sudden jump needs a rest day to absorb."))
     }
-    if consecutive >= MRReadiness.restConsecutiveDays {
-        return make(.rest, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row")],
-                    why: L.s("\(consecutive)일 내리 달리면 피로가 쌓여요. 하루 쉬어야 다음 강도가 살아나요.",
-                             "\(consecutive) days in a row lets fatigue pile up. One day off brings the next hard session back."))
+    // 연속일은 휴식이 아니라 강도를 빼라는 신호 — 이지런이면 괜찮다(2026-09-23 사용자 결정). 문턱은 본인 평소 연속일 + 1.
+    if consecutive >= streakThreshold {
+        return make(.easy, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row")],
+                    why: L.s("\(consecutive)일 내리 달렸어요. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요.",
+                             "\(consecutive) days in a row — longer than your usual streak. Keep today easy and skip the intensity."))
     }
     // 규칙 3 — HRV 억제 · 어젯밤 유독 낮음. 어제 고강도였으면 그 사실을 앞에 붙인다 — 고강도 다음 밤 HRV가 눌리는 건
     // 정상 반응이라, 원인을 같이 말해야 "몸에 문제가 있나" 하고 놀라지 않는다. 판정(휴식)은 그대로.

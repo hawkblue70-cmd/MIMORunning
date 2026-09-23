@@ -44,7 +44,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
 | 0 | `ranToday` | **nil** (이미 뛴 날은 제안하지 않는다 — 오늘 기록 줄이 주인공) | |
 | 0' | `runs` 비어 있음 | nil | |
 | 1 | `planPhase == "회복"` / `"테이퍼"` | easy | "대회 계획 회복 주" / "대회 계획 테이퍼 주" |
-| 2 | `acwr > 1.3` 또는 `consecutiveDays ≥ 4` | rest | "부하 급증" / "N일 연속" |
+| 2 | `acwr > 1.3` | rest | "부하 급증" |
+| 2' | `consecutiveDays ≥ 문턱` (문턱 = 본인 평소 연속일 + 1, 4~6으로 자름 — `mrTypicalStreakDays`: 최근 28일 연속 구간 길이의 중앙값, 현재 구간 제외) | **easy** (2026-09-23: 연속은 강도를 빼라는 신호지 쉬라는 신호가 아님) | "N일 연속" |
 | 3 | `trend.isSuppressed` 또는 `lastNightLow` | rest | "HRV 낮음"/"HRV 불안정" / "어젯밤 HRV 유독 낮음" |
 | 4 | `lastHardDaysAgo ≤ 1` | easy | "어제 고강도" (0이면 "오늘 고강도"지만 0은 `ranToday`라 도달 안 함) |
 | 5 | `rising` 이고 `trend?.isReadyHigh != true` | easy | "부하 오르는 중" |

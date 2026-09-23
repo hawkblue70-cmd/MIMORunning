@@ -75,19 +75,49 @@ struct MRReadinessTests {
         #expect(r?.line == "오늘은 이지런 · 대회 계획 테이퍼 주")
     }
 
-    @Test func fourConsecutiveDaysIsRestEvenWithGoodHRV() {
+    @Test func fourConsecutiveDaysIsEasyEvenWithGoodHRV() {
+        // steadyRuns는 평소 1일 구간뿐 → 문턱 4. 나흘 연속이면 휴식이 아니라 이지런(강도만 뺀다)
         var runs = steadyRuns()
         // 1·2·3·4일 전 연속. 끼워 넣는 두 번은 20분 — 최근 7일 분 합이 급증(1.3배)에 걸리지 않게(190/150 = 1.27, 여유 5분)
         runs.append(contentsOf: [run(daysAgo: 4, minutes: 20), run(daysAgo: 2, minutes: 20)])
         runs.sort { $0.start < $1.start }
         let r = readiness(runs: runs, nights: nights(base: 30, recent: 37))
-        #expect(r?.level == .rest)
-        #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 4일 연속")
+        #expect(r?.level == .easy)
+        #expect(r?.line == "오늘은 이지런 · 4일 연속")
         // 둘째 줄: 왜 + 데이터(HRV 어젯밤·이번 주·평소·상태어, 연속일). 마지막 고강도는 없으니 생략
-        #expect(r?.why == "4일 내리 달리면 피로가 쌓여요. 하루 쉬어야 다음 강도가 살아나요.")
+        #expect(r?.why == "4일 내리 달렸어요. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요.")
         // 어젯밤 37은 평소 30보다 15% 넘게 높다 → "(평소보다 높음)"
         #expect(r?.data == ["HRV 어젯밤 37(평소보다 높음) · 7일 평균 37(좋음) · 4주 평균 30ms", "4일 연속"])
-        #expect(r?.detail == "4일 내리 달리면 피로가 쌓여요. 하루 쉬어야 다음 강도가 살아나요. HRV 어젯밤 37(평소보다 높음) · 7일 평균 37(좋음) · 4주 평균 30ms · 4일 연속")
+        #expect(r?.detail == "4일 내리 달렸어요. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요. HRV 어젯밤 37(평소보다 높음) · 7일 평균 37(좋음) · 4주 평균 30ms · 4일 연속")
+    }
+
+    /// 평소 주 4일 연속(월~목)으로 뛰는 사람 — 4주 전부 4일 구간. 각 러닝 30분이라 급증·상승 없음.
+    private func fourDayStreakRuns(currentStreak: Int) -> [MRWorkout] {
+        var days: [Int] = []
+        for w in 1...4 { days.append(contentsOf: [7 * w + 3, 7 * w + 2, 7 * w + 1, 7 * w]) }   // 10~7, 17~14, 24~21, 31~28
+        days.append(contentsOf: (1...currentStreak).reversed().map { $0 })                       // 현재 구간: N…1일 전
+        return days.sorted(by: >).map { run(daysAgo: $0, minutes: 30) }
+    }
+
+    @Test func habitualFourDayStreakIsNotFlaggedAtFour() {
+        // 평소 4일 연속 → 문턱 5. 오늘 4일째면 연속 판정 없이 HRV로 넘어간다
+        let r = readiness(runs: fourDayStreakRuns(currentStreak: 4), nights: nights(base: 30, recent: 37))
+        #expect(r?.level == .go)
+        #expect(r?.reasons.first == "HRV 좋음")
+        #expect(mrTypicalStreakDays(runs: fourDayStreakRuns(currentStreak: 4), asOf: now) == 4)
+    }
+
+    @Test func habitualFourDayStreakIsFlaggedAtFive() {
+        let r = readiness(runs: fourDayStreakRuns(currentStreak: 5), nights: nights(base: 30, recent: 37))
+        #expect(r?.level == .easy)
+        #expect(r?.line == "오늘은 이지런 · 5일 연속")
+    }
+
+    @Test func consecutiveThresholdIsClamped() {
+        #expect(mrConsecutiveThreshold(typicalStreak: nil) == 4)
+        #expect(mrConsecutiveThreshold(typicalStreak: 1) == 4)
+        #expect(mrConsecutiveThreshold(typicalStreak: 4) == 5)
+        #expect(mrConsecutiveThreshold(typicalStreak: 9) == 6)
     }
 
     @Test func loadSpikeIsRest() {
