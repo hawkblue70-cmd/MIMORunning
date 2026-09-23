@@ -462,13 +462,7 @@ enum RunSummary {
     }
 
     /// HRV 근거 상태어 — 본인 4주 기준선 대비 관찰어. 억제(아래·불안정)가 좋음보다 먼저다.
-    static func hrvGradeLabel(_ t: MRHRVTrend) -> String {
-        let L = AppLanguage.shared
-        if t.isVolatile { return L.s("불안정", "unstable") }
-        if t.state == .below { return L.s("낮음", "low") }
-        if t.isReadyHigh { return L.s("좋음", "good") }
-        return L.s("보통", "normal")
-    }
+    static func hrvGradeLabel(_ t: MRHRVTrend) -> String { t.gradeLabel }
 
     /// 계획상 회복/테이퍼 주 > 급증/단조/장기 연속 > 충분한 회복 순으로 다음 행동을 고른다.
     /// 어젯밤 한 밤이 평소(4주)보다 15% 넘게 낮았나 — 근거 줄의 "(평소보다 낮음)"과 같은 판정. 추세가 보통이어도 다음 행동에 반영한다.

@@ -83,6 +83,11 @@ struct MRReadinessTests {
         let r = readiness(runs: runs, nights: nights(base: 30, recent: 37))
         #expect(r?.level == .rest)
         #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 4일 연속")
+        // 둘째 줄: 왜 + 데이터(HRV 어젯밤·이번 주·평소·상태어, 연속일). 마지막 고강도는 없으니 생략
+        #expect(r?.why == "4일 내리 달리면 피로가 쌓여요. 하루 쉬어야 다음 강도가 살아나요.")
+        // 어젯밤 37은 평소 30보다 15% 넘게 높다 → "(평소보다 높음)"
+        #expect(r?.data == ["HRV 어젯밤 37(평소보다 높음) · 이번 주 37 · 평소 30ms · 좋음", "4일 연속"])
+        #expect(r?.detail == "4일 내리 달리면 피로가 쌓여요. 하루 쉬어야 다음 강도가 살아나요. HRV 어젯밤 37(평소보다 높음) · 이번 주 37 · 평소 30ms · 좋음 · 4일 연속")
     }
 
     @Test func loadSpikeIsRest() {
@@ -183,6 +188,8 @@ struct MRReadinessTests {
         let r = readiness(runs: runs, nights: nights(base: 30, recent: 37))
         #expect(r?.level == .go)
         #expect(r?.line == "오늘은 강도 OK · HRV 좋음 · 마지막 고강도 6일 전")
+        #expect(r?.why == "이번 주 HRV가 평소 위로 안정적이에요. 강도를 소화할 준비가 된 신호예요.")
+        #expect(r?.data == ["HRV 어젯밤 37(평소보다 높음) · 이번 주 37 · 평소 30ms · 좋음", "마지막 고강도 6일 전"])
     }
 
     @Test func goodHRVWithoutRecentHardOmitsThatPiece() {
@@ -212,6 +219,9 @@ struct MRReadinessTests {
         #expect(r?.level == .go)
         #expect(r?.line == "오늘은 강도 OK")
         #expect(r?.hrvPending == false)
+        // HRV 자료가 없으면 데이터 조각도 없고 왜 문장만 남는다
+        #expect(r?.data == [])
+        #expect(r?.detail == "부하가 안정돼 있어요. 계획한 강도를 넣어도 돼요.")
     }
 
     // MARK: 동기화 전
@@ -220,6 +230,8 @@ struct MRReadinessTests {
         let r = readiness(runs: steadyRuns(), nights: nights(base: 30, recent: 37, todayNight: false))
         #expect(r?.hrvPending == true)
         #expect(r?.line == "오늘은 강도 OK · HRV 좋음 · 어젯밤 HRV 동기화 전")
+        // 어젯밤이 없으면 데이터 조각도 이번 주·평소만
+        #expect(r?.data == ["HRV 이번 주 37 · 평소 30ms · 좋음"])
     }
 
     @Test func eveningSampleKeyedTomorrowDoesNotHidePending() {

@@ -43,6 +43,15 @@ struct MRTodayCardView: View {
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(readinessColor(level))
                         .padding(.top, 6)
+                    // 둘째 줄 — 왜 그 판정인지 + 데이터. 판정 줄보다 작고 흐리게(12pt · 0.72).
+                    if let detail = c.readinessDetail, !detail.isEmpty {
+                        Text(detail)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.white.opacity(0.72))
+                            .lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 3)
+                    }
                 }
                 // 거리 행 — 이번 주 · 이번 달 · 올해 · 누적. 0km 칸은 엔진에서 이미 빠져 있고
                 // 남은 칸이 폭을 나눠 갖는다.

@@ -23,6 +23,8 @@ struct MRTodayCard {
     /// 아침 제안 — 연속 줄 바로 아래. 오늘 뛴 날·러닝 없음·판정 불가면 nil.
     let readinessLine: String?
     let readinessLevel: MRReadiness.Level?
+    /// 둘째 줄 — 왜 그 판정인지 + 데이터(HRV 어젯밤·이번 주·평소, 마지막 고강도, 연속일)
+    let readinessDetail: String?
 
     /// 러닝 기록 줄을 "오늘"로 치는 시간 — 러닝 **종료** 후 이만큼. 달력상 자정이 아니다.
     /// 이 안에 다시 뛰면 가장 최근 러닝으로 교체된다(`runs.last`).
@@ -168,5 +170,6 @@ func mrTodayCard(runs: [MRWorkout],
 
     return MRTodayCard(streakLine: streakLine, distanceCells: distanceCells,
                        sessionLine: sessionLine, linkLine: linkLine,
-                       readinessLine: readiness?.line, readinessLevel: readiness?.level)
+                       readinessLine: readiness?.line, readinessLevel: readiness?.level,
+                       readinessDetail: readiness?.detail)
 }

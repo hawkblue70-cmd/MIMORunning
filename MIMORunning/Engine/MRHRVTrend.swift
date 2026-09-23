@@ -54,6 +54,15 @@ struct MRHRVTrend: Equatable {
     /// 아래 또는 불안정 — "충분히 회복" 억제 조건
     var isSuppressed: Bool { state == .below || isVolatile }
 
+    /// 상태어 — 본인 4주 기준선 대비 관찰어(절대 등급 아님). 억제(불안정·아래)가 좋음보다 먼저. 총평 근거·아침 제안이 같이 쓴다.
+    var gradeLabel: String {
+        let L = AppLanguage.shared
+        if isVolatile { return L.s("불안정", "unstable") }
+        if state == .below { return L.s("낮음", "low") }
+        if isReadyHigh { return L.s("좋음", "good") }
+        return L.s("보통", "normal")
+    }
+
     static let minRecentNights = 4
     static let minBaselineNights = 14
     static let bandSD = 0.5
