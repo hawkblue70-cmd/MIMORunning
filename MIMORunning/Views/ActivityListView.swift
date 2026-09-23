@@ -211,11 +211,22 @@ private struct ActivityListContent: View {
     /// 엔진의 `MRWorkout.isInterval`은 WorkoutKit 구조화 운동만 잡아, 앱이 "인터벌"로 분류한 러닝을 놓친다 —
     /// 아침 제안의 "어제 고강도"와 조언 `hrvReady`가 이 집합을 합쳐 본다. `Activity.date`와 `MRWorkout.start`는 같은 HKWorkout.startDate.
     private func pushHardRunStarts() {
+        // ⚠ 엔진 준비 전에는 돌지 않는다 — 첫 화면 onAppear는 엔진의 .task보다 먼저 실행되므로, 여기서 메인이 막히면 엔진이 시작조차 못 한다.
+        //   준비되면 .onChange(of: engine.isReady)가 다시 부른다.
+        guard engine.isReady else {
+            #if DEBUG
+            print("[하드런] 엔진 준비 전 — 건너뜀")
+            #endif
+            return
+        }
         let t0 = CFAbsoluteTimeGetCurrent()
+        #if DEBUG
+        print("[하드런] 시작")
+        #endif
         defer {
             #if DEBUG
             let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-            if ms > 50 { print(String(format: "[⏱ pushHardRunStarts] %.0fms — 메인 스레드", ms)) }
+            print(String(format: "[하드런] 끝 %.0fms", ms))
             #endif
         }
         let since = Calendar.current.date(byAdding: .day, value: -15, to: Date()) ?? .distantPast
