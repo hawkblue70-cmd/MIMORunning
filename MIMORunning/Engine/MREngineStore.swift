@@ -324,24 +324,13 @@ final class MREngineStore: ObservableObject {
         let hrvAge = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
         // 오늘 키의 밤이 없으면(워치가 아침에 동기화) 24시간 안이어도 다시 읽는다 — 아침 제안이 어젯밤을 봐야 한다
         let hasTonight = hrvNights.contains { Calendar.current.isDateInToday($0.date) }   // last가 아니라 검색 — 15시 이후 샘플은 내일 키로 묶인다
-        if hrvNights.isEmpty || hrvAge >= 24 * 3600 || !hasTonight {
-            let t0 = CFAbsoluteTimeGetCurrent()
-            async let rawTask = hk.fetchSleepHRV()
-            async let asleepTask = hk.fetchAsleepIntervals()
-            let raw = (try? await rawTask) ?? []
-            let asleep = (try? await asleepTask) ?? []
-            // 밤 묶기는 메인 밖에서 — 순수 함수, 값 타입
-            let nights = await Task.detached(priority: .userInitiated) { mrHRVNightMedians(samples: raw, asleep: asleep) }.value
-            // 일시적 조회 실패(빈 결과)가 복원된 캐시를 메모리에서 지우지 않게 — 결과가 있을 때만 교체
-            if !nights.isEmpty || hrvNights.isEmpty { hrvNights = nights }
-            let fetchedAt = Date()
-            hrvLastFetchedAt = fetchedAt
-            if !nights.isEmpty { persistHRV(fetchedAt: fetchedAt, nights: nights) }
-            #if DEBUG
-            print(String(format: "[⏱ fetchSleepHRV] %.2fs · 조회범위 60일 · 샘플 %d건 · 잠든 구간 %d개 · %d밤 · 캐시 미스",
-                         CFAbsoluteTimeGetCurrent() - t0, raw.count, asleep.count, nights.count))
-            #endif
-        }
+        // ⚠ HRV 조회는 화면 준비(.ready)를 막지 않는다 — 캐시로 먼저 그리고, 필요하면 뒤에서 다시 읽어 조언·오늘 카드만 갱신한다.
+        //   HealthKit 쿼리 하나가 늦거나 멈춰도 홈이 멈추지 않게. (2026-09-23: 빌드 후 앱이 멈춘다는 보고)
+        let hrvStale = hrvNights.isEmpty || hrvAge >= 24 * 3600 || !hasTonight
+        #if DEBUG
+        print("[HRV] 캐시 \(hrvNights.count)밤 · 오늘 밤 \(hasTonight ? "있음" : "없음") · \(hrvStale ? "뒤에서 재조회" : "캐시 사용")")
+        #endif
+        if hrvStale { Task { await self.reloadHRV(reason: "시작") } }
         #if DEBUG
         if let t = mrHRVTrend(nights: hrvNights, asOf: now) {
             let stateStr: String = {
@@ -895,21 +884,42 @@ final class MREngineStore: ObservableObject {
         let hasTonight = hrvNights.contains { Calendar.current.isDateInToday($0.date) }   // last가 아니라 검색 — 15시 이후 샘플은 내일 키로 묶인다
         let age = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
         guard !hasTonight, age >= 30 * 60 else { return }
-        async let rawTask = hk.fetchSleepHRV()
-        async let asleepTask = hk.fetchAsleepIntervals()
-        let raw = (try? await rawTask) ?? []
-        let asleep = (try? await asleepTask) ?? []
+        await reloadHRV(reason: "앞으로 옴")
+    }
+
+    private var hrvReloading = false
+
+    /// HRV 60일 + 잠든 구간을 순서대로 읽고(동시 실행 없음) 밤 묶기는 메인 밖에서. 끝나면 조언·오늘 카드만 다시 만든다.
+    /// 화면 준비(.ready)와 무관하게 돈다 — 준비 전에 끝나면 refreshCore가 만드는 카드가 새 값을 쓰고, 뒤에 끝나면 여기서 갱신한다.
+    private func reloadHRV(reason: String) async {
+        guard !hrvReloading else { return }
+        hrvReloading = true
+        defer { hrvReloading = false }
         let t0 = CFAbsoluteTimeGetCurrent()
+        #if DEBUG
+        print("[HRV] 재조회 시작(\(reason))")
+        #endif
+        let raw = (try? await hk.fetchSleepHRV()) ?? []
+        #if DEBUG
+        print(String(format: "[⏱ HRV 샘플] %.2fs · %d건", CFAbsoluteTimeGetCurrent() - t0, raw.count))
+        #endif
+        let asleep = (try? await hk.fetchAsleepIntervals()) ?? []
+        #if DEBUG
+        print(String(format: "[⏱ HRV 잠든 구간] %.2fs · %d개", CFAbsoluteTimeGetCurrent() - t0, asleep.count))
+        #endif
+        let t1 = CFAbsoluteTimeGetCurrent()
         let nights = await Task.detached(priority: .userInitiated) { mrHRVNightMedians(samples: raw, asleep: asleep) }.value
         #if DEBUG
-        print(String(format: "[⏱ HRV 밤 묶기] %.3fs · 샘플 %d · 잠든 구간 %d · %d밤", CFAbsoluteTimeGetCurrent() - t0, raw.count, asleep.count, nights.count))
+        print(String(format: "[⏱ HRV 밤 묶기] %.3fs · %d밤", CFAbsoluteTimeGetCurrent() - t1, nights.count))
         #endif
         let fetchedAt = Date()
         hrvLastFetchedAt = fetchedAt
+        // 일시적 조회 실패(빈 결과)가 복원된 캐시를 메모리에서 지우지 않게 — 결과가 있을 때만 교체
         if !nights.isEmpty {
             hrvNights = nights
             persistHRV(fetchedAt: fetchedAt, nights: nights)
         }
+        guard case .ready = state else { return }   // 준비 전이면 refreshCore가 이어서 카드를 만든다
         let now = Date()
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
                                races: userInput.races,
@@ -921,7 +931,12 @@ final class MREngineStore: ObservableObject {
                                log: adviceLog, asOf: now)
         todayCard = buildTodayCard(runs: runs, now: now)
         #if DEBUG
-        print("[HRV] 앞으로 옴 → 재조회 \(nights.count)밤 · 오늘 밤 \(hrvNights.contains { Calendar.current.isDateInToday($0.date) } ? "있음" : "없음")")
+        if let t = mrHRVTrend(nights: hrvNights, asOf: now) {
+            print(String(format: "[HRV] 재조회 끝(%@) · %d밤 · 이번 주 %.0fms · 평소 %.0f±%.0f · %@", reason, hrvNights.count,
+                         t.sevenDayMean, t.baseline, t.baselineSD, t.gradeLabel))
+        } else {
+            print("[HRV] 재조회 끝(\(reason)) · \(hrvNights.count)밤 · 추세 없음")
+        }
         #endif
     }
 
