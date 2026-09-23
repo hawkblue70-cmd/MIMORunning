@@ -107,9 +107,14 @@ final class MREngineStore: ObservableObject {
 
     private static let hrvCacheDateKey   = "mimo.hrvCache.fetchedAt"
     private static let hrvCacheNightsKey = "mimo.hrvCache.nights"
+    private static let hrvCacheRuleKey   = "mimo.hrvCache.rule"
+    /// 밤 묶기 규칙 버전 — 바뀌면 캐시를 버리고 다시 읽는다. 1 = 창 규칙(15시~12시) · 2 = 잠든 구간 한정(2026-09-23)
+    private static let hrvNightRuleVersion = 2
 
     private func loadPersistedHRV() -> (fetchedAt: Date, nights: [(date: Date, value: Double)])? {
         let ud = UserDefaults.standard
+        // 다른 규칙으로 만든 밤 값은 쓰지 않는다 — 오늘 밤이 있어도 재조회로 간다
+        guard ud.integer(forKey: Self.hrvCacheRuleKey) == Self.hrvNightRuleVersion else { return nil }
         guard let ts = ud.object(forKey: Self.hrvCacheDateKey) as? Double,
               let rawArr = ud.array(forKey: Self.hrvCacheNightsKey) as? [[Double]] else { return nil }
         let nights = rawArr.compactMap { arr -> (date: Date, value: Double)? in
@@ -124,6 +129,7 @@ final class MREngineStore: ObservableObject {
         let ud = UserDefaults.standard
         ud.set(fetchedAt.timeIntervalSince1970, forKey: Self.hrvCacheDateKey)
         ud.set(nights.map { [$0.date.timeIntervalSince1970, $0.value] }, forKey: Self.hrvCacheNightsKey)
+        ud.set(Self.hrvNightRuleVersion, forKey: Self.hrvCacheRuleKey)
     }
     private var storedDob: Date? = nil
     private var storedSex: MRSex = .unknown
