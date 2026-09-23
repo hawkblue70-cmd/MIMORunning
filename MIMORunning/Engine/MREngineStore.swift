@@ -858,12 +858,33 @@ final class MREngineStore: ObservableObject {
     /// 오늘 카드 생성 — 호출부 5곳이 이 하나만 쓴다(대회 D-day 가시성·아침 제안 입력을 한 곳에서).
     private func buildTodayCard(runs: [MRWorkout], now: Date) -> MRTodayCard? {
         let raceDayVisible = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
+        let governing = governingPlanWeek(for: now)
         return mrTodayCard(runs: runs, phys: phys, plans: plans,
                            raceDayCardVisible: raceDayVisible,
                            advice: advice, asOf: now,
                            heatHR: heatHR, hrvNights: hrvNights,
-                           planPhase: governingPlanWeek(for: now)?.week.phase,
-                           hardRunStarts: hardRunStarts)
+                           planPhase: governing?.week.phase,
+                           hardRunStarts: hardRunStarts,
+                           planWeek: governing.map { planWeekContext(plan: $0.plan, week: $0.week, now: now) })
+    }
+
+    /// 아침 제안의 세션 추론 입력 — 이번 주 계획 구성. 이지 횟수는 계획과 같은 규칙(본인 4주 빈도 − 1),
+    /// 대회 페이스는 계획 문구와 같은 함수(예측 기록 기준).
+    private func planWeekContext(plan: MRRacePlan, week: MRPlanWeek, now: Date) -> MRPlanWeekContext {
+        let cal = Calendar.current
+        let n = max(Int(profile.runsPerWeek.rounded()), 2)
+        let isRacePace = week.phase == "대회 페이스"
+        let pace: Double? = isRacePace
+            ? mrTrainingRacePaceSecPerKm(halfEquivMin: halfEquivMin, distanceM: plan.distanceM,
+                                         weeklyKm: plan.peakWeeklyKm, longestKm: plan.reachableLongKm,
+                                         finishes: profile.marathonFinishes)
+            : nil
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: plan.raceDate)).day ?? 999
+        return MRPlanWeekContext(phase: week.phase, longRunKm: week.longRunKm, weeklyKm: week.weeklyKm,
+                                 easyRuns: max(n - 1, 1),
+                                 racePaceSecPerKm: pace,
+                                 racePaceSegmentMin: isRacePace ? mrRacePaceSegmentMinutes(longRunMin: week.longRunMin) : nil,
+                                 daysToRace: days)
     }
 
     /// 홈이 앱 쪽 고강도 판정을 넣어 준다. 바뀌었을 때만 조언·오늘 카드를 다시 만든다(HealthKit 재읽기 없음).

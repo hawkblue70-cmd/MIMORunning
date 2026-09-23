@@ -18,9 +18,15 @@ struct MRReadiness: Equatable {
     /// 판정과 무관하게 항상 보여주는 데이터 조각(HRV 어젯밤·이번 주·평소, 마지막 고강도, 연속일) — 둘째 줄 뒷부분
     var data: [String] = []
 
-    /// 둘째 줄 — "왜" 문장 뒤에 데이터 조각을 " · "로 붙인다
+    /// 대회 훈련 계획이 있을 때 오늘 세션 — "롱런 14km, 마지막 15분 5'22"" / "이지 8km". 없으면 nil.
+    var session: String? = nil
+    /// 이번 주 계획 진행 — "이번 주 롱런 아직 · 이지 2/3회". 둘째 줄 끝에 붙는다.
+    var progress: String? = nil
+
+    /// 둘째 줄 — "왜" 문장 뒤에 데이터 조각(+ 계획 진행)을 " · "로 붙인다
     var detail: String {
-        data.isEmpty ? why : (why.isEmpty ? data.joined(separator: " · ") : why + " " + data.joined(separator: " · "))
+        let pieces = data + (progress.map { [$0] } ?? [])
+        return pieces.isEmpty ? why : (why.isEmpty ? pieces.joined(separator: " · ") : why + " " + pieces.joined(separator: " · "))
     }
 
     var line: String {
@@ -31,7 +37,8 @@ struct MRReadiness: Equatable {
         case .easy: head = L.s("오늘은 이지런", "Today: easy run")
         case .rest: head = L.s("오늘은 휴식이나 짧은 이지", "Today: rest or a short easy run")
         }
-        var parts = [head] + reasons
+        // 세션이 있으면 판정어 · 세션 — 근거는 둘째 줄의 "왜" 문장이 이미 담고 있다
+        var parts = session.map { [head, $0] } ?? ([head] + reasons)
         if hrvPending { parts.append(L.s("어젯밤 HRV 동기화 전", "last night's HRV not synced yet")) }
         return parts.joined(separator: " · ")
     }
@@ -56,6 +63,103 @@ struct MRReadiness: Equatable {
         if ratio < -lastNightDeviationFraction { return -1 }
         if ratio > lastNightDeviationFraction { return 1 }
         return 0
+    }
+}
+
+// MARK: - 대회 훈련 계획의 이번 주 구성 → 오늘 세션
+
+/// 스토어가 `governingPlanWeek`에서 조립해 넘기는 이번 주 계획. 플랜은 주 단위라 요일 배정이 없다 —
+/// "오늘 무엇"은 이번 주에 남은 것 + 오늘 판정 + 본인 롱런 요일 습관으로 추론한다.
+struct MRPlanWeekContext: Equatable {
+    let phase: String
+    let longRunKm: Double
+    let weeklyKm: Double
+    /// 이지 횟수 — 본인 최근 4주 빈도에서 max(round(n) − 1, 1)
+    let easyRuns: Int
+    /// 대회 페이스 주일 때만(예측 기록 기준, 목표 기록이 아니다)
+    let racePaceSecPerKm: Double?
+    let racePaceSegmentMin: Int?
+    let daysToRace: Int
+
+    static let longRunDoneFraction = 0.8
+    /// 대회 주(D-7 이내)는 D-day 카드가 담당 — 두 카드가 다른 말을 하면 안 된다
+    static let raceWeekDays = 7
+}
+
+struct MRSessionSuggestion: Equatable {
+    let session: String?
+    let progress: String
+}
+
+/// 최근 8주(이번 주 제외)에서 러닝 2회 이상인 주의 최장 러닝 요일(Gregorian 1=일…7=토) 최빈값. 표본 3주 미만이면 nil.
+func mrHabitualLongRunWeekday(runs: [MRWorkout], asOf: Date, calendar: Calendar = .current) -> Int? {
+    let thisMonday = MRPlanGovernance.weekMonday(of: asOf, calendar: calendar)
+    guard let from = calendar.date(byAdding: .day, value: -56, to: thisMonday) else { return nil }
+    var byWeek: [Date: [MRWorkout]] = [:]
+    for w in runs where w.start >= from && w.start < thisMonday {
+        byWeek[MRPlanGovernance.weekMonday(of: w.start, calendar: calendar), default: []].append(w)
+    }
+    var counts: [Int: Int] = [:]
+    for (_, ws) in byWeek where ws.count >= 2 {
+        guard let longest = ws.max(by: { ($0.distanceKm ?? 0) < ($1.distanceKm ?? 0) }) else { continue }
+        counts[calendar.component(.weekday, from: longest.start), default: 0] += 1
+    }
+    guard counts.values.reduce(0, +) >= 3 else { return nil }
+    return counts.max { a, b in a.value == b.value ? a.key > b.key : a.value < b.value }?.key
+}
+
+/// 오늘 판정 + 이번 주 계획 → 오늘 세션과 진행. 대회 주면 nil(D-day 카드 담당).
+func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs: [MRWorkout],
+                         asOf: Date, calendar: Calendar = .current) -> MRSessionSuggestion? {
+    let L = AppLanguage.shared
+    guard plan.daysToRace > MRPlanWeekContext.raceWeekDays else { return nil }
+    let today = calendar.startOfDay(for: asOf)
+    let monday = MRPlanGovernance.weekMonday(of: asOf, calendar: calendar)
+    guard let nextMonday = calendar.date(byAdding: .day, value: 7, to: monday) else { return nil }
+    let week = runs.filter { $0.start >= monday && $0.start < nextMonday }
+    let longDone = plan.longRunKm > 0 && week.contains { ($0.distanceKm ?? 0) >= plan.longRunKm * MRPlanWeekContext.longRunDoneFraction }
+    let easyDone = min(max(week.count - (longDone ? 1 : 0), 0), plan.easyRuns)
+    let daysLeft = max(7 - (calendar.dateComponents([.day], from: monday, to: today).day ?? 0), 1)   // 오늘 포함, 일요일이면 1
+    let longLeft = plan.longRunKm > 0 && !longDone
+
+    // 이지 1회 거리
+    let easyKm = max(plan.weeklyKm - plan.longRunKm, 0) / Double(max(plan.easyRuns, 1))
+    let easyText = easyKm >= 1.5
+        ? L.s("이지 \(Int(easyKm.rounded()))km", "Easy \(Int(easyKm.rounded()))km")
+        : L.s("이지런", "Easy run")
+    var longText = L.s("롱런 \(Int(plan.longRunKm.rounded()))km", "Long run \(Int(plan.longRunKm.rounded()))km")
+    if let pace = plan.racePaceSecPerKm, let seg = plan.racePaceSegmentMin, pace > 0 {
+        longText += L.s(", 마지막 \(seg)분 \(mrFormatPace(pace))", ", last \(seg) min at \(mrFormatPace(pace))")
+    }
+
+    // 진행
+    var progress: [String] = []
+    if plan.longRunKm > 0 {
+        progress.append(longDone ? L.s("이번 주 롱런 완료", "long run done this week") : L.s("이번 주 롱런 아직", "long run still to do this week"))
+    }
+    progress.append(L.s("이지 \(easyDone)/\(plan.easyRuns)회", "easy \(easyDone)/\(plan.easyRuns)"))
+
+    // 세션
+    let allDone = !longLeft && easyDone >= plan.easyRuns
+    if allDone {
+        return MRSessionSuggestion(session: nil, progress: L.s("이번 주 계획 완료", "this week's plan is done"))
+    }
+    switch level {
+    case .rest:
+        if longLeft && daysLeft <= 2 {
+            progress.append(L.s("롱런은 이번 주 못 하면 다음 주로", "if the long run doesn't fit this week, move it to next week"))
+        }
+        return MRSessionSuggestion(session: nil, progress: progress.joined(separator: " · "))
+    case .go:
+        let habitual = mrHabitualLongRunWeekday(runs: runs, asOf: asOf, calendar: calendar)
+        let todayWD = calendar.component(.weekday, from: asOf)
+        if longLeft && (habitual == todayWD || daysLeft <= 2) {
+            return MRSessionSuggestion(session: longText, progress: progress.joined(separator: " · "))
+        }
+        return MRSessionSuggestion(session: easyText, progress: progress.joined(separator: " · "))
+    case .easy:
+        if longLeft { progress.append(L.s("\(daysLeft)일 남음", "\(daysLeft) days left")) }
+        return MRSessionSuggestion(session: easyText, progress: progress.joined(separator: " · "))
     }
 }
 
@@ -129,6 +233,7 @@ func mrDurationAcuteChronic(runs: [MRWorkout], asOf: Date,
 func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                  hrvNights: [(date: Date, value: Double)], planPhase: String?,
                  asOf: Date, hardRunStarts: Set<Date> = [],
+                 planWeek: MRPlanWeekContext? = nil,
                  calendar: Calendar = .current) -> MRReadiness? {
     let L = AppLanguage.shared
     let today = calendar.startOfDay(for: asOf)
@@ -180,6 +285,11 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         var r = MRReadiness(level: level, reasons: reasons, hrvPending: pending)
         r.why = why
         r.data = data
+        // 대회 훈련 계획이 있으면 오늘 세션·이번 주 진행을 붙인다 — 종류는 플랜이 정한다
+        if let plan = planWeek, let s = mrSessionSuggestion(level: level, plan: plan, runs: runs, asOf: asOf, calendar: calendar) {
+            r.session = s.session
+            r.progress = s.progress
+        }
         return r
     }
 

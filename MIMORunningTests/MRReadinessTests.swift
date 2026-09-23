@@ -273,6 +273,131 @@ struct MRReadinessTests {
         #expect(r?.line == "오늘은 강도 OK · HRV 좋음")
     }
 
+    // MARK: 대회 훈련 계획 → 오늘 세션
+
+    private func plan(phase: String = "늘리기", longRunKm: Double = 14, weeklyKm: Double = 38, easyRuns: Int = 3,
+                      racePace: Double? = nil, segMin: Int? = nil, daysToRace: Int = 30) -> MRPlanWeekContext {
+        MRPlanWeekContext(phase: phase, longRunKm: longRunKm, weeklyKm: weeklyKm, easyRuns: easyRuns,
+                          racePaceSecPerKm: racePace, racePaceSegmentMin: segMin, daysToRace: daysToRace)
+    }
+
+    /// `asOf` 기준 이번 주 월요일에서 `offset`일 뒤 07:00. 이번 주 러닝 픽스처용.
+    private func thisWeekRun(dayOffset: Int, km: Double, asOf: Date) -> MRWorkout {
+        let monday = MRPlanGovernance.weekMonday(of: asOf)
+        let start = cal.date(byAdding: .day, value: dayOffset, to: monday)!.addingTimeInterval(7 * 3600)
+        return MRWorkout(start: start, durationMin: km * 6.5, distanceKm: km, hrAvg: 140, hrMax: 170,
+                         tempC: 15, humidity: nil, indoor: false, isInterval: false)
+    }
+
+    /// 8주 동안 매주 토요일 롱런 14km + 화·목 이지 8km — 롱런 습관 요일 = 토(7). 이번 주는 비어 있다.
+    private func saturdayLongRunHistory(asOf: Date) -> [MRWorkout] {
+        let monday = MRPlanGovernance.weekMonday(of: asOf)
+        var out: [MRWorkout] = []
+        for w in 1...8 {
+            let mon = cal.date(byAdding: .day, value: -7 * w, to: monday)!
+            for (off, km) in [(1, 8.0), (3, 8.0), (5, 14.0)] {
+                out.append(MRWorkout(start: cal.date(byAdding: .day, value: off, to: mon)!.addingTimeInterval(7 * 3600),
+                                     durationMin: km * 6.5, distanceKm: km, hrAvg: 140, hrMax: 170,
+                                     tempC: 15, humidity: nil, indoor: false, isInterval: false))
+            }
+        }
+        return out
+    }
+
+    /// 이번 주 특정 요일(1=일…7=토) 08:00
+    private func thisWeek(weekday: Int) -> Date {
+        let monday = MRPlanGovernance.weekMonday(of: now)
+        let offset = (weekday + 5) % 7   // 월=0 … 일=6
+        return cal.date(byAdding: .day, value: offset, to: monday)!.addingTimeInterval(8 * 3600)
+    }
+
+    @Test func habitualLongRunWeekdayIsSaturday() {
+        #expect(mrHabitualLongRunWeekday(runs: saturdayLongRunHistory(asOf: now), asOf: now) == 7)
+    }
+
+    @Test func goOnHabitualDayWithLongRunLeftSuggestsLongRun() {
+        let sat = thisWeek(weekday: 7)
+        var runs = saturdayLongRunHistory(asOf: sat)
+        runs.append(contentsOf: [thisWeekRun(dayOffset: 1, km: 8, asOf: sat), thisWeekRun(dayOffset: 3, km: 8, asOf: sat)])
+        let s = mrSessionSuggestion(level: .go, plan: plan(), runs: runs, asOf: sat)
+        #expect(s?.session == "롱런 14km")
+        #expect(s?.progress == "이번 주 롱런 아직 · 이지 2/3회")
+    }
+
+    @Test func goOnOtherDayKeepsEasyAndNotesLongRunPending() {
+        let wed = thisWeek(weekday: 4)
+        var runs = saturdayLongRunHistory(asOf: wed)
+        runs.append(thisWeekRun(dayOffset: 1, km: 8, asOf: wed))
+        let s = mrSessionSuggestion(level: .go, plan: plan(), runs: runs, asOf: wed)
+        #expect(s?.session == "이지 8km")
+        #expect(s?.progress == "이번 주 롱런 아직 · 이지 1/3회")
+    }
+
+    @Test func goWithTwoDaysLeftSuggestsLongRunEvenOffHabit() {
+        // 습관은 토요일인데 이미 토요일을 지나 일요일(남은 날 1) — 롱런이 남았으면 오늘
+        let sunday = cal.date(byAdding: .day, value: 6, to: MRPlanGovernance.weekMonday(of: now))!.addingTimeInterval(8 * 3600)
+        let runs = saturdayLongRunHistory(asOf: sunday)
+        let s = mrSessionSuggestion(level: .go, plan: plan(), runs: runs, asOf: sunday)
+        #expect(s?.session == "롱런 14km")
+    }
+
+    @Test func racePaceWeekAppendsSegment() {
+        let sat = thisWeek(weekday: 7)
+        let s = mrSessionSuggestion(level: .go, plan: plan(phase: "대회 페이스", racePace: 322, segMin: 15),
+                                    runs: saturdayLongRunHistory(asOf: sat), asOf: sat)
+        #expect(s?.session == "롱런 14km, 마지막 15분 5'22\"")
+    }
+
+    @Test func easyLevelSuggestsEasyWithDaysLeft() {
+        let wed = thisWeek(weekday: 4)
+        let s = mrSessionSuggestion(level: .easy, plan: plan(), runs: saturdayLongRunHistory(asOf: wed), asOf: wed)
+        #expect(s?.session == "이지 8km")
+        #expect(s?.progress == "이번 주 롱런 아직 · 이지 0/3회 · 5일 남음")
+    }
+
+    @Test func restLevelHasNoSessionAndWarnsLateInWeek() {
+        let sat = thisWeek(weekday: 7)
+        let s = mrSessionSuggestion(level: .rest, plan: plan(), runs: saturdayLongRunHistory(asOf: sat), asOf: sat)
+        #expect(s?.session == nil)
+        #expect(s?.progress == "이번 주 롱런 아직 · 이지 0/3회 · 롱런은 이번 주 못 하면 다음 주로")
+    }
+
+    @Test func raceWeekYieldsNothing() {
+        let sat = thisWeek(weekday: 7)
+        #expect(mrSessionSuggestion(level: .go, plan: plan(daysToRace: 5), runs: saturdayLongRunHistory(asOf: sat), asOf: sat) == nil)
+    }
+
+    @Test func longRunCountsDoneAtEightyPercent() {
+        let sun = cal.date(byAdding: .day, value: 6, to: MRPlanGovernance.weekMonday(of: now))!.addingTimeInterval(8 * 3600)
+        var runs = saturdayLongRunHistory(asOf: sun)
+        runs.append(thisWeekRun(dayOffset: 5, km: 11.5, asOf: sun))   // 14 × 0.8 = 11.2 이상 → 완료
+        let s = mrSessionSuggestion(level: .go, plan: plan(), runs: runs, asOf: sun)
+        #expect(s?.session == "이지 8km")
+        #expect(s?.progress == "이번 주 롱런 완료 · 이지 0/3회")
+    }
+
+    @Test func everythingDoneSaysPlanComplete() {
+        let sun = cal.date(byAdding: .day, value: 6, to: MRPlanGovernance.weekMonday(of: now))!.addingTimeInterval(8 * 3600)
+        var runs = saturdayLongRunHistory(asOf: sun)
+        runs.append(contentsOf: [1, 2, 3].map { thisWeekRun(dayOffset: $0, km: 8, asOf: sun) })
+        runs.append(thisWeekRun(dayOffset: 5, km: 14, asOf: sun))
+        let s = mrSessionSuggestion(level: .go, plan: plan(), runs: runs, asOf: sun)
+        #expect(s?.session == nil)
+        #expect(s?.progress == "이번 주 계획 완료")
+    }
+
+    @Test func readinessLineUsesSessionWhenPlanPresent() {
+        // 판정 줄이 "판정어 · 세션"이 되고 근거는 둘째 줄로 — 이지 판정(어제 고강도) + 계획
+        let wed = thisWeek(weekday: 4)
+        var runs = saturdayLongRunHistory(asOf: wed)
+        runs.append(MRWorkout(start: cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: wed))!.addingTimeInterval(7 * 3600),
+                              durationMin: 45, distanceKm: 7, hrAvg: 140, hrMax: 170, tempC: 15, humidity: nil, indoor: false, isInterval: true))
+        let r = mrReadiness(runs: runs, phys: phys, heatHR: MRHeatHRModel(), hrvNights: [], planPhase: nil, asOf: wed, planWeek: plan())
+        #expect(r?.level == .easy)
+        #expect(r?.line == "오늘은 이지런 · 이지 8km")
+        #expect(r?.detail.hasSuffix("이번 주 롱런 아직 · 이지 1/3회 · 5일 남음") == true)
+    }
+
     // MARK: 헬퍼
 
     @Test func consecutiveDaysEndingYesterday() {
