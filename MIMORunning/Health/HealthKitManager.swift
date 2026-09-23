@@ -1621,14 +1621,16 @@ class HealthKitManager {
     /// 강도 분포(존 시간 합산)용 존 조회 — 메모리 상세 → 존 전용 캐시 → 디스크 상세 순. 없으면 nil.
     /// 리듬 카드 도넛과 같은 데이터(queryHRZones 결과)이며 여기서 새로 계산하지 않는다.
     /// AT2 분할 정보(K-4)가 없는 구버전 존은 nil로 취급 — `backfillHRZonesAroundActivity`가 재조회해 채운다.
-    func hrZonesFromCache(_ id: UUID) -> [HRZoneData]? {
+    /// `allowDisk: false`면 메모리·존 전용 캐시만 본다 — 상세 JSON(경로·고도·심박 시계열 포함)을 메인에서 디코딩하지 않는다.
+    /// 홈처럼 러닝 여러 건을 한꺼번에 묻는 자리는 false로.
+    func hrZonesFromCache(_ id: UUID, allowDisk: Bool = true) -> [HRZoneData]? {
         func ok(_ z: [HRZoneData]?) -> [HRZoneData]? {
             guard let z, !z.isEmpty, MRIntensityTime.hasAT2Split(z) else { return nil }
             return z
         }
         if let z = ok(detailCache[id]?.hrZones) { return z }
         if let z = ok(loadHRZoneOnlyCache()[id.uuidString]) { return z }
-        if let z = ok(loadDetailFromDisk(id)?.hrZones) { return z }
+        if allowDisk, let z = ok(loadDetailFromDisk(id)?.hrZones) { return z }
         return nil
     }
 
