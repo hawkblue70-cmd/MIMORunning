@@ -181,6 +181,8 @@ struct RunChartSeries {
     /// 타일에 보일 대표 숫자. nil이면 avgValue를 쓴다.
     /// 고도는 평균 해발이 아니라 **누적 상승**(지표 그리드의 "고도 획득"과 같은 값)을 보인다.
     var tileValue: Double? = nil
+    /// norm 0에 해당하는 값이 최저값이 아니라 고정 바닥일 때(심박=안정시심박). 축 아래 라벨용.
+    var axisFloor: Double? = nil
 
     init(
         layer: RunChartLayer,
@@ -211,10 +213,12 @@ struct RunChartSeries {
 
     /// stepCount 기반 정확한 평균으로 교체 — 차트 시각화(points)는 유지
     func withAvg(_ avg: Double) -> RunChartSeries {
-        RunChartSeries(layer: layer, points: points,
-                       minValue: minValue, maxValue: maxValue,
-                       avgValue: avg, minIndex: minIndex, maxIndex: maxIndex,
-                       lastValue: lastValue, tileValue: tileValue)
+        var s = RunChartSeries(layer: layer, points: points,
+                               minValue: minValue, maxValue: maxValue,
+                               avgValue: avg, minIndex: minIndex, maxIndex: maxIndex,
+                               lastValue: lastValue, tileValue: tileValue)
+        s.axisFloor = axisFloor
+        return s
     }
 }
 
@@ -335,11 +339,24 @@ enum RunChartBuilder {
         let storedGctAvg   = detail?.avgGroundContactTime
 
         // Heart rate — 2–98 percentile clamp, median 15 → mean 13
+        //
+        // 세로축 바닥을 이 런의 최저값이 아니라 안정시심박(존1 하한)에 고정한다.
+        // ⚠ 예전에는 최저~최고(예: 122~162)를 차트 높이 전체로 늘려, 40bpm 변화가
+        //   화면 끝에서 끝까지 요동쳤다(애플·타 앱 대비 약 4배 과장). 바닥을 안정시심박에
+        //   두면 굴곡은 남고 과장은 준다. 존이 없으면 예전처럼 최저값 기준.
+        let hrZonesForFloor = detail?.hrZones ?? []
+        let hrFloor: Double? = {
+            let sorted = hrZonesForFloor.sorted { $0.id < $1.id }
+            if let z1 = sorted.first, z1.minBPM > 0 { return Double(z1.minBPM) }   // Karvonen: Z1 하한 = 안정시심박
+            if sorted.count > 1, sorted[1].minBPM > 0 { return Double(sorted[1].minBPM) } // %MHR 폴백: Z1 하한이 0 → Z2 하한
+            return nil
+        }()
         let hrRaw = rawPoints(hrSamples.map { (offset: $0.offset, value: Double($0.bpm)) })
         if let s = makeSmoothedSeries(layer: .heartRate, rawPoints: hrRaw,
                                       smoothWindow: 15,
                                       clamp: .percentile(lo: 0.02, hi: 0.98),
-                                      meanWindow: 13) {
+                                      meanWindow: 13,
+                                      normFloor: hrFloor) {
             allSeries[.heartRate] = storedHRAvg.map { s.withAvg($0) } ?? s
         }
 
@@ -549,7 +566,8 @@ enum RunChartBuilder {
         smoothWindow: Int,
         clamp: ClampMode,
         secondaryClamp: ClampMode? = nil,
-        meanWindow: Int = 0
+        meanWindow: Int = 0,
+        normFloor: Double? = nil
     ) -> RunChartSeries? {
         guard rawPoints.count >= 2 else { return nil }
 
@@ -583,8 +601,9 @@ enum RunChartBuilder {
         let lastValue = smoothed.last ?? doubleClamped.reduce(0, +) / Double(doubleClamped.count)
 
         // Chart normalization: smoothed range (line fills chart height naturally)
-        let smMin   = smoothed.min()!
+        // normFloor가 있으면 바닥을 그 값에 고정(최저값보다 낮을 때만) — 변동 과장 방지.
         let smMax   = smoothed.max()!
+        let smMin   = min(normFloor ?? .infinity, smoothed.min()!)
         let smRange = smMax - smMin
         let smAvg   = smoothed.reduce(0, +) / Double(smoothed.count)
 
@@ -597,9 +616,11 @@ enum RunChartBuilder {
                           norm: smRange > 0 ? (sv - smMin) / smRange : 0.5)
         }
 
-        return RunChartSeries(layer: layer, points: points,
-                              minValue: rawMin, maxValue: rawMax, avgValue: smAvg,
-                              lastValue: lastValue)
+        var series = RunChartSeries(layer: layer, points: points,
+                                    minValue: rawMin, maxValue: rawMax, avgValue: smAvg,
+                                    lastValue: lastValue)
+        if let f = normFloor, f < smoothed.min()! { series.axisFloor = f }
+        return series
     }
 
     // MARK: - Clamping helpers

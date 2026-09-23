@@ -560,7 +560,7 @@ struct RunCombinedChartView: View {
             at: CGPoint(x: 22, y: yForBand(norm: 1.0, band: hrBand, in: rect)), anchor: .trailing
         )
         ctx.draw(
-            Text("\(Int(hrSeries.minValue.rounded()))").font(.system(size: 9, weight: .medium)).foregroundStyle(axisStyle),
+            Text("\(Int((hrSeries.axisFloor ?? hrSeries.minValue).rounded()))").font(.system(size: 9, weight: .medium)).foregroundStyle(axisStyle),
             at: CGPoint(x: 22, y: yForBand(norm: 0.0, band: hrBand, in: rect)), anchor: .trailing
         )
     }
