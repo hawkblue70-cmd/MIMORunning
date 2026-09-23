@@ -330,7 +330,26 @@ struct MRReadinessTests {
         runs.append(thisWeekRun(dayOffset: 1, km: 8, asOf: wed))
         let s = mrSessionSuggestion(level: .go, plan: plan(), runs: runs, asOf: wed)
         #expect(s?.session == "이지 8km")
+        #expect(s?.isLongRun == false)
+        #expect(s?.whyNote == "여유는 토요일 롱런에 쓰세요.")
         #expect(s?.progress == "이번 주 롱런 아직 · 이지 1/3회")
+    }
+
+    @Test func goWithEasySessionReadsAsEasyWithRoom() {
+        // 강도 OK인데 오늘 세션이 이지 → "오늘은 이지 8km · 강도 여유 있음", 왜 문장 끝에 롱런 요일
+        let wed = thisWeek(weekday: 4)
+        let r = mrReadiness(runs: saturdayLongRunHistory(asOf: wed), phys: phys, heatHR: MRHeatHRModel(),
+                            hrvNights: [], planPhase: nil, asOf: wed, planWeek: plan())
+        #expect(r?.level == .go)
+        #expect(r?.line == "오늘은 이지 8km · 강도 여유 있음")
+        #expect(r?.why.hasSuffix("여유는 토요일 롱런에 쓰세요.") == true)
+    }
+
+    @Test func goWithLongRunKeepsHardOkHead() {
+        let sat = thisWeek(weekday: 7)
+        let r = mrReadiness(runs: saturdayLongRunHistory(asOf: sat), phys: phys, heatHR: MRHeatHRModel(),
+                            hrvNights: [], planPhase: nil, asOf: sat, planWeek: plan())
+        #expect(r?.line == "오늘은 강도 OK · 롱런 14km")
     }
 
     @Test func goWithTwoDaysLeftSuggestsLongRunEvenOffHabit() {
@@ -395,7 +414,8 @@ struct MRReadinessTests {
         let r = mrReadiness(runs: runs, phys: phys, heatHR: MRHeatHRModel(), hrvNights: [], planPhase: nil, asOf: wed, planWeek: plan())
         #expect(r?.level == .easy)
         #expect(r?.line == "오늘은 이지런 · 이지 8km")
-        #expect(r?.detail.hasSuffix("이번 주 롱런 아직 · 이지 1/3회 · 5일 남음") == true)
+        #expect(r?.planLine == "이번 주 롱런 아직 · 이지 1/3회 · 5일 남음")
+        #expect(r?.detail.contains("이번 주 롱런") == false)   // 계획 진행은 셋째 줄로 따로
     }
 
     // MARK: 헬퍼

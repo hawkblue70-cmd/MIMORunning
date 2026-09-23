@@ -52,6 +52,14 @@ struct MRTodayCardView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, 3)
                     }
+                    // 셋째 줄 — 대회 계획 이번 주 진행. HRV 데이터와 섞이지 않게 따로(같은 12pt, 조금 더 흐리게 0.6).
+                    if let plan = c.readinessPlan, !plan.isEmpty {
+                        Text(plan)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.white.opacity(0.6))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 3)
+                    }
                 }
                 // 거리 행 — 이번 주 · 이번 달 · 올해 · 누적. 0km 칸은 엔진에서 이미 빠져 있고
                 // 남은 칸이 폭을 나눠 갖는다.

@@ -20,14 +20,18 @@ struct MRReadiness: Equatable {
 
     /// 대회 훈련 계획이 있을 때 오늘 세션 — "롱런 14km, 마지막 15분 5'22"" / "이지 8km". 없으면 nil.
     var session: String? = nil
-    /// 이번 주 계획 진행 — "이번 주 롱런 아직 · 이지 2/3회". 둘째 줄 끝에 붙는다.
+    /// 이번 주 계획 진행 — "이번 주 롱런 아직 · 이지 2/3회". 둘째 줄과 떨어진 셋째 줄(`planLine`)로 그린다.
     var progress: String? = nil
+    /// 세션이 롱런인가 — 강도 OK인데 이지를 권하는 날은 판정 줄을 "오늘은 이지 Nkm · 강도 여유 있음"으로 바꾼다
+    var sessionIsLongRun: Bool = false
 
-    /// 둘째 줄 — "왜" 문장 뒤에 데이터 조각(+ 계획 진행)을 " · "로 붙인다
+    /// 둘째 줄 — "왜" 문장 뒤에 데이터 조각을 " · "로 붙인다(계획 진행은 셋째 줄로 따로)
     var detail: String {
-        let pieces = data + (progress.map { [$0] } ?? [])
-        return pieces.isEmpty ? why : (why.isEmpty ? pieces.joined(separator: " · ") : why + " " + pieces.joined(separator: " · "))
+        data.isEmpty ? why : (why.isEmpty ? data.joined(separator: " · ") : why + " " + data.joined(separator: " · "))
     }
+
+    /// 셋째 줄 — 이번 주 계획 진행. 계획이 없으면 nil.
+    var planLine: String? { progress }
 
     var line: String {
         let L = AppLanguage.shared
@@ -37,8 +41,14 @@ struct MRReadiness: Equatable {
         case .easy: head = L.s("오늘은 이지런", "Today: easy run")
         case .rest: head = L.s("오늘은 휴식이나 짧은 이지", "Today: rest or a short easy run")
         }
-        // 세션이 있으면 판정어 · 세션 — 근거는 둘째 줄의 "왜" 문장이 이미 담고 있다
-        var parts = session.map { [head, $0] } ?? ([head] + reasons)
+        // 세션이 있으면 판정어 · 세션 — 근거는 둘째 줄의 "왜" 문장이 이미 담고 있다.
+        // 강도 OK인데 오늘 세션이 이지면 "강도 OK · 이지"가 앞뒤로 부딪힌다 → "오늘은 이지 Nkm · 강도 여유 있음"
+        var parts: [String]
+        if level == .go, let sess = session, !sessionIsLongRun {
+            parts = [L.s("오늘은 \(sess)", "Today: \(sess)"), L.s("강도 여유 있음", "room for intensity")]
+        } else {
+            parts = session.map { [head, $0] } ?? ([head] + reasons)
+        }
         if hrvPending { parts.append(L.s("어젯밤 HRV 동기화 전", "last night's HRV not synced yet")) }
         return parts.joined(separator: " · ")
     }
@@ -89,6 +99,17 @@ struct MRPlanWeekContext: Equatable {
 struct MRSessionSuggestion: Equatable {
     let session: String?
     let progress: String
+    var isLongRun: Bool = false
+    /// "왜" 문장 뒤에 덧붙일 한 문장 — 강도 여유가 있는데 이지를 권하는 날, 그 여유를 어디에 쓸지
+    var whyNote: String? = nil
+}
+
+/// 요일 이름(Gregorian 1=일…7=토)
+func mrWeekdayName(_ wd: Int) -> String {
+    let ko = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"]
+    let en = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    let i = min(max(wd - 1, 0), 6)
+    return AppLanguage.shared.s(ko[i], en[i])
 }
 
 /// 최근 8주(이번 주 제외)에서 러닝 2회 이상인 주의 최장 러닝 요일(Gregorian 1=일…7=토) 최빈값. 표본 3주 미만이면 nil.
@@ -154,9 +175,14 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
         let habitual = mrHabitualLongRunWeekday(runs: runs, asOf: asOf, calendar: calendar)
         let todayWD = calendar.component(.weekday, from: asOf)
         if longLeft && (habitual == todayWD || daysLeft <= 2) {
-            return MRSessionSuggestion(session: longText, progress: progress.joined(separator: " · "))
+            return MRSessionSuggestion(session: longText, progress: progress.joined(separator: " · "), isLongRun: true)
         }
-        return MRSessionSuggestion(session: easyText, progress: progress.joined(separator: " · "))
+        // 강도 여유는 있지만 오늘은 롱런 날이 아니다 — 여유를 이번 주 롱런에 남겨 두라고 말한다
+        let note: String? = longLeft
+            ? (habitual.map { L.s("여유는 \(mrWeekdayName($0)) 롱런에 쓰세요.", "Save it for \(mrWeekdayName($0))'s long run.") }
+               ?? L.s("여유는 이번 주 롱런에 쓰세요.", "Save it for this week's long run."))
+            : nil
+        return MRSessionSuggestion(session: easyText, progress: progress.joined(separator: " · "), whyNote: note)
     case .easy:
         if longLeft { progress.append(L.s("\(daysLeft)일 남음", "\(daysLeft) days left")) }
         return MRSessionSuggestion(session: easyText, progress: progress.joined(separator: " · "))
@@ -289,6 +315,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         if let plan = planWeek, let s = mrSessionSuggestion(level: level, plan: plan, runs: runs, asOf: asOf, calendar: calendar) {
             r.session = s.session
             r.progress = s.progress
+            r.sessionIsLongRun = s.isLongRun
+            if let note = s.whyNote { r.why = r.why.isEmpty ? note : r.why + " " + note }
         }
         return r
     }
