@@ -330,7 +330,8 @@ final class MREngineStore: ObservableObject {
             async let asleepTask = hk.fetchAsleepIntervals()
             let raw = (try? await rawTask) ?? []
             let asleep = (try? await asleepTask) ?? []
-            let nights = mrHRVNightMedians(samples: raw, asleep: asleep)
+            // 밤 묶기는 메인 밖에서 — 순수 함수, 값 타입
+            let nights = await Task.detached(priority: .userInitiated) { mrHRVNightMedians(samples: raw, asleep: asleep) }.value
             // 일시적 조회 실패(빈 결과)가 복원된 캐시를 메모리에서 지우지 않게 — 결과가 있을 때만 교체
             if !nights.isEmpty || hrvNights.isEmpty { hrvNights = nights }
             let fetchedAt = Date()
@@ -898,7 +899,11 @@ final class MREngineStore: ObservableObject {
         async let asleepTask = hk.fetchAsleepIntervals()
         let raw = (try? await rawTask) ?? []
         let asleep = (try? await asleepTask) ?? []
-        let nights = mrHRVNightMedians(samples: raw, asleep: asleep)
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let nights = await Task.detached(priority: .userInitiated) { mrHRVNightMedians(samples: raw, asleep: asleep) }.value
+        #if DEBUG
+        print(String(format: "[⏱ HRV 밤 묶기] %.3fs · 샘플 %d · 잠든 구간 %d · %d밤", CFAbsoluteTimeGetCurrent() - t0, raw.count, asleep.count, nights.count))
+        #endif
         let fetchedAt = Date()
         hrvLastFetchedAt = fetchedAt
         if !nights.isEmpty {

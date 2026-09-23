@@ -27,17 +27,29 @@ func mrHRVNightMedians(samples: [(Date, Double)],
                        noiseFloor: Double = 10.0,
                        calendar: Calendar = .current) -> [(date: Date, value: Double)] {
     let margin: TimeInterval = 15 * 60
-    // 잠든 구간 → 그 구간이 속한 밤 키(기상 시각 기준)
-    let keyed: [(start: Date, end: Date, key: Date)] = asleep.compactMap { iv in
+    // 잠든 구간 → 밤 키(기상 시각 기준). 여백을 미리 더하고 시작 시각으로 정렬해 이진 탐색한다 —
+    // 수면 단계 샘플은 60일에 수천 개, HRV 샘플은 천 개 남짓이라 선형 탐색(수백만 비교)은 메인 스레드를 초 단위로 세운다.
+    let keyed: [(start: TimeInterval, end: TimeInterval, key: Date)] = asleep.compactMap { iv in
         guard let k = mrHRVNightKey(iv.end, calendar: calendar) ?? mrHRVNightKey(iv.start, calendar: calendar) else { return nil }
-        return (iv.start, iv.end, k)
-    }
+        return (iv.start.timeIntervalSinceReferenceDate - margin, iv.end.timeIntervalSinceReferenceDate + margin, k)
+    }.sorted { $0.start < $1.start }
     let nightsWithSleep = Set(keyed.map(\.key))
+    /// t를 품는 구간 — 시작이 t 이하인 마지막 구간부터 몇 개만 거슬러 본다(구간이 겹칠 수 있어 최대 8개).
+    func containing(_ t: TimeInterval) -> Date? {
+        var lo = 0, hi = keyed.count
+        while lo < hi { let mid = (lo + hi) / 2; if keyed[mid].start <= t { lo = mid + 1 } else { hi = mid } }
+        var i = lo - 1, steps = 0
+        while i >= 0 && steps < 8 {
+            if keyed[i].end >= t { return keyed[i].key }
+            i -= 1; steps += 1
+        }
+        return nil
+    }
 
     var buckets: [Date: [Double]] = [:]
     for (t, v) in samples where v >= noiseFloor {
-        if let iv = keyed.first(where: { t >= $0.start.addingTimeInterval(-margin) && t <= $0.end.addingTimeInterval(margin) }) {
-            buckets[iv.key, default: []].append(v)
+        if let key = containing(t.timeIntervalSinceReferenceDate) {
+            buckets[key, default: []].append(v)
             continue
         }
         guard let key = mrHRVNightKey(t, calendar: calendar) else { continue }
