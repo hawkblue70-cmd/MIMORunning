@@ -154,6 +154,19 @@ extension RunChartLayer {
     }
 }
 
+// MARK: - HR axis floor
+
+extension Array where Element == HRZoneData {
+    /// 심박 차트 세로축 바닥 — 이 런의 최저값 대신 안정시심박(존1 하한)에 고정해 변동 과장을 막는다.
+    /// Karvonen 존: Z1 하한 = 안정시심박. %MHR 폴백 존: Z1 하한이 0 → Z2 하한(최대심박 60%). 존 없음: nil.
+    /// 결합 차트(RunChartBuilder)와 리듬 카드 러닝 심박수·회복 차트가 같은 바닥을 쓴다.
+    var hrAxisFloor: Double? {
+        if let z1 = first(where: { $0.id == 1 }), z1.minBPM > 0 { return Double(z1.minBPM) }
+        if let z2 = first(where: { $0.id == 2 }), z2.minBPM > 0 { return Double(z2.minBPM) }
+        return nil
+    }
+}
+
 // MARK: - RunChartPoint
 
 struct RunChartPoint {
@@ -344,13 +357,7 @@ enum RunChartBuilder {
         // ⚠ 예전에는 최저~최고(예: 122~162)를 차트 높이 전체로 늘려, 40bpm 변화가
         //   화면 끝에서 끝까지 요동쳤다(애플·타 앱 대비 약 4배 과장). 바닥을 안정시심박에
         //   두면 굴곡은 남고 과장은 준다. 존이 없으면 예전처럼 최저값 기준.
-        let hrZonesForFloor = detail?.hrZones ?? []
-        let hrFloor: Double? = {
-            let sorted = hrZonesForFloor.sorted { $0.id < $1.id }
-            if let z1 = sorted.first, z1.minBPM > 0 { return Double(z1.minBPM) }   // Karvonen: Z1 하한 = 안정시심박
-            if sorted.count > 1, sorted[1].minBPM > 0 { return Double(sorted[1].minBPM) } // %MHR 폴백: Z1 하한이 0 → Z2 하한
-            return nil
-        }()
+        let hrFloor = (detail?.hrZones ?? []).hrAxisFloor
         let hrRaw = rawPoints(hrSamples.map { (offset: $0.offset, value: Double($0.bpm)) })
         if let s = makeSmoothedSeries(layer: .heartRate, rawPoints: hrRaw,
                                       smoothWindow: 15,

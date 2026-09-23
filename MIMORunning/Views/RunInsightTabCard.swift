@@ -1188,7 +1188,9 @@ private struct HRTimeSeriesView: View {
             for b in bs { v.append(r.endHR - b.hi); v.append(r.endHR - b.lo) }
             return v
         } ?? []
-        let minBPM = min(smoothed.min() ?? 0, recoveryBPM.min() ?? .infinity)
+        // 바닥은 안정시심박(존1 하한)에 고정 — 결합 차트와 같은 규칙. 최저값~최고값을 높이 전체로 늘리면
+        // 40bpm 변화도 화면 끝에서 끝까지 요동친다. 회복·러닝 최저가 바닥보다 낮으면 그쪽을 따른다.
+        let minBPM = min(smoothed.min() ?? 0, recoveryBPM.min() ?? .infinity, zones.hrAxisFloor ?? .infinity)
         // 위쪽 10bpm 여유 — 선과 끝점 마커가 천장에 붙지 않게. 축 라벨은 이 값(차트 최대)을 쓴다.
         let maxBPM = max(smoothed.max() ?? 1, recoveryBPM.max() ?? -.infinity) + 10
         let valRange = max(1.0, maxBPM - minBPM)
