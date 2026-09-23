@@ -218,10 +218,12 @@ private struct ActivityListContent: View {
             if ms > 50 { print(String(format: "[⏱ pushHardRunStarts] %.0fms — 메인 스레드", ms)) }
             #endif
         }
-        let idx = EffortIndex(stories: stories, apple: manager.effortMap)
         let since = Calendar.current.date(byAdding: .day, value: -15, to: Date()) ?? .distantPast
-        let starts = manager.activities
-            .filter { $0.type == .running && $0.date >= since }
+        let recent = manager.activities.filter { $0.type == .running && $0.date >= since }
+        // 스토리는 이 러닝들 것만 — 전체를 정렬하면 스토리 수만큼 SwiftData 폴트가 메인에서 난다
+        let ids = Set(recent.map { $0.id.uuidString })
+        let idx = EffortIndex(stories: stories.filter { ids.contains($0.workoutID) }, apple: manager.effortMap)
+        let starts = recent
             .filter { RunSummaryBuilder.isHardRun($0, effortIndex: idx,
                                                    workoutTypeFn: { [manager] id in manager.cachedWorkoutTypeForStats(for: id) },
                                                    // 디스크 상세는 안 읽는다 — 홈에서 러닝 6~10건의 상세 JSON을 메인에서 디코딩하면 화면이 선다
@@ -325,8 +327,9 @@ private struct ActivityListContent: View {
         .onChange(of: showRunning)  { _, _ in displayCount = 50 }
         .onChange(of: showWalking)  { _, _ in displayCount = 50 }
         .onChange(of: showHiking)   { _, _ in displayCount = 50 }
+        // ⚠ `.onChange(of: stories.map(\.effortRPE))`는 쓰지 않는다 — 스토리 전체를 매 갱신마다 훑어(SwiftData 폴트) CloudKit 동기화 중엔
+        //   재갱신이 꼬리를 물어 메인이 서 버린다(2026-09-23 홈 터치 불능). 강도 입력 반영은 화면에 돌아올 때(onAppear)로 충분하다.
         .onAppear { pushHardRunStarts() }
-        .onChange(of: stories.map(\.effortRPE)) { _, _ in pushHardRunStarts() }
         .onChange(of: manager.activities.count) { _, _ in
             pushHardRunStarts()
             // 새 러닝이 목록에 들어오면 오늘 카드의 거리 행(이번 주·이번 달·올해·누적)도 같은 러닝을 보게 — 앱 재시작 없이
