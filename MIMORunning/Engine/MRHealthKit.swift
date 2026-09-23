@@ -252,6 +252,31 @@ struct MRHealthKit {
 
     /// 수면 HRV(SDNN) 원본 샘플. 밤 묶기는 `mrHRVNightMedians`가 한다.
     /// 60일이면 7일 창 + 4주 기준선(34일)에 여유가 있다. 그 이상은 쓰지 않는다.
+    /// 잠든 구간(core·deep·REM·unspecified)의 시작·끝. 밤 HRV를 "잠든 동안"으로 한정하는 데 쓴다 —
+    /// 기상 후 깨어 있을 때 찍힌 값은 수면 값보다 낮아 밤 중앙값을 끌어내린다(애플 '수면' 항목과 같은 재료로 맞춘다).
+    func fetchAsleepIntervals(days: Int = 60) async throws -> [(start: Date, end: Date)] {
+        guard let type = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) else { return [] }
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        let from = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
+        let pred = HKQuery.predicateForSamples(withStart: from, end: nil, options: .strictStartDate)
+        let asleep: Set<Int> = [
+            HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+            HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
+            HKCategoryValueSleepAnalysis.asleepREM.rawValue,
+            HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
+        ]
+        let samples: [HKCategorySample] = try await withCheckedThrowingContinuation { cont in
+            let q = HKSampleQuery(sampleType: type, predicate: pred,
+                                  limit: HKObjectQueryNoLimit,
+                                  sortDescriptors: [sort]) { _, s, e in
+                if let e { cont.resume(throwing: e); return }
+                cont.resume(returning: (s as? [HKCategorySample]) ?? [])
+            }
+            store.execute(q)
+        }
+        return samples.filter { asleep.contains($0.value) }.map { ($0.startDate, $0.endDate) }
+    }
+
     func fetchSleepHRV(days: Int = 60) async throws -> [(Date, Double)] {
         guard let type = HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN)
         else { return [] }

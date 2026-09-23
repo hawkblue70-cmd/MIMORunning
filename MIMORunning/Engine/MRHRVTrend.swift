@@ -8,24 +8,41 @@ import Foundation
 // 근거: 저강도 기간에는 HRV가 오르고 고강도 기간에는 눌린다(Plews·Buchheit). 하루 값은 10~20% 자연 변동.
 //       HRV는 회복 상태 지표이지 체력 지표가 아니다(취미 러너 10주 연구에서 체력 향상을 추적하지 못함).
 
-/// 밤별 중앙값. 창은 **전날 15:00 ~ 당일 12:00** — 15시 이후 샘플은 다음 날 키, 12시 전은 그날 키, 12~15시는 낮이라 버린다.
+/// 밤 키 — 15시 이후는 다음 날, 12시 전은 그날, 12~15시는 낮이라 nil.
+private func mrHRVNightKey(_ t: Date, calendar: Calendar) -> Date? {
+    let hour = calendar.component(.hour, from: t)
+    let dayStart = calendar.startOfDay(for: t)
+    if hour >= 15 { return calendar.date(byAdding: .day, value: 1, to: dayStart) }
+    if hour < 12 { return dayStart }
+    return nil
+}
+
+/// 밤별 중앙값.
+/// - `asleep`(잠든 구간)이 있으면 **잠든 동안 찍힌 값만** 그 밤에 넣는다(구간 끝 = 기상 시각의 밤 키). 기상 후 깨어 있을 때 값은
+///   수면 값보다 낮아 중앙값을 끌어내리므로 버린다 — 애플 건강의 '수면' HRV와 같은 재료. 구간 경계 ±15분은 포함.
+/// - 수면 기록이 없는 밤은 창 규칙으로 폴백: **전날 15:00 ~ 당일 12:00** — 15시 이후 샘플은 다음 날 키, 12시 전은 그날 키, 12~15시는 버림.
 /// 10ms 미만은 측정 노이즈로 버린다. 반환은 날짜(자정) 오름차순.
 func mrHRVNightMedians(samples: [(Date, Double)],
+                       asleep: [(start: Date, end: Date)] = [],
                        noiseFloor: Double = 10.0,
                        calendar: Calendar = .current) -> [(date: Date, value: Double)] {
+    let margin: TimeInterval = 15 * 60
+    // 잠든 구간 → 그 구간이 속한 밤 키(기상 시각 기준)
+    let keyed: [(start: Date, end: Date, key: Date)] = asleep.compactMap { iv in
+        guard let k = mrHRVNightKey(iv.end, calendar: calendar) ?? mrHRVNightKey(iv.start, calendar: calendar) else { return nil }
+        return (iv.start, iv.end, k)
+    }
+    let nightsWithSleep = Set(keyed.map(\.key))
+
     var buckets: [Date: [Double]] = [:]
     for (t, v) in samples where v >= noiseFloor {
-        let hour = calendar.component(.hour, from: t)
-        let dayStart = calendar.startOfDay(for: t)
-        let key: Date
-        if hour >= 15 {
-            guard let next = calendar.date(byAdding: .day, value: 1, to: dayStart) else { continue }
-            key = next
-        } else if hour < 12 {
-            key = dayStart
-        } else {
+        if let iv = keyed.first(where: { t >= $0.start.addingTimeInterval(-margin) && t <= $0.end.addingTimeInterval(margin) }) {
+            buckets[iv.key, default: []].append(v)
             continue
         }
+        guard let key = mrHRVNightKey(t, calendar: calendar) else { continue }
+        // 그 밤에 수면 기록이 있는데 잠든 구간 밖이면(기상 후 낮 값) 버린다. 수면 기록이 없는 밤만 창 규칙.
+        if nightsWithSleep.contains(key) { continue }
         buckets[key, default: []].append(v)
     }
     return buckets.keys.sorted().map { ($0, mrMedian(buckets[$0]!)) }

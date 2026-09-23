@@ -56,6 +56,41 @@ struct MRHRVTrendTests {
         #expect(nights.map(\.date) == [day(-3), day(0)])
     }
 
+    // MARK: 잠든 구간으로 한정
+
+    /// 어젯밤 23:30 취침 → 오늘 06:30 기상
+    private var lastNightAsleep: [(start: Date, end: Date)] { [(at(day: -1, hour: 23, minute: 30), at(day: 0, hour: 6, minute: 30))] }
+
+    @Test func wakeSamplesAreDroppedWhenSleepIsKnown() {
+        // 잠든 동안 30·28·35·58, 기상 후 7시·8시·10:42에 22·18·15 → 수면 값만: 중앙값 32.5
+        let nights = mrHRVNightMedians(samples: [
+            (at(day: 0, hour: 0), 30), (at(day: 0, hour: 2), 28), (at(day: 0, hour: 4), 35), (at(day: 0, hour: 6), 58),
+            (at(day: 0, hour: 7), 22), (at(day: 0, hour: 8), 18), (at(day: 0, hour: 10, minute: 42), 15),
+        ], asleep: lastNightAsleep)
+        #expect(nights.count == 1)
+        #expect(nights[0].date == day(0))
+        #expect(nights[0].value == 32.5)
+    }
+
+    @Test func sampleJustAfterWakeWithinMarginIsKept() {
+        // 기상 06:30 + 10분 = 06:40 → ±15분 안이라 포함
+        let nights = mrHRVNightMedians(samples: [(at(day: 0, hour: 6, minute: 40), 40)], asleep: lastNightAsleep)
+        #expect(nights.map(\.value) == [40])
+    }
+
+    @Test func nightWithoutSleepRecordFallsBackToWindow() {
+        // 그제 밤은 수면 기록이 없다 → 창 규칙으로 아침 8시 값도 포함
+        let nights = mrHRVNightMedians(samples: [(at(day: -1, hour: 8), 20), (at(day: 0, hour: 3), 30)], asleep: lastNightAsleep)
+        #expect(nights.map(\.date) == [day(-1), day(0)])
+        #expect(nights.map(\.value) == [20, 30])
+    }
+
+    @Test func eveningSleepBeforeMidnightKeysToWakeDay() {
+        // 22:00에 잠든 구간 안 샘플은 기상일(오늘) 키
+        let nights = mrHRVNightMedians(samples: [(at(day: -1, hour: 23, minute: 45), 33)], asleep: lastNightAsleep)
+        #expect(nights.map(\.date) == [day(0)])
+    }
+
     // MARK: 추세
 
     /// 4주(−34…−7)는 base, 7일(−6…0)은 recent 값으로 채운 밤 시계열.

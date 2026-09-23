@@ -326,16 +326,19 @@ final class MREngineStore: ObservableObject {
         let hasTonight = hrvNights.contains { Calendar.current.isDateInToday($0.date) }   // last가 아니라 검색 — 15시 이후 샘플은 내일 키로 묶인다
         if hrvNights.isEmpty || hrvAge >= 24 * 3600 || !hasTonight {
             let t0 = CFAbsoluteTimeGetCurrent()
-            let raw = (try? await hk.fetchSleepHRV()) ?? []
-            let nights = mrHRVNightMedians(samples: raw)
+            async let rawTask = hk.fetchSleepHRV()
+            async let asleepTask = hk.fetchAsleepIntervals()
+            let raw = (try? await rawTask) ?? []
+            let asleep = (try? await asleepTask) ?? []
+            let nights = mrHRVNightMedians(samples: raw, asleep: asleep)
             // 일시적 조회 실패(빈 결과)가 복원된 캐시를 메모리에서 지우지 않게 — 결과가 있을 때만 교체
             if !nights.isEmpty || hrvNights.isEmpty { hrvNights = nights }
             let fetchedAt = Date()
             hrvLastFetchedAt = fetchedAt
             if !nights.isEmpty { persistHRV(fetchedAt: fetchedAt, nights: nights) }
             #if DEBUG
-            print(String(format: "[⏱ fetchSleepHRV] %.2fs · 조회범위 60일 · 샘플 %d건 · %d밤 · 캐시 미스",
-                         CFAbsoluteTimeGetCurrent() - t0, raw.count, nights.count))
+            print(String(format: "[⏱ fetchSleepHRV] %.2fs · 조회범위 60일 · 샘플 %d건 · 잠든 구간 %d개 · %d밤 · 캐시 미스",
+                         CFAbsoluteTimeGetCurrent() - t0, raw.count, asleep.count, nights.count))
             #endif
         }
         #if DEBUG
@@ -891,8 +894,11 @@ final class MREngineStore: ObservableObject {
         let hasTonight = hrvNights.contains { Calendar.current.isDateInToday($0.date) }   // last가 아니라 검색 — 15시 이후 샘플은 내일 키로 묶인다
         let age = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
         guard !hasTonight, age >= 30 * 60 else { return }
-        let raw = (try? await hk.fetchSleepHRV()) ?? []
-        let nights = mrHRVNightMedians(samples: raw)
+        async let rawTask = hk.fetchSleepHRV()
+        async let asleepTask = hk.fetchAsleepIntervals()
+        let raw = (try? await rawTask) ?? []
+        let asleep = (try? await asleepTask) ?? []
+        let nights = mrHRVNightMedians(samples: raw, asleep: asleep)
         let fetchedAt = Date()
         hrvLastFetchedAt = fetchedAt
         if !nights.isEmpty {
