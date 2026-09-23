@@ -90,6 +90,8 @@ struct MRPlanWeekContext: Equatable {
     let racePaceSecPerKm: Double?
     let racePaceSegmentMin: Int?
     let daysToRace: Int
+    /// 훈련일지에 보이는 이지 1회 거리 — 있으면 계산값 대신 이걸 쓴다(두 화면 숫자가 같아야 한다)
+    var easyKm: Double? = nil
 
     static let longRunDoneFraction = 0.8
     /// 대회 주(D-7 이내)는 D-day 카드가 담당 — 두 카드가 다른 말을 하면 안 된다
@@ -110,6 +112,26 @@ func mrWeekdayName(_ wd: Int) -> String {
     let en = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
     let i = min(max(wd - 1, 0), 6)
     return AppLanguage.shared.s(ko[i], en[i])
+}
+
+/// 훈련일지 이번 주 문구("롱런 19km + 이지 6.4km × 4회", "… + 이지 4회", "짧게 5km × 3회", 영어 "Easy 6.4km × 4x")에서
+/// 이지 횟수·1회 거리를 읽는다. 계획이 만들어질 때의 러닝 빈도로 적힌 숫자라, 오늘 빈도로 다시 계산하면 어긋난다.
+func mrParsePlanBreakdown(_ text: String) -> (easyRuns: Int?, easyKm: Double?) {
+    func lastMatch(_ pattern: String) -> [String]? {
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = text as NSString
+        guard let m = re.matches(in: text, range: NSRange(location: 0, length: ns.length)).last else { return nil }
+        return (1..<m.numberOfRanges).map { m.range(at: $0).location == NSNotFound ? "" : ns.substring(with: m.range(at: $0)) }
+    }
+    // "이지 6.4km × 4회" / "짧게 5km × 3회" / "Easy 6.4km × 4x"
+    if let g = lastMatch(#"(?:이지|짧게|Easy|Short) ([0-9]+(?:\.[0-9]+)?)km × ([0-9]+)(?:회|x)"#), g.count == 2 {
+        return (Int(g[1]), Double(g[0]))
+    }
+    // "이지 4회" / "Easy 4x"
+    if let g = lastMatch(#"(?:이지|Easy) ([0-9]+)(?:회|x)"#), g.count == 1 {
+        return (Int(g[0]), nil)
+    }
+    return (nil, nil)
 }
 
 /// 최근 8주(이번 주 제외)에서 러닝 2회 이상인 주의 최장 러닝 요일(Gregorian 1=일…7=토) 최빈값. 표본 3주 미만이면 nil.
@@ -143,10 +165,12 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
     let daysLeft = max(7 - (calendar.dateComponents([.day], from: monday, to: today).day ?? 0), 1)   // 오늘 포함, 일요일이면 1
     let longLeft = plan.longRunKm > 0 && !longDone
 
-    // 이지 1회 거리
-    let easyKm = max(plan.weeklyKm - plan.longRunKm, 0) / Double(max(plan.easyRuns, 1))
+    // 이지 1회 거리 — 훈련일지 문구에서 읽은 값이 우선
+    let easyKm = plan.easyKm ?? (max(plan.weeklyKm - plan.longRunKm, 0) / Double(max(plan.easyRuns, 1)))
+    // 일지와 같은 자릿수 — 정수면 "8km", 아니면 "6.4km"
+    let easyKmStr = abs(easyKm - easyKm.rounded()) < 0.05 ? String(format: "%.0f", easyKm) : String(format: "%.1f", easyKm)
     let easyText = easyKm >= 1.5
-        ? L.s("이지 \(Int(easyKm.rounded()))km", "Easy \(Int(easyKm.rounded()))km")
+        ? L.s("이지 \(easyKmStr)km", "Easy \(easyKmStr)km")
         : L.s("이지런", "Easy run")
     var longText = L.s("롱런 \(Int(plan.longRunKm.rounded()))km", "Long run \(Int(plan.longRunKm.rounded()))km")
     if let pace = plan.racePaceSecPerKm, let seg = plan.racePaceSegmentMin, pace > 0 {

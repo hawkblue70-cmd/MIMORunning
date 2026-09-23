@@ -311,6 +311,25 @@ struct MRReadinessTests {
         return cal.date(byAdding: .day, value: offset, to: monday)!.addingTimeInterval(8 * 3600)
     }
 
+    @Test func parsesEasyCountAndDistanceFromPlanText() {
+        #expect(mrParsePlanBreakdown("롱런 19km + 이지 6.4km × 4회") == (easyRuns: 4, easyKm: 6.4))
+        #expect(mrParsePlanBreakdown("롱런 19km · 마지막 15분은 5'22\"/km + 이지 6km × 4회") == (easyRuns: 4, easyKm: 6.0))
+        #expect(mrParsePlanBreakdown("롱런 12km + 짧게 5km × 3회 · 강도는 그대로") == (easyRuns: 3, easyKm: 5.0))
+        #expect(mrParsePlanBreakdown("롱런 10km + 이지 3회") == (easyRuns: 3, easyKm: nil))
+        #expect(mrParsePlanBreakdown("10K 계획을 따릅니다 · 롱런 14km + 이지 7km × 2회") == (easyRuns: 2, easyKm: 7.0))
+        #expect(mrParsePlanBreakdown("Long run 19km + Easy 6.4km × 4x") == (easyRuns: 4, easyKm: 6.4))
+        #expect(mrParsePlanBreakdown("") == (easyRuns: nil, easyKm: nil))
+    }
+
+    @Test func planEasyKmOverridesComputedDistance() {
+        let wed = thisWeek(weekday: 4)
+        var p = plan(longRunKm: 19, weeklyKm: 45, easyRuns: 4)
+        p.easyKm = 6.4
+        let s = mrSessionSuggestion(level: .easy, plan: p, runs: saturdayLongRunHistory(asOf: wed), asOf: wed)
+        #expect(s?.session == "이지 6.4km")
+        #expect(s?.progress.contains("이지 0/4회") == true)
+    }
+
     @Test func habitualLongRunWeekdayIsSaturday() {
         #expect(mrHabitualLongRunWeekday(runs: saturdayLongRunHistory(asOf: now), asOf: now) == 7)
     }

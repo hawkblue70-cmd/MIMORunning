@@ -872,6 +872,9 @@ final class MREngineStore: ObservableObject {
     /// 대회 페이스는 계획 문구와 같은 함수(예측 기록 기준).
     private func planWeekContext(plan: MRRacePlan, week: MRPlanWeek, now: Date) -> MRPlanWeekContext {
         let cal = Calendar.current
+        // 이지 횟수·거리는 훈련일지 문구(week.breakdown)에서 읽는다 — 계획이 만들어질 때 빈도로 적힌 숫자라
+        // 오늘 빈도(profile.runsPerWeek)로 다시 세면 "이지 2/5회" vs 일지 "6.4km × 4회"처럼 어긋난다. 못 읽으면 계산값.
+        let parsed = mrParsePlanBreakdown(week.breakdown)
         let n = max(Int(profile.runsPerWeek.rounded()), 2)
         let isRacePace = week.phase == "대회 페이스"
         let pace: Double? = isRacePace
@@ -881,10 +884,11 @@ final class MREngineStore: ObservableObject {
             : nil
         let days = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: plan.raceDate)).day ?? 999
         return MRPlanWeekContext(phase: week.phase, longRunKm: week.longRunKm, weeklyKm: week.weeklyKm,
-                                 easyRuns: max(n - 1, 1),
+                                 easyRuns: parsed.easyRuns ?? max(n - 1, 1),
                                  racePaceSecPerKm: pace,
                                  racePaceSegmentMin: isRacePace ? mrRacePaceSegmentMinutes(longRunMin: week.longRunMin) : nil,
-                                 daysToRace: days)
+                                 daysToRace: days,
+                                 easyKm: parsed.easyKm)
     }
 
     /// 홈이 앱 쪽 고강도 판정을 넣어 준다. 바뀌었을 때만 조언·오늘 카드를 다시 만든다(HealthKit 재읽기 없음).
