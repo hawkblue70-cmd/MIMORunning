@@ -891,6 +891,15 @@ final class MREngineStore: ObservableObject {
                                  easyKm: parsed.easyKm)
     }
 
+    /// 홈이 훈련일지 확정 주차(스냅샷)를 넣어 준다 — 나 탭을 열기 전에도 아침 제안이 일지와 같은 주차 문구를 읽게.
+    /// 계획 재계산은 하지 않는다(그건 나 탭의 recomputePlans 몫). 비어 있지 않을 때만, 바뀌었을 때만 오늘 카드를 다시 만든다.
+    func updateSnapshotWeeksIfEmpty(_ weeks: [String: [MRPlanWeekSummary]]) {
+        guard storedSnapshotWeeks.isEmpty, !weeks.isEmpty else { return }
+        storedSnapshotWeeks = weeks
+        guard case .ready = state else { return }
+        todayCard = buildTodayCard(runs: runs, now: Date())
+    }
+
     /// 홈이 앱 쪽 고강도 판정을 넣어 준다. 바뀌었을 때만 조언·오늘 카드를 다시 만든다(HealthKit 재읽기 없음).
     func updateHardRunStarts(_ starts: Set<Date>) {
         guard starts != hardRunStarts else { return }

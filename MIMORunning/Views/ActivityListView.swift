@@ -119,6 +119,8 @@ private struct ActivityListContent: View {
     @Query private var stories: [WorkoutStory]
     @Query private var shoes: [Shoe]
     @Query private var allOneLinerEntries: [OneLinerEntry]
+    /// 훈련일지 확정 주차 — 나 탭을 열기 전에도 아침 제안이 일지와 같은 주차 문구(이지 횟수·거리)를 읽게 엔진에 넣는다
+    @Query private var planSnapshots: [RacePlanSnapshot]
 
     private var shoeByWorkout: [String: String] {
         let shoeDict = Dictionary(uniqueKeysWithValues: shoes.map { ($0.id.uuidString, $0.displayName) })
@@ -348,6 +350,10 @@ private struct ActivityListContent: View {
         }
         .onChange(of: engine.isReady) { _, isReady in
             guard isReady else { return }
+            // 나 탭(MeView.syncAndRecompute)과 같은 키 — mrArchiveKey(raceDate:distanceM:)
+            engine.updateSnapshotWeeksIfEmpty(Dictionary(
+                planSnapshots.map { (mrArchiveKey(raceDate: $0.raceDate, distanceM: $0.distanceM), $0.planWeeks) },
+                uniquingKeysWith: { a, _ in a }))
             pushHardRunStarts()
             manager.backfillIntervalTypes(from: engine.runs)
             // 페이스 더위 모델 → 유형 분류기. 모델이 바뀌면 매니저가 8주를 재분류한다.
