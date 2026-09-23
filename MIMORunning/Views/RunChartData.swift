@@ -159,7 +159,6 @@ extension RunChartLayer {
 extension Array where Element == HRZoneData {
     /// 심박 차트 세로축 바닥 — 이 런의 최저값 대신 안정시심박(존1 하한)에 고정해 변동 과장을 막는다.
     /// Karvonen 존: Z1 하한 = 안정시심박. %MHR 폴백 존: Z1 하한이 0 → Z2 하한(최대심박 60%). 존 없음: nil.
-    /// 결합 차트(RunChartBuilder)와 리듬 카드 러닝 심박수·회복 차트가 같은 바닥을 쓴다.
     var hrAxisFloor: Double? {
         if let z1 = first(where: { $0.id == 1 }), z1.minBPM > 0 { return Double(z1.minBPM) }
         if let z2 = first(where: { $0.id == 2 }), z2.minBPM > 0 { return Double(z2.minBPM) }
