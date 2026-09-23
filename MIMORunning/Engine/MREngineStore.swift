@@ -903,9 +903,10 @@ final class MREngineStore: ObservableObject {
         #if DEBUG
         print(String(format: "[⏱ HRV 샘플] %.2fs · %d건", CFAbsoluteTimeGetCurrent() - t0, raw.count))
         #endif
-        let asleep = (try? await hk.fetchAsleepIntervals()) ?? []
+        let asleep: [(start: Date, end: Date)] = mrHRVUseSleepIntervals ? ((try? await hk.fetchAsleepIntervals()) ?? []) : []
         #if DEBUG
-        print(String(format: "[⏱ HRV 잠든 구간] %.2fs · %d개", CFAbsoluteTimeGetCurrent() - t0, asleep.count))
+        print(String(format: "[⏱ HRV 잠든 구간] %.2fs · %d개%@", CFAbsoluteTimeGetCurrent() - t0, asleep.count,
+                     mrHRVUseSleepIntervals ? "" : " (꺼짐 — 창 규칙)"))
         #endif
         let t1 = CFAbsoluteTimeGetCurrent()
         let nights = await Task.detached(priority: .userInitiated) { mrHRVNightMedians(samples: raw, asleep: asleep) }.value

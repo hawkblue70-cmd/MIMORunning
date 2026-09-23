@@ -60,6 +60,10 @@ func mrHRVNightMedians(samples: [(Date, Double)],
     return buckets.keys.sorted().map { ($0, mrMedian(buckets[$0]!)) }
 }
 
+/// 밤 값을 잠든 구간(sleepAnalysis)으로 한정할지. 2026-09-23 빌드 후 앱이 멈춘다는 보고로 원인 분리를 위해 잠시 끔 —
+/// false면 수면 쿼리를 하지 않고 창 규칙(전날 15시~당일 12시)만 쓴다. 멈춤이 사라지면 여기가 범인, 아니면 다른 곳.
+let mrHRVUseSleepIntervals = false
+
 struct MRHRVTrend: Equatable {
     enum State: Equatable { case above, within, below }
     let state: State
