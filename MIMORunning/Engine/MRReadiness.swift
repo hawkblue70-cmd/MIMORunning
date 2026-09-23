@@ -128,7 +128,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         if let v = todayNight {
             let night = Int(v.rounded())
             let dev = MRReadiness.lastNightDeviation(v, trend: t)
-            let note = dev < 0 ? L.s("(평소보다 낮음)", " (below usual)") : (dev > 0 ? L.s("(평소보다 높음)", " (above usual)") : "")
+            // 평소 범위일 때도 괄호를 붙인다 — 비어 있으면 "판정을 안 한 건가"로 읽힌다
+            let note = dev < 0 ? L.s("(평소보다 낮음)", " (below usual)") : (dev > 0 ? L.s("(평소보다 높음)", " (above usual)") : L.s("(평소 범위)", " (usual range)"))
             // 상태어는 이번 주 판정 — 이번 주 숫자 바로 뒤 괄호(총평 근거 줄과 같은 형식)
             data.append(L.s("HRV 어젯밤 \(night)\(note) · 7일 평균 \(seven)(\(t.gradeLabel)) · 4주 평균 \(base)ms",
                             "HRV last night \(night)\(note) · 7-day avg \(seven) (\(t.gradeLabel)) · 4-wk avg \(base)ms"))

@@ -387,7 +387,7 @@ struct RunSummaryTests {
         var i = restedInput(); i.hrvTrend = hrv(.within); i.lastNightHRV = 19
         #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 19(평소보다 낮음) · 7일 평균 37(보통) · 4주 평균 30ms") == true)
         i.lastNightHRV = 28
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 28 · 7일 평균 37(보통) · 4주 평균 30ms") == true)
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 28(평소 범위) · 7일 평균 37(보통) · 4주 평균 30ms") == true)
         i.lastNightHRV = 35
         #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 35(평소보다 높음) · 7일 평균 37(보통) · 4주 평균 30ms") == true)
     }
