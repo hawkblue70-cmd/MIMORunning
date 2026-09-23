@@ -453,10 +453,10 @@ enum RunSummary {
                 let nightNote = dev < 0 ? L.s("(평소보다 낮음)", " (below usual)")
                               : dev > 0 ? L.s("(평소보다 높음)", " (above usual)") : ""
                 // 상태어는 이번 주(7일 평균) 판정 — 이번 주 숫자 바로 뒤 괄호로. 어젯밤 괄호와 같은 자리라 무엇을 두고 하는 말인지 헷갈리지 않는다.
-                lines.append(L.s("HRV 어젯밤 \(night)\(nightNote) · 이번 주 \(seven)(\(grade)) · 평소 \(base)ms",
-                               "HRV last night \(night)\(nightNote) · this week \(seven) (\(grade)) · usual \(base)ms"))
+                lines.append(L.s("HRV 어젯밤 \(night)\(nightNote) · 7일 평균 \(seven)(\(grade)) · 4주 평균 \(base)ms",
+                               "HRV last night \(night)\(nightNote) · 7-day avg \(seven) (\(grade)) · 4-wk avg \(base)ms"))
             } else {
-                lines.append(L.s("HRV 이번 주 \(seven)(\(grade)) · 평소 \(base)ms", "HRV this week \(seven) (\(grade)) · usual \(base)ms"))
+                lines.append(L.s("HRV 7일 평균 \(seven)(\(grade)) · 4주 평균 \(base)ms", "HRV 7-day avg \(seven) (\(grade)) · 4-wk avg \(base)ms"))
             }
         }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")

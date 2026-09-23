@@ -130,11 +130,11 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
             let dev = MRReadiness.lastNightDeviation(v, trend: t)
             let note = dev < 0 ? L.s("(평소보다 낮음)", " (below usual)") : (dev > 0 ? L.s("(평소보다 높음)", " (above usual)") : "")
             // 상태어는 이번 주 판정 — 이번 주 숫자 바로 뒤 괄호(총평 근거 줄과 같은 형식)
-            data.append(L.s("HRV 어젯밤 \(night)\(note) · 이번 주 \(seven)(\(t.gradeLabel)) · 평소 \(base)ms",
-                            "HRV last night \(night)\(note) · this week \(seven) (\(t.gradeLabel)) · usual \(base)ms"))
+            data.append(L.s("HRV 어젯밤 \(night)\(note) · 7일 평균 \(seven)(\(t.gradeLabel)) · 4주 평균 \(base)ms",
+                            "HRV last night \(night)\(note) · 7-day avg \(seven) (\(t.gradeLabel)) · 4-wk avg \(base)ms"))
         } else {
-            data.append(L.s("HRV 이번 주 \(seven)(\(t.gradeLabel)) · 평소 \(base)ms",
-                            "HRV this week \(seven) (\(t.gradeLabel)) · usual \(base)ms"))
+            data.append(L.s("HRV 7일 평균 \(seven)(\(t.gradeLabel)) · 4주 평균 \(base)ms",
+                            "HRV 7-day avg \(seven) (\(t.gradeLabel)) · 4-wk avg \(base)ms"))
         }
     }
     if let p = lastHardPiece() { data.append(p) }
