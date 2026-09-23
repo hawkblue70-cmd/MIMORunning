@@ -385,32 +385,32 @@ struct RunSummaryTests {
     @Test func hrvEvidenceMarksLastNightOutsideUsualRange() {
         // 기준선 29.6 · 문턱 ±15%(±4.4): 19(−36%)는 낮음, 28(−5%)은 범위 안, 35(+18%)는 높음
         var i = restedInput(); i.hrvTrend = hrv(.within); i.lastNightHRV = 19
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 19(평소보다 낮음) · 이번 주 37 · 평소 30ms · 보통") == true)
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 19(평소보다 낮음) · 이번 주 37(보통) · 평소 30ms") == true)
         i.lastNightHRV = 28
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 28 · 이번 주 37 · 평소 30ms · 보통") == true)
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 28 · 이번 주 37(보통) · 평소 30ms") == true)
         i.lastNightHRV = 35
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 35(평소보다 높음) · 이번 주 37 · 평소 30ms · 보통") == true)
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 어젯밤 35(평소보다 높음) · 이번 주 37(보통) · 평소 30ms") == true)
     }
 
     @Test func hrvEvidenceAppendsSevenDayAndBaseline() {
         var i = restedInput(); i.hrvTrend = hrv(.within)
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 이번 주 37 · 평소 30ms · 보통") == true)
-        inEnglish { #expect(lines(i)[3].evidence?.hasSuffix("\nHRV this week 37 · usual 30ms · normal") == true) }
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 이번 주 37(보통) · 평소 30ms") == true)
+        inEnglish { #expect(lines(i)[3].evidence?.hasSuffix("\nHRV this week 37 (normal) · usual 30ms") == true) }
     }
 
     @Test func hrvEvidenceGradeFollowsTrend() {
         // 상태어는 본인 기준선 대비 — 위·안정=좋음, 아래=낮음, 불안정=불안정(위여도 억제가 먼저)
         var i = restedInput()
         i.hrvTrend = hrv(.above)
-        #expect(lines(i)[3].evidence?.hasSuffix(" · 좋음") == true)
+        #expect(lines(i)[3].evidence?.contains("이번 주 37(좋음)") == true)
         i.hrvTrend = hrv(.below)
-        #expect(lines(i)[3].evidence?.hasSuffix(" · 낮음") == true)
+        #expect(lines(i)[3].evidence?.contains("이번 주 37(낮음)") == true)
         i.hrvTrend = hrv(.above, volatile: true)
-        #expect(lines(i)[3].evidence?.hasSuffix(" · 불안정") == true)
+        #expect(lines(i)[3].evidence?.contains("이번 주 37(불안정)") == true)
         // 안정 상승(밴드 안이지만 기준선 위 + 7일 CV가 4주의 절반 미만)도 좋음
         i.hrvTrend = MRHRVTrend(state: .within, isVolatile: false, sevenDayMean: 27, baseline: 25, baselineSD: 5,
                                 sevenDayCV: 0.07, baselineCV: 0.18, sevenDayNights: 7, baselineNights: 28)
-        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 이번 주 27 · 평소 25ms · 좋음") == true)
+        #expect(lines(i)[3].evidence?.hasSuffix("\nHRV 이번 주 27(좋음) · 평소 25ms") == true)
     }
 
     @Test func hrvStableRiseCountsAsReady() {

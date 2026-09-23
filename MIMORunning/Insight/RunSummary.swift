@@ -452,10 +452,11 @@ enum RunSummary {
                 let dev = MRReadiness.lastNightDeviation(n, trend: t)
                 let nightNote = dev < 0 ? L.s("(평소보다 낮음)", " (below usual)")
                               : dev > 0 ? L.s("(평소보다 높음)", " (above usual)") : ""
-                lines.append(L.s("HRV 어젯밤 \(night)\(nightNote) · 이번 주 \(seven) · 평소 \(base)ms · \(grade)",
-                               "HRV last night \(night)\(nightNote) · this week \(seven) · usual \(base)ms · \(grade)"))
+                // 상태어는 이번 주(7일 평균) 판정 — 이번 주 숫자 바로 뒤 괄호로. 어젯밤 괄호와 같은 자리라 무엇을 두고 하는 말인지 헷갈리지 않는다.
+                lines.append(L.s("HRV 어젯밤 \(night)\(nightNote) · 이번 주 \(seven)(\(grade)) · 평소 \(base)ms",
+                               "HRV last night \(night)\(nightNote) · this week \(seven) (\(grade)) · usual \(base)ms"))
             } else {
-                lines.append(L.s("HRV 이번 주 \(seven) · 평소 \(base)ms · \(grade)", "HRV this week \(seven) · usual \(base)ms · \(grade)"))
+                lines.append(L.s("HRV 이번 주 \(seven)(\(grade)) · 평소 \(base)ms", "HRV this week \(seven) (\(grade)) · usual \(base)ms"))
             }
         }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")

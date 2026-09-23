@@ -86,8 +86,8 @@ struct MRReadinessTests {
         // 둘째 줄: 왜 + 데이터(HRV 어젯밤·이번 주·평소·상태어, 연속일). 마지막 고강도는 없으니 생략
         #expect(r?.why == "4일 내리 달리면 피로가 쌓여요. 하루 쉬어야 다음 강도가 살아나요.")
         // 어젯밤 37은 평소 30보다 15% 넘게 높다 → "(평소보다 높음)"
-        #expect(r?.data == ["HRV 어젯밤 37(평소보다 높음) · 이번 주 37 · 평소 30ms · 좋음", "4일 연속"])
-        #expect(r?.detail == "4일 내리 달리면 피로가 쌓여요. 하루 쉬어야 다음 강도가 살아나요. HRV 어젯밤 37(평소보다 높음) · 이번 주 37 · 평소 30ms · 좋음 · 4일 연속")
+        #expect(r?.data == ["HRV 어젯밤 37(평소보다 높음) · 이번 주 37(좋음) · 평소 30ms", "4일 연속"])
+        #expect(r?.detail == "4일 내리 달리면 피로가 쌓여요. 하루 쉬어야 다음 강도가 살아나요. HRV 어젯밤 37(평소보다 높음) · 이번 주 37(좋음) · 평소 30ms · 4일 연속")
     }
 
     @Test func loadSpikeIsRest() {
@@ -189,7 +189,7 @@ struct MRReadinessTests {
         #expect(r?.level == .go)
         #expect(r?.line == "오늘은 강도 OK · HRV 좋음 · 마지막 고강도 6일 전")
         #expect(r?.why == "이번 주 HRV가 평소 위로 안정적이에요. 강도를 소화할 준비가 된 신호예요.")
-        #expect(r?.data == ["HRV 어젯밤 37(평소보다 높음) · 이번 주 37 · 평소 30ms · 좋음", "마지막 고강도 6일 전"])
+        #expect(r?.data == ["HRV 어젯밤 37(평소보다 높음) · 이번 주 37(좋음) · 평소 30ms", "마지막 고강도 6일 전"])
     }
 
     @Test func goodHRVWithoutRecentHardOmitsThatPiece() {
@@ -231,7 +231,7 @@ struct MRReadinessTests {
         #expect(r?.hrvPending == true)
         #expect(r?.line == "오늘은 강도 OK · HRV 좋음 · 어젯밤 HRV 동기화 전")
         // 어젯밤이 없으면 데이터 조각도 이번 주·평소만
-        #expect(r?.data == ["HRV 이번 주 37 · 평소 30ms · 좋음"])
+        #expect(r?.data == ["HRV 이번 주 37(좋음) · 평소 30ms"])
     }
 
     @Test func eveningSampleKeyedTomorrowDoesNotHidePending() {
