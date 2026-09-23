@@ -1129,8 +1129,6 @@ private struct HRTimeSeriesView: View {
 
     /// 고도 배경 — 회색 계열로 둔다. 초록(고도 지표색)을 쓰면 심박선의 Zone 2 초록과
     /// 섞여 어느 쪽이 고도인지 구분이 안 된다. 시인성은 채도가 아니라 윤곽선으로 올린다.
-    /// 심박 세로축 바닥(bpm) — 사용자 확정값.
-    private static let axisFloorBPM: Double = 80
     private static let elevFill = Color.white.opacity(0.17)
     private static let elevStroke = Color.white.opacity(0.32)
 
@@ -1190,9 +1188,9 @@ private struct HRTimeSeriesView: View {
             for b in bs { v.append(r.endHR - b.hi); v.append(r.endHR - b.lo) }
             return v
         } ?? []
-        // 바닥은 80bpm 고정. 최저값~최고값을 높이 전체로 늘리면 40bpm 변화도 화면 끝에서 끝까지 요동친다.
-        // 회복·러닝 최저가 80보다 낮으면 그쪽을 따른다.
-        let minBPM = min(smoothed.min() ?? 0, recoveryBPM.min() ?? .infinity, Self.axisFloorBPM)
+        // 바닥은 90bpm 고정(결합 차트와 같은 값, RunChartBuilder.hrAxisFloorBPM). 최저값~최고값을 높이 전체로 늘리면 40bpm 변화도 화면 끝에서 끝까지 요동친다.
+        // 회복·러닝 최저가 90보다 낮으면 그쪽을 따른다.
+        let minBPM = min(smoothed.min() ?? 0, recoveryBPM.min() ?? .infinity, RunChartBuilder.hrAxisFloorBPM)
         // 위쪽 10bpm 여유 — 선과 끝점 마커가 천장에 붙지 않게. 축 라벨은 이 값(차트 최대)을 쓴다.
         let maxBPM = max(smoothed.max() ?? 1, recoveryBPM.max() ?? -.infinity) + 10
         let valRange = max(1.0, maxBPM - minBPM)
