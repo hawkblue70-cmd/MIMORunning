@@ -225,7 +225,7 @@ private struct ActivityListContent: View {
             .filter { RunSummaryBuilder.isHardRun($0, effortIndex: idx,
                                                    workoutTypeFn: { [manager] id in manager.cachedWorkoutTypeForStats(for: id) },
                                                    // 디스크 상세는 안 읽는다 — 홈에서 러닝 6~10건의 상세 JSON을 메인에서 디코딩하면 화면이 선다
-                                                   hrZonesFn: { [manager] id in manager.hrZonesFromCache(id, allowDisk: false) }) }
+                                                   hrZonesFn: { [manager] id in manager.hrZonesFromMemoryCache(id) }) }
             .map(\.date)
         engine.updateHardRunStarts(Set(starts))
     }
