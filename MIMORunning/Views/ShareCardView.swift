@@ -704,7 +704,8 @@ struct ShareCardScreen: View {
                 .padding(.vertical, 2)
             }
 
-            // ── Row 3: chart panel chips ───
+            // ── Row 3: chart panel chips ─── 경로 영상에선 숨김(차트를 그리지 않음). 고른 값(cardPanel)은 유지
+            if template != .routeVideo {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(CardChartPanel.allCases, id: \.self) { panel in
@@ -737,6 +738,7 @@ struct ShareCardScreen: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 2)
+            }
             }
         }
     }
@@ -2976,7 +2978,7 @@ struct ShareCardScreen: View {
                     date: activity.date,
                     weather: condition?.weather,
                     shoeName: displayShoeName,
-                    chartPanel: cardPanel,
+                    chartPanel: .map,   // 경로 영상은 지도가 곧 차트 — 러닝 차트 없음(심박은 경로 선의 존 색)
                     chartSplits: detail?.splits ?? [],
                     chartHRSamples: shareHRSamples,
                     chartHRZones: detail?.hrZones ?? [],
@@ -4165,7 +4167,7 @@ struct ShareCardScreen: View {
                 routeMarkerImage: miniMeStore.image,
                 weather: condition?.weather,
                 shoeName: displayShoeName,
-                chartPanel: cardPanel,
+                chartPanel: .map,   // 경로 영상은 러닝 차트 없음 — 미리보기와 같게
                 chartSplits: detail?.splits ?? [],
                 chartHRSamples: shareHRSamples,
                 chartHRZones: detail?.hrZones ?? [],
