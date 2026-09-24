@@ -125,6 +125,7 @@ private struct SplitsPalette {
 
 /// 구간 카드 하단에 무엇을 붙일지 — 카드 본문(구간 막대차트)은 두 종류가 그대로 공유한다.
 enum SplitsCardVariant: Identifiable {
+    case splitsOnly // 구간 기록만 (막대차트 + 요약 줄)
     case hrZones   // 구간 기록 + 심박 영역
     case runData   // 구간 기록 + 이 러닝의 지표
 
@@ -337,6 +338,8 @@ struct SplitsShareCardView: View {
 
                     // 하단 섹션 — 막대차트 아래에 심박 영역 또는 러닝 데이터
                     switch variant {
+                    case .splitsOnly:
+                        EmptyView()
                     case .hrZones:
                         if !zones.isEmpty { hrZonesSectionView }
                     case .runData:
@@ -630,7 +633,9 @@ struct SplitsShareCardScreen: View {
             Spacer()
             Text(variant == .runData
                  ? AppLanguage.shared.s("구간 · 러닝 데이터 카드", "Splits · Run Data Card")
-                 : AppLanguage.shared.s("구간 · 심박 영역 카드", "Splits · HR Zones Card"))
+                 : variant == .hrZones
+                 ? AppLanguage.shared.s("구간 · 심박 영역 카드", "Splits · HR Zones Card")
+                 : AppLanguage.shared.s("구간 기록 카드", "Splits Card"))
                 .font(.headline)
                 .foregroundStyle(.white)
             Spacer()

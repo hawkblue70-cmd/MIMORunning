@@ -2238,11 +2238,16 @@ private struct SplitsSection: View {
             DetailSectionHeader(title: AppLanguage.shared.s("구간 기록", "Splits"),
                                subtitle: AppLanguage.shared.s("\(splits.count)개 구간", "\(splits.count) splits"))
             if activity != nil {
-                HStack(spacing: 8) {
-                    exportButton(title: AppLanguage.shared.s("구간 러닝 데이터 내보내기", "Export Splits + Run Data"),
-                                 variant: .runData)
-                    exportButton(title: AppLanguage.shared.s("구간 심박영역 내보내기", "Export Splits + HR Zones"),
-                                 variant: .hrZones)
+                // 3개를 한 줄에 두면 글자가 너무 줄어든다 — 구간 기록만은 위 한 줄, 나머지 둘은 아래 줄
+                VStack(spacing: 8) {
+                    exportButton(title: AppLanguage.shared.s("구간 기록 내보내기", "Export Splits"),
+                                 variant: .splitsOnly)
+                    HStack(spacing: 8) {
+                        exportButton(title: AppLanguage.shared.s("구간 및 러닝 데이터 내보내기", "Export Splits + Run Data"),
+                                     variant: .runData)
+                        exportButton(title: AppLanguage.shared.s("구간 및 심박영역 내보내기", "Export Splits + HR Zones"),
+                                     variant: .hrZones)
+                    }
                 }
             }
             SplitsHighlightCard(splits: splits, activity: activity, allActivities: allActivities, isEasy: isEasyRun)
