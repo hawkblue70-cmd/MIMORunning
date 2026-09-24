@@ -906,7 +906,7 @@ private struct StampSplitRowsView: View {
     /// 요약 그리드 3열 폭(54×3 + 8×2)과 같게 — 격자 왼쪽·오른쪽 선에 맞춘다.
     private var width: CGFloat { sz(178, scale) }
     private var kmW: CGFloat { sz(18, scale) }
-    private var paceW: CGFloat { sz(30, scale) }
+    private var paceW: CGFloat { sz(32, scale) }   // 9pt 페이스가 칸을 넘치면 가운데로 밀려 열이 흔들린다
     private var hrW: CGFloat { sz(20, scale) }
     private var colGap: CGFloat { sz(5, scale) }
     private var rowH: CGFloat { sz(10, scale) }   // 페이스 9pt가 윗줄과 붙지 않게
@@ -940,7 +940,7 @@ private struct StampSplitRowsView: View {
                     let r = rows[i]
                     HStack(spacing: colGap) {
                         Text(kmLabel(r.endKm))
-                            .font(.system(size: sz(7, scale), weight: .semibold))
+                            .font(.system(size: sz(7, scale), weight: .semibold).monospacedDigit())
                             .opacity(0.62)
                             .frame(width: kmW, alignment: .leading)
                         // 가장 빠른 구간만 페이스 색(청록) — 어디서 빨랐는지 한눈에
@@ -949,13 +949,15 @@ private struct StampSplitRowsView: View {
                             .frame(width: barMax * ratio(r.paceSecPerKm), height: sz(5, scale))
                             .frame(width: barMax, alignment: .leading)
                         Text(paceText(r.paceSecPerKm))
-                            .font(.system(size: sz(9, scale), weight: .black).width(.compressed))
+                            .font(.system(size: sz(9, scale), weight: .black).width(.compressed).monospacedDigit())
                             .italic()
+                            .fixedSize()
                             .frame(width: paceW, alignment: .trailing)
                         if hasHR {
                             Text(r.heartRate.map { "\($0)" } ?? "–")
-                                .font(.system(size: sz(8, scale), weight: .semibold))
+                                .font(.system(size: sz(8, scale), weight: .semibold).monospacedDigit())
                                 .opacity(0.62)
+                                .fixedSize()
                                 .frame(width: hrW, alignment: .trailing)
                         }
                     }
