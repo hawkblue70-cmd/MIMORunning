@@ -77,16 +77,16 @@ enum MRCacheMaintenance {
         }
     }
 
-    /// ④ 옛 버전 경로 지도 스냅샷 — 상세 화면 것과 카드 것 모두. 지금 쓰는 버전만 남긴다.
-    /// 지워도 다음에 열 때 다시 찍는다.
+    /// ④ 옛 버전 경로 지도 스냅샷 — 카드 것은 지금 쓰는 버전만 남긴다. 지워도 다음에 열 때 다시 찍는다.
+    /// 옛 상세 화면 지도(기본·심박존) 캐시는 만드는 곳이 없어졌으므로(2026-09-24) 버전 무관 전부 지운다.
     ///
     /// 이름이 긴 앞자리부터 봐야 한다 — "mimo_map_card_"와 "mimo_map_hrzone_"은
     /// 둘 다 "mimo_map_"으로 시작해서, 순서를 바꾸면 카드 캐시를 상세 캐시로 잘못 읽는다.
     private static func purgeStaleRouteCardMaps(_ fm: FileManager, caches: URL) {
         let groups: [(prefix: String, keep: Set<String>)] = [
             (RouteCardStyle.mapCachePrefix, Set(RouteCardStyle.allCases.map(\.mapCacheVersion))),
-            (RouteMapCache.zonePrefix,      Set([RouteMapCache.zoneVersion])),
-            (RouteMapCache.plainPrefix,     Set([RouteMapCache.plainVersion])),
+            (RouteMapCache.zonePrefix,      Set<String>()),
+            (RouteMapCache.plainPrefix,     Set<String>()),
         ].sorted { $0.prefix.count > $1.prefix.count }
 
         guard let files = try? fm.contentsOfDirectory(at: caches, includingPropertiesForKeys: nil) else { return }

@@ -1083,6 +1083,8 @@ struct RouteStampCardPreview: View {
 
     private let cardW = DetailPanelShareCard.cardWidth
     private let cardH = DetailPanelShareCard.cardHeight
+    /// 상세 화면에 보이는 카드 폭 — 높이는 4:5로 따라간다(260 → 325pt)
+    static let displayWidth: CGFloat = 260
 
     var body: some View {
         GeometryReader { geo in
@@ -1106,6 +1108,9 @@ struct RouteStampCardPreview: View {
         }
         .aspectRatio(cardW / cardH, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        // 화면 폭 가득이면 상세 화면에서 너무 크다 — 폭 260pt(≈카드 0.87배)로 가운데
+        .frame(maxWidth: Self.displayWidth)
+        .frame(maxWidth: .infinity)
         .task(id: isReady) {
             guard isReady else { return }
             if snapshot == nil {

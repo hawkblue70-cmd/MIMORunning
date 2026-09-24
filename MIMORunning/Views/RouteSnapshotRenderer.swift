@@ -257,14 +257,11 @@ enum RouteSnapshotRenderer {
     }
 }
 
-// MARK: - 상세 화면 경로 지도 캐시 이름
+// MARK: - 옛 상세 화면 경로 지도 캐시 이름
 
-/// 상세 화면 경로 지도 스냅샷의 캐시 파일 이름 규칙.
-/// 지도 스타일이나 선 그리기가 바뀌면 버전을 올려 옛 그림이 남지 않게 한다.
-/// 앱 시작 때 옛 버전 파일을 지우는 정리(MRCacheMaintenance)가 이 값만 남긴다.
+/// 옛 상세 화면 경로 지도(RouteMapView, 2026-09-24 삭제 — 경로 1 카드 미리보기로 교체)가 남긴 캐시 파일 앞자리.
+/// 이제 만드는 곳이 없어 앱 시작 때 정리(MRCacheMaintenance)가 이 앞자리 파일을 **전부** 지운다.
 enum RouteMapCache {
     static let plainPrefix  = "mimo_map_"
     static let zonePrefix   = "mimo_map_hrzone_"
-    static let plainVersion = "v15"   // v15: 다크 standard · 관심 지점 제거(경로 카드와 같은 지도)
-    static let zoneVersion  = "v10"   // v10: 같은 이유
 }
