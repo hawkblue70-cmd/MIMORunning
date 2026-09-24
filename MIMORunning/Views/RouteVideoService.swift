@@ -331,8 +331,10 @@ struct RouteVideoExportService {
     // renderScale is derived — do NOT hardcode. Changing renderSize without updating renderScale
     // would silently produce a wrong output resolution.
     static let renderSize    = CGSize(width: 540, height: 960)
-    /// 지도 위 검정 덮기 알파 — 출력(writeBackgroundVideo)과 미리보기 프레임 뷰가 공유
-    static let mapDarkenAlpha: CGFloat = 0.08
+    /// 지도 위 검정 덮기 알파 — 출력(writeBackgroundVideo)과 미리보기 프레임 뷰가 공유.
+    /// 지도가 다크(경로 내보내기와 같은 스타일)라 0 — 라이트 지도 시절 흰 글자 대비용이던 0.08에서 내림.
+    /// 실기기에서 글자가 묻히면 여기만 올린다.
+    static let mapDarkenAlpha: CGFloat = 0
     /// 하단 여백: 미리보기(211pt 폭 기준 14pt)와 동일 비율 → 540pt 폭에서 ≈ 35.8pt
     static var previewMatchedBottomInset: CGFloat { 14 * renderSize.width / (375.0 * 9.0 / 16.0) }
     static let renderScale: CGFloat = VideoExportService.targetSize.width / renderSize.width  // 1080/540 = 2.0
@@ -375,19 +377,16 @@ struct RouteVideoExportService {
         opts.region     = MKCoordinateRegion(center: center, span: span)
         opts.size       = renderSize
         opts.scale      = renderScale
-        opts.mapType    = .mutedStandard
-        opts.showsBuildings = false
+        // 경로 내보내기·상세 지도와 같은 지도(다크 · standard · 관심 지점 없음) — 시스템 모드 무관
+        RouteSnapshotRenderer.applyRouteMapStyle(opts)
 
-        // 시스템 라이트/다크 모드·시간대 무관하게 지도 외관을 항상 라이트로 고정
         let snap = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<MKMapSnapshotter.Snapshot, Error>) in
-            UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
-                MKMapSnapshotter(options: opts).start { snapshot, error in
-                    if let error { cont.resume(throwing: error); return }
-                    guard let snapshot else {
-                        cont.resume(throwing: NSError(domain: "RouteVideoExport", code: -4)); return
-                    }
-                    cont.resume(returning: snapshot)
+            MKMapSnapshotter(options: opts).start { snapshot, error in
+                if let error { cont.resume(throwing: error); return }
+                guard let snapshot else {
+                    cont.resume(throwing: NSError(domain: "RouteVideoExport", code: -4)); return
                 }
+                cont.resume(returning: snapshot)
             }
         }
 
