@@ -715,17 +715,7 @@ struct DetailPanelShareCardScreen: View {
     private var isVideoMode: Bool { activePanel == .map && routeStyle == .stamp && stampOutput == .video }
     private var effectiveTheme: ShareTheme { isDarkOnly ? .dark : cardTheme }
 
-    private var formattedDateText: String {
-        let isEn = AppLanguage.shared.isEnglish
-        let dateFmt = DateFormatter()
-        dateFmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
-        dateFmt.dateFormat = isEn ? "MMM d, yyyy" : "yyyy. M.d"
-        let timeFmt = DateFormatter()
-        timeFmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
-        timeFmt.dateStyle = .none
-        timeFmt.timeStyle = .short
-        return "\(dateFmt.string(from: activity.date))  \(timeFmt.string(from: activity.date))"
-    }
+    private var formattedDateText: String { RouteCardAssets.dateText(for: activity.date) }
 
     var body: some View {
         NavigationStack {
@@ -969,28 +959,56 @@ struct DetailPanelShareCardScreen: View {
 
     // MARK: Map snapshot helpers
 
-    /// 카드 전용 지도 캐시 — 화면 지도(398×220)와 크기가 달라 따로 둔다. 카드 모양별로 파일이 다르다.
-    /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다 — 옛 버전 파일은 앱 시작 때 정리가 지운다.
-    private func cardMapCacheURL(style: RouteCardStyle) -> URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("\(RouteCardStyle.mapCachePrefix)\(style.mapCacheVersion)_\(activity.id.uuidString).jpg")
-    }
-
     private func loadCachedMapSnapshot(style: RouteCardStyle) -> UIImage? {
-        guard let data = try? Data(contentsOf: cardMapCacheURL(style: style)) else { return nil }
-        return UIImage(data: data)
+        RouteCardAssets.loadCachedMapSnapshot(activityID: activity.id, style: style)
     }
 
     private func saveMapSnapshotToCache(_ image: UIImage, style: RouteCardStyle) {
+        RouteCardAssets.saveMapSnapshotToCache(image, activityID: activity.id, style: style)
+    }
+
+    private func makeMapSnapshot(style: RouteCardStyle) async -> UIImage? {
+        await RouteCardAssets.makeMapSnapshot(style: style, activity: activity, detail: detail, hrSamples: hrSamples)
+    }
+
+    private func reverseGeocodedPlaceName() async -> String? {
+        await RouteCardAssets.placeName(detail: detail)
+    }
+
+    private func zoneColors(for coords: [CLLocationCoordinate2D]) async -> [UIColor]? {
+        RouteCardAssets.zoneColors(for: coords, activity: activity, detail: detail, hrSamples: hrSamples)
+    }
+}
+
+
+// MARK: - Route card assets (경로 카드 지도·지역명·날짜 — 내보내기 시트와 상세 화면 미리보기 공용)
+
+/// 경로 카드에 들어가는 지도 스냅샷·지역명·날짜 문자열. 내보내기 시트(DetailPanelShareCardScreen)와
+/// 러닝 상세의 경로 미리보기(RouteStampCardPreview)가 **같은 함수·같은 캐시**를 써서 화면 = 출력이 된다.
+enum RouteCardAssets {
+    /// 카드 전용 지도 캐시 — 화면 지도(398×220)와 크기가 달라 따로 둔다. 카드 모양별로 파일이 다르다.
+    /// 마커 모양이 바뀌면 v를 올려 옛 스냅샷이 남지 않게 한다 — 옛 버전 파일은 앱 시작 때 정리가 지운다.
+    static func cardMapCacheURL(activityID: UUID, style: RouteCardStyle) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("\(RouteCardStyle.mapCachePrefix)\(style.mapCacheVersion)_\(activityID.uuidString).jpg")
+    }
+
+    static func loadCachedMapSnapshot(activityID: UUID, style: RouteCardStyle) -> UIImage? {
+        guard let data = try? Data(contentsOf: cardMapCacheURL(activityID: activityID, style: style)) else { return nil }
+        return UIImage(data: data)
+    }
+
+    static func saveMapSnapshotToCache(_ image: UIImage, activityID: UUID, style: RouteCardStyle) {
         guard let data = image.jpegData(compressionQuality: 0.9) else { return }
-        try? data.write(to: cardMapCacheURL(style: style))
+        try? data.write(to: cardMapCacheURL(activityID: activityID, style: style))
     }
 
     /// 경로 지도 — 심박이 있으면 존 색 그라데이션, 없으면 단색.
     /// 그리기는 활동 상세 지도와 같은 구현(RouteSnapshotRenderer)을 쓴다.
     /// 크기만 모양마다 다르고(경로 2은 300×262, 경로 1는 300×375) 나머지 설정은 같다 —
     /// 다크 standard · POI 제외 · 경로는 위 60% · 기본 선 굵기 · km 알약 없음.
-    private func makeMapSnapshot(style: RouteCardStyle) async -> UIImage? {
+    static func makeMapSnapshot(style: RouteCardStyle, activity: Activity, detail: ActivityDetail?,
+                                hrSamples: [(offset: TimeInterval, bpm: Int)]) async -> UIImage? {
         guard let coords = detail?.routeCoordinates, !coords.isEmpty else { return nil }
         let valid = RouteSnapshotRenderer.validCoordinates(coords)
         guard valid.count > 1,
@@ -1000,14 +1018,14 @@ struct DetailPanelShareCardScreen: View {
                                                        routeBottomLimit: DetailPanelShareCard.mapRouteBottomLimit)
         else { return nil }
         guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
-        let colors = await zoneColors(for: valid)
+        let colors = zoneColors(for: valid, activity: activity, detail: detail, hrSamples: hrSamples)
         // 선은 상세 화면과 같은 굵기(애플 요약처럼 얇게), km 알약은 끈다 — 이 폭에서는 경로보다 마커가 커 보인다.
         return RouteSnapshotRenderer.draw(on: snap, coordinates: valid, segmentColors: colors,
                                           lineScale: 1, showKmMarkers: false)
     }
 
     /// 출발 지점의 "시/도 + 시/군/구" — 스탬프 카드와 같은 역지오코딩. 실패하면 nil(줄 생략).
-    private func reverseGeocodedPlaceName() async -> String? {
+    static func placeName(detail: ActivityDetail?) async -> String? {
         guard let first = detail?.routeCoordinates.first(where: { CLLocationCoordinate2DIsValid($0) && abs($0.latitude) > 1 })
         else { return nil }
         let location = CLLocation(latitude: first.latitude, longitude: first.longitude)
@@ -1019,7 +1037,8 @@ struct DetailPanelShareCardScreen: View {
     }
 
     /// 좌표별 심박 존 색. 존 경계가 없으면 최고 심박에서 추정한다(상세 지도와 같은 폴백).
-    private func zoneColors(for coords: [CLLocationCoordinate2D]) async -> [UIColor]? {
+    static func zoneColors(for coords: [CLLocationCoordinate2D], activity: Activity, detail: ActivityDetail?,
+                           hrSamples: [(offset: TimeInterval, bpm: Int)]) -> [UIColor]? {
         guard hrSamples.count >= 10 else { return nil }
         let bounds = RouteSnapshotRenderer.zoneBounds(zones: detail?.hrZones ?? [], hrSamples: hrSamples)
         return RouteSnapshotRenderer.zoneColors(
@@ -1029,5 +1048,76 @@ struct DetailPanelShareCardScreen: View {
             hrSamples: hrSamples,
             zoneBounds: bounds)
     }
+
+    static func dateText(for date: Date) -> String {
+        let isEn = AppLanguage.shared.isEnglish
+        let dateFmt = DateFormatter()
+        dateFmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        dateFmt.dateFormat = isEn ? "MMM d, yyyy" : "yyyy. M.d"
+        let timeFmt = DateFormatter()
+        timeFmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        timeFmt.dateStyle = .none
+        timeFmt.timeStyle = .short
+        return "\(dateFmt.string(from: date))  \(timeFmt.string(from: date))"
+    }
 }
 
+// MARK: - Route stamp card preview (러닝 상세의 경로 표시)
+
+/// 러닝 상세의 "경로" 패널 — 경로 내보내기의 경로 1 카드(4:5)를 **그대로** 보여준다.
+/// 같은 컴포넌트(DetailPanelShareCard)·같은 지도 캐시라 화면에서 본 모양이 내보내는 이미지·영상 끝 장면과 같다.
+/// 카드는 300×375pt 기준으로 그리고 화면 폭에 맞게 비율만 키운다(§5.8 — 크기별 레이아웃을 따로 만들지 않는다).
+struct RouteStampCardPreview: View {
+    let activity: Activity
+    let detail: ActivityDetail?
+    let hrSamples: [(offset: TimeInterval, bpm: Int)]
+    /// 심박 샘플을 다 받았는가 — 전에 지도를 찍으면 존 색 없는 지도가 캐시에 남아 내보내기에도 쓰인다
+    let isReady: Bool
+    var condition: ActivityCondition? = nil
+    var age: Int? = nil
+    var isMale: Bool? = nil
+    var raceName: String? = nil
+
+    @State private var snapshot: UIImage?
+    @State private var placeName: String?
+
+    private let cardW = DetailPanelShareCard.cardWidth
+    private let cardH = DetailPanelShareCard.cardHeight
+
+    var body: some View {
+        GeometryReader { geo in
+            let k = geo.size.width / cardW
+            DetailPanelShareCard(
+                activity: activity, detail: detail,
+                activePanel: .map,
+                hrSamples: hrSamples, panelSeriesData: [],
+                mapSnapshot: snapshot,
+                dateText: RouteCardAssets.dateText(for: activity.date),
+                condition: condition,
+                age: age, isMale: isMale,
+                theme: .dark,
+                placeName: placeName,
+                routeStyle: .stamp,
+                raceName: raceName
+            )
+            .frame(width: cardW, height: cardH)
+            .scaleEffect(k, anchor: .topLeading)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+        }
+        .aspectRatio(cardW / cardH, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .task(id: isReady) {
+            guard isReady else { return }
+            if snapshot == nil {
+                if let cached = RouteCardAssets.loadCachedMapSnapshot(activityID: activity.id, style: .stamp) {
+                    snapshot = cached
+                } else if let img = await RouteCardAssets.makeMapSnapshot(style: .stamp, activity: activity,
+                                                                          detail: detail, hrSamples: hrSamples) {
+                    snapshot = img
+                    RouteCardAssets.saveMapSnapshotToCache(img, activityID: activity.id, style: .stamp)
+                }
+            }
+            if placeName == nil { placeName = await RouteCardAssets.placeName(detail: detail) }
+        }
+    }
+}

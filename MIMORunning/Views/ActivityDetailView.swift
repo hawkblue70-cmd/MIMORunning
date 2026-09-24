@@ -1190,18 +1190,18 @@ struct ActivityDetailView: View {
                     loadingPanelPlaceholder
                 } else if activePanel == .map {
                     if let coords = detail?.routeCoordinates, !coords.isEmpty {
-                        RouteMapView(
-                            coordinates: coords,
-                            activityID: activity.id,
-                            activityDate: activity.date,
-                            manager: manager,
-                            routeTimeOffsets: detail?.routeTimeOffsets ?? [],
-                            workoutDuration: activity.duration,
-                            hasHRData: activity.avgHeartRate != nil,
-                            showHRZones: $mapHRZoneMode,
-                            // 확정된 대회만 — 공유 카드에 실리는 것과 같은 조건. 미리보기에서 "대회가 붙는다"를 보여준다.
+                        // 경로 내보내기의 경로 1 카드를 그대로 — 화면에서 본 모양 = 내보내는 이미지·영상 끝 장면
+                        RouteStampCardPreview(
+                            activity: activity, detail: detail,
+                            hrSamples: hrSamples,
+                            // 심박이 없는 러닝은 기다릴 샘플이 없다
+                            isReady: hrFetchDone || activity.avgHeartRate == nil,
+                            condition: condition,
+                            age: userAge, isMale: manager.userIsMale,
+                            // 확정된 대회만 — 공유 카드에 실리는 것과 같은 조건
                             raceName: confirmedRaceMatch?.raceName
                         )
+                        .padding(.horizontal, 16)
                     } else {
                         panelPlaceholder(icon: "map.fill", message: AppLanguage.shared.s("경로 없음", "No Route"))
                     }
