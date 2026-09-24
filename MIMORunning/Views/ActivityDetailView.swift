@@ -2583,15 +2583,16 @@ private struct SplitsHighlightCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // 구간(페이스) 카드라 틀도 페이스 청록 — 막대·칩과 같은 색 계열
         .background(
             LinearGradient(
-                colors: [Theme.violet.opacity(0.18), Color(hex: "6845E8").opacity(0.06)],
+                colors: [Theme.splitBarLo.opacity(0.18), Theme.splitBarLo.opacity(0.06)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Theme.violet.opacity(0.22), lineWidth: 1)
+                .strokeBorder(Theme.splitBarLo.opacity(0.22), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
