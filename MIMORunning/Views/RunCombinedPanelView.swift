@@ -290,6 +290,9 @@ private struct RunStatTile: View {
                         .foregroundStyle(titleStyle)
                         .opacity(isOn ? 1.0 : 0.38)
                         .lineLimit(1)
+                        // "케이던스"·"지면접촉"이 범위 숫자에 밀려 "케이…"로 잘렸다 — 제목이 먼저 자리를 잡고, 좁으면 글자를 줄인다
+                        .minimumScaleFactor(0.7)
+                        .layoutPriority(1)
                     Spacer(minLength: 2)
                     if layer.showsRange {
                         Text("\(layer.formattedRange(series.minValue))–\(layer.formattedRange(series.maxValue))")
