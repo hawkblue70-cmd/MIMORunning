@@ -2469,6 +2469,7 @@ private struct SplitsHighlightCard: View {
         case negativeSplit(diff: Int)
         case consistency(spread: Int)
         case recentBest(n: Int)
+        case finishKick(km: Int)
         case fallback
     }
     private var highlightKind: HighlightKind {
@@ -2498,6 +2499,12 @@ private struct SplitsHighlightCard: View {
                 let recentAvg = recentPaces.reduce(0,+) / Double(recentPaces.count)
                 if currentPace < recentAvg { return .recentBest(n: min(similar.count, 5)) }
             }
+        }
+        // 4. 마지막 스퍼트 — 끝 km(1km 채운 구간 중 마지막)가 가장 빨랐다. 300m 같은 끝 조각은 페이스가 튀어 빼고 본다
+        let full = splits.filter { $0.distanceM >= 990 }
+        if full.count >= 3, let last = full.last,
+           let fastestFull = full.min(by: { $0.paceSecPerKm < $1.paceSecPerKm }), fastestFull.id == last.id {
+            return .finishKick(km: last.id)
         }
         return .fallback
     }
@@ -2535,6 +2542,17 @@ private struct SplitsHighlightCard: View {
                 : Text("최근 \(n)회 중 ").foregroundStyle(Color.white)
                   + Text("가장 빠른 평균 페이스").foregroundStyle(g)
                   + Text("예요.").foregroundStyle(Color.white)
+        case .finishKick(let km):
+            // 이지런이면 "힘이 남았다"보다 편하게 마무리한 쪽으로
+            let tailKo = isEasy ? " — 여유 있게 마무리했네요." : " — 끝까지 힘이 남았네요."
+            let tailEn = isEasy ? " — an easy, strong finish." : " — you still had gas in the tank."
+            return L.isEnglish
+                ? Text("Your last km (\(km)km) was ").foregroundStyle(Color.white)
+                  + Text("the fastest").foregroundStyle(g)
+                  + Text(tailEn).foregroundStyle(Color.white)
+                : Text("마지막 \(km)km가 ").foregroundStyle(Color.white)
+                  + Text("가장 빨랐어요").foregroundStyle(g)
+                  + Text(tailKo).foregroundStyle(Color.white)
         case .fallback:
             return Text(L.s("완주했어요. 오늘도 수고하셨어요.", "Finished. Great work today."))
                 .foregroundStyle(Color.secondary)
@@ -2552,10 +2570,11 @@ private struct SplitsHighlightCard: View {
                 .font(.system(size: 14, weight: isFallback ? .regular : .semibold))
 
             HStack(spacing: 8) {
-                SplitChip(label: AppLanguage.shared.s("평균 페이스", "Avg Pace"), value: formatPace(avgPaceSeconds), color: Theme.violet)
+                // 페이스 숫자는 페이스 색(청록) — 보라는 브랜드 색
+                SplitChip(label: AppLanguage.shared.s("평균 페이스", "Avg Pace"), value: formatPace(avgPaceSeconds), color: Theme.pace)
                 SplitChip(label: AppLanguage.shared.s("페이스 편차", "Deviation"),
                           value: AppLanguage.shared.s("±\(Int(paceSpread.rounded()))초", "±\(Int(paceSpread.rounded()))s"),
-                          color: Theme.violet)
+                          color: Theme.pace)
                 if let fastest = fastestSplit {
                     let km = fastest.distanceM >= 990 ? "\(fastest.id)km" : AppLanguage.shared.s("마지막", "Last")
                     SplitChip(label: AppLanguage.shared.s("최고 구간", "Best Split"), value: "\(km) · \(fastest.formattedPace)", color: Self.gold)
