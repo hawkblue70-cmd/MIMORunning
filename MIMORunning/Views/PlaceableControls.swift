@@ -191,7 +191,7 @@ struct PlaceableChipRowView: View {
             }
         } else {
             VStack(spacing: 2) {
-                if template == .story {
+                if template == .photo {
                     Text(AppLanguage.shared.s("데이터", "Data"))
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.white.opacity(0.4))

@@ -4,7 +4,7 @@ import CoreLocation
 // MARK: - Story Share Card (no photo — dark card)
 //
 // 사진 없는 다크 카드. 스토리(메모·무드) + 기록 데이터 + 루트 or 차트.
-// 공유: ShareCardScreen에서 template == .story 시 사용.
+// 공유: ShareCardScreen에서 template == .photo 시 사용.
 
 struct StoryShareCardView: View {
     let activity: Activity

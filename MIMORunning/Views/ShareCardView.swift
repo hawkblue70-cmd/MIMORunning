@@ -16,9 +16,10 @@ import SwiftData
 
 // MARK: - Share Template
 
+/// 카드 출력 형태. 이름 = 배경에 무엇을 쓰는지(§5.7 사진 모드 / 기록 전용 모드).
 enum ShareTemplate: String, CaseIterable {
-    case athletic    = "애슬레틱"
-    case story       = "스토리"
+    case record      = "기록"     // 사진 없는 4:5 정지 카드
+    case photo       = "사진"     // 사진 배경 4:5 정지 카드
     case video       = "영상"
     case slide       = "슬라이드"
     case routeVideo  = "경로 영상"
@@ -26,8 +27,8 @@ enum ShareTemplate: String, CaseIterable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .athletic:   L.s("애슬레틱",  "Athletic")
-        case .story:      L.s("스토리",    "Story")
+        case .record:     L.s("기록",      "Record")
+        case .photo:      L.s("사진",      "Photo")
         case .video:      L.s("영상",      "Video")
         case .slide:      L.s("슬라이드",  "Slide")
         case .routeVideo: L.s("경로 영상", "Route Video")
@@ -63,18 +64,18 @@ enum ShareCard: Int, CaseIterable, Hashable {
     /// templatePicker 활성화, onCardIndexChanged 자동전환, renderCard 분기의 단일 소스.
     var supportedTemplates: Set<ShareTemplate> {
         switch self {
-        case .placeable: return [.story, .video, .slide]
-        case .oneLiner:  return [.story, .video, .slide]
-        case .athletic:  return [.athletic, .story, .video, .slide, .routeVideo]
-        case .stamp:     return [.story, .video, .slide, .routeVideo]
+        case .placeable: return [.photo, .video, .slide]
+        case .oneLiner:  return [.photo, .video, .slide]
+        case .athletic:  return [.record, .photo, .video, .slide, .routeVideo]
+        case .stamp:     return [.photo, .video, .slide, .routeVideo]
         }
     }
 
     /// 카드 진입 시 현재 템플릿이 미지원이면 이 값으로 자동 전환.
     var defaultTemplate: ShareTemplate {
         switch self {
-        case .placeable, .oneLiner, .stamp: return .story
-        default:                            return .athletic
+        case .placeable, .oneLiner, .stamp: return .photo
+        default:                            return .record
         }
     }
 }
@@ -145,7 +146,7 @@ struct ShareCardScreen: View {
     @State private var showStoryPhotoPicker = false
     @State private var photoOffset: CGSize = .zero
     @State private var photoOffsets: [Int: CGSize] = [:]
-    @State var template: ShareTemplate = .story
+    @State var template: ShareTemplate = .photo
     @State private var enabledMetrics: Set<ShareMetric>
     @State private var showRaceOnCard = true
     /// "총평" 칩 — 기본 꺼짐. 켜지면 지도/차트 자리에 총평 5줄이 대신 들어간다(§5.8: 카드 4종·영상 오버레이 공용).
@@ -496,7 +497,7 @@ struct ShareCardScreen: View {
                     ZStack(alignment: .topTrailing) {
                         Button {
                             // 원라이너 스토리·슬라이드 모드: 탭 → 카드를 해당 사진으로 즉시 전환 후 ClipTrimSheet 열기
-                            if isOneLiner, template == .story || template == .slide {
+                            if isOneLiner, template == .photo || template == .slide {
                                 for c in ShareCard.photoLinked { cardPhotoIndex[c] = i }
                                 let isSlide = (template == .slide)
                                 oneLinerVM.storyClipEditIsSlide = isSlide
@@ -577,7 +578,7 @@ struct ShareCardScreen: View {
                                                 .overlay(Circle().strokeBorder(.black.opacity(0.25), lineWidth: 1))
                                                 .offset(x: 3, y: 3)
                                         }
-                                    } else if isPlaceable, template == .story {
+                                    } else if isPlaceable, template == .photo {
                                         if !(placeableVM.placeableStoryTexts[i] ?? "").isEmpty {
                                             Circle()
                                                 .fill(Theme.violet)
@@ -1417,7 +1418,7 @@ struct ShareCardScreen: View {
                         // 스토리 모드: 상단 사진 스트립 선택이 바뀌면 selectedClipIndex 동기화
                         // → StampControlsView 문구 텍스트 필드가 올바른 사진 텍스트를 표시/편집
                         .onChange(of: cardPhotoIndex[.stamp] ?? 0) { _, newIdx in
-                            if isStamp, template == .story {
+                            if isStamp, template == .photo {
                                 stampVM.selectedClipIndex = newIdx
                             }
                         }
@@ -1648,7 +1649,7 @@ struct ShareCardScreen: View {
 
     // 문구가 연결된 사진(story template) 개수 — 2장 이상이면 일괄 저장 모드.
     private var linkedOneLinerPhotoCount: Int {
-        guard isOneLiner, template == .story else { return 0 }
+        guard isOneLiner, template == .photo else { return 0 }
         return oneLinerVM.storyPhotoUUIDs.indices.filter { i in
             let ref = "photo:\(oneLinerVM.storyPhotoUUIDs[i])"
             return oneLinerEntries.contains {
@@ -1668,8 +1669,8 @@ struct ShareCardScreen: View {
     private var oneLinerChipRow: some View {
         MultiClipEditorView(
             // 스토리 모드에서는 영상 클립을 표시하지 않음 — 사진 관리는 photoStrip이 담당
-            recipes: template == .story ? .constant([]) : Bindable(oneLinerVM).oneLinerClipRecipes,
-            isPhotoSlideMode: Binding<Bool>(get: { template == .slide || template == .story }, set: { _ in }),
+            recipes: template == .photo ? .constant([]) : Bindable(oneLinerVM).oneLinerClipRecipes,
+            isPhotoSlideMode: Binding<Bool>(get: { template == .slide || template == .photo }, set: { _ in }),
             muteAudio: Bindable(oneLinerVM).oneLinerMuteAudio,
             selectedClipIndex: Bindable(oneLinerVM).currentOneLinerClipIndex,
             savedClipLines: [],
@@ -1698,8 +1699,8 @@ struct ShareCardScreen: View {
                 // 영상·슬라이드 모드에서 저장 — 스토리 전환 시 빈 배열로 덮어쓰기 방지
                 if template == .video || template == .slide { saveOneLinerClipRecipes() }
             },
-            isStoryMode: template == .story,
-            showPickerButton: template != .story && template != .slide,
+            isStoryMode: template == .photo,
+            showPickerButton: template != .photo && template != .slide,
             showTitleEvenWhenEmpty: template == .slide && !storyPhotos.isEmpty,
             videoTitle: Bindable(oneLinerVM).oneLinerVideoTitle,
             titleStyle: Bindable(oneLinerVM).oneLinerTitleStyle
@@ -1772,7 +1773,7 @@ struct ShareCardScreen: View {
     // · 다중 사진 연재 모드(사진 2장 이상)에서는 숨김 — 각 사진마다 독립 입력이 의도된 설계.
     @ViewBuilder
     private var oneLinerReuseChipRow: some View {
-        let isMultiPhotoStory = template == .story && oneLinerVM.storyPhotoUUIDs.count > 1
+        let isMultiPhotoStory = template == .photo && oneLinerVM.storyPhotoUUIDs.count > 1
         if !uniqueOneLinerEntries.isEmpty && !isMultiPhotoStory {
             let currentText = oneLinerVM.oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -1901,7 +1902,7 @@ struct ShareCardScreen: View {
         AnyView(templatePicker)
         Color.clear.frame(height: 8)
         AnyView(activeChipRow)
-        if template == .story || template == .slide {
+        if template == .photo || template == .slide {
             AnyView(photoStrip.padding(.bottom, 4))
             if template == .slide, !storyPhotos.isEmpty {
                 // cachedStoryRecipes에 실제 per-clip duration이 있으면 합산, 없으면 photoDuration 기본값 사용
@@ -1926,7 +1927,7 @@ struct ShareCardScreen: View {
     private var placeableControlPanel: some View {
         AnyView(templatePicker)
         AnyView(activeChipRow.padding(.bottom, 3))
-        if isPlaceable, template == .story || template == .slide {
+        if isPlaceable, template == .photo || template == .slide {
             AnyView(placeableStoryTextField)
         }
         if isPlaceable, template == .video, !placeableVM.placeableClipRecipes.isEmpty {
@@ -1935,7 +1936,7 @@ struct ShareCardScreen: View {
         if isStamp, template == .video, !stampVM.clipRecipes.isEmpty {
             AnyView(stampTrimRow)
         }
-        if template == .story || (isStamp && template == .slide) {
+        if template == .photo || (isStamp && template == .slide) {
             AnyView(photoStrip.padding(.bottom, 8))
         }
         if isPlaceable, template == .slide {
@@ -2211,8 +2212,8 @@ struct ShareCardScreen: View {
             ClipTrimSheet(
                 recipes: Bindable(oneLinerVM).storyClipEditRecipes,
                 selectedClipIndex: Bindable(oneLinerVM).storyClipEditIndex,
-                hideTimePicker: template == .story,
-                isStoryMode: template == .story,
+                hideTimePicker: template == .photo,
+                isStoryMode: template == .photo,
                 isPhotoSlideMode: template == .slide,
                 availableMetrics: oneLinerAvailableMetrics,
                 routeCoords: routeCoords,
@@ -2318,7 +2319,7 @@ struct ShareCardScreen: View {
         // Button 액션이 loadOneLinerSettingsFor를 먼저 호출하지만, 포커스 해제 타이밍에 따라
         // onChange도 발화할 수 있어 방어적으로 유지 — 중복 로드는 무해함.
         .onChange(of: cardPhotoIndex) { old, new in
-            if isOneLiner, template == .story, old[.oneLiner] != new[.oneLiner] {
+            if isOneLiner, template == .photo, old[.oneLiner] != new[.oneLiner] {
                 loadOneLinerSettingsFor(photoIndex: new[.oneLiner] ?? 0)
             }
             if isStamp, old[.stamp] != new[.stamp] {
@@ -2326,7 +2327,7 @@ struct ShareCardScreen: View {
                 // selectedClipIndex가 photo 인덱스와 일치해야 currentConfig(get/set)가
                 // 올바른 photoConfigs[idx]를 읽고 쓴다. story·slide 모두 동기화.
                 stampVM.selectedClipIndex = idx
-                if template == .story { stampVM.storyCropOffsetX = stampVM.storyCropOffsets[idx] ?? 0.5 }
+                if template == .photo { stampVM.storyCropOffsetX = stampVM.storyCropOffsets[idx] ?? 0.5 }
                 // slide: 선택 사진의 시작 시각(+0.5s)으로 이동해 해당 사진이 미리보기에 보이게 함
                 if template == .slide, previewPlayer.isReady {
                     let t = Double(idx) * PhotoSlideComposition.placeableSlideDuration + 0.5
@@ -2429,7 +2430,7 @@ struct ShareCardScreen: View {
                 guard isStamp else { return }
                 saveStampConfig()
                 if template == .video || template == .routeVideo { exportedVideoFile = nil }
-                if template == .story {
+                if template == .photo {
                     storyShareImages = []
                     previewImage = nil
                     // ImageRenderer 레이아웃 엔진을 새 position으로 reprime.
@@ -2451,7 +2452,7 @@ struct ShareCardScreen: View {
                 guard isStamp else { return }
                 saveStampConfig()
                 if template == .video || template == .routeVideo { exportedVideoFile = nil }
-                if template == .story {
+                if template == .photo {
                     storyShareImages = []
                     previewImage = nil
                 }
@@ -2946,7 +2947,7 @@ struct ShareCardScreen: View {
         // Stamp 스토리 모드 진입 시 selectedClipIndex를 사진 인덱스와 동기화.
         // 영상 모드에서 non-0 클립이 선택된 채로 스토리로 전환하면 위치·템플릿 변경이
         // photoConfigs[selectedClipIndex]에 저장되지만 내보내기는 photoConfig(at: 0)을 읽어 값이 엇갈림.
-        if isStamp, template == .story {
+        if isStamp, template == .photo {
             stampVM.selectedClipIndex = cardPhotoIndex[.stamp] ?? 0
         }
         // 템플릿 전환 시 이전 템플릿의 내보내기 결과를 항상 초기화
@@ -2958,7 +2959,7 @@ struct ShareCardScreen: View {
             exportedVideoFile = nil
         }
         // Stop preview when leaving clip modes (story has no preview)
-        if isOneLiner, template == .story { previewPlayer.pause() }
+        if isOneLiner, template == .photo { previewPlayer.pause() }
         // Athletic: .video ↔ .slide 전환 시 videoState 초기화
         // (이전 템플릿 콘텐츠가 새 템플릿 프리뷰 영역에 잔존하는 것을 방지)
         if !isOneLiner, !isPlaceable, !isStamp, template == .video || template == .slide {
@@ -3084,12 +3085,12 @@ struct ShareCardScreen: View {
         // Stamp 카드 진입 시 — 지명·지도 사전 로드 + 미리보기 재빌드
         if newCard == .stamp {
             // 스토리 모드 진입 시 selectedClipIndex 동기화 (onTemplateChanged와 동일 이유)
-            if template == .story {
+            if template == .photo {
                 stampVM.selectedClipIndex = cardPhotoIndex[.stamp] ?? 0
             }
             fetchStampPlaceIfNeeded()
             fetchStampMapIfNeeded()
-            if template == .story, !storyPhotos.isEmpty {
+            if template == .photo, !storyPhotos.isEmpty {
                 // 스크롤 애니메이션(0.3s) 완료 후 슬라이드 프리뷰를 백그라운드에서 미리 빌드.
                 // 카드 전환 중 AVAssetWriter 초기화가 메인스레드를 블로킹하지 않도록 지연 실행.
                 let data = stampPreviewData
@@ -3162,7 +3163,7 @@ struct ShareCardScreen: View {
     @ViewBuilder
     private var cardPreview: some View {
         switch template {
-        case .athletic:
+        case .record:
             AthleticCard(activity: activity, routeCoordinates: routeCoords,
                           metrics: enabledMetricItems,
                           raceName: activeRaceName,
@@ -3177,7 +3178,7 @@ struct ShareCardScreen: View {
                           photo: nil,
                           summaryLines: cardSummaryLines,
 )
-        case .story:
+        case .photo:
             if let photo = photoFor(.athletic) {
                 let s      = max(300 / photo.size.width, 375 / photo.size.height)
                 let excess = max(0, photo.size.width * s - 300)
@@ -3681,9 +3682,7 @@ struct ShareCardScreen: View {
         } else if storyShareImages.count >= 1 {
             VStack(spacing: 10) {
                 Button { showShareSheet = true } label: {
-                    Label(template == .story
-                          ? AppLanguage.shared.s("스토리 내보내기", "Export Story")
-                          : AppLanguage.shared.s("카드 내보내기", "Export Card"),
+                    Label(AppLanguage.shared.s("카드 내보내기", "Export Card"),
                           systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
@@ -3695,7 +3694,7 @@ struct ShareCardScreen: View {
                     ShareSheet(images: storyShareImages)
                 }
             }
-        } else if isStamp && template == .story {
+        } else if isStamp && template == .photo {
             Button {
                 // 버튼 탭 시점(동기)에 baseConfig 캡처.
                 // baseConfig는 position·template·colorMode 등 스타일 setter가 항상 최신값으로 갱신하지만,
@@ -3712,7 +3711,7 @@ struct ShareCardScreen: View {
                                             cropOffsetX: exportCropX,
                                             configOverride: exportCfg)
                     try? await Task.sleep(nanoseconds: 50_000_000)
-                    guard isStamp, template == .story else { return }
+                    guard isStamp, template == .photo else { return }
 
                     if storyPhotos.count > 1 {
                         // 다중 사진: 각 사진의 독립 config(위치·템플릿·문구 등) 사용.
@@ -3747,7 +3746,7 @@ struct ShareCardScreen: View {
                     }
                 }
             } label: {
-                Label(AppLanguage.shared.s("스토리 내보내기", "Export Story"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 46)
@@ -3769,11 +3768,11 @@ struct ShareCardScreen: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 18)
-            } else if isOneLiner && template == .story && !oneLinerVM.storyPhotoUUIDs.isEmpty {
+            } else if isOneLiner && template == .photo && !oneLinerVM.storyPhotoUUIDs.isEmpty {
                 // 사진 연결 OneLiner: 문구 있는 사진 렌더링 후 공유 시트 표시
                 let count = linkedOneLinerPhotoCount
                 Button { Task { await batchExportOneLinerCards() } } label: {
-                    Label(AppLanguage.shared.s("스토리 내보내기", "Export Story"), systemImage: "square.and.arrow.up")
+                    Label(AppLanguage.shared.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(count == 0 ? Color.white.opacity(0.4) : .white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -3784,9 +3783,7 @@ struct ShareCardScreen: View {
             } else {
                 let shareDisabled = isOneLiner && oneLinerVM.oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 Button { showShareSheet = true } label: {
-                    Label(template == .story
-                          ? AppLanguage.shared.s("스토리 내보내기", "Export Story")
-                          : AppLanguage.shared.s("카드 내보내기", "Export Card"),
+                    Label(AppLanguage.shared.s("카드 내보내기", "Export Card"),
                           systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(shareDisabled ? Color.white.opacity(0.4) : .white)
@@ -4794,7 +4791,7 @@ struct ShareCardScreen: View {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
-            if template == .story, storyPhotos.count > 1 {
+            if template == .photo, storyPhotos.count > 1 {
                 // 각 사진마다 해당 사진의 문구를 넣어 렌더링
                 var rendered: [UIImage] = []
                 for (i, photo) in storyPhotos.enumerated() {
@@ -4883,7 +4880,7 @@ struct ShareCardScreen: View {
         // a view tree produces a black image; the 50 ms gap after the warm-up render lets
         // the pipeline fully initialize, making the synchronous share-button render correct.
         if isStamp {
-            if template == .story {
+            if template == .photo {
                 // 이전 다중-사진 내보내기 캐시를 무효화. 여기를 지나면 내보내기 버튼이 항상 fresh 렌더 경로를 탐.
                 storyShareImages = []
                 previewImage = nil
@@ -4901,7 +4898,7 @@ struct ShareCardScreen: View {
                 wu.scale = 1
                 _ = wu.uiImage
                 try? await Task.sleep(nanoseconds: 50_000_000)   // 50 ms — let pipeline settle
-                guard isStamp, template == .story else { return } // guard: card may have changed
+                guard isStamp, template == .photo else { return } // guard: card may have changed
                 previewImage = makeStampStoryImage(
                     photo: photo, data: stampPreviewData, vm: stampVM,
                     cropOffsetX: stampVM.storyCropOffsetX,
@@ -4918,7 +4915,7 @@ struct ShareCardScreen: View {
         // Use in-memory array if available (avoids @Query timing gap); fall back to disk on restart.
         // Athletic card + story template: render athletic card with selected photo background.
         // Share only the single rendered card (no extra plain photos).
-        if template == .story, let selPhoto = photoFor(.athletic) {
+        if template == .photo, let selPhoto = photoFor(.athletic) {
             let renderer = ImageRenderer(content:
                 AthleticCard(activity: activity, routeCoordinates: routeCoords,
                               metrics: enabledMetricItems,
@@ -4958,7 +4955,7 @@ struct ShareCardScreen: View {
     @ViewBuilder
     private func renderableCard() -> some View {
         switch template {
-        case .athletic:
+        case .record:
             AthleticCard(activity: activity, routeCoordinates: routeCoords,
                           metrics: enabledMetricItems,
                           raceName: activeRaceName,
@@ -4974,7 +4971,7 @@ struct ShareCardScreen: View {
                           summaryLines: cardSummaryLines,
 )
                 .frame(width: 300, height: 375)
-        case .story:
+        case .photo:
             if let photo = photoFor(.oneLiner) {
                 PhotoShareCardView(activity: activity, photo: photo,
                                    metrics: enabledMetricItems, raceName: activeRaceName,

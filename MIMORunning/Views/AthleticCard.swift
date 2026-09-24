@@ -4,7 +4,7 @@ import CoreLocation
 // MARK: - Athletic card (record-only mode, no photo)
 //
 // 사진 없는 애슬레틱 카드. 4:5 비율(300×375pt).
-// 공유: ShareCardScreen에서 template == .athletic 시 사용.
+// 공유: ShareCardScreen에서 template == .record 시 사용.
 //
 // ⚠️ 이 파일은 Athletic 카드 전용.
 //    PhotoCard · StoryCard · VideoOverlayCard 관련 코드 작성 금지.

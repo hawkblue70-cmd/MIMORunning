@@ -129,7 +129,7 @@ extension ShareCardScreen {
                 cropOffsetX: placeableVM.placeableStoryCropOffsets[photoIndex]  ?? 0.5,
                 cropOffsetY: placeableVM.placeableStoryCropOffsetsY[photoIndex] ?? 0.5
             )
-            if (template == .story || template == .video || template == .slide), !overlayText.isEmpty {
+            if (template == .photo || template == .video || template == .slide), !overlayText.isEmpty {
                 OneLinerCard(
                     activity: activity,
                     text: overlayText,

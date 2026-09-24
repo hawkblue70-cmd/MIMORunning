@@ -17,7 +17,7 @@ extension ShareCardScreen {
         if template == .video, let assetID = videoPickerItem?.itemIdentifier {
             return "video:\(assetID)"
         }
-        if template == .story {
+        if template == .photo {
             let idx = cardPhotoIndex[.oneLiner] ?? 0
             if idx < oneLinerVM.storyPhotoUUIDs.count { return "photo:\(oneLinerVM.storyPhotoUUIDs[idx])" }
         }

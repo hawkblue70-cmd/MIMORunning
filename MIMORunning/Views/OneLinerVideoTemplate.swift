@@ -204,7 +204,7 @@ extension ShareCardScreen {
     /// 문구가 연결된 사진을 순서대로 렌더링한 뒤 공유 시트를 표시한다.
     @MainActor
     func batchExportOneLinerCards() async {
-        guard isOneLiner, template == .story else { return }
+        guard isOneLiner, template == .photo else { return }
         isBatchExporting = true
         defer { isBatchExporting = false }
 

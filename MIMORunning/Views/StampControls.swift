@@ -126,10 +126,10 @@ struct StampControlsView: View {
             //   라벨이 "…"로 잘린다. 토글끼리 아랫줄로 분리한다.
             // 토글이 그림을 바꾸지 않는 스탬프에서는 칩을 감춘다 — 눌러도 아무 일이 없으면 고장으로 보인다.
             let showHRChip = vm.storyTemplate.supportsHeartRateToggle && data.heartRate != nil
-            if showHRChip || template == .story {
+            if showHRChip || template == .photo {
                 HStack(spacing: 6) {
                     if showHRChip         { heartRateChip }
-                    if template == .story { dateChip }
+                    if template == .photo { dateChip }
                 }
             }
             // 배속 — 영상, 클립이 있을 때
@@ -523,7 +523,7 @@ struct StampControlsView: View {
 struct StampVisualPickerSheet: View {
     @Bindable var vm: StampViewModel
     var data: StampData = .sample
-    var template: ShareTemplate = .story
+    var template: ShareTemplate = .photo
     @Environment(\.dismiss) private var dismiss
 
     private let naturalW: CGFloat = 300
