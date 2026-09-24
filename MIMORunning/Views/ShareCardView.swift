@@ -2093,8 +2093,8 @@ struct ShareCardScreen: View {
 
     // MARK: - 9:16 미리보기 크게 보기
 
-    /// 9:16 미리보기(폭 211pt) 확대 배율 — 폰 폭 가득(≈393pt)에 가깝게, 높이는 화면 안에 들어오게(375×1.75≈656pt)
-    private static let previewZoom: CGFloat = 1.75
+    /// 9:16 미리보기(폭 211pt) 확대 배율 — 1.75는 아래가 화면 밖으로 잘려 1.6(≈338×600pt)으로 낮췄다
+    private static let previewZoom: CGFloat = 1.6
 
     private var isNineBySixteenTemplate: Bool {
         template == .video || template == .slide || template == .routeVideo
