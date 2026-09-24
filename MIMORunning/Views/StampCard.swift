@@ -6,6 +6,12 @@ import SwiftUI
 
 // MARK: - StampData
 
+/// km 스플릿 하나 — 요약 그리드+페이스의 막대(페이스)·선(심박).
+struct StampSplit {
+    let paceSecPerKm: Double
+    let heartRate: Int?
+}
+
 struct StampData {
     let distance: String
     let distanceUnit: String
@@ -39,6 +45,8 @@ struct StampData {
     var routeCoordinates: [CLLocationCoordinate2D]? = nil   // 경로 라인아트용 원시 좌표
     // 날짜 라벨용 원본 날짜 (showDate 토글 시 워드마크 줄 오른쪽에 날짜·시간 표시)
     var date: Date?              = nil
+    /// km 스플릿 (페이스·심박) — 요약 그리드+페이스 차트. 2개 미만이면 그 스탬프를 고를 수 없다
+    var splits: [StampSplit]?    = nil
 
     static let sample = StampData(
         distance: "10.13",
@@ -71,7 +79,10 @@ struct StampData {
             CLLocationCoordinate2D(latitude: 37.334, longitude: 126.809),
             CLLocationCoordinate2D(latitude: 37.328, longitude: 126.812),
             CLLocationCoordinate2D(latitude: 37.325, longitude: 126.818),
-        ]
+        ],
+        splits: [(378, 138), (372, 144), (369, 147), (371, 149), (366, 150),
+                 (374, 151), (368, 152), (363, 154), (360, 156), (352, 161)]
+            .map { StampSplit(paceSecPerKm: $0.0, heartRate: $0.1) }
     )
 }
 
@@ -441,6 +452,17 @@ struct StampCard: View {
             // 있는 지표를 모두(최대 6칸) 보여준다.
             StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
                                  showTextOutline: showTextOutline)
+        case .summaryGridPace:
+            // 요약 그리드 그대로 + 아래에 km 스플릿 차트(페이스 막대 · 심박 선)
+            VStack(alignment: .leading, spacing: sz(12, scale)) {
+                StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
+                                     showTextOutline: showTextOutline)
+                if let splits = data.splits, splits.count >= 2 {
+                    StampSplitPaceChart(splits: splits, fill: fill, outline: outline, scale: scale,
+                                        hrColor: data.heartRateColor ?? Theme.heartRate,
+                                        showTextOutline: showTextOutline)
+                }
+            }
         case .hud:
             StampHUDView(data: data, fill: fill, outline: outline, scale: scale,
                          showHeartRate: showHeartRate, showCalories: showCalories,
@@ -837,6 +859,94 @@ private struct StampSummaryGridView: View {
                 .lineLimit(1).fixedSize()
         }
         .frame(width: columnWidth, alignment: .leading)
+    }
+}
+
+// MARK: - Split Pace Chart (요약 그리드+페이스 — km 막대 = 페이스, 선 = 심박)
+
+private struct StampSplitPaceChart: View {
+    let splits: [StampSplit]
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    let hrColor: Color
+    var showTextOutline: Bool = true
+
+    /// 요약 그리드 3열 폭(54×3 + 8×2)과 같게 — 격자 왼쪽·오른쪽 선에 맞춘다.
+    private var width: CGFloat { sz(178, scale) }
+    private var height: CGFloat { sz(30, scale) }
+    private var gap: CGFloat { splits.count > 20 ? sz(1, scale) : sz(2, scale) }
+
+    /// 막대 높이 비율 0.3~1.0 — 빠를수록 높다. 모두 같으면 0.65.
+    private var barRatios: [CGFloat] {
+        let p = splits.map(\.paceSecPerKm)
+        guard let lo = p.min(), let hi = p.max(), hi > lo else { return p.map { _ in 0.65 } }
+        return p.map { CGFloat(0.3 + 0.7 * (hi - $0) / (hi - lo)) }
+    }
+
+    /// 심박 선 높이 비율 0.15~0.9 — 없는 km는 nil(선을 끊는다). 값이 2개 미만이면 선 없음.
+    private var hrRatios: [CGFloat?]? {
+        let v = splits.compactMap(\.heartRate)
+        guard v.count >= 2, let lo = v.min(), let hi = v.max() else { return nil }
+        return splits.map { s in
+            s.heartRate.map { hi > lo ? CGFloat(0.15 + 0.75 * Double($0 - lo) / Double(hi - lo)) : 0.5 }
+        }
+    }
+
+    var body: some View {
+        let n = CGFloat(splits.count)
+        let barW = max(1, (width - gap * (n - 1)) / n)
+        let hr = hrRatios
+        VStack(alignment: .leading, spacing: sz(3, scale)) {
+            ZStack(alignment: .bottomLeading) {
+                HStack(alignment: .bottom, spacing: gap) {
+                    ForEach(barRatios.indices, id: \.self) { i in
+                        Rectangle()
+                            .fill(fill.opacity(0.85))
+                            .frame(width: barW, height: height * barRatios[i])
+                    }
+                }
+                if let hr {
+                    SplitHRLine(ratios: hr, barW: barW, gap: gap)
+                        .stroke(hrColor, style: StrokeStyle(lineWidth: max(1, sz(1.5, scale)),
+                                                            lineCap: .round, lineJoin: .round))
+                        .frame(width: width, height: height)
+                }
+            }
+            .frame(width: width, height: height, alignment: .bottomLeading)
+            HStack(spacing: sz(4, scale)) {
+                Text("PACE / KM")
+                Spacer(minLength: 0)
+                if hr != nil {
+                    Capsule().fill(hrColor)
+                        .frame(width: sz(8, scale), height: max(1, sz(1.5, scale)))
+                    Text("HR")
+                }
+            }
+            .font(.system(size: sz(7, scale), weight: .semibold))
+            .tracking(0.9)
+            .lineLimit(1)
+            .frame(width: width)
+            .opacity(0.62)
+        }
+        .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+    }
+}
+
+/// 막대 가운데를 잇는 심박 선. nil(심박 없는 km)에서 끊는다.
+private struct SplitHRLine: Shape {
+    let ratios: [CGFloat?]
+    let barW: CGFloat
+    let gap: CGFloat
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        var pen = false
+        for (i, r) in ratios.enumerated() {
+            guard let r else { pen = false; continue }
+            let pt = CGPoint(x: CGFloat(i) * (barW + gap) + barW / 2, y: rect.maxY - rect.height * r)
+            if pen { p.addLine(to: pt) } else { p.move(to: pt); pen = true }
+        }
+        return p
     }
 }
 

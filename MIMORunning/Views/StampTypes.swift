@@ -7,6 +7,8 @@ import Foundation
 
 enum StampRequirement {
     case none, heartRate, hrZone, cadence, elevation, location, route
+    /// km 스플릿 2개 이상 (요약 그리드+페이스의 막대 차트)
+    case splits
 }
 
 // MARK: - Position / Occupancy
@@ -25,6 +27,7 @@ enum StampOccupancy {
 /// rawValue가 저장값이라 순서만 바꾸는 건 안전하다.
 enum StampTemplate: String, CaseIterable, Identifiable {
     case summaryGrid
+    case summaryGridPace
     case distanceHero
     case labeledRows
     case inlineTriple
@@ -76,6 +79,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .inlineTriple:  return L.s("가로 3열",        "Inline Triple")
         case .distanceHero:  return L.s("거리 몰아주기",   "Distance Hero")
         case .summaryGrid:   return L.s("요약 그리드",     "Summary Grid")
+        case .summaryGridPace: return L.s("요약 그리드+페이스", "Summary Grid + Pace")
         case .hrWave:        return L.s("심박 파형",       "HR Wave")
         case .hrZone:        return L.s("심박 존",         "HR Zones")
         case .elevProfile:   return L.s("고도 프로파일",   "Elevation Profile")
@@ -143,6 +147,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .inlineTriple: return (small: 0.28, medium: 0.38, large: 0.50, xlarge: 0.62)
         case .distanceHero: return (small: 0.56, medium: 0.78, large: 1.02, xlarge: 1.28)
         case .summaryGrid:  return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.84)   // 특대는 높이 상한(158pt)에 걸려 0.85 → 0.84
+        case .summaryGridPace: return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.68)   // 요약 그리드와 같은 배율. 특대 없음(supportsXLarge) — 차트가 붙어 높이 상한을 넘는다
         case .hud:          return (small: 0.50, medium: 0.65, large: 0.80, xlarge: 1.00)
         case .hrWave:       return (small: 0.56, medium: 0.77, large: 1.01, xlarge: 1.27)
         case .hrZone:       return (small: 0.55, medium: 0.76, large: 1.00, xlarge: 1.25)
@@ -154,13 +159,17 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         }
     }
 
+    /// 특대 크기를 고를 수 있는가. 요약 그리드+페이스는 격자 아래 차트가 붙어 특대면 높이 상한을 넘으므로
+    /// 특대 칩을 숨기고, 특대가 저장돼 있어도 대(large)로 그린다.
+    var supportsXLarge: Bool { self != .summaryGridPace }
+
     func stampScale(for level: TextSizeLevel) -> CGFloat {
         let t = sizeScales
         switch level {
         case .small:  return t.small
         case .medium: return t.medium
         case .large:  return t.large
-        case .xlarge: return t.xlarge
+        case .xlarge: return supportsXLarge ? t.xlarge : t.large
         }
     }
 
@@ -182,6 +191,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .cadenceEq:                 return [.cadence]
         case .placeHeadline:             return [.location]
         case .routeHero, .routeSide:     return [.route]
+        case .summaryGridPace:           return [.splits]
         default:                         return [.none]
         }
     }

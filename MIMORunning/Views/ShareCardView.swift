@@ -995,6 +995,10 @@ struct ShareCardScreen: View {
         d.routePoints        = stampRoutePoints
         d.routeCoordinates   = routeCoords.count >= 2 ? routeCoords : nil
         d.date               = activity.date
+        // km 스플릿 — 300m 미만 끝 조각은 페이스가 튀어 막대 비교를 망가뜨리므로 뺀다
+        d.splits = detail?.splits
+            .filter { $0.distanceM >= 300 && $0.duration > 0 }
+            .map { StampSplit(paceSecPerKm: $0.paceSecPerKm, heartRate: $0.avgHeartRate) }
         return d
     }
 

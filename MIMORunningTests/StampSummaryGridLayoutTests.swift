@@ -79,6 +79,42 @@ final class StampSummaryGridLayoutTests: XCTestCase {
         }
     }
 
+    /// "요약 그리드+페이스" — 격자 아래 스플릿 차트가 붙어 키가 크다. 특대가 없으니(대로 그림)
+    /// 모든 크기에서 오른쪽·아래 여백 안에 들어가야 한다. 42km 스플릿(막대가 가장 많은 경우)으로 잰다.
+    @MainActor
+    func testSummaryGridPaceFitsInsideCardAtEverySize() throws {
+        var data = StampData.sample
+        data.splits = (0 ..< 42).map { i in
+            StampSplit(paceSecPerKm: 330 + Double(i % 7) * 6, heartRate: 140 + i % 20)
+        }
+        XCTAssertFalse(StampTemplate.summaryGridPace.supportsXLarge)
+        XCTAssertEqual(StampTemplate.summaryGridPace.stampScale(for: .xlarge),
+                       StampTemplate.summaryGridPace.stampScale(for: .large))
+
+        for level in [TextSizeLevel.small, .medium, .large, .xlarge] {
+            let view = ZStack(alignment: .top) {
+                Color(hex: "3A4038")
+                StampCard(data: data, template: .summaryGridPace, colorMode: .auto,
+                          position: .topLeading, sizeLevel: level, isBrightBackground: false,
+                          showHeartRate: true, showCalories: true, showTextOutline: true,
+                          renderOnlyStamp: true)
+            }
+            .frame(width: Self.cardW, height: Self.cardH)
+
+            let r = ImageRenderer(content: view)
+            r.proposedSize = .init(width: Self.cardW, height: Self.cardH)
+            r.scale = Self.renderScale
+            _ = r.uiImage
+            _ = r.uiImage
+            let img = try XCTUnwrap(r.uiImage)
+            let box = try XCTUnwrap(inkBounds(in: img), "\(level) — 렌더되지 않았다")
+            XCTAssertLessThanOrEqual(box.maxX, (Self.cardW - Self.sideInset + 1) * Self.renderScale,
+                "\(level): 오른쪽 여백 밖으로 나갔다")
+            XCTAssertLessThanOrEqual(box.maxY, (Self.cardH - Self.bottomPadding + 1) * Self.renderScale,
+                "\(level): 아래 여백 밖으로 나갔다")
+        }
+    }
+
     /// 이 스탬프는 다른 스탬프와 달리 심박·칼로리 토글을 따르지 않는다 —
     /// 격자를 채우는 게 목적이라 있는 지표를 전부(최대 6칸) 보여주는 것이 기본값이다.
     @MainActor

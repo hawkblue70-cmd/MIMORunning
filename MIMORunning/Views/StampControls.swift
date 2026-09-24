@@ -118,7 +118,7 @@ struct StampControlsView: View {
                 sizeChip(.small)
                 sizeChip(.medium)
                 sizeChip(.large)
-                sizeChip(.xlarge)
+                if vm.storyTemplate.supportsXLarge { sizeChip(.xlarge) }
                 textOutlineChip
             }
             // 토글 행: 심박 · 칼로리 · 날짜(스토리)
@@ -544,6 +544,7 @@ struct StampVisualPickerSheet: View {
                     case .elevation: if (data.elevGain.flatMap(Double.init) ?? 0) <= 0 { return false }
                     case .location:
                         if data.placeName == nil && data.coordText == nil { return false }
+                    case .splits:    if (data.splits?.count ?? 0) < 2 { return false }
                     case .route:
                         let hasMap   = data.routePoints != nil || data.mapImage != nil
                         let hasCoord = (data.routeCoordinates?.count ?? 0) >= 2
