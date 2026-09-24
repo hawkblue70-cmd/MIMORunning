@@ -185,6 +185,10 @@ struct ShareCardScreen: View {
     @State var chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:]
     // 현재 캐러셀 카드
     @State private var card: ShareCard = .stamp
+    /// 9:16 미리보기 크게 보기 — 영상·슬라이드·경로 영상은 미리보기 폭이 211pt라 차트·글자를 확인하기 어렵다.
+    /// 새 창을 띄우지 않고 **지금 미리보기를 제자리에서 확대**한다: 원라이너·스탬프 미리보기의 애니메이션 층은
+    /// 한 번에 한 뷰에만 붙어서, 같은 미리보기를 창 두 곳에 그리면 원래 자리가 빈 화면이 된다.
+    @State private var isPreviewExpanded = false
     @State var cardPhotoIndex: [ShareCard: Int] = [:]
     @State var athleticCropOffsetX: CGFloat = 0.5
     @State private var athleticCropDragBase: CGFloat? = nil
@@ -2087,6 +2091,36 @@ struct ShareCardScreen: View {
         AnyView(bottomControls)
     }
 
+    // MARK: - 9:16 미리보기 크게 보기
+
+    /// 9:16 미리보기(폭 211pt) 확대 배율 — 폰 폭 가득(≈393pt)에 가깝게, 높이는 화면 안에 들어오게(375×1.75≈656pt)
+    private static let previewZoom: CGFloat = 1.75
+
+    private var isNineBySixteenTemplate: Bool {
+        template == .video || template == .slide || template == .routeVideo
+    }
+
+    @ViewBuilder
+    private var previewExpandButton: some View {
+        if isNineBySixteenTemplate {
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) { isPreviewExpanded.toggle() }
+            } label: {
+                Image(systemName: isPreviewExpanded ? "arrow.down.right.and.arrow.up.left"
+                                                    : "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(Color.black.opacity(0.55)))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 8)
+            .padding(.trailing, 20)
+            .accessibilityLabel(AppLanguage.shared.s(isPreviewExpanded ? "미리보기 작게" : "미리보기 크게",
+                                                     isPreviewExpanded ? "Shrink preview" : "Enlarge preview"))
+        }
+    }
+
     // MARK: - Body
 
     // Extracted to keep the body modifier chain within Swift's type-check budget.
@@ -2098,6 +2132,17 @@ struct ShareCardScreen: View {
                 VStack(spacing: 0) {
                     Color.clear.frame(height: 4)
                     cardSection
+                        .scaleEffect(isPreviewExpanded ? Self.previewZoom : 1, anchor: .top)
+                        .background(alignment: .top) {
+                            // 확대 중 뒤 화면을 가리는 판 — 탭하면 닫힌다
+                            if isPreviewExpanded {
+                                Color.black.opacity(0.94)
+                                    .frame(width: 3000, height: 3000)
+                                    .onTapGesture { withAnimation(.easeInOut(duration: 0.25)) { isPreviewExpanded = false } }
+                            }
+                        }
+                        .overlay(alignment: .topTrailing) { previewExpandButton }
+                        .zIndex(isPreviewExpanded ? 10 : 0)
                     cardPageDots
                     Color.clear.frame(height: 6)
                     if isOneLiner {
@@ -2677,6 +2722,7 @@ struct ShareCardScreen: View {
     }
 
     private func onTemplateChanged() {
+        isPreviewExpanded = false   // 다른 탭·카드로 가면 크게 보기 해제
         routeVideoFile = nil
         isRoutePreviewPlaying = false
         routePreviewProgress = 1.0
@@ -2741,6 +2787,7 @@ struct ShareCardScreen: View {
     }
 
     private func onCardChanged(_ newCard: ShareCard) {
+        isPreviewExpanded = false   // 다른 탭·카드로 가면 크게 보기 해제
         // player를 직접 사용하는 카드(Stamp·OneLiner)로 이동할 때만 초기화.
         // 같은 카드 복귀(예: Stamp→Athletic→Stamp)는 builtForCard가 같아 초기화 생략 → 영상 유지.
         // OneLiner 한정: 슬라이드↔영상 전환 후 다른 카드 경유 복귀 시 player 컨텐츠가 template과 불일치하면 초기화.
