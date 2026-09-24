@@ -20,6 +20,8 @@ struct AthleticCard: View {
     var chartHRZones: [HRZoneData] = []
     var chartWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     var chartIntervalSegments: [IntervalSegment] = []
+    /// 차트 세로 위치 — 상(로고 아래)·중(가운데)·하(날짜 줄 위, 기존). VideoOverlayCard와 같은 규칙(§5.8)
+    var chartPosition: CardChartPosition = .bottom
     var weather: WeatherSnapshot? = nil
     var shoeName: String? = nil
     var photo: UIImage? = nil
@@ -50,9 +52,15 @@ struct AthleticCard: View {
 
     // non-map chart — anchored inside the bottom VStack, above the divider
     // 총평이 켜지면(summaryLines 비어있지 않음) 로고 아래로 옮겨가고 이 자리의 지도/차트는 숨김(§5.8).
+    private var showsChart: Bool { summaryLines.isEmpty && chartPanel != .map }
+
     @ViewBuilder
     private var chartAboveDivider: some View {
-        if summaryLines.isEmpty, chartPanel != .map {
+        if showsChart, chartPosition == .bottom { chartBlock }
+    }
+
+    @ViewBuilder
+    private var chartBlock: some View {
             HStack {
                 Spacer()
                 CardChartLabeledPanel(
@@ -63,7 +71,6 @@ struct AthleticCard: View {
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
-        }
     }
 
     var body: some View {
@@ -109,7 +116,16 @@ struct AthleticCard: View {
                         .padding(.top, 8)
                 }
 
+                // 차트 위치 상 — 로고 바로 아래
+                if showsChart, chartPosition == .top { chartBlock.padding(.top, 10) }
+
                 Spacer()
+
+                // 차트 위치 중 — 위아래 빈 곳의 가운데
+                if showsChart, chartPosition == .middle {
+                    chartBlock
+                    Spacer()
+                }
 
                 // ── MIDDLE: map / chart — right-aligned, same spot ──
                 chartMiddleSection

@@ -213,7 +213,7 @@
 |---|---|---|
 | 워드마크 | 9pt | MIMO / RUNNING |
 | 인사이트 제목 | 13pt bold | |
-| 차트 | 160×100pt | CardChartPanelView |
+| 차트 | 150×83pt | CardChartPanelView — 스플릿은 세로 목록(줄 수만큼 높이, 최대 16줄) · 위치 상·중·하 |
 | MiniMe | 54pt | |
 | 아이콘/레이블 | 7pt / 8pt | 차트 패널 헤더 |
 | 수평 패딩 | 10pt | |

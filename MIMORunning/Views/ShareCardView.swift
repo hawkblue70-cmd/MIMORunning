@@ -180,6 +180,8 @@ struct ShareCardScreen: View {
     @State private var previewTextDelayTask: Task<Void, Never>?
     // Chart panel
     @State private var cardPanel: CardChartPanel = .map
+    /// 애슬레틱 차트 세로 위치(상·중·하) — 기록·사진·영상·슬라이드 공통
+    @State private var cardChartPosition: CardChartPosition = .bottom
     @State var shareHRSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var shareWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     @State var chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:]
@@ -747,6 +749,33 @@ struct ShareCardScreen: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 2)
             }
+            }
+
+            // ── Row 4: 차트 위치 상·중·하 — 차트가 보일 때만(경로·총평·경로 영상이면 차트가 없다)
+            if template != .routeVideo, cardPanel != .map, !showSummaryOnCard {
+                HStack(spacing: 8) {
+                    Text(AppLanguage.shared.s("차트 위치", "Chart"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                    ForEach(CardChartPosition.allCases, id: \.self) { pos in
+                        let isSel = cardChartPosition == pos
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { cardChartPosition = pos }
+                        } label: {
+                            Text(pos.label)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(isSel ? Theme.violet : Color.white.opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 2)
             }
         }
     }
@@ -2212,6 +2241,13 @@ struct ShareCardScreen: View {
             }
         }
         .onChange(of: card) { _, newCard in onCardChanged(newCard) }
+        .onChange(of: cardChartPosition) { _, _ in
+            // 이미지(기록·사진)는 다시 그리고, 만들어 둔 영상·슬라이드는 옛 위치라 버린다
+            exportedVideoFile = nil
+            // 슬라이드 재생 미리보기는 오버레이를 구워 두므로 다음 재생 때 새 위치로 다시 굽게 한다
+            if template == .slide { athleticVM.athleticVideoState.invalidate() }
+            Task { await renderCard(showSpinner: false) }
+        }
     }
 
     // bodyWithEventHandlers attaches onChange/task handlers; split from body to reduce
@@ -2695,6 +2731,7 @@ struct ShareCardScreen: View {
             weather: condition?.weather,
             shoeName: displayShoeName,
             summaryLines: cardSummaryLines,
+            chartPosition: cardChartPosition,
             scale: 216.0 / 300.0,
             topInset: exportInset,
             bottomInset: 14
@@ -2925,6 +2962,7 @@ struct ShareCardScreen: View {
                           chartHRZones: detail?.hrZones ?? [],
                           chartWorkoutSeries: shareWorkoutSeries,
                           chartIntervalSegments: detail?.intervalSegments ?? [],
+                          chartPosition: cardChartPosition,
                           weather: condition?.weather,
                           shoeName: displayShoeName,
                           photo: nil,
@@ -2943,6 +2981,7 @@ struct ShareCardScreen: View {
                               chartHRZones: detail?.hrZones ?? [],
                               chartWorkoutSeries: shareWorkoutSeries,
                               chartIntervalSegments: detail?.intervalSegments ?? [],
+                              chartPosition: cardChartPosition,
                               weather: condition?.weather,
                               shoeName: displayShoeName,
                               photo: photo,
@@ -2985,6 +3024,7 @@ struct ShareCardScreen: View {
                               chartHRZones: detail?.hrZones ?? [],
                               chartWorkoutSeries: shareWorkoutSeries,
                               chartIntervalSegments: detail?.intervalSegments ?? [],
+                              chartPosition: cardChartPosition,
                               weather: condition?.weather,
                               shoeName: displayShoeName,
                               summaryLines: cardSummaryLines)
@@ -3216,6 +3256,7 @@ struct ShareCardScreen: View {
                         weather: condition?.weather,
                         shoeName: displayShoeName,
                         summaryLines: cardSummaryLines,
+                        chartPosition: cardChartPosition,
                         scale: vidW / 300.0,
                         topInset: inset,
                         bottomInset: 14
@@ -3732,6 +3773,7 @@ struct ShareCardScreen: View {
                 weather: condition?.weather,
                 shoeName: displayShoeName,
                 summaryLines: cardSummaryLines,
+                chartPosition: cardChartPosition,
                 scale: 216.0 / 300.0,
                 topInset: exportInset,
                 bottomInset: 14
@@ -3807,6 +3849,7 @@ struct ShareCardScreen: View {
                 weather: condition?.weather,
                 shoeName: displayShoeName,
                 summaryLines: cardSummaryLines,
+                chartPosition: cardChartPosition,
                 scale: 216.0 / 300.0,
                 topInset: exportInset,
                 bottomInset: 14
@@ -4080,6 +4123,7 @@ struct ShareCardScreen: View {
             weather: condition?.weather,
             shoeName: displayShoeName,
             summaryLines: cardSummaryLines,
+            chartPosition: cardChartPosition,
             scale: 216.0 / 300.0,    // proportional to 300pt preview (= 0.72)
             topInset: 384.0 * 0.05,  // 5% = 19.2pt → 96px at scale 5 (preview 일치)
             bottomInset: 14
@@ -4508,6 +4552,7 @@ struct ShareCardScreen: View {
                               chartHRZones: detail?.hrZones ?? [],
                               chartWorkoutSeries: shareWorkoutSeries,
                               chartIntervalSegments: detail?.intervalSegments ?? [],
+                              chartPosition: cardChartPosition,
                               weather: condition?.weather,
                               shoeName: displayShoeName,
                               photo: selPhoto,
@@ -4547,6 +4592,7 @@ struct ShareCardScreen: View {
                           chartHRZones: detail?.hrZones ?? [],
                           chartWorkoutSeries: shareWorkoutSeries,
                           chartIntervalSegments: detail?.intervalSegments ?? [],
+                          chartPosition: cardChartPosition,
                           weather: condition?.weather,
                           shoeName: displayShoeName,
                           photo: nil,
@@ -4595,6 +4641,7 @@ struct ShareCardScreen: View {
                               chartHRZones: detail?.hrZones ?? [],
                               chartWorkoutSeries: shareWorkoutSeries,
                               chartIntervalSegments: detail?.intervalSegments ?? [],
+                              chartPosition: cardChartPosition,
                               weather: condition?.weather,
                               shoeName: displayShoeName,
                               summaryLines: cardSummaryLines)

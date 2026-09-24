@@ -244,3 +244,94 @@ struct CardIntervalChart: View {
         }
     }
 }
+
+// MARK: - Card split rows (카드 차트 패널의 스플릿 — 구간 내보내기와 같은 규칙의 세로 목록)
+
+/// 애슬레틱 카드(기록·사진·영상·슬라이드)의 "스플릿" 차트. 한 줄 = 한 구간.
+/// 규칙은 구간 내보내기 카드(SplitsShareCardView)와 같다 —
+///   묶음: 구간 16개 이하 1km · 30개 이하 2km · 그 이상 3km (최대 16줄)
+///   막대: 빠를수록 길고 진한 페이스 청록(Theme.splitBar…) · 가장 빠른 구간은 골드
+/// 세로 막대는 칸이 좁아지면(영상 미리보기) 페이스를 읽기 어려워 목록으로 바꿨다(2026-09-24).
+struct CardSplitRowsChart: View {
+    let splits: [SplitData]
+    /// 목록 폭 — 다른 차트와 같은 차트 폭(CardChartPanelView.chartSize.width)
+    var width: CGFloat = 150
+    var labelScale: CGFloat = 1.0
+
+    private static let gold = Color(hex: "FFC74D")
+
+    /// SplitsShareCardView.groupSize와 같은 기준(구간 개수)
+    static func groupSize(count: Int) -> Int { count <= 16 ? 1 : (count <= 30 ? 2 : 3) }
+
+    private struct Row { let label: String; let pace: Double }
+
+    private var rows: [Row] {
+        let g = Self.groupSize(count: splits.count)
+        var out: [Row] = []
+        var i = 0
+        var cumM = 0.0
+        while i < splits.count {
+            let chunk = splits[i ..< min(i + g, splits.count)]
+            let d = chunk.reduce(0) { $0 + $1.distanceM }
+            let t = chunk.reduce(0) { $0 + $1.duration }
+            cumM += d
+            i += g
+            guard d > 0, t > 0 else { continue }
+            let km = cumM / 1000
+            let label = abs(km - km.rounded()) < 0.05 ? "\(Int(km.rounded()))" : String(format: "%.1f", km)
+            out.append(Row(label: label, pace: t / (d / 1000)))
+        }
+        return out
+    }
+
+    private func paceText(_ sec: Double) -> String {
+        let t = Int(sec.rounded())
+        return String(format: "%d'%02d\"", t / 60, t % 60)
+    }
+
+    var body: some View {
+        let s = labelScale
+        let rs = rows
+        let paces = rs.map(\.pace)
+        let lo = paces.min() ?? 0
+        let hi = paces.max() ?? 0
+        let fastest = paces.firstIndex(of: lo)
+        let kmW: CGFloat = 14 * s
+        let paceW: CGFloat = 26 * s
+        let gap: CGFloat = 4 * s
+        let barMax = max(10, width - kmW - paceW - gap * 2)
+        VStack(spacing: 1 * s) {
+            ForEach(rs.indices, id: \.self) { i in
+                let r = rs[i]
+                let speed = hi - lo > 0.5 ? (hi - r.pace) / (hi - lo) : 0.5
+                let isBest = i == fastest
+                let op = Theme.splitBarOpacity(speed: speed)
+                let fillStyle: AnyShapeStyle = isBest
+                    ? AnyShapeStyle(Self.gold)
+                    : AnyShapeStyle(LinearGradient(colors: [Theme.splitBarHi.opacity(op), Theme.splitBarLo.opacity(op)],
+                                                   startPoint: .leading, endPoint: .trailing))
+                HStack(spacing: gap) {
+                    Text(r.label)
+                        .font(.system(size: 6.5 * s, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(isBest ? Self.gold : Color.white.opacity(0.6))
+                        .lineLimit(1).fixedSize()
+                        .frame(width: kmW, alignment: .leading)
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.10))
+                            .frame(width: barMax, height: 4 * s)
+                        Capsule().fill(fillStyle)
+                            .frame(width: barMax * CGFloat(0.28 + 0.72 * speed), height: 4 * s)
+                    }
+                    .frame(width: barMax, alignment: .leading)
+                    Text(paceText(r.pace))
+                        .font(.system(size: 7 * s, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(isBest ? Self.gold : Color.white)
+                        .lineLimit(1).fixedSize()
+                        .frame(width: paceW, alignment: .trailing)
+                }
+                .frame(height: 8 * s)
+            }
+        }
+        .frame(width: width)
+    }
+}

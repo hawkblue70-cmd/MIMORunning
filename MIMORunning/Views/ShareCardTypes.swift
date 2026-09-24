@@ -97,6 +97,20 @@ enum CardChartPanel: String, CaseIterable, Equatable {
     }
 }
 
+// MARK: - Card chart position (애슬레틱 차트 세로 위치 — 기록·사진·영상·슬라이드 공용)
+
+enum CardChartPosition: String, CaseIterable {
+    case top, middle, bottom
+    var label: String {
+        let L = AppLanguage.shared
+        switch self {
+        case .top:    return L.s("상", "Top")
+        case .middle: return L.s("중", "Mid")
+        case .bottom: return L.s("하", "Bottom")
+        }
+    }
+}
+
 // MARK: - Shared overlay constants (cards + video, single source of truth)
 
 enum CardVisual {
@@ -201,14 +215,14 @@ struct CardChartPanelView: View {
     var hrZones: [HRZoneData] = []
     var workoutSeries: [(offset: TimeInterval, value: Double)] = []
     var intervalSegments: [IntervalSegment] = []
-    var chartSize: CGSize = CGSize(width: 130, height: 83)
+    /// 차트 크기(scale 1) — 130 → 150 폭(2026-09-24). 스플릿은 목록이라 높이는 줄 수만큼(최대 16줄 ≈ 143pt)
+    var chartSize: CGSize = CGSize(width: 150, height: 83)
     var labelScale: CGFloat = 1.0
 
     var body: some View {
         switch panel {
         case .splits where !splits.isEmpty:
-            SplitsPanelChart(splits: splits, compact: true, labelScale: labelScale)
-                .frame(width: chartSize.width, height: chartSize.height).clipped()
+            CardSplitRowsChart(splits: splits, width: chartSize.width, labelScale: labelScale)
         case .intervals where !intervalSegments.isEmpty:
             CardIntervalChart(segments: intervalSegments, labelScale: labelScale)
         case .heartRate where !hrSamples.isEmpty:

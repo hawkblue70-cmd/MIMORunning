@@ -11,7 +11,7 @@ import SwiftUI
 //
 // scale 기준값 (scale=1.0)
 //   워드마크: 11pt × scale
-//   차트: 160×100pt
+//   차트: 150×83pt (스플릿은 줄 수만큼 높이)
 //   아이콘/레이블: 7pt/8pt  수평 패딩: 10pt
 
 struct VideoOverlayCard: View {
@@ -29,11 +29,46 @@ struct VideoOverlayCard: View {
     var shoeName: String? = nil
     /// 총평 5줄 — 비어 있으면(기본) 기존 지도/차트 자리 그대로. §5.8: scale만 다르고 컴포넌트는 하나.
     var summaryLines: [RunSummaryLine] = []
+    /// 차트 세로 위치 — 상(로고 아래)·중(가운데)·하(날짜 줄 위, 기존). AthleticCard와 같은 규칙(§5.8)
+    var chartPosition: CardChartPosition = .bottom
     var scale: CGFloat = 1.0
     // nil = videoSafeTopRef/BottomRef * scale (Instagram safe zone 기본값)
     // 값 지정 시 해당 pt를 그대로 사용 (scale 미적용)
     var topInset: CGFloat? = nil
     var bottomInset: CGFloat? = nil
+
+    private var showsChart: Bool { summaryLines.isEmpty && chartPanel != .map }
+
+    @ViewBuilder
+    private var chartBlock: some View {
+            HStack {
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2 * scale) {
+                    HStack(spacing: 2 * scale) {
+                        Image(systemName: chartPanel.icon)
+                            .font(.system(size: 7 * scale))
+                        Text(chartPanel.label)
+                            .font(.system(size: 8 * scale, weight: .semibold))
+                            .tracking(0.3)
+                        if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
+                            Text(s)
+                                .font(.system(size: 8 * scale, weight: .semibold).monospacedDigit())
+                        }
+                    }
+                    .foregroundStyle(Color.white.opacity(0.55))
+                    CardChartPanelView(
+                        panel: chartPanel, splits: chartSplits, hrSamples: chartHRSamples,
+                        hrZones: chartHRZones, workoutSeries: chartWorkoutSeries,
+                        intervalSegments: chartIntervalSegments,
+                        chartSize: CGSize(width: 150 * scale, height: 83 * scale),
+                        labelScale: scale
+                    )
+                }
+            }
+            .padding(.horizontal, 20 * scale)
+            .padding(.bottom, 8 * scale)
+            .cardTextShadow()
+    }
 
     var body: some View {
         ZStack {
@@ -61,38 +96,19 @@ struct VideoOverlayCard: View {
                         .padding(.top, 8 * scale)
                 }
 
+                // 차트 위치 상 — 로고(세이프존) 바로 아래
+                if showsChart, chartPosition == .top { chartBlock.padding(.top, 10 * scale) }
+
                 Spacer()
 
-                // ── MIDDLE: chart (right-aligned) — 총평이 켜지면 숨김(§5.8) ──
-                if summaryLines.isEmpty, chartPanel != .map {
-                    HStack {
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2 * scale) {
-                            HStack(spacing: 2 * scale) {
-                                Image(systemName: chartPanel.icon)
-                                    .font(.system(size: 7 * scale))
-                                Text(chartPanel.label)
-                                    .font(.system(size: 8 * scale, weight: .semibold))
-                                    .tracking(0.3)
-                                if chartPanel == .intervals, let s = chartIntervalSegments.workSummaryText {
-                                    Text(s)
-                                        .font(.system(size: 8 * scale, weight: .semibold).monospacedDigit())
-                                }
-                            }
-                            .foregroundStyle(Color.white.opacity(0.55))
-                            CardChartPanelView(
-                                panel: chartPanel, splits: chartSplits, hrSamples: chartHRSamples,
-                                hrZones: chartHRZones, workoutSeries: chartWorkoutSeries,
-                                intervalSegments: chartIntervalSegments,
-                                chartSize: CGSize(width: 130 * scale, height: 83 * scale),
-                                labelScale: scale
-                            )
-                        }
-                    }
-                    .padding(.horizontal, 20 * scale)
-                    .padding(.bottom, 8 * scale)
-                    .cardTextShadow()
+                // 차트 위치 중 — 위아래 빈 곳의 가운데
+                if showsChart, chartPosition == .middle {
+                    chartBlock
+                    Spacer()
                 }
+
+                // ── MIDDLE: chart (right-aligned) — 총평이 켜지면 숨김(§5.8) · 위치 하(기존)
+                if showsChart, chartPosition == .bottom { chartBlock }
 
                 // ── BOTTOM: date · divider · stats ──
                 HStack(spacing: 0) {
