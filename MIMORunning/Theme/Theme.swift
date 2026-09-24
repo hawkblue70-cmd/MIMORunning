@@ -49,6 +49,17 @@ enum Theme {
     // 지표 격자에서 두 라벨이 같은 색으로 보였다. 앰버 쪽으로 한 칸 내린다.
     static let time = Color(hex: "FFB020")
     static let pace = Color.cyan
+    /// 구간(스플릿) 막대 — 페이스 색(청록) 그라디언트. 보라는 브랜드 색이라 지표에 쓰지 않는다(§11).
+    /// 러닝 상세 구간 기록·구간 공유 카드·애슬레틱 스플릿 차트·영상 스플릿 오버레이가 이 값을 같이 쓴다.
+    static let splitBarHi = Color(hex: "7ADFFF")
+    static let splitBarLo = Color(hex: "32ADE6")
+    /// splitBarLo와 같은 값 — CoreGraphics로 그리는 영상·슬라이드 스플릿 오버레이용
+    static let splitBarLoUI = UIColor(red: 0x32 / 255.0, green: 0xAD / 255.0, blue: 0xE6 / 255.0, alpha: 1)
+    /// 라이트 카드용 — 흰 바탕에서 옅은 청록이 묻히지 않게 짙게(지표 페이스 라이트 색 0E7C8A와 같은 계열)
+    static let splitBarHiLight = Color(hex: "1597A8")
+    static let splitBarLoLight = Color(hex: "0E7C8A")
+    /// 빠를수록 진하게(Strava 방식) — speed 0(가장 느림)~1(가장 빠름) → 불투명도 0.45~1.0
+    static func splitBarOpacity(speed: Double) -> Double { 0.45 + 0.55 * max(0, min(1, speed)) }
     static let heartRate = Color.red
     static let elevation = Color.green
     static let power = Color(hex: "A3E635")   // lime

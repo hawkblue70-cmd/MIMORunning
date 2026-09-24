@@ -2705,7 +2705,6 @@ struct VideoExportService {
             let paces      = displaySplits.map { $0.paceSecPerKm }
             let minP       = paces.min()!
             let rangeP     = max(1.0, (paces.max()!) - minP)
-            let avgP       = paces.reduce(0, +) / Double(paces.count)
             let fastestIdx = paces.indices.min(by: { paces[$0] < paces[$1] }) ?? 0
 
             let hasHR  = displaySplits.contains { $0.avgHeartRate != nil }
@@ -2730,7 +2729,6 @@ struct VideoExportService {
 
             // Colors
             let gold   = UIColor(red: 1.000, green: 0.780, blue: 0.302, alpha: 1.0)
-            let violet = UIColor(red: 0.486, green: 0.361, blue: 0.988, alpha: 0.85)
             let cyan   = UIColor(red: 0.376, green: 0.910, blue: 0.800, alpha: 1.0)
             let lime   = UIColor(red: 0.745, green: 0.980, blue: 0.416, alpha: 1.0)
             func zoneUIColor(_ hr: Int?) -> UIColor {
@@ -2787,7 +2785,9 @@ struct VideoExportService {
                     let pace = split.paceSecPerKm
                     let barFrac = CGFloat(0.28 + 0.72 * (pace - minP) / rangeP)
                     let barColor: UIColor = isFastest ? gold
-                        : (pace <= avgP ? violet : UIColor.white.withAlphaComponent(0.30))
+                        // 페이스 색(청록), 빠를수록 진하게 — 앱 구간 기록과 같은 규칙(Theme.splitBarOpacity)
+                        : Theme.splitBarLoUI.withAlphaComponent(
+                            Theme.splitBarOpacity(speed: rangeP > 0 ? 1 - (pace - minP) / rangeP : 0.5))
 
                     // km label (right-aligned in kmW)
                     let kmStr = "\(split.id)k" as NSString

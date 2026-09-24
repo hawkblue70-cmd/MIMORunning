@@ -2319,8 +2319,6 @@ private struct SplitBarRow: View {
 
     private static let gold        = Color(hex: "FFC74D")
     private static let goldDark    = Color(hex: "F2A33C")
-    private static let violetHi    = Color(hex: "9B7DFF")
-    private static let violetLo    = Color(hex: "6845E8")
     private static let track       = Color.white.opacity(0.09)
     private static let kmColor     = Color(hex: "6E6E78")
     private static let hrColor     = Color(hex: "8A8A92")
@@ -2351,8 +2349,9 @@ private struct SplitBarRow: View {
             return LinearGradient(colors: [Self.gold, Self.goldDark],
                                   startPoint: .leading, endPoint: .trailing)
         }
-        let a: Double = isSlowerThanAvg ? 0.75 : 1.0
-        return LinearGradient(colors: [Self.violetHi.opacity(a), Self.violetLo.opacity(a)],
+        // 빠를수록 진하게 — barFraction 0.28(가장 느림)~1.0(가장 빠름)을 0~1로
+        let a = Theme.splitBarOpacity(speed: (barFraction - 0.28) / 0.72)
+        return LinearGradient(colors: [Theme.splitBarHi.opacity(a), Theme.splitBarLo.opacity(a)],
                               startPoint: .leading, endPoint: .trailing)
     }
 
@@ -3708,13 +3707,14 @@ struct SplitsPanelChart: View {
                         let bH: CGFloat = dRange > 0.5
                             ? barH * CGFloat(0.18 + 0.82 * (dMax - split.paceSecPerKm) / dRange)
                             : barH * 0.6
+                        let speedOp = Theme.splitBarOpacity(speed: dRange > 0.5 ? (dMax - split.paceSecPerKm) / dRange : 0.5)
                         let fillGradient = isFastest
                             ? LinearGradient(colors: [Self.panelGoldDark, Self.panelGold],
                                              startPoint: .bottom, endPoint: .top)
                             : isSlower
-                            ? LinearGradient(colors: [Color.white.opacity(0.11), Color.white.opacity(0.17)],
+                            ? LinearGradient(colors: [Theme.splitBarLo.opacity(speedOp * 0.5), Theme.splitBarHi.opacity(speedOp * 0.5)],
                                              startPoint: .bottom, endPoint: .top)
-                            : LinearGradient(colors: [Self.panelVioletLo, Self.panelVioletHi],
+                            : LinearGradient(colors: [Theme.splitBarLo.opacity(speedOp), Theme.splitBarHi.opacity(speedOp)],
                                              startPoint: .bottom, endPoint: .top)
                         VStack(spacing: 3) {
                             Spacer(minLength: 0)
@@ -3804,12 +3804,13 @@ struct SplitsPanelChart: View {
                         let bH: CGFloat = dRange > 0.5
                             ? chartH * CGFloat(0.18 + 0.82 * (dMax - split.paceSecPerKm) / dRange)
                             : chartH * 0.6
-                        let barOpacity: Double = (!isFastest && isSlowerAvg) ? 0.58 : 1.0
+                        // 빠를수록 진하게
+                        let barOpacity = Theme.splitBarOpacity(speed: dRange > 0.5 ? (dMax - split.paceSecPerKm) / dRange : 0.5)
                         let fillGradient = isFastest
                             ? LinearGradient(colors: [Self.panelGoldDark, Self.panelGold],
                                              startPoint: .bottom, endPoint: .top)
-                            : LinearGradient(colors: [Self.panelVioletLo.opacity(barOpacity),
-                                                      Self.panelVioletHi.opacity(barOpacity)],
+                            : LinearGradient(colors: [Theme.splitBarLo.opacity(barOpacity),
+                                                      Theme.splitBarHi.opacity(barOpacity)],
                                              startPoint: .bottom, endPoint: .top)
                         VStack(spacing: max(1.5, 2 * labelScale)) {
                             Text(split.formattedPace)
@@ -3863,8 +3864,6 @@ struct SplitsPanelChart: View {
 
     private static let panelGold      = Color(hex: "FFC74D")
     private static let panelGoldDark  = Color(hex: "F2A33C")
-    private static let panelVioletHi  = Color(hex: "9B7DFF")
-    private static let panelVioletLo  = Color(hex: "6845E8")
     private static let panelTrack     = Color(hex: "26262E")
     private static let panelKmColor   = Color(hex: "6E6E78")
     private static let panelAvgDot    = Color(hex: "7A7A85")
@@ -3872,13 +3871,14 @@ struct SplitsPanelChart: View {
     @ViewBuilder
     private func panelRow(idx: Int, split: SplitData) -> some View {
         let isFastest   = idx == fastestIdx
-        let isSlowerAvg = split.paceSecPerKm > avgPace
-        let barOpacity  = (!isFastest && isSlowerAvg) ? 0.75 : 1.0
+        // 빠를수록 진하게
+        let range       = maxPace - minPace
+        let barOpacity  = Theme.splitBarOpacity(speed: range > 0.5 ? (maxPace - split.paceSecPerKm) / range : 0.5)
         let fillGradient: LinearGradient = isFastest
             ? LinearGradient(colors: [Self.panelGold, Self.panelGoldDark],
                              startPoint: .leading, endPoint: .trailing)
-            : LinearGradient(colors: [Self.panelVioletHi.opacity(barOpacity),
-                                      Self.panelVioletLo.opacity(barOpacity)],
+            : LinearGradient(colors: [Theme.splitBarHi.opacity(barOpacity),
+                                      Theme.splitBarLo.opacity(barOpacity)],
                              startPoint: .leading, endPoint: .trailing)
 
         HStack(spacing: 0) {

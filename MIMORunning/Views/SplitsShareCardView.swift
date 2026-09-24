@@ -44,8 +44,8 @@ private struct SplitsPalette {
         wordmarkMIMO:    .white,
         wordmarkRunning: Theme.violet,
         barTrack:        Color.white.opacity(0.09),
-        barFillStart:    Color(hex: "9B7DFF"),
-        barFillEnd:      Color(hex: "6845E8"),
+        barFillStart:    Theme.splitBarHi,
+        barFillEnd:      Theme.splitBarLo,
         bestBarStart:    Color(hex: "FFC74D"),
         bestBarEnd:      Color(hex: "F2A33C"),
         bestText:        Color(hex: "FFC74D"),
@@ -82,8 +82,8 @@ private struct SplitsPalette {
         wordmarkMIMO:    Color(hex: "111111"),
         wordmarkRunning: Color(hex: "5B3FD9"),
         barTrack:        Color(hex: "EFEEEA"),
-        barFillStart:    Color(hex: "7B5CE8"),
-        barFillEnd:      Color(hex: "5B3FD9"),
+        barFillStart:    Theme.splitBarHiLight,
+        barFillEnd:      Theme.splitBarLoLight,
         bestBarStart:    Color(hex: "F0AA00"),
         bestBarEnd:      Color(hex: "E8A000"),
         bestText:        Color(hex: "C77A00"),
@@ -376,15 +376,15 @@ struct SplitsShareCardView: View {
 
     private func splitRow(split: SplitData, idx: Int) -> some View {
         let isFastest   = idx == fastestIdx
-        let isSlowerAvg = split.paceSecPerKm > avgPace
         let avgFrac     = barFraction(for: avgPace)
 
         let barGradient: LinearGradient = isFastest
             ? LinearGradient(colors: [pal.bestBarStart, pal.bestBarEnd],
                              startPoint: .leading, endPoint: .trailing)
             : LinearGradient(
-                colors: [pal.barFillStart.opacity(isSlowerAvg ? 0.75 : 1.0),
-                         pal.barFillEnd.opacity(isSlowerAvg ? 0.75 : 1.0)],
+                // 빠를수록 진하게 — barFraction 0.28(가장 느림)~1.0(가장 빠름)
+                colors: [pal.barFillStart.opacity(Theme.splitBarOpacity(speed: (barFraction(for: split.paceSecPerKm) - 0.28) / 0.72)),
+                         pal.barFillEnd.opacity(Theme.splitBarOpacity(speed: (barFraction(for: split.paceSecPerKm) - 0.28) / 0.72))],
                 startPoint: .leading, endPoint: .trailing
             )
 
