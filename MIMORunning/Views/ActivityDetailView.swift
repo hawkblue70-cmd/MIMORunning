@@ -1167,7 +1167,7 @@ struct ActivityDetailView: View {
             .fill(Theme.cardBackground)
             .frame(height: 220)
             .overlay { ProgressView().tint(Theme.violet) }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 28)   // 아래 러닝 데이터 격자와 같은 폭
     }
 
     /// 종합 차트 — 칩 선택과 무관하게 **항상** 표시한다.
@@ -1211,7 +1211,7 @@ struct ActivityDetailView: View {
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .frame(height: panelContentHeight)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 28)   // 아래 러닝 데이터 격자와 같은 폭
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: activePanel)
