@@ -37,6 +37,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     case scoreboard
     case passportStamp
     case circleBadge
+    case placeable
     case hud
     // 지표 특화 4종
     case hrWave
@@ -75,6 +76,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .scoreboard:    return L.s("전광판",          "Scoreboard")
         case .passportStamp: return L.s("여권 스탬프",     "Passport Stamp")
         case .circleBadge:   return L.s("서클 배지",       "Circle Badge")
+        case .placeable:     return L.s("플레이서블",      "Placeable")
         case .labeledRows:   return L.s("행마다 라벨",     "Row Labels")
         case .inlineTriple:  return L.s("가로 3열",        "Inline Triple")
         case .distanceHero:  return L.s("거리 몰아주기",   "Distance Hero")
@@ -142,6 +144,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         switch self {
         case .passportStamp: return (small: 0.61, medium: 0.85, large: 1.11, xlarge: 1.39)
         case .circleBadge:  return (small: 0.67, medium: 0.93, large: 1.22, xlarge: 1.52)
+        case .placeable:    return (small: 0.45, medium: 0.62, large: 0.78, xlarge: 0.92)   // 세로 3줄+정보 줄이라 높이가 먼저 찬다 — 특대는 높이 상한(158pt) 기준 추정, 실측 후 조정
         case .scoreboard:   return (small: 0.27, medium: 0.37, large: 0.49, xlarge: 0.58)   // 심박까지 한 줄, 폭 311. 특대는 좌우 여백에 걸려 0.61 → 0.58
         case .labeledRows:  return (small: 0.60, medium: 0.82, large: 1.08, xlarge: 1.35)
         case .inlineTriple: return (small: 0.28, medium: 0.38, large: 0.50, xlarge: 0.62)

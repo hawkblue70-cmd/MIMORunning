@@ -80,6 +80,10 @@ struct StampData {
     var date: Date?              = nil
     /// km 스플릿 (페이스·심박) — 요약 그리드+페이스 차트. 2개 미만이면 그 스탬프를 고를 수 없다
     var splits: [StampSplit]?    = nil
+    // 날씨·러닝화 — 플레이서블 스탬프 정보 줄 (없으면 그 항목만 생략)
+    var weatherIcon: String?     = nil   // SF Symbol
+    var weatherText: String?     = nil   // "18°C"
+    var shoeName: String?        = nil
 
     static let sample = StampData(
         distance: "10.13",
@@ -115,7 +119,10 @@ struct StampData {
         ],
         splits: [(378, 138), (372, 144), (369, 147), (371, 149), (366, 150),
                  (374, 151), (368, 152), (363, 154), (360, 156), (352, 161)]
-            .map { StampSplit(distanceM: 1000, duration: $0.0, heartRate: $0.1) }
+            .map { StampSplit(distanceM: 1000, duration: $0.0, heartRate: $0.1) },
+        weatherIcon: "sun.max",
+        weatherText: "18°C",
+        shoeName: "Pegasus 41"
     )
 }
 
@@ -462,6 +469,9 @@ struct StampCard: View {
         case .passportStamp:
             StampPassportView(data: data, fill: fill, outline: outline, scale: scale,
                               showTextOutline: showTextOutline)
+        case .placeable:
+            StampPlaceableView(data: data, fill: fill, outline: outline, scale: scale,
+                               showTextOutline: showTextOutline)
         case .circleBadge:
             StampCircleBadgeView(data: data, fill: fill, outline: outline, scale: scale,
                                  showTextOutline: showTextOutline)
@@ -693,6 +703,69 @@ private struct StampLabeledRowsView: View {
                 Text(u)
                     .font(.system(size: sz(11, scale), weight: .bold))
                     .baselineOffset(sz(4, scale))
+            }
+        }
+    }
+}
+
+// MARK: - Placeable (삭제된 플레이서블 카드의 데이터 블록을 스탬프로 — 라벨 위 값: 거리·시간·페이스 + 날씨·러닝화)
+
+private struct StampPlaceableView: View {
+    let data: StampData
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    var showTextOutline: Bool = true
+
+    /// 러닝화 이름이 길면 스탬프 폭을 밀어내므로 18자에서 자른다
+    private var shoe: String? {
+        guard let s = data.shoeName, !s.isEmpty else { return nil }
+        return s.count > 18 ? String(s.prefix(17)) + "…" : s
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: sz(8, scale)) {
+            row(label: "DIST", value: data.distance, unit: data.distanceUnit.lowercased())
+            row(label: "TIME", value: data.time)
+            row(label: "PACE", value: data.pace, unit: "/km")
+            if data.weatherText != nil || shoe != nil {
+                HStack(spacing: sz(4, scale)) {
+                    if let t = data.weatherText {
+                        if let icon = data.weatherIcon {
+                            Image(systemName: icon).font(.system(size: sz(8, scale)))
+                        }
+                        Text(t)
+                    }
+                    if data.weatherText != nil, shoe != nil { Text("·") }
+                    if let shoe { Text(shoe) }
+                }
+                .font(.system(size: sz(9, scale), weight: .medium))
+                .opacity(0.85)
+                .lineLimit(1).fixedSize()
+            }
+        }
+        .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+    }
+
+    private func row(label: String, value: String, unit: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(label)
+                .font(.system(size: sz(9, scale), weight: .semibold))
+                .fontWidth(.condensed)
+                .tracking(1.5)
+                .lineLimit(1).fixedSize()
+            HStack(alignment: .lastTextBaseline, spacing: sz(3, scale)) {
+                Text(value)
+                    .font(.system(size: sz(20, scale), weight: .heavy).italic().monospacedDigit())
+                    .fontWidth(.condensed)
+                    .lineLimit(1).fixedSize()
+                if let unit {
+                    Text(unit)
+                        .font(.system(size: sz(11, scale), weight: .semibold).italic())
+                        .fontWidth(.condensed)
+                        .opacity(0.70)
+                        .lineLimit(1).fixedSize()
+                }
             }
         }
     }

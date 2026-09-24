@@ -130,6 +130,35 @@ final class StampSummaryGridLayoutTests: XCTestCase {
         }
     }
 
+    /// "플레이서블" — 세로 3줄(거리·시간·페이스) + 날씨·러닝화 줄. 배율표가 추정값이라
+    /// 모든 크기에서 오른쪽·아래 여백 안에 들어가는지 실제 렌더로 확인한다(긴 러닝화 이름 포함).
+    @MainActor
+    func testPlaceableStampFitsInsideCardAtEverySize() throws {
+        var data = StampData.sample
+        data.shoeName = "Nike Pegasus Trail 5 GORE-TEX"   // 18자에서 잘린다
+        for level in [TextSizeLevel.small, .medium, .large, .xlarge] {
+            let view = ZStack(alignment: .top) {
+                Color(hex: "3A4038")
+                StampCard(data: data, template: .placeable, colorMode: .auto,
+                          position: .topLeading, sizeLevel: level, isBrightBackground: false,
+                          showHeartRate: false, showCalories: false, showTextOutline: true,
+                          renderOnlyStamp: true)
+            }
+            .frame(width: Self.cardW, height: Self.cardH)
+            let r = ImageRenderer(content: view)
+            r.proposedSize = .init(width: Self.cardW, height: Self.cardH)
+            r.scale = Self.renderScale
+            _ = r.uiImage
+            _ = r.uiImage
+            let img = try XCTUnwrap(r.uiImage)
+            let box = try XCTUnwrap(inkBounds(in: img), "\(level) — 렌더되지 않았다")
+            XCTAssertLessThanOrEqual(box.maxX, (Self.cardW - Self.sideInset + 1) * Self.renderScale,
+                "\(level): 오른쪽 여백 밖으로 나갔다")
+            XCTAssertLessThanOrEqual(box.maxY, (Self.cardH - Self.bottomPadding + 1) * Self.renderScale,
+                "\(level): 아래 여백 밖으로 나갔다")
+        }
+    }
+
     /// 이 스탬프는 다른 스탬프와 달리 심박·칼로리 토글을 따르지 않는다 —
     /// 격자를 채우는 게 목적이라 있는 지표를 전부(최대 6칸) 보여주는 것이 기본값이다.
     @MainActor

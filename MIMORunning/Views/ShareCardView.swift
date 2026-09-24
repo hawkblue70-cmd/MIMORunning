@@ -975,6 +975,10 @@ struct ShareCardScreen: View {
         d.splits = detail?.splits
             .filter { $0.distanceM >= 300 && $0.duration > 0 }
             .map { StampSplit(distanceM: $0.distanceM, duration: $0.duration, heartRate: $0.avgHeartRate) }
+        // 날씨·러닝화 — 플레이서블 스탬프 정보 줄 (삭제된 플레이서블 카드 푸터와 같은 값)
+        d.weatherIcon = condition?.weather?.systemIcon
+        d.weatherText = activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? condition?.weather?.formattedTemp
+        d.shoeName    = displayShoeName
         return d
     }
 
