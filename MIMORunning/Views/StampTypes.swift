@@ -21,19 +21,20 @@ enum StampOccupancy {
 
 // MARK: - Template
 
+/// 선언 순서 = 스탬프 선택 화면 순서(allCases). 맨 앞 요약 그리드가 기본값(StampPhotoConfig.template).
+/// rawValue가 저장값이라 순서만 바꾸는 건 안전하다.
 enum StampTemplate: String, CaseIterable, Identifiable {
-    // 경로 결합 2종
+    case summaryGrid
+    case distanceHero
+    case labeledRows
+    case inlineTriple
+    // 경로 결합
     case routeHero
     case routeSide
-    // 기본 8종
-    case hud
     case scoreboard
     case passportStamp
     case circleBadge
-    case labeledRows
-    case inlineTriple
-    case distanceHero
-    case summaryGrid
+    case hud
     // 지표 특화 4종
     case hrWave
     case hrZone
@@ -233,7 +234,7 @@ enum StampControlTab { case stamp, text }
 /// 사진 한 장(또는 클립 하나)의 스탬프·문구·애니메이션 속성 전체.
 /// story / slide / video 모두 클립·사진마다 독립 저장.
 struct StampPhotoConfig: Equatable {
-    var template:       StampTemplate     = .passportStamp
+    var template:       StampTemplate     = .summaryGrid
     var colorMode:      StampColorMode    = .auto
     var position:       CardPosition      = .bottom
     var sizeLevel:      TextSizeLevel     = .medium
