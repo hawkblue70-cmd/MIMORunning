@@ -556,12 +556,15 @@ struct RunCombinedChartView: View {
         let bandMap = bands(for: activeLayers)
         guard let hrBand = bandMap[.heartRate] else { return }
         let axisStyle = p.axisLabelColor
+        // 축 끝은 다듬은 선의 최고·최저 자리(norm 1·0) — 타일 범위(원본 최저~최고, 애플과 같음)와 다를 수 있다
+        let lineMax = hrSeries.points.map(\.value).max() ?? hrSeries.maxValue
+        let lineMin = hrSeries.points.map(\.value).min() ?? hrSeries.minValue
         ctx.draw(
-            Text("\(Int(hrSeries.maxValue.rounded()))").font(.system(size: 9, weight: .medium)).foregroundStyle(axisStyle),
+            Text("\(Int(lineMax.rounded()))").font(.system(size: 9, weight: .medium)).foregroundStyle(axisStyle),
             at: CGPoint(x: 22, y: yForBand(norm: 1.0, band: hrBand, in: rect)), anchor: .trailing
         )
         ctx.draw(
-            Text("\(Int((hrSeries.axisFloor ?? hrSeries.minValue).rounded()))").font(.system(size: 9, weight: .medium)).foregroundStyle(axisStyle),
+            Text("\(Int((hrSeries.axisFloor ?? lineMin).rounded()))").font(.system(size: 9, weight: .medium)).foregroundStyle(axisStyle),
             at: CGPoint(x: 22, y: yForBand(norm: 0.0, band: hrBand, in: rect)), anchor: .trailing
         )
     }

@@ -353,7 +353,9 @@ enum RunChartBuilder {
                                       smoothWindow: 15,
                                       clamp: .percentile(lo: 0.02, hi: 0.98),
                                       meanWindow: 13,
-                                      normFloor: hrFloor) {
+                                      normFloor: hrFloor,
+                                      // 타일 범위는 애플 피트니스와 같게 — 자르지 않은 실제 최저~최고
+                                      rawRange: true) {
             allSeries[.heartRate] = storedHRAvg.map { s.withAvg($0) } ?? s
         }
 
@@ -564,7 +566,9 @@ enum RunChartBuilder {
         clamp: ClampMode,
         secondaryClamp: ClampMode? = nil,
         meanWindow: Int = 0,
-        normFloor: Double? = nil
+        normFloor: Double? = nil,
+        /// true면 타일 범위(min/max)를 자르기 전 원본에서 — 심박처럼 애플 값과 맞춰야 할 때. 선은 그대로 다듬는다.
+        rawRange: Bool = false
     ) -> RunChartSeries? {
         guard rawPoints.count >= 2 else { return nil }
 
@@ -605,8 +609,8 @@ enum RunChartBuilder {
         let smAvg   = smoothed.reduce(0, +) / Double(smoothed.count)
 
         // Stats display: clamped raw data = actual HealthKit range, not smoothed
-        let rawMin = doubleClamped.min()!
-        let rawMax = doubleClamped.max()!
+        let rawMin = rawRange ? rawValues.min()! : doubleClamped.min()!
+        let rawMax = rawRange ? rawValues.max()! : doubleClamped.max()!
 
         let points = zip(rawPoints, smoothed).map { (rp, sv) -> RunChartPoint in
             RunChartPoint(km: rp.km, value: sv,
