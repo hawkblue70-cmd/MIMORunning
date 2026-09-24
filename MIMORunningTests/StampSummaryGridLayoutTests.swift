@@ -79,13 +79,28 @@ final class StampSummaryGridLayoutTests: XCTestCase {
         }
     }
 
-    /// "요약 그리드+페이스" — 격자 아래 스플릿 차트가 붙어 키가 크다. 특대가 없으니(대로 그림)
-    /// 모든 크기에서 오른쪽·아래 여백 안에 들어가야 한다. 42km 스플릿(막대가 가장 많은 경우)으로 잰다.
+    /// 묶음 규칙 — 16km 이하 1km, 40km 이하 2km, 그 이상 3km. 줄 수는 최대 20(40km).
+    func testSummaryGridPaceBuckets() {
+        func splits(_ n: Int) -> [StampSplit] {
+            (0 ..< n).map { i in StampSplit(distanceM: 1000, duration: 360 + Double(i), heartRate: 140 + i) }
+        }
+        XCTAssertEqual(StampSplit.rows(splits(16)).count, 16)
+        XCTAssertEqual(StampSplit.rows(splits(17)).count, 9)
+        XCTAssertEqual(StampSplit.rows(splits(40)).count, 20)
+        XCTAssertEqual(StampSplit.rows(splits(42)).count, 14)
+        let two = StampSplit.rows(splits(20))[0]   // 1·2km 묶음: (360+361)/2km, 심박 (140+141)/2
+        XCTAssertEqual(two.endKm, 2, accuracy: 0.001)
+        XCTAssertEqual(two.paceSecPerKm, 360.5, accuracy: 0.001)
+        XCTAssertEqual(two.heartRate, 141)   // 140.5 반올림
+    }
+
+    /// "요약 그리드+페이스" — 격자 아래 세로 목록이 붙어 키가 크다. 특대가 없으니(대로 그림)
+    /// 모든 크기에서 오른쪽·아래 여백 안에 들어가야 한다. 줄이 가장 많은 40km(2km×20줄)로 잰다.
     @MainActor
     func testSummaryGridPaceFitsInsideCardAtEverySize() throws {
         var data = StampData.sample
-        data.splits = (0 ..< 42).map { i in
-            StampSplit(paceSecPerKm: 330 + Double(i % 7) * 6, heartRate: 140 + i % 20)
+        data.splits = (0 ..< 40).map { i in
+            StampSplit(distanceM: 1000, duration: 330 + Double(i % 7) * 6, heartRate: 140 + i % 20)
         }
         XCTAssertFalse(StampTemplate.summaryGridPace.supportsXLarge)
         XCTAssertEqual(StampTemplate.summaryGridPace.stampScale(for: .xlarge),
