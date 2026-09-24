@@ -381,6 +381,10 @@ struct ShareCardScreen: View {
 
     private var shareZoneBounds: [(id: Int, minBPM: Int)] {
         guard !shareHRSamples.isEmpty else { return [] }
+        // 1순위: 이 러닝의 심박존(심박존 도넛·상세 경로 카드·경로 내보내기와 같은 값)
+        if let zones = detail?.hrZones, zones.count >= 2 {
+            return RouteSnapshotRenderer.zoneBounds(zones: zones, hrSamples: shareHRSamples)
+        }
         if let mgr = manager {
             let k = mgr.computeHRZonesFromSamples(shareHRSamples)
             if !k.isEmpty { return k.sorted { $0.minBPM < $1.minBPM }.map { (id: $0.id, minBPM: $0.minBPM) } }
@@ -4178,6 +4182,7 @@ struct ShareCardScreen: View {
                 hrSamplesForRoute: shareHRSamples,
                 routeWorkoutDuration: activity.duration,
                 showHRGradient: showHRGradientForRoute,
+                routeZoneBounds: shareZoneBounds,
                 stampLayers: exportStampLayers,
                 progressHandler: { p in routeVideoProgress = p }
             )

@@ -432,6 +432,8 @@ struct RouteVideoExportService {
         hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = [],
         routeWorkoutDuration: TimeInterval = 0,
         showHRGradient: Bool = false,
+        /// 심박존 경계 — 미리보기(RouteVideoFrameView)·상세 지도와 같은 값을 넘긴다. 비면 최고 심박 추정으로 폴백.
+        routeZoneBounds: [(id: Int, minBPM: Int)] = [],
         stampLayers: [StampLayerConfig] = [],
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
@@ -490,6 +492,7 @@ struct RouteVideoExportService {
             hrSamples: hrSamplesForRoute,
             workoutDuration: routeWorkoutDuration,
             showHRGradient: showHRGradient,
+            zoneBounds: routeZoneBounds,
             miniMeImage: routeMarkerImage,
             stampLayers: stampLayers,
             outputURL: outputURL,
@@ -509,6 +512,7 @@ struct RouteVideoExportService {
         hrSamples: [(offset: TimeInterval, bpm: Int)] = [],
         workoutDuration: TimeInterval = 0,
         showHRGradient: Bool = false,
+        zoneBounds: [(id: Int, minBPM: Int)] = [],
         miniMeImage: UIImage? = nil,
         showKmMarkers: Bool = true,
         stampLayers: [StampLayerConfig] = [],
@@ -555,7 +559,11 @@ struct RouteVideoExportService {
                 // Gradient mode: ~50 micro-segments, each with its own color and timed strokeEnd
                 let segCount = min(50, scaledPoints.count - 1)
                 let step = (scaledPoints.count - 1) / segCount
-                let sortedBounds = computeZoneBoundsStatic(from: hrSamples)
+                // 내 심박존 경계(미리보기·상세 지도와 같은 값). 예전엔 항상 "최고 심박÷0.9의 60/70/80/90%"
+                // 추정이라 평균 132bpm(존2)이 존4 주황으로 칠해졌다.
+                let sortedBounds = zoneBounds.count >= 2
+                    ? zoneBounds.sorted { $0.minBPM < $1.minBPM }
+                    : computeZoneBoundsStatic(from: hrSamples)
 
                 // Glow pass — all micro-segments
                 for si in 0..<segCount {
