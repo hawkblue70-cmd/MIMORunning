@@ -641,7 +641,7 @@ class HealthKitManager {
 
     // MARK: - Detail (on demand)
 
-    private static let workoutTypeCacheKey  = "mimo.workoutTypeCache.v9"  // v9: 분류 기준선 평균→중앙값·기간 창·인터벌/대회/3km미만 제외 → 전량 재분류 (v8: RHR 중앙값 전환)
+    private static let workoutTypeCacheKey  = "mimo.workoutTypeCache.v10"  // v10: 이지런 심박 우선(존1~2 ≥65%면 페이스 무관) → 전량 재분류 · v9: 분류 기준선 평균→중앙값·기간 창·인터벌/대회/3km미만 제외 → 전량 재분류 (v8: RHR 중앙값 전환)
     private static let workoutTypeReadyKey  = workoutTypeCacheKey + ".ready"  // true = 8주 스플릿 포함 재분류 완료
     private static let formCacheKey         = "mimo.formCache.v1"
     /// 캐시 버전과 무관하게 영속 — 대회 확정 ID는 여기에도 함께 저장해 버전 교체 후에도 baseline에서 제외 보장

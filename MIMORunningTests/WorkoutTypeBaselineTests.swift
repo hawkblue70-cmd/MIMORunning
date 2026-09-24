@@ -66,6 +66,21 @@ final class WorkoutTypeBaselineTests: XCTestCase {
         XCTAssertEqual(WorkoutTypeClassifier.classify(activity: hot, history: hist, splits: splits, heat: hotModel), .longRun)
     }
 
+    /// 심박 우선 — 존1~2가 65% 이상이면 기준선보다 빨라도 이지런(체력이 올라 같은 강도로 빨라진 날).
+    /// 예전 규칙은 기준선보다 빠르면 이지런에서 빼 템포런이 됐다(2026-09-24 7.20km, 존1~2 77%).
+    func testEasyByHeartRateEvenWhenFasterThanBaseline() {
+        let hist = (1...6).map { run(daysAgo: $0 * 4, km: 7, pace: 400) }
+        let fast = run(daysAgo: 0, km: 7.2, pace: 378)          // 기준 400보다 5% 빠름 → 예전엔 템포
+        let splits = flatSplits(count: 7, pace: 378)
+        let zones = [
+            HRZoneData(id: 1, name: "Z1", minBPM: 90,  maxBPM: 119, seconds: 300,  fraction: 0.10),
+            HRZoneData(id: 2, name: "Z2", minBPM: 120, maxBPM: 139, seconds: 2100, fraction: 0.77),
+            HRZoneData(id: 3, name: "Z3", minBPM: 140, maxBPM: 154, seconds: 350,  fraction: 0.13),
+        ]
+        XCTAssertEqual(WorkoutTypeClassifier.classify(activity: fast, history: hist, splits: splits), .tempo)
+        XCTAssertEqual(WorkoutTypeClassifier.classify(activity: fast, history: hist, splits: splits, hrZones: zones), .easy)
+    }
+
     // MARK: - baselinePace
 
     func testPaceBaselineIsMedianNotMean() {

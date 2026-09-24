@@ -185,15 +185,14 @@ struct WorkoutTypeClassifier {
     }
 
     /// Easy / recovery run.
-    /// Primary: Zone 1+2 time fraction ≥ 65% (from hrZones), guard: pace must not be faster than baseline.
+    /// Primary: Zone 1+2 time fraction ≥ 65% (from hrZones) — 심박이 우선, 페이스는 보지 않는다.
+    /// ⚠ 예전에는 "기준선보다 빠르면 이지런 아님" 보조 조건이 있었다. 체력이 올라 같은 쉬운 심박으로
+    ///   더 빨리 뛴 날(존1~2 77%·강도 입력 '쉬움')이 템포런이 됐다 — 좋아진 몸을 "세게 뛰었다"로 읽은 것(2026-09-24).
     /// Fallback (no hrZones): pace ≥ 15% slower than baseline.
     private static func isEasy(activity: Activity, base: Baseline, hrZones: [HRZoneData]?) -> Bool {
         if let zones = hrZones, !zones.isEmpty {
             let zone12 = zones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +)
-            guard zone12 >= 0.65 else { return false }
-            // 기준선보다 빠른 페이스는 이지런 아님 (보조 조건)
-            if let pace = base.todayPace, let med = base.pace, pace < med { return false }
-            return true
+            return zone12 >= 0.65
         }
 
         // hrZones 없을 때: 페이스 기반 폴백
@@ -271,11 +270,8 @@ struct WorkoutTypeClassifier {
             let zone12 = zones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +)
             let pct = Int((zone12 * 100).rounded())
             if zone12 >= 0.65 {
-                if let pace = myPace, let m = med, pace < m {
-                    notes.append("이지탈락: Zone2 \(pct)%≥65%지만 페이스 \(pf(pace)) < 기준\(pf(m))")
-                } else {
-                    return (.easy, "이지: Zone2 \(pct)% ≥ 65% · \(baseStr)")
-                }
+                // 심박 우선 — 기준선보다 빨라도 이지런(isEasy와 같은 규칙)
+                return (.easy, "이지: Zone2 \(pct)% ≥ 65% · \(baseStr)")
             } else {
                 notes.append("이지탈락: Zone2 \(pct)% < 65%")
             }
