@@ -107,6 +107,27 @@ struct MRReadinessTests {
         #expect(mrTypicalStreakDays(runs: fourDayStreakRuns(currentStreak: 4), asOf: now) == 4)
     }
 
+    @Test func streakWithLowHRVIsRest() {
+        // 평소보다 긴 연속(4일, 문턱 4) + 7일 HRV 낮음 → 이지런이 아니라 휴식, 근거는 둘 다
+        var runs = steadyRuns()
+        runs.append(contentsOf: [run(daysAgo: 4, minutes: 20), run(daysAgo: 2, minutes: 20)])
+        runs.sort { $0.start < $1.start }
+        let r = readiness(runs: runs, nights: nights(base: 30, recent: 25))
+        #expect(r?.level == .rest)
+        #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 4일 연속 · HRV 낮음")
+        #expect(r?.why == "4일 내리 달렸고 HRV도 평소보다 낮아요. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.")
+    }
+
+    @Test func streakWithLowLastNightIsRest() {
+        // 7일 흐름은 보통인데 어젯밤만 평소보다 15% 넘게 낮음(22 vs 30) + 연속 → 휴식
+        var runs = steadyRuns()
+        runs.append(contentsOf: [run(daysAgo: 4, minutes: 20), run(daysAgo: 2, minutes: 20)])
+        runs.sort { $0.start < $1.start }
+        let r = readiness(runs: runs, nights: nights(base: 30, recent: 31, baseJitter: [4, -4], todayValue: 22))
+        #expect(r?.level == .rest)
+        #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 4일 연속 · 어젯밤 HRV 22ms, 평소 30ms보다 낮음")
+    }
+
     @Test func habitualFourDayStreakIsFlaggedAtFive() {
         let r = readiness(runs: fourDayStreakRuns(currentStreak: 5), nights: nights(base: 30, recent: 37))
         #expect(r?.level == .easy)

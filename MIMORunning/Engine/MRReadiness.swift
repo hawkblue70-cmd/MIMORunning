@@ -365,6 +365,23 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     }
     // 연속일은 휴식이 아니라 강도를 빼라는 신호 — 이지런이면 괜찮다(2026-09-23 사용자 결정). 문턱은 본인 평소 연속일 + 1.
     if consecutive >= streakThreshold {
+        // 연속에 HRV까지 낮거나 흔들리면 휴식 쪽으로 — 쌓인 피로가 몸에 드러난 날이다(2026-09-25 사용자 결정).
+        // 판정어("휴식이나 짧은 이지")가 두 가지를 다 담는다. 근거는 연속 + HRV 둘 다 적는다.
+        let hrvDown: String? = {
+            if let t = trend, t.isSuppressed {
+                return t.isVolatile ? L.s("HRV 불안정", "HRV unstable") : L.s("HRV 낮음", "HRV low")
+            }
+            if lastNightLow, let t = trend, let v = todayNight {
+                let vStr = Int(v.rounded()), bStr = Int(t.baseline.rounded())
+                return L.s("어젯밤 HRV \(vStr)ms, 평소 \(bStr)ms보다 낮음", "last night's HRV \(vStr)ms, below usual \(bStr)ms")
+            }
+            return nil
+        }()
+        if let down = hrvDown {
+            return make(.rest, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row"), down],
+                        why: L.s("\(consecutive)일 내리 달렸고 HRV도 평소보다 낮아요. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.",
+                                 "\(consecutive) days in a row and your HRV is below usual — fatigue is showing. Rest, or keep it under 30 minutes and easy."))
+        }
         return make(.easy, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row")],
                     why: L.s("\(consecutive)일 내리 달렸어요. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요.",
                              "\(consecutive) days in a row — longer than your usual streak. Keep today easy and skip the intensity."))
