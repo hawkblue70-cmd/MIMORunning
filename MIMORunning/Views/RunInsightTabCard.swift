@@ -5493,7 +5493,7 @@ private struct RaceInsightCard: View {
             .sorted { $0.raceDate < $1.raceDate }
         guard sameDistMatches.count >= 2 else { return [] }
         // history에서 해당 활동 찾기
-        let historyByID = Dictionary(uniqueKeysWithValues: history.map { ($0.id, $0) })
+        let historyByID = Dictionary(history.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         return sameDistMatches.compactMap { m -> (match: PersistedRaceMatch, activity: Activity)? in
             guard let act = historyByID[m.activityID] else { return nil }
             return (match: m, activity: act)

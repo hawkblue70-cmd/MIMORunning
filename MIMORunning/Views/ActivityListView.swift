@@ -123,7 +123,7 @@ private struct ActivityListContent: View {
     @Query private var planSnapshots: [RacePlanSnapshot]
 
     private var shoeByWorkout: [String: String] {
-        let shoeDict = Dictionary(uniqueKeysWithValues: shoes.map { ($0.id.uuidString, $0.displayName) })
+        let shoeDict = Dictionary(shoes.map { ($0.id.uuidString, $0.displayName) }, uniquingKeysWith: { a, _ in a })   // CloudKit 동기화 중복 대비
         var result: [String: String] = [:]
         for story in stories {
             if let sid = story.shoeID, let name = shoeDict[sid] {

@@ -2467,11 +2467,13 @@ struct ShareCardScreen: View {
         // OneLiner: 기존 클립별 문구(lines)를 assetID 기준으로 보존.
         // 소스 클립(다른 카드)의 card-specific 문구를 덮어쓰지 않는다.
         if ids(oneLinerVM.oneLinerClipRecipes) != srcIds {
-            let existingLinesByID = Dictionary(uniqueKeysWithValues:
+            // 같은 사진·영상을 두 번 고르면 키가 겹친다 — 앞의 것을 유지
+            let existingLinesByID = Dictionary(
                 oneLinerVM.oneLinerClipRecipes.compactMap { r -> (String, [String])? in
                     let key = r.assetIdentifier ?? r.clipVideoRef ?? r.storedPhotoRef ?? r.url.lastPathComponent
                     return key.isEmpty ? nil : (key, r.lines)
-                })
+                },
+                uniquingKeysWith: { a, _ in a })
             var updated = recipes
             for i in updated.indices {
                 let key = updated[i].assetIdentifier ?? updated[i].clipVideoRef ?? updated[i].storedPhotoRef ?? updated[i].url.lastPathComponent
