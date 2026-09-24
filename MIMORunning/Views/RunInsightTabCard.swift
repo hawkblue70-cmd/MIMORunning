@@ -1004,8 +1004,8 @@ struct RunInsightTabCard: View {
                 let recent = history
                     .filter { $0.type == .running && $0.date >= threeMonthsAgo && $0.date <= activity.date }
                     .sorted { $0.date < $1.date }
-                for i in 0..<(recent.count - 1) {
-                    let gap = cal.dateComponents([.day], from: recent[i].date, to: recent[i + 1].date).day ?? 0
+                for (a, b) in zip(recent, recent.dropFirst()) {   // 0·1건이면 루프 없음 (0..<-1 크래시 방지)
+                    let gap = cal.dateComponents([.day], from: a.date, to: b.date).day ?? 0
                     if gap >= 14 { return true }
                 }
                 return false
@@ -6008,8 +6008,8 @@ struct InsightExportSheet: View {
                 let recent = history
                     .filter { $0.type == .running && $0.date >= threeMonthsAgo && $0.date <= activity.date }
                     .sorted { $0.date < $1.date }
-                for i in 0..<(recent.count - 1) {
-                    let gap = cal.dateComponents([.day], from: recent[i].date, to: recent[i + 1].date).day ?? 0
+                for (a, b) in zip(recent, recent.dropFirst()) {   // 0·1건이면 루프 없음 (0..<-1 크래시 방지)
+                    let gap = cal.dateComponents([.day], from: a.date, to: b.date).day ?? 0
                     if gap >= 14 { return true }
                 }
                 return false
