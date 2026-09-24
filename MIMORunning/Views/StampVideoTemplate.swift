@@ -911,7 +911,7 @@ extension ShareCardScreen {
         await previewPlayer.buildForPhotoSlides(
             photos: photos, recipes: recipes,
             fastBase: true,
-            forCardIndex: 0)
+            forCard: .stamp)
     }
 
     // MARK: 미리보기 빌더 — 영상 컴포지션만 빌드, 스탬프는 SwiftUI 오버레이로 표시
@@ -931,6 +931,6 @@ extension ShareCardScreen {
             recipes: blankRecipes,
             showWordmark: false,
             muteAudio: stampVM.muteAudio,
-            forCardIndex: 0)
+            forCard: .stamp)
     }
 }

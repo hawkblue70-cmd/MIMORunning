@@ -14,7 +14,7 @@ extension ShareCardScreen {
 
     @ViewBuilder
     var placeableStoryPreview: some View {
-        let storyPhoto = photoFor(1)
+        let storyPhoto = photoFor(.placeable)
         let storyCropX = placeableVM.placeableStoryCropOffsets[placeableCurrentPhotoIdx]  ?? 0.5
         let storyCropY = placeableVM.placeableStoryCropOffsetsY[placeableCurrentPhotoIdx] ?? 0.5
         let storyExcessX: CGFloat = {

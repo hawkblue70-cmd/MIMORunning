@@ -3,8 +3,8 @@ import PhotosUI
 
 // MARK: - AthleticViewModel
 //
-// Athletic 카드(cardIndex == 2)의 전용 상태 클래스.
-// BigNumber 카드(cardIndex == 3)도 athleticClipRecipes를 공유하므로
+// Athletic 카드(ShareCard.athletic)의 전용 상태 클래스.
+// BigNumber 카드(ShareCard.bigNumber)도 athleticClipRecipes를 공유하므로
 // 두 카드 모두 athleticVM을 통해 클립 레시피에 접근한다.
 //
 // ShareCardView에서 @State var athleticVM = AthleticViewModel() 로 보유.

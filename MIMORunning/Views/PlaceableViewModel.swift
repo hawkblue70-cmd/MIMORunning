@@ -40,7 +40,7 @@ struct PlaceableSlideClipStyle: Codable {
 
 // MARK: - PlaceableViewModel
 //
-// Placeable 카드(cardIndex == 0)의 전용 상태 클래스.
+// Placeable 카드(ShareCard.placeable)의 전용 상태 클래스.
 // ShareCardView에서 @State private var placeableVM = PlaceableViewModel() 로 보유.
 // PlaceableSection / Template 뷰에서 @Bindable var vm: PlaceableViewModel 으로 전달.
 //

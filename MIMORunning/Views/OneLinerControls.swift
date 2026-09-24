@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - OneLiner 카드 전용 설정 패널 View structs
 //
-// ⚠️ 이 파일은 OneLiner 카드(cardIndex == 1) 전용.
+// ⚠️ 이 파일은 OneLiner 카드(ShareCard.oneLiner) 전용.
 //    Athletic · Placeable · BigNumber · Sky · ECG · Ticket 카드 관련 코드 작성 금지.
 //
 // 파일별 담당:

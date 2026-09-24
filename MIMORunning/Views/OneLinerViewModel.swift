@@ -3,7 +3,7 @@ import UIKit
 
 // MARK: - OneLinerViewModel
 //
-// OneLiner 카드(cardIndex == 1)의 전용 상태 클래스.
+// OneLiner 카드(ShareCard.oneLiner)의 전용 상태 클래스.
 // ShareCardView에서 @State var oneLinerVM = OneLinerViewModel() 로 보유.
 // OneLiner 관련 자식 뷰에서 @Bindable var vm: OneLinerViewModel 으로 전달.
 //

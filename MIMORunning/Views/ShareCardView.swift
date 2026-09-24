@@ -39,15 +39,27 @@ enum ShareTemplate: String, CaseIterable {
 
 enum HorizGridMode { case text, route }
 
-enum ShareCard: Int {
-    case stamp     = 0
-    case placeable = 1
-    case oneLiner  = 2
-    case athletic  = 3
-    case bigNumber = 4
-    case sky       = 5
-    case ecg       = 6
-    case ticket    = 7
+/// 카드 만들기 캐러셀의 카드. 선언 순서 = 화면 순서(allCases).
+enum ShareCard: Int, CaseIterable, Hashable {
+    case stamp
+    case placeable
+    case oneLiner
+    case athletic
+    case bigNumber
+
+    /// 상단 사진 스트립 선택을 함께 따르는 카드(스탬프는 자체 선택).
+    static let photoLinked: [ShareCard] = [.placeable, .oneLiner, .athletic, .bigNumber]
+
+    /// 캐러셀 이름표
+    var name: String {
+        switch self {
+        case .stamp:     return "Stamp"
+        case .placeable: return "Placeable"
+        case .oneLiner:  return "One Liner"
+        case .athletic:  return "Athletic"
+        case .bigNumber: return "Big Number"
+        }
+    }
 
     /// 이 카드에서 활성화(탭 가능·흰색)로 표시할 템플릿 집합.
     /// templatePicker 활성화, onCardIndexChanged 자동전환, renderCard 분기의 단일 소스.
@@ -57,9 +69,6 @@ enum ShareCard: Int {
         case .oneLiner:  return [.story, .video, .slide]
         case .athletic:  return [.athletic, .story, .video, .slide, .routeVideo]
         case .bigNumber: return [.athletic, .story, .video, .slide, .routeVideo]
-        case .sky:       return [.athletic]
-        case .ecg:       return [.athletic]
-        case .ticket:    return [.athletic]
         case .stamp:     return [.story, .video, .slide, .routeVideo]
         }
     }
@@ -119,7 +128,7 @@ struct ShareCardScreen: View {
     }
     private var activeRaceName: String? { showRaceOnCard ? confirmedRace?.raceName : nil }
 
-    // 잠금 칩 행(placeholder·Sky)에서만 참조
+    // 잠금 칩 행(placeholder)에서만 참조
     private var canShowMiniMe: Bool { true }
 
     @State var storyShareImages: [UIImage] = []
@@ -145,24 +154,18 @@ struct ShareCardScreen: View {
     /// "총평" 칩 — 기본 꺼짐. 켜지면 지도/차트 자리에 총평 5줄이 대신 들어간다(§5.8: 카드 4종·영상 오버레이 공용).
     @State private var showSummaryOnCard = false
     @State private var carouselPage = 0
-    // Stamp card ViewModel (cardIndex == 0)
+    // Stamp card ViewModel
     @State var stampVM = StampViewModel()
     /// 로고 칩 "열 때마다 ON" — 이 시트 인스턴스에서 한 번만 리셋(사진 선택 등 되돌아올 때 재리셋 방지)
     @State private var didResetMediaLogo = false
-    // Placeable card ViewModel (cardIndex == 1 전용)
+    // Placeable card ViewModel
     @State var placeableVM = PlaceableViewModel()
-    // OneLiner card ViewModel (cardIndex == 2 전용)
+    // OneLiner card ViewModel
     @State var oneLinerVM = OneLinerViewModel()
-    // Athletic card ViewModel (cardIndex == 3; athleticClipRecipes는 BigNumber와 공유)
+    // Athletic card ViewModel (athleticClipRecipes는 BigNumber와 공유)
     @State var athleticVM = AthleticViewModel()
-    // BigNumber card ViewModel (cardIndex == 4)
+    // BigNumber card ViewModel
     @State var bigNumberVM = BigNumberViewModel()
-    // Sky card ViewModel (cardIndex == 5)
-    @State var skyVM = SkyViewModel()
-    // ECG card ViewModel (cardIndex == 6)
-    @State var ecgVM = ECGViewModel()
-    // Ticket card ViewModel (cardIndex == 7)
-    @State var ticketVM = TicketViewModel()
     // Video
     @State var videoPickerItem: PhotosPickerItem?
     @State var sourceVideoURL: URL?
@@ -191,9 +194,9 @@ struct ShareCardScreen: View {
     @State var shareHRSamples: [(offset: TimeInterval, bpm: Int)] = []
     @State private var shareWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     @State var chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:]
-    // Card index (0 = template card, 1 = big number)
-    @State private var cardIndex = 0
-    @State var cardPhotoIndex: [Int: Int] = [:]
+    // 현재 캐러셀 카드
+    @State private var card: ShareCard = .stamp
+    @State var cardPhotoIndex: [ShareCard: Int] = [:]
     @State private var heroMetric: HeroMetric = .distance
     @State var athleticCropOffsetX: CGFloat = 0.5
     @State private var athleticCropDragBase: CGFloat? = nil
@@ -210,15 +213,15 @@ struct ShareCardScreen: View {
     @State private var stampMapImage: UIImage?      = nil
     @State private var stampRoutePoints: [CGPoint]? = nil
 
-    private var isStamp: Bool      { cardIndex == 0 }
-    var isPlaceable: Bool  { cardIndex == 1 }
-    var isOneLiner: Bool   { cardIndex == 2 }
+    private var isStamp: Bool      { card == .stamp }
+    var isPlaceable: Bool  { card == .placeable }
+    var isOneLiner: Bool   { card == .oneLiner }
     /// 현재 Placeable 카드에서 보여주는 사진 인덱스 (photoStrip 탭 기반)
-    var placeableCurrentPhotoIdx: Int { cardPhotoIndex[1] ?? 0 }
+    var placeableCurrentPhotoIdx: Int { cardPhotoIndex[.placeable] ?? 0 }
     /// 현재 사진에 연결된 Placeable 문구
     var placeableCurrentText: String { placeableVM.placeableStoryTexts[placeableCurrentPhotoIdx] ?? "" }
-    // cardIndex == 3: Athletic (기본 템플릿 카드, 별도 판별 불필요)
-    private var isBigNumber: Bool  { cardIndex == 4 }
+    // .athletic: 기본 템플릿 카드, 별도 판별 불필요
+    private var isBigNumber: Bool  { card == .bigNumber }
 
     /// Metric chips injected into MultiClipEditorView for the running day OneLiner.
     var oneLinerAvailableMetrics: [MetricItem] {
@@ -343,7 +346,7 @@ struct ShareCardScreen: View {
     }
 
     private var slideStaticRecipe: ClipRecipe? {
-        photoRecipe(at: cardPhotoIndex[2] ?? 0, prefix: "slide:")
+        photoRecipe(at: cardPhotoIndex[.oneLiner] ?? 0, prefix: "slide:")
     }
 
     /// 스토리 카드 차트 예약 높이 — captionMode 텍스트·PDT칩이 차트와 겹치지 않도록.
@@ -376,10 +379,6 @@ struct ShareCardScreen: View {
            let s = chartSeriesData[gt], s.count >= 2 { return cH * 0.264 + botPad }
         return 0
     }
-
-    private var isSky: Bool        { cardIndex == 5 }
-    private var isECG: Bool        { cardIndex == 6 }
-    private var isTicket: Bool     { cardIndex == 7 }
 
     // Placeable story text overlay
     // OneLiner card
@@ -488,9 +487,9 @@ struct ShareCardScreen: View {
         return d
     }
 
-    func photoFor(_ cIdx: Int) -> UIImage? {
+    func photoFor(_ c: ShareCard) -> UIImage? {
         guard !storyPhotos.isEmpty else { return selectedPhoto }
-        let idx = cardPhotoIndex[cIdx] ?? 0
+        let idx = cardPhotoIndex[c] ?? 0
         // PHAsset-loaded high-res photo takes priority over SwiftData thumbnail
         if let hq = oneLinerVM.highQualityStoryPhotos[idx] { return hq }
         return idx < storyPhotos.count ? storyPhotos[idx] : storyPhotos.first
@@ -500,12 +499,12 @@ struct ShareCardScreen: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(storyPhotos.indices, id: \.self) { i in
-                    let isSelected = (cardPhotoIndex[cardIndex] ?? 0) == i
+                    let isSelected = (cardPhotoIndex[card] ?? 0) == i
                     ZStack(alignment: .topTrailing) {
                         Button {
                             // 원라이너 스토리·슬라이드 모드: 탭 → 카드를 해당 사진으로 즉시 전환 후 ClipTrimSheet 열기
                             if isOneLiner, template == .story || template == .slide {
-                                for ci in [1, 2, 3, 4] { cardPhotoIndex[ci] = i }
+                                for c in ShareCard.photoLinked { cardPhotoIndex[c] = i }
                                 let isSlide = (template == .slide)
                                 oneLinerVM.storyClipEditIsSlide = isSlide
                                 // cachedStoryRecipes가 있으면 @Query 갱신 대기 없이 즉시 사용 — 직전 편집 결과 보존
@@ -520,12 +519,12 @@ struct ShareCardScreen: View {
                                 if isOneLiner {
                                     saveOneLinerSettings()
                                     oneLinerFieldFocused = false
-                                    for ci in [1, 2, 3, 4] { cardPhotoIndex[ci] = i }
+                                    for c in ShareCard.photoLinked { cardPhotoIndex[c] = i }
                                     loadOneLinerSettingsFor(photoIndex: i)
                                 } else {
-                                    for ci in [1, 2, 3, 4] { cardPhotoIndex[ci] = i }
+                                    for c in ShareCard.photoLinked { cardPhotoIndex[c] = i }
                                     if isStamp {
-                                        cardPhotoIndex[0] = i  // stamp cardIndex=0
+                                        cardPhotoIndex[.stamp] = i
                                         // 슬라이드 모드: selectedClipIndex를 sync → 프리뷰·컨트롤이 올바른 사진 config 사용
                                         if template == .slide { stampVM.selectedClipIndex = i }
                                     }
@@ -826,7 +825,7 @@ struct ShareCardScreen: View {
                 weatherIcon: condition?.weather?.systemIcon,
                 date: activity.date,
                 shoeName: displayShoeName,
-                photo: template == .story ? photoFor(4) : nil,
+                photo: template == .story ? photoFor(.bigNumber) : nil,
                 chartPanel: .map,
                 routeCoordinates: routeCoords,
                 accent: bigNumberVM.bigNumberAccent,
@@ -840,54 +839,6 @@ struct ShareCardScreen: View {
 
     // MARK: - Placeable 템플릿 미리보기·저장·내보내기 → PlaceableVideoTemplate.swift
 
-    private var skyCardPreview: some View {
-        SkyCard(
-            activity: activity,
-            weather: condition?.weather,
-            shoeName: displayShoeName,
-            accent: skyVM.skyAccent
-        )
-    }
-
-    @ViewBuilder
-    private var ecgCardPreview: some View {
-        let activeWaveform = ecgVM.ecgShowPace ? (ecgVM.paceWaveform ?? ecgVM.hrWaveform) : (ecgVM.hrWaveform ?? ecgVM.paceWaveform)
-        if let waveform = activeWaveform {
-            ECGSignatureCard(
-                activity: activity,
-                waveform: waveform,
-                weather: condition?.weather,
-                shoeName: displayShoeName,
-                accent: ecgVM.ecgAccent
-            )
-        } else {
-            ZStack {
-                Color(hex: "0D0D12")
-                if ecgVM.ecgDataAvailable == nil {
-                    ProgressView().tint(Theme.violet)
-                } else {
-                    Image(systemName: "waveform.path.ecg")
-                        .font(.system(size: 28))
-                        .foregroundStyle(Theme.violet.opacity(0.4))
-                }
-            }
-        }
-    }
-
-    private var ticketCardPreview: some View {
-        TicketCard(
-            activity: activity,
-            routeCoordinates: routeCoords,
-            splits: detail?.splits ?? [],
-            raceName: confirmedRace?.raceName,
-            shoeName: displayShoeName,
-            departureName: ticketVM.ticketDepartureName,
-            raceDistanceKm: confirmedRace?.distanceKm,
-            raceStartTimeString: confirmedBundledRace?.startTimeString,
-            accent: ticketVM.ticketAccent
-        )
-    }
-
     @ViewBuilder
     private var stampCardPreview: some View {
         if template == .routeVideo {
@@ -897,7 +848,7 @@ struct ShareCardScreen: View {
         } else if template == .slide {
             stampSlidePreviewSection
         } else if !storyPhotos.isEmpty {
-            let selectedIdx = max(0, min(cardPhotoIndex[0] ?? 0, storyPhotos.count - 1))
+            let selectedIdx = max(0, min(cardPhotoIndex[.stamp] ?? 0, storyPhotos.count - 1))
             let ph = storyPhotos[selectedIdx]
             let s      = max(300 / ph.size.width, 375 / ph.size.height)
             let excess = max(0, ph.size.width * s - 300)
@@ -1154,7 +1105,7 @@ struct ShareCardScreen: View {
         if template == .video {
             // 211×375pt 고정 — Stamp·Placeable 영상과 동일한 좌표계, 스케일 계산 없음.
             let previewW: CGFloat = 211
-            if cardIndex == 2, previewPlayer.isReady, previewPlayer.isPlaying,
+            if card == .oneLiner, previewPlayer.isReady, previewPlayer.isPlaying,
                let pl = previewPlayer.player, let cl = previewPlayer.contentLayer {
                 // 재생 중: 실제 영상 + CALayer 애니메이션 + SwiftUI 워드마크 오버레이
                 OneLinerPreviewView(player: pl, contentLayer: cl, renderSize: previewPlayer.renderSize)
@@ -1238,7 +1189,7 @@ struct ShareCardScreen: View {
             }
         } else if template == .slide {
             // 슬라이드: 재생 중일 때만 animated preview, 정지·미준비 시 정적 카드 + ▶ 버튼
-            if cardIndex == 2, previewPlayer.isReady, previewPlayer.isPlaying,
+            if card == .oneLiner, previewPlayer.isReady, previewPlayer.isPlaying,
                let pl = previewPlayer.player, let cl = previewPlayer.contentLayer {
                 // 9:16 → 4:5 높이(375pt)에 비례 축소 (211×375pt)
                 let previewW: CGFloat = 211
@@ -1269,12 +1220,12 @@ struct ShareCardScreen: View {
                     .onTapGesture { previewPlayer.togglePlayPause() }
             } else {
                 // 슬라이드 정적 대기 카드: 영상과 동일 211×375pt 직접 렌더 (scaleEffect 제거)
-                let idx   = cardPhotoIndex[2]
+                let idx   = cardPhotoIndex[.oneLiner]
                 let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
                          ?? (!storyPhotos.isEmpty ? storyPhotos[0] : nil)
                 // cachedStoryRecipes 우선 — @Query 갱신 지연 없이 편집 직후에도 즉시 반영
                 let sr: ClipRecipe? = {
-                    let i = cardPhotoIndex[2] ?? 0
+                    let i = cardPhotoIndex[.oneLiner] ?? 0
                     if !oneLinerVM.cachedStoryRecipes.isEmpty, oneLinerVM.cachedStoryRecipes.indices.contains(i) {
                         return oneLinerVM.cachedStoryRecipes[i]
                     }
@@ -1378,7 +1329,7 @@ struct ShareCardScreen: View {
                 }
             }
         } else {
-            let idx   = cardPhotoIndex[2]
+            let idx   = cardPhotoIndex[.oneLiner]
             let photoI = idx ?? 0
             let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
                      ?? (!storyPhotos.isEmpty ? storyPhotos[0] : nil)
@@ -1528,78 +1479,55 @@ struct ShareCardScreen: View {
             ScrollViewReader { scrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
-                    // 0: Stamp
+                    // Stamp
                     stampCardPreview
                         .frame(width: 300, height: 375)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .shadow(color: Theme.violet.opacity(0.25), radius: 28, y: 10)
                         .frame(width: w, height: 375)
-                        .id(0)
+                        .id(ShareCard.stamp)
                         // 스토리 모드: 상단 사진 스트립 선택이 바뀌면 selectedClipIndex 동기화
                         // → StampControlsView 문구 텍스트 필드가 올바른 사진 텍스트를 표시/편집
-                        .onChange(of: cardPhotoIndex[0] ?? 0) { _, newIdx in
+                        .onChange(of: cardPhotoIndex[.stamp] ?? 0) { _, newIdx in
                             if isStamp, template == .story {
                                 stampVM.selectedClipIndex = newIdx
                             }
                         }
-                    // 1: Placeable — 영상 템플릿은 9:16 넓게(480pt), 그 외 375pt
+                    // Placeable — 영상 템플릿은 9:16 넓게(480pt), 그 외 375pt
                     placeableCardPreview
                         .frame(width: 300, height: cardSectionH)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                         .frame(width: w, height: cardSectionH)
-                        .id(1)
-                    // 2: OneLiner (한마디) — 영상 선택 시 9:16 확장
+                        .id(ShareCard.placeable)
+                    // OneLiner (한마디) — 영상 선택 시 9:16 확장
                     AnyView(oneLinerCardPreview)
                         .frame(width: 300, height: oneLinerCardHeight)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .shadow(color: Theme.violet.opacity(0.1), radius: 28, y: 10)
                         .frame(width: w, height: oneLinerCardHeight)
-                        .id(2)
-                    // 3: Athletic (기본 템플릿 카드)
+                        .id(ShareCard.oneLiner)
+                    // Athletic (기본 템플릿 카드)
                     AnyView(cardPreview)
                         .frame(width: 300, height: 375)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                         .animation(.easeInOut(duration: 0.2), value: template)
                         .frame(width: w, height: 375)
-                        .id(3)
-                    // 4: BigNumber
+                        .id(ShareCard.athletic)
+                    // BigNumber
                     AnyView(bigNumberCardPreview)
                         .frame(width: 300, height: 375)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
                         .frame(width: w, height: 375)
-                        .id(4)
-                    // 5: Sky
-                    AnyView(skyCardPreview)
-                        .frame(width: 300, height: 375)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .shadow(color: Color(hex: "1B2A4A").opacity(0.5), radius: 28, y: 10)
-                        .frame(width: w, height: 375)
-                        .id(5)
-                    // 6: ECG (데이터 없으면 숨김)
-                    if ecgVM.ecgDataAvailable != false {
-                        AnyView(ecgCardPreview)
-                            .frame(width: 300, height: 375)
-                            .clipShape(RoundedRectangle(cornerRadius: 20))
-                            .shadow(color: Theme.violet.opacity(0.2), radius: 28, y: 10)
-                            .frame(width: w, height: 375)
-                            .id(6)
-                    }
-                    // 7: Ticket
-                    AnyView(ticketCardPreview)
-                        .frame(width: 300, height: 375)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .shadow(color: Theme.violet.opacity(0.15), radius: 28, y: 10)
-                        .frame(width: w, height: 375)
-                        .id(7)
+                        .id(ShareCard.bigNumber)
                 }
             }
             .scrollDisabled(true)
             .frame(width: w, height: cardSectionH)
-            .onAppear { scrollProxy.scrollTo(cardIndex, anchor: .center) }
-            .onChange(of: cardIndex) { _, new in
+            .onAppear { scrollProxy.scrollTo(card, anchor: .center) }
+            .onChange(of: card) { _, new in
                 withAnimation(.easeInOut(duration: 0.3)) {
                     scrollProxy.scrollTo(new, anchor: .center)
                 }
@@ -1616,25 +1544,18 @@ struct ShareCardScreen: View {
             Button { navigateCard(by: -1) } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(cardIndex > 0 ? 0.55 : 0.15))
+                    .foregroundStyle(.white.opacity(card != ShareCard.allCases.first ? 0.55 : 0.15))
                     .frame(width: 36, height: 28)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(cardIndex == 0)
+            .disabled(card == ShareCard.allCases.first)
 
             Spacer(minLength: 0)
 
             // 점 인디케이터 — 탭으로 카드 직접 이동 가능
             HStack(spacing: 7) {
-                pageDot(0) // Stamp
-                pageDot(1) // Placeable
-                pageDot(2) // OneLiner
-                pageDot(3) // Athletic
-                pageDot(4) // BigNumber
-                pageDot(5) // Sky
-                if ecgVM.ecgDataAvailable != false { pageDot(6) } // ECG
-                pageDot(7) // Ticket
+                ForEach(ShareCard.allCases, id: \.self) { pageDot($0) }
             }
 
             Spacer(minLength: 0)
@@ -1643,47 +1564,47 @@ struct ShareCardScreen: View {
             Button { navigateCard(by: +1) } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(cardIndex < 7 ? 0.55 : 0.15))
+                    .foregroundStyle(.white.opacity(card != ShareCard.allCases.last ? 0.55 : 0.15))
                     .frame(width: 36, height: 28)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(cardIndex == 7)
+            .disabled(card == ShareCard.allCases.last)
         }
         .padding(.horizontal, 8)
         .padding(.top, 6)
     }
 
-    // ECG 없을 때 인덱스 6 건너뜀
     private func navigateCard(by delta: Int) {
-        var target = cardIndex + delta
-        if target == 6, ecgVM.ecgDataAvailable == false { target += delta }
-        guard target >= 0, target <= 7 else { return }
-        cardIndex = target  // onChange(of: cardIndex)가 ScrollViewReader로 애니메이션 처리
+        let all = ShareCard.allCases
+        guard let cur = all.firstIndex(of: card), all.indices.contains(cur + delta) else { return }
+        card = all[cur + delta]  // onChange(of: card)가 ScrollViewReader로 애니메이션 처리
     }
 
-    private func pageDot(_ i: Int) -> some View {
-        let names    = ["Stamp", "Placeable", "One Liner", "Athletic", "Big Number", "Sky", "ECG", "Ticket"]
-        let isActive = cardIndex == i
+    private func pageDot(_ c: ShareCard) -> some View {
+        let all      = ShareCard.allCases
+        let i        = all.firstIndex(of: c) ?? 0
+        let cur      = all.firstIndex(of: card) ?? 0
+        let isActive = card == c
         // 항상 3칸 창: 가장자리에선 반대쪽으로 채움
-        // ex) cardIndex=0 → 창=[0,1,2], cardIndex=7 → 창=[5,6,7]
-        let lo       = max(0, min(cardIndex - 1, names.count - 3))
+        // ex) 첫 카드 → 창=[0,1,2], 마지막 카드 → 창=[n-3…n-1]
+        let lo       = max(0, min(cur - 1, all.count - 3))
         let hi       = lo + 2
         let inWindow = i >= lo && i <= hi
 
         return Button {
-            withAnimation(.easeInOut(duration: 0.2)) { cardIndex = i }
+            withAnimation(.easeInOut(duration: 0.2)) { card = c }
         } label: {
             if isActive {
                 // 선택 = 보라 채움 + 흰 글자 — 템플릿 피커·토글 칩과 같은 표시
-                Text(i < names.count ? names[i] : "")
+                Text(c.name)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
                     .background(Capsule().fill(Theme.violet))
             } else if inWindow {
-                Text(i < names.count ? names[i] : "")
+                Text(c.name)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Color(hex: "6E6E78"))
                     .padding(.horizontal, 6)
@@ -1697,10 +1618,10 @@ struct ShareCardScreen: View {
             }
         }
         .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.2), value: cardIndex)
+        .animation(.easeInOut(duration: 0.2), value: card)
     }
 
-    // MARK: - Big Number chip row (cardIndex == 3)
+    // MARK: - Big Number chip row
 
     @ViewBuilder
     private func lockedChip(_ label: String, icon: String? = nil) -> some View {
@@ -1827,18 +1748,7 @@ struct ShareCardScreen: View {
         }
     }
 
-    // Chip row for sky card: locked content chips + time-range accent selector
-    // 스카이: 고를 수 있는 건 액센트뿐 — 잠긴 칩(인사이트·미니미·지표)과 러닝화 토글은 뺐다. 러닝화는 항상 표시.
-    private var skyChipRow: some View {
-        skyAccentRow
-    }
-
-    // → SkyControls.swift: SkyAccentRowView
-    private var skyAccentRow: some View {
-        SkyAccentRowView(vm: skyVM, onRender: { await renderCard(showSpinner: false) })
-    }
-
-    // 로고 칩 — 템플릿 피커 행 오른쪽 끝, 8개 카드 공통 한 자리(전역 설정). 대회 칩과 같은 스타일.
+    // 로고 칩 — 템플릿 피커 행 오른쪽 끝, 모든 카드 공통 한 자리(전역 설정). 대회 칩과 같은 스타일.
     private var logoChip: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.15)) { MediaLogoSetting.shared.isOn.toggle() }
@@ -1863,23 +1773,8 @@ struct ShareCardScreen: View {
                                                     onLoadPreview: { await loadStampVideoPreview(data: stampPreviewData) }) }
         else if isBigNumber                     { bigNumberChipRow }
         else if isPlaceable { placeableStoryModeChipRow }
-        else if isSky                           { skyChipRow }
-        else if isECG                           { ecgChipRow }
-        else if isTicket                        { ticketChipRowContent }
         else if isOneLiner                      { oneLinerChipRow }
         else                                    { chipRow }
-    }
-
-    // Resolved chip row for ticket card slot — extracted so the Group if-else chain stays shallow.
-    @ViewBuilder private var ticketChipRowContent: some View {
-        if confirmedRace == nil { ticketAccentRow }
-        // Race ticket → EmptyView (gold fixed, no accent selection needed)
-    }
-
-    // → TicketControls.swift: TicketAccentRowView
-    // Race ticket hides this row entirely (confirmedRace != nil) — gold is always fixed.
-    private var ticketAccentRow: some View {
-        TicketAccentRowView(vm: ticketVM, onRender: { await renderCard(showSpinner: false) })
     }
 
     // Height of the card section: 9:16 (≈533pt) for slide/video templates, 375pt otherwise.
@@ -1904,7 +1799,7 @@ struct ShareCardScreen: View {
         }.count
     }
 
-    // MARK: - OneLiner chip row (cardIndex == 1)
+    // MARK: - OneLiner chip row
 
     // Layout (top→bottom):
     //   [9-grid | font 3-chips (VStack) / color 3-chips]
@@ -2086,33 +1981,16 @@ struct ShareCardScreen: View {
         )
     }
 
-    // → ECGControls.swift: ECGChipRowView
-    private var ecgChipRow: some View {
-        ECGChipRowView(vm: ecgVM, onRender: { await renderCard(showSpinner: false) })
-    }
-
-    // Placeable·OneLiner는 3탭(스토리/영상/슬라이드)만, 스탬프는 4탭(스토리/영상/슬라이드/경로영상), 그 외 카드는 전체 목록.
+    // 현재 카드가 지원하는 템플릿만, ShareTemplate 선언 순서대로.
     private var templateTabs: [ShareTemplate] {
-        if isOneLiner || isPlaceable { return [.story, .video, .slide] }
-        if isStamp { return [.story, .video, .slide, .routeVideo] }
-        return ShareTemplate.allCases
-    }
-
-    /// 템플릿이 하나뿐인 카드(스카이·ECG·티켓) — 고를 게 없으니 탭 대신 로고 칩만 보인다
-    private var isSingleTemplateCard: Bool {
-        (ShareCard(rawValue: cardIndex)?.supportedTemplates.count ?? 2) <= 1
+        ShareTemplate.allCases.filter { card.supportedTemplates.contains($0) }
     }
 
     private var templatePicker: some View {
         HStack(spacing: 0) {
-            if isSingleTemplateCard {
-                Spacer(minLength: 0)
-            } else {
             ForEach(templateTabs, id: \.self) { t in
-                let available = ShareCard(rawValue: cardIndex)?.supportedTemplates.contains(t) ?? true
                 let selected  = template == t
                 Button {
-                    guard available else { return }
                     if isOneLiner {
                         previewPlayer.pause()
                     }
@@ -2121,10 +1999,10 @@ struct ShareCardScreen: View {
                     // 세그먼트(항상 하나 선택)라 체크 없음 — 체크는 토글 칩의 기호. 선택은 같은 화면의
                     // 토글 칩과 같은 보라 채움 + 흰 글자. 5칸 + 로고 칩이면 칸 폭 ≈57pt라 한 줄 고정(최소 85%).
                     Text(t.label)
-                        .font(.system(size: 13, weight: selected ? .semibold : (available ? .semibold : .regular)))
+                        .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
-                        .foregroundStyle(available ? Color.white : Color(hex: "6E6E78"))
+                        .foregroundStyle(Color.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
                         .background(
@@ -2133,8 +2011,6 @@ struct ShareCardScreen: View {
                                 : nil
                         )
                 }
-                .disabled(!available)
-            }
             }
             // 로고 on/off — 피커 버튼들이 maxWidth: .infinity라 칩 폭만큼만 양보하고 한 줄 유지
             logoChip
@@ -2506,7 +2382,7 @@ struct ShareCardScreen: View {
                 await renderCard(showSpinner: false)
             }
         }
-        .onChange(of: cardIndex) { _, newIndex in onCardIndexChanged(newIndex) }
+        .onChange(of: card) { _, newCard in onCardChanged(newCard) }
         .onDisappear {
             // 뷰가 dismiss될 때 현재 영상 클립 문구·스타일을 UserDefaults에 저장.
             // 텍스트 필드 바인딩의 onChange 타이밍 이슈로 미저장된 경우 여기서 최종 보장.
@@ -2578,16 +2454,16 @@ struct ShareCardScreen: View {
             previewPlayer.setMuted(newVal)
             saveStampConfig()
         }
-        // OneLiner 카드(index 1)의 사진이 바뀌면 새 사진의 entry 로드.
+        // OneLiner 카드의 사진이 바뀌면 새 사진의 entry 로드.
         // 저장은 Button 액션에서 cardPhotoIndex 변경 전에 처리.
         // Button 액션이 loadOneLinerSettingsFor를 먼저 호출하지만, 포커스 해제 타이밍에 따라
         // onChange도 발화할 수 있어 방어적으로 유지 — 중복 로드는 무해함.
         .onChange(of: cardPhotoIndex) { old, new in
-            if isOneLiner, template == .story, old[2] != new[2] {
-                loadOneLinerSettingsFor(photoIndex: new[2] ?? 0)
+            if isOneLiner, template == .story, old[.oneLiner] != new[.oneLiner] {
+                loadOneLinerSettingsFor(photoIndex: new[.oneLiner] ?? 0)
             }
-            if isStamp, old[0] != new[0] {
-                let idx = new[0] ?? 0
+            if isStamp, old[.stamp] != new[.stamp] {
+                let idx = new[.stamp] ?? 0
                 // selectedClipIndex가 photo 인덱스와 일치해야 currentConfig(get/set)가
                 // 올바른 photoConfigs[idx]를 읽고 쓴다. story·slide 모두 동기화.
                 stampVM.selectedClipIndex = idx
@@ -2946,18 +2822,6 @@ struct ShareCardScreen: View {
             guard isPlaceable else { return }
             Task { await renderCard(showSpinner: false) }
         }
-        .onChange(of: ecgVM.ecgAccent) { _, _ in
-            guard isECG else { return }
-            Task { await renderCard(showSpinner: false) }
-        }
-        .onChange(of: skyVM.skyAccent) { _, _ in
-            guard isSky else { return }
-            Task { await renderCard(showSpinner: false) }
-        }
-        .onChange(of: ticketVM.ticketAccent) { _, _ in
-            guard isTicket else { return }
-            Task { await renderCard(showSpinner: false) }
-        }
         .onChange(of: oneLinerVM.oneLinerVideoTitle) { _, _ in
             if isOneLiner { exportedVideoFile = nil }
             if isOneLiner, template == .video { buildPreview() } else { previewPlayer.invalidate() }
@@ -3081,7 +2945,7 @@ struct ShareCardScreen: View {
             oneLinerVM.storyPhotoUUIDs = mergedUUIDs
             persistStoryPhotos(merged, uuids: mergedUUIDs)
             let newIdx = min(existing.count, merged.count - 1)
-            for ci in [1, 2, 3, 4] { cardPhotoIndex[ci] = newIdx }
+            for c in ShareCard.photoLinked { cardPhotoIndex[c] = newIdx }
             if template == .slide { previewPlayer.invalidate() }
             await renderCard()
         }
@@ -3125,7 +2989,7 @@ struct ShareCardScreen: View {
     private func onStoryClipEditDismiss() {
         saveStoryClipEdits(oneLinerVM.storyClipEditRecipes, isSlide: oneLinerVM.storyClipEditIsSlide)
         exportedVideoFile = nil
-        for i in [1, 2, 3, 4] { cardPhotoIndex[i] = oneLinerVM.storyClipEditIndex }
+        for c in ShareCard.photoLinked { cardPhotoIndex[c] = oneLinerVM.storyClipEditIndex }
     }
 
     private func onAthleticPickerItemsChanged(_ newItems: [PhotosPickerItem]) {
@@ -3243,7 +3107,7 @@ struct ShareCardScreen: View {
         // 영상 모드에서 non-0 클립이 선택된 채로 스토리로 전환하면 위치·템플릿 변경이
         // photoConfigs[selectedClipIndex]에 저장되지만 내보내기는 photoConfig(at: 0)을 읽어 값이 엇갈림.
         if isStamp, template == .story {
-            stampVM.selectedClipIndex = cardPhotoIndex[0] ?? 0
+            stampVM.selectedClipIndex = cardPhotoIndex[.stamp] ?? 0
         }
         // 템플릿 전환 시 이전 템플릿의 내보내기 결과를 항상 초기화
         // videoPreviewImage는 .video 진입 시 유지 (영상 클립 썸네일 보존)
@@ -3315,14 +3179,14 @@ struct ShareCardScreen: View {
         Task { await renderCard() }
     }
 
-    private func onCardIndexChanged(_ newIndex: Int) {
+    private func onCardChanged(_ newCard: ShareCard) {
         // player를 직접 사용하는 카드(Stamp·Placeable·OneLiner)로 이동할 때만 초기화.
-        // 같은 카드 복귀(예: Placeable→Athletic→Placeable)는 builtForCardIndex가 같아 초기화 생략 → 영상 유지.
+        // 같은 카드 복귀(예: Placeable→Athletic→Placeable)는 builtForCard가 같아 초기화 생략 → 영상 유지.
         // OneLiner 한정: 슬라이드↔영상 전환 후 다른 카드 경유 복귀 시 player 컨텐츠가 template과 불일치하면 초기화.
-        if [0, 1, 2].contains(newIndex) {
-            let cardMismatch = previewPlayer.builtForCardIndex != newIndex
-            let oneLinerContentMismatch = newIndex == 2
-                && previewPlayer.builtForCardIndex == 2
+        if [.stamp, .placeable, .oneLiner].contains(newCard) {
+            let cardMismatch = previewPlayer.builtForCard != newCard
+            let oneLinerContentMismatch = newCard == .oneLiner
+                && previewPlayer.builtForCard == .oneLiner
                 && (template == .slide) != previewPlayer.builtForPhotoSlide
             if cardMismatch || oneLinerContentMismatch {
                 previewPlayer.invalidate()
@@ -3330,18 +3194,17 @@ struct ShareCardScreen: View {
         }
         // Athletic·BigNumber는 athleticVideoState를 공유하므로, 카드 전환 시 항상 초기화.
         // 이전 카드의 영상이 새 카드 오버레이와 겹쳐 보이는 버그 방지.
-        if [3, 4].contains(newIndex) {
+        if [.athletic, .bigNumber].contains(newCard) {
             athleticVM.athleticVideoState.invalidate()
         }
         routeVideoFile = nil
         exportedVideoFile = nil
         // 새 카드가 현재 템플릿을 지원하지 않으면 그 카드의 기본 템플릿으로 자동 전환.
-        if let card = ShareCard(rawValue: newIndex),
-           !card.supportedTemplates.contains(template) {
-            template = card.defaultTemplate
+        if !newCard.supportedTemplates.contains(template) {
+            template = newCard.defaultTemplate
         }
         // OneLiner 카드 진입 시 현재 미디어(그라데이션 포함) 저장값 로드 (인라인 편집, 모달 없음)
-        if newIndex == 2 {
+        if newCard == .oneLiner {
             // 이전 카드(Placeable 등)의 videoPreviewImage가 OneLiner 정적 카드 배경으로 표시되는 것을 방지
             videoPreviewImage = nil
             // 슬라이드 진입: 다른 카드에 있을 때 template이 slide로 바뀌면 syncOneLinerVideoBacking의
@@ -3365,12 +3228,12 @@ struct ShareCardScreen: View {
             }
         }
         // Placeable 카드 복귀 시 클립 복원 + 스타일 동기화 + 미리보기 로드
-        if newIndex == 1 {
+        if newCard == .placeable {
             if template == .video { loadPlaceableVideoClips() }
             // 다른 카드에서 전환 시 applyStyleToVideoClips가 isPlaceable=false로 스킵됐을 수 있으므로 명시 호출
             applyStyleToVideoClips()
             if !placeableVM.placeableClipRecipes.isEmpty {
-                if previewPlayer.builtForCardIndex != 1 {
+                if previewPlayer.builtForCard != .placeable {
                     // 다른 카드의 player이거나 초기화된 경우 → Placeable 영상 재빌드
                     Task { await loadPlaceablePreview() }
                 } else {
@@ -3380,10 +3243,10 @@ struct ShareCardScreen: View {
             }
         }
         // Stamp 카드 진입 시 — 지명·지도 사전 로드 + 미리보기 재빌드
-        if newIndex == 0 {
+        if newCard == .stamp {
             // 스토리 모드 진입 시 selectedClipIndex 동기화 (onTemplateChanged와 동일 이유)
             if template == .story {
-                stampVM.selectedClipIndex = cardPhotoIndex[0] ?? 0
+                stampVM.selectedClipIndex = cardPhotoIndex[.stamp] ?? 0
             }
             fetchStampPlaceIfNeeded()
             fetchStampMapIfNeeded()
@@ -3415,14 +3278,14 @@ struct ShareCardScreen: View {
             }
         }
         // Athletic/BigNumber 카드 진입 시 — 클립이 있으면 영상 모드 복원, 없으면 SwiftData에서 복원
-        if newIndex == 3 {
+        if newCard == .athletic {
             if !athleticVM.athleticClipRecipes.isEmpty {
                 template = .video
             } else {
                 Task { await loadAthleticClipRecipes() }
             }
         }
-        if newIndex == 4, athleticVM.athleticClipRecipes.isEmpty {
+        if newCard == .bigNumber, athleticVM.athleticClipRecipes.isEmpty {
             Task { await loadAthleticClipRecipes() }
         }
         Task { await renderCard(showSpinner: false) }
@@ -3479,7 +3342,7 @@ struct ShareCardScreen: View {
                           summaryLines: cardSummaryLines,
 )
         case .story:
-            if let photo = photoFor(3) {
+            if let photo = photoFor(.athletic) {
                 let s      = max(300 / photo.size.width, 375 / photo.size.height)
                 let excess = max(0, photo.size.width * s - 300)
                 AthleticCard(activity: activity, routeCoordinates: routeCoords,
@@ -3680,7 +3543,7 @@ struct ShareCardScreen: View {
                         RawVideoPlayerView(player: avPlayer)
                             .frame(width: vidW, height: 375)
                     } else {
-                        let idx   = cardPhotoIndex[3] ?? 0
+                        let idx   = cardPhotoIndex[.athletic] ?? 0
                         let cropX = athleticSlideCropOffsets[idx] ?? 0.5
                         if let photo = storyPhotos.indices.contains(idx) ? storyPhotos[idx] : storyPhotos.first {
                             let s      = max(vidW / photo.size.width, 375 / photo.size.height)
@@ -3878,7 +3741,7 @@ struct ShareCardScreen: View {
                     RawVideoPlayerView(player: avPlayer)
                         .frame(width: vidW, height: 375)
                 } else {
-                    let idx   = cardPhotoIndex[4] ?? 0
+                    let idx   = cardPhotoIndex[.bigNumber] ?? 0
                     let cropX = athleticSlideCropOffsets[idx] ?? 0.5
                     if let photo = storyPhotos.indices.contains(idx) ? storyPhotos[idx] : storyPhotos.first {
                         let s      = max(vidW / photo.size.width, 375 / photo.size.height)
@@ -3942,7 +3805,7 @@ struct ShareCardScreen: View {
                     }
                 }
             }
-            // BigNumber 오버레이 — 항상 BigNumber (cardIndex 의존 없음)
+            // BigNumber 오버레이 — 항상 BigNumber (현재 카드 의존 없음)
             // topInset: 5% 여백, bottomInset: 14pt 고정
             let previewInset: CGFloat = 375 * 0.05
             makeBigNumberOverlayView(topInset: previewInset, bottomInset: 14)
@@ -4329,7 +4192,7 @@ struct ShareCardScreen: View {
                     intervalSegments: detail?.intervalSegments ?? [],
                     videoTitle: oneLinerVM.oneLinerVideoTitle, titleStyle: oneLinerVM.oneLinerTitleStyle,
                     fastBase: true,
-                    forCardIndex: 2)
+                    forCard: .oneLiner)
                 // 슬라이드: 빌드 완료 즉시 재생 — ▶ 한 번으로 재생 시작
                 previewPlayer.play()
             } else {
@@ -4350,7 +4213,7 @@ struct ShareCardScreen: View {
                     videoTitle: oneLinerVM.oneLinerVideoTitle, titleStyle: oneLinerVM.oneLinerTitleStyle,
                     safeTopOverride: 1920 * 0.06, safeBotOverride: 1920 * 0.06,
                     wordmarkTopPad: 1920 * 0.06,
-                    forCardIndex: 2)
+                    forCard: .oneLiner)
             }
         }
     }
@@ -5217,30 +5080,14 @@ struct ShareCardScreen: View {
         isExportingRouteVideo = false
     }
 
-    @MainActor
-    private func loadECGWaveforms() async {
-        guard let mgr = manager else { ecgVM.ecgDataAvailable = false; return }
-        async let pace = ECGWaveform.fromPace(activity: activity, using: mgr)
-        async let hr   = ECGWaveform.fromHeartRate(activity: activity, using: mgr)
-        let p = await pace
-        let h = await hr
-        ecgVM.paceWaveform      = p
-        ecgVM.hrWaveform        = h
-        ecgVM.ecgDataAvailable  = (p != nil || h != nil)
-        if ecgVM.paceWaveform == nil, ecgVM.hrWaveform != nil { ecgVM.ecgShowPace = false }
-        if ecgVM.ecgDataAvailable == false && cardIndex == 6 { withAnimation { cardIndex = 5 } }
-        if isECG { await renderCard(showSpinner: false) }
-    }
-
     // Extracted from .task {} to keep the closure trivial and avoid type-checker timeouts.
     @MainActor
     private func onAppear() async {
         // Restore selected photo from stored data on re-entry (e.g. after app restart).
         // Without this, selectedPhoto stays nil and the legacy all-cards branch fires.
         if !storyPhotos.isEmpty {
-            // 사진 선택을 지원하는 카드 인덱스: Placeable(1), OneLiner(2), Athletic(3), BigNumber(4)
-            for i in [1, 2, 3, 4] where cardPhotoIndex[i] == nil {
-                cardPhotoIndex[i] = 0
+            for c in ShareCard.photoLinked where cardPhotoIndex[c] == nil {
+                cardPhotoIndex[c] = 0
             }
         }
         // Load stable photo UUIDs from SwiftData (used by OneLinerEntry cross-references)
@@ -5311,21 +5158,7 @@ struct ShareCardScreen: View {
             chartSeriesData = newData
         }
         await renderCard()
-        await loadECGWaveforms()
-        await loadTicketDepartureName()
     }
-
-    private func loadTicketDepartureName() async {
-        guard let coord = routeCoords.first else { return }
-        let location = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
-        let geocoder = CLGeocoder()
-        guard let placemarks = try? await geocoder.reverseGeocodeLocation(location),
-              let pm = placemarks.first else { return }
-        let name = pm.subLocality ?? pm.locality ?? pm.administrativeArea ?? "RUN"
-        ticketVM.ticketDepartureName = name
-        if isTicket { await renderCard(showSpinner: false) }
-    }
-
 
     // MARK: - Athletic/BigNumber 클립 저장/복원 (영상·슬라이드 템플릿 전용)
 
@@ -5416,7 +5249,7 @@ struct ShareCardScreen: View {
     @MainActor
     func renderCard(showSpinner: Bool = true) async {
         // Placeable card: static image render. 스토리 다사진이면 전체 storyShareImages 생성.
-        if cardIndex == 1 {
+        if card == .placeable {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
@@ -5434,7 +5267,7 @@ struct ShareCardScreen: View {
                 let curIdx = placeableCurrentPhotoIdx
                 previewImage = rendered.indices.contains(curIdx) ? rendered[curIdx] : rendered.first
             } else {
-                let photo = template == .video ? videoPreviewImage : photoFor(1)
+                let photo = template == .video ? videoPreviewImage : photoFor(.placeable)
                 let renderer = ImageRenderer(content: placeableExportView(photo: photo))
                 renderer.scale = 3
                 previewImage = renderer.uiImage
@@ -5444,13 +5277,13 @@ struct ShareCardScreen: View {
         }
 
         // BigNumber card: render regardless of template (video/routeVideo don't block it)
-        if cardIndex == 4 {
+        if card == .bigNumber {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
             let bnPhoto: UIImage? = template == .video ? videoPreviewImage
                 : template == .routeVideo ? routeSnapshot
-                : template == .story ? photoFor(4)
+                : template == .story ? photoFor(.bigNumber)
                 : nil
             let bnCard = BigNumberCard(
                 activity: activity, detail: detail, heroMetric: heroMetric,
@@ -5475,74 +5308,12 @@ struct ShareCardScreen: View {
             return
         }
 
-        // Sky card — "그날의 하늘"
-        if cardIndex == 5 {
-            if showSpinner { isRendering = true }
-            storyShareImages = []
-            previewImage = nil
-            let card = SkyCard(
-                activity: activity,
-                weather: condition?.weather,
-                shoeName: displayShoeName,
-                accent: skyVM.skyAccent
-            )
-            let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
-            renderer.scale = 3
-            previewImage = renderer.uiImage
-            isRendering = false
-            return
-        }
-
-        // ECG card — "심전도 시그니처"
-        if cardIndex == 6 {
-            let activeWaveform = ecgVM.ecgShowPace ? (ecgVM.paceWaveform ?? ecgVM.hrWaveform) : (ecgVM.hrWaveform ?? ecgVM.paceWaveform)
-            guard let waveform = activeWaveform else { isRendering = false; return }
-            if showSpinner { isRendering = true }
-            storyShareImages = []
-            previewImage = nil
-            let card = ECGSignatureCard(
-                activity: activity,
-                waveform: waveform,
-                weather: condition?.weather,
-                shoeName: displayShoeName,
-                accent: ecgVM.ecgAccent
-            )
-            let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
-            renderer.scale = 3
-            previewImage = renderer.uiImage
-            isRendering = false
-            return
-        }
-
-        // Ticket card
-        if cardIndex == 7 {
-            if showSpinner { isRendering = true }
-            storyShareImages = []
-            previewImage = nil
-            let card = TicketCard(
-                activity: activity,
-                routeCoordinates: routeCoords,
-                splits: detail?.splits ?? [],
-                raceName: confirmedRace?.raceName,
-                shoeName: displayShoeName,
-                departureName: ticketVM.ticketDepartureName,
-                raceDistanceKm: confirmedRace?.distanceKm,
-                raceStartTimeString: confirmedBundledRace?.startTimeString,
-                accent: ticketVM.ticketAccent
-            )
-            let renderer = ImageRenderer(content: card.frame(width: 300, height: 375))
-            renderer.scale = 3
-            previewImage = renderer.uiImage
-            isRendering = false
-            return
-        }
-
         // OneLiner card
-        if cardIndex == 2 {
+        if card == .oneLiner {
             if showSpinner { isRendering = true }
             storyShareImages = []
             previewImage = nil
-            let idx   = cardPhotoIndex[2]
+            let idx   = cardPhotoIndex[.oneLiner]
             let photo = idx.flatMap { storyPhotos.indices.contains($0) ? storyPhotos[$0] : nil }
                      ?? (!storyPhotos.isEmpty ? storyPhotos[0] : nil)
             // @Query 갱신 타이밍 이슈 우회: 편집 직후엔 oneLinerVM.cachedStoryRecipes 사용
@@ -5637,7 +5408,7 @@ struct ShareCardScreen: View {
         // Use in-memory array if available (avoids @Query timing gap); fall back to disk on restart.
         // Athletic card + story template: render athletic card with selected photo background.
         // Share only the single rendered card (no extra plain photos).
-        if template == .story, let selPhoto = photoFor(3) {
+        if template == .story, let selPhoto = photoFor(.athletic) {
             let renderer = ImageRenderer(content:
                 AthleticCard(activity: activity, routeCoordinates: routeCoords,
                               metrics: enabledMetricItems,
@@ -5694,7 +5465,7 @@ struct ShareCardScreen: View {
 )
                 .frame(width: 300, height: 375)
         case .story:
-            if let photo = photoFor(2) {
+            if let photo = photoFor(.oneLiner) {
                 PhotoShareCardView(activity: activity, photo: photo,
                                    metrics: enabledMetricItems, raceName: activeRaceName,
                                    routeCoordinates: routeCoords,
@@ -5849,15 +5620,15 @@ struct ShareCardScreen: View {
         if newPhotos.isEmpty {
             allPickedPhotos = []
             clearStoryPhoto()
-            for ci in [1, 2, 3, 4] { cardPhotoIndex[ci] = nil }
+            for c in ShareCard.photoLinked { cardPhotoIndex[c] = nil }
         } else {
             allPickedPhotos = newPhotos
             persistStoryPhotos(newPhotos, uuids: newUUIDs)
             // 삭제된 인덱스 기준으로 카드 인덱스 보정
-            for ci in [1, 2, 3, 4] {
-                guard let idx = cardPhotoIndex[ci] else { continue }
-                if idx >= newPhotos.count { cardPhotoIndex[ci] = max(0, newPhotos.count - 1) }
-                else if idx > index { cardPhotoIndex[ci] = idx - 1 }
+            for c in ShareCard.photoLinked {
+                guard let idx = cardPhotoIndex[c] else { continue }
+                if idx >= newPhotos.count { cardPhotoIndex[c] = max(0, newPhotos.count - 1) }
+                else if idx > index { cardPhotoIndex[c] = idx - 1 }
             }
         }
         if template == .slide { previewPlayer.invalidate() }

@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - BigNumberViewModel
 //
-// BigNumber 카드(cardIndex == 3)의 전용 상태 클래스.
+// BigNumber 카드(ShareCard.bigNumber)의 전용 상태 클래스.
 // 영상 클립(athleticClipRecipes)은 AthleticViewModel과 공유 → athleticVM 참조.
 //
 // ShareCardView에서 @State var bigNumberVM = BigNumberViewModel() 로 보유.

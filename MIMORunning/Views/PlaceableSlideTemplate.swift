@@ -359,7 +359,7 @@ extension ShareCardScreen {
                 photos: photos, recipes: recipes,
                 dataOverlayImage: overlay,
                 dataOverlayIsTop: overlayIsTop,
-                forCardIndex: 1)
+                forCard: .placeable)
             if thenPlay { previewPlayer.play() }
         }
     }

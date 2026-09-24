@@ -18,7 +18,7 @@ extension ShareCardScreen {
             return "video:\(assetID)"
         }
         if template == .story {
-            let idx = cardPhotoIndex[2] ?? 0
+            let idx = cardPhotoIndex[.oneLiner] ?? 0
             if idx < oneLinerVM.storyPhotoUUIDs.count { return "photo:\(oneLinerVM.storyPhotoUUIDs[idx])" }
         }
         return nil   // gradient

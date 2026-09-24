@@ -104,7 +104,7 @@ private struct PlaceableVideoTextOverlay: View {
 
 // MARK: - ShareCardScreen + Placeable 템플릿
 //
-// Placeable 카드(cardIndex == 0)의 미리보기·컨트롤·저장·내보내기 헬퍼.
+// Placeable 카드(ShareCard.placeable)의 미리보기·컨트롤·저장·내보내기 헬퍼.
 // ShareCardScreen extension이므로 @State 등 부모 프로퍼티에 그대로 접근 가능.
 //
 // 파일별 담당:
@@ -517,7 +517,7 @@ extension ShareCardScreen {
             muteAudio:        placeableVM.placeableMuteAudio,
             safeTopOverride:  CardVisual.videoSafeTop,
             safeBotOverride:  CardVisual.videoSafeBottom,
-            forCardIndex:     1
+            forCard:          .placeable
         )
         // 빌드 중 mute 토글이 발생했을 경우 현재 상태를 재적용
         previewPlayer.setMuted(placeableVM.placeableMuteAudio)

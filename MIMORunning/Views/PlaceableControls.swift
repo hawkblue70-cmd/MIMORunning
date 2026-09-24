@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Placeable 카드 전용 설정 패널 View structs
 //
-// ⚠️ 이 파일은 Placeable 카드(cardIndex == 0) 전용.
+// ⚠️ 이 파일은 Placeable 카드(ShareCard.placeable) 전용.
 //    Athletic · OneLiner · BigNumber · Sky · ECG · Ticket 카드 관련 코드 작성 금지.
 //
 // 파일별 담당:

@@ -16,9 +16,9 @@ final class OneLinerPreviewPlayer {
     var isPlaying:  Bool   = false
     var progress:   Double = 0
     var isReady:    Bool   = false
-    // 어느 카드가 이 player를 빌드했는지 추적 (0=Stamp, 1=Placeable, 2=OneLiner, -1=없음)
+    // 어느 카드가 이 player를 빌드했는지 추적 (nil=없음)
     // 같은 카드로 복귀 시 불필요한 재빌드를 생략하는 데 사용
-    var builtForCardIndex: Int = -1
+    var builtForCard: ShareCard? = nil
     // 슬라이드(사진) 빌드였으면 true, 영상 클립 빌드였으면 false
     // OneLiner 재진입 시 player 컨텐츠가 현재 template과 불일치하면 invalidate하기 위해 사용
     var builtForPhotoSlide: Bool = false
@@ -57,7 +57,7 @@ final class OneLinerPreviewPlayer {
         dataOverlayImage: UIImage?           = nil,
         dataOverlayIsTop: Bool               = false,
         fastBase:         Bool               = false,
-        forCardIndex:     Int               = -1
+        forCard:          ShareCard?        = nil
     ) async {
         invalidate()                         // buildGeneration 증가 → 이전 빌드 무효화
         buildGeneration += 1
@@ -84,7 +84,7 @@ final class OneLinerPreviewPlayer {
             guard buildGeneration == myGen else { return }  // 대기 중 invalidate 됐으면 폐기
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
-            builtForCardIndex = forCardIndex
+            builtForCard = forCard
             builtForPhotoSlide = true
             tempURL = result.tempURL
         } catch {
@@ -110,7 +110,7 @@ final class OneLinerPreviewPlayer {
         wordmarkTopPad:   CGFloat?           = nil,
         dataOverlayImage: UIImage?           = nil,
         fullSizeOverlayImage: UIImage?       = nil,
-        forCardIndex:     Int               = -1
+        forCard:          ShareCard?        = nil
     ) async {
         targetMuted = muteAudio   // 초기 상태 기록; 빌드 중 setMuted 호출로 덮어쓸 수 있음
         invalidate()                         // buildGeneration 증가 → 이전 빌드 무효화
@@ -141,7 +141,7 @@ final class OneLinerPreviewPlayer {
             guard buildGeneration == myGen else { return }  // 대기 중 invalidate 됐으면 폐기
             setUpPlayer(playerItem: result.playerItem, animLayer: result.layer,
                         renderSize: result.size, duration: result.duration)
-            builtForCardIndex = forCardIndex
+            builtForCard = forCard
             builtForPhotoSlide = false
             player?.isMuted = targetMuted   // 캡처된 muteAudio 대신 현재 상태 적용
         } catch {
@@ -204,7 +204,7 @@ final class OneLinerPreviewPlayer {
         // 뷰를 다시 그리더라도 player를 사용하는 분기에 진입하지 않도록 보장
         isReady           = false
         isPlaying         = false
-        builtForCardIndex = -1
+        builtForCard = nil
         builtForPhotoSlide = false
         if let obs = timeObserver { player?.removeTimeObserver(obs) }
         timeObserver = nil
