@@ -48,12 +48,19 @@ struct RunMetricCell: View {
     var scale: CGFloat = 1.0
     /// 값 아래 부연(유산소의 "현재 추정 · 높음") — 작은 카드에서는 자리가 없어 끈다.
     var showsNote: Bool = true
+    /// 칸 안 정렬 — 기본 왼쪽(공유 카드). 앱 상세 격자만 가운데.
+    var centered: Bool = false
+    /// 값 글자 크기 조정(pt, scale 전) — 앱 상세 격자만 -1. 라벨은 그대로.
+    var valueDelta: CGFloat = 0
+    /// 세로 여백 조정(pt, scale 전) — 앱 상세 격자만 칸을 조금 낮춘다.
+    var padVDelta: CGFloat = 0
 
     private func s(_ v: CGFloat) -> CGFloat { v * scale }
 
     var body: some View {
         let m = RunMetricCellMetrics.self
-        VStack(alignment: .leading, spacing: s(1)) {
+        let valueSize = (item.compactValue ? m.value * 0.82 : m.value) + valueDelta
+        VStack(alignment: centered ? .center : .leading, spacing: s(1)) {
             HStack(spacing: s(3)) {
                 Image(systemName: item.icon)
                     .font(.system(size: s(m.icon), weight: .semibold))
@@ -65,7 +72,7 @@ struct RunMetricCell: View {
             .foregroundStyle(item.color)
 
             Text(item.value)
-                .font(.system(size: s(item.compactValue ? m.value * 0.82 : m.value), weight: .black))
+                .font(.system(size: s(valueSize), weight: .black))
                 .fontWidth(.condensed)
                 .foregroundStyle(style.textPrimary)
                 .lineLimit(1)
@@ -79,9 +86,9 @@ struct RunMetricCell: View {
                     .minimumScaleFactor(0.7)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
         .padding(.horizontal, s(m.padH))
-        .padding(.vertical, s(m.padV))
+        .padding(.vertical, s(m.padV + padVDelta))
         .background {
             let r = RoundedRectangle(cornerRadius: s(m.corner))
             r.fill(style.cellBackground)
@@ -98,13 +105,18 @@ struct RunMetricGrid: View {
     var showsNote: Bool = true
     /// 열 수 — 기본 3. 경로 카드 지도형은 2열(칸이 커져 지도 아래에서 읽힌다).
     var columns: Int = 3
+    /// 앱 상세 격자 전용 조정(RunMetricCell 참고) — 공유 카드는 기본값 그대로
+    var centered: Bool = false
+    var valueDelta: CGFloat = 0
+    var padVDelta: CGFloat = 0
 
     var body: some View {
         let gap = RunMetricCellMetrics.spacing * scale
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: gap), count: columns),
                   alignment: .leading, spacing: gap) {
             ForEach(items) { item in
-                RunMetricCell(item: item, style: style, scale: scale, showsNote: showsNote)
+                RunMetricCell(item: item, style: style, scale: scale, showsNote: showsNote,
+                              centered: centered, valueDelta: valueDelta, padVDelta: padVDelta)
             }
         }
     }

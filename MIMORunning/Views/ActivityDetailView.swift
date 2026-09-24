@@ -1952,8 +1952,10 @@ private struct MetricGrid: View {
 
     var body: some View {
         // 셀은 공유 카드들과 같은 컴포넌트를 쓴다 — 크기만 scale로 조정(§5.8).
-        RunMetricGrid(items: items, style: .appDark, scale: 1.0)
-        .padding(.horizontal, 16)
+        // 위 경로 카드(폭 260)가 작아져 격자를 조금 좁고 낮게 — 가운데 정렬, 값만 1pt 작게(라벨 그대로)
+        RunMetricGrid(items: items, style: .appDark, scale: 1.0,
+                      centered: true, valueDelta: -1, padVDelta: -2)
+        .padding(.horizontal, 28)
         #if DEBUG
         // 화면이 실제로 그리는 항목 — 매니저의 activities가 아니라 이 뷰가 받은 activity 기준.
         // 둘이 다를 수 있어서(값 복사) 캐시 로그만으로는 빈칸의 이유를 못 가린다.
