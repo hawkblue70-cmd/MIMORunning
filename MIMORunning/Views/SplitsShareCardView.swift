@@ -897,7 +897,7 @@ struct IntervalsShareCardView: View {
                     Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
                         .padding(.top, 8).padding(.bottom, 8)
                     HStack(spacing: 0) {
-                        footerStat("\(workSegments.count)", AppLanguage.shared.s("워크 구간", "WORK REPS"), Theme.violet)
+                        footerStat("\(workSegments.count)", AppLanguage.shared.s("워크 구간", "WORK REPS"), Theme.intervalWork)
                         Spacer()
                         if let best = fastestWorkPace {
                             footerStat(formatPace(best), AppLanguage.shared.s("최고 구간", "BEST"), Self.gold)
@@ -945,7 +945,7 @@ struct IntervalsShareCardView: View {
     private func segmentRow(_ seg: IntervalSegment) -> some View {
         let work = isWork(seg)
         let isDim = seg.stepLabel == "준비운동" || seg.stepLabel == "정리운동"
-        let paceColor: Color = work ? Theme.violet : Color.white.opacity(0.50)
+        let paceColor: Color = work ? Theme.intervalWork : Color.white.opacity(0.50)
         let labelW: CGFloat  = hasLabels ? 50 : 18
 
         return VStack(spacing: 0) {
@@ -954,13 +954,13 @@ struct IntervalsShareCardView: View {
                 if hasLabels {
                     Text(labelText(seg))
                         .font(.system(size: 10, weight: work ? .bold : .regular))
-                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(isDim ? 0.30 : 0.45))
+                        .foregroundStyle(work ? Theme.intervalWork : Color.white.opacity(isDim ? 0.30 : 0.45))
                         .frame(width: labelW, alignment: .leading)
                         .lineLimit(1).minimumScaleFactor(0.8)
                 } else {
                     Text("\(seg.id)")
                         .font(.system(size: 10, weight: work ? .bold : .regular, design: .rounded))
-                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.45))
+                        .foregroundStyle(work ? Theme.intervalWork : Color.white.opacity(0.45))
                         .frame(width: labelW, alignment: .leading)
                 }
                 if hasDist {
@@ -996,7 +996,7 @@ struct IntervalsShareCardView: View {
                 }
             }
             .padding(.vertical, 4)
-            .background(work ? Theme.violet.opacity(0.08) : Color.clear)
+            .background(work ? Theme.intervalWork.opacity(0.08) : Color.clear)
         }
     }
 

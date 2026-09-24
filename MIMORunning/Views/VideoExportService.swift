@@ -2850,7 +2850,7 @@ struct VideoExportService {
             let totalDuration = segments.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
             guard totalDuration > 0 else { return nil }
 
-            let violet   = UIColor(red: 0.486, green: 0.361, blue: 0.988, alpha: 0.90)
+            let workClr  = Theme.intervalWorkUI.withAlphaComponent(0.90)   // 운동 구간 = 페이스 청록
             let darkGray = UIColor(white: 0.28, alpha: 0.90)
             let lblFont  = UIFont.monospacedDigitSystemFont(ofSize: 8 * vScale, weight: .regular)
 
@@ -2881,7 +2881,7 @@ struct VideoExportService {
                     let fraction = CGFloat(dur / totalDuration)
                     let bW       = (barAreaW - totalGapW) * fraction
                     let isWork   = seg.stepLabel == "운동"
-                    let barColor = isWork ? violet : darkGray
+                    let barColor = isWork ? workClr : darkGray
 
                     let barRect = CGRect(x: xCursor, y: barAreaY, width: bW, height: barAreaH)
                     let barPath = UIBezierPath(roundedRect: barRect, cornerRadius: 4 * vScale)

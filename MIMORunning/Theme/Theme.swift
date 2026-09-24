@@ -58,6 +58,9 @@ enum Theme {
     /// 라이트 카드용 — 흰 바탕에서 옅은 청록이 묻히지 않게 짙게(지표 페이스 라이트 색 0E7C8A와 같은 계열)
     static let splitBarHiLight = Color(hex: "1597A8")
     static let splitBarLoLight = Color(hex: "0E7C8A")
+    /// 인터벌 운동(work) 구간 — 구간 막대와 같은 페이스 청록. 회복 구간은 각 화면의 회색
+    static let intervalWork   = splitBarLo
+    static let intervalWorkUI = splitBarLoUI
     /// 빠를수록 진하게(Strava 방식) — speed 0(가장 느림)~1(가장 빠름) → 불투명도 0.45~1.0
     static func splitBarOpacity(speed: Double) -> Double { 0.45 + 0.55 * max(0, min(1, speed)) }
     static let heartRate = Color.red

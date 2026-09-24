@@ -1321,7 +1321,7 @@ enum PhotoSlideComposition {
                 guard segs.count >= 2 else { return nil }
                 let totalDur = segs.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
                 guard totalDur > 0 else { return nil }
-                let violet   = UIColor(red: 0.486, green: 0.361, blue: 0.988, alpha: 0.90)
+                let workClr  = Theme.intervalWorkUI.withAlphaComponent(0.90)   // 운동 구간 = 페이스 청록
                 let darkGray = UIColor(white: 0.28, alpha: 0.90)
                 let lblFont  = UIFont.monospacedDigitSystemFont(ofSize: 8 * vScale, weight: .regular)
                 let titleH: CGFloat   = 13 * vScale
@@ -1345,7 +1345,7 @@ enum PhotoSlideComposition {
                         let fraction = CGFloat(dur / totalDur)
                         let bW       = (barAreaW - totalGapW) * fraction
                         let isWork   = seg.stepLabel == "운동"
-                        (isWork ? violet : darkGray).setFill()
+                        (isWork ? workClr : darkGray).setFill()
                         UIBezierPath(roundedRect: CGRect(x: xCursor, y: barAreaY, width: bW, height: barAreaH), cornerRadius: 4 * vScale).fill()
                         if bW > 28 * vScale {
                             var lines: [String] = []

@@ -2118,14 +2118,14 @@ private struct IntervalSegmentsSection: View {
                                 if hasLabels {
                                     Text(localizedStepLabel(seg.stepLabel) ?? "#\(seg.id)")
                                         .font(.system(.subheadline, design: .rounded).weight(work ? .bold : .regular))
-                                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.55))
+                                        .foregroundStyle(work ? Theme.intervalWork : Color.white.opacity(0.55))
                                         .frame(width: 56, alignment: .leading)
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.8)
                                 } else {
                                     Text("\(seg.id)")
                                         .font(.system(.subheadline, design: .rounded).weight(work ? .bold : .regular))
-                                        .foregroundStyle(work ? Theme.violet : Color.white.opacity(0.45))
+                                        .foregroundStyle(work ? Theme.intervalWork : Color.white.opacity(0.45))
                                         .frame(width: 20, alignment: .leading)
                                 }
                                 if hasDist {
@@ -2139,7 +2139,7 @@ private struct IntervalSegmentsSection: View {
                                     .font(.system(.callout, design: .rounded).weight(work ? .semibold : .regular))
                                     .foregroundStyle(
                                         seg.formattedPace != nil
-                                            ? (work ? Theme.violet : Color.white.opacity(0.40))
+                                            ? (work ? Theme.intervalWork : Color.white.opacity(0.40))
                                             : Color.secondary
                                     )
                                     .frame(width: 70, alignment: .trailing)
@@ -2170,7 +2170,7 @@ private struct IntervalSegmentsSection: View {
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
-                            .background(work ? Theme.violet.opacity(0.07) : Color.clear)
+                            .background(work ? Theme.intervalWork.opacity(0.07) : Color.clear)
                         }
                     }
                 }
@@ -4474,14 +4474,14 @@ struct IntervalPanelChart: View {
                         // segment type label
                         Text(row.typeLabel)
                             .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(row.isWork ? Theme.violet.opacity(0.9) : Color.white.opacity(0.55))
+                            .foregroundStyle(row.isWork ? Theme.intervalWork.opacity(0.9) : Color.white.opacity(0.55))
                             .frame(width: typeW, alignment: .leading)
 
                         // horizontal bar — 8pt height
                         ZStack(alignment: .leading) {
                             Color.clear.frame(width: maxBarW, height: 8)
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(row.isWork ? Theme.violet : Color.white.opacity(0.18))
+                                .fill(row.isWork ? Theme.intervalWork : Color.white.opacity(0.18))
                                 .frame(width: max(4, maxBarW * row.barRatio), height: 8)
                         }
 

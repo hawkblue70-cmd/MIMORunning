@@ -198,7 +198,7 @@ struct CardIntervalChart: View {
                     let isWork = seg.stepLabel == "운동"
                     BarMark(x: .value("구간", seg.id), y: .value("pace", pace),
                             width: .fixed(barW))
-                        .foregroundStyle((isWork ? Theme.violet : Color.white.opacity(0.25)).gradient)
+                        .foregroundStyle((isWork ? Theme.intervalWork : Color.white.opacity(0.25)).gradient)
                         .cornerRadius(2)
                 }
             }
