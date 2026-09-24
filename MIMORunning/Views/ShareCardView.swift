@@ -457,7 +457,7 @@ struct ShareCardScreen: View {
 
     private func isChartPanelAvailable(_ panel: CardChartPanel) -> Bool {
         switch panel {
-        case .map:                  !routeCoords.isEmpty
+        case .map:                  true   // 차트 끄기 — 항상 고를 수 있다
         case .splits:               !(detail?.splits.isEmpty ?? true)
         case .heartRate:            activity.avgHeartRate != nil && manager != nil
         case .cadence:              detail?.avgCadence != nil && manager != nil
@@ -4301,11 +4301,6 @@ struct ShareCardScreen: View {
         // avoiding a visible flash before the first edit dismiss populates the cache.
         if oneLinerVM.cachedStoryRecipes.isEmpty, !oneLinerVM.storyPhotoUUIDs.isEmpty {
             oneLinerVM.cachedStoryRecipes = makeStoryClipRecipes(isSlide: template == .slide)
-        }
-        // Auto-select first available panel when no route
-        if routeCoords.isEmpty && cardPanel == .map {
-            let first = CardChartPanel.allCases.first { isChartPanelAvailable($0) }
-            cardPanel = first ?? .splits
         }
         deduplicateOneLinerEntries()
         loadOneLinerSettings()

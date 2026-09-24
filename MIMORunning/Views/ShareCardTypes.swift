@@ -67,7 +67,7 @@ enum CardChartPanel: String, CaseIterable, Equatable {
 
     var icon: String {
         switch self {
-        case .map:                  "map"
+        case .map:                  "xmark.circle"
         case .splits:               "chart.bar.fill"
         case .heartRate:            "heart.fill"
         case .cadence:              "figure.run"
@@ -83,7 +83,9 @@ enum CardChartPanel: String, CaseIterable, Equatable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .map:                  L.s("경로",    "Route")
+        // .map = 차트 없음. 영상·슬라이드에서는 아무것도 그리지 않아 "경로" 칩이 역할이 없었다(2026-09-24).
+        // 기록·사진 카드는 이때 빈 자리에 작은 경로 선을 그대로 둔다.
+        case .map:                  L.s("차트 끄기", "Chart Off")
         case .splits:               L.s("스플릿",  "Splits")
         case .heartRate:            L.s("심박수",  "HR")
         case .cadence:              L.s("케이던스", "Cadence")
