@@ -1475,7 +1475,7 @@ struct ShareCardScreen: View {
 
             Spacer(minLength: 0)
 
-            // 점 인디케이터 — 탭으로 카드 직접 이동 가능
+            // 카드 이름표 한 줄 — 탭으로 카드 직접 이동 가능
             HStack(spacing: 7) {
                 ForEach(ShareCard.allCases, id: \.self) { pageDot($0) }
             }
@@ -1503,47 +1503,27 @@ struct ShareCardScreen: View {
         card = all[cur + delta]  // onChange(of: card)가 ScrollViewReader로 애니메이션 처리
     }
 
+    /// 카드 이름표 — 카드 전부를 한 줄에 이름으로 표시(4종이라 창·점 축약 없음).
     private func pageDot(_ c: ShareCard) -> some View {
-        let all      = ShareCard.allCases
-        let i        = all.firstIndex(of: c) ?? 0
-        let cur      = all.firstIndex(of: card) ?? 0
         let isActive = card == c
-        // 항상 3칸 창: 가장자리에선 반대쪽으로 채움
-        // ex) 첫 카드 → 창=[0,1,2], 마지막 카드 → 창=[n-3…n-1]
-        let lo       = max(0, min(cur - 1, all.count - 3))
-        let hi       = lo + 2
-        let inWindow = i >= lo && i <= hi
-
         return Button {
             withAnimation(.easeInOut(duration: 0.2)) { card = c }
         } label: {
-            if isActive {
-                // 선택 = 보라 채움 + 흰 글자 — 템플릿 피커·토글 칩과 같은 표시
-                Text(c.name)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Theme.violet))
-            } else if inWindow {
-                Text(c.name)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color(hex: "6E6E78"))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-            } else {
-                Circle()
-                    .fill(Color(hex: "6E6E78"))
-                    .frame(width: 6, height: 6)
-                    .frame(width: 11, height: 18)
-                    .contentShape(Rectangle())
-            }
+            // 선택 = 보라 채움 + 흰 글자 — 템플릿 피커·토글 칩과 같은 표시
+            Text(c.name)
+                .font(.system(size: 10, weight: isActive ? .semibold : .medium))
+                .foregroundStyle(isActive ? Color.white : Color(hex: "6E6E78"))
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(isActive ? Theme.violet : Color.clear))
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.2), value: card)
     }
 
-    // MARK: - Big Number chip row
+    // MARK: - Locked chips
 
     @ViewBuilder
     private func lockedChip(_ label: String, icon: String? = nil) -> some View {
