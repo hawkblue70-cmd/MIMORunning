@@ -260,6 +260,13 @@ private struct RunStatTile: View {
     var dotColors: [Color]? = nil
     let onTap: () -> Void
 
+    private var titleStyle: AnyShapeStyle {
+        if let dotColors, dotColors.count >= 2 {
+            return AnyShapeStyle(LinearGradient(colors: dotColors, startPoint: .leading, endPoint: .trailing))
+        }
+        return AnyShapeStyle(layer.color)
+    }
+
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 3) {
@@ -276,9 +283,12 @@ private struct RunStatTile: View {
                     }
                     .opacity(isOn ? 1.0 : 0.38)
                     .frame(width: 7, height: 7)
+                    // 제목 = 차트 선 색 — 상세 격자처럼 색으로 읽힌다(점만으로는 작아 선과 짝짓기 어렵다).
+                    // 심박은 선이 존 색 그라데이션이라 제목도 같은 그라데이션.
                     Text(layer.shortLabel)
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.white.opacity(isOn ? 0.85 : 0.32))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(titleStyle)
+                        .opacity(isOn ? 1.0 : 0.38)
                         .lineLimit(1)
                     Spacer(minLength: 2)
                     if layer.showsRange {
