@@ -370,7 +370,9 @@ struct DetailPanelShareCard: View {
                 Text("KM")
                     .font(.system(size: 12, weight: .bold)).tracking(1)
             }
-            .foregroundStyle(BigNumberStyle.heroGradient(.violet))
+            // 연보라 얕은 그라디언트 — 어두운 배경에서 숫자 하단이 묻히지 않게
+            .foregroundStyle(LinearGradient(colors: [Color(hex: "A98BFF"), Color(hex: "8C6BFF")],
+                                            startPoint: .top, endPoint: .bottom))
             .padding(.top, -2)
             // 날짜 · 날씨 · 습도를 한 줄에 — "날씨"·"습도" 제목 없이 아이콘과 값만. 줄이 하나 줄어 묶음이 아래로 내려간다
             HStack(spacing: 5) {

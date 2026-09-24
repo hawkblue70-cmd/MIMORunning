@@ -45,7 +45,7 @@ struct PlaceableSlideClipStyle: Codable {
 // PlaceableSection / Template 뷰에서 @Bindable var vm: PlaceableViewModel 으로 전달.
 //
 // ⚠️ 이 파일은 Placeable 카드 전용.
-//    Athletic · OneLiner · BigNumber · Sky · ECG · Ticket 카드 관련 코드 작성 금지.
+//    Athletic · OneLiner 카드 관련 코드 작성 금지.
 
 @Observable
 @MainActor

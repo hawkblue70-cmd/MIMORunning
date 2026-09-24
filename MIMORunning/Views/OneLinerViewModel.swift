@@ -8,7 +8,7 @@ import UIKit
 // OneLiner 관련 자식 뷰에서 @Bindable var vm: OneLinerViewModel 으로 전달.
 //
 // ⚠️ 이 파일은 OneLiner 카드 전용.
-//    Placeable · Athletic · BigNumber · Sky · ECG · Ticket 카드 관련 코드 작성 금지.
+//    Placeable · Athletic 카드 관련 코드 작성 금지.
 
 @Observable
 @MainActor

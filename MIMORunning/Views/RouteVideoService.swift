@@ -275,67 +275,6 @@ private struct RoutePolylineOverlay: View, Equatable {
     }
 }
 
-// MARK: - BigNumberRouteVideoFrameView
-
-struct BigNumberRouteVideoFrameView: View {
-    let snapshot: UIImage
-    let snapshotPoints: [CGPoint]
-    let routeProgress: CGFloat
-    let activity: Activity
-    let detail: ActivityDetail?
-    let heroMetric: HeroMetric
-    var memoText: String? = nil
-    var weatherText: String? = nil
-    var weatherIcon: String? = nil
-    let date: Date
-    var shoeName: String? = nil
-    var accent: CardAccent = .violet
-    // HR gradient for route polyline
-    var hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = []
-    var routeWorkoutDuration: TimeInterval = 0
-    var routeZoneBounds: [(id: Int, minBPM: Int)] = []
-    var showHRGradient: Bool = false
-    // nil → videoSafeTopRef/BottomRef * s (export 기본값). 값 지정 시 그대로 사용 (preview 전용).
-    var topInset: CGFloat? = nil
-    var bottomInset: CGFloat? = nil
-
-    var body: some View {
-        GeometryReader { proxy in
-            let w = proxy.size.width
-            let h = proxy.size.height
-            ZStack {
-                Image(uiImage: snapshot)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: w, height: h)
-                    .clipped()
-                    // 출력(writeBackgroundVideo)과 동일: 검정 8% 덮기. 밝기·채도 보정 없음
-                    .overlay(Color.black.opacity(RouteVideoExportService.mapDarkenAlpha))
-
-                RoutePolylineOverlay(snapshotPoints: snapshotPoints, progress: routeProgress,
-                                     hrSamples: hrSamplesForRoute,
-                                     workoutDuration: routeWorkoutDuration,
-                                     zoneBounds: routeZoneBounds,
-                                     showHRGradient: showHRGradient)
-                    .equatable()   // 칩 탭 등 입력이 같은 재평가에서는 Canvas를 다시 그리지 않는다
-                    .frame(width: w, height: h)
-
-                BigNumberVideoOverlayView(
-                    activity: activity, detail: detail, heroMetric: heroMetric,
-                    memoText: memoText,
-                    weatherText: weatherText, weatherIcon: weatherIcon,
-                    date: date, shoeName: shoeName,
-                    topInset: topInset,
-                    bottomInset: bottomInset,
-                    accent: accent,
-                    onMap: true
-                )
-                .frame(width: w, height: h)
-            }
-        }
-    }
-}
-
 // MARK: - KM marker label (경로 영상 · 지도 스냅샷 공용)
 
 /// km 마커 라벨의 색 — 배경 매체에 따라 고른다.
@@ -561,79 +500,6 @@ struct RouteVideoExportService {
         return outputURL
     }
 
-    /// Export route video (BigNumber overlay).
-    @MainActor
-    static func exportBigNumberFast(
-        snapshot: UIImage,
-        snapshotPoints: [CGPoint],
-        activity: Activity,
-        detail: ActivityDetail?,
-        heroMetric: HeroMetric,
-        memoText: String?,
-        weatherText: String?,
-        weatherIcon: String?,
-        date: Date,
-        shoeName: String?,
-        totalDistanceM: Double,
-        hrSamplesForRoute: [(offset: TimeInterval, bpm: Int)] = [],
-        routeWorkoutDuration: TimeInterval = 0,
-        showHRGradient: Bool = false,
-        routeMarkerImage: UIImage? = nil,
-        accent: CardAccent = .violet,
-        progressHandler: @escaping (Double) -> Void
-    ) async throws -> URL {
-        let t0 = CACurrentMediaTime()
-
-        let exportInset = renderSize.height * 0.05   // 5% = 48pt → 96px at renderScale 2 (preview 일치)
-        let overlayView = BigNumberVideoOverlayView(
-            activity: activity, detail: detail, heroMetric: heroMetric,
-            memoText: memoText,
-            weatherText: weatherText, weatherIcon: weatherIcon,
-            date: date, shoeName: shoeName,
-            topInset: exportInset,
-            bottomInset: previewMatchedBottomInset,
-            accent: accent,
-            onMap: true   // 미리보기(BigNumberRouteVideoFrameView)와 동일
-        )
-        .frame(width: renderSize.width, height: renderSize.height)
-        .preferredColorScheme(.dark)
-        let overlayRenderer = ImageRenderer(content: overlayView)
-        overlayRenderer.scale = renderScale
-        guard let overlayImage = overlayRenderer.uiImage,
-              let overlayCGImage = overlayImage.cgImage else {
-            throw NSError(domain: "RouteVideoExport", code: -2)
-        }
-
-        guard let ciMap = CIImage(image: snapshot),
-              let mapCGImage = CIContext().createCGImage(ciMap, from: ciMap.extent) else {
-            throw NSError(domain: "RouteVideoExport", code: -3)
-        }
-
-        let scaledPoints = snapshotPoints.map {
-            CGPoint(x: $0.x * renderScale, y: $0.y * renderScale)
-        }
-
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mimo_route_bn_v2_\(UUID().uuidString).mov")
-        try? FileManager.default.removeItem(at: outputURL)
-
-        try await exportWithCAShapeLayer(
-            mapCGImage: mapCGImage,
-            overlayCGImage: overlayCGImage,
-            scaledPoints: scaledPoints,
-            totalDistanceM: totalDistanceM,
-            hrSamples: hrSamplesForRoute,
-            workoutDuration: routeWorkoutDuration,
-            showHRGradient: showHRGradient,
-            miniMeImage: routeMarkerImage,
-            showKmMarkers: false,
-            outputURL: outputURL,
-            progressHandler: progressHandler
-        )
-
-        return outputURL
-    }
-
     // MARK: - Core compositing engine
 
     private static func exportWithCAShapeLayer(
@@ -826,7 +692,7 @@ struct RouteVideoExportService {
                 parentLayer.addSublayer(tipDot)
             }
 
-            // KM markers — route video only (BigNumber card uses showKmMarkers: false)
+            // KM markers
             if showKmMarkers {
                 let markers = computeKmMarkers(snapshotPoints: scaledPoints, totalDistanceM: totalDistanceM)
                 for m in markers {

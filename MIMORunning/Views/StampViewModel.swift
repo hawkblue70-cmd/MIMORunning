@@ -3,7 +3,7 @@
 // StampCard / StampControls / Stamp*Template 뷰에서 @Bindable 로 전달.
 //
 // ⚠️ 이 파일은 스탬프 카드 전용.
-//    Placeable · OneLiner · Athletic · BigNumber · Sky · ECG · Ticket 관련 코드 작성 금지.
+//    Placeable · OneLiner · Athletic 관련 코드 작성 금지.
 
 import SwiftUI
 

@@ -6,7 +6,7 @@ import SwiftUI
 // ShareCardView 내부에서 self. 없이 직접 호출.
 //
 // ⚠️ 이 파일은 Placeable 카드 전용.
-//    Athletic · OneLiner · BigNumber · Sky · ECG · Ticket 관련 코드 작성 금지.
+//    Athletic · OneLiner 관련 코드 작성 금지.
 //
 // 파일별 담당:
 //   PlaceableViewModel.swift      — Placeable 전용 @State (26개 변수) + layout 계산

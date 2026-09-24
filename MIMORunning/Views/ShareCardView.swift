@@ -45,10 +45,9 @@ enum ShareCard: Int, CaseIterable, Hashable {
     case placeable
     case oneLiner
     case athletic
-    case bigNumber
 
     /// 상단 사진 스트립 선택을 함께 따르는 카드(스탬프는 자체 선택).
-    static let photoLinked: [ShareCard] = [.placeable, .oneLiner, .athletic, .bigNumber]
+    static let photoLinked: [ShareCard] = [.placeable, .oneLiner, .athletic]
 
     /// 캐러셀 이름표
     var name: String {
@@ -57,7 +56,6 @@ enum ShareCard: Int, CaseIterable, Hashable {
         case .placeable: return "Placeable"
         case .oneLiner:  return "One Liner"
         case .athletic:  return "Athletic"
-        case .bigNumber: return "Big Number"
         }
     }
 
@@ -68,7 +66,6 @@ enum ShareCard: Int, CaseIterable, Hashable {
         case .placeable: return [.story, .video, .slide]
         case .oneLiner:  return [.story, .video, .slide]
         case .athletic:  return [.athletic, .story, .video, .slide, .routeVideo]
-        case .bigNumber: return [.athletic, .story, .video, .slide, .routeVideo]
         case .stamp:     return [.story, .video, .slide, .routeVideo]
         }
     }
@@ -162,10 +159,8 @@ struct ShareCardScreen: View {
     @State var placeableVM = PlaceableViewModel()
     // OneLiner card ViewModel
     @State var oneLinerVM = OneLinerViewModel()
-    // Athletic card ViewModel (athleticClipRecipes는 BigNumber와 공유)
+    // Athletic card ViewModel
     @State var athleticVM = AthleticViewModel()
-    // BigNumber card ViewModel
-    @State var bigNumberVM = BigNumberViewModel()
     // Video
     @State var videoPickerItem: PhotosPickerItem?
     @State var sourceVideoURL: URL?
@@ -197,7 +192,6 @@ struct ShareCardScreen: View {
     // 현재 캐러셀 카드
     @State private var card: ShareCard = .stamp
     @State var cardPhotoIndex: [ShareCard: Int] = [:]
-    @State private var heroMetric: HeroMetric = .distance
     @State var athleticCropOffsetX: CGFloat = 0.5
     @State private var athleticCropDragBase: CGFloat? = nil
     @State var athleticSlideCropOffsets: [Int: CGFloat] = [:]
@@ -221,7 +215,6 @@ struct ShareCardScreen: View {
     /// 현재 사진에 연결된 Placeable 문구
     var placeableCurrentText: String { placeableVM.placeableStoryTexts[placeableCurrentPhotoIdx] ?? "" }
     // .athletic: 기본 템플릿 카드, 별도 판별 불필요
-    private var isBigNumber: Bool  { card == .bigNumber }
 
     /// Metric chips injected into MultiClipEditorView for the running day OneLiner.
     var oneLinerAvailableMetrics: [MetricItem] {
@@ -515,7 +508,7 @@ struct ShareCardScreen: View {
                                 oneLinerVM.storyClipEditIndex = i
                                 oneLinerVM.showStoryClipEdit = true
                             } else {
-                                // 통일 선택: 모든 카드(Placeable/OneLiner/Athletic/BigNumber) 동시 적용
+                                // 통일 선택: 모든 카드(Placeable/OneLiner/Athletic) 동시 적용
                                 if isOneLiner {
                                     saveOneLinerSettings()
                                     oneLinerFieldFocused = false
@@ -771,71 +764,6 @@ struct ShareCardScreen: View {
 
     // MARK: - Body helpers
 
-    @ViewBuilder
-    private var bigNumberCardPreview: some View {
-        if template == .routeVideo, let snap = routeSnapshot {
-            // 9:16 콘텐츠를 4:5 컨테이너 안에 필러박스로 표시 (양옆 검은 여백)
-            let vidW: CGFloat = 375.0 * 9.0 / 16.0
-            let inset: CGFloat = 375.0 * 0.05
-            ZStack {
-                Color.black
-                BigNumberRouteVideoFrameView(
-                    snapshot: snap,
-                    snapshotPoints: routeSnapshotPoints,
-                    routeProgress: routePreviewProgress,
-                    activity: activity, detail: detail, heroMetric: heroMetric,
-                    memoText: bigNumberVM.bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
-                    weatherText: activity.temperatureC.map { String(format: "%.0f°C", $0) },
-                    weatherIcon: condition?.weather?.systemIcon,
-                    date: activity.date,
-                    shoeName: displayShoeName,
-                    accent: bigNumberVM.bigNumberAccent,
-                    hrSamplesForRoute: shareHRSamples,
-                    routeWorkoutDuration: activity.duration,
-                    routeZoneBounds: shareZoneBounds,
-                    showHRGradient: showHRGradientForRoute,
-                    topInset: inset,
-                    bottomInset: 14
-                )
-                .frame(width: vidW, height: 375)
-                if !isRoutePreviewPlaying {
-                    Button {
-                        routePreviewProgress = 0
-                        previewStampVisible = false
-                        previewTextVisible = false
-                        isRoutePreviewPlaying = true
-                        routePreviewPlayCount += 1
-                    } label: {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 44))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .shadow(color: .black.opacity(0.5), radius: 8)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        } else if template == .video || template == .slide {
-            // 영상/슬라이드 템플릿: BigNumber 전용 프리뷰 (항상 BigNumber 오버레이)
-            bigNumberVideoPreviewCard
-        } else {
-            BigNumberCard(
-                activity: activity, detail: detail, heroMetric: heroMetric,
-                memoText: bigNumberVM.bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
-                weatherText: activity.temperatureC.map { String(format: "%.0f°C", $0) },
-                weatherIcon: condition?.weather?.systemIcon,
-                date: activity.date,
-                shoeName: displayShoeName,
-                photo: template == .story ? photoFor(.bigNumber) : nil,
-                chartPanel: .map,
-                routeCoordinates: routeCoords,
-                accent: bigNumberVM.bigNumberAccent,
-                showHRGradient: showHRGradientForRoute,
-                hrSamplesForRoute: shareHRSamples,
-                routeWorkoutDuration: activity.duration,
-                routeZoneBounds: shareZoneBounds
-            )
-        }
-    }
 
     // MARK: - Placeable 템플릿 미리보기·저장·내보내기 → PlaceableVideoTemplate.swift
 
@@ -1515,13 +1443,6 @@ struct ShareCardScreen: View {
                         .animation(.easeInOut(duration: 0.2), value: template)
                         .frame(width: w, height: 375)
                         .id(ShareCard.athletic)
-                    // BigNumber
-                    AnyView(bigNumberCardPreview)
-                        .frame(width: 300, height: 375)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
-                        .frame(width: w, height: 375)
-                        .id(ShareCard.bigNumber)
                 }
             }
             .scrollDisabled(true)
@@ -1668,68 +1589,7 @@ struct ShareCardScreen: View {
         .clipShape(Capsule())
     }
 
-    private var bigNumberChipRow: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            // Row 1: 메모 — story 메모가 있을 때만 표시
-            if let s = story, !s.memo.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        Button {
-                            bigNumberVM.bigNumberShowMemo.toggle()
-                            Task { await renderCard(showSpinner: false) }
-                        } label: {
-                            if bigNumberVM.bigNumberShowMemo {
-                                activeChip(AppLanguage.shared.s("메모", "Memo"))
-                            } else {
-                                availableChip(AppLanguage.shared.s("메모", "Memo"))
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 2)
-                }
-            }
-            // Row 2: HeroMetric radio chips (거리/페이스/시간/심박)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(HeroMetric.allCases) { m in
-                        let available = m.isAvailable(activity: activity, detail: detail)
-                        let isSelected = heroMetric == m
-                        Button {
-                            guard available else { return }
-                            heroMetric = m
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(m.shortName).font(.caption.weight(.semibold))
-                            }
-                            .foregroundStyle(
-                                !available ? Color(hex: "6E6E78")
-                                    : Color.white
-                            )
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(
-                                !available ? Color.white.opacity(0.04)
-                                    : (isSelected ? Theme.violet : Color.white.opacity(0.15))
-                            )
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!available)
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 2)
-            }
-            bigNumberAccentRow
-        }
-    }
 
-    // → BigNumberControls.swift: BigNumberAccentRowView
-    private var bigNumberAccentRow: some View {
-        BigNumberAccentRowView(vm: bigNumberVM, onRender: { await renderCard(showSpinner: false) })
-    }
 
     // Chip row for placeholder cards: all chips shown but locked/gray
     private var lockedAllChipRow: some View {
@@ -1771,7 +1631,6 @@ struct ShareCardScreen: View {
     @ViewBuilder private var activeChipRow: some View {
         if isStamp                              { StampControlsView(vm: stampVM, template: template, data: stampPreviewData,
                                                     onLoadPreview: { await loadStampVideoPreview(data: stampPreviewData) }) }
-        else if isBigNumber                     { bigNumberChipRow }
         else if isPlaceable { placeableStoryModeChipRow }
         else if isOneLiner                      { oneLinerChipRow }
         else                                    { chipRow }
@@ -2093,7 +1952,7 @@ struct ShareCardScreen: View {
                     .padding(.bottom, 4)
             }
         }
-        // Athletic/BigNumber 슬라이드: 사진 스트립만 표시 (문구·데이터 그리드 없음)
+        // Athletic 슬라이드: 사진 스트립만 표시 (문구·데이터 그리드 없음)
         if !isOneLiner, !isPlaceable, !isStamp, template == .slide {
             AnyView(photoStrip.padding(.bottom, storyPhotos.isEmpty ? 4 : 0))
             if !storyPhotos.isEmpty {
@@ -2734,7 +2593,7 @@ struct ShareCardScreen: View {
             where (placeableVM.placeableClipRecipes[i].lines.first ?? "").isEmpty {
             placeableVM.placeableClipRecipes[i].lines = [text]
         }
-        // Athletic / BigNumber 영상 클립 — 빈 첫 번째 줄만
+        // Athletic 영상 클립 — 빈 첫 번째 줄만
         for i in athleticVM.athleticClipRecipes.indices
             where (athleticVM.athleticClipRecipes[i].lines.first ?? "").isEmpty {
             athleticVM.athleticClipRecipes[i].lines = [text]
@@ -2793,18 +2652,6 @@ struct ShareCardScreen: View {
             guard !didResetMediaLogo else { return }
             didResetMediaLogo = true
             MediaLogoSetting.shared.resetForNewSheet()
-        }
-        .onChange(of: heroMetric) { _, _ in
-            guard isBigNumber else { return }
-            Task { await renderCard(showSpinner: false) }
-        }
-        .onChange(of: bigNumberVM.bigNumberShowMemo) { _, _ in
-            guard isBigNumber else { return }
-            Task { await renderCard(showSpinner: false) }
-        }
-        .onChange(of: bigNumberVM.bigNumberAccent) { _, _ in
-            guard isBigNumber else { return }
-            Task { await renderCard(showSpinner: false) }
         }
         .onChange(of: placeableVM.placeableMetricsPosition) { _, _ in
             guard isPlaceable else { return }
@@ -3046,40 +2893,33 @@ struct ShareCardScreen: View {
         defer { athleticVM.athleticPreviewBuilding = false }
 
         let overlayImage: UIImage?
-        if isBigNumber {
-            let exportH: CGFloat = 384
-            let renderer = ImageRenderer(content: makeBigNumberOverlayView(topInset: exportH * 0.05, bottomInset: 14).frame(width: 216, height: exportH).preferredColorScheme(.dark))
-            renderer.scale = 5.0
-            overlayImage = renderer.uiImage
-        } else {
-            let exportH: CGFloat = 384
-            let exportInset = exportH * 0.05
-            let km = activity.distance / 1000
-            let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
-            let overlayView = VideoOverlayCard(
-                distanceKm: distStr,
-                date: activity.date,
-                metrics: Array(enabledMetricItems.prefix(6)),
-                raceName: activeRaceName,
-                chartPanel: cardPanel,
-                chartSplits: detail?.splits ?? [],
-                chartHRSamples: shareHRSamples,
-                chartHRZones: detail?.hrZones ?? [],
-                chartWorkoutSeries: shareWorkoutSeries,
-                chartIntervalSegments: detail?.intervalSegments ?? [],
-                weather: condition?.weather,
-                shoeName: displayShoeName,
-                summaryLines: cardSummaryLines,
-                scale: 216.0 / 300.0,
-                topInset: exportInset,
-                bottomInset: 14
-            )
-            .frame(width: 216, height: exportH)
-            .preferredColorScheme(.dark)
-            let renderer = ImageRenderer(content: overlayView)
-            renderer.scale = 5.0
-            overlayImage = renderer.uiImage
-        }
+        let exportH: CGFloat = 384
+        let exportInset = exportH * 0.05
+        let km = activity.distance / 1000
+        let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        let overlayView = VideoOverlayCard(
+            distanceKm: distStr,
+            date: activity.date,
+            metrics: Array(enabledMetricItems.prefix(6)),
+            raceName: activeRaceName,
+            chartPanel: cardPanel,
+            chartSplits: detail?.splits ?? [],
+            chartHRSamples: shareHRSamples,
+            chartHRZones: detail?.hrZones ?? [],
+            chartWorkoutSeries: shareWorkoutSeries,
+            chartIntervalSegments: detail?.intervalSegments ?? [],
+            weather: condition?.weather,
+            shoeName: displayShoeName,
+            summaryLines: cardSummaryLines,
+            scale: 216.0 / 300.0,
+            topInset: exportInset,
+            bottomInset: 14
+        )
+        .frame(width: 216, height: exportH)
+        .preferredColorScheme(.dark)
+        let renderer = ImageRenderer(content: overlayView)
+        renderer.scale = 5.0
+        overlayImage = renderer.uiImage
         guard let overlayImage else { return }
 
         let offsets = storyPhotos.indices.map { i in athleticSlideCropOffsets[i] ?? 0.5 }
@@ -3119,7 +2959,7 @@ struct ShareCardScreen: View {
         }
         // Stop preview when leaving clip modes (story has no preview)
         if isOneLiner, template == .story { previewPlayer.pause() }
-        // Athletic/BigNumber: .video ↔ .slide 전환 시 공유 videoState 초기화
+        // Athletic: .video ↔ .slide 전환 시 videoState 초기화
         // (이전 템플릿 콘텐츠가 새 템플릿 프리뷰 영역에 잔존하는 것을 방지)
         if !isOneLiner, !isPlaceable, !isStamp, template == .video || template == .slide {
             athleticVM.athleticVideoState.invalidate()
@@ -3192,9 +3032,8 @@ struct ShareCardScreen: View {
                 previewPlayer.invalidate()
             }
         }
-        // Athletic·BigNumber는 athleticVideoState를 공유하므로, 카드 전환 시 항상 초기화.
-        // 이전 카드의 영상이 새 카드 오버레이와 겹쳐 보이는 버그 방지.
-        if [.athletic, .bigNumber].contains(newCard) {
+        // Athletic 진입 시 athleticVideoState 초기화 — 이전 카드의 영상이 오버레이와 겹쳐 보이는 버그 방지.
+        if newCard == .athletic {
             athleticVM.athleticVideoState.invalidate()
         }
         routeVideoFile = nil
@@ -3277,16 +3116,13 @@ struct ShareCardScreen: View {
                 }
             }
         }
-        // Athletic/BigNumber 카드 진입 시 — 클립이 있으면 영상 모드 복원, 없으면 SwiftData에서 복원
+        // Athletic 카드 진입 시 — 클립이 있으면 영상 모드 복원, 없으면 SwiftData에서 복원
         if newCard == .athletic {
             if !athleticVM.athleticClipRecipes.isEmpty {
                 template = .video
             } else {
                 Task { await loadAthleticClipRecipes() }
             }
-        }
-        if newCard == .bigNumber, athleticVM.athleticClipRecipes.isEmpty {
-            Task { await loadAthleticClipRecipes() }
         }
         Task { await renderCard(showSpinner: false) }
     }
@@ -3610,7 +3446,6 @@ struct ShareCardScreen: View {
                 } // end template == .slide else
 
                 // 데이터 오버레이: Athletic/OneLiner — VideoOverlayCard (상·하 5% 여백)
-                // BigNumber는 bigNumberVideoPreviewCard를 통해 항상 BigNumberVideoOverlayView를 사용
                 // 슬라이드 재생 중에는 영상에 오버레이가 이미 합성되어 있으므로 정적 오버레이 숨김
                 let slideIsPlaying = template == .slide && athleticVM.athleticVideoState.isPlaying
                 let inset: CGFloat = 375 * 0.05   // 18.75pt
@@ -3665,7 +3500,7 @@ struct ShareCardScreen: View {
                     }
                 }
 
-                // ▶ Athletic/BigNumber 슬라이드 미리보기 컨트롤
+                // ▶ Athletic 슬라이드 미리보기 컨트롤
                 if !isOneLiner, template == .slide, !storyPhotos.isEmpty, !isExportingVideo {
                     if athleticVM.athleticVideoState.isReady {
                         Button { athleticVM.athleticVideoState.togglePlayPause() } label: {
@@ -3726,155 +3561,6 @@ struct ShareCardScreen: View {
         }
     }
 
-    // MARK: - BigNumber 영상/슬라이드 프리뷰 (isBigNumber 의존 없이 항상 BigNumber 오버레이)
-
-    @ViewBuilder
-    private var bigNumberVideoPreviewCard: some View {
-        let vidW: CGFloat = 375.0 * 9.0 / 16.0
-        ZStack {
-            Color.black
-            // 슬라이드: 재생 중일 때만 비디오 플레이어, 정지/대기 중엔 정적 사진
-            if template == .slide {
-                if athleticVM.athleticVideoState.isReady,
-                   athleticVM.athleticVideoState.isPlaying,
-                   let avPlayer = athleticVM.athleticVideoState.player {
-                    RawVideoPlayerView(player: avPlayer)
-                        .frame(width: vidW, height: 375)
-                } else {
-                    let idx   = cardPhotoIndex[.bigNumber] ?? 0
-                    let cropX = athleticSlideCropOffsets[idx] ?? 0.5
-                    if let photo = storyPhotos.indices.contains(idx) ? storyPhotos[idx] : storyPhotos.first {
-                        let s      = max(vidW / photo.size.width, 375 / photo.size.height)
-                        let iW     = photo.size.width  * s
-                        let iH     = photo.size.height * s
-                        let excess = max(0, iW - vidW)
-                        Image(uiImage: photo)
-                            .resizable()
-                            .frame(width: iW, height: iH)
-                            .offset(x: -(cropX * excess))
-                            .frame(width: vidW, height: 375, alignment: .topLeading)
-                            .clipped()
-                            .brightness(CardVisual.videoBrightnessBoost)
-                            .gesture(excess > 0 ? DragGesture(minimumDistance: 1)
-                                .onChanged { drag in
-                                    if athleticSlideCropDragBase == nil { athleticSlideCropDragBase = cropX }
-                                    guard let base = athleticSlideCropDragBase else { return }
-                                    athleticSlideCropOffsets[idx] = max(0, min(1,
-                                        base - drag.translation.width / excess))
-                                }
-                                .onEnded { _ in
-                                    athleticSlideCropDragBase = nil
-                                    saveAthleticCropOffsets()
-                                    athleticVM.athleticVideoState.invalidate()
-                                }
-                            : nil)
-                    } else if !isExportingVideo {
-                        VStack(spacing: 10) {
-                            Image(systemName: "photo.badge.plus")
-                                .font(.system(size: 32))
-                                .foregroundStyle(Theme.violet)
-                            Text(AppLanguage.shared.s("사진을 선택해 주세요", "Select photos"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            } else {
-                // 영상: 플레이어 준비 시 플레이어, 아니면 썸네일
-                if athleticVM.athleticVideoState.isReady, let avPlayer = athleticVM.athleticVideoState.player {
-                    RawVideoPlayerView(player: avPlayer)
-                        .frame(width: vidW, height: 375)
-                } else {
-                    let previewThumb = videoPreviewImage ?? athleticVM.athleticClipRecipes.first?.thumbnail
-                    if let preview = previewThumb {
-                        Image(uiImage: preview)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: vidW, height: 375)
-                            .clipped()
-                            .brightness(CardVisual.videoBrightnessBoost)
-                    } else if !isExportingVideo {
-                        VStack(spacing: 10) {
-                            Image(systemName: "video.badge.plus")
-                                .font(.system(size: 32))
-                                .foregroundStyle(Theme.violet)
-                            Text(AppLanguage.shared.s("영상을 선택해 주세요", "Select a video"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            // BigNumber 오버레이 — 항상 BigNumber (현재 카드 의존 없음)
-            // topInset: 5% 여백, bottomInset: 14pt 고정
-            let previewInset: CGFloat = 375 * 0.05
-            makeBigNumberOverlayView(topInset: previewInset, bottomInset: 14)
-                .frame(width: vidW, height: 375)
-                .allowsHitTesting(false)
-            // 합성 진행 오버레이
-            if isExportingVideo {
-                Color.black.opacity(0.55)
-                VStack(spacing: 8) {
-                    ProgressView().tint(.white).scaleEffect(1.2)
-                    Text(AppLanguage.shared.s("합성 중...", "Processing..."))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.white)
-                }
-            }
-            // 슬라이드 ▶ 버튼
-            if template == .slide, !storyPhotos.isEmpty, !isExportingVideo {
-                if athleticVM.athleticVideoState.isReady {
-                    Button { athleticVM.athleticVideoState.togglePlayPause() } label: {
-                        Image(systemName: athleticVM.athleticVideoState.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.white.opacity(athleticVM.athleticVideoState.isPlaying ? 0 : 0.85))
-                            .shadow(color: .black.opacity(0.55), radius: 10)
-                    }
-                    .buttonStyle(.plain)
-                } else if athleticVM.athleticPreviewBuilding {
-                    ProgressView().tint(.white)
-                        .padding(14)
-                        .background(.black.opacity(0.45))
-                        .clipShape(Circle())
-                } else {
-                    Button { Task { await buildAthleticSlidePreview() } } label: {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .shadow(color: .black.opacity(0.55), radius: 10)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            // 영상 ▶ 버튼
-            if template == .video, !athleticVM.athleticClipRecipes.isEmpty, !isExportingVideo {
-                if athleticVM.athleticVideoState.isReady {
-                    Button { athleticVM.athleticVideoState.togglePlayPause() } label: {
-                        Image(systemName: athleticVM.athleticVideoState.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.white.opacity(athleticVM.athleticVideoState.isPlaying ? 0 : 0.85))
-                            .shadow(color: .black.opacity(0.55), radius: 10)
-                    }
-                    .buttonStyle(.plain)
-                } else if athleticVM.athleticPreviewBuilding {
-                    ProgressView().tint(.white)
-                        .padding(14)
-                        .background(.black.opacity(0.45))
-                        .clipShape(Circle())
-                } else {
-                    Button { Task { await buildAthleticPreview() } } label: {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .shadow(color: .black.opacity(0.55), radius: 10)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .frame(width: vidW, height: 375)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-    }
 
     // MARK: - Share CTA
 
@@ -3982,38 +3668,6 @@ struct ShareCardScreen: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .disabled(routeSnapshotPoints.isEmpty)
-            }
-        } else if isBigNumber {
-            // BigNumber card: always share as image (video/routeVideo handled above via exportVideo/exportRouteVideo)
-            if isRendering {
-                HStack(spacing: 10) {
-                    ProgressView().tint(Theme.violet)
-                    Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card..."))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
-            } else if let img = previewImage {
-                Button { showShareSheet = true } label: {
-                    Label(template == .story
-                          ? AppLanguage.shared.s("스토리 내보내기", "Export Story")
-                          : AppLanguage.shared.s("카드 내보내기", "Export Card"),
-                          systemImage: "square.and.arrow.up")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 46)
-                        .background(Theme.violet)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                }
-                .sheet(isPresented: $showShareSheet) {
-                    ShareSheet(images: [img])
-                }
-            } else {
-                Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
             }
         } else if isRendering {
             HStack(spacing: 10) {
@@ -4156,20 +3810,6 @@ struct ShareCardScreen: View {
 
     // MARK: - Render
 
-    @MainActor
-    private func makeBigNumberOverlayView(topInset: CGFloat? = nil, bottomInset: CGFloat? = nil) -> BigNumberVideoOverlayView {
-        BigNumberVideoOverlayView(
-            activity: activity, detail: detail, heroMetric: heroMetric,
-            memoText: bigNumberVM.bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
-            weatherText: activity.temperatureC.map { String(format: "%.0f°C", $0) },
-            weatherIcon: condition?.weather?.systemIcon,
-            date: activity.date,
-            shoeName: displayShoeName,
-            topInset: topInset,
-            bottomInset: bottomInset,
-            accent: bigNumberVM.bigNumberAccent
-        )
-    }
 
     private func buildPreview() {
         Task {
@@ -4454,7 +4094,7 @@ struct ShareCardScreen: View {
         }
 
         // ── Athletic 멀티 클립 합성 (athleticVM.athleticClipRecipes 기반) ──────────────
-        if !isOneLiner, !isPlaceable, !isStamp, !isBigNumber, template == .video, !athleticVM.athleticClipRecipes.isEmpty {
+        if !isOneLiner, !isPlaceable, !isStamp, template == .video, !athleticVM.athleticClipRecipes.isEmpty {
             let km = activity.distance / 1000
             let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
             // 미리보기와 동일한 9:16 비율(216×384pt)로 오버레이 렌더링
@@ -4484,7 +4124,7 @@ struct ShareCardScreen: View {
             // Warmup: 첫 번째 ImageRenderer 호출로 SwiftUI 파이프라인 초기화.
             let wuR = ImageRenderer(content: overlayView); wuR.scale = 1.0; _ = wuR.uiImage
             try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms
-            guard !isOneLiner, !isPlaceable, !isStamp, !isBigNumber, template == .video else { isExportingVideo = false; return }
+            guard !isOneLiner, !isPlaceable, !isStamp, template == .video else { isExportingVideo = false; return }
             let overlayRenderer = ImageRenderer(content: overlayView)
             overlayRenderer.scale = 5.0
             guard let overlayImage = overlayRenderer.uiImage else {
@@ -4529,38 +4169,9 @@ struct ShareCardScreen: View {
             return
         }
 
-        // ── BigNumber 슬라이드 (사진 → 영상, cross-dissolve) ──────────────────────
-        if isBigNumber, template == .slide, !storyPhotos.isEmpty {
-            let exportH: CGFloat = 384
-            let bnOverlayView = makeBigNumberOverlayView(topInset: exportH * 0.05, bottomInset: 14)
-                .frame(width: 216, height: exportH).preferredColorScheme(.dark)
-            // Warmup: 첫 번째 ImageRenderer 호출로 SwiftUI 파이프라인 초기화.
-            let wuR = ImageRenderer(content: bnOverlayView); wuR.scale = 1.0; _ = wuR.uiImage
-            try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms
-            guard isBigNumber, template == .slide, !storyPhotos.isEmpty else { isExportingVideo = false; return }
-            let overlayRenderer = ImageRenderer(content: bnOverlayView)
-            overlayRenderer.scale = 5.0
-            guard let overlayImage = overlayRenderer.uiImage else {
-                isExportingVideo = false; return
-            }
-            let offsets = storyPhotos.indices.map { i in athleticSlideCropOffsets[i] ?? 0.5 }
-            if let out = try? await PhotoSlideComposition.exportAthleticSlide(
-                photos: storyPhotos,
-                cropOffsets: offsets,
-                overlayImage: overlayImage,
-                clipDuration: PhotoSlideComposition.placeableSlideDuration) {
-                exportedVideoFile = SharableVideoFile(url: out)
-                presentShareSheet(url: out)
-            } else {
-                videoExportError = AppLanguage.shared.s("슬라이드 영상 합성에 실패했습니다.", "Slide export failed.")
-                showVideoExportError = true
-            }
-            isExportingVideo = false
-            return
-        }
 
         // ── Athletic 슬라이드 (사진 → 영상) ────────────────────────────────────
-        if !isOneLiner, !isPlaceable, !isBigNumber, !isStamp, template == .slide, !storyPhotos.isEmpty {
+        if !isOneLiner, !isPlaceable, !isStamp, template == .slide, !storyPhotos.isEmpty {
             let km = activity.distance / 1000
             let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
             let exportH: CGFloat = 384
@@ -4588,7 +4199,7 @@ struct ShareCardScreen: View {
             // Warmup: 첫 번째 ImageRenderer 호출로 SwiftUI 파이프라인 초기화.
             let wuR = ImageRenderer(content: overlayView); wuR.scale = 1.0; _ = wuR.uiImage
             try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms
-            guard !isOneLiner, !isPlaceable, !isBigNumber, !isStamp, template == .slide, !storyPhotos.isEmpty else { isExportingVideo = false; return }
+            guard !isOneLiner, !isPlaceable, !isStamp, template == .slide, !storyPhotos.isEmpty else { isExportingVideo = false; return }
             let overlayRenderer = ImageRenderer(content: overlayView)
             overlayRenderer.scale = 5.0
             guard let overlayImage = overlayRenderer.uiImage else {
@@ -4834,54 +4445,6 @@ struct ShareCardScreen: View {
             return
         }
 
-        // ── BigNumber 멀티 클립 합성 (athleticVM.athleticClipRecipes 공유) ──────────────
-        if isBigNumber, !athleticVM.athleticClipRecipes.isEmpty {
-            let exportH: CGFloat = 384
-            let overlayRenderer = ImageRenderer(content:
-                makeBigNumberOverlayView(topInset: exportH * 0.05, bottomInset: 14).frame(width: 216, height: exportH).preferredColorScheme(.dark)
-            )
-            overlayRenderer.scale = 5.0
-            guard let overlayImage = overlayRenderer.uiImage else {
-                isExportingVideo = false; return
-            }
-            var processedURLs: [URL] = []
-            for recipe in athleticVM.athleticClipRecipes {
-                var srcURL = recipe.url
-                if !FileManager.default.fileExists(atPath: srcURL.path) {
-                    if let urlAsset = recipe.resolvedAsset as? AVURLAsset {
-                        srcURL = urlAsset.url
-                    } else if let assetID = recipe.assetIdentifier,
-                              let resolved = try? await MultiClipComposition.resolveAVAsset(assetID: assetID),
-                              let urlAsset = resolved as? AVURLAsset {
-                        srcURL = urlAsset.url
-                    } else {
-                        continue
-                    }
-                }
-                if let u = try? await VideoExportService.exportClipWithOverlay(
-                    sourceURL: srcURL, overlay: overlayImage,
-                    trimStart: recipe.trimStart, trimEnd: recipe.trimEnd,
-                    muteAudio: athleticVM.athleticMuted,
-                    brightenHDR: true) {
-                    processedURLs.append(u)
-                }
-            }
-            let exportedURL: URL?
-            if processedURLs.count > 1 {
-                exportedURL = try? await VideoExportService.concatenateURLs(processedURLs)
-            } else {
-                exportedURL = processedURLs.first
-            }
-            if let out = exportedURL {
-                exportedVideoFile = SharableVideoFile(url: out)
-                presentShareSheet(url: out)
-            } else {
-                videoExportError = AppLanguage.shared.s("영상 합성에 실패했습니다.", "Video export failed.")
-                showVideoExportError = true
-            }
-            isExportingVideo = false
-            return
-        }
 
         let km = activity.distance / 1000
         let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
@@ -4933,147 +4496,125 @@ struct ShareCardScreen: View {
         routeVideoFile = nil
         do {
             let url: URL
-            if isBigNumber {
-                url = try await RouteVideoExportService.exportBigNumberFast(
-                    snapshot: snap,
-                    snapshotPoints: routeSnapshotPoints,
-                    activity: activity,
-                    detail: detail,
-                    heroMetric: heroMetric,
-                    memoText: bigNumberVM.bigNumberShowMemo && !(story?.memo.isEmpty ?? true) ? story?.memo : nil,
-                    weatherText: activity.temperatureC.map { String(format: "%.0f°C", $0) },
-                    weatherIcon: condition?.weather?.systemIcon,
-                    date: activity.date,
-                    shoeName: displayShoeName,
-                    totalDistanceM: activity.distance,
-                    hrSamplesForRoute: shareHRSamples,
-                    routeWorkoutDuration: activity.duration,
-                    showHRGradient: showHRGradientForRoute,
-                    routeMarkerImage: miniMeStore.image,
-                    accent: bigNumberVM.bigNumberAccent,
-                    progressHandler: { p in routeVideoProgress = p }
-                )
-            } else {
-                // stamp 경로 영상: 스탬프·문구를 별도 이미지로 렌더 → 각각 애니메이션 CALayer로 합성
-                var exportStampLayers: [RouteVideoExportService.StampLayerConfig] = []
-                if isStamp, template == .routeVideo {
-                    let previewVidW: CGFloat = 375.0 * 9.0 / 16.0
-                    let stampStart: Double = 0.5   // 영상 시작 후 0.5s (경로 그려지는 동안 오버레이)
-                    let stampAnimDuration: Double = 0.55
-                    let textStart: Double = stampStart + stampAnimDuration  // 스탬프 완료 후 문구 등장
+            // stamp 경로 영상: 스탬프·문구를 별도 이미지로 렌더 → 각각 애니메이션 CALayer로 합성
+            var exportStampLayers: [RouteVideoExportService.StampLayerConfig] = []
+            if isStamp, template == .routeVideo {
+                let previewVidW: CGFloat = 375.0 * 9.0 / 16.0
+                let stampStart: Double = 0.5   // 영상 시작 후 0.5s (경로 그려지는 동안 오버레이)
+                let stampAnimDuration: Double = 0.55
+                let textStart: Double = stampStart + stampAnimDuration  // 스탬프 완료 후 문구 등장
 
-                    func renderStampImage(renderOnlyStamp: Bool, renderOnlyText: Bool) -> UIImage? {
-                        if renderOnlyText {
-                            // 문구: Placeable과 동일하게 300pt 기준 (줄바꿈·글자 크기 통일)
-                            let textW = PlaceableCard.cardWidth
-                            let textH = textW * 16.0 / 9.0
-                            let textScale = RouteVideoExportService.renderScale * previewVidW / textW
-                            let v = OneLinerCard(
-                                text: stampVM.stampText,
-                                position: stampVM.stampTextPosition,
-                                textColor: stampVM.stampTextColor,
-                                fontChoice: stampVM.stampTextFont,
-                                sizeLevel: stampVM.stampTextSize,
-                                appearanceMode: .typing,
-                                decorEffect: .none,
-                                hasBorder: stampVM.stampTextHasBorder,
-                                showBackground: false,
-                                showWordmark: false,
-                                cardHeightOverride: textH,
-                                safeTopInset: 77,
-                                isStaticPreview: true
-                            )
-                            .frame(width: textW, height: textH)
-                            let r = ImageRenderer(content: v)
-                            r.scale = textScale
-                            return r.uiImage
-                        }
-                        let v = StampCard(
-                            data: stampPreviewData,
-                            template: stampVM.storyTemplate,
-                            colorMode: stampVM.colorMode,
-                            position: stampVM.position,
-                            sizeLevel: stampVM.sizeLevel,
-                            isBrightBackground: false,
-                            showHeartRate: stampVM.showHeartRate,
-                            showCalories: stampVM.showCalories,
-                            showTextOutline: stampVM.showTextOutline,
-                            stampText: stampVM.stampText,
-                            stampTextPosition: stampVM.stampTextPosition,
-                            stampTextFont: stampVM.stampTextFont,
-                            stampTextSize: stampVM.stampTextSize,
-                            stampTextColor: stampVM.stampTextColor,
-                            stampTextHasBorder: stampVM.stampTextHasBorder,
-                            wordmarkTopInset: 54,
-                            renderOnlyStamp: renderOnlyStamp,
-                            renderOnlyText: false
+                func renderStampImage(renderOnlyStamp: Bool, renderOnlyText: Bool) -> UIImage? {
+                    if renderOnlyText {
+                        // 문구: Placeable과 동일하게 300pt 기준 (줄바꿈·글자 크기 통일)
+                        let textW = PlaceableCard.cardWidth
+                        let textH = textW * 16.0 / 9.0
+                        let textScale = RouteVideoExportService.renderScale * previewVidW / textW
+                        let v = OneLinerCard(
+                            text: stampVM.stampText,
+                            position: stampVM.stampTextPosition,
+                            textColor: stampVM.stampTextColor,
+                            fontChoice: stampVM.stampTextFont,
+                            sizeLevel: stampVM.stampTextSize,
+                            appearanceMode: .typing,
+                            decorEffect: .none,
+                            hasBorder: stampVM.stampTextHasBorder,
+                            showBackground: false,
+                            showWordmark: false,
+                            cardHeightOverride: textH,
+                            safeTopInset: 77,
+                            isStaticPreview: true
                         )
-                        .frame(width: previewVidW, height: 375.0)
-                        .preferredColorScheme(.dark)
+                        .frame(width: textW, height: textH)
                         let r = ImageRenderer(content: v)
-                        r.scale = RouteVideoExportService.renderScale
+                        r.scale = textScale
                         return r.uiImage
                     }
-
-                    // 스탬프 레이어
-                    if let img = renderStampImage(renderOnlyStamp: true, renderOnlyText: false) {
-                        exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
-                            image: img,
-                            entranceMode: stampVM.stampEntranceMode,
-                            flyDirection: stampVM.stampFlyDirection,
-                            startTime: stampStart,
-                            animDuration: 0.55
-                        ))
-                    }
-                    // 문구 레이어 (문구가 있을 때만)
-                    if !stampVM.stampText.isEmpty,
-                       let img = renderStampImage(renderOnlyStamp: false, renderOnlyText: true) {
-                        exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
-                            image: img,
-                            entranceMode: stampVM.stampTextEntranceMode,
-                            flyDirection: stampVM.stampTextFlyDirection,
-                            startTime: textStart,
-                            animDuration: 0.45
-                        ))
-                    }
-                    // 로고 정적 레이어 — stamp 모드에서만 필요 (VideoOverlayCard 없이 합성 시)
-                    if let logoImg = makeStampLogoOverlay(renderSize: VideoExportService.targetSize, date: stampVM.showDate ? activity.date : nil) {
-                        exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
-                            image: logoImg,
-                            entranceMode: .none,
-                            flyDirection: .trailing,
-                            startTime: 0,
-                            animDuration: 0.0
-                        ))
-                    }
+                    let v = StampCard(
+                        data: stampPreviewData,
+                        template: stampVM.storyTemplate,
+                        colorMode: stampVM.colorMode,
+                        position: stampVM.position,
+                        sizeLevel: stampVM.sizeLevel,
+                        isBrightBackground: false,
+                        showHeartRate: stampVM.showHeartRate,
+                        showCalories: stampVM.showCalories,
+                        showTextOutline: stampVM.showTextOutline,
+                        stampText: stampVM.stampText,
+                        stampTextPosition: stampVM.stampTextPosition,
+                        stampTextFont: stampVM.stampTextFont,
+                        stampTextSize: stampVM.stampTextSize,
+                        stampTextColor: stampVM.stampTextColor,
+                        stampTextHasBorder: stampVM.stampTextHasBorder,
+                        wordmarkTopInset: 54,
+                        renderOnlyStamp: renderOnlyStamp,
+                        renderOnlyText: false
+                    )
+                    .frame(width: previewVidW, height: 375.0)
+                    .preferredColorScheme(.dark)
+                    let r = ImageRenderer(content: v)
+                    r.scale = RouteVideoExportService.renderScale
+                    return r.uiImage
                 }
 
-                url = try await RouteVideoExportService.exportFast(
-                    snapshot: snap,
-                    snapshotPoints: routeSnapshotPoints,
-                    distanceKm: distanceKmString,
-                    duration: activity.formattedDuration,
-                    date: activity.date,
-                    metrics: Array(enabledMetricItems.prefix(6)),
-                    raceName: activeRaceName,
-                    routeMarkerImage: miniMeStore.image,
-                    weather: condition?.weather,
-                    shoeName: displayShoeName,
-                    chartPanel: cardPanel,
-                    chartSplits: detail?.splits ?? [],
-                    chartHRSamples: shareHRSamples,
-                    chartHRZones: detail?.hrZones ?? [],
-                    chartWorkoutSeries: shareWorkoutSeries,
-                    chartIntervalSegments: detail?.intervalSegments ?? [],
-                    summaryLines: cardSummaryLines,
-                    totalDistanceM: activity.distance,
-                    hrSamplesForRoute: shareHRSamples,
-                    routeWorkoutDuration: activity.duration,
-                    showHRGradient: showHRGradientForRoute,
-                    stampLayers: exportStampLayers,
-                    progressHandler: { p in routeVideoProgress = p }
-                )
+                // 스탬프 레이어
+                if let img = renderStampImage(renderOnlyStamp: true, renderOnlyText: false) {
+                    exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
+                        image: img,
+                        entranceMode: stampVM.stampEntranceMode,
+                        flyDirection: stampVM.stampFlyDirection,
+                        startTime: stampStart,
+                        animDuration: 0.55
+                    ))
+                }
+                // 문구 레이어 (문구가 있을 때만)
+                if !stampVM.stampText.isEmpty,
+                   let img = renderStampImage(renderOnlyStamp: false, renderOnlyText: true) {
+                    exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
+                        image: img,
+                        entranceMode: stampVM.stampTextEntranceMode,
+                        flyDirection: stampVM.stampTextFlyDirection,
+                        startTime: textStart,
+                        animDuration: 0.45
+                    ))
+                }
+                // 로고 정적 레이어 — stamp 모드에서만 필요 (VideoOverlayCard 없이 합성 시)
+                if let logoImg = makeStampLogoOverlay(renderSize: VideoExportService.targetSize, date: stampVM.showDate ? activity.date : nil) {
+                    exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
+                        image: logoImg,
+                        entranceMode: .none,
+                        flyDirection: .trailing,
+                        startTime: 0,
+                        animDuration: 0.0
+                    ))
+                }
             }
+
+            url = try await RouteVideoExportService.exportFast(
+                snapshot: snap,
+                snapshotPoints: routeSnapshotPoints,
+                distanceKm: distanceKmString,
+                duration: activity.formattedDuration,
+                date: activity.date,
+                metrics: Array(enabledMetricItems.prefix(6)),
+                raceName: activeRaceName,
+                routeMarkerImage: miniMeStore.image,
+                weather: condition?.weather,
+                shoeName: displayShoeName,
+                chartPanel: cardPanel,
+                chartSplits: detail?.splits ?? [],
+                chartHRSamples: shareHRSamples,
+                chartHRZones: detail?.hrZones ?? [],
+                chartWorkoutSeries: shareWorkoutSeries,
+                chartIntervalSegments: detail?.intervalSegments ?? [],
+                summaryLines: cardSummaryLines,
+                totalDistanceM: activity.distance,
+                hrSamplesForRoute: shareHRSamples,
+                routeWorkoutDuration: activity.duration,
+                showHRGradient: showHRGradientForRoute,
+                stampLayers: exportStampLayers,
+                progressHandler: { p in routeVideoProgress = p }
+            )
             routeVideoFile = SharableVideoFile(url: url)
             showRouteVideoShareSheet = true
         } catch { }
@@ -5160,7 +4701,7 @@ struct ShareCardScreen: View {
         await renderCard()
     }
 
-    // MARK: - Athletic/BigNumber 클립 저장/복원 (영상·슬라이드 템플릿 전용)
+    // MARK: - Athletic 클립 저장/복원 (영상·슬라이드 템플릿 전용)
 
     private var athleticClipsEntry: OneLinerEntry? {
         allOneLinerEntries.first {
@@ -5276,37 +4817,6 @@ struct ShareCardScreen: View {
             return
         }
 
-        // BigNumber card: render regardless of template (video/routeVideo don't block it)
-        if card == .bigNumber {
-            if showSpinner { isRendering = true }
-            storyShareImages = []
-            previewImage = nil
-            let bnPhoto: UIImage? = template == .video ? videoPreviewImage
-                : template == .routeVideo ? routeSnapshot
-                : template == .story ? photoFor(.bigNumber)
-                : nil
-            let bnCard = BigNumberCard(
-                activity: activity, detail: detail, heroMetric: heroMetric,
-                memoText: bigNumberVM.bigNumberShowMemo && story?.memo.isEmpty == false ? story?.memo : nil,
-                weatherText: activity.temperatureC.map { String(format: "%.0f°C", $0) },
-                weatherIcon: condition?.weather?.systemIcon,
-                date: activity.date,
-                shoeName: displayShoeName,
-                photo: bnPhoto,
-                chartPanel: .map,
-                routeCoordinates: routeCoords,
-                accent: bigNumberVM.bigNumberAccent,
-                showHRGradient: showHRGradientForRoute,
-                hrSamplesForRoute: shareHRSamples,
-                routeWorkoutDuration: activity.duration,
-                routeZoneBounds: shareZoneBounds
-            )
-            let renderer = ImageRenderer(content: bnCard.frame(width: 300, height: 375))
-            renderer.scale = 3
-            previewImage = renderer.uiImage
-            isRendering = false
-            return
-        }
 
         // OneLiner card
         if card == .oneLiner {
