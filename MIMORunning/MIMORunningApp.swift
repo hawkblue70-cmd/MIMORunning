@@ -17,10 +17,15 @@ struct MIMORunningApp: App {
         try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [])
         try? AVAudioSession.sharedInstance().setActive(true)
         FontLoader.registerBundledFonts()
-        UITabBar.appearance().itemPositioning = .centered
-        UITabBar.appearance().itemWidth = 76
-        UITabBar.appearance().itemSpacing = 0
-        UITabBarItem.appearance().imageInsets = UIEdgeInsets(top: -4, left: 0, bottom: 4, right: 0)
+        // ⚠ iOS 26 이상만. iOS 18에서는 SwiftUI가 탭바를 붙일 때 이 프록시 적용이
+        //   UIAppearance 내부 assertion(PushNextClassForSettingIMP)으로 실행 직후 크래시한다
+        //   (1.6.2·1.6.3, iOS 18.7.8 두 기기). iOS 18 이하는 기본 탭바 배치.
+        if #available(iOS 26, *) {
+            UITabBar.appearance().itemPositioning = .centered
+            UITabBar.appearance().itemWidth = 76
+            UITabBar.appearance().itemSpacing = 0
+            UITabBarItem.appearance().imageInsets = UIEdgeInsets(top: -4, left: 0, bottom: 4, right: 0)
+        }
         MRCacheMaintenance.purgeStale()
         MIMORunningApp.migrateFormStable()
         MIMORunningApp.mergeAndPurgeStaleWorkoutTypeKey()
