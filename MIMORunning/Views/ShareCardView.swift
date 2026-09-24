@@ -38,23 +38,19 @@ enum ShareTemplate: String, CaseIterable {
 
 // MARK: - Share Card (카드별 지원 템플릿 단일 소스)
 
-enum HorizGridMode { case text, route }
-
 /// 카드 만들기 캐러셀의 카드. 선언 순서 = 화면 순서(allCases).
 enum ShareCard: Int, CaseIterable, Hashable {
     case stamp
-    case placeable
     case oneLiner
     case athletic
 
     /// 상단 사진 스트립 선택을 함께 따르는 카드(스탬프는 자체 선택).
-    static let photoLinked: [ShareCard] = [.placeable, .oneLiner, .athletic]
+    static let photoLinked: [ShareCard] = [.oneLiner, .athletic]
 
     /// 캐러셀 이름표
     var name: String {
         switch self {
         case .stamp:     return "Stamp"
-        case .placeable: return "Placeable"
         case .oneLiner:  return "One Liner"
         case .athletic:  return "Athletic"
         }
@@ -64,7 +60,6 @@ enum ShareCard: Int, CaseIterable, Hashable {
     /// templatePicker 활성화, onCardIndexChanged 자동전환, renderCard 분기의 단일 소스.
     var supportedTemplates: Set<ShareTemplate> {
         switch self {
-        case .placeable: return [.photo, .video, .slide]
         case .oneLiner:  return [.photo, .video, .slide]
         case .athletic:  return [.record, .photo, .video, .slide, .routeVideo]
         case .stamp:     return [.photo, .video, .slide, .routeVideo]
@@ -74,7 +69,7 @@ enum ShareCard: Int, CaseIterable, Hashable {
     /// 카드 진입 시 현재 템플릿이 미지원이면 이 값으로 자동 전환.
     var defaultTemplate: ShareTemplate {
         switch self {
-        case .placeable, .oneLiner, .stamp: return .photo
+        case .oneLiner, .stamp: return .photo
         default:                            return .record
         }
     }
@@ -156,8 +151,6 @@ struct ShareCardScreen: View {
     @State var stampVM = StampViewModel()
     /// 로고 칩 "열 때마다 ON" — 이 시트 인스턴스에서 한 번만 리셋(사진 선택 등 되돌아올 때 재리셋 방지)
     @State private var didResetMediaLogo = false
-    // Placeable card ViewModel
-    @State var placeableVM = PlaceableViewModel()
     // OneLiner card ViewModel
     @State var oneLinerVM = OneLinerViewModel()
     // Athletic card ViewModel
@@ -209,12 +202,7 @@ struct ShareCardScreen: View {
     @State private var stampRoutePoints: [CGPoint]? = nil
 
     private var isStamp: Bool      { card == .stamp }
-    var isPlaceable: Bool  { card == .placeable }
     var isOneLiner: Bool   { card == .oneLiner }
-    /// 현재 Placeable 카드에서 보여주는 사진 인덱스 (photoStrip 탭 기반)
-    var placeableCurrentPhotoIdx: Int { cardPhotoIndex[.placeable] ?? 0 }
-    /// 현재 사진에 연결된 Placeable 문구
-    var placeableCurrentText: String { placeableVM.placeableStoryTexts[placeableCurrentPhotoIdx] ?? "" }
     // .athletic: 기본 템플릿 카드, 별도 판별 불필요
 
     /// Metric chips injected into MultiClipEditorView for the running day OneLiner.
@@ -374,11 +362,9 @@ struct ShareCardScreen: View {
         return 0
     }
 
-    // Placeable story text overlay
     // OneLiner card
     @FocusState private var oneLinerFieldFocused: Bool
     @FocusState private var oneLinerFocusedLine: Int?
-    @FocusState var placeableStoryFocused: Bool
 
     private var oneLinerIsPhotoSlide: Bool { template == .slide }
     /// 슬라이드 = storyPhotos, 영상 = oneLinerVM.oneLinerClipRecipes 기반 '사진/클립 있음' 여부
@@ -509,7 +495,7 @@ struct ShareCardScreen: View {
                                 oneLinerVM.storyClipEditIndex = i
                                 oneLinerVM.showStoryClipEdit = true
                             } else {
-                                // 통일 선택: 모든 카드(Placeable/OneLiner/Athletic) 동시 적용
+                                // 통일 선택: 모든 카드(OneLiner/Athletic) 동시 적용
                                 if isOneLiner {
                                     saveOneLinerSettings()
                                     oneLinerFieldFocused = false
@@ -572,14 +558,6 @@ struct ShareCardScreen: View {
                                             !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                         }
                                         if hasText {
-                                            Circle()
-                                                .fill(Theme.violet)
-                                                .frame(width: 9, height: 9)
-                                                .overlay(Circle().strokeBorder(.black.opacity(0.25), lineWidth: 1))
-                                                .offset(x: 3, y: 3)
-                                        }
-                                    } else if isPlaceable, template == .photo {
-                                        if !(placeableVM.placeableStoryTexts[i] ?? "").isEmpty {
                                             Circle()
                                                 .fill(Theme.violet)
                                                 .frame(width: 9, height: 9)
@@ -765,8 +743,6 @@ struct ShareCardScreen: View {
 
     // MARK: - Body helpers
 
-
-    // MARK: - Placeable 템플릿 미리보기·저장·내보내기 → PlaceableVideoTemplate.swift
 
     @ViewBuilder
     private var stampCardPreview: some View {
@@ -1036,7 +1012,7 @@ struct ShareCardScreen: View {
     @ViewBuilder
     private var oneLinerCardPreview: some View {
         if template == .video {
-            // 211×375pt 고정 — Stamp·Placeable 영상과 동일한 좌표계, 스케일 계산 없음.
+            // 211×375pt 고정 — Stamp 영상과 동일한 좌표계, 스케일 계산 없음.
             let previewW: CGFloat = 211
             if card == .oneLiner, previewPlayer.isReady, previewPlayer.isPlaying,
                let pl = previewPlayer.player, let cl = previewPlayer.contentLayer {
@@ -1336,7 +1312,7 @@ struct ShareCardScreen: View {
     }
 
     private var oneLinerVideoPreviewCard: some View {
-        // OneLinerCard at 211×375pt — Stamp·Placeable 영상과 동일한 좌표계. 스케일 없음.
+        // OneLinerCard at 211×375pt — Stamp 영상과 동일한 좌표계. 스케일 없음.
         let clipRecipe = oneLinerVM.oneLinerClipRecipes.first
         let clipText: String = clipRecipe?.lines
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -1426,13 +1402,6 @@ struct ShareCardScreen: View {
                                 stampVM.selectedClipIndex = newIdx
                             }
                         }
-                    // Placeable — 영상 템플릿은 9:16 넓게(480pt), 그 외 375pt
-                    placeableCardPreview
-                        .frame(width: 300, height: cardSectionH)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .shadow(color: Theme.violet.opacity(0.3), radius: 28, y: 10)
-                        .frame(width: w, height: cardSectionH)
-                        .id(ShareCard.placeable)
                     // OneLiner (한마디) — 영상 선택 시 9:16 확장
                     AnyView(oneLinerCardPreview)
                         .frame(width: 300, height: oneLinerCardHeight)
@@ -1616,7 +1585,6 @@ struct ShareCardScreen: View {
     @ViewBuilder private var activeChipRow: some View {
         if isStamp                              { StampControlsView(vm: stampVM, template: template, data: stampPreviewData,
                                                     onLoadPreview: { await loadStampVideoPreview(data: stampPreviewData) }) }
-        else if isPlaceable { placeableStoryModeChipRow }
         else if isOneLiner                      { oneLinerChipRow }
         else                                    { chipRow }
     }
@@ -1908,37 +1876,17 @@ struct ShareCardScreen: View {
     }
 
     @ViewBuilder
-    private var placeableControlPanel: some View {
+    private var cardControlPanel: some View {
         AnyView(templatePicker)
         AnyView(activeChipRow.padding(.bottom, 3))
-        if isPlaceable, template == .photo || template == .slide {
-            AnyView(placeableStoryTextField)
-        }
-        if isPlaceable, template == .video, !placeableVM.placeableClipRecipes.isEmpty {
-            AnyView(placeableTrimRow)
-        }
         if isStamp, template == .video, !stampVM.clipRecipes.isEmpty {
             AnyView(stampTrimRow)
         }
         if template == .photo || (isStamp && template == .slide) {
             AnyView(photoStrip.padding(.bottom, 8))
         }
-        if isPlaceable, template == .slide {
-            AnyView(photoStrip.padding(.bottom, storyPhotos.isEmpty ? 4 : 0))
-            if !storyPhotos.isEmpty {
-                let clipCnt = storyPhotos.count
-                let totalSec = Int(Double(clipCnt) * PhotoSlideComposition.placeableSlideDuration)
-                Text(AppLanguage.shared.s(
-                    "사진 \(clipCnt)장 · \(totalSec)초",
-                    "\(clipCnt) photo(s) · \(totalSec)s"))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 4)
-            }
-        }
         // Athletic 슬라이드: 사진 스트립만 표시 (문구·데이터 그리드 없음)
-        if !isOneLiner, !isPlaceable, !isStamp, template == .slide {
+        if !isOneLiner, !isStamp, template == .slide {
             AnyView(photoStrip.padding(.bottom, storyPhotos.isEmpty ? 4 : 0))
             if !storyPhotos.isEmpty {
                 let clipCnt = storyPhotos.count
@@ -1953,26 +1901,7 @@ struct ShareCardScreen: View {
             }
         }
         if template == .video {
-            if isPlaceable {
-                AnyView(MultiClipEditorView(
-                    recipes: Bindable(placeableVM).placeableClipRecipes,
-                    isPhotoSlideMode: .constant(false),
-                    muteAudio: Bindable(placeableVM).placeableMuteAudio,
-                    selectedClipIndex: $placeableVM.selectedPlaceableClipIndex,
-                    savedClipLines: [],
-                    availableMetrics: [],
-                    enabledMetricIDs: Bindable(placeableVM).placeableEnabledMetricIDs,
-                    onSave: {
-                        savePlaceableVideoClips()
-                        Task { await loadPlaceablePreview() }
-                    },
-                    showTitle: false,
-                    openEditOnTap: false,
-                    videoTitle: Bindable(placeableVM).placeableVideoTitle,
-                    titleStyle: Bindable(placeableVM).placeableTitleStyle
-                )
-                .padding(.horizontal, 24))
-            } else if isStamp {
+            if isStamp {
                 AnyView(MultiClipEditorView(
                     recipes: Bindable(stampVM).clipRecipes,
                     isPhotoSlideMode: .constant(false),
@@ -2163,7 +2092,7 @@ struct ShareCardScreen: View {
                     if isOneLiner {
                         oneLinerControlPanel
                     } else {
-                        placeableControlPanel
+                        cardControlPanel
                     }
                     Color.clear.frame(height: 8)
                 }
@@ -2227,11 +2156,6 @@ struct ShareCardScreen: View {
             }
         }
         .onChange(of: card) { _, newCard in onCardChanged(newCard) }
-        .onDisappear {
-            // 뷰가 dismiss될 때 현재 영상 클립 문구·스타일을 UserDefaults에 저장.
-            // 텍스트 필드 바인딩의 onChange 타이밍 이슈로 미저장된 경우 여기서 최종 보장.
-            savePlaceableVideoClips()
-        }
     }
 
     // bodyWithEventHandlers attaches onChange/task handlers; split from body to reduce
@@ -2322,94 +2246,11 @@ struct ShareCardScreen: View {
         }
     }
 
-    // Placeable story overlay state 변경 → UserDefaults 저장. body에서 분리해 타입 체커 부담 경감.
-    private var bodyWithStoryOverlayHandlers: some View {
-        bodyWithEventHandlers
-            .onChange(of: placeableVM.placeableStoryTexts)    { _, _ in savePlaceableStoryOverlay(); if isPlaceable { exportedVideoFile = nil }; Task { await renderCard(showSpinner: false) } }
-            .onChange(of: placeableVM.placeableStoryFont)     { _, _ in savePlaceableStoryOverlay(); applyStyleToVideoClips(); if isPlaceable, template == .video { savePlaceableVideoClips() }; rebuildPlaceableSlidePreview(); if isPlaceable { exportedVideoFile = nil; if template == .video { Task { await loadPlaceablePreview() } } } }
-            .onChange(of: placeableVM.placeableStoryColor)    { _, _ in savePlaceableStoryOverlay(); applyStyleToVideoClips(); if isPlaceable, template == .video { savePlaceableVideoClips() }; rebuildPlaceableSlidePreview(); if isPlaceable { exportedVideoFile = nil; if template == .video { Task { await loadPlaceablePreview() } } } }
-            .onChange(of: placeableVM.placeableStorySize)     { _, _ in savePlaceableStoryOverlay(); applyStyleToVideoClips(); if isPlaceable, template == .video { savePlaceableVideoClips() }; rebuildPlaceableSlidePreview(); if isPlaceable { exportedVideoFile = nil; if template == .video { Task { await loadPlaceablePreview() } } } }
-            .onChange(of: placeableVM.placeableStoryPosition) { _, _ in savePlaceableStoryOverlay(); applyStyleToVideoClips(); if isPlaceable, template == .video { savePlaceableVideoClips() }; rebuildPlaceableSlidePreview(); if isPlaceable { exportedVideoFile = nil; if template == .video { Task { await loadPlaceablePreview() } } } }
-            .onChange(of: placeableVM.placeableStoryHasBorder)   { _, _ in savePlaceableStoryOverlay(); applyStyleToVideoClips(); if isPlaceable, template == .video { savePlaceableVideoClips() }; rebuildPlaceableSlidePreview(); if isPlaceable { exportedVideoFile = nil; if template == .video { Task { await loadPlaceablePreview() } } } }
-            .onChange(of: placeableVM.placeableMuteAudio) { _, newVal in
-                guard isPlaceable, template == .video else { return }
-                // 토글 즉시 live player에 반영 — 재빌드 불필요
-                previewPlayer.setMuted(newVal)
-                savePlaceableVideoClips()
-            }
-            .onChange(of: placeableVM.placeableVideoTexts) { _, newTexts in
-                // Stamp의 onChange(of: stampVM.photoConfigs) 패턴: 텍스트 변경 시 clip recipes에 동기화 → 저장
-                guard template == .video else { return }
-                for (idx, text) in newTexts {
-                    guard placeableVM.placeableClipRecipes.indices.contains(idx) else { continue }
-                    placeableVM.placeableClipRecipes[idx].lines = text.isEmpty ? [] : [text]
-                }
-                // ClipRecipe 기본 sizeLevel = .large 이므로, 텍스트 동기화 후 전역 스타일 즉시 적용
-                applyStyleToVideoClips()
-                placeableVM.placeableVideoTextDirty = true
-                savePlaceableVideoClips()
-                if isPlaceable { exportedVideoFile = nil }
-            }
-            .onChange(of: placeableVM.placeableClipRecipes.count) { _, _ in
-                exportedVideoFile = nil
-                applyAnimationToVideoClips()
-                applyStyleToVideoClips()
-                savePlaceableVideoClips()
-                guard isPlaceable, template == .video else { return }
-                Task { await loadPlaceablePreview() }
-            }
-            .onChange(of: storyPhotos.count) { _, _ in
-                guard isPlaceable else { return }
-                exportedVideoFile = nil
-                // previewPlayer는 영상·슬라이드 공유 — 슬라이드 템플릿일 때만 빌드.
-                guard template == .slide else { return }
-                let photos = storyPhotos
-                if !photos.isEmpty {
-                    Task {
-                        let overlayIsTop = placeableVM.placeableLayout == .horizontal
-                            ? placeableVM.placeableHorizTextRow == .top
-                            : placeableVM.placeableMetricsPosition.isTop
-                        let overlay = makePlaceableDataOverlay(fullHeight: overlayIsTop)
-                        let recipes = makePlaceableSlideRecipes(for: photos)
-                        await previewPlayer.buildForPhotoSlides(
-                            photos: photos, recipes: recipes,
-                            dataOverlayImage: overlay,
-                            dataOverlayIsTop: overlayIsTop,
-                            fastBase: true)
-                    }
-                } else {
-                    previewPlayer.invalidate()
-                }
-            }
-            .onChange(of: placeableVM.placeableSlideAppearance) { _, _ in
-                guard isPlaceable, template == .slide else { return }
-                exportedVideoFile = nil
-                let photos = storyPhotos
-                guard !photos.isEmpty else { return }
-                Task {
-                    let overlayIsTop = placeableVM.placeableLayout == .horizontal
-                        ? placeableVM.placeableHorizTextRow == .top
-                        : placeableVM.placeableMetricsPosition.isTop
-                    let overlay = makePlaceableDataOverlay(fullHeight: overlayIsTop)
-                    let recipes = makePlaceableSlideRecipes(for: photos)
-                    await previewPlayer.buildForPhotoSlides(
-                        photos: photos, recipes: recipes,
-                        dataOverlayImage: overlay,
-                        dataOverlayIsTop: overlayIsTop,
-                        fastBase: true)
-                }
-            }
-            .onChange(of: placeableVM.selectedPlaceableClipIndex) { _, _ in
-                // 단일 클립만: 선택 변경 → 해당 클립 로드. 멀티클립은 합쳐진 미리보기 유지.
-                guard isPlaceable, template == .video, placeableVM.placeableClipRecipes.count <= 1 else { return }
-                Task { await loadPlaceablePreview() }
-            }
-    }
 
-    // Stamp 속성 변경 → UserDefaults 저장. bodyWithStoryOverlayHandlers 에서 분리(타입 체커 한계).
+    // Stamp 속성 변경 → UserDefaults 저장. 타입 체커 한계로 체인을 나눈다.
     // 애니메이션은 StampPhotoConfig 안에 포함되므로 photoConfigs/baseConfig 감시만으로 충분.
     private var bodyWithStampHandlers: some View {
-        bodyWithStoryOverlayHandlers
+        bodyWithEventHandlers
             .onChange(of: stampVM.baseConfig)   { _, _ in
                 guard isStamp else { return }
                 saveStampConfig()
@@ -2454,45 +2295,6 @@ struct ShareCardScreen: View {
             }
     }
 
-    private var bodyWithSlideHandlers: some View {
-        bodyWithStampHandlers
-            .onChange(of: placeableVM.slideDecorEffect) { _, _ in
-                guard isPlaceable, template == .slide, placeableVM.placeableSlideAppearance == .fade else { return }
-                exportedVideoFile = nil
-                let photos = storyPhotos
-                guard !photos.isEmpty else { return }
-                Task {
-                    let overlayIsTop = placeableVM.placeableLayout == .horizontal
-                        ? placeableVM.placeableHorizTextRow == .top
-                        : placeableVM.placeableMetricsPosition.isTop
-                    let overlay = makePlaceableDataOverlay(fullHeight: overlayIsTop)
-                    let recipes = makePlaceableSlideRecipes(for: photos)
-                    await previewPlayer.buildForPhotoSlides(
-                        photos: photos, recipes: recipes,
-                        dataOverlayImage: overlay,
-                        dataOverlayIsTop: overlayIsTop,
-                        fastBase: true)
-                }
-            }
-            .onChange(of: placeableVM.slideFlyDirection) { _, _ in
-                guard isPlaceable, template == .slide, placeableVM.placeableSlideAppearance == .flyIn else { return }
-                exportedVideoFile = nil
-                let photos = storyPhotos
-                guard !photos.isEmpty else { return }
-                Task {
-                    let overlayIsTop = placeableVM.placeableLayout == .horizontal
-                        ? placeableVM.placeableHorizTextRow == .top
-                        : placeableVM.placeableMetricsPosition.isTop
-                    let overlay = makePlaceableDataOverlay(fullHeight: overlayIsTop)
-                    let recipes = makePlaceableSlideRecipes(for: photos)
-                    await previewPlayer.buildForPhotoSlides(
-                        photos: photos, recipes: recipes,
-                        dataOverlayImage: overlay,
-                        dataOverlayIsTop: overlayIsTop,
-                        fastBase: true)
-                }
-            }
-    }
 
     // Cross-card text propagation: 문구 입력 시 다른 카드의 빈 슬롯에 전이
     private var bodyWithTextPropHandlers: some View {
@@ -2500,10 +2302,6 @@ struct ShareCardScreen: View {
             .onChange(of: oneLinerVM.oneLinerText) { _, new in
                 guard !new.isEmpty else { return }
                 propagateFirstText(new)
-            }
-            .onChange(of: placeableVM.placeableStoryTexts) { _, new in
-                guard let first = new[0], !first.isEmpty else { return }
-                propagateFirstText(first)
             }
             .onChange(of: stampVM.baseConfig) { _, new in
                 guard !new.text.isEmpty else { return }
@@ -2519,14 +2317,11 @@ struct ShareCardScreen: View {
             .onChange(of: oneLinerVM.oneLinerClipRecipes.count) { _, _ in
                 propagateClips(oneLinerVM.oneLinerClipRecipes)
             }
-            .onChange(of: placeableVM.placeableClipRecipes.count) { _, _ in
-                propagateClips(placeableVM.placeableClipRecipes)
-            }
     }
 
     // Cross-card clip propagation (2/2)
     private var bodyWithClipPropHandlers2: some View {
-        bodyWithVideoAnimHandlers
+        bodyWithStampHandlers
             .onChange(of: athleticVM.athleticClipRecipes.count) { _, _ in
                 propagateClips(athleticVM.athleticClipRecipes)
             }
@@ -2535,27 +2330,6 @@ struct ShareCardScreen: View {
             }
     }
 
-    private var bodyWithVideoAnimHandlers: some View {
-        bodyWithSlideHandlers
-            .onChange(of: placeableVM.placeableSlideAppearance) { _, _ in
-                guard isPlaceable, template == .video else { return }
-                exportedVideoFile = nil
-                applyAnimationToVideoClips()
-                Task { await loadPlaceablePreview() }
-            }
-            .onChange(of: placeableVM.slideDecorEffect) { _, _ in
-                guard isPlaceable, template == .video, placeableVM.placeableSlideAppearance == .fade else { return }
-                exportedVideoFile = nil
-                applyAnimationToVideoClips()
-                Task { await loadPlaceablePreview() }
-            }
-            .onChange(of: placeableVM.slideFlyDirection) { _, _ in
-                guard isPlaceable, template == .video, placeableVM.placeableSlideAppearance == .flyIn else { return }
-                exportedVideoFile = nil
-                applyAnimationToVideoClips()
-                Task { await loadPlaceablePreview() }
-            }
-    }
 
     // MARK: - Cross-card first text propagation
     // 카드 A에서 입력된 첫 번째 문구를 다른 카드의 비어있는 첫 번째 슬롯에만 채움 (덮어쓰기 금지).
@@ -2564,19 +2338,12 @@ struct ShareCardScreen: View {
         guard !text.isEmpty else { return }
         // OneLiner story/slide 텍스트
         if oneLinerVM.oneLinerText.isEmpty { oneLinerVM.oneLinerText = text }
-        // Placeable: 첫 사진 텍스트
-        if (placeableVM.placeableStoryTexts[0] ?? "").isEmpty { placeableVM.placeableStoryTexts[0] = text }
         // Stamp: 기본 텍스트
         if stampVM.baseConfig.text.isEmpty { stampVM.baseConfig.text = text }
         // OneLiner 영상 클립 — 빈 첫 번째 줄만
         for i in oneLinerVM.oneLinerClipRecipes.indices
             where (oneLinerVM.oneLinerClipRecipes[i].lines.first ?? "").isEmpty {
             oneLinerVM.oneLinerClipRecipes[i].lines = [text]
-        }
-        // Placeable 영상 클립 — 빈 첫 번째 줄만
-        for i in placeableVM.placeableClipRecipes.indices
-            where (placeableVM.placeableClipRecipes[i].lines.first ?? "").isEmpty {
-            placeableVM.placeableClipRecipes[i].lines = [text]
         }
         // Athletic 영상 클립 — 빈 첫 번째 줄만
         for i in athleticVM.athleticClipRecipes.indices
@@ -2595,9 +2362,12 @@ struct ShareCardScreen: View {
             rs.map { $0.assetIdentifier ?? $0.clipVideoRef ?? $0.storedPhotoRef ?? $0.url.lastPathComponent }
         }
         let srcIds = ids(recipes)
+        // 클립이 바뀌면 이전에 합성한 영상은 무효 — 어느 카드에서 바뀌어도 내보내기 버튼이 옛 영상을 공유하지 않게.
+        // (플레이서블 삭제 전엔 플레이서블 클립 onChange가 전파를 받아 이 일을 대신했다)
+        exportedVideoFile = nil
 
         // OneLiner: 기존 클립별 문구(lines)를 assetID 기준으로 보존.
-        // 소스 클립(Placeable 등)의 card-specific 문구를 덮어쓰지 않는다.
+        // 소스 클립(다른 카드)의 card-specific 문구를 덮어쓰지 않는다.
         if ids(oneLinerVM.oneLinerClipRecipes) != srcIds {
             let existingLinesByID = Dictionary(uniqueKeysWithValues:
                 oneLinerVM.oneLinerClipRecipes.compactMap { r -> (String, [String])? in
@@ -2611,22 +2381,6 @@ struct ShareCardScreen: View {
             }
             oneLinerVM.oneLinerClipRecipes = updated
         }
-        // Placeable: placeableVideoTexts가 정식 텍스트 소스 — 소스 클립의 lines로 덮어쓰면 안 됨.
-        // 소스 클립(OneLiner 등)의 card-specific 문구가 placeableVideoTexts를 오염시키는 버그 방지.
-        // clip.lines는 항상 placeableVideoTexts에서 복원.
-        if ids(placeableVM.placeableClipRecipes) != srcIds {
-            placeableVM.placeableClipRecipes = recipes
-            for (i, text) in placeableVM.placeableVideoTexts where !text.isEmpty {
-                guard placeableVM.placeableClipRecipes.indices.contains(i) else { continue }
-                if placeableVM.placeableClipRecipes[i].lines.isEmpty {
-                    placeableVM.placeableClipRecipes[i].lines = [text]
-                } else {
-                    placeableVM.placeableClipRecipes[i].lines[0] = text
-                }
-            }
-            // 외부 소스에서 덮어쓴 후 Placeable 전용 스타일(sizeLevel·font·color·border)을 즉시 복원
-            applyStyleToVideoClips()
-        }
         if ids(athleticVM.athleticClipRecipes)   != srcIds { athleticVM.athleticClipRecipes   = recipes }
         if ids(stampVM.clipRecipes)              != srcIds { stampVM.clipRecipes              = recipes }
     }
@@ -2637,22 +2391,6 @@ struct ShareCardScreen: View {
             guard !didResetMediaLogo else { return }
             didResetMediaLogo = true
             MediaLogoSetting.shared.resetForNewSheet()
-        }
-        .onChange(of: placeableVM.placeableMetricsPosition) { _, _ in
-            guard isPlaceable else { return }
-            Task { await renderCard(showSpinner: false) }
-        }
-        .onChange(of: placeableVM.placeableAccent) { _, _ in
-            guard isPlaceable else { return }
-            Task { await renderCard(showSpinner: false) }
-        }
-        .onChange(of: placeableVM.placeableSize) { _, _ in
-            guard isPlaceable else { return }
-            Task { await renderCard(showSpinner: false) }
-        }
-        .onChange(of: placeableVM.placeableLayout) { _, _ in
-            guard isPlaceable else { return }
-            Task { await renderCard(showSpinner: false) }
         }
         .onChange(of: oneLinerVM.oneLinerVideoTitle) { _, _ in
             if isOneLiner { exportedVideoFile = nil }
@@ -2813,7 +2551,6 @@ struct ShareCardScreen: View {
             // PHAsset ID가 확정된 후 해당 영상의 저장된 OneLiner 설정 로드
             if isOneLiner { loadOneLinerSettings() }
             videoPreviewImage = await VideoExportService.firstFrame(of: result.url)
-            // Placeable 영상: 프리뷰는 placeableVM.placeableClipRecipes.count onChange → loadPlaceablePreview() 에서 처리
             // 자동 합성 안 함 — 사용자가 미리보기로 배치 확인 후 직접 합성 버튼 탭
         }
     }
@@ -2936,30 +2673,16 @@ struct ShareCardScreen: View {
         }
         // 템플릿 전환 시 이전 템플릿의 내보내기 결과를 항상 초기화
         // videoPreviewImage는 .video 진입 시 유지 (영상 클립 썸네일 보존)
-        if isPlaceable {
-            exportedVideoFile = nil
-            if template != .video { videoPreviewImage = nil }
-        } else {
-            exportedVideoFile = nil
-        }
+        exportedVideoFile = nil
         // Stop preview when leaving clip modes (story has no preview)
         if isOneLiner, template == .photo { previewPlayer.pause() }
         // Athletic: .video ↔ .slide 전환 시 videoState 초기화
         // (이전 템플릿 콘텐츠가 새 템플릿 프리뷰 영역에 잔존하는 것을 방지)
-        if !isOneLiner, !isPlaceable, !isStamp, template == .video || template == .slide {
+        if !isOneLiner, !isStamp, template == .video || template == .slide {
             athleticVM.athleticVideoState.invalidate()
         }
-        // Placeable 영상 진입 시 문구 탭 기본 선택, 벗어날 때 플레이어 정지
-        if isPlaceable, template == .video {
-            placeableVM.placeableStoryTabIsText = true
-            let hadClips = !placeableVM.placeableClipRecipes.isEmpty
-            loadPlaceableVideoClips()
-            // 클립이 이미 로드된 상태였으면 count 변화 없음 → onChange 미발화 → 수동 재빌드
-            if hadClips { Task { await loadPlaceablePreview() } }
-        }
-        if isPlaceable, template != .video { previewPlayer.pause() }
         // Athletic 영상 템플릿 진입 시 레시피 복원 — sourceVideoURL이 있는데 recipes가 비어 있으면 재구성
-        if !isPlaceable, !isOneLiner, template == .video,
+        if !isOneLiner, template == .video,
            let url = sourceVideoURL, athleticVM.athleticClipRecipes.isEmpty {
             Task {
                 let dur = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 30.0
@@ -2968,10 +2691,6 @@ struct ShareCardScreen: View {
                 athleticVM.athleticClipRecipes = [r]
             }
         }
-        // Placeable 슬라이드: 즉시 전환 — 이전 player 초기화만, 빌드는 ▶ 탭 시 시작.
-        // (Athletic 패턴과 동일: 탭 전환 시 사진 즉시 표시, 스피너 없음)
-        if isPlaceable, template == .slide { previewPlayer.invalidate() }
-        if isPlaceable, template != .slide { previewPlayer.pause() }
         // Stamp 영상: 진입 시 항상 초기화 후 재빌드.
         // [필수] 슬라이드→영상 전환 시 슬라이드 player가 previewPlayer에 잔존하면
         // stampVideoPreviewSection이 isReady=true를 감지해 슬라이드 내용을 영상 미리보기로 표시함.
@@ -3005,10 +2724,10 @@ struct ShareCardScreen: View {
     }
 
     private func onCardChanged(_ newCard: ShareCard) {
-        // player를 직접 사용하는 카드(Stamp·Placeable·OneLiner)로 이동할 때만 초기화.
-        // 같은 카드 복귀(예: Placeable→Athletic→Placeable)는 builtForCard가 같아 초기화 생략 → 영상 유지.
+        // player를 직접 사용하는 카드(Stamp·OneLiner)로 이동할 때만 초기화.
+        // 같은 카드 복귀(예: Stamp→Athletic→Stamp)는 builtForCard가 같아 초기화 생략 → 영상 유지.
         // OneLiner 한정: 슬라이드↔영상 전환 후 다른 카드 경유 복귀 시 player 컨텐츠가 template과 불일치하면 초기화.
-        if [.stamp, .placeable, .oneLiner].contains(newCard) {
+        if [.stamp, .oneLiner].contains(newCard) {
             let cardMismatch = previewPlayer.builtForCard != newCard
             let oneLinerContentMismatch = newCard == .oneLiner
                 && previewPlayer.builtForCard == .oneLiner
@@ -3029,7 +2748,7 @@ struct ShareCardScreen: View {
         }
         // OneLiner 카드 진입 시 현재 미디어(그라데이션 포함) 저장값 로드 (인라인 편집, 모달 없음)
         if newCard == .oneLiner {
-            // 이전 카드(Placeable 등)의 videoPreviewImage가 OneLiner 정적 카드 배경으로 표시되는 것을 방지
+            // 이전 카드의 videoPreviewImage가 OneLiner 정적 카드 배경으로 표시되는 것을 방지
             videoPreviewImage = nil
             // 슬라이드 진입: 다른 카드에 있을 때 template이 slide로 바뀌면 syncOneLinerVideoBacking의
             // guard isOneLiner가 스킵되어 oneLinerClipRecipes에 이전 영상 클립이 남을 수 있음 → 명시 정리
@@ -3048,21 +2767,6 @@ struct ShareCardScreen: View {
                 }
                 if !oneLinerVM.oneLinerClipRecipes.isEmpty {
                     buildPreview()
-                }
-            }
-        }
-        // Placeable 카드 복귀 시 클립 복원 + 스타일 동기화 + 미리보기 로드
-        if newCard == .placeable {
-            if template == .video { loadPlaceableVideoClips() }
-            // 다른 카드에서 전환 시 applyStyleToVideoClips가 isPlaceable=false로 스킵됐을 수 있으므로 명시 호출
-            applyStyleToVideoClips()
-            if !placeableVM.placeableClipRecipes.isEmpty {
-                if previewPlayer.builtForCard != .placeable {
-                    // 다른 카드의 player이거나 초기화된 경우 → Placeable 영상 재빌드
-                    Task { await loadPlaceablePreview() }
-                } else {
-                    // 같은 카드 복귀(예: Athletic 경유) → player 유지, 썸네일만 동기화
-                    videoPreviewImage = placeableVM.placeableClipRecipes.first?.thumbnail
                 }
             }
         }
@@ -3316,7 +3020,7 @@ struct ShareCardScreen: View {
         // OneLiner: 카드 1(oneLinerCardPreview)이 contentLayer를 독점 소유.
         // 카드 2는 항상 정적 미리보기 + ▶ 버튼만 표시 → contentLayer 충돌(검은 화면) 방지.
         if isOneLiner, oneLinerHasPhotos {
-            // 211×375pt 직접 표시 — Stamp·Placeable 영상과 동일한 좌표계, 스케일 없음.
+            // 211×375pt 직접 표시 — Stamp 영상과 동일한 좌표계, 스케일 없음.
             oneLinerVideoPreviewCard
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(alignment: .topLeading) {
@@ -3857,10 +3561,6 @@ struct ShareCardScreen: View {
         topVC.present(activityVC, animated: true)
     }
 
-    /// 플레이서블 영상 설정 변경 시 이전 내보내기 캐시를 무효화한다.
-    /// PlaceableVideoTemplate.swift extension에서 접근할 수 있도록 internal로 선언.
-    func invalidatePlaceableVideoExport() { exportedVideoFile = nil }
-
     @MainActor
     private func exportVideo() async {
         guard !isExportingVideo else { return }
@@ -3946,136 +3646,8 @@ struct ShareCardScreen: View {
             return
         }
 
-        // ── Placeable 슬라이드 (storyPhotos 기반 사진 슬라이드 영상) ──────────
-        if isPlaceable, template == .slide {
-            let photos = storyPhotos
-            guard !photos.isEmpty else { isExportingVideo = false; return }
-            do {
-                let overlayIsTop = placeableVM.placeableLayout == .horizontal
-                    ? placeableVM.placeableHorizTextRow == .top
-                    : placeableVM.placeableMetricsPosition.isTop
-                let overlay = makePlaceableDataOverlay(fullHeight: overlayIsTop)
-                let recipes = makePlaceableSlideRecipes(for: photos)
-                let out = try await PhotoSlideComposition.exportSlideWithText(
-                    photos: photos, recipes: recipes,
-                    metricLookup: [:], routeCoords: [],
-                    hrSamples: [], splits: [], chartSeriesData: [:],
-                    hrZones: [], intervalSegments: [],
-                    videoTitle: "", titleStyle: OneLinerTitleStyle(),
-                    dataOverlayImage: overlay,
-                    dataOverlayIsTop: overlayIsTop)
-                exportedVideoFile = SharableVideoFile(url: out)
-                presentShareSheet(url: out)
-            } catch {
-                videoExportError = AppLanguage.shared.s(
-                    "내보내기 중 오류가 발생했습니다: \(error.localizedDescription)",
-                    "Export error: \(error.localizedDescription)")
-                showVideoExportError = true
-            }
-            isExportingVideo = false
-            return
-        }
-
-        // ── Placeable 영상 합성 (sourceVideoURL 불필요 — 클립별 URL 직접 해석) ──
-        if isPlaceable {
-            guard !placeableVM.placeableClipRecipes.isEmpty else { isExportingVideo = false; return }
-
-            // PlaceableCard overlay: 로고 상단 7.5%, 데이터·날짜 하단 7.5% 배치
-            let scale: CGFloat = 216.0 / PlaceableCard.cardWidth  // 0.72
-            let scaledH = PlaceableCard.cardHeight * scale          // ~270pt
-
-            // 정적 오버레이: 그라디언트 + PlaceableCard 데이터 패널 (문구·워드마크 제외)
-            // 워드마크는 textLayer(buildClipTextContentLayer)가 처리하므로 여기서는 렌더링하지 않음.
-            let exportIsTop = placeableVM.placeableLayout == .horizontal
-                ? placeableVM.placeableHorizTextRow == .top
-                : placeableVM.placeableMetricsPosition.isTop
-            let exportFullH: CGFloat = 384.0 / scale  // 9:16 전체 높이를 카드 좌표계로 환산
-            let staticOverlayContent = ZStack {
-                LinearGradient(colors: [.black.opacity(0.15), .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(width: 216, height: 24).frame(width: 216, height: 384, alignment: .top)
-                LinearGradient(colors: [.clear, .black.opacity(0.15)], startPoint: .top, endPoint: .bottom)
-                    .frame(width: 216, height: 24).frame(width: 216, height: 384, alignment: .bottom)
-                PlaceableCard(
-                    activity: activity, detail: detail,
-                    routeCoords: routeCoords.isEmpty ? nil : routeCoords,
-                    photo: nil, date: activity.date,
-                    metricsPosition: placeableVM.placeableMetricsPosition, accent: placeableVM.placeableAccent,
-                    showBackground: false, showWordmark: false,
-                    shoeName: displayShoeName, weather: condition?.weather,
-                    size: placeableVM.placeableSize, layout: placeableVM.placeableLayout,
-                    horizTextRow: placeableVM.placeableHorizTextRow, horizRoutePos: placeableVM.placeableHorizRoutePos,
-                    heightOverride: exportIsTop ? exportFullH : nil
-                )
-                .frame(width: PlaceableCard.cardWidth, height: exportIsTop ? exportFullH : PlaceableCard.cardHeight)
-                .scaleEffect(scale, anchor: .center)
-                .frame(width: 216, height: exportIsTop ? 384 : scaledH)
-                .padding(.bottom, exportIsTop ? 0 : 384 * 0.03)
-                .frame(width: 216, height: 384, alignment: exportIsTop ? .center : .bottom)
-            }
-            .frame(width: 216, height: 384)
-            let staticRenderer = ImageRenderer(content: staticOverlayContent)
-            staticRenderer.scale = 5.0
-            let staticOverlay = staticRenderer.uiImage
-
-            // 문구 safe zone — 스토리처럼 데이터 위치와 독립적으로 자유 배치
-            let safeBotPx = CardVisual.videoSafeBottom
-            let safeTopPx = CardVisual.videoSafeTop
-
-            // 클립별 오버레이 적용 후 연결
-            // URL 해석 우선순위: 임시파일(PHPicker) → resolvedAsset(PHImageManager) → assetIdentifier 재해석
-            var processedURLs: [URL] = []
-            for recipe in placeableVM.placeableClipRecipes {
-                var srcURL: URL = recipe.url
-                if !FileManager.default.fileExists(atPath: recipe.url.path) {
-                    if let urlAsset = recipe.resolvedAsset as? AVURLAsset {
-                        srcURL = urlAsset.url
-                    } else if let assetID = recipe.assetIdentifier,
-                              let resolved = try? await MultiClipComposition.resolveAVAsset(assetID: assetID),
-                              let urlAsset = resolved as? AVURLAsset {
-                        srcURL = urlAsset.url
-                    } else {
-                        continue
-                    }
-                }
-                // 클립 길이 = 트림 구간 / 배속
-                let clipDur = recipe.trimmedDuration / max(0.1, recipe.speed)
-                // 문구 애니메이션 CALayer — 빈 text도 레이어 생성(내용 없음으로 처리)
-                let textLayer = VideoExportService.buildClipTextContentLayer(
-                    recipes: [recipe],
-                    renderSize: VideoExportService.targetSize,
-                    totalDuration: clipDur,
-                    safeTopOverride: safeTopPx,
-                    safeBotOverride: safeBotPx,
-                    wordmarkTopPad: VideoExportService.targetSize.height * 0.06)
-                if let processed = try? await VideoExportService.exportPlaceableClipAnimated(
-                    sourceURL: srcURL,
-                    staticOverlay: staticOverlay,
-                    textLayer: textLayer,
-                    trimStart: recipe.trimStart, trimEnd: recipe.trimEnd,
-                    muteAudio: placeableVM.placeableMuteAudio, speed: recipe.speed,
-                    brightenHDR: true) {
-                    processedURLs.append(processed)
-                }
-            }
-            let exportedURL: URL?
-            if processedURLs.count > 1 {
-                exportedURL = try? await VideoExportService.concatenateURLs(processedURLs)
-            } else {
-                exportedURL = processedURLs.first
-            }
-            if let out = exportedURL {
-                exportedVideoFile = SharableVideoFile(url: out)
-                presentShareSheet(url: out)
-            } else {
-                videoExportError = AppLanguage.shared.s("영상 합성에 실패했습니다.", "Video export failed.")
-                showVideoExportError = true
-            }
-            isExportingVideo = false
-            return
-        }
-
         // ── Athletic 멀티 클립 합성 (athleticVM.athleticClipRecipes 기반) ──────────────
-        if !isOneLiner, !isPlaceable, !isStamp, template == .video, !athleticVM.athleticClipRecipes.isEmpty {
+        if !isOneLiner, !isStamp, template == .video, !athleticVM.athleticClipRecipes.isEmpty {
             let km = activity.distance / 1000
             let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
             // 미리보기와 동일한 9:16 비율(216×384pt)로 오버레이 렌더링
@@ -4105,7 +3677,7 @@ struct ShareCardScreen: View {
             // Warmup: 첫 번째 ImageRenderer 호출로 SwiftUI 파이프라인 초기화.
             let wuR = ImageRenderer(content: overlayView); wuR.scale = 1.0; _ = wuR.uiImage
             try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms
-            guard !isOneLiner, !isPlaceable, !isStamp, template == .video else { isExportingVideo = false; return }
+            guard !isOneLiner, !isStamp, template == .video else { isExportingVideo = false; return }
             let overlayRenderer = ImageRenderer(content: overlayView)
             overlayRenderer.scale = 5.0
             guard let overlayImage = overlayRenderer.uiImage else {
@@ -4152,7 +3724,7 @@ struct ShareCardScreen: View {
 
 
         // ── Athletic 슬라이드 (사진 → 영상) ────────────────────────────────────
-        if !isOneLiner, !isPlaceable, !isStamp, template == .slide, !storyPhotos.isEmpty {
+        if !isOneLiner, !isStamp, template == .slide, !storyPhotos.isEmpty {
             let km = activity.distance / 1000
             let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
             let exportH: CGFloat = 384
@@ -4180,7 +3752,7 @@ struct ShareCardScreen: View {
             // Warmup: 첫 번째 ImageRenderer 호출로 SwiftUI 파이프라인 초기화.
             let wuR = ImageRenderer(content: overlayView); wuR.scale = 1.0; _ = wuR.uiImage
             try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms
-            guard !isOneLiner, !isPlaceable, !isStamp, template == .slide, !storyPhotos.isEmpty else { isExportingVideo = false; return }
+            guard !isOneLiner, !isStamp, template == .slide, !storyPhotos.isEmpty else { isExportingVideo = false; return }
             let overlayRenderer = ImageRenderer(content: overlayView)
             overlayRenderer.scale = 5.0
             guard let overlayImage = overlayRenderer.uiImage else {
@@ -4487,8 +4059,8 @@ struct ShareCardScreen: View {
 
                 func renderStampImage(renderOnlyStamp: Bool, renderOnlyText: Bool) -> UIImage? {
                     if renderOnlyText {
-                        // 문구: Placeable과 동일하게 300pt 기준 (줄바꿈·글자 크기 통일)
-                        let textW = PlaceableCard.cardWidth
+                        // 문구: 정지 카드 폭 300pt 기준 (줄바꿈·글자 크기 통일)
+                        let textW: CGFloat = 300
                         let textH = textW * 16.0 / 9.0
                         let textScale = RouteVideoExportService.renderScale * previewVidW / textW
                         let v = OneLinerCard(
@@ -4628,21 +4200,10 @@ struct ShareCardScreen: View {
         }
         deduplicateOneLinerEntries()
         loadOneLinerSettings()
-        loadPlaceableStoryOverlay()
-        // isPlaceable 무관하게 항상 로드 — 함수 내부에 isEmpty guard 있어 이중 로드 없음.
-        // Placeable(UserDefaults)·OneLiner(SwiftData) 중 어느 저장소에 클립이 있어도
-        // 초기 진입 카드와 무관하게 propagateClips가 작동하도록 미리 채움.
-        if template == .video {
-            loadPlaceableVideoClips()
-            // 로드 직후 전역 스타일(sizeLevel 등)을 클립에 즉시 동기화.
-            // onChange(of: count)는 비동기 발화라 로드~첫 렌더 사이 sizeLevel 불일치 발생 가능.
-            applyStyleToVideoClips()
-        }
-        // 두 저장소에서 로드한 클립 순서가 다를 경우 즉시 동기화
+        // OneLiner(SwiftData)에서 로드한 클립을 다른 카드에 즉시 동기화
         // onChange(of: count)는 카운트 불변 시 발화 안 하므로 여기서 명시적으로 처리
-        if let clips = [placeableVM.placeableClipRecipes, oneLinerVM.oneLinerClipRecipes]
-                .first(where: { !$0.isEmpty }) {
-            propagateClips(clips)
+        if !oneLinerVM.oneLinerClipRecipes.isEmpty {
+            propagateClips(oneLinerVM.oneLinerClipRecipes)
         }
         loadStampConfig()
         loadAthleticCropOffsets()
@@ -4654,7 +4215,6 @@ struct ShareCardScreen: View {
             saveStampConfig()
         }
         await loadHighQualityPhotos()
-        // Placeable 슬라이드: 자동 빌드 없음 — ▶ 버튼을 눌러야 빌드·재생 시작 (스탬프 슬라이드 패턴).
         if isStamp, template == .slide, !storyPhotos.isEmpty {
             let data = stampPreviewData
             Task { await loadStampSlidePreview(data: data) }
@@ -4770,33 +4330,6 @@ struct ShareCardScreen: View {
 
     @MainActor
     func renderCard(showSpinner: Bool = true) async {
-        // Placeable card: static image render. 스토리 다사진이면 전체 storyShareImages 생성.
-        if card == .placeable {
-            if showSpinner { isRendering = true }
-            storyShareImages = []
-            previewImage = nil
-            if template == .photo, storyPhotos.count > 1 {
-                // 각 사진마다 해당 사진의 문구를 넣어 렌더링
-                var rendered: [UIImage] = []
-                for (i, photo) in storyPhotos.enumerated() {
-                    let t = placeableVM.placeableStoryTexts[i] ?? ""
-                    let r = ImageRenderer(content: placeableExportView(photo: photo, text: t, photoIndex: i))
-                    r.scale = 3
-                    if let img = r.uiImage { rendered.append(img) }
-                }
-                storyShareImages = rendered
-                // 미리보기는 현재 선택 사진
-                let curIdx = placeableCurrentPhotoIdx
-                previewImage = rendered.indices.contains(curIdx) ? rendered[curIdx] : rendered.first
-            } else {
-                let photo = template == .video ? videoPreviewImage : photoFor(.placeable)
-                let renderer = ImageRenderer(content: placeableExportView(photo: photo))
-                renderer.scale = 3
-                previewImage = renderer.uiImage
-            }
-            isRendering = false
-            return
-        }
 
 
         // OneLiner card
