@@ -909,7 +909,7 @@ private struct StampSplitRowsView: View {
     private var paceW: CGFloat { sz(30, scale) }
     private var hrW: CGFloat { sz(20, scale) }
     private var colGap: CGFloat { sz(5, scale) }
-    private var rowH: CGFloat { sz(9, scale) }
+    private var rowH: CGFloat { sz(10, scale) }   // 페이스 9pt가 윗줄과 붙지 않게
     private var hasHR: Bool { rows.contains { $0.heartRate != nil } }
     private var barMax: CGFloat {
         width - kmW - paceW - colGap * 3 - (hasHR ? hrW + colGap : 0)
@@ -949,12 +949,12 @@ private struct StampSplitRowsView: View {
                             .frame(width: barMax * ratio(r.paceSecPerKm), height: sz(5, scale))
                             .frame(width: barMax, alignment: .leading)
                         Text(paceText(r.paceSecPerKm))
-                            .font(.system(size: sz(8, scale), weight: .black).width(.compressed))
+                            .font(.system(size: sz(9, scale), weight: .black).width(.compressed))
                             .italic()
                             .frame(width: paceW, alignment: .trailing)
                         if hasHR {
                             Text(r.heartRate.map { "\($0)" } ?? "–")
-                                .font(.system(size: sz(7, scale), weight: .semibold))
+                                .font(.system(size: sz(8, scale), weight: .semibold))
                                 .opacity(0.62)
                                 .frame(width: hrW, alignment: .trailing)
                         }
