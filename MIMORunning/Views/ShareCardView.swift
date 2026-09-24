@@ -1588,6 +1588,7 @@ struct ShareCardScreen: View {
     // Chip row selector — extracted from body to keep the body's type-check surface small.
     @ViewBuilder private var activeChipRow: some View {
         if isStamp                              { StampControlsView(vm: stampVM, template: template, data: stampPreviewData,
+                                                    isWhiteBackground: template == .photo && storyPhotos.isEmpty,
                                                     onLoadPreview: { await loadStampVideoPreview(data: stampPreviewData) }) }
         else if isOneLiner                      { oneLinerChipRow }
         else                                    { chipRow }
@@ -2255,6 +2256,12 @@ struct ShareCardScreen: View {
     // 애니메이션은 StampPhotoConfig 안에 포함되므로 photoConfigs/baseConfig 감시만으로 충분.
     private var bodyWithStampHandlers: some View {
         bodyWithEventHandlers
+            // 흰 배경 전용 테두리는 config 밖이라 저장 onChange가 안 걸린다 — 내보낼 이미지만 다시 만들게 비운다
+            .onChange(of: stampVM.whiteBgTextOutline) { _, _ in
+                guard isStamp, template == .photo else { return }
+                storyShareImages = []
+                previewImage = nil
+            }
             .onChange(of: stampVM.baseConfig)   { _, _ in
                 guard isStamp else { return }
                 saveStampConfig()

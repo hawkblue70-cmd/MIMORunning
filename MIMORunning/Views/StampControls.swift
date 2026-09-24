@@ -10,6 +10,8 @@ struct StampControlsView: View {
     @Bindable var vm: StampViewModel
     let template: ShareTemplate
     var data: StampData = .sample
+    /// 사진 탭인데 사진이 없어 흰 배경인 상태 — 테두리 칩이 흰 배경 전용 값을 다룬다
+    var isWhiteBackground: Bool = false
     var onLoadPreview: (() async -> Void)? = nil
     @State private var showTemplatePicker = false
     @State private var controlTab: StampControlTab = .stamp
@@ -373,9 +375,11 @@ struct StampControlsView: View {
     }
 
     private var textOutlineChip: some View {
-        let isOn = vm.showTextOutline
+        let isOn = isWhiteBackground ? vm.whiteBgTextOutline : vm.showTextOutline
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { vm.showTextOutline.toggle() }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if isWhiteBackground { vm.whiteBgTextOutline.toggle() } else { vm.showTextOutline.toggle() }
+            }
         } label: {
             Text(AppLanguage.shared.s("테두리", "Outline"))
                 .font(.system(size: 11, weight: .semibold))

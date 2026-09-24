@@ -85,6 +85,10 @@ final class StampViewModel {
     /// (요약 그리드는 이 값을 보지 않고 있는 지표를 전부 넣는다.)
     var showCalories: Bool { false }
 
+    /// 흰 배경(사진 없는 사진 탭) 전용 테두리 — 기본 꺼짐, 저장 안 함(시트 열 때마다 꺼짐).
+    /// 사진·영상용 showTextOutline과 분리해 흰 배경에서 끈 것이 사진·영상으로 번지지 않게 한다.
+    var whiteBgTextOutline: Bool = false
+
     var showTextOutline: Bool {
         get { currentConfig.showTextOutline }
         set { var c = currentConfig; c.showTextOutline = newValue; currentConfig = c; baseConfig.showTextOutline = newValue }

@@ -65,6 +65,8 @@ struct StampStoryRenderView: View {
     /// 사진이 없으면 흰 배경이라 처음부터 밝음 — 비동기 판정 전에 흰 글자가 한 번 번쩍이지 않게
     @State private var isBrightBackground: Bool = false
     private var effectiveBright: Bool { photo == nil ? true : isBrightBackground }
+    /// 흰 배경이면 흰 배경 전용 테두리(기본 꺼짐), 사진이면 사진별 설정
+    private var effectiveOutline: Bool { photo == nil ? vm.whiteBgTextOutline : resolved.showTextOutline }
 
     private var brightnessKey: String {
         let posIdx = CardPosition.allCases.firstIndex(of: resolved.position) ?? 0
@@ -100,7 +102,7 @@ struct StampStoryRenderView: View {
                 isBrightBackground: effectiveBright,
                 showHeartRate: resolved.showHeartRate,
                 showCalories: false,
-                showTextOutline: resolved.showTextOutline,
+                showTextOutline: effectiveOutline,
                 stampText: resolved.text,
                 stampTextPosition: resolved.textPosition,
                 stampTextFont: resolved.textFont,
@@ -200,7 +202,7 @@ struct StampAnimPreviewCard: View {
                 position: cfg.position, sizeLevel: cfg.sizeLevel,
                 isBrightBackground: photo == nil ? true : stampBackgroundIsBright(photo: photo, position: cfg.position),
                 showHeartRate: cfg.showHeartRate, showCalories: false,
-                showTextOutline: cfg.showTextOutline,
+                showTextOutline: photo == nil ? vm.whiteBgTextOutline : cfg.showTextOutline,
                 stampText: cfg.text, stampTextPosition: cfg.textPosition,
                 stampTextFont: cfg.textFont, stampTextSize: cfg.textSize,
                 stampTextColor: cfg.textColor, stampTextHasBorder: cfg.textHasBorder,
