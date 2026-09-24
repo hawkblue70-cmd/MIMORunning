@@ -723,11 +723,24 @@ private struct StampPlaceableView: View {
         return s.count > 18 ? String(s.prefix(17)) + "…" : s
     }
 
+    private var route: [CLLocationCoordinate2D] { data.routeCoordinates ?? [] }
+
     var body: some View {
         VStack(alignment: .leading, spacing: sz(8, scale)) {
-            row(label: "DIST", value: data.distance, unit: data.distanceUnit.lowercased())
-            row(label: "TIME", value: data.time)
-            row(label: "PACE", value: data.pace, unit: "/km")
+            // 기록 3줄 + 오른쪽 경로 선(경로가 있을 때만) — 플레이서블 카드의 "지표 반대편 경로"를 한 덩어리로
+            HStack(alignment: .center, spacing: sz(14, scale)) {
+                VStack(alignment: .leading, spacing: sz(8, scale)) {
+                    row(label: "DIST", value: data.distance, unit: data.distanceUnit.lowercased())
+                    row(label: "TIME", value: data.time)
+                    row(label: "PACE", value: data.pace, unit: "/km")
+                }
+                if route.count >= 2 {
+                    let portrait = StampRouteArt.isPortraitRoute(route)
+                    StampRouteArt(coords: route, lineWidth: max(1, sz(2.2, scale)),
+                                  color: fill, casingColor: outline)
+                        .frame(width: sz(portrait ? 56 : 72, scale), height: sz(portrait ? 90 : 60, scale))
+                }
+            }
             if data.weatherText != nil || shoe != nil {
                 HStack(spacing: sz(4, scale)) {
                     if let t = data.weatherText {
