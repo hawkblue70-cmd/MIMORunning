@@ -62,7 +62,9 @@ struct StampStoryRenderView: View {
 
     // 배경 밝기 캐시 — photo+position 조합 변경 시 비동기 재계산
     // 뷰 body에서 직접 계산하면 풀해상도 사진 디코딩이 메인스레드를 블로킹하므로 분리.
+    /// 사진이 없으면 흰 배경이라 처음부터 밝음 — 비동기 판정 전에 흰 글자가 한 번 번쩍이지 않게
     @State private var isBrightBackground: Bool = false
+    private var effectiveBright: Bool { photo == nil ? true : isBrightBackground }
 
     private var brightnessKey: String {
         let posIdx = CardPosition.allCases.firstIndex(of: resolved.position) ?? 0
@@ -84,7 +86,8 @@ struct StampStoryRenderView: View {
                     .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                     .clipped()
             } else {
-                Color(hex: "3A4038")
+                // 사진 없음 = 흰 배경 (나이키 방식) — 스탬프 자동 색은 검정, 사진을 고르면 흰색으로 바뀐다
+                Color.white
             }
 
             // 스탬프 레이어
@@ -94,7 +97,7 @@ struct StampStoryRenderView: View {
                 colorMode: resolved.colorMode,
                 position: resolved.position,
                 sizeLevel: resolved.sizeLevel,
-                isBrightBackground: isBrightBackground,
+                isBrightBackground: effectiveBright,
                 showHeartRate: resolved.showHeartRate,
                 showCalories: false,
                 showTextOutline: resolved.showTextOutline,
@@ -134,7 +137,7 @@ struct StampStoryRenderView: View {
                 .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                 .allowsHitTesting(false)
             if resolved.showDate, let d = data.date {
-                StampDateLabel(date: d)
+                StampDateLabel(date: d, onLight: photo == nil)
                     .padding(.horizontal, 14)
                     .padding(.top, 14 + 8)   // 워드마크(25pt) 세로 중앙 근처
                     .frame(width: renderWidth, height: renderHeight, alignment: .topTrailing)
@@ -187,14 +190,15 @@ struct StampAnimPreviewCard: View {
                     .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                     .clipped()
             } else {
-                Color(hex: "3A4038")
+                // 사진 없음 = 흰 배경 (나이키 방식) — 스탬프 자동 색은 검정, 사진을 고르면 흰색으로 바뀐다
+                Color.white
             }
 
             // 스탬프 레이어 (독립 애니메이션)
             StampCard(
                 data: data, template: cfg.template, colorMode: cfg.colorMode,
                 position: cfg.position, sizeLevel: cfg.sizeLevel,
-                isBrightBackground: stampBackgroundIsBright(photo: photo, position: cfg.position),
+                isBrightBackground: photo == nil ? true : stampBackgroundIsBright(photo: photo, position: cfg.position),
                 showHeartRate: cfg.showHeartRate, showCalories: false,
                 showTextOutline: cfg.showTextOutline,
                 stampText: cfg.text, stampTextPosition: cfg.textPosition,
@@ -238,7 +242,7 @@ struct StampAnimPreviewCard: View {
                 .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                 .allowsHitTesting(false)
             if cfg.showDate, let d = data.date {
-                StampDateLabel(date: d)
+                StampDateLabel(date: d, onLight: photo == nil)
                     .padding(.horizontal, 14)
                     .padding(.top, 14 + 8)
                     .frame(width: renderWidth, height: renderHeight, alignment: .topTrailing)

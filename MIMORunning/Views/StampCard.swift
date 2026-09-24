@@ -131,11 +131,13 @@ struct StampData {
 /// 스탬프 카드의 날짜·시간 라벨. `StampPhotoConfig.showDate`가 켜져 있을 때만 배치한다.
 struct StampDateLabel: View {
     let date: Date
+    /// 흰 배경(사진 없는 스탬프 카드) — 검은 글자, 그림자 없음
+    var onLight: Bool = false
     var body: some View {
         Text(StampDateLabel.string(for: date))
             .font(.system(size: 8, weight: .medium))
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+            .foregroundStyle(onLight ? Color.black : Color.white)
+            .shadow(color: .black.opacity(onLight ? 0 : 0.4), radius: 2, x: 0, y: 1)
     }
     /// 예: "2026. 9. 4 오후 6:16" (애슬레틱 카드 날짜 줄과 같은 포맷터)
     static func string(for date: Date) -> String {
