@@ -113,22 +113,22 @@ struct ShareChartPalette {
             Color(hex: "FF375F"),  // Z5 pink
         ],
         hrRepColor:      Color(hex: "FF5247"),    // HR chip/tile representative red
-        pace:            Theme.chartPace,         // #4DD0F5 cyan
+        pace:            Theme.splitBarLo,        // 구간 기록 막대와 같은 페이스 청록
         elevation:       Theme.chartElev,         // #8FE04D lime
         elevFill:        Theme.chartElev,
         elevFillMaxOp:   0.12,
         timeLabel:       Color.yellow.opacity(0.85),
         textSecondary:   .white.opacity(0.55),
         axisLabelColor:  .white,
-        paceColFillOp:      0.14,
-        paceColBorderOp:    0.16,
+        paceColFillOp:      0.30,   // 0.14는 검은 배경에서 회색으로 보였다 — 청록이 읽히게
+        paceColBorderOp:    0.45,
         paceColBorderWidth: 1.0,
         lineWidthAdjust:    0.0,
         casingWidthAdd:     1.8,
         hrLineWidth:        2.8,
         xAxisTimeColor:     Color(hex: "FFE04D"),
         xAxisDistColor:     .white,
-        paceColLabelColor:  .white.opacity(0.7),
+        paceColLabelColor:  Theme.splitBarHi,   // 막대 아래 페이스 숫자도 페이스 색
         scrubberBorderOp:   0.0,
         valueLabelBgOp:     0.0,
         mapBorderOp:        0.0,
@@ -157,22 +157,22 @@ struct ShareChartPalette {
             Color(hex: "D81B60"),  // Z5 deep pink
         ],
         hrRepColor:      Color(hex: "E0242B"),    // HR chip/tile representative red
-        pace:            Color(hex: "00A8C8"),    // cyan (same hue as dark, darkened)
+        pace:            Theme.splitBarLoLight,   // 구간 기록 라이트 막대와 같은 짙은 청록
         elevation:       Color(hex: "00915A"),    // 스프링 그린의 어두운 짝 (다크 00E676)
         elevFill:        Color(hex: "00915A"),
         elevFillMaxOp:   0.13,
         timeLabel:       Color(hex: "555555"),
         textSecondary:   Color(hex: "757575"),
         axisLabelColor:  Color(hex: "8A8A8A"),
-        paceColFillOp:      0.08,
-        paceColBorderOp:    0.14,
+        paceColFillOp:      0.16,
+        paceColBorderOp:    0.35,
         paceColBorderWidth: 0.8,
         lineWidthAdjust:    -0.2,
         casingWidthAdd:     1.8,
         hrLineWidth:        2.6,
         xAxisTimeColor:     Color(hex: "D4A700"),
         xAxisDistColor:     Color(hex: "111111"),
-        paceColLabelColor:  Color(hex: "555555"),
+        paceColLabelColor:  Theme.splitBarLoLight,
         scrubberBorderOp:   0.10,
         valueLabelBgOp:     0.90,  // opacity for white text casing behind value labels
         mapBorderOp:        0.10,

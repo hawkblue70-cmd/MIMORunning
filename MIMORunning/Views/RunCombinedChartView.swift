@@ -327,7 +327,8 @@ struct RunCombinedChartView: View {
             let fillOp   = isInProgress ? baseOp * 0.5 : baseOp
             let borderOp = isInProgress ? p.paceColBorderOp * 0.5 : p.paceColBorderOp
             ctx.fill(barPath, with: .color(p.pace.opacity(fillOp)))
-            ctx.stroke(barPath, with: .color(p.textPrimary.opacity(borderOp)),
+            // 테두리도 페이스 색 — 흰 테두리는 막대를 회색으로 보이게 했다
+            ctx.stroke(barPath, with: .color(p.pace.opacity(borderOp)),
                        style: StrokeStyle(lineWidth: p.paceColBorderWidth))
 
             // Label centred under column; skip if too narrow or in-progress bar
