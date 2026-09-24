@@ -73,6 +73,13 @@ enum InsightAIGenerator {
                 #endif
                 return nil
             }
+            // 원문에 없는 주장("가장", "이번 달", "연속" …)이 붙으면 버린다 — 말투 예시를 사실처럼 베낀다
+            guard InsightFactGuard.claimsAreGrounded(output: output.detail, source: base.detail) else {
+                #if DEBUG
+                print("[LLM] DetailInsight 결과에 원문에 없는 주장 → 폴백: \"\(output.detail)\" / 원문 \"\(base.detail)\"")
+                #endif
+                return nil
+            }
             #if DEBUG
             print("[LLM] DetailInsight 프롬프트 길이 \(promptLen)자 · 결과 (성공)")
             #endif

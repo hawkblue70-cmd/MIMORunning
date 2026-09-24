@@ -42,4 +42,19 @@ final class InsightFactGuardTests: XCTestCase {
         XCTAssertEqual(InsightFactGuard.digitRuns(in: "1:40:41 · 12.3km · 178bpm"),
                        ["1", "40", "41", "12", "3", "178"])
     }
+
+    /// 말투 예시를 베껴 원문에 없는 "이번 달 가장 긴 거리"를 주장하면 막는다(숫자는 원문 그대로라 숫자 검사는 통과).
+    func testClaimCopiedFromStyleExampleIsRejected() {
+        let source = "임계 페이스 근처를 꾸준히 지켰어요, 7.20 km"
+        let output = "이번 달 가장 긴 거리를 달렸어요, 7.20 km"
+        XCTAssertTrue(InsightFactGuard.numbersAreGrounded(output: output, source: source))
+        XCTAssertFalse(InsightFactGuard.claimsAreGrounded(output: output, source: source))
+    }
+
+    /// 원문이 실제로 같은 주장을 하면 통과한다.
+    func testClaimPresentInSourceIsAllowed() {
+        let source = "이번 달 가장 긴 거리예요 · 16.0 km"
+        let output = "이번 달 가장 긴 거리를 달렸어요, 16.0 km"
+        XCTAssertTrue(InsightFactGuard.claimsAreGrounded(output: output, source: source))
+    }
 }

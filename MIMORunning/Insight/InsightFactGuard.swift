@@ -30,6 +30,19 @@ enum InsightFactGuard {
         return digitRuns(in: output) == digitRuns(in: source)
     }
 
+    /// 사실 주장 표현 — 원문에 없는데 결과에만 있으면 모델이 지어낸 것이다.
+    /// 숫자 검사만으로는 못 막는다: 말투 예시 "이번 달 가장 긴 거리를 달렸어요"를 베껴
+    /// 원문 숫자 7.20km를 붙이자 숫자는 그대로라 통과했고, 이번 달 최장이 아닌 러닝이 최장이 됐다(2026-09-24).
+    static let claimPhrases: [String] = [
+        "가장", "최고", "최장", "최단", "최저", "처음", "첫 ", "신기록", "PR",
+        "연속", "몇 주째", "이번 달", "이번 주", "올해", "여러 번", "반복", "끊기지",
+    ]
+
+    /// 결과에 쓰인 사실 주장 표현이 모두 원문에도 있으면 true.
+    static func claimsAreGrounded(output: String, source: String) -> Bool {
+        claimPhrases.allSatisfy { !output.contains($0) || source.contains($0) }
+    }
+
     /// 프롬프트 예시에서 베껴 올 수 있는 자리표시 문자(○ ◯ ○ □ X 등)가 들어 있는가.
     static func containsPlaceholderGlyph(_ text: String) -> Bool {
         text.contains { "○◯〇□■△▲◇◆※".contains($0) }
