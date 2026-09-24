@@ -1225,7 +1225,8 @@ private struct StampHRZoneView: View {
                 ForEach(0..<5, id: \.self) { i in
                     let isSel = i == (data.hrZoneIndex ?? -1)
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(isSel ? zoneOrange : Color.white.opacity(0.22))
+                        // 빈 칸은 스탬프 색 — 흰색 고정이면 흰 배경(사진 없음)에서 사라진다
+                        .fill(isSel ? zoneOrange : fill.opacity(0.22))
                         .frame(width: sz(14, scale), height: sz(8, scale))
                 }
             }
@@ -1325,7 +1326,8 @@ private struct StampCadenceEqView: View {
     }
 
     private var eqCanvas: some View {
-        EQBarShape(barHeights: barHeights).fill(Color.white.opacity(0.82))
+        // 스탬프 색 — 흰색 고정이면 흰 배경(사진 없음)에서 사라진다
+        EQBarShape(barHeights: barHeights).fill(fill.opacity(0.82))
     }
 }
 
