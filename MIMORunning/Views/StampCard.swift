@@ -1258,14 +1258,14 @@ private struct StampElevProfileView: View {
             elevCanvas
                 .frame(width: sz(120, scale), height: sz(40, scale))
 
+            // 숫자·곡선 모두 스탬프 색 — 라임 고정이면 흰 배경(사진 없음)에서 거의 안 보인다
             HStack(alignment: .lastTextBaseline, spacing: sz(2, scale)) {
                 Text("↑\(data.elevGain ?? "—")")
                     .font(.system(size: sz(20, scale), weight: .black))
-                    .foregroundStyle(Color(hex: "C6FF00"))
                 Text("M")
                     .font(.system(size: sz(9, scale), weight: .bold, design: .monospaced))
-                    .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
             }
+            .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
 
             Text("ELEV GAIN · \(data.distance) \(data.distanceUnit)")
                 .font(.system(size: sz(9, scale), weight: .medium, design: .monospaced))
@@ -1276,11 +1276,10 @@ private struct StampElevProfileView: View {
 
     private var elevCanvas: some View {
         let series = data.elevSeries ?? defaultSeries
-        let lime = Color(hex: "C6FF00")
         return ZStack {
-            ElevFillShape(series: series).fill(lime.opacity(0.18))
+            ElevFillShape(series: series).fill(fill.opacity(0.18))
             ElevLineShape(series: series)
-                .stroke(lime, style: StrokeStyle(lineWidth: max(1, sz(1.5, scale)), lineCap: .round, lineJoin: .round))
+                .stroke(fill, style: StrokeStyle(lineWidth: max(1, sz(1.5, scale)), lineCap: .round, lineJoin: .round))
         }
     }
 
