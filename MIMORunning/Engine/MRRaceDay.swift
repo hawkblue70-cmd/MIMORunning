@@ -18,13 +18,14 @@ enum MRRacePhase {
     case recovery        // D+1 ~ D+14
 
     var title: String {
+        let L = AppLanguage.shared
         switch self {
-        case .building:  return "쌓는 시기"
-        case .tapering:  return "이제 아끼는 시기"
-        case .finalWeek: return "마지막 한 주"
-        case .eve:       return "내일입니다"
-        case .raceDay:   return "오늘입니다"
-        case .recovery:  return "회복 중"
+        case .building:  return L.s("쌓는 시기", "Building")
+        case .tapering:  return L.s("이제 아끼는 시기", "Time to save it")
+        case .finalWeek: return L.s("마지막 한 주", "Final week")
+        case .eve:       return L.s("내일입니다", "Tomorrow")
+        case .raceDay:   return L.s("오늘입니다", "Today")
+        case .recovery:  return L.s("회복 중", "Recovering")
         }
     }
 }
@@ -110,6 +111,7 @@ func mrRaceDayCard(race: MRTargetRace,
     let cutoff28 = cal.date(byAdding: .day, value: -28, to: asOf)!
     let vol4w = runs.filter { $0.start > cutoff28 }.compactMap(\.distanceKm).reduce(0, +) / 4.0
 
+    let L = AppLanguage.shared
     var lines: [String] = []
     var headline = ""
     var compactLine = ""
@@ -125,73 +127,73 @@ func mrRaceDayCard(race: MRTargetRace,
     case .building:
         headline = "D-\(d)"
         if let p = plan {
-            lines.append("계획대로 쌓으면 \(mrFormatDisplay(p.projectedFinal))입니다.")
+            lines.append(L.s("계획대로 쌓으면 \(mrFormatDisplay(p.projectedFinal))입니다.", "On plan: \(mrFormatDisplay(p.projectedFinal))."))
         }
 
     case .tapering:
         if let w = planWeek, !inPlanTaper {
             // 계획상 아직 테이퍼가 아닌 주(10K 1주 테이퍼의 D-14 주 등) — 계획 값을 그대로 말한다
-            headline = "D-\(d) · 마지막 정상 주"
-            lines.append("이번 주는 계획대로 — \(w.breakdown). 테이퍼는 다음 주부터입니다.")
-            lines.append("여기서 늘려도 대회 날 몸에 남지 않습니다. 지금까지 쌓은 것이 다입니다.")
+            headline = L.s("D-\(d) · 마지막 정상 주", "D-\(d) · Last normal week")
+            lines.append(L.s("이번 주는 계획대로 — \(w.breakdown). 테이퍼는 다음 주부터입니다.", "Stick to the plan this week — \(w.breakdown). The taper starts next week."))
+            lines.append(L.s("여기서 늘려도 대회 날 몸에 남지 않습니다. 지금까지 쌓은 것이 다입니다.", "Adding more now won't show up on race day. What you've built is what you have."))
             if let t = base {
                 let pace = t * 60 / (race.distanceM / 1000)
-                lines.append("대회 예상 평균 \(mrFormatPace(pace))/km — 짧은 구간은 이 페이스로 감각을 유지하세요.")
-                compactLine = "예상 \(mrFormatPace(pace))/km · 계획대로 \(Int(w.weeklyKm))km, 테이퍼는 다음 주"
+                lines.append(L.s("대회 예상 평균 \(mrFormatPace(pace))/km — 짧은 구간은 이 페이스로 감각을 유지하세요.", "Projected race pace \(mrFormatPace(pace))/km — run short stretches at it to keep the feel."))
+                compactLine = L.s("예상 \(mrFormatPace(pace))/km · 계획대로 \(Int(w.weeklyKm))km, 테이퍼는 다음 주", "Projected \(mrFormatPace(pace))/km · \(Int(w.weeklyKm)) km on plan, taper next week")
             }
         } else {
-            headline = "D-\(d) · 이제 쌓는 게 아니라 아끼는 시기입니다"
-            lines.append("거리는 절반 가까이 줄이시되 **페이스는 그대로** 두세요. 완전히 쉬면 오히려 둔해집니다.")
-            lines.append("여기서 늘려도 대회 날 몸에 남지 않습니다. 지금까지 쌓은 것이 다입니다.")
+            headline = L.s("D-\(d) · 이제 쌓는 게 아니라 아끼는 시기입니다", "D-\(d) · Time to save it, not build it")
+            lines.append(L.s("거리는 절반 가까이 줄이시되 **페이스는 그대로** 두세요. 완전히 쉬면 오히려 둔해집니다.", "Cut the distance by nearly half but **keep the pace**. Resting completely leaves you sluggish."))
+            lines.append(L.s("여기서 늘려도 대회 날 몸에 남지 않습니다. 지금까지 쌓은 것이 다입니다.", "Adding more now won't show up on race day. What you've built is what you have."))
             if let w = planWeek {
-                lines.append("이번 주는 계획대로 \(Int(w.weeklyKm))km — \(w.breakdown).")
+                lines.append(L.s("이번 주는 계획대로 \(Int(w.weeklyKm))km — \(w.breakdown).", "This week: \(Int(w.weeklyKm)) km on plan — \(w.breakdown)."))
             } else {
                 // 계획 없음 — 4주 평균 기준 폴백 (2주 테이퍼 첫 주 ~84%)
                 lines.append(vol4w >= 5
-                    ? "테이퍼 2주차 — 이번 주는 \(Int((vol4w * 0.84).rounded()))km 정도로."
-                    : "테이퍼 2주차 — 이번 주는 평소의 80% 정도로.")
+                    ? L.s("테이퍼 2주차 — 이번 주는 \(Int((vol4w * 0.84).rounded()))km 정도로.", "Two weeks out — about \(Int((vol4w * 0.84).rounded())) km this week.")
+                    : L.s("테이퍼 2주차 — 이번 주는 평소의 80% 정도로.", "Two weeks out — about 80% of your usual this week."))
             }
             // 페이스는 2주 전부터 — "페이스는 그대로"의 그 페이스가 몇인지. 스플릿 표는 D-7부터(뷰).
             if let t = base {
                 let pace = t * 60 / (race.distanceM / 1000)
-                lines.append("대회 예상 평균 \(mrFormatPace(pace))/km — 테이퍼 러닝의 짧은 구간은 이 페이스로.")
-                compactLine = "예상 \(mrFormatPace(pace))/km · 거리는 줄이고 페이스는 그대로"
+                lines.append(L.s("대회 예상 평균 \(mrFormatPace(pace))/km — 테이퍼 러닝의 짧은 구간은 이 페이스로.", "Projected race pace \(mrFormatPace(pace))/km — run short stretches of your taper runs at it."))
+                compactLine = L.s("예상 \(mrFormatPace(pace))/km · 거리는 줄이고 페이스는 그대로", "Projected \(mrFormatPace(pace))/km · less distance, same pace")
             }
         }
 
     case .finalWeek:
-        headline = "D-\(d) · 마지막 한 주"
-        lines.append("새 최장 롱런은 하지 마세요. 이 시점의 롱런은 이득 없이 회복만 잡아먹습니다.")
-        lines.append("대회에서 쓸 젤과 음료를 이번 주 러닝에서 한 번 미리 써보세요. 당일 처음 시도하면 안 됩니다.")
+        headline = L.s("D-\(d) · 마지막 한 주", "D-\(d) · Final week")
+        lines.append(L.s("새 최장 롱런은 하지 마세요. 이 시점의 롱런은 이득 없이 회복만 잡아먹습니다.", "No new longest long run. A long run this late costs recovery and gains nothing."))
+        lines.append(L.s("대회에서 쓸 젤과 음료를 이번 주 러닝에서 한 번 미리 써보세요. 당일 처음 시도하면 안 됩니다.", "Try the gels and drinks you'll race with on one run this week. Nothing new on race day."))
         if let t = base, t >= 150 {
-            lines.append("보급은 탄수화물 시간당 \(t >= 150 ? "60~90g" : "30~60g")(젤 1개 ≈ 22~25g) — 15~20분 간격으로 나누시고요.")
+            lines.append(L.s("보급은 탄수화물 시간당 \(t >= 150 ? "60~90g" : "30~60g")(젤 1개 ≈ 22~25g) — 15~20분 간격으로 나누시고요.", "Fuel: \(t >= 150 ? "60–90 g" : "30–60 g") of carbs per hour (one gel ≈ 22–25 g), split every 15–20 minutes."))
         }
         if let w = planWeek {
-            lines.append("이번 주는 계획대로 \(Int(w.weeklyKm))km — \(w.breakdown).")
+            lines.append(L.s("이번 주는 계획대로 \(Int(w.weeklyKm))km — \(w.breakdown).", "This week: \(Int(w.weeklyKm)) km on plan — \(w.breakdown)."))
         } else {
             // 계획 없음 — 4주 평균 기준 폴백 (마지막 주 ~51%)
             lines.append(vol4w >= 5
-                ? "테이퍼 1주차 — 이번 주는 \(Int((vol4w * 0.51).rounded()))km 정도로."
-                : "테이퍼 1주차 — 이번 주는 평소의 50% 정도로.")
+                ? L.s("테이퍼 1주차 — 이번 주는 \(Int((vol4w * 0.51).rounded()))km 정도로.", "Race week — about \(Int((vol4w * 0.51).rounded())) km this week.")
+                : L.s("테이퍼 1주차 — 이번 주는 평소의 50% 정도로.", "Race week — about 50% of your usual this week."))
         }
         // 마지막 한 주는 배분을 정하는 시기 — 전날에야 숫자를 주면 늦다. 첫 5km 상한은 당일과 같은 2%.
         if let t = base {
             let pace = t * 60 / (race.distanceM / 1000)
-            lines.append("예상 평균 \(mrFormatPace(pace))/km · 첫 5km는 \(mrFormatPace(pace * 0.98))/km보다 빠르지 않게. 아래 배분은 처음부터 끝까지 같은 페이스입니다.")
-            compactLine = "예상 \(mrFormatPace(pace))/km · 첫 5km는 \(mrFormatPace(pace * 0.98)) 이내 · 젤은 미리 연습"
+            lines.append(L.s("예상 평균 \(mrFormatPace(pace))/km · 첫 5km는 \(mrFormatPace(pace * 0.98))/km보다 빠르지 않게. 아래 배분은 처음부터 끝까지 같은 페이스입니다.", "Projected average \(mrFormatPace(pace))/km · first 5 km no faster than \(mrFormatPace(pace * 0.98))/km. The splits below are even pace start to finish."))
+            compactLine = L.s("예상 \(mrFormatPace(pace))/km · 첫 5km는 \(mrFormatPace(pace * 0.98)) 이내 · 젤은 미리 연습", "Projected \(mrFormatPace(pace))/km · first 5 km within \(mrFormatPace(pace * 0.98)) · practice your gels")
         }
 
     case .eve:
-        headline = "내일입니다"
-        lines.append("오늘은 20~30분 가볍게 몸만 풀거나, 쉬셔도 됩니다.")
-        lines.append("짐은 오늘 싸두세요 — 배번, 젤, 물, 옷, 신발.")
+        headline = L.s("내일입니다", "Tomorrow")
+        lines.append(L.s("오늘은 20~30분 가볍게 몸만 풀거나, 쉬셔도 됩니다.", "Today, 20–30 easy minutes to loosen up — or just rest."))
+        lines.append(L.s("짐은 오늘 싸두세요 — 배번, 젤, 물, 옷, 신발.", "Pack today — bib, gels, water, clothes, shoes."))
         if let t = base {
             let pace = t * 60 / (race.distanceM / 1000)
-            lines.append("예상 평균 \(mrFormatPace(pace))/km입니다. 첫 5km는 여기서 **더 빠르지 않게**.")
+            lines.append(L.s("예상 평균 \(mrFormatPace(pace))/km입니다. 첫 5km는 여기서 **더 빠르지 않게**.", "Projected average \(mrFormatPace(pace))/km. For the first 5 km, **no faster than this**."))
         }
 
     case .raceDay:
-        headline = "오늘입니다"
+        headline = L.s("오늘입니다", "Today")
         if let t = base {
             let pace = t * 60 / (race.distanceM / 1000)
             let cap = pace * 0.98
@@ -200,10 +202,10 @@ func mrRaceDayCard(race: MRTargetRace,
             //   첫 5km를 10% 빠르게 가면 완주 시간 평균 +37분.
             //   세 명 중 한 명(33%)이 첫 5km를 가장 빠른 구간으로 달렸고,
             //   이들의 평균 과속률은 12%였다.
-            lines.append("첫 5km를 \(mrFormatPace(cap))/km보다 빠르게 가지 마세요.")
-            lines.append("172만 명 기록에서 초반 10% 과속은 완주 시간을 평균 37분 늘렸습니다. 세 명 중 한 명이 첫 5km를 가장 빠르게 달립니다.")
+            lines.append(L.s("첫 5km를 \(mrFormatPace(cap))/km보다 빠르게 가지 마세요.", "Don't run the first 5 km faster than \(mrFormatPace(cap))/km."))
+            lines.append(L.s("172만 명 기록에서 초반 10% 과속은 완주 시간을 평균 37분 늘렸습니다. 세 명 중 한 명이 첫 5km를 가장 빠르게 달립니다.", "Across 1.72 million finishes, starting 10% too fast added 37 minutes on average. One in three runners runs their fastest 5 km first."))
             // ■1 균등 배분 설명 — 배분표가 같은 페이스임을 명시, 네거티브 스플릿 암시 제거
-            lines.append("위 배분은 처음부터 끝까지 같은 페이스입니다. 초반에 빨라지는 쪽이 후반 감속으로 돌아옵니다.")
+            lines.append(L.s("위 배분은 처음부터 끝까지 같은 페이스입니다. 초반에 빨라지는 쪽이 후반 감속으로 돌아옵니다.", "The splits above are even pace start to finish. Speed spent early comes back as a late slowdown."))
         }
 
     case .recovery:
@@ -217,24 +219,24 @@ func mrRaceDayCard(race: MRTargetRace,
         if let g = goalMin {
             let diff = run.durationMin - g
             lines.append(diff <= 0
-                ? "목표 \(mrFormatDisplay(g))보다 \(mrFormatDisplay(-diff)) 빨랐습니다."
-                : "목표 \(mrFormatDisplay(g))에서 \(mrFormatDisplay(diff)) 차이였습니다.")
+                ? L.s("목표 \(mrFormatDisplay(g))보다 \(mrFormatDisplay(-diff)) 빨랐습니다.", "\(mrFormatDisplay(-diff)) faster than your goal of \(mrFormatDisplay(g)).")
+                : L.s("목표 \(mrFormatDisplay(g))에서 \(mrFormatDisplay(diff)) 차이였습니다.", "\(mrFormatDisplay(diff)) off your goal of \(mrFormatDisplay(g))."))
         }
         // 예측이 얼마나 맞았는지 — 이 앱이 스스로를 검증하는 자리다
         if let p = base {
             let err = (p - run.durationMin) / run.durationMin * 100
-            lines.append(String(format: "이 앱은 %@로 봤습니다 (%+.1f%%).",
+            lines.append(String(format: L.s("이 앱은 %@로 봤습니다 (%+.1f%%).", "This app predicted %@ (%+.1f%%)."),
                                 mrFormatDisplay(p), err))
         }
 
         if race.distanceM >= MRDistance.dF {
-            lines.append("마라톤 뒤에는 근육이 회복되는 데 2주쯤 걸립니다. 지금 기록이 잘 안 나와도 정상이에요.")
-            lines.append(ago <= 3 ? "며칠은 걷기나 아주 가벼운 조깅만으로 충분합니다."
-                                  : "슬슬 이지 러닝으로 돌아오셔도 됩니다. 강도는 다음 주부터.")
+            lines.append(L.s("마라톤 뒤에는 근육이 회복되는 데 2주쯤 걸립니다. 지금 기록이 잘 안 나와도 정상이에요.", "Muscles take about two weeks to recover after a marathon. Slow times right now are normal."))
+            lines.append(ago <= 3 ? L.s("며칠은 걷기나 아주 가벼운 조깅만으로 충분합니다.", "For a few days, walking or very easy jogging is plenty.")
+                                  : L.s("슬슬 이지 러닝으로 돌아오셔도 됩니다. 강도는 다음 주부터.", "You can ease back into easy runs. Intensity from next week."))
         } else {
-            lines.append("며칠은 가볍게 가시면 됩니다.")
+            lines.append(L.s("며칠은 가볍게 가시면 됩니다.", "Keep it easy for a few days."))
         }
-        lines.append("이 기록이 다음 예상에 반영됩니다.")
+        lines.append(L.s("이 기록이 다음 예상에 반영됩니다.", "This result feeds into your next prediction."))
         splits = []      // 끝난 대회에 스플릿은 필요 없다
     }
 
@@ -247,17 +249,17 @@ func mrRaceDayCard(race: MRTargetRace,
         switch phase {
         case .finalWeek, .eve, .raceDay:
             if gapPct < 0 {
-                lines.append("목표 안에 들어옵니다.")
+                lines.append(L.s("목표 안에 들어옵니다.", "You're inside your goal."))
             } else if gapPct <= 3 {
-                lines.append("사정권입니다. 당일 컨디션에 따라 갈립니다.")
+                lines.append(L.s("사정권입니다. 당일 컨디션에 따라 갈립니다.", "Within range — race-day conditions will decide."))
                 // "30km 지나서" 조언은 마라톤에만 적용
                 if race.distanceM >= MRDistance.dF {
-                    lines.append("몸이 좋으면 30km 지나서 올리시면 됩니다 — 반대는 되돌릴 수 없습니다.")
+                    lines.append(L.s("몸이 좋으면 30km 지나서 올리시면 됩니다 — 반대는 되돌릴 수 없습니다.", "If you feel good, pick it up after 30 km — the other way round can't be undone."))
                 }
             } else if gapPct <= 8 {
-                lines.append("입력하신 목표는 \(mrFormatDisplay(g))인데 지금 몸으로는 \(mrFormatDisplay(p)) 부근입니다. 부족분이 있습니다. 이 배분으로 완주부터 확보하시죠.")
+                lines.append(L.s("입력하신 목표는 \(mrFormatDisplay(g))인데 지금 몸으로는 \(mrFormatDisplay(p)) 부근입니다. 부족분이 있습니다. 이 배분으로 완주부터 확보하시죠.", "Your goal is \(mrFormatDisplay(g)), but your current fitness points to around \(mrFormatDisplay(p)). There's a gap — secure the finish with these splits first."))
             } else {
-                lines.append("입력하신 목표는 \(mrFormatDisplay(g))인데 지금 몸으로는 \(mrFormatDisplay(p)) 부근입니다. 이번 대회에서 목표까지는 거리가 있습니다. 오늘 배분은 완주 기준입니다.")
+                lines.append(L.s("입력하신 목표는 \(mrFormatDisplay(g))인데 지금 몸으로는 \(mrFormatDisplay(p)) 부근입니다. 이번 대회에서 목표까지는 거리가 있습니다. 오늘 배분은 완주 기준입니다.", "Your goal is \(mrFormatDisplay(g)), but your current fitness points to around \(mrFormatDisplay(p)). The goal is a stretch for this race — today's splits are set for finishing."))
             }
         default: break
         }
@@ -265,7 +267,7 @@ func mrRaceDayCard(race: MRTargetRace,
 
     // ■2 순서: "좋은 레이스 되세요"는 목표 대비 부족 문구 뒤에 붙는 마지막 인사
     if case .raceDay = phase {
-        lines.append("좋은 레이스 되세요.")
+        lines.append(L.s("좋은 레이스 되세요.", "Have a great race."))
     }
 
     return MRRaceDayCard(race: race, phase: phase, daysLeft: d,
