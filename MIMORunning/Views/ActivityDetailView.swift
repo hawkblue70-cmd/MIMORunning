@@ -702,9 +702,11 @@ struct ActivityDetailView: View {
                 #endif
             }
 
-            // 존 분포: detail?.hrZones 우선, 없으면 HR 시리즈로 비동기 재계산 → displayZones
+            // 존 분포: detail?.hrZones 우선, 없거나 러닝 시간의 절반도 못 덮으면(예전 존 계산 결함의 흔적)
+            // HR 시리즈로 비동기 재계산 → displayZones. 재계산은 detail?.hrZones도 고쳐 구간 · 심박 영역 카드까지 맞춘다.
             let detailZones = detail?.hrZones ?? []
-            if !detailZones.isEmpty {
+            if !detailZones.isEmpty,
+               HealthKitManager.zonesCoverRun(detailZones, duration: activity.duration) {
                 displayZones = detailZones
             } else {
                 await recomputeZonesIfNeeded()

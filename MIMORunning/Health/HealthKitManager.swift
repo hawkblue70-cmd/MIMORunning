@@ -1468,8 +1468,9 @@ class HealthKitManager {
             print("[유형] 인터벌 \(_ic)/\(_d.count)건")
         }
         #endif
-        if let cached = detailCache[activityID], cached.isComplete {
+        if var cached = detailCache[activityID], cached.isComplete {
             logGridState(cached, activityID: activityID, tag: "메모리 캐시")
+            if await repairZonesIfShort(&cached, activityID: activityID) { detailCache[activityID] = cached }
             return cached
         }
         if var disk = loadDetailFromDisk(activityID), disk.isComplete {
@@ -1477,9 +1478,11 @@ class HealthKitManager {
             if let refreshed = await refetchIfWatchMetricsMissing(disk, activityID: activityID) {
                 disk = refreshed
             }
+            // 존이 고쳐졌으면 이지런 판정(Zone 1~2 비율)이 달라질 수 있다 → 확정 분류가 있어도 한 번 재판정
+            let zonesRepaired = await repairZonesIfShort(&disk, activityID: activityID)
             // [29] 이미 확정(hasSplits=true)된 분류가 있으면 재판정 건너뜀 — 매 실행 반복 방지
             let wtDict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
-            if let raw = wtDict[activityID.uuidString], let entry = parseWorkoutTypeEntry(raw), entry.hasSplits {
+            if !zonesRepaired, let raw = wtDict[activityID.uuidString], let entry = parseWorkoutTypeEntry(raw), entry.hasSplits {
                 if disk.workoutType != entry.type {
                     disk.workoutType = entry.type
                     saveDetailToDisk(disk, id: activityID)
@@ -1623,21 +1626,54 @@ class HealthKitManager {
     /// AT2 분할 정보(K-4)가 없는 구버전 존은 nil로 취급 — `backfillHRZonesAroundActivity`가 재조회해 채운다.
     func hrZonesFromCache(_ id: UUID) -> [HRZoneData]? {
         if let z = hrZonesFromMemoryCache(id) { return z }
-        if let z = Self.validZones(loadDetailFromDisk(id)?.hrZones) { return z }
+        if let z = Self.validZones(loadDetailFromDisk(id)?.hrZones, duration: runDuration(id)) { return z }
         return nil
     }
 
     /// 메모리·존 전용 캐시만 — 상세 JSON(경로·고도·심박 시계열 포함)을 메인에서 디코딩하지 않는다.
     /// 홈처럼 러닝 여러 건을 한꺼번에 묻는 자리(아침 제안의 고강도 판정)는 이걸 쓴다.
     func hrZonesFromMemoryCache(_ id: UUID) -> [HRZoneData]? {
-        if let z = Self.validZones(detailCache[id]?.hrZones) { return z }
-        if let z = Self.validZones(loadHRZoneOnlyCache()[id.uuidString]) { return z }
+        let duration = runDuration(id)
+        if let z = Self.validZones(detailCache[id]?.hrZones, duration: duration) { return z }
+        if let z = Self.validZones(loadHRZoneOnlyCache()[id.uuidString], duration: duration) { return z }
         return nil
     }
 
-    private static func validZones(_ z: [HRZoneData]?) -> [HRZoneData]? {
+    private static func validZones(_ z: [HRZoneData]?, duration: TimeInterval?) -> [HRZoneData]? {
         guard let z, !z.isEmpty, MRIntensityTime.hasAT2Split(z) else { return nil }
+        if let duration, !zonesCoverRun(z, duration: duration) { return nil }
         return z
+    }
+
+    private func runDuration(_ id: UUID) -> TimeInterval? {
+        activities.first(where: { $0.id == id })?.duration
+    }
+
+    /// 존 합계가 러닝 시간의 절반도 안 되면 잘못 저장된 존이다 — 예전 queryHRZones가 심박 묶음 몇 개만 세던
+    /// 결함(2026-09-25)의 흔적. 샘플 간격 상한(60초)·일시정지 제외로 합계가 조금 모자라는 건 정상이라 절반을 문턱으로 둔다.
+    /// 판단할 수 없으면(존 없음·시간 0) 통과.
+    static func zonesCoverRun(_ zones: [HRZoneData], duration: TimeInterval) -> Bool {
+        guard !zones.isEmpty, duration > 0 else { return true }
+        return zones.reduce(0) { $0 + $1.seconds } >= duration * 0.5
+    }
+
+    /// 캐시된 상세의 존이 러닝 시간을 못 덮으면 다시 계산해 상세·디스크·존 전용 캐시를 고친다. 고쳤으면 true.
+    private func repairZonesIfShort(_ detail: inout ActivityDetail, activityID: UUID) async -> Bool {
+        guard let duration = runDuration(activityID),
+              !Self.zonesCoverRun(detail.hrZones, duration: duration) else { return false }
+        if workoutCache[activityID] == nil { await fetchSingleWorkout(id: activityID) }
+        guard let wo = workoutCache[activityID] else { return false }
+        let fresh = await queryHRZones(workout: wo)
+        guard !fresh.isEmpty else { return false }
+        #if DEBUG
+        let before = Int(detail.hrZones.reduce(0) { $0 + $1.seconds })
+        let after  = Int(fresh.reduce(0) { $0 + $1.seconds })
+        print("[존] 합계 부족 → 재계산 \(before / 60)분 → \(after / 60)분 (러닝 \(Int(duration) / 60)분)")
+        #endif
+        detail.hrZones = fresh
+        saveDetailToDisk(detail, id: activityID)
+        persistHRZones(fresh, for: activityID)
+        return true
     }
 
     /// 열람 러닝 기준 4주 창에서 존 체류 시간이 어느 캐시에도 없는 러닝을 채운다.
@@ -3572,53 +3608,17 @@ class HealthKitManager {
     }
 
     private func queryHRZones(workout: HKWorkout) async -> [HRZoneData] {
-        let unit = Self.bpmUnit
-
         // 러닝 날짜 기준 나이 — HealthKit DOB → 수동입력 → nil(존계산불가)
         guard let (ageAtRun, ageSrc) = effectiveAge(at: workout.startDate) else { return [] }
         let mhr = max(150, Int((208.0 - 0.7 * Double(ageAtRun)).rounded()))
         let rhr = await queryLatestRestingHR(before: workout.startDate)
 
-        // 1차: 워크아웃 연결 샘플
-        let pred = HKSamplePredicate<HKQuantitySample>.quantitySample(
-            type: HKQuantityType(.heartRate),
-            predicate: HKQuery.predicateForObjects(from: workout)
-        )
-        let desc = HKSampleQueryDescriptor(
-            predicates: [pred],
-            sortDescriptors: [SortDescriptor(\HKQuantitySample.startDate, order: .forward)]
-        )
-        var bpmDates: [(bpm: Double, start: Date)] = []
-        if let linked = try? await desc.result(for: store) {
-            bpmDates = linked.map { ($0.quantity.doubleValue(for: unit), $0.startDate) }
-        }
-
-        // 2차 시리즈 폴백: Apple Watch HR이 HKQuantitySeriesSampleBuilder로 저장된 경우.
-        // options: [] — 컨테이너 startDate가 workout.startDate보다 1~2초 앞선 경우도 포함 (strictStartDate 금지).
-        if bpmDates.count < 5 {
-            let seriesPred = HKSamplePredicate<HKQuantitySample>.quantitySample(
-                type: HKQuantityType(.heartRate),
-                predicate: HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate, options: [])
-            )
-            let seriesDesc = HKQuantitySeriesSampleQueryDescriptor(predicate: seriesPred, options: [])
-            var seen = Set<Date>()
-            var seriesBpmDates: [(bpm: Double, start: Date)] = []
-            do {
-                for try await entry in seriesDesc.results(for: store) {
-                    let start = entry.dateInterval.start
-                    guard seen.insert(start).inserted else { continue }
-                    seriesBpmDates.append((entry.quantity.doubleValue(for: unit), start))
-                }
-            } catch {}
-            if seriesBpmDates.count > bpmDates.count {
-                bpmDates = seriesBpmDates.sorted { $0.start < $1.start }
-            }
-        }
-
-        guard bpmDates.count >= 5 else { return [] }
-
+        // 심박 차트와 같은 샘플(queryHRSamples) — 연결 샘플이 러닝 분 수보다 적으면 시리즈로 넘어가고, 일시정지 구간은 뺀다.
+        // ⚠ 예전엔 여기서 따로 조회하며 "연결 샘플 5개 미만"일 때만 시리즈로 넘어갔다. 워치가 심박을 묶음(시리즈 컨테이너)
+        //   몇 개로 저장한 러닝은 묶음 6개만 세고 샘플 간격 60초 상한에 걸려, 1:58 하프의 존 합계가 5분(1:00 + 4:05)이 됐다(2026-09-25).
+        let asSamples = await queryHRSamples(for: workout)
+        guard asSamples.count >= 5 else { return [] }
         let _ = ageSrc  // consumed to silence unused-variable warning
-        let asSamples = bpmDates.map { (offset: $0.start.timeIntervalSince(workout.startDate), bpm: Int($0.bpm.rounded())) }
 
         if let rhr, mhr > rhr {
             return computeKarvonenZones(samples: asSamples, rhr: rhr, mhr: mhr)
