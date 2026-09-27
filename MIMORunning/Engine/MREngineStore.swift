@@ -785,13 +785,17 @@ final class MREngineStore: ObservableObject {
             let addl = mrEffortsFromConfirmedMatches(storedConfirmedMatches, runs: runs)
             let r = runs, rhr = rhrSamples, d = storedDob, s = storedSex, h = heat
             let matchCount = addl.count
-            backtestInFlightKeys.insert(key)
-            let result = await Task.detached(priority: .userInitiated) {
-                mrBacktest(runs: r, restingHRSamples: rhr,
-                           dateOfBirth: d, sex: s, heat: h,
-                           additionalTargets: addl, asOf: Date())
-            }.value
-            backtestInFlightKeys.remove(key)
+            // defer로 계산 중 표시를 반드시 지운다 — 이 블록에 이른 return이 생겨도 키가 새지 않게
+            let result: [MRBacktestRow]
+            do {
+                backtestInFlightKeys.insert(key)
+                defer { backtestInFlightKeys.remove(key) }
+                result = await Task.detached(priority: .userInitiated) {
+                    mrBacktest(runs: r, restingHRSamples: rhr,
+                               dateOfBirth: d, sex: s, heat: h,
+                               additionalTargets: addl, asOf: Date())
+                }.value
+            }
             // 계산하는 동안 대회 목록·노력이 바뀌어 새 키가 요청됐으면 이 결과는 낡았다 — 캐시·화면 모두 건드리지 않음
             guard key == backtestLatestKey else {
                 #if DEBUG

@@ -60,6 +60,11 @@ struct ContentView: View {
         .onChange(of: raceDetector.isReady) { _, ready in
             if ready { syncConfirmedMatchesToEngine() }
         }
+        // 확정·해제(러닝 상세에서 사용자가 바꾸거나 재검증이 자동 확정을 푼 경우)도 백테스트에 반영
+        .onChange(of: confirmedMatchesKey) { _, _ in
+            guard raceDetector.isReady else { return }
+            syncConfirmedMatchesToEngine()
+        }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             // 홈 오늘 카드는 시간에 따라 바뀐다(러닝 종료 후 12시간까지만 기록 줄 표시).
@@ -73,6 +78,14 @@ struct ContentView: View {
     }
 
     // MARK: Private helpers
+
+    /// 확정 대회 목록의 가벼운 비교용 키 — 엔진 백테스트 캐시 키의 대회 부분과 같은 요소(러닝 ID·거리).
+    private var confirmedMatchesKey: [String] {
+        raceDetector.matches.values
+            .filter(\.isConfirmed)
+            .map { "\($0.activityID.uuidString)_\(Int($0.distanceKm * 10))" }
+            .sorted()
+    }
 
     /// 성장 탭 .onAppear와 같은 규칙 — raceDetector 미준비면 영속 키 폴백.
     private func syncConfirmedMatchesToEngine() {

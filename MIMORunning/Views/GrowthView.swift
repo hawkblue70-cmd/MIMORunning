@@ -254,8 +254,7 @@ struct GrowthView: View {
                         manager.syncUserEfforts(from: allStories)
                         refreshRecordBars()
                         refreshEffortTypeRows()
-                        // refreshBacktest 진입부 폴백용 — 모든 호출 경로에서 대회 목록 보장
-                        engine.persistedMatchesProvider = { [manager] in manager.persistedConfirmedMatches() }
+                        // refreshBacktest 폴백용 persistedMatchesProvider는 ContentView .task 첫 줄에서 앱 수준으로 주입된다
                         // raceDetector 미준비 → 영속 키 폴백. 준비 완료 → onChange가 정식 목록으로 재실행
                         let matches: [PersistedRaceMatch] = raceDetector.isReady
                             ? Array(raceDetector.matches.values)
