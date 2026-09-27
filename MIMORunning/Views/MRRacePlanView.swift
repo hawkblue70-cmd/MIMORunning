@@ -981,40 +981,43 @@ struct MRRacePlanSection: View {
                 MRGoalLinksView(links: mrGoalLinks(engine.userInput.goals))
                 ForEach(engine.raceItems) { item in
                     let isExpanded = expandedId == item.id
-                    switch item {
-                    case .planned(let c):
-                        MRRacePlanCard(check: c, isExpanded: isExpanded,
-                                       runs: engine.runs, snapshot: snapshot(for: c),
-                                       recoveryEffortNote: recoveryEffortNote) {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                expandedId = isExpanded ? nil : item.id
-                            }
-                        }
-                    case .planless(let r):
-                        if isExpanded {
-                            MRPlanlessRaceCard(race: r)
-                        } else {
-                            MRRaceCollapsedRow(name: r.name, date: r.date, weekCount: nil) {
+                    // 카드와 준비 비교 블록을 한 묶음으로 — 블록이 카드에 6pt로 붙고, 대회 사이 간격(14)은 그대로
+                    VStack(spacing: 6) {
+                        switch item {
+                        case .planned(let c):
+                            MRRacePlanCard(check: c, isExpanded: isExpanded,
+                                           runs: engine.runs, snapshot: snapshot(for: c),
+                                           recoveryEffortNote: recoveryEffortNote) {
                                 withAnimation(.easeOut(duration: 0.2)) {
-                                    expandedId = item.id
+                                    expandedId = isExpanded ? nil : item.id
+                                }
+                            }
+                        case .planless(let r):
+                            if isExpanded {
+                                MRPlanlessRaceCard(race: r)
+                            } else {
+                                MRRaceCollapsedRow(name: r.name, date: r.date, weekCount: nil) {
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        expandedId = item.id
+                                    }
+                                }
+                            }
+                        case .tuneUp(let r, let planName):
+                            if isExpanded {
+                                MRPlanlessRaceCard(race: r, enclosingPlanName: planName)
+                            } else {
+                                MRRaceCollapsedRow(name: r.name, date: r.date, weekCount: nil) {
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        expandedId = item.id
+                                    }
                                 }
                             }
                         }
-                    case .tuneUp(let r, let planName):
-                        if isExpanded {
-                            MRPlanlessRaceCard(race: r, enclosingPlanName: planName)
-                        } else {
-                            MRRaceCollapsedRow(name: r.name, date: r.date, weekCount: nil) {
-                                withAnimation(.easeOut(duration: 0.2)) {
-                                    expandedId = item.id
-                                }
-                            }
-                        }
-                    }
 
-                    // 대회 준비 비교(B) — 펼친 대회에만, 카드 바로 아래
-                    if isExpanded, let prep = engine.prepComparisons[item.id] {
-                        MRPrepComparisonView(result: prep)
+                        // 대회 준비 비교(B) — 펼친 대회에만, 카드 바로 아래
+                        if isExpanded, let prep = engine.prepComparisons[item.id] {
+                            MRPrepComparisonView(result: prep)
+                        }
                     }
                 }
             } else if case .loading = engine.state {
