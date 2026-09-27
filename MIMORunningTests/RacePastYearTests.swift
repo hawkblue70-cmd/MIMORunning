@@ -77,6 +77,14 @@ struct RacePastYearTests {
         #expect(detector().series(for: manual) == nil)
     }
 
+    @Test func manualMatchNamedLikeDBRaceHasNoSeries() {
+        // 수동 입력 대회가 DB 대회와 이름·날짜가 우연히 같아도 시리즈를 물려받으면 안 된다.
+        let manual = PersistedRaceMatch(activityID: UUID(), raceName: "2026 춘천마라톤", distanceKm: 42.195,
+                                        raceDate: r26.date!, isConfirmed: true,
+                                        isDismissed: false, isManual: true, gateVersion: RaceDetector.gateVersion)
+        #expect(detector().series(for: manual) == nil)
+    }
+
     // MARK: - 지난 해 후보
 
     @Test func findsWeakAndStrongCandidatesNewestFirst() async {

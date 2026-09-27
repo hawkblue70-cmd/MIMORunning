@@ -23,6 +23,8 @@ struct BundledRace: Identifiable {
 
     var date: Date? {
         let df = DateFormatter()
+        df.calendar = Calendar(identifier: .gregorian)
+        df.locale = Locale(identifier: "en_US_POSIX")
         df.dateFormat = "yyyy-MM-dd"
         df.timeZone = TimeZone(identifier: "UTC")
         return df.date(from: dateString)
@@ -246,6 +248,7 @@ final class RaceDetector {
     /// 확정 매칭이 가리키는 DB 대회 줄. 직접 입력한 대회처럼 DB에 없으면 nil.
     /// `confirm`은 `raceDate`에 DB 날짜(UTC 자정)를 넣으므로 UTC 날짜 문자열로 맞춘다.
     func bundledRace(for match: PersistedRaceMatch) -> BundledRace? {
+        guard !match.isManual else { return nil }
         let day = Self.utcDayString(match.raceDate)
         return races.first { $0.name == match.raceName && $0.dateString == day }
     }
