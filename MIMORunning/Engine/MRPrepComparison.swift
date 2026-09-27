@@ -72,7 +72,7 @@ enum MRPrepComparison {
             .sorted { $0.date > $1.date }
         func ratio(_ km: Double) -> Double { abs(km - raceDistanceKm) / max(raceDistanceKm, 0.001) }
         if let s = raceSeries, !s.isEmpty,
-           let same = earlier.first(where: { $0.series == s && ratio($0.distanceKm) <= sameEventTolerance }) {
+           let same = earlier.first(where: { $0.series == s && ratio($0.distanceKm) <= sameEventTolerance + 1e-9 }) {
             return Target(race: same, isSameRace: true)
         }
         if let dist = earlier.first(where: { ratio($0.distanceKm) <= sameDistanceTolerance + 1e-9 }) {
@@ -105,7 +105,7 @@ enum MRPrepComparison {
                        longestKm: inWindow.map(\.km).max() ?? 0)
     }
 
-    /// 등록 대회 하나의 결과. D-N ≥ 1이고 대상이 있고 지난 창에 러닝이 있을 때만.
+    /// 등록 대회 하나의 결과. D-N ≥ 1이고 대상이 있고 지난 창·지금 창 모두 러닝이 있을 때만.
     /// - predictionAt: 그 시점 전날까지 데이터로 낸 예상 기록(분). 엔진이 제공.
     static func build(raceDate: Date, raceDistanceKm: Double, raceSeries: String?,
                       confirmed: [PastRace], runs: [RunPoint], today: Date,
@@ -116,8 +116,9 @@ enum MRPrepComparison {
               let t = target(raceDate: raceDate, raceDistanceKm: raceDistanceKm, raceSeries: raceSeries,
                              confirmed: confirmed, calendar: calendar) else { return nil }
         let point = pastPoint(pastRaceDate: t.race.date, daysLeft: n, calendar: calendar)
-        guard let past = metrics(runs: runs, before: point, calendar: calendar) else { return nil }
-        let now = metrics(runs: runs, before: today, calendar: calendar) ?? Metrics(weeklyKm: 0, longestKm: 0)
+        // 지금 창이 비면(최근 28일 러닝 없음) 비교 전체를 숨긴다 — "지금 0km"를 말하지 않음
+        guard let past = metrics(runs: runs, before: point, calendar: calendar),
+              let now = metrics(runs: runs, before: today, calendar: calendar) else { return nil }
         let pastYear = calendar.component(.year, from: t.race.date)
         return Result(target: t.race, isSameRace: t.isSameRace, daysLeft: n,
                       yearsAgo: calendar.component(.year, from: raceDate) - pastYear,
@@ -159,7 +160,8 @@ enum MRPrepComparison {
         let col = pastColumn(r)
         func km(_ v: Double) -> String { "\(Int(v.rounded()))km" }
         func gain(_ now: Double, _ past: Double) -> String? {
-            guard past > 0, now >= past * (1 + gainThreshold) - 1e-9 else { return nil }
+            // 지난 값이 표시상 0km(1km 미만)면 %가 부풀려지므로 칭찬하지 않음
+            guard Int(past.rounded()) >= 1, now >= past * (1 + gainThreshold) - 1e-9 else { return nil }
             return "+\(Int(((now / past - 1) * 100).rounded()))%"
         }
         var out = [
@@ -169,7 +171,8 @@ enum MRPrepComparison {
                  past: "\(col) \(km(r.past.longestKm))", gain: gain(r.now.longestKm, r.past.longestKm)),
         ]
         if let n = r.nowPredictedMin, let p = r.pastPredictedMin {
-            let faster = Int(((p - n) * 60).rounded())
+            // 표시된 초끼리 뺀다 — 화면의 두 기록 차와 "−m:ss"가 어긋나지 않게
+            let faster = Int((p * 60).rounded()) - Int((n * 60).rounded())
             out.append(Line(label: L.s("예상 기록", "Predicted"), now: mrFormatDisplay(n),
                             past: "\(col) \(mrFormatDisplay(p))",
                             gain: faster >= 1 ? "−" + RaceYearOverYear.clockDuration(faster) : nil))
@@ -191,7 +194,7 @@ enum MRPrepComparison {
         } else {
             subjectKo = "지난 \(name) 이맘때"; subjectEn = "this point before your last \(name)"
         }
-        if r.past.weeklyKm > 0, r.now.weeklyKm >= r.past.weeklyKm * (1 + gainThreshold) - 1e-9 {
+        if pastKm >= 1, r.now.weeklyKm >= r.past.weeklyKm * (1 + gainThreshold) - 1e-9 {
             let pct = Int(((r.now.weeklyKm / r.past.weeklyKm - 1) * 100).rounded())
             return L.s("\(subjectKo)보다 주간 거리 \(pct)% 많아요 · \(nowKm)km / \(pastKm)km",
                        "Weekly distance \(pct)% higher than \(subjectEn) · \(nowKm) km / \(pastKm) km")

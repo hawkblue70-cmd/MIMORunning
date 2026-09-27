@@ -156,6 +156,16 @@ struct MRPrepComparisonTests {
         #expect(noPastRuns == nil)
     }
 
+    @Test func buildNilWhenNoRecentRuns() {
+        // 지난 창(2025-09-06~10-03)엔 러닝이 있지만 지금 창(2026-09-06~10-03)은 비어 있음 → 비교 숨김
+        let r = MRPrepComparison.build(
+            raceDate: utc("2026-10-25"), raceDistanceKm: 42.195, raceSeries: "c",
+            confirmed: [past("제46회 조선일보 춘천마라톤", "2025-10-25", km: 42.195, series: "c")],
+            runs: [run(date(2025, 9, 20), 24), run(date(2026, 8, 1), 10)], today: date(2026, 10, 4, 8),
+            nowPredictedMin: 235, predictionAt: { _ in 242 }, calendar: cal)
+        #expect(r == nil)
+    }
+
     // MARK: - 나 탭 블록
 
     @Test func titleAndLines() {
@@ -187,6 +197,14 @@ struct MRPrepComparisonTests {
         #expect(MRPrepComparison.lines(two)[0].past == "2024년 10km")
     }
 
+    @Test func tinyPastValueIsNotPraised() {
+        // 지난 주간 0.3km(표시 0km) → 지금 2km라도 "+567%" 같은 칭찬 없음
+        let r = result(weeklyNow: 2, weeklyPast: 0.3)
+        #expect(MRPrepComparison.lines(r)[0].gain == nil)
+        #expect(MRPrepComparison.lines(r)[0].past == "작년 0km")
+        #expect(MRPrepComparison.homeLine(r) == "작년 이맘때 주간 0km · 지금 2km")
+    }
+
     // MARK: - 홈 한 줄
 
     @Test func homeLines() {
@@ -195,6 +213,9 @@ struct MRPrepComparisonTests {
         #expect(MRPrepComparison.homeLine(result(same: false, years: 0, pastYear: 2026, name: "2026 서울마라톤"))
                 == "지난 서울마라톤 이맘때보다 주간 거리 20% 많아요 · 12km / 10km")
         #expect(MRPrepComparison.homeLine(result(years: 2, pastYear: 2024)) == "2024년 이맘때보다 주간 거리 20% 많아요 · 12km / 10km")
+        // 같은 대회를 같은 해에 — "지난 ○○ 이맘때"
+        #expect(MRPrepComparison.homeLine(result(years: 0, pastYear: 2026))
+                == "지난 조선일보 춘천마라톤 이맘때보다 주간 거리 20% 많아요 · 12km / 10km")
     }
 
     @Test(.english) func homeLinesInEnglish() {
