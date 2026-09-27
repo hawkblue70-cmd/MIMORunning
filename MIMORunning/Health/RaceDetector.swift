@@ -263,6 +263,8 @@ final class RaceDetector {
     struct PastRaceCandidate {
         let race: BundledRace
         let activityID: UUID
+        /// 그 러닝의 거리(km) — 확정할 때 매칭에 그대로 넣는다.
+        let activityDistanceKm: Double
         /// `.strong` = 자동 확정 기준 통과, `.weak` = 하드 게이트만 통과(사용자에게 묻는다)
         let strength: MatchStrength
     }
@@ -283,6 +285,7 @@ final class RaceDetector {
 
         var out: [PastRaceCandidate] = []
         for race in pastRaces {
+            if Task.isCancelled { break }
             guard let raceDate = race.date else { continue }
             let alreadyConfirmed = matches.values.contains {
                 $0.isConfirmed && $0.raceName == race.name && Self.utcDayString($0.raceDate) == race.dateString
@@ -299,8 +302,14 @@ final class RaceDetector {
                 guard let ends = await routeEnds(run.id) else { continue }
                 let km = run.distance / 1000
                 guard passesHardGate(race: race, date: run.date, distanceKm: km, startCoord: ends.start) else { continue }
-                let strong = qualifiesForAutoConfirm(race: race, date: run.date, distanceKm: km, endCoord: ends.end)
-                out.append(PastRaceCandidate(race: race, activityID: run.id, strength: strong ? .strong : .weak))
+                // assess와 같은 기준 — 그 러닝이 게이트를 통과하는 대회가 하나뿐일 때만 자동 확정
+                let gatedCount = races.filter {
+                    passesHardGate(race: $0, date: run.date, distanceKm: km, startCoord: ends.start)
+                }.count
+                let strong = gatedCount == 1
+                    && qualifiesForAutoConfirm(race: race, date: run.date, distanceKm: km, endCoord: ends.end)
+                out.append(PastRaceCandidate(race: race, activityID: run.id, activityDistanceKm: km,
+                                             strength: strong ? .strong : .weak))
                 break
             }
         }

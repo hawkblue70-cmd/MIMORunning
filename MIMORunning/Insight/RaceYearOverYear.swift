@@ -180,8 +180,8 @@ enum RaceYearOverYear {
         return parts.joined(separator: " ")
     }
 
-    /// "4:12" · "1:02:05"
-    private static func clockDuration(_ seconds: Int) -> String {
+    /// "4:12" · "1:02:05" — 표의 기록 칸도 이 형식(언어 무관, 좁은 칸에 맞게).
+    static func clockDuration(_ seconds: Int) -> String {
         let h = seconds / 3600, m = (seconds % 3600) / 60, s = seconds % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }

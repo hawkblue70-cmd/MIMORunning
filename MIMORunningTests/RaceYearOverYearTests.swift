@@ -139,6 +139,25 @@ struct RaceYearOverYearTests {
         #expect(c.headline == nil)
     }
 
+    @Test func nilSeriesNeverMatchesAsSameRace() {
+        // 시리즈를 모르는 두 대회 — 이름·거리가 같아도 "같은 대회"로 묶지 않고 같은 거리로만
+        let todayNoSeries = entry("2026 춘천마라톤", date(2026, 10, 25), km: 42.195, sec: 13_930)
+        let past = entry("2025 춘천마라톤", date(2025, 10, 25), km: 42.195, sec: 14_182)
+        let c = RaceYearOverYear.compare(today: todayNoSeries, confirmed: [past], calendar: cal)
+        #expect(c.sameRace.isEmpty)
+        #expect(c.sameDistance.map(\.title) == ["춘천마라톤"])
+        #expect(c.headline == "지난 춘천마라톤보다 4분 12초 빨라요")
+    }
+
+    @Test func paceDifferenceUnderHalfSecondIsNotFaster() {
+        // 오늘 20K 6000초 = km당 300초. 지난 19K 5707초 = km당 300.37초 → 차이 0.37초 → 반올림 0
+        let today20 = entry("2026 한강 20K", date(2026, 4, 26), km: 20.0, sec: 6_000)
+        let past = entry("2025 ○○", date(2025, 11, 2), km: 19.0, sec: 5_707)
+        let c = RaceYearOverYear.compare(today: today20, confirmed: [past], calendar: cal)
+        #expect(c.sameDistance[0].delta == .pace(secondsPerKm: 0))
+        #expect(c.headline == "지난 ○○ 19K 1:35:07")
+    }
+
     // MARK: - 표 차이 문구
 
     @Test func deltaTexts() {
