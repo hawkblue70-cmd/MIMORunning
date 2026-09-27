@@ -268,6 +268,20 @@ func mrDeduplicateArchives(_ archives: [RaceArchive],
     }
 }
 
+/// 아카이브와 그것을 만들어낸 계획 스냅샷을 함께 지운다.
+/// 스냅샷을 남기면 `createArchivesIfNeeded`가 다음에 같은 아카이브를 다시 만든다. 러닝 기록은 건드리지 않는다.
+func mrDeleteArchive(_ arch: RaceArchive, snapshots: [RacePlanSnapshot], context: ModelContext) {
+    let cal = Calendar.current
+    snapshots
+        .filter { snap in
+            cal.isDate(snap.raceDate, inSameDayAs: arch.raceDate)
+            && abs(snap.distanceM - arch.distanceM) / max(arch.distanceM, 1) <= 0.02
+        }
+        .forEach { context.delete($0) }
+    context.delete(arch)
+    try? context.save()
+}
+
 // MARK: - 소급 아카이브 생성 (디버그 전용)
 
 /// 백테스트의 마지막 N건에 대해 소급 아카이브를 만든다.
