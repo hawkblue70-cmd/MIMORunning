@@ -139,6 +139,11 @@ final class MREngineStore: ObservableObject {
     private var storedFatigue: [MRLongRunFatigue] = []
     private var storedCadenceShift: MRFormShift? = nil
     private var storedConfirmedMatches: [PersistedRaceMatch] = []
+    /// 대회 준비 비교를 마지막으로 계산한 날(자정) — 날이 바뀌면 D-N·창이 달라지므로 다시 계산한다.
+    private var prepComputedDay: Date?
+    /// 지난 시점 예상 기록 메모 — "종목|시점 자정" → 분(nil도 기억). 러닝·안정심박·기온 모델이 바뀌면 비운다.
+    private var asOfMemo: [String: Double?] = [:]
+    private var asOfMemoStamp = ""
     private var storedSigmaObs: Double = 0
 
     /// 뷰에서 주입 — HealthKitManager.persistedConfirmedMatches() 래퍼.
@@ -500,7 +505,7 @@ final class MREngineStore: ObservableObject {
         //   판정 시점에 기록하면 화면에 뜬 적 없는 항목이 "보여줬다"로 기록돼
         //   신선도가 차감되어 영영 노출되지 않는다.
         raceDayCard = computeRaceDayCard(plans: plans, asOf: now)
-        todayCard = buildTodayCard(runs: fetched, now: now)
+        // 오늘 카드는 아래 refreshPrepComparisons가 만든다(같은 메인 액터 흐름 — .ready 직후 동기 실행)
 
         #if DEBUG
         print("[추론] 레벨 \(profileFull.level) · 모드 \(profileFull.mode) · 노력 \(efforts.count)건 · 예측 \(predictions.count)건")
@@ -508,7 +513,7 @@ final class MREngineStore: ObservableObject {
 
         // ★ 여기서 화면이 그려진다
         state = .ready
-        refreshPrepComparisons(now: now)
+        refreshPrepComparisons(now: now)   // 준비 비교 + 오늘 카드
     }
 
     // MARK: - 2단계: 백그라운드 (화면 이미 표시됨)
@@ -877,32 +882,50 @@ final class MREngineStore: ObservableObject {
         var out: [String: MRPrepComparison.Result] = [:]
         for race in userInput.upcomingRaces(asOf: now) {
             let label = race.label
+            let nowMin = predictions.first { $0.label == label }?.midMin
             if let r = MRPrepComparison.build(
                 raceDate: race.date, raceDistanceKm: race.distanceM / 1000,
                 raceSeries: seriesForRace(race.name, race.date),
                 confirmed: confirmed, runs: points, today: now,
-                nowPredictedMin: predictions.first { $0.label == label }?.midMin,
-                predictionAt: { point in self.asOfPrediction(label: label, at: point) }) {
+                nowPredictedMin: nowMin,
+                // 지금 예상이 없으면 예상 기록 줄이 안 나오므로 지난 시점 계산(무거움)을 건너뛴다
+                predictionAt: { point in nowMin == nil ? nil : self.asOfPrediction(label: label, at: point) }) {
                 out[race.id.uuidString] = r
             }
         }
-        prepComparisons = out
+        if out != prepComparisons { prepComparisons = out }   // 바뀔 때만 발행 — 나 탭 불필요한 다시 그리기 방지
+        prepComputedDay = Calendar.current.startOfDay(for: now)
         todayCard = buildTodayCard(runs: runs, now: now)
     }
 
-    /// 그 시점 전날까지의 데이터만으로 낸 예상 기록(분) — 성장 탭 예측 목록(mrBacktest)과 같은 방식.
+    /// 그 시점(자정) 직전까지의 데이터만으로 낸 예상 기록(분) — 성장 탭 예측 목록(mrBacktest)과 같은 방식.
+    /// ⚠ 시점은 지난 대회일 − N일의 자정이다. 전날 자정을 기준으로 자르면 전날 러닝이 빠지므로
+    ///   러닝은 시점 이전 전부(`< point`), 기준 시각은 시점 1초 전(= 전날 23:59:59)으로 둔다.
     private func asOfPrediction(label: String, at point: Date) -> Double? {
-        guard ["5K", "10K", "하프", "풀"].contains(label),
-              let y = Calendar.current.date(byAdding: .day, value: -1, to: point) else { return nil }
-        let pastRuns = runs.filter { $0.date <= y }
+        guard ["5K", "10K", "하프", "풀"].contains(label) else { return nil }
+        let stamp = "\(runs.count)|\(runs.last?.start.timeIntervalSince1970 ?? 0)|\(rhrSamples.count)|\(heat.ok)"
+        if stamp != asOfMemoStamp {
+            asOfMemo.removeAll()
+            asOfMemoStamp = stamp
+        }
+        let key = "\(label)|\(Int(Calendar.current.startOfDay(for: point).timeIntervalSince1970))"
+        if let hit = asOfMemo[key] { return hit }
+        let v = computeAsOfPrediction(label: label, at: point)
+        asOfMemo.updateValue(v, forKey: key)   // nil도 기억(subscript 대입은 nil이면 키를 지운다)
+        return v
+    }
+
+    private func computeAsOfPrediction(label: String, at point: Date) -> Double? {
+        let asOf = point.addingTimeInterval(-1)
+        let pastRuns = runs.filter { $0.date < point }
         let phys2 = mrPhysiology(runs: pastRuns, restingHRSamples: rhrSamples,
-                                 dateOfBirth: storedDob, sex: storedSex, asOf: y)
+                                 dateOfBirth: storedDob, sex: storedSex, asOf: asOf)
+        // 노력은 pastRuns(모두 < point)에서 w.date 그대로 나오므로 따로 날짜를 거를 필요 없다
         let prior = mrApplyHeat(mrDetectEfforts(runs: pastRuns, phys: phys2), heat: heat)
-            .filter { $0.date < point }
         guard prior.count >= 3 else { return nil }
         let fit2 = mrFitExponent(prior)
-        let prof2 = mrProfile(runs: pastRuns, efforts: prior, asOf: y)
-        return mrPredict(efforts: prior, fit: fit2, profile: prof2, heat: heat, asOf: y)
+        let prof2 = mrProfile(runs: pastRuns, efforts: prior, asOf: asOf)
+        return mrPredict(efforts: prior, fit: fit2, profile: prof2, heat: heat, asOf: asOf)
             .first { $0.label == label }?.midMin
     }
 
@@ -949,14 +972,12 @@ final class MREngineStore: ObservableObject {
 
     /// 홈 대회 안내 줄 아래 한 줄 — 안내 줄이 가리키는 대회(가장 가까운 계획 대회)의 준비 비교.
     /// 안내 줄이 없으면(D-day 카드가 떠 있거나 계획 대회 없음) 없다.
+    /// ⚠ checks는 plans와 1:1·같은 순서(validPairs)이고 plan.raceDate == race.date라,
+    ///   mrTodayCard의 linkLine(plans.filter { raceDate > asOf }.min)과 같은 대회를 고른다.
     private func prepLine(for card: MRTodayCard?, now: Date) -> String? {
         guard card?.linkLine != nil,
-              let next = plans.filter({ $0.raceDate > now }).min(by: { $0.raceDate < $1.raceDate }) else { return nil }
-        let cal = Calendar.current
-        guard let race = userInput.races.first(where: {
-                  cal.isDate($0.date, inSameDayAs: next.raceDate) && abs($0.distanceM - next.distanceM) < 1
-              }),
-              let r = prepComparisons[race.id.uuidString] else { return nil }
+              let id = checks.filter({ $0.race.date > now }).min(by: { $0.race.date < $1.race.date })?.race.id,
+              let r = prepComparisons[id.uuidString] else { return nil }
         return MRPrepComparison.homeLine(r)
     }
 
@@ -1101,14 +1122,20 @@ final class MREngineStore: ObservableObject {
                                hrvTrend: mrHRVTrend(nights: hrvNights, asOf: now),
                                hardRunStarts: hardRunStarts,
                                log: adviceLog, asOf: now)
-        todayCard = buildTodayCard(runs: runs, now: now)
+        // 러닝이 바뀌면 준비 비교의 지금 창도 바뀐다 — 비교를 다시 계산하고 오늘 카드도 그 안에서 만든다
+        refreshPrepComparisons(now: now)
     }
 
     // 언어가 바뀌었을 때 HealthKit 재읽기 없이 todayCard 문자열만 재생성한다.
+    // 날이 바뀐 뒤(앱을 켜둔 채 자정을 넘김)면 준비 비교의 D-N·창이 달라지므로 비교부터 다시 계산한다.
     func recomputeTodayCard() {
         guard case .ready = state else { return }
         let now = Date()
-        todayCard = buildTodayCard(runs: runs, now: now)
+        if let day = prepComputedDay, Calendar.current.isDate(day, inSameDayAs: now) {
+            todayCard = buildTodayCard(runs: runs, now: now)
+        } else {
+            refreshPrepComparisons(now: now)   // 오늘 카드도 다시 만든다
+        }
     }
 
     // MARK: - 대회·목표 변경 (HealthKit 재읽기 없음)
@@ -1168,8 +1195,7 @@ final class MREngineStore: ObservableObject {
                                log: adviceLog, asOf: now)
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         raceDayCard = computeRaceDayCard(plans: plans, asOf: now)
-        todayCard = buildTodayCard(runs: runs, now: now)
-        refreshPrepComparisons(now: now)
+        refreshPrepComparisons(now: now)   // 같은 .ready 가드 — 준비 비교 + 오늘 카드
     }
 
     // MARK: - 내부 헬퍼
