@@ -197,6 +197,16 @@ struct MRPrepComparisonTests {
         #expect(MRPrepComparison.lines(two)[0].past == "2024년 10km")
     }
 
+    @Test func buildNilWhenWeeklyRoundsToZero() {
+        // 지난 창 28일에 1.6km → 주 0.4km(표시 0km). 지금 창은 충분해도 비교 전체를 숨긴다.
+        let target = [past("제46회 조선일보 춘천마라톤", "2025-10-25", km: 42.195, series: "c")]
+        let r = MRPrepComparison.build(
+            raceDate: utc("2026-10-25"), raceDistanceKm: 42.195, raceSeries: "c", confirmed: target,
+            runs: [run(date(2025, 9, 20), 1.6), run(date(2026, 9, 20), 24)], today: date(2026, 10, 4, 8),
+            nowPredictedMin: nil, predictionAt: { _ in nil }, calendar: cal)
+        #expect(r == nil)
+    }
+
     @Test func tinyPastValueIsNotPraised() {
         // 지난 주간 0.3km(표시 0km) → 지금 2km라도 "+567%" 같은 칭찬 없음
         let r = result(weeklyNow: 2, weeklyPast: 0.3)

@@ -119,6 +119,8 @@ enum MRPrepComparison {
         // 지금 창이 비면(최근 28일 러닝 없음) 비교 전체를 숨긴다 — "지금 0km"를 말하지 않음
         guard let past = metrics(runs: runs, before: point, calendar: calendar),
               let now = metrics(runs: runs, before: today, calendar: calendar) else { return nil }
+        // 어느 쪽이든 주간 거리가 반올림해 0km면 비교하지 않는다 — "0km"를 나란히 보여 주는 건 비교가 아니다.
+        guard Int(past.weeklyKm.rounded()) >= 1, Int(now.weeklyKm.rounded()) >= 1 else { return nil }
         let pastYear = calendar.component(.year, from: t.race.date)
         return Result(target: t.race, isSameRace: t.isSameRace, daysLeft: n,
                       yearsAgo: calendar.component(.year, from: raceDate) - pastYear,

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Combine
 import UIKit
 
 struct ContentView: View {
@@ -76,6 +77,11 @@ struct ContentView: View {
             engine.recomputeTodayCard()
             guard manager.authorizationStatus == .authorized else { return }
             Task { await manager.fetchActivities() }
+        }
+        // 앱을 켠 채 자정을 넘기면 scenePhase가 바뀌지 않는다 — 날짜 변경 알림으로 오늘 카드와
+        // 대회 준비 비교(D-N·28일 창)를 다시 계산한다. 날이 바뀐 것을 엔진이 알아서 준비 비교까지 새로 만든다.
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            engine.recomputeTodayCard()
         }
         .background(KeyboardDismissInstaller())
     }
