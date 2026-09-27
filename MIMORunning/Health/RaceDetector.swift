@@ -226,8 +226,91 @@ final class RaceDetector {
         isReady = true
     }
 
+    /// 테스트 전용 — 번들 CSV 대신 주어진 대회로.
+    func loadRacesForTesting(_ list: [BundledRace]) {
+        races = list
+        isReady = true
+    }
+
+    /// 테스트 전용 — 저장소(SwiftData·UserDefaults)를 건드리지 않고 매칭을 채운다.
+    func loadMatchesForTesting(_ list: [PersistedRaceMatch]) {
+        matches = Dictionary(list.map { ($0.activityID.uuidString, $0) }, uniquingKeysWith: { _, b in b })
+    }
+
     func matchFor(activityID: UUID) -> PersistedRaceMatch? {
         matches[activityID.uuidString]
+    }
+
+    // MARK: - Series (대회 해마다 비교)
+
+    /// 확정 매칭이 가리키는 DB 대회 줄. 직접 입력한 대회처럼 DB에 없으면 nil.
+    /// `confirm`은 `raceDate`에 DB 날짜(UTC 자정)를 넣으므로 UTC 날짜 문자열로 맞춘다.
+    func bundledRace(for match: PersistedRaceMatch) -> BundledRace? {
+        let day = Self.utcDayString(match.raceDate)
+        return races.first { $0.name == match.raceName && $0.dateString == day }
+    }
+
+    /// 확정 매칭의 시리즈 값. DB에 없거나 칸이 비면 nil.
+    func series(for match: PersistedRaceMatch) -> String? {
+        guard let s = bundledRace(for: match)?.series, !s.isEmpty else { return nil }
+        return s
+    }
+
+    /// 같은 시리즈 지난 해 대회에 해당해 보이는 러닝 하나.
+    struct PastRaceCandidate {
+        let race: BundledRace
+        let activityID: UUID
+        /// `.strong` = 자동 확정 기준 통과, `.weak` = 하드 게이트만 통과(사용자에게 묻는다)
+        let strength: MatchStrength
+    }
+
+    /// 같은 시리즈의 지난 해 대회마다, 그날 러닝 중 조건에 맞는 것을 찾는다(설계 2-2).
+    /// 저장하지 않는다 — 확정·질문은 호출자가 정한다.
+    /// - Parameter routeEnds: 러닝의 출발·도착 좌표. 경로가 없으면 nil(그 러닝은 건너뜀).
+    func pastYearCandidates(
+        for match: PersistedRaceMatch,
+        runs: [Activity],
+        routeEnds: (UUID) async -> (start: CLLocationCoordinate2D, end: CLLocationCoordinate2D?)?
+    ) async -> [PastRaceCandidate] {
+        guard let series = series(for: match), match.distanceKm > 0 else { return [] }
+        let today = Self.utcDayString(match.raceDate)
+        let pastRaces = races
+            .filter { $0.series == series && $0.dateString < today && $0.bestMatchingDistance(match.distanceKm) != nil }
+            .sorted { $0.dateString > $1.dateString }
+
+        var out: [PastRaceCandidate] = []
+        for race in pastRaces {
+            guard let raceDate = race.date else { continue }
+            let alreadyConfirmed = matches.values.contains {
+                $0.isConfirmed && $0.raceName == race.name && Self.utcDayString($0.raceDate) == race.dateString
+            }
+            if alreadyConfirmed { continue }
+
+            let dayRuns = runs.filter {
+                $0.type == .running
+                && matches[$0.id.uuidString] == nil
+                && Calendar.current.isDate($0.date, inSameDayAs: raceDate)
+                && abs($0.distance / 1000 - match.distanceKm) / match.distanceKm <= 0.05
+            }
+            for run in dayRuns {
+                guard let ends = await routeEnds(run.id) else { continue }
+                let km = run.distance / 1000
+                guard passesHardGate(race: race, date: run.date, distanceKm: km, startCoord: ends.start) else { continue }
+                let strong = qualifiesForAutoConfirm(race: race, date: run.date, distanceKm: km, endCoord: ends.end)
+                out.append(PastRaceCandidate(race: race, activityID: run.id, strength: strong ? .strong : .weak))
+                break
+            }
+        }
+        return out
+    }
+
+    private static func utcDayString(_ date: Date) -> String {
+        let df = DateFormatter()
+        df.calendar = Calendar(identifier: .gregorian)
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(identifier: "UTC")
+        df.dateFormat = "yyyy-MM-dd"
+        return df.string(from: date)
     }
 
     // MARK: - Revalidation
