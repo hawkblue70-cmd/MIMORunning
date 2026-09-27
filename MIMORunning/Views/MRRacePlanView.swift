@@ -74,9 +74,12 @@ struct MRRacePlanCard: View {
     private var plan: MRRacePlan { check.plan }
     private var race: MRTargetRace { check.race }
 
+    /// 달력 날짜로 센다(오늘 자정 → 대회일 자정). 대회 날짜는 UTC 자정(한국 09:00)이라 시각 차로 세면
+    /// 매일 오전 9시 이후 하루 적게 나와 D-day 카드·홈·준비 비교 블록과 어긋났다.
     private var daysLeft: Int {
-        Calendar.current.dateComponents([.day], from: Date(),
-                                        to: race.date).day ?? 0
+        let cal = Calendar.current
+        return cal.dateComponents([.day], from: cal.startOfDay(for: Date()),
+                                  to: cal.startOfDay(for: race.date)).day ?? 0
     }
 
     /// 목표와의 거리를 색으로. ⚠ 빨강을 쓰지 않는다.
@@ -1046,7 +1049,10 @@ private struct MRRaceCollapsedRow: View {
     let onTap: () -> Void
 
     private var daysLeft: Int {
-        Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
+        // 달력 날짜로 센다 — 위 카드 머리와 같은 규칙(오전 9시 이후 하루 적게 나오던 문제)
+        let cal = Calendar.current
+        return cal.dateComponents([.day], from: cal.startOfDay(for: Date()),
+                                  to: cal.startOfDay(for: date)).day ?? 0
     }
 
     var body: some View {
