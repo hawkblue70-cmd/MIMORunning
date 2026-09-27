@@ -897,7 +897,10 @@ final class MREngineStore: ObservableObject {
         guard storedSnapshotWeeks.isEmpty, !weeks.isEmpty else { return }
         storedSnapshotWeeks = weeks
         guard case .ready = state else { return }
-        todayCard = buildTodayCard(runs: runs, now: Date())
+        let now = Date()
+        todayCard = buildTodayCard(runs: runs, now: now)
+        // D-day 카드도 스냅샷 주차를 읽으므로 같이 — 안 그러면 나 탭을 열기 전까지 라이브 주차 문구가 남는다.
+        raceDayCard = computeRaceDayCard(plans: plans, asOf: now)
     }
 
     /// 홈이 앱 쪽 고강도 판정을 넣어 준다. 바뀌었을 때만 조언·오늘 카드를 다시 만든다(HealthKit 재읽기 없음).
@@ -1104,9 +1107,18 @@ final class MREngineStore: ObservableObject {
         guard let (race, _) = upcoming ?? recovery else { return nil }
 
         let goalMin = userInput.goals.minutes(for: race.distanceM)
-        let plan = plans.first {
+        var plan = plans.first {
             abs($0.distanceM - race.distanceM) < 1 &&
             abs($0.raceDate.timeIntervalSince(race.date)) < 86400
+        }
+        // ⚠ D-day 카드의 "이번 주는 계획대로 Nkm — …"도 주차표(스냅샷)와 같은 숫자여야 한다.
+        //   라이브 계획은 오늘 프로필로 다시 계산돼 빈도가 바뀌면 45km · 이지 5.8km × 5회처럼
+        //   주차표(41km · 6.3km × 4회)와 다른 말을 했다(2026-09-27, 10K D-7). governingPlanWeek와 같은 규칙.
+        if let p = plan,
+           let snap = storedSnapshotWeeks[mrArchiveKey(raceDate: p.raceDate, distanceM: p.distanceM)],
+           !snap.isEmpty {
+            plan?.weeks = MRPlanGovernance.applyingSnapshot(p.weeks, snapshot: snap,
+                                                            easyPaceSecPerKm: easyPaceSecPerKm)
         }
         let raceTemp = mrSeasonalTemp(runs: runs, for: race.date) ?? MR_REF_TEMP
         return mrRaceDayCard(race: race, plan: plan,
