@@ -70,8 +70,10 @@ struct RecordBarChart: View {
         static let deemphasized: Double = 0.45
         /// 페이스 축 위아래 여유 (초/km)
         static let pacePad: Double = 10
-        /// 극단값이 나머지를 눌러 앉히지 않도록 백분위로 자르기 시작하는 표본 수
-        static let paceClipMinCount: Int = 8
+        /// 극단값(걷기 섞인 날·GPS 튐)이 나머지를 눌러 앉히지 않도록 사분위 울타리로 자르기 시작하는 표본 수
+        static let paceClipMinCount: Int = 4
+        /// 축 끝 눈금 라벨이 플롯 위아래에서 잘리지 않도록 눈금을 안쪽으로 들이는 비율
+        static let paceTickInset: Double = 0.1
     }
 
     // MARK: - 파생 값
@@ -149,15 +151,21 @@ struct RecordBarChart: View {
 
     private var paceValues: [Double] { bars.compactMap(\.paceSec) }
 
-    /// 페이스 축 범위(초/km). 표본이 충분하면 5~95 백분위로 잘라 극단값이 나머지를 눌러 앉히지 않게 한다.
+    /// 페이스 축 범위(초/km). 표본이 충분하면 사분위 울타리(Q1−1.5·IQR ~ Q3+1.5·IQR) 밖 값을 빼고 잡는다 —
+    /// 14일 창처럼 표본이 10개 안팎이면 백분위 자르기가 최댓값을 그대로 남겨, 18분대 한 점이 축을 5'40"~18'10"로 늘렸다.
+    /// 울타리 밖 점은 `yForPace`가 축 끝에 붙인다.
     private var paceRange: (fast: Double, slow: Double)? {
         let vals = paceValues.sorted()
-        guard let lo = vals.first, let hi = vals.last else { return nil }
-        var fast = lo, slow = hi
+        guard var fast = vals.first, var slow = vals.last else { return nil }
         if vals.count >= Metrics.paceClipMinCount {
-            let last = Double(vals.count - 1)
-            fast = vals[Int((last * 0.05).rounded())]
-            slow = vals[Int((last * 0.95).rounded())]
+            func quantile(_ q: Double) -> Double {
+                let pos = Double(vals.count - 1) * q
+                let i = Int(pos), f = pos - Double(i)
+                return i + 1 < vals.count ? vals[i] + (vals[i + 1] - vals[i]) * f : vals[i]
+            }
+            let q1 = quantile(0.25), q3 = quantile(0.75), iqr = q3 - q1
+            let inside = vals.filter { $0 >= q1 - 1.5 * iqr && $0 <= q3 + 1.5 * iqr }
+            if let lo = inside.first, let hi = inside.last { fast = lo; slow = hi }
         }
         fast -= Metrics.pacePad
         slow += Metrics.pacePad
@@ -181,8 +189,10 @@ struct RecordBarChart: View {
     /// 왼쪽 축 눈금 3개 — 10초 단위로 반올림한 "보기 좋은" 페이스를 y로 옮긴 값.
     private var paceTickYs: [Double] {
         guard let r = paceRange else { return [] }
-        let fastTick = (r.fast / 10).rounded(.up) * 10
-        let slowTick = (r.slow / 10).rounded(.down) * 10
+        // 끝 눈금을 안쪽으로 — 플롯 맨 위·아래에 붙으면 라벨 반쪽이 잘린다
+        let inset = (r.slow - r.fast) * Metrics.paceTickInset
+        let fastTick = ((r.fast + inset) / 10).rounded(.up) * 10
+        let slowTick = ((r.slow - inset) / 10).rounded(.down) * 10
         guard slowTick > fastTick else { return [] }
         let midTick = ((fastTick + slowTick) / 20).rounded() * 10
         var seen = Set<Int>()
@@ -419,6 +429,7 @@ struct RecordBarChart: View {
                         AxisValueLabel {
                             Text(paceLabel(value.as(Double.self) ?? 0))
                                 .font(font)
+                                .lineLimit(1).minimumScaleFactor(0.7)   // 10분대 라벨이 좁은 거터에서 줄바꿈되지 않게
                                 .frame(width: gutter, alignment: .trailing)
                         }
                         AxisGridLine()
