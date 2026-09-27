@@ -436,7 +436,11 @@ struct MeView: View {
         let L = AppLanguage.shared
         let runs = raceRecordRuns
         let predictions = raceRecordPredictions
-        let rows = RaceRecordList.rows(runs: runs, archives: raceRecordArchives, predictions: predictions)
+        // N회째 — 같은 시리즈(대회 DB series 칸) 확정 대회를 센다. 직접 입력·DB에 없는 대회는 nil이라 표시 없음.
+        let rows = RaceRecordList.rows(runs: runs, archives: raceRecordArchives, predictions: predictions,
+                                       seriesKey: { [raceDetector] run in
+                                           raceDetector.matches[run.activityID.uuidString].flatMap { raceDetector.series(for: $0) }
+                                       })
         VStack(alignment: .leading, spacing: 10) {
             if rows.isEmpty {
                 raceEmptyText(L.s("대회를 뛰면 여기에 모여요. 러닝이 대회로 확인되면 자동으로 추가돼요.",
