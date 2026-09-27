@@ -2686,10 +2686,14 @@ private struct HRZonesSection: View {
                             .frame(height: 20)
 
                             // Time in zone
+                            // 1시간 넘는 존은 "1:19:05"(7자) — 40pt에선 두 줄로 꺾였다. 폭을 넓히고 한 줄 고정.
                             Text(formattedZoneTime(zone.seconds))
                                 .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .monospacedDigit()
                                 .foregroundStyle(hasTime ? Color.white : Color.white.opacity(0.25))
-                                .frame(width: 40, alignment: .trailing)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(width: 54, alignment: .trailing)
 
                             // BPM range
                             Text(bpmRangeText(zone))
