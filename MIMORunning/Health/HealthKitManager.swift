@@ -136,6 +136,7 @@ class HealthKitManager {
         // 단계별 탈락 집계 — 왜 후보가 0인지 로그로 보이게 한다
         var nPrefilter = 0, nNoDetail = 0, nIndoor = 0, nType = 0, nNoSplits = 0
         let minKm = max(10.0, longest16w * 0.7)
+        let formBaseline = FormBaselineEngine.peekFromCache()
         let result: [MRLongRunFatigue] = runs8w.compactMap { a in
             // 값싼 거리·시간 선별을 먼저 — 상세 디코드(경로 좌표 포함)는 후보에만
             let km = a.distance / 1000, mins = a.duration / 60
@@ -147,10 +148,17 @@ class HealthKitManager {
             guard MRDurabilityCheck.isEligibleLongRun(distanceKm: km, durationMin: mins,
                                                       longest16wKm: longest16w,
                                                       workoutType: wt) else { nType += 1; return nil }
-            let s = MRDurabilityCheck.summarize(id: a.id, start: a.date,
+            var s = MRDurabilityCheck.summarize(id: a.id, start: a.date,
                                                 distanceKm: km, durationMin: mins,
                                                 splits: det.splits)
             if s == nil { nNoSplits += 1 }
+            // 후반 진단 — 총평 '후반' 줄과 같은 함수·같은 폼 3단계. 여기선 접지 시점 보정(formShifts)만 빠진다(±15ms 제한 보정).
+            if s != nil, LateRunDiagnosis.applies(to: wt, durationMin: mins) {
+                let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
+                                            baseline: formBaseline, formShifts: [], workoutType: wt)
+                s?.lateKind = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
+                                                        altitudeProfile: det.altitudeProfile)?.kind
+            }
             return s
         }
         #if DEBUG
@@ -158,11 +166,12 @@ class HealthKitManager {
         print(String(format: "[내구성:후보] 8주 러닝 %d건 · 하한 %.1fkm/60분 통과 %d · 상세없음 %d · 실내 %d · 유형제외 %d · 스플릿부족 %d → 요약 %d건 (16주 최장 %.1fkm)",
                      runs8w.count, minKm, nPrefilter, nNoDetail, nIndoor, nType, nNoSplits, result.count, longest16w))
         for f in result.sorted(by: { $0.start > $1.start }) {
-            print(String(format: "[내구성:후보]   %@ %.1fkm · Q1 %@ %.0fspm → Q4 %@ %.0fspm (%+.1f%%) · 전반HR %@",
+            print(String(format: "[내구성:후보]   %@ %.1fkm · Q1 %@ %.0fspm → Q4 %@ %.0fspm (%+.1f%%) · 전반HR %@ · 후반 %@",
                          df.string(from: f.start), f.distanceKm,
                          mrFormatPace(f.q1PaceSecPerKm), f.q1Cadence,
                          mrFormatPace(f.q4PaceSecPerKm), f.q4Cadence, -f.cadenceDropPct,
-                         f.firstHalfAvgHR.map { String(format: "%.0f", $0) } ?? "—"))
+                         f.firstHalfAvgHR.map { String(format: "%.0f", $0) } ?? "—",
+                         f.lateKind?.rawValue ?? "—"))
         }
         #endif
         fatigueMemo = (key, result)

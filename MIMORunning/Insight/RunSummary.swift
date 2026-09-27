@@ -36,6 +36,8 @@ struct RunSummaryInput {
     /// 오늘 강도를 냈는가(계획된 고강도 유형 · Zone 4+ 절반 이상 · 체감강도 7+) — 훈련부하 다음 행동에서
     /// "내일은 이지런이나 휴식" 제안에 쓴다. 급증/단조/4일+연속 경고가 있으면 그쪽이 우선.
     var todayIsHard: Bool = false
+    /// 후반 진단(`LateRunDiagnosis`) — 60분 이상 롱런 문맥에서만 채운다. nil이면 '후반' 줄 생략.
+    var lateRun: LateRunDiagnosis.Result? = nil
 
     // MARK: 근거·다음용 — 모두 옵셔널, 없으면 해당 근거·다음 절만 생략
 
@@ -71,7 +73,7 @@ struct RunSummaryInput {
     }
 }
 
-/// 총평 규칙. 축 순서 고정: 러닝폼 → 거리 적응 → 심박 → 훈련부하 → 유산소.
+/// 총평 규칙. 축 순서 고정: 러닝폼 → 거리 적응 → 심박 → 후반 → 훈련부하 → 유산소.
 /// 상태어는 관찰 사실만. 톤은 초록(good)·노랑(neutral) 둘.
 /// 각 줄의 `evidence`(왜 이 말이 나왔나)·`next`(그래서 뭘 하나)도 여기서 함께 채운다.
 enum RunSummary {
@@ -107,7 +109,18 @@ enum RunSummary {
     }
 
     static func lines(_ i: RunSummaryInput) -> [RunSummaryLine] {
-        [formLine(i), distanceLine(i), heartRateLine(i), loadLine(i), aerobicLine(i)].compactMap { $0 }
+        [formLine(i), distanceLine(i), heartRateLine(i), lateLine(i), loadLine(i), aerobicLine(i)].compactMap { $0 }
+    }
+
+    /// 후반 — 무엇이 먼저 무너졌나(다리·심박·에너지·둘 다) 또는 끝까지 유지. 유지만 초록.
+    private static func lateLine(_ i: RunSummaryInput) -> RunSummaryLine? {
+        guard let r = i.lateRun else { return nil }
+        var line = RunSummaryLine(axis: AppLanguage.shared.s("후반", "Late run"),
+                                  state: LateRunDiagnosis.state(r),
+                                  tone: r.kind == .held ? .good : .neutral)
+        line.evidence = LateRunDiagnosis.evidence(r, heatDeltaBpm: i.heatDeltaBpm)
+        line.next = LateRunDiagnosis.next(r, heatDeltaBpm: i.heatDeltaBpm, isRace: i.workoutType == .race)
+        return line
     }
 
     // MARK: 축별 규칙

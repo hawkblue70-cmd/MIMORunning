@@ -1055,6 +1055,7 @@ struct RunInsightTabCard: View {
         case .race:
             RaceInsightCard(
                 activity: activity, detail: detail,
+                formBaseline: formBaseline, formShifts: formShifts, heatHRModel: heatHRModel,
                 age: age, isMale: isMale,
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
@@ -5146,6 +5147,10 @@ private struct PerformanceInsightCard: View {
 private struct RaceInsightCard: View {
     let activity: Activity
     var detail: ActivityDetail? = nil
+    /// 후반 진단(`LateRunDiagnosis`)의 다리 신호 — 총평 '후반' 줄과 같은 폼 3단계 결과를 쓰기 위해
+    var formBaseline: RunningFormBaseline? = nil
+    var formShifts: [MRFormShift] = []
+    var heatHRModel: MRHeatHRModel? = nil
     var age: Int? = nil
     var isMale: Bool? = nil
     var confirmedRace: PersistedRaceMatch? = nil
@@ -5236,15 +5241,23 @@ private struct RaceInsightCard: View {
                 }
             }
 
-            // ── 제한 요인 섹션
-            let lf = limitingFactor
-            if lf != .noData {
+            // ── 제한 요인 섹션 — 60분 이상 대회는 총평 '후반' 줄과 같은 진단(`LateRunDiagnosis`),
+            //    그보다 짧거나 진단이 침묵하면(이유 모를 감속 등) 심박 %·폼 유지 규칙(`LimitFactor`)
+            if let late = lateDiagnosis {
                 Color.white.opacity(0.1).frame(height: 0.5)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L.s("제한 요인", "Limiting Factor"))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.5))
-                    limitingFactorRow(lf)
+                    lateDiagnosisRow(late)
+                }
+            } else if limitingFactor != .noData {
+                Color.white.opacity(0.1).frame(height: 0.5)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L.s("제한 요인", "Limiting Factor"))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.5))
+                    limitingFactorRow(limitingFactor)
                 }
             }
 
@@ -5349,27 +5362,87 @@ private struct RaceInsightCard: View {
             }
         }()
         if !text.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: icon)
-                        .font(.system(size: 12))
-                        .foregroundStyle(color)
-                    Text(text)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(color)
-                }
-                if let suggestion = limitingFactorSuggestion(lf) {
-                    Text(suggestion)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.white.opacity(0.65))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 10).padding(.vertical, 7)
-                        .background(Color.white.opacity(0.07))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .padding(.leading, 18)
-                }
+            limitRow(icon: icon, text: text, color: color, suggestion: limitingFactorSuggestion(lf))
+        }
+    }
+
+    /// 제한 요인 한 줄 — 아이콘·문장 + 제안 상자. 짧은 대회(`LimitFactor`)와 60분 이상 대회(`LateRunDiagnosis`)가 같은 모양.
+    @ViewBuilder
+    private func limitRow(icon: String, text: String, color: Color, detail: String? = nil, suggestion: String?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12))
+                    .foregroundStyle(color)
+                Text(text)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(color)
+            }
+            if let detail {
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.white.opacity(0.5))
+                    .padding(.leading, 18)
+            }
+            if let suggestion {
+                Text(suggestion)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.white.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(Color.white.opacity(0.07))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.leading, 18)
             }
         }
+    }
+
+    /// 60분 이상 대회의 후반 진단 — 총평 '후반' 줄과 같은 판정·근거·다음 행동(대회 문장).
+    @ViewBuilder
+    private func lateDiagnosisRow(_ r: LateRunDiagnosis.Result) -> some View {
+        let L = AppLanguage.shared
+        let heat = heatHRModel?.delta(activity.temperatureC)
+        let (icon, text, color): (String, String, Color) = {
+            switch r.kind {
+            case .held:
+                return ("checkmark.seal.fill",
+                        L.s("끝까지 유지한 레이스 — 후반에도 심박 효율과 폼이 버텼어요",
+                            "Held to the finish — HR efficiency and form lasted through the late stage"),
+                        IC.green)
+            case .cardio:
+                return ("lungs.fill",
+                        L.s("심박이 먼저 — 후반에 같은 속도를 내는 데 심박이 더 들었어요",
+                            "HR first — the late stage cost more heart rate for the same speed"),
+                        IC.hrRed)
+            case .legs:
+                return ("figure.run",
+                        L.s("다리가 먼저 — 심박은 버텼지만 후반 폼이 무거워졌어요",
+                            "Legs first — HR held, but form got heavier late"),
+                        Color(hex: "FF9A3C"))
+            case .energy:
+                return ("bolt.slash.fill",
+                        L.s("후반 힘 빠짐 — 페이스와 심박이 함께 내려갔어요. 에너지가 떨어졌을 가능성이 있어요",
+                            "Ran low late — pace and HR dropped together. You may have run low on energy"),
+                        Color(hex: "F5C542"))
+            case .combined:
+                return ("arrow.left.arrow.right",
+                        L.s("다리·심박 함께 — 후반에 심박도 더 들고 폼도 무거워졌어요",
+                            "Legs and HR together — late stage cost more HR and form got heavier"),
+                        Color(hex: "F5C542"))
+            }
+        }()
+        limitRow(icon: icon, text: text, color: color,
+                 detail: LateRunDiagnosis.evidence(r, heatDeltaBpm: heat),
+                 suggestion: LateRunDiagnosis.next(r, heatDeltaBpm: heat, isRace: true))
+    }
+
+    /// 60분 이상 대회만 — 총평 '후반' 줄과 같은 입력(폼 3단계 결과 포함)으로 진단한다.
+    private var lateDiagnosis: LateRunDiagnosis.Result? {
+        guard let det = detail, activity.duration >= LateRunDiagnosis.minDurationMin * 60 else { return nil }
+        let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
+                                    baseline: formBaseline, formShifts: formShifts, workoutType: .race)
+        return LateRunDiagnosis.diagnose(splits: det.splits, durationMin: activity.duration / 60,
+                                         form: form, altitudeProfile: det.altitudeProfile)
     }
 
     private func limitingFactorSuggestion(_ lf: LimitFactor) -> String? {
@@ -5377,8 +5450,8 @@ private struct RaceInsightCard: View {
         switch lf {
         case .endurance:
             return L.s(
-                "다음 대회 전 30km 이상 롱런을 2~3회 넣으면 감속 지점을 뒤로 밀 수 있어요.",
-                "Adding 2–3 long runs of 30 km+ before your next race can push your fade point back."
+                "거리만 늘리기보다 편한 롱런을 꾸준히 쌓고 근력·점프 운동을 주 2회 넣으면 감속 지점을 뒤로 밀 수 있어요.",
+                "Rather than just adding distance, steady easy long runs plus strength and jump work twice a week can push your fade point back."
             )
         case .cardio:
             return L.s(
@@ -6165,6 +6238,7 @@ struct InsightExportSheet: View {
         case .race:
             RaceInsightCard(
                 activity: activity, detail: detail,
+                formBaseline: formBaseline, formShifts: formShifts, heatHRModel: heatHRModel,
                 age: age, isMale: isMale,
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,

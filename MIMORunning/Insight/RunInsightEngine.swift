@@ -439,8 +439,9 @@ enum RunInsightEngine {
             let mhrLL = estimatedHRMax(hrMax: hrMax, age: age)
             let generators: [() -> RunInsight?] = [
                 { cardiacDriftInsight(activity: activity, hrSamples: hrSamples, category: .efficiency, heatHR: heatHR) },
-                { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrLL)
-                  ?? enduranceInsight(detail: detail) },
+                { lateDiagnosisCovers(activity: activity, detail: detail) ? nil
+                  : (fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrLL)
+                     ?? enduranceInsight(detail: detail)) },
                 { cardioInsight(detail: detail, age: age, isMale: isMale) },
                 { environmentInsight(activity: activity) },
                 { loadInsight(baseline: base) },
@@ -465,8 +466,9 @@ enum RunInsightEngine {
             let generators: [() -> RunInsight?] = [
                 { distanceRunInsight(activity: activity, baseline: base, heat: heat, heatHR: heatHR,
                                      lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR) },
-                { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrDR)
-                  ?? enduranceInsight(detail: detail) },
+                { lateDiagnosisCovers(activity: activity, detail: detail) ? nil
+                  : (fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrDR)
+                     ?? enduranceInsight(detail: detail)) },
                 { efficiencyInsight(activity: activity, history: history, heatHR: heatHR) },
                 { cardioInsight(detail: detail, age: age, isMale: isMale) },
             ]
@@ -522,8 +524,9 @@ enum RunInsightEngine {
             { intensityInsight(activity: activity, detail: detail, age: age,
                                hrMax: hrMax, lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR,
                                heatHR: heatHR) },
-            { fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: maxHR)
-              ?? enduranceInsight(detail: detail) },
+            { lateDiagnosisCovers(activity: activity, detail: detail) ? nil
+              : (fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: maxHR)
+                 ?? enduranceInsight(detail: detail)) },
             { efficiencyComparisonApplies(to: type) ? efficiencyInsight(activity: activity, history: history, heatHR: heatHR) : nil },
             { formInsight(detail: detail) },
             { environmentInsight(activity: activity) },
@@ -1041,6 +1044,18 @@ enum RunInsightEngine {
             recentLongRunKm: recentLongRunKm,
             cause: cause
         )
+    }
+
+    /// 총평 '후반' 줄(`LateRunDiagnosis`)이 이 러닝의 후반을 말하는가 — 그렇다면 감속 원인·후반 페이스 인사이트는
+    /// 같은 말을 두 번 하지 않게 생략한다. 여기선 기준선이 없어 폼 없이 판정한다 — 유지·심박·에너지 판정은
+    /// 폼과 무관하게 같고 폼은 다리 신호만 바꾸므로, 폼 없는 판정이 말하면 총평도 말한다
+    /// (예외: 심박 없는 워치 러닝에서 원값 다리 신호만 있는 경우 — 실사용에선 드묾).
+    static func lateDiagnosisCovers(activity: Activity, detail: ActivityDetail?) -> Bool {
+        guard let det = detail else { return false }
+        let mins = activity.duration / 60
+        guard LateRunDiagnosis.applies(to: det.workoutType, durationMin: mins) else { return false }
+        return LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: nil,
+                                         altitudeProfile: det.altitudeProfile) != nil
     }
 
     private static func fadeCauseInsight(

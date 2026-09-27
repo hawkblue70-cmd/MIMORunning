@@ -124,6 +124,12 @@ enum RunSummaryBuilder {
             return FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                     baseline: c.formBaseline, formShifts: c.formShifts, workoutType: c.workoutType)
         }()
+        input.lateRun = {
+            guard let det = c.detail,
+                  LateRunDiagnosis.applies(to: c.workoutType, durationMin: c.activity.duration / 60) else { return nil }
+            return LateRunDiagnosis.diagnose(splits: det.splits, durationMin: c.activity.duration / 60,
+                                             form: input.form, altitudeProfile: det.altitudeProfile)
+        }()
         input.distKm = c.activity.distance / 1000
         let typicalKm = typicalRunDistanceKm(activity: c.activity, history: c.history)
         input.typicalKm = typicalKm

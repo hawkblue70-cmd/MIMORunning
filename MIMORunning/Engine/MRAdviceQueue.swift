@@ -261,7 +261,28 @@ func mrBuildAdvice(runs: [MRWorkout],
                  verdict.triggered ? "발동" : (verdict.evaluated < 2 ? "판정 없음(평가 가능 2건 미만)" : "미발동"),
                  verdict.latestDropPct.map { String(format: " · 최신 하락 %.1f%%", $0) } ?? ""))
     #endif
+    // 롱런 후반 패턴(`LateRunDiagnosis` 최근 3회 중 2회) — 다리형은 내구성 조언과 같은 주제라 거기로 합친다
+    let late = MRLateRunPattern.aggregate(fatigue: fatigue, asOf: asOf)
+    #if DEBUG
+    print("[후반:패턴] 진단 \(late.evaluated)건 · 반복 유형 \(late.dominant?.rawValue ?? "없음")(\(late.dominantCount)회)")
+    #endif
     var durabilityShown = false
+    if suppression == nil, !verdict.triggered, late.dominant == .legs {
+        durabilityShown = true
+        out.append(MRAdvice(key: "durability",
+            text: late.latestIsTodayAndDominant
+                ? "오늘 롱런도 후반에 다리가 먼저 지쳤어요. 최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번이 그랬습니다. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요."
+                : "최근 롱런 후반에 심박은 버티는데 폼이 먼저 무거워지는 패턴이 반복됐어요. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요.",
+            rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 폼이 평소 범위 밖으로 무거워짐(심박 효율은 유지) · Blagrove 2018 메타분석(근력·플라이오 → 경제성)",
+            grade: "B", gainMin: 6, timeliness: late.latestIsTodayAndDominant ? 0.8 : 0.4,
+            slot: late.latestIsTodayAndDominant ? "todayRun" : "weekly",
+            exercises: [
+                "근력 주 2회 20~30분 — 스쿼트·데드리프트·한발 운동·카프 레이즈 중 2~3개",
+                "무거운 무게 = 8회 이하로 힘든 무게, 세트당 3~5회",
+                "점프 — 제자리 홉·바운딩·언덕 스프린트 중 하나, 10분 이내",
+                "롱런 다음날은 피하고, 이지런 날에",
+            ]))
+    }
     if suppression == nil, verdict.triggered {
         durabilityShown = true
         let dropStr = String(format: "%.0f", max(verdict.latestDropPct ?? 0, 0))
@@ -321,6 +342,45 @@ func mrBuildAdvice(runs: [MRWorkout],
             ]))
     }
 
+    // ── 롱런 후반 패턴 — 심박형 · 한꺼번에 · 끝까지 유지 (훈련 방식 변경이라 근력과 같은 억제 적용)
+    //
+    // 심박형: 목표 페이스 과도 · 유산소 기반/역치 부족 · 더위·수분 — 영상의 원인 목록 그대로.
+    //   Friel 유산소 디커플링 5% 관례 · Maunder 2021(Sports Med 51(8):1619–1628, 내구성).
+    // 한꺼번에: 초반 강도 과도 또는 기본 지구력 부족 → 초반을 늦추고 주간 거리를 꾸준히.
+    // 끝까지 유지: 다음 단계 = 롱런 후반 목표 페이스 삽입(대회 계획의 빌드 후반 규칙과 같은 처방).
+    //   대회 계획이 있으면 계획이 이미 그 처방을 하므로 생략한다.
+    let slotToday = late.latestIsTodayAndDominant
+    if suppression == nil {
+        switch late.dominant {
+        case .cardio?:
+            out.append(MRAdvice(key: "lateCardio",
+                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반에 같은 속도를 내는 데 심박이 더 들었어요. 다리보다 심박이 먼저 한계에 닿는 패턴이에요. 롱런 중반 페이스를 10초/km 늦추고, 주 1회 템포 20분으로 같은 페이스의 심박을 낮춰 보세요. 더운 날엔 수분·나트륨도 챙기고요.",
+                rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 중반 대비 후반 심박 효율 5%↑ 하락 · Friel 유산소 디커플링 5% 관례 · Maunder 2021(내구성)",
+                grade: "B", gainMin: 5, timeliness: slotToday ? 0.75 : 0.35, slot: slotToday ? "todayRun" : "weekly",
+                exercises: [
+                    "롱런 — 중반 페이스를 평소보다 10초/km 늦게, 후반 심박을 비교",
+                    "템포 주 1회 — 편하게 힘든 강도 20분(대화는 짧은 문장만)",
+                    "더운 날 — 출발 전 수분, 60분 넘으면 나트륨 음료",
+                ]))
+        case .combined?:
+            out.append(MRAdvice(key: "lateCombined",
+                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반에 심박도 더 들고 폼도 무거워졌어요. 초반 강도가 높았거나 기본 지구력이 아직 부족할 때 나오는 패턴이에요. 초반을 더 편하게 시작하고, 긴 롱런 한 번보다 주간 거리를 꾸준히 쌓아 보세요.",
+                rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 심박 효율 5%↑ 하락 + 폼 평소 범위 밖 · Maunder 2021(내구성)",
+                grade: "C", gainMin: 4, timeliness: slotToday ? 0.7 : 0.3, slot: slotToday ? "todayRun" : "weekly",
+                exercises: [
+                    "롱런 첫 20분은 이지 페이스보다도 느리게",
+                    "한 주 거리를 한 번에 몰지 말고 3~4회로 나눠 꾸준히",
+                ]))
+        case .held? where plans.isEmpty:
+            out.append(MRAdvice(key: "lateHeld",
+                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반까지 심박 효율과 폼을 지켰어요. 다음 단계는 지친 상태에서 페이스를 지키는 연습이에요 — 롱런 마지막 15분을 목표 대회 페이스로 올려 보세요.",
+                rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 유지(심박 효율 하락 5% 미만 · 폼 평소 범위) · 롱런 후반 대회 페이스 삽입은 관행(통제 연구 없음)",
+                grade: "C", gainMin: 3, timeliness: 0.25, slot: "weekly"))
+        default:
+            break
+        }
+    }
+
     // ── 보급 3종
     //
     // ⚠ "가장 가까운 대회"가 아니라 "**보급이 필요한** 대회 중 가장 가까운 것"이다.
@@ -337,6 +397,21 @@ func mrBuildAdvice(runs: [MRWorkout],
                 out.append(a)
             }
         }
+    }
+
+    // ── 롱런 후반 패턴 — 에너지형 (보급 연습은 테이퍼·회복 중에도 유효해 억제하지 않는다)
+    // ⚠ 대회 보급 연습 조언(gut)이 이미 있으면 같은 주제라 생략한다.
+    // ⚠ 보급 기록이 없으므로 "가능성"으로만 말한다 — 페이스와 심박이 함께 내려간 90분 이상 롱런에서만 진단된다.
+    if late.dominant == .energy, !out.contains(where: { $0.key == "gut" }) {
+        out.append(MRAdvice(key: "lateEnergy",
+            text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 90분이 지나면 페이스와 심박이 함께 내려갔어요. 에너지가 떨어졌을 가능성이 있어요. 90분 넘는 롱런은 30~40분부터 시간당 30~60g 탄수화물을 나눠 먹어 보고, 초반 10분은 목표보다 느리게 시작해 보세요.",
+            rationale: "최근 8주 90분+ 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 페이스 20초/km↑ 느려짐 + 심박 3bpm↓ (보급 기록 없음, 추정) · ACSM/AND/DC 2016(1~2.5시간 30~60 g/h)",
+            grade: "B", gainMin: 6, timeliness: slotToday ? 0.75 : 0.4, slot: slotToday ? "todayRun" : "weekly",
+            exercises: [
+                "젤 1개 ≈ 탄수화물 22~25g — 1시간에 1~2개",
+                "첫 보급은 30~40분, 이후 20~30분 간격",
+                "물과 함께. 레이스에 쓸 제품으로 연습",
+            ]))
     }
 
     // ── 신선도 반영 + 주 5개 상한

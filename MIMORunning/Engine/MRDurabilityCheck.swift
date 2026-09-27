@@ -29,6 +29,8 @@ struct MRLongRunFatigue: Codable, Sendable, Identifiable {
     let q4Cadence: Double
     let firstHalfAvgHR: Double?    // 스플릿 avgHeartRate 전반 평균
     let cadenceCoverage: Double    // 케이던스 있는 스플릿 비율 (0~1)
+    /// 후반 진단(`LateRunDiagnosis`) 유형 — 요약을 만드는 쪽(HealthKitManager)이 채운다. 진단 불가면 nil.
+    var lateKind: LateRunDiagnosis.Kind? = nil
 
     var cadenceDropPct: Double {
         guard q1Cadence > 0 else { return 0 }
@@ -154,5 +156,43 @@ enum MRDurabilityCheck {
                         .compactMap(\.paceSecPerKm).sorted()
         guard !paces.isEmpty else { return nil }
         return paces[paces.count / 2]
+    }
+}
+
+// MARK: - 롱런 후반 패턴 — 최근 롱런에서 같은 유형이 반복되는가
+//
+// 영상 요지(배선수, 2026-09): 마라톤 후반의 벽은 거리 부족이 아니라 무너지는 원인이 사람마다 다르다
+// (다리 · 심박 · 에너지 · 한꺼번에). 원인을 먼저 진단하고 그에 맞춰 훈련을 나눈다.
+// 한 번의 나쁜 날을 패턴으로 굳히지 않도록 S1과 같은 규칙: 최근 8주 진단된 롱런 최신 3회 중 2회.
+
+enum MRLateRunPattern {
+    struct Verdict: Sendable {
+        let evaluated: Int
+        /// 2회 이상 반복된 유형(끝까지 유지 포함). 없으면 nil.
+        let dominant: LateRunDiagnosis.Kind?
+        let dominantCount: Int
+        /// 가장 최근 진단 롱런이 오늘이고 그 유형이 `dominant`인가 — 조언 슬롯(todayRun/weekly)
+        let latestIsTodayAndDominant: Bool
+    }
+
+    static func aggregate(fatigue: [MRLongRunFatigue], asOf: Date) -> Verdict {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: asOf)
+        let cutoff = cal.date(byAdding: .day, value: -MRDurabilityCheck.windowDays, to: today) ?? today
+        let recent = fatigue
+            .filter { $0.lateKind != nil && $0.date >= cutoff && $0.date <= today }
+            .sorted { $0.start > $1.start }
+            .prefix(MRDurabilityCheck.maxRunsConsidered)
+        var counts: [LateRunDiagnosis.Kind: Int] = [:]
+        for f in recent { if let k = f.lateKind { counts[k, default: 0] += 1 } }
+        let top = counts.max { a, b in a.value < b.value }
+        let dominant = (top?.value ?? 0) >= 2 ? top?.key : nil
+        let latest = recent.first
+        return Verdict(evaluated: recent.count,
+                       dominant: dominant,
+                       dominantCount: dominant.flatMap { counts[$0] } ?? 0,
+                       latestIsTodayAndDominant: latest.map {
+                           dominant != nil && $0.lateKind == dominant && cal.isDate($0.date, inSameDayAs: today)
+                       } ?? false)
     }
 }
