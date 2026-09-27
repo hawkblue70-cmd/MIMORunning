@@ -29,39 +29,48 @@ struct RaceRecordRow: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
+                    .layoutPriority(1)
                 Text(row.name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(dim ? Color.secondary : RaceBadge.color)
                     .lineLimit(1)
                 Text(row.distanceLabel)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(dim ? Color.secondary : Theme.violet)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Theme.violet.opacity(0.15))
+                    .background((dim ? Color.secondary : Theme.violet).opacity(0.15))
                     .clipShape(Capsule())
                 Spacer(minLength: 4)
                 Text(row.finishMin.map { mrFormatDisplay($0) } ?? L.s("기록 없음", "No result"))
                     .font(.system(size: 14, weight: row.finishMin == nil ? .regular : .bold, design: .rounded))
                     .foregroundStyle(dim ? Color.secondary : Color.white)
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .layoutPriority(1)
                 if row.opensRun {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
             }
+            .accessibilityElement(children: .combine)
             if hasSecondLine {
                 HStack(spacing: 6) {
                     if let p = row.prediction {
                         Text(L.s("예측 \(mrFormatDisplay(p.predictedMin))", "Predicted \(mrFormatDisplay(p.predictedMin))"))
                             .foregroundStyle(.secondary)
                         Text("·").foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                         Text(p.inBand ? L.s("구간 안", "In range") : L.s("구간 밖", "Out of range"))
                             .foregroundStyle(p.inBand ? Theme.positive : Self.warn)
                     }
                     if let n = row.editionCount {
-                        if row.prediction != nil { Text("·").foregroundStyle(.secondary) }
+                        if row.prediction != nil {
+                            Text("·").foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
                         Text(L.s("\(n)회째", "#\(n)"))
                             .foregroundStyle(.secondary)
                     }
@@ -77,6 +86,7 @@ struct RaceRecordRow: View {
                                 .clipShape(Capsule())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(L.s("계획 보기", "View plan"))
                     }
                 }
                 .font(.system(size: 11))
