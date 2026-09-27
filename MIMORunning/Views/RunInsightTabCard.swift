@@ -5403,8 +5403,9 @@ private struct RaceInsightCard: View {
                 .font(.system(size: 11, weight: row.isToday ? .semibold : .regular))
                 .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.8))
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Spacer(minLength: 4)
-            Text(mrFormatDisplay(row.durationSec / 60))
+            Text(RaceYearOverYear.clockDuration(Int(row.durationSec.rounded())))
                 .font(cardNumFont(12))
                 .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.85))
                 .lineLimit(1)
@@ -5413,6 +5414,7 @@ private struct RaceInsightCard: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.6))
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .frame(width: 62, alignment: .trailing)
             Text(row.tempC.map { "\(Int($0.rounded()))°C" } ?? "")
                 .font(.system(size: 10))
@@ -5427,7 +5429,7 @@ private struct RaceInsightCard: View {
         let L = AppLanguage.shared
         let c = Calendar.current.dateComponents([.month, .day], from: q.runDate)
         let m = c.month ?? 0, d = c.day ?? 0
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 2) {
             Text(L.s("\(String(q.year)) \(q.raceName) — \(m)월 \(d)일 러닝이 이 대회였나요?",
                      "\(String(q.year)) \(q.raceName) — was your run on \(m)/\(d) this race?"))
                 .font(.system(size: 11))
@@ -5441,6 +5443,9 @@ private struct RaceInsightCard: View {
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(Theme.violet)
                         .clipShape(Capsule())
+                        // 캡슐 모양은 그대로, 누르는 영역만 세로 44pt 가까이
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 Button { onAnswerRaceQuestion?(q, false) } label: {
@@ -5450,6 +5455,8 @@ private struct RaceInsightCard: View {
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(Color.white.opacity(0.08))
                         .clipShape(Capsule())
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
