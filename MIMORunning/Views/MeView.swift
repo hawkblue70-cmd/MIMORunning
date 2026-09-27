@@ -41,6 +41,15 @@ struct MeView: View {
     @State private var showAddShoe = false
     @State private var shoeToDelete: Shoe?
     @State private var raceToDelete: MyPlannedRace?
+    /// 나 탭 내비게이션 경로 — 참가 대회 기록 행이 러닝 상세(`Activity`)를 넣는다.
+    @State private var navPath = NavigationPath()
+    /// 참가 대회 토글. 탭에 들어올 때마다 `RaceRecordList.defaultMode`로 다시 정한다(저장 안 함).
+    @State private var raceListMode: RaceListMode = .planned
+    /// 러닝 상세에서 돌아올 때는 토글을 되돌리지 않기 위한 표시
+    @State private var raceDetailPushed = false
+    @State private var showAllRaceRecords = false
+    @State private var planArchive: RaceArchive? = nil
+    @State private var archiveToDelete: RaceArchive? = nil
     @State private var shoeKmCache: [UUID: Double] = [:]
     @State private var cachedMonthStats: [SummaryPeriodStats] = []
     @State private var cachedYearStats: [SummaryPeriodStats] = []
@@ -216,7 +225,7 @@ struct MeView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 ScrollView {
@@ -241,7 +250,20 @@ struct MeView: View {
             }
             .navigationTitle(AppLanguage.shared.s("나", "Me"))
             .navigationBarTitleDisplayMode(.large)
-            .onAppear { manager.syncUserEfforts(from: allStories) }
+            .navigationDestination(for: Activity.self) { activity in
+                ActivityDetailView(activity: activity, manager: manager)
+            }
+            .onAppear {
+                manager.syncUserEfforts(from: allStories)
+                // 러닝 상세에서 돌아온 경우는 사용자가 고른 토글을 유지한다
+                if raceDetailPushed {
+                    raceDetailPushed = false
+                } else {
+                    raceListMode = RaceRecordList.defaultMode(plannedDates: plannedRaces.map(\.raceDate),
+                                                              today: Date())
+                    showAllRaceRecords = false
+                }
+            }
         }
         .task {
             nicknameInput = crewNicknameManager.nickname ?? ""
@@ -269,7 +291,9 @@ struct MeView: View {
         .onChange(of: racePlanKey) { syncAndRecompute() }
         .onChange(of: goalHash) { syncAndRecompute() }
         .onChange(of: engine.isReady) { if engine.isReady { syncAndRecompute() } }
-        .sheet(isPresented: $showRaceSearch) {
+        .sheet(isPresented: $showRaceSearch, onDismiss: {
+            if plannedRaces.contains(where: { !$0.isPast }) { raceListMode = .planned }
+        }) {
             RaceSearchSheet(raceDetector: raceDetector, existing: Set(plannedRaces.map { $0.raceName + $0.dateString }))
         }
         .sheet(item: $editingGoal) { kind in
@@ -296,36 +320,196 @@ struct MeView: View {
     private var plannedRacesSection: some View {
         let L = AppLanguage.shared
         return VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 6) {
                 Text(L.s("참가 대회", "My Races"))
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
+                raceModeChip(.planned, L.s("예정", "Upcoming"))
+                raceModeChip(.records, L.s("기록", "Results"))
                 Button { showRaceSearch = true } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 20))
                         .foregroundStyle(Theme.violet)
                 }
                 .buttonStyle(.plain)
+                .padding(.leading, 4)
             }
             .padding(.horizontal, 16)
 
-            if plannedRaces.isEmpty {
-                Text(L.s("참가 예정 대회를 등록하세요", "Add races you plan to join"))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(Theme.cardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .padding(.horizontal, 16)
+            switch raceListMode {
+            case .planned: plannedRacesContent
+            case .records: raceRecordsContent
+            }
+        }
+    }
+
+    /// 예정 | 기록 칩 — 앱의 기존 칩 토글과 같은 모양(보라 채움 + 흰 글자 / 흐린 배경).
+    private func raceModeChip(_ mode: RaceListMode, _ title: String) -> some View {
+        let isOn = raceListMode == mode
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { raceListMode = mode }
+        } label: {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+                .foregroundStyle(isOn ? .white : .white.opacity(0.55))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(isOn ? Theme.violet : Color.white.opacity(0.08))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 예정 — 기존 행 그대로, 오늘 이후 대회만. 지난 예정 대회는 탭이 열릴 때 계획 아카이브가 되어 기록으로 간다.
+    @ViewBuilder
+    private var plannedRacesContent: some View {
+        let L = AppLanguage.shared
+        let upcoming = plannedRaces.filter { !$0.isPast }
+        if upcoming.isEmpty {
+            raceEmptyText(L.s("참가 예정 대회를 등록하세요", "Add races you plan to join"))
+        } else {
+            ForEach(upcoming) { race in
+                PlannedRaceRow(race: race, locked: isRaceLocked(race)) {
+                    raceToDelete = race
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    private func raceEmptyText(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Theme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .padding(.horizontal, 16)
+    }
+
+    // MARK: - 참가 대회 · 기록
+
+    /// 확정 대회 러닝. 러닝이 아직 목록에 로드되지 않은 매칭은 빼고, 로드되면 나타난다.
+    private var raceRecordRuns: [RaceRecordList.RunInput] {
+        let byID = Dictionary(manager.activities.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return raceDetector.matches.values
+            .filter(\.isConfirmed)
+            .compactMap { m in
+                guard let a = byID[m.activityID] else { return nil }
+                return RaceRecordList.RunInput(activityID: a.id, raceName: m.raceName,
+                                               distanceKm: m.distanceKm, date: a.date,
+                                               durationSec: a.duration)
+            }
+    }
+
+    private var raceRecordArchives: [RaceRecordList.ArchiveInput] {
+        allArchives.enumerated().map { i, a in
+            RaceRecordList.ArchiveInput(index: i, raceName: a.raceName, raceDate: a.raceDate,
+                                        distanceM: a.distanceM, hasResult: a.hasResult,
+                                        actualMin: a.actualMin,
+                                        projectedMin: a.snapshotProjectedFinalMin,
+                                        hasDetail: mrArchiveHasDetail(a.markdown))
+        }
+    }
+
+    /// 엔진 예측 행 중 예측이 있는 것. 라벨("5K"·"10K"·"하프"·"풀")을 km로 바꾼다.
+    private var raceRecordPredictions: [RaceRecordList.PredictionInput] {
+        engine.backtest.compactMap { r in
+            guard let p = r.predictedMin, let e = r.errorPct else { return nil }
+            return RaceRecordList.PredictionInput(date: r.date,
+                                                  distanceKm: mrDistanceForLabel(r.label) / 1000,
+                                                  predictedMin: p, errorPct: e, inBand: r.inBand)
+        }
+    }
+
+    @ViewBuilder
+    private var raceRecordsContent: some View {
+        let L = AppLanguage.shared
+        let runs = raceRecordRuns
+        let predictions = raceRecordPredictions
+        let rows = RaceRecordList.rows(runs: runs, archives: raceRecordArchives, predictions: predictions)
+        VStack(alignment: .leading, spacing: 10) {
+            if rows.isEmpty {
+                raceEmptyText(L.s("대회를 뛰면 여기에 모여요. 러닝이 대회로 확인되면 자동으로 추가돼요.",
+                                  "Your races gather here. Runs confirmed as races are added automatically."))
             } else {
-                ForEach(plannedRaces) { race in
-                    PlannedRaceRow(race: race, locked: isRaceLocked(race)) {
-                        raceToDelete = race
+                let visible = showAllRaceRecords ? rows : Array(rows.prefix(5))
+                ForEach(visible) { row in
+                    raceRecordRowView(row)
+                        .padding(.horizontal, 16)
+                }
+                if rows.count > 5 {
+                    Button(showAllRaceRecords ? L.s("접기", "Collapse")
+                                              : L.s("전체 \(rows.count)건 보기", "Show all \(rows.count)")) {
+                        withAnimation { showAllRaceRecords.toggle() }
                     }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Theme.violet)
                     .padding(.horizontal, 16)
+                }
+                if let acc = RaceRecordList.accuracy(runs: runs, predictions: predictions) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L.s("예측 정확도 · 구간 안 \(acc.hit)/\(acc.count) · 평균 오차 \(String(format: "%.1f", acc.meanAbsErrorPct))%",
+                                 "Prediction accuracy · \(acc.hit)/\(acc.count) in range · avg error \(String(format: "%.1f", acc.meanAbsErrorPct))%"))
+                        Text(L.s("예측은 그 대회 전날까지의 데이터만으로 다시 계산한 값이에요.",
+                                 "Predictions are recalculated using only data from before each race."))
+                        if acc.count < 3 {
+                            Text(L.s("표본이 \(acc.count)건뿐입니다. 예측은 참고용이고, 특히 마라톤은 ±20분 이상 벌어질 수 있습니다.",
+                                     "Only \(acc.count) sample(s). Estimates only — marathons can vary by ±20 min or more."))
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+        .sheet(item: $planArchive) { arch in
+            MRArchiveDetailView(archive: arch)
+        }
+        .confirmationDialog(
+            archiveToDelete.map(\.raceName) ?? "",
+            isPresented: Binding(get: { archiveToDelete != nil },
+                                 set: { if !$0 { archiveToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button(L.s("삭제", "Delete"), role: .destructive) {
+                if let arch = archiveToDelete {
+                    mrDeleteArchive(arch, snapshots: allSnapshots, context: modelContext)
+                }
+                archiveToDelete = nil
+            }
+            Button(L.s("취소", "Cancel"), role: .cancel) { archiveToDelete = nil }
+        } message: {
+            Text(L.s("이 대회 기록을 목록에서 지웁니다. 러닝 기록 자체는 지워지지 않습니다.",
+                     "Removes this race from the list. Your run itself is not deleted."))
+        }
+    }
+
+    /// 행 하나 — 확정 러닝은 탭하면 러닝 상세, 러닝 없는 아카이브는 길게 눌러 삭제.
+    @ViewBuilder
+    private func raceRecordRowView(_ row: RaceRecordList.Row) -> some View {
+        let L = AppLanguage.shared
+        let archive: RaceArchive? = row.archiveIndex.flatMap { allArchives.indices.contains($0) ? allArchives[$0] : nil }
+        let base = RaceRecordRow(row: row) { planArchive = archive }
+        switch row.source {
+        case .run(let id):
+            base.onTapGesture {
+                guard let activity = manager.activities.first(where: { $0.id == id }) else { return }
+                raceDetailPushed = true
+                navPath.append(activity)
+            }
+        case .archiveOnly:
+            base.contextMenu {
+                if let archive {
+                    Button(L.s("이 대회 삭제", "Delete this race"), systemImage: "trash", role: .destructive) {
+                        archiveToDelete = archive
+                    }
                 }
             }
         }
