@@ -1011,6 +1011,11 @@ struct MRRacePlanSection: View {
                             }
                         }
                     }
+
+                    // 대회 준비 비교(B) — 펼친 대회에만, 카드 바로 아래
+                    if isExpanded, let prep = engine.prepComparisons[item.id] {
+                        MRPrepComparisonView(result: prep)
+                    }
                 }
             } else if case .loading = engine.state {
                 ProgressView().tint(.white).frame(height: 80)

@@ -101,6 +101,14 @@ struct MRTodayCardView: View {
                             .foregroundStyle(Color(red: 0.55, green: 0.42, blue: 0.98))
                             .padding(.top, c.sessionLine != nil ? 8 : 0)
                     }
+
+                    // 대회 준비 비교(B) — 안내 줄 아래 한 줄, 작고 흐리게
+                    if let prep = c.prepLine {
+                        Text(prep)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.white.opacity(0.6))
+                            .padding(.top, 4)
+                    }
                 }
             }
             .padding(22)
