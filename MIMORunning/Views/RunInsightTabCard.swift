@@ -29,6 +29,8 @@ private enum IC {
     static let violetText = Color(hex: "D5CEFF")
     static let label      = Color(hex: "8A8F99")
     static let hrRed      = Color(hex: "FF6B6B")
+    /// 심박 효율 개선 화살표(↓N bpm) — 눈에 띄게 하늘색. 성장 탭·강도 요약의 "좋아짐" 하늘색과 같은 값
+    static let sky        = Color(hex: "5AC8FA")
     /// 케이던스 — 지표 의미색 하나만 쓴다(`Theme.cadence`). 예전 값 5CE5D5는 Zone 2와 같은 색이었다.
     static let cadCyan    = Theme.cadence
     /// 심박 효율 산점도의 "오늘" 점. 강도 부하·경로 카드가 쓰는 형광 팔레트의 라임과 같은 값이지만
@@ -3241,7 +3243,7 @@ private struct PerformanceInsightCard: View {
                     (Text(L.s("심박 효율: ", "HR Efficiency: "))
                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.90))
                     + Text("↓\(d) bpm")
-                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(IC.green)
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(IC.sky)
                     + Text(scatterIsHeatAdjusted
                            ? L.s(" (동일 페이스 · 15°C 기준)", " (vs. similar pace · at 15°C)")
                            : L.s(" (동일 페이스 기준)", " (vs. similar pace)"))
@@ -3544,7 +3546,13 @@ private struct PerformanceInsightCard: View {
             $0.avgHeartRate != nil &&
             isDistanceComparable($0) &&
             abs(($0.paceSecPerKm ?? .infinity) - curPace) <= 15.0
-        }.sorted { $0.date < $1.date }
+        }
+        // 산점도와 같은 규칙 — 인터벌·빌드업은 섞인 평균이라 비교 표본에서 뺀다
+        .filter {
+            guard let wt = workoutTypeFn?($0.id) else { return true }
+            return wt != .interval && wt != .buildUp
+        }
+        .sorted { $0.date < $1.date }
         guard similar.count >= 2 else { return [] }
         var pts = similar.prefix(7).enumerated().map { i, r in
             HRTrendPt(index: i, hr: refHR(r)!, isToday: false)
@@ -3606,8 +3614,9 @@ private struct PerformanceInsightCard: View {
         return result
     }
 
+    /// 오늘이 인터벌·빌드업이면 화살표도 없다 — 산점도에 오늘 점을 안 찍는 것과 같은 이유(scatterTodayExcluded).
     private var hrDelta: Int? {
-        guard let curHR = refHR(activity) else { return nil }
+        guard !scatterTodayExcluded, let curHR = refHR(activity) else { return nil }
         let pts = hrTrendPts.filter { !$0.isToday }
         guard !pts.isEmpty else { return nil }
         let avg = pts.map(\.hr).reduce(0, +) / Double(pts.count)
