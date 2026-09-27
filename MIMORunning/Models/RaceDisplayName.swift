@@ -11,7 +11,7 @@ enum RaceDisplayName {
     /// "2026 서울마라톤 (제96회 동아마라톤)" → "서울마라톤 (동아마라톤)"
     static func short(_ name: String) -> String {
         var s = name
-        s = s.replacingOccurrences(of: #"(?<!\d)20\d{2}(?!\d)"#, with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"(?<!\d)20\d{2}년?(?!\d)"#, with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: #"\(\s*\d+\s*회\s*\)"#, with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: #"제\s*\d+\s*회\s*"#, with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: #"\(\s*\)"#, with: "", options: .regularExpression)

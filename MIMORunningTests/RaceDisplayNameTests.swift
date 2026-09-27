@@ -42,6 +42,14 @@ struct RaceDisplayNameTests {
         #expect(RaceDisplayName.short("2026 제5회") == "2026 제5회")
     }
 
+    @Test func stripsYearWithTrailingYearMarker() {
+        #expect(RaceDisplayName.short("2026년 서울마라톤") == "서울마라톤")
+    }
+
+    @Test func stripsEditionAndYearMarkerTogether() {
+        #expect(RaceDisplayName.short("제3회 2026년 마라톤") == "마라톤")
+    }
+
     @Test func standardDistanceLabels() {
         #expect(RaceDisplayName.distanceLabel(km: 5.0) == "5K")
         #expect(RaceDisplayName.distanceLabel(km: 10.0) == "10K")
