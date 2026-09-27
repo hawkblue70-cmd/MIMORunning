@@ -68,6 +68,8 @@ struct ActivityDetailView: View {
     @State private var raceComparison: RaceYearOverYear.Comparison? = nil
     /// 같은 시리즈 지난 해 대회로 보이지만 확신이 부족해 사용자에게 물을 러닝
     @State private var pendingPastRaces: [RaceDetector.PastRaceCandidate] = []
+    /// 지난 해 후보 러닝의 출발·도착 좌표 캐시. 경로 없음(nil)도 기억해 매칭 수가 바뀔 때마다 다시 읽지 않는다.
+    @State private var routeEndsMemo: [UUID: RouteEnds?] = [:]
     @State private var showRouteShareCard = false
     @State private var showChartShare = false
     /// 칩으로 고른 상세 패널. `.combined` = 선택 없음(종합은 상단에 고정 표시).
@@ -750,8 +752,16 @@ struct ActivityDetailView: View {
                 } else {
                     withAnimation(.easeIn) { raceSuggestion = suggestion }
                 }
+                // 다른 화면(대회 탭 질문·자동 확정)에서 대회로 확정된 러닝인데 캐시가 확정 전 인사이트면 다시 계산.
+                // 다시 계산하면 테마가 raceDay(또는 그보다 앞서는 테마)가 되어 다음 진입엔 조건이 거짓이다.
+                var shownInsight = cachedInsight!
+                let raceAwareThemes: [InsightTheme] = [.raceDay, .firstAchievement, .safety, .returnGap]
+                if confirmedRaceMatch != nil, !raceAwareThemes.contains(shownInsight.theme) {
+                    await recomputeInsightWithRaceMatch()
+                    if let r = insight { shownInsight = r }
+                }
                 // AI enhancement pass (idempotent — skips if already enhanced)
-                if let aiResult = await InsightEngine.tryAIEnhance(cachedInsight!) {
+                if let aiResult = await InsightEngine.tryAIEnhance(shownInsight) {
                     await InsightCache.shared.cache(aiResult, for: activity.id, isRefined: true, language: lang)
                     withAnimation(.easeInOut(duration: 0.4)) { insight = aiResult }
                 }
@@ -917,9 +927,15 @@ struct ActivityDetailView: View {
 
     // MARK: - 대회 해마다 비교
 
+    /// 러닝 경로의 출발·도착 좌표(지난 해 후보 판정용).
+    private struct RouteEnds {
+        let start: CLLocationCoordinate2D
+        let end: CLLocationCoordinate2D?
+    }
+
     /// 비교를 다시 계산할 시점 — 오늘 대회 확정 여부, 매칭 수(지난 러닝 확정·대회 아님 포함), 러닝 목록 로드.
     private var raceComparisonKey: String {
-        "\(confirmedRaceMatch?.raceName ?? "-")|\(raceDetector.matches.count)|\(manager.activities.count)"
+        "\(confirmedRaceMatch?.raceName ?? "-")|\(raceDetector.matches.count)|\(manager.activities.count)|\(AppLanguage.shared.isEnglish)"
     }
 
     private var raceQuestions: [RaceYearOverYear.Question] {
@@ -940,18 +956,21 @@ struct ActivityDetailView: View {
             pendingPastRaces = []
             return
         }
-        let runs = manager.activities
-        let candidates = await raceDetector.pastYearCandidates(for: m, runs: runs) { id in
+        let candidates = await raceDetector.pastYearCandidates(for: m, runs: manager.activities) { id in
+            if let memo = routeEndsMemo[id] { return memo.map { (start: $0.start, end: $0.end) } }
             var det = manager.detailFromCache(id)
             if det == nil { det = await manager.fetchDetail(for: id) }
-            guard let coords = det?.routeCoordinates, let first = coords.first else { return nil }
-            return (start: first, end: coords.last)
+            var ends: RouteEnds? = nil
+            if let coords = det?.routeCoordinates, let first = coords.first {
+                ends = RouteEnds(start: first, end: coords.last)
+            }
+            routeEndsMemo.updateValue(ends, forKey: id)
+            return ends.map { (start: $0.start, end: $0.end) }
         }
         guard !Task.isCancelled else { return }
         pendingPastRaces = candidates.filter { $0.strength == .weak }
         for c in candidates where c.strength == .strong {
-            guard let run = runs.first(where: { $0.id == c.activityID }) else { continue }
-            raceDetector.confirm(activityID: c.activityID, race: c.race, activityDistanceKm: run.distance / 1000)
+            raceDetector.confirm(activityID: c.activityID, race: c.race, activityDistanceKm: c.activityDistanceKm)
         }
         raceComparison = buildRaceComparison(for: m)
     }
@@ -959,7 +978,8 @@ struct ActivityDetailView: View {
     private func buildRaceComparison(for m: PersistedRaceMatch) -> RaceYearOverYear.Comparison? {
         let byID = Dictionary(manager.activities.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         func entry(_ match: PersistedRaceMatch) -> RaceYearOverYear.Entry? {
-            guard let a = byID[match.activityID] else { return nil }
+            // 오늘 러닝이 아직 목록에 없어도(목록 로드 전 등) 이 화면의 활동으로 비교한다
+            guard let a = byID[match.activityID] ?? (match.activityID == activity.id ? activity : nil) else { return nil }
             return RaceYearOverYear.Entry(activityID: a.id, raceName: match.raceName, date: a.date,
                                           distanceKm: match.distanceKm, durationSec: a.duration,
                                           tempC: a.temperatureC, series: raceDetector.series(for: match))
@@ -974,8 +994,8 @@ struct ActivityDetailView: View {
     /// 질문 응답 — 맞아요: 그 대회로 확정, 아니요: 대회 아님(다시 묻지 않음). 매칭 수가 바뀌어 비교가 다시 계산된다.
     private func answerRaceQuestion(_ q: RaceYearOverYear.Question, isSameRace: Bool) {
         guard let c = pendingPastRaces.first(where: { $0.activityID == q.activityID }) else { return }
-        if isSameRace, let run = manager.activities.first(where: { $0.id == c.activityID }) {
-            raceDetector.confirm(activityID: c.activityID, race: c.race, activityDistanceKm: run.distance / 1000)
+        if isSameRace {
+            raceDetector.confirm(activityID: c.activityID, race: c.race, activityDistanceKm: c.activityDistanceKm)
         } else {
             raceDetector.markAsNotRace(activityID: c.activityID)
         }
