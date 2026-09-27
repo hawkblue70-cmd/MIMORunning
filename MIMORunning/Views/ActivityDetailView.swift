@@ -64,6 +64,10 @@ struct ActivityDetailView: View {
     @State private var condition: ActivityCondition?
     @State private var raceSuggestion: RaceSuggestion?
     @State private var showManualRaceEntry = false
+    /// 대회 해마다 비교 결과. 확정 대회가 아니면 nil.
+    @State private var raceComparison: RaceYearOverYear.Comparison? = nil
+    /// 같은 시리즈 지난 해 대회로 보이지만 확신이 부족해 사용자에게 물을 러닝
+    @State private var pendingPastRaces: [RaceDetector.PastRaceCandidate] = []
     @State private var showRouteShareCard = false
     @State private var showChartShare = false
     /// 칩으로 고른 상세 패널. `.combined` = 선택 없음(종합은 상단에 고정 표시).
@@ -336,7 +340,8 @@ struct ActivityDetailView: View {
                     if activity.type == .running {
                         InsightCard(activity: activity, insight: insight, condition: condition,
                                     confirmedRace: confirmedRaceMatch, hillMatch: hillMatch,
-                                    effortValue: resolvedEffort?.value)
+                                    effortValue: resolvedEffort?.value,
+                                    comparisonLine: raceComparison?.headline)
                     }
                     StorySection(workoutID: activity.id.uuidString,
                                  activityType: activity.type,
@@ -378,6 +383,9 @@ struct ActivityDetailView: View {
                             confirmedRace: confirmedRaceMatch,
                             confirmedRaces: raceDetector.matches.values.filter(\.isConfirmed),
                             raceDetailFn: { [manager] id in manager.detailFromCache(id) },
+                            raceComparison: raceComparison,
+                            raceQuestions: raceQuestions,
+                            onAnswerRaceQuestion: { q, yes in answerRaceQuestion(q, isSameRace: yes) },
                             effortIndex: effortIndex,
                             easyPaceLookup: engine.easyPaceLookup,
                             planPhase: matchedPlanWeek()?.phase,
@@ -579,6 +587,10 @@ struct ActivityDetailView: View {
             guard !isLoadingDetail else { return }
             runInsights = []
             loadInsights()
+        }
+        .task(id: raceComparisonKey) {
+            guard activity.type == .running else { return }
+            await refreshRaceComparison()
         }
         .task {
             // Release any stale in-flight claim left by a prior cancelled task for this activity
@@ -901,6 +913,73 @@ struct ActivityDetailView: View {
         } else {
             withAnimation(.easeIn) { raceSuggestion = suggestion }
         }
+    }
+
+    // MARK: - 대회 해마다 비교
+
+    /// 비교를 다시 계산할 시점 — 오늘 대회 확정 여부, 매칭 수(지난 러닝 확정·대회 아님 포함), 러닝 목록 로드.
+    private var raceComparisonKey: String {
+        "\(confirmedRaceMatch?.raceName ?? "-")|\(raceDetector.matches.count)|\(manager.activities.count)"
+    }
+
+    private var raceQuestions: [RaceYearOverYear.Question] {
+        pendingPastRaces.map { c in
+            let run = manager.activities.first { $0.id == c.activityID }
+            return RaceYearOverYear.Question(
+                activityID: c.activityID,
+                raceName: RaceDisplayName.short(c.race.name),
+                year: Int(c.race.dateString.prefix(4)) ?? 0,
+                runDate: run?.date ?? c.race.date ?? Date())
+        }
+    }
+
+    /// 같은 시리즈 지난 해 러닝을 찾아(확실하면 확정, 애매하면 질문) 비교를 다시 만든다.
+    private func refreshRaceComparison() async {
+        guard let m = confirmedRaceMatch else {
+            raceComparison = nil
+            pendingPastRaces = []
+            return
+        }
+        let runs = manager.activities
+        let candidates = await raceDetector.pastYearCandidates(for: m, runs: runs) { id in
+            var det = manager.detailFromCache(id)
+            if det == nil { det = await manager.fetchDetail(for: id) }
+            guard let coords = det?.routeCoordinates, let first = coords.first else { return nil }
+            return (start: first, end: coords.last)
+        }
+        guard !Task.isCancelled else { return }
+        pendingPastRaces = candidates.filter { $0.strength == .weak }
+        for c in candidates where c.strength == .strong {
+            guard let run = runs.first(where: { $0.id == c.activityID }) else { continue }
+            raceDetector.confirm(activityID: c.activityID, race: c.race, activityDistanceKm: run.distance / 1000)
+        }
+        raceComparison = buildRaceComparison(for: m)
+    }
+
+    private func buildRaceComparison(for m: PersistedRaceMatch) -> RaceYearOverYear.Comparison? {
+        let byID = Dictionary(manager.activities.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func entry(_ match: PersistedRaceMatch) -> RaceYearOverYear.Entry? {
+            guard let a = byID[match.activityID] else { return nil }
+            return RaceYearOverYear.Entry(activityID: a.id, raceName: match.raceName, date: a.date,
+                                          distanceKm: match.distanceKm, durationSec: a.duration,
+                                          tempC: a.temperatureC, series: raceDetector.series(for: match))
+        }
+        guard let today = entry(m) else { return nil }
+        let others = raceDetector.matches.values
+            .filter { $0.isConfirmed && $0.activityID != m.activityID }
+            .compactMap(entry)
+        return RaceYearOverYear.compare(today: today, confirmed: others)
+    }
+
+    /// 질문 응답 — 맞아요: 그 대회로 확정, 아니요: 대회 아님(다시 묻지 않음). 매칭 수가 바뀌어 비교가 다시 계산된다.
+    private func answerRaceQuestion(_ q: RaceYearOverYear.Question, isSameRace: Bool) {
+        guard let c = pendingPastRaces.first(where: { $0.activityID == q.activityID }) else { return }
+        if isSameRace, let run = manager.activities.first(where: { $0.id == c.activityID }) {
+            raceDetector.confirm(activityID: c.activityID, race: c.race, activityDistanceKm: run.distance / 1000)
+        } else {
+            raceDetector.markAsNotRace(activityID: c.activityID)
+        }
+        pendingPastRaces.removeAll { $0.activityID == q.activityID }
     }
 
     private func currentValue(for metric: TrendMetric) -> Double? {
@@ -1517,9 +1596,14 @@ private struct InsightCard: View {
     var confirmedRace: PersistedRaceMatch? = nil
     var hillMatch: HillMatch? = nil
     var effortValue: Int? = nil
+    /// 대회 해마다 비교 한 문장 — 있으면 대회 러닝(.raceDay)의 부연 줄을 이것으로 바꾸고 종목은 깃발 줄로 옮긴다.
+    var comparisonLine: String? = nil
+
+    private var showsComparison: Bool { insight?.theme == .raceDay && comparisonLine != nil }
 
     private var displayDetail: String {
         guard let ins = insight else { return AppLanguage.shared.s("인사이트 분석 준비 중", "Analyzing…") }
+        if showsComparison, let line = comparisonLine { return line }
         if ins.theme == .adverseCondition, let e = effortValue {
             return ins.detail + AppLanguage.shared.s(" · 체감 강도 \(e)", " · effort \(e)/10")
         }
@@ -1604,7 +1688,9 @@ private struct InsightCard: View {
                         .foregroundStyle(.white.opacity(0.72))
                         .contentTransition(.opacity)
                     if let race = confirmedRace {
-                        Label(AppLanguage.shared.s("대회 러닝 · \(race.raceName)", "Race · \(race.raceName)"), systemImage: "flag.checkered")
+                        let division = showsComparison ? " · " + InsightEngine.raceDistanceDivision(km: race.distanceKm) : ""
+                        Label(AppLanguage.shared.s("대회 러닝 · \(race.raceName)\(division)", "Race · \(race.raceName)\(division)"),
+                              systemImage: "flag.checkered")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.violet)
                             .padding(.horizontal, 10)
