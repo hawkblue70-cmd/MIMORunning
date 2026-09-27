@@ -43,6 +43,9 @@ struct ContentView: View {
             // 대회 없이 백테스트가 돌아 예측 줄·정확도가 빠진 채 캐시됐다. 첫 await 전에 동기로 설정 →
             // engine.refresh()의 HealthKit 읽기(수 초) 뒤에야 도는 refreshDetail 백테스트보다 항상 먼저.
             engine.persistedMatchesProvider = { [manager] in manager.persistedConfirmedMatches() }
+            // 대회 준비 비교(B) — 시리즈 조회. raceDetector가 준비되면 확정 대회 전달(updateConfirmedMatches)이 다시 계산한다.
+            engine.seriesForMatch = { [raceDetector] m in raceDetector.series(for: m) }
+            engine.seriesForRace = { [raceDetector] name, date in raceDetector.series(forRaceNamed: name, on: date) }
             await manager.checkAuthorizationStatus()
             await raceDetector.setup(context: modelContext)
             await migrateStoryPhotoThumbnails()

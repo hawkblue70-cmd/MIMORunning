@@ -66,6 +66,8 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var todayCard: MRTodayCard?
     @Published private(set) var raceDayCard: MRRaceDayCard?
     @Published private(set) var backtest: [MRBacktestRow] = []
+    /// 대회 준비 비교(B) — 등록 대회 id(uuidString) → 결과. 비교할 지난 대회가 없으면 항목 없음.
+    @Published private(set) var prepComparisons: [String: MRPrepComparison.Result] = [:]
     @Published private(set) var drift = MRDriftModel()
     @Published private(set) var profileFull = MRProfileFull()
     @Published private(set) var gaps: [MRGap] = []
@@ -142,6 +144,10 @@ final class MREngineStore: ObservableObject {
     /// 뷰에서 주입 — HealthKitManager.persistedConfirmedMatches() 래퍼.
     /// refreshBacktest 진입부에서 storedConfirmedMatches가 비었을 때 폴백으로 호출.
     var persistedMatchesProvider: (() -> [PersistedRaceMatch]) = { [] }
+    /// 대회 준비 비교(B) — 확정 매칭 → 대회 DB 시리즈. 앱 수준(ContentView)이 RaceDetector로 채운다.
+    var seriesForMatch: (PersistedRaceMatch) -> String? = { _ in nil }
+    /// 대회 준비 비교(B) — 등록 대회(이름·날짜) → 대회 DB 시리즈.
+    var seriesForRace: (String, Date) -> String? = { _, _ in nil }
 
     /// 백테스트 중복 계산 방지 — updateConfirmedMatches는 앱 수준(ContentView)·성장 탭 두 곳에서
     /// 같은 목록으로 거의 동시에 불릴 수 있고, refreshDetail의 백테스트와도 겹친다.
@@ -502,6 +508,7 @@ final class MREngineStore: ObservableObject {
 
         // ★ 여기서 화면이 그려진다
         state = .ready
+        refreshPrepComparisons(now: now)
     }
 
     // MARK: - 2단계: 백그라운드 (화면 이미 표시됨)
@@ -853,7 +860,50 @@ final class MREngineStore: ObservableObject {
         }
         #endif
         storedConfirmedMatches = matches
+        refreshPrepComparisons()
         Task { await self.refreshBacktest() }
+    }
+
+    /// 대회 준비 비교(B)를 다시 계산하고 홈 오늘 카드(한 줄)도 다시 만든다.
+    func refreshPrepComparisons(now: Date = Date()) {
+        guard case .ready = state else { return }
+        let confirmed = storedConfirmedMatches.filter(\.isConfirmed).map {
+            MRPrepComparison.PastRace(name: $0.raceName, date: $0.raceDate,
+                                      distanceKm: $0.distanceKm, series: seriesForMatch($0))
+        }
+        let points = runs.compactMap { w in
+            w.distanceKm.map { MRPrepComparison.RunPoint(date: w.date, km: $0) }
+        }
+        var out: [String: MRPrepComparison.Result] = [:]
+        for race in userInput.upcomingRaces(asOf: now) {
+            let label = race.label
+            if let r = MRPrepComparison.build(
+                raceDate: race.date, raceDistanceKm: race.distanceM / 1000,
+                raceSeries: seriesForRace(race.name, race.date),
+                confirmed: confirmed, runs: points, today: now,
+                nowPredictedMin: predictions.first { $0.label == label }?.midMin,
+                predictionAt: { point in self.asOfPrediction(label: label, at: point) }) {
+                out[race.id.uuidString] = r
+            }
+        }
+        prepComparisons = out
+        todayCard = buildTodayCard(runs: runs, now: now)
+    }
+
+    /// 그 시점 전날까지의 데이터만으로 낸 예상 기록(분) — 성장 탭 예측 목록(mrBacktest)과 같은 방식.
+    private func asOfPrediction(label: String, at point: Date) -> Double? {
+        guard ["5K", "10K", "하프", "풀"].contains(label),
+              let y = Calendar.current.date(byAdding: .day, value: -1, to: point) else { return nil }
+        let pastRuns = runs.filter { $0.date <= y }
+        let phys2 = mrPhysiology(runs: pastRuns, restingHRSamples: rhrSamples,
+                                 dateOfBirth: storedDob, sex: storedSex, asOf: y)
+        let prior = mrApplyHeat(mrDetectEfforts(runs: pastRuns, phys: phys2), heat: heat)
+            .filter { $0.date < point }
+        guard prior.count >= 3 else { return nil }
+        let fit2 = mrFitExponent(prior)
+        let prof2 = mrProfile(runs: pastRuns, efforts: prior, asOf: y)
+        return mrPredict(efforts: prior, fit: fit2, profile: prof2, heat: heat, asOf: y)
+            .first { $0.label == label }?.midMin
     }
 
     // MARK: - 근력 횟수·롱런 피로·케이던스 이동 업데이트 (HealthKit 재읽기 없음)
@@ -885,13 +935,29 @@ final class MREngineStore: ObservableObject {
     private func buildTodayCard(runs: [MRWorkout], now: Date) -> MRTodayCard? {
         let raceDayVisible = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
         let governing = governingPlanWeek(for: now)
-        return mrTodayCard(runs: runs, phys: phys, plans: plans,
+        var card: MRTodayCard? = mrTodayCard(runs: runs, phys: phys, plans: plans,
                            raceDayCardVisible: raceDayVisible,
                            advice: advice, asOf: now,
                            heatHR: heatHR, hrvNights: hrvNights,
                            planPhase: governing?.week.phase,
                            hardRunStarts: hardRunStarts,
                            planWeek: governing.map { planWeekContext(plan: $0.plan, week: $0.week, now: now) })
+        let line = prepLine(for: card, now: now)
+        card?.prepLine = line
+        return card
+    }
+
+    /// 홈 대회 안내 줄 아래 한 줄 — 안내 줄이 가리키는 대회(가장 가까운 계획 대회)의 준비 비교.
+    /// 안내 줄이 없으면(D-day 카드가 떠 있거나 계획 대회 없음) 없다.
+    private func prepLine(for card: MRTodayCard?, now: Date) -> String? {
+        guard card?.linkLine != nil,
+              let next = plans.filter({ $0.raceDate > now }).min(by: { $0.raceDate < $1.raceDate }) else { return nil }
+        let cal = Calendar.current
+        guard let race = userInput.races.first(where: {
+                  cal.isDate($0.date, inSameDayAs: next.raceDate) && abs($0.distanceM - next.distanceM) < 1
+              }),
+              let r = prepComparisons[race.id.uuidString] else { return nil }
+        return MRPrepComparison.homeLine(r)
     }
 
     /// 아침 제안의 세션 추론 입력 — 이번 주 계획 구성. 이지 횟수는 계획과 같은 규칙(본인 4주 빈도 − 1),
@@ -1103,6 +1169,7 @@ final class MREngineStore: ObservableObject {
         // ⚠ record()는 조언 카드 .onAppear에서 — 판정 시점 호출 금지
         raceDayCard = computeRaceDayCard(plans: plans, asOf: now)
         todayCard = buildTodayCard(runs: runs, now: now)
+        refreshPrepComparisons(now: now)
     }
 
     // MARK: - 내부 헬퍼

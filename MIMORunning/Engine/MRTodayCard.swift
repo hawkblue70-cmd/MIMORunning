@@ -27,6 +27,8 @@ struct MRTodayCard {
     let readinessDetail: String?
     /// 셋째 줄 — 대회 계획 이번 주 진행("이번 주 롱런 아직 · 이지 2/5회"). 계획이 없으면 nil.
     let readinessPlan: String?
+    /// 대회 준비 비교 — 대회 안내 줄(linkLine) 바로 아래 한 줄. 엔진이 카드를 만든 뒤 채운다.
+    var prepLine: String? = nil
 
     /// 러닝 기록 줄을 "오늘"로 치는 시간 — 러닝 **종료** 후 이만큼. 달력상 자정이 아니다.
     /// 이 안에 다시 뛰면 가장 최근 러닝으로 교체된다(`runs.last`).
