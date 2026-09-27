@@ -4072,14 +4072,20 @@ private struct PerformanceInsightCard: View {
             let variance = paces.map { pow($0 - avgPace, 2) }.reduce(0, +) / Double(paces.count)
             return Int(variance.squareRoot().rounded())
         }()
+        let fmtAvgPace: String = {
+            let v = Int(avgPace.rounded()); return String(format: "%d'%02d\"", v / 60, v % 60)
+        }()
 
         VStack(alignment: .leading, spacing: 4) {
             ZStack(alignment: .trailing) {
                 Text(L.s("페이스 분포", "Pace Distribution"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                     .frame(maxWidth: .infinity, alignment: .center)
-                Text("±\(sdSec)" + L.s("초", "s"))
-                    .font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.85))
+                // 평균값은 점선 끝이 아니라 머리에 — 차트 안 오른쪽 끝은 후반 막대가 가장 높아 이름표가 묻힌다
+                (Text(L.s("평균 ", "avg ")).foregroundStyle(.white.opacity(0.55))
+                 + Text(fmtAvgPace).foregroundStyle(Color(hex: "5BB8FF").opacity(0.9))
+                 + Text("  ±\(sdSec)" + L.s("초", "s")).foregroundStyle(.white.opacity(0.85)))
+                    .font(.system(size: 9, weight: .medium))
             }
             Canvas { ctx, size in
                 let w = size.width
@@ -4166,14 +4172,9 @@ private struct PerformanceInsightCard: View {
                 let avgY  = chartH - avgBH
                 var dash = Path()
                 dash.move(to: CGPoint(x: xPad, y: avgY))
-                dash.addLine(to: CGPoint(x: w - 32, y: avgY))
+                dash.addLine(to: CGPoint(x: w, y: avgY))
                 ctx.stroke(dash, with: .color(Color(hex: "5BB8FF").opacity(0.6)),
                            style: StrokeStyle(lineWidth: 0.7, dash: [3, 2]))
-                let fmtAvg = String(format: "%d'%02d\"", Int(dAvg) / 60, Int(dAvg) % 60)
-                ctx.draw(
-                    Text(fmtAvg).font(.system(size: 7)).foregroundStyle(Color(hex: "5BB8FF").opacity(0.85)),
-                    at: CGPoint(x: w, y: avgY), anchor: .trailing
-                )
 
                 var xAxis = Path()
                 xAxis.move(to: CGPoint(x: xPad, y: chartH))
