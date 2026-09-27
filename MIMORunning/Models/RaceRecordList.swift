@@ -108,11 +108,12 @@ enum RaceRecordList {
             let d = day(r.date)
             runDays.insert(d)
             let dayArchives = archives.filter { day($0.raceDate) == d }
-            let arch = dayArchives.first {
+            let distArch = dayArchives.first {
                 abs(($0.distanceM / 1000) - r.distanceKm) / max(r.distanceKm, 0.001) <= 0.02
-            } ?? dayArchives.first
+            }
+            let arch = distArch ?? dayArchives.first
             let prediction = prediction(for: r, in: predictions, calendar: calendar).map { p in
-                let fromArchive = arch.map(\.projectedMin) ?? 0
+                let fromArchive = distArch.map(\.projectedMin) ?? 0
                 return Prediction(predictedMin: fromArchive > 0 ? fromArchive : p.predictedMin,
                                   inBand: p.inBand)
             }
@@ -150,7 +151,7 @@ enum RaceRecordList {
         for d in archiveOnlyDayOrder {
             let a = archiveOnlyByDay[d]!
             out.append(Row(
-                id: "archive-\(a.index)",
+                id: "archive-\(Int(a.raceDate.timeIntervalSince1970))-\(Int(a.distanceM))",
                 date: a.raceDate,
                 name: RaceDisplayName.short(a.raceName),
                 distanceLabel: RaceDisplayName.distanceLabel(km: a.distanceM / 1000),

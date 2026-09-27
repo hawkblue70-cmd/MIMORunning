@@ -178,6 +178,17 @@ struct RaceRecordListTests {
         #expect(rows[0].prediction?.predictedMin == 235)
     }
 
+    @Test func projectionIgnoresArchiveOfOtherDistance() {
+        let d = date(2026, 4, 5)
+        let rows = RaceRecordList.rows(
+            runs: [run("2026 ○○10K", km: 10, d, minutes: 50)],
+            archives: [archive(0, "2026 ○○하프", d, km: 21.0975, projectedMin: 110)],
+            predictions: [prediction(d, km: 10, predicted: 52)], calendar: cal)
+        #expect(rows[0].prediction?.predictedMin == 52)
+        #expect(rows[0].archiveIndex == 0)
+        #expect(rows[0].hasPlan == true)
+    }
+
     @Test func editionCountIgnoresSameDayDuplicate() {
         let d2025 = date(2025, 10, 25)
         let d2026 = date(2026, 10, 25)
