@@ -15,6 +15,8 @@ enum RaceListMode: Equatable {
 ///  · 같은 날짜는 한 행. 확정 대회 러닝 > 러닝 없는 훈련 계획 아카이브.
 ///  · 엔진 예측만 있고 확정 러닝이 없는 날(대회급 훈련 러닝)은 목록에 없다.
 ///  · 예측 줄은 같은 날·같은 표준 거리(±2%)의 엔진 예측이 있을 때만.
+///  · 예측 값은 항상 엔진 예측(대회 전날까지 데이터로 다시 계산한 값) — 구간 안/밖·정확도·각주와 같은 기준.
+///    아카이브의 계획 시작 시점 예측은 쓰지 않는다(아카이브는 계획 버튼·삭제용 위치만).
 enum RaceRecordList {
 
     /// 확정된 대회 러닝 하나.
@@ -36,8 +38,6 @@ enum RaceRecordList {
         let distanceM: Double
         let hasResult: Bool
         let actualMin: Double
-        /// 계획 시작 시점 앱 예측(`snapshotProjectedFinalMin`). 0이면 없음.
-        let projectedMin: Double
         /// 주차별 이행표가 있는가(`mrArchiveHasDetail`)
         let hasDetail: Bool
     }
@@ -108,14 +108,12 @@ enum RaceRecordList {
             let d = day(r.date)
             runDays.insert(d)
             let dayArchives = archives.filter { day($0.raceDate) == d }
-            let distArch = dayArchives.first {
+            // 계획 버튼·삭제용 아카이브 — 같은 거리(±2%) 우선, 없으면 그날 첫 아카이브
+            let arch = dayArchives.first {
                 abs(($0.distanceM / 1000) - r.distanceKm) / max(r.distanceKm, 0.001) <= 0.02
-            }
-            let arch = distArch ?? dayArchives.first
+            } ?? dayArchives.first
             let prediction = prediction(for: r, in: predictions, calendar: calendar).map { p in
-                let fromArchive = distArch.map(\.projectedMin) ?? 0
-                return Prediction(predictedMin: fromArchive > 0 ? fromArchive : p.predictedMin,
-                                  inBand: p.inBand)
+                Prediction(predictedMin: p.predictedMin, inBand: p.inBand)
             }
             var edition: Int? = nil
             if let seriesKey, let key = seriesKey(r) {

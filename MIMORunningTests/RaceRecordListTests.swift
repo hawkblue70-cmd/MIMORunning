@@ -23,10 +23,10 @@ struct RaceRecordListTests {
 
     private func archive(_ index: Int, _ name: String, _ d: Date, km: Double,
                          hasResult: Bool = false, actualMin: Double = 0,
-                         projectedMin: Double = 0, hasDetail: Bool = true) -> RaceRecordList.ArchiveInput {
+                         hasDetail: Bool = true) -> RaceRecordList.ArchiveInput {
         RaceRecordList.ArchiveInput(index: index, raceName: name, raceDate: d, distanceM: km * 1000,
                                     hasResult: hasResult, actualMin: actualMin,
-                                    projectedMin: projectedMin, hasDetail: hasDetail)
+                                    hasDetail: hasDetail)
     }
 
     private func prediction(_ d: Date, km: Double, predicted: Double,
@@ -98,13 +98,13 @@ struct RaceRecordListTests {
         #expect(matched[0].prediction == RaceRecordList.Prediction(predictedMin: 112, inBand: false))
     }
 
-    @Test func archiveProjectionPreferredOverEnginePrediction() {
+    @Test func predictionAlwaysFromEngine() {
         let d = date(2026, 10, 25)
         let rows = RaceRecordList.rows(
             runs: [run("2026 춘천마라톤", km: 42.195, d, minutes: 232)],
-            archives: [archive(0, "2026 춘천마라톤", d, km: 42.195, projectedMin: 235)],
+            archives: [archive(0, "2026 춘천마라톤", d, km: 42.195)],
             predictions: [prediction(d, km: 42.195, predicted: 240)], calendar: cal)
-        #expect(rows[0].prediction?.predictedMin == 235)
+        #expect(rows[0].prediction?.predictedMin == 240)
     }
 
     @Test func trainingEffortWithoutConfirmedRaceIsNotListed() {
@@ -171,18 +171,18 @@ struct RaceRecordListTests {
         let d = date(2026, 10, 25)
         let rows = RaceRecordList.rows(
             runs: [run("2026 춘천마라톤", km: 42.195, d, minutes: 232)],
-            archives: [archive(0, "2026 ○○10K", d, km: 10, projectedMin: 50),
-                       archive(1, "2026 춘천마라톤", d, km: 42.195, projectedMin: 235)],
+            archives: [archive(0, "2026 ○○10K", d, km: 10),
+                       archive(1, "2026 춘천마라톤", d, km: 42.195)],
             predictions: [prediction(d, km: 42.195, predicted: 240)], calendar: cal)
         #expect(rows[0].archiveIndex == 1)
-        #expect(rows[0].prediction?.predictedMin == 235)
+        #expect(rows[0].prediction?.predictedMin == 240)
     }
 
-    @Test func projectionIgnoresArchiveOfOtherDistance() {
+    @Test func runFallsBackToOtherDistanceArchiveForPlan() {
         let d = date(2026, 4, 5)
         let rows = RaceRecordList.rows(
             runs: [run("2026 ○○10K", km: 10, d, minutes: 50)],
-            archives: [archive(0, "2026 ○○하프", d, km: 21.0975, projectedMin: 110)],
+            archives: [archive(0, "2026 ○○하프", d, km: 21.0975)],
             predictions: [prediction(d, km: 10, predicted: 52)], calendar: cal)
         #expect(rows[0].prediction?.predictedMin == 52)
         #expect(rows[0].archiveIndex == 0)

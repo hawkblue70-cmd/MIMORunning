@@ -416,7 +416,6 @@ struct MeView: View {
             RaceRecordList.ArchiveInput(index: i, raceName: a.raceName, raceDate: a.raceDate,
                                         distanceM: a.distanceM, hasResult: a.hasResult,
                                         actualMin: a.actualMin,
-                                        projectedMin: a.snapshotProjectedFinalMin,
                                         hasDetail: mrArchiveHasDetail(a.markdown))
         }
     }
