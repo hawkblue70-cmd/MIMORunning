@@ -50,6 +50,8 @@ struct MeView: View {
     @State private var showAllRaceRecords = false
     @State private var planArchive: RaceArchive? = nil
     @State private var archiveToDelete: RaceArchive? = nil
+    /// 대회 검색 시트를 열 때의 예정 대회 수 — 닫을 때 새로 등록했을 때만 예정으로 전환
+    @State private var plannedCountAtSearch = 0
     @State private var shoeKmCache: [UUID: Double] = [:]
     @State private var cachedMonthStats: [SummaryPeriodStats] = []
     @State private var cachedYearStats: [SummaryPeriodStats] = []
@@ -292,7 +294,7 @@ struct MeView: View {
         .onChange(of: goalHash) { syncAndRecompute() }
         .onChange(of: engine.isReady) { if engine.isReady { syncAndRecompute() } }
         .sheet(isPresented: $showRaceSearch, onDismiss: {
-            if plannedRaces.contains(where: { !$0.isPast }) { raceListMode = .planned }
+            if plannedRaces.count > plannedCountAtSearch { raceListMode = .planned }
         }) {
             RaceSearchSheet(raceDetector: raceDetector, existing: Set(plannedRaces.map { $0.raceName + $0.dateString }))
         }
@@ -327,7 +329,10 @@ struct MeView: View {
                 Spacer()
                 raceModeChip(.planned, L.s("예정", "Upcoming"))
                 raceModeChip(.records, L.s("기록", "Results"))
-                Button { showRaceSearch = true } label: {
+                Button {
+                    plannedCountAtSearch = plannedRaces.count
+                    showRaceSearch = true
+                } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 20))
                         .foregroundStyle(Theme.violet)
@@ -500,10 +505,12 @@ struct MeView: View {
         switch row.source {
         case .run(let id):
             base.onTapGesture {
+                guard navPath.isEmpty else { return }   // 빠른 두 번 탭으로 두 번 쌓이지 않게
                 guard let activity = manager.activities.first(where: { $0.id == id }) else { return }
                 raceDetailPushed = true
                 navPath.append(activity)
             }
+            .accessibilityAddTraits(.isButton)
         case .archiveOnly:
             base.contextMenu {
                 if let archive {

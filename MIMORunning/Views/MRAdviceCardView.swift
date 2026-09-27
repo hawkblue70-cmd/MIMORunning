@@ -9,7 +9,7 @@ struct MRAdviceCardView: View {
     @EnvironmentObject private var engine: MREngineStore
     @State private var expanded: Set<String> = []
 
-    // 형제 카드(MRBacktestView 등)와 동일한 컨테이너 스타일
+    // 형제 카드(MRHealthMetricsView 등)와 동일한 컨테이너 스타일
     private let cardColor = Theme.cardBackground
 
     private var items: [MRAdvice] { Array(engine.advice.prefix(2)) }
