@@ -2630,8 +2630,12 @@ private struct HRZonesSection: View {
 
     private func zoneColor(_ id: Int) -> Color { Theme.hrZoneColor(id) }
 
+    /// 1시간 넘으면 시:분:초 — 하프·풀에서 "91:34"(분:초)로 읽히던 것을 "1:31:34"로.
     private func formattedZoneTime(_ seconds: TimeInterval) -> String {
         let total = Int(seconds)
+        if total >= 3600 {
+            return String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+        }
         return String(format: "%02d:%02d", total / 60, total % 60)
     }
 
