@@ -6,13 +6,13 @@ import Foundation
 /// 화면에는 그것을 뗀 이름을 쓴다. 저장된 이름은 바꾸지 않는다.
 enum RaceDisplayName {
 
-    /// 앞·뒤 연도와 "제N회"(괄호 안 포함)를 뗀 표시 이름.
+    /// 연도(위치 무관)와 회차를 뗀 표시 이름.
     /// "제46회 조선일보 춘천마라톤" → "조선일보 춘천마라톤"
     /// "2026 서울마라톤 (제96회 동아마라톤)" → "서울마라톤 (동아마라톤)"
     static func short(_ name: String) -> String {
         var s = name
-        s = s.replacingOccurrences(of: #"^\s*20\d{2}\s+"#, with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: #"\s+20\d{2}\s*$"#, with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"(?<!\d)20\d{2}(?!\d)"#, with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"\(\s*\d+\s*회\s*\)"#, with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: #"제\s*\d+\s*회\s*"#, with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: #"\(\s*\)"#, with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
@@ -29,6 +29,6 @@ enum RaceDisplayName {
         ]
         if let hit = standards.first(where: { abs($0.km - km) / $0.km <= 0.02 }) { return hit.label }
         if abs(km - km.rounded()) < 0.05 { return "\(Int(km.rounded()))K" }
-        return String(format: "%.1fK", km)
+        return String(format: "%.1fK", locale: Locale(identifier: "en_US_POSIX"), km)
     }
 }

@@ -26,6 +26,22 @@ struct RaceDisplayNameTests {
         #expect(RaceDisplayName.short("JTBC 마라톤") == "JTBC 마라톤")
     }
 
+    @Test func stripsYearInMiddle() {
+        #expect(RaceDisplayName.short("RUN SEOUL RUN 2025 (런서울런)") == "RUN SEOUL RUN (런서울런)")
+    }
+
+    @Test func stripsEditionAndYearTogether() {
+        #expect(RaceDisplayName.short("제6회 2026 버킷런") == "버킷런")
+    }
+
+    @Test func stripsEditionInParenthesesWithoutJe() {
+        #expect(RaceDisplayName.short("2026(20회) 선사마라톤 축제") == "선사마라톤 축제")
+    }
+
+    @Test func fallsBackToOriginalWhenEverythingStripped() {
+        #expect(RaceDisplayName.short("2026 제5회") == "2026 제5회")
+    }
+
     @Test func standardDistanceLabels() {
         #expect(RaceDisplayName.distanceLabel(km: 5.0) == "5K")
         #expect(RaceDisplayName.distanceLabel(km: 10.0) == "10K")
@@ -36,6 +52,9 @@ struct RaceDisplayNameTests {
     @Test func nonStandardDistanceLabels() {
         #expect(RaceDisplayName.distanceLabel(km: 32.0) == "32K")
         #expect(RaceDisplayName.distanceLabel(km: 10.9) == "10.9K")
+        #expect(RaceDisplayName.distanceLabel(km: 20.0) == "20K")
+        #expect(RaceDisplayName.distanceLabel(km: 42.0) == "풀")
+        #expect(RaceDisplayName.distanceLabel(km: 9.99) == "10K")
     }
 
     @Test(.english) func englishLabels() {
