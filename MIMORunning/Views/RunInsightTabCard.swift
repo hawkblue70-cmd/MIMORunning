@@ -29,8 +29,6 @@ private enum IC {
     static let violetText = Color(hex: "D5CEFF")
     static let label      = Color(hex: "8A8F99")
     static let hrRed      = Color(hex: "FF6B6B")
-    /// 심박 효율 개선 화살표(↓N bpm) — 눈에 띄게 하늘색. 성장 탭·강도 요약의 "좋아짐" 하늘색과 같은 값
-    static let sky        = Color(hex: "5AC8FA")
     /// 케이던스 — 지표 의미색 하나만 쓴다(`Theme.cadence`). 예전 값 5CE5D5는 Zone 2와 같은 색이었다.
     static let cadCyan    = Theme.cadence
     /// 심박 효율 산점도의 "오늘" 점. 강도 부하·경로 카드가 쓰는 형광 팔레트의 라임과 같은 값이지만
@@ -3243,7 +3241,7 @@ private struct PerformanceInsightCard: View {
                     (Text(L.s("심박 효율: ", "HR Efficiency: "))
                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.90))
                     + Text("↓\(d) bpm")
-                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(IC.sky)
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(IC.green)
                     + Text(scatterIsHeatAdjusted
                            ? L.s(" (동일 페이스 · 15°C 기준)", " (vs. similar pace · at 15°C)")
                            : L.s(" (동일 페이스 기준)", " (vs. similar pace)"))
@@ -3313,7 +3311,8 @@ private struct PerformanceInsightCard: View {
                     let rCX = recentPts.map { cx($0.pace) }.reduce(0, +) / CGFloat(recentPts.count)
                     let rCY = recentPts.map { cy($0.hr) }.reduce(0, +) / CGFloat(recentPts.count)
 
-                    // 좋아졌으면 하늘색(위쪽 "↓N bpm"과 같은 색), 아니면 흐린 회색 — 나빠짐은 빨강으로 말하지 않는다.
+                    // 좋아졌으면 초록(위쪽 "↓N bpm"과 같은 색), 아니면 흐린 회색 — 나빠짐은 빨강으로 말하지 않는다.
+                    // (2026-09-28 하늘색을 실기기에서 보고 사용자가 이전 초록으로 되돌림)
                     // 판정은 페이스를 걸러 낸 비교: 평소 범위 띠(기대 심박선)에서 벗어난 정도의 평균이
                     // 최근 무리에서 과거 무리보다 2bpm 이상 낮으면 "같은 페이스에 심박이 낮아졌다".
                     // 화면 좌표 방향으로 판정하면 천천히 달려 심박이 낮은 달도 좋아진 것처럼 보인다.
@@ -3324,7 +3323,7 @@ private struct PerformanceInsightCard: View {
                         }
                         return meanResidual(recentPts) <= meanResidual(pastPts) - 2
                     }()
-                    let arrowColor: Color = improved ? IC.sky : .white.opacity(0.35)
+                    let arrowColor: Color = improved ? IC.green : .white.opacity(0.35)
 
                     var arrowLine = Path()
                     arrowLine.move(to: CGPoint(x: pCX, y: pCY))
