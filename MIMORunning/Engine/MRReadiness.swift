@@ -308,7 +308,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
 
     func lastHardPiece() -> String? {
         guard let d = hard.lastHardDaysAgo else { return nil }
-        return L.s("마지막 고강도 \(d)일 전", "last hard run \(d) days ago")
+        return L.s("마지막 고강도 \(d)일 전", d == 1 ? "last hard run 1 day ago" : "last hard run \(d) days ago")
     }
 
     // ── 데이터 조각 — 판정과 무관하게 둘째 줄에 항상. 총평 근거 줄과 같은 라벨(어젯밤·이번 주·평소·상태어).
@@ -433,7 +433,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     }
     // 규칙 7 — 범위 안 또는 자료 없음: 부하 쪽이 넉넉할 때만 강도 OK
     if let d = hard.lastHardDaysAgo, d < MRReadiness.normalHRVGoMinDays {
-        return make(.easy, [L.s("고강도 \(d)일 전", "hard run \(d) days ago"), L.s("하루 더 여유", "one more easy day")],
+        return make(.easy, [L.s("고강도 \(d)일 전", d == 1 ? "hard run 1 day ago" : "hard run \(d) days ago"), L.s("하루 더 여유", "one more easy day")],
                     why: L.s("고강도 뒤 사흘은 두는 게 좋아요. 그 사이 강도를 더하면 회복이 밀려요.",
                              "Leave about three days after a hard session. Stacking another one pushes recovery back."))
     }
