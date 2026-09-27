@@ -4181,16 +4181,12 @@ private struct PerformanceInsightCard: View {
                 dash.addLine(to: CGPoint(x: w, y: avgY))
                 ctx.stroke(dash, with: .color(Color(hex: "5BB8FF").opacity(0.6)),
                            style: StrokeStyle(lineWidth: 0.7, dash: [3, 2]))
-                // 평균 이름표 — 막대 위에 겹쳐도 읽히게 카드 배경색 알약 위에 그린다(같은 파랑 막대에 묻혔었다).
-                // 왼쪽 눈금 라벨과 떨어뜨려 차트 오른쪽 끝, 점선 바로 위에 둔다.
-                let avgLabel = ctx.resolve(Text(fmtAvgPace).font(.system(size: 7, weight: .semibold))
-                    .foregroundStyle(Color(hex: "5BB8FF")))
+                // 평균 이름표 — 흰색 굵게. 같은 파랑이면 막대에 묻힌다. 차트 오른쪽 끝, 점선 바로 위.
+                let avgLabel = ctx.resolve(Text(fmtAvgPace).font(.system(size: 7.5, weight: .bold))
+                    .foregroundStyle(.white))
                 let ls = avgLabel.measure(in: CGSize(width: 60, height: 20))
-                let pillW = ls.width + 6, pillH = ls.height + 2
-                let pillY = min(max(0, avgY - pillH - 1), chartH - pillH)
-                let pill = CGRect(x: w - pillW, y: pillY, width: pillW, height: pillH)
-                ctx.fill(Path(roundedRect: pill, cornerRadius: pillH / 2), with: .color(Theme.cardBackground.opacity(0.92)))
-                ctx.draw(avgLabel, at: CGPoint(x: pill.midX, y: pill.midY), anchor: .center)
+                let labelY = min(max(0, avgY - ls.height - 1), chartH - ls.height)
+                ctx.draw(avgLabel, at: CGPoint(x: w, y: labelY), anchor: .topTrailing)
 
                 var xAxis = Path()
                 xAxis.move(to: CGPoint(x: xPad, y: chartH))
