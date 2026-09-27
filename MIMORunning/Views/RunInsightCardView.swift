@@ -133,6 +133,12 @@ struct RunInsightSection: View {
     var confirmedRace: PersistedRaceMatch? = nil
     var confirmedRaces: [PersistedRaceMatch] = []
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
+    /// 대회 해마다 비교(같은 대회·같은 거리). 확정 대회가 아니면 nil.
+    var raceComparison: RaceYearOverYear.Comparison? = nil
+    /// 같은 시리즈 지난 해 대회로 보이는 러닝 — 확인 질문
+    var raceQuestions: [RaceYearOverYear.Question] = []
+    /// 질문 응답(true = 맞아요). nil이면 질문을 그리지 않는다(내보내기 이미지).
+    var onAnswerRaceQuestion: ((RaceYearOverYear.Question, Bool) -> Void)? = nil
     /// 강도(sRPE) 조회 인덱스 — 퍼포먼스 탭의 7일 강도 부하용. 없으면 해당 반쪽 생략.
     var effortIndex: EffortIndex? = nil
     /// 이지 페이스 조회값 — 총평 심박 줄이 다음 이지런 페이스를 숫자로 제안할 때 쓴다.
@@ -175,6 +181,9 @@ struct RunInsightSection: View {
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
                 raceDetailFn: raceDetailFn,
+                raceComparison: raceComparison,
+                raceQuestions: raceQuestions,
+                onAnswerRaceQuestion: onAnswerRaceQuestion,
                 hrZonesFn: hrZonesFn,
                 effortIndex: effortIndex,
                 easyPaceLookup: easyPaceLookup,

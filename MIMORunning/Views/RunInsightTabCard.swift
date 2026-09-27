@@ -800,6 +800,12 @@ struct RunInsightTabCard: View {
     var confirmedRace: PersistedRaceMatch? = nil
     var confirmedRaces: [PersistedRaceMatch] = []
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
+    /// 대회 해마다 비교(같은 대회·같은 거리). 확정 대회가 아니면 nil.
+    var raceComparison: RaceYearOverYear.Comparison? = nil
+    /// 같은 시리즈 지난 해 대회로 보이는 러닝 — 확인 질문
+    var raceQuestions: [RaceYearOverYear.Question] = []
+    /// 질문 응답(true = 맞아요). nil이면 질문을 그리지 않는다(내보내기 이미지).
+    var onAnswerRaceQuestion: ((RaceYearOverYear.Question, Bool) -> Void)? = nil
     /// 과거 러닝의 존 체류 시간 (강도 분포 · 4주 합산용). 리듬 카드 도넛과 같은 캐시 데이터.
     var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
     /// 강도(sRPE) 조회 인덱스 — 퍼포먼스 탭의 7일 강도 부하용. 없으면 해당 반쪽 생략.
@@ -864,6 +870,7 @@ struct RunInsightTabCard: View {
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
                 raceDetailFn: raceDetailFn,
+                raceComparison: raceComparison,
                 hrZonesFn: hrZonesFn,
                 effortIndex: effortIndex,
                 easyPaceLookup: easyPaceLookup,
@@ -1052,7 +1059,10 @@ struct RunInsightTabCard: View {
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
                 history: history,
-                raceDetailFn: raceDetailFn
+                raceDetailFn: raceDetailFn,
+                raceComparison: raceComparison,
+                raceQuestions: raceQuestions,
+                onAnswerRaceQuestion: onAnswerRaceQuestion
             )
         }
     }
@@ -5106,6 +5116,12 @@ private struct RaceInsightCard: View {
     var confirmedRaces: [PersistedRaceMatch] = []
     var history: [Activity] = []
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
+    /// 대회 해마다 비교(같은 대회·같은 거리). 확정 대회가 아니면 nil.
+    var raceComparison: RaceYearOverYear.Comparison? = nil
+    /// 같은 시리즈 지난 해 대회로 보이는 러닝 — 확인 질문
+    var raceQuestions: [RaceYearOverYear.Question] = []
+    /// 질문 응답(true = 맞아요). nil이면 질문을 그리지 않는다(내보내기 이미지).
+    var onAnswerRaceQuestion: ((RaceYearOverYear.Question, Bool) -> Void)? = nil
 
     // MARK: Types
 
@@ -5207,11 +5223,10 @@ private struct RaceInsightCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
-            // ── 대회 간 비교 (같은 거리 2개 이상)
-            let sdr = sameDistanceRaces
-            if !sdr.isEmpty {
+            // ── 같은 대회 · 같은 거리 (과거 대회가 있거나 확인할 과거 러닝이 있을 때)
+            if let cmp = raceComparison, !cmp.isEmpty || !visibleQuestions.isEmpty {
                 Color.white.opacity(0.1).frame(height: 0.5)
-                crossRaceSection(sdr)
+                comparisonSection(cmp)
             }
 
             // ── 거리별 붕괴 곡선 (3개 이상 대회, 2개 이상 부문)
@@ -5339,39 +5354,110 @@ private struct RaceInsightCard: View {
         }
     }
 
-    @ViewBuilder
-    private func crossRaceSection(_ races: [(match: PersistedRaceMatch, activity: Activity)]) -> some View {
+    // MARK: 같은 대회 · 같은 거리
+
+    /// 내보내기 이미지(응답 콜백 없음)에서는 질문을 그리지 않는다.
+    private var visibleQuestions: [RaceYearOverYear.Question] {
+        onAnswerRaceQuestion == nil ? [] : raceQuestions
+    }
+
+    private func comparisonSection(_ cmp: RaceYearOverYear.Comparison) -> some View {
         let L = AppLanguage.shared
-        VStack(alignment: .leading, spacing: 6) {
-            Text(L.s("같은 거리 대회 비교", "Same Distance Races"))
+        let showRaceGroup = !cmp.sameRace.isEmpty || !visibleQuestions.isEmpty
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(L.s("같은 대회 · 같은 거리", "Same Race · Same Distance"))
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.5))
-            ForEach(Array(races.enumerated()), id: \.offset) { _, entry in
-                let cal = Calendar.current
-                let comps = cal.dateComponents([.year, .month], from: entry.activity.date)
-                let label = "\(comps.year ?? 0). \(comps.month ?? 0)"
-                HStack(spacing: 0) {
-                    Text(label)
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.white.opacity(0.45))
-                        .frame(width: 56, alignment: .leading)
-                    Text(entry.activity.formattedPace ?? "--'--\"")
-                        .font(cardNumFont(12))
-                        .foregroundStyle(entry.activity.id == activity.id ? Theme.violet : Color.white.opacity(0.85))
-                        .frame(width: 56, alignment: .trailing)
-                    Text("/km")
-                        .font(.system(size: 9))
-                        .foregroundStyle(Color.white.opacity(0.4))
-                        .padding(.leading, 2)
-                    Spacer()
-                    if let hr = entry.activity.avgHeartRate {
-                        Text("\(hr) bpm")
-                            .font(.system(size: 10))
-                            .foregroundStyle(IC.hrRed.opacity(entry.activity.id == activity.id ? 1.0 : 0.6))
-                    }
-                }
+            if showRaceGroup {
+                comparisonGroupLabel(L.s("같은 대회", "Same race"))
+                comparisonRow(cmp.today)
+                ForEach(cmp.sameRace) { comparisonRow($0) }
+                ForEach(visibleQuestions) { questionRow($0) }
+            }
+            if !cmp.sameDistance.isEmpty {
+                comparisonGroupLabel(L.s("같은 거리", "Same distance"))
+                if !showRaceGroup { comparisonRow(cmp.today) }
+                ForEach(cmp.sameDistance) { comparisonRow($0) }
             }
         }
+    }
+
+    private func comparisonGroupLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(0.35))
+            .padding(.top, 2)
+    }
+
+    /// 한 줄 — 연.월 · 이름 · 완주 시간 · 차이(오늘 행은 "오늘") · 기온
+    private func comparisonRow(_ row: RaceYearOverYear.Row) -> some View {
+        let L = AppLanguage.shared
+        let c = Calendar.current.dateComponents([.year, .month], from: row.date)
+        return HStack(spacing: 6) {
+            Text(String(format: "%d.%02d", c.year ?? 0, c.month ?? 0))
+                .font(.system(size: 10))
+                .foregroundStyle(Color.white.opacity(0.45))
+                .monospacedDigit()
+                .frame(width: 48, alignment: .leading)
+            Text(row.title)
+                .font(.system(size: 11, weight: row.isToday ? .semibold : .regular))
+                .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.8))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text(mrFormatDisplay(row.durationSec / 60))
+                .font(cardNumFont(12))
+                .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.85))
+                .lineLimit(1)
+                .layoutPriority(1)
+            Text(row.delta.map { RaceYearOverYear.deltaText($0) } ?? L.s("오늘", "Today"))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.6))
+                .lineLimit(1)
+                .frame(width: 62, alignment: .trailing)
+            Text(row.tempC.map { "\(Int($0.rounded()))°C" } ?? "")
+                .font(.system(size: 10))
+                .foregroundStyle(Color.white.opacity(0.45))
+                .frame(width: 34, alignment: .trailing)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// 지난 해 대회 확인 — "2025 춘천마라톤 — 10월 25일 러닝이 이 대회였나요?  [맞아요] [아니요]"
+    private func questionRow(_ q: RaceYearOverYear.Question) -> some View {
+        let L = AppLanguage.shared
+        let c = Calendar.current.dateComponents([.month, .day], from: q.runDate)
+        let m = c.month ?? 0, d = c.day ?? 0
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(L.s("\(String(q.year)) \(q.raceName) — \(m)월 \(d)일 러닝이 이 대회였나요?",
+                     "\(String(q.year)) \(q.raceName) — was your run on \(m)/\(d) this race?"))
+                .font(.system(size: 11))
+                .foregroundStyle(Color.white.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button { onAnswerRaceQuestion?(q, true) } label: {
+                    Text(L.s("맞아요", "Yes"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Theme.violet)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                Button { onAnswerRaceQuestion?(q, false) } label: {
+                    Text(L.s("아니요", "No"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.violet.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: Computed
@@ -5482,22 +5568,6 @@ private struct RaceInsightCard: View {
             )
         }
         return nil
-    }
-
-    private var sameDistanceRaces: [(match: PersistedRaceMatch, activity: Activity)] {
-        guard let myRace = confirmedRace else { return [] }
-        let myKm = myRace.distanceKm
-        // 같은 거리(±15%) 확인된 대회들을 날짜 오름차순
-        let sameDistMatches = confirmedRaces
-            .filter { $0.isConfirmed && abs($0.distanceKm - myKm) / max(myKm, 1) <= 0.15 }
-            .sorted { $0.raceDate < $1.raceDate }
-        guard sameDistMatches.count >= 2 else { return [] }
-        // history에서 해당 활동 찾기
-        let historyByID = Dictionary(history.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        return sameDistMatches.compactMap { m -> (match: PersistedRaceMatch, activity: Activity)? in
-            guard let act = historyByID[m.activityID] else { return nil }
-            return (match: m, activity: act)
-        }
     }
 
     private func distanceDivision(km: Double) -> String {
@@ -5782,6 +5852,8 @@ struct InsightExportSheet: View {
     var confirmedRace: PersistedRaceMatch? = nil
     var confirmedRaces: [PersistedRaceMatch] = []
     var raceDetailFn: ((UUID) -> ActivityDetail?)? = nil
+    /// 대회 해마다 비교 — 내보내기 이미지에는 표만(질문 없음)
+    var raceComparison: RaceYearOverYear.Comparison? = nil
     var hrZonesFn: ((UUID) -> [HRZoneData]?)? = nil
     /// 강도(sRPE) 조회 인덱스 — 퍼포먼스 탭의 7일 강도 부하용.
     var effortIndex: EffortIndex? = nil
@@ -6053,7 +6125,8 @@ struct InsightExportSheet: View {
                 confirmedRace: confirmedRace,
                 confirmedRaces: confirmedRaces,
                 history: history,
-                raceDetailFn: raceDetailFn
+                raceDetailFn: raceDetailFn,
+                raceComparison: raceComparison
             )
         }
     }
