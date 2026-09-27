@@ -795,7 +795,7 @@ struct MeView: View {
                 Text(AppLanguage.shared.s("가민 기기 감지됨", "Garmin Device Detected"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
-                Text(AppLanguage.shared.s("심박·러닝폼·VO2max 등 일부 지표는 가민→애플 건강 앱 동기화가 필요해요. 동기화가 안 된 경우 해당 지표가 표시되지 않을 수 있어요.", "Some metrics (HR, running form, VO2max) require Garmin→Apple Health sync. They may not appear if sync is off."))
+                Text(AppLanguage.shared.s("가민 기록은 애플 건강을 거쳐 들어와요. 거리·시간·페이스는 그대로 보이지만, 경로·러닝폼·VO2max는 넘어오지 않아요.", "Garmin runs come in through Apple Health. Distance, time and pace show as usual, but route, running form and VO2max don't come across."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
