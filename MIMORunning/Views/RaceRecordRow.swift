@@ -8,7 +8,7 @@ struct RaceRecordRow: View {
     let row: RaceRecordList.Row
     var onTapPlan: (() -> Void)? = nil
 
-    /// 구간 밖 — 성장 탭 예측 목록과 같은 주황
+    /// 구간 밖 경고 주황
     private static let warn = Color(red: 0.95, green: 0.68, blue: 0.25)
 
     private var dateText: String {
