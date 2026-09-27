@@ -123,6 +123,15 @@ enum WorkoutType: String, Codable, CaseIterable {
         case .general:     L.s("일반 러닝", "General Run")
         }
     }
+
+    /// 화면에 보이는 종류 이름 — 빌드업이 롱런 거리이기도 하면 "롱런 · 빌드업".
+    /// 집계(종류별 횟수·강도)는 그대로 빌드업 하나로 센다.
+    func displayLabel(for activity: Activity, history: [Activity]) -> String {
+        if self == .buildUp, WorkoutTypeClassifier.isLongDistance(activity: activity, history: history) {
+            return AppLanguage.shared.s("롱런 · 빌드업", "Long Run · Build-Up")
+        }
+        return koreanLabel
+    }
 }
 
 // MARK: - Activity Detail

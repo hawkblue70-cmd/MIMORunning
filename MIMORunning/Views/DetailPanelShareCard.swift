@@ -115,6 +115,8 @@ struct DetailPanelShareCard: View {
     var routeProgress: RouteProgressSnapshot? = nil
     /// 확정된 대회 이름. 있으면 맨 윗줄 오른쪽(워드마크와 같은 줄)에 뱃지로 얹는다.
     var raceName: String? = nil
+    /// 화면용 종류 이름("롱런 · 빌드업" 등) — 없으면 detail의 종류 이름.
+    var workoutTypeLabel: String? = nil
 
     private var pal: RouteCardPalette { theme == .light ? .light : .dark }
 
@@ -275,7 +277,7 @@ struct DetailPanelShareCard: View {
                                      hrColor: boardHRColor)
                     .padding(.bottom, 22)   // 종류·날짜 묶음과 떨어져 위로 — 경로선과 조금 겹쳐도 된다(사용자 결정)
             }
-            Text(detail?.workoutType.koreanLabel ?? activity.type.label)
+            Text(workoutTypeLabel ?? detail?.workoutType.koreanLabel ?? activity.type.label)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(.white)
             Text(heroDateOnlyText)
@@ -360,7 +362,7 @@ struct DetailPanelShareCard: View {
                 }
                 .foregroundStyle(.white.opacity(0.85))
             }
-            Text(detail?.workoutType.koreanLabel ?? activity.type.label)
+            Text(workoutTypeLabel ?? detail?.workoutType.koreanLabel ?? activity.type.label)
                 .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
@@ -687,6 +689,8 @@ struct DetailPanelShareCardScreen: View {
     var isMale: Bool? = nil
     /// 확정된 대회 이름 — 카드 맨 윗줄 오른쪽 뱃지. 정지 이미지·영상 모두에 같이 들어간다.
     var raceName: String? = nil
+    /// 화면용 종류 이름("롱런 · 빌드업" 등) — 없으면 detail의 종류 이름.
+    var workoutTypeLabel: String? = nil
 
     @State private var previewImage: UIImage?
     @State private var isRendering = true
@@ -737,7 +741,8 @@ struct DetailPanelShareCardScreen: View {
                         // 영상 모드에서는 영상의 마지막 프레임을 그대로 — 러닝 데이터 여섯 칸이 아니라
                         // 영상에 실제로 나오는 거리·페이스·시간·심박 네 칸만 보여준다
                         routeProgress: isVideoMode ? videoPreviewSnapshot : nil,
-                        raceName: raceName
+                        raceName: raceName,
+                        workoutTypeLabel: workoutTypeLabel
                     )
                     .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -849,6 +854,7 @@ struct DetailPanelShareCardScreen: View {
                 activity: activity, detail: detail, condition: condition,
                 age: age, isMale: isMale, placeName: placeName,
                 raceName: raceName,
+                workoutTypeLabel: workoutTypeLabel,
                 segmentColors: colors,
                 hrSamples: hrSamples,
                 onProgress: { p in
@@ -948,7 +954,8 @@ struct DetailPanelShareCardScreen: View {
                 theme: effectiveTheme,
                 placeName: placeName,
                 routeStyle: routeStyle,
-                raceName: raceName
+                raceName: raceName,
+                workoutTypeLabel: workoutTypeLabel
             )
             .frame(width: cardW, height: cardH)
         )
@@ -1077,6 +1084,8 @@ struct RouteStampCardPreview: View {
     var age: Int? = nil
     var isMale: Bool? = nil
     var raceName: String? = nil
+    /// 화면용 종류 이름("롱런 · 빌드업" 등) — 없으면 detail의 종류 이름.
+    var workoutTypeLabel: String? = nil
 
     @State private var snapshot: UIImage?
     @State private var placeName: String?
@@ -1100,7 +1109,8 @@ struct RouteStampCardPreview: View {
                 theme: .dark,
                 placeName: placeName,
                 routeStyle: .stamp,
-                raceName: raceName
+                raceName: raceName,
+                workoutTypeLabel: workoutTypeLabel
             )
             .frame(width: cardW, height: cardH)
             .scaleEffect(k, anchor: .topLeading)

@@ -128,22 +128,39 @@ struct WorkoutTypeClassifier {
     /// Progressive buildup: first-to-last improvement ≥5%, AND either
     ///   (a) each of three pace-thirds is strictly faster than the previous, OR
     ///   (b) linear regression slope < 0 with R² ≥ 0.40 (catches noisy but real build-ups).
-    private static func isBuildUp(splits: [SplitData]) -> Bool {
-        let full = splits.filter { $0.distanceM >= 900 }
-        guard full.count >= 4 else { return false }
-        let paces = full.map(\.paceSecPerKm)
-        guard let firstPace = paces.first, let lastPace = paces.last else { return false }
-        guard lastPace < firstPace * 0.95 else { return false }  // ≥5% first-to-last gain
+    /// 빌드업 — 페이스를 **실제로 단계적으로** 올린 러닝.
+    /// ⚠ 예전 기준(3등분 평균이 1초라도 순차 감소, 또는 R² ≥ 0.40)은 첫 km(몸 풀기·신호 대기)가 느리고
+    ///   마지막 km(스퍼트)가 빠른 평범한 러닝을 빌드업으로 잡았다 — 4주 18회 중 11회(2026-09-28).
+    ///   이제 구간 6개 이상이면 양 끝 km를 빼고 추세를 보며, 단계마다 1.5% 이상 또는 추세선 4% 이상 빨라져야 한다.
+    static func isBuildUp(splits: [SplitData]) -> Bool {
+        buildUpVerdict(splits: splits).isBuildUp
+    }
 
-        // (a) 3등분 단조 상승: 각 구간 평균 페이스가 순차 감소 (= 점점 빨라짐)
+    /// 빌드업 판정 + 트레이스 문구. `isBuildUp`과 디버그 트레이스가 같은 계산을 쓴다.
+    static func buildUpVerdict(splits: [SplitData]) -> (isBuildUp: Bool, note: String) {
+        func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60) }
+        let full = splits.filter { $0.distanceM >= 900 }
+        guard full.count >= 4 else { return (false, "빌드업탈락: splits \(full.count) < 4") }
+        let all = full.map(\.paceSecPerKm)
+        let firstPace = all[0], lastPace = all[all.count - 1]
+        guard lastPace < firstPace * 0.95 else {   // ≥5% first-to-last gain
+            return (false, "빌드업탈락: 초→말 개선 \(Int((1 - lastPace / firstPace) * 100))% < 5%")
+        }
+
+        // 첫 km(몸 풀기·신호 대기)·마지막 km(스퍼트)는 추세에서 뺀다 — 이 둘만으로 평탄한 러닝이 빌드업이 됐다
+        let paces = all.count >= 6 ? Array(all.dropFirst().dropLast()) : all
         let n = paces.count; let t = max(1, n / 3)
         let avgOf: (ArraySlice<Double>) -> Double = { s in s.reduce(0, +) / Double(s.count) }
         let a1 = avgOf(paces[0..<t])
         let a2 = avgOf(paces[t..<(2 * t)])
         let a3 = avgOf(paces[(2 * t)...])
-        if a1 > a2 && a2 > a3 { return true }
 
-        // (b) 선형 회귀 기울기 < 0이고 R² ≥ 0.40 (전반적 하향 추세)
+        // (a) 3등분 단계 상승 — 단계마다 1.5% 이상(6'20" 기준 약 6초) 빨라짐
+        if (a1 - a2) / a1 >= 0.015 && (a2 - a3) / a2 >= 0.015 {
+            return (true, "빌드업(단계3분구 \(pf(a1))→\(pf(a2))→\(pf(a3)))")
+        }
+
+        // (b) 선형 추세 — R² ≥ 0.40이고 추세선상 처음→끝 4% 이상 빨라짐
         let xMean = Double(n - 1) / 2.0
         let yMean = paces.reduce(0, +) / Double(n)
         var sxy = 0.0, sxx = 0.0, syy = 0.0
@@ -151,8 +168,23 @@ struct WorkoutTypeClassifier {
             let dx = Double(i) - xMean; let dy = y - yMean
             sxy += dx * dy; sxx += dx * dx; syy += dy * dy
         }
-        guard sxx > 0, syy > 0 else { return false }
-        return sxy / sxx < 0 && (sxy * sxy) / (sxx * syy) >= 0.40
+        guard sxx > 0, syy > 0 else { return (false, "빌드업탈락: 단계✗ 평탄") }
+        let r2 = (sxy * sxy) / (sxx * syy)
+        let gain = -(sxy / sxx) * Double(n - 1) / yMean
+        let tag = "R²=\(String(format: "%.2f", r2)) 추세\(String(format: "%.1f", gain * 100))%"
+        if r2 >= 0.40 && gain >= 0.04 {
+            return (true, "빌드업(\(tag)) \(pf(firstPace))→\(pf(lastPace))")
+        }
+        return (false, "빌드업탈락: 단계✗ \(tag) (R²≥0.40·추세≥4% 필요)")
+    }
+
+    /// 롱런 거리인가 — 분류기의 롱런 조건(8km 이상 + 직전 4주 거리 중앙값 × 1.20, 기록 부족 시 12km)과 같은 계산.
+    /// 빌드업이 롱런 거리이기도 하면 화면에 "롱런 · 빌드업"으로 함께 보여주는 데 쓴다.
+    static func isLongDistance(activity: Activity, history: [Activity]) -> Bool {
+        guard activity.distance >= 8000 else { return false }
+        let recentRuns = history.filter { $0.type == .running && $0.id != activity.id && $0.date < activity.date }
+        guard let med = baselineDistance(activity: activity, recentRuns: recentRuns) else { return activity.distance >= 12000 }
+        return activity.distance > med * 1.20
     }
 
     /// Long distance + pace near/faster than personal baseline (race-intent effort).
@@ -285,38 +317,10 @@ struct WorkoutTypeClassifier {
             notes.append("이지탈락: Zone2없음·기준선 없음")
         }
 
-        // 3. 빌드업 — 3등분 단조 or 선형 회귀 R²≥0.40
-        if full.count >= 4 {
-            let ps = full.map(\.paceSecPerKm)
-            let fp = ps.first!, lp = ps.last!
-            if lp < fp * 0.95 {
-                let n = ps.count; let t = max(1, n / 3)
-                let avgOf: (ArraySlice<Double>) -> Double = { s in s.reduce(0,+) / Double(s.count) }
-                let a1 = avgOf(ps[0..<t]), a2 = avgOf(ps[t..<(2*t)]), a3 = avgOf(ps[(2*t)...])
-                if a1 > a2 && a2 > a3 {
-                    return (.buildUp, "빌드업(단조3분구) \(pf(fp))→\(pf(lp))")
-                }
-                let xMean = Double(n-1)/2.0, yMean = ps.reduce(0,+)/Double(n)
-                var sxy = 0.0, sxx = 0.0, syy = 0.0
-                for (i, y) in ps.enumerated() {
-                    let dx = Double(i)-xMean; let dy = y-yMean
-                    sxy += dx*dy; sxx += dx*dx; syy += dy*dy
-                }
-                if sxx > 0 && syy > 0 && sxy/sxx < 0 {
-                    let r2 = (sxy*sxy)/(sxx*syy)
-                    if r2 >= 0.40 {
-                        return (.buildUp, "빌드업(R²=\(String(format:"%.2f",r2))) \(pf(fp))→\(pf(lp))")
-                    }
-                    notes.append("빌드업탈락: 단조3분구✗ R²=\(String(format:"%.2f",r2)) < 0.40")
-                } else {
-                    notes.append("빌드업탈락: 단조3분구✗ 기울기≥0")
-                }
-            } else {
-                notes.append("빌드업탈락: 초→말 개선 \(Int((1-lp/fp)*100))% < 5%")
-            }
-        } else {
-            notes.append("빌드업탈락: splits \(full.count) < 4")
-        }
+        // 3. 빌드업 — 양 끝 km 뺀 3등분 단계 상승(각 1.5%) or 추세선 4%·R²≥0.40
+        let bu = buildUpVerdict(splits: splits)
+        if bu.isBuildUp { return (.buildUp, bu.note) }
+        notes.append(bu.note)
 
         // 롱런 여부 (4·5·6 공용) — 4주 거리 중앙값 × 1.20
         let medKm = base.distance.map { $0 / 1000 }

@@ -4090,11 +4090,8 @@ private struct PerformanceInsightCard: View {
                 Text(L.s("페이스 분포", "Pace Distribution"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                     .frame(maxWidth: .infinity, alignment: .center)
-                // 평균값은 점선 끝이 아니라 머리에 — 차트 안 오른쪽 끝은 후반 막대가 가장 높아 이름표가 묻힌다
-                (Text(L.s("평균 ", "avg ")).foregroundStyle(.white.opacity(0.55))
-                 + Text(fmtAvgPace).foregroundStyle(Color(hex: "5BB8FF").opacity(0.9))
-                 + Text("  ±\(sdSec)" + L.s("초", "s")).foregroundStyle(.white.opacity(0.85)))
-                    .font(.system(size: 9, weight: .medium))
+                Text("±\(sdSec)" + L.s("초", "s"))
+                    .font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.85))
             }
             Canvas { ctx, size in
                 let w = size.width
@@ -4184,6 +4181,16 @@ private struct PerformanceInsightCard: View {
                 dash.addLine(to: CGPoint(x: w, y: avgY))
                 ctx.stroke(dash, with: .color(Color(hex: "5BB8FF").opacity(0.6)),
                            style: StrokeStyle(lineWidth: 0.7, dash: [3, 2]))
+                // 평균 이름표 — 막대 위에 겹쳐도 읽히게 카드 배경색 알약 위에 그린다(같은 파랑 막대에 묻혔었다).
+                // 왼쪽 눈금 라벨과 떨어뜨려 차트 오른쪽 끝, 점선 바로 위에 둔다.
+                let avgLabel = ctx.resolve(Text(fmtAvgPace).font(.system(size: 7, weight: .semibold))
+                    .foregroundStyle(Color(hex: "5BB8FF")))
+                let ls = avgLabel.measure(in: CGSize(width: 60, height: 20))
+                let pillW = ls.width + 6, pillH = ls.height + 2
+                let pillY = min(max(0, avgY - pillH - 1), chartH - pillH)
+                let pill = CGRect(x: w - pillW, y: pillY, width: pillW, height: pillH)
+                ctx.fill(Path(roundedRect: pill, cornerRadius: pillH / 2), with: .color(Theme.cardBackground.opacity(0.92)))
+                ctx.draw(avgLabel, at: CGPoint(x: pill.midX, y: pill.midY), anchor: .center)
 
                 var xAxis = Path()
                 xAxis.move(to: CGPoint(x: xPad, y: chartH))
@@ -5997,7 +6004,7 @@ struct InsightExportSheet: View {
     private var exportWorkoutTypeLabel: String? {
         let wt = workoutTypeFn?(activity.id) ?? detail?.workoutType
         guard let wt else { return nil }
-        return wt.koreanLabel
+        return wt.displayLabel(for: activity, history: history)
     }
 
     private var exportHeader: some View {

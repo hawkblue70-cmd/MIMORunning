@@ -292,6 +292,8 @@ private struct ActivityListContent: View {
                                             level: manager.userLevel.bucket,
                                             shoeName: shoeByWorkout[activity.id.uuidString],
                                             workoutType: manager.cachedWorkoutTypeForStats(for: activity.id),
+                                            workoutTypeLabel: manager.cachedWorkoutTypeForStats(for: activity.id)?
+                                                .displayLabel(for: activity, history: manager.activities),
                                             isProvisionalType: manager.isProvisionalWorkoutType(for: activity.id),
                                             raceName: raceDetector.matchFor(activityID: activity.id).flatMap {
                                                 $0.isConfirmed ? $0.raceName : nil
@@ -760,6 +762,8 @@ private struct ActivityCard: View {
     var level: LevelBucket = .beginner
     var shoeName: String? = nil
     var workoutType: WorkoutType? = nil
+    /// 화면용 종류 이름("롱런 · 빌드업" 등) — 없으면 workoutType의 이름.
+    var workoutTypeLabel: String? = nil
     var isProvisionalType: Bool = false
     var raceName: String? = nil
 
@@ -789,7 +793,7 @@ private struct ActivityCard: View {
                     Text(activity.type.label)
                         .foregroundStyle(Theme.violet)
                     if let wt = workoutType {
-                        Text("- \(wt.koreanLabel)")
+                        Text("- \(workoutTypeLabel ?? wt.koreanLabel)")
                             .foregroundStyle(Color(hex: "FFC74D").opacity(isProvisionalType ? 0.45 : 1.0))
                     }
                 }

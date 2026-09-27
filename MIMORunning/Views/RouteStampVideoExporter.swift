@@ -210,6 +210,8 @@ enum RouteStampVideoExporter {
         placeName: String?,
         /// 확정된 대회 이름 — 정지 카드와 같은 자리(맨 윗줄 오른쪽)에 프레임마다 그린다.
         raceName: String? = nil,
+        /// 화면용 종류 이름 — 정지 카드와 같은 값.
+        workoutTypeLabel: String? = nil,
         segmentColors: [UIColor]?,
         /// 시점별 심박 — 시계 시간 오프셋. 그 시점의 심박을 읽는 데 쓴다.
         hrSamples: [(offset: TimeInterval, bpm: Int)],
@@ -295,7 +297,8 @@ enum RouteStampVideoExporter {
                     theme: .dark, placeName: placeName,
                     routeStyle: .stamp,
                     routeProgress: table.snapshot(at: p),
-                    raceName: raceName
+                    raceName: raceName,
+                    workoutTypeLabel: workoutTypeLabel
                 )
                 .frame(width: cardSize.width, height: cardSize.height)
 
