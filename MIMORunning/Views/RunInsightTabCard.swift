@@ -3313,11 +3313,24 @@ private struct PerformanceInsightCard: View {
                     let rCX = recentPts.map { cx($0.pace) }.reduce(0, +) / CGFloat(recentPts.count)
                     let rCY = recentPts.map { cy($0.hr) }.reduce(0, +) / CGFloat(recentPts.count)
 
+                    // 좋아졌으면 하늘색(위쪽 "↓N bpm"과 같은 색), 아니면 흐린 회색 — 나빠짐은 빨강으로 말하지 않는다.
+                    // 판정은 페이스를 걸러 낸 비교: 평소 범위 띠(기대 심박선)에서 벗어난 정도의 평균이
+                    // 최근 무리에서 과거 무리보다 2bpm 이상 낮으면 "같은 페이스에 심박이 낮아졌다".
+                    // 화면 좌표 방향으로 판정하면 천천히 달려 심박이 낮은 달도 좋아진 것처럼 보인다.
+                    let improved: Bool = {
+                        guard let b = band else { return false }
+                        func meanResidual(_ pts: [ScatterPt]) -> Double {
+                            pts.map { $0.hr - b.expected($0.pace) }.reduce(0, +) / Double(pts.count)
+                        }
+                        return meanResidual(recentPts) <= meanResidual(pastPts) - 2
+                    }()
+                    let arrowColor: Color = improved ? IC.sky : .white.opacity(0.35)
+
                     var arrowLine = Path()
                     arrowLine.move(to: CGPoint(x: pCX, y: pCY))
                     arrowLine.addLine(to: CGPoint(x: rCX, y: rCY))
-                    ctx.stroke(arrowLine, with: .color(.white.opacity(0.35)),
-                               style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    ctx.stroke(arrowLine, with: .color(arrowColor),
+                               style: StrokeStyle(lineWidth: improved ? 1.3 : 1, dash: [3, 3]))
 
                     let dxF = rCX - pCX
                     let dyF = rCY - pCY
@@ -3336,8 +3349,8 @@ private struct PerformanceInsightCard: View {
                         head.move(to: CGPoint(x: rCX, y: rCY))
                         head.addLine(to: CGPoint(x: rCX - al * (nx * cosA - ny * sinA),
                                                   y: rCY - al * (ny * cosA + nx * sinA)))
-                        ctx.stroke(head, with: .color(.white.opacity(0.35)),
-                                   style: StrokeStyle(lineWidth: 1))
+                        ctx.stroke(head, with: .color(arrowColor),
+                                   style: StrokeStyle(lineWidth: improved ? 1.3 : 1))
                     }
                 }
 
