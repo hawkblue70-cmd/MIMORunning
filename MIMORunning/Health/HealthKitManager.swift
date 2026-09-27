@@ -1304,8 +1304,20 @@ class HealthKitManager {
     /// - Returns: 이번 호출에서 새로 처리한 항목 수 (기준선 재계산 여부 판단에 사용)
     @discardableResult
     func backfillFormMetrics(months: Int = 12) async -> Int {
-        // v3: 경사 조정 페이스(GAP) 추가 — 옛 캐시에는 없어 전체 재처리가 필요하다
-        let processedKey = "mimo.formBackfill.processed.v3"
+        // v4: GAP 평지 게이트(지속 경사 없으면 계수 1) — 옛 GAP은 평지 트랙 노이즈로 빠르게 치우쳐 있어
+        //   1회 비우고 전체 재처리한다. 다른 지표는 그대로 둔다(GAP이 nil이면 needsBackfill이 다시 잡는다).
+        //   12개월 밖 러닝은 GAP nil로 남아 실제 페이스를 쓴다(effectivePaceSecPerKm 폴백).
+        let gapResetKey = "mimo.migration.gapFlatGate.v1"
+        if !UserDefaults.standard.bool(forKey: gapResetKey) {
+            var dict = loadFormCacheDict()
+            for (id, var m) in dict where m.gradeAdjustedPaceSecPerKm != nil {
+                m.gradeAdjustedPaceSecPerKm = nil
+                dict[id] = m
+            }
+            saveFormCacheDict(dict)
+            UserDefaults.standard.set(true, forKey: gapResetKey)
+        }
+        let processedKey = "mimo.formBackfill.processed.v4"
         var processed = Set(UserDefaults.standard.stringArray(forKey: processedKey) ?? [])
         let cutoff = Calendar.current.date(byAdding: .month, value: -months, to: Date()) ?? .distantPast
 

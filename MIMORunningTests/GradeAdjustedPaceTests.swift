@@ -188,6 +188,25 @@ final class GradeAdjustedPaceTests: XCTestCase {
         XCTAssertNil(text, "평지 트랙의 고도 노이즈로 평지 환산을 띄우면 안 된다")
     }
 
+    /// 표기뿐 아니라 내부 계산(폼 기준선·백필)도 트랙 노이즈로 빨라지면 안 된다
+    func testFlatTrackNoiseKeepsInternalGapAtActualPace() throws {
+        let gap = try XCTUnwrap(GradeAdjustedPace.compute(splits: splits(count: 6, paceSecPerKm: 426),
+                                                          altitudeProfile: trackNoiseProfile(km: 6)))
+        XCTAssertEqual(gap, 426, accuracy: 0.5)
+        let route = trackNoiseProfile(km: 6).map {
+            (distanceM: $0.distanceKm * 1000, altitude: $0.altitude, time: $0.distanceKm * 426)
+        }
+        XCTAssertEqual(try XCTUnwrap(GradeAdjustedPace.overallFactor(routeSamples: route)), 1, accuracy: 0.0001)
+    }
+
+    func testDownhillOnlyCourseStillShowsFlatEquivalent() {
+        // 5km 동안 100m 하강 — 상승은 0이어도 경사 보정 대상
+        let text = GradeAdjustedPace.kpiText(splits: splits(count: 5, paceSecPerKm: 360),
+                                             altitudeProfile: profile(km: 5, from: 100, to: 0),
+                                             actualPaceSecPerKm: 360)
+        XCTAssertNotNil(text)
+    }
+
     func testRealHillStillShowsFlatEquivalent() {
         // 5km 동안 100m 상승(km당 20m) — 실제 오르막은 계속 표기
         let text = GradeAdjustedPace.kpiText(splits: splits(count: 5, paceSecPerKm: 400),

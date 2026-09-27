@@ -81,6 +81,7 @@ enum GradeAdjustedPace {
         let stepM = 100.0
         let totalM = routeSamples.last?.distanceM ?? 0
         guard totalM >= stepM else { return nil }
+        guard hasRealElevation(profile) else { return 1 }   // 평지(노이즈뿐)면 보정 없음 — 편향 방지
 
         var weighted = 0.0      // Σ(소요시간 × 계수)
         var totalTime = 0.0
@@ -139,26 +140,32 @@ enum GradeAdjustedPace {
         return AppLanguage.shared.s("평지 환산 \(paceText)", "GAP \(paceText)")
     }
 
-    /// 평지 환산을 띄울 만큼 실제 오르내림이 있는가 — 고도 배경과 같은 기준(20m 이상 · km당 10m 이상).
+    /// 지속 경사로 볼 최소 고도 변화(m) — 1km 안에서 한 방향으로 이만큼 변해야 한다(평균 1% 경사).
+    static let sustainedChangeM: Double = 10
+    static let sustainedWindowM: Double = 1000
+
+    /// 경사 보정을 할 만큼 실제 오르내림이 있는가 — **어느 1km 구간에서든 고도가 10m 이상 한 방향으로 변했는가.**
     /// ⚠ 평지 트랙에서도 GPS 고도는 바퀴마다 몇 m씩 오르내린다. 내리막 이득만 절반으로 줄이는
     ///   비대칭(downhillDamping) 때문에 이 노이즈가 상쇄되지 않고 "더 빨랐을 것"으로 쌓인다
-    ///   (7'06" 트랙 러닝이 평지 환산 7'02"로 뜬 사례).
+    ///   (7'06" 트랙 러닝이 평지 환산 7'02"로 뜬 사례). 그래서 기준 미달이면 계수를 1로 둔다 —
+    ///   표기뿐 아니라 폼 기준선·단계 보정·백필까지 같은 판단을 쓴다.
+    /// 누적 상승 ÷ 전체 거리로 재지 않는 이유: 오르막이 코스 일부에 몰리면 평지 구간에 희석돼
+    ///   분명한 언덕(5km 2% 오르막 + 5km 평지)도 평지로 읽힌다. 노이즈는 짧은 주기로 오르내려
+    ///   1km 안에서 상쇄되고, 실제 언덕은 한 방향으로 쌓인다. 내리막만 있는 코스도 잡힌다.
     static func hasRealElevation(_ profile: [(distanceKm: Double, altitude: Double)]) -> Bool {
         guard profile.count >= 3 else { return false }
         let smoothed = smoothAltitudes(profile)
         let totalM = (smoothed.last?.distanceKm ?? 0) * 1000
         guard totalM > 0 else { return false }
         let stepM = 100.0
-        var gain = 0.0
-        var prev = altitude(at: 0, in: smoothed)
-        var d = stepM
-        while d < totalM + stepM {
-            let a = altitude(at: min(d, totalM), in: smoothed)
-            gain += max(0, a - prev)
-            prev = a
+        let window = min(sustainedWindowM, totalM)
+        var d = 0.0
+        while d + window <= totalM + 1e-6 {
+            let change = abs(altitude(at: min(d + window, totalM), in: smoothed) - altitude(at: d, in: smoothed))
+            if change >= sustainedChangeM { return true }
             d += stepM
         }
-        return gain >= elevationMinTotalGain && gain / (totalM / 1000) >= elevationMinGainPerKm
+        return false
     }
 
     // MARK: - Internals
@@ -172,6 +179,7 @@ enum GradeAdjustedPace {
         let totalM = (smoothed.last?.distanceKm ?? 0) * 1000
         guard totalM >= stepM else { return [] }
 
+        let isHilly = hasRealElevation(profile)   // 평지(노이즈뿐)면 계수 1 — 편향 방지
         var result: [(start: Double, end: Double, factor: Double)] = []
         var d = 0.0
         while d < totalM {
@@ -180,7 +188,7 @@ enum GradeAdjustedPace {
             let a0 = altitude(at: d, in: smoothed)
             let a1 = altitude(at: end, in: smoothed)
             let grade = (a1 - a0) / (end - d)
-            result.append((start: d, end: end, factor: factor(grade: grade)))
+            result.append((start: d, end: end, factor: isHilly ? factor(grade: grade) : 1))
             d = end
         }
         return result
