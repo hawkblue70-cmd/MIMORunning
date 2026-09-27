@@ -365,6 +365,7 @@ struct MeView: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     /// 예정 — 기존 행 그대로, 오늘 이후 대회만. 지난 예정 대회는 탭이 열릴 때 계획 아카이브가 되어 기록으로 간다.
