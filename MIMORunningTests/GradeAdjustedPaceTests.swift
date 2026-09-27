@@ -167,6 +167,34 @@ final class GradeAdjustedPaceTests: XCTestCase {
             splits: splits(count: 5, paceSecPerKm: 360), altitudeProfile: points))
         XCTAssertEqual(gap, 360, accuracy: 8, "노이즈가 경사로 읽히면 평지에서도 GAP이 크게 흔들린다")
     }
+
+    // MARK: 평지 환산 표기 — 평지 트랙 노이즈
+
+    /// 400m 트랙을 도는 평지 러닝 — 고도는 GPS 노이즈로 바퀴마다 ±3m 오르내린다.
+    /// 내리막 이득만 절반으로 줄이는 비대칭 때문에, 노이즈만으로도 GAP이 실제보다 빠르게 나온다.
+    private func trackNoiseProfile(km: Double) -> [(distanceKm: Double, altitude: Double)] {
+        let stepKm = 0.05
+        let n = Int(km / stepKm)
+        return (0...n).map { i in
+            let d = Double(i) * stepKm
+            return (distanceKm: d, altitude: 30 + 3 * sin(2 * .pi * d / 0.4))
+        }
+    }
+
+    func testFlatTrackNoiseShowsNoFlatEquivalent() {
+        let text = GradeAdjustedPace.kpiText(splits: splits(count: 6, paceSecPerKm: 426),
+                                             altitudeProfile: trackNoiseProfile(km: 6),
+                                             actualPaceSecPerKm: 426)
+        XCTAssertNil(text, "평지 트랙의 고도 노이즈로 평지 환산을 띄우면 안 된다")
+    }
+
+    func testRealHillStillShowsFlatEquivalent() {
+        // 5km 동안 100m 상승(km당 20m) — 실제 오르막은 계속 표기
+        let text = GradeAdjustedPace.kpiText(splits: splits(count: 5, paceSecPerKm: 400),
+                                             altitudeProfile: profile(km: 5, from: 0, to: 100),
+                                             actualPaceSecPerKm: 400)
+        XCTAssertNotNil(text)
+    }
 }
 
 /// 페이스 구간 분류가 GAP 기준으로 도는지 — 언덕 러닝이 느린 구간으로 밀리지 않아야 한다.

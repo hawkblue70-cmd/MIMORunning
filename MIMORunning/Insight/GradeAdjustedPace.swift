@@ -128,6 +128,7 @@ enum GradeAdjustedPace {
                         altitudeProfile: [(distanceKm: Double, altitude: Double)],
                         actualPaceSecPerKm: Double?) -> String? {
         guard !splits.isEmpty, !altitudeProfile.isEmpty,
+              hasRealElevation(altitudeProfile),
               let actual = actualPaceSecPerKm,
               let gap = compute(splits: splits, altitudeProfile: altitudeProfile),
               abs(gap - actual) >= 5
@@ -136,6 +137,28 @@ enum GradeAdjustedPace {
         let paceText = "\(secs / 60)'\(String(format: "%02d", secs % 60))\""
         // 영문은 러너에게 통용되는 GAP 그대로, 한국어는 뜻이 바로 읽히는 "평지 환산"
         return AppLanguage.shared.s("평지 환산 \(paceText)", "GAP \(paceText)")
+    }
+
+    /// 평지 환산을 띄울 만큼 실제 오르내림이 있는가 — 고도 배경과 같은 기준(20m 이상 · km당 10m 이상).
+    /// ⚠ 평지 트랙에서도 GPS 고도는 바퀴마다 몇 m씩 오르내린다. 내리막 이득만 절반으로 줄이는
+    ///   비대칭(downhillDamping) 때문에 이 노이즈가 상쇄되지 않고 "더 빨랐을 것"으로 쌓인다
+    ///   (7'06" 트랙 러닝이 평지 환산 7'02"로 뜬 사례).
+    static func hasRealElevation(_ profile: [(distanceKm: Double, altitude: Double)]) -> Bool {
+        guard profile.count >= 3 else { return false }
+        let smoothed = smoothAltitudes(profile)
+        let totalM = (smoothed.last?.distanceKm ?? 0) * 1000
+        guard totalM > 0 else { return false }
+        let stepM = 100.0
+        var gain = 0.0
+        var prev = altitude(at: 0, in: smoothed)
+        var d = stepM
+        while d < totalM + stepM {
+            let a = altitude(at: min(d, totalM), in: smoothed)
+            gain += max(0, a - prev)
+            prev = a
+            d += stepM
+        }
+        return gain >= elevationMinTotalGain && gain / (totalM / 1000) >= elevationMinGainPerKm
     }
 
     // MARK: - Internals

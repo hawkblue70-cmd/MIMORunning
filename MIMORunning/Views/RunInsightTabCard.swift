@@ -1273,6 +1273,12 @@ private struct HRTimeSeriesView: View {
                     }
                     ctx.stroke(ridge, with: .color(Self.elevStroke), style: StrokeStyle(lineWidth: 1.0))
 
+                    // "고도" 이름표 — 회색 면적이 무엇인지 알 수 없다는 피드백. 차트 안 오른쪽 아래(고도 면적 안,
+                    // 러닝 끝이라 심박선은 보통 위쪽). 최고 높이 숫자는 회복 점이 있으면 접히므로 거기에 붙이지 않는다.
+                    ctx.draw(Text(AppLanguage.shared.s("고도", "Elev")).font(.system(size: 7.5))
+                        .foregroundStyle(.white.opacity(0.5)),
+                        at: CGPoint(x: chartRight - 3, y: chartH - 2), anchor: .bottomTrailing)
+
                     // 최고 높이 라벨 — 면적 꼭대기 높이에 맞춰 오른쪽 바깥에.
                     // 심박 라벨(0.70)보다 흐리게 두어 "주인공은 심박"이라는 위계를 지킨다.
                     if recovery == nil {
