@@ -539,7 +539,7 @@ struct ActivityDetailView: View {
                 distanceText: activity.formattedDistance,
                 durationText: activity.formattedDuration,
                 weatherText: activity.weatherBadgeText,
-                weatherIcon: condition?.weather?.systemIcon,
+                weatherIcon: condition?.weather?.systemIcon(at: activity.date),
                 dateText: panelDateText,
                 weekdayText: panelWeekdayText,
                 startTimeText: panelTimeText,
@@ -1381,7 +1381,7 @@ struct ActivityDetailView: View {
                 distanceText: activity.formattedDistance,
                 durationText: activity.formattedDuration,
                 weatherText: activity.weatherBadgeText,
-                weatherIcon: condition?.weather?.systemIcon,
+                weatherIcon: condition?.weather?.systemIcon(at: activity.date),
                 dateText: panelDateText,
                 weekdayText: panelWeekdayText,
                 startTimeText: panelTimeText,
@@ -1664,7 +1664,7 @@ private struct InsightCard: View {
                         return .secondary
                     }()
                     let tempLabel = hkTemp.map { String(format: "%.0f°C", $0) } ?? w.formattedTemp
-                    ConditionChip(icon: w.systemIcon, label: tempLabel, color: wColor)
+                    ConditionChip(icon: w.systemIcon(at: activity.date), label: tempLabel, color: wColor)
                 }
                 if let slp = cond.sleepScore {
                     // 등급 라벨 칩 (숫자 없음 — Apple Health 스타일)
@@ -2293,7 +2293,7 @@ private struct IntervalSegmentsSection: View {
             if let act = activity {
                 IntervalsShareCardScreen(activity: act, segments: segments, miniMeImage: miniMeStore.image,
                                         weatherText: act.temperatureC.map { String(format: "%.0f°C", $0) },
-                                        weatherIcon: condition?.weather?.systemIcon,
+                                        weatherIcon: condition?.weather?.systemIcon(at: act.date),
                                         shoeName: shoeName,
                                         firstCoordinate: firstCoordinate)
             }
@@ -2380,7 +2380,7 @@ private struct SplitsSection: View {
             if let act = activity {
                 SplitsShareCardScreen(activity: act, splits: splits, zones: zones, miniMeImage: miniMeStore.image, shoeName: shoeName,
                                       weatherText: act.temperatureC.map { String(format: "%.0f°C", $0) },
-                                      weatherIcon: condition?.weather?.systemIcon,
+                                      weatherIcon: condition?.weather?.systemIcon(at: act.date),
                                       firstCoordinate: firstCoordinate,
                                       variant: variant,
                                       runMetrics: runMetrics)

@@ -92,7 +92,7 @@ struct StoryShareCardView: View {
                     .foregroundStyle(.white.opacity(0.80))
                     if let w = weather {
                         HStack(spacing: 3) {
-                            Image(systemName: w.systemIcon)
+                            Image(systemName: w.systemIcon(at: activity.date))
                                 .font(.system(size: 8))
                             Text(activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? w.formattedTemp)
                                 .font(.system(size: 8, weight: .medium))

@@ -121,7 +121,7 @@ struct VideoOverlayCard: View {
                     .foregroundStyle(.white.opacity(0.80))
                     if let w = weather {
                         HStack(spacing: 2 * scale) {
-                            Image(systemName: w.systemIcon)
+                            Image(systemName: w.systemIcon(at: date))
                                 .font(.system(size: 8 * scale))
                             Text(w.formattedTemp)
                                 .font(.system(size: 8 * scale, weight: .medium))

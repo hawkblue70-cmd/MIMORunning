@@ -2194,16 +2194,21 @@ private struct RhythmInsightCard: View {
                 return nil
             }
             let expectedCad = cadStat.median
+            // "끌어올렸다"는 본인 전반 대비 실제로 올랐을 때만 — 기준값만 넘고 전반과 같으면
+            // 폼 추이 카드의 "케이던스는 그대로예요"와 어긋난다.
+            let fc = halfAvgCadence(Array(fullSplits.prefix(half)))
             let result: (text: String, color: Color)
-            if sc >= expectedCad {
+            if sc >= expectedCad, let fc, sc - fc >= 2 {
                 result = (L.s("후반에 발걸음까지 끌어올렸어요", "Cadence lifted in the second half — great buildup"), Theme.positive)
+            } else if sc >= expectedCad {
+                result = (L.s("빨라진 후반에도 발걸음이 평소 이상이었어요", "Cadence held above your usual as the pace rose"), Theme.positive)
             } else if sc <= expectedCad - 2 {
                 result = (L.s("페이스를 주로 보폭으로 올렸어요. 발걸음을 함께 올리면 무릎 부담이 줄어요", "Stride-led buildup — adding cadence reduces knee load"), Color(hex: "FFD166"))
             } else {
                 result = (L.s("평소 패턴대로 페이스를 올렸어요", "Paced up in your usual pattern"), Color.white.opacity(0.75))
             }
             #if DEBUG
-            print("[Form:종류] type=\(wtName) 후반P=\(pf(sp)) 구간=\(band.rawValue) 기대C=\(Int(expectedCad)) 실제C=\(Int(sc)) → \"\(result.text)\"")
+            print("[Form:종류] type=\(wtName) 후반P=\(pf(sp)) 구간=\(band.rawValue) 기대C=\(Int(expectedCad)) 전반C=\(fc.map { Int($0) } ?? -1) 실제C=\(Int(sc)) → \"\(result.text)\"")
             #endif
             return [typePrefix, result]
 
@@ -6048,10 +6053,11 @@ struct InsightExportSheet: View {
     }
 
     private func weatherIcon(for tempC: Double) -> String {
-        if let h = activity.humidityPercent, h >= 80 { return "cloud.rain.fill" }
-        if tempC >= 28 { return "sun.max.fill" }
+        let night = WeatherSnapshot.isNight(activity.date)
+        if let h = activity.humidityPercent, h >= 80 { return night ? "cloud.moon.rain.fill" : "cloud.rain.fill" }
+        if tempC >= 28 { return night ? "moon.fill" : "sun.max.fill" }
         if tempC <= 2  { return "snowflake" }
-        return "cloud.sun.fill"
+        return night ? "cloud.moon.fill" : "cloud.sun.fill"
     }
 
     @ViewBuilder

@@ -284,7 +284,7 @@ struct DetailPanelShareCard: View {
                 HStack(spacing: 5) {
                     if let t = heroTempText {
                         HStack(spacing: 2) {
-                            Image(systemName: condition?.weather?.systemIcon ?? "thermometer.medium")
+                            Image(systemName: condition?.weather?.systemIcon(at: activity.date) ?? "thermometer.medium")
                                 .font(.system(size: 8, weight: .semibold))
                             Text(t)
                         }
@@ -380,7 +380,7 @@ struct DetailPanelShareCard: View {
                 if let t = heroTempText {
                     Text("·")
                     HStack(spacing: 2) {
-                        Image(systemName: condition?.weather?.systemIcon ?? "thermometer.medium")
+                        Image(systemName: condition?.weather?.systemIcon(at: activity.date) ?? "thermometer.medium")
                             .font(.system(size: 8, weight: .semibold))
                         Text(t)
                     }
@@ -537,7 +537,7 @@ struct DetailPanelShareCard: View {
                 // 날씨는 날짜 아래 같은 크기로 — 제목 줄에 섞이면 패널 이름과 경쟁한다
                 if let weather = condition?.weather {
                     HStack(spacing: 3) {
-                        Image(systemName: weather.systemIcon)
+                        Image(systemName: weather.systemIcon(at: activity.date))
                             .font(.system(size: 9, weight: .medium))
                         Text(activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? weather.formattedTemp)
                             .font(.system(size: 9, weight: .medium))

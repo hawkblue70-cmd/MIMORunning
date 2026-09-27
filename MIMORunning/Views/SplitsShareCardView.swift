@@ -719,12 +719,12 @@ struct SplitsShareCardScreen: View {
             let cached = await ConditionCache.shared.condition(for: activity.id)
             if let cached, let w = cached.weather {
                 resolvedWeatherText = w.formattedTemp
-                resolvedWeatherIcon = w.systemIcon
+                resolvedWeatherIcon = w.systemIcon(at: activity.date)
             } else if firstCoordinate != nil {
                 let w = await ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate)
                 if let w {
                     resolvedWeatherText = w.formattedTemp
-                    resolvedWeatherIcon = w.systemIcon
+                    resolvedWeatherIcon = w.systemIcon(at: activity.date)
                     var cond = cached ?? ActivityCondition()
                     cond.weather = w
                     await ConditionCache.shared.cache(cond, for: activity.id)
@@ -1095,12 +1095,12 @@ struct IntervalsShareCardScreen: View {
             let cached = await ConditionCache.shared.condition(for: activity.id)
             if let cached, let w = cached.weather {
                 resolvedWeatherText = w.formattedTemp
-                resolvedWeatherIcon = w.systemIcon
+                resolvedWeatherIcon = w.systemIcon(at: activity.date)
             } else if firstCoordinate != nil {
                 let w = await ConditionService.fetchWeather(date: activity.date, coordinate: firstCoordinate)
                 if let w {
                     resolvedWeatherText = w.formattedTemp
-                    resolvedWeatherIcon = w.systemIcon
+                    resolvedWeatherIcon = w.systemIcon(at: activity.date)
                     var cond = cached ?? ActivityCondition()
                     cond.weather = w
                     await ConditionCache.shared.cache(cond, for: activity.id)

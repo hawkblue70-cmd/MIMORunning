@@ -96,12 +96,19 @@ struct WeatherSnapshot: Codable {
     var isWindy:   Bool { windKmh >= 20 }
     var isAdverse: Bool { isHot || isCold || isRainy || isWindy }
 
-    var systemIcon: String {
-        if isRainy { return "cloud.rain.fill" }
-        if isHot   { return "sun.max.fill" }
+    /// 러닝 시작 시각 기준 아이콘 — 밤(19시~6시)엔 해 대신 달.
+    func systemIcon(at date: Date) -> String {
+        let night = Self.isNight(date)
+        if isRainy { return night ? "cloud.moon.rain.fill" : "cloud.rain.fill" }
+        if isHot   { return night ? "moon.fill" : "sun.max.fill" }
         if isCold  { return "snowflake" }
         if isWindy { return "wind" }
-        return "cloud.sun.fill"
+        return night ? "cloud.moon.fill" : "cloud.sun.fill"
+    }
+
+    static func isNight(_ date: Date) -> Bool {
+        let h = Calendar.current.component(.hour, from: date)
+        return h >= 19 || h < 6
     }
 
     var formattedTemp: String { String(format: "%.0f°C", tempC) }
