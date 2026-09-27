@@ -882,14 +882,19 @@ final class MREngineStore: ObservableObject {
         var out: [String: MRPrepComparison.Result] = [:]
         for race in userInput.upcomingRaces(asOf: now) {
             let label = race.label
-            let nowMin = predictions.first { $0.label == label }?.midMin
+            // 예상 기록은 두 시점 모두 **이번 대회 날 예년 기온**으로 — 나 탭 대회 카드("지금 상태로 …")와 같은 값.
+            //   engine.predictions는 표준 조건(15°C)이라 그대로 쓰면 같은 화면에 예상 기록이 둘로 보인다.
+            let raceTemp = mrSeasonalTemp(runs: runs, for: race.date) ?? MR_REF_TEMP
+            let nowMin = mrPredict(efforts: efforts, fit: fit, profile: profile, heat: heat,
+                                   asOf: now, targetTempC: raceTemp)
+                .first { abs($0.distanceM - race.distanceM) / race.distanceM < 0.02 }?.midMin
             if let r = MRPrepComparison.build(
                 raceDate: race.date, raceDistanceKm: race.distanceM / 1000,
                 raceSeries: seriesForRace(race.name, race.date),
                 confirmed: confirmed, runs: points, today: now,
                 nowPredictedMin: nowMin,
                 // 지금 예상이 없으면 예상 기록 줄이 안 나오므로 지난 시점 계산(무거움)을 건너뛴다
-                predictionAt: { point in nowMin == nil ? nil : self.asOfPrediction(label: label, at: point) }) {
+                predictionAt: { point in nowMin == nil ? nil : self.asOfPrediction(label: label, at: point, tempC: raceTemp) }) {
                 out[race.id.uuidString] = r
             }
         }
@@ -901,21 +906,21 @@ final class MREngineStore: ObservableObject {
     /// 그 시점(자정) 직전까지의 데이터만으로 낸 예상 기록(분) — 성장 탭 예측 목록(mrBacktest)과 같은 방식.
     /// ⚠ 시점은 지난 대회일 − N일의 자정이다. 전날 자정을 기준으로 자르면 전날 러닝이 빠지므로
     ///   러닝은 시점 이전 전부(`< point`), 기준 시각은 시점 1초 전(= 전날 23:59:59)으로 둔다.
-    private func asOfPrediction(label: String, at point: Date) -> Double? {
+    private func asOfPrediction(label: String, at point: Date, tempC: Double) -> Double? {
         guard ["5K", "10K", "하프", "풀"].contains(label) else { return nil }
         let stamp = "\(runs.count)|\(runs.last?.start.timeIntervalSince1970 ?? 0)|\(rhrSamples.count)|\(heat.ok)"
         if stamp != asOfMemoStamp {
             asOfMemo.removeAll()
             asOfMemoStamp = stamp
         }
-        let key = "\(label)|\(Int(Calendar.current.startOfDay(for: point).timeIntervalSince1970))"
+        let key = "\(label)|\(Int(Calendar.current.startOfDay(for: point).timeIntervalSince1970))|\(Int((tempC * 10).rounded()))"
         if let hit = asOfMemo[key] { return hit }
-        let v = computeAsOfPrediction(label: label, at: point)
+        let v = computeAsOfPrediction(label: label, at: point, tempC: tempC)
         asOfMemo.updateValue(v, forKey: key)   // nil도 기억(subscript 대입은 nil이면 키를 지운다)
         return v
     }
 
-    private func computeAsOfPrediction(label: String, at point: Date) -> Double? {
+    private func computeAsOfPrediction(label: String, at point: Date, tempC: Double) -> Double? {
         let asOf = point.addingTimeInterval(-1)
         let pastRuns = runs.filter { $0.date < point }
         let phys2 = mrPhysiology(runs: pastRuns, restingHRSamples: rhrSamples,
@@ -925,7 +930,7 @@ final class MREngineStore: ObservableObject {
         guard prior.count >= 3 else { return nil }
         let fit2 = mrFitExponent(prior)
         let prof2 = mrProfile(runs: pastRuns, efforts: prior, asOf: asOf)
-        return mrPredict(efforts: prior, fit: fit2, profile: prof2, heat: heat, asOf: asOf)
+        return mrPredict(efforts: prior, fit: fit2, profile: prof2, heat: heat, asOf: asOf, targetTempC: tempC)
             .first { $0.label == label }?.midMin
     }
 
