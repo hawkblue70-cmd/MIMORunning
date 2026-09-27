@@ -259,6 +259,14 @@ final class RaceDetector {
         return s
     }
 
+    /// 등록 대회(이름·날짜)의 시리즈 값 — 대회 준비 비교(B)용. 등록 대회 날짜도 DB처럼 UTC 자정이다.
+    func series(forRaceNamed name: String, on date: Date) -> String? {
+        let day = Self.utcDayString(date)
+        guard let s = races.first(where: { $0.name == name && $0.dateString == day })?.series,
+              !s.isEmpty else { return nil }
+        return s
+    }
+
     /// 같은 시리즈 지난 해 대회에 해당해 보이는 러닝 하나.
     struct PastRaceCandidate {
         let race: BundledRace

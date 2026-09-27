@@ -85,6 +85,13 @@ struct RacePastYearTests {
         #expect(detector().series(for: manual) == nil)
     }
 
+    @Test func seriesForRegisteredRaceByNameAndDay() {
+        let d = detector()
+        #expect(d.series(forRaceNamed: "2026 춘천마라톤", on: r26.date!) == "c")
+        #expect(d.series(forRaceNamed: "우리 동네 풀", on: r26.date!) == nil)
+        #expect(d.series(forRaceNamed: "2026 춘천마라톤", on: r25.date!) == nil)
+    }
+
     // MARK: - 지난 해 후보
 
     @Test func findsWeakAndStrongCandidatesNewestFirst() async {
