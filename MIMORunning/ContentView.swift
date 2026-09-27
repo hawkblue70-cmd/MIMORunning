@@ -39,6 +39,10 @@ struct ContentView: View {
         .tint(Theme.violet)
         .preferredColorScheme(.dark)
         .task {
+            // 확정 대회 → 엔진 백테스트. 예전엔 성장 탭만 넣어서, 앱을 켜고 곧장 나 탭(참가 대회 기록)으로 가면
+            // 대회 없이 백테스트가 돌아 예측 줄·정확도가 빠진 채 캐시됐다. 첫 await 전에 동기로 설정 →
+            // engine.refresh()의 HealthKit 읽기(수 초) 뒤에야 도는 refreshDetail 백테스트보다 항상 먼저.
+            engine.persistedMatchesProvider = { [manager] in manager.persistedConfirmedMatches() }
             await manager.checkAuthorizationStatus()
             await raceDetector.setup(context: modelContext)
             await migrateStoryPhotoThumbnails()
@@ -47,6 +51,14 @@ struct ContentView: View {
         // id가 달라지면서 다시 시도한다 (한 탭 안에 두면 그 탭을 안 열면 영영 안 돈다).
         .task(id: "\(manager.activities.count)-\(raceDetector.isReady)-\(engine.runs.count)") {
             await runRaceDataMaintenance()
+        }
+        // 엔진 준비(updateConfirmedMatches는 준비 전 호출을 무시)·raceDetector 준비 중 늦은 쪽에서 정식 목록을 넣는다.
+        // 성장 탭도 같은 호출을 하지만 같은 키는 엔진이 중복 계산을 건너뛴다.
+        .onChange(of: engine.isReady) { _, ready in
+            if ready { syncConfirmedMatchesToEngine() }
+        }
+        .onChange(of: raceDetector.isReady) { _, ready in
+            if ready { syncConfirmedMatchesToEngine() }
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
@@ -61,6 +73,14 @@ struct ContentView: View {
     }
 
     // MARK: Private helpers
+
+    /// 성장 탭 .onAppear와 같은 규칙 — raceDetector 미준비면 영속 키 폴백.
+    private func syncConfirmedMatchesToEngine() {
+        let matches: [PersistedRaceMatch] = raceDetector.isReady
+            ? Array(raceDetector.matches.values)
+            : manager.persistedConfirmedMatches()
+        engine.updateConfirmedMatches(matches, raceDetectorReady: raceDetector.isReady)
+    }
 
     /// 대회 데이터 정리 — ① 예전 기준으로 자동 확정된 매칭 재검증
     /// ② 실제 기록을 뒷받침할 러닝이 없는 아카이브 삭제.

@@ -143,6 +143,12 @@ final class MREngineStore: ObservableObject {
     /// refreshBacktest 진입부에서 storedConfirmedMatches가 비었을 때 폴백으로 호출.
     var persistedMatchesProvider: (() -> [PersistedRaceMatch]) = { [] }
 
+    /// 백테스트 중복 계산 방지 — updateConfirmedMatches는 앱 수준(ContentView)·성장 탭 두 곳에서
+    /// 같은 목록으로 거의 동시에 불릴 수 있고, refreshDetail의 백테스트와도 겹친다.
+    /// 같은 키가 계산 중이면 건너뛰고, 늦게 끝난 이전 키 결과는 버린다(최신 요청 키만 반영).
+    private var backtestInFlightKeys: Set<String> = []
+    private var backtestLatestKey: String? = nil
+
     var isReady: Bool {
         if case .ready = state { return true }
         return false
@@ -760,6 +766,13 @@ final class MREngineStore: ObservableObject {
             .map { "\($0.activityID.uuidString)_\(Int($0.distanceKm * 10))" }
             .joined(separator: "|")
         let key = effortPart + "||" + matchPart
+        backtestLatestKey = key
+        if backtestInFlightKeys.contains(key) {
+            #if DEBUG
+            print("[백테스트] 같은 키 계산 중 — 중복 호출 건너뜀")
+            #endif
+            return
+        }
 
         let rows: [MRBacktestRow]
         if let cached = MRBacktestCacheStore.load(), cached.effortKey == key {
@@ -772,11 +785,20 @@ final class MREngineStore: ObservableObject {
             let addl = mrEffortsFromConfirmedMatches(storedConfirmedMatches, runs: runs)
             let r = runs, rhr = rhrSamples, d = storedDob, s = storedSex, h = heat
             let matchCount = addl.count
+            backtestInFlightKeys.insert(key)
             let result = await Task.detached(priority: .userInitiated) {
                 mrBacktest(runs: r, restingHRSamples: rhr,
                            dateOfBirth: d, sex: s, heat: h,
                            additionalTargets: addl, asOf: Date())
             }.value
+            backtestInFlightKeys.remove(key)
+            // 계산하는 동안 대회 목록·노력이 바뀌어 새 키가 요청됐으면 이 결과는 낡았다 — 캐시·화면 모두 건드리지 않음
+            guard key == backtestLatestKey else {
+                #if DEBUG
+                print("[백테스트] 계산 중 새 요청이 들어와 이전 결과 폐기")
+                #endif
+                return
+            }
             rows = result
             MRBacktestCacheStore.save(MRBacktestCache(
                 effortKey: key,
