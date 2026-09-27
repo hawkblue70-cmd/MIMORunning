@@ -72,7 +72,6 @@ struct GrowthView: View {
     var manager: HealthKitManager
     @EnvironmentObject private var engine: MREngineStore
     @Environment(RaceDetector.self) private var raceDetector
-    @Query private var allArchives: [RaceArchive]
     @Query private var allStories: [WorkoutStory]
 
     @State private var showDaily: Bool = true
@@ -244,7 +243,6 @@ struct GrowthView: View {
                             MRDriftView(drift: engine.drift)
                             prSection
                             journeySection
-                            MRBacktestView(rows: engine.backtest, confirmedMatches: Array(raceDetector.matches.values), archives: allArchives)
                             Spacer(minLength: 32)
                         }
                         .padding(.horizontal, 16)
