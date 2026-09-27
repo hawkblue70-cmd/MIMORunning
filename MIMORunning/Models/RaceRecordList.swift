@@ -99,13 +99,18 @@ enum RaceRecordList {
                      calendar: Calendar = .current) -> [Row] {
         func day(_ d: Date) -> Date { calendar.startOfDay(for: d) }
 
+        let dedupRuns = dedupedRuns(runs, calendar: calendar)
+
         var out: [Row] = []
         var runDays = Set<Date>()
 
-        for r in runs {
+        for r in dedupRuns {
             let d = day(r.date)
             runDays.insert(d)
-            let arch = archives.first { day($0.raceDate) == d }
+            let dayArchives = archives.filter { day($0.raceDate) == d }
+            let arch = dayArchives.first {
+                abs(($0.distanceM / 1000) - r.distanceKm) / max(r.distanceKm, 0.001) <= 0.02
+            } ?? dayArchives.first
             let prediction = prediction(for: r, in: predictions, calendar: calendar).map { p in
                 let fromArchive = arch.map(\.projectedMin) ?? 0
                 return Prediction(predictedMin: fromArchive > 0 ? fromArchive : p.predictedMin,
@@ -113,7 +118,7 @@ enum RaceRecordList {
             }
             var edition: Int? = nil
             if let seriesKey, let key = seriesKey(r) {
-                let n = runs.filter { seriesKey($0) == key && day($0.date) <= d }.count
+                let n = dedupRuns.filter { seriesKey($0) == key && day($0.date) <= d }.count
                 if n >= 2 { edition = n }
             }
             out.append(Row(
@@ -129,7 +134,21 @@ enum RaceRecordList {
                 hasPlan: arch?.hasDetail ?? false))
         }
 
-        for a in archives where !runDays.contains(day(a.raceDate)) {
+        // 러닝이 없는 날의 아카이브 — 하루에 여럿이면 하나만: 결과 있음 > 이행표 있음 > 입력 순서상 먼저.
+        var archiveOnlyByDay: [Date: ArchiveInput] = [:]
+        var archiveOnlyDayOrder: [Date] = []
+        for a in archives {
+            let d = day(a.raceDate)
+            guard !runDays.contains(d) else { continue }
+            if let existing = archiveOnlyByDay[d] {
+                if preferArchive(a, over: existing) { archiveOnlyByDay[d] = a }
+            } else {
+                archiveOnlyByDay[d] = a
+                archiveOnlyDayOrder.append(d)
+            }
+        }
+        for d in archiveOnlyDayOrder {
+            let a = archiveOnlyByDay[d]!
             out.append(Row(
                 id: "archive-\(a.index)",
                 date: a.raceDate,
@@ -152,7 +171,8 @@ enum RaceRecordList {
     static func accuracy(runs: [RunInput],
                          predictions: [PredictionInput],
                          calendar: Calendar = .current) -> Accuracy? {
-        let matched = runs.compactMap { prediction(for: $0, in: predictions, calendar: calendar) }
+        let dedupRuns = dedupedRuns(runs, calendar: calendar)
+        let matched = dedupRuns.compactMap { prediction(for: $0, in: predictions, calendar: calendar) }
         guard !matched.isEmpty else { return nil }
         let meanAbs = matched.map { abs($0.errorPct) }.reduce(0, +) / Double(matched.count)
         return Accuracy(hit: matched.filter(\.inBand).count, count: matched.count, meanAbsErrorPct: meanAbs)
@@ -168,6 +188,31 @@ enum RaceRecordList {
     }
 
     // MARK: - 내부
+
+    /// 같은 날짜에 확정 러닝이 여럿이면 하나만 남긴다 — 가장 오래 뛴 것, 동률이면 입력 순서상 먼저.
+    private static func dedupedRuns(_ runs: [RunInput], calendar: Calendar) -> [RunInput] {
+        var byDay: [Date: RunInput] = [:]
+        var dayOrder: [Date] = []
+        for r in runs {
+            let d = calendar.startOfDay(for: r.date)
+            if let existing = byDay[d] {
+                if r.durationSec > existing.durationSec { byDay[d] = r }
+            } else {
+                byDay[d] = r
+                dayOrder.append(d)
+            }
+        }
+        return dayOrder.map { byDay[$0]! }
+    }
+
+    /// 러닝 없는 같은 날 아카이브가 여럿일 때 우선순위: 결과 있음 > 이행표 있음 > 동률이면 기존(입력 순서상 먼저) 유지.
+    private static func preferArchive(_ candidate: ArchiveInput, over existing: ArchiveInput) -> Bool {
+        let candidateHasResult = candidate.hasResult && candidate.actualMin > 0
+        let existingHasResult = existing.hasResult && existing.actualMin > 0
+        if candidateHasResult != existingHasResult { return candidateHasResult }
+        if candidate.hasDetail != existing.hasDetail { return candidate.hasDetail }
+        return false
+    }
 
     /// 같은 날·같은 표준 거리(±2%)의 엔진 예측.
     private static func prediction(for run: RunInput, in predictions: [PredictionInput],

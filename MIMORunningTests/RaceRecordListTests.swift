@@ -145,6 +145,50 @@ struct RaceRecordListTests {
         #expect(rows.allSatisfy { $0.editionCount == nil })
     }
 
+    @Test func twoRunsSameDayKeepLongest() {
+        let d = date(2026, 10, 25)
+        let rows = RaceRecordList.rows(
+            runs: [run("2026 춘천마라톤", km: 42.195, d, minutes: 230),
+                   run("2026 춘천마라톤", km: 42.195, d, minutes: 240)],
+            calendar: cal)
+        #expect(rows.count == 1)
+        #expect(rows[0].finishMin == 240)
+    }
+
+    @Test func twoArchivesSameDayWithoutRunMakeOneRow() {
+        let d = date(2026, 10, 25)
+        let rows = RaceRecordList.rows(
+            runs: [],
+            archives: [archive(0, "2026 ○○10K", d, km: 10),
+                       archive(1, "2026 춘천마라톤", d, km: 42.195, hasResult: true, actualMin: 250)],
+            predictions: [], calendar: cal)
+        #expect(rows.count == 1)
+        #expect(rows[0].archiveIndex == 1)
+        #expect(rows[0].finishMin == 250)
+    }
+
+    @Test func runPicksArchiveWithMatchingDistance() {
+        let d = date(2026, 10, 25)
+        let rows = RaceRecordList.rows(
+            runs: [run("2026 춘천마라톤", km: 42.195, d, minutes: 232)],
+            archives: [archive(0, "2026 ○○10K", d, km: 10, projectedMin: 50),
+                       archive(1, "2026 춘천마라톤", d, km: 42.195, projectedMin: 235)],
+            predictions: [prediction(d, km: 42.195, predicted: 240)], calendar: cal)
+        #expect(rows[0].archiveIndex == 1)
+        #expect(rows[0].prediction?.predictedMin == 235)
+    }
+
+    @Test func editionCountIgnoresSameDayDuplicate() {
+        let d2025 = date(2025, 10, 25)
+        let d2026 = date(2026, 10, 25)
+        let a = run("2025 춘천마라톤", km: 42.195, d2025, minutes: 236)
+        let b = run("2026 춘천마라톤", km: 42.195, d2026, minutes: 232)
+        let bDup = run("2026 춘천마라톤", km: 42.195, d2026, minutes: 100)
+        let rows = RaceRecordList.rows(runs: [a, b, bDup], seriesKey: { _ in "chuncheon-marathon" }, calendar: cal)
+        #expect(rows.count == 2)
+        #expect(rows[0].editionCount == 2)
+    }
+
     @Test func rowsAreNewestFirst() {
         let rows = RaceRecordList.rows(
             runs: [run("A", km: 10, date(2025, 4, 6), minutes: 50),
@@ -165,6 +209,16 @@ struct RaceRecordListTests {
                           prediction(effortDay, km: 10, predicted: 50, errorPct: 20, inBand: false)],
             calendar: cal)
         #expect(acc == RaceRecordList.Accuracy(hit: 1, count: 2, meanAbsErrorPct: 4.0))
+    }
+
+    @Test func accuracyUsesDedupedRuns() {
+        let d = date(2026, 10, 25)
+        let acc = RaceRecordList.accuracy(
+            runs: [run("춘천", km: 42.195, d, minutes: 230),
+                   run("춘천", km: 42.195, d, minutes: 240)],
+            predictions: [prediction(d, km: 42.195, predicted: 245, errorPct: 2.0, inBand: true)],
+            calendar: cal)
+        #expect(acc?.count == 1)
     }
 
     @Test func accuracyIsNilWithoutPredictions() {
