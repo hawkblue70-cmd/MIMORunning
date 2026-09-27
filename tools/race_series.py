@@ -68,7 +68,12 @@ def main():
         for r1, s1, d1, la1, ln1 in pts:
             for r2, s2, d2, la2, ln2 in pts:
                 if d2.year != d1.year + 1 or s1 == s2: continue
-                if abs((d2.replace(year=d1.year) - d1).days) > 14: continue
+                if r1[7] == "city" or r2[7] == "city": continue
+                try:
+                    gap = abs((d2.replace(year=d1.year) - d1).days)
+                except ValueError:
+                    gap = abs((d2 - d1).days - 365)
+                if gap > 14: continue
                 km = 111 * math.hypot(la1 - la2, (ln1 - ln2) * math.cos(math.radians(la1)))
                 if km <= 5:
                     print(f"{r1[0]} ({r1[1]}) ↔ {r2[0]} ({r2[1]}) · {km:.1f}km")
