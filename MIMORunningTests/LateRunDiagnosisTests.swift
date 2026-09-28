@@ -146,6 +146,61 @@ struct LateRunDiagnosisTests {
         #expect(try #require(LateRunDiagnosis.diagnose(splits: s, durationMin: 298, form: nil, baseline: trendBaseline())).kind == .energy)
     }
 
+    // MARK: 더위 보정 — 실데이터 6/30: 27°C 10km 거리주, 6'10→6'16 · 심박 151→157
+
+    private var june30: [SplitData] {
+        (1...10).map { i in i >= 8 ? split(i, pace: 376, hr: 157) : split(i, pace: 370, hr: 151) }
+    }
+
+    private var drift: MRDriftModel {
+        var m = MRDriftModel()
+        m.ok = true
+        m.bpmPer10MinAtRef = 1.3          // 15°C 10분당 1.3bpm
+        m.bpmPer10MinPerDegC = 1.4 / 15   // 30°C 2.7bpm
+        return m
+    }
+
+    @Test func withoutHeatCorrectionItLooksLikeHRFirst() throws {
+        let r = try #require(diagnose(june30, minutes: 62))
+        #expect(r.kind == .cardio)
+        #expect(abs((r.decouplingPct ?? 0) - 5.4) < 0.1)
+    }
+
+    @Test func heatCorrectionRemovesHotDayDrift() throws {
+        let s = june30
+        let r = try #require(LateRunDiagnosis.diagnose(splits: s, durationMin: 62, form: form(s),
+                                                       temperatureC: 27, drift: drift))
+        // 중반 가운데→후반 가운데 21.7분 × 12°C × 0.093 = 2.4bpm
+        #expect(abs(r.heatAdjustBpm - 2.43) < 0.05)
+        #expect((r.decouplingPct ?? 99) < LateRunDiagnosis.decouplingThresholdPct)
+        #expect(r.kind == .held)
+        let ev = LateRunDiagnosis.evidence(r)
+        #expect(ev.contains("더위 몫 2bpm 빼고"))
+        #expect(ev.contains("3.9%"))
+    }
+
+    @Test func coolDayHasNoHeatCorrection() throws {
+        let r = try #require(LateRunDiagnosis.diagnose(splits: june30, durationMin: 62, form: nil,
+                                                       temperatureC: 12, drift: drift))
+        #expect(r.heatAdjustBpm == 0)
+    }
+
+    @Test func fatiguedDaySaysJudgeAfterRecovery() throws {
+        var i = RunSummaryInput()
+        i.lateRun = try #require(diagnose(run(lateHR: 162, lateCad: 166)))   // 다리·심박 함께
+        i.acuteChronic = .high
+        let line = try #require(RunSummary.lines(i).first { $0.axis == "후반" })
+        #expect(line.next?.contains("회복한 뒤") == true)
+    }
+
+    @Test func distanceRunHeldGetsNoFastFinishNudge() throws {
+        var i = RunSummaryInput()
+        i.lateRun = try #require(diagnose(run()))
+        i.workoutType = .distanceRun
+        let line = try #require(RunSummary.lines(i).first { $0.axis == "후반" })
+        #expect(line.next == nil)
+    }
+
     @Test func sameSlowdownUnder90MinIsSilent() {
         #expect(diagnose(run(latePace: 420, lateHR: 138), minutes: 75) == nil)
     }

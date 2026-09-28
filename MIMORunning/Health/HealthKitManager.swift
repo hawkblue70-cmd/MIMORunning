@@ -171,6 +171,7 @@ class HealthKitManager {
                                             baseline: formBaseline, formShifts: [], workoutType: wt)
                 s?.lateKind = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
                                                         baseline: formBaseline, plannedFastFinish: isLongBuildUp,
+                                                        temperatureC: a.temperatureC, drift: LateRunDiagnosis.cachedDrift,
                                                         altitudeProfile: det.altitudeProfile)?.kind
             }
             return s
@@ -255,6 +256,7 @@ class HealthKitManager {
                                             baseline: baseline, formShifts: [], workoutType: wt)
                 guard let r = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
                                                         baseline: baseline, plannedFastFinish: wt == .buildUp,
+                                                        temperatureC: a.temperatureC, drift: LateRunDiagnosis.cachedDrift,
                                                         altitudeProfile: det.altitudeProfile) else { nSilent += 1; return nil }
                 return LateRunPoint(id: a.id, date: a.date, distanceKm: a.distance / 1000, kind: r.kind,
                                     decouplingPct: r.isFastFinish ? nil : r.decouplingPct,

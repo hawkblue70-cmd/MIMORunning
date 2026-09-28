@@ -47,6 +47,8 @@ enum LateRunDiagnosis {
         }
         /// 빌드업처럼 후반 가속이 계획인 러닝 — 조금이라도 빨라졌으면 가속으로 본다
         var plannedFastFinish: Bool = false
+        /// 효율 계산에서 뺀 더위 몫(bpm) — 기온이 15°C보다 높아 중반→후반 사이 더 오른 심박. 0이면 보정 없음.
+        var heatAdjustBpm: Double = 0
         var isFastFinish: Bool {
             paceChangeSec <= -LateRunDiagnosis.fastFinishSec || (plannedFastFinish && paceChangeSec < 0)
         }
@@ -186,8 +188,11 @@ enum LateRunDiagnosis {
     ///   - baseline: 폼 기준선. 폼 3단계가 판정하지 못한 페이스(평소 범위 밖으로 느려진 대회 후반 등)에서
     ///     기준선 구간들의 페이스→폼 추세로 "느려진 속도로 설명되는 몫"을 빼고 다리 신호를 본다(`trendLegs`).
     ///   - plannedFastFinish: 빌드업 — 후반이 조금이라도 빨라졌으면 계획된 가속(심박 신호 제외)
+    ///   - temperatureC · drift: 더위 보정 — 드리프트 모델(`MRDriftModel`, 기온 1°C당 10분 심박 증가)로 15°C보다 더운 만큼
+    ///     중반→후반 사이 더 오른 심박을 빼고 효율을 계산한다(앱의 15°C 기준 원칙). 모델이 없거나 15°C 이하면 보정 없음.
     static func diagnose(splits: [SplitData], durationMin: Double, form: FormPhase.Result?,
                          baseline: RunningFormBaseline? = nil, plannedFastFinish: Bool = false,
+                         temperatureC: Double? = nil, drift: MRDriftModel? = nil,
                          altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Result? {
         let full = splits.filter { $0.distanceM >= 900 }
         guard let p = FormPhase.phases(full) else { return nil }
@@ -197,11 +202,19 @@ enum LateRunDiagnosis {
         let midGAP = mid.paceSecPerKm * (scales.mid > 0 ? scales.mid : 1)
         let lateGAP = late.paceSecPerKm * (scales.late > 0 ? scales.late : 1)
 
-        // 심박 — GAP 속도 ÷ 심박 효율의 하락률
+        // 더위 몫 — 15°C보다 더운 만큼 중반 가운데→후반 가운데 사이(달린 시간)에 더 오른 심박
+        let heatAdjust: Double = {
+            guard let t = temperatureC, let d = drift, d.ok, d.bpmPer10MinPerDegC > 0, t > MR_REF_TEMP else { return 0 }
+            let midSec = mid.paceSecPerKm * (mid.endKm - mid.startKm)
+            let lateSec = late.paceSecPerKm * (late.endKm - late.startKm)
+            let gapMin = (midSec / 2 + lateSec / 2) / 60
+            return d.bpmPer10MinPerDegC * (t - MR_REF_TEMP) * gapMin / 10
+        }()
+        // 심박 — GAP 속도 ÷ 심박 효율의 하락률(후반 심박은 더위 몫을 뺀 값)
         let decoupling: Double? = {
-            guard let mh = mid.avgHR, let lh = late.avgHR, mh > 0, lh > 0 else { return nil }
+            guard let mh = mid.avgHR, let lh = late.avgHR, mh > 0, lh - heatAdjust > 0 else { return nil }
             let efMid = (1000 / midGAP) / mh
-            let efLate = (1000 / lateGAP) / lh
+            let efLate = (1000 / lateGAP) / (lh - heatAdjust)
             return (efMid - efLate) / efMid * 100
         }()
 
@@ -243,7 +256,7 @@ enum LateRunDiagnosis {
         return Result(kind: kind, mid: mid, late: late, decouplingPct: decoupling,
                       legMetrics: legs, legMethod: legSig?.method, durationMin: durationMin,
                       efficiencyOnsetKm: on.efficiencyKm, paceOnsetKm: on.paceKm,
-                      plannedFastFinish: plannedFastFinish)
+                      plannedFastFinish: plannedFastFinish, heatAdjustBpm: heatAdjust)
     }
 
     // MARK: - 시작 지점 — 페이스보다 심박이 먼저
@@ -433,6 +446,18 @@ enum LateRunDiagnosis {
         return out
     }
 
+    // MARK: - 더위 보정 모델
+
+    /// 드리프트 모델 캐시(`MRDriftCacheStore`) — 엔진이 계산해 둔 것. 앱 실행당 한 번 읽는다(파일 디코드).
+    /// 총평·대회 카드·성장 탭 기록이 같은 모델로 보정하도록 한 곳에서 읽는다.
+    private static var driftMemo: MRDriftModel?? = nil
+    static var cachedDrift: MRDriftModel? {
+        if let m = driftMemo { return m }
+        let m = MRDriftCacheStore.load()?.drift.model
+        driftMemo = .some(m)
+        return m
+    }
+
     // MARK: - 문장 (총평 줄·대회 카드 공용)
 
     /// 짧은 상태어 — 총평 줄
@@ -450,7 +475,7 @@ enum LateRunDiagnosis {
     }
 
     /// 근거 — 중반→후반 페이스 · 심박 · 효율 · 무거워진 폼 지표. 모르는 값은 말하지 않는다.
-    /// - heatDeltaBpm: 이 러닝의 더위 보정량. 심박 신호일 때 `RunSummary.heatNoteMinBpm` 이상이면 붙인다.
+    /// 더위는 효율 계산에서 이미 뺐다(`heatAdjustBpm`) — 1bpm 이상이면 "더위 몫 N bpm 빼고"로 적는다. `heatDeltaBpm`은 호환용(사용 안 함).
     static func evidence(_ r: Result, heatDeltaBpm: Double? = nil) -> String {
         let L = AppLanguage.shared
         var pieces: [String] = []
@@ -461,7 +486,11 @@ enum LateRunDiagnosis {
             pieces.append(L.s("심박 \(ai)→\(bi)", "HR \(ai)→\(bi)"))
         }
         if let d = r.decouplingPct, !r.isFastFinish {
-            let n = String(format: "%.0f", abs(d))
+            // 10% 미만은 소수 한 자리 — 문턱(5%) 근처에서 "5%"로 반올림돼 판정과 어긋나 보이지 않게
+            let n = abs(d) < 10 ? String(format: "%.1f", abs(d)) : String(format: "%.0f", abs(d))
+            if r.heatAdjustBpm >= 1 {
+                pieces.append(L.s("더위 몫 \(Int(r.heatAdjustBpm.rounded()))bpm 빼고", "after removing \(Int(r.heatAdjustBpm.rounded())) bpm of heat"))
+            }
             if d >= 0.5 {
                 pieces.append(L.s("같은 속도에 심박 \(n)% 더 듦", "\(n)% more HR per speed"))
             } else if d <= -0.5 {
@@ -491,9 +520,6 @@ enum LateRunDiagnosis {
             }
         }
         if let o = onsetPiece(r) { pieces.append(o) }
-        if (r.kind == .cardio || r.kind == .combined), let h = heatDeltaBpm, h >= RunSummary.heatNoteMinBpm {
-            pieces.append(L.s("더위 +\(Int(h.rounded()))bpm", "heat +\(Int(h.rounded())) bpm"))
-        }
         if r.kind == .energy {
             pieces.append(L.s("보급 기록이 없어 추정이에요", "estimated — no fueling data"))
         }

@@ -5511,7 +5511,9 @@ private struct RaceInsightCard: View {
         let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                     baseline: formBaseline, formShifts: formShifts, workoutType: .race)
         return LateRunDiagnosis.diagnose(splits: det.splits, durationMin: activity.duration / 60,
-                                         form: form, baseline: formBaseline, altitudeProfile: det.altitudeProfile)
+                                         form: form, baseline: formBaseline,
+                                         temperatureC: activity.temperatureC, drift: LateRunDiagnosis.cachedDrift,
+                                         altitudeProfile: det.altitudeProfile)
     }
 
     private func limitingFactorSuggestion(_ lf: LimitFactor) -> String? {

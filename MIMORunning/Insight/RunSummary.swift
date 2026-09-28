@@ -119,7 +119,19 @@ enum RunSummary {
                                   state: LateRunDiagnosis.state(r),
                                   tone: r.kind == .held ? .good : .neutral)
         line.evidence = LateRunDiagnosis.evidence(r, heatDeltaBpm: i.heatDeltaBpm)
-        line.next = LateRunDiagnosis.next(r, heatDeltaBpm: i.heatDeltaBpm, isRace: i.workoutType == .race)
+        // 피로가 쌓인 날(4주 평균 대비 높음·4일↑ 연속·회복/테이퍼 주) — 영상 요지대로 피로 누적이면 후반이 무거운 게 자연스럽다.
+        // 무너졌으면 원인 처방 대신 "회복 뒤 롱런에서 다시", 유지였으면 가속 권유를 하지 않는다(훈련부하 줄의 회복 권유와 충돌).
+        // 거리주는 이미 목표 페이스 근처로 달린 날이라 유지여도 가속 권유를 하지 않는다.
+        let fatigued = i.acuteChronic == .high || i.acuteChronic == .veryHigh || i.streakDays >= 4
+            || i.planPhase.map { planEasyPhases.contains($0) } == true
+        if i.workoutType != .race, fatigued || i.workoutType == .distanceRun {
+            line.next = r.kind == .held ? nil
+                : (fatigued ? AppLanguage.shared.s("피로가 쌓인 상태에서 뛴 러닝이에요. 후반 판단은 회복한 뒤 롱런에서 다시 보세요.",
+                                                    "This run came on accumulated fatigue — judge your late-run durability again on a long run after recovery.")
+                            : LateRunDiagnosis.next(r, heatDeltaBpm: i.heatDeltaBpm))
+        } else {
+            line.next = LateRunDiagnosis.next(r, heatDeltaBpm: i.heatDeltaBpm, isRace: i.workoutType == .race)
+        }
         return line
     }
 

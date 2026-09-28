@@ -134,6 +134,7 @@ enum RunSummaryBuilder {
             return LateRunDiagnosis.diagnose(splits: det.splits, durationMin: c.activity.duration / 60,
                                              form: input.form, baseline: c.formBaseline,
                                              plannedFastFinish: c.workoutType == .buildUp,
+                                             temperatureC: c.activity.temperatureC, drift: LateRunDiagnosis.cachedDrift,
                                              altitudeProfile: det.altitudeProfile)
         }()
         input.distKm = c.activity.distance / 1000
