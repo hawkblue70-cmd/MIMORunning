@@ -340,6 +340,14 @@ class HealthKitManager {
                 workoutTypeBackfillTask?.cancel()
                 workoutTypeBackfillTask = Task { await self.backfillWorkoutTypes(weeks: 8, forceReclassify: true) }
             }
+            // "롱런 · 후반 페이스" 이전 러닝 1회 채우기 — 유형 백필은 버전이 오를 때만 돌므로 여기서 따로.
+            // 디스크 상세 디코드라 첫 화면이 뜬 뒤로 미룬다. 이미 채웠으면 즉시 반환.
+            if !UserDefaults.standard.bool(forKey: Self.fastFinishKey + ".filled") {
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.fillFastFinishFlagsIfNeeded()
+                }
+            }
         }
 
         // 5분 이내 early return은 위에서 이미 처리됨.
