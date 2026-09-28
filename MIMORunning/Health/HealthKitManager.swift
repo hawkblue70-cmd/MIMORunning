@@ -199,16 +199,22 @@ class HealthKitManager {
         if let memo = lateRunMemo, memo.key == key { return memo.value }
         let cutoff = cal.date(byAdding: .day, value: -7 * weeks, to: today) ?? today
         let baseline = FormBaselineEngine.peekFromCache()
+        // 단계별 탈락 집계 — 16주 롱런 수 대비 진단 수가 적을 때 어디서 빠졌는지 로그로 보이게
+        var n60 = 0, nNoDetail = 0, nType = 0, nBreak = 0, nSilent = 0
         let result: [LateRunPoint] = activities
             .filter { $0.type == .running && $0.date >= cutoff && $0.date <= asOf && $0.duration >= LateRunDiagnosis.minDurationMin * 60 }
             .compactMap { a in
-                guard let det = detailFromCache(a.id) else { return nil }
+                n60 += 1
+                guard let det = detailFromCache(a.id) else { nNoDetail += 1; return nil }
                 let wt = cachedWorkoutTypeForStats(for: a.id) ?? det.workoutType
                 let mins = a.duration / 60
                 guard LateRunDiagnosis.applies(to: wt, durationMin: mins, splits: det.splits,
                                                pausedSpans: det.pausedSpans,
                                                isLongDistance: wt == .buildUp
                                                    && WorkoutTypeClassifier.isLongDistance(activity: a, history: activities)) else {
+                    let typeOK = ![.interval, .buildUp, .tempo].contains(wt)
+                        || wt == .buildUp && WorkoutTypeClassifier.isLongDistance(activity: a, history: activities)
+                    if typeOK { nBreak += 1 } else { nType += 1 }
                     #if DEBUG
                     // 유형(인터벌·빌드업·템포)으로 빠진 러닝은 끊김 이유를 찍지 않는다 — 끊김 때문에 빠진 것처럼 보이지 않게
                     if ![.interval, .buildUp, .tempo].contains(wt) || wt == .buildUp && WorkoutTypeClassifier.isLongDistance(activity: a, history: activities),
@@ -223,7 +229,7 @@ class HealthKitManager {
                                             baseline: baseline, formShifts: [], workoutType: wt)
                 guard let r = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
                                                         baseline: baseline, plannedFastFinish: wt == .buildUp,
-                                                        altitudeProfile: det.altitudeProfile) else { return nil }
+                                                        altitudeProfile: det.altitudeProfile) else { nSilent += 1; return nil }
                 return LateRunPoint(id: a.id, date: a.date, distanceKm: a.distance / 1000, kind: r.kind,
                                     decouplingPct: r.isFastFinish ? nil : r.decouplingPct,
                                     efficiencyOnsetKm: r.efficiencyOnsetKm, isFastFinish: r.isFastFinish)
@@ -231,7 +237,7 @@ class HealthKitManager {
             .sorted { $0.date < $1.date }
         #if DEBUG
         let counts = Dictionary(grouping: result, by: \.kind).mapValues(\.count)
-        print("[후반:기록] \(weeks)주 60분+ 진단 \(result.count)건 · \(counts.map { "\($0.key.rawValue) \($0.value)" }.sorted().joined(separator: " · "))")
+        print("[후반:기록] \(weeks)주 60분+ 러닝 \(n60)건 → 상세없음 \(nNoDetail) · 유형제외 \(nType) · 끊김 \(nBreak) · 판정침묵 \(nSilent) → 진단 \(result.count)건 · \(counts.map { "\($0.key.rawValue) \($0.value)" }.sorted().joined(separator: " · "))")
         #endif
         lateRunMemo = (key, result)
         return result
