@@ -146,3 +146,33 @@ func mrBreakdownReplacingEasy(_ text: String, easyKm: Double, runs: Int) -> Stri
     let replacedRuns = ns.replacingCharacters(in: m.range(at: 2), with: "\(runs)") as NSString
     return replacedRuns.replacingCharacters(in: m.range(at: 1), with: mrPointKmString(easyKm))
 }
+
+/// 트리거 5 — 이미 시작한 계획의 스냅샷에 포인트 칸 채우기(설계 6절).
+/// 다음 주(thisMonday 뒤)부터, 스냅샷 주에 point가 없고 같은 월요일 라이브 주가 **같은 단계**로 point를 가질 때만.
+/// 종류·페이스는 라이브, 양은 스냅샷 자신의 주간·롱런으로 다시 잰다. 이지 문구는 숫자만 바꾼다.
+/// 이지 1회가 1.5km 아래로 내려가거나 문구를 못 읽으면 그 주는 건너뛴다. 지난 주·이번 주는 건드리지 않는다.
+func mrFillSnapshotPoints(snapshot: [MRPlanWeekSummary], live: [MRPlanWeek], thisMonday: Date,
+                          raceDistanceM: Double, calendar: Calendar = .current) -> (weeks: [MRPlanWeekSummary], filled: Int) {
+    let liveByMonday = Dictionary(live.map { (calendar.startOfDay(for: $0.monday), $0) },
+                                  uniquingKeysWith: { a, _ in a })
+    let thisMon = calendar.startOfDay(for: thisMonday)
+    var filled = 0
+    let weeks = snapshot.map { s -> MRPlanWeekSummary in
+        let mon = calendar.startOfDay(for: s.monday)
+        guard s.point == nil, mon > thisMon,
+              let lw = liveByMonday[mon], lw.phase == s.phase, let lp = lw.point else { return s }
+        let parsed = mrParsePlanBreakdown(s.breakdown)
+        guard let runs = parsed.easyRuns, runs >= 2, parsed.easyKm != nil else { return s }
+        let long = s.longRunKm.rounded()   // 플래너 문구와 같은 표기값(lrDisplay)
+        guard let pt = MRPlanPoint.make(kind: lp.kind, weeklyKm: s.weeklyKm, longRunKm: long,
+                                        raceDistanceM: raceDistanceM, paceSecPerKm: lp.paceSecPerKm) else { return s }
+        let easyKm = ((s.weeklyKm - long - pt.totalKm) / Double(runs - 1) * 10).rounded() / 10
+        guard easyKm >= 1.5, let bd = mrBreakdownReplacingEasy(s.breakdown, easyKm: easyKm, runs: runs - 1) else { return s }
+        filled += 1
+        var out = s
+        out.breakdown = bd
+        out.point = pt
+        return out
+    }
+    return (weeks, filled)
+}

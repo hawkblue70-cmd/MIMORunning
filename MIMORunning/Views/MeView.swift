@@ -826,6 +826,22 @@ struct MeView: View {
                 }
             }
 
+            // ── Trigger 5: 포인트 칸 채우기(2026-09-29) — 이미 시작한 계획은 다음 주부터 ──
+            // 포인트는 롱런·주간 km를 바꾸지 않고 이지 한 번의 성격만 바꾼다. 지난 주·이번 주는 그대로(설계 6절).
+            do {
+                let r = mrFillSnapshotPoints(snapshot: existing.planWeeks, live: check.plan.weeks,
+                                             thisMonday: thisMonday, raceDistanceM: check.race.distanceM)
+                if r.filled > 0 {
+                    let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
+                    if let wd = try? enc.encode(r.weeks), let wj = String(data: wd, encoding: .utf8) {
+                        existing.weeksJSON = wj
+                    }
+                    #if DEBUG
+                    print("[스냅샷] 포인트 칸 채움 → \(r.filled)주: \(check.race.name)")
+                    #endif
+                }
+            }
+
             // ── Trigger 1: targetLongKm 규칙 변경 → 미래 주 조정 ──────────────
             // 프로필 변화(더 많이 달림)는 targetLongKm에 영향을 주지 않으므로 갱신 안 함.
             let liveTarget = check.plan.targetLongKm
