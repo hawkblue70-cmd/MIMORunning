@@ -187,6 +187,16 @@ struct LateRunDiagnosisTests {
         #expect(LateRunDiagnosis.onsets(full: s, altitudeProfile: [], temperatureC: 27, drift: drift).efficiencyKm == nil)
     }
 
+    @Test func legsVerdictShowsOnlyPaceOnset() throws {
+        // 다리 판정에는 심박 효율 시점을 붙이지 않는다
+        var r = try #require(diagnose(run(latePace: 380, lateCad: 166), minutes: 80))
+        #expect(r.kind == .legs)
+        r.efficiencyOnsetKm = 5
+        r.paceOnsetKm = 9
+        let piece = LateRunDiagnosis.onsetPiece(r)
+        #expect(piece == "페이스 9km부터↓")
+    }
+
     @Test func coolDayHasNoHeatCorrection() throws {
         let r = try #require(LateRunDiagnosis.diagnose(splits: june30, durationMin: 62, form: nil,
                                                        temperatureC: 12, drift: drift))

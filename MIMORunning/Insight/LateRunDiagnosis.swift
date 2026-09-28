@@ -270,7 +270,7 @@ enum LateRunDiagnosis {
     static let onsetPersist = 3
 
     /// km별 효율(GAP 속도 ÷ 심박)과 페이스가 기준(15~45% 구간 중앙값 — 워밍업 뒤·후반 전)에서 벗어나기 시작한 지점.
-    /// 30% 지점 이후만 본다. 풀 스플릿 8개 미만·심박 없는 스플릿이 있으면 효율 시점은 nil.
+    /// 창 전체가 기준 구간(45%) 뒤에 있을 때만 본다. 풀 스플릿 8개 미만·심박 없는 스플릿이 있으면 효율 시점은 nil.
     /// - temperatureC · drift: `diagnose`와 같은 더위 보정 — km마다 기준 구간 가운데로부터 달린 시간만큼 더위 몫을 뺀 심박으로
     ///   효율을 잰다. 빼지 않으면 더운 날 서서히 오른 심박이 "심박 효율 3km부터↓"로 읽혀, 보정 후 효율(5% 미만)과 같은 줄에서 어긋난다.
     static func onsets(full: [SplitData], altitudeProfile: [(distanceKm: Double, altitude: Double)],
@@ -326,7 +326,8 @@ enum LateRunDiagnosis {
 
         /// i에서 끝나는 창부터 연속으로 문턱을 넘는 첫 지점(그 창 가운데 km의 시작)
         func onset(_ breached: (Int) -> Bool?) -> Double? {
-            let first = splits.indices.first { frac($0) >= 0.30 && $0 >= onsetWindow - 1 } ?? splits.count
+            // 창 전체가 기준 구간(15~45%) 뒤에 있어야 한다 — 짧은 러닝(10km)에서 창이 기준과 겹쳐 4km 같은 이른 시점이 잡히지 않게
+            let first = splits.indices.first { $0 >= onsetWindow - 1 && frac($0 - (onsetWindow - 1)) >= 0.45 } ?? splits.count
             var i = first
             while i < splits.count {
                 var ok = true
@@ -543,11 +544,14 @@ enum LateRunDiagnosis {
 
     /// 시작 지점 절 — 유지 날에는 말하지 않는다. 효율이 페이스보다 먼저(또는 페이스는 끝까지 유지)일 때
     /// "심박 효율 22km부터↓ · 페이스 28km부터↓", 페이스만 떨어졌으면 "페이스 28km부터↓".
+    /// 심박 효율 시점은 판정에 심박이 들어간 날(심박이 먼저·함께)에만 — 다리·에너지 판정에 "심박 효율 N km부터↓"가 붙으면
+    /// 시점 문턱(3%)이 판정 문턱(5%)보다 낮아 심박이 원인인 것처럼 읽힌다(실례 6/30: 다리 · 효율 4.0% · "심박 효율 4km부터↓").
     static func onsetPiece(_ r: Result) -> String? {
         guard r.kind != .held else { return nil }
         let L = AppLanguage.shared
         func km(_ v: Double) -> String { String(format: "%.0f", v) }
-        switch (r.efficiencyOnsetKm, r.paceOnsetKm) {
+        let hrInVerdict = r.kind == .cardio || r.kind == .combined
+        switch (hrInVerdict ? r.efficiencyOnsetKm : nil, r.paceOnsetKm) {
         case let (e?, p?) where e < p:
             return L.s("심박 효율 \(km(e))km부터↓, 페이스는 \(km(p))km부터↓",
                        "HR efficiency slipped from \(km(e)) km, pace from \(km(p)) km")
