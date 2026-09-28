@@ -355,7 +355,8 @@ struct ActivityDetailView: View {
                     Group {
                         RunInsightSection(
                             insights: runInsights,
-                            workoutTypeLabel: detail?.workoutType.displayLabel(for: activity, history: manager.activities),
+                            workoutTypeLabel: detail?.workoutType.displayLabel(for: activity, history: manager.activities,
+                                                                              fastFinish: manager.isFastFinishRun(activity.id)),
                             isAutoDetected: runSegmentSource == .detected,
                             activity: activity,
                             detail: detail,
@@ -531,7 +532,8 @@ struct ActivityDetailView: View {
                 // 확정된 대회만 — 제안 배너 단계(미확정)는 카드에 싣지 않는다
                 raceName: raceDetector.matchFor(activityID: activity.id)
                     .flatMap { $0.isConfirmed ? $0.raceName : nil },
-                workoutTypeLabel: detail?.workoutType.displayLabel(for: activity, history: manager.activities)
+                workoutTypeLabel: detail?.workoutType.displayLabel(for: activity, history: manager.activities,
+                                                                              fastFinish: manager.isFastFinishRun(activity.id))
             )
         }
         .sheet(isPresented: $showChartShare) {
@@ -1301,7 +1303,8 @@ struct ActivityDetailView: View {
                             age: userAge, isMale: manager.userIsMale,
                             // 확정된 대회만 — 공유 카드에 실리는 것과 같은 조건
                             raceName: confirmedRaceMatch?.raceName,
-                            workoutTypeLabel: detail?.workoutType.displayLabel(for: activity, history: manager.activities)
+                            workoutTypeLabel: detail?.workoutType.displayLabel(for: activity, history: manager.activities,
+                                                                              fastFinish: manager.isFastFinishRun(activity.id))
                         )
                         .padding(.horizontal, 16)
                     } else {

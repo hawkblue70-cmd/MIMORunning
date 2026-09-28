@@ -124,14 +124,22 @@ enum WorkoutType: String, Codable, CaseIterable {
         }
     }
 
-    /// 화면에 보이는 종류 이름 — 빌드업이 롱런 거리이기도 하면 "롱런 · 빌드업".
-    /// 집계(종류별 횟수·강도)는 그대로 빌드업 하나로 센다.
-    func displayLabel(for activity: Activity, history: [Activity]) -> String {
+    /// 화면에 보이는 종류 이름 — 빌드업이 롱런 거리이기도 하면 "롱런 · 빌드업",
+    /// 롱런 거리를 편하게 달리다 마지막 구간을 빠르게 마무리했으면(`fastFinish`) "롱런 · 후반 페이스".
+    /// 집계(종류별 횟수·강도)는 저장된 유형 하나로 센다 — 이름만 바뀐다.
+    func displayLabel(for activity: Activity, history: [Activity], fastFinish: Bool = false) -> String {
         if self == .buildUp, WorkoutTypeClassifier.isLongDistance(activity: activity, history: history) {
             return AppLanguage.shared.s("롱런 · 빌드업", "Long Run · Build-Up")
         }
+        if fastFinish, Self.fastFinishLabelTypes.contains(self),
+           WorkoutTypeClassifier.isLongDistance(activity: activity, history: history) {
+            return AppLanguage.shared.s("롱런 · 후반 페이스", "Long Run · Fast Finish")
+        }
         return koreanLabel
     }
+
+    /// "롱런 · 후반 페이스"를 붙이는 유형 — 편한 몸통이 전제인 유형만. 거리주(처음부터 빠름)·인터벌·템포·대회·빌드업은 제외.
+    static let fastFinishLabelTypes: Set<WorkoutType> = [.longRun, .lsd, .easy, .general]
 }
 
 // MARK: - Activity Detail

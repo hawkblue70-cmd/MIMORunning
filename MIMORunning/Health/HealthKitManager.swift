@@ -36,6 +36,9 @@ class HealthKitManager {
     var isWorkoutTypeReclassifying = false
     /// 온디맨드 분류 완료 시 1 증가 → 리스트 배지 재렌더링 트리거.
     var workoutTypeRevision: Int = 0
+    /// 후반 페이스 롱런(`WorkoutTypeClassifier.isFastFinish`) 러닝 id — 화면 이름 "롱런 · 후반 페이스"용. 유형을 저장할 때 스플릿으로 함께 갱신.
+    private(set) var fastFinishIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: HealthKitManager.fastFinishKey) ?? [])
+    nonisolated static let fastFinishKey = "mimo.fastFinish.v1"
     /// Latest resting HR from HealthKit — used as RHR in Karvonen zone calc
     var restingHeartRate: Int? = nil
     /// 폼 백필 진행 상황. nil = 백필 안 하는 중.
@@ -841,7 +844,9 @@ class HealthKitManager {
 
     /// hasSplits=true 엔트리는 hasSplits=false 분류로 덮어쓰지 않는다 — 스플릿 없는 백필 오염 방지
     /// race 확정 엔트리는 어떤 값으로도 덮어쓰지 않는다 — markConfirmedRaces 이후 재분류 오염 방지
-    private func persistWorkoutType(_ type: WorkoutType, hasSplits: Bool, for id: UUID) {
+    private func persistWorkoutType(_ type: WorkoutType, splits: [SplitData], for id: UUID) {
+        let hasSplits = !splits.isEmpty
+        if hasSplits { noteFastFinish(WorkoutTypeClassifier.isFastFinish(splits: splits), for: id) }
         var dict = UserDefaults.standard.dictionary(forKey: Self.workoutTypeCacheKey) as? [String: String] ?? [:]
         let key = id.uuidString
         if let existing = dict[key], let existingEntry = parseWorkoutTypeEntry(existing) {
@@ -850,6 +855,33 @@ class HealthKitManager {
         }
         dict[key] = "\(type.rawValue):\(hasSplits ? "1" : "0")"
         UserDefaults.standard.set(dict, forKey: Self.workoutTypeCacheKey)
+    }
+
+    private func noteFastFinish(_ on: Bool, for id: UUID) {
+        let key = id.uuidString
+        guard fastFinishIDs.contains(key) != on else { return }
+        if on { fastFinishIDs.insert(key) } else { fastFinishIDs.remove(key) }
+        UserDefaults.standard.set(Array(fastFinishIDs), forKey: Self.fastFinishKey)
+    }
+
+    func isFastFinishRun(_ id: UUID) -> Bool { fastFinishIDs.contains(id.uuidString) }
+
+    /// 1회 채우기 — 이 기능 전에 분류된 러닝은 유형 저장을 다시 거치지 않으므로, 디스크 상세 캐시가 있는 8km↑ 러닝을 한 번 훑는다.
+    func fillFastFinishFlagsIfNeeded() {
+        let doneKey = Self.fastFinishKey + ".filled"
+        guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
+        var found = 0, scanned = 0
+        for a in activities where a.type == .running && a.distance >= 8000 {
+            guard let det = detailFromCache(a.id), !det.splits.isEmpty else { continue }
+            scanned += 1
+            let on = WorkoutTypeClassifier.isFastFinish(splits: det.splits)
+            if on { found += 1 }
+            noteFastFinish(on, for: a.id)
+        }
+        UserDefaults.standard.set(true, forKey: doneKey)
+        #if DEBUG
+        print("[후반페이스:채우기] 8km↑ 상세 \(scanned)건 훑음 · 후반 페이스 \(found)건")
+        #endif
     }
 
     /// 엔진이 학습한 페이스 더위 모델을 분류기에 연결한다.
@@ -978,7 +1010,7 @@ class HealthKitManager {
                     splits: actSplits, intervalSegments: actSegments, hrZones: zones4Classify,
                     typeOf: workoutTypeLookup(), heat: heatModelForClassification
                 )
-                persistWorkoutType(wt, hasSplits: !actSplits.isEmpty, for: act.id)
+                persistWorkoutType(wt, splits: actSplits, for: act.id)
                 onDemandClassifiedCount += 1
                 batchCounts[wt.rawValue, default: 0] += 1
             }
@@ -1139,6 +1171,7 @@ class HealthKitManager {
         #endif
 
         guard !toProcess.isEmpty else {
+            fillFastFinishFlagsIfNeeded()
             if forceReclassify {
                 UserDefaults.standard.set(true, forKey: Self.workoutTypeReadyKey)
                 isWorkoutTypeReclassifying = false
@@ -1228,7 +1261,7 @@ class HealthKitManager {
                     existingType: cachedEntry?.type, typeOf: typeOf, heat: heatModelForClassification
                 )
                 #endif
-                persistWorkoutType(type, hasSplits: !actSplits.isEmpty, for: act.id)
+                persistWorkoutType(type, splits: actSplits, for: act.id)
                 if actSplits.isEmpty { provisionalCount += 1 } else { confirmedCount += 1 }
                 #if DEBUG
                 let distKm  = String(format: "%.1f", act.distance / 1000)
@@ -1266,6 +1299,7 @@ class HealthKitManager {
         }
         #endif
 
+        fillFastFinishFlagsIfNeeded()
         workoutTypeRevision += 1
         if forceReclassify {
             UserDefaults.standard.set(true, forKey: Self.workoutTypeReadyKey)
@@ -1333,7 +1367,7 @@ class HealthKitManager {
                 existingType: backfillCached?.type, typeOf: workoutTypeLookup(),
                 heat: heatModelForClassification
             )
-            persistWorkoutType(type, hasSplits: !actSplits.isEmpty, for: act.id)
+            persistWorkoutType(type, splits: actSplits, for: act.id)
             await Task.yield()
         }
         workoutTypeRevision += 1
@@ -1576,7 +1610,7 @@ class HealthKitManager {
                 if type != oldType { saveDetailToDisk(disk, id: activityID) }
             }
             detailCache[activityID] = disk
-            persistWorkoutType(disk.workoutType, hasSplits: !disk.splits.isEmpty, for: activityID)
+            persistWorkoutType(disk.workoutType, splits: disk.splits, for: activityID)
             persistFormFromDetail(disk, for: activityID)
             return disk
         }
@@ -1613,7 +1647,7 @@ class HealthKitManager {
             }
             print("[유형:판정] \(_ds) \(_km)km \(_ps)\(_z2)\(_hrTag) splits=\(_sn) 플랜=\(_in > 0 ? "\(_in)회" : "없음") → \(result.workoutType.koreanLabel)")
             #endif
-            persistWorkoutType(result.workoutType, hasSplits: !result.splits.isEmpty, for: activityID)
+            persistWorkoutType(result.workoutType, splits: result.splits, for: activityID)
             persistFormFromDetail(result, for: activityID)
         }
         return result

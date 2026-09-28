@@ -178,6 +178,41 @@ struct WorkoutTypeClassifier {
         return (false, "빌드업탈락: 단계✗ \(tag) (R²≥0.40·추세≥4% 필요)")
     }
 
+    // MARK: 후반 페이스 롱런 — 편하게 달리다 마지막 구간을 목표 페이스 근처로 (영상: 후반 M 페이스 삽입)
+
+    /// 마지막 구간이 몸통보다 이만큼 빨라야 "후반 페이스"(임의로 정함 — 6'15 기준 15초/km)
+    static let fastFinishGainFrac = 0.04
+    /// 마지막 구간의 각 km가 몸통보다 최소 이만큼은 빨라야 연속 구간으로 센다(임의로 정함)
+    static let fastFinishSplitFrac = 0.03
+
+    /// 편한 몸통 + 지속된 빠른 마무리인가 — 순수 함수. 저장 유형은 바꾸지 않고 화면 이름("롱런 · 후반 페이스")에만 쓴다.
+    /// - 풀 스플릿(900m↑) 8개↑. 몸통 기준 = km1 제외 앞 60% 중앙값.
+    /// - 끝에서부터 몸통보다 3%↑ 빠른 km가 이어지는 구간: 2km↑ · 전체 거리의 10~50% · 평균 4%↑ 빠름.
+    ///   마지막 1km 스퍼트는 2km 조건에 걸리지 않고, 점진 가속은 빌드업 판정이 먼저 가져간다.
+    static func isFastFinish(splits: [SplitData]) -> Bool {
+        let full = splits.filter { $0.distanceM >= 900 }.sorted { $0.id < $1.id }
+        let n = full.count
+        guard n >= 8 else { return false }
+        let bodyEnd = max(2, Int((Double(n) * 0.6).rounded(.down)))
+        let body = full[1..<bodyEnd].map(\.paceSecPerKm).sorted()
+        guard !body.isEmpty else { return false }
+        let ref = body[body.count / 2]
+        guard ref > 0 else { return false }
+
+        var k = 0
+        for sp in full.reversed() {
+            guard sp.paceSecPerKm <= ref * (1 - fastFinishSplitFrac) else { break }
+            k += 1
+        }
+        guard k >= 2 else { return false }
+        let finish = full.suffix(k)
+        let totalM = full.map(\.distanceM).reduce(0, +)
+        let finishM = finish.map(\.distanceM).reduce(0, +)
+        guard totalM > 0, finishM / totalM >= 0.10, finishM / totalM <= 0.50 else { return false }
+        let finishPace = finish.map(\.duration).reduce(0, +) / (finishM / 1000)
+        return finishPace <= ref * (1 - fastFinishGainFrac)
+    }
+
     /// 롱런 거리인가 — 분류기의 롱런 조건(8km 이상 + 직전 4주 거리 중앙값 × 1.20, 기록 부족 시 12km)과 같은 계산.
     /// 빌드업이 롱런 거리이기도 하면 화면에 "롱런 · 빌드업"으로 함께 보여주는 데 쓴다.
     static func isLongDistance(activity: Activity, history: [Activity]) -> Bool {

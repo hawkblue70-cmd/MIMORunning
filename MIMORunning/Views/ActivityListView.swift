@@ -293,7 +293,8 @@ private struct ActivityListContent: View {
                                             shoeName: shoeByWorkout[activity.id.uuidString],
                                             workoutType: manager.cachedWorkoutTypeForStats(for: activity.id),
                                             workoutTypeLabel: manager.cachedWorkoutTypeForStats(for: activity.id)?
-                                                .displayLabel(for: activity, history: manager.activities),
+                                                .displayLabel(for: activity, history: manager.activities,
+                                                              fastFinish: manager.isFastFinishRun(activity.id)),
                                             isProvisionalType: manager.isProvisionalWorkoutType(for: activity.id),
                                             raceName: raceDetector.matchFor(activityID: activity.id).flatMap {
                                                 $0.isConfirmed ? $0.raceName : nil

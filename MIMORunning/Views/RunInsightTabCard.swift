@@ -6029,7 +6029,9 @@ struct InsightExportSheet: View {
     private var exportWorkoutTypeLabel: String? {
         let wt = workoutTypeFn?(activity.id) ?? detail?.workoutType
         guard let wt else { return nil }
-        return wt.displayLabel(for: activity, history: history)
+        // 스플릿으로 바로 판정 — 목록·상세가 쓰는 저장 플래그와 같은 순수 함수
+        return wt.displayLabel(for: activity, history: history,
+                               fastFinish: detail.map { WorkoutTypeClassifier.isFastFinish(splits: $0.splits) } ?? false)
     }
 
     private var exportHeader: some View {

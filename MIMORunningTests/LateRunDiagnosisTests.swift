@@ -322,3 +322,41 @@ struct LateRunPointTests {
         #expect(LateRunDurabilityCard.shortName(pt(.held, 2, day: 2)) == "유지")
     }
 }
+
+@Suite("후반 페이스 롱런 인식", .korean)
+struct FastFinishLongRunTests {
+    private func run(_ paces: [Double]) -> [SplitData] {
+        paces.enumerated().map { i, p in
+            SplitData(id: i + 1, distanceM: 1000, duration: p, avgHeartRate: 150, avgCadence: 172,
+                      avgPower: nil, avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+        }
+    }
+
+    @Test func easyBodyThenGoalPaceFinish() {
+        // 16km: 6'30 × 12 → 5'50 × 4
+        #expect(WorkoutTypeClassifier.isFastFinish(splits: run(Array(repeating: 390, count: 12) + Array(repeating: 350, count: 4))))
+    }
+
+    @Test func lastKmSprintIsNot() {
+        #expect(!WorkoutTypeClassifier.isFastFinish(splits: run(Array(repeating: 390, count: 15) + [340])))
+    }
+
+    @Test func slightlyFasterFinishIsNot() {
+        // 마지막 3km가 2%만 빠름 — 연속 구간(3%) 조건에 못 미침
+        #expect(!WorkoutTypeClassifier.isFastFinish(splits: run(Array(repeating: 390, count: 13) + Array(repeating: 382, count: 3))))
+    }
+
+    @Test func evenRunIsNot() {
+        #expect(!WorkoutTypeClassifier.isFastFinish(splits: run(Array(repeating: 390, count: 16))))
+    }
+
+    @Test func shortRunIsNot() {
+        #expect(!WorkoutTypeClassifier.isFastFinish(splits: run([390, 390, 390, 390, 390, 350, 350])))
+    }
+
+    @Test func labelOnlyForEasyBodiedTypes() {
+        #expect(WorkoutType.fastFinishLabelTypes.contains(.longRun))
+        #expect(!WorkoutType.fastFinishLabelTypes.contains(.distanceRun))
+        #expect(!WorkoutType.fastFinishLabelTypes.contains(.buildUp))
+    }
+}
