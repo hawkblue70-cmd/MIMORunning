@@ -52,7 +52,7 @@ class HealthKitManager {
     @ObservationIgnored private var isFetchInProgress = false
     @ObservationIgnored private var pausedIntervalsCache: [UUID: [DateInterval]] = [:]
     @ObservationIgnored private var detailCache: [UUID: ActivityDetail] = [:] {
-        didSet { fatigueMemo = nil }   // 상세가 채워지면 롱런 피로 요약을 다시 계산한다
+        didSet { fatigueMemo = nil; lateRunMemo = nil }   // 상세가 채워지면 롱런 피로 요약·후반 기록을 다시 계산한다
     }
     /// 존 체류 시간 전용 캐시 — 분류 경로에서 계산한 hrZones를 버리지 않고 강도 분포(4주 합산)에 재사용. 지연 로드.
     @ObservationIgnored private var hrZoneOnlyCache: [String: [HRZoneData]]? = nil
@@ -69,6 +69,8 @@ class HealthKitManager {
     /// longRunFatigueSummaries 메모 — 같은 날·같은 활동 목록이면 재계산하지 않는다.
     /// 디스크 상세 캐시 디코드(경로 좌표 포함)가 러닝당 한 번씩 들어가기 때문.
     @ObservationIgnored private var fatigueMemo: (key: String, value: [MRLongRunFatigue])? = nil
+    /// lateRunHistory 메모 — fatigueMemo와 같은 이유(디스크 상세 디코드)
+    @ObservationIgnored private var lateRunMemo: (key: String, value: [LateRunPoint])? = nil
 
     // Codable proxies for disk serialization of time-series tuples
     private struct HRPoint: Codable { var offset: Double; var bpm: Int }
@@ -175,6 +177,39 @@ class HealthKitManager {
         }
         #endif
         fatigueMemo = (key, result)
+        return result
+    }
+
+    /// 최근 N주 60분 이상 러닝의 후반 진단 — 성장 탭 '후반 내구성' 카드.
+    /// 총평 '후반' 줄과 같은 함수·같은 폼 3단계(접지 시점 보정만 빠짐). 상세 캐시가 있는 러닝만 — HealthKit 재조회 없음.
+    func lateRunHistory(weeks: Int = LateRunPoint.windowWeeks, asOf: Date = Date()) -> [LateRunPoint] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: asOf)
+        let key = "\(today.timeIntervalSince1970)|\(weeks)|\(activities.count)|\(activities.first?.id.uuidString ?? "")|\(workoutTypeRevision)"
+        if let memo = lateRunMemo, memo.key == key { return memo.value }
+        let cutoff = cal.date(byAdding: .day, value: -7 * weeks, to: today) ?? today
+        let baseline = FormBaselineEngine.peekFromCache()
+        let result: [LateRunPoint] = activities
+            .filter { $0.type == .running && $0.date >= cutoff && $0.date <= asOf && $0.duration >= LateRunDiagnosis.minDurationMin * 60 }
+            .compactMap { a in
+                guard let det = detailFromCache(a.id) else { return nil }
+                let wt = cachedWorkoutTypeForStats(for: a.id) ?? det.workoutType
+                let mins = a.duration / 60
+                guard LateRunDiagnosis.applies(to: wt, durationMin: mins) else { return nil }
+                let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
+                                            baseline: baseline, formShifts: [], workoutType: wt)
+                guard let r = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
+                                                        altitudeProfile: det.altitudeProfile) else { return nil }
+                return LateRunPoint(id: a.id, date: a.date, distanceKm: a.distance / 1000, kind: r.kind,
+                                    decouplingPct: r.isFastFinish ? nil : r.decouplingPct,
+                                    efficiencyOnsetKm: r.efficiencyOnsetKm)
+            }
+            .sorted { $0.date < $1.date }
+        #if DEBUG
+        let counts = Dictionary(grouping: result, by: \.kind).mapValues(\.count)
+        print("[후반:기록] \(weeks)주 60분+ 진단 \(result.count)건 · \(counts.map { "\($0.key.rawValue) \($0.value)" }.sorted().joined(separator: " · "))")
+        #endif
+        lateRunMemo = (key, result)
         return result
     }
 

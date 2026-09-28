@@ -109,6 +109,48 @@ struct LateRunDiagnosisTests {
         #expect(r?.legMetrics.isEmpty == true)
     }
 
+    // MARK: 시작 지점 — 페이스보다 심박이 먼저
+
+    /// 20km: 11km부터 심박이 오르고(페이스 그대로), 17km부터 페이스가 떨어진다
+    private var driftingRun: [SplitData] {
+        (1...20).map { i in
+            let hr = i >= 11 ? 150 + (i - 10) * 3 : 150
+            let pace: Double = i >= 17 ? 400 : 375
+            return split(i, pace: pace, hr: hr)
+        }
+    }
+
+    @Test func efficiencySlipsBeforePace() throws {
+        let on = LateRunDiagnosis.onsets(full: driftingRun, altitudeProfile: [])
+        let e = try #require(on.efficiencyKm)
+        let p = try #require(on.paceKm)
+        #expect(e < p)
+        #expect(e >= 9 && e <= 12)
+        #expect(p >= 15 && p <= 17)
+    }
+
+    @Test func onsetShowsInEvidence() throws {
+        let r = try #require(diagnose(driftingRun, minutes: 130))
+        #expect(r.kind == .cardio)
+        let ev = LateRunDiagnosis.evidence(r)
+        #expect(ev.contains("심박 효율"))
+        #expect(ev.contains("페이스는"))
+    }
+
+    @Test func steadyRunHasNoOnset() {
+        let on = LateRunDiagnosis.onsets(full: (1...20).map { split($0) }, altitudeProfile: [])
+        #expect(on.efficiencyKm == nil)
+        #expect(on.paceKm == nil)
+    }
+
+    @Test func singleBadKmIsNotAnOnset() {
+        // 14km 한 구간만 느리고 심박 높음(신호 대기·언덕) — 3km 이동 평균 연속 3번 조건에 걸리지 않는다
+        let s = (1...20).map { i in i == 14 ? split(i, pace: 420, hr: 170) : split(i) }
+        let on = LateRunDiagnosis.onsets(full: s, altitudeProfile: [])
+        #expect(on.efficiencyKm == nil)
+        #expect(on.paceKm == nil)
+    }
+
     // MARK: 폼 유지력(대회 카드) — 다리 신호만
 
     @Test func legSignalMatchesDiagnosisLegs() throws {
@@ -236,5 +278,35 @@ struct MRLateRunPatternAdviceTests {
 
     @Test func heldPatternWithoutPlanSuggestsGoalPaceFinish() {
         #expect(keys([.held, .held, .cardio]).contains("lateHeld"))
+    }
+}
+
+@Suite("후반 내구성 카드 요약", .korean)
+struct LateRunPointTests {
+    private func pt(_ kind: LateRunDiagnosis.Kind, _ pct: Double?, day: Int) -> LateRunPoint {
+        LateRunPoint(id: UUID(), date: Date(timeIntervalSince1970: Double(day) * 86_400), distanceKm: 18,
+                     kind: kind, decouplingPct: pct, efficiencyOnsetKm: nil)
+    }
+
+    @Test func summaryPicksMostFrequentRecentKind() throws {
+        let pts = [pt(.held, 2, day: 1), pt(.cardio, 7, day: 8), pt(.legs, 3, day: 15), pt(.cardio, 6, day: 22)]
+        let s = try #require(LateRunPoint.summary(pts))
+        #expect(s.kind == .cardio)
+        #expect(s.count == 2)
+        #expect(LateRunPoint.sentence(pts)?.contains("심박이 먼저") == true)
+    }
+
+    @Test func singleRunHasNoSummary() {
+        #expect(LateRunPoint.summary([pt(.held, 2, day: 1)]) == nil)
+    }
+
+    @Test func fallingDecouplingIsImprovement() throws {
+        let pts = [pt(.cardio, 8, day: 1), pt(.cardio, 7, day: 8), pt(.held, 3, day: 15), pt(.held, 2, day: 22)]
+        #expect(try #require(LateRunPoint.trendDelta(pts)) > 0)
+        #expect(LateRunPoint.trendSentence(pts)?.contains("좋아지고") == true)
+    }
+
+    @Test func trendNeedsFourPoints() {
+        #expect(LateRunPoint.trendDelta([pt(.held, 2, day: 1), pt(.held, 3, day: 8), pt(.held, nil, day: 15)]) == nil)
     }
 }

@@ -32,6 +32,10 @@ enum LateRunDiagnosis {
         /// 다리 신호가 된 지표(피로 방향, 순서 고정: 케이던스 → 보폭 → 접지). 없으면 빈 배열.
         let legMetrics: [FormNarrative.Metric]
         let durationMin: Double
+        /// 심박 효율이 떨어지기 시작한 지점(km) — "벽은 갑자기 오지 않는다". 없으면 nil.
+        var efficiencyOnsetKm: Double? = nil
+        /// 페이스가 떨어지기 시작한 지점(km). 없으면 nil.
+        var paceOnsetKm: Double? = nil
         /// 후반 − 중반 페이스(초/km, 실측). 양수 = 느려짐.
         var paceChangeSec: Double { late.paceSecPerKm - mid.paceSecPerKm }
         /// 후반 − 중반 평균 심박. 한쪽이라도 없으면 nil.
@@ -119,8 +123,95 @@ enum LateRunDiagnosis {
         } else {
             kind = .held
         }
+        let on = onsets(full: full, altitudeProfile: altitudeProfile)
         return Result(kind: kind, mid: mid, late: late, decouplingPct: decoupling,
-                      legMetrics: legs, durationMin: durationMin)
+                      legMetrics: legs, durationMin: durationMin,
+                      efficiencyOnsetKm: on.efficiencyKm, paceOnsetKm: on.paceKm)
+    }
+
+    // MARK: - 시작 지점 — 페이스보다 심박이 먼저
+
+    /// 효율 하락 시작 문턱 — 기준 대비 3%. 후반 전체 판정(5%)보다 낮은 "앞선 신호" 문턱(임의로 정함)
+    static let onsetEfficiencyDropFrac = 0.03
+    /// 페이스 하락 시작 문턱 — 기준보다 10초/km 느림(폼 3단계 단계 간 페이스 차이와 같은 값)
+    static let onsetPaceDropSec = FormPhase.paceDeltaSec
+    /// 3km 이동 중앙값이 연속 3번 문턱을 넘어야 시작으로 본다 — 언덕 하나·신호 대기 하나로 시점을 잡지 않게
+    static let onsetWindow = 3
+    static let onsetPersist = 3
+
+    /// km별 효율(GAP 속도 ÷ 심박)과 페이스가 기준(15~45% 구간 중앙값 — 워밍업 뒤·후반 전)에서 벗어나기 시작한 지점.
+    /// 30% 지점 이후만 본다. 풀 스플릿 8개 미만·심박 없는 스플릿이 있으면 효율 시점은 nil.
+    static func onsets(full: [SplitData], altitudeProfile: [(distanceKm: Double, altitude: Double)])
+        -> (efficiencyKm: Double?, paceKm: Double?) {
+        let splits = full.sorted { $0.id < $1.id }
+        guard splits.count >= 8 else { return (nil, nil) }
+        let totalM = splits.map(\.distanceM).reduce(0, +)
+        guard totalM > 0 else { return (nil, nil) }
+        let segments = GradeAdjustedPace.gradeSegments(from: altitudeProfile)
+
+        var startM: [Double] = []
+        var cum = 0.0
+        for sp in splits { startM.append(cum); cum += sp.distanceM }
+
+        func gapScale(_ i: Int) -> Double {
+            let lo0 = startM[i], hi0 = startM[i] + splits[i].distanceM
+            var w = 0.0, c = 0.0
+            for seg in segments {
+                let lo = max(seg.start, lo0), hi = min(seg.end, hi0)
+                guard hi > lo else { continue }
+                w += seg.factor * (hi - lo); c += hi - lo
+            }
+            return c > 0 ? min(max(w / c, 0.7), 1.3) : 1
+        }
+        let pace = splits.map(\.paceSecPerKm)
+        let ef: [Double?] = splits.indices.map { i in
+            guard let hr = splits[i].avgHeartRate, hr > 0, pace[i] > 0 else { return nil }
+            return (1000 / (pace[i] * gapScale(i))) / Double(hr)
+        }
+        func frac(_ i: Int) -> Double { (startM[i] + splits[i].distanceM / 2) / totalM }
+        func median(_ v: [Double]) -> Double? {
+            guard !v.isEmpty else { return nil }
+            let s = v.sorted(); let m = s.count / 2
+            return s.count % 2 == 0 ? (s[m - 1] + s[m]) / 2 : s[m]
+        }
+        let refIdx = splits.indices.filter { frac($0) >= 0.15 && frac($0) < 0.45 }
+        guard refIdx.count >= 2 else { return (nil, nil) }
+        let refPace = median(refIdx.map { pace[$0] })
+        let refEF = median(refIdx.compactMap { ef[$0] })
+
+        /// i에서 끝나는 창부터 연속으로 문턱을 넘는 첫 지점(그 창 가운데 km의 시작)
+        func onset(_ breached: (Int) -> Bool?) -> Double? {
+            let first = splits.indices.first { frac($0) >= 0.30 && $0 >= onsetWindow - 1 } ?? splits.count
+            var i = first
+            while i < splits.count {
+                var ok = true
+                var j = i
+                while j < min(i + onsetPersist, splits.count) {
+                    guard let b = breached(j), b else { ok = false; break }
+                    j += 1
+                }
+                // 남은 창이 연속 조건보다 적으면(끝 무렵) 있는 만큼만 — 단, 최소 2개
+                if ok && j - i >= min(onsetPersist, 2) {
+                    let mid = i - onsetWindow / 2
+                    return startM[max(mid, 0)] / 1000
+                }
+                i += 1
+            }
+            return nil
+        }
+        /// 3km 이동 중앙값 — 평균이면 한 km의 이상치(신호 대기·언덕)가 창 3개를 연달아 끌어내린다
+        func rolling(_ v: [Double?], _ i: Int) -> Double? {
+            let w = v[(i - onsetWindow + 1)...i]
+            guard w.allSatisfy({ $0 != nil }) else { return nil }
+            return median(w.compactMap { $0 })
+        }
+        let effKm: Double? = refEF.flatMap { r in
+            onset { i in rolling(ef, i).map { $0 < r * (1 - onsetEfficiencyDropFrac) } }
+        }
+        let paceKm: Double? = refPace.flatMap { r in
+            onset { i in rolling(pace.map { Optional($0) }, i).map { $0 >= r + onsetPaceDropSec } }
+        }
+        return (effKm, paceKm)
     }
 
     /// 다리 신호만 — 대회 카드 '폼 유지력'·'거리별 폼 유지력' 표가 쓴다(시간 게이트 없음, 풀 스플릿 5개↑).
@@ -209,6 +300,7 @@ enum LateRunDiagnosis {
             }
             pieces.append(names.joined(separator: " "))
         }
+        if let o = onsetPiece(r) { pieces.append(o) }
         if (r.kind == .cardio || r.kind == .combined), let h = heatDeltaBpm, h >= RunSummary.heatNoteMinBpm {
             pieces.append(L.s("더위 +\(Int(h.rounded()))bpm", "heat +\(Int(h.rounded())) bpm"))
         }
@@ -216,6 +308,26 @@ enum LateRunDiagnosis {
             pieces.append(L.s("보급 기록이 없어 추정이에요", "estimated — no fueling data"))
         }
         return pieces.joined(separator: " · ")
+    }
+
+    /// 시작 지점 절 — 유지 날에는 말하지 않는다. 효율이 페이스보다 먼저(또는 페이스는 끝까지 유지)일 때
+    /// "심박 효율 22km부터↓ · 페이스 28km부터↓", 페이스만 떨어졌으면 "페이스 28km부터↓".
+    static func onsetPiece(_ r: Result) -> String? {
+        guard r.kind != .held else { return nil }
+        let L = AppLanguage.shared
+        func km(_ v: Double) -> String { String(format: "%.0f", v) }
+        switch (r.efficiencyOnsetKm, r.paceOnsetKm) {
+        case let (e?, p?) where e < p:
+            return L.s("심박 효율 \(km(e))km부터↓, 페이스는 \(km(p))km부터↓",
+                       "HR efficiency slipped from \(km(e)) km, pace from \(km(p)) km")
+        case let (e?, nil):
+            return L.s("심박 효율 \(km(e))km부터↓, 페이스는 유지",
+                       "HR efficiency slipped from \(km(e)) km while pace held")
+        case let (_, p?):
+            return L.s("페이스 \(km(p))km부터↓", "pace slipped from \(km(p)) km")
+        default:
+            return nil
+        }
     }
 
     /// 다음 행동 — 유형별 대책(영상 요지: 거리만 늘리지 말고 무너지는 원인에 맞춰 훈련을 나눈다).
@@ -257,5 +369,84 @@ enum LateRunDiagnosis {
             return L.s("초반을 더 편하게 시작하고, 긴 롱런 한 번보다 주간 거리를 꾸준히 쌓아 기본 지구력을 올려 보세요.",
                        "Start easier, and build base endurance with steady weekly volume rather than one big long run.")
         }
+    }
+}
+
+// MARK: - 기록 한 점 — 성장 탭 '후반 내구성' 카드
+
+struct LateRunPoint: Identifiable, Equatable {
+    static let windowWeeks = 16
+    /// 카드가 요약 문장·유형 줄에 쓰는 최근 러닝 수
+    static let recentCount = 6
+    /// 추세 문장 — 앞 절반 대 뒤 절반 평균 효율 하락률 차이가 이 이상(%p)이어야 "좋아짐/나빠짐"(임의로 정함)
+    static let trendDeltaPct = 1.5
+
+    let id: UUID
+    let date: Date
+    let distanceKm: Double
+    let kind: LateRunDiagnosis.Kind
+    /// 중반 대비 후반 효율 하락률(%). 후반 가속·심박 없음이면 nil(추세 차트에서 제외).
+    let decouplingPct: Double?
+    let efficiencyOnsetKm: Double?
+
+    /// 최근 러닝 요약 — 가장 많은 유형과 횟수. 동률이면 최근 쪽 유형.
+    static func summary(_ pts: [LateRunPoint]) -> (kind: LateRunDiagnosis.Kind, count: Int, total: Int)? {
+        let recent = Array(pts.suffix(recentCount))
+        guard recent.count >= 2 else { return nil }
+        var best: (LateRunDiagnosis.Kind, Int)? = nil
+        for p in recent.reversed() {
+            let c = recent.filter { $0.kind == p.kind }.count
+            if best == nil || c > best!.1 { best = (p.kind, c) }
+        }
+        return best.map { ($0.0, $0.1, recent.count) }
+    }
+
+    /// 효율 하락률 추세 — 앞 절반 평균 − 뒤 절반 평균(양수 = 좋아짐). 점 4개 미만이면 nil.
+    static func trendDelta(_ pts: [LateRunPoint]) -> Double? {
+        let v = pts.compactMap(\.decouplingPct)
+        guard v.count >= 4 else { return nil }
+        let h = v.count / 2
+        let early = v.prefix(h), late = v.suffix(v.count - h)
+        return early.reduce(0, +) / Double(early.count) - late.reduce(0, +) / Double(late.count)
+    }
+
+    /// 카드 요약 문장
+    static func sentence(_ pts: [LateRunPoint]) -> String? {
+        guard let s = summary(pts) else { return nil }
+        let L = AppLanguage.shared
+        let n = s.total, c = s.count
+        switch s.kind {
+        case .held:
+            return L.s("최근 롱런 \(n)번 중 \(c)번 후반까지 달리기를 남겼어요.",
+                       "In \(c) of your last \(n) long runs, you kept your running to the end.")
+        case .cardio:
+            return L.s("최근 롱런 \(n)번 중 \(c)번 심박이 먼저 올랐어요. 다리보다 심폐가 먼저 한계에 닿는 편이에요.",
+                       "In \(c) of your last \(n) long runs, HR rose first — your cardio tends to hit the limit before your legs.")
+        case .legs:
+            return L.s("최근 롱런 \(n)번 중 \(c)번 다리가 먼저 지쳤어요. 심폐보다 근지구력이 먼저 한계에 닿는 편이에요.",
+                       "In \(c) of your last \(n) long runs, legs tired first — muscular endurance tends to give out before cardio.")
+        case .energy:
+            return L.s("최근 롱런 \(n)번 중 \(c)번 후반에 힘이 빠졌어요. 보급을 점검해 볼 만해요.",
+                       "In \(c) of your last \(n) long runs, you ran low late — worth checking your fueling.")
+        case .combined:
+            return L.s("최근 롱런 \(n)번 중 \(c)번 다리와 심박이 함께 무너졌어요.",
+                       "In \(c) of your last \(n) long runs, legs and HR faded together.")
+        }
+    }
+
+    /// 추세 문장 — 효율 하락률이 줄면 후반 내구성이 좋아지는 것
+    static func trendSentence(_ pts: [LateRunPoint]) -> String? {
+        guard let d = trendDelta(pts) else { return nil }
+        let L = AppLanguage.shared
+        let n = String(format: "%.1f", abs(d))
+        if d >= trendDeltaPct {
+            return L.s("후반 효율 하락이 이전보다 \(n)%p 줄었어요 — 후반 내구성이 좋아지고 있어요.",
+                       "Late-run efficiency loss is down \(n) pts — your durability is improving.")
+        }
+        if d <= -trendDeltaPct {
+            return L.s("후반 효율 하락이 이전보다 \(n)%p 늘었어요. 최근 롱런 강도나 회복을 살펴보세요.",
+                       "Late-run efficiency loss is up \(n) pts. Check recent long-run intensity or recovery.")
+        }
+        return L.s("후반 효율 하락은 이전과 비슷해요.", "Late-run efficiency loss is about the same as before.")
     }
 }

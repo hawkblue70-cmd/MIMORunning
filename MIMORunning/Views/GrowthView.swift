@@ -109,6 +109,8 @@ struct GrowthView: View {
     @State private var runsCache: [Activity] = []
     /// 유형별 평소 강도 표 — 강도 입력이 바뀔 때만 다시 계산한다(body 평가 비용 회피).
     @State private var effortTypeRowsCache: [EffortBaseline.TypeSummary] = []
+    /// 후반 내구성 카드 — 최근 16주 60분+ 러닝의 후반 진단(상세 캐시 디코드라 body 밖에서 갱신)
+    @State private var lateRunPointsCache: [LateRunPoint] = []
     @State private var prEntriesCache: [PREntry] = []
     @State private var journeyMilestonesCache: [MilestoneEvent] = []
     @State private var thisWeekRunCountCache: Int = 0
@@ -225,6 +227,7 @@ struct GrowthView: View {
                                 .onChange(of: manager.workoutTypeRevision) { _, _ in
                                     engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w,
                                                         fatigue: manager.longRunFatigueSummaries())
+                                    lateRunPointsCache = manager.lateRunHistory()
                                 }
                             heatmapSection
                             weeklySection
@@ -241,6 +244,7 @@ struct GrowthView: View {
                             bodyChangeSectionView
                             gapSection
                             MRDriftView(drift: engine.drift)
+                            LateRunDurabilityCard(points: lateRunPointsCache)
                             prSection
                             journeySection
                             Spacer(minLength: 32)
@@ -263,6 +267,7 @@ struct GrowthView: View {
                         engine.computeBacktestIfNeeded()
                         engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w,
                                             fatigue: manager.longRunFatigueSummaries())
+                        lateRunPointsCache = manager.lateRunHistory()
                         if !engine.runs.isEmpty {
                             let gaps = Self.computeDisplayGaps(runs: engine.runs)
                             displayGaps = gaps
