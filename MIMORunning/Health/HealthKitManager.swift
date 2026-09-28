@@ -199,10 +199,12 @@ class HealthKitManager {
                 let wt = cachedWorkoutTypeForStats(for: a.id) ?? det.workoutType
                 let mins = a.duration / 60
                 guard LateRunDiagnosis.applies(to: wt, durationMin: mins, splits: det.splits,
-                                               pausedSpans: det.pausedSpans) else {
+                                               pausedSpans: det.pausedSpans,
+                                               isLongDistance: wt == .buildUp
+                                                   && WorkoutTypeClassifier.isLongDistance(activity: a, history: activities)) else {
                     #if DEBUG
                     // 유형(인터벌·빌드업·템포)으로 빠진 러닝은 끊김 이유를 찍지 않는다 — 끊김 때문에 빠진 것처럼 보이지 않게
-                    if ![.interval, .buildUp, .tempo].contains(wt),
+                    if ![.interval, .buildUp, .tempo].contains(wt) || wt == .buildUp && WorkoutTypeClassifier.isLongDistance(activity: a, history: activities),
                        let why = LateRunDiagnosis.interruptionReason(splits: det.splits, pausedSpans: det.pausedSpans) {
                         let df = DateFormatter(); df.dateFormat = "M/d"
                         print("[후반:제외] \(df.string(from: a.date)) \(String(format: "%.1f", a.distance / 1000))km · \(why)")
@@ -213,7 +215,8 @@ class HealthKitManager {
                 let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                             baseline: baseline, formShifts: [], workoutType: wt)
                 guard let r = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
-                                                        baseline: baseline, altitudeProfile: det.altitudeProfile) else { return nil }
+                                                        baseline: baseline, plannedFastFinish: wt == .buildUp,
+                                                        altitudeProfile: det.altitudeProfile) else { return nil }
                 return LateRunPoint(id: a.id, date: a.date, distanceKm: a.distance / 1000, kind: r.kind,
                                     decouplingPct: r.isFastFinish ? nil : r.decouplingPct,
                                     efficiencyOnsetKm: r.efficiencyOnsetKm, isFastFinish: r.isFastFinish)

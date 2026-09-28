@@ -45,7 +45,11 @@ enum LateRunDiagnosis {
             guard let a = mid.avgHR, let b = late.avgHR else { return nil }
             return b - a
         }
-        var isFastFinish: Bool { paceChangeSec <= -LateRunDiagnosis.fastFinishSec }
+        /// 빌드업처럼 후반 가속이 계획인 러닝 — 조금이라도 빨라졌으면 가속으로 본다
+        var plannedFastFinish: Bool = false
+        var isFastFinish: Bool {
+            paceChangeSec <= -LateRunDiagnosis.fastFinishSec || (plannedFastFinish && paceChangeSec < 0)
+        }
     }
 
     /// 총평·조언이 진단하는 최소 시간 — 영상의 "후반 벽"은 장시간 러닝의 이야기다.
@@ -70,11 +74,15 @@ enum LateRunDiagnosis {
     /// **대회는 항상, 연습 러닝은 끊김이 없을 때만**(사용자 결정 2026-09-28): 연습 장거리는 신호 대기·급수·걷기로
     /// 중간에 끊기는 일이 많고, 끊긴 뒤엔 심박이 떨어졌다 다시 오르고 페이스가 흔들려 중반 대 후반 비교가 피로를 말하지 않는다.
     /// 대회 카드는 이 게이트 없이 `diagnose`를 직접 부른다(짧은 대회는 카드가 자체 규칙).
+    /// - isLongDistance: 롱런 거리인가(`WorkoutTypeClassifier.isLongDistance`) — **롱런 빌드업은 포함**(사용자 결정 2026-09-28:
+    ///   영상이 권하는 후반 대비 훈련이라 "지쳐서 속도를 올려도 폼이 버티나"를 본다). 짧은 빌드업은 제외.
+    ///   빌드업은 `diagnose(plannedFastFinish: true)`로 불러 후반 가속을 심박 신호로 읽지 않게 한다.
     static func applies(to type: WorkoutType, durationMin: Double,
-                        splits: [SplitData], pausedSpans: [PausedSpan]) -> Bool {
+                        splits: [SplitData], pausedSpans: [PausedSpan], isLongDistance: Bool = false) -> Bool {
         guard durationMin >= minDurationMin else { return false }
         switch type {
-        case .interval, .buildUp, .tempo: return false
+        case .interval, .tempo: return false
+        case .buildUp: return isLongDistance && isContinuous(splits: splits, pausedSpans: pausedSpans)
         case .race: return true
         default: return isContinuous(splits: splits, pausedSpans: pausedSpans)
         }
@@ -177,8 +185,9 @@ enum LateRunDiagnosis {
     ///   쿨다운·정지일 수 있음), 심박이 없어 유지를 말할 수 없으면 nil.
     ///   - baseline: 폼 기준선. 폼 3단계가 판정하지 못한 페이스(평소 범위 밖으로 느려진 대회 후반 등)에서
     ///     기준선 구간들의 페이스→폼 추세로 "느려진 속도로 설명되는 몫"을 빼고 다리 신호를 본다(`trendLegs`).
+    ///   - plannedFastFinish: 빌드업 — 후반이 조금이라도 빨라졌으면 계획된 가속(심박 신호 제외)
     static func diagnose(splits: [SplitData], durationMin: Double, form: FormPhase.Result?,
-                         baseline: RunningFormBaseline? = nil,
+                         baseline: RunningFormBaseline? = nil, plannedFastFinish: Bool = false,
                          altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Result? {
         let full = splits.filter { $0.distanceM >= 900 }
         guard let p = FormPhase.phases(full) else { return nil }
@@ -201,7 +210,8 @@ enum LateRunDiagnosis {
         let legs = legSig?.metrics ?? []
 
         let paceChange = late.paceSecPerKm - mid.paceSecPerKm
-        let fastFinish = paceChange <= -fastFinishSec
+        // 빌드업은 가속이 계획 — 10초 문턱 아래의 완만한 가속도 가속으로 봐 심박 신호를 막는다
+        let fastFinish = paceChange <= -fastFinishSec || (plannedFastFinish && paceChange < 0)
         // 심박이 함께 내려갔으면(3bpm↓) 효율 하락은 심박 드리프트가 아니라 페이스 붕괴(벽) — 심박 신호로 보지 않는다.
         // 예: 풀코스 6'41→8'32 · 심박 155→147 → 효율 16% 하락이지만 "심박이 먼저"가 아니다.
         let hrFell: Bool = {
@@ -232,7 +242,8 @@ enum LateRunDiagnosis {
         let on = onsets(full: full, altitudeProfile: altitudeProfile)
         return Result(kind: kind, mid: mid, late: late, decouplingPct: decoupling,
                       legMetrics: legs, legMethod: legSig?.method, durationMin: durationMin,
-                      efficiencyOnsetKm: on.efficiencyKm, paceOnsetKm: on.paceKm)
+                      efficiencyOnsetKm: on.efficiencyKm, paceOnsetKm: on.paceKm,
+                      plannedFastFinish: plannedFastFinish)
     }
 
     // MARK: - 시작 지점 — 페이스보다 심박이 먼저

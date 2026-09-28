@@ -239,12 +239,12 @@ struct GrowthView: View {
                             if !effortTypeRowsCache.isEmpty {
                                 EffortTypeBaselineCard(rows: effortTypeRowsCache)
                             }
+                            LateRunDurabilityCard(points: lateRunPointsCache)
                             metricTrendsSection
                             MRHealthMetricsView(m: engine.healthMetrics)
                             bodyChangeSectionView
                             gapSection
                             MRDriftView(drift: engine.drift)
-                            LateRunDurabilityCard(points: lateRunPointsCache)
                             prSection
                             journeySection
                             Spacer(minLength: 32)

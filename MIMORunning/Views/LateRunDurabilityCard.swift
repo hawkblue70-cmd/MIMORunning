@@ -83,8 +83,8 @@ struct LateRunDurabilityCard: View {
                     }
                 }
 
-                Text(L.s("최근 \(LateRunPoint.windowWeeks)주 60분 이상 러닝 \(points.count)회 · 연습은 걸었거나 멈춘 뒤 페이스가 이어지지 않은 러닝 제외(대회는 포함) · 인터벌·빌드업·템포 제외 · 5% 아래면 후반까지 유지 · 가속 = 후반 10초/km 이상 빨라짐(차트 제외)",
-                         "Last \(LateRunPoint.windowWeeks) weeks · \(points.count) runs over 60 min · training runs with walking or a stop that broke the pace excluded (races included) · excl. intervals, build-ups, tempo · under 5% = held · Faster = late 10+ s/km quicker (not charted)"))
+                Text(L.s("최근 \(LateRunPoint.windowWeeks)주 60분 이상 러닝 \(points.count)회 · 연습은 걸었거나 멈춘 뒤 페이스가 이어지지 않은 러닝 제외(대회는 포함) · 인터벌·템포·짧은 빌드업 제외 · 5% 아래면 후반까지 유지 · 가속 = 후반 10초/km 이상 빨라짐(차트 제외)",
+                         "Last \(LateRunPoint.windowWeeks) weeks · \(points.count) runs over 60 min · training runs with walking or a stop that broke the pace excluded (races included) · excl. intervals, tempo, short build-ups · under 5% = held · Faster = late 10+ s/km quicker (not charted)"))
                     .font(.system(size: 11))
                     .foregroundStyle(Color.mrInk3)
                     .fixedSize(horizontal: false, vertical: true)

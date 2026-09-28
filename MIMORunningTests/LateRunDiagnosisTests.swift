@@ -150,6 +150,16 @@ struct LateRunDiagnosisTests {
         #expect(diagnose(run(latePace: 420, lateHR: 138), minutes: 75) == nil)
     }
 
+    @Test func gentleBuildUpIsNotCardio() throws {
+        // 롱런 빌드업: 후반 5초/km만 빨라졌는데 심박 150 → 162 — 가속 문턱(10초) 아래라도 계획된 가속
+        let s = run(latePace: 370, lateHR: 162)
+        let plain = try #require(diagnose(s))
+        #expect(plain.kind == .cardio)
+        let r = try #require(LateRunDiagnosis.diagnose(splits: s, durationMin: 100, form: form(s), plannedFastFinish: true))
+        #expect(r.kind == .held)
+        #expect(r.isFastFinish)
+    }
+
     @Test func fastFinishIsNotCardio() throws {
         // 후반 6'15 → 5'45, 심박 150 → 168 — 계획된 가속
         let r = try #require(diagnose(run(latePace: 345, lateHR: 168)))
@@ -248,7 +258,8 @@ struct LateRunDiagnosisTests {
         #expect(applies(.race, 90))
         #expect(!applies(.longRun, 59))
         #expect(!applies(.interval, 90))
-        #expect(!applies(.buildUp, 90))
+        #expect(!applies(.buildUp, 90))   // 짧은 빌드업
+        #expect(LateRunDiagnosis.applies(to: .buildUp, durationMin: 100, splits: run(), pausedSpans: [], isLongDistance: true))
         #expect(!applies(.tempo, 90))
     }
 
