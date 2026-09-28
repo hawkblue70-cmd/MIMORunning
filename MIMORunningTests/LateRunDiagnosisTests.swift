@@ -267,8 +267,9 @@ struct LateRunDiagnosisTests {
         #expect(applies(.longRun, 107, steady16(), pauses: [PausedSpan(start: 420, end: 827)]))
     }
 
-    @Test func stopOverFifteenMinutesExcludes() {
-        #expect(!applies(.longRun, 107, steady16(), pauses: [PausedSpan(start: 1800, end: 2800)]))
+    @Test func stopOverTenMinutesExcludes() {
+        #expect(!applies(.longRun, 107, steady16(), pauses: [PausedSpan(start: 1800, end: 2460)]))
+        #expect(applies(.longRun, 107, steady16(), pauses: [PausedSpan(start: 1800, end: 2340)]))
     }
 
     @Test func stopThenMuchSlowerExcludes() {

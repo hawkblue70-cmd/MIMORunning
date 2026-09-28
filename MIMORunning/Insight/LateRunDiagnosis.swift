@@ -85,8 +85,8 @@ enum LateRunDiagnosis {
     /// 멈춤 허용 — 멈춘 길이가 아니라 **걸었나·다시 같은 페이스로 이어 뛰었나**로 본다(사용자 결정 2026-09-28).
     /// 실데이터: 끊김 5회 모두 화장실 정지 3~7분, 걷기 없음. 멈춘 동안엔 심박·페이스·지면접촉·케이던스가 유지되다
     /// 뚝 끊기고 다시 뛰면 원래대로 돌아온다 — 걷기(계속 하강)와 다르다.
-    /// 15분 넘게 쉬면 사실상 두 번 나눠 뛴 러닝이라 제외(임의로 정함).
-    static let maxStopSec = 900.0
+    /// 10분 넘게 쉬면 제외(사용자 결정 2026-09-28 — 화장실 3~7분은 들어오고 그보다 긴 휴식은 흐름이 끊긴 것).
+    static let maxStopSec = 600.0
     /// 이 이하의 멈춤은 다시 뛴 뒤 페이스를 따지지 않는다(신호 대기·급수)
     static let shortStopSec = 60.0
     /// 다시 뛴 뒤 2km 평균이 멈추기 전 2km보다 이만큼 이상 느리면 흐름이 끊긴 것(임의로 정함)
@@ -96,7 +96,7 @@ enum LateRunDiagnosis {
     /// 일시정지 없이 서거나 걸은 km — 러닝 전체 km 중앙값보다 이만큼 느리면 끊김 후보(임의로 정함)
     static let breakSplitFactor = 1.30
 
-    /// 끊김 없는 러닝인가 — 15분 넘게 멈추거나, 1분 넘게 멈춘 뒤 페이스가 이어지지 않거나, 걸은 km가 있으면 false.
+    /// 끊김 없는 러닝인가 — 10분 넘게 멈추거나, 1분 넘게 멈춘 뒤 페이스가 이어지지 않거나, 걸은 km가 있으면 false.
     /// 일시정지 기록이 없는 옛 캐시는 km 규칙만 본다.
     static func isContinuous(splits: [SplitData], pausedSpans: [PausedSpan]) -> Bool {
         interruptionReason(splits: splits, pausedSpans: pausedSpans) == nil
@@ -141,7 +141,7 @@ enum LateRunDiagnosis {
     static let walkPaceFactor = 1.10
 
     /// 첫 km를 뺀 km 중 끊김 흔적이 있는 첫 km 번호. 없으면 nil.
-    /// ① 중앙값의 1.3배보다 느림 — 단, 케이던스 유지(서 있었음)·15분 안·다시 뛴 뒤 페이스 이어짐이면 통과
+    /// ① 중앙값의 1.3배보다 느림 — 단, 케이던스 유지(서 있었음)·10분 안·다시 뛴 뒤 페이스 이어짐이면 통과
     /// ② 케이던스·심박이 함께 떨어지고 10%↑ 느림(짧게 걸음)
     static func slowBreakKm(_ splits: [SplitData]) -> Int? {
         let full = splits.filter { $0.distanceM >= 900 }.sorted { $0.id < $1.id }
@@ -155,7 +155,7 @@ enum LateRunDiagnosis {
         let medHR = median(full.compactMap { $0.avgHeartRate.map(Double.init) })
         return full.dropFirst().first { sp in
             if sp.paceSecPerKm > med * breakSplitFactor {
-                // 워치를 안 멈추고 선 km — 달린 부분 케이던스가 유지됐고, 선 시간(초과분)이 15분 안이고, 다시 뛴 뒤 페이스가 이어지면 통과
+                // 워치를 안 멈추고 선 km — 달린 부분 케이던스가 유지됐고, 선 시간(초과분)이 10분 안이고, 다시 뛴 뒤 페이스가 이어지면 통과
                 if let c = sp.avgCadence, let mc = medCad, Double(c) >= mc * (1 - stopCadenceHoldFrac),
                    (sp.paceSecPerKm - med) * sp.distanceM / 1000 <= maxStopSec,
                    let i = full.firstIndex(where: { $0.id == sp.id }),
