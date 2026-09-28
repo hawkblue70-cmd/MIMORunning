@@ -264,7 +264,8 @@ func mrBuildAdvice(runs: [MRWorkout],
     // 롱런 후반 패턴(`LateRunDiagnosis` 최근 3회 중 2회) — 다리형은 내구성 조언과 같은 주제라 거기로 합친다
     let late = MRLateRunPattern.aggregate(fatigue: fatigue, asOf: asOf)
     #if DEBUG
-    print("[후반:패턴] 진단 \(late.evaluated)건 · 반복 유형 \(late.dominant?.rawValue ?? "없음")(\(late.dominantCount)회)")
+    // 성장 탭이 롱런 요약을 넘기기 전(빈 배열)의 조언 계산은 찍지 않는다 — "진단 0건"이 여러 줄 반복되는 소음
+    if !fatigue.isEmpty { print("[후반:패턴] 진단 \(late.evaluated)건 · 반복 유형 \(late.dominant?.rawValue ?? "없음")(\(late.dominantCount)회)") }
     #endif
     var durabilityShown = false
     if suppression == nil, !verdict.triggered, late.dominant == .legs {
