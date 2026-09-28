@@ -384,6 +384,16 @@ struct MRLateRunPatternAdviceTests {
                                  log: MRAdviceLog(), asOf: Date()).map(\.key))
     }
 
+    @Test func longBuildUpCountsForPatternNotS1() {
+        // 롱런 빌드업 2회 + 일반 롱런 1회 — 빌드업은 후반 패턴에는 세고 S1 평가에서는 빠진다
+        var b1 = fatigue(.legs, daysAgo: 0); b1.countsForS1 = false
+        var b2 = fatigue(.legs, daysAgo: 7); b2.countsForS1 = false
+        let v = MRLateRunPattern.aggregate(fatigue: [b1, b2, fatigue(.held, daysAgo: 14)], asOf: Date())
+        #expect(v.dominant == .legs)
+        let s1 = MRDurabilityCheck.aggregate(fatigue: [b1, b2], runs: runs(), maxHR: nil, asOf: Date())
+        #expect(s1.evaluated == 0)
+    }
+
     @Test func twoOfThreeDecidesPattern() {
         let v = MRLateRunPattern.aggregate(fatigue: [fatigue(.cardio, daysAgo: 0), fatigue(.legs, daysAgo: 7),
                                                      fatigue(.cardio, daysAgo: 14)], asOf: Date())

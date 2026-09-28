@@ -150,7 +150,11 @@ class HealthKitManager {
             guard let det = detailFromCache(a.id) else { nNoDetail += 1; return nil }
             guard !det.routeCoordinates.isEmpty else { nIndoor += 1; return nil }          // 야외만
             let wt = cachedWorkoutTypeForStats(for: a.id) ?? det.workoutType
-            guard MRDurabilityCheck.isEligibleLongRun(distanceKm: km, durationMin: mins,
+            // 롱런 빌드업은 후반 패턴용으로만 들어온다(S1 제외) — 롱런 자격은 같은 거리·시간 기준
+            let isLongBuildUp = wt == .buildUp
+                && MRDurabilityCheck.isEligibleLongRun(distanceKm: km, durationMin: mins,
+                                                       longest16wKm: longest16w, workoutType: .longRun)
+            guard isLongBuildUp || MRDurabilityCheck.isEligibleLongRun(distanceKm: km, durationMin: mins,
                                                       longest16wKm: longest16w,
                                                       workoutType: wt) else { nType += 1; return nil }
             var s = MRDurabilityCheck.summarize(id: a.id, start: a.date,
@@ -158,11 +162,14 @@ class HealthKitManager {
                                                 splits: det.splits)
             if s == nil { nNoSplits += 1 }
             // 후반 진단 — 총평 '후반' 줄과 같은 함수·같은 폼 3단계. 여기선 접지 시점 보정(formShifts)만 빠진다(±15ms 제한 보정).
-            if s != nil, LateRunDiagnosis.applies(to: wt, durationMin: mins, splits: det.splits, pausedSpans: det.pausedSpans) {
+            s?.countsForS1 = !isLongBuildUp
+            if s != nil, LateRunDiagnosis.applies(to: wt, durationMin: mins, splits: det.splits, pausedSpans: det.pausedSpans,
+                                                  isLongDistance: isLongBuildUp) {
                 let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                             baseline: formBaseline, formShifts: [], workoutType: wt)
                 s?.lateKind = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
-                                                        baseline: formBaseline, altitudeProfile: det.altitudeProfile)?.kind
+                                                        baseline: formBaseline, plannedFastFinish: isLongBuildUp,
+                                                        altitudeProfile: det.altitudeProfile)?.kind
             }
             return s
         }

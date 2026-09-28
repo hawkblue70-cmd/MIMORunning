@@ -31,6 +31,9 @@ struct MRLongRunFatigue: Codable, Sendable, Identifiable {
     let cadenceCoverage: Double    // 케이던스 있는 스플릿 비율 (0~1)
     /// 후반 진단(`LateRunDiagnosis`) 유형 — 요약을 만드는 쪽(HealthKitManager)이 채운다. 진단 불가면 nil.
     var lateKind: LateRunDiagnosis.Kind? = nil
+    /// S1(후반 케이던스 붕괴) 판정에 쓰나 — 롱런 빌드업은 후반 패턴(`MRLateRunPattern`)에만 쓰고 S1에선 뺀다
+    /// (빌드업은 속도를 올리니 케이던스가 오르는 게 정상이라 S1 비교가 성립하지 않는다).
+    var countsForS1: Bool = true
 
     var cadenceDropPct: Double {
         guard q1Cadence > 0 else { return 0 }
@@ -128,7 +131,7 @@ enum MRDurabilityCheck {
         let cal = Calendar.current
         let today = cal.startOfDay(for: asOf)
         let cutoff = cal.date(byAdding: .day, value: -windowDays, to: today) ?? today
-        let recent = fatigue.filter { $0.date >= cutoff && $0.date <= today }
+        let recent = fatigue.filter { $0.countsForS1 && $0.date >= cutoff && $0.date <= today }
                             .sorted { $0.start > $1.start }
 
         var results: [(f: MRLongRunFatigue, s1: Bool)] = []
