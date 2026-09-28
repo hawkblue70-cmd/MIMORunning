@@ -206,4 +206,109 @@ struct MRRhythmContext: Equatable {
     /// 최근 14일 안에 끝난 대회 — 이름·날짜. 없으면 nil.
     var recentRaceName: String? = nil
     var recentRaceDate: Date? = nil
+
+    static let longRunEveryDays = 7
+    /// ⚠ 코칭 관행 — 대회 거리별로 나누지 않는다
+    static let postRaceEasyDays = 14
+    static let minUsualLongKm = 8.0
+}
+
+/// 평소 롱런 — 이번 주 앞의 4주(월~일) 각 주 최장 러닝의 중앙값. 러닝 있는 주 2개 미만이거나 8km 미만이면 nil.
+/// 늘리지 않는다 — 대회가 없을 때 목적은 유지다(설계 9.1).
+func mrUsualLongRunKm(runs: [MRWorkout], asOf: Date, calendar: Calendar = .current) -> Double? {
+    let thisMonday = MRPlanGovernance.weekMonday(of: asOf, calendar: calendar)
+    guard let from = calendar.date(byAdding: .day, value: -28, to: thisMonday) else { return nil }
+    var byWeek: [Date: Double] = [:]
+    for w in runs where w.start >= from && w.start < thisMonday {
+        let mon = MRPlanGovernance.weekMonday(of: w.start, calendar: calendar)
+        byWeek[mon] = max(byWeek[mon] ?? 0, w.distanceKm ?? 0)
+    }
+    guard byWeek.count >= 2 else { return nil }
+    let l = mrMedian(Array(byWeek.values))
+    return l >= MRRhythmContext.minUsualLongKm ? l : nil
+}
+
+/// 대회 계획이 오늘을 덮지 않을 때 — 마지막으로 한 날을 보고 빠진 것을 권한다(설계 9.4).
+/// 강도 OK: 대회 뒤 14일 → 이지 · 롱런 7일↑ + 습관 요일(또는 습관 없음) → 롱런 · 포인트 간격↑ + 롱런 요일 전날 아님 → 포인트(번갈이) · 그 외 이지.
+/// 이지·휴식 날은 세션 없이 리듬 상태만. 이지 거리는 말하지 않는다(주간 목표가 없다).
+func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [MRWorkout],
+                        hardStarts: Set<Date>, asOf: Date, calendar: Calendar = .current) -> MRSessionSuggestion? {
+    let L = AppLanguage.shared
+    let today = calendar.startOfDay(for: asOf)
+    let past = runs.filter { $0.start < today }
+    func daysAgo(_ d: Date) -> Int { calendar.dateComponents([.day], from: calendar.startOfDay(for: d), to: today).day ?? 0 }
+    let md: DateFormatter = { let f = DateFormatter(); f.dateFormat = "M/d"; return f }()
+
+    // 대회 뒤 2주 — 포인트도 롱런도 권하지 않는다
+    if let rd = ctx.recentRaceDate, (0..<MRRhythmContext.postRaceEasyDays).contains(daysAgo(rd)) {
+        let n = daysAgo(rd)
+        let name = ctx.recentRaceName ?? L.s("대회", "the race")
+        let note = L.s("\(name) \(n)일 뒤 — 2주는 이지로 회복해요.", "\(n) days after \(name) — keep two weeks easy to recover.")
+        return MRSessionSuggestion(session: level == .go ? L.s("이지런", "Easy run") : nil, progress: "", whyNote: note)
+    }
+
+    let usualLong = mrUsualLongRunKm(runs: runs, asOf: asOf, calendar: calendar)
+    func isLong(_ w: MRWorkout) -> Bool {
+        guard let l = usualLong else { return false }
+        return (w.distanceKm ?? 0) >= l * MRPlanWeekContext.longRunDoneFraction
+    }
+    let lastLong = past.filter(isLong).max { $0.start < $1.start }
+    let lastPoint = past
+        .filter { !isLong($0) }
+        .filter { w in
+            hardStarts.contains(w.start)
+                || (ctx.pointTypes[w.start].map { MRPlanPoint.pointWorkoutTypes.contains($0) } ?? false)
+        }
+        .max { $0.start < $1.start }
+    let interval = mrPointIntervalDays(runsPerWeek: ctx.runsPerWeek)
+
+    var pieces: [String] = []
+    if usualLong != nil, let l = lastLong {
+        pieces.append(L.s("마지막 롱런 \(daysAgo(l.start))일 전", "last long run \(daysAgo(l.start)) days ago"))
+    }
+    if interval != nil, let p = lastPoint {
+        pieces.append(L.s("마지막 포인트 \(daysAgo(p.start))일 전", "last workout \(daysAgo(p.start)) days ago"))
+    }
+    let progress = pieces.joined(separator: " · ")
+
+    guard level == .go else { return MRSessionSuggestion(session: nil, progress: progress) }
+
+    let habitual = mrHabitualLongRunWeekday(runs: runs, asOf: asOf, calendar: calendar)
+    let todayWD = calendar.component(.weekday, from: asOf)
+    let longDue = usualLong != nil
+        && (lastLong.map { daysAgo($0.start) >= MRRhythmContext.longRunEveryDays } ?? true)
+    if let l = usualLong, longDue, habitual == nil || habitual == todayWD {
+        return MRSessionSuggestion(session: L.s("롱런 \(Int(l.rounded()))km", "Long run \(Int(l.rounded()))km"),
+                                   progress: progress, isLongRun: true)
+    }
+
+    let tomorrowWD = todayWD % 7 + 1
+    if let iv = interval, let paces = ctx.paces, habitual != tomorrowWD,
+       lastPoint.map({ daysAgo($0.start) >= iv }) ?? true {
+        let lastType = lastPoint.flatMap { ctx.pointTypes[$0.start] }
+        let weekly = past.filter { daysAgo($0.start) <= 28 }.compactMap(\.distanceKm).reduce(0, +) / 4
+        func make(_ kind: MRPlanPoint.Kind) -> MRPlanPoint? {
+            let pace = kind == .speed ? paces.fiveK : (kind == .tempo ? paces.tempo : paces.half)
+            return MRPlanPoint.make(kind: kind, weeklyKm: weekly, longRunKm: usualLong ?? 0,
+                                    raceDistanceM: nil, paceSecPerKm: pace)
+        }
+        // 빌드업이 안 되면(평소 롱런이 짧음) 속도로
+        if let pt = make(MRPlanPoint.nextKind(after: lastType)) ?? make(.speed) {
+            let why: String
+            if let lp = lastPoint {
+                let label = lastType.map { " " + $0.koreanLabel } ?? ""
+                why = L.s("지난 포인트는 \(md.string(from: lp.start))\(label), \(daysAgo(lp.start))일 전이에요.",
+                          "Last workout:\(label) \(daysAgo(lp.start)) days ago.")
+            } else {
+                why = L.s("최근 포인트가 없어요.", "No recent workout.")
+            }
+            return MRSessionSuggestion(session: L.s("포인트 추천: \(pt.text)", "Workout: \(pt.text)"),
+                                       progress: progress, isPoint: true, whyNote: why)
+        }
+    }
+
+    let note: String? = longDue
+        ? habitual.map { L.s("여유는 \(mrWeekdayName($0)) 롱런에 쓰세요.", "Save it for \(mrWeekdayName($0))'s long run.") }
+        : nil
+    return MRSessionSuggestion(session: L.s("이지런", "Easy run"), progress: progress, whyNote: note)
 }

@@ -364,10 +364,15 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         r.why = why
         r.data = data
         // 대회 훈련 계획이 있으면 오늘 세션·이번 주 진행을 붙인다 — 종류는 플랜이 정한다
-        let s: MRSessionSuggestion? = planWeek.flatMap {
-            mrSessionSuggestion(level: level, plan: $0, runs: runs, asOf: asOf,
-                                hardStarts: hardRunStarts, pointTypes: pointRunTypes, calendar: calendar)
-        }
+        let s: MRSessionSuggestion? = planWeek != nil
+            ? planWeek.flatMap {
+                mrSessionSuggestion(level: level, plan: $0, runs: runs, asOf: asOf,
+                                    hardStarts: hardRunStarts, pointTypes: pointRunTypes, calendar: calendar)
+              }
+            : rhythm.flatMap {
+                mrRhythmSuggestion(level: level, ctx: $0, runs: runs, hardStarts: hardRunStarts,
+                                   asOf: asOf, calendar: calendar)
+              }
         if let s {
             r.session = s.session
             r.progress = s.progress.isEmpty ? nil : s.progress

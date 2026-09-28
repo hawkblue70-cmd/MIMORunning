@@ -973,7 +973,7 @@ final class MREngineStore: ObservableObject {
                            planPhase: governing?.week.phase,
                            hardRunStarts: hardRunStarts,
                            planWeek: governing.map { planWeekContext(plan: $0.plan, week: $0.week, now: now) },
-                           pointRunTypes: pointRunTypes)
+                           pointRunTypes: pointRunTypes, rhythm: governing == nil ? rhythmContext(now: now) : nil)
         let line = prepLine(for: card, now: now)
         card?.prepLine = line
         return card
@@ -1011,6 +1011,27 @@ final class MREngineStore: ObservableObject {
                                  racePaceSegmentMin: isRacePace ? mrRacePaceSegmentMinutes(longRunMin: week.longRunMin) : nil,
                                  daysToRace: days,
                                  easyKm: parsed.easyKm, point: week.point)
+    }
+
+    /// 대회 계획이 오늘을 덮지 않을 때의 2주 리듬 입력(설계 9절). 최근 14일 대회는 등록 대회 우선, 없으면 저장 유형 '대회'.
+    private func rhythmContext(now: Date) -> MRRhythmContext {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: now)
+        func within14(_ d: Date) -> Bool {
+            let n = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: today).day ?? -1
+            return n >= 0 && n < MRRhythmContext.postRaceEasyDays
+        }
+        let registered = userInput.races.filter { within14($0.date) }.max { $0.date < $1.date }
+        let typed = pointRunTypes.filter { $0.value == .race && within14($0.key) }.keys.max()
+        var c = MRRhythmContext(runsPerWeek: profile.runsPerWeek,
+                                paces: mrPointPaces(halfEquivMin: halfEquivMin),
+                                pointTypes: pointRunTypes)
+        if let r = registered {
+            c.recentRaceName = r.name; c.recentRaceDate = r.date
+        } else if let t = typed {
+            c.recentRaceName = AppLanguage.shared.s("대회", "the race"); c.recentRaceDate = t
+        }
+        return c
     }
 
     /// 홈이 훈련일지 확정 주차(스냅샷)를 넣어 준다 — 나 탭을 열기 전에도 아침 제안이 일지와 같은 주차 문구를 읽게.
