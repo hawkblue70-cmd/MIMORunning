@@ -972,7 +972,8 @@ final class MREngineStore: ObservableObject {
                            heatHR: heatHR, hrvNights: hrvNights,
                            planPhase: governing?.week.phase,
                            hardRunStarts: hardRunStarts,
-                           planWeek: governing.map { planWeekContext(plan: $0.plan, week: $0.week, now: now) })
+                           planWeek: governing.map { planWeekContext(plan: $0.plan, week: $0.week, now: now) },
+                           pointRunTypes: pointRunTypes)
         let line = prepLine(for: card, now: now)
         card?.prepLine = line
         return card
@@ -1009,7 +1010,7 @@ final class MREngineStore: ObservableObject {
                                  racePaceSecPerKm: pace,
                                  racePaceSegmentMin: isRacePace ? mrRacePaceSegmentMinutes(longRunMin: week.longRunMin) : nil,
                                  daysToRace: days,
-                                 easyKm: parsed.easyKm)
+                                 easyKm: parsed.easyKm, point: week.point)
     }
 
     /// 홈이 훈련일지 확정 주차(스냅샷)를 넣어 준다 — 나 탭을 열기 전에도 아침 제안이 일지와 같은 주차 문구를 읽게.

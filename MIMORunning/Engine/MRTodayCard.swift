@@ -103,7 +103,9 @@ func mrTodayCard(runs: [MRWorkout],
                  hrvNights: [(date: Date, value: Double)] = [],
                  planPhase: String? = nil,
                  hardRunStarts: Set<Date> = [],
-                 planWeek: MRPlanWeekContext? = nil) -> MRTodayCard? {
+                 planWeek: MRPlanWeekContext? = nil,
+                 pointRunTypes: [Date: WorkoutType] = [:],
+                 rhythm: MRRhythmContext? = nil) -> MRTodayCard? {
 
     guard let last = runs.last else { return nil }
     let cal = Calendar.current
@@ -171,7 +173,8 @@ func mrTodayCard(runs: [MRWorkout],
 
     // ── 아침 제안 — 오늘 아직 안 뛴 날에만. 종류는 고르지 않고 강도만 연다.
     let readiness = mrReadiness(runs: runs, phys: phys, heatHR: heatHR, hrvNights: hrvNights,
-                                planPhase: planPhase, asOf: asOf, hardRunStarts: hardRunStarts, planWeek: planWeek)
+                                planPhase: planPhase, asOf: asOf, hardRunStarts: hardRunStarts, planWeek: planWeek,
+                                pointRunTypes: pointRunTypes, rhythm: rhythm)
 
     return MRTodayCard(streakLine: streakLine, distanceCells: distanceCells,
                        sessionLine: sessionLine, linkLine: linkLine,

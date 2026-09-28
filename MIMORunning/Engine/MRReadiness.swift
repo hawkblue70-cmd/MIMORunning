@@ -24,6 +24,8 @@ struct MRReadiness: Equatable {
     var progress: String? = nil
     /// 세션이 롱런인가 — 강도 OK인데 이지를 권하는 날은 판정 줄을 "오늘은 이지 Nkm · 강도 여유 있음"으로 바꾼다
     var sessionIsLongRun: Bool = false
+    /// 세션이 포인트인가 — 판정 줄을 "오늘은 강도 OK · 포인트 …"로 둔다(이지용 "강도 여유 있음" 문형을 쓰지 않는다)
+    var sessionIsPoint: Bool = false
 
     /// 둘째 줄 — "왜" 문장 뒤에 데이터 조각을 " · "로 붙인다(계획 진행은 셋째 줄로 따로)
     var detail: String {
@@ -44,7 +46,7 @@ struct MRReadiness: Equatable {
         // 세션이 있으면 판정어 · 세션 — 근거는 둘째 줄의 "왜" 문장이 이미 담고 있다.
         // 강도 OK인데 오늘 세션이 이지면 "강도 OK · 이지"가 앞뒤로 부딪힌다 → "오늘은 이지 Nkm · 강도 여유 있음"
         var parts: [String]
-        if level == .go, let sess = session, !sessionIsLongRun {
+        if level == .go, let sess = session, !sessionIsLongRun, !sessionIsPoint {
             parts = [L.s("오늘은 \(sess)", "Today: \(sess)"), L.s("강도 여유 있음", "room for intensity")]
         } else {
             parts = session.map { [head, $0] } ?? ([head] + reasons)
@@ -92,6 +94,8 @@ struct MRPlanWeekContext: Equatable {
     let daysToRace: Int
     /// 훈련일지에 보이는 이지 1회 거리 — 있으면 계산값 대신 이걸 쓴다(두 화면 숫자가 같아야 한다)
     var easyKm: Double? = nil
+    /// 이번 주 포인트(스냅샷 값 — 이미 시작한 계획의 이번 주는 nil, 설계 6절)
+    var point: MRPlanPoint? = nil
 
     static let longRunDoneFraction = 0.8
     /// 대회 주(D-7 이내)는 D-day 카드가 담당 — 두 카드가 다른 말을 하면 안 된다
@@ -102,6 +106,8 @@ struct MRSessionSuggestion: Equatable {
     let session: String?
     let progress: String
     var isLongRun: Bool = false
+    /// 세션이 포인트인가(계획 포인트·대회 없을 때 추천)
+    var isPoint: Bool = false
     /// "왜" 문장 뒤에 덧붙일 한 문장 — 강도 여유가 있는데 이지를 권하는 날, 그 여유를 어디에 쓸지
     var whyNote: String? = nil
 }
@@ -152,8 +158,10 @@ func mrHabitualLongRunWeekday(runs: [MRWorkout], asOf: Date, calendar: Calendar 
 }
 
 /// 오늘 판정 + 이번 주 계획 → 오늘 세션과 진행. 대회 주면 nil(D-day 카드 담당).
+/// 강도 OK 우선순위: 롱런(습관 요일·남은 날 ≤2) > 포인트(남은 날 ≥3, 롱런 습관 요일 전날 아님) > 이지. 설계 8절.
 func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs: [MRWorkout],
-                         asOf: Date, calendar: Calendar = .current) -> MRSessionSuggestion? {
+                         asOf: Date, hardStarts: Set<Date> = [], pointTypes: [Date: WorkoutType] = [:],
+                         calendar: Calendar = .current) -> MRSessionSuggestion? {
     let L = AppLanguage.shared
     guard plan.daysToRace > MRPlanWeekContext.raceWeekDays else { return nil }
     let today = calendar.startOfDay(for: asOf)
@@ -161,12 +169,16 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
     guard let nextMonday = calendar.date(byAdding: .day, value: 7, to: monday) else { return nil }
     let week = runs.filter { $0.start >= monday && $0.start < nextMonday }
     let longDone = plan.longRunKm > 0 && week.contains { ($0.distanceKm ?? 0) >= plan.longRunKm * MRPlanWeekContext.longRunDoneFraction }
-    let easyDone = min(max(week.count - (longDone ? 1 : 0), 0), plan.easyRuns)
+    // 포인트 — 롱런으로 센 러닝을 뺀 고강도·포인트 유형 러닝(주차표와 같은 함수)
+    let pointDone = plan.point != nil
+        && mrPointRun(weekRuns: week, longRunKm: plan.longRunKm, hardStarts: hardStarts, pointTypes: pointTypes) != nil
+    let pointLeft = plan.point != nil && !pointDone
+    let easyDone = min(max(week.count - (longDone ? 1 : 0) - (pointDone ? 1 : 0), 0), plan.easyRuns)
     let daysLeft = max(7 - (calendar.dateComponents([.day], from: monday, to: today).day ?? 0), 1)   // 오늘 포함, 일요일이면 1
     let longLeft = plan.longRunKm > 0 && !longDone
 
     // 이지 1회 거리 — 훈련일지 문구에서 읽은 값이 우선
-    let easyKm = plan.easyKm ?? (max(plan.weeklyKm - plan.longRunKm, 0) / Double(max(plan.easyRuns, 1)))
+    let easyKm = plan.easyKm ?? (max(plan.weeklyKm - plan.longRunKm - (plan.point?.totalKm ?? 0), 0) / Double(max(plan.easyRuns, 1)))
     // 일지와 같은 자릿수 — 정수면 "8km", 아니면 "6.4km"
     let easyKmStr = abs(easyKm - easyKm.rounded()) < 0.05 ? String(format: "%.0f", easyKm) : String(format: "%.1f", easyKm)
     let easyText = easyKm >= 1.5
@@ -182,10 +194,18 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
     if plan.longRunKm > 0 {
         progress.append(longDone ? L.s("이번 주 롱런 완료", "long run done this week") : L.s("이번 주 롱런 아직", "long run still to do this week"))
     }
+    if plan.point != nil {
+        progress.append(pointDone ? L.s("포인트 완료", "workout done") : L.s("포인트 아직", "workout still to do"))
+    }
     progress.append(L.s("이지 \(easyDone)/\(plan.easyRuns)회", "easy \(easyDone)/\(plan.easyRuns)"))
+    // 주 끝에 포인트를 몰아넣지 않는다 — 남은 날 2일 이하면 이번 주 포인트는 건너뛴다(다음 주로 미루지 않음)
+    let pointSkippable = pointLeft && daysLeft <= 2
+    if pointSkippable {
+        progress.append(L.s("포인트는 이번 주 건너뛰어도 괜찮아요", "fine to skip this week's workout"))
+    }
 
     // 세션
-    let allDone = !longLeft && easyDone >= plan.easyRuns
+    let allDone = !longLeft && (!pointLeft || pointSkippable) && easyDone >= plan.easyRuns
     if allDone {
         return MRSessionSuggestion(session: nil, progress: L.s("이번 주 계획 완료", "this week's plan is done"))
     }
@@ -201,7 +221,13 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
         if longLeft && (habitual == todayWD || daysLeft <= 2) {
             return MRSessionSuggestion(session: longText, progress: progress.joined(separator: " · "), isLongRun: true)
         }
-        // 강도 여유는 있지만 오늘은 롱런 날이 아니다 — 여유를 이번 주 롱런에 남겨 두라고 말한다
+        // 포인트 — 롱런 습관 요일 전날은 피한다(다음 날 아침 제안이 "어제 고강도 → 이지"를 내 롱런이 밀린다)
+        let tomorrowWD = todayWD % 7 + 1
+        if let pt = plan.point, pointLeft, daysLeft >= 3, habitual != tomorrowWD {
+            return MRSessionSuggestion(session: L.s("포인트 \(pt.text)", "Workout: \(pt.text)"),
+                                       progress: progress.joined(separator: " · "), isPoint: true)
+        }
+        // 강도 여유는 있지만 오늘은 롱런·포인트 날이 아니다 — 여유를 이번 주 롱런에 남겨 두라고 말한다
         let note: String? = longLeft
             ? (habitual.map { L.s("여유는 \(mrWeekdayName($0)) 롱런에 쓰세요.", "Save it for \(mrWeekdayName($0))'s long run.") }
                ?? L.s("여유는 이번 주 롱런에 쓰세요.", "Save it for this week's long run."))
@@ -284,6 +310,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                  hrvNights: [(date: Date, value: Double)], planPhase: String?,
                  asOf: Date, hardRunStarts: Set<Date> = [],
                  planWeek: MRPlanWeekContext? = nil,
+                 pointRunTypes: [Date: WorkoutType] = [:],
+                 rhythm: MRRhythmContext? = nil,
                  calendar: Calendar = .current) -> MRReadiness? {
     let L = AppLanguage.shared
     let today = calendar.startOfDay(for: asOf)
@@ -336,10 +364,15 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         r.why = why
         r.data = data
         // 대회 훈련 계획이 있으면 오늘 세션·이번 주 진행을 붙인다 — 종류는 플랜이 정한다
-        if let plan = planWeek, let s = mrSessionSuggestion(level: level, plan: plan, runs: runs, asOf: asOf, calendar: calendar) {
+        let s: MRSessionSuggestion? = planWeek.flatMap {
+            mrSessionSuggestion(level: level, plan: $0, runs: runs, asOf: asOf,
+                                hardStarts: hardRunStarts, pointTypes: pointRunTypes, calendar: calendar)
+        }
+        if let s {
             r.session = s.session
-            r.progress = s.progress
+            r.progress = s.progress.isEmpty ? nil : s.progress
             r.sessionIsLongRun = s.isLongRun
+            r.sessionIsPoint = s.isPoint
             if let note = s.whyNote { r.why = r.why.isEmpty ? note : r.why + " " + note }
         }
         return r

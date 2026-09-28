@@ -194,3 +194,16 @@ func mrPointRun(weekRuns: [MRWorkout], longRunKm: Double, hardStarts: Set<Date>,
         }
         .min { $0.start < $1.start }
 }
+
+// MARK: - 대회가 없을 때 — 2주 리듬 (설계 9절)
+
+/// 대회 계획이 오늘을 덮지 않을 때의 입력. 스토어가 조립한다.
+struct MRRhythmContext: Equatable {
+    let runsPerWeek: Double
+    let paces: MRPointPaces?
+    /// 앱 저장 유형이 포인트 유형인 러닝(최근 180일) — 번갈이·마지막 포인트
+    let pointTypes: [Date: WorkoutType]
+    /// 최근 14일 안에 끝난 대회 — 이름·날짜. 없으면 nil.
+    var recentRaceName: String? = nil
+    var recentRaceDate: Date? = nil
+}
