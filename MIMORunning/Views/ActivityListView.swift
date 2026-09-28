@@ -243,6 +243,14 @@ private struct ActivityListContent: View {
                                                    hrZonesFn: { [manager] id in manager.hrZonesFromMemoryCache(id) }) }
             .map(\.date)
         engine.updateHardRunStarts(Set(starts))
+        // 포인트 유형 러닝(최근 180일) — 지난 주차 포인트 완료·대회 없을 때 번갈이용. UserDefaults는 한 번만 읽는다.
+        let lookup = manager.workoutTypeLookup()
+        let since180 = Calendar.current.date(byAdding: .day, value: -180, to: Date()) ?? .distantPast
+        var pointTypes: [Date: WorkoutType] = [:]
+        for a in manager.activities where a.type == .running && a.date >= since180 {
+            if let t = lookup(a.id), MRPlanPoint.pointWorkoutTypes.contains(t) { pointTypes[a.date] = t }
+        }
+        engine.updatePointRunTypes(pointTypes)
     }
 
     var body: some View {

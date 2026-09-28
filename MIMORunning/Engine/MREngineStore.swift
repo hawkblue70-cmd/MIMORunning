@@ -63,6 +63,9 @@ final class MREngineStore: ObservableObject {
     /// 앱 쪽 고강도 판정(분류 유형·체감 강도·존 분포)으로 고강도인 러닝의 시작 시각. 홈이 주입한다(`updateHardRunStarts`).
     /// 엔진의 `isInterval`은 WorkoutKit 구조화 운동만 잡아 "인터벌"로 분류된 일반 러닝을 놓친다 — 아침 제안·hrvReady가 이걸 합쳐 본다.
     @Published private(set) var hardRunStarts: Set<Date> = []
+    /// 앱 저장 유형이 포인트 유형(인터벌·템포·빌드업·거리주·대회)인 러닝의 시작 시각 → 유형. 최근 180일, 홈이 주입(`updatePointRunTypes`).
+    /// 고강도 집합(15일)으로는 지난 주차의 포인트 완료와 대회 없을 때 번갈이를 못 본다.
+    @Published private(set) var pointRunTypes: [Date: WorkoutType] = [:]
     @Published private(set) var todayCard: MRTodayCard?
     @Published private(set) var raceDayCard: MRRaceDayCard?
     @Published private(set) var backtest: [MRBacktestRow] = []
@@ -1036,6 +1039,14 @@ final class MREngineStore: ObservableObject {
                                hardRunStarts: hardRunStarts,
                                log: adviceLog, asOf: now)
         todayCard = buildTodayCard(runs: runs, now: now)
+    }
+
+    /// 홈이 포인트 유형 러닝을 넣어 준다. 바뀌었을 때만 오늘 카드를 다시 만든다.
+    func updatePointRunTypes(_ types: [Date: WorkoutType]) {
+        guard types != pointRunTypes else { return }
+        pointRunTypes = types
+        guard case .ready = state else { return }
+        todayCard = buildTodayCard(runs: runs, now: Date())
     }
 
     /// 앱이 앞으로 올 때 — 오늘 키의 밤이 아직 없고 마지막 조회가 30분 이상 전이면 HRV만 다시 읽고 조언·오늘 카드를 다시 만든다.

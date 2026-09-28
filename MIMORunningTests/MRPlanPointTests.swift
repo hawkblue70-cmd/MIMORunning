@@ -104,4 +104,24 @@ struct MRPlanPointTests {
                 == "롱런 10km + 짧게 3km × 2회 · 강도는 그대로")
         #expect(mrBreakdownReplacingEasy("롱런 8km + 이지 3회", easyKm: 2, runs: 2) == nil)
     }
+
+    private func run(_ day: Int, km: Double) -> MRWorkout {
+        let start = Date(timeIntervalSince1970: 1_791_000_000 + Double(day) * 86_400)
+        return MRWorkout(start: start, durationMin: km * 6, distanceKm: km, hrAvg: 145, hrMax: 170,
+                         tempC: 15, humidity: nil, indoor: false, isInterval: false)
+    }
+
+    @Test func pointRunExcludesTheLongRunAndUsesHardOrType() {
+        let easy = run(0, km: 8), hard = run(2, km: 9), long = run(5, km: 16)
+        // 고강도 판정으로
+        #expect(mrPointRun(weekRuns: [easy, hard, long], longRunKm: 16, hardStarts: [hard.start], pointTypes: [:])?.start == hard.start)
+        // 저장 유형으로
+        #expect(mrPointRun(weekRuns: [easy, hard, long], longRunKm: 16, hardStarts: [], pointTypes: [hard.start: .tempo])?.start == hard.start)
+        // 롱런 · 빌드업 하나만 — 롱런이 우선, 포인트는 미완료
+        #expect(mrPointRun(weekRuns: [easy, long], longRunKm: 16, hardStarts: [long.start], pointTypes: [long.start: .buildUp]) == nil)
+        // 포인트 유형이 아니면 아님
+        #expect(mrPointRun(weekRuns: [easy, hard], longRunKm: 16, hardStarts: [], pointTypes: [hard.start: .easy]) == nil)
+        // 롱런 없는 주(0)면 제외 없음
+        #expect(mrPointRun(weekRuns: [long], longRunKm: 0, hardStarts: [long.start], pointTypes: [:])?.start == long.start)
+    }
 }

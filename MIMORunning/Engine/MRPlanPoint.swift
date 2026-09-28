@@ -176,3 +176,21 @@ func mrFillSnapshotPoints(snapshot: [MRPlanWeekSummary], live: [MRPlanWeek], thi
     }
     return (weeks, filled)
 }
+
+/// 그 주 포인트를 했는가 — 롱런으로 센 러닝(거리 ≥ 롱런×0.8 중 가장 긴 것 하나)을 뺀 나머지 중
+/// 고강도 판정(`hardStarts`, 앱 판정 최근 15일)이거나 저장 유형이 포인트 유형(`pointTypes`, 최근 180일)인 러닝.
+/// 가장 이른 것을 돌려준다. 주차표와 아침 제안이 같이 쓴다(설계 7절).
+func mrPointRun(weekRuns: [MRWorkout], longRunKm: Double, hardStarts: Set<Date>,
+                pointTypes: [Date: WorkoutType]) -> MRWorkout? {
+    let longCounted: Date? = longRunKm > 0
+        ? weekRuns.filter { ($0.distanceKm ?? 0) >= longRunKm * MRPlanWeekContext.longRunDoneFraction }
+                  .max { ($0.distanceKm ?? 0) < ($1.distanceKm ?? 0) }?.start
+        : nil
+    return weekRuns
+        .filter { $0.start != longCounted }
+        .filter { w in
+            hardStarts.contains(w.start)
+                || (pointTypes[w.start].map { MRPlanPoint.pointWorkoutTypes.contains($0) } ?? false)
+        }
+        .min { $0.start < $1.start }
+}
