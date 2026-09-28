@@ -801,7 +801,7 @@ struct MeView: View {
                     changed += 1
                     return MRPlanWeekSummary(idx: snap.idx, monday: snap.monday, phase: live.phase,
                                              longRunKm: live.longRunKm, weeklyKm: live.weeklyKm,
-                                             breakdown: live.breakdown)
+                                             breakdown: live.breakdown, point: live.point)
                 }
                 // ── Trigger 4: 실시간 계획에만 있는 미래 주(대회 주 포함 규칙 등으로 늘어난 주) 덧붙이기 ──
                 // 스냅샷은 시작 시점의 주 수를 그대로 든다. 주 수 계산 규칙이 바뀌어 대회일이 속한 주가
@@ -812,7 +812,7 @@ struct MeView: View {
                     && !snapMondays.contains(cal.startOfDay(for: w.monday)) {
                     appended.append(MRPlanWeekSummary(idx: w.idx, monday: w.monday, phase: w.phase,
                                                       longRunKm: w.longRunKm, weeklyKm: w.weeklyKm,
-                                                      breakdown: w.breakdown))
+                                                      breakdown: w.breakdown, point: w.point))
                 }
                 let finalWeeks = (merged + appended).sorted { $0.monday < $1.monday }
                 if changed > 0 || !appended.isEmpty {
@@ -849,13 +849,13 @@ struct MeView: View {
                             let bd    = liveByMonday[snapMon]?.breakdown ?? snap.breakdown
                             return MRPlanWeekSummary(idx: snap.idx, monday: snap.monday,
                                                      phase: "테이퍼", longRunKm: newLr,
-                                                     weeklyKm: snap.weeklyKm, breakdown: bd)
+                                                     weeklyKm: snap.weeklyKm, breakdown: bd, point: snap.point)
                         }
                         if snap.longRunKm > liveTarget {
                             let bd = liveByMonday[snapMon]?.breakdown ?? snap.breakdown
                             return MRPlanWeekSummary(idx: snap.idx, monday: snap.monday,
                                                      phase: "유지", longRunKm: liveTarget,
-                                                     weeklyKm: snap.weeklyKm, breakdown: bd)
+                                                     weeklyKm: snap.weeklyKm, breakdown: bd, point: snap.point)
                         }
                         return snap
                     }
@@ -895,7 +895,7 @@ struct MeView: View {
                                 let newLr = (snap.longRunKm * scaleFactor * 10).rounded() / 10
                                 return MRPlanWeekSummary(idx: snap.idx, monday: snap.monday,
                                                          phase: snap.phase, longRunKm: newLr,
-                                                         weeklyKm: snap.weeklyKm, breakdown: snap.breakdown)
+                                                         weeklyKm: snap.weeklyKm, breakdown: snap.breakdown, point: snap.point)
                             }
                             let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
                             if let wd = try? enc.encode(corrected), let wj = String(data: wd, encoding: .utf8) {

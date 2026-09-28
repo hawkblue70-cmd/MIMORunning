@@ -46,11 +46,13 @@ enum MRPlanGovernance {
         return weeks.map { w in
             guard let s = byMonday[calendar.startOfDay(for: w.monday)] else { return w }
             let mins = s.longRunKm * (easyPaceSecPerKm ?? 420) / 60.0
+            // 포인트도 스냅샷 값 — 옛 스냅샷의 이번 주(nil)에 라이브 포인트가 새어 들지 않게(설계 6절 "이번 주 공백")
             return MRPlanWeek(idx: w.idx, monday: w.monday, phase: s.phase,
                               longRunKm: s.longRunKm, longRunMin: mins.rounded(),
                               weeklyKm: s.weeklyKm, projectedMin: w.projectedMin,
                               isNewMax: w.isNewMax, isVolRecord: w.isVolRecord,
-                              breakdown: s.breakdown.isEmpty ? w.breakdown : s.breakdown)
+                              breakdown: s.breakdown.isEmpty ? w.breakdown : s.breakdown,
+                              point: s.point)
         }
     }
 

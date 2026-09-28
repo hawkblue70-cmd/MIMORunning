@@ -10,12 +10,15 @@ struct MRPlanWeekSummary: Codable {
     let longRunKm: Double
     let weeklyKm: Double
     var breakdown: String   // 실행 안내
+    /// 포인트 1회(2026-09-29) — 옛 스냅샷엔 없다(nil). 이미 시작한 계획은 트리거 5가 다음 주부터 채운다.
+    var point: MRPlanPoint?
 
     init(idx: Int, monday: Date, phase: String,
-         longRunKm: Double, weeklyKm: Double, breakdown: String = "") {
+         longRunKm: Double, weeklyKm: Double, breakdown: String = "", point: MRPlanPoint? = nil) {
         self.idx = idx; self.monday = monday; self.phase = phase
         self.longRunKm = longRunKm; self.weeklyKm = weeklyKm
         self.breakdown = breakdown
+        self.point = point
     }
 
     // breakdown은 신규 필드 — 구버전 스냅샷 JSON에 없을 때 빈 문자열로 폴백.
@@ -28,6 +31,7 @@ struct MRPlanWeekSummary: Codable {
         longRunKm = try c.decode(Double.self, forKey: .longRunKm)
         weeklyKm  = try c.decode(Double.self, forKey: .weeklyKm)
         breakdown = (try? c.decodeIfPresent(String.self, forKey: .breakdown)) ?? ""
+        point     = (try? c.decodeIfPresent(MRPlanPoint.self, forKey: .point)) ?? nil
     }
 }
 

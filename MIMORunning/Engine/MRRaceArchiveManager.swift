@@ -40,7 +40,7 @@ func mrBuildSnapshotData(check: MRGoalCheck) -> (
     let weeksData = plan.weeks.map { w in
         MRPlanWeekSummary(idx: w.idx, monday: w.monday,
                           phase: w.phase, longRunKm: w.longRunKm, weeklyKm: w.weeklyKm,
-                          breakdown: w.breakdown)
+                          breakdown: w.breakdown, point: w.point)
     }
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .secondsSince1970

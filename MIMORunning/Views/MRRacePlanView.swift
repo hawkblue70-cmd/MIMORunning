@@ -396,7 +396,7 @@ struct MRWeekTable: View {
               let live = weeks.first(where: { Calendar.current.isDate($0.monday, inSameDayAs: snap.monday) })
         else { return snap }
         return MRPlanWeekSummary(idx: snap.idx, monday: snap.monday, phase: live.phase,
-                                 longRunKm: live.longRunKm, weeklyKm: live.weeklyKm, breakdown: live.breakdown)
+                                 longRunKm: live.longRunKm, weeklyKm: live.weeklyKm, breakdown: live.breakdown, point: live.point)
     }
 
     private func breakdownForSnap(_ snap: MRPlanWeekSummary) -> String {
