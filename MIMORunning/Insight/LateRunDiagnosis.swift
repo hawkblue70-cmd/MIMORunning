@@ -410,6 +410,65 @@ struct LateRunPoint: Identifiable, Equatable {
         return early.reduce(0, +) / Double(early.count) - late.reduce(0, +) / Double(late.count)
     }
 
+    /// 카드 요약 문장 — 대상이 60분 이상 러닝이라 "롱런"이 아니라 "60분 이상 러닝"으로 부른다(10km 이지런도 들어옴).
+    /// 전부 같은 유형이면 "N번 모두", 아니면 "N번 중 M번".
+    static func sentence(_ pts: [LateRunPoint]) -> String? {
+        guard let s = summary(pts) else { return nil }
+        let L = AppLanguage.shared
+        let n = s.total, c = s.count
+        let all = c == n
+        let headKo = all ? "최근 60분 이상 러닝 \(n)번 모두" : "최근 60분 이상 러닝 \(n)번 중 \(c)번"
+        let headEn = all ? "In all of your last \(n) runs over 60 min" : "In \(c) of your last \(n) runs over 60 min"
+        switch s.kind {
+        case .held:
+            return L.s("\(headKo) 후반까지 달리기를 남겼어요.", "\(headEn), you kept your running to the end.")
+        case .cardio:
+            return L.s("\(headKo) 심박이 먼저 올랐어요. 다리보다 심폐가 먼저 한계에 닿는 편이에요.",
+                       "\(headEn), HR rose first — your cardio tends to hit the limit before your legs.")
+        case .legs:
+            return L.s("\(headKo) 다리가 먼저 지쳤어요. 심폐보다 근지구력이 먼저 한계에 닿는 편이에요.",
+                       "\(headEn), legs tired first — muscular endurance tends to give out before cardio.")
+        case .energy:
+            return L.s("\(headKo) 후반에 힘이 빠졌어요. 보급을 점검해 볼 만해요.",
+                       "\(headEn), you ran low late — worth checking your fueling.")
+        case .combined:
+            return L.s("\(headKo) 다리와 심박이 함께 무너졌어요.",
+                       "\(headEn), legs and HR faded together.")
+        }
+    }
+
+    /// 추세 문장 — 앞 절반 대 뒤 절반 평균 효율 하락률 차이가 이 이상(%p)이어야 "좋아짐/나빠짐"(임의로 정함)
+    static let trendDeltaPct = 1.5
+
+    let id: UUID
+    let date: Date
+    let distanceKm: Double
+    let kind: LateRunDiagnosis.Kind
+    /// 중반 대비 후반 효율 하락률(%). 후반 가속·심박 없음이면 nil(추세 차트에서 제외).
+    let decouplingPct: Double?
+    let efficiencyOnsetKm: Double?
+
+    /// 최근 러닝 요약 — 가장 많은 유형과 횟수. 동률이면 최근 쪽 유형.
+    static func summary(_ pts: [LateRunPoint]) -> (kind: LateRunDiagnosis.Kind, count: Int, total: Int)? {
+        let recent = Array(pts.suffix(recentCount))
+        guard recent.count >= 2 else { return nil }
+        var best: (LateRunDiagnosis.Kind, Int)? = nil
+        for p in recent.reversed() {
+            let c = recent.filter { $0.kind == p.kind }.count
+            if best == nil || c > best!.1 { best = (p.kind, c) }
+        }
+        return best.map { ($0.0, $0.1, recent.count) }
+    }
+
+    /// 효율 하락률 추세 — 앞 절반 평균 − 뒤 절반 평균(양수 = 좋아짐). 점 4개 미만이면 nil.
+    static func trendDelta(_ pts: [LateRunPoint]) -> Double? {
+        let v = pts.compactMap(\.decouplingPct)
+        guard v.count >= 4 else { return nil }
+        let h = v.count / 2
+        let early = v.prefix(h), late = v.suffix(v.count - h)
+        return early.reduce(0, +) / Double(early.count) - late.reduce(0, +) / Double(late.count)
+    }
+
     /// 카드 요약 문장
     static func sentence(_ pts: [LateRunPoint]) -> String? {
         guard let s = summary(pts) else { return nil }

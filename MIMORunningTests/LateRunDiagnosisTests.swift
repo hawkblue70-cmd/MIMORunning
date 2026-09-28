@@ -296,6 +296,11 @@ struct LateRunPointTests {
         #expect(LateRunPoint.sentence(pts)?.contains("심박이 먼저") == true)
     }
 
+    @Test func allSameKindSaysAll() {
+        let pts = [pt(.held, 2, day: 1), pt(.held, 3, day: 8), pt(.held, 1, day: 15)]
+        #expect(LateRunPoint.sentence(pts) == "최근 60분 이상 러닝 3번 모두 후반까지 달리기를 남겼어요.")
+    }
+
     @Test func singleRunHasNoSummary() {
         #expect(LateRunPoint.summary([pt(.held, 2, day: 1)]) == nil)
     }
