@@ -102,7 +102,13 @@ enum LateRunDiagnosis {
 
         let paceChange = late.paceSecPerKm - mid.paceSecPerKm
         let fastFinish = paceChange <= -fastFinishSec
-        let cardio = !fastFinish && (decoupling ?? 0) >= decouplingThresholdPct
+        // 심박이 함께 내려갔으면(3bpm↓) 효율 하락은 심박 드리프트가 아니라 페이스 붕괴(벽) — 심박 신호로 보지 않는다.
+        // 예: 풀코스 6'41→8'32 · 심박 155→147 → 효율 16% 하락이지만 "심박이 먼저"가 아니다.
+        let hrFell: Bool = {
+            guard let a = mid.avgHR, let b = late.avgHR else { return false }
+            return b - a <= -energyHRDropBpm
+        }()
+        let cardio = !fastFinish && !hrFell && (decoupling ?? 0) >= decouplingThresholdPct
         let slowed = paceChange >= slowdownSec
         let hrDropped: Bool = {
             guard let a = mid.avgHR, let b = late.avgHR else { return false }
@@ -215,17 +221,18 @@ enum LateRunDiagnosis {
     }
 
     /// 다리 신호만 — 대회 카드 '폼 유지력'·'거리별 폼 유지력' 표가 쓴다(시간 게이트 없음, 풀 스플릿 5개↑).
-    /// - Returns: 피로 방향으로 무거워진 지표. 빈 배열 = 유지. nil = 판정 불가(폼 데이터 없음 · 기준선 없이 페이스가 5% 넘게 변함).
+    /// - Returns: 단계를 못 나누면 nil. `metrics`: 피로 방향으로 무거워진 지표(빈 배열 = 유지),
+    ///   nil = 판정 불가(폼 데이터 없음, 또는 기준선이 그 페이스를 덮지 못하고 페이스가 5% 넘게 변해 속도와 구분 불가).
+    ///   둘은 `mid`/`late`의 케이던스·보폭 유무로 가른다.
     static func legSignal(splits: [SplitData], form: FormPhase.Result?,
                           altitudeProfile: [(distanceKm: Double, altitude: Double)] = [])
-        -> (metrics: [FormNarrative.Metric], mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats)? {
+        -> (metrics: [FormNarrative.Metric]?, mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats)? {
         let full = splits.filter { $0.distanceM >= 900 }
         guard let p = FormPhase.phases(full) else { return nil }
         let scales = FormPhase.phasePaceScales(splits: full, altitudeProfile: altitudeProfile)
         let midGAP = p.mid.paceSecPerKm * (scales.mid > 0 ? scales.mid : 1)
         let lateGAP = p.late.paceSecPerKm * (scales.late > 0 ? scales.late : 1)
-        guard let m = legSignal(form: form, mid: p.mid, late: p.late, midGAP: midGAP, lateGAP: lateGAP) else { return nil }
-        return (m, p.mid, p.late)
+        return (legSignal(form: form, mid: p.mid, late: p.late, midGAP: midGAP, lateGAP: lateGAP), p.mid, p.late)
     }
 
     private static func legSignal(form: FormPhase.Result?, mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats,

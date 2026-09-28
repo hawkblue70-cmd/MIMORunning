@@ -78,6 +78,23 @@ struct LateRunDiagnosisTests {
         #expect(LateRunDiagnosis.evidence(r).contains("추정"))
     }
 
+    @Test func wallWithFallingHRIsNotCardio() throws {
+        // 풀코스 벽: 6'41 → 8'32, 심박 155 → 147 — 효율 수치는 크게 나빠지지만 심박은 내려갔다
+        let s = (1...12).map { i in
+            i >= 9 ? split(i, pace: 512, cad: 158, hr: 147) : split(i, pace: 401, hr: i >= 5 ? 155 : 150)
+        }
+        let r = try #require(diagnose(s, minutes: 298, withForm: false))
+        #expect((r.decouplingPct ?? 0) > LateRunDiagnosis.decouplingThresholdPct)
+        #expect(r.kind == .energy)
+    }
+
+    @Test func wallFormIsUndeterminedWithoutBaseline() throws {
+        let s = (1...12).map { i in i >= 9 ? split(i, pace: 512, cad: 158) : split(i, pace: 401) }
+        let sig = try #require(LateRunDiagnosis.legSignal(splits: s, form: nil))
+        #expect(sig.metrics == nil)
+        #expect(sig.late.cadence != nil)
+    }
+
     @Test func sameSlowdownUnder90MinIsSilent() {
         #expect(diagnose(run(latePace: 420, lateHR: 138), minutes: 75) == nil)
     }
@@ -162,11 +179,11 @@ struct LateRunDiagnosisTests {
 
     @Test func legSignalHeldIsEmpty() throws {
         let s = run(lateHR: 162)
-        #expect(try #require(LateRunDiagnosis.legSignal(splits: s, form: form(s))).metrics.isEmpty)
+        #expect(try #require(LateRunDiagnosis.legSignal(splits: s, form: form(s))).metrics?.isEmpty == true)
     }
 
-    @Test func legSignalUnjudgeableWithoutBaselineWhenPaceChanged() {
-        #expect(LateRunDiagnosis.legSignal(splits: run(latePace: 420, lateCad: 166), form: nil) == nil)
+    @Test func legSignalUnjudgeableWithoutBaselineWhenPaceChanged() throws {
+        #expect(try #require(LateRunDiagnosis.legSignal(splits: run(latePace: 420, lateCad: 166), form: nil)).metrics == nil)
     }
 
     // MARK: 대상

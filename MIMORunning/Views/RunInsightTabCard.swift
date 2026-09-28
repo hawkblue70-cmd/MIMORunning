@@ -5172,6 +5172,7 @@ private struct RaceInsightCard: View {
         case held         // 후반 폼이 중반보다 무거워지지 않음
         case mid          // (옛 반분 규칙의 중간 — 지금 판정은 만들지 않는다. 문장·배지 분기만 유지)
         case collapsed    // 후반 폼이 그 페이스의 평소 범위 밖으로 무거워짐
+        case undetermined // 폼 데이터는 있지만 후반 페이스 변화가 커서 속도와 구분할 수 없음
         case noData
     }
 
@@ -5199,8 +5200,12 @@ private struct RaceInsightCard: View {
                                     baseline: formBaseline, formShifts: formShifts, workoutType: .race)
         guard let sig = LateRunDiagnosis.legSignal(splits: det.splits, form: form,
                                                    altitudeProfile: det.altitudeProfile) else { return .none }
-        return FormEnduranceInfo(form: sig.metrics.isEmpty ? .held : .collapsed,
-                                 metrics: sig.metrics, mid: sig.mid, late: sig.late)
+        guard let metrics = sig.metrics else {
+            let hasForm = (sig.mid.cadence != nil && sig.late.cadence != nil) || (sig.mid.stride != nil && sig.late.stride != nil)
+            return FormEnduranceInfo(form: hasForm ? .undetermined : .noData, metrics: [], mid: sig.mid, late: sig.late)
+        }
+        return FormEnduranceInfo(form: metrics.isEmpty ? .held : .collapsed,
+                                 metrics: metrics, mid: sig.mid, late: sig.late)
     }
 
     private enum LimitFactor {
@@ -5348,6 +5353,15 @@ private struct RaceInsightCard: View {
             case .mid:
                 return (L.s("폼이 일부 흔들렸지만 붕괴 수준은 아니었어요",
                             "Form wobbled slightly but didn't fully collapse"), Color.white.opacity(0.7))
+            case .undetermined:
+                let info = formEnduranceInfo(detail)
+                let pct: String = {
+                    guard let m = info.mid?.paceSecPerKm, let l = info.late?.paceSecPerKm, m > 0 else { return "" }
+                    return String(format: "%.0f", abs(l - m) / m * 100)
+                }()
+                return (L.s("후반 페이스가 \(pct)% 달라져 폼 변화를 속도 변화와 구분할 수 없어요",
+                            "Late pace changed \(pct)%, so form changes can't be separated from speed"),
+                        Color.white.opacity(0.7))
             case .noData:
                 return ("", .clear)
             }
@@ -5652,7 +5666,7 @@ private struct RaceInsightCard: View {
         let pct = Double(hr) / Double(maxHR)
         let isHighHR = pct >= 0.90
         let fe = formEndurance
-        if fe == .noData { return .noData }
+        if fe == .noData || fe == .undetermined { return .noData }
         let formOk = fe == .held || fe == .mid
         switch (isHighHR, formOk) {
         case (true,  true):  return .cardio
@@ -5809,7 +5823,7 @@ private struct RaceInsightCard: View {
             case .held:      return (L.s("유지", "Held"),  IC.green)
             case .mid:       return (L.s("중간", "Mid"),   Color(hex: "F5C542"))
             case .collapsed: return (L.s("무거워짐", "Heavier"), Color(hex: "FF9A3C"))
-            case .noData:    return ("–",                  Color.white.opacity(0.30))
+            case .noData, .undetermined: return ("–",       Color.white.opacity(0.30))
             }
         }()
         Text(label)
@@ -5835,11 +5849,15 @@ private struct RaceInsightCard: View {
         let held   = rows.filter { $0.form == .held || $0.form == .mid }
         let coll   = rows.filter { $0.form == .collapsed }
         let noData = rows.filter { $0.form == .noData }
+        let undet  = rows.filter { $0.form == .undetermined }
         guard !held.isEmpty || !coll.isEmpty else { return nil }
 
-        let noDataTail: String = noData.isEmpty ? "" : " " + L.s(
+        let noDataTail: String = (noData.isEmpty ? "" : " " + L.s(
             "\(names(noData))는 폼 데이터가 없어 확인할 수 없어요.",
-            "No form data for \(names(noData)), so it can't be judged.")
+            "No form data for \(names(noData)), so it can't be judged."))
+            + (undet.isEmpty ? "" : " " + L.s(
+            "\(names(undet))는 후반 페이스 변화가 커서 폼을 판정할 수 없어요.",
+            "\(names(undet)): late pace changed too much to judge form."))
 
         // 열람 중 대회가 유지 쪽 + 심박 여유 → 유지가 쉬운 조건이었다는 사실을 함께 말한다
         let currentEasyHeld: Bool = {
@@ -5873,7 +5891,7 @@ private struct RaceInsightCard: View {
             return L.s("\(names(held))는 \(easyKo)\(heldVerbKo)어요.",
                        "Form \(heldVerbEn) in \(names(held))\(easyEn).") + noDataTail
         }
-        if noData.isEmpty {
+        if noData.isEmpty && undet.isEmpty {
             return L.s(
                 "\(names(held)) 모두 \(heldVerbKo)어요. 더 긴 거리에도 도전할 준비가 됐어요.",
                 "Form \(heldVerbEn) in all of \(names(held)). You may be ready to push to a longer distance."
