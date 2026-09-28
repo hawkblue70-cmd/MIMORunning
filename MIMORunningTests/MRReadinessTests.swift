@@ -75,6 +75,17 @@ struct MRReadinessTests {
         #expect(r?.line == "오늘은 이지런 · 대회 계획 테이퍼 주")
     }
 
+    @Test func taperWeekWithPointLeftDoesNotForceEasy() {
+        // 테이퍼 주 포인트(대회 페이스 1km × 3)가 남았으면 테이퍼 규칙이 강도를 막지 않는다
+        var ctx = MRPlanWeekContext(phase: "테이퍼", longRunKm: 12, weeklyKm: 28, easyRuns: 2,
+                                    racePaceSecPerKm: nil, racePaceSegmentMin: nil, daysToRace: 12, easyKm: 4.6)
+        ctx.point = MRPlanPoint(kind: .racePaceShort, totalKm: 6.8, reps: 3, repKm: 1, sustainedKm: nil, paceSecPerKm: 312)
+        let r = mrReadiness(runs: steadyRuns(), phys: phys, heatHR: MRHeatHRModel(),
+                            hrvNights: nights(base: 30, recent: 37), planPhase: "테이퍼", asOf: now, planWeek: ctx)
+        #expect(r != nil)
+        #expect(r?.line.contains("테이퍼 주") == false)
+    }
+
     @Test func fourConsecutiveDaysIsEasyEvenWithGoodHRV() {
         // steadyRuns는 평소 1일 구간뿐 → 문턱 4. 나흘 연속이면 휴식이 아니라 이지런(강도만 뺀다)
         var runs = steadyRuns()

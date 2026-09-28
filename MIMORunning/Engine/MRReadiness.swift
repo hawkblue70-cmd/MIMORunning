@@ -384,7 +384,16 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                     why: L.s("대회 계획상 이번 주는 부하를 낮추는 주예요. 이지런으로 다리를 아끼세요.",
                              "Your race plan has this as a recovery week. Keep it easy and save your legs."))
     }
-    if planPhase == "테이퍼" {
+    // 테이퍼 주라도 이번 주 포인트(대회 페이스 짧게)가 남았으면 강도를 막지 않는다 —
+    // 테이퍼는 볼륨만 줄이고 강도는 유지한다(Bosquet 2007). 포인트를 했거나 없으면 기존대로 이지.
+    let taperPointLeft: Bool = {
+        guard let p = planWeek, p.point != nil else { return false }
+        let monday = MRPlanGovernance.weekMonday(of: asOf, calendar: calendar)
+        guard let next = calendar.date(byAdding: .day, value: 7, to: monday) else { return false }
+        let week = runs.filter { $0.start >= monday && $0.start < next }
+        return mrPointRun(weekRuns: week, longRunKm: p.longRunKm, hardStarts: hardRunStarts, pointTypes: pointRunTypes) == nil
+    }()
+    if planPhase == "테이퍼" && !taperPointLeft {
         return make(.easy, [L.s("대회 계획 테이퍼 주", "race plan: taper week")],
                     why: L.s("대회 계획상 테이퍼 주예요. 강도보다 신선함이 남는 게 이득이에요.",
                              "Your race plan has this as a taper week. Freshness beats one more hard session."))
