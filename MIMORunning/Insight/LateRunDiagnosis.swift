@@ -93,15 +93,8 @@ enum LateRunDiagnosis {
             return (efMid - efLate) / efMid * 100
         }()
 
-        // 다리
-        let legs: [FormNarrative.Metric]
-        if let f = form {
-            let set = FormPhase.lateFatigue(late: f.signals.late, latePhase: f.phases.late, midPhase: f.phases.mid)
-            // 이지 프레임에서 케이던스만 내려간 건 편한 날의 자연스러운 변화(폼 카드와 같은 해석)
-            legs = (f.isEasyFrame && set == [.cadence]) ? [] : set
-        } else {
-            legs = rawLegs(mid: mid, late: late, midGAP: midGAP, lateGAP: lateGAP)
-        }
+        // 다리 — 판정 불가(nil)는 신호 없음으로 본다
+        let legs = legSignal(form: form, mid: mid, late: late, midGAP: midGAP, lateGAP: lateGAP) ?? []
 
         let paceChange = late.paceSecPerKm - mid.paceSecPerKm
         let fastFinish = paceChange <= -fastFinishSec
@@ -130,11 +123,37 @@ enum LateRunDiagnosis {
                       legMetrics: legs, durationMin: durationMin)
     }
 
+    /// 다리 신호만 — 대회 카드 '폼 유지력'·'거리별 폼 유지력' 표가 쓴다(시간 게이트 없음, 풀 스플릿 5개↑).
+    /// - Returns: 피로 방향으로 무거워진 지표. 빈 배열 = 유지. nil = 판정 불가(폼 데이터 없음 · 기준선 없이 페이스가 5% 넘게 변함).
+    static func legSignal(splits: [SplitData], form: FormPhase.Result?,
+                          altitudeProfile: [(distanceKm: Double, altitude: Double)] = [])
+        -> (metrics: [FormNarrative.Metric], mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats)? {
+        let full = splits.filter { $0.distanceM >= 900 }
+        guard let p = FormPhase.phases(full) else { return nil }
+        let scales = FormPhase.phasePaceScales(splits: full, altitudeProfile: altitudeProfile)
+        let midGAP = p.mid.paceSecPerKm * (scales.mid > 0 ? scales.mid : 1)
+        let lateGAP = p.late.paceSecPerKm * (scales.late > 0 ? scales.late : 1)
+        guard let m = legSignal(form: form, mid: p.mid, late: p.late, midGAP: midGAP, lateGAP: lateGAP) else { return nil }
+        return (m, p.mid, p.late)
+    }
+
+    private static func legSignal(form: FormPhase.Result?, mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats,
+                                  midGAP: Double, lateGAP: Double) -> [FormNarrative.Metric]? {
+        if let f = form {
+            let set = FormPhase.lateFatigue(late: f.signals.late, latePhase: f.phases.late, midPhase: f.phases.mid)
+            // 이지 프레임에서 케이던스만 내려간 건 편한 날의 자연스러운 변화(폼 카드와 같은 해석)
+            return (f.isEasyFrame && set == [.cadence]) ? [] : set
+        }
+        return rawLegs(mid: mid, late: late, midGAP: midGAP, lateGAP: lateGAP)
+    }
+
     /// 기준선 없을 때 — 페이스가 비슷할 때(GAP 5% 안)만 원값 변화를 다리 신호로 본다.
-    /// 느려졌으면 케이던스·보폭·접지 변화가 속도로 설명되므로 말하지 않는다.
+    /// 느려졌으면 케이던스·보폭·접지 변화가 속도로 설명되므로 판정하지 않는다(nil).
     private static func rawLegs(mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats,
-                                midGAP: Double, lateGAP: Double) -> [FormNarrative.Metric] {
-        guard midGAP > 0, abs(lateGAP - midGAP) / midGAP <= rawPaceGateFrac else { return [] }
+                                midGAP: Double, lateGAP: Double) -> [FormNarrative.Metric]? {
+        let hasData = (mid.cadence != nil && late.cadence != nil) || (mid.stride != nil && late.stride != nil)
+            || (mid.groundContact != nil && late.groundContact != nil)
+        guard hasData, midGAP > 0, abs(lateGAP - midGAP) / midGAP <= rawPaceGateFrac else { return nil }
         var out: [FormNarrative.Metric] = []
         if let a = mid.cadence, let b = late.cadence, a > 0, b < a * (1 - rawCadenceDropFrac) { out.append(.cadence) }
         if let a = mid.stride, let b = late.stride, a > 0, b < a * (1 - rawStrideDropFrac) { out.append(.stride) }

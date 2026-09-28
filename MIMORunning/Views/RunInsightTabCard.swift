@@ -5166,11 +5166,41 @@ private struct RaceInsightCard: View {
 
     // MARK: Types
 
+    /// 폼 유지력 — 후반 진단(`LateRunDiagnosis.legSignal`)의 다리 신호 하나로 판정한다.
+    /// 제한 요인·총평 '후반' 줄과 같은 중반(30~70%) 대 후반(70~100%) 비교라 세 곳의 결론이 어긋나지 않는다.
     private enum FormEndurance {
-        case held         // 폼 유지: cad ≤2% AND stride ≤3%
-        case mid          // 중간: 사실만
-        case collapsed    // 후반 붕괴: cad or stride >5%
+        case held         // 후반 폼이 중반보다 무거워지지 않음
+        case mid          // (옛 반분 규칙의 중간 — 지금 판정은 만들지 않는다. 문장·배지 분기만 유지)
+        case collapsed    // 후반 폼이 그 페이스의 평소 범위 밖으로 무거워짐
         case noData
+    }
+
+    private struct FormEnduranceInfo {
+        let form: FormEndurance
+        let metrics: [FormNarrative.Metric]
+        let mid: FormPhase.PhaseStats?
+        let late: FormPhase.PhaseStats?
+        /// 중반 → 후반 감소율(%) — 양수 = 줄어듦
+        var cadDrop: Double? {
+            guard let a = mid?.cadence, let b = late?.cadence, a > 0 else { return nil }
+            return (a - b) / a * 100
+        }
+        var strideDrop: Double? {
+            guard let a = mid?.stride, let b = late?.stride, a > 0 else { return nil }
+            return (a - b) / a * 100
+        }
+        static let none = FormEnduranceInfo(form: .noData, metrics: [], mid: nil, late: nil)
+    }
+
+    /// 대회 한 건의 폼 유지력 — 열람 중 대회·거리별 표의 다른 대회가 모두 이 함수 하나를 쓴다.
+    private func formEnduranceInfo(_ det: ActivityDetail?) -> FormEnduranceInfo {
+        guard let det else { return .none }
+        let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
+                                    baseline: formBaseline, formShifts: formShifts, workoutType: .race)
+        guard let sig = LateRunDiagnosis.legSignal(splits: det.splits, form: form,
+                                                   altitudeProfile: det.altitudeProfile) else { return .none }
+        return FormEnduranceInfo(form: sig.metrics.isEmpty ? .held : .collapsed,
+                                 metrics: sig.metrics, mid: sig.mid, late: sig.late)
     }
 
     private enum LimitFactor {
@@ -5302,11 +5332,19 @@ private struct RaceInsightCard: View {
         let (text, color): (String, Color) = {
             switch fe {
             case .held:
-                return (L.s("후반까지 폼이 유지됐어요 — 케이던스·보폭 변화 모두 안정적이었어요",
-                            "Form held to the finish — cadence and stride stayed stable"), IC.green)
+                return (L.s("후반까지 폼이 유지됐어요 — 중반보다 무거워지지 않았어요",
+                            "Form held to the finish — no heavier than mid-race"), IC.green)
             case .collapsed:
-                return (L.s("후반에 폼이 무너졌어요 — 케이던스나 보폭이 5% 이상 줄었어요",
-                            "Form broke down in the second half — cadence or stride dropped over 5%"), Color(hex: "FF9A3C"))
+                let names = formEnduranceInfo(detail).metrics.map { m -> String in
+                    switch m {
+                    case .cadence:       return L.s("케이던스", "cadence")
+                    case .stride:        return L.s("보폭", "stride")
+                    case .groundContact: return L.s("지면접촉", "ground contact")
+                    case .verticalOsc:   return L.s("수직진폭", "vertical oscillation")
+                    }
+                }.joined(separator: "·")
+                return (L.s("후반에 폼이 무거워졌어요 — \(names) 지표가 그 페이스의 평소 범위를 벗어났어요",
+                            "Form got heavier late — \(names) left the usual range for that pace"), Color(hex: "FF9A3C"))
             case .mid:
                 return (L.s("폼이 일부 흔들렸지만 붕괴 수준은 아니었어요",
                             "Form wobbled slightly but didn't fully collapse"), Color.white.opacity(0.7))
@@ -5584,76 +5622,27 @@ private struct RaceInsightCard: View {
         return Int((208.0 - 0.7 * Double(a)).rounded())
     }
 
-    private var formEndurance: FormEndurance {
-        guard let splits = detail?.splits else { return .noData }
-        let full = splits.filter { $0.distanceM >= 900 }
-        guard full.count >= 4 else { return .noData }
-        let half = full.count / 2
-        let s1 = Array(full.prefix(half))
-        let s2 = Array(full.suffix(full.count - half))
+    private var formEndurance: FormEndurance { formEnduranceInfo(detail).form }
 
-        func avgCad(_ arr: [SplitData]) -> Double? {
-            let v = arr.compactMap(\.avgCadence).map(Double.init)
-            return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
-        }
-        func avgStride(_ arr: [SplitData]) -> Double? {
-            let v = arr.compactMap(\.avgStrideLength)
-            return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
-        }
-
-        let cadOk: Bool?
-        if let c1 = avgCad(s1), let c2 = avgCad(s2), c1 > 0 {
-            let drop = (c1 - c2) / c1 * 100   // positive = fewer steps in 2nd half
-            if drop > 5    { cadOk = false }
-            else if drop <= 2 { cadOk = true }
-            else           { cadOk = nil }
-        } else { cadOk = nil }
-
-        let strideOk: Bool?
-        if let sl1 = avgStride(s1), let sl2 = avgStride(s2), sl1 > 0 {
-            let drop = (sl1 - sl2) / sl1 * 100
-            if drop > 5    { strideOk = false }
-            else if drop <= 3 { strideOk = true }
-            else           { strideOk = nil }
-        } else { strideOk = nil }
-
-        if cadOk == nil && strideOk == nil { return .noData }
-        if cadOk == false || strideOk == false { return .collapsed }
-        if cadOk == true && (strideOk == true || strideOk == nil) { return .held }
-        if strideOk == true && cadOk == nil { return .held }
-        return .mid
-    }
-
+    /// 중반 → 후반 케이던스·보폭·접지 — 판정과 같은 구간의 원값
     private var formHalvesDetail: String? {
-        guard let splits = detail?.splits else { return nil }
-        let full = splits.filter { $0.distanceM >= 900 }
-        guard full.count >= 4 else { return nil }
-        let half = full.count / 2
-        let s1 = Array(full.prefix(half))
-        let s2 = Array(full.suffix(full.count - half))
-
-        func avgCad(_ arr: [SplitData]) -> Double? {
-            let v = arr.compactMap(\.avgCadence).map(Double.init)
-            return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
-        }
-        func avgStride(_ arr: [SplitData]) -> Double? {
-            let v = arr.compactMap(\.avgStrideLength)
-            return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
-        }
-
+        let info = formEnduranceInfo(detail)
+        guard let m = info.mid, let l = info.late else { return nil }
+        let L = AppLanguage.shared
         var parts: [String] = []
-        if let c1 = avgCad(s1), let c2 = avgCad(s2), c1 > 0 {
-            let drop = (c1 - c2) / c1 * 100
-            let sign = drop >= 0 ? "-" : "+"
-            parts.append("케이던스 \(sign)\(String(format: "%.1f", abs(drop)))%")
+        if let a = m.cadence, let b = l.cadence {
+            parts.append(L.s("케이던스 \(Int(a.rounded()))→\(Int(b.rounded()))", "cadence \(Int(a.rounded()))→\(Int(b.rounded()))"))
         }
-        if let sl1 = avgStride(s1), let sl2 = avgStride(s2), sl1 > 0 {
-            let drop = (sl1 - sl2) / sl1 * 100
-            let sign = drop >= 0 ? "-" : "+"
-            parts.append("보폭 \(sign)\(String(format: "%.1f", abs(drop)))%")
+        if let a = m.stride, let b = l.stride {
+            parts.append(L.s("보폭 \(String(format: "%.2f", a))→\(String(format: "%.2f", b))m",
+                             "stride \(String(format: "%.2f", a))→\(String(format: "%.2f", b)) m"))
+        }
+        if let a = m.groundContact, let b = l.groundContact {
+            parts.append(L.s("지면접촉 \(Int(a.rounded()))→\(Int(b.rounded()))ms",
+                             "ground contact \(Int(a.rounded()))→\(Int(b.rounded())) ms"))
         }
         guard !parts.isEmpty else { return nil }
-        return "전반 → 후반: " + parts.joined(separator: " · ")
+        return L.s("중반 → 후반: ", "Mid → late: ") + parts.joined(separator: " · ")
     }
 
     private var limitingFactor: LimitFactor {
@@ -5701,54 +5690,9 @@ private struct RaceInsightCard: View {
         let km: Double
         let raceDate: Date
         let form: FormEndurance
-        let cadDrop: Double?    // positive = drop %
-        let strideDrop: Double? // positive = drop %
+        let cadDrop: Double?    // 중반 → 후반, positive = drop %
+        let strideDrop: Double? // 중반 → 후반, positive = drop %
         let isCurrent: Bool
-    }
-
-    private static func splitFormData(
-        _ splits: [SplitData]
-    ) -> (form: FormEndurance, cadDrop: Double?, strideDrop: Double?) {
-        let full = splits.filter { $0.distanceM >= 900 }
-        guard full.count >= 4 else { return (.noData, nil, nil) }
-        let half = full.count / 2
-        let s1 = Array(full.prefix(half))
-        let s2 = Array(full.suffix(full.count - half))
-
-        func avgCad(_ arr: [SplitData]) -> Double? {
-            let v = arr.compactMap(\.avgCadence).map(Double.init)
-            return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
-        }
-        func avgStride(_ arr: [SplitData]) -> Double? {
-            let v = arr.compactMap(\.avgStrideLength)
-            return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
-        }
-
-        var cadDrop: Double?    = nil
-        var strideDrop: Double? = nil
-        let cadOk: Bool?
-        if let c1 = avgCad(s1), let c2 = avgCad(s2), c1 > 0 {
-            let drop = (c1 - c2) / c1 * 100
-            cadDrop = drop
-            if drop > 5       { cadOk = false }
-            else if drop <= 2 { cadOk = true  }
-            else              { cadOk = nil   }
-        } else { cadOk = nil }
-
-        let strideOk: Bool?
-        if let sl1 = avgStride(s1), let sl2 = avgStride(s2), sl1 > 0 {
-            let drop = (sl1 - sl2) / sl1 * 100
-            strideDrop = drop
-            if drop > 5       { strideOk = false }
-            else if drop <= 3 { strideOk = true  }
-            else              { strideOk = nil   }
-        } else { strideOk = nil }
-
-        if cadOk == nil && strideOk == nil   { return (.noData,    cadDrop, strideDrop) }
-        if cadOk == false || strideOk == false { return (.collapsed, cadDrop, strideDrop) }
-        if cadOk == true && (strideOk == true || strideOk == nil) { return (.held, cadDrop, strideDrop) }
-        if strideOk == true && cadOk == nil  { return (.held,      cadDrop, strideDrop) }
-        return (.mid, cadDrop, strideDrop)
     }
 
     private var distanceCollapseRows: [DCRow] {
@@ -5771,14 +5715,14 @@ private struct RaceInsightCard: View {
                 let isCurrent = race.activityID == activity.id
                 // 현재 활동은 파라미터 detail 사용, 나머지는 클로저로 로드 (ImageRenderer에서도 안전)
                 let actDetail = isCurrent ? self.detail : raceDetailFn?(race.activityID)
-                let r = actDetail.map { Self.splitFormData($0.splits) }
+                let r = formEnduranceInfo(actDetail)
                 return DCRow(
                     division:   distanceDivision(km: race.distanceKm),
                     km:         race.distanceKm,
                     raceDate:   race.raceDate,
-                    form:       r?.form      ?? .noData,
-                    cadDrop:    r?.cadDrop,
-                    strideDrop: r?.strideDrop,
+                    form:       r.form,
+                    cadDrop:    r.cadDrop,
+                    strideDrop: r.strideDrop,
                     isCurrent:  isCurrent
                 )
             }
@@ -5864,7 +5808,7 @@ private struct RaceInsightCard: View {
             switch form {
             case .held:      return (L.s("유지", "Held"),  IC.green)
             case .mid:       return (L.s("중간", "Mid"),   Color(hex: "F5C542"))
-            case .collapsed: return (L.s("붕괴", "Broke"), Color(hex: "FF9A3C"))
+            case .collapsed: return (L.s("무거워짐", "Heavier"), Color(hex: "FF9A3C"))
             case .noData:    return ("–",                  Color.white.opacity(0.30))
             }
         }()
@@ -5914,14 +5858,14 @@ private struct RaceInsightCard: View {
 
         if !held.isEmpty && !coll.isEmpty {
             return L.s(
-                "\(names(held))는 \(easyKo)\(heldVerbKo)고, \(afterKo)\(names(coll))에서는 무너졌어요.",
-                "Form \(heldVerbEn) in \(names(held))\(easyEn), but broke in \(names(coll))\(afterEn)."
+                "\(names(held))는 \(easyKo)\(heldVerbKo)고, \(afterKo)\(names(coll))에서는 후반 폼이 무거워졌어요.",
+                "Form \(heldVerbEn) in \(names(held))\(easyEn), but got heavier late in \(names(coll))\(afterEn)."
             ) + noDataTail
         }
         if !coll.isEmpty {
             return L.s(
-                "\(afterKo)\(names(coll))에서 폼이 무너졌어요.",
-                "Form broke in \(names(coll))\(afterEn)."
+                "\(afterKo)\(names(coll))에서 후반 폼이 무거워졌어요.",
+                "Form got heavier late in \(names(coll))\(afterEn)."
             ) + noDataTail
         }
         // 전부 유지 — 데이터 미완성 행이 없을 때만 "더 긴 거리" 제안

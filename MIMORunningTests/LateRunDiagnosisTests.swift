@@ -109,6 +109,24 @@ struct LateRunDiagnosisTests {
         #expect(r?.legMetrics.isEmpty == true)
     }
 
+    // MARK: 폼 유지력(대회 카드) — 다리 신호만
+
+    @Test func legSignalMatchesDiagnosisLegs() throws {
+        let s = run(lateHR: 162, lateCad: 166)
+        let sig = try #require(LateRunDiagnosis.legSignal(splits: s, form: form(s)))
+        #expect(sig.metrics == [.cadence])
+        #expect(try #require(diagnose(s)).legMetrics == sig.metrics)
+    }
+
+    @Test func legSignalHeldIsEmpty() throws {
+        let s = run(lateHR: 162)
+        #expect(try #require(LateRunDiagnosis.legSignal(splits: s, form: form(s))).metrics.isEmpty)
+    }
+
+    @Test func legSignalUnjudgeableWithoutBaselineWhenPaceChanged() {
+        #expect(LateRunDiagnosis.legSignal(splits: run(latePace: 420, lateCad: 166), form: nil) == nil)
+    }
+
     // MARK: 대상
 
     @Test func appliesOnlyToLongNonStructuredRuns() {
