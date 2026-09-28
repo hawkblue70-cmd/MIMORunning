@@ -264,6 +264,11 @@ class HealthKitManager {
         #if DEBUG
         let counts = Dictionary(grouping: result, by: \.kind).mapValues(\.count)
         print("[후반:기록] \(weeks)주 60분+ 러닝 \(n60)건 → 상세없음 \(nNoDetail) · 유형제외 \(nType) · 끊김 \(nBreak) · 판정침묵 \(nSilent) → 진단 \(result.count)건 · \(counts.map { "\($0.key.rawValue) \($0.value)" }.sorted().joined(separator: " · "))")
+        let dfPt = DateFormatter(); dfPt.dateFormat = "M/d"
+        for p in result {
+            let dec = p.decouplingPct.map { String(format: "%.1f%%", $0) } ?? (p.isFastFinish ? "가속" : "—")
+            print("[후반:기록]   \(dfPt.string(from: p.date)) \(String(format: "%.1f", p.distanceKm))km · \(p.kind.rawValue) · 효율 하락 \(dec)")
+        }
         #endif
         lateRunMemo = (key, result)
         return result
