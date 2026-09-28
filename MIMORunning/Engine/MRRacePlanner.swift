@@ -29,6 +29,8 @@ struct MRPlanWeek {
     ///   "주 5회 하세요" 같은 지시를 하지 않기 위해서다 —
     ///   지금 하고 있는 리듬 위에 거리만 얹는다.
     var breakdown: String = ""
+    /// 이번 주 포인트 1회(2026-09-29) — 이지 한 번을 대신한다. 회복·대회 주·주 2회 이하면 nil.
+    var point: MRPlanPoint? = nil
 }
 
 struct MRRacePlan {
@@ -415,6 +417,8 @@ func mrBuildPlan(raceDate: Date,
     var longNow = peakLong
     var seenVolRecord = false            // 12개월 최대 주간거리를 처음 넘는 주 — 한 번만 표시
     var forceRecovery = false            // 하프 튠업 다음 주는 회복 주
+    // 주 3회는 포인트를 격주로 — 포인트 종류가 정해지는 주(테이퍼 제외)를 센다
+    var pointSlot = 0
 
     // 마라톤 후 회복 3주와 30/50/70% 는 관행이다. 하프 1주(60/70%)는 임의로 정함.
     // 통제된 연구를 찾지 못했다. 근거가 나오면 바꿀 것.
@@ -560,7 +564,38 @@ func mrBuildPlan(raceDate: Date,
         // 표시값 기준으로 역산 — "롱런 A + 이지 B × N = 주간" 합산이 일치하도록
         let lrDisplay = lr.rounded()
         let wkDisplay = (wkVol * 10).rounded() / 10
-        let each = max(wkDisplay - lrDisplay, 0) / Double(others)
+        // ── 포인트 1회 (2026-09-29 설계) — 이지 한 번을 대신한다. 주간 km·러닝 횟수는 그대로.
+        //   따르는 주는 따르는 계획의 포인트 그대로. 튠업 주·대회 전 주·대회 주·회복 주는 없음.
+        let isRaceWeek = raceDate >= mon && raceDate < weekEnd
+        var point: MRPlanPoint? = nil
+        if let f = followed, i <= buildWeeks {
+            point = f.week.point
+        } else if preTune == nil, tune == nil, !isRaceWeek,
+                  let kind = mrPointKind(phase: phase),
+                  let interval = mrPointIntervalDays(runsPerWeek: runsPerWeek),
+                  others >= 2 {
+            let slotOK = interval == 7 || kind == .racePaceShort || pointSlot % 2 == 0
+            if kind != .racePaceShort { pointSlot += 1 }
+            if slotOK, let paces = mrPointPaces(halfEquivMin: halfEquivMin) {
+                let pace: Double
+                switch kind {
+                case .speed: pace = paces.fiveK
+                case .tempo: pace = paces.tempo
+                case .buildUp, .racePaceShort:
+                    pace = mrTrainingRacePaceSecPerKm(halfEquivMin: halfEquivMin, distanceM: distanceM,
+                                                      weeklyKm: projVol, longestKm: peakLong,
+                                                      finishes: profile.marathonFinishes)
+                }
+                if let pt = MRPlanPoint.make(kind: kind, weeklyKm: wkDisplay, longRunKm: lrDisplay,
+                                             raceDistanceM: distanceM, paceSecPerKm: pace),
+                   (wkDisplay - lrDisplay - pt.totalKm) / Double(others - 1) >= 1.5 {
+                    point = pt
+                }
+            }
+        }
+        // 이지 횟수 — 포인트가 있으면 하나 줄인다. 문구의 "이지 B × N"이 이 값이다.
+        let easyRuns = point == nil ? others : others - 1
+        let each = max(wkDisplay - lrDisplay - (point?.totalKm ?? 0), 0) / Double(easyRuns)
         // ⚠ 테이퍼 주는 볼륨만 줄인다 — 강도·빈도 유지가 핵심(Bosquet 2007).
         //   "이지 1km × 3회" 같은 숫자는 의미 없고 오히려 혼란스럽다.
         let eachStr: String = {
@@ -568,13 +603,13 @@ func mrBuildPlan(raceDate: Date,
             return String(format: "%.1fkm", each)
         }()
         var breakdown = each >= 1.5
-            ? L.s("롱런 \(Int(lrDisplay))km + 이지 \(eachStr) × \(others)회",
-                  "Long run \(Int(lrDisplay))km + Easy \(eachStr) × \(others)x")
-            : String(format: L.s("롱런 %.0fkm + 이지 %d회", "Long run %.0fkm + Easy %dx"), lrDisplay, others)
+            ? L.s("롱런 \(Int(lrDisplay))km + 이지 \(eachStr) × \(easyRuns)회",
+                  "Long run \(Int(lrDisplay))km + Easy \(eachStr) × \(easyRuns)x")
+            : String(format: L.s("롱런 %.0fkm + 이지 %d회", "Long run %.0fkm + Easy %dx"), lrDisplay, easyRuns)
         if phase == "테이퍼" {
             // "짧게"가 얼마인지 묻는 사람이 있었다 — 대략 거리를 붙인다. 강도·빈도 유지가 핵심인 건 그대로.
             breakdown = String(format: L.s("롱런 %.0fkm + 짧게 %@ × %d회 · 강도는 그대로",
-                                           "Long run %.0fkm + Short %@ × %dx · Keep the intensity"), lrDisplay, eachStr, others)
+                                           "Long run %.0fkm + Short %@ × %dx · Keep the intensity"), lrDisplay, eachStr, easyRuns)
         }
         if phase == "대회 페이스" {
             // ⚠ 페이스는 기온·테이퍼 보정 전 예측값. 훈련은 대회 기온에서 하지 않는다.
@@ -584,10 +619,10 @@ func mrBuildPlan(raceDate: Date,
             let seg = mrRacePaceSegmentMinutes(longRunMin: mins.rounded())   // 저장값(longRunMin)과 동일 기준
             let paceStr = mrFormatPace(racePace) + "/km"
             breakdown = each >= 1.5
-                ? L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(eachStr) × \(others)회",
-                      "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(eachStr) × \(others)x")
-                : L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(others)회",
-                      "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(others)x")
+                ? L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(eachStr) × \(easyRuns)회",
+                      "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(eachStr) × \(easyRuns)x")
+                : L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(easyRuns)회",
+                      "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(easyRuns)x")
         }
         if let f = followed, i <= buildWeeks {
             let label = mrLabelFor(distanceM: f.race.distanceM)
@@ -596,7 +631,7 @@ func mrBuildPlan(raceDate: Date,
             let label = mrLabelFor(distanceM: pt.distanceM)
             breakdown = String(format: L.s("%@ 대회 전 주 — 롱런 %.0fkm + 짧게 %@ × %d회 · 강도는 그대로",
                                            "Week before %@ race — Long run %.0fkm + Short %@ × %dx · Keep the intensity"),
-                               label, lrDisplay, eachStr, others)
+                               label, lrDisplay, eachStr, easyRuns)
         }
         // 따르는 주(자기 계획 있는 10K의 대회 주 포함)는 그 계획의 문구가 전부다 — 튠업 문구를 덧붙이지 않는다.
         if let t = tune, followed == nil {
@@ -633,7 +668,8 @@ func mrBuildPlan(raceDate: Date,
                                   weeklyKm: (wkVol * 10).rounded() / 10,
                                   projectedMin: proj, isNewMax: newMax,
                                   isVolRecord: isVR,
-                                  breakdown: breakdown))
+                                  breakdown: breakdown,
+                                  point: point))
     }
 
     p.reachableLongKm = peakLong
