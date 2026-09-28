@@ -5190,6 +5190,8 @@ private struct RaceInsightCard: View {
             guard let a = mid?.stride, let b = late?.stride, a > 0 else { return nil }
             return (a - b) / a * 100
         }
+        /// 기준선 페이스→폼 추세로 속도 몫을 빼고 판정했나(후반이 평소 범위 밖으로 느려진 대회)
+        var byPaceTrend: Bool = false
         static let none = FormEnduranceInfo(form: .noData, metrics: [], mid: nil, late: nil)
     }
 
@@ -5198,14 +5200,14 @@ private struct RaceInsightCard: View {
         guard let det else { return .none }
         let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                     baseline: formBaseline, formShifts: formShifts, workoutType: .race)
-        guard let sig = LateRunDiagnosis.legSignal(splits: det.splits, form: form,
+        guard let sig = LateRunDiagnosis.legSignal(splits: det.splits, form: form, baseline: formBaseline,
                                                    altitudeProfile: det.altitudeProfile) else { return .none }
         guard let metrics = sig.metrics else {
             let hasForm = (sig.mid.cadence != nil && sig.late.cadence != nil) || (sig.mid.stride != nil && sig.late.stride != nil)
             return FormEnduranceInfo(form: hasForm ? .undetermined : .noData, metrics: [], mid: sig.mid, late: sig.late)
         }
         return FormEnduranceInfo(form: metrics.isEmpty ? .held : .collapsed,
-                                 metrics: metrics, mid: sig.mid, late: sig.late)
+                                 metrics: metrics, mid: sig.mid, late: sig.late, byPaceTrend: sig.method == .paceTrend)
     }
 
     private enum LimitFactor {
@@ -5336,6 +5338,9 @@ private struct RaceInsightCard: View {
         let L = AppLanguage.shared
         let (text, color): (String, Color) = {
             switch fe {
+            case .held where formEnduranceInfo(detail).byPaceTrend:
+                return (L.s("후반까지 폼이 유지됐어요 — 느려진 속도로 설명되는 만큼만 변했어요",
+                            "Form held — changes match the slowdown"), IC.green)
             case .held:
                 return (L.s("후반까지 폼이 유지됐어요 — 중반보다 무거워지지 않았어요",
                             "Form held to the finish — no heavier than mid-race"), IC.green)
@@ -5348,6 +5353,10 @@ private struct RaceInsightCard: View {
                     case .verticalOsc:   return L.s("수직진폭", "vertical oscillation")
                     }
                 }.joined(separator: "·")
+                if formEnduranceInfo(detail).byPaceTrend {
+                    return (L.s("후반에 폼이 무거워졌어요 — 느려진 속도로 설명되는 것보다 \(names) 지표가 더 나빠졌어요",
+                                "Form got heavier late — \(names) worsened more than the slowdown explains"), Color(hex: "FF9A3C"))
+                }
                 return (L.s("후반에 폼이 무거워졌어요 — \(names) 지표가 그 페이스의 평소 범위를 벗어났어요",
                             "Form got heavier late — \(names) left the usual range for that pace"), Color(hex: "FF9A3C"))
             case .mid:
@@ -5494,7 +5503,7 @@ private struct RaceInsightCard: View {
         let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                     baseline: formBaseline, formShifts: formShifts, workoutType: .race)
         return LateRunDiagnosis.diagnose(splits: det.splits, durationMin: activity.duration / 60,
-                                         form: form, altitudeProfile: det.altitudeProfile)
+                                         form: form, baseline: formBaseline, altitudeProfile: det.altitudeProfile)
     }
 
     private func limitingFactorSuggestion(_ lf: LimitFactor) -> String? {

@@ -95,6 +95,57 @@ struct LateRunDiagnosisTests {
         #expect(sig.late.cadence != nil)
     }
 
+    // MARK: 기준선 페이스→폼 추세 — 평소 범위 밖으로 느려진 후반
+
+    /// 구간 중심 페이스 → 케이던스 중앙값: 330→176, 390→172, 450→168 (1초/km당 −0.067spm)
+    private func trendBaseline() -> RunningFormBaseline {
+        func band(_ b: PaceBand, _ lo: Double, _ hi: Double, cad: Double) -> BandBaseline {
+            BandBaseline(band: b, isJudgeable: true, sampleCount: 30, windowMonths: 6, paceMin: lo, paceMax: hi,
+                         cadence: stat(cad, sd: 3), strideLength: nil, groundContact: nil, verticalOsc: nil, heartRate: nil,
+                         cadenceStrideR: nil, cadenceResidualP10: nil, cadenceResidualP25: nil,
+                         cadenceResidualP75: nil, cadenceResidualP90: nil, strideResidualP10: nil,
+                         strideResidualP25: nil, strideResidualP75: nil, strideResidualP90: nil, recentSamples: [])
+        }
+        let cut = PaceBandCutoffs(jogMax: 420, verySlowMax: 480, fastMin: 300, jogMin: 390, dailyMin: 360,
+                                  tempoMin: 330, mergedBands: [])
+        return RunningFormBaseline(version: RunningFormBaseline.currentVersion, computedAt: Date(), cutoffs: cut,
+                                   bands: [.tempo: band(.tempo, 300, 360, cad: 176),
+                                           .daily: band(.daily, 360, 420, cad: 172),
+                                           .verySlow: band(.verySlow, 420, 480, cad: 168)],
+                                   cadenceHRDiag: nil, gctBaselineResidualMean: nil, allFormSamples: [])
+    }
+
+    /// 6'41 → 8'32 (+111초): 추세로 예상되는 케이던스 변화 ≈ −7.4spm
+    private func wall(lateCad: Int) -> [SplitData] {
+        (1...12).map { i in
+            i >= 9 ? split(i, pace: 512, cad: lateCad, sl: nil, gct: nil, hr: 147)
+                   : split(i, pace: 401, cad: 169, sl: nil, gct: nil, hr: i >= 5 ? 155 : 150)
+        }
+    }
+
+    @Test func paceTrendSlope() throws {
+        let t = try #require(LateRunDiagnosis.paceTrend(trendBaseline(), \.cadence))
+        #expect(abs(t.slope - (-8.0 / 120.0)) < 0.0001)
+    }
+
+    @Test func wallCadenceDropBeyondSlowdownIsLegs() throws {
+        // 169 → 153 = −16spm, 속도 몫 −7.4 → 초과 −8.6 (문턱 −5.1)
+        let s = wall(lateCad: 153)
+        let sig = try #require(LateRunDiagnosis.legSignal(splits: s, form: nil, baseline: trendBaseline()))
+        #expect(sig.metrics == [.cadence])
+        #expect(sig.method == .paceTrend)
+        let r = try #require(LateRunDiagnosis.diagnose(splits: s, durationMin: 298, form: nil, baseline: trendBaseline()))
+        #expect(r.kind == .legs)
+        #expect(LateRunDiagnosis.evidence(r).contains("보급 부족"))
+    }
+
+    @Test func wallCadenceDropExplainedBySlowdownIsHeld() throws {
+        // 169 → 163 = −6spm, 속도 몫 −7.4 안쪽 → 다리 신호 없음 → 90분↑ 페이스·심박 동반 하락 → 에너지
+        let s = wall(lateCad: 163)
+        #expect(try #require(LateRunDiagnosis.legSignal(splits: s, form: nil, baseline: trendBaseline())).metrics == [])
+        #expect(try #require(LateRunDiagnosis.diagnose(splits: s, durationMin: 298, form: nil, baseline: trendBaseline())).kind == .energy)
+    }
+
     @Test func sameSlowdownUnder90MinIsSilent() {
         #expect(diagnose(run(latePace: 420, lateHR: 138), minutes: 75) == nil)
     }

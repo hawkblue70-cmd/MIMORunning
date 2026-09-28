@@ -162,7 +162,7 @@ class HealthKitManager {
                 let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                             baseline: formBaseline, formShifts: [], workoutType: wt)
                 s?.lateKind = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
-                                                        altitudeProfile: det.altitudeProfile)?.kind
+                                                        baseline: formBaseline, altitudeProfile: det.altitudeProfile)?.kind
             }
             return s
         }
@@ -202,7 +202,7 @@ class HealthKitManager {
                 let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                             baseline: baseline, formShifts: [], workoutType: wt)
                 guard let r = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
-                                                        altitudeProfile: det.altitudeProfile) else { return nil }
+                                                        baseline: baseline, altitudeProfile: det.altitudeProfile) else { return nil }
                 return LateRunPoint(id: a.id, date: a.date, distanceKm: a.distance / 1000, kind: r.kind,
                                     decouplingPct: r.isFastFinish ? nil : r.decouplingPct,
                                     efficiencyOnsetKm: r.efficiencyOnsetKm, isFastFinish: r.isFastFinish)

@@ -31,6 +31,8 @@ enum LateRunDiagnosis {
         let decouplingPct: Double?
         /// 다리 신호가 된 지표(피로 방향, 순서 고정: 케이던스 → 보폭 → 접지). 없으면 빈 배열.
         let legMetrics: [FormNarrative.Metric]
+        /// 다리 신호를 본 방법 — nil = 판정 불가(신호 없음으로 취급)
+        var legMethod: LegMethod? = nil
         let durationMin: Double
         /// 심박 효율이 떨어지기 시작한 지점(km) — "벽은 갑자기 오지 않는다". 없으면 nil.
         var efficiencyOnsetKm: Double? = nil
@@ -79,7 +81,10 @@ enum LateRunDiagnosis {
     ///   - altitudeProfile: 단계별 GAP 배율(`FormPhase.phasePaceScales`)로 디커플링 속도를 보정한다.
     /// - Returns: 단계를 나눌 수 없거나(풀 스플릿 5개 미만), 이유를 모르는 감속(다리·심박·에너지 신호 없이 느려짐 —
     ///   쿨다운·정지일 수 있음), 심박이 없어 유지를 말할 수 없으면 nil.
+    ///   - baseline: 폼 기준선. 폼 3단계가 판정하지 못한 페이스(평소 범위 밖으로 느려진 대회 후반 등)에서
+    ///     기준선 구간들의 페이스→폼 추세로 "느려진 속도로 설명되는 몫"을 빼고 다리 신호를 본다(`trendLegs`).
     static func diagnose(splits: [SplitData], durationMin: Double, form: FormPhase.Result?,
+                         baseline: RunningFormBaseline? = nil,
                          altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Result? {
         let full = splits.filter { $0.distanceM >= 900 }
         guard let p = FormPhase.phases(full) else { return nil }
@@ -98,7 +103,8 @@ enum LateRunDiagnosis {
         }()
 
         // 다리 — 판정 불가(nil)는 신호 없음으로 본다
-        let legs = legSignal(form: form, mid: mid, late: late, midGAP: midGAP, lateGAP: lateGAP) ?? []
+        let legSig = legSignal(form: form, baseline: baseline, mid: mid, late: late, midGAP: midGAP, lateGAP: lateGAP)
+        let legs = legSig?.metrics ?? []
 
         let paceChange = late.paceSecPerKm - mid.paceSecPerKm
         let fastFinish = paceChange <= -fastFinishSec
@@ -131,7 +137,7 @@ enum LateRunDiagnosis {
         }
         let on = onsets(full: full, altitudeProfile: altitudeProfile)
         return Result(kind: kind, mid: mid, late: late, decouplingPct: decoupling,
-                      legMetrics: legs, durationMin: durationMin,
+                      legMetrics: legs, legMethod: legSig?.method, durationMin: durationMin,
                       efficiencyOnsetKm: on.efficiencyKm, paceOnsetKm: on.paceKm)
     }
 
@@ -224,25 +230,88 @@ enum LateRunDiagnosis {
     /// - Returns: 단계를 못 나누면 nil. `metrics`: 피로 방향으로 무거워진 지표(빈 배열 = 유지),
     ///   nil = 판정 불가(폼 데이터 없음, 또는 기준선이 그 페이스를 덮지 못하고 페이스가 5% 넘게 변해 속도와 구분 불가).
     ///   둘은 `mid`/`late`의 케이던스·보폭 유무로 가른다.
-    static func legSignal(splits: [SplitData], form: FormPhase.Result?,
+    static func legSignal(splits: [SplitData], form: FormPhase.Result?, baseline: RunningFormBaseline? = nil,
                           altitudeProfile: [(distanceKm: Double, altitude: Double)] = [])
-        -> (metrics: [FormNarrative.Metric]?, mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats)? {
+        -> (metrics: [FormNarrative.Metric]?, method: LegMethod?, mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats)? {
         let full = splits.filter { $0.distanceM >= 900 }
         guard let p = FormPhase.phases(full) else { return nil }
         let scales = FormPhase.phasePaceScales(splits: full, altitudeProfile: altitudeProfile)
         let midGAP = p.mid.paceSecPerKm * (scales.mid > 0 ? scales.mid : 1)
         let lateGAP = p.late.paceSecPerKm * (scales.late > 0 ? scales.late : 1)
-        return (legSignal(form: form, mid: p.mid, late: p.late, midGAP: midGAP, lateGAP: lateGAP), p.mid, p.late)
+        let sig = legSignal(form: form, baseline: baseline, mid: p.mid, late: p.late, midGAP: midGAP, lateGAP: lateGAP)
+        return (sig?.metrics, sig?.method, p.mid, p.late)
     }
 
-    private static func legSignal(form: FormPhase.Result?, mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats,
-                                  midGAP: Double, lateGAP: Double) -> [FormNarrative.Metric]? {
+    /// 다리 신호를 어떻게 봤나 — 문장이 근거를 다르게 말한다
+    enum LegMethod: Equatable {
+        case band        // 그 페이스의 평소 범위(폼 3단계)
+        case raw         // 페이스가 비슷해 원값 변화 그대로
+        case paceTrend   // 기준선 페이스→폼 추세로 속도 몫을 뺀 나머지
+    }
+
+    /// 순서: 폼 3단계(평소 범위) → 페이스 5% 안이면 원값 → 기준선 추세로 속도 몫 제거. 셋 다 못 하면 nil.
+    private static func legSignal(form: FormPhase.Result?, baseline: RunningFormBaseline?,
+                                  mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats,
+                                  midGAP: Double, lateGAP: Double) -> (metrics: [FormNarrative.Metric], method: LegMethod)? {
         if let f = form {
             let set = FormPhase.lateFatigue(late: f.signals.late, latePhase: f.phases.late, midPhase: f.phases.mid)
             // 이지 프레임에서 케이던스만 내려간 건 편한 날의 자연스러운 변화(폼 카드와 같은 해석)
-            return (f.isEasyFrame && set == [.cadence]) ? [] : set
+            return ((f.isEasyFrame && set == [.cadence]) ? [] : set, .band)
         }
-        return rawLegs(mid: mid, late: late, midGAP: midGAP, lateGAP: lateGAP)
+        if let m = rawLegs(mid: mid, late: late, midGAP: midGAP, lateGAP: lateGAP) { return (m, .raw) }
+        if let bl = baseline, let m = trendLegs(bl, mid: mid, late: late, midGAP: midGAP, lateGAP: lateGAP) {
+            return (m, .paceTrend)
+        }
+        return nil
+    }
+
+    // MARK: 기준선 페이스→폼 추세 — 느려진 속도로 설명되는 몫 빼기
+    //
+    // 느려지면 케이던스는 조금 줄고, 보폭은 줄고, 접지는 길어진다 — 피로가 없어도.
+    // 기준선의 페이스 구간별 중앙값(본인 기록)으로 직선을 그려 "중반→후반 페이스 차이만큼 예상되는 변화"를 구하고,
+    // 실제 변화가 그보다 케이던스 3%·보폭 3%·접지 4% 이상 더 나빠졌으면 다리 신호로 본다(원값 판정과 같은 문턱).
+    // 외삽은 기준선 구간 중심 범위 밖 90초/km까지만(임의로 정함 — 한 구간 폭 정도).
+
+    static let trendExtrapolateSec = 90.0
+
+    struct PaceTrend: Equatable {
+        let slope: Double        // 지표 변화 / 페이스 1초/km
+        let loPace: Double
+        let hiPace: Double
+    }
+
+    /// 판정 가능한 구간 2개↑, 구간 중심 페이스 폭 20초↑일 때 최소제곱 직선의 기울기.
+    static func paceTrend(_ bl: RunningFormBaseline, _ metric: KeyPath<BandBaseline, FormStat?>) -> PaceTrend? {
+        let pts: [(x: Double, y: Double)] = bl.bands.values
+            .filter(\.isJudgeable)
+            .compactMap { b in b[keyPath: metric].map { ((b.paceMin + b.paceMax) / 2, $0.median) } }
+        guard pts.count >= 2, let lo = pts.map(\.x).min(), let hi = pts.map(\.x).max(), hi - lo >= 20 else { return nil }
+        let mx = pts.map(\.x).reduce(0, +) / Double(pts.count)
+        let my = pts.map(\.y).reduce(0, +) / Double(pts.count)
+        let sxx = pts.map { ($0.x - mx) * ($0.x - mx) }.reduce(0, +)
+        guard sxx > 0 else { return nil }
+        let sxy = pts.map { ($0.x - mx) * ($0.y - my) }.reduce(0, +)
+        return PaceTrend(slope: sxy / sxx, loPace: lo, hiPace: hi)
+    }
+
+    private static func trendLegs(_ bl: RunningFormBaseline, mid: FormPhase.PhaseStats, late: FormPhase.PhaseStats,
+                                  midGAP: Double, lateGAP: Double) -> [FormNarrative.Metric]? {
+        let dPace = lateGAP - midGAP
+        func excess(_ key: KeyPath<BandBaseline, FormStat?>, _ a: Double?, _ b: Double?) -> Double? {
+            guard let a, let b, let t = paceTrend(bl, key),
+                  midGAP >= t.loPace - trendExtrapolateSec, midGAP <= t.hiPace + trendExtrapolateSec,
+                  lateGAP >= t.loPace - trendExtrapolateSec, lateGAP <= t.hiPace + trendExtrapolateSec else { return nil }
+            return (b - a) - t.slope * dPace
+        }
+        let cad = excess(\.cadence, mid.cadence, late.cadence)
+        let sl = excess(\.strideLength, mid.stride, late.stride)
+        let gct = excess(\.groundContact, mid.groundContact, late.groundContact)
+        guard cad != nil || sl != nil || gct != nil else { return nil }
+        var out: [FormNarrative.Metric] = []
+        if let e = cad, let a = mid.cadence, e <= -a * rawCadenceDropFrac { out.append(.cadence) }
+        if let e = sl, let a = mid.stride, e <= -a * rawStrideDropFrac { out.append(.stride) }
+        if let e = gct, let a = mid.groundContact, e >= a * rawGCTRiseFrac { out.append(.groundContact) }
+        return out
     }
 
     /// 기준선 없을 때 — 페이스가 비슷할 때(GAP 5% 안)만 원값 변화를 다리 신호로 본다.
@@ -305,7 +374,16 @@ enum LateRunDiagnosis {
                 case .verticalOsc:   return L.s("수직진폭↑", "vertical osc↑")
                 }
             }
-            pieces.append(names.joined(separator: " "))
+            let joined = names.joined(separator: " ")
+            pieces.append(r.legMethod == .paceTrend
+                ? L.s("느려진 속도 몫을 빼고도 \(joined)", "\(joined) beyond what the slowdown explains")
+                : joined)
+            // 다리 신호 + 90분↑에서 페이스·심박이 함께 떨어졌으면 에너지 고갈이 겹쳤을 수 있다(보급 기록 없음)
+            if r.durationMin >= energyMinDurationMin, r.paceChangeSec >= slowdownSec,
+               let h = r.hrChange, h <= -energyHRDropBpm {
+                pieces.append(L.s("심박도 함께 내려가 보급 부족이 겹쳤을 수 있어요",
+                                  "HR fell too — low fuel may have added to it"))
+            }
         }
         if let o = onsetPiece(r) { pieces.append(o) }
         if (r.kind == .cardio || r.kind == .combined), let h = heatDeltaBpm, h >= RunSummary.heatNoteMinBpm {
