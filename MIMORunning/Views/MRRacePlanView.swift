@@ -292,7 +292,9 @@ struct MRRacePlanCard: View {
                 MRWeekTable(weeks: plan.weeks, histMaxWeeklyKm: plan.histMaxWeeklyKm,
                             runs: runs, snapshotWeeks: snapshot?.planWeeks ?? [],
                             currentRaceLabels: Set(engine.userInput.races.map { mrLabelFor(distanceM: $0.distanceM) }),
-                            recoveryEffortNote: recoveryEffortNote)
+                            recoveryEffortNote: recoveryEffortNote,
+                            hardRunStarts: engine.hardRunStarts,
+                            pointRunTypes: engine.pointRunTypes)
                     .padding(.top, 12)
             }
 
@@ -326,6 +328,9 @@ struct MRWeekTable: View {
     var currentRaceLabels: Set<String> = []
     /// 회복·테이퍼 주 평균 강도 초과 문구 — 현재 주 행에만 표시
     var recoveryEffortNote: String? = nil
+    /// 포인트 완료 판정 입력 — 엔진이 홈에서 받은 값(고강도 15일 · 포인트 유형 180일)
+    var hardRunStarts: Set<Date> = []
+    var pointRunTypes: [Date: WorkoutType] = [:]
     @State private var expanded: Set<Int> = []
 
     private let dateFmt: DateFormatter = {
@@ -410,6 +415,31 @@ struct MRWeekTable: View {
             raw = snap.breakdown
         }
         return localizedBreakdown(raw)
+    }
+
+    /// 그 주에 한 포인트 — 주차표와 아침 제안이 같은 판정(`mrPointRun`)을 쓴다. 미래 주는 nil.
+    private func pointRunIn(week monday: Date, longRunKm: Double) -> MRWorkout? {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: monday)
+        guard start <= cal.startOfDay(for: Date()),
+              let end = cal.date(byAdding: .day, value: 7, to: start) else { return nil }
+        let weekRuns = runs.filter { $0.start >= start && $0.start < end }
+        return mrPointRun(weekRuns: weekRuns, longRunKm: longRunKm, hardStarts: hardRunStarts, pointTypes: pointRunTypes)
+    }
+
+    /// 포인트 두 줄 — 계획(흰색 0.72) · 한 뒤(노랑 = 실제로 한 것). 설계 7절.
+    @ViewBuilder
+    private func pointLines(_ pt: MRPlanPoint, monday: Date, longRunKm: Double) -> some View {
+        let L = AppLanguage.shared
+        Text(L.s("포인트 · \(pt.text)", "Workout · \(pt.text)"))
+            .font(.system(size: 11))
+            .foregroundStyle(.white.opacity(0.72))
+        if let done = pointRunIn(week: monday, longRunKm: longRunKm) {
+            let type = pointRunTypes[done.start].map { " " + $0.koreanLabel } ?? ""
+            Text(L.s("포인트 ✓ \(dateFmt.string(from: done.start))\(type)", "Workout ✓ \(dateFmt.string(from: done.start))\(type)"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.yellow)   // 노랑 = 실제로 한 것
+        }
     }
 
     // MARK: - 라이브 플랜 헬퍼 (스냅샷 없을 때)
@@ -666,6 +696,9 @@ struct MRWeekTable: View {
                                         .font(.system(size: 11))
                                         .foregroundStyle(.white.opacity(0.72))
                                 }
+                                if let pt = snap.point {
+                                    pointLines(pt, monday: snap.monday, longRunKm: snap.longRunKm)
+                                }
                             }
                             .padding(.leading, 36).padding(.bottom, 4)
                             .transition(.opacity.combined(with: .move(edge: .top)))
@@ -776,6 +809,9 @@ struct MRWeekTable: View {
                                     Text(localizedBreakdown(w.breakdown))
                                         .font(.system(size: 11))
                                         .foregroundStyle(.white.opacity(0.72))
+                                }
+                                if let pt = w.point {
+                                    pointLines(pt, monday: w.monday, longRunKm: w.longRunKm)
                                 }
                             }
                             .padding(.leading, 36).padding(.bottom, 4)
