@@ -201,7 +201,9 @@ class HealthKitManager {
                 guard LateRunDiagnosis.applies(to: wt, durationMin: mins, splits: det.splits,
                                                pausedSpans: det.pausedSpans) else {
                     #if DEBUG
-                    if let why = LateRunDiagnosis.interruptionReason(splits: det.splits, pausedSpans: det.pausedSpans) {
+                    // 유형(인터벌·빌드업·템포)으로 빠진 러닝은 끊김 이유를 찍지 않는다 — 끊김 때문에 빠진 것처럼 보이지 않게
+                    if ![.interval, .buildUp, .tempo].contains(wt),
+                       let why = LateRunDiagnosis.interruptionReason(splits: det.splits, pausedSpans: det.pausedSpans) {
                         let df = DateFormatter(); df.dateFormat = "M/d"
                         print("[후반:제외] \(df.string(from: a.date)) \(String(format: "%.1f", a.distance / 1000))km · \(why)")
                     }
