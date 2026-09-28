@@ -82,31 +82,55 @@ enum LateRunDiagnosis {
 
     // MARK: 끊김 — 연습 러닝 진단 자격
 
-    /// 한 번에 이만큼 이상 멈췄으면 끊긴 러닝 — 1분 안에 다시 뛰면 괜찮다(사용자 결정 2026-09-28: 신호 대기·짧은 급수).
-    /// 멈춘 횟수·합계는 보지 않는다 — 신호등이 여러 번이어도 한 번이 1분 안이면 흐름이 이어진다.
-    static let maxSinglePauseSec = 60.0
-    /// 일시정지 없이 서거나 걸은 km — 러닝 전체 km 중앙값보다 이만큼 느리면 끊김으로 본다(임의로 정함)
+    /// 멈춤 허용 — 멈춘 길이가 아니라 **걸었나·다시 같은 페이스로 이어 뛰었나**로 본다(사용자 결정 2026-09-28).
+    /// 실데이터: 끊김 5회 모두 화장실 정지 3~7분, 걷기 없음. 멈춘 동안엔 심박·페이스·지면접촉·케이던스가 유지되다
+    /// 뚝 끊기고 다시 뛰면 원래대로 돌아온다 — 걷기(계속 하강)와 다르다.
+    /// 15분 넘게 쉬면 사실상 두 번 나눠 뛴 러닝이라 제외(임의로 정함).
+    static let maxStopSec = 900.0
+    /// 이 이하의 멈춤은 다시 뛴 뒤 페이스를 따지지 않는다(신호 대기·급수)
+    static let shortStopSec = 60.0
+    /// 다시 뛴 뒤 2km 평균이 멈추기 전 2km보다 이만큼 이상 느리면 흐름이 끊긴 것(임의로 정함)
+    static let resumePaceFactor = 1.10
+    /// 워치를 멈추지 않고 선 km — 달린 부분의 케이던스가 러닝 중앙값의 −3% 안이면 "서 있었음", 더 내려갔으면 걷기
+    static let stopCadenceHoldFrac = 0.03
+    /// 일시정지 없이 서거나 걸은 km — 러닝 전체 km 중앙값보다 이만큼 느리면 끊김 후보(임의로 정함)
     static let breakSplitFactor = 1.30
 
-    /// 끊김 없는 러닝인가 — 1분 넘게 멈춘 워치 일시정지 없음 + 첫 km 뺀 모든 km가 중앙값의 1.3배 안
-    /// (일시정지 없이 서거나 걸은 km — 1분 정지가 섞인 km는 6'30 기준 약 1.15배라 통과, 걷기 km는 걸린다).
+    /// 끊김 없는 러닝인가 — 15분 넘게 멈추거나, 1분 넘게 멈춘 뒤 페이스가 이어지지 않거나, 걸은 km가 있으면 false.
     /// 일시정지 기록이 없는 옛 캐시는 km 규칙만 본다.
     static func isContinuous(splits: [SplitData], pausedSpans: [PausedSpan]) -> Bool {
-        if pausedSpans.contains(where: { $0.end - $0.start > maxSinglePauseSec }) { return false }
-        return slowBreakKm(splits) == nil
+        interruptionReason(splits: splits, pausedSpans: pausedSpans) == nil
     }
 
-    /// 끊김 이유(디버그 로그·확인용) — 끊김 없으면 nil. 예: "정지 2분 15초(38분)" · "8km 걷기(7'10 · 150spm · 138bpm)"
+    /// 끊김 이유 — 끊김 없으면 nil. 예: "정지 6분 10초(38분)" · "정지 3분 뒤 페이스 회복 안 됨(52분)" · "8km 걷기(7'10 · 150spm · 138bpm)"
     static func interruptionReason(splits: [SplitData], pausedSpans: [PausedSpan]) -> String? {
-        if let p = pausedSpans.filter({ $0.end - $0.start > maxSinglePauseSec })
-            .max(by: { ($0.end - $0.start) < ($1.end - $1.start) }) {
-            let d = Int(p.end - p.start)
-            return "정지 \(d / 60)분 \(d % 60)초(\(Int(p.start / 60))분)"
+        let full = splits.filter { $0.distanceM >= 900 }.sorted { $0.id < $1.id }
+        for p in pausedSpans.sorted(by: { $0.start < $1.start }) {
+            let d = p.end - p.start
+            guard d > shortStopSec else { continue }
+            let label = "\(Int(d) / 60)분 \(Int(d) % 60)초(\(Int(p.start / 60))분)"
+            if d > maxStopSec { return "정지 " + label }
+            // 멈춘 지점의 km — 스플릿 시간은 일시정지를 뺀 달린 시간이라 달린 시간으로 찾는다
+            let active = pausedSpans.activeElapsed(atWallOffset: p.start)
+            var cum = 0.0
+            let idx = full.firstIndex { cum += $0.duration; return cum >= active } ?? (full.count - 1)
+            if !resumedSteady(full, stopIndex: idx, includeStopKm: true) { return "정지 \(label) 뒤 페이스 회복 안 됨" }
         }
         guard let km = slowBreakKm(splits), let sp = splits.first(where: { $0.id == km }) else { return nil }
         let cad = sp.avgCadence.map { "\($0)spm" } ?? "—"
         let hr = sp.avgHeartRate.map { "\($0)bpm" } ?? "—"
         return "\(km)km 걷기·정지(\(mrFormatPace(sp.paceSecPerKm)) · \(cad) · \(hr))"
+    }
+
+    /// 멈춘 km 전후 2km 평균 페이스 비교 — 뒤가 앞보다 10% 넘게 느리면 흐름이 끊긴 것. 한쪽이 없으면(처음·끝) 통과.
+    /// - includeStopKm: 일시정지 멈춤은 그 km 시간에 멈춘 시간이 안 들어가 그 km도 "뒤"로 센다. 워치를 안 멈춘 km는 제외.
+    static func resumedSteady(_ full: [SplitData], stopIndex i: Int, includeStopKm: Bool) -> Bool {
+        let before = full[max(0, i - 2)..<i]
+        let afterStart = includeStopKm ? i : i + 1
+        guard afterStart < full.count, !before.isEmpty else { return true }
+        let after = full[afterStart..<min(full.count, afterStart + 2)]
+        func mean(_ a: ArraySlice<SplitData>) -> Double { a.map(\.paceSecPerKm).reduce(0, +) / Double(a.count) }
+        return mean(after) <= mean(before) * resumePaceFactor
     }
 
     /// 걷기 km — 케이던스와 심박이 **함께** 떨어진 km(사용자 관찰 2026-09-28: 걷는 순간엔 둘이 같이 내려간다).
@@ -117,7 +141,8 @@ enum LateRunDiagnosis {
     static let walkPaceFactor = 1.10
 
     /// 첫 km를 뺀 km 중 끊김 흔적이 있는 첫 km 번호. 없으면 nil.
-    /// ① 중앙값의 1.3배보다 느림(서 있거나 오래 걸음) ② 케이던스·심박이 함께 떨어지고 10%↑ 느림(짧게 걸음)
+    /// ① 중앙값의 1.3배보다 느림 — 단, 케이던스 유지(서 있었음)·15분 안·다시 뛴 뒤 페이스 이어짐이면 통과
+    /// ② 케이던스·심박이 함께 떨어지고 10%↑ 느림(짧게 걸음)
     static func slowBreakKm(_ splits: [SplitData]) -> Int? {
         let full = splits.filter { $0.distanceM >= 900 }.sorted { $0.id < $1.id }
         guard full.count >= 3 else { return nil }
@@ -129,7 +154,16 @@ enum LateRunDiagnosis {
         let medCad = median(full.compactMap { $0.avgCadence.map(Double.init) })
         let medHR = median(full.compactMap { $0.avgHeartRate.map(Double.init) })
         return full.dropFirst().first { sp in
-            if sp.paceSecPerKm > med * breakSplitFactor { return true }
+            if sp.paceSecPerKm > med * breakSplitFactor {
+                // 워치를 안 멈추고 선 km — 달린 부분 케이던스가 유지됐고, 선 시간(초과분)이 15분 안이고, 다시 뛴 뒤 페이스가 이어지면 통과
+                if let c = sp.avgCadence, let mc = medCad, Double(c) >= mc * (1 - stopCadenceHoldFrac),
+                   (sp.paceSecPerKm - med) * sp.distanceM / 1000 <= maxStopSec,
+                   let i = full.firstIndex(where: { $0.id == sp.id }),
+                   resumedSteady(full, stopIndex: i, includeStopKm: false) {
+                    return false
+                }
+                return true
+            }
             guard sp.paceSecPerKm > med * walkPaceFactor,
                   let c = sp.avgCadence, let mc = medCad, let h = sp.avgHeartRate, let mh = medHR else { return false }
             return Double(c) <= mc * (1 - walkCadenceDropFrac) && Double(h) <= mh - walkHRDropBpm

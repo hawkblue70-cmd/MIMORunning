@@ -254,20 +254,41 @@ struct LateRunDiagnosisTests {
 
     // MARK: 끊김 — 연습은 1분 넘게 멈추거나 걸은 러닝 제외, 대회는 항상
 
+    /// 16km · 6'15 고정 — 달린 시간 기준 km 경계는 375초마다
+    private func steady16() -> [SplitData] { (1...16).map { split($0) } }
+
     @Test func shortStopsUnderAMinuteAreFine() {
         let pauses = [PausedSpan(start: 600, end: 640), PausedSpan(start: 1800, end: 1855), PausedSpan(start: 3000, end: 3050)]
         #expect(applies(.longRun, 75, pauses: pauses))
     }
 
-    @Test func stopOverAMinuteExcludesTraining() {
-        #expect(!applies(.longRun, 75, pauses: [PausedSpan(start: 1800, end: 1875)]))
+    @Test func bathroomStopThenSamePaceIsIncluded() {
+        // 실데이터 9/19: 7분에 6분 47초 정지, 같은 페이스로 이어 뜀
+        #expect(applies(.longRun, 107, steady16(), pauses: [PausedSpan(start: 420, end: 827)]))
+    }
+
+    @Test func stopOverFifteenMinutesExcludes() {
+        #expect(!applies(.longRun, 107, steady16(), pauses: [PausedSpan(start: 1800, end: 2800)]))
+    }
+
+    @Test func stopThenMuchSlowerExcludes() {
+        // 37분(6km 무렵) 3분 정지 뒤 8'00으로 느려짐 — 다시 뛴 2km 평균 7'07.5 > 멈추기 전 6'15 × 1.1
+        let s = (1...16).map { i in split(i, pace: i >= 7 ? 480 : 375) }
+        let reason = LateRunDiagnosis.interruptionReason(splits: s, pausedSpans: [PausedSpan(start: 2250, end: 2430)])
+        #expect(reason?.contains("회복 안 됨") == true)
     }
 
     @Test func walkedKmExcludesTraining() {
-        // 7km만 걸음(10'00) — 중앙값 6'15의 1.6배
-        let s = (1...12).map { i in split(i, pace: i == 7 ? 600 : 375) }
+        // 7km만 걸음(10'00 · 케이던스 120) — 중앙값의 1.6배, 케이던스도 내려감
+        let s = (1...12).map { i in i == 7 ? split(i, pace: 600, cad: 120, hr: 128) : split(i) }
         #expect(LateRunDiagnosis.slowBreakKm(s) == 7)
         #expect(!applies(.longRun, 80, s))
+    }
+
+    @Test func standingKmWithoutWatchPauseIsIncluded() {
+        // 워치 안 멈추고 3분 서 있던 km — 페이스 9'15지만 달린 부분 케이던스는 그대로
+        let s = (1...12).map { i in i == 7 ? split(i, pace: 555) : split(i) }
+        #expect(LateRunDiagnosis.slowBreakKm(s) == nil)
     }
 
     @Test func shortWalkWithCadenceAndHRDropIsABreak() {
