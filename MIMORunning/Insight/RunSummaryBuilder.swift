@@ -126,7 +126,8 @@ enum RunSummaryBuilder {
         }()
         input.lateRun = {
             guard let det = c.detail,
-                  LateRunDiagnosis.applies(to: c.workoutType, durationMin: c.activity.duration / 60) else { return nil }
+                  LateRunDiagnosis.applies(to: c.workoutType, durationMin: c.activity.duration / 60,
+                                           splits: det.splits, pausedSpans: det.pausedSpans) else { return nil }
             return LateRunDiagnosis.diagnose(splits: det.splits, durationMin: c.activity.duration / 60,
                                              form: input.form, baseline: c.formBaseline, altitudeProfile: det.altitudeProfile)
         }()

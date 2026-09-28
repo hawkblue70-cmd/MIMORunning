@@ -66,14 +66,61 @@ enum LateRunDiagnosis {
     static let rawStrideDropFrac = 0.03   // 임의로 정함 — 케이던스와 같은 폭
     static let rawGCTRiseFrac = 0.04      // 임의로 정함 — 250ms 기준 10ms, 폼 카드 유지 알약(+10ms)과 같은 폭
 
-    /// 총평·조언이 진단하는 러닝인가 — 60분 이상 + 후반 속도 변화가 계획인 유형(인터벌·빌드업·템포) 제외.
+    /// 총평·조언·성장 카드가 진단하는 러닝인가 — 60분 이상 + 후반 속도 변화가 계획인 유형(인터벌·빌드업·템포) 제외.
+    /// **대회는 항상, 연습 러닝은 끊김이 없을 때만**(사용자 결정 2026-09-28): 연습 장거리는 신호 대기·급수·걷기로
+    /// 중간에 끊기는 일이 많고, 끊긴 뒤엔 심박이 떨어졌다 다시 오르고 페이스가 흔들려 중반 대 후반 비교가 피로를 말하지 않는다.
     /// 대회 카드는 이 게이트 없이 `diagnose`를 직접 부른다(짧은 대회는 카드가 자체 규칙).
-    static func applies(to type: WorkoutType, durationMin: Double) -> Bool {
+    static func applies(to type: WorkoutType, durationMin: Double,
+                        splits: [SplitData], pausedSpans: [PausedSpan]) -> Bool {
         guard durationMin >= minDurationMin else { return false }
         switch type {
         case .interval, .buildUp, .tempo: return false
-        default: return true
+        case .race: return true
+        default: return isContinuous(splits: splits, pausedSpans: pausedSpans)
         }
+    }
+
+    // MARK: 끊김 — 연습 러닝 진단 자격
+
+    /// 한 번에 이만큼 이상 멈췄으면 끊긴 러닝 — 1분 안에 다시 뛰면 괜찮다(사용자 결정 2026-09-28: 신호 대기·짧은 급수).
+    /// 멈춘 횟수·합계는 보지 않는다 — 신호등이 여러 번이어도 한 번이 1분 안이면 흐름이 이어진다.
+    static let maxSinglePauseSec = 60.0
+    /// 일시정지 없이 서거나 걸은 km — 러닝 전체 km 중앙값보다 이만큼 느리면 끊김으로 본다(임의로 정함)
+    static let breakSplitFactor = 1.30
+
+    /// 끊김 없는 러닝인가 — 1분 넘게 멈춘 워치 일시정지 없음 + 첫 km 뺀 모든 km가 중앙값의 1.3배 안
+    /// (일시정지 없이 서거나 걸은 km — 1분 정지가 섞인 km는 6'30 기준 약 1.15배라 통과, 걷기 km는 걸린다).
+    /// 일시정지 기록이 없는 옛 캐시는 km 규칙만 본다.
+    static func isContinuous(splits: [SplitData], pausedSpans: [PausedSpan]) -> Bool {
+        if pausedSpans.contains(where: { $0.end - $0.start > maxSinglePauseSec }) { return false }
+        return slowBreakKm(splits) == nil
+    }
+
+    /// 걷기 km — 케이던스와 심박이 **함께** 떨어진 km(사용자 관찰 2026-09-28: 걷는 순간엔 둘이 같이 내려간다).
+    /// 1~2분 걷고 다시 뛴 km는 페이스가 1.2배 안팎이라 1.3배 규칙을 빠져나가므로 따로 잡는다. 문턱은 임의로 정함:
+    /// 케이던스 중앙값 −6%(170 기준 10spm) · 심박 중앙값 −5bpm · 페이스 중앙값 +10%.
+    static let walkCadenceDropFrac = 0.06
+    static let walkHRDropBpm = 5.0
+    static let walkPaceFactor = 1.10
+
+    /// 첫 km를 뺀 km 중 끊김 흔적이 있는 첫 km 번호. 없으면 nil.
+    /// ① 중앙값의 1.3배보다 느림(서 있거나 오래 걸음) ② 케이던스·심박이 함께 떨어지고 10%↑ 느림(짧게 걸음)
+    static func slowBreakKm(_ splits: [SplitData]) -> Int? {
+        let full = splits.filter { $0.distanceM >= 900 }.sorted { $0.id < $1.id }
+        guard full.count >= 3 else { return nil }
+        func median(_ v: [Double]) -> Double? {
+            guard !v.isEmpty else { return nil }
+            let s = v.sorted(); return s[s.count / 2]
+        }
+        guard let med = median(full.map(\.paceSecPerKm)), med > 0 else { return nil }
+        let medCad = median(full.compactMap { $0.avgCadence.map(Double.init) })
+        let medHR = median(full.compactMap { $0.avgHeartRate.map(Double.init) })
+        return full.dropFirst().first { sp in
+            if sp.paceSecPerKm > med * breakSplitFactor { return true }
+            guard sp.paceSecPerKm > med * walkPaceFactor,
+                  let c = sp.avgCadence, let mc = medCad, let h = sp.avgHeartRate, let mh = medHR else { return false }
+            return Double(c) <= mc * (1 - walkCadenceDropFrac) && Double(h) <= mh - walkHRDropBpm
+        }?.id
     }
 
     /// - Parameters:
@@ -497,15 +544,15 @@ struct LateRunPoint: Identifiable, Equatable {
         return early.reduce(0, +) / Double(early.count) - late.reduce(0, +) / Double(late.count)
     }
 
-    /// 카드 요약 문장 — 대상이 60분 이상 러닝이라 "롱런"이 아니라 "60분 이상 러닝"으로 부른다(10km 이지런도 들어옴).
+    /// 카드 요약 문장 — 대상이 끊김 없는 60분 이상 러닝·대회라 "롱런"이 아니라 "끊김 없는 긴 러닝"으로 부른다(10km 이지런도 들어옴).
     /// 전부 같은 유형이면 "N번 모두", 아니면 "N번 중 M번".
     static func sentence(_ pts: [LateRunPoint]) -> String? {
         guard let s = summary(pts) else { return nil }
         let L = AppLanguage.shared
         let n = s.total, c = s.count
         let all = c == n
-        let headKo = all ? "최근 60분 이상 러닝 \(n)번 모두" : "최근 60분 이상 러닝 \(n)번 중 \(c)번"
-        let headEn = all ? "In all of your last \(n) runs over 60 min" : "In \(c) of your last \(n) runs over 60 min"
+        let headKo = all ? "최근 끊김 없는 긴 러닝 \(n)번 모두" : "최근 끊김 없는 긴 러닝 \(n)번 중 \(c)번"
+        let headEn = all ? "In all of your last \(n) unbroken long runs" : "In \(c) of your last \(n) unbroken long runs"
         switch s.kind {
         case .held:
             return L.s("\(headKo) 후반까지 달리기를 남겼어요.", "\(headEn), you kept your running to the end.")

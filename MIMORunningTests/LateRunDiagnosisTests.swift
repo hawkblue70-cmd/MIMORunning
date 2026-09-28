@@ -239,13 +239,58 @@ struct LateRunDiagnosisTests {
 
     // MARK: 대상
 
+    private func applies(_ t: WorkoutType, _ m: Double, _ s: [SplitData]? = nil, pauses: [PausedSpan] = []) -> Bool {
+        LateRunDiagnosis.applies(to: t, durationMin: m, splits: s ?? run(), pausedSpans: pauses)
+    }
+
     @Test func appliesOnlyToLongNonStructuredRuns() {
-        #expect(LateRunDiagnosis.applies(to: .longRun, durationMin: 60))
-        #expect(LateRunDiagnosis.applies(to: .race, durationMin: 90))
-        #expect(!LateRunDiagnosis.applies(to: .longRun, durationMin: 59))
-        #expect(!LateRunDiagnosis.applies(to: .interval, durationMin: 90))
-        #expect(!LateRunDiagnosis.applies(to: .buildUp, durationMin: 90))
-        #expect(!LateRunDiagnosis.applies(to: .tempo, durationMin: 90))
+        #expect(applies(.longRun, 60))
+        #expect(applies(.race, 90))
+        #expect(!applies(.longRun, 59))
+        #expect(!applies(.interval, 90))
+        #expect(!applies(.buildUp, 90))
+        #expect(!applies(.tempo, 90))
+    }
+
+    // MARK: 끊김 — 연습은 1분 넘게 멈추거나 걸은 러닝 제외, 대회는 항상
+
+    @Test func shortStopsUnderAMinuteAreFine() {
+        let pauses = [PausedSpan(start: 600, end: 640), PausedSpan(start: 1800, end: 1855), PausedSpan(start: 3000, end: 3050)]
+        #expect(applies(.longRun, 75, pauses: pauses))
+    }
+
+    @Test func stopOverAMinuteExcludesTraining() {
+        #expect(!applies(.longRun, 75, pauses: [PausedSpan(start: 1800, end: 1875)]))
+    }
+
+    @Test func walkedKmExcludesTraining() {
+        // 7km만 걸음(10'00) — 중앙값 6'15의 1.6배
+        let s = (1...12).map { i in split(i, pace: i == 7 ? 600 : 375) }
+        #expect(LateRunDiagnosis.slowBreakKm(s) == 7)
+        #expect(!applies(.longRun, 80, s))
+    }
+
+    @Test func shortWalkWithCadenceAndHRDropIsABreak() {
+        // 8km: 2분 걷고 다시 뜀 — 7'10(1.15배) · 케이던스 175→150 · 심박 150→138
+        let s = (1...12).map { i in i == 8 ? split(i, pace: 430, cad: 150, hr: 138) : split(i) }
+        #expect(LateRunDiagnosis.slowBreakKm(s) == 8)
+    }
+
+    @Test func slowerKmWithHRHeldIsNotAWalk() {
+        // 오르막 km: 7'10 · 케이던스 164(−6.3%)지만 심박은 오히려 158 — 걷기 아님
+        let s = (1...12).map { i in i == 8 ? split(i, pace: 430, cad: 164, hr: 158) : split(i) }
+        #expect(LateRunDiagnosis.slowBreakKm(s) == nil)
+    }
+
+    @Test func kmWithOneMinuteStopStillCounts() {
+        // 일시정지 없이 1분 서 있던 km — 6'15 + 60초 = 1.16배
+        let s = (1...12).map { i in split(i, pace: i == 7 ? 435 : 375) }
+        #expect(applies(.longRun, 80, s))
+    }
+
+    @Test func racesAreAlwaysDiagnosed() {
+        let s = (1...12).map { i in split(i, pace: i >= 10 ? 600 : 375) }
+        #expect(applies(.race, 290, s, pauses: [PausedSpan(start: 9000, end: 9300)]))
     }
 
     // MARK: 총평 줄
@@ -366,7 +411,7 @@ struct LateRunPointTests {
 
     @Test func allSameKindSaysAll() {
         let pts = [pt(.held, 2, day: 1), pt(.held, 3, day: 8), pt(.held, 1, day: 15)]
-        #expect(LateRunPoint.sentence(pts) == "최근 60분 이상 러닝 3번 모두 후반까지 달리기를 남겼어요.")
+        #expect(LateRunPoint.sentence(pts) == "최근 끊김 없는 긴 러닝 3번 모두 후반까지 달리기를 남겼어요.")
     }
 
     @Test func singleRunHasNoSummary() {

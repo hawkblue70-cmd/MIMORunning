@@ -1053,7 +1053,8 @@ enum RunInsightEngine {
     static func lateDiagnosisCovers(activity: Activity, detail: ActivityDetail?) -> Bool {
         guard let det = detail else { return false }
         let mins = activity.duration / 60
-        guard LateRunDiagnosis.applies(to: det.workoutType, durationMin: mins) else { return false }
+        guard LateRunDiagnosis.applies(to: det.workoutType, durationMin: mins,
+                                       splits: det.splits, pausedSpans: det.pausedSpans) else { return false }
         return LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: nil,
                                          altitudeProfile: det.altitudeProfile) != nil
     }

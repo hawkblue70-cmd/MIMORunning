@@ -5192,6 +5192,8 @@ private struct RaceInsightCard: View {
         }
         /// 기준선 페이스→폼 추세로 속도 몫을 빼고 판정했나(후반이 평소 범위 밖으로 느려진 대회)
         var byPaceTrend: Bool = false
+        /// 걷거나 멈춘 흔적의 km(중앙값 1.3배↑) — 판정 불가 이유를 "걷기·정지"로 말한다
+        var hasBreaks: Bool = false
         static let none = FormEnduranceInfo(form: .noData, metrics: [], mid: nil, late: nil)
     }
 
@@ -5204,7 +5206,8 @@ private struct RaceInsightCard: View {
                                                    altitudeProfile: det.altitudeProfile) else { return .none }
         guard let metrics = sig.metrics else {
             let hasForm = (sig.mid.cadence != nil && sig.late.cadence != nil) || (sig.mid.stride != nil && sig.late.stride != nil)
-            return FormEnduranceInfo(form: hasForm ? .undetermined : .noData, metrics: [], mid: sig.mid, late: sig.late)
+            return FormEnduranceInfo(form: hasForm ? .undetermined : .noData, metrics: [], mid: sig.mid, late: sig.late,
+                                     hasBreaks: LateRunDiagnosis.slowBreakKm(det.splits) != nil)
         }
         return FormEnduranceInfo(form: metrics.isEmpty ? .held : .collapsed,
                                  metrics: metrics, mid: sig.mid, late: sig.late, byPaceTrend: sig.method == .paceTrend)
@@ -5368,6 +5371,11 @@ private struct RaceInsightCard: View {
                     guard let m = info.mid?.paceSecPerKm, let l = info.late?.paceSecPerKm, m > 0 else { return "" }
                     return String(format: "%.0f", abs(l - m) / m * 100)
                 }()
+                if info.hasBreaks {
+                    return (L.s("걷거나 멈춘 km가 섞여 후반 폼을 중반과 비교할 수 없어요",
+                                "Walked or stopped kilometres make late form incomparable to mid-race"),
+                            Color.white.opacity(0.7))
+                }
                 return (L.s("후반 페이스가 \(pct)% 달라져 폼 변화를 속도 변화와 구분할 수 없어요",
                             "Late pace changed \(pct)%, so form changes can't be separated from speed"),
                         Color.white.opacity(0.7))
@@ -5716,6 +5724,7 @@ private struct RaceInsightCard: View {
         let cadDrop: Double?    // 중반 → 후반, positive = drop %
         let strideDrop: Double? // 중반 → 후반, positive = drop %
         let isCurrent: Bool
+        var hasBreaks: Bool = false   // 판정 불가 이유가 걷기·정지인가
     }
 
     private var distanceCollapseRows: [DCRow] {
@@ -5746,7 +5755,8 @@ private struct RaceInsightCard: View {
                     form:       r.form,
                     cadDrop:    r.cadDrop,
                     strideDrop: r.strideDrop,
-                    isCurrent:  isCurrent
+                    isCurrent:  isCurrent,
+                    hasBreaks:  r.hasBreaks
                 )
             }
     }
@@ -5864,9 +5874,12 @@ private struct RaceInsightCard: View {
         let noDataTail: String = (noData.isEmpty ? "" : " " + L.s(
             "\(names(noData))는 폼 데이터가 없어 확인할 수 없어요.",
             "No form data for \(names(noData)), so it can't be judged."))
-            + (undet.isEmpty ? "" : " " + L.s(
-            "\(names(undet))는 후반 페이스 변화가 커서 폼을 판정할 수 없어요.",
-            "\(names(undet)): late pace changed too much to judge form."))
+            + (undet.filter(\.hasBreaks).isEmpty ? "" : " " + L.s(
+            "\(names(undet.filter(\.hasBreaks)))는 걷거나 멈춘 구간이 섞여 폼을 판정할 수 없어요.",
+            "\(names(undet.filter(\.hasBreaks))): walking or stops make form unjudgeable."))
+            + (undet.filter { !$0.hasBreaks }.isEmpty ? "" : " " + L.s(
+            "\(names(undet.filter { !$0.hasBreaks }))는 후반 페이스 변화가 커서 폼을 판정할 수 없어요.",
+            "\(names(undet.filter { !$0.hasBreaks })): late pace changed too much to judge form."))
 
         // 열람 중 대회가 유지 쪽 + 심박 여유 → 유지가 쉬운 조건이었다는 사실을 함께 말한다
         let currentEasyHeld: Bool = {

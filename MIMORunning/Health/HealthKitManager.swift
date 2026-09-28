@@ -158,7 +158,7 @@ class HealthKitManager {
                                                 splits: det.splits)
             if s == nil { nNoSplits += 1 }
             // 후반 진단 — 총평 '후반' 줄과 같은 함수·같은 폼 3단계. 여기선 접지 시점 보정(formShifts)만 빠진다(±15ms 제한 보정).
-            if s != nil, LateRunDiagnosis.applies(to: wt, durationMin: mins) {
+            if s != nil, LateRunDiagnosis.applies(to: wt, durationMin: mins, splits: det.splits, pausedSpans: det.pausedSpans) {
                 let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                             baseline: formBaseline, formShifts: [], workoutType: wt)
                 s?.lateKind = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
@@ -198,7 +198,8 @@ class HealthKitManager {
                 guard let det = detailFromCache(a.id) else { return nil }
                 let wt = cachedWorkoutTypeForStats(for: a.id) ?? det.workoutType
                 let mins = a.duration / 60
-                guard LateRunDiagnosis.applies(to: wt, durationMin: mins) else { return nil }
+                guard LateRunDiagnosis.applies(to: wt, durationMin: mins, splits: det.splits,
+                                               pausedSpans: det.pausedSpans) else { return nil }
                 let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                             baseline: baseline, formShifts: [], workoutType: wt)
                 guard let r = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
