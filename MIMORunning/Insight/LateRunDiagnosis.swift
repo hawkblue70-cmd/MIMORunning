@@ -96,6 +96,19 @@ enum LateRunDiagnosis {
         return slowBreakKm(splits) == nil
     }
 
+    /// 끊김 이유(디버그 로그·확인용) — 끊김 없으면 nil. 예: "정지 2분 15초(38분)" · "8km 걷기(7'10 · 150spm · 138bpm)"
+    static func interruptionReason(splits: [SplitData], pausedSpans: [PausedSpan]) -> String? {
+        if let p = pausedSpans.filter({ $0.end - $0.start > maxSinglePauseSec })
+            .max(by: { ($0.end - $0.start) < ($1.end - $1.start) }) {
+            let d = Int(p.end - p.start)
+            return "정지 \(d / 60)분 \(d % 60)초(\(Int(p.start / 60))분)"
+        }
+        guard let km = slowBreakKm(splits), let sp = splits.first(where: { $0.id == km }) else { return nil }
+        let cad = sp.avgCadence.map { "\($0)spm" } ?? "—"
+        let hr = sp.avgHeartRate.map { "\($0)bpm" } ?? "—"
+        return "\(km)km 걷기·정지(\(mrFormatPace(sp.paceSecPerKm)) · \(cad) · \(hr))"
+    }
+
     /// 걷기 km — 케이던스와 심박이 **함께** 떨어진 km(사용자 관찰 2026-09-28: 걷는 순간엔 둘이 같이 내려간다).
     /// 1~2분 걷고 다시 뛴 km는 페이스가 1.2배 안팎이라 1.3배 규칙을 빠져나가므로 따로 잡는다. 문턱은 임의로 정함:
     /// 케이던스 중앙값 −6%(170 기준 10spm) · 심박 중앙값 −5bpm · 페이스 중앙값 +10%.

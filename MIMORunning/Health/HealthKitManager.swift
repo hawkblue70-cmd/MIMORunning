@@ -199,7 +199,15 @@ class HealthKitManager {
                 let wt = cachedWorkoutTypeForStats(for: a.id) ?? det.workoutType
                 let mins = a.duration / 60
                 guard LateRunDiagnosis.applies(to: wt, durationMin: mins, splits: det.splits,
-                                               pausedSpans: det.pausedSpans) else { return nil }
+                                               pausedSpans: det.pausedSpans) else {
+                    #if DEBUG
+                    if let why = LateRunDiagnosis.interruptionReason(splits: det.splits, pausedSpans: det.pausedSpans) {
+                        let df = DateFormatter(); df.dateFormat = "M/d"
+                        print("[후반:제외] \(df.string(from: a.date)) \(String(format: "%.1f", a.distance / 1000))km · \(why)")
+                    }
+                    #endif
+                    return nil
+                }
                 let form = FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                             baseline: baseline, formShifts: [], workoutType: wt)
                 guard let r = LateRunDiagnosis.diagnose(splits: det.splits, durationMin: mins, form: form,
