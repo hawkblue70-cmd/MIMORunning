@@ -74,6 +74,8 @@ class HealthKitManager {
     @ObservationIgnored private var fatigueMemo: (key: String, value: [MRLongRunFatigue])? = nil
     /// lateRunHistory 메모 — fatigueMemo와 같은 이유(디스크 상세 디코드)
     @ObservationIgnored private var lateRunMemo: (key: String, value: [LateRunPoint])? = nil
+    /// 후반 기록용 상세 받아오기 — 앱 실행당 한 번(받아오기 실패한 러닝을 매번 다시 조회하지 않게)
+    @ObservationIgnored private var lateRunDetailsFilled = false
 
     // Codable proxies for disk serialization of time-series tuples
     private struct HRPoint: Codable { var offset: Double; var bpm: Int }
@@ -188,6 +190,30 @@ class HealthKitManager {
         #endif
         fatigueMemo = (key, result)
         return result
+    }
+
+    /// 후반 내구성 카드·롱런 요약이 쓰는 16주 60분+ 러닝 중 상세 캐시가 없는 것을 HealthKit에서 받아온다.
+    /// 상세는 러닝을 열었거나 8주 유형 백필 때만 저장되므로 그보다 오래된 롱런이 카드에서 빠진다(실데이터 11건 중 3건).
+    /// 앱 실행당 한 번, 최대 12건. 하나라도 받아왔으면 true — 호출부가 카드·조언을 다시 계산한다.
+    func fillLateRunDetailsIfNeeded(weeks: Int = LateRunPoint.windowWeeks) async -> Bool {
+        guard !lateRunDetailsFilled else { return false }
+        lateRunDetailsFilled = true
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7 * weeks, to: Date()) ?? Date()
+        let missing = activities
+            .filter { $0.type == .running && $0.date >= cutoff && $0.duration >= LateRunDiagnosis.minDurationMin * 60 }
+            .filter { detailFromCache($0.id) == nil }
+            .prefix(12)
+        guard !missing.isEmpty else { return false }
+        var got = 0
+        for a in missing {
+            if Task.isCancelled { break }
+            if await fetchDetail(for: a.id) != nil { got += 1 }
+            await Task.yield()
+        }
+        #if DEBUG
+        print("[후반:상세받기] 16주 60분+ 상세 없음 \(missing.count)건 → 받아옴 \(got)건")
+        #endif
+        return got > 0
     }
 
     /// 최근 N주 60분 이상 러닝의 후반 진단 — 성장 탭 '후반 내구성' 카드.

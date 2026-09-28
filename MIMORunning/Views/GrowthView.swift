@@ -268,6 +268,13 @@ struct GrowthView: View {
                         engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w,
                                             fatigue: manager.longRunFatigueSummaries())
                         lateRunPointsCache = manager.lateRunHistory()
+                        // 상세가 없어 빠진 16주 롱런을 한 번 받아와 카드·조언을 다시 계산(앱 실행당 한 번)
+                        Task {
+                            guard await manager.fillLateRunDetailsIfNeeded() else { return }
+                            lateRunPointsCache = manager.lateRunHistory()
+                            engine.updateAdvice(strengthPerWeek: manager.strengthPerWeek4w,
+                                                fatigue: manager.longRunFatigueSummaries())
+                        }
                         if !engine.runs.isEmpty {
                             let gaps = Self.computeDisplayGaps(runs: engine.runs)
                             displayGaps = gaps
