@@ -240,11 +240,13 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
     let md: DateFormatter = { let f = DateFormatter(); f.dateFormat = "M/d"; return f }()
 
     // 대회 뒤 2주 — 포인트도 롱런도 권하지 않는다
-    if let rd = ctx.recentRaceDate, (0..<MRRhythmContext.postRaceEasyDays).contains(daysAgo(rd)) {
+    // 당일(0일)은 제외 — 대회 날 아침에 "0일 뒤"라고 하지 않는다
+    if let rd = ctx.recentRaceDate, (1..<MRRhythmContext.postRaceEasyDays).contains(daysAgo(rd)) {
         let n = daysAgo(rd)
         let name = ctx.recentRaceName ?? L.s("대회", "the race")
         let note = L.s("\(name) \(n)일 뒤 — 2주는 이지로 회복해요.", "\(n) days after \(name) — keep two weeks easy to recover.")
-        return MRSessionSuggestion(session: level == .go ? L.s("이지런", "Easy run") : nil, progress: "", whyNote: note)
+        return MRSessionSuggestion(session: level == .rest ? nil : L.s("이지런", "Easy run"), progress: "",
+                                   isRecovery: level != .rest, whyNote: note)
     }
 
     let usualLong = mrUsualLongRunKm(runs: runs, asOf: asOf, calendar: calendar)
@@ -311,4 +313,11 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
         ? habitual.map { L.s("여유는 \(mrWeekdayName($0)) 롱런에 쓰세요.", "Save it for \(mrWeekdayName($0))'s long run.") }
         : nil
     return MRSessionSuggestion(session: L.s("이지런", "Easy run"), progress: progress, whyNote: note)
+}
+
+/// 계획 문구 + 포인트 — D-day 카드처럼 이번 주 계획을 한 줄로 말하는 곳. 포인트가 없으면 문구 그대로.
+/// (안내 문구는 포인트가 있으면 이지 횟수가 하나 줄어 있어, 포인트를 빼고 말하면 합이 주간 km와 안 맞는다)
+func mrBreakdownWithPoint(_ w: MRPlanWeek) -> String {
+    guard let pt = w.point else { return w.breakdown }
+    return w.breakdown + AppLanguage.shared.s(" + 포인트 ", " + workout ") + pt.text
 }

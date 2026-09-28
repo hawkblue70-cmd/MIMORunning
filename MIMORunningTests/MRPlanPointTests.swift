@@ -124,4 +124,14 @@ struct MRPlanPointTests {
         // 롱런 없는 주(0)면 제외 없음
         #expect(mrPointRun(weekRuns: [long], longRunKm: 0, hardStarts: [long.start], pointTypes: [:])?.start == long.start)
     }
+
+    @Test func breakdownWithPointAppendsPointText() {
+        let mon = Date(timeIntervalSince1970: 1_791_000_000)
+        let pt = MRPlanPoint(kind: .racePaceShort, totalKm: 6.8, reps: 3, repKm: 1, sustainedKm: nil, paceSecPerKm: 312)
+        let w = MRPlanWeek(idx: 1, monday: mon, phase: "테이퍼", longRunKm: 12, longRunMin: 80, weeklyKm: 22,
+                           projectedMin: 110, isNewMax: false, breakdown: "롱런 12km + 짧게 1.6km × 2회 · 강도는 그대로", point: pt)
+        #expect(mrBreakdownWithPoint(w) == "롱런 12km + 짧게 1.6km × 2회 · 강도는 그대로 + 포인트 대회 페이스 1km × 3회 5'12\"")
+        var noPoint = w; noPoint.point = nil
+        #expect(mrBreakdownWithPoint(noPoint) == noPoint.breakdown)
+    }
 }

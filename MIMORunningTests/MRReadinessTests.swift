@@ -83,7 +83,24 @@ struct MRReadinessTests {
         let r = mrReadiness(runs: steadyRuns(), phys: phys, heatHR: MRHeatHRModel(),
                             hrvNights: nights(base: 30, recent: 37), planPhase: "테이퍼", asOf: now, planWeek: ctx)
         #expect(r != nil)
-        #expect(r?.line.contains("테이퍼 주") == false)
+        // 포인트를 권할 수 있는 날(남은 날 3일 이상 · 롱런 습관 요일 전날 아님)에만 테이퍼 규칙을 건너뛴다 — 테스트 날의 요일에 따라 갈린다
+        let daysLeft = 7 - (cal.dateComponents([.day], from: MRPlanGovernance.weekMonday(of: now), to: cal.startOfDay(for: now)).day ?? 0)
+        let dayBeforeLong = mrHabitualLongRunWeekday(runs: steadyRuns(), asOf: now) == cal.component(.weekday, from: now) % 7 + 1
+        if daysLeft >= 3 && !dayBeforeLong {
+            #expect(r?.line.contains("테이퍼 주") == false)
+        } else {
+            #expect(r?.line == "오늘은 이지런 · 대회 계획 테이퍼 주")
+        }
+    }
+
+    @Test func taperWeekInsideRaceWeekStaysEasyEvenWithPoint() {
+        // D-7 이내면 포인트를 권할 수 없으므로 테이퍼 규칙이 그대로 이지로 막는다
+        var ctx = MRPlanWeekContext(phase: "테이퍼", longRunKm: 12, weeklyKm: 28, easyRuns: 2,
+                                    racePaceSecPerKm: nil, racePaceSegmentMin: nil, daysToRace: 7, easyKm: 4.6)
+        ctx.point = MRPlanPoint(kind: .racePaceShort, totalKm: 6.8, reps: 3, repKm: 1, sustainedKm: nil, paceSecPerKm: 312)
+        let r = mrReadiness(runs: steadyRuns(), phys: phys, heatHR: MRHeatHRModel(),
+                            hrvNights: nights(base: 30, recent: 37), planPhase: "테이퍼", asOf: now, planWeek: ctx)
+        #expect(r?.line == "오늘은 이지런 · 대회 계획 테이퍼 주")
     }
 
     @Test func fourConsecutiveDaysIsEasyEvenWithGoodHRV() {

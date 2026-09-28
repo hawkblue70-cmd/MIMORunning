@@ -1014,12 +1014,18 @@ final class MREngineStore: ObservableObject {
     }
 
     /// 대회 계획이 오늘을 덮지 않을 때의 2주 리듬 입력(설계 9절). 최근 14일 대회는 등록 대회 우선, 없으면 저장 유형 '대회'.
-    private func rhythmContext(now: Date) -> MRRhythmContext {
+    /// 등록 대회가 오늘~13일 뒤에 있으면 nil — 계획 없는 대회(3주 안 등록)는 D-day 카드가 테이퍼를 말하는데
+    /// 리듬이 롱런·포인트를 권하면 두 카드가 부딪힌다.
+    private func rhythmContext(now: Date) -> MRRhythmContext? {
         let cal = Calendar.current
         let today = cal.startOfDay(for: now)
+        func daysFromToday(_ d: Date) -> Int { cal.dateComponents([.day], from: today, to: cal.startOfDay(for: d)).day ?? -999 }
+        if userInput.races.contains(where: { (0..<MRRhythmContext.postRaceEasyDays).contains(daysFromToday($0.date)) }) {
+            return nil
+        }
         func within14(_ d: Date) -> Bool {
-            let n = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: today).day ?? -1
-            return n >= 0 && n < MRRhythmContext.postRaceEasyDays
+            let n = -daysFromToday(d)
+            return n >= 1 && n < MRRhythmContext.postRaceEasyDays
         }
         let registered = userInput.races.filter { within14($0.date) }.max { $0.date < $1.date }
         let typed = pointRunTypes.filter { $0.value == .race && within14($0.key) }.keys.max()

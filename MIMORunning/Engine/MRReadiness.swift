@@ -26,6 +26,8 @@ struct MRReadiness: Equatable {
     var sessionIsLongRun: Bool = false
     /// 세션이 포인트인가 — 판정 줄을 "오늘은 강도 OK · 포인트 …"로 둔다(이지용 "강도 여유 있음" 문형을 쓰지 않는다)
     var sessionIsPoint: Bool = false
+    /// 대회 뒤 2주 회복(대회 없을 때 리듬) — 판정 줄을 "오늘은 이지런 · 대회 뒤 회복"으로. "강도 여유 있음"과 부딪히지 않게.
+    var sessionIsRecovery: Bool = false
 
     /// 둘째 줄 — "왜" 문장 뒤에 데이터 조각을 " · "로 붙인다(계획 진행은 셋째 줄로 따로)
     var detail: String {
@@ -46,7 +48,9 @@ struct MRReadiness: Equatable {
         // 세션이 있으면 판정어 · 세션 — 근거는 둘째 줄의 "왜" 문장이 이미 담고 있다.
         // 강도 OK인데 오늘 세션이 이지면 "강도 OK · 이지"가 앞뒤로 부딪힌다 → "오늘은 이지 Nkm · 강도 여유 있음"
         var parts: [String]
-        if level == .go, let sess = session, !sessionIsLongRun, !sessionIsPoint {
+        if sessionIsRecovery, level != .rest {
+            parts = [L.s("오늘은 이지런", "Today: easy run"), L.s("대회 뒤 회복", "post-race recovery")]
+        } else if level == .go, let sess = session, !sessionIsLongRun, !sessionIsPoint {
             parts = [L.s("오늘은 \(sess)", "Today: \(sess)"), L.s("강도 여유 있음", "room for intensity")]
         } else {
             parts = session.map { [head, $0] } ?? ([head] + reasons)
@@ -108,6 +112,8 @@ struct MRSessionSuggestion: Equatable {
     var isLongRun: Bool = false
     /// 세션이 포인트인가(계획 포인트·대회 없을 때 추천)
     var isPoint: Bool = false
+    /// 대회 뒤 2주 회복 세션인가(대회 없을 때 리듬)
+    var isRecovery: Bool = false
     /// "왜" 문장 뒤에 덧붙일 한 문장 — 강도 여유가 있는데 이지를 권하는 날, 그 여유를 어디에 쓸지
     var whyNote: String? = nil
 }
@@ -234,6 +240,10 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
             : nil
         return MRSessionSuggestion(session: easyText, progress: progress.joined(separator: " · "), whyNote: note)
     case .easy:
+        // 롱런·이지를 다 했고 포인트만 남았으면 이지를 더 권하지 않는다(오늘은 강도를 못 내는 날)
+        if !longLeft && easyDone >= plan.easyRuns {
+            return MRSessionSuggestion(session: nil, progress: progress.joined(separator: " · "))
+        }
         if longLeft { progress.append(L.s("\(daysLeft)일 남음", "\(daysLeft) days left")) }
         return MRSessionSuggestion(session: easyText, progress: progress.joined(separator: " · "))
     }
@@ -378,6 +388,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
             r.progress = s.progress.isEmpty ? nil : s.progress
             r.sessionIsLongRun = s.isLongRun
             r.sessionIsPoint = s.isPoint
+            r.sessionIsRecovery = s.isRecovery
             if let note = s.whyNote { r.why = r.why.isEmpty ? note : r.why + " " + note }
         }
         return r
@@ -391,10 +402,15 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     }
     // 테이퍼 주라도 이번 주 포인트(대회 페이스 짧게)가 남았으면 강도를 막지 않는다 —
     // 테이퍼는 볼륨만 줄이고 강도는 유지한다(Bosquet 2007). 포인트를 했거나 없으면 기존대로 이지.
+    // 단 오늘 실제로 포인트를 권할 수 있는 날만(대회 주 밖 · 남은 날 3일 이상 · 롱런 습관 요일 전날 아님 — mrSessionSuggestion과 같은 조건).
     let taperPointLeft: Bool = {
-        guard let p = planWeek, p.point != nil else { return false }
+        guard let p = planWeek, p.point != nil, p.daysToRace > MRPlanWeekContext.raceWeekDays else { return false }
         let monday = MRPlanGovernance.weekMonday(of: asOf, calendar: calendar)
         guard let next = calendar.date(byAdding: .day, value: 7, to: monday) else { return false }
+        let daysLeft = max(7 - (calendar.dateComponents([.day], from: monday, to: today).day ?? 0), 1)
+        guard daysLeft >= 3 else { return false }
+        let todayWD = calendar.component(.weekday, from: asOf)
+        if mrHabitualLongRunWeekday(runs: runs, asOf: asOf, calendar: calendar) == todayWD % 7 + 1 { return false }
         let week = runs.filter { $0.start >= monday && $0.start < next }
         return mrPointRun(weekRuns: week, longRunKm: p.longRunKm, hardStarts: hardRunStarts, pointTypes: pointRunTypes) == nil
     }()

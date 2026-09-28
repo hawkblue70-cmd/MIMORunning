@@ -42,6 +42,23 @@ struct MRRhythmTests {
         #expect(s.whyNote?.contains("회복") == true)
     }
 
+    @Test func postRaceIsRecoveryAndRaceDayIsNot() throws {
+        let s = try #require(mrRhythmSuggestion(level: .easy, ctx: ctx(raceDaysAgo: 3), runs: history(), hardStarts: [], asOf: day(2)))
+        #expect(s.isRecovery)
+        // 대회 당일(0일) 아침은 "0일 뒤"가 아니다 — 회복 규칙이 아니라 평소 리듬
+        // ctx(raceDaysAgo:)는 월요일(day(0)) 기준 — 수요일(day(2)) 당일 대회는 −2
+        let t = try #require(mrRhythmSuggestion(level: .go, ctx: ctx(raceDaysAgo: -2), runs: history(), hardStarts: [], asOf: day(2)))
+        #expect(!t.isRecovery)
+        #expect(t.whyNote?.contains("0일 뒤") != true)
+    }
+
+    @Test func recoveryLineDoesNotSayRoomForIntensity() {
+        var r = MRReadiness(level: .go, reasons: [], hrvPending: false)
+        r.session = "이지런"
+        r.sessionIsRecovery = true
+        #expect(r.line == "오늘은 이지런 · 대회 뒤 회복")
+    }
+
     @Test func longRunDueOnHabitualDay() throws {
         // 토요일(5), 지난 토요일 롱런 없음 → 마지막 롱런 14일 전
         let s = try #require(mrRhythmSuggestion(level: .go, ctx: ctx(), runs: history(skipLastSaturday: true), hardStarts: [], asOf: day(5)))
