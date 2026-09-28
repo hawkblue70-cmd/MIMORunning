@@ -202,7 +202,7 @@ class HealthKitManager {
                                                         altitudeProfile: det.altitudeProfile) else { return nil }
                 return LateRunPoint(id: a.id, date: a.date, distanceKm: a.distance / 1000, kind: r.kind,
                                     decouplingPct: r.isFastFinish ? nil : r.decouplingPct,
-                                    efficiencyOnsetKm: r.efficiencyOnsetKm)
+                                    efficiencyOnsetKm: r.efficiencyOnsetKm, isFastFinish: r.isFastFinish)
             }
             .sorted { $0.date < $1.date }
         #if DEBUG

@@ -314,4 +314,11 @@ struct LateRunPointTests {
     @Test func trendNeedsFourPoints() {
         #expect(LateRunPoint.trendDelta([pt(.held, 2, day: 1), pt(.held, 3, day: 8), pt(.held, nil, day: 15)]) == nil)
     }
+
+    @Test func fastFinishShowsAsFaster() {
+        var p = pt(.held, nil, day: 1)
+        p.isFastFinish = true
+        #expect(LateRunDurabilityCard.shortName(p) == "가속")
+        #expect(LateRunDurabilityCard.shortName(pt(.held, 2, day: 2)) == "유지")
+    }
 }

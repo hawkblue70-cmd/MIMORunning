@@ -388,6 +388,8 @@ struct LateRunPoint: Identifiable, Equatable {
     /// 중반 대비 후반 효율 하락률(%). 후반 가속·심박 없음이면 nil(추세 차트에서 제외).
     let decouplingPct: Double?
     let efficiencyOnsetKm: Double?
+    /// 후반 10초/km↑ 가속(계획된 마무리) — 카드 유형 줄에 '가속'으로 표시, 추세 차트에선 제외(decouplingPct nil)
+    var isFastFinish: Bool = false
 
     /// 최근 러닝 요약 — 가장 많은 유형과 횟수. 동률이면 최근 쪽 유형.
     static func summary(_ pts: [LateRunPoint]) -> (kind: LateRunDiagnosis.Kind, count: Int, total: Int)? {

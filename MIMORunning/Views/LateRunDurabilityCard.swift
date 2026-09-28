@@ -39,6 +39,15 @@ struct LateRunDurabilityCard: View {
         }
     }
 
+    /// 유지 + 후반 가속이면 '가속'(같은 초록) — 추세 차트에 점이 없는 이유를 줄에서 보이게
+    static func icon(_ p: LateRunPoint) -> String {
+        p.kind == .held && p.isFastFinish ? "arrow.up.right" : icon(p.kind)
+    }
+
+    static func shortName(_ p: LateRunPoint) -> String {
+        p.kind == .held && p.isFastFinish ? AppLanguage.shared.s("가속", "Faster") : shortName(p.kind)
+    }
+
     var body: some View {
         let L = AppLanguage.shared
         if points.count >= 2 {
@@ -59,7 +68,8 @@ struct LateRunDurabilityCard: View {
                 let chartPts = points.filter { $0.decouplingPct != nil }
                 if chartPts.count >= 3 {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(L.s("후반에 같은 속도에 드는 심박 증가(중반 대비)", "Extra HR for the same speed, late vs mid"))
+                        Text(L.s("최근 \(LateRunPoint.windowWeeks)주 · 후반에 같은 속도에 드는 심박 증가(중반 대비)",
+                                 "Last \(LateRunPoint.windowWeeks) weeks · extra HR for the same speed, late vs mid"))
                             .font(.system(size: 10))
                             .foregroundStyle(Color.mrInk3)
                         chart(chartPts)
@@ -73,8 +83,8 @@ struct LateRunDurabilityCard: View {
                     }
                 }
 
-                Text(L.s("최근 \(LateRunPoint.windowWeeks)주 60분 이상 러닝 \(points.count)회 · 인터벌·빌드업·템포 제외 · 5% 아래면 후반까지 유지",
-                         "Last \(LateRunPoint.windowWeeks) weeks · \(points.count) runs over 60 min · excl. intervals, build-ups, tempo · under 5% = held"))
+                Text(L.s("최근 \(LateRunPoint.windowWeeks)주 60분 이상 러닝 \(points.count)회 · 인터벌·빌드업·템포 제외 · 5% 아래면 후반까지 유지 · 가속 = 후반 10초/km 이상 빨라짐(차트 제외)",
+                         "Last \(LateRunPoint.windowWeeks) weeks · \(points.count) runs over 60 min · excl. intervals, build-ups, tempo · under 5% = held · Faster = late 10+ s/km quicker (not charted)"))
                     .font(.system(size: 11))
                     .foregroundStyle(Color.mrInk3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -95,12 +105,12 @@ struct LateRunDurabilityCard: View {
                 VStack(spacing: 4) {
                     ZStack {
                         Circle().fill(Self.color(p.kind).opacity(0.18))
-                        Image(systemName: Self.icon(p.kind))
+                        Image(systemName: Self.icon(p))
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Self.color(p.kind))
                     }
                     .frame(width: 30, height: 30)
-                    Text(Self.shortName(p.kind))
+                    Text(Self.shortName(p))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(Self.color(p.kind))
                         .lineLimit(1)
