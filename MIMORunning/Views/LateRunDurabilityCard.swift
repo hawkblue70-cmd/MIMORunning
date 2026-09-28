@@ -126,20 +126,32 @@ struct LateRunDurabilityCard: View {
         }
     }
 
+    /// y축 — 0% 아래로 거의 안 내려가면(−1%까지) 0%부터 시작한다. 한 점이 −0.1%라고 축이 −5%까지 내려가 아래 절반이 비지 않게.
+    /// 그 경우 0 아래 점은 0에 그린다(표시 차이 1%p 미만). 위쪽은 5% 기준선이 늘 보이게 최소 6%.
+    private func yDomain(_ pts: [LateRunPoint]) -> ClosedRange<Double> {
+        let v = pts.compactMap(\.decouplingPct)
+        let lo = (v.min() ?? 0) < -1 ? ((v.min() ?? 0) - 1).rounded(.down) : 0
+        let hi = max(6, ((v.max() ?? 0) + 1).rounded(.up))
+        return lo...hi
+    }
+
     private func chart(_ pts: [LateRunPoint]) -> some View {
-        Chart {
+        let dom = yDomain(pts)
+        func y(_ p: LateRunPoint) -> Double { max(p.decouplingPct ?? 0, dom.lowerBound) }
+        return Chart {
             RuleMark(y: .value("threshold", LateRunDiagnosis.decouplingThresholdPct))
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 .foregroundStyle(Color.white.opacity(0.35))
             ForEach(pts) { p in
-                LineMark(x: .value("date", p.date), y: .value("pct", p.decouplingPct ?? 0))
+                LineMark(x: .value("date", p.date), y: .value("pct", y(p)))
                     .foregroundStyle(Color.white.opacity(0.35))
                     .interpolationMethod(.monotone)
-                PointMark(x: .value("date", p.date), y: .value("pct", p.decouplingPct ?? 0))
+                PointMark(x: .value("date", p.date), y: .value("pct", y(p)))
                     .foregroundStyle(Self.color(p.kind))
                     .symbolSize(36)
             }
         }
+        .chartYScale(domain: dom)
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
                 AxisGridLine().foregroundStyle(Color.white.opacity(0.08))

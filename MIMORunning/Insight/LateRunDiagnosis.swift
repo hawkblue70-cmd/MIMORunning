@@ -252,7 +252,7 @@ enum LateRunDiagnosis {
         } else {
             kind = .held
         }
-        let on = onsets(full: full, altitudeProfile: altitudeProfile)
+        let on = onsets(full: full, altitudeProfile: altitudeProfile, temperatureC: temperatureC, drift: drift)
         return Result(kind: kind, mid: mid, late: late, decouplingPct: decoupling,
                       legMetrics: legs, legMethod: legSig?.method, durationMin: durationMin,
                       efficiencyOnsetKm: on.efficiencyKm, paceOnsetKm: on.paceKm,
@@ -271,7 +271,10 @@ enum LateRunDiagnosis {
 
     /// km별 효율(GAP 속도 ÷ 심박)과 페이스가 기준(15~45% 구간 중앙값 — 워밍업 뒤·후반 전)에서 벗어나기 시작한 지점.
     /// 30% 지점 이후만 본다. 풀 스플릿 8개 미만·심박 없는 스플릿이 있으면 효율 시점은 nil.
-    static func onsets(full: [SplitData], altitudeProfile: [(distanceKm: Double, altitude: Double)])
+    /// - temperatureC · drift: `diagnose`와 같은 더위 보정 — km마다 기준 구간 가운데로부터 달린 시간만큼 더위 몫을 뺀 심박으로
+    ///   효율을 잰다. 빼지 않으면 더운 날 서서히 오른 심박이 "심박 효율 3km부터↓"로 읽혀, 보정 후 효율(5% 미만)과 같은 줄에서 어긋난다.
+    static func onsets(full: [SplitData], altitudeProfile: [(distanceKm: Double, altitude: Double)],
+                       temperatureC: Double? = nil, drift: MRDriftModel? = nil)
         -> (efficiencyKm: Double?, paceKm: Double?) {
         let splits = full.sorted { $0.id < $1.id }
         guard splits.count >= 8 else { return (nil, nil) }
@@ -294,11 +297,23 @@ enum LateRunDiagnosis {
             return c > 0 ? min(max(w / c, 0.7), 1.3) : 1
         }
         let pace = splits.map(\.paceSecPerKm)
+        func frac(_ i: Int) -> Double { (startM[i] + splits[i].distanceM / 2) / totalM }
+        // 더위 몫 — 1분당 bpm(15°C보다 더운 만큼). km 가운데의 달린 시간 − 기준 구간(15~45%) 가운데 시간만큼 뺀다.
+        let heatPerMin: Double = {
+            guard let t = temperatureC, let d = drift, d.ok, d.bpmPer10MinPerDegC > 0, t > MR_REF_TEMP else { return 0 }
+            return d.bpmPer10MinPerDegC * (t - MR_REF_TEMP) / 10
+        }()
+        var centerSec: [Double] = []
+        var tcum = 0.0
+        for sp in splits { centerSec.append(tcum + sp.duration / 2); tcum += sp.duration }
+        let refCenters = splits.indices.filter { frac($0) >= 0.15 && frac($0) < 0.45 }.map { centerSec[$0] }
+        let refSec = refCenters.isEmpty ? 0 : refCenters.reduce(0, +) / Double(refCenters.count)
         let ef: [Double?] = splits.indices.map { i in
             guard let hr = splits[i].avgHeartRate, hr > 0, pace[i] > 0 else { return nil }
-            return (1000 / (pace[i] * gapScale(i))) / Double(hr)
+            let adjHR = Double(hr) - heatPerMin * (centerSec[i] - refSec) / 60
+            guard adjHR > 0 else { return nil }
+            return (1000 / (pace[i] * gapScale(i))) / adjHR
         }
-        func frac(_ i: Int) -> Double { (startM[i] + splits[i].distanceM / 2) / totalM }
         func median(_ v: [Double]) -> Double? {
             guard !v.isEmpty else { return nil }
             let s = v.sorted(); let m = s.count / 2

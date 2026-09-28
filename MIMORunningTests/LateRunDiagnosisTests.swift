@@ -179,6 +179,14 @@ struct LateRunDiagnosisTests {
         #expect(ev.contains("3.9%"))
     }
 
+    @Test func heatCorrectedOnsetAgreesWithHeldVerdict() {
+        // 20km 27°C, 페이스 그대로 심박이 km마다 0.8bpm씩 오름 — 27°C 더위 몫(6'15 km당 0.7bpm)과 거의 같다.
+        // 보정 전엔 15km 무렵부터 효율이 떨어져 보이고, 보정 후엔 km당 0.1bpm만 남아 시작 지점이 없다.
+        let s = (1...20).map { i in split(i, pace: 375, hr: 145 + Int((Double(i) * 0.8).rounded())) }
+        #expect(LateRunDiagnosis.onsets(full: s, altitudeProfile: []).efficiencyKm != nil)
+        #expect(LateRunDiagnosis.onsets(full: s, altitudeProfile: [], temperatureC: 27, drift: drift).efficiencyKm == nil)
+    }
+
     @Test func coolDayHasNoHeatCorrection() throws {
         let r = try #require(LateRunDiagnosis.diagnose(splits: june30, durationMin: 62, form: nil,
                                                        temperatureC: 12, drift: drift))
