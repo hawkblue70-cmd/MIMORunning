@@ -724,9 +724,10 @@ struct MileageStreakShareCard: View {
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(p.textPrimary)
             Spacer()
+            // 월 결산 카드도 오른쪽 "러닝 흐름"은 왼쪽 제목과 같은 크기·색 — 두 제목이 한 줄의 짝으로 읽히게
             Text(isMonthSummary ? AppLanguage.shared.s("러닝 흐름", "Running Flow") : periodLabel)
-                .font(.system(size: isMonthSummary ? 11 : 13, weight: isMonthSummary ? .semibold : .bold))
-                .foregroundStyle(isMonthSummary ? p.textSecondary : p.textPrimary)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(p.textPrimary)
         }
     }
 
