@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 강도 훈련의 빈도를 본인 최근 12주 습관에서, 인터벌의 반복 거리·회수·페이스·회복을 본인 최근 인터벌 기록에서 출발하게 한다. 문헌값은 폴백.
+**Goal:** 강도 훈련의 빈도를 본인 최근 12주 습관에서, 인터벌 페이스를 본인 최근 인터벌 기록에서 정한다. 구조(반복 약 4분·회복 3분·주간 8%·롱런 +10%)는 문헌 그대로.
 
 **Architecture:** 순수 함수는 `MIMORunning/Engine/MRPlanPoint.swift`에 더한다. 플래너(`mrBuildPlan`)는 새 인자 두 개(`pointHabitEveryWeeks`, `intervalHistory`)를 받는다. 대회 없을 때 리듬은 `MRRhythmContext`의 새 필드로 받는다. 홈(`ActivityListView.pushHardRunStarts`)이 인터벌 기록을 엔진에 넣고, 엔진이 계획을 만들 때 습관과 기록을 넘긴다. 트리거 5는 이미 채운 미래 주를 같은 단계 라이브 주에 맞춘다.
 
@@ -227,11 +227,14 @@ func mrPointEveryWeeks(runsPerWeek: Double, habit: Int?) -> Int? {
 
 ---
 
-### Task 2: 인터벌 시작점 — 본인 최근 인터벌에서 한 단계씩
+### Task 2: 인터벌 페이스 — 구조는 문헌, 페이스는 본인 기록
+
+원칙(2026-09-29 사용자 보정): 문헌 = 구조와 규칙(반복 약 4분·회복 3분·주간 8% 그대로), 본인 데이터 = 값(페이스). 반복 거리·회수·회복 규칙은 **바꾸지 않는다**.
 
 **Files:**
-- Modify: `MIMORunning/Engine/MRPlanPoint.swift` (`MRPlanPoint.recoverySec`, `howTo`, `MRIntervalHistory`, `mrIntervalHistory`, `mrIntervalPoint`, 리듬)
-- Modify: `MIMORunning/Engine/MRRacePlanner.swift` (`intervalHistory` 인자·사다리)
+- Modify: `MIMORunning/Engine/MRPlanPoint.swift` (`MRPlanPoint.paceFromHistory`, `howTo`, `MRIntervalHistory`, `mrIntervalHistory`, `mrIntervalPace`, 리듬)
+- Modify: `MIMORunning/Engine/MRRacePlanner.swift` (`intervalHistory` 인자)
+- Modify: `MIMORunningTests/MRRacePlannerPointTests.swift` (`howToExplainsStructure` 기대값)
 - Test: Create `MIMORunningTests/MRIntervalHistoryTests.swift`
 
 - [ ] **Step 1: 테스트 먼저**
@@ -241,7 +244,7 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-@Suite("강도 훈련 — 본인 인터벌에서 출발", .korean)
+@Suite("강도 훈련 — 인터벌 페이스는 본인 기록", .korean)
 struct MRIntervalHistoryTests {
 
     private let t0 = Date(timeIntervalSince1970: 1_791_000_000)
@@ -273,63 +276,48 @@ struct MRIntervalHistoryTests {
         #expect(mrIntervalHistory(segments: s, date: t0) == nil)
     }
 
-    private let mine = MRIntervalHistory(date: Date(timeIntervalSince1970: 1_791_000_000),
-                                         repKm: 0.4, reps: 5, paceSecPerKm: 270, recoverySec: 72)
-
-    @Test func stepZeroIsExactlyWhatIDid() throws {
-        let p = try #require(mrIntervalPoint(history: mine, step: 0, weeklyKm: 50, fiveKPace: 307))
-        #expect(p.kind == .speed)
-        #expect(p.repKm == 0.4)
-        #expect(p.reps == 5)
-        #expect(p.paceSecPerKm == 270)
-        #expect(p.recoverySec == 60)            // 72초 → 30초 단위 60, 하한 60
+    @Test func threeToFiveMinuteRepsUseMyActualPace() {
+        // 1km 5'00" = 300초 → 3~5분 반복 → 본인 실제 페이스
+        let h = MRIntervalHistory(date: t0, repKm: 1.0, reps: 4, paceSecPerKm: 300, recoverySec: 180)
+        let r = mrIntervalPace(history: h, fiveKPace: 307)
+        #expect(r.pace == 300)
+        #expect(r.fromHistory)
     }
 
-    @Test func eachStepAddsTwoHundredMetersUpToFourMinuteDistance() throws {
-        // 5'07" → 4분 거리 800m
-        let s1 = try #require(mrIntervalPoint(history: mine, step: 1, weeklyKm: 50, fiveKPace: 307))
-        #expect(s1.repKm == 0.6)
-        #expect(s1.paceSecPerKm == 307)          // 늘린 거리는 5K 예측 페이스
-        // 회복 = (72 ÷ (0.4×270)) × (0.6×307) ≈ 122.8 → 120초
-        #expect(s1.recoverySec == 120)
-        let s2 = try #require(mrIntervalPoint(history: mine, step: 2, weeklyKm: 50, fiveKPace: 307))
-        #expect(s2.repKm == 0.8)
-        let s5 = try #require(mrIntervalPoint(history: mine, step: 5, weeklyKm: 50, fiveKPace: 307))
-        #expect(s5.repKm == 0.8)                 // 목표에서 멈춤
+    @Test func shortRepsFallBackToPredictedFiveK() {
+        // 400m 4'30" = 108초 → 2분 미만, 다른 에너지 구간 → 5K 예측 페이스
+        let h = MRIntervalHistory(date: t0, repKm: 0.4, reps: 5, paceSecPerKm: 270, recoverySec: 72)
+        let r = mrIntervalPace(history: h, fiveKPace: 307)
+        #expect(r.pace == 307)
+        #expect(!r.fromHistory)
+        #expect(mrIntervalPace(history: nil, fiveKPace: 307).fromHistory == false)
     }
 
-    @Test func longerHistoryIsNotShortened() throws {
-        let long = MRIntervalHistory(date: mine.date, repKm: 1.2, reps: 4, paceSecPerKm: 300, recoverySec: 180)
-        let p = try #require(mrIntervalPoint(history: long, step: 3, weeklyKm: 60, fiveKPace: 307))
-        #expect(p.repKm == 1.2)
+    @Test func overFiveMinuteRepsAlsoFallBack() {
+        let h = MRIntervalHistory(date: t0, repKm: 1.2, reps: 3, paceSecPerKm: 280, recoverySec: 180)   // 336초
+        #expect(!mrIntervalPace(history: h, fiveKPace: 307).fromHistory)
     }
 
-    @Test func repsCappedByEightPercentOfWeekly() throws {
-        let many = MRIntervalHistory(date: mine.date, repKm: 0.4, reps: 10, paceSecPerKm: 270, recoverySec: 72)
-        // 주간 20km × 8% = 1.6km ÷ 0.4 = 4회
-        let p = try #require(mrIntervalPoint(history: many, step: 0, weeklyKm: 20, fiveKPace: 307))
-        #expect(p.reps == 4)
+    @Test func howToShowsPaceBasis() {
+        var p = MRPlanPoint(kind: .speed, totalKm: 8.5, reps: 5, repKm: 0.8, sustainedKm: nil, paceSecPerKm: 307)
+        #expect(p.howTo.hasSuffix("예상 5K 기록 기준"))
+        p.paceFromHistory = true
+        #expect(p.howTo.hasSuffix("최근 인터벌 페이스 기준"))
     }
 
-    @Test func howToShowsOwnRecoveryOrFallbackNote() {
-        let own = MRPlanPoint(kind: .speed, totalKm: 5.4, reps: 5, repKm: 0.4, sustainedKm: nil, paceSecPerKm: 270, recoverySec: 90)
-        #expect(own.howTo.hasPrefix("사이 1분 30초 천천히 조깅"))
-        let generic = MRPlanPoint(kind: .speed, totalKm: 8.5, reps: 5, repKm: 0.8, sustainedKm: nil, paceSecPerKm: 307)
-        #expect(generic.howTo.hasPrefix("사이 3분 천천히 조깅"))
-        #expect(generic.howTo.hasSuffix("인터벌 기록이 없어 일반 기준"))
-    }
-
-    @Test func planLaddersFromHistory() throws {
+    @Test func planUsesHistoryPaceOnlyForThreeToFiveMinuteReps() throws {
         var pr = MRProfile()
         pr.weeklyKm4w = 45; pr.longestRun16wKm = 22; pr.maxWeeklyKm52w = 60; pr.runsPerWeek = 5
         let today = Date()
         let race = Calendar.current.date(byAdding: .day, value: 7 * 24, to: today)!
+        let hist = MRIntervalHistory(date: t0, repKm: 1.0, reps: 4, paceSecPerKm: 300, recoverySec: 180)
         let p = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.dF, today: today, profile: pr,
                                          halfEquivMin: 110, easyPaceSecPerKm: 400, heat: MRHeatModel(),
-                                         raceTempC: 15, runsPerWeek: 5, intervalHistory: mine))
-        let reps = p.weeks.compactMap(\.point).filter { $0.kind == .speed }.compactMap(\.repKm)
-        #expect(reps.first == 0.4)                        // 첫 인터벌 = 지난 인터벌 그대로
-        for (a, b) in zip(reps, reps.dropFirst()) { #expect(b >= a && b - a <= 0.2 + 1e-9) }
+                                         raceTempC: 15, runsPerWeek: 5, intervalHistory: hist))
+        let speeds = p.weeks.compactMap(\.point).filter { $0.kind == .speed }
+        #expect(!speeds.isEmpty)
+        #expect(speeds.allSatisfy { $0.paceSecPerKm == 300 && $0.paceFromHistory == true })
+        #expect(speeds.allSatisfy { $0.repKm == mrIntervalRepKm(paceSecPerKm: 300) })   // 구조는 그대로(4분 거리)
     }
 }
 ```
@@ -341,32 +329,24 @@ struct MRIntervalHistoryTests {
 (a) `struct MRPlanPoint`의 `let paceSecPerKm: Double` 아래에:
 
 ```swift
-    /// 반복 사이 회복(초) — 본인 인터벌 기록에서 온 값. nil이면 일반 기준(인터벌 3분·대회 페이스 반복 1분).
-    var recoverySec: Int? = nil
+    /// 페이스 근거 — true 최근 인터벌(3~5분 반복) 실제 페이스 · false/nil 본인 기록으로 낸 5K 예측 페이스
+    var paceFromHistory: Bool? = nil
 ```
 
-(b) `howTo`의 `.speed` 케이스를 교체:
+(b) `howTo`의 `.speed` 케이스를 교체(구조 문구는 그대로, 끝에 근거):
 
 ```swift
         case .speed:
-            if let r = recoverySec {
-                return L.s("사이 \(mrRecoveryString(r)) 천천히 조깅 · 앞뒤 조깅 포함 총 \(total)km",
-                           "\(mrRecoveryString(r)) easy jog between · \(total) km total incl. warm-up/cool-down")
-            }
-            return L.s("사이 \(Self.intervalJogMin)분 천천히 조깅 · 앞뒤 조깅 포함 총 \(total)km · 인터벌 기록이 없어 일반 기준",
-                       "\(Self.intervalJogMin)-min easy jog between · \(total) km total incl. warm-up/cool-down · general rule (no interval history)")
+            let basis = paceFromHistory == true
+                ? L.s("최근 인터벌 페이스 기준", "pace from your recent intervals")
+                : L.s("예상 5K 기록 기준", "pace from your predicted 5K")
+            return L.s("사이 \(Self.intervalJogMin)분 천천히 조깅 · 앞뒤 조깅 포함 총 \(total)km · \(basis)",
+                       "\(Self.intervalJogMin)-min easy jog between · \(total) km total incl. warm-up/cool-down · \(basis)")
 ```
 
 (c) `func mrPointKmString` 위에 추가:
 
 ```swift
-/// 회복 시간 표기 — 60 "1분" · 90 "1분 30초" · 120 "2분". 영어 "1 min" · "1 min 30 s".
-func mrRecoveryString(_ sec: Int) -> String {
-    let m = sec / 60, s = sec % 60
-    if s == 0 { return AppLanguage.shared.s("\(m)분", "\(m) min") }
-    return AppLanguage.shared.s("\(m)분 \(s)초", "\(m) min \(s) s")
-}
-
 /// 본인 인터벌 한 번의 요약 — 워치 구조화 운동의 "운동"·"회복" 구간에서.
 struct MRIntervalHistory: Equatable, Sendable {
     let date: Date
@@ -375,7 +355,7 @@ struct MRIntervalHistory: Equatable, Sendable {
     let reps: Int
     /// 운동 구간 평균 페이스
     let paceSecPerKm: Double
-    /// 회복 구간 시간 중앙값(초). 회복 구간이 없으면 120 — ⚠ 임의로 정함
+    /// 회복 구간 시간 중앙값(초). 회복 구간이 없으면 120 — ⚠ 임의로 정함(지금은 기록용, 계획 규칙엔 안 씀)
     let recoverySec: Double
 }
 
@@ -393,25 +373,15 @@ func mrIntervalHistory(segments: [IntervalSegment], date: Date) -> MRIntervalHis
                              recoverySec: rec.isEmpty ? 120 : mrMedian(rec))
 }
 
-/// 본인 인터벌에서 출발하는 인터벌 — step 0 = 지난 인터벌 그대로(거리·회수·페이스·회복).
-/// step마다 반복 거리 +200m, 약 4분 거리(`mrIntervalRepKm`)까지(이미 더 길면 줄이지 않는다).
-/// 늘린 거리의 페이스는 5K 예측 페이스, 회복은 본인 "회복 ÷ 반복 시간" 비율 × 새 반복 시간을 30초 단위 60~180초로.
-/// 회수는 본인 회수(3~8), 단 빠른 구간 합이 주간 8%를 넘지 않게(최소 3).
-func mrIntervalPoint(history h: MRIntervalHistory, step: Int, weeklyKm: Double, fiveKPace: Double) -> MRPlanPoint? {
-    guard h.paceSecPerKm > 0, h.repKm > 0, fiveKPace > 0 else { return nil }
-    let target = max(mrIntervalRepKm(paceSecPerKm: fiveKPace), h.repKm)
-    let repKm = ((min(h.repKm + 0.2 * Double(step), target)) * 10).rounded() / 10
-    let same = abs(repKm - h.repKm) < 0.01
-    let pace = same ? h.paceSecPerKm : fiveKPace
-    let ratio = h.recoverySec / (h.repKm * h.paceSecPerKm)
-    let recRaw = same ? h.recoverySec : ratio * repKm * pace
-    let recoverySec = min(max((recRaw / 30).rounded() * 30, 60), 180)
-    let capReps = max(3, Int((weeklyKm * 0.08 / repKm).rounded()))
-    let reps = min(max(h.reps, 3), capReps, 8)
-    let jogKm = recoverySec / 390          // 6'30"/km 조깅으로 환산 — ⚠ 임의로 정함
-    let total = MRPlanPoint.warmupKm + Double(reps) * repKm + Double(reps - 1) * jogKm + MRPlanPoint.cooldownKm
-    return MRPlanPoint(kind: .speed, totalKm: (total * 10).rounded() / 10, reps: reps, repKm: repKm,
-                       sustainedKm: nil, paceSecPerKm: pace, recoverySec: Int(recoverySec))
+/// 인터벌 페이스 — 구조(반복 약 4분·회복 3분·주간 8%)는 문헌(Daniels), 페이스는 본인 데이터.
+/// 최근 인터벌 반복이 3~5분이었으면 그 실제 평균 페이스(같은 구조의 가장 직접적인 본인 기록),
+/// 아니면 본인 기록으로 낸 5K 예측 페이스. 400m처럼 짧은 반복은 다른 에너지 구간이라 4분 반복 페이스로 옮기지 않는다.
+func mrIntervalPace(history: MRIntervalHistory?, fiveKPace: Double) -> (pace: Double, fromHistory: Bool) {
+    if let h = history {
+        let repSec = h.repKm * h.paceSecPerKm
+        if repSec >= 180 && repSec <= 300 { return (h.paceSecPerKm, true) }
+    }
+    return (fiveKPace, false)
 }
 ```
 
@@ -421,41 +391,27 @@ func mrIntervalPoint(history h: MRIntervalHistory, step: Int, weeklyKm: Double, 
                  intervalHistory: MRIntervalHistory? = nil,
 ```
 
-`var buildPointCount = 0` 아래에:
+강도 훈련 블록의 `switch kind { case .speed: pace = paces.fiveK` 를
 
 ```swift
-    // 인터벌이 들어간 주를 센다 — 본인 인터벌 기록에서 한 단계씩(2026-09-29 본인 데이터 우선)
-    var intervalStep = 0
+                let ip = mrIntervalPace(history: intervalHistory, fiveKPace: paces.fiveK)
+                let pace: Double
+                switch kind {
+                case .speed: pace = ip.pace
 ```
-
-강도 훈련 블록의
+로 바꾸고(원래 `let pace: Double` 선언은 이 줄로 대체), `if let pt = MRPlanPoint.make(…)` 조건 안에서 `point = pt` 를
 
 ```swift
-                if let pt = MRPlanPoint.make(kind: kind, weeklyKm: wkDisplay, longRunKm: lrDisplay,
-                                             raceDistanceM: distanceM, paceSecPerKm: pace),
-                   (wkDisplay - lrDisplay - pt.totalKm) / Double(others - 1) >= 1.5 {
-                    point = pt
-                    if phaseKind == .speed { buildPointCount += 1 }
-                }
+                    var marked = pt
+                    if kind == .speed { marked.paceFromHistory = ip.fromHistory }
+                    point = marked
 ```
-를
-```swift
-                let made: MRPlanPoint? = (kind == .speed && intervalHistory != nil)
-                    ? mrIntervalPoint(history: intervalHistory!, step: intervalStep, weeklyKm: wkDisplay, fiveKPace: paces.fiveK)
-                    : MRPlanPoint.make(kind: kind, weeklyKm: wkDisplay, longRunKm: lrDisplay,
-                                       raceDistanceM: distanceM, paceSecPerKm: pace)
-                if let pt = made, (wkDisplay - lrDisplay - pt.totalKm) / Double(others - 1) >= 1.5 {
-                    point = pt
-                    if phaseKind == .speed { buildPointCount += 1 }
-                    if kind == .speed { intervalStep += 1 }
-                }
-```
-로.
+로 바꾼다.
 
 (e) 리듬 — `MRRhythmContext`에 `var habitEveryWeeks` 아래:
 
 ```swift
-    /// 본인 최근 인터벌(가장 최근 1건) — 인터벌 차례면 한 단계(+200m) 위
+    /// 본인 최근 인터벌(가장 최근 1건) — 3~5분 반복이면 그 페이스
     var intervalHistory: MRIntervalHistory? = nil
 ```
 
@@ -463,17 +419,20 @@ func mrIntervalPoint(history h: MRIntervalHistory, step: Int, weeklyKm: Double, 
 
 ```swift
         func make(_ kind: MRPlanPoint.Kind) -> MRPlanPoint? {
-            if kind == .speed, let h = ctx.intervalHistory {
-                return mrIntervalPoint(history: h, step: 1, weeklyKm: weekly, fiveKPace: paces.fiveK)
-            }
-            let pace = kind == .speed ? paces.fiveK : (kind == .tempo ? paces.tempo : paces.half)
-            return MRPlanPoint.make(kind: kind, weeklyKm: weekly, longRunKm: usualLong ?? 0,
-                                    raceDistanceM: nil, paceSecPerKm: pace)
+            let ip = mrIntervalPace(history: ctx.intervalHistory, fiveKPace: paces.fiveK)
+            let pace = kind == .speed ? ip.pace : (kind == .tempo ? paces.tempo : paces.half)
+            var pt = MRPlanPoint.make(kind: kind, weeklyKm: weekly, longRunKm: usualLong ?? 0,
+                                      raceDistanceM: nil, paceSecPerKm: pace)
+            if kind == .speed { pt?.paceFromHistory = ip.fromHistory }
+            return pt
         }
 ```
 
-- [ ] **Step 4: 컴파일 확인** — `** TEST BUILD SUCCEEDED **`. 기존 `MRRacePlannerPointTests.howToExplainsStructure`는 `recoverySec` 없는 점이라 이제 끝에 폴백 문구가 붙는다 — 기대값을 `"사이 3분 천천히 조깅 · 앞뒤 조깅 포함 총 8.2km · 인터벌 기록이 없어 일반 기준"`으로 고친다.
-- [ ] **Step 5: 커밋** — 새 테스트 `git add` 후 `-- MIMORunning/Engine/MRPlanPoint.swift MIMORunning/Engine/MRRacePlanner.swift MIMORunningTests/MRIntervalHistoryTests.swift MIMORunningTests/MRRacePlannerPointTests.swift`, 메시지 "인터벌 시작점을 본인 최근 인터벌에서 — 첫 주는 지난 인터벌 그대로, 주마다 200m씩 4분 거리까지, 회복은 본인 비율, 기록 없으면 일반 기준 표기".
+(f) `MRRacePlannerPointTests.howToExplainsStructure`의 기대값을
+`"사이 3분 천천히 조깅 · 앞뒤 조깅 포함 총 8.2km · 예상 5K 기록 기준"`으로 고친다.
+
+- [ ] **Step 4: 컴파일 확인** — `** TEST BUILD SUCCEEDED **`
+- [ ] **Step 5: 커밋** — 새 테스트 `git add` 후 `-- MIMORunning/Engine/MRPlanPoint.swift MIMORunning/Engine/MRRacePlanner.swift MIMORunningTests/MRIntervalHistoryTests.swift MIMORunningTests/MRRacePlannerPointTests.swift`, 메시지 "인터벌 페이스를 본인 기록에서 — 최근 3~5분 반복이면 실제 페이스, 아니면 5K 예측, 구조(4분·3분 회복·8%)는 문헌 그대로, 문구에 근거".
 
 ---
 
@@ -535,7 +494,7 @@ func mrIntervalPoint(history h: MRIntervalHistory, step: Int, weeklyKm: Double, 
     /// 같은 훈련인가 — 구조가 같고 페이스가 5초/km 안쪽. 예측이 조금 움직여도 스냅샷을 다시 쓰지 않게.
     func isSamePlan(as o: MRPlanPoint) -> Bool {
         kind == o.kind && reps == o.reps && repKm == o.repKm && sustainedKm == o.sustainedKm
-            && abs(totalKm - o.totalKm) < 0.05 && recoverySec == o.recoverySec
+            && abs(totalKm - o.totalKm) < 0.05 && (paceFromHistory ?? false) == (o.paceFromHistory ?? false)
             && abs(paceSecPerKm - o.paceSecPerKm) < 5
     }
 ```
@@ -543,7 +502,7 @@ func mrIntervalPoint(history h: MRIntervalHistory, step: Int, weeklyKm: Double, 
 `mrFillSnapshotPoints`의 `if let sp = s.point { … }` 블록 전체를 교체:
 
 ```swift
-        // 이미 채운 미래 주 — 같은 단계 라이브 주를 따른다(빈도 습관·인터벌 사다리·종류 규칙이 바뀌면 반영).
+        // 이미 채운 미래 주 — 같은 단계 라이브 주를 따른다(빈도 습관·인터벌 페이스 근거·종류 규칙이 바뀌면 반영).
         // 라이브에 없으면 빼고 이지 한 번으로 되돌린다. 페이스만 5초/km 안쪽 차이면 그대로(스냅샷을 자꾸 다시 쓰지 않게).
         if let sp = s.point {
             guard mon > thisMon, let lw = liveByMonday[mon], lw.phase == s.phase else { return s }
@@ -653,7 +612,7 @@ func mrIntervalPoint(history h: MRIntervalHistory, step: Int, weeklyKm: Double, 
 ```markdown
 **본인 데이터에서 출발**(2026-09-29, 설계 `docs/superpowers/specs/2026-09-29-point-from-own-data-design.md`)
 - **빈도**: 이번 주 앞 12주에서 롱런을 뺀 강도 훈련이 있던 주의 비율로 습관 간격(1·2·3주)을 잡고, 주당 러닝 횟수 규칙과 둘 중 더 드문 쪽으로 넣는다. 러닝 있는 주 6주 미만이면 주당 횟수 규칙만(폴백).
-- **인터벌**: 최근 12주 워치 구조화 인터벌 최신 기록에서 출발 — 첫 인터벌 주는 지난 인터벌 그대로(예: 400m × 5 본인 페이스·본인 회복), 인터벌 주마다 +200m씩 약 4분 거리까지, 늘린 거리는 5K 예측 페이스, 회복은 본인 "회복 ÷ 반복 시간" 비율. 기록이 없으면 일반 기준(4분 거리·3분 회복)이고 주차표에 "인터벌 기록이 없어 일반 기준". 로그 `[강도훈련:기록]`.
+- **인터벌 페이스**: 구조(반복 약 4분·회복 3분·주간 8%)는 문헌 그대로, 페이스는 본인 기록 — 최근 12주 워치 구조화 인터벌의 반복이 3~5분이었으면 그 실제 페이스, 아니면 본인 기록으로 낸 5K 예측 페이스(400m처럼 짧은 반복은 옮기지 않음). 주차표 끝에 "최근 인터벌 페이스 기준"/"예상 5K 기록 기준". 로그 `[강도훈련:기록]`.
 - **이미 채운 미래 주**: 같은 단계 라이브 주를 따른다(바꾸기·빼기), 페이스 5초/km 안 차이는 그대로.
 ```
 
@@ -667,6 +626,6 @@ func mrIntervalPoint(history h: MRIntervalHistory, step: Int, weeklyKm: Double, 
 ## 실기기 확인 포인트
 
 1. 로그 `[강도훈련:기록]` — 습관 간격(예상 2주)과 인터벌 기록(예: 400m×5).
-2. 풀 계획 첫 인터벌 주가 본인 지난 인터벌 그대로, 다음 인터벌 주 +200m.
+2. 풀 계획 인터벌 주 문구 끝 근거 — 사용자는 400m 기록이라 "예상 5K 기록 기준".
 3. 강도 훈련 주 간격이 2주로 벌어졌는가. 로그 `[스냅샷] 시작 전 계획 변경 → 전체 갱신`(풀).
-4. 인터벌 기록이 없으면 주차표 끝에 "인터벌 기록이 없어 일반 기준".
+4. 강도 훈련 주 간격(습관 2주 예상).
