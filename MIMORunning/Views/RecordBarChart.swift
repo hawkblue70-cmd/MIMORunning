@@ -386,11 +386,15 @@ struct RecordBarChart: View {
                 AxisValueLabel {
                     if let d = value.as(Date.self) {
                         Text(xLabel(d)).font(xAxisFont).fixedSize()   // 마지막 라벨이 "…"로 잘리지 않게
+                            .foregroundStyle(Self.axisLabelColor)
                     }
                 }
             }
         }
     }
+
+    /// 축 눈금 글자(페이스·날짜·km) — 기본 회색은 어두운 카드에서 묻혔다. 머리 글자(흰색)보다 한 단계만 낮춘 밝은 색.
+    static let axisLabelColor = Color.primary.opacity(0.85)
 
     /// 탭 선택은 앱 화면에서만 — 내보내기 모드에서는 붙이지 않는다.
     private struct TapSelection: ViewModifier {
@@ -422,6 +426,7 @@ struct RecordBarChart: View {
                         AxisValueLabel {
                             Text(kmLabel(value.as(Double.self) ?? 0))
                                 .font(font)
+                                .foregroundStyle(RecordBarChart.axisLabelColor)
                                 .frame(width: gutter, alignment: .trailing)
                         }
                         AxisGridLine()
@@ -433,6 +438,7 @@ struct RecordBarChart: View {
                         AxisValueLabel {
                             Text(paceLabel(value.as(Double.self) ?? 0))
                                 .font(font)
+                                .foregroundStyle(RecordBarChart.axisLabelColor)
                                 .lineLimit(1).minimumScaleFactor(0.7)   // 10분대 라벨이 좁은 거터에서 줄바꿈되지 않게
                                 .frame(width: gutter, alignment: .trailing)
                         }
@@ -443,6 +449,7 @@ struct RecordBarChart: View {
                         AxisValueLabel {
                             Text(kmLabel(value.as(Double.self) ?? 0))
                                 .font(font)
+                                .foregroundStyle(RecordBarChart.axisLabelColor)
                         }
                     }
                 }
