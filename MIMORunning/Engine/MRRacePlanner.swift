@@ -153,6 +153,7 @@ func mrBuildPlan(raceDate: Date,
                  priorRace: (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? = nil,
                  forcedMonday: Date? = nil,
                  tuneUps: [MRTuneUpRace] = [],
+                 pointHabitEveryWeeks: Int? = nil,
                  caller: String = "unknown",
                  raceName: String = "") -> MRRacePlan? {
 
@@ -417,7 +418,9 @@ func mrBuildPlan(raceDate: Date,
     var longNow = peakLong
     var seenVolRecord = false            // 12개월 최대 주간거리를 처음 넘는 주 — 한 번만 표시
     var forceRecovery = false            // 하프 튠업 다음 주는 회복 주
-    // 주 3회는 포인트를 격주로 — 포인트 종류가 정해지는 주(테이퍼 제외)를 센다
+    // 강도 훈련 간격(주) — 주당 러닝 횟수 규칙과 본인 습관 중 더 드문 쪽(2026-09-29 본인 데이터 우선)
+    let pointEvery = mrPointEveryWeeks(runsPerWeek: runsPerWeek, habit: pointHabitEveryWeeks)
+    // 간격이 2주 이상이면 포인트를 그 간격마다 — 포인트 종류가 정해지는 주(테이퍼 제외)를 센다
     var pointSlot = 0
     // 늘리기 단계는 인터벌과 템포런을 번갈아 — 실제로 강도 훈련이 들어간 늘리기 주를 센다(2026-09-29 사용자 결정)
     var buildPointCount = 0
@@ -592,12 +595,12 @@ func mrBuildPlan(raceDate: Date,
             point = f.week.point
         } else if preTune == nil, tune == nil, !isRaceWeek, !afterTuneUp,
                   let phaseKind = mrPointKind(phase: phase),
-                  let interval = mrPointIntervalDays(runsPerWeek: runsPerWeek),
+                  let every = pointEvery,
                   others >= 2 {
             // 늘리기 단계: 인터벌 → 템포런 → 인터벌 … — 서브4 이상 러너에게는 역치 훈련이 더 직접적이고,
             // 인터벌을 뺄 근거는 없어 둘을 번갈아 둔다(최대치 자극 유지 + 역치 비중 확대).
             let kind: MRPlanPoint.Kind = (phaseKind == .speed && buildPointCount % 2 == 1) ? .tempo : phaseKind
-            let slotOK = interval == 7 || kind == .racePaceShort || pointSlot % 2 == 0
+            let slotOK = every == 1 || kind == .racePaceShort || pointSlot % every == 0
             if kind != .racePaceShort { pointSlot += 1 }
             if slotOK, let paces = mrPointPaces(halfEquivMin: halfEquivMin) {
                 let pace: Double

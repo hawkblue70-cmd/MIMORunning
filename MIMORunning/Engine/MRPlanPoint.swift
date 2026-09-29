@@ -182,6 +182,34 @@ func mrPointIntervalDays(runsPerWeek: Double) -> Int? {
     return nil
 }
 
+/// 본인 강도 훈련 습관 간격(주) — 이번 주 앞 12주 중 러닝이 있던 주에서, 그 주 최장 러닝(롱런)을 뺀 고강도·포인트 유형
+/// 러닝(`mrPointRun`)이 있던 주의 비율로. 1 매주 · 2 격주 · 3 3주에 한 번. 러닝 있는 주 6주 미만이면 nil(폴백).
+/// 비율 0(강도 훈련을 거의 안 해 옴)이면 3 — 천천히 들인다. 설계 2026-09-29 "본인 데이터에서 출발" 2절.
+func mrHabitualPointEveryWeeks(runs: [MRWorkout], pointTypes: [Date: WorkoutType], hardStarts: Set<Date>,
+                               asOf: Date, calendar: Calendar = .current) -> Int? {
+    let thisMonday = MRPlanGovernance.weekMonday(of: asOf, calendar: calendar)
+    guard let from = calendar.date(byAdding: .day, value: -84, to: thisMonday) else { return nil }
+    var byWeek: [Date: [MRWorkout]] = [:]
+    for w in runs where w.start >= from && w.start < thisMonday {
+        byWeek[MRPlanGovernance.weekMonday(of: w.start, calendar: calendar), default: []].append(w)
+    }
+    guard byWeek.count >= 6 else { return nil }   // ⚠ 임의로 정함 — 습관으로 보기에 최소한의 주 수
+    let withPoint = byWeek.values.filter { ws in
+        let longest = ws.compactMap(\.distanceKm).max() ?? 0
+        return mrPointRun(weekRuns: ws, longRunKm: longest, hardStarts: hardStarts, pointTypes: pointTypes) != nil
+    }.count
+    let ratio = Double(withPoint) / Double(byWeek.count)
+    guard ratio > 0 else { return 3 }
+    return min(max(Int((1 / ratio).rounded()), 1), 3)
+}
+
+/// 적용 간격(주) — 주당 러닝 횟수 규칙(4회↑ 1 · 3회 2 · 2회↓ 없음)과 본인 습관 중 더 드문 쪽.
+func mrPointEveryWeeks(runsPerWeek: Double, habit: Int?) -> Int? {
+    guard let days = mrPointIntervalDays(runsPerWeek: runsPerWeek) else { return nil }
+    let byRuns = days / 7
+    return max(byRuns, habit ?? byRuns)
+}
+
 /// 계획 문구의 마지막 "이지(짧게/Easy/Short) Xkm × N회(x)"에서 숫자만 바꾼다. 언어·나머지 문구는 그대로. 못 찾으면 nil.
 /// (`mrParsePlanBreakdown`과 같은 패턴)
 func mrBreakdownReplacingEasy(_ text: String, easyKm: Double, runs: Int) -> String? {
@@ -274,6 +302,8 @@ struct MRRhythmContext: Equatable {
     /// 최근 14일 안에 끝난 대회 — 이름·날짜. 없으면 nil.
     var recentRaceName: String? = nil
     var recentRaceDate: Date? = nil
+    /// 본인 강도 훈련 습관 간격(주) — nil이면 주당 러닝 횟수 규칙만
+    var habitEveryWeeks: Int? = nil
 
     static let longRunEveryDays = 7
     /// ⚠ 코칭 관행 — 대회 거리별로 나누지 않는다
@@ -330,7 +360,7 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
                 || (ctx.pointTypes[w.start].map { MRPlanPoint.pointWorkoutTypes.contains($0) } ?? false)
         }
         .max { $0.start < $1.start }
-    let interval = mrPointIntervalDays(runsPerWeek: ctx.runsPerWeek)
+    let interval = mrPointEveryWeeks(runsPerWeek: ctx.runsPerWeek, habit: ctx.habitEveryWeeks).map { $0 * 7 }
 
     var pieces: [String] = []
     if usualLong != nil, let l = lastLong {
