@@ -67,9 +67,9 @@ struct MRPlanPointSnapshotTests {
         #expect(r.weeks[1].point == nil)          // 이번 주 — 공백
         #expect(r.weeks[2].point?.kind == .speed) // 다음 주
         #expect(r.weeks[3].point == nil)          // 단계가 다르면 건너뜀
-        // 양은 스냅샷 자신의 주간(40)으로: 40×0.08=3.2 → 3회, 총 6.8 · 이지 (40−16−6.8)/2 = 8.6
+        // 양은 스냅샷 자신의 주간(40)으로: 40×0.08=3.2 → 3회, 총 7.0 · 이지 (40−16−7.0)/2 = 8.5
         #expect(r.weeks[2].point?.reps == 3)
-        #expect(r.weeks[2].breakdown == "롱런 16km + 이지 8.6km × 2회")
+        #expect(r.weeks[2].breakdown == "롱런 16km + 이지 8.5km × 2회")
     }
 
     @Test func alreadyFilledOrUnparsableWeeksAreLeftAlone() {

@@ -102,6 +102,6 @@ struct MRRacePlannerPointTests {
 
     @Test func howToExplainsStructure() {
         let s = MRPlanPoint(kind: .speed, totalKm: 8.2, reps: 4, repKm: 1, sustainedKm: nil, paceSecPerKm: 307)
-        #expect(s.howTo == "사이 2분 천천히 조깅 · 앞뒤 조깅 포함 총 8.2km")
+        #expect(s.howTo == "사이 3분 천천히 조깅 · 앞뒤 조깅 포함 총 8.2km")
     }
 }

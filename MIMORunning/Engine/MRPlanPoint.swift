@@ -25,8 +25,14 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
 
     static let warmupKm = 2.0
     static let cooldownKm = 1.0
-    /// 반복 사이 2분 조깅·400m — ⚠ 임의로 정함
-    static let jogBetweenKm = 0.4
+    /// 반복 사이 회복은 **시간**으로 안내한다 — 트랙 없이도 시계로 맞출 수 있고, 도로 GPS는 짧은 거리를 잘 못 잰다.
+    /// 인터벌 사이 3분: Daniels 관행(5K 페이스 반복의 회복 ≈ 달린 시간과 같거나 조금 짧게, 1km ≈ 5분)을 초·중수 쪽으로.
+    /// 대회 페이스 반복 사이 1분: 대회 페이스는 역치 아래라 짧은 휴식으로 충분. ⚠ 둘 다 임의로 정함.
+    static let intervalJogMin = 3
+    static let racePaceJogMin = 1
+    /// 총 거리 계산용 회복 조깅 거리 — 3분 ≈ 0.5km · 1분 ≈ 0.15km (6~7분/km 조깅)
+    static let intervalJogKm = 0.5
+    static let racePaceJogKm = 0.15
 
     /// 포인트로 세는 앱 저장 유형 — 고강도 판정(`RunSummaryBuilder.isHardRun`)의 종류 규칙과 같다.
     static let pointWorkoutTypes: Set<WorkoutType> = [.interval, .tempo, .buildUp, .distanceRun, .race]
@@ -39,7 +45,7 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
         switch kind {
         case .speed:
             let reps = min(max(Int((weeklyKm * 0.08).rounded()), 3), 6)
-            let total = warmupKm + Double(reps) + Double(reps - 1) * jogBetweenKm + cooldownKm
+            let total = warmupKm + Double(reps) + Double(reps - 1) * intervalJogKm + cooldownKm
             return MRPlanPoint(kind: .speed, totalKm: r1(total), reps: reps, repKm: 1.0,
                                sustainedKm: nil, paceSecPerKm: paceSecPerKm)
         case .tempo:
@@ -59,7 +65,7 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
             return MRPlanPoint(kind: .buildUp, totalKm: b, reps: nil, repKm: nil,
                                sustainedKm: r1(b / 3), paceSecPerKm: paceSecPerKm)
         case .racePaceShort:
-            let total = warmupKm + 3 + 2 * jogBetweenKm + cooldownKm
+            let total = warmupKm + 3 + 2 * racePaceJogKm + cooldownKm
             return MRPlanPoint(kind: .racePaceShort, totalKm: r1(total), reps: 3, repKm: 1.0,
                                sustainedKm: nil, paceSecPerKm: paceSecPerKm)
         }
@@ -103,13 +109,13 @@ extension MRPlanPoint {
         let total = mrPointKmString(totalKm)
         switch kind {
         case .speed:
-            return L.s("사이 2분 천천히 조깅 · 앞뒤 조깅 포함 총 \(total)km", "2-min easy jog between · \(total) km total incl. warm-up/cool-down")
+            return L.s("사이 \(Self.intervalJogMin)분 천천히 조깅 · 앞뒤 조깅 포함 총 \(total)km", "\(Self.intervalJogMin)-min easy jog between · \(total) km total incl. warm-up/cool-down")
         case .tempo:
             return L.s("앞뒤 조깅 포함 총 \(total)km", "\(total) km total incl. warm-up/cool-down")
         case .buildUp:
             return L.s("편하게 시작해 점점 올리기", "start easy, build steadily")
         case .racePaceShort:
-            return L.s("사이 400m 조깅 · 앞뒤 조깅 포함 총 \(total)km", "400 m jog between · \(total) km total incl. warm-up/cool-down")
+            return L.s("사이 \(Self.racePaceJogMin)분 조깅 · 앞뒤 조깅 포함 총 \(total)km", "\(Self.racePaceJogMin)-min jog between · \(total) km total incl. warm-up/cool-down")
         }
     }
 }

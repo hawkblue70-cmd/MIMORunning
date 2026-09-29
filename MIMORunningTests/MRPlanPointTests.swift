@@ -8,7 +8,7 @@ struct MRPlanPointTests {
     @Test func speedRepsAreEightPercentOfWeeklyClampedThreeToSix() throws {
         let a = try #require(MRPlanPoint.make(kind: .speed, weeklyKm: 30, longRunKm: 14, raceDistanceM: MRDistance.dH, paceSecPerKm: 300))
         #expect(a.reps == 3)                       // 2.4 → 2 → 하한 3
-        #expect(abs(a.totalKm - 6.8) < 0.01)       // 2 + 3×1 + 2×0.4 + 1
+        #expect(abs(a.totalKm - 7.0) < 0.01)       // 2 + 3×1 + 2×0.5(3분) + 1
         let b = try #require(MRPlanPoint.make(kind: .speed, weeklyKm: 60, longRunKm: 18, raceDistanceM: MRDistance.dH, paceSecPerKm: 300))
         #expect(b.reps == 5)                       // 4.8 → 5
         let c = try #require(MRPlanPoint.make(kind: .speed, weeklyKm: 100, longRunKm: 28, raceDistanceM: MRDistance.dF, paceSecPerKm: 300))
@@ -42,7 +42,7 @@ struct MRPlanPointTests {
     @Test func racePaceShortIsThreeByOneKm() throws {
         let p = try #require(MRPlanPoint.make(kind: .racePaceShort, weeklyKm: 25, longRunKm: 10, raceDistanceM: MRDistance.dH, paceSecPerKm: 312))
         #expect(p.reps == 3)
-        #expect(abs(p.totalKm - 6.8) < 0.01)
+        #expect(abs(p.totalKm - 6.3) < 0.01)       // 2 + 3 + 2×0.15(1분) + 1
     }
 
     @Test func zeroPaceMakesNoPoint() {
