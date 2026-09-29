@@ -19,6 +19,9 @@ enum RecordFlowInsight {
     static let effortThreshold = 1.0
     /// 절반마다 필요한 최소 러닝 횟수.
     static let minRunsPerHalf = 3
+    /// 시간 가중 평균 심박 변화(bpm) — 체감 강도가 그대로인데 페이스가 느려졌을 때 "편하게 뛴 것"인지 가른다.
+    /// ⚠ 3bpm은 임의로 정함(기온-심박 설명 문턱 `MRHeatHRModel.explainThresholdBpm`과 같게).
+    static let heartRateThresholdBpm = 3.0
 
     // MARK: - 입력
 
@@ -39,6 +42,8 @@ enum RecordFlowInsight {
         let effort: Direction
         let firstRuns: Int
         let secondRuns: Int
+        /// 시간 가중 평균 심박 방향 — 심박 없는 러닝뿐이면 .flat(판정에 안 쓴다)
+        var heartRate: Direction = .flat
     }
 
     enum Sentence: Equatable {
@@ -88,7 +93,8 @@ enum RecordFlowInsight {
             pace: paceDirection(first, second),
             effort: effortDirection(first, second),
             firstRuns: firstRuns,
-            secondRuns: secondRuns
+            secondRuns: secondRuns,
+            heartRate: heartRateDirection(first, second)
         )
     }
 
@@ -120,6 +126,21 @@ enum RecordFlowInsight {
         return .flat
     }
 
+    /// 시간 가중 평균 심박 방향(bpm). 한쪽이라도 심박이 없으면 .flat.
+    private static func heartRateDirection(_ first: [RecordBar], _ second: [RecordBar]) -> Direction {
+        func avg(_ bars: [RecordBar]) -> Double? {
+            let rows = bars.compactMap { b in b.avgHR.map { ($0, b.minutes) } }.filter { $0.1 > 0 }
+            let mins = rows.reduce(0) { $0 + $1.1 }
+            guard mins > 0 else { return nil }
+            return rows.reduce(0) { $0 + $1.0 * $1.1 } / mins
+        }
+        guard let a = avg(first), let b = avg(second) else { return .flat }
+        let delta = b - a
+        if delta > heartRateThresholdBpm { return .up }
+        if delta < -heartRateThresholdBpm { return .down }
+        return .flat
+    }
+
     private static func meanEffort(_ bars: [RecordBar]) -> Double? {
         let vals = bars.compactMap(\.meanEffort)
         guard !vals.isEmpty else { return nil }
@@ -141,7 +162,8 @@ enum RecordFlowInsight {
         case .up:   return trend.pace == .up ? .pushingFaster : (trend.distance == .down ? .lessButHarder : .harder)
         case .flat:
             if trend.distance == .down { return .lessDistance }
-            if trend.pace == .down { return .slower }
+            // 체감 강도는 그대로인데 심박이 내려갔으면 더위·피로가 아니라 편하게 뛴 것 — 이지런으로 느려진 경우(2026-09-29 사용자)
+            if trend.pace == .down { return trend.heartRate == .down ? .easierSlower : .slower }
             return .steady
         }
     }

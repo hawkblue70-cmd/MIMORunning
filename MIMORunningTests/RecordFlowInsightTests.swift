@@ -192,4 +192,26 @@ struct RecordFlowInsightTests {
         #expect(result.direction == "More distance without more effort.")
         #expect(result.status == "Last 30 days · 6 runs · 72.0 km · easy days 100%")
     }
+
+    // MARK: 심박 축 — 체감 강도 그대로 + 느려짐
+
+    private func hrBar(_ i: Int, pace: Double, hr: Double) -> RecordBar {
+        RecordBar(id: day(i), end: day(i + 1), km: 6, minutes: 40, au: 0,
+                  paceSec: pace, meanEffort: 4, avgHR: hr, runCount: 1, ratedCount: 1)
+    }
+
+    @Test func slowerWithLowerHeartRateIsEasierNotHeat() {
+        // 앞 절반 6'00" 145bpm, 뒤 절반 6'30" 134bpm, 체감 강도 4로 같음
+        let bars = (0..<4).map { hrBar($0, pace: 360, hr: 145) } + (4..<8).map { hrBar($0, pace: 390, hr: 134) }
+        let t = RecordFlowInsight.trend(.init(bars: bars, period: .day, easyCutoff: 4))
+        #expect(t?.heartRate == .down)
+        #expect(t.map { RecordFlowInsight.sentence(for: $0) } == .easierSlower)
+    }
+
+    @Test func slowerWithSameHeartRateStaysHeatOrFatigue() {
+        let bars = (0..<4).map { hrBar($0, pace: 360, hr: 145) } + (4..<8).map { hrBar($0, pace: 390, hr: 144) }
+        let t = RecordFlowInsight.trend(.init(bars: bars, period: .day, easyCutoff: 4))
+        #expect(t?.heartRate == .flat)
+        #expect(t.map { RecordFlowInsight.sentence(for: $0) } == .slower)
+    }
 }
