@@ -102,12 +102,43 @@ struct MRPointHabitTests {
         HRZoneData(id: id, name: "Z\(id)", minBPM: 0, maxBPM: 0, seconds: sec, fraction: 0)
     }
 
+    private func eff(_ v: Int, _ src: EffortSource) -> ResolvedEffort { ResolvedEffort(value: v, source: src) }
+
     @Test func actualIntensityByEffortOrZoneFourPlusTime() {
-        #expect(mrActualIntensity(effort: 7, zones: nil) == "강도 7")
+        #expect(mrActualIntensity(effort: eff(7, .user), zones: nil) == "강도 7")
         // 존4 400초 + 존5 300초 = 700초 → 12분
-        #expect(mrActualIntensity(effort: 5, zones: [zone(3, sec: 1200), zone(4, sec: 400), zone(5, sec: 300)]) == "존4+ 12분")
+        #expect(mrActualIntensity(effort: eff(5, .user), zones: [zone(3, sec: 1200), zone(4, sec: 400), zone(5, sec: 300)]) == "존4+ 12분")
         // 존3에 오래 머문 "애매하게 빠른" 러닝 — 존4 이상 5분 → 아님
         #expect(mrActualIntensity(effort: nil, zones: [zone(3, sec: 1800), zone(4, sec: 300)]) == nil)
-        #expect(mrActualIntensity(effort: 6, zones: nil) == nil)
+        #expect(mrActualIntensity(effort: eff(6, .user), zones: nil) == nil)
+    }
+
+    private func zoneB(_ id: Int, min: Int, max: Int, sec: Double) -> HRZoneData {
+        HRZoneData(id: id, name: "Z\(id)", minBPM: min, maxBPM: max, seconds: sec, fraction: 0)
+    }
+
+    @Test func heatShiftTrimsZoneFourTime() {
+        // 존4 150~165bpm 720초, 존5 0초. 기온으로 +9bpm → 존4 위쪽 6/15만 남음 = 288초
+        let zs = [zoneB(4, min: 150, max: 165, sec: 720), zoneB(5, min: 165, max: 185, sec: 0)]
+        #expect(abs(mrHeatAdjustedZ4PlusSec(zs, shiftBpm: 9) - 288) < 0.5)
+        #expect(mrHeatAdjustedZ4PlusSec(zs, shiftBpm: 0) == 720)
+        #expect(mrActualIntensity(effort: nil, zones: zs, heatShiftBpm: 9) == nil)         // 12분 → 보정 뒤 5분
+        #expect(mrActualIntensity(effort: nil, zones: zs, heatShiftBpm: 0) == "존4+ 12분")
+        // 존4 넘게 오르면 존5도 깎인다: +25bpm → 존5(20bpm 폭)의 위 10/20만
+        let hot = [zoneB(4, min: 150, max: 165, sec: 600), zoneB(5, min: 165, max: 185, sec: 800)]
+        #expect(abs(mrHeatAdjustedZ4PlusSec(hot, shiftBpm: 25) - 400) < 0.5)
+    }
+
+    @Test func estimatedEffortCountsOnlyWithoutZones() {
+        let cool = [zoneB(4, min: 150, max: 165, sec: 120)]
+        #expect(mrActualIntensity(effort: eff(7, .appleEstimated), zones: cool, heatShiftBpm: 10) == nil)   // 존 있으면 존으로만
+        #expect(mrActualIntensity(effort: eff(7, .appleEstimated), zones: nil) == "강도 7(추정)")
+        #expect(mrActualIntensity(effort: eff(8, .appleManual), zones: cool, heatShiftBpm: 10) == "강도 8")  // 직접 입력은 그대로
+    }
+
+    @Test func heatReasonShownWhenShiftIsMeaningful() {
+        let zs = [zoneB(4, min: 150, max: 170, sec: 900), zoneB(5, min: 170, max: 190, sec: 300)]
+        // +5bpm → 존4 900×(15/20)=675 + 300 = 975초 → 16분
+        #expect(mrActualIntensity(effort: nil, zones: zs, heatShiftBpm: 5) == "존4+ 16분, 기온 −5bpm")
     }
 }

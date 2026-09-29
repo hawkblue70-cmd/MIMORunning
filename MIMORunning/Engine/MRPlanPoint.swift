@@ -238,13 +238,41 @@ func mrPointIntervalDays(runsPerWeek: Double) -> Int? {
 let MR_INTENSE_EFFORT = 7
 let MR_INTENSE_Z4PLUS_SEC = 600.0
 
-/// 실제로 힘들게 뛴 러닝인가 — 근거 문구("강도 8" · "존4+ 14분")를 돌려준다. 아니면 nil.
-func mrActualIntensity(effort: Int?, zones: [HRZoneData]?) -> String? {
+/// 실제로 힘들게 뛴 러닝인가 — 근거 문구("강도 8" · "존4+ 14분" · "존4+ 12분, 기온 −9bpm")를 돌려준다. 아니면 nil.
+/// - 직접 입력한 체감 강도(사용자·애플 수동)는 더위를 이미 느낌에 담고 있어 그대로 센다.
+/// - 심박 존은 **기온 보정**: 그날 기온으로 오른 심박(`heatShiftBpm`, 본인 기온-심박 모델 `MRHeatHRModel.delta`)만큼
+///   존 4 경계를 올려 센다(`mrHeatAdjustedZ4PlusSec`). 여름엔 같은 페이스도 심박이 10~20 높다(2026-09-29 사용자).
+/// - 애플 워치 **추정** 강도는 심박·페이스로 계산돼 더위에 같이 부풀려진다 → 존 자료가 있으면 보정한 존으로만,
+///   존 자료가 없을 때만 추정값을 쓴다.
+func mrActualIntensity(effort: ResolvedEffort?, zones: [HRZoneData]?, heatShiftBpm: Double = 0) -> String? {
     let L = AppLanguage.shared
-    if let e = effort, e >= MR_INTENSE_EFFORT { return L.s("강도 \(e)", "effort \(e)") }
-    let hi = (zones ?? []).filter { $0.id >= 4 }.map(\.seconds).reduce(0, +)
-    if hi >= MR_INTENSE_Z4PLUS_SEC { return L.s("존4+ \(Int((hi / 60).rounded()))분", "Z4+ \(Int((hi / 60).rounded())) min") }
+    if let e = effort, e.source != .appleEstimated, e.value >= MR_INTENSE_EFFORT {
+        return L.s("강도 \(e.value)", "effort \(e.value)")
+    }
+    if let zs = zones, !zs.isEmpty {
+        let hi = mrHeatAdjustedZ4PlusSec(zs, shiftBpm: heatShiftBpm)
+        guard hi >= MR_INTENSE_Z4PLUS_SEC else { return nil }
+        let min = Int((hi / 60).rounded())
+        if heatShiftBpm >= MRHeatHRModel.explainThresholdBpm {
+            let s = Int(heatShiftBpm.rounded())
+            return L.s("존4+ \(min)분, 기온 −\(s)bpm", "Z4+ \(min) min, heat −\(s) bpm")
+        }
+        return L.s("존4+ \(min)분", "Z4+ \(min) min")
+    }
+    if let e = effort, e.value >= MR_INTENSE_EFFORT { return L.s("강도 \(e.value)(추정)", "effort \(e.value) (est.)") }
     return nil
+}
+
+/// 기온 보정한 존 4 이상 시간(초) — 존 4 시작 심박을 `shiftBpm`만큼 올렸을 때 그 위에 있던 시간.
+/// 초 단위 심박이 없어(존별 시간만 저장) 존 안에서 심박이 고르게 퍼져 있다고 보고 비례로 잘라낸다 — 근사.
+func mrHeatAdjustedZ4PlusSec(_ zones: [HRZoneData], shiftBpm: Double) -> Double {
+    let z4 = zones.first { $0.id == 4 }, z5 = zones.first { $0.id == 5 }
+    let s4 = z4?.seconds ?? 0, s5 = z5?.seconds ?? 0
+    guard shiftBpm > 0 else { return s4 + s5 }
+    let w4 = Double(max((z4?.maxBPM ?? 0) - (z4?.minBPM ?? 0), 1))
+    if shiftBpm < w4 { return s4 * (1 - shiftBpm / w4) + s5 }
+    let w5 = Double(max((z5?.maxBPM ?? 0) - (z5?.minBPM ?? 0), 1))
+    return s5 * max(0, 1 - (shiftBpm - w4) / w5)
 }
 
 /// 본인 강도 훈련 습관 간격(주) — 이번 주 앞 12주 중 러닝이 있던 주에서, 그 주 최장 러닝(롱런)을 뺀 러닝 가운데

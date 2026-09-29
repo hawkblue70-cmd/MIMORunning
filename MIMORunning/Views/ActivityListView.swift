@@ -267,14 +267,16 @@ private struct ActivityListContent: View {
         #endif
         engine.updateRecentIntervals(intervals)
 
-        // 실제로 힘들게 뛴 러닝(최근 84일) — 체감 강도 7↑ 또는 심박 존 4 이상 10분↑. 종류 이름이 아니라 본인 심박·체감으로.
+        // 실제로 힘들게 뛴 러닝(최근 84일) — 직접 입력 체감 강도 7↑ 또는 기온 보정한 심박 존 4 이상 10분↑.
+        // 종류 이름이 아니라 본인 심박·체감으로, 여름 심박 상승은 본인 기온-심박 모델로 뺀다.
         // 존은 메모리·존 전용 캐시만(상세 JSON을 메인에서 디코딩하지 않는다).
         let runs84 = manager.activities.filter { $0.type == .running && $0.date >= since84 }
         let ids84 = Set(runs84.map { $0.id.uuidString })
         let idx84 = EffortIndex(stories: stories.filter { ids84.contains($0.workoutID) }, apple: manager.effortMap)
         var intense: [Date: String] = [:]
         for a in runs84 {
-            if let why = mrActualIntensity(effort: idx84.resolve(a.id)?.value, zones: manager.hrZonesFromMemoryCache(a.id)) {
+            if let why = mrActualIntensity(effort: idx84.resolve(a.id), zones: manager.hrZonesFromMemoryCache(a.id),
+                                           heatShiftBpm: engine.heatHR.delta(a.temperatureC)) {
                 intense[a.date] = why
             }
         }
