@@ -656,6 +656,12 @@ struct MileageStreakShareCard: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 7)
 
+                if isMonthSummary {
+                    monthTotalsRow
+                        .padding(.horizontal, 20)
+                        .padding(.top, 2)
+                }
+
                 recordChart
                     .padding(.horizontal, 14)
                     .padding(.top, 6)
@@ -689,19 +695,61 @@ struct MileageStreakShareCard: View {
     }
 
     // MARK: 러닝 흐름 (성장 탭과 동일한 컴포넌트)
+
+    /// 일 단위(달력 한 달) 카드 — 월 결산으로 총거리·횟수를 위에 크게 싣는다. 12주 보기는 그대로.
+    private var isMonthSummary: Bool { period == .day }
+
+    /// "9월 결산" — 달이 끝났거나 마지막 날이면 결산, 아직 진행 중이면 "9월 지금까지"
+    private var monthTitle: String {
+        let L = AppLanguage.shared
+        let cal = Calendar.current
+        let lastDay = cal.startOfDay(for: windowEnd.addingTimeInterval(-1))
+        let finished = Date() >= lastDay
+        if L.isEnglish {
+            let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMMM"
+            let m = df.string(from: windowStart)
+            return finished ? "\(m) summary" : "\(m) so far"
+        }
+        let m = cal.component(.month, from: windowStart)
+        return finished ? "\(m)월 결산" : "\(m)월 지금까지"
+    }
+
     private var flowTitleRow: some View {
         HStack(alignment: .center) {
-            Text(AppLanguage.shared.s("러닝 흐름", "Running Flow"))
+            Text(isMonthSummary ? monthTitle : AppLanguage.shared.s("러닝 흐름", "Running Flow"))
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(p.textPrimary)
             Spacer()
-            Text(periodLabel)
-                .font(.system(size: 13, weight: .bold))
+            Text(isMonthSummary ? AppLanguage.shared.s("러닝 흐름", "Running Flow") : periodLabel)
+                .font(.system(size: isMonthSummary ? 11 : 13, weight: isMonthSummary ? .semibold : .bold))
+                .foregroundStyle(isMonthSummary ? p.textSecondary : p.textPrimary)
+        }
+    }
+
+    /// "196 km        24회 · 17일" — 총거리를 카드에서 가장 큰 숫자로, 횟수·달린 날을 옆에.
+    /// 하루 두 번 뛴 날이 있으면 횟수와 날 수가 달라 꾸준함이 그대로 보인다.
+    private var monthTotalsRow: some View {
+        let L = AppLanguage.shared
+        let km = bars.reduce(0.0) { $0 + $1.km }
+        let runs = bars.reduce(0) { $0 + $1.runCount }
+        let days = bars.filter { $0.runCount > 0 }.count
+        let kmStr = km >= 100 ? String(format: "%.0f", km) : String(format: "%.1f", km)
+        return HStack(alignment: .lastTextBaseline, spacing: 4) {
+            Text(kmStr)
+                .font(.system(size: 34, weight: .black).width(.condensed))
+                .foregroundStyle(p.textPrimary)
+            Text("km")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(p.textSecondary)
+            Spacer(minLength: 8)
+            Text(L.s("\(runs)회 · \(days)일", "\(runs) runs · \(days) days"))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(p.textPrimary)
         }
     }
 
     /// §5.8 — 성장 탭 카드와 **같은 컴포넌트**. 크기·상호작용만 내보내기 모드로.
+    /// 월 결산이면 같은 숫자를 위에 크게 실었으니 차트 머리·흐름 문장의 총계는 뺀다.
     private var recordChart: some View {
         RecordBarChart(
             bars: bars,
@@ -709,8 +757,9 @@ struct MileageStreakShareCard: View {
             start: windowStart,
             end: windowEnd,
             exportMode: true,
+            showsTotals: !isMonthSummary,
             cardBackground: p.boxFill,
-            flowComment: flowComment
+            flowComment: isMonthSummary ? flowComment?.withoutTotals() : flowComment
         )
     }
 

@@ -73,6 +73,17 @@ enum RecordFlowInsight {
         let direction: String?
         let sentence: Sentence
         let trend: Trend?
+
+        /// 상태 줄에서 기간·횟수·거리(앞 세 칸)를 뺀 것 — 월 결산 공유 카드는 그 숫자를 위에 크게 싣는다.
+        /// 남는 칸(쉬운 날 %)이 없으면 방향 줄을 상태 자리로 올리고, 그것도 없으면 nil.
+        func withoutTotals() -> Result? {
+            let rest = status.components(separatedBy: " · ").dropFirst(3)
+            if rest.isEmpty {
+                guard let d = direction else { return nil }
+                return Result(status: d, direction: nil, sentence: sentence, trend: trend)
+            }
+            return Result(status: rest.joined(separator: " · "), direction: direction, sentence: sentence, trend: trend)
+        }
     }
 
     // MARK: - 방향 판정

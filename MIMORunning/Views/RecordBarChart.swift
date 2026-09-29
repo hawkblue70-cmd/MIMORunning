@@ -22,6 +22,8 @@ struct RecordBarChart: View {
     /// 공유 카드 내보내기 모드 — 탭 안내·선택 상호작용을 빼고 더 작게 그린다.
     /// (§5.8 — 카드용 레이아웃을 따로 만들지 않고 **이 컴포넌트 하나**를 그대로 재사용한다)
     var exportMode: Bool = false
+    /// 축 머리 오른쪽 "196 km · 24회"를 보일지 — 월 결산 공유 카드는 같은 숫자를 위에 크게 싣고 여기서는 뺀다(§5.8, 파라미터로만)
+    var showsTotals: Bool = true
     /// 좁은 열(퍼포먼스 카드 35:65 행의 오른쪽)용 축소 모드 — 축 머리·각주를 빼고 범례·축 글자를 줄인다.
     /// 상호작용은 `exportMode`와 같이 꺼진다. (§5.8 — 별도 레이아웃을 만들지 않고 **파라미터로만** 줄인다)
     var compact: Bool = false
@@ -321,11 +323,13 @@ struct RecordBarChart: View {
                 Text(L.s("거리 km", "Distance km"))
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
-                Text(distanceTrailing)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                if showsTotals {
+                    Text(distanceTrailing)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
             }
         }
     }
