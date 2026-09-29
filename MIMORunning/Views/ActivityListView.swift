@@ -251,6 +251,21 @@ private struct ActivityListContent: View {
             if let t = lookup(a.id), MRPlanPoint.pointWorkoutTypes.contains(t) { pointTypes[a.date] = t }
         }
         engine.updatePointRunTypes(pointTypes)
+        // 본인 최근 인터벌(최근 12주 인터벌 유형 최신 3건) — 워치 구조화 운동 구간이 있는 것만. 디스크 상세 3건 이하만 읽는다.
+        let since84 = Calendar.current.date(byAdding: .day, value: -84, to: Date()) ?? .distantPast
+        let intervalRuns = manager.activities
+            .filter { $0.type == .running && $0.date >= since84 && pointTypes[$0.date] == .interval }
+            .sorted { $0.date > $1.date }
+            .prefix(3)
+        let intervals = intervalRuns.compactMap { a in
+            manager.detailFromCache(a.id).flatMap { mrIntervalHistory(segments: $0.intervalSegments, date: a.date) }
+        }.sorted { $0.date < $1.date }
+        #if DEBUG
+        print("[강도훈련:기록] 습관·인터벌 — 인터벌 \(intervals.count)건 " + intervals.map {
+            "\(Int($0.repKm * 1000))m×\($0.reps) \(mrFormatPace($0.paceSecPerKm)) 회복 \(Int($0.recoverySec))s"
+        }.joined(separator: ", "))
+        #endif
+        engine.updateRecentIntervals(intervals)
     }
 
     var body: some View {

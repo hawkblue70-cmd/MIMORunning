@@ -66,6 +66,14 @@ final class MREngineStore: ObservableObject {
     /// 앱 저장 유형이 포인트 유형(인터벌·템포·빌드업·거리주·대회)인 러닝의 시작 시각 → 유형. 최근 180일, 홈이 주입(`updatePointRunTypes`).
     /// 고강도 집합(15일)으로는 지난 주차의 포인트 완료와 대회 없을 때 번갈이를 못 본다.
     @Published private(set) var pointRunTypes: [Date: WorkoutType] = [:]
+
+    /// 본인 최근 인터벌 요약(최근 12주 인터벌 유형 최신 3건, 오래된 → 최근). 홈이 주입(`updateRecentIntervals`).
+    @Published private(set) var recentIntervals: [MRIntervalHistory] = []
+
+    /// 본인 강도 훈련 습관 간격 — 계획·리듬이 쓴다. 러닝·주입값에서 그때그때 계산.
+    private var pointHabitEveryWeeks: Int? {
+        mrHabitualPointEveryWeeks(runs: runs, pointTypes: pointRunTypes, hardStarts: hardRunStarts, asOf: Date())
+    }
     @Published private(set) var todayCard: MRTodayCard?
     @Published private(set) var raceDayCard: MRRaceDayCard?
     @Published private(set) var backtest: [MRBacktestRow] = []
@@ -197,6 +205,9 @@ final class MREngineStore: ObservableObject {
         var prevPlanInfo: (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? = nil
         var absorbed: [(race: MRTargetRace, planName: String)] = []
         var aPairs: [(race: MRTargetRace, plan: MRRacePlan?)] = []
+        #if DEBUG
+        print("[강도훈련:기록] 습관 간격=\(pointHabitEveryWeeks.map { "\($0)주" } ?? "없음(폴백)") · 인터벌 기록=\(recentIntervals.last.map { "\(Int($0.repKm * 1000))m×\($0.reps)" } ?? "없음(일반 기준)")")
+        #endif
 
         // ① 자기 계획(앵커)이 있는 단거리 먼저 — A 계획이 겹치는 주에 이 숫자를 따라야 하므로.
         var ownPlanWeeksByKey: [String: [MRPlanWeek]] = [:]
@@ -210,6 +221,8 @@ final class MREngineStore: ObservableObject {
                                  raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP,
                                  runsPerWeek: planProfile.runsPerWeek,
                                  priorRace: nil, forcedMonday: anchor,
+                                 pointHabitEveryWeeks: pointHabitEveryWeeks,
+                                 intervalHistory: recentIntervals.last,
                                  caller: caller, raceName: r.name)
             // ⚠ A 계획이 따를 숫자는 사용자가 주차표에서 보는 스냅샷 값이어야 한다.
             //   라이브 주차는 오늘 프로필로 다시 만들어져 스냅샷(48)과 다른 숫자(41)가 나올 수 있고,
@@ -240,7 +253,10 @@ final class MREngineStore: ObservableObject {
                                  raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP,
                                  runsPerWeek: planProfile.runsPerWeek,
                                  priorRace: prior, forcedMonday: anchors[key],
-                                 tuneUps: tune, caller: caller, raceName: r.name)
+                                 tuneUps: tune,
+                                 pointHabitEveryWeeks: pointHabitEveryWeeks,
+                                 intervalHistory: recentIntervals.last,
+                                 caller: caller, raceName: r.name)
             if let pl {
                 prevPlanInfo = (date: r.date, name: r.name, distanceM: r.distanceM,
                                 peakLong: pl.reachableLongKm, peakVol: pl.peakWeeklyKm)
@@ -268,6 +284,8 @@ final class MREngineStore: ObservableObject {
                                  raceTempC: raceTempByID[r.id] ?? MR_REF_TEMP,
                                  runsPerWeek: planProfile.runsPerWeek,
                                  priorRace: nil, forcedMonday: anchors[key],
+                                 pointHabitEveryWeeks: pointHabitEveryWeeks,
+                                 intervalHistory: recentIntervals.last,
                                  caller: caller, raceName: r.name)
             shortPairs.append((r, pl))
         }
@@ -1032,6 +1050,8 @@ final class MREngineStore: ObservableObject {
         var c = MRRhythmContext(runsPerWeek: profile.runsPerWeek,
                                 paces: mrPointPaces(halfEquivMin: halfEquivMin),
                                 pointTypes: pointRunTypes)
+        c.habitEveryWeeks = pointHabitEveryWeeks
+        c.intervalHistory = recentIntervals.last
         if let r = registered {
             c.recentRaceName = r.name; c.recentRaceDate = r.date
         } else if let t = typed {
@@ -1073,6 +1093,14 @@ final class MREngineStore: ObservableObject {
     func updatePointRunTypes(_ types: [Date: WorkoutType]) {
         guard types != pointRunTypes else { return }
         pointRunTypes = types
+        guard case .ready = state else { return }
+        todayCard = buildTodayCard(runs: runs, now: Date())
+    }
+
+    /// 홈이 본인 최근 인터벌 요약을 넣어 준다. 계획은 다음 재계산(나 탭)에서 쓰고, 오늘 카드(리듬)는 바로 다시 만든다.
+    func updateRecentIntervals(_ items: [MRIntervalHistory]) {
+        guard items != recentIntervals else { return }
+        recentIntervals = items
         guard case .ready = state else { return }
         todayCard = buildTodayCard(runs: runs, now: Date())
     }
