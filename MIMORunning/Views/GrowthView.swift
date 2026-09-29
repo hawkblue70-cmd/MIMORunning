@@ -335,7 +335,7 @@ struct GrowthView: View {
             //   .task에서도 호출하면 두 Task가 경쟁하여 healthStory를 기록한 직후
             //   두 번째 완료 Task가 canShow=false를 덮어쓸 수 있다.
             MRAdviceLogStore.runMigrationIfNeeded()
-            // 일간 모드 기본 창은 "오늘까지 최근 30일" — 자정을 넘겨 탭에 다시 들어오면 창을 다시 잡는다.
+            // 일간 모드 기본 창은 "이번 달" — 달이 바뀐 뒤 탭에 다시 들어오면 창을 다시 잡는다.
             if showDaily, recordBarsCache.first?.id != dailyWindow(for: dailyMonth).start {
                 refreshRecordBars()
             }
@@ -543,14 +543,14 @@ struct GrowthView: View {
         AppLanguage.shared.s("러닝 흐름", "Running Flow")
     }
 
-    /// 공유 카드에 찍는 기간 라벨 — "최근 30일" / "8월" / "최근 12주"
+    /// 공유 카드에 찍는 기간 라벨 — "이번 달" / "8월" / "최근 12주"
     private var recordPeriodLabel: String {
         showDaily ? dailyMonthLabel : AppLanguage.shared.s("최근 12주", "Last 12 weeks")
     }
 
     private var dailyMonthLabel: String {
         let cal = Calendar.current
-        if isAtCurrentMonth { return AppLanguage.shared.s("최근 30일", "Last 30 days") }
+        if isAtCurrentMonth { return AppLanguage.shared.s("이번 달", "This month") }
         let comps = cal.dateComponents([.year, .month], from: dailyMonth)
         if AppLanguage.shared.isEnglish {
             let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMMM yyyy"
@@ -568,16 +568,11 @@ struct GrowthView: View {
 
     private var isAtCurrentMonth: Bool { isCurrentMonth(dailyMonth) }
 
-    /// 일간 모드 표시 창 — 기본(현재 달)은 **오늘까지 최근 30일** 롤링,
-    /// "<"로 뒤로 가면 그 달의 달력 단위. 거리·부하·페이스 세 차트가 같은 창을 쓴다.
+    /// 일간 모드 표시 창 — 달력 한 달(이번 달 포함). 거리·부하·페이스 세 차트가 같은 창을 쓴다.
     private func dailyWindow(for month: Date) -> (start: Date, end: Date) {
+        // 이번 달도 지난 달과 같이 **달력 한 달**(1일~말일) — 홈 이번 달·나 탭 결산·카드의 "이번 달"과 같은 기준(2026-09-29 통일).
+        // 전엔 이번 달만 "오늘까지 최근 30일" 롤링이라 숫자가 달랐다. 남은 날은 빈 막대로 둔다.
         let cal = Calendar.current
-        if isCurrentMonth(month) {
-            let today = cal.startOfDay(for: Date())
-            let end = cal.date(byAdding: .day, value: 1, to: today) ?? today
-            let start = cal.date(byAdding: .day, value: -30, to: end) ?? end
-            return (start, end)
-        }
         let start = cal.date(from: cal.dateComponents([.year, .month], from: month)) ?? month
         let days = cal.range(of: .day, in: .month, for: start)?.count ?? 30
         let end = cal.date(byAdding: .day, value: days, to: start) ?? start
@@ -661,8 +656,10 @@ struct GrowthView: View {
     /// 차트 아래 흐름 문장 — 앞뒤 절반 비교 규칙 엔진(`RecordFlowInsight`). 캐시된 버킷만 훑어 가볍다.
     /// 앱 화면 전용이며 공유 카드에는 넣지 않는다.
     private var recordFlowComment: RecordFlowInsight.Result {
-        RecordFlowInsight.evaluate(
-            .init(bars: recordBarsCache,
+        // 이번 달의 남은 날(미래 빈 막대)은 비교에서 뺀다 — 앞뒤 절반이 "거리 줄었다"로 잘못 갈리지 않게
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+        return RecordFlowInsight.evaluate(
+            .init(bars: recordBarsCache.filter { $0.id < tomorrow },
                   period: recordPeriod,
                   easyCutoff: manager.easyEffortCutoff() ?? EffortPaceTrend.fallbackCutoff),
             periodLabel: recordPeriodLabel
@@ -674,7 +671,7 @@ struct GrowthView: View {
         switch recordPeriod {
         case .day:
             return isAtCurrentMonth
-                ? L.s("최근 30일 러닝 기록이 없어요", "No runs in the last 30 days")
+                ? L.s("이번 달 러닝 기록이 없어요", "No runs this month")
                 : L.s("이 달에 러닝 기록이 없어요", "No runs this month")
         case .week:
             return L.s("이번 12주간 러닝 기록이 없어요", "No runs in the last 12 weeks")

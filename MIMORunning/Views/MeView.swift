@@ -83,8 +83,9 @@ struct MeView: View {
 
     // MARK: - Period stats
 
-    private var runWalkActivities: [Activity] {
-        manager.activities.filter { $0.type == .running || $0.type == .walking }
+    /// 기간별 결산은 러닝만 — 홈 이번 달·러닝 흐름·리듬/퍼포먼스 카드와 같은 기준(2026-09-29 통일, 전엔 걷기 포함)
+    private var runActivities: [Activity] {
+        manager.activities.filter { $0.type == .running }
     }
 
     private func periodStats(monthOffset: Int) -> SummaryPeriodStats {
@@ -92,7 +93,7 @@ struct MeView: View {
         let ref = cal.date(byAdding: .month, value: -monthOffset, to: Date()) ?? Date()
         let year  = cal.component(.year,  from: ref)
         let month = cal.component(.month, from: ref)
-        let acts = runWalkActivities.filter {
+        let acts = runActivities.filter {
             cal.component(.year,  from: $0.date) == year &&
             cal.component(.month, from: $0.date) == month
         }
@@ -100,7 +101,7 @@ struct MeView: View {
         let prevRef = cal.date(byAdding: .month, value: -(monthOffset + 1), to: Date()) ?? Date()
         let prevYear  = cal.component(.year,  from: prevRef)
         let prevMonth = cal.component(.month, from: prevRef)
-        let prevActs = runWalkActivities.filter {
+        let prevActs = runActivities.filter {
             cal.component(.year,  from: $0.date) == prevYear &&
             cal.component(.month, from: $0.date) == prevMonth
         }
@@ -117,7 +118,7 @@ struct MeView: View {
         var ytdKm: Double? = nil
         if monthOffset == 0 {
             let currYear = cal.component(.year, from: Date())
-            let km = runWalkActivities.filter {
+            let km = runActivities.filter {
                 cal.component(.year, from: $0.date) == currYear
             }.reduce(0.0) { $0 + $1.distance / 1000 }
             ytdKm = km > 0 ? km : nil
@@ -137,12 +138,12 @@ struct MeView: View {
     private func yearStats(yearOffset: Int) -> SummaryPeriodStats {
         let cal = Calendar.current
         let year = cal.component(.year, from: Date()) - yearOffset
-        let acts = runWalkActivities.filter {
+        let acts = runActivities.filter {
             cal.component(.year, from: $0.date) == year
         }
 
         let prevYear = year - 1
-        let prevActs = runWalkActivities.filter {
+        let prevActs = runActivities.filter {
             cal.component(.year, from: $0.date) == prevYear
         }
         let prevRuns = prevActs.filter { $0.type == .running }
