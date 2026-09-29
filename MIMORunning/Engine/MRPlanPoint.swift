@@ -22,6 +22,8 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
     let sustainedKm: Double?
     /// 빠른 구간 페이스 (초/km) — 예측 기록 기준, 기온 보정 전
     let paceSecPerKm: Double
+    /// 페이스 근거 — true 최근 인터벌(3~5분 반복) 실제 페이스 · false/nil 본인 기록으로 낸 5K 예측 페이스
+    var paceFromHistory: Bool? = nil
 
     static let warmupKm = 2.0
     static let cooldownKm = 1.0
@@ -114,7 +116,11 @@ extension MRPlanPoint {
         let total = mrPointKmString(totalKm)
         switch kind {
         case .speed:
-            return L.s("사이 \(Self.intervalJogMin)분 천천히 조깅 · 앞뒤 조깅 포함 총 \(total)km", "\(Self.intervalJogMin)-min easy jog between · \(total) km total incl. warm-up/cool-down")
+            let basis = paceFromHistory == true
+                ? L.s("최근 인터벌 페이스 기준", "pace from your recent intervals")
+                : L.s("예상 5K 기록 기준", "pace from your predicted 5K")
+            return L.s("사이 \(Self.intervalJogMin)분 천천히 조깅 · 앞뒤 조깅 포함 총 \(total)km · \(basis)",
+                       "\(Self.intervalJogMin)-min easy jog between · \(total) km total incl. warm-up/cool-down · \(basis)")
         case .tempo:
             return L.s("앞 2km·뒤 1km 조깅 포함 총 \(total)km", "\(total) km total incl. 2 km warm-up and 1 km cool-down")
         case .buildUp:
@@ -140,6 +146,43 @@ func mrIntervalRepKm(paceSecPerKm: Double) -> Double {
 /// 반복 거리 표기 — 1km 이상은 "1km"·"1.2km", 그 아래는 "800m".
 func mrRepDistanceString(_ km: Double) -> String {
     km >= 1 ? "\(mrPointKmString(km))km" : "\(Int((km * 1000).rounded()))m"
+}
+
+/// 본인 인터벌 한 번의 요약 — 워치 구조화 운동의 "운동"·"회복" 구간에서.
+struct MRIntervalHistory: Equatable, Sendable {
+    let date: Date
+    /// 운동 구간 거리 중앙값, 200m 단위
+    let repKm: Double
+    let reps: Int
+    /// 운동 구간 평균 페이스
+    let paceSecPerKm: Double
+    /// 회복 구간 시간 중앙값(초). 회복 구간이 없으면 120 — ⚠ 임의로 정함(지금은 기록용, 계획 규칙엔 안 씀)
+    let recoverySec: Double
+}
+
+/// 구간 → 요약. 운동 구간이 3개 미만이거나 운동 구간 거리가 빠져 있으면 nil.
+func mrIntervalHistory(segments: [IntervalSegment], date: Date) -> MRIntervalHistory? {
+    let work = segments.filter { $0.stepLabel == "운동" }
+    let dists = work.compactMap(\.distanceM).filter { $0 > 0 }
+    let paces = work.compactMap(\.paceSecPerKm)
+    guard work.count >= 3, dists.count == work.count, !paces.isEmpty else { return nil }
+    let repKm = (mrMedian(dists) / 200).rounded() * 200 / 1000
+    guard repKm >= 0.2 else { return nil }
+    let rec = segments.filter { $0.stepLabel == "회복" }.map(\.duration)
+    return MRIntervalHistory(date: date, repKm: repKm, reps: work.count,
+                             paceSecPerKm: paces.reduce(0, +) / Double(paces.count),
+                             recoverySec: rec.isEmpty ? 120 : mrMedian(rec))
+}
+
+/// 인터벌 페이스 — 구조(반복 약 4분·회복 3분·주간 8%)는 문헌(Daniels), 페이스는 본인 데이터.
+/// 최근 인터벌 반복이 3~5분이었으면 그 실제 평균 페이스(같은 구조의 가장 직접적인 본인 기록),
+/// 아니면 본인 기록으로 낸 5K 예측 페이스. 400m처럼 짧은 반복은 다른 에너지 구간이라 4분 반복 페이스로 옮기지 않는다.
+func mrIntervalPace(history: MRIntervalHistory?, fiveKPace: Double) -> (pace: Double, fromHistory: Bool) {
+    if let h = history {
+        let repSec = h.repKm * h.paceSecPerKm
+        if repSec >= 180 && repSec <= 300 { return (h.paceSecPerKm, true) }
+    }
+    return (fiveKPace, false)
 }
 
 /// km 표기 — 정수면 "8", 아니면 "6.4". 계획 문구(eachStr)와 같은 규칙.
@@ -304,6 +347,8 @@ struct MRRhythmContext: Equatable {
     var recentRaceDate: Date? = nil
     /// 본인 강도 훈련 습관 간격(주) — nil이면 주당 러닝 횟수 규칙만
     var habitEveryWeeks: Int? = nil
+    /// 본인 최근 인터벌(가장 최근 1건) — 3~5분 반복이면 그 페이스
+    var intervalHistory: MRIntervalHistory? = nil
 
     static let longRunEveryDays = 7
     /// ⚠ 코칭 관행 — 대회 거리별로 나누지 않는다
@@ -388,9 +433,12 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
         let lastType = lastPoint.flatMap { ctx.pointTypes[$0.start] }
         let weekly = past.filter { daysAgo($0.start) <= 28 }.compactMap(\.distanceKm).reduce(0, +) / 4
         func make(_ kind: MRPlanPoint.Kind) -> MRPlanPoint? {
-            let pace = kind == .speed ? paces.fiveK : (kind == .tempo ? paces.tempo : paces.half)
-            return MRPlanPoint.make(kind: kind, weeklyKm: weekly, longRunKm: usualLong ?? 0,
-                                    raceDistanceM: nil, paceSecPerKm: pace)
+            let ip = mrIntervalPace(history: ctx.intervalHistory, fiveKPace: paces.fiveK)
+            let pace = kind == .speed ? ip.pace : (kind == .tempo ? paces.tempo : paces.half)
+            var pt = MRPlanPoint.make(kind: kind, weeklyKm: weekly, longRunKm: usualLong ?? 0,
+                                      raceDistanceM: nil, paceSecPerKm: pace)
+            if kind == .speed { pt?.paceFromHistory = ip.fromHistory }
+            return pt
         }
         // 빌드업이 안 되면(평소 롱런이 짧음) 속도로
         if let pt = make(MRPlanPoint.nextKind(after: lastType)) ?? make(.speed) {

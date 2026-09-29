@@ -154,6 +154,7 @@ func mrBuildPlan(raceDate: Date,
                  forcedMonday: Date? = nil,
                  tuneUps: [MRTuneUpRace] = [],
                  pointHabitEveryWeeks: Int? = nil,
+                 intervalHistory: MRIntervalHistory? = nil,
                  caller: String = "unknown",
                  raceName: String = "") -> MRRacePlan? {
 
@@ -603,9 +604,10 @@ func mrBuildPlan(raceDate: Date,
             let slotOK = every == 1 || kind == .racePaceShort || pointSlot % every == 0
             if kind != .racePaceShort { pointSlot += 1 }
             if slotOK, let paces = mrPointPaces(halfEquivMin: halfEquivMin) {
+                let ip = mrIntervalPace(history: intervalHistory, fiveKPace: paces.fiveK)
                 let pace: Double
                 switch kind {
-                case .speed: pace = paces.fiveK
+                case .speed: pace = ip.pace
                 case .tempo: pace = paces.tempo
                 case .buildUp, .racePaceShort:
                     pace = mrTrainingRacePaceSecPerKm(halfEquivMin: halfEquivMin, distanceM: distanceM,
@@ -615,7 +617,9 @@ func mrBuildPlan(raceDate: Date,
                 if let pt = MRPlanPoint.make(kind: kind, weeklyKm: wkDisplay, longRunKm: lrDisplay,
                                              raceDistanceM: distanceM, paceSecPerKm: pace),
                    (wkDisplay - lrDisplay - pt.totalKm) / Double(others - 1) >= 1.5 {
-                    point = pt
+                    var marked = pt
+                    if kind == .speed { marked.paceFromHistory = ip.fromHistory }
+                    point = marked
                     if phaseKind == .speed { buildPointCount += 1 }
                 }
             }
