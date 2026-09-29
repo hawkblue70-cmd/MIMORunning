@@ -1022,7 +1022,13 @@ final class MREngineStore: ObservableObject {
                            planPhase: governing?.week.phase,
                            hardRunStarts: hardRunStarts,
                            planWeek: governing.map { planWeekContext(plan: $0.plan, week: $0.week, now: now) },
-                           pointRunTypes: pointRunTypes, rhythm: governing == nil ? rhythmContext(now: now) : nil)
+                           pointRunTypes: pointRunTypes, rhythm: governing == nil ? rhythmContext(now: now) : nil,
+                           easyTarget: easyTarget,
+                           grayZone: easyTarget.flatMap { t in
+                               mrGrayZoneWeek(runs: runs, lt1HR: t.lt1HR,
+                                              intenseStarts: intenseRunsInjected ? Set(intenseRuns.keys) : hardRunStarts,
+                                              asOf: now)
+                           })
         let line = prepLine(for: card, now: now)
         card?.prepLine = line
         return card
@@ -1060,6 +1066,12 @@ final class MREngineStore: ObservableObject {
                                  racePaceSegmentMin: isRacePace ? mrRacePaceSegmentMinutes(longRunMin: week.longRunMin) : nil,
                                  daysToRace: days,
                                  easyKm: parsed.easyKm, point: week.point)
+    }
+
+    /// 본인 이지 기준(워치 사용자만) — LT1 심박이 있어야 한다. 이지 페이스는 LT1 아래 러닝의 중앙값(`easyPaceLookup`).
+    private var easyTarget: MREasyTarget? {
+        guard let lt1 = phys.lt1HR?.value, lt1 > 0 else { return nil }
+        return MREasyTarget(lt1HR: Int(lt1.rounded()), paceSecPerKm: easyPaceSecPerKm)
     }
 
     /// 대회 계획이 오늘을 덮지 않을 때의 2주 리듬 입력(설계 9절). 최근 14일 대회는 등록 대회 우선, 없으면 저장 유형 '대회'.

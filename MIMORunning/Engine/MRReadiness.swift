@@ -322,6 +322,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                  planWeek: MRPlanWeekContext? = nil,
                  pointRunTypes: [Date: WorkoutType] = [:],
                  rhythm: MRRhythmContext? = nil,
+                 easyTarget: MREasyTarget? = nil,
+                 grayZone: MRGrayZoneWeek? = nil,
                  calendar: Calendar = .current) -> MRReadiness? {
     let L = AppLanguage.shared
     let today = calendar.startOfDay(for: asOf)
@@ -368,6 +370,11 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     }
     if let p = lastHardPiece() { data.append(p) }
     if consecutive >= 2 { data.append(L.s("\(consecutive)일 연속", "\(consecutive) days in a row")) }
+    // 이지 확인 — 지난 7일 애매하게 빠른 러닝이 2회 이상일 때만(한 번은 그날 사정일 수 있다)
+    if let g = grayZone, let t = easyTarget, g.gray >= 2 {
+        data.append(L.s("지난 7일 애매하게 빠른 러닝 \(g.gray)/\(g.runs)회(평균 심박 \(t.lt1HR) 넘음)",
+                        "last 7 days: \(g.gray)/\(g.runs) runs in the gray zone (avg HR over \(t.lt1HR))"))
+    }
 
     func make(_ level: MRReadiness.Level, _ reasons: [String], why: String) -> MRReadiness {
         var r = MRReadiness(level: level, reasons: reasons, hrvPending: pending)
@@ -390,6 +397,13 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
             r.sessionIsPoint = s.isPoint
             r.sessionIsRecovery = s.isRecovery
             if let note = s.whyNote { r.why = r.why.isEmpty ? note : r.why + " " + note }
+        }
+        // 이지를 권하는 날 — 본인 기준으로 얼마나 편하게인지. 롱런·강도 훈련 세션 날은 붙이지 않는다.
+        let easyDay = level != .go || (r.session != nil && !r.sessionIsLongRun && !r.sessionIsPoint)
+        if easyDay, let t = easyTarget {
+            let pace = t.paceSecPerKm.map { L.s(", \(mrFormatPace($0)) 근처로", ", around \(mrFormatPace($0))") } ?? ""
+            let guide = L.s("이지는 심박 \(t.lt1HR) 아래\(pace).", "Easy means HR under \(t.lt1HR)\(pace).")
+            r.why = r.why.isEmpty ? guide : r.why + " " + guide
         }
         return r
     }
@@ -509,4 +523,31 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         : L.s("부하가 안정돼 있어요. 계획한 강도를 넣어도 돼요.",
               "Load is steady. Your planned hard session is fine.")
     return make(.go, reasons, why: why)
+}
+
+// MARK: - 이지 확인 (워치 사용자만, 2026-09-29 80/20 보류 부분 해제)
+//
+// 본인 LT1(첫 번째 젖산 역치 심박) 아래가 이지다. 1년 러닝 88%가 평균 심박으로 LT1을 넘었다(사용자 실기기 로그) —
+// 영상이 말한 "빠르지도 느리지도 않은 애매한 속도". 초보·폰 러닝(심박 없음)은 대상이 아니다: LT1이 없으면 아무것도 안 붙는다.
+
+/// 본인 이지 기준 — LT1 심박과 이지 페이스(LT1 아래로 뛴 러닝의 중앙값).
+struct MREasyTarget: Equatable {
+    let lt1HR: Int
+    let paceSecPerKm: Double?
+}
+
+/// 지난 7일(오늘 제외) 러닝 중 "애매하게 빠른" 러닝 — 평균 심박이 LT1을 넘었지만 실제 강도 훈련(`intenseStarts`)은 아닌 것.
+struct MRGrayZoneWeek: Equatable {
+    let runs: Int
+    let gray: Int
+}
+
+func mrGrayZoneWeek(runs: [MRWorkout], lt1HR: Int, intenseStarts: Set<Date>, asOf: Date,
+                    calendar: Calendar = .current) -> MRGrayZoneWeek? {
+    let today = calendar.startOfDay(for: asOf)
+    guard let from = calendar.date(byAdding: .day, value: -7, to: today) else { return nil }
+    let week = runs.filter { $0.start >= from && $0.start < today && $0.hrAvg != nil }
+    guard !week.isEmpty else { return nil }
+    let gray = week.filter { ($0.hrAvg ?? 0) > Double(lt1HR) && !intenseStarts.contains($0.start) }.count
+    return MRGrayZoneWeek(runs: week.count, gray: gray)
 }

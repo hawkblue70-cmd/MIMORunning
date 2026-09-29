@@ -103,6 +103,41 @@ struct MRReadinessTests {
         #expect(r?.line == "오늘은 이지런 · 대회 계획 테이퍼 주")
     }
 
+    // MARK: 이지 확인 (워치 사용자만)
+
+    @Test func easyDayGetsOwnLT1AndPaceGuide() {
+        let r = mrReadiness(runs: steadyRuns(), phys: phys, heatHR: MRHeatHRModel(),
+                            hrvNights: nights(base: 30, recent: 37), planPhase: "회복", asOf: now,
+                            easyTarget: MREasyTarget(lt1HR: 140, paceSecPerKm: 391))
+        #expect(r?.level == .easy)
+        #expect(r?.why.hasSuffix("이지는 심박 140 아래, 6'31\" 근처로.") == true)
+    }
+
+    @Test func noGuideWithoutWatchReference() {
+        let r = mrReadiness(runs: steadyRuns(), phys: phys, heatHR: MRHeatHRModel(),
+                            hrvNights: nights(base: 30, recent: 37), planPhase: "회복", asOf: now)
+        #expect(r?.why.contains("이지는 심박") == false)
+    }
+
+    @Test func grayZoneRunsCountedAndShownFromTwo() {
+        // 지난 7일: 145bpm 3회(애매), 130bpm 1회(이지), 152bpm 1회(실제 강도 훈련)
+        let gray = [run(daysAgo: 1, hr: 145), run(daysAgo: 2, hr: 145), run(daysAgo: 4, hr: 145)]
+        let easy = run(daysAgo: 5, hr: 130)
+        let hard = run(daysAgo: 6, hr: 152)
+        let week = gray + [easy, hard]
+        let g = mrGrayZoneWeek(runs: week, lt1HR: 140, intenseStarts: [hard.start], asOf: now)
+        #expect(g == MRGrayZoneWeek(runs: 5, gray: 3))
+        let r = mrReadiness(runs: steadyRuns(), phys: phys, heatHR: MRHeatHRModel(),
+                            hrvNights: nights(base: 30, recent: 37), planPhase: "회복", asOf: now,
+                            easyTarget: MREasyTarget(lt1HR: 140, paceSecPerKm: 391), grayZone: g)
+        #expect(r?.detail.contains("지난 7일 애매하게 빠른 러닝 3/5회(평균 심박 140 넘음)") == true)
+        let one = mrReadiness(runs: steadyRuns(), phys: phys, heatHR: MRHeatHRModel(),
+                              hrvNights: nights(base: 30, recent: 37), planPhase: "회복", asOf: now,
+                              easyTarget: MREasyTarget(lt1HR: 140, paceSecPerKm: 391),
+                              grayZone: MRGrayZoneWeek(runs: 4, gray: 1))
+        #expect(one?.detail.contains("애매하게 빠른") == false)   // 한 번은 그날 사정일 수 있다
+    }
+
     @Test func fourConsecutiveDaysIsEasyEvenWithGoodHRV() {
         // steadyRuns는 평소 1일 구간뿐 → 문턱 4. 나흘 연속이면 휴식이 아니라 이지런(강도만 뺀다)
         var runs = steadyRuns()
