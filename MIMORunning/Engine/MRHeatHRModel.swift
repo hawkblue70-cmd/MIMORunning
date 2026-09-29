@@ -160,3 +160,34 @@ func mrFitHeatHRModel(runs: [MRWorkout], asOf: Date) -> MRHeatHRModel {
     m.ok = true
     return log(m)
 }
+
+// MARK: - 진단 — 페이스를 맞춘 직접 비교 (회귀 없이)
+
+/// 본인 이지 페이스 ±`window`초로 뛴 야외 러닝(최근 365일, 20분↑)만 모아 기온 구간별 평균 심박·페이스.
+/// 회귀(`mrFitHeatHRModel`)가 배운 계수가 맞는지 눈으로 확인하는 용도 — 계획·판정에는 쓰지 않는다.
+struct MRHeatBucket: Equatable {
+    let label: String
+    let n: Int
+    let avgHR: Double
+    let avgPace: Double
+}
+
+func mrPaceMatchedHRByTemp(runs: [MRWorkout], paceCenter: Double, asOf: Date,
+                           window: Double = 20, calendar: Calendar = .current) -> [MRHeatBucket] {
+    let edges: [(String, Double, Double)] = [("<15°C", -50, 15), ("15–20°C", 15, 20), ("20–25°C", 20, 25),
+                                             ("25–30°C", 25, 30), ("30°C↑", 30, 60)]
+    let rows = runs.filter { w in
+        let days = calendar.dateComponents([.day], from: w.date, to: calendar.startOfDay(for: asOf)).day ?? -1
+        guard days >= 0, days <= 365, !w.indoor, w.durationMin >= 20,
+              w.hrAvg != nil, w.tempC != nil, let p = w.paceSecPerKm else { return false }
+        return abs(p - paceCenter) <= window
+    }
+    return edges.compactMap { (label, lo, hi) in
+        let b = rows.filter { $0.tempC! >= lo && $0.tempC! < hi }
+        guard !b.isEmpty else { return nil }
+        let n = Double(b.count)
+        return MRHeatBucket(label: label, n: b.count,
+                            avgHR: b.compactMap(\.hrAvg).reduce(0, +) / n,
+                            avgPace: b.compactMap(\.paceSecPerKm).reduce(0, +) / n)
+    }
+}

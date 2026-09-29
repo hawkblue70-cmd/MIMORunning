@@ -438,6 +438,13 @@ final class MREngineStore: ObservableObject {
         } else {
             easyPaceLookup = nil
         }
+        #if DEBUG
+        // 기온 효과 직접 비교 — 이지 페이스 ±20초 러닝만, 기온 구간별 평균 심박. 회귀 계수(heatHR)가 맞는지 확인용.
+        let center = easyPaceLookup?.paceSec ?? mrMedian(fetched.compactMap(\.paceSecPerKm))
+        let buckets = mrPaceMatchedHRByTemp(runs: fetched, paceCenter: center, asOf: now)
+        print("[더위심박:비교] 페이스 \(mrFormatPace(center))±20초 · 회귀 \(String(format: "%.2f", heatHR.bpmPerC)) bpm/°C · "
+              + buckets.map { "\($0.label) n=\($0.n) \(Int($0.avgHR.rounded()))bpm(\(mrFormatPace($0.avgPace)))" }.joined(separator: " · "))
+        #endif
 
         #if DEBUG
         do {
