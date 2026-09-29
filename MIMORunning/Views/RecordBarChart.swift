@@ -293,7 +293,7 @@ struct RecordBarChart: View {
             HStack(spacing: compact ? 1.5 : 2) {
                 Text(L.s("강도", "Effort"))
                     .font(axisFont)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.primary)   // 회색이면 범례가 묻혔다 — 흰색(라이트 테마는 검정)
                     .padding(.trailing, 2)
                 ForEach(Array(EffortPalette.colors.enumerated()), id: \.offset) { _, c in
                     RoundedRectangle(cornerRadius: 1.5)
@@ -313,7 +313,7 @@ struct RecordBarChart: View {
                 if let p = paceTrailing {
                     Text(p)
                         .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary)   // 평균·가장 빠른 페이스 — 흰색
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
@@ -322,11 +322,11 @@ struct RecordBarChart: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(L.s("거리 km", "Distance km"))
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.primary)
                 if showsTotals {
                     Text(distanceTrailing)
                         .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
@@ -503,7 +503,7 @@ struct RecordBarChart: View {
         Text(L.s("막대 = 거리(색 = 강도) · 선 = 페이스",
                  "Bars = distance (color = effort) · line = pace"))
             .font(.system(size: 8.5))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.primary)
             .fixedSize(horizontal: false, vertical: true)
     }
 
