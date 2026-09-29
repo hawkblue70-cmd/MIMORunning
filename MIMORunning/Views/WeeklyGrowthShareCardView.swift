@@ -734,13 +734,15 @@ struct MileageStreakShareCard: View {
             Text(kmStr)
                 .font(.system(size: 34, weight: .black).width(.condensed))
                 .foregroundStyle(p.textPrimary)
+            // "km"는 바이올렛 — 애슬레틱 카드의 거리 표기("16.0 KM")와 같은 방식
             Text("km")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(p.textSecondary)
+                .foregroundStyle(Theme.violet)
             Spacer(minLength: 8)
-            Text(L.s("\(runs)회 · \(days)일", "\(runs) runs · \(days) days"))
+            // 달린 날 수는 앰버 — 아래 연속 달리기 격자 칸 색(heatFull)과 같아, 격자에 칠해진 날이라는 게 이어진다
+            (Text(L.s("\(runs)회 · ", "\(runs) runs · ")).foregroundStyle(p.textPrimary)
+             + Text(L.s("\(days)일", "\(days) days")).foregroundStyle(p.heatFull))
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(p.textPrimary)
         }
     }
 
