@@ -71,8 +71,11 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var recentIntervals: [MRIntervalHistory] = []
 
     /// 본인 강도 훈련 습관 간격 — 계획·리듬이 쓴다. 러닝·주입값에서 그때그때 계산.
+    /// 홈이 러닝 종류를 한 번이라도 넣어 줬는가 — 그 전에는 강도 훈련이 0건으로 보여 습관이 "3주"로 잘못 잡힌다.
+    private var pointRunTypesInjected = false
     private var pointHabitEveryWeeks: Int? {
-        mrHabitualPointEveryWeeks(runs: runs, pointTypes: pointRunTypes, hardStarts: hardRunStarts, asOf: Date())
+        guard pointRunTypesInjected else { return nil }   // 모름 → 주당 횟수 규칙만(폴백)
+        return mrHabitualPointEveryWeeks(runs: runs, pointTypes: pointRunTypes, hardStarts: hardRunStarts, asOf: Date())
     }
     @Published private(set) var todayCard: MRTodayCard?
     @Published private(set) var raceDayCard: MRRaceDayCard?
@@ -207,6 +210,26 @@ final class MREngineStore: ObservableObject {
         var aPairs: [(race: MRTargetRace, plan: MRRacePlan?)] = []
         #if DEBUG
         print("[강도훈련:기록] 습관 간격=\(pointHabitEveryWeeks.map { "\($0)주" } ?? "없음(폴백)") · 인터벌 기록=\(recentIntervals.last.map { "\(Int($0.repKm * 1000))m×\($0.reps)" } ?? "없음(일반 기준)")")
+        // 습관 근거 — 지난 12주 주별로 강도 훈련으로 센 러닝(롱런 제외)의 종류. "—"는 없음.
+        if pointRunTypesInjected {
+            let cal = Calendar.current
+            let thisMon = MRPlanGovernance.weekMonday(of: Date())
+            let df = DateFormatter(); df.dateFormat = "M/d"
+            let weeks: [String] = (1...12).reversed().compactMap { k in
+                guard let mon = cal.date(byAdding: .day, value: -7 * k, to: thisMon),
+                      let end = cal.date(byAdding: .day, value: 7, to: mon) else { return nil }
+                let ws = runs.filter { $0.start >= mon && $0.start < end }
+                guard !ws.isEmpty else { return "\(df.string(from: mon)) 러닝없음" }
+                let longest = ws.compactMap(\.distanceKm).max() ?? 0
+                let pr = mrPointRun(weekRuns: ws, longRunKm: longest, hardStarts: hardRunStarts, pointTypes: pointRunTypes)
+                let label = pr.map { r in
+                    let t = pointRunTypes[r.start]?.koreanLabel ?? "고강도(심박·강도 입력)"
+                    return "\(t) \(String(format: "%.1f", r.distanceKm ?? 0))km"
+                } ?? "—"
+                return "\(df.string(from: mon)) \(label)"
+            }
+            print("[강도훈련:습관] " + weeks.joined(separator: " · "))
+        }
         #endif
 
         // ① 자기 계획(앵커)이 있는 단거리 먼저 — A 계획이 겹치는 주에 이 숫자를 따라야 하므로.
@@ -1091,6 +1114,7 @@ final class MREngineStore: ObservableObject {
 
     /// 홈이 포인트 유형 러닝을 넣어 준다. 바뀌었을 때만 오늘 카드를 다시 만든다.
     func updatePointRunTypes(_ types: [Date: WorkoutType]) {
+        pointRunTypesInjected = true
         guard types != pointRunTypes else { return }
         pointRunTypes = types
         guard case .ready = state else { return }
