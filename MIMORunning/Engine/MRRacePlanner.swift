@@ -567,10 +567,14 @@ func mrBuildPlan(raceDate: Date,
         // ── 포인트 1회 (2026-09-29 설계) — 이지 한 번을 대신한다. 주간 km·러닝 횟수는 그대로.
         //   따르는 주는 따르는 계획의 포인트 그대로. 튠업 주·대회 전 주·대회 주·회복 주는 없음.
         let isRaceWeek = raceDate >= mon && raceDate < weekEnd
+        // 튠업 대회 다음 주도 포인트 없음 — 대회 자체가 그 주기의 포인트였다(2026-09-29 사용자 결정).
+        // 하프 튠업 다음 주는 이미 회복 주라 여기서는 5K·10K가 대상이다.
+        let prevMon = cal.date(byAdding: .day, value: -7, to: mon) ?? mon
+        let afterTuneUp = tuneUps.contains { $0.date >= prevMon && $0.date < mon }
         var point: MRPlanPoint? = nil
         if let f = followed, i <= buildWeeks {
             point = f.week.point
-        } else if preTune == nil, tune == nil, !isRaceWeek,
+        } else if preTune == nil, tune == nil, !isRaceWeek, !afterTuneUp,
                   let kind = mrPointKind(phase: phase),
                   let interval = mrPointIntervalDays(runsPerWeek: runsPerWeek),
                   others >= 2 {

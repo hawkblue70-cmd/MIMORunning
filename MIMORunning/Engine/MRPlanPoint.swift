@@ -96,6 +96,24 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
     }
 }
 
+extension MRPlanPoint {
+    /// 어떻게 뛰는지 — 주차표에서 `text` 뒤에 붙인다. "1km × 4회"만으로는 이지에 섞는 건지, 따로 뛰는 건지 알 수 없었다.
+    var howTo: String {
+        let L = AppLanguage.shared
+        let total = mrPointKmString(totalKm)
+        switch kind {
+        case .speed:
+            return L.s("사이 2분 천천히 조깅 · 앞뒤 조깅 포함 총 \(total)km", "2-min easy jog between · \(total) km total incl. warm-up/cool-down")
+        case .tempo:
+            return L.s("앞뒤 조깅 포함 총 \(total)km", "\(total) km total incl. warm-up/cool-down")
+        case .buildUp:
+            return L.s("편하게 시작해 점점 올리기", "start easy, build steadily")
+        case .racePaceShort:
+            return L.s("사이 400m 조깅 · 앞뒤 조깅 포함 총 \(total)km", "400 m jog between · \(total) km total incl. warm-up/cool-down")
+        }
+    }
+}
+
 /// km 표기 — 정수면 "8", 아니면 "6.4". 계획 문구(eachStr)와 같은 규칙.
 func mrPointKmString(_ km: Double) -> String {
     km == km.rounded() ? String(format: "%.0f", km) : String(format: "%.1f", km)

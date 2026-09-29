@@ -431,7 +431,8 @@ struct MRWeekTable: View {
     @ViewBuilder
     private func pointLines(_ pt: MRPlanPoint, monday: Date, longRunKm: Double) -> some View {
         let L = AppLanguage.shared
-        Text(L.s("포인트 · \(pt.text)", "Workout · \(pt.text)"))
+        // 포인트는 이지에 섞는 게 아니라 이지 한 번을 대신하는 별도 러닝 — 문구로 드러낸다
+        Text(L.s("포인트(이지 1회 대신) · \(pt.text) · \(pt.howTo)", "Workout (replaces one easy run) · \(pt.text) · \(pt.howTo)"))
             .font(.system(size: 11))
             .foregroundStyle(.white.opacity(0.72))
         if let done = pointRunIn(week: monday, longRunKm: longRunKm) {

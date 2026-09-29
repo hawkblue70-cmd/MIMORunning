@@ -81,4 +81,27 @@ struct MRRacePlannerPointTests {
         let p = try #require(plan(distanceM: MRDistance.d10, weeks: 12))
         #expect(p.weeks.allSatisfy { $0.point?.kind != .buildUp })
     }
+
+    @Test func weekAfterTenKTuneUpHasNoPoint() throws {
+        let today = Date()
+        let cal = Calendar.current
+        let race = cal.date(byAdding: .day, value: 7 * 20, to: today)!
+        // 8주 뒤 주의 수요일에 10K 튠업
+        let thisMon = MRPlanGovernance.weekMonday(of: today)
+        let tuneDate = cal.date(byAdding: .day, value: 7 * 8 + 2, to: thisMon)!
+        let tune = MRTuneUpRace(date: tuneDate, name: "10K", distanceM: MRDistance.d10, hasOwnPlan: false, ownPlanWeeks: [])
+        let p = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.dH, today: today,
+                                         profile: profile(runs: 4), halfEquivMin: 110,
+                                         easyPaceSecPerKm: 400, heat: MRHeatModel(), raceTempC: 15,
+                                         runsPerWeek: 4, tuneUps: [tune]))
+        let tuneMon = MRPlanGovernance.weekMonday(of: tuneDate)
+        let nextMon = cal.date(byAdding: .day, value: 7, to: tuneMon)!
+        let after = try #require(p.weeks.first { cal.isDate($0.monday, inSameDayAs: nextMon) })
+        #expect(after.point == nil)
+    }
+
+    @Test func howToExplainsStructure() {
+        let s = MRPlanPoint(kind: .speed, totalKm: 8.2, reps: 4, repKm: 1, sustainedKm: nil, paceSecPerKm: 307)
+        #expect(s.howTo == "사이 2분 천천히 조깅 · 앞뒤 조깅 포함 총 8.2km")
+    }
 }
