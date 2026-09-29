@@ -42,19 +42,28 @@ final class MRTodayCardTests: XCTestCase {
         XCTAssertEqual(c.distanceCells.map(\.label), [L("이번 주", "This week"), L("이번 달", "This month"), L("올해", "This year"), L("누적", "Total")])
     }
 
-    // 월요일 아침, 이번 주 러닝 전 → "이번 주" 칸이 없다 (0km는 찌른다). 누적은 항상 있다.
-    func testZeroWeekCellIsOmitted() throws {
-        let runs = [run(start: date("2026-09-10 07:00"), km: 6)]
+    // 월요일 아침, 이번 주 러닝 전 → "이번 주 0km" 대신 "지난 주" 거리 (2026-09-29 사용자 요청). 누적은 항상 있다.
+    func testZeroWeekShowsLastWeek() throws {
+        let runs = [run(start: date("2026-09-10 07:00"), km: 6),     // 지난 주(목)
+                    run(start: date("2026-09-12 07:00"), km: 10)]    // 지난 주(토)
         let c = try XCTUnwrap(card(runs: runs, asOf: date("2026-09-14 08:00")))
-        XCTAssertEqual(c.distanceCells.map(\.label), [L("이번 달", "This month"), L("올해", "This year"), L("누적", "Total")])
-        XCTAssertEqual(c.distanceCells.last?.km, 6)
+        XCTAssertEqual(c.distanceCells.map(\.label), [L("지난 주", "Last week"), L("이번 달", "This month"), L("올해", "This year"), L("누적", "Total")])
+        XCTAssertEqual(c.distanceCells.first?.km, 16)
+        XCTAssertEqual(c.distanceCells.last?.km, 16)
     }
 
-    // 1월 1일 아침, 작년 기록만 → 누적 하나만
-    func testNewYearMorningShowsOnlyTotal() throws {
+    // 지난 주도 쉬었으면 주 칸 자체가 없다(0km는 찌른다)
+    func testZeroWeekAndZeroLastWeekOmitsWeekCell() throws {
+        let runs = [run(start: date("2026-09-03 07:00"), km: 6)]      // 2주 전
+        let c = try XCTUnwrap(card(runs: runs, asOf: date("2026-09-14 08:00")))
+        XCTAssertEqual(c.distanceCells.map(\.label), [L("이번 달", "This month"), L("올해", "This year"), L("누적", "Total")])
+    }
+
+    // 1월 1일 아침, 작년 기록만 → 지난 주(12/28) + 누적
+    func testNewYearMorningShowsLastWeekAndTotal() throws {
         let runs = [run(start: date("2025-12-28 07:00"), km: 12)]
         let c = try XCTUnwrap(card(runs: runs, asOf: date("2026-01-01 08:00")))
-        XCTAssertEqual(c.distanceCells.map(\.label), [L("누적", "Total")])
+        XCTAssertEqual(c.distanceCells.map(\.label), [L("지난 주", "Last week"), L("누적", "Total")])
         XCTAssertEqual(c.distanceCells.first?.km, 12)
     }
 

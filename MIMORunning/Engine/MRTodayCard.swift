@@ -70,6 +70,7 @@ func mrActiveWeekStreak(runs: [MRWorkout], asOf: Date) -> Int {
 ///
 /// 회수가 아니라 거리다: 러너가 관리하는 단위는 주간 마일리지고, 누적 km는 레벨의 숫자다(NRC 블랙 = 5,000km).
 /// 0km인 칸은 넣지 않는다 — 월요일 아침 "이번 주 0km", 1일 아침 "이번 달 0km"는 사람을 찌른다.
+/// 이번 주가 0km면 그 자리에 "지난 주" 거리를 보인다(지난 주도 0이면 칸 없음).
 /// 누적은 러닝이 하나라도 있으면 항상 있다.
 func mrDistanceCells(runs: [MRWorkout], asOf: Date) -> [MRTodayCard.DistanceCell] {
     let L = AppLanguage.shared
@@ -86,7 +87,13 @@ func mrDistanceCells(runs: [MRWorkout], asOf: Date) -> [MRTodayCard.DistanceCell
     let total = sum { _ in true }
 
     var cells: [MRTodayCard.DistanceCell] = []
-    if week  > 0 { cells.append(.init(label: L.s("이번 주", "This week"),  km: week)) }
+    if week > 0 {
+        cells.append(.init(label: L.s("이번 주", "This week"), km: week))
+    } else if let prev = iso.date(byAdding: .day, value: -7, to: asOf) {
+        // 이번 주에 아직 안 뛰었으면(월요일 아침 등) 빈칸 대신 지난 주 거리 — 2026-09-29 사용자 요청
+        let lastWeek = sum { iso.isDate($0.start, equalTo: prev, toGranularity: .weekOfYear) }
+        if lastWeek > 0 { cells.append(.init(label: L.s("지난 주", "Last week"), km: lastWeek)) }
+    }
     if month > 0 { cells.append(.init(label: L.s("이번 달", "This month"), km: month)) }
     if year  > 0 { cells.append(.init(label: L.s("올해",   "This year"),  km: year)) }
     cells.append(.init(label: L.s("누적", "Total"), km: total))
