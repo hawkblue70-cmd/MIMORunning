@@ -209,8 +209,12 @@ func mrFillSnapshotPoints(snapshot: [MRPlanWeekSummary], live: [MRPlanWeek], thi
         if let sp = s.point {
             guard mon > thisMon else { return s }
             let long = s.longRunKm.rounded()
-            guard let np = MRPlanPoint.make(kind: sp.kind, weeklyKm: s.weeklyKm, longRunKm: long,
-                                            raceDistanceM: raceDistanceM, paceSecPerKm: sp.paceSecPerKm),
+            // 종류 규칙이 바뀌었으면(늘리기 인터벌·템포런 번갈이 등) 같은 단계 라이브 주의 종류·페이스를 따른다
+            let live = liveByMonday[mon].flatMap { lw in lw.phase == s.phase ? lw.point : nil }
+            let (kind, pace) = (live.map { $0.kind != sp.kind } ?? false)
+                ? (live!.kind, live!.paceSecPerKm) : (sp.kind, sp.paceSecPerKm)
+            guard let np = MRPlanPoint.make(kind: kind, weeklyKm: s.weeklyKm, longRunKm: long,
+                                            raceDistanceM: raceDistanceM, paceSecPerKm: pace),
                   np != sp else { return s }
             let parsed = mrParsePlanBreakdown(s.breakdown)
             guard let runs = parsed.easyRuns, runs >= 1, parsed.easyKm != nil else { return s }

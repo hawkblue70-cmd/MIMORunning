@@ -26,7 +26,11 @@ struct MRRacePlannerPointTests {
         #expect(p.weeks.contains { $0.point != nil })
         for w in p.weeks {
             guard let pt = w.point else { continue }
-            #expect(pt.kind == mrPointKind(phase: w.phase))
+            if w.phase == "늘리기" {
+                #expect(pt.kind == .speed || pt.kind == .tempo)   // 늘리기는 인터벌·템포런 번갈이
+            } else {
+                #expect(pt.kind == mrPointKind(phase: w.phase))
+            }
         }
     }
 
@@ -103,5 +107,14 @@ struct MRRacePlannerPointTests {
     @Test func howToExplainsStructure() {
         let s = MRPlanPoint(kind: .speed, totalKm: 8.2, reps: 4, repKm: 1, sustainedKm: nil, paceSecPerKm: 307)
         #expect(s.howTo == "사이 3분 천천히 조깅 · 앞뒤 조깅 포함 총 8.2km")
+    }
+
+    @Test func buildPhaseAlternatesIntervalAndTempoStartingWithInterval() throws {
+        let p = try #require(plan(distanceM: MRDistance.dF, weeks: 24))
+        let kinds = p.weeks.filter { $0.phase == "늘리기" }.compactMap(\.point?.kind)
+        #expect(kinds.count >= 2)
+        for (i, k) in kinds.enumerated() {
+            #expect(k == (i % 2 == 0 ? .speed : .tempo))
+        }
     }
 }

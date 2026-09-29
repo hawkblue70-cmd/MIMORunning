@@ -99,4 +99,18 @@ struct MRPlanPointSnapshotTests {
         #expect(r.filled == 0)
         #expect(r.weeks[1].point == nil)
     }
+
+    @Test func existingFuturePointFollowsLiveKindWhenKindRuleChanged() {
+        let thisMon = wk(0)
+        let old = MRPlanPoint.make(kind: .speed, weeklyKm: 40, longRunKm: 16, raceDistanceM: MRDistance.dH, paceSecPerKm: 240)!
+        let tempoLive = MRPlanPoint(kind: .tempo, totalKm: 7, reps: nil, repKm: nil, sustainedKm: 4, paceSecPerKm: 260)
+        let r = mrFillSnapshotPoints(snapshot: [snapWeek(1, point: old, breakdown: "롱런 16km + 이지 8.5km × 2회")],
+                                     live: [liveWeek(1, point: tempoLive)],
+                                     thisMonday: thisMon, raceDistanceM: MRDistance.dH)
+        #expect(r.filled == 1)
+        #expect(r.weeks[0].point?.kind == .tempo)
+        #expect(r.weeks[0].point?.paceSecPerKm == 260)
+        // 템포런 40×0.1 = 4km, 총 7 → 이지 (40−16−7)/2 = 8.5 — 문구 그대로
+        #expect(r.weeks[0].breakdown == "롱런 16km + 이지 8.5km × 2회")
+    }
 }

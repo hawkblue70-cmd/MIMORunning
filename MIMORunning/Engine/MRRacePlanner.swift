@@ -419,6 +419,8 @@ func mrBuildPlan(raceDate: Date,
     var forceRecovery = false            // 하프 튠업 다음 주는 회복 주
     // 주 3회는 포인트를 격주로 — 포인트 종류가 정해지는 주(테이퍼 제외)를 센다
     var pointSlot = 0
+    // 늘리기 단계는 인터벌과 템포런을 번갈아 — 실제로 강도 훈련이 들어간 늘리기 주를 센다(2026-09-29 사용자 결정)
+    var buildPointCount = 0
 
     // 마라톤 후 회복 3주와 30/50/70% 는 관행이다. 하프 1주(60/70%)는 임의로 정함.
     // 통제된 연구를 찾지 못했다. 근거가 나오면 바꿀 것.
@@ -575,9 +577,12 @@ func mrBuildPlan(raceDate: Date,
         if let f = followed, i <= buildWeeks {
             point = f.week.point
         } else if preTune == nil, tune == nil, !isRaceWeek, !afterTuneUp,
-                  let kind = mrPointKind(phase: phase),
+                  let phaseKind = mrPointKind(phase: phase),
                   let interval = mrPointIntervalDays(runsPerWeek: runsPerWeek),
                   others >= 2 {
+            // 늘리기 단계: 인터벌 → 템포런 → 인터벌 … — 서브4 이상 러너에게는 역치 훈련이 더 직접적이고,
+            // 인터벌을 뺄 근거는 없어 둘을 번갈아 둔다(최대치 자극 유지 + 역치 비중 확대).
+            let kind: MRPlanPoint.Kind = (phaseKind == .speed && buildPointCount % 2 == 1) ? .tempo : phaseKind
             let slotOK = interval == 7 || kind == .racePaceShort || pointSlot % 2 == 0
             if kind != .racePaceShort { pointSlot += 1 }
             if slotOK, let paces = mrPointPaces(halfEquivMin: halfEquivMin) {
@@ -594,6 +599,7 @@ func mrBuildPlan(raceDate: Date,
                                              raceDistanceM: distanceM, paceSecPerKm: pace),
                    (wkDisplay - lrDisplay - pt.totalKm) / Double(others - 1) >= 1.5 {
                     point = pt
+                    if phaseKind == .speed { buildPointCount += 1 }
                 }
             }
         }
