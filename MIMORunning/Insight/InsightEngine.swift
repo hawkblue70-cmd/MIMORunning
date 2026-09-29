@@ -543,7 +543,7 @@ struct InsightEngine {
         let cal = Calendar.current
         let L = AppLanguage.shared
 
-        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)) ?? .distantPast
+        let weekStart = weekCalendar.date(from: weekCalendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)) ?? .distantPast   // 이번 주 = 월요일 시작
         let priorThisWeek = prior.filter { $0.date >= weekStart }
         let distanceTitles = [L.s("경계를 넓힌 러닝", "Expanding Boundaries"),
                               L.s("낯선 거리를 만난 날", "Into New Distance"),
@@ -567,8 +567,17 @@ struct InsightEngine {
     }
 
     /// Consecutive-weeks streak ≥ threshold, or ≥ N runs this week
-    private static func consistent(_ a: Activity, _ prior: [Activity], level: LevelBucket = .beginner) -> InsightResult? {
-        let cal = Calendar.current
+    /// 주 경계 — 앱 전체(홈 "N주 연속"·연속 달리기 격자·이번 주 거리)와 같은 **월요일 시작 ISO 주**.
+    /// Calendar.current(한국 기본 = 일요일 시작)로 자르면 일요일 러닝이 다음 주로 넘어가 연속이 끊겼다
+    /// (홈 30주 연속 vs 9/20 러닝 인사이트 11주 연속, 2026-09-30).
+    static var weekCalendar: Calendar {
+        var c = Calendar(identifier: .iso8601)
+        c.timeZone = .current
+        return c
+    }
+
+    static func consistent(_ a: Activity, _ prior: [Activity], level: LevelBucket = .beginner) -> InsightResult? {   // 테스트에서 직접 부른다
+        let cal = weekCalendar
         let streakThreshold = level == .beginner ? 2 : 3
 
         // Precompute set of weeks that have at least one prior run — O(n) once
@@ -580,7 +589,7 @@ struct InsightEngine {
         var weekAnchor = cal.date(
             from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)
         ) ?? a.date
-        for _ in 0..<52 {
+        for _ in 0..<1000 {   // 52주 상한이면 1년 넘는 연속이 홈 숫자와 갈린다
             let prevWeekStart = cal.date(byAdding: .weekOfYear, value: -1, to: weekAnchor) ?? weekAnchor
             if priorWeekStarts.contains(prevWeekStart) {
                 streak += 1
