@@ -14,6 +14,9 @@ private struct BadgeInfo: Identifiable {
     let title: String
     let achieved: Bool
     let achievedDate: Date?
+    /// 달성했을 때의 색 — 그룹마다 흐름(완주: 초록→청록→하늘→보라→금 · 누적: 민트→파랑→인디고→핑크 · 연속: 주황→빨강→마젠타).
+    /// 미달성은 회색 그대로(2026-09-29 사용자 요청: 전부 보라라 단조로움).
+    var color: Color = Theme.violet
 }
 
 private struct SelectedSummaryStats: Identifiable {
@@ -1537,15 +1540,15 @@ struct MeView: View {
         let L = AppLanguage.shared
         var badges: [BadgeInfo] = [
             .init(id: "first_run", icon: "figure.run",  title: L.s("첫 러닝", "First Run"),
-                  achieved: !runs.isEmpty,                        achievedDate: runs.first?.date),
+                  achieved: !runs.isEmpty,                        achievedDate: runs.first?.date, color: Color(hex: "34C759")),
             .init(id: "5k",   icon: "flag",        title: L.s("5K 완주", "5K Finish"),
-                  achieved: firstRun(over:  5000) != nil,         achievedDate: firstRun(over:  5000)?.date),
+                  achieved: firstRun(over:  5000) != nil,         achievedDate: firstRun(over:  5000)?.date, color: Color(hex: "30D5C8")),
             .init(id: "10k",  icon: "flag.fill",   title: L.s("10K 완주", "10K Finish"),
-                  achieved: firstRun(over: 10000) != nil,         achievedDate: firstRun(over: 10000)?.date),
+                  achieved: firstRun(over: 10000) != nil,         achievedDate: firstRun(over: 10000)?.date, color: Color(hex: "5BB8FF")),
             .init(id: "half", icon: "medal",        title: L.s("하프 완주", "Half Finish"),
-                  achieved: firstRun(over: 21097) != nil,         achievedDate: firstRun(over: 21097)?.date),
+                  achieved: firstRun(over: 21097) != nil,         achievedDate: firstRun(over: 21097)?.date, color: Color(hex: "7C5CFC")),
             .init(id: "full", icon: "trophy.fill",  title: L.s("풀 완주", "Full Finish"),
-                  achieved: firstRun(over: 42195) != nil,         achievedDate: firstRun(over: 42195)?.date),
+                  achieved: firstRun(over: 42195) != nil,         achievedDate: firstRun(over: 42195)?.date, color: Color(hex: "FFC83D")),
         ]
 
         // Cumulative distance (all activity types)
@@ -1559,21 +1562,21 @@ struct MeView: View {
         }
         badges += [
             .init(id: "cum100",  icon: "map",           title: L.s("누적 100km", "100km Total"),
-                  achieved: cumDates[100]  != nil, achievedDate: cumDates[100]),
+                  achieved: cumDates[100]  != nil, achievedDate: cumDates[100], color: Color(hex: "66D4CF")),
             .init(id: "cum300",  icon: "map.fill",       title: L.s("누적 300km", "300km Total"),
-                  achieved: cumDates[300]  != nil, achievedDate: cumDates[300]),
+                  achieved: cumDates[300]  != nil, achievedDate: cumDates[300], color: Color(hex: "0A84FF")),
             .init(id: "cum500",  icon: "globe.americas", title: L.s("누적 500km", "500km Total"),
-                  achieved: cumDates[500]  != nil, achievedDate: cumDates[500]),
+                  achieved: cumDates[500]  != nil, achievedDate: cumDates[500], color: Color(hex: "5E5CE6")),
             .init(id: "cum1000", icon: "globe",          title: L.s("누적 1000km", "1000km Total"),
-                  achieved: cumDates[1000] != nil, achievedDate: cumDates[1000]),
+                  achieved: cumDates[1000] != nil, achievedDate: cumDates[1000], color: Color(hex: "FF6FB5")),
         ]
 
         // Week streak
         let maxStreak = computeMaxWeekStreak(runs: runs)
         badges += [
-            .init(id: "streak4",  icon: "flame.fill", title: L.s("4주 연속", "4-Wk Streak"),  achieved: maxStreak >= 4,  achievedDate: nil),
-            .init(id: "streak8",  icon: "bolt.fill",  title: L.s("8주 연속", "8-Wk Streak"),  achieved: maxStreak >= 8,  achievedDate: nil),
-            .init(id: "streak12", icon: "crown.fill", title: L.s("12주 연속", "12-Wk Streak"), achieved: maxStreak >= 12, achievedDate: nil),
+            .init(id: "streak4",  icon: "flame.fill", title: L.s("4주 연속", "4-Wk Streak"),  achieved: maxStreak >= 4,  achievedDate: nil, color: Color(hex: "FF9F0A")),
+            .init(id: "streak8",  icon: "bolt.fill",  title: L.s("8주 연속", "8-Wk Streak"),  achieved: maxStreak >= 8,  achievedDate: nil, color: Color(hex: "FF453A")),
+            .init(id: "streak12", icon: "crown.fill", title: L.s("12주 연속", "12-Wk Streak"), achieved: maxStreak >= 12, achievedDate: nil, color: Color(hex: "FF2D92")),
         ]
 
         return badges
@@ -1904,11 +1907,11 @@ private struct BadgeCell: View {
         VStack(spacing: 6) {
             ZStack {
                 Circle()
-                    .fill(badge.achieved ? Theme.violet.opacity(0.18) : Color.white.opacity(0.05))
+                    .fill(badge.achieved ? badge.color.opacity(0.18) : Color.white.opacity(0.05))
                     .frame(width: 52, height: 52)
                 Image(systemName: badge.icon)
                     .font(.system(size: 22, weight: badge.achieved ? .semibold : .light))
-                    .foregroundStyle(badge.achieved ? Theme.violet : Color.white.opacity(0.2))
+                    .foregroundStyle(badge.achieved ? badge.color : Color.white.opacity(0.2))
             }
             Text(badge.title)
                 .font(.system(size: 10, weight: .medium))
@@ -1921,7 +1924,7 @@ private struct BadgeCell: View {
                     Text(shortDate(date))
                         .foregroundStyle(.secondary)
                 } else if badge.achieved {
-                    Text(AppLanguage.shared.s("달성", "Done")).foregroundStyle(Theme.violet.opacity(0.8))
+                    Text(AppLanguage.shared.s("달성", "Done")).foregroundStyle(badge.color.opacity(0.8))
                 } else {
                     Text(AppLanguage.shared.s("미달성", "Locked")).foregroundStyle(.tertiary)
                 }
