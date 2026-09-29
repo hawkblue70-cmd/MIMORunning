@@ -696,26 +696,17 @@ struct MileageStreakShareCard: View {
 
     // MARK: 러닝 흐름 (성장 탭과 동일한 컴포넌트)
 
-    /// 일 단위(달력 한 달) 카드 — 월 결산으로 총거리·횟수를 위에 크게 싣는다. 12주 보기는 그대로.
+    /// 일 단위(달력 한 달) 카드 — 월 기록으로 총거리·횟수를 위에 크게 싣는다. 12주 보기는 그대로.
     private var isMonthSummary: Bool { period == .day }
 
-    /// 월말 결산을 1~2일 앞서 올리는 경우가 많아 마지막 3일(30일 달은 28일)부터 "결산"으로 본다(2026-09-30 사용자 결정)
-    static let summaryLeadDays = 3
-
-    /// "9월 결산" — 지난 달이거나 달의 마지막 3일이면 결산, 그 전엔 "9월 기록"
+    /// "9월 기록" — 날짜와 관계없이 항상 기록(2026-09-30 사용자 결정: "결산보다 기록"). 달 이름은 보는 달(windowStart).
     private var monthTitle: String {
         let L = AppLanguage.shared
-        let cal = Calendar.current
-        let lastDay = cal.startOfDay(for: windowEnd.addingTimeInterval(-1))
-        let summaryFrom = cal.date(byAdding: .day, value: -(Self.summaryLeadDays - 1), to: lastDay) ?? lastDay
-        let isSummary = Date() >= summaryFrom
         if L.isEnglish {
             let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMMM"
-            let m = df.string(from: windowStart)
-            return isSummary ? "\(m) summary" : "\(m) runs"
+            return "\(df.string(from: windowStart)) runs"
         }
-        let m = cal.component(.month, from: windowStart)
-        return isSummary ? "\(m)월 결산" : "\(m)월 기록"
+        return "\(Calendar.current.component(.month, from: windowStart))월 기록"
     }
 
     private var flowTitleRow: some View {
@@ -724,7 +715,7 @@ struct MileageStreakShareCard: View {
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(p.textPrimary)
             Spacer()
-            // 월 결산 카드도 오른쪽 "러닝 흐름"은 왼쪽 제목과 같은 크기·색 — 두 제목이 한 줄의 짝으로 읽히게
+            // 월 기록 카드도 오른쪽 "러닝 흐름"은 왼쪽 제목과 같은 크기·색 — 두 제목이 한 줄의 짝으로 읽히게
             Text(isMonthSummary ? AppLanguage.shared.s("러닝 흐름", "Running Flow") : periodLabel)
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(p.textPrimary)
@@ -754,7 +745,7 @@ struct MileageStreakShareCard: View {
     }
 
     /// §5.8 — 성장 탭 카드와 **같은 컴포넌트**. 크기·상호작용만 내보내기 모드로.
-    /// 월 결산이면 같은 숫자를 위에 크게 실었으니 차트 머리·흐름 문장의 총계는 뺀다.
+    /// 월 기록 카드면 같은 숫자를 위에 크게 실었으니 차트 머리·흐름 문장의 총계는 뺀다.
     private var recordChart: some View {
         RecordBarChart(
             bars: bars,
