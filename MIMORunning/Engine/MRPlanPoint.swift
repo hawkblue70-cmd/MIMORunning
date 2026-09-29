@@ -25,6 +25,13 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
     /// 페이스 근거 — true 최근 인터벌(3~5분 반복) 실제 페이스 · false/nil 본인 기록으로 낸 5K 예측 페이스
     var paceFromHistory: Bool? = nil
 
+    /// 같은 훈련인가 — 구조가 같고 페이스가 5초/km 안쪽. 예측이 조금 움직여도 스냅샷을 다시 쓰지 않게.
+    func isSamePlan(as o: MRPlanPoint) -> Bool {
+        kind == o.kind && reps == o.reps && repKm == o.repKm && sustainedKm == o.sustainedKm
+            && abs(totalKm - o.totalKm) < 0.05 && (paceFromHistory ?? false) == (o.paceFromHistory ?? false)
+            && abs(paceSecPerKm - o.paceSecPerKm) < 5
+    }
+
     static let warmupKm = 2.0
     static let cooldownKm = 1.0
     /// 반복 사이 회복은 **시간**으로 안내한다 — 트랙 없이도 시계로 맞출 수 있고, 도로 GPS는 짧은 거리를 잘 못 잰다.
@@ -264,7 +271,7 @@ func mrBreakdownReplacingEasy(_ text: String, easyKm: Double, runs: Int) -> Stri
     return replacedRuns.replacingCharacters(in: m.range(at: 1), with: mrPointKmString(easyKm))
 }
 
-/// 트리거 5 — 이미 시작한 계획의 스냅샷에 포인트 칸 채우기(설계 6절). 이미 채운 미래 주는 규칙이 바뀌었을 때만 다시 잰다.
+/// 트리거 5 — 이미 시작한 계획의 스냅샷에 포인트 칸 채우기(설계 6절). 이미 채운 미래 주는 같은 단계 라이브 주를 따른다(바꾸기·빼기).
 /// 다음 주(thisMonday 뒤)부터, 스냅샷 주에 point가 없고 같은 월요일 라이브 주가 **같은 단계**로 point를 가질 때만.
 /// 종류·페이스는 라이브, 양은 스냅샷 자신의 주간·롱런으로 다시 잰다. 이지 문구는 숫자만 바꾼다.
 /// 이지 1회가 1.5km 아래로 내려가거나 문구를 못 읽으면 그 주는 건너뛴다. 지난 주·이번 주는 건드리지 않는다.
@@ -276,26 +283,27 @@ func mrFillSnapshotPoints(snapshot: [MRPlanWeekSummary], live: [MRPlanWeek], thi
     var filled = 0
     let weeks = snapshot.map { s -> MRPlanWeekSummary in
         let mon = calendar.startOfDay(for: s.monday)
-        // 이미 채운 미래 주 — 규칙(반복 거리·회복 시간)이 바뀌었으면 저장된 페이스 그대로 다시 잰다. 이지 횟수는 그대로.
-        // 페이스를 라이브로 바꾸지 않아 예측이 조금씩 움직일 때마다 스냅샷을 다시 쓰지 않는다.
+        // 이미 채운 미래 주 — 같은 단계 라이브 주를 따른다(빈도 습관·인터벌 페이스 근거·종류 규칙이 바뀌면 반영).
+        // 라이브에 없으면 빼고 이지 한 번으로 되돌린다. 페이스만 5초/km 안쪽 차이면 그대로(스냅샷을 자꾸 다시 쓰지 않게).
         if let sp = s.point {
-            guard mon > thisMon else { return s }
-            let long = s.longRunKm.rounded()
-            // 종류 규칙이 바뀌었으면(늘리기 인터벌·템포런 번갈이 등) 같은 단계 라이브 주의 종류·페이스를 따른다
-            let live = liveByMonday[mon].flatMap { lw in lw.phase == s.phase ? lw.point : nil }
-            let (kind, pace) = (live.map { $0.kind != sp.kind } ?? false)
-                ? (live!.kind, live!.paceSecPerKm) : (sp.kind, sp.paceSecPerKm)
-            guard let np = MRPlanPoint.make(kind: kind, weeklyKm: s.weeklyKm, longRunKm: long,
-                                            raceDistanceM: raceDistanceM, paceSecPerKm: pace),
-                  np != sp else { return s }
+            guard mon > thisMon, let lw = liveByMonday[mon], lw.phase == s.phase else { return s }
             let parsed = mrParsePlanBreakdown(s.breakdown)
             guard let runs = parsed.easyRuns, runs >= 1, parsed.easyKm != nil else { return s }
-            let easyKm = ((s.weeklyKm - long - np.totalKm) / Double(runs) * 10).rounded() / 10
-            guard easyKm >= 1.5, let bd = mrBreakdownReplacingEasy(s.breakdown, easyKm: easyKm, runs: runs) else { return s }
-            filled += 1
+            let long = s.longRunKm.rounded()
             var out = s
-            out.breakdown = bd
-            out.point = np
+            if let lp = lw.point {
+                guard !lp.isSamePlan(as: sp) else { return s }
+                let easyKm = ((s.weeklyKm - long - lp.totalKm) / Double(runs) * 10).rounded() / 10
+                guard easyKm >= 1.5, let bd = mrBreakdownReplacingEasy(s.breakdown, easyKm: easyKm, runs: runs) else { return s }
+                out.breakdown = bd
+                out.point = lp
+            } else {
+                let easyKm = ((s.weeklyKm - long) / Double(runs + 1) * 10).rounded() / 10
+                guard let bd = mrBreakdownReplacingEasy(s.breakdown, easyKm: easyKm, runs: runs + 1) else { return s }
+                out.breakdown = bd
+                out.point = nil
+            }
+            filled += 1
             return out
         }
         guard mon > thisMon,

@@ -73,20 +73,40 @@ struct MRPlanPointSnapshotTests {
         #expect(r.weeks[2].breakdown == "롱런 16km + 이지 8.5km × 2회")
     }
 
-    @Test func existingFuturePointIsRefreshedToCurrentRulesOnce() {
+    @Test func existingFuturePointFollowsLiveAndIsIdempotent() {
         let thisMon = wk(0)
-        // 옛 규칙(회복 0.4km)으로 채운 점: 3회 × 1km, 총 6.8 → 지금 규칙(회복 0.5km) 총 7.0, 이지 (40−16−7)/2 = 8.5
         let old = MRPlanPoint(kind: .speed, totalKm: 6.8, reps: 3, repKm: 1, sustainedKm: nil, paceSecPerKm: 240)
+        let current = MRPlanPoint.make(kind: .speed, weeklyKm: 40, longRunKm: 16, raceDistanceM: MRDistance.dH, paceSecPerKm: 240)!
         let past = snapWeek(-1, point: old, breakdown: "롱런 16km + 이지 8.6km × 2회")
         let future = snapWeek(1, point: old, breakdown: "롱런 16km + 이지 8.6km × 2회")
-        let r = mrFillSnapshotPoints(snapshot: [past, future], live: [], thisMonday: thisMon, raceDistanceM: MRDistance.dH)
+        let live = [liveWeek(-1, point: current), liveWeek(1, point: current)]
+        let r = mrFillSnapshotPoints(snapshot: [past, future], live: live, thisMonday: thisMon, raceDistanceM: MRDistance.dH)
         #expect(r.filled == 1)
         #expect(r.weeks[0].point == old)                          // 지난 주는 그대로
-        #expect(abs((r.weeks[1].point?.totalKm ?? 0) - 7.0) < 0.01)
+        #expect(r.weeks[1].point == current)
         #expect(r.weeks[1].breakdown == "롱런 16km + 이지 8.5km × 2회")
-        // 다시 돌려도 바뀌지 않는다
-        let again = mrFillSnapshotPoints(snapshot: r.weeks, live: [], thisMonday: thisMon, raceDistanceM: MRDistance.dH)
+        let again = mrFillSnapshotPoints(snapshot: r.weeks, live: live, thisMonday: thisMon, raceDistanceM: MRDistance.dH)
         #expect(again.filled == 0)
+    }
+
+    @Test func pointRemovedWhenLiveWeekHasNone() {
+        let thisMon = wk(0)
+        let current = MRPlanPoint.make(kind: .speed, weeklyKm: 40, longRunKm: 16, raceDistanceM: MRDistance.dH, paceSecPerKm: 240)!
+        let r = mrFillSnapshotPoints(snapshot: [snapWeek(1, point: current, breakdown: "롱런 16km + 이지 8.5km × 2회")],
+                                     live: [liveWeek(1, point: nil)], thisMonday: thisMon, raceDistanceM: MRDistance.dH)
+        #expect(r.filled == 1)
+        #expect(r.weeks[0].point == nil)
+        #expect(r.weeks[0].breakdown == "롱런 16km + 이지 8km × 3회")   // (40−16)/3
+    }
+
+    @Test func smallPaceDriftDoesNotRewrite() {
+        let thisMon = wk(0)
+        let stored = MRPlanPoint.make(kind: .speed, weeklyKm: 40, longRunKm: 16, raceDistanceM: MRDistance.dH, paceSecPerKm: 240)!
+        let drift = MRPlanPoint(kind: stored.kind, totalKm: stored.totalKm, reps: stored.reps, repKm: stored.repKm,
+                                sustainedKm: stored.sustainedKm, paceSecPerKm: 243)
+        let r = mrFillSnapshotPoints(snapshot: [snapWeek(1, point: stored, breakdown: "롱런 16km + 이지 8.5km × 2회")],
+                                     live: [liveWeek(1, point: drift)], thisMonday: thisMon, raceDistanceM: MRDistance.dH)
+        #expect(r.filled == 0)
     }
 
     @Test func alreadyFilledOrUnparsableWeeksAreLeftAlone() {
@@ -94,7 +114,7 @@ struct MRPlanPointSnapshotTests {
         let current = MRPlanPoint.make(kind: .speed, weeklyKm: 40, longRunKm: 16, raceDistanceM: MRDistance.dH, paceSecPerKm: 240)!
         let r = mrFillSnapshotPoints(
             snapshot: [snapWeek(1, point: current), snapWeek(2, breakdown: "롱런 16km + 이지 3회")],
-            live: [liveWeek(1, point: pt), liveWeek(2, point: pt)],
+            live: [liveWeek(1, point: current), liveWeek(2, point: pt)],
             thisMonday: thisMon, raceDistanceM: MRDistance.dH)
         #expect(r.filled == 0)
         #expect(r.weeks[1].point == nil)
