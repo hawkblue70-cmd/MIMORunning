@@ -389,8 +389,8 @@ enum RunSummary {
         guard i.weekOverWeek != nil || i.acuteChronic != nil else {
             // 부하 데이터가 없어도 연속일 자체는 보여준다
             guard i.streakDays >= 3 else { return nil }
-            // 연속 4일 이상이면 회복을 권하는 next와 어긋나지 않도록 tone을 중립으로 낮춘다
-            let tone: RunSummaryLine.Tone = i.streakDays >= 4 ? .neutral : .good
+            // 연속 4일 이상이면 회복을 권하는 next와 어긋나지 않도록 tone을 중립으로 낮춘다(계획상 회복·테이퍼 주는 제외)
+            let tone: RunSummaryLine.Tone = (i.streakDays >= 4 && !planEasyWeek(i)) ? .neutral : .good
             var line = RunSummaryLine(axis: axis, state: L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row"), tone: tone)
             line.evidence = evidence
             line.next = loadNext(i, jumped: false)
@@ -424,8 +424,9 @@ enum RunSummary {
             }
             tone = .good
         }
-        if i.streakDays >= 4 {
-            // next가 회복/휴식을 권할 만큼 연속이 길어지면(loadNext ≥4일 규칙) state의 초록 tone과 어긋난다 — 중립으로 맞춘다
+        if i.streakDays >= 4 && !planEasyWeek(i) {
+            // next가 회복/휴식을 권할 만큼 연속이 길어지면(loadNext ≥4일 규칙) state의 초록 tone과 어긋난다 — 중립으로 맞춘다.
+            // 계획상 회복·테이퍼 주는 다음 행동이 "이지런 위주로"라 경고가 아니다 — 연속 일수는 상태어에 그대로 두고 초록.
             tone = .neutral
         }
         if i.todayEffortMissing {
@@ -444,6 +445,11 @@ enum RunSummary {
 
     /// 근거: "7일 N AU · 이전 7일 N · 최근 7일 +N%" — 있는 것만, 이 순서로.
     /// 연속일은 **상태어에만** 쓴다(loadLine) — 두 줄에 같은 "N일 연속"이 겹쳐 보이지 않게.
+    /// 대회 훈련 계획상 회복·테이퍼 주 — 부하 줄의 다음 행동이 계획 문장이 되는 주
+    private static func planEasyWeek(_ i: RunSummaryInput) -> Bool {
+        i.planPhase == "회복" || i.planPhase == "테이퍼"
+    }
+
     private static func loadEvidence(_ i: RunSummaryInput) -> String? {
         let L = AppLanguage.shared
         var parts: [String] = []

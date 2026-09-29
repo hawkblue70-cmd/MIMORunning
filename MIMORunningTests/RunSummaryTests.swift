@@ -248,6 +248,17 @@ struct RunSummaryTests {
         #expect(line?.next == "강도를 입력하면 오늘 러닝이 부하에 반영돼요.")
     }
 
+    @Test func taperWeekStreakStaysGreen() {
+        // 테이퍼 주 · 4일 연속 · 부하 유지 — 다음 행동은 계획 문장이고 경고가 아니므로 초록, 연속 일수는 상태어에 그대로
+        var i = RunSummaryInput(); i.weekOverWeek = -0.2; i.acuteChronic = .steady; i.streakDays = 4; i.planPhase = "테이퍼"
+        let line = RunSummary.lines(i).first { $0.axis == "훈련부하" }
+        #expect(line?.tone == .good)
+        #expect(line?.state == "4주 평균 수준 · 4일 연속")
+        #expect(line?.next == "대회 훈련 계획상 테이퍼 주예요. 이지런 위주로 가세요.")
+        i.planPhase = nil
+        #expect(RunSummary.lines(i).first { $0.axis == "훈련부하" }?.tone == .neutral)
+    }
+
     @Test func steadyLoadIsGood() {
         var i = RunSummaryInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준", tone: .good)])

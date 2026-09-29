@@ -611,14 +611,13 @@ struct RunFormCardView: View {
             items.removeLast()
         }
 
-        // [107] 후보 0개면 측정값 폴백 — 해석 없이 사실만
+        // [107] 후보 0개면 측정값 폴백 — 해석 없이 사실만. 위 지표(거리·페이스)만 되풀이하는 줄은 만들지 않는다:
+        // 후반 변화가 있을 때만 그 한 줄을 보이고, 페이스는 위 지표와 같은 표기(formattedPace)를 쓴다(6'25" vs 6'26" 어긋남).
         if items.isEmpty {
             let distKm  = activity.distance / 1000
             let distStr = String(format: "%.1f", distKm)
             var text: String
-            if let pace = activity.paceSecPerKm, pace > 0 {
-                let i = Int(pace.rounded())
-                let pStr = "\(i / 60)'\(String(format: "%02d", i % 60))\""
+            if let pStr = activity.formattedPace {
                 text = L.s("\(distStr)km를 \(pStr) 페이스로 달렸어요.",
                            "You ran \(distStr) km at \(pStr)/km.")
             } else {
@@ -658,12 +657,14 @@ struct RunFormCardView: View {
                 }
             }
             if let change = notableChange { text += " " + change }
+            if notableChange != nil {
             items.append(FormInsightItem(id: .trend,
                                          badgeText: L.s("기록", "Stats"),
                                          bodyText: text,
                                          badgeColor: Color.white.opacity(0.58)))
+            }
             #if DEBUG
-            print("[인사이트] 표시 0개 → 폴백: \(text)")
+            print("[인사이트] 표시 0개 → 폴백: \(notableChange == nil ? "숨김(위 지표 되풀이)" : text)")
             #endif
         }
 

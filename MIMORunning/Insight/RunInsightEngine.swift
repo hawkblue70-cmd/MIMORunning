@@ -379,7 +379,8 @@ enum RunInsightEngine {
         planWeeklyTargetKm: Double? = nil,
         planLabel: String? = nil,
         effort: ResolvedEffort? = nil,
-        effortBaseline: Int? = nil
+        effortBaseline: Int? = nil,
+        typeOf: ((UUID) -> WorkoutType?)? = nil
     ) -> (insights: [RunInsight], segmentSource: RunSegmentSource, fadeStartKm: Double?) {
         let base        = Self.baseline(for: activity, history: history,
                                         planWeeklyTargetKm: planWeeklyTargetKm, planLabel: planLabel)
@@ -409,7 +410,7 @@ enum RunInsightEngine {
             } else {
                 appendGeneralInsights(into: &results, activity: activity, detail: detail,
                                       history: history, base: base, age: age, isMale: isMale,
-                                      hrSamples: hrSamples, heatHR: heatHR, type: workoutType)
+                                      hrSamples: hrSamples, heatHR: heatHR, type: workoutType, typeOf: typeOf)
             }
 
         case .tempo:
@@ -417,7 +418,7 @@ enum RunInsightEngine {
                 { tempoPaceStabilityInsight(detail: detail) },
                 { cardiacDriftInsight(activity: activity, hrSamples: hrSamples, category: .efficiency, heatHR: heatHR) },
                 { cardioInsight(detail: detail, age: age, isMale: isMale) },
-                { efficiencyInsight(activity: activity, history: history, heatHR: heatHR) },
+                { efficiencyInsight(activity: activity, history: history, heatHR: heatHR, typeOf: typeOf) },
                 { loadInsight(baseline: base) },
             ]
             for gen in generators where results.count < 4 {
@@ -469,7 +470,7 @@ enum RunInsightEngine {
                 { lateDiagnosisCovers(activity: activity, detail: detail) ? nil
                   : (fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: mhrDR)
                      ?? enduranceInsight(detail: detail)) },
-                { efficiencyInsight(activity: activity, history: history, heatHR: heatHR) },
+                { efficiencyInsight(activity: activity, history: history, heatHR: heatHR, typeOf: typeOf) },
                 { cardioInsight(detail: detail, age: age, isMale: isMale) },
             ]
             for gen in generators where results.count < 4 {
@@ -480,7 +481,7 @@ enum RunInsightEngine {
             appendGeneralInsights(into: &results, activity: activity, detail: detail,
                                   history: history, base: base, age: age, isMale: isMale,
                                   hrSamples: hrSamples, heatHR: heatHR, hrMax: hrMax,
-                                  lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR)
+                                  lt1HR: lt1HR, lt1SD: lt1SD, easyCeilingHR: easyCeilingHR, typeOf: typeOf)
         }
 
         let maxHRForFade = estimatedHRMax(hrMax: hrMax, age: age)
@@ -516,7 +517,8 @@ enum RunInsightEngine {
         lt1HR: Double? = nil,
         lt1SD: Double = 0,
         easyCeilingHR: Double? = nil,
-        type: WorkoutType = .general
+        type: WorkoutType = .general,
+        typeOf: ((UUID) -> WorkoutType?)? = nil
     ) {
         let maxHR = estimatedHRMax(hrMax: hrMax, age: age)
         let generators: [() -> RunInsight?] = [
@@ -527,7 +529,7 @@ enum RunInsightEngine {
             { lateDiagnosisCovers(activity: activity, detail: detail) ? nil
               : (fadeCauseInsight(activity: activity, detail: detail, history: history, hrSamples: hrSamples, maxHR: maxHR)
                  ?? enduranceInsight(detail: detail)) },
-            { efficiencyComparisonApplies(to: type) ? efficiencyInsight(activity: activity, history: history, heatHR: heatHR) : nil },
+            { efficiencyComparisonApplies(to: type) ? efficiencyInsight(activity: activity, history: history, heatHR: heatHR, typeOf: typeOf) : nil },
             { formInsight(detail: detail) },
             { environmentInsight(activity: activity) },
             { loadInsight(baseline: base) },
@@ -1367,20 +1369,36 @@ enum RunInsightEngine {
         return L.s("오늘 컨디션을 반영한 것일 수 있어요.", "may reflect today's condition.")
     }
 
+    /// 심박 효율 비교 표본 — 퍼포먼스 카드의 산점도 제목("심박 효율 ↓N bpm")·히어로·맨 아래 문장이 **이 함수 하나**를 쓴다.
+    /// 이 러닝 이전 최근 8주 · 러닝 · 심박 있음 · 페이스 ±15초 · 거리 0.5~2배 · 인터벌·빌드업 제외(섞인 평균).
+    /// (예전엔 문장이 기간 제한 없이 전체 기록 178회와, 산점도는 8주와 비교해 9 vs 7 bpm으로 갈렸다.)
+    static let efficiencyWindowWeeks = 8
+    static func efficiencySample(activity: Activity, history: [Activity],
+                                 typeOf: ((UUID) -> WorkoutType?)? = nil) -> [Activity] {
+        guard let currentPace = activity.paceSecPerKm, currentPace > 0, activity.distance > 0 else { return [] }
+        let cutoff = Calendar.current.date(byAdding: .weekOfYear, value: -efficiencyWindowWeeks, to: activity.date) ?? .distantPast
+        return history.filter {
+            $0.type == .running && $0.id != activity.id && $0.date >= cutoff && $0.date < activity.date &&
+            $0.avgHeartRate != nil && $0.distance > 0 &&
+            abs(($0.paceSecPerKm ?? -999) - currentPace) <= 15.0 &&
+            (0.5...2.0).contains(activity.distance / $0.distance)
+        }
+        .filter { a in
+            guard let wt = typeOf?(a.id) else { return true }
+            return wt != .interval && wt != .buildUp
+        }
+    }
+
     /// 개선 주장은 원본과 보정 둘 다 3 bpm 이상 낮을 때만; 보정만으로 개선을 말하지 않는다.
     static func efficiencyInsight(activity: Activity, history: [Activity],
-                                  heatHR: MRHeatHRModel = MRHeatHRModel()) -> RunInsight? {
+                                  heatHR: MRHeatHRModel = MRHeatHRModel(),
+                                  typeOf: ((UUID) -> WorkoutType?)? = nil) -> RunInsight? {
         guard let currentHR   = activity.avgHeartRate,
               let currentPace = activity.paceSecPerKm, currentPace > 0 else { return nil }
         let L = AppLanguage.shared
-        let window = 15.0
 
-        // 이 러닝 이전 기록만 — 엔진의 다른 사실과 같은 시점 규칙
-        let comparable = history.filter {
-            $0.type == .running && $0.id != activity.id && $0.date < activity.date &&
-            $0.avgHeartRate != nil &&
-            abs(($0.paceSecPerKm ?? -999) - currentPace) <= window
-        }
+        // 이 러닝 이전 최근 8주 — 산점도와 같은 표본
+        let comparable = efficiencySample(activity: activity, history: history, typeOf: typeOf)
         guard comparable.count >= 3 else { return nil }
         let sampleStr = "\(comparable.count)"
         let tempStr = activity.temperatureC.map { "\(Int($0.rounded()))°C" } ?? ""
@@ -1400,15 +1418,15 @@ enum RunInsightEngine {
             let diffStr = "\(Int(abs(rawDiff).rounded()))"
             if rawDiff > 0 {
                 return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient"),
-                    message: L.s("비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(diffStr) bpm 낮아요 — 심폐 효율이 개선되고 있어요.",
-                                 "HR is \(diffStr) bpm lower vs \(sampleStr) similar-pace runs — efficiency improving."),
+                    message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회보다 심박이 \(diffStr) bpm 낮았어요.",
+                                 "HR was \(diffStr) bpm lower than \(sampleStr) similar-pace runs in the last 8 weeks."),
                     highlights: [diffStr + "bpm", sampleStr + "회"])
             }
             let cause = heatExplains
                 ? L.s("\(tempStr) 더위 영향일 수 있어요.", "the \(tempStr) heat may be a factor.")
                 : Self.efficiencyCause(activity: activity, history: history)
             return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note"),
-                message: L.s("비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높아요. \(cause)",
+                message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높아요. \(cause)",
                              "HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)"),
                 highlights: [diffStr + "bpm", sampleStr + "회"])
         }
@@ -1427,12 +1445,12 @@ enum RunInsightEngine {
             let rawStr = "\(Int(abs(rawDiff).rounded()))"
             if heatHR.isFallback {
                 return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note"),
-                    message: L.s("비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(rawStr) bpm 높지만 일반적인 더위 영향(\(tempStr))을 감안하면 평소 수준으로 보여요.",
+                    message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(rawStr) bpm 높지만 일반적인 더위 영향(\(tempStr))을 감안하면 평소 수준으로 보여요.",
                                  "HR is \(rawStr) bpm higher vs \(sampleStr) similar-pace runs, but allowing for typical heat effects (\(tempStr)) it looks like your usual level."),
                     highlights: [rawStr + "bpm", tempStr])
             }
             return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("기온 감안", "Heat-Adjusted"),
-                message: L.s("비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(rawStr) bpm 높지만 \(tempStr) 기온을 감안하면 평소 수준이에요.",
+                message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(rawStr) bpm 높지만 \(tempStr) 기온을 감안하면 평소 수준이에요.",
                              "HR is \(rawStr) bpm higher vs \(sampleStr) similar-pace runs, but at \(tempStr) that is your usual level."),
                 highlights: [rawStr + "bpm", tempStr])
         }
@@ -1443,8 +1461,8 @@ enum RunInsightEngine {
         if diff >= 3 {
             guard rawDiff >= 3 else { return nil }
             return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient"),
-                message: L.s("비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(diffStr) bpm 낮아요 — 심폐 효율이 개선되고 있어요.",
-                             "HR is \(diffStr) bpm lower vs \(sampleStr) similar-pace runs — efficiency improving."),
+                message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회보다 심박이 \(diffStr) bpm 낮았어요.",
+                             "HR was \(diffStr) bpm lower than \(sampleStr) similar-pace runs in the last 8 weeks."),
                 highlights: [diffStr + "bpm", sampleStr + "회"])
         }
         let cause = Self.efficiencyCause(activity: activity, history: history)
@@ -1462,7 +1480,7 @@ enum RunInsightEngine {
             prefix = ""
         }
         return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note"),
-            message: L.s("\(prefix)비슷한 페이스 최근 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높아요. \(cause)",
+            message: L.s("\(prefix)비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높아요. \(cause)",
                          "\(prefix)HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)"),
             highlights: [diffStr + "bpm", sampleStr + "회"])
     }

@@ -3661,13 +3661,15 @@ private struct PerformanceInsightCard: View {
     }
 
     /// 오늘이 인터벌·빌드업이면 화살표도 없다 — 산점도에 오늘 점을 안 찍는 것과 같은 이유(scatterTodayExcluded).
+    /// 산점도 제목 "심박 효율 ↓N bpm" — 히어로·맨 아래 문장과 **같은 엔진 판정**(RunInsightEngine.efficiencyInsight)의 값.
+    /// 예전엔 여기만 8주 중 오래된 7개로 따로 평균해 7, 문장은 전체 기록과 비교해 9로 갈렸다.
     private var hrDelta: Int? {
-        guard !scatterTodayExcluded, let curHR = refHR(activity) else { return nil }
-        let pts = hrTrendPts.filter { !$0.isToday }
-        guard !pts.isEmpty else { return nil }
-        let avg = pts.map(\.hr).reduce(0, +) / Double(pts.count)
-        let d = Int((avg - curHR).rounded())
-        return d >= 3 ? d : nil
+        guard !scatterTodayExcluded,
+              let eff = RunInsightEngine.efficiencyInsight(activity: activity, history: history,
+                                                           heatHR: heatHRModel ?? MRHeatHRModel(), typeOf: workoutTypeFn),
+              eff.tone == .good, let h = eff.highlights.first,
+              let d = Int(h.filter { $0.isNumber }) else { return nil }
+        return d
     }
 
     private var vo2Info: RunInsightEngine.VO2FitnessInfo? {

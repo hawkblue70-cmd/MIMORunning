@@ -1143,7 +1143,8 @@ struct ActivityDetailView: View {
             planWeeklyTargetKm: planWeeklyTargetKm,
             planLabel: planLabel,
             effort: activity.type == .running ? resolvedEffort : nil,
-            effortBaseline: effortBaseline
+            effortBaseline: effortBaseline,
+            typeOf: summaryWorkoutType   // 심박 효율 비교에서 인터벌·빌드업 제외 — 산점도와 같은 표본
         )
         runInsights = result.insights
         runSegmentSource = result.segmentSource
