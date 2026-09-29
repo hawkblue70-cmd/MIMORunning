@@ -42,8 +42,10 @@ enum RecordFlowInsight {
         let effort: Direction
         let firstRuns: Int
         let secondRuns: Int
-        /// 시간 가중 평균 심박 방향 — 심박 없는 러닝뿐이면 .flat(판정에 안 쓴다)
+        /// 버킷 평균 심박 중앙값 방향 — 심박 없는 러닝뿐이면 .flat(판정에 안 쓴다)
         var heartRate: Direction = .flat
+        /// 체감 강도와 심박이 **둘 다** 내려갔는가(각각 문턱 미만이어도) — 조금 편하게 뛰어 조금 느려진 경우를 잡는다
+        var easedOnBoth: Bool = false
     }
 
     enum Sentence: Equatable {
@@ -94,8 +96,17 @@ enum RecordFlowInsight {
             effort: effortDirection(first, second),
             firstRuns: firstRuns,
             secondRuns: secondRuns,
-            heartRate: heartRateDirection(first, second)
+            heartRate: heartRateDirection(first, second),
+            easedOnBoth: easedOnBoth(first, second)
         )
+    }
+
+    /// 체감 강도 평균과 심박 중앙값이 **둘 다** 내려갔는가. 둘 중 하나라도 없으면 false.
+    /// (2026-09-29 실기기: 강도 4.7→3.8 · 심박 138→135 · 페이스 6초 느려짐 — 각각 문턱 미만이라 "같은 강도"로 묶였다)
+    private static func easedOnBoth(_ first: [RecordBar], _ second: [RecordBar]) -> Bool {
+        guard let ea = meanEffort(first), let eb = meanEffort(second),
+              let ha = medianHR(first), let hb = medianHR(second) else { return false }
+        return eb < ea && hb < ha
     }
 
     private static func distanceDirection(_ first: [RecordBar], _ second: [RecordBar]) -> Direction {
@@ -126,18 +137,21 @@ enum RecordFlowInsight {
         return .flat
     }
 
-    /// 시간 가중 평균 심박 방향(bpm). 한쪽이라도 심박이 없으면 .flat.
+    /// 심박 방향(bpm) — 버킷(하루·주·달) 평균 심박의 **중앙값**끼리 비교. 한쪽이라도 심박이 없으면 .flat.
+    /// 시간 가중 평균은 롱런·대회 한 번(100분)이 이지런 여러 번을 덮어 "편하게 뛴 날이 늘었다"를 놓쳤다
+    /// (2026-09-29 실기기: 9월 하순 이지런 134bpm이 9/26 롱런 빌드업에 묻힘) — 보통 날의 강도를 본다.
+    static func medianHR(_ bars: [RecordBar]) -> Double? {
+        let v = bars.compactMap(\.avgHR).sorted()
+        guard !v.isEmpty else { return nil }
+        let m = v.count / 2
+        return v.count % 2 == 1 ? v[m] : (v[m - 1] + v[m]) / 2
+    }
+
     private static func heartRateDirection(_ first: [RecordBar], _ second: [RecordBar]) -> Direction {
-        func avg(_ bars: [RecordBar]) -> Double? {
-            let rows = bars.compactMap { b in b.avgHR.map { ($0, b.minutes) } }.filter { $0.1 > 0 }
-            let mins = rows.reduce(0) { $0 + $1.1 }
-            guard mins > 0 else { return nil }
-            return rows.reduce(0) { $0 + $1.0 * $1.1 } / mins
-        }
-        guard let a = avg(first), let b = avg(second) else { return .flat }
+        guard let a = medianHR(first), let b = medianHR(second) else { return .flat }
         let delta = b - a
-        if delta > heartRateThresholdBpm { return .up }
-        if delta < -heartRateThresholdBpm { return .down }
+        if delta >= heartRateThresholdBpm { return .up }
+        if delta <= -heartRateThresholdBpm { return .down }   // 3bpm 포함(138→135)
         return .flat
     }
 
@@ -162,8 +176,11 @@ enum RecordFlowInsight {
         case .up:   return trend.pace == .up ? .pushingFaster : (trend.distance == .down ? .lessButHarder : .harder)
         case .flat:
             if trend.distance == .down { return .lessDistance }
-            // 체감 강도는 그대로인데 심박이 내려갔으면 더위·피로가 아니라 편하게 뛴 것 — 이지런으로 느려진 경우(2026-09-29 사용자)
-            if trend.pace == .down { return trend.heartRate == .down ? .easierSlower : .slower }
+            // 체감 강도가 "그대로"여도 심박이 3bpm↓이거나, 강도·심박이 둘 다 조금씩 내려갔으면
+            // 더위·피로가 아니라 편하게 뛴 것 — 이지런으로 느려진 경우(2026-09-29 사용자)
+            if trend.pace == .down {
+                return (trend.heartRate == .down || trend.easedOnBoth) ? .easierSlower : .slower
+            }
             return .steady
         }
     }

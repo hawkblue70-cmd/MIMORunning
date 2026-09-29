@@ -212,6 +212,37 @@ struct RecordFlowInsightTests {
         let bars = (0..<4).map { hrBar($0, pace: 360, hr: 145) } + (4..<8).map { hrBar($0, pace: 390, hr: 144) }
         let t = RecordFlowInsight.trend(.init(bars: bars, period: .day, easyCutoff: 4))
         #expect(t?.heartRate == .flat)
+        #expect(t?.easedOnBoth == false)   // 강도 그대로(4=4)라 둘 다↓ 아님
+        #expect(t.map { RecordFlowInsight.sentence(for: $0) } == .slower)
+    }
+
+    private func hrEffortBar(_ i: Int, pace: Double, hr: Double, effort: Double) -> RecordBar {
+        RecordBar(id: day(i), end: day(i + 1), km: 6, minutes: 40, au: 0,
+                  paceSec: pace, meanEffort: effort, avgHR: hr, runCount: 1, ratedCount: 1)
+    }
+
+    @Test func slightlyEasierOnBothSignalsIsEasierNotHeat() {
+        // 2026-09-29 실기기 재현: 페이스 6'19"→6'25", 강도 4.7→3.8(±1 안), 심박 중앙 138→136(±3 안) — 둘 다 조금씩 ↓
+        let bars = (0..<4).map { hrEffortBar($0, pace: 379.5, hr: 138, effort: 4.7) }
+                 + (4..<8).map { hrEffortBar($0, pace: 385.7, hr: 136, effort: 3.8) }
+        let t = RecordFlowInsight.trend(.init(bars: bars, period: .day, easyCutoff: 4))
+        #expect(t?.effort == .flat)
+        #expect(t?.heartRate == .flat)
+        #expect(t?.easedOnBoth == true)
+        #expect(t.map { RecordFlowInsight.sentence(for: $0) } == .easierSlower)
+    }
+
+    @Test func threeBpmDropCountsAsDown() {
+        let bars = (0..<4).map { hrBar($0, pace: 379.5, hr: 138) } + (4..<8).map { hrBar($0, pace: 385.7, hr: 135) }
+        #expect(RecordFlowInsight.trend(.init(bars: bars, period: .day, easyCutoff: 4))?.heartRate == .down)
+    }
+
+    @Test func mixedSignalsStayHeatOrFatigue() {
+        // 강도는 조금 ↓, 심박은 조금 ↑ — 엇갈리면 편하게 뛴 게 아니다
+        let bars = (0..<4).map { hrEffortBar($0, pace: 379.5, hr: 138, effort: 4.7) }
+                 + (4..<8).map { hrEffortBar($0, pace: 385.7, hr: 140, effort: 3.8) }
+        let t = RecordFlowInsight.trend(.init(bars: bars, period: .day, easyCutoff: 4))
+        #expect(t?.easedOnBoth == false)
         #expect(t.map { RecordFlowInsight.sentence(for: $0) } == .slower)
     }
 }

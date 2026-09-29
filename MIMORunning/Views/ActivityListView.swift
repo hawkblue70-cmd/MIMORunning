@@ -280,17 +280,6 @@ private struct ActivityListContent: View {
                 intense[a.date] = why
             }
         }
-        #if DEBUG
-        // 기온 보정 진단 — 모델 계수와 여름(6~9월) 러닝의 기온·보정량
-        let hm = engine.heatHR
-        let df = DateFormatter(); df.dateFormat = "M/d"
-        let summer = runs84.filter { Calendar.current.component(.month, from: $0.date) >= 6 }.sorted { $0.date < $1.date }
-        print(String(format: "[강도훈련:기온] 모델 %@ %.2f bpm/°C · 최고 %.0f°C", hm.isFallback ? "폴백" : (hm.ok ? "학습" : "없음"), hm.bpmPerC, hm.tempMaxC)
-              + " · " + summer.map { a in
-                  let t = a.temperatureC.map { String(format: "%.0f°C", $0) } ?? "기온없음"
-                  return "\(df.string(from: a.date)) \(t) −\(Int(hm.delta(a.temperatureC).rounded()))"
-              }.joined(separator: ", "))
-        #endif
         engine.updateIntenseRuns(intense)
     }
 
