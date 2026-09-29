@@ -44,9 +44,12 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
         func r1(_ x: Double) -> Double { (x * 10).rounded() / 10 }
         switch kind {
         case .speed:
-            let reps = min(max(Int((weeklyKm * 0.08).rounded()), 3), 6)
-            let total = warmupKm + Double(reps) + Double(reps - 1) * intervalJogKm + cooldownKm
-            return MRPlanPoint(kind: .speed, totalKm: r1(total), reps: reps, repKm: 1.0,
+            // 반복 한 번 ≈ 4분(Daniels 인터벌 3~5분의 가운데)을 본인 5K 페이스로 거리로 — 200m 단위, 400~1200m.
+            // 빠른 러너 1km, 5'07" 러너 800m, 6'30" 러너 600m. 회수는 빠른 구간 합이 주간 8%에 들게(3~6회).
+            let repKm = mrIntervalRepKm(paceSecPerKm: paceSecPerKm)
+            let reps = min(max(Int((weeklyKm * 0.08 / repKm).rounded()), 3), 6)
+            let total = warmupKm + Double(reps) * repKm + Double(reps - 1) * intervalJogKm + cooldownKm
+            return MRPlanPoint(kind: .speed, totalKm: r1(total), reps: reps, repKm: repKm,
                                sustainedKm: nil, paceSecPerKm: paceSecPerKm)
         case .tempo:
             let t = Double(min(max(Int((weeklyKm * 0.10).rounded()), 3), 8))
@@ -88,7 +91,8 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
         switch kind {
         case .speed:
             let n = reps ?? 0
-            return L.s("인터벌 1km × \(n)회 \(pace)", "Intervals 1km × \(n) at \(pace)")
+            let rep = mrRepDistanceString(repKm ?? 1)
+            return L.s("인터벌 \(rep) × \(n)회 \(pace)", "Intervals \(rep) × \(n) at \(pace)")
         case .tempo:
             let t = mrPointKmString(sustainedKm ?? 0)
             return L.s("템포런 \(t)km \(pace)", "Tempo run \(t)km at \(pace)")
@@ -118,6 +122,23 @@ extension MRPlanPoint {
             return L.s("사이 \(Self.racePaceJogMin)분 조깅 · 앞뒤 조깅 포함 총 \(total)km", "\(Self.racePaceJogMin)-min jog between · \(total) km total incl. warm-up/cool-down")
         }
     }
+}
+
+/// 인터벌 반복 한 번의 목표 시간(초) — Daniels' Running Formula: 인터벌(I) 반복은 3~5분.
+/// 산소 섭취가 최고치 가까이 오르는 데 약 2분이 걸려 3분은 되어야 최고 구간에 머물고, 5분을 넘으면 페이스를 못 지킨다.
+/// ⚠ 코칭 관행(생리학에서 끌어낸 처방) — 3분·5분을 직접 비교한 통제 연구는 아니다. 4분은 그 가운데로 임의로 정함.
+let MR_INTERVAL_REP_SEC = 240.0
+
+/// 반복 거리(km) — 4분 × 5K 페이스를 200m 단위로 반올림, 400~1200m.
+func mrIntervalRepKm(paceSecPerKm: Double) -> Double {
+    guard paceSecPerKm > 0 else { return 1.0 }
+    let meters = (MR_INTERVAL_REP_SEC / paceSecPerKm * 1000 / 200).rounded() * 200
+    return min(max(meters, 400), 1200) / 1000
+}
+
+/// 반복 거리 표기 — 1km 이상은 "1km"·"1.2km", 그 아래는 "800m".
+func mrRepDistanceString(_ km: Double) -> String {
+    km >= 1 ? "\(mrPointKmString(km))km" : "\(Int((km * 1000).rounded()))m"
 }
 
 /// km 표기 — 정수면 "8", 아니면 "6.4". 계획 문구(eachStr)와 같은 규칙.
@@ -171,7 +192,7 @@ func mrBreakdownReplacingEasy(_ text: String, easyKm: Double, runs: Int) -> Stri
     return replacedRuns.replacingCharacters(in: m.range(at: 1), with: mrPointKmString(easyKm))
 }
 
-/// 트리거 5 — 이미 시작한 계획의 스냅샷에 포인트 칸 채우기(설계 6절).
+/// 트리거 5 — 이미 시작한 계획의 스냅샷에 포인트 칸 채우기(설계 6절). 이미 채운 미래 주는 규칙이 바뀌었을 때만 다시 잰다.
 /// 다음 주(thisMonday 뒤)부터, 스냅샷 주에 point가 없고 같은 월요일 라이브 주가 **같은 단계**로 point를 가질 때만.
 /// 종류·페이스는 라이브, 양은 스냅샷 자신의 주간·롱런으로 다시 잰다. 이지 문구는 숫자만 바꾼다.
 /// 이지 1회가 1.5km 아래로 내려가거나 문구를 못 읽으면 그 주는 건너뛴다. 지난 주·이번 주는 건드리지 않는다.
@@ -183,7 +204,25 @@ func mrFillSnapshotPoints(snapshot: [MRPlanWeekSummary], live: [MRPlanWeek], thi
     var filled = 0
     let weeks = snapshot.map { s -> MRPlanWeekSummary in
         let mon = calendar.startOfDay(for: s.monday)
-        guard s.point == nil, mon > thisMon,
+        // 이미 채운 미래 주 — 규칙(반복 거리·회복 시간)이 바뀌었으면 저장된 페이스 그대로 다시 잰다. 이지 횟수는 그대로.
+        // 페이스를 라이브로 바꾸지 않아 예측이 조금씩 움직일 때마다 스냅샷을 다시 쓰지 않는다.
+        if let sp = s.point {
+            guard mon > thisMon else { return s }
+            let long = s.longRunKm.rounded()
+            guard let np = MRPlanPoint.make(kind: sp.kind, weeklyKm: s.weeklyKm, longRunKm: long,
+                                            raceDistanceM: raceDistanceM, paceSecPerKm: sp.paceSecPerKm),
+                  np != sp else { return s }
+            let parsed = mrParsePlanBreakdown(s.breakdown)
+            guard let runs = parsed.easyRuns, runs >= 1, parsed.easyKm != nil else { return s }
+            let easyKm = ((s.weeklyKm - long - np.totalKm) / Double(runs) * 10).rounded() / 10
+            guard easyKm >= 1.5, let bd = mrBreakdownReplacingEasy(s.breakdown, easyKm: easyKm, runs: runs) else { return s }
+            filled += 1
+            var out = s
+            out.breakdown = bd
+            out.point = np
+            return out
+        }
+        guard mon > thisMon,
               let lw = liveByMonday[mon], lw.phase == s.phase, let lp = lw.point else { return s }
         let parsed = mrParsePlanBreakdown(s.breakdown)
         guard let runs = parsed.easyRuns, runs >= 2, parsed.easyKm != nil else { return s }

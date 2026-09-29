@@ -6,13 +6,27 @@ import Foundation
 struct MRPlanPointTests {
 
     @Test func speedRepsAreEightPercentOfWeeklyClampedThreeToSix() throws {
+        // 5'00" 페이스 → 4분 = 800m
         let a = try #require(MRPlanPoint.make(kind: .speed, weeklyKm: 30, longRunKm: 14, raceDistanceM: MRDistance.dH, paceSecPerKm: 300))
-        #expect(a.reps == 3)                       // 2.4 → 2 → 하한 3
-        #expect(abs(a.totalKm - 7.0) < 0.01)       // 2 + 3×1 + 2×0.5(3분) + 1
-        let b = try #require(MRPlanPoint.make(kind: .speed, weeklyKm: 60, longRunKm: 18, raceDistanceM: MRDistance.dH, paceSecPerKm: 300))
-        #expect(b.reps == 5)                       // 4.8 → 5
+        #expect(a.repKm == 0.8)
+        #expect(a.reps == 3)                       // 2.4 / 0.8 = 3
+        #expect(abs(a.totalKm - 6.4) < 0.01)       // 2 + 3×0.8 + 2×0.5(3분) + 1
+        let b = try #require(MRPlanPoint.make(kind: .speed, weeklyKm: 40, longRunKm: 18, raceDistanceM: MRDistance.dH, paceSecPerKm: 300))
+        #expect(b.reps == 4)                       // 3.2 / 0.8 = 4
         let c = try #require(MRPlanPoint.make(kind: .speed, weeklyKm: 100, longRunKm: 28, raceDistanceM: MRDistance.dF, paceSecPerKm: 300))
-        #expect(c.reps == 6)                       // 8 → 상한 6
+        #expect(c.reps == 6)                       // 10 → 상한 6
+    }
+
+    @Test func intervalRepIsAboutFourMinutesRoundedTo200m() {
+        #expect(mrIntervalRepKm(paceSecPerKm: 240) == 1.0)   // 4'00" → 1000m
+        #expect(mrIntervalRepKm(paceSecPerKm: 200) == 1.2)   // 3'20" → 1200m
+        #expect(mrIntervalRepKm(paceSecPerKm: 307) == 0.8)   // 5'07" → 782m → 800m
+        #expect(mrIntervalRepKm(paceSecPerKm: 390) == 0.6)   // 6'30" → 615m → 600m
+        #expect(mrIntervalRepKm(paceSecPerKm: 900) == 0.4)   // 15'00" → 267m → 하한 400m
+        #expect(mrIntervalRepKm(paceSecPerKm: 150) == 1.2)   // 2'30" → 1600m → 상한 1200m
+        #expect(mrRepDistanceString(0.8) == "800m")
+        #expect(mrRepDistanceString(1.2) == "1.2km")
+        #expect(mrRepDistanceString(1.0) == "1km")
     }
 
     @Test func tempoIsTenPercentOfWeeklyClampedThreeToEight() throws {
@@ -89,6 +103,8 @@ struct MRPlanPointTests {
         #expect(s.text == "인터벌 1km × 4회 5'05\"")
         let t = MRPlanPoint(kind: .tempo, totalKm: 8, reps: nil, repKm: nil, sustainedKm: 5, paceSecPerKm: 320)
         #expect(t.text == "템포런 5km 5'20\"")
+        let s8 = MRPlanPoint(kind: .speed, totalKm: 8, reps: 5, repKm: 0.8, sustainedKm: nil, paceSecPerKm: 307)
+        #expect(s8.text == "인터벌 800m × 5회 5'07\"")
         let b = MRPlanPoint(kind: .buildUp, totalKm: 10, reps: nil, repKm: nil, sustainedKm: 3.3, paceSecPerKm: 330)
         #expect(b.text == "빌드업 10km · 마지막 3.3km 5'30\"")
         let r = MRPlanPoint(kind: .racePaceShort, totalKm: 6.8, reps: 3, repKm: 1, sustainedKm: nil, paceSecPerKm: 312)

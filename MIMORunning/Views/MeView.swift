@@ -837,7 +837,7 @@ struct MeView: View {
                         existing.weeksJSON = wj
                     }
                     #if DEBUG
-                    print("[스냅샷] 포인트 칸 채움 → \(r.filled)주: \(check.race.name)")
+                    print("[스냅샷] 포인트 칸 채움·규칙 갱신 → \(r.filled)주: \(check.race.name)")
                     #endif
                 }
             }
