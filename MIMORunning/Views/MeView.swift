@@ -8,16 +8,6 @@ import ImagePlayground
 
 // MARK: - File-private types
 
-private struct BadgeInfo: Identifiable {
-    let id: String
-    let icon: String
-    let title: String
-    let achieved: Bool
-    let achievedDate: Date?
-    /// 달성했을 때의 색 — 그룹마다 흐름(완주: 초록→청록→하늘→보라→금 · 누적: 민트→파랑→인디고→핑크 · 연속: 주황→빨강→마젠타).
-    /// 미달성은 회색 그대로(2026-09-29 사용자 요청: 전부 보라라 단조로움).
-    var color: Color = Theme.violet
-}
 
 private struct SelectedSummaryStats: Identifiable {
     let id = UUID()
@@ -60,7 +50,6 @@ struct MeView: View {
     /// 기간별 결산 펼침 — 기본 접힘(나 탭이 카드 다섯 장으로 길어지지 않게, 2026-09-29 사용자 요청)
     @State private var statsExpanded = false
     @State private var cachedYearStats: [SummaryPeriodStats] = []
-    @State private var badgesCache: [BadgeInfo] = []
     @State private var lastStatsCacheKey: String = ""
     @State private var cachedMonthFormMetrics: [String: FormMetricsData] = [:]
     @AppStorage("distanceUnitMiles") private var useMiles = false
@@ -183,13 +172,12 @@ struct MeView: View {
         plannedRaces.filter { ($0.raceDate ?? .distantFuture) < today }.forEach { modelContext.delete($0) }
     }
 
-    private func refreshStatsAndBadges() {
+    private func refreshStats() {
         let key = "\(manager.activities.count)-\(useMiles)"
         guard key != lastStatsCacheKey else { return }
         lastStatsCacheKey = key
         cachedMonthStats = [periodStats(monthOffset: 0), periodStats(monthOffset: 1), periodStats(monthOffset: 2)]
         cachedYearStats  = [yearStats(yearOffset: 0), yearStats(yearOffset: 1)]
-        badgesCache      = computeBadges()
         cachedMonthFormMetrics = [:]  // 데이터 변경 시 폼 지표도 무효화
     }
 
@@ -247,7 +235,6 @@ struct MeView: View {
                             .padding(.horizontal, 16)
                         statsSection
                         shoesSection
-                        milestonesSection
                         crewNicknameSection
                         settingsSection
                         Spacer(minLength: 32)
@@ -280,19 +267,18 @@ struct MeView: View {
             mrDeduplicateSnapshots(allSnapshots, context: modelContext)
             mrDeduplicateArchives(allArchives,   context: modelContext)
             refreshShoeKmCache()
-            refreshStatsAndBadges()
+            refreshStats()
             await refreshFormMetrics()
             deletePastRaces()
         }
         .onChange(of: manager.activities.count) {
             refreshShoeKmCache()
-            refreshStatsAndBadges()
+            refreshStats()
             Task { await refreshFormMetrics() }
         }
         .onChange(of: allStories.count) { refreshShoeKmCache() }
-        .onChange(of: useMiles) { refreshStatsAndBadges() }
+        .onChange(of: useMiles) { refreshStats() }
         .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
-            badgesCache = computeBadges()
             engine.recomputePlans()   // verdict·plan notes는 빌드 시 L.s()로 저장 → 재계산 필요
         }
         .onChange(of: racePlanKey) { syncAndRecompute() }
@@ -1259,27 +1245,6 @@ struct MeView: View {
         }
     }
 
-    // MARK: - Milestones section
-
-    private var milestonesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(AppLanguage.shared.s("마일스톤", "Milestones"))
-                .font(.headline)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
-                spacing: 10
-            ) {
-                ForEach(badgesCache) { badge in
-                    BadgeCell(badge: badge)
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
     // MARK: - Crew section
 
     private var crewNicknameSection: some View {
@@ -1527,74 +1492,6 @@ struct MeView: View {
             .fill(Color.white.opacity(0.07))
             .frame(height: 0.5)
             .padding(.horizontal, 16)
-    }
-
-    // MARK: - Badge computation
-
-    private func computeBadges() -> [BadgeInfo] {
-        let all = manager.activities.sorted { $0.date < $1.date }
-        let runs = all.filter { $0.type == .running }
-
-        func firstRun(over dist: Double) -> Activity? { runs.first { $0.distance >= dist } }
-
-        let L = AppLanguage.shared
-        var badges: [BadgeInfo] = [
-            .init(id: "first_run", icon: "figure.run",  title: L.s("첫 러닝", "First Run"),
-                  achieved: !runs.isEmpty,                        achievedDate: runs.first?.date, color: Color(hex: "34C759")),
-            .init(id: "5k",   icon: "flag",        title: L.s("5K 완주", "5K Finish"),
-                  achieved: firstRun(over:  5000) != nil,         achievedDate: firstRun(over:  5000)?.date, color: Color(hex: "30D5C8")),
-            .init(id: "10k",  icon: "flag.fill",   title: L.s("10K 완주", "10K Finish"),
-                  achieved: firstRun(over: 10000) != nil,         achievedDate: firstRun(over: 10000)?.date, color: Color(hex: "5BB8FF")),
-            .init(id: "half", icon: "medal",        title: L.s("하프 완주", "Half Finish"),
-                  achieved: firstRun(over: 21097) != nil,         achievedDate: firstRun(over: 21097)?.date, color: Color(hex: "7C5CFC")),
-            .init(id: "full", icon: "trophy.fill",  title: L.s("풀 완주", "Full Finish"),
-                  achieved: firstRun(over: 42195) != nil,         achievedDate: firstRun(over: 42195)?.date, color: Color(hex: "FFC83D")),
-        ]
-
-        // Cumulative distance (all activity types)
-        var totalKm = 0.0
-        var cumDates: [Int: Date] = [:]
-        for a in all {
-            totalKm += a.distance / 1000
-            for t in [100, 300, 500, 1000] where cumDates[t] == nil && totalKm >= Double(t) {
-                cumDates[t] = a.date
-            }
-        }
-        badges += [
-            .init(id: "cum100",  icon: "map",           title: L.s("누적 100km", "100km Total"),
-                  achieved: cumDates[100]  != nil, achievedDate: cumDates[100], color: Color(hex: "66D4CF")),
-            .init(id: "cum300",  icon: "map.fill",       title: L.s("누적 300km", "300km Total"),
-                  achieved: cumDates[300]  != nil, achievedDate: cumDates[300], color: Color(hex: "0A84FF")),
-            .init(id: "cum500",  icon: "globe.americas", title: L.s("누적 500km", "500km Total"),
-                  achieved: cumDates[500]  != nil, achievedDate: cumDates[500], color: Color(hex: "5E5CE6")),
-            .init(id: "cum1000", icon: "globe",          title: L.s("누적 1000km", "1000km Total"),
-                  achieved: cumDates[1000] != nil, achievedDate: cumDates[1000], color: Color(hex: "FF6FB5")),
-        ]
-
-        // Week streak
-        let maxStreak = computeMaxWeekStreak(runs: runs)
-        badges += [
-            .init(id: "streak4",  icon: "flame.fill", title: L.s("4주 연속", "4-Wk Streak"),  achieved: maxStreak >= 4,  achievedDate: nil, color: Color(hex: "FF9F0A")),
-            .init(id: "streak8",  icon: "bolt.fill",  title: L.s("8주 연속", "8-Wk Streak"),  achieved: maxStreak >= 8,  achievedDate: nil, color: Color(hex: "FF453A")),
-            .init(id: "streak12", icon: "crown.fill", title: L.s("12주 연속", "12-Wk Streak"), achieved: maxStreak >= 12, achievedDate: nil, color: Color(hex: "FF2D92")),
-        ]
-
-        return badges
-    }
-
-    private func computeMaxWeekStreak(runs: [Activity]) -> Int {
-        guard !runs.isEmpty else { return 0 }
-        let cal = Calendar.current
-        let weekStarts = Set(runs.compactMap {
-            cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.date))
-        }).sorted()
-        var maxStreak = 1, cur = 1
-        for i in 1..<weekStarts.count {
-            let days = cal.dateComponents([.day], from: weekStarts[i - 1], to: weekStarts[i]).day ?? 0
-            if days == 7 { cur += 1 } else { cur = 1 }
-            if cur > maxStreak { maxStreak = cur }
-        }
-        return maxStreak
     }
 }
 
@@ -1895,53 +1792,6 @@ private struct SummarySectionCard: View {
             .fill(Color.white.opacity(0.08))
             .frame(width: 0.5, height: 32)
             .padding(.horizontal, 12)
-    }
-}
-
-// MARK: - Badge Cell
-
-private struct BadgeCell: View {
-    let badge: BadgeInfo
-
-    var body: some View {
-        VStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .fill(badge.achieved ? badge.color.opacity(0.18) : Color.white.opacity(0.05))
-                    .frame(width: 52, height: 52)
-                Image(systemName: badge.icon)
-                    .font(.system(size: 22, weight: badge.achieved ? .semibold : .light))
-                    .foregroundStyle(badge.achieved ? badge.color : Color.white.opacity(0.2))
-            }
-            Text(badge.title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(badge.achieved ? .white : Color.white.opacity(0.25))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            Group {
-                if let date = badge.achievedDate {
-                    Text(shortDate(date))
-                        .foregroundStyle(.secondary)
-                } else if badge.achieved {
-                    Text(AppLanguage.shared.s("달성", "Done")).foregroundStyle(badge.color.opacity(0.8))
-                } else {
-                    Text(AppLanguage.shared.s("미달성", "Locked")).foregroundStyle(.tertiary)
-                }
-            }
-            .font(.system(size: 9))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .padding(.horizontal, 4)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
-    private func shortDate(_ date: Date) -> String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yy.M.d"
-        return fmt.string(from: date)
     }
 }
 

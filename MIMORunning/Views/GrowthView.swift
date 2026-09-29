@@ -931,7 +931,7 @@ struct GrowthView: View {
         let L = AppLanguage.shared
         let events = journeyMilestonesCache
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: L.s("나의 여정", "My Journey"), subtitle: L.s("걷기에서 러닝으로", "From walking to running"))
+            SectionLabel(title: L.s("나의 여정", "My Journey"), subtitle: L.s("첫 러닝부터 지금까지", "From your first run to now"))
             if events.isEmpty {
                 EmptyChartPlaceholder(message: L.s("기록이 쌓이면 여정이 여기에 펼쳐져요", "Your journey will appear as you log more"))
             } else {
@@ -1503,20 +1503,12 @@ struct GrowthView: View {
 
     private func journeyMilestones() -> [MilestoneEvent] {
         let L = AppLanguage.shared
-        let all = manager.activities.sorted { $0.date < $1.date }
-        let allRuns = all.filter { $0.type == .running }
+        // 러닝만 — 걷기·하이킹은 여정에 넣지 않는다(2026-09-29 사용자 요청: "걷기 말고 러닝으로")
+        let allRuns = manager.activities.filter { $0.type == .running }.sorted { $0.date < $1.date }
         var events: [MilestoneEvent] = []
 
-        // 첫 기록 (any type)
-        if let first = all.first {
-            let typeLabel = first.type.label
-            let title = L.isEnglish ? "First \(typeLabel)" : "첫 \(typeLabel)"
-            events.append(.init(id: "first_any", date: first.date, kind: .first,
-                                title: title, detail: first.formattedDistance))
-        }
-
-        // 첫 러닝 (only if different from very first activity)
-        if let firstRun = allRuns.first, firstRun.id != all.first?.id {
+        // 첫 러닝
+        if let firstRun = allRuns.first {
             events.append(.init(id: "first_run", date: firstRun.date, kind: .first,
                                 title: L.s("첫 러닝", "First Run"), detail: firstRun.formattedDistance))
         }
@@ -1537,11 +1529,11 @@ struct GrowthView: View {
             }
         }
 
-        // 누적 거리 돌파 (모든 활동 기준: 걷기+러닝+하이킹)
+        // 누적 러닝 거리 돌파 (러닝만)
         let thresholds: [Double] = [100, 300, 500, 1000]
         var totalKm = 0.0
         var nextThresh = 0
-        for a in all {
+        for a in allRuns {
             totalKm += a.distance / 1000
             while nextThresh < thresholds.count && totalKm >= thresholds[nextThresh] {
                 let km = thresholds[nextThresh]
@@ -1549,7 +1541,7 @@ struct GrowthView: View {
                     id: "cum_\(Int(km))",
                     date: a.date,
                     kind: .cumulative,
-                    title: L.s("누적 \(Int(km))km 돌파", "\(Int(km))km total"),
+                    title: L.s("누적 러닝 \(Int(km))km 돌파", "\(Int(km))km run total"),
                     detail: String(format: L.s("총 %.0fkm", "Total %.0fkm"), totalKm)
                 ))
                 nextThresh += 1
