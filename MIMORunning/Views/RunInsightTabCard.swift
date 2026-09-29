@@ -204,12 +204,22 @@ private struct CadenceRPMGaugeView: View {
         // 이 러닝 값과 기준 범위 상단 위로 10 이상 여유(5 단위 올림) — 194는 205, 200은 210. +4는 194→200이라 여전히 빠듯했다.
         // 케이던스가 높은 러너(190 초과)에서 바늘이 끝에 붙던 문제.
         let band = personalBand
-        let needMax = ceil((max(Double(cadence), band.upper) + 10) / 5) * 5
-        guard let s = cadenceStat else { return (140, max(190, needMax)) }
+        let c = Double(cadence)
+        // 반드시 보여야 할 구간 — 이 러닝 값과 평소 범위, 양쪽 10 여유(5 단위)
+        let needMin = floor((min(c, band.lower) - 10) / 5) * 5
+        let needMax = ceil((max(c, band.upper) + 10) / 5) * 5
+        guard let s = cadenceStat else { return (min(140, needMin), max(190, needMax)) }
         let rawMax = max(190, ceil((s.median + 4 * s.sd) / 5) * 5, needMax)
-        var rawMin = min(140, floor((s.median - 4 * s.sd) / 5) * 5)
-        if rawMax - rawMin > 70 { rawMin = rawMax - 70 }
-        return (rawMin, rawMax)
+        let rawMin = min(140, floor((s.median - 4 * s.sd) / 5) * 5, needMin)
+        guard rawMax - rawMin > 70 else { return (rawMin, rawMax) }
+        // 70 폭으로 줄일 때 위쪽만 남기면 값·평소 범위가 눈금 밖으로 밀렸다(185~255에 177).
+        // 보여야 할 구간을 가운데 두고 70 폭을 잡는다. 그 구간이 70보다 넓으면 구간 그대로.
+        if needMax - needMin >= 70 { return (needMin, needMax) }
+        var lo = floor(((needMin + needMax) / 2 - 35) / 5) * 5
+        lo = min(max(lo, rawMin), needMin)
+        var hi = lo + 70
+        if hi < needMax { hi = needMax; lo = hi - 70 }
+        return (lo, hi)
     }
 
     private var personalBand: (lower: Double, upper: Double, absoluteWarning: Double?) {
@@ -256,8 +266,8 @@ private struct CadenceRPMGaugeView: View {
                                style: StrokeStyle(lineWidth: thick, lineCap: .butt))
                 }
 
-                // 160 absoluteWarning 마커 — 개인 lower < 160 일 때만 표시
-                if absoluteWarning != nil {
+                // 160 absoluteWarning 마커 — 개인 lower < 160 이고 160이 눈금 안일 때만(밖이면 끝에 붙어 라벨과 겹쳤다)
+                if absoluteWarning != nil, 160 > axMin, 160 < axMax {
                     let wRad = ang(160, axMin: axMin, axMax: axMax) * .pi / 180
                     var mp = Path()
                     mp.move(to: CGPoint(x: center.x + (r - 7 * scale) * CGFloat(cos(wRad)),
@@ -2446,8 +2456,15 @@ private struct RhythmInsightCard: View {
                 let sd = sqrt(paces.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(paces.count))
                 cv = sd / mean * 100
             }
+            // 전반·후반의 오르내림이 크게 다르면(내려갔다 올라오는 코스 등) 폼 변화가 경사 때문일 수 있다 —
+            // 전후반 폼 비교(⓪①)는 하지 않고 페이스 고르기(②③)만 본다
+            let slopeConfounded: Bool = {
+                guard let c = GradeAdjustedPace.halvesNetClimb((detail?.altitudeProfile ?? []).map { (x: $0.distanceKm, altitude: $0.altitude) })
+                else { return false }
+                return abs(c.second - c.first) >= GradeAdjustedPace.halvesClimbGapM
+            }()
             // 분기⓪ GCT 우선, 없으면 케이던스 폴백 (임계값 2)
-            let fGCT = halfAvgGCT(first); let sGCT = halfAvgGCT(second)
+            let fGCT = slopeConfounded ? nil : halfAvgGCT(first); let sGCT = slopeConfounded ? nil : halfAvgGCT(second)
             let firstCad = halfAvgCadence(first); let secondCad = halfAvgCadence(second)
             let formHeavy: Bool
             let formImproved: Bool   // ⓪ 후반 GCT ≤ -7ms — 개선
@@ -2458,7 +2475,7 @@ private struct RhythmInsightCard: View {
                 let sign = (sg - fg) >= 0 ? "+" : ""
                 formHeavyMethod = "GCT \(Int(fg))→\(Int(sg))ms(\(sign)\(Int((sg - fg).rounded())))"
             } else {
-                let cadDrop: Double = (firstCad != nil && secondCad != nil) ? (firstCad! - secondCad!) : 0
+                let cadDrop: Double = (!slopeConfounded && firstCad != nil && secondCad != nil) ? (firstCad! - secondCad!) : 0
                 formHeavy    = cadDrop >= 2
                 formImproved = false  // 케이던스만으론 개선 판정 안 함
                 formHeavyMethod = "케이던스폴백 \(firstCad.map{Int($0)} ?? 0)→\(secondCad.map{Int($0)} ?? 0)(\(Int(cadDrop.rounded()))spm)"
@@ -2611,7 +2628,9 @@ private struct RhythmInsightCard: View {
 
     private func cadenceVerdictInfo(cad: Int) -> (text: String, color: Color) {
         let L = AppLanguage.shared
-        guard let bl = formBaseline else {
+        // 기준선이 없거나 이 페이스 구간의 케이던스 기준이 빠졌으면(범위가 너무 넓어 제외 등) 일반 범위 문장 —
+        // 아래 라벨이 "일반 참고 범위"인데 "평소 범위예요"라고 하면 어긋난다
+        guard let bl = formBaseline, bl.baseline(for: activity, gradeAdjustedPace: runGAP)?.cadence != nil else {
             let inRange = (160...175).contains(cad)
             let text = inRange
                 ? L.s("일반적인 범위예요", "Typical range")
@@ -2790,11 +2809,24 @@ private struct RhythmInsightCard: View {
         let avgSecond = samples.suffix(n - half).map { Double($0.bpm) }.reduce(0, +) / Double(n - half)
         let diff = avgSecond - avgFirst
         // 220−나이는 쓰지 않는다 — 엔진과 같은 규칙(관측 최대 → Tanaka)
+        // "최고 강도"는 최대심박 90% 이상에 2분 이상 머물렀을 때만 — 오르막 끝에서 한 번 스친 최고치로는 말하지 않는다.
+        // (존 도넛 "딱 좋은 강도"·총평과 부딪혔다.) 평활한 값으로 재서 광학 튐도 거른다.
         if let mhr = RunInsightEngine.estimatedHRMax(hrMax: hrMax, age: age), mhr > 0 {
-            let peakBPM = Double(samples.map(\.bpm).max() ?? 0)
-            if peakBPM / Double(mhr) >= 0.90 {
+            let thr = 0.90 * Double(mhr)
+            let sm = hrChartSmoothed(samples.map(\.bpm))
+            var secAbove: TimeInterval = 0
+            for i in 0..<(samples.count - 1) where sm[i] >= thr {
+                secAbove += min(max(samples[i + 1].offset - samples[i].offset, 0), 30)
+            }
+            if secAbove >= 120 {
                 return (L.s("최고 강도까지 올렸어요", "Pushed to max intensity"), Color(hex: "FF9A3C"))
             }
+        }
+        // 후반 오르막 코스에서 오른 심박은 사실대로 — 빌드업은 계획이라 유형 문구가 먼저
+        if diff >= 8, rhythmWorkoutType != .buildUp,
+           let climb = GradeAdjustedPace.halvesNetClimb(detail?.altitudeTimeProfile.map { (x: $0.offset, altitude: $0.altitude) } ?? []),
+           climb.second - climb.first >= GradeAdjustedPace.halvesClimbGapM, climb.second > 0 {
+            return (L.s("후반 오르막에서 심박이 올랐어요", "HR rose on the late climb"), Color.white.opacity(0.75))
         }
         // 빌드업은 후반 상승이 계획 — 문구만 유형별 (색은 동일)
         if diff >= 8  { return (FormNarrative.hrSecondHalfRiseCaption(type: rhythmWorkoutType), Color(hex: "FF9A3C")) }

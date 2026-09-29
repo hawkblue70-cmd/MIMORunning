@@ -168,6 +168,34 @@ enum GradeAdjustedPace {
         return false
     }
 
+    /// 전반·후반 순 고도 변화가 이만큼(m) 다르면 두 반을 같은 조건으로 비교하지 않는다 — 심박 캡션·폼 전후반 비교가 같이 쓴다.
+    static let halvesClimbGapM: Double = 15
+
+    /// 전반·후반 순 고도 변화(m). x는 거리(km) 또는 시간(초) — 반은 x의 가운데로 나눈다. 5점 이동평균으로 GPS 고도 잡음을 누른다.
+    /// 지속 경사(`hasRealElevation`와 같은 1km·10m 기준)가 없는 코스면 nil — 평지 트랙의 고도 흔들림으로 판단하지 않는다.
+    static func halvesNetClimb(_ pts: [(x: Double, altitude: Double)]) -> (first: Double, second: Double)? {
+        guard pts.count >= 6, let x0 = pts.first?.x, let x1 = pts.last?.x, x1 > x0 else { return nil }
+        let w = 5
+        let sm: [(x: Double, altitude: Double)] = pts.indices.map { i in
+            let lo = max(0, i - w / 2), hi = min(pts.count - 1, i + w / 2)
+            let a = pts[lo...hi].map(\.altitude).reduce(0, +) / Double(hi - lo + 1)
+            return (pts[i].x, a)
+        }
+        // 지속 경사 게이트 — 순 변화가 한쪽이라도 10m 이상이어야 언덕 코스로 본다
+        let mid = (x0 + x1) / 2
+        func alt(at x: Double) -> Double {
+            guard let j = sm.firstIndex(where: { $0.x >= x }) else { return sm.last!.altitude }
+            guard j > 0 else { return sm[0].altitude }
+            let a = sm[j - 1], b = sm[j]
+            let t = b.x > a.x ? (x - a.x) / (b.x - a.x) : 0
+            return a.altitude + t * (b.altitude - a.altitude)
+        }
+        let first = alt(at: mid) - alt(at: x0)
+        let second = alt(at: x1) - alt(at: mid)
+        guard max(abs(first), abs(second)) >= sustainedChangeM else { return nil }
+        return (first, second)
+    }
+
     // MARK: - Internals
 
     /// 100m 구간별 (시작거리m, 끝거리m, 보정계수)

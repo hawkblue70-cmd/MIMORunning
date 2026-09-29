@@ -201,7 +201,9 @@ extension FormInput {
 @MainActor
 enum FormBaselineEngine {
     static let minSamples = 5
-    private static let cacheKey = "mimo.formBaseline.v7"
+    /// 케이던스 평소 범위 폭 상한(spm) — 넘으면 그 구간 케이던스 기준을 쓰지 않는다
+    static let maxCadenceBandWidth: Double = 20
+    private static let cacheKey = "mimo.formBaseline.v8"   // v8: 넓은 케이던스 범위 제외
     private static let cacheTTL: TimeInterval = 7 * 24 * 3600
 
     // nil = 아직 읽지 않음, .some(nil) = 읽었으나 캐시 없음, .some(.some(v)) = 유효한 캐시
@@ -313,7 +315,19 @@ enum FormBaselineEngine {
             print("── \(band.rawValue) (\(samples.count)회 / \(windowMonths)개월\(excStr)\(judgeStr)) ──")
             #endif
             let paces   = samples.map(\.effectivePaceSecPerKm)
-            let cadStat = formStat(samples.compactMap { $0.avgCadence.map(Double.init) })
+            // 케이던스 평소 범위(±1.2SD) 폭이 20spm을 넘으면 기준으로 쓰지 않는다 — 걷뛰기·트레드밀이 섞인 구간은
+            // 148~196처럼 거의 모든 값을 "평소 범위"로 삼아 판정이 뜻이 없고, 게이지 축도 망가졌다.
+            // nil이면 게이지·문장·폼 카드 막대·3단계 표 모두 "일반 참고 범위(160~180)"나 생략으로 떨어진다.
+            let cadStat: FormStat? = formStat(samples.compactMap { $0.avgCadence.map(Double.init) }).flatMap { st in
+                if st.upper - st.lower > FormBaselineEngine.maxCadenceBandWidth {
+                    #if DEBUG
+                    print(String(format: "[기준선] %@ 케이던스 범위 %.0f~%.0f(폭 %.0f) — 너무 넓어 기준에서 제외",
+                                 band.rawValue, st.lower, st.upper, st.upper - st.lower))
+                    #endif
+                    return nil
+                }
+                return st
+            }
             let strStat = formStat(samples.compactMap { $0.avgStrideLength })
 
             // 잔차 상관 및 분위수 — 주법 판정용
