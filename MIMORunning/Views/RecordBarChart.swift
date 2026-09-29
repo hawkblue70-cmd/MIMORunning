@@ -499,8 +499,9 @@ struct RecordBarChart: View {
     }
 
     private var footnote: some View {
-        Text(L.s("막대 = 거리(색 = 강도) · 선 = 페이스, 위가 빠름 · 왼쪽 축 페이스 · 오른쪽 축 km",
-                 "Bars = distance (color = effort) · line = pace, higher = faster · left axis pace · right axis km"))
+        // 축 설명(위가 빠름 · 왼쪽 축 페이스 · 오른쪽 축 km)은 뺐다 — 축 눈금 자체가 페이스·km라 되풀이였다(2026-09-30)
+        Text(L.s("막대 = 거리(색 = 강도) · 선 = 페이스",
+                 "Bars = distance (color = effort) · line = pace"))
             .font(.system(size: 8.5))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
