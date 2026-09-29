@@ -102,7 +102,7 @@ struct MRPlanPointTests {
         let s = MRPlanPoint(kind: .speed, totalKm: 8.2, reps: 4, repKm: 1, sustainedKm: nil, paceSecPerKm: 305)
         #expect(s.text == "인터벌 1km × 4회 5'05\"")
         let t = MRPlanPoint(kind: .tempo, totalKm: 8, reps: nil, repKm: nil, sustainedKm: 5, paceSecPerKm: 320)
-        #expect(t.text == "템포런 5km 5'20\"")
+        #expect(t.text == "템포런 5km 지속 5'20\"")
         let s8 = MRPlanPoint(kind: .speed, totalKm: 8, reps: 5, repKm: 0.8, sustainedKm: nil, paceSecPerKm: 307)
         #expect(s8.text == "인터벌 800m × 5회 5'07\"")
         let b = MRPlanPoint(kind: .buildUp, totalKm: 10, reps: nil, repKm: nil, sustainedKm: 3.3, paceSecPerKm: 330)

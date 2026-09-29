@@ -95,7 +95,7 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
             return L.s("인터벌 \(rep) × \(n)회 \(pace)", "Intervals \(rep) × \(n) at \(pace)")
         case .tempo:
             let t = mrPointKmString(sustainedKm ?? 0)
-            return L.s("템포런 \(t)km \(pace)", "Tempo run \(t)km at \(pace)")
+            return L.s("템포런 \(t)km 지속 \(pace)", "Tempo run \(t)km steady at \(pace)")
         case .buildUp:
             let b = mrPointKmString(totalKm), s = mrPointKmString(sustainedKm ?? 0)
             return L.s("빌드업 \(b)km · 마지막 \(s)km \(pace)", "Build-up \(b)km · last \(s)km at \(pace)")
@@ -115,7 +115,7 @@ extension MRPlanPoint {
         case .speed:
             return L.s("사이 \(Self.intervalJogMin)분 천천히 조깅 · 앞뒤 조깅 포함 총 \(total)km", "\(Self.intervalJogMin)-min easy jog between · \(total) km total incl. warm-up/cool-down")
         case .tempo:
-            return L.s("앞뒤 조깅 포함 총 \(total)km", "\(total) km total incl. warm-up/cool-down")
+            return L.s("앞 2km·뒤 1km 조깅 포함 총 \(total)km", "\(total) km total incl. 2 km warm-up and 1 km cool-down")
         case .buildUp:
             return L.s("편하게 시작해 점점 올리기", "start easy, build steadily")
         case .racePaceShort:
