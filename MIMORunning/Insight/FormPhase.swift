@@ -80,7 +80,8 @@ enum FormPhase {
                 return lc <= mc - 1
             case .stride:
                 guard let ms = mid.stride, let ls = late.stride else { return false }
-                return ls <= ms - 0.005
+                // 페이스 무너짐은 보폭이 줄어든 것 자체가 설명이라 원래 문턱 그대로, 그 외엔 느려진 만큼을 빼고 본다
+                return isFaded ? ls <= ms - 0.005 : FormPhase.strideWorsened(mid: mid, late: late)
             case .groundContact:
                 guard let mg = mid.groundContact, let lg = late.groundContact else { return false }
                 return lg >= mg + 2
@@ -220,8 +221,8 @@ enum FormPhase {
             }
         }
         if late.stride == .below {
-            if let ls = latePhase.stride, let ms = midPhase.stride {
-                if ls <= ms - 0.005 { out.append(.stride) }
+            if latePhase.stride != nil, midPhase.stride != nil {
+                if strideWorsened(mid: midPhase, late: latePhase) { out.append(.stride) }
             } else {
                 out.append(.stride)
             }
@@ -234,6 +235,18 @@ enum FormPhase {
             }
         }
         return out
+    }
+
+    /// 후반 보폭 감소 중 "느려져서 자연히 준 몫"을 넘는 감소가 1.5% 이상일 때만 폼 변화로 본다.
+    /// 보폭 ≈ 속도 ÷ 케이던스라, 케이던스가 같고 페이스가 6초/km 느려지면 보폭은 1.5% 줄어든다(0.82→0.80) —
+    /// 이걸 "마지막 3km 살짝 무거워짐"이라 했다(2026-09-30 다른 러너 검토). 후반이 더 빨라진 경우엔 보폭이 늘길
+    /// 요구하지 않는다(케이던스로 속도를 낸 네거티브 스플릿) — 기대치는 중반 보폭을 넘지 않게 잡는다.
+    static let strideWorsenFraction = 0.015
+    static func strideWorsened(mid: PhaseStats, late: PhaseStats) -> Bool {
+        guard let ms = mid.stride, let ls = late.stride else { return false }
+        guard mid.paceSecPerKm > 0, late.paceSecPerKm > 0 else { return ls <= ms - 0.005 }
+        let expected = ms * min(1, mid.paceSecPerKm / late.paceSecPerKm)
+        return ls < expected * (1 - strideWorsenFraction)
     }
 
     static func signals(_ p: PhaseStats, _ band: BandStats?) -> Signals {

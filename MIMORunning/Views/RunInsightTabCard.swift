@@ -2801,7 +2801,8 @@ private struct RhythmInsightCard: View {
         let L = AppLanguage.shared
         // 출발 직후 광학 심박이 튄 구간(HRSeriesSmoothing.hrEarlyArtifactCount)은 전후반 비교·최고치에서 뺀다.
         // 차트는 그대로 그리고 판정만 뺀다 — 그 구간이 "후반에 여유"·"최고 강도"를 만들어내던 것.
-        let samples = hrEarlyArtifactCount(hrSamples).map { Array(hrSamples.dropFirst($0)) } ?? hrSamples
+        // 러닝 중간 튐(hrMidRunSpikeCleaned)도 주변 값으로 바꿔 판정한다 — 존 분포와 같은 규칙
+        let samples = hrMidRunSpikeCleaned(hrEarlyArtifactCount(hrSamples).map { Array(hrSamples.dropFirst($0)) } ?? hrSamples)
         guard samples.count >= 10 else { return nil }
         let n = samples.count
         let half = n / 2

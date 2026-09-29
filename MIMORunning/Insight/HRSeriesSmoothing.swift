@@ -53,3 +53,70 @@ func hrEarlyArtifactCount(_ samples: [(offset: TimeInterval, bpm: Int)]) -> Int?
     guard Double(laterMax) < earlyAvg - 5 else { return nil }
     return early.count
 }
+
+// MARK: - 러닝 중간 광학 심박 튐
+
+/// 러닝 중간에 심박만 갑자기 튄 구간을 찾아 그 구간 값을 주변 중앙값으로 바꾼 시계열.
+/// 판정(존 분포·"최고 강도"·전후반 비교)에만 쓰고 차트는 원본 그대로 그린다 — 출발 직후 튐(`hrEarlyArtifactCount`)과 같은 원칙.
+///
+/// 튐으로 보는 구간(셋 다):
+/// 1) 앞뒤 5분(±300초) 중앙값보다 15bpm 이상 높은 연속 구간, 길이 7분 이하, 그 안 최대 초과 20bpm 이상
+/// 2) **갑자기 시작** — 구간 시작 30초 전에는 중앙값보다 5bpm 이하였다. 오르막·스퍼트의 심박은 1~2분에 걸쳐 오르므로
+///    30초 전에 이미 절반쯤 올라와 있다. 광학 센서가 케이던스에 걸리거나 밀착이 풀리면 한두 표본 만에 뛴다.
+/// 3) 러닝 전체에 1~2개뿐 — 3개 이상이면 반복 패턴(센서 불량이 계속되는 날 등)이라 한두 구간만 고치지 않는다.
+///    15bpm↑ 구간 자체가 6개를 넘으면(인터벌·파틀렉) 아예 보지 않는다. 인터벌 회차는 1분 안팎에 걸쳐 올라 2)에서 대개 걸러진다.
+/// 10분 미만 러닝은 판단하지 않는다.
+func hrMidRunSpikeCleaned(_ samples: [(offset: TimeInterval, bpm: Int)]) -> [(offset: TimeInterval, bpm: Int)] {
+    let ranges = hrMidRunSpikeRanges(samples)
+    guard !ranges.isEmpty else { return samples }
+    let sorted = samples.sorted { $0.offset < $1.offset }
+    let med = hrRollingMedian(sorted, halfWindow: 300)
+    return sorted.enumerated().map { i, s in
+        ranges.contains(where: { $0.contains(i) }) ? (offset: s.offset, bpm: Int(med[i].rounded())) : s
+    }
+}
+
+/// 러닝 중간 튐이 있는가 — 저장된 존을 다시 계산할지 정할 때 쓴다.
+func hasHRMidRunSpike(_ samples: [(offset: TimeInterval, bpm: Int)]) -> Bool {
+    !hrMidRunSpikeRanges(samples).isEmpty
+}
+
+/// 튐 구간(정렬된 표본의 인덱스 범위). 규칙은 `hrMidRunSpikeCleaned` 주석.
+func hrMidRunSpikeRanges(_ samples: [(offset: TimeInterval, bpm: Int)]) -> [ClosedRange<Int>] {
+    let s = samples.sorted { $0.offset < $1.offset }
+    guard s.count >= 30, let first = s.first, let last = s.last, last.offset - first.offset >= 600 else { return [] }
+    let med = hrRollingMedian(s, halfWindow: 300)
+    let excess = s.indices.map { Double(s[$0].bpm) - med[$0] }
+    var groups: [ClosedRange<Int>] = []
+    var i = 0
+    while i < s.count {
+        guard excess[i] >= 15 else { i += 1; continue }
+        var j = i
+        while j + 1 < s.count && excess[j + 1] >= 15 { j += 1 }
+        groups.append(i...j)
+        i = j + 1
+    }
+    let spikes = groups.filter { g in
+        let dur = s[g.upperBound].offset - s[g.lowerBound].offset
+        guard dur <= 420, (g.map { excess[$0] }.max() ?? 0) >= 20 else { return false }
+        // 갑자기 시작했나 — 시작 30초 전(그 사이 가장 가까운 표본)의 초과량
+        let t0 = s[g.lowerBound].offset - 30
+        guard let before = s[..<g.lowerBound].last(where: { $0.offset <= t0 }),
+              let bi = s.firstIndex(where: { $0.offset == before.offset }) else { return false }
+        return excess[bi] <= 5
+    }
+    guard !spikes.isEmpty, spikes.count <= 2, groups.count <= 6 else { return [] }
+    return spikes
+}
+
+/// 시간(초) 기준 앞뒤 `halfWindow` 안 표본의 중앙값. `s`는 시간순 정렬돼 있어야 한다.
+private func hrRollingMedian(_ s: [(offset: TimeInterval, bpm: Int)], halfWindow: TimeInterval) -> [Double] {
+    var lo = 0, hi = 0
+    return s.indices.map { i in
+        while s[lo].offset < s[i].offset - halfWindow { lo += 1 }
+        while hi + 1 < s.count && s[hi + 1].offset <= s[i].offset + halfWindow { hi += 1 }
+        let v = s[lo...hi].map(\.bpm).sorted()
+        let m = v.count / 2
+        return v.count % 2 == 0 ? Double(v[m - 1] + v[m]) / 2 : Double(v[m])
+    }
+}

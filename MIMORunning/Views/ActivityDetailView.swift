@@ -91,6 +91,8 @@ struct ActivityDetailView: View {
     /// 비동기 computeHRZonesForDate 결과 전용 상태. detail?.hrZones보다 우선.
     @State private var displayZones: [HRZoneData] = []
     @State private var isComputingZones = false
+    /// 러닝 중간 심박 튐 때문에 존을 한 번 다시 셌는가(같은 화면에서 반복하지 않게)
+    @State private var spikeZonesRecomputed = false
     @State private var panelSeriesData: [(offset: TimeInterval, value: Double)] = []
     @State private var panelSeriesCache: [DetailPanel: [(offset: TimeInterval, value: Double)]] = [:]
     @State private var isLoadingPanelSeries = false
@@ -203,9 +205,9 @@ struct ActivityDetailView: View {
     /// hrSamples가 실제로 도착하는 자리마다 부른다(메인 .task · loadCombinedChart · 심박 패널 탭):
     /// 탭 한 곳에만 두면 앞선 경로가 hrFetchDone을 먼저 켜 영영 닿지 않는다 — 회복 한 줄이 그랬다.
     /// 중복 진입은 isComputingZones가 막는다. 첫 await 전에 동기로 켜지므로 두 번째 진입은 가드에서 끊긴다.
-    private func recomputeZonesIfNeeded() async {
+    private func recomputeZonesIfNeeded(force: Bool = false) async {
         guard !isComputingZones,
-              displayZones.isEmpty || (detail?.hrZones ?? []).isEmpty else { return }
+              force || displayZones.isEmpty || (detail?.hrZones ?? []).isEmpty else { return }
         isComputingZones = true
         defer { isComputingZones = false }
         if hrSamples.isEmpty {
@@ -584,6 +586,11 @@ struct ActivityDetailView: View {
             // 예전엔 심박 패널 탭에 매달려 있었는데, 무관한 플래그(hrFetchDone)가 먼저 켜지면서
             // 조용히 안 불리게 된 적이 있다. 트리거를 데이터에 붙여 그 부류의 회귀를 막는다.
             if newCount > 0 { Task { await loadRecovery() } }
+            // 저장된 존은 러닝 중간 심박 튐을 거르기 전(2026-09-30 이전) 계산일 수 있다 — 튐이 보이면 한 번만 다시 센다
+            if newCount > 0, !spikeZonesRecomputed, hasHRMidRunSpike(hrSamples) {
+                spikeZonesRecomputed = true
+                Task { await recomputeZonesIfNeeded(force: true) }
+            }
         }
         .onChange(of: panelAllStories.map(\.effortRPE)) { _, _ in
             manager.syncUserEfforts(from: panelAllStories)

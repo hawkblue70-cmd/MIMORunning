@@ -3665,6 +3665,7 @@ class HealthKitManager {
 
     /// MHR 단독 기반 존 경계 — RHR 없을 때 폴백. Karvonen보다 부정확하나 단색보다 의미 있음.
     private func hrZonesMHR(mhr: Int, samples: [(offset: TimeInterval, bpm: Int)]) -> [HRZoneData] {
+        let samples = hrMidRunSpikeCleaned(samples)   // 러닝 중간 광학 튐은 주변 값으로(computeKarvonenZones와 같은 규칙)
         let ratios: [(name: String, lo: Double, hi: Double)] = [
             ("Z1 웜업",   0.00, 0.60),
             ("Z2 회복",   0.60, 0.70),
@@ -3727,6 +3728,8 @@ class HealthKitManager {
 
     /// Karvonen 존 분포 계산 (offset 기반 샘플 — fetchHRTimeSeries 결과).
     private func computeKarvonenZones(samples: [(offset: TimeInterval, bpm: Int)], rhr: Int, mhr: Int) -> [HRZoneData] {
+        // 러닝 중간 광학 튐(파워·페이스는 그대로인데 심박만 20bpm↑)은 존 시간에서 주변 값으로 바꿔 센다
+        let samples = hrMidRunSpikeCleaned(samples)
         let hrr = Double(mhr - rhr)
         let ratios: [(name: String, lo: Double, hi: Double)] = [
             ("Z1 웜업",   0.00, 0.60),

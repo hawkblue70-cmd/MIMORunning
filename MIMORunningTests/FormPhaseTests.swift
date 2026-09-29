@@ -169,6 +169,20 @@ struct FormPhaseTests {
         #expect(r?.late == .held)
     }
 
+    @Test func strideDropExplainedBySlowerPaceIsNotHeavier() {
+        // 다른 러너 11km: 중반 6'27"·보폭 0.82 → 후반 6'33"·보폭 0.80, 케이던스 192 그대로.
+        // 6초 느려진 만큼(1.5%)이 보폭 감소의 전부 — 폼 변화가 아니다
+        let mid = FormPhase.PhaseStats(splitCount: 5, startKm: 3, endKm: 8, paceSecPerKm: 387, cadence: 192, stride: 0.82,
+                                       groundContact: 227, verticalOsc: 7.0, avgHR: 145)
+        let late = FormPhase.PhaseStats(splitCount: 3, startKm: 8, endKm: 11, paceSecPerKm: 393, cadence: 192, stride: 0.80,
+                                        groundContact: 232, verticalOsc: 7.0, avgHR: 143)
+        #expect(!FormPhase.strideWorsened(mid: mid, late: late))
+        // 같은 페이스에서 0.80이면 폼 변화
+        let sameLate = FormPhase.PhaseStats(splitCount: 3, startKm: 8, endKm: 11, paceSecPerKm: 387, cadence: 192, stride: 0.80,
+                                            groundContact: 232, verticalOsc: 7.0, avgHR: 143)
+        #expect(FormPhase.strideWorsened(mid: mid, late: sameLate))
+    }
+
     @Test func lateBelowBandAndWorseVsMidIsHeavier() {
         let s = (1...7).map { split($0) } + (8...10).map { split($0, sl: 0.85) }
         #expect(classify(s)?.late == .heavier([.stride]))
