@@ -232,10 +232,25 @@ func mrPointIntervalDays(runsPerWeek: Double) -> Int? {
     return nil
 }
 
-/// 본인 강도 훈련 습관 간격(주) — 이번 주 앞 12주 중 러닝이 있던 주에서, 그 주 최장 러닝(롱런)을 뺀 고강도·포인트 유형
-/// 러닝(`mrPointRun`)이 있던 주의 비율로. 1 매주 · 2 격주 · 3 3주에 한 번. 러닝 있는 주 6주 미만이면 nil(폴백).
-/// 비율 0(강도 훈련을 거의 안 해 옴)이면 3 — 천천히 들인다. 설계 2026-09-29 "본인 데이터에서 출발" 2절.
-func mrHabitualPointEveryWeeks(runs: [MRWorkout], pointTypes: [Date: WorkoutType], hardStarts: Set<Date>,
+/// 실제 강도 문턱 — 체감 강도(직접 입력·애플 워치 추정) 7 이상이거나 심박 존 4 이상 10분 이상.
+/// 종류 이름(템포런·빌드업)이 아니라 본인 심박·체감으로 센다(2026-09-29 사용자 결정 — 페이스만 빨라진 존 3 러닝은 강도 훈련이 아니다).
+/// ⚠ 10분은 임의로 정함 — 템포런 20분이면 넘고, 존 3에 머문 "애매하게 빠른" 러닝은 못 넘는다.
+let MR_INTENSE_EFFORT = 7
+let MR_INTENSE_Z4PLUS_SEC = 600.0
+
+/// 실제로 힘들게 뛴 러닝인가 — 근거 문구("강도 8" · "존4+ 14분")를 돌려준다. 아니면 nil.
+func mrActualIntensity(effort: Int?, zones: [HRZoneData]?) -> String? {
+    let L = AppLanguage.shared
+    if let e = effort, e >= MR_INTENSE_EFFORT { return L.s("강도 \(e)", "effort \(e)") }
+    let hi = (zones ?? []).filter { $0.id >= 4 }.map(\.seconds).reduce(0, +)
+    if hi >= MR_INTENSE_Z4PLUS_SEC { return L.s("존4+ \(Int((hi / 60).rounded()))분", "Z4+ \(Int((hi / 60).rounded())) min") }
+    return nil
+}
+
+/// 본인 강도 훈련 습관 간격(주) — 이번 주 앞 12주 중 러닝이 있던 주에서, 그 주 최장 러닝(롱런)을 뺀 러닝 가운데
+/// **실제로 힘들게 뛴 러닝**(`intenseStarts`, `mrActualIntensity`)이 있던 주의 비율로. 1 매주 · 2 격주 · 3 3주에 한 번.
+/// 러닝 있는 주 6주 미만이면 nil(폴백). 비율 0이면 3 — 천천히 들인다. 설계 2026-09-29 "본인 데이터에서 출발" 2절.
+func mrHabitualPointEveryWeeks(runs: [MRWorkout], intenseStarts: Set<Date>,
                                asOf: Date, calendar: Calendar = .current) -> Int? {
     let thisMonday = MRPlanGovernance.weekMonday(of: asOf, calendar: calendar)
     guard let from = calendar.date(byAdding: .day, value: -84, to: thisMonday) else { return nil }
@@ -245,12 +260,17 @@ func mrHabitualPointEveryWeeks(runs: [MRWorkout], pointTypes: [Date: WorkoutType
     }
     guard byWeek.count >= 6 else { return nil }   // ⚠ 임의로 정함 — 습관으로 보기에 최소한의 주 수
     let withPoint = byWeek.values.filter { ws in
-        let longest = ws.compactMap(\.distanceKm).max() ?? 0
-        return mrPointRun(weekRuns: ws, longRunKm: longest, hardStarts: hardStarts, pointTypes: pointTypes) != nil
+        mrWeekIntenseRun(ws, intenseStarts: intenseStarts) != nil
     }.count
     let ratio = Double(withPoint) / Double(byWeek.count)
     guard ratio > 0 else { return 3 }
     return min(max(Int((1 / ratio).rounded()), 1), 3)
+}
+
+/// 그 주에 롱런(그 주 최장 러닝)을 뺀 실제 강도 러닝 — 가장 이른 것. 습관 계산과 근거 로그가 같이 쓴다.
+func mrWeekIntenseRun(_ weekRuns: [MRWorkout], intenseStarts: Set<Date>) -> MRWorkout? {
+    let longest = weekRuns.max { ($0.distanceKm ?? 0) < ($1.distanceKm ?? 0) }?.start
+    return weekRuns.filter { $0.start != longest && intenseStarts.contains($0.start) }.min { $0.start < $1.start }
 }
 
 /// 적용 간격(주) — 주당 러닝 횟수 규칙(4회↑ 1 · 3회 2 · 2회↓ 없음)과 본인 습관 중 더 드문 쪽.

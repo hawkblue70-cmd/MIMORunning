@@ -71,11 +71,13 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var recentIntervals: [MRIntervalHistory] = []
 
     /// 본인 강도 훈련 습관 간격 — 계획·리듬이 쓴다. 러닝·주입값에서 그때그때 계산.
-    /// 홈이 러닝 종류를 한 번이라도 넣어 줬는가 — 그 전에는 강도 훈련이 0건으로 보여 습관이 "3주"로 잘못 잡힌다.
-    private var pointRunTypesInjected = false
+    /// 실제로 힘들게 뛴 러닝(최근 84일) → 근거("강도 8" · "존4+ 14분"). 홈이 주입(`updateIntenseRuns`). 습관 간격의 재료.
+    @Published private(set) var intenseRuns: [Date: String] = [:]
+    /// 홈이 한 번이라도 넣어 줬는가 — 그 전에는 강도 훈련이 0건으로 보여 습관이 "3주"로 잘못 잡힌다.
+    private var intenseRunsInjected = false
     private var pointHabitEveryWeeks: Int? {
-        guard pointRunTypesInjected else { return nil }   // 모름 → 주당 횟수 규칙만(폴백)
-        return mrHabitualPointEveryWeeks(runs: runs, pointTypes: pointRunTypes, hardStarts: hardRunStarts, asOf: Date())
+        guard intenseRunsInjected else { return nil }   // 모름 → 주당 횟수 규칙만(폴백)
+        return mrHabitualPointEveryWeeks(runs: runs, intenseStarts: Set(intenseRuns.keys), asOf: Date())
     }
     @Published private(set) var todayCard: MRTodayCard?
     @Published private(set) var raceDayCard: MRRaceDayCard?
@@ -210,8 +212,8 @@ final class MREngineStore: ObservableObject {
         var aPairs: [(race: MRTargetRace, plan: MRRacePlan?)] = []
         #if DEBUG
         print("[강도훈련:기록] 습관 간격=\(pointHabitEveryWeeks.map { "\($0)주" } ?? "없음(폴백)") · 인터벌 기록=\(recentIntervals.last.map { "\(Int($0.repKm * 1000))m×\($0.reps)" } ?? "없음(일반 기준)")")
-        // 습관 근거 — 지난 12주 주별로 강도 훈련으로 센 러닝(롱런 제외)의 종류. "—"는 없음.
-        if pointRunTypesInjected {
+        // 습관 근거 — 지난 12주 주별로 실제 강도로 센 러닝(롱런 제외)과 근거. "—"는 없음.
+        if intenseRunsInjected {
             let cal = Calendar.current
             let thisMon = MRPlanGovernance.weekMonday(of: Date())
             let df = DateFormatter(); df.dateFormat = "M/d"
@@ -220,11 +222,10 @@ final class MREngineStore: ObservableObject {
                       let end = cal.date(byAdding: .day, value: 7, to: mon) else { return nil }
                 let ws = runs.filter { $0.start >= mon && $0.start < end }
                 guard !ws.isEmpty else { return "\(df.string(from: mon)) 러닝없음" }
-                let longest = ws.compactMap(\.distanceKm).max() ?? 0
-                let pr = mrPointRun(weekRuns: ws, longRunKm: longest, hardStarts: hardRunStarts, pointTypes: pointRunTypes)
+                let pr = mrWeekIntenseRun(ws, intenseStarts: Set(intenseRuns.keys))
                 let label = pr.map { r in
-                    let t = pointRunTypes[r.start]?.koreanLabel ?? "고강도(심박·강도 입력)"
-                    return "\(t) \(String(format: "%.1f", r.distanceKm ?? 0))km"
+                    let t = pointRunTypes[r.start]?.koreanLabel ?? "러닝"
+                    return "\(t) \(String(format: "%.1f", r.distanceKm ?? 0))km(\(intenseRuns[r.start] ?? ""))"
                 } ?? "—"
                 return "\(df.string(from: mon)) \(label)"
             }
@@ -1114,11 +1115,19 @@ final class MREngineStore: ObservableObject {
 
     /// 홈이 포인트 유형 러닝을 넣어 준다. 바뀌었을 때만 오늘 카드를 다시 만든다.
     func updatePointRunTypes(_ types: [Date: WorkoutType]) {
-        pointRunTypesInjected = true
         guard types != pointRunTypes else { return }
         pointRunTypes = types
         guard case .ready = state else { return }
         todayCard = buildTodayCard(runs: runs, now: Date())
+    }
+
+    /// 홈이 실제 강도 러닝(최근 84일)을 넣어 준다. 계획은 다음 재계산(나 탭)에서, 오늘 카드(리듬)는 바로.
+    func updateIntenseRuns(_ runs: [Date: String]) {
+        intenseRunsInjected = true
+        guard runs != intenseRuns else { return }
+        intenseRuns = runs
+        guard case .ready = state else { return }
+        todayCard = buildTodayCard(runs: self.runs, now: Date())
     }
 
     /// 홈이 본인 최근 인터벌 요약을 넣어 준다. 계획은 다음 재계산(나 탭)에서 쓰고, 오늘 카드(리듬)는 바로 다시 만든다.

@@ -29,34 +29,34 @@ struct MRPointHabitTests {
 
     @Test func weeklyHabitIsOne() {
         let h = history(pointEvery: 1)
-        #expect(mrHabitualPointEveryWeeks(runs: h.runs, pointTypes: h.types, hardStarts: [], asOf: day(2)) == 1)
+        #expect(mrHabitualPointEveryWeeks(runs: h.runs, intenseStarts: Set(h.types.keys), asOf: day(2)) == 1)
     }
 
     @Test func everyOtherWeekIsTwo() {
         let h = history(pointEvery: 2)
-        #expect(mrHabitualPointEveryWeeks(runs: h.runs, pointTypes: h.types, hardStarts: [], asOf: day(2)) == 2)
+        #expect(mrHabitualPointEveryWeeks(runs: h.runs, intenseStarts: Set(h.types.keys), asOf: day(2)) == 2)
     }
 
     @Test func everyThirdWeekIsThree() {
         let h = history(pointEvery: 3)
-        #expect(mrHabitualPointEveryWeeks(runs: h.runs, pointTypes: h.types, hardStarts: [], asOf: day(2)) == 3)
+        #expect(mrHabitualPointEveryWeeks(runs: h.runs, intenseStarts: Set(h.types.keys), asOf: day(2)) == 3)
     }
 
     @Test func noHardSessionsStartsSlowlyAtThree() {
         let h = history(pointEvery: 0)
-        #expect(mrHabitualPointEveryWeeks(runs: h.runs, pointTypes: h.types, hardStarts: [], asOf: day(2)) == 3)
+        #expect(mrHabitualPointEveryWeeks(runs: h.runs, intenseStarts: Set(h.types.keys), asOf: day(2)) == 3)
     }
 
-    @Test func longRunBuildUpDoesNotCountAsHardSession() {
-        // 토요일 롱런만 빌드업이면 강도 훈련이 아니다(롱런으로 셈)
+    @Test func intenseLongRunDoesNotCountAsHardSession() {
+        // 토요일 롱런만 힘들었으면 강도 훈련이 아니다(롱런으로 셈)
         var h = history(pointEvery: 0)
         for r in h.runs where (r.distanceKm ?? 0) >= 16 { h.types[r.start] = .buildUp }
-        #expect(mrHabitualPointEveryWeeks(runs: h.runs, pointTypes: h.types, hardStarts: [], asOf: day(2)) == 3)
+        #expect(mrHabitualPointEveryWeeks(runs: h.runs, intenseStarts: Set(h.types.keys), asOf: day(2)) == 3)
     }
 
     @Test func fewerThanSixWeeksIsNil() {
         let h = history(pointEvery: 1, weeks: 5)
-        #expect(mrHabitualPointEveryWeeks(runs: h.runs, pointTypes: h.types, hardStarts: [], asOf: day(2)) == nil)
+        #expect(mrHabitualPointEveryWeeks(runs: h.runs, intenseStarts: Set(h.types.keys), asOf: day(2)) == nil)
     }
 
     @Test func appliedIntervalIsTheRarerOfRunsRuleAndHabit() {
@@ -96,5 +96,18 @@ struct MRPointHabitTests {
         ctx.habitEveryWeeks = 2
         let s = try #require(mrRhythmSuggestion(level: .go, ctx: ctx, runs: h.runs, hardStarts: [], asOf: day(2)))
         #expect(!s.isPoint)
+    }
+
+    private func zone(_ id: Int, sec: Double) -> HRZoneData {
+        HRZoneData(id: id, name: "Z\(id)", minBPM: 0, maxBPM: 0, seconds: sec, fraction: 0)
+    }
+
+    @Test func actualIntensityByEffortOrZoneFourPlusTime() {
+        #expect(mrActualIntensity(effort: 7, zones: nil) == "강도 7")
+        // 존4 400초 + 존5 300초 = 700초 → 12분
+        #expect(mrActualIntensity(effort: 5, zones: [zone(3, sec: 1200), zone(4, sec: 400), zone(5, sec: 300)]) == "존4+ 12분")
+        // 존3에 오래 머문 "애매하게 빠른" 러닝 — 존4 이상 5분 → 아님
+        #expect(mrActualIntensity(effort: nil, zones: [zone(3, sec: 1800), zone(4, sec: 300)]) == nil)
+        #expect(mrActualIntensity(effort: 6, zones: nil) == nil)
     }
 }
