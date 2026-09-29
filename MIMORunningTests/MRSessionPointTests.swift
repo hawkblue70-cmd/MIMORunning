@@ -31,8 +31,8 @@ struct MRSessionPointTests {
     @Test func goOnThursdaySuggestsPoint() throws {
         let s = try #require(mrSessionSuggestion(level: .go, plan: plan(point: pt), runs: history(), asOf: day(3)))
         #expect(s.isPoint)
-        #expect(s.session == "포인트 속도 1km × 4회 5'05\"")
-        #expect(s.progress.contains("포인트 아직"))
+        #expect(s.session == "인터벌 1km × 4회 5'05\"")
+        #expect(s.progress.contains("강도 훈련 아직"))
     }
 
     @Test func dayBeforeHabitualLongRunIsEasyNotPoint() throws {
@@ -55,20 +55,20 @@ struct MRSessionPointTests {
         let s = try #require(mrSessionSuggestion(level: .go, plan: plan(point: pt), runs: runs, asOf: day(3),
                                                  hardStarts: [hardTue.start]))
         #expect(!s.isPoint)
-        #expect(s.progress.contains("포인트 완료"))
+        #expect(s.progress.contains("강도 훈련 완료"))
         #expect(s.progress.contains("이지 0/2회"))
     }
 
     @Test func noPointInPlanKeepsOldProgress() throws {
         let s = try #require(mrSessionSuggestion(level: .go, plan: plan(point: nil), runs: history(), asOf: day(3)))
         #expect(!s.isPoint)
-        #expect(!s.progress.contains("포인트"))
+        #expect(!s.progress.contains("강도 훈련"))
     }
 
     @Test func readinessLineForPointSessionKeepsVerdictHead() {
         var r = MRReadiness(level: .go, reasons: [], hrvPending: false)
-        r.session = "포인트 속도 1km × 4회 5'05\""
+        r.session = "인터벌 1km × 4회 5'05\""
         r.sessionIsPoint = true
-        #expect(r.line == "오늘은 강도 OK · 포인트 속도 1km × 4회 5'05\"")
+        #expect(r.line == "오늘은 강도 OK · 인터벌 1km × 4회 5'05\"")
     }
 }

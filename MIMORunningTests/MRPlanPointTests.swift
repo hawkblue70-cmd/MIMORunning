@@ -86,9 +86,9 @@ struct MRPlanPointTests {
 
     @Test func koreanText() {
         let s = MRPlanPoint(kind: .speed, totalKm: 8.2, reps: 4, repKm: 1, sustainedKm: nil, paceSecPerKm: 305)
-        #expect(s.text == "속도 1km × 4회 5'05\"")
+        #expect(s.text == "인터벌 1km × 4회 5'05\"")
         let t = MRPlanPoint(kind: .tempo, totalKm: 8, reps: nil, repKm: nil, sustainedKm: 5, paceSecPerKm: 320)
-        #expect(t.text == "템포 5km 5'20\"")
+        #expect(t.text == "템포런 5km 5'20\"")
         let b = MRPlanPoint(kind: .buildUp, totalKm: 10, reps: nil, repKm: nil, sustainedKm: 3.3, paceSecPerKm: 330)
         #expect(b.text == "빌드업 10km · 마지막 3.3km 5'30\"")
         let r = MRPlanPoint(kind: .racePaceShort, totalKm: 6.8, reps: 3, repKm: 1, sustainedKm: nil, paceSecPerKm: 312)
@@ -130,7 +130,7 @@ struct MRPlanPointTests {
         let pt = MRPlanPoint(kind: .racePaceShort, totalKm: 6.8, reps: 3, repKm: 1, sustainedKm: nil, paceSecPerKm: 312)
         let w = MRPlanWeek(idx: 1, monday: mon, phase: "테이퍼", longRunKm: 12, longRunMin: 80, weeklyKm: 22,
                            projectedMin: 110, isNewMax: false, breakdown: "롱런 12km + 짧게 1.6km × 2회 · 강도는 그대로", point: pt)
-        #expect(mrBreakdownWithPoint(w) == "롱런 12km + 짧게 1.6km × 2회 · 강도는 그대로 + 포인트 대회 페이스 1km × 3회 5'12\"")
+        #expect(mrBreakdownWithPoint(w) == "롱런 12km + 짧게 1.6km × 2회 · 강도는 그대로 + 강도 훈련 대회 페이스 1km × 3회 5'12\"")
         var noPoint = w; noPoint.point = nil
         #expect(mrBreakdownWithPoint(noPoint) == noPoint.breakdown)
     }

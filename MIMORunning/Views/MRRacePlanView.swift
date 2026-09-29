@@ -432,12 +432,12 @@ struct MRWeekTable: View {
     private func pointLines(_ pt: MRPlanPoint, monday: Date, longRunKm: Double) -> some View {
         let L = AppLanguage.shared
         // 포인트는 이지에 섞는 게 아니라 이지 한 번을 대신하는 별도 러닝 — 문구로 드러낸다
-        Text(L.s("포인트(이지 1회 대신) · \(pt.text) · \(pt.howTo)", "Workout (replaces one easy run) · \(pt.text) · \(pt.howTo)"))
+        Text(L.s("강도 훈련(이지 1회 대신) · \(pt.text) · \(pt.howTo)", "Hard session (replaces one easy run) · \(pt.text) · \(pt.howTo)"))
             .font(.system(size: 11))
             .foregroundStyle(.white.opacity(0.72))
         if let done = pointRunIn(week: monday, longRunKm: longRunKm) {
             let type = pointRunTypes[done.start].map { " " + $0.koreanLabel } ?? ""
-            Text(L.s("포인트 ✓ \(dateFmt.string(from: done.start))\(type)", "Workout ✓ \(dateFmt.string(from: done.start))\(type)"))
+            Text(L.s("강도 훈련 ✓ \(dateFmt.string(from: done.start))\(type)", "Hard session ✓ \(dateFmt.string(from: done.start))\(type)"))
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.yellow)   // 노랑 = 실제로 한 것
         }

@@ -75,17 +75,17 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
         }
     }
 
-    /// 주차표·아침 제안 공용 문구 — "속도 1km × 4회 5'05\"".
+    /// 주차표·아침 제안 공용 문구 — "인터벌 1km × 4회 5'05\"". 이름은 앱 러닝 종류 분류명과 같게(인터벌·템포런·빌드업).
     var text: String {
         let L = AppLanguage.shared
         let pace = mrFormatPace(paceSecPerKm)
         switch kind {
         case .speed:
             let n = reps ?? 0
-            return L.s("속도 1km × \(n)회 \(pace)", "Speed 1km × \(n) at \(pace)")
+            return L.s("인터벌 1km × \(n)회 \(pace)", "Intervals 1km × \(n) at \(pace)")
         case .tempo:
             let t = mrPointKmString(sustainedKm ?? 0)
-            return L.s("템포 \(t)km \(pace)", "Tempo \(t)km at \(pace)")
+            return L.s("템포런 \(t)km \(pace)", "Tempo run \(t)km at \(pace)")
         case .buildUp:
             let b = mrPointKmString(totalKm), s = mrPointKmString(sustainedKm ?? 0)
             return L.s("빌드업 \(b)km · 마지막 \(s)km \(pace)", "Build-up \(b)km · last \(s)km at \(pace)")
@@ -287,7 +287,7 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
         pieces.append(L.s("마지막 롱런 \(daysAgo(l.start))일 전", "last long run \(daysAgo(l.start)) days ago"))
     }
     if interval != nil, let p = lastPoint {
-        pieces.append(L.s("마지막 포인트 \(daysAgo(p.start))일 전", "last workout \(daysAgo(p.start)) days ago"))
+        pieces.append(L.s("마지막 강도 훈련 \(daysAgo(p.start))일 전", "last hard session \(daysAgo(p.start)) days ago"))
     }
     let progress = pieces.joined(separator: " · ")
 
@@ -317,12 +317,12 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
             let why: String
             if let lp = lastPoint {
                 let label = lastType.map { " " + $0.koreanLabel } ?? ""
-                why = L.s("지난 포인트는 \(md.string(from: lp.start))\(label), \(daysAgo(lp.start))일 전이에요.",
-                          "Last workout:\(label) \(daysAgo(lp.start)) days ago.")
+                why = L.s("지난 강도 훈련은 \(md.string(from: lp.start))\(label), \(daysAgo(lp.start))일 전이에요.",
+                          "Last hard session:\(label) \(daysAgo(lp.start)) days ago.")
             } else {
-                why = L.s("최근 포인트가 없어요.", "No recent workout.")
+                why = L.s("최근 강도 훈련이 없어요.", "No recent hard session.")
             }
-            return MRSessionSuggestion(session: L.s("포인트 추천: \(pt.text)", "Workout: \(pt.text)"),
+            return MRSessionSuggestion(session: pt.text,
                                        progress: progress, isPoint: true, whyNote: why)
         }
     }
@@ -337,5 +337,5 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
 /// (안내 문구는 포인트가 있으면 이지 횟수가 하나 줄어 있어, 포인트를 빼고 말하면 합이 주간 km와 안 맞는다)
 func mrBreakdownWithPoint(_ w: MRPlanWeek) -> String {
     guard let pt = w.point else { return w.breakdown }
-    return w.breakdown + AppLanguage.shared.s(" + 포인트 ", " + workout ") + pt.text
+    return w.breakdown + AppLanguage.shared.s(" + 강도 훈련 ", " + hard session: ") + pt.text
 }

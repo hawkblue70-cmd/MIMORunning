@@ -24,7 +24,7 @@ struct MRReadiness: Equatable {
     var progress: String? = nil
     /// 세션이 롱런인가 — 강도 OK인데 이지를 권하는 날은 판정 줄을 "오늘은 이지 Nkm · 강도 여유 있음"으로 바꾼다
     var sessionIsLongRun: Bool = false
-    /// 세션이 포인트인가 — 판정 줄을 "오늘은 강도 OK · 포인트 …"로 둔다(이지용 "강도 여유 있음" 문형을 쓰지 않는다)
+    /// 세션이 포인트인가 — 판정 줄을 "오늘은 강도 OK · 인터벌 …"로 둔다(이지용 "강도 여유 있음" 문형을 쓰지 않는다)
     var sessionIsPoint: Bool = false
     /// 대회 뒤 2주 회복(대회 없을 때 리듬) — 판정 줄을 "오늘은 이지런 · 대회 뒤 회복"으로. "강도 여유 있음"과 부딪히지 않게.
     var sessionIsRecovery: Bool = false
@@ -201,13 +201,13 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
         progress.append(longDone ? L.s("이번 주 롱런 완료", "long run done this week") : L.s("이번 주 롱런 아직", "long run still to do this week"))
     }
     if plan.point != nil {
-        progress.append(pointDone ? L.s("포인트 완료", "workout done") : L.s("포인트 아직", "workout still to do"))
+        progress.append(pointDone ? L.s("강도 훈련 완료", "hard session done") : L.s("강도 훈련 아직", "hard session still to do"))
     }
     progress.append(L.s("이지 \(easyDone)/\(plan.easyRuns)회", "easy \(easyDone)/\(plan.easyRuns)"))
     // 주 끝에 포인트를 몰아넣지 않는다 — 남은 날 2일 이하면 이번 주 포인트는 건너뛴다(다음 주로 미루지 않음)
     let pointSkippable = pointLeft && daysLeft <= 2
     if pointSkippable {
-        progress.append(L.s("포인트는 이번 주 건너뛰어도 괜찮아요", "fine to skip this week's workout"))
+        progress.append(L.s("강도 훈련은 이번 주 건너뛰어도 괜찮아요", "fine to skip this week's hard session"))
     }
 
     // 세션
@@ -230,7 +230,7 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
         // 포인트 — 롱런 습관 요일 전날은 피한다(다음 날 아침 제안이 "어제 고강도 → 이지"를 내 롱런이 밀린다)
         let tomorrowWD = todayWD % 7 + 1
         if let pt = plan.point, pointLeft, daysLeft >= 3, habitual != tomorrowWD {
-            return MRSessionSuggestion(session: L.s("포인트 \(pt.text)", "Workout: \(pt.text)"),
+            return MRSessionSuggestion(session: pt.text,
                                        progress: progress.joined(separator: " · "), isPoint: true)
         }
         // 강도 여유는 있지만 오늘은 롱런·포인트 날이 아니다 — 여유를 이번 주 롱런에 남겨 두라고 말한다
