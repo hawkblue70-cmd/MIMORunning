@@ -54,6 +54,8 @@ struct MeView: View {
     @State private var plannedCountAtSearch = 0
     @State private var shoeKmCache: [UUID: Double] = [:]
     @State private var cachedMonthStats: [SummaryPeriodStats] = []
+    /// 기간별 결산 펼침 — 기본 접힘(나 탭이 카드 다섯 장으로 길어지지 않게, 2026-09-29 사용자 요청)
+    @State private var statsExpanded = false
     @State private var cachedYearStats: [SummaryPeriodStats] = []
     @State private var badgesCache: [BadgeInfo] = []
     @State private var lastStatsCacheKey: String = ""
@@ -1085,11 +1087,27 @@ struct MeView: View {
         let y0 = cachedYearStats.count > 0  ? cachedYearStats[0]  : yearStats(yearOffset: 0)
         let y1 = cachedYearStats.count > 1  ? cachedYearStats[1]  : yearStats(yearOffset: 1)
         return VStack(alignment: .leading, spacing: 12) {
-            Text(AppLanguage.shared.s("기간별 결산", "Period Summary"))
-                .font(.headline)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 16)
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { statsExpanded.toggle() }
+            } label: {
+                HStack {
+                    Text(AppLanguage.shared.s("기간별 결산", "Period Summary"))
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .rotationEffect(.degrees(statsExpanded ? 180 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .accessibilityLabel(AppLanguage.shared.s(statsExpanded ? "기간별 결산 접기" : "기간별 결산 펼치기",
+                                                     statsExpanded ? "Collapse period summary" : "Expand period summary"))
 
+            if statsExpanded {
             SummarySectionCard(stats: s0, manager: manager,
                                preloadedFormMetrics: cachedMonthFormMetrics[s0.kind.title]) { selectedSummaryStats = SelectedSummaryStats(stats: s0) }
                 .padding(.horizontal, 16)
@@ -1103,6 +1121,7 @@ struct MeView: View {
                 .padding(.horizontal, 16)
             SummarySectionCard(stats: y1, manager: manager) { selectedSummaryStats = SelectedSummaryStats(stats: y1) }
                 .padding(.horizontal, 16)
+            }
         }
         .sheet(item: $selectedSummaryStats) { sel in
             SummaryShareCardScreen(statsList: [sel.stats], miniMeImage: miniMeStore.image)
