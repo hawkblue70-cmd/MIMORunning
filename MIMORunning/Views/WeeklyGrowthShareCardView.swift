@@ -699,19 +699,23 @@ struct MileageStreakShareCard: View {
     /// 일 단위(달력 한 달) 카드 — 월 결산으로 총거리·횟수를 위에 크게 싣는다. 12주 보기는 그대로.
     private var isMonthSummary: Bool { period == .day }
 
-    /// "9월 결산" — 달이 끝났거나 마지막 날이면 결산, 아직 진행 중이면 "9월 지금까지"
+    /// 월말 결산을 1~2일 앞서 올리는 경우가 많아 마지막 3일(30일 달은 28일)부터 "결산"으로 본다(2026-09-30 사용자 결정)
+    static let summaryLeadDays = 3
+
+    /// "9월 결산" — 지난 달이거나 달의 마지막 3일이면 결산, 그 전엔 "9월 기록"
     private var monthTitle: String {
         let L = AppLanguage.shared
         let cal = Calendar.current
         let lastDay = cal.startOfDay(for: windowEnd.addingTimeInterval(-1))
-        let finished = Date() >= lastDay
+        let summaryFrom = cal.date(byAdding: .day, value: -(Self.summaryLeadDays - 1), to: lastDay) ?? lastDay
+        let isSummary = Date() >= summaryFrom
         if L.isEnglish {
             let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMMM"
             let m = df.string(from: windowStart)
-            return finished ? "\(m) summary" : "\(m) so far"
+            return isSummary ? "\(m) summary" : "\(m) runs"
         }
         let m = cal.component(.month, from: windowStart)
-        return finished ? "\(m)월 결산" : "\(m)월 지금까지"
+        return isSummary ? "\(m)월 결산" : "\(m)월 기록"
     }
 
     private var flowTitleRow: some View {
