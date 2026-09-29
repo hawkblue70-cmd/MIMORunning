@@ -135,6 +135,9 @@ enum LateRunDiagnosis {
     /// 멈춘 km 전후 2km 평균 페이스 비교 — 뒤가 앞보다 10% 넘게 느리면 흐름이 끊긴 것. 한쪽이 없으면(처음·끝) 통과.
     /// - includeStopKm: 일시정지 멈춤은 그 km 시간에 멈춘 시간이 안 들어가 그 km도 "뒤"로 센다. 워치를 안 멈춘 km는 제외.
     static func resumedSteady(_ full: [SplitData], stopIndex i: Int, includeStopKm: Bool) -> Bool {
+        // 1km 스플릿이 없으면 멈춘 km 위치가 -1(`full.count - 1`)로 들어온다 — full[0..<-1]로 종료되던 것.
+        // 비교할 수 없으니 통과(위 "한쪽이 없으면 통과"와 같은 규칙).
+        guard i >= 0, i < full.count else { return true }
         let before = full[max(0, i - 2)..<i]
         let afterStart = includeStopKm ? i : i + 1
         guard afterStart < full.count, !before.isEmpty else { return true }

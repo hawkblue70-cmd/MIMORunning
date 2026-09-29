@@ -363,6 +363,15 @@ struct LateRunDiagnosisTests {
         #expect(reason?.contains("회복 안 됨") == true)
     }
 
+    @Test func stopWithoutFullSplitsDoesNotCrash() {
+        // 1km 스플릿이 하나도 없는 러닝(거리 샘플 없이 총합만 들어온 기록) + 3분 정지 —
+        // 멈춘 km 위치가 -1이 되어 full[0..<-1]로 종료되던 것. 페이스를 비교할 수 없으니 통과.
+        #expect(LateRunDiagnosis.interruptionReason(splits: [], pausedSpans: [PausedSpan(start: 2250, end: 2430)]) == nil)
+        #expect(applies(.longRun, 80, [], pauses: [PausedSpan(start: 2250, end: 2430)]))
+        // 10분 넘는 정지는 스플릿이 없어도 끊김
+        #expect(LateRunDiagnosis.interruptionReason(splits: [], pausedSpans: [PausedSpan(start: 1800, end: 2460)]) != nil)
+    }
+
     @Test func walkedKmExcludesTraining() {
         // 7km만 걸음(10'00 · 케이던스 120) — 중앙값의 1.6배, 케이던스도 내려감
         let s = (1...12).map { i in i == 7 ? split(i, pace: 600, cad: 120, hr: 128) : split(i) }
