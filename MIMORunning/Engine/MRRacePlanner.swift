@@ -421,6 +421,8 @@ func mrBuildPlan(raceDate: Date,
     var pointSlot = 0
     // 늘리기 단계는 인터벌과 템포런을 번갈아 — 실제로 강도 훈련이 들어간 늘리기 주를 센다(2026-09-29 사용자 결정)
     var buildPointCount = 0
+    // 직전 빌드 주(회복 주 제외)의 롱런 — 풀 대회 페이스 단계에서 목표 롱런을 연달아 쌓지 않기 위해
+    var lastBuildLong = 0.0
 
     // 마라톤 후 회복 3주와 30/50/70% 는 관행이다. 하프 1주(60/70%)는 임의로 정함.
     // 통제된 연구를 찾지 못했다. 근거가 나오면 바꿀 것.
@@ -524,6 +526,14 @@ func mrBuildPlan(raceDate: Date,
                 } else {
                     phase = "늘리기"
                 }
+                // 풀 대회 페이스 단계: 직전 빌드 주 롱런이 이미 목표(28km)였으면 이번 주는 85%(24km).
+                // 이지 페이스로 28km는 약 3시간 — 회복 비용이 커서 28km를 연달아 쌓지 않는다(2026-09-29 사용자 결정,
+                // 코칭 관행·통제 연구 없음). 목표 28km 자체(Fokkema 2020)와 주간 거리는 그대로.
+                if distanceM >= MRDistance.dF, phase == "대회 페이스", tuneKind == 0,
+                   lastBuildLong >= p.targetLongKm - 0.1 {
+                    lr = (p.targetLongKm * 0.85).rounded()
+                    newMax = false
+                }
                 currentBuildVol = min(currentBuildVol * 1.05, volCap)
                 wkVol = currentBuildVol
                 peakVol = max(peakVol, wkVol)    // 회복주는 최대치를 낮추지 않는다
@@ -532,6 +542,7 @@ func mrBuildPlan(raceDate: Date,
                     phase = "대회 주"
                     wkVol = currentBuildVol * MR_TUNEUP_SHORT_VOL
                 }
+                lastBuildLong = lr
             }
             longNow = max(longNow, lr)
         } else {
@@ -569,10 +580,13 @@ func mrBuildPlan(raceDate: Date,
         // ── 포인트 1회 (2026-09-29 설계) — 이지 한 번을 대신한다. 주간 km·러닝 횟수는 그대로.
         //   따르는 주는 따르는 계획의 포인트 그대로. 튠업 주·대회 전 주·대회 주·회복 주는 없음.
         let isRaceWeek = raceDate >= mon && raceDate < weekEnd
-        // 튠업 대회 다음 주도 포인트 없음 — 대회 자체가 그 주기의 포인트였다(2026-09-29 사용자 결정).
-        // 하프 튠업 다음 주는 이미 회복 주라 여기서는 5K·10K가 대상이다.
-        let prevMon = cal.date(byAdding: .day, value: -7, to: mon) ?? mon
-        let afterTuneUp = tuneUps.contains { $0.date >= prevMon && $0.date < mon }
+        // 대회(튠업·앞선 대회) 뒤 14일 안에 시작하는 주는 강도 훈련 없음 — 대회가 그 주기의 강도 훈련이었고,
+        // 대회 없을 때 리듬의 "대회 뒤 2주 이지"와 같은 규칙(2026-09-29 사용자 결정). 하프 8일 뒤 인터벌 같은 일을 막는다.
+        let raceDatesBefore = tuneUps.map(\.date) + (priorRace.map { [$0.date] } ?? [])
+        let afterTuneUp = raceDatesBefore.contains { d in
+            let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: mon)).day ?? -1
+            return days >= 1 && days < MRRhythmContext.postRaceEasyDays
+        }
         var point: MRPlanPoint? = nil
         if let f = followed, i <= buildWeeks {
             point = f.week.point

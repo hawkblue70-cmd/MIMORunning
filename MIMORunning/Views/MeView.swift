@@ -750,15 +750,20 @@ struct MeView: View {
                cal.startOfDay(for: firstMon) > thisMonday {
                 let liveFirst = check.plan.weeks.first.map { cal.startOfDay(for: $0.monday) }
                 let liveStartMon = liveFirst ?? cal.startOfDay(for: firstMon)
+                // 시작 전이면 구조뿐 아니라 내용(단계·롱런·주간·문구·강도 훈련)이 달라져도 갱신 — 규칙이 바뀌면 바로 반영.
+                let contentChanged = zip(existing.planWeeks, check.plan.weeks).contains { s, w in
+                    s.phase != w.phase || abs(s.longRunKm - w.longRunKm) > 0.05 || abs(s.weeklyKm - w.weeklyKm) > 0.05
+                        || s.breakdown != w.breakdown || s.point != w.point
+                }
                 if liveStartMon != cal.startOfDay(for: firstMon)
-                    || check.plan.weeks.count != existing.planWeeks.count {
+                    || check.plan.weeks.count != existing.planWeeks.count || contentChanged {
                     existing.weeksJSON         = data.weeksJSON
                     existing.metaJSON          = data.metaJSON
                     existing.projectedFinalMin = data.projectedFinalMin
                     existing.projectedNowMin   = data.projectedNowMin
                     existing.goalMin           = data.goalMin
                     #if DEBUG
-                    print("[스냅샷] 시작 전 계획 구조 변경 → 전체 갱신: \(check.race.name) \(existing.planWeeks.count)주")
+                    print("[스냅샷] 시작 전 계획 변경 → 전체 갱신: \(check.race.name) \(existing.planWeeks.count)주")
                     #endif
                     continue
                 }

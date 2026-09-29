@@ -44,7 +44,7 @@ struct MRPlanPointTests {
         #expect(half.totalKm == 10)                // min(10, 11)
         #expect(abs((half.sustainedKm ?? 0) - 3.3) < 0.01)
         let full = try #require(MRPlanPoint.make(kind: .buildUp, weeklyKm: 50, longRunKm: 16, raceDistanceM: MRDistance.dF, paceSecPerKm: 330))
-        #expect(full.totalKm == 11)                // min(14, 11.2 내림 11)
+        #expect(full.totalKm == 10)                // 풀도 10km(대회 페이스 주에 긴 러닝이 둘이 되지 않게)
         let tenK = try #require(MRPlanPoint.make(kind: .buildUp, weeklyKm: 30, longRunKm: 12, raceDistanceM: MRDistance.d10, paceSecPerKm: 290))
         #expect(tenK.totalKm == 8)
         let noRace = try #require(MRPlanPoint.make(kind: .buildUp, weeklyKm: 40, longRunKm: 18, raceDistanceM: nil, paceSecPerKm: 310))

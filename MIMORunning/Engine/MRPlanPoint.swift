@@ -56,10 +56,11 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
             return MRPlanPoint(kind: .tempo, totalKm: r1(warmupKm + t + cooldownKm), reps: nil, repKm: nil,
                                sustainedKm: t, paceSecPerKm: paceSecPerKm)
         case .buildUp:
-            // ⚠ 임의로 정함 — 10K 이하 8km · 하프 10km · 풀 14km · 대회 없음 10km, 롱런의 70% 이하
+            // ⚠ 임의로 정함 — 10K 이하 8km · 하프·풀·대회 없음 10km, 롱런의 70% 이하.
+            //   풀도 10km(2026-09-29): 대회 페이스 주는 롱런 후반에도 대회 페이스가 있어 14km면 한 주에 긴 러닝이 둘이 된다.
             let base: Double
             if let d = raceDistanceM {
-                base = d >= MRDistance.dF ? 14 : (d >= MRDistance.dH ? 10 : 8)
+                base = d >= MRDistance.dH ? 10 : 8
             } else {
                 base = 10
             }
