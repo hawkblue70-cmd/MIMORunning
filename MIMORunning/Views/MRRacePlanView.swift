@@ -8,7 +8,7 @@ private func mrFormatHM(_ minutes: Double) -> String {
 }
 
 private let mrAccent = Color(red: 0.48, green: 0.36, blue: 0.98)
-/// 어두운 바탕 위 보라 글자용 — mrAccent는 글자로 쓰면 어둡다(주차별 계획 보기·목표 대비 멘트·D-day)
+/// 어두운 바탕 위 보라 글자용 — mrAccent는 글자로 쓰면 어둡다(목표 대비 멘트·D-day)
 private let mrAccentText = Theme.violetText
 private let mrCard   = Color(red: 0.11, green: 0.11, blue: 0.12)
 private let mrGood   = Color(red: 0.30, green: 0.80, blue: 0.55)
@@ -283,10 +283,11 @@ struct MRRacePlanCard: View {
                 HStack(spacing: 4) {
                     Text(L.s(showWeeks ? "주차별 계획 접기" : "주차별 계획 보기", showWeeks ? "Collapse weekly plan" : "Show weekly plan"))
                     Image(systemName: showWeeks ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                 }
-                .font(.system(size: 12))
-                .foregroundStyle(mrAccentText)
+                // 한 단계 크게(12→13) · 준비 비교 증가 표시(+37%)와 같은 색
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.positive)
             }
             .padding(.top, 16)
 
