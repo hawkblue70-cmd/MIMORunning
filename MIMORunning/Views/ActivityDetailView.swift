@@ -513,7 +513,7 @@ struct ActivityDetailView: View {
                 isComputingZones = false
             }
         }
-        .navigationTitle(activity.type.label)
+        .navigationTitle(activity.type == .running ? AppLanguage.shared.s("오늘의 러닝", "Today's Run") : activity.type.label)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -1585,7 +1585,7 @@ private struct DetailHeader: View {
     let activity: Activity
     var confirmedRace: PersistedRaceMatch? = nil
     var onRaceRevoke: (() -> Void)? = nil
-    /// 러닝 종류("일반 러닝"·"이지런"·"롱런 · 빌드업") — 아이콘 아래에 쓴다. 인사이트 탭 머리 "오늘의 러닝 · ○○"와 같은 값.
+    /// 러닝 종류("일반 러닝"·"이지런"·"롱런 · 빌드업") — 머리 큰 제목으로 쓴다. 인사이트 탭 머리 "오늘의 러닝 · ○○"와 같은 값.
     var workoutTypeLabel: String? = nil
 
     private var dateText: Text {
@@ -1611,26 +1611,15 @@ private struct DetailHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                VStack(spacing: 3) {
-                    Image(systemName: activity.type.icon)
-                        .font(.title2)
-                        .foregroundStyle(Color(hex: "3DFF7A"))
-                        .frame(width: 44, height: 44)
-                        .background(Color(hex: "3DFF7A").opacity(0.12))
-                        .clipShape(Circle())
-                    // 러닝 종류 — 아이콘 바로 아래 한 줄(러닝일 때만)
-                    if activity.type == .running, let label = workoutTypeLabel {
-                        Text(label)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color(hex: "3DFF7A"))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .frame(maxWidth: 64)
-                    }
-                }
+                Image(systemName: activity.type.icon)
+                    .font(.title2)
+                    .foregroundStyle(Color(hex: "3DFF7A"))
+                    .frame(width: 44, height: 44)
+                    .background(Color(hex: "3DFF7A").opacity(0.12))
+                    .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 4) {
-                    // 러닝은 "오늘의 러닝"(종류는 아이콘 아래), 걷기·하이킹은 종류 이름 그대로
-                    Text(activity.type == .running ? AppLanguage.shared.s("오늘의 러닝", "Today's Run") : activity.type.label)
+                    // 러닝은 러닝 종류("이지런"·"인터벌"·"롱런 · 빌드업"), 자료 도착 전·걷기·하이킹은 활동 종류 이름
+                    Text(activity.type == .running ? (workoutTypeLabel ?? activity.type.label) : activity.type.label)
                         .font(.title2.bold())
                         .foregroundStyle(.white)
                     dateText
