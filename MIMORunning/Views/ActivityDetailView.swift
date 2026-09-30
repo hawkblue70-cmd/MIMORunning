@@ -1628,7 +1628,8 @@ private struct DetailHeader: View {
                     // 러닝은 러닝 종류("이지런"·"인터벌"·"롱런 · 빌드업"), 자료 도착 전·걷기·하이킹은 활동 종류 이름
                     Text(activity.type == .running ? (workoutTypeLabel ?? activity.type.label) : activity.type.label)
                         .font(.system(size: 19, weight: .bold))
-                        .foregroundStyle(.white)
+                        // 밝은 바이올렛 — 브랜드 색을 어두운 배경에서 읽히게 밝힌 값. 종류는 정체성이라 평가색(초록·주황)을 피한다.
+                        .foregroundStyle(Color(hex: "A48BFF"))
                     dateText
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white)
