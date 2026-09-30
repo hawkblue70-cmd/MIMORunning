@@ -521,7 +521,7 @@ struct GrowthView: View {
                               systemImage: "square.and.arrow.up")
                             .font(.system(size: 12, weight: .medium))
                     }
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(Theme.violetText)
                     .opacity(showDaily ? 1 : 0)
                     .disabled(!showDaily)
                     .accessibilityHidden(!showDaily)
@@ -775,7 +775,7 @@ struct GrowthView: View {
                     Label(L.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
                         .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundStyle(Theme.violet)
+                .foregroundStyle(Theme.violetText)
                 .padding(.top, 4)
             }
 

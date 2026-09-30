@@ -8,6 +8,8 @@ private func mrFormatHM(_ minutes: Double) -> String {
 }
 
 private let mrAccent = Color(red: 0.48, green: 0.36, blue: 0.98)
+/// 어두운 바탕 위 보라 글자용 — mrAccent는 글자로 쓰면 어둡다(주차별 계획 보기·목표 대비 멘트·D-day)
+private let mrAccentText = Theme.violetText
 private let mrCard   = Color(red: 0.11, green: 0.11, blue: 0.12)
 private let mrGood   = Color(red: 0.30, green: 0.80, blue: 0.55)
 private let mrWarn   = Color(red: 0.95, green: 0.68, blue: 0.25)
@@ -87,7 +89,7 @@ struct MRRacePlanCard: View {
     private var gapColor: Color {
         guard let g = check.goalMin, let gap = check.gapMin else { return .white }
         let pct = gap / g * 100
-        return pct <= 0 ? mrGood : (pct <= 3 ? mrAccent : mrWarn)
+        return pct <= 0 ? mrGood : (pct <= 3 ? mrAccentText : mrWarn)
     }
 
     private func bridgeTextColor(_ text: String) -> Color {
@@ -284,7 +286,7 @@ struct MRRacePlanCard: View {
                         .font(.system(size: 9, weight: .semibold))
                 }
                 .font(.system(size: 12))
-                .foregroundStyle(mrAccent)
+                .foregroundStyle(mrAccentText)
             }
             .padding(.top, 16)
 
@@ -1103,7 +1105,7 @@ private struct MRRaceCollapsedRow: View {
                     HStack(spacing: 6) {
                         Text("D-\(daysLeft)")
                             .font(.system(size: 12, design: .rounded))
-                            .foregroundStyle(mrAccent)
+                            .foregroundStyle(mrAccentText)
                         if let w = weekCount {
                             Text("· \(AppLanguage.shared.s("\(w)주", "\(w) wks"))")
                                 .font(.system(size: 12))

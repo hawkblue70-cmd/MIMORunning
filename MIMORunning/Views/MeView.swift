@@ -1172,7 +1172,7 @@ struct MeView: View {
                                     .frame(width: 38, height: 38)
                                 Image(systemName: "shoe.fill")
                                     .font(.system(size: 16))
-                                    .foregroundStyle(Theme.violet)
+                                    .foregroundStyle(Theme.violetText)
                             }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(shoe.displayName)

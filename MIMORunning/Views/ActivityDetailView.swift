@@ -1529,7 +1529,7 @@ struct ActivityDetailView: View {
             HStack(spacing: 5) {
                 Image(systemName: DetailPanel.combined.icon)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(Theme.violetText)
                 Text(DetailPanel.combined.label)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
@@ -2248,7 +2248,7 @@ private struct IntervalSegmentsSection: View {
                             Text(AppLanguage.shared.s("공유", "Share"))
                                 .font(.caption.weight(.semibold))
                         }
-                        .foregroundStyle(Theme.violet)
+                        .foregroundStyle(Theme.violetText)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(Theme.violet.opacity(0.12))
                         .clipShape(Capsule())
