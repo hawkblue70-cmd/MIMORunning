@@ -923,7 +923,7 @@ struct RunInsightTabCard: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(Theme.violetText)
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(Theme.violet.opacity(0.12))
                     .clipShape(Capsule())
@@ -971,7 +971,7 @@ struct RunInsightTabCard: View {
                 } label: {
                     Text(t.title)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(tab == t ? Theme.violet : Color.white.opacity(0.50))
+                        .foregroundStyle(tab == t ? Theme.violetText : Color.white.opacity(0.50))
                         .padding(.horizontal, 14).padding(.vertical, 7)
                         .background(tab == t ? Theme.violet.opacity(0.22) : Color.clear)
                         .clipShape(Capsule())

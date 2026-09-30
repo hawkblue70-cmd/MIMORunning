@@ -2459,7 +2459,7 @@ private struct SplitsSection: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            .foregroundStyle(Theme.violet)
+            .foregroundStyle(Theme.violetText)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
