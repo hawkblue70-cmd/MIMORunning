@@ -101,6 +101,8 @@ struct ActivityDetailView: View {
     @State private var chartData: RunChartData = .empty
     @State private var isLoadingChart = false
     @State private var runInsights: [RunInsight] = []
+    /// 오늘의 인사이트 요약(RunHeadline) — 입력이 바뀔 때 한 번 계산(렌더마다 계산하지 않음)
+    @State private var headline: RunHeadline?
     /// 사용자 입력(중복 workoutID는 최신 우선) + Apple(manager 맵 > detail 캐시)
     private var effortIndex: EffortIndex { EffortIndex(stories: panelAllStories, apple: manager.effortMap) }
     private var appleEffortForRun: AppleEffort? { manager.appleEffort(for: activity.id) ?? detail?.appleEffort }
@@ -257,6 +259,28 @@ struct ActivityDetailView: View {
 
     private var shareSummaryLines: [RunSummaryLine] { RunSummaryBuilder.lines(summaryContext) }
 
+    /// headline 재계산 트리거 — 인사이트·총평 재료가 바뀌면 달라지는 값들
+    private var headlineKey: String {
+        "\(insight?.title ?? "")|\(insight?.detail ?? "")|\(hrSamples.count)|\(formBaseline == nil ? 0 : 1)|" +
+        "\(effectiveHRZones.count)|\(runInsights.count)|\(detail == nil ? 0 : 1)"
+    }
+
+    private func recomputeHeadline() {
+        guard activity.type == .running else { headline = nil; return }
+        let input = RunSummaryBuilder.input(summaryContext)
+        let lines = RunSummary.lines(input)
+        let eff = runInsights.first { $0.category == .efficiency }
+        let h = RunHeadline.make(insight: insight, summaryInput: input, summaryLines: lines, efficiency: eff)
+        if h != headline { withAnimation(.easeInOut(duration: 0.3)) { headline = h } }
+    }
+
+    /// 공유 카드에 넘길 인사이트 — 요약을 골랐으면 그 제목·사실(헤드라인 = 맨 위 카드 제목), 드문 사건·대체면 엔진 결과 그대로
+    private var shareInsight: InsightResult? {
+        guard let h = headline, h.source != .rareEvent, h.source != .fallback else { return insight }
+        return InsightResult(theme: insight?.theme ?? .default, workoutType: insight?.workoutType ?? .general,
+                             title: h.title, detail: h.fact, aiEnhanced: false)
+    }
+
     private var confirmedRaceMatch: PersistedRaceMatch? {
         guard let m = raceDetector.matchFor(activityID: activity.id), m.isConfirmed else { return nil }
         return m
@@ -342,7 +366,7 @@ struct ActivityDetailView: View {
                         }
                     )
                     if activity.type == .running {
-                        InsightCard(activity: activity, insight: insight, condition: condition,
+                        InsightCard(activity: activity, insight: insight, headline: headline, condition: condition,
                                     confirmedRace: confirmedRaceMatch, hillMatch: hillMatch,
                                     effortValue: resolvedEffort?.value,
                                     comparisonLine: raceComparison?.headline)
@@ -508,7 +532,7 @@ struct ActivityDetailView: View {
             }
         }
         .navigationDestination(isPresented: $showShareCard) {
-            ShareCardScreen(activity: activity, detail: detail, insight: insight, manager: manager, condition: condition,
+            ShareCardScreen(activity: activity, detail: detail, insight: shareInsight, manager: manager, condition: condition,
                              summaryLines: shareSummaryLines)
         }
         .sheet(isPresented: $showManualRaceEntry) {
@@ -581,6 +605,7 @@ struct ActivityDetailView: View {
                 break
             }
         }
+        .onChange(of: headlineKey, initial: true) { _, _ in recomputeHeadline() }
         .onChange(of: hrSamples.count) { _, newCount in
             // 회복 로드는 HR 시리즈에만 의존한다 — 어느 경로로 채워지든 여기서 한 번 걸린다.
             // 예전엔 심박 패널 탭에 매달려 있었는데, 무관한 플래그(hrFetchDone)가 먼저 켜지면서
@@ -1625,6 +1650,12 @@ private struct DetailHeader: View {
 private struct InsightCard: View {
     let activity: Activity
     let insight: InsightResult?
+    /// 카드 판정 요약 — 있고 드문 사건·대체가 아니면 제목·사실·다음 행동을 이것으로
+    var headline: RunHeadline? = nil
+    private var usesHeadline: Bool {
+        guard let h = headline else { return false }
+        return h.source != .rareEvent && h.source != .fallback
+    }
     var condition: ActivityCondition? = nil
     var confirmedRace: PersistedRaceMatch? = nil
     var hillMatch: HillMatch? = nil
@@ -1712,14 +1743,22 @@ private struct InsightCard: View {
                             .font(.caption)
                             .foregroundStyle(Theme.violet)
                     }
-                    Text(insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run"))
+                    Text((usesHeadline ? headline?.title : nil) ?? insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run"))
                         .font(.headline.bold())
                         .foregroundStyle(.white)
                         .contentTransition(.opacity)
-                    Text(displayDetail)
+                    Text(usesHeadline ? (headline?.fact ?? displayDetail) : displayDetail)
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.72))
                         .contentTransition(.opacity)
+                    // 다음 행동 — 총평의 "다음" 한 문장(없으면 숨김). 드문 사건·대체에도 붙인다
+                    if let next = headline?.next {
+                        Text(next)
+                            .font(.footnote)
+                            .foregroundStyle(.white.opacity(0.55))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .contentTransition(.opacity)
+                    }
                     if let race = confirmedRace {
                         let division = showsComparison ? " · " + InsightEngine.raceDistanceDivision(km: race.distanceKm) : ""
                         Label(AppLanguage.shared.s("대회 러닝 · \(race.raceName)\(division)", "Race · \(race.raceName)\(division)"),
