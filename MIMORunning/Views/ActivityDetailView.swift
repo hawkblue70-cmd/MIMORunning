@@ -1570,7 +1570,7 @@ struct ActivityDetailView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
             }
-            .foregroundStyle(Theme.violet)
+            .foregroundStyle(Theme.violetText)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(Theme.violet.opacity(0.12))
@@ -1744,11 +1744,11 @@ private struct InsightCard: View {
                     HStack {
                         Text(AppLanguage.shared.s("오늘의 인사이트", "Today's Insight"))
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(Theme.violet)
+                            .foregroundStyle(Theme.violetText)
                         Spacer()
                         Image(systemName: "sparkles")
                             .font(.caption)
-                            .foregroundStyle(Theme.violet)
+                            .foregroundStyle(Theme.violetText)
                     }
                     Text((usesHeadline ? headline?.title : nil) ?? insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run"))
                         .font(.headline.bold())
@@ -1857,7 +1857,7 @@ private struct MiniMeUpdateButton: View {
                          : AppLanguage.shared.s("이 사진으로 미니미 업데이트", "Update Mini-Me from photo"))
                         .font(.caption.weight(.medium))
                 }
-                .foregroundStyle(Theme.violet)
+                .foregroundStyle(Theme.violetText)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(Theme.violet.opacity(0.10))
@@ -3003,7 +3003,7 @@ private struct StorySection: View {
                     Label(hasJournal ? AppLanguage.shared.s("편집", "Edit") : AppLanguage.shared.s("추가", "Add"),
                           systemImage: hasJournal ? "pencil" : "plus")
                         .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Theme.violet)
+                        .foregroundStyle(Theme.violetText)
                 }
             }
             if let s = story, hasJournal {

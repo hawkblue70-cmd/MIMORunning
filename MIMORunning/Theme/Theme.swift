@@ -41,6 +41,8 @@ enum CardPreviewFrame {
 enum Theme {
     // Brand
     static let violet = Color(hex: "7C5CFC")
+    /// 어두운 바탕 위 보라 글자·아이콘용 — 브랜드 바이올렛은 글자로 쓰면 어둡다(상세 화면 인사이트 머리·편집·미니미·내보내기 칩)
+    static let violetText = Color(hex: "A48BFF")
     static let background = Color(hex: "111111")
     static let cardBackground = Color(hex: "1C1C1E")
 
