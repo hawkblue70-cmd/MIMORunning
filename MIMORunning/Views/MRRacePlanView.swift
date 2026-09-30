@@ -8,7 +8,7 @@ private func mrFormatHM(_ minutes: Double) -> String {
 }
 
 private let mrAccent = Color(red: 0.48, green: 0.36, blue: 0.98)
-/// 어두운 바탕 위 보라 글자용 — mrAccent는 글자로 쓰면 어둡다(목표 대비 멘트·D-day)
+/// 어두운 바탕 위 보라 글자·아이콘용 — mrAccent는 글자로 쓰면 어둡다. mrAccent는 막대·점·칩 바탕에만 쓴다.
 private let mrAccentText = Theme.violetText
 private let mrCard   = Color(red: 0.11, green: 0.11, blue: 0.12)
 private let mrGood   = Color(red: 0.30, green: 0.80, blue: 0.55)
@@ -96,7 +96,7 @@ struct MRRacePlanCard: View {
         if text.hasPrefix("회복") { return Color(red: 0.35, green: 0.65, blue: 0.95) }
         if text.hasPrefix("대회 주") { return Color(red: 0.98, green: 0.55, blue: 0.40) }
         if text.hasPrefix("유지") { return Color(red: 0.45, green: 0.80, blue: 0.55) }
-        if text.hasPrefix("이 계획 시작") { return mrAccent }
+        if text.hasPrefix("이 계획 시작") { return mrAccentText }
         return .white.opacity(0.82)
     }
 
@@ -116,7 +116,7 @@ struct MRRacePlanCard: View {
                 Spacer(minLength: 8)
                 Text(race.label)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(mrAccent)
+                    .foregroundStyle(mrAccentText)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(mrAccent.opacity(0.15))
                     .clipShape(Capsule())
@@ -138,7 +138,7 @@ struct MRRacePlanCard: View {
             if !plan.startNote.isEmpty {
                 Text(plan.startNote)
                     .font(.system(size: 12))
-                    .foregroundStyle(mrAccent.opacity(0.92))
+                    .foregroundStyle(mrAccentText.opacity(0.92))
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 6)
             }
@@ -510,7 +510,7 @@ struct MRWeekTable: View {
 
     private func phaseColor(_ p: String) -> Color {
         switch p {
-        case "테이퍼":      return mrAccent
+        case "테이퍼":      return mrAccentText
         case "회복":        return Color(red: 0.35, green: 0.65, blue: 0.95)
         case "대회 페이스": return mrWarn
         case "대회 주":     return Color(red: 0.98, green: 0.55, blue: 0.40)
@@ -671,7 +671,7 @@ struct MRWeekTable: View {
                                             Text("—").foregroundStyle(.white.opacity(0.65))
                                         }
                                         Text(String(format: "/%.1fkm", snap.longRunKm))
-                                            .foregroundStyle(mrAccent.opacity(0.70))
+                                            .foregroundStyle(mrAccentText.opacity(0.70))
                                     }
                                     HStack(spacing: 3) {
                                         Text(L.s("주간", "Weekly")).foregroundStyle(.white.opacity(0.72))
@@ -683,12 +683,12 @@ struct MRWeekTable: View {
                                             Text("—").foregroundStyle(.white.opacity(0.65))
                                         }
                                         Text(String(format: "/%.0fkm", snap.weeklyKm))
-                                            .foregroundStyle(mrAccent.opacity(0.70))
+                                            .foregroundStyle(mrAccentText.opacity(0.70))
                                     }
                                     if isCurr {
                                         Text(L.s("진행 중", "In progress"))
                                             .font(.system(size: 9, weight: .medium))
-                                            .foregroundStyle(mrAccent.opacity(0.88))
+                                            .foregroundStyle(mrAccentText.opacity(0.88))
                                             .padding(.horizontal, 5).padding(.vertical, 2)
                                             .background(mrAccent.opacity(0.12), in: Capsule())
                                     }
@@ -786,7 +786,7 @@ struct MRWeekTable: View {
                                             Text("—").foregroundStyle(.white.opacity(0.65))
                                         }
                                         Text(String(format: "/%.1fkm", w.longRunKm))
-                                            .foregroundStyle(mrAccent.opacity(0.70))
+                                            .foregroundStyle(mrAccentText.opacity(0.70))
                                     }
                                     HStack(spacing: 3) {
                                         Text(L.s("주간", "Weekly")).foregroundStyle(.white.opacity(0.72))
@@ -798,12 +798,12 @@ struct MRWeekTable: View {
                                             Text("—").foregroundStyle(.white.opacity(0.65))
                                         }
                                         Text(String(format: "/%.0fkm", w.weeklyKm))
-                                            .foregroundStyle(mrAccent.opacity(0.70))
+                                            .foregroundStyle(mrAccentText.opacity(0.70))
                                     }
                                     if isCurrent(w) {
                                         Text(L.s("진행 중", "In progress"))
                                             .font(.system(size: 9, weight: .medium))
-                                            .foregroundStyle(mrAccent.opacity(0.88))
+                                            .foregroundStyle(mrAccentText.opacity(0.88))
                                             .padding(.horizontal, 5).padding(.vertical, 2)
                                             .background(mrAccent.opacity(0.12), in: Capsule())
                                     }
@@ -895,7 +895,7 @@ struct MRGoalLinksView: View {
                             .foregroundStyle(.white.opacity(0.78))
                         Spacer()
                         Text(l.note).font(.system(size: 12))
-                            .foregroundStyle(l.isImpossible ? mrWarn : mrAccent)
+                            .foregroundStyle(l.isImpossible ? mrWarn : mrAccentText)
                     }
                 }
 
@@ -963,7 +963,7 @@ struct MRPlanlessRaceCard: View {
                     .foregroundStyle(RaceBadge.color)   // 대회명 = 대회 뱃지와 같은 노랑
                 Spacer()
                 Text(race.label).font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(mrAccent)
+                    .foregroundStyle(mrAccentText)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(mrAccent.opacity(0.15)).clipShape(Capsule())
             }
