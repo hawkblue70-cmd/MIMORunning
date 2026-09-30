@@ -516,6 +516,13 @@ struct ActivityDetailView: View {
         .navigationTitle(activity.type == .running ? AppLanguage.shared.s("오늘의 러닝", "Today's Run") : activity.type.label)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // 가운데 제목 — 시스템 inline 제목(17pt)보다 조금 크게. navigationTitle은 뒤로 가기 이름용으로 남긴다.
+            ToolbarItem(placement: .principal) {
+                Text(activity.type == .running ? AppLanguage.shared.s("오늘의 러닝", "Today's Run") : activity.type.label)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showShareCard = true } label: {
                     HStack(spacing: 5) {
@@ -1620,7 +1627,7 @@ private struct DetailHeader: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // 러닝은 러닝 종류("이지런"·"인터벌"·"롱런 · 빌드업"), 자료 도착 전·걷기·하이킹은 활동 종류 이름
                     Text(activity.type == .running ? (workoutTypeLabel ?? activity.type.label) : activity.type.label)
-                        .font(.title2.bold())
+                        .font(.system(size: 19, weight: .bold))
                         .foregroundStyle(.white)
                     dateText
                         .font(.system(size: 14, weight: .medium))
