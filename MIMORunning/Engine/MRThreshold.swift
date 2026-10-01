@@ -16,6 +16,10 @@ let MR_THRESHOLD_RACE_MIN = 60.0
 let MR_THRESHOLD_HR_AGREE_BPM = 5.0
 /// 역치 페이스가 "좋아졌다"로 보는 문턱(초/km). ⚠ 임의로 정함 — 추세 문장·헤드라인 후보 문턱.
 let MR_THRESHOLD_IMPROVE_SEC = 3.0
+/// 역치 기준 노력 창(일). 대회 예측은 최근 550일 최고 기록을 앵커로 쓰지만(최고 기록 = 예측의 근거),
+/// 역치는 "지금 체력"이라 550일 앵커로는 새 최고 기록 전까지 추세가 평평하다(2026-10-01 실기기).
+/// ⚠ 180일은 임의로 정함 — 레벨 판정 90일보다 길게: 대회급 노력이 드물어 90일이면 빈 달이 많다.
+let MR_THRESHOLD_WINDOW_DAYS = 180
 
 /// 한 시점(asOf) 기준 역치 추정.
 struct MRThresholdEstimate: Equatable, Sendable {
@@ -64,7 +68,7 @@ func mrSustainedEffortHR(runs: [MRWorkout], efforts: [MRRaceEffort], asOf: Date)
     var hrs: [Double] = []
     for e in efforts where e.timeMin >= 20 && e.timeMin <= 70 {
         let days = cal.dateComponents([.day], from: cal.startOfDay(for: e.date), to: today).day ?? -1
-        guard days >= 0, days <= 180 else { continue }
+        guard days >= 0, days <= MR_THRESHOLD_WINDOW_DAYS else { continue }
         let match = runs
             .filter {
                 !$0.isInterval && $0.hrAvg != nil && $0.start <= asOf
@@ -106,7 +110,13 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
     let efforts = mrApplyHeat(mrDetectEfforts(runs: past, phys: phys), heat: heat)
     let fit = mrFitExponent(efforts)
     let prof = mrProfile(runs: past, efforts: efforts, asOf: asOf)
-    let preds = mrPredict(efforts: efforts, fit: fit, profile: prof, heat: heat, asOf: asOf)
+    // 지수 적합·프로필은 전체 노력으로, 앵커만 최근 창 안에서 고른다. 창 안에 노력이 없으면 그 시점은 nil(빈 점).
+    let cal = Calendar.current
+    let recent = efforts.filter {
+        let d = cal.dateComponents([.day], from: cal.startOfDay(for: $0.date), to: cal.startOfDay(for: asOf)).day ?? -1
+        return d >= 0 && d <= MR_THRESHOLD_WINDOW_DAYS
+    }
+    let preds = mrPredict(efforts: recent, fit: fit, profile: prof, heat: heat, asOf: asOf)
     guard let half = preds.first(where: { $0.label == "하프" }),
           let pace = mrThresholdPace(halfEquivMin: half.midMin) else { return nil }
     let hrp = mrFitHRPaceModel(runs: past, asOf: asOf)
@@ -135,16 +145,14 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
                                basis: basis)
 }
 
-/// 최근 6개월 월별 추세 — 5~1개월 전 각 달 말일 23:59:59 + now, 총 6시점. 추정 불가 시점은 건너뛴다. 날짜 오름차순.
+/// 최근 6개월 월별 추세 — 오늘에서 5~0개월 전, 매달 같은 날짜로 6시점(간격 고르게). 추정 불가 시점은 건너뛴다. 날짜 오름차순.
+/// (처음엔 "각 달 말일 + now"였는데 월초에는 지난달 말일과 하루 차이로 점이 겹쳤다 — 2026-10-01 실기기)
 func mrThresholdTrend(runs: [MRWorkout], restingHRSamples: [(date: Date, value: Double)],
                       dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, now: Date) -> [MRThresholdEstimate] {
     let cal = Calendar.current
-    guard let thisMonth = cal.dateInterval(of: .month, for: now)?.start else { return [] }
-    var points: [Date] = (1...5).reversed().compactMap { k in
-        // k개월 전 달의 말일 23:59:59 = (이번 달 1일 − (k−1)개월) − 1초
-        cal.date(byAdding: .month, value: -(k - 1), to: thisMonth)?.addingTimeInterval(-1)
+    let points: [Date] = (0...5).reversed().compactMap { k in
+        k == 0 ? now : cal.date(byAdding: .month, value: -k, to: now)
     }
-    points.append(now)
     return points.compactMap {
         mrThresholdAsOf(runs: runs, restingHRSamples: restingHRSamples,
                         dateOfBirth: dateOfBirth, sex: sex, heat: heat, asOf: $0)

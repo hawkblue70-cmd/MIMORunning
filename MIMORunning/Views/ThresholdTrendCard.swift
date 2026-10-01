@@ -83,6 +83,15 @@ struct ThresholdTrendCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
+    /// y축 — 위가 빠름(반전). 값이 거의 같으면 1초 폭 축이 되어 작은 흔들림이 크게 보이므로 최소 ±10초를 확보한다.
+    /// ⚠ 10초는 임의로 정함 — 추세 문장 문턱(3초)이 눈에 띄되 과장되지 않는 폭.
+    private func yDomain(_ pts: [MRThresholdEstimate]) -> ClosedRange<Double> {
+        let v = pts.map(\.paceSecPerKm)
+        guard let lo = v.min(), let hi = v.max() else { return 0...1 }
+        let mid = (lo + hi) / 2, half = max((hi - lo) / 2, 10)
+        return (mid - half)...(mid + half)
+    }
+
     /// 월별 라인 — y축 반전(페이스 초가 작을수록 = 빠를수록 위). 점 모양은 주간 지표 스파크라인과 같은 흰 테두리 점.
     private func chart(_ pts: [MRThresholdEstimate]) -> some View {
         Chart {
@@ -99,7 +108,10 @@ struct ThresholdTrendCard: View {
                     .symbolSize(Theme.sparkHaloCoreSizeCompact)
             }
         }
-        .chartYScale(domain: .automatic(includesZero: false, reversed: true))
+        .chartYScale(domain: .automatic(includesZero: false, reversed: true, dataType: Double.self) { inferred in
+            let d = yDomain(pts)
+            inferred.append(contentsOf: [d.lowerBound, d.upperBound])
+        })
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
                 AxisGridLine().foregroundStyle(Color.white.opacity(0.08))
