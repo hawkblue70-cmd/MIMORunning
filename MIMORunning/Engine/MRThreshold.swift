@@ -7,8 +7,7 @@ import Foundation
 // 가민의 "젖산 역치(페이스·심박)"는 HealthKit으로 넘어오지 않는다 → 본인 기록으로 직접 추정한다.
 // 원칙(문헌 = 틀, 본인 데이터 = 값):
 //   · 역치 페이스 = 60분 대회 페이스 — Daniels T 페이스 정의(Daniels' Running Formula, "about the pace you could race for 60 min").
-//     값은 **기준 기록**(최근 24개월 확정 대회 중 최고, 대회가 없으면 대회급 노력 중 최고)을 하프 등가로 옮긴 뒤
-//     Riegel 1.06으로 60분 거리를 풀어 낸다.
+//     값은 본인 예측 하프 등가에서 앱 공통 Riegel 1.06으로 60분 거리를 풀어 낸다.
 //   · 역치 심박 = (a) 심박–페이스 회귀의 역함수 × (b) 20~70분 대회급 노력의 실측 심박, 두 갈래를 교차한다.
 
 /// 역치 페이스 정의의 대회 시간(분) — Daniels T 페이스 ≈ 60분 대회 페이스.
@@ -17,30 +16,22 @@ let MR_THRESHOLD_RACE_MIN = 60.0
 let MR_THRESHOLD_HR_AGREE_BPM = 5.0
 /// 역치 페이스가 "좋아졌다"로 보는 문턱(초/km). ⚠ 임의로 정함 — 추세 문장·헤드라인 후보 문턱.
 let MR_THRESHOLD_IMPROVE_SEC = 3.0
-/// 역치 기준 기록 창(일) — 최근 24개월(사용자 결정 2026-10-01).
-/// 이력: 180일은 강한 러닝이 빠질 때마다 한 달 30초 출렁, 365일 훈련 노력은 대회 아닌 러닝이 섞여 흩어졌다.
-/// 대회는 1년에 몇 번뿐이라 24개월로 넓힌다. ⚠ 기간 자체는 임의로 정함.
-/// ⚠ 대회 예측(`mrPredict`)은 550일 밖 노력을 버린다 → 역치는 mrPredict를 거치지 않고 기준 기록에서 바로 환산한다.
-let MR_THRESHOLD_WINDOW_DAYS = 730
+/// 역치 기준 노력 창(일). 대회 예측은 최근 550일 최고 기록을 앵커로 쓰지만(최고 기록 = 예측의 근거),
+/// 역치는 "지금 체력"이라 550일 앵커로는 새 최고 기록 전까지 추세가 평평하다(2026-10-01 실기기).
+/// ⚠ 365일은 임의로 정함. 처음 180일은 강한 러닝이 창에서 빠질 때마다 한 달에 30초씩 출렁였다(2026-10-01 실기기
+///   5'27→5'58→5'23) — 체력 변화가 아니라 근거 기록의 들고 남. 1년이면 계절마다 한 번쯤 있는 대회·강한 러닝이 창에 남는다.
+let MR_THRESHOLD_WINDOW_DAYS = 365
 
 /// 한 시점(asOf) 기준 역치 추정.
 struct MRThresholdEstimate: Equatable, Sendable {
     let asOf: Date
     let paceSecPerKm: Double
-    let paceConfidence: MRConfidence     // 대회 기준 = 보통, 훈련 노력 기준 = 낮음
+    let paceConfidence: MRConfidence     // 하프 예측의 confidence
     let hr: Double?
     let hrConfidence: MRConfidence       // hr nil이면 .none
     let basis: [String]                  // 화면 근거줄 (예측 근거 · 회귀 n · 노력 n)
     /// 큰 숫자의 기준 기록(앵커) — 카드가 그 점을 굵게, 추세 문장이 갱신 시점을 말할 때 쓴다
     var anchor: MRRaceEffort? = nil
-    /// 기준 기록이 확정 대회면 그 이름
-    var anchorName: String? = nil
-}
-
-/// 확정 대회 한 건 — 이름을 달고 다니는 노력(`MRRaceEffort.isConfirmedRace == true`).
-struct MRThresholdRace: Equatable, Sendable {
-    let effort: MRRaceEffort
-    let name: String
 }
 
 /// 역치 페이스(초/km) — 하프 등가 기록(분)에서 Riegel 1.06으로 60분에 갈 수 있는 거리를 풀어 페이스로.
@@ -110,83 +101,49 @@ func mrCombineThresholdHR(regression: Double?, sustained: (hr: Double, n: Int)?)
     }
 }
 
-/// 앵커 규칙 — 거리 차이를 지우고 가장 빠른 기록(`mrPredict`와 같은 환산시간 / 거리^1.06 최소).
-private func mrThresholdBest(_ es: [MRRaceEffort]) -> MRRaceEffort? {
-    es.min { $0.timeMinRef / pow($0.distanceM, 1.06) < $1.timeMinRef / pow($1.distanceM, 1.06) }
-}
-
-/// 점·앵커에 쓰는 대회 거리 — 풀은 60분 환산이 지구력(후반 저하)을 섞어 느리게 나와 뺀다.
-private let mrThresholdRaceLabels: Set<String> = ["5K", "10K", "하프"]
-
-/// 한 노력의 60분 대회 페이스 — 개인 지수(하프 쪽)로 하프 등가로 옮긴 뒤 `mrThresholdPace`.
-/// `mrPredict`의 하프 계산과 같은 식이라, 같은 앵커면 예측 화면의 하프와 맞는다.
-func mrThresholdPace(effort e: MRRaceEffort, fit: MRExponentFit) -> Double? {
-    let bHalf = fit.bFor(distanceM: MRDistance.dH, prior: 1.06).b
-    return mrThresholdPace(halfEquivMin: e.timeMinRef * pow(MRDistance.dH / e.distanceM, bHalf))
-}
-
-/// 한 시점(asOf) 기준 역치 재료 — 그 시점까지 러닝만, 창(24개월) 안 대회·노력.
-private struct MRThresholdInputs {
-    let past: [MRWorkout]
-    let fit: MRExponentFit
-    let races: [MRThresholdRace]        // 창 안 확정 대회(5K·10K·하프), 더위 환산 적용
-    let efforts: [MRRaceEffort]         // 창 안 대회급 노력(대회 없을 때 폴백)
-}
-
-private func mrThresholdInputs(runs: [MRWorkout], races: [MRThresholdRace],
-                               restingHRSamples: [(date: Date, value: Double)],
-                               dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, asOf: Date) -> MRThresholdInputs {
-    let cal = Calendar.current
-    func inWindow(_ d: Date) -> Bool {
-        let n = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: asOf)).day ?? -1
-        return n >= 0 && n <= MR_THRESHOLD_WINDOW_DAYS
-    }
+/// 한 시점(asOf) 기준 역치 추정. 그 시점까지의 러닝만 본다 — 대회 비교와 같은 as-of 파이프라인
+/// (physiology → 노력+더위 → 지수 적합 → 프로필 → 예측 → 심박–페이스 회귀). 하프 예측이 없으면 nil.
+func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: Double)],
+                     dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, asOf: Date) -> MRThresholdEstimate? {
+    let L = AppLanguage.shared
     let past = runs.filter { $0.start <= asOf }
     // 안정시 심박도 그 시점까지만 — 미래 샘플이 과거 추정에 새지 않게
     let phys = mrPhysiology(runs: past, restingHRSamples: restingHRSamples.filter { $0.date <= asOf },
                             dateOfBirth: dateOfBirth, sex: sex, asOf: asOf)
-    // 지수 적합은 전체 노력으로. 노력은 창 안 러닝만으로 다시 고른다 —
-    // ⚠ `mrDetectEfforts`는 전 기간 거리대별 최고 하나씩만 남겨, 전체 결과를 창으로 자르면 최근 노력이 거의 없다.
-    let fit = mrFitExponent(mrApplyHeat(mrDetectEfforts(runs: past, phys: phys), heat: heat))
-    let windowRuns = past.filter { inWindow($0.date) }
-    let efforts = mrApplyHeat(mrDetectEfforts(runs: windowRuns, phys: phys), heat: heat)
-        .filter { $0.distanceM <= MRDistance.dH * 1.02 }   // 풀·30km 롱런 제외(대회 점과 같은 이유)
-    let rs = races
-        .filter { $0.effort.date <= asOf && inWindow($0.effort.date) && mrThresholdRaceLabels.contains($0.effort.label) }
-        .map { r in MRThresholdRace(effort: mrApplyHeat([r.effort], heat: heat)[0], name: r.name) }
-    return MRThresholdInputs(past: past, fit: fit, races: rs, efforts: efforts)
-}
-
-/// 한 시점(asOf) 기준 역치 추정. 기준 기록 = 창 안 확정 대회 중 최고, 대회가 없으면 대회급 노력 중 최고.
-/// 기준 기록이 없으면 nil.
-func mrThresholdAsOf(runs: [MRWorkout], races: [MRThresholdRace] = [],
-                     restingHRSamples: [(date: Date, value: Double)],
-                     dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, asOf: Date) -> MRThresholdEstimate? {
-    let L = AppLanguage.shared
+    let efforts = mrApplyHeat(mrDetectEfforts(runs: past, phys: phys), heat: heat)
+    let fit = mrFitExponent(efforts)
+    let prof = mrProfile(runs: past, efforts: efforts, asOf: asOf)
+    // 지수 적합·프로필은 전체 노력으로, 앵커만 최근 창 안에서 고른다. 창 안에 노력이 없으면 그 시점은 nil(빈 점).
+    // ⚠ 전체 노력을 창으로 자르면 안 된다 — `mrDetectEfforts`는 **전 기간** 거리대별 최고 하나씩만 남기고
+    //   최고 VDOT의 88% 미만을 버려서, 최근 노력은 대부분 이미 탈락해 있다(2026-10-01 실기기: 카드 사라짐).
+    //   → 창 안의 러닝만으로 노력을 다시 고른다(심박 게이트·VDOT 필터도 창 안 기준).
     let cal = Calendar.current
-    let inp = mrThresholdInputs(runs: runs, races: races, restingHRSamples: restingHRSamples,
-                                dateOfBirth: dateOfBirth, sex: sex, heat: heat, asOf: asOf)
-    let fromRace = !inp.races.isEmpty
-    let anchor = fromRace ? mrThresholdBest(inp.races.map(\.effort)) : mrThresholdBest(inp.efforts)
-    guard let a = anchor, let pace = mrThresholdPace(effort: a, fit: inp.fit) else { return nil }
-    let anchorName = fromRace ? inp.races.first { $0.effort == a }?.name : nil
+    let windowRuns = past.filter {
+        let d = cal.dateComponents([.day], from: $0.date, to: cal.startOfDay(for: asOf)).day ?? -1
+        return d >= 0 && d <= MR_THRESHOLD_WINDOW_DAYS
+    }
+    let recent = mrApplyHeat(mrDetectEfforts(runs: windowRuns, phys: phys), heat: heat)
+    let preds = mrPredict(efforts: recent, fit: fit, profile: prof, heat: heat, asOf: asOf)
+    guard let half = preds.first(where: { $0.label == "하프" }),
+          let pace = mrThresholdPace(halfEquivMin: half.midMin) else { return nil }
+    let hrp = mrFitHRPaceModel(runs: past, asOf: asOf)
     #if DEBUG
-    print("[역치:앵커] asOf \(asOf.formatted(date: .numeric, time: .omitted)) · 대회 \(inp.races.count)건 · 노력 \(inp.efforts.count)건 · 기준 \(anchorName ?? "훈련") \(a.label) \(mrFormatHMS(a.timeMin)) → \(mrFormatPace(pace))")
+    print("[역치:앵커] asOf \(asOf.formatted(date: .numeric, time: .omitted)) · 창 노력 \(recent.count)건 · \(half.basis.first ?? "") → \(mrFormatPace(pace))")
     #endif
 
-    let hrp = mrFitHRPaceModel(runs: inp.past, asOf: asOf)
     let reg = hrp.hrAtPace(pace)
-    let sus = mrSustainedEffortHR(runs: inp.past, efforts: inp.efforts + inp.races.map(\.effort), asOf: asOf)
+    let sus = mrSustainedEffortHR(runs: past, efforts: recent, asOf: asOf)
     let combined = mrCombineThresholdHR(regression: reg, sustained: sus)
 
-    let ago = cal.dateComponents([.day], from: a.date, to: cal.startOfDay(for: asOf)).day ?? 0
-    let dist = a.label == "하프" ? L.s("하프", "Half") : a.label
-    let what = anchorName.map { "\($0) \(dist)" } ?? L.s("훈련 중 \(dist)", "training \(dist)")
-    var basis = [L.s("기준 기록: \(what) \(mrFormatDisplay(a.timeMin)) (\(ago)일 전)을 60분 대회 페이스로 환산",
-                     "Anchor: \(what) \(mrFormatDisplay(a.timeMin)) (\(ago) days ago) as 1-hour race pace")]
-    if !fromRace {
-        basis.append(L.s("최근 24개월 확정 대회가 없어 대회급 훈련 기록으로 냈어요",
-                         "No confirmed race in 24 months — estimated from race-level training runs"))
+    var basis = [L.s("하프 예측 \(mrFormatHMS(half.midMin))에서 60분 대회 페이스로 환산",
+                     "60-min race pace from half prediction \(mrFormatHMS(half.midMin))")]
+    // 기준 기록 — mrPredict와 같은 앵커 규칙(환산시간 / 거리^1.06 최소). 언제 빠질지 보이게 며칠 전인지 밝힌다.
+    let anchor = recent.min(by: { $0.timeMinRef / pow($0.distanceM, 1.06) < $1.timeMinRef / pow($1.distanceM, 1.06) })
+    if let a = anchor {
+        let ago = cal.dateComponents([.day], from: a.date, to: cal.startOfDay(for: asOf)).day ?? 0
+        let name = a.label == "하프" ? L.s("하프", "Half") : a.label
+        basis.append(L.s("기준 기록: \(name) \(mrFormatDisplay(a.timeMin)) (\(ago)일 전)",
+                         "Anchor: \(name) \(mrFormatDisplay(a.timeMin)) (\(ago) days ago)"))
     }
     if let r = reg {
         basis.append(L.s("심박–페이스 회귀(러닝 \(hrp.n)회) \(Int(r.rounded()))bpm",
@@ -201,70 +158,113 @@ func mrThresholdAsOf(runs: [MRWorkout], races: [MRThresholdRace] = [],
                          "HR not shown — the two estimates differ by more than \(Int(MR_THRESHOLD_HR_AGREE_BPM))bpm"))
     }
 
-    return MRThresholdEstimate(asOf: asOf, paceSecPerKm: pace, paceConfidence: fromRace ? .medium : .low,
+    return MRThresholdEstimate(asOf: asOf, paceSecPerKm: pace, paceConfidence: half.confidence,
                                hr: combined?.hr, hrConfidence: combined?.confidence ?? .none,
-                               basis: basis, anchor: a, anchorName: anchorName)
+                               basis: basis, anchor: anchor)
 }
 
-// MARK: - 성장 탭 카드: 현재 추정 + 대회 점
+// MARK: - 성장 탭 카드: 현재 추정 + 강한 러닝 점
 
-/// 카드 점 하나 — 대회(또는 대회급 노력) 한 건을 60분 대회 페이스로 환산한 값.
+/// 카드 점 하나 — 실제 강한 러닝 한 건을 60분 대회 페이스로 환산한 값.
 struct MRThresholdEffortPoint: Equatable, Sendable {
     let date: Date
-    let label: String          // "10K" / "하프"
-    let name: String?          // 확정 대회 이름
+    let label: String          // "10K" / "하프" / "12.4K"
     let paceSecPerKm: Double
     let isAnchor: Bool         // 큰 숫자의 기준 기록
 }
 
-/// 성장 탭 카드 재료 — 큰 숫자(현재 추정)와 최근 24개월 대회 점.
+/// 성장 탭 카드 재료 — 큰 숫자(현재 추정)와 최근 12개월 강한 러닝 점.
 ///
-/// ⚠ 추세"선"은 네 번 실패했다(2026-10-01 실기기): 창 안 최고 기록(출렁/평평) · 90일 심박–페이스 회귀(심박 141~160
-///   좁은 띠라 기울기 붕괴) · 역치 심박 ±3bpm 평소 러닝(6'00", 역치가 아닌 다른 지표) · 심박 상위 12% 훈련(대회 아닌 러닝이
-///   섞여 5'20"~7'40" 흩어짐). 역치는 전력으로 달린 기록에서만 보인다 → **확정 대회만 점으로**(사용자 결정).
-///   대회가 없으면 대회급 노력(거리대별 최고)으로 폴백.
+/// ⚠ 추세"선"은 세 번 실패했다(2026-10-01 실기기):
+///   ① 창 안 최고 기록 — 180일이면 한 달 30초 출렁, 365일이면 평평(최댓값은 드물게 바뀐다)
+///   ② 90일 심박–페이스 회귀 — 평균 심박이 141~160 좁은 띠에 몰려 기울기 붕괴
+///   ③ 역치 심박 ±3bpm 평소 러닝 중앙값 — 6'00" 근처, 큰 숫자보다 40~60초 느림.
+///      평소 러닝은 길고(심박 드리프트) 워밍업·오르막이 섞여 역치가 아니라 다른 지표다.
+///   역치 페이스는 강한 러닝(대회·템포)에서만 직접 보인다 → 그 러닝들을 **점**으로 찍는다(선 없음, 사용자 선택 A).
 struct MRThresholdTrendResult: Equatable, Sendable {
     let current: MRThresholdEstimate
     let points: [MRThresholdEffortPoint]
-    /// 점이 확정 대회인가(아니면 대회급 훈련 폴백) — 카드 설명 줄이 달라진다
-    let pointsAreRaces: Bool
     /// 최근 기준 기록이 역치를 앞당겼을 때만 — 좋아졌을 때만 말한다
     let sentence: String?
 }
 
+/// 점으로 찍을 강한 러닝의 거리 상한(km). 풀·울트라는 60분 환산이 지구력(후반 저하)을 섞어 느리게 나온다.
+/// ⚠ 25km는 임의로 정함 — 하프(21.1)는 넣고 30km 롱런·풀은 뺀다.
+let MR_THRESHOLD_POINT_MAX_KM = 25.0
 /// 추세 문장 — 기준 기록이 이 기간 안의 것일 때만 "갱신"을 말한다. ⚠ 60일은 임의로 정함.
 let MR_THRESHOLD_SENTENCE_DAYS = 60
 
-func mrThresholdTrend(runs: [MRWorkout], races: [MRThresholdRace],
-                      restingHRSamples: [(date: Date, value: Double)],
-                      dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, now: Date) -> MRThresholdTrendResult? {
-    guard let current = mrThresholdAsOf(runs: runs, races: races, restingHRSamples: restingHRSamples,
-                                        dateOfBirth: dateOfBirth, sex: sex, heat: heat, asOf: now) else { return nil }
-    let inp = mrThresholdInputs(runs: runs, races: races, restingHRSamples: restingHRSamples,
-                                dateOfBirth: dateOfBirth, sex: sex, heat: heat, asOf: now)
-    let fromRace = !inp.races.isEmpty
-    let src: [(MRRaceEffort, String?)] = fromRace ? inp.races.map { ($0.effort, $0.name) } : inp.efforts.map { ($0, nil) }
-    let points = src.compactMap { e, name in
-        mrThresholdPace(effort: e, fit: inp.fit).map {
-            MRThresholdEffortPoint(date: e.date, label: e.label, name: name, paceSecPerKm: $0,
-                                   isAnchor: e == current.anchor)
+/// 한 노력의 60분 대회 페이스 — `mrPredict`의 하프 계산과 같은 식(같은 개인 지수)이라 앵커 점 = 큰 숫자.
+func mrThresholdPace(effort e: MRRaceEffort, fit: MRExponentFit) -> Double? {
+    let bHalf = fit.bFor(distanceM: MRDistance.dH, prior: 1.06).b
+    return mrThresholdPace(halfEquivMin: e.timeMinRef * pow(MRDistance.dH / e.distanceM, bHalf))
+}
+
+/// 최근 12개월(`MR_THRESHOLD_WINDOW_DAYS`) 강한 러닝 — 본인 심박 상위 12%(대회급 노력 감지와 같은 게이트) 러닝 전부.
+/// 대회급 노력 감지(`mrDetectEfforts`)는 거리대별 최고 하나씩만 남겨 점이 4개뿐이라, 여기선 중복 제거·VDOT 필터를 하지 않는다.
+/// 심박 게이트를 못 만들면(심박 있는 러닝 20회 미만 — 폰 러닝) 대회급 노력만 점으로. 앵커는 항상 포함.
+func mrThresholdEffortPoints(windowRuns: [MRWorkout], recentEfforts: [MRRaceEffort], anchor: MRRaceEffort?,
+                             fit: MRExponentFit, heat: MRHeatModel) -> [MRThresholdEffortPoint] {
+    let cal = Calendar.current
+    let cands = windowRuns.filter {
+        !$0.indoor && !$0.isInterval && $0.durationMin >= 12
+            && ($0.distanceKm ?? 0) >= 3 && ($0.distanceKm ?? 0) <= MR_THRESHOLD_POINT_MAX_KM
+    }
+    let hrs = cands.compactMap(\.hrAvg).sorted()
+    var efforts: [MRRaceEffort]
+    if hrs.count >= 20 {
+        let gate = hrs[min(Int(Double(hrs.count) * 0.88), hrs.count - 1)]
+        efforts = mrApplyHeat(cands.compactMap { w -> MRRaceEffort? in
+            guard let hr = w.hrAvg, hr >= gate, let km = w.distanceKm else { return nil }
+            let n = mrNormalizeDistance(distanceM: km * 1000, timeMin: w.durationMin)
+            return MRRaceEffort(date: w.date, distanceM: n.distanceM, timeMin: n.timeMin, timeMinRef: n.timeMin,
+                                tempC: w.tempC, label: n.label, isConfirmedRace: false)
+        }, heat: heat)
+    } else {
+        efforts = recentEfforts.filter { $0.distanceM <= MR_THRESHOLD_POINT_MAX_KM * 1000 }
+    }
+    func same(_ a: MRRaceEffort, _ b: MRRaceEffort) -> Bool {
+        cal.isDate(a.date, inSameDayAs: b.date) && abs(a.distanceM - b.distanceM) / b.distanceM < 0.05
+    }
+    if let a = anchor, !efforts.contains(where: { same($0, a) }) { efforts.append(a) }
+    return efforts.compactMap { e in
+        mrThresholdPace(effort: e, fit: fit).map {
+            MRThresholdEffortPoint(date: e.date, label: e.label, paceSecPerKm: $0,
+                                   isAnchor: anchor.map { same(e, $0) } ?? false)
         }
     }
     .sorted { $0.date < $1.date }
+}
+
+func mrThresholdTrend(runs: [MRWorkout], restingHRSamples: [(date: Date, value: Double)],
+                      dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, now: Date) -> MRThresholdTrendResult? {
+    guard let current = mrThresholdAsOf(runs: runs, restingHRSamples: restingHRSamples,
+                                        dateOfBirth: dateOfBirth, sex: sex, heat: heat, asOf: now) else { return nil }
+    // 점 재료 — mrThresholdAsOf와 같은 파이프라인(전체 노력으로 지수, 창 안 러닝으로 노력)
+    let cal = Calendar.current
+    let past = runs.filter { $0.start <= now }
+    let phys = mrPhysiology(runs: past, restingHRSamples: restingHRSamples.filter { $0.date <= now },
+                            dateOfBirth: dateOfBirth, sex: sex, asOf: now)
+    let fit = mrFitExponent(mrApplyHeat(mrDetectEfforts(runs: past, phys: phys), heat: heat))
+    let windowRuns = past.filter {
+        let d = cal.dateComponents([.day], from: $0.date, to: cal.startOfDay(for: now)).day ?? -1
+        return d >= 0 && d <= MR_THRESHOLD_WINDOW_DAYS
+    }
+    let recent = mrApplyHeat(mrDetectEfforts(runs: windowRuns, phys: phys), heat: heat)
+    let points = mrThresholdEffortPoints(windowRuns: windowRuns, recentEfforts: recent, anchor: current.anchor,
+                                         fit: fit, heat: heat)
 
     // 문장 — 기준 기록이 최근 60일 안이고, 그 기록 직전 추정보다 3초/km 이상 빨라졌을 때만
     var sentence: String?
-    let cal = Calendar.current
     if let a = current.anchor,
        let ago = cal.dateComponents([.day], from: a.date, to: cal.startOfDay(for: now)).day,
        ago <= MR_THRESHOLD_SENTENCE_DAYS {
-        let before = mrThresholdAsOf(runs: runs, races: races, restingHRSamples: restingHRSamples,
-                                     dateOfBirth: dateOfBirth, sex: sex, heat: heat,
-                                     asOf: a.date.addingTimeInterval(-1))
+        let before = mrThresholdAsOf(runs: runs, restingHRSamples: restingHRSamples, dateOfBirth: dateOfBirth,
+                                     sex: sex, heat: heat, asOf: a.date.addingTimeInterval(-1))
         sentence = mrThresholdUpdateSentence(anchor: a, beforePace: before?.paceSecPerKm,
                                              afterPace: current.paceSecPerKm)
     }
-    return MRThresholdTrendResult(current: current, points: points, pointsAreRaces: fromRace, sentence: sentence)
+    return MRThresholdTrendResult(current: current, points: points, sentence: sentence)
 }
 
 /// 갱신 문장 — 직전 추정보다 `MR_THRESHOLD_IMPROVE_SEC` 이상 빨라졌을 때만. 직전 추정이 없으면(첫 기록) 말하지 않는다.

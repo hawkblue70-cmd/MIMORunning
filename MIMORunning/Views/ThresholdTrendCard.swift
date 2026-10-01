@@ -1,8 +1,7 @@
 import SwiftUI
 import Charts
 
-/// 성장 탭 '역치 페이스' — 큰 숫자는 현재 추정(기록·심박 교차), 점은 최근 24개월 확정 대회를 60분 대회 페이스로 환산한 값
-/// (대회가 없으면 대회급 훈련 기록).
+/// 성장 탭 '역치 페이스' — 큰 숫자는 현재 추정(기록·심박 교차), 점은 최근 12개월 강한 러닝을 60분 대회 페이스로 환산한 값.
 /// 선이 아니라 점인 이유는 `MRThresholdTrendResult` 참고. 굵은 점 = 큰 숫자의 기준 기록, 점선 = 큰 숫자.
 /// 값은 엔진(`mrThresholdTrend`)이 내고 여기선 그리기만. 표시 조건(중수 이상·3점 이상)은 GrowthView가 건다.
 /// 카드 모양은 같은 섹션의 `MRFormObservationCard`(바탕·모서리·제목·본문·근거 글자)와 같게.
@@ -49,11 +48,8 @@ struct ThresholdTrendCard: View {
             chart(pts)
                 .frame(height: 100)
 
-            Text(trend.pointsAreRaces
-                 ? L.s("점: 최근 24개월 대회 기록을 60분 대회 페이스로 환산 · 굵은 점이 지금 기준 대회",
-                       "Dots: races in the last 24 months as 1-hour race pace · bold dot is the current anchor race")
-                 : L.s("점: 최근 24개월 대회급 훈련 기록을 60분 대회 페이스로 환산 · 굵은 점이 지금 기준 기록",
-                       "Dots: race-level training runs in the last 24 months as 1-hour race pace · bold dot is the current anchor"))
+            Text(L.s("점: 최근 12개월 강한 러닝을 60분 대회 페이스로 환산 · 굵은 점이 지금 기준 기록",
+                     "Dots: hard runs in the last 12 months as 1-hour race pace · bold dot is the current anchor"))
                 .font(.system(size: 11))
                 .foregroundStyle(Color.mrInk3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -141,7 +137,7 @@ struct ThresholdTrendCard: View {
         }
         .chartXScale(range: .plotDimension(padding: 14))   // 양 끝 점의 달 라벨이 잘려 빠지지 않게
         .chartXAxis {
-            AxisMarks(values: .stride(by: .month, count: 4)) { _ in
+            AxisMarks(values: .stride(by: .month, count: 2)) { _ in
                 AxisValueLabel(format: .dateTime.month(.abbreviated), centered: false)
                     .font(.system(size: 9))
                     .foregroundStyle(Color.mrInk3)
