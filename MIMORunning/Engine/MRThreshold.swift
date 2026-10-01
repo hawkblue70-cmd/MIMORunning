@@ -214,6 +214,20 @@ func mrThresholdEffortPoints(windowRuns: [MRWorkout], recentEfforts: [MRRaceEffo
     var efforts: [MRRaceEffort]
     if hrs.count >= 20 {
         let gate = hrs[min(Int(Double(hrs.count) * 0.88), hrs.count - 1)]
+        #if DEBUG
+        // 최근 몇 달 점이 비는 이유 확인용 — 그 달 후보 수·최고 평균 심박·게이트 통과 수
+        do {
+            let df = DateFormatter(); df.dateFormat = "yy.MM"
+            let byMonth = Dictionary(grouping: cands) { df.string(from: $0.start) }
+            let rows = byMonth.keys.sorted().suffix(6).map { k -> String in
+                let ws = byMonth[k] ?? []
+                let mx = ws.compactMap(\.hrAvg).max().map { String(format: "%.0f", $0) } ?? "-"
+                let pass = ws.filter { ($0.hrAvg ?? 0) >= gate }.count
+                return "\(k) \(ws.count)회·최고 \(mx)·통과 \(pass)"
+            }
+            print(String(format: "[역치:점] 게이트 %.0fbpm(후보 %d회 상위 12%%) · ", gate, hrs.count) + rows.joined(separator: " / "))
+        }
+        #endif
         efforts = mrApplyHeat(cands.compactMap { w -> MRRaceEffort? in
             guard let hr = w.hrAvg, hr >= gate, let km = w.distanceKm else { return nil }
             let n = mrNormalizeDistance(distanceM: km * 1000, timeMin: w.durationMin)

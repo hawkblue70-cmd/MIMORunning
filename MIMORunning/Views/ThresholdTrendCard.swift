@@ -13,6 +13,12 @@ struct ThresholdTrendCard: View {
 
     private var basisLines: [String] { trend.current.basis }
 
+    private var xDomain: ClosedRange<Date> {
+        let end = trend.current.asOf
+        let start = Calendar.current.date(byAdding: .day, value: -MR_THRESHOLD_WINDOW_DAYS, to: end) ?? end
+        return start...end
+    }
+
     var body: some View {
         let L = AppLanguage.shared
         let pts = trend.points
@@ -135,7 +141,8 @@ struct ThresholdTrendCard: View {
                 }
             }
         }
-        .chartXScale(range: .plotDimension(padding: 14))   // 양 끝 점의 달 라벨이 잘려 빠지지 않게
+        // x축은 항상 "12개월 전 ~ 오늘" — 마지막 점에서 끝나면 최근에 강한 러닝이 없다는 사실과 기준 기록의 나이가 안 보인다
+        .chartXScale(domain: xDomain, range: .plotDimension(padding: 14))
         .chartXAxis {
             AxisMarks(values: .stride(by: .month, count: 2)) { _ in
                 AxisValueLabel(format: .dateTime.month(.abbreviated), centered: false)
