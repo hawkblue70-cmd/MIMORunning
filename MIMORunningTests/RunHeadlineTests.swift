@@ -108,4 +108,54 @@ struct RunHeadlineTests {
         #expect(h?.title == "숨 고르는 러닝")
         #expect(h?.fact == "대회 계획 테이퍼 주")
     }
+
+    // MARK: - 역치 (2026-10-01)
+
+    @Test func thresholdRaiseLeadsGoodSignals() {
+        // 직전 5'05" → 직후 4'58" (7초 빨라짐) — 효율 신호보다 앞
+        let t = RunHeadline.ThresholdContext(beforePace: 305, afterPace: 298, tempoGapSec: nil)
+        let h = RunHeadline.make(insight: nil, summaryInput: input(late: nil), summaryLines: todayLines,
+                                 efficiency: efficiency7, threshold: t)
+        #expect(h?.title == "역치를 밀어올린 러닝")
+        #expect(h?.fact == "역치 페이스 추정 5'05\" → 4'58\" · 같은 페이스에 심박 7bpm 낮음")
+        #expect(h?.source == .goodSignal)
+    }
+
+    @Test func thresholdGainBelowCutoffIsNoCandidate() {
+        let t = RunHeadline.ThresholdContext(beforePace: 300, afterPace: 298, tempoGapSec: nil)
+        let c = RunHeadline.candidates(insight: nil, input: input(late: nil), lines: todayLines,
+                                       efficiency: nil, threshold: t)
+        #expect(c.isEmpty)
+    }
+
+    @Test func tempoGapIsSecondFactOnly() {
+        // 템포런 + 효율 신호 — 제목은 효율, 두 번째 사실에 역치 대비 줄(같은 심박 축 "한계를 미는"은 건너뜀)
+        let slow = RunHeadline.ThresholdContext(beforePace: 300, afterPace: 300, tempoGapSec: 4.2)
+        let h = RunHeadline.make(insight: nil, summaryInput: input(late: nil, type: .tempo), summaryLines: todayLines,
+                                 efficiency: efficiency7, threshold: slow)
+        #expect(h?.title == "가벼워진 러닝")
+        #expect(h?.fact == "같은 페이스에 심박 7bpm 낮음 · 본인 역치 대비 +4초/km")
+        // 빠르면 −, 1초 미만이면 "그대로"
+        let fast = RunHeadline.candidates(insight: nil, input: input(late: nil, type: .tempo), lines: todayLines,
+                                          efficiency: nil, threshold: .init(tempoGapSec: -6))
+        #expect(fast.contains { $0.fact == "본인 역치 대비 −6초/km" && !$0.titleEligible })
+        let same = RunHeadline.candidates(insight: nil, input: input(late: nil, type: .tempo), lines: todayLines,
+                                          efficiency: nil, threshold: .init(tempoGapSec: 0.4))
+        #expect(same.contains { $0.fact == "본인 역치 페이스 그대로" })
+        // 템포런이 아니면 없음
+        let general = RunHeadline.candidates(insight: nil, input: input(late: nil), lines: todayLines,
+                                             efficiency: nil, threshold: .init(tempoGapSec: 4.2))
+        #expect(general.isEmpty)
+    }
+
+    @Test func nilThresholdKeepsExistingResult() {
+        let base = RunHeadline.make(insight: streakInsight, summaryInput: input(streak: 4, plan: "테이퍼"),
+                                    summaryLines: todayLines, efficiency: efficiency7)
+        let withNil = RunHeadline.make(insight: streakInsight, summaryInput: input(streak: 4, plan: "테이퍼"),
+                                       summaryLines: todayLines, efficiency: efficiency7, threshold: nil)
+        let withEmpty = RunHeadline.make(insight: streakInsight, summaryInput: input(streak: 4, plan: "테이퍼"),
+                                         summaryLines: todayLines, efficiency: efficiency7, threshold: .init())
+        #expect(base == withNil)
+        #expect(base == withEmpty)
+    }
 }

@@ -241,6 +241,10 @@ struct GrowthView: View {
                             }
                             LateRunDurabilityCard(points: lateRunPointsCache)
                             metricTrendsSection
+                            // 역치 페이스 추세 — 중수 이상·월별 점 3개 이상일 때만(설계 2026-10-01-threshold-estimate)
+                            if manager.userLevel.bucket >= .intermediate, engine.thresholdTrend.count >= 3 {
+                                ThresholdTrendCard(points: engine.thresholdTrend)
+                            }
                             MRHealthMetricsView(m: engine.healthMetrics)
                             bodyChangeSectionView
                             gapSection

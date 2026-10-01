@@ -100,7 +100,8 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
                      dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, asOf: Date) -> MRThresholdEstimate? {
     let L = AppLanguage.shared
     let past = runs.filter { $0.start <= asOf }
-    let phys = mrPhysiology(runs: past, restingHRSamples: restingHRSamples,
+    // 안정시 심박도 그 시점까지만 — 미래 샘플이 과거 추정에 새지 않게
+    let phys = mrPhysiology(runs: past, restingHRSamples: restingHRSamples.filter { $0.date <= asOf },
                             dateOfBirth: dateOfBirth, sex: sex, asOf: asOf)
     let efforts = mrApplyHeat(mrDetectEfforts(runs: past, phys: phys), heat: heat)
     let fit = mrFitExponent(efforts)

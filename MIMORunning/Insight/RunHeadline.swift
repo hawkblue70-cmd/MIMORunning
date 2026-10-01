@@ -33,18 +33,31 @@ struct RunHeadline: Equatable {
         var titleEligible: Bool = true
     }
 
+    /// 역치 추정 맥락(중수 이상 러닝만) — 판정은 엔진(`mrThresholdAsOf`)이 하고 여기선 고르기만.
+    /// 설계: docs/superpowers/specs/2026-10-01-threshold-estimate-design.md
+    struct ThresholdContext: Equatable {
+        /// 러닝 직전(시작 −1초) 기준 역치 페이스(초/km)
+        var beforePace: Double?
+        /// 러닝 직후(끝) 기준 역치 페이스(초/km)
+        var afterPace: Double?
+        /// 이 러닝 페이스 − 직전 역치 페이스(초/km). +면 역치보다 느림
+        var tempoGapSec: Double?
+    }
+
     /// 인사이트 엔진의 드문 사건 — 카드 판정보다 먼저
     static let rareThemes: Set<InsightTheme> = [.safety, .returnGap, .firstAchievement, .raceDay, .recordImproved, .milestone]
     /// "끝까지 버틴 러닝"을 제목으로 쓰는 최소 거리 — 짧은 러닝엔 과장
     static let heldTitleMinKm = 8.0
 
     static func make(insight: InsightResult?, summaryInput: RunSummaryInput?,
-                     summaryLines: [RunSummaryLine], efficiency: RunInsight?) -> RunHeadline? {
+                     summaryLines: [RunSummaryLine], efficiency: RunInsight?,
+                     threshold: ThresholdContext? = nil) -> RunHeadline? {
         // 재료 없음(워치 없는 러닝·재료 도착 전) → 엔진 결과 그대로
         guard let input = summaryInput, summaryLines.count >= 2 else {
             return insight.map { RunHeadline(title: $0.title, fact: $0.detail, next: nil, source: .fallback) }
         }
-        let cands = candidates(insight: insight, input: input, lines: summaryLines, efficiency: efficiency)
+        let cands = candidates(insight: insight, input: input, lines: summaryLines, efficiency: efficiency,
+                               threshold: threshold)
         guard let firstIdx = cands.firstIndex(where: { $0.titleEligible }) else {
             return insight.map { RunHeadline(title: $0.title, fact: $0.detail,
                                              next: nextAction(for: .none, lines: summaryLines), source: .fallback) }
@@ -66,7 +79,8 @@ struct RunHeadline: Equatable {
     // MARK: - 후보 (순서 = 배열 순서)
 
     static func candidates(insight: InsightResult?, input i: RunSummaryInput,
-                           lines: [RunSummaryLine], efficiency: RunInsight?) -> [Candidate] {
+                           lines: [RunSummaryLine], efficiency: RunInsight?,
+                           threshold: ThresholdContext? = nil) -> [Candidate] {
         let L = AppLanguage.shared
         func line(_ a: Axis) -> RunSummaryLine? { a.label.flatMap { lbl in lines.first { $0.axis == lbl } } }
         let planEasy = i.planPhase == "회복" || i.planPhase == "테이퍼"
@@ -89,6 +103,13 @@ struct RunHeadline: Equatable {
                                  fact: FormPhase.shortState(f), axis: .form))
         }
         // 3 좋은 신호
+        // 역치 상승 — 이 러닝이 들어가며 역치 페이스 추정이 문턱 이상 빨라졌다(좋은 신호 맨 앞)
+        if let b = threshold?.beforePace, let a = threshold?.afterPace, b - a >= MR_THRESHOLD_IMPROVE_SEC {
+            out.append(Candidate(source: .goodSignal, title: L.s("역치를 밀어올린 러닝", "Raising the Threshold"),
+                                 fact: L.s("역치 페이스 추정 \(mrFormatPace(b)) → \(mrFormatPace(a))",
+                                           "Threshold pace est. \(mrFormatPace(b)) → \(mrFormatPace(a))"),
+                                 axis: .none))
+        }
         if let e = efficiency, e.category == .efficiency, e.tone == .good, let h = e.highlights.first {
             out.append(Candidate(source: .goodSignal, title: L.s("가벼워진 러닝", "Lighter Run"),
                                  fact: L.s("같은 페이스에 심박 \(h) 낮음", "HR \(h) lower at the same pace"), axis: .heart))
@@ -104,6 +125,15 @@ struct RunHeadline: Equatable {
         if i.distanceRank == 1, let n = i.distanceSampleCount, n >= 5 {
             out.append(Candidate(source: .goodSignal, title: L.s("경계를 넓힌 러닝", "Expanding Boundaries"),
                                  fact: L.s("최근 \(n)회 중 가장 긴 거리", "Longest of your last \(n) runs"), axis: .distance))
+        }
+        // 템포런의 역치 대비 — 두 번째 사실 전용(좋은 신호 맨 끝). 느리면 +, 빠르면 −
+        if i.workoutType == .tempo, let gap = threshold?.tempoGapSec {
+            let sec = Int(abs(gap).rounded())
+            let sign = gap > 0 ? "+" : "−"
+            let fact = abs(gap) < 1
+                ? L.s("본인 역치 페이스 그대로", "Right at your threshold pace")
+                : L.s("본인 역치 대비 \(sign)\(sec)초/km", "\(sign)\(sec)s/km vs your threshold")
+            out.append(Candidate(source: .goodSignal, title: "", fact: fact, axis: .none, titleEligible: false))
         }
         // 4 가벼운 주의
         if let f = i.form, case .heavier = f.late {

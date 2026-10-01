@@ -262,7 +262,7 @@ struct ActivityDetailView: View {
     /// headline 재계산 트리거 — 인사이트·총평 재료가 바뀌면 달라지는 값들
     private var headlineKey: String {
         "\(insight?.title ?? "")|\(insight?.detail ?? "")|\(hrSamples.count)|\(formBaseline == nil ? 0 : 1)|" +
-        "\(effectiveHRZones.count)|\(runInsights.count)|\(detail == nil ? 0 : 1)"
+        "\(effectiveHRZones.count)|\(runInsights.count)|\(detail == nil ? 0 : 1)|\(engine.thresholdTrend.count)|\(level.rawValue)"
     }
 
     private func recomputeHeadline() {
@@ -270,8 +270,22 @@ struct ActivityDetailView: View {
         let input = RunSummaryBuilder.input(summaryContext)
         let lines = RunSummary.lines(input)
         let eff = runInsights.first { $0.category == .efficiency }
-        let h = RunHeadline.make(insight: insight, summaryInput: input, summaryLines: lines, efficiency: eff)
+        let h = RunHeadline.make(insight: insight, summaryInput: input, summaryLines: lines, efficiency: eff,
+                                 threshold: thresholdContext)
         if h != headline { withAnimation(.easeInOut(duration: 0.3)) { headline = h } }
+    }
+
+    /// 역치 맥락 — 중수 이상 러닝만. 이 러닝 직전·직후 기준 역치 페이스와, 이 러닝 페이스의 직전 역치 대비 차이.
+    /// 설계: docs/superpowers/specs/2026-10-01-threshold-estimate-design.md
+    private var thresholdContext: RunHeadline.ThresholdContext? {
+        guard activity.type == .running, level >= .intermediate else { return nil }
+        let change = engine.thresholdChange(runStart: activity.date, runEnd: activity.date + activity.duration)
+        let before = change.before?.paceSecPerKm
+        let gap: Double? = {
+            guard let b = before, let p = activity.paceSecPerKm else { return nil }
+            return p - b
+        }()
+        return RunHeadline.ThresholdContext(beforePace: before, afterPace: change.after?.paceSecPerKm, tempoGapSec: gap)
     }
 
     /// 공유 카드에 넘길 인사이트 — 요약을 골랐으면 그 제목·사실(헤드라인 = 맨 위 카드 제목), 드문 사건·대체면 엔진 결과 그대로

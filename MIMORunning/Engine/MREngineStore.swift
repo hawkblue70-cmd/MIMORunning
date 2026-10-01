@@ -51,6 +51,9 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var fit = MRExponentFit()
     @Published private(set) var profile = MRProfile()
     @Published private(set) var predictions: [MRPrediction] = []
+    /// 역치 페이스·심박 최근 6개월 월별 추세(월말 기준 + 지금, 날짜 오름차순). 성장 탭 카드가 쓴다.
+    /// 설계: docs/superpowers/specs/2026-10-01-threshold-estimate-design.md
+    @Published private(set) var thresholdTrend: [MRThresholdEstimate] = []
     @Published private(set) var plans: [MRRacePlan] = []
     @Published private(set) var checks: [MRGoalCheck] = []
     @Published private(set) var planlessRaces: [MRTargetRace] = []
@@ -161,6 +164,8 @@ final class MREngineStore: ObservableObject {
     private var asOfMemo: [String: Double?] = [:]
     private var asOfMemoStamp = ""
     private var storedSigmaObs: Double = 0
+    /// 러닝 직전·직후 역치 추정 메모 — 키 = 러닝 시작 시각. 러닝 목록이 바뀌면(refreshCore·증분 재읽기) 비운다.
+    private var thresholdChangeMemo: [Date: (before: MRThresholdEstimate?, after: MRThresholdEstimate?)] = [:]
 
     /// 뷰에서 주입 — HealthKitManager.persistedConfirmedMatches() 래퍼.
     /// refreshBacktest 진입부에서 storedConfirmedMatches가 비었을 때 폴백으로 호출.
@@ -339,6 +344,7 @@ final class MREngineStore: ObservableObject {
 
     private func refreshCore() async throws {
         let now = Date()
+        thresholdChangeMemo.removeAll()
 
         // 증분 fetch — 캐시 히트 시 WorkoutKit 쿼리 0회
         var fetched = try await timed("fetchRunsIncremental") { try await hk.fetchRunsIncremental() }
@@ -418,6 +424,7 @@ final class MREngineStore: ObservableObject {
         let sex: MRSex = sexRaw == .female ? .female : (sexRaw == .male ? .male : .unknown)
 
         runs = fetched
+        thresholdChangeMemo.removeAll()   // fetch 대기 중에 옛 목록으로 채워진 메모를 버린다
         // ⚠ 연속 주는 한 곳에서만 계산한다.
         //   홈·성장 탭·공유 카드가 같은 값을 가리켜야 사용자가 믿을 수 있다.
         streakWeeks = mrActiveWeekStreak(runs: fetched, asOf: now)
@@ -496,6 +503,16 @@ final class MREngineStore: ObservableObject {
 
         predictions = mrPredict(efforts: efforts, fit: fit, profile: profile,
                                 heat: heat, asOf: now)
+        thresholdTrend = mrThresholdTrend(runs: fetched, restingHRSamples: rhr,
+                                          dateOfBirth: dob, sex: sex, heat: heat, now: now)
+        #if DEBUG
+        if let last = thresholdTrend.last {
+            let hrStr = last.hr.map { "심박 \(Int($0.rounded()))(\(last.hrConfidence.label))" } ?? "심박 없음"
+            print("[역치] \(thresholdTrend.count)점 · 최신 \(mrFormatPace(last.paceSecPerKm)) · \(hrStr)")
+        } else {
+            print("[역치] 추정 불가(하프 예측 없음)")
+        }
+        #endif
 
         let he = halfEquivMin
         let upcoming = userInput.upcomingRaces(asOf: now)
@@ -1213,6 +1230,20 @@ final class MREngineStore: ObservableObject {
         #endif
     }
 
+    /// 이 러닝 직전(시작 −1초)·직후(끝) 기준 역치 추정 — 오늘의 인사이트 "역치를 밀어올린 러닝"·템포 역치 대비용.
+    /// as-of 파이프라인을 두 번 돌리므로 러닝 시작 시각별로 메모한다. 러닝 목록이 아직 없으면 메모하지 않고 nil.
+    func thresholdChange(runStart: Date, runEnd: Date) -> (before: MRThresholdEstimate?, after: MRThresholdEstimate?) {
+        if let hit = thresholdChangeMemo[runStart] { return hit }
+        guard !runs.isEmpty else { return (nil, nil) }
+        func est(_ asOf: Date) -> MRThresholdEstimate? {
+            mrThresholdAsOf(runs: runs, restingHRSamples: rhrSamples, dateOfBirth: storedDob,
+                            sex: storedSex, heat: heat, asOf: asOf)
+        }
+        let r = (before: est(runStart.addingTimeInterval(-1)), after: est(runEnd))
+        thresholdChangeMemo[runStart] = r
+        return r
+    }
+
     /// 앱을 켜둔 채 러닝을 마치고 돌아온 경우 — 기록 탭에 새 러닝이 들어오거나 앱이 앞으로 올 때 부른다.
     /// 워크아웃을 증분으로 다시 읽어(캐시 히트면 오늘 것 하나만 HealthKit 조회) 목록이 달라졌을 때만
     /// 조언·오늘 카드(이번 주·이번 달·올해·누적 거리 행)를 다시 만든다. 전체 refresh(state=.loading)는 하지 않는다 —
@@ -1229,6 +1260,7 @@ final class MREngineStore: ObservableObject {
         #endif
         guard changed else { return }
         runs = fetched
+        thresholdChangeMemo.removeAll()
         let now = Date()
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
                                races: userInput.races,
