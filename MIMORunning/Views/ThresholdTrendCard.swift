@@ -1,18 +1,25 @@
 import SwiftUI
 import Charts
 
-/// 성장 탭 '역치 페이스' — 최근 6개월 월말 기준 역치 페이스 추정 추세(빠를수록 위).
+/// 성장 탭 '역치 페이스' — 큰 숫자는 현재 추정(기록·심박 교차), 선은 최근 6개월 추세(빠를수록 위).
+/// 심박이 있으면 선은 "같은 역치 심박에서의 페이스"(최근 90일 러닝), 없으면 기록 기준 — `MRThresholdTrendResult` 참고.
 /// 값은 엔진(`mrThresholdTrend`)이 내고 여기선 그리기만. 표시 조건(중수 이상·3점 이상)은 GrowthView가 건다.
 /// 카드 모양은 같은 섹션의 `MRFormObservationCard`(바탕·모서리·제목·본문·근거 글자)와 같게.
 /// 설계: docs/superpowers/specs/2026-10-01-threshold-estimate-design.md
 struct ThresholdTrendCard: View {
-    let points: [MRThresholdEstimate]
+    let trend: MRThresholdTrendResult
 
     @State private var expanded = false
 
+    /// 근거줄 — 현재 추정 근거 + (심박 기준 선이면) 최신 점의 회귀 근거
+    private var basisLines: [String] {
+        trend.current.basis + (trend.lineIsHRBased ? (trend.line.last?.basis ?? []) : [])
+    }
+
     var body: some View {
         let L = AppLanguage.shared
-        let pts = points.sorted { $0.asOf < $1.asOf }
+        let pts = trend.line.sorted { $0.asOf < $1.asOf }
+        let current = trend.current
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "speedometer")
@@ -24,16 +31,14 @@ struct ThresholdTrendCard: View {
                 Spacer()
             }
 
-            if let last = pts.last {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("\(mrFormatPace(last.paceSecPerKm))/km")
-                        .font(.system(.title3, design: .rounded).weight(.bold))
-                        .foregroundStyle(Theme.pace)
-                    if let hr = last.hr {
-                        Text(L.s(" · 역치 심박 \(Int(hr.rounded()))bpm", " · Threshold HR \(Int(hr.rounded()))bpm"))
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color.mrInk2)
-                    }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text("\(mrFormatPace(current.paceSecPerKm))/km")
+                    .font(.system(.title3, design: .rounded).weight(.bold))
+                    .foregroundStyle(Theme.pace)
+                if let hr = current.hr {
+                    Text(L.s(" · 역치 심박 \(Int(hr.rounded()))bpm", " · Threshold HR \(Int(hr.rounded()))bpm"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.mrInk2)
                 }
             }
 
@@ -45,6 +50,13 @@ struct ThresholdTrendCard: View {
 
             chart(pts)
                 .frame(height: 100)
+
+            if trend.lineIsHRBased, let hr = current.hr {
+                Text(L.s("선: 역치 심박 \(Int(hr.rounded()))bpm에서 낼 수 있는 페이스 · 최근 90일 러닝",
+                         "Line: pace you can run at \(Int(hr.rounded()))bpm · runs in the last 90 days"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.mrInk3)
+            }
 
             // 설명 줄 — 탭하면 최신 시점 근거줄을 펼친다
             Button {
@@ -65,9 +77,9 @@ struct ThresholdTrendCard: View {
             }
             .buttonStyle(.plain)
 
-            if expanded, let basis = pts.last?.basis, !basis.isEmpty {
+            if expanded, !basisLines.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(basis, id: \.self) { b in
+                    ForEach(basisLines, id: \.self) { b in
                         Text("· " + b)
                             .font(.system(size: 11))
                             .foregroundStyle(Color.mrInk3)

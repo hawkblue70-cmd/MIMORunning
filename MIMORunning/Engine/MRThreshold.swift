@@ -125,6 +125,9 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
     guard let half = preds.first(where: { $0.label == "하프" }),
           let pace = mrThresholdPace(halfEquivMin: half.midMin) else { return nil }
     let hrp = mrFitHRPaceModel(runs: past, asOf: asOf)
+    #if DEBUG
+    print("[역치:앵커] asOf \(asOf.formatted(date: .numeric, time: .omitted)) · 창 노력 \(recent.count)건 · \(half.basis.first ?? "") → \(mrFormatPace(pace))")
+    #endif
 
     let reg = hrp.hrAtPace(pace)
     let sus = mrSustainedEffortHR(runs: past, efforts: recent, asOf: asOf)
@@ -150,19 +153,70 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
                                basis: basis)
 }
 
-/// 최근 6개월 월별 추세 — 오늘에서 5~0개월 전, 매달 같은 날짜로 6시점(간격 고르게). 추정 불가 시점은 건너뛴다. 날짜 오름차순.
+/// 추세 시점 — 오늘에서 5~0개월 전, 매달 같은 날짜로 6시점(간격 고르게). 날짜 오름차순.
 /// (처음엔 "각 달 말일 + now"였는데 월초에는 지난달 말일과 하루 차이로 점이 겹쳤다 — 2026-10-01 실기기)
-func mrThresholdTrend(runs: [MRWorkout], restingHRSamples: [(date: Date, value: Double)],
-                      dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, now: Date) -> [MRThresholdEstimate] {
+func mrThresholdTrendDates(now: Date) -> [Date] {
     let cal = Calendar.current
-    let points: [Date] = (0...5).reversed().compactMap { k in
+    return (0...5).reversed().compactMap { k in
         k == 0 ? now : cal.date(byAdding: .month, value: -k, to: now)
     }
-    return points.compactMap {
+}
+
+/// 심박 기준 추세의 회귀 창(일). ⚠ 90일은 임의로 정함 — 레벨 판정 창과 같게. 최근 체력만 보되 회귀 표본(≥8)은 채우는 길이.
+let MR_THRESHOLD_TREND_HR_WINDOW_DAYS = 90
+
+/// 역치 심박에서 낼 수 있는 페이스 — 그 시점까지 최근 90일 러닝 전체(이지 포함)의 심박–페이스 회귀에서.
+/// ⚠ 외삽 금지: 역치 심박이 그 창의 학습 심박 범위(dataHRMin...dataHRMax) 밖이면 nil(빈 점).
+func mrPaceAtThresholdHR(runs: [MRWorkout], thresholdHR: Double, asOf: Date) -> MRThresholdEstimate? {
+    let cal = Calendar.current
+    let window = runs.filter {
+        let d = cal.dateComponents([.day], from: $0.date, to: cal.startOfDay(for: asOf)).day ?? -1
+        return $0.start <= asOf && d >= 0 && d <= MR_THRESHOLD_TREND_HR_WINDOW_DAYS
+    }
+    let m = mrFitHRPaceModel(runs: window, asOf: asOf)
+    guard m.ok, thresholdHR <= m.dataHRMax, let pace = m.paceAtHR(thresholdHR) else {
+        #if DEBUG
+        print(String(format: "[역치:심박추세] asOf %@ · n=%d · 심박범위 %.0f~%.0f · 역치 %.0f → 빈 점",
+                     asOf.formatted(date: .numeric, time: .omitted), m.n, m.dataHRMin, m.dataHRMax, thresholdHR))
+        #endif
+        return nil
+    }
+    let L = AppLanguage.shared
+    let hr = Int(thresholdHR.rounded())
+    return MRThresholdEstimate(
+        asOf: asOf, paceSecPerKm: pace, paceConfidence: m.n >= 20 ? .medium : .low,
+        hr: thresholdHR, hrConfidence: .none,
+        basis: [L.s("최근 90일 러닝 \(m.n)회의 심박–페이스 관계에서 \(hr)bpm일 때 페이스",
+                    "Pace at \(hr)bpm from the HR–pace relation of \(m.n) runs in the last 90 days")])
+}
+
+/// 성장 탭 카드 재료 — 큰 숫자(현재 추정)와 추세선을 따로 낸다.
+///
+/// 추세선을 기록 기준(창 안 최고 노력)으로 그리면 창 길이에 따라 출렁이거나(180일, 한 달 30초) 평평했다(365일) —
+/// 최고 기록은 드물게 바뀌는 최댓값이라서다(2026-10-01 실기기). 그래서 심박이 있으면 추세선은
+/// **같은 역치 심박에서의 페이스**(최근 90일 러닝 전체)로 그린다 — 가민 자동 감지와 같은 원리(심박·페이스 패턴).
+/// 심박이 없으면(폰 러닝) 기록 기준 점으로 그린다.
+struct MRThresholdTrendResult: Equatable, Sendable {
+    let current: MRThresholdEstimate
+    let line: [MRThresholdEstimate]
+    /// 추세선이 심박 기준인가 — 카드 설명 줄이 달라진다
+    let lineIsHRBased: Bool
+}
+
+func mrThresholdTrend(runs: [MRWorkout], restingHRSamples: [(date: Date, value: Double)],
+                      dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, now: Date) -> MRThresholdTrendResult? {
+    guard let current = mrThresholdAsOf(runs: runs, restingHRSamples: restingHRSamples,
+                                        dateOfBirth: dateOfBirth, sex: sex, heat: heat, asOf: now) else { return nil }
+    let dates = mrThresholdTrendDates(now: now)
+    if let lthr = current.hr {
+        let line = dates.compactMap { mrPaceAtThresholdHR(runs: runs, thresholdHR: lthr, asOf: $0) }
+        return MRThresholdTrendResult(current: current, line: line, lineIsHRBased: true)
+    }
+    let line = dates.dropLast().compactMap {
         mrThresholdAsOf(runs: runs, restingHRSamples: restingHRSamples,
                         dateOfBirth: dateOfBirth, sex: sex, heat: heat, asOf: $0)
-    }
-    .sorted { $0.asOf < $1.asOf }
+    } + [current]
+    return MRThresholdTrendResult(current: current, line: line, lineIsHRBased: false)
 }
 
 /// 추세 문장 — 첫 점 대비 마지막 점이 `MR_THRESHOLD_IMPROVE_SEC` 이상 빨라졌을 때만. 아니면 nil(좋아졌을 때만 말한다).

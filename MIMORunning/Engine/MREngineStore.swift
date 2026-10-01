@@ -53,7 +53,7 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var predictions: [MRPrediction] = []
     /// 역치 페이스·심박 최근 6개월 월별 추세(월말 기준 + 지금, 날짜 오름차순). 성장 탭 카드가 쓴다.
     /// 설계: docs/superpowers/specs/2026-10-01-threshold-estimate-design.md
-    @Published private(set) var thresholdTrend: [MRThresholdEstimate] = []
+    @Published private(set) var thresholdTrend: MRThresholdTrendResult?
     @Published private(set) var plans: [MRRacePlan] = []
     @Published private(set) var checks: [MRGoalCheck] = []
     @Published private(set) var planlessRaces: [MRTargetRace] = []
@@ -506,9 +506,11 @@ final class MREngineStore: ObservableObject {
         thresholdTrend = mrThresholdTrend(runs: fetched, restingHRSamples: rhr,
                                           dateOfBirth: dob, sex: sex, heat: heat, now: now)
         #if DEBUG
-        if let last = thresholdTrend.last {
+        if let t = thresholdTrend {
+            let last = t.current
             let hrStr = last.hr.map { "심박 \(Int($0.rounded()))(\(last.hrConfidence.label))" } ?? "심박 없음"
-            print("[역치] \(thresholdTrend.count)점 · 최신 \(mrFormatPace(last.paceSecPerKm)) · \(hrStr)")
+            print("[역치] 현재 \(mrFormatPace(last.paceSecPerKm)) · \(hrStr) · 추세 \(t.line.count)점(\(t.lineIsHRBased ? "심박 기준" : "기록 기준")) "
+                  + t.line.map { mrFormatPace($0.paceSecPerKm) }.joined(separator: " → "))
         } else {
             print("[역치] 추정 불가(하프 예측 없음)")
         }
