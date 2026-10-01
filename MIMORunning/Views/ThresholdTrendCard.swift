@@ -1,8 +1,8 @@
 import SwiftUI
 import Charts
 
-/// 성장 탭 '역치 페이스' — 큰 숫자는 현재 추정(기록·심박 교차), 선은 최근 6개월 추세(빠를수록 위).
-/// 심박이 있으면 선은 "같은 역치 심박에서의 페이스"(최근 90일 러닝), 없으면 기록 기준 — `MRThresholdTrendResult` 참고.
+/// 성장 탭 '역치 페이스' — 큰 숫자는 현재 추정(기록·심박 교차), 점은 최근 12개월 강한 러닝을 60분 대회 페이스로 환산한 값.
+/// 선이 아니라 점인 이유는 `MRThresholdTrendResult` 참고. 굵은 점 = 큰 숫자의 기준 기록, 점선 = 큰 숫자.
 /// 값은 엔진(`mrThresholdTrend`)이 내고 여기선 그리기만. 표시 조건(중수 이상·3점 이상)은 GrowthView가 건다.
 /// 카드 모양은 같은 섹션의 `MRFormObservationCard`(바탕·모서리·제목·본문·근거 글자)와 같게.
 /// 설계: docs/superpowers/specs/2026-10-01-threshold-estimate-design.md
@@ -11,14 +11,11 @@ struct ThresholdTrendCard: View {
 
     @State private var expanded = false
 
-    /// 근거줄 — 현재 추정 근거 + (심박 기준 선이면) 최신 점의 회귀 근거
-    private var basisLines: [String] {
-        trend.current.basis + (trend.lineIsHRBased ? (trend.line.last?.basis ?? []) : [])
-    }
+    private var basisLines: [String] { trend.current.basis }
 
     var body: some View {
         let L = AppLanguage.shared
-        let pts = trend.line.sorted { $0.asOf < $1.asOf }
+        let pts = trend.points
         let current = trend.current
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -42,7 +39,7 @@ struct ThresholdTrendCard: View {
                 }
             }
 
-            if let s = mrThresholdTrendSentence(pts) {
+            if let s = trend.sentence {
                 Text(s)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.positive)
@@ -51,12 +48,11 @@ struct ThresholdTrendCard: View {
             chart(pts)
                 .frame(height: 100)
 
-            if trend.lineIsHRBased, let hr = current.hr {
-                Text(L.s("선: 평균 심박 \(Int(hr.rounded()))bpm 안팎으로 달린 러닝의 중간 페이스 · 최근 90일",
-                         "Line: median pace of runs averaging about \(Int(hr.rounded()))bpm · last 90 days"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.mrInk3)
-            }
+            Text(L.s("점: 최근 12개월 강한 러닝을 60분 대회 페이스로 환산 · 굵은 점이 지금 기준 기록",
+                     "Dots: hard runs in the last 12 months as 1-hour race pace · bold dot is the current anchor"))
+                .font(.system(size: 11))
+                .foregroundStyle(Color.mrInk3)
+                .fixedSize(horizontal: false, vertical: true)
 
             // 설명 줄 — 탭하면 최신 시점 근거줄을 펼친다
             Button {
@@ -95,29 +91,34 @@ struct ThresholdTrendCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    /// y축 — 위가 빠름(반전). 값이 거의 같으면 1초 폭 축이 되어 작은 흔들림이 크게 보이므로 최소 ±10초를 확보한다.
-    /// ⚠ 10초는 임의로 정함 — 추세 문장 문턱(3초)이 눈에 띄되 과장되지 않는 폭.
-    private func yDomain(_ pts: [MRThresholdEstimate]) -> ClosedRange<Double> {
-        let v = pts.map(\.paceSecPerKm)
+    /// y축 — 위가 빠름(반전). 점과 큰 숫자가 모두 들어오게, 최소 ±10초.
+    /// ⚠ 10초는 임의로 정함 — 문장 문턱(3초)이 눈에 띄되 과장되지 않는 폭.
+    private func yDomain(_ pts: [MRThresholdEffortPoint]) -> ClosedRange<Double> {
+        let v = pts.map(\.paceSecPerKm) + [trend.current.paceSecPerKm]
         guard let lo = v.min(), let hi = v.max() else { return 0...1 }
         let mid = (lo + hi) / 2, half = max((hi - lo) / 2, 10)
         return (mid - half)...(mid + half)
     }
 
-    /// 월별 라인 — y축 반전(페이스 초가 작을수록 = 빠를수록 위). 점 모양은 주간 지표 스파크라인과 같은 흰 테두리 점.
-    private func chart(_ pts: [MRThresholdEstimate]) -> some View {
+    /// 강한 러닝 점 — 기준 기록은 굵게, 나머지는 옅게. 점선 = 큰 숫자. 선으로 잇지 않는다(각 점이 독립된 기록).
+    private func chart(_ pts: [MRThresholdEffortPoint]) -> some View {
         Chart {
-            ForEach(pts, id: \.asOf) { p in
-                LineMark(x: .value("month", p.asOf), y: .value("pace", p.paceSecPerKm))
-                    .foregroundStyle(Theme.pace)
-                    .lineStyle(StrokeStyle(lineWidth: 2.0))
-                    .interpolationMethod(.monotone)
-                PointMark(x: .value("month", p.asOf), y: .value("pace", p.paceSecPerKm))
-                    .foregroundStyle(Color.white)
-                    .symbolSize(Theme.sparkHaloSizeCompact)
-                PointMark(x: .value("month", p.asOf), y: .value("pace", p.paceSecPerKm))
-                    .foregroundStyle(Theme.pace)
-                    .symbolSize(Theme.sparkHaloCoreSizeCompact)
+            RuleMark(y: .value("current", trend.current.paceSecPerKm))
+                .foregroundStyle(Theme.pace.opacity(0.5))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            ForEach(Array(pts.enumerated()), id: \.offset) { _, p in
+                if p.isAnchor {
+                    PointMark(x: .value("date", p.date), y: .value("pace", p.paceSecPerKm))
+                        .foregroundStyle(Color.white)
+                        .symbolSize(Theme.sparkHaloSizeCompact * 1.6)
+                    PointMark(x: .value("date", p.date), y: .value("pace", p.paceSecPerKm))
+                        .foregroundStyle(Theme.pace)
+                        .symbolSize(Theme.sparkHaloCoreSizeCompact * 1.6)
+                } else {
+                    PointMark(x: .value("date", p.date), y: .value("pace", p.paceSecPerKm))
+                        .foregroundStyle(Theme.pace.opacity(0.45))
+                        .symbolSize(Theme.sparkHaloCoreSizeCompact)
+                }
             }
         }
         .chartYScale(domain: .automatic(includesZero: false, reversed: true, dataType: Double.self) { inferred in
@@ -136,7 +137,7 @@ struct ThresholdTrendCard: View {
         }
         .chartXScale(range: .plotDimension(padding: 14))   // 양 끝 점의 달 라벨이 잘려 빠지지 않게
         .chartXAxis {
-            AxisMarks(values: pts.map(\.asOf)) { _ in
+            AxisMarks(values: .stride(by: .month, count: 2)) { _ in
                 AxisValueLabel(format: .dateTime.month(.abbreviated), centered: false)
                     .font(.system(size: 9))
                     .foregroundStyle(Color.mrInk3)

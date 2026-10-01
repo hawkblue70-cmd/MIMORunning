@@ -240,8 +240,8 @@ struct GrowthView: View {
                                 EffortTypeBaselineCard(rows: effortTypeRowsCache)
                             }
                             LateRunDurabilityCard(points: lateRunPointsCache)
-                            // 역치 페이스 추세 — 중수 이상·월별 점 3개 이상일 때만(설계 2026-10-01-threshold-estimate)
-                            if manager.userLevel.bucket >= .intermediate, let t = engine.thresholdTrend, t.line.count >= 3 {
+                            // 역치 페이스 추세 — 중수 이상·강한 러닝 점 3개 이상일 때만(설계 2026-10-01-threshold-estimate)
+                            if manager.userLevel.bucket >= .intermediate, let t = engine.thresholdTrend, t.points.count >= 3 {
                                 ThresholdTrendCard(trend: t)
                             }
                             metricTrendsSection

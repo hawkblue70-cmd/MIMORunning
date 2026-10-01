@@ -188,7 +188,7 @@ struct MRInference {
 //
 // 실제 대회이거나, 대회에 준하는 강도로 달린 기록.
 // 지수 적합과 예측의 재료가 된다.
-struct MRRaceEffort: Sendable {
+struct MRRaceEffort: Sendable, Equatable {
     let date: Date
     let distanceM: Double
     let timeMin: Double

@@ -504,13 +504,12 @@ final class MREngineStore: ObservableObject {
         predictions = mrPredict(efforts: efforts, fit: fit, profile: profile,
                                 heat: heat, asOf: now)
         thresholdTrend = mrThresholdTrend(runs: fetched, restingHRSamples: rhr,
-                                          dateOfBirth: dob, sex: sex, heat: heat, heatHR: heatHR, now: now)
+                                          dateOfBirth: dob, sex: sex, heat: heat, now: now)
         #if DEBUG
         if let t = thresholdTrend {
             let last = t.current
             let hrStr = last.hr.map { "심박 \(Int($0.rounded()))(\(last.hrConfidence.label))" } ?? "심박 없음"
-            print("[역치] 현재 \(mrFormatPace(last.paceSecPerKm)) · \(hrStr) · 추세 \(t.line.count)점(\(t.lineIsHRBased ? "심박 기준" : "기록 기준")) "
-                  + t.line.map { mrFormatPace($0.paceSecPerKm) }.joined(separator: " → "))
+            print("[역치] 현재 \(mrFormatPace(last.paceSecPerKm)) · \(hrStr) · 강한 러닝 \(t.points.count)점 · 문장 \(t.sentence ?? "없음")")
         } else {
             print("[역치] 추정 불가(하프 예측 없음)")
         }

@@ -75,43 +75,38 @@ struct MRThresholdTests {
         #expect(mrSustainedEffortHR(runs: runs, efforts: [], asOf: asOf) == nil)
     }
 
-    @Test func trendSentenceOnlyWhenFaster() {
-        let a = day(2026, 4, 15), b = day(2026, 10, 1)
-        #expect(mrThresholdTrendSentence([estimate(a, pace: 312), estimate(b, pace: 300)]) == "6개월간 12초 빨라졌어요")
-        #expect(mrThresholdTrendSentence([estimate(a, pace: 312), estimate(b, pace: 310)]) == nil)   // 2초 — 문턱 미만
-        #expect(mrThresholdTrendSentence([estimate(a, pace: 300), estimate(b, pace: 310)]) == nil)   // 느려짐
-        #expect(mrThresholdTrendSentence([estimate(b, pace: 300)]) == nil)                           // 점 1개
-        #expect(inEnglish { mrThresholdTrendSentence([estimate(a, pace: 312), estimate(b, pace: 300)]) }
-                == "12s/km faster over 6 months")
+    @Test func updateSentenceOnlyWhenAnchorMadeItFaster() {
+        let a = effort(day(2026, 9, 20), min: 50)
+        let tenK = MRRaceEffort(date: a.date, distanceM: 10_000, timeMin: 50, timeMinRef: 50,
+                                tempC: nil, label: "10K", isConfirmedRace: false)
+        #expect(mrThresholdUpdateSentence(anchor: tenK, beforePace: 330, afterPace: 320) == "9월 20일 10K 기록으로 10초 빨라졌어요")
+        #expect(mrThresholdUpdateSentence(anchor: tenK, beforePace: 322, afterPace: 320) == nil)   // 2초 — 문턱 미만
+        #expect(mrThresholdUpdateSentence(anchor: tenK, beforePace: 310, afterPace: 320) == nil)   // 느려짐
+        #expect(mrThresholdUpdateSentence(anchor: tenK, beforePace: nil, afterPace: 320) == nil)   // 첫 기록
+        #expect(inEnglish { mrThresholdUpdateSentence(anchor: tenK, beforePace: 330, afterPace: 320) }
+                == "10s/km faster after your 10K on Sep 20")
     }
 
-    @Test func paceAtThresholdHRIsMedianOfRunsInBand() throws {
-        let asOf = day(2026, 10, 1, 12)
-        func w(_ start: Date, pace: Double, hr: Double, interval: Bool = false, indoor: Bool = false) -> MRWorkout {
-            MRWorkout(start: start, durationMin: pace * 8 / 60, distanceKm: 8, hrAvg: hr, hrMax: nil,
-                      tempC: nil, humidity: nil, indoor: indoor, isInterval: interval)
+    @Test func effortPointsAreHardRunsAboveOwnHRGate() throws {
+        func w(_ d: Date, km: Double, min: Double, hr: Double, interval: Bool = false) -> MRWorkout {
+            MRWorkout(start: d, durationMin: min, distanceKm: km, hrAvg: hr, hrMax: nil,
+                      tempC: nil, humidity: nil, indoor: false, isInterval: interval)
         }
-        let runs = [
-            w(day(2026, 9, 20), pace: 320, hr: 152),      // ✓
-            w(day(2026, 9, 10), pace: 330, hr: 154),      // ✓
-            w(day(2026, 8, 20), pace: 340, hr: 157),      // ✓ (경계 +3)
-            w(day(2026, 8, 10), pace: 300, hr: 160),      // 띠 밖
-            w(day(2026, 8, 1),  pace: 280, hr: 154, interval: true),   // 인터벌 제외
-            w(day(2026, 7, 20), pace: 290, hr: 154, indoor: true),     // 실내 제외
-            w(day(2026, 5, 1),  pace: 250, hr: 154),      // 90일 밖
-        ]
-        let e = try #require(mrPaceAtThresholdHR(runs: runs, thresholdHR: 154, heatHR: MRHeatHRModel(), asOf: asOf))
-        #expect(e.paceSecPerKm == 330)
-        #expect(e.hr == 154)
-        // 2회뿐 → 빈 점
-        #expect(mrPaceAtThresholdHR(runs: Array(runs.prefix(2)), thresholdHR: 154,
-                                    heatHR: MRHeatHRModel(), asOf: asOf) == nil)
-    }
-
-    @Test func trendDatesAreSameDayEachMonth() {
-        let now = day(2026, 10, 1, 12)
-        let d = mrThresholdTrendDates(now: now)
-        #expect(d.count == 6)
-        #expect(d.first == day(2026, 5, 1, 12) && d.last == now)
+        var runs = (0..<20).map { w(day(2026, 9, 1).addingTimeInterval(Double(-$0) * 86_400 * 5), km: 8, min: 52, hr: 140) }
+        runs += [w(day(2026, 3, 1), km: 10, min: 50, hr: 165),       // ✓ 10K
+                 w(day(2026, 5, 1), km: 21.1, min: 115, hr: 165),    // ✓ 하프
+                 w(day(2026, 7, 1), km: 6, min: 29, hr: 166),        // ✓ 6K
+                 w(day(2026, 8, 1), km: 30, min: 170, hr: 166),      // 25km 초과 — 제외
+                 w(day(2026, 8, 5), km: 8, min: 36, hr: 175, interval: true)]   // 인터벌 — 제외
+        let anchor = MRRaceEffort(date: Calendar.current.startOfDay(for: day(2026, 3, 1)), distanceM: 10_000,
+                                  timeMin: 50, timeMinRef: 50, tempC: nil, label: "10K", isConfirmedRace: false)
+        let pts = mrThresholdEffortPoints(windowRuns: runs, recentEfforts: [], anchor: anchor,
+                                          fit: MRExponentFit(), heat: MRHeatModel())
+        #expect(pts.count == 3)
+        #expect(pts.map(\.label) == ["10K", "하프", "6.0K"])
+        let first = try #require(pts.first)
+        #expect(first.isAnchor && !pts[1].isAnchor)
+        let expected = try #require(mrThresholdPace(halfEquivMin: 50 * pow(MRDistance.dH / 10_000, 1.06)))
+        #expect(abs(first.paceSecPerKm - expected) < 0.01)   // 앵커 점 = 큰 숫자와 같은 식
     }
 }

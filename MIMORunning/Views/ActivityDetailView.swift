@@ -262,7 +262,7 @@ struct ActivityDetailView: View {
     /// headline 재계산 트리거 — 인사이트·총평 재료가 바뀌면 달라지는 값들
     private var headlineKey: String {
         "\(insight?.title ?? "")|\(insight?.detail ?? "")|\(hrSamples.count)|\(formBaseline == nil ? 0 : 1)|" +
-        "\(effectiveHRZones.count)|\(runInsights.count)|\(detail == nil ? 0 : 1)|\(engine.thresholdTrend?.line.count ?? 0)|\(level.rawValue)"
+        "\(effectiveHRZones.count)|\(runInsights.count)|\(detail == nil ? 0 : 1)|\(engine.thresholdTrend?.points.count ?? 0)|\(level.rawValue)"
     }
 
     private func recomputeHeadline() {

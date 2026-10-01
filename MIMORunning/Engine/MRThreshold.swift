@@ -30,6 +30,8 @@ struct MRThresholdEstimate: Equatable, Sendable {
     let hr: Double?
     let hrConfidence: MRConfidence       // hr nil이면 .none
     let basis: [String]                  // 화면 근거줄 (예측 근거 · 회귀 n · 노력 n)
+    /// 큰 숫자의 기준 기록(앵커) — 카드가 그 점을 굵게, 추세 문장이 갱신 시점을 말할 때 쓴다
+    var anchor: MRRaceEffort? = nil
 }
 
 /// 역치 페이스(초/km) — 하프 등가 기록(분)에서 Riegel 1.06으로 60분에 갈 수 있는 거리를 풀어 페이스로.
@@ -136,7 +138,8 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
     var basis = [L.s("하프 예측 \(mrFormatHMS(half.midMin))에서 60분 대회 페이스로 환산",
                      "60-min race pace from half prediction \(mrFormatHMS(half.midMin))")]
     // 기준 기록 — mrPredict와 같은 앵커 규칙(환산시간 / 거리^1.06 최소). 언제 빠질지 보이게 며칠 전인지 밝힌다.
-    if let a = recent.min(by: { $0.timeMinRef / pow($0.distanceM, 1.06) < $1.timeMinRef / pow($1.distanceM, 1.06) }) {
+    let anchor = recent.min(by: { $0.timeMinRef / pow($0.distanceM, 1.06) < $1.timeMinRef / pow($1.distanceM, 1.06) })
+    if let a = anchor {
         let ago = cal.dateComponents([.day], from: a.date, to: cal.startOfDay(for: asOf)).day ?? 0
         let name = a.label == "하프" ? L.s("하프", "Half") : a.label
         basis.append(L.s("기준 기록: \(name) \(mrFormatDisplay(a.timeMin)) (\(ago)일 전)",
@@ -157,105 +160,124 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
 
     return MRThresholdEstimate(asOf: asOf, paceSecPerKm: pace, paceConfidence: half.confidence,
                                hr: combined?.hr, hrConfidence: combined?.confidence ?? .none,
-                               basis: basis)
+                               basis: basis, anchor: anchor)
 }
 
-/// 추세 시점 — 오늘에서 5~0개월 전, 매달 같은 날짜로 6시점(간격 고르게). 날짜 오름차순.
-/// (처음엔 "각 달 말일 + now"였는데 월초에는 지난달 말일과 하루 차이로 점이 겹쳤다 — 2026-10-01 실기기)
-func mrThresholdTrendDates(now: Date) -> [Date] {
-    let cal = Calendar.current
-    return (0...5).reversed().compactMap { k in
-        k == 0 ? now : cal.date(byAdding: .month, value: -k, to: now)
-    }
+// MARK: - 성장 탭 카드: 현재 추정 + 강한 러닝 점
+
+/// 카드 점 하나 — 실제 강한 러닝 한 건을 60분 대회 페이스로 환산한 값.
+struct MRThresholdEffortPoint: Equatable, Sendable {
+    let date: Date
+    let label: String          // "10K" / "하프" / "12.4K"
+    let paceSecPerKm: Double
+    let isAnchor: Bool         // 큰 숫자의 기준 기록
 }
 
-/// 심박 기준 추세의 창(일). ⚠ 90일은 임의로 정함 — 레벨 판정 창과 같게. 최근 체력만 본다.
-let MR_THRESHOLD_TREND_HR_WINDOW_DAYS = 90
-/// 역치 심박 ± 이 폭 안의 러닝을 모은다. ⚠ 3bpm은 임의로 정함 — 이지 페이스 실측 구간(±5)보다 좁게: 역치 근처만.
-let MR_THRESHOLD_TREND_HR_BAND = 3.0
-/// 한 점에 필요한 최소 러닝 수. ⚠ 임의로 정함 — 중앙값이 한두 건에 끌려가지 않게.
-let MR_THRESHOLD_TREND_MIN_RUNS = 3
-
-/// 역치 심박으로 실제 달린 러닝의 페이스 중앙값 — 그 시점까지 최근 90일, 평균 심박(15°C 기준) 역치 ±3bpm.
+/// 성장 탭 카드 재료 — 큰 숫자(현재 추정)와 최근 12개월 강한 러닝 점.
 ///
-/// ⚠ 처음엔 90일 심박–페이스 회귀였는데 실기기에서 무너졌다(2026-10-01): 러닝 평균 심박이 141~160bpm 좁은 띠에
-///   몰려 있어 페이스가 달라도 심박이 거의 같다 → 기울기가 0 근처 → 3개월 빈 점, 나머지는 4'47"~5'14" 잡음.
-///   코드베이스 원칙대로 회귀 대신 **실측 구간 중앙값**을 쓰고 표본 수를 밝힌다(`MRHRPaceLookup`과 같은 방식).
-/// 기온은 1년치 더위–심박 모델(`MRHeatHRModel`, 더운 날 카드와 같은 것)로 15°C 기준 심박에 맞춘 뒤 고른다.
-/// 인터벌은 평균 심박·페이스가 질주+회복의 평균이라 뺀다.
-func mrPaceAtThresholdHR(runs: [MRWorkout], thresholdHR: Double, heatHR: MRHeatHRModel,
-                         asOf: Date) -> MRThresholdEstimate? {
-    let cal = Calendar.current
-    let paces: [Double] = runs.compactMap { w in
-        let d = cal.dateComponents([.day], from: w.date, to: cal.startOfDay(for: asOf)).day ?? -1
-        guard w.start <= asOf, d >= 0, d <= MR_THRESHOLD_TREND_HR_WINDOW_DAYS,
-              !w.indoor, !w.isInterval, w.durationMin >= 20, (w.distanceKm ?? 0) >= 2,
-              let ref = heatHR.refHR(of: w), abs(ref - thresholdHR) <= MR_THRESHOLD_TREND_HR_BAND
-        else { return nil }
-        return w.paceSecPerKm
-    }
-    let lo = Int((thresholdHR - MR_THRESHOLD_TREND_HR_BAND).rounded())
-    let hi = Int((thresholdHR + MR_THRESHOLD_TREND_HR_BAND).rounded())
-    guard paces.count >= MR_THRESHOLD_TREND_MIN_RUNS else {
-        #if DEBUG
-        print("[역치:심박추세] asOf \(asOf.formatted(date: .numeric, time: .omitted)) · \(lo)~\(hi)bpm 러닝 \(paces.count)회 → 빈 점")
-        #endif
-        return nil
-    }
-    let pace = mrMedian(paces)
-    #if DEBUG
-    print("[역치:심박추세] asOf \(asOf.formatted(date: .numeric, time: .omitted)) · \(lo)~\(hi)bpm 러닝 \(paces.count)회 → \(mrFormatPace(pace))")
-    #endif
-    let L = AppLanguage.shared
-    return MRThresholdEstimate(
-        asOf: asOf, paceSecPerKm: pace, paceConfidence: paces.count >= 8 ? .medium : .low,
-        hr: thresholdHR, hrConfidence: .none,
-        basis: [L.s("최근 90일 평균 심박 \(lo)~\(hi)bpm(15°C 기준) 러닝 \(paces.count)회의 중간 페이스",
-                    "Median pace of \(paces.count) runs at \(lo)–\(hi)bpm avg HR (15°C) in the last 90 days")])
-}
-
-/// 성장 탭 카드 재료 — 큰 숫자(현재 추정)와 추세선을 따로 낸다.
-///
-/// 추세선을 기록 기준(창 안 최고 노력)으로 그리면 창 길이에 따라 출렁이거나(180일, 한 달 30초) 평평했다(365일) —
-/// 최고 기록은 드물게 바뀌는 최댓값이라서다(2026-10-01 실기기). 그래서 심박이 있으면 추세선은
-/// **역치 심박으로 실제 달린 러닝의 페이스**(최근 90일 실측 구간 중앙값)로 그린다 — 가민 자동 감지와 같은 원리(심박·페이스 패턴).
-/// 심박이 없으면(폰 러닝) 기록 기준 점으로 그린다.
+/// ⚠ 추세"선"은 세 번 실패했다(2026-10-01 실기기):
+///   ① 창 안 최고 기록 — 180일이면 한 달 30초 출렁, 365일이면 평평(최댓값은 드물게 바뀐다)
+///   ② 90일 심박–페이스 회귀 — 평균 심박이 141~160 좁은 띠에 몰려 기울기 붕괴
+///   ③ 역치 심박 ±3bpm 평소 러닝 중앙값 — 6'00" 근처, 큰 숫자보다 40~60초 느림.
+///      평소 러닝은 길고(심박 드리프트) 워밍업·오르막이 섞여 역치가 아니라 다른 지표다.
+///   역치 페이스는 강한 러닝(대회·템포)에서만 직접 보인다 → 그 러닝들을 **점**으로 찍는다(선 없음, 사용자 선택 A).
 struct MRThresholdTrendResult: Equatable, Sendable {
     let current: MRThresholdEstimate
-    let line: [MRThresholdEstimate]
-    /// 추세선이 심박 기준인가 — 카드 설명 줄이 달라진다
-    let lineIsHRBased: Bool
+    let points: [MRThresholdEffortPoint]
+    /// 최근 기준 기록이 역치를 앞당겼을 때만 — 좋아졌을 때만 말한다
+    let sentence: String?
+}
+
+/// 점으로 찍을 강한 러닝의 거리 상한(km). 풀·울트라는 60분 환산이 지구력(후반 저하)을 섞어 느리게 나온다.
+/// ⚠ 25km는 임의로 정함 — 하프(21.1)는 넣고 30km 롱런·풀은 뺀다.
+let MR_THRESHOLD_POINT_MAX_KM = 25.0
+/// 추세 문장 — 기준 기록이 이 기간 안의 것일 때만 "갱신"을 말한다. ⚠ 60일은 임의로 정함.
+let MR_THRESHOLD_SENTENCE_DAYS = 60
+
+/// 한 노력의 60분 대회 페이스 — `mrPredict`의 하프 계산과 같은 식(같은 개인 지수)이라 앵커 점 = 큰 숫자.
+func mrThresholdPace(effort e: MRRaceEffort, fit: MRExponentFit) -> Double? {
+    let bHalf = fit.bFor(distanceM: MRDistance.dH, prior: 1.06).b
+    return mrThresholdPace(halfEquivMin: e.timeMinRef * pow(MRDistance.dH / e.distanceM, bHalf))
+}
+
+/// 최근 12개월(`MR_THRESHOLD_WINDOW_DAYS`) 강한 러닝 — 본인 심박 상위 12%(대회급 노력 감지와 같은 게이트) 러닝 전부.
+/// 대회급 노력 감지(`mrDetectEfforts`)는 거리대별 최고 하나씩만 남겨 점이 4개뿐이라, 여기선 중복 제거·VDOT 필터를 하지 않는다.
+/// 심박 게이트를 못 만들면(심박 있는 러닝 20회 미만 — 폰 러닝) 대회급 노력만 점으로. 앵커는 항상 포함.
+func mrThresholdEffortPoints(windowRuns: [MRWorkout], recentEfforts: [MRRaceEffort], anchor: MRRaceEffort?,
+                             fit: MRExponentFit, heat: MRHeatModel) -> [MRThresholdEffortPoint] {
+    let cal = Calendar.current
+    let cands = windowRuns.filter {
+        !$0.indoor && !$0.isInterval && $0.durationMin >= 12
+            && ($0.distanceKm ?? 0) >= 3 && ($0.distanceKm ?? 0) <= MR_THRESHOLD_POINT_MAX_KM
+    }
+    let hrs = cands.compactMap(\.hrAvg).sorted()
+    var efforts: [MRRaceEffort]
+    if hrs.count >= 20 {
+        let gate = hrs[min(Int(Double(hrs.count) * 0.88), hrs.count - 1)]
+        efforts = mrApplyHeat(cands.compactMap { w -> MRRaceEffort? in
+            guard let hr = w.hrAvg, hr >= gate, let km = w.distanceKm else { return nil }
+            let n = mrNormalizeDistance(distanceM: km * 1000, timeMin: w.durationMin)
+            return MRRaceEffort(date: w.date, distanceM: n.distanceM, timeMin: n.timeMin, timeMinRef: n.timeMin,
+                                tempC: w.tempC, label: n.label, isConfirmedRace: false)
+        }, heat: heat)
+    } else {
+        efforts = recentEfforts.filter { $0.distanceM <= MR_THRESHOLD_POINT_MAX_KM * 1000 }
+    }
+    func same(_ a: MRRaceEffort, _ b: MRRaceEffort) -> Bool {
+        cal.isDate(a.date, inSameDayAs: b.date) && abs(a.distanceM - b.distanceM) / b.distanceM < 0.05
+    }
+    if let a = anchor, !efforts.contains(where: { same($0, a) }) { efforts.append(a) }
+    return efforts.compactMap { e in
+        mrThresholdPace(effort: e, fit: fit).map {
+            MRThresholdEffortPoint(date: e.date, label: e.label, paceSecPerKm: $0,
+                                   isAnchor: anchor.map { same(e, $0) } ?? false)
+        }
+    }
+    .sorted { $0.date < $1.date }
 }
 
 func mrThresholdTrend(runs: [MRWorkout], restingHRSamples: [(date: Date, value: Double)],
-                      dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, heatHR: MRHeatHRModel,
-                      now: Date) -> MRThresholdTrendResult? {
+                      dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, now: Date) -> MRThresholdTrendResult? {
     guard let current = mrThresholdAsOf(runs: runs, restingHRSamples: restingHRSamples,
                                         dateOfBirth: dateOfBirth, sex: sex, heat: heat, asOf: now) else { return nil }
-    let dates = mrThresholdTrendDates(now: now)
-    if let lthr = current.hr {
-        let line = dates.compactMap { mrPaceAtThresholdHR(runs: runs, thresholdHR: lthr, heatHR: heatHR, asOf: $0) }
-        return MRThresholdTrendResult(current: current, line: line, lineIsHRBased: true)
+    // 점 재료 — mrThresholdAsOf와 같은 파이프라인(전체 노력으로 지수, 창 안 러닝으로 노력)
+    let cal = Calendar.current
+    let past = runs.filter { $0.start <= now }
+    let phys = mrPhysiology(runs: past, restingHRSamples: restingHRSamples.filter { $0.date <= now },
+                            dateOfBirth: dateOfBirth, sex: sex, asOf: now)
+    let fit = mrFitExponent(mrApplyHeat(mrDetectEfforts(runs: past, phys: phys), heat: heat))
+    let windowRuns = past.filter {
+        let d = cal.dateComponents([.day], from: $0.date, to: cal.startOfDay(for: now)).day ?? -1
+        return d >= 0 && d <= MR_THRESHOLD_WINDOW_DAYS
     }
-    let line = dates.dropLast().compactMap {
-        mrThresholdAsOf(runs: runs, restingHRSamples: restingHRSamples,
-                        dateOfBirth: dateOfBirth, sex: sex, heat: heat, asOf: $0)
-    } + [current]
-    return MRThresholdTrendResult(current: current, line: line, lineIsHRBased: false)
+    let recent = mrApplyHeat(mrDetectEfforts(runs: windowRuns, phys: phys), heat: heat)
+    let points = mrThresholdEffortPoints(windowRuns: windowRuns, recentEfforts: recent, anchor: current.anchor,
+                                         fit: fit, heat: heat)
+
+    // 문장 — 기준 기록이 최근 60일 안이고, 그 기록 직전 추정보다 3초/km 이상 빨라졌을 때만
+    var sentence: String?
+    if let a = current.anchor,
+       let ago = cal.dateComponents([.day], from: a.date, to: cal.startOfDay(for: now)).day,
+       ago <= MR_THRESHOLD_SENTENCE_DAYS {
+        let before = mrThresholdAsOf(runs: runs, restingHRSamples: restingHRSamples, dateOfBirth: dateOfBirth,
+                                     sex: sex, heat: heat, asOf: a.date.addingTimeInterval(-1))
+        sentence = mrThresholdUpdateSentence(anchor: a, beforePace: before?.paceSecPerKm,
+                                             afterPace: current.paceSecPerKm)
+    }
+    return MRThresholdTrendResult(current: current, points: points, sentence: sentence)
 }
 
-/// 추세 문장 — 첫 점 대비 마지막 점이 `MR_THRESHOLD_IMPROVE_SEC` 이상 빨라졌을 때만. 아니면 nil(좋아졌을 때만 말한다).
-/// 개월 수 = 두 시점의 달력 월 차이(최소 1).
-func mrThresholdTrendSentence(_ points: [MRThresholdEstimate]) -> String? {
-    let sorted = points.sorted { $0.asOf < $1.asOf }
-    guard sorted.count >= 2, let first = sorted.first, let last = sorted.last else { return nil }
-    let gain = first.paceSecPerKm - last.paceSecPerKm
+/// 갱신 문장 — 직전 추정보다 `MR_THRESHOLD_IMPROVE_SEC` 이상 빨라졌을 때만. 직전 추정이 없으면(첫 기록) 말하지 않는다.
+func mrThresholdUpdateSentence(anchor: MRRaceEffort, beforePace: Double?, afterPace: Double) -> String? {
+    guard let b = beforePace else { return nil }
+    let gain = b - afterPace
     guard gain >= MR_THRESHOLD_IMPROVE_SEC else { return nil }
-    let cal = Calendar.current
-    let a = cal.dateComponents([.year, .month], from: first.asOf)
-    let b = cal.dateComponents([.year, .month], from: last.asOf)
-    let m = max(1, ((b.year ?? 0) - (a.year ?? 0)) * 12 + (b.month ?? 0) - (a.month ?? 0))
-    let s = Int(gain.rounded())
     let L = AppLanguage.shared
-    return L.s("\(m)개월간 \(s)초 빨라졌어요", "\(s)s/km faster over \(m) months")
+    let df = DateFormatter()
+    df.locale = Locale(identifier: L.isEnglish ? "en_US" : "ko_KR")
+    df.setLocalizedDateFormatFromTemplate("MMMd")
+    let name = anchor.label == "하프" ? L.s("하프", "Half") : anchor.label
+    let s = Int(gain.rounded())
+    return L.s("\(df.string(from: anchor.date)) \(name) 기록으로 \(s)초 빨라졌어요",
+               "\(s)s/km faster after your \(name) on \(df.string(from: anchor.date))")
 }
