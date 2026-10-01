@@ -111,18 +111,22 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
     let fit = mrFitExponent(efforts)
     let prof = mrProfile(runs: past, efforts: efforts, asOf: asOf)
     // 지수 적합·프로필은 전체 노력으로, 앵커만 최근 창 안에서 고른다. 창 안에 노력이 없으면 그 시점은 nil(빈 점).
+    // ⚠ 전체 노력을 창으로 자르면 안 된다 — `mrDetectEfforts`는 **전 기간** 거리대별 최고 하나씩만 남기고
+    //   최고 VDOT의 88% 미만을 버려서, 최근 노력은 대부분 이미 탈락해 있다(2026-10-01 실기기: 카드 사라짐).
+    //   → 창 안의 러닝만으로 노력을 다시 고른다(심박 게이트·VDOT 필터도 창 안 기준).
     let cal = Calendar.current
-    let recent = efforts.filter {
-        let d = cal.dateComponents([.day], from: cal.startOfDay(for: $0.date), to: cal.startOfDay(for: asOf)).day ?? -1
+    let windowRuns = past.filter {
+        let d = cal.dateComponents([.day], from: $0.date, to: cal.startOfDay(for: asOf)).day ?? -1
         return d >= 0 && d <= MR_THRESHOLD_WINDOW_DAYS
     }
+    let recent = mrApplyHeat(mrDetectEfforts(runs: windowRuns, phys: phys), heat: heat)
     let preds = mrPredict(efforts: recent, fit: fit, profile: prof, heat: heat, asOf: asOf)
     guard let half = preds.first(where: { $0.label == "하프" }),
           let pace = mrThresholdPace(halfEquivMin: half.midMin) else { return nil }
     let hrp = mrFitHRPaceModel(runs: past, asOf: asOf)
 
     let reg = hrp.hrAtPace(pace)
-    let sus = mrSustainedEffortHR(runs: past, efforts: efforts, asOf: asOf)
+    let sus = mrSustainedEffortHR(runs: past, efforts: recent, asOf: asOf)
     let combined = mrCombineThresholdHR(regression: reg, sustained: sus)
 
     var basis = [L.s("하프 예측 \(mrFormatHMS(half.midMin))에서 60분 대회 페이스로 환산",
