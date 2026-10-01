@@ -503,17 +503,7 @@ final class MREngineStore: ObservableObject {
 
         predictions = mrPredict(efforts: efforts, fit: fit, profile: profile,
                                 heat: heat, asOf: now)
-        thresholdTrend = mrThresholdTrend(runs: fetched, restingHRSamples: rhr,
-                                          dateOfBirth: dob, sex: sex, heat: heat, now: now)
-        #if DEBUG
-        if let t = thresholdTrend {
-            let last = t.current
-            let hrStr = last.hr.map { "심박 \(Int($0.rounded()))(\(last.hrConfidence.label))" } ?? "심박 없음"
-            print("[역치] 현재 \(mrFormatPace(last.paceSecPerKm)) · \(hrStr) · 강한 러닝 \(t.points.count)점 · 문장 \(t.sentence ?? "없음")")
-        } else {
-            print("[역치] 추정 불가(하프 예측 없음)")
-        }
-        #endif
+        recomputeThreshold(now: now)
 
         let he = halfEquivMin
         let upcoming = userInput.upcomingRaces(asOf: now)
@@ -928,6 +918,7 @@ final class MREngineStore: ObservableObject {
         #endif
         storedConfirmedMatches = matches
         refreshPrepComparisons()
+        recomputeThreshold()
         Task { await self.refreshBacktest() }
     }
 
@@ -1231,13 +1222,37 @@ final class MREngineStore: ObservableObject {
         #endif
     }
 
+    /// 역치 기준 대회 — 확정 대회 매칭(이름 포함). 매칭이 아직 안 왔으면 영속 키 폴백(백테스트와 같은 경로).
+    private func thresholdRaces() -> [MRThresholdRace] {
+        let matches = storedConfirmedMatches.contains(where: \.isConfirmed) ? storedConfirmedMatches : persistedMatchesProvider()
+        return matches.filter(\.isConfirmed).compactMap { m in
+            mrEffortFromConfirmedMatch(m, runs: runs).map { MRThresholdRace(effort: $0, name: m.raceName) }
+        }
+    }
+
+    /// 성장 탭 역치 카드 재계산 — refreshCore와 대회 매칭 갱신(updateConfirmedMatches) 때. 매칭은 첫 계산보다 늦게 온다.
+    private func recomputeThreshold(now: Date = Date()) {
+        thresholdChangeMemo.removeAll()
+        thresholdTrend = mrThresholdTrend(runs: runs, races: thresholdRaces(), restingHRSamples: rhrSamples,
+                                          dateOfBirth: storedDob, sex: storedSex, heat: heat, now: now)
+        #if DEBUG
+        if let t = thresholdTrend {
+            let last = t.current
+            let hrStr = last.hr.map { "심박 \(Int($0.rounded()))(\(last.hrConfidence.label))" } ?? "심박 없음"
+            print("[역치] 현재 \(mrFormatPace(last.paceSecPerKm)) · \(hrStr) · \(t.pointsAreRaces ? "대회" : "훈련 노력") \(t.points.count)점 · 문장 \(t.sentence ?? "없음")")
+        } else {
+            print("[역치] 추정 불가(기준 기록 없음)")
+        }
+        #endif
+    }
+
     /// 이 러닝 직전(시작 −1초)·직후(끝) 기준 역치 추정 — 오늘의 인사이트 "역치를 밀어올린 러닝"·템포 역치 대비용.
     /// as-of 파이프라인을 두 번 돌리므로 러닝 시작 시각별로 메모한다. 러닝 목록이 아직 없으면 메모하지 않고 nil.
     func thresholdChange(runStart: Date, runEnd: Date) -> (before: MRThresholdEstimate?, after: MRThresholdEstimate?) {
         if let hit = thresholdChangeMemo[runStart] { return hit }
         guard !runs.isEmpty else { return (nil, nil) }
         func est(_ asOf: Date) -> MRThresholdEstimate? {
-            mrThresholdAsOf(runs: runs, restingHRSamples: rhrSamples, dateOfBirth: storedDob,
+            mrThresholdAsOf(runs: runs, races: thresholdRaces(), restingHRSamples: rhrSamples, dateOfBirth: storedDob,
                             sex: storedSex, heat: heat, asOf: asOf)
         }
         let r = (before: est(runStart.addingTimeInterval(-1)), after: est(runEnd))
@@ -1401,25 +1416,26 @@ final class MREngineStore: ObservableObject {
     // 대회 매칭 → MRRaceEffort 변환 (main actor에서 실행, Sendable 타입만 Task.detached로 전달)
     private func mrEffortsFromConfirmedMatches(_ matches: [PersistedRaceMatch],
                                                runs: [MRWorkout]) -> [MRRaceEffort] {
+        matches.filter { $0.isConfirmed }.compactMap { mrEffortFromConfirmedMatch($0, runs: runs) }
+    }
+
+    /// 확정 대회 한 건 → 노력. 표준 거리(5K·10K·하프·풀)만, 같은 날 거리가 가장 가까운 러닝의 시간을 표준 거리로 비례 보정.
+    private func mrEffortFromConfirmedMatch(_ match: PersistedRaceMatch, runs: [MRWorkout]) -> MRRaceEffort? {
         let cal = Calendar.current
-        return matches
-            .filter { $0.isConfirmed }
-            .compactMap { match -> MRRaceEffort? in
-                let stdDistM = match.distanceKm * 1000
-                let label = mrLabelFor(distanceM: stdDistM)
-                guard ["5K", "10K", "하프", "풀"].contains(label) else { return nil }
+        let stdDistM = match.distanceKm * 1000
+        let label = mrLabelFor(distanceM: stdDistM)
+        guard ["5K", "10K", "하프", "풀"].contains(label) else { return nil }
 
-                let sameDayRuns = runs.filter { cal.isDate($0.start, inSameDayAs: match.raceDate) }
-                guard let run = sameDayRuns.min(by: {
-                    abs(($0.distanceKm ?? 0) - match.distanceKm) < abs(($1.distanceKm ?? 0) - match.distanceKm)
-                }), let km = run.distanceKm, km > 0 else { return nil }
+        let sameDayRuns = runs.filter { cal.isDate($0.start, inSameDayAs: match.raceDate) }
+        guard let run = sameDayRuns.min(by: {
+            abs(($0.distanceKm ?? 0) - match.distanceKm) < abs(($1.distanceKm ?? 0) - match.distanceKm)
+        }), let km = run.distanceKm, km > 0 else { return nil }
 
-                let timeMin = run.durationMin * (stdDistM / (km * 1000))
-                return MRRaceEffort(date: run.date, distanceM: stdDistM,
-                                   timeMin: timeMin, timeMinRef: timeMin,
-                                   tempC: run.tempC, label: label,
-                                   isConfirmedRace: true)
-            }
+        let timeMin = run.durationMin * (stdDistM / (km * 1000))
+        return MRRaceEffort(date: run.date, distanceM: stdDistM,
+                           timeMin: timeMin, timeMinRef: timeMin,
+                           tempC: run.tempC, label: label,
+                           isConfirmedRace: true)
     }
 
     @discardableResult

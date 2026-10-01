@@ -87,26 +87,28 @@ struct MRThresholdTests {
                 == "10s/km faster after your 10K on Sep 20")
     }
 
-    @Test func effortPointsAreHardRunsAboveOwnHRGate() throws {
-        func w(_ d: Date, km: Double, min: Double, hr: Double, interval: Bool = false) -> MRWorkout {
-            MRWorkout(start: d, durationMin: min, distanceKm: km, hrAvg: hr, hrMax: nil,
-                      tempC: nil, humidity: nil, indoor: false, isInterval: interval)
+    @Test func anchorIsBestConfirmedRaceWithinTwentyFourMonths() throws {
+        let asOf = day(2026, 10, 1, 12)
+        func race(_ d: Date, km: Double, min: Double, name: String) -> (MRWorkout, MRThresholdRace) {
+            let w = MRWorkout(start: d, durationMin: min, distanceKm: km, hrAvg: nil, hrMax: nil,
+                              tempC: nil, humidity: nil, indoor: false, isInterval: false)
+            let e = MRRaceEffort(date: Calendar.current.startOfDay(for: d), distanceM: km * 1000, timeMin: min,
+                                 timeMinRef: min, tempC: nil, label: mrLabelFor(distanceM: km * 1000), isConfirmedRace: true)
+            return (w, MRThresholdRace(effort: e, name: name))
         }
-        var runs = (0..<20).map { w(day(2026, 9, 1).addingTimeInterval(Double(-$0) * 86_400 * 5), km: 8, min: 52, hr: 140) }
-        runs += [w(day(2026, 3, 1), km: 10, min: 50, hr: 165),       // ✓ 10K
-                 w(day(2026, 5, 1), km: 21.1, min: 115, hr: 165),    // ✓ 하프
-                 w(day(2026, 7, 1), km: 6, min: 29, hr: 166),        // ✓ 6K
-                 w(day(2026, 8, 1), km: 30, min: 170, hr: 166),      // 25km 초과 — 제외
-                 w(day(2026, 8, 5), km: 8, min: 36, hr: 175, interval: true)]   // 인터벌 — 제외
-        let anchor = MRRaceEffort(date: Calendar.current.startOfDay(for: day(2026, 3, 1)), distanceM: 10_000,
-                                  timeMin: 50, timeMinRef: 50, tempC: nil, label: "10K", isConfirmedRace: false)
-        let pts = mrThresholdEffortPoints(windowRuns: runs, recentEfforts: [], anchor: anchor,
-                                          fit: MRExponentFit(), heat: MRHeatModel())
-        #expect(pts.count == 3)
-        #expect(pts.map(\.label) == ["10K", "하프", "6.0K"])
-        let first = try #require(pts.first)
-        #expect(first.isAnchor && !pts[1].isAnchor)
+        let a = race(day(2025, 11, 9), km: 10, min: 50, name: "가을 10K")          // ✓ 최고
+        let b = race(day(2026, 4, 5), km: MRDistance.dH / 1000, min: 118, name: "봄 하프")
+        let old = race(day(2024, 5, 1), km: 10, min: 45, name: "옛 대회")          // 24개월 밖
+        let full = race(day(2026, 3, 1), km: MRDistance.dF / 1000, min: 200, name: "풀")   // 풀 제외
+        let all = [a, b, old, full]
+        let est = try #require(mrThresholdAsOf(runs: all.map(\.0), races: all.map(\.1), restingHRSamples: [],
+                                               dateOfBirth: nil, sex: .male, heat: MRHeatModel(), asOf: asOf))
+        #expect(est.anchorName == "가을 10K")
         let expected = try #require(mrThresholdPace(halfEquivMin: 50 * pow(MRDistance.dH / 10_000, 1.06)))
-        #expect(abs(first.paceSecPerKm - expected) < 0.01)   // 앵커 점 = 큰 숫자와 같은 식
+        #expect(abs(est.paceSecPerKm - expected) < 0.01)
+        #expect(est.paceConfidence == .medium)
+        // 24개월 밖 대회뿐 → 기준 기록 없음
+        #expect(mrThresholdAsOf(runs: [old.0], races: [old.1], restingHRSamples: [], dateOfBirth: nil,
+                                sex: .male, heat: MRHeatModel(), asOf: asOf) == nil)
     }
 }
