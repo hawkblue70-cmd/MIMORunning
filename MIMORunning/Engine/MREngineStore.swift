@@ -252,6 +252,7 @@ final class MREngineStore: ObservableObject {
                                  priorRace: nil, forcedMonday: anchor,
                                  pointHabitEveryWeeks: pointHabitEveryWeeks,
                                  intervalHistory: recentIntervals.last,
+                                 thresholdPace: thresholdTrend?.current.paceSecPerKm,
                                  caller: caller, raceName: r.name)
             // ⚠ A 계획이 따를 숫자는 사용자가 주차표에서 보는 스냅샷 값이어야 한다.
             //   라이브 주차는 오늘 프로필로 다시 만들어져 스냅샷(48)과 다른 숫자(41)가 나올 수 있고,
@@ -285,6 +286,7 @@ final class MREngineStore: ObservableObject {
                                  tuneUps: tune,
                                  pointHabitEveryWeeks: pointHabitEveryWeeks,
                                  intervalHistory: recentIntervals.last,
+                                 thresholdPace: thresholdTrend?.current.paceSecPerKm,
                                  caller: caller, raceName: r.name)
             if let pl {
                 prevPlanInfo = (date: r.date, name: r.name, distanceM: r.distanceM,
@@ -315,6 +317,7 @@ final class MREngineStore: ObservableObject {
                                  priorRace: nil, forcedMonday: anchors[key],
                                  pointHabitEveryWeeks: pointHabitEveryWeeks,
                                  intervalHistory: recentIntervals.last,
+                                 thresholdPace: thresholdTrend?.current.paceSecPerKm,
                                  caller: caller, raceName: r.name)
             shortPairs.append((r, pl))
         }
@@ -1101,7 +1104,7 @@ final class MREngineStore: ObservableObject {
         let registered = userInput.races.filter { within14($0.date) }.max { $0.date < $1.date }
         let typed = pointRunTypes.filter { $0.value == .race && within14($0.key) }.keys.max()
         var c = MRRhythmContext(runsPerWeek: profile.runsPerWeek,
-                                paces: mrPointPaces(halfEquivMin: halfEquivMin),
+                                paces: mrPointPaces(halfEquivMin: halfEquivMin, thresholdPace: thresholdTrend?.current.paceSecPerKm),
                                 pointTypes: pointRunTypes)
         c.habitEveryWeeks = pointHabitEveryWeeks
         c.intervalHistory = recentIntervals.last

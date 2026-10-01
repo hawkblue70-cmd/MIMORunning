@@ -202,15 +202,22 @@ struct MRPointPaces: Equatable, Sendable {
     let fiveK: Double
     let tenK: Double
     let half: Double
-    /// Daniels T 페이스 = 60분 대회 페이스 — 하프 등가에서 Riegel 1.06으로 60분 거리를 풀어 낸 역치 페이스(`mrThresholdPace`).
-    /// 설계: docs/superpowers/specs/2026-10-01-threshold-estimate-design.md. 계산 실패 시에만 10K·하프 중간값 폴백.
-    var tempo: Double { mrThresholdPace(halfEquivMin: half * MRDistance.dH / 1000 / 60) ?? (tenK + half) / 2 }
+    /// 성장 탭 역치 카드의 큰 숫자(`MREngineStore.thresholdTrend.current`) — 있으면 템포가 이 값을 쓴다.
+    /// 예측 하프(550일 앵커)와 카드(최근 12개월 앵커)의 기준 기록이 달라 템포가 카드와 5초쯤 어긋났다(2026-10-01) →
+    /// 앱 안 "역치 페이스"를 한 숫자로 통일(사용자 결정).
+    var thresholdPace: Double? = nil
+    /// Daniels T 페이스 = 60분 대회 페이스. 역치 카드 값 → 없으면 예측 하프 등가에서 `mrThresholdPace` → 실패 시 10K·하프 중간값.
+    /// 설계: docs/superpowers/specs/2026-10-01-threshold-estimate-design.md
+    var tempo: Double {
+        thresholdPace ?? mrThresholdPace(halfEquivMin: half * MRDistance.dH / 1000 / 60) ?? (tenK + half) / 2
+    }
 }
 
-func mrPointPaces(halfEquivMin: Double) -> MRPointPaces? {
+func mrPointPaces(halfEquivMin: Double, thresholdPace: Double? = nil) -> MRPointPaces? {
     guard halfEquivMin > 10 else { return nil }
     func pace(_ dM: Double) -> Double { halfEquivMin * pow(dM / MRDistance.dH, 1.06) * 60 / (dM / 1000) }
-    return MRPointPaces(fiveK: pace(MRDistance.d5), tenK: pace(MRDistance.d10), half: pace(MRDistance.dH))
+    return MRPointPaces(fiveK: pace(MRDistance.d5), tenK: pace(MRDistance.d10), half: pace(MRDistance.dH),
+                        thresholdPace: thresholdPace)
 }
 
 /// 계획 단계 → 포인트 종류. 회복·대회 주·따르는 주(○○ 계획)는 nil.

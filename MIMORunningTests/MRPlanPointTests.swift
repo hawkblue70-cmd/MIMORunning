@@ -70,6 +70,8 @@ struct MRPlanPointTests {
         #expect(p.tempo > p.tenK && p.tempo < p.half)
         #expect(abs(p.tempo - 302.3) < 0.5)         // 60분 대회 페이스(Daniels T) — mrThresholdPace
         #expect(mrPointPaces(halfEquivMin: 5) == nil)
+        // 역치 카드 값이 있으면 템포는 그 값(앱 안 역치 페이스 하나로)
+        #expect(mrPointPaces(halfEquivMin: 110, thresholdPace: 327)?.tempo == 327)
     }
 
     @Test func kindFollowsPlanPhase() {
