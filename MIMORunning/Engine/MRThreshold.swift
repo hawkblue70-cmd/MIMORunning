@@ -135,6 +135,13 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
 
     var basis = [L.s("하프 예측 \(mrFormatHMS(half.midMin))에서 60분 대회 페이스로 환산",
                      "60-min race pace from half prediction \(mrFormatHMS(half.midMin))")]
+    // 기준 기록 — mrPredict와 같은 앵커 규칙(환산시간 / 거리^1.06 최소). 언제 빠질지 보이게 며칠 전인지 밝힌다.
+    if let a = recent.min(by: { $0.timeMinRef / pow($0.distanceM, 1.06) < $1.timeMinRef / pow($1.distanceM, 1.06) }) {
+        let ago = cal.dateComponents([.day], from: a.date, to: cal.startOfDay(for: asOf)).day ?? 0
+        let name = a.label == "하프" ? L.s("하프", "Half") : a.label
+        basis.append(L.s("기준 기록: \(name) \(mrFormatDisplay(a.timeMin)) (\(ago)일 전)",
+                         "Anchor: \(name) \(mrFormatDisplay(a.timeMin)) (\(ago) days ago)"))
+    }
     if let r = reg {
         basis.append(L.s("심박–페이스 회귀(러닝 \(hrp.n)회) \(Int(r.rounded()))bpm",
                          "HR–pace regression (\(hrp.n) runs) \(Int(r.rounded()))bpm"))
@@ -162,39 +169,56 @@ func mrThresholdTrendDates(now: Date) -> [Date] {
     }
 }
 
-/// 심박 기준 추세의 회귀 창(일). ⚠ 90일은 임의로 정함 — 레벨 판정 창과 같게. 최근 체력만 보되 회귀 표본(≥8)은 채우는 길이.
+/// 심박 기준 추세의 창(일). ⚠ 90일은 임의로 정함 — 레벨 판정 창과 같게. 최근 체력만 본다.
 let MR_THRESHOLD_TREND_HR_WINDOW_DAYS = 90
+/// 역치 심박 ± 이 폭 안의 러닝을 모은다. ⚠ 3bpm은 임의로 정함 — 이지 페이스 실측 구간(±5)보다 좁게: 역치 근처만.
+let MR_THRESHOLD_TREND_HR_BAND = 3.0
+/// 한 점에 필요한 최소 러닝 수. ⚠ 임의로 정함 — 중앙값이 한두 건에 끌려가지 않게.
+let MR_THRESHOLD_TREND_MIN_RUNS = 3
 
-/// 역치 심박에서 낼 수 있는 페이스 — 그 시점까지 최근 90일 러닝 전체(이지 포함)의 심박–페이스 회귀에서.
-/// ⚠ 외삽 금지: 역치 심박이 그 창의 학습 심박 범위(dataHRMin...dataHRMax) 밖이면 nil(빈 점).
-func mrPaceAtThresholdHR(runs: [MRWorkout], thresholdHR: Double, asOf: Date) -> MRThresholdEstimate? {
+/// 역치 심박으로 실제 달린 러닝의 페이스 중앙값 — 그 시점까지 최근 90일, 평균 심박(15°C 기준) 역치 ±3bpm.
+///
+/// ⚠ 처음엔 90일 심박–페이스 회귀였는데 실기기에서 무너졌다(2026-10-01): 러닝 평균 심박이 141~160bpm 좁은 띠에
+///   몰려 있어 페이스가 달라도 심박이 거의 같다 → 기울기가 0 근처 → 3개월 빈 점, 나머지는 4'47"~5'14" 잡음.
+///   코드베이스 원칙대로 회귀 대신 **실측 구간 중앙값**을 쓰고 표본 수를 밝힌다(`MRHRPaceLookup`과 같은 방식).
+/// 기온은 1년치 더위–심박 모델(`MRHeatHRModel`, 더운 날 카드와 같은 것)로 15°C 기준 심박에 맞춘 뒤 고른다.
+/// 인터벌은 평균 심박·페이스가 질주+회복의 평균이라 뺀다.
+func mrPaceAtThresholdHR(runs: [MRWorkout], thresholdHR: Double, heatHR: MRHeatHRModel,
+                         asOf: Date) -> MRThresholdEstimate? {
     let cal = Calendar.current
-    let window = runs.filter {
-        let d = cal.dateComponents([.day], from: $0.date, to: cal.startOfDay(for: asOf)).day ?? -1
-        return $0.start <= asOf && d >= 0 && d <= MR_THRESHOLD_TREND_HR_WINDOW_DAYS
+    let paces: [Double] = runs.compactMap { w in
+        let d = cal.dateComponents([.day], from: w.date, to: cal.startOfDay(for: asOf)).day ?? -1
+        guard w.start <= asOf, d >= 0, d <= MR_THRESHOLD_TREND_HR_WINDOW_DAYS,
+              !w.indoor, !w.isInterval, w.durationMin >= 20, (w.distanceKm ?? 0) >= 2,
+              let ref = heatHR.refHR(of: w), abs(ref - thresholdHR) <= MR_THRESHOLD_TREND_HR_BAND
+        else { return nil }
+        return w.paceSecPerKm
     }
-    let m = mrFitHRPaceModel(runs: window, asOf: asOf)
-    guard m.ok, thresholdHR <= m.dataHRMax, let pace = m.paceAtHR(thresholdHR) else {
+    let lo = Int((thresholdHR - MR_THRESHOLD_TREND_HR_BAND).rounded())
+    let hi = Int((thresholdHR + MR_THRESHOLD_TREND_HR_BAND).rounded())
+    guard paces.count >= MR_THRESHOLD_TREND_MIN_RUNS else {
         #if DEBUG
-        print(String(format: "[역치:심박추세] asOf %@ · n=%d · 심박범위 %.0f~%.0f · 역치 %.0f → 빈 점",
-                     asOf.formatted(date: .numeric, time: .omitted), m.n, m.dataHRMin, m.dataHRMax, thresholdHR))
+        print("[역치:심박추세] asOf \(asOf.formatted(date: .numeric, time: .omitted)) · \(lo)~\(hi)bpm 러닝 \(paces.count)회 → 빈 점")
         #endif
         return nil
     }
+    let pace = mrMedian(paces)
+    #if DEBUG
+    print("[역치:심박추세] asOf \(asOf.formatted(date: .numeric, time: .omitted)) · \(lo)~\(hi)bpm 러닝 \(paces.count)회 → \(mrFormatPace(pace))")
+    #endif
     let L = AppLanguage.shared
-    let hr = Int(thresholdHR.rounded())
     return MRThresholdEstimate(
-        asOf: asOf, paceSecPerKm: pace, paceConfidence: m.n >= 20 ? .medium : .low,
+        asOf: asOf, paceSecPerKm: pace, paceConfidence: paces.count >= 8 ? .medium : .low,
         hr: thresholdHR, hrConfidence: .none,
-        basis: [L.s("최근 90일 러닝 \(m.n)회의 심박–페이스 관계에서 \(hr)bpm일 때 페이스",
-                    "Pace at \(hr)bpm from the HR–pace relation of \(m.n) runs in the last 90 days")])
+        basis: [L.s("최근 90일 평균 심박 \(lo)~\(hi)bpm(15°C 기준) 러닝 \(paces.count)회의 중간 페이스",
+                    "Median pace of \(paces.count) runs at \(lo)–\(hi)bpm avg HR (15°C) in the last 90 days")])
 }
 
 /// 성장 탭 카드 재료 — 큰 숫자(현재 추정)와 추세선을 따로 낸다.
 ///
 /// 추세선을 기록 기준(창 안 최고 노력)으로 그리면 창 길이에 따라 출렁이거나(180일, 한 달 30초) 평평했다(365일) —
 /// 최고 기록은 드물게 바뀌는 최댓값이라서다(2026-10-01 실기기). 그래서 심박이 있으면 추세선은
-/// **같은 역치 심박에서의 페이스**(최근 90일 러닝 전체)로 그린다 — 가민 자동 감지와 같은 원리(심박·페이스 패턴).
+/// **역치 심박으로 실제 달린 러닝의 페이스**(최근 90일 실측 구간 중앙값)로 그린다 — 가민 자동 감지와 같은 원리(심박·페이스 패턴).
 /// 심박이 없으면(폰 러닝) 기록 기준 점으로 그린다.
 struct MRThresholdTrendResult: Equatable, Sendable {
     let current: MRThresholdEstimate
@@ -204,12 +228,13 @@ struct MRThresholdTrendResult: Equatable, Sendable {
 }
 
 func mrThresholdTrend(runs: [MRWorkout], restingHRSamples: [(date: Date, value: Double)],
-                      dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, now: Date) -> MRThresholdTrendResult? {
+                      dateOfBirth: Date?, sex: MRSex, heat: MRHeatModel, heatHR: MRHeatHRModel,
+                      now: Date) -> MRThresholdTrendResult? {
     guard let current = mrThresholdAsOf(runs: runs, restingHRSamples: restingHRSamples,
                                         dateOfBirth: dateOfBirth, sex: sex, heat: heat, asOf: now) else { return nil }
     let dates = mrThresholdTrendDates(now: now)
     if let lthr = current.hr {
-        let line = dates.compactMap { mrPaceAtThresholdHR(runs: runs, thresholdHR: lthr, asOf: $0) }
+        let line = dates.compactMap { mrPaceAtThresholdHR(runs: runs, thresholdHR: lthr, heatHR: heatHR, asOf: $0) }
         return MRThresholdTrendResult(current: current, line: line, lineIsHRBased: true)
     }
     let line = dates.dropLast().compactMap {

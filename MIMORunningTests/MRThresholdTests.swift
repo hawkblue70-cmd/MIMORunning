@@ -85,23 +85,27 @@ struct MRThresholdTests {
                 == "12s/km faster over 6 months")
     }
 
-    @Test func paceAtThresholdHRUsesRecentNinetyDaysWithoutExtrapolation() throws {
-        // 최근 90일 러닝 10회: 심박 = 60 + 0.4 × 속도(m/min) — 기온·시간은 심박에 영향 없게 흩뿌림
+    @Test func paceAtThresholdHRIsMedianOfRunsInBand() throws {
         let asOf = day(2026, 10, 1, 12)
-        var runs: [MRWorkout] = (0..<10).map { i in
-            let speed = 160.0 + Double(i) * 10           // 160~250 m/min → 심박 124~160
-            let minutes = 25.0 + Double(i % 4) * 5
-            return MRWorkout(start: day(2026, 9, 25 - i * 2), durationMin: minutes,
-                             distanceKm: speed * minutes / 1000, hrAvg: 60 + 0.4 * speed, hrMax: nil,
-                             tempC: 15 + Double(i % 3) * 3, humidity: nil, indoor: false, isInterval: false)
+        func w(_ start: Date, pace: Double, hr: Double, interval: Bool = false, indoor: Bool = false) -> MRWorkout {
+            MRWorkout(start: start, durationMin: pace * 8 / 60, distanceKm: 8, hrAvg: hr, hrMax: nil,
+                      tempC: nil, humidity: nil, indoor: indoor, isInterval: interval)
         }
-        // 90일 밖 이상치 — 섞이면 기울기가 틀어진다
-        runs.append(MRWorkout(start: day(2026, 5, 1), durationMin: 30, distanceKm: 4, hrAvg: 190, hrMax: nil,
-                              tempC: 15, humidity: nil, indoor: false, isInterval: false))
-        let e = try #require(mrPaceAtThresholdHR(runs: runs, thresholdHR: 150, asOf: asOf))
-        #expect(abs(e.paceSecPerKm - 60_000.0 / 225) < 1)    // 150bpm → 225 m/min → 4'27"
-        #expect(e.hr == 150)
-        #expect(mrPaceAtThresholdHR(runs: runs, thresholdHR: 170, asOf: asOf) == nil)   // 학습 상한 160 위 — 외삽
+        let runs = [
+            w(day(2026, 9, 20), pace: 320, hr: 152),      // ✓
+            w(day(2026, 9, 10), pace: 330, hr: 154),      // ✓
+            w(day(2026, 8, 20), pace: 340, hr: 157),      // ✓ (경계 +3)
+            w(day(2026, 8, 10), pace: 300, hr: 160),      // 띠 밖
+            w(day(2026, 8, 1),  pace: 280, hr: 154, interval: true),   // 인터벌 제외
+            w(day(2026, 7, 20), pace: 290, hr: 154, indoor: true),     // 실내 제외
+            w(day(2026, 5, 1),  pace: 250, hr: 154),      // 90일 밖
+        ]
+        let e = try #require(mrPaceAtThresholdHR(runs: runs, thresholdHR: 154, heatHR: MRHeatHRModel(), asOf: asOf))
+        #expect(e.paceSecPerKm == 330)
+        #expect(e.hr == 154)
+        // 2회뿐 → 빈 점
+        #expect(mrPaceAtThresholdHR(runs: Array(runs.prefix(2)), thresholdHR: 154,
+                                    heatHR: MRHeatHRModel(), asOf: asOf) == nil)
     }
 
     @Test func trendDatesAreSameDayEachMonth() {

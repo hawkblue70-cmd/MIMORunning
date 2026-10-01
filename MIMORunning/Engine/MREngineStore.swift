@@ -504,7 +504,7 @@ final class MREngineStore: ObservableObject {
         predictions = mrPredict(efforts: efforts, fit: fit, profile: profile,
                                 heat: heat, asOf: now)
         thresholdTrend = mrThresholdTrend(runs: fetched, restingHRSamples: rhr,
-                                          dateOfBirth: dob, sex: sex, heat: heat, now: now)
+                                          dateOfBirth: dob, sex: sex, heat: heat, heatHR: heatHR, now: now)
         #if DEBUG
         if let t = thresholdTrend {
             let last = t.current

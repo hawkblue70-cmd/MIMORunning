@@ -52,8 +52,8 @@ struct ThresholdTrendCard: View {
                 .frame(height: 100)
 
             if trend.lineIsHRBased, let hr = current.hr {
-                Text(L.s("선: 역치 심박 \(Int(hr.rounded()))bpm에서 낼 수 있는 페이스 · 최근 90일 러닝",
-                         "Line: pace you can run at \(Int(hr.rounded()))bpm · runs in the last 90 days"))
+                Text(L.s("선: 평균 심박 \(Int(hr.rounded()))bpm 안팎으로 달린 러닝의 중간 페이스 · 최근 90일",
+                         "Line: median pace of runs averaging about \(Int(hr.rounded()))bpm · last 90 days"))
                     .font(.system(size: 11))
                     .foregroundStyle(Color.mrInk3)
             }
@@ -134,6 +134,7 @@ struct ThresholdTrendCard: View {
                 }
             }
         }
+        .chartXScale(range: .plotDimension(padding: 14))   // 양 끝 점의 달 라벨이 잘려 빠지지 않게
         .chartXAxis {
             AxisMarks(values: pts.map(\.asOf)) { _ in
                 AxisValueLabel(format: .dateTime.month(.abbreviated), centered: false)
