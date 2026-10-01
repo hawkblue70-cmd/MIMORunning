@@ -202,8 +202,9 @@ struct MRPointPaces: Equatable, Sendable {
     let fiveK: Double
     let tenK: Double
     let half: Double
-    /// Daniels T 페이스 ≈ 1시간 대회 페이스. 일반 러너에게 1시간은 대략 10K와 하프 사이 — ⚠ 임의로 정함(중간값)
-    var tempo: Double { (tenK + half) / 2 }
+    /// Daniels T 페이스 = 60분 대회 페이스 — 하프 등가에서 Riegel 1.06으로 60분 거리를 풀어 낸 역치 페이스(`mrThresholdPace`).
+    /// 설계: docs/superpowers/specs/2026-10-01-threshold-estimate-design.md. 계산 실패 시에만 10K·하프 중간값 폴백.
+    var tempo: Double { mrThresholdPace(halfEquivMin: half * MRDistance.dH / 1000 / 60) ?? (tenK + half) / 2 }
 }
 
 func mrPointPaces(halfEquivMin: Double) -> MRPointPaces? {

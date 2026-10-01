@@ -68,6 +68,7 @@ struct MRPlanPointTests {
         #expect(abs(p.half - 312.8) < 0.2)         // 110×60/21.0975
         #expect(p.fiveK < p.tenK && p.tenK < p.half)
         #expect(p.tempo > p.tenK && p.tempo < p.half)
+        #expect(abs(p.tempo - 302.3) < 0.5)         // 60분 대회 페이스(Daniels T) — mrThresholdPace
         #expect(mrPointPaces(halfEquivMin: 5) == nil)
     }
 
