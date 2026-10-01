@@ -18,8 +18,9 @@ let MR_THRESHOLD_HR_AGREE_BPM = 5.0
 let MR_THRESHOLD_IMPROVE_SEC = 3.0
 /// 역치 기준 노력 창(일). 대회 예측은 최근 550일 최고 기록을 앵커로 쓰지만(최고 기록 = 예측의 근거),
 /// 역치는 "지금 체력"이라 550일 앵커로는 새 최고 기록 전까지 추세가 평평하다(2026-10-01 실기기).
-/// ⚠ 180일은 임의로 정함 — 레벨 판정 90일보다 길게: 대회급 노력이 드물어 90일이면 빈 달이 많다.
-let MR_THRESHOLD_WINDOW_DAYS = 180
+/// ⚠ 365일은 임의로 정함. 처음 180일은 강한 러닝이 창에서 빠질 때마다 한 달에 30초씩 출렁였다(2026-10-01 실기기
+///   5'27→5'58→5'23) — 체력 변화가 아니라 근거 기록의 들고 남. 1년이면 계절마다 한 번쯤 있는 대회·강한 러닝이 창에 남는다.
+let MR_THRESHOLD_WINDOW_DAYS = 365
 
 /// 한 시점(asOf) 기준 역치 추정.
 struct MRThresholdEstimate: Equatable, Sendable {
@@ -61,7 +62,7 @@ extension MRHRPaceModel {
 /// 노력(`MRRaceEffort`)에는 심박이 없으므로 같은 날·같은 시간(±5%) 러닝을 찾아 그 `hrAvg`를 쓴다.
 /// ±5%는 표준 거리 정규화(±2% 거리 → 시간 비례 보정)를 흡수하는 폭이다.
 /// 인터벌 러닝은 평균 심박이 질주+회복의 평균이라 뺀다(`mrDetectEfforts`와 같은 이유).
-/// ⚠ 20~70분·180일은 임의로 정함 — 60분 대회 정의 앞뒤로 역치 근처에서 버틸 수 있는 시간대, 최근 반년.
+/// ⚠ 20~70분은 임의로 정함 — 60분 대회 정의 앞뒤로 역치 근처에서 버틸 수 있는 시간대. 기간은 앵커와 같은 창.
 func mrSustainedEffortHR(runs: [MRWorkout], efforts: [MRRaceEffort], asOf: Date) -> (hr: Double, n: Int)? {
     let cal = Calendar.current
     let today = cal.startOfDay(for: asOf)

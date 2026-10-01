@@ -57,12 +57,12 @@ struct MRThresholdTests {
     @Test func sustainedEffortHRMatchesSameDaySameDuration() throws {
         let asOf = day(2026, 10, 1, 12)
         let d1 = day(2026, 7, 1), d2 = day(2026, 8, 1), d3 = day(2026, 8, 15)
-        let d4 = day(2026, 2, 1), d5 = day(2026, 9, 1), d6 = day(2026, 9, 10)
+        let d4 = day(2025, 9, 1), d5 = day(2026, 9, 1), d6 = day(2026, 9, 10)
         let runs = [
             run(d1, min: 30.5, hr: 170),                    // ✓ 30분 노력, +1.7%
             run(d2, min: 40, hr: 174),                      // ✓
             run(d3, min: 15, hr: 185),                      // 20분 미만 노력
-            run(d4, min: 30, hr: 160),                      // 180일 밖
+            run(d4, min: 30, hr: 160),                      // 창(365일) 밖
             run(d5, min: 50, hr: 180, interval: true),      // 인터벌 제외
             run(d6, min: 50, hr: 150),                      // 노력 45분과 +11% — 매칭 안 됨
         ]
