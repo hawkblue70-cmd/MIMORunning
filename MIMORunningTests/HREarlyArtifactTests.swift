@@ -20,7 +20,9 @@ import Foundation
         let s = series([(300, 158), (1200, 137), (1200, 140), (180, 142)])
         let n = hrEarlyArtifactCount(s)
         #expect(n != nil)
-        #expect((n ?? 0) >= 25 && (n ?? 0) <= 30)   // 첫 10% ≈ 288초 → 표본 28~29개
+        // 첫 10%(287초) 29개 + 10% 뒤에 남은 튐 꼬리(290초) 1개 = 5분 튐 전부 30개.
+        // 꼬리가 '다시 올라옴'으로 잡혀 nil이 되던 결함의 회귀 확인.
+        #expect(n == 30)
     }
 
     @Test func buildUpStartingLowIsNotArtifact() {

@@ -32,7 +32,7 @@ func hrChartSmoothed(_ bpm: [Int]) -> [Double] {
     hrMovingAverage(hrMovingMedian(bpm, window: 9), window: 25)
 }
 
-/// 출발 직후 광학 심박 오독 구간의 표본 수(nil = 없음).
+/// 출발 직후 광학 심박 오독 구간의 표본 수(첫 10% + 그 뒤 떨어지기 전 튐 꼬리, nil = 없음).
 /// 규칙: 첫 10%(60초~10분) 평균이 그 다음 10~40% 구간 평균보다 15bpm 이상 높고, 그 뒤로는 초반 평균 −5 위로
 /// 다시 올라오지 않으면 초반 구간을 오독으로 본다. 생리적으로 출발 직후 심박은 낮게 시작해 올라가므로,
 /// 출발이 가장 높고 곧 급락한 뒤 회복이 없는 모양은 측정 문제일 가능성이 크다(10분 미만 러닝은 판단하지 않음).
@@ -49,9 +49,13 @@ func hrEarlyArtifactCount(_ samples: [(offset: TimeInterval, bpm: Int)]) -> Int?
     let earlyAvg = Double(early.map(\.bpm).reduce(0, +)) / Double(early.count)
     let refAvg = Double(ref.map(\.bpm).reduce(0, +)) / Double(ref.count)
     guard earlyAvg - refAvg >= 15 else { return nil }
-    let laterMax = samples.filter { $0.offset >= cut }.map(\.bpm).max() ?? 0
+    // "다시 올라오는가"는 튐이 끝난 뒤(초반 평균 −5 아래로 처음 떨어진 표본)부터 본다 — 튐이 첫 10%보다 길면
+    // 그 꼬리가 '다시 올라온 것'으로 잡혀 오독을 놓쳤다(48분 러닝 · 첫 5분 튐). 제외 표본도 튐 꼬리까지.
+    let later = samples.filter { $0.offset >= cut }
+    guard let drop = later.firstIndex(where: { Double($0.bpm) < earlyAvg - 5 }) else { return nil }
+    let laterMax = later[drop...].map(\.bpm).max() ?? 0
     guard Double(laterMax) < earlyAvg - 5 else { return nil }
-    return early.count
+    return early.count + drop
 }
 
 // MARK: - 러닝 중간 광학 심박 튐
