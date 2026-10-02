@@ -121,7 +121,7 @@ struct MRRaceDayView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(acc.opacity(0.12))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(acc.opacity(0.3), lineWidth: 1))
+                    .stroke(Theme.violetText.opacity(0.45), lineWidth: 1))   // 테두리 선은 밝은 보라 — 바탕 틴트만 브랜드 보라
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
