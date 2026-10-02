@@ -512,7 +512,9 @@ final class MREngineStore: ObservableObject {
         thresholdTrend = mrThresholdTrend(runs: fetched, restingHRSamples: rhr,
                                           dateOfBirth: dob, sex: sex, heat: heat, now: now)
         let firstRun = fetched.map(\.start).min()
-        restingHRTrend = mrRestingHRTrend(samples: rhr, asOf: now)
+        restingHRTrend = mrRestingHRTrend(samples: rhr,
+                                          runs: fetched.compactMap { r in r.distanceKm.map { (r.start, $0) } },
+                                          asOf: now)
         #if DEBUG
         logRestingHR(samples: rhr, firstRun: firstRun, trend: restingHRTrend, now: now)
         #endif
@@ -693,7 +695,7 @@ final class MREngineStore: ObservableObject {
         }.joined(separator: " · ")
         print("[안정시심박] 월별 \(monthStr)")
         if let t = trend {
-            let roll = t.rolling.map { "\(mf.string(from: $0.date)) \(String(format: "%.1f", $0.bpm))" }.joined(separator: " · ")
+            let roll = t.rolling.map { "\(mf.string(from: $0.date)) \(String(format: "%.1f", $0.value))" }.joined(separator: " · ")
             print("[안정시심박] 12개월 이동평균 \(roll.isEmpty ? "없음(12개월 중 \(MR_RHR_ROLLING_MIN_MONTHS)달 미만)" : roll)")
             let yoy = t.yearChange.map { String(format: "%+.1f", $0) } ?? "없음"
             print("[안정시심박] 선 \(t.months.count)개월 · 최근 90일 \(String(format: "%.1f", t.recent))(\(t.recentDays)일) · 1년 전 같은 90일 \(t.recentLY.map { String(format: "%.1f", $0) } ?? "없음") · 같은 달 대비 \(yoy)(짝 \(t.yearPairs), 화면 미사용)")

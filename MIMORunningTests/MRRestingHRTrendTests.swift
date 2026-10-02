@@ -68,6 +68,20 @@ struct MRRestingHRTrendTests {
         #expect(mrRestingHRTrend(samples: samples, asOf: now) == nil)
     }
 
+    @Test func monthlyKmHasZeroForRestMonth() {
+        // 5개월 전 달만 안 달림(부상 휴식) → 그 달 0km, 다른 달은 합계
+        let samples = daily(from: 300) { _ in 58 }
+        let restMonth = cal.date(from: cal.dateComponents([.year, .month], from: day(-150)))!
+        let runs: [(date: Date, km: Double)] = stride(from: 300, through: 0, by: -3).compactMap { ago in
+            let d = day(-ago)
+            return cal.date(from: cal.dateComponents([.year, .month], from: d))! == restMonth ? nil : (d, 10)
+        }
+        let t = mrRestingHRTrend(samples: samples, runs: runs, asOf: now)
+        let rest = t?.monthlyKm.first { $0.date == restMonth }
+        #expect(rest?.value == 0)
+        #expect((t?.monthlyKm.map(\.value).max() ?? 0) >= 90)
+    }
+
     // MARK: 단기 상승 구간(로그용)
 
     @Test func riseEpisodeCountsThreeDayRun() {

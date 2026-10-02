@@ -17,7 +17,7 @@ struct MRRestingHRTrend: Equatable, Sendable {
     }
     struct Point: Equatable, Sendable {
         let date: Date
-        let bpm: Double
+        let value: Double   // bpm(이동평균) 또는 km(월별 거리)
     }
 
     let months: [Month]          // 표본 MR_RHR_MONTH_MIN_DAYS일 이상인 달만, 오래된 순
@@ -32,6 +32,9 @@ struct MRRestingHRTrend: Equatable, Sendable {
 
     /// 1년 전 같은 90일 중앙값 — 큰 숫자 옆 비교(계절을 맞춘 사실). 표본 부족이면 nil.
     let recentLY: Double?
+    /// 월별 러닝 거리(km) — 선과 같은 달 범위, 안 달린 달은 0. 앱이 아는 유일한 맥락이라 막대로 깔아
+    /// 오르내림을 본인이 훈련과 맞춰 보게 한다(2026-10-02 사용자 요청 — 부상 휴식 달이 빈 막대로 보인다).
+    let monthlyKm: [Point]
 
     /// 오르내림의 일반적인 원인 — 판정하지 않고 늘 같은 문장(2026-10-02 사용자 결정).
     /// ⚠ 앱은 부상·질병·생활 변화를 모른다. 실기기: 2026년 3월 부상 휴식으로 70까지 올랐다가 복귀 후 60으로 내려왔는데,
@@ -49,7 +52,9 @@ let MR_RHR_ROLLING_MIN_MONTHS = 10   // 12개월 이동평균에 필요한 최�
 let MR_RHR_YOY_MIN_PAIRS = 6         // 같은 달 비교 최소 짝 수(최근 12개월 중)
 
 /// 월별 중앙값·12개월 이동평균·1년 전 같은 달 대비 변화. 표본이 모자라면 nil(카드가 조용히 빠진다).
-func mrRestingHRTrend(samples: [(date: Date, value: Double)], asOf: Date) -> MRRestingHRTrend? {
+func mrRestingHRTrend(samples: [(date: Date, value: Double)],
+                      runs: [(date: Date, km: Double)] = [],
+                      asOf: Date) -> MRRestingHRTrend? {
     let cal = Calendar.current
     let past = samples.filter { $0.date <= asOf }.sorted { $0.date < $1.date }
     guard !past.isEmpty else { return nil }
@@ -77,7 +82,7 @@ func mrRestingHRTrend(samples: [(date: Date, value: Double)], asOf: Date) -> MRR
     let rolling: [MRRestingHRTrend.Point] = months.compactMap { m in
         let vals = (0..<12).compactMap { medianOf[shift(m.month, -$0)] }
         guard vals.count >= MR_RHR_ROLLING_MIN_MONTHS else { return nil }
-        return .init(date: m.month, bpm: vals.reduce(0, +) / Double(vals.count))
+        return .init(date: m.month, value: vals.reduce(0, +) / Double(vals.count))
     }
 
     // 같은 달 비교 — 이번 달 포함 최근 12개 달력 달 각각 − 12개월 전
@@ -89,6 +94,18 @@ func mrRestingHRTrend(samples: [(date: Date, value: Double)], asOf: Date) -> MRR
     }
     let yearChange = diffs.count >= MR_RHR_YOY_MIN_PAIRS ? diffs.reduce(0, +) / Double(diffs.count) : nil
 
+    // 월별 러닝 거리 — 선의 첫 달 ~ 이번 달, 빈 달은 0
+    var kmBy: [Date: Double] = [:]
+    for r in runs where r.date <= asOf {
+        kmBy[cal.date(from: cal.dateComponents([.year, .month], from: r.date))!, default: 0] += r.km
+    }
+    var monthlyKm: [MRRestingHRTrend.Point] = []
+    var m = months.first!.month
+    while m <= thisMonth {
+        monthlyKm.append(.init(date: m, value: kmBy[m] ?? 0))
+        m = shift(m, 1)
+    }
+
     // 1년 전 같은 90일
     let lyLo = cal.date(byAdding: .year, value: -1, to: recentStart)!
     let lyHi = cal.date(byAdding: .year, value: -1, to: asOf)!
@@ -97,7 +114,8 @@ func mrRestingHRTrend(samples: [(date: Date, value: Double)], asOf: Date) -> MRR
     return MRRestingHRTrend(months: months,
                             recent: mrMedian(recentVals), recentDays: recentVals.count,
                             rolling: rolling, yearChange: yearChange, yearPairs: diffs.count,
-                            recentLY: lyVals.count >= MR_RHR_WINDOW_MIN_DAYS ? mrMedian(lyVals) : nil)
+                            recentLY: lyVals.count >= MR_RHR_WINDOW_MIN_DAYS ? mrMedian(lyVals) : nil,
+                            monthlyKm: monthlyKm)
 }
 
 /// 단기 상승 구간 수 — 아침 제안 보조 규칙(검토 중)의 발동 빈도 확인용. 로그 전용.
