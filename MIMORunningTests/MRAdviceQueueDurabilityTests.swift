@@ -75,9 +75,10 @@ struct MRAdviceQueueDurabilityTests {
         #expect(!k.contains("strength"))
     }
 
-    @Test func strengthStillFiresWithoutDurability() {
+    // 일반 근력 조언은 2026-10-02 뺐다 — 근력 기록이 없어도 뜨지 않는다
+    @Test func noGenericStrengthWithoutDurability() {
         let k = keys(build(strength: 0.0))
-        #expect(k.contains("strength"))
+        #expect(!k.contains("strength"))
         #expect(!k.contains("durability"))
     }
 

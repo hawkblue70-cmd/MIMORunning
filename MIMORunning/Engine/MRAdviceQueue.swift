@@ -38,27 +38,8 @@ struct MRAdvice: Identifiable {
 //   그 경계의 러너에게 "strategically refuel during the race"라고 한다.
 //   더 먹으라는 근거였는데 적게 먹어도 된다는 근거로 거꾸로 쓰고 있었다.
 
-func mrFuelingAdvice(raceDate: Date, distanceM: Double,
-                     projectedMin: Double, today: Date) -> MRAdvice? {
-    let d = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: today),
-                                            to: Calendar.current.startOfDay(for: raceDate)).day ?? -1
-    guard d >= 0, d <= 90, distanceM >= 20000 else { return nil }
-    let hours = projectedMin / 60.0
-    guard hours >= 1.5 else { return nil }
-
-    if hours >= 2.5 {
-        let lo = Int(60 * hours), hi = Int(90 * hours)
-        return MRAdvice(key: "fueling",
-            text: "\(mrFormatDisplay(projectedMin)) 예상이면 2.5시간을 넘으니 권장 탄수화물이 시간당 60g이 아니라 60~90g입니다(총 \(lo)~\(hi)g — 젤 무게가 아니라 탄수화물 양). 60g를 넘길 때는 포도당:과당 혼합 제품을 쓰세요 — 단일 포도당은 흡수 한계가 60g/h입니다. 젤만으로는(1개 22~25g) 못 채우니 젤은 30분마다, 사이사이 음료로 채우세요(시간·km별 타이밍은 나 탭 대회 카드). 상단은 훈련에서 연습해 본 만큼만.",
-            rationale: "ACSM/AND/DC 2016 합동 성명 · Jeukendrup 2014(복합 수송 탄수화물) · D-\(d)",
-            grade: "A", gainMin: 12, timeliness: 0.85, slot: "raceCountdown")
-    }
-    let lo = Int(30 * hours), hi = Int(60 * hours)
-    return MRAdvice(key: "fueling",
-        text: "\(mrFormatDisplay(projectedMin)) 예상이면 탄수화물 시간당 30~60g이 권장 구간입니다(총 \(lo)~\(hi)g). 젤 무게가 아니라 탄수화물 양이고, 젤 1개는 보통 22~25g이라 30~40분 간격이면 맞습니다(시간·km별 타이밍은 나 탭 대회 카드).",
-        rationale: "ACSM/AND/DC 2016 합동 성명 · D-\(d)",
-        grade: "A", gainMin: 6, timeliness: 0.7, slot: "raceCountdown")
-}
+// ⚠ 2026-10-02 성장 탭에서 보급량 조언(fueling)을 뺐다 — 나 탭 대회 카드의 젤 보급 제안(MRGelPlan)이
+//   같은 내용을 시간·km별로 보여 준다. 위 근거는 MRGelPlan·MRRaceDay가 그대로 쓴다.
 
 func mrGutTrainingAdvice(raceDate: Date, distanceM: Double,
                          projectedMin: Double, today: Date) -> MRAdvice? {
@@ -267,9 +248,7 @@ func mrBuildAdvice(runs: [MRWorkout],
     // 성장 탭이 롱런 요약을 넘기기 전(빈 배열)의 조언 계산은 찍지 않는다 — "진단 0건"이 여러 줄 반복되는 소음
     if !fatigue.isEmpty { print("[후반:패턴] 진단 \(late.evaluated)건 · 반복 유형 \(late.dominant?.rawValue ?? "없음")(\(late.dominantCount)회)") }
     #endif
-    var durabilityShown = false
     if suppression == nil, !verdict.triggered, late.dominant == .legs {
-        durabilityShown = true
         out.append(MRAdvice(key: "durability",
             text: late.latestIsTodayAndDominant
                 ? "오늘 롱런도 후반에 다리가 먼저 지쳤습니다. 최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번이 그랬습니다. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요."
@@ -285,7 +264,6 @@ func mrBuildAdvice(runs: [MRWorkout],
             ]))
     }
     if suppression == nil, verdict.triggered {
-        durabilityShown = true
         let dropStr = String(format: "%.0f", max(verdict.latestDropPct ?? 0, 0))
         let text: String
         let slot: String
@@ -310,21 +288,9 @@ func mrBuildAdvice(runs: [MRWorkout],
             ]))
     }
 
-    // ── 근력운동 (기본)
-    //
-    // 러닝에 근력을 더하면 러닝만 할 때보다 경제성과 기록이 좋아진다는
-    // 메타분석이 여럿 있다(Blagrove 2018, Sports Med 48(5):1117–1149).
-    // 그 메타분석 자체가 고중량·플라이오메트릭을 다루므로 문구를 그렇게 쓴다.
-    // ⚠ durability가 이미 나왔으면 같은 주제를 두 번 말하지 않는다.
-    if suppression == nil, !durabilityShown, strengthPerWeek < 1.5 {
-        out.append(MRAdvice(key: "strength",
-            text: "무거운 무게를 드는 근력운동과 점프 운동을 주 2회 함께 하면 러닝 경제성과 기록이 좋아졌다는 연구가 많습니다. 주 30분이면 충분합니다.",
-            // ⚠ "주 0.0회"를 그대로 보여주지 않는다 — 0은 사람을 찌른다 (앱 원칙).
-            rationale: strengthPerWeek < 0.25
-                ? "최근 4주 근력 세션 기록 없음 · Blagrove 2018 메타분석"
-                : String(format: "최근 4주 근력 세션 주 %.1f회 · Blagrove 2018 메타분석", strengthPerWeek),
-            grade: "A", gainMin: 4, timeliness: 0.2, slot: "weekly"))
-    }
+    // ── 근력운동 (기본) — 2026-10-02 뺐다.
+    //   내 데이터와 무관한 일반론이고, 근력을 하되 기록하지 않는 사람에게도 계속 떴다.
+    //   근력은 롱런 후반 패턴(durability)이 발동할 때만 처방으로 말한다. 일반 근력 조언은 추후 재논의.
 
     // ── 케이던스 큐 (유일한 폼 제안)
     //
@@ -382,7 +348,7 @@ func mrBuildAdvice(runs: [MRWorkout],
         }
     }
 
-    // ── 보급 3종
+    // ── 보급 2종(장 훈련·수분)
     //
     // ⚠ "가장 가까운 대회"가 아니라 "**보급이 필요한** 대회 중 가장 가까운 것"이다.
     //   8/30 10K가 11/1 풀보다 가깝다고 해서 마라톤 보급 안내를 놓치면 안 된다.
@@ -391,7 +357,7 @@ func mrBuildAdvice(runs: [MRWorkout],
     let fuelable = plans.filter { $0.distanceM >= 20000 }
     if let target = fuelable.min(by: { $0.raceDate < $1.raceDate }) {
         let fns: [(Date, Double, Double, Date) -> MRAdvice?] = [
-            mrFuelingAdvice, mrGutTrainingAdvice, mrHydrationAdvice
+            mrGutTrainingAdvice, mrHydrationAdvice
         ]
         for fn in fns {
             if let a = fn(target.raceDate, target.distanceM, target.projectedFinal, asOf) {
