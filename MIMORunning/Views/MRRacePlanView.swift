@@ -367,17 +367,22 @@ struct MRWeekTable: View {
         return (long, weekly)
     }
 
-    /// 지난 주만 기호 반환. 이번 주·미래 주 nil.
-    private func complianceSymbolForSnap(_ snap: MRPlanWeekSummary) -> String? {
+    /// 지난 주 기호. 이번 주는 `includeCurrent`일 때 **롱런·주간을 다 채웠으면** 주가 끝나기 전에도 ●(10% 초과면 ▲) —
+    /// 덜 채운 이번 주는 주중에 ○를 띄우지 않고 비운다(2026-10-02 사용자: "완료하면 시간에 관계없이 수행 표시"). 미래 주 nil.
+    private func complianceSymbolForSnap(_ snap: MRPlanWeekSummary, includeCurrent: Bool = true) -> String? {
         let cal = Calendar.current
         let today     = cal.startOfDay(for: Date())
         let weekStart = cal.startOfDay(for: snap.monday)
-        guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart),
-              weekEnd <= today else { return nil }
-        let weekRuns     = runs.filter { $0.start >= weekStart && $0.start < weekEnd }
+        guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart), weekStart <= today else { return nil }
+        let isCurrent = weekEnd > today
+        if isCurrent && !includeCurrent { return nil }
+        let cutoff = min(weekEnd, cal.date(byAdding: .day, value: 1, to: today) ?? weekEnd)
+        let weekRuns     = runs.filter { $0.start >= weekStart && $0.start < cutoff }
         let actualLong   = weekRuns.compactMap(\.distanceKm).max() ?? 0
         let actualWeekly = weekRuns.compactMap(\.distanceKm).reduce(0, +)
-        return weekSymbol(plan: snap, actualLong: actualLong, actualWeekly: actualWeekly)
+        let sym = weekSymbol(plan: snap, actualLong: actualLong, actualWeekly: actualWeekly)
+        if isCurrent { return (sym == symbolBoth || sym == symbolOver) ? sym : nil }
+        return sym
     }
 
     /// 스냅샷 주의 예측 시간 — 재계산 플랜 주에서 날짜 매칭으로 조회.
@@ -456,19 +461,12 @@ struct MRWeekTable: View {
         return todayStart >= weekStart && todayStart < weekEnd
     }
 
-    private func complianceSymbol(for w: MRPlanWeek) -> String? {
+    private func complianceSymbol(for w: MRPlanWeek, includeCurrent: Bool = true) -> String? {
         let cal = Calendar.current
-        let today     = cal.startOfDay(for: Date())
-        let weekStart = cal.startOfDay(for: w.monday)
-        guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart),
-              weekEnd <= today else { return nil }
         guard let snap = snapshotWeeks.first(where: {
-            cal.startOfDay(for: $0.monday) == weekStart
+            cal.startOfDay(for: $0.monday) == cal.startOfDay(for: w.monday)
         }) else { return nil }
-        let weekRuns     = runs.filter { $0.start >= weekStart && $0.start < weekEnd }
-        let actualLong   = weekRuns.compactMap(\.distanceKm).max() ?? 0
-        let actualWeekly = weekRuns.compactMap(\.distanceKm).reduce(0, +)
-        return weekSymbol(plan: snap, actualLong: actualLong, actualWeekly: actualWeekly)
+        return complianceSymbolForSnap(snap, includeCurrent: includeCurrent)
     }
 
     private func actualData(for w: MRPlanWeek) -> (long: Double, weekly: Double)? {
@@ -490,9 +488,10 @@ struct MRWeekTable: View {
         let L = AppLanguage.shared
         let syms: [String]
         if !snapshotWeeks.isEmpty {
-            syms = snapshotWeeks.compactMap { complianceSymbolForSnap($0) }
+            // 요약 줄은 "지난 N주" — 끝난 주만 센다
+            syms = snapshotWeeks.compactMap { complianceSymbolForSnap($0, includeCurrent: false) }
         } else {
-            syms = weeks.compactMap { complianceSymbol(for: $0) }
+            syms = weeks.compactMap { complianceSymbol(for: $0, includeCurrent: false) }
         }
         guard !syms.isEmpty else { return nil }
         let both = syms.filter { $0 == symbolBoth }.count
