@@ -21,10 +21,10 @@ enum SleepGrade: String, Codable {
     var runningComment: String {
         let L = AppLanguage.shared
         return switch self {
-        case .excellent:    L.s("오늘 힘껏 달려도 좋아요",     "Great day to push hard")
-        case .good:         L.s("컨디션이 좋아요",             "Good condition today")
+        case .excellent:    L.s("오늘 힘껏 달려도 좋습니다",     "Great day to push hard")
+        case .good:         L.s("컨디션이 좋습니다",             "Good condition today")
         case .fair:         L.s("무리하지 않게 달리세요",       "Keep it comfortable")
-        case .insufficient: L.s("가볍게 달리는 걸 추천해요",   "Easy run recommended")
+        case .insufficient: L.s("가볍게 달리는 걸 추천합니다",   "Easy run recommended")
         case .poor:         L.s("충분한 휴식 후 달리세요",     "Rest up before running")
         }
     }

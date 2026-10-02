@@ -136,7 +136,7 @@ struct JoinCrewView: View {
 
             VStack(spacing: 8) {
                 Text(AppLanguage.shared.s(
-                    "\(crewName) 크루에 합류했어요!",
+                    "\(crewName) 크루에 합류했습니다!",
                     "You joined \(crewName)!"
                 ))
                 .font(.title2.bold())
@@ -144,7 +144,7 @@ struct JoinCrewView: View {
                 .multilineTextAlignment(.center)
 
                 Text(AppLanguage.shared.s(
-                    "크루 탭에서 멤버들의 기록을 확인할 수 있어요",
+                    "크루 탭에서 멤버들의 기록을 확인할 수 있습니다",
                     "Check your crew's records in the Crew tab"
                 ))
                 .font(.subheadline)
@@ -176,7 +176,7 @@ struct JoinCrewView: View {
                 .font(.system(size: 22))
                 .foregroundStyle(Theme.violet)
             VStack(alignment: .leading, spacing: 3) {
-                Text(AppLanguage.shared.s("닉네임이 필요해요", "Nickname required"))
+                Text(AppLanguage.shared.s("닉네임이 필요합니다", "Nickname required"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
                 Text(AppLanguage.shared.s(
@@ -215,7 +215,7 @@ struct JoinCrewView: View {
             switch ckError.code {
             case .notAuthenticated:
                 errorMessage = AppLanguage.shared.s(
-                    "iCloud 로그인이 필요해요.",
+                    "iCloud 로그인이 필요합니다.",
                     "iCloud sign-in required."
                 )
             case .networkUnavailable, .networkFailure:

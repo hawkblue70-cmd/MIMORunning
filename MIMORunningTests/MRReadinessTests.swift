@@ -148,10 +148,10 @@ struct MRReadinessTests {
         #expect(r?.level == .easy)
         #expect(r?.line == "오늘은 이지런 · 4일 연속")
         // 둘째 줄: 왜 + 데이터(HRV 어젯밤·이번 주·평소·상태어, 연속일). 마지막 고강도는 없으니 생략
-        #expect(r?.why == "4일 내리 달렸어요. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요.")
+        #expect(r?.why == "4일 내리 달렸습니다. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요.")
         // 어젯밤 37은 평소 30보다 15% 넘게 높다 → "(평소보다 높음)"
         #expect(r?.data == ["HRV 어젯밤 37(평소보다 높음) · 7일 평균 37(좋음) · 4주 평균 30ms", "4일 연속"])
-        #expect(r?.detail == "4일 내리 달렸어요. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요. HRV 어젯밤 37(평소보다 높음) · 7일 평균 37(좋음) · 4주 평균 30ms · 4일 연속")
+        #expect(r?.detail == "4일 내리 달렸습니다. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요. HRV 어젯밤 37(평소보다 높음) · 7일 평균 37(좋음) · 4주 평균 30ms · 4일 연속")
     }
 
     /// 평소 주 4일 연속(월~목)으로 뛰는 사람 — 4주 전부 4일 구간. 각 러닝 30분이라 급증·상승 없음.
@@ -178,7 +178,7 @@ struct MRReadinessTests {
         let r = readiness(runs: runs, nights: nights(base: 30, recent: 25))
         #expect(r?.level == .rest)
         #expect(r?.line == "오늘은 휴식이나 짧은 이지 · 4일 연속 · HRV 낮음")
-        #expect(r?.why == "4일 내리 달렸고 HRV도 평소보다 낮아요. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.")
+        #expect(r?.why == "4일 내리 달렸고 HRV도 평소보다 낮습니다. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.")
     }
 
     @Test func streakWithLowLastNightIsRest() {
@@ -302,7 +302,7 @@ struct MRReadinessTests {
         let r = readiness(runs: runs, nights: nights(base: 30, recent: 37))
         #expect(r?.level == .go)
         #expect(r?.line == "오늘은 강도 OK · HRV 좋음 · 마지막 고강도 6일 전")
-        #expect(r?.why == "이번 주 HRV가 평소 위로 안정적이에요. 강도를 소화할 준비가 된 신호예요.")
+        #expect(r?.why == "이번 주 HRV가 평소 위로 안정적입니다. 강도를 소화할 준비가 된 신호입니다.")
         #expect(r?.data == ["HRV 어젯밤 37(평소보다 높음) · 7일 평균 37(좋음) · 4주 평균 30ms", "마지막 고강도 6일 전"])
     }
 
@@ -335,7 +335,7 @@ struct MRReadinessTests {
         #expect(r?.hrvPending == false)
         // HRV 자료가 없으면 데이터 조각도 없고 왜 문장만 남는다
         #expect(r?.data == [])
-        #expect(r?.detail == "부하가 안정돼 있어요. 계획한 강도를 넣어도 돼요.")
+        #expect(r?.detail == "부하가 안정돼 있습니다. 계획한 강도를 넣어도 됩니다.")
     }
 
     // MARK: 동기화 전

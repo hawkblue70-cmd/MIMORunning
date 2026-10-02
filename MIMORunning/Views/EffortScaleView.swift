@@ -155,7 +155,7 @@ struct EffortScaleView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L.s("운동 강도 막대", "Effort scale"))
         .accessibilityValue(shownValue.map { "\($0), \(EffortBand(value: $0).label)" } ?? L.s("미입력", "Not set"))
-        .accessibilityHint(isEditable ? "" : L.s("Apple 값입니다. 배지를 눌러 수정할 수 있어요.", "Apple value. Activate the badge to edit."))
+        .accessibilityHint(isEditable ? "" : L.s("Apple 값입니다. 배지를 눌러 수정할 수 있습니다.", "Apple value. Activate the badge to edit."))
         .accessibilityAdjustableAction { dir in
             guard isEditable else { return }
             let cur = shownValue ?? 5

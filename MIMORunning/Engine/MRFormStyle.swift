@@ -299,7 +299,7 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
         let timeKor   = isStrong ? " 3개월 새" : " \(durKor)"
         let timeEng   = isStrong ? " over 3 months" : " \(durEng)"
         let cadDirKor = cs.delta < 0 ? "내려가고" : "올라가고"
-        let gctDirKor = gs.delta < 0 ? "짧아졌어요." : "길어졌어요."
+        let gctDirKor = gs.delta < 0 ? "짧아졌습니다." : "길어졌습니다."
         let cadDirEng = cs.delta < 0 ? "dropped" : "rose"
         let gctDirEng = gs.delta < 0 ? "shortened" : "lengthened"
 
@@ -314,10 +314,10 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
         let elasticKor: String
         let elasticEng: String
         if !gctDown && !airUp {
-            elasticKor = "지면에 머무는 시간이 늘었어요."
+            elasticKor = "지면에 머무는 시간이 늘었습니다."
             elasticEng = "time on the ground went up."
         } else {
-            elasticKor = airUp ? "공중 시간은 \(airtimeMs)ms 늘었어요." : "공중 시간은 \(airtimeMs)ms 줄었어요."
+            elasticKor = airUp ? "공중 시간은 \(airtimeMs)ms 늘었습니다." : "공중 시간은 \(airtimeMs)ms 줄었습니다."
             elasticEng = airUp ? "airtime rose ~\(airtimeMs) ms." : "airtime dropped ~\(airtimeMs) ms."
         }
         let mechKor = strideKor.map { "\($0) \(elasticKor)" } ?? elasticKor
@@ -327,16 +327,16 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
         let concKor: String
         let concEng: String
         if gctDown && airUp {
-            concKor = "같은 페이스를 더 가볍고 탄력 있게 만들고 있다는 뜻이에요."
-            concEng = "At the same pace, you're getting lighter and springier."
+            concKor = "같은 페이스를 더 짧은 접지로 달리고 있다는 뜻입니다."
+            concEng = "At the same pace, you're spending less time on the ground."
         } else if !gctDown && !airUp {
-            concKor = "같은 페이스를 조금 더 오래 딛고 만들고 있어요."
+            concKor = "같은 페이스를 조금 더 오래 딛고 만들고 있습니다."
             concEng = "At the same pace, you're spending a little longer on each footstrike."
         } else if cs.delta > 0 {
-            concKor = "같은 페이스를 더 잦은 걸음으로 만들고 있다는 뜻이에요."
+            concKor = "같은 페이스를 더 잦은 걸음으로 만들고 있다는 뜻입니다."
             concEng = "At the same pace, you're taking quicker steps."
         } else {
-            concKor = "같은 페이스를 더 큰 걸음으로 만들고 있다는 뜻이에요."
+            concKor = "같은 페이스를 더 큰 걸음으로 만들고 있다는 뜻입니다."
             concEng = "At the same pace, you're taking longer steps."
         }
 
@@ -346,10 +346,10 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
         if let r = runCadenceResidual {
             let endpoint = cs.recentMean
             if r >= endpoint - 1 {
-                tailKor = " 이 러닝도 그 흐름 위에 있어요."
-                tailEng = " This run sits right on that trend."
+                tailKor = " 이 러닝도 같은 방향입니다."
+                tailEng = " This run points the same way."
             } else if r < endpoint - 2 {
-                tailKor = " 이 러닝은 그 흐름보다 조금 느긋했어요."
+                tailKor = " 이 러닝은 그 흐름보다 조금 느긋했습니다."
                 tailEng = " This run was a little more relaxed than that trend."
             }
         } else if wks >= 8 {
@@ -382,22 +382,22 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
             switch s.metric.key {
             case "cadence":
                 let l1 = s.delta > 0
-                    ? "같은 페이스에서 케이던스가 3개월 새 \(cadVal) 올랐어요."
-                    : "같은 페이스에서 케이던스가 3개월 새 \(cadVal) 내려갔어요."
+                    ? "같은 페이스에서 케이던스가 3개월 새 \(cadVal) 올랐습니다."
+                    : "같은 페이스에서 케이던스가 3개월 새 \(cadVal) 내려갔습니다."
                 let l2 = s.delta > 0
-                    ? "발걸음이 더 잦아지고 있다는 뜻이에요."
-                    : "발걸음이 느려지고 있다는 뜻이에요."
+                    ? "발걸음이 더 잦아지고 있다는 뜻입니다."
+                    : "발걸음이 느려지고 있다는 뜻입니다."
                 return "\(l1)\n\(l2)"
             case "gct":
                 let l1 = s.delta < 0
-                    ? "같은 페이스에서 지면접촉이 3개월 새 \(gctVal) 짧아졌어요."
-                    : "같은 페이스에서 지면접촉이 3개월 새 \(gctVal) 길어졌어요."
+                    ? "같은 페이스에서 지면접촉이 3개월 새 \(gctVal) 짧아졌습니다."
+                    : "같은 페이스에서 지면접촉이 3개월 새 \(gctVal) 길어졌습니다."
                 let l2 = s.delta < 0
-                    ? "지면에서 더 빨리 떨어지고 있다는 뜻이에요."
-                    : "지면에 더 오래 닿고 있다는 뜻이에요."
+                    ? "지면에서 더 빨리 떨어지고 있다는 뜻입니다."
+                    : "지면에 더 오래 닿고 있다는 뜻입니다."
                 return "\(l1)\n\(l2)"
             default:
-                return s.delta > 0 ? "\(s.metric.label)이 3개월 새 증가했어요." : "\(s.metric.label)이 3개월 새 감소했어요."
+                return s.delta > 0 ? "\(s.metric.label)이 3개월 새 증가했습니다." : "\(s.metric.label)이 3개월 새 감소했습니다."
             }
         } else {
             let dur = s.weeksConsistent >= 12 ? "3개월째"
@@ -406,23 +406,23 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
             switch s.metric.key {
             case "cadence":
                 let l1 = s.delta > 0
-                    ? "같은 페이스에서 케이던스가 \(dur) 조금씩 올라가고 있어요."
-                    : "같은 페이스에서 케이던스가 \(dur) 조금씩 내려가고 있어요."
+                    ? "같은 페이스에서 케이던스가 \(dur) 조금씩 올라가고 있습니다."
+                    : "같은 페이스에서 케이던스가 \(dur) 조금씩 내려가고 있습니다."
                 let l2 = s.delta > 0
-                    ? "발걸음이 서서히 잦아지는 추세예요."
-                    : "발걸음이 서서히 느려지는 추세예요."
+                    ? "발걸음이 서서히 잦아지는 추세입니다."
+                    : "발걸음이 서서히 느려지는 추세입니다."
                 return "\(l1)\n\(l2)"
             case "gct":
                 let l1 = s.delta < 0
-                    ? "같은 페이스에서 지면접촉이 \(dur) 조금씩 짧아지고 있어요."
-                    : "같은 페이스에서 지면접촉이 \(dur) 조금씩 길어지고 있어요."
+                    ? "같은 페이스에서 지면접촉이 \(dur) 조금씩 짧아지고 있습니다."
+                    : "같은 페이스에서 지면접촉이 \(dur) 조금씩 길어지고 있습니다."
                 let l2 = s.delta < 0
-                    ? "지면에서 서서히 더 빨리 떨어지는 추세예요."
-                    : "지면에 서서히 더 오래 닿는 추세예요."
+                    ? "지면에서 서서히 더 빨리 떨어지는 추세입니다."
+                    : "지면에 서서히 더 오래 닿는 추세입니다."
                 return "\(l1)\n\(l2)"
             default:
                 let dir = s.delta > 0 ? "증가하고" : "감소하고"
-                return "같은 페이스에서 \(s.metric.label)이 \(dur) 조금씩 \(dir) 있어요."
+                return "같은 페이스에서 \(s.metric.label)이 \(dur) 조금씩 \(dir) 있습니다."
             }
         }
     }

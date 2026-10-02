@@ -21,7 +21,7 @@ import CloudKit
             if !hasCache {
                 switch ckError.code {
                 case .notAuthenticated:
-                    errorMessage = AppLanguage.shared.s("iCloud 로그인이 필요해요.", "iCloud sign-in required.")
+                    errorMessage = AppLanguage.shared.s("iCloud 로그인이 필요합니다.", "iCloud sign-in required.")
                 case .networkUnavailable, .networkFailure:
                     errorMessage = AppLanguage.shared.s("네트워크 연결을 확인해 주세요.", "Check your network connection.")
                 default:
@@ -100,7 +100,7 @@ struct CrewTabView: View {
                     .foregroundStyle(Theme.violet)
             }
             VStack(spacing: 8) {
-                Text(AppLanguage.shared.s("아직 크루가 없어요", "No crews yet"))
+                Text(AppLanguage.shared.s("아직 크루가 없습니다", "No crews yet"))
                     .font(.title3.bold())
                     .foregroundStyle(.white)
                 Text(AppLanguage.shared.s("친구와 함께 달려보세요", "Run together with friends"))
@@ -205,7 +205,7 @@ struct CrewTabView: View {
         VStack(spacing: 6) {
             if atMax {
                 Text(AppLanguage.shared.s(
-                    "크루는 최대 3개까지 참여할 수 있어요",
+                    "크루는 최대 3개까지 참여할 수 있습니다",
                     "You can join up to 3 crews"
                 ))
                 .font(.caption)

@@ -113,7 +113,7 @@ enum MRGelPlan {
         let L = AppLanguage.shared
         let iv = Int(p.intervalMin)
         if p.stops.isEmpty {
-            return L.s("이 거리는 몸에 저장된 에너지로 충분해요 — 레이스 중 보급은 필요 없어요.",
+            return L.s("이 거리는 몸에 저장된 에너지로 충분합니다 — 레이스 중 보급은 필요 없습니다.",
                        "Your stored energy covers this distance — no fueling needed during the race.")
         }
         if p.recommendedLo >= 60 {
@@ -130,7 +130,7 @@ enum MRGelPlan {
     }
 
     static func disclaimer() -> String {
-        AppLanguage.shared.s("참고용 제안이에요. 대회 전 롱런에서 같은 젤·같은 간격으로 반드시 연습해 보고, 몸에 맞게 조정하세요.",
+        AppLanguage.shared.s("참고용 제안입니다. 대회 전 롱런에서 같은 젤·같은 간격으로 반드시 연습해 보고, 몸에 맞게 조정하세요.",
                              "For reference only. Always rehearse the same gels at the same intervals on long runs before race day, and adjust to what your body tolerates.")
     }
 }

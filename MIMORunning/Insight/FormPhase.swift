@@ -420,19 +420,19 @@ enum FormPhase {
         }
         switch r.late {
         case .held:
-            ko.append("끝까지 폼을 유지했어요")
+            ko.append("끝까지 폼을 유지했습니다")
             en.append("your form held to the finish")
         case .cadenceDefended:
-            ko.append("마지막 \(lateKm)km엔 속도가 떨어졌지만 발 회전은 지켰어요")
+            ko.append("마지막 \(lateKm)km엔 속도가 떨어졌지만 발 회전은 지켰습니다")
             en.append("pace faded over the last \(lateKm) km but your cadence held")
         case .bouncier:
-            ko.append("마지막 \(lateKm)km엔 앞보다 위로 가는 움직임이 늘었어요")
+            ko.append("마지막 \(lateKm)km엔 앞보다 위로 가는 움직임이 늘었습니다")
             en.append("over the last \(lateKm) km more motion went up than forward")
         case .heavier(let signals):
             if r.isSoftCadenceOnly {
                 // 이지 프레임의 케이던스 단독 하강은 무거워짐이 아니라 편한 날의 변화 — 위안 문장을 절 안에 그대로 담는다
                 // (마지막 요소일 때 뒤에 붙는 마침표 하나로 두 문장이 자연스럽게 끝난다).
-                ko.append("마지막 \(lateKm)km엔 케이던스가 조금 내려갔어요. 편한 날엔 자연스러운 변화예요")
+                ko.append("마지막 \(lateKm)km엔 케이던스가 조금 내려갔습니다. 편한 날엔 자연스러운 변화입니다")
                 en.append("Cadence eased a little over the last \(lateKm) km — natural on an easy day")
             } else {
                 ko.append("마지막 \(lateKm)km엔 " + joinKo(signals))
@@ -441,7 +441,7 @@ enum FormPhase {
         case .faded(let d):
             // 붕괴 사실 절 뒤에 무엇이 나빠졌는지(있으면) 이어 붙인다 — 소프트 케이던스 절과 같은 방식으로
             // 안쪽 마침표만 직접 넣고 바깥 wrap의 마침표 하나로 마무리한다(이중 마침표 방지).
-            var koClause = "마지막 \(lateKm)km엔 페이스가 \(d)초/km 떨어졌는데 심박은 그대로였어요"
+            var koClause = "마지막 \(lateKm)km엔 페이스가 \(d)초/km 떨어졌는데 심박은 그대로였습니다"
             var enClause = "Pace dropped \(d) s/km over the last \(lateKm) km while heart rate stayed up"
             let pieces = fadedWorsenedPieces(r)
             if !pieces.isEmpty {
@@ -462,7 +462,7 @@ enum FormPhase {
         enS = String(enS.prefix(1)).uppercased() + enS.dropFirst()
         if isLongDistance, r.late != .held, !suppressCommonTail, !r.isSoftCadenceOnly, !r.isFaded {
             let d = String(format: "%.0f", r.totalKm)
-            koS += " \(d)km 후반엔 흔한 변화예요."
+            koS += " \(d)km 후반엔 흔한 변화입니다."
             enS += " Common late in a \(d) km run."
         }
         return L.s(koS, enS)
@@ -497,13 +497,13 @@ enum FormPhase {
             var koPairs: [(conj: String, final: String)] = []
             var enPhrases: [String] = []
             if let a = e.stride, let b = m.stride, b - a >= strideDeltaM {
-                koPairs.append(("보폭이 늘고", "보폭이 늘었어요")); enPhrases.append("a longer stride")
+                koPairs.append(("보폭이 늘고", "보폭이 늘었습니다")); enPhrases.append("a longer stride")
             }
             if let a = e.groundContact, let b = m.groundContact, a - b >= 8 {
-                koPairs.append(("지면접촉이 짧아지고", "지면접촉이 짧아졌어요")); enPhrases.append("shorter ground contact")
+                koPairs.append(("지면접촉이 짧아지고", "지면접촉이 짧아졌습니다")); enPhrases.append("shorter ground contact")
             }
             if let a = e.cadence, let b = m.cadence, b - a >= cadenceGainSPM {
-                koPairs.append(("발 회전이 빨라지고", "발 회전이 빨라졌어요")); enPhrases.append("quicker steps")
+                koPairs.append(("발 회전이 빨라지고", "발 회전이 빨라졌습니다")); enPhrases.append("quicker steps")
             }
             if !koPairs.isEmpty {
                 let ko = joinKoClauses(koPairs)
@@ -562,14 +562,14 @@ enum FormPhase {
             if let dir = cadenceDir {
                 let cadKo: String, cadEn: String
                 switch dir {
-                case .same:    cadKo = "케이던스는 그대로예요.";  cadEn = "while cadence stayed the same."
-                case .dropped: cadKo = "케이던스는 \(cadenceDeltaSPM)spm 내려갔어요."; cadEn = "and cadence dropped \(cadenceDeltaSPM) spm."
-                case .rose:    cadKo = "케이던스는 \(cadenceDeltaSPM)spm 올라갔어요."; cadEn = "and cadence went up \(cadenceDeltaSPM) spm."
+                case .same:    cadKo = "케이던스는 그대로입니다.";  cadEn = "while cadence stayed the same."
+                case .dropped: cadKo = "케이던스는 \(cadenceDeltaSPM)spm 내려갔습니다."; cadEn = "and cadence dropped \(cadenceDeltaSPM) spm."
+                case .rose:    cadKo = "케이던스는 \(cadenceDeltaSPM)spm 올라갔습니다."; cadEn = "and cadence went up \(cadenceDeltaSPM) spm."
                 }
                 ko = "\(paceKo) 심박이 \(hrDelta)bpm 올랐고\(heatKo), \(cadKo)"
                 en = "\(paceEn) heart rate rose \(hrDelta) bpm\(heatEn), \(cadEn)"
             } else {
-                ko = "\(paceKo) 심박이 \(hrDelta)bpm 올랐어요\(heatKo)."
+                ko = "\(paceKo) 심박이 \(hrDelta)bpm 올랐습니다\(heatKo)."
                 en = "\(paceEn) heart rate rose \(hrDelta) bpm\(heatEn)."
             }
             out.append(L.s("후반 \(kmKo(l)): " + ko, "Late \(kmEn(l)): " + en))
@@ -638,10 +638,10 @@ enum FormPhase {
         }
         func final_(_ m: Metric) -> String {
             switch m {
-            case .cadence:       return "케이던스가 내려갔어요"
-            case .stride:        return "보폭이 줄었어요"
-            case .groundContact: return "지면접촉이 길어졌어요"
-            case .verticalOsc:   return "위아래 움직임이 늘었어요"
+            case .cadence:       return "케이던스가 내려갔습니다"
+            case .stride:        return "보폭이 줄었습니다"
+            case .groundContact: return "지면접촉이 길어졌습니다"
+            case .verticalOsc:   return "위아래 움직임이 늘었습니다"
             }
         }
         guard let last = signals.last else { return "" }

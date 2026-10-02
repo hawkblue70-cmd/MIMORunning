@@ -210,9 +210,9 @@ struct MRRecoveryTests {
                             percentile: MRRecovery.tauPercentile(tau, history: history))
         }
         let h = [40.0, 45, 50, 55, 60, 65, 70, 75]
-        #expect(MRRecovery.shapeCaption(shape(39, h)) == "평소보다 빠르게 안정됐어요")
-        #expect(MRRecovery.shapeCaption(shape(57, h)) == "평소대로 내려왔어요")
-        #expect(MRRecovery.shapeCaption(shape(76, h)) == "2분 뒤에도 계속 내려오는 중이었어요")
+        #expect(MRRecovery.shapeCaption(shape(39, h)) == "평소보다 빠르게 안정됐습니다")
+        #expect(MRRecovery.shapeCaption(shape(57, h)) == "평소대로 내려왔습니다")
+        #expect(MRRecovery.shapeCaption(shape(76, h)) == "2분 뒤에도 계속 내려오는 중이었습니다")
         // 사분위 문구의 영문판도 한 건은 덮는다 — 폴백 제거로 없어진 영문 커버리지를 여기로 옮김
         inEnglish {
             #expect(MRRecovery.shapeCaption(shape(39, h)) == "Settled faster than usual")
@@ -239,10 +239,10 @@ struct MRRecoveryTests {
         }
         // 47 → 40·45 두 개가 아래 → p = 0.25 (하위 사분위에 포함)
         #expect(MRRecovery.tauPercentile(47, history: h) == 0.25)
-        #expect(caption(47) == "평소보다 빠르게 안정됐어요")
+        #expect(caption(47) == "평소보다 빠르게 안정됐습니다")
         // 67 → 40~65 여섯 개가 아래 → p = 0.75
         #expect(MRRecovery.tauPercentile(67, history: h) == 0.75)
-        #expect(caption(67) == "2분 뒤에도 계속 내려오는 중이었어요")
+        #expect(caption(67) == "2분 뒤에도 계속 내려오는 중이었습니다")
     }
 
     @Test func shapeInitRequiresDecayAndHRR2() {

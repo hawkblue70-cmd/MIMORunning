@@ -126,7 +126,7 @@ enum RunSummary {
             || i.planPhase.map { planEasyPhases.contains($0) } == true
         if i.workoutType != .race, fatigued || i.workoutType == .distanceRun {
             line.next = r.kind == .held ? nil
-                : (fatigued ? AppLanguage.shared.s("피로가 쌓인 상태에서 뛴 러닝이에요. 후반 판단은 회복한 뒤 롱런에서 다시 보세요.",
+                : (fatigued ? AppLanguage.shared.s("피로가 쌓인 상태에서 뛴 러닝입니다. 후반 판단은 회복한 뒤 롱런에서 다시 보세요.",
                                                     "This run came on accumulated fatigue — judge your late-run durability again on a long run after recovery.")
                             : LateRunDiagnosis.next(r, heatDeltaBpm: i.heatDeltaBpm))
         } else {
@@ -259,13 +259,13 @@ enum RunSummary {
         let next: String
         if let phase = i.planPhase {
             next = planEasyPhases.contains(phase)
-                ? L.s("대회 훈련 계획상 \(phase) 주예요. 거리를 더 늘리지 말고 계획대로 가세요.",
+                ? L.s("대회 훈련 계획상 \(phase) 주입니다. 거리를 더 늘리지 말고 계획대로 가세요.",
                       "Your race plan has this as an easy week — hold the distance and stick to the plan.")
-                : L.s("대회 훈련 계획상 \(phase) 주의 러닝이에요. 다음 롱런 거리는 계획을 따르세요.",
+                : L.s("대회 훈련 계획상 \(phase) 주의 러닝입니다. 다음 롱런 거리는 계획을 따르세요.",
                       "This run is part of your race plan — follow the plan for your next long run.")
         } else if plannedLongRunTypes.contains(i.workoutType) {
             // 오늘 거리는 의도한 것이라 증량 경고가 아니라 회복이 다음 행동이다
-            next = L.s("계획한 거리를 채운 러닝이에요. 다음 1~2일은 이지런이나 휴식으로 회복하세요.",
+            next = L.s("계획한 거리를 채운 러닝입니다. 다음 1~2일은 이지런이나 휴식으로 회복하세요.",
                       "You covered the distance you set out to — take the next day or two easy, or rest.")
         } else {
             next = L.s("이 거리는 2~3주 유지한 뒤 늘리세요. 롱런은 한 번에 평소의 1.3배 안에서.",
@@ -364,7 +364,7 @@ enum RunSummary {
 
         var next: String? = nil
         if let phase = planDeviationPhase {
-            next = L.s("\(phase) 주는 다음 고강도를 받아낼 몸을 만드는 기간이에요. 다음 러닝은 이지런으로 돌아가세요.",
+            next = L.s("\(phase) 주는 다음 고강도를 받아낼 몸을 만드는 기간입니다. 다음 러닝은 이지런으로 돌아가세요.",
                       "An easy week is what makes the next hard block land — make your next run an easy one.")
         } else if isEasyHighBranch {
             if let pace = i.easyPace {
@@ -510,29 +510,29 @@ enum RunSummary {
     private static func loadNext(_ i: RunSummaryInput, jumped: Bool) -> String? {
         let L = AppLanguage.shared
         if i.todayEffortMissing {
-            return L.s("강도를 입력하면 오늘 러닝이 부하에 반영돼요.", "Rate today's effort and it will count toward your load.")
+            return L.s("강도를 입력하면 오늘 러닝이 부하에 반영됩니다.", "Rate today's effort and it will count toward your load.")
         }
         if let phase = i.planPhase {
             if phase == "회복" {
-                return L.s("대회 훈련 계획상 회복 주예요. 이지런 위주로 가세요.", "Your race plan has this as a recovery week — stick to easy runs.")
+                return L.s("대회 훈련 계획상 회복 주입니다. 이지런 위주로 가세요.", "Your race plan has this as a recovery week — stick to easy runs.")
             }
             if phase == "테이퍼" {
-                return L.s("대회 훈련 계획상 테이퍼 주예요. 이지런 위주로 가세요.", "Your race plan has this as a taper week — keep it easy.")
+                return L.s("대회 훈련 계획상 테이퍼 주입니다. 이지런 위주로 가세요.", "Your race plan has this as a taper week — keep it easy.")
             }
         }
         if jumped || i.loadSentence == .monotony || i.streakDays >= 4 {
-            var s = L.s("다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋아요.",
+            var s = L.s("다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.",
                         "Take a 30–40 min recovery run or rest for the next day or two.")
             if i.hrvTrend?.isSuppressed == true {
-                s += L.s(" HRV도 기준선 아래로 흔들리고 있어요.", " Your HRV is also wobbling below baseline.")
+                s += L.s(" HRV도 기준선 아래로 흔들리고 있습니다.", " Your HRV is also wobbling below baseline.")
             } else if lastNightLow(i) {
                 // 추세는 보통이어도 어젯밤이 낮았으면 그 사실을 다음 행동에 붙인다 — 근거 줄의 "(평소보다 낮음)"과 짝
-                s += L.s(" 어젯밤 HRV도 평소보다 낮았어요.", " Last night's HRV was also below usual.")
+                s += L.s(" 어젯밤 HRV도 평소보다 낮았습니다.", " Last night's HRV was also below usual.")
             }
             return s
         }
         if i.todayIsHard {
-            return L.s("오늘 강도를 냈으니 내일은 이지런이나 휴식이 좋아요.",
+            return L.s("오늘 강도를 냈으니 내일은 이지런이나 휴식이 좋습니다.",
                       "You went hard today — make tomorrow an easy run or a rest day.")
         }
         // 히스테리시스: 어제(창 하루 전)까지 4주 평균 대비 높음이었다가 오늘 유지/가볍게로 내려온 날은
@@ -540,7 +540,7 @@ enum RunSummary {
         let yesterdayHigh = i.acuteChronicYesterday == .high || i.acuteChronicYesterday == .veryHigh
         let todayCalm = i.acuteChronic == .steady || i.acuteChronic == .low
         if yesterdayHigh && todayCalm {
-            return L.s("부하가 내려오는 중이에요. 하루 더 편하게 가면 좋아요.",
+            return L.s("부하가 내려오는 중입니다. 하루 더 편하게 가면 좋습니다.",
                       "Load is coming down — one more easy day is a good idea.")
         }
         // 결정 2: 4주 평균 대비 자료 없이는 "충분히 회복됐다"고 말하지 않는다 — 마지막 고강도 이후 며칠 지났는지만으로는
@@ -559,23 +559,23 @@ enum RunSummary {
             // 위·안정이면 2주 이지 블록(회복이 쌓임)과 고강도 있음(잘 흡수함)을 나눠 말한다. 범위 안이면 기존 문장.
             if let t = i.hrvTrend {
                 if t.isSuppressed {
-                    return L.s("부하는 내려왔지만 HRV가 기준선 아래예요. 수면이나 생활 피로 쪽일 수 있으니 하루 더 편하게 가세요.",
+                    return L.s("부하는 내려왔지만 HRV가 기준선 아래입니다. 수면이나 생활 피로 쪽일 수 있으니 하루 더 편하게 가세요.",
                                "Load has come down, but your HRV is below baseline. It may be sleep or life stress — take one more easy day.")
                 }
                 if lastNightLow(i) {
                     // 추세는 보통인데 어젯밤만 낮음 — "충분히 회복"이라 하지 않고 하루만 미룬다
-                    return L.s("부하는 내려왔지만 어젯밤 HRV가 평소보다 낮았어요. 하루 더 편하게 가세요.",
+                    return L.s("부하는 내려왔지만 어젯밤 HRV가 평소보다 낮았습니다. 하루 더 편하게 가세요.",
                                "Load has come down, but last night's HRV was below usual — take one more easy day.")
                 }
                 if t.isReadyHigh {
                     return i.isEasyBlock
-                        ? L.s("2주 이지런으로 회복이 쌓였어요. HRV가 4주 기준선 위로 안정적이라 이번 주 강도 세션 넣기 좋아요.",
+                        ? L.s("2주 이지런으로 회복이 쌓였습니다. HRV가 4주 기준선 위로 안정적이라 이번 주 강도 세션 넣기 좋습니다.",
                               "Two weeks of easy running have built up recovery. Your HRV is steadily above its 4-week baseline — a good week for a quality session.")
-                        : L.s("충분히 회복됐어요. 고강도 뒤에도 HRV가 기준선 위라 부하를 잘 흡수하고 있어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.",
+                        : L.s("충분히 회복됐습니다. 고강도 뒤에도 HRV가 기준선 위라 부하를 잘 흡수하고 있습니다. 빌드업이나 템포런을 넣기 좋은 시점입니다.",
                               "You're well recovered. Your HRV stayed above baseline even after hard runs, so you're absorbing the load — a good time for a build-up or tempo run.")
                 }
             }
-            return L.s("충분히 회복됐어요. 빌드업이나 템포런을 넣기 좋은 시점이에요.",
+            return L.s("충분히 회복됐습니다. 빌드업이나 템포런을 넣기 좋은 시점입니다.",
                       "You're well recovered — a good time for a build-up or tempo run.")
         }
         // 유지(.steady)인데 회복 판정에는 못 미치는 날(최근 7일이 직전보다 15% 이상 늘었거나 고강도가 최근) —
@@ -583,12 +583,12 @@ enum RunSummary {
         // 증감 폭은 말하지 않는다("조금/크게") — 근거 줄의 숫자(+81% 같은)와 싸운다. "하루 간격"은 이틀 연속 고강도를 피하라는 뜻.
         if i.acuteChronic == .steady {
             let rising = (i.weekOverWeek ?? 0) >= restedWeekOverWeekMax
-            guard rising else { return L.s("지금 리듬을 유지하면 좋아요.", "Keep this rhythm.") }
+            guard rising else { return L.s("지금 리듬을 유지하면 좋습니다.", "Keep this rhythm.") }
             if i.hrvTrend?.isReadyHigh == true {
-                return L.s("지금 리듬을 유지하면 좋아요. HRV는 좋고 직전 7일보다 부하가 늘었으니, 고강도 사이에는 쉬운 날 하루를 두세요.",
+                return L.s("지금 리듬을 유지하면 좋습니다. HRV는 좋고 직전 7일보다 부하가 늘었으니, 고강도 사이에는 쉬운 날 하루를 두세요.",
                            "Keep this rhythm. HRV looks good and load is up on the previous 7 days, so leave an easy day between hard sessions.")
             }
-            return L.s("지금 리듬을 유지하면 좋아요. 직전 7일보다 부하가 늘었으니 고강도 사이에는 쉬운 날 하루를 두세요.",
+            return L.s("지금 리듬을 유지하면 좋습니다. 직전 7일보다 부하가 늘었으니 고강도 사이에는 쉬운 날 하루를 두세요.",
                        "Keep this rhythm. Load is up on the previous 7 days, so leave an easy day between hard sessions.")
         }
         return nil

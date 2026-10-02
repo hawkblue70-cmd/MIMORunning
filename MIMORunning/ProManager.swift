@@ -149,7 +149,7 @@ final class ProManager {
             case .userCancelled:
                 return false
             case .pending:
-                purchaseError = "결제 승인 대기 중입니다. 완료되면 자동으로 반영돼요."
+                purchaseError = "결제 승인 대기 중입니다. 완료되면 자동으로 반영됩니다."
                 return false
             @unknown default:
                 return false

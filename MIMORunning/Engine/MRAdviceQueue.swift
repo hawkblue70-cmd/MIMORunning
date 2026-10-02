@@ -145,7 +145,7 @@ func mrBuildAdvice(runs: [MRWorkout],
         let over = (cur / longest - 1) * 100
         let hrr = over <= 30 ? "1.64" : (over <= 100 ? "1.52" : "2.28")
         out.append(MRAdvice(key: "spike",
-            text: String(format: "지난 30일 최장 거리보다 %.0f%% 길었어요. 다음 롱런은 %.0fkm 정도가 무난합니다.", over, longest * 1.1),
+            text: String(format: "지난 30일 최장 거리보다 %.0f%% 길었습니다. 다음 롱런은 %.0fkm 정도가 무난합니다.", over, longest * 1.1),
             rationale: String(format: "최근 30일 최장 %.1fkm → 이번 %.1fkm · Frandsen 2025 해당 밴드 HRR %@", longest, cur, hrr),
             grade: "B", gainMin: 8, timeliness: 0.9, slot: "todayRun"))
     }
@@ -169,14 +169,14 @@ func mrBuildAdvice(runs: [MRWorkout],
             case "부상 의심":
                 // 이 공백 직전에 단일 세션 급증이 있었다.
                 // 같은 실수를 반복하지 않게 하는 게 핵심이다.
-                text = "\(g.days)일 쉬고 돌아오셨네요. 당분간 주 \(Int(pre*decay))km 정도로 시작하시고, "
+                text = "\(g.days)일 쉬고 돌아오셨습니다. 당분간 주 \(Int(pre*decay))km 정도로 시작하시고, "
                      + "롱런은 한 번에 10% 넘게 올리지 않는 게 좋습니다."
             case "질병·여행 의심":
-                text = "\(g.days)일 만이네요. 몸이 아직 돌아오는 중일 수 있으니 "
+                text = "\(g.days)일 만입니다. 몸이 아직 돌아오는 중일 수 있으니 "
                      + "주 \(Int(pre*decay))km 정도로 가볍게 시작하시면 됩니다."
             default:
-                text = "\(g.days)일 만에 다시 나오셨네요. 반갑습니다. "
-                     + "주 \(Int(pre*decay))km 정도로 시작하면 무리가 없어요."
+                text = "\(g.days)일 만에 다시 나오셨습니다. 반갑습니다. "
+                     + "주 \(Int(pre*decay))km 정도로 시작하면 무리가 없습니다."
             }
             out.append(MRAdvice(key: "return", text: text,
                 rationale: String(format: "공백 전 주 평균 %.0fkm × %.1f · 원인 추정: %@ (걸음 수 기준)", pre, decay, g.cause),
@@ -196,7 +196,7 @@ func mrBuildAdvice(runs: [MRWorkout],
                                      extraHardStarts: hardRunStarts)
         if c.hard <= 1 && c.total >= 4 && (c.lastHardDaysAgo ?? Int.max) >= 2 {
             out.append(MRAdvice(key: "hrvReady",
-                text: "지난 2주는 이지런 위주였고 수면 HRV 7일 평균이 4주 기준선 위로 안정적이에요. 이번 주 강도 세션 하나 넣기 좋은 때예요.",
+                text: "지난 2주는 이지런 위주였고 수면 HRV 7일 평균이 4주 기준선 위로 안정적입니다. 이번 주 강도 세션 하나 넣기 좋은 때입니다.",
                 rationale: String(format: "HRV 7일 %.0fms · 4주 기준선 %.0fms · 14일 고강도 %d회 · Vesterinen 2016(HRV 기반 강도 조절) · 회복 지표이지 체력 지표는 아님",
                                   t.sevenDayMean, t.baseline, c.hard),
                 grade: "B", gainMin: 3, timeliness: 0.6, slot: "todayRun"))
@@ -227,8 +227,8 @@ func mrBuildAdvice(runs: [MRWorkout],
                 //   인과 근거가 약해 등급 B로 내려간 항목이다.
                 //   근거가 약한 걸 제일 아프게 말하면 안 된다.
                 let phrase = easy == 0
-                    ? "최근 4주는 대부분 템포에 가까운 날이었어요"
-                    : "최근 4주 \(hrRuns.count)회 중 \(easy)회가 유산소 구간이었어요"
+                    ? "최근 4주는 대부분 템포에 가까운 날이었습니다"
+                    : "최근 4주 \(hrRuns.count)회 중 \(easy)회가 유산소 구간이었습니다"
                 let intervalNote = intervals > 0
                     ? "(인터벌 \(intervals)회는 따로 세었습니다) "
                     : ""
@@ -272,8 +272,8 @@ func mrBuildAdvice(runs: [MRWorkout],
         durabilityShown = true
         out.append(MRAdvice(key: "durability",
             text: late.latestIsTodayAndDominant
-                ? "오늘 롱런도 후반에 다리가 먼저 지쳤어요. 최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번이 그랬습니다. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요."
-                : "최근 롱런 후반에 심박은 버티는데 폼이 먼저 무거워지는 패턴이 반복됐어요. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요.",
+                ? "오늘 롱런도 후반에 다리가 먼저 지쳤습니다. 최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번이 그랬습니다. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요."
+                : "최근 롱런 후반에 심박은 버티는데 폼이 먼저 무거워지는 패턴이 반복됐습니다. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요.",
             rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 폼이 평소 범위 밖으로 무거워짐(심박 효율은 유지) · Blagrove 2018 메타분석(근력·플라이오 → 경제성)",
             grade: "B", gainMin: 6, timeliness: late.latestIsTodayAndDominant ? 0.8 : 0.4,
             slot: late.latestIsTodayAndDominant ? "todayRun" : "weekly",
@@ -292,10 +292,10 @@ func mrBuildAdvice(runs: [MRWorkout],
         var timeliness: Double
         if verdict.latestPositiveIsToday {
             slot = "todayRun"; timeliness = 0.8
-            text = "오늘 롱런 후반에 케이던스가 \(dropStr)% 떨어졌어요. 최근 롱런 \(verdict.evaluated)번 중 \(verdict.positive)번이 그랬습니다. 다리가 지치면 발걸음이 느려지는 패턴이에요. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦추는 데 도움이 될 수 있어요."
+            text = "오늘 롱런 후반에 케이던스가 \(dropStr)% 떨어졌습니다. 최근 롱런 \(verdict.evaluated)번 중 \(verdict.positive)번이 그랬습니다. 다리가 지치면 발걸음이 느려지는 패턴입니다. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦추는 데 도움이 될 수 있습니다."
         } else {
             slot = "weekly"; timeliness = 0.4
-            text = "최근 롱런 후반에 발걸음이 느려지는 패턴이 반복됐어요. 무거운 무게를 드는 근력운동과 점프 운동이 후반 페이스를 지키는 데 도움이 됩니다."
+            text = "최근 롱런 후반에 발걸음이 느려지는 패턴이 반복됐습니다. 무거운 무게를 드는 근력운동과 점프 운동이 후반 페이스를 지키는 데 도움이 됩니다."
         }
         if strengthPerWeek < 1.0 { timeliness += 0.1 }
         out.append(MRAdvice(key: "durability", text: text,
@@ -318,7 +318,7 @@ func mrBuildAdvice(runs: [MRWorkout],
     // ⚠ durability가 이미 나왔으면 같은 주제를 두 번 말하지 않는다.
     if suppression == nil, !durabilityShown, strengthPerWeek < 1.5 {
         out.append(MRAdvice(key: "strength",
-            text: "무거운 무게를 드는 근력운동과 점프 운동을 주 2회 함께 하면 러닝 경제성과 기록이 좋아졌다는 연구가 많습니다. 주 30분이면 충분해요.",
+            text: "무거운 무게를 드는 근력운동과 점프 운동을 주 2회 함께 하면 러닝 경제성과 기록이 좋아졌다는 연구가 많습니다. 주 30분이면 충분합니다.",
             // ⚠ "주 0.0회"를 그대로 보여주지 않는다 — 0은 사람을 찌른다 (앱 원칙).
             rationale: strengthPerWeek < 0.25
                 ? "최근 4주 근력 세션 기록 없음 · Blagrove 2018 메타분석"
@@ -334,7 +334,7 @@ func mrBuildAdvice(runs: [MRWorkout],
     if suppression == nil, verdict.positive == 0,
        let s = cadenceShift, s.metric.key == "cadence", s.isReal, s.delta < 0 {
         out.append(MRAdvice(key: "cadenceCue",
-            text: String(format: "같은 페이스에서 케이던스가 3개월 새 %.0f spm 내려갔어요. 이지런 한 번에 10분만 평소보다 5%% 빠른 발걸음으로 달려보세요.", abs(s.delta)),
+            text: String(format: "같은 페이스에서 케이던스가 3개월 새 %.0f spm 내려갔습니다. 이지런 한 번에 10분만 평소보다 5%% 빠른 발걸음으로 달려보세요.", abs(s.delta)),
             rationale: String(format: "MRFormShift cadence Δ=%.1f spm (MDC %.1f) · Van Hooren 2024 r=−0.20 · Heiderscheit 2011 (+5~10%% 케이던스)", s.delta, s.mdc),
             grade: "B", gainMin: 2, timeliness: 0.3, slot: "weekly",
             exercises: [
@@ -355,7 +355,7 @@ func mrBuildAdvice(runs: [MRWorkout],
         switch late.dominant {
         case .cardio?:
             out.append(MRAdvice(key: "lateCardio",
-                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반에 같은 속도를 내는 데 심박이 더 들었어요. 다리보다 심박이 먼저 한계에 닿는 패턴이에요. 롱런 중반 페이스를 10초/km 늦추고, 주 1회 템포 20분으로 같은 페이스의 심박을 낮춰 보세요. 더운 날엔 수분·나트륨도 챙기고요.",
+                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반에 같은 속도를 내는 데 심박이 더 들었습니다. 다리보다 심박이 먼저 한계에 닿는 패턴입니다. 롱런 중반 페이스를 10초/km 늦추고, 주 1회 템포 20분으로 같은 페이스의 심박을 낮춰 보세요. 더운 날엔 수분·나트륨도 챙기세요.",
                 rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 중반 대비 후반 심박 효율 5%↑ 하락 · Friel 유산소 디커플링 5% 관례 · Maunder 2021(내구성)",
                 grade: "B", gainMin: 5, timeliness: slotToday ? 0.75 : 0.35, slot: slotToday ? "todayRun" : "weekly",
                 exercises: [
@@ -365,7 +365,7 @@ func mrBuildAdvice(runs: [MRWorkout],
                 ]))
         case .combined?:
             out.append(MRAdvice(key: "lateCombined",
-                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반에 심박도 더 들고 폼도 무거워졌어요. 초반 강도가 높았거나 기본 지구력이 아직 부족할 때 나오는 패턴이에요. 초반을 더 편하게 시작하고, 긴 롱런 한 번보다 주간 거리를 꾸준히 쌓아 보세요.",
+                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반에 심박도 더 들고 폼도 무거워졌습니다. 초반 강도가 높았거나 기본 지구력이 아직 부족할 때 나오는 패턴입니다. 초반을 더 편하게 시작하고, 긴 롱런 한 번보다 주간 거리를 꾸준히 쌓아 보세요.",
                 rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 심박 효율 5%↑ 하락 + 폼 평소 범위 밖 · Maunder 2021(내구성)",
                 grade: "C", gainMin: 4, timeliness: slotToday ? 0.7 : 0.3, slot: slotToday ? "todayRun" : "weekly",
                 exercises: [
@@ -374,7 +374,7 @@ func mrBuildAdvice(runs: [MRWorkout],
                 ]))
         case .held? where plans.isEmpty:
             out.append(MRAdvice(key: "lateHeld",
-                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반까지 심박 효율과 폼을 지켰어요. 다음 단계는 지친 상태에서 페이스를 지키는 연습이에요 — 롱런 마지막 15분을 목표 대회 페이스로 올려 보세요.",
+                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반까지 심박 효율과 폼을 지켰습니다. 다음 단계는 지친 상태에서 페이스를 지키는 연습입니다 — 롱런 마지막 15분을 목표 대회 페이스로 올려 보세요.",
                 rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 유지(심박 효율 하락 5% 미만 · 폼 평소 범위) · 롱런 후반 대회 페이스 삽입은 관행(통제 연구 없음)",
                 grade: "C", gainMin: 3, timeliness: 0.25, slot: "weekly"))
         default:
@@ -405,7 +405,7 @@ func mrBuildAdvice(runs: [MRWorkout],
     // ⚠ 보급 기록이 없으므로 "가능성"으로만 말한다 — 페이스와 심박이 함께 내려간 90분 이상 롱런에서만 진단된다.
     if late.dominant == .energy, !out.contains(where: { $0.key == "gut" }) {
         out.append(MRAdvice(key: "lateEnergy",
-            text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 90분이 지나면 페이스와 심박이 함께 내려갔어요. 에너지가 떨어졌을 가능성이 있어요. 90분 넘는 롱런은 30~40분부터 시간당 30~60g 탄수화물을 나눠 먹어 보고, 초반 10분은 목표보다 느리게 시작해 보세요.",
+            text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 90분이 지나면 페이스와 심박이 함께 내려갔습니다. 에너지가 떨어졌을 가능성이 있습니다. 90분 넘는 롱런은 30~40분부터 시간당 30~60g 탄수화물을 나눠 먹어 보고, 초반 10분은 목표보다 느리게 시작해 보세요.",
             rationale: "최근 8주 90분+ 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 페이스 20초/km↑ 느려짐 + 심박 3bpm↓ (보급 기록 없음, 추정) · ACSM/AND/DC 2016(1~2.5시간 30~60 g/h)",
             grade: "B", gainMin: 6, timeliness: slotToday ? 0.75 : 0.4, slot: slotToday ? "todayRun" : "weekly",
             exercises: [

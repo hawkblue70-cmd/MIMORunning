@@ -79,7 +79,7 @@ struct MRThresholdTests {
         let a = effort(day(2026, 9, 20), min: 50)
         let tenK = MRRaceEffort(date: a.date, distanceM: 10_000, timeMin: 50, timeMinRef: 50,
                                 tempC: nil, label: "10K", isConfirmedRace: false)
-        #expect(mrThresholdUpdateSentence(anchor: tenK, beforePace: 330, afterPace: 320) == "9월 20일 10K 기록으로 10초 빨라졌어요")
+        #expect(mrThresholdUpdateSentence(anchor: tenK, beforePace: 330, afterPace: 320) == "9월 20일 10K 기록으로 10초 빨라졌습니다")
         #expect(mrThresholdUpdateSentence(anchor: tenK, beforePace: 322, afterPace: 320) == nil)   // 2초 — 문턱 미만
         #expect(mrThresholdUpdateSentence(anchor: tenK, beforePace: 310, afterPace: 320) == nil)   // 느려짐
         #expect(mrThresholdUpdateSentence(anchor: tenK, beforePace: nil, afterPace: 320) == nil)   // 첫 기록

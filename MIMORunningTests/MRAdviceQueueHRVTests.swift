@@ -44,7 +44,7 @@ struct MRAdviceQueueHRVTests {
         #expect(a != nil)
         #expect(a?.slot == "todayRun")
         #expect(a?.grade == "B")
-        #expect(a?.text == "지난 2주는 이지런 위주였고 수면 HRV 7일 평균이 4주 기준선 위로 안정적이에요. 이번 주 강도 세션 하나 넣기 좋은 때예요.")
+        #expect(a?.text == "지난 2주는 이지런 위주였고 수면 HRV 7일 평균이 4주 기준선 위로 안정적입니다. 이번 주 강도 세션 하나 넣기 좋은 때입니다.")
         #expect(a?.rationale == "HRV 7일 37ms · 4주 기준선 30ms · 14일 고강도 0회 · Vesterinen 2016(HRV 기반 강도 조절) · 회복 지표이지 체력 지표는 아님")
     }
 

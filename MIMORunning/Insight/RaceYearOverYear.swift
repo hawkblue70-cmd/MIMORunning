@@ -136,9 +136,9 @@ enum RaceYearOverYear {
             case .time(let s): amount = L.s(koreanDuration(s), clockDuration(s))
             case .pace(let s): amount = L.s("km당 \(s)초", "\(s) s/km")
             }
-            if sameRace && yearsAgo == 1 { return L.s("작년보다 \(amount) 빨라요", "\(amount) faster than last year") }
-            if sameRace && yearsAgo >= 2 { return L.s("\(year)년보다 \(amount) 빨라요", "\(amount) faster than \(year)") }
-            return L.s("지난 \(name)보다 \(amount) 빨라요", "\(amount) faster than your last \(name)")
+            if sameRace && yearsAgo == 1 { return L.s("작년보다 \(amount) 빠릅니다", "\(amount) faster than last year") }
+            if sameRace && yearsAgo >= 2 { return L.s("\(year)년보다 \(amount) 빠릅니다", "\(amount) faster than \(year)") }
+            return L.s("지난 \(name)보다 \(amount) 빠릅니다", "\(amount) faster than your last \(name)")
         }
         if sameRace && yearsAgo == 1 { return L.s("작년 \(name) \(record)", "Last year's \(name): \(record)") }
         if sameRace && yearsAgo >= 2 { return L.s("\(year)년 \(name) \(record)", "\(name) \(year): \(record)") }

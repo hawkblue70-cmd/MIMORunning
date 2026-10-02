@@ -205,7 +205,7 @@ struct FormPhaseTests {
         #expect(r?.lateWorsened(.cadence) == true)
         #expect(r?.lateWorsened(.groundContact) == true)
         #expect(FormPhase.sentence(r!, isLongDistance: false) ==
-                "마지막 3km엔 페이스가 35초/km 떨어졌는데 심박은 그대로였어요. 보폭 0.97→0.91 · 케이던스 175→171 · 지면접촉 +24ms.")
+                "마지막 3km엔 페이스가 35초/km 떨어졌는데 심박은 그대로였습니다. 보폭 0.97→0.91 · 케이던스 175→171 · 지면접촉 +24ms.")
         #expect(FormPhase.shortState(r!) == "마지막 3km 페이스 떨어짐")
     }
 
@@ -275,13 +275,13 @@ struct FormPhaseTests {
     }
 
     @Test func heldAloneIsOneClause() {
-        #expect(ko(result(late: .held)) == "끝까지 폼을 유지했어요.")
+        #expect(ko(result(late: .held)) == "끝까지 폼을 유지했습니다.")
         #expect(en(result(late: .held)) == "Your form held to the finish.")
     }
 
     @Test func warmupAccelerationHeldJoinsThreeClauses() {
         let r = result(early: .warmup, mid: .strideDriven, late: .held)
-        #expect(ko(r) == "처음 4km는 몸을 풀고, 중반엔 보폭으로 속도를 냈고, 끝까지 폼을 유지했어요.")
+        #expect(ko(r) == "처음 4km는 몸을 풀고, 중반엔 보폭으로 속도를 냈고, 끝까지 폼을 유지했습니다.")
     }
 
     @Test func englishThreeClausesUseAnd() {
@@ -291,28 +291,28 @@ struct FormPhaseTests {
 
     @Test func heavierListsSignalsWithLastKm() {
         let r = result(late: .heavier([.stride, .groundContact]))
-        #expect(ko(r) == "마지막 4km엔 보폭이 줄고 지면접촉이 길어졌어요.")
+        #expect(ko(r) == "마지막 4km엔 보폭이 줄고 지면접촉이 길어졌습니다.")
         #expect(en(r) == "Over the last 4 km stride shortened and ground contact lengthened.")
     }
 
     @Test func heavierThreeSignals() {
         let r = result(late: .heavier([.cadence, .stride, .verticalOsc]))
-        #expect(ko(r) == "마지막 4km엔 케이던스가 내려가고 보폭이 줄고 위아래 움직임이 늘었어요.")
+        #expect(ko(r) == "마지막 4km엔 케이던스가 내려가고 보폭이 줄고 위아래 움직임이 늘었습니다.")
     }
 
     @Test func cadenceDefendedAndBouncier() {
-        #expect(ko(result(late: .cadenceDefended)) == "마지막 4km엔 속도가 떨어졌지만 발 회전은 지켰어요.")
-        #expect(ko(result(late: .bouncier)) == "마지막 4km엔 앞보다 위로 가는 움직임이 늘었어요.")
+        #expect(ko(result(late: .cadenceDefended)) == "마지막 4km엔 속도가 떨어졌지만 발 회전은 지켰습니다.")
+        #expect(ko(result(late: .bouncier)) == "마지막 4km엔 앞보다 위로 가는 움직임이 늘었습니다.")
     }
 
     @Test func longDistanceAppendsCommonNoteOnlyWhenNotHeld() {
-        #expect(ko(result(late: .heavier([.stride])), long: true) == "마지막 4km엔 보폭이 줄었어요. 16km 후반엔 흔한 변화예요.")
-        #expect(ko(result(late: .held), long: true) == "끝까지 폼을 유지했어요.")
+        #expect(ko(result(late: .heavier([.stride])), long: true) == "마지막 4km엔 보폭이 줄었습니다. 16km 후반엔 흔한 변화입니다.")
+        #expect(ko(result(late: .held), long: true) == "끝까지 폼을 유지했습니다.")
     }
 
     @Test func midVariants() {
-        #expect(ko(result(mid: .cadenceDriven, late: .held)) == "중반엔 발 회전으로 속도를 냈고, 끝까지 폼을 유지했어요.")
-        #expect(ko(result(mid: .both, late: .held)) == "중반엔 보폭과 회전을 함께 올려 속도를 냈고, 끝까지 폼을 유지했어요.")
+        #expect(ko(result(mid: .cadenceDriven, late: .held)) == "중반엔 발 회전으로 속도를 냈고, 끝까지 폼을 유지했습니다.")
+        #expect(ko(result(mid: .both, late: .held)) == "중반엔 보폭과 회전을 함께 올려 속도를 냈고, 끝까지 폼을 유지했습니다.")
     }
 
     @Test func shortStates() {
@@ -329,7 +329,7 @@ struct FormPhaseTests {
         let r = classify(s, easyFrame: true)
         #expect(r?.late == .heavier([.cadence]))
         #expect(r?.isSoftCadenceOnly == true)
-        #expect(FormPhase.sentence(r!, isLongDistance: false) == "마지막 3km엔 케이던스가 조금 내려갔어요. 편한 날엔 자연스러운 변화예요.")
+        #expect(FormPhase.sentence(r!, isLongDistance: false) == "마지막 3km엔 케이던스가 조금 내려갔습니다. 편한 날엔 자연스러운 변화입니다.")
         #expect(FormPhase.shortState(r!) == "편한 페이스 · 케이던스만 살짝 내려감")
     }
 
@@ -548,19 +548,19 @@ struct FormPhaseTests {
     @Test func midAccelerationSentenceNamesLevers() {
         let s = (1...3).map { split($0, pace: 400, sl: 0.88, gct: 262) } + (4...10).map { split($0, pace: 375, sl: 0.94, gct: 250) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains("중반 3~7km: 페이스가 25초/km 빨라지며 보폭이 늘고 지면접촉이 짧아졌어요."))
+        #expect(lines.contains("중반 3~7km: 페이스가 25초/km 빨라지며 보폭이 늘고 지면접촉이 짧아졌습니다."))
     }
 
     @Test func lateDriftSentenceWithCadenceHeld() {
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고, 케이던스는 그대로예요."))
+        #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고, 케이던스는 그대로입니다."))
     }
 
     @Test func lateDriftSentenceMentionsHeat() {
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: 8)
-        #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고 (더위 +8bpm을 감안하면 흔한 폭), 케이던스는 그대로예요."))
+        #expect(lines.contains("후반 7~10km: 페이스는 같은데 심박이 8bpm 올랐고 (더위 +8bpm을 감안하면 흔한 폭), 케이던스는 그대로입니다."))
     }
 
     @Test func noRelationWhenNothingChanged() {
@@ -571,19 +571,19 @@ struct FormPhaseTests {
     @Test func negativeSplitSaysFaster() {
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, pace: 360, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains("후반 7~10km: 페이스가 15초/km 빨라지며 심박이 8bpm 올랐고, 케이던스는 그대로예요."))
+        #expect(lines.contains("후반 7~10km: 페이스가 15초/km 빨라지며 심박이 8bpm 올랐고, 케이던스는 그대로입니다."))
     }
 
     @Test func risingCadenceIsNotReportedAsDrop() {
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, cad: 178, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains { $0.contains("케이던스는 3spm 올라갔어요.") })
+        #expect(lines.contains { $0.contains("케이던스는 3spm 올라갔습니다.") })
     }
 
     @Test func unknownCadenceOmitsClause() {
         let s = (1...7).map { split($0, hr: 150) } + (8...10).map { split($0, cad: nil, hr: 158) }
         let lines = FormPhase.relationSentences(classify(s)!, heatDeltaBpm: nil)
-        #expect(lines.contains { $0.hasSuffix("올랐어요.") && !$0.contains("케이던스") })
+        #expect(lines.contains { $0.hasSuffix("올랐습니다.") && !$0.contains("케이던스") })
     }
 
     @Test func largeDriftGetsNoHeatReassurance() {

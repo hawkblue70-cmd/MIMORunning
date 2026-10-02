@@ -167,54 +167,54 @@ struct WeeklySummary {
         let variants: [String]
         if intenseRunCount >= 3 {
             variants = [
-                "인터벌·템포를 \(intenseRunCount)회 섞은 \(totalRunCount)회 구성이었어요.",
-                "고강도 훈련을 \(intenseRunCount)번 넣은 \(totalRunCount)회의 2주였어요.",
-                "\(totalRunCount)회 중 \(intenseRunCount)회를 인터벌·템포로 채운 2주예요."
+                "인터벌·템포를 \(intenseRunCount)회 섞은 \(totalRunCount)회 구성이었습니다.",
+                "고강도 훈련을 \(intenseRunCount)번 넣은 \(totalRunCount)회의 2주였습니다.",
+                "\(totalRunCount)회 중 \(intenseRunCount)회를 인터벌·템포로 채운 2주입니다."
             ]
         } else if intenseRunCount >= 1 {
             variants = [
-                "이지런 위주에 인터벌 \(intenseRunCount)회를 섞은 \(totalRunCount)회였어요.",
-                "\(totalRunCount)번 달리는 동안 인터벌·템포가 \(intenseRunCount)번 있었어요.",
-                "대부분 이지런으로, \(intenseRunCount)번의 인터벌이 포함된 구성이에요."
+                "이지런 위주에 인터벌 \(intenseRunCount)회를 섞은 \(totalRunCount)회였습니다.",
+                "\(totalRunCount)번 달리는 동안 인터벌·템포가 \(intenseRunCount)번 있었습니다.",
+                "대부분 이지런으로, \(intenseRunCount)번의 인터벌이 포함된 구성입니다."
             ]
         } else {
             variants = [
-                "이지런 위주로 \(totalRunCount)회 달린 2주였어요.",
-                "편안한 페이스로 \(totalRunCount)번 쌓은 2주예요.",
-                "\(totalRunCount)회 모두 이지런 위주로 이어졌어요."
+                "이지런 위주로 \(totalRunCount)회 달린 2주였습니다.",
+                "편안한 페이스로 \(totalRunCount)번 쌓은 2주입니다.",
+                "\(totalRunCount)회 모두 이지런 위주로 이어졌습니다."
             ]
         }
         let base = variants[woy % variants.count]
-        return hasLongRun ? base + " 롱런도 한 번 있었어요." : base
+        return hasLongRun ? base + " 롱런도 한 번 있었습니다." : base
     }
 
     private func koBodySignalSentence(_ woy: Int) -> String {
         let p = (woy + 1) % 3
         switch bodySignalKey {
         case "fatigueSign":
-            return ["지면접촉과 진폭이 늘었어요. 몸이 피로 신호를 보내는 중일 수 있어요.",
-                    "폼이 조금 무거워졌어요. 가볍게 달리는 날을 넣어봐도 좋아요.",
-                    "접촉이 길어지고 진폭도 커졌어요. 쉬어가는 날이 도움이 될 수 있어요."][p]
+            return ["지면접촉과 진폭이 늘었습니다. 몸이 피로 신호를 보내는 중일 수 있습니다.",
+                    "폼이 조금 무거워졌습니다. 가볍게 달리는 날을 넣어봐도 좋습니다.",
+                    "접촉이 길어지고 진폭도 커졌습니다. 쉬어가는 날이 도움이 될 수 있습니다."][p]
         case "overstride":
-            return ["보폭이 길어지고 케이던스가 줄었어요. 발이 몸 아래에 떨어지는 느낌을 살려보면 좋아요.",
-                    "착지가 앞으로 나갔어요. 발 회전을 조금 높이면 자연스럽게 정리될 수 있어요.",
-                    "스트라이드가 앞서고 접촉이 길어졌어요. 발이 무릎 아래에 오는 느낌으로 달려봐요."][p]
+            return ["보폭이 길어지고 케이던스가 줄었습니다. 발이 몸 아래에 떨어지는 느낌을 살려보면 좋습니다.",
+                    "착지가 앞으로 나갔습니다. 발 회전을 조금 높이면 자연스럽게 정리될 수 있습니다.",
+                    "스트라이드가 앞서고 접촉이 길어졌습니다. 발이 무릎 아래에 오는 느낌으로 달려 보세요."][p]
         case "economyPlus":
-            return ["달리는 방식이 조금씩 달라지고 있어요. 몸이 리듬을 잡아가는 흐름이에요.",
-                    "폼이 안정적으로 이어지고 있어요. 몸이 달리기에 익숙해지는 중이에요.",
-                    "달리는 흐름이 자리를 잡아가고 있어요."][p]
+            return ["달리는 방식이 조금씩 달라지고 있습니다. 몸이 리듬을 잡아가는 흐름입니다.",
+                    "폼이 안정적으로 이어지고 있습니다. 몸이 달리기에 익숙해지는 중입니다.",
+                    "달리는 흐름이 자리를 잡아가고 있습니다."][p]
         case "propulsion":
-            return ["보폭이 자라고 추진력이 붙는 흐름이에요.",
-                    "밀고 나가는 힘이 붙으면서 보폭이 넓어졌어요.",
-                    "케이던스는 유지하며 보폭이 자랐어요. 러닝이 점점 힘차지고 있어요."][p]
+            return ["보폭이 자라고 추진력이 붙는 흐름입니다.",
+                    "밀고 나가는 힘이 붙으면서 보폭이 넓어졌습니다.",
+                    "케이던스는 유지하며 보폭이 자랐습니다. 러닝이 점점 힘차지고 있습니다."][p]
         case "turnover":
-            return ["케이던스가 높아지며 잰걸음의 리듬이 잡히는 중이에요.",
-                    "발 회전이 빨라지고 리듬이 몸에 익어가고 있어요.",
-                    "발 회전이 빨라지면서 폼이 안정되고 있어요."][p]
+            return ["케이던스가 높아지며 잰걸음의 리듬이 잡히는 중입니다.",
+                    "발 회전이 빨라지고 리듬이 몸에 익어가고 있습니다.",
+                    "발 회전이 빨라지면서 폼이 안정되고 있습니다."][p]
         case "compositionChange":
-            return ["훈련 구성이 바뀌며 지표가 출렁이는 건 자연스러운 흐름이에요.",
-                    "구성 변화에 몸이 적응 중이라 지표 변동은 자연스러워요.",
-                    "고강도가 늘면 지표가 흔들려요. 몸이 적응하는 과정이에요."][p]
+            return ["훈련 구성이 바뀌며 지표가 출렁이는 건 자연스러운 흐름입니다.",
+                    "구성 변화에 몸이 적응 중이라 지표 변동은 자연스럽습니다.",
+                    "고강도가 늘면 지표가 흔들립니다. 몸이 적응하는 과정입니다."][p]
         default:
             // 폼 지표 안정 메시지는 MRFormObservationCard가 담당한다.
             // 이 위치에서 "지표" 언급은 중복이므로 침묵.
@@ -224,20 +224,20 @@ struct WeeklySummary {
 
     private func koFlowSentence(_ woy: Int) -> String {
         if streakWeeks >= 3 {
-            return ["\(streakWeeks)주째 이어지는 흐름이에요.",
-                    "\(streakWeeks)주 연속으로 달리고 있어요.",
-                    "꾸준히 \(streakWeeks)주를 이어왔어요."][woy % 3]
+            return ["\(streakWeeks)주째 이어지는 흐름입니다.",
+                    "\(streakWeeks)주 연속으로 달리고 있습니다.",
+                    "꾸준히 \(streakWeeks)주를 이어왔습니다."][woy % 3]
         }
         let p = woy % 3
         switch weekDistanceTrend {
         case .up:
-            return ["주간 거리가 조금씩 늘어나는 방향이에요.",
-                    "달리는 거리가 꾸준히 쌓여가고 있어요.",
-                    "주간 거리가 늘어나는 흐름이에요."][p]
+            return ["주간 거리가 조금씩 늘어나는 방향입니다.",
+                    "달리는 거리가 꾸준히 쌓여가고 있습니다.",
+                    "주간 거리가 늘어나는 흐름입니다."][p]
         case .down:
-            return ["주간 거리를 조절하며 가고 있어요.",
-                    "이번 2주는 거리를 줄이며 달렸어요.",
-                    "쉬어가는 흐름으로 달린 2주였어요."][p]
+            return ["주간 거리를 조절하며 가고 있습니다.",
+                    "이번 2주는 거리를 줄이며 달렸습니다.",
+                    "쉬어가는 흐름으로 달린 2주였습니다."][p]
         default:
             return ""
         }
@@ -362,12 +362,12 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             shortNames: ["강약이 있는 주", "훈련이 진해진 주"],
             enShortNames: ["Intensity shift", "A harder week"],
             koTemplates: [
-                "이번 2주는 강한 훈련이 늘었어요. 지표가 출렁이는 건 자연스러운 반응이에요.",
-                "훈련 구성이 바뀌면 몸도 적응 중이에요. 숫자보다 느낌에 더 귀 기울여봐요.",
-                "고강도 훈련이 많아진 2주였어요. 회복에 조금 더 신경 써주는 게 좋아요.",
-                "훈련 강도가 바뀌면 지표가 흔들려요. 추세를 조금 더 지켜봐요.",
-                "이번 2주는 훈련이 진해졌어요. 지표 변화는 몸이 적응하는 신호예요.",
-                "강한 훈련이 들어온 주였어요. 지표 해석보다 회복의 질을 먼저 챙겨요."
+                "이번 2주는 강한 훈련이 늘었습니다. 지표가 출렁이는 건 자연스러운 반응입니다.",
+                "훈련 구성이 바뀌면 몸도 적응 중입니다. 숫자보다 느낌에 더 귀 기울여 보세요.",
+                "고강도 훈련이 많아진 2주였습니다. 회복에 조금 더 신경 써주는 게 좋습니다.",
+                "훈련 강도가 바뀌면 지표가 흔들립니다. 추세를 조금 더 지켜보세요.",
+                "이번 2주는 훈련이 진해졌습니다. 지표 변화는 몸이 적응하는 신호입니다.",
+                "강한 훈련이 들어온 주였습니다. 지표 해석보다 회복의 질을 먼저 챙깁니다."
             ],
             enTemplates: [
                 "More intense sessions this 2 weeks. Metric fluctuations are a natural response.",
@@ -390,13 +390,13 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             shortNames: ["빨라지는 러닝", "페이스가 오르는 러닝", "수월해진 러닝"],
             enShortNames: ["Getting faster", "Pace is rising", "Running easier"],
             koTemplates: [
-                "심박은 차분한데 페이스가 빨라졌어요",
-                "같은 노력에 더 빠르게 달리고 있어요",
-                "심폐가 페이스를 따라오고 있어요",
-                "페이스가 올라가고 심박은 안정됐어요",
-                "같은 심박으로 더 빠르게 나아가고 있어요",
-                "심박과 페이스의 균형이 좋아지고 있어요",
-                "페이스가 자연스럽게 빨라지고 있어요"
+                "심박은 차분한데 페이스가 빨라졌습니다",
+                "같은 노력에 더 빠르게 달리고 있습니다",
+                "심폐가 페이스를 따라오고 있습니다",
+                "페이스가 올라가고 심박은 안정됐습니다",
+                "같은 심박으로 더 빠르게 나아가고 있습니다",
+                "심박과 페이스의 균형이 좋아지고 있습니다",
+                "페이스가 자연스럽게 빨라지고 있습니다"
             ],
             enTemplates: [
                 "Faster pace with the same heart rate",
@@ -421,10 +421,10 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             shortNames: ["더운 날의 러닝", "기온 보정 페이스"],
             enShortNames: ["Running in the heat", "Heat-adjusted pace"],
             koTemplates: [
-                "최근 7일 평균 \(actual)/km, 기온은 \(temp)°C였어요. 15°C였다면 \(ref) 정도예요.",
-                "\(temp)°C에서 \(actual)/km로 달렸어요. 같은 몸으로 15°C에서 뛰면 \(ref)쯤 됩니다.",
-                "이번 더위에서 \(actual)/km. 기온을 걷어내면 \(ref) 수준이에요.",
-                "\(temp)°C의 최근 7일, 평균 \(actual)/km — 같은 노력이라면 15°C에서 \(ref)예요.",
+                "최근 7일 평균 \(actual)/km, 기온은 \(temp)°C였습니다. 15°C였다면 \(ref) 정도입니다.",
+                "\(temp)°C에서 \(actual)/km로 달렸습니다. 같은 몸으로 15°C에서 뛰면 \(ref)쯤 됩니다.",
+                "이번 더위에서 \(actual)/km. 기온을 걷어내면 \(ref) 수준입니다.",
+                "\(temp)°C의 최근 7일, 평균 \(actual)/km — 같은 노력이라면 15°C에서 \(ref)입니다.",
             ],
             enTemplates: [
                 "Averaged \(actual)/km over the last 7 days at \(temp)°C. At 15°C, that would be about \(ref).",
@@ -446,9 +446,9 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             shortNames: ["드리프트 알림", "심박 드리프트"],
             enShortNames: ["Drift alert", "HR drift"],
             koTemplates: [
-                "긴 러닝에서 심박이 10분당 \(actual)bpm 올랐어요. \(temp)°C에서 평소는 \(ref) 정도예요.",
-                "\(temp)°C 롱런에서 10분마다 \(actual)bpm씩 심박이 올랐어요. 15°C 기준으론 \(ref)bpm이에요.",
-                "이번 주 롱런(\(temp)°C)에서 심박 드리프트가 10분당 \(actual)bpm이었어요. 기준 \(ref)bpm.",
+                "긴 러닝에서 심박이 10분당 \(actual)bpm 올랐습니다. \(temp)°C에서 평소는 \(ref) 정도입니다.",
+                "\(temp)°C 롱런에서 10분마다 \(actual)bpm씩 심박이 올랐습니다. 15°C 기준으론 \(ref)bpm입니다.",
+                "이번 주 롱런(\(temp)°C)에서 심박 드리프트가 10분당 \(actual)bpm이었습니다. 기준 \(ref)bpm.",
             ],
             enTemplates: [
                 "Heart rate drifted \(actual) bpm/10 min in your long run at \(temp)°C. Usual: \(ref).",
@@ -470,7 +470,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             enShortNames: ["HR-based speed", "Aerobic efficiency"],
             koTemplates: [
                 "같은 심박에서 지난 8주보다 \(secs)초 \(dir).",
-                "심박이 같아도 \(secs)초 \(dir). 유산소 효율이 달라졌어요.",
+                "심박이 같아도 \(secs)초 \(dir). 유산소 효율이 달라졌습니다.",
                 "8주 전과 같은 심박인데 속도가 \(secs)초 \(dir).",
             ],
             enTemplates: [
@@ -491,13 +491,13 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             shortNames: ["심폐가 자라는 러닝", "숨이 고르는 러닝"],
             enShortNames: ["Cardio is growing", "Breathing easy"],
             koTemplates: [
-                "유산소 기반이 탄탄해지고 있어요",
-                "심폐 능력이 꾸준히 오르고 있어요",
-                "몸이 달리기를 더 잘하도록 적응하고 있어요",
-                "심폐 지구력이 쌓이고 있어요",
-                "유산소 능력이 점점 발전하고 있어요",
-                "심폐가 한 단계 더 성장하고 있어요",
-                "유산소 능력이 꾸준히 올라오고 있어요"
+                "유산소 기반이 탄탄해지고 있습니다",
+                "심폐 능력이 꾸준히 오르고 있습니다",
+                "몸이 달리기를 더 잘하도록 적응하고 있습니다",
+                "심폐 지구력이 쌓이고 있습니다",
+                "유산소 능력이 점점 발전하고 있습니다",
+                "심폐가 한 단계 더 성장하고 있습니다",
+                "유산소 능력이 꾸준히 올라오고 있습니다"
             ],
             enTemplates: [
                 "Your aerobic base is getting stronger",
@@ -524,13 +524,13 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             shortNames: ["편해지는 페이스", "기반이 다져지는 중"],
             enShortNames: ["Building the base", "Easy running week"],
             koTemplates: [
-                "오늘은 천천히, 내일을 위한 달리기예요",
-                "여유 있게 달렸고, 심박도 잘 관리됐어요",
-                "느린 달리기가 빠른 달리기를 만들어요",
-                "회복하며 달리는 한 주였어요",
-                "쉬어가는 주간도 훈련의 일부예요",
-                "몸을 아끼며 달린 2주였어요",
-                "심박을 낮게 유지하며 꾸준히 달렸어요"
+                "오늘은 천천히, 내일을 위한 달리기입니다",
+                "여유 있게 달렸고, 심박도 잘 관리됐습니다",
+                "느린 달리기가 빠른 달리기를 만듭니다",
+                "회복하며 달리는 한 주였습니다",
+                "쉬어가는 주간도 훈련의 일부입니다",
+                "몸을 아끼며 달린 2주였습니다",
+                "심박을 낮게 유지하며 꾸준히 달렸습니다"
             ],
             enTemplates: [
                 "Easy today means faster tomorrow",
@@ -551,12 +551,12 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             shortNames: ["쌓이는 러닝", "이어지는 러닝", "여무는 러닝"],
             enShortNames: ["Stacking runs", "The streak continues", "Getting stronger"],
             koTemplates: [
-                "\(streak)주 연속 — 최장 기록을 경신 중이에요 🔥",
-                "\(streak)주 이어온 꾸준함, 그게 실력이에요",
-                "멈추지 않은 \(streak)주, 이제 습관이 됐어요",
-                "\(streak)주 연속 — 꾸준함이 빛나고 있어요",
-                "쉬지 않고 이어온 \(streak)주예요",
-                "매주 달린 \(streak)주, 루틴이 완성되고 있어요"
+                "\(streak)주 연속 — 최장 기록을 경신 중입니다 🔥",
+                "\(streak)주 이어온 꾸준함, 그게 실력입니다",
+                "멈추지 않은 \(streak)주, 이제 습관이 됐습니다",
+                "\(streak)주 연속 달렸습니다",
+                "쉬지 않고 이어온 \(streak)주입니다",
+                "매주 달린 \(streak)주, 루틴이 완성되고 있습니다"
             ],
             enTemplates: [
                 "\(streak) weeks straight — chasing a new streak record 🔥",
@@ -577,12 +577,12 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             shortNames: ["오늘도 한 걸음", "꾸준한 두 주"],
             enShortNames: ["One more step", "Steady two weeks"],
             koTemplates: [
-                "이번 2주, 꾸준히 달렸어요. 쌓이는 게 보여요",
+                "이번 2주, 꾸준히 달렸습니다. 쌓이는 게 보입니다",
                 "달리는 날이 쌓여 기반이 됩니다",
-                "꾸준함이 가장 강한 훈련법이에요",
-                "2주를 성실하게 채웠어요",
-                "작은 꾸준함이 큰 변화를 만들어요",
-                "이 리듬, 이어가 봐요"
+                "꾸준함이 가장 강한 훈련법입니다",
+                "2주를 성실하게 채웠습니다",
+                "작은 꾸준함이 큰 변화를 만듭니다",
+                "이 리듬, 이어가 보세요"
             ],
             enTemplates: [
                 "Steady 2 weeks — it's adding up",
@@ -600,15 +600,15 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
         patterns.append(WeeklyPattern(
             priority: 99, key: "encourage",
             factSummary: "",
-            shortNames: ["함께 달려요"],
+            shortNames: ["함께 달립니다"],
             enShortNames: ["Let's go run"],
             koTemplates: [
-                "2주간 데이터가 쌓이면 추세를 읽어드릴게요",
-                "오늘 달리면 2주 뒤 변화가 보여요",
-                "첫 발이 가장 어렵고, 가장 중요해요",
-                "달리기 시작이 반이에요",
-                "작은 시작이 큰 변화의 출발이에요",
-                "오늘 나서면 내일이 달라져요"
+                "2주간 데이터가 쌓이면 추세를 읽어 드리겠습니다",
+                "오늘 달리면 2주 뒤 변화가 보입니다",
+                "첫 발이 가장 어렵고, 가장 중요합니다",
+                "달리기 시작이 반입니다",
+                "작은 시작이 큰 변화의 출발입니다",
+                "오늘 나서면 내일이 달라집니다"
             ],
             enTemplates: [
                 "Run more and we'll spot the trend in 2 weeks",

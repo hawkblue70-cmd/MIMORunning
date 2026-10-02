@@ -18,7 +18,7 @@ struct HeatAdjustedHRInsightTests {
         let hist = (1...5).map { run($0 * 3, pace: 376, hr: 146, temp: 15) }
         let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned)
         #expect(r?.badge == "기온 감안")
-        #expect(r?.message == "비슷한 페이스 최근 8주 5회 대비 심박이 3 bpm 높지만 25°C 기온을 감안하면 평소 수준이에요.")
+        #expect(r?.message == "비슷한 페이스 최근 8주 5회 대비 심박이 3 bpm 높지만 25°C 기온을 감안하면 평소 수준입니다.")
         #expect(r?.tone == .neutral)
     }
 
@@ -27,14 +27,14 @@ struct HeatAdjustedHRInsightTests {
         let hist = (1...5).map { run($0 * 3, pace: 376, hr: 146, temp: 15) }
         let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: .fallback())
         #expect(r?.badge == "참고")
-        #expect(r?.message == "비슷한 페이스 최근 8주 5회 대비 심박이 3 bpm 높지만 일반적인 더위 영향(25°C)을 감안하면 평소 수준으로 보여요.")
+        #expect(r?.message == "비슷한 페이스 최근 8주 5회 대비 심박이 3 bpm 높지만 일반적인 더위 영향(25°C)을 감안하면 평소 수준으로 보입니다.")
     }
 
     @Test func stillHigherAfterAdjustment() {
         let today = run(0, pace: 376, hr: 160, temp: 25)                  // 보정 152, 과거 146 → +6
         let hist = (1...5).map { run($0 * 3, pace: 376, hr: 146, temp: 15) }
         let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned)
-        #expect(r?.message == "25°C 기온을 감안해도 비슷한 페이스 최근 8주 5회 대비 심박이 6 bpm 높아요. 오늘 컨디션을 반영한 것일 수 있어요.")
+        #expect(r?.message == "25°C 기온을 감안해도 비슷한 페이스 최근 8주 5회 대비 심박이 6 bpm 높습니다. 오늘 컨디션을 반영한 것일 수 있습니다.")
     }
 
     @Test func hotHistoryIsAdjustedToo() {
@@ -50,7 +50,7 @@ struct HeatAdjustedHRInsightTests {
         let hist = (1...5).map { run($0 * 3, pace: 376, hr: 146, temp: 15) }
         let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned)
         #expect(r?.badge == "기온 감안")
-        #expect(r?.message == "비슷한 페이스 최근 8주 5회 대비 심박이 10 bpm 높지만 25°C 기온을 감안하면 평소 수준이에요.")
+        #expect(r?.message == "비슷한 페이스 최근 8주 5회 대비 심박이 10 bpm 높지만 25°C 기온을 감안하면 평소 수준입니다.")
     }
 
     @Test func hotHistoryDoesNotGetFalseReassurance() {
@@ -60,7 +60,7 @@ struct HeatAdjustedHRInsightTests {
         let today = run(0, pace: 376, hr: 158, temp: 35)
         let hist = (1...5).map { run($0 * 3, pace: 376, hr: 150, temp: 33) }
         let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: model)
-        #expect(r?.message == "35°C 기온을 감안해도 비슷한 페이스 최근 8주 5회 대비 심박이 6 bpm 높아요. 오늘 컨디션을 반영한 것일 수 있어요.")
+        #expect(r?.message == "35°C 기온을 감안해도 비슷한 페이스 최근 8주 5회 대비 심박이 6 bpm 높습니다. 오늘 컨디션을 반영한 것일 수 있습니다.")
     }
 
     @Test func fallbackToneOnStillHigher() {
@@ -83,7 +83,7 @@ struct HeatAdjustedHRInsightTests {
         let today = run(0, pace: 376, hr: 138, temp: 15)
         let hist = (1...5).map { run($0 * 3, pace: 376, hr: 149, temp: 25) }
         let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned)
-        #expect(r?.message == "비슷한 페이스 최근 8주 5회보다 심박이 3 bpm 낮았어요.")
+        #expect(r?.message == "비슷한 페이스 최근 8주 5회보다 심박이 3 bpm 낮았습니다.")
         #expect(r?.tone == .good)
     }
 
@@ -92,7 +92,7 @@ struct HeatAdjustedHRInsightTests {
         let hist = (1...5).map { run($0 * 3, pace: 376, hr: 146, temp: nil) } // 과거 기온 없음 → 커버리지 0%
         let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned)
         #expect(r?.badge == "참고")
-        #expect(r?.message == "비슷한 페이스 최근 8주 5회 대비 심박이 3 bpm 높아요. 25°C 더위 영향일 수 있어요.")
+        #expect(r?.message == "비슷한 페이스 최근 8주 5회 대비 심박이 3 bpm 높습니다. 25°C 더위 영향일 수 있습니다.")
     }
 
     @Test func todayWithoutTemperatureComparesRaw() {
@@ -100,7 +100,7 @@ struct HeatAdjustedHRInsightTests {
         let today = run(0, pace: 376, hr: 146, temp: nil)
         let hist = (1...5).map { run($0 * 3, pace: 376, hr: 150, temp: 30) }
         let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned)
-        #expect(r?.message == "비슷한 페이스 최근 8주 5회보다 심박이 4 bpm 낮았어요.")
+        #expect(r?.message == "비슷한 페이스 최근 8주 5회보다 심박이 4 bpm 낮았습니다.")
     }
 
     @Test func coolTodayVersusHotHistoryExplainsTheAdjustment() {
@@ -109,7 +109,7 @@ struct HeatAdjustedHRInsightTests {
         let today = run(0, pace: 376, hr: 148, temp: 15)
         let hist = (1...5).map { run($0 * 3, pace: 376, hr: 150, temp: 28) } // 보정 139.6
         let r = RunInsightEngine.efficiencyInsight(activity: today, history: hist, heatHR: learned)
-        #expect(r?.message == "더운 날이 많았던 최근 기록을 15°C 기준으로 맞추면 비슷한 페이스 최근 8주 5회 대비 심박이 8 bpm 높아요. 오늘 컨디션을 반영한 것일 수 있어요.")
+        #expect(r?.message == "더운 날이 많았던 최근 기록을 15°C 기준으로 맞추면 비슷한 페이스 최근 8주 5회 대비 심박이 8 bpm 높습니다. 오늘 컨디션을 반영한 것일 수 있습니다.")
     }
 
     @Test(.english) func englishMirrorPrefixReadsCleanly() {
@@ -134,10 +134,10 @@ struct HeatAdjustedHRInsightTests {
         let today = run(0, pace: 360, hr: 149, temp: 26)
         let samples: [(offset: TimeInterval, bpm: Int)] = (0..<120).map { i in (Double(i) * 30, i < 60 ? 143 : 155) }
         let r = RunInsightEngine.cardiacDriftInsight(activity: today, hrSamples: samples, category: .efficiency, heatHR: learned)
-        #expect(r?.message == "후반 심박이 전반보다 12bpm 올랐어요. 26°C에서는 흔한 폭이에요.")
+        #expect(r?.message == "후반 심박이 전반보다 12bpm 올랐습니다. 26°C에서는 흔한 폭입니다.")
         let cool = run(0, pace: 360, hr: 149, temp: 12)
         let r2 = RunInsightEngine.cardiacDriftInsight(activity: cool, hrSamples: samples, category: .efficiency, heatHR: learned)
-        #expect(r2?.message == "후반 심박이 전반보다 12bpm 올랐어요.")
+        #expect(r2?.message == "후반 심박이 전반보다 12bpm 올랐습니다.")
     }
 
     @Test func hrDropIsNotReportedAsRise() {
@@ -145,7 +145,7 @@ struct HeatAdjustedHRInsightTests {
         let today = run(0, pace: 360, hr: 149, temp: 20)
         let samples: [(offset: TimeInterval, bpm: Int)] = (0..<120).map { i in (Double(i) * 30, i < 60 ? 155 : 143) }
         let r = RunInsightEngine.cardiacDriftInsight(activity: today, hrSamples: samples, category: .efficiency, heatHR: learned)
-        #expect(r?.message == "전반/후반 심박 차이 12bpm — 카디악 드리프트 적어요.")
+        #expect(r?.message == "전반/후반 심박 차이 12bpm — 카디악 드리프트 적습니다.")
         #expect(r?.tone == .good)
     }
 
@@ -154,7 +154,7 @@ struct HeatAdjustedHRInsightTests {
         let today = run(0, pace: 420, hr: 130, temp: 25)
         let r = RunInsightEngine.easyOverpaceInsight(activity: today, age: nil, hrMax: 170, heatHR: learned)
         #expect(r?.tone == .good)
-        #expect(r?.message == "심박 72%로 여유 있는 강도의 이지런이었어요. (25°C 감안)")
+        #expect(r?.message == "심박 72%로 여유 있는 강도의 이지런이었습니다. (25°C 감안)")
     }
 
     @Test func intensityInsightUsesAdjustedHR() {
@@ -164,7 +164,7 @@ struct HeatAdjustedHRInsightTests {
         let r = RunInsightEngine.intensityInsight(activity: today, detail: nil, age: nil,
                                                   lt1HR: 152, lt1SD: 0, easyCeilingHR: 145, heatHR: learned)
         #expect(r?.tone == .good)
-        #expect(r?.message == "유산소 구간 안에서 달리셨어요. 이런 날이 오래 가는 다리를 만듭니다. (25°C 감안)")
+        #expect(r?.message == "유산소 구간 안에서 달리셨습니다. 이런 날이 오래 가는 다리를 만듭니다. (25°C 감안)")
     }
 
     @Test func intensityInsightRawWhenNoTemperature() {
@@ -173,6 +173,6 @@ struct HeatAdjustedHRInsightTests {
         let r = RunInsightEngine.intensityInsight(activity: today, detail: nil, age: nil,
                                                   lt1HR: 152, lt1SD: 0, easyCeilingHR: 145, heatHR: learned)
         #expect(r?.tone == .neutral)
-        #expect(r?.message == "이지보다 템포에 가까운 날이었습니다. 나쁜 건 아니고, 다음 한 번을 조금 느리게 잡아두면 균형이 맞아요.")
+        #expect(r?.message == "이지보다 템포에 가까운 날이었습니다. 나쁜 건 아니고, 다음 한 번을 조금 느리게 잡아두면 균형이 맞습니다.")
     }
 }

@@ -1465,7 +1465,7 @@ struct ActivityDetailView: View {
                     .font(.system(size: 20, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.heartRate.opacity(0.7))
             }
-            Text(L.s("이 운동의 상세 심박 기록이 없어요",
+            Text(L.s("이 운동의 상세 심박 기록이 없습니다",
                      "No detailed HR data for this workout"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -1655,7 +1655,7 @@ private struct DetailHeader: View {
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Theme.violet.opacity(0.35), lineWidth: 1))
                     if let revoke = onRaceRevoke {
-                        Button(AppLanguage.shared.s("이 대회 아니에요", "Not a Race"), action: revoke)
+                        Button(AppLanguage.shared.s("이 대회 아닙니다", "Not a Race"), action: revoke)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
@@ -2700,7 +2700,7 @@ private struct SplitsHighlightCard: View {
         switch highlightKind {
         case .negativeSplit(let diff):
             // 이지런의 완만한 네거티브 스플릿은 "밀어붙임"이 아니라 몸이 풀린 흐름
-            let tailKo = isEasy ? " — 편하게 몸이 풀렸네요." : " — 끝까지 밀어붙였네요."
+            let tailKo = isEasy ? " — 편하게 몸이 풀렸습니다." : " — 끝까지 밀어붙였습니다."
             let tailEn = isEasy ? " — eased into it." : " — you pushed through."
             return L.isEnglish
                 ? Text("Second half ").foregroundStyle(Color.white)
@@ -2716,7 +2716,7 @@ private struct SplitsHighlightCard: View {
                   + Text(" — rock solid.").foregroundStyle(Color.white)
                 : Text("페이스 편차 단 ").foregroundStyle(Color.white)
                   + Text("\(spread)초").foregroundStyle(g)
-                  + Text(", 흔들림 없었어요.").foregroundStyle(Color.white)
+                  + Text(", 흔들림 없었습니다.").foregroundStyle(Color.white)
         case .recentBest(let n):
             return L.isEnglish
                 ? Text("Fastest avg pace in your last ").foregroundStyle(Color.white)
@@ -2724,20 +2724,20 @@ private struct SplitsHighlightCard: View {
                   + Text(".").foregroundStyle(Color.white)
                 : Text("최근 \(n)회 중 ").foregroundStyle(Color.white)
                   + Text("가장 빠른 평균 페이스").foregroundStyle(g)
-                  + Text("예요.").foregroundStyle(Color.white)
+                  + Text("입니다.").foregroundStyle(Color.white)
         case .finishKick(let km):
             // 이지런이면 "힘이 남았다"보다 편하게 마무리한 쪽으로
-            let tailKo = isEasy ? " — 여유 있게 마무리했네요." : " — 끝까지 힘이 남았네요."
+            let tailKo = isEasy ? " — 여유 있게 마무리했습니다." : " — 끝까지 힘이 남았습니다."
             let tailEn = isEasy ? " — an easy, strong finish." : " — you still had gas in the tank."
             return L.isEnglish
                 ? Text("Your last km (\(km)km) was ").foregroundStyle(Color.white)
                   + Text("the fastest").foregroundStyle(g)
                   + Text(tailEn).foregroundStyle(Color.white)
                 : Text("마지막 \(km)km가 ").foregroundStyle(Color.white)
-                  + Text("가장 빨랐어요").foregroundStyle(g)
+                  + Text("가장 빨랐습니다").foregroundStyle(g)
                   + Text(tailKo).foregroundStyle(Color.white)
         case .fallback:
-            return Text(L.s("완주했어요. 오늘도 수고하셨어요.", "Finished. Great work today."))
+            return Text(L.s("완주했습니다.", "Finished."))
                 .foregroundStyle(Color.secondary)
         }
     }
@@ -3266,7 +3266,7 @@ private struct OneLinerListDisplay: View {
         } message: { group in
             let n = group.entries.count
             Text(AppLanguage.shared.s(
-                "사진 \(n)장에 적용된 문구예요. 모두 삭제할까요?",
+                "사진 \(n)장에 적용된 문구입니다. 모두 삭제할까요?",
                 "Applied to \(n) photos. Delete all?"
             ))
         }
@@ -3337,7 +3337,7 @@ private struct OneLinerGroupRow: View {
                         .foregroundStyle(.secondary)
                 }
                 if mediaDeleted {
-                    Text(AppLanguage.shared.s("원본이 삭제되었어요", "Original deleted"))
+                    Text(AppLanguage.shared.s("원본이 삭제되었습니다", "Original deleted"))
                         .font(.caption2)
                         .foregroundStyle(.orange.opacity(0.8))
                 }
@@ -3602,7 +3602,7 @@ private struct RaceDetectionBanner: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             HStack(spacing: 10) {
-                confirmButton(race: suggestion.primary, label: AppLanguage.shared.s("예, 맞아요", "Yes, this one"))
+                confirmButton(race: suggestion.primary, label: AppLanguage.shared.s("예, 맞습니다", "Yes, this one"))
                 denyButton(label: AppLanguage.shared.s("아니요", "No"))
             }
         } else {

@@ -451,7 +451,7 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
     if let rd = ctx.recentRaceDate, (1..<MRRhythmContext.postRaceEasyDays).contains(daysAgo(rd)) {
         let n = daysAgo(rd)
         let name = ctx.recentRaceName ?? L.s("대회", "the race")
-        let note = L.s("\(name) \(n)일 뒤 — 2주는 이지로 회복해요.", "\(n) days after \(name) — keep two weeks easy to recover.")
+        let note = L.s("\(name) \(n)일 뒤 — 2주는 이지로 회복합니다.", "\(n) days after \(name) — keep two weeks easy to recover.")
         return MRSessionSuggestion(session: level == .rest ? nil : L.s("이지런", "Easy run"), progress: "",
                                    isRecovery: level != .rest, whyNote: note)
     }
@@ -509,10 +509,10 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
             let why: String
             if let lp = lastPoint {
                 let label = lastType.map { " " + $0.koreanLabel } ?? ""
-                why = L.s("지난 강도 훈련은 \(md.string(from: lp.start))\(label), \(daysAgo(lp.start))일 전이에요.",
+                why = L.s("지난 강도 훈련은 \(md.string(from: lp.start))\(label), \(daysAgo(lp.start))일 전입니다.",
                           "Last hard session:\(label) \(daysAgo(lp.start)) days ago.")
             } else {
-                why = L.s("최근 강도 훈련이 없어요.", "No recent hard session.")
+                why = L.s("최근 강도 훈련이 없습니다.", "No recent hard session.")
             }
             return MRSessionSuggestion(session: pt.text,
                                        progress: progress, isPoint: true, whyNote: why)

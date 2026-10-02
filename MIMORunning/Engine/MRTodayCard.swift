@@ -123,8 +123,8 @@ func mrTodayCard(runs: [MRWorkout],
     let L = AppLanguage.shared
     let streak = mrActiveWeekStreak(runs: runs, asOf: asOf)
     let streakLine = streak >= 2
-        ? L.s("\(streak)주 연속으로 달리고 있어요", "\(streak)-week streak")
-        : L.s("오늘도 나오셨네요", "Great to see you today")
+        ? L.s("\(streak)주 연속으로 달리고 있습니다", "\(streak)-week streak")
+        : L.s("오늘도 나오셨습니다", "Great to see you today")
 
     let distanceCells = mrDistanceCells(runs: runs, asOf: asOf)
 
@@ -175,7 +175,7 @@ func mrTodayCard(runs: [MRWorkout],
                 "\(weeks) weeks to race day — keep this up for \(mrFormatDisplay(next.projectedFinal))"
               )
             : L.s(
-                "대회가 \(d)일 남았어요. 이제는 쌓는 게 아니라 아끼는 시기입니다",
+                "대회가 \(d)일 남았습니다. 이제는 쌓는 게 아니라 아끼는 시기입니다",
                 "\(d) days to race day — time to taper, not to push"
               )
     }

@@ -240,7 +240,7 @@ struct RecordBarChart: View {
                 if !compact { footnote }
                 if !compact, let flow = flowComment { flowCommentView(flow) }   // 공유 카드(export)에도 붙인다
             } else {
-                Text(emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period"))
+                Text(emptyMessage ?? L.s("이 기간에 기록이 없습니다", "No records in this period"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -277,7 +277,7 @@ struct RecordBarChart: View {
                     .background(Color.white.opacity(0.10))
                     .clipShape(RoundedRectangle(cornerRadius: 7))
             } else {
-                Text(L.s("구간을 탭하면 정확한 값이 보여요", "Tap a bucket for exact values"))
+                Text(L.s("구간을 탭하면 정확한 값이 보입니다", "Tap a bucket for exact values"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -682,7 +682,7 @@ struct RecordBarChart: View {
 
     private var accessibilitySummary: String {
         guard hasData else {
-            return emptyMessage ?? L.s("이 기간에 기록이 없어요", "No records in this period")
+            return emptyMessage ?? L.s("이 기간에 기록이 없습니다", "No records in this period")
         }
         var parts = [L.s("거리 막대와 페이스 선을 한 차트에 — 오른쪽 축 km, 왼쪽 축 페이스",
                          "One chart: distance bars (right axis, km) and pace line (left axis)"),

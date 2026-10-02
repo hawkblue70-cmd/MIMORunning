@@ -59,7 +59,7 @@ import CloudKit
         } catch let ckError as CKError {
             switch ckError.code {
             case .notAuthenticated:
-                errorMessage = AppLanguage.shared.s("iCloud 로그인이 필요해요.", "iCloud sign-in required.")
+                errorMessage = AppLanguage.shared.s("iCloud 로그인이 필요합니다.", "iCloud sign-in required.")
             case .networkUnavailable, .networkFailure:
                 errorMessage = AppLanguage.shared.s("네트워크 연결을 확인해 주세요.", "Check your network connection.")
             default:
@@ -209,7 +209,7 @@ struct CrewRankingView: View {
             Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
         } message: {
             Text(AppLanguage.shared.s(
-                "정말 해체할까요? 모든 기록이 사라지고 되돌릴 수 없어요.",
+                "정말 해체할까요? 모든 기록이 사라지고 되돌릴 수 없습니다.",
                 "Are you sure? All data will be lost and cannot be undone."
             ))
         }
@@ -385,7 +385,7 @@ struct CrewRankingView: View {
             Image(systemName: "figure.run.circle")
                 .font(.system(size: 18))
                 .foregroundStyle(Theme.violet.opacity(0.4))
-            Text(AppLanguage.shared.s("아직 아무도 안 뛰었어요", "No one has run yet"))
+            Text(AppLanguage.shared.s("아직 아무도 안 뛰었습니다", "No one has run yet"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -536,17 +536,17 @@ struct CrewRankingView: View {
 
     private var leaveConfirmMessage: String {
         guard store.isOwner else {
-            return AppLanguage.shared.s("크루에서 나가시겠어요?", "Leave this crew?")
+            return AppLanguage.shared.s("크루에서 나가시겠습니까?", "Leave this crew?")
         }
         let hasOthers = store.members.contains { $0.icloudID != store.myID }
         if hasOthers {
             return AppLanguage.shared.s(
-                "나가면 다음 분에게 방장이 넘어가요.",
+                "나가면 다음 분에게 방장이 넘어갑니다.",
                 "Ownership will transfer to the next member."
             )
         } else {
             return AppLanguage.shared.s(
-                "나가면 크루가 사라져요.",
+                "나가면 크루가 사라집니다.",
                 "Leaving will disband the crew."
             )
         }

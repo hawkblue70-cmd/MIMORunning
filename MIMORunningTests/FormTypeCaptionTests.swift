@@ -34,11 +34,11 @@ struct FormTypeCaptionTests {
 
     @Test func hrRiseCaptionOnlyBuildUpGetsPrefix() {
         ko {
-            #expect(FormNarrative.hrSecondHalfRiseCaption(type: .buildUp) == "빌드업답게 후반에 심박이 올라갔어요")
-            #expect(FormNarrative.hrSteadyCaption(type: .buildUp) == "페이스를 올린 만큼만 올랐어요")
-            #expect(FormNarrative.hrSteadyCaption(type: .tempo) == "끝까지 안정적이었어요")
+            #expect(FormNarrative.hrSecondHalfRiseCaption(type: .buildUp) == "후반에 페이스를 올려 심박도 올랐습니다")
+            #expect(FormNarrative.hrSteadyCaption(type: .buildUp) == "페이스를 올린 만큼만 올랐습니다")
+            #expect(FormNarrative.hrSteadyCaption(type: .tempo) == "끝까지 안정적이었습니다")
             for t: WorkoutType in [.tempo, .race, .interval, .easy, .general, .longRun] {
-                #expect(FormNarrative.hrSecondHalfRiseCaption(type: t) == "후반에 심박이 올랐어요", "\(t)")
+                #expect(FormNarrative.hrSecondHalfRiseCaption(type: t) == "후반에 심박이 올랐습니다", "\(t)")
             }
         }
     }
@@ -48,17 +48,17 @@ struct FormTypeCaptionTests {
     @Test func zoneCaptionPlannedTypesSayAsPlanned() {
         ko {
             for t: WorkoutType in [.buildUp, .tempo, .race, .interval] {
-                #expect(FormNarrative.highIntensityZoneCaption(type: t) == "계획대로 고강도 구간이 많았어요", "\(t)")
+                #expect(FormNarrative.highIntensityZoneCaption(type: t) == "고강도 구간이 많았습니다 · 의도한 강도", "\(t)")
             }
-            #expect(FormNarrative.highIntensityZoneCaption(type: .easy) == "고강도 구간이 많았어요")
-            #expect(FormNarrative.highIntensityZoneCaption(type: .general) == "고강도 구간이 많았어요")
+            #expect(FormNarrative.highIntensityZoneCaption(type: .easy) == "고강도 구간이 많았습니다")
+            #expect(FormNarrative.highIntensityZoneCaption(type: .general) == "고강도 구간이 많았습니다")
         }
     }
 
     @Test func oneLinerKeepsAdviceAndAddsAsPlanned() {
         ko {
-            #expect(FormNarrative.highIntensityOneLiner(type: .buildUp) == "계획대로 고강도 구간이 많았어요. 다음엔 여유롭게 가도 좋아요")
-            #expect(FormNarrative.highIntensityOneLiner(type: .easy) == "고강도 구간이 많았어요. 다음엔 여유롭게 가도 좋아요")
+            #expect(FormNarrative.highIntensityOneLiner(type: .buildUp) == "고강도 구간이 많았습니다. 다음 러닝은 이지런으로 하세요.")
+            #expect(FormNarrative.highIntensityOneLiner(type: .easy) == "고강도 구간이 많았습니다. 다음 러닝은 이지런으로 하세요.")
         }
     }
 
@@ -67,10 +67,10 @@ struct FormTypeCaptionTests {
     @Test func formHeldCaptionFastFinishVsLong() {
         ko {
             for t: WorkoutType in [.buildUp, .tempo, .race] {
-                #expect(FormNarrative.formHeldCaption(type: t) == "후반 가속에도 폼이 버텼어요", "\(t)")
+                #expect(FormNarrative.formHeldCaption(type: t) == "후반 가속에도 폼이 버텼습니다", "\(t)")
             }
             for t: WorkoutType in [.longRun, .lsd, .distanceRun, .general, .easy] {
-                #expect(FormNarrative.formHeldCaption(type: t) == "장거리인데 후반까지 폼이 버텼어요", "\(t)")
+                #expect(FormNarrative.formHeldCaption(type: t) == "장거리인데 후반까지 폼이 버텼습니다", "\(t)")
             }
         }
     }
@@ -79,9 +79,9 @@ struct FormTypeCaptionTests {
 
     @Test func belowRangeNoteFastTypesExplainPace() {
         ko {
-            #expect(FormNarrative.belowRangeNote(type: .buildUp, metric: .groundContact) == "후반 페이스가 빨라 범위 아래에 머물러요")
-            #expect(FormNarrative.belowRangeNote(type: .tempo, metric: .cadence) == "후반 페이스가 빨라 범위를 벗어났어요")
-            #expect(FormNarrative.belowRangeNote(type: .race, metric: .stride) == "후반 페이스가 빨라 범위를 벗어났어요")
+            #expect(FormNarrative.belowRangeNote(type: .buildUp, metric: .groundContact) == "후반 페이스가 빨라 범위 아래에 머무릅니다")
+            #expect(FormNarrative.belowRangeNote(type: .tempo, metric: .cadence) == "후반 페이스가 빨라 범위를 벗어났습니다")
+            #expect(FormNarrative.belowRangeNote(type: .race, metric: .stride) == "후반 페이스가 빨라 범위를 벗어났습니다")
         }
     }
 
@@ -89,10 +89,10 @@ struct FormTypeCaptionTests {
         ko {
             for t: WorkoutType in [.longRun, .lsd, .distanceRun, .general, .easy] {
                 // 지면접촉·수직진폭 아래 = 좋은 쪽 — 거리 탓을 붙이지 않는다
-                #expect(FormNarrative.belowRangeNote(type: t, metric: .groundContact) == "평소보다 짧게 유지됐어요", "\(t)")
-                #expect(FormNarrative.belowRangeNote(type: t, metric: .verticalOsc) == "평소보다 낮게 유지됐어요", "\(t)")
-                #expect(FormNarrative.belowRangeNote(type: t, metric: .cadence) == "장거리라 평소 범위 아래에 머물러요", "\(t)")
-                #expect(FormNarrative.belowRangeNote(type: t, metric: .stride) == "장거리라 평소 범위 아래에 머물러요", "\(t)")
+                #expect(FormNarrative.belowRangeNote(type: t, metric: .groundContact) == "평소보다 짧게 유지됐습니다", "\(t)")
+                #expect(FormNarrative.belowRangeNote(type: t, metric: .verticalOsc) == "평소보다 낮게 유지됐습니다", "\(t)")
+                #expect(FormNarrative.belowRangeNote(type: t, metric: .cadence) == "장거리라 평소 범위 아래에 머무릅니다", "\(t)")
+                #expect(FormNarrative.belowRangeNote(type: t, metric: .stride) == "장거리라 평소 범위 아래에 머무릅니다", "\(t)")
             }
         }
     }
@@ -101,21 +101,21 @@ struct FormTypeCaptionTests {
     @Test func belowRangeNoteLateFasterExplainsPace() {
         ko {
             #expect(FormNarrative.belowRangeNote(type: .easy, metric: .groundContact, lateFasterSec: 25)
-                    == "후반 페이스가 빨라 범위 아래에 머물러요")
+                    == "후반 페이스가 빨라 범위 아래에 머무릅니다")
             #expect(FormNarrative.belowRangeNote(type: .easy, metric: .cadence, lateFasterSec: 10)
-                    == "후반 페이스가 빨라 범위를 벗어났어요")
+                    == "후반 페이스가 빨라 범위를 벗어났습니다")
             // 10초 미만이면 페이스 탓이 아니다
             #expect(FormNarrative.belowRangeNote(type: .easy, metric: .groundContact, lateFasterSec: 9)
-                    == "평소보다 짧게 유지됐어요")
+                    == "평소보다 짧게 유지됐습니다")
             // 후반이 느려졌으면(음수) 당연히 페이스 탓이 아니다
             #expect(FormNarrative.belowRangeNote(type: .longRun, metric: .cadence, lateFasterSec: -20)
-                    == "장거리라 평소 범위 아래에 머물러요")
+                    == "장거리라 평소 범위 아래에 머무릅니다")
         }
     }
 
     @Test(.english) func captionsHaveEnglish() {
-        #expect(FormNarrative.hrSecondHalfRiseCaption(type: .buildUp).contains("build-up"))
-        #expect(FormNarrative.highIntensityZoneCaption(type: .tempo).contains("as planned"))
+        #expect(FormNarrative.hrSecondHalfRiseCaption(type: .buildUp).contains("pace picked up"))
+        #expect(FormNarrative.highIntensityZoneCaption(type: .tempo).contains("intended"))
         #expect(FormNarrative.formHeldCaption(type: .race).contains("fast finish"))
         #expect(FormNarrative.belowRangeNote(type: .buildUp, metric: .groundContact).contains("Faster late pace"))
     }
@@ -219,6 +219,6 @@ struct FormTypeCaptionTests {
         let cad = MRFormShift(metric: cadM, recentMean: 1.0, baseMean: -2.0, delta: 3.0, mdc: 1.0, weeksConsistent: 4, r2: nil)
         let gct = MRFormShift(metric: gctM, recentMean: -8, baseMean: 0, delta: -8, mdc: 2.0, weeksConsistent: 4, r2: nil)
         let text = ko { mrFormObservation([cad, gct], refCadence: 170, runCadenceResidual: r)?.text ?? "" }
-        #expect(text.hasSuffix("이 러닝도 그 흐름 위에 있어요."))
+        #expect(text.hasSuffix("이 러닝도 같은 방향입니다."))
     }
 }

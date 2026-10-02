@@ -198,7 +198,7 @@ enum MRPrepComparison {
         }
         if pastKm >= 1, r.now.weeklyKm >= r.past.weeklyKm * (1 + gainThreshold) - 1e-9 {
             let pct = Int(((r.now.weeklyKm / r.past.weeklyKm - 1) * 100).rounded())
-            return L.s("\(subjectKo)보다 주간 거리 \(pct)% 많아요 · \(nowKm)km / \(pastKm)km",
+            return L.s("\(subjectKo)보다 주간 거리 \(pct)% 많습니다 · \(nowKm)km / \(pastKm)km",
                        "Weekly distance \(pct)% higher than \(subjectEn) · \(nowKm) km / \(pastKm) km")
         }
         let subjectEnCap = subjectEn.prefix(1).uppercased() + subjectEn.dropFirst()

@@ -445,18 +445,18 @@ struct RunFormCardView: View {
         switch shift.metric.key {
         case "vo":
             return shift.delta > 0
-                ? L.s("위아래 움직임이 \(suffix)커지고 있어요.", "Vertical oscillation has been \(suffix)increasing.")
-                : L.s("위아래 움직임이 \(suffix)줄어들고 있어요.", "Vertical oscillation has been \(suffix)decreasing.")
+                ? L.s("위아래 움직임이 \(suffix)커지고 있습니다.", "Vertical oscillation has been \(suffix)increasing.")
+                : L.s("위아래 움직임이 \(suffix)줄어들고 있습니다.", "Vertical oscillation has been \(suffix)decreasing.")
         case "cadence":
             return shift.delta > 0
-                ? L.s("케이던스가 \(suffix)높아지고 있어요.", "Cadence has been \(suffix)increasing.")
-                : L.s("케이던스가 \(suffix)낮아지고 있어요.", "Cadence has been \(suffix)decreasing.")
+                ? L.s("케이던스가 \(suffix)높아지고 있습니다.", "Cadence has been \(suffix)increasing.")
+                : L.s("케이던스가 \(suffix)낮아지고 있습니다.", "Cadence has been \(suffix)decreasing.")
         case "gct":
             return shift.delta > 0
-                ? L.s("지면접촉이 \(suffix)길어지고 있어요.", "Ground contact has been \(suffix)increasing.")
-                : L.s("지면접촉이 \(suffix)짧아지고 있어요.", "Ground contact has been \(suffix)decreasing.")
+                ? L.s("지면접촉이 \(suffix)길어지고 있습니다.", "Ground contact has been \(suffix)increasing.")
+                : L.s("지면접촉이 \(suffix)짧아지고 있습니다.", "Ground contact has been \(suffix)decreasing.")
         default:
-            return L.s("주법 지표에 변화가 있어요.", "A form metric is shifting.")
+            return L.s("주법 지표에 변화가 있습니다.", "A form metric is shifting.")
         }
     }
 
@@ -490,11 +490,11 @@ struct RunFormCardView: View {
                     let text: String
                     if isRainy {
                         text = L.s(
-                            "\(tempStr)°C에 비까지 왔어요. 시원한 날이었다면 같은 노력으로 \(refStr) 정도 나왔을 거예요.",
+                            "\(tempStr)°C에 비까지 왔습니다. 시원한 날이었다면 같은 노력으로 \(refStr) 정도 나왔을 것입니다.",
                             "You ran in \(tempStr)°C rain. On a cooler day, same effort might have produced \(refStr).")
                     } else {
                         text = L.s(
-                            "\(tempStr)°C에서 뛰었어요. 시원한 날이었다면 같은 노력으로 \(refStr) 정도 나왔을 거예요.",
+                            "\(tempStr)°C에서 뛰었습니다. 시원한 날이었다면 같은 노력으로 \(refStr) 정도 나왔을 것입니다.",
                             "You ran at \(tempStr)°C. On a cooler day, the same effort might have produced a \(refStr) pace.")
                     }
                     items.append(FormInsightItem(
@@ -521,8 +521,8 @@ struct RunFormCardView: View {
                     tempFired = true
                     let tempInt = Int(temp.rounded())
                     let baseLine = isRainy
-                        ? L.s("\(tempInt)°C에 비까지 왔어요.", "You ran in \(tempInt)°C rain.")
-                        : L.s("\(tempInt)°C에서 뛰었어요.", "You ran at \(tempInt)°C.")
+                        ? L.s("\(tempInt)°C에 비까지 왔습니다.", "You ran in \(tempInt)°C rain.")
+                        : L.s("\(tempInt)°C에서 뛰었습니다.", "You ran at \(tempInt)°C.")
                     // 사실 문맥 — 인과 없음
                     let contextLine: String = {
                         guard sortedTemps.count >= 5 else { return "" }
@@ -530,11 +530,11 @@ struct RunFormCardView: View {
                         if temp < 0 {
                             let subZeroCount = sortedTemps.filter { $0 < 0 }.count
                             if subZeroCount > 0 {
-                                return L.s("최근 기록 중 영하 러닝은 \(subZeroCount)번이에요.",
+                                return L.s("최근 기록 중 영하 러닝은 \(subZeroCount)번입니다.",
                                            "\(subZeroCount) sub-zero run(s) in your history.")
                             }
                         } else if pct <= 0.20 {
-                            return L.s("최근 기록 중 가장 추운 축이에요.",
+                            return L.s("최근 기록 중 가장 추운 축입니다.",
                                        "One of your coldest runs on record.")
                         }
                         return ""
@@ -550,7 +550,7 @@ struct RunFormCardView: View {
         }
         if !tempFired, isRainy, items.count < 3 {
             let text = L.s(
-                "비 오는 날이었어요. 노면이 젖으면 지면접촉과 페이스가 평소와 달라질 수 있어요.",
+                "비 오는 날이었습니다. 노면이 젖으면 지면접촉과 페이스가 평소와 달라질 수 있습니다.",
                 "It was raining. Wet pavement can affect ground contact and pace.")
             items.append(FormInsightItem(
                 id: .weather,
@@ -575,7 +575,7 @@ struct RunFormCardView: View {
             let distKm = activity.distance / 1000
             let ratio  = distKm / typical
             let text = L.s(
-                "\(String(format: "%.1f", distKm))km는 평소(\(String(format: "%.1f", typical))km)의 \(String(format: "%.1f", ratio))배예요.",
+                "\(String(format: "%.1f", distKm))km는 평소(\(String(format: "%.1f", typical))km)의 \(String(format: "%.1f", ratio))배입니다.",
                 "\(String(format: "%.1f", distKm)) km is \(String(format: "%.1f", ratio))× your usual \(String(format: "%.1f", typical)) km.")
             items.append(FormInsightItem(id: .distance,
                                          badgeText: L.s("거리", "Distance"),
@@ -594,9 +594,9 @@ struct RunFormCardView: View {
             let text: String
             switch style {
             case .quickStep:
-                text = L.s("평소보다 발걸음이 빠르고 보폭이 짧았어요.", "Cadence was higher and stride shorter than usual.")
+                text = L.s("평소보다 발걸음이 빠르고 보폭이 짧았습니다.", "Cadence was higher and stride shorter than usual.")
             case .bigStride:
-                text = L.s("평소보다 보폭이 크고 발걸음이 느렸어요.", "Stride was longer and cadence slower than usual.")
+                text = L.s("평소보다 보폭이 크고 발걸음이 느렸습니다.", "Stride was longer and cadence slower than usual.")
             default:
                 text = ""
             }
@@ -618,10 +618,10 @@ struct RunFormCardView: View {
             let distStr = String(format: "%.1f", distKm)
             var text: String
             if let pStr = activity.formattedPace {
-                text = L.s("\(distStr)km를 \(pStr) 페이스로 달렸어요.",
+                text = L.s("\(distStr)km를 \(pStr) 페이스로 달렸습니다.",
                            "You ran \(distStr) km at \(pStr)/km.")
             } else {
-                text = L.s("\(distStr)km를 달렸어요.", "You ran \(distStr) km.")
+                text = L.s("\(distStr)km를 달렸습니다.", "You ran \(distStr) km.")
             }
             // 가장 큰 후반 변화 지표 한 줄 추가 (있으면)
             let all = formSeriesCache.isEmpty ? formSeries : formSeriesCache
@@ -636,24 +636,24 @@ struct RunFormCardView: View {
                     guard absDiff >= 2 else { return nil }
                     let d = String(format: "%.0f", absDiff)
                     return diff < 0
-                        ? L.s("케이던스가 후반에 \(d)spm 낮아졌어요.", "Cadence was \(d) spm lower in the second half.")
-                        : L.s("케이던스가 후반에 \(d)spm 높아졌어요.", "Cadence was \(d) spm higher in the second half.")
+                        ? L.s("케이던스가 후반에 \(d)spm 낮아졌습니다.", "Cadence was \(d) spm lower in the second half.")
+                        : L.s("케이던스가 후반에 \(d)spm 높아졌습니다.", "Cadence was \(d) spm higher in the second half.")
                 case .groundContact:
                     guard absDiff >= 5 else { return nil }
                     let d = String(format: "%.0f", absDiff)
                     return diff < 0
-                        ? L.s("지면접촉이 후반에 \(d)ms 짧아졌어요.", "Ground contact was \(d) ms shorter in the second half.")
-                        : L.s("지면접촉이 후반에 \(d)ms 길어졌어요.", "Ground contact was \(d) ms longer in the second half.")
+                        ? L.s("지면접촉이 후반에 \(d)ms 짧아졌습니다.", "Ground contact was \(d) ms shorter in the second half.")
+                        : L.s("지면접촉이 후반에 \(d)ms 길어졌습니다.", "Ground contact was \(d) ms longer in the second half.")
                 case .stride:
                     guard absDiff >= 0.03 else { return nil }
                     let d = String(format: "%.2f", absDiff)
                     return diff < 0
-                        ? L.s("보폭이 후반에 \(d)m 짧아졌어요.", "Stride was \(d) m shorter in the second half.")
-                        : L.s("보폭이 후반에 \(d)m 길어졌어요.", "Stride was \(d) m longer in the second half.")
+                        ? L.s("보폭이 후반에 \(d)m 짧아졌습니다.", "Stride was \(d) m shorter in the second half.")
+                        : L.s("보폭이 후반에 \(d)m 길어졌습니다.", "Stride was \(d) m longer in the second half.")
                 case .verticalOsc:
                     guard absDiff >= 0.3 else { return nil }
                     let d = String(format: "%.1f", absDiff)
-                    return L.s("수직진폭이 후반에 \(d)cm 변했어요.", "Vertical oscillation changed by \(d) cm.")
+                    return L.s("수직진폭이 후반에 \(d)cm 변했습니다.", "Vertical oscillation changed by \(d) cm.")
                 }
             }
             if let change = notableChange { text += " " + change }
@@ -720,19 +720,19 @@ struct RunFormCardView: View {
             switch e.dir {
             case .cadence:
                 return idx == 0
-                    ? L.s("\(km)km 지점부터 케이던스가 평소 범위 아래로 내려갔어요.",
+                    ? L.s("\(km)km 지점부터 케이던스가 평소 범위 아래로 내려갔습니다.",
                           "From \(km) km, cadence dropped below its normal range.")
-                    : L.s("케이던스는 \(km)km부터였어요.", "Cadence from \(km) km.")
+                    : L.s("케이던스는 \(km)km부터였습니다.", "Cadence from \(km) km.")
             case .stride:
                 return idx == 0
-                    ? L.s("\(km)km 지점부터 보폭이 평소 범위 아래로 내려갔어요.",
+                    ? L.s("\(km)km 지점부터 보폭이 평소 범위 아래로 내려갔습니다.",
                           "From \(km) km, stride length dropped below its normal range.")
-                    : L.s("보폭은 \(km)km부터였어요.", "Stride from \(km) km.")
+                    : L.s("보폭은 \(km)km부터였습니다.", "Stride from \(km) km.")
             case .groundContact:
                 return idx == 0
-                    ? L.s("\(km)km 지점부터 지면접촉이 평소 범위 위로 올라갔어요.",
+                    ? L.s("\(km)km 지점부터 지면접촉이 평소 범위 위로 올라갔습니다.",
                           "From \(km) km, ground contact time rose above its normal range.")
-                    : L.s("지면접촉은 \(km)km부터였어요.", "Ground contact from \(km) km.")
+                    : L.s("지면접촉은 \(km)km부터였습니다.", "Ground contact from \(km) km.")
             case .verticalOsc:
                 return nil
             }
@@ -770,7 +770,7 @@ struct RunFormCardView: View {
             ? L.s("조금 높은", "slightly higher")
             : L.s("조금 낮은", "slightly lower")
         let body = L.s(
-            "같은 페이스에서 케이던스 \(optimalCadence) 근처일 때 심박이 가장 낮았어요. 지금보다 \(direction) 편이 효율적일 수 있어요.",
+            "같은 페이스에서 케이던스 \(optimalCadence) 근처일 때 심박이 가장 낮았습니다. 지금보다 \(direction) 편이 효율적일 수 있습니다.",
             "HR was lowest around a cadence of \(optimalCadence) at the same pace. A \(direction) cadence than now may be more efficient."
         )
         return FormInsightItem(id: .cadenceHR,
@@ -1626,7 +1626,7 @@ struct RunFormCardView: View {
             ? L.s("빨라", "faster than")
             : L.s("느려", "slower than")
         let line2 = L.s(
-            "\n오늘 페이스(\(todayPace))는 평소 구간보다 \(dirWord) 판정 대신 참고로만 보여드려요",
+            "\n오늘 페이스(\(todayPace))는 평소 구간보다 \(dirWord) 판정 대신 참고로만 보여 드립니다",
             "\nToday's pace (\(todayPace)) is \(dirWord) your usual bands — shown for reference, not judged")
         return line1 + line2
     }
@@ -1666,7 +1666,7 @@ struct RunFormCardView: View {
         // [93] 0건일 때 "비교할 만한 거리의 러닝이 없어요", 2건 이상만 흰 점 표기
         let dotLine: String
         if recentCount == 0 {
-            dotLine = L.s("\n비교할 만한 거리의 러닝이 없어요",
+            dotLine = L.s("\n비교할 만한 거리의 러닝이 없습니다",
                           "\nNo runs of similar distance to compare")
         } else if recentCount >= 2 {
             dotLine = L.s("\n흰 점 = 거리가 비슷한 최근 \(recentCount)회",
@@ -1681,7 +1681,7 @@ struct RunFormCardView: View {
             "\n초록 = 범위 안이거나 더 좋은 쪽 (케이던스는 높게 · 지면접촉·수직진폭은 낮게)",
             "\nGreen = in range, or the better side (higher cadence · lower contact & oscillation)")
         let caveat: String = n < 3
-            ? L.s("\n비교 대상이 적어 참고용이에요.", "\nLimited samples — treat as reference only.")
+            ? L.s("\n비교 대상이 적어 참고용입니다.", "\nLimited samples — treat as reference only.")
             : ""
         return line1 + dotLine + colorLine + caveat
     }
@@ -1698,25 +1698,25 @@ struct RunFormCardView: View {
         let gctStr  = avgGroundContactTime.map { String(format: "%.0f", $0) }
 
         if cadD < 160 {
-            return L.s("케이던스가 \(cad)spm이에요. 보폭이 큰 편이에요.",
+            return L.s("케이던스가 \(cad)spm입니다. 보폭이 큰 편입니다.",
                         "Cadence is \(cad) spm — stride is on the longer side.")
         }
         // 인터벌: 회복 구간이 포함된 전체 평균이라 개인 기준 비교를 생략한다
         if isInterval {
             let base = slStr.map {
-                L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 \(paceStr) 페이스가 나왔어요.",
+                L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 \(paceStr) 페이스가 나왔습니다.",
                      "Cadence \(cadStr) spm and stride \($0) m produced a \(paceStr) pace.")
-            } ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스가 나왔어요.",
+            } ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스가 나왔습니다.",
                       "A cadence of \(cadStr) spm produced a \(paceStr) pace.")
             return base + " " + L.s(
-                "인터벌은 회복 구간이 섞여 평균만으로는 폼을 판단하기 어려워요.",
+                "인터벌은 회복 구간이 섞여 평균만으로는 폼을 판단하기 어렵습니다.",
                 "Mixed with recovery intervals — averages alone don't reflect form."
             )
         }
         guard bb?.isJudgeable == true else {
-            return slStr.map { L.s("케이던스 \(cadStr)spm으로 보폭 \($0)m를 만들어 \(paceStr) 페이스가 나왔어요.",
+            return slStr.map { L.s("케이던스 \(cadStr)spm으로 보폭 \($0)m를 만들어 \(paceStr) 페이스가 나왔습니다.",
                                    "A cadence of \(cadStr) spm and \($0) m stride produced a \(paceStr) pace.") }
-                ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스가 나왔어요.",
+                ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스가 나왔습니다.",
                         "A cadence of \(cadStr) spm produced a \(paceStr) pace.")
         }
 

@@ -31,7 +31,7 @@ struct FormTrendParagraphTests {
     /// cad +3 · gct −8 @170 → 걸음 주기 −6.2ms, 공중 +1.8ms → 잦은 걸음 + 탄력. "더 큰 한 걸음"은 나오면 안 된다.
     @Test func cadenceUpGctDown_isQuickerAndSpringy() {
         let t = ko([cad(3), gct(-8)])
-        #expect(t == "같은 페이스에서 케이던스가 3개월 새 3spm 올라가고, 지면접촉이 8ms 짧아졌어요.\n조금 더 잦은 걸음이 되고 공중 시간은 2ms 늘었어요.\n같은 페이스를 더 가볍고 탄력 있게 만들고 있다는 뜻이에요.")
+        #expect(t == "같은 페이스에서 케이던스가 3개월 새 3spm 올라가고, 지면접촉이 8ms 짧아졌습니다.\n조금 더 잦은 걸음이 되고 공중 시간은 2ms 늘었습니다.\n같은 페이스를 더 짧은 접지로 달리고 있다는 뜻입니다.")
         #expect(t.contains("잦은"))
         #expect(t.contains("탄력"))
         #expect(!t.contains("더 큰"))
@@ -42,7 +42,7 @@ struct FormTrendParagraphTests {
     @Test func cadenceDownGctUp_isLongerStepsAndLongerContact() {
         let t = ko([cad(-3), gct(8)])
         #expect(t.contains("큰 걸음"))
-        #expect(t.contains("지면에 머무는 시간이 늘었어요"))
+        #expect(t.contains("지면에 머무는 시간이 늘었습니다"))
         #expect(t.contains("조금 더 오래 딛고"))
         #expect(!t.contains("탄력"))
         #expect(!t.contains("잦은"))
@@ -60,25 +60,25 @@ struct FormTrendParagraphTests {
     /// cad +6 @170 → 걸음 주기 −12.5ms, gct −8 → 공중 −4.5ms → "줄었어요" + 케이던스 방향 결론.
     @Test func airtimeSignMath_unchanged() {
         let t = ko([cad(6), gct(-8)])
-        #expect(t.contains("공중 시간은 4ms 줄었어요"))
-        #expect(t.contains("같은 페이스를 더 잦은 걸음으로 만들고 있다는 뜻이에요"))
+        #expect(t.contains("공중 시간은 4ms 줄었습니다"))
+        #expect(t.contains("같은 페이스를 더 잦은 걸음으로 만들고 있다는 뜻입니다"))
         #expect(!t.contains("탄력"))
         // 기준 케이던스가 낮으면 걸음 주기 변화가 커진다: @150 → −16ms, 공중 −8ms
         let t2 = ko([cad(6), gct(-8)], refCadence: 150)
-        #expect(t2.contains("공중 시간은 8ms 줄었어요"))
+        #expect(t2.contains("공중 시간은 8ms 줄었습니다"))
     }
 
     /// cad −4 · gct −3 → 걸음 주기 +8.3ms, 공중 +11.3ms → 큰 걸음이면서 지면↓·공중↑ → 탄력 결론. (gct는 |Δ| ≥ 3ms여야 실증)
     @Test func cadenceDownGctDown_isLongerStepsAndSpringy() {
         let t = ko([cad(-4), gct(-3)])
         #expect(t.contains("큰 걸음"))
-        #expect(t.contains("공중 시간은 11ms 늘었어요"))
+        #expect(t.contains("공중 시간은 11ms 늘었습니다"))
         #expect(t.contains("탄력"))
     }
 
     @Test func englishVariant() {
         let t = en([cad(3), gct(-8)])
-        #expect(t == "At similar pace, cadence over 3 months rose 3 spm, contact shortened 8 ms.\nSteps got a little quicker, and airtime rose ~2 ms.\nAt the same pace, you're getting lighter and springier.")
+        #expect(t == "At similar pace, cadence over 3 months rose 3 spm, contact shortened 8 ms.\nSteps got a little quicker, and airtime rose ~2 ms.\nAt the same pace, you're spending less time on the ground.")
         let t2 = en([cad(-3), gct(8)])
         #expect(t2.contains("Steps got a little longer, and time on the ground went up."))
         #expect(t2.contains("spending a little longer on each footstrike"))
@@ -89,22 +89,22 @@ struct FormTrendParagraphTests {
 
     @Test func runOnTrend_appendsOnTrendTail() {
         let t = ko([cad(3, recentMean: 2.0), gct(-8)], run: 1.5)   // ≥ 끝점 − 1
-        #expect(t.hasSuffix("만들고 있다는 뜻이에요. 이 러닝도 그 흐름 위에 있어요."))
+        #expect(t.hasSuffix("달리고 있다는 뜻입니다. 이 러닝도 같은 방향입니다."))
         #expect(t.split(separator: "\n").count == 3)
         let e = en([cad(3, recentMean: 2.0), gct(-8)], run: 4.0)
-        #expect(e.hasSuffix("This run sits right on that trend."))
+        #expect(e.hasSuffix("This run points the same way."))
     }
 
     @Test func runBelowTrend_appendsRelaxedTail() {
         let t = ko([cad(3, recentMean: 2.0), gct(-8)], run: -0.5)  // < 끝점 − 2
-        #expect(t.hasSuffix("이 러닝은 그 흐름보다 조금 느긋했어요."))
+        #expect(t.hasSuffix("이 러닝은 그 흐름보다 조금 느긋했습니다."))
         let e = en([cad(3, recentMean: 2.0), gct(-8)], run: -0.5)
         #expect(e.hasSuffix("This run was a little more relaxed than that trend."))
     }
 
     @Test func runSlightlyBelow_noTail() {
         let t = ko([cad(3, recentMean: 2.0), gct(-8)], run: 0.5)   // 끝점 − 2 ≤ r < 끝점 − 1
-        #expect(t.hasSuffix("만들고 있다는 뜻이에요."))
+        #expect(t.hasSuffix("만들고 있다는 뜻입니다."))
         #expect(!t.contains("이 러닝"))
     }
 
@@ -113,7 +113,7 @@ struct FormTrendParagraphTests {
         let t = ko([cad(3, weeks: 9), gct(-8, weeks: 9)])
         #expect(t.split(separator: "\n").count == 2)
         #expect(t.hasPrefix("같은 페이스에서 케이던스가"))
-        #expect(t.hasSuffix("탄력 있게 만들고 있다는 뜻이에요."))
+        #expect(t.hasSuffix("짧은 접지로 달리고 있다는 뜻입니다."))
         // 러닝별 값이 있으면 오래된 추세여도 3줄 유지
         let t3 = ko([cad(3, recentMean: 2.0, weeks: 9), gct(-8, weeks: 9)], run: 2.0)
         #expect(t3.split(separator: "\n").count == 3)

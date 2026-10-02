@@ -73,7 +73,7 @@ struct CreateCrewView: View {
                             Text(AppLanguage.shared.s("리셋 주기", "Reset cycle"))
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.white)
-                            Text(AppLanguage.shared.s("생성 후 변경할 수 없어요", "Cannot be changed after creation"))
+                            Text(AppLanguage.shared.s("생성 후 변경할 수 없습니다", "Cannot be changed after creation"))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -151,7 +151,7 @@ struct CreateCrewView: View {
             }
 
             VStack(spacing: 8) {
-                Text(AppLanguage.shared.s("크루가 만들어졌어요!", "Crew created!"))
+                Text(AppLanguage.shared.s("크루가 만들어졌습니다!", "Crew created!"))
                     .font(.title2.bold())
                     .foregroundStyle(.white)
                 Text(crew.name)
@@ -196,7 +196,7 @@ struct CreateCrewView: View {
             .padding(.horizontal, 16)
 
             Text(AppLanguage.shared.s(
-                "친구에게 코드를 공유하면\n크루에 합류할 수 있어요",
+                "친구에게 코드를 공유하면\n크루에 합류할 수 있습니다",
                 "Share this code with friends\nso they can join the crew"
             ))
             .font(.subheadline)
@@ -226,7 +226,7 @@ struct CreateCrewView: View {
                 .font(.system(size: 22))
                 .foregroundStyle(Theme.violet)
             VStack(alignment: .leading, spacing: 3) {
-                Text(AppLanguage.shared.s("닉네임이 필요해요", "Nickname required"))
+                Text(AppLanguage.shared.s("닉네임이 필요합니다", "Nickname required"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
                 Text(AppLanguage.shared.s(
@@ -274,7 +274,7 @@ struct CreateCrewView: View {
             switch ckError.code {
             case .notAuthenticated:
                 errorMessage = AppLanguage.shared.s(
-                    "iCloud 로그인이 필요해요. 설정 → Apple 계정을 확인해 주세요.",
+                    "iCloud 로그인이 필요합니다. 설정 → Apple 계정을 확인해 주세요.",
                     "iCloud sign-in required. Check Settings → Apple Account."
                 )
             case .networkUnavailable, .networkFailure:
@@ -284,7 +284,7 @@ struct CreateCrewView: View {
                 )
             case .permissionFailure:
                 errorMessage = AppLanguage.shared.s(
-                    "iCloud 접근 권한이 필요해요.",
+                    "iCloud 접근 권한이 필요합니다.",
                     "iCloud access permission required."
                 )
             default:

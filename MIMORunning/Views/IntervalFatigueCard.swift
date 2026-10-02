@@ -202,12 +202,12 @@ struct IntervalFatigueCard: View {
         let L = AppLanguage.shared
         if interpretationType == .muscFatigue {
             return L.s(
-                "후반에 보폭이 \(String(format: "%.1f", sdAbs))% 줄어 발걸음(\(String(format: "%.1f", cdAbs))%)보다 컸고요.",
+                "후반에 보폭이 \(String(format: "%.1f", sdAbs))% 줄어 발걸음(\(String(format: "%.1f", cdAbs))%)보다 컸습니다.",
                 "In the later reps stride dropped \(String(format: "%.1f", sdAbs))% vs cadence (\(String(format: "%.1f", cdAbs))%)."
             )
         } else if interpretationType == .rhythmCollapse {
             return L.s(
-                "후반에 발걸음이 \(String(format: "%.1f", cdAbs))% 줄어 보폭(\(String(format: "%.1f", sdAbs))%)보다 컸고요.",
+                "후반에 발걸음이 \(String(format: "%.1f", cdAbs))% 줄어 보폭(\(String(format: "%.1f", sdAbs))%)보다 컸습니다.",
                 "In the later reps cadence dropped \(String(format: "%.1f", cdAbs))% vs stride (\(String(format: "%.1f", sdAbs))%)."
             )
         }
@@ -256,11 +256,11 @@ struct IntervalFatigueCard: View {
     private var normBadgeDesc: String {
         let L = AppLanguage.shared
         switch normBadgeKind {
-        case .muscFatigue:    return L.s("보폭이 더 크게 떨어졌어요",          "Stride dropped more than cadence")
-        case .rhythmCollapse: return L.s("발걸음이 더 크게 떨어졌어요",         "Cadence dropped more than stride")
-        case .bothDecline:    return L.s("둘 다 나란히 떨어졌어요",             "Both declined together")
-        case .styleChange:    return L.s("같은 속도를 다른 방식으로 만들었어요", "Same speed, different mechanics")
-        case .stable:         return L.s("둘 다 유지됐어요",                   "Both held steady")
+        case .muscFatigue:    return L.s("보폭이 더 크게 떨어졌습니다",          "Stride dropped more than cadence")
+        case .rhythmCollapse: return L.s("발걸음이 더 크게 떨어졌습니다",         "Cadence dropped more than stride")
+        case .bothDecline:    return L.s("둘 다 나란히 떨어졌습니다",             "Both declined together")
+        case .styleChange:    return L.s("같은 속도를 다른 방식으로 만들었습니다", "Same speed, different mechanics")
+        case .stable:         return L.s("둘 다 유지됐습니다",                   "Both held steady")
         }
     }
 
@@ -302,11 +302,11 @@ struct IntervalFatigueCard: View {
             let epStr = fmtPace(ep), lpStr = fmtPace(lp)
             let dir: String
             if delta > 2 {
-                dir = L.s("\(abs(delta))초 느려졌어요.", "slowed by \(abs(delta))s.")
+                dir = L.s("\(abs(delta))초 느려졌습니다.", "slowed by \(abs(delta))s.")
             } else if delta < -2 {
-                dir = L.s("\(abs(delta))초 빨라졌어요.", "sped up by \(abs(delta))s.")
+                dir = L.s("\(abs(delta))초 빨라졌습니다.", "sped up by \(abs(delta))s.")
             } else {
-                dir = L.s("그대로였어요.", "stayed the same.")
+                dir = L.s("그대로였습니다.", "stayed the same.")
             }
             parts.append(L.s("페이스가 \(epStr) → \(lpStr)로 \(dir)",
                               "Pace: \(epStr) → \(lpStr), \(dir)"))
@@ -327,7 +327,7 @@ struct IntervalFatigueCard: View {
                 let ecI = Int(ec.rounded()), lcI = Int(lc.rounded())
                 let cadBetter = lc > ec
                 let conn = parts.isEmpty ? "케이던스가" : (paceGotBetter == cadBetter ? "케이던스도" : "케이던스는")
-                let dir  = pct > 0.5 ? "올랐고요." : pct < -0.5 ? "내렸고요." : "그대로였고요."
+                let dir  = pct > 0.5 ? "올랐습니다." : pct < -0.5 ? "내렸습니다." : "그대로였습니다."
                 cands.append(.init(pct: abs(pct), isPositiveChange: cadBetter, isHR: false,
                                    text: L.s("\(conn) \(ecI) → \(lcI) spm으로 \(dir)",
                                              "Cadence: \(ecI) → \(lcI) spm, \(dir)")))
@@ -338,7 +338,7 @@ struct IntervalFatigueCard: View {
                 let esS = String(format: "%.2f", es), lsS = String(format: "%.2f", ls)
                 let strBetter = ls >= es * 0.995   // maintained (≤0.5% drop) counts as positive
                 let conn = parts.isEmpty ? "보폭이" : (paceGotBetter == (ls > es) ? "보폭도" : "보폭은")
-                let dir  = pct < -0.5 ? "줄었고요." : pct > 0.5 ? "늘었고요." : "그대로였고요."
+                let dir  = pct < -0.5 ? "줄었습니다." : pct > 0.5 ? "늘었습니다." : "그대로였습니다."
                 cands.append(.init(pct: abs(pct), isPositiveChange: strBetter, isHR: false,
                                    text: L.s("\(conn) \(esS) → \(lsS) m로 \(dir)",
                                              "Stride: \(esS) → \(lsS) m, \(dir)")))
@@ -350,9 +350,9 @@ struct IntervalFatigueCard: View {
                 let hrBetter = lh < eh
                 let conn = parts.isEmpty ? "심박이" : (paceGotBetter == hrBetter ? "심박도" : "심박은")
                 let dir: String
-                if d > 1.5       { dir = "\(Int(d.rounded())) bpm 올랐고요." }
-                else if d < -1.5 { dir = "\(Int(abs(d).rounded())) bpm 내렸고요." }
-                else              { dir = "그대로였고요." }
+                if d > 1.5       { dir = "\(Int(d.rounded())) bpm 올랐습니다." }
+                else if d < -1.5 { dir = "\(Int(abs(d).rounded())) bpm 내렸습니다." }
+                else              { dir = "그대로였습니다." }
                 cands.append(.init(pct: abs(d / eh * 100), isPositiveChange: hrBetter, isHR: true,
                                    text: L.s("\(conn) \(ehI) → \(lhI) bpm으로 \(dir)",
                                              "HR: \(ehI) → \(lhI) bpm, \(dir)")))
@@ -374,7 +374,7 @@ struct IntervalFatigueCard: View {
         }
 
         return parts.isEmpty
-            ? L.s("구간 데이터가 충분하지 않아요.", "Not enough rep data.")
+            ? L.s("구간 데이터가 충분하지 않습니다.", "Not enough rep data.")
             : parts.joined(separator: " ")
     }
 
@@ -390,29 +390,29 @@ struct IntervalFatigueCard: View {
         case .normal:
             if let ec = earlyCad, let lc = lateCad, lc > ec {
                 return L.s(
-                    "페이스를 지키면서 발걸음이 오히려 올랐어요. 후반까지 리듬이 살아 있었다는 뜻이에요.",
+                    "페이스를 지키면서 발걸음이 오히려 올랐습니다. 후반까지 리듬이 살아 있었다는 뜻입니다.",
                     "Pace held while cadence actually climbed — rhythm stayed strong to the end."
                 )
             } else if let es = earlyStride, let ls = lateStride, ls >= es * 0.995 {
                 return L.s(
-                    "보폭이 끝까지 유지됐어요. 다리 힘이 남아 있었어요.",
+                    "보폭이 끝까지 유지됐습니다. 다리 힘이 남아 있었습니다.",
                     "Stride held all the way through — leg power was there."
                 )
             } else {
                 return L.s(
-                    "페이스를 끝까지 고르게 유지했어요.",
+                    "페이스를 끝까지 고르게 유지했습니다.",
                     "Pace held steady throughout."
                 )
             }
         case .lateBoost:
             if let ec = earlyCad, let lc = lateCad, lc > ec {
                 return L.s(
-                    "발걸음이 올라가면서 속도가 붙었어요. 여유가 남아 있었다는 뜻이에요.",
+                    "발걸음이 올라가면서 속도가 붙었습니다. 여유가 남아 있었다는 뜻입니다.",
                     "Cadence climbed and pace followed — more in the tank."
                 )
             } else {
                 return L.s(
-                    "후반으로 갈수록 페이스가 살아났어요. 여유가 있었다는 뜻이에요.",
+                    "후반으로 갈수록 페이스가 살아났습니다. 여유가 있었다는 뜻입니다.",
                     "Pace picked up in the second half — you had more to give."
                 )
             }
@@ -421,45 +421,45 @@ struct IntervalFatigueCard: View {
             if let eh = earlyHR, let lh = lateHR {
                 let d = Int((lh - eh).rounded())
                 parts.append(L.s(
-                    "후반으로 갈수록 리듬이 살아났어요. 심박이 \(d) bpm 오른 건 더 빠르게 뛴 만큼의 자연스러운 반응이에요.",
+                    "후반으로 갈수록 리듬이 살아났습니다. 심박이 \(d) bpm 오른 건 더 빠르게 뛴 만큼의 자연스러운 반응입니다.",
                     "Rhythm picked up in the second half. HR rising \(d) bpm is a natural response to running faster."))
             } else {
-                parts.append(L.s("후반으로 갈수록 리듬이 살아났어요.",
+                parts.append(L.s("후반으로 갈수록 리듬이 살아났습니다.",
                                   "Rhythm picked up in the second half."))
             }
         case .muscFatigue:
             // ① 근피로: stride-driven drop, HR stable
-            parts.append(L.s("심폐는 여유가 있었는데 다리 힘이 먼저 빠졌을 수 있어요.",
+            parts.append(L.s("심폐는 여유가 있었는데 다리 힘이 먼저 빠졌을 수 있습니다.",
                               "Cardio had capacity, but leg strength may have given out first."))
         case .cardioStress:
             // ② 심폐 부담: pace maintained + HR rose ≥8 bpm
             if let eh = earlyHR, let lh = lateHR {
                 let d = Int((lh - eh).rounded())
-                parts.append(L.s("심박이 \(d) bpm 오른 건 심폐 부담이 쌓이고 있다는 신호예요.",
+                parts.append(L.s("심박이 \(d) bpm 오른 건 심폐 부담이 쌓이고 있다는 신호입니다.",
                                   "HR rising \(d) bpm is a signal that cardio load is accumulating."))
             } else {
-                parts.append(L.s("심폐 부담이 쌓이고 있다는 신호예요.",
+                parts.append(L.s("심폐 부담이 쌓이고 있다는 신호입니다.",
                                   "A sign that cardio load is accumulating."))
             }
         case .cardioLimit:
             // 한계 구간: pace dropped + HR also rose
             if let eh = earlyHR, let lh = lateHR {
                 let d = Int((lh - eh).rounded())
-                parts.append(L.s("심박이 \(d) bpm 올라간 건 한계에 다가가고 있다는 신호예요.",
+                parts.append(L.s("심박이 \(d) bpm 올라간 건 한계에 다가가고 있다는 신호입니다.",
                                   "HR rising \(d) bpm signals you were approaching your limit."))
             } else {
-                parts.append(L.s("후반엔 한계에 가까운 구간이었어요.",
+                parts.append(L.s("후반엔 한계에 가까운 구간이었습니다.",
                                   "The later reps pushed close to your limit."))
             }
         case .rhythmCollapse:
             // ③ 리듬 붕괴: cadence-dominant drop, HR stable
-            parts.append(L.s("후반으로 갈수록 발걸음 리듬이 흐트러졌어요.",
+            parts.append(L.s("후반으로 갈수록 발걸음 리듬이 흐트러졌습니다.",
                               "Stride rhythm broke down in the later reps."))
         }
 
         // ④ 초반 오버페이스 — appended to ①②③/한계 when pace dropped ≥1% and first rep too fast
         if hasOverpace {
-            parts.append(L.s("1회차가 평균보다 \(overpaceDeltaSec)초 빨랐던 것도 영향을 줬을 거예요.",
+            parts.append(L.s("1회차가 평균보다 \(overpaceDeltaSec)초 빨랐던 것도 영향을 줬을 것입니다.",
                               "Starting rep 1 \(overpaceDeltaSec)s faster than average likely played a role."))
         }
 
@@ -485,7 +485,7 @@ struct IntervalFatigueCard: View {
                 lines.append(L.s("다음엔 1회차를 \(avgStr)로 시작해 보세요.",
                                    "Next session, start rep 1 at \(avgStr)."))
             }
-            lines.append(L.s("종아리·둔근 보강을 주 2회 곁들이면 후반 보폭 유지에 도움이 돼요.",
+            lines.append(L.s("종아리·둔근 보강을 주 2회 곁들이면 후반 보폭 유지에 도움이 됩니다.",
                                "Calf raises and hip hinges 2×/week help maintain stride in later reps."))
         case .cardioStress:
             // 회복 시간 or 구간 수 조정
@@ -499,7 +499,7 @@ struct IntervalFatigueCard: View {
             // 구간 단축 + 드릴
             lines.append(L.s("구간 길이를 조금 줄여 리듬을 유지해 보세요.",
                                "Try shortening each rep to keep your rhythm intact."))
-            lines.append(L.s("짧은 스트라이드·스킵 드릴이 리듬 유지에 도움이 돼요.",
+            lines.append(L.s("짧은 스트라이드·스킵 드릴이 리듬 유지에 도움이 됩니다.",
                                "Short stride and skip drills help maintain rhythm."))
         }
 
@@ -534,32 +534,32 @@ struct IntervalFatigueCard: View {
             let note: String?
             if isShort && hasPaceProblem && isPoorDrop {
                 note = L.s(
-                    "회복\(recNum): \(durSec)초로 짧았고 페이스도 운동 구간과 비슷해 심박이 내려가지 않았어요",
+                    "회복\(recNum): \(durSec)초로 짧았고 페이스도 운동 구간과 비슷해 심박이 내려가지 않았습니다",
                     "Rec \(recNum): only \(durSec)s and pace close to work — HR didn't recover"
                 )
             } else if isShort && isPoorDrop {
                 note = L.s(
-                    "회복\(recNum): 회복 시간이 짧고 심박도 충분히 내려가지 않았어요",
+                    "회복\(recNum): 회복 시간이 짧고 심박도 충분히 내려가지 않았습니다",
                     "Rec \(recNum): short recovery and HR didn't drop enough"
                 )
             } else if hasPaceProblem && isPoorDrop {
                 note = L.s(
-                    "회복\(recNum): 회복 페이스가 운동 구간과 비슷해 심박이 충분히 내려가지 않았어요",
+                    "회복\(recNum): 회복 페이스가 운동 구간과 비슷해 심박이 충분히 내려가지 않았습니다",
                     "Rec \(recNum): recovery pace close to work — HR didn't drop enough"
                 )
             } else if isVeryPoor {
                 note = L.s(
-                    "회복\(recNum): 심박 회복이 거의 안 됐어요",
+                    "회복\(recNum): 심박 회복이 거의 안 됐습니다",
                     "Rec \(recNum): HR barely recovered"
                 )
             } else if isPoorDrop {
                 note = L.s(
-                    "회복\(recNum): 심박이 조금밖에 안 내려갔어요",
+                    "회복\(recNum): 심박이 조금밖에 안 내려갔습니다",
                     "Rec \(recNum): HR dropped only a little"
                 )
             } else if hasPaceProblem {
                 note = L.s(
-                    "회복\(recNum): 회복 페이스가 운동 구간과 비슷했어요",
+                    "회복\(recNum): 회복 페이스가 운동 구간과 비슷했습니다",
                     "Rec \(recNum): recovery pace was close to work pace"
                 )
             } else {
@@ -582,7 +582,7 @@ struct IntervalFatigueCard: View {
         for i in 1..<(indexed.count - 1) {
             let prev = indexed[i - 1].cad, curr = indexed[i].cad, next = indexed[i + 1].cad
             guard prev > 0, (prev - curr) / prev * 100 > 3, next > curr else { continue }
-            return L.s("\(indexed[i].display)구간에서 일시적 리듬 저하, 스스로 회복했어요",
+            return L.s("\(indexed[i].display)구간에서 일시적 리듬 저하, 스스로 회복했습니다",
                         "Segment \(indexed[i].display) had a brief dip — bounced back")
         }
         return nil
@@ -645,7 +645,7 @@ struct IntervalFatigueCard: View {
             HStack(spacing: 8) {
                 Image(systemName: "chart.xyaxis.line")
                     .font(.system(size: 13)).foregroundStyle(Color.white.opacity(0.28))
-                Text(AppLanguage.shared.s("구간이 부족해요 (최소 3개 필요)", "Not enough intervals (need 3+)"))
+                Text(AppLanguage.shared.s("구간이 부족합니다 (최소 3개 필요)", "Not enough intervals (need 3+)"))
                     .font(.system(size: 11)).foregroundStyle(Color.white.opacity(0.38))
             }
             .padding(.vertical, 14)
@@ -656,7 +656,7 @@ struct IntervalFatigueCard: View {
                 if let note = tempDropNote { noteRow(note) }
                 if !outlierIDs.isEmpty {
                     let ids = outlierIDs.sorted().map { "\($0)" }.joined(separator: ", ")
-                    noteRow(AppLanguage.shared.s("\(ids)구간은 이상치로 판정에서 제외됐어요",
+                    noteRow(AppLanguage.shared.s("\(ids)구간은 이상치로 판정에서 제외됐습니다",
                                                  "Segment(s) \(ids) excluded as outliers"))
                 }
 

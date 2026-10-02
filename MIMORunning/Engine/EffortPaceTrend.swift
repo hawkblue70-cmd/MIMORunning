@@ -46,8 +46,8 @@ enum EffortPaceTrend {
                 : "In runs at effort ≤\(cutoff), pace got \(d)s/km faster over 3 months."
         } else {
             text = isPersonal
-                ? "강도 \(cutoff) 이하(본인 이지런 기준)로 뛴 러닝의 페이스가 3개월 새 \(d)초/km 빨라졌어요."
-                : "강도 \(cutoff) 이하로 뛴 러닝의 페이스가 3개월 새 \(d)초/km 빨라졌어요."
+                ? "강도 \(cutoff) 이하(본인 이지런 기준)로 뛴 러닝의 페이스가 3개월 새 \(d)초/km 빨라졌습니다."
+                : "강도 \(cutoff) 이하로 뛴 러닝의 페이스가 3개월 새 \(d)초/km 빨라졌습니다."
         }
         let basis = String(format: "Δ%+.1fs/km · MDC %.1f · Foster 2001", shift.delta, shift.mdc)
         return (text, basis)

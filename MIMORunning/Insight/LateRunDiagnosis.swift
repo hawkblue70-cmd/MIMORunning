@@ -534,13 +534,13 @@ enum LateRunDiagnosis {
             // 다리 신호 + 90분↑에서 페이스·심박이 함께 떨어졌으면 에너지 고갈이 겹쳤을 수 있다(보급 기록 없음)
             if r.durationMin >= energyMinDurationMin, r.paceChangeSec >= slowdownSec,
                let h = r.hrChange, h <= -energyHRDropBpm {
-                pieces.append(L.s("심박도 함께 내려가 보급 부족이 겹쳤을 수 있어요",
+                pieces.append(L.s("심박도 함께 내려가 보급 부족이 겹쳤을 수 있습니다",
                                   "HR fell too — low fuel may have added to it"))
             }
         }
         if let o = onsetPiece(r) { pieces.append(o) }
         if r.kind == .energy {
-            pieces.append(L.s("보급 기록이 없어 추정이에요", "estimated — no fueling data"))
+            pieces.append(L.s("보급 기록이 없어 추정입니다", "estimated — no fueling data"))
         }
         return pieces.joined(separator: " · ")
     }
@@ -577,9 +577,9 @@ enum LateRunDiagnosis {
         case .held:
             if r.isFastFinish { return nil }
             return isRace
-                ? L.s("끝까지 달리기를 남겼어요. 다음 대회는 목표 페이스를 조금 올려 봐도 좋아요.",
+                ? L.s("끝까지 달리기를 남겼습니다. 다음 대회는 목표 페이스를 조금 올려 봐도 좋습니다.",
                       "You kept your running to the end. You could aim a little faster next race.")
-                : L.s("다음 롱런은 마지막 15분을 목표 대회 페이스로 올려 보세요 — 지친 상태에서 페이스를 지키는 연습이에요.",
+                : L.s("다음 롱런은 마지막 15분을 목표 대회 페이스로 올려 보세요 — 지친 상태에서 페이스를 지키는 연습입니다.",
                       "On your next long run, lift the last 15 minutes to goal race pace — practice holding pace while tired.")
         case .legs:
             return isRace
@@ -595,13 +595,13 @@ enum LateRunDiagnosis {
             return isRace
                 ? L.s("다음 대회는 초반을 5~10초/km 늦게 시작하고, 롱런 후반에 목표 페이스를 넣어 지친 상태의 페이스를 연습해 보세요.",
                       "Start your next race 5–10 s/km slower, and practice goal pace late in long runs.")
-                : L.s("다음 롱런은 중반 페이스를 10초/km 늦춰 보세요. 주 1회 템포 20분이 같은 페이스의 심박을 낮춰 줘요.",
+                : L.s("다음 롱런은 중반 페이스를 10초/km 늦춰 보세요. 주 1회 템포 20분이 같은 페이스의 심박을 낮춰 줍니다.",
                       "Ease mid-run pace by 10 s/km next long run. A weekly 20-minute tempo lowers HR at the same pace.")
         case .energy:
             return isRace
                 ? L.s("다음 대회는 30~40분부터 탄수화물을 나눠 먹고, 롱런에서 같은 보급을 미리 연습해 두세요.",
                       "Next race, start carbs at 30–40 minutes and rehearse the same fueling in long runs.")
-                : L.s("90분 넘는 롱런은 30~40분부터 시간당 30~60g 탄수화물을 나눠 먹어 보세요. 초반 10분은 목표보다 느리게요.",
+                : L.s("90분 넘는 롱런은 30~40분부터 시간당 30~60g 탄수화물을 나눠 먹어 보세요. 초반 10분은 목표보다 느리게 달리세요.",
                       "On runs over 90 minutes, take 30–60 g of carbs per hour from 30–40 minutes in, and start the first 10 minutes easier.")
         case .combined:
             return L.s("초반을 더 편하게 시작하고, 긴 롱런 한 번보다 주간 거리를 꾸준히 쌓아 기본 지구력을 올려 보세요.",
@@ -661,18 +661,18 @@ struct LateRunPoint: Identifiable, Equatable {
         let headEn = all ? "In all of your last \(n) unbroken long runs" : "In \(c) of your last \(n) unbroken long runs"
         switch s.kind {
         case .held:
-            return L.s("\(headKo) 후반까지 달리기를 남겼어요.", "\(headEn), you kept your running to the end.")
+            return L.s("\(headKo) 후반까지 달리기를 남겼습니다.", "\(headEn), you kept your running to the end.")
         case .cardio:
-            return L.s("\(headKo) 심박이 먼저 올랐어요. 다리보다 심폐가 먼저 한계에 닿는 편이에요.",
+            return L.s("\(headKo) 심박이 먼저 올랐습니다. 다리보다 심폐가 먼저 한계에 닿는 편입니다.",
                        "\(headEn), HR rose first — your cardio tends to hit the limit before your legs.")
         case .legs:
-            return L.s("\(headKo) 다리가 먼저 지쳤어요. 심폐보다 근지구력이 먼저 한계에 닿는 편이에요.",
+            return L.s("\(headKo) 다리가 먼저 지쳤습니다. 심폐보다 근지구력이 먼저 한계에 닿는 편입니다.",
                        "\(headEn), legs tired first — muscular endurance tends to give out before cardio.")
         case .energy:
-            return L.s("\(headKo) 후반에 힘이 빠졌어요. 보급을 점검해 볼 만해요.",
+            return L.s("\(headKo) 후반에 힘이 빠졌습니다. 보급을 점검해 볼 만합니다.",
                        "\(headEn), you ran low late — worth checking your fueling.")
         case .combined:
-            return L.s("\(headKo) 다리와 심박이 함께 무너졌어요.",
+            return L.s("\(headKo) 다리와 심박이 함께 무너졌습니다.",
                        "\(headEn), legs and HR faded together.")
         }
     }
@@ -683,13 +683,13 @@ struct LateRunPoint: Identifiable, Equatable {
         let L = AppLanguage.shared
         let n = String(format: "%.1f", abs(d))
         if d >= trendDeltaPct {
-            return L.s("후반 효율 하락이 이전보다 \(n)%p 줄었어요 — 후반 내구성이 좋아지고 있어요.",
+            return L.s("후반 효율 하락이 이전보다 \(n)%p 줄었습니다 — 후반 내구성이 좋아지고 있습니다.",
                        "Late-run efficiency loss is down \(n) pts — your durability is improving.")
         }
         if d <= -trendDeltaPct {
-            return L.s("후반 효율 하락이 이전보다 \(n)%p 늘었어요. 최근 롱런 강도나 회복을 살펴보세요.",
+            return L.s("후반 효율 하락이 이전보다 \(n)%p 늘었습니다. 최근 롱런 강도나 회복을 살펴보세요.",
                        "Late-run efficiency loss is up \(n) pts. Check recent long-run intensity or recovery.")
         }
-        return L.s("후반 효율 하락은 이전과 비슷해요.", "Late-run efficiency loss is about the same as before.")
+        return L.s("후반 효율 하락은 이전과 비슷합니다.", "Late-run efficiency loss is about the same as before.")
     }
 }

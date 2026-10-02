@@ -50,8 +50,8 @@ struct MRHealthMetricsView: View {
             return "You usually run on \(days)\(hour)"
         } else {
             let days = m.habitDays.map { dayNames[$0] }.joined(separator: "·")
-            let hour = m.typicalHour.map { ", 보통 \($0)시쯤이고요" } ?? ""
-            return "주로 \(days)요일에 나가시네요\(hour)"
+            let hour = m.typicalHour.map { ", 보통 \($0)시쯤" } ?? ""
+            return "주로 \(days)요일\(hour) 달립니다"
         }
     }
 
@@ -62,7 +62,7 @@ struct MRHealthMetricsView: View {
             return "Your runs are evenly spread across the week\(hour)"
         } else {
             let hour = m.typicalHour.map { ". 보통 \($0)시쯤입니다" } ?? ""
-            return "특정 요일에 몰리지 않고 고르게 나가시네요\(hour)"
+            return "특정 요일에 몰리지 않고 고르게 달립니다\(hour)"
         }
     }
 

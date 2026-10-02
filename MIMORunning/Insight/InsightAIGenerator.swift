@@ -43,11 +43,11 @@ enum InsightAIGenerator {
             · 사실에 없는 수치를 만들어내지 말 것
             · 아래 예시는 말투만 참고할 것. 예시 문장을 그대로 쓰지 말 것
             말투 예시:
-            최근 같은 거리 중 가장 빠른 페이스였어요
-            몇 주째 끊기지 않고 이어지는 달리기예요
-            이번 달 가장 긴 거리를 달렸어요
-            짧은 질주를 여러 번 반복한 날이에요
-            심박이 가장 높이 올라간 러닝이었어요
+            최근 같은 거리 중 가장 빠른 페이스였습니다
+            몇 주째 끊기지 않고 이어지는 달리기입니다
+            이번 달 가장 긴 거리를 달렸습니다
+            짧은 질주를 여러 번 반복한 날입니다
+            심박이 가장 높이 올라간 러닝이었습니다
             """
 
         let prompt = """
@@ -144,10 +144,10 @@ enum InsightAIGenerator {
         guard !factSummary.isEmpty else { return nil }
 
         let instructions = """
-            너는 러닝 앱 "미모러닝"의 따뜻한 코치다. 주어진 2주 훈련 사실로 총평을 쓴다.
+            너는 러닝 앱 "미모러닝"의 담백한 코치다. 주어진 2주 훈련 사실로 총평을 쓴다.
             출력 규격:
             - 출력은 2~3문장, 전체 30~80자.
-            - 각 문장은 '~요' 또는 '~네요'로 끝낸다.
+            - 각 문장은 합쇼체 '~니다'로 끝낸다('~요'·'~네요' 금지).
             - 이모지, 느낌표, 특수문자를 쓰지 않는다.
             - 주어진 사실의 수치를 최소 한 곳에 포함한다.
             규칙:
@@ -157,8 +157,8 @@ enum InsightAIGenerator {
             4) 같은 단어를 반복하지 마라.
             5) 헤드라인·구호 형태 금지. 반드시 서술형 문장으로 끝낸다.
             6) 수직 진폭, 지면접촉 시간, 케이던스, 보폭의 변화를 효율·경제성·개선·좋아짐의 근거로 쓰지 마라. 이 지표들은 손목 측정 오차가 크고, 어떤 방향이 더 좋다는 연구 결과가 없다. 러닝 이코노미를 말해야 한다면 페이스 대비 심박, 같은 심박에서의 속도 변화만 근거로 삼아라.
-            좋은 예: "인터벌 2회를 섞은 5회 구성이었어요. 보폭이 늘어나는 흐름이에요. 4주째 이어지고 있어요."
-            나쁜 예: "5회 완주! 최고였어요."
+            좋은 예: "인터벌 2회를 섞은 5회 구성이었습니다. 보폭이 늘어나는 흐름입니다. 4주째 이어지고 있습니다."
+            나쁜 예: "5회 완주! 최고였습니다."
             """
         let guide = patternGuide(patternKey)
         let prompt = "패턴: \(weeklyPatternKorean(patternKey)). \(guide) 사실: \(factSummary). 이 사실로 2~3문장 총평."
@@ -181,7 +181,7 @@ enum InsightAIGenerator {
                 } else if r.contains("문장수 부족") {
                     retryHint = "이전 출력이 문장 1개뿐이었다. 반드시 2~3문장으로 나눠서 다시 써라."
                 } else if r.contains("종결어미") {
-                    retryHint = "이전 출력이 '요' 또는 '다'로 끝나지 않았다. 반드시 '~요'로 끝내라."
+                    retryHint = "이전 출력이 '~니다'로 끝나지 않았다. 모든 문장을 '~니다'로 끝내라."
                 } else if r.contains("양성어휘") {
                     retryHint = "이전 출력에 필수 어휘(\(requiredVocab(for: patternKey).joined(separator: "/")))가 없었다. 이 중 하나를 포함해서 다시 써라."
                 } else if r.contains("금지어") {
@@ -261,8 +261,10 @@ enum InsightAIGenerator {
         guard !trimmed.isEmpty else { return (false, "빈 문자열") }
         let charCount = trimmed.filter({ !$0.isWhitespace }).count
         guard charCount >= 25 else { return (false, "길이 미달: \(charCount)자 < 25자") }
+        // 앱 말투는 합쇼체(2026-10-02) — 마지막 문장이 '~니다'로 끝나야 한다
         let tail = String(trimmed.suffix(10))
-        guard tail.contains("요") || trimmed.hasSuffix("다") else {
+        let ending = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: ".。 "))
+        guard ending.hasSuffix("니다") else {
             return (false, "종결어미 없음: 뒤10자=「\(tail)」")
         }
         let sentenceEnders = CharacterSet(charactersIn: ".。!?！？\n")

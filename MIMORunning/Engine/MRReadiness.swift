@@ -207,7 +207,7 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
     // 주 끝에 포인트를 몰아넣지 않는다 — 남은 날 2일 이하면 이번 주 포인트는 건너뛴다(다음 주로 미루지 않음)
     let pointSkippable = pointLeft && daysLeft <= 2
     if pointSkippable {
-        progress.append(L.s("강도 훈련은 이번 주 건너뛰어도 괜찮아요", "fine to skip this week's hard session"))
+        progress.append(L.s("강도 훈련은 이번 주 건너뛰어도 괜찮습니다", "fine to skip this week's hard session"))
     }
 
     // 세션
@@ -411,7 +411,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     // 규칙 1 — 대회 계획의 회복·테이퍼 주
     if planPhase == "회복" {
         return make(.easy, [L.s("대회 계획 회복 주", "race plan: recovery week")],
-                    why: L.s("대회 계획상 이번 주는 부하를 낮추는 주예요. 이지런으로 다리를 아끼세요.",
+                    why: L.s("대회 계획상 이번 주는 부하를 낮추는 주입니다. 이지런으로 다리를 아끼세요.",
                              "Your race plan has this as a recovery week. Keep it easy and save your legs."))
     }
     // 테이퍼 주라도 이번 주 포인트(대회 페이스 짧게)가 남았으면 강도를 막지 않는다 —
@@ -430,14 +430,14 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     }()
     if planPhase == "테이퍼" && !taperPointLeft {
         return make(.easy, [L.s("대회 계획 테이퍼 주", "race plan: taper week")],
-                    why: L.s("대회 계획상 테이퍼 주예요. 강도보다 신선함이 남는 게 이득이에요.",
+                    why: L.s("대회 계획상 테이퍼 주입니다. 강도보다 신선함이 남는 게 이득입니다.",
                              "Your race plan has this as a taper week. Freshness beats one more hard session."))
     }
     // 규칙 2 — 부하 급증 · 장기 연속
     if let r = load.ratio, r > MRReadiness.spikeRatio {
         let ratioStr = String(format: "%.1f", r)
         return make(.rest, [L.s("부하 급증", "load spike")],
-                    why: L.s("최근 7일 부하가 평소의 \(ratioStr)배예요. 급히 늘린 부하는 쉬는 날에 흡수돼요.",
+                    why: L.s("최근 7일 부하가 평소의 \(ratioStr)배입니다. 급히 늘린 부하는 쉬는 날에 흡수됩니다.",
                              "Your last 7 days carry \(ratioStr)× your usual load. A sudden jump needs a rest day to absorb."))
     }
     // 연속일은 휴식이 아니라 강도를 빼라는 신호 — 이지런이면 괜찮다(2026-09-23 사용자 결정). 문턱은 본인 평소 연속일 + 1.
@@ -456,24 +456,24 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         }()
         if let down = hrvDown {
             return make(.rest, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row"), down],
-                        why: L.s("\(consecutive)일 내리 달렸고 HRV도 평소보다 낮아요. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.",
+                        why: L.s("\(consecutive)일 내리 달렸고 HRV도 평소보다 낮습니다. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.",
                                  "\(consecutive) days in a row and your HRV is below usual — fatigue is showing. Rest, or keep it under 30 minutes and easy."))
         }
         return make(.easy, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row")],
-                    why: L.s("\(consecutive)일 내리 달렸어요. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요.",
+                    why: L.s("\(consecutive)일 내리 달렸습니다. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요.",
                              "\(consecutive) days in a row — longer than your usual streak. Keep today easy and skip the intensity."))
     }
     // 규칙 3 — HRV 억제 · 어젯밤 유독 낮음. 어제 고강도였으면 그 사실을 앞에 붙인다 — 고강도 다음 밤 HRV가 눌리는 건
     // 정상 반응이라, 원인을 같이 말해야 "몸에 문제가 있나" 하고 놀라지 않는다. 판정(휴식)은 그대로.
     let wasHardYesterday = hard.lastHardDaysAgo.map { $0 <= 1 } ?? false
     let hardYesterday: [String] = wasHardYesterday ? [L.s("어제 고강도", "hard run yesterday")] : []
-    let afterHardWhy = L.s("어제 고강도 뒤라 HRV가 눌린 건 정상 반응이에요. 오늘 쉬면 돌아와요.",
+    let afterHardWhy = L.s("어제 고강도 뒤라 HRV가 눌린 건 정상 반응입니다. 오늘 쉬면 돌아옵니다.",
                            "HRV dips after a hard day — that's normal. A rest day brings it back.")
     if let t = trend, t.isSuppressed {
         let why = wasHardYesterday ? afterHardWhy : (t.isVolatile
-            ? L.s("이번 주 HRV가 평소보다 크게 흔들려요. 몸이 아직 안정되지 않은 신호예요.",
+            ? L.s("이번 주 HRV가 평소보다 크게 흔들립니다. 몸이 아직 안정되지 않은 신호입니다.",
                   "Your HRV is swinging far more than usual this week — a sign the body hasn't settled.")
-            : L.s("이번 주 HRV가 평소 아래예요. 회복이 덜 된 신호라 강도는 미루는 게 좋아요.",
+            : L.s("이번 주 HRV가 평소 아래입니다. 회복이 덜 된 신호라 강도는 미루는 게 좋습니다.",
                   "Your HRV is below usual this week — recovery isn't done yet, so hold the hard session."))
         return make(.rest, hardYesterday + [t.isVolatile ? L.s("HRV 불안정", "HRV unstable") : L.s("HRV 낮음", "HRV low")], why: why)
     }
@@ -484,7 +484,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         let vStr = Int(v.rounded()), bStr = Int(t.baseline.rounded())
         let pct = Int(((t.baseline - v) / t.baseline * 100).rounded())
         let why = wasHardYesterday ? afterHardWhy
-            : L.s("어젯밤 HRV가 평소보다 \(pct)% 낮아요. 하룻밤이지만 오늘은 가볍게 가는 편이 안전해요.",
+            : L.s("어젯밤 HRV가 평소보다 \(pct)% 낮습니다. 하룻밤이지만 오늘은 가볍게 가는 편이 안전합니다.",
                   "Last night's HRV was \(pct)% below usual. One night, but an easy day is the safer call.")
         return make(.rest, hardYesterday + [L.s("어젯밤 HRV \(vStr)ms, 평소 \(bStr)ms보다 낮음",
                                                 "last night's HRV \(vStr)ms, below usual \(bStr)ms")], why: why)
@@ -492,35 +492,35 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     // 규칙 4 — 어제 고강도
     if let d = hard.lastHardDaysAgo, d <= 1 {
         return make(.easy, [L.s("어제 고강도", "hard run yesterday")],
-                    why: L.s("고강도 다음 날은 쉬운 날이어야 몸이 적응해요. 이틀 연속 강도는 피하세요.",
+                    why: L.s("고강도 다음 날은 쉬운 날이어야 몸이 적응합니다. 이틀 연속 강도는 피하세요.",
                              "The day after a hard session should be easy — that's when the body adapts. Avoid back-to-back hard days."))
     }
     // 규칙 5 — 부하 오르는 중(HRV가 좋으면 통과)
     let ready = trend?.isReadyHigh == true
     if load.rising && !ready {
         return make(.easy, [L.s("부하 오르는 중", "load rising")],
-                    why: L.s("직전 7일보다 부하가 늘었어요. 여기에 강도까지 얹으면 급증이 돼요.",
+                    why: L.s("직전 7일보다 부하가 늘었습니다. 여기에 강도까지 얹으면 급증이 됩니다.",
                              "Load is up on the previous 7 days. Adding a hard session on top would make it a spike."))
     }
     // 규칙 6 — HRV 좋음
     if ready {
         return make(.go, [L.s("HRV 좋음", "HRV good")] + [lastHardPiece()].compactMap { $0 },
-                    why: L.s("이번 주 HRV가 평소 위로 안정적이에요. 강도를 소화할 준비가 된 신호예요.",
+                    why: L.s("이번 주 HRV가 평소 위로 안정적입니다. 강도를 소화할 준비가 된 신호입니다.",
                              "Your HRV is steadily above usual this week — a sign you're ready to absorb a hard session."))
     }
     // 규칙 7 — 범위 안 또는 자료 없음: 부하 쪽이 넉넉할 때만 강도 OK
     if let d = hard.lastHardDaysAgo, d < MRReadiness.normalHRVGoMinDays {
         return make(.easy, [L.s("고강도 \(d)일 전", d == 1 ? "hard run 1 day ago" : "hard run \(d) days ago"), L.s("하루 더 여유", "one more easy day")],
-                    why: L.s("고강도 뒤 사흘은 두는 게 좋아요. 그 사이 강도를 더하면 회복이 밀려요.",
+                    why: L.s("고강도 뒤 사흘은 두는 게 좋습니다. 그 사이 강도를 더하면 회복이 밀립니다.",
                              "Leave about three days after a hard session. Stacking another one pushes recovery back."))
     }
     var reasons: [String] = []
     if trend != nil { reasons.append(L.s("HRV 보통", "HRV normal")) }
     if let p = lastHardPiece() { reasons.append(p) }
     let why = trend != nil
-        ? L.s("HRV는 평소 범위이고 마지막 고강도도 충분히 지났어요. 계획한 강도를 넣어도 돼요.",
+        ? L.s("HRV는 평소 범위이고 마지막 고강도도 충분히 지났습니다. 계획한 강도를 넣어도 됩니다.",
               "HRV is in your usual range and the last hard session is far enough back. Your planned hard session is fine.")
-        : L.s("부하가 안정돼 있어요. 계획한 강도를 넣어도 돼요.",
+        : L.s("부하가 안정돼 있습니다. 계획한 강도를 넣어도 됩니다.",
               "Load is steady. Your planned hard session is fine.")
     return make(.go, reasons, why: why)
 }

@@ -204,28 +204,28 @@ struct RunInsightSection: View {
             category: .cardio,
             tone: .good,
             badge: "평균 이상",
-            message: "유산소 피트니스 48.5는 같은 연령대 기준 평균 이상에 해당해요. (추정값)",
+            message: "유산소 피트니스 48.5는 같은 연령대 기준 평균 이상에 해당합니다. (추정값)",
             highlights: ["48.5", "평균 이상"]
         ),
         RunInsight(
             category: .intensity,
             tone: .neutral,
             badge: "강도 확인",
-            message: "평균 심박 152은 추정 최대심박의 약 82% — 고강도이에요. 페이스 편차 12초로 안정적이었어요.",
+            message: "평균 심박 152은 추정 최대심박의 약 82% — 고강도입니다. 페이스 편차 12초로 안정적이었습니다.",
             highlights: ["152", "82%"]
         ),
         RunInsight(
             category: .endurance,
             tone: .good,
             badge: "후반 유지",
-            message: "전반 대비 후반 페이스 편차 1.8% — 끝까지 잘 유지했어요.",
+            message: "전반 대비 후반 페이스 편차 1.8% — 끝까지 잘 유지했습니다.",
             highlights: ["1.8%"]
         ),
         RunInsight(
             category: .environment,
             tone: .caution,
             badge: "날씨 감안",
-            message: "27°C · 습도 78% — 더위와 습도가 높아 체감 부담이 있었을 거예요.",
+            message: "27°C · 습도 78% — 더위와 습도가 높아 체감 부담이 있었을 것입니다.",
             highlights: ["27°C · 습도 78%"]
         ),
     ]

@@ -78,7 +78,7 @@ struct MeView: View {
         let eightWeeksAgo = Calendar.current.date(byAdding: .day, value: -56, to: monday) ?? monday
         let past = runs.filter { $0.date >= eightWeeksAgo && $0.date < monday }.compactMap { idx.resolve($0.id)?.value }
         guard EffortLoad.recoveryWeekExceeds(meanEffort: cur.meanEffort, coverage: cur.coverage, eightWeekEfforts: past) else { return nil }
-        return AppLanguage.shared.s("회복 주인데 평균 강도가 평소보다 높아요.", "Recovery week, but your average effort is above usual.")
+        return AppLanguage.shared.s("회복 주인데 평균 강도가 평소보다 높습니다.", "Recovery week, but your average effort is above usual.")
     }
 
     // MARK: - Period stats
@@ -435,7 +435,7 @@ struct MeView: View {
                                        })
         VStack(alignment: .leading, spacing: 10) {
             if rows.isEmpty {
-                raceEmptyText(L.s("대회를 뛰면 여기에 모여요. 러닝이 대회로 확인되면 자동으로 추가돼요.",
+                raceEmptyText(L.s("대회를 뛰면 여기에 모입니다. 러닝이 대회로 확인되면 자동으로 추가됩니다.",
                                   "Your races gather here. Runs confirmed as races are added automatically."))
             } else {
                 let visible = showAllRaceRecords ? rows : Array(rows.prefix(5))
@@ -456,7 +456,7 @@ struct MeView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(L.s("예측 정확도 · 구간 안 \(acc.hit)/\(acc.count) · 평균 오차 \(String(format: "%.1f", acc.meanAbsErrorPct))%",
                                  "Prediction accuracy · \(acc.hit)/\(acc.count) in range · avg error \(String(format: "%.1f", acc.meanAbsErrorPct))%"))
-                        Text(L.s("예측은 그 대회 전날까지의 데이터만으로 다시 계산한 값이에요.",
+                        Text(L.s("예측은 그 대회 전날까지의 데이터만으로 다시 계산한 값입니다.",
                                  "Predictions are recalculated using only data from before each race."))
                         if acc.count < 3 {
                             Text(L.s("표본이 \(acc.count)건뿐입니다. 예측은 참고용이고, 특히 마라톤은 ±20분 이상 벌어질 수 있습니다.",
@@ -1003,7 +1003,7 @@ struct MeView: View {
                 Text(AppLanguage.shared.s("가민 기기 감지됨", "Garmin Device Detected"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
-                Text(AppLanguage.shared.s("가민 기록은 애플 건강을 거쳐 들어와요. 거리·시간·페이스는 그대로 보이지만, 경로·러닝폼·VO2max는 넘어오지 않아요.", "Garmin runs come in through Apple Health. Distance, time and pace show as usual, but route, running form and VO2max don't come across."))
+                Text(AppLanguage.shared.s("가민 기록은 애플 건강을 거쳐 들어옵니다. 거리·시간·페이스는 그대로 보이지만, 경로·러닝폼·VO2max는 넘어오지 않습니다.", "Garmin runs come in through Apple Health. Distance, time and pace show as usual, but route, running form and VO2max don't come across."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1156,7 +1156,7 @@ struct MeView: View {
             .padding(.horizontal, 16)
 
             if shoes.isEmpty {
-                Text(AppLanguage.shared.s("등록된 신발이 없어요. + 버튼으로 추가하세요.", "No shoes added. Tap + to add one."))
+                Text(AppLanguage.shared.s("등록된 신발이 없습니다. + 버튼으로 추가하세요.", "No shoes added. Tap + to add one."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1241,7 +1241,7 @@ struct MeView: View {
             Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) { shoeToDelete = nil }
         } message: {
             if let shoe = shoeToDelete {
-                Text(AppLanguage.shared.s("'\(shoe.displayName)'을(를) 삭제하면 복구할 수 없어요.", "'\(shoe.displayName)' cannot be recovered after deletion."))
+                Text(AppLanguage.shared.s("'\(shoe.displayName)'을(를) 삭제하면 복구할 수 없습니다.", "'\(shoe.displayName)' cannot be recovered after deletion."))
             }
         }
     }
@@ -1562,7 +1562,7 @@ private struct SummarySectionCard: View {
 
             // Stats grid
             if stats.isEmpty {
-                Text(AppLanguage.shared.s("이 기간에 기록된 활동이 없어요", "No activities for this period"))
+                Text(AppLanguage.shared.s("이 기간에 기록된 활동이 없습니다", "No activities for this period"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)

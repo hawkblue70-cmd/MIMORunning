@@ -443,7 +443,7 @@ struct MetricTrendView: View {
             Text(AppLanguage.shared.s("데이터 없음", "No Data"))
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text(AppLanguage.shared.s("이 기간에 기록된 \(metric.koreanLabel) 데이터가 없어요", "No \(metric.koreanLabel) data for this period"))
+            Text(AppLanguage.shared.s("이 기간에 기록된 \(metric.koreanLabel) 데이터가 없습니다", "No \(metric.koreanLabel) data for this period"))
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

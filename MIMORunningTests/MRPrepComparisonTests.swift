@@ -218,14 +218,14 @@ struct MRPrepComparisonTests {
     // MARK: - 홈 한 줄
 
     @Test func homeLines() {
-        #expect(MRPrepComparison.homeLine(result()) == "작년 이맘때보다 주간 거리 20% 많아요 · 12km / 10km")
+        #expect(MRPrepComparison.homeLine(result()) == "작년 이맘때보다 주간 거리 20% 많습니다 · 12km / 10km")
         #expect(MRPrepComparison.homeLine(result(weeklyNow: 9)) == "작년 이맘때 주간 10km · 지금 9km")
         #expect(MRPrepComparison.homeLine(result(same: false, years: 0, pastYear: 2026, name: "2026 서울마라톤"))
-                == "지난 서울마라톤 이맘때보다 주간 거리 20% 많아요 · 12km / 10km")
-        #expect(MRPrepComparison.homeLine(result(years: 2, pastYear: 2024)) == "2024년 이맘때보다 주간 거리 20% 많아요 · 12km / 10km")
+                == "지난 서울마라톤 이맘때보다 주간 거리 20% 많습니다 · 12km / 10km")
+        #expect(MRPrepComparison.homeLine(result(years: 2, pastYear: 2024)) == "2024년 이맘때보다 주간 거리 20% 많습니다 · 12km / 10km")
         // 같은 대회를 같은 해에 — "지난 ○○ 이맘때"
         #expect(MRPrepComparison.homeLine(result(years: 0, pastYear: 2026))
-                == "지난 조선일보 춘천마라톤 이맘때보다 주간 거리 20% 많아요 · 12km / 10km")
+                == "지난 조선일보 춘천마라톤 이맘때보다 주간 거리 20% 많습니다 · 12km / 10km")
     }
 
     @Test(.english) func homeLinesInEnglish() {

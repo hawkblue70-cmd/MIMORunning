@@ -154,7 +154,7 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
                          "Median HR of \(s.n) race-level 20–70 min efforts \(Int(s.hr.rounded()))bpm"))
     }
     if reg != nil, sus != nil, combined == nil {
-        basis.append(L.s("두 심박 추정이 \(Int(MR_THRESHOLD_HR_AGREE_BPM))bpm 넘게 어긋나 심박은 표시하지 않아요",
+        basis.append(L.s("두 심박 추정이 \(Int(MR_THRESHOLD_HR_AGREE_BPM))bpm 넘게 어긋나 심박은 표시하지 않습니다",
                          "HR not shown — the two estimates differ by more than \(Int(MR_THRESHOLD_HR_AGREE_BPM))bpm"))
     }
 
@@ -292,6 +292,6 @@ func mrThresholdUpdateSentence(anchor: MRRaceEffort, beforePace: Double?, afterP
     df.setLocalizedDateFormatFromTemplate("MMMd")
     let name = anchor.label == "하프" ? L.s("하프", "Half") : anchor.label
     let s = Int(gain.rounded())
-    return L.s("\(df.string(from: anchor.date)) \(name) 기록으로 \(s)초 빨라졌어요",
+    return L.s("\(df.string(from: anchor.date)) \(name) 기록으로 \(s)초 빨라졌습니다",
                "\(s)s/km faster after your \(name) on \(df.string(from: anchor.date))")
 }

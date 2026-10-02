@@ -217,9 +217,9 @@ enum MRRecovery {
         // 9개 값만 낼 수 있어, 한쪽만 "포함"이면(예: p < 0.25) 그 버킷이 다른 쪽보다 좁아진다
         // (< 0.25 → 2/9, >= 0.75 → 3/9). p == 0.25는 "과거 넷 중 하나가 더 빨랐다"는 하위
         // 사분위의 자연스러운 경계값이라 포함한다. p == 0.75도 대칭으로 포함.
-        if p <= 0.25 { return L.s("평소보다 빠르게 안정됐어요", "Settled faster than usual") }
-        if p >= 0.75 { return L.s("2분 뒤에도 계속 내려오는 중이었어요", "Still coming down after 2 min") }
-        return L.s("평소대로 내려왔어요", "Came down as usual")
+        if p <= 0.25 { return L.s("평소보다 빠르게 안정됐습니다", "Settled faster than usual") }
+        if p >= 0.75 { return L.s("2분 뒤에도 계속 내려오는 중이었습니다", "Still coming down after 2 min") }
+        return L.s("평소대로 내려왔습니다", "Came down as usual")
     }
 
     // MARK: 추세
@@ -268,7 +268,7 @@ enum MRRecovery {
         let d = Int(shift.delta.rounded())
         let text = L.isEnglish
             ? "In runs finished at the same heart rate, your 1-minute recovery improved by \(d) bpm over 3 months."
-            : "같은 심박으로 끝낸 러닝에서 1분 회복이 3개월 새 \(d)bpm 늘었어요."
+            : "같은 심박으로 끝낸 러닝에서 1분 회복이 3개월 새 \(d)bpm 늘었습니다."
         let basis = String(format: "잔차 Δ%+.1fbpm · MDC %.1f · Daanen 2012", shift.delta, shift.mdc)
         return (text, basis)
     }

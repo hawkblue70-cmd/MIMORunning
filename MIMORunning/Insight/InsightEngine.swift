@@ -336,7 +336,7 @@ struct InsightEngine {
                        date: activity.date)
             let detail = base.theme == .recordImproved
                 ? base.detail
-                : L.s("후반이 가장 빨랐어요 — 빌드업의 정석", "Last splits your fastest — textbook buildup")
+                : L.s("후반이 가장 빨랐습니다 — 빌드업의 정석", "Last splits your fastest — textbook buildup")
             return InsightResult(theme: base.theme, title: title, detail: detail)
 
         case .lsd:
@@ -444,7 +444,7 @@ struct InsightEngine {
         let gap = cal.dateComponents([.day], from: lastRun.date, to: activity.date).day ?? 0
         guard gap >= 14 else { return nil }
         let L = AppLanguage.shared
-        let detail = L.s("\(gap)일 만에 다시 나섰어요", "Back out after \(gap) days")
+        let detail = L.s("\(gap)일 만에 다시 나섰습니다", "Back out after \(gap) days")
         return InsightResult(theme: .returnGap,
                              title: L.s("다시 시작한 러닝", "Back on the Run"),
                              detail: detail)
@@ -525,7 +525,7 @@ struct InsightEngine {
             switch level {
             case .advanced, .elite:
                 return (L.s("효율의 러닝", "Efficiency Run"),
-                        L.s("동일 거리 페이스 갱신 — 꾸준히 나아지고 있어요", "PR on same distance — steady improvement"))
+                        L.s("동일 거리 페이스 갱신 — 꾸준히 나아지고 있습니다", "PR on same distance — steady improvement"))
             default:
                 return (L.s("페이스가 자란 러닝", "Growing Pace"),
                         L.s("최근 동일 거리 중 가장 빠른 페이스 \(a.formattedPace ?? "")",
@@ -671,7 +671,7 @@ struct InsightEngine {
             }
             return InsightResult(theme: .adverseCondition,
                                  title: L.s("바람을 가른 러닝", "Into the Wind"),
-                                 detail: L.s("강풍 속에서도 멈추지 않았어요", "Strong winds, but you didn't stop"))
+                                 detail: L.s("강풍 속에서도 멈추지 않았습니다", "Strong winds, but you didn't stop"))
         }
         return nil
     }
@@ -775,7 +775,7 @@ struct InsightEngine {
         return InsightResult(
             theme: .safety,
             title: L.s("\(distLabel) 러닝", "\(distLabel) Run"),
-            detail: L.s("같은 페이스대에서 평소보다 약 \(excess)bpm 높았어요. 충분한 회복을 챙기세요\(heatSuffix)",
+            detail: L.s("같은 페이스대에서 평소보다 약 \(excess)bpm 높았습니다. 충분한 회복을 챙기세요\(heatSuffix)",
                         "Avg ~\(excess) bpm above your baseline at this pace. Prioritize recovery today\(heatSuffix)")
         )
     }
@@ -809,8 +809,8 @@ struct InsightEngine {
                 let diff = Int((tempC - base).rounded())
                 let sign = diff > 0 ? "+" : ""
                 let ending = diff > 0
-                    ? L.s("높았어요", "warmer than usual")
-                    : L.s("낮았어요", "cooler than usual")
+                    ? L.s("높았습니다", "warmer than usual")
+                    : L.s("낮았습니다", "cooler than usual")
                 detail = L.s(
                     "\(tempInt)°C · 예년 이맘때보다 \(sign)\(diff)도 \(ending)",
                     "\(tempInt)°C — \(sign)\(diff)° \(ending)"
@@ -820,7 +820,7 @@ struct InsightEngine {
             }
         } else {
             detail = L.s(
-                "더운 환경에서도 예정한 거리를 소화했어요",
+                "더운 환경에서도 예정한 거리를 소화했습니다",
                 "You covered your distance despite the heat"
             )
         }
@@ -1015,7 +1015,7 @@ struct InsightEngine {
             return InsightResult(
                 theme: .periodPositive,
                 title: L.s("꾸준히 이어가는 러닝", "Steady Every Week"),
-                detail: L.s("달리기 횟수는 적어도 매주 빠지지 않았어요", "Fewer runs, but every week still counted")
+                detail: L.s("달리기 횟수는 적어도 매주 빠지지 않았습니다", "Fewer runs, but every week still counted")
             )
         }
 
@@ -1167,9 +1167,9 @@ struct InsightEngine {
             let titles = [L.s("기록 중 첫 이지런", "First Easy Run on Record"),
                           L.s("처음 가져본 이지 페이스", "First Easy Pace"),
                           L.s("첫 여유 페이스 러닝", "First Easy-Pace Run")]
-            let details = [L.s("지금까지 기록 중 처음으로 여유 페이스를 유지했어요", "First easy-paced run across all logged history"),
-                           L.s("기록 전체에서 처음 나온 이지 페이스예요", "First time an easy pace appears in your history"),
-                           L.s("기록 중 이지 페이스는 이번이 처음이에요", "Your history shows no prior easy-pace run")]
+            let details = [L.s("지금까지 기록 중 처음으로 여유 페이스를 유지했습니다", "First easy-paced run across all logged history"),
+                           L.s("기록 전체에서 처음 나온 이지 페이스입니다", "First time an easy pace appears in your history"),
+                           L.s("기록 중 이지 페이스는 이번이 처음입니다", "Your history shows no prior easy-pace run")]
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
 
@@ -1185,16 +1185,16 @@ struct InsightEngine {
                 titles = [L.s("반년 만의 이지런", "Easy Run After 6 Months"),
                           L.s("\(weeks)주 만의 이지런", "Easy Run After \(weeks) Weeks"),
                           L.s("오랜만에 돌아온 여유 페이스", "Easy Pace Returns After a Long Break")]
-                details = [L.s("\(weeks)주 만에 여유 페이스를 유지했어요", "Easy pace after \(weeks) weeks"),
-                           L.s("마지막 이지런이 \(weeks)주 전이었어요", "Your last easy run was \(weeks) weeks ago"),
-                           L.s("\(weeks)주 만에 나온 이지 페이스예요", "Easy pace after \(weeks) weeks")]
+                details = [L.s("\(weeks)주 만에 여유 페이스를 유지했습니다", "Easy pace after \(weeks) weeks"),
+                           L.s("마지막 이지런이 \(weeks)주 전이었습니다", "Your last easy run was \(weeks) weeks ago"),
+                           L.s("\(weeks)주 만에 나온 이지 페이스입니다", "Easy pace after \(weeks) weeks")]
             } else {
                 titles = [L.s("\(weeks)주 만의 이지런", "Easy Run After \(weeks) Weeks"),
                           L.s("오랜만의 여유 페이스", "Easy Pace After a While"),
                           L.s("\(weeks)주 만에 찾은 이지 페이스", "Easy Pace After \(weeks) Weeks")]
-                details = [L.s("\(weeks)주 만에 여유 페이스를 유지했어요", "Easy pace after \(weeks) weeks"),
-                           L.s("마지막 이지런이 \(weeks)주 전이었어요", "Your last easy run was \(weeks) weeks ago"),
-                           L.s("\(weeks)주 만에 나온 이지 페이스예요", "Easy pace after \(weeks) weeks")]
+                details = [L.s("\(weeks)주 만에 여유 페이스를 유지했습니다", "Easy pace after \(weeks) weeks"),
+                           L.s("마지막 이지런이 \(weeks)주 전이었습니다", "Your last easy run was \(weeks) weeks ago"),
+                           L.s("\(weeks)주 만에 나온 이지 페이스입니다", "Easy pace after \(weeks) weeks")]
             }
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
@@ -1213,11 +1213,11 @@ struct InsightEngine {
         let titles = [L.s("올해 \(countThisYear)번째 이지런", "\(ordinalEn(countThisYear)) Easy Run This Year"),
                       L.s("올해 \(countThisYear)회의 이지런", "\(countThisYear) Easy Run(s) This Year"),
                       L.s("이지런 — 올해 \(countThisYear)번", "Easy Run \(countThisYear) This Year")]
-        let details = [L.s("올해 들어 여유 페이스를 유지한 게 \(countThisYear)번이에요 · 직전 \(lastEasyStr)",
+        let details = [L.s("올해 들어 여유 페이스를 유지한 게 \(countThisYear)번입니다 · 직전 \(lastEasyStr)",
                            "\(countThisYear) easy-pace run(s) this year · last on \(lastEasyStr)"),
                        L.s("올해 이지런은 드물게 — 이번이 \(countThisYear)번째, 직전은 \(lastEasyStr)",
                            "Easy runs are rare this year — number \(countThisYear), last on \(lastEasyStr)"),
-                       L.s("올해 \(countThisYear)번째 이지런이에요 · 직전 \(lastEasyStr)",
+                       L.s("올해 \(countThisYear)번째 이지런입니다 · 직전 \(lastEasyStr)",
                            "\(countThisYear)\(ordinalSuffix(countThisYear)) easy run of the year · last on \(lastEasyStr)")]
         return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
     }
@@ -1248,9 +1248,9 @@ struct InsightEngine {
             let titles = [L.s("가장 더운 축의 러닝", "One of Your Hottest Runs"),
                           L.s("기온 상위 5%의 러닝", "Top 5% Heat Run"),
                           L.s("뜨거운 날의 러닝", "Peak Heat Run")]
-            let details = [L.s("기록 중 가장 더운 날 축이에요 — 이 더위에 뛰어낸 게 맞습니다", "One of the hottest days in your running history — finishing counts"),
-                           L.s("이 더위에 달린 건 \(n)번의 기록 중 드문 편이에요", "Running in this heat is rare across your \(n) recorded runs"),
-                           L.s("달린 날 중 가장 더운 상위 5%에 드는 날이에요", "Today ranks among the hottest 5% of your running days")]
+            let details = [L.s("기록 중 가장 더운 날 축입니다 — 이 더위에 뛰어낸 게 맞습니다", "One of the hottest days in your running history — finishing counts"),
+                           L.s("이 더위에 달린 건 \(n)번의 기록 중 드문 편입니다", "Running in this heat is rare across your \(n) recorded runs"),
+                           L.s("달린 날 중 가장 더운 상위 5%에 드는 날입니다", "Today ranks among the hottest 5% of your running days")]
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
         if percentile <= 0.05 {
@@ -1258,9 +1258,9 @@ struct InsightEngine {
             let titles = [L.s("가장 추운 축의 러닝", "One of Your Coldest Runs"),
                           L.s("기온 하위 5%의 러닝", "Bottom 5% Cold Run"),
                           L.s("혹한 속 러닝", "Into the Cold")]
-            let details = [L.s("기록 중 가장 추운 날 축이에요 — 이 추위에 뛰어낸 게 맞습니다", "One of the coldest days in your running history — finishing counts"),
-                           L.s("이 추위에 달린 건 \(n)번의 기록 중 드문 편이에요", "Running in this cold is rare across your \(n) recorded runs"),
-                           L.s("달린 날 중 가장 추운 하위 5%에 드는 날이에요", "Today ranks among the coldest 5% of your running days")]
+            let details = [L.s("기록 중 가장 추운 날 축입니다 — 이 추위에 뛰어낸 게 맞습니다", "One of the coldest days in your running history — finishing counts"),
+                           L.s("이 추위에 달린 건 \(n)번의 기록 중 드문 편입니다", "Running in this cold is rare across your \(n) recorded runs"),
+                           L.s("달린 날 중 가장 추운 하위 5%에 드는 날입니다", "Today ranks among the coldest 5% of your running days")]
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
         return nil
@@ -1286,9 +1286,9 @@ struct InsightEngine {
             let titles = [L.s("첫 \(koName) 러닝", "First \(enName.capitalized) Run"),
                           L.s("\(koName)에 처음 달린 러닝", "Running at \(enName.capitalized) for the First Time"),
                           L.s("\(koName) 러닝 첫 경험", "\(enName.capitalized) Run Debut")]
-            let details = [L.s("처음으로 \(koName)에 달렸어요", "First time running in the \(enName)"),
-                           L.s("\(koName) 러닝 첫 기록 — 시간대의 문을 열었어요", "First \(enName) run logged — a new window opens"),
-                           L.s("지금까지 \(koName)엔 달린 기록이 없었어요", "No prior runs at this time of day")]
+            let details = [L.s("처음으로 \(koName)에 달렸습니다", "First time running in the \(enName)"),
+                           L.s("\(koName) 러닝 첫 기록 — 시간대의 문을 열었습니다", "First \(enName) run logged — a new window opens"),
+                           L.s("지금까지 \(koName)엔 달린 기록이 없었습니다", "No prior runs at this time of day")]
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
         guard let lastVisit = sameSlot.max(by: { $0.date < $1.date }) else { return nil }
@@ -1300,9 +1300,9 @@ struct InsightEngine {
         let titles = [L.s("\(months)개월 만의 \(koName) 러닝", "\(enName.capitalized) Run After \(months) Months"),
                       L.s("오랜만의 \(koName) 러닝", "Back to \(enName.capitalized) Running"),
                       L.s("\(months)개월 만에 다시 \(koName)에", "Back at \(enName.capitalized) After \(months) Months")]
-        let details = [L.s("\(months)개월 만에 다시 \(koName)에 달렸어요", "Back to \(enName) runs after \(months) months"),
-                       L.s("마지막 \(koName) 러닝이 \(days)일 전이었어요", "Your last \(enName) run was \(days) days ago"),
-                       L.s("오래된 시간대로 돌아왔어요 — \(months)개월 만", "Old time slot revisited — \(months) months later")]
+        let details = [L.s("\(months)개월 만에 다시 \(koName)에 달렸습니다", "Back to \(enName) runs after \(months) months"),
+                       L.s("마지막 \(koName) 러닝이 \(days)일 전이었습니다", "Your last \(enName) run was \(days) days ago"),
+                       L.s("오래된 시간대로 돌아왔습니다 — \(months)개월 만", "Old time slot revisited — \(months) months later")]
         return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
     }
 
@@ -1325,7 +1325,7 @@ struct InsightEngine {
         let titles = [L.s("누적 \(km)km의 발자국", "\(km) km of Footprints"),
                       L.s("\(km)km 이정표를 넘은 러닝", "Crossing \(km) km Total"),
                       L.s("\(km)km이 쌓인 날", "\(km) km — Day It Stacked Up")]
-        let details = [L.s("이 러닝으로 누적 \(km)km에 도달했어요", "This run brought your total to \(km) km"),
+        let details = [L.s("이 러닝으로 누적 \(km)km에 도달했습니다", "This run brought your total to \(km) km"),
                        L.s("한 걸음 한 걸음 쌓아 \(km)km", "Step by step to \(km) km"),
                        L.s("누적 \(Int(curKm))km — \(km)km 이정표 통과", "Lifetime: \(Int(curKm)) km, past the \(km) km mark")]
         return InsightResult(theme: .milestone, title: titles[idx], detail: details[idx])
@@ -1392,13 +1392,13 @@ struct InsightEngine {
             return InsightResult(theme: base.theme, workoutType: base.workoutType,
                                  title: base.title, detail: prefixes[seed] + base.detail)
         default:
-            let replacements = [L.s("몸이 무거운 흐름 속에서도 완주한 러닝이에요.",
+            let replacements = [L.s("몸이 무거운 흐름 속에서도 완주한 러닝입니다.",
                                     "A finish through heavy legs — that counts."),
-                                L.s("피로가 쌓이는 주간에도 나섰어요.",
+                                L.s("피로가 쌓이는 주간에도 나섰습니다.",
                                     "You showed up even in a heavy week."),
-                                L.s("힘든 흐름 속에서도 달렸어요.",
+                                L.s("힘든 흐름 속에서도 달렸습니다.",
                                     "Running through the fatigue takes its own strength."),
-                                L.s("무거운 몸을 끌고 나온 것 자체가 이미 성취예요.",
+                                L.s("무거운 몸을 끌고 나온 것 자체가 이미 성취입니다.",
                                     "Getting out the door with tired legs is its own win.")]
             return InsightResult(theme: base.theme, workoutType: base.workoutType,
                                  title: base.title, detail: replacements[seed])
@@ -1642,9 +1642,9 @@ struct InsightEngine {
             "심폐가 단단해지는 러닝", "지구력을 쌓는 러닝", "보폭이 자라는 러닝",
             "폼이 다듬어지는 러닝", "스피드의 정당한 대가",
             // safety
-            "오늘 심박이 평소보다 높았어요",
-            "더위 속 장거리 — 잘 해냈어요", "열기를 이겨낸 장거리", "더운 날의 긴 거리",
-            "더운 날 잘 뛰었어요", "열기 속 러닝 완료", "더위와 함께 달린 러닝",
+            "오늘 심박이 평소보다 높았습니다",
+            "더위 속 장거리", "열기를 이겨낸 장거리", "더운 날의 긴 거리",
+            "더운 날의 러닝", "열기 속 러닝 완료", "더위와 함께 달린 러닝",
             // easyRarity
             "기록 중 첫 이지런", "처음 가져본 이지 페이스", "첫 여유 페이스 러닝",
             "반년 만의 이지런", "오랜만에 돌아온 여유 페이스",

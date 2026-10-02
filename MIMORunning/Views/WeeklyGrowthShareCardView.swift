@@ -537,7 +537,7 @@ struct WeeklyGrowthShareCardScreen: View {
                 if let img = previewImage { ShareSheet(images: [img]) }
             }
         } else {
-            Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
+            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed"))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
@@ -1011,7 +1011,7 @@ struct MileageStreakShareCardScreen: View {
                 if let img = previewImage { ShareSheet(images: [img]) }
             }
         } else {
-            Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
+            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed"))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)

@@ -167,7 +167,7 @@ func mrRaceDayCard(race: MRTargetRace,
         lines.append(L.s("새 최장 롱런은 하지 마세요. 이 시점의 롱런은 이득 없이 회복만 잡아먹습니다.", "No new longest long run. A long run this late costs recovery and gains nothing."))
         lines.append(L.s("대회에서 쓸 젤과 음료를 이번 주 러닝에서 한 번 미리 써보세요. 당일 처음 시도하면 안 됩니다.", "Try the gels and drinks you'll race with on one run this week. Nothing new on race day."))
         if let t = base, t >= 150 {
-            lines.append(L.s("보급은 탄수화물 시간당 \(t >= 150 ? "60~90g" : "30~60g")(젤 1개 ≈ 22~25g) — 젤은 30분마다, 사이사이 음료로 채우시고요.", "Fuel: \(t >= 150 ? "60–90 g" : "30–60 g") of carbs per hour (one gel ≈ 22–25 g), a gel every 30 min, topped up with drink in between."))
+            lines.append(L.s("보급은 탄수화물 시간당 \(t >= 150 ? "60~90g" : "30~60g")(젤 1개 ≈ 22~25g) — 젤은 30분마다, 사이사이 음료로 채우세요.", "Fuel: \(t >= 150 ? "60–90 g" : "30–60 g") of carbs per hour (one gel ≈ 22–25 g), a gel every 30 min, topped up with drink in between."))
         }
         if let w = planWeek {
             lines.append(L.s("이번 주는 계획대로 \(Int(w.weeklyKm))km — \(mrBreakdownWithPoint(w)).", "This week: \(Int(w.weeklyKm)) km on plan — \(mrBreakdownWithPoint(w))."))
@@ -231,7 +231,7 @@ func mrRaceDayCard(race: MRTargetRace,
         }
 
         if race.distanceM >= MRDistance.dF {
-            lines.append(L.s("마라톤 뒤에는 근육이 회복되는 데 2주쯤 걸립니다. 지금 기록이 잘 안 나와도 정상이에요.", "Muscles take about two weeks to recover after a marathon. Slow times right now are normal."))
+            lines.append(L.s("마라톤 뒤에는 근육이 회복되는 데 2주쯤 걸립니다. 지금 기록이 잘 안 나와도 정상입니다.", "Muscles take about two weeks to recover after a marathon. Slow times right now are normal."))
             lines.append(ago <= 3 ? L.s("며칠은 걷기나 아주 가벼운 조깅만으로 충분합니다.", "For a few days, walking or very easy jogging is plenty.")
                                   : L.s("슬슬 이지 러닝으로 돌아오셔도 됩니다. 강도는 다음 주부터.", "You can ease back into easy runs. Intensity from next week."))
         } else {

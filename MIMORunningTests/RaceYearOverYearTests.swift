@@ -33,7 +33,7 @@ struct RaceYearOverYearTests {
         let c = RaceYearOverYear.compare(today: today, confirmed: [past], calendar: cal)
         #expect(c.sameRace.count == 1)
         #expect(c.sameRace[0].delta == .time(seconds: 252))
-        #expect(c.headline == "작년보다 4분 12초 빨라요")
+        #expect(c.headline == "작년보다 4분 12초 빠릅니다")
         #expect(c.today.isToday)
         #expect(c.today.tempC == 18)
     }
@@ -47,13 +47,13 @@ struct RaceYearOverYearTests {
     @Test func sameRaceTwoYearsAgoFaster() {
         let past = entry("2024 춘천마라톤", date(2024, 10, 27), km: 42.195, sec: 14_182, series: "c")
         #expect(RaceYearOverYear.compare(today: today, confirmed: [past], calendar: cal).headline
-                == "2024년보다 4분 12초 빨라요")
+                == "2024년보다 4분 12초 빠릅니다")
     }
 
     @Test func sameRaceEarlierThisYearUsesLastWording() {
         let past = entry("2026 춘천마라톤", date(2026, 1, 25), km: 42.195, sec: 14_182, series: "c")
         #expect(RaceYearOverYear.compare(today: today, confirmed: [past], calendar: cal).headline
-                == "지난 춘천마라톤보다 4분 12초 빨라요")
+                == "지난 춘천마라톤보다 4분 12초 빠릅니다")
     }
 
     @Test func sameRaceSlowerStatesLastRecordOnly() {
@@ -72,7 +72,7 @@ struct RaceYearOverYearTests {
     @Test func oneSecondFasterCounts() {
         let past = entry("2025 춘천마라톤", date(2025, 10, 25), km: 42.195, sec: 13_931, series: "c")
         #expect(RaceYearOverYear.compare(today: today, confirmed: [past], calendar: cal).headline
-                == "작년보다 1초 빨라요")
+                == "작년보다 1초 빠릅니다")
     }
 
     @Test func sameSeriesDifferentEventIsNotSameRace() {
@@ -90,7 +90,7 @@ struct RaceYearOverYearTests {
         let c = RaceYearOverYear.compare(today: today, confirmed: [past], calendar: cal)
         #expect(c.sameRace.isEmpty)
         #expect(c.sameDistance.map(\.title) == ["서울마라톤"])
-        #expect(c.headline == "지난 서울마라톤보다 6분 30초 빨라요")
+        #expect(c.headline == "지난 서울마라톤보다 6분 30초 빠릅니다")
     }
 
     @Test func sameDistanceOtherEventUsesPace() {
@@ -99,7 +99,7 @@ struct RaceYearOverYearTests {
         let c = RaceYearOverYear.compare(today: half, confirmed: [past], calendar: cal)
         #expect(c.sameDistance.map(\.title) == ["○○ 20K"])
         #expect(c.sameDistance[0].delta == .pace(secondsPerKm: 8))
-        #expect(c.headline == "지난 ○○ 20K보다 km당 8초 빨라요")
+        #expect(c.headline == "지난 ○○ 20K보다 km당 8초 빠릅니다")
     }
 
     @Test func sameDistanceSlowerStatesLastRecord() {
@@ -112,7 +112,7 @@ struct RaceYearOverYearTests {
         let race = entry("2025 춘천마라톤", date(2025, 10, 25), km: 42.195, sec: 14_182, series: "c")
         let dist = entry("2026 서울마라톤", date(2026, 3, 15), km: 42.195, sec: 14_320, series: "s")
         let c = RaceYearOverYear.compare(today: today, confirmed: [dist, race], calendar: cal)
-        #expect(c.headline == "작년보다 4분 12초 빨라요")
+        #expect(c.headline == "작년보다 4분 12초 빠릅니다")
         #expect(c.sameRace.count == 1)
         #expect(c.sameDistance.count == 1)
     }
@@ -146,7 +146,7 @@ struct RaceYearOverYearTests {
         let c = RaceYearOverYear.compare(today: todayNoSeries, confirmed: [past], calendar: cal)
         #expect(c.sameRace.isEmpty)
         #expect(c.sameDistance.map(\.title) == ["춘천마라톤"])
-        #expect(c.headline == "지난 춘천마라톤보다 4분 12초 빨라요")
+        #expect(c.headline == "지난 춘천마라톤보다 4분 12초 빠릅니다")
     }
 
     @Test func paceDifferenceUnderHalfSecondIsNotFaster() {

@@ -160,7 +160,7 @@ struct RecordFlowInsightTests {
         let result = RecordFlowInsight.evaluate(.init(bars: bars, period: .week, easyCutoff: 4),
                                                 periodLabel: "최근 12주")
         #expect(result.sentence == .steady)
-        #expect(result.direction == "고른 흐름이에요. 주 1.0회 · 평균 10.0 km.")
+        #expect(result.direction == "고른 흐름입니다. 주 1.0회 · 평균 10.0 km.")
         #expect(result.status == "최근 12주 · 12회 · 120 km · 쉬운 날 100%")   // 100 km 이상은 정수
         #expect(result.trend?.firstRuns == 6)
     }
@@ -182,7 +182,7 @@ struct RecordFlowInsightTests {
                            firstEffort: 4, secondEffort: 4)
         let result = RecordFlowInsight.evaluate(input, periodLabel: "최근 30일")
         #expect(result.sentence == .fasterSameEffort)
-        #expect(result.direction == "같은 노력으로 더 빨라지고 있어요.")
+        #expect(result.direction == "같은 노력으로 더 빨라지고 있습니다.")
     }
 
     @Test(.english) func englishStrings() {

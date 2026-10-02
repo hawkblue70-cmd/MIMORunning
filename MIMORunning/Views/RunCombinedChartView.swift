@@ -85,7 +85,7 @@ struct RunCombinedChartView: View {
             Image(systemName: "chart.xyaxis.line")
                 .font(.system(size: 28))
                 .foregroundStyle(.secondary)
-            Text("표시할 데이터가 없어요")
+            Text("표시할 데이터가 없습니다")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

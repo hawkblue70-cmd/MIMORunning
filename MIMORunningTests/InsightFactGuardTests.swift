@@ -27,14 +27,14 @@ final class InsightFactGuardTests: XCTestCase {
     // 원문의 숫자를 빼먹어도 안 된다 — 부연의 존재 이유가 그 숫자다
     func testDroppingSourceNumberIsRejected() {
         XCTAssertFalse(InsightFactGuard.numbersAreGrounded(
-            output: "이 거리에서 가장 빨랐어요",
+            output: "이 거리에서 가장 빨랐습니다",
             source: "최근 동일 거리 중 가장 빠른 페이스 6'16\""))
     }
 
     // 원문에 숫자가 없으면 결과에도 없어야 통과
     func testNoNumbersOnBothSidesPasses() {
         XCTAssertTrue(InsightFactGuard.numbersAreGrounded(
-            output: "꾸준히 이어지는 달리기예요",
+            output: "꾸준히 이어지는 달리기입니다",
             source: "연속 달리기 중"))
     }
 
@@ -45,16 +45,16 @@ final class InsightFactGuardTests: XCTestCase {
 
     /// 말투 예시를 베껴 원문에 없는 "이번 달 가장 긴 거리"를 주장하면 막는다(숫자는 원문 그대로라 숫자 검사는 통과).
     func testClaimCopiedFromStyleExampleIsRejected() {
-        let source = "임계 페이스 근처를 꾸준히 지켰어요, 7.20 km"
-        let output = "이번 달 가장 긴 거리를 달렸어요, 7.20 km"
+        let source = "임계 페이스 근처를 꾸준히 지켰습니다, 7.20 km"
+        let output = "이번 달 가장 긴 거리를 달렸습니다, 7.20 km"
         XCTAssertTrue(InsightFactGuard.numbersAreGrounded(output: output, source: source))
         XCTAssertFalse(InsightFactGuard.claimsAreGrounded(output: output, source: source))
     }
 
     /// 원문이 실제로 같은 주장을 하면 통과한다.
     func testClaimPresentInSourceIsAllowed() {
-        let source = "이번 달 가장 긴 거리예요 · 16.0 km"
-        let output = "이번 달 가장 긴 거리를 달렸어요, 16.0 km"
+        let source = "이번 달 가장 긴 거리입니다 · 16.0 km"
+        let output = "이번 달 가장 긴 거리를 달렸습니다, 16.0 km"
         XCTAssertTrue(InsightFactGuard.claimsAreGrounded(output: output, source: source))
     }
 }

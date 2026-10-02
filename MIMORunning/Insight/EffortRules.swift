@@ -37,13 +37,13 @@ enum EffortRules {
             if slow >= splitThreshold {
                 return RunInsight(
                     category: .intensity, tone: .caution, badge: L.s("페이스 배분", "Pacing"),
-                    message: L.s("후반이 처지고 체감도 높았어요. 초반 페이스가 목적보다 빨랐을 수 있어요.",
+                    message: L.s("후반이 처지고 체감도 높았습니다. 초반 페이스가 목적보다 빨랐을 수 있습니다.",
                                  "You faded late and effort ran high — the early pace may have been too quick for the goal."),
                     highlights: [])
             } else if slow <= -splitThreshold {
                 return RunInsight(
                     category: .intensity, tone: .caution, badge: L.s("페이스 배분", "Pacing"),
-                    message: L.s("\(label) 후반에 속도를 올리면 회복이라는 목적이 흐려져요.",
+                    message: L.s("\(label) 후반에 속도를 올리면 회복이라는 목적이 흐려집니다.",
                                  "Speeding up late in a \(label.lowercased()) blurs its purpose: recovery."),
                     highlights: [])
             }
@@ -60,14 +60,14 @@ enum EffortRules {
             if tooHard {
                 out.append(RunInsight(
                     category: .intensity, tone: .caution, badge: L.s("체감 강도", "Perceived Effort"),
-                    message: L.s("\(label)인데 체감 강도가 \(e)이었어요. 이름과 달리 몸이 힘들었다면 회복 목적은 이루지 못한 거예요.",
+                    message: L.s("\(label)인데 체감 강도가 \(e)이었습니다. 이름과 달리 몸이 힘들었다면 회복 목적은 이루지 못한 것입니다.",
                                  "\(label), but effort was \(e)/10. If the body says hard, it wasn't a recovery run."),
                     highlights: ["\(e)"]))
             } else if let b = i.baseline, e <= b - 2 {
                 // 이지 유형에서 평소보다 확실히 편했던 날 — "의도와 맞았어요"보다 정확한 표현
                 out.append(RunInsight(
                     category: .intensity, tone: .good, badge: L.s("편한 날", "Easy Day"),
-                    message: L.s("체감 \(e) · 평소 \(b) — 평소보다 편하게 뛴 \(label)이에요.",
+                    message: L.s("체감 \(e) · 평소 \(b) — 평소보다 편하게 뛴 \(label)입니다.",
                                  "Effort \(e) · usual \(b) — an easier-than-usual \(label.lowercased())."),
                     highlights: ["\(e)"]))
             } else if let b = i.baseline, cInsight == nil {
@@ -77,7 +77,7 @@ enum EffortRules {
             if e <= b - 2 {
                 out.append(RunInsight(
                     category: .intensity, tone: .neutral, badge: L.s("강도 메모", "Effort"),
-                    message: L.s("체감 \(e), 평소 같은 훈련(\(b))보다 낮았어요. 여유 있게 소화한 날.",
+                    message: L.s("체감 \(e), 평소 같은 훈련(\(b))보다 낮았습니다. 여유 있게 소화한 날.",
                                  "Effort \(e), below your usual \(b) for this workout — a comfortable day."),
                     highlights: ["\(e)"]))
             } else {
@@ -99,14 +99,14 @@ enum EffortRules {
                 if e >= b + 1 {
                     out.append(RunInsight(
                         category: .environment, tone: .neutral, badge: L.s("환경", "Conditions"),
-                        message: L.s("\(header). 같은 페이스라도 \(noun)은 체감이 1~2 높아지는 게 자연스러워요. 페이스보다 강도에 맞춰 뛰는 날.",
+                        message: L.s("\(header). 같은 페이스라도 \(noun)은 체감이 1~2 높아지는 게 자연스럽습니다. 페이스보다 강도에 맞춰 뛰는 날.",
                                      "\(header). On \(noun) the same pace feels 1–2 points harder — run to effort, not pace."),
                         highlights: [header]))
                     replacesEnv = true
                 } else if e <= b {
                     out.append(RunInsight(
                         category: .environment, tone: .good, badge: L.s("환경", "Conditions"),
-                        message: L.s("\(header). \(noun)인데 체감이 평소 수준이었어요.",
+                        message: L.s("\(header). \(noun)인데 체감이 평소 수준이었습니다.",
                                      "\(header). \(noun.prefix(1).uppercased() + noun.dropFirst()), yet effort stayed at your usual level."),
                         highlights: [header]))
                     replacesEnv = true
@@ -122,7 +122,7 @@ enum EffortRules {
     private static func matched(_ e: Int, _ b: Int) -> RunInsight {
         let L = AppLanguage.shared
         return RunInsight(category: .intensity, tone: .good, badge: L.s("의도에 맞는 강도", "On-Target Effort"),
-                          message: L.s("체감 \(e) · 평소 \(b) — 훈련 의도와 맞았어요.",
+                          message: L.s("체감 \(e) · 평소 \(b) — 훈련 의도와 맞았습니다.",
                                        "Effort \(e) · usual \(b) — matched the session's intent."),
                           highlights: ["\(e)"])
     }

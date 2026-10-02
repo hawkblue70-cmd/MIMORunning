@@ -376,7 +376,7 @@ struct MultiClipEditorView: View {
         return Group {
             if exceeded {
                 Text(AppLanguage.shared.s(
-                    "전체 60초를 넘어요 — \(overBy)초 초과",
+                    "전체 60초를 넘습니다 — \(overBy)초 초과",
                     "Over 60s limit — \(overBy)s too long"))
                     .font(.caption).foregroundStyle(.red)
             } else if showEditHint {

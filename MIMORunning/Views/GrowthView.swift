@@ -681,12 +681,12 @@ struct GrowthView: View {
         switch recordPeriod {
         case .day:
             return isAtCurrentMonth
-                ? L.s("최근 30일 러닝 기록이 없어요", "No runs in the last 30 days")
-                : L.s("이 달에 러닝 기록이 없어요", "No runs this month")
+                ? L.s("최근 30일 러닝 기록이 없습니다", "No runs in the last 30 days")
+                : L.s("이 달에 러닝 기록이 없습니다", "No runs this month")
         case .week:
-            return L.s("이번 12주간 러닝 기록이 없어요", "No runs in the last 12 weeks")
+            return L.s("이번 12주간 러닝 기록이 없습니다", "No runs in the last 12 weeks")
         case .month:
-            return L.s("최근 12개월간 러닝 기록이 없어요", "No runs in the last 12 months")
+            return L.s("최근 12개월간 러닝 기록이 없습니다", "No runs in the last 12 months")
         }
     }
 
@@ -790,7 +790,7 @@ struct GrowthView: View {
             }
 
             if km == 0 && mins == 0 && count == 0 {
-                Text(L.s("이번 주 첫 러닝을 기다리고 있어요", "Waiting for your first run this week"))
+                Text(L.s("이번 주 첫 러닝을 기다리고 있습니다", "Waiting for your first run this week"))
                     .font(.system(size: 15))
                     .foregroundStyle(Color(hex: "8A8A92"))
                     .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
@@ -927,7 +927,7 @@ struct GrowthView: View {
         return VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: L.s("PR 타임라인", "PR Timeline"), subtitle: L.s("거리별 최고 기록", "Best by distance"))
             if entries.isEmpty {
-                EmptyChartPlaceholder(message: L.s("표준 거리 완주 기록이 생기면 PR이 여기에 표시돼요", "Complete a standard distance to see your PR"))
+                EmptyChartPlaceholder(message: L.s("표준 거리 완주 기록이 생기면 PR이 여기에 표시됩니다", "Complete a standard distance to see your PR"))
             } else {
                 PRGrid(entries: entries)
             }
@@ -940,7 +940,7 @@ struct GrowthView: View {
         return VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: L.s("나의 여정", "My Journey"), subtitle: L.s("첫 러닝부터 지금까지", "From your first run to now"))
             if events.isEmpty {
-                EmptyChartPlaceholder(message: L.s("기록이 쌓이면 여정이 여기에 펼쳐져요", "Your journey will appear as you log more"))
+                EmptyChartPlaceholder(message: L.s("기록이 쌓이면 여정이 여기에 펼쳐집니다", "Your journey will appear as you log more"))
             } else {
                 JourneyTimeline(events: events)
             }
@@ -979,11 +979,11 @@ struct GrowthView: View {
         let L = AppLanguage.shared
         let streak = engine.streakWeeks
         if streak >= 3 {
-            return L.s("\(streak)주 연속 달리고 있어요 — 루틴이 자리 잡고 있어요",
+            return L.s("\(streak)주 연속 달리고 있습니다 — 루틴이 자리 잡고 있습니다",
                        "\(streak) weeks in a row — you're building a routine")
         }
         if streak == 2 {
-            return L.s("2주 연속 달리고 있어요 — 이번 주도 이어가 봐요",
+            return L.s("2주 연속 달리고 있습니다 — 이번 주도 이어가 보세요",
                        "2 weeks running — keep it up this week")
         }
 
@@ -991,11 +991,11 @@ struct GrowthView: View {
         let prevKm = weeklyKmsCache.dropLast().last?.km ?? 0
         if thisKm > prevKm, prevKm > 0 {
             let diff = thisKm - prevKm
-            return String(format: L.s("이번 주 거리가 지난 주보다 +%.1fkm 늘었어요", "+%.1fkm more than last week"), diff)
+            return String(format: L.s("이번 주 거리가 지난 주보다 +%.1fkm 늘었습니다", "+%.1fkm more than last week"), diff)
         }
 
         if let recent = prEntriesCache.first(where: { $0.isNew }) {
-            return L.s("\(recent.label) 신기록을 세웠어요", "New \(recent.label) PR")
+            return L.s("\(recent.label) 신기록을 세웠습니다", "New \(recent.label) PR")
         }
 
         let pts = pacePointsCache
@@ -1003,7 +1003,7 @@ struct GrowthView: View {
             let latestAvg = pts.suffix(3).map(\.speedKmh).reduce(0, +) / 3
             let earlierAvg = pts.prefix(3).map(\.speedKmh).reduce(0, +) / 3
             if earlierAvg > 0, latestAvg > earlierAvg * 1.02 {
-                return L.s("최근 페이스가 꾸준히 빨라지고 있어요", "Your pace has been steadily improving")
+                return L.s("최근 페이스가 꾸준히 빨라지고 있습니다", "Your pace has been steadily improving")
             }
         }
 
@@ -2014,14 +2014,14 @@ struct GrowthView: View {
         let sdStr  = String(format: "%.1f", data.stdDev)
 
         let titleText = L.s(
-            "체중이 \(minStr) ~ \(maxStr)kg 사이에서 유지되고 있어요",
+            "체중이 \(minStr) ~ \(maxStr)kg 사이에서 유지되고 있습니다",
             "Your weight has stayed between \(minStr) and \(maxStr) kg"
         )
         let sdSentence: String = {
             if data.stdDev < 0.8 {
                 return L.s("흔들림이 거의 없습니다.", "Very stable — barely any fluctuation.")
             } else if data.stdDev <= 2.0 {
-                return L.s("평소 범위 안에서 오르내리고 있어요.", "Normal day-to-day variation.")
+                return L.s("평소 범위 안에서 오르내리고 있습니다.", "Normal day-to-day variation.")
             } else {
                 return L.s("최근 폭이 조금 넓습니다.", "The range has been a bit wider lately.")
             }
@@ -2609,7 +2609,7 @@ private struct WeekStatTile: View {
     ZStack {
         Theme.background.ignoresSafeArea()
         MRFormObservationCard(
-            text: "최근 14일간 케이던스와 보폭이 안정적으로 유지되고 있어요. 큰 변화 없이 꾸준한 달리기 스타일이 자리를 잡고 있습니다.",
+            text: "최근 14일간 케이던스와 보폭이 안정적으로 유지되고 있습니다. 큰 변화 없이 꾸준한 달리기 스타일이 자리를 잡고 있습니다.",
             basis: "14일 창·분석 지표 6개(케이던스·파워·지면접촉·보폭·수직진폭·VO2max) 중 5개 이상 ±5% 이내 → 안정 판정",
             isStable: true
         )
@@ -2626,10 +2626,10 @@ private struct WeekStatTile: View {
         basis: "본인 러닝 493회로 계산 · 28°C에서 4.5% 보정",
         shortNames: ["더운 날의 러닝", "기온 보정 페이스"],
         koTemplates: [
-            "최근 7일 평균 6'21\"/km, 기온은 28°C였어요. 15°C였다면 6'06\" 정도예요.",
-            "28°C에서 6'21\"/km로 달렸어요. 같은 몸으로 15°C에서 뛰면 6'06\"쯤 됩니다.",
-            "이번 더위에서 6'21\"/km. 기온을 걷어내면 6'06\" 수준이에요.",
-            "28°C의 최근 7일, 평균 6'21\"/km — 같은 노력이라면 15°C에서 6'06\"예요.",
+            "최근 7일 평균 6'21\"/km, 기온은 28°C였습니다. 15°C였다면 6'06\" 정도입니다.",
+            "28°C에서 6'21\"/km로 달렸습니다. 같은 몸으로 15°C에서 뛰면 6'06\"쯤 됩니다.",
+            "이번 더위에서 6'21\"/km. 기온을 걷어내면 6'06\" 수준입니다.",
+            "28°C의 최근 7일, 평균 6'21\"/km — 같은 노력이라면 15°C에서 6'06\"입니다.",
         ],
         enTemplates: ["28°C week, 6'21\"/km avg — same effort at 15°C would be 6'06\"."]
     )

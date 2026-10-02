@@ -2506,7 +2506,7 @@ struct ShareCardScreen: View {
             guard routePreviewPlayCount > 0 else { return }
             await animateRouteVideoPreview()
         }
-        .alert(AppLanguage.shared.s("이미 내보낸 영상이에요", "Already exported video"),
+        .alert(AppLanguage.shared.s("이미 내보낸 영상입니다", "Already exported video"),
                isPresented: $showExportedVideoWarning) {
             Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { }
         } message: {
@@ -3423,7 +3423,7 @@ struct ShareCardScreen: View {
             }
         } else if template == .routeVideo {
             if routeCoords.isEmpty {
-                Text(AppLanguage.shared.s("야외 러닝 경로가 있을 때\n사용할 수 있어요", "Available when an outdoor route exists"))
+                Text(AppLanguage.shared.s("야외 러닝 경로가 있을 때\n사용할 수 있습니다", "Available when an outdoor route exists"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -3593,7 +3593,7 @@ struct ShareCardScreen: View {
                 }
             }
         } else {
-            Text(AppLanguage.shared.s("카드 생성에 실패했어요", "Card creation failed"))
+            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed"))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
