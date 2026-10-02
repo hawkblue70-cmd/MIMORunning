@@ -44,7 +44,7 @@ struct FormTrendParagraphTests {
         let t = ko([cad(-3), gct(8)])
         #expect(t.contains("큰 걸음"))
         #expect(t.contains("지면에 머무는 시간이 늘었습니다"))
-        #expect(t.contains("조금 더 오래 딛고"))
+        #expect(t.hasSuffix("같은 페이스를 조금 더 오래 딛고 달리고 있다는 뜻입니다."))
         #expect(!t.contains("짧은 접지"))
         #expect(!t.contains("잦은"))
         #expect(!t.contains("부상") && !t.contains("위험"))

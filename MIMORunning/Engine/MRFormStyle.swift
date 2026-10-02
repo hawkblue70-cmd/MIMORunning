@@ -330,7 +330,7 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
             concKor = "같은 페이스를 더 짧은 접지로 달리고 있다는 뜻입니다."
             concEng = "At the same pace, you're spending less time on the ground."
         } else if !gctDown && !airUp {
-            concKor = "같은 페이스를 조금 더 오래 딛고 만들고 있습니다."
+            concKor = "같은 페이스를 조금 더 오래 딛고 달리고 있다는 뜻입니다."
             concEng = "At the same pace, you're spending a little longer on each footstrike."
         } else if cs.delta > 0 {
             concKor = "같은 페이스를 더 잦은 걸음으로 만들고 있다는 뜻입니다."
