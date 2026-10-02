@@ -227,8 +227,8 @@ struct MRHealthKit {
 
     // MARK: 안정시심박
 
-    // 건강 모드의 작년 비교에 400일이 필요하고, 그 이상은 쓰지 않는다.
-    func fetchRestingHR(days: Int = 400) async throws -> [(date: Date, value: Double)] {
+    // 작년 비교에 400일, 성장 탭 추세의 "러닝 시작 전" 기준에 그 이상이 필요해 3년(하루 1개라 1,100개 남짓).
+    func fetchRestingHR(days: Int = 1100) async throws -> [(date: Date, value: Double)] {
         guard let type = HKQuantityType.quantityType(forIdentifier: .restingHeartRate)
         else { return [] }
         let unit = HKUnit.count().unitDivided(by: .minute())

@@ -54,6 +54,8 @@ final class MREngineStore: ObservableObject {
     /// 역치 페이스·심박 최근 6개월 월별 추세(월말 기준 + 지금, 날짜 오름차순). 성장 탭 카드가 쓴다.
     /// 설계: docs/superpowers/specs/2026-10-01-threshold-estimate-design.md
     @Published private(set) var thresholdTrend: MRThresholdTrendResult?
+    /// 성장 탭 안정시 심박 추세(월별 중앙값). 표본 부족이면 nil — 카드가 빠진다.
+    @Published private(set) var restingHRTrend: MRRestingHRTrend?
     @Published private(set) var plans: [MRRacePlan] = []
     @Published private(set) var checks: [MRGoalCheck] = []
     @Published private(set) var planlessRaces: [MRTargetRace] = []
@@ -105,8 +107,9 @@ final class MREngineStore: ObservableObject {
     /// 라이브 재계산 값은 오늘 프로필로 다시 만들어져 주차표(스냅샷)와 어긋날 수 있다.
     private var storedSnapshotWeeks: [String: [MRPlanWeekSummary]] = [:]
 
-    private static let rhrCacheDateKey    = "mimo.rhrCache.fetchedAt"
-    private static let rhrCacheSamplesKey = "mimo.rhrCache.samples"
+    // v2: 조회 범위 400일 → 3년(2026-10-02). 옛 캐시는 범위가 좁아 버린다.
+    private static let rhrCacheDateKey    = "mimo.rhrCache.fetchedAt.v2"
+    private static let rhrCacheSamplesKey = "mimo.rhrCache.samples.v2"
 
     private func loadPersistedRHR() -> (fetchedAt: Date, samples: [(date: Date, value: Double)])? {
         let ud = UserDefaults.standard
@@ -388,7 +391,7 @@ final class MREngineStore: ObservableObject {
             rhrLastFetchedAt = fetchedAt
             persistRHR(fetchedAt: fetchedAt, samples: rhr)
             #if DEBUG
-            print(String(format: "[⏱ fetchRestingHR] %.2fs · 조회범위 400일 · 결과 %d건 · 캐시 미스",
+            print(String(format: "[⏱ fetchRestingHR] %.2fs · 조회범위 1100일 · 결과 %d건 · 캐시 미스",
                          CFAbsoluteTimeGetCurrent() - t0, rhr.count))
             #endif
         }
@@ -508,6 +511,11 @@ final class MREngineStore: ObservableObject {
                                 heat: heat, asOf: now)
         thresholdTrend = mrThresholdTrend(runs: fetched, restingHRSamples: rhr,
                                           dateOfBirth: dob, sex: sex, heat: heat, now: now)
+        let firstRun = fetched.map(\.start).min()
+        restingHRTrend = mrRestingHRTrend(samples: rhr, firstRunDate: firstRun, asOf: now)
+        #if DEBUG
+        logRestingHR(samples: rhr, firstRun: firstRun, trend: restingHRTrend, now: now)
+        #endif
         #if DEBUG
         if let t = thresholdTrend {
             let last = t.current
@@ -664,6 +672,48 @@ final class MREngineStore: ObservableObject {
         }
         #endif
     }
+
+    #if DEBUG
+    /// [안정시심박] 로그 — 성장 탭 추세의 근거와, 아침 제안 보조 규칙(평소+5bpm 3일 연속)의 발동 빈도 확인용.
+    private func logRestingHR(samples: [(date: Date, value: Double)], firstRun: Date?,
+                              trend: MRRestingHRTrend?, now: Date) {
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+        let mf = DateFormatter(); mf.dateFormat = "yy-MM"
+        let span = samples.first.map { "\(df.string(from: $0.date)) ~ \(df.string(from: samples.last!.date))" } ?? "없음"
+        print("[안정시심박] 표본 \(samples.count)일 · \(span) · 첫 러닝 \(firstRun.map { df.string(from: $0) } ?? "없음")")
+        // 월별 중앙값(표본 일수와 함께 — 10일 미만 달은 추세에서 빠진다)
+        let cal = Calendar.current
+        var byMonth: [Date: [Double]] = [:]
+        for s in samples {
+            byMonth[cal.date(from: cal.dateComponents([.year, .month], from: s.date))!, default: []].append(s.value)
+        }
+        let monthStr = byMonth.keys.sorted().map { m in
+            let v = byMonth[m]!
+            return "\(mf.string(from: m)) \(String(format: "%.0f", mrMedian(v)))(\(v.count)\(v.count < MR_RHR_MONTH_MIN_DAYS ? "·제외" : ""))"
+        }.joined(separator: " · ")
+        print("[안정시심박] 월별 \(monthStr)")
+        if let t = trend {
+            let kind: String = {
+                switch t.baselineKind {
+                case .beforeRunning: return "러닝 시작 전 90일"
+                case .windowStart:   return "조회 창 첫 90일"
+                case nil:            return "기준 없음"
+                }
+            }()
+            let base = t.baseline.map { String(format: "%.1f", $0) } ?? "-"
+            let chg  = t.change.map { String(format: "%+.1f", $0) } ?? "-"
+            print("[안정시심박] 추세 \(t.months.count)개월 · 최근 90일 \(String(format: "%.1f", t.recent))(\(t.recentDays)일) · 기준 \(kind) \(base) · 변화 \(chg) · 문장 \(t.sentence(asOf: now) ?? "없음")")
+        } else {
+            print("[안정시심박] 추세 없음(달 \(MR_RHR_MIN_MONTHS)개·최근 90일 \(MR_RHR_WINDOW_MIN_DAYS)일 미만)")
+        }
+        // 아침 제안 보조 규칙 후보 — 최근 1년에 몇 번 걸렸을지
+        let yearAgo = cal.date(byAdding: .day, value: -365, to: now)!
+        for rise in [4.0, 5.0, 6.0] {
+            let r = mrRestingHRRiseEpisodes(samples: samples, from: yearAgo, to: now, rise: rise, run: 3)
+            print("[안정시심박] 최근 1년 평소(28일 중앙값)+\(Int(rise)) 이상 · 해당 \(r.flaggedDays)일 · 3일 연속 \(r.episodes)회")
+        }
+    }
+    #endif
 
     // MARK: - 드리프트 (세그먼트 fetch 병렬화 + 캐시)
 

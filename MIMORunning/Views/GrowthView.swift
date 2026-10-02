@@ -245,6 +245,10 @@ struct GrowthView: View {
                                 ThresholdTrendCard(trend: t)
                             }
                             metricTrendsSection
+                            // 안정시 심박 추세 — 러닝 습관 위(2026-10-02 사용자 지정). 워치 표본 부족이면 nil로 빠진다.
+                            if let rhr = engine.restingHRTrend {
+                                RestingHRTrendCard(trend: rhr)
+                            }
                             MRHealthMetricsView(m: engine.healthMetrics)
                             bodyChangeSectionView
                             gapSection
