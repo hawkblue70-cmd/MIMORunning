@@ -87,6 +87,8 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var todayCard: MRTodayCard?
     @Published private(set) var raceDayCard: MRRaceDayCard?
     @Published private(set) var backtest: [MRBacktestRow] = []
+    /// 워치 VO2max 전체 이력 — 나 탭 대회 기록의 환산표 비교 줄용(refreshDetail에서 채움)
+    @Published private(set) var vo2Samples: [(date: Date, value: Double)] = []
     /// 대회 준비 비교(B) — 등록 대회 id(uuidString) → 결과. 비교할 지난 대회가 없으면 항목 없음.
     @Published private(set) var prepComparisons: [String: MRPrepComparison.Result] = [:]
     @Published private(set) var drift = MRDriftModel()
@@ -668,6 +670,7 @@ final class MREngineStore: ObservableObject {
 
         // ③ VO2max + 건강 지표 (vo2도 ①에서 시작했으므로 이미 도착했을 것)
         let vo2 = (try? await vo2Task) ?? []
+        vo2Samples = vo2
         healthMetrics = mrHealthMetrics(runs: runs,
                                         restingHRSamples: rhrSamples,
                                         vo2Samples: vo2,

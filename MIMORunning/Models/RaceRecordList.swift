@@ -50,6 +50,8 @@ enum RaceRecordList {
         let predictedMin: Double
         let errorPct: Double
         let inBand: Bool
+        /// 같은 대회를 워치 VO2max 환산표(Daniels)로 예측했을 때의 오차(%). 대회 전 60일 내 VO2max가 없으면 nil.
+        var vo2ErrorPct: Double? = nil
     }
 
     struct Prediction: Equatable {
@@ -88,6 +90,19 @@ enum RaceRecordList {
         let hit: Int
         let count: Int
         let meanAbsErrorPct: Double
+        /// 워치 VO2max 환산표 비교 — 두 예측이 모두 있는 대회가 2건 이상일 때만
+        var vo2: VO2Comparison? = nil
+    }
+
+    /// 워치 VO2max 환산표(가민·블로그식)와 앱 예측을 **같은 대회 묶음**에서 비교한 값.
+    /// 앱이 질 때도 그대로 보여 준다 — 맞은 것만 고르면 광고다(2026-10-02).
+    struct VO2Comparison: Equatable {
+        let count: Int
+        let appMeanAbsErrorPct: Double
+        let vo2MeanAbsErrorPct: Double
+        /// 모든 대회에서 환산표 예측이 실제보다 빨랐는가 / 느렸는가
+        let allFaster: Bool
+        let allSlower: Bool
     }
 
     // MARK: - 행
@@ -174,7 +189,44 @@ enum RaceRecordList {
         let matched = dedupRuns.compactMap { prediction(for: $0, in: predictions, calendar: calendar) }
         guard !matched.isEmpty else { return nil }
         let meanAbs = matched.map { abs($0.errorPct) }.reduce(0, +) / Double(matched.count)
-        return Accuracy(hit: matched.filter(\.inBand).count, count: matched.count, meanAbsErrorPct: meanAbs)
+        return Accuracy(hit: matched.filter(\.inBand).count, count: matched.count, meanAbsErrorPct: meanAbs,
+                        vo2: vo2Comparison(matched))
+    }
+
+    /// 1건으로는 우연과 구분할 수 없어 2건부터.
+    private static func vo2Comparison(_ matched: [PredictionInput]) -> VO2Comparison? {
+        let pairs = matched.compactMap { p in p.vo2ErrorPct.map { (app: p.errorPct, vo2: $0) } }
+        guard pairs.count >= 2 else { return nil }
+        let n = Double(pairs.count)
+        return VO2Comparison(count: pairs.count,
+                             appMeanAbsErrorPct: pairs.map { abs($0.app) }.reduce(0, +) / n,
+                             vo2MeanAbsErrorPct: pairs.map { abs($0.vo2) }.reduce(0, +) / n,
+                             allFaster: pairs.allSatisfy { $0.vo2 < 0 },
+                             allSlower: pairs.allSatisfy { $0.vo2 > 0 })
+    }
+
+    /// 정확도 줄 아래 한 줄. 해석 없이 숫자만(합쇼체). 비교가 없으면 nil.
+    /// 환산표 비교 대회가 정확도 줄과 같은 묶음이 아니면 그 대회들의 앱 오차를 함께 밝힌다.
+    static func vo2Sentence(_ acc: Accuracy, english: Bool) -> String? {
+        guard let v = acc.vo2 else { return nil }
+        let vo2 = String(format: "%.1f", v.vo2MeanAbsErrorPct)
+        let app = String(format: "%.1f", v.appMeanAbsErrorPct)
+        var s: String
+        if v.count == acc.count {
+            s = english
+                ? "Predicted from watch VO2max tables, the same races would have been off by \(vo2)% on average."
+                : "같은 대회를 워치 VO2max 환산표로 예측했다면 평균 오차 \(vo2)%입니다."
+        } else {
+            s = english
+                ? "For the \(v.count) races with watch VO2max, VO2max tables would have been off by \(vo2)% on average; this app's predictions for them were off by \(app)%."
+                : "워치 VO2max가 있던 \(v.count)건을 환산표로 예측했다면 평균 오차 \(vo2)%입니다. 같은 \(v.count)건의 앱 예측은 \(app)%입니다."
+        }
+        if v.allFaster {
+            s += english ? " All \(v.count) were faster than actual." : " \(v.count)건 모두 예측이 실제보다 빨랐습니다."
+        } else if v.allSlower {
+            s += english ? " All \(v.count) were slower than actual." : " \(v.count)건 모두 예측이 실제보다 느렸습니다."
+        }
+        return s
     }
 
     // MARK: - 토글 기본값

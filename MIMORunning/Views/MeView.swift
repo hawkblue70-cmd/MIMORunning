@@ -415,11 +415,17 @@ struct MeView: View {
 
     /// 엔진 예측 행 중 예측이 있는 것. 라벨("5K"·"10K"·"하프"·"풀")을 km로 바꾼다.
     private var raceRecordPredictions: [RaceRecordList.PredictionInput] {
-        engine.backtest.compactMap { r in
+        let vo2 = engine.vo2Samples
+        return engine.backtest.compactMap { r in
             guard let p = r.predictedMin, let e = r.errorPct else { return nil }
+            // 워치 VO2max 환산표 예측 — [VO2예측] 로그와 같은 기준(대회 전날까지 60일 내, 기온 무관)
+            let vo2Err = mrVO2Before(vo2, raceDate: r.date)
+                .flatMap { mrTimeForVDOT($0.value, distanceM: mrDistanceForLabel(r.label)) }
+                .map { ($0 - r.actualMin) / r.actualMin * 100 }
             return RaceRecordList.PredictionInput(date: r.date,
                                                   distanceKm: mrDistanceForLabel(r.label) / 1000,
-                                                  predictedMin: p, errorPct: e, inBand: r.inBand)
+                                                  predictedMin: p, errorPct: e, inBand: r.inBand,
+                                                  vo2ErrorPct: vo2Err)
         }
     }
 
@@ -456,6 +462,9 @@ struct MeView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(L.s("예측 정확도 · 구간 안 \(acc.hit)/\(acc.count) · 평균 오차 \(String(format: "%.1f", acc.meanAbsErrorPct))%",
                                  "Prediction accuracy · \(acc.hit)/\(acc.count) in range · avg error \(String(format: "%.1f", acc.meanAbsErrorPct))%"))
+                        if let vo2Line = RaceRecordList.vo2Sentence(acc, english: L.isEnglish) {
+                            Text(vo2Line)
+                        }
                         Text(L.s("예측은 그 대회 전날까지의 데이터만으로 다시 계산한 값입니다.",
                                  "Predictions are recalculated using only data from before each race."))
                         if acc.count < 3 {
