@@ -17,51 +17,60 @@ struct MRRestingHRTrendTests {
         (0...offset).reversed().map { ago in (day(-ago), f(ago)) }
     }
 
-    @Test func beforeRunningBaselineWhenDataExists() {
-        // 300일 전 첫 러닝. 그 전 64, 이후 선형으로 57까지
-        let samples = daily(from: 400) { ago in ago > 300 ? 64 : 57 + 7 * Double(ago) / 300 }
-        let t = mrRestingHRTrend(samples: samples, firstRunDate: day(-300), asOf: now)
+    /// 1월에 +5 오르는 계절 곡선(실기기에서 본 겨울 상승 모양)
+    private func season(_ ago: Int) -> Double {
+        let m = Double(cal.component(.month, from: day(-ago)))
+        return 2.5 * (1 + cos((m - 1) / 12 * 2 * .pi))
+    }
+
+    @Test func downTrendYearOverYear() {
+        // 2년 넘게 연 6bpm씩 하락 + 계절 곡선
+        let samples = daily(from: 760) { ago in 58 + 6 * Double(ago) / 365 + self.season(ago) }
+        let t = mrRestingHRTrend(samples: samples, asOf: now)
+        #expect(t?.direction == .down)
+        #expect(abs((t?.yearChange ?? 0) + 6) < 0.8)
+        #expect(t?.sentence?.contains("낮아지는 추세") == true)
+        #expect(t?.meaning?.contains("4~6bpm") == true)
+        #expect(t?.rolling.isEmpty == false)
+    }
+
+    @Test func upTrendHasMeaning() {
+        let samples = daily(from: 760) { ago in 62 - 4 * Double(ago) / 365 }
+        let t = mrRestingHRTrend(samples: samples, asOf: now)
+        #expect(t?.direction == .up)
+        #expect(t?.meaning?.contains("2~9bpm") == true)
+    }
+
+    /// 계절 흔들림만 있을 때 — 지금이 몇 월이든 추세가 없어야 한다(직선 회귀는 여기서 ±5bpm 오판했다).
+    @Test func seasonalSwingIsFlatInAnyMonth() {
+        for monthsBack in 0..<12 {
+            let asOf = cal.date(byAdding: .month, value: -monthsBack, to: now)!
+            let samples = daily(from: 1100) { ago in 58 + self.season(ago) }
+            let t = mrRestingHRTrend(samples: samples, asOf: asOf)
+            #expect(t?.direction == .flat, "asOf \(monthsBack)개월 전")
+            #expect(abs(t?.yearChange ?? 99) < 0.5)
+        }
+    }
+
+    @Test func noTrendUnderTwoYears() {
+        // 13개월뿐 — 선은 있지만 같은 달 짝(6개) 부족 → 문장·뜻 없음
+        let samples = daily(from: 400) { _ in 58 }
+        let t = mrRestingHRTrend(samples: samples, asOf: now)
         #expect(t != nil)
-        #expect(t?.baselineKind == .beforeRunning)
-        #expect(t?.baseline == 64)
-        #expect((t?.change ?? 0) < -5)
-        #expect(t?.sentence(asOf: now)?.contains("러닝을 시작한 뒤") == true)
-    }
-
-    @Test func windowStartBaselineWhenNoPreRunData() {
-        // 러닝은 표본보다 먼저 시작 — 시작 전 데이터 없음
-        let samples = daily(from: 300) { ago in 55 + 5 * Double(ago) / 300 }
-        let t = mrRestingHRTrend(samples: samples, firstRunDate: day(-500), asOf: now)
-        #expect(t?.baselineKind == .windowStart)
-        #expect(t?.sentence(asOf: now)?.contains("개월 전보다") == true)
-    }
-
-    @Test func noSentenceWhenFlatOrRising() {
-        let flat = daily(from: 300) { _ in 58 }
-        #expect(mrRestingHRTrend(samples: flat, firstRunDate: nil, asOf: now)?.sentence(asOf: now) == nil)
-        let rising = daily(from: 300) { ago in 55 + 5 * (1 - Double(ago) / 300) }
-        let t = mrRestingHRTrend(samples: rising, firstRunDate: nil, asOf: now)
-        #expect(t != nil)                      // 선은 보인다
-        #expect(t?.sentence(asOf: now) == nil) // 문장은 없다
+        #expect(t?.yearChange == nil)
+        #expect(t?.sentence == nil)
+        #expect(t?.meaning == nil)
     }
 
     @Test func nilWhenTooFewMonths() {
         let samples = daily(from: 50) { _ in 58 }
-        #expect(mrRestingHRTrend(samples: samples, firstRunDate: nil, asOf: now) == nil)
+        #expect(mrRestingHRTrend(samples: samples, asOf: now) == nil)
     }
 
     @Test func sparseMonthsAreDropped() {
         // 매주 1개뿐 — 달 표본 10일 미만 → 추세 없음
         let samples = stride(from: 300, through: 0, by: -7).map { (day(-$0), 58.0) }
-        #expect(mrRestingHRTrend(samples: samples, firstRunDate: nil, asOf: now) == nil)
-    }
-
-    @Test func noBaselineWhenWindowOverlapsRecent() {
-        // 150일뿐 — 첫 90일이 최근 90일과 겹침 → 기준 없음, 선만
-        let samples = daily(from: 150) { _ in 58 }
-        let t = mrRestingHRTrend(samples: samples, firstRunDate: nil, asOf: now)
-        #expect(t != nil)
-        #expect(t?.baseline == nil)
+        #expect(mrRestingHRTrend(samples: samples, asOf: now) == nil)
     }
 
     // MARK: 단기 상승 구간(로그용)

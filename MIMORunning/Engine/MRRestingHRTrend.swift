@@ -1,70 +1,88 @@
 import Foundation
 
-/// 성장 탭 '안정시 심박' 추세 — 월별 중앙값 선 + 기준 대비 변화.
+/// 성장 탭 '안정시 심박' 추세 — 월별 중앙값 선 + 12개월 이동평균(추세선) + 1년 전 같은 달 대비 변화와 그 뜻.
 ///
-/// 문헌(틀): 지구력 훈련은 안정시 심박을 평균 4~6bpm 낮춘다(Reimers 2018 메타분석, 121개 지구력 개입).
-///   효과가 작아 두 점 비교로는 계절·측정 흔들림에 묻힌다 → 달마다 중앙값을 잇는 선으로 보여준다.
-/// 본인 데이터(값): 기준은 "러닝 시작 전 90일"(데이터가 있으면), 없으면 조회 창의 첫 90일.
-/// ⚠ 의료적 해석(사망 위험·심폐 향상)은 문장에 넣지 않는다 — 숫자 변화만.
+/// 문헌(틀): 지구력 훈련은 안정시 심박을 평균 4~6bpm 낮추고(Reimers 2018 메타분석), 훈련을 쉬면 몇 주 안에 2~9bpm 오른다(디트레이닝 리뷰).
+///   효과가 작아 계절 흔들림(겨울에 몇 bpm↑)과 크기가 같다 → 추세는 계절을 지운 값으로만 말한다.
+/// ⚠ 계절을 지우는 방법(2026-10-02 검토):
+///   - 두 90일 창 비교(겨울 vs 여름)는 계절 차이를 훈련 효과로 말했다(실기기: 36개월 전 64 vs 최근 60).
+///   - 최근 12개월 직선 회귀도 안 된다 — 5bpm 계절 곡선만 있어도 지금이 몇 월이냐에 따라 ±5bpm "추세"가 나온다.
+///   → 같은 달끼리 비교(올해 3월 − 작년 3월)의 평균. 계절이 정확히 빠진다. 선은 12개월 이동평균.
+/// ⚠ 의료적 해석(사망 위험·질병)은 넣지 않는다 — 일반적으로 알려진 훈련 반응만.
 struct MRRestingHRTrend: Equatable, Sendable {
     struct Month: Equatable, Sendable {
         let month: Date      // 그 달 1일 0시
         let median: Double
         let days: Int        // 그 달 안정시 심박 표본 수(하루 1개)
     }
-    enum BaselineKind: Equatable, Sendable {
-        case beforeRunning   // 첫 러닝 전 90일
-        case windowStart     // 조회 창 첫 90일(러닝 시작 전 데이터가 없을 때)
+    struct Point: Equatable, Sendable {
+        let date: Date
+        let bpm: Double
     }
+    enum Direction: Equatable, Sendable { case down, flat, up }
 
     let months: [Month]          // 표본 MR_RHR_MONTH_MIN_DAYS일 이상인 달만, 오래된 순
     let recent: Double           // 최근 90일 중앙값
     let recentDays: Int
-    let baseline: Double?
-    let baselineKind: BaselineKind?
-    let baselineStart: Date?     // 기준 창 시작일
+    /// 12개월 이동평균(그 달까지 12개 달력 달 중 MR_RHR_ROLLING_MIN_MONTHS달 이상일 때만) — 차트 점선.
+    let rolling: [Point]
+    /// 최근 12개월 각 달 − 1년 전 같은 달의 평균. 짝이 MR_RHR_YOY_MIN_PAIRS개 미만이면 nil.
+    let yearChange: Double?
+    let yearPairs: Int
 
-    /// 최근 − 기준 (음수 = 낮아짐)
-    var change: Double? { baseline.map { recent - $0 } }
-
-    /// 기준 창 시작부터 지금까지 개월 수(반올림, 최소 1)
-    func monthsSinceBaseline(asOf: Date) -> Int? {
-        guard let s = baselineStart else { return nil }
-        let d = Calendar.current.dateComponents([.day], from: s, to: asOf).day ?? 0
-        return max(1, Int((Double(d) / 30.4).rounded()))
+    /// ⚠ 2bpm 문턱은 임의값 — 같은 달 비교의 흔들림보다 크고 문헌 효과(4~6)보다 작게. 실기기 로그로 재검토.
+    var direction: Direction? {
+        guard let c = yearChange else { return nil }
+        if c <= -MR_RHR_TREND_MIN_CHANGE { return .down }
+        if c >= MR_RHR_TREND_MIN_CHANGE { return .up }
+        return .flat
     }
 
-    /// 한 줄 문장 — 낮아졌을 때만 말한다(설계 원칙 5: 좌절 방지, 오른 건 선으로만 보인다).
-    /// ⚠ 3bpm 문턱은 임의값 — 월 중앙값의 흔들림(대개 1~2bpm)보다 크고, 문헌 효과(4~6)보다 작게. 실기기 로그로 재검토.
-    func sentence(asOf: Date) -> String? {
-        guard let c = change, c <= -MR_RHR_SENTENCE_MIN_DROP, let kind = baselineKind else { return nil }
-        let n = Int((-c).rounded())
+    /// 한 줄 사실 — 방향과 폭.
+    var sentence: String? {
+        guard let d = direction, let c = yearChange else { return nil }
+        let n = Int(abs(c).rounded())
         let L = AppLanguage.shared
-        switch kind {
-        case .beforeRunning:
-            return L.s("러닝을 시작한 뒤 \(n)bpm 낮아졌습니다",
-                       "\(n) bpm lower since you started running")
-        case .windowStart:
-            let m = monthsSinceBaseline(asOf: asOf) ?? 0
-            return L.s("\(m)개월 전보다 \(n)bpm 낮습니다",
-                       "\(n) bpm lower than \(m) months ago")
+        switch d {
+        case .down: return L.s("1년 전 같은 달보다 평균 \(n)bpm 낮습니다 · 낮아지는 추세",
+                               "\(n) bpm lower than the same months a year ago · trending down")
+        case .up:   return L.s("1년 전 같은 달보다 평균 \(n)bpm 높습니다 · 높아지는 추세",
+                               "\(n) bpm higher than the same months a year ago · trending up")
+        case .flat: return L.s("1년 전 같은 달과 비슷합니다",
+                               "About the same as the same months a year ago")
+        }
+    }
+
+    /// 방향의 뜻 — 일반적으로 알려진 훈련 반응. 개인 건강 판단은 하지 않는다.
+    var meaning: String? {
+        guard let d = direction else { return nil }
+        let L = AppLanguage.shared
+        switch d {
+        case .down:
+            return L.s("지구력 훈련에서 흔히 나타나는 변화입니다. 심장이 한 번 뛸 때 보내는 혈액이 늘어 같은 일을 더 적은 박동으로 합니다. 훈련 연구의 평균 변화는 4~6bpm입니다.",
+                       "A common change with endurance training: each beat pumps more blood, so the same work takes fewer beats. Training studies average 4–6 bpm.")
+        case .up:
+            return L.s("훈련을 줄이거나 쉬면 몇 주 안에 2~9bpm 오를 수 있습니다. 수면 부족·피로·스트레스에도 올라갑니다.",
+                       "Cutting back or pausing training can raise it 2–9 bpm within weeks. Poor sleep, fatigue and stress also raise it.")
+        case .flat:
+            return L.s("훈련으로 낮아진 값은 몇 달 뒤 평평해집니다. 지금 훈련량에서 유지되는 값입니다.",
+                       "Training-driven drops level off after a few months; this is the level your current training holds.")
         }
     }
 }
 
 let MR_RHR_MONTH_MIN_DAYS = 10       // 달 중앙값을 믿을 최소 표본 일수
-let MR_RHR_WINDOW_MIN_DAYS = 20      // 90일 창(최근·기준) 최소 표본 일수
+let MR_RHR_WINDOW_MIN_DAYS = 20      // 최근 90일 최소 표본 일수
 let MR_RHR_MIN_MONTHS = 3            // 선을 그릴 최소 달 수
-let MR_RHR_SENTENCE_MIN_DROP = 3.0   // 문장을 붙일 최소 하락(bpm)
+let MR_RHR_ROLLING_MIN_MONTHS = 10   // 12개월 이동평균에 필요한 최소 달 수(빠진 달이 많으면 계절이 덜 지워진다)
+let MR_RHR_YOY_MIN_PAIRS = 6         // 같은 달 비교 최소 짝 수(최근 12개월 중)
+let MR_RHR_TREND_MIN_CHANGE = 2.0    // 방향을 말할 최소 변화(bpm)
 
-/// 월별 중앙값과 기준 대비 변화. 표본이 모자라면 nil(카드가 조용히 빠진다).
-/// - firstRunDate: 첫 러닝 시작일. 그 전 90일에 표본이 충분하면 그 창이 기준.
-func mrRestingHRTrend(samples: [(date: Date, value: Double)],
-                      firstRunDate: Date?,
-                      asOf: Date) -> MRRestingHRTrend? {
+/// 월별 중앙값·12개월 이동평균·1년 전 같은 달 대비 변화. 표본이 모자라면 nil(카드가 조용히 빠진다).
+func mrRestingHRTrend(samples: [(date: Date, value: Double)], asOf: Date) -> MRRestingHRTrend? {
     let cal = Calendar.current
     let past = samples.filter { $0.date <= asOf }.sorted { $0.date < $1.date }
-    guard let first = past.first else { return nil }
+    guard !past.isEmpty else { return nil }
 
     // 월별 중앙값
     var byMonth: [Date: [Double]] = [:]
@@ -77,36 +95,33 @@ func mrRestingHRTrend(samples: [(date: Date, value: Double)],
         .map { MRRestingHRTrend.Month(month: $0.key, median: mrMedian($0.value), days: $0.value.count) }
         .sorted { $0.month < $1.month }
     guard months.count >= MR_RHR_MIN_MONTHS else { return nil }
+    let medianOf = Dictionary(uniqueKeysWithValues: months.map { ($0.month, $0.median) })
+    func shift(_ d: Date, _ n: Int) -> Date { cal.date(byAdding: .month, value: n, to: d)! }
 
     // 최근 90일
     let recentStart = cal.date(byAdding: .day, value: -90, to: asOf)!
     let recentVals = past.filter { $0.date > recentStart }.map(\.value)
     guard recentVals.count >= MR_RHR_WINDOW_MIN_DAYS else { return nil }
 
-    // 기준: 러닝 시작 전 90일 → 없으면 창 첫 90일(최근 90일과 겹치지 않을 때만)
-    var baseline: Double? = nil
-    var kind: MRRestingHRTrend.BaselineKind? = nil
-    var baseStart: Date? = nil
-    if let fr = firstRunDate {
-        let lo = cal.date(byAdding: .day, value: -90, to: fr)!
-        let vals = past.filter { $0.date >= lo && $0.date < fr }.map(\.value)
-        if vals.count >= MR_RHR_WINDOW_MIN_DAYS {
-            baseline = mrMedian(vals); kind = .beforeRunning; baseStart = lo
-        }
+    // 12개월 이동평균 — 그 달 포함 앞 12개 달력 달
+    let rolling: [MRRestingHRTrend.Point] = months.compactMap { m in
+        let vals = (0..<12).compactMap { medianOf[shift(m.month, -$0)] }
+        guard vals.count >= MR_RHR_ROLLING_MIN_MONTHS else { return nil }
+        return .init(date: m.month, bpm: vals.reduce(0, +) / Double(vals.count))
     }
-    if baseline == nil {
-        let hi = cal.date(byAdding: .day, value: 90, to: first.date)!
-        if hi <= recentStart {
-            let vals = past.filter { $0.date < hi }.map(\.value)
-            if vals.count >= MR_RHR_WINDOW_MIN_DAYS {
-                baseline = mrMedian(vals); kind = .windowStart; baseStart = first.date
-            }
-        }
+
+    // 같은 달 비교 — 이번 달 포함 최근 12개 달력 달 각각 − 12개월 전
+    let thisMonth = cal.date(from: cal.dateComponents([.year, .month], from: asOf))!
+    let diffs: [Double] = (0..<12).compactMap { k in
+        let m = shift(thisMonth, -k)
+        guard let now = medianOf[m], let ago = medianOf[shift(m, -12)] else { return nil }
+        return now - ago
     }
+    let yearChange = diffs.count >= MR_RHR_YOY_MIN_PAIRS ? diffs.reduce(0, +) / Double(diffs.count) : nil
 
     return MRRestingHRTrend(months: months,
                             recent: mrMedian(recentVals), recentDays: recentVals.count,
-                            baseline: baseline, baselineKind: kind, baselineStart: baseStart)
+                            rolling: rolling, yearChange: yearChange, yearPairs: diffs.count)
 }
 
 /// 단기 상승 구간 수 — 아침 제안 보조 규칙(검토 중)의 발동 빈도 확인용. 로그 전용.

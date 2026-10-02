@@ -98,17 +98,9 @@ struct MRHealthMetricsView: View {
                     }
                 }
 
-                // RHR / VO2max 당해·작년
-                if m.restingHR != nil || m.vo2max != nil {
+                // VO2max 당해·작년 — 안정시 심박은 위의 RestingHRTrendCard가 추세로 보여준다(2026-10-02 중복 제거)
+                if m.vo2max != nil {
                     HStack(spacing: 16) {
-                        if let rhr = m.restingHR {
-                            metricPair(label: L.s("휴식 시 심박수", "Resting HR"),
-                                       current: String(format: "%.0f", rhr),
-                                       last: m.restingHRLY.map { String(format: "%.0f", $0) },
-                                       unit: "bpm",
-                                       note: L.s("계절과 훈련량에 따라 몇 bpm씩 움직입니다",
-                                                 "Varies a few bpm with season and training load"))
-                        }
                         if let v = m.vo2max {
                             metricPair(label: "VO2max",
                                        current: String(format: "%.1f", v),

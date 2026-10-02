@@ -107,9 +107,9 @@ final class MREngineStore: ObservableObject {
     /// 라이브 재계산 값은 오늘 프로필로 다시 만들어져 주차표(스냅샷)와 어긋날 수 있다.
     private var storedSnapshotWeeks: [String: [MRPlanWeekSummary]] = [:]
 
-    // v2: 조회 범위 400일 → 3년(2026-10-02). 옛 캐시는 범위가 좁아 버린다.
-    private static let rhrCacheDateKey    = "mimo.rhrCache.fetchedAt.v2"
-    private static let rhrCacheSamplesKey = "mimo.rhrCache.samples.v2"
+    // v3: 조회 범위 400일 → 1200일(2026-10-02). 옛 캐시는 범위가 좁아 버린다.
+    private static let rhrCacheDateKey    = "mimo.rhrCache.fetchedAt.v3"
+    private static let rhrCacheSamplesKey = "mimo.rhrCache.samples.v3"
 
     private func loadPersistedRHR() -> (fetchedAt: Date, samples: [(date: Date, value: Double)])? {
         let ud = UserDefaults.standard
@@ -391,7 +391,7 @@ final class MREngineStore: ObservableObject {
             rhrLastFetchedAt = fetchedAt
             persistRHR(fetchedAt: fetchedAt, samples: rhr)
             #if DEBUG
-            print(String(format: "[⏱ fetchRestingHR] %.2fs · 조회범위 1100일 · 결과 %d건 · 캐시 미스",
+            print(String(format: "[⏱ fetchRestingHR] %.2fs · 조회범위 1200일 · 결과 %d건 · 캐시 미스",
                          CFAbsoluteTimeGetCurrent() - t0, rhr.count))
             #endif
         }
@@ -512,7 +512,7 @@ final class MREngineStore: ObservableObject {
         thresholdTrend = mrThresholdTrend(runs: fetched, restingHRSamples: rhr,
                                           dateOfBirth: dob, sex: sex, heat: heat, now: now)
         let firstRun = fetched.map(\.start).min()
-        restingHRTrend = mrRestingHRTrend(samples: rhr, firstRunDate: firstRun, asOf: now)
+        restingHRTrend = mrRestingHRTrend(samples: rhr, asOf: now)
         #if DEBUG
         logRestingHR(samples: rhr, firstRun: firstRun, trend: restingHRTrend, now: now)
         #endif
@@ -674,7 +674,7 @@ final class MREngineStore: ObservableObject {
     }
 
     #if DEBUG
-    /// [안정시심박] 로그 — 성장 탭 추세의 근거와, 아침 제안 보조 규칙(평소+5bpm 3일 연속)의 발동 빈도 확인용.
+    /// [안정시심박] 로그 — 성장 탭 추세의 근거(월별·12개월 이동평균·같은 달 비교)와, 첫 러닝 날짜(참고), 아침 제안 보조 규칙(평소+5bpm 3일 연속)의 발동 빈도 확인용.
     private func logRestingHR(samples: [(date: Date, value: Double)], firstRun: Date?,
                               trend: MRRestingHRTrend?, now: Date) {
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
@@ -693,16 +693,10 @@ final class MREngineStore: ObservableObject {
         }.joined(separator: " · ")
         print("[안정시심박] 월별 \(monthStr)")
         if let t = trend {
-            let kind: String = {
-                switch t.baselineKind {
-                case .beforeRunning: return "러닝 시작 전 90일"
-                case .windowStart:   return "조회 창 첫 90일"
-                case nil:            return "기준 없음"
-                }
-            }()
-            let base = t.baseline.map { String(format: "%.1f", $0) } ?? "-"
-            let chg  = t.change.map { String(format: "%+.1f", $0) } ?? "-"
-            print("[안정시심박] 추세 \(t.months.count)개월 · 최근 90일 \(String(format: "%.1f", t.recent))(\(t.recentDays)일) · 기준 \(kind) \(base) · 변화 \(chg) · 문장 \(t.sentence(asOf: now) ?? "없음")")
+            let roll = t.rolling.map { "\(mf.string(from: $0.date)) \(String(format: "%.1f", $0.bpm))" }.joined(separator: " · ")
+            print("[안정시심박] 12개월 이동평균 \(roll.isEmpty ? "없음(12개월 중 \(MR_RHR_ROLLING_MIN_MONTHS)달 미만)" : roll)")
+            let yoy = t.yearChange.map { String(format: "%+.1f", $0) } ?? "없음"
+            print("[안정시심박] 선 \(t.months.count)개월 · 최근 90일 \(String(format: "%.1f", t.recent))(\(t.recentDays)일) · 1년 전 같은 달 대비 \(yoy)(짝 \(t.yearPairs)) · 문장 \(t.sentence ?? "없음")")
         } else {
             print("[안정시심박] 추세 없음(달 \(MR_RHR_MIN_MONTHS)개·최근 90일 \(MR_RHR_WINDOW_MIN_DAYS)일 미만)")
         }
