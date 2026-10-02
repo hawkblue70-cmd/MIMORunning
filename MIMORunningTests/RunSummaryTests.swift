@@ -103,7 +103,7 @@ struct RunSummaryTests {
         let out = bare(raw)
         #expect(out[0] == RunSummaryLine(axis: "러닝폼", state: "끝까지 유지", tone: .good))
         #expect(out[1] == RunSummaryLine(axis: "거리 적응", state: "평소 2.1배, 범위 안", tone: .good))
-        #expect(out[2] == RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good))
+        #expect(out[2] == RunSummaryLine(axis: "심박", state: "의도한 고강도", tone: .good))
         // 최근 7일 +55%라도 상태어는 4주 평균 대비로만 — 증감은 근거 줄의 숫자. 4일 연속이라 톤은 중립.
         #expect(out[3] == RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준 · 4일 연속", tone: .neutral))
         #expect(out[4] == RunSummaryLine(axis: "유산소", state: "50대 남성 기준 높음", tone: .good))
@@ -164,7 +164,7 @@ struct RunSummaryTests {
 
     @Test func zoneTwoMajorityIsJustRight() {
         var i = RunSummaryInput(); i.zoneFractions = [1: 0.1, 2: 0.7, 3: 0.2]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "딱 좋은 강도", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "Zone 2 중심", tone: .good)])
     }
 
     @Test func easyIntentWithHighZonesIsFlagged() {
@@ -174,7 +174,7 @@ struct RunSummaryTests {
 
     @Test func plannedHighIntensityInZoneFourIsGood() {
         var i = RunSummaryInput(); i.workoutType = .tempo; i.zoneFractions = [3: 0.3, 4: 0.6, 5: 0.1]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "의도한 고강도", tone: .good)])
     }
 
     @Test func generalRunInZoneFourIsNeutral() {
@@ -185,19 +185,19 @@ struct RunSummaryTests {
     @Test func distanceRunInHighZonesIsPlanned() {
         // 거리주는 레이스페이스 장거리 — 이지 의도도 아니고, Zone 4 우세면 계획대로
         var i = RunSummaryInput(); i.workoutType = .distanceRun; i.zoneFractions = [3: 0.2, 4: 0.7, 5: 0.1]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "의도한 고강도", tone: .good)])
     }
 
     @Test func distanceRunInZoneThreeIsPlanned() {
-        // Zone 3 우세여도 거리주는 계획된 고강도 유형 — "계획대로 템포 구간"
+        // Zone 3 우세여도 거리주는 계획된 고강도 유형 — "의도한 템포 구간"
         var i = RunSummaryInput(); i.workoutType = .distanceRun; i.zoneFractions = [2: 0.2, 3: 0.66, 4: 0.14]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "계획대로 템포 구간", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "의도한 템포 구간", tone: .good)])
     }
 
     @Test func intervalInZoneThreeIsPlannedHighIntensity() {
         // 인터벌은 평균 존이 회복 구간에 깎여 Zone 3 우세만으로도 고강도로 본다
         var i = RunSummaryInput(); i.workoutType = .interval; i.zoneFractions = [2: 0.2, 3: 0.41, 4: 0.3, 5: 0.09]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "의도한 고강도", tone: .good)])
     }
 
     @Test func zoneTieBreaksToHigherZone() {
@@ -212,7 +212,7 @@ struct RunSummaryTests {
 
     @Test func raceInHighZonesIsPlanned() {
         var i = RunSummaryInput(); i.workoutType = .race; i.zoneFractions = [4: 0.5, 5: 0.5]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "계획대로 고강도", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "의도한 고강도", tone: .good)])
     }
 
     @Test(.english) func englishEasyIntentLine() {
@@ -589,14 +589,14 @@ struct RunSummaryTests {
         // 회복 주에 Zone 2 위주면 이탈이 아니다
         var i = todayInput(); i.planPhase = "회복"
         i.zoneFractions = [1: 0.15, 2: 0.70, 3: 0.15]
-        #expect(lines(i)[2].state == "딱 좋은 강도")
+        #expect(lines(i)[2].state == "Zone 2 중심")
         #expect(lines(i)[2].next == nil)
     }
 
     @Test func buildPhaseHighIntensityIsNotFlagged() {
         // 늘리기 주의 고강도는 계획대로다
         var i = todayInput(); i.planPhase = "늘리기"
-        #expect(lines(i)[2].state == "계획대로 고강도")
+        #expect(lines(i)[2].state == "의도한 고강도")
     }
 
     @Test func planRecoveryPhaseOverrides() {

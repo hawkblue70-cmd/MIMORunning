@@ -10,7 +10,7 @@ struct RunHeadlineTests {
     }
     private let taperNext = "대회 훈련 계획상 테이퍼 주입니다. 이지런 위주로 가세요."
     private var todayLines: [RunSummaryLine] {
-        [line("러닝폼", "끝까지 유지"), line("심박", "딱 좋은 강도"),
+        [line("러닝폼", "끝까지 유지"), line("심박", "Zone 2 중심"),
          line("훈련부하", "4주 평균 수준 · 4일 연속", next: taperNext), line("유산소", "50대 남성 기준 높음")]
     }
     private var efficiency7: RunInsight {
@@ -84,17 +84,17 @@ struct RunHeadlineTests {
         #expect(h1?.next == taperNext)
         // 같은 축(심박)에 next가 있으면 그것
         var lines = todayLines
-        lines[1] = line("심박", "딱 좋은 강도", next: "다음 이지런은 6'40\"로.")
+        lines[1] = line("심박", "Zone 2 중심", next: "다음 이지런은 6'40\"로.")
         let h2 = RunHeadline.make(insight: nil, summaryInput: input(), summaryLines: lines, efficiency: efficiency7)
         #expect(h2?.next == "다음 이지런은 6'40\"로.")
         // 어디에도 next 없음 → nil
-        let bare = [line("러닝폼", "끝까지 유지"), line("심박", "딱 좋은 강도")]
+        let bare = [line("러닝폼", "끝까지 유지"), line("심박", "Zone 2 중심")]
         let h3 = RunHeadline.make(insight: nil, summaryInput: input(), summaryLines: bare, efficiency: efficiency7)
         #expect(h3?.next == nil)
     }
 
     @Test func fewSummaryLinesFallBackToEngine() {
-        let h = RunHeadline.make(insight: streakInsight, summaryInput: input(), summaryLines: [line("심박", "딱 좋은 강도")],
+        let h = RunHeadline.make(insight: streakInsight, summaryInput: input(), summaryLines: [line("심박", "Zone 2 중심")],
                                  efficiency: efficiency7)
         #expect(h?.title == "경계를 넓힌 러닝")
         #expect(h?.fact == "이번 주 최장 거리 6.24 km")

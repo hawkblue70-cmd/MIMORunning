@@ -551,18 +551,16 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
             shortNames: ["쌓이는 러닝", "이어지는 러닝", "여무는 러닝"],
             enShortNames: ["Stacking runs", "The streak continues", "Getting stronger"],
             koTemplates: [
-                "\(streak)주 연속 — 최장 기록을 경신 중입니다 🔥",
-                "\(streak)주 이어온 꾸준함, 그게 실력입니다",
-                "멈추지 않은 \(streak)주, 이제 습관이 됐습니다",
+                // 사실만 — "최장 기록 경신"은 최장 여부를 확인하지 않아 틀릴 수 있었다(2026-10-02)
                 "\(streak)주 연속 달렸습니다",
+                "\(streak)주째 매주 달리고 있습니다",
+                "쉬는 주 없이 \(streak)주를 이어왔습니다",
                 "쉬지 않고 이어온 \(streak)주입니다",
-                "매주 달린 \(streak)주, 루틴이 완성되고 있습니다"
+                "매주 달린 지 \(streak)주째입니다"
             ],
             enTemplates: [
-                "\(streak) weeks straight — chasing a new streak record 🔥",
-                "\(streak) weeks of consistency, that's real strength",
-                "\(streak) unbroken weeks — it's a habit now",
-                "\(streak) weeks straight — consistency is your superpower",
+                "\(streak) weeks straight",
+                "\(streak) weeks of running every week",
                 "\(streak) weeks without a break",
                 "Every week running for \(streak) weeks"
             ]

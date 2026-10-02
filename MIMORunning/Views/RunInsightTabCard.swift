@@ -2666,7 +2666,7 @@ private struct RhythmInsightCard: View {
         let visible = hrZones.filter { $0.fraction > 0.01 }
         let total = max(1e-9, visible.map(\.fraction).reduce(0, +))
         let z2frac = (hrZones.first(where: { $0.id == 2 })?.fraction ?? 0) / total
-        if z2frac >= 0.60 { return L.s("딱 좋은 강도였습니다", "Just the right intensity") }
+        if z2frac >= 0.60 { return L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2") }
         guard let dom = visible.max(by: { $0.fraction < $1.fraction }) else { return "" }
         let heatDelta = heatHRModel?.delta(activity.temperatureC) ?? 0
         let heatSuffix: String = {
@@ -2678,9 +2678,9 @@ private struct RhythmInsightCard: View {
         }()
         switch dom.id {
         case 1: return L.s("가벼운 회복 강도였습니다", "Light recovery run")
-        case 2: return L.s("딱 좋은 강도였습니다", "Just the right intensity")
+        case 2: return L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2")
         case 3:
-            // 인터벌은 운동·회복이 섞인 평균이라 "템포 구간에 머물렀다"가 아니다 — 총평 "계획대로 고강도"와도 부딪혔다
+            // 인터벌은 운동·회복이 섞인 평균이라 "템포 구간에 머물렀다"가 아니다 — 총평 "의도한 고강도"와도 부딪혔다
             if rhythmWorkoutType == .interval {
                 return L.s("운동·회복이 섞인 평균이 Zone 3입니다", "Zone 3 on average — work and recovery mixed") + heatSuffix
             }
@@ -2815,7 +2815,7 @@ private struct RhythmInsightCard: View {
         let diff = avgSecond - avgFirst
         // 220−나이는 쓰지 않는다 — 엔진과 같은 규칙(관측 최대 → Tanaka)
         // "최고 강도"는 최대심박 90% 이상에 2분 이상 머물렀을 때만 — 오르막 끝에서 한 번 스친 최고치로는 말하지 않는다.
-        // (존 도넛 "딱 좋은 강도"·총평과 부딪혔다.) 평활한 값으로 재서 광학 튐도 거른다.
+        // (존 도넛 "Zone 2 중심"·총평과 부딪혔다.) 평활한 값으로 재서 광학 튐도 거른다.
         if let mhr = RunInsightEngine.estimatedHRMax(hrMax: hrMax, age: age), mhr > 0 {
             let thr = 0.90 * Double(mhr)
             let sm = hrChartSmoothed(samples.map(\.bpm))

@@ -322,7 +322,7 @@ enum RunSummary {
         var line: RunSummaryLine
 
         if frac(2) >= 0.60 {
-            line = RunSummaryLine(axis: axis, state: L.s("딱 좋은 강도", "Just right"), tone: .good)
+            line = RunSummaryLine(axis: axis, state: L.s("Zone 2 중심", "Mostly Zone 2"), tone: .good)
         } else {
             let high3 = frac(3) + frac(4) + frac(5)
             let pct = Int((high3 * 100).rounded())
@@ -342,19 +342,19 @@ enum RunSummary {
             } else {
                 switch dom {
                 case 1: line = RunSummaryLine(axis: axis, state: L.s("가벼운 회복 강도", "Light recovery"), tone: .good)
-                case 2: line = RunSummaryLine(axis: axis, state: L.s("딱 좋은 강도", "Just right"), tone: .good)
+                case 2: line = RunSummaryLine(axis: axis, state: L.s("Zone 2 중심", "Mostly Zone 2"), tone: .good)
                 case 3:
                     if i.workoutType == .interval {
-                        // 인터벌은 평균 존이 회복 구간에 깎여 나가므로 Zone 3 우세만으로도 계획대로 고강도로 본다
-                        line = RunSummaryLine(axis: axis, state: L.s("계획대로 고강도", "High intensity, as planned"), tone: .good)
+                        // 인터벌은 평균 존이 회복 구간에 깎여 나가므로 Zone 3 우세만으로도 의도한 고강도로 본다
+                        line = RunSummaryLine(axis: axis, state: L.s("의도한 고강도", "Intended high intensity"), tone: .good)
                     } else if FormNarrative.isPlannedHighIntensity(i.workoutType) {
-                        line = RunSummaryLine(axis: axis, state: L.s("계획대로 템포 구간", "Tempo zone, as planned"), tone: .good)
+                        line = RunSummaryLine(axis: axis, state: L.s("의도한 템포 구간", "Intended tempo zone"), tone: .good)
                     } else {
                         line = RunSummaryLine(axis: axis, state: L.s("템포 구간에 머묾", "Stayed in tempo zone"), tone: .neutral)
                     }
                 default:
                     line = FormNarrative.isPlannedHighIntensity(i.workoutType)
-                        ? RunSummaryLine(axis: axis, state: L.s("계획대로 고강도", "High intensity, as planned"), tone: .good)
+                        ? RunSummaryLine(axis: axis, state: L.s("의도한 고강도", "Intended high intensity"), tone: .good)
                         : RunSummaryLine(axis: axis,
                                          state: L.s("고강도 구간이 많음 · Zone 3 이상 \(pct)%", "Mostly high intensity · \(pct)% in Zone 3+"),
                                          tone: .neutral)
