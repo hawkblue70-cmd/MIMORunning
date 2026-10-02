@@ -167,7 +167,7 @@ func mrRaceDayCard(race: MRTargetRace,
         lines.append(L.s("새 최장 롱런은 하지 마세요. 이 시점의 롱런은 이득 없이 회복만 잡아먹습니다.", "No new longest long run. A long run this late costs recovery and gains nothing."))
         lines.append(L.s("대회에서 쓸 젤과 음료를 이번 주 러닝에서 한 번 미리 써보세요. 당일 처음 시도하면 안 됩니다.", "Try the gels and drinks you'll race with on one run this week. Nothing new on race day."))
         if let t = base, t >= 150 {
-            lines.append(L.s("보급은 탄수화물 시간당 \(t >= 150 ? "60~90g" : "30~60g")(젤 1개 ≈ 22~25g) — 15~20분 간격으로 나누시고요.", "Fuel: \(t >= 150 ? "60–90 g" : "30–60 g") of carbs per hour (one gel ≈ 22–25 g), split every 15–20 minutes."))
+            lines.append(L.s("보급은 탄수화물 시간당 \(t >= 150 ? "60~90g" : "30~60g")(젤 1개 ≈ 22~25g) — 젤은 30분마다, 사이사이 음료로 채우시고요.", "Fuel: \(t >= 150 ? "60–90 g" : "30–60 g") of carbs per hour (one gel ≈ 22–25 g), a gel every 30 min, topped up with drink in between."))
         }
         if let w = planWeek {
             lines.append(L.s("이번 주는 계획대로 \(Int(w.weeklyKm))km — \(mrBreakdownWithPoint(w)).", "This week: \(Int(w.weeklyKm)) km on plan — \(mrBreakdownWithPoint(w))."))

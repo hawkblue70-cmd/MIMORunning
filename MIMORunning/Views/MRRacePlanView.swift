@@ -301,6 +301,12 @@ struct MRRacePlanCard: View {
                     .padding(.top, 12)
             }
 
+            // 젤 보급 제안 — 10km 대는 출발 전만, 하프·풀은 예상 기록 기준 시간·km별
+            if let gel = MRGelPlan.build(distanceM: race.distanceM, projectedMin: plan.projectedFinal) {
+                MRGelPlanView(plan: gel)
+                    .padding(.top, 16)
+            }
+
             // 근거 — 숨기지 않는다
             ForEach(plan.notes, id: \.self) { n in
                 Text(n).font(.system(size: 11))
