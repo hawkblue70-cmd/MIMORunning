@@ -52,11 +52,14 @@ enum RaceRecordList {
         let inBand: Bool
         /// 같은 대회를 워치 VO2max 환산표(Daniels)로 예측했을 때의 오차(%). 대회 전 60일 내 VO2max가 없으면 nil.
         var vo2ErrorPct: Double? = nil
+        /// 같은 대회의 워치 VO2max 환산표 예측(분). 대회 줄에 "VO2max 환산표 3:28:02"로 보인다.
+        var vo2PredictedMin: Double? = nil
     }
 
     struct Prediction: Equatable {
         let predictedMin: Double
         let inBand: Bool
+        var vo2PredictedMin: Double? = nil
     }
 
     struct Row: Identifiable, Equatable {
@@ -128,7 +131,7 @@ enum RaceRecordList {
                 abs(($0.distanceM / 1000) - r.distanceKm) / max(r.distanceKm, 0.001) <= 0.02
             } ?? dayArchives.first
             let prediction = prediction(for: r, in: predictions, calendar: calendar).map { p in
-                Prediction(predictedMin: p.predictedMin, inBand: p.inBand)
+                Prediction(predictedMin: p.predictedMin, inBand: p.inBand, vo2PredictedMin: p.vo2PredictedMin)
             }
             var edition: Int? = nil
             if let seriesKey, let key = seriesKey(r) {

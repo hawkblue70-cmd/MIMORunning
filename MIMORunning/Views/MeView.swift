@@ -419,13 +419,13 @@ struct MeView: View {
         return engine.backtest.compactMap { r in
             guard let p = r.predictedMin, let e = r.errorPct else { return nil }
             // 워치 VO2max 환산표 예측 — [VO2예측] 로그와 같은 기준(대회 전날까지 60일 내, 기온 무관)
-            let vo2Err = mrVO2Before(vo2, raceDate: r.date)
+            let vo2Min = mrVO2Before(vo2, raceDate: r.date)
                 .flatMap { mrTimeForVDOT($0.value, distanceM: mrDistanceForLabel(r.label)) }
-                .map { ($0 - r.actualMin) / r.actualMin * 100 }
             return RaceRecordList.PredictionInput(date: r.date,
                                                   distanceKm: mrDistanceForLabel(r.label) / 1000,
                                                   predictedMin: p, errorPct: e, inBand: r.inBand,
-                                                  vo2ErrorPct: vo2Err)
+                                                  vo2ErrorPct: vo2Min.map { ($0 - r.actualMin) / r.actualMin * 100 },
+                                                  vo2PredictedMin: vo2Min)
         }
     }
 

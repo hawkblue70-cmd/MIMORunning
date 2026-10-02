@@ -31,9 +31,11 @@ struct RaceRecordListTests {
 
     private func prediction(_ d: Date, km: Double, predicted: Double,
                             errorPct: Double = 1.0, inBand: Bool = true,
-                            vo2ErrorPct: Double? = nil) -> RaceRecordList.PredictionInput {
+                            vo2ErrorPct: Double? = nil,
+                            vo2PredictedMin: Double? = nil) -> RaceRecordList.PredictionInput {
         RaceRecordList.PredictionInput(date: d, distanceKm: km, predictedMin: predicted,
-                                       errorPct: errorPct, inBand: inBand, vo2ErrorPct: vo2ErrorPct)
+                                       errorPct: errorPct, inBand: inBand, vo2ErrorPct: vo2ErrorPct,
+                                       vo2PredictedMin: vo2PredictedMin)
     }
 
     // MARK: - 행 만들기
@@ -241,6 +243,15 @@ struct RaceRecordListTests {
     }
 
     // MARK: - 워치 VO2max 환산표 비교
+
+    @Test func rowCarriesVO2TablePrediction() {
+        let d = date(2025, 11, 23)
+        let rows = RaceRecordList.rows(
+            runs: [run("A", km: 42.195, d, minutes: 296)],
+            predictions: [prediction(d, km: 42.195, predicted: 284, vo2PredictedMin: 208)],
+            calendar: cal)
+        #expect(rows.first?.prediction?.vo2PredictedMin == 208)
+    }
 
     @Test func vo2ComparisonNeedsTwoPairedRaces() {
         let d1 = date(2026, 3, 15), d2 = date(2026, 10, 25)

@@ -16,6 +16,56 @@ struct RaceRecordRow: View {
         return String(format: "%d.%02d.%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
+    /// 같은 대회를 워치 VO2max 환산표로 예측한 값 — 비교용이라 회색으로만
+    private func vo2Text(_ minutes: Double) -> some View {
+        Text(AppLanguage.shared.s("VO2max 환산표 \(mrFormatDisplay(minutes))",
+                                  "VO2max table \(mrFormatDisplay(minutes))"))
+            .foregroundStyle(.secondary)
+    }
+
+    private func dot() -> some View {
+        Text("·").foregroundStyle(.secondary).accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func secondLine(vo2Inline: Bool) -> some View {
+        let L = AppLanguage.shared
+        HStack(spacing: 6) {
+            if let p = row.prediction {
+                Text(L.s("예측 \(mrFormatDisplay(p.predictedMin))", "Predicted \(mrFormatDisplay(p.predictedMin))"))
+                    .foregroundStyle(.secondary)
+                dot()
+                Text(p.inBand ? L.s("구간 안", "In range") : L.s("구간 밖", "Out of range"))
+                    .foregroundStyle(p.inBand ? Theme.positive : Self.warn)
+                if vo2Inline, let v = p.vo2PredictedMin {
+                    dot()
+                    vo2Text(v)
+                }
+            }
+            if let n = row.editionCount {
+                if row.prediction != nil { dot() }
+                Text(L.s("\(n)회째", "#\(n)"))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            if row.hasPlan {
+                Button { onTapPlan?() } label: {
+                    Text(L.s("계획", "Plan"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L.s("계획 보기", "View plan"))
+            }
+        }
+        // 한 줄 판정용 — 내린 쪽은 원래처럼 줄바꿈 허용
+        .lineLimit(vo2Inline ? 1 : nil)
+    }
+
     private var hasSecondLine: Bool {
         row.prediction != nil || row.editionCount != nil || row.hasPlan
     }
@@ -57,36 +107,12 @@ struct RaceRecordRow: View {
             }
             .accessibilityElement(children: .combine)
             if hasSecondLine {
-                HStack(spacing: 6) {
-                    if let p = row.prediction {
-                        Text(L.s("예측 \(mrFormatDisplay(p.predictedMin))", "Predicted \(mrFormatDisplay(p.predictedMin))"))
-                            .foregroundStyle(.secondary)
-                        Text("·").foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                        Text(p.inBand ? L.s("구간 안", "In range") : L.s("구간 밖", "Out of range"))
-                            .foregroundStyle(p.inBand ? Theme.positive : Self.warn)
-                    }
-                    if let n = row.editionCount {
-                        if row.prediction != nil {
-                            Text("·").foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                        }
-                        Text(L.s("\(n)회째", "#\(n)"))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                    if row.hasPlan {
-                        Button { onTapPlan?() } label: {
-                            Text(L.s("계획", "Plan"))
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.85))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(L.s("계획 보기", "View plan"))
+                // 폭이 모자라면(회째·계획 버튼까지 붙은 줄) VO2max 환산표를 다음 줄로 내린다
+                ViewThatFits(in: .horizontal) {
+                    secondLine(vo2Inline: true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        secondLine(vo2Inline: false)
+                        if let v = row.prediction?.vo2PredictedMin { vo2Text(v) }
                     }
                 }
                 .font(.system(size: 11))
