@@ -3,7 +3,7 @@ import Foundation
 @testable import MIMORunning
 
 /// `RunSummaryBuilder` 배선 검증 — 리듬 카드가 하던 ~15개 입력 조립을 이 빌더 하나로 옮긴 뒤에도
-/// 같은 러닝이 같은 총평 5줄을 내는지 확인한다. 세부 문구는 `RunSummaryTests`가 이미 촘촘히 검사하므로
+/// 같은 러닝이 같은 총평 줄을 내는지 확인한다. 세부 문구는 `RunSummaryTests`가 이미 촘촘히 검사하므로
 /// 여기서는 축 순서·핵심 근거 한둘만 재확인한다.
 @Suite("RunSummaryBuilder 조립", .korean)
 @MainActor
@@ -99,12 +99,14 @@ struct RunSummaryBuilderTests {
         )
     }
 
-    @Test func fiveAxesInOrderWithHeatAndStreakEvidence() {
+    /// 100분 거리주라 롱런 후반 진단(71635df) '후반' 줄이 심박 다음에 붙는다 — 스플릿 페이스·심박이 끝까지 같아 "끝까지 유지".
+    @Test func sixAxesInOrderWithHeatAndStreakEvidence() {
         let lines = RunSummaryBuilder.lines(makeContext())
-        #expect(lines.map(\.axis) == ["러닝폼", "거리 적응", "심박", "훈련부하", "유산소"])
+        #expect(lines.map(\.axis) == ["러닝폼", "거리 적응", "심박", "후반", "훈련부하", "유산소"])
         let hr = lines[2]
         #expect(hr.evidence?.contains("25°C(더위 +8)") == true)
-        let load = lines[3]
+        #expect(lines[3].state == "끝까지 유지")
+        let load = lines[4]
         #expect(load.state.contains("4일 연속"))
     }
 }

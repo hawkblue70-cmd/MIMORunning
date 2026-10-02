@@ -2,7 +2,8 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-/// 폼 카드 추세 문단(케이던스+지면접촉 결합) — 보폭 방향은 케이던스에서, 탄력은 지면·공중 시간에서 읽는다.
+/// 폼 카드 추세 문단(케이던스+지면접촉 결합) — 보폭 방향은 케이던스에서, "짧은 접지" 결론은 지면·공중 시간에서 읽는다.
+/// (46b92d2 말투 정리에서 꾸밈말 "가볍고 탄력 있게"를 사실 문장 "더 짧은 접지로 달리고"로 바꿨다.)
 /// 문자열 검사는 `.korean` 트레이트로 언어를 태스크 로컬에 고정.
 @Suite("MRFormStyle 추세 문단", .korean)
 struct FormTrendParagraphTests {
@@ -26,25 +27,25 @@ struct FormTrendParagraphTests {
         inEnglish { mrFormObservation(shifts, refCadence: refCadence, runCadenceResidual: run)?.text ?? "" }
     }
 
-    // MARK: - 버그 2: 보폭은 케이던스 방향, 탄력은 지면·공중 시간
+    // MARK: - 버그 2: 보폭은 케이던스 방향, 짧은 접지 결론은 지면·공중 시간
 
-    /// cad +3 · gct −8 @170 → 걸음 주기 −6.2ms, 공중 +1.8ms → 잦은 걸음 + 탄력. "더 큰 한 걸음"은 나오면 안 된다.
-    @Test func cadenceUpGctDown_isQuickerAndSpringy() {
+    /// cad +3 · gct −8 @170 → 걸음 주기 −6.2ms, 공중 +1.8ms → 잦은 걸음 + 짧은 접지 결론. "더 큰 한 걸음"은 나오면 안 된다.
+    @Test func cadenceUpGctDown_isQuickerAndShorterContact() {
         let t = ko([cad(3), gct(-8)])
         #expect(t == "같은 페이스에서 케이던스가 3개월 새 3spm 올라가고, 지면접촉이 8ms 짧아졌습니다.\n조금 더 잦은 걸음이 되고 공중 시간은 2ms 늘었습니다.\n같은 페이스를 더 짧은 접지로 달리고 있다는 뜻입니다.")
         #expect(t.contains("잦은"))
-        #expect(t.contains("탄력"))
+        #expect(t.contains("짧은 접지로"))
         #expect(!t.contains("더 큰"))
         #expect(t.split(separator: "\n").count == 3)
     }
 
-    /// cad −3 · gct +8 → 공중 −1.8ms → 큰 걸음 + "오래 딛고". 탄력·위험 표현 없음.
+    /// cad −3 · gct +8 → 공중 −1.8ms → 큰 걸음 + "오래 딛고". 짧은 접지 결론·위험 표현 없음.
     @Test func cadenceDownGctUp_isLongerStepsAndLongerContact() {
         let t = ko([cad(-3), gct(8)])
         #expect(t.contains("큰 걸음"))
         #expect(t.contains("지면에 머무는 시간이 늘었습니다"))
         #expect(t.contains("조금 더 오래 딛고"))
-        #expect(!t.contains("탄력"))
+        #expect(!t.contains("짧은 접지"))
         #expect(!t.contains("잦은"))
         #expect(!t.contains("부상") && !t.contains("위험"))
     }
@@ -62,18 +63,18 @@ struct FormTrendParagraphTests {
         let t = ko([cad(6), gct(-8)])
         #expect(t.contains("공중 시간은 4ms 줄었습니다"))
         #expect(t.contains("같은 페이스를 더 잦은 걸음으로 만들고 있다는 뜻입니다"))
-        #expect(!t.contains("탄력"))
+        #expect(!t.contains("짧은 접지"))
         // 기준 케이던스가 낮으면 걸음 주기 변화가 커진다: @150 → −16ms, 공중 −8ms
         let t2 = ko([cad(6), gct(-8)], refCadence: 150)
         #expect(t2.contains("공중 시간은 8ms 줄었습니다"))
     }
 
-    /// cad −4 · gct −3 → 걸음 주기 +8.3ms, 공중 +11.3ms → 큰 걸음이면서 지면↓·공중↑ → 탄력 결론. (gct는 |Δ| ≥ 3ms여야 실증)
-    @Test func cadenceDownGctDown_isLongerStepsAndSpringy() {
+    /// cad −4 · gct −3 → 걸음 주기 +8.3ms, 공중 +11.3ms → 큰 걸음이면서 지면↓·공중↑ → 짧은 접지 결론. (gct는 |Δ| ≥ 3ms여야 실증)
+    @Test func cadenceDownGctDown_isLongerStepsAndShorterContact() {
         let t = ko([cad(-4), gct(-3)])
         #expect(t.contains("큰 걸음"))
         #expect(t.contains("공중 시간은 11ms 늘었습니다"))
-        #expect(t.contains("탄력"))
+        #expect(t.contains("짧은 접지로"))
     }
 
     @Test func englishVariant() {
@@ -104,7 +105,7 @@ struct FormTrendParagraphTests {
 
     @Test func runSlightlyBelow_noTail() {
         let t = ko([cad(3, recentMean: 2.0), gct(-8)], run: 0.5)   // 끝점 − 2 ≤ r < 끝점 − 1
-        #expect(t.hasSuffix("만들고 있다는 뜻입니다."))
+        #expect(t.hasSuffix("짧은 접지로 달리고 있다는 뜻입니다."))
         #expect(!t.contains("이 러닝"))
     }
 

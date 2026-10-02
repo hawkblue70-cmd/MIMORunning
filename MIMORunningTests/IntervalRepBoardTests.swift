@@ -44,10 +44,11 @@ struct IntervalRepBoardTests {
         #expect(b.reps[0].index == 1)
         #expect(b.reps[3].paceSecPerKm == 287)
         #expect(b.reps[4].avgHeartRate == 157)
-        // 1회차 끝 = 준비 1000 + 운동 1000 = 2000m / 총 6800m(준비 1000 + 운동 5000 + 회복 800 + 정리 1000)
-        #expect(abs(b.reps[0].revealFraction - 2000.0 / 6800.0) < 1e-9)
-        // 마지막 회차 끝 = 6800 − 정리 1000 = 5800
-        #expect(abs(b.reps[4].revealFraction - 5800.0 / 6800.0) < 1e-9)
+        // 1회차 끝 = 준비 1000 + 운동 1000 = 2000m / 총 7800m(준비 1000 + 운동 5000 + 회복 800 + 정리 1000)
+        #expect(t.m == 7800)
+        #expect(abs(b.reps[0].revealFraction - 2000.0 / 7800.0) < 1e-9)
+        // 마지막 회차 끝 = 7800 − 정리 1000 = 6800
+        #expect(abs(b.reps[4].revealFraction - 6800.0 / 7800.0) < 1e-9)
         #expect(b.reps.map(\.revealFraction) == b.reps.map(\.revealFraction).sorted())
     }
 
