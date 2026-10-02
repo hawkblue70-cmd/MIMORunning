@@ -211,7 +211,7 @@ struct CardIntervalChart: View {
                         .foregroundStyle(Color.white.opacity(0.10))
                     AxisValueLabel {
                         if let sec = val.as(Double.self) {
-                            Text(String(format: "%d'%02d\"", Int(sec) / 60, Int(sec) % 60))
+                            Text(String(format: "%d'%02d\"", Int(sec.rounded()) / 60, Int(sec.rounded()) % 60))
                                 .font(.system(size: 6.5 * labelScale))
                                 .foregroundStyle(Color.white.opacity(0.80))
                         }

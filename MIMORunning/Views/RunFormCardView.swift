@@ -432,8 +432,8 @@ struct RunFormCardView: View {
     // MARK: - Insight Slot
 
     private func paceString(_ secPerKm: Double) -> String {
-        let m = Int(secPerKm) / 60
-        let s = Int(secPerKm) % 60
+        let m = Int(secPerKm.rounded()) / 60
+        let s = Int(secPerKm.rounded()) % 60
         return String(format: "%d'%02d\"", m, s)
     }
 

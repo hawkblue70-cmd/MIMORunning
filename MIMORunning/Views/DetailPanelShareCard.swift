@@ -256,7 +256,7 @@ struct DetailPanelShareCard: View {
     /// "6'21\"" — 초/km를 스탬프와 같은 표기로. 마지막 프레임이 정지 카드와 한 자리도 어긋나지 않게 같은 반올림을 쓴다.
     private func paceText(_ secPerKm: Double) -> String {
         guard secPerKm.isFinite, secPerKm > 0 else { return "--'--\"" }
-        let s = Int(secPerKm)
+        let s = Int(secPerKm.rounded())
         return String(format: "%d'%02d\"", s / 60, s % 60)
     }
 

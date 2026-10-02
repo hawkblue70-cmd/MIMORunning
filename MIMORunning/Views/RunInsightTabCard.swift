@@ -3434,7 +3434,7 @@ private struct PerformanceInsightCard: View {
 
                 // X-axis labels (slow left / fast right — x-axis is inverted)
                 func fmtPace(_ sec: Double) -> String {
-                    let m = Int(sec) / 60; let s = Int(sec) % 60
+                    let m = Int(sec.rounded()) / 60; let s = Int(sec.rounded()) % 60
                     return String(format: "%d'%02d\"", m, s)
                 }
                 ctx.draw(
@@ -3873,7 +3873,7 @@ private struct PerformanceInsightCard: View {
                     let wcText = warmCool.map { seg -> String in
                         let lbl = seg.stepLabel ?? ""
                         if let p = seg.paceSecPerKm {
-                            return "\(lbl) \(String(format: "%d'%02d\"", Int(p)/60, Int(p)%60))"
+                            return "\(lbl) \(String(format: "%d'%02d\"", Int(p.rounded())/60, Int(p.rounded())%60))"
                         }
                         return lbl
                     }.joined(separator: "  ·  ")
@@ -3886,7 +3886,7 @@ private struct PerformanceInsightCard: View {
                 // 운동·회복 rows
                 ForEach(Array(mainSegs.enumerated()), id: \.0) { _, seg in
                     let isWork = seg.stepLabel == "운동"
-                    let paceStr = seg.paceSecPerKm.map { String(format: "%d'%02d\"", Int($0)/60, Int($0)%60) } ?? ""
+                    let paceStr = seg.paceSecPerKm.map { String(format: "%d'%02d\"", Int($0.rounded())/60, Int($0.rounded())%60) } ?? ""
                     let norm: Double = {
                         guard let pace = seg.paceSecPerKm else { return 0.08 }
                         return max(0.08, (maxPace - pace) / paceRange)

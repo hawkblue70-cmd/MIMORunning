@@ -2892,7 +2892,7 @@ struct VideoExportService {
                         var lines: [String] = []
                         if let distM = seg.distanceM, distM > 0 {
                             let pSec = dur / (distM / 1000)
-                            lines.append("\(Int(pSec) / 60)'\(String(format: "%02d", Int(pSec) % 60))\"")
+                            lines.append("\(Int(pSec.rounded()) / 60)'\(String(format: "%02d", Int(pSec.rounded()) % 60))\"")
                         }
                         if let hr = seg.avgHeartRate  { lines.append("\(hr)♥") }
                         if let cd = seg.avgCadence    { lines.append("\(cd)spm") }

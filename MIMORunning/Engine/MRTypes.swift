@@ -232,8 +232,8 @@ func mrFormatDisplay(_ minutes: Double) -> String {
 }
 
 func mrFormatPace(_ secPerKm: Double) -> String {
-    // ⚠ 버림(Int, 반올림 아님) + '/" 기호 — Activity.formattedPace와 동일.
-    //   반올림이 다르면 같은 러닝이 목록에서 6'28"인데 카드에서 6:29로 보인다.
-    let s = Int(secPerKm)
+    // ⚠ 반올림 + '/" 기호 — Activity.formattedPace와 동일(2026-10-02 버림→반올림 통일).
+    //   기준이 다르면 같은 러닝이 카드에선 6'16", 이번 주 문장에선 6'17"로 보인다.
+    let s = Int(secPerKm.rounded())
     return String(format: "%d'%02d\"", s / 60, s % 60)
 }

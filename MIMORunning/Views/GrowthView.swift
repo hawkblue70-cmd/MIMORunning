@@ -1751,7 +1751,7 @@ struct GrowthView: View {
         }
         let pf: (Double?) -> String = { sec in
             guard let s = sec else { return "—" }
-            return String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60)
+            return String(format: "%d'%02d\"", Int(s.rounded()) / 60, Int(s.rounded()) % 60)
         }
         for gap in gaps {
             print("[공백] \(ymd(gap.start)) ~ \(ymd(gap.end)) (\(gap.days)일) | 전 페이스 \(pf(gap.prePace)) · 후 페이스 \(pf(gap.postPace))")

@@ -553,7 +553,7 @@ enum RunInsightEngine {
         let diff    = paces.last! - paces.first!  // positive = slower at end
         let absDiff = Int(abs(diff).rounded())
         let countStr   = "\(workSegs.count)"
-        let avgPaceStr = String(format: "%d'%02d\"", Int(mean) / 60, Int(mean) % 60)
+        let avgPaceStr = String(format: "%d'%02d\"", Int(mean.rounded()) / 60, Int(mean.rounded()) % 60)
         let diffStr    = "\(absDiff)초"
 
         let tone: InsightTone; let badge: String; let msg: String
@@ -659,7 +659,7 @@ enum RunInsightEngine {
         guard mean > 0 else { return nil }
         let sd    = (paces.map { pow($0 - mean, 2) }.reduce(0.0, +) / Double(paces.count)).squareRoot()
         let sdInt = Int(sd.rounded())
-        let avgPaceStr = String(format: "%d'%02d\"", Int(mean) / 60, Int(mean) % 60)
+        let avgPaceStr = String(format: "%d'%02d\"", Int(mean.rounded()) / 60, Int(mean.rounded()) % 60)
         let sdStr      = "\(sdInt)초"
 
         let tone: InsightTone; let badge: String; let msg: String
@@ -818,7 +818,7 @@ enum RunInsightEngine {
         let diffToShow = heatExplains ? diff : raw
         guard heatExplains || abs(diffToShow) > 5 else { return nil }
 
-        let currentStr = String(format: "%d'%02d\"", Int(currentPace) / 60, Int(currentPace) % 60)
+        let currentStr = String(format: "%d'%02d\"", Int(currentPace.rounded()) / 60, Int(currentPace.rounded()) % 60)
         var parts: [String] = []
         var highlights: [String] = [currentStr]
         var tone: InsightTone = .neutral

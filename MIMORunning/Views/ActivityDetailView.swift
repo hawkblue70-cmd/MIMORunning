@@ -3988,7 +3988,7 @@ struct SplitsPanelChart: View {
         let dAvg: Double = ds.isEmpty ? 0 : ds.map(\.paceSecPerKm).reduce(0, +) / Double(ds.count)
         let dFastIdx: Int? = ds.indices.min(by: { ds[$0].paceSecPerKm < ds[$1].paceSecPerKm })
         let dRange: Double = dMax - dMin
-        let avgSec = Int(dAvg)
+        let avgSec = Int(dAvg.rounded())
         let avgLabel: String = "avg \(avgSec / 60)'\(String(format: "%02d", avgSec % 60))\""
         GeometryReader { geo in
             let hPad: CGFloat = 8

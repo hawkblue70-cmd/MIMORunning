@@ -274,7 +274,7 @@ enum FormBaselineEngine {
         // 아주 느림 행방 추적 — jogMax-verySlowMax 범위 내 표본 수와 상한 초과 제외 건수를 기록
         func _pfPace(_ s: Double) -> String {
             guard s < .greatestFiniteMagnitude / 2 else { return "∞" }
-            return String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60)
+            return String(format: "%d'%02d\"", Int(s.rounded()) / 60, Int(s.rounded()) % 60)
         }
         if cutoffs.mergedBands.contains(.verySlow) {
             print("[Baseline] 아주 느림 — 병합됨 (느린 편과 경계 차이 <30초)")
@@ -445,7 +445,7 @@ enum FormBaselineEngine {
         #if DEBUG
         let _pf: (Double) -> String = { s in
             guard s < Double.greatestFiniteMagnitude / 2 else { return "∞" }
-            return String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60)
+            return String(format: "%d'%02d\"", Int(s.rounded()) / 60, Int(s.rounded()) % 60)
         }
         let _activeNames = PaceBand.allCases.compactMap { result.bands[$0] != nil ? $0.rawValue : nil }
         let _aboveMax = all12.filter { $0.paceSecPerKm > result.cutoffs.verySlowMax }.count
@@ -480,7 +480,7 @@ enum FormBaselineEngine {
             print("[Baseline] 캐시 사용 (계산일: \(c.computedAt), bands=\(c.bands.count))")
             let _pf: (Double) -> String = { s in
                 guard s < .greatestFiniteMagnitude / 2 else { return "∞" }
-                return String(format: "%d'%02d\"", Int(s)/60, Int(s)%60)
+                return String(format: "%d'%02d\"", Int(s.rounded())/60, Int(s.rounded())%60)
             }
             let _list = PaceBand.allCases.compactMap { b in
                 c.bands[b].map { "\(b.rawValue)(n=\($0.sampleCount)\($0.isJudgeable ? "" : "·불가"))" }
@@ -871,7 +871,7 @@ extension FormBaselineEngine {
     static func logBaseline(_ b: RunningFormBaseline) {
         func pf(_ s: Double) -> String {
             guard s < .greatestFiniteMagnitude / 2 else { return "∞" }
-            return String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60)
+            return String(format: "%d'%02d\"", Int(s.rounded()) / 60, Int(s.rounded()) % 60)
         }
         let c = b.cutoffs
         print("═══ [Baseline] \(b.computedAt) ═══")

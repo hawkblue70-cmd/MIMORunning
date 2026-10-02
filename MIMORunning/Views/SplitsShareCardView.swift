@@ -247,7 +247,7 @@ struct SplitsShareCardView: View {
     }
 
     private func formatPace(_ secs: Double) -> String {
-        let s = Int(secs)
+        let s = Int(secs.rounded())
         return String(format: "%d'%02d\"", s / 60, s % 60)
     }
 
@@ -801,7 +801,7 @@ struct IntervalsShareCardView: View {
     }
 
     private func formatPace(_ secs: Double) -> String {
-        let s = Int(secs); return String(format: "%d'%02d\"", s / 60, s % 60)
+        let s = Int(secs.rounded()); return String(format: "%d'%02d\"", s / 60, s % 60)
     }
 
     private static let standardDistances = [100, 200, 300, 400, 500, 600, 800, 1000, 1200, 1500, 1600, 2000, 3000, 4000, 5000]

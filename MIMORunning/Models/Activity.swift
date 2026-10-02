@@ -80,7 +80,7 @@ struct Activity: Identifiable, Hashable {
 
     var formattedPace: String? {
         guard let sec = paceSecPerKm else { return nil }
-        let s = Int(sec)
+        let s = Int(sec.rounded())
         return String(format: "%d'%02d\"", s / 60, s % 60)
     }
 
@@ -254,7 +254,7 @@ struct IntervalSegment: Identifiable, Codable {
 
     var formattedPace: String? {
         guard let sec = paceSecPerKm else { return nil }
-        return String(format: "%d'%02d\"", Int(sec) / 60, Int(sec) % 60)
+        return String(format: "%d'%02d\"", Int(sec.rounded()) / 60, Int(sec.rounded()) % 60)
     }
 
     var formattedDistance: String? {
@@ -285,7 +285,7 @@ struct SplitData: Identifiable, Codable {
     var paceSecPerKm: Double { duration / (distanceM / 1000) }
 
     var formattedPace: String {
-        let sec = Int(paceSecPerKm)
+        let sec = Int(paceSecPerKm.rounded())
         return String(format: "%d'%02d\"", sec / 60, sec % 60)
     }
 

@@ -101,7 +101,7 @@ struct SummaryPeriodStats {
     var avgPaceStr: String? {
         guard let secs = avgPacePerKmSec else { return nil }
         let adjusted = useMiles ? secs * 1.60934 : secs
-        let total = Int(adjusted)
+        let total = Int(adjusted.rounded())
         return "\(total / 60)'\(String(format: "%02d", total % 60))\""
     }
 
