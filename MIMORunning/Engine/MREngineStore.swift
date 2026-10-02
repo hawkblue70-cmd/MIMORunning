@@ -375,21 +375,26 @@ final class MREngineStore: ObservableObject {
         }
         let rhr: [(date: Date, value: Double)]
         let rhrAge = rhrLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
-        // 아침 제안(안정시 심박 며칠째 높음)은 어제 값이 필요하다 — 캐시가 24시간 안이어도 어제 값이 없으면 다시 읽는다
+        // 아침 제안(안정시 심박 며칠째 높음)은 어제 값이 필요하다 — 어제 값이 없으면 다시 읽는다.
+        // ⚠ 캐시는 24시간이 아니라 "오늘 읽었나"로 본다: 어제 아침에 읽은 캐시엔 어제 값이 아침 시점 값(하루 중 갱신 전)으로 들어 있어,
+        //   24시간 규칙이면 오늘 아침 판정이 그 덜 된 값을 쓴다(2026-10-02 로그: 저장일 오늘·마지막 값 오늘 → 캐시 히트).
         let rhrHasYesterday: Bool = {
             guard let last = rhrSamples.last?.date else { return false }
             let y = Calendar.current.date(byAdding: .day, value: -1, to: Calendar.current.startOfDay(for: Date()))!
             return last >= y
         }()
         // 어제 값이 원래 없는 사람(워치 안 찬 날)이 매번 다시 읽지 않게 — 재조회는 한 시간에 한 번까지
-        if !rhrSamples.isEmpty && rhrAge < 24 * 3600 && (rhrHasYesterday || rhrAge < 3600) {
+        let rhrFetchedToday = rhrLastFetchedAt.map { Calendar.current.isDateInToday($0) } ?? false
+        if !rhrSamples.isEmpty && rhrFetchedToday && (rhrHasYesterday || rhrAge < 3600) {
             rhr = rhrSamples
             #if DEBUG
             let saveDateStr: String = {
                 let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
                 return rhrLastFetchedAt.map { df.string(from: $0) } ?? "?"
             }()
-            print("[⏱ fetchRestingHR] 캐시 히트(저장일 \(saveDateStr)) · \(rhrSamples.count)건")
+            let lastDf = DateFormatter(); lastDf.dateFormat = "MM-dd"
+            let lastStr = rhrSamples.last.map { lastDf.string(from: $0.date) } ?? "?"
+            print("[⏱ fetchRestingHR] 캐시 히트(저장일 \(saveDateStr)) · \(rhrSamples.count)건 · 마지막 값 \(lastStr)")
             #endif
         } else {
             let t0 = CFAbsoluteTimeGetCurrent()
@@ -398,8 +403,9 @@ final class MREngineStore: ObservableObject {
             rhrLastFetchedAt = fetchedAt
             persistRHR(fetchedAt: fetchedAt, samples: rhr)
             #if DEBUG
-            print(String(format: "[⏱ fetchRestingHR] %.2fs · 조회범위 1200일 · 결과 %d건 · 캐시 미스",
-                         CFAbsoluteTimeGetCurrent() - t0, rhr.count))
+            let lastDf = DateFormatter(); lastDf.dateFormat = "MM-dd"
+            print(String(format: "[⏱ fetchRestingHR] %.2fs · 조회범위 1200일 · 결과 %d건 · 마지막 값 %@ · 캐시 미스",
+                         CFAbsoluteTimeGetCurrent() - t0, rhr.count, rhr.last.map { lastDf.string(from: $0.date) } ?? "?"))
             #endif
         }
 
