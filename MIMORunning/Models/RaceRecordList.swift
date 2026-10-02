@@ -208,7 +208,7 @@ enum RaceRecordList {
                              allSlower: pairs.allSatisfy { $0.vo2 > 0 })
     }
 
-    /// 정확도 줄 아래 한 줄. 해석 없이 숫자만(합쇼체). 비교가 없으면 nil.
+    /// 정확도 상자의 환산표 항목(개조식 — 사용자 요청으로 '~입니다' 없이, 2026-10-02). 비교가 없으면 nil.
     /// 환산표 비교 대회가 정확도 줄과 같은 묶음이 아니면 그 대회들의 앱 오차를 함께 밝힌다.
     static func vo2Sentence(_ acc: Accuracy, english: Bool) -> String? {
         guard let v = acc.vo2 else { return nil }
@@ -216,18 +216,16 @@ enum RaceRecordList {
         let app = String(format: "%.1f", v.appMeanAbsErrorPct)
         var s: String
         if v.count == acc.count {
-            s = english
-                ? "Predicted from watch VO2max tables, the same races would have been off by \(vo2)% on average."
-                : "같은 대회를 워치 VO2max 환산표로 예측했다면 평균 오차 \(vo2)%입니다."
+            s = english ? "VO2max table: avg error \(vo2)%"
+                        : "VO2max 환산표: 평균 오차 \(vo2)%"
         } else {
-            s = english
-                ? "For the \(v.count) races with watch VO2max, VO2max tables would have been off by \(vo2)% on average; this app's predictions for them were off by \(app)%."
-                : "워치 VO2max가 있던 \(v.count)건을 환산표로 예측했다면 평균 오차 \(vo2)%입니다. 같은 \(v.count)건의 앱 예측은 \(app)%입니다."
+            s = english ? "VO2max table (\(v.count) races with VO2max): avg error \(vo2)% · this app \(app)% on the same races"
+                        : "VO2max 환산표(VO2max 있는 \(v.count)건): 평균 오차 \(vo2)% · 같은 \(v.count)건 앱 \(app)%"
         }
         if v.allFaster {
-            s += english ? " All \(v.count) were faster than actual." : " \(v.count)건 모두 예측이 실제보다 빨랐습니다."
+            s += english ? " · all \(v.count) faster than actual" : " · \(v.count)건 모두 실제보다 빠름"
         } else if v.allSlower {
-            s += english ? " All \(v.count) were slower than actual." : " \(v.count)건 모두 예측이 실제보다 느렸습니다."
+            s += english ? " · all \(v.count) slower than actual" : " · \(v.count)건 모두 실제보다 느림"
         }
         return s
     }

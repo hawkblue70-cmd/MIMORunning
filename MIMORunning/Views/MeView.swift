@@ -429,6 +429,14 @@ struct MeView: View {
         }
     }
 
+    /// 정확도 상자의 개조식 항목 — 줄이 넘어가도 글머리 기호 뒤로 맞춘다
+    private func raceAccuracyBullet(_ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text("•")
+            Text(text)
+        }
+    }
+
     @ViewBuilder
     private var raceRecordsContent: some View {
         let L = AppLanguage.shared
@@ -459,17 +467,18 @@ struct MeView: View {
                     .padding(.horizontal, 16)
                 }
                 if let acc = RaceRecordList.accuracy(runs: runs, predictions: predictions) {
+                    // 개조식 — '~입니다' 없이(사용자 요청, 2026-10-02)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(L.s("예측 정확도 · 구간 안 \(acc.hit)/\(acc.count) · 평균 오차 \(String(format: "%.1f", acc.meanAbsErrorPct))%",
-                                 "Prediction accuracy · \(acc.hit)/\(acc.count) in range · avg error \(String(format: "%.1f", acc.meanAbsErrorPct))%"))
+                        raceAccuracyBullet(L.s("예측 정확도: 구간 안 \(acc.hit)/\(acc.count) · 평균 오차 \(String(format: "%.1f", acc.meanAbsErrorPct))%",
+                                               "Prediction accuracy: \(acc.hit)/\(acc.count) in range · avg error \(String(format: "%.1f", acc.meanAbsErrorPct))%"))
                         if let vo2Line = RaceRecordList.vo2Sentence(acc, english: L.isEnglish) {
-                            Text(vo2Line)
+                            raceAccuracyBullet(vo2Line)
                         }
-                        Text(L.s("예측은 그 대회 전날까지의 데이터만으로 다시 계산한 값입니다.",
-                                 "Predictions are recalculated using only data from before each race."))
+                        raceAccuracyBullet(L.s("예측은 대회 전날까지의 데이터로만 다시 계산",
+                                               "Predictions recalculated using only data from before each race"))
                         if acc.count < 3 {
-                            Text(L.s("표본이 \(acc.count)건뿐입니다. 예측은 참고용이고, 특히 마라톤은 ±20분 이상 벌어질 수 있습니다.",
-                                     "Only \(acc.count) sample(s). Estimates only — marathons can vary by ±20 min or more."))
+                            raceAccuracyBullet(L.s("표본 \(acc.count)건 — 참고용, 마라톤은 ±20분 이상 차이 가능",
+                                                   "Only \(acc.count) sample(s) — estimates only, marathons can vary by ±20 min or more"))
                         }
                     }
                     .font(.caption)

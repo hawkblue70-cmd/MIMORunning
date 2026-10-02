@@ -274,7 +274,7 @@ struct RaceRecordListTests {
         #expect(v == RaceRecordList.VO2Comparison(count: 2, appMeanAbsErrorPct: 4.0, vo2MeanAbsErrorPct: 15.0,
                                                   allFaster: true, allSlower: false))
         #expect(RaceRecordList.vo2Sentence(acc!, english: false)
-                == "같은 대회를 워치 VO2max 환산표로 예측했다면 평균 오차 15.0%입니다. 2건 모두 예측이 실제보다 빨랐습니다.")
+                == "VO2max 환산표: 평균 오차 15.0% · 2건 모두 실제보다 빠름")
     }
 
     // VO2max가 일부 대회에만 있으면 그 대회들의 앱 오차를 따로 밝힌다 — 다른 묶음끼리 비교하지 않게
@@ -290,7 +290,7 @@ struct RaceRecordListTests {
         #expect(acc?.vo2 == RaceRecordList.VO2Comparison(count: 2, appMeanAbsErrorPct: 2.0, vo2MeanAbsErrorPct: 8.0,
                                                          allFaster: false, allSlower: false))
         #expect(RaceRecordList.vo2Sentence(acc!, english: false)
-                == "워치 VO2max가 있던 2건을 환산표로 예측했다면 평균 오차 8.0%입니다. 같은 2건의 앱 예측은 2.0%입니다.")
+                == "VO2max 환산표(VO2max 있는 2건): 평균 오차 8.0% · 같은 2건 앱 2.0%")
     }
 
     // MARK: - 토글 기본값
