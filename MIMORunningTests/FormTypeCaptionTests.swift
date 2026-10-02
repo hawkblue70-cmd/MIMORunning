@@ -85,12 +85,31 @@ struct FormTypeCaptionTests {
         }
     }
 
-    @Test func belowRangeNoteLongTypesUnchanged() {
+    @Test func belowRangeNoteLongTypes() {
         ko {
             for t: WorkoutType in [.longRun, .lsd, .distanceRun, .general, .easy] {
-                #expect(FormNarrative.belowRangeNote(type: t, metric: .groundContact) == "장거리라 평소 범위 아래에 머물러요", "\(t)")
+                // 지면접촉·수직진폭 아래 = 좋은 쪽 — 거리 탓을 붙이지 않는다
+                #expect(FormNarrative.belowRangeNote(type: t, metric: .groundContact) == "평소보다 짧게 유지됐어요", "\(t)")
+                #expect(FormNarrative.belowRangeNote(type: t, metric: .verticalOsc) == "평소보다 낮게 유지됐어요", "\(t)")
                 #expect(FormNarrative.belowRangeNote(type: t, metric: .cadence) == "장거리라 평소 범위 아래에 머물러요", "\(t)")
+                #expect(FormNarrative.belowRangeNote(type: t, metric: .stride) == "장거리라 평소 범위 아래에 머물러요", "\(t)")
             }
+        }
+    }
+
+    /// 다른 러너 6km 이지런(2026-10-02) — 초반 6'52" → 후반 6'27"(25초 빠름)인데 "장거리라 아래"가 떴다.
+    @Test func belowRangeNoteLateFasterExplainsPace() {
+        ko {
+            #expect(FormNarrative.belowRangeNote(type: .easy, metric: .groundContact, lateFasterSec: 25)
+                    == "후반 페이스가 빨라 범위 아래에 머물러요")
+            #expect(FormNarrative.belowRangeNote(type: .easy, metric: .cadence, lateFasterSec: 10)
+                    == "후반 페이스가 빨라 범위를 벗어났어요")
+            // 10초 미만이면 페이스 탓이 아니다
+            #expect(FormNarrative.belowRangeNote(type: .easy, metric: .groundContact, lateFasterSec: 9)
+                    == "평소보다 짧게 유지됐어요")
+            // 후반이 느려졌으면(음수) 당연히 페이스 탓이 아니다
+            #expect(FormNarrative.belowRangeNote(type: .longRun, metric: .cadence, lateFasterSec: -20)
+                    == "장거리라 평소 범위 아래에 머물러요")
         }
     }
 

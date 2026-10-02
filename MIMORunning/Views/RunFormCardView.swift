@@ -1410,9 +1410,11 @@ struct RunFormCardView: View {
         if !displayKms.isEmpty {
             displayKms[displayKms.count - 1] = totalKm
             // 직전 라벨이 총 거리와 너무 가까우면 제거 (겹침 방지)
+            // 마지막이 소수 라벨("5.9")이면 글자가 넓어 더 떨어져 있어야 한다 — 정수 0.7칸 · 소수 0.9칸
             if displayKms.count >= 2 {
                 let gap = totalKm - displayKms[displayKms.count - 2]
-                if gap < kmStep * 0.7 {
+                let lastIsDecimal = abs(totalKm - totalKm.rounded()) >= 0.05
+                if gap < kmStep * (lastIsDecimal ? 0.9 : 0.7) {
                     displayKms.remove(at: displayKms.count - 2)
                 }
             }
@@ -1542,8 +1544,9 @@ struct RunFormCardView: View {
                                     .foregroundStyle(Color.white.opacity(0.42))
                             }
                         } else {
-                            let fmtKm = v.truncatingRemainder(dividingBy: 1) < 0.05
-                                ? String(format: "%.0f", v)
+                            // 정수에 가까우면 정수로 — 5.99km를 "6.0"으로 찍으면 넓어진 글자가 앞 "5"에 붙어 "56.0"으로 읽혔다
+                            let fmtKm = abs(v - v.rounded()) < 0.05
+                                ? String(format: "%.0f", v.rounded())
                                 : String(format: "%.1f", v)
                             if isLast {
                                 AxisValueLabel(anchor: .topTrailing) {
@@ -1568,7 +1571,12 @@ struct RunFormCardView: View {
             if isLongDistanceContext, let bandLo = s.bandLo {
                 let belowCount = s.points.filter { $0.value < bandLo }.count
                 if s.points.count > 0, Double(belowCount) / Double(s.points.count) >= 0.30 {
-                    Text(FormNarrative.belowRangeNote(type: workoutType, metric: s.dir))
+                    // 초반 − 후반 페이스(초/km) — 양수면 후반이 빨랐다. 단계 결과가 없으면 nil(종류로만 판단).
+                    let lateFasterSec: Double? = formPhaseResult.flatMap { r in
+                        let e = r.phases.early.paceSecPerKm, l = r.phases.late.paceSecPerKm
+                        return (e > 0 && l > 0) ? e - l : nil
+                    }
+                    Text(FormNarrative.belowRangeNote(type: workoutType, metric: s.dir, lateFasterSec: lateFasterSec))
                         .font(.system(size: 8.5))
                         .foregroundStyle(Color.white.opacity(0.58))
                 }

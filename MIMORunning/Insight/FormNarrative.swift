@@ -457,16 +457,29 @@ extension FormNarrative {
         return L.s("장거리인데 후반까지 폼이 버텼어요", "Form held through the long run")
     }
 
+    /// 후반이 초반보다 이만큼(초/km) 이상 빨랐으면 범위 이탈의 원인을 페이스로 본다 — 종류가 후반 가속이 아니어도.
+    static let belowRangeLateFasterSec = 10.0
+
     /// 폼 추이 차트(km별) 하단 주석 — 포인트의 30% 이상이 평소 범위 아래일 때.
-    /// 후반 가속 유형은 페이스가 원인임을 말하고(GCT는 "아래에 머물러요" = 짧아짐), 그 외는 장거리 문맥 그대로.
-    static func belowRangeNote(type: WorkoutType, metric: Metric) -> String {
+    /// 원인 판단은 기록 우선: 후반 가속 유형이거나 실제로 후반이 초반보다 10초/km↑ 빨랐으면 페이스를 말한다.
+    /// 그 외 지면접촉·수직진폭(낮을수록 좋은 쪽)은 원인을 붙이지 않는다 — 긴 거리는 오히려 지면접촉을 늘리므로
+    /// "장거리라 아래"는 틀린 설명이다(다른 러너 6km 이지런, 2026-10-02). 케이던스·보폭은 장거리 문맥 그대로.
+    /// - Parameter lateFasterSec: 초반 페이스 − 후반 페이스(초/km). 양수 = 후반이 빠름. 단계 결과가 없으면 nil.
+    static func belowRangeNote(type: WorkoutType, metric: Metric, lateFasterSec: Double? = nil) -> String {
         let L = AppLanguage.shared
-        if isPlannedFastFinish(type) {
+        if isPlannedFastFinish(type) || (lateFasterSec ?? 0) >= belowRangeLateFasterSec {
             if metric == .groundContact {
                 return L.s("후반 페이스가 빨라 범위 아래에 머물러요", "Faster late pace — contact stays below the range")
             }
             return L.s("후반 페이스가 빨라 범위를 벗어났어요", "Faster late pace — outside the range")
         }
-        return L.s("장거리라 평소 범위 아래에 머물러요", "Long run — staying below normal range is natural")
+        switch metric {
+        case .groundContact:
+            return L.s("평소보다 짧게 유지됐어요", "Contact stayed shorter than usual")
+        case .verticalOsc:
+            return L.s("평소보다 낮게 유지됐어요", "Bounce stayed lower than usual")
+        case .cadence, .stride:
+            return L.s("장거리라 평소 범위 아래에 머물러요", "Long run — staying below normal range is natural")
+        }
     }
 }
