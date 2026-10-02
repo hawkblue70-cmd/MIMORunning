@@ -699,9 +699,21 @@ struct MileageStreakShareCard: View {
     /// 일 단위(달력 한 달) 카드 — 월 기록으로 총거리·횟수를 위에 크게 싣는다. 12주 보기는 그대로.
     private var isMonthSummary: Bool { period == .day }
 
+    /// 창이 달력 한 달(1일~다음 달 1일)인가 — 이번 달 기본 보기는 "오늘까지 최근 30일" 롤링이라 아니다.
+    private var isCalendarMonthWindow: Bool {
+        let cal = Calendar.current
+        guard cal.component(.day, from: windowStart) == 1,
+              let next = cal.date(byAdding: .month, value: 1, to: cal.startOfDay(for: windowStart)) else { return false }
+        return cal.isDate(windowEnd, inSameDayAs: next)
+    }
+
     /// "9월 기록" — 날짜와 관계없이 항상 기록(2026-09-30 사용자 결정: "결산보다 기록"). 달 이름은 보는 달(windowStart).
+    /// 최근 30일 보기면 "최근 30일 기록"(2026-10-02 사용자: 10/2에 9/2부터 창이라 "9월 기록"으로 잘못 나왔다).
     private var monthTitle: String {
         let L = AppLanguage.shared
+        if !isCalendarMonthWindow {
+            return L.isEnglish ? periodLabel : "\(periodLabel) 기록"
+        }
         if L.isEnglish {
             let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMMM"
             return "\(df.string(from: windowStart)) runs"
