@@ -196,7 +196,8 @@ struct RecordBarChart: View {
         let fastTick = ((r.fast + inset) / 10).rounded(.up) * 10
         let slowTick = ((r.slow - inset) / 10).rounded(.down) * 10
         guard slowTick > fastTick else { return [] }
-        let midTick = ((fastTick + slowTick) / 20).rounded() * 10
+        // 가운데 눈금은 5초 단위 — 10초로 반올림하면 6'20"·6'50" 사이가 6'40"이 돼 간격이 2:1로 어긋났다
+        let midTick = ((fastTick + slowTick) / 10).rounded() * 5
         var seen = Set<Int>()
         return [slowTick, midTick, fastTick].compactMap { pace in
             guard seen.insert(Int(pace)).inserted else { return nil }

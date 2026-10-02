@@ -63,6 +63,10 @@ enum FormPhase {
         let signals: PhaseSignals
         /// 이지 프레임(`FormNarrative.frame(for:) == .easy`)에서 만들어진 결과인가 — 말기 판정의 톤을 바꾼다.
         var isEasyFrame: Bool = false
+        /// 말기 판정에 쓴 평소 범위(표시 정밀도로 반올림). 말기 페이스(평지 환산)로 고른 구간이라
+        /// 폼 카드의 전체 러닝 범위와 다를 수 있어 근거 줄에 숫자로 밝힌다.
+        var lateStrideRange: ClosedRange<Double>? = nil
+        var lateGroundContactRange: ClosedRange<Double>? = nil
         var isHeld: Bool { late == .held }
         /// 이지 프레임에서 케이던스만 내려간 말기는 "무거워짐"이 아니라 편한 날의 자연스러운 변화.
         /// (`.heavier([.cadence, .verticalOsc])`처럼 다른 신호가 섞이면 소프트가 아니다.)
@@ -249,6 +253,14 @@ enum FormPhase {
         return ls < expected * (1 - strideWorsenFraction)
     }
 
+    /// `FormNarrative.status`가 비교에 쓰는 것과 같은 경계(표시 정밀도로 반올림).
+    static func displayRange(_ stat: FormStat?, metric: FormNarrative.Metric) -> ClosedRange<Double>? {
+        guard let stat else { return nil }
+        let lo = FormNarrative.roundedDisplay(stat.lower, metric: metric)
+        let hi = FormNarrative.roundedDisplay(stat.upper, metric: metric)
+        return lo <= hi ? lo...hi : nil
+    }
+
     static func signals(_ p: PhaseStats, _ band: BandStats?) -> Signals {
         Signals(cadence: FormNarrative.status(rawValue: p.cadence, stat: band?.cadence, metric: .cadence),
                 stride: FormNarrative.status(rawValue: p.stride, stat: band?.stride, metric: .stride),
@@ -270,7 +282,8 @@ enum FormPhase {
         let e = p.early, m = p.mid, l = p.late
         let eS = signals(e, bandFor(e.paceSecPerKm * eScale))
         let mS = signals(m, bandFor(m.paceSecPerKm * mScale))
-        let lS = signals(l, bandFor(l.paceSecPerKm * lScale))
+        let lBand = bandFor(l.paceSecPerKm * lScale)
+        let lS = signals(l, lBand)
         guard lS.knownCount >= 2 else { return nil }
 
         // 말기
@@ -324,7 +337,9 @@ enum FormPhase {
                       earlyEndKm: e.endKm, lateStartKm: l.startKm, totalKm: l.endKm,
                       phases: Phases(early: e, mid: m, late: l),
                       signals: PhaseSignals(early: eS, mid: mS, late: lS),
-                      isEasyFrame: easyFrame)
+                      isEasyFrame: easyFrame,
+                      lateStrideRange: displayRange(lBand?.stride, metric: .stride),
+                      lateGroundContactRange: displayRange(lBand?.groundContact, metric: .groundContact))
     }
 
     /// 세 단계에 같은 배율을 쓰는 편의 오버로드 — 기존 단일 스케일 호출부·테스트가 그대로 동작한다.

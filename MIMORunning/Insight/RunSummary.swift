@@ -179,10 +179,13 @@ enum RunSummary {
             switch sig.stride {
             case .inRange:
                 pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위 안", "stride \(s) in range over the last \(lateKm) km"))
+            // 범위 밖이면 비교한 범위를 숫자로 — 말기 페이스 기준 범위라 폼 카드(전체 러닝 기준)의 범위와 다를 수 있다
             case .above:
-                pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위 위", "stride \(s) above range over the last \(lateKm) km"))
+                let r = f.lateStrideRange.map { String(format: "(%.2f~%.2f)", $0.lowerBound, $0.upperBound) } ?? ""
+                pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위\(r) 위", "stride \(s) above range\(r.isEmpty ? "" : " " + r) over the last \(lateKm) km"))
             case .below:
-                pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위 아래", "stride \(s) below range over the last \(lateKm) km"))
+                let r = f.lateStrideRange.map { String(format: "(%.2f~%.2f)", $0.lowerBound, $0.upperBound) } ?? ""
+                pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위\(r) 아래", "stride \(s) below range\(r.isEmpty ? "" : " " + r) over the last \(lateKm) km"))
             case .unknown:
                 break
             }
@@ -190,8 +193,9 @@ enum RunSummary {
         if let gct = late.groundContact, sig.groundContact != .unknown {
             let inRange = sig.groundContact != .above
             let n = Int(gct.rounded())
-            pieces.append(L.s(inRange ? "지면접촉 \(n) 범위 안" : "지면접촉 \(n) 범위 위",
-                              inRange ? "ground contact \(n) in range" : "ground contact \(n) above range"))
+            let r = inRange ? "" : (f.lateGroundContactRange.map { "(\(Int($0.lowerBound))~\(Int($0.upperBound)))" } ?? "")
+            pieces.append(L.s(inRange ? "지면접촉 \(n) 범위 안" : "지면접촉 \(n) 범위\(r) 위",
+                              inRange ? "ground contact \(n) in range" : "ground contact \(n) above range\(r.isEmpty ? "" : " " + r)"))
         }
         return pieces.isEmpty ? nil : pieces.joined(separator: " · ")
     }

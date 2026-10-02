@@ -620,7 +620,7 @@ struct RunSummaryTests {
     @Test func heavierFormSuggestsWatchingLateStride() {
         var i = todayInput(); i.form = heavierForm10km()
         #expect(lines(i)[0].next == "다음 롱런은 같은 거리에서 후반 보폭만 지켜보세요.")
-        #expect(lines(i)[0].evidence == "케이던스 175 유지 · 마지막 3km 보폭 0.85 범위 아래 · 지면접촉 272 범위 위")
+        #expect(lines(i)[0].evidence == "케이던스 175 유지 · 마지막 3km 보폭 0.85 범위(0.88~0.96) 아래 · 지면접촉 272 범위(245~265) 위")
     }
 
     @Test func heavierCadenceSuggestsWatchingCadence() {
