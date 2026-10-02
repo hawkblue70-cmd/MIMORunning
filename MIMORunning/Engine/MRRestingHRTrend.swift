@@ -1,6 +1,6 @@
 import Foundation
 
-/// 성장 탭 '안정시 심박' 추세 — 월별 중앙값 선 + 12개월 이동평균(추세선) + 1년 전 같은 달 대비 변화와 그 뜻.
+/// 성장 탭 '안정시 심박' 추세 — 월별 중앙값 선 + 12개월 이동평균(추세선) + 1년 전 같은 기간 숫자 + 오르내림의 일반 원인.
 ///
 /// 문헌(틀): 지구력 훈련은 안정시 심박을 평균 4~6bpm 낮추고(Reimers 2018 메타분석), 훈련을 쉬면 몇 주 안에 2~9bpm 오른다(디트레이닝 리뷰).
 ///   효과가 작아 계절 흔들림(겨울에 몇 bpm↑)과 크기가 같다 → 추세는 계절을 지운 값으로만 말한다.
@@ -19,55 +19,26 @@ struct MRRestingHRTrend: Equatable, Sendable {
         let date: Date
         let bpm: Double
     }
-    enum Direction: Equatable, Sendable { case down, flat, up }
 
     let months: [Month]          // 표본 MR_RHR_MONTH_MIN_DAYS일 이상인 달만, 오래된 순
     let recent: Double           // 최근 90일 중앙값
     let recentDays: Int
     /// 12개월 이동평균(그 달까지 12개 달력 달 중 MR_RHR_ROLLING_MIN_MONTHS달 이상일 때만) — 차트 점선.
     let rolling: [Point]
-    /// 최근 12개월 각 달 − 1년 전 같은 달의 평균. 짝이 MR_RHR_YOY_MIN_PAIRS개 미만이면 nil.
+    /// 최근 12개월 각 달 − 1년 전 같은 달의 평균(계절 제거). 짝이 MR_RHR_YOY_MIN_PAIRS개 미만이면 nil.
+    /// 화면에는 쓰지 않는다 — 12개월 평균이라 부상·복귀 같은 최근 변화를 늦게 반영한다. 로그·검토용.
     let yearChange: Double?
     let yearPairs: Int
 
-    /// ⚠ 2bpm 문턱은 임의값 — 같은 달 비교의 흔들림보다 크고 문헌 효과(4~6)보다 작게. 실기기 로그로 재검토.
-    var direction: Direction? {
-        guard let c = yearChange else { return nil }
-        if c <= -MR_RHR_TREND_MIN_CHANGE { return .down }
-        if c >= MR_RHR_TREND_MIN_CHANGE { return .up }
-        return .flat
-    }
+    /// 1년 전 같은 90일 중앙값 — 큰 숫자 옆 비교(계절을 맞춘 사실). 표본 부족이면 nil.
+    let recentLY: Double?
 
-    /// 한 줄 사실 — 방향과 폭.
-    var sentence: String? {
-        guard let d = direction, let c = yearChange else { return nil }
-        let n = Int(abs(c).rounded())
-        let L = AppLanguage.shared
-        switch d {
-        case .down: return L.s("1년 전 같은 달보다 평균 \(n)bpm 낮습니다 · 낮아지는 추세",
-                               "\(n) bpm lower than the same months a year ago · trending down")
-        case .up:   return L.s("1년 전 같은 달보다 평균 \(n)bpm 높습니다 · 높아지는 추세",
-                               "\(n) bpm higher than the same months a year ago · trending up")
-        case .flat: return L.s("1년 전 같은 달과 비슷합니다",
-                               "About the same as the same months a year ago")
-        }
-    }
-
-    /// 방향의 뜻 — 일반적으로 알려진 훈련 반응. 개인 건강 판단은 하지 않는다.
-    var meaning: String? {
-        guard let d = direction else { return nil }
-        let L = AppLanguage.shared
-        switch d {
-        case .down:
-            return L.s("지구력 훈련에서 흔히 나타나는 변화입니다. 심장이 한 번 뛸 때 보내는 혈액이 늘어 같은 일을 더 적은 박동으로 합니다. 훈련 연구의 평균 변화는 4~6bpm입니다.",
-                       "A common change with endurance training: each beat pumps more blood, so the same work takes fewer beats. Training studies average 4–6 bpm.")
-        case .up:
-            return L.s("훈련을 줄이거나 쉬면 몇 주 안에 2~9bpm 오를 수 있습니다. 수면 부족·피로·스트레스에도 올라갑니다.",
-                       "Cutting back or pausing training can raise it 2–9 bpm within weeks. Poor sleep, fatigue and stress also raise it.")
-        case .flat:
-            return L.s("훈련으로 낮아진 값은 몇 달 뒤 평평해집니다. 지금 훈련량에서 유지되는 값입니다.",
-                       "Training-driven drops level off after a few months; this is the level your current training holds.")
-        }
+    /// 오르내림의 일반적인 원인 — 판정하지 않고 늘 같은 문장(2026-10-02 사용자 결정).
+    /// ⚠ 앱은 부상·질병·생활 변화를 모른다. 실기기: 2026년 3월 부상 휴식으로 70까지 올랐다가 복귀 후 60으로 내려왔는데,
+    ///   같은 달 비교(+2.8)는 "높아지는 추세"라고 말했다 — 원인은 본인이 그래프를 보고 판단한다.
+    static var explainer: String {
+        AppLanguage.shared.s("훈련이 쌓이면 낮아집니다(훈련 연구 평균 4~6bpm). 쉬거나 부상·질병·수면 부족·스트레스가 있으면 몇 주 안에 2~9bpm 오릅니다. 오르내린 시기를 그때의 훈련·생활과 맞춰 보세요.",
+                             "It drops as training builds up (studies average 4–6 bpm). Rest, injury, illness, poor sleep or stress can raise it 2–9 bpm within weeks. Match the rises and falls to what was happening in your training and life.")
     }
 }
 
@@ -76,7 +47,6 @@ let MR_RHR_WINDOW_MIN_DAYS = 20      // 최근 90일 최소 표본 일수
 let MR_RHR_MIN_MONTHS = 3            // 선을 그릴 최소 달 수
 let MR_RHR_ROLLING_MIN_MONTHS = 10   // 12개월 이동평균에 필요한 최소 달 수(빠진 달이 많으면 계절이 덜 지워진다)
 let MR_RHR_YOY_MIN_PAIRS = 6         // 같은 달 비교 최소 짝 수(최근 12개월 중)
-let MR_RHR_TREND_MIN_CHANGE = 2.0    // 방향을 말할 최소 변화(bpm)
 
 /// 월별 중앙값·12개월 이동평균·1년 전 같은 달 대비 변화. 표본이 모자라면 nil(카드가 조용히 빠진다).
 func mrRestingHRTrend(samples: [(date: Date, value: Double)], asOf: Date) -> MRRestingHRTrend? {
@@ -119,9 +89,15 @@ func mrRestingHRTrend(samples: [(date: Date, value: Double)], asOf: Date) -> MRR
     }
     let yearChange = diffs.count >= MR_RHR_YOY_MIN_PAIRS ? diffs.reduce(0, +) / Double(diffs.count) : nil
 
+    // 1년 전 같은 90일
+    let lyLo = cal.date(byAdding: .year, value: -1, to: recentStart)!
+    let lyHi = cal.date(byAdding: .year, value: -1, to: asOf)!
+    let lyVals = past.filter { $0.date > lyLo && $0.date <= lyHi }.map(\.value)
+
     return MRRestingHRTrend(months: months,
                             recent: mrMedian(recentVals), recentDays: recentVals.count,
-                            rolling: rolling, yearChange: yearChange, yearPairs: diffs.count)
+                            rolling: rolling, yearChange: yearChange, yearPairs: diffs.count,
+                            recentLY: lyVals.count >= MR_RHR_WINDOW_MIN_DAYS ? mrMedian(lyVals) : nil)
 }
 
 /// 단기 상승 구간 수 — 아침 제안 보조 규칙(검토 중)의 발동 빈도 확인용. 로그 전용.

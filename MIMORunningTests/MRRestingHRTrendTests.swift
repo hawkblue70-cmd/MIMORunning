@@ -27,18 +27,16 @@ struct MRRestingHRTrendTests {
         // 2년 넘게 연 6bpm씩 하락 + 계절 곡선
         let samples = daily(from: 760) { ago in 58 + 6 * Double(ago) / 365 + self.season(ago) }
         let t = mrRestingHRTrend(samples: samples, asOf: now)
-        #expect(t?.direction == .down)
         #expect(abs((t?.yearChange ?? 0) + 6) < 0.8)
-        #expect(t?.sentence?.contains("낮아지는 추세") == true)
-        #expect(t?.meaning?.contains("4~6bpm") == true)
+        #expect(t?.recentLY != nil)
         #expect(t?.rolling.isEmpty == false)
     }
 
-    @Test func upTrendHasMeaning() {
-        let samples = daily(from: 760) { ago in 62 - 4 * Double(ago) / 365 }
+    @Test func sameSeasonLastYear() {
+        // 1년 전 같은 90일은 계절이 같다 — 계절 곡선만 있으면 지금과 같은 값
+        let samples = daily(from: 760) { ago in 58 + self.season(ago) }
         let t = mrRestingHRTrend(samples: samples, asOf: now)
-        #expect(t?.direction == .up)
-        #expect(t?.meaning?.contains("2~9bpm") == true)
+        #expect(abs((t?.recentLY ?? 0) - (t?.recent ?? 99)) < 0.6)
     }
 
     /// 계절 흔들림만 있을 때 — 지금이 몇 월이든 추세가 없어야 한다(직선 회귀는 여기서 ±5bpm 오판했다).
@@ -47,19 +45,16 @@ struct MRRestingHRTrendTests {
             let asOf = cal.date(byAdding: .month, value: -monthsBack, to: now)!
             let samples = daily(from: 1100) { ago in 58 + self.season(ago) }
             let t = mrRestingHRTrend(samples: samples, asOf: asOf)
-            #expect(t?.direction == .flat, "asOf \(monthsBack)개월 전")
-            #expect(abs(t?.yearChange ?? 99) < 0.5)
+            #expect(abs(t?.yearChange ?? 99) < 0.5, "asOf \(monthsBack)개월 전")
         }
     }
 
     @Test func noTrendUnderTwoYears() {
-        // 13개월뿐 — 선은 있지만 같은 달 짝(6개) 부족 → 문장·뜻 없음
+        // 13개월뿐 — 선은 있지만 같은 달 짝(6개) 부족
         let samples = daily(from: 400) { _ in 58 }
         let t = mrRestingHRTrend(samples: samples, asOf: now)
         #expect(t != nil)
         #expect(t?.yearChange == nil)
-        #expect(t?.sentence == nil)
-        #expect(t?.meaning == nil)
     }
 
     @Test func nilWhenTooFewMonths() {

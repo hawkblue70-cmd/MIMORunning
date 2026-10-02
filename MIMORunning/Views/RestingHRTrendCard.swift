@@ -2,16 +2,11 @@ import SwiftUI
 import Charts
 
 /// 성장 탭 '안정시 심박' — 큰 숫자는 최근 90일 중앙값, 선은 달마다 중앙값, 점선은 12개월 이동평균(계절을 지운 추세).
-/// 추세 문장 아래에 방향의 뜻(일반적으로 알려진 훈련 반응)을 붙인다(2026-10-02 사용자 요청).
+/// 방향 판정은 하지 않는다 — 오르내림의 일반 원인만 늘 같은 문장으로(앱은 부상·생활을 모른다, 2026-10-02 사용자 결정).
 /// 값은 엔진(`mrRestingHRTrend`)이 내고 여기선 그리기만. 표본 부족이면 GrowthView가 카드를 빼낸다.
 /// 카드 모양은 `ThresholdTrendCard`(바탕·모서리·제목·본문·근거 글자)와 같게.
 struct RestingHRTrendCard: View {
     let trend: MRRestingHRTrend
-
-    /// 낮아짐 = 초록, 높아짐·변화 없음 = 회색(좌절 방지 — 경고색 쓰지 않음)
-    private var sentenceColor: Color {
-        trend.direction == .down ? Theme.positive : Color.mrInk1
-    }
 
     var body: some View {
         let L = AppLanguage.shared
@@ -33,19 +28,18 @@ struct RestingHRTrendCard: View {
                 Text(L.s(" · 최근 90일 중앙값", " · last 90-day median"))
                     .font(.system(size: 13))
                     .foregroundStyle(Color.mrInk2)
+                if let ly = trend.recentLY {
+                    Text(L.s(" · 1년 전 같은 기간 \(Int(ly.rounded()))", " · same period last yr \(Int(ly.rounded()))"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.mrInk3)
+                }
             }
 
-            if let s = trend.sentence {
-                Text(s)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(sentenceColor)
-            }
-            if let m = trend.meaning {
-                Text(m)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.mrInk2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            // 판정 없이 일반 원인만 — 부상·생활은 앱이 모르니 본인이 그래프와 맞춰 본다(2026-10-02 사용자 결정)
+            Text(MRRestingHRTrend.explainer)
+                .font(.system(size: 12))
+                .foregroundStyle(Color.mrInk2)
+                .fixedSize(horizontal: false, vertical: true)
 
             chart
                 .frame(height: 100)

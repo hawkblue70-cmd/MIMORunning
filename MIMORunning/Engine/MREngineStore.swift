@@ -696,7 +696,7 @@ final class MREngineStore: ObservableObject {
             let roll = t.rolling.map { "\(mf.string(from: $0.date)) \(String(format: "%.1f", $0.bpm))" }.joined(separator: " · ")
             print("[안정시심박] 12개월 이동평균 \(roll.isEmpty ? "없음(12개월 중 \(MR_RHR_ROLLING_MIN_MONTHS)달 미만)" : roll)")
             let yoy = t.yearChange.map { String(format: "%+.1f", $0) } ?? "없음"
-            print("[안정시심박] 선 \(t.months.count)개월 · 최근 90일 \(String(format: "%.1f", t.recent))(\(t.recentDays)일) · 1년 전 같은 달 대비 \(yoy)(짝 \(t.yearPairs)) · 문장 \(t.sentence ?? "없음")")
+            print("[안정시심박] 선 \(t.months.count)개월 · 최근 90일 \(String(format: "%.1f", t.recent))(\(t.recentDays)일) · 1년 전 같은 90일 \(t.recentLY.map { String(format: "%.1f", $0) } ?? "없음") · 같은 달 대비 \(yoy)(짝 \(t.yearPairs), 화면 미사용)")
         } else {
             print("[안정시심박] 추세 없음(달 \(MR_RHR_MIN_MONTHS)개·최근 90일 \(MR_RHR_WINDOW_MIN_DAYS)일 미만)")
         }
