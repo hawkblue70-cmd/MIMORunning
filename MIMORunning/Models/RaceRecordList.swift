@@ -182,6 +182,24 @@ enum RaceRecordList {
         return out.sorted { $0.date > $1.date }
     }
 
+    // MARK: - 연도별 페이지
+
+    /// 대회 기록을 연도별로 묶는다. 페이지는 **과거 → 최근** 순(왼쪽 = 과거, 첫 화면은 마지막 페이지),
+    /// 한 해 안에서는 `rows`의 순서(최근이 위)를 그대로 둔다.
+    /// 5개씩 끊지 않는 이유: 페이지에 의미가 생기고, 새 대회가 늘어도 지난 연도 페이지는 바뀌지 않는다(2026-10-02).
+    struct YearPage: Identifiable, Equatable {
+        let year: Int
+        let rows: [Row]
+        var id: Int { year }
+    }
+
+    static func yearPages(_ rows: [Row], calendar: Calendar = .current) -> [YearPage] {
+        let byYear = Dictionary(grouping: rows) { calendar.component(.year, from: $0.date) }
+        return byYear.keys.sorted().map { y in
+            YearPage(year: y, rows: rows.filter { calendar.component(.year, from: $0.date) == y })
+        }
+    }
+
     // MARK: - 예측 정확도
 
     /// 확정 대회 러닝과 짝지어진 엔진 예측만 집계한다. 짝이 하나도 없으면 nil.

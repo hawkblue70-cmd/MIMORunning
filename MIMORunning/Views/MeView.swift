@@ -41,6 +41,10 @@ struct MeView: View {
     /// 러닝 상세에서 돌아올 때는 토글을 되돌리지 않기 위한 표시
     @State private var raceDetailPushed = false
     @State private var showAllRaceRecords = false
+    /// 대회 기록 연도 페이지 — nil이면 가장 최근 연도
+    @State private var raceRecordYear: Int? = nil
+    /// 연도 이동 방향(넘김 애니메이션용) — true = 최근 쪽으로
+    @State private var raceYearForward = true
     @State private var planArchive: RaceArchive? = nil
     @State private var archiveToDelete: RaceArchive? = nil
     /// 대회 검색 시트를 열 때의 예정 대회 수 — 닫을 때 새로 등록했을 때만 예정으로 전환
@@ -257,6 +261,7 @@ struct MeView: View {
                     raceListMode = RaceRecordList.defaultMode(plannedDates: plannedRaces.map(\.raceDate),
                                                               today: Date())
                     showAllRaceRecords = false
+                    raceRecordYear = nil
                 }
             }
         }
@@ -429,6 +434,48 @@ struct MeView: View {
         }
     }
 
+    /// ‹ 2025 · 대회 8건 › — ‹ = 과거, › = 최근
+    private func raceYearHeader(_ pages: [RaceRecordList.YearPage], index: Int) -> some View {
+        let L = AppLanguage.shared
+        let page = pages[index]
+        return HStack {
+            Button { moveRaceYear(pages, from: index, by: -1) } label: {
+                Image(systemName: "chevron.left").frame(width: 32, height: 28)
+            }
+            .disabled(index == 0)
+            .opacity(index == 0 ? 0.25 : 1)
+            .accessibilityLabel(L.s("이전 연도", "Previous year"))
+            Spacer()
+            Text(L.s("\(page.year) · 대회 \(page.rows.count)건", "\(page.year) · \(page.rows.count) races"))
+                .monospacedDigit()
+            Spacer()
+            Button { moveRaceYear(pages, from: index, by: 1) } label: {
+                Image(systemName: "chevron.right").frame(width: 32, height: 28)
+            }
+            .disabled(index == pages.count - 1)
+            .opacity(index == pages.count - 1 ? 0.25 : 1)
+            .accessibilityLabel(L.s("다음 연도", "Next year"))
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.primary)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+    }
+
+    private func moveRaceYear(_ pages: [RaceRecordList.YearPage], from i: Int, by d: Int) {
+        let j = i + d
+        guard pages.indices.contains(j) else { return }
+        // 방향을 먼저 반영해 떠나는 페이지의 전환 방향도 바꾼 뒤, 다음 틱에 넘긴다
+        //   (같은 갱신에서 바꾸면 떠나는 페이지는 이전 방향으로 빠져 두 페이지가 겹친다)
+        raceYearForward = d > 0
+        DispatchQueue.main.async {
+            withAnimation(.snappy) {
+                raceRecordYear = pages[j].year
+                showAllRaceRecords = false
+            }
+        }
+    }
+
     /// 정확도 상자의 개조식 항목 — 줄이 넘어가도 글머리 기호 뒤로 맞춘다
     private func raceAccuracyBullet(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -452,19 +499,50 @@ struct MeView: View {
                 raceEmptyText(L.s("대회를 뛰면 여기에 모입니다. 러닝이 대회로 확인되면 자동으로 추가됩니다.",
                                   "Your races gather here. Runs confirmed as races are added automatically."))
             } else {
-                let visible = showAllRaceRecords ? rows : Array(rows.prefix(5))
-                ForEach(visible) { row in
-                    raceRecordRowView(row)
-                        .padding(.horizontal, 16)
+                // 연도별 좌우 이동 — 왼쪽 = 과거, 첫 화면은 최근 연도. 한 해뿐이면 지금처럼 목록만.
+                let pages = RaceRecordList.yearPages(rows)
+                let pageIndex = pages.firstIndex { $0.year == raceRecordYear } ?? pages.count - 1
+                let page = pages[pageIndex]
+                if pages.count > 1 {
+                    raceYearHeader(pages, index: pageIndex)
                 }
-                if rows.count > 5 {
-                    Button(showAllRaceRecords ? L.s("접기", "Collapse")
-                                              : L.s("전체 \(rows.count)건 보기", "Show all \(rows.count)")) {
-                        withAnimation { showAllRaceRecords.toggle() }
+                VStack(alignment: .leading, spacing: 10) {
+                    let visible = showAllRaceRecords ? page.rows : Array(page.rows.prefix(5))
+                    ForEach(visible) { row in
+                        raceRecordRowView(row)
+                            .padding(.horizontal, 16)
                     }
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(Theme.violet)
-                    .padding(.horizontal, 16)
+                    if page.rows.count > 5 {
+                        Button(showAllRaceRecords ? L.s("접기", "Collapse")
+                                                  : L.s("\(page.year)년 전체 \(page.rows.count)건 보기", "Show all \(page.rows.count) in \(page.year)")) {
+                            withAnimation { showAllRaceRecords.toggle() }
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Theme.violet)
+                        .padding(.horizontal, 16)
+                    }
+                }
+                .id(page.year)
+                .transition(.push(from: raceYearForward ? .trailing : .leading))
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 24).onEnded { v in
+                        let dx = v.translation.width
+                        // 세로 스크롤과 구분 — 가로로 충분히, 세로보다 확실히 클 때만
+                        guard abs(dx) > 60, abs(dx) > abs(v.translation.height) * 1.5 else { return }
+                        moveRaceYear(pages, from: pageIndex, by: dx < 0 ? 1 : -1)
+                    }
+                )
+                if pages.count > 1 && pages.count <= 8 {
+                    HStack(spacing: 6) {
+                        ForEach(pages.indices, id: \.self) { i in
+                            Circle()
+                                .fill(i == pageIndex ? Theme.violet : Color.secondary.opacity(0.35))
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityHidden(true)
                 }
                 if let acc = RaceRecordList.accuracy(runs: runs, predictions: predictions) {
                     // 개조식 — '~입니다' 없이(사용자 요청, 2026-10-02)

@@ -242,6 +242,24 @@ struct RaceRecordListTests {
         #expect(acc == nil)
     }
 
+    // MARK: - 연도별 페이지
+
+    @Test func yearPagesGroupOldestFirstKeepingNewestFirstWithinYear() {
+        let rows = RaceRecordList.rows(
+            runs: [run("A", km: 10, date(2024, 5, 1), minutes: 55),
+                   run("B", km: 10, date(2025, 3, 2), minutes: 56),
+                   run("C", km: 42.195, date(2025, 11, 23), minutes: 296),
+                   run("D", km: 21.0975, date(2026, 4, 5), minutes: 115)],
+            calendar: cal)
+        let pages = RaceRecordList.yearPages(rows, calendar: cal)
+        #expect(pages.map(\.year) == [2024, 2025, 2026])          // 왼쪽 = 과거
+        #expect(pages[1].rows.map(\.name) == ["C", "B"])          // 해 안에서는 최근이 위
+    }
+
+    @Test func yearPagesEmptyForNoRows() {
+        #expect(RaceRecordList.yearPages([], calendar: cal).isEmpty)
+    }
+
     // MARK: - 워치 VO2max 환산표 비교
 
     @Test func rowCarriesVO2TablePrediction() {
