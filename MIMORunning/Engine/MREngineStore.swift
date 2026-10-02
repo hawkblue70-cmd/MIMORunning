@@ -689,8 +689,43 @@ final class MREngineStore: ObservableObject {
             print("[성장] VO2max 올해 \(vo2Now) · 작년 \(vo2LY)")
         }
         logVO2Compare(vo2: vo2, now: now)
+        logAnchorExpiry(now: now)
         #endif
     }
+
+    #if DEBUG
+    /// [앵커만료] 로그 — 예측 앵커가 550일 창에서 빠지는 날마다 다음 앵커와 예측이 어떻게 바뀌는지.
+    /// 체력은 그대로인데 날짜만 지나 예측이 계단처럼 바뀌는지 보려는 확인용(2026-10-02). 지금의 fit·profile·노력 그대로, 날짜만 옮긴다.
+    private func logAnchorExpiry(now: Date) {
+        let cal = Calendar.current
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+        func line(_ asOf: Date, _ tag: String) -> MRRaceEffort? {
+            guard let a = mrPredictionAnchor(efforts: efforts, asOf: asOf) else {
+                print("[앵커만료] \(tag) \(df.string(from: asOf)) · 앵커 없음 → 예측 없음")
+                return nil
+            }
+            let preds = mrPredict(efforts: efforts, fit: fit, profile: profile, heat: heat, asOf: asOf)
+            let p = ["5K", "10K", "하프", "풀"].map { l in
+                "\(l) \(preds.first { $0.label == l }.map { mrFormatHMS($0.midMin) } ?? "-")"
+            }.joined(separator: " · ")
+            let until = mrAnchorDropDate(a)
+            print("[앵커만료] \(tag) \(df.string(from: asOf)) · 앵커 \(df.string(from: a.date)) \(a.label) \(mrFormatHMS(a.timeMin)) (\(df.string(from: until))에 빠짐) · \(p)")
+            return a
+        }
+        let window = efforts.filter {
+            let d = cal.dateComponents([.day], from: $0.date, to: cal.startOfDay(for: now)).day ?? -1
+            return d >= 0 && d <= MR_ANCHOR_WINDOW_DAYS
+        }
+        print("[앵커만료] 창 안 노력 \(window.count)건: " + window.sorted { $0.date < $1.date }
+            .map { "\(df.string(from: $0.date)) \($0.label) \(mrFormatHMS($0.timeMin))" }.joined(separator: " · "))
+        guard var a = line(now, "지금") else { return }
+        // 앵커가 빠지는 날로 차례로 옮겨 본다(최대 6번)
+        for _ in 0..<6 {
+            guard let b = line(mrAnchorDropDate(a), "이후") else { return }
+            a = b
+        }
+    }
+    #endif
 
     #if DEBUG
     /// [VO2예측] 로그 — 가민·블로그식(워치 VO2max를 VDOT로) 예측과 앱 예측을 과거 대회에서 나란히 본다.

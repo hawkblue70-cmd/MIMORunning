@@ -319,6 +319,31 @@ func mrSigmaObs(backtest: [MRBacktestRow]) -> Double {
     return sqrt(ss / Double(logResiduals.count - 1))
 }
 
+/// 예측 앵커 = 최근 `MR_ANCHOR_WINDOW_DAYS`일 노력 중 (환산시간 / 거리^1.06)이 가장 작은 것.
+let MR_ANCHOR_WINDOW_DAYS = 550
+
+func mrPredictionAnchor(efforts: [MRRaceEffort], asOf: Date) -> MRRaceEffort? {
+    let cal = Calendar.current
+    let recent = efforts.filter {
+        let d = cal.dateComponents([.day], from: $0.date,
+                                   to: cal.startOfDay(for: asOf)).day ?? -1
+        return d >= 0 && d <= MR_ANCHOR_WINDOW_DAYS
+    }
+    return recent.min(by: {
+        $0.timeMinRef / pow($0.distanceM, 1.06) < $1.timeMinRef / pow($1.distanceM, 1.06)
+    })
+}
+
+/// 이 노력이 앵커 창에서 처음 빠지는 날(그 날 0시). 노력 시각이 아침이라 '날짜 + 550일'보다 하루 이틀 늦다.
+func mrAnchorDropDate(_ e: MRRaceEffort) -> Date {
+    let cal = Calendar.current
+    var day = cal.date(byAdding: .day, value: MR_ANCHOR_WINDOW_DAYS - 1, to: cal.startOfDay(for: e.date))!
+    while (cal.dateComponents([.day], from: e.date, to: day).day ?? 0) <= MR_ANCHOR_WINDOW_DAYS {
+        day = cal.date(byAdding: .day, value: 1, to: day)!
+    }
+    return day
+}
+
 func mrPredict(efforts: [MRRaceEffort],
                fit: MRExponentFit,
                profile: MRProfile,
@@ -327,15 +352,7 @@ func mrPredict(efforts: [MRRaceEffort],
                targetTempC: Double = MR_REF_TEMP) -> [MRPrediction] {
 
     let cal = Calendar.current
-    // 앵커 = 최근 550일 노력 중 (환산시간 / 거리^1.06)이 가장 작은 것
-    let recent = efforts.filter {
-        let d = cal.dateComponents([.day], from: $0.date,
-                                   to: cal.startOfDay(for: asOf)).day ?? -1
-        return d >= 0 && d <= 550
-    }
-    guard let anchor = recent.min(by: {
-        $0.timeMinRef / pow($0.distanceM, 1.06) < $1.timeMinRef / pow($1.distanceM, 1.06)
-    }) else { return [] }
+    guard let anchor = mrPredictionAnchor(efforts: efforts, asOf: asOf) else { return [] }
 
     let ageDays = Double(cal.dateComponents([.day], from: anchor.date,
                                             to: cal.startOfDay(for: asOf)).day ?? 0)
