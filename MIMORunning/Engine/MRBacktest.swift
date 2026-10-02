@@ -83,8 +83,9 @@ func mrBacktest(runs: [MRWorkout],
         // 기온을 아는 상태에서 얼마나 맞혔는지를 보려는 것이다)
         let temp = runs.first { cal.isDate($0.date, inSameDayAs: t.date) && $0.tempC != nil }?.tempC
                    ?? MR_REF_TEMP
+        let pool = mrAnchorPool(runs: pastRuns, efforts: prior, phys: phys2, heat: heat, asOf: y)
         let p = mrPredict(efforts: prior, fit: fit2, profile: prof2,
-                          heat: heat, asOf: y, targetTempC: temp)
+                          heat: heat, asOf: y, targetTempC: temp, anchorPool: pool)
                    .first { $0.label == label }
 
         rows.append(MRBacktestRow(date: t.date, label: label, actualMin: t.timeMin,

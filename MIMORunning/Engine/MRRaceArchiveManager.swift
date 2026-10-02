@@ -344,7 +344,9 @@ func mrCreateRetroactiveArchives(
                             .filter { $0.date < row.date }
         let fit1      = mrFitExponent(prior1)
         let prof1     = mrProfile(runs: pastRuns1, efforts: prior1, asOf: asOf1)
-        let preds1    = mrPredict(efforts: prior1, fit: fit1, profile: prof1, heat: heat, asOf: asOf1)
+        let preds1    = mrPredict(efforts: prior1, fit: fit1, profile: prof1, heat: heat, asOf: asOf1,
+                                  anchorPool: mrAnchorPool(runs: pastRuns1, efforts: prior1, phys: phys1,
+                                                           heat: heat, asOf: asOf1))
         let hrp1      = mrFitHRPaceModel(runs: pastRuns1, asOf: asOf1)
         let easy1     = phys1.easyCeilingHR.flatMap { hrp1.paceAtHR($0) }
         let half1     = preds1.first { $0.label == "하프" }?.midMin ?? 0
@@ -382,7 +384,9 @@ func mrCreateRetroactiveArchives(
                             .filter { $0.date < row.date }
         let fit2      = mrFitExponent(prior2)
         let prof2     = mrProfile(runs: pastRuns2, efforts: prior2, asOf: asOf2)
-        let preds2    = mrPredict(efforts: prior2, fit: fit2, profile: prof2, heat: heat, asOf: asOf2)
+        let preds2    = mrPredict(efforts: prior2, fit: fit2, profile: prof2, heat: heat, asOf: asOf2,
+                                  anchorPool: mrAnchorPool(runs: pastRuns2, efforts: prior2, phys: phys2,
+                                                           heat: heat, asOf: asOf2))
         let hrp2      = mrFitHRPaceModel(runs: pastRuns2, asOf: asOf2)
         let easy2     = phys2.easyCeilingHR.flatMap { hrp2.paceAtHR($0) }
         let half2     = preds2.first { $0.label == "하프" }?.midMin ?? 0

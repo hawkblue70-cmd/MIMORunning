@@ -48,6 +48,8 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var hrPace = MRHRPaceModel()
     @Published private(set) var easyPaceLookup: MRHRPaceLookup?
     @Published private(set) var efforts: [MRRaceEffort] = []
+    /// 예측 앵커 후보(550일 창 안에서 다시 고른 노력 포함) — `mrAnchorPool`
+    @Published private(set) var anchorPool: [MRRaceEffort] = []
     @Published private(set) var fit = MRExponentFit()
     @Published private(set) var profile = MRProfile()
     @Published private(set) var predictions: [MRPrediction] = []
@@ -481,6 +483,7 @@ final class MREngineStore: ObservableObject {
         #endif
 
         efforts = mrApplyHeat(mrDetectEfforts(runs: fetched, phys: phys), heat: heat)
+        anchorPool = mrAnchorPool(runs: fetched, efforts: efforts, phys: phys, heat: heat, asOf: now)
         fit = mrFitExponent(efforts)
 
         // 걸음 수는 2단계에서 — stage 1은 firstDataDate nil로 profileFull 추산
@@ -523,7 +526,7 @@ final class MREngineStore: ObservableObject {
         let planProfile = mrProfile(runs: fetched, efforts: efforts, sigmaObs: sigmaObs, asOf: planCutoff)
 
         predictions = mrPredict(efforts: efforts, fit: fit, profile: profile,
-                                heat: heat, asOf: now)
+                                heat: heat, asOf: now, anchorPool: anchorPool)
         thresholdTrend = mrThresholdTrend(runs: fetched, restingHRSamples: rhr,
                                           dateOfBirth: dob, sex: sex, heat: heat, now: now)
         let firstRun = fetched.map(\.start).min()
@@ -700,11 +703,13 @@ final class MREngineStore: ObservableObject {
         let cal = Calendar.current
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
         func line(_ asOf: Date, _ tag: String) -> MRRaceEffort? {
-            guard let a = mrPredictionAnchor(efforts: efforts, asOf: asOf) else {
+            let pool = mrAnchorPool(runs: runs, efforts: efforts, phys: phys, heat: heat, asOf: asOf)
+            guard let a = mrPredictionAnchor(efforts: pool, asOf: asOf) else {
                 print("[앵커만료] \(tag) \(df.string(from: asOf)) · 앵커 없음 → 예측 없음")
                 return nil
             }
-            let preds = mrPredict(efforts: efforts, fit: fit, profile: profile, heat: heat, asOf: asOf)
+            let preds = mrPredict(efforts: efforts, fit: fit, profile: profile, heat: heat, asOf: asOf,
+                                  anchorPool: pool)
             let p = ["5K", "10K", "하프", "풀"].map { l in
                 "\(l) \(preds.first { $0.label == l }.map { mrFormatHMS($0.midMin) } ?? "-")"
             }.joined(separator: " · ")
@@ -712,10 +717,7 @@ final class MREngineStore: ObservableObject {
             print("[앵커만료] \(tag) \(df.string(from: asOf)) · 앵커 \(df.string(from: a.date)) \(a.label) \(mrFormatHMS(a.timeMin)) (\(df.string(from: until))에 빠짐) · \(p)")
             return a
         }
-        let window = efforts.filter {
-            let d = cal.dateComponents([.day], from: $0.date, to: cal.startOfDay(for: now)).day ?? -1
-            return d >= 0 && d <= MR_ANCHOR_WINDOW_DAYS
-        }
+        let window = mrAnchorPool(runs: runs, efforts: efforts, phys: phys, heat: heat, asOf: now)
         print("[앵커만료] 창 안 노력 \(window.count)건: " + window.sorted { $0.date < $1.date }
             .map { "\(df.string(from: $0.date)) \($0.label) \(mrFormatHMS($0.timeMin))" }.joined(separator: " · "))
         guard var a = line(now, "지금") else { return }
@@ -1029,7 +1031,8 @@ final class MREngineStore: ObservableObject {
             storedSigmaObs = newSigma
             let now = Date()
             profile = mrProfile(runs: runs, efforts: efforts, sigmaObs: newSigma, asOf: now)
-            predictions = mrPredict(efforts: efforts, fit: fit, profile: profile, heat: heat, asOf: now)
+            predictions = mrPredict(efforts: efforts, fit: fit, profile: profile, heat: heat, asOf: now,
+                                    anchorPool: anchorPool)
             #if DEBUG
             print(String(format: "[σ_obs] 백테스트 %d건 → σ_obs=%.4f (±%.1f%%) · 재계산",
                          rows.count, newSigma, (exp(newSigma) - 1) * 100))
@@ -1082,7 +1085,7 @@ final class MREngineStore: ObservableObject {
             //   engine.predictions는 표준 조건(15°C)이라 그대로 쓰면 같은 화면에 예상 기록이 둘로 보인다.
             let raceTemp = mrSeasonalTemp(runs: runs, for: race.date) ?? MR_REF_TEMP
             let nowMin = mrPredict(efforts: efforts, fit: fit, profile: profile, heat: heat,
-                                   asOf: now, targetTempC: raceTemp)
+                                   asOf: now, targetTempC: raceTemp, anchorPool: anchorPool)
                 .first { abs($0.distanceM - race.distanceM) / race.distanceM < 0.02 }?.midMin
             if let r = MRPrepComparison.build(
                 raceDate: race.date, raceDistanceKm: race.distanceM / 1000,
@@ -1126,7 +1129,9 @@ final class MREngineStore: ObservableObject {
         guard prior.count >= 3 else { return nil }
         let fit2 = mrFitExponent(prior)
         let prof2 = mrProfile(runs: pastRuns, efforts: prior, asOf: asOf)
-        return mrPredict(efforts: prior, fit: fit2, profile: prof2, heat: heat, asOf: asOf, targetTempC: tempC)
+        let pool = mrAnchorPool(runs: pastRuns, efforts: prior, phys: phys2, heat: heat, asOf: asOf)
+        return mrPredict(efforts: prior, fit: fit2, profile: prof2, heat: heat, asOf: asOf, targetTempC: tempC,
+                         anchorPool: pool)
             .first { $0.label == label }?.midMin
     }
 

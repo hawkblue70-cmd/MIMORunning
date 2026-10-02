@@ -51,10 +51,11 @@ enum MRBacktestCacheStore {
 
     /// 노력 목록 → 핑거프린트 문자열
     /// v2|: 이전 3건짜리 캐시 무효화 (RHR 중앙값 전환 + σ_obs 재계산 적용)
+    /// v3|: 예측 앵커를 창 안 재선별 노력(mrAnchorPool)에서 고름 — 백테스트 예측이 바뀐다(2026-10-02)
     static func effortKey(_ efforts: [MRRaceEffort]) -> String {
         let body = efforts.map { e in
             "\(Int(e.date.timeIntervalSince1970))_\(Int(e.distanceM))_\(Int(e.timeMinRef * 10))"
         }.joined(separator: "|")
-        return "v2|\(body)"
+        return "v3|\(body)"
     }
 }

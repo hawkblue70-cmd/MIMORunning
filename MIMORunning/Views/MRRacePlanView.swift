@@ -957,7 +957,7 @@ struct MRPlanlessRaceCard: View {
         //   8월 대회에 그대로 쓰면 실제보다 빠르게 나온다.
         mrPredict(efforts: engine.efforts, fit: engine.fit,
                   profile: engine.profile, heat: engine.heat,
-                  asOf: Date(), targetTempC: raceTemp)
+                  asOf: Date(), targetTempC: raceTemp, anchorPool: engine.anchorPool)
             .first { abs($0.distanceM - race.distanceM) / race.distanceM < 0.02 }
     }
 

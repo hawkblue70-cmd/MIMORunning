@@ -121,6 +121,31 @@ final class MRRobustnessTests: XCTestCase {
         XCTAssertEqual(lt1 / hm, 0.800, accuracy: 0.001)
     }
 
+    // MARK: 앵커 — 같은 거리대 최고 기록이 창을 벗어나도 더 최근 기록으로 넘어간다
+
+    func testAnchorPoolRecoversNewerEffortInSameBucket() {
+        let cal = Calendar.current
+        func fast10K(_ daysAgo: Int, _ min: Double) -> MRWorkout {
+            MRWorkout(start: cal.date(byAdding: .day, value: -daysAgo, to: Date())!,
+                      durationMin: min, distanceKm: 10, hrAvg: 175, hrMax: 185,
+                      tempC: 15, humidity: nil, indoor: false, isInterval: false)
+        }
+        var runs = makeRuns(count: 40, km: 6, paceSecPerKm: 400, hr: 140, temp: 15)
+        runs.append(fast10K(600, 50))   // 550일 창 밖의 최고 기록
+        runs.append(fast10K(300, 52))   // 창 안의 더 최근 기록
+        runs.sort { $0.start < $1.start }
+        let phys = mrPhysiology(runs: runs, restingHRSamples: [],
+                                dateOfBirth: nil, sex: .male, asOf: Date())
+        let efforts = mrDetectEfforts(runs: runs, phys: phys)
+        // 전 기간 거리대별 최고만 남아 52분 기록은 이미 버려져 있다
+        XCTAssertEqual(efforts.filter { $0.label == "10K" }.map(\.timeMin), [50])
+        XCTAssertNil(mrPredictionAnchor(efforts: efforts, asOf: Date()))
+
+        let pool = mrAnchorPool(runs: runs, efforts: efforts, phys: phys,
+                                heat: MRHeatModel(), asOf: Date())
+        XCTAssertEqual(mrPredictionAnchor(efforts: pool, asOf: Date())?.timeMin ?? 0, 52, accuracy: 0.01)
+    }
+
     // MARK: ⑥ 대회 하나뿐인 사람 — 지수 적합 불가
 
     func testSingleEffort() {

@@ -334,6 +334,26 @@ func mrPredictionAnchor(efforts: [MRRaceEffort], asOf: Date) -> MRRaceEffort? {
     })
 }
 
+/// 앵커 후보 — 앵커 창 안의 러닝만으로 대회급 노력을 다시 고르고, 전체 노력 중 창 안의 것과 합친다.
+/// ⚠ `mrDetectEfforts`는 **전 기간** 거리대별 최고 하나만 남긴다. 그 최고 기록이 창을 벗어나면 같은 거리대의
+///   더 최근 기록(이미 버려짐)으로 넘어가지 못하고 짧은 훈련 노력으로 밀려난다
+///   (2026-10-02 [앵커만료]: 10K 53:46이 빠진 뒤 10K 54:23 대신 7.1K → 하프 예측 +6분, 다시 6.0K → +12분).
+///   역치 카드(`mrThresholdAsOf`)와 같은 처방. 지수 적합·프로필은 지금처럼 전체 노력으로 한다.
+func mrAnchorPool(runs: [MRWorkout], efforts: [MRRaceEffort], phys: MRPhysiology,
+                  heat: MRHeatModel, asOf: Date) -> [MRRaceEffort] {
+    let cal = Calendar.current
+    func inWindow(_ d: Date) -> Bool {
+        let n = cal.dateComponents([.day], from: d, to: cal.startOfDay(for: asOf)).day ?? -1
+        return n >= 0 && n <= MR_ANCHOR_WINDOW_DAYS
+    }
+    let redetected = mrApplyHeat(mrDetectEfforts(runs: runs.filter { inWindow($0.date) }, phys: phys), heat: heat)
+    var pool = efforts.filter { inWindow($0.date) }
+    for e in redetected where !pool.contains(where: { $0.date == e.date && abs($0.distanceM - e.distanceM) < 1 }) {
+        pool.append(e)
+    }
+    return pool.sorted { $0.date < $1.date }
+}
+
 /// 이 노력이 앵커 창에서 처음 빠지는 날(그 날 0시). 노력 시각이 아침이라 '날짜 + 550일'보다 하루 이틀 늦다.
 func mrAnchorDropDate(_ e: MRRaceEffort) -> Date {
     let cal = Calendar.current
@@ -349,10 +369,12 @@ func mrPredict(efforts: [MRRaceEffort],
                profile: MRProfile,
                heat: MRHeatModel,
                asOf: Date,
-               targetTempC: Double = MR_REF_TEMP) -> [MRPrediction] {
+               targetTempC: Double = MR_REF_TEMP,
+               anchorPool: [MRRaceEffort]? = nil) -> [MRPrediction] {
 
     let cal = Calendar.current
-    guard let anchor = mrPredictionAnchor(efforts: efforts, asOf: asOf) else { return [] }
+    // 앵커는 `mrAnchorPool`(창 안 재선별)에서 고른다. nil이면 전체 노력에서(옛 동작 — 디버그 화면용)
+    guard let anchor = mrPredictionAnchor(efforts: anchorPool ?? efforts, asOf: asOf) else { return [] }
 
     let ageDays = Double(cal.dateComponents([.day], from: anchor.date,
                                             to: cal.startOfDay(for: asOf)).day ?? 0)
