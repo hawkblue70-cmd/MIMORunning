@@ -301,8 +301,8 @@ struct MRRacePlanCard: View {
                     .padding(.top, 12)
             }
 
-            // 젤 보급 제안 — 10km 대는 출발 전만, 하프·풀은 예상 기록 기준 시간·km별
-            if let gel = MRGelPlan.build(distanceM: race.distanceM, projectedMin: plan.projectedFinal) {
+            // 젤 보급 제안(주차별 계획과 함께 접힘) — 10km 대는 출발 전만, 하프·풀은 예상 기록 기준 시간·km별
+            if showWeeks, let gel = MRGelPlan.build(distanceM: race.distanceM, projectedMin: plan.projectedFinal) {
                 MRGelPlanView(plan: gel)
                     .padding(.top, 16)
             }
