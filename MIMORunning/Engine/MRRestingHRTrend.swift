@@ -146,3 +146,44 @@ func mrRestingHRRiseEpisodes(samples: [(date: Date, value: Double)],
     }
     return (episodes, flagged)
 }
+
+// MARK: - 아침 제안 — 안정시 심박 며칠째 높음
+
+/// 문헌(틀): 기준선보다 5~10bpm 높은 안정시 심박이 3일 이상 이어지면 과부하·회복 부족·몸살 신호로 강도를 낮춘다.
+/// 본인 데이터(값): 기준선 = 그날 전 28일 중앙값(표본 14일↑). 사용자 실기기 1년 = +5bpm 3일 연속 4회(분기 1회꼴, 2026-10-02 로그).
+let MR_RHR_ELEVATED_RISE = 5.0
+let MR_RHR_ELEVATED_DAYS = 3
+
+struct MRRestingHRElevation: Equatable {
+    let days: Int        // 마지막 날부터 거꾸로 이어진 높은 날 수
+    let latest: Double   // 마지막 날 값
+    let usual: Double    // 마지막 날 기준선(전 28일 중앙값)
+}
+
+/// 가장 최근 날(오늘 또는 어제여야 함)부터 거꾸로, 기준선 + 5bpm 이상인 날이 며칠 이어졌나.
+/// 높은 날이 없거나 자료가 이틀 넘게 끊겼으면 nil. 문턱(3일) 판단은 호출부가 한다.
+/// ⚠ 애플의 오늘자 안정시 심박은 하루 동안 갱신된다 — 아침엔 없을 수 있어 어제까지로도 판정한다.
+func mrRestingHRElevation(samples: [(date: Date, value: Double)], asOf: Date,
+                          calendar cal: Calendar = .current) -> MRRestingHRElevation? {
+    // 하루 1개 — 같은 날 여러 개면 마지막 값
+    var byDay: [Date: Double] = [:]
+    for s in samples where s.date <= asOf { byDay[cal.startOfDay(for: s.date)] = s.value }
+    let today = cal.startOfDay(for: asOf)
+    guard let last = byDay.keys.max(),
+          let gap = cal.dateComponents([.day], from: last, to: today).day, gap <= 1 else { return nil }
+
+    func usual(before day: Date) -> Double? {
+        let lo = cal.date(byAdding: .day, value: -28, to: day)!
+        let vals = byDay.filter { $0.key >= lo && $0.key < day }.map(\.value)
+        return vals.count >= 14 ? mrMedian(vals) : nil
+    }
+
+    guard let lastUsual = usual(before: last), byDay[last]! >= lastUsual + MR_RHR_ELEVATED_RISE else { return nil }
+    var days = 1
+    var d = cal.date(byAdding: .day, value: -1, to: last)!
+    while let v = byDay[d], let u = usual(before: d), v >= u + MR_RHR_ELEVATED_RISE {
+        days += 1
+        d = cal.date(byAdding: .day, value: -1, to: d)!
+    }
+    return MRRestingHRElevation(days: days, latest: byDay[last]!, usual: lastUsual)
+}

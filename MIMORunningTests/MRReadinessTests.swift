@@ -547,4 +547,41 @@ struct MRReadinessTests {
         #expect(a.ratio == 1.5)
         #expect(a.rising == true)   // 직전 7일(−13…−7)은 60분(9일 전) → 90 ≥ 69
     }
+
+    // MARK: 규칙 3-2 — 안정시 심박 며칠째 높음
+
+    /// −40…−(high+1)일 55bpm, 마지막 `high`일(어제까지)은 62bpm. 오늘 값은 없다(아침).
+    private func rhr(highDays: Int, lastDaysAgo: Int = 1) -> [(date: Date, value: Double)] {
+        (lastDaysAgo...40).reversed().map { ago in (day(-ago), ago < lastDaysAgo + highDays ? 62 : 55) }
+    }
+
+    @Test func restingHRHighThreeDaysIsRest() {
+        let r = mrReadiness(runs: steadyRuns(), phys: phys, heatHR: MRHeatHRModel(),
+                            hrvNights: nights(base: 30, recent: 30), planPhase: nil, asOf: now,
+                            restingHR: rhr(highDays: 3))
+        #expect(r?.level == .rest)
+        #expect(r?.line.contains("안정시 심박 3일째 높음") == true)
+        #expect(r?.detail.contains("안정시 심박 3일째 62(평소 55)") == true)
+    }
+
+    @Test func restingHRHighTwoDaysIsIgnored() {
+        let r = mrReadiness(runs: steadyRuns(), phys: phys, heatHR: MRHeatHRModel(),
+                            hrvNights: nights(base: 30, recent: 30), planPhase: nil, asOf: now,
+                            restingHR: rhr(highDays: 2))
+        #expect(r?.level != .rest)
+        #expect(r?.detail.contains("안정시 심박") == false)
+    }
+
+    @Test func restingHRStaleDataIsIgnored() {
+        // 마지막 값이 3일 전 — 지금 상태를 말할 수 없다
+        #expect(mrRestingHRElevation(samples: rhr(highDays: 3, lastDaysAgo: 3), asOf: now) == nil)
+    }
+
+    @Test func restingHRWithoutHRVStillCounts() {
+        // 밤에 워치를 안 차서 HRV가 없는 사람
+        let r = mrReadiness(runs: steadyRuns(), phys: phys, heatHR: MRHeatHRModel(),
+                            hrvNights: [], planPhase: nil, asOf: now, restingHR: rhr(highDays: 4))
+        #expect(r?.level == .rest)
+        #expect(r?.line.contains("4일째") == true)
+    }
 }

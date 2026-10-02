@@ -67,11 +67,14 @@ struct RestingHRTrendCard: View {
     /// 가장 많이 달린 달의 km — 막대 높이 기준
     private var maxKm: Double { trend.monthlyKm.map(\.value).max() ?? 0 }
 
-    /// 막대는 y축 아래 40%에 km 비율로 — 차트의 y축은 bpm 하나뿐이라 km 눈금은 없고, 가장 긴 달을 설명 줄에 적는다.
+    /// 막대는 y축 아래 70%에 km 비율로 — 차트의 y축은 bpm 하나뿐이라 km 눈금은 없고, 가장 긴 달을 설명 줄에 적는다.
+    /// 70%: 사용자 차트(57~71)에서 가장 많은 달이 67bpm 높이까지 오게(2026-10-02 사용자 요청).
     private func barTop(_ km: Double) -> Double {
         let d = yDomain
-        return d.lowerBound + (maxKm > 0 ? km / maxKm : 0) * 0.4 * (d.upperBound - d.lowerBound)
+        return d.lowerBound + (maxKm > 0 ? km / maxKm : 0) * Self.barHeightFraction * (d.upperBound - d.lowerBound)
     }
+
+    private static let barHeightFraction = 0.7
 
     private static let monthLabel: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "yy.M"; return f
@@ -100,7 +103,7 @@ struct RestingHRTrendCard: View {
             ForEach(trend.rolling, id: \.date) { p in
                 LineMark(x: .value("month", p.date), y: .value("bpm", p.value),
                          series: .value("s", "rolling"))
-                    .foregroundStyle(Color.white.opacity(0.6))
+                    .foregroundStyle(Theme.positive)   // 12개월 평균 = 초록 점선(2026-10-02 사용자 요청)
                     .interpolationMethod(.monotone)
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
             }

@@ -324,6 +324,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                  rhythm: MRRhythmContext? = nil,
                  easyTarget: MREasyTarget? = nil,
                  grayZone: MRGrayZoneWeek? = nil,
+                 restingHR: [(date: Date, value: Double)] = [],
                  calendar: Calendar = .current) -> MRReadiness? {
     let L = AppLanguage.shared
     let today = calendar.startOfDay(for: asOf)
@@ -345,6 +346,14 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         guard let t = trend, let v = todayNight else { return false }
         return MRReadiness.lastNightDeviation(v, trend: t) < 0
     }()
+
+    // 안정시 심박 며칠째 높음(평소 + 5bpm, 3일 이상) — HRV와 같은 쪽의 신호. HRV가 없는 사람(밤에 워치 안 참)도 잡힌다.
+    let rhrHigh: MRRestingHRElevation? = mrRestingHRElevation(samples: restingHR, asOf: asOf, calendar: calendar)
+        .flatMap { $0.days >= MR_RHR_ELEVATED_DAYS ? $0 : nil }
+    func rhrPiece(_ e: MRRestingHRElevation) -> String {
+        L.s("안정시 심박 \(e.days)일째 \(Int(e.latest.rounded()))(평소 \(Int(e.usual.rounded())))",
+            "resting HR high \(e.days) days: \(Int(e.latest.rounded())) (usual \(Int(e.usual.rounded())))")
+    }
 
     func lastHardPiece() -> String? {
         guard let d = hard.lastHardDaysAgo else { return nil }
@@ -368,6 +377,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                             "HRV 7-day avg \(seven) (\(t.gradeLabel)) · 4-wk avg \(base)ms"))
         }
     }
+    if let e = rhrHigh { data.append(rhrPiece(e)) }
     if let p = lastHardPiece() { data.append(p) }
     if consecutive >= 2 { data.append(L.s("\(consecutive)일 연속", "\(consecutive) days in a row")) }
     // 이지 확인 — 지난 7일 애매하게 빠른 러닝이 2회 이상일 때만(한 번은 그날 사정일 수 있다)
@@ -452,12 +462,16 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                 let vStr = Int(v.rounded()), bStr = Int(t.baseline.rounded())
                 return L.s("어젯밤 HRV \(vStr)ms, 평소 \(bStr)ms보다 낮음", "last night's HRV \(vStr)ms, below usual \(bStr)ms")
             }
+            if rhrHigh != nil { return L.s("안정시 심박 높음", "resting HR high") }
             return nil
         }()
         if let down = hrvDown {
             return make(.rest, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row"), down],
-                        why: L.s("\(consecutive)일 내리 달렸고 HRV도 평소보다 낮습니다. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.",
-                                 "\(consecutive) days in a row and your HRV is below usual — fatigue is showing. Rest, or keep it under 30 minutes and easy."))
+                        why: trend?.isSuppressed == true || lastNightLow
+                            ? L.s("\(consecutive)일 내리 달렸고 HRV도 평소보다 낮습니다. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.",
+                                  "\(consecutive) days in a row and your HRV is below usual — fatigue is showing. Rest, or keep it under 30 minutes and easy.")
+                            : L.s("\(consecutive)일 내리 달렸고 안정시 심박도 며칠째 평소보다 높습니다. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.",
+                                  "\(consecutive) days in a row and your resting HR has been above usual for days — fatigue is showing. Rest, or keep it under 30 minutes and easy."))
         }
         return make(.easy, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row")],
                     why: L.s("\(consecutive)일 내리 달렸습니다. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요.",
@@ -488,6 +502,14 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                   "Last night's HRV was \(pct)% below usual. One night, but an easy day is the safer call.")
         return make(.rest, hardYesterday + [L.s("어젯밤 HRV \(vStr)ms, 평소 \(bStr)ms보다 낮음",
                                                 "last night's HRV \(vStr)ms, below usual \(bStr)ms")], why: why)
+    }
+    // 규칙 3-2 — 안정시 심박 며칠째 높음(2026-10-02). HRV 규칙 뒤 — HRV가 더 민감한 지표라 먼저 말하고(Buchheit 2014),
+    // HRV가 괜찮거나 없을 때 이 규칙이 잡는다. 한 밤이 아니라 며칠이라 판정은 휴식 쪽.
+    if let e = rhrHigh {
+        let n = Int((e.latest - e.usual).rounded())
+        return make(.rest, hardYesterday + [L.s("안정시 심박 \(e.days)일째 높음", "resting HR high \(e.days) days")],
+                    why: L.s("안정시 심박이 \(e.days)일째 평소보다 \(n)bpm 높습니다. 피로·수면 부족·감기 기운이 쌓이면 오르는 값이라 오늘은 쉬거나 30분 이내로 가볍게 가세요.",
+                             "Resting HR has been \(n) bpm above usual for \(e.days) days. Fatigue, poor sleep or a cold coming on raise it — rest, or keep it under 30 minutes and easy."))
     }
     // 규칙 4 — 어제 고강도
     if let d = hard.lastHardDaysAgo, d <= 1 {

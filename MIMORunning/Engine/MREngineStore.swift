@@ -375,7 +375,14 @@ final class MREngineStore: ObservableObject {
         }
         let rhr: [(date: Date, value: Double)]
         let rhrAge = rhrLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
-        if !rhrSamples.isEmpty && rhrAge < 24 * 3600 {
+        // 아침 제안(안정시 심박 며칠째 높음)은 어제 값이 필요하다 — 캐시가 24시간 안이어도 어제 값이 없으면 다시 읽는다
+        let rhrHasYesterday: Bool = {
+            guard let last = rhrSamples.last?.date else { return false }
+            let y = Calendar.current.date(byAdding: .day, value: -1, to: Calendar.current.startOfDay(for: Date()))!
+            return last >= y
+        }()
+        // 어제 값이 원래 없는 사람(워치 안 찬 날)이 매번 다시 읽지 않게 — 재조회는 한 시간에 한 번까지
+        if !rhrSamples.isEmpty && rhrAge < 24 * 3600 && (rhrHasYesterday || rhrAge < 3600) {
             rhr = rhrSamples
             #if DEBUG
             let saveDateStr: String = {
@@ -1087,7 +1094,8 @@ final class MREngineStore: ObservableObject {
                                mrGrayZoneWeek(runs: runs, lt1HR: t.lt1HR,
                                               intenseStarts: intenseRunsInjected ? Set(intenseRuns.keys) : hardRunStarts,
                                               asOf: now)
-                           })
+                           },
+                           restingHR: rhrSamples)
         let line = prepLine(for: card, now: now)
         card?.prepLine = line
         return card
