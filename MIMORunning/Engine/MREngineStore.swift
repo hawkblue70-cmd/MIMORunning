@@ -685,8 +685,42 @@ final class MREngineStore: ObservableObject {
             print("[성장] 안정시 심박 올해 \(rhrNow) (중앙값·90일) · 작년 \(rhrLY) (중앙값·재계산)")
             print("[성장] VO2max 올해 \(vo2Now) · 작년 \(vo2LY)")
         }
+        logVO2Compare(vo2: vo2, now: now)
         #endif
     }
+
+    #if DEBUG
+    /// [VO2예측] 로그 — 가민·블로그식(워치 VO2max를 VDOT로) 예측과 앱 예측을 과거 대회에서 나란히 본다.
+    /// 백테스트는 ⑤에서 이미 끝나 있다. 화면에는 쓰지 않는다 — 결과를 보고 쓸지 정한다(2026-10-02).
+    private func logVO2Compare(vo2: [(date: Date, value: Double)], now: Date) {
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+        func pct(_ v: Double?) -> String { v.map { String(format: "%+.1f%%", $0) } ?? "-" }
+        func hms(_ v: Double?) -> String { v.map(mrFormatHMS) ?? "없음" }
+        print("[VO2예측] 표본 \(vo2.count)개 · \(vo2.first.map { df.string(from: $0.date) } ?? "-") ~ \(vo2.last.map { df.string(from: $0.date) } ?? "-") · 백테스트 \(backtest.count)건 (오차 음수 = 실제보다 빠르게 예측 · 앱은 그날 기온 반영, VO2는 기온 무관)")
+        let rows = mrVO2Compare(backtest: backtest, vo2Samples: vo2)
+        for r in rows {
+            let vo2Str = r.vo2.map { String(format: "%.1f(%d일 전)", $0, r.vo2AgeDays ?? 0) } ?? "없음(60일 내)"
+            print(String(format: "[VO2예측] %@ %@ 실제 %@ (기록 VDOT %.1f) · 앱 %@ %@ · VO2 %@ → %@ %@",
+                         df.string(from: r.date), r.label, mrFormatHMS(r.actualMin), r.raceVDOT,
+                         hms(r.appMin), pct(r.appErrPct), vo2Str, hms(r.vo2Min), pct(r.vo2ErrPct)))
+        }
+        for s in mrVO2CompareSummary(rows) {
+            print(String(format: "[VO2예측] 요약 %@ %d건 · 평균 오차 앱 %.1f%% (치우침 %+.1f%%) · VO2 %.1f%% (치우침 %+.1f%%)",
+                         s.label, s.n, s.appMAE, s.appBias, s.vo2MAE, s.vo2Bias))
+        }
+        // 지금 시점 — 가민·블로그 표에 나올 숫자와 앱 예측
+        if let cur = mrVO2Before(vo2, raceDate: Calendar.current.date(byAdding: .day, value: 1, to: now) ?? now) {
+            let parts = ["5K", "10K", "하프", "풀"].map { label -> String in
+                let app = predictions.first { $0.label == label }?.midMin
+                let v = mrTimeForVDOT(cur.value, distanceM: mrDistanceForLabel(label))
+                return "\(label) 앱 \(hms(app)) / VO2 \(hms(v))"
+            }
+            print(String(format: "[VO2예측] 현재 VO2max %.1f(%d일 전) · ", cur.value, cur.ageDays) + parts.joined(separator: " · "))
+        } else {
+            print("[VO2예측] 현재 — 최근 60일 VO2max 없음")
+        }
+    }
+    #endif
 
     #if DEBUG
     /// [안정시심박] 로그 — 성장 탭 추세의 근거(월별·12개월 이동평균·같은 달 비교)와, 첫 러닝 날짜(참고), 아침 제안 보조 규칙(평소+5bpm 3일 연속)의 발동 빈도 확인용.
