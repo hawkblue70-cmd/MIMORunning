@@ -87,18 +87,21 @@ struct MRRacePlannerPointTests {
     }
 
     @Test func weekAfterTenKTuneUpHasNoPoint() throws {
-        let today = Date()
         let cal = Calendar.current
-        let race = cal.date(byAdding: .day, value: 7 * 20, to: today)!
-        // 8주 뒤 주의 수요일에 10K 튠업
-        let thisMon = MRPlanGovernance.weekMonday(of: today)
-        let tuneDate = cal.date(byAdding: .day, value: 7 * 8 + 2, to: thisMon)!
+        // 계획은 필요한 주 수만큼만 늦게 시작한다 — 튠업이 계획 안에 오도록 대회를 9주 뒤 토요일로 둔다
+        // (하프·주 30km·롱런 14km는 10주가 필요해 이번 주부터 시작)
+        let thisMon = MRPlanGovernance.weekMonday(of: Date())
+        let race = cal.date(byAdding: .day, value: 7 * 9 + 5, to: thisMon)!
+        // 4주 뒤 주의 수요일에 10K 튠업
+        let tuneDate = cal.date(byAdding: .day, value: 7 * 4 + 2, to: thisMon)!
         let tune = MRTuneUpRace(date: tuneDate, name: "10K", distanceM: MRDistance.d10, hasOwnPlan: false, ownPlanWeeks: [])
-        let p = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.dH, today: today,
+        let p = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.dH, today: Date(),
                                          profile: profile(runs: 4), halfEquivMin: 110,
                                          easyPaceSecPerKm: 400, heat: MRHeatModel(), raceTempC: 15,
                                          runsPerWeek: 4, tuneUps: [tune]))
         let tuneMon = MRPlanGovernance.weekMonday(of: tuneDate)
+        let tuneWeek = try #require(p.weeks.first { cal.isDate($0.monday, inSameDayAs: tuneMon) })
+        #expect(tuneWeek.phase == "대회 주")
         let nextMon = cal.date(byAdding: .day, value: 7, to: tuneMon)!
         let after = try #require(p.weeks.first { cal.isDate($0.monday, inSameDayAs: nextMon) })
         #expect(after.point == nil)
@@ -123,8 +126,10 @@ struct MRRacePlannerPointTests {
     }
 
     @Test func fullRacePaceWeeksDoNotStackTargetLongRuns() throws {
+        // 대회 페이스 단계가 2주 이상 나오는 사람(주 30km·롱런 14km → 14주 계획).
+        //   이미 롱런 22km인 사람은 10주 계획이라 그 단계가 1주뿐이다.
         var pr = profile(runs: 5)
-        pr.weeklyKm4w = 45; pr.longestRun16wKm = 22; pr.maxWeeklyKm52w = 60
+        pr.weeklyKm4w = 30; pr.longestRun16wKm = 14; pr.maxWeeklyKm52w = 45
         let today = Date()
         let race = Calendar.current.date(byAdding: .day, value: 7 * 24, to: today)!
         let p = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.dF, today: today,

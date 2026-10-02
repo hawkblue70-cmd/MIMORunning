@@ -147,11 +147,11 @@ struct MRPlanGovernanceTests {
             #expect(h.breakdown.contains("계획을 따릅니다") || h.breakdown.contains("Follows the"))
             #expect(h.breakdown.hasSuffix(w.breakdown))
         }
-        // 하프는 이번 주(0)부터 시작하므로 0·+1·+2 세 주가 겹친다 (10K 주차는 대회 전 주까지)
-        #expect(checked >= 3)
-        // 10K 주차표에 없는 대회 주(+3)는 기존 튠업 규칙("대회 주") — 따를 숫자가 없다
+        // 하프는 이번 주(0)부터 시작하므로 0·+1·+2·+3 네 주가 겹친다 — 10K 주차표에 대회 주(테이퍼)까지 들어 있다
+        #expect(checked >= 4)
+        // 대회 주도 예외가 아니다 — 10K 계획의 대회 주 숫자를 그대로 따른다(하프가 '대회 주 −20%'를 따로 말하면 숫자가 둘이 된다)
         let raceWeek = try #require(halfByMonday[cal.startOfDay(for: monday(3))])
-        #expect(raceWeek.phase == "대회 주")
+        #expect(raceWeek.phase == "10K 계획")
         // 10K 이후 주는 하프 고유 진행
         let after = try #require(halfByMonday[cal.startOfDay(for: monday(4))])
         #expect(after.phase != "10K 계획")
