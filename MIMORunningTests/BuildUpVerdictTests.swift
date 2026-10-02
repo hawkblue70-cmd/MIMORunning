@@ -30,6 +30,11 @@ struct BuildUpVerdictTests {
         #expect(!WorkoutTypeClassifier.isBuildUp(splits: splits("7'05 6'30 6'28 6'31 6'26 6'12")))
     }
 
+    @Test("처음 3km 몸 풀고 이후 평탄(중간에 빠른 km 하나) → 빌드업 아님")
+    func warmupThenSteadyIsNotBuildUp() {
+        #expect(!WorkoutTypeClassifier.isBuildUp(splits: splits("6'54 6'33 6'19 6'09 6'16 5'53 6'01 6'12 6'12 6'08")))
+    }
+
     @Test("고르게 올린 10km → 빌드업")
     func steadyProgressionIsBuildUp() {
         #expect(WorkoutTypeClassifier.isBuildUp(splits: splits("6'40 6'35 6'30 6'25 6'20 6'15 6'10 6'05 6'00 5'55")))

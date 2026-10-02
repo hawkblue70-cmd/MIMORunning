@@ -149,11 +149,15 @@ struct WorkoutTypeClassifier {
 
         // 첫 km(몸 풀기·신호 대기)·마지막 km(스퍼트)는 추세에서 뺀다 — 이 둘만으로 평탄한 러닝이 빌드업이 됐다
         let paces = all.count >= 6 ? Array(all.dropFirst().dropLast()) : all
-        let n = paces.count; let t = max(1, n / 3)
+        // 3등분은 고르게(8개 → 3/2/3). n/3씩 자르면 8개가 2/2/4로 나뉘어, 가운데의 가장 빠른 km가 마지막 묶음에
+        // 들어가 "몸 풀고 평탄"한 러닝이 빌드업이 됐다(2026-10-01 10km: 6'54"→…→5'53"→6'01"~6'12").
+        let n = paces.count
+        let i1 = max(1, Int((Double(n) / 3).rounded()))
+        let i2 = max(i1 + 1, Int((Double(n) * 2 / 3).rounded()))
         let avgOf: (ArraySlice<Double>) -> Double = { s in s.reduce(0, +) / Double(s.count) }
-        let a1 = avgOf(paces[0..<t])
-        let a2 = avgOf(paces[t..<(2 * t)])
-        let a3 = avgOf(paces[(2 * t)...])
+        let a1 = avgOf(paces[0..<i1])
+        let a2 = avgOf(paces[i1..<i2])
+        let a3 = avgOf(paces[i2...])
 
         // (a) 3등분 단계 상승 — 단계마다 1.5% 이상(6'20" 기준 약 6초) 빨라짐
         if (a1 - a2) / a1 >= 0.015 && (a2 - a3) / a2 >= 0.015 {
