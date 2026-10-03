@@ -465,7 +465,7 @@ struct MRWeekTable: View {
 
     private let runDayFmt: DateFormatter = {
         let df = DateFormatter()
-        df.locale = Locale(identifier: AppLanguage.shared.isEnglish ? "en_US" : "ko_KR")
+        df.locale = AppLanguage.shared.locale
         df.dateFormat = "M/d (E)"
         return df
     }()

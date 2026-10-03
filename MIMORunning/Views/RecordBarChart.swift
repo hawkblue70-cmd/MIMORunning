@@ -598,6 +598,7 @@ struct RecordBarChart: View {
             return "\(c.month ?? 1)/\(c.day ?? 1)"
         case .month:
             let m = cal.component(.month, from: d)
+            if L.isJapanese { return "\(m)月" }
             if L.isEnglish {
                 let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMM"
                 return df.string(from: d)

@@ -6164,14 +6164,13 @@ struct InsightExportSheet: View {
     }
 
     private var dateTimeText: Text {
-        let isEn = AppLanguage.shared.isEnglish
-        let localeId = isEn ? "en_US" : "ko_KR"
-        let loc = Locale(identifier: localeId)
+        let L = AppLanguage.shared
+        let loc = L.locale
         let fDate = DateFormatter(); fDate.locale = loc
-        fDate.dateFormat = isEn ? "MMM d, yyyy " : "yyyy. M. d "
+        fDate.dateFormat = L.s("yyyy. M. d ", "MMM d, yyyy ", ja: "yyyy年M月d日 ")
         let fDay  = DateFormatter(); fDay.locale  = loc; fDay.dateFormat = "EEE"
         let fTime = DateFormatter(); fTime.locale = loc
-        fTime.dateFormat = isEn ? " h:mm a" : " a h:mm"
+        fTime.dateFormat = L.s(" a h:mm", " h:mm a", ja: " H:mm")
         return Text(fDate.string(from: activity.date)).foregroundStyle(.white.opacity(0.65))
              + Text(fDay.string(from: activity.date)).foregroundStyle(Color.yellow)
              + Text(fTime.string(from: activity.date)).foregroundStyle(.white.opacity(0.65))

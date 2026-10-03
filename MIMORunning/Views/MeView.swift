@@ -291,7 +291,7 @@ struct MeView: View {
         }
         .onChange(of: allStories.count) { refreshShoeKmCache() }
         .onChange(of: useMiles) { refreshStats() }
-        .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
+        .onChange(of: AppLanguage.shared.current) { _, _ in
             engine.recomputePlans()   // verdict·plan notes는 빌드 시 L.s()로 저장 → 재계산 필요
         }
         .onChange(of: racePlanKey) { syncAndRecompute() }
@@ -1289,7 +1289,7 @@ struct MeView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.white)
                                 Text(shoe.addedDate, format: .dateTime.year().month().day()
-                                    .locale(AppLanguage.shared.isEnglish ? Locale(identifier: "en_US") : Locale(identifier: "ko_KR")))
+                                    .locale(AppLanguage.shared.locale))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -1468,14 +1468,15 @@ struct MeView: View {
                     Text(AppLanguage.shared.s("언어", "Language")).foregroundStyle(.white)
                     Spacer()
                     Picker("", selection: Binding(
-                        get: { AppLanguage.shared.isEnglish },
-                        set: { AppLanguage.shared.isEnglish = $0 }
+                        get: { AppLanguage.shared.current },
+                        set: { AppLanguage.shared.current = $0 }
                     )) {
-                        Text("한국어").tag(false)
-                        Text("English").tag(true)
+                        ForEach(AppLanguage.Lang.allCases, id: \.self) { lang in
+                            Text(lang.nativeName).tag(lang)
+                        }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 130)
+                    .frame(width: 200)
                 }
             }
             .background(Theme.cardBackground)

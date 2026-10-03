@@ -319,22 +319,22 @@ struct ActivityDetailView: View {
 
     private var panelDateText: String {
         let df = DateFormatter()
-        df.locale = Locale(identifier: AppLanguage.shared.s("ko_KR", "en_US"))
-        df.dateFormat = AppLanguage.shared.s("yyyy. M. d", "MMM d, yyyy")
+        df.locale = AppLanguage.shared.locale
+        df.dateFormat = AppLanguage.shared.s("yyyy. M. d", "MMM d, yyyy", ja: "yyyy年M月d日")
         return df.string(from: activity.date)
     }
 
     private var panelWeekdayText: String {
         let df = DateFormatter()
-        df.locale = Locale(identifier: AppLanguage.shared.s("ko_KR", "en_US"))
+        df.locale = AppLanguage.shared.locale
         df.dateFormat = "EEEE"
         return df.string(from: activity.date)
     }
 
     private var panelTimeText: String {
         let df = DateFormatter()
-        df.locale = Locale(identifier: AppLanguage.shared.s("ko_KR", "en_US"))
-        df.dateFormat = AppLanguage.shared.s("a h:mm", "h:mm a")
+        df.locale = AppLanguage.shared.locale
+        df.dateFormat = AppLanguage.shared.s("a h:mm", "h:mm a", ja: "H:mm")
         return df.string(from: activity.date)
     }
 
@@ -660,7 +660,7 @@ struct ActivityDetailView: View {
 
             manager.syncUserEfforts(from: panelAllStories)
 
-            let lang = AppLanguage.shared.isEnglish ? "en" : "ko"
+            let lang = AppLanguage.shared.current.rawValue
 
             // Check cache first — show immediately if available (insight stays nil → loading state otherwise)
             let cachedInsight = await InsightCache.shared.result(for: activity.id, isRefined: true, language: lang)
@@ -876,7 +876,7 @@ struct ActivityDetailView: View {
             // 항등 열지수 모델로 계산됐을 수 있다 — 실제 heatHR로 다시 계산해 교체한다.
             guard !wasReady, nowReady, activity.type == .running, insight != nil else { return }
             Task {
-                let lang = AppLanguage.shared.isEnglish ? "en" : "ko"
+                let lang = AppLanguage.shared.current.rawValue
                 await InsightCache.shared.invalidate(activity.id)
                 let result = await InsightEngine.computeBackground(
                     activity: activity, history: manager.activities, level: level,
@@ -898,9 +898,9 @@ struct ActivityDetailView: View {
                 }
             }
         }
-        .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
+        .onChange(of: AppLanguage.shared.current) { _, _ in
             Task {
-                let lang = AppLanguage.shared.isEnglish ? "en" : "ko"
+                let lang = AppLanguage.shared.current.rawValue
                 if let cached = await InsightCache.shared.result(for: activity.id, isRefined: true, language: lang) {
                     withAnimation { insight = cached }
                 } else if activity.type == .running {
@@ -937,7 +937,7 @@ struct ActivityDetailView: View {
     }
 
     private func recomputeInsightWithRaceMatch() async {
-        let lang = AppLanguage.shared.isEnglish ? "en" : "ko"
+        let lang = AppLanguage.shared.current.rawValue
         await InsightCache.shared.invalidate(activity.id)
         let match = raceDetector.matchFor(activityID: activity.id)
         let recomputed = await InsightEngine.computeBackground(
@@ -987,7 +987,7 @@ struct ActivityDetailView: View {
 
     /// 비교를 다시 계산할 시점 — 오늘 대회 확정 여부, 매칭 수(지난 러닝 확정·대회 아님 포함), 러닝 목록 로드.
     private var raceComparisonKey: String {
-        "\(confirmedRaceMatch?.raceName ?? "-")|\(raceDetector.matches.count)|\(manager.activities.count)|\(AppLanguage.shared.isEnglish)"
+        "\(confirmedRaceMatch?.raceName ?? "-")|\(raceDetector.matches.count)|\(manager.activities.count)|\(AppLanguage.shared.current.rawValue)"
     }
 
     private var raceQuestions: [RaceYearOverYear.Question] {
@@ -1604,20 +1604,21 @@ private struct DetailHeader: View {
     var workoutTypeLabel: String? = nil
 
     private var dateText: Text {
+        let L = AppLanguage.shared
         let df = DateFormatter()
-        df.locale = Locale(identifier: AppLanguage.shared.s("ko_KR", "en_US"))
-        if AppLanguage.shared.isEnglish {
+        df.locale = L.locale
+        if L.current == .en {
             df.dateFormat = "EEEE"
             let weekday = df.string(from: activity.date)
             df.dateFormat = ", MMMM d, yyyy  h:mm a"
             let rest = df.string(from: activity.date)
             return Text(weekday).foregroundStyle(Theme.time) + Text(rest)
         } else {
-            df.dateFormat = "yyyy년 M월 d일"
+            df.dateFormat = L.s("yyyy년 M월 d일", "", ja: "yyyy年M月d日")
             let datePart = df.string(from: activity.date)
             df.dateFormat = " EEEE"
             let weekday = df.string(from: activity.date)
-            df.dateFormat = "  a h:mm"
+            df.dateFormat = L.s("  a h:mm", "", ja: "  H:mm")
             let timePart = df.string(from: activity.date)
             return Text(datePart) + Text(weekday).foregroundStyle(Theme.time) + Text(timePart)
         }

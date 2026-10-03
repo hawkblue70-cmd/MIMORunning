@@ -230,17 +230,16 @@ struct SplitsShareCardView: View {
 
     // 날짜·시간 포맷은 경로 내보내기 카드(DetailPanelShareCard)와 동일하게 맞춘다
     private var dateStr: String {
-        let isEn = AppLanguage.shared.isEnglish
+        let L = AppLanguage.shared
         let df = DateFormatter()
-        df.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
-        df.dateFormat = isEn ? "MMM d, yyyy" : "yyyy. M.d"
+        df.locale = L.locale
+        df.dateFormat = L.s("yyyy. M.d", "MMM d, yyyy", ja: "yyyy年M月d日")
         return df.string(from: activity.date)
     }
 
     private var timeStr: String {
-        let isEn = AppLanguage.shared.isEnglish
         let df = DateFormatter()
-        df.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        df.locale = AppLanguage.shared.locale
         df.dateStyle = .none
         df.timeStyle = .short
         return df.string(from: activity.date)

@@ -155,8 +155,15 @@ struct GrowthView: View {
     private static let monthLabelFormatterEn: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "MMM"; return f
     }()
+    private static let monthLabelFormatterJa: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "M月"; return f
+    }()
     private static var monthLabelFormatter: DateFormatter {
-        AppLanguage.shared.isEnglish ? monthLabelFormatterEn : monthLabelFormatterKo
+        switch AppLanguage.shared.current {
+        case .ko: monthLabelFormatterKo
+        case .en: monthLabelFormatterEn
+        case .ja: monthLabelFormatterJa
+        }
     }
 
     private var runs: [Activity] { runsCache }
@@ -319,7 +326,7 @@ struct GrowthView: View {
         .onChange(of: dailyMonth) { _, _ in
             refreshRecordBars()
         }
-        .onChange(of: AppLanguage.shared.isEnglish) { _, _ in
+        .onChange(of: AppLanguage.shared.current) { _, _ in
             // 언어가 바뀌면 캐시된 현지화 문자열을 즉시 재계산한다.
             journeyMilestonesCache = journeyMilestones()
             prEntriesCache = prEntries()
@@ -560,6 +567,7 @@ struct GrowthView: View {
         let cal = Calendar.current
         if isAtCurrentMonth { return AppLanguage.shared.s("최근 30일", "Last 30 days") }
         let comps = cal.dateComponents([.year, .month], from: dailyMonth)
+        if AppLanguage.shared.isJapanese { return "\(comps.year ?? 2025)年\(comps.month ?? 1)月" }
         if AppLanguage.shared.isEnglish {
             let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMMM yyyy"
             return df.string(from: dailyMonth)
@@ -1315,7 +1323,7 @@ struct GrowthView: View {
         _hashSources.append(summary.template(for: weekOfYear, isEnglish: false))
         _hashSources.append(summary.template(for: weekOfYear, isEnglish: true))
         let _tHash = String(format: "%08x", Self.stableHash(_hashSources.sorted().joined(separator: "|")))
-        let langSuffix = AppLanguage.shared.isEnglish ? "_en" : "_ko"
+        let langSuffix = "_\(AppLanguage.shared.current.rawValue)"
         let cacheKey = "v\(Self.weeklyCommentVersion)_\(_tHash)_\(year)W\(weekOfYear)_\(summary.topPatternKey)\(langSuffix)"
 
         // 중복 실행 방지: 직전 호출과 동일 입력이면 AI 재시도 스킵 (onChange 이중 실행 등 방어)

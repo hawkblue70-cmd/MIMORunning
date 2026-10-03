@@ -368,6 +368,11 @@ struct WeeklyGrowthShareCard: View {
         let mSun = cal.component(.month, from: sunday)
         let dSun = cal.component(.day,   from: sunday)
 
+        if AppLanguage.shared.isJapanese {
+            return mMon == mSun
+                ? "\(year)年\(mMon)月\(dMon)日〜\(dSun)日"
+                : "\(year)年\(mMon)月\(dMon)日〜\(mSun)月\(dSun)日"
+        }
         if AppLanguage.shared.isEnglish {
             let df = DateFormatter()
             df.locale = Locale(identifier: "en_US")

@@ -10,6 +10,12 @@ struct SummaryPeriodStats {
 
         var title: String {
             let L = AppLanguage.shared
+            if L.isJapanese {
+                switch self {
+                case .monthly(let y, let m): return "\(y)年\(m)月"
+                case .yearly(let y):        return "\(y)年"
+                }
+            }
             if L.isEnglish {
                 switch self {
                 case .monthly(let y, let m):

@@ -425,9 +425,9 @@ struct DetailPanelShareCard: View {
 
     /// "2026년 9월 16일" — 경로 1 왼쪽 열용(한 줄에 하나)
     private var heroDateOnlyText: String {
-        let isEn = AppLanguage.shared.isEnglish
-        let f = DateFormatter(); f.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
-        f.dateFormat = isEn ? "MMM d, yyyy" : "yyyy년 M월 d일"
+        let L = AppLanguage.shared
+        let f = DateFormatter(); f.locale = L.locale
+        f.dateFormat = L.s("yyyy년 M월 d일", "MMM d, yyyy", ja: "yyyy年M月d日")
         return f.string(from: activity.date)
     }
 
@@ -440,16 +440,16 @@ struct DetailPanelShareCard: View {
 
     /// "2026년 9월 16일 오후 6:48~7:39" — 종료가 같은 오전/오후면 시:분만 붙인다.
     private var heroTimeRangeText: String {
-        let isEn = AppLanguage.shared.isEnglish
-        let locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        let L = AppLanguage.shared
+        let locale = L.locale
         let start = activity.date
         let end = start.addingTimeInterval(activity.duration)
         let dateFmt = DateFormatter(); dateFmt.locale = locale
-        dateFmt.dateFormat = isEn ? "MMM d, yyyy" : "yyyy년 M월 d일"
+        dateFmt.dateFormat = L.s("yyyy년 M월 d일", "MMM d, yyyy", ja: "yyyy年M月d日")
         let timeFmt = DateFormatter(); timeFmt.locale = locale
         timeFmt.dateStyle = .none; timeFmt.timeStyle = .short
         let hourFmt = DateFormatter(); hourFmt.locale = locale
-        hourFmt.dateFormat = "h:mm"
+        hourFmt.dateFormat = L.s("h:mm", "h:mm", ja: "H:mm")   // 일본어 .short는 24시간제
         let cal = Calendar.current
         let samePeriod = (cal.component(.hour, from: start) < 12) == (cal.component(.hour, from: end) < 12)
             && cal.isDate(start, inSameDayAs: end)
@@ -496,17 +496,16 @@ struct DetailPanelShareCard: View {
     // MARK: Header
 
     private var headerDateStr: String {
-        let isEn = AppLanguage.shared.isEnglish
+        let L = AppLanguage.shared
         let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
-        fmt.dateFormat = isEn ? "MMM d, yyyy" : "yyyy. M.d"
+        fmt.locale = L.locale
+        fmt.dateFormat = L.s("yyyy. M.d", "MMM d, yyyy", ja: "yyyy年M月d日")
         return fmt.string(from: activity.date)
     }
 
     private var headerTimeStr: String {
-        let isEn = AppLanguage.shared.isEnglish
         let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        fmt.locale = AppLanguage.shared.locale
         fmt.dateStyle = .none
         fmt.timeStyle = .short
         return fmt.string(from: activity.date)
@@ -514,10 +513,11 @@ struct DetailPanelShareCard: View {
 
     private var weekdayChar: String {
         let weekday = Calendar.current.component(.weekday, from: activity.date)
-        if AppLanguage.shared.isEnglish {
-            return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][(weekday - 1) % 7]
+        switch AppLanguage.shared.current {
+        case .ko: return ["일", "월", "화", "수", "목", "금", "토"][(weekday - 1) % 7]
+        case .en: return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][(weekday - 1) % 7]
+        case .ja: return ["日", "月", "火", "水", "木", "金", "土"][(weekday - 1) % 7]
         }
-        return ["일", "월", "화", "수", "목", "금", "토"][(weekday - 1) % 7]
     }
 
     private var headerRow: some View {
@@ -1057,12 +1057,12 @@ enum RouteCardAssets {
     }
 
     static func dateText(for date: Date) -> String {
-        let isEn = AppLanguage.shared.isEnglish
+        let L = AppLanguage.shared
         let dateFmt = DateFormatter()
-        dateFmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
-        dateFmt.dateFormat = isEn ? "MMM d, yyyy" : "yyyy. M.d"
+        dateFmt.locale = L.locale
+        dateFmt.dateFormat = L.s("yyyy. M.d", "MMM d, yyyy", ja: "yyyy年M月d日")
         let timeFmt = DateFormatter()
-        timeFmt.locale = Locale(identifier: isEn ? "en_US" : "ko_KR")
+        timeFmt.locale = L.locale
         timeFmt.dateStyle = .none
         timeFmt.timeStyle = .short
         return "\(dateFmt.string(from: date))  \(timeFmt.string(from: date))"
