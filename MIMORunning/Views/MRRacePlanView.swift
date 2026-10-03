@@ -70,6 +70,8 @@ struct MRRacePlanCard: View {
     var snapshot: RacePlanSnapshot? = nil
     /// 회복·테이퍼 주 평균 강도 초과 문구 — 현재 주 행에만 표시
     var recoveryEffortNote: String? = nil
+    /// 주차표 러닝 줄 → 러닝 상세. nil이면 줄은 누를 수 없다.
+    var onTapRun: ((MRWorkout) -> Void)? = nil
     var onToggleCollapse: (() -> Void)? = nil   // trailing closure 를 위해 마지막에
     @State private var showWeeks = false
 
@@ -297,7 +299,8 @@ struct MRRacePlanCard: View {
                             currentRaceLabels: Set(engine.userInput.races.map { mrLabelFor(distanceM: $0.distanceM) }),
                             recoveryEffortNote: recoveryEffortNote,
                             hardRunStarts: engine.hardRunStarts,
-                            pointRunTypes: engine.pointRunTypes)
+                            pointRunTypes: engine.pointRunTypes,
+                            onTapRun: onTapRun)
                     .padding(.top, 12)
             }
 
@@ -467,12 +470,15 @@ struct MRWeekTable: View {
         return df
     }()
 
-    /// 끝난 계획에서 행을 펼치면 — 그 주 러닝 한 줄씩(날짜 · 거리 · 페이스 · 앱 유형). 노랑 = 실제로 한 것.
+    /// 행을 펼치면 — 그 주 러닝 한 줄씩(날짜 · 거리 · 페이스 · 앱 유형). 노랑 = 실제로 한 것. 아직 안 온 주는 그리지 않는다.
     @ViewBuilder
     private func weekRunLines(_ monday: Date) -> some View {
         let L = AppLanguage.shared
         let list = runsIn(week: monday)
-        if list.isEmpty {
+        let cal = Calendar.current
+        if cal.startOfDay(for: monday) > cal.startOfDay(for: refNow) {
+            EmptyView()
+        } else if list.isEmpty {
             Text(L.s("이 주에는 러닝이 없습니다", "No runs this week"))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.60))
@@ -796,10 +802,8 @@ struct MRWeekTable: View {
                                 if let pt = snap.point {
                                     pointLines(pt, monday: snap.monday, longRunKm: snap.longRunKm)
                                 }
-                                if isFinished {
-                                    weekRunLines(snap.monday)
-                                        .padding(.top, 2)
-                                }
+                                weekRunLines(snap.monday)
+                                    .padding(.top, 2)
                             }
                             .padding(.leading, 36).padding(.bottom, 4)
                             .transition(.opacity.combined(with: .move(edge: .top)))
@@ -914,6 +918,8 @@ struct MRWeekTable: View {
                                 if let pt = w.point {
                                     pointLines(pt, monday: w.monday, longRunKm: w.longRunKm)
                                 }
+                                weekRunLines(w.monday)
+                                    .padding(.top, 2)
                             }
                             .padding(.leading, 36).padding(.bottom, 4)
                             .transition(.opacity.combined(with: .move(edge: .top)))
@@ -938,7 +944,7 @@ struct MRWeekTable: View {
 
             Text(isFinished
                  ? L.s("행 탭 → 그 주 실행 안내와 달린 러닝 · 대회 주는 대회일까지", "Tap row → guidance and runs that week · Race week counts up to race day")
-                 : L.s("행 탭 → 실제 기록 또는 실행 안내 · 진한 주 번호 = 이번 주 · 거리는 이지 페이스 기준", "Tap row → actual log or guidance · Bold = current week · Distance at easy pace"))
+                 : L.s("행 탭 → 실제 기록·달린 러닝 또는 실행 안내 · 진한 주 번호 = 이번 주 · 거리는 이지 페이스 기준", "Tap row → actual log & runs or guidance · Bold = current week · Distance at easy pace"))
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.65))
                 .padding(.top, 10)
@@ -1101,6 +1107,8 @@ struct MRRacePlanSection: View {
     @EnvironmentObject var engine: MREngineStore
     /// 회복·테이퍼 주 평균 강도 초과 문구 — MeView가 계산해 내려준다
     var recoveryEffortNote: String? = nil
+    /// 주차표 러닝 줄 → 러닝 상세 — MeView가 자기 내비게이션으로 연다
+    var onTapRun: ((MRWorkout) -> Void)? = nil
     @Query private var snapshots: [RacePlanSnapshot]
     // 가장 가까운 대회 하나만 기본 펼침. nil이면 전체 접힘
     @State private var expandedId: String? = nil
@@ -1129,7 +1137,8 @@ struct MRRacePlanSection: View {
                         case .planned(let c):
                             MRRacePlanCard(check: c, isExpanded: isExpanded,
                                            runs: engine.runs, snapshot: snapshot(for: c),
-                                           recoveryEffortNote: recoveryEffortNote) {
+                                           recoveryEffortNote: recoveryEffortNote,
+                                           onTapRun: onTapRun) {
                                 withAnimation(.easeOut(duration: 0.2)) {
                                     expandedId = isExpanded ? nil : item.id
                                 }

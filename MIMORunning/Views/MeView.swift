@@ -236,7 +236,14 @@ struct MeView: View {
                         }
                         plannedRacesSection
                         raceGoalsSection
-                        MRRacePlanSection(recoveryEffortNote: recoveryEffortNote)
+                        MRRacePlanSection(recoveryEffortNote: recoveryEffortNote) { run in
+                            // 주차표 러닝 줄 → 러닝 상세(시작 시각으로 Activity 매칭)
+                            guard navPath.isEmpty,
+                                  let a = manager.activities.first(where: { abs($0.date.timeIntervalSince(run.start)) < 1 })
+                            else { return }
+                            raceDetailPushed = true   // 돌아왔을 때 대회 기록 토글을 그대로 두게
+                            navPath.append(a)
+                        }
                             .padding(.horizontal, 16)
                         statsSection
                         shoesSection
