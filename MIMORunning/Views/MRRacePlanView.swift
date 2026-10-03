@@ -343,6 +343,8 @@ struct MRWeekTable: View {
     /// 끝난 계획(대회 기록의 "계획") — 대회일을 '오늘'로 보고 대회 주까지 모두 끝난 주로 센다.
     /// 예상 칸은 빼고, 행을 펼치면 그 주에 달린 러닝 목록을 보인다. nil이면 진행 중인 계획.
     var finishedRaceDate: Date? = nil
+    /// 끝난 계획의 러닝 줄을 눌렀을 때 — 러닝 상세로. nil이면 줄은 누를 수 없다.
+    var onTapRun: ((MRWorkout) -> Void)? = nil
     @State private var expanded: Set<Int> = []
 
     private var isFinished: Bool { finishedRaceDate != nil }
@@ -488,9 +490,20 @@ struct MRWeekTable: View {
                     if let t = pointRunTypes[r.start] {
                         Text(t.koreanLabel).foregroundStyle(.white.opacity(0.60))
                     }
+                    if onTapRun != nil {
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.45))
+                            .accessibilityHidden(true)
+                    }
                 }
                 .font(.system(size: 11, design: .rounded))
                 .monospacedDigit()
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
+                .onTapGesture { onTapRun?(r) }
+                .accessibilityAddTraits(onTapRun != nil ? .isButton : [])
             }
         }
     }

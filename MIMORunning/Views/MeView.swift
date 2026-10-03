@@ -568,8 +568,13 @@ struct MeView: View {
         }
         .sheet(item: $planArchive) { arch in
             MRArchiveDetailView(archive: arch,
-                                snapshot: allSnapshots.first { $0.matches(date: arch.raceDate, distanceM: arch.distanceM) })
+                                snapshot: allSnapshots.first { $0.matches(date: arch.raceDate, distanceM: arch.distanceM) },
+                                manager: manager)
                 .environmentObject(engine)
+                // 러닝 상세가 시트 안에서 열린다 — 상세가 읽는 환경을 그대로 넘긴다
+                .environment(raceDetector)
+                .environment(miniMeStore)
+                .environment(crewNicknameManager)
         }
         .confirmationDialog(
             archiveToDelete.map(\.raceName) ?? "",

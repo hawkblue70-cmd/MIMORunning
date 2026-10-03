@@ -9,7 +9,10 @@ struct MRArchiveDetailView: View {
     let archive: RaceArchive
     /// 그 대회의 계획 스냅샷 — 있으면 진행 중 계획과 같은 주차표(`MRWeekTable`)로 보인다. 없으면 저장된 글 그대로.
     var snapshot: RacePlanSnapshot? = nil
+    /// 러닝 줄 → 러닝 상세. nil이면 줄을 누를 수 없다.
+    var manager: HealthKitManager? = nil
     @EnvironmentObject private var engine: MREngineStore
+    @State private var navPath: [Activity] = []
     @Environment(\.dismiss) private var dismiss
 
     /// 저장된 글의 머리(실제 · 계획 시작 시점 예측 · 대회 직전 예측) — 제목 줄과 주차 절은 뺀다.
@@ -21,7 +24,7 @@ struct MRArchiveDetailView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ScrollView {
                 if let snap = snapshot, !snap.planWeeks.isEmpty {
                     VStack(alignment: .leading, spacing: 16) {
@@ -38,7 +41,16 @@ struct MRArchiveDetailView: View {
                                     currentRaceLabels: ["5K", "10K", "하프", "풀"],
                                     hardRunStarts: engine.hardRunStarts.union(engine.intenseRuns.keys),
                                     pointRunTypes: engine.pointRunTypes,
-                                    finishedRaceDate: snap.raceDate)
+                                    finishedRaceDate: snap.raceDate,
+                                    onTapRun: manager.map { m in
+                                        { run in
+                                            // 러닝 상세는 Activity — 시작 시각으로 찾는다(엔진 러닝 = HealthKit 운동 시작)
+                                            guard navPath.isEmpty,
+                                                  let a = m.activities.first(where: { abs($0.date.timeIntervalSince(run.start)) < 1 })
+                                            else { return }
+                                            navPath.append(a)
+                                        }
+                                    })
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(20)
@@ -52,6 +64,9 @@ struct MRArchiveDetailView: View {
             }
             .background(Color(red: 0.07, green: 0.07, blue: 0.08))
             .navigationTitle(archive.raceName)
+            .navigationDestination(for: Activity.self) { activity in
+                if let manager { ActivityDetailView(activity: activity, manager: manager) }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
