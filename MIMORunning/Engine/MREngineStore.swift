@@ -219,6 +219,10 @@ final class MREngineStore: ObservableObject {
             absorbed: [(race: MRTargetRace, planName: String)]) {
         let cal = Calendar.current
         let he = halfEquivMin
+        // 대회 거리 직접 예측(15°C) — 나 탭 대회 비교의 예상 기록과 같은 출처. 표준 거리(±2%)만.
+        func directRefMin(_ distanceM: Double) -> Double? {
+            predictions.first { abs($0.distanceM - distanceM) / distanceM < 0.02 }?.midMin
+        }
         var prevPlanInfo: (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? = nil
         var absorbed: [(race: MRTargetRace, planName: String)] = []
         var aPairs: [(race: MRTargetRace, plan: MRRacePlan?)] = []
@@ -260,6 +264,7 @@ final class MREngineStore: ObservableObject {
                                  pointHabitEveryWeeks: pointHabitEveryWeeks,
                                  intervalHistory: recentIntervals.last,
                                  thresholdPace: thresholdTrend?.current.paceSecPerKm,
+                                 nowRefMin: directRefMin(r.distanceM),
                                  caller: caller, raceName: r.name)
             // ⚠ A 계획이 따를 숫자는 사용자가 주차표에서 보는 스냅샷 값이어야 한다.
             //   라이브 주차는 오늘 프로필로 다시 만들어져 스냅샷(48)과 다른 숫자(41)가 나올 수 있고,
@@ -294,6 +299,7 @@ final class MREngineStore: ObservableObject {
                                  pointHabitEveryWeeks: pointHabitEveryWeeks,
                                  intervalHistory: recentIntervals.last,
                                  thresholdPace: thresholdTrend?.current.paceSecPerKm,
+                                 nowRefMin: directRefMin(r.distanceM),
                                  caller: caller, raceName: r.name)
             if let pl {
                 prevPlanInfo = (date: r.date, name: r.name, distanceM: r.distanceM,
@@ -325,6 +331,7 @@ final class MREngineStore: ObservableObject {
                                  pointHabitEveryWeeks: pointHabitEveryWeeks,
                                  intervalHistory: recentIntervals.last,
                                  thresholdPace: thresholdTrend?.current.paceSecPerKm,
+                                 nowRefMin: directRefMin(r.distanceM),
                                  caller: caller, raceName: r.name)
             shortPairs.append((r, pl))
         }
@@ -1207,7 +1214,7 @@ final class MREngineStore: ObservableObject {
         let pace: Double? = isRacePace
             ? mrTrainingRacePaceSecPerKm(halfEquivMin: halfEquivMin, distanceM: plan.distanceM,
                                          weeklyKm: plan.peakWeeklyKm, longestKm: plan.reachableLongKm,
-                                         finishes: profile.marathonFinishes)
+                                         finishes: profile.marathonFinishes) * plan.projectionScale
             : nil
         let days = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: plan.raceDate)).day ?? 999
         return MRPlanWeekContext(phase: week.phase, longRunKm: week.longRunKm, weeklyKm: week.weeklyKm,

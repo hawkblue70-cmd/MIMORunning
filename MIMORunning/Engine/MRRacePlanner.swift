@@ -44,6 +44,8 @@ struct MRRacePlan {
     var histMaxWeeklyKm = 0.0
     var projectedNow = 0.0
     var projectedFinal = 0.0
+    /// 대회 거리 직접 예측 ÷ 하프 등가 환산 — 계획의 모든 예상 기록·대회 페이스에 곱한다(1 = 보정 없음).
+    var projectionScale = 1.0
     /// 불확실성 하한 (마라톤 전용, 0이면 미계산)
     var projectedFinalLo = 0.0
     /// 불확실성 상한 (마라톤 전용, 0이면 미계산)
@@ -156,6 +158,7 @@ func mrBuildPlan(raceDate: Date,
                  pointHabitEveryWeeks: Int? = nil,
                  intervalHistory: MRIntervalHistory? = nil,
                  thresholdPace: Double? = nil,
+                 nowRefMin: Double? = nil,
                  caller: String = "unknown",
                  raceName: String = "") -> MRRacePlan? {
 
@@ -201,6 +204,14 @@ func mrBuildPlan(raceDate: Date,
                                        weeklyKm: profile.weeklyKm4w,
                                        longestKm: profile.longestRun16wKm,
                                        finishes: profile.marathonFinishes)
+    // ⚠ 대회 거리 직접 예측(nowRefMin, 15°C)이 있으면 그 값에 맞춘다 — 나 탭 "지난 대회 같은 시점과 비교"의
+    //   예상 기록과 같은 숫자여야 한다(하프 환산 54:32 vs 10K 직접 54:11로 어긋났다, 2026-10-03).
+    //   비율로 맞추므로 '계획대로 쌓으면'·주차별 예상·대회 페이스도 같은 기준으로 옮겨진다.
+    if let now = nowRefMin, now > 0, p.projectedNow > 0 {
+        p.projectionScale = now / p.projectedNow
+        p.projectedNow = now
+    }
+    let scale = p.projectionScale
     // ⚠ 화살표 양쪽은 반드시 같은 기온 조건이어야 한다.
     //   projectedNow만 15°C면 "훈련하면 느려진다"는 화면이 나온다.
     if heat.ok { p.projectedNow = heat.fromRef(timeRefMin: p.projectedNow, tempC: raceTempC) }
@@ -566,7 +577,7 @@ func mrBuildPlan(raceDate: Date,
         // 풀은 durability 지수, 하프 이하는 등가에서 직접 — mrProjectedRefMin 한 곳에서 계산
         var proj = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
                                      weeklyKm: projVol, longestKm: peakLong,
-                                     finishes: profile.marathonFinishes)
+                                     finishes: profile.marathonFinishes) * scale
         if phase == "테이퍼" {
             let k = Double(i - buildWeeks)
             proj *= (1 - MR_TAPER_GAIN * (k / Double(max(p.taperWeeks, 1))))
@@ -613,7 +624,7 @@ func mrBuildPlan(raceDate: Date,
                 case .buildUp, .racePaceShort:
                     pace = mrTrainingRacePaceSecPerKm(halfEquivMin: halfEquivMin, distanceM: distanceM,
                                                       weeklyKm: projVol, longestKm: peakLong,
-                                                      finishes: profile.marathonFinishes)
+                                                      finishes: profile.marathonFinishes) * scale
                 }
                 if let pt = MRPlanPoint.make(kind: kind, weeklyKm: wkDisplay, longRunKm: lrDisplay,
                                              raceDistanceM: distanceM, paceSecPerKm: pace),
@@ -647,7 +658,7 @@ func mrBuildPlan(raceDate: Date,
             // ⚠ 페이스는 기온·테이퍼 보정 전 예측값. 훈련은 대회 기온에서 하지 않는다.
             let racePace = mrTrainingRacePaceSecPerKm(
                 halfEquivMin: halfEquivMin, distanceM: distanceM,
-                weeklyKm: projVol, longestKm: peakLong, finishes: profile.marathonFinishes)
+                weeklyKm: projVol, longestKm: peakLong, finishes: profile.marathonFinishes) * scale
             let seg = mrRacePaceSegmentMinutes(longRunMin: mins.rounded())   // 저장값(longRunMin)과 동일 기준
             let paceStr = mrFormatPace(racePace) + "/km"
             breakdown = each >= 1.5
@@ -739,7 +750,7 @@ func mrBuildPlan(raceDate: Date,
                                      finishes: profile.marathonFinishes)
         var finalRef = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
                                          weeklyKm: peakVol, longestKm: peakLong,
-                                         finishes: profile.marathonFinishes) * (1 - MR_TAPER_GAIN)
+                                         finishes: profile.marathonFinishes) * scale * (1 - MR_TAPER_GAIN)
         if heat.ok { finalRef = heat.fromRef(timeRefMin: finalRef, tempC: raceTempC) }
         p.projectedFinal = finalRef
         // 불확실성 구간 — 데이터에서 잰 체력 변동성 + 모델 오차
@@ -778,7 +789,7 @@ func mrBuildPlan(raceDate: Date,
     } else {
         var finalRef = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
                                          weeklyKm: peakVol, longestKm: peakLong,
-                                         finishes: profile.marathonFinishes) * (1 - MR_TAPER_GAIN)
+                                         finishes: profile.marathonFinishes) * scale * (1 - MR_TAPER_GAIN)
         if heat.ok { finalRef = heat.fromRef(timeRefMin: finalRef, tempC: raceTempC) }
         p.projectedFinal = finalRef
     }
