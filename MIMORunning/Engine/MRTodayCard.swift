@@ -88,15 +88,15 @@ func mrDistanceCells(runs: [MRWorkout], asOf: Date) -> [MRTodayCard.DistanceCell
 
     var cells: [MRTodayCard.DistanceCell] = []
     if week > 0 {
-        cells.append(.init(label: L.s("이번 주", "This week"), km: week))
+        cells.append(.init(label: L.s("이번 주", "This week", ja: "今週"), km: week))
     } else if let prev = iso.date(byAdding: .day, value: -7, to: asOf) {
         // 이번 주에 아직 안 뛰었으면(월요일 아침 등) 빈칸 대신 지난 주 거리 — 2026-09-29 사용자 요청
         let lastWeek = sum { iso.isDate($0.start, equalTo: prev, toGranularity: .weekOfYear) }
-        if lastWeek > 0 { cells.append(.init(label: L.s("지난 주", "Last week"), km: lastWeek)) }
+        if lastWeek > 0 { cells.append(.init(label: L.s("지난 주", "Last week", ja: "先週"), km: lastWeek)) }
     }
-    if month > 0 { cells.append(.init(label: L.s("이번 달", "This month"), km: month)) }
-    if year  > 0 { cells.append(.init(label: L.s("올해",   "This year"),  km: year)) }
-    cells.append(.init(label: L.s("누적", "Total"), km: total))
+    if month > 0 { cells.append(.init(label: L.s("이번 달", "This month", ja: "今月"), km: month)) }
+    if year  > 0 { cells.append(.init(label: L.s("올해",   "This year", ja: "今年"),  km: year)) }
+    cells.append(.init(label: L.s("누적", "Total", ja: "累計"), km: total))
     return cells
 }
 
@@ -124,8 +124,8 @@ func mrTodayCard(runs: [MRWorkout],
     let L = AppLanguage.shared
     let streak = mrActiveWeekStreak(runs: runs, asOf: asOf)
     let streakLine = streak >= 2
-        ? L.s("\(streak)주 연속으로 달리고 있습니다", "\(streak)-week streak")
-        : L.s("오늘도 나오셨습니다", "Great to see you today")
+        ? L.s("\(streak)주 연속으로 달리고 있습니다", "\(streak)-week streak", ja: "\(streak)週連続で走っています")
+        : L.s("오늘도 나오셨습니다", "Great to see you today", ja: "今日も来ましたね")
 
     let distanceCells = mrDistanceCells(runs: runs, asOf: asOf)
 
@@ -173,11 +173,11 @@ func mrTodayCard(runs: [MRWorkout],
         linkLine = weeks >= 2
             ? L.s(
                 "다음 대회까지 \(weeks)주 — 오늘 같은 날이 쌓이면 \(mrFormatDisplay(next.projectedFinal))입니다",
-                "\(weeks) weeks to race day — keep this up for \(mrFormatDisplay(next.projectedFinal))"
+                "\(weeks) weeks to race day — keep this up for \(mrFormatDisplay(next.projectedFinal))", ja: "次のレースまで\(weeks)週 — 今日のような日を積み重ねれば\(mrFormatDisplay(next.projectedFinal))です"
               )
             : L.s(
                 "대회가 \(d)일 남았습니다. 이제는 쌓는 게 아니라 아끼는 시기입니다",
-                "\(d) days to race day — time to taper, not to push"
+                "\(d) days to race day — time to taper, not to push", ja: "レースまであと\(d)日です。もう積む時期ではなく、温存する時期です"
               )
     }
 

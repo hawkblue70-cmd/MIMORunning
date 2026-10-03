@@ -90,10 +90,10 @@ struct MRHRVTrend: Equatable {
     /// 상태어 — 본인 4주 기준선 대비 관찰어(절대 등급 아님). 억제(불안정·아래)가 좋음보다 먼저. 총평 근거·아침 제안이 같이 쓴다.
     var gradeLabel: String {
         let L = AppLanguage.shared
-        if isVolatile { return L.s("불안정", "unstable") }
-        if state == .below { return L.s("낮음", "low") }
-        if isReadyHigh { return L.s("좋음", "good") }
-        return L.s("보통", "normal")
+        if isVolatile { return L.s("불안정", "unstable", ja: "不安定") }
+        if state == .below { return L.s("낮음", "low", ja: "低め") }
+        if isReadyHigh { return L.s("좋음", "good", ja: "良好") }
+        return L.s("보통", "normal", ja: "普通")
     }
 
     static let minRecentNights = 4

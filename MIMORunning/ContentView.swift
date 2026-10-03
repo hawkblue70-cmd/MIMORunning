@@ -16,25 +16,25 @@ struct ContentView: View {
             ActivityListView(manager: manager)
                 .tabItem {
                     Image(systemName: "figure.run").imageScale(.large)
-                    Text(AppLanguage.shared.s("기록", "Log"))
+                    Text(AppLanguage.shared.s("기록", "Log", ja: "記録"))
                 }
 
             GrowthView(manager: manager)
                 .tabItem {
                     Image(systemName: "chart.line.uptrend.xyaxis").imageScale(.large)
-                    Text(AppLanguage.shared.s("성장", "Growth"))
+                    Text(AppLanguage.shared.s("성장", "Growth", ja: "成長"))
                 }
 
             CrewTabView(manager: manager)
                 .tabItem {
                     Image(systemName: "person.2.fill").imageScale(.large)
-                    Text(AppLanguage.shared.s("크루", "Crew"))
+                    Text(AppLanguage.shared.s("크루", "Crew", ja: "クルー"))
                 }
 
             MeView(manager: manager)
                 .tabItem {
                     Image(systemName: "person").imageScale(.large)
-                    Text(AppLanguage.shared.s("나", "Me"))
+                    Text(AppLanguage.shared.s("나", "Me", ja: "マイ"))
                 }
         }
         .tint(Theme.violet)

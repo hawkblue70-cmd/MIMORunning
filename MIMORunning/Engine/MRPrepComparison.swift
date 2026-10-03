@@ -136,25 +136,25 @@ enum MRPrepComparison {
         let name = RaceDisplayName.short(r.target.name)
         guard r.isSameRace else {
             let label = RaceDisplayName.distanceLabel(km: r.target.distanceKm)
-            return L.s("지난 \(name) \(label)", "your last \(name) \(label)")
+            return L.s("지난 \(name) \(label)", "your last \(name) \(label)", ja: "前回の\(name) \(label)")
         }
-        if r.yearsAgo == 1 { return L.s("작년 \(name)", "last year's \(name)") }
-        if r.yearsAgo >= 2 { return L.s("\(r.pastYear)년 \(name)", "\(name) \(r.pastYear)") }
-        return L.s("지난 \(name)", "your last \(name)")
+        if r.yearsAgo == 1 { return L.s("작년 \(name)", "last year's \(name)", ja: "昨年の\(name)") }
+        if r.yearsAgo >= 2 { return L.s("\(r.pastYear)년 \(name)", "\(name) \(r.pastYear)", ja: "\(r.pastYear)年の\(name)") }
+        return L.s("지난 \(name)", "your last \(name)", ja: "前回の\(name)")
     }
 
     static func title(_ r: Result) -> String {
         AppLanguage.shared.s("\(targetName(r)) D-\(r.daysLeft) 시점과 비교",
-                             "Compared with \(targetName(r)) at D-\(r.daysLeft)")
+                             "Compared with \(targetName(r)) at D-\(r.daysLeft)", ja: "\(targetName(r)) D-\(r.daysLeft)時点と比較")
     }
 
     /// 지난 값 앞에 붙는 열 이름 — 작년 · 2024년 · 지난
     static func pastColumn(_ r: Result) -> String {
         let L = AppLanguage.shared
-        guard r.isSameRace else { return L.s("지난", "last") }
-        if r.yearsAgo == 1 { return L.s("작년", "last yr") }
-        if r.yearsAgo >= 2 { return L.s("\(r.pastYear)년", "\(r.pastYear)") }
-        return L.s("지난", "last")
+        guard r.isSameRace else { return L.s("지난", "last", ja: "前回") }
+        if r.yearsAgo == 1 { return L.s("작년", "last yr", ja: "昨年") }
+        if r.yearsAgo >= 2 { return L.s("\(r.pastYear)년", "\(r.pastYear)", ja: "\(r.pastYear)年") }
+        return L.s("지난", "last", ja: "前回")
     }
 
     static func lines(_ r: Result) -> [Line] {
@@ -167,15 +167,15 @@ enum MRPrepComparison {
             return "+\(Int(((now / past - 1) * 100).rounded()))%"
         }
         var out = [
-            Line(label: L.s("주간 거리", "Weekly"), now: km(r.now.weeklyKm),
+            Line(label: L.s("주간 거리", "Weekly", ja: "週間距離"), now: km(r.now.weeklyKm),
                  past: "\(col) \(km(r.past.weeklyKm))", gain: gain(r.now.weeklyKm, r.past.weeklyKm)),
-            Line(label: L.s("최장 롱런", "Longest"), now: km(r.now.longestKm),
+            Line(label: L.s("최장 롱런", "Longest", ja: "最長ロング走"), now: km(r.now.longestKm),
                  past: "\(col) \(km(r.past.longestKm))", gain: gain(r.now.longestKm, r.past.longestKm)),
         ]
         if let n = r.nowPredictedMin, let p = r.pastPredictedMin {
             // 표시된 초끼리 뺀다 — 화면의 두 기록 차와 "−m:ss"가 어긋나지 않게
             let faster = Int((p * 60).rounded()) - Int((n * 60).rounded())
-            out.append(Line(label: L.s("예상 기록", "Predicted"), now: mrFormatDisplay(n),
+            out.append(Line(label: L.s("예상 기록", "Predicted", ja: "予測タイム"), now: mrFormatDisplay(n),
                             past: "\(col) \(mrFormatDisplay(p))",
                             gain: faster >= 1 ? "−" + RaceYearOverYear.clockDuration(faster) : nil))
         }
@@ -188,21 +188,23 @@ enum MRPrepComparison {
         let L = AppLanguage.shared
         let nowKm = Int(r.now.weeklyKm.rounded()), pastKm = Int(r.past.weeklyKm.rounded())
         let name = RaceDisplayName.short(r.target.name)
-        let subjectKo: String, subjectEn: String
+        let subjectKo: String, subjectEn: String, subjectJa: String
         if r.isSameRace && r.yearsAgo == 1 {
-            subjectKo = "작년 이맘때"; subjectEn = "this point last year"
+            subjectKo = "작년 이맘때"; subjectEn = "this point last year"; subjectJa = "昨年の同じ時期"
         } else if r.isSameRace && r.yearsAgo >= 2 {
-            subjectKo = "\(r.pastYear)년 이맘때"; subjectEn = "this point in \(r.pastYear)"
+            subjectKo = "\(r.pastYear)년 이맘때"; subjectEn = "this point in \(r.pastYear)"; subjectJa = "\(r.pastYear)年の同じ時期"
         } else {
-            subjectKo = "지난 \(name) 이맘때"; subjectEn = "this point before your last \(name)"
+            subjectKo = "지난 \(name) 이맘때"; subjectEn = "this point before your last \(name)"; subjectJa = "前回の\(name)の同じ時期"
         }
         if pastKm >= 1, r.now.weeklyKm >= r.past.weeklyKm * (1 + gainThreshold) - 1e-9 {
             let pct = Int(((r.now.weeklyKm / r.past.weeklyKm - 1) * 100).rounded())
             return L.s("\(subjectKo)보다 주간 거리 \(pct)% 많습니다 · \(nowKm)km / \(pastKm)km",
-                       "Weekly distance \(pct)% higher than \(subjectEn) · \(nowKm) km / \(pastKm) km")
+                       "Weekly distance \(pct)% higher than \(subjectEn) · \(nowKm) km / \(pastKm) km",
+                       ja: "\(subjectJa)より週間距離が\(pct)%多いです · \(nowKm)km / \(pastKm)km")
         }
         let subjectEnCap = subjectEn.prefix(1).uppercased() + subjectEn.dropFirst()
         return L.s("\(subjectKo) 주간 \(pastKm)km · 지금 \(nowKm)km",
-                   "\(subjectEnCap): \(pastKm) km/wk · now \(nowKm) km")
+                   "\(subjectEnCap): \(pastKm) km/wk · now \(nowKm) km",
+                   ja: "\(subjectJa) 週間\(pastKm)km · 現在\(nowKm)km")
     }
 }

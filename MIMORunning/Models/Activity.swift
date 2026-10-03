@@ -16,9 +16,9 @@ enum ActivityType: String {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .walking:  L.s("걷기",   "Walk")
-        case .running:  L.s("러닝",   "Run")
-        case .hiking:   L.s("하이킹", "Hike")
+        case .walking:  L.s("걷기",   "Walk", ja: "ウォーキング")
+        case .running:  L.s("러닝",   "Run", ja: "ランニング")
+        case .hiking:   L.s("하이킹", "Hike", ja: "ハイキング")
         }
     }
 }
@@ -49,10 +49,11 @@ struct Activity: Identifiable, Hashable {
     }
 
     var weatherBadgeText: String? {
+        let humidity = AppLanguage.shared.s("습도", "Humidity", ja: "湿度")
         switch (temperatureC, humidityPercent) {
-        case let (t?, h?):  return "\(Int(t.rounded()))° · 습도 \(Int(h.rounded()))%"
+        case let (t?, h?):  return "\(Int(t.rounded()))° · \(humidity) \(Int(h.rounded()))%"
         case let (t?, nil): return "\(Int(t.rounded()))°"
-        case let (nil, h?): return "습도 \(Int(h.rounded()))%"
+        case let (nil, h?): return "\(humidity) \(Int(h.rounded()))%"
         case (nil, nil):    return nil
         }
     }
@@ -112,15 +113,15 @@ enum WorkoutType: String, Codable, CaseIterable {
     var koreanLabel: String {
         let L = AppLanguage.shared
         return switch self {
-        case .interval:    L.s("인터벌",   "Interval")
-        case .longRun:     L.s("롱런",     "Long Run")
-        case .easy:        L.s("이지런",   "Easy Run")
-        case .tempo:       L.s("템포런",   "Tempo Run")
-        case .buildUp:     L.s("빌드업",   "Build-Up")
-        case .lsd:         L.s("LSD",      "LSD")
-        case .distanceRun: L.s("거리주",   "Distance Run")
-        case .race:        L.s("대회",     "Race")
-        case .general:     L.s("일반 러닝", "General Run")
+        case .interval:    L.s("인터벌",   "Interval", ja: "インターバル")
+        case .longRun:     L.s("롱런",     "Long Run", ja: "ロング走")
+        case .easy:        L.s("이지런",   "Easy Run", ja: "イージーラン")
+        case .tempo:       L.s("템포런",   "Tempo Run", ja: "テンポ走")
+        case .buildUp:     L.s("빌드업",   "Build-Up", ja: "ビルドアップ")
+        case .lsd:         L.s("LSD",      "LSD", ja: "LSD")
+        case .distanceRun: L.s("거리주",   "Distance Run", ja: "距離走")
+        case .race:        L.s("대회",     "Race", ja: "レース")
+        case .general:     L.s("일반 러닝", "General Run", ja: "通常ラン")
         }
     }
 
@@ -129,11 +130,11 @@ enum WorkoutType: String, Codable, CaseIterable {
     /// 집계(종류별 횟수·강도)는 저장된 유형 하나로 센다 — 이름만 바뀐다.
     func displayLabel(for activity: Activity, history: [Activity], fastFinish: Bool = false) -> String {
         if self == .buildUp, WorkoutTypeClassifier.isLongDistance(activity: activity, history: history) {
-            return AppLanguage.shared.s("롱런 · 빌드업", "Long Run · Build-Up")
+            return AppLanguage.shared.s("롱런 · 빌드업", "Long Run · Build-Up", ja: "ロング走 · ビルドアップ")
         }
         if fastFinish, Self.fastFinishLabelTypes.contains(self),
            WorkoutTypeClassifier.isLongDistance(activity: activity, history: history) {
-            return AppLanguage.shared.s("롱런 · 후반 페이스", "Long Run · Fast Finish")
+            return AppLanguage.shared.s("롱런 · 후반 페이스", "Long Run · Fast Finish", ja: "ロング走 · 後半上げ")
         }
         return koreanLabel
     }
@@ -394,16 +395,16 @@ enum TrendMetric: String, CaseIterable, Identifiable {
     var koreanLabel: String {
         let L = AppLanguage.shared
         return switch self {
-        case .cadence:             L.s("케이던스",     "Cadence")
-        case .power:               L.s("파워",         "Power")
-        case .groundContactTime:   L.s("지면접촉 시간", "Gnd Contact")
-        case .strideLength:        L.s("보폭",         "Stride Length")
-        case .verticalOscillation: L.s("수직 진폭",   "Vert. Osc.")
-        case .vo2Max:              L.s("유산소 피트니스", "Cardio Fitness")
-        case .hrRecovery1:         L.s("1분 회복",     "HR Recovery")
-        case .easyEffortPace:      L.s("쉬운 날 페이스", "Easy-Effort Pace")
-        case .bodyMass:            L.s("체중",         "Body Weight")
-        case .bodyFatPercentage:   L.s("체지방률",     "Body Fat")
+        case .cadence:             L.s("케이던스",     "Cadence", ja: "ケイデンス")
+        case .power:               L.s("파워",         "Power", ja: "パワー")
+        case .groundContactTime:   L.s("지면접촉 시간", "Gnd Contact", ja: "接地時間")
+        case .strideLength:        L.s("보폭",         "Stride Length", ja: "ストライド")
+        case .verticalOscillation: L.s("수직 진폭",   "Vert. Osc.", ja: "上下動")
+        case .vo2Max:              L.s("유산소 피트니스", "Cardio Fitness", ja: "心肺フィットネス")
+        case .hrRecovery1:         L.s("1분 회복",     "HR Recovery", ja: "1分後の心拍回復")
+        case .easyEffortPace:      L.s("쉬운 날 페이스", "Easy-Effort Pace", ja: "イージー日のペース")
+        case .bodyMass:            L.s("체중",         "Body Weight", ja: "体重")
+        case .bodyFatPercentage:   L.s("체지방률",     "Body Fat", ja: "体脂肪率")
         }
     }
 

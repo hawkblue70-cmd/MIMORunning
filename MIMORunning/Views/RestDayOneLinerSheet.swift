@@ -234,10 +234,10 @@ struct RestDayOneLinerSheet: View {
             .onChange(of: videoTitle)     { _, _ in previewPlayer.invalidate() }
             .onChange(of: titleStyle)     { _, _ in previewPlayer.invalidate() }
             .onChange(of: muteVideoAudio) { _, muted in previewPlayer.setMuted(muted) }
-            .alert(AppLanguage.shared.s("내보내기 실패", "Export Failed"),
+            .alert(AppLanguage.shared.s("내보내기 실패", "Export Failed", ja: "書き出しに失敗しました"),
                    isPresented: Binding(get: { exportError != nil },
                                         set: { if !$0 { exportError = nil } })) {
-                Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { exportError = nil }
+                Button(AppLanguage.shared.s("확인", "OK", ja: "OK"), role: .cancel) { exportError = nil }
             } message: {
                 if let msg = exportError { Text(msg) }
             }
@@ -251,7 +251,7 @@ struct RestDayOneLinerSheet: View {
             VStack(spacing: 0) {
                 if previewPlayer.isReady {
                     HStack {
-                        Button(AppLanguage.shared.s("미리보기 닫기", "Close preview")) {
+                        Button(AppLanguage.shared.s("미리보기 닫기", "Close preview", ja: "プレビューを閉じる")) {
                             previewPlayer.pause()
                             previewPlayer.invalidate()
                         }
@@ -274,7 +274,7 @@ struct RestDayOneLinerSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button(AppLanguage.shared.s("닫기", "Close")) {
+                        Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) {
                             if previewPlayer.isReady {
                                 previewPlayer.pause()
                                 previewPlayer.invalidate()
@@ -510,14 +510,14 @@ struct RestDayOneLinerSheet: View {
         HStack(spacing: 8) {
             if isExportingVideo {
                 ProgressView().tint(.white)
-                Text(AppLanguage.shared.s("내보내는 중...", "Exporting...")).fontWeight(.semibold)
+                Text(AppLanguage.shared.s("내보내는 중...", "Exporting...", ja: "書き出し中...")).fontWeight(.semibold)
             } else {
                 Image(systemName: "square.and.arrow.up")
                 Text(selectedTemplate == .slide
-                     ? AppLanguage.shared.s("슬라이드 내보내기", "Export Slides")
+                     ? AppLanguage.shared.s("슬라이드 내보내기", "Export Slides", ja: "スライドを書き出す")
                      : selectedTemplate == .video
-                     ? AppLanguage.shared.s("영상 내보내기", "Export Video")
-                     : AppLanguage.shared.s("스토리 내보내기", "Export Story"))
+                     ? AppLanguage.shared.s("영상 내보내기", "Export Video", ja: "動画を書き出す")
+                     : AppLanguage.shared.s("스토리 내보내기", "Export Story", ja: "ストーリーを書き出す"))
                     .fontWeight(.semibold)
             }
         }
@@ -557,7 +557,8 @@ struct RestDayOneLinerSheet: View {
                     HStack(spacing: 8) {
                         TextField(
                             AppLanguage.shared.s(i == 0 ? "오늘의 한마디" : "\(i + 1)번째 줄",
-                                                 i == 0 ? "Your one-liner" : "Line \(i + 1)"),
+                                                 i == 0 ? "Your one-liner" : "Line \(i + 1)",
+                                                 ja: i == 0 ? "今日のひとこと" : "\(i + 1)行目"),
                             text: textLineBinding(for: i)
                         )
                         .focused($focusedLineIndex, equals: i)
@@ -615,7 +616,7 @@ struct RestDayOneLinerSheet: View {
                         .buttonStyle(.plain)
 
                         TextField(
-                            AppLanguage.shared.s("사진 \(i + 1) 문구", "Caption \(i + 1)"),
+                            AppLanguage.shared.s("사진 \(i + 1) 문구", "Caption \(i + 1)", ja: "写真\(i + 1)のテキスト"),
                             text: slotTextBinding(for: i),
                             axis: .vertical
                         )
@@ -656,7 +657,7 @@ struct RestDayOneLinerSheet: View {
                 }
 
                 TextField(
-                    AppLanguage.shared.s("보관된 문구", "Saved caption"),
+                    AppLanguage.shared.s("보관된 문구", "Saved caption", ja: "保存したテキスト"),
                     text: orphanedTextBinding(for: i),
                     axis: .vertical
                 )
@@ -882,7 +883,7 @@ struct RestDayOneLinerSheet: View {
                 }
             )
             HStack(spacing: 8) {
-                TextField(AppLanguage.shared.s("사진 위에 문구", "Text on photo"),
+                TextField(AppLanguage.shared.s("사진 위에 문구", "Text on photo", ja: "写真の上のテキスト"),
                           text: textBinding)
                     .font(.system(size: 15))
                     .foregroundStyle(.white)
@@ -928,7 +929,7 @@ struct RestDayOneLinerSheet: View {
                 handleRecipesChanged()
             }
         } label: {
-            Text(AppLanguage.shared.s("테두리", "Outline"))
+            Text(AppLanguage.shared.s("테두리", "Outline", ja: "縁取り"))
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(isOn ? .white : .white.opacity(0.55))
                 .padding(.horizontal, 8).padding(.vertical, 5)
@@ -1071,11 +1072,13 @@ struct RestDayOneLinerSheet: View {
         f.dateFormat = "M월 d일"; f.locale = Locale(identifier: "ko_KR")
         let e = DateFormatter()
         e.dateFormat = "MMM d";  e.locale = Locale(identifier: "en_US")
-        let base = AppLanguage.shared.s(f.string(from: d), e.string(from: d))
+        let j = DateFormatter()
+        j.dateFormat = "M月d日";  j.locale = Locale(identifier: "ja_JP")
+        let base = AppLanguage.shared.s(f.string(from: d), e.string(from: d), ja: j.string(from: d))
         // 운동한 날 = "오늘의 한마디", 쉬는날 = "쉬는 날"
         let suffix = activity != nil
-            ? AppLanguage.shared.s("오늘의 한마디", "Today's One-liner")
-            : AppLanguage.shared.s("쉬는 날", "Rest Day")
+            ? AppLanguage.shared.s("오늘의 한마디", "Today's One-liner", ja: "今日のひとこと")
+            : AppLanguage.shared.s("쉬는 날", "Rest Day", ja: "休養日")
         return base + " " + suffix
     }
 

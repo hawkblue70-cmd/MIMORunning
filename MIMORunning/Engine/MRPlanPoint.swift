@@ -102,16 +102,16 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
         case .speed:
             let n = reps ?? 0
             let rep = mrRepDistanceString(repKm ?? 1)
-            return L.s("인터벌 \(rep) × \(n)회 \(pace)", "Intervals \(rep) × \(n) at \(pace)")
+            return L.s("인터벌 \(rep) × \(n)회 \(pace)", "Intervals \(rep) × \(n) at \(pace)", ja: "インターバル \(rep) × \(n)本 \(pace)")
         case .tempo:
             let t = mrPointKmString(sustainedKm ?? 0)
-            return L.s("템포런 \(t)km 지속 \(pace)", "Tempo run \(t)km steady at \(pace)")
+            return L.s("템포런 \(t)km 지속 \(pace)", "Tempo run \(t)km steady at \(pace)", ja: "テンポ走 \(t)km 一定 \(pace)")
         case .buildUp:
             let b = mrPointKmString(totalKm), s = mrPointKmString(sustainedKm ?? 0)
-            return L.s("빌드업 \(b)km · 마지막 \(s)km \(pace)", "Build-up \(b)km · last \(s)km at \(pace)")
+            return L.s("빌드업 \(b)km · 마지막 \(s)km \(pace)", "Build-up \(b)km · last \(s)km at \(pace)", ja: "ビルドアップ \(b)km · 最後の\(s)km \(pace)")
         case .racePaceShort:
             let n = reps ?? 0
-            return L.s("대회 페이스 1km × \(n)회 \(pace)", "Race pace 1km × \(n) at \(pace)")
+            return L.s("대회 페이스 1km × \(n)회 \(pace)", "Race pace 1km × \(n) at \(pace)", ja: "レースペース 1km × \(n)本 \(pace)")
         }
     }
 }
@@ -124,16 +124,16 @@ extension MRPlanPoint {
         switch kind {
         case .speed:
             let basis = paceFromHistory == true
-                ? L.s("최근 인터벌 페이스 기준", "pace from your recent intervals")
-                : L.s("예상 5K 기록 기준", "pace from your predicted 5K")
+                ? L.s("최근 인터벌 페이스 기준", "pace from your recent intervals", ja: "最近のインターバルペース基準")
+                : L.s("예상 5K 기록 기준", "pace from your predicted 5K", ja: "予測5Kタイム基準")
             return L.s("사이 \(Self.intervalJogMin)분 천천히 조깅 · 앞뒤 조깅 포함 총 \(total)km · \(basis)",
-                       "\(Self.intervalJogMin)-min easy jog between · \(total) km total incl. warm-up/cool-down · \(basis)")
+                       "\(Self.intervalJogMin)-min easy jog between · \(total) km total incl. warm-up/cool-down · \(basis)", ja: "間は\(Self.intervalJogMin)分ゆっくりジョグ · 前後のジョグ込みで計\(total)km · \(basis)")
         case .tempo:
-            return L.s("앞 2km·뒤 1km 조깅 포함 총 \(total)km", "\(total) km total incl. 2 km warm-up and 1 km cool-down")
+            return L.s("앞 2km·뒤 1km 조깅 포함 총 \(total)km", "\(total) km total incl. 2 km warm-up and 1 km cool-down", ja: "前2km・後1kmのジョグ込みで計\(total)km")
         case .buildUp:
-            return L.s("편하게 시작해 점점 올리기", "start easy, build steadily")
+            return L.s("편하게 시작해 점점 올리기", "start easy, build steadily", ja: "楽に入って徐々に上げる")
         case .racePaceShort:
-            return L.s("사이 \(Self.racePaceJogMin)분 조깅 · 앞뒤 조깅 포함 총 \(total)km", "\(Self.racePaceJogMin)-min jog between · \(total) km total incl. warm-up/cool-down")
+            return L.s("사이 \(Self.racePaceJogMin)분 조깅 · 앞뒤 조깅 포함 총 \(total)km", "\(Self.racePaceJogMin)-min jog between · \(total) km total incl. warm-up/cool-down", ja: "間は\(Self.racePaceJogMin)分ジョグ · 前後のジョグ込みで計\(total)km")
         }
     }
 }
@@ -255,7 +255,7 @@ let MR_INTENSE_Z4PLUS_SEC = 600.0
 func mrActualIntensity(effort: ResolvedEffort?, zones: [HRZoneData]?, heatShiftBpm: Double = 0) -> String? {
     let L = AppLanguage.shared
     if let e = effort, e.source != .appleEstimated, e.value >= MR_INTENSE_EFFORT {
-        return L.s("강도 \(e.value)", "effort \(e.value)")
+        return L.s("강도 \(e.value)", "effort \(e.value)", ja: "強度 \(e.value)")
     }
     if let zs = zones, !zs.isEmpty {
         let hi = mrHeatAdjustedZ4PlusSec(zs, shiftBpm: heatShiftBpm)
@@ -263,11 +263,11 @@ func mrActualIntensity(effort: ResolvedEffort?, zones: [HRZoneData]?, heatShiftB
         let min = Int((hi / 60).rounded())
         if heatShiftBpm >= MRHeatHRModel.explainThresholdBpm {
             let s = Int(heatShiftBpm.rounded())
-            return L.s("존4+ \(min)분, 기온 −\(s)bpm", "Z4+ \(min) min, heat −\(s) bpm")
+            return L.s("존4+ \(min)분, 기온 −\(s)bpm", "Z4+ \(min) min, heat −\(s) bpm", ja: "ゾーン4+ \(min)分、気温 −\(s)bpm")
         }
-        return L.s("존4+ \(min)분", "Z4+ \(min) min")
+        return L.s("존4+ \(min)분", "Z4+ \(min) min", ja: "ゾーン4+ \(min)分")
     }
-    if let e = effort, e.value >= MR_INTENSE_EFFORT { return L.s("강도 \(e.value)(추정)", "effort \(e.value) (est.)") }
+    if let e = effort, e.value >= MR_INTENSE_EFFORT { return L.s("강도 \(e.value)(추정)", "effort \(e.value) (est.)", ja: "強度 \(e.value)(推定)") }
     return nil
 }
 
@@ -450,9 +450,9 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
     // 당일(0일)은 제외 — 대회 날 아침에 "0일 뒤"라고 하지 않는다
     if let rd = ctx.recentRaceDate, (1..<MRRhythmContext.postRaceEasyDays).contains(daysAgo(rd)) {
         let n = daysAgo(rd)
-        let name = ctx.recentRaceName ?? L.s("대회", "the race")
-        let note = L.s("\(name) \(n)일 뒤 — 2주는 이지로 회복합니다.", "\(n) days after \(name) — keep two weeks easy to recover.")
-        return MRSessionSuggestion(session: level == .rest ? nil : L.s("이지런", "Easy run"), progress: "",
+        let name = ctx.recentRaceName ?? L.s("대회", "the race", ja: "レース")
+        let note = L.s("\(name) \(n)일 뒤 — 2주는 이지로 회복합니다.", "\(n) days after \(name) — keep two weeks easy to recover.", ja: "\(name)から\(n)日 — 2週間はイージーで回復します。")
+        return MRSessionSuggestion(session: level == .rest ? nil : L.s("이지런", "Easy run", ja: "イージーラン"), progress: "",
                                    isRecovery: level != .rest, whyNote: note)
     }
 
@@ -473,10 +473,10 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
 
     var pieces: [String] = []
     if usualLong != nil, let l = lastLong {
-        pieces.append(L.s("마지막 롱런 \(daysAgo(l.start))일 전", "last long run \(daysAgo(l.start)) days ago"))
+        pieces.append(L.s("마지막 롱런 \(daysAgo(l.start))일 전", "last long run \(daysAgo(l.start)) days ago", ja: "最後のロング走は\(daysAgo(l.start))日前"))
     }
     if interval != nil, let p = lastPoint {
-        pieces.append(L.s("마지막 강도 훈련 \(daysAgo(p.start))일 전", "last hard session \(daysAgo(p.start)) days ago"))
+        pieces.append(L.s("마지막 강도 훈련 \(daysAgo(p.start))일 전", "last hard session \(daysAgo(p.start)) days ago", ja: "最後の強度練習は\(daysAgo(p.start))日前"))
     }
     let progress = pieces.joined(separator: " · ")
 
@@ -487,7 +487,7 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
     let longDue = usualLong != nil
         && (lastLong.map { daysAgo($0.start) >= MRRhythmContext.longRunEveryDays } ?? true)
     if let l = usualLong, longDue, habitual == nil || habitual == todayWD {
-        return MRSessionSuggestion(session: L.s("롱런 \(Int(l.rounded()))km", "Long run \(Int(l.rounded()))km"),
+        return MRSessionSuggestion(session: L.s("롱런 \(Int(l.rounded()))km", "Long run \(Int(l.rounded()))km", ja: "ロング走\(Int(l.rounded()))km"),
                                    progress: progress, isLongRun: true)
     }
 
@@ -510,9 +510,9 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
             if let lp = lastPoint {
                 let label = lastType.map { " " + $0.koreanLabel } ?? ""
                 why = L.s("지난 강도 훈련은 \(md.string(from: lp.start))\(label), \(daysAgo(lp.start))일 전입니다.",
-                          "Last hard session:\(label) \(daysAgo(lp.start)) days ago.")
+                          "Last hard session:\(label) \(daysAgo(lp.start)) days ago.", ja: "前回の強度練習は\(md.string(from: lp.start))\(label)、\(daysAgo(lp.start))日前です。")
             } else {
-                why = L.s("최근 강도 훈련이 없습니다.", "No recent hard session.")
+                why = L.s("최근 강도 훈련이 없습니다.", "No recent hard session.", ja: "最近の強度練習はありません。")
             }
             return MRSessionSuggestion(session: pt.text,
                                        progress: progress, isPoint: true, whyNote: why)
@@ -520,14 +520,14 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
     }
 
     let note: String? = longDue
-        ? habitual.map { L.s("여유는 \(mrWeekdayName($0)) 롱런에 쓰세요.", "Save it for \(mrWeekdayName($0))'s long run.") }
+        ? habitual.map { L.s("여유는 \(mrWeekdayName($0)) 롱런에 쓰세요.", "Save it for \(mrWeekdayName($0))'s long run.", ja: "余力は\(mrWeekdayName($0))のロング走に取っておいてください。") }
         : nil
-    return MRSessionSuggestion(session: L.s("이지런", "Easy run"), progress: progress, whyNote: note)
+    return MRSessionSuggestion(session: L.s("이지런", "Easy run", ja: "イージーラン"), progress: progress, whyNote: note)
 }
 
 /// 계획 문구 + 포인트 — D-day 카드처럼 이번 주 계획을 한 줄로 말하는 곳. 포인트가 없으면 문구 그대로.
 /// (안내 문구는 포인트가 있으면 이지 횟수가 하나 줄어 있어, 포인트를 빼고 말하면 합이 주간 km와 안 맞는다)
 func mrBreakdownWithPoint(_ w: MRPlanWeek) -> String {
     guard let pt = w.point else { return w.breakdown }
-    return w.breakdown + AppLanguage.shared.s(" + 강도 훈련 ", " + hard session: ") + pt.text
+    return w.breakdown + AppLanguage.shared.s(" + 강도 훈련 ", " + hard session: ", ja: " + 強度練習 ") + pt.text
 }

@@ -52,7 +52,7 @@ private struct ConnectView: View {
                 VStack(spacing: 6) {
                     MIMOWordmark(size: 40)
                     Text(AppLanguage.shared.s("걷고 뛰기만 하세요.\n정리는 MIMO Running이 합니다.",
-                                              "Just walk and run.\nMIMO Running handles the rest."))
+                                              "Just walk and run.\nMIMO Running handles the rest.", ja: "歩いて走るだけ。\n整理はMIMO Runningにおまかせ。"))
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -61,7 +61,7 @@ private struct ConnectView: View {
             }
             Spacer()
             Button(action: onConnect) {
-                Text(AppLanguage.shared.s("건강 앱 연결하기", "Connect Health App"))
+                Text(AppLanguage.shared.s("건강 앱 연결하기", "Connect Health App", ja: "ヘルスケアと連携する"))
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -97,8 +97,8 @@ private enum ListItem: Identifiable {
 
 // 날짜 기반 카드 제목 — 교체 시 이 한 곳만 수정
 private enum OneLinerListLabels {
-    static var diary:   String { AppLanguage.shared.s("일기",   "Diary") }
-    static var restDay: String { AppLanguage.shared.s("쉬는 날", "Rest Day") }
+    static var diary:   String { AppLanguage.shared.s("일기",   "Diary", ja: "日記") }
+    static var restDay: String { AppLanguage.shared.s("쉬는 날", "Rest Day", ja: "休養日") }
 }
 
 // MARK: - Activity List
@@ -357,7 +357,7 @@ private struct ActivityListContent: View {
                                 Button {
                                     displayCount += 50
                                 } label: {
-                                    Text(AppLanguage.shared.s("더 보기 (\(filteredActivities.count - displayCount)개 남음)", "Load More (\(filteredActivities.count - displayCount) left)"))
+                                    Text(AppLanguage.shared.s("더 보기 (\(filteredActivities.count - displayCount)개 남음)", "Load More (\(filteredActivities.count - displayCount) left)", ja: "さらに表示(残り\(filteredActivities.count - displayCount)件)"))
                                         .font(.subheadline.weight(.medium))
                                         .foregroundStyle(Theme.violet)
                                         .frame(maxWidth: .infinity)
@@ -523,7 +523,7 @@ private struct RestDayListRow: View {
                             .foregroundStyle(.white)
                             .lineLimit(1)
                     } else if !hasEntry {
-                        Text(AppLanguage.shared.s("이야기 추가하기", "Add your story"))
+                        Text(AppLanguage.shared.s("이야기 추가하기", "Add your story", ja: "ストーリーを追加"))
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.violet.opacity(0.8))
                     }
@@ -653,20 +653,20 @@ private struct TrialBannerView: View {
                 .foregroundStyle(accentColor)
             VStack(alignment: .leading, spacing: 2) {
                 Text(isExpired
-                     ? AppLanguage.shared.s("무료 체험이 종료되었습니다", "Free trial ended")
-                     : AppLanguage.shared.s("무료 체험 중 · \(daysRemaining)일 남음", "Free trial · \(daysRemaining) days left"))
+                     ? AppLanguage.shared.s("무료 체험이 종료되었습니다", "Free trial ended", ja: "無料体験が終了しました")
+                     : AppLanguage.shared.s("무료 체험 중 · \(daysRemaining)일 남음", "Free trial · \(daysRemaining) days left", ja: "無料体験中 · 残り\(daysRemaining)日"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(isExpired
-                     ? AppLanguage.shared.s("새 기록을 받으려면 MIMO Pro 구독이 필요합니다", "Subscribe to MIMO Pro to keep syncing new workouts")
-                     : AppLanguage.shared.s("체험 종료 후 새 기록을 계속 받으려면 구독하세요", "Subscribe to continue syncing after the trial"))
+                     ? AppLanguage.shared.s("새 기록을 받으려면 MIMO Pro 구독이 필요합니다", "Subscribe to MIMO Pro to keep syncing new workouts", ja: "新しい記録を受け取るにはMIMO Proの購読が必要です")
+                     : AppLanguage.shared.s("체험 종료 후 새 기록을 계속 받으려면 구독하세요", "Subscribe to continue syncing after the trial", ja: "体験終了後も新しい記録を受け取るには購読してください"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Button(action: onSubscribe) {
-                Text(AppLanguage.shared.s("구독하기", "Subscribe"))
+                Text(AppLanguage.shared.s("구독하기", "Subscribe", ja: "購読する"))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
@@ -727,7 +727,7 @@ private struct ProPaywallSheet: View {
                             Text("MIMO Pro")
                                 .font(.system(size: 22, weight: .bold))
                                 .foregroundStyle(.white)
-                            Text(AppLanguage.shared.s("새 기록을 계속 쌓으려면\n구독이 필요합니다", "Subscribe to keep syncing\nnew workouts"))
+                            Text(AppLanguage.shared.s("새 기록을 계속 쌓으려면\n구독이 필요합니다", "Subscribe to keep syncing\nnew workouts", ja: "新しい記録を積み続けるには\n購読が必要です"))
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -737,38 +737,38 @@ private struct ProPaywallSheet: View {
 
                         // Features list
                         VStack(alignment: .leading, spacing: 12) {
-                            Text(AppLanguage.shared.s("포함 기능", "What's included"))
+                            Text(AppLanguage.shared.s("포함 기능", "What's included", ja: "含まれる機能"))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.secondary)
                                 .textCase(.uppercase)
                                 .tracking(0.5)
                             FeatureRow(
                                 icon: "arrow.triangle.2.circlepath",
-                                text: AppLanguage.shared.s("모든 러닝·걷기·하이킹 기록 무제한 동기화", "Unlimited sync for all running, walking & hiking")
+                                text: AppLanguage.shared.s("모든 러닝·걷기·하이킹 기록 무제한 동기화", "Unlimited sync for all running, walking & hiking", ja: "すべてのランニング・ウォーキング・ハイキング記録を無制限に同期")
                             )
                             FeatureRow(
                                 icon: "chart.xyaxis.line",
-                                text: AppLanguage.shared.s("상세 지표: 페이스, 심박수, 칼로리, 고도", "Detailed metrics: pace, heart rate, calories, elevation")
+                                text: AppLanguage.shared.s("상세 지표: 페이스, 심박수, 칼로리, 고도", "Detailed metrics: pace, heart rate, calories, elevation", ja: "詳細指標: ペース、心拍数、カロリー、標高")
                             )
                             FeatureRow(
                                 icon: "map",
-                                text: AppLanguage.shared.s("GPS 루트 지도 및 스플릿 분석", "GPS route map & split analysis")
+                                text: AppLanguage.shared.s("GPS 루트 지도 및 스플릿 분석", "GPS route map & split analysis", ja: "GPSルートマップとスプリット分析")
                             )
                             FeatureRow(
                                 icon: "sparkles",
-                                text: AppLanguage.shared.s("러닝 인사이트 및 공유 카드", "Running insights & share cards")
+                                text: AppLanguage.shared.s("러닝 인사이트 및 공유 카드", "Running insights & share cards", ja: "ランニングインサイトとシェアカード")
                             )
                             FeatureRow(
                                 icon: "shoe",
-                                text: AppLanguage.shared.s("신발 관리 및 주행거리 추적", "Shoe management & mileage tracking")
+                                text: AppLanguage.shared.s("신발 관리 및 주행거리 추적", "Shoe management & mileage tracking", ja: "シューズ管理と走行距離の記録")
                             )
                             FeatureRow(
                                 icon: "chart.line.uptrend.xyaxis",
-                                text: AppLanguage.shared.s("성장 차트 및 개인 기록(PR) 추적", "Growth charts & personal record (PR) tracking")
+                                text: AppLanguage.shared.s("성장 차트 및 개인 기록(PR) 추적", "Growth charts & personal record (PR) tracking", ja: "成長チャートと自己ベスト(PR)の記録")
                             )
                             FeatureRow(
                                 icon: "flag.checkered",
-                                text: AppLanguage.shared.s("목표 대회 맞춤 훈련계획", "Personalized race training plans")
+                                text: AppLanguage.shared.s("목표 대회 맞춤 훈련계획", "Personalized race training plans", ja: "目標レースに合わせた練習計画")
                             )
                         }
                         .padding(16)
@@ -785,7 +785,7 @@ private struct ProPaywallSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                         .foregroundStyle(.secondary)
                 }
             }
@@ -865,7 +865,7 @@ private struct ActivityCard: View {
                 if level >= .novice, let pace = activity.formattedPace {
                     MetricChip(value: pace, label: "/km", color: Theme.pace)
                 }
-                MetricChip(value: activity.formattedDuration, label: AppLanguage.shared.s("시간", "time"), color: Theme.time)
+                MetricChip(value: activity.formattedDuration, label: AppLanguage.shared.s("시간", "time", ja: "時間"), color: Theme.time)
                 if level >= .novice, let hr = activity.avgHeartRate {
                     MetricChip(value: "\(hr)", label: "bpm", color: Theme.heartRate)
                 }
@@ -924,7 +924,7 @@ private struct EmptyActivitiesView: View {
             Image(systemName: "figure.walk.motion")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text(AppLanguage.shared.s("기록된 활동이 없습니다", "No activities found"))
+            Text(AppLanguage.shared.s("기록된 활동이 없습니다", "No activities found", ja: "記録されたアクティビティがありません"))
                 .foregroundStyle(.secondary)
         }
     }
@@ -936,10 +936,10 @@ private struct FilteredEmptyView: View {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text(AppLanguage.shared.s("선택한 종류의 활동이 없습니다", "No activities for selected type"))
+            Text(AppLanguage.shared.s("선택한 종류의 활동이 없습니다", "No activities for selected type", ja: "選択した種類のアクティビティがありません"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Text(AppLanguage.shared.s("나 탭 > 설정 > 활동 종류에서 변경할 수 있습니다", "Change in Me > Settings > Activity Type"))
+            Text(AppLanguage.shared.s("나 탭 > 설정 > 활동 종류에서 변경할 수 있습니다", "Change in Me > Settings > Activity Type", ja: "マイ > 設定 > アクティビティの種類 で変更できます"))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -954,10 +954,10 @@ private struct UnavailableView: View {
             Image(systemName: "heart.slash")
                 .font(.system(size: 48))
                 .foregroundStyle(Theme.heartRate)
-            Text(AppLanguage.shared.s("건강 앱을 사용할 수 없습니다", "Health App Not Available"))
+            Text(AppLanguage.shared.s("건강 앱을 사용할 수 없습니다", "Health App Not Available", ja: "ヘルスケアを利用できません"))
                 .font(.headline)
                 .foregroundStyle(.white)
-            Text(AppLanguage.shared.s("이 기기는 HealthKit을 지원하지 않습니다.", "This device doesn't support HealthKit."))
+            Text(AppLanguage.shared.s("이 기기는 HealthKit을 지원하지 않습니다.", "This device doesn't support HealthKit.", ja: "このデバイスはHealthKitに対応していません。"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
