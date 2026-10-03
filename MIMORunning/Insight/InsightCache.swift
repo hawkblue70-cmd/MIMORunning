@@ -66,7 +66,7 @@ actor InsightCache {
     // MARK: - Disk persistence
 
     // Bump this when insight generation logic changes to invalidate stale cache files.
-    private static let cacheVersion = 25   // v25: 주 경계를 월요일 시작 ISO 주로(홈 N주 연속과 같게) · v24: 이지런 심박 우선 재분류 — 유형이 바뀐 러닝의 제목 재계산 (v23: AI 부연 주장 검사 — 원문에 없는 "가장·이번 달·연속" 폐기 (v22: 심박 비교를 15°C 기준으로 · v21: 이 러닝 이전 기록만 · v20: 직전 날짜 · v19–16: 이지런·AI 검사)
+    private static let cacheVersion = 26   // v26: 일본어 번역 전 빌드가 ja 키에 저장한 영어 대체 결과 폐기 · v25: 주 경계를 월요일 시작 ISO 주로(홈 N주 연속과 같게) · v24: 이지런 심박 우선 재분류 — 유형이 바뀐 러닝의 제목 재계산 (v23: AI 부연 주장 검사 — 원문에 없는 "가장·이번 달·연속" 폐기 (v22: 심박 비교를 15°C 기준으로 · v21: 이 러닝 이전 기록만 · v20: 직전 날짜 · v19–16: 이지런·AI 검사)
 
     /// 테스트에서 파일명 패턴을 검증하기 위해 internal 로 노출.
     static func cacheFileName(activityID: UUID, isRefined: Bool, language: String) -> String {
