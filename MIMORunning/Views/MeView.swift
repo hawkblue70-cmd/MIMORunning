@@ -567,7 +567,9 @@ struct MeView: View {
             }
         }
         .sheet(item: $planArchive) { arch in
-            MRArchiveDetailView(archive: arch)
+            MRArchiveDetailView(archive: arch,
+                                snapshot: allSnapshots.first { $0.matches(date: arch.raceDate, distanceM: arch.distanceM) })
+                .environmentObject(engine)
         }
         .confirmationDialog(
             archiveToDelete.map(\.raceName) ?? "",

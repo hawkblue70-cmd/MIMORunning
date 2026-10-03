@@ -340,7 +340,14 @@ struct MRWeekTable: View {
     /// 포인트 완료 판정 입력 — 엔진이 홈에서 받은 값(고강도 15일 · 포인트 유형 180일)
     var hardRunStarts: Set<Date> = []
     var pointRunTypes: [Date: WorkoutType] = [:]
+    /// 끝난 계획(대회 기록의 "계획") — 대회일을 '오늘'로 보고 대회 주까지 모두 끝난 주로 센다.
+    /// 예상 칸은 빼고, 행을 펼치면 그 주에 달린 러닝 목록을 보인다. nil이면 진행 중인 계획.
+    var finishedRaceDate: Date? = nil
     @State private var expanded: Set<Int> = []
+
+    private var isFinished: Bool { finishedRaceDate != nil }
+    /// 기준 '오늘' — 끝난 계획은 대회일(그날 러닝까지 포함), 진행 중이면 지금.
+    private var refNow: Date { finishedRaceDate ?? Date() }
 
     private let dateFmt: DateFormatter = {
         let df = DateFormatter()
@@ -352,8 +359,9 @@ struct MRWeekTable: View {
     // MARK: - 스냅샷 기반 헬퍼
 
     private func isCurrentSnap(_ snap: MRPlanWeekSummary) -> Bool {
+        guard !isFinished else { return false }
         let cal = Calendar.current
-        let todayStart = cal.startOfDay(for: Date())
+        let todayStart = cal.startOfDay(for: refNow)
         let weekStart  = cal.startOfDay(for: snap.monday)
         guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else { return false }
         return todayStart >= weekStart && todayStart < weekEnd
@@ -362,7 +370,7 @@ struct MRWeekTable: View {
     /// 과거·현재 주의 실제 달린 거리. 미래 주는 nil.
     private func actualDataForSnap(_ snap: MRPlanWeekSummary) -> (long: Double, weekly: Double)? {
         let cal = Calendar.current
-        let today     = cal.startOfDay(for: Date())
+        let today     = cal.startOfDay(for: refNow)
         let weekStart = cal.startOfDay(for: snap.monday)
         guard weekStart <= today else { return nil }
         guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else { return nil }
@@ -377,10 +385,10 @@ struct MRWeekTable: View {
     /// 덜 채운 이번 주는 주중에 ○를 띄우지 않고 비운다(2026-10-02 사용자: "완료하면 시간에 관계없이 수행 표시"). 미래 주 nil.
     private func complianceSymbolForSnap(_ snap: MRPlanWeekSummary, includeCurrent: Bool = true) -> String? {
         let cal = Calendar.current
-        let today     = cal.startOfDay(for: Date())
+        let today     = cal.startOfDay(for: refNow)
         let weekStart = cal.startOfDay(for: snap.monday)
         guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart), weekStart <= today else { return nil }
-        let isCurrent = weekEnd > today
+        let isCurrent = !isFinished && weekEnd > today
         if isCurrent && !includeCurrent { return nil }
         let cutoff = min(weekEnd, cal.date(byAdding: .day, value: 1, to: today) ?? weekEnd)
         let weekRuns     = runs.filter { $0.start >= weekStart && $0.start < cutoff }
@@ -435,10 +443,64 @@ struct MRWeekTable: View {
     private func pointRunIn(week monday: Date, longRunKm: Double) -> MRWorkout? {
         let cal = Calendar.current
         let start = cal.startOfDay(for: monday)
-        guard start <= cal.startOfDay(for: Date()),
-              let end = cal.date(byAdding: .day, value: 7, to: start) else { return nil }
-        let weekRuns = runs.filter { $0.start >= start && $0.start < end }
+        let weekRuns = runsIn(week: monday)
+        guard start <= cal.startOfDay(for: refNow) else { return nil }
         return mrPointRun(weekRuns: weekRuns, longRunKm: longRunKm, hardStarts: hardRunStarts, pointTypes: pointRunTypes)
+    }
+
+    /// 그 주(월~일)에 달린 러닝 — 기준 '오늘'(끝난 계획은 대회일)까지만.
+    private func runsIn(week monday: Date) -> [MRWorkout] {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: monday)
+        guard let weekEnd = cal.date(byAdding: .day, value: 7, to: start),
+              let dayAfter = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: refNow)) else { return [] }
+        let end = min(weekEnd, dayAfter)
+        return runs.filter { $0.start >= start && $0.start < end }.sorted { $0.start < $1.start }
+    }
+
+    private let runDayFmt: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: AppLanguage.shared.isEnglish ? "en_US" : "ko_KR")
+        df.dateFormat = "M/d (E)"
+        return df
+    }()
+
+    /// 끝난 계획에서 행을 펼치면 — 그 주 러닝 한 줄씩(날짜 · 거리 · 페이스 · 앱 유형). 노랑 = 실제로 한 것.
+    @ViewBuilder
+    private func weekRunLines(_ monday: Date) -> some View {
+        let L = AppLanguage.shared
+        let list = runsIn(week: monday)
+        if list.isEmpty {
+            Text(L.s("이 주에는 러닝이 없습니다", "No runs this week"))
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.60))
+        } else {
+            ForEach(list, id: \.start) { r in
+                HStack(spacing: 8) {
+                    Text(runDayFmt.string(from: r.start))
+                        .frame(width: 64, alignment: .leading)
+                        .foregroundStyle(.white.opacity(0.72))
+                    Text(r.distanceKm.map { String(format: "%.1fkm", $0) } ?? "—")
+                        .frame(width: 48, alignment: .trailing)
+                        .foregroundStyle(Color.yellow)
+                    Text(r.paceSecPerKm.map { mrFormatPace($0) + "/km" } ?? "")
+                        .foregroundStyle(.white.opacity(0.72))
+                    if let t = pointRunTypes[r.start] {
+                        Text(t.koreanLabel).foregroundStyle(.white.opacity(0.60))
+                    }
+                }
+                .font(.system(size: 11, design: .rounded))
+                .monospacedDigit()
+            }
+        }
+    }
+
+    /// 강도 훈련 계획 회수와 한 회수 — 끝난 계획 요약 줄. 계획에 강도 훈련이 없으면 nil.
+    private var pointSummary: String? {
+        let planned = snapshotWeeks.filter { $0.point != nil }
+        guard !planned.isEmpty else { return nil }
+        let done = planned.filter { pointRunIn(week: $0.monday, longRunKm: $0.longRunKm) != nil }.count
+        return AppLanguage.shared.s("강도 훈련 \(done)/\(planned.count)회", "Hard sessions \(done)/\(planned.count)")
     }
 
     /// 포인트 두 줄 — 계획(흰색 0.72) · 한 뒤(노랑 = 실제로 한 것). 설계 7절.
@@ -461,7 +523,7 @@ struct MRWeekTable: View {
 
     private func isCurrent(_ w: MRPlanWeek) -> Bool {
         let cal = Calendar.current
-        let todayStart = cal.startOfDay(for: Date())
+        let todayStart = cal.startOfDay(for: refNow)
         let weekStart  = cal.startOfDay(for: w.monday)
         guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else { return false }
         return todayStart >= weekStart && todayStart < weekEnd
@@ -477,7 +539,7 @@ struct MRWeekTable: View {
 
     private func actualData(for w: MRPlanWeek) -> (long: Double, weekly: Double)? {
         let cal = Calendar.current
-        let today     = cal.startOfDay(for: Date())
+        let today     = cal.startOfDay(for: refNow)
         let weekStart = cal.startOfDay(for: w.monday)
         guard weekStart <= today else { return nil }
         guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else { return nil }
@@ -510,6 +572,10 @@ struct MRWeekTable: View {
         if one  > 0 { parts.append("\(symbolOne) \(one)")  }
         if none > 0 { parts.append("\(symbolNone) \(none)") }
         let n = syms.count
+        if isFinished {
+            let head = L.s("계획 \(n)주:", "\(n)-wk plan:") + " \(parts.joined(separator: " · "))"
+            return pointSummary.map { head + " · " + $0 } ?? head
+        }
         return L.s("지난 \(n)주:", "Last \(n) wks:") + " \(parts.joined(separator: " · "))"
     }
 
@@ -552,6 +618,11 @@ struct MRWeekTable: View {
 
     private func autoExpandCurrent() {
         guard expanded.isEmpty else { return }
+        if isFinished {
+            // 끝난 계획은 대회 주를 펼쳐 둔다 — 마지막에 무엇을 했는지가 먼저 궁금하다
+            if let last = snapshotWeeks.last { expanded.insert(last.idx) }
+            return
+        }
         if !snapshotWeeks.isEmpty {
             // 이번 주와 다음 주 자동 펼침
             for (i, snap) in snapshotWeeks.enumerated() {
@@ -592,7 +663,9 @@ struct MRWeekTable: View {
                 Text(L.s("단계", "Phase")).frame(width: 64, alignment: .leading)
                 Text(L.s("롱런", "Long")).frame(maxWidth: .infinity, alignment: .trailing)
                 Text(L.s("주간", "Weekly")).frame(maxWidth: .infinity, alignment: .trailing)
-                Text(L.s("예상", "Target")).frame(width: 56, alignment: .trailing)
+                if !isFinished {
+                    Text(L.s("예상", "Target")).frame(width: 56, alignment: .trailing)
+                }
             }
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.white.opacity(0.72))
@@ -636,15 +709,17 @@ struct MRWeekTable: View {
                             Text(String(format: "%.0f", snap.weeklyKm))
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                                 .foregroundStyle(.white.opacity(0.82))
-                            Group {
-                                if let pm = projMin {
-                                    Text(mrFormatDisplay(pm))
-                                        .foregroundStyle(.white.opacity(0.82))
-                                } else {
-                                    Text("—").foregroundStyle(.white.opacity(0.65))
+                            if !isFinished {
+                                Group {
+                                    if let pm = projMin {
+                                        Text(mrFormatDisplay(pm))
+                                            .foregroundStyle(.white.opacity(0.82))
+                                    } else {
+                                        Text("—").foregroundStyle(.white.opacity(0.65))
+                                    }
                                 }
+                                .frame(width: 56, alignment: .trailing)
                             }
-                            .frame(width: 56, alignment: .trailing)
                         }
                         .font(.system(size: 12, design: .rounded))
                         .contentShape(Rectangle())
@@ -707,6 +782,10 @@ struct MRWeekTable: View {
                                 }
                                 if let pt = snap.point {
                                     pointLines(pt, monday: snap.monday, longRunKm: snap.longRunKm)
+                                }
+                                if isFinished {
+                                    weekRunLines(snap.monday)
+                                        .padding(.top, 2)
                                 }
                             }
                             .padding(.leading, 36).padding(.bottom, 4)
@@ -844,7 +923,9 @@ struct MRWeekTable: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Text(L.s("행 탭 → 실제 기록 또는 실행 안내 · 진한 주 번호 = 이번 주 · 거리는 이지 페이스 기준", "Tap row → actual log or guidance · Bold = current week · Distance at easy pace"))
+            Text(isFinished
+                 ? L.s("행 탭 → 그 주 실행 안내와 달린 러닝 · 대회 주는 대회일까지", "Tap row → guidance and runs that week · Race week counts up to race day")
+                 : L.s("행 탭 → 실제 기록 또는 실행 안내 · 진한 주 번호 = 이번 주 · 거리는 이지 페이스 기준", "Tap row → actual log or guidance · Bold = current week · Distance at easy pace"))
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.65))
                 .padding(.top, 10)

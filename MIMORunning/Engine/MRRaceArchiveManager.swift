@@ -100,13 +100,11 @@ func mrBuildArchiveMarkdown(
         return md + appendMeta(snapshot: snapshot, actualMin: actualMin)
     }
 
-    // 대회일 기준 과거 주만
+    // 대회 주까지 — 대회 주는 대회일까지의 러닝만 센다(대회 뒤 같은 주 러닝 제외).
+    //   예전에는 대회일 전에 끝난 주만 넣어 일요일 대회의 테이퍼 주가 통째로 빠졌다(2026-10-03).
     let raceDayStart = cal.startOfDay(for: snapshot.raceDate)
-    let pastWeeks = planWeeks.filter { w in
-        let weekEnd = cal.date(byAdding: .day, value: 7,
-                               to: cal.startOfDay(for: w.monday)) ?? cal.startOfDay(for: w.monday)
-        return weekEnd <= raceDayStart
-    }
+    let raceDayEnd = cal.date(byAdding: .day, value: 1, to: raceDayStart) ?? raceDayStart
+    let pastWeeks = planWeeks.filter { cal.startOfDay(for: $0.monday) <= raceDayStart }
 
     if !pastWeeks.isEmpty {
         md += mrArchiveWeeklySectionHeader + "\n\n"
@@ -116,7 +114,7 @@ func mrBuildArchiveMarkdown(
 
         for w in pastWeeks {
             let weekStart = cal.startOfDay(for: w.monday)
-            let weekEnd   = cal.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
+            let weekEnd   = min(cal.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart, raceDayEnd)
             let weekRuns  = runs.filter { $0.start >= weekStart && $0.start < weekEnd }
             let actualLong   = weekRuns.compactMap(\.distanceKm).max() ?? 0
             let actualWeekly = weekRuns.compactMap(\.distanceKm).reduce(0, +)

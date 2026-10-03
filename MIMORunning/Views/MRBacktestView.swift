@@ -7,16 +7,48 @@ private let mrBtCard   = Color(red: 0.11, green: 0.11, blue: 0.12)
 
 struct MRArchiveDetailView: View {
     let archive: RaceArchive
+    /// 그 대회의 계획 스냅샷 — 있으면 진행 중 계획과 같은 주차표(`MRWeekTable`)로 보인다. 없으면 저장된 글 그대로.
+    var snapshot: RacePlanSnapshot? = nil
+    @EnvironmentObject private var engine: MREngineStore
     @Environment(\.dismiss) private var dismiss
+
+    /// 저장된 글의 머리(실제 · 계획 시작 시점 예측 · 대회 직전 예측) — 제목 줄과 주차 절은 뺀다.
+    private var headLines: [String] {
+        let text = mrArchiveDisplayText(archive.markdown)
+        let head = text.components(separatedBy: mrArchiveWeeklySectionHeader).first ?? text
+        return head.split(separator: "\n").map(String.init)
+            .filter { !$0.hasPrefix("#") && !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                Text(mrArchiveDisplayText(archive.markdown))
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.85))
+                if let snap = snapshot, !snap.planWeeks.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(headLines, id: \.self) { line in
+                                Text(line)
+                                    .font(.system(size: 13, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .monospacedDigit()
+                            }
+                        }
+                        // 진행 중 계획과 같은 표 — 대회일을 '오늘'로 보고 대회 주까지 끝난 주로 센다
+                        MRWeekTable(weeks: [], runs: engine.runs, snapshotWeeks: snap.planWeeks,
+                                    currentRaceLabels: ["5K", "10K", "하프", "풀"],
+                                    hardRunStarts: engine.hardRunStarts.union(engine.intenseRuns.keys),
+                                    pointRunTypes: engine.pointRunTypes,
+                                    finishedRaceDate: snap.raceDate)
+                    }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(20)
+                } else {
+                    Text(mrArchiveDisplayText(archive.markdown))
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(20)
+                }
             }
             .background(Color(red: 0.07, green: 0.07, blue: 0.08))
             .navigationTitle(archive.raceName)
