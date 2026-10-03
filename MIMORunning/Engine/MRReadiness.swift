@@ -136,12 +136,12 @@ func mrParsePlanBreakdown(_ text: String) -> (easyRuns: Int?, easyKm: Double?) {
         guard let m = re.matches(in: text, range: NSRange(location: 0, length: ns.length)).last else { return nil }
         return (1..<m.numberOfRanges).map { m.range(at: $0).location == NSNotFound ? "" : ns.substring(with: m.range(at: $0)) }
     }
-    // "이지 6.4km × 4회" / "짧게 5km × 3회" / "Easy 6.4km × 4x"
-    if let g = lastMatch(#"(?:이지|짧게|Easy|Short) ([0-9]+(?:\.[0-9]+)?)km × ([0-9]+)(?:회|x)"#), g.count == 2 {
+    // "이지 6.4km × 4회" / "짧게 5km × 3회" / "Easy 6.4km × 4x" / "イージー 6.4km × 4回"
+    if let g = lastMatch(#"(?:이지|짧게|Easy|Short|イージー|短め) ([0-9]+(?:\.[0-9]+)?)km × ([0-9]+)(?:회|x|回)"#), g.count == 2 {
         return (Int(g[1]), Double(g[0]))
     }
     // "이지 4회" / "Easy 4x"
-    if let g = lastMatch(#"(?:이지|Easy) ([0-9]+)(?:회|x)"#), g.count == 1 {
+    if let g = lastMatch(#"(?:이지|Easy|イージー) ([0-9]+)(?:회|x|回)"#), g.count == 1 {
         return (Int(g[0]), nil)
     }
     return (nil, nil)

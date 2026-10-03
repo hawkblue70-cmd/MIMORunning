@@ -19,7 +19,7 @@ struct RaceRecordRow: View {
     /// 같은 대회를 워치 VO2max 환산표로 예측한 값 — 비교용이라 회색으로만
     private func vo2Text(_ minutes: Double) -> some View {
         Text(AppLanguage.shared.s("VO2max 환산표 \(mrFormatDisplay(minutes))",
-                                  "VO2max table \(mrFormatDisplay(minutes))"))
+                                  "VO2max table \(mrFormatDisplay(minutes))", ja: "VO2max換算表 \(mrFormatDisplay(minutes))"))
             .foregroundStyle(.secondary)
     }
 
@@ -32,10 +32,10 @@ struct RaceRecordRow: View {
         let L = AppLanguage.shared
         HStack(spacing: 6) {
             if let p = row.prediction {
-                Text(L.s("예측 \(mrFormatDisplay(p.predictedMin))", "Predicted \(mrFormatDisplay(p.predictedMin))"))
+                Text(L.s("예측 \(mrFormatDisplay(p.predictedMin))", "Predicted \(mrFormatDisplay(p.predictedMin))", ja: "予測 \(mrFormatDisplay(p.predictedMin))"))
                     .foregroundStyle(.secondary)
                 dot()
-                Text(p.inBand ? L.s("구간 안", "In range") : L.s("구간 밖", "Out of range"))
+                Text(p.inBand ? L.s("구간 안", "In range", ja: "範囲内") : L.s("구간 밖", "Out of range", ja: "範囲外"))
                     .foregroundStyle(p.inBand ? Theme.positive : Self.warn)
                 if vo2Inline, let v = p.vo2PredictedMin {
                     dot()
@@ -44,13 +44,13 @@ struct RaceRecordRow: View {
             }
             if let n = row.editionCount {
                 if row.prediction != nil { dot() }
-                Text(L.s("\(n)회째", "#\(n)"))
+                Text(L.s("\(n)회째", "#\(n)", ja: "\(n)回目"))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
             if row.hasPlan {
                 Button { onTapPlan?() } label: {
-                    Text(L.s("계획", "Plan"))
+                    Text(L.s("계획", "Plan", ja: "計画"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.85))
                         .padding(.horizontal, 8)
@@ -59,7 +59,7 @@ struct RaceRecordRow: View {
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(L.s("계획 보기", "View plan"))
+                .accessibilityLabel(L.s("계획 보기", "View plan", ja: "計画を見る"))
             }
         }
         // 한 줄 판정용 — 내린 쪽은 원래처럼 줄바꿈 허용
@@ -92,7 +92,7 @@ struct RaceRecordRow: View {
                     .background((dim ? Color.secondary : Theme.violet).opacity(0.15))
                     .clipShape(Capsule())
                 Spacer(minLength: 4)
-                Text(row.finishMin.map { mrFormatDisplay($0) } ?? L.s("기록 없음", "No result"))
+                Text(row.finishMin.map { mrFormatDisplay($0) } ?? L.s("기록 없음", "No result", ja: "記録なし"))
                     .font(.system(size: 14, weight: row.finishMin == nil ? .regular : .bold, design: .rounded))
                     .foregroundStyle(dim ? Color.secondary : Color.white)
                     .monospacedDigit()

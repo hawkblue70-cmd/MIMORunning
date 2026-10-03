@@ -94,19 +94,19 @@ enum MRGelPlan {
 
     static func title(_ p: Plan) -> String {
         AppLanguage.shared.s("젤 보급 제안 · 예상 \(mrFormatDisplay(p.projectedMin)) 기준",
-                             "Gel plan · based on projected \(mrFormatDisplay(p.projectedMin))")
+                             "Gel plan · based on projected \(mrFormatDisplay(p.projectedMin))", ja: "ジェル補給の提案 · 予測\(mrFormatDisplay(p.projectedMin))基準")
     }
 
     static func gelName(_ k: Kind) -> String {
         let L = AppLanguage.shared
         switch k {
-        case .regular:  return L.s("일반 젤", "Gel")
-        case .caffeine: return L.s("카페인 젤", "Caffeine gel")
+        case .regular:  return L.s("일반 젤", "Gel", ja: "ジェル")
+        case .caffeine: return L.s("카페인 젤", "Caffeine gel", ja: "カフェインジェル")
         }
     }
 
     static func preStartLabel() -> String {
-        AppLanguage.shared.s("출발 15~20분 전", "15–20 min before start")
+        AppLanguage.shared.s("출발 15~20분 전", "15–20 min before start", ja: "スタート15~20分前")
     }
 
     static func summary(_ p: Plan) -> String {
@@ -114,23 +114,23 @@ enum MRGelPlan {
         let iv = Int(p.intervalMin)
         if p.stops.isEmpty {
             return L.s("이 거리는 몸에 저장된 에너지로 충분합니다 — 레이스 중 보급은 필요 없습니다.",
-                       "Your stored energy covers this distance — no fueling needed during the race.")
+                       "Your stored energy covers this distance — no fueling needed during the race.", ja: "この距離は体に蓄えたエネルギーで十分です — レース中の補給は必要ありません。")
         }
         if p.recommendedLo >= 60 {
             return L.s("레이스 중 \(p.stops.count)개 · \(iv)분마다 · 젤만으로 시간당 약 \(p.gelCarbsPerHourLo)~\(p.gelCarbsPerHourHi)g — 권장 \(p.recommendedLo)~\(p.recommendedHi)g까지는 스포츠음료로 채우세요.",
-                       "\(p.stops.count) during the race · every \(iv) min · gels alone give ~\(p.gelCarbsPerHourLo)–\(p.gelCarbsPerHourHi) g/h — top up toward \(p.recommendedLo)–\(p.recommendedHi) g/h with sports drink.")
+                       "\(p.stops.count) during the race · every \(iv) min · gels alone give ~\(p.gelCarbsPerHourLo)–\(p.gelCarbsPerHourHi) g/h — top up toward \(p.recommendedLo)–\(p.recommendedHi) g/h with sports drink.", ja: "レース中\(p.stops.count)個 · \(iv)分ごと · ジェルだけで1時間あたり約\(p.gelCarbsPerHourLo)~\(p.gelCarbsPerHourHi)g — 推奨の\(p.recommendedLo)~\(p.recommendedHi)gまではスポーツドリンクで補ってください。")
         }
         return L.s("레이스 중 \(p.stops.count)개 · \(iv)분마다 · 시간당 약 \(p.gelCarbsPerHourLo)~\(p.gelCarbsPerHourHi)g(권장 \(p.recommendedLo)~\(p.recommendedHi)g).",
-                   "\(p.stops.count) during the race · every \(iv) min · ~\(p.gelCarbsPerHourLo)–\(p.gelCarbsPerHourHi) g/h (guideline \(p.recommendedLo)–\(p.recommendedHi) g).")
+                   "\(p.stops.count) during the race · every \(iv) min · ~\(p.gelCarbsPerHourLo)–\(p.gelCarbsPerHourHi) g/h (guideline \(p.recommendedLo)–\(p.recommendedHi) g).", ja: "レース中\(p.stops.count)個 · \(iv)分ごと · 1時間あたり約\(p.gelCarbsPerHourLo)~\(p.gelCarbsPerHourHi)g(推奨 \(p.recommendedLo)~\(p.recommendedHi)g)。")
     }
 
     static func caffeineNote() -> String {
         AppLanguage.shared.s("카페인은 체중 1kg당 3mg 안팎(70kg ≈ 200mg). 평소 커피에 예민하면 빼세요.",
-                             "Caffeine ≈ 3 mg per kg body weight (70 kg ≈ 200 mg). Skip it if you're sensitive to coffee.")
+                             "Caffeine ≈ 3 mg per kg body weight (70 kg ≈ 200 mg). Skip it if you're sensitive to coffee.", ja: "カフェインは体重1kgあたり3mg前後(70kg ≈ 200mg)。普段コーヒーに敏感なら外してください。")
     }
 
     static func disclaimer() -> String {
         AppLanguage.shared.s("참고용 제안입니다. 대회 전 롱런에서 같은 젤·같은 간격으로 반드시 연습해 보고, 몸에 맞게 조정하세요.",
-                             "For reference only. Always rehearse the same gels at the same intervals on long runs before race day, and adjust to what your body tolerates.")
+                             "For reference only. Always rehearse the same gels at the same intervals on long runs before race day, and adjust to what your body tolerates.", ja: "参考用の提案です。レース前のロング走で同じジェル・同じ間隔で必ず練習し、体に合わせて調整してください。")
     }
 }

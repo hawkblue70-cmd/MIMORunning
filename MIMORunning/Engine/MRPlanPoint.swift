@@ -316,10 +316,10 @@ func mrPointEveryWeeks(runsPerWeek: Double, habit: Int?) -> Int? {
     return max(byRuns, habit ?? byRuns)
 }
 
-/// 계획 문구의 마지막 "이지(짧게/Easy/Short) Xkm × N회(x)"에서 숫자만 바꾼다. 언어·나머지 문구는 그대로. 못 찾으면 nil.
+/// 계획 문구의 마지막 "이지(짧게/Easy/Short/イージー/短め) Xkm × N회(x/回)"에서 숫자만 바꾼다. 언어·나머지 문구는 그대로. 못 찾으면 nil.
 /// (`mrParsePlanBreakdown`과 같은 패턴)
 func mrBreakdownReplacingEasy(_ text: String, easyKm: Double, runs: Int) -> String? {
-    guard let re = try? NSRegularExpression(pattern: #"(?:이지|짧게|Easy|Short) ([0-9]+(?:\.[0-9]+)?)km × ([0-9]+)(?:회|x)"#) else { return nil }
+    guard let re = try? NSRegularExpression(pattern: #"(?:이지|짧게|Easy|Short|イージー|短め) ([0-9]+(?:\.[0-9]+)?)km × ([0-9]+)(?:회|x|回)"#) else { return nil }
     let ns = text as NSString
     guard let m = re.matches(in: text, range: NSRange(location: 0, length: ns.length)).last else { return nil }
     // 뒤쪽(횟수)부터 바꿔야 앞쪽(거리) 범위가 밀리지 않는다

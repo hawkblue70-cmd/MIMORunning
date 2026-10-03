@@ -402,6 +402,9 @@ struct MRReadinessTests {
         #expect(mrParsePlanBreakdown("롱런 10km + 이지 3회") == (easyRuns: 3, easyKm: nil))
         #expect(mrParsePlanBreakdown("10K 계획을 따릅니다 · 롱런 14km + 이지 7km × 2회") == (easyRuns: 2, easyKm: 7.0))
         #expect(mrParsePlanBreakdown("Long run 19km + Easy 6.4km × 4x") == (easyRuns: 4, easyKm: 6.4))
+        #expect(mrParsePlanBreakdown("ロング走 19km + イージー 6.4km × 4回") == (easyRuns: 4, easyKm: 6.4))
+        #expect(mrParsePlanBreakdown("ロング走 12km + 短め 5km × 3回 · 強度はそのまま") == (easyRuns: 3, easyKm: 5.0))
+        #expect(mrParsePlanBreakdown("ロング走 10km + イージー 3回") == (easyRuns: 3, easyKm: nil))
         #expect(mrParsePlanBreakdown("") == (easyRuns: nil, easyKm: nil))
     }
 

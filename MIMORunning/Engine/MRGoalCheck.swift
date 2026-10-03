@@ -89,13 +89,13 @@ func mrCheckGoal(race: MRTargetRace,
     // ⚠ 판정이 아니라 거리감이다. "못 한다"고 쓰지 않는다.
     let verdict: String
     if gap <= 0 {
-        verdict = L.s("계획대로면 목표 안쪽입니다", "On track for the goal")
+        verdict = L.s("계획대로면 목표 안쪽입니다", "On track for the goal", ja: "計画どおりなら目標圏内です")
     } else if pct <= 3 {
-        verdict = L.s("사정권 — 당일 컨디션이 가르는 차이입니다", "Within range — race day conditions will decide")
+        verdict = L.s("사정권 — 당일 컨디션이 가르는 차이입니다", "Within range — race day conditions will decide", ja: "射程圏内 — 当日のコンディション次第です")
     } else if pct <= 8 {
-        verdict = L.s("조금 모자랍니다. 아래를 바꾸면 메워집니다", "Slightly short. Adjusting the levers below can close the gap")
+        verdict = L.s("조금 모자랍니다. 아래를 바꾸면 메워집니다", "Slightly short. Adjusting the levers below can close the gap", ja: "少し足りません。下の項目を変えれば埋まります")
     } else {
-        verdict = L.s("이번 대회보다 다음 대회에 더 어울리는 목표입니다", "This goal fits better for your next race than this one")
+        verdict = L.s("이번 대회보다 다음 대회에 더 어울리는 목표입니다", "This goal fits better for your next race than this one", ja: "今回のレースより次のレースに合った目標です")
     }
 
     // ── 무엇을 바꾸면 메워지는가
@@ -119,12 +119,12 @@ func mrCheckGoal(race: MRTargetRace,
         if heat.ok { bestPossible = heat.fromRef(timeRefMin: bestPossible, tempC: raceTempC) }
         let needHalf = goal / pow(2.0, 1.13)      // 준비된 아마추어 기준
         levers = [
-            L.s("이 목표는 하프를 \(mrFormatDisplay(needHalf))에 뛰는 몸을 전제합니다 (지금 \(mrFormatDisplay(halfEquivMin)))", "This goal requires a half-marathon equivalent of \(mrFormatDisplay(needHalf)) (current: \(mrFormatDisplay(halfEquivMin)))"),
-            L.s("마라톤 준비를 최대로 끌어올려도 이번 대회는 \(mrFormatDisplay(bestPossible)) 부근이 한계선입니다", "Even at peak marathon prep, \(mrFormatDisplay(bestPossible)) is the ceiling for this race"),
+            L.s("이 목표는 하프를 \(mrFormatDisplay(needHalf))에 뛰는 몸을 전제합니다 (지금 \(mrFormatDisplay(halfEquivMin)))", "This goal requires a half-marathon equivalent of \(mrFormatDisplay(needHalf)) (current: \(mrFormatDisplay(halfEquivMin)))", ja: "この目標はハーフを\(mrFormatDisplay(needHalf))で走れる体を前提にしています(現在 \(mrFormatDisplay(halfEquivMin)))"),
+            L.s("마라톤 준비를 최대로 끌어올려도 이번 대회는 \(mrFormatDisplay(bestPossible)) 부근이 한계선입니다", "Even at peak marathon prep, \(mrFormatDisplay(bestPossible)) is the ceiling for this race", ja: "マラソンの準備を最大限に高めても、今回のレースは\(mrFormatDisplay(bestPossible))前後が限界です"),
         ]
     } else if farOff {
         let needHalf = goal / pow(race.distanceM / MRDistance.dH, 1.06)
-        levers = [L.s("이 목표는 하프 등가 \(mrFormatDisplay(needHalf))를 요구합니다 (지금 \(mrFormatDisplay(halfEquivMin)))", "This goal requires a half equivalent of \(mrFormatDisplay(needHalf)) (current: \(mrFormatDisplay(halfEquivMin)))")]
+        levers = [L.s("이 목표는 하프 등가 \(mrFormatDisplay(needHalf))를 요구합니다 (지금 \(mrFormatDisplay(halfEquivMin)))", "This goal requires a half equivalent of \(mrFormatDisplay(needHalf)) (current: \(mrFormatDisplay(halfEquivMin)))", ja: "この目標にはハーフ換算\(mrFormatDisplay(needHalf))が必要です(現在 \(mrFormatDisplay(halfEquivMin)))")]
     } else if gap > 0 && race.distanceM >= MRDistance.dF {
         let volPeak = plan.peakWeeklyKm
 
@@ -151,10 +151,10 @@ func mrCheckGoal(race: MRTargetRace,
         //   (b) 계획 상한: lr > targetLongKm (아무리 기다려도 플래너가 거기까지 안 올림)
         func longRunSuffix(_ lr: Double) -> String {
             if lr > plan.targetLongKm {
-                return " ⚠ \(L.s("계획 상한이 \(Int(plan.targetLongKm))km입니다", "Plan ceiling is \(Int(plan.targetLongKm)) km"))"
+                return " ⚠ \(L.s("계획 상한이 \(Int(plan.targetLongKm))km입니다", "Plan ceiling is \(Int(plan.targetLongKm)) km", ja: "計画の上限は\(Int(plan.targetLongKm))kmです"))"
             }
             let nWeeks = plan.weeks.count
-            var s = " ⚠ \(L.s("\(nWeeks)주로는 도달 불가", "Unreachable in \(nWeeks) weeks"))"
+            var s = " ⚠ \(L.s("\(nWeeks)주로는 도달 불가", "Unreachable in \(nWeeks) weeks", ja: "\(nWeeks)週では到達不可"))"
             if let next = otherPlans
                 .filter({ p in
                     p.0.date > plan.raceDate &&
@@ -162,19 +162,19 @@ func mrCheckGoal(race: MRTargetRace,
                     p.1.reachableLongKm >= lr
                 })
                 .min(by: { $0.0.date < $1.0.date }) {
-                s += " · \(L.s("\(next.0.name)에서는 가능", "Possible by \(next.0.name)"))"
+                s += " · \(L.s("\(next.0.name)에서는 가능", "Possible by \(next.0.name)", ja: "\(next.0.name)なら可能"))"
             }
             return s
         }
 
         for lr in [25.0, 28.0, 32.0] where lr > plan.reachableLongKm {
-            add(L.s("롱런 \(Int(lr))km", "Long run \(Int(lr)) km"),
+            add(L.s("롱런 \(Int(lr))km", "Long run \(Int(lr)) km", ja: "ロング走 \(Int(lr))km"),
                 finish(bMarathonModel(weeklyKm: volPeak, longestKm: lr,
                                       finishes: profile.marathonFinishes).b),
                 suffix: longRunSuffix(lr))
         }
         func weeklyKmSuffix(_ wk: Double) -> String {
-            var s = " ⚠ \(L.s("\(plan.weeks.count)주로는 도달 불가", "Unreachable in \(plan.weeks.count) weeks"))"
+            var s = " ⚠ \(L.s("\(plan.weeks.count)주로는 도달 불가", "Unreachable in \(plan.weeks.count) weeks", ja: "\(plan.weeks.count)週では到達不可"))"
             if let next = otherPlans
                 .filter({ p in
                     p.0.date > plan.raceDate &&
@@ -182,13 +182,13 @@ func mrCheckGoal(race: MRTargetRace,
                     p.1.peakWeeklyKm >= wk
                 })
                 .min(by: { $0.0.date < $1.0.date }) {
-                s += " · \(L.s("\(next.0.name)에서는 가능", "Possible by \(next.0.name)"))"
+                s += " · \(L.s("\(next.0.name)에서는 가능", "Possible by \(next.0.name)", ja: "\(next.0.name)なら可能"))"
             }
             return s
         }
 
         for wk in [40.0, 50.0, 60.0] where wk > volPeak {
-            add(L.s("주 \(Int(wk))km", "Weekly \(Int(wk)) km"),
+            add(L.s("주 \(Int(wk))km", "Weekly \(Int(wk)) km", ja: "週\(Int(wk))km"),
                 finish(bMarathonModel(weeklyKm: wk, longestKm: plan.reachableLongKm,
                                       finishes: profile.marathonFinishes).b),
                 suffix: weeklyKmSuffix(wk))
@@ -198,7 +198,7 @@ func mrCheckGoal(race: MRTargetRace,
         //   0.4% 차이에 "이것도 하세요"를 붙이면 잔소리가 된다.
         //   하프 이하는 durability가 아니라 기본 속도 문제다.
         let needHalf = goal / pow(race.distanceM / MRDistance.dH, 1.06)
-        levers.append(String(format: L.s("이 목표는 하프 등가 %@를 요구합니다 (지금 %@, %+.1f%%)", "This goal requires a half equivalent of %@ (current: %@, %+.1f%%)"),
+        levers.append(String(format: L.s("이 목표는 하프 등가 %@를 요구합니다 (지금 %@, %+.1f%%)", "This goal requires a half equivalent of %@ (current: %@, %+.1f%%)", ja: "この目標にはハーフ換算%@が必要です(現在 %@、%+.1f%%)"),
                              mrFormatDisplay(needHalf), mrFormatDisplay(halfEquivMin),
                              (halfEquivMin - needHalf) / needHalf * 100))
     }

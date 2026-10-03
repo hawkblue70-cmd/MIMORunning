@@ -17,6 +17,26 @@ private let mrWarn   = Color(red: 0.95, green: 0.68, blue: 0.25)
 /// 플랜 빌드 시점에 한국어로 생성된 breakdown 문자열을 표시 시점에 번역.
 /// 캐시된 플랜에도 적용되도록 view layer에서 처리한다.
 private func localizedBreakdown(_ s: String) -> String {
+    if AppLanguage.shared.isJapanese {
+        // 긴 구절부터 — "롱런"·"대회"를 먼저 바꾸면 구절이 안 맞는다
+        return s
+            .replacingOccurrences(of: "(이번 주 롱런)", with: "(今週のロング走)")
+            .replacingOccurrences(of: "(대회 이틀 뒤)", with: "(レースの2日後)")
+            .replacingOccurrences(of: "대회 전 2~3일은 가볍게", with: "レース前の2~3日は軽めに")
+            .replacingOccurrences(of: "앞 5~7일 볼륨 −30%", with: "前の5~7日は量を−30%")
+            .replacingOccurrences(of: "대회는 가볍게", with: "レースは軽めに")
+            .replacingOccurrences(of: "대회 전 주 — ", with: "レースの前の週 — ")
+            .replacingOccurrences(of: " 계획을 따릅니다 · ", with: "の計画に従います · ")
+            .replacingOccurrences(of: "하프 대회", with: "ハーフレース")
+            .replacingOccurrences(of: " 대회", with: "レース")
+            .replacingOccurrences(of: "강도는 그대로", with: "強度はそのまま")
+            .replacingOccurrences(of: "롱런", with: "ロング走")
+            .replacingOccurrences(of: "이지", with: "イージー")
+            .replacingOccurrences(of: "짧게", with: "短め")
+            .replacingOccurrences(of: "마지막 ", with: "最後の")
+            .replacingOccurrences(of: "분은 ", with: "分は")
+            .replacingOccurrences(of: "회", with: "回")
+    }
     guard AppLanguage.shared.isEnglish else { return s }
     return s
         .replacingOccurrences(of: "롱런", with: "Long run")
@@ -41,17 +61,17 @@ private func localizedBreakdown(_ s: String) -> String {
 private func localizedPhase(_ p: String) -> String {
     let L = AppLanguage.shared
     switch p {
-    case "늘리기":       return L.s("늘리기", "Build")
-    case "유지":         return L.s("유지", "Maintain")
-    case "회복":         return L.s("회복", "Recovery")
-    case "테이퍼":       return L.s("테이퍼", "Taper")
-    case "대회 페이스":  return L.s("대회 페이스", "Race pace")
-    case "대회 주":      return L.s("대회 주", "Race week")
+    case "늘리기":       return L.s("늘리기", "Build", ja: "積み上げ")
+    case "유지":         return L.s("유지", "Maintain", ja: "維持")
+    case "회복":         return L.s("회복", "Recovery", ja: "回復")
+    case "테이퍼":       return L.s("테이퍼", "Taper", ja: "テーパー")
+    case "대회 페이스":  return L.s("대회 페이스", "Race pace", ja: "レースペース")
+    case "대회 주":      return L.s("대회 주", "Race week", ja: "レース週")
     default:
         // "10K 계획" — 다른 계획을 따르는 주
         if MRPlanGovernance.isFollowingPhase(p) {
             let label = String(p.dropLast(" 계획".count))
-            return L.s("\(label) 계획", "\(label) plan")
+            return L.s("\(label) 계획", "\(label) plan", ja: "\(label)の計画")
         }
         return p
     }
@@ -132,7 +152,7 @@ struct MRRacePlanCard: View {
                     .buttonStyle(.plain)
                 }
             }
-            Text("D-\(daysLeft) · \(L.s("\(plan.weeks.count)주 계획", "\(plan.weeks.count)-week plan"))")
+            Text("D-\(daysLeft) · \(L.s("\(plan.weeks.count)주 계획", "\(plan.weeks.count)-week plan", ja: "\(plan.weeks.count)週間の計画"))")
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.60))
                 .padding(.top, 3)
@@ -166,7 +186,7 @@ struct MRRacePlanCard: View {
             // 지금 → 계획후
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L.s("지금 나가면", "If I start now")).font(.system(size: 11))
+                    Text(L.s("지금 나가면", "If I start now", ja: "今走ると")).font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.60))
                     Text(mrFormatDisplay(plan.projectedNow))
                         .font(.system(size: 17, weight: .medium, design: .rounded))
@@ -177,7 +197,7 @@ struct MRRacePlanCard: View {
                     .foregroundStyle(.white.opacity(0.65))
                     .padding(.top, 14)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L.s("계획대로 쌓으면", "On plan")).font(.system(size: 11))
+                    Text(L.s("계획대로 쌓으면", "On plan", ja: "計画どおり積むと")).font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.60))
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(mrFormatDisplay(plan.projectedFinal))
@@ -205,11 +225,11 @@ struct MRRacePlanCard: View {
             // 목표 대비
             if let goal = check.goalMin, let gap = check.gapMin {
                 HStack(spacing: 6) {
-                    Text(L.s("목표 \(mrFormatDisplay(goal))", "Goal: \(mrFormatDisplay(goal))"))
+                    Text(L.s("목표 \(mrFormatDisplay(goal))", "Goal: \(mrFormatDisplay(goal))", ja: "目標 \(mrFormatDisplay(goal))"))
                         .foregroundStyle(.white.opacity(0.68))
                     Text(gap <= 0
-                         ? String(format: L.s("%.0f분 여유", "%.0f min ahead"), -gap)
-                         : String(format: L.s("%.0f분 %02d초 모자람", "%.0f min %02d sec short"), floor(gap),
+                         ? String(format: L.s("%.0f분 여유", "%.0f min ahead", ja: "%.0f分の余裕"), -gap)
+                         : String(format: L.s("%.0f분 %02d초 모자람", "%.0f min %02d sec short", ja: "%.0f分%02d秒不足"), floor(gap),
                                   Int((gap - floor(gap)) * 60)))
                         .foregroundStyle(gapColor)
                         .fontWeight(.semibold)
@@ -242,7 +262,7 @@ struct MRRacePlanCard: View {
             // 롱런 진행 막대
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(L.s("롱런", "Long run")).font(.system(size: 11))
+                    Text(L.s("롱런", "Long run", ja: "ロング走")).font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.60))
                     Spacer()
                     Text(String(format: "%.0f → %.0fkm",
@@ -266,11 +286,11 @@ struct MRRacePlanCard: View {
                 Text({
                     switch plan.verdict {
                     case "기록 목표 가능":
-                        return L.s("롱런 준비는 충분합니다", "Long run prep is sufficient")
+                        return L.s("롱런 준비는 충분합니다", "Long run prep is sufficient", ja: "ロング走の準備は十分です")
                     case "완주는 충분, 기록은 다음 대회에":
-                        return L.s("완주에는 충분한 롱런입니다", "Long run is enough for finishing")
+                        return L.s("완주에는 충분한 롱런입니다", "Long run is enough for finishing", ja: "完走には十分なロング走です")
                     default:
-                        return L.s("이 기간에는 롱런을 여기까지 올릴 수 있습니다", "This is how far the long run can reach in this timeframe")
+                        return L.s("이 기간에는 롱런을 여기까지 올릴 수 있습니다", "This is how far the long run can reach in this timeframe", ja: "この期間ではロング走をここまで伸ばせます")
                     }
                 }())
                 .font(.system(size: 11))
@@ -283,7 +303,7 @@ struct MRRacePlanCard: View {
                 withAnimation(.easeOut(duration: 0.2)) { showWeeks.toggle() }
             } label: {
                 HStack(spacing: 4) {
-                    Text(L.s(showWeeks ? "주차별 계획 접기" : "주차별 계획 보기", showWeeks ? "Collapse weekly plan" : "Show weekly plan"))
+                    Text(L.s(showWeeks ? "주차별 계획 접기" : "주차별 계획 보기", showWeeks ? "Collapse weekly plan" : "Show weekly plan", ja: showWeeks ? "週ごとの計画を閉じる" : "週ごとの計画を見る"))
                     Image(systemName: showWeeks ? "chevron.up" : "chevron.down")
                         .font(.system(size: 10, weight: .semibold))
                 }
@@ -479,7 +499,7 @@ struct MRWeekTable: View {
         if cal.startOfDay(for: monday) > cal.startOfDay(for: refNow) {
             EmptyView()
         } else if list.isEmpty {
-            Text(L.s("이 주에는 러닝이 없습니다", "No runs this week"))
+            Text(L.s("이 주에는 러닝이 없습니다", "No runs this week", ja: "この週はランがありません"))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.60))
         } else {
@@ -519,7 +539,7 @@ struct MRWeekTable: View {
         let planned = snapshotWeeks.filter { $0.point != nil }
         guard !planned.isEmpty else { return nil }
         let done = planned.filter { pointRunIn(week: $0.monday, longRunKm: $0.longRunKm) != nil }.count
-        return AppLanguage.shared.s("강도 훈련 \(done)/\(planned.count)회", "Hard sessions \(done)/\(planned.count)")
+        return AppLanguage.shared.s("강도 훈련 \(done)/\(planned.count)회", "Hard sessions \(done)/\(planned.count)", ja: "強度練習 \(done)/\(planned.count)回")
     }
 
     /// 포인트 두 줄 — 계획(흰색 0.72) · 한 뒤(노랑 = 실제로 한 것). 설계 7절.
@@ -527,12 +547,12 @@ struct MRWeekTable: View {
     private func pointLines(_ pt: MRPlanPoint, monday: Date, longRunKm: Double) -> some View {
         let L = AppLanguage.shared
         // 포인트는 이지에 섞는 게 아니라 이지 한 번을 대신하는 별도 러닝 — 문구로 드러낸다
-        Text(L.s("강도 훈련(이지 1회 대신) · \(pt.text) · \(pt.howTo)", "Hard session (replaces one easy run) · \(pt.text) · \(pt.howTo)"))
+        Text(L.s("강도 훈련(이지 1회 대신) · \(pt.text) · \(pt.howTo)", "Hard session (replaces one easy run) · \(pt.text) · \(pt.howTo)", ja: "強度練習(イージー1回の代わり) · \(pt.text) · \(pt.howTo)"))
             .font(.system(size: 11))
             .foregroundStyle(.white.opacity(0.72))
         if let done = pointRunIn(week: monday, longRunKm: longRunKm) {
             let type = pointRunTypes[done.start].map { " " + $0.koreanLabel } ?? ""
-            Text(L.s("강도 훈련 ✓ \(dateFmt.string(from: done.start))\(type)", "Hard session ✓ \(dateFmt.string(from: done.start))\(type)"))
+            Text(L.s("강도 훈련 ✓ \(dateFmt.string(from: done.start))\(type)", "Hard session ✓ \(dateFmt.string(from: done.start))\(type)", ja: "強度練習 ✓ \(dateFmt.string(from: done.start))\(type)"))
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.yellow)   // 노랑 = 실제로 한 것
         }
@@ -592,10 +612,10 @@ struct MRWeekTable: View {
         if none > 0 { parts.append("\(symbolNone) \(none)") }
         let n = syms.count
         if isFinished {
-            let head = L.s("계획 \(n)주:", "\(n)-wk plan:") + " \(parts.joined(separator: " · "))"
+            let head = L.s("계획 \(n)주:", "\(n)-wk plan:", ja: "計画\(n)週:") + " \(parts.joined(separator: " · "))"
             return pointSummary.map { head + " · " + $0 } ?? head
         }
-        return L.s("지난 \(n)주:", "Last \(n) wks:") + " \(parts.joined(separator: " · "))"
+        return L.s("지난 \(n)주:", "Last \(n) wks:", ja: "直近\(n)週:") + " \(parts.joined(separator: " · "))"
     }
 
     private func phaseColor(_ p: String) -> Color {
@@ -622,14 +642,14 @@ struct MRWeekTable: View {
             .filter { MRPlanGovernance.isFollowingPhase($0) }
             .sorted()
             .map { (phase: $0, desc: L.s("겹치는 주는 그 계획의 롱런·주간을 그대로 따릅니다. 대회가 지나면 이 계획이 이어받습니다",
-                                         "Overlapping weeks follow that plan's long run and volume. This plan resumes after that race")) }
+                                         "Overlapping weeks follow that plan's long run and volume. This plan resumes after that race", ja: "重なる週はその計画のロング走・週間距離にそのまま従います。レースが終わるとこの計画が引き継ぎます")) }
         return following + [
-            (phase: "늘리기",       desc: L.s("롱런을 매주 조금씩 늘립니다",                              "Gradually increase long run each week")),
-            (phase: "유지",         desc: L.s("롱런을 더 늘리지 않고 그 거리에 익숙해집니다",            "Get comfortable at the current long run distance")),
-            (phase: "대회 페이스",   desc: L.s("롱런 안에 대회 페이스로 달리는 구간이 들어갑니다",        "Includes race-pace segments within the long run")),
-            (phase: "대회 주",       desc: L.s("계획 안의 튠업 대회. 단거리는 롱런 유지, 하프는 대회가 롱런. 자기 계획이 있는 대회는 그 전 주도 테이퍼", "Tune-up race inside the plan. Short races keep the long run; a half is the long run. A race with its own plan also tapers the week before")),
-            (phase: "회복",         desc: L.s("롱런과 주간 거리를 줄입니다. 몸은 쉴 때 좋아집니다",     "Reduce long run and weekly distance. Bodies improve with rest")),
-            (phase: "테이퍼",       desc: L.s("대회 전 2주, 거리를 절반 이하로 줄입니다",               "2 weeks before race, cut volume below half")),
+            (phase: "늘리기",       desc: L.s("롱런을 매주 조금씩 늘립니다",                              "Gradually increase long run each week", ja: "ロング走を毎週少しずつ伸ばします")),
+            (phase: "유지",         desc: L.s("롱런을 더 늘리지 않고 그 거리에 익숙해집니다",            "Get comfortable at the current long run distance", ja: "ロング走をこれ以上伸ばさず、その距離に慣れます")),
+            (phase: "대회 페이스",   desc: L.s("롱런 안에 대회 페이스로 달리는 구간이 들어갑니다",        "Includes race-pace segments within the long run", ja: "ロング走の中にレースペースで走る区間が入ります")),
+            (phase: "대회 주",       desc: L.s("계획 안의 튠업 대회. 단거리는 롱런 유지, 하프는 대회가 롱런. 자기 계획이 있는 대회는 그 전 주도 테이퍼", "Tune-up race inside the plan. Short races keep the long run; a half is the long run. A race with its own plan also tapers the week before", ja: "計画内の調整レース。短い距離はロング走を維持、ハーフはレースがロング走。自分の計画があるレースはその前の週もテーパー")),
+            (phase: "회복",         desc: L.s("롱런과 주간 거리를 줄입니다. 몸은 쉴 때 좋아집니다",     "Reduce long run and weekly distance. Bodies improve with rest", ja: "ロング走と週間距離を減らします。体は休むときに強くなります")),
+            (phase: "테이퍼",       desc: L.s("대회 전 2주, 거리를 절반 이하로 줄입니다",               "2 weeks before race, cut volume below half", ja: "レース前の2週間、距離を半分以下に減らします")),
         ].filter { present.contains($0.phase) }
     }
 
@@ -677,13 +697,13 @@ struct MRWeekTable: View {
         let L = AppLanguage.shared
         VStack(spacing: 0) {
             HStack {
-                Text(L.s("주", "Wk")).frame(width: 36, alignment: .leading)
-                Text(L.s("날짜", "Date")).frame(width: 40, alignment: .leading)
-                Text(L.s("단계", "Phase")).frame(width: 64, alignment: .leading)
-                Text(L.s("롱런", "Long")).frame(maxWidth: .infinity, alignment: .trailing)
-                Text(L.s("주간", "Weekly")).frame(maxWidth: .infinity, alignment: .trailing)
+                Text(L.s("주", "Wk", ja: "週")).frame(width: 36, alignment: .leading)
+                Text(L.s("날짜", "Date", ja: "日付")).frame(width: 40, alignment: .leading)
+                Text(L.s("단계", "Phase", ja: "段階")).frame(width: 64, alignment: .leading)
+                Text(L.s("롱런", "Long", ja: "ロング走")).frame(maxWidth: .infinity, alignment: .trailing)
+                Text(L.s("주간", "Weekly", ja: "週間")).frame(maxWidth: .infinity, alignment: .trailing)
                 if !isFinished {
-                    Text(L.s("예상", "Target")).frame(width: 56, alignment: .trailing)
+                    Text(L.s("예상", "Target", ja: "予測")).frame(width: 56, alignment: .trailing)
                 }
             }
             .font(.system(size: 10, weight: .semibold))
@@ -761,7 +781,7 @@ struct MRWeekTable: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 12) {
                                     HStack(spacing: 3) {
-                                        Text(L.s("롱런", "Long")).foregroundStyle(.white.opacity(0.72))
+                                        Text(L.s("롱런", "Long", ja: "ロング走")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.long))
                                                 .fontWeight(.bold).foregroundStyle(Color.yellow)   // 노랑 = 실제로 한 것
@@ -773,7 +793,7 @@ struct MRWeekTable: View {
                                             .foregroundStyle(mrAccentText.opacity(0.70))
                                     }
                                     HStack(spacing: 3) {
-                                        Text(L.s("주간", "Weekly")).foregroundStyle(.white.opacity(0.72))
+                                        Text(L.s("주간", "Weekly", ja: "週間")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.weekly))
                                                 .fontWeight(.bold).foregroundStyle(Color.yellow)
@@ -785,7 +805,7 @@ struct MRWeekTable: View {
                                             .foregroundStyle(mrAccentText.opacity(0.70))
                                     }
                                     if isCurr {
-                                        Text(L.s("진행 중", "In progress"))
+                                        Text(L.s("진행 중", "In progress", ja: "進行中"))
                                             .font(.system(size: 9, weight: .medium))
                                             .foregroundStyle(mrAccentText.opacity(0.88))
                                             .padding(.horizontal, 5).padding(.vertical, 2)
@@ -865,7 +885,7 @@ struct MRWeekTable: View {
                         }
 
                         if w.isVolRecord && histMaxWeeklyKm > 0 {
-                            Text(L.s("└ 지난 1년 최고치(\(Int(histMaxWeeklyKm.rounded()))km)에 도달", "└ Reached 1-yr high (\(Int(histMaxWeeklyKm.rounded())) km)"))
+                            Text(L.s("└ 지난 1년 최고치(\(Int(histMaxWeeklyKm.rounded()))km)에 도달", "└ Reached 1-yr high (\(Int(histMaxWeeklyKm.rounded())) km)", ja: "└ 直近1年の最高値(\(Int(histMaxWeeklyKm.rounded()))km)に到達"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(.white.opacity(0.65))
                                 .padding(.leading, 64).padding(.bottom, 2)
@@ -878,7 +898,7 @@ struct MRWeekTable: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 12) {
                                     HStack(spacing: 3) {
-                                        Text(L.s("롱런", "Long")).foregroundStyle(.white.opacity(0.72))
+                                        Text(L.s("롱런", "Long", ja: "ロング走")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.long))
                                                 .fontWeight(.bold).foregroundStyle(Color.yellow)   // 노랑 = 실제로 한 것
@@ -890,7 +910,7 @@ struct MRWeekTable: View {
                                             .foregroundStyle(mrAccentText.opacity(0.70))
                                     }
                                     HStack(spacing: 3) {
-                                        Text(L.s("주간", "Weekly")).foregroundStyle(.white.opacity(0.72))
+                                        Text(L.s("주간", "Weekly", ja: "週間")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
                                             Text(String(format: "%.1f", a.weekly))
                                                 .fontWeight(.bold).foregroundStyle(Color.yellow)
@@ -902,7 +922,7 @@ struct MRWeekTable: View {
                                             .foregroundStyle(mrAccentText.opacity(0.70))
                                     }
                                     if isCurrent(w) {
-                                        Text(L.s("진행 중", "In progress"))
+                                        Text(L.s("진행 중", "In progress", ja: "進行中"))
                                             .font(.system(size: 9, weight: .medium))
                                             .foregroundStyle(mrAccentText.opacity(0.88))
                                             .padding(.horizontal, 5).padding(.vertical, 2)
@@ -943,14 +963,14 @@ struct MRWeekTable: View {
             }
 
             Text(isFinished
-                 ? L.s("행 탭 → 그 주 실행 안내와 달린 러닝 · 대회 주는 대회일까지", "Tap row → guidance and runs that week · Race week counts up to race day")
-                 : L.s("행 탭 → 실제 기록·달린 러닝 또는 실행 안내 · 진한 주 번호 = 이번 주 · 거리는 이지 페이스 기준", "Tap row → actual log & runs or guidance · Bold = current week · Distance at easy pace"))
+                 ? L.s("행 탭 → 그 주 실행 안내와 달린 러닝 · 대회 주는 대회일까지", "Tap row → guidance and runs that week · Race week counts up to race day", ja: "行をタップ → その週の実行ガイドと走ったラン · レース週はレース日まで")
+                 : L.s("행 탭 → 실제 기록·달린 러닝 또는 실행 안내 · 진한 주 번호 = 이번 주 · 거리는 이지 페이스 기준", "Tap row → actual log & runs or guidance · Bold = current week · Distance at easy pace", ja: "行をタップ → 実際の記録・走ったラン、または実行ガイド · 太字の週番号 = 今週 · 距離はイージーペース基準"))
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.65))
                 .padding(.top, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(L.s("● 둘 다 달성  ◐ 하나만 달성  ○ 미달성  ▲ 10% 초과", "● Both met  ◐ One met  ○ Not met  ▲ 10% over"))
+            Text(L.s("● 둘 다 달성  ◐ 하나만 달성  ○ 미달성  ▲ 10% 초과", "● Both met  ◐ One met  ○ Not met  ▲ 10% over", ja: "● 両方達成  ◐ 片方達成  ○ 未達成  ▲ 10%超過"))
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.65))
                 .padding(.top, 4)
@@ -989,7 +1009,9 @@ struct MRGoalLinksView: View {
     var body: some View {
         if !problems.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text("목표 하나가 나머지와 어긋나 있습니다")
+                Text(AppLanguage.shared.s("목표 하나가 나머지와 어긋나 있습니다",
+                     "One goal is out of line with the others",
+                     ja: "目標のひとつがほかと合っていません"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
 
@@ -1006,7 +1028,9 @@ struct MRGoalLinksView: View {
 
                 // 병목이 어느 목표인지 짚어준다 — 이게 이 카드의 존재 이유다.
                 if let bottleneck = bottleneckName {
-                    Text("\(bottleneck) 목표를 조정하시면 나머지 둘과 맞아떨어집니다.")
+                    Text(AppLanguage.shared.s("\(bottleneck) 목표를 조정하시면 나머지 둘과 맞아떨어집니다.",
+                     "Adjust the \(bottleneck) goal and the other two will line up.",
+                     ja: "\(bottleneck)の目標を調整すると、ほかの2つと合います。"))
                         .font(.system(size: 12))
                         .foregroundStyle(.white.opacity(0.68))
                         .fixedSize(horizontal: false, vertical: true)
@@ -1073,22 +1097,30 @@ struct MRPlanlessRaceCard: View {
                     .background(mrAccent.opacity(0.15)).clipShape(Capsule())
             }
             if let name = enclosingPlanName {
-                Text("「\(name)」 계획 안의 '대회 주'로 들어 있습니다. 별도 계획은 만들지 않습니다. 그 주차의 실행 안내를 따르시면 됩니다.")
+                Text(AppLanguage.shared.s("「\(name)」 계획 안의 '대회 주'로 들어 있습니다. 별도 계획은 만들지 않습니다. 그 주차의 실행 안내를 따르시면 됩니다.",
+                     "This race is a race week inside the \(name) plan, so no separate plan is made. Follow that week's guidance.",
+                     ja: "「\(name)」の計画の中の「レース週」に入っています。別の計画は作りません。その週の実行ガイドに従ってください。"))
                     .font(.system(size: 13)).foregroundStyle(.white.opacity(0.78))
                     .fixedSize(horizontal: false, vertical: true)
             } else if weeksToRace < 3 {
                 // ⚠ 3주 미만은 훈련으로 바꿀 수 있는 게 없다.
-                Text("대회가 가까워 훈련 계획을 세우지 않습니다. 지금부터는 쌓기보다 아끼는 편이 낫습니다.")
+                Text(AppLanguage.shared.s("대회가 가까워 훈련 계획을 세우지 않습니다. 지금부터는 쌓기보다 아끼는 편이 낫습니다.",
+                     "The race is too close for a training plan. From here, saving energy beats building.",
+                     ja: "レースが近いため練習計画は立てません。ここからは積むより温存するほうがよいです。"))
                     .font(.system(size: 13)).foregroundStyle(.white.opacity(0.78))
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 // 기간은 충분하지만 기록·훈련량 부족, 또는 앞선 대회 회복 기간과 겹쳐 계획 생성 불가.
-                Text("기록이 부족하거나 앞선 대회의 회복 기간과 겹쳐 계획을 만들지 못했습니다.\n러닝을 몇 번 더 하거나 대회 간격을 확인해 보세요.")
+                Text(AppLanguage.shared.s("기록이 부족하거나 앞선 대회의 회복 기간과 겹쳐 계획을 만들지 못했습니다.\n러닝을 몇 번 더 하거나 대회 간격을 확인해 보세요.",
+                     "Couldn't build a plan — not enough runs, or it overlaps an earlier race's recovery.\nLog a few more runs or check the gap between races.",
+                     ja: "記録が足りないか、前のレースの回復期間と重なるため計画を作れませんでした。\nもう何回か走るか、レースの間隔を確認してください。"))
                     .font(.system(size: 13)).foregroundStyle(.white.opacity(0.78))
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let p = prediction {
-                Text("지금 상태로 \(mrFormatDisplay(p.midMin)) 정도입니다")
+                Text(AppLanguage.shared.s("지금 상태로 \(mrFormatDisplay(p.midMin)) 정도입니다",
+                     "About \(mrFormatDisplay(p.midMin)) at your current fitness",
+                     ja: "今の状態で\(mrFormatDisplay(p.midMin))ほどです"))
                     .font(.system(size: 14)).foregroundStyle(.white)
                     .padding(.top, 2)
                 Text(String(format: "대회 날 기온을 %.0f°C로 봤습니다 (예년 이맘때 본인 러닝 기준)", raceTemp))
@@ -1122,7 +1154,9 @@ struct MRRacePlanSection: View {
         VStack(spacing: 14) {
             if case .ready = engine.state {
                 if engine.raceItems.isEmpty && !engine.userInput.races.isEmpty {
-                    Text("아직 예상 기록을 낼 만한 기록이 부족합니다.\n대회에 준하는 노력이 몇 번 쌓이면 여기에 나타납니다.")
+                    Text(AppLanguage.shared.s("아직 예상 기록을 낼 만한 기록이 부족합니다.\n대회에 준하는 노력이 몇 번 쌓이면 여기에 나타납니다.",
+                     "Not enough runs yet to predict a time.\nIt appears here after a few race-level efforts.",
+                     ja: "まだ予測タイムを出せるほどの記録がありません。\nレースに近い努力が何回か積み重なるとここに表示されます。"))
                         .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.65))
                         .multilineTextAlignment(.center)
@@ -1216,7 +1250,7 @@ private struct MRRaceCollapsedRow: View {
                             .font(.system(size: 12, design: .rounded))
                             .foregroundStyle(mrAccentText)
                         if let w = weekCount {
-                            Text("· \(AppLanguage.shared.s("\(w)주", "\(w) wks"))")
+                            Text("· \(AppLanguage.shared.s("\(w)주", "\(w) wks", ja: "\(w)週"))")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.white.opacity(0.60))
                         }
@@ -1273,7 +1307,7 @@ private func _previewWeeks() -> [MRPlanWeek] {
             isNewMax: i == 3
         )
         w.isVolRecord = (i == 5)
-        w.breakdown = String(format: AppLanguage.shared.s("롱런 %.0fkm + 이지 7km × 3회", "Long run %.0fkm + Easy 7km × 3x"), Double(10 + i))
+        w.breakdown = String(format: AppLanguage.shared.s("롱런 %.0fkm + 이지 7km × 3회", "Long run %.0fkm + Easy 7km × 3x", ja: "ロング走 %.0fkm + イージー 7km × 3回"), Double(10 + i))
         return w
     }
 }

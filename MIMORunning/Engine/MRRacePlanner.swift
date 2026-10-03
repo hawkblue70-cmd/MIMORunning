@@ -331,11 +331,11 @@ func mrBuildPlan(raceDate: Date,
         let dayBeforePriorWeek = cal.date(byAdding: .day, value: -1, to: priorWeekMon) ?? priorWeekMon
         p.bridgeRows = [
             ("\(sfmt(today)) ~ \(sfmt(dayBeforePriorWeek))",
-             L.s("「\(prior.name)」 계획을 따릅니다", "Follow the \(prior.name) plan")),
+             L.s("「\(prior.name)」 계획을 따릅니다", "Follow the \(prior.name) plan", ja: "「\(prior.name)」の計画に従います")),
             ("\(sfmt(priorWeekMon)) ~ \(sfmt(prior.date))",
-             L.s("대회 주 — \(priorLabel) 대회 \(prior.name)", "Race week — \(priorLabel) \(prior.name)")),
+             L.s("대회 주 — \(priorLabel) 대회 \(prior.name)", "Race week — \(priorLabel) \(prior.name)", ja: "レース週 — \(priorLabel)レース \(prior.name)")),
             ("\(sfmt(planToday)) ~",
-             L.s("이 계획 시작 · 회복 \(priorRecoveryWeeks)주", "Plan starts · \(priorRecoveryWeeks)-wk recovery"))
+             L.s("이 계획 시작 · 회복 \(priorRecoveryWeeks)주", "Plan starts · \(priorRecoveryWeeks)-wk recovery", ja: "この計画の開始 · 回復\(priorRecoveryWeeks)週"))
         ]
         #if DEBUG
         dbgStartNote = "앞선 대회「\(prior.name)」 다음 주"
@@ -351,11 +351,11 @@ func mrBuildPlan(raceDate: Date,
         let df = DateFormatter()
         df.locale = Locale(identifier: "ko_KR"); df.dateFormat = "yyyy-MM-dd"
         p.startNote = L.s("이 계획은 \(neededTotal)주짜리입니다. \(df.string(from: deferredStart))에 시작합니다.",
-                          "This is a \(neededTotal)-week plan starting \(df.string(from: deferredStart)).")
+                          "This is a \(neededTotal)-week plan starting \(df.string(from: deferredStart)).", ja: "この計画は\(neededTotal)週間です。\(df.string(from: deferredStart))に始まります。")
         let waitEnd = cal.date(byAdding: .day, value: -1, to: deferredStart) ?? deferredStart
         p.bridgeRows = [
-            ("\(sfmt(today)) ~ \(sfmt(waitEnd))", L.s("유지 — 지금처럼 달리시면 됩니다", "Maintain — keep running as you are")),
-            ("\(sfmt(deferredStart)) ~", L.s("이 계획 시작", "Plan starts"))
+            ("\(sfmt(today)) ~ \(sfmt(waitEnd))", L.s("유지 — 지금처럼 달리시면 됩니다", "Maintain — keep running as you are", ja: "維持 — 今のように走れば大丈夫です")),
+            ("\(sfmt(deferredStart)) ~", L.s("이 계획 시작", "Plan starts", ja: "この計画の開始"))
         ]
         #if DEBUG
         dbgStartNote = "역산 \(neededTotal)주 · \(df.string(from: deferredStart)) (대기 \(totalWeeks - neededTotal)주)"
@@ -419,7 +419,7 @@ func mrBuildPlan(raceDate: Date,
     // 앞 대회 있을 때 startNote — planTotalWeeks 를 알아야 총 주 수 표시 가능
     if recoveryWeekCount > 0 {
         p.startNote = L.s("\(priorRaceName) 다음 주부터 이어집니다 · 회복 \(recoveryWeekCount)주 포함 \(planTotalWeeks)주",
-                          "Continues after \(priorRaceName) · \(planTotalWeeks) weeks incl. \(recoveryWeekCount)-wk recovery")
+                          "Continues after \(priorRaceName) · \(planTotalWeeks) weeks incl. \(recoveryWeekCount)-wk recovery", ja: "\(priorRaceName)の翌週から続きます · 回復\(recoveryWeekCount)週を含む\(planTotalWeeks)週")
     }
 
     // 롱런 게이지 왼쪽 값: 앞 대회가 있으면 그 대회의 peakLong (회복 구간은 의도적 저하)
@@ -456,8 +456,8 @@ func mrBuildPlan(raceDate: Date,
             let rest = max(wkV - lr, 0)
             let each = rest / Double(max(n - 1, 1))
             let bk   = each >= 1.5
-                ? String(format: L.s("롱런 %.0fkm + 이지 %.0fkm × %d회", "Long run %.0fkm + Easy %.0fkm × %dx"), lr, each, max(n-1, 1))
-                : String(format: L.s("롱런 %.0fkm + 이지 %d회", "Long run %.0fkm + Easy %dx"), lr, max(n-1, 1))
+                ? String(format: L.s("롱런 %.0fkm + 이지 %.0fkm × %d회", "Long run %.0fkm + Easy %.0fkm × %dx", ja: "ロング走 %.0fkm + イージー %.0fkm × %d回"), lr, each, max(n-1, 1))
+                : String(format: L.s("롱런 %.0fkm + 이지 %d회", "Long run %.0fkm + Easy %dx", ja: "ロング走 %.0fkm + イージー %d回"), lr, max(n-1, 1))
             p.weeks.append(MRPlanWeek(idx: ri, monday: mon, phase: "회복",
                                       longRunKm: lr, longRunMin: mins.rounded(),
                                       weeklyKm: wkV, projectedMin: p.projectedNow,
@@ -647,12 +647,12 @@ func mrBuildPlan(raceDate: Date,
         }()
         var breakdown = each >= 1.5
             ? L.s("롱런 \(Int(lrDisplay))km + 이지 \(eachStr) × \(easyRuns)회",
-                  "Long run \(Int(lrDisplay))km + Easy \(eachStr) × \(easyRuns)x")
-            : String(format: L.s("롱런 %.0fkm + 이지 %d회", "Long run %.0fkm + Easy %dx"), lrDisplay, easyRuns)
+                  "Long run \(Int(lrDisplay))km + Easy \(eachStr) × \(easyRuns)x", ja: "ロング走 \(Int(lrDisplay))km + イージー \(eachStr) × \(easyRuns)回")
+            : String(format: L.s("롱런 %.0fkm + 이지 %d회", "Long run %.0fkm + Easy %dx", ja: "ロング走 %.0fkm + イージー %d回"), lrDisplay, easyRuns)
         if phase == "테이퍼" {
             // "짧게"가 얼마인지 묻는 사람이 있었다 — 대략 거리를 붙인다. 강도·빈도 유지가 핵심인 건 그대로.
             breakdown = String(format: L.s("롱런 %.0fkm + 짧게 %@ × %d회 · 강도는 그대로",
-                                           "Long run %.0fkm + Short %@ × %dx · Keep the intensity"), lrDisplay, eachStr, easyRuns)
+                                           "Long run %.0fkm + Short %@ × %dx · Keep the intensity", ja: "ロング走 %.0fkm + 短め %@ × %d回 · 強度はそのまま"), lrDisplay, eachStr, easyRuns)
         }
         if phase == "대회 페이스" {
             // ⚠ 페이스는 기온·테이퍼 보정 전 예측값. 훈련은 대회 기온에서 하지 않는다.
@@ -663,17 +663,17 @@ func mrBuildPlan(raceDate: Date,
             let paceStr = mrFormatPace(racePace) + "/km"
             breakdown = each >= 1.5
                 ? L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(eachStr) × \(easyRuns)회",
-                      "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(eachStr) × \(easyRuns)x")
+                      "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(eachStr) × \(easyRuns)x", ja: "ロング走 \(Int(lrDisplay))km · 最後の\(seg)分は\(paceStr) + イージー \(eachStr) × \(easyRuns)回")
                 : L.s("롱런 \(Int(lrDisplay))km · 마지막 \(seg)분은 \(paceStr) + 이지 \(easyRuns)회",
-                      "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(easyRuns)x")
+                      "Long run \(Int(lrDisplay))km · last \(seg) min at \(paceStr) + Easy \(easyRuns)x", ja: "ロング走 \(Int(lrDisplay))km · 最後の\(seg)分は\(paceStr) + イージー \(easyRuns)回")
         }
         if let f = followed, i <= buildWeeks {
             let label = mrLabelFor(distanceM: f.race.distanceM)
-            breakdown = L.s("\(label) 계획을 따릅니다 · ", "Follows the \(label) plan · ") + f.week.breakdown
+            breakdown = L.s("\(label) 계획을 따릅니다 · ", "Follows the \(label) plan · ", ja: "\(label)の計画に従います · ") + f.week.breakdown
         } else if let pt = preTune, i <= buildWeeks {
             let label = mrLabelFor(distanceM: pt.distanceM)
             breakdown = String(format: L.s("%@ 대회 전 주 — 롱런 %.0fkm + 짧게 %@ × %d회 · 강도는 그대로",
-                                           "Week before %@ race — Long run %.0fkm + Short %@ × %dx · Keep the intensity"),
+                                           "Week before %@ race — Long run %.0fkm + Short %@ × %dx · Keep the intensity", ja: "%@レースの前の週 — ロング走 %.0fkm + 短め %@ × %d回 · 強度はそのまま"),
                                label, lrDisplay, eachStr, easyRuns)
         }
         // 따르는 주(자기 계획 있는 10K의 대회 주 포함)는 그 계획의 문구가 전부다 — 튠업 문구를 덧붙이지 않는다.
@@ -681,18 +681,18 @@ func mrBuildPlan(raceDate: Date,
             let label = mrLabelFor(distanceM: t.distanceM)
             if i > buildWeeks {
                 // 테이퍼 안의 튠업: 테이퍼는 그대로, 대회는 가볍게
-                breakdown += L.s(" · \(label) 대회는 가볍게", " · \(label) race, take it easy")
+                breakdown += L.s(" · \(label) 대회는 가볍게", " · \(label) race, take it easy", ja: " · \(label)レースは軽めに")
             } else if tuneKind == 2 {
                 let m = max(n - 1, 1)
                 breakdown = L.s("하프 대회 (이번 주 롱런) + 이지 \(m)회 · 앞 5~7일 볼륨 −30%",
-                                "Half race (this week's long run) + Easy \(m)x · volume −30% for 5–7 days before")
+                                "Half race (this week's long run) + Easy \(m)x · volume −30% for 5–7 days before", ja: "ハーフレース(今週のロング走) + イージー \(m)回 · 前の5~7日は量を−30%")
             } else {
                 let m = max(n - 2, 0)
                 breakdown = m > 0
                     ? L.s("\(label) 대회 + 롱런 \(Int(lrDisplay))km(대회 이틀 뒤) + 이지 \(m)회 · 대회 전 2~3일은 가볍게",
-                          "\(label) race + Long run \(Int(lrDisplay))km (2 days after) + Easy \(m)x · easy 2–3 days before")
+                          "\(label) race + Long run \(Int(lrDisplay))km (2 days after) + Easy \(m)x · easy 2–3 days before", ja: "\(label)レース + ロング走 \(Int(lrDisplay))km(レースの2日後) + イージー \(m)回 · レース前の2~3日は軽めに")
                     : L.s("\(label) 대회 + 롱런 \(Int(lrDisplay))km(대회 이틀 뒤) · 대회 전 2~3일은 가볍게",
-                          "\(label) race + Long run \(Int(lrDisplay))km (2 days after) · easy 2–3 days before")
+                          "\(label) race + Long run \(Int(lrDisplay))km (2 days after) · easy 2–3 days before", ja: "\(label)レース + ロング走 \(Int(lrDisplay))km(レースの2日後) · レース前の2~3日は軽めに")
             }
         }
         // 12개월 최대 주간거리를 처음 초과하는 주를 표시 — 경고가 아니라 사실 전달
@@ -725,7 +725,7 @@ func mrBuildPlan(raceDate: Date,
     }.count
     if halfAbsorbed > 0 {
         p.notes.append(L.s("하프 대회 주와 그다음 회복 주에는 롱런이 늘지 않습니다. 목표 롱런 도달이 \(2 * halfAbsorbed)주 늦어집니다.",
-                           "The half-race week and the recovery week after it don't advance the long run. Reaching the target long run is delayed by \(2 * halfAbsorbed) weeks."))
+                           "The half-race week and the recovery week after it don't advance the long run. Reaching the target long run is delayed by \(2 * halfAbsorbed) weeks.", ja: "ハーフレースの週とその次の回復週はロング走が伸びません。目標のロング走への到達が\(2 * halfAbsorbed)週遅れます。"))
     }
     var raceRun = 0, maxRaceRun = 0
     for w in p.weeks {
@@ -733,16 +733,16 @@ func mrBuildPlan(raceDate: Date,
     }
     if maxRaceRun >= 3 {
         p.notes.append(L.s("대회가 \(maxRaceRun)주 연속입니다. 그 구간은 훈련 자극이 거의 없습니다.",
-                           "\(maxRaceRun) consecutive race weeks — almost no training stimulus in that stretch."))
+                           "\(maxRaceRun) consecutive race weeks — almost no training stimulus in that stretch.", ja: "レースが\(maxRaceRun)週連続です。その期間は練習の刺激がほとんどありません。"))
     }
     print(String(format: "[계획] 과거12개월 최대주간 = %.1fkm", profile.maxWeeklyKm52w))
     if profile.maxWeeklyKm52w > 0 && volCap < profile.maxWeeklyKm52w - 0.5 {
         p.notes.append(String(format: L.s("주간 거리는 %.0fkm까지만 올립니다. 이 거리 대회에는 그 이상이 필요하지 않습니다 (지난 1년 최고 %.0fkm).",
-                                          "Weekly distance goes up to %.0f km only — this race distance doesn't need more (1-yr high %.0f km)."),
+                                          "Weekly distance goes up to %.0f km only — this race distance doesn't need more (1-yr high %.0f km).", ja: "週間距離は%.0fkmまでしか上げません。この距離のレースにはそれ以上は必要ありません(直近1年の最高 %.0fkm)。"),
                              volCap, profile.maxWeeklyKm52w))
     } else if profile.maxWeeklyKm52w > 0 {
         p.notes.append(String(format: L.s("주간 거리는 지난 1년 최고치(%.0fkm)까지 올립니다. 그 이상은 아직 해보신 적이 없습니다.",
-                                          "Weekly distance will reach your 1-yr high (%.0f km). You haven't gone beyond this before."),
+                                          "Weekly distance will reach your 1-yr high (%.0f km). You haven't gone beyond this before.", ja: "週間距離は直近1年の最高値(%.0fkm)まで上げます。それ以上はまだ経験がありません。"),
                              profile.maxWeeklyKm52w))
     }
     if distanceM >= MRDistance.dF {
@@ -776,14 +776,15 @@ func mrBuildPlan(raceDate: Date,
                              mrFormatDisplay(finalRef), hm(p.projectedFinalLo), hm(p.projectedFinalHi)))
             } else {
                 let months = max(1, totalWeeks / 4)
-                p.projectedFinalNote = L.isEnglish
-                    ? String(format: "Race is %d months away — prediction is wide (±%.0f%%). It will narrow as you race more.", months, pct)
-                    : String(format: "%d개월 뒤라 예측 폭이 매우 넓습니다 (±%.0f%%). 대회를 치를수록 좁아집니다.", months, pct)
+                p.projectedFinalNote = L.s(
+                    String(format: "%d개월 뒤라 예측 폭이 매우 넓습니다 (±%.0f%%). 대회를 치를수록 좁아집니다.", months, pct),
+                    String(format: "Race is %d months away — prediction is wide (±%.0f%%). It will narrow as you race more.", months, pct),
+                    ja: String(format: "%dか月先のため予測の幅がとても広いです(±%.0f%%)。レースを重ねるほど狭まります。", months, pct))
                 print(String(format: "[예측] %d주 → ±%.1f%% → 표시 기준(10%%) 초과, 문장으로 대체", totalWeeks, pct))
             }
         } else {
             p.projectedFinalNote = L.s("최근 기록이 적어 예측 폭을 계산하지 못했습니다",
-                                       "Not enough recent data to calculate the prediction range")
+                                       "Not enough recent data to calculate the prediction range", ja: "最近の記録が少ないため、予測の幅を計算できませんでした")
             print(String(format: "[예측] %d주 → σ8 계산 불가", totalWeeks))
         }
     } else {
@@ -802,7 +803,7 @@ func mrBuildPlan(raceDate: Date,
         if ratio < 0.78 {
             p.notes.append(L.s(
                 "\(planTotalWeeks)주로는 롱런이 \(Int(peakLong))km까지밖에 못 올라갑니다. 근거가 있는 하한(28km)까지 가려면 \(mrWeeksToReach(from: max(profile.longestRun16wKm, 5), to: p.targetLongKm, step: stepPct, cycle: cycleLen))주가 필요합니다.",
-                "In \(planTotalWeeks) weeks, the long run can only reach \(Int(peakLong)) km. Reaching the evidence-based minimum (28 km) requires \(mrWeeksToReach(from: max(profile.longestRun16wKm, 5), to: p.targetLongKm, step: stepPct, cycle: cycleLen)) weeks."
+                "In \(planTotalWeeks) weeks, the long run can only reach \(Int(peakLong)) km. Reaching the evidence-based minimum (28 km) requires \(mrWeeksToReach(from: max(profile.longestRun16wKm, 5), to: p.targetLongKm, step: stepPct, cycle: cycleLen)) weeks.", ja: "\(planTotalWeeks)週ではロング走は\(Int(peakLong))kmまでしか伸ばせません。根拠のある下限(28km)まで行くには\(mrWeeksToReach(from: max(profile.longestRun16wKm, 5), to: p.targetLongKm, step: stepPct, cycle: cycleLen))週必要です。"
             ))
         }
     } else {
@@ -817,7 +818,7 @@ func mrBuildPlan(raceDate: Date,
             p.verdict = "준비 기간이 짧습니다"
             p.notes.append(L.s(
                 "\(planTotalWeeks)주로는 롱런이 \(Int(peakLong))km까지입니다. \(Int(need))km 완주를 편하게 하려면 최소 \(Int(need * 0.6))km는 소화해 두는 편이 좋습니다.",
-                "In \(planTotalWeeks) weeks, the long run reaches \(Int(peakLong)) km. To finish \(Int(need)) km comfortably, reaching at least \(Int(need * 0.6)) km first is recommended."
+                "In \(planTotalWeeks) weeks, the long run reaches \(Int(peakLong)) km. To finish \(Int(need)) km comfortably, reaching at least \(Int(need * 0.6)) km first is recommended.", ja: "\(planTotalWeeks)週ではロング走は\(Int(peakLong))kmまでです。\(Int(need))kmを楽に完走するには、最低\(Int(need * 0.6))kmはこなしておくとよいです。"
             ))
         }
     }

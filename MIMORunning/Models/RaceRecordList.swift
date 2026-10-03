@@ -228,10 +228,18 @@ enum RaceRecordList {
 
     /// 정확도 상자의 환산표 항목(개조식 — 사용자 요청으로 '~입니다' 없이, 2026-10-02). 비교가 없으면 nil.
     /// 환산표 비교 대회가 정확도 줄과 같은 묶음이 아니면 그 대회들의 앱 오차를 함께 밝힌다.
-    static func vo2Sentence(_ acc: Accuracy, english: Bool) -> String? {
+    static func vo2Sentence(_ acc: Accuracy, english: Bool, japanese: Bool = false) -> String? {
         guard let v = acc.vo2 else { return nil }
         let vo2 = String(format: "%.1f", v.vo2MeanAbsErrorPct)
         let app = String(format: "%.1f", v.appMeanAbsErrorPct)
+        if japanese {
+            var s = v.count == acc.count
+                ? "VO2max換算表: 平均誤差 \(vo2)%"
+                : "VO2max換算表(VO2maxがある\(v.count)件): 平均誤差 \(vo2)% · 同じ\(v.count)件でアプリ \(app)%"
+            if v.allFaster { s += " · \(v.count)件すべて実際より速い" }
+            else if v.allSlower { s += " · \(v.count)件すべて実際より遅い" }
+            return s
+        }
         var s: String
         if v.count == acc.count {
             s = english ? "VO2max table: avg error \(vo2)%"
