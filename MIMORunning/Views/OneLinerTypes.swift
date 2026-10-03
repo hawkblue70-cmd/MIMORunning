@@ -130,11 +130,11 @@ enum OneLinerTextColor: String, CaseIterable, Codable {
 
     var chipLabel: String {
         switch self {
-        case .white:  return AppLanguage.shared.s("흰색", "White")
-        case .violet: return AppLanguage.shared.s("바이올렛", "Violet")
-        case .gold:   return AppLanguage.shared.s("골드", "Gold")
-        case .lime:   return AppLanguage.shared.s("라임", "Lime")
-        case .blue:   return AppLanguage.shared.s("블루", "Blue")
+        case .white:  return AppLanguage.shared.s("흰색", "White", ja: "ホワイト")
+        case .violet: return AppLanguage.shared.s("바이올렛", "Violet", ja: "バイオレット")
+        case .gold:   return AppLanguage.shared.s("골드", "Gold", ja: "ゴールド")
+        case .lime:   return AppLanguage.shared.s("라임", "Lime", ja: "ライム")
+        case .blue:   return AppLanguage.shared.s("블루", "Blue", ja: "ブルー")
         }
     }
 
@@ -185,10 +185,10 @@ enum TextSizeLevel: String, CaseIterable, Codable {
 
     var chipLabel: String {
         switch self {
-        case .small:  return AppLanguage.shared.s("소", "S")
-        case .medium: return AppLanguage.shared.s("중", "M")
-        case .large:  return AppLanguage.shared.s("대", "L")
-        case .xlarge: return AppLanguage.shared.s("특대", "XL")
+        case .small:  return AppLanguage.shared.s("소", "S", ja: "小")
+        case .medium: return AppLanguage.shared.s("중", "M", ja: "中")
+        case .large:  return AppLanguage.shared.s("대", "L", ja: "大")
+        case .xlarge: return AppLanguage.shared.s("특대", "XL", ja: "特大")
         }
     }
 }
@@ -204,9 +204,9 @@ enum AppearanceMode: String, CaseIterable, Codable {
 
     var chipLabel: String {
         switch self {
-        case .typing: return AppLanguage.shared.s("타이핑", "Typing")
-        case .fade:   return AppLanguage.shared.s("페이드", "Fade")
-        case .flyIn:  return AppLanguage.shared.s("날아오기", "Fly In")
+        case .typing: return AppLanguage.shared.s("타이핑", "Typing", ja: "タイピング")
+        case .fade:   return AppLanguage.shared.s("페이드", "Fade", ja: "フェード")
+        case .flyIn:  return AppLanguage.shared.s("날아오기", "Fly In", ja: "フライイン")
         }
     }
 }
@@ -224,9 +224,9 @@ enum DecorEffect: String, CaseIterable, Codable {
 
     var chipLabel: String {
         switch self {
-        case .none:   return AppLanguage.shared.s("없음",   "None")
-        case .wobble: return AppLanguage.shared.s("흔들림", "Shake")
-        case .pop:    return AppLanguage.shared.s("팝",     "Pop")
+        case .none:   return AppLanguage.shared.s("없음",   "None", ja: "なし")
+        case .wobble: return AppLanguage.shared.s("흔들림", "Shake", ja: "揺れ")
+        case .pop:    return AppLanguage.shared.s("팝",     "Pop", ja: "ポップ")
         }
     }
 }
@@ -243,9 +243,9 @@ enum FlyInDirection: String, CaseIterable, Codable {
 
     var chipLabel: String {
         switch self {
-        case .leading:  return AppLanguage.shared.s("왼쪽에서", "From Left")
-        case .trailing: return AppLanguage.shared.s("오른쪽에서", "From Right")
-        case .bottom:   return AppLanguage.shared.s("아래에서", "From Below")
+        case .leading:  return AppLanguage.shared.s("왼쪽에서", "From Left", ja: "左から")
+        case .trailing: return AppLanguage.shared.s("오른쪽에서", "From Right", ja: "右から")
+        case .bottom:   return AppLanguage.shared.s("아래에서", "From Below", ja: "下から")
         }
     }
 
@@ -263,8 +263,8 @@ enum ReadabilityStyle: String, CaseIterable, Codable {
 
     var chipLabel: String {
         switch self {
-        case .none:    return AppLanguage.shared.s("없음",   "None")
-        case .outline: return AppLanguage.shared.s("테두리", "Border")
+        case .none:    return AppLanguage.shared.s("없음",   "None", ja: "なし")
+        case .outline: return AppLanguage.shared.s("테두리", "Border", ja: "縁取り")
         }
     }
 }

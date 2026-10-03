@@ -644,7 +644,7 @@ extension ShareCardScreen {
                     Image(systemName: "video.badge.plus")
                         .font(.system(size: 32))
                         .foregroundStyle(Theme.violet)
-                    Text(AppLanguage.shared.s("영상을 선택해 주세요", "Select a video"))
+                    Text(AppLanguage.shared.s("영상을 선택해 주세요", "Select a video", ja: "動画を選択してください"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -666,7 +666,9 @@ extension ShareCardScreen {
             }
             VStack(spacing: 6) {
                 HStack {
-                    Text("\(fmt(r.trimStart)) – \(fmt(r.trimEnd))  ·  \(fmt(used)) 사용")
+                    Text(AppLanguage.shared.s("\(fmt(r.trimStart)) – \(fmt(r.trimEnd))  ·  \(fmt(used)) 사용",
+                                              "\(fmt(r.trimStart)) – \(fmt(r.trimEnd))  ·  \(fmt(used)) used",
+                                              ja: "\(fmt(r.trimStart)) – \(fmt(r.trimEnd))  ·  \(fmt(used))使用"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -842,7 +844,7 @@ extension ShareCardScreen {
                     Image(systemName: "photo.badge.plus")
                         .font(.system(size: 32))
                         .foregroundStyle(Theme.violet)
-                    Text(AppLanguage.shared.s("사진을 선택해 주세요", "Select photos"))
+                    Text(AppLanguage.shared.s("사진을 선택해 주세요", "Select photos", ja: "写真を選択してください"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

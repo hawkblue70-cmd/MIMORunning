@@ -79,7 +79,7 @@ enum RouteCardStyle: Int, CaseIterable, Identifiable {
         }
     }
     var id: Int { rawValue }
-    var label: String { AppLanguage.shared.s("경로 \(rawValue)", "Route \(rawValue)") }
+    var label: String { AppLanguage.shared.s("경로 \(rawValue)", "Route \(rawValue)", ja: "ルート\(rawValue)") }
 }
 
 /// 경로 1 영상의 한 프레임 값 — 거리·경과 시간은 "지금까지", 심박은 "지금".
@@ -775,11 +775,11 @@ struct DetailPanelShareCardScreen: View {
                     }
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("경로 내보내기 카드", "Route Card"))
+            .navigationTitle(AppLanguage.shared.s("경로 내보내기 카드", "Route Card", ja: "ルート書き出しカード"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                         .foregroundStyle(Theme.violet)
                 }
             }
@@ -806,8 +806,8 @@ struct DetailPanelShareCardScreen: View {
     private var outputRow: some View {
         let L = AppLanguage.shared
         return HStack(spacing: 0) {
-            segment(L.s("이미지", "Image"), selected: stampOutput == .image) { stampOutput = .image }
-            segment(L.s("영상", "Video"), selected: stampOutput == .video) {
+            segment(L.s("이미지", "Image", ja: "画像"), selected: stampOutput == .image) { stampOutput = .image }
+            segment(L.s("영상", "Video", ja: "動画"), selected: stampOutput == .video) {
                 stampOutput = .video
                 if videoPreviewSnapshot == nil {
                     videoPreviewSnapshot = RouteStampVideoExporter.finalSnapshot(
@@ -827,13 +827,13 @@ struct DetailPanelShareCardScreen: View {
             VStack(spacing: 8) {
                 ProgressView(value: videoProgress).tint(Theme.violet)
                 Text(L.s("영상 만드는 중 \(Int(videoProgress * 100))%",
-                         "Creating video \(Int(videoProgress * 100))%"))
+                         "Creating video \(Int(videoProgress * 100))%", ja: "動画を作成中 \(Int(videoProgress * 100))%"))
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 12)
         } else {
             Button { Task { await exportVideo() } } label: {
-                Label(L.s("영상 내보내기", "Export Video"), systemImage: "film")
+                Label(L.s("영상 내보내기", "Export Video", ja: "動画を書き出す"), systemImage: "film")
                     .font(.headline).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 16)
                     .background(Theme.violet)
@@ -869,8 +869,8 @@ struct DetailPanelShareCardScreen: View {
 
     /// 카드 테마 — 경로선은 늘 심박 존 색(심박이 없으면 자동으로 단색)이라 선택지가 없다
     private var optionRow: some View {
-        segmented(left: AppLanguage.shared.s("다크", "Dark"), leftOn: cardTheme == .dark,
-                  right: AppLanguage.shared.s("라이트", "Light"), rightOn: cardTheme == .light) { wantsDark in
+        segmented(left: AppLanguage.shared.s("다크", "Dark", ja: "ダーク"), leftOn: cardTheme == .dark,
+                  right: AppLanguage.shared.s("라이트", "Light", ja: "ライト"), rightOn: cardTheme == .light) { wantsDark in
             let next: ShareTheme = wantsDark ? .dark : .light
             guard cardTheme != next else { return }
             cardTheme = next
@@ -906,13 +906,13 @@ struct DetailPanelShareCardScreen: View {
         if isRendering {
             HStack(spacing: 10) {
                 ProgressView().tint(Theme.violet)
-                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card..."))
+                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card...", ja: "カードを作成中..."))
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 18)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("카드 내보내기", "Export Card", ja: "カードを書き出す"), systemImage: "square.and.arrow.up")
                     .font(.headline).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 16)
                     .background(Theme.violet)
@@ -922,7 +922,7 @@ struct DetailPanelShareCardScreen: View {
                 if let img = previewImage { ShareSheet(images: [img]) }
             }
         } else {
-            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed"))
+            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed", ja: "カードの作成に失敗しました"))
                 .foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 18)
         }
     }

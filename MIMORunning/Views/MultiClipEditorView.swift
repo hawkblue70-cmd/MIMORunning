@@ -123,13 +123,13 @@ struct MultiClipEditorView: View {
         }) { clipTrimSheet }
         .onChange(of: videoPickerItems)      { _, items in loadVideoClips(items) }
         .onChange(of: photoSlidePickerItems) { _, items in loadPhotoSlides(items) }
-        .alert(AppLanguage.shared.s("영상을 다시 추가해 주세요", "Re-add This Video"),
+        .alert(AppLanguage.shared.s("영상을 다시 추가해 주세요", "Re-add This Video", ja: "動画をもう一度追加してください"),
                isPresented: $showReAddAlert) {
-            Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { }
+            Button(AppLanguage.shared.s("확인", "OK", ja: "OK"), role: .cancel) { }
         } message: {
             Text(AppLanguage.shared.s(
                 "이 영상은 저장된 참조를 잃어 재생·export가 불가합니다.\n삭제 후 사진 보관함에서 다시 추가해 주세요.",
-                "This video's reference was lost and can't be played or exported.\nPlease delete it and re-add from your photo library."))
+                "This video's reference was lost and can't be played or exported.\nPlease delete it and re-add from your photo library.", ja: "この動画は保存された参照が失われたため、再生・書き出しができません。\n削除して写真ライブラリから追加し直してください。"))
         }
         .onAppear { resolveVideoClips() }
         .onChange(of: recipes.map { $0.assetIdentifier }) { _, _ in resolveVideoClips() }
@@ -201,8 +201,8 @@ struct MultiClipEditorView: View {
             Image(systemName: "photo.badge.plus")
                 .font(.system(size: 17))
             Text(isPhotoSlideMode
-                 ? AppLanguage.shared.s("사진 선택", "Select Photos")
-                 : AppLanguage.shared.s("영상 선택", "Select Video"))
+                 ? AppLanguage.shared.s("사진 선택", "Select Photos", ja: "写真を選択")
+                 : AppLanguage.shared.s("영상 선택", "Select Video", ja: "動画を選択"))
                 .font(.subheadline)
         }
         .foregroundStyle(Color.white.opacity(0.55))
@@ -305,13 +305,13 @@ struct MultiClipEditorView: View {
                 lineWidth: isSelected ? 2.5 : 1.5))
             .overlay(alignment: .bottom) {
                 if isNoSource {
-                    Text(AppLanguage.shared.s("재추가 필요", "Re-add"))
+                    Text(AppLanguage.shared.s("재추가 필요", "Re-add", ja: "再追加が必要"))
                         .font(.system(size: 7, weight: .bold)).foregroundStyle(.black)
                         .padding(.horizontal, 3).padding(.vertical, 1)
                         .background(Color.yellow.opacity(0.92))
                         .clipShape(RoundedRectangle(cornerRadius: 2)).padding(.bottom, 3)
                 } else if avail == .deleted {
-                    Text(AppLanguage.shared.s("원본 없음", "Missing"))
+                    Text(AppLanguage.shared.s("원본 없음", "Missing", ja: "元データなし"))
                         .font(.system(size: 7, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 3).padding(.vertical, 1)
                         .background(Color.red.opacity(0.85))
@@ -363,7 +363,7 @@ struct MultiClipEditorView: View {
     private var storyHintRow: some View {
         Text(AppLanguage.shared.s(
             "사진 \(recipes.count)장  (탭하면 상세 편집)",
-            "\(recipes.count) photos  (tap to edit)"))
+            "\(recipes.count) photos  (tap to edit)", ja: "写真\(recipes.count)枚  (タップで詳細編集)"))
             .font(.caption).foregroundStyle(.secondary)
     }
 
@@ -377,17 +377,17 @@ struct MultiClipEditorView: View {
             if exceeded {
                 Text(AppLanguage.shared.s(
                     "전체 60초를 넘습니다 — \(overBy)초 초과",
-                    "Over 60s limit — \(overBy)s too long"))
+                    "Over 60s limit — \(overBy)s too long", ja: "合計60秒を超えています — \(overBy)秒超過"))
                     .font(.caption).foregroundStyle(.red)
             } else if showEditHint {
                 Text(AppLanguage.shared.s(
                     "클립 \(recipes.count)개 · \(Int(totalSeconds))초  (탭하면 상세 편집)",
-                    "\(recipes.count) clips · \(Int(totalSeconds))s  (tap to edit)"))
+                    "\(recipes.count) clips · \(Int(totalSeconds))s  (tap to edit)", ja: "クリップ\(recipes.count)本 · \(Int(totalSeconds))秒  (タップで詳細編集)"))
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 Text(AppLanguage.shared.s(
                     "클립 \(recipes.count)개 · \(Int(totalSeconds))초",
-                    "\(recipes.count) clips · \(Int(totalSeconds))s"))
+                    "\(recipes.count) clips · \(Int(totalSeconds))s", ja: "クリップ\(recipes.count)本 · \(Int(totalSeconds))秒"))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -433,12 +433,12 @@ struct MultiClipEditorView: View {
             if isPhotoSlideMode {
                 // 슬라이드: 눈에 띄는 박스형 입력 + 섹션 레이블
                 HStack {
-                    Text(AppLanguage.shared.s("문구 (선택)", "Caption (optional)"))
+                    Text(AppLanguage.shared.s("문구 (선택)", "Caption (optional)", ja: "テキスト(任意)"))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
-                TextField(AppLanguage.shared.s("영상에 넣을 문구를 입력하세요", "Enter a caption for the video"),
+                TextField(AppLanguage.shared.s("영상에 넣을 문구를 입력하세요", "Enter a caption for the video", ja: "動画に入れるテキストを入力してください"),
                           text: $videoTitle,
                           axis: .vertical)
                     .lineLimit(1...3)
@@ -453,7 +453,7 @@ struct MultiClipEditorView: View {
             } else {
                 // 영상: 기존 미니멀 스타일
                 Divider()
-                TextField(AppLanguage.shared.s("전체 제목 (선택)", "Title (optional)"),
+                TextField(AppLanguage.shared.s("전체 제목 (선택)", "Title (optional)", ja: "タイトル(任意)"),
                           text: $videoTitle,
                           axis: .vertical)
                     .lineLimit(1...2)
@@ -571,7 +571,7 @@ struct MultiClipEditorView: View {
     private var titleOutlineChip: some View {
         let isSel = titleStyle.outline
         return Button { titleStyle.outline.toggle(); onSave() } label: {
-            Text(AppLanguage.shared.s("테두리", "Border"))
+            Text(AppLanguage.shared.s("테두리", "Border", ja: "縁取り"))
                 .font(.system(size: 12, weight: isSel ? .semibold : .regular))
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(isSel ? Theme.violet : Color.white.opacity(0.08))

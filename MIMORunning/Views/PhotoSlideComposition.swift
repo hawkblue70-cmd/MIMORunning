@@ -1005,7 +1005,7 @@ enum PhotoSlideComposition {
                     let cg = ctx.cgContext
                     let bg = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: panW, height: panH), cornerRadius: panCR)
                     UIColor.black.withAlphaComponent(0.30).setFill(); bg.fill()
-                    (AppLanguage.shared.s("↗ 경로", "↗ Route") as NSString)
+                    (AppLanguage.shared.s("↗ 경로", "↗ Route", ja: "↗ ルート") as NSString)
                         .draw(at: CGPoint(x: chartX, y: panPad), withAttributes: titleAttrs)
                     cg.setStrokeColor(UIColor.white.withAlphaComponent(0.88).cgColor)
                     cg.setLineWidth(1.5 * vScale); cg.setLineCap(.round); cg.setLineJoin(.round)
@@ -1098,7 +1098,7 @@ enum PhotoSlideComposition {
                     let titleFont  = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
                     let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont,
                                                                       .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
-                    (AppLanguage.shared.s("♥ 심박수", "♥ HR") as NSString).draw(at: CGPoint(x: chartX, y: panPad),
+                    (AppLanguage.shared.s("♥ 심박수", "♥ HR", ja: "♥ 心拍数") as NSString).draw(at: CGPoint(x: chartX, y: panPad),
                                                                                   withAttributes: titleAttrs)
 
                     for i in 0..<yMarkCount {
@@ -1226,7 +1226,7 @@ enum PhotoSlideComposition {
                     UIColor.black.withAlphaComponent(0.30).setFill(); bg.fill()
 
                     // Title
-                    (AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits") as NSString)
+                    (AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits", ja: "⚡ スプリット") as NSString)
                         .draw(at: CGPoint(x: sHPad, y: vPad), withAttributes: titleAttrs)
 
                     // Column headers (right-aligned in each colW)
@@ -1237,11 +1237,11 @@ enum PhotoSlideComposition {
                         s.draw(at: CGPoint(x: atX + colW - sz.width,
                                            y: colHY + (colHH - sz.height) / 2), withAttributes: colHAttrs)
                     }
-                    drawHeaderRight(AppLanguage.shared.s("페이스", "Pace"), atX: paceColX)
+                    drawHeaderRight(AppLanguage.shared.s("페이스", "Pace", ja: "ペース"), atX: paceColX)
                     var nextColX = paceColX + colW
-                    if hasHR  { drawHeaderRight(AppLanguage.shared.s("심박", "HR"),       atX: nextColX + gap); nextColX += gap + colW }
-                    if hasCad { drawHeaderRight(AppLanguage.shared.s("케이던스", "Cad"),   atX: nextColX + gap); nextColX += gap + colW }
-                    if hasPwr { drawHeaderRight(AppLanguage.shared.s("파워", "Pwr"),       atX: nextColX + gap) }
+                    if hasHR  { drawHeaderRight(AppLanguage.shared.s("심박", "HR", ja: "心拍"),       atX: nextColX + gap); nextColX += gap + colW }
+                    if hasCad { drawHeaderRight(AppLanguage.shared.s("케이던스", "Cad", ja: "ケイデンス"),   atX: nextColX + gap); nextColX += gap + colW }
+                    if hasPwr { drawHeaderRight(AppLanguage.shared.s("파워", "Pwr", ja: "パワー"),       atX: nextColX + gap) }
 
                     // Rows
                     for (i, split) in full.enumerated() {
@@ -1336,7 +1336,7 @@ enum PhotoSlideComposition {
                     UIColor.black.withAlphaComponent(0.30).setFill(); bg.fill()
                     let titleFont = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
                     let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
-                    (AppLanguage.shared.s("⚙ 인터벌", "⚙ Intervals") as NSString).draw(at: CGPoint(x: barAreaX, y: panPad), withAttributes: titleAttrs)
+                    (AppLanguage.shared.s("⚙ 인터벌", "⚙ Intervals", ja: "⚙ インターバル") as NSString).draw(at: CGPoint(x: barAreaX, y: panPad), withAttributes: titleAttrs)
                     var xCursor: CGFloat = barAreaX
                     for seg in segs {
                         let dur      = seg.endDate.timeIntervalSince(seg.startDate)

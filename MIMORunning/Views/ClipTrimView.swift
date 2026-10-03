@@ -175,7 +175,7 @@ struct ClipTrimSheet: View {
             editScrollView
                 .scrollDismissesKeyboard(.interactively)
                 .background(Color(hex: "0E0E18").ignoresSafeArea())
-                .navigationTitle(AppLanguage.shared.s("클립 편집", "Edit Clip"))
+                .navigationTitle(AppLanguage.shared.s("클립 편집", "Edit Clip", ja: "クリップを編集"))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { clipEditToolbar }
         }
@@ -218,7 +218,9 @@ struct ClipTrimSheet: View {
         .alert("영상을 다시 추가해 주세요", isPresented: $showReAddAlert) {
             Button("확인", role: .cancel) { }
         } message: {
-            Text("이 클립의 원본 영상을 찾을 수 없습니다.\n아래 교체 버튼으로 새 영상을 선택해 주세요.")
+            Text(AppLanguage.shared.s("이 클립의 원본 영상을 찾을 수 없습니다.\n아래 교체 버튼으로 새 영상을 선택해 주세요.",
+                                      "Can't find this clip's original video.\nUse the Replace button below to pick a new one.",
+                                      ja: "このクリップの元の動画が見つかりません。\n下の差し替えボタンで新しい動画を選んでください。"))
         }
     }
 
@@ -413,7 +415,7 @@ struct ClipTrimSheet: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 32))
                             .foregroundStyle(.orange)
-                        Text("이 영상은 다시 추가해 주세요")
+                        Text(AppLanguage.shared.s("이 영상은 다시 추가해 주세요", "Please re-add this video", ja: "この動画をもう一度追加してください"))
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
@@ -682,14 +684,14 @@ struct ClipTrimSheet: View {
             HStack(spacing: 8) {
                 Text(AppLanguage.shared.s(
                     "\(formatSec(r.trimStart)) – \(formatSec(r.trimEnd))  ·  \(formatSec(trimmed)) 사용",
-                    "\(formatSec(r.trimStart)) – \(formatSec(r.trimEnd))  ·  \(formatSec(trimmed)) used"))
+                    "\(formatSec(r.trimStart)) – \(formatSec(r.trimEnd))  ·  \(formatSec(trimmed)) used", ja: "\(formatSec(r.trimStart)) – \(formatSec(r.trimEnd))  ·  \(formatSec(trimmed))使用"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
                 Spacer()
                 PhotosPicker(selection: $replaceVideoPicker,
                              maxSelectionCount: 1, matching: .videos,
                              photoLibrary: .shared()) {
-                    Label(AppLanguage.shared.s("영상 교체", "Replace"),
+                    Label(AppLanguage.shared.s("영상 교체", "Replace", ja: "動画を差し替え"),
                           systemImage: "video.badge.checkmark")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -724,7 +726,7 @@ struct ClipTrimSheet: View {
                 HStack(alignment: .top, spacing: 8) {
                     HStack(alignment: .top, spacing: 8) {
                         TextField(
-                            AppLanguage.shared.s("\(i + 1)번째 줄", "Line \(i + 1)"),
+                            AppLanguage.shared.s("\(i + 1)번째 줄", "Line \(i + 1)", ja: "\(i + 1)行目"),
                             text: lineBinding(for: i),
                             axis: .vertical
                         )
@@ -900,10 +902,10 @@ struct ClipTrimSheet: View {
     // 문구 | 데이터 모드 토글 (그리드 위)
     private var gridModeToggle: some View {
         HStack(spacing: 4) {
-            gridModeChip(AppLanguage.shared.s("문구", "Text"), on: !gridDataMode) {
+            gridModeChip(AppLanguage.shared.s("문구", "Text", ja: "テキスト"), on: !gridDataMode) {
                 withAnimation(.easeInOut(duration: 0.12)) { gridDataMode = false }
             }
-            gridModeChip(AppLanguage.shared.s("데이터", "Data"), on: gridDataMode) {
+            gridModeChip(AppLanguage.shared.s("데이터", "Data", ja: "データ"), on: gridDataMode) {
                 withAnimation(.easeInOut(duration: 0.12)) { gridDataMode = true }
             }
         }
@@ -1063,14 +1065,14 @@ struct ClipTrimSheet: View {
     private var chartGridSection: some View {
         // (타입, 레이블, 활성여부)
         let charts: [(ChartOverlayType, String, Bool)] = [
-            (.route,               AppLanguage.shared.s("경로",   "Route"),   !routeCoords.isEmpty),
-            (.hrChart,             AppLanguage.shared.s("심박수",  "HR"),      hrSamples.count >= 2),
-            (.splits,              AppLanguage.shared.s("스플릿",  "Splits"),  !splits.isEmpty),
-            (.cadence,             AppLanguage.shared.s("케이던스", "Cadnc"),  (chartSeriesData[.cadence]?.count ?? 0) >= 2),
-            (.strideLength,        AppLanguage.shared.s("보폭",   "Stride"),  (chartSeriesData[.strideLength]?.count ?? 0) >= 2),
-            (.verticalOscillation, AppLanguage.shared.s("수직진폭", "VO"),     (chartSeriesData[.verticalOscillation]?.count ?? 0) >= 2),
-            (.elevation,           AppLanguage.shared.s("고도",   "Elev"),    (chartSeriesData[.elevation]?.count ?? 0) >= 2),
-            (.intervals,           AppLanguage.shared.s("인터벌",  "Intvl"),   !intervalSegments.isEmpty),
+            (.route,               AppLanguage.shared.s("경로",   "Route", ja: "ルート"),   !routeCoords.isEmpty),
+            (.hrChart,             AppLanguage.shared.s("심박수",  "HR", ja: "心拍数"),      hrSamples.count >= 2),
+            (.splits,              AppLanguage.shared.s("스플릿",  "Splits", ja: "スプリット"),  !splits.isEmpty),
+            (.cadence,             AppLanguage.shared.s("케이던스", "Cadnc", ja: "ケイデンス"),  (chartSeriesData[.cadence]?.count ?? 0) >= 2),
+            (.strideLength,        AppLanguage.shared.s("보폭",   "Stride", ja: "ストライド"),  (chartSeriesData[.strideLength]?.count ?? 0) >= 2),
+            (.verticalOscillation, AppLanguage.shared.s("수직진폭", "VO", ja: "上下動"),     (chartSeriesData[.verticalOscillation]?.count ?? 0) >= 2),
+            (.elevation,           AppLanguage.shared.s("고도",   "Elev", ja: "標高"),    (chartSeriesData[.elevation]?.count ?? 0) >= 2),
+            (.intervals,           AppLanguage.shared.s("인터벌",  "Intvl", ja: "インターバル"),   !intervalSegments.isEmpty),
         ]
         return VStack(alignment: .leading, spacing: 4) {
             chartRow(Array(charts[0..<4]))
@@ -1255,7 +1257,7 @@ struct ClipTrimSheet: View {
                 RoundedRectangle(cornerRadius: 12 * ps)
                     .fill(Color.black.opacity(0.30))
                 VStack(alignment: .leading, spacing: 2 * ps) {
-                    Text(AppLanguage.shared.s("♥ 심박수", "♥ HR"))
+                    Text(AppLanguage.shared.s("♥ 심박수", "♥ HR", ja: "♥ 心拍数"))
                         .font(.system(size: 10 * ps, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.9))
                         .padding(.top, 8 * ps)
@@ -1344,7 +1346,7 @@ struct ClipTrimSheet: View {
                 RoundedRectangle(cornerRadius: 12 * ps)
                     .fill(Color.black.opacity(0.30))
                 VStack(alignment: .leading, spacing: 2 * ps) {
-                    Text(AppLanguage.shared.s("↗ 경로", "↗ Route"))
+                    Text(AppLanguage.shared.s("↗ 경로", "↗ Route", ja: "↗ ルート"))
                         .font(.system(size: 10 * ps, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.9))
                         .padding(.top, 8 * ps)
@@ -1423,7 +1425,7 @@ struct ClipTrimSheet: View {
                     RoundedRectangle(cornerRadius: 12 * ps)
                         .fill(Color.black.opacity(0.30))
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits"))
+                        Text(AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits", ja: "⚡ スプリット"))
                             .font(.system(size: 10 * ps, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.9))
                             .frame(height: titleH)
@@ -1432,24 +1434,24 @@ struct ClipTrimSheet: View {
                         HStack(spacing: gap) {
                             Spacer().frame(width: kmW)
                             Spacer().frame(width: barAreaW)
-                            Text(AppLanguage.shared.s("페이스", "Pace"))
+                            Text(AppLanguage.shared.s("페이스", "Pace", ja: "ペース"))
                                 .font(.system(size: 5.5 * ps, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.75))
                                 .frame(width: colW, alignment: .trailing)
                             if hasHR {
-                                Text(AppLanguage.shared.s("심박", "HR"))
+                                Text(AppLanguage.shared.s("심박", "HR", ja: "心拍"))
                                     .font(.system(size: 5.5 * ps, weight: .medium))
                                     .foregroundStyle(Color.white.opacity(0.75))
                                     .frame(width: colW, alignment: .trailing)
                             }
                             if hasCad {
-                                Text(AppLanguage.shared.s("케이던스", "Cad"))
+                                Text(AppLanguage.shared.s("케이던스", "Cad", ja: "ケイデンス"))
                                     .font(.system(size: 5.5 * ps, weight: .medium))
                                     .foregroundStyle(Color.white.opacity(0.75))
                                     .frame(width: colW, alignment: .trailing)
                             }
                             if hasPwr {
-                                Text(AppLanguage.shared.s("파워", "Pwr"))
+                                Text(AppLanguage.shared.s("파워", "Pwr", ja: "パワー"))
                                     .font(.system(size: 5.5 * ps, weight: .medium))
                                     .foregroundStyle(Color.white.opacity(0.75))
                                     .frame(width: colW, alignment: .trailing)
@@ -1530,7 +1532,7 @@ struct ClipTrimSheet: View {
                     RoundedRectangle(cornerRadius: 12 * ps)
                         .fill(Color.black.opacity(0.30))
                     VStack(alignment: .leading, spacing: 2 * ps) {
-                        Text(AppLanguage.shared.s("⚙ 인터벌", "⚙ Intervals"))
+                        Text(AppLanguage.shared.s("⚙ 인터벌", "⚙ Intervals", ja: "⚙ インターバル"))
                             .font(.system(size: 10 * ps, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.9))
                             .padding(.top, 8 * ps)
@@ -1776,7 +1778,7 @@ struct ClipTrimSheet: View {
                 sizeAuditLog("테두리 토글")
                 #endif
             } label: {
-                Text(AppLanguage.shared.s("테두리", "Border"))
+                Text(AppLanguage.shared.s("테두리", "Border", ja: "縁取り"))
                     .font(.system(size: 12, weight: borderOn ? .semibold : .regular))
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(borderOn ? Theme.violet : Color.white.opacity(0.08))
@@ -1888,7 +1890,7 @@ struct ClipTrimSheet: View {
                 sizeAuditLog("테두리 토글")
                 #endif
             } label: {
-                Text(AppLanguage.shared.s("테두리", "Border"))
+                Text(AppLanguage.shared.s("테두리", "Border", ja: "縁取り"))
                     .font(.system(size: 12, weight: borderOn ? .semibold : .regular))
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(borderOn ? Theme.violet : Color.white.opacity(0.08))
@@ -1958,10 +1960,10 @@ struct ClipTrimSheet: View {
     @ToolbarContentBuilder
     private var clipEditToolbar: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
-            Button(AppLanguage.shared.s("취소", "Cancel")) { dismiss() }
+            Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル")) { dismiss() }
         }
         ToolbarItem(placement: .confirmationAction) {
-            Button(AppLanguage.shared.s("완료", "Done")) {
+            Button(AppLanguage.shared.s("완료", "Done", ja: "完了")) {
                 commitWorkingRecipes()
                 dismiss()
             }
@@ -2253,7 +2255,7 @@ struct ClipTrimSheet: View {
                             workingRecipes[currentPage].trimEnd      = sec
                             workingRecipes[currentPage].trimStart    = 0
                         } label: {
-                            Text(AppLanguage.shared.s("\(Int(sec))초", "\(Int(sec)) s"))
+                            Text(AppLanguage.shared.s("\(Int(sec))초", "\(Int(sec)) s", ja: "\(Int(sec))秒"))
                                 .font(.system(size: 13, weight: .semibold))
                                 .padding(.horizontal, 14).padding(.vertical, 7)
                                 .background(dur == sec ? Theme.violet : Color(hex: "1E1E28"))
@@ -2265,7 +2267,7 @@ struct ClipTrimSheet: View {
                     Spacer()
                     PhotosPicker(selection: $replacePhotoPicker,
                                  maxSelectionCount: 1, matching: .images) {
-                        Label(AppLanguage.shared.s("사진 교체", "Replace"),
+                        Label(AppLanguage.shared.s("사진 교체", "Replace", ja: "写真を差し替え"),
                               systemImage: "photo.badge.arrow.down")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
@@ -2285,7 +2287,7 @@ struct ClipTrimSheet: View {
                     } label: {
                         Label(AppLanguage.shared.s(
                                 "전체 \(photoCount)장에 \(Int(dur))초 적용",
-                                "Apply \(Int(dur))s to all \(photoCount) photos"),
+                                "Apply \(Int(dur))s to all \(photoCount) photos", ja: "全\(photoCount)枚に\(Int(dur))秒を適用"),
                               systemImage: "arrow.triangle.2.circlepath")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)

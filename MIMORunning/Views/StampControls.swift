@@ -43,10 +43,10 @@ struct StampControlsView: View {
                 // 왼쪽: 탭 + 그리드
                 VStack(spacing: 6) {
                     HStack(spacing: 4) {
-                        controlTabChip(AppLanguage.shared.s("스탬프", "Stamp"), on: controlTab == .stamp) {
+                        controlTabChip(AppLanguage.shared.s("스탬프", "Stamp", ja: "スタンプ"), on: controlTab == .stamp) {
                             withAnimation(.easeInOut(duration: 0.12)) { controlTab = .stamp }
                         }
-                        controlTabChip(AppLanguage.shared.s("문구", "Text"), on: controlTab == .text) {
+                        controlTabChip(AppLanguage.shared.s("문구", "Text", ja: "テキスト"), on: controlTab == .text) {
                             withAnimation(.easeInOut(duration: 0.12)) { controlTab = .text }
                         }
                     }
@@ -68,8 +68,8 @@ struct StampControlsView: View {
             if controlTab == .text {
                 HStack(spacing: 8) {
                     TextField(template == .routeVideo
-                                  ? AppLanguage.shared.s("경로 영상 제목", "Route video title")
-                                  : AppLanguage.shared.s("사진 위에 문구", "Text on photo"),
+                                  ? AppLanguage.shared.s("경로 영상 제목", "Route video title", ja: "ルート動画のタイトル")
+                                  : AppLanguage.shared.s("사진 위에 문구", "Text on photo", ja: "写真の上のテキスト"),
                               text: $vm.stampText)
                         .focused($textFocused)
                         .font(.system(size: 15))
@@ -205,7 +205,7 @@ struct StampControlsView: View {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { vm.stampTextHasBorder.toggle() }
                 } label: {
-                    smallChip(AppLanguage.shared.s("테두리", "Outline"), isSelected: vm.stampTextHasBorder)
+                    smallChip(AppLanguage.shared.s("테두리", "Outline", ja: "縁取り"), isSelected: vm.stampTextHasBorder)
                 }
                 .buttonStyle(.plain)
                 .animation(.easeInOut(duration: 0.15), value: vm.stampTextHasBorder)
@@ -381,7 +381,7 @@ struct StampControlsView: View {
                 if isWhiteBackground { vm.whiteBgTextOutline.toggle() } else { vm.showTextOutline.toggle() }
             }
         } label: {
-            Text(AppLanguage.shared.s("테두리", "Outline"))
+            Text(AppLanguage.shared.s("테두리", "Outline", ja: "縁取り"))
                 .font(.system(size: 11, weight: .semibold))
                 .lineLimit(1)
                 .foregroundStyle(isOn ? .white : .white.opacity(0.55))
@@ -402,7 +402,7 @@ struct StampControlsView: View {
         } label: {
             HStack(spacing: 3) {
                 Image(systemName: "heart.fill").font(.system(size: 9))
-                Text(AppLanguage.shared.s("심박", "HR"))
+                Text(AppLanguage.shared.s("심박", "HR", ja: "心拍"))
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
             }
@@ -424,7 +424,7 @@ struct StampControlsView: View {
         } label: {
             HStack(spacing: 3) {
                 Image(systemName: "calendar").font(.system(size: 9))
-                Text(AppLanguage.shared.s("날짜", "Date"))
+                Text(AppLanguage.shared.s("날짜", "Date", ja: "日付"))
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
             }
@@ -593,11 +593,11 @@ struct StampVisualPickerSheet: View {
                     .padding(.vertical, 12)
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("스탬프 선택", "Select Stamp"))
+            .navigationTitle(AppLanguage.shared.s("스탬프 선택", "Select Stamp", ja: "スタンプを選択"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(AppLanguage.shared.s("완료", "Done")) { dismiss() }
+                    Button(AppLanguage.shared.s("완료", "Done", ja: "完了")) { dismiss() }
                         .fontWeight(.semibold)
                 }
             }

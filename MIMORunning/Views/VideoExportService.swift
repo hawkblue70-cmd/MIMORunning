@@ -2525,7 +2525,7 @@ struct VideoExportService {
                 let cg = ctx.cgContext
                 let bg = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: panW, height: panH), cornerRadius: panCR)
                 UIColor.black.withAlphaComponent(0.30).setFill(); bg.fill()
-                (AppLanguage.shared.s("↗ 경로", "↗ Route") as NSString)
+                (AppLanguage.shared.s("↗ 경로", "↗ Route", ja: "↗ ルート") as NSString)
                     .draw(at: CGPoint(x: chartX, y: panPad), withAttributes: titleAttrs)
                 cg.setStrokeColor(UIColor.white.withAlphaComponent(0.88).cgColor)
                 cg.setLineWidth(2 * vScale); cg.setLineCap(.round); cg.setLineJoin(.round)
@@ -2625,7 +2625,7 @@ struct VideoExportService {
                 let titleFont  = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
                 let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont,
                                                                   .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
-                (AppLanguage.shared.s("♥ 심박수", "♥ HR") as NSString).draw(at: CGPoint(x: chartX, y: panPad),
+                (AppLanguage.shared.s("♥ 심박수", "♥ HR", ja: "♥ 心拍数") as NSString).draw(at: CGPoint(x: chartX, y: panPad),
                                                                               withAttributes: titleAttrs)
 
                 // H grid + right Y labels
@@ -2751,7 +2751,7 @@ struct VideoExportService {
                 // Title
                 let titleFont = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
                 let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
-                let titleStr = AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits") as NSString
+                let titleStr = AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits", ja: "⚡ スプリット") as NSString
                 let tSz = titleStr.size(withAttributes: titleAttrs)
                 titleStr.draw(at: CGPoint(x: hPadV, y: (titleH - tSz.height) / 2), withAttributes: titleAttrs)
 
@@ -2764,11 +2764,11 @@ struct VideoExportService {
                     let s = str as NSString; let sz = s.size(withAttributes: attrs)
                     s.draw(at: CGPoint(x: x + w - sz.width, y: y), withAttributes: attrs)
                 }
-                drawRightAligned(AppLanguage.shared.s("페이스", "Pace"), x: paceColX, y: hdrY, w: colW, attrs: hdrAttrs)
+                drawRightAligned(AppLanguage.shared.s("페이스", "Pace", ja: "ペース"), x: paceColX, y: hdrY, w: colW, attrs: hdrAttrs)
                 var hdrCurX = paceColX + colW + gapV
-                if hasHR  { drawRightAligned(AppLanguage.shared.s("심박", "HR"),   x: hdrCurX, y: hdrY, w: colW, attrs: hdrAttrs); hdrCurX += colW + gapV }
-                if hasCad { drawRightAligned(AppLanguage.shared.s("케이던스", "Cad"), x: hdrCurX, y: hdrY, w: colW, attrs: hdrAttrs); hdrCurX += colW + gapV }
-                if hasPwr { drawRightAligned(AppLanguage.shared.s("파워", "Pwr"),    x: hdrCurX, y: hdrY, w: colW, attrs: hdrAttrs) }
+                if hasHR  { drawRightAligned(AppLanguage.shared.s("심박", "HR", ja: "心拍"),   x: hdrCurX, y: hdrY, w: colW, attrs: hdrAttrs); hdrCurX += colW + gapV }
+                if hasCad { drawRightAligned(AppLanguage.shared.s("케이던스", "Cad", ja: "ケイデンス"), x: hdrCurX, y: hdrY, w: colW, attrs: hdrAttrs); hdrCurX += colW + gapV }
+                if hasPwr { drawRightAligned(AppLanguage.shared.s("파워", "Pwr", ja: "パワー"),    x: hdrCurX, y: hdrY, w: colW, attrs: hdrAttrs) }
 
                 // Data rows
                 let kmFont   = UIFont.monospacedDigitSystemFont(ofSize: 6.5 * vScale, weight: .medium)
@@ -2871,7 +2871,7 @@ struct VideoExportService {
                 // Title
                 let titleFont = UIFont.systemFont(ofSize: 10 * vScale, weight: .semibold)
                 let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: UIColor.white.withAlphaComponent(0.9)]
-                (AppLanguage.shared.s("⚙ 인터벌", "⚙ Intervals") as NSString).draw(at: CGPoint(x: barAreaX, y: panPad), withAttributes: titleAttrs)
+                (AppLanguage.shared.s("⚙ 인터벌", "⚙ Intervals", ja: "⚙ インターバル") as NSString).draw(at: CGPoint(x: barAreaX, y: panPad), withAttributes: titleAttrs)
 
                 var xCursor: CGFloat = barAreaX
                 for seg in segments {

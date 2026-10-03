@@ -242,7 +242,7 @@ struct OneLinerCard: View {
                     ZStack(alignment: .topLeading) {
                         RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.30))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(AppLanguage.shared.s("♥ 심박수", "♥ HR"))
+                            Text(AppLanguage.shared.s("♥ 심박수", "♥ HR", ja: "♥ 心拍数"))
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.9))
                                 .padding(.top, 8)
@@ -348,7 +348,7 @@ struct OneLinerCard: View {
                     ZStack(alignment: .topLeading) {
                         RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.30))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(AppLanguage.shared.s("♥ 심박수", "♥ HR"))
+                            Text(AppLanguage.shared.s("♥ 심박수", "♥ HR", ja: "♥ 心拍数"))
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.9))
                                 .padding(.top, 8)
@@ -439,7 +439,7 @@ struct OneLinerCard: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color.black.opacity(0.30))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(AppLanguage.shared.s("↗ 경로", "↗ Route"))
+                        Text(AppLanguage.shared.s("↗ 경로", "↗ Route", ja: "↗ ルート"))
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.9))
                             .padding(.top, 8)
@@ -481,7 +481,7 @@ struct OneLinerCard: View {
             } else {
                 if text.isEmpty {
                     if showBackground {
-                        Text(AppLanguage.shared.s("한마디를 입력해 주세요", "Enter your one-liner"))
+                        Text(AppLanguage.shared.s("한마디를 입력해 주세요", "Enter your one-liner", ja: "ひとことを入力してください"))
                             .font(.system(size: 13))
                             .foregroundStyle(.white.opacity(0.45))
                             .multilineTextAlignment(.center)
@@ -686,7 +686,7 @@ struct OneLinerCard: View {
         VStack(alignment: hAlign, spacing: 4) {
             if text.isEmpty {
                 if showBackground {
-                    Text(AppLanguage.shared.s("한마디를 입력해 주세요", "Enter your one-liner"))
+                    Text(AppLanguage.shared.s("한마디를 입력해 주세요", "Enter your one-liner", ja: "ひとことを入力してください"))
                         .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.45))
                 }
@@ -912,7 +912,7 @@ struct OneLinerCard: View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 12 * ps).fill(Color.black.opacity(0.30))
             VStack(alignment: .leading, spacing: 0) {
-                Text(AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits"))
+                Text(AppLanguage.shared.s("⚡ 스플릿", "⚡ Splits", ja: "⚡ スプリット"))
                     .font(.system(size: 10 * ps, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
                     .frame(height: titleH)
@@ -921,24 +921,24 @@ struct OneLinerCard: View {
                 HStack(spacing: gap) {
                     Spacer().frame(width: kmW)
                     Spacer().frame(width: barAreaW)
-                    Text(AppLanguage.shared.s("페이스", "Pace"))
+                    Text(AppLanguage.shared.s("페이스", "Pace", ja: "ペース"))
                         .font(.system(size: 5.5 * ps, weight: .medium))
                         .foregroundStyle(.white.opacity(0.75))
                         .frame(width: colW, alignment: .trailing)
                     if hasHR {
-                        Text(AppLanguage.shared.s("심박", "HR"))
+                        Text(AppLanguage.shared.s("심박", "HR", ja: "心拍"))
                             .font(.system(size: 5.5 * ps, weight: .medium))
                             .foregroundStyle(.white.opacity(0.75))
                             .frame(width: colW, alignment: .trailing)
                     }
                     if hasCad {
-                        Text(AppLanguage.shared.s("케이던스", "Cad"))
+                        Text(AppLanguage.shared.s("케이던스", "Cad", ja: "ケイデンス"))
                             .font(.system(size: 5.5 * ps, weight: .medium))
                             .foregroundStyle(.white.opacity(0.75))
                             .frame(width: colW, alignment: .trailing)
                     }
                     if hasPwr {
-                        Text(AppLanguage.shared.s("파워", "Pwr"))
+                        Text(AppLanguage.shared.s("파워", "Pwr", ja: "パワー"))
                             .font(.system(size: 5.5 * ps, weight: .medium))
                             .foregroundStyle(.white.opacity(0.75))
                             .frame(width: colW, alignment: .trailing)
@@ -1040,7 +1040,7 @@ struct OneLinerCard: View {
             let lbl = dist >= 1000
                 ? (dist % 1000 == 0 ? "\(dist/1000)km" : String(format: "%.1fkm", Double(dist)/1000))
                 : "\(dist)m"
-            return AppLanguage.shared.s("\(lbl)×\(cnt)회", "\(lbl)×\(cnt)")
+            return AppLanguage.shared.s("\(lbl)×\(cnt)회", "\(lbl)×\(cnt)", ja: "\(lbl)×\(cnt)本")
         }()
 
         let hPad:   CGFloat = 8  * ps
@@ -1069,7 +1069,7 @@ struct OneLinerCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 // 제목 행
                 HStack(spacing: 4 * ps) {
-                    Text(AppLanguage.shared.s("⚙ 인터벌", "⚙ Interval"))
+                    Text(AppLanguage.shared.s("⚙ 인터벌", "⚙ Interval", ja: "⚙ インターバル"))
                         .font(.system(size: 10 * ps, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.9))
                     if let s = summaryText {
@@ -1085,18 +1085,18 @@ struct OneLinerCard: View {
                 HStack(spacing: gap) {
                     Spacer().frame(width: lblW)
                     Spacer().frame(width: barAreaW)
-                    Text(AppLanguage.shared.s("페이스", "Pace"))
+                    Text(AppLanguage.shared.s("페이스", "Pace", ja: "ペース"))
                         .font(.system(size: 5.5 * ps, weight: .medium))
                         .foregroundStyle(.white.opacity(0.75))
                         .frame(width: colW, alignment: .trailing)
                     if hasHR {
-                        Text(AppLanguage.shared.s("심박", "HR"))
+                        Text(AppLanguage.shared.s("심박", "HR", ja: "心拍"))
                             .font(.system(size: 5.5 * ps, weight: .medium))
                             .foregroundStyle(.white.opacity(0.75))
                             .frame(width: colW, alignment: .trailing)
                     }
                     if hasCad {
-                        Text(AppLanguage.shared.s("케이던스", "Cad"))
+                        Text(AppLanguage.shared.s("케이던스", "Cad", ja: "ケイデンス"))
                             .font(.system(size: 5.5 * ps, weight: .medium))
                             .foregroundStyle(.white.opacity(0.75))
                             .frame(width: colW, alignment: .trailing)
@@ -1115,10 +1115,10 @@ struct OneLinerCard: View {
                         : Color(white: 0.30)
                     let shortLabel: String = {
                         switch seg.stepLabel {
-                        case "준비운동": return AppLanguage.shared.s("준비", "WU")
-                        case "운동":     return AppLanguage.shared.s("운동", "Work")
-                        case "회복":     return AppLanguage.shared.s("회복", "Rec")
-                        case "정리운동": return AppLanguage.shared.s("정리", "CD")
+                        case "준비운동": return AppLanguage.shared.s("준비", "WU", ja: "WU")
+                        case "운동":     return AppLanguage.shared.s("운동", "Work", ja: "本練習")
+                        case "회복":     return AppLanguage.shared.s("회복", "Rec", ja: "リカバリー")
+                        case "정리운동": return AppLanguage.shared.s("정리", "CD", ja: "CD")
                         default:         return seg.stepLabel ?? "-"
                         }
                     }()

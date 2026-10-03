@@ -263,7 +263,7 @@ struct RunChartShareSheet: View {
                                     Image(systemName: "square.and.arrow.up")
                                         .font(.system(size: 15, weight: .semibold))
                                 }
-                                Text(L.s("공유하기", "Share"))
+                                Text(L.s("공유하기", "Share", ja: "共有する"))
                                     .font(.system(size: 16, weight: .semibold))
                             }
                             .frame(maxWidth: .infinity, minHeight: 46)
@@ -280,11 +280,11 @@ struct RunChartShareSheet: View {
                     }
                 }
             }
-            .navigationTitle(L.s("차트 내보내기", "Export Chart"))
+            .navigationTitle(L.s("차트 내보내기", "Export Chart", ja: "チャートを書き出す"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(L.s("닫기", "Close")) { dismiss() }
+                    Button(L.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                         .foregroundStyle(Theme.violet)
                 }
             }
@@ -360,15 +360,15 @@ struct RunChartShareSheet: View {
                     // 영상의 하위 옵션을 모드와 같은 높이로 늘어놓은 것 자체가 위계를 감춘다.
                     let hasRoute = routeCoordinates.count >= 2
                     HStack(spacing: 5) {
-                        controlChip(L.s("이미지", "Image"),
+                        controlChip(L.s("이미지", "Image", ja: "画像"),
                                     isOn: exportMode == .image) {
                             exportMode = .image
                         }
-                        controlChip(L.s("영상", "Video"),
+                        controlChip(L.s("영상", "Video", ja: "動画"),
                                     isOn: exportMode == .video) {
                             exportMode = .video
                         }
-                        controlChip(shareTheme == .light ? L.s("라이트", "Light") : L.s("다크", "Dark"),
+                        controlChip(shareTheme == .light ? L.s("라이트", "Light", ja: "ライト") : L.s("다크", "Dark", ja: "ダーク"),
                                     isOn: shareTheme == .light) {
                             shareTheme = shareTheme == .light ? .dark : .light
                             videoExportTask?.cancel()
@@ -410,14 +410,14 @@ struct RunChartShareSheet: View {
                     // (d-2) 영상 내용 — 영상 모드의 하위 옵션이라 모드 줄 아래에 따로 둔다.
                     if exportMode == .video {
                         HStack(spacing: 5) {
-                            controlChip(L.s("차트+데이터", "Chart+Data"),
+                            controlChip(L.s("차트+데이터", "Chart+Data", ja: "チャート+データ"),
                                         isOn: videoContent == .chartData) {
                                 videoContent = .chartData
                                 videoExportTask?.cancel()
                                 exportedVideo = nil; isExportingVideo = false; videoProgress = 0
                                 refreshPreview()
                             }
-                            controlChip(L.s("경로+차트", "Route+Chart"),
+                            controlChip(L.s("경로+차트", "Route+Chart", ja: "ルート+チャート"),
                                         isOn: videoContent == .routeChart,
                                         isDisabled: !hasRoute) {
                                 videoContent = .routeChart
@@ -440,7 +440,7 @@ struct RunChartShareSheet: View {
 
                         // (e-2) 영상 길이
                         HStack {
-                            Text(L.s("영상 길이", "Duration"))
+                            Text(L.s("영상 길이", "Duration", ja: "動画の長さ"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                             Spacer()
@@ -479,13 +479,13 @@ struct RunChartShareSheet: View {
                 // Export complete: show ShareLink
                 ShareLink(
                     item: video,
-                    preview: SharePreview(L.s("차트 영상", "Chart Video"),
+                    preview: SharePreview(L.s("차트 영상", "Chart Video", ja: "チャート動画"),
                                          image: Image(systemName: "video"))
                 ) {
                     HStack(spacing: 8) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 15, weight: .semibold))
-                        Text(L.s("영상 내보내기", "Export Video"))
+                        Text(L.s("영상 내보내기", "Export Video", ja: "動画を書き出す"))
                             .font(.system(size: 16, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity, minHeight: 46)
@@ -506,8 +506,8 @@ struct RunChartShareSheet: View {
                                 .font(.system(size: 15, weight: .semibold))
                         }
                         Text(isExportingVideo
-                             ? L.s("영상 만드는 중…", "Rendering…")
-                             : L.s("영상 내보내기", "Export Video"))
+                             ? L.s("영상 만드는 중…", "Rendering…", ja: "動画を作成中…")
+                             : L.s("영상 내보내기", "Export Video", ja: "動画を書き出す"))
                             .font(.system(size: 16, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity, minHeight: 46)

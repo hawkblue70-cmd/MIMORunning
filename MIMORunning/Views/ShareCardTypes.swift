@@ -9,16 +9,16 @@ enum ShareMetric: String, Hashable {
     var chipLabel: String {
         let L = AppLanguage.shared
         return switch self {
-        case .pace:      L.s("페이스",     "Pace")
-        case .duration:  L.s("시간",       "Time")
-        case .heartRate: L.s("심박",       "HR")
-        case .cadence:   L.s("케이던스",   "Cadence")
-        case .vo2Max:    L.s("유산소",     "VO₂max")
-        case .calories:  L.s("칼로리",     "Cals")
-        case .power:     L.s("파워",       "Power")
-        case .elevation: L.s("고도",       "Elev.")
-        case .intervals: L.s("반복",       "Intervals")
-        case .bestPace:  L.s("최고 페이스", "Best Pace")
+        case .pace:      L.s("페이스",     "Pace", ja: "ペース")
+        case .duration:  L.s("시간",       "Time", ja: "時間")
+        case .heartRate: L.s("심박",       "HR", ja: "心拍")
+        case .cadence:   L.s("케이던스",   "Cadence", ja: "ケイデンス")
+        case .vo2Max:    L.s("유산소",     "VO₂max", ja: "有酸素")
+        case .calories:  L.s("칼로리",     "Cals", ja: "カロリー")
+        case .power:     L.s("파워",       "Power", ja: "パワー")
+        case .elevation: L.s("고도",       "Elev.", ja: "標高")
+        case .intervals: L.s("반복",       "Intervals", ja: "本数")
+        case .bestPace:  L.s("최고 페이스", "Best Pace", ja: "最速ペース")
         }
     }
 }
@@ -85,16 +85,16 @@ enum CardChartPanel: String, CaseIterable, Equatable {
         return switch self {
         // .map = 차트 없음. 영상·슬라이드에서는 아무것도 그리지 않아 "경로" 칩이 역할이 없었다(2026-09-24).
         // 기록·사진 카드는 이때 빈 자리에 작은 경로 선을 그대로 둔다.
-        case .map:                  L.s("차트 끄기", "Chart Off")
-        case .splits:               L.s("스플릿",  "Splits")
-        case .heartRate:            L.s("심박수",  "HR")
-        case .cadence:              L.s("케이던스", "Cadence")
-        case .groundContact:        L.s("지면접촉", "Gnd Contact")
-        case .strideLength:         L.s("보폭",    "Stride")
-        case .power:                L.s("파워",    "Power")
-        case .verticalOscillation:  L.s("수직진폭", "Vert. Osc.")
-        case .elevation:            L.s("고도",    "Elevation")
-        case .intervals:            L.s("인터벌",  "Intervals")
+        case .map:                  L.s("차트 끄기", "Chart Off", ja: "チャートをオフ")
+        case .splits:               L.s("스플릿",  "Splits", ja: "スプリット")
+        case .heartRate:            L.s("심박수",  "HR", ja: "心拍数")
+        case .cadence:              L.s("케이던스", "Cadence", ja: "ケイデンス")
+        case .groundContact:        L.s("지면접촉", "Gnd Contact", ja: "接地時間")
+        case .strideLength:         L.s("보폭",    "Stride", ja: "ストライド")
+        case .power:                L.s("파워",    "Power", ja: "パワー")
+        case .verticalOscillation:  L.s("수직진폭", "Vert. Osc.", ja: "上下動")
+        case .elevation:            L.s("고도",    "Elevation", ja: "標高")
+        case .intervals:            L.s("인터벌",  "Intervals", ja: "インターバル")
         }
     }
 }
@@ -106,9 +106,9 @@ enum CardChartPosition: String, CaseIterable {
     var label: String {
         let L = AppLanguage.shared
         switch self {
-        case .top:    return L.s("상", "Top")
-        case .middle: return L.s("중", "Mid")
-        case .bottom: return L.s("하", "Bottom")
+        case .top:    return L.s("상", "Top", ja: "上")
+        case .middle: return L.s("중", "Mid", ja: "中")
+        case .bottom: return L.s("하", "Bottom", ja: "下")
         }
     }
 }

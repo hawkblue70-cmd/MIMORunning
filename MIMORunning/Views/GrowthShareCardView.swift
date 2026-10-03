@@ -413,11 +413,11 @@ struct GrowthShareCardScreen: View {
                         .padding(.bottom, 36)
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("\(metric.koreanLabel) 내보내기", "\(metric.koreanLabel) Export"))
+            .navigationTitle(AppLanguage.shared.s("\(metric.koreanLabel) 내보내기", "\(metric.koreanLabel) Export", ja: "\(metric.koreanLabel)を書き出す"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                         .foregroundStyle(Theme.violet)
                 }
             }
@@ -430,9 +430,9 @@ struct GrowthShareCardScreen: View {
 
     private var themeToggle: some View {
         HStack(spacing: 0) {
-            themeSegment(label: AppLanguage.shared.s("다크", "Dark"),
+            themeSegment(label: AppLanguage.shared.s("다크", "Dark", ja: "ダーク"),
                          selected: cardTheme == .dark) { cardTheme = .dark }
-            themeSegment(label: AppLanguage.shared.s("라이트", "Light"),
+            themeSegment(label: AppLanguage.shared.s("라이트", "Light", ja: "ライト"),
                          selected: cardTheme == .light) { cardTheme = .light }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -459,7 +459,7 @@ struct GrowthShareCardScreen: View {
         if isRendering {
             HStack(spacing: 10) {
                 ProgressView().tint(Theme.violet)
-                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card..."))
+                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card...", ja: "カードを作成中..."))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -467,7 +467,7 @@ struct GrowthShareCardScreen: View {
             .padding(.vertical, 18)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("내보내기", "Export"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("내보내기", "Export", ja: "書き出す"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -479,7 +479,7 @@ struct GrowthShareCardScreen: View {
                 if let img = previewImage { ShareSheet(images: [img]) }
             }
         } else {
-            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed"))
+            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed", ja: "カードの作成に失敗しました"))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)

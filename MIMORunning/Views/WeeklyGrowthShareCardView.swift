@@ -171,7 +171,7 @@ struct WeeklyGrowthShareCard: View {
 
                 divider.padding(.top, 10)
 
-            Text(AppLanguage.shared.s("주간 트렌드", "Weekly Trend"))
+            Text(AppLanguage.shared.s("주간 트렌드", "Weekly Trend", ja: "週間トレンド"))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(pal.wordmarkRunning)
                 .padding(.horizontal, 20)
@@ -221,14 +221,14 @@ struct WeeklyGrowthShareCard: View {
     private var statTiles: some View {
         HStack(spacing: 6) {
             weekTile(value: kmString,
-                     label: AppLanguage.shared.s("거리", "Distance"))
+                     label: AppLanguage.shared.s("거리", "Distance", ja: "距離"))
             weekTile(value: timeString,
-                     label: AppLanguage.shared.s("시간", "Time"))
-            weekTile(value: AppLanguage.shared.s("\(count)회", "\(count)"),
-                     label: AppLanguage.shared.s("횟수", "Runs"))
+                     label: AppLanguage.shared.s("시간", "Time", ja: "時間"))
+            weekTile(value: AppLanguage.shared.s("\(count)회", "\(count)", ja: "\(count)回"),
+                     label: AppLanguage.shared.s("횟수", "Runs", ja: "回数"))
             if streak > 0 {
-                weekTile(value: AppLanguage.shared.s("\(streak)주", "\(streak)wk"),
-                         label: AppLanguage.shared.s("연속", "Streak"))
+                weekTile(value: AppLanguage.shared.s("\(streak)주", "\(streak)wk", ja: "\(streak)週"),
+                         label: AppLanguage.shared.s("연속", "Streak", ja: "連続"))
             }
         }
     }
@@ -400,6 +400,7 @@ struct WeeklyGrowthShareCard: View {
         let total = Int(mins)
         let h = total / 60
         let m = total % 60
+        if AppLanguage.shared.isJapanese { return h > 0 ? "\(h)時間\(m)分" : "\(m)分" }
         if AppLanguage.shared.isEnglish { return h > 0 ? "\(h)h \(m)m" : "\(m)m" }
         return h > 0 ? "\(h)시간 \(m)분" : "\(m)분"
     }
@@ -463,11 +464,11 @@ struct WeeklyGrowthShareCardScreen: View {
                         .padding(.bottom, 36)
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("이번주 러닝 데이터", "This Week's Running"))
+            .navigationTitle(AppLanguage.shared.s("이번주 러닝 데이터", "This Week's Running", ja: "今週のランデータ"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                         .foregroundStyle(Theme.violet)
                 }
             }
@@ -491,10 +492,10 @@ struct WeeklyGrowthShareCardScreen: View {
 
     private var themeToggle: some View {
         HStack(spacing: 0) {
-            themeSegment(label: AppLanguage.shared.s("다크", "Dark"), selected: weeklyTheme == .dark) {
+            themeSegment(label: AppLanguage.shared.s("다크", "Dark", ja: "ダーク"), selected: weeklyTheme == .dark) {
                 weeklyTheme = .dark
             }
-            themeSegment(label: AppLanguage.shared.s("라이트", "Light"), selected: weeklyTheme == .light) {
+            themeSegment(label: AppLanguage.shared.s("라이트", "Light", ja: "ライト"), selected: weeklyTheme == .light) {
                 weeklyTheme = .light
             }
         }
@@ -522,7 +523,7 @@ struct WeeklyGrowthShareCardScreen: View {
         if isRendering {
             HStack(spacing: 10) {
                 ProgressView().tint(Theme.violet)
-                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card..."))
+                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card...", ja: "カードを作成中..."))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -530,7 +531,7 @@ struct WeeklyGrowthShareCardScreen: View {
             .padding(.vertical, 18)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("이번주 러닝 내보내기", "Export This Week"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("이번주 러닝 내보내기", "Export This Week", ja: "今週のランを書き出す"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -542,7 +543,7 @@ struct WeeklyGrowthShareCardScreen: View {
                 if let img = previewImage { ShareSheet(images: [img]) }
             }
         } else {
-            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed"))
+            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed", ja: "カードの作成に失敗しました"))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
@@ -717,8 +718,9 @@ struct MileageStreakShareCard: View {
     private var monthTitle: String {
         let L = AppLanguage.shared
         if !isCalendarMonthWindow {
-            return L.isEnglish ? periodLabel : "\(periodLabel) 기록"
+            return L.s("\(periodLabel) 기록", periodLabel, ja: "\(periodLabel)の記録")
         }
+        if L.isJapanese { return "\(Calendar.current.component(.month, from: windowStart))月の記録" }
         if L.isEnglish {
             let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMMM"
             return "\(df.string(from: windowStart)) runs"
@@ -728,12 +730,12 @@ struct MileageStreakShareCard: View {
 
     private var flowTitleRow: some View {
         HStack(alignment: .center) {
-            Text(isMonthSummary ? monthTitle : AppLanguage.shared.s("러닝 흐름", "Running Flow"))
+            Text(isMonthSummary ? monthTitle : AppLanguage.shared.s("러닝 흐름", "Running Flow", ja: "ランの流れ"))
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(p.textPrimary)
             Spacer()
             // 월 기록 카드도 오른쪽 "러닝 흐름"은 왼쪽 제목과 같은 크기·색 — 두 제목이 한 줄의 짝으로 읽히게
-            Text(isMonthSummary ? AppLanguage.shared.s("러닝 흐름", "Running Flow") : periodLabel)
+            Text(isMonthSummary ? AppLanguage.shared.s("러닝 흐름", "Running Flow", ja: "ランの流れ") : periodLabel)
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(p.textPrimary)
         }
@@ -757,8 +759,8 @@ struct MileageStreakShareCard: View {
                 .foregroundStyle(Theme.violet)
             Spacer(minLength: 8)
             // 달린 날 수는 앰버 — 아래 연속 달리기 격자 칸 색(heatFull)과 같아, 격자에 칠해진 날이라는 게 이어진다
-            (Text(L.s("\(runs)회 · ", "\(runs) runs · ")).foregroundStyle(p.textPrimary)
-             + Text(L.s("\(days)일", "\(days) days")).foregroundStyle(p.heatFull))
+            (Text(L.s("\(runs)회 · ", "\(runs) runs · ", ja: "\(runs)回 · ")).foregroundStyle(p.textPrimary)
+             + Text(L.s("\(days)일", "\(days) days", ja: "\(days)日")).foregroundStyle(p.heatFull))
                 .font(.system(size: 15, weight: .semibold))
         }
     }
@@ -784,15 +786,15 @@ struct MileageStreakShareCard: View {
         let detail: String
         if streak >= 2 {
             detail = L.s("\(streak)주 연속 · \(heatmapWeekCount)주간 \(activeDays)일",
-                         "\(streak)wk · \(activeDays)d / \(heatmapWeekCount)wk")
+                         "\(streak)wk · \(activeDays)d / \(heatmapWeekCount)wk", ja: "\(streak)週連続 · \(heatmapWeekCount)週間で\(activeDays)日")
         } else if activeDays > 0 {
             detail = L.s("\(heatmapWeekCount)주간 \(activeDays)일 러닝",
-                         "\(activeDays) days / \(heatmapWeekCount) wks")
+                         "\(activeDays) days / \(heatmapWeekCount) wks", ja: "\(heatmapWeekCount)週間で\(activeDays)日ラン")
         } else {
-            detail = L.s("\(heatmapWeekCount)주간 기록 없음", "No runs in \(heatmapWeekCount) wks")
+            detail = L.s("\(heatmapWeekCount)주간 기록 없음", "No runs in \(heatmapWeekCount) wks", ja: "\(heatmapWeekCount)週間記録なし")
         }
         return HStack(alignment: .center) {
-            Text(L.s("연속 달리기", "Streak"))
+            Text(L.s("연속 달리기", "Streak", ja: "連続ラン"))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(p.textPrimary)
             Spacer()
@@ -840,7 +842,7 @@ struct MileageStreakShareCard: View {
             // Legend
             HStack(spacing: 4) {
                 Spacer()
-                Text(AppLanguage.shared.s("적음", "Less"))
+                Text(AppLanguage.shared.s("적음", "Less", ja: "少"))
                     .font(.system(size: 6))
                     .foregroundStyle(p.textSecondary)
                 ForEach([0.0, 2.0, 5.0, 8.0, 12.0], id: \.self) { km in
@@ -848,7 +850,7 @@ struct MileageStreakShareCard: View {
                         .fill(cellColor(km: km, isFuture: false))
                         .frame(width: cs, height: cs)
                 }
-                Text(AppLanguage.shared.s("많음", "More"))
+                Text(AppLanguage.shared.s("많음", "More", ja: "多"))
                     .font(.system(size: 6))
                     .foregroundStyle(p.textSecondary)
             }
@@ -859,9 +861,11 @@ struct MileageStreakShareCard: View {
     }
 
     private var heatmapDayLabels: [String] {
-        AppLanguage.shared.isEnglish
-            ? ["M", "", "W", "", "F", "Sa", "Su"]
-            : ["월", "", "수", "", "금", "토", "일"]
+        switch AppLanguage.shared.current {
+        case .ko: ["월", "", "수", "", "금", "토", "일"]
+        case .en: ["M", "", "W", "", "F", "Sa", "Su"]
+        case .ja: ["月", "", "水", "", "金", "土", "日"]
+        }
     }
 
     private func heatmapMonthChanges(at idx: Int) -> Bool {
@@ -904,7 +908,7 @@ struct MileageStreakShareCardScreen: View {
     let streak: Int
     let activeDays: Int
     let heatmapWeekCount: Int
-    var screenTitle: String = AppLanguage.shared.s("러닝 흐름", "Running Flow")
+    var screenTitle: String = AppLanguage.shared.s("러닝 흐름", "Running Flow", ja: "ランの流れ")
 
     @State private var previewImage: UIImage?
     @State private var isRendering = true
@@ -956,7 +960,7 @@ struct MileageStreakShareCardScreen: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                         .foregroundStyle(Theme.violet)
                 }
             }
@@ -969,9 +973,9 @@ struct MileageStreakShareCardScreen: View {
 
     private var themeToggle: some View {
         HStack(spacing: 0) {
-            themeSegment(label: AppLanguage.shared.s("다크", "Dark"),
+            themeSegment(label: AppLanguage.shared.s("다크", "Dark", ja: "ダーク"),
                          selected: cardTheme == .dark) { cardTheme = .dark }
-            themeSegment(label: AppLanguage.shared.s("라이트", "Light"),
+            themeSegment(label: AppLanguage.shared.s("라이트", "Light", ja: "ライト"),
                          selected: cardTheme == .light) { cardTheme = .light }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -996,7 +1000,7 @@ struct MileageStreakShareCardScreen: View {
         if isRendering {
             HStack(spacing: 10) {
                 ProgressView().tint(Theme.violet)
-                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card..."))
+                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card...", ja: "カードを作成中..."))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -1004,7 +1008,7 @@ struct MileageStreakShareCardScreen: View {
             .padding(.vertical, 18)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("흐름 내보내기", "Export Flow"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("흐름 내보내기", "Export Flow", ja: "流れを書き出す"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1016,7 +1020,7 @@ struct MileageStreakShareCardScreen: View {
                 if let img = previewImage { ShareSheet(images: [img]) }
             }
         } else {
-            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed"))
+            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed", ja: "カードの作成に失敗しました"))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)

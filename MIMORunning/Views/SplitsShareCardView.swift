@@ -300,8 +300,8 @@ struct SplitsShareCardView: View {
                     .padding(.bottom, 8)
 
                     Text(variant == .runData
-                         ? AppLanguage.shared.s("구간 기록 · 러닝 데이터", "Splits · Run Data")
-                         : AppLanguage.shared.s("구간 기록", "Splits"))
+                         ? AppLanguage.shared.s("구간 기록 · 러닝 데이터", "Splits · Run Data", ja: "スプリット · ランデータ")
+                         : AppLanguage.shared.s("구간 기록", "Splits", ja: "スプリット"))
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.5)
                         .foregroundStyle(pal.accentLabel)
@@ -326,13 +326,13 @@ struct SplitsShareCardView: View {
                         .padding(.bottom, 8)
 
                     HStack(spacing: 0) {
-                        footerStat(value: formatPace(avgPace), label: AppLanguage.shared.s("평균 페이스", "AVG PACE"), color: pal.footerAvgPace)
+                        footerStat(value: formatPace(avgPace), label: AppLanguage.shared.s("평균 페이스", "AVG PACE", ja: "平均ペース"), color: pal.footerAvgPace)
                         Spacer()
                         if let best = bestPace {
-                            footerStat(value: formatPace(best), label: AppLanguage.shared.s("최고 구간", "BEST"), color: pal.footerBest)
+                            footerStat(value: formatPace(best), label: AppLanguage.shared.s("최고 구간", "BEST", ja: "最速区間"), color: pal.footerBest)
                             Spacer()
                         }
-                        footerStat(value: String(format: "%.1fkm", totalDistanceKm), label: AppLanguage.shared.s("총 거리", "TOTAL"), color: pal.footerTotal)
+                        footerStat(value: String(format: "%.1fkm", totalDistanceKm), label: AppLanguage.shared.s("총 거리", "TOTAL", ja: "総距離"), color: pal.footerTotal)
                     }
 
                     // 하단 섹션 — 막대차트 아래에 심박 영역 또는 러닝 데이터
@@ -493,11 +493,11 @@ struct SplitsShareCardView: View {
             .padding(.bottom, 6)
         // 헤더
         HStack(spacing: 0) {
-            Text(AppLanguage.shared.s("심박 영역", "HR Zones"))
+            Text(AppLanguage.shared.s("심박 영역", "HR Zones", ja: "心拍ゾーン"))
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(pal.textPrimary)
             Spacer()
-            Text(AppLanguage.shared.s("존별 운동 시간", "Time per zone"))
+            Text(AppLanguage.shared.s("존별 운동 시간", "Time per zone", ja: "ゾーン別の運動時間"))
                 .font(.system(size: 8))
                 .foregroundStyle(pal.kmLabel)
         }
@@ -516,7 +516,7 @@ struct SplitsShareCardView: View {
                     }
                     HStack(spacing: 4) {
                         // 존 레이블
-                        Text(AppLanguage.shared.s("영역 \(zone.id)", "Z\(zone.id)"))
+                        Text(AppLanguage.shared.s("영역 \(zone.id)", "Z\(zone.id)", ja: "ゾーン\(zone.id)"))
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(hasTime ? color : color.opacity(0.4))
                             .frame(width: 32, alignment: .leading)
@@ -558,11 +558,11 @@ struct SplitsShareCardView: View {
             .padding(.top, 8)
             .padding(.bottom, 6)
         HStack(spacing: 0) {
-            Text(AppLanguage.shared.s("러닝 데이터", "Run Data"))
+            Text(AppLanguage.shared.s("러닝 데이터", "Run Data", ja: "ランデータ"))
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(pal.textPrimary)
             Spacer()
-            Text(AppLanguage.shared.s("이 러닝 평균", "This run"))
+            Text(AppLanguage.shared.s("이 러닝 평균", "This run", ja: "このランの平均"))
                 .font(.system(size: 8))
                 .foregroundStyle(pal.kmLabel)
         }
@@ -626,19 +626,19 @@ struct SplitsShareCardScreen: View {
 
     private var topBar: some View {
         HStack {
-            Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+            Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                 .font(.body)
                 .foregroundStyle(.secondary)
             Spacer()
             Text(variant == .runData
-                 ? AppLanguage.shared.s("구간 · 러닝 데이터 카드", "Splits · Run Data Card")
+                 ? AppLanguage.shared.s("구간 · 러닝 데이터 카드", "Splits · Run Data Card", ja: "スプリット · ランデータカード")
                  : variant == .hrZones
-                 ? AppLanguage.shared.s("구간 · 심박 영역 카드", "Splits · HR Zones Card")
-                 : AppLanguage.shared.s("구간 기록 카드", "Splits Card"))
+                 ? AppLanguage.shared.s("구간 · 심박 영역 카드", "Splits · HR Zones Card", ja: "スプリット · 心拍ゾーンカード")
+                 : AppLanguage.shared.s("구간 기록 카드", "Splits Card", ja: "スプリットカード"))
                 .font(.headline)
                 .foregroundStyle(.white)
             Spacer()
-            Text(AppLanguage.shared.s("닫기", "Close")).foregroundStyle(.clear)
+            Text(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")).foregroundStyle(.clear)
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -647,10 +647,10 @@ struct SplitsShareCardScreen: View {
 
     private var themeToggle: some View {
         HStack(spacing: 0) {
-            themeSegment(label: AppLanguage.shared.s("다크", "Dark"), selected: splitsTheme == .dark) {
+            themeSegment(label: AppLanguage.shared.s("다크", "Dark", ja: "ダーク"), selected: splitsTheme == .dark) {
                 splitsTheme = .dark
             }
-            themeSegment(label: AppLanguage.shared.s("라이트", "Light"), selected: splitsTheme == .light) {
+            themeSegment(label: AppLanguage.shared.s("라이트", "Light", ja: "ライト"), selected: splitsTheme == .light) {
                 splitsTheme = .light
             }
         }
@@ -696,7 +696,7 @@ struct SplitsShareCardScreen: View {
                 .padding(.vertical, 16)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("카드 내보내기", "Export Card", ja: "カードを書き出す"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -790,10 +790,10 @@ struct IntervalsShareCardView: View {
     private func labelText(_ seg: IntervalSegment) -> String {
         let L = AppLanguage.shared
         switch seg.stepLabel {
-        case "준비운동": return L.s("준비운동", "Warmup")
-        case "운동":     return L.s("운동",     "Work")
-        case "회복":     return L.s("회복",     "Rest")
-        case "정리운동": return L.s("정리운동", "Cooldown")
+        case "준비운동": return L.s("준비운동", "Warmup", ja: "ウォームアップ")
+        case "운동":     return L.s("운동",     "Work", ja: "本練習")
+        case "회복":     return L.s("회복",     "Rest", ja: "リカバリー")
+        case "정리운동": return L.s("정리운동", "Cooldown", ja: "クールダウン")
         case let s?:     return s
         default:         return "#\(seg.id)"
         }
@@ -822,7 +822,7 @@ struct IntervalsShareCardView: View {
         let label = dist >= 1000
             ? (dist % 1000 == 0 ? "\(dist / 1000)km" : String(format: "%.1fkm", Double(dist) / 1000))
             : "\(dist)m"
-        return AppLanguage.shared.s("\(label)×\(cnt)회", "\(label)×\(cnt)")
+        return AppLanguage.shared.s("\(label)×\(cnt)회", "\(label)×\(cnt)", ja: "\(label)×\(cnt)本")
     }
 
     private static let gold = Color(hex: "FFC74D")
@@ -859,7 +859,7 @@ struct IntervalsShareCardView: View {
                         }
                     }
                     Text({
-                        let base = AppLanguage.shared.s("인터벌 구간", "Interval Reps")
+                        let base = AppLanguage.shared.s("인터벌 구간", "Interval Reps", ja: "インターバル区間")
                         if let s = workSummaryText { return "\(base)  (\(s))" }
                         return base
                     }())
@@ -871,19 +871,19 @@ struct IntervalsShareCardView: View {
                         .padding(.top, 12).padding(.bottom, 5)
 
                     HStack(spacing: 0) {
-                        Text(hasLabels ? AppLanguage.shared.s("구간", "Rep") : "#")
+                        Text(hasLabels ? AppLanguage.shared.s("구간", "Rep", ja: "本") : "#")
                             .frame(width: hasLabels ? 50 : 18, alignment: .leading)
                         if hasDist {
-                            Text(AppLanguage.shared.s("거리", "Dist")).frame(width: 47, alignment: .trailing)
+                            Text(AppLanguage.shared.s("거리", "Dist", ja: "距離")).frame(width: 47, alignment: .trailing)
                         }
                         Spacer()
-                        Text(AppLanguage.shared.s("페이스", "Pace")).frame(width: 52, alignment: .trailing)
-                        Text(AppLanguage.shared.s("시간", "Time")).frame(width: 40, alignment: .trailing)
+                        Text(AppLanguage.shared.s("페이스", "Pace", ja: "ペース")).frame(width: 52, alignment: .trailing)
+                        Text(AppLanguage.shared.s("시간", "Time", ja: "時間")).frame(width: 40, alignment: .trailing)
                         if hasHR {
-                            Text(AppLanguage.shared.s("심박", "HR")).frame(width: 28, alignment: .trailing)
+                            Text(AppLanguage.shared.s("심박", "HR", ja: "心拍")).frame(width: 28, alignment: .trailing)
                         }
                         if hasCadence {
-                            Text(AppLanguage.shared.s("케이던스", "Cad.")).frame(width: 30, alignment: .trailing)
+                            Text(AppLanguage.shared.s("케이던스", "Cad.", ja: "ケイデンス")).frame(width: 30, alignment: .trailing)
                         }
                     }
                     .font(.system(size: 8, weight: .semibold))
@@ -896,14 +896,14 @@ struct IntervalsShareCardView: View {
                     Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
                         .padding(.top, 8).padding(.bottom, 8)
                     HStack(spacing: 0) {
-                        footerStat("\(workSegments.count)", AppLanguage.shared.s("워크 구간", "WORK REPS"), Theme.intervalWork)
+                        footerStat("\(workSegments.count)", AppLanguage.shared.s("워크 구간", "WORK REPS", ja: "本練習"), Theme.intervalWork)
                         Spacer()
                         if let best = fastestWorkPace {
-                            footerStat(formatPace(best), AppLanguage.shared.s("최고 구간", "BEST"), Self.gold)
+                            footerStat(formatPace(best), AppLanguage.shared.s("최고 구간", "BEST", ja: "最速区間"), Self.gold)
                             Spacer()
                         }
                         if let avg = avgWorkPace {
-                            footerStat(formatPace(avg), AppLanguage.shared.s("평균 워크", "AVG WORK"), Theme.pace)
+                            footerStat(formatPace(avg), AppLanguage.shared.s("평균 워크", "AVG WORK", ja: "本練習の平均"), Theme.pace)
                         }
                     }
 
@@ -1045,13 +1045,13 @@ struct IntervalsShareCardScreen: View {
 
     private var topBar: some View {
         HStack {
-            Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+            Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                 .font(.body).foregroundStyle(.secondary)
             Spacer()
-            Text(AppLanguage.shared.s("인터벌 카드", "Intervals Card"))
+            Text(AppLanguage.shared.s("인터벌 카드", "Intervals Card", ja: "インターバルカード"))
                 .font(.headline).foregroundStyle(.white)
             Spacer()
-            Text(AppLanguage.shared.s("닫기", "Close")).foregroundStyle(.clear)
+            Text(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")).foregroundStyle(.clear)
         }
         .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 14)
     }
@@ -1075,7 +1075,7 @@ struct IntervalsShareCardScreen: View {
             ProgressView().tint(Theme.violet).frame(maxWidth: .infinity).padding(.vertical, 16)
         } else if previewImage != nil {
             Button { showShareSheet = true } label: {
-                Label(AppLanguage.shared.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("카드 내보내기", "Export Card", ja: "カードを書き出す"), systemImage: "square.and.arrow.up")
                     .font(.headline).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 15)
                     .background(Theme.violet).clipShape(RoundedRectangle(cornerRadius: 14))

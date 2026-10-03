@@ -27,11 +27,11 @@ enum ShareTemplate: String, CaseIterable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .record:     L.s("기록",      "Record")
-        case .photo:      L.s("사진",      "Photo")
-        case .video:      L.s("영상",      "Video")
-        case .slide:      L.s("슬라이드",  "Slide")
-        case .routeVideo: L.s("경로 영상", "Route Video")
+        case .record:     L.s("기록",      "Record", ja: "記録")
+        case .photo:      L.s("사진",      "Photo", ja: "写真")
+        case .video:      L.s("영상",      "Video", ja: "動画")
+        case .slide:      L.s("슬라이드",  "Slide", ja: "スライド")
+        case .routeVideo: L.s("경로 영상", "Route Video", ja: "ルート動画")
         }
     }
 }
@@ -404,7 +404,7 @@ struct ShareCardScreen: View {
         let km = activity.distance / 1000
         return km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
     }
-    private var insightTitle: String { insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run") }
+    private var insightTitle: String { insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run", ja: "今日のラン") }
     private var storyHasContent: Bool { story?.hasContent == true }
     /// 신발이 등록돼 있으면 항상 표시 (토글 없음)
     var displayShoeName: String? { activeShoe?.displayName }
@@ -427,7 +427,7 @@ struct ShareCardScreen: View {
         if let pace = activity.formattedPace {
             items.append(ShareMetricItem(id: .pace, value: pace, label: "/km", color: Theme.pace))
         }
-        items.append(ShareMetricItem(id: .duration, value: activity.formattedDuration, label: AppLanguage.shared.s("시간", "TIME"), color: Theme.time))
+        items.append(ShareMetricItem(id: .duration, value: activity.formattedDuration, label: AppLanguage.shared.s("시간", "TIME", ja: "時間"), color: Theme.time))
         if let hr = activity.avgHeartRate {
             items.append(ShareMetricItem(id: .heartRate, value: "\(hr)", label: "bpm", color: Theme.heartRate))
         }
@@ -599,7 +599,7 @@ struct ShareCardScreen: View {
                         HStack(spacing: 6) {
                             Image(systemName: "photo.badge.plus")
                                 .font(.system(size: 17))
-                            Text(AppLanguage.shared.s("사진 선택", "Select Photos"))
+                            Text(AppLanguage.shared.s("사진 선택", "Select Photos", ja: "写真を選択"))
                                 .font(.subheadline)
                         }
                         .foregroundStyle(Color.white.opacity(0.55))
@@ -674,7 +674,7 @@ struct ShareCardScreen: View {
                         Task { await renderCard(showSpinner: false) }
                     } label: {
                         HStack(spacing: 4) {
-                            Text(AppLanguage.shared.s("총평", "Summary"))
+                            Text(AppLanguage.shared.s("총평", "Summary", ja: "総評"))
                                 .font(.caption.weight(.semibold))
                         }
                         .foregroundStyle(summaryAvailable ? Color.white : Color.white.opacity(0.18))
@@ -754,7 +754,7 @@ struct ShareCardScreen: View {
             // ── Row 4: 차트 위치 상·중·하 — 차트가 보일 때만(경로·총평·경로 영상이면 차트가 없다)
             if template != .routeVideo, cardPanel != .map, !showSummaryOnCard {
                 HStack(spacing: 8) {
-                    Text(AppLanguage.shared.s("차트 위치", "Chart"))
+                    Text(AppLanguage.shared.s("차트 위치", "Chart", ja: "チャート位置"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.white.opacity(0.55))
                     ForEach(CardChartPosition.allCases, id: \.self) { pos in
@@ -826,7 +826,7 @@ struct ShareCardScreen: View {
                     Image(systemName: "map.fill")
                         .font(.system(size: 28))
                         .foregroundStyle(Theme.violet)
-                    Text(AppLanguage.shared.s("야외 경로 없음", "No outdoor route"))
+                    Text(AppLanguage.shared.s("야외 경로 없음", "No outdoor route", ja: "屋外ルートなし"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -942,7 +942,7 @@ struct ShareCardScreen: View {
                 Color(hex: "0D0D12")
                 VStack(spacing: 10) {
                     ProgressView().tint(Theme.violet)
-                    Text(AppLanguage.shared.s("경로 준비 중…", "Loading route…"))
+                    Text(AppLanguage.shared.s("경로 준비 중…", "Loading route…", ja: "ルートを準備中…"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1592,9 +1592,9 @@ struct ShareCardScreen: View {
     private var lockedAllChipRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                lockedChip(AppLanguage.shared.s("인사이트", "Insight"), icon: "sparkles")
+                lockedChip(AppLanguage.shared.s("인사이트", "Insight", ja: "インサイト"), icon: "sparkles")
                 if canShowMiniMe {
-                    lockedChip(AppLanguage.shared.s("미니미", "Mini-Me"))
+                    lockedChip(AppLanguage.shared.s("미니미", "Mini-Me", ja: "ミニミー"))
                 }
                 ForEach(allMetricItems) { item in
                     lockedChip(item.id.chipLabel)
@@ -1612,7 +1612,7 @@ struct ShareCardScreen: View {
             Task { await renderCard(showSpinner: false) }
         } label: {
             HStack(spacing: 4) {
-                Text(AppLanguage.shared.s("로고", "Logo"))
+                Text(AppLanguage.shared.s("로고", "Logo", ja: "ロゴ"))
                     .font(.caption.weight(.semibold))
             }
             .foregroundStyle(showLogoOnCard ? Color.white : Color.white.opacity(0.4))
@@ -1728,7 +1728,7 @@ struct ShareCardScreen: View {
     // 메인 편집(클립 추가·스타일·데이터)은 쉬는날 방식 전용 시트로
     private var oneLinerEditButton: some View {
         Button { oneLinerVM.showOneLinerSheet = true } label: {
-            Label(AppLanguage.shared.s("한마디 편집", "Edit one-liner"), systemImage: "slider.horizontal.3")
+            Label(AppLanguage.shared.s("한마디 편집", "Edit one-liner", ja: "ひとことを編集"), systemImage: "slider.horizontal.3")
                 .font(.headline)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 46)
@@ -1880,7 +1880,7 @@ struct ShareCardScreen: View {
     @ViewBuilder
     private var bottomControls: some View {
         if template == .video, !isStamp {
-            Text(AppLanguage.shared.s("영상 선택과 공유시 영상 길이에 따라 시간이 소요됩니다.", "Processing time varies by video length."))
+            Text(AppLanguage.shared.s("영상 선택과 공유시 영상 길이에 따라 시간이 소요됩니다.", "Processing time varies by video length.", ja: "動画の選択と共有には、動画の長さに応じて時間がかかります。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -1908,7 +1908,7 @@ struct ShareCardScreen: View {
                     }
                     return Int(Double(storyPhotos.count) * PhotoSlideComposition.photoDuration)
                 }()
-                Text(AppLanguage.shared.s("클립 \(storyPhotos.count)개 · \(totalSec)초 · 탭하면 상세 편집", "\(storyPhotos.count) clips · \(totalSec)s · Tap to edit"))
+                Text(AppLanguage.shared.s("클립 \(storyPhotos.count)개 · \(totalSec)초 · 탭하면 상세 편집", "\(storyPhotos.count) clips · \(totalSec)s · Tap to edit", ja: "クリップ\(storyPhotos.count)本 · \(totalSec)秒 · タップで詳細編集"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1937,7 +1937,7 @@ struct ShareCardScreen: View {
                 let totalSec = Int(Double(clipCnt) * PhotoSlideComposition.placeableSlideDuration)
                 Text(AppLanguage.shared.s(
                     "사진 \(clipCnt)장 · \(totalSec)초",
-                    "\(clipCnt) photo(s) · \(totalSec)s"))
+                    "\(clipCnt) photo(s) · \(totalSec)s", ja: "写真\(clipCnt)枚 · \(totalSec)秒"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 24)
@@ -2035,7 +2035,7 @@ struct ShareCardScreen: View {
                                     HStack(spacing: 6) {
                                         Image(systemName: "photo.badge.plus")
                                             .font(.system(size: 17))
-                                        Text(AppLanguage.shared.s("영상 선택", "Select Video"))
+                                        Text(AppLanguage.shared.s("영상 선택", "Select Video", ja: "動画を選択"))
                                             .font(.subheadline)
                                     }
                                     .foregroundStyle(Color.white.opacity(0.55))
@@ -2074,7 +2074,8 @@ struct ShareCardScreen: View {
                                 .font(.system(size: 13, weight: .medium))
                             Text(AppLanguage.shared.s(
                                 athleticVM.athleticMuted ? "음소거" : "소리 켜짐",
-                                athleticVM.athleticMuted ? "Muted" : "Sound On"
+                                athleticVM.athleticMuted ? "Muted" : "Sound On",
+                                ja: athleticVM.athleticMuted ? "ミュート" : "サウンドオン"
                             ))
                             .font(.system(size: 13, weight: .medium))
                         }
@@ -2098,7 +2099,7 @@ struct ShareCardScreen: View {
                         VStack(spacing: 4) {
                             Text(AppLanguage.shared.s(
                                 "\(trimFormatSec(selRecipe.trimStart)) – \(trimFormatSec(selRecipe.trimEnd))  ·  \(trimFormatSec(used)) 사용",
-                                "\(trimFormatSec(selRecipe.trimStart)) – \(trimFormatSec(selRecipe.trimEnd))  ·  \(trimFormatSec(used)) used"
+                                "\(trimFormatSec(selRecipe.trimStart)) – \(trimFormatSec(selRecipe.trimEnd))  ·  \(trimFormatSec(used)) used", ja: "\(trimFormatSec(selRecipe.trimStart)) – \(trimFormatSec(selRecipe.trimEnd))  ·  \(trimFormatSec(used))使用"
                             ))
                             .font(.system(size: 12, weight: .medium).monospacedDigit())
                             .foregroundStyle(.secondary)
@@ -2146,7 +2147,8 @@ struct ShareCardScreen: View {
             .padding(.top, 8)
             .padding(.trailing, 20)
             .accessibilityLabel(AppLanguage.shared.s(isPreviewExpanded ? "미리보기 작게" : "미리보기 크게",
-                                                     isPreviewExpanded ? "Shrink preview" : "Enlarge preview"))
+                                                     isPreviewExpanded ? "Shrink preview" : "Enlarge preview",
+                                                     ja: isPreviewExpanded ? "プレビューを小さく" : "プレビューを大きく"))
         }
     }
 
@@ -2190,7 +2192,7 @@ struct ShareCardScreen: View {
                 .padding(.bottom, 16)
                 .background(Theme.background.ignoresSafeArea())
         }
-        .navigationTitle(AppLanguage.shared.s("카드 만들기", "Create Card"))
+        .navigationTitle(AppLanguage.shared.s("카드 만들기", "Create Card", ja: "カードを作る"))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -2506,18 +2508,18 @@ struct ShareCardScreen: View {
             guard routePreviewPlayCount > 0 else { return }
             await animateRouteVideoPreview()
         }
-        .alert(AppLanguage.shared.s("이미 내보낸 영상입니다", "Already exported video"),
+        .alert(AppLanguage.shared.s("이미 내보낸 영상입니다", "Already exported video", ja: "書き出し済みの動画です"),
                isPresented: $showExportedVideoWarning) {
-            Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { }
+            Button(AppLanguage.shared.s("확인", "OK", ja: "OK"), role: .cancel) { }
         } message: {
             Text(AppLanguage.shared.s(
                 "원본 영상을 선택해 주세요. 내보낸 영상을 다시 선택하면 내용이 두 번 나타납니다.",
-                "Please select the original video. Selecting an exported video again will duplicate the overlay."
+                "Please select the original video. Selecting an exported video again will duplicate the overlay.", ja: "元の動画を選択してください。書き出した動画を再び選ぶと、内容が二重に表示されます。"
             ))
         }
-        .alert(AppLanguage.shared.s("내보내기 실패", "Export Failed"),
+        .alert(AppLanguage.shared.s("내보내기 실패", "Export Failed", ja: "書き出しに失敗しました"),
                isPresented: $showVideoExportError) {
-            Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { showVideoExportError = false }
+            Button(AppLanguage.shared.s("확인", "OK", ja: "OK"), role: .cancel) { showVideoExportError = false }
         } message: {
             Text(videoExportError ?? "")
         }
@@ -3049,7 +3051,7 @@ struct ShareCardScreen: View {
                     Image(systemName: "map.fill")
                         .font(.system(size: 28))
                         .foregroundStyle(Theme.violet)
-                    Text(AppLanguage.shared.s("야외 경로 없음", "No outdoor route"))
+                    Text(AppLanguage.shared.s("야외 경로 없음", "No outdoor route", ja: "屋外ルートなし"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -3108,7 +3110,7 @@ struct ShareCardScreen: View {
                 Color(hex: "0D0D12")
                 VStack(spacing: 10) {
                     ProgressView().tint(Theme.violet)
-                    Text(AppLanguage.shared.s("경로 준비 중…", "Loading route…"))
+                    Text(AppLanguage.shared.s("경로 준비 중…", "Loading route…", ja: "ルートを準備中…"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -3140,7 +3142,7 @@ struct ShareCardScreen: View {
                             Color.black.opacity(0.55)
                             VStack(spacing: 8) {
                                 ProgressView().tint(.white).scaleEffect(1.2)
-                                Text(AppLanguage.shared.s("합성 중...", "Processing..."))
+                                Text(AppLanguage.shared.s("합성 중...", "Processing...", ja: "合成中..."))
                                     .font(.caption.weight(.medium))
                                     .foregroundStyle(.white)
                             }
@@ -3206,7 +3208,7 @@ struct ShareCardScreen: View {
                                 Image(systemName: "photo.badge.plus")
                                     .font(.system(size: 32))
                                     .foregroundStyle(Theme.violet)
-                                Text(AppLanguage.shared.s("사진을 선택해 주세요", "Select photos"))
+                                Text(AppLanguage.shared.s("사진을 선택해 주세요", "Select photos", ja: "写真を選択してください"))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -3232,7 +3234,7 @@ struct ShareCardScreen: View {
                             Image(systemName: "video.badge.plus")
                                 .font(.system(size: 32))
                                 .foregroundStyle(Theme.violet)
-                            Text(AppLanguage.shared.s("영상을 선택해 주세요", "Select a video"))
+                            Text(AppLanguage.shared.s("영상을 선택해 주세요", "Select a video", ja: "動画を選択してください"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -3272,7 +3274,7 @@ struct ShareCardScreen: View {
                     Color.black.opacity(0.55)
                     VStack(spacing: 8) {
                         ProgressView().tint(.white).scaleEffect(1.2)
-                        Text(AppLanguage.shared.s("합성 중...", "Processing..."))
+                        Text(AppLanguage.shared.s("합성 중...", "Processing...", ja: "合成中..."))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.white)
                     }
@@ -3367,8 +3369,8 @@ struct ShareCardScreen: View {
                 HStack(spacing: 10) {
                     ProgressView().tint(Theme.violet)
                     Text(template == .slide
-                         ? AppLanguage.shared.s("슬라이드 만드는 중...", "Creating slides...")
-                         : AppLanguage.shared.s("영상 만드는 중...", "Exporting video..."))
+                         ? AppLanguage.shared.s("슬라이드 만드는 중...", "Creating slides...", ja: "スライドを作成中...")
+                         : AppLanguage.shared.s("영상 만드는 중...", "Exporting video...", ja: "動画を作成中..."))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -3377,13 +3379,13 @@ struct ShareCardScreen: View {
             } else if let vf = exportedVideoFile {
                 ShareLink(item: vf, preview: SharePreview(
                     template == .slide
-                        ? AppLanguage.shared.s("러닝 슬라이드", "Running Slides")
-                        : AppLanguage.shared.s("러닝 영상", "Running Video")
+                        ? AppLanguage.shared.s("러닝 슬라이드", "Running Slides", ja: "ランのスライド")
+                        : AppLanguage.shared.s("러닝 영상", "Running Video", ja: "ランの動画")
                 )) {
                     Label(
                         template == .slide
-                            ? AppLanguage.shared.s("슬라이드 내보내기", "Export Slides")
-                            : AppLanguage.shared.s("영상 내보내기", "Export Video"),
+                            ? AppLanguage.shared.s("슬라이드 내보내기", "Export Slides", ja: "スライドを書き出す")
+                            : AppLanguage.shared.s("영상 내보내기", "Export Video", ja: "動画を書き出す"),
                         systemImage: "square.and.arrow.up"
                     )
                     .font(.headline)
@@ -3393,14 +3395,14 @@ struct ShareCardScreen: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
             } else if template == .slide, storyPhotos.isEmpty {
-                Text(AppLanguage.shared.s("사진을 선택해 주세요", "Select photos first"))
+                Text(AppLanguage.shared.s("사진을 선택해 주세요", "Select photos first", ja: "写真を選択してください"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
             } else if isStamp, template == .video, stampVM.clipRecipes.isEmpty {
-                Text(AppLanguage.shared.s("영상을 선택해 주세요", "Select a video first"))
+                Text(AppLanguage.shared.s("영상을 선택해 주세요", "Select a video first", ja: "動画を選択してください"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -3411,8 +3413,8 @@ struct ShareCardScreen: View {
                     Task { await exportVideo() }
                 } label: {
                     Label(template == .slide
-                              ? AppLanguage.shared.s("슬라이드 내보내기", "Export Slides")
-                              : AppLanguage.shared.s("영상 내보내기", "Export Video"),
+                              ? AppLanguage.shared.s("슬라이드 내보내기", "Export Slides", ja: "スライドを書き出す")
+                              : AppLanguage.shared.s("영상 내보내기", "Export Video", ja: "動画を書き出す"),
                           systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
@@ -3423,7 +3425,7 @@ struct ShareCardScreen: View {
             }
         } else if template == .routeVideo {
             if routeCoords.isEmpty {
-                Text(AppLanguage.shared.s("야외 러닝 경로가 있을 때\n사용할 수 있습니다", "Available when an outdoor route exists"))
+                Text(AppLanguage.shared.s("야외 러닝 경로가 있을 때\n사용할 수 있습니다", "Available when an outdoor route exists", ja: "屋外ランのルートがあるときに\n使用できます"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -3434,7 +3436,7 @@ struct ShareCardScreen: View {
                     ProgressView(value: routeVideoProgress)
                         .tint(Theme.violet)
                         .padding(.horizontal, 4)
-                    Text(AppLanguage.shared.s("경로 영상 만드는 중… \(Int(routeVideoProgress * 100))%", "Creating route video… \(Int(routeVideoProgress * 100))%"))
+                    Text(AppLanguage.shared.s("경로 영상 만드는 중… \(Int(routeVideoProgress * 100))%", "Creating route video… \(Int(routeVideoProgress * 100))%", ja: "ルート動画を作成中… \(Int(routeVideoProgress * 100))%"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -3442,7 +3444,7 @@ struct ShareCardScreen: View {
                 .padding(.vertical, 14)
             } else if let vf = routeVideoFile {
                 Button { showRouteVideoShareSheet = true } label: {
-                    Label(AppLanguage.shared.s("경로 영상 내보내기", "Export Route Video"), systemImage: "square.and.arrow.up")
+                    Label(AppLanguage.shared.s("경로 영상 내보내기", "Export Route Video", ja: "ルート動画を書き出す"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -3456,7 +3458,7 @@ struct ShareCardScreen: View {
                 Button {
                     Task { await exportRouteVideo() }
                 } label: {
-                    Label(AppLanguage.shared.s("경로 영상 내보내기", "Export Route Video"), systemImage: "square.and.arrow.up")
+                    Label(AppLanguage.shared.s("경로 영상 내보내기", "Export Route Video", ja: "ルート動画を書き出す"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -3468,7 +3470,7 @@ struct ShareCardScreen: View {
         } else if isRendering {
             HStack(spacing: 10) {
                 ProgressView().tint(Theme.violet)
-                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card..."))
+                Text(AppLanguage.shared.s("카드 만드는 중...", "Creating card...", ja: "カードを作成中..."))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -3477,7 +3479,7 @@ struct ShareCardScreen: View {
         } else if storyShareImages.count >= 1 {
             VStack(spacing: 10) {
                 Button { showShareSheet = true } label: {
-                    Label(AppLanguage.shared.s("카드 내보내기", "Export Card"),
+                    Label(AppLanguage.shared.s("카드 내보내기", "Export Card", ja: "カードを書き出す"),
                           systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(.white)
@@ -3541,7 +3543,7 @@ struct ShareCardScreen: View {
                     }
                 }
             } label: {
-                Label(AppLanguage.shared.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
+                Label(AppLanguage.shared.s("카드 내보내기", "Export Card", ja: "カードを書き出す"), systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 46)
@@ -3559,7 +3561,7 @@ struct ShareCardScreen: View {
             if isOneLiner && isBatchExporting {
                 HStack(spacing: 10) {
                     ProgressView().tint(Theme.violet)
-                    Text(AppLanguage.shared.s("합성 중...", "Processing..."))
+                    Text(AppLanguage.shared.s("합성 중...", "Processing...", ja: "合成中..."))
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 18)
@@ -3567,7 +3569,7 @@ struct ShareCardScreen: View {
                 // 사진 연결 OneLiner: 문구 있는 사진 렌더링 후 공유 시트 표시
                 let count = linkedOneLinerPhotoCount
                 Button { Task { await batchExportOneLinerCards() } } label: {
-                    Label(AppLanguage.shared.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
+                    Label(AppLanguage.shared.s("카드 내보내기", "Export Card", ja: "カードを書き出す"), systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(count == 0 ? Color.white.opacity(0.4) : .white)
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -3578,7 +3580,7 @@ struct ShareCardScreen: View {
             } else {
                 let shareDisabled = isOneLiner && oneLinerVM.oneLinerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 Button { showShareSheet = true } label: {
-                    Label(AppLanguage.shared.s("카드 내보내기", "Export Card"),
+                    Label(AppLanguage.shared.s("카드 내보내기", "Export Card", ja: "カードを書き出す"),
                           systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .foregroundStyle(shareDisabled ? Color.white.opacity(0.4) : .white)
@@ -3593,7 +3595,7 @@ struct ShareCardScreen: View {
                 }
             }
         } else {
-            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed"))
+            Text(AppLanguage.shared.s("카드 생성에 실패했습니다", "Card creation failed", ja: "カードの作成に失敗しました"))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
@@ -3746,7 +3748,7 @@ struct ShareCardScreen: View {
             } catch {
                 videoExportError = AppLanguage.shared.s(
                     "내보내기 중 오류가 발생했습니다: \(error.localizedDescription)",
-                    "Export error: \(error.localizedDescription)")
+                    "Export error: \(error.localizedDescription)", ja: "書き出し中にエラーが発生しました: \(error.localizedDescription)")
                 showVideoExportError = true
             }
             isExportingVideo = false
@@ -3823,7 +3825,7 @@ struct ShareCardScreen: View {
                 exportedVideoFile = SharableVideoFile(url: out)
                 presentShareSheet(url: out)
             } else {
-                videoExportError = AppLanguage.shared.s("영상 합성에 실패했습니다.", "Video export failed.")
+                videoExportError = AppLanguage.shared.s("영상 합성에 실패했습니다.", "Video export failed.", ja: "動画の合成に失敗しました。")
                 showVideoExportError = true
             }
             isExportingVideo = false
@@ -3878,7 +3880,7 @@ struct ShareCardScreen: View {
                 exportedVideoFile = SharableVideoFile(url: out)
                 presentShareSheet(url: out)
             } else {
-                videoExportError = AppLanguage.shared.s("슬라이드 영상 합성에 실패했습니다.", "Slide export failed.")
+                videoExportError = AppLanguage.shared.s("슬라이드 영상 합성에 실패했습니다.", "Slide export failed.", ja: "スライド動画の合成に失敗しました。")
                 showVideoExportError = true
             }
             isExportingVideo = false
@@ -3951,7 +3953,7 @@ struct ShareCardScreen: View {
                 exportedVideoFile = SharableVideoFile(url: out)
                 presentShareSheet(url: out)
             } else {
-                videoExportError = AppLanguage.shared.s("슬라이드 합성에 실패했습니다.", "Slide export failed.")
+                videoExportError = AppLanguage.shared.s("슬라이드 합성에 실패했습니다.", "Slide export failed.", ja: "スライドの合成に失敗しました。")
                 showVideoExportError = true
             }
             isExportingVideo = false
@@ -4057,7 +4059,7 @@ struct ShareCardScreen: View {
                 exportedVideoFile = SharableVideoFile(url: out)
                 presentShareSheet(url: out)
             } else {
-                videoExportError = AppLanguage.shared.s("영상 합성에 실패했습니다.", "Video export failed.")
+                videoExportError = AppLanguage.shared.s("영상 합성에 실패했습니다.", "Video export failed.", ja: "動画の合成に失敗しました。")
                 showVideoExportError = true
             }
             isExportingVideo = false
@@ -4808,11 +4810,11 @@ private struct StoryPhotoPickerSheet: View {
                 }
                 .padding(4)
             }
-            .navigationTitle(AppLanguage.shared.s("사진 선택", "Select Photo"))
+            .navigationTitle(AppLanguage.shared.s("사진 선택", "Select Photo", ja: "写真を選択"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(AppLanguage.shared.s("취소", "Cancel")) { dismiss() }
+                    Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル")) { dismiss() }
                 }
             }
         }

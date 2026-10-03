@@ -52,7 +52,8 @@ struct OneLinerTextFieldView: View {
                     HStack(spacing: 8) {
                         TextField(
                             AppLanguage.shared.s(i == 0 ? "오늘의 한마디" : "\(i + 1)번째 줄",
-                                                 i == 0 ? "Your one-liner" : "Line \(i + 1)"),
+                                                 i == 0 ? "Your one-liner" : "Line \(i + 1)",
+                                                 ja: i == 0 ? "今日のひとこと" : "\(i + 1)行目"),
                             text: lineBinding(for: i)
                         )
                         .focused(focusedLine, equals: i)
@@ -109,7 +110,7 @@ struct OneLinerVideoSlotInputView: View {
                         .font(.system(size: 11, weight: .semibold).monospacedDigit())
                         .foregroundStyle(Color(hex: "6E6E78"))
                         .frame(width: 18, alignment: .trailing)
-                    TextField(L.s("슬롯 \(idx + 1)", "Slot \(idx + 1)"),
+                    TextField(L.s("슬롯 \(idx + 1)", "Slot \(idx + 1)", ja: "スロット\(idx + 1)"),
                               text: Binding(
                         get: {
                             idx < vm.oneLinerVideoSlotTexts.count
@@ -140,7 +141,7 @@ struct OneLinerVideoSlotInputView: View {
         }
         .padding(.horizontal, 24)
 
-        Text(L.s("각 칸이 영상에서 차례로 타이핑됩니다", "Each slot types in sequence on the video"))
+        Text(L.s("각 칸이 영상에서 차례로 타이핑됩니다", "Each slot types in sequence on the video", ja: "各スロットが動画で順番にタイピングされます"))
             .font(.caption2)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 24)

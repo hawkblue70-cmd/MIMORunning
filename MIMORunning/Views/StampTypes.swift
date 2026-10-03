@@ -72,23 +72,23 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     var displayName: String {
         let L = AppLanguage.shared
         switch self {
-        case .hud:           return L.s("HUD 계기판",      "HUD Gauge")
-        case .scoreboard:    return L.s("전광판",          "Scoreboard")
-        case .passportStamp: return L.s("여권 스탬프",     "Passport Stamp")
-        case .circleBadge:   return L.s("서클 배지",       "Circle Badge")
-        case .placeable:     return L.s("플레이서블",      "Placeable")
-        case .labeledRows:   return L.s("행마다 라벨",     "Row Labels")
-        case .inlineTriple:  return L.s("가로 3열",        "Inline Triple")
-        case .distanceHero:  return L.s("거리 몰아주기",   "Distance Hero")
-        case .summaryGrid:   return L.s("요약 그리드",     "Summary Grid")
-        case .summaryGridPace: return L.s("요약 그리드+페이스", "Summary Grid + Pace")
-        case .hrWave:        return L.s("심박 파형",       "HR Wave")
-        case .hrZone:        return L.s("심박 존",         "HR Zones")
-        case .elevProfile:   return L.s("고도 프로파일",   "Elevation Profile")
-        case .cadenceEq:     return L.s("케이던스",        "Cadence")
-        case .placeHeadline: return L.s("지명 헤드라인",   "Place Headline")
-        case .routeHero:     return L.s("루트 히어로",     "Route Hero")
-        case .routeSide:     return L.s("루트 사이드",     "Route Side")
+        case .hud:           return L.s("HUD 계기판",      "HUD Gauge", ja: "HUDメーター")
+        case .scoreboard:    return L.s("전광판",          "Scoreboard", ja: "電光掲示板")
+        case .passportStamp: return L.s("여권 스탬프",     "Passport Stamp", ja: "パスポートスタンプ")
+        case .circleBadge:   return L.s("서클 배지",       "Circle Badge", ja: "サークルバッジ")
+        case .placeable:     return L.s("플레이서블",      "Placeable", ja: "プレースブル")
+        case .labeledRows:   return L.s("행마다 라벨",     "Row Labels", ja: "行ごとのラベル")
+        case .inlineTriple:  return L.s("가로 3열",        "Inline Triple", ja: "横3列")
+        case .distanceHero:  return L.s("거리 몰아주기",   "Distance Hero", ja: "距離を主役に")
+        case .summaryGrid:   return L.s("요약 그리드",     "Summary Grid", ja: "サマリーグリッド")
+        case .summaryGridPace: return L.s("요약 그리드+페이스", "Summary Grid + Pace", ja: "サマリーグリッド+ペース")
+        case .hrWave:        return L.s("심박 파형",       "HR Wave", ja: "心拍波形")
+        case .hrZone:        return L.s("심박 존",         "HR Zones", ja: "心拍ゾーン")
+        case .elevProfile:   return L.s("고도 프로파일",   "Elevation Profile", ja: "標高プロファイル")
+        case .cadenceEq:     return L.s("케이던스",        "Cadence", ja: "ケイデンス")
+        case .placeHeadline: return L.s("지명 헤드라인",   "Place Headline", ja: "地名ヘッドライン")
+        case .routeHero:     return L.s("루트 히어로",     "Route Hero", ja: "ルートヒーロー")
+        case .routeSide:     return L.s("루트 사이드",     "Route Side", ja: "ルートサイド")
         }
     }
 
@@ -230,10 +230,10 @@ enum StampEntranceMode: String, CaseIterable {
 
     var chipLabel: String {
         switch self {
-        case .stamp: return AppLanguage.shared.s("도장", "Stamp")
-        case .fade:  return AppLanguage.shared.s("페이드", "Fade")
-        case .flyIn: return AppLanguage.shared.s("날아오기", "Fly In")
-        case .none:  return AppLanguage.shared.s("없음", "None")
+        case .stamp: return AppLanguage.shared.s("도장", "Stamp", ja: "スタンプ")
+        case .fade:  return AppLanguage.shared.s("페이드", "Fade", ja: "フェード")
+        case .flyIn: return AppLanguage.shared.s("날아오기", "Fly In", ja: "フライイン")
+        case .none:  return AppLanguage.shared.s("없음", "None", ja: "なし")
         }
     }
 }

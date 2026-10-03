@@ -148,11 +148,11 @@ extension RestDayOneLinerSheet {
                 } catch RestDayExportError.clipNotFound {
                     exportError = AppLanguage.shared.s(
                         "영상 파일을 찾을 수 없습니다. 영상을 삭제하고 다시 추가해주세요.",
-                        "Video file not found. Please remove the clip and add it again.")
+                        "Video file not found. Please remove the clip and add it again.", ja: "動画ファイルが見つかりません。動画を削除して追加し直してください。")
                 } catch {
                     exportError = AppLanguage.shared.s(
                         "내보내기 중 오류가 발생했습니다: \(error.localizedDescription)",
-                        "Export error: \(error.localizedDescription)")
+                        "Export error: \(error.localizedDescription)", ja: "書き出し中にエラーが発生しました: \(error.localizedDescription)")
                 }
             }
             return

@@ -42,17 +42,17 @@ struct SummaryPeriodStats {
                 let now = Date()
                 let currY = cal.component(.year,  from: now)
                 let currM = cal.component(.month, from: now)
-                if y == currY && m == currM { return L.s("이번 달 결산", "This Month") }
+                if y == currY && m == currM { return L.s("이번 달 결산", "This Month", ja: "今月のまとめ") }
                 let diff = (currY - y) * 12 + (currM - m)
                 return diff == 1
-                    ? L.s("지난달 결산", "Last Month")
-                    : L.s("\(diff)달 전 결산", "\(diff) Months Ago")
+                    ? L.s("지난달 결산", "Last Month", ja: "先月のまとめ")
+                    : L.s("\(diff)달 전 결산", "\(diff) Months Ago", ja: "\(diff)か月前のまとめ")
             case .yearly(let y):
                 let currY = Calendar.current.component(.year, from: Date())
-                if y == currY { return L.s("올해 결산", "This Year") }
+                if y == currY { return L.s("올해 결산", "This Year", ja: "今年のまとめ") }
                 return y == currY - 1
-                    ? L.s("작년 결산", "Last Year")
-                    : L.s("\(currY - y)년 전 결산", "\(currY - y) Years Ago")
+                    ? L.s("작년 결산", "Last Year", ja: "昨年のまとめ")
+                    : L.s("\(currY - y)년 전 결산", "\(currY - y) Years Ago", ja: "\(currY - y)年前のまとめ")
             }
         }
 
@@ -101,7 +101,7 @@ struct SummaryPeriodStats {
     var durationStr: String {
         let h = Int(totalDuration) / 3600
         let m = (Int(totalDuration) % 3600) / 60
-        return h > 0 ? "\(h)h \(m)m" : AppLanguage.shared.s("\(m)분", "\(m)m")
+        return h > 0 ? "\(h)h \(m)m" : AppLanguage.shared.s("\(m)분", "\(m)m", ja: "\(m)分")
     }
 
     var avgPaceStr: String? {
@@ -134,7 +134,7 @@ struct SummaryPeriodStats {
         guard let prev = compRunCount else { return nil }
         let delta = runCount - prev
         let sign = delta >= 0 ? "+" : ""
-        return AppLanguage.shared.s("\(sign)\(delta)회", "\(sign)\(delta) runs")
+        return AppLanguage.shared.s("\(sign)\(delta)회", "\(sign)\(delta) runs", ja: "\(sign)\(delta)回")
     }
 
     var paceDeltaStr: String? {
@@ -145,13 +145,13 @@ struct SummaryPeriodStats {
         let m = absDelta / 60; let s = absDelta % 60
         let timeStr = m > 0 ? "\(m)′\(String(format: "%02d", s))″" : "\(s)″"
         return delta > 0
-            ? AppLanguage.shared.s("\(timeStr) 빨라짐", "\(timeStr) faster")
-            : AppLanguage.shared.s("\(timeStr) 느려짐", "\(timeStr) slower")
+            ? AppLanguage.shared.s("\(timeStr) 빨라짐", "\(timeStr) faster", ja: "\(timeStr)速くなった")
+            : AppLanguage.shared.s("\(timeStr) 느려짐", "\(timeStr) slower", ja: "\(timeStr)遅くなった")
     }
 
     var ytdStr: String? {
         guard case .monthly = kind, let km = ytdDistanceKm, km > 0 else { return nil }
-        return AppLanguage.shared.s(String(format: "올해 누적 %.0fkm", km), String(format: "YTD %.0fkm", km))
+        return AppLanguage.shared.s(String(format: "올해 누적 %.0fkm", km), String(format: "YTD %.0fkm", km), ja: String(format: "今年の累計 %.0fkm", km))
     }
 
     var isEmpty: Bool { activities.isEmpty }
@@ -335,7 +335,7 @@ struct SummaryShareCardView: View {
                             .font(.system(size: 18, weight: .bold))
                             .foregroundStyle(p.brand)
                     }
-                    Text(AppLanguage.shared.s("총 거리", "TOTAL"))
+                    Text(AppLanguage.shared.s("총 거리", "TOTAL", ja: "総距離"))
                         .font(.system(size: 11, weight: .semibold))
                         .tracking(1)
                         .foregroundStyle(p.textSecondary)
@@ -363,16 +363,16 @@ struct SummaryShareCardView: View {
                     // Secondary stats
                     HStack(spacing: 0) {
                         secondaryCell(value: stats.durationStr,
-                                      label: AppLanguage.shared.s("운동 시간", "TIME"),
+                                      label: AppLanguage.shared.s("운동 시간", "TIME", ja: "運動時間"),
                                       labelColor: p.accentGold)
                         cellDivider
-                        secondaryCell(value: AppLanguage.shared.s("\(stats.runCount)회", "\(stats.runCount)"),
-                                      label: AppLanguage.shared.s("러닝 횟수", "RUNS"),
+                        secondaryCell(value: AppLanguage.shared.s("\(stats.runCount)회", "\(stats.runCount)", ja: "\(stats.runCount)回"),
+                                      label: AppLanguage.shared.s("러닝 횟수", "RUNS", ja: "ラン回数"),
                                       labelColor: p.brand)
                         if let pace = stats.avgPaceStr {
                             cellDivider
                             secondaryCell(value: pace,
-                                          label: AppLanguage.shared.s("평균 페이스", "AVG PACE"),
+                                          label: AppLanguage.shared.s("평균 페이스", "AVG PACE", ja: "平均ペース"),
                                           labelColor: p.accentTeal)
                         }
                     }
@@ -387,7 +387,7 @@ struct SummaryShareCardView: View {
                             Image(systemName: "arrow.right.circle.fill")
                                 .font(.system(size: 8))
                                 .foregroundStyle(p.brand)
-                            Text(AppLanguage.shared.s("최장 거리", "LONGEST"))
+                            Text(AppLanguage.shared.s("최장 거리", "LONGEST", ja: "最長距離"))
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(p.textSecondary)
                             Spacer()
@@ -410,8 +410,8 @@ struct SummaryShareCardView: View {
                             .padding(.bottom, 6)
                         HStack {
                             Text(showDaily
-                                 ? AppLanguage.shared.s("일간 거리", "DAILY DIST")
-                                 : AppLanguage.shared.s("월간 거리", "MONTHLY DIST"))
+                                 ? AppLanguage.shared.s("일간 거리", "DAILY DIST", ja: "日別距離")
+                                 : AppLanguage.shared.s("월간 거리", "MONTHLY DIST", ja: "月別距離"))
                                 .font(.system(size: 8, weight: .semibold))
                                 .tracking(0.6)
                                 .foregroundStyle(p.textSecondary)
@@ -546,17 +546,17 @@ struct SummaryShareCardScreen: View {
 
     private var topBar: some View {
         HStack {
-            Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+            Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                 .font(.body)
                 .foregroundStyle(.secondary)
             Spacer()
             Text(isMonthly
-                 ? AppLanguage.shared.s("월말 결산 데이터", "Monthly Summary")
-                 : AppLanguage.shared.s("연말 결산 데이터", "Yearly Summary"))
+                 ? AppLanguage.shared.s("월말 결산 데이터", "Monthly Summary", ja: "月末のまとめデータ")
+                 : AppLanguage.shared.s("연말 결산 데이터", "Yearly Summary", ja: "年末のまとめデータ"))
                 .font(.headline)
                 .foregroundStyle(.white)
             Spacer()
-            Text(AppLanguage.shared.s("닫기", "Close")).foregroundStyle(.clear)
+            Text(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")).foregroundStyle(.clear)
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -582,9 +582,9 @@ struct SummaryShareCardScreen: View {
 
     private var themeToggle: some View {
         HStack(spacing: 0) {
-            themeSegment(label: AppLanguage.shared.s("다크", "Dark"),
+            themeSegment(label: AppLanguage.shared.s("다크", "Dark", ja: "ダーク"),
                          selected: summaryTheme == .dark) { summaryTheme = .dark }
-            themeSegment(label: AppLanguage.shared.s("라이트", "Light"),
+            themeSegment(label: AppLanguage.shared.s("라이트", "Light", ja: "ライト"),
                          selected: summaryTheme == .light) { summaryTheme = .light }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -616,7 +616,7 @@ struct SummaryShareCardScreen: View {
             Button {
                 activeShare = SingleShareConfig(id: index, image: previewImages[index])
             } label: {
-                Label(title + " " + AppLanguage.shared.s("러닝 마일리지 내보내기", "Running Mileage Export"),
+                Label(title + " " + AppLanguage.shared.s("러닝 마일리지 내보내기", "Running Mileage Export", ja: "走行距離を書き出す"),
                       systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
